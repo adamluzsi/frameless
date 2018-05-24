@@ -1,20 +1,12 @@
-package payload
+package iterate
 
 import (
 	"bufio"
 	"fmt"
 	"io"
-	"net/http"
 
-	"github.com/adamluzsi/frameless/dataprovider"
+	"github.com/adamluzsi/frameless/dataproviders"
 )
-
-type PlainText struct {
-	request *http.Request
-	scanner *bufio.Scanner
-
-	lastValue []byte
-}
 
 type textIterator struct {
 	scanner *bufio.Scanner
@@ -36,7 +28,7 @@ func (ti *textIterator) Decode(container interface{}) error {
 	return ti.scanner.Err()
 }
 
-func LineByLine(r io.Reader) dataprovider.Iterator {
+func LineByLine(r io.Reader) dataproviders.Iterator {
 	s := bufio.NewScanner(r)
 
 	return &textIterator{s}

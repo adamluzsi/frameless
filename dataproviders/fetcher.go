@@ -1,4 +1,4 @@
-package dataprovider
+package dataproviders
 
 // Fetcher is an object that implements fetching logic for a given Business Entity
 type Fetcher interface {
