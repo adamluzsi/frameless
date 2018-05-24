@@ -2,8 +2,6 @@ package presenters
 
 import (
 	"io"
-
-	"github.com/adamluzsi/frameless"
 )
 
 // Presenter is represent a communication layer presenting layer
@@ -22,7 +20,7 @@ type Presenter interface {
 	//
 	// Render renders a simple message back to the enwrapped communication channel
 	//	message is an interface type because the channel communication layer and content and the serialization is up to the Presenter to implement
-	Render(message frameless.Content) error
+	Render(message interface{}) error
 }
 
 // PresenterBuilder is an example how presenter should be created
