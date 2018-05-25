@@ -1,22 +1,24 @@
-package http
+package httprouter
 
 import (
 	"context"
 	"net/http"
-	"net/url"
 
 	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/julienschmidt/httprouter"
 )
 
 type Request struct {
 	srcRequest      *http.Request
 	iteratorBuilder dataproviders.IteratorBuilder
+	params          httprouter.Params
 }
 
-func NewRequest(r *http.Request, payloadDecoderBuilder dataproviders.IteratorBuilder) *Request {
+func NewRequest(r *http.Request, b dataproviders.IteratorBuilder, p httprouter.Params) *Request {
 	return &Request{
 		srcRequest:      r,
-		iteratorBuilder: payloadDecoderBuilder,
+		iteratorBuilder: b,
+		params:          p,
 	}
 }
 
@@ -24,52 +26,39 @@ func (r *Request) Context() context.Context {
 	return r.srcRequest.Context()
 }
 
-type options url.Values
+type options struct{ httprouter.Params }
 
 func (o options) Get(key interface{}) interface{} {
-	return o.GetAll(key)[0]
+	return o.Params.ByName(key.(string))
 }
 
 func (o options) Lookup(key interface{}) (interface{}, bool) {
-	is, ok := o.LookupAll(key)
-
-	return is[0], ok
+	vs, ok := o.LookupAll(key)
+	return vs[0], ok
 }
 
 func (o options) GetAll(key interface{}) []interface{} {
-	vs, ok := o[key.(string)]
+	vs, _ := o.LookupAll(key)
 
-	if !ok {
-		return nil
-	}
-
-	is := make([]interface{}, 0, len(vs))
-
-	for _, v := range vs {
-		is = append(is, v)
-	}
-
-	return is
+	return vs
 }
 
 func (o options) LookupAll(key interface{}) ([]interface{}, bool) {
-	vs, ok := o[key.(string)]
 
-	if !ok {
-		return []interface{}{}, ok
+	name := key.(string)
+	values := []interface{}{}
+
+	for _, param := range o.Params {
+		if param.Key == name {
+			values = append(values, param.Value)
+		}
 	}
 
-	is := make([]interface{}, 0, len(vs))
-
-	for _, v := range vs {
-		is = append(is, v)
-	}
-
-	return is, ok
+	return values, len(values) != 0
 }
 
 func (r *Request) Options() dataproviders.Getter {
-	return options(r.srcRequest.URL.Query())
+	return &options{r.params}
 }
 
 func (r *Request) Data() dataproviders.Iterator {

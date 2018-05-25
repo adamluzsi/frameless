@@ -1,6 +1,7 @@
 package adapters_test
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"testing"
@@ -59,4 +60,14 @@ func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool
 
 		return err
 	})
+}
+
+type Body struct {
+	*bytes.Buffer
+	IsClosed bool
+}
+
+func (b *Body) Close() error {
+	b.IsClosed = true
+	return nil
 }

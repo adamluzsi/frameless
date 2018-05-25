@@ -1,4 +1,4 @@
-package http_test
+package httprouter_test
 
 import (
 	"net/http/httptest"
@@ -6,19 +6,21 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/dataproviders"
-	fhttp "github.com/adamluzsi/frameless/integrations/net/http"
+	fhttprouter "github.com/adamluzsi/frameless/integrations/github.com/julienschmidt/httprouter"
+	httprouter "github.com/julienschmidt/httprouter"
+
 	"github.com/adamluzsi/frameless/iterate"
 	"github.com/adamluzsi/frameless/requests"
 	require "github.com/stretchr/testify/require"
 )
 
-var _ requests.Request = fhttp.NewRequest(nil, nil)
+var _ requests.Request = fhttprouter.NewRequest(nil, nil, nil)
 
 func TestRequestOptionsMultiGetter(t *testing.T) {
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v&k=c", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}, httprouter.Param{Key: "k", Value: "c"}})
 	mgetter := frequest.Options().(dataproviders.MultiGetter)
 
 	vs := mgetter.GetAll("k")
@@ -32,11 +34,12 @@ func TestRequestOptionsMultiGetter(t *testing.T) {
 	require.Equal(t, "v", vs[0])
 	require.Equal(t, "c", vs[1])
 }
+
 func TestRequestOptionsLookup_HTTPRequestConfiguredValueReturned_QueryParametersTurnedIntoOptions(t *testing.T) {
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
 	v, found := frequest.Options().Lookup("k")
 
 	require.True(t, found)
@@ -47,7 +50,7 @@ func TestRequestOptionsGet_HTTPRequestConfiguredValueReturned_QueryParametersTur
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
 	v := frequest.Options().Get("k")
 
 	require.NotNil(t, v)
@@ -58,7 +61,7 @@ func TestRequestData_HTTPRequestConfiguredValueReturned_PayloadIterable(t *testi
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{})
 	i := frequest.Data()
 
 	var s string
