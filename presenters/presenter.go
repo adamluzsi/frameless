@@ -25,3 +25,11 @@ type Presenter interface {
 
 // PresenterBuilder is an example how presenter should be created
 type PresenterBuilder func(io.Writer) Presenter
+
+// PresenterFunc is a wrapper to convert standalone functions into a presenter
+type PresenterFunc func(interface{}) error
+
+// Render implements the Presenter Interface
+func (pf PresenterFunc) Render(message interface{}) error {
+	return pf(message)
+}
