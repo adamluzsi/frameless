@@ -5,10 +5,19 @@ import (
 	"net/http"
 
 	"github.com/adamluzsi/frameless/controllers"
+	"github.com/adamluzsi/frameless/dataproviders"
 	fhttp "github.com/adamluzsi/frameless/integrations/net/http"
+	"github.com/adamluzsi/frameless/presenters"
 )
 
-func (a *Adapter) NetHTTP(controller controllers.Controller) http.Handler {
+// NetHTTP creates an adapter http.Hander object that can be given to a http.ServerMux
+func NetHTTP(
+	controller controllers.Controller,
+	buildPresenter presenters.PresenterBuilder,
+	buildIterator dataproviders.IteratorBuilder,
+
+) http.Handler {
+
 	closer := func(c io.Closer) {
 		if c != nil {
 			c.Close()
@@ -18,8 +27,8 @@ func (a *Adapter) NetHTTP(controller controllers.Controller) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer closer(r.Body)
 
-		presenter := a.buildPresenter(w)
-		request := fhttp.NewRequest(r, a.buildIterator)
+		presenter := buildPresenter(w)
+		request := fhttp.NewRequest(r, buildIterator)
 
 		if err := controller.Serve(presenter, request); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

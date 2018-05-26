@@ -17,8 +17,7 @@ import (
 func TestAdapterHTTPRouter_RequestBodyCanBeReadAsTheData_RequestSucceed(t *testing.T) {
 	t.Parallel()
 
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.HTTPRouter(ControllerFor(t, nil, true, nil))
+	mw := adapters.HTTPRouter(ControllerFor(t, nil, true, nil), MockPresenterBuilder(), MockIteratorBuilder())
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", bytes.NewReader([]byte(`Hello, World!`)))
@@ -32,8 +31,7 @@ func TestAdapterHTTPRouter_RequestBodyCanBeReadAsTheData_RequestSucceed(t *testi
 func TestAdapterHTTPRouter_RequestBodyIsClosedAfterHandle_RequestSucceed(t *testing.T) {
 	t.Parallel()
 
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.HTTPRouter(ControllerFor(t, nil, true, nil))
+	mw := adapters.HTTPRouter(ControllerFor(t, nil, true, nil), MockPresenterBuilder(), MockIteratorBuilder())
 
 	var body io.ReadCloser = &Body{Buffer: bytes.NewBuffer([]byte(`Hello, World!`))}
 	w := httptest.NewRecorder()
@@ -48,8 +46,7 @@ func TestAdapterHTTPRouter_RequestBodyIsClosedAfterHandle_RequestSucceed(t *test
 func TestAdapterHTTPRouter_QueryStringPresentInPath_RequestSucceed(t *testing.T) {
 	t.Parallel()
 
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.HTTPRouter(ControllerFor(t, map[interface{}]interface{}{"k": "v"}, false, nil))
+	mw := adapters.HTTPRouter(ControllerFor(t, map[interface{}]interface{}{"k": "v"}, false, nil), MockPresenterBuilder(), MockIteratorBuilder())
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/?k=v", bytes.NewReader([]byte{}))
@@ -64,8 +61,7 @@ func TestAdapterHTTPRouter__RequestSucceed(t *testing.T) {
 	t.Parallel()
 
 	err := errors.New("KaBuM!")
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.HTTPRouter(ControllerFor(t, nil, false, err))
+	mw := adapters.HTTPRouter(ControllerFor(t, nil, false, err), MockPresenterBuilder(), MockIteratorBuilder())
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", bytes.NewReader([]byte{}))

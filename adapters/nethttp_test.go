@@ -8,16 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/adamluzsi/frameless/adapters"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAdapterNetHTTP_RequestBodyCanBeReadAsTheData_RequestSucceed(t *testing.T) {
 	t.Parallel()
 
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.NetHTTP(ControllerFor(t, nil, true, nil))
+	mw := adapters.NetHTTP(ControllerFor(t, nil, true, nil), MockPresenterBuilder(), MockIteratorBuilder())
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", bytes.NewReader([]byte(`Hello, World!`)))
@@ -30,8 +28,7 @@ func TestAdapterNetHTTP_RequestBodyCanBeReadAsTheData_RequestSucceed(t *testing.
 func TestAdapterNetHTTP_RequestBodyIsClosedAfterHandle_RequestSucceed(t *testing.T) {
 	t.Parallel()
 
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.NetHTTP(ControllerFor(t, nil, true, nil))
+	mw := adapters.NetHTTP(ControllerFor(t, nil, true, nil), MockPresenterBuilder(), MockIteratorBuilder())
 
 	var body io.ReadCloser = &Body{Buffer: bytes.NewBuffer([]byte(`Hello, World!`))}
 	w := httptest.NewRecorder()
@@ -45,8 +42,7 @@ func TestAdapterNetHTTP_RequestBodyIsClosedAfterHandle_RequestSucceed(t *testing
 func TestAdapterNetHTTP_QueryStringPresentInPath_RequestSucceed(t *testing.T) {
 	t.Parallel()
 
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.NetHTTP(ControllerFor(t, map[interface{}]interface{}{"k": "v"}, false, nil))
+	mw := adapters.NetHTTP(ControllerFor(t, map[interface{}]interface{}{"k": "v"}, false, nil), MockPresenterBuilder(), MockIteratorBuilder())
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/?k=v", bytes.NewReader([]byte{}))
@@ -60,8 +56,8 @@ func TestAdapterNetHTTP__RequestSucceed(t *testing.T) {
 	t.Parallel()
 
 	err := errors.New("KaBuM!")
-	adapter := adapters.New(MockPresenterBuilder(), MockIteratorBuilder())
-	mw := adapter.NetHTTP(ControllerFor(t, nil, false, err))
+
+	mw := adapters.NetHTTP(ControllerFor(t, nil, false, err), MockPresenterBuilder(), MockIteratorBuilder())
 
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", bytes.NewReader([]byte{}))
