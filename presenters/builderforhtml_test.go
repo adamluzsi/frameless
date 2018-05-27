@@ -1,13 +1,12 @@
-package templates_test
+package presenters_test
 
 import (
 	"bytes"
 	"html/template"
 	"testing"
 
+	"github.com/adamluzsi/frameless/presenters"
 	"github.com/stretchr/testify/require"
-
-	"github.com/adamluzsi/frameless/presenters/templates"
 )
 
 var (
@@ -23,7 +22,7 @@ type content struct {
 func TestHTMLPresenterBuilderFor_PageTeplateGiven(t *testing.T) {
 	t.Parallel()
 
-	builder := templates.BuilderForHTML(a, b, c)
+	builder := presenters.ForHTMLTemplate(a, b, c)
 
 	w := bytes.NewBuffer([]byte{})
 

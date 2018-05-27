@@ -5,35 +5,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/adamluzsi/frameless"
 	fhttprouter "github.com/adamluzsi/frameless/integrations/github.com/julienschmidt/httprouter"
 	httprouter "github.com/julienschmidt/httprouter"
 
 	"github.com/adamluzsi/frameless/iterate"
-	"github.com/adamluzsi/frameless/requests"
 	require "github.com/stretchr/testify/require"
 )
 
-var _ requests.Request = fhttprouter.NewRequest(nil, nil, nil)
-
-func TestRequestOptionsMultiGetter(t *testing.T) {
-	t.Parallel()
-
-	httpRequest := httptest.NewRequest("GET", "/test?k=v&k=c", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}, httprouter.Param{Key: "k", Value: "c"}})
-	mgetter := frequest.Options().(dataproviders.MultiGetter)
-
-	vs := mgetter.GetAll("k")
-	require.Equal(t, 2, len(vs))
-	require.Equal(t, "v", vs[0])
-	require.Equal(t, "c", vs[1])
-
-	vs, ok := mgetter.LookupAll("k")
-	require.Equal(t, true, ok)
-	require.Equal(t, 2, len(vs))
-	require.Equal(t, "v", vs[0])
-	require.Equal(t, "c", vs[1])
-}
+var _ frameless.Request = fhttprouter.NewRequest(nil, nil, nil)
 
 func TestRequestOptionsLookup_HTTPRequestConfiguredValueReturned_QueryParametersTurnedIntoOptions(t *testing.T) {
 	t.Parallel()

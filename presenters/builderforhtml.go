@@ -1,17 +1,17 @@
-package templates
+package presenters
 
 import (
 	"bytes"
 	"html/template"
 	"io"
 
-	"github.com/adamluzsi/frameless/presenters"
+	"github.com/adamluzsi/frameless"
 )
 
-// BuilderForHTML creates a builder func that than could be provided for example to a adapter that handles a external interface
-func BuilderForHTML(ts ...*template.Template) presenters.PresenterBuilder {
-	return presenters.PresenterBuilder(func(w io.Writer) presenters.Presenter {
-		return presenters.PresenterFunc(func(data interface{}) error {
+// ForHTMLTemplate creates a builder func that than could be provided for example to a adapter that handles a external interface
+func ForHTMLTemplate(ts ...*template.Template) frameless.PresenterBuilder {
+	return frameless.PresenterBuilder(func(w io.Writer) frameless.Presenter {
+		return frameless.PresenterFunc(func(data interface{}) error {
 
 			mostInnerTemplate := ts[len(ts)-1]
 			tContent := bytes.NewBuffer([]byte{})

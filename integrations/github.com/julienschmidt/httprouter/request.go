@@ -4,17 +4,17 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/adamluzsi/frameless"
 	"github.com/julienschmidt/httprouter"
 )
 
 type Request struct {
 	srcRequest      *http.Request
-	iteratorBuilder dataproviders.IteratorBuilder
+	iteratorBuilder frameless.IteratorBuilder
 	params          httprouter.Params
 }
 
-func NewRequest(r *http.Request, b dataproviders.IteratorBuilder, p httprouter.Params) *Request {
+func NewRequest(r *http.Request, b frameless.IteratorBuilder, p httprouter.Params) *Request {
 	return &Request{
 		srcRequest:      r,
 		iteratorBuilder: b,
@@ -57,11 +57,11 @@ func (o options) LookupAll(key interface{}) ([]interface{}, bool) {
 	return values, len(values) != 0
 }
 
-func (r *Request) Options() dataproviders.Getter {
+func (r *Request) Options() frameless.Getter {
 	return &options{r.params}
 }
 
-func (r *Request) Data() dataproviders.Iterator {
+func (r *Request) Data() frameless.Iterator {
 	return r.iteratorBuilder(r.srcRequest.Body)
 }
 

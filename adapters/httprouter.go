@@ -4,18 +4,16 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/controllers"
-	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/adamluzsi/frameless"
 	fhttprouter "github.com/adamluzsi/frameless/integrations/github.com/julienschmidt/httprouter"
-	"github.com/adamluzsi/frameless/presenters"
 	"github.com/julienschmidt/httprouter"
 )
 
 // HTTPRouter create adapter function that fits to Julien Schmidt httprouter common interface
 func HTTPRouter(
-	controller controllers.Controller,
-	buildPresenter presenters.PresenterBuilder,
-	buildIterator dataproviders.IteratorBuilder,
+	controller frameless.Controller,
+	buildPresenter frameless.PresenterBuilder,
+	buildIterator frameless.IteratorBuilder,
 
 ) func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	closer := func(c io.Closer) {

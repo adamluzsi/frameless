@@ -4,17 +4,15 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/controllers"
-	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/adamluzsi/frameless"
 	fhttp "github.com/adamluzsi/frameless/integrations/net/http"
-	"github.com/adamluzsi/frameless/presenters"
 )
 
 // NetHTTP creates an adapter http.Hander object that can be given to a http.ServerMux
 func NetHTTP(
-	controller controllers.Controller,
-	buildPresenter presenters.PresenterBuilder,
-	buildIterator dataproviders.IteratorBuilder,
+	controller frameless.Controller,
+	buildPresenter frameless.PresenterBuilder,
+	buildIterator frameless.IteratorBuilder,
 
 ) http.Handler {
 

@@ -6,11 +6,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/adamluzsi/frameless/controllers"
-	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterate"
-	"github.com/adamluzsi/frameless/presenters"
-	"github.com/adamluzsi/frameless/requests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,16 +20,16 @@ func (this *mockPresenter) Render(message interface{}) error {
 	return err
 }
 
-func MockPresenterBuilder() presenters.PresenterBuilder {
-	return func(w io.Writer) presenters.Presenter { return &mockPresenter{w} }
+func MockPresenterBuilder() frameless.PresenterBuilder {
+	return func(w io.Writer) frameless.Presenter { return &mockPresenter{w} }
 }
 
-func MockIteratorBuilder() dataproviders.IteratorBuilder {
+func MockIteratorBuilder() frameless.IteratorBuilder {
 	return iterate.LineByLine
 }
 
-func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool, err error) controllers.Controller {
-	return controllers.ControllerFunc(func(p presenters.Presenter, r requests.Request) error {
+func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool, err error) frameless.Controller {
+	return frameless.ControllerFunc(func(p frameless.Presenter, r frameless.Request) error {
 		defer r.Close()
 
 		if opts != nil {

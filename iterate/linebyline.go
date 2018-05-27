@@ -5,31 +5,38 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/adamluzsi/frameless/dataproviders"
+	"github.com/adamluzsi/frameless"
 )
 
 type textIterator struct {
 	scanner *bufio.Scanner
+	io      io.ReadCloser
 }
 
-func (ti *textIterator) More() bool {
-	return ti.scanner.Scan()
+func (this *textIterator) More() bool {
+	return this.scanner.Scan()
 }
 
-func (ti *textIterator) Decode(container interface{}) error {
+func (this *textIterator) Err() error {
+	return this.scanner.Err()
+}
+
+func (this *textIterator) Close() error {
+	return this.io.Close()
+}
+
+func (this *textIterator) Decode(container interface{}) error {
 	switch v := container.(type) {
 	case *string:
-		*(container).(*string) = ti.scanner.Text()
+		*(container).(*string) = this.scanner.Text()
 
 	default:
 		panic(fmt.Sprintf("unknown type %s\n", v))
 	}
 
-	return ti.scanner.Err()
+	return this.scanner.Err()
 }
 
-func LineByLine(r io.Reader) dataproviders.Iterator {
-	s := bufio.NewScanner(r)
-
-	return &textIterator{s}
+func LineByLine(rc io.ReadCloser) frameless.Iterator {
+	return &textIterator{scanner: bufio.NewScanner(rc), io: rc}
 }
