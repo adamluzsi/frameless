@@ -22,7 +22,7 @@ The results will be something like:
      * controllers
    * Business entities
 
-*Yes but how this help in this ?*
+*Yes but how will this help me to achieve this ?*
 
 Basically because because the overwhelming possibility to what technology use for a project,
 sometimes these days reverse the traditional development from ground up to upside down way.
