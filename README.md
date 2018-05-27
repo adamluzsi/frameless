@@ -21,3 +21,17 @@ The results will be something like:
      * use cases
      * controllers
    * Business entities
+
+*Yes but how this help in this ?*
+
+Basically because because the overwhelming possibility to what technology use for a project,
+sometimes these days reverse the traditional development from ground up to upside down way.
+So instead of starting to create pure Business rules and business core entities,
+the developer tricked into start working from End2End through external interface point of view.
+Such example is when a developer creates an application through testing (sometimes manually) from the webpage point of view,
+or like "If I click this html button on the side bar, there should be a new record in the database with xy".
+While it has faster impact in look, usually the business rules rarely created independently from the framework and external resources such as the db.
+
+While following the ideologies presented in the project, you will create applications that will be build from ground.
+You will basically create the pure business entities, than business "use cases"/rules with them,
+and as a final move, you choose what should be the external interface (cli/mq/http/{{.Channel}}).
