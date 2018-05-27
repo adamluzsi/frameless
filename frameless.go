@@ -5,14 +5,19 @@ import (
 	"io"
 )
 
+// Controller defines how a framework independent controller should look
+//  the core concept that the controller implements the business rules
+// 	and the channels like CLI or HTTP only provide data to it in a form of application specific business entities
 type Controller interface {
 	Serve(Presenter, Request) error
 }
 
+// ControllerFunc Wrapper type to convert anonimus lambda expressions into valid Frameless Controller object
 type ControllerFunc func(Presenter, Request) error
 
-func (this ControllerFunc) Serve(p Presenter, r Request) error {
-	return this(p, r)
+// Serve func implements the Frameless Controller interface
+func (lambda ControllerFunc) Serve(p Presenter, r Request) error {
+	return lambda(p, r)
 }
 
 // Fetcher is an object that implements fetching logic for a given Business Entity
@@ -36,9 +41,10 @@ type Getter interface {
 
 // Iterator will provide data to the user in a stream like way
 //
-// https://golang.org/pkg/encoding/json/#Decoder
+// inspirated by https://golang.org/pkg/encoding/json/#Decoder
 type Iterator interface {
 	// this is required to make it able to cancel iterators where resource being used behind the schene
+	// 	for all other case where the underling io is handled on higher level, it should simply return nil
 	io.Closer
 	// More can tell if there is still more value left or not
 	More() bool
@@ -70,17 +76,19 @@ type Presenter interface {
 	Render(message interface{}) error
 }
 
-// PresenterBuilder is an example how presenter should be created
-type PresenterBuilder func(io.Writer) Presenter
-
 // PresenterFunc is a wrapper to convert standalone functions into a presenter
 type PresenterFunc func(interface{}) error
 
+// PresenterBuilder is an example how presenter should be created
+type PresenterBuilder func(io.Writer) Presenter
+
 // Render implements the Presenter Interface
-func (this PresenterFunc) Render(message interface{}) error {
-	return this(message)
+func (lambda PresenterFunc) Render(message interface{}) error {
+	return lambda(message)
 }
 
+// Request is framework independent way of interacting with a request that has been received on some kind of channel.
+// 	from this, the controller should get all the data and options that should required for the business rule processing
 type Request interface {
 	io.Closer
 	Context() context.Context
