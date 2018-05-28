@@ -10,7 +10,7 @@ import (
 
 type textIterator struct {
 	scanner *bufio.Scanner
-	io      io.ReadCloser
+	io      io.Reader
 }
 
 func (this *textIterator) More() bool {
@@ -22,7 +22,13 @@ func (this *textIterator) Err() error {
 }
 
 func (this *textIterator) Close() error {
-	return this.io.Close()
+	rc, ok := this.io.(io.ReadCloser)
+
+	if !ok {
+		return nil
+	}
+
+	return rc.Close()
 }
 
 func (this *textIterator) Decode(container interface{}) error {
@@ -37,6 +43,6 @@ func (this *textIterator) Decode(container interface{}) error {
 	return this.scanner.Err()
 }
 
-func LineByLine(rc io.ReadCloser) frameless.Iterator {
+func LineByLine(rc io.Reader) frameless.Iterator {
 	return &textIterator{scanner: bufio.NewScanner(rc), io: rc}
 }

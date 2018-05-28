@@ -24,7 +24,7 @@ func MockPresenterBuilder() frameless.PresenterBuilder {
 	return func(w io.Writer) frameless.Presenter { return &mockPresenter{w} }
 }
 
-func MockIteratorBuilder() frameless.IteratorBuilder {
+func MockIteratorBuilder() func(io.Reader) frameless.Iterator {
 	return iterate.LineByLine
 }
 

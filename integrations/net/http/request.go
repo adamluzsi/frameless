@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -10,10 +11,10 @@ import (
 
 type Request struct {
 	srcRequest      *http.Request
-	iteratorBuilder frameless.IteratorBuilder
+	iteratorBuilder func(io.Reader) frameless.Iterator
 }
 
-func NewRequest(r *http.Request, payloadDecoderBuilder frameless.IteratorBuilder) *Request {
+func NewRequest(r *http.Request, payloadDecoderBuilder func(io.Reader) frameless.Iterator) *Request {
 	return &Request{
 		srcRequest:      r,
 		iteratorBuilder: payloadDecoderBuilder,

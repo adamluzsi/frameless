@@ -35,6 +35,16 @@
 // You will basically create the pure business entities, than business "use cases"/rules with them,
 // and as a final move, you choose what should be the external interface (cli/mq/http/{{.Channel}}).
 //
+// Handling relationship between business entities
+//
+// Relations between business entities should be implemented by function relations and controller should not know how to query the underling structure.
+// For example:
+//
+//		type Customer interface{
+//			frameless.Persistable
+//			Teams() frameless.Iterator
+//		}
+//
 //
 package frameless
 
@@ -97,14 +107,6 @@ type Request interface {
 	Data() Iterator
 }
 
-// Fetcher is an object that implements fetching logic for a given Business Entity
-type Fetcher interface {
-	// Return an Iterator that provides all possible value that the given Fetcher able to locate
-	All() Iterator
-	// Return a Fetcher that memorized the Filter requirements
-	Filter(query map[string]interface{}) Fetcher
-}
-
 // Getter interface allows to look up one specific object from a given data pile*
 type Getter interface {
 	// Get gets the first value associated with the given key.
@@ -131,16 +133,15 @@ type Iterator interface {
 	Decode(interface{}) error
 }
 
-// IteratorBuilder is a generic example for building iterators how should look
-type IteratorBuilder func(io.ReadCloser) Iterator
-
 // Persistable defines what requirements is expected from a business entity from behavior side if it is marked as a persistable object
 // This interface expected to be used in the Software Application Business Entity definitions.
 type Persistable interface {
+	// ID represents a string serialized identifier that could be used for finding the record next time
+	// It should be a value that is allowed to be published
+	ID() string
 	// Save expects to fulfill the role of "Create" and "Update".
 	// The underling structure that implements the interface is expected to know if it's an already stored object or not.
 	Save() error
-
 	// Delete is expected to make the object look like deleted from the controller point of view.
 	// The fact that it is deleted actually or just marked as "deleted_at" is up to the implementation.
 	Delete() error

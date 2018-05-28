@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.IteratorBuilder = iterate.LineByLine
+var _ func(io.Reader) frameless.Iterator = iterate.LineByLine
 
 func TestLineByLine_SingleLineGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()

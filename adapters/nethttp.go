@@ -12,7 +12,7 @@ import (
 func NetHTTP(
 	controller frameless.Controller,
 	buildPresenter frameless.PresenterBuilder,
-	buildIterator frameless.IteratorBuilder,
+	buildIterator func(io.Reader) frameless.Iterator,
 
 ) http.Handler {
 

@@ -13,7 +13,7 @@ import (
 func HTTPRouter(
 	controller frameless.Controller,
 	buildPresenter frameless.PresenterBuilder,
-	buildIterator frameless.IteratorBuilder,
+	buildIterator func(io.Reader) frameless.Iterator,
 
 ) func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	closer := func(c io.Closer) {

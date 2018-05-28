@@ -2,6 +2,7 @@ package httprouter
 
 import (
 	"context"
+	"io"
 	"net/http"
 
 	"github.com/adamluzsi/frameless"
@@ -10,11 +11,11 @@ import (
 
 type Request struct {
 	srcRequest      *http.Request
-	iteratorBuilder frameless.IteratorBuilder
+	iteratorBuilder func(io.Reader) frameless.Iterator
 	params          httprouter.Params
 }
 
-func NewRequest(r *http.Request, b frameless.IteratorBuilder, p httprouter.Params) *Request {
+func NewRequest(r *http.Request, b func(io.Reader) frameless.Iterator, p httprouter.Params) *Request {
 	return &Request{
 		srcRequest:      r,
 		iteratorBuilder: b,
