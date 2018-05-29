@@ -22,7 +22,7 @@ The results will be something like:
      * controllers
    * Business entities
 
-*Yes but how will this help me to achieve this ?*
+# *Yes but how will this help me to achieve this ?*
 
 Basically because because the overwhelming possibility to what technology use for a project,
 sometimes these days reverse the traditional development from ground up to upside down way.
@@ -35,3 +35,11 @@ While it has faster impact in look, usually the business rules rarely created in
 While following the ideologies presented in the project, you will create applications that will be build from ground.
 You will basically create the pure business entities, than business "use cases"/rules with them,
 and as a final move, you choose what should be the external interface (cli/mq/http/{{.Channel}}).
+
+# "Yes, but...
+
+## ... it looks to me you want to force interfaces to my duck type language"
+
+Of course not, for example, in ruby you not do compile based interface contracts but explicit specification based contracts.
+Basically you define your business entities in a testing specification that could be included in every other test where it will be dependency.
+You can also make it work with "in memory" implementation for the sake of tests, which result in a fast testing suite execution.
