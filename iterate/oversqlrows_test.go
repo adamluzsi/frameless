@@ -1,6 +1,7 @@
 package iterate_test
 
 import (
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -10,6 +11,8 @@ import (
 
 	"github.com/adamluzsi/frameless/iterate"
 )
+
+var _ oversqlrows.Rows = &sql.Rows{}
 
 func TestOverSQLRows_IteratorClosed_RowsReceivedIt(t *testing.T) {
 	t.Parallel()
