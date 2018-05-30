@@ -13,7 +13,7 @@ type textIterator struct {
 	io      io.Reader
 }
 
-func (this *textIterator) More() bool {
+func (this *textIterator) Next() bool {
 	return this.scanner.Scan()
 }
 

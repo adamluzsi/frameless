@@ -19,11 +19,11 @@ func TestLineByLine_SingleLineGiven_EachLineFetched(t *testing.T) {
 
 	var s string
 
-	require.True(t, i.More())
+	require.True(t, i.Next())
 	require.Nil(t, i.Decode(&s))
 	require.Equal(t, "Hello, World!", s)
 
-	require.False(t, i.More())
+	require.False(t, i.Next())
 }
 
 func TestLineByLine_ClosableIOGiven_OnCloseItIsClosed(t *testing.T) {
@@ -42,19 +42,19 @@ func TestLineByLine_MultipleLineGiven_EachLineFetched(t *testing.T) {
 
 	var s string
 
-	require.True(t, i.More())
+	require.True(t, i.Next())
 	require.Nil(t, i.Decode(&s))
 	require.Equal(t, "Hello, World!", s)
 
-	require.True(t, i.More())
+	require.True(t, i.Next())
 	require.Nil(t, i.Decode(&s))
 	require.Equal(t, "How are you?", s)
 
-	require.True(t, i.More())
+	require.True(t, i.Next())
 	require.Nil(t, i.Decode(&s))
 	require.Equal(t, "Thanks I'm fine!", s)
 
-	require.False(t, i.More())
+	require.False(t, i.Next())
 }
 
 type brokenReader struct{}
@@ -68,6 +68,6 @@ func TestLineByLine_NilReaderGiven_ErrorReturned(t *testing.T) {
 
 	var s string
 
-	require.False(t, i.More())
+	require.False(t, i.Next())
 	require.Error(t, io.ErrUnexpectedEOF, i.Decode(&s))
 }

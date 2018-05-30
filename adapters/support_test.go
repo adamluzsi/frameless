@@ -42,7 +42,7 @@ func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool
 
 		if readBody {
 			i := r.Data()
-			for i.More() {
+			for i.Next() {
 				var d string
 
 				if err := i.Decode(&d); err != nil {

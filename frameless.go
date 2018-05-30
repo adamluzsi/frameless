@@ -125,8 +125,8 @@ type Iterator interface {
 	// this is required to make it able to cancel iterators where resource being used behind the schene
 	// 	for all other case where the underling io is handled on higher level, it should simply return nil
 	io.Closer
-	// More can tell if there is still more value left or not
-	More() bool
+	// Next will ensure that Decode return the next item when it is executed
+	Next() bool
 	// Err return the cause if for some reason by default the More return false all the time
 	Err() error
 	// Decode will populate an object with values and/or return error

@@ -22,7 +22,7 @@ func (this *sqlRowsIterator) Err() error {
 	return this.rows.Err()
 }
 
-func (this *sqlRowsIterator) More() bool {
+func (this *sqlRowsIterator) Next() bool {
 	return this.rows.Next()
 }
 

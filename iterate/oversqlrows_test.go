@@ -64,7 +64,7 @@ func TestOverSQLRows_DecoderGiven_IteratorUseItForScanning(t *testing.T) {
 	defer iterator.Close()
 
 	results := make([]*OverSQLRowsSubject, 0)
-	for iterator.More() {
+	for iterator.Next() {
 		o := &OverSQLRowsSubject{}
 
 		if err := iterator.Decode(o); err != nil {

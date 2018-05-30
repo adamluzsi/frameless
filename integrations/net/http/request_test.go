@@ -63,13 +63,13 @@ func TestRequestData_HTTPRequestConfiguredValueReturned_PayloadIterable(t *testi
 
 	var s string
 
-	require.True(t, i.More())
+	require.True(t, i.Next())
 	require.Nil(t, i.Decode(&s))
 	require.Equal(t, "Hello, World!", s)
 
-	require.True(t, i.More())
+	require.True(t, i.Next())
 	require.Nil(t, i.Decode(&s))
 	require.Equal(t, "How are you?", s)
 
-	require.False(t, i.More())
+	require.False(t, i.Next())
 }
