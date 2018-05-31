@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCountTotalIterations_IteratorGiven_AllTheRecordsCounted(t *testing.T) {
+func TestAndCountTotalIterations_IteratorGiven_AllTheRecordsCounted(t *testing.T) {
 	t.Parallel()
 
 	i := iterateover.LineByLine(strings.NewReader("Hello\nWorld"))
-	total, err := iterateover.CountTotalIterations(i)
+	total, err := iterateover.AndCountTotalIterations(i)
 
 	require.Nil(t, err)
 	require.Equal(t, 2, total)
