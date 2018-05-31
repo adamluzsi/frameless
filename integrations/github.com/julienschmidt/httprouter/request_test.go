@@ -7,9 +7,9 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	fhttprouter "github.com/adamluzsi/frameless/integrations/github.com/julienschmidt/httprouter"
+	"github.com/adamluzsi/frameless/iterateover"
 	httprouter "github.com/julienschmidt/httprouter"
 
-	"github.com/adamluzsi/frameless/iterate"
 	require "github.com/stretchr/testify/require"
 )
 
@@ -19,7 +19,7 @@ func TestRequestOptionsLookup_HTTPRequestConfiguredValueReturned_QueryParameters
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
+	frequest := fhttprouter.NewRequest(httpRequest, iterateover.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
 	v, found := frequest.Options().Lookup("k")
 
 	require.True(t, found)
@@ -30,7 +30,7 @@ func TestRequestOptionsGet_HTTPRequestConfiguredValueReturned_QueryParametersTur
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
+	frequest := fhttprouter.NewRequest(httpRequest, iterateover.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
 	v := frequest.Options().Get("k")
 
 	require.NotNil(t, v)
@@ -41,7 +41,7 @@ func TestRequestData_HTTPRequestConfiguredValueReturned_PayloadIterable(t *testi
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttprouter.NewRequest(httpRequest, iterate.LineByLine, httprouter.Params{})
+	frequest := fhttprouter.NewRequest(httpRequest, iterateover.LineByLine, httprouter.Params{})
 	i := frequest.Data()
 
 	var s string

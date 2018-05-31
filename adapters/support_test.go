@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterate"
+	"github.com/adamluzsi/frameless/iterateover"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +25,7 @@ func MockPresenterBuilder() frameless.PresenterBuilder {
 }
 
 func MockIteratorBuilder() func(io.Reader) frameless.Iterator {
-	return iterate.LineByLine
+	return iterateover.LineByLine
 }
 
 func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool, err error) frameless.Controller {

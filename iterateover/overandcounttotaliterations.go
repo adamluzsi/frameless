@@ -1,4 +1,4 @@
-package iterate
+package iterateover
 
 import (
 	"github.com/adamluzsi/frameless"

@@ -1,17 +1,17 @@
-package iterate
+package iterateover
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterate/oversqlrows"
+	"github.com/adamluzsi/frameless/iterateover/sqlrows"
 )
 
-func OverSQLRows(rows oversqlrows.Rows, decoder oversqlrows.Decoder) frameless.Iterator {
+func SQLRows(rows sqlrows.Rows, decoder sqlrows.Decoder) frameless.Iterator {
 	return &sqlRowsIterator{rows: rows, decoder: decoder}
 }
 
 type sqlRowsIterator struct {
-	rows    oversqlrows.Rows
-	decoder oversqlrows.Decoder
+	rows    sqlrows.Rows
+	decoder sqlrows.Decoder
 }
 
 func (this *sqlRowsIterator) Close() error {

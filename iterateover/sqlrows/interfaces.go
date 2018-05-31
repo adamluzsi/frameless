@@ -1,4 +1,4 @@
-package oversqlrows
+package sqlrows
 
 import "io"
 

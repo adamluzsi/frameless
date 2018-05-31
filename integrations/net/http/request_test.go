@@ -7,36 +7,17 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	fhttp "github.com/adamluzsi/frameless/integrations/net/http"
-	"github.com/adamluzsi/frameless/iterate"
+	"github.com/adamluzsi/frameless/iterateover"
 	require "github.com/stretchr/testify/require"
 )
 
 var _ frameless.Request = fhttp.NewRequest(nil, nil)
 
-// func TestRequestOptionsMultiGetter(t *testing.T) {
-// 	t.Parallel()
-
-// 	httpRequest := httptest.NewRequest("GET", "/test?k=v&k=c", strings.NewReader("Hello, World!\nHow are you?"))
-// 	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
-// 	mgetter := frequest.Options().(dataproviders.MultiGetter)
-
-// 	vs := mgetter.GetAll("k")
-// 	require.Equal(t, 2, len(vs))
-// 	require.Equal(t, "v", vs[0])
-// 	require.Equal(t, "c", vs[1])
-
-// 	vs, ok := mgetter.LookupAll("k")
-// 	require.Equal(t, true, ok)
-// 	require.Equal(t, 2, len(vs))
-// 	require.Equal(t, "v", vs[0])
-// 	require.Equal(t, "c", vs[1])
-// }
-
 func TestRequestOptionsLookup_HTTPRequestConfiguredValueReturned_QueryParametersTurnedIntoOptions(t *testing.T) {
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttp.NewRequest(httpRequest, iterateover.LineByLine)
 	v, found := frequest.Options().Lookup("k")
 
 	require.True(t, found)
@@ -47,7 +28,7 @@ func TestRequestOptionsGet_HTTPRequestConfiguredValueReturned_QueryParametersTur
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttp.NewRequest(httpRequest, iterateover.LineByLine)
 	v := frequest.Options().Get("k")
 
 	require.NotNil(t, v)
@@ -58,7 +39,7 @@ func TestRequestData_HTTPRequestConfiguredValueReturned_PayloadIterable(t *testi
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttp.NewRequest(httpRequest, iterate.LineByLine)
+	frequest := fhttp.NewRequest(httpRequest, iterateover.LineByLine)
 	i := frequest.Data()
 
 	var s string

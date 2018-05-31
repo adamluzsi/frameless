@@ -1,4 +1,4 @@
-package iterate_test
+package iterateover_test
 
 import (
 	"io"
@@ -6,16 +6,16 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterate"
+	"github.com/adamluzsi/frameless/iterateover"
 	"github.com/stretchr/testify/require"
 )
 
-var _ func(io.Reader) frameless.Iterator = iterate.LineByLine
+var _ func(io.Reader) frameless.Iterator = iterateover.LineByLine
 
 func TestLineByLine_SingleLineGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()
 
-	i := iterate.LineByLine(NewReadCloser(strings.NewReader("Hello, World!")))
+	i := iterateover.LineByLine(NewReadCloser(strings.NewReader("Hello, World!")))
 
 	var s string
 
@@ -29,7 +29,7 @@ func TestLineByLine_SingleLineGiven_EachLineFetched(t *testing.T) {
 func TestLineByLine_ClosableIOGiven_OnCloseItIsClosed(t *testing.T) {
 	t.Parallel()
 
-	i := iterate.LineByLine(NewReadCloser(strings.NewReader(`Hy`)))
+	i := iterateover.LineByLine(NewReadCloser(strings.NewReader(`Hy`)))
 
 	require.Nil(t, i.Close())
 	require.Error(t, i.Close(), "already closed")
@@ -38,7 +38,7 @@ func TestLineByLine_ClosableIOGiven_OnCloseItIsClosed(t *testing.T) {
 func TestLineByLine_MultipleLineGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()
 
-	i := iterate.LineByLine(NewReadCloser(strings.NewReader("Hello, World!\nHow are you?\r\nThanks I'm fine!")))
+	i := iterateover.LineByLine(NewReadCloser(strings.NewReader("Hello, World!\nHow are you?\r\nThanks I'm fine!")))
 
 	var s string
 
@@ -64,7 +64,7 @@ func (b *brokenReader) Read(p []byte) (n int, err error) { return 0, io.ErrUnexp
 func TestLineByLine_NilReaderGiven_ErrorReturned(t *testing.T) {
 	t.Parallel()
 
-	i := iterate.LineByLine(NewReadCloser(new(brokenReader)))
+	i := iterateover.LineByLine(NewReadCloser(new(brokenReader)))
 
 	var s string
 

@@ -1,4 +1,4 @@
-package iterate_test
+package iterateover_test
 
 import (
 	"errors"
@@ -73,7 +73,7 @@ func (this *Rows) Scan(dests ...interface{}) error {
 	return nil
 }
 
-type OverSQLRowsSubject struct {
+type SQLRowsSubject struct {
 	C1 string
 	C2 string
 	C3 string
