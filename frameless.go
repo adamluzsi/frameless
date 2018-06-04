@@ -8,7 +8,7 @@
 // By working disciplined and separate the scope of your code and enforcing [law of demeter](https://en.wikipedia.org/wiki/Law_of_Demeter) on your architecture,
 // by my you probably end up with something that is boring in term of code, not have fancy.
 //
-// The results will be something like:
+// The results will be something like
 //
 //  * boring code
 //  * separation between
@@ -21,7 +21,8 @@
 //      * controllers
 //    * Business entities
 //
-// *Yes but how will this help me to achieve this ?*
+//
+// Yes but how will this help me to achieve this
 //
 // Basically because because the overwhelming possibility to what technology use for a project,
 // sometimes these days reverse the traditional development from ground up to upside down way.
@@ -35,14 +36,43 @@
 // You will basically create the pure business entities, than business "use cases"/rules with them,
 // and as a final move, you choose what should be the external interface (cli/mq/http/{{.Channel}}).
 //
+//
+// Business Entity
+//
+// Entities encapsulate the most general and high-level rules of the application.
+// 	"An entity can be an object with methods, or it can be a set of data structures and functions".
+// 	Robert Martin
+//
+// I tried different structures during my research, and in the end the most maintainable one was an
+// interface that describe the high level behavior of an entity and a shared runable specification.
+// This shared specification used to test against the underling implementations.
+// They behavior are the least likely to change when something external changes.
+// 	For example, you would not expect these objects to be affected by how they used and what behavior they implement
+// 	when a change to page navigation, or security happen.
+//
+// In other languages my preference is RSpec, Jasmine or Oleaster for creating shared specifications but it is up to you what you prefer the most.
+// Also the Business Entity must not give back any value that is implementation specific!
+// 	for example when you call a method/function on this entity, you should not receive sql rows object
+//
+// Example:
+//
+//		type User interface{
+//			frameless.Persistable
+//
+//			Name() string
+//			Email() string
+//			Biography() string
+//		}
+//
+//
 // Handling relationship between business entities
 //
 // Relations between business entities should be implemented by function relations and controller should not know how to query the underling structure.
 // For example:
 //
-//		type Customer interface{
+//		type User interface{
 //			frameless.Persistable
-//			Teams() frameless.Iterator
+//			Teams() frameless.HasManyRelationship
 //		}
 //
 //
@@ -84,6 +114,10 @@ type Presenter interface {
 	//
 	// Render renders a simple message back to the enwrapped communication channel
 	//	message is an interface type because the channel communication layer and content and the serialization is up to the Presenter to implement
+	//
+	// If the message is a complex type that has multiple fields,
+	// an exported struct that represent the content must be declared at the controller level
+	// and all the presenters must based on that input for they test
 	Render(message interface{}) error
 }
 
@@ -133,6 +167,20 @@ type Iterator interface {
 	Decode(interface{}) error
 }
 
+// Storage define what is the most minimum that a storage should implement in order to be able
+type Storage interface {
+	// All returns an iterator that include the business entities.
+	All() Iterator
+	// Find return the requested business entity, the fact that it has been found
+	// and an error if something went unexpected independently from the business logics
+	Find(string) (businessEntityThatIsA Persistable, isFound bool, err error)
+	// Create saves an object in the storage
+	// At the controller layer, there should be an exported struct type which includes all the required fields.
+	// Based on the values in that, the Storage should be able to create a new Persistable object
+	// The Validation of the fields MUST Not be implemented in the Persistable, because that is the scope of the controller,
+	Create(ExportedStructFromController interface{}) (businessEntityThatIsA Persistable, err error)
+}
+
 // Persistable defines what requirements is expected from a business entity from behavior side if it is marked as a persistable object
 // This interface expected to be used in the Software Application Business Entity definitions.
 type Persistable interface {
@@ -145,4 +193,37 @@ type Persistable interface {
 	// Delete is expected to make the object look like deleted from the controller point of view.
 	// The fact that it is deleted actually or just marked as "deleted_at" is up to the implementation.
 	Delete() error
+}
+
+// Relationship behaviors
+//
+
+// HasOneRelationship represents a connection between Business Entities as :1 (1:!, N:1)
+//
+// Example:
+//
+// type Team interface {
+// 	Organization() frameless.HasOneRelationship
+// }
+//
+type HasOneRelationship interface {
+	Get() (Persistable, error)
+	Set(Persistable) error
+}
+
+// HasManyRelationship represents a connection between Business Entities as :N (1:N, M:N)
+//
+// Example:
+//
+// type Team interface {
+// 	Users() frameless.HasManyRelationship
+// }
+//
+type HasManyRelationship interface {
+	// All returns an iterator that include the business entities.
+	All() Iterator
+	// Add will add a different Persistable to this relation.
+	Add(Persistable) error
+	// Remove will remove the relation from a given Business entity to an another
+	Remove(Persistable) error
 }
