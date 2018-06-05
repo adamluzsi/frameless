@@ -34,9 +34,9 @@ func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool
 
 		if opts != nil {
 			for k, v := range opts {
-				require.Equal(t, v, r.Options().Get(k))
+				require.Equal(t, v, r.Context().Value(k))
 
-				p.Render(r.Options().Get(k))
+				p.Render(r.Context().Value(k))
 			}
 		}
 

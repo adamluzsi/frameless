@@ -13,25 +13,18 @@ import (
 	require "github.com/stretchr/testify/require"
 )
 
-var _ frameless.Request = fhttprouter.NewRequest(nil, nil, nil)
+var _ frameless.Request = fhttprouter.NewRequest(
+	httptest.NewRequest("GET", "/test?k=v", strings.NewReader("github.com/julienschmidt/httprouter")),
+	iterateover.LineByLine,
+	httprouter.Params{},
+)
 
-func TestRequestOptionsLookup_HTTPRequestConfiguredValueReturned_QueryParametersTurnedIntoOptions(t *testing.T) {
+func TestRequestContextValue_HTTPRequestConfiguredValueReturned_QueryParametersTurnedIntoOptions(t *testing.T) {
 	t.Parallel()
 
 	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
 	frequest := fhttprouter.NewRequest(httpRequest, iterateover.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
-	v, found := frequest.Options().Lookup("k")
-
-	require.True(t, found)
-	require.Equal(t, "v", v.(string))
-}
-
-func TestRequestOptionsGet_HTTPRequestConfiguredValueReturned_QueryParametersTurnedIntoOptions(t *testing.T) {
-	t.Parallel()
-
-	httpRequest := httptest.NewRequest("GET", "/test?k=v", strings.NewReader("Hello, World!\nHow are you?"))
-	frequest := fhttprouter.NewRequest(httpRequest, iterateover.LineByLine, httprouter.Params{httprouter.Param{Key: "k", Value: "v"}})
-	v := frequest.Options().Get("k")
+	v := frequest.Context().Value("k")
 
 	require.NotNil(t, v)
 	require.Equal(t, "v", v.(string))

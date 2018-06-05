@@ -10,67 +10,33 @@ import (
 )
 
 type Request struct {
+	ctx             context.Context
 	srcRequest      *http.Request
 	iteratorBuilder func(io.Reader) frameless.Iterator
 }
 
-func NewRequest(r *http.Request, payloadDecoderBuilder func(io.Reader) frameless.Iterator) *Request {
+func NewRequest(r *http.Request, b func(io.Reader) frameless.Iterator) frameless.Request {
+	return NewRequestWithContext(contextBy(r.Context(), r.URL.Query()), r, b)
+}
+
+func NewRequestWithContext(ctx context.Context, r *http.Request, b func(io.Reader) frameless.Iterator) frameless.Request {
 	return &Request{
+		ctx:             ctx,
 		srcRequest:      r,
-		iteratorBuilder: payloadDecoderBuilder,
+		iteratorBuilder: b,
 	}
+}
+
+func contextBy(ctx context.Context, vs url.Values) context.Context {
+	for k, v := range vs {
+		ctx = context.WithValue(ctx, k, v[0])
+	}
+
+	return ctx
 }
 
 func (r *Request) Context() context.Context {
-	return r.srcRequest.Context()
-}
-
-type options url.Values
-
-func (o options) Get(key interface{}) interface{} {
-	return o.GetAll(key)[0]
-}
-
-func (o options) Lookup(key interface{}) (interface{}, bool) {
-	is, ok := o.LookupAll(key)
-
-	return is[0], ok
-}
-
-func (o options) GetAll(key interface{}) []interface{} {
-	vs, ok := o[key.(string)]
-
-	if !ok {
-		return nil
-	}
-
-	is := make([]interface{}, 0, len(vs))
-
-	for _, v := range vs {
-		is = append(is, v)
-	}
-
-	return is
-}
-
-func (o options) LookupAll(key interface{}) ([]interface{}, bool) {
-	vs, ok := o[key.(string)]
-
-	if !ok {
-		return []interface{}{}, ok
-	}
-
-	is := make([]interface{}, 0, len(vs))
-
-	for _, v := range vs {
-		is = append(is, v)
-	}
-
-	return is, ok
-}
-
-func (r *Request) Options() frameless.Getter {
-	return options(r.srcRequest.URL.Query())
+	return r.ctx
 }
 
 func (r *Request) Data() frameless.Iterator {

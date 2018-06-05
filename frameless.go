@@ -40,7 +40,7 @@
 // Business Entity
 //
 // Entities encapsulate the most general and high-level rules of the application.
-// 	"An entity can be an object with methods, or it can be a set of data structures and functions".
+// 	"An entity can be an object with methods, or it can be a set of data structures and functions"
 // 	Robert Martin
 //
 // I tried different structures during my research, and in the end the most maintainable one was an
@@ -75,6 +75,34 @@
 //			Teams() frameless.HasManyRelationship
 //		}
 //
+//
+//
+// Controllers
+//
+// 	The controller responds to the user input and performs interactions on the data model objects.
+// 	The controller receives the input, optionally validates it and then passes the input to the model.
+//
+// To me when I played with the Separate Controller/UseCase layers in a production app, I felt the extra layer just was cumbersome.
+// Therefore the "controller" concept here is a little different from traditional controllers but not different what most of the time a controller do in real world applications.
+// Implementing business use cases, validation or you name it. From the simples case such as listing users, to the extend of executing heavy calculations on user behalf.
+// The classical controller that provides interface between an external interface and a business logic implementation is something that must be implemented in the external interface integration layer itself.
+// I removed this extra layer to make controller scope only to control the execution of a specific business use case based on generic inputs such as presenter and request.
+// Also there is a return error which represent the unexpected and not recoverable errors that should notified back to the caller to teardown execution nicely.
+//
+//  The software in this layer contains application specific business rules.
+//  It encapsulates and implements all of the use cases of the system.
+//  These use cases orchestrate the flow of data to and from the entities,
+//  and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.
+//
+//  We do not expect changes in this layer to affect the entities.
+//  We also do not expect this layer to be affected by changes to externalities such as the database,
+//  the UI, or any of the common frameworks.
+//  This layer is isolated from such concerns.
+//
+//  We do, however, expect that changes to the operation of the application will affect the use-cases and therefore the software in this layer.
+//  If the details of a use-case change, then some code in this layer will certainly be affected.
+//
+//  Robert Martin
 //
 package frameless
 
@@ -137,19 +165,7 @@ func (lambda PresenterFunc) Render(message interface{}) error {
 type Request interface {
 	io.Closer
 	Context() context.Context
-	Options() Getter
 	Data() Iterator
-}
-
-// Getter interface allows to look up one specific object from a given data pile*
-type Getter interface {
-	// Get gets the first value associated with the given key.
-	// By convention it should be a single value
-	Get(key interface{}) interface{}
-
-	// Lookup gets the first value associated with the given key.
-	// If there are no values associated with the key, Get returns a second value FALSE.
-	Lookup(key interface{}) (interface{}, bool)
 }
 
 // Iterator will provide data to the user in a stream like way
