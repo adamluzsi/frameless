@@ -188,7 +188,13 @@ type Storage interface {
 	// All returns an iterator that can Decode values to business entities.
 	All() Iterator
 	// Where defines search/lookups based on the exported struct that the Controller defines
-	// This way, the controller defines what will be used for search, and storage implement the fetching
+	// This way, the controller defines what will be used for search, and storage implement the fetching.
+	// Note that an Exported Structure ALL fields must be exported, and must only contain fields that will be actively used for the lookup.
+	// Empty ignoreable fields must be omitted from the ExportedStructFromController.
+	//
+	// This way it maybe feels boilerplated for really dynamic and complex searches, but for those,
+	// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
+	// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
 	Where(ExportedStructFromController interface{}) Iterator
 	// Find return the requested business entity, the fact that it has been found
 	// and an error if something went unexpected independently from the business logics
