@@ -185,16 +185,19 @@ type Iterator interface {
 
 // Storage define what is the most minimum that a storage should implement in order to be able
 type Storage interface {
-	// All returns an iterator that include the business entities.
+	// All returns an iterator that can Decode values to business entities.
 	All() Iterator
+	// Where defines search/lookups based on the exported struct that the Controller defines
+	// This way, the controller defines what will be used for search, and storage implement the fetching
+	Where(ExportedStructFromController interface{}) Iterator
 	// Find return the requested business entity, the fact that it has been found
 	// and an error if something went unexpected independently from the business logics
 	Find(string) (businessEntityThatIsA Persistable, isFound bool, err error)
-	// Create saves an object in the storage
-	// At the controller layer, there should be an exported struct type which includes all the required fields.
-	// Based on the values in that, the Storage should be able to create a new Persistable object
-	// The Validation of the fields MUST Not be implemented in the Persistable, because that is the scope of the controller,
-	Create(ExportedStructFromController interface{}) (businessEntityThatIsA Persistable, err error)
+	// NewEntity creates a new business entity based on the given controller exported structure that includes all the necessary raw data.
+	// So at the controller layer, there should be an exported struct type which includes all the required fields.
+	// Based on the values in that, the Storage should be able to initialize a new Persistable object and the Persistance is up to the controller with the Save functionality.
+	// The Validation of the fields MUST Not be implemented in the Persistable, because that is the scope of the controller
+	NewEntity(ExportedStructFromController interface{}) (businessEntityThatIsA Persistable)
 }
 
 // Persistable defines what requirements is expected from a business entity from behavior side if it is marked as a persistable object
