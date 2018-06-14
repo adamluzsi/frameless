@@ -198,7 +198,7 @@ type Storage interface {
 	Where(ExportedStructFromController interface{}) Iterator
 	// Find return the requested business entity, the fact that it has been found
 	// and an error if something went unexpected independently from the business logics
-	Find(string) (businessEntityThatIsA Persistable, isFound bool, err error)
+	Find(ID string) (businessEntityThatIsA Persistable, isFound bool, err error)
 	// NewEntity creates a new business entity based on the given controller exported structure that includes all the necessary raw data.
 	// So at the controller layer, there should be an exported struct type which includes all the required fields.
 	// Based on the values in that, the Storage should be able to initialize a new Persistable object and the Persistance is up to the controller with the Save functionality.
