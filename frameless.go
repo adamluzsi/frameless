@@ -196,9 +196,9 @@ type Storage interface {
 	// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
 	// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
 	Where(ExportedStructFromController interface{}) Iterator
-	// Find return the requested business entity, the fact that it has been found
-	// and an error if something went unexpected independently from the business logics
-	Find(ID string) (businessEntityThatIsA Persistable, isFound bool, err error)
+	// Find return the requested business entity or if it is missing than nil is returned.
+	// Also an error is returned if something went unexpected independently from the business entity existence.
+	Find(ID string) (businessEntityThatIsA Persistable, err error)
 	// NewEntity creates a new business entity based on the given controller exported structure that includes all the necessary raw data.
 	// So at the controller layer, there should be an exported struct type which includes all the required fields.
 	// Based on the values in that, the Storage should be able to initialize a new Persistable object and the Persistance is up to the controller with the Save functionality.
