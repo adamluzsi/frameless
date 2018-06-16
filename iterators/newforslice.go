@@ -22,7 +22,7 @@ func test(t interface{}) {
 func NewForSlice(slice interface{}) frameless.Iterator {
 
 	if reflect.TypeOf(slice).Kind() != reflect.Slice {
-		panic("invalid type")
+		panic("TypeError")
 	}
 
 	return &iterator{

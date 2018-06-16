@@ -56,7 +56,19 @@ func TestNewForSlice_ClosedCalledMultipleTimes_NoErrorReturned(t *testing.T) {
 func TestNewForSlice_NotSliceGiven_PanicSent(t *testing.T) {
 	t.Parallel()
 
-	defer func() { require.NotNil(t, recover()) }()
+	defer func() { require.Equal(t, "TypeError", recover()) }()
 
 	iterators.NewForSlice(42)
+}
+
+func TestNewForSlice_SliceGivenButWrongTypeFetched_PanicSent(t *testing.T) {
+	t.Parallel()
+
+	i := iterators.NewForSlice([]int{42})
+	require.True(t, i.Next())
+
+	defer func() { require.Equal(t, "reflect.Set: value of type int is not assignable to type string", recover()) }()
+
+	var v string
+	i.Decode(&v)
 }
