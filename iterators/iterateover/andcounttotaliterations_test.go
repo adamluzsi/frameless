@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adamluzsi/frameless/iterateover"
+	"github.com/adamluzsi/frameless/iterators/iterateover"
 	"github.com/stretchr/testify/require"
 )
 

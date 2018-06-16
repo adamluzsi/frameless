@@ -7,7 +7,7 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	fhttprouter "github.com/adamluzsi/frameless/integrations/github.com/julienschmidt/httprouter"
-	"github.com/adamluzsi/frameless/iterateover"
+	"github.com/adamluzsi/frameless/iterators/iterateover"
 	httprouter "github.com/julienschmidt/httprouter"
 
 	require "github.com/stretchr/testify/require"

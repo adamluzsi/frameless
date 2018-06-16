@@ -2,7 +2,7 @@ package iterateover
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterateover/sqlrows"
+	"github.com/adamluzsi/frameless/iterators/iterateover/sqlrows"
 )
 
 func SQLRows(rows sqlrows.Rows, decoder sqlrows.Decoder) frameless.Iterator {
