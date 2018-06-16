@@ -2,39 +2,80 @@
 //
 // But what does this in in practice? This package makes you be less productive in speed for short term! :)
 //
-// The goal of the package is the learning and practicing [The Clean Architecture](https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html).
+// The goal of the package is the learning and practicing The Clean Architecture.
 // By doing so you will create web/cli/{{ .ChannelName }} applications that actually external channel and framework independent.
 //
-// By working disciplined and separate the scope of your code and enforcing [law of demeter](https://en.wikipedia.org/wiki/Law_of_Demeter) on your architecture,
-// by my you probably end up with something that is boring in term of code, not have fancy.
+// The Project goals not include to make the application have "maximum optimization".
+// I worked with languages that are anything but highperformant, so I have a different view about "required" performance,
+// and I don't share the opinion that the application must be prematurely optimized for some extra nano seconds.
+// Even with one of the slowest languages in the world you can architect and build scalable and quick business softwares,
+// so golang is chosen for different reasons to be one of my favorite language.
+// My main goals with business applications is maintainability, responsibility/scope limitation for components.
+// To me if golang would be slow I still would love to use it.
+// If you feel that you have to create boring simple tests for a given component, than I already happy.
+// Of course we not live in a world where every company open to give extra time to achieve this,
+// so I started this project as a guideline to make myself and hopefully others able to create applications in a fast and efficient way.
+// I try to create primary for myself conventions that on the long run help avoid common mistakes that usually crystalize out not when being developed,
+// but when a software have to be updated later.
+// Even if you are the one who have to update it, after a certain amount of time it can be easily happen that you easily end up watching your own code like a stranger would do.
+// Usually the smaller the required mind model to be built, the faster you can interact with an application code base.
+// And this is what this meta framework try to achieve.
 //
-// The results will be something like
+// Therefore if your opinion includes any of the followings:
+//  * I don't use interface because it's slower
+//  * I don't use reflection because it's slower
+//  * I don't use reflection and empty interfaces, because I lose type safety in compile time.
+//  * I don't create tests because {{.Reasons}}
+// ... please only continue to read if you prepared light headaches and some frustration.
+// I believe everyone has it's own way to create they code, this is one of mine.
+//
+// By working disciplined and separate the scope of your code and enforcing law of demeter on your architecture,
+// I believe the following can be achieved:
 //
 //  * boring code
-//  * separation between
+//  * components with small mind model
+//  * easy maintainability and extendability of your code
+//  * strict separation between
 //    * external interface
 //    * external resource
-//    * template layer
-//    * presentation & serialization
+//    * presentation (serialization layer)
 //    * application control logic
 //      * use cases
-//      * controllers
-//    * Business entities
+// 		* entities
 //
 //
 // Yes but how will this help me to achieve this
 //
-// Basically because because the overwhelming possibility to what technology use for a project,
-// sometimes these days reverse the traditional development from ground up to upside down way.
+// Basically because the overwhelming possibility to what technology use for a project,
+// these days it's easy to loose priority and start build up software from upside down,
+// starting with the technology and than implement business use cases in it,
+// instead of defining the required business usecases and finding technology to it.
+//
 // So instead of starting to create pure Business rules and business core entities,
 // the developer tricked into start working from End2End through external interface point of view.
 // Such example is when a developer creates an application through testing (sometimes manually) from the webpage point of view,
 // or like "If I click this html button on the side bar, there should be a new record in the database with xy".
-// While it has faster impact in look, usually the business rules rarely created independently from the framework and external resources such as the db.
+// While it has faster impact in look, usually the business rules and usecases rarely defined and created independently from the given technology specification or to the given framework.
 //
 // While following the ideologies presented in the project, you will create applications that will be build from ground.
 // You will basically create the pure business entities, than business "use cases"/rules with them,
 // and as a final move, you choose what should be the external interface (cli/mq/http/{{.Channel}}).
+//
+//
+// Last notes
+//
+// As a last note, most of the interfaces defined here may look simple,
+// but took much more time than it looks, so sometimes one function signature was created under days.
+// I would like to ask you, if you see anything and care to share your constructive opinion,
+// please feel free to create an issue where it can be discussed!
+//
+//
+// Resources
+//
+// https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html
+// https://en.wikipedia.org/wiki/Law_of_Demeter
+// https://golang.org/pkg/encoding/json/#Decoder
+// https://en.wikipedia.org/wiki/Iterator_pattern
 //
 //
 // Business Entity
@@ -168,8 +209,8 @@ type Request interface {
 	Data() Iterator
 }
 
-// Iterator will provide data to the user in a stream like way
-//
+// Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
+// Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
 // inspirated by https://golang.org/pkg/encoding/json/#Decoder
 type Iterator interface {
 	// this is required to make it able to cancel iterators where resource being used behind the schene
