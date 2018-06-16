@@ -2,22 +2,10 @@ package iterators
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 
 	"github.com/adamluzsi/frameless"
 )
-
-func test(t interface{}) {
-	switch reflect.TypeOf(t).Kind() {
-	case reflect.Slice:
-		s := reflect.ValueOf(t)
-
-		for i := 0; i < s.Len(); i++ {
-			fmt.Println(s.Index(i))
-		}
-	}
-}
 
 func NewForSlice(slice interface{}) frameless.Iterator {
 
