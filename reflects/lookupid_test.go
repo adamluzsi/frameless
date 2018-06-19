@@ -7,18 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type IDInFieldName struct {
-	ID string
-}
-
-type IDInTagName struct {
-	DI string `frameless:"ID"`
-}
-
-type UnidentifiableID struct {
-	UserID string
-}
-
 func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 

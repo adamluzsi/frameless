@@ -7,18 +7,10 @@ import (
 func LookupID(i interface{}) (string, bool) {
 
 	r := reflect.ValueOf(i)
-	if r.Kind() == reflect.Ptr {
-		r = r.Elem()
-	}
+	val, ok := idReflectValue(r)
 
-	byName := r.FieldByName("ID")
-	if byName.Kind() != reflect.Invalid {
-		return byName.String(), true
-	}
-
-	byTag, ok := lookupByTag(r)
 	if ok {
-		return byTag.String(), true
+		return val.String(), true
 	}
 
 	return "", false
@@ -37,4 +29,23 @@ func lookupByTag(val reflect.Value) (reflect.Value, bool) {
 	}
 
 	return val, false
+}
+
+func idReflectValue(val reflect.Value) (reflect.Value, bool) {
+
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	byName := val.FieldByName("ID")
+	if byName.Kind() != reflect.Invalid {
+		return byName, true
+	}
+
+	byTag, ok := lookupByTag(val)
+	if ok {
+		return byTag, true
+	}
+
+	return reflect.Value{}, false
 }
