@@ -96,27 +96,14 @@
 // Also the Business Entity must not give back any value that is implementation specific!
 // 	for example when you call a method/function on this entity, you should not receive sql rows object
 //
-// Example:
+// Example Entity:
 //
-//		type User interface{
-//			frameless.Persistable
-//
-//			Name() string
-//			Email() string
-//			Biography() string
-//		}
-//
-//
-// Handling relationship between business entities
-//
-// Relations between business entities should be implemented by function relations and controller should not know how to query the underling structure.
-// For example:
-//
-//		type User interface{
-//			frameless.Persistable
-//			Teams() frameless.HasManyRelationship
-//		}
-//
+// 		type User struct {
+// 			ID        string
+// 			Name      string
+// 			Email     string
+// 			Biography string
+// 		}
 //
 //
 package frameless
