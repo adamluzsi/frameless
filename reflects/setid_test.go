@@ -3,6 +3,7 @@ package reflects_test
 import (
 	"testing"
 
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
 )
@@ -44,4 +45,12 @@ func TestSetID_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 
 	require.Nil(t, err)
 	require.Equal(t, "OK", subject.DI)
+}
+
+func TestSetID_InterfaceTypeGiven_IDSaved(t *testing.T) {
+	t.Parallel()
+
+	var subject frameless.Entity = &IDInFieldName{}
+	require.Nil(t, reflects.SetID(subject, "OK"))
+	require.Equal(t, "OK", subject.(*IDInFieldName).ID)
 }

@@ -14,7 +14,7 @@ import (
 type AllFor struct {
 	Type frameless.Entity
 
-	CreateEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
+	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
 func (quc AllFor) Test(t *testing.T, storage frameless.Storage) {
@@ -24,7 +24,7 @@ func (quc AllFor) Test(t *testing.T, storage frameless.Storage) {
 
 	for i := 0; i < 10; i++ {
 
-		entity := quc.CreateEntityForTest(quc.Type)
+		entity := quc.NewEntityForTest(quc.Type)
 		require.Nil(t, storage.Create(entity))
 
 		id, found := reflects.LookupID(entity)

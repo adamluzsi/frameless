@@ -6,8 +6,7 @@ import (
 
 func LookupID(i interface{}) (string, bool) {
 
-	r := reflect.ValueOf(i)
-	val, ok := idReflectValue(r)
+	val, ok := idReflectValue(reflect.ValueOf(i))
 
 	if ok {
 		return val.String(), true

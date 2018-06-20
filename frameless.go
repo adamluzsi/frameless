@@ -307,7 +307,7 @@ type Storage interface {
 	//
 	// for simple use cases where returned iterator expected to only include 1 element I recommend using iterators.DecodeNext(iterator, &entity) for syntax sugar.
 	// The use case common but I do not see benefit enforcing a First, FindOne or similar requirement from the storage.
-	// For creating iterators for a single entity, you can use iterators.NewForStruct.
+	// For creating iterators for a single entity, you can use iterators.NewForSingleElement.
 	Find(QueryUseCase) Iterator
 	//
 	// Exec can execute a QueryUseCase that goal is to do modification in the storage in a described way by the QueryUseCase#Test method.

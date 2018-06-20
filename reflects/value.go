@@ -1,6 +1,8 @@
 package reflects
 
-import "reflect"
+import (
+	"reflect"
+)
 
 func idReflectValue(val reflect.Value) (reflect.Value, bool) {
 

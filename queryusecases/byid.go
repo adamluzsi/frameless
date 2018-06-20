@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless"
@@ -14,62 +15,62 @@ type ByID struct {
 	Type frameless.Entity
 	ID   string
 
-	CreateEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
+	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (this ByID) Test(spec *testing.T, subject frameless.Storage) {
+func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 
-	if this.CreateEntityForTest == nil {
-		spec.Fatal("without CreateEntityForTest it this spec cannot work, but for usage outside of testing CreateEntityForTest must not be used")
+	if quc.NewEntityForTest == nil {
+		spec.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
 	}
 
-	count := 0
-	entities := []interface{}{}
-	allSet := subject.Find(AllFor{Type: this.Type})
+	ids := []string{}
 
-	for allSet.Next() {
-		var entity interface{}
+	for i := 0; i < 10; i++ {
 
-		if err := allSet.Decode(&entity); err != nil {
-			spec.Fatal(err)
+		entity := quc.NewEntityForTest(quc.Type)
+		require.Nil(spec, storage.Create(entity))
+		ID, ok := reflects.LookupID(entity)
+
+		if !ok {
+			spec.Fatal(strings.Join([]string{
+				"Can't find the ID in the current structure",
+				"if there is no ID in the subject structure",
+				"custom test needed that explicitly defines how ID is stored and retrived from an entity",
+			}, "\n"))
 		}
 
-		entities = append(entities, entity)
-
-		count++
-	}
-
-	if err := allSet.Err(); err != nil {
-		spec.Fatal(err)
-	}
-
-	if count == 0 {
-		spec.Fatal("there is no entity in the given subject storage, please populate before call this test")
+		require.True(spec, len(ID) > 0)
+		ids = append(ids, ID)
+		// TODO: teardown
 	}
 
 	spec.Run("values returned", func(t *testing.T) {
-		for _, expected := range entities {
-			var actually interface{}
+		for _, ID := range ids {
 
-			ID, ok := reflects.LookupID(expected)
+			var entity frameless.Entity
+
+			func() {
+				iterator := storage.Find(ByID{Type: quc.Type, ID: ID})
+
+				defer iterator.Close()
+
+				if err := iterators.DecodeNext(iterator, &entity); err != nil {
+					t.Fatal(err)
+				}
+			}()
+
+			actualID, ok := reflects.LookupID(entity)
 
 			if !ok {
-				t.Fatal(strings.Join([]string{
-					"Can't find the ID in the current structure",
-					"if there is no ID in the subject structure",
-					"custom test needed that explicitly defines how ID is stored and retrived from an entity",
-				}, "\n"))
+				t.Fatal("can't find ID in the returned value")
 			}
 
-			if err := subject.Find(ByID{Type: this.Type, ID: ID}).Decode(&actually); err != nil {
-				t.Fatal(err)
-			}
+			require.Equal(t, ID, actualID)
 
-			require.Equal(t, expected, actually)
 		}
-
 	})
 
 }
