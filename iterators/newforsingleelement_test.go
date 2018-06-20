@@ -12,13 +12,13 @@ type ExampleStruct struct {
 	Name string
 }
 
-func TestNewForStruct_StructGiven_StructReceivedWithDecode(t *testing.T) {
+func TestNewForSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	t.Parallel()
 
 	var expected ExampleStruct = ExampleStruct{Name: randomdata.SillyName()}
 	var actually ExampleStruct
 
-	i := iterators.NewForStruct(&expected)
+	i := iterators.NewForSingleElement(&expected)
 	defer i.Close()
 
 	iterators.DecodeNext(i, &actually)
@@ -26,12 +26,12 @@ func TestNewForStruct_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	require.Equal(t, expected, actually)
 }
 
-func TestNewForStruct_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
+func TestNewForSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
 	t.Parallel()
 
 	var expected ExampleStruct = ExampleStruct{Name: randomdata.SillyName()}
 
-	i := iterators.NewForStruct(&expected)
+	i := iterators.NewForSingleElement(&expected)
 	defer i.Close()
 
 	require.True(t, i.Next())
@@ -43,13 +43,13 @@ func TestNewForStruct_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOn
 
 }
 
-func TestNewForStruct_NextCalled_DecodeShouldDoNothing(t *testing.T) {
+func TestNewForSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 	t.Parallel()
 
 	var expected ExampleStruct = ExampleStruct{Name: randomdata.SillyName()}
 	var actually ExampleStruct
 
-	i := iterators.NewForStruct(&expected)
+	i := iterators.NewForSingleElement(&expected)
 	defer i.Close()
 	i.Next()
 	i.Next()
@@ -59,10 +59,10 @@ func TestNewForStruct_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 
 }
 
-func TestNewForStruct_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
+func TestNewForSingleElement_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForStruct(&ExampleStruct{Name: randomdata.SillyName()})
+	i := iterators.NewForSingleElement(&ExampleStruct{Name: randomdata.SillyName()})
 	i.Close()
 
 	require.Error(t, i.Decode(&ExampleStruct{}), "closed")

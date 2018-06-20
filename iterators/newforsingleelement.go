@@ -7,8 +7,8 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-// NewForStruct creates an iterator that can return one single element and will ensure that Next can only be called once.
-func NewForStruct(e frameless.Entity) frameless.Iterator {
+// NewForSingleElement creates an iterator that can return one single element and will ensure that Next can only be called once.
+func NewForSingleElement(e frameless.Entity) frameless.Iterator {
 	return &singleElementIterator{element: e, index: -1, closed: false}
 }
 
