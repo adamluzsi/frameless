@@ -4,6 +4,8 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/adamluzsi/frameless/reflects"
+
 	"github.com/adamluzsi/frameless"
 )
 
@@ -51,9 +53,5 @@ func (this *iterator) Decode(i interface{}) error {
 		return errors.New("closed")
 	}
 
-	value := this.rows.Index(this.index)
-	dest := reflect.ValueOf(i)
-	dest.Elem().Set(value)
-
-	return nil
+	return reflects.Link(this.rows.Index(this.index).Interface(), i)
 }

@@ -67,8 +67,6 @@ func TestNewForSlice_SliceGivenButWrongTypeFetched_PanicSent(t *testing.T) {
 	i := iterators.NewForSlice([]int{42})
 	require.True(t, i.Next())
 
-	defer func() { require.Equal(t, "reflect.Set: value of type int is not assignable to type string", recover()) }()
-
 	var v string
-	i.Decode(&v)
+	require.Error(t, i.Decode(&v), "reflect.Set: value of type int is not assignable to type string")
 }
