@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNextDecoder_IteratorGiven_ValidDecoderReturnedThanCanDecodeTheFirstValueFromTheIterator(t *testing.T) {
+func TestDecodeNext_IteratorGiven_ValidDecoderReturnedThanCanDecodeTheFirstValueFromTheIterator(t *testing.T) {
 	t.Parallel()
 
 	var expected int = 42
@@ -16,7 +16,7 @@ func TestNextDecoder_IteratorGiven_ValidDecoderReturnedThanCanDecodeTheFirstValu
 	i := iterators.NewForSlice([]int{expected, 4, 2})
 	defer i.Close()
 
-	if err := iterators.NextDecoder(i).Decode(&actually); err != nil {
+	if err := iterators.DecodeNext(i, &actually); err != nil {
 		t.Fatal(err)
 	}
 
