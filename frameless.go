@@ -76,7 +76,8 @@
 // https://en.wikipedia.org/wiki/Law_of_Demeter
 // https://golang.org/pkg/encoding/json/#Decoder
 // https://en.wikipedia.org/wiki/Iterator_pattern
-//
+// https://en.wikipedia.org/wiki/Single_responsibility_principle
+// https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it
 //
 // Business Entity
 //
@@ -118,7 +119,33 @@
 //
 //
 //
-// Controllers
+package frameless
+
+import (
+	"context"
+	"io"
+	"testing"
+)
+
+// Entity represents a application defined expored/public structure with exported/public fields
+// Entities encapsulate Enterprise wide business rules.
+// An entity is a data structure with functions.
+// In enterprise environment, this or the specification of this object can be shared between applications.
+// If you don’t have an enterprise, and are just writing a single application, then these entities are the business objects of the application.
+// They encapsulate the most general and high-level rules.
+// Entity scope must be free from anything related to other software layers implementation knowledge such as SQL or HTTP request objects.
+//
+// They are the least likely to change when something external changes.
+// For example, you would not expect these objects to be affected by a change to page navigation, or security.
+// No operational change to any particular application should affect the entity layer.
+//
+// By convention these structures should be placed on the top folder level of the project
+//
+type Entity = interface{}
+
+// Controller defines how a framework independent controller should look
+//  the core concept that the controller implements the business rules
+// 	and the channels like CLI or HTTP only provide data to it in a form of application specific business entities
 //
 // 	The controller responds to the user input and performs interactions on the data model objects.
 // 	The controller receives the input, optionally validates it and then passes the input to the model.
@@ -145,21 +172,11 @@
 //
 //  Robert Martin
 //
-package frameless
-
-import (
-	"context"
-	"io"
-)
-
-// Controller defines how a framework independent controller should look
-//  the core concept that the controller implements the business rules
-// 	and the channels like CLI or HTTP only provide data to it in a form of application specific business entities
 type Controller interface {
 	Serve(Presenter, Request) error
 }
 
-// ControllerFunc Wrapper type to convert anonimus lambda expressions into valid Frameless Controller object
+// ControllerFunc helps convert anonimus lambda expressions into valid Frameless Controller object
 type ControllerFunc func(Presenter, Request) error
 
 // Serve func implements the Frameless Controller interface
@@ -209,87 +226,93 @@ type Request interface {
 	Data() Iterator
 }
 
+// Decoder is the interface for populating/replacing a public struct with values that retrived from an external resource
+type Decoder interface {
+	// Decode will populate an object with values and/or return error
+	Decode(interface{}) error
+}
+
+// DecoderFunc enables to use anonimus functions to be a valid DecoderFunc
+type DecoderFunc func(interface{}) error
+
+// Decode proxy the call to the wrapped Decoder function
+func (fn DecoderFunc) Decode(i interface{}) error {
+	return fn(i)
+}
+
 // Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
 // Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
 // inspirated by https://golang.org/pkg/encoding/json/#Decoder
 type Iterator interface {
 	// this is required to make it able to cancel iterators where resource being used behind the schene
-	// 	for all other case where the underling io is handled on higher level, it should simply return nil
+	// for all other case where the underling io is handled on higher level, it should simply return nil
 	io.Closer
 	// Next will ensure that Decode return the next item when it is executed
 	Next() bool
 	// Err return the cause if for some reason by default the More return false all the time
 	Err() error
-	// Decode will populate an object with values and/or return error
-	Decode(interface{}) error
+	// this is required to retrive the current value from the iterator
+	Decoder
+}
+
+//
+// Storing And Retrival
+
+// ID is the serialized form of an identification entry that is provided by a given storage and than used for fetching entries from it.
+// this is actually just a primitive string type, the type declaration is only meant to be for documentation purpose
+type ID = string
+
+// QueryUseCase is a storage specific component.
+// It represent a use case for a specific Read of Update action.
+// It should not implement or represent anything how the database query will be build,
+// only contain necessary data to make it able implement in the storage.
+// There must be no business logic located in a QueryUseCase type,
+// this also includes complex types that holds logical information.
+// It should only include as primitive fields as possible,
+// and anything that require some kind of rule/logic to be done before it can be found in the storage should be done at controller level.
+//
+// By convention this should be declared where the Controllers are defined.
+// If it's used explicitly by one Controller, the query use case definition should defined prior to that controller
+// and listed close to each other in the go documentation.
+//
+type QueryUseCase = interface {
+	// Test specify the given query Use Case behavior, and must be used for implementing it in the storage side.
+	// For different context and scenarios testing#T.Run is advised to be used.
+	// Test should create and teardown it's context in each execution (on each T.Run basis if T.Run used).
+	//
+	// The *testing.T is used, so the specification can use test specific methods like #Run and #Parallel.
+	//
+	Test(spec *testing.T, subject Storage)
 }
 
 // Storage define what is the most minimum that a storage should implement in order to be able
+//
+// The CRUD not enforced here because I found that most of the time, it is not even the case.
+// For example, if there is no such query use case where you have to update something, why implement it ?
+// I found that the most required functionality is Persisting an entity (it's a storage after all) and query and execute on it.
 type Storage interface {
-	// All returns an iterator that can Decode values to business entities.
-	All() Iterator
-	// Where defines search/lookups based on the exported struct that the Controller defines
-	// This way, the controller defines what will be used for search, and storage implement the fetching.
-	// Note that an Exported Structure ALL fields must be exported, and must only contain fields that will be actively used for the lookup.
-	// Empty ignoreable fields must be omitted from the ExportedStructFromController.
+	// Create able to create a given entity
+	// By convention it also should set the id in the entity
+	Create(Entity) error
+	//
+	// FindBy implements each application QueryUseCase.Test that used with the given storage.
+	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
 	//
 	// This way it maybe feels boilerplated for really dynamic and complex searches, but for those,
 	// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
 	// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
-	Where(ExportedStructFromController interface{}) Iterator
-	// Find return the requested business entity or if it is missing than nil is returned.
-	// Also an error is returned if something went unexpected independently from the business entity existence.
-	Find(ID string) (businessEntityThatIsA Persistable, err error)
-	// NewEntity creates a new business entity based on the given controller exported structure that includes all the necessary raw data.
-	// So at the controller layer, there should be an exported struct type which includes all the required fields.
-	// Based on the values in that, the Storage should be able to initialize a new Persistable object and the Persistance is up to the controller with the Save functionality.
-	// The Validation of the fields MUST Not be implemented in the Persistable, because that is the scope of the controller
-	NewEntity(ExportedStructFromController interface{}) (businessEntityThatIsA Persistable)
-}
-
-// Persistable defines what requirements is expected from a business entity from behavior side if it is marked as a persistable object
-// This interface expected to be used in the Software Application Business Entity definitions.
-type Persistable interface {
-	// ID represents a string serialized identifier that could be used for finding the record next time
-	// It should be a value that is allowed to be published
-	ID() string
-	// Save expects to fulfill the role of "Create" and "Update".
-	// The underling structure that implements the interface is expected to know if it's an already stored object or not.
-	Save() error
-	// Delete is expected to make the object look like deleted from the controller point of view.
-	// The fact that it is deleted actually or just marked as "deleted_at" is up to the implementation.
-	Delete() error
-}
-
-// Relationship behaviors
-//
-
-// HasOneRelationship represents a connection between Business Entities as :1 (1:!, N:1)
-//
-// Example:
-//
-// type Team interface {
-// 	Organization() frameless.HasOneRelationship
-// }
-//
-type HasOneRelationship interface {
-	Get() (Persistable, error)
-	Set(Persistable) error
-}
-
-// HasManyRelationship represents a connection between Business Entities as :N (1:N, M:N)
-//
-// Example:
-//
-// type Team interface {
-// 	Users() frameless.HasManyRelationship
-// }
-//
-type HasManyRelationship interface {
-	// All returns an iterator that include the business entities.
-	All() Iterator
-	// Add will add a different Persistable to this relation.
-	Add(Persistable) error
-	// Remove will remove the relation from a given Business entity to an another
-	Remove(Persistable) error
+	//
+	// By convention the QueryUseCase name should start with "[EntityName][FindLogicDescription]" so it is easy to distinguish it from other exported Structures,
+	// 	example: UserByName, UsersByName, UserByEmail
+	//
+	// for simple use cases where returned iterator expected to only include 1 element I recommend using iterators.DecodeNext(iterator, &entity) for syntax sugar.
+	// The use case common but I do not see benefit enforcing a First, FindOne or similar requirement from the storage.
+	// For creating iterators for a single entity, you can use iterators.NewForStruct.
+	Find(QueryUseCase) Iterator
+	//
+	// Exec can execute a QueryUseCase that goal is to do modification in the storage in a described way by the QueryUseCase#Test method.
+	//
+	// By convention the QueryUseCase name should start with the Task to be achieved and than followed by type.
+	// 	example: UpdateUserByName, DeleteUser, InvalidateUser
+	Exec(QueryUseCase) error
 }
