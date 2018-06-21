@@ -51,13 +51,14 @@
 //
 // Resources
 //
-// https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html
+// https://12factor.net/
 // https://en.wikipedia.org/wiki/Law_of_Demeter
 // https://golang.org/pkg/encoding/json/#Decoder
 // https://en.wikipedia.org/wiki/Iterator_pattern
-// https://en.wikipedia.org/wiki/Single_responsibility_principle
+// https://en.wikipedia.org/wiki/Adapter_pattern
 // https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it
-// https://12factor.net/
+// https://en.wikipedia.org/wiki/Single_responsibility_principle
+// https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html
 //
 // Business Entity
 //
