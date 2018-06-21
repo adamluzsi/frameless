@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/adamluzsi/frameless"
-	fhttp "github.com/adamluzsi/frameless/integrations/net/http"
+	fhttp "github.com/adamluzsi/frameless/controllers/adapters/integrations/net/http"
 )
 
 // NetHTTP creates an adapter http.Hander object that can be given to a http.ServerMux

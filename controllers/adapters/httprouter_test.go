@@ -11,7 +11,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/adapters"
+	"github.com/adamluzsi/frameless/controllers/adapters"
 )
 
 func TestAdapterHTTPRouter_RequestBodyCanBeReadAsTheData_RequestSucceed(t *testing.T) {
