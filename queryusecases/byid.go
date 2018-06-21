@@ -1,7 +1,6 @@
 package queryusecases
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -11,6 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// ByID request a business entity from a storage that implement it's test.
+// Type is an empty struct from the given business entity type, and ID is a string
+//
+// NewEntityForTest used only for testing and should not be provided outside of testing
 type ByID struct {
 	Type frameless.Entity
 	ID   string
@@ -35,16 +38,13 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 		ID, ok := reflects.LookupID(entity)
 
 		if !ok {
-			spec.Fatal(strings.Join([]string{
-				"Can't find the ID in the current structure",
-				"if there is no ID in the subject structure",
-				"custom test needed that explicitly defines how ID is stored and retrived from an entity",
-			}, "\n"))
+			spec.Fatal(idRequiredMessage)
 		}
 
 		require.True(spec, len(ID) > 0)
 		ids = append(ids, ID)
-		// TODO: teardown
+
+		defer storage.Exec(DeleteByID{Type: quc.Test, ID: ID})
 	}
 
 	spec.Run("values returned", func(t *testing.T) {

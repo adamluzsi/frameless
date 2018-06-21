@@ -11,6 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// AllFor can return business entities from a given storage that implement it's test
+// The "Type" is a Empty struct for the specific entity (struct) type that should be returned.
+//
+// NewEntityForTest used only for testing and should not be provided outside of testing
 type AllFor struct {
 	Type frameless.Entity
 
@@ -18,8 +22,6 @@ type AllFor struct {
 }
 
 func (quc AllFor) Test(t *testing.T, storage frameless.Storage) {
-	t.Parallel()
-
 	ids := []string{}
 
 	for i := 0; i < 10; i++ {
@@ -30,12 +32,12 @@ func (quc AllFor) Test(t *testing.T, storage frameless.Storage) {
 		id, found := reflects.LookupID(entity)
 
 		if !found {
-			t.Fatal("ID is required for this specification")
+			t.Fatal(idRequiredMessage)
 		}
 
 		ids = append(ids, id)
 
-		// TODO: teardown here with defer Delete
+		defer storage.Exec(DeleteByID{Type: quc.Test, ID: id})
 	}
 
 	i := storage.Find(quc)
@@ -49,7 +51,7 @@ func (quc AllFor) Test(t *testing.T, storage frameless.Storage) {
 		id, found := reflects.LookupID(entity)
 
 		if !found {
-			t.Fatal("ID is required for this specification")
+			t.Fatal(idRequiredMessage)
 		}
 
 		require.Contains(t, ids, id)
