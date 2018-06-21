@@ -56,13 +56,37 @@ func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 		return iterators.NewForSlice(entities)
 
 	default:
-		panic(fmt.Sprintf("%s not implemented", reflect.TypeOf(quc).Name()))
+		return iterators.NewForError(fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name()))
 
 	}
 }
 
-func (storage *memory) Exec(frameless.QueryUseCase) error {
-	panic("not implemented")
+func (storage *memory) Exec(quc frameless.QueryUseCase) error {
+	switch quc.(type) {
+	case queryusecases.DeleteByID:
+		DeleteByID := quc.(queryusecases.DeleteByID)
+		table := storage.tableFor(DeleteByID.Type)
+
+		if _, ok := table[DeleteByID.ID]; ok {
+			delete(table, DeleteByID.ID)
+		}
+
+		return nil
+
+	case queryusecases.DeleteByEntity:
+		DeleteByEntity := quc.(queryusecases.DeleteByEntity)
+
+		ID, found := reflects.LookupID(DeleteByEntity.Entity)
+		if !found {
+			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
+		}
+
+		return storage.Exec(queryusecases.DeleteByID{Type: DeleteByEntity.Entity, ID: ID})
+
+	default:
+		panic(fmt.Sprintf("%s not implemented", reflect.TypeOf(quc).Name()))
+
+	}
 }
 
 //

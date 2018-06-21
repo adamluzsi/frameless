@@ -30,19 +30,50 @@ func TestMemoryCreate_SpecificValueGiven_IDSet(t *testing.T) {
 	require.True(t, len(ID) > 0)
 }
 
-func TestMemoryFind(suite *testing.T) {
-	suite.Run("QueryUseCases", func(spec *testing.T) {
-
-		storage := storages.NewMemory()
+func TestMemory(suite *testing.T) {
+	suite.Run("Find", func(spec *testing.T) {
 
 		spec.Run("ByID", func(t *testing.T) {
 			t.Parallel()
 
 			queryusecases.ByID{
-				Type:             SampleEntity{},
+				Type: SampleEntity{},
+
 				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storage)
+			}.Test(t, storages.NewMemory())
 		})
 
+		spec.Run("AllFor", func(t *testing.T) {
+			t.Parallel()
+
+			queryusecases.AllFor{
+				Type: SampleEntity{},
+
+				NewEntityForTest: NewEntityForTest,
+			}.Test(t, storages.NewMemory())
+		})
+
+	})
+
+	suite.Run("Exec", func(spec *testing.T) {
+		spec.Run("DeleteByID", func(t *testing.T) {
+			t.Parallel()
+
+			queryusecases.DeleteByID{
+				Type: SampleEntity{},
+
+				NewEntityForTest: NewEntityForTest,
+			}.Test(t, storages.NewMemory())
+		})
+
+		spec.Run("DeleteByEntity", func(t *testing.T) {
+			t.Parallel()
+
+			queryusecases.DeleteByEntity{
+				Entity: SampleEntity{},
+
+				NewEntityForTest: NewEntityForTest,
+			}.Test(t, storages.NewMemory())
+		})
 	})
 }
