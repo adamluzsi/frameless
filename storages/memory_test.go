@@ -56,6 +56,17 @@ func TestMemory(suite *testing.T) {
 	})
 
 	suite.Run("Exec", func(spec *testing.T) {
+
+		spec.Run("UpdateEntity", func(t *testing.T) {
+			t.Parallel()
+
+			queryusecases.UpdateEntity{
+				Entity: SampleEntity{},
+
+				NewEntityForTest: NewEntityForTest,
+			}.Test(t, storages.NewMemory())
+		})
+
 		spec.Run("DeleteByID", func(t *testing.T) {
 			t.Parallel()
 

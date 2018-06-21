@@ -83,8 +83,26 @@ func (storage *memory) Exec(quc frameless.QueryUseCase) error {
 
 		return storage.Exec(queryusecases.DeleteByID{Type: DeleteByEntity.Entity, ID: ID})
 
+	case queryusecases.UpdateEntity:
+		UpdateEntity := quc.(queryusecases.UpdateEntity)
+
+		ID, found := reflects.LookupID(UpdateEntity.Entity)
+		if !found {
+			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
+		}
+
+		table := storage.tableFor(UpdateEntity.Entity)
+
+		if _, ok := table[ID]; !ok {
+			return fmt.Errorf("%s id not found in the %s table", ID, storage.tableName(UpdateEntity.Entity))
+		}
+
+		table[ID] = UpdateEntity.Entity
+
+		return nil
+
 	default:
-		panic(fmt.Sprintf("%s not implemented", reflect.TypeOf(quc).Name()))
+		return fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name())
 
 	}
 }
@@ -93,16 +111,17 @@ func (storage *memory) Exec(quc frameless.QueryUseCase) error {
 //
 //
 
-func (storage *memory) tableFor(e frameless.Entity) memoryTable {
-
+func (storage *memory) tableName(e frameless.Entity) string {
 	t := reflect.TypeOf(e)
-	var name string
-
 	if t.Kind() == reflect.Ptr {
-		name = t.Elem().Name()
+		return t.Elem().Name()
 	} else {
-		name = t.Name()
+		return t.Name()
 	}
+}
+
+func (storage *memory) tableFor(e frameless.Entity) memoryTable {
+	name := storage.tableName(e)
 
 	if _, ok := storage.db[name]; !ok {
 		storage.db[name] = make(memoryTable)

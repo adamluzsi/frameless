@@ -59,6 +59,7 @@ func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage) {
 
 }
 
+// DeleteByEntity request a delete of a specific entity that is wrapped in the query use case object
 type DeleteByEntity struct {
 	Entity frameless.Entity
 
