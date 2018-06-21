@@ -49,6 +49,22 @@ func (quc InactiveUsers) Test(suite *testing.T, storage frameless.Storage) {
 
 type UsersNameBeginWith struct{ Prefix string }
 
-func ExampleQueryUseCase(storage frameless.Storage) {
-	storage.Find(InactiveUsers{})
+func ExampleQueryUseCase(storage frameless.Storage) error {
+	iterator := storage.Find(InactiveUsers{})
+
+	for iterator.Next() {
+		var user User
+
+		if err := iterator.Decode(&user); err != nil {
+			return err
+		}
+
+		// do something with inactive User
+	}
+
+	if err := iterator.Err(); err != nil {
+		return err
+	}
+
+	return nil
 }
