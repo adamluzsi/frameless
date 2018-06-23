@@ -8,6 +8,8 @@ script: go test ./... -v
 # Skip the install step. Don't `go get` dependencies. Only build with the code
 # in vendor/
 install: true
+
+# before_install:
 #   - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 #   - dep ensure
 
