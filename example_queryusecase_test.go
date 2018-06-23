@@ -1,4 +1,4 @@
-package examples_test
+package frameless_test
 
 import (
 	"testing"
@@ -35,6 +35,7 @@ func (quc InactiveUsers) Test(suite *testing.T, storage frameless.Storage) {
 			require.Nil(t, i.Err())
 
 			count := 0
+
 			for i.Next() {
 				count++
 				var user User
@@ -49,22 +50,6 @@ func (quc InactiveUsers) Test(suite *testing.T, storage frameless.Storage) {
 
 type UsersNameBeginWith struct{ Prefix string }
 
-func ExampleQueryUseCase(storage frameless.Storage) error {
-	iterator := storage.Find(InactiveUsers{})
-
-	for iterator.Next() {
-		var user User
-
-		if err := iterator.Decode(&user); err != nil {
-			return err
-		}
-
-		// do something with inactive User
-	}
-
-	if err := iterator.Err(); err != nil {
-		return err
-	}
-
-	return nil
+func ExampleQueryUseCase(storage frameless.Storage) frameless.QueryUseCase {
+	return InactiveUsers{}
 }
