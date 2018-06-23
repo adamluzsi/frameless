@@ -4,24 +4,25 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
+// NewEmpty iterator is used to represent nil result with Null object pattern
 func NewEmpty() frameless.Iterator {
-	return &newEmpty{}
+	return &empty{}
 }
 
-type newEmpty struct{}
+type empty struct{}
 
-func (i *newEmpty) Close() error {
+func (i *empty) Close() error {
 	return nil
 }
 
-func (i *newEmpty) Next() bool {
+func (i *empty) Next() bool {
 	return false
 }
 
-func (i *newEmpty) Err() error {
+func (i *empty) Err() error {
 	return nil
 }
 
-func (i *newEmpty) Decode(interface{}) error {
+func (i *empty) Decode(interface{}) error {
 	return nil
 }
