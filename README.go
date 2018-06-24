@@ -1,40 +1,100 @@
 /*
 
-Package frameless aims to create convention to build software from ground instead of upside down.
+Package frameless aims to create convention to build software on application level
 
-What does this in in practice
 
-You can practice building software with clean seperation between layers.
-For example you can implement Business Usecases without any external dependency.
-I often saw that a developer like to challenge they mind and also to play around with new hyped modules or frameworks.
-In a software where there is no strict seperation between external interfaces and internal business rules / use cases,
-this easily mean that the software development will be throttled over time because reverse dependency injection.
 
-Initially the goal for this project was starting to extend my vision in software level architecture
-and find a way out for myself what is "clean" to me in terms of Architecture.
-As a side effect my software become even more easier to test, than before.
-By creating like this my software, it will be framework independent, and I can use whatever I want for my software channel (web/cli/mq/etc).
 
-I'm not saying this is the silver bullet here, because the actually usable real world usecases limited to business applications.
-If you need to create a service for an edge case purpose, than you probably better of without extra complexity layer,
-because would not make it cleaner, just more complex. Such case is building a reverse proxy that handles custom security rules and stuff like that.
-Also the design here highly assumes you create software that follows 12 factor principles, and scalable via the process model.
-I worked with languages that are anything but high-performant, so I have a different view about "required" performance,
+
+Introduction
+
+This research project primary was created for myself, to extend my knowledge in software design.
+You will probably see a few common design principles that I prefer, and known commonly.
+The core concept is based on inspiration by Robert Martin works, and on my own experience.
+
+
+
+
+
+The reason
+
+While I had the pleasure to work with software engineers that I respected for both personality and knowledge,
+there was one commonly returning feeling think that kept bothering me.
+It endend in an extreme that I realized, I love minimalism in programming,
+and unconsciously try to avoid frameworks that provides rapid development with "ease of use".
+
+Most of these framework requires disciplined following it's conventions,
+which I really like for team scaleability and productivity reasons.
+But in the same time, I see that software design suffer in the long run.
+Project gets tightly chained to that framework,
+Business use cases and rules depending on how the framework works, and what smart objects it provides.
+This in the end resulted in a way where the Juniors who grown up working with these tools build software by default from roof to ground.
+Software core entities was not testable without tons of external resources,
+features created in a way where the first thing to be chosen was the technology in a form of external resource and framework,
+instead of being able to create, define the use cases of that software and user story.
+
+But that should be enough, because people expecting results to be delivered, and if possible by yesterday,
+It's rare to have a moment to think every project through.
+That is especially true for me, who like think things through slowly and play in mind what could be the future outcome of that decision...
+How will it affect maintainability ?
+How easy will the code to be consumed if someone join the team of that project and want to read it alone ?
+How much effort will be required to build mind model for the code ?
+
+
+
+
+
+The Goal
+
+So I decided to find time in my life and research out in my own speed a solution for the above mentioned problem.
+I also tried to include the factor that we software engineers like play with new toys (abstractions)
+and I would like to leave space for that for myself as well. So I tried layer software into the following:
+
+• Entity
+Is usually a data structure that may or may not have functions.
+
+• Controller
+that implements a specific business use case.
+Depends on Entities it works, it defines what will presenter receive,
+also defines what query use cases the storage must implement.
+
+• Query Use Case
+for controllers that have to interact with a storage.
+This defines what is the expected behavior to be implemented in the storage or storages (for example dark launch).
+It depends on the Entity, which it works with.
+
+• Resuest and Presenter
+implements the interaction between an input external interface and an output external interface that could be the same as well.
+Request implements the unserialization logic required to have only primitives as input.
+Presenter implements the serialization logic that will be used in the out bound communication from the application.
+This two removes the above mentioned responsibility from the controller, so as a result, controller wil only have use case controlling related logic.
+I believe this makes testing and composition of these parts easier, while the required mind model will be super little for controllers as well.
+
+• Storage
+implements query use case specifications on a specific external resource that main purpose is storing data.
+Hides the technology/packages from the controller, so the dependency inversion can be enforced even more.
+Ensure that the given external resource connection only used through this and it is not leaked out.
+Your entities by default will not know about they persistence, the only information can optionally exchange is the storage ID.
+As a nice side effect, because storage is a dependency for controller rather than encapsulation in an entity, like how most ORM frameworks do,
+you can use during testing in-memory storages, so your red/green/refactor feedback cycle will be blazing fast,
+and you can start create business use cases implementations without any storage.
+
+
+
+
+
+Caveat
+
+This research primary targets creating design for business software applications,
+If you need to create a service for technology specific an edge case purpose,
+than you probably better of without the extra layer this requires.
+
+	such case is a HTTP reverse proxy with custom logic related to the transferred data.
+
+Also the design here highly assumes you create software that is tested and follows 12 factor principles, so it's scalable via the process model.
+I worked with languages that are way slower than golang, so I have a different view about "required" performance,
 and I don't share the opinion that the application must be prematurely optimized for some extra nano seconds.
-Even with one of the slowest languages in the world you can architect and build scalable and quick business softwares,
-so golang is chosen for different reasons to be one of my favorite language.
-
-My main goals while design a business applications is maintainability, testability, scope limitation and testability for components.
-To me if golang would be slow I still would love to use it, because I really like how opinionated the language is.
-
-If you feel while using idioms from here, that your test are too simple and boring, than I already happy.
-Of course we not live in a world where every company open to give extra time to achieve this,
-so I started this project as a guideline to make myself and hopefully others able to create applications in a fast and efficient way.
-I try to create primary for myself conventions that on the long run help avoid common mistakes that usually crystalize out not when being developed,
-but when a software have to be updated later.
-Even if you are the one who have to update it, after a certain amount of time it can be easily happen that you easily end up watching your own code like a stranger would do.
-Usually the smaller the required mind model to be built, the faster you can interact with an application code base.
-And this is what this "meta" framework try to achieve.
+Therefore for those who benchmark interface{} vs struct{} method execution speed may find this package disturbing.
 
 Therefore if your opinion includes any of the followings:
  * I don't mind using interfaces
@@ -43,12 +103,30 @@ Therefore if your opinion includes any of the followings:
 If you said yes to this, I guess there would be no harm continue reading this.
 
 
+
+
+
+Why Golang
+
+Most of these experience sourced from working in other languages,
+and programming in golang's minimalist environment is kind a like a chill out place for my mind,
+but the knowledge I try to form it into code here is language independent and could be used in any other languages as well.
+In languages where there are no interfaces, I highly recommend creating specification that ensure this simple contract.
+
+
+
+
+
 Last notes
 
-As a last note, most of the interfaces defined here may look simple,
-but took much more time than it looks, so sometimes one function signature was created under days.
+As a last note, most of the interfaces defined here may only contain a few or just one function signature,
+it is because I tried remove everything that is YAGNI in order to achieve final goal for a given project.
+QueryUseCase is the tipical example for this, because you only implement those that you use it. and nothing more.
 I would like to ask you, if you see anything and care to share your constructive opinion,
-please feel free to create an issue where it can be discussed!
+please feel free to create an issue on github where we can discuss this!
+
+
+
 
 
 Resources
@@ -61,32 +139,6 @@ https://en.wikipedia.org/wiki/Adapter_pattern
 https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it
 https://en.wikipedia.org/wiki/Single_responsibility_principle
 https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html
-
-Business Entity
-
-Entities encapsulate the most general and high-level rules of the application.
-	"An entity can be an object with methods, or it can be a set of data structures and functions"
-	Robert Martin
-
-I tried different structures during my research, and in the end the most maintainable one was an
-interface that describe the high level behavior of an entity and a shared runable specification.
-This shared specification used to test against the underling implementations.
-They behavior are the least likely to change when something external changes.
-	For example, you would not expect these objects to be affected by how they used and what behavior they implement
-	when a change to page navigation, or security happen.
-
-In other languages my preference is RSpec, Jasmine or Oleaster for creating shared specifications but it is up to you what you prefer the most.
-Also the Business Entity must not give back any value that is implementation specific!
-	for example when you call a method/function on this entity, you should not receive sql rows object
-
-Example Entity:
-
-		type User struct {
-			ID        string
-			Name      string
-			Email     string
-			Biography string
-		}
 
 
 */

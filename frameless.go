@@ -6,9 +6,10 @@ import (
 	"testing"
 )
 
-// Entity represents a application defined expored/public structure with exported/public fields
-// Entities encapsulate Enterprise wide business rules.
-// An entity is a data structure with functions.
+// Entity encapsulate the most general and high-level rules of the application.
+// 	"An entity can be an object with methods, or it can be a set of data structures and functions"
+// 	Robert Martin
+//
 // In enterprise environment, this or the specification of this object can be shared between applications.
 // If you don’t have an enterprise, and are just writing a single application, then these entities are the business objects of the application.
 // They encapsulate the most general and high-level rules.
@@ -19,7 +20,6 @@ import (
 // No operational change to any particular application should affect the entity layer.
 //
 // By convention these structures should be placed on the top folder level of the project
-//
 type Entity = interface{}
 
 // Controller defines how a framework independent controller should look
