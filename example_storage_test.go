@@ -107,4 +107,6 @@ func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite
 	})
 }
 
-func ExampleStorage() {}
+func ExampleStorage() {
+	// for working implementation example check frameless/storages package in Memory storage code and test
+}
