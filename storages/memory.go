@@ -94,7 +94,7 @@ func (storage *memory) Exec(quc frameless.QueryUseCase) error {
 		table := storage.tableFor(UpdateEntity.Entity)
 
 		if _, ok := table[ID]; !ok {
-			return fmt.Errorf("%s id not found in the %s table", ID, storage.tableName(UpdateEntity.Entity))
+			return fmt.Errorf("%s id not found in the %s table", ID, reflects.Name(UpdateEntity.Entity))
 		}
 
 		table[ID] = UpdateEntity.Entity
@@ -111,17 +111,8 @@ func (storage *memory) Exec(quc frameless.QueryUseCase) error {
 //
 //
 
-func (storage *memory) tableName(e frameless.Entity) string {
-	t := reflect.TypeOf(e)
-	if t.Kind() == reflect.Ptr {
-		return t.Elem().Name()
-	} else {
-		return t.Name()
-	}
-}
-
 func (storage *memory) tableFor(e frameless.Entity) memoryTable {
-	name := storage.tableName(e)
+	name := reflects.Name(e)
 
 	if _, ok := storage.db[name]; !ok {
 		storage.db[name] = make(memoryTable)
