@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/adamluzsi/frameless/iterators"
 
@@ -16,23 +15,13 @@ import (
 )
 
 //
-// myentity.go
+// mystorage.go
 
-type MyEntity struct {
-	ID string
-
-	Name string
-	Time time.Time
-}
-
-//
-// mycustomstorage.go
-
-type MyCustomStorage struct {
+type MyStorage struct {
 	ExternalResourceConnection interface{}
 }
 
-func (storage *MyCustomStorage) Create(e frameless.Entity) error {
+func (storage *MyStorage) Create(e frameless.Entity) error {
 	switch e.(type) {
 	case *MyEntity:
 		myEntity := e.(*MyEntity)
@@ -45,7 +34,7 @@ func (storage *MyCustomStorage) Create(e frameless.Entity) error {
 	}
 }
 
-func (storage *MyCustomStorage) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (storage *MyStorage) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	switch quc.(type) {
 	case queryusecases.ByID:
 		// implementation for queryusecases.ByID with the given external resource connection
@@ -61,7 +50,7 @@ func (storage *MyCustomStorage) Find(quc frameless.QueryUseCase) frameless.Itera
 	}
 }
 
-func (storage *MyCustomStorage) Exec(quc frameless.QueryUseCase) error {
+func (storage *MyStorage) Exec(quc frameless.QueryUseCase) error {
 	switch quc.(type) {
 	case queryusecases.DeleteByEntity:
 		DeleteByEntity := quc.(queryusecases.DeleteByEntity)
@@ -89,8 +78,8 @@ func (storage *MyCustomStorage) Exec(quc frameless.QueryUseCase) error {
 
 func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite *testing.T) {
 	suite.Run("QueryUseCase", func(spec *testing.T) {
-		storage := &MyCustomStorage{ExternalResourceConnection: nil}
-		// or you can create NewMyCustomStorage(interface{}) as well for controlled initialization of your storage implementation,
+		storage := &MyStorage{ExternalResourceConnection: nil}
+		// or you can create NewMyStorage(interface{}) as well for controlled initialization of your storage implementation,
 		// and use it here for initialize the object
 
 		spec.Run("queryusecases.ByID", func(t *testing.T) {
