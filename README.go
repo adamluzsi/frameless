@@ -19,23 +19,24 @@ The core concept is based on inspiration by Robert Martin works, and on my own e
 The reason
 
 While I had the pleasure to work with software engineers that I respected for both personality and knowledge,
-there was one commonly returning feeling think that kept bothering me.
+there was one commonly returning feeling that kept me bothered.
 It endend in an extreme that I realized, I love minimalism in programming,
-and unconsciously try to avoid frameworks that provides rapid development with "ease of use".
+and unconsciously I started to avoid frameworks that provides rapid development with "ease of use".
 
 Most of these framework requires disciplined following it's conventions,
 which I really like for team scaleability and productivity reasons.
 But in the same time, I see that software design suffer in the long run.
 Project gets tightly chained to that framework,
-Business use cases and rules depending on how the framework works, and what smart objects it provides.
-This in the end resulted in a way where the Juniors who grown up working with these tools build software by default from roof to ground.
-Software core entities was not testable without tons of external resources,
-features created in a way where the first thing to be chosen was the technology in a form of external resource and framework,
-instead of being able to create, define the use cases of that software and user story.
+Business entities, use cases and rules depending on the framework, and its smart objects.
 
-But that should be enough, because people expecting results to be delivered, and if possible by yesterday,
-It's rare to have a moment to think every project through.
-That is especially true for me, who like think things through slowly and play in mind what could be the future outcome of that decision...
+This in the end resulted in a way where the Juniors who "grown up"* working with these tools,
+tends to have some tight connection with a framework rather than core ideas.
+I'm in no position to define this is good or not. The softwares made this way could be really high quality.
+but usually suffer in testability in a way, that ir requires tons of external resources to test business use cases, which tends to give slow test suite.
+Features created in a way where use cases implemented after choosing backing resources feels like building a house by starting from the roof.
+
+But because people expecting results to be delivered, and if possible by yesterday, It's rare to have a moment to think every project through.
+And because I like to think through things, play in mind what could be the future outcome of a given decision...
 How will it affect maintainability ?
 How easy will the code to be consumed if someone join the team of that project and want to read it alone ?
 How much effort will be required to build mind model for the code ?
