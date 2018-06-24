@@ -98,9 +98,8 @@ func (lambda PresenterFunc) Render(message interface{}) error {
 }
 
 // Request is framework independent way of interacting with a request that has been received on some kind of channel.
-// 	from this, the controller should get all the data and options that should required for the business rule processing
+// from this, the controller should get all the data and options that should required for the business use case that use it.
 type Request interface {
-	io.Closer
 	Context() context.Context
 	Data() Iterator
 }

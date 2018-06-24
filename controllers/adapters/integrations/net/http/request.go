@@ -42,7 +42,3 @@ func (r *Request) Context() context.Context {
 func (r *Request) Data() frameless.Iterator {
 	return r.iteratorBuilder(r.srcRequest.Body)
 }
-
-func (r *Request) Close() error {
-	return r.srcRequest.Body.Close()
-}

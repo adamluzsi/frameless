@@ -30,7 +30,6 @@ func MockIteratorBuilder() func(io.Reader) frameless.Iterator {
 
 func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool, err error) frameless.Controller {
 	return frameless.ControllerFunc(func(p frameless.Presenter, r frameless.Request) error {
-		defer r.Close()
 
 		if opts != nil {
 			for k, v := range opts {
@@ -42,6 +41,8 @@ func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool
 
 		if readBody {
 			i := r.Data()
+			defer i.Close()
+
 			for i.Next() {
 				var d string
 
