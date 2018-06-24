@@ -62,42 +62,39 @@ func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 }
 
 func (storage *memory) Exec(quc frameless.QueryUseCase) error {
-	switch quc.(type) {
+	switch quc := quc.(type) {
 	case queryusecases.DeleteByID:
-		DeleteByID := quc.(queryusecases.DeleteByID)
-		table := storage.tableFor(DeleteByID.Type)
+		table := storage.tableFor(quc.Type)
 
-		if _, ok := table[DeleteByID.ID]; ok {
-			delete(table, DeleteByID.ID)
+		if _, ok := table[quc.ID]; ok {
+			delete(table, quc.ID)
 		}
 
 		return nil
 
 	case queryusecases.DeleteByEntity:
-		DeleteByEntity := quc.(queryusecases.DeleteByEntity)
+		ID, found := reflects.LookupID(quc.Entity)
 
-		ID, found := reflects.LookupID(DeleteByEntity.Entity)
 		if !found {
 			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		return storage.Exec(queryusecases.DeleteByID{Type: DeleteByEntity.Entity, ID: ID})
+		return storage.Exec(queryusecases.DeleteByID{Type: quc.Entity, ID: ID})
 
 	case queryusecases.UpdateEntity:
-		UpdateEntity := quc.(queryusecases.UpdateEntity)
+		ID, found := reflects.LookupID(quc.Entity)
 
-		ID, found := reflects.LookupID(UpdateEntity.Entity)
 		if !found {
 			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		table := storage.tableFor(UpdateEntity.Entity)
+		table := storage.tableFor(quc.Entity)
 
 		if _, ok := table[ID]; !ok {
-			return fmt.Errorf("%s id not found in the %s table", ID, reflects.Name(UpdateEntity.Entity))
+			return fmt.Errorf("%s id not found in the %s table", ID, reflects.Name(quc.Entity))
 		}
 
-		table[ID] = UpdateEntity.Entity
+		table[ID] = quc.Entity
 
 		return nil
 
