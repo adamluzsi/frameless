@@ -96,12 +96,6 @@ I worked with languages that are way slower than golang, so I have a different v
 and I don't share the opinion that the application must be prematurely optimized for some extra nano seconds.
 Therefore for those who benchmark interface{} vs struct{} method execution speed may find this package disturbing.
 
-Therefore if your opinion includes any of the followings:
- * I don't mind using interfaces
- * I don't care speed differences between function calls on interface <=> struct
- * I don't depend purely only on type check, I'm comfortable with tests as well.
-If you said yes to this, I guess there would be no harm continue reading this.
-
 
 
 
