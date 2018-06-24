@@ -3,7 +3,7 @@ package frameless_test
 import "time"
 
 type MyEntity struct {
-	ID string `frameless:"ID"`
+	ID string `storage:"ID"`
 
 	Name      string
 	Email     string

@@ -5,7 +5,7 @@ type IDInFieldName struct {
 }
 
 type IDInTagName struct {
-	DI string `frameless:"ID"`
+	DI string `storage:"ID"`
 }
 
 type UnidentifiableID struct {
