@@ -13,7 +13,8 @@ type User struct {
 
 type InactiveUsers struct{} // <- QueryUseCase
 
-func (quc InactiveUsers) Test(suite *testing.T, storage frameless.Storage) {
+// Remove extra T from Test, it is only added here so the full page example can work in godoc
+func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
 
 		spec.Log("Given 10 users stored in the storage")
@@ -50,6 +51,4 @@ func (quc InactiveUsers) Test(suite *testing.T, storage frameless.Storage) {
 
 type UsersNameBeginWith struct{ Prefix string }
 
-func ExampleQueryUseCase(storage frameless.Storage) frameless.QueryUseCase {
-	return InactiveUsers{}
-}
+func ExampleQueryUseCase() {}
