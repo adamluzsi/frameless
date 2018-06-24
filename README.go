@@ -32,7 +32,7 @@ Business entities, use cases and rules depending on the framework, and its smart
 This in the end resulted in a way where the Juniors who "grown up"* working with these tools,
 tends to have some tight connection with a framework rather than core ideas.
 I'm in no position to define this is good or not. The softwares made this way could be really high quality.
-but usually suffer in testability in a way, that ir requires tons of external resources to test business use cases, which tends to give slow test suite.
+but usually suffer in testability in a way, that it requires tons of external resources to test business use cases, which tends to give slow test suite.
 Features created in a way where use cases implemented after choosing backing resources feels like building a house by starting from the roof.
 
 But because people expecting results to be delivered, and if possible by yesterday, It's rare to have a moment to think every project through.
