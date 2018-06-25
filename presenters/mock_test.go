@@ -2,6 +2,7 @@ package presenters_test
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -12,14 +13,109 @@ import (
 
 var _ frameless.Presenter = &presenters.Mock{}
 
-func TestMock(t *testing.T) {
+func TestMock_ErrorSetToReturnOnRenderCall_ErrorReturned(t *testing.T) {
 	t.Parallel()
 
+	mock := presenters.NewMock()
+
 	err := errors.New("Boom!")
-	msg := "OK"
+	mock.ReturnError = err
 
-	m := &presenters.Mock{ReturnError: err}
+	require.Equal(t, err, mock.Render(nil))
+}
 
-	require.Equal(t, err, m.Render(msg))
-	require.Equal(t, msg, m.LastReceivedMessage())
+func TestMock_ValueGiven_MatchCheckEquality(t *testing.T) {
+	t.Parallel()
+
+	mock := presenters.NewMock()
+	require.Nil(t, mock.Render("OK"))
+
+	t.Run("when asserted value is equal", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.MessageMatch(tb, "OK")
+		}()
+
+		wg.Wait()
+
+		require.False(t, tb.Failed())
+	})
+
+	t.Run("when asserted value is different", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.MessageMatch(tb, "KO")
+		}()
+
+		wg.Wait()
+
+		require.True(t, tb.Failed())
+	})
+
+}
+func TestMock_SliceGiven_MatchMakeGivenTestToFailOrNotDependingByEquality(t *testing.T) {
+	t.Parallel()
+
+	msg := []int{1, 2, 3, 4}
+	mock := presenters.NewMock()
+	require.Nil(t, mock.Render(msg))
+
+	t.Run("when asserted value is equal", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.MessageMatch(tb, []int{4, 2, 1, 3})
+		}()
+
+		wg.Wait()
+
+		require.False(t, tb.Failed())
+	})
+
+	t.Run("when asserted value is different by length", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.MessageMatch(tb, []int{4, 2, 1, 3, 42})
+		}()
+
+		wg.Wait()
+
+		require.True(t, tb.Failed())
+	})
+
+	t.Run("when asserted value is different by content", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.MessageMatch(tb, []int{4, 2, 1, 42})
+		}()
+
+		wg.Wait()
+
+		require.True(t, tb.Failed())
+	})
+
 }
