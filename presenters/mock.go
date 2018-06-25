@@ -21,13 +21,13 @@ func (m *Mock) Render(message interface{}) error {
 	return m.ReturnError
 }
 
-func (m *Mock) LastReceivedMessage() interface{} {
+func (m *Mock) Message() interface{} {
 	return m.ReceivedMessages[len(m.ReceivedMessages)-1]
 }
 
 func (m *Mock) MessageMatch(t testing.TB, i interface{}) {
 	expected := reflect.ValueOf(i)
-	actually := reflect.ValueOf(m.LastReceivedMessage())
+	actually := reflect.ValueOf(m.Message())
 
 	switch expected.Kind() {
 	case reflect.Slice:
@@ -38,7 +38,7 @@ func (m *Mock) MessageMatch(t testing.TB, i interface{}) {
 		}
 
 	default:
-		require.Equal(t, i, m.LastReceivedMessage())
+		require.Equal(t, i, m.Message())
 
 	}
 }

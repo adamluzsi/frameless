@@ -24,6 +24,14 @@ func TestMock_ErrorSetToReturnOnRenderCall_ErrorReturned(t *testing.T) {
 	require.Equal(t, err, mock.Render(nil))
 }
 
+func TestMock_MessageGivenToPresenter_LastMessageAvailableByMessageMethod(t *testing.T) {
+	t.Parallel()
+
+	mock := presenters.NewMock()
+	require.Nil(t, mock.Render("OK"))
+	require.Equal(t, "OK", mock.Message())
+}
+
 func TestMock_ValueGiven_MatchCheckEquality(t *testing.T) {
 	t.Parallel()
 
