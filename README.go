@@ -6,6 +6,28 @@ Package frameless aims to create convention to build software on application lev
 
 
 
+Caution
+
+Everything you will read here you should handle with a grain of salt, because everything here is just an opinion on this subject.
+Therefore this specification here is just an example on how to include the ideas that I learned in the hard way about design.
+You have to decide in your project whether it's worth it or not to add this thin but extra abstraction layer.
+So not the exact specification here is what is the most important content of this document but the ideas it tries to represent.
+
+I tried my best and researched this result by working on a project of mine that had it's own caveats.
+Such caveat is that during design I already known that I will have limited time to work on it,
+I intentionally tried to force myself to design a solution that breaks down small isolated parts where the required mind model can be small,
+and all the task in a user story can be executed almost independently from each other by using generally appliable contracts between parts.
+My most important requirement was to reduce the time I loose while I load the required mind model for a given task.
+This includes the way I can test my application without fallint into a trap of full green test suite for a not working application.
+This approach has it's own pro and con.
+
+To summary up this section, if you decide to layer your application but to do it on your own/team 's way,
+I hope my research can at least be useful on your journey.
+
+
+
+
+
 Introduction
 
 This research project primary was created for myself, to extend my knowledge in software design.
