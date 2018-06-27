@@ -78,3 +78,5 @@ type SQLRowsSubject struct {
 	C2 string
 	C3 string
 }
+
+type X struct{ V string }
