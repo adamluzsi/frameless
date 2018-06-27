@@ -1,6 +1,7 @@
 package iterateover_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators/iterateover"
@@ -33,4 +34,19 @@ func TestAndCollectAll_PointerValues(t *testing.T) {
 	require.Nil(t, iterateover.AndCollectAll(i, &actually))
 
 	require.Equal(t, expected, actually)
+}
+
+func TestAndCollectAll_IteratorResourceFailsForSomeReason_ErrReturned(t *testing.T) {
+	t.Parallel()
+
+	i := iterators.NewMock(iterators.NewForSlice([]int{42, 43, 44}))
+
+	expectedDecodeError := errors.New("Boom Decode!")
+	i.DecodeStub = func(interface{}) error { return expectedDecodeError }
+	require.Error(t, expectedDecodeError, iterateover.AndCollectAll(i, &[]int{}))
+	i.ResetDecode()
+
+	expectedErrError := errors.New("Boom Err!")
+	i.ErrStub = func() error { return expectedErrError }
+	require.Error(t, expectedErrError, iterateover.AndCollectAll(i, &[]int{}))
 }
