@@ -1,8 +1,6 @@
 package iterators
 
 import (
-	"errors"
-
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 )
@@ -36,7 +34,7 @@ func (i *singleElementIterator) Err() error {
 func (i *singleElementIterator) Decode(e frameless.Entity) error {
 
 	if i.closed {
-		return errors.New("closed")
+		return ErrClosed
 	}
 
 	if i.index == 0 {

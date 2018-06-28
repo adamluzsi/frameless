@@ -1,7 +1,6 @@
 package iterators
 
 import (
-	"errors"
 	"reflect"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -10,7 +9,6 @@ import (
 )
 
 func NewForSlice(slice interface{}) frameless.Iterator {
-
 	if reflect.TypeOf(slice).Kind() != reflect.Slice {
 		panic("TypeError")
 	}
@@ -20,7 +18,6 @@ func NewForSlice(slice interface{}) frameless.Iterator {
 		rows:  reflect.ValueOf(slice),
 		index: -1,
 	}
-
 }
 
 type iterator struct {
@@ -50,7 +47,7 @@ func (this *iterator) Next() bool {
 
 func (this *iterator) Decode(i interface{}) error {
 	if !this.open {
-		return errors.New("closed")
+		return ErrClosed
 	}
 
 	return reflects.Link(this.rows.Index(this.index).Interface(), i)
