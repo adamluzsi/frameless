@@ -8,6 +8,12 @@
   revision = "15df0648130a623e418886f81b2aaecd0a00547b"
 
 [[projects]]
+  name = "github.com/boltdb/bolt"
+  packages = ["."]
+  revision = "2f1ce7a837dcb8da3ec595b1dac9d0632f0f99e8"
+  version = "v1.3.1"
+
+[[projects]]
   name = "github.com/davecgh/go-spew"
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
@@ -26,6 +32,12 @@
   version = "v1.0.0"
 
 [[projects]]
+  name = "github.com/satori/go.uuid"
+  packages = ["."]
+  revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
+  version = "v1.2.0"
+
+[[projects]]
   name = "github.com/stretchr/testify"
   packages = [
     "assert",
@@ -34,9 +46,15 @@
   revision = "12b6f73e6084dad08a7c6e575284b177ecafbc71"
   version = "v1.2.1"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["unix"]
+  revision = "c4afb3effaa53fd9a06ca61262dc7ce8df4c081b"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4b8703a5cd682dbc33a6304645788f08295f6e795f5b508f5e52cd81cffcb57c"
+  inputs-digest = "4467c1c713cfe2ae18d7224948a93e5d4017406a59e59f444dad5e7183c02ede"
   solver-name = "gps-cdcl"
   solver-version = 1
