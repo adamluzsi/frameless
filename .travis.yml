@@ -3,7 +3,10 @@
 sudo: false
 
 language: go
-script: go test ./... -v
+
+script:
+  - go test ./... -v
+  - go test ./... -count=1000
 
 # Skip the install step. Don't `go get` dependencies. Only build with the code
 # in vendor/
