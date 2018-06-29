@@ -62,7 +62,8 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	t.Parallel()
 
 	if testing.Short() {
-		// this test should be skipped because the millisecond sleep
+		// this test should be skipped because the 5 millisecond slowness
+		// But I prefer this test to be slow, than engineer a solution that will be not used in real life.
 		t.Skip()
 	}
 
@@ -82,7 +83,7 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 
 	// normally next should not called after a Close, but in the test I have to define the behavior
 	// so in order to prevent overengineering in sender Send method, I place a sleep here to force thick the scheduler in favor of done channel
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(5 * time.Millisecond)
 	require.False(t, r.Next())                           // the sender is notified about this and stopped sending messages
 	require.Error(t, iterators.ErrClosed, r.Decode(nil)) // and for some reason when I want to decode, it tells me the iterator closed. It was the sender who close it
 }

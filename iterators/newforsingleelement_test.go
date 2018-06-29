@@ -12,10 +12,12 @@ type ExampleStruct struct {
 	Name string
 }
 
+var RandomName = randomdata.SillyName()
+
 func TestNewForSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	t.Parallel()
 
-	var expected ExampleStruct = ExampleStruct{Name: randomdata.SillyName()}
+	var expected ExampleStruct = ExampleStruct{Name: RandomName}
 	var actually ExampleStruct
 
 	i := iterators.NewForSingleElement(&expected)
@@ -29,7 +31,7 @@ func TestNewForSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) 
 func TestNewForSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
 	t.Parallel()
 
-	var expected ExampleStruct = ExampleStruct{Name: randomdata.SillyName()}
+	var expected ExampleStruct = ExampleStruct{Name: RandomName}
 
 	i := iterators.NewForSingleElement(&expected)
 	defer i.Close()
@@ -46,7 +48,7 @@ func TestNewForSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyRetur
 func TestNewForSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 	t.Parallel()
 
-	var expected ExampleStruct = ExampleStruct{Name: randomdata.SillyName()}
+	var expected ExampleStruct = ExampleStruct{Name: RandomName}
 	var actually ExampleStruct
 
 	i := iterators.NewForSingleElement(&expected)
@@ -62,7 +64,7 @@ func TestNewForSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 func TestNewForSingleElement_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForSingleElement(&ExampleStruct{Name: randomdata.SillyName()})
+	i := iterators.NewForSingleElement(&ExampleStruct{Name: RandomName})
 	i.Close()
 
 	require.Error(t, i.Decode(&ExampleStruct{}), "closed")

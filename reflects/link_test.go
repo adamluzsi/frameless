@@ -12,8 +12,10 @@ type Example struct {
 	Name string
 }
 
+var RandomName = randomdata.SillyName()
+
 func ExampleLink() {
-	var src Example = Example{Name: randomdata.SillyName()}
+	var src Example = Example{Name: RandomName}
 	var dest Example
 
 	reflects.Link(&src, &dest)
@@ -22,7 +24,7 @@ func ExampleLink() {
 func TestLink_SrcIsNonPtr_ValuesLinked(t *testing.T) {
 	t.Parallel()
 
-	var src Example = Example{Name: randomdata.SillyName()}
+	var src Example = Example{Name: RandomName}
 	var dest Example
 
 	require.Nil(t, reflects.Link(src, &dest))
@@ -32,7 +34,7 @@ func TestLink_SrcIsNonPtr_ValuesLinked(t *testing.T) {
 func TestLink_SrcIsPtr_ValuesLinked(t *testing.T) {
 	t.Parallel()
 
-	var src Example = Example{Name: randomdata.SillyName()}
+	var src Example = Example{Name: RandomName}
 	var dest Example
 
 	require.Nil(t, reflects.Link(&src, &dest))
