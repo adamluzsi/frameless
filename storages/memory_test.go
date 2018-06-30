@@ -11,11 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type SampleEntity struct {
-	ID   string
-	Name string
-}
-
 func TestMemoryCreate_SpecificValueGiven_IDSet(t *testing.T) {
 	t.Parallel()
 

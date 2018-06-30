@@ -7,6 +7,7 @@ import (
 
 func NewMock() *Mock {
 	return &Mock{
+		IsOpen:   true,
 		Created:  []frameless.Entity{},
 		FindStub: func(quc frameless.QueryUseCase) frameless.Iterator { return iterators.NewEmpty() },
 		ExecStub: func(quc frameless.QueryUseCase) error { return nil },
@@ -14,11 +15,18 @@ func NewMock() *Mock {
 }
 
 type Mock struct {
+	IsOpen bool
+
 	ReturnError error
 
 	Created  []frameless.Entity
 	FindStub func(frameless.QueryUseCase) frameless.Iterator
 	ExecStub func(frameless.QueryUseCase) error
+}
+
+func (mock *Mock) Close() error {
+	mock.IsOpen = false
+	return nil
 }
 
 func (mock *Mock) Create(e frameless.Entity) error {

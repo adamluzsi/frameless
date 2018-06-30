@@ -169,6 +169,7 @@ type QueryUseCase = interface {
 // For example, if there is no such query use case where you have to update something, why implement it ?
 // I found that the most required functionality is Persisting an entity (it's a storage after all) and query and execute on it.
 type Storage interface {
+	io.Closer
 	// Create able to create a given entity
 	// By convention it also should set the id in the entity
 	Create(Entity) error

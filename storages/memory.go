@@ -22,7 +22,9 @@ type memory struct {
 	db map[string]memoryTable
 }
 
-type memoryTable map[string]frameless.Entity
+func (storage *memory) Close() error {
+	return nil
+}
 
 func (storage *memory) Create(e frameless.Entity) error {
 
@@ -107,6 +109,8 @@ func (storage *memory) Exec(quc frameless.QueryUseCase) error {
 //
 //
 //
+
+type memoryTable map[string]frameless.Entity
 
 func (storage *memory) tableFor(e frameless.Entity) memoryTable {
 	name := reflects.Name(e)

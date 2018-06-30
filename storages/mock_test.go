@@ -43,4 +43,7 @@ func TestMock(t *testing.T) {
 	require.Equal(t, mock.ReturnError, mock.Exec(nil))
 	require.Equal(t, mock.ReturnError, mock.Find(nil).Err())
 
+	require.True(t, mock.IsOpen)
+	require.Nil(t, mock.Close())
+	require.False(t, mock.IsOpen)
 }
