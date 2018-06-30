@@ -3,10 +3,14 @@ package iterators_test
 import (
 	"testing"
 
+	"github.com/adamluzsi/frameless"
+
 	randomdata "github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
+
+var _ frameless.Iterator = iterators.NewSingleElement("")
 
 type ExampleStruct struct {
 	Name string
@@ -14,13 +18,13 @@ type ExampleStruct struct {
 
 var RandomName = randomdata.SillyName()
 
-func TestNewForSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
+func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	t.Parallel()
 
 	var expected ExampleStruct = ExampleStruct{Name: RandomName}
 	var actually ExampleStruct
 
-	i := iterators.NewForSingleElement(&expected)
+	i := iterators.NewSingleElement(&expected)
 	defer i.Close()
 
 	iterators.DecodeNext(i, &actually)
@@ -28,12 +32,12 @@ func TestNewForSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) 
 	require.Equal(t, expected, actually)
 }
 
-func TestNewForSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
+func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
 	t.Parallel()
 
 	var expected ExampleStruct = ExampleStruct{Name: RandomName}
 
-	i := iterators.NewForSingleElement(&expected)
+	i := iterators.NewSingleElement(&expected)
 	defer i.Close()
 
 	require.True(t, i.Next())
@@ -45,13 +49,13 @@ func TestNewForSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyRetur
 
 }
 
-func TestNewForSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
+func TestNewSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 	t.Parallel()
 
 	var expected ExampleStruct = ExampleStruct{Name: RandomName}
 	var actually ExampleStruct
 
-	i := iterators.NewForSingleElement(&expected)
+	i := iterators.NewSingleElement(&expected)
 	defer i.Close()
 	i.Next()
 	i.Next()
@@ -61,10 +65,10 @@ func TestNewForSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 
 }
 
-func TestNewForSingleElement_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
+func TestNewSingleElement_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForSingleElement(&ExampleStruct{Name: RandomName})
+	i := iterators.NewSingleElement(&ExampleStruct{Name: RandomName})
 	i.Close()
 
 	require.Error(t, i.Decode(&ExampleStruct{}), "closed")

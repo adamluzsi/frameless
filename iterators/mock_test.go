@@ -4,11 +4,15 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/adamluzsi/frameless"
+
 	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
+
+var _ frameless.Iterator = iterators.NewMock(iterators.NewEmpty())
 
 func TestMock_Err(t *testing.T) {
 	t.Parallel()
@@ -16,7 +20,7 @@ func TestMock_Err(t *testing.T) {
 	originalError := errors.New("Boom! original")
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.NewMock(iterators.NewForError(originalError))
+	m := iterators.NewMock(iterators.NewError(originalError))
 
 	// default is the wrapped iterator
 	require.Error(t, originalError, m.Err())
@@ -66,7 +70,7 @@ func TestMock_Decode(t *testing.T) {
 	var value int
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.NewMock(iterators.NewForSlice([]int{42, 43, 44}))
+	m := iterators.NewMock(iterators.NewSlice([]int{42, 43, 44}))
 
 	require.True(t, m.Next())
 	require.Nil(t, m.Decode(&value))

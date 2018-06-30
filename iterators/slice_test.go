@@ -3,14 +3,18 @@ package iterators_test
 import (
 	"testing"
 
+	"github.com/adamluzsi/frameless"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewForSlice_SliceGiven_SliceIterableAndValuesReturnedWithDecode(t *testing.T) {
+var _ frameless.Iterator = iterators.NewSlice([]string{"A", "B", "C"})
+
+func TestNewSlice_SliceGiven_SliceIterableAndValuesReturnedWithDecode(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForSlice([]int{42, 4, 2})
+	i := iterators.NewSlice([]int{42, 4, 2})
 
 	var v int
 
@@ -30,10 +34,10 @@ func TestNewForSlice_SliceGiven_SliceIterableAndValuesReturnedWithDecode(t *test
 	require.Nil(t, i.Err())
 }
 
-func TestNewForSlice_Closed_ClosedErrorReturned(t *testing.T) {
+func TestNewSlice_Closed_ClosedErrorReturned(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForSlice([]int{42, 4, 2})
+	i := iterators.NewSlice([]int{42, 4, 2})
 
 	require.Nil(t, i.Close())
 
@@ -43,28 +47,28 @@ func TestNewForSlice_Closed_ClosedErrorReturned(t *testing.T) {
 	require.Error(t, i.Decode(&v), "closed")
 }
 
-func TestNewForSlice_ClosedCalledMultipleTimes_NoErrorReturned(t *testing.T) {
+func TestNewSlice_ClosedCalledMultipleTimes_NoErrorReturned(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForSlice([]int{42})
+	i := iterators.NewSlice([]int{42})
 
 	for index := 0; index < 42; index++ {
 		require.Nil(t, i.Close())
 	}
 }
 
-func TestNewForSlice_NotSliceGiven_PanicSent(t *testing.T) {
+func TestNewSlice_NotSliceGiven_PanicSent(t *testing.T) {
 	t.Parallel()
 
 	defer func() { require.Equal(t, "TypeError", recover()) }()
 
-	iterators.NewForSlice(42)
+	iterators.NewSlice(42)
 }
 
-func TestNewForSlice_SliceGivenButWrongTypeFetched_PanicSent(t *testing.T) {
+func TestNewSlice_SliceGivenButWrongTypeFetched_PanicSent(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewForSlice([]int{42})
+	i := iterators.NewSlice([]int{42})
 	require.True(t, i.Next())
 
 	var v string

@@ -14,7 +14,7 @@ import (
 func TestMock(t *testing.T) {
 	t.Parallel()
 
-	m := requests.NewMock(context.Background(), iterators.NewForSingleElement("Hello, World!"))
+	m := requests.NewMock(context.Background(), iterators.NewSingleElement("Hello, World!"))
 	i := m.Data()
 
 	var value string

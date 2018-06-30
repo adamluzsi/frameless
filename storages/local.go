@@ -68,7 +68,7 @@ func (storage *local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 		key, err := storage.idToBytes(quc.ID)
 
 		if err != nil {
-			return iterators.NewForError(err)
+			return iterators.NewError(err)
 		}
 
 		entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
@@ -91,14 +91,14 @@ func (storage *local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 		})
 
 		if err != nil {
-			return iterators.NewForError(err)
+			return iterators.NewError(err)
 		}
 
 		if entity == nil {
 			return iterators.NewEmpty()
 		}
 
-		return iterators.NewForSingleElement(entity)
+		return iterators.NewSingleElement(entity)
 
 	case queryusecases.AllFor:
 		r, w := iterators.NewPipe()
@@ -129,7 +129,7 @@ func (storage *local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 		return r
 
 	default:
-		return iterators.NewForError(fmt.Errorf("%s not implemented", reflects.Name(quc)))
+		return iterators.NewError(fmt.Errorf("%s not implemented", reflects.Name(quc)))
 
 	}
 }

@@ -5,11 +5,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adamluzsi/frameless"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/iterators/iterateover"
 )
+
+func ExampleNewPipe() (frameless.Iterator, *iterators.PipeSender) {
+	return iterators.NewPipe()
+}
 
 func TestNewPipe_SimpleFeedScenario(t *testing.T) {
 	t.Parallel()

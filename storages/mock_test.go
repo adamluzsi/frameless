@@ -19,7 +19,7 @@ func TestMock(t *testing.T) {
 	var actually string
 
 	FindStub := func(frameless.QueryUseCase) frameless.Iterator {
-		return iterators.NewForSingleElement(expected)
+		return iterators.NewSingleElement(expected)
 	}
 
 	ExecStub := func(frameless.QueryUseCase) error {

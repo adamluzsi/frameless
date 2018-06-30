@@ -45,7 +45,7 @@ func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 		entity, found := storage.tableFor(byID.Type)[byID.ID]
 
 		if found {
-			return iterators.NewForSingleElement(entity)
+			return iterators.NewSingleElement(entity)
 		} else {
 			return iterators.NewEmpty()
 		}
@@ -59,10 +59,10 @@ func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 			entities = append(entities, entity)
 		}
 
-		return iterators.NewForSlice(entities)
+		return iterators.NewSlice(entities)
 
 	default:
-		return iterators.NewForError(fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name()))
+		return iterators.NewError(fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name()))
 
 	}
 }

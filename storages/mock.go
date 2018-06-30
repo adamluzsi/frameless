@@ -37,7 +37,7 @@ func (mock *Mock) Create(e frameless.Entity) error {
 
 func (mock *Mock) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	if mock.ReturnError != nil {
-		return iterators.NewForError(mock.ReturnError)
+		return iterators.NewError(mock.ReturnError)
 	}
 
 	return mock.FindStub(quc)

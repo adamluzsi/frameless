@@ -13,7 +13,7 @@ func TestDecodeNext_IteratorGiven_ValidDecoderReturnedThanCanDecodeTheFirstValue
 	var expected int = 42
 	var actually int
 
-	i := iterators.NewForSlice([]int{expected, 4, 2})
+	i := iterators.NewSlice([]int{expected, 4, 2})
 	defer i.Close()
 
 	if err := iterators.DecodeNext(i, &actually); err != nil {
