@@ -3,6 +3,7 @@ package frameless_test
 import (
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -19,6 +20,16 @@ import (
 
 type MyStorage struct {
 	ExternalResourceConnection interface{}
+}
+
+func (storage *MyStorage) Close() error {
+	closer, ok := storage.ExternalResourceConnection.(io.Closer)
+
+	if !ok {
+		return nil
+	}
+
+	return closer.Close()
 }
 
 func (storage *MyStorage) Create(e frameless.Entity) error {
