@@ -7,7 +7,7 @@ import (
 func DecodeNext(i frameless.Iterator, e frameless.Entity) error {
 
 	if !i.Next() {
-		return ErrNoNextElementFound
+		return ErrNoNextElement
 	}
 
 	return i.Decode(e)
