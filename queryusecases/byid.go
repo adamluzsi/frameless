@@ -47,6 +47,17 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 		defer storage.Exec(DeleteByID{Type: quc.Test, ID: ID})
 	}
 
+	spec.Run("when no value stored that the query request", func(t *testing.T) {
+		iterator := storage.Find(ByID{Type: quc.Type, ID: "The Cake Is a Lie"})
+		defer iterator.Close()
+
+		if iterator.Next() {
+			var entity frameless.Entity
+			iterator.Decode(&entity)
+			t.Fatalf("there should be no next value, but %#v found", entity)
+		}
+	})
+
 	spec.Run("values returned", func(t *testing.T) {
 		for _, ID := range ids {
 

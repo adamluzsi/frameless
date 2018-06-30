@@ -20,6 +20,7 @@ type DeleteByID struct {
 	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
+// Test will test that an DeleteByID is implemented by a generic specification
 func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage) {
 
 	if quc.NewEntityForTest == nil {
@@ -52,7 +53,7 @@ func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage) {
 			defer iterator.Close()
 
 			var entity frameless.Entity
-			require.Error(t, iterators.DecodeNext(iterator, &entity), iterators.ErrNoNextElementFound)
+			require.Equal(t, iterators.ErrNoNextElement, iterators.DecodeNext(iterator, &entity))
 
 		}
 	})
@@ -66,6 +67,7 @@ type DeleteByEntity struct {
 	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
+// Test will test that an DeleteByEntity is implemented by a generic specification
 func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Storage) {
 
 	if quc.NewEntityForTest == nil {
@@ -80,15 +82,18 @@ func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Storage) {
 		spec.Fatal(idRequiredMessage)
 	}
 
-	spec.Run("value is Deleted by providing an Entity that should not be findable after the exec", func(t *testing.T) {
+	spec.Run("value is Deleted by providing an Entity, and than it should not be findable afterwards", func(t *testing.T) {
 
 		require.Nil(t, storage.Exec(DeleteByEntity{Entity: expected}))
 
 		iterator := storage.Find(ByID{Type: quc.Entity, ID: ID})
 		defer iterator.Close()
 
-		var entity frameless.Entity
-		require.Error(t, iterators.DecodeNext(iterator, &entity), iterators.ErrNoNextElementFound)
+		if iterator.Next() {
+			var entity frameless.Entity
+			iterator.Decode(&entity)
+			t.Fatalf("there should be no next value, but %#v found", entity)
+		}
 
 	})
 

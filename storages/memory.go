@@ -42,9 +42,13 @@ func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	switch quc.(type) {
 	case queryusecases.ByID:
 		byID := quc.(queryusecases.ByID)
-		entity := storage.tableFor(byID.Type)[byID.ID]
+		entity, found := storage.tableFor(byID.Type)[byID.ID]
 
-		return iterators.NewForSingleElement(entity)
+		if found {
+			return iterators.NewForSingleElement(entity)
+		} else {
+			return iterators.NewEmpty()
+		}
 
 	case queryusecases.AllFor:
 		byAll := quc.(queryusecases.AllFor)
