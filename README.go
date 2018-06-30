@@ -1,12 +1,12 @@
 /*
 
-Package frameless aims to create convention to build software on application level
+Package frameless -> The Hitchhiker's Guide to the Grumpytecture
 
 
 
 
 
-Caution
+Pre Words
 
 Everything you will read here you should handle with a grain of salt, because everything here is just an opinion on this subject.
 Therefore this specification here is just an example on how to include the ideas that I learned in the hard way about design.
