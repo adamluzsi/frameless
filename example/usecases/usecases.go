@@ -1,21 +1,26 @@
-package multichannel
+package usecases
 
 import (
 	"errors"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/example"
 	"github.com/adamluzsi/frameless/iterators/iterateover"
 	"github.com/adamluzsi/frameless/queryusecases"
 )
 
+func NewUseCases(storage frameless.Storage) *UseCases {
+	return &UseCases{storage: storage}
+}
+
 type UseCases struct {
-	Storage frameless.Storage
+	storage frameless.Storage
 }
 
 func (uc *UseCases) ListNotes(p frameless.Presenter, r frameless.Request) error {
-	notes := []*Note{}
+	notes := []*example.Note{}
 
-	i := uc.Storage.Find(queryusecases.AllFor{Type: Note{}})
+	i := uc.storage.Find(queryusecases.AllFor{Type: example.Note{}})
 
 	if err := iterateover.AndCollectAll(i, &notes); err != nil {
 		return err
@@ -35,12 +40,12 @@ func (uc *UseCases) AddNote(p frameless.Presenter, r frameless.Request) error {
 		return errors.New("missing Content")
 	}
 
-	newNote := &Note{
+	newNote := &example.Note{
 		Title:   title,
 		Content: content,
 	}
 
-	if err := uc.Storage.Create(newNote); err != nil {
+	if err := uc.storage.Create(newNote); err != nil {
 		return err
 	}
 

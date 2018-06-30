@@ -1,9 +1,8 @@
-package multichannel_test
+package usecases_test
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators/iterateover"
@@ -18,7 +17,12 @@ import (
 	"github.com/adamluzsi/frameless/presenters"
 	"github.com/adamluzsi/frameless/requests"
 
-	"github.com/adamluzsi/frameless/examples/multichannel"
+	"github.com/adamluzsi/frameless/example"
+)
+
+var (
+	AddNoteTitle   = randomdata.SillyName()
+	AddNoteContent = randomdata.SillyName()
 )
 
 func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing.T) {
@@ -29,9 +33,9 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 
 	p := presenters.NewMock()
 
-	sample := &multichannel.Note{
-		Title:   randomdata.SillyName(),
-		Content: randomdata.SillyName(),
+	sample := &example.Note{
+		Title:   AddNoteTitle,
+		Content: AddNoteContent,
 	}
 
 	ctx := context.Background()
@@ -41,15 +45,15 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 
 	require.Nil(t, usecases.AddNote(p, r))
 
-	i := storage.Find(queryusecases.AllFor{Type: multichannel.Note{}})
+	i := storage.Find(queryusecases.AllFor{Type: example.Note{}})
 
-	foundNotes := []*multichannel.Note{}
+	foundNotes := []*example.Note{}
 	require.Nil(t, iterateover.AndCollectAll(i, &foundNotes))
 
 	require.Equal(t, 1, len(foundNotes))
 	savedNote := foundNotes[0]
 
-	fmt.Println(len(p.ReceivedMessages))
+	require.True(t, len(p.ReceivedMessages) > 0)
 	require.Equal(t, savedNote, p.Message())
 
 }
@@ -66,10 +70,9 @@ func TestUseCasesAddNote_ErrHappenInStorage_ErrReturned(t *testing.T) {
 	p := presenters.NewMock()
 
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "Title", randomdata.SillyName())
-	ctx = context.WithValue(ctx, "Content", randomdata.SillyName())
+	ctx = context.WithValue(ctx, "Title", AddNoteTitle)
+	ctx = context.WithValue(ctx, "Content", AddNoteContent)
 	r := requests.NewMock(ctx, iterators.NewEmpty())
 
 	require.Error(t, expectedError, usecases.AddNote(p, r))
-
 }

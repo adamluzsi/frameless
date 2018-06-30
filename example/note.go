@@ -1,4 +1,4 @@
-package multichannel
+package example
 
 type Note struct {
 	ID      string
