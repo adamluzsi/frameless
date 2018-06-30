@@ -68,22 +68,25 @@ type PipeSender struct {
 	err  chan<- error
 }
 
-// Send send value to the PipeReceiver and returns the state that more value is expected on the other side
-func (f *PipeSender) Send(e frameless.Entity) bool {
+// Send send value to the PipeReceiver
+// and returns ErrClosed error if no more value expected on the receiver side
+func (f *PipeSender) Send(e frameless.Entity) error {
 	select {
-	case _, _ = <-f.done:
-		return false
 	case f.feed <- e:
-		return true
+		return nil
+	case _, _ = <-f.done:
+		return ErrClosed
 	}
 }
 
+// Error send an error object to the PipeReceiver side, so it will be accessable with iterator.Err()
 func (f *PipeSender) Error(err error) (rErr error) {
 	defer func() { recover() }()
 	f.err <- err
 	return
 }
 
+// Close close the feed and err channel, which eventually notify the receiver that no more value expected
 func (f *PipeSender) Close() error {
 	defer func() { recover() }()
 	close(f.feed)

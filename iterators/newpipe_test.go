@@ -21,7 +21,7 @@ func TestNewPipe_SimpleFeedScenario(t *testing.T) {
 
 	go func() {
 		defer w.Close()
-		w.Send(&expected)
+		require.Nil(t, w.Send(&expected))
 	}()
 
 	require.True(t, r.Next())            // first next should return the value mean to be sent
@@ -61,9 +61,14 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	t.Parallel()
 
+	// skip when only short test expected
+	// this test is slow because it has sleep in it
+	//
+	// This could be fixed by implementing extra logic in the Pipe iterator,
+	// but that would be overengineering because after an iterator is closed,
+	// it is highly unlikely that next value and decode will be called.
+	// So this is only for the sake of describing the iterator behavior in this edge case
 	if testing.Short() {
-		// this test should be skipped because the 5 millisecond slowness
-		// But I prefer this test to be slow, than engineer a solution that will be not used in real life.
 		t.Skip()
 	}
 
@@ -72,7 +77,7 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	go func() {
 		defer w.Close()
 
-		require.False(t, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Equal(t, iterators.ErrClosed, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 	}()
 
 	require.Nil(t, r.Close()) // I release the resource,
@@ -81,9 +86,9 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 
 	require.Nil(t, r.Close()) // multiple times because defer ensure and other reasons
 
-	// normally next should not called after a Close, but in the test I have to define the behavior
+	// normally next should not be called after a Close, but in the test I have to define the behavior
 	// so in order to prevent overengineering in sender Send method, I place a sleep here to force thick the scheduler in favor of done channel
-	time.Sleep(5 * time.Millisecond)
+	time.Sleep(time.Millisecond)
 	require.False(t, r.Next())                           // the sender is notified about this and stopped sending messages
 	require.Error(t, iterators.ErrClosed, r.Decode(nil)) // and for some reason when I want to decode, it tells me the iterator closed. It was the sender who close it
 }
@@ -96,7 +101,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 	r, w := iterators.NewPipe()
 
 	go func() {
-		require.True(t, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Nil(t, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 		require.Nil(t, w.Error(expected))
 		require.Nil(t, w.Close())
 	}()
