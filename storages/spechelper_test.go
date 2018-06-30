@@ -5,6 +5,11 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
+type SampleEntity struct {
+	ID   string
+	Name string
+}
+
 func NewEntityForTest(Type frameless.Entity) (NewUniqEntity frameless.Entity) {
 	switch Type.(type) {
 	case SampleEntity:
