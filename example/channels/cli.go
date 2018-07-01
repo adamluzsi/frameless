@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 
 	"github.com/adamluzsi/frameless/example"
@@ -42,8 +43,12 @@ func (cli *CLI) Run(args []string) error {
 	case "list":
 		return cli.listNotes(args[1:])
 
+	case "http":
+		fmt.Fprintln(cli.writer, "Listen And Serve on :8080")
+		return http.ListenAndServe(":8080", NewHTTPMux(cli.usecases))
+
 	default:
-		fmt.Println("use one of the following commands: add, list")
+		fmt.Println("use one of the following commands: add, list, http")
 		os.Exit(1)
 
 	}
