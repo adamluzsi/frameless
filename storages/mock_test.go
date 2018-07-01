@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ frameless.Storage = storages.NewMemory()
+
 func TestMock(t *testing.T) {
 
 	entity := "I'm an entity, just kidding"

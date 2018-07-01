@@ -15,22 +15,22 @@ import (
 	"github.com/boltdb/bolt"
 )
 
-func NewLocal(path string) (frameless.Storage, error) {
+func NewLocal(path string) (*Local, error) {
 	db, err := bolt.Open(path, 0600, nil)
 
-	return &local{db: db}, err
+	return &Local{db: db}, err
 }
 
-type local struct {
+type Local struct {
 	db *bolt.DB
 }
 
-// Close the local database and release the file lock
-func (storage *local) Close() error {
+// Close the Local database and release the file lock
+func (storage *Local) Close() error {
 	return storage.db.Close()
 }
 
-func (storage *local) Create(e frameless.Entity) error {
+func (storage *Local) Create(e frameless.Entity) error {
 	return storage.db.Update(func(tx *bolt.Tx) error {
 
 		bucket, err := storage.ensureBucketFor(tx, e)
@@ -62,7 +62,7 @@ func (storage *local) Create(e frameless.Entity) error {
 	})
 }
 
-func (storage *local) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (storage *Local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	switch quc := quc.(type) {
 	case queryusecases.ByID:
 		key, err := storage.idToBytes(quc.ID)
@@ -134,7 +134,7 @@ func (storage *local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	}
 }
 
-func (storage *local) Exec(quc frameless.QueryUseCase) error {
+func (storage *Local) Exec(quc frameless.QueryUseCase) error {
 	switch quc := quc.(type) {
 	case queryusecases.DeleteByID:
 
@@ -198,11 +198,11 @@ func (storage *local) Exec(quc frameless.QueryUseCase) error {
 	}
 }
 
-func (storage *local) bucketName(e frameless.Entity) []byte {
+func (storage *Local) bucketName(e frameless.Entity) []byte {
 	return []byte(reflects.Name(e))
 }
 
-func (storage *local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
+func (storage *Local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
 	bucket := tx.Bucket(storage.bucketName(e))
 
 	var err error
@@ -214,11 +214,11 @@ func (storage *local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, 
 	return bucket, err
 }
 
-func (storage *local) ensureBucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
+func (storage *Local) ensureBucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
 	return tx.CreateBucketIfNotExists(storage.bucketName(e))
 }
 
-func (storage *local) idToBytes(ID string) ([]byte, error) {
+func (storage *Local) idToBytes(ID string) ([]byte, error) {
 	n, err := strconv.ParseUint(ID, 10, 64)
 
 	if err != nil {
@@ -229,13 +229,13 @@ func (storage *local) idToBytes(ID string) ([]byte, error) {
 }
 
 // uintToBytes returns an 8-byte big endian representation of v.
-func (storage *local) uintToBytes(v uint64) []byte {
+func (storage *Local) uintToBytes(v uint64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, v)
 	return b
 }
 
-func (storage *local) encode(e frameless.Entity) ([]byte, error) {
+func (storage *Local) encode(e frameless.Entity) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(e); err != nil {
@@ -244,7 +244,7 @@ func (storage *local) encode(e frameless.Entity) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (storage *local) decode(data []byte, ptr frameless.Entity) error {
+func (storage *Local) decode(data []byte, ptr frameless.Entity) error {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
 	return dec.Decode(ptr)

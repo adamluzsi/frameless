@@ -14,19 +14,19 @@ import (
 	"github.com/adamluzsi/frameless/queryusecases"
 )
 
-func NewMemory() frameless.Storage {
-	return &memory{make(map[string]memoryTable)}
+func NewMemory() *Memory {
+	return &Memory{make(map[string]memoryTable)}
 }
 
-type memory struct {
+type Memory struct {
 	db map[string]memoryTable
 }
 
-func (storage *memory) Close() error {
+func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *memory) Create(e frameless.Entity) error {
+func (storage *Memory) Create(e frameless.Entity) error {
 
 	id, err := randID()
 
@@ -38,7 +38,7 @@ func (storage *memory) Create(e frameless.Entity) error {
 	return reflects.SetID(e, id)
 }
 
-func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (storage *Memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	switch quc.(type) {
 	case queryusecases.ByID:
 		byID := quc.(queryusecases.ByID)
@@ -67,7 +67,7 @@ func (storage *memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	}
 }
 
-func (storage *memory) Exec(quc frameless.QueryUseCase) error {
+func (storage *Memory) Exec(quc frameless.QueryUseCase) error {
 	switch quc := quc.(type) {
 	case queryusecases.DeleteByID:
 		table := storage.tableFor(quc.Type)
@@ -116,7 +116,7 @@ func (storage *memory) Exec(quc frameless.QueryUseCase) error {
 
 type memoryTable map[string]frameless.Entity
 
-func (storage *memory) tableFor(e frameless.Entity) memoryTable {
+func (storage *Memory) tableFor(e frameless.Entity) memoryTable {
 	name := reflects.Name(e)
 
 	if _, ok := storage.db[name]; !ok {
