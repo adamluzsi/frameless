@@ -71,7 +71,8 @@ func TestMock_ValueGiven_MatchCheckEquality(t *testing.T) {
 	})
 
 }
-func TestMock_SliceGiven_MatchMakeGivenTestToFailOrNotDependingByEquality(t *testing.T) {
+
+func TestMock_SliceMessageExpected_MatchMakeGivenTestToFailOrNotDependingByEquality(t *testing.T) {
 	t.Parallel()
 
 	msg := []int{1, 2, 3, 4}
@@ -119,6 +120,65 @@ func TestMock_SliceGiven_MatchMakeGivenTestToFailOrNotDependingByEquality(t *tes
 		go func() {
 			defer wg.Done()
 			mock.MessageMatch(tb, []int{4, 2, 1, 42})
+		}()
+
+		wg.Wait()
+
+		require.True(t, tb.Failed())
+	})
+
+}
+
+func TestMock_StreamLikeUsageExpected_MatchMakeGivenTestToFailOrNotDependingByEquality(t *testing.T) {
+	t.Parallel()
+
+	msgs := []int{1, 2, 3, 4}
+	mock := presenters.NewMock()
+	for _, msg := range msgs {
+		require.Nil(t, mock.Render(msg))
+	}
+
+	t.Run("when asserted value is equal", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.StreamContains(tb, []int{4, 2, 1, 3})
+		}()
+
+		wg.Wait()
+
+		require.False(t, tb.Failed())
+	})
+
+	t.Run("when asserted value is different by length", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.StreamContains(tb, []int{4, 2, 1, 3, 42})
+		}()
+
+		wg.Wait()
+
+		require.True(t, tb.Failed())
+	})
+
+	t.Run("when asserted value is different by content", func(t *testing.T) {
+		tb := &testing.T{}
+
+		wg := &sync.WaitGroup{}
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			mock.StreamContains(tb, []int{4, 2, 1, 42})
 		}()
 
 		wg.Wait()

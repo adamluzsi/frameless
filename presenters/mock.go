@@ -31,14 +31,32 @@ func (m *Mock) MessageMatch(t testing.TB, i interface{}) {
 
 	switch expected.Kind() {
 	case reflect.Slice:
-		require.Equal(t, expected.Len(), actually.Len())
-
-		for index := 0; index < actually.Len(); index++ {
-			require.Contains(t, i, actually.Index(index).Interface())
-		}
+		m.matchSlice(t, expected, actually)
 
 	default:
 		require.Equal(t, i, m.Message())
 
+	}
+}
+
+func (m *Mock) StreamContains(t testing.TB, i interface{}) {
+	expected := reflect.ValueOf(i)
+	actually := reflect.ValueOf(m.ReceivedMessages)
+
+	switch expected.Kind() {
+	case reflect.Slice:
+		m.matchSlice(t, expected, actually)
+
+	default:
+		require.Contains(t, m.ReceivedMessages, i)
+
+	}
+}
+
+func (m *Mock) matchSlice(t testing.TB, expected, actually reflect.Value) {
+	require.Equal(t, expected.Len(), actually.Len())
+
+	for index := 0; index < actually.Len(); index++ {
+		require.Contains(t, expected.Interface(), actually.Index(index).Interface())
 	}
 }
