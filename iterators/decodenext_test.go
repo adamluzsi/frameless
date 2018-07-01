@@ -22,3 +22,11 @@ func TestDecodeNext_IteratorGiven_ValidDecoderReturnedThanCanDecodeTheFirstValue
 
 	require.Equal(t, expected, actually)
 }
+
+func TestDecodeNext_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {
+	t.Parallel()
+
+	i := iterators.NewEmpty()
+
+	require.Equal(t, iterators.ErrNoNextElement, iterators.DecodeNext(i, &Entity{}))
+}
