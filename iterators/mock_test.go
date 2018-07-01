@@ -25,7 +25,7 @@ func TestMock_Err(t *testing.T) {
 	// default is the wrapped iterator
 	require.Error(t, originalError, m.Err())
 
-	m.ErrStub = func() error { return expectedError }
+	m.StubErr = func() error { return expectedError }
 	require.Error(t, expectedError, m.Err())
 
 	m.ResetErr()
@@ -43,7 +43,7 @@ func TestMock_Close(t *testing.T) {
 	// default is the wrapped iterator
 	require.Nil(t, m.Close())
 
-	m.CloseStub = func() error { return expectedError }
+	m.StubClose = func() error { return expectedError }
 	require.Error(t, expectedError, m.Close())
 
 	m.ResetClose()
@@ -57,7 +57,7 @@ func TestMock_Next(t *testing.T) {
 
 	require.False(t, m.Next())
 
-	m.NextStub = func() bool { return true }
+	m.StubNext = func() bool { return true }
 	require.True(t, m.Next())
 
 	m.ResetNext()
@@ -80,7 +80,7 @@ func TestMock_Decode(t *testing.T) {
 	require.Nil(t, m.Decode(&value))
 	require.Equal(t, 43, value)
 
-	m.DecodeStub = func(i interface{}) error {
+	m.StubDecode = func(i interface{}) error {
 		src := 4242
 		reflects.Link(&src, i)
 		return expectedError

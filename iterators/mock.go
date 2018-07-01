@@ -8,54 +8,54 @@ func NewMock(i frameless.Iterator) *Mock {
 	return &Mock{
 		iterator: i,
 
-		DecodeStub: i.Decode,
-		CloseStub:  i.Close,
-		NextStub:   i.Next,
-		ErrStub:    i.Err,
+		StubDecode: i.Decode,
+		StubClose:  i.Close,
+		StubNext:   i.Next,
+		StubErr:    i.Err,
 	}
 }
 
 type Mock struct {
 	iterator frameless.Iterator
 
-	DecodeStub func(interface{}) error
-	CloseStub  func() error
-	NextStub   func() bool
-	ErrStub    func() error
+	StubDecode func(interface{}) error
+	StubClose  func() error
+	StubNext   func() bool
+	StubErr    func() error
 }
 
 // wrapper
 
 func (m *Mock) Close() error {
-	return m.CloseStub()
+	return m.StubClose()
 }
 
 func (m *Mock) Next() bool {
-	return m.NextStub()
+	return m.StubNext()
 }
 
 func (m *Mock) Err() error {
-	return m.ErrStub()
+	return m.StubErr()
 }
 
 func (m *Mock) Decode(i interface{}) error {
-	return m.DecodeStub(i)
+	return m.StubDecode(i)
 }
 
 // Reseting stubs
 
 func (m *Mock) ResetClose() {
-	m.CloseStub = m.iterator.Close
+	m.StubClose = m.iterator.Close
 }
 
 func (m *Mock) ResetNext() {
-	m.NextStub = m.iterator.Next
+	m.StubNext = m.iterator.Next
 }
 
 func (m *Mock) ResetErr() {
-	m.ErrStub = m.iterator.Err
+	m.StubErr = m.iterator.Err
 }
 
 func (m *Mock) ResetDecode() {
-	m.DecodeStub = m.iterator.Decode
+	m.StubDecode = m.iterator.Decode
 }

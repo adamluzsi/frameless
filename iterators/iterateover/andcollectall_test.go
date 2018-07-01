@@ -42,11 +42,11 @@ func TestAndCollectAll_IteratorResourceFailsForSomeReason_ErrReturned(t *testing
 	i := iterators.NewMock(iterators.NewSlice([]int{42, 43, 44}))
 
 	expectedDecodeError := errors.New("Boom Decode!")
-	i.DecodeStub = func(interface{}) error { return expectedDecodeError }
+	i.StubDecode = func(interface{}) error { return expectedDecodeError }
 	require.Error(t, expectedDecodeError, iterateover.AndCollectAll(i, &[]int{}))
 	i.ResetDecode()
 
 	expectedErrError := errors.New("Boom Err!")
-	i.ErrStub = func() error { return expectedErrError }
+	i.StubErr = func() error { return expectedErrError }
 	require.Error(t, expectedErrError, iterateover.AndCollectAll(i, &[]int{}))
 }
