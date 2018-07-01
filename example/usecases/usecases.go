@@ -31,12 +31,12 @@ func (uc *UseCases) ListNotes(p frameless.Presenter, r frameless.Request) error 
 
 func (uc *UseCases) AddNote(p frameless.Presenter, r frameless.Request) error {
 	title, ok := r.Context().Value("Title").(string)
-	if !ok {
+	if !ok || title == "" {
 		return errors.New("missing Title")
 	}
 
 	content, ok := r.Context().Value("Content").(string)
-	if !ok {
+	if !ok || content == "" {
 		return errors.New("missing Content")
 	}
 

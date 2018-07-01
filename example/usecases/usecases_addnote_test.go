@@ -76,3 +76,16 @@ func TestUseCasesAddNote_ErrHappenInStorage_ErrReturned(t *testing.T) {
 
 	require.Error(t, expectedError, usecases.AddNote(p, r))
 }
+
+func TestUseCasesAddNote_MissingTitle_ErrReturned(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	usecases := ExampleUseCases(nil)
+
+	require.Equal(t, errors.New("missing Title"), usecases.AddNote(nil, requests.New(ctx, iterators.NewEmpty())))
+
+	ctx = context.WithValue(ctx, "Title", AddNoteTitle)
+	require.Equal(t, errors.New("missing Content"), usecases.AddNote(nil, requests.New(ctx, iterators.NewEmpty())))
+
+}
