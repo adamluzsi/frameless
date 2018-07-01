@@ -59,7 +59,6 @@ func TestUseCasesListNotes_StorageFails_ErrReturned(t *testing.T) {
 
 	require.Nil(t, usecases.ListNotes(p, r))
 	p.MessageMatch(t, notes)
-
 }
 
 func CreateNotes() []*example.Note {
