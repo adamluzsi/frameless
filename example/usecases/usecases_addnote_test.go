@@ -41,7 +41,7 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "Title", sample.Title)
 	ctx = context.WithValue(ctx, "Content", sample.Content)
-	r := requests.NewMock(ctx, iterators.NewEmpty())
+	r := requests.New(ctx, iterators.NewEmpty())
 
 	require.Nil(t, usecases.AddNote(p, r))
 
@@ -72,7 +72,7 @@ func TestUseCasesAddNote_ErrHappenInStorage_ErrReturned(t *testing.T) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "Title", AddNoteTitle)
 	ctx = context.WithValue(ctx, "Content", AddNoteContent)
-	r := requests.NewMock(ctx, iterators.NewEmpty())
+	r := requests.New(ctx, iterators.NewEmpty())
 
 	require.Error(t, expectedError, usecases.AddNote(p, r))
 }

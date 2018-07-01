@@ -22,7 +22,7 @@ func TestUseCasesListNotes_NoNotesInTheStore_EmptySetReturned(t *testing.T) {
 	storage := storages.NewMemory()
 	usecases := ExampleUseCases(storage)
 	p := presenters.NewMock()
-	r := requests.NewMock(context.Background(), iterators.NewEmpty())
+	r := requests.New(context.Background(), iterators.NewEmpty())
 
 	require.Nil(t, usecases.ListNotes(p, r))
 	require.Equal(t, []*example.Note{}, p.Message())
@@ -38,7 +38,7 @@ func TestUseCasesListNotes_NotesStoredInTheStorageAlready_AllNoteReturned(t *tes
 	AddNotest(t, storage, notes)
 
 	p := presenters.NewMock()
-	r := requests.NewMock(context.Background(), iterators.NewEmpty())
+	r := requests.New(context.Background(), iterators.NewEmpty())
 
 	require.Nil(t, usecases.ListNotes(p, r))
 	p.MessageMatch(t, notes)
@@ -55,7 +55,7 @@ func TestUseCasesListNotes_StorageFails_ErrReturned(t *testing.T) {
 	AddNotest(t, storage, notes)
 
 	p := presenters.NewMock()
-	r := requests.NewMock(context.Background(), iterators.NewEmpty())
+	r := requests.New(context.Background(), iterators.NewEmpty())
 
 	require.Nil(t, usecases.ListNotes(p, r))
 	p.MessageMatch(t, notes)

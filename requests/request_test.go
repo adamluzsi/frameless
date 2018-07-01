@@ -11,10 +11,10 @@ import (
 	"github.com/adamluzsi/frameless/requests"
 )
 
-func TestMock(t *testing.T) {
+func TestRequest(t *testing.T) {
 	t.Parallel()
 
-	m := requests.NewMock(context.Background(), iterators.NewSingleElement("Hello, World!"))
+	m := requests.New(context.Background(), iterators.NewSingleElement("Hello, World!"))
 	i := m.Data()
 
 	var value string
