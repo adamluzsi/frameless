@@ -20,7 +20,7 @@ func (this *mockPresenter) Render(message interface{}) error {
 	return err
 }
 
-func MockPresenterBuilder() frameless.PresenterBuilder {
+func MockPresenterBuilder() func(io.Writer) frameless.Presenter {
 	return func(w io.Writer) frameless.Presenter { return &mockPresenter{w} }
 }
 

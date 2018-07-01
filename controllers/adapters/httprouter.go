@@ -12,9 +12,8 @@ import (
 // HTTPRouter create adapter function that fits to Julien Schmidt httprouter common interface
 func HTTPRouter(
 	controller frameless.Controller,
-	buildPresenter frameless.PresenterBuilder,
+	buildPresenter func(io.Writer) frameless.Presenter,
 	buildIterator func(io.Reader) frameless.Iterator,
-
 ) func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	closer := func(c io.Closer) {
 		if c != nil {

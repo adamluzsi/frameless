@@ -11,9 +11,8 @@ import (
 // NetHTTP creates an adapter http.Hander object that can be given to a http.ServerMux
 func NetHTTP(
 	controller frameless.Controller,
-	buildPresenter frameless.PresenterBuilder,
+	buildPresenter func(io.Writer) frameless.Presenter,
 	buildIterator func(io.Reader) frameless.Iterator,
-
 ) http.Handler {
 
 	closer := func(c io.Closer) {

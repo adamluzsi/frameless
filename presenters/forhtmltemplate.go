@@ -9,8 +9,8 @@ import (
 )
 
 // ForHTMLTemplate creates a builder func that than could be provided for example to a adapter that handles a external interface
-func ForHTMLTemplate(ts ...*template.Template) frameless.PresenterBuilder {
-	return frameless.PresenterBuilder(func(w io.Writer) frameless.Presenter {
+func ForHTMLTemplate(ts ...*template.Template) func(io.Writer) frameless.Presenter {
+	return (func(io.Writer) frameless.Presenter)(func(w io.Writer) frameless.Presenter {
 		return frameless.PresenterFunc(func(data interface{}) error {
 
 			mostInnerTemplate := ts[len(ts)-1]
