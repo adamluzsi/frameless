@@ -15,28 +15,28 @@ import (
 	"github.com/adamluzsi/frameless/example/usecases"
 )
 
-func NewHTTPMux(usecases *usecases.UseCases) *http.ServeMux {
-	return (&WEB{usecases: usecases}).toServerMux()
+func NewHTTPHandler(usecases *usecases.UseCases) http.Handler {
+	return (&builder{usecases: usecases}).toServerMux()
 }
 
-type WEB struct {
+type builder struct {
 	usecases *usecases.UseCases
 }
 
-func (web *WEB) toServerMux() *http.ServeMux {
+func (b *builder) toServerMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	add := adapters.NetHTTP(
-		frameless.ControllerFunc(web.usecases.AddNote),
-		func(w io.Writer) frameless.Presenter { return web.presentNote(w) },
+		frameless.ControllerFunc(b.usecases.AddNote),
+		func(w io.Writer) frameless.Presenter { return b.presentNote(w) },
 		func(r io.Reader) frameless.Iterator { return iterateover.LineByLine(r) },
 	)
 
 	mux.Handle("/add", add)
 
 	list := adapters.NetHTTP(
-		frameless.ControllerFunc(web.usecases.ListNotes),
-		func(w io.Writer) frameless.Presenter { return web.presentNotes(w) },
+		frameless.ControllerFunc(b.usecases.ListNotes),
+		func(w io.Writer) frameless.Presenter { return b.presentNotes(w) },
 		func(r io.Reader) frameless.Iterator { return iterateover.LineByLine(r) },
 	)
 
@@ -64,23 +64,23 @@ var notesTemplateText = `
 
 var notesTemplate = template.Must(template.New("present-note-list").Parse(notesTemplateText))
 
-func (web *WEB) presentNote(w io.Writer) frameless.Presenter {
+func (b *builder) presentNote(w io.Writer) frameless.Presenter {
 	return frameless.PresenterFunc(func(message interface{}) error {
 		note := message.(*example.Note)
 		notes := []*example.Note{note}
-		return web.executeNotesTemplate(w, notes)
+		return b.executeNotesTemplate(w, notes)
 	})
 }
 
-func (web *WEB) presentNotes(w io.Writer) frameless.Presenter {
+func (b *builder) presentNotes(w io.Writer) frameless.Presenter {
 	return frameless.PresenterFunc(func(message interface{}) error {
 		notes := message.([]*example.Note)
 
-		return web.executeNotesTemplate(w, notes)
+		return b.executeNotesTemplate(w, notes)
 	})
 }
 
-func (web *WEB) executeNotesTemplate(w io.Writer, message interface{}) error {
+func (b *builder) executeNotesTemplate(w io.Writer, message interface{}) error {
 	notes := message.([]*example.Note)
 
 	return notesTemplate.Execute(w, notes)
