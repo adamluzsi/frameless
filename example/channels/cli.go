@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 
 	"github.com/adamluzsi/frameless/example"
@@ -18,15 +17,21 @@ import (
 	"github.com/adamluzsi/frameless/example/usecases"
 )
 
-func NewCLI(out io.Writer, usecases *usecases.UseCases) *CLI {
+type HTTPServer interface {
+	ListenAndServe() error
+}
+
+func NewCLI(out io.Writer, usecases *usecases.UseCases, server HTTPServer) *CLI {
 	return &CLI{
 		usecases: usecases,
+		server:   server,
 		writer:   out,
 	}
 }
 
 type CLI struct {
 	usecases *usecases.UseCases
+	server   HTTPServer
 	writer   io.Writer
 }
 
@@ -45,7 +50,7 @@ func (cli *CLI) Run(args []string) error {
 
 	case "http":
 		fmt.Fprintln(cli.writer, "Listen And Serve on :8080")
-		return http.ListenAndServe(":8080", NewHTTPMux(cli.usecases))
+		return cli.server.ListenAndServe()
 
 	default:
 		fmt.Println("use one of the following commands: add, list, http")

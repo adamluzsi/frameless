@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -24,8 +25,9 @@ func main() {
 	defer storage.Close()
 
 	cases := usecases.NewUseCases(storage)
-
-	cli := channels.NewCLI(os.Stdout, cases)
+	handler := channels.NewHTTPHandler(cases)
+	server := &http.Server{Addr: ":8080", Handler: handler}
+	cli := channels.NewCLI(os.Stdout, cases, server)
 
 	if err := cli.Run(os.Args[1:]); err != nil {
 		log.Fatal(err)
