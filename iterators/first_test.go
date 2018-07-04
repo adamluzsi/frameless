@@ -1,7 +1,6 @@
 package iterators_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -41,15 +40,8 @@ func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
 	require.True(t, closed)
 }
 
-func TestFirst_WhenErrorOccursDuringClosing_ErrorReturned(t *testing.T) {
-	t.Parallel()
-
-	expected := errors.New("Boom!")
-
-	i := iterators.NewMock(iterators.NewSlice([]*Entity{&Entity{Text: "hy!"}}))
-	i.StubClose = func() error { return expected }
-
-	require.Equal(t, expected, iterators.First(i, &Entity{}))
+func TestFirst_WhenErrorOccursDuring(t *testing.T) {
+	SharedErrCases(t, iterators.First)
 }
 
 func TestFirst_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {

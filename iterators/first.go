@@ -5,19 +5,23 @@ import (
 )
 
 // First decode the first next value of the iterator and close the iterator
-func First(i frameless.Iterator, e frameless.Entity) error {
+func First(i frameless.Iterator, e frameless.Entity) (err error) {
 
-	dErr := DecodeNext(i, e)
-	cErr := i.Close()
+	defer func() {
+		cErr := i.Close()
 
-	if dErr != nil {
-		return dErr
+		if err == nil && cErr != nil {
+			err = cErr
+		}
+	}()
+
+	if !i.Next() {
+		return ErrNoNextElement
 	}
 
-	if cErr != nil {
-		return cErr
+	if err := i.Decode(e); err != nil {
+		return err
 	}
 
-	return nil
-
+	return i.Err()
 }
