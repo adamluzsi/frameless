@@ -6,7 +6,6 @@ language: go
 
 script:
   - go test ./... -v
-  - go test ./... -count=1000
   - go test ./... -count=100 -race
 
 # Skip the install step. Don't `go get` dependencies. Only build with the code

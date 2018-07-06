@@ -86,17 +86,17 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 		require.Equal(t, iterators.ErrClosed, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 	}()
 
+	// normally next should not be called after a Close, but in the test I have to define the behavior
+	// so in order to prevent overengineering in sender Send method, I place a sleep here to force thick the scheduler in favor of done channel
+	time.Sleep(10 * time.Millisecond)
+
 	require.Nil(t, r.Close()) // I release the resource,
 	// for example something went wrong during the processing on my side (receiver) and I can't continue work,
 	// but I want to note this to the sender as well
-
 	require.Nil(t, r.Close()) // multiple times because defer ensure and other reasons
 
-	// normally next should not be called after a Close, but in the test I have to define the behavior
-	// so in order to prevent overengineering in sender Send method, I place a sleep here to force thick the scheduler in favor of done channel
-	time.Sleep(time.Millisecond)
-	require.False(t, r.Next())                           // the sender is notified about this and stopped sending messages
-	require.Error(t, iterators.ErrClosed, r.Decode(nil)) // and for some reason when I want to decode, it tells me the iterator closed. It was the sender who close it
+	require.False(t, r.Next())            // the sender is notified about this and stopped sending messages
+	require.Error(t, r.Decode(&Entity{})) // and for some reason when I want to decode, it tells me the iterator closed. It was the sender who close it
 }
 
 func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *testing.T) {
