@@ -133,7 +133,11 @@ Prove it with user story and tests.
 If it is "hard to test", take a break and think over.
 
 Rule 7.
-Use contracts where ever it makes sense concrete type declarations to enforce dependency inversion.
+Use contracts wherever it makes sense instead of concrete type declarations to enforce dependency inversion.
+
+Rule 8.
+Try create code parts that a stranger could understand withing 15m,
+else try to reduce the code in a way that it require lesser mind model.
 
 Most of the rules originated from one of my favorite programmer,
 who was the initial reason why I started to read about golang, Rob Pike.
