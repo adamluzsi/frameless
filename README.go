@@ -8,20 +8,20 @@ Package frameless -> The Hitchhiker's Guide to the Grumpytecture
 
 Pre Words
 
-Everything you will read here you should handle with a grain of salt, because everything here is just an opinion on this subject.
-Therefore this specification here is just an example on how to include the ideas that I learned in the hard way about design.
-You have to decide in your project whether it's worth it or not to add this thin but extra abstraction layer.
+Everything you read here handle with a grain of salt, because it is just an opinion on this subject.
+Therefore this specification is just an example on how to include some ideas that I learned in the hard way about design.
+You have to decide in your project whether it's worth it or not adding this extra but thin abstraction layer.
 So not the exact specification here is what is the most important content of this document but the ideas it tries to represent.
 
-I tried my best and researched this result by working on a project of mine that had it's own caveats.
-Such caveat is that during design I already known that I will have limited time to work on it,
+I tried my best and researched this idea by working on a project of mine that had it's own caveats.
+During design of such caveat I have already known that I would have limited time to work on.
 I intentionally tried to force myself to design a solution that breaks down small isolated parts where the required mind model can be small,
 and all the task in a user story can be executed almost independently from each other by using generally appliable contracts between parts.
 My most important requirement was to reduce the time I loose while I load the required mind model for a given task.
-This includes the way I can test my application without fallint into a trap of full green test suite for a not working application.
+This includes the way I can test my application without falling into a trap of full green test suite for a not working application.
 This approach has it's own pro and con.
 
-To summary up this section, if you decide to layer your application but to do it on your own/team 's way,
+To summary up this section, if you decide to layer your application but to do it on your own/team's way,
 I hope my research can at least be useful on your journey.
 
 
@@ -41,7 +41,7 @@ The core concept is based on inspiration by Robert Martin works, and on my own e
 The reason
 
 While I had the pleasure to work with software engineers that I respected for both personality and knowledge,
-there was one commonly returning feeling that kept me bothered.
+there was one commonly returning feeling that kept bothering me.
 It endend in an extreme that I realized, I love minimalism in programming,
 and unconsciously I started to avoid frameworks that provides rapid development with "ease of use".
 
@@ -51,10 +51,10 @@ But in the same time, I see that software design suffer in the long run.
 Project gets tightly chained to that framework,
 Business entities, use cases and rules depending on the framework, and its smart objects.
 
-This in the end resulted in a way where the Juniors who "grown up"* working with these tools,
+This in the end resulted in a way where the Juniors who "grew up"* working with these tools,
 tends to have some tight connection with a framework rather than core ideas.
-I'm in no position to define this is good or not. The softwares made this way could be really high quality.
-but usually suffer in testability in a way, that it requires tons of external resources to test business use cases, which tends to give slow test suite.
+I'm in no position to define this is good or not. The software made this way could be really high quality.
+However, they usually suffer in testability in a way, that it requires tons of external resources to test business use cases, which tends to give slow test suite.
 Features created in a way where use cases implemented after choosing backing resources feels like building a house by starting from the roof.
 
 But because people expecting results to be delivered, and if possible by yesterday, It's rare to have a moment to think every project through.
@@ -78,7 +78,7 @@ Is usually a data structure that may or may not have functions.
 
 • Controller
 that implements a specific business use case.
-Depends on Entities it works, it defines what will presenter receive,
+Depends on Entities it works, it defines what the presenter receives,
 also defines what query use cases the storage must implement.
 
 • Query Use Case
@@ -87,17 +87,17 @@ This defines what is the expected behavior to be implemented in the storage or s
 It depends on the Entity, which it works with.
 
 • Resuest and Presenter
-implements the interaction between an input external interface and an output external interface that could be the same as well.
+implements the interaction between an input external interface and an output external interface that could even be the same as well.
 Request implements the unserialization logic required to have only primitives as input.
-Presenter implements the serialization logic that will be used in the out bound communication from the application.
-This two removes the above mentioned responsibility from the controller, so as a result, controller wil only have use case controlling related logic.
+Presenter implements the serialization logic that will be used in the outbound communication from the application.
+This two interface remove the above mentioned responsibility from the controller, so as a result, controller wil only have use case controlling related logic.
 I believe this makes testing and composition of these parts easier, while the required mind model will be super little for controllers as well.
 
 • Storage
 implements query use case specifications on a specific external resource that main purpose is storing data.
 Hides the technology/packages from the controller, so the dependency inversion can be enforced even more.
 Ensure that the given external resource connection only used through this and it is not leaked out.
-Your entities by default will not know about they persistence, the only information can optionally exchange is the storage ID.
+Your entities by default will not know about their persistence, the only information can optionally exchange is the storage ID.
 As a nice side effect, because storage is a dependency for controller rather than encapsulation in an entity, like how most ORM frameworks do,
 you can use during testing in-memory storages, so your red/green/refactor feedback cycle will be blazing fast,
 and you can start create business use cases implementations without any storage.
@@ -110,10 +110,10 @@ Principles that should be followed when you design with this package
 
 Rule 1.
 You can't tell where a program is going to spend its time.
-Bottlenecks occur in surprising places, so don't try to second guess and put in a speed hack until you've proven that's where the bottleneck is.
+Bottlenecks occur in surprising places, so don't try to guess and build in a speed hack until you've proven that's where the bottleneck really is.
 
 Rule 2.
-Measure. Don't tune for speed until you've measured, and even then don't unless one part of the code overwhelms the rest.
+Measure. Don't tune for speed until you've measured, and even then, still don't tune unless one part of the code overwhelms the rest.
 
 Rule 3.
 Fancy algorithms are slow when n is small,
@@ -136,7 +136,7 @@ Rule 7.
 Use contracts wherever it makes sense instead of concrete type declarations to enforce dependency inversion.
 
 Rule 8.
-Try create code parts that a stranger could understand withing 15m,
+Try creating code parts that a stranger could understand within 15m,
 else try to reduce the code in a way that it require lesser mind model.
 
 Most of the rules originated from one of my favorite programmer,
@@ -152,13 +152,13 @@ Rule 5 was previously stated by Fred Brooks in The Mythical Man-Month.
 
 Caveat
 
-This research primary targets creating design for business software applications,
+This research primary targets creating design for business software applications.
 If you need to create a service for technology specific an edge case purpose,
 than you probably better of without the extra layer this requires.
 
 	such case is a HTTP reverse proxy with custom logic related to the transferred data.
 
-Also the design here highly assumes you create software that is tested and follows 12 factor principles, so it's scalable via the process model.
+Also the design here strongly assumes that you create software that is tested and follows 12 factor principles, so it's scalable via the process model.
 I worked with languages that are way slower than golang, so I have a different view about "required" performance,
 and I don't share the opinion that the application must be prematurely optimized for some extra nano seconds.
 Therefore for those who benchmark interface{} vs struct{} method execution speed may find this package disturbing.
