@@ -30,11 +30,11 @@ type Entity = interface{}
 // 	The controller receives the input, optionally validates it and then passes the input to the model.
 //
 // To me when I played with the Separate UseCase/UseCase layers in a production app, I felt the extra layer just was cumbersome.
-// Therefore the "controller" concept here is a little different from traditional usecases but not different what most of the time a controller do in real world applications.
+// Therefore the "controller" concept here is a little different from traditional ukases but not different what most of the time a controller do in real world applications.
 // Implementing business use cases, validation or you name it. From the simples case such as listing users, to the extend of executing heavy calculations on user behalf.
 // The classical controller that provides interface between an external interface and a business logic implementation is something that must be implemented in the external interface integration layer itself.
 // I removed this extra layer to make controller scope only to control the execution of a specific business use case based on generic inputs such as presenter and request.
-// Also there is a return error which represent the unexpected and not recoverable errors that should notified back to the caller to teardown execution nicely.
+// Also there is a return error which represent the unexpected and not recoverable errors that should notified back to the caller to tear-down execution nicely.
 //
 //  The software in this layer contains application specific business rules.
 //  It encapsulates and implements all of the use cases of the system.
@@ -42,7 +42,7 @@ type Entity = interface{}
 //  and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.
 //
 //  We do not expect changes in this layer to affect the entities.
-//  We also do not expect this layer to be affected by changes to externalities such as the database,
+//  We also do not expect this layer to be affected by changes to externalises such as the database,
 //  the UI, or any of the common frameworks.
 //  This layer is isolated from such concerns.
 //
@@ -68,7 +68,7 @@ func (lambda UseCaseFunc) Do(r Request, p Presenter) error {
 // Scope:
 // 	receive messages, and convert it into a serialized form
 //
-// You should not allow the users of the Presenter object to modify the state of the enwrapped communication channel, such as closing, or direct writing
+// You should not allow the users of the Presenter object to modify the state of the wrapped communication channel, such as closing, or direct writing
 type Presenter interface {
 	//
 	// RenderWithTemplate a content on a channel that the Presenter implements
@@ -77,7 +77,7 @@ type Presenter interface {
 	// RenderWithTemplate(name string, data frameless.Content) error
 
 	//
-	// Render renders a simple message back to the enwrapped communication channel
+	// Render renders a simple message back to the wrapped communication channel
 	//	message is an interface type because the channel communication layer and content and the serialization is up to the Presenter to implement
 	//
 	// If the message is a complex type that has multiple fields,
@@ -101,13 +101,13 @@ type Request interface {
 	Data() Iterator
 }
 
-// Decoder is the interface for populating/replacing a public struct with values that retrived from an external resource
+// Decoder is the interface for populating/replacing a public struct with values that retried from an external resource
 type Decoder interface {
 	// Decode will populate an object with values and/or return error
 	Decode(interface{}) error
 }
 
-// DecoderFunc enables to use anonimus functions to be a valid DecoderFunc
+// DecoderFunc enables to use anonymous functions to be a valid DecoderFunc
 type DecoderFunc func(interface{}) error
 
 // Decode proxy the call to the wrapped Decoder function
@@ -117,16 +117,16 @@ func (fn DecoderFunc) Decode(i interface{}) error {
 
 // Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
 // Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
-// inspirated by https://golang.org/pkg/encoding/json/#Decoder
+// inspirited by https://golang.org/pkg/encoding/json/#Decoder
 type Iterator interface {
-	// this is required to make it able to cancel iterators where resource being used behind the schene
+	// this is required to make it able to cancel iterators where resource being used behind the scene
 	// for all other case where the underling io is handled on higher level, it should simply return nil
 	io.Closer
 	// Next will ensure that Decode return the next item when it is executed
 	Next() bool
 	// Err return the cause if for some reason by default the More return false all the time
 	Err() error
-	// this is required to retrive the current value from the iterator
+	// this is required to retrieve the current value from the iterator
 	Decoder
 }
 
@@ -153,7 +153,7 @@ type ID = string
 type Query interface {
 	// Test specify the given query Use Case behavior, and must be used for implementing it in the storage side.
 	// For different context and scenarios testing#T.Run is advised to be used.
-	// Test should create and teardown it's context in each execution (on each T.Run basis if T.Run used).
+	// Test should create and tear-down it's context in each execution (on each T.Run basis if T.Run used).
 	//
 	// The *testing.T is used, so the specification can use test specific methods like #Run and #Parallel.
 	//
@@ -174,7 +174,7 @@ type Storage interface {
 	// FindBy implements each application Query.Test that used with the given storage.
 	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
 	//
-	// This way it maybe feels boilerplated for really dynamic and complex searches, but for those,
+	// This way it maybe feels boilerplate for really dynamic and complex searches, but for those,
 	// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
 	// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
 	//
