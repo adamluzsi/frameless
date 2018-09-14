@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adamluzsi/frameless/controllers/adapters"
+	"github.com/adamluzsi/frameless/usecases/adapters"
 	"github.com/stretchr/testify/require"
 )
 

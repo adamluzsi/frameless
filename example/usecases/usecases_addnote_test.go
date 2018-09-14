@@ -7,7 +7,7 @@ import (
 
 	"github.com/adamluzsi/frameless/iterators/iterateover"
 
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/storages"
 
 	randomdata "github.com/Pallinder/go-randomdata"
@@ -43,9 +43,9 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 	ctx = context.WithValue(ctx, "Content", sample.Content)
 	r := requests.New(ctx, iterators.NewEmpty())
 
-	require.Nil(t, usecases.AddNote(p, r))
+	require.Nil(t, usecases.AddNote(r, p))
 
-	i := storage.Find(queryusecases.AllFor{Type: example.Note{}})
+	i := storage.Find(queries.AllFor{Type: example.Note{}})
 
 	foundNotes := []*example.Note{}
 	require.Nil(t, iterateover.AndCollectAll(i, &foundNotes))
@@ -74,7 +74,7 @@ func TestUseCasesAddNote_ErrHappenInStorage_ErrReturned(t *testing.T) {
 	ctx = context.WithValue(ctx, "Content", AddNoteContent)
 	r := requests.New(ctx, iterators.NewEmpty())
 
-	require.Error(t, expectedError, usecases.AddNote(p, r))
+	require.Error(t, expectedError, usecases.AddNote(r, p))
 }
 
 func TestUseCasesAddNote_MissingTitle_ErrReturned(t *testing.T) {
@@ -83,9 +83,9 @@ func TestUseCasesAddNote_MissingTitle_ErrReturned(t *testing.T) {
 	ctx := context.Background()
 	usecases := ExampleUseCases(nil)
 
-	require.Equal(t, errors.New("missing Title"), usecases.AddNote(nil, requests.New(ctx, iterators.NewEmpty())))
+	require.Equal(t, errors.New("missing Title"), usecases.AddNote(requests.New(ctx, iterators.NewEmpty()), nil ))
 
 	ctx = context.WithValue(ctx, "Title", AddNoteTitle)
-	require.Equal(t, errors.New("missing Content"), usecases.AddNote(nil, requests.New(ctx, iterators.NewEmpty())))
+	require.Equal(t, errors.New("missing Content"), usecases.AddNote(requests.New(ctx, iterators.NewEmpty()), nil))
 
 }

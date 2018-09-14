@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless"
-	fhttp "github.com/adamluzsi/frameless/controllers/adapters/integrations/net/http"
+	fhttp "github.com/adamluzsi/frameless/usecases/adapters/integrations/net/http"
 	"github.com/adamluzsi/frameless/iterators/iterateover"
 	require "github.com/stretchr/testify/require"
 )

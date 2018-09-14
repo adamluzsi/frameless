@@ -8,7 +8,7 @@ import (
 
 	"net/http"
 
-	"github.com/adamluzsi/frameless/controllers/adapters"
+	"github.com/adamluzsi/frameless/usecases/adapters"
 	"github.com/adamluzsi/frameless/example"
 
 	"github.com/adamluzsi/frameless"
@@ -27,7 +27,7 @@ func (b *builder) toServerMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
 	add := adapters.NetHTTP(
-		frameless.ControllerFunc(b.usecases.AddNote),
+		frameless.UseCaseFunc(b.usecases.AddNote),
 		func(w io.Writer) frameless.Presenter { return b.presentNote(w) },
 		func(r io.Reader) frameless.Iterator { return iterateover.LineByLine(r) },
 	)
@@ -35,7 +35,7 @@ func (b *builder) toServerMux() *http.ServeMux {
 	mux.Handle("/add", add)
 
 	list := adapters.NetHTTP(
-		frameless.ControllerFunc(b.usecases.ListNotes),
+		frameless.UseCaseFunc(b.usecases.ListNotes),
 		func(w io.Writer) frameless.Presenter { return b.presentNotes(w) },
 		func(r io.Reader) frameless.Iterator { return iterateover.LineByLine(r) },
 	)

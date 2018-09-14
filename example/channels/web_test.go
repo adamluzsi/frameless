@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 
 	randomdata "github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless/example"
@@ -90,7 +90,7 @@ func TestNewHTTPHandler(t *testing.T) {
 		require.True(t, len(matches) > 0)
 
 		var note example.Note
-		if err := iterators.First(s.Find(queryusecases.ByID{Type: note, ID: matches[0][1]}), &note); err != nil {
+		if err := iterators.First(s.Find(queries.ByID{Type: note, ID: matches[0][1]}), &note); err != nil {
 			t.Fatal(err)
 		}
 

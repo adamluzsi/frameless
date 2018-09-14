@@ -28,8 +28,8 @@ func MockIteratorBuilder() func(io.Reader) frameless.Iterator {
 	return iterateover.LineByLine
 }
 
-func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool, err error) frameless.Controller {
-	return frameless.ControllerFunc(func(p frameless.Presenter, r frameless.Request) error {
+func ControllerFor(t testing.TB, opts map[interface{}]interface{}, readBody bool, err error) frameless.UseCase {
+	return frameless.UseCaseFunc(func(r frameless.Request, p frameless.Presenter) error {
 
 		if opts != nil {
 			for k, v := range opts {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/adamluzsi/frameless/iterators"
 
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 
 	"github.com/adamluzsi/frameless/reflects"
 
@@ -45,11 +45,11 @@ func (storage *MyStorage) Create(e frameless.Entity) error {
 	}
 }
 
-func (storage *MyStorage) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (storage *MyStorage) Find(quc frameless.Query) frameless.Iterator {
 	switch quc.(type) {
-	case queryusecases.ByID:
-		// implementation for queryusecases.ByID with the given external resource connection
-		ByID := quc.(queryusecases.ByID)
+	case queries.ByID:
+		// implementation for queries.ByID with the given external resource connection
+		ByID := quc.(queries.ByID)
 
 		fmt.Printf("searching in %s table for %s ID\n", reflects.Name(ByID.Type), ByID.ID)
 
@@ -61,10 +61,10 @@ func (storage *MyStorage) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	}
 }
 
-func (storage *MyStorage) Exec(quc frameless.QueryUseCase) error {
+func (storage *MyStorage) Exec(quc frameless.Query) error {
 	switch quc.(type) {
-	case queryusecases.DeleteByEntity:
-		DeleteByEntity := quc.(queryusecases.DeleteByEntity)
+	case queries.DeleteByEntity:
+		DeleteByEntity := quc.(queries.DeleteByEntity)
 
 		ID, found := reflects.LookupID(DeleteByEntity.Entity)
 
@@ -88,15 +88,15 @@ func (storage *MyStorage) Exec(quc frameless.QueryUseCase) error {
 // mycustomstorage_test.go
 
 func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite *testing.T) {
-	suite.Run("QueryUseCase", func(spec *testing.T) {
+	suite.Run("Query", func(spec *testing.T) {
 		storage := &MyStorage{ExternalResourceConnection: nil}
 		// or you can create NewMyStorage(interface{}) as well for controlled initialization of your storage implementation,
 		// and use it here for initialize the object
 
-		spec.Run("queryusecases.ByID", func(t *testing.T) {
+		spec.Run("queries.ByID", func(t *testing.T) {
 
 			// this will test our implementation against the expected behavior in the ByID specification
-			queryusecases.ByID{
+			queries.ByID{
 				Type: MyEntity{},
 				NewEntityForTest: func(interface{}) interface{} {
 					return &MyEntity{}

@@ -2,7 +2,7 @@ package frameless_test
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 )
 
 func ExampleQueryUseCase_storageFind(storage frameless.Storage) error {
@@ -27,7 +27,7 @@ func ExampleQueryUseCase_storageFind(storage frameless.Storage) error {
 }
 
 func ExampleQueryUseCase_storageExec(storage frameless.Storage) error {
-	// DeleteByID is a common query use case which specified with test in the queryusecases package
+	// DeleteByID is a common query use case which specified with test in the queries package
 	// Of course you can implement your own as well
-	return storage.Exec(queryusecases.DeleteByID{Type: User{}, ID: "42"})
+	return storage.Exec(queries.DeleteByID{Type: User{}, ID: "42"})
 }

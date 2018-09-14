@@ -11,7 +11,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 )
 
 func NewMemory() *Memory {
@@ -38,10 +38,10 @@ func (storage *Memory) Create(e frameless.Entity) error {
 	return reflects.SetID(e, id)
 }
 
-func (storage *Memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (storage *Memory) Find(quc frameless.Query) frameless.Iterator {
 	switch quc.(type) {
-	case queryusecases.ByID:
-		byID := quc.(queryusecases.ByID)
+	case queries.ByID:
+		byID := quc.(queries.ByID)
 		entity, found := storage.tableFor(byID.Type)[byID.ID]
 
 		if found {
@@ -50,8 +50,8 @@ func (storage *Memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 			return iterators.NewEmpty()
 		}
 
-	case queryusecases.AllFor:
-		byAll := quc.(queryusecases.AllFor)
+	case queries.AllFor:
+		byAll := quc.(queries.AllFor)
 		table := storage.tableFor(byAll.Type)
 
 		entities := []frameless.Entity{}
@@ -67,9 +67,9 @@ func (storage *Memory) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	}
 }
 
-func (storage *Memory) Exec(quc frameless.QueryUseCase) error {
+func (storage *Memory) Exec(quc frameless.Query) error {
 	switch quc := quc.(type) {
-	case queryusecases.DeleteByID:
+	case queries.DeleteByID:
 		table := storage.tableFor(quc.Type)
 
 		if _, ok := table[quc.ID]; ok {
@@ -78,16 +78,16 @@ func (storage *Memory) Exec(quc frameless.QueryUseCase) error {
 
 		return nil
 
-	case queryusecases.DeleteByEntity:
+	case queries.DeleteByEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
 			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		return storage.Exec(queryusecases.DeleteByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
 
-	case queryusecases.UpdateEntity:
+	case queries.UpdateEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {

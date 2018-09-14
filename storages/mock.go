@@ -9,8 +9,8 @@ func NewMock() *Mock {
 	return &Mock{
 		IsOpen:   true,
 		Created:  []frameless.Entity{},
-		FindStub: func(quc frameless.QueryUseCase) frameless.Iterator { return iterators.NewEmpty() },
-		ExecStub: func(quc frameless.QueryUseCase) error { return nil },
+		FindStub: func(quc frameless.Query) frameless.Iterator { return iterators.NewEmpty() },
+		ExecStub: func(quc frameless.Query) error { return nil },
 	}
 }
 
@@ -20,8 +20,8 @@ type Mock struct {
 	ReturnError error
 
 	Created  []frameless.Entity
-	FindStub func(frameless.QueryUseCase) frameless.Iterator
-	ExecStub func(frameless.QueryUseCase) error
+	FindStub func(frameless.Query) frameless.Iterator
+	ExecStub func(frameless.Query) error
 }
 
 func (mock *Mock) Close() error {
@@ -35,7 +35,7 @@ func (mock *Mock) Create(e frameless.Entity) error {
 	return mock.ReturnError
 }
 
-func (mock *Mock) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (mock *Mock) Find(quc frameless.Query) frameless.Iterator {
 	if mock.ReturnError != nil {
 		return iterators.NewError(mock.ReturnError)
 	}
@@ -43,7 +43,7 @@ func (mock *Mock) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	return mock.FindStub(quc)
 }
 
-func (mock *Mock) Exec(quc frameless.QueryUseCase) error {
+func (mock *Mock) Exec(quc frameless.Query) error {
 	if mock.ReturnError != nil {
 		return mock.ReturnError
 	}

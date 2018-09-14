@@ -1,4 +1,4 @@
-package queryusecases
+package queries
 
 const idRequiredMessage = `
 Can't find the ID in the current structure

@@ -7,7 +7,7 @@ import (
 
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/storages"
 	"github.com/satori/go.uuid"
@@ -56,7 +56,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queryusecases.ByID{
+			queries.ByID{
 				Type: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -69,7 +69,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queryusecases.AllFor{
+			queries.AllFor{
 				Type: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -86,7 +86,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queryusecases.UpdateEntity{
+			queries.UpdateEntity{
 				Entity: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -99,7 +99,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queryusecases.DeleteByID{
+			queries.DeleteByID{
 				Type: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -112,7 +112,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queryusecases.DeleteByEntity{
+			queries.DeleteByEntity{
 				Entity: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,

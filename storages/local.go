@@ -10,7 +10,7 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/boltdb/bolt"
 )
@@ -62,9 +62,9 @@ func (storage *Local) Create(e frameless.Entity) error {
 	})
 }
 
-func (storage *Local) Find(quc frameless.QueryUseCase) frameless.Iterator {
+func (storage *Local) Find(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
-	case queryusecases.ByID:
+	case queries.ByID:
 		key, err := storage.idToBytes(quc.ID)
 
 		if err != nil {
@@ -100,7 +100,7 @@ func (storage *Local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 
 		return iterators.NewSingleElement(entity)
 
-	case queryusecases.AllFor:
+	case queries.AllFor:
 		r, w := iterators.NewPipe()
 
 		go storage.db.View(func(tx *bolt.Tx) error {
@@ -134,9 +134,9 @@ func (storage *Local) Find(quc frameless.QueryUseCase) frameless.Iterator {
 	}
 }
 
-func (storage *Local) Exec(quc frameless.QueryUseCase) error {
+func (storage *Local) Exec(quc frameless.Query) error {
 	switch quc := quc.(type) {
-	case queryusecases.DeleteByID:
+	case queries.DeleteByID:
 
 		ID, err := storage.idToBytes(quc.ID)
 
@@ -154,16 +154,16 @@ func (storage *Local) Exec(quc frameless.QueryUseCase) error {
 			return bucket.Delete(ID)
 		})
 
-	case queryusecases.DeleteByEntity:
+	case queries.DeleteByEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
 			return fmt.Errorf("can't find ID in %s", reflects.Name(quc.Entity))
 		}
 
-		return storage.Exec(queryusecases.DeleteByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
 
-	case queryusecases.UpdateEntity:
+	case queries.UpdateEntity:
 		encodedID, found := reflects.LookupID(quc.Entity)
 
 		if !found {

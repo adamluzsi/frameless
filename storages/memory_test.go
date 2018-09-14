@@ -5,7 +5,7 @@ import (
 
 	"github.com/adamluzsi/frameless/reflects"
 
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 
 	"github.com/adamluzsi/frameless/storages"
 	"github.com/stretchr/testify/require"
@@ -31,7 +31,7 @@ func TestMemory(suite *testing.T) {
 		spec.Run("ByID", func(t *testing.T) {
 			t.Parallel()
 
-			queryusecases.ByID{
+			queries.ByID{
 				Type: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -41,7 +41,7 @@ func TestMemory(suite *testing.T) {
 		spec.Run("AllFor", func(t *testing.T) {
 			t.Parallel()
 
-			queryusecases.AllFor{
+			queries.AllFor{
 				Type: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -55,7 +55,7 @@ func TestMemory(suite *testing.T) {
 		spec.Run("UpdateEntity", func(t *testing.T) {
 			t.Parallel()
 
-			queryusecases.UpdateEntity{
+			queries.UpdateEntity{
 				Entity: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -65,7 +65,7 @@ func TestMemory(suite *testing.T) {
 		spec.Run("DeleteByID", func(t *testing.T) {
 			t.Parallel()
 
-			queryusecases.DeleteByID{
+			queries.DeleteByID{
 				Type: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,
@@ -75,7 +75,7 @@ func TestMemory(suite *testing.T) {
 		spec.Run("DeleteByEntity", func(t *testing.T) {
 			t.Parallel()
 
-			queryusecases.DeleteByEntity{
+			queries.DeleteByEntity{
 				Entity: SampleEntity{},
 
 				NewEntityForTest: NewEntityForTest,

@@ -1,4 +1,4 @@
-package queryusecases
+package queries
 
 import (
 	"testing"

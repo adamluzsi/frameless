@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/example"
 	"github.com/adamluzsi/frameless/iterators/iterateover"
-	"github.com/adamluzsi/frameless/queryusecases"
+	"github.com/adamluzsi/frameless/queries"
 )
 
 func NewUseCases(storage frameless.Storage) *UseCases {
@@ -17,10 +17,10 @@ type UseCases struct {
 	storage frameless.Storage
 }
 
-func (uc *UseCases) ListNotes(p frameless.Presenter, r frameless.Request) error {
+func (uc *UseCases) ListNotes(r frameless.Request, p frameless.Presenter) error {
 	notes := []*example.Note{}
 
-	i := uc.storage.Find(queryusecases.AllFor{Type: example.Note{}})
+	i := uc.storage.Find(queries.AllFor{Type: example.Note{}})
 
 	if err := iterateover.AndCollectAll(i, &notes); err != nil {
 		return err
@@ -29,7 +29,7 @@ func (uc *UseCases) ListNotes(p frameless.Presenter, r frameless.Request) error 
 	return p.Render(notes)
 }
 
-func (uc *UseCases) AddNote(p frameless.Presenter, r frameless.Request) error {
+func (uc *UseCases) AddNote(r frameless.Request, p frameless.Presenter) error {
 	title, ok := r.Context().Value("Title").(string)
 	if !ok || title == "" {
 		return errors.New("missing Title")

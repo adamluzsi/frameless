@@ -20,11 +20,11 @@ func TestMock(t *testing.T) {
 	expected := randomdata.SillyName()
 	var actually string
 
-	FindStub := func(frameless.QueryUseCase) frameless.Iterator {
+	FindStub := func(frameless.Query) frameless.Iterator {
 		return iterators.NewSingleElement(expected)
 	}
 
-	ExecStub := func(frameless.QueryUseCase) error {
+	ExecStub := func(frameless.Query) error {
 		return errors.New("stub")
 	}
 

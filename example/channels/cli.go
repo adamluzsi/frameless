@@ -49,7 +49,7 @@ func (cli *CLI) Run(args []string) error {
 		return cli.listNotes(args[1:])
 
 	case "http":
-		fmt.Fprintln(cli.writer, "Listen And Serve on :8080")
+		fmt.Fprintln(cli.writer, "Listen And Do on :8080")
 		return cli.server.ListenAndServe()
 
 	default:
@@ -84,7 +84,7 @@ func (cli *CLI) addNote(args []string) error {
 	ctx = context.WithValue(ctx, "Content", *content)
 	r := requests.New(ctx, iterators.NewEmpty())
 
-	return cli.usecases.AddNote(frameless.PresenterFunc(cli.presentNote), r)
+	return cli.usecases.AddNote(r, frameless.PresenterFunc(cli.presentNote))
 
 }
 
@@ -109,7 +109,7 @@ func (cli *CLI) listNotes(args []string) error {
 
 	r := requests.New(context.Background(), iterators.NewEmpty())
 
-	return cli.usecases.ListNotes(frameless.PresenterFunc(cli.presentNoteList), r)
+	return cli.usecases.ListNotes(r, frameless.PresenterFunc(cli.presentNoteList))
 }
 
 func (cli *CLI) presentNoteList(message interface{}) error {

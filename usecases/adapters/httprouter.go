@@ -5,13 +5,13 @@ import (
 	"net/http"
 
 	"github.com/adamluzsi/frameless"
-	fhttprouter "github.com/adamluzsi/frameless/controllers/adapters/integrations/github.com/julienschmidt/httprouter"
+	fhttprouter "github.com/adamluzsi/frameless/usecases/adapters/integrations/github.com/julienschmidt/httprouter"
 	"github.com/julienschmidt/httprouter"
 )
 
 // HTTPRouter create adapter function that fits to Julien Schmidt httprouter common interface
 func HTTPRouter(
-	controller frameless.Controller,
+	useCase frameless.UseCase,
 	buildPresenter func(io.Writer) frameless.Presenter,
 	buildIterator func(io.Reader) frameless.Iterator,
 ) func(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
@@ -27,7 +27,7 @@ func HTTPRouter(
 		presenter := buildPresenter(w)
 		request := fhttprouter.NewRequest(r, buildIterator, p)
 
-		if err := controller.Serve(presenter, request); err != nil {
+		if err := useCase.Do(request, presenter); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 

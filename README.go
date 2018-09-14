@@ -76,13 +76,13 @@ and I would like to leave space for that for myself as well. So I tried layer so
 • Entity
 Is usually a data structure that may or may not have functions.
 
-• Controller
+• UseCase
 that implements a specific business use case.
 Depends on Entities it works, it defines what will presenter receive,
 also defines what query use cases the storage must implement.
 
 • Query Use Case
-for controllers that have to interact with a storage.
+for usecases that have to interact with a storage.
 This defines what is the expected behavior to be implemented in the storage or storages (for example dark launch).
 It depends on the Entity, which it works with.
 
@@ -91,7 +91,7 @@ implements the interaction between an input external interface and an output ext
 Request implements the unserialization logic required to have only primitives as input.
 Presenter implements the serialization logic that will be used in the out bound communication from the application.
 This two removes the above mentioned responsibility from the controller, so as a result, controller wil only have use case controlling related logic.
-I believe this makes testing and composition of these parts easier, while the required mind model will be super little for controllers as well.
+I believe this makes testing and composition of these parts easier, while the required mind model will be super little for usecases as well.
 
 • Storage
 implements query use case specifications on a specific external resource that main purpose is storing data.
@@ -182,7 +182,7 @@ Last notes
 
 As a last note, most of the interfaces defined here may only contain a few or just one function signature,
 it is because I tried remove everything that is YAGNI in order to achieve final goal for a given project.
-QueryUseCase is the tipical example for this, because you only implement those that you use it. and nothing more.
+Query is the tipical example for this, because you only implement those that you use it. and nothing more.
 I would like to ask you, if you see anything and care to share your constructive opinion,
 please feel free to create an issue on github where we can discuss this!
 

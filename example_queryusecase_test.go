@@ -11,7 +11,7 @@ type User struct {
 	IsActive bool
 }
 
-type InactiveUsers struct{} // <- QueryUseCase
+type InactiveUsers struct{} // <- Query
 
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
 func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
