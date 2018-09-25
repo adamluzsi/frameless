@@ -13,30 +13,24 @@ import (
 
 // UpdateEntity will request an update for a wrapped entity object in the storage
 // Entity parameter is the wrapped entity that has the updated values.
-//
-// NewEntityForTest used only for testing and should not be provided outside of testing
-type UpdateEntity struct {
-	Entity frameless.Entity
+type UpdateEntity struct{ Entity frameless.Entity }
 
-	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
-}
+func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
 
-func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Storage) {
-
-	if quc.NewEntityForTest == nil {
+	if fixture.New == nil {
 		suite.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
 	}
 
 	suite.Run("UpdateEntity", func(spec *testing.T) {
 
 		setup := func() (string, func()) {
-			entity := quc.NewEntityForTest(quc.Entity)
-			require.Nil(spec, storage.Create(entity))
+			entity := fixture.New(quc.Entity)
+			require.Nil(spec, storage.Store(entity))
 
 			ID, ok := reflects.LookupID(entity)
 
 			if !ok {
-				spec.Fatal(idRequiredMessage)
+				spec.Fatal(ErrIDRequired)
 			}
 
 			require.True(spec, len(ID) > 0)
@@ -47,14 +41,14 @@ func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Storage) {
 			ID, td := setup()
 			defer td()
 
-			newEntity := quc.NewEntityForTest(quc.Entity)
+			newEntity := fixture.New(quc.Entity)
 			reflects.SetID(newEntity, ID)
 
 			require.Nil(t, storage.Exec(UpdateEntity{Entity: newEntity}))
 
-			iterator := storage.Find(ByID{Type: quc.Entity, ID: ID})
+			iterator := storage.Exec(ByID{Type: quc.Entity, ID: ID})
 
-			actually := quc.NewEntityForTest(quc.Entity)
+			actually := fixture.New(quc.Entity)
 			iterators.DecodeNext(iterator, actually)
 
 			require.Equal(t, newEntity, actually)
@@ -65,9 +59,9 @@ func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Storage) {
 			_, td := setup()
 			defer td()
 
-			newEntity := quc.NewEntityForTest(quc.Entity)
+			newEntity := fixture.New(quc.Entity)
 			reflects.SetID(newEntity, "hitchhiker's guide to the galaxy")
-			require.Error(t, storage.Exec(UpdateEntity{Entity: newEntity}))
+			require.Error(t, storage.Exec(UpdateEntity{Entity: newEntity}).Err())
 
 		})
 

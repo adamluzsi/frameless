@@ -1,0 +1,109 @@
+package fixtures
+
+import (
+	"math/rand"
+	"reflect"
+
+	randomdata "github.com/Pallinder/go-randomdata"
+	"github.com/adamluzsi/frameless"
+)
+
+func New(entity frameless.Entity) frameless.Entity {
+	ptr := reflect.New(reflect.TypeOf(entity))
+	elem := ptr.Elem()
+
+	for i := 0; i < elem.NumField(); i++ {
+		fv := elem.Field(i)
+
+		if fv.CanSet() {
+			newValue := newValue(fv)
+
+			if newValue.IsValid() {
+				fv.Set(newValue)
+			}
+		}
+	}
+
+	return ptr.Interface()
+
+}
+
+func newValue(value reflect.Value) reflect.Value {
+	switch value.Type().Kind() {
+
+	case reflect.Bool:
+		return reflect.ValueOf(randomdata.Boolean())
+
+	case reflect.String:
+		return reflect.ValueOf(randomdata.SillyName())
+
+	case reflect.Int:
+		return reflect.ValueOf(rand.Int())
+
+	case reflect.Int8:
+		return reflect.ValueOf(int8(rand.Int()))
+
+	case reflect.Int16:
+		return reflect.ValueOf(int16(rand.Int()))
+
+	case reflect.Int32:
+		return reflect.ValueOf(rand.Int31())
+
+	case reflect.Int64:
+		return reflect.ValueOf(rand.Int63())
+
+	case reflect.Uint:
+		return reflect.ValueOf(uint(rand.Uint32()))
+
+	case reflect.Uint8:
+		return reflect.ValueOf(uint8(rand.Uint32()))
+
+	case reflect.Uint16:
+		return reflect.ValueOf(uint16(rand.Uint64()))
+
+	case reflect.Uint32:
+		return reflect.ValueOf(rand.Uint32())
+
+	case reflect.Uint64:
+		return reflect.ValueOf(rand.Uint64())
+
+	case reflect.Float32:
+		return reflect.ValueOf(rand.Float32())
+
+	case reflect.Float64:
+		return reflect.ValueOf(rand.Float64())
+
+	case reflect.Complex64:
+		return reflect.ValueOf(complex64(42))
+
+	case reflect.Complex128:
+		return reflect.ValueOf(complex128(42.42))
+
+	case reflect.Array:
+		return reflect.New(value.Type()).Elem()
+
+	case reflect.Slice:
+		return reflect.MakeSlice(value.Type(), 0, 0)
+
+	case reflect.Chan:
+		return reflect.MakeChan(value.Type(), 0)
+
+	case reflect.Map:
+		return reflect.MakeMap(value.Type())
+
+	case reflect.Ptr:
+		return reflect.New(value.Type().Elem())
+
+	case reflect.Uintptr:
+		return reflect.ValueOf(uintptr(rand.Int()))
+
+	case reflect.Struct:
+		return reflect.ValueOf(New(value.Interface())).Elem()
+
+	default:
+		//reflect.UnsafePointer
+		//reflect.Interface
+		//reflect.Func
+		return reflect.ValueOf(nil)
+	}
+}

@@ -1,4 +1,4 @@
-package queries
+package delete
 
 import (
 	"testing"
@@ -17,13 +17,12 @@ type DeleteByID struct {
 	Type frameless.Entity
 	ID   string
 
-	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
 // Test will test that an DeleteByID is implemented by a generic specification
-func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage) {
+func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
 
-	if quc.NewEntityForTest == nil {
+	if fixture == nil {
 		spec.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
 	}
 
@@ -31,8 +30,8 @@ func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage) {
 
 	for i := 0; i < 10; i++ {
 
-		entity := quc.NewEntityForTest(quc.Type)
-		require.Nil(spec, storage.Create(entity))
+		entity := fixture.New(quc.Type)
+		require.Nil(spec, storage.Store(entity))
 		ID, ok := reflects.LookupID(entity)
 
 		if !ok {
@@ -63,19 +62,17 @@ func (quc DeleteByID) Test(spec *testing.T, storage frameless.Storage) {
 // DeleteByEntity request a delete of a specific entity that is wrapped in the query use case object
 type DeleteByEntity struct {
 	Entity frameless.Entity
-
-	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
 // Test will test that an DeleteByEntity is implemented by a generic specification
-func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Storage) {
+func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
 
-	if quc.NewEntityForTest == nil {
+	if fixture == nil {
 		spec.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
 	}
 
-	expected := quc.NewEntityForTest(quc.Entity)
-	require.Nil(spec, storage.Create(expected))
+	expected := fixture.New(quc.Entity)
+	require.Nil(spec, storage.Store(expected))
 	ID, ok := reflects.LookupID(expected)
 
 	if !ok {

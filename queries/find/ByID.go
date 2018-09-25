@@ -17,15 +17,13 @@ import (
 type ByID struct {
 	Type frameless.Entity
 	ID   string
-
-	NewEntityForTest func(Type frameless.Entity) (NewUniqEntity frameless.Entity)
 }
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
+func (quc ByID) Test(spec *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
 
-	if quc.NewEntityForTest == nil {
+	if fixture == nil {
 		spec.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
 	}
 
@@ -33,8 +31,8 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 
 	for i := 0; i < 10; i++ {
 
-		entity := quc.NewEntityForTest(quc.Type)
-		require.Nil(spec, storage.Create(entity))
+		entity := fixture.New(quc.Type)
+		require.Nil(spec, storage.Store(entity))
 		ID, ok := reflects.LookupID(entity)
 
 		if !ok {
