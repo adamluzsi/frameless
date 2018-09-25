@@ -8,6 +8,9 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
+// New returns a populated entity for a given business data entity.
+// This is primary and only used for testing.
+// With fixtures, it become easy to create generic query objects that use test cases that does not specify the concrete Structure type.
 func New(entity frameless.Entity) frameless.Entity {
 	ptr := reflect.New(reflect.TypeOf(entity))
 	elem := ptr.Elem()
