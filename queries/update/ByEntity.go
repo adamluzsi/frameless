@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/queries"
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 
@@ -34,7 +34,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage) {
 			}
 
 			require.True(spec, len(ID) > 0)
-			return ID, func() { storage.Exec(delete.ByEntity{Entity: quc.Entity}) }
+			return ID, func() { storage.Exec(destroy.ByEntity{Entity: quc.Entity}) }
 		}
 
 		spec.Run("values returned", func(t *testing.T) {

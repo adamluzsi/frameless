@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -52,7 +52,7 @@ func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
 		fmt.Printf("searching in %s table for %s ID\n", reflects.FullyQualifiedName(quc.Type), quc.ID)
 
 		return iterators.NewEmpty()
-	case delete.ByEntity:
+	case destroy.ByEntity:
 
 		ID, found := reflects.LookupID(quc.Entity)
 

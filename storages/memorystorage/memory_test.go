@@ -3,7 +3,7 @@ package memorystorage_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
@@ -54,13 +54,13 @@ func TestMemory(suite *testing.T) {
 		spec.Run("DeleteByID", func(t *testing.T) {
 			t.Parallel()
 
-			delete.ByID{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
+			destroy.ByID{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 
 		spec.Run("DeleteByEntity", func(t *testing.T) {
 			t.Parallel()
 
-			delete.ByEntity{Entity: SampleEntity{}}.Test(t, memorystorage.NewMemory())
+			destroy.ByEntity{Entity: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 	})
 }

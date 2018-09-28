@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/queries"
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -37,7 +37,7 @@ func (quc All) Test(t *testing.T, storage frameless.Storage) {
 
 		ids = append(ids, id)
 
-		defer storage.Store(delete.ByID{Type: quc.Test, ID: id})
+		defer storage.Store(destroy.ByID{Type: quc.Test, ID: id})
 
 	}
 

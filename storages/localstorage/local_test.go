@@ -11,7 +11,7 @@ import (
 
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
@@ -90,7 +90,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			delete.ByID{Type: SampleEntity{}}.Test(t, storage)
+			destroy.ByID{Type: SampleEntity{}}.Test(t, storage)
 		})
 
 		spec.Run("DeleteByEntity", func(t *testing.T) {
@@ -99,7 +99,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			delete.ByEntity{Entity: SampleEntity{}}.Test(t, storage)
+			destroy.ByEntity{Entity: SampleEntity{}}.Test(t, storage)
 		})
 	})
 }

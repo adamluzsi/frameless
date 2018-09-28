@@ -1,4 +1,4 @@
-package delete
+package destroy
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ByEntity request a delete of a specific entity that is wrapped in the query use case object
+// ByEntity request a destroy of a specific entity that is wrapped in the query use case object
 type ByEntity struct {
 	Entity frameless.Entity
 }

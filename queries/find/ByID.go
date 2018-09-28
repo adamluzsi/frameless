@@ -2,7 +2,7 @@ package find
 
 import (
 	"github.com/adamluzsi/frameless/queries"
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 	"testing"
 
@@ -41,7 +41,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 		require.True(spec, len(ID) > 0)
 		ids = append(ids, ID)
 
-		defer storage.Exec(delete.ByID{Type: quc.Test, ID: ID})
+		defer storage.Exec(destroy.ByID{Type: quc.Test, ID: ID})
 	}
 
 	spec.Run("when no value stored that the query request", func(t *testing.T) {

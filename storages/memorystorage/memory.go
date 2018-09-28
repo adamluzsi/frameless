@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"reflect"
 
-	qd "github.com/adamluzsi/frameless/queries/delete"
+	qd "github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"

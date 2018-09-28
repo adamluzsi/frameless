@@ -10,7 +10,7 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
@@ -130,7 +130,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 		return r
 
-	case delete.ByID:
+	case destroy.ByID:
 
 		ID, err := storage.idToBytes(quc.ID)
 
@@ -148,14 +148,14 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 			return bucket.Delete(ID)
 		}))
 
-	case delete.ByEntity:
+	case destroy.ByEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
 		}
 
-		return storage.Exec(delete.ByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
 
 	case update.ByEntity:
 		encodedID, found := reflects.LookupID(quc.Entity)

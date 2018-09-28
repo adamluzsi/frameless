@@ -1,4 +1,4 @@
-package delete
+package destroy
 
 import (
 	"testing"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ByID request to delete a business entity in the storage that implement it's test.
+// ByID request to destroy a business entity in the storage that implement it's test.
 // Type is an empty struct from the given business entity type, and ID is a string
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
