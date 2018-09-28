@@ -1,14 +1,13 @@
 package frameless_test
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/find"
 
 	"github.com/adamluzsi/frameless/reflects"
 
@@ -32,7 +31,7 @@ func (storage *MyStorage) Close() error {
 	return closer.Close()
 }
 
-func (storage *MyStorage) Create(e frameless.Entity) error {
+func (storage *MyStorage) Store(e frameless.Entity) error {
 	switch e.(type) {
 	case *MyEntity:
 		myEntity := e.(*MyEntity)
@@ -45,34 +44,23 @@ func (storage *MyStorage) Create(e frameless.Entity) error {
 	}
 }
 
-func (storage *MyStorage) Find(quc frameless.Query) frameless.Iterator {
-	switch quc.(type) {
-	case queries.ByID:
+func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
+	switch quc := quc.(type) {
+	case find.ByID:
 		// implementation for queries.ByID with the given external resource connection
-		ByID := quc.(queries.ByID)
 
-		fmt.Printf("searching in %s table for %s ID\n", reflects.Name(ByID.Type), ByID.ID)
+		fmt.Printf("searching in %s table for %s ID\n", reflects.FullyQualifiedName(quc.Type), quc.ID)
 
 		return iterators.NewEmpty()
+	case delete.ByEntity:
 
-	default:
-		panic("not implemented")
-
-	}
-}
-
-func (storage *MyStorage) Exec(quc frameless.Query) error {
-	switch quc.(type) {
-	case queries.DeleteByEntity:
-		DeleteByEntity := quc.(queries.DeleteByEntity)
-
-		ID, found := reflects.LookupID(DeleteByEntity.Entity)
+		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
-			return errors.New("this implementation depending on an ID field in the entity")
+			return iterators.Errorf("this implementation depending on an ID field in the entity")
 		}
 
-		name := reflects.Name(DeleteByEntity.Entity)
+		name := reflects.FullyQualifiedName(quc.Entity)
 
 		fmt.Printf("deleting from %s the row with the %s ID of\n", name, ID)
 
@@ -96,12 +84,7 @@ func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite
 		spec.Run("queries.ByID", func(t *testing.T) {
 
 			// this will test our implementation against the expected behavior in the ByID specification
-			queries.ByID{
-				Type: MyEntity{},
-				NewEntityForTest: func(interface{}) interface{} {
-					return &MyEntity{}
-				},
-			}.Test(t, storage)
+			find.ByID{Type: MyEntity{}}.Test(t, storage)
 		})
 
 	})

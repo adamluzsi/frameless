@@ -130,15 +130,12 @@ type Iterator interface {
 	Decoder
 }
 
-//
-// Storing And Retrival
-
 // ID is the serialized form of an identification entry that is provided by a given storage and than used for fetching entries from it.
 // this is actually just a primitive string type, the type declaration is only meant to be for documentation purpose
 type ID = string
 
-// Query is a storage specific component.
-// It represent a use case for a specific Read of Update action.
+// Query is a Storage specific component.
+// It represent a use case for a specific Find of Update action.
 // It should not implement or represent anything how the database query will be build,
 // only contain necessary data to make it able implement in the storage.
 // There must be no business logic located in a Query type,
@@ -150,6 +147,12 @@ type ID = string
 // If it's used explicitly by one UseCase, the query use case definition should defined prior to that controller
 // and listed close to each other in the go documentation.
 //
+// This way it maybe feels boilerplate for really dynamic and complex searches, but for those,
+// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
+// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
+//
+// By convention the Query name should start with "[EntityName][FindLogicDescription]" so it is easy to distinguish it from other exported Structures,
+// 	example: UserByName, UsersByName, UserByEmail
 type Query interface {
 	// Test specify the given query Use Case behavior, and must be used for implementing it in the storage side.
 	// For different context and scenarios testing#T.Run is advised to be used.
@@ -157,38 +160,31 @@ type Query interface {
 	//
 	// The *testing.T is used, so the specification can use test specific methods like #Run and #Parallel.
 	//
-	Test(spec *testing.T, subject Storage)
+	Test(*testing.T, Storage)
 }
 
 // Storage define what is the most minimum that a storage should implement in order to be able
 //
-// The CRUD not enforced here because I found that most of the time, it is not even the case.
+// The classic CRUD not enforced here because I found that most of the time, it is not even the case.
+//
 // For example, if there is no such query use case where you have to update something, why implement it ?
-// I found that the most required functionality is Persisting an entity (it's a storage after all) and query and execute on it.
+// I found that the most required functionality is Persisting an entity (it's a storage after all) and execute a query in it.
 type Storage interface {
 	io.Closer
-	// Create able to create a given entity
+
+	// Store able to create a given entity
 	// By convention it also should set the id in the entity
-	Create(Entity) error
-	//
-	// FindBy implements each application Query.Test that used with the given storage.
+	Store(Entity) error
+	// Exec implements the Query#Test -s  each application Query.Test that used with the given storage.
 	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
-	//
-	// This way it maybe feels boilerplate for really dynamic and complex searches, but for those,
-	// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
-	// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
-	//
-	// By convention the Query name should start with "[EntityName][FindLogicDescription]" so it is easy to distinguish it from other exported Structures,
-	// 	example: UserByName, UsersByName, UserByEmail
 	//
 	// for simple use cases where returned iterator expected to only include 1 element I recommend using iterators.DecodeNext(iterator, &entity) for syntax sugar.
 	// The use case common but I do not see benefit enforcing a First, FindOne or similar requirement from the storage.
 	// For creating iterators for a single entity, you can use iterators.NewSingleElement.
-	Find(Query) Iterator
 	//
 	// Exec can execute a Query that goal is to do modification in the storage in a described way by the Query#Test method.
 	//
 	// By convention the Query name should start with the Task to be achieved and than followed by type.
 	// 	example: UpdateUserByName, DeleteUser, InvalidateUser
-	Exec(Query) error
+	Exec(Query) Iterator
 }

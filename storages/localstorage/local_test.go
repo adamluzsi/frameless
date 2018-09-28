@@ -1,15 +1,18 @@
-package storages_test
+package localstorage_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/update"
+	"github.com/adamluzsi/frameless/storages/localstorage"
+
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/delete"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/storages"
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +20,7 @@ import (
 
 func ExampleNewLocal(t testing.TB) (frameless.Storage, func()) {
 	dbPath := filepath.Join(os.TempDir(), uuid.NewV4().String())
-	storage, err := storages.NewLocal(dbPath)
+	storage, err := localstorage.NewLocal(dbPath)
 
 	if err != nil {
 		t.Fatal(err)
@@ -39,7 +42,7 @@ func TestLocalCreate_SpecificValueGiven_IDSet(t *testing.T) {
 
 	entity := NewEntityForTest(SampleEntity{})
 
-	require.Nil(t, storage.Create(entity))
+	require.Nil(t, storage.Store(entity))
 
 	ID, ok := reflects.LookupID(entity)
 
@@ -56,24 +59,16 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queries.ByID{
-				Type: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storage)
+			find.ByID{Type: SampleEntity{}}.Test(t, storage)
 		})
 
-		spec.Run("AllFor", func(t *testing.T) {
+		spec.Run("FindAll", func(t *testing.T) {
 			t.Parallel()
 
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queries.AllFor{
-				Type: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storage)
+			find.All{SampleEntity{}}.Test(t, storage)
 		})
 
 	})
@@ -86,11 +81,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queries.UpdateEntity{
-				Entity: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storage)
+			update.ByEntity{Entity: SampleEntity{}}.Test(t, storage)
 		})
 
 		spec.Run("DeleteByID", func(t *testing.T) {
@@ -99,11 +90,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queries.DeleteByID{
-				Type: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storage)
+			delete.ByID{Type: SampleEntity{}}.Test(t, storage)
 		})
 
 		spec.Run("DeleteByEntity", func(t *testing.T) {
@@ -112,11 +99,7 @@ func TestLocal(suite *testing.T) {
 			storage, td := ExampleNewLocal(t)
 			defer td()
 
-			queries.DeleteByEntity{
-				Entity: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storage)
+			delete.ByEntity{Entity: SampleEntity{}}.Test(t, storage)
 		})
 	})
 }

@@ -3,6 +3,9 @@ package delete
 import (
 	"testing"
 
+	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/fixtures"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
@@ -14,25 +17,23 @@ type ByEntity struct {
 }
 
 // Test will test that an ByEntity is implemented by a generic specification
-func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
+func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage) {
 
-	if fixture == nil {
-		spec.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
-	}
-
-	expected := fixture.New(quc.Entity)
+	expected := fixtures.New(quc.Entity)
 	require.Nil(spec, storage.Store(expected))
 	ID, ok := reflects.LookupID(expected)
 
 	if !ok {
-		spec.Fatal(idRequiredMessage)
+		spec.Fatal(queries.ErrIDRequired)
 	}
 
 	spec.Run("value is Deleted by providing an Entity, and than it should not be findable afterwards", func(t *testing.T) {
 
-		require.Nil(t, storage.Exec(ByEntity{Entity: expected}))
+		deleteResults := storage.Exec(ByEntity{Entity: expected})
+		require.NotNil(t, deleteResults)
+		require.Nil(t, deleteResults.Err())
 
-		iterator := storage.Find(ByID{Type: quc.Entity, ID: ID})
+		iterator := storage.Exec(ByID{Type: quc.Entity, ID: ID})
 		defer iterator.Close()
 
 		if iterator.Next() {

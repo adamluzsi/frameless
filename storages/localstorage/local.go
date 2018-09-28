@@ -1,4 +1,4 @@
-package storages
+package localstorage
 
 import (
 	"bytes"
@@ -10,7 +10,9 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/boltdb/bolt"
 )
@@ -30,7 +32,7 @@ func (storage *Local) Close() error {
 	return storage.db.Close()
 }
 
-func (storage *Local) Create(e frameless.Entity) error {
+func (storage *Local) Store(e frameless.Entity) error {
 	return storage.db.Update(func(tx *bolt.Tx) error {
 
 		bucket, err := storage.ensureBucketFor(tx, e)
@@ -62,9 +64,9 @@ func (storage *Local) Create(e frameless.Entity) error {
 	})
 }
 
-func (storage *Local) Find(quc frameless.Query) frameless.Iterator {
+func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
-	case queries.ByID:
+	case find.ByID:
 		key, err := storage.idToBytes(quc.ID)
 
 		if err != nil {
@@ -100,7 +102,7 @@ func (storage *Local) Find(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewSingleElement(entity)
 
-	case queries.AllFor:
+	case find.All:
 		r, w := iterators.NewPipe()
 
 		go storage.db.View(func(tx *bolt.Tx) error {
@@ -128,23 +130,15 @@ func (storage *Local) Find(quc frameless.Query) frameless.Iterator {
 
 		return r
 
-	default:
-		return iterators.NewError(fmt.Errorf("%s not implemented", reflects.Name(quc)))
-
-	}
-}
-
-func (storage *Local) Exec(quc frameless.Query) error {
-	switch quc := quc.(type) {
-	case queries.DeleteByID:
+	case delete.ByID:
 
 		ID, err := storage.idToBytes(quc.ID)
 
 		if err != nil {
-			return err
+			return iterators.NewError(err)
 		}
 
-		return storage.db.Update(func(tx *bolt.Tx) error {
+		return iterators.NewError(storage.db.Update(func(tx *bolt.Tx) error {
 			bucket, err := storage.bucketFor(tx, quc.Type)
 
 			if err != nil {
@@ -152,37 +146,37 @@ func (storage *Local) Exec(quc frameless.Query) error {
 			}
 
 			return bucket.Delete(ID)
-		})
+		}))
 
-	case queries.DeleteByEntity:
+	case delete.ByEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
-			return fmt.Errorf("can't find ID in %s", reflects.Name(quc.Entity))
+			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
 		}
 
-		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(delete.ByID{Type: quc.Entity, ID: ID})
 
-	case queries.UpdateEntity:
+	case update.ByEntity:
 		encodedID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
-			return fmt.Errorf("can't find ID in %s", reflects.Name(quc.Entity))
+			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
 		}
 
 		ID, err := storage.idToBytes(encodedID)
 
 		if err != nil {
-			return err
+			return iterators.NewError(err)
 		}
 
 		value, err := storage.encode(quc.Entity)
 
 		if err != nil {
-			return err
+			return iterators.NewError(err)
 		}
 
-		return storage.db.Batch(func(tx *bolt.Tx) error {
+		return iterators.NewError(storage.db.Batch(func(tx *bolt.Tx) error {
 			bucket, err := storage.bucketFor(tx, quc.Entity)
 
 			if err != nil {
@@ -190,16 +184,16 @@ func (storage *Local) Exec(quc frameless.Query) error {
 			}
 
 			return bucket.Put(ID, value)
-		})
+		}))
 
 	default:
-		return fmt.Errorf("%s not implemented", reflects.Name(quc))
+		return iterators.NewError(fmt.Errorf("%s not implemented", reflects.FullyQualifiedName(quc)))
 
 	}
 }
 
 func (storage *Local) bucketName(e frameless.Entity) []byte {
-	return []byte(reflects.Name(e))
+	return []byte(reflects.FullyQualifiedName(e))
 }
 
 func (storage *Local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
@@ -208,7 +202,7 @@ func (storage *Local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, 
 	var err error
 
 	if bucket == nil {
-		err = fmt.Errorf("No entity created before with type %s", reflects.Name(e))
+		err = fmt.Errorf("No entity created before with type %s", reflects.FullyQualifiedName(e))
 	}
 
 	return bucket, err

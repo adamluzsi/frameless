@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators/iterateover"
-
-	"github.com/adamluzsi/frameless/queries"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/storages/memorystorage"
+	"github.com/adamluzsi/frameless/storages/mockstorage"
 
 	randomdata "github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless/iterators"
@@ -28,7 +28,7 @@ var (
 func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing.T) {
 	t.Parallel()
 
-	storage := storages.NewMemory()
+	storage := memorystorage.NewMemory()
 	usecases := ExampleUseCases(storage)
 
 	p := presenters.NewMock()
@@ -45,7 +45,7 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 
 	require.Nil(t, usecases.AddNote(r, p))
 
-	i := storage.Find(queries.AllFor{Type: example.Note{}})
+	i := storage.Exec(find.All{Type: example.Note{}})
 
 	foundNotes := []*example.Note{}
 	require.Nil(t, iterateover.AndCollectAll(i, &foundNotes))
@@ -62,7 +62,7 @@ func TestUseCasesAddNote_ErrHappenInStorage_ErrReturned(t *testing.T) {
 	t.Parallel()
 
 	expectedError := errors.New("Boom!")
-	storage := storages.NewMock()
+	storage := mockstorage.NewMock()
 	storage.ReturnError = expectedError
 
 	usecases := ExampleUseCases(storage)
@@ -83,7 +83,7 @@ func TestUseCasesAddNote_MissingTitle_ErrReturned(t *testing.T) {
 	ctx := context.Background()
 	usecases := ExampleUseCases(nil)
 
-	require.Equal(t, errors.New("missing Title"), usecases.AddNote(requests.New(ctx, iterators.NewEmpty()), nil ))
+	require.Equal(t, errors.New("missing Title"), usecases.AddNote(requests.New(ctx, iterators.NewEmpty()), nil))
 
 	ctx = context.WithValue(ctx, "Title", AddNoteTitle)
 	require.Equal(t, errors.New("missing Content"), usecases.AddNote(requests.New(ctx, iterators.NewEmpty()), nil))

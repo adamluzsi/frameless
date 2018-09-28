@@ -1,4 +1,4 @@
-package storages
+package memorystorage
 
 import (
 	"crypto/rand"
@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"reflect"
 
+	qd "github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless/iterators"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queries"
 )
 
 func NewMemory() *Memory {
@@ -26,7 +28,7 @@ func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *Memory) Create(e frameless.Entity) error {
+func (storage *Memory) Store(e frameless.Entity) error {
 
 	id, err := randID()
 
@@ -38,11 +40,11 @@ func (storage *Memory) Create(e frameless.Entity) error {
 	return reflects.SetID(e, id)
 }
 
-func (storage *Memory) Find(quc frameless.Query) frameless.Iterator {
-	switch quc.(type) {
-	case queries.ByID:
-		byID := quc.(queries.ByID)
-		entity, found := storage.tableFor(byID.Type)[byID.ID]
+func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
+	switch quc := quc.(type) {
+
+	case find.ByID:
+		entity, found := storage.tableFor(quc.Type)[quc.ID]
 
 		if found {
 			return iterators.NewSingleElement(entity)
@@ -50,9 +52,8 @@ func (storage *Memory) Find(quc frameless.Query) frameless.Iterator {
 			return iterators.NewEmpty()
 		}
 
-	case queries.AllFor:
-		byAll := quc.(queries.AllFor)
-		table := storage.tableFor(byAll.Type)
+	case find.All:
+		table := storage.tableFor(quc.Type)
 
 		entities := []frameless.Entity{}
 		for _, entity := range table {
@@ -61,51 +62,43 @@ func (storage *Memory) Find(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewSlice(entities)
 
-	default:
-		return iterators.NewError(fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name()))
-
-	}
-}
-
-func (storage *Memory) Exec(quc frameless.Query) error {
-	switch quc := quc.(type) {
-	case queries.DeleteByID:
+	case qd.ByID:
 		table := storage.tableFor(quc.Type)
 
 		if _, ok := table[quc.ID]; ok {
 			delete(table, quc.ID)
 		}
 
-		return nil
+		return iterators.NewEmpty()
 
-	case queries.DeleteByEntity:
+	case qd.ByEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
-			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
+			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(qd.ByID{Type: quc.Entity, ID: ID})
 
-	case queries.UpdateEntity:
+	case update.ByEntity:
 		ID, found := reflects.LookupID(quc.Entity)
 
 		if !found {
-			return fmt.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
+			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
 		table := storage.tableFor(quc.Entity)
 
 		if _, ok := table[ID]; !ok {
-			return fmt.Errorf("%s id not found in the %s table", ID, reflects.Name(quc.Entity))
+			return iterators.Errorf("%s id not found in the %s table", ID, reflects.FullyQualifiedName(quc.Entity))
 		}
 
 		table[ID] = quc.Entity
 
-		return nil
+		return iterators.NewEmpty()
 
 	default:
-		return fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name())
+		return iterators.NewError(fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name()))
 
 	}
 }
@@ -117,7 +110,7 @@ func (storage *Memory) Exec(quc frameless.Query) error {
 type memoryTable map[string]frameless.Entity
 
 func (storage *Memory) tableFor(e frameless.Entity) memoryTable {
-	name := reflects.Name(e)
+	name := reflects.FullyQualifiedName(e)
 
 	if _, ok := storage.db[name]; !ok {
 		storage.db[name] = make(memoryTable)

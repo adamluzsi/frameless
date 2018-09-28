@@ -9,7 +9,7 @@ import (
 	randomdata "github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless/example"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/storages/memorystorage"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/presenters"
@@ -19,7 +19,7 @@ import (
 func TestUseCasesListNotes_NoNotesInTheStore_EmptySetReturned(t *testing.T) {
 	t.Parallel()
 
-	storage := storages.NewMemory()
+	storage := memorystorage.NewMemory()
 	usecases := ExampleUseCases(storage)
 	p := presenters.NewMock()
 	r := requests.New(context.Background(), iterators.NewEmpty())
@@ -33,7 +33,7 @@ func TestUseCasesListNotes_NotesStoredInTheStorageAlready_AllNoteReturned(t *tes
 
 	t.Parallel()
 
-	storage := storages.NewMemory()
+	storage := memorystorage.NewMemory()
 	usecases := ExampleUseCases(storage)
 	AddNotest(t, storage, notes)
 
@@ -50,7 +50,7 @@ func TestUseCasesListNotes_StorageFails_ErrReturned(t *testing.T) {
 
 	t.Parallel()
 
-	storage := storages.NewMemory()
+	storage := memorystorage.NewMemory()
 	usecases := ExampleUseCases(storage)
 	AddNotest(t, storage, notes)
 
@@ -75,6 +75,6 @@ func CreateNotes() []*example.Note {
 
 func AddNotest(t testing.TB, toStorage frameless.Storage, notes []*example.Note) {
 	for _, note := range notes {
-		require.Nil(t, toStorage.Create(note))
+		require.Nil(t, toStorage.Store(note))
 	}
 }

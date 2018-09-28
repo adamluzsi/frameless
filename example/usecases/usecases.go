@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/example"
 	"github.com/adamluzsi/frameless/iterators/iterateover"
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/find"
 )
 
 func NewUseCases(storage frameless.Storage) *UseCases {
@@ -20,7 +20,7 @@ type UseCases struct {
 func (uc *UseCases) ListNotes(r frameless.Request, p frameless.Presenter) error {
 	notes := []*example.Note{}
 
-	i := uc.storage.Find(queries.AllFor{Type: example.Note{}})
+	i := uc.storage.Exec(find.All{Type: example.Note{}})
 
 	if err := iterateover.AndCollectAll(i, &notes); err != nil {
 		return err
@@ -45,7 +45,7 @@ func (uc *UseCases) AddNote(r frameless.Request, p frameless.Presenter) error {
 		Content: content,
 	}
 
-	if err := uc.storage.Create(newNote); err != nil {
+	if err := uc.storage.Store(newNote); err != nil {
 		return err
 	}
 

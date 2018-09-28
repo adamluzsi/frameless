@@ -26,13 +26,13 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
 				inactiveUsers = append(inactiveUsers, u)
 			}
 
-			require.Nil(suite, storage.Create(u))
+			require.Nil(suite, storage.Store(u))
 		}
 
 		suite.Run("All Inactive users returned on search", func(t *testing.T) {
 			t.Parallel()
 
-			i := storage.Find(InactiveUsers{})
+			i := storage.Exec(InactiveUsers{})
 			require.Nil(t, i.Err())
 
 			count := 0

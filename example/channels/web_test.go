@@ -9,7 +9,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/storages/memorystorage"
 
 	randomdata "github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless/example"
@@ -17,14 +18,12 @@ import (
 
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/storages"
-
 	"github.com/adamluzsi/frameless/example/channels"
 	"github.com/adamluzsi/frameless/example/usecases"
 )
 
 func ExampleNewHTTPHandler() (http.Handler, frameless.Storage) {
-	s := storages.NewMemory()
+	s := memorystorage.NewMemory()
 	u := usecases.NewUseCases(s)
 	return channels.NewHTTPHandler(u), s
 }
@@ -62,7 +61,7 @@ func TestNewHTTPHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/list", strings.NewReader(``))
 
-			require.Nil(t, s.Create(note))
+			require.Nil(t, s.Store(note))
 			h.ServeHTTP(w, r)
 
 			body := w.Body.String()
@@ -90,7 +89,7 @@ func TestNewHTTPHandler(t *testing.T) {
 		require.True(t, len(matches) > 0)
 
 		var note example.Note
-		if err := iterators.First(s.Find(queries.ByID{Type: note, ID: matches[0][1]}), &note); err != nil {
+		if err := iterators.First(s.Exec(find.ByID{Type: note, ID: matches[0][1]}), &note); err != nil {
 			t.Fatal(err)
 		}
 

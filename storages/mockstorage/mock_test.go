@@ -1,4 +1,4 @@
-package storages_test
+package mockstorage_test
 
 import (
 	"errors"
@@ -7,11 +7,11 @@ import (
 	"github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/storages/mockstorage"
 	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.Storage = storages.NewMemory()
+var _ frameless.Storage = mockstorage.NewMock()
 
 func TestMock(t *testing.T) {
 
@@ -20,32 +20,45 @@ func TestMock(t *testing.T) {
 	expected := randomdata.SillyName()
 	var actually string
 
-	FindStub := func(frameless.Query) frameless.Iterator {
+	ExecStub := func(frameless.Query) frameless.Iterator {
 		return iterators.NewSingleElement(expected)
 	}
 
-	ExecStub := func(frameless.Query) error {
-		return errors.New("stub")
-	}
+	t.Run("exec stub", func(t *testing.T) {
+		t.Parallel()
 
-	mock := storages.NewMock()
-	mock.FindStub = FindStub
-	mock.ExecStub = ExecStub
+		mock := mockstorage.NewMock()
+		mock.ExecStub = ExecStub
 
-	// Happy stubbed case
-	require.Nil(t, mock.Create(entity))
-	require.Equal(t, []frameless.Entity{entity}, mock.Created)
-	require.Equal(t, "stub", mock.Exec(nil).Error())
-	require.Nil(t, iterators.DecodeNext(mock.Find(nil), &actually))
-	require.Equal(t, expected, actually)
+		require.Nil(t, mock.Store(entity))
+		require.Equal(t, []frameless.Entity{entity}, mock.Created)
 
-	// Err case
-	mock.ReturnError = errors.New("BOOM!")
-	require.Equal(t, mock.ReturnError, mock.Create(entity))
-	require.Equal(t, mock.ReturnError, mock.Exec(nil))
-	require.Equal(t, mock.ReturnError, mock.Find(nil).Err())
+		fakeIterator := mock.Exec(nil)
+		require.NotNil(t, fakeIterator)
+		require.Nil(t, fakeIterator.Err())
+		require.Nil(t, iterators.DecodeNext(mock.Exec(nil), &actually))
+		require.Equal(t, expected, actually)
+	})
 
-	require.True(t, mock.IsOpen)
-	require.Nil(t, mock.Close())
-	require.False(t, mock.IsOpen)
+	t.Run("err stub", func(t *testing.T) {
+		t.Parallel()
+
+		mock := mockstorage.NewMock()
+		mock.ExecStub = ExecStub
+
+		mock.ReturnError = errors.New("BOOM!")
+		require.Equal(t, mock.ReturnError, mock.Store(entity))
+		require.Equal(t, mock.ReturnError, mock.Exec(nil).Err())
+
+	})
+
+	t.Run("Close", func(t *testing.T) {
+		t.Parallel()
+
+		mock := mockstorage.NewMock()
+		require.True(t, mock.IsOpen)
+		require.Nil(t, mock.Close())
+		require.False(t, mock.IsOpen)
+
+	})
 }

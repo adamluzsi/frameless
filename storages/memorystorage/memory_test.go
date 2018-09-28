@@ -1,23 +1,24 @@
-package storages_test
+package memorystorage_test
 
 import (
 	"testing"
 
+	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/storages/memorystorage"
 
-	"github.com/adamluzsi/frameless/queries"
-
-	"github.com/adamluzsi/frameless/storages"
 	"github.com/stretchr/testify/require"
 )
 
-func TestMemoryCreate_SpecificValueGiven_IDSet(t *testing.T) {
+func TestMemoryStore_SpecificValueGiven_IDSet(t *testing.T) {
 	t.Parallel()
 
-	storage := storages.NewMemory()
+	storage := memorystorage.NewMemory()
 	entity := NewEntityForTest(SampleEntity{})
 
-	require.Nil(t, storage.Create(entity))
+	require.Nil(t, storage.Store(entity))
 
 	ID, ok := reflects.LookupID(entity)
 
@@ -31,21 +32,13 @@ func TestMemory(suite *testing.T) {
 		spec.Run("ByID", func(t *testing.T) {
 			t.Parallel()
 
-			queries.ByID{
-				Type: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storages.NewMemory())
+			find.ByID{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 
-		spec.Run("AllFor", func(t *testing.T) {
+		spec.Run("FindAll", func(t *testing.T) {
 			t.Parallel()
 
-			queries.AllFor{
-				Type: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storages.NewMemory())
+			find.All{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 
 	})
@@ -55,31 +48,19 @@ func TestMemory(suite *testing.T) {
 		spec.Run("UpdateEntity", func(t *testing.T) {
 			t.Parallel()
 
-			queries.UpdateEntity{
-				Entity: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storages.NewMemory())
+			update.ByEntity{Entity: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 
 		spec.Run("DeleteByID", func(t *testing.T) {
 			t.Parallel()
 
-			queries.DeleteByID{
-				Type: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storages.NewMemory())
+			delete.ByID{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 
 		spec.Run("DeleteByEntity", func(t *testing.T) {
 			t.Parallel()
 
-			queries.DeleteByEntity{
-				Entity: SampleEntity{},
-
-				NewEntityForTest: NewEntityForTest,
-			}.Test(t, storages.NewMemory())
+			delete.ByEntity{Entity: SampleEntity{}}.Test(t, memorystorage.NewMemory())
 		})
 	})
 }

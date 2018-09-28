@@ -1,7 +1,12 @@
-package queries
+package update
 
 import (
 	"testing"
+
+	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/fixtures"
 
 	"github.com/adamluzsi/frameless/iterators"
 
@@ -11,44 +16,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// UpdateEntity will request an update for a wrapped entity object in the storage
-// Entity parameter is the wrapped entity that has the updated values.
-type UpdateEntity struct{ Entity frameless.Entity }
+// ByEntity will request an update for a wrapped entity object in the storage
+// ByEntity parameter is the wrapped entity that has the updated values.
+type ByEntity struct{ Entity frameless.Entity }
 
-func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
-
-	if fixture.New == nil {
-		suite.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
-	}
-
-	suite.Run("UpdateEntity", func(spec *testing.T) {
+func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage) {
+	suite.Run("ByEntity", func(spec *testing.T) {
 
 		setup := func() (string, func()) {
-			entity := fixture.New(quc.Entity)
+			entity := fixtures.New(quc.Entity)
 			require.Nil(spec, storage.Store(entity))
 
 			ID, ok := reflects.LookupID(entity)
 
 			if !ok {
-				spec.Fatal(ErrIDRequired)
+				spec.Fatal(queries.ErrIDRequired)
 			}
 
 			require.True(spec, len(ID) > 0)
-			return ID, func() { storage.Exec(DeleteByEntity{Entity: quc.Entity}) }
+			return ID, func() { storage.Exec(delete.ByEntity{Entity: quc.Entity}) }
 		}
 
 		spec.Run("values returned", func(t *testing.T) {
 			ID, td := setup()
 			defer td()
 
-			newEntity := fixture.New(quc.Entity)
+			newEntity := fixtures.New(quc.Entity)
 			reflects.SetID(newEntity, ID)
 
-			require.Nil(t, storage.Exec(UpdateEntity{Entity: newEntity}))
+			updateResults := storage.Exec(ByEntity{Entity: newEntity})
+			require.NotNil(t, updateResults)
+			require.Nil(t, updateResults.Err())
 
-			iterator := storage.Exec(ByID{Type: quc.Entity, ID: ID})
+			iterator := storage.Exec(find.ByID{Type: quc.Entity, ID: ID})
 
-			actually := fixture.New(quc.Entity)
+			actually := fixtures.New(quc.Entity)
 			iterators.DecodeNext(iterator, actually)
 
 			require.Equal(t, newEntity, actually)
@@ -59,9 +61,9 @@ func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Storage, fixtur
 			_, td := setup()
 			defer td()
 
-			newEntity := fixture.New(quc.Entity)
+			newEntity := fixtures.New(quc.Entity)
 			reflects.SetID(newEntity, "hitchhiker's guide to the galaxy")
-			require.Error(t, storage.Exec(UpdateEntity{Entity: newEntity}).Err())
+			require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
 
 		})
 

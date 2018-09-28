@@ -8,7 +8,7 @@ import (
 
 	"github.com/adamluzsi/frameless/example/channels"
 	"github.com/adamluzsi/frameless/example/usecases"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/storages/localstorage"
 )
 
 func main() {
@@ -18,7 +18,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	storage, err := storages.NewLocal(filepath.Join(wd, "db"))
+	storage, err := localstorage.NewLocal(filepath.Join(wd, "db"))
 	if err != nil {
 		log.Fatal(err)
 	}

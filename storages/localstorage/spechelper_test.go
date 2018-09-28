@@ -1,4 +1,4 @@
-package memorystorage
+package localstorage_test
 
 import (
 	"math/rand"

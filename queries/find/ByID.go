@@ -1,6 +1,9 @@
-package queries
+package find
 
 import (
+	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/delete"
+	"github.com/adamluzsi/frameless/queries/fixtures"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -21,32 +24,28 @@ type ByID struct {
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc ByID) Test(spec *testing.T, storage frameless.Storage, fixture frameless.Fixture) {
-
-	if fixture == nil {
-		spec.Fatal("without NewEntityForTest it this spec cannot work, but for usage outside of testing NewEntityForTest must not be used")
-	}
+func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 
 	ids := []string{}
 
 	for i := 0; i < 10; i++ {
 
-		entity := fixture.New(quc.Type)
+		entity := fixtures.New(quc.Type)
 		require.Nil(spec, storage.Store(entity))
 		ID, ok := reflects.LookupID(entity)
 
 		if !ok {
-			spec.Fatal(idRequiredMessage)
+			spec.Fatal(queries.ErrIDRequired)
 		}
 
 		require.True(spec, len(ID) > 0)
 		ids = append(ids, ID)
 
-		defer storage.Exec(DeleteByID{Type: quc.Test, ID: ID})
+		defer storage.Exec(delete.ByID{Type: quc.Test, ID: ID})
 	}
 
 	spec.Run("when no value stored that the query request", func(t *testing.T) {
-		iterator := storage.Find(ByID{Type: quc.Type, ID: "The Cake Is a Lie"})
+		iterator := storage.Exec(ByID{Type: quc.Type, ID: "The Cake Is a Lie"})
 		defer iterator.Close()
 
 		if iterator.Next() {
@@ -62,7 +61,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, fixture framele
 			var entity frameless.Entity
 
 			func() {
-				iterator := storage.Find(ByID{Type: quc.Type, ID: ID})
+				iterator := storage.Exec(ByID{Type: quc.Type, ID: ID})
 
 				defer iterator.Close()
 
