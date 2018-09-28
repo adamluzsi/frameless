@@ -2,7 +2,7 @@ package reflects_test
 
 import (
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/stretchr/testify/require"
+	"reflect"
 	"testing"
 )
 
@@ -16,33 +16,12 @@ func TestName(t *testing.T) {
 
 		SpecForPrimitiveNames(spec, subject)
 
-		spec.Run("when given object is an interface", func(t *testing.T) {
-			t.Parallel()
+		cases := make(map[interface{}]reflect.Type)
 
-			var i InterfaceObject = &StructObject{}
-
-			require.Equal(t, "StructObject", subject(i))
-		})
-
-		spec.Run("when given object is a struct", func(t *testing.T) {
-			t.Parallel()
-
-			require.Equal(t, "StructObject", subject(StructObject{}))
-		})
-
-		spec.Run("when given object is a pointer of a struct", func(t *testing.T) {
-			t.Parallel()
-
-			require.Equal(t, "StructObject", subject(&StructObject{}))
-		})
-
-		spec.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
-			t.Parallel()
-
-			o := &StructObject{}
-
-			require.Equal(t, "StructObject", subject(&o))
-		})
+		cases[StructObject{}] = reflect.TypeOf(StructObject{})
+		cases[&StructObject{}] = reflect.TypeOf(StructObject{})
+		o := &StructObject{}
+		cases[&o] = reflect.TypeOf(StructObject{})
 
 	})
 }
