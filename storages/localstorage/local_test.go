@@ -1,17 +1,15 @@
 package localstorage_test
 
 import (
+	"github.com/adamluzsi/frameless/queries"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/find"
-	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/storages/localstorage"
 
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
@@ -50,56 +48,8 @@ func TestLocalCreate_SpecificValueGiven_IDSet(t *testing.T) {
 	require.True(t, len(ID) > 0)
 }
 
-func TestLocal(suite *testing.T) {
-	suite.Run("Find", func(spec *testing.T) {
-
-		spec.Run("ByID", func(t *testing.T) {
-			t.Parallel()
-
-			storage, td := ExampleNewLocal(t)
-			defer td()
-
-			find.ByID{Type: SampleEntity{}}.Test(t, storage)
-		})
-
-		spec.Run("FindAll", func(t *testing.T) {
-			t.Parallel()
-
-			storage, td := ExampleNewLocal(t)
-			defer td()
-
-			find.All{SampleEntity{}}.Test(t, storage)
-		})
-
-	})
-
-	suite.Run("Exec", func(spec *testing.T) {
-
-		spec.Run("UpdateEntity", func(t *testing.T) {
-			t.Parallel()
-
-			storage, td := ExampleNewLocal(t)
-			defer td()
-
-			update.ByEntity{Entity: SampleEntity{}}.Test(t, storage)
-		})
-
-		spec.Run("DeleteByID", func(t *testing.T) {
-			t.Parallel()
-
-			storage, td := ExampleNewLocal(t)
-			defer td()
-
-			destroy.ByID{Type: SampleEntity{}}.Test(t, storage)
-		})
-
-		spec.Run("DeleteByEntity", func(t *testing.T) {
-			t.Parallel()
-
-			storage, td := ExampleNewLocal(t)
-			defer td()
-
-			destroy.ByEntity{Entity: SampleEntity{}}.Test(t, storage)
-		})
-	})
+func TestLocal(t *testing.T) {
+	s, td := ExampleNewLocal(t)
+	defer td()
+	queries.Test(t, s)
 }

@@ -108,19 +108,17 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		go storage.db.View(func(tx *bolt.Tx) error {
 			defer w.Close()
 
-			bucket, err := storage.bucketFor(tx, quc.Type)
-			if err != nil {
-				w.Error(err)
-				return err
+			bucket := tx.Bucket(storage.bucketName(quc.Type))
+
+			if bucket == nil {
+				return nil
 			}
 
-			err = bucket.ForEach(func(IDbytes, encodedEntity []byte) error {
+			if err := bucket.ForEach(func(IDbytes, encodedEntity []byte) error {
 				entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
 				storage.decode(encodedEntity, entity)
 				return w.Send(entity) // iterators.ErrClosed will cancel ForEach execution
-			})
-
-			if err != nil {
+			}); err != nil {
 				w.Error(err)
 				return err
 			}
@@ -143,6 +141,10 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 			if err != nil {
 				return err
+			}
+
+			if v := bucket.Get(ID); v == nil {
+				return fmt.Errorf("%s is not found", quc.ID)
 			}
 
 			return bucket.Delete(ID)

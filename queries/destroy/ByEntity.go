@@ -3,7 +3,7 @@ package destroy
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 
 	"github.com/adamluzsi/frameless"
@@ -24,7 +24,7 @@ func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage) {
 	ID, ok := reflects.LookupID(expected)
 
 	if !ok {
-		spec.Fatal(queries.ErrIDRequired)
+		spec.Fatal(queryerrors.ErrIDRequired)
 	}
 
 	spec.Run("value is Deleted by providing an Entity, and than it should not be findable afterwards", func(t *testing.T) {

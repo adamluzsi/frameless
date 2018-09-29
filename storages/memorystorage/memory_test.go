@@ -1,11 +1,9 @@
 package memorystorage_test
 
 import (
+	"github.com/adamluzsi/frameless/queries"
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/destroy"
-	"github.com/adamluzsi/frameless/queries/find"
-	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/storages/memorystorage"
 
@@ -27,40 +25,5 @@ func TestMemoryStore_SpecificValueGiven_IDSet(t *testing.T) {
 }
 
 func TestMemory(suite *testing.T) {
-	suite.Run("Find", func(spec *testing.T) {
-
-		spec.Run("ByID", func(t *testing.T) {
-			t.Parallel()
-
-			find.ByID{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
-		})
-
-		spec.Run("FindAll", func(t *testing.T) {
-			t.Parallel()
-
-			find.All{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
-		})
-
-	})
-
-	suite.Run("Exec", func(spec *testing.T) {
-
-		spec.Run("UpdateEntity", func(t *testing.T) {
-			t.Parallel()
-
-			update.ByEntity{Entity: SampleEntity{}}.Test(t, memorystorage.NewMemory())
-		})
-
-		spec.Run("DeleteByID", func(t *testing.T) {
-			t.Parallel()
-
-			destroy.ByID{Type: SampleEntity{}}.Test(t, memorystorage.NewMemory())
-		})
-
-		spec.Run("DeleteByEntity", func(t *testing.T) {
-			t.Parallel()
-
-			destroy.ByEntity{Entity: SampleEntity{}}.Test(t, memorystorage.NewMemory())
-		})
-	})
+	queries.Test(suite, memorystorage.NewMemory())
 }

@@ -1,14 +1,12 @@
 package find
 
 import (
-	"reflect"
-	"testing"
-
-	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/reflects"
+	"reflect"
+	"testing"
 
 	"github.com/adamluzsi/frameless"
 
@@ -22,27 +20,25 @@ import (
 type All struct{ Type frameless.Entity }
 
 func (quc All) Test(t *testing.T, storage frameless.Storage) {
-	ids := []string{}
 
-	for i := 0; i < 10; i++ {
+	t.Run("when value stored in the database", func(t *testing.T) {
+		ids := []string{}
 
-		entity := fixtures.New(quc.Type)
-		require.Nil(t, storage.Store(entity))
+		for i := 0; i < 10; i++ {
 
-		id, found := reflects.LookupID(entity)
+			entity := fixtures.New(quc.Type)
+			require.Nil(t, storage.Store(entity))
 
-		if !found {
-			t.Fatal(queries.ErrIDRequired)
+			id, found := reflects.LookupID(entity)
+
+			if !found {
+				t.Fatal(queryerrors.ErrIDRequired)
+			}
+
+			ids = append(ids, id)
 		}
 
-		ids = append(ids, id)
-
-		defer storage.Store(destroy.ByID{Type: quc.Test, ID: id})
-
-	}
-
-	t.Run("Find", func(t *testing.T) {
-		i := storage.Exec(quc)
+		i := storage.Exec(All{Type: quc.Type})
 		defer i.Close()
 
 		for i.Next() {
@@ -53,12 +49,29 @@ func (quc All) Test(t *testing.T, storage frameless.Storage) {
 			id, found := reflects.LookupID(entity)
 
 			if !found {
-				t.Fatal(queries.ErrIDRequired)
+				t.Fatal(queryerrors.ErrIDRequired)
 			}
 
 			require.Contains(t, ids, id)
 		}
 
+		for _, id := range ids {
+			require.Nil(t, storage.Exec(destroy.ByID{Type: quc.Type, ID: id}).Err())
+		}
+
+		require.Nil(t, i.Err())
+	})
+
+	t.Run("when no value present in the database", func(t *testing.T) {
+		i := storage.Exec(All{Type: quc.Type})
+		defer i.Close()
+
+		total := 0
+		for i.Next() {
+			total++
+		}
+
+		require.Equal(t, 0, total)
 		require.Nil(t, i.Err())
 	})
 

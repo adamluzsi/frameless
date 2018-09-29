@@ -1,1 +1,44 @@
 package queries
+
+import (
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/queries/destroy"
+	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/update"
+	"testing"
+)
+
+func Test(t *testing.T, s frameless.Storage) {
+	t.Run("query implementations", func(suite *testing.T) {
+		suite.Run("find", func(spec *testing.T) {
+			spec.Run("ByID", func(t *testing.T) {
+				//find.ByID{Type: testEntity{}}.Test(t, s)
+			})
+
+			spec.Run("FindAll", func(t *testing.T) {
+				find.All{Type: testEntity{}}.Test(t, s)
+			})
+		})
+
+		suite.Run("update", func(spec *testing.T) {
+			spec.Run("UpdateEntity", func(t *testing.T) {
+				update.ByEntity{Entity: testEntity{}}.Test(t, s)
+			})
+		})
+
+		suite.Run("destroy", func(spec *testing.T) {
+			spec.Run("DeleteByID", func(t *testing.T) {
+				destroy.ByID{Type: testEntity{}}.Test(t, s)
+			})
+
+			spec.Run("DeleteByEntity", func(t *testing.T) {
+				destroy.ByEntity{Entity: testEntity{}}.Test(t, s)
+			})
+		})
+	})
+}
+
+type testEntity struct {
+	ID   string
+	Name string
+}

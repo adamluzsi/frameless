@@ -1,7 +1,7 @@
 package find
 
 import (
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 	"testing"
@@ -35,7 +35,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 		ID, ok := reflects.LookupID(entity)
 
 		if !ok {
-			spec.Fatal(queries.ErrIDRequired)
+			spec.Fatal(queryerrors.ErrIDRequired)
 		}
 
 		require.True(spec, len(ID) > 0)
