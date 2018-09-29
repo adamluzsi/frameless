@@ -130,10 +130,6 @@ type Iterator interface {
 	Decoder
 }
 
-// ID is the serialized form of an identification entry that is provided by a given storage and than used for fetching entries from it.
-// this is actually just a primitive string type, the type declaration is only meant to be for documentation purpose
-type ID = string
-
 // Query is a Storage specific component.
 // It represent a use case for a specific Find of Update action.
 // It should not implement or represent anything how the database query will be build,
@@ -169,6 +165,10 @@ type Query interface {
 //
 // For example, if there is no such query use case where you have to update something, why implement it ?
 // I found that the most required functionality is Persisting an entity (it's a storage after all) and execute a query in it.
+//
+// Storage use a field called `ID` to represent the link to a stored object.
+// This ID in other words is the serialized form of an identification entry that is provided by a given storage and than used for fetching entries from it.
+// The ID represented in the data structures as a primitive string type
 type Storage interface {
 	io.Closer
 
