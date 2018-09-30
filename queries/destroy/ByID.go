@@ -22,7 +22,8 @@ type ByID struct {
 }
 
 // Test will test that an ByID is implemented by a generic specification
-func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
+func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
+	defer reset()
 
 	ids := []string{}
 

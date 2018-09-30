@@ -24,6 +24,12 @@ func TestMemoryStore_SpecificValueGiven_IDSet(t *testing.T) {
 	require.True(t, len(ID) > 0)
 }
 
+func ExampleMemory() *memorystorage.Memory {
+	return memorystorage.NewMemory()
+}
+
 func TestMemory(suite *testing.T) {
-	queries.Test(suite, memorystorage.NewMemory())
+	storage := ExampleMemory()
+
+	queries.Test(suite, storage, func() { *storage = *ExampleMemory() })
 }

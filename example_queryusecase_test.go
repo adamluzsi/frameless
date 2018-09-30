@@ -14,8 +14,9 @@ type User struct {
 type InactiveUsers struct{} // <- Query
 
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
-func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
+func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage, resetStorage func()) {
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
+		defer resetStorage()
 
 		spec.Log("Given 10 users stored in the storage")
 		inactiveUsers := []*User{}
@@ -30,7 +31,6 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
 		}
 
 		suite.Run("All Inactive users returned on search", func(t *testing.T) {
-			t.Parallel()
 
 			i := storage.Exec(InactiveUsers{})
 			require.Nil(t, i.Err())

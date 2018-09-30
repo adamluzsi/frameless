@@ -77,14 +77,16 @@ func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
 
 func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite *testing.T) {
 	suite.Run("Query", func(spec *testing.T) {
-		storage := &MyStorage{ExternalResourceConnection: nil}
+		var storage *MyStorage
+		reset := func() { *storage = MyStorage{ExternalResourceConnection: nil} }
+		reset()
 		// or you can create NewMyStorage(interface{}) as well for controlled initialization of your storage implementation,
 		// and use it here for initialize the object
 
 		spec.Run("queries.ByID", func(t *testing.T) {
 
 			// this will test our implementation against the expected behavior in the ByID specification
-			find.ByID{Type: MyEntity{}}.Test(t, storage)
+			find.ByID{Type: MyEntity{}}.Test(t, storage, reset)
 		})
 
 	})

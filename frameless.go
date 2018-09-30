@@ -156,7 +156,9 @@ type Query interface {
 	//
 	// The *testing.T is used, so the specification can use test specific methods like #Run and #Parallel.
 	//
-	Test(*testing.T, Storage)
+	// the last argument, reset represent a cleanup/teardown mechanism to reset storage state to the initial default, before a new specification would be run.
+	// if reset encounter an error during it's run it is responsible to make the test scope fail, and not delegate this responsibility to the query specification.
+	Test(t *testing.T, s Storage, resetDB func())
 }
 
 // Storage define what is the most minimum that a storage should implement in order to be able

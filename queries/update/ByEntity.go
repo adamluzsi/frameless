@@ -3,10 +3,9 @@ package update
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 
 	"github.com/adamluzsi/frameless/iterators"
 
@@ -20,10 +19,10 @@ import (
 // ByEntity parameter is the wrapped entity that has the updated values.
 type ByEntity struct{ Entity frameless.Entity }
 
-func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage) {
+func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func() ) {
 	suite.Run("ByEntity", func(spec *testing.T) {
 
-		setup := func() (string, func()) {
+		setup := func() (string, func() ) {
 			entity := fixtures.New(quc.Entity)
 			require.Nil(spec, storage.Store(entity))
 
@@ -34,7 +33,8 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage) {
 			}
 
 			require.True(spec, len(ID) > 0)
-			return ID, func() { storage.Exec(destroy.ByEntity{Entity: quc.Entity}) }
+
+			return ID, reset
 		}
 
 		spec.Run("values returned", func(t *testing.T) {
