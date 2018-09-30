@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
+	"github.com/adamluzsi/frameless/storages"
 	"reflect"
 	"strconv"
 
@@ -49,7 +50,7 @@ func (storage *Local) Store(e frameless.Entity) error {
 
 		encodedID := strconv.FormatUint(uIntID, 10)
 
-		if err = reflects.SetID(e, encodedID); err != nil {
+		if err = storages.SetID(e, encodedID); err != nil {
 			return err
 		}
 
@@ -151,7 +152,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	case destroy.ByEntity:
-		ID, found := reflects.LookupID(quc.Entity)
+		ID, found := storages.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
@@ -160,7 +161,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
 
 	case update.ByEntity:
-		encodedID, found := reflects.LookupID(quc.Entity)
+		encodedID, found := storages.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))

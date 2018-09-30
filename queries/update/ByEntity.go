@@ -1,6 +1,7 @@
 package update
 
 import (
+	"github.com/adamluzsi/frameless/storages"
 	"testing"
 
 	"github.com/adamluzsi/frameless/queries/find"
@@ -8,8 +9,6 @@ import (
 	"github.com/adamluzsi/frameless/queries/queryerrors"
 
 	"github.com/adamluzsi/frameless/iterators"
-
-	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/stretchr/testify/require"
@@ -19,14 +18,14 @@ import (
 // ByEntity parameter is the wrapped entity that has the updated values.
 type ByEntity struct{ Entity frameless.Entity }
 
-func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func() ) {
+func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func()) {
 	suite.Run("ByEntity", func(spec *testing.T) {
 
-		setup := func() (string, func() ) {
+		setup := func() (string, func()) {
 			entity := fixtures.New(quc.Entity)
 			require.Nil(spec, storage.Store(entity))
 
-			ID, ok := reflects.LookupID(entity)
+			ID, ok := storages.LookupID(entity)
 
 			if !ok {
 				spec.Fatal(queryerrors.ErrIDRequired)
@@ -42,7 +41,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func
 			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
-			reflects.SetID(newEntity, ID)
+			storages.SetID(newEntity, ID)
 
 			updateResults := storage.Exec(ByEntity{Entity: newEntity})
 			require.NotNil(t, updateResults)
@@ -62,7 +61,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func
 			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
-			reflects.SetID(newEntity, "hitchhiker's guide to the galaxy")
+			storages.SetID(newEntity, "hitchhiker's guide to the galaxy")
 			require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
 
 		})

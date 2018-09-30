@@ -4,12 +4,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/storages"
 	"reflect"
 
-	qd "github.com/adamluzsi/frameless/queries/destroy"
+	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/update"
-	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless/iterators"
 
@@ -37,7 +38,7 @@ func (storage *Memory) Store(e frameless.Entity) error {
 	}
 
 	storage.tableFor(e)[id] = e
-	return reflects.SetID(e, id)
+	return storages.SetID(e, id)
 }
 
 func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
@@ -62,7 +63,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewSlice(entities)
 
-	case qd.ByID:
+	case destroy.ByID:
 		table := storage.tableFor(quc.Type)
 
 		if _, ok := table[quc.ID]; ok {
@@ -71,17 +72,17 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewEmpty()
 
-	case qd.ByEntity:
-		ID, found := reflects.LookupID(quc.Entity)
+	case destroy.ByEntity:
+		ID, found := storages.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		return storage.Exec(qd.ByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
 
 	case update.ByEntity:
-		ID, found := reflects.LookupID(quc.Entity)
+		ID, found := storages.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())

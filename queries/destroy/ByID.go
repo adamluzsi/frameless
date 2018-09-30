@@ -1,14 +1,14 @@
 package destroy
 
 import (
+	"github.com/adamluzsi/frameless/storages"
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +31,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 
 		entity := fixtures.New(quc.Type)
 		require.Nil(spec, storage.Store(entity))
-		ID, ok := reflects.LookupID(entity)
+		ID, ok := storages.LookupID(entity)
 
 		if !ok {
 			spec.Fatal(queryerrors.ErrIDRequired)

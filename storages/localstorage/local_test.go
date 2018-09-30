@@ -2,6 +2,7 @@ package localstorage_test
 
 import (
 	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/storages"
 	"github.com/boltdb/bolt"
 	"github.com/satori/go.uuid"
 	"os"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/adamluzsi/frameless/storages/localstorage"
 
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,7 +50,7 @@ func TestLocalCreate_SpecificValueGiven_IDSet(t *testing.T) {
 
 	require.Nil(t, storage.Store(entity))
 
-	ID, ok := reflects.LookupID(entity)
+	ID, ok := storages.LookupID(entity)
 
 	require.True(t, ok, "ID is not defined in the entity struct src definition")
 	require.True(t, len(ID) > 0)
