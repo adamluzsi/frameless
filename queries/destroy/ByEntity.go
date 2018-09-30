@@ -1,10 +1,11 @@
 package destroy
 
 import (
+	"github.com/adamluzsi/frameless/queries/find"
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
@@ -17,7 +18,8 @@ type ByEntity struct {
 }
 
 // Test will test that an ByEntity is implemented by a generic specification
-func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage) {
+func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage, reset func()) {
+	defer reset()
 
 	expected := fixtures.New(quc.Entity)
 	require.Nil(spec, storage.Store(expected))
@@ -33,7 +35,8 @@ func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage) {
 		require.NotNil(t, deleteResults)
 		require.Nil(t, deleteResults.Err())
 
-		iterator := storage.Exec(ByID{Type: quc.Entity, ID: ID})
+		// TODO: fix it to use BaseValueOf Entity
+		iterator := storage.Exec(find.ByID{Type: quc.Entity, ID: ID})
 		defer iterator.Close()
 
 		if iterator.Next() {

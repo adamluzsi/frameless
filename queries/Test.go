@@ -8,31 +8,31 @@ import (
 	"testing"
 )
 
-func Test(t *testing.T, s frameless.Storage) {
+func Test(t *testing.T, s frameless.Storage, r func()) {
 	t.Run("query implementations", func(suite *testing.T) {
 		suite.Run("find", func(spec *testing.T) {
 			spec.Run("ByID", func(t *testing.T) {
-				//find.ByID{Type: testEntity{}}.Test(t, s)
+				find.ByID{Type: testEntity{}}.Test(t, s, r)
 			})
 
-			spec.Run("FindAll", func(t *testing.T) {
-				find.All{Type: testEntity{}}.Test(t, s)
+			spec.Run("All", func(t *testing.T) {
+				find.All{Type: testEntity{}}.Test(t, s, r)
 			})
 		})
 
 		suite.Run("update", func(spec *testing.T) {
 			spec.Run("UpdateEntity", func(t *testing.T) {
-				update.ByEntity{Entity: testEntity{}}.Test(t, s)
+				update.ByEntity{Entity: testEntity{}}.Test(t, s, r)
 			})
 		})
 
 		suite.Run("destroy", func(spec *testing.T) {
 			spec.Run("DeleteByID", func(t *testing.T) {
-				destroy.ByID{Type: testEntity{}}.Test(t, s)
+				destroy.ByID{Type: testEntity{}}.Test(t, s, r)
 			})
 
 			spec.Run("DeleteByEntity", func(t *testing.T) {
-				destroy.ByEntity{Entity: testEntity{}}.Test(t, s)
+				destroy.ByEntity{Entity: testEntity{}}.Test(t, s, r)
 			})
 		})
 	})

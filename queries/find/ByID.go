@@ -1,9 +1,8 @@
 package find
 
 import (
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -24,7 +23,8 @@ type ByID struct {
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
+func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
+	defer reset()
 
 	ids := []string{}
 
@@ -41,7 +41,6 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage) {
 		require.True(spec, len(ID) > 0)
 		ids = append(ids, ID)
 
-		defer storage.Exec(destroy.ByID{Type: quc.Test, ID: ID})
 	}
 
 	spec.Run("when no value stored that the query request", func(t *testing.T) {

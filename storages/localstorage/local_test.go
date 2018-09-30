@@ -2,41 +2,49 @@ package localstorage_test
 
 import (
 	"github.com/adamluzsi/frameless/queries"
+	"github.com/boltdb/bolt"
+	"github.com/satori/go.uuid"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/adamluzsi/frameless/storages/localstorage"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/satori/go.uuid"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleNewLocal(t testing.TB) (frameless.Storage, func()) {
+func ExampleNewLocal() {
+	localstorage.NewLocal("path/to/local/db/file")
+}
+
+func NewSubject(t testing.TB) (*localstorage.Local, func()) {
+
 	dbPath := filepath.Join(os.TempDir(), uuid.NewV4().String())
 	storage, err := localstorage.NewLocal(dbPath)
+	require.Nil(t, err)
 
-	if err != nil {
-		t.Fatal(err)
+	reset := func() {
+
+		if err := storage.DB.Update(func(tx *bolt.Tx) error {
+			return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+				return tx.DeleteBucket(name)
+			})
+		}); err != nil {
+			t.Fatal(err)
+		}
+
 	}
 
-	teardown := func() {
-		assert.Nil(t, storage.Close())
-		assert.Nil(t, os.Remove(dbPath))
-	}
+	reset()
 
-	return storage, teardown
+	return storage, reset
 }
 
 func TestLocalCreate_SpecificValueGiven_IDSet(t *testing.T) {
-	t.Parallel()
 
-	storage, td := ExampleNewLocal(t)
-	defer td()
+	storage, _ := NewSubject(t)
+	defer storage.Close()
 
 	entity := NewEntityForTest(SampleEntity{})
 
@@ -46,10 +54,12 @@ func TestLocalCreate_SpecificValueGiven_IDSet(t *testing.T) {
 
 	require.True(t, ok, "ID is not defined in the entity struct src definition")
 	require.True(t, len(ID) > 0)
+
 }
 
 func TestLocal(t *testing.T) {
-	s, td := ExampleNewLocal(t)
-	defer td()
-	queries.Test(t, s)
+	s, td := NewSubject(t)
+	defer s.Close()
+
+	queries.Test(t, s, td)
 }

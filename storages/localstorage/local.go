@@ -20,20 +20,20 @@ import (
 func NewLocal(path string) (*Local, error) {
 	db, err := bolt.Open(path, 0600, nil)
 
-	return &Local{db: db}, err
+	return &Local{DB: db}, err
 }
 
 type Local struct {
-	db *bolt.DB
+	DB *bolt.DB
 }
 
 // Close the Local database and release the file lock
 func (storage *Local) Close() error {
-	return storage.db.Close()
+	return storage.DB.Close()
 }
 
 func (storage *Local) Store(e frameless.Entity) error {
-	return storage.db.Update(func(tx *bolt.Tx) error {
+	return storage.DB.Update(func(tx *bolt.Tx) error {
 
 		bucket, err := storage.ensureBucketFor(tx, e)
 
@@ -75,7 +75,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 		entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
 
-		err = storage.db.View(func(tx *bolt.Tx) error {
+		err = storage.DB.View(func(tx *bolt.Tx) error {
 			bucket, err := storage.bucketFor(tx, quc.Type)
 
 			if err != nil {
@@ -105,7 +105,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	case find.All:
 		r, w := iterators.NewPipe()
 
-		go storage.db.View(func(tx *bolt.Tx) error {
+		go storage.DB.View(func(tx *bolt.Tx) error {
 			defer w.Close()
 
 			bucket := tx.Bucket(storage.bucketName(quc.Type))
@@ -136,7 +136,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 			return iterators.NewError(err)
 		}
 
-		return iterators.NewError(storage.db.Update(func(tx *bolt.Tx) error {
+		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 			bucket, err := storage.bucketFor(tx, quc.Type)
 
 			if err != nil {
@@ -178,7 +178,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 			return iterators.NewError(err)
 		}
 
-		return iterators.NewError(storage.db.Batch(func(tx *bolt.Tx) error {
+		return iterators.NewError(storage.DB.Batch(func(tx *bolt.Tx) error {
 			bucket, err := storage.bucketFor(tx, quc.Entity)
 
 			if err != nil {
