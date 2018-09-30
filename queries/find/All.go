@@ -3,7 +3,7 @@ package find
 import (
 	"github.com/adamluzsi/frameless/queries/fixtures"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/storages"
 	"reflect"
 	"testing"
 
@@ -29,7 +29,7 @@ func (quc All) Test(t *testing.T, storage frameless.Storage, reset func()) {
 			entity := fixtures.New(quc.Type)
 			require.Nil(t, storage.Store(entity))
 
-			id, found := reflects.LookupID(entity)
+			id, found := storages.LookupID(entity)
 
 			if !found {
 				t.Fatal(queryerrors.ErrIDRequired)
@@ -46,7 +46,7 @@ func (quc All) Test(t *testing.T, storage frameless.Storage, reset func()) {
 
 			require.Nil(t, i.Decode(entity))
 
-			id, found := reflects.LookupID(entity)
+			id, found := storages.LookupID(entity)
 
 			if !found {
 				t.Fatal(queryerrors.ErrIDRequired)
