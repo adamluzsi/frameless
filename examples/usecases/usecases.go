@@ -2,9 +2,10 @@ package usecases
 
 import (
 	"errors"
+	"github.com/adamluzsi/frameless/queries/persist"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/example"
+	"github.com/adamluzsi/frameless/examples"
 	"github.com/adamluzsi/frameless/iterators/iterateover"
 	"github.com/adamluzsi/frameless/queries/find"
 )
@@ -18,9 +19,9 @@ type UseCases struct {
 }
 
 func (uc *UseCases) ListNotes(r frameless.Request, p frameless.Presenter) error {
-	notes := []*example.Note{}
+	notes := []*examples.Note{}
 
-	i := uc.storage.Exec(find.All{Type: example.Note{}})
+	i := uc.storage.Exec(find.All{Type: examples.Note{}})
 
 	if err := iterateover.AndCollectAll(i, &notes); err != nil {
 		return err
@@ -40,12 +41,12 @@ func (uc *UseCases) AddNote(r frameless.Request, p frameless.Presenter) error {
 		return errors.New("missing Content")
 	}
 
-	newNote := &example.Note{
+	newNote := &examples.Note{
 		Title:   title,
 		Content: content,
 	}
 
-	if err := uc.storage.Store(newNote); err != nil {
+	if err := uc.storage.Exec(persist.Entity{newNote}).Err(); err != nil {
 		return err
 	}
 

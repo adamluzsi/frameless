@@ -1,4 +1,4 @@
-package example
+package examples
 
 type Note struct {
 	ID      string

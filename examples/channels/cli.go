@@ -8,13 +8,13 @@ import (
 	"io"
 	"os"
 
-	"github.com/adamluzsi/frameless/example"
+	"github.com/adamluzsi/frameless/examples"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/requests"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/example/usecases"
+	"github.com/adamluzsi/frameless/examples/usecases"
 )
 
 type HTTPServer interface {
@@ -89,7 +89,7 @@ func (cli *CLI) addNote(args []string) error {
 }
 
 func (cli *CLI) presentNote(message interface{}) error {
-	note, ok := message.(*example.Note)
+	note, ok := message.(*examples.Note)
 
 	if !ok {
 		return errors.New("contract violation")
@@ -113,7 +113,7 @@ func (cli *CLI) listNotes(args []string) error {
 }
 
 func (cli *CLI) presentNoteList(message interface{}) error {
-	notes, ok := message.([]*example.Note)
+	notes, ok := message.([]*examples.Note)
 
 	if !ok {
 		return errors.New("contract violation")

@@ -2,6 +2,7 @@ package channels_test
 
 import (
 	"fmt"
+	"github.com/adamluzsi/frameless/queries/persist"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -12,14 +13,14 @@ import (
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/storages/memorystorage"
 
-	randomdata "github.com/Pallinder/go-randomdata"
-	"github.com/adamluzsi/frameless/example"
+	"github.com/Pallinder/go-randomdata"
+	"github.com/adamluzsi/frameless/examples"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/example/channels"
-	"github.com/adamluzsi/frameless/example/usecases"
+	"github.com/adamluzsi/frameless/examples/channels"
+	"github.com/adamluzsi/frameless/examples/usecases"
 )
 
 func ExampleNewHTTPHandler() (http.Handler, frameless.Storage) {
@@ -28,8 +29,8 @@ func ExampleNewHTTPHandler() (http.Handler, frameless.Storage) {
 	return channels.NewHTTPHandler(u), s
 }
 
-func NewSampleNote() *example.Note {
-	return &example.Note{
+func NewSampleNote() *examples.Note {
+	return &examples.Note{
 		Title:   randomdata.SillyName(),
 		Content: randomdata.SillyName(),
 	}
@@ -61,7 +62,7 @@ func TestNewHTTPHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/list", strings.NewReader(``))
 
-			require.Nil(t, s.Store(note))
+			require.Nil(t, s.Exec(persist.Entity{Entity: note}).Err())
 			h.ServeHTTP(w, r)
 
 			body := w.Body.String()
@@ -88,7 +89,7 @@ func TestNewHTTPHandler(t *testing.T) {
 		matches := rgx.FindAllStringSubmatch(w.Body.String(), -1)
 		require.True(t, len(matches) > 0)
 
-		var note example.Note
+		var note examples.Note
 		if err := iterators.First(s.Exec(find.ByID{Type: note, ID: matches[0][1]}), &note); err != nil {
 			t.Fatal(err)
 		}

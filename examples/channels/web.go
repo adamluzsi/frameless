@@ -9,10 +9,10 @@ import (
 	"net/http"
 
 	"github.com/adamluzsi/frameless/usecases/adapters"
-	"github.com/adamluzsi/frameless/example"
+	"github.com/adamluzsi/frameless/examples"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/example/usecases"
+	"github.com/adamluzsi/frameless/examples/usecases"
 )
 
 func NewHTTPHandler(usecases *usecases.UseCases) http.Handler {
@@ -66,22 +66,22 @@ var notesTemplate = template.Must(template.New("present-note-list").Parse(notesT
 
 func (b *builder) presentNote(w io.Writer) frameless.Presenter {
 	return frameless.PresenterFunc(func(message interface{}) error {
-		note := message.(*example.Note)
-		notes := []*example.Note{note}
+		note := message.(*examples.Note)
+		notes := []*examples.Note{note}
 		return b.executeNotesTemplate(w, notes)
 	})
 }
 
 func (b *builder) presentNotes(w io.Writer) frameless.Presenter {
 	return frameless.PresenterFunc(func(message interface{}) error {
-		notes := message.([]*example.Note)
+		notes := message.([]*examples.Note)
 
 		return b.executeNotesTemplate(w, notes)
 	})
 }
 
 func (b *builder) executeNotesTemplate(w io.Writer, message interface{}) error {
-	notes := message.([]*example.Note)
+	notes := message.([]*examples.Note)
 
 	return notesTemplate.Execute(w, notes)
 }
