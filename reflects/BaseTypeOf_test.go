@@ -7,7 +7,7 @@ import (
 )
 
 
-func TestName(t *testing.T) {
+func TestBaseTypeOf(t *testing.T) {
 	t.Run("FullyQualifiedName", func(spec *testing.T) {
 
 		subject := func(obj interface{}) string {
