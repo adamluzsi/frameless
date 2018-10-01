@@ -17,7 +17,7 @@ import (
 	"github.com/adamluzsi/frameless/presenters"
 	"github.com/adamluzsi/frameless/requests"
 
-	"github.com/adamluzsi/frameless/example"
+	"github.com/adamluzsi/frameless/examples"
 )
 
 var (
@@ -33,7 +33,7 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 
 	p := presenters.NewMock()
 
-	sample := &example.Note{
+	sample := &examples.Note{
 		Title:   AddNoteTitle,
 		Content: AddNoteContent,
 	}
@@ -45,9 +45,9 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 
 	require.Nil(t, usecases.AddNote(r, p))
 
-	i := storage.Exec(find.All{Type: example.Note{}})
+	i := storage.Exec(find.All{Type: examples.Note{}})
 
-	foundNotes := []*example.Note{}
+	foundNotes := []*examples.Note{}
 	require.Nil(t, iterateover.AndCollectAll(i, &foundNotes))
 
 	require.Equal(t, 1, len(foundNotes))

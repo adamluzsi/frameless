@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/adamluzsi/frameless/example/channels"
-	"github.com/adamluzsi/frameless/example/usecases"
+	"github.com/adamluzsi/frameless/examples/channels"
+	"github.com/adamluzsi/frameless/examples/usecases"
 	"github.com/adamluzsi/frameless/storages/localstorage"
 )
 

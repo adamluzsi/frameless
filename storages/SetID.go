@@ -10,7 +10,7 @@ func SetID(i interface{}, newID string) error {
 	r := reflect.ValueOf(i)
 
 	if r.Kind() != reflect.Ptr {
-		return errors.New("Ptr should be given, else Pass By Value prevent setting struct ID field remotely")
+		return errors.New("ptr should be given, else Pass By Value prevent setting struct ID field remotely")
 	}
 
 	val, ok := idReflectValue(r)
@@ -22,4 +22,5 @@ func SetID(i interface{}, newID string) error {
 	val.Set(reflect.ValueOf(newID))
 
 	return nil
+
 }
