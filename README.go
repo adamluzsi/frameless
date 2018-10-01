@@ -76,13 +76,13 @@ and I would like to leave space for that for myself as well. So I tried layer so
 • Entity
 Is usually a data structure that may or may not have functions.
 
-• Controller
+• UseCase
 that implements a specific business use case.
 Depends on Entities it works, it defines what the presenter receives,
 also defines what query use cases the storage must implement.
 
 • Query Use Case
-for controllers that have to interact with a storage.
+for usecases that have to interact with a storage.
 This defines what is the expected behavior to be implemented in the storage or storages (for example dark launch).
 It depends on the Entity, which it works with.
 
@@ -182,7 +182,7 @@ Last notes
 
 As a last note, most of the interfaces defined here may only contain a few or just one function signature,
 it is because I tried remove everything that is YAGNI in order to achieve final goal for a given project.
-QueryUseCase is the tipical example for this, because you only implement those that you use it. and nothing more.
+Query is the tipical example for this, because you only implement those that you use it. and nothing more.
 I would like to ask you, if you see anything and care to share your constructive opinion,
 please feel free to create an issue on github where we can discuss this!
 

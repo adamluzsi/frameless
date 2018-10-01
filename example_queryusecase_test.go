@@ -1,6 +1,7 @@
 package frameless_test
 
 import (
+	"github.com/adamluzsi/frameless/queries/persist"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -11,11 +12,16 @@ type User struct {
 	IsActive bool
 }
 
-type InactiveUsers struct{} // <- QueryUseCase
+type InactiveUsers struct{} // <- Query
 
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
-func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
+func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage, resetStorage func()) {
+	suite.Run("dependency", func(t *testing.T) {
+		persist.Entity{Entity: &User{}}.Test(t, storage, resetStorage)
+	})
+
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
+		defer resetStorage()
 
 		spec.Log("Given 10 users stored in the storage")
 		inactiveUsers := []*User{}
@@ -26,13 +32,12 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage) {
 				inactiveUsers = append(inactiveUsers, u)
 			}
 
-			require.Nil(suite, storage.Create(u))
+			require.Nil(suite, storage.Exec(persist.Entity{Entity: u}).Err())
 		}
 
 		suite.Run("All Inactive users returned on search", func(t *testing.T) {
-			t.Parallel()
 
-			i := storage.Find(InactiveUsers{})
+			i := storage.Exec(InactiveUsers{})
 			require.Nil(t, i.Err())
 
 			count := 0
