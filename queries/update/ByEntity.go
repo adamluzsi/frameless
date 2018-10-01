@@ -1,17 +1,16 @@
 package update
 
 import (
-	"github.com/adamluzsi/frameless/storages"
-	"testing"
-
+	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/queries/persist"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
-
-	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/frameless/storages"
+	"github.com/stretchr/testify/require"
+	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/stretchr/testify/require"
 )
 
 // ByEntity will request an update for a wrapped entity object in the storage
@@ -21,9 +20,13 @@ type ByEntity struct{ Entity frameless.Entity }
 func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func()) {
 	suite.Run("ByEntity", func(spec *testing.T) {
 
+		suite.Run("dependency", func(t *testing.T) {
+			persist.Entity{Entity: quc.Entity}.Test(t, storage, reset)
+		})
+
 		setup := func() (string, func()) {
 			entity := fixtures.New(quc.Entity)
-			require.Nil(spec, storage.Store(entity))
+			require.Nil(spec, storage.Exec(persist.Entity{Entity: entity}).Err())
 
 			ID, ok := storages.LookupID(entity)
 
