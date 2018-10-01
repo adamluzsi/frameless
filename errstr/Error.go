@@ -1,4 +1,4 @@
-package errtype
+package errstr
 
 type Error string
 
