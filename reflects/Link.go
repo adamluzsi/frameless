@@ -10,7 +10,7 @@ import (
 
 // Link will make destination interface be linked with the src value.
 // if the src is a pointer to a value, the value will be linked
-func Link(src, dest frameless.Entity) (err error) {
+func Link(src, dst frameless.Entity) (err error) {
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -26,7 +26,7 @@ func Link(src, dest frameless.Entity) (err error) {
 		value = ptr
 	}
 
-	reflect.ValueOf(dest).Elem().Set(value.Elem())
+	reflect.ValueOf(dst).Elem().Set(value.Elem())
 
 	return nil
 }
