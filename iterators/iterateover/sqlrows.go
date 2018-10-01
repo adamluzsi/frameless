@@ -26,6 +26,6 @@ func (this *sqlRowsIterator) Next() bool {
 	return this.rows.Next()
 }
 
-func (this *sqlRowsIterator) Decode(dest interface{}) error {
-	return this.decoder(this.rows.Scan, dest)
+func (this *sqlRowsIterator) Decode(dst interface{}) error {
+	return this.decoder(this.rows.Scan, dst)
 }
