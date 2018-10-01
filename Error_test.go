@@ -1,5 +1,5 @@
-package errstr_test
+package frameless_test
 
-import "github.com/adamluzsi/frameless/errstr"
+import "github.com/adamluzsi/frameless"
 
-var _ error = errstr.Error("Hello, World!")
+var _ error = frameless.Error("Hello, World!")

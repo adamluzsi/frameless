@@ -189,3 +189,9 @@ type Storage interface {
 	// In the case of dedicated pkg for a specific generic query use case, the pkg name can represent the CRUD functionality as well.
 	Exec(Query) Iterator
 }
+
+// Error is a string based type that allows you to declare ErrConstantValues for your packages
+type Error string
+
+// Error implement the error interface, so the Error string type can be used as an error object
+func (errStr Error) Error() string { return string(errStr) }
