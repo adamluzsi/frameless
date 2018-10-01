@@ -3,6 +3,7 @@ package fixtures
 import (
 	"math/rand"
 	"reflect"
+	"sync"
 
 	randomdata "github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless"
@@ -28,16 +29,21 @@ func New(entity frameless.Entity) frameless.Entity {
 	}
 
 	return ptr.Interface()
-
 }
+
+var mutex sync.Mutex
 
 func newValue(value reflect.Value) reflect.Value {
 	switch value.Type().Kind() {
 
 	case reflect.Bool:
+		mutex.Lock()
+		defer mutex.Unlock()
 		return reflect.ValueOf(randomdata.Boolean())
 
 	case reflect.String:
+		mutex.Lock()
+		defer mutex.Unlock()
 		return reflect.ValueOf(randomdata.SillyName())
 
 	case reflect.Int:
