@@ -163,20 +163,18 @@ type Query interface {
 
 // Storage define what is the most minimum that a storage should implement in order to be able
 //
-// The classic CRUD not enforced here because I found that most of the time, it is not even the case.
+// The classic CRUD not enforced here because I found that most of the time, it is not even required.
+// For example when you build a data-warehouse which functions in a classic "APPEND ONLY" way,
+// you simply can't afford to implement delete functionality.
+// Or when there is no such query use case where you have to update something, why implement it ?
+// There fore the developer free to define what specifications he need from a storage.
+// The bundled storage implementations use the queries.Test specification which enforce common query usages.
 //
-// For example, if there is no such query use case where you have to update something, why implement it ?
-// I found that the most required functionality is Persisting an entity (it's a storage after all) and execute a query in it.
-//
-// Storage use a field called `ID` to represent the link to a stored object.
-// This ID in other words is the serialized form of an identification entry that is provided by a given storage and than used for fetching entries from it.
-// The ID represented in the data structures as a primitive string type
+// Storage that works with the bundled in queries require a special field in the data entity: ID.
+// This ID field represent the link between the in memory entity and it's persisted version in the storage.
+// This ID field can be any exported string field as long it is tagged with `storage:"ID"`.
 type Storage interface {
 	io.Closer
-
-	// Store able to create a given entity
-	// By convention it also should set the id in the entity
-	Store(Entity) error
 	// Exec implements the Query#Test -s  each application Query.Test that used with the given storage.
 	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
 	//
@@ -188,5 +186,6 @@ type Storage interface {
 	//
 	// By convention the Query name should start with the Task to be achieved and than followed by type.
 	// 	example: UpdateUserByName, DeleteUser, InvalidateUser
+	// In the case of dedicated pkg for a specific generic query use case, the pkg name can represent the CRUD functionality as well.
 	Exec(Query) Iterator
 }

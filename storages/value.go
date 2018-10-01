@@ -15,6 +15,7 @@ func idReflectValue(val reflect.Value) (reflect.Value, bool) {
 		return byName, true
 	}
 
+	// TODO specific this to be the first expected use case
 	byTag, ok := lookupByTag(val)
 	if ok {
 		return byTag, true

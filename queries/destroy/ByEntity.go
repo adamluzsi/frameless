@@ -2,6 +2,7 @@ package destroy
 
 import (
 	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries/persist"
 	"github.com/adamluzsi/frameless/storages"
 	"testing"
 
@@ -21,8 +22,12 @@ type ByEntity struct {
 func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 	defer reset()
 
+	spec.Run("dependency", func(t *testing.T) {
+		persist.Entity{Entity: quc.Entity}.Test(t, storage, reset)
+	})
+
 	expected := fixtures.New(quc.Entity)
-	require.Nil(spec, storage.Store(expected))
+	require.Nil(spec, storage.Exec(persist.Entity{Entity: expected}).Err())
 	ID, ok := storages.LookupID(expected)
 
 	if !ok {

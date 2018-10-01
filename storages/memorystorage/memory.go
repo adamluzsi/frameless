@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/adamluzsi/frameless/queries/persist"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/storages"
 	"reflect"
@@ -18,34 +19,32 @@ import (
 )
 
 func NewMemory() *Memory {
-	return &Memory{make(map[string]memoryTable)}
+	return &Memory{make(map[string]Table)}
 }
 
 type Memory struct {
-	db map[string]memoryTable
+	DB map[string]Table
 }
 
 func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *Memory) Store(e frameless.Entity) error {
-
-	id, err := randID()
-
-	if err != nil {
-		return err
-	}
-
-	storage.tableFor(e)[id] = e
-	return storages.SetID(e, id)
-}
-
 func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 
+	case persist.Entity:
+		id, err := RandID()
+
+		if err != nil {
+			return iterators.NewError(err)
+		}
+
+		storage.TableFor(quc.Entity)[id] = quc.Entity
+		return iterators.NewError(storages.SetID(quc.Entity, id))
+
 	case find.ByID:
-		entity, found := storage.tableFor(quc.Type)[quc.ID]
+		entity, found := storage.TableFor(quc.Type)[quc.ID]
 
 		if found {
 			return iterators.NewSingleElement(entity)
@@ -54,7 +53,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		}
 
 	case find.All:
-		table := storage.tableFor(quc.Type)
+		table := storage.TableFor(quc.Type)
 
 		entities := []frameless.Entity{}
 		for _, entity := range table {
@@ -64,7 +63,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewSlice(entities)
 
 	case destroy.ByID:
-		table := storage.tableFor(quc.Type)
+		table := storage.TableFor(quc.Type)
 
 		if _, ok := table[quc.ID]; ok {
 			delete(table, quc.ID)
@@ -88,7 +87,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		table := storage.tableFor(quc.Entity)
+		table := storage.TableFor(quc.Entity)
 
 		if _, ok := table[ID]; !ok {
 			return iterators.Errorf("%s id not found in the %s table", ID, reflects.FullyQualifiedName(quc.Entity))
@@ -104,23 +103,19 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	}
 }
 
-//
-//
-//
+type Table map[string]frameless.Entity
 
-type memoryTable map[string]frameless.Entity
-
-func (storage *Memory) tableFor(e frameless.Entity) memoryTable {
+func (storage *Memory) TableFor(e frameless.Entity) Table {
 	name := reflects.FullyQualifiedName(e)
 
-	if _, ok := storage.db[name]; !ok {
-		storage.db[name] = make(memoryTable)
+	if _, ok := storage.DB[name]; !ok {
+		storage.DB[name] = make(Table)
 	}
 
-	return storage.db[name]
+	return storage.DB[name]
 }
 
-func randID() (string, error) {
+func RandID() (string, error) {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
 	bytes := make([]byte, 42)

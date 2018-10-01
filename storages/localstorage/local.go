@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
+	"github.com/adamluzsi/frameless/queries/persist"
 	"github.com/adamluzsi/frameless/storages"
 	"reflect"
 	"strconv"
@@ -33,40 +34,40 @@ func (storage *Local) Close() error {
 	return storage.DB.Close()
 }
 
-func (storage *Local) Store(e frameless.Entity) error {
-	return storage.DB.Update(func(tx *bolt.Tx) error {
-
-		bucket, err := storage.ensureBucketFor(tx, e)
-
-		if err != nil {
-			return err
-		}
-
-		uIntID, err := bucket.NextSequence()
-
-		if err != nil {
-			return err
-		}
-
-		encodedID := strconv.FormatUint(uIntID, 10)
-
-		if err = storages.SetID(e, encodedID); err != nil {
-			return err
-		}
-
-		value, err := storage.encode(e)
-
-		if err != nil {
-			return err
-		}
-
-		return bucket.Put(storage.uintToBytes(uIntID), value)
-
-	})
-}
-
 func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
+	case persist.Entity:
+		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
+
+			bucketName := storage.BucketNameFor(quc.Entity)
+			bucket, err := tx.CreateBucketIfNotExists(bucketName)
+
+			if err != nil {
+				return err
+			}
+
+			uIntID, err := bucket.NextSequence()
+
+			if err != nil {
+				return err
+			}
+
+			encodedID := strconv.FormatUint(uIntID, 10)
+
+			if err = storages.SetID(quc.Entity, encodedID); err != nil {
+				return err
+			}
+
+			value, err := storage.encode(quc.Entity)
+
+			if err != nil {
+				return err
+			}
+
+			return bucket.Put(storage.uintToBytes(uIntID), value)
+
+		}))
+
 	case find.ByID:
 		key, err := storage.idToBytes(quc.ID)
 
@@ -77,7 +78,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
 
 		err = storage.DB.View(func(tx *bolt.Tx) error {
-			bucket, err := storage.bucketFor(tx, quc.Type)
+			bucket, err := storage.BucketFor(tx, quc.Type)
 
 			if err != nil {
 				return err
@@ -109,7 +110,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		go storage.DB.View(func(tx *bolt.Tx) error {
 			defer w.Close()
 
-			bucket := tx.Bucket(storage.bucketName(quc.Type))
+			bucket := tx.Bucket(storage.BucketNameFor(quc.Type))
 
 			if bucket == nil {
 				return nil
@@ -138,7 +139,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}
 
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
-			bucket, err := storage.bucketFor(tx, quc.Type)
+			bucket, err := storage.BucketFor(tx, quc.Type)
 
 			if err != nil {
 				return err
@@ -180,7 +181,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}
 
 		return iterators.NewError(storage.DB.Batch(func(tx *bolt.Tx) error {
-			bucket, err := storage.bucketFor(tx, quc.Entity)
+			bucket, err := storage.BucketFor(tx, quc.Entity)
 
 			if err != nil {
 				return err
@@ -195,12 +196,12 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	}
 }
 
-func (storage *Local) bucketName(e frameless.Entity) []byte {
+func (storage *Local) BucketNameFor(e frameless.Entity) []byte {
 	return []byte(reflects.FullyQualifiedName(e))
 }
 
-func (storage *Local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
-	bucket := tx.Bucket(storage.bucketName(e))
+func (storage *Local) BucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
+	bucket := tx.Bucket(storage.BucketNameFor(e))
 
 	var err error
 
@@ -209,10 +210,6 @@ func (storage *Local) bucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, 
 	}
 
 	return bucket, err
-}
-
-func (storage *Local) ensureBucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
-	return tx.CreateBucketIfNotExists(storage.bucketName(e))
 }
 
 func (storage *Local) idToBytes(ID string) ([]byte, error) {

@@ -2,6 +2,7 @@ package find
 
 import (
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/queries/persist"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/storages"
 	"reflect"
@@ -27,7 +28,7 @@ func (quc All) Test(t *testing.T, storage frameless.Storage, reset func()) {
 		for i := 0; i < 10; i++ {
 
 			entity := fixtures.New(quc.Type)
-			require.Nil(t, storage.Store(entity))
+			require.Nil(t, storage.Exec(persist.Entity{Entity: entity}).Err())
 
 			id, found := storages.LookupID(entity)
 
