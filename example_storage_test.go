@@ -36,7 +36,7 @@ func (storage *MyStorage) Store(e frameless.Entity) error {
 	switch e.(type) {
 	case *MyEntity:
 		myEntity := e.(*MyEntity)
-		fmt.Println("persist in db", myEntity)
+		fmt.Println("save in db", myEntity)
 		return storages.SetID(myEntity, "42")
 
 	default:

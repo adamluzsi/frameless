@@ -1,7 +1,7 @@
 package frameless_test
 
 import (
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -17,7 +17,7 @@ type InactiveUsers struct{} // <- Query
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
 func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage, resetStorage func()) {
 	suite.Run("dependency", func(t *testing.T) {
-		persist.Entity{Entity: &User{}}.Test(t, storage, resetStorage)
+		save.Entity{Entity: &User{}}.Test(t, storage, resetStorage)
 	})
 
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
@@ -32,7 +32,7 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage, rese
 				inactiveUsers = append(inactiveUsers, u)
 			}
 
-			require.Nil(suite, storage.Exec(persist.Entity{Entity: u}).Err())
+			require.Nil(suite, storage.Exec(save.Entity{Entity: u}).Err())
 		}
 
 		suite.Run("All Inactive users returned on search", func(t *testing.T) {

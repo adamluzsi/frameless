@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/storages"
 	"reflect"
@@ -33,7 +33,7 @@ func (storage *Memory) Close() error {
 func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 
-	case persist.Entity:
+	case save.Entity:
 		id, err := RandID()
 
 		if err != nil {

@@ -2,7 +2,7 @@ package channels_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -62,7 +62,7 @@ func TestNewHTTPHandler(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest("GET", "/list", strings.NewReader(``))
 
-			require.Nil(t, s.Exec(persist.Entity{Entity: note}).Err())
+			require.Nil(t, s.Exec(save.Entity{Entity: note}).Err())
 			h.ServeHTTP(w, r)
 
 			body := w.Body.String()

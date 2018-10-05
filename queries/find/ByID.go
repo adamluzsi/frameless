@@ -2,7 +2,7 @@ package find
 
 import (
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/storages"
 	"testing"
@@ -25,7 +25,7 @@ type ByID struct {
 // also the caller should do the teardown as well
 func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 	spec.Run("dependency", func(t *testing.T) {
-		persist.Entity{Entity:quc.Type}.Test(t, storage, reset)
+		save.Entity{Entity: quc.Type}.Test(t, storage, reset)
 	})
 	defer reset()
 
@@ -34,7 +34,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 	for i := 0; i < 10; i++ {
 
 		entity := fixtures.New(quc.Type)
-		require.Nil(spec, storage.Exec(persist.Entity{entity}).Err())
+		require.Nil(spec, storage.Exec(save.Entity{entity}).Err())
 		ID, ok := storages.LookupID(entity)
 
 		if !ok {

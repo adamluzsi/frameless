@@ -4,7 +4,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/queries/update"
 	"testing"
 )
@@ -12,7 +12,7 @@ import (
 func Test(t *testing.T, s frameless.Storage, r func()) {
 	t.Run("query implementations", func(suite *testing.T) {
 		suite.Run("persist", func(t *testing.T) {
-			persist.Entity{Entity: &testEntity{}}.Test(t, s, r)
+			save.Entity{Entity: &testEntity{}}.Test(t, s, r)
 		})
 		suite.Run("find", func(spec *testing.T) {
 			spec.Run("ByID", func(t *testing.T) {

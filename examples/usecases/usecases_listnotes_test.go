@@ -2,7 +2,7 @@ package usecases_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -76,6 +76,6 @@ func CreateNotes() []*examples.Note {
 
 func AddNotest(t testing.TB, toStorage frameless.Storage, notes []*examples.Note) {
 	for _, note := range notes {
-		require.Nil(t, toStorage.Exec(persist.Entity{Entity:note}).Err())
+		require.Nil(t, toStorage.Exec(save.Entity{Entity: note}).Err())
 	}
 }

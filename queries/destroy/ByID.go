@@ -1,7 +1,7 @@
 package destroy
 
 import (
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/storages"
 	"testing"
 
@@ -27,7 +27,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 	defer reset()
 
 	spec.Run("dependency", func(t *testing.T) {
-		persist.Entity{Entity: quc.Type}.Test(t, storage, reset)
+		save.Entity{Entity: quc.Type}.Test(t, storage, reset)
 	})
 
 	ids := []string{}
@@ -35,7 +35,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 	for i := 0; i < 10; i++ {
 
 		entity := fixtures.New(quc.Type)
-		require.Nil(spec, storage.Exec(persist.Entity{Entity: entity}).Err())
+		require.Nil(spec, storage.Exec(save.Entity{Entity: entity}).Err())
 		ID, ok := storages.LookupID(entity)
 
 		if !ok {

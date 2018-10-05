@@ -2,7 +2,7 @@ package usecases
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/examples"
@@ -46,7 +46,7 @@ func (uc *UseCases) AddNote(r frameless.Request, p frameless.Presenter) error {
 		Content: content,
 	}
 
-	if err := uc.storage.Exec(persist.Entity{newNote}).Err(); err != nil {
+	if err := uc.storage.Exec(save.Entity{newNote}).Err(); err != nil {
 		return err
 	}
 

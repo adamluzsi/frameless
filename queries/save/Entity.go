@@ -1,4 +1,4 @@
-package persist
+package save
 
 import (
 	"github.com/adamluzsi/frameless"

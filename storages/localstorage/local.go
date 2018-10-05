@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
-	"github.com/adamluzsi/frameless/queries/persist"
+	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/storages"
 	"reflect"
 	"strconv"
@@ -36,7 +36,7 @@ func (storage *Local) Close() error {
 
 func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
-	case persist.Entity:
+	case save.Entity:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 
 			bucketName := storage.BucketNameFor(quc.Entity)
