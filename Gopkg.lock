@@ -76,7 +76,6 @@
     "github.com/boltdb/bolt",
     "github.com/julienschmidt/httprouter",
     "github.com/satori/go.uuid",
-    "github.com/stretchr/testify/assert",
     "github.com/stretchr/testify/require",
   ]
   solver-name = "gps-cdcl"
