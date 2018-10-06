@@ -2,11 +2,13 @@ package localstorage
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/storages"
+	"io/ioutil"
 	"reflect"
 	"strconv"
 
@@ -22,11 +24,12 @@ import (
 func NewLocal(path string) (*Local, error) {
 	db, err := bolt.Open(path, 0600, nil)
 
-	return &Local{DB: db}, err
+	return &Local{DB: db, CompressionLevel: gzip.DefaultCompression}, err
 }
 
 type Local struct {
-	DB *bolt.DB
+	DB               *bolt.DB
+	CompressionLevel int
 }
 
 // Close the Local database and release the file lock
@@ -58,7 +61,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 				return err
 			}
 
-			value, err := storage.encode(quc.Entity)
+			value, err := storage.Serialize(quc.Entity)
 
 			if err != nil {
 				return err
@@ -69,7 +72,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	case find.ByID:
-		key, err := storage.idToBytes(quc.ID)
+		key, err := storage.IDToBytes(quc.ID)
 
 		if err != nil {
 			return iterators.NewError(err)
@@ -91,7 +94,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 				return nil
 			}
 
-			return storage.decode(encodedValue, entity)
+			return storage.Deserialize(encodedValue, entity)
 		})
 
 		if err != nil {
@@ -118,8 +121,8 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 			if err := bucket.ForEach(func(IDbytes, encodedEntity []byte) error {
 				entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
-				storage.decode(encodedEntity, entity)
-				return w.Send(entity) // iterators.ErrClosed will cancel ForEach execution
+				storage.Deserialize(encodedEntity, entity)
+				return w.Encode(entity) // iterators.ErrClosed will cancel ForEach execution
 			}); err != nil {
 				w.Error(err)
 				return err
@@ -132,7 +135,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 	case destroy.ByID:
 
-		ID, err := storage.idToBytes(quc.ID)
+		ID, err := storage.IDToBytes(quc.ID)
 
 		if err != nil {
 			return iterators.NewError(err)
@@ -155,7 +158,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	case destroy.ByEntity:
 		ID, found := storages.LookupID(quc.Entity)
 
-		if !found {
+		if !found || ID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
 		}
 
@@ -164,17 +167,17 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	case update.ByEntity:
 		encodedID, found := storages.LookupID(quc.Entity)
 
-		if !found {
+		if !found || encodedID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
 		}
 
-		ID, err := storage.idToBytes(encodedID)
+		ID, err := storage.IDToBytes(encodedID)
 
 		if err != nil {
 			return iterators.NewError(err)
 		}
 
-		value, err := storage.encode(quc.Entity)
+		value, err := storage.Serialize(quc.Entity)
 
 		if err != nil {
 			return iterators.NewError(err)
@@ -212,7 +215,7 @@ func (storage *Local) BucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, 
 	return bucket, err
 }
 
-func (storage *Local) idToBytes(ID string) ([]byte, error) {
+func (storage *Local) IDToBytes(ID string) ([]byte, error) {
 	n, err := strconv.ParseUint(ID, 10, 64)
 
 	if err != nil {
@@ -229,17 +232,42 @@ func (storage *Local) uintToBytes(v uint64) []byte {
 	return b
 }
 
-func (storage *Local) encode(e frameless.Entity) ([]byte, error) {
+func (storage *Local) Serialize(e frameless.Entity) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(e); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	return storage.compress(buf.Bytes())
 }
 
-func (storage *Local) decode(data []byte, ptr frameless.Entity) error {
-	buf := bytes.NewBuffer(data)
+func (storage *Local) Deserialize(CompressedAndSerialized []byte, ptr frameless.Entity) error {
+	serialized, err := storage.decompress(CompressedAndSerialized)
+	if err != nil {
+		return err
+	}
+	buf := bytes.NewBuffer(serialized)
 	dec := gob.NewDecoder(buf)
 	return dec.Decode(ptr)
+}
+
+func (storage *Local) compress(serialized []byte) ([]byte, error) {
+	buffer := bytes.NewBuffer([]byte{})
+	writer, err := gzip.NewWriterLevel(buffer, storage.CompressionLevel)
+	if err != nil {
+		return nil, err
+	}
+	_, err = writer.Write(serialized)
+	writer.Flush()
+	writer.Close()
+	return buffer.Bytes(), err
+}
+
+func (storage *Local) decompress(compressedData []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(compressedData))
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	return ioutil.ReadAll(reader)
 }
