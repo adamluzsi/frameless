@@ -11,7 +11,7 @@ import (
 	"github.com/adamluzsi/frameless/presenters"
 )
 
-var _ frameless.Presenter = &presenters.Mock{}
+var _ frameless.Encoder = &presenters.Mock{}
 
 func TestMock_ErrorSetToReturnOnRenderCall_ErrorReturned(t *testing.T) {
 	t.Parallel()
@@ -21,14 +21,14 @@ func TestMock_ErrorSetToReturnOnRenderCall_ErrorReturned(t *testing.T) {
 	err := errors.New("Boom!")
 	mock.ReturnError = err
 
-	require.Equal(t, err, mock.Render(nil))
+	require.Equal(t, err, mock.Encode(nil))
 }
 
 func TestMock_MessageGivenToPresenter_LastMessageAvailableByMessageMethod(t *testing.T) {
 	t.Parallel()
 
 	mock := presenters.NewMock()
-	require.Nil(t, mock.Render("OK"))
+	require.Nil(t, mock.Encode("OK"))
 	require.Equal(t, "OK", mock.Message())
 }
 
@@ -36,7 +36,7 @@ func TestMock_ValueGiven_MatchCheckEquality(t *testing.T) {
 	t.Parallel()
 
 	mock := presenters.NewMock()
-	require.Nil(t, mock.Render("OK"))
+	require.Nil(t, mock.Encode("OK"))
 
 	t.Run("when asserted value is equal", func(t *testing.T) {
 		tb := &testing.T{}
@@ -77,7 +77,7 @@ func TestMock_SliceMessageExpected_MatchMakeGivenTestToFailOrNotDependingByEqual
 
 	msg := []int{1, 2, 3, 4}
 	mock := presenters.NewMock()
-	require.Nil(t, mock.Render(msg))
+	require.Nil(t, mock.Encode(msg))
 
 	t.Run("when asserted value is equal", func(t *testing.T) {
 		tb := &testing.T{}
@@ -135,7 +135,7 @@ func TestMock_StreamLikeUsageExpected_MatchMakeGivenTestToFailOrNotDependingByEq
 	msgs := []int{1, 2, 3, 4}
 	mock := presenters.NewMock()
 	for _, msg := range msgs {
-		require.Nil(t, mock.Render(msg))
+		require.Nil(t, mock.Encode(msg))
 	}
 
 	t.Run("when asserted value is equal", func(t *testing.T) {

@@ -16,7 +16,7 @@ type Mock struct {
 	ReturnError      error
 }
 
-func (m *Mock) Render(message interface{}) error {
+func (m *Mock) Encode(message interface{}) error {
 	m.ReceivedMessages = append(m.ReceivedMessages, message)
 	return m.ReturnError
 }
