@@ -86,10 +86,10 @@ for usecases that have to interact with a storage.
 This defines what is the expected behavior to be implemented in the storage or storages (for example dark launch).
 It depends on the Entity, which it works with.
 
-• Resuest and Presenter
+• Resuest and Encoder
 implements the interaction between an input external interface and an output external interface that could even be the same as well.
 Request implements the unserialization logic required to have only primitives as input.
-Presenter implements the serialization logic that will be used in the outbound communication from the application.
+Encoder implements the serialization logic that will be used in the outbound communication from the application.
 This two interface remove the above mentioned responsibility from the controller, so as a result, controller wil only have use case controlling related logic.
 I believe this makes testing and composition of these parts easier, while the required mind model will be super little for controllers as well.
 
