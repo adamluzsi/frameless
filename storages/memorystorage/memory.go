@@ -8,6 +8,7 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/storages"
 	"reflect"
+	"sync"
 
 	"github.com/adamluzsi/frameless/queries/destroy"
 	"github.com/adamluzsi/frameless/queries/find"
@@ -19,11 +20,15 @@ import (
 )
 
 func NewMemory() *Memory {
-	return &Memory{make(map[string]Table)}
+	return &Memory{
+		DB:    make(map[string]Table),
+		Mutex: &sync.RWMutex{},
+	}
 }
 
 type Memory struct {
-	DB map[string]Table
+	DB    map[string]Table
+	Mutex *sync.RWMutex
 }
 
 func (storage *Memory) Close() error {
@@ -34,6 +39,9 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 
 	case save.Entity:
+		storage.Mutex.Lock()
+		defer  storage.Mutex.Unlock()
+
 		id, err := RandID()
 
 		if err != nil {
@@ -44,6 +52,9 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewError(storages.SetID(quc.Entity, id))
 
 	case find.ByID:
+		storage.Mutex.RLock()
+		defer  storage.Mutex.RUnlock()
+
 		entity, found := storage.TableFor(quc.Type)[quc.ID]
 
 		if found {
@@ -53,6 +64,9 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		}
 
 	case find.All:
+		storage.Mutex.RLock()
+		defer  storage.Mutex.RUnlock()
+
 		table := storage.TableFor(quc.Type)
 
 		entities := []frameless.Entity{}
@@ -63,6 +77,9 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewSlice(entities)
 
 	case destroy.ByID:
+		storage.Mutex.Lock()
+		defer  storage.Mutex.Unlock()
+
 		table := storage.TableFor(quc.Type)
 
 		if _, ok := table[quc.ID]; ok {
@@ -81,6 +98,9 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
 
 	case update.ByEntity:
+		storage.Mutex.Lock()
+		defer  storage.Mutex.Unlock()
+
 		ID, found := storages.LookupID(quc.Entity)
 
 		if !found {
