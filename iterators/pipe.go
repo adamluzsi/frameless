@@ -68,9 +68,9 @@ type PipeSender struct {
 	err  chan<- error
 }
 
-// Send send value to the PipeReceiver
+// Encode send value to the PipeReceiver
 // and returns ErrClosed error if no more value expected on the receiver side
-func (f *PipeSender) Send(e frameless.Entity) error {
+func (f *PipeSender) Encode(e frameless.Entity) error {
 	select {
 	case f.feed <- e:
 		return nil

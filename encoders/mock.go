@@ -1,4 +1,4 @@
-package presenters
+package encoders
 
 import (
 	"reflect"
@@ -12,43 +12,43 @@ func NewMock() *Mock {
 }
 
 type Mock struct {
-	ReceivedMessages []interface{}
-	ReturnError      error
+	Received    []interface{}
+	ReturnError error
 }
 
-func (m *Mock) Encode(message interface{}) error {
-	m.ReceivedMessages = append(m.ReceivedMessages, message)
+func (m *Mock) Encode(e interface{}) error {
+	m.Received = append(m.Received, e)
 	return m.ReturnError
 }
 
-func (m *Mock) Message() interface{} {
-	return m.ReceivedMessages[len(m.ReceivedMessages)-1]
+func (m *Mock) Entity() interface{} {
+	return m.Received[len(m.Received)-1]
 }
 
 func (m *Mock) MessageMatch(t testing.TB, i interface{}) {
 	expected := reflect.ValueOf(i)
-	actually := reflect.ValueOf(m.Message())
+	actually := reflect.ValueOf(m.Entity())
 
 	switch expected.Kind() {
 	case reflect.Slice:
 		m.matchSlice(t, expected, actually)
 
 	default:
-		require.Equal(t, i, m.Message())
+		require.Equal(t, i, m.Entity())
 
 	}
 }
 
 func (m *Mock) StreamContains(t testing.TB, i interface{}) {
 	expected := reflect.ValueOf(i)
-	actually := reflect.ValueOf(m.ReceivedMessages)
+	actually := reflect.ValueOf(m.Received)
 
 	switch expected.Kind() {
 	case reflect.Slice:
 		m.matchSlice(t, expected, actually)
 
 	default:
-		require.Contains(t, m.ReceivedMessages, i)
+		require.Contains(t, m.Received, i)
 
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/adamluzsi/frameless/storages/memorystorage"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/presenters"
+	"github.com/adamluzsi/frameless/encoders"
 	"github.com/adamluzsi/frameless/requests"
 )
 
@@ -22,11 +22,11 @@ func TestUseCasesListNotes_NoNotesInTheStore_EmptySetReturned(t *testing.T) {
 
 	storage := memorystorage.NewMemory()
 	usecases := ExampleUseCases(storage)
-	p := presenters.NewMock()
+	p := encoders.NewMock()
 	r := requests.New(context.Background(), iterators.NewEmpty())
 
 	require.Nil(t, usecases.ListNotes(r, p))
-	require.Equal(t, []*examples.Note{}, p.Message())
+	require.Equal(t, []*examples.Note{}, p.Entity())
 }
 
 func TestUseCasesListNotes_NotesStoredInTheStorageAlready_AllNoteReturned(t *testing.T) {
@@ -38,7 +38,7 @@ func TestUseCasesListNotes_NotesStoredInTheStorageAlready_AllNoteReturned(t *tes
 	usecases := ExampleUseCases(storage)
 	AddNotest(t, storage, notes)
 
-	p := presenters.NewMock()
+	p := encoders.NewMock()
 	r := requests.New(context.Background(), iterators.NewEmpty())
 
 	require.Nil(t, usecases.ListNotes(r, p))
@@ -55,7 +55,7 @@ func TestUseCasesListNotes_StorageFails_ErrReturned(t *testing.T) {
 	usecases := ExampleUseCases(storage)
 	AddNotest(t, storage, notes)
 
-	p := presenters.NewMock()
+	p := encoders.NewMock()
 	r := requests.New(context.Background(), iterators.NewEmpty())
 
 	require.Nil(t, usecases.ListNotes(r, p))

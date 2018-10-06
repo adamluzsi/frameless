@@ -27,7 +27,7 @@ func TestNewPipe_SimpleFeedScenario(t *testing.T) {
 
 	go func() {
 		defer w.Close()
-		require.Nil(t, w.Send(&expected))
+		require.Nil(t, w.Encode(&expected))
 	}()
 
 	require.True(t, r.Next())            // first next should return the value mean to be sent
@@ -55,7 +55,7 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 		defer w.Close()
 
 		for _, e := range expected {
-			w.Send(e)
+			w.Encode(e)
 		}
 	}()
 
@@ -83,11 +83,11 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	go func() {
 		defer w.Close()
 
-		require.Equal(t, iterators.ErrClosed, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Equal(t, iterators.ErrClosed, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 	}()
 
 	// normally next should not be called after a Close, but in the test I have to define the behavior
-	// so in order to prevent overengineering in sender Send method, I place a sleep here to force thick the scheduler in favor of done channel
+	// so in order to prevent overengineering in sender Encode method, I place a sleep here to force thick the scheduler in favor of done channel
 	time.Sleep(10 * time.Millisecond)
 
 	require.Nil(t, r.Close()) // I release the resource,
@@ -107,7 +107,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 	r, w := iterators.NewPipe()
 
 	go func() {
-		require.Nil(t, w.Send(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 		require.Nil(t, w.Error(expected))
 		require.Nil(t, w.Close())
 	}()
@@ -118,4 +118,15 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 	require.Equal(t, expected, r.Err()) // Also tells me that something went wrong during the processing
 	require.Nil(t, r.Close())           // I release the resource because than and go on
 	require.Equal(t, expected, r.Err()) // The last error should be available later
+}
+
+func TestNewPipe_EncoderAndDecoderInterface(t *testing.T) {
+	t.Parallel()
+
+	r, w := iterators.NewPipe()
+	defer w.Close()
+
+	var _ frameless.Decoder = r
+	var _ frameless.Encoder = w
+
 }

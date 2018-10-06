@@ -1,4 +1,4 @@
-package presenters_test
+package encoders_test
 
 import (
 	"errors"
@@ -8,15 +8,15 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/presenters"
+	"github.com/adamluzsi/frameless/encoders"
 )
 
-var _ frameless.Encoder = &presenters.Mock{}
+var _ frameless.Encoder = &encoders.Mock{}
 
 func TestMock_ErrorSetToReturnOnRenderCall_ErrorReturned(t *testing.T) {
 	t.Parallel()
 
-	mock := presenters.NewMock()
+	mock := encoders.NewMock()
 
 	err := errors.New("Boom!")
 	mock.ReturnError = err
@@ -27,15 +27,15 @@ func TestMock_ErrorSetToReturnOnRenderCall_ErrorReturned(t *testing.T) {
 func TestMock_MessageGivenToPresenter_LastMessageAvailableByMessageMethod(t *testing.T) {
 	t.Parallel()
 
-	mock := presenters.NewMock()
+	mock := encoders.NewMock()
 	require.Nil(t, mock.Encode("OK"))
-	require.Equal(t, "OK", mock.Message())
+	require.Equal(t, "OK", mock.Entity())
 }
 
 func TestMock_ValueGiven_MatchCheckEquality(t *testing.T) {
 	t.Parallel()
 
-	mock := presenters.NewMock()
+	mock := encoders.NewMock()
 	require.Nil(t, mock.Encode("OK"))
 
 	t.Run("when asserted value is equal", func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestMock_SliceMessageExpected_MatchMakeGivenTestToFailOrNotDependingByEqual
 	t.Parallel()
 
 	msg := []int{1, 2, 3, 4}
-	mock := presenters.NewMock()
+	mock := encoders.NewMock()
 	require.Nil(t, mock.Encode(msg))
 
 	t.Run("when asserted value is equal", func(t *testing.T) {
@@ -133,7 +133,7 @@ func TestMock_StreamLikeUsageExpected_MatchMakeGivenTestToFailOrNotDependingByEq
 	t.Parallel()
 
 	msgs := []int{1, 2, 3, 4}
-	mock := presenters.NewMock()
+	mock := encoders.NewMock()
 	for _, msg := range msgs {
 		require.Nil(t, mock.Encode(msg))
 	}

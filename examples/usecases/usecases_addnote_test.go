@@ -14,7 +14,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/presenters"
+	"github.com/adamluzsi/frameless/encoders"
 	"github.com/adamluzsi/frameless/requests"
 
 	"github.com/adamluzsi/frameless/examples"
@@ -31,7 +31,7 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 	storage := memorystorage.NewMemory()
 	usecases := ExampleUseCases(storage)
 
-	p := presenters.NewMock()
+	p := encoders.NewMock()
 
 	sample := &examples.Note{
 		Title:   AddNoteTitle,
@@ -53,8 +53,8 @@ func TestUseCasesAddNote_NoNotesInTheStore_NoteCreatedAndNoteReturned(t *testing
 	require.Equal(t, 1, len(foundNotes))
 	savedNote := foundNotes[0]
 
-	require.True(t, len(p.ReceivedMessages) > 0)
-	require.Equal(t, savedNote, p.Message())
+	require.True(t, len(p.Received) > 0)
+	require.Equal(t, savedNote, p.Entity())
 
 }
 
@@ -67,7 +67,7 @@ func TestUseCasesAddNote_ErrHappenInStorage_ErrReturned(t *testing.T) {
 
 	usecases := ExampleUseCases(storage)
 
-	p := presenters.NewMock()
+	p := encoders.NewMock()
 
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "Title", AddNoteTitle)

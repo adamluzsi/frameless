@@ -84,7 +84,7 @@ func (cli *CLI) addNote(args []string) error {
 	ctx = context.WithValue(ctx, "Content", *content)
 	r := requests.New(ctx, iterators.NewEmpty())
 
-	return cli.usecases.AddNote(r, frameless.PresenterFunc(cli.presentNote))
+	return cli.usecases.AddNote(r, frameless.EncoderFunc(cli.presentNote))
 
 }
 
@@ -109,7 +109,7 @@ func (cli *CLI) listNotes(args []string) error {
 
 	r := requests.New(context.Background(), iterators.NewEmpty())
 
-	return cli.usecases.ListNotes(r, frameless.PresenterFunc(cli.presentNoteList))
+	return cli.usecases.ListNotes(r, frameless.EncoderFunc(cli.presentNoteList))
 }
 
 func (cli *CLI) presentNoteList(message interface{}) error {

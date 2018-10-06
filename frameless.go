@@ -3,6 +3,7 @@ package frameless
 import (
 	"context"
 	"io"
+	"net/http"
 	"testing"
 )
 
@@ -52,46 +53,33 @@ type Entity = interface{}
 //  Robert Martin
 //
 type UseCase interface {
-	Do(Request, Presenter) error
+	Do(Request, Encoder) error
+}
+
+
+
+type x = http.Handler
+
+type Adapter interface {
+	Decorate(Interactor) Interactor
+}
+
+type Interactor interface {
+	Interact(context.Context, Iterator) Iterator
+}
+
+type ListUsersOfTheTeam struct{}
+
+func Interact(ctx context.Context) Iterator {
+	return nil
 }
 
 // UseCaseFunc helps convert anonimus lambda expressions into valid Frameless UseCase object
-type UseCaseFunc func(Request, Presenter) error
+type UseCaseFunc func(Request, Encoder) error
 
 // Do func implements the Frameless UseCase interface
-func (lambda UseCaseFunc) Do(r Request, p Presenter) error {
+func (lambda UseCaseFunc) Do(r Request, p Encoder) error {
 	return lambda(r, p)
-}
-
-// Presenter is represent a communication layer presenting layer
-//
-// Scope:
-// 	receive messages, and convert it into a serialized form
-//
-// You should not allow the users of the Presenter object to modify the state of the wrapped communication channel, such as closing, or direct writing
-type Presenter interface {
-	//
-	// RenderWithTemplate a content on a channel that the Presenter implements
-	//	name helps to determine the what template should be used, but should not include channel specific names
-	//	data is the content that should be used in the template
-	// RenderWithTemplate(name string, data frameless.Content) error
-
-	//
-	// Render renders a simple message back to the wrapped communication channel
-	//	message is an interface type because the channel communication layer and content and the serialization is up to the Presenter to implement
-	//
-	// If the message is a complex type that has multiple fields,
-	// an exported struct that represent the content must be declared at the controller level
-	// and all the presenters must based on that input for they test
-	Render(message interface{}) error
-}
-
-// PresenterFunc is a wrapper to convert standalone functions into a presenter
-type PresenterFunc func(interface{}) error
-
-// Render implements the Presenter Interface
-func (lambda PresenterFunc) Render(message interface{}) error {
-	return lambda(message)
 }
 
 // Request is framework independent way of interacting with a request that has been received on some kind of channel.
@@ -101,10 +89,34 @@ type Request interface {
 	Data() Iterator
 }
 
+// Encoder is a scope isolation boundary.
+// One use-case for this is for example the Presenter object that encapsulate the external resource presentation mechanism from it's user.
+//
+// Scope:
+// 	receive Entities, that will be used by the creator of the Encoder
+type Encoder interface {
+	//
+	// Encode encode a simple message back to the wrapped communication channel
+	//	message is an interface type because the channel communication layer and content and the serialization is up to the Encoder to implement
+	//
+	// If the message is a complex type that has multiple fields,
+	// an exported struct that represent the content must be declared at the controller level
+	// and all the presenters must based on that input for they test
+	Encode(Entity) error
+}
+
+// EncoderFunc is a wrapper to convert standalone functions into a presenter
+type EncoderFunc func(interface{}) error
+
+// Encode implements the Encoder Interface
+func (lambda EncoderFunc) Encode(i interface{}) error {
+	return lambda(i)
+}
+
 // Decoder is the interface for populating/replacing a public struct with values that retried from an external resource
 type Decoder interface {
 	// Decode will populate an object with values and/or return error
-	Decode(interface{}) error
+	Decode(Entity) error
 }
 
 // DecoderFunc enables to use anonymous functions to be a valid DecoderFunc

@@ -28,7 +28,7 @@ func (b *builder) toServerMux() *http.ServeMux {
 
 	add := adapters.NetHTTP(
 		frameless.UseCaseFunc(b.usecases.AddNote),
-		func(w io.Writer) frameless.Presenter { return b.presentNote(w) },
+		func(w io.Writer) frameless.Encoder { return b.presentNote(w) },
 		func(r io.Reader) frameless.Iterator { return iterateover.LineByLine(r) },
 	)
 
@@ -36,7 +36,7 @@ func (b *builder) toServerMux() *http.ServeMux {
 
 	list := adapters.NetHTTP(
 		frameless.UseCaseFunc(b.usecases.ListNotes),
-		func(w io.Writer) frameless.Presenter { return b.presentNotes(w) },
+		func(w io.Writer) frameless.Encoder { return b.presentNotes(w) },
 		func(r io.Reader) frameless.Iterator { return iterateover.LineByLine(r) },
 	)
 
@@ -64,16 +64,16 @@ var notesTemplateText = `
 
 var notesTemplate = template.Must(template.New("present-note-list").Parse(notesTemplateText))
 
-func (b *builder) presentNote(w io.Writer) frameless.Presenter {
-	return frameless.PresenterFunc(func(message interface{}) error {
+func (b *builder) presentNote(w io.Writer) frameless.Encoder {
+	return frameless.EncoderFunc(func(message interface{}) error {
 		note := message.(*examples.Note)
 		notes := []*examples.Note{note}
 		return b.executeNotesTemplate(w, notes)
 	})
 }
 
-func (b *builder) presentNotes(w io.Writer) frameless.Presenter {
-	return frameless.PresenterFunc(func(message interface{}) error {
+func (b *builder) presentNotes(w io.Writer) frameless.Encoder {
+	return frameless.EncoderFunc(func(message interface{}) error {
 		notes := message.([]*examples.Note)
 
 		return b.executeNotesTemplate(w, notes)

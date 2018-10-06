@@ -7,4 +7,4 @@ import (
 )
 
 // PresenterBuilder is an example how presenter should be created
-type PresenterBuilder func(io.Writer) frameless.Presenter
+type PresenterBuilder func(io.Writer) frameless.Encoder

@@ -18,7 +18,7 @@ type UseCases struct {
 	storage frameless.Storage
 }
 
-func (uc *UseCases) ListNotes(r frameless.Request, p frameless.Presenter) error {
+func (uc *UseCases) ListNotes(r frameless.Request, p frameless.Encoder) error {
 	notes := []*examples.Note{}
 
 	i := uc.storage.Exec(find.All{Type: examples.Note{}})
@@ -27,10 +27,10 @@ func (uc *UseCases) ListNotes(r frameless.Request, p frameless.Presenter) error 
 		return err
 	}
 
-	return p.Render(notes)
+	return p.Encode(notes)
 }
 
-func (uc *UseCases) AddNote(r frameless.Request, p frameless.Presenter) error {
+func (uc *UseCases) AddNote(r frameless.Request, p frameless.Encoder) error {
 	title, ok := r.Context().Value("Title").(string)
 	if !ok || title == "" {
 		return errors.New("missing Title")
@@ -50,5 +50,5 @@ func (uc *UseCases) AddNote(r frameless.Request, p frameless.Presenter) error {
 		return err
 	}
 
-	return p.Render(newNote)
+	return p.Encode(newNote)
 }
