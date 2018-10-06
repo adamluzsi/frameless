@@ -2,6 +2,7 @@ package fixtures
 
 import (
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/storages"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -29,7 +30,13 @@ func New(entity frameless.Entity) frameless.Entity {
 		}
 	}
 
-	return ptr.Interface()
+	newEntity := ptr.Interface()
+
+	if _, ok := storages.LookupID(newEntity); ok {
+		storages.SetID(newEntity, "")
+	}
+
+	return newEntity
 }
 
 var mutex sync.Mutex
