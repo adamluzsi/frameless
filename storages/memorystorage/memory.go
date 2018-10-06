@@ -42,6 +42,10 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		storage.Mutex.Lock()
 		defer  storage.Mutex.Unlock()
 
+		if currentID, ok := storages.LookupID(quc.Entity); !ok || currentID != "" {
+			return iterators.Errorf("entity already have an ID: %s", currentID)
+		}
+
 		id, err := RandID()
 
 		if err != nil {

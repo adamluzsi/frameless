@@ -42,6 +42,10 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	case save.Entity:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 
+			if currentID, ok := storages.LookupID(quc.Entity); !ok || currentID != "" {
+				return fmt.Errorf("entity already have an ID: %s", currentID)
+			}
+
 			bucketName := storage.BucketNameFor(quc.Entity)
 			bucket, err := tx.CreateBucketIfNotExists(bucketName)
 

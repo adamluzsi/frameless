@@ -52,4 +52,14 @@ func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage, reset func(
 
 	})
 
+	spec.Run("when entity doesn't have storage ID field", func(t *testing.T) {
+		defer reset()
+
+		newEntity := fixtures.New(entityWithoutIDField{})
+		require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
+	})
+}
+
+type entityWithoutIDField struct {
+	Data string
 }

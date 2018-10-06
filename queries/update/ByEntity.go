@@ -4,8 +4,8 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
+	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/storages"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -69,5 +69,16 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func
 
 		})
 
+		spec.Run("given entity doesn't have storage ID field", func(t *testing.T) {
+			defer reset()
+
+			newEntity := fixtures.New(entityWithoutIDField{})
+			require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
+		})
+
 	})
+}
+
+type entityWithoutIDField struct {
+	Data string
 }

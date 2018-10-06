@@ -30,4 +30,23 @@ func (q Entity) Test(t *testing.T, s frameless.Storage, resetDB func()) {
 		require.True(t, len(ID) > 0, "it's expected that storage set the storage ID in the entity")
 
 	})
+
+	t.Run("when entity doesn't have storage ID field", func(t *testing.T) {
+		defer resetDB()
+
+		newEntity := fixtures.New(entityWithoutIDField{})
+		require.Error(t, s.Exec(Entity{Entity: newEntity}).Err())
+	})
+
+	t.Run("when entity already have an ID", func(t *testing.T) {
+		defer resetDB()
+
+		newEntity := fixtures.New(q.Entity)
+		storages.SetID(newEntity, "Hello world!")
+		require.Error(t, s.Exec(Entity{Entity: newEntity}).Err())
+	})
+}
+
+type entityWithoutIDField struct {
+	Data string
 }
