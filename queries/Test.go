@@ -11,7 +11,7 @@ import (
 
 func Test(t *testing.T, s frameless.Storage, r func()) {
 	t.Run("query implementations", func(suite *testing.T) {
-		suite.Run("persist", func(t *testing.T) {
+		suite.Run("save", func(t *testing.T) {
 			save.Entity{Entity: &testEntity{}}.Test(t, s, r)
 		})
 		suite.Run("find", func(spec *testing.T) {
