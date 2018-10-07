@@ -26,14 +26,6 @@
   version = "v1.1.0"
 
 [[projects]]
-  digest = "1:ccfa094742ce1c97fd3f6481e1bf98f3d9862510eee2bc0eb56e2745396bd330"
-  name = "github.com/julienschmidt/httprouter"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "8c199fb6259ffc1af525cc3ad52ee60ba8359669"
-  version = "v1.1"
-
-[[projects]]
   digest = "1:0028cb19b2e4c3112225cd871870f2d9cf49b9b4276531f03438a88e94be86fe"
   name = "github.com/pmezard/go-difflib"
   packages = ["difflib"]
@@ -74,7 +66,6 @@
   input-imports = [
     "github.com/Pallinder/go-randomdata",
     "github.com/boltdb/bolt",
-    "github.com/julienschmidt/httprouter",
     "github.com/satori/go.uuid",
     "github.com/stretchr/testify/require",
   ]
