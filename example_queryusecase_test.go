@@ -15,7 +15,7 @@ type User struct {
 type InactiveUsers struct{} // <- Query
 
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
-func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Storage, resetStorage func()) {
+func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.ExternalResource, resetStorage func()) {
 	suite.Run("dependency", func(t *testing.T) {
 		save.Entity{Entity: &User{}}.Test(t, storage, resetStorage)
 	})
