@@ -4,3 +4,4 @@ import "github.com/adamluzsi/frameless/queries/queryerrors"
 
 var _ error = queryerrors.ErrNotFound
 var _ error = queryerrors.ErrIDRequired
+var _ error = queryerrors.ErrNotImplemented

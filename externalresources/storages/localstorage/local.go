@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/save"
 	"io/ioutil"
 	"reflect"
@@ -198,7 +199,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	default:
-		return iterators.NewError(fmt.Errorf("%s not implemented", reflects.FullyQualifiedName(quc)))
+		return iterators.NewError(queryerrors.ErrNotImplemented)
 
 	}
 }

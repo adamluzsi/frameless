@@ -3,8 +3,8 @@ package memorystorage
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
@@ -122,7 +122,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewEmpty()
 
 	default:
-		return iterators.NewError(fmt.Errorf("%s not implemented", reflect.TypeOf(quc).Name()))
+		return iterators.NewError(queryerrors.ErrNotImplemented)
 
 	}
 }

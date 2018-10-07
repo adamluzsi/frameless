@@ -4,6 +4,8 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
+const ErrNotImplemented frameless.Error = "ErrNotImplemented"
+
 const ErrNotFound frameless.Error = "ErrNotFound"
 
 const ErrIDRequired frameless.Error = `
