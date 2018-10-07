@@ -6,72 +6,77 @@ import (
 )
 
 /*
-Entity encapsulate the most general and high-level rules of the application.
-This interface here is only for documentation purpose
+	Entity encapsulate the most general and high-level rules of the application.
+	This interface here is only for documentation purpose
 
-	"An entity can be an object with methods, or it can be a set of data structures and functions"
-	Robert Martin
+		"An entity can be an object with methods, or it can be a set of data structures and functions"
+		Robert Martin
 
-In enterprise environment, this or the specification of this object can be shared between applications.
-If you don’t have an enterprise, and are just writing a single application, then these entities are the business objects of the application.
-They encapsulate the most general and high-level rules.
-Entity scope must be free from anything related to other software layers implementation knowledge such as SQL or HTTP request objects.
+	In enterprise environment, this or the specification of this object can be shared between applications.
+	If you don’t have an enterprise, and are just writing a single application, then these entities are the business objects of the application.
+	They encapsulate the most general and high-level rules.
+	Entity scope must be free from anything related to other software layers implementation knowledge such as SQL or HTTP request objects.
 
-They are the least likely to change when something external changes.
-For example, you would not expect these objects to be affected by a change to page navigation, or security.
-No operational change to any particular application should affect the entity layer.
+	They are the least likely to change when something external changes.
+	For example, you would not expect these objects to be affected by a change to page navigation, or security.
+	No operational change to any particular application should affect the entity layer.
 
-By convention these structures should be placed on the top folder level of the project
+	By convention these structures should be placed on the top folder level of the project
 */
 type Entity = interface{}
 
 /*
-UseCase implement domain logic / business rule.
-This interface here is only for documentation purpose.
+	UseCase implement domain logic / business rule.
+	This interface here is only for documentation purpose.
 
-TL;DR:
-You create code exactly the same way as how you used to do,
-except you practice the the discipline of not using anything from the external interfaces layer.
+	TL;DR:
+		Using UseCase imposes discipline upon focusing on the domain goal instead of the "how" and "with what".
 
-This can be a function or a struct of function, it's up to the implementation.
-It has to be implemented in a framework independent way.
-The function arguments should be explicit Entity structures or primitives.
-When stream of data required, use case should declare framework and technology independent data providers.
-	In my future examples this data source will be fulfilled by Iterator pattern implementations.
+	This can be a function or a struct of function, it's up to the implementation.
+	It has to be implemented in a framework independent way.
+	The function arguments should be explicit Entity structures or primitives.
+	When stream of data required, use case should declare framework and technology independent data providers.
 
-As an easy to follow practice that you start build your application by implementing domain use cases,
-until you have all your business logic / use case implemented.
-Your test should work only with Entity structures and primitives exclusively.
+		In my future examples this data source will be fulfilled by Iterator pattern implementations.
 
-If you cannot avoid to depend on external resources, use interface to represent they need.
-During my research, I played around multiple solutions, and the one I liked the most is the following:
-You describe in a shared specification, in a test that is Exposed and importable by the external interface specification,
-and in that you describe what is your expectation from the use-case point of view from the provided external resource,
-when you call it with a specific data structure. for more about this, read the "Query" and "ExternalResource" type.
+	As an easy to follow practice that you start build your application by implementing domain use cases,
+	until you have all your business logic / use case implemented.
+	Your test should work only with Entity structures and primitives exclusively.
 
-Here is a definition from Robert Martin:
+	If you cannot avoid to depend on external resources, use interface to represent they need.
+	During my research, I played around multiple solutions, and the one I liked the most is the following:
+	You describe in a shared specification, in a test that is Exposed and importable by the external interface specification,
+	and in that you describe what is your expectation from the use-case point of view from the provided external resource,
+	when you call it with a specific data structure. for more about this, read the "Query" and "ExternalResource" type.
 
- The software in this layer contains application specific business rules.
- It encapsulates and implements all of the use cases of the system.
- These use cases orchestrate the flow of data to and from the entities,
- and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.
+	Here is a definition from Robert Martin:
 
- We do not expect changes in this layer to affect the entities.
- We also do not expect this layer to be affected by changes to externalises such as the database,
- the UI, or any of the common frameworks.
- This layer is isolated from such concerns.
+		The software in this layer contains application specific business rules.
+		It encapsulates and implements all of the use cases of the system.
+		These use cases orchestrate the flow of data to and from the entities,
+		and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.
 
- We do, however, expect that changes to the operation of the application will affect the use-cases and therefore the software in this layer.
- If the details of a use-case change, then some code in this layer will certainly be affected.
+		We do not expect changes in this layer to affect the entities.
+		We also do not expect this layer to be affected by changes to externalises such as the database,
+		the UI, or any of the common frameworks.
+		This layer is isolated from such concerns.
+
+		We do, however, expect that changes to the operation of the application will affect the use-cases and therefore the software in this layer.
+		If the details of a use-case change, then some code in this layer will certainly be affected.
 
 
-When your application has all the use-case, then you decide the right external interface to expose them.
+	When your application has all the use-case, then you decide the right external interface to expose them.
  */
 type UseCase = interface{}
 
 /*
 
 	Query is a ExternalResource specific component.
+
+	TL;DR:
+		Query imposes discipline upon scope usage.
+		So Query is a behavior specification and a data structure that helps use-cases to focus on the "what" instead of the "how".
+
 	The main purpose is to Use Case specific behavior requirements from the technology specific implementation
 	The Use Case implementation should never specify low level implementation of the storage usage, but represent it with a Query data structure that passed to the storage.
 	The Query data structure should contain all the necessary data that required for the storage.
@@ -92,11 +97,18 @@ type Query interface {
 	// To cover your behavior easily it is advised to use multiple test run with different contexts.
 	// I personally prefer the testing#T.Run to create test contexts.
 	// test should receive a tear-down/cleanup function as the last argument that will used to reset to the initial state the external resource.
-	Test(t *testing.T, er ExternalResource, reset func())
+	Test(t *testing.T, e ExternalResource, reset func())
 }
 
 /*
 	ExternalResource are resources that implements interactions (queries) that the use case depends on.
+
+	TL;DR:
+		ExternalResource imposes discipline upon dependency inversion.
+		You encapsulate all the technology specific implementations,
+		so you can try anything out while frameworks and ORMs evolve,
+		yet your domain rules will be keep safe from this changes.
+
 	By removing tight integration and encapsulate it behind such a generic interface like this,
 	we can freely swap the implementation and make testing much more easier for the domain rules.
 
@@ -104,18 +116,22 @@ type Query interface {
 	but the usage of these is generally applicable to any kind of external resource which you have to interact from use-cases or from controllers.
 
 	While at first this may seems boilerplate and you would feel a nice ORM would do the same,
-	but than you took over the responsibilty of ensuring that the current ORM you choose to work with,
-	with its current API will be maintained and if needed, backward ported for your application.
-	Otherwise you violate the dependency inversion rule which defines that a change in external interfaces should never affect use-cases or Entities.
+	but than you took over the responsibility of ensuring that the current ORM you choose to work with
+	and its current API will be maintained and if needed, backward ported for your application.
+	You may ask why not just update the project code base to the newest api in the use-cases, but then
+	that update would be a violation to the dependency inversion rule,
+	which defines that a change in external interfaces should never affect use-cases or Entities.
 
-
-	ExternalResource that works with the bundled in queries require a special field in the data entity: ID.
-	This ID field represent the link between the in memory entity and it's persisted version in the storage.
-	This ID field can be any exported string field as long it is tagged with `ext:"ID"`.
+	So this interface aims to reduce interconnection between use-case layer and external interface layer.
+	The first is that you define Query structures that define the behavior which needs to be implemented.
+	The second but optionally requirement for this interface is a string field: `ext:"ID"`.
+	which links the Entity structure to an external resource object.
+	If the external resource use complex types to represent ID objects, they have to implement the serialization
+	and the deserialization as well under the hood, without bothering the use-case or entity layer with it.
 */
 type ExternalResource interface {
 	io.Closer
-	// Exec implements the Query#Test -s  each application Query.Test that used with the given storage.
+	// Exec expect a Query object and  implements the Query#Test -s  each application Query.Test that used with the given storage.
 	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
 	//
 	// for simple use cases where returned iterator expected to only include 1 element I recommend using iterators.DecodeNext(iterator, &entity) for syntax sugar.
