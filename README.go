@@ -59,31 +59,6 @@ How much effort will be required to build mind model for the code ?
 
 
 
-The Goal
-
-So I decided to find time in my life and research out in my own speed a solution for the above mentioned problem.
-I also tried to include the factor that we software engineers like play with new toys (abstractions)
-and I would like to leave space for that for myself as well. So I tried layer software into the following:
-
-• Entity
-Is usually a data structure that may or may not have functions.
-
-• UseCase
-that implements a specific business use case.
-Depends on Entities it works, it defines what the presenter receives,
-also defines what query use cases the storage must implement.
-
-
-• ExternalResource
-implements query use case specifications on a specific external resource that main purpose is storing data.
-Hides the technology/packages from the controller, so the dependency inversion can be enforced even more.
-Ensure that the given external resource connection only used through this and it is not leaked out.
-Your entities by default will not know about their persistence, the only information can optionally exchange is the storage ID.
-As a nice side effect, because storage is a dependency for controller rather than encapsulation in an entity, like how most ORM frameworks do,
-you can use during testing in-memory storages, so your red/green/refactor feedback cycle will be blazing fast,
-and you can start create business use cases implementations without any storage.
-
-
 
 Principles that should be followed when you design with this package
 
