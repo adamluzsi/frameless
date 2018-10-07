@@ -1,9 +1,9 @@
 package destroy
 
 import (
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/save"
-	"github.com/adamluzsi/frameless/storages"
 	"testing"
 
 	"github.com/adamluzsi/frameless/queries/fixtures"
@@ -19,7 +19,7 @@ type ByEntity struct {
 }
 
 // Test will test that an ByEntity is implemented by a generic specification
-func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage, reset func()) {
+func (quc ByEntity) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
 	defer reset()
 
 	spec.Run("dependency", func(t *testing.T) {
@@ -28,7 +28,7 @@ func (quc ByEntity) Test(spec *testing.T, storage frameless.Storage, reset func(
 
 	expected := fixtures.New(quc.Entity)
 	require.Nil(spec, storage.Exec(save.Entity{Entity: expected}).Err())
-	ID, ok := storages.LookupID(expected)
+	ID, ok := externalresources.LookupID(expected)
 
 	if !ok {
 		spec.Fatal(queryerrors.ErrIDRequired)

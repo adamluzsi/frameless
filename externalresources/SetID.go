@@ -1,4 +1,4 @@
-package storages
+package externalresources
 
 import (
 	"errors"

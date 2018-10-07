@@ -1,4 +1,4 @@
-package storages
+package externalresources
 
 import (
 	"reflect"
@@ -32,7 +32,7 @@ func lookupByTag(val reflect.Value) (reflect.Value, bool) {
 		typeField := val.Type().Field(i)
 		tag := typeField.Tag
 
-		if tag.Get("storage") == "ID" {
+		if tag.Get("ext") == "ID" {
 			return valueField, true
 		}
 	}

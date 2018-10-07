@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
@@ -42,7 +42,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		storage.Mutex.Lock()
 		defer  storage.Mutex.Unlock()
 
-		if currentID, ok := storages.LookupID(quc.Entity); !ok || currentID != "" {
+		if currentID, ok := externalresources.LookupID(quc.Entity); !ok || currentID != "" {
 			return iterators.Errorf("entity already have an ID: %s", currentID)
 		}
 
@@ -53,7 +53,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		}
 
 		storage.TableFor(quc.Entity)[id] = quc.Entity
-		return iterators.NewError(storages.SetID(quc.Entity, id))
+		return iterators.NewError(externalresources.SetID(quc.Entity, id))
 
 	case find.ByID:
 		storage.Mutex.RLock()
@@ -93,7 +93,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewEmpty()
 
 	case destroy.ByEntity:
-		ID, found := storages.LookupID(quc.Entity)
+		ID, found := externalresources.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
@@ -105,7 +105,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		storage.Mutex.Lock()
 		defer  storage.Mutex.Unlock()
 
-		ID, found := storages.LookupID(quc.Entity)
+		ID, found := externalresources.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())

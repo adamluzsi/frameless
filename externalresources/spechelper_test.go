@@ -1,11 +1,11 @@
-package storages_test
+package externalresources_test
 
 type IDInFieldName struct {
 	ID string
 }
 
 type IDInTagName struct {
-	DI string `storage:"ID"`
+	DI string `ext:"ID"`
 }
 
 type UnidentifiableID struct {

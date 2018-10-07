@@ -1,10 +1,10 @@
 package find
 
 import (
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/queries/save"
 	"reflect"
 	"testing"
 
@@ -19,7 +19,7 @@ import (
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type All struct{ Type frameless.Entity }
 
-func (quc All) Test(t *testing.T, storage frameless.Storage, reset func()) {
+func (quc All) Test(t *testing.T, storage frameless.ExternalResource, reset func()) {
 	t.Run("when value stored in the database", func(t *testing.T) {
 		defer reset()
 
@@ -30,7 +30,7 @@ func (quc All) Test(t *testing.T, storage frameless.Storage, reset func()) {
 			entity := fixtures.New(quc.Type)
 			require.Nil(t, storage.Exec(save.Entity{Entity: entity}).Err())
 
-			id, found := storages.LookupID(entity)
+			id, found := externalresources.LookupID(entity)
 
 			if !found {
 				t.Fatal(queryerrors.ErrIDRequired)
@@ -47,7 +47,7 @@ func (quc All) Test(t *testing.T, storage frameless.Storage, reset func()) {
 
 			require.Nil(t, i.Decode(entity))
 
-			id, found := storages.LookupID(entity)
+			id, found := externalresources.LookupID(entity)
 
 			if !found {
 				t.Fatal(queryerrors.ErrIDRequired)

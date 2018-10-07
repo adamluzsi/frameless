@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func Test(t *testing.T, s frameless.Storage, r func()) {
+func Test(t *testing.T, s frameless.ExternalResource, r func()) {
 	t.Run("query implementations", func(suite *testing.T) {
 		suite.Run("save", func(t *testing.T) {
 			save.Entity{Entity: &testEntity{}}.Test(t, s, r)
@@ -39,6 +39,6 @@ func Test(t *testing.T, s frameless.Storage, r func()) {
 }
 
 type testEntity struct {
-	ID   string `storage:"ID"`
+	ID   string `ext:"ID"`
 	Name string
 }

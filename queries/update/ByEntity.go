@@ -1,12 +1,12 @@
 package update
 
 import (
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
 	"github.com/adamluzsi/frameless/queries/save"
-	"github.com/adamluzsi/frameless/storages"
 	"github.com/stretchr/testify/require"
 	"testing"
 
@@ -17,7 +17,7 @@ import (
 // ByEntity parameter is the wrapped entity that has the updated values.
 type ByEntity struct{ Entity frameless.Entity }
 
-func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func()) {
+func (quc ByEntity) Test(suite *testing.T, storage frameless.ExternalResource, reset func()) {
 	suite.Run("ByEntity", func(spec *testing.T) {
 
 		suite.Run("dependency", func(t *testing.T) {
@@ -28,7 +28,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func
 			entity := fixtures.New(quc.Entity)
 			require.Nil(spec, storage.Exec(save.Entity{Entity: entity}).Err())
 
-			ID, ok := storages.LookupID(entity)
+			ID, ok := externalresources.LookupID(entity)
 
 			if !ok {
 				spec.Fatal(queryerrors.ErrIDRequired)
@@ -44,7 +44,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func
 			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
-			storages.SetID(newEntity, ID)
+			externalresources.SetID(newEntity, ID)
 
 			updateResults := storage.Exec(ByEntity{Entity: newEntity})
 			require.NotNil(t, updateResults)
@@ -64,7 +64,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.Storage, reset func
 			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
-			storages.SetID(newEntity, "hitchhiker's guide to the galaxy")
+			externalresources.SetID(newEntity, "hitchhiker's guide to the galaxy")
 			require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
 
 		})

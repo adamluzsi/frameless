@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/adamluzsi/frameless/storages/storages/localstorage"
+	"github.com/adamluzsi/frameless/externalresources/storages/localstorage"
 
 	"github.com/stretchr/testify/require"
 )

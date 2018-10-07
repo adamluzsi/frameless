@@ -1,10 +1,10 @@
 package find
 
 import (
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/queries/save"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -23,7 +23,7 @@ type ByID struct {
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
+func (quc ByID) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
 	spec.Run("dependency", func(t *testing.T) {
 		save.Entity{Entity: quc.Type}.Test(t, storage, reset)
 	})
@@ -35,7 +35,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 
 		entity := fixtures.New(quc.Type)
 		require.Nil(spec, storage.Exec(save.Entity{entity}).Err())
-		ID, ok := storages.LookupID(entity)
+		ID, ok := externalresources.LookupID(entity)
 
 		if !ok {
 			spec.Fatal(queryerrors.ErrIDRequired)
@@ -72,7 +72,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.Storage, reset func()) {
 				}
 			}()
 
-			actualID, ok := storages.LookupID(entity)
+			actualID, ok := externalresources.LookupID(entity)
 
 			if !ok {
 				t.Fatal("can't find ID in the returned value")

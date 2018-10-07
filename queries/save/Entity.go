@@ -2,8 +2,8 @@ package save
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/storages"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -12,10 +12,10 @@ type Entity struct {
 	Entity frameless.Entity
 }
 
-func (q Entity) Test(t *testing.T, s frameless.Storage, resetDB func()) {
+func (q Entity) Test(t *testing.T, s frameless.ExternalResource, resetDB func()) {
 	t.Run("persist an Entity", func(t *testing.T) {
 
-		if ID, _ := storages.LookupID(q.Entity); ID != "" {
+		if ID, _ := externalresources.LookupID(q.Entity); ID != "" {
 			t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 		}
 
@@ -25,7 +25,7 @@ func (q Entity) Test(t *testing.T, s frameless.Storage, resetDB func()) {
 		require.NotNil(t, i)
 		require.Nil(t, i.Err())
 
-		ID, ok := storages.LookupID(e)
+		ID, ok := externalresources.LookupID(e)
 		require.True(t, ok, "ID is not defined in the entity struct src definition")
 		require.True(t, len(ID) > 0, "it's expected that storage set the storage ID in the entity")
 
@@ -42,7 +42,7 @@ func (q Entity) Test(t *testing.T, s frameless.Storage, resetDB func()) {
 		defer resetDB()
 
 		newEntity := fixtures.New(q.Entity)
-		storages.SetID(newEntity, "Hello world!")
+		externalresources.SetID(newEntity, "Hello world!")
 		require.Error(t, s.Exec(Entity{Entity: newEntity}).Err())
 	})
 }

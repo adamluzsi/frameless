@@ -4,7 +4,7 @@ import (
 	"github.com/adamluzsi/frameless/queries"
 	"testing"
 
-	"github.com/adamluzsi/frameless/storages/storages/memorystorage"
+	"github.com/adamluzsi/frameless/externalresources/storages/memorystorage"
 )
 
 func ExampleMemory() *memorystorage.Memory {

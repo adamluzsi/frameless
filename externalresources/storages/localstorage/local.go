@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
-	"github.com/adamluzsi/frameless/storages"
+	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/save"
 	"io/ioutil"
 	"reflect"
@@ -42,7 +42,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	case save.Entity:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 
-			if currentID, ok := storages.LookupID(quc.Entity); !ok || currentID != "" {
+			if currentID, ok := externalresources.LookupID(quc.Entity); !ok || currentID != "" {
 				return fmt.Errorf("entity already have an ID: %s", currentID)
 			}
 
@@ -61,7 +61,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 			encodedID := strconv.FormatUint(uIntID, 10)
 
-			if err = storages.SetID(quc.Entity, encodedID); err != nil {
+			if err = externalresources.SetID(quc.Entity, encodedID); err != nil {
 				return err
 			}
 
@@ -160,7 +160,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	case destroy.ByEntity:
-		ID, found := storages.LookupID(quc.Entity)
+		ID, found := externalresources.LookupID(quc.Entity)
 
 		if !found || ID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
@@ -169,7 +169,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
 
 	case update.ByEntity:
-		encodedID, found := storages.LookupID(quc.Entity)
+		encodedID, found := externalresources.LookupID(quc.Entity)
 
 		if !found || encodedID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
