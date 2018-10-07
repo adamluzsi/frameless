@@ -10,15 +10,14 @@ func idReflectValue(val reflect.Value) (reflect.Value, bool) {
 		val = val.Elem()
 	}
 
-	byName := val.FieldByName("ID")
-	if byName.Kind() != reflect.Invalid {
-		return byName, true
-	}
-
-	// TODO specific this to be the first expected use case
 	byTag, ok := lookupByTag(val)
 	if ok {
 		return byTag, true
+	}
+
+	byName := val.FieldByName("ID")
+	if byName.Kind() != reflect.Invalid {
+		return byName, true
 	}
 
 	return reflect.Value{}, false
