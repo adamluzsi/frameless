@@ -1,191 +1,119 @@
 package frameless
 
 import (
-	"context"
 	"io"
-	"net/http"
 	"testing"
 )
 
-// Entity encapsulate the most general and high-level rules of the application.
-// 	"An entity can be an object with methods, or it can be a set of data structures and functions"
-// 	Robert Martin
-//
-// In enterprise environment, this or the specification of this object can be shared between applications.
-// If you don’t have an enterprise, and are just writing a single application, then these entities are the business objects of the application.
-// They encapsulate the most general and high-level rules.
-// Entity scope must be free from anything related to other software layers implementation knowledge such as SQL or HTTP request objects.
-//
-// They are the least likely to change when something external changes.
-// For example, you would not expect these objects to be affected by a change to page navigation, or security.
-// No operational change to any particular application should affect the entity layer.
-//
-// By convention these structures should be placed on the top folder level of the project
+/*
+Entity encapsulate the most general and high-level rules of the application.
+This interface here is only for documentation purpose
+
+	"An entity can be an object with methods, or it can be a set of data structures and functions"
+	Robert Martin
+
+In enterprise environment, this or the specification of this object can be shared between applications.
+If you don’t have an enterprise, and are just writing a single application, then these entities are the business objects of the application.
+They encapsulate the most general and high-level rules.
+Entity scope must be free from anything related to other software layers implementation knowledge such as SQL or HTTP request objects.
+
+They are the least likely to change when something external changes.
+For example, you would not expect these objects to be affected by a change to page navigation, or security.
+No operational change to any particular application should affect the entity layer.
+
+By convention these structures should be placed on the top folder level of the project
+*/
 type Entity = interface{}
 
-// UseCase defines how a framework independent controller should look
-//  the core concept that the controller implements the business rules
-// 	and the channels like CLI or HTTP only provide data to it in a form of application specific business entities
-//
-// 	The controller responds to the user input and performs interactions on the data model objects.
-// 	The controller receives the input, optionally validates it and then passes the input to the model.
-//
-// To me when I played with the Separate UseCase/UseCase layers in a production app, I felt the extra layer just was cumbersome.
-// Therefore the "controller" concept here is a little different from traditional ukases but not different what most of the time a controller do in real world applications.
-// Implementing business use cases, validation or you name it. From the simples case such as listing users, to the extend of executing heavy calculations on user behalf.
-// The classical controller that provides interface between an external interface and a business logic implementation is something that must be implemented in the external interface integration layer itself.
-// I removed this extra layer to make controller scope only to control the execution of a specific business use case based on generic inputs such as presenter and request.
-// Also there is a return error which represent the unexpected and not recoverable errors that should notified back to the caller to tear-down execution nicely.
-//
-//  The software in this layer contains application specific business rules.
-//  It encapsulates and implements all of the use cases of the system.
-//  These use cases orchestrate the flow of data to and from the entities,
-//  and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.
-//
-//  We do not expect changes in this layer to affect the entities.
-//  We also do not expect this layer to be affected by changes to externalises such as the database,
-//  the UI, or any of the common frameworks.
-//  This layer is isolated from such concerns.
-//
-//  We do, however, expect that changes to the operation of the application will affect the use-cases and therefore the software in this layer.
-//  If the details of a use-case change, then some code in this layer will certainly be affected.
-//
-//  Robert Martin
-//
-type UseCase interface {
-	Do(Request, Encoder) error
-}
+/*
+UseCase implement domain logic / business rule.
+This interface here is only for documentation purpose.
+
+TL;DR:
+You create code exactly the same way as how you used to do,
+except you practice the the discipline of not using anything from the external interfaces layer.
+
+This can be a function or a struct of function, it's up to the implementation.
+It has to be implemented in a framework independent way.
+The function arguments should be explicit Entity structures or primitives.
+When stream of data required, use case should declare framework and technology independent data providers.
+	In my future examples this data source will be fulfilled by Iterator pattern implementations.
+
+As an easy to follow practice that you start build your application by implementing domain use cases,
+until you have all your business logic / use case implemented.
+Your test should work only with Entity structures and primitives exclusively.
+
+If you cannot avoid to depend on external resources, use interface to represent they need.
+During my research, I played around multiple solutions, and the one I liked the most is the following:
+You describe in a shared specification, in a test that is Exposed and importable by the external interface specification,
+and in that you describe what is your expectation from the use-case point of view from the provided external resource,
+when you call it with a specific data structure. for more about this, read the "Query" and "ExternalResource" type.
+
+Here is a definition from Robert Martin:
+
+ The software in this layer contains application specific business rules.
+ It encapsulates and implements all of the use cases of the system.
+ These use cases orchestrate the flow of data to and from the entities,
+ and direct those entities to use their enterprise wide business rules to achieve the goals of the use case.
+
+ We do not expect changes in this layer to affect the entities.
+ We also do not expect this layer to be affected by changes to externalises such as the database,
+ the UI, or any of the common frameworks.
+ This layer is isolated from such concerns.
+
+ We do, however, expect that changes to the operation of the application will affect the use-cases and therefore the software in this layer.
+ If the details of a use-case change, then some code in this layer will certainly be affected.
 
 
+When your application has all the use-case, then you decide the right external interface to expose them.
+ */
+type UseCase = interface{}
 
-type x = http.Handler
+/*
 
-type Adapter interface {
-	Decorate(Interactor) Interactor
-}
+	Query is a ExternalResource specific component.
+	The main purpose is to Use Case specific behavior requirements from the technology specific implementation
+	The Use Case implementation should never specify low level implementation of the storage usage, but represent it with a Query data structure that passed to the storage.
+	The Query data structure should contain all the necessary data that required for the storage.
+	Query type must define a Test method that describe the expected high level behavior when storage encounter this type of query.
+	This way all the storage implementations use the same shared specification/test, and by that ensure the high level requirements for the use-cases.
+	The Query type should not define anything other than the data types in its structure, and the expected behavior in the Test function,
+	everything else is the responsibility of the use-cases who use it.
+	If possible, its data structure should only include primitive fields.
+	By convention this should be declared next to the use-case implementation who use it.
+	If it's a generic query structure, than it should include a field that can hold a structure that can be used as a reference for creating fixture with the fixtures pkg New function.
 
-type Interactor interface {
-	Interact(context.Context, Iterator) Iterator
-}
+	By convention the Query name should start with "[EntityName][FindLogicDescription]" so it is easy to distinguish it from other exported Structures,
+	example: UserByName, UsersByName, UserByEmail
 
-type ListUsersOfTheTeam struct{}
-
-func Interact(ctx context.Context) Iterator {
-	return nil
-}
-
-// UseCaseFunc helps convert anonimus lambda expressions into valid Frameless UseCase object
-type UseCaseFunc func(Request, Encoder) error
-
-// Do func implements the Frameless UseCase interface
-func (lambda UseCaseFunc) Do(r Request, p Encoder) error {
-	return lambda(r, p)
-}
-
-// Request is framework independent way of interacting with a request that has been received on some kind of channel.
-// from this, the controller should get all the data and options that should required for the business use case that use it.
-type Request interface {
-	Context() context.Context
-	Data() Iterator
-}
-
-// Encoder is a scope isolation boundary.
-// One use-case for this is for example the Presenter object that encapsulate the external resource presentation mechanism from it's user.
-//
-// Scope:
-// 	receive Entities, that will be used by the creator of the Encoder
-type Encoder interface {
-	//
-	// Encode encode a simple message back to the wrapped communication channel
-	//	message is an interface type because the channel communication layer and content and the serialization is up to the Encoder to implement
-	//
-	// If the message is a complex type that has multiple fields,
-	// an exported struct that represent the content must be declared at the controller level
-	// and all the presenters must based on that input for they test
-	Encode(Entity) error
-}
-
-// EncoderFunc is a wrapper to convert standalone functions into a presenter
-type EncoderFunc func(interface{}) error
-
-// Encode implements the Encoder Interface
-func (lambda EncoderFunc) Encode(i interface{}) error {
-	return lambda(i)
-}
-
-// Decoder is the interface for populating/replacing a public struct with values that retried from an external resource
-type Decoder interface {
-	// Decode will populate an object with values and/or return error
-	Decode(Entity) error
-}
-
-// DecoderFunc enables to use anonymous functions to be a valid DecoderFunc
-type DecoderFunc func(interface{}) error
-
-// Decode proxy the call to the wrapped Decoder function
-func (fn DecoderFunc) Decode(i interface{}) error {
-	return fn(i)
-}
-
-// Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
-// Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
-// inspirited by https://golang.org/pkg/encoding/json/#Decoder
-type Iterator interface {
-	// this is required to make it able to cancel iterators where resource being used behind the scene
-	// for all other case where the underling io is handled on higher level, it should simply return nil
-	io.Closer
-	// Next will ensure that Decode return the next item when it is executed
-	Next() bool
-	// Err return the cause if for some reason by default the More return false all the time
-	Err() error
-	// this is required to retrieve the current value from the iterator
-	Decoder
-}
-
-// Query is a Storage specific component.
-// It represent a use case for a specific Find of Update action.
-// It should not implement or represent anything how the database query will be build,
-// only contain necessary data to make it able implement in the storage.
-// There must be no business logic located in a Query type,
-// this also includes complex types that holds logical information.
-// It should only include as primitive fields as possible,
-// and anything that require some kind of rule/logic to be done before it can be found in the storage should be done at controller level.
-//
-// By convention this should be declared where the Controllers are defined.
-// If it's used explicitly by one UseCase, the query use case definition should defined prior to that controller
-// and listed close to each other in the go documentation.
-//
-// This way it maybe feels boilerplate for really dynamic and complex searches, but for those,
-// I highly recommend to implement a separate structure that works with an iterator and do the complex filtering on the elements.
-// This way you can use easy to implement and minimalist query logic on the storage, and do complex things that is easy to test in a filter struct.
-//
-// By convention the Query name should start with "[EntityName][FindLogicDescription]" so it is easy to distinguish it from other exported Structures,
-// 	example: UserByName, UsersByName, UserByEmail
+*/
 type Query interface {
-	// Test specify the given query Use Case behavior, and must be used for implementing it in the storage side.
-	// For different context and scenarios testing#T.Run is advised to be used.
-	// Test should create and tear-down it's context in each execution (on each T.Run basis if T.Run used).
-	//
-	// The *testing.T is used, so the specification can use test specific methods like #Run and #Parallel.
-	//
-	// the last argument, reset represent a cleanup/teardown mechanism to reset storage state to the initial default, before a new specification would be run.
-	// if reset encounter an error during it's run it is responsible to make the test scope fail, and not delegate this responsibility to the query specification.
-	Test(t *testing.T, s Storage, resetDB func())
+	// Test specify the given query - Use Case expected behavior, and must be used for implementing it in the external resource tests.
+	// To cover your behavior easily it is advised to use multiple test run with different contexts.
+	// I personally prefer the testing#T.Run to create test contexts.
+	// test should receive a tear-down/cleanup function as the last argument that will used to reset to the initial state the external resource.
+	Test(t *testing.T, er ExternalResource, reset func())
 }
 
-// Storage define what is the most minimum that a storage should implement in order to be able
-//
-// The classic CRUD not enforced here because I found that most of the time, it is not even required.
-// For example when you build a data-warehouse which functions in a classic "APPEND ONLY" way,
-// you simply can't afford to implement delete functionality.
-// Or when there is no such query use case where you have to update something, why implement it ?
-// There fore the developer free to define what specifications he need from a storage.
-// The bundled storage implementations use the queries.Test specification which enforce common query usages.
-//
-// Storage that works with the bundled in queries require a special field in the data entity: ID.
-// This ID field represent the link between the in memory entity and it's persisted version in the storage.
-// This ID field can be any exported string field as long it is tagged with `storage:"ID"`.
-type Storage interface {
+/*
+	ExternalResource are resources that implements interactions (queries) that the use case depends on.
+	By removing tight integration and encapsulate it behind such a generic interface like this,
+	we can freely swap the implementation and make testing much more easier for the domain rules.
+
+	One specific ExternalResource that received multiple implementations is the "storage",
+	but the usage of these is generally applicable to any kind of external resource which you have to interact from use-cases or from controllers.
+
+	While at first this may seems boilerplate and you would feel a nice ORM would do the same,
+	but than you took over the responsibilty of ensuring that the current ORM you choose to work with,
+	with its current API will be maintained and if needed, backward ported for your application.
+	Otherwise you violate the dependency inversion rule which defines that a change in external interfaces should never affect use-cases or Entities.
+
+
+	ExternalResource that works with the bundled in queries require a special field in the data entity: ID.
+	This ID field represent the link between the in memory entity and it's persisted version in the storage.
+	This ID field can be any exported string field as long it is tagged with `ext:"ID"`.
+*/
+type ExternalResource interface {
 	io.Closer
 	// Exec implements the Query#Test -s  each application Query.Test that used with the given storage.
 	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
@@ -202,8 +130,27 @@ type Storage interface {
 	Exec(Query) Iterator
 }
 
-// Error is a string based type that allows you to declare ErrConstantValues for your packages
+/*
+Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
+Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
+Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
+https://en.wikipedia.org/wiki/Iterator_pattern
+ */
+type Iterator interface {
+	// this is required to make it able to cancel iterators where resource being used behind the scene
+	// for all other case where the underling io is handled on higher level, it should simply return nil
+	io.Closer
+	// Next will ensure that Decode return the next item when it is executed
+	Next() bool
+	// Err return the cause if for some reason by default the More return false all the time
+	Err() error
+	// Decode will populate an object with values and/or return error
+	// this is required to retrieve the current value from the iterator
+	Decode(Entity) error
+}
+
+// Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
 type Error string
 
-// Error implement the error interface, so the Error string type can be used as an error object
+// Error implement the error interface
 func (errStr Error) Error() string { return string(errStr) }

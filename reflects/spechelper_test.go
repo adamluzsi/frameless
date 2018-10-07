@@ -5,7 +5,7 @@ type IDInFieldName struct {
 }
 
 type IDInTagName struct {
-	DI string `storage:"ID"`
+	DI string `ext:"ID"`
 }
 
 type UnidentifiableID struct {

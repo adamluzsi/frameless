@@ -1,14 +1,8 @@
-package sqlrows
+package sqlrows_test
 
-import "io"
+import (
+	"database/sql"
+	"github.com/adamluzsi/frameless/iterators/iterateover/sqlrows"
+)
 
-type Scan func(...interface{}) error
-
-type Decoder func(scan Scan, destination interface{}) error
-
-type Rows interface {
-	io.Closer
-	Next() bool
-	Err() error
-	Scan(...interface{}) error
-}
+var _ sqlrows.Rows = &sql.Rows{}

@@ -119,14 +119,3 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 	require.Nil(t, r.Close())           // I release the resource because than and go on
 	require.Equal(t, expected, r.Err()) // The last error should be available later
 }
-
-func TestNewPipe_EncoderAndDecoderInterface(t *testing.T) {
-	t.Parallel()
-
-	r, w := iterators.NewPipe()
-	defer w.Close()
-
-	var _ frameless.Decoder = r
-	var _ frameless.Encoder = w
-
-}

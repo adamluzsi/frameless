@@ -1,8 +1,6 @@
 /*
 
-Package frameless -> The Hitchhiker's Guide to the Grumpytecture
-
-
+Package frameless - The Hitchhiker's Guide to the Grumpytecture.
 
 
 
@@ -26,15 +24,11 @@ I hope my research can at least be useful on your journey.
 
 
 
-
-
 Introduction
 
 This research project primary was created for myself, to extend my knowledge in software design.
 You will probably see a few common design principles that I prefer, and known commonly.
 The core concept is based on inspiration by Robert Martin works, and on my own experience.
-
-
 
 
 
@@ -65,8 +59,6 @@ How much effort will be required to build mind model for the code ?
 
 
 
-
-
 The Goal
 
 So I decided to find time in my life and research out in my own speed a solution for the above mentioned problem.
@@ -81,19 +73,8 @@ that implements a specific business use case.
 Depends on Entities it works, it defines what the presenter receives,
 also defines what query use cases the storage must implement.
 
-• Query Use Case
-for usecases that have to interact with a storage.
-This defines what is the expected behavior to be implemented in the storage or storages (for example dark launch).
-It depends on the Entity, which it works with.
 
-• Resuest and Encoder
-implements the interaction between an input external interface and an output external interface that could even be the same as well.
-Request implements the unserialization logic required to have only primitives as input.
-Encoder implements the serialization logic that will be used in the outbound communication from the application.
-This two interface remove the above mentioned responsibility from the controller, so as a result, controller wil only have use case controlling related logic.
-I believe this makes testing and composition of these parts easier, while the required mind model will be super little for controllers as well.
-
-• Storage
+• ExternalResource
 implements query use case specifications on a specific external resource that main purpose is storing data.
 Hides the technology/packages from the controller, so the dependency inversion can be enforced even more.
 Ensure that the given external resource connection only used through this and it is not leaked out.
@@ -101,8 +82,6 @@ Your entities by default will not know about their persistence, the only informa
 As a nice side effect, because storage is a dependency for controller rather than encapsulation in an entity, like how most ORM frameworks do,
 you can use during testing in-memory storages, so your red/green/refactor feedback cycle will be blazing fast,
 and you can start create business use cases implementations without any storage.
-
-
 
 
 
