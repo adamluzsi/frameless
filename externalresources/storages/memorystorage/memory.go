@@ -40,7 +40,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 	case save.Entity:
 		storage.Mutex.Lock()
-		defer  storage.Mutex.Unlock()
+		defer storage.Mutex.Unlock()
 
 		if currentID, ok := externalresources.LookupID(quc.Entity); !ok || currentID != "" {
 			return iterators.Errorf("entity already have an ID: %s", currentID)
@@ -57,7 +57,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 	case find.ByID:
 		storage.Mutex.RLock()
-		defer  storage.Mutex.RUnlock()
+		defer storage.Mutex.RUnlock()
 
 		entity, found := storage.TableFor(quc.Type)[quc.ID]
 
@@ -69,7 +69,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 	case find.All:
 		storage.Mutex.RLock()
-		defer  storage.Mutex.RUnlock()
+		defer storage.Mutex.RUnlock()
 
 		table := storage.TableFor(quc.Type)
 
@@ -82,7 +82,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 	case destroy.ByID:
 		storage.Mutex.Lock()
-		defer  storage.Mutex.Unlock()
+		defer storage.Mutex.Unlock()
 
 		table := storage.TableFor(quc.Type)
 
@@ -103,7 +103,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 	case update.ByEntity:
 		storage.Mutex.Lock()
-		defer  storage.Mutex.Unlock()
+		defer storage.Mutex.Unlock()
 
 		ID, found := externalresources.LookupID(quc.Entity)
 
@@ -124,6 +124,15 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	default:
 		return iterators.NewError(queryerrors.ErrNotImplemented)
 
+	}
+}
+
+func (storage *Memory) Purge() {
+	storage.Mutex.Lock()
+	defer storage.Mutex.Unlock()
+
+	for k, _ := range storage.DB {
+		delete(storage.DB, k)
 	}
 }
 

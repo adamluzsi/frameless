@@ -14,11 +14,5 @@ func ExampleMemory() *memorystorage.Memory {
 func TestMemory(suite *testing.T) {
 	storage := ExampleMemory()
 
-	reset := func() {
-		for k, _ := range storage.DB {
-			delete(storage.DB, k)
-		}
-	}
-
-	queries.Test(suite, storage, reset)
+	queries.Test(suite, storage, storage.Purge)
 }
