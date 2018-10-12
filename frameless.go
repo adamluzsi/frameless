@@ -7,6 +7,12 @@ import (
 
 /*
 	Entity encapsulate the most general and high-level rules of the application.
+
+		TL;DR:
+			These structures are representing purely data related to some kind of real world entity.
+			It may have high level functions that use it's own data.
+			It knows about nothing else but it self only.
+
 	This interface here is only for documentation purpose
 
 		"An entity can be an object with methods, or it can be a set of data structures and functions"
@@ -22,15 +28,16 @@ import (
 	No operational change to any particular application should affect the entity layer.
 
 	By convention these structures should be placed on the top folder level of the project
+
 */
 type Entity = interface{}
 
 /*
-	UseCase implement domain logic / business rule.
+	Interactor implement a business rule to a specific audience of the software.
 	This interface here is only for documentation purpose.
 
-	TL;DR:
-		Using UseCase imposes discipline upon focusing on the domain goal instead of the "how" and "with what".
+		TL;DR:
+			Using Interactor imposes discipline upon focusing on the audience who's business rule you works on.
 
 	This can be a function or a struct of function, it's up to the implementation.
 	It has to be implemented in a framework independent way.
@@ -66,16 +73,26 @@ type Entity = interface{}
 
 
 	When your application has all the use-case, then you decide the right external interface to expose them.
+
+		TIP:
+			If you don't know how to start, imagine that every audience category your system defines has a dedicated engineer.
+			For example in case of a web-shop: Buyer, Seller, Content Manager, Application Manager, DataBaseAdministrator just to name a few.
+			Each engineer work on one user story for one of the audience category. You are one of the engineers.
+			Almost every other engineer on the other user stories push code really frequently (for example 1 push / min).
+
+			How would you structure and create your code in a way that you are safe from merge conflicts ?
+			How would you design your code dependency in a way that other engineers activity unlikely to affect your code ?
+
  */
-type UseCase = interface{}
+type Interactor = interface{}
 
 /*
 
 	Query is a ExternalResource specific component.
 
-	TL;DR:
-		Query imposes discipline upon scope usage.
-		So Query is a behavior specification and a data structure that helps use-cases to focus on the "what" instead of the "how".
+		TL;DR:
+			Query imposes discipline upon scope usage.
+			So Query is a behavior specification and a data structure that helps use-cases to focus on the "what" instead of the "how".
 
 	The main purpose is to Use Case specific behavior requirements from the technology specific implementation
 	The Use Case implementation should never specify low level implementation of the storage usage, but represent it with a Query data structure that passed to the storage.
@@ -103,11 +120,12 @@ type Query interface {
 /*
 	ExternalResource are resources that implements interactions (queries) that the use case depends on.
 
-	TL;DR:
-		ExternalResource imposes discipline upon dependency inversion.
-		You encapsulate all the technology specific implementations,
-		so you can try anything out while frameworks and ORMs evolve,
-		yet your domain rules will be keep safe from this changes.
+		TL;DR:
+			ExternalResource imposes discipline upon dependency inversion.
+			You encapsulate all the technology specific implementations,
+			behind a stable but easily extendable interface,
+			so you can try anything out while frameworks and ORMs evolve,
+			yet your domain rules will be keep safe from this changes.
 
 	By removing tight integration and encapsulate it behind such a generic interface like this,
 	we can freely swap the implementation and make testing much more easier for the domain rules.
@@ -128,6 +146,10 @@ type Query interface {
 	which links the Entity structure to an external resource object.
 	If the external resource use complex types to represent ID objects, they have to implement the serialization
 	and the deserialization as well under the hood, without bothering the use-case or entity layer with it.
+
+	The design heavily inspirited by the combination of Liskov substitution principle with the dependency inversion principle.
+	While the External Resource interface provides a stable abstraction, the actual implementations can fulfil the implementations with the specific technology.
+	This helps to easily remove any concrete dependency from other layers by only referring to a common stable non volatile interface.
 */
 type ExternalResource interface {
 	io.Closer
@@ -165,8 +187,14 @@ type Iterator interface {
 	Decode(Entity) error
 }
 
-// Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
+/*
+	Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
+
+		TL;DR:
+			const ErrSomething frameless.Error = "something is an error"
+
+ */
 type Error string
 
 // Error implement the error interface
-func (errStr Error) Error() string { return string(errStr) }
+func (err Error) Error() string { return string(err) }
