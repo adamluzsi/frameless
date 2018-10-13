@@ -44,5 +44,5 @@ func TestLocal(t *testing.T) {
 	s, td := NewSubject(t)
 	defer s.Close()
 
-	queries.Test(t, s, td)
+	queries.TestAll(t, s, td)
 }

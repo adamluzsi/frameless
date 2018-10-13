@@ -14,5 +14,5 @@ func ExampleMemory() *memorystorage.Memory {
 func TestMemory(suite *testing.T) {
 	storage := ExampleMemory()
 
-	queries.Test(suite, storage, storage.Purge)
+	queries.TestAll(suite, storage, storage.Purge)
 }
