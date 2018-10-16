@@ -41,5 +41,5 @@ func TestExportedEntity(t *testing.T, e frameless.ExternalResource, r func()) {
 
 type ExportedEntity struct {
 	ExtID string `ext:"ID"`
-	Name  string
+	Data  string
 }
