@@ -2,8 +2,8 @@ package iterators_test
 
 import (
 	"errors"
+	"runtime"
 	"testing"
-	"time"
 
 	"github.com/adamluzsi/frameless"
 
@@ -65,13 +65,13 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 }
 
 func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
-	t.Parallel()
+	// This test cannot run in Parallel mode, because we need to ask the scheduler to run the other routines
 
 	// skip when only short test expected
 	// this test is slow because it has sleep in it
 	//
 	// This could be fixed by implementing extra logic in the Pipe iterator,
-	// but that would be overengineering because after an iterator is closed,
+	// but that would be over-engineering because after an iterator is closed,
 	// it is highly unlikely that next value and decode will be called.
 	// So this is only for the sake of describing the iterator behavior in this edge case
 	if testing.Short() {
@@ -87,8 +87,10 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	}()
 
 	// normally next should not be called after a Close, but in the test I have to define the behavior
-	// so in order to prevent overengineering in sender Encode method, I place a sleep here to force thick the scheduler in favor of done channel
-	time.Sleep(10 * time.Millisecond)
+	// so in order to prevent over-engineering in sender Encode method,
+	for i := 0; i < 42; i++ {
+		runtime.Gosched()
+	}
 
 	require.Nil(t, r.Close()) // I release the resource,
 	// for example something went wrong during the processing on my side (receiver) and I can't continue work,
