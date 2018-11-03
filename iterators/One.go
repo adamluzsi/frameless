@@ -4,7 +4,7 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-func One(i frameless.Iterator, e frameless.Entity) error  {
+func One(i frameless.Iterator, e frameless.Entity) error {
 	if err := i.Err(); err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package iterateover
+package iterators
 
 import (
 	"reflect"
@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-func AndCollectAll(i frameless.Iterator, PointerToTheSlice interface{}) error {
+func CollectAll(i frameless.Iterator, PointerToTheSlice interface{}) error {
 	defer i.Close()
 
 	ptr := reflect.ValueOf(PointerToTheSlice)

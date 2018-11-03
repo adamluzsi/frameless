@@ -81,7 +81,6 @@ func TestOne(t *testing.T) {
 				require.Equal(t, iterators.One(i, &e), fmt.Errorf("boom"))
 			})
 
-
 			i := iterators.NewMock(iterators.NewEmpty())
 			i.StubDecode = func(i interface{}) error {
 				return fmt.Errorf("boom")

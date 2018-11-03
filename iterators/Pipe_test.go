@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/iterators/iterateover"
 )
 
 func ExampleNewPipe() (frameless.Iterator, *iterators.PipeSender) {
@@ -59,9 +58,9 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 		}
 	}()
 
-	require.Nil(t, iterateover.AndCollectAll(r, &actually)) // When I collect everything with Collect All and close the resource
-	require.True(t, len(actually) > 0)                      // the collection includes all the sent values
-	require.Equal(t, expected, actually)                    // which is exactly the same that mean to be sent.
+	require.Nil(t, iterators.CollectAll(r, &actually)) // When I collect everything with Collect All and close the resource
+	require.True(t, len(actually) > 0)                 // the collection includes all the sent values
+	require.Equal(t, expected, actually)               // which is exactly the same that mean to be sent.
 }
 
 func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
