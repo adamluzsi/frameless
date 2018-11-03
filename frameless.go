@@ -83,7 +83,7 @@ type Entity = interface{}
 			How would you structure and create your code in a way that you are safe from merge conflicts ?
 			How would you design your code dependency in a way that other engineers activity unlikely to affect your code ?
 
- */
+*/
 type Interactor = interface{}
 
 /*
@@ -173,7 +173,7 @@ Iterator define a separate object that encapsulates accessing and traversing an 
 Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
 Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
 https://en.wikipedia.org/wiki/Iterator_pattern
- */
+*/
 type Iterator interface {
 	// this is required to make it able to cancel iterators where resource being used behind the scene
 	// for all other case where the underling io is handled on higher level, it should simply return nil
@@ -193,7 +193,7 @@ type Iterator interface {
 		TL;DR:
 			const ErrSomething frameless.Error = "something is an error"
 
- */
+*/
 type Error string
 
 // Error implement the error interface

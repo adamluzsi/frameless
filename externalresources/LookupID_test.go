@@ -75,4 +75,3 @@ func TestLookupID_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) 
 	require.False(t, ok)
 	require.Equal(t, "", id)
 }
-

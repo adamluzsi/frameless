@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-
 func TestBaseTypeOf(t *testing.T) {
 	t.Run("FullyQualifiedName", func(spec *testing.T) {
 

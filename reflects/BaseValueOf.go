@@ -4,7 +4,6 @@ import (
 	"reflect"
 )
 
-
 func BaseValueOf(i interface{}) reflect.Value {
 	v := reflect.ValueOf(i)
 

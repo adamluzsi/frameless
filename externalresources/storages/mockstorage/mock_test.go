@@ -6,8 +6,8 @@ import (
 
 	"github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/externalresources/storages/mockstorage"
+	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
 

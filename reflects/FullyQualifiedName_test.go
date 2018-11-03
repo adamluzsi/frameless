@@ -60,7 +60,6 @@ func TestFullyQualifiedName(t *testing.T) {
 
 }
 
-
 func SpecForPrimitiveNames(spec *testing.T, subject func(entity frameless.Entity) string) {
 
 	spec.Run("when given object is a bool", func(t *testing.T) {
