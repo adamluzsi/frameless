@@ -5,6 +5,8 @@ func NewError(err error) *Error {
 	return &Error{err}
 }
 
+// Error iterator can be used for returning an error wrapped with iterator interface.
+// This can be used when external resource encounter unexpected non recoverable error during query execution.
 type Error struct {
 	err error
 }
