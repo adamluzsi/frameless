@@ -1,4 +1,4 @@
-package save
+package queries
 
 import (
 	"github.com/adamluzsi/frameless"
@@ -8,19 +8,19 @@ import (
 	"testing"
 )
 
-type Entity struct {
+type SaveEntity struct {
 	Entity frameless.Entity
 }
 
-func (q Entity) Test(t *testing.T, s frameless.ExternalResource, resetDB func()) {
-	t.Run("persist an Entity", func(t *testing.T) {
+func (q SaveEntity) Test(t *testing.T, s frameless.ExternalResource, resetDB func()) {
+	t.Run("persist an SaveEntity", func(t *testing.T) {
 
 		if ID, _ := externalresources.LookupID(q.Entity); ID != "" {
 			t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 		}
 
 		e := fixtures.New(q.Entity)
-		i := s.Exec(Entity{Entity: e})
+		i := s.Exec(SaveEntity{Entity: e})
 
 		require.NotNil(t, i)
 		require.Nil(t, i.Err())
@@ -35,7 +35,7 @@ func (q Entity) Test(t *testing.T, s frameless.ExternalResource, resetDB func())
 		defer resetDB()
 
 		newEntity := fixtures.New(entityWithoutIDField{})
-		require.Error(t, s.Exec(Entity{Entity: newEntity}).Err())
+		require.Error(t, s.Exec(SaveEntity{Entity: newEntity}).Err())
 	})
 
 	t.Run("when entity already have an ID", func(t *testing.T) {
@@ -43,10 +43,6 @@ func (q Entity) Test(t *testing.T, s frameless.ExternalResource, resetDB func())
 
 		newEntity := fixtures.New(q.Entity)
 		externalresources.SetID(newEntity, "Hello world!")
-		require.Error(t, s.Exec(Entity{Entity: newEntity}).Err())
+		require.Error(t, s.Exec(SaveEntity{Entity: newEntity}).Err())
 	})
-}
-
-type entityWithoutIDField struct {
-	Data string
 }

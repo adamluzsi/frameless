@@ -2,7 +2,7 @@ package frameless_test
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queries/destroy"
+	"github.com/adamluzsi/frameless/queries"
 )
 
 func ExampleQueryUseCase_storageFind(storage frameless.ExternalResource) error {
@@ -29,5 +29,5 @@ func ExampleQueryUseCase_storageFind(storage frameless.ExternalResource) error {
 func ExampleQueryUseCase_storageExec(storage frameless.ExternalResource) error {
 	// DeleteByID is a common query use case which specified with test in the queries package
 	// Of course you can implement your own as well
-	return storage.Exec(destroy.ByID{Type: User{}, ID: "42"}).Err()
+	return storage.Exec(queries.DeleteByID{Type: User{}, ID: "42"}).Err()
 }

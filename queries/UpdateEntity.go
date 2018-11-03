@@ -1,37 +1,34 @@
-package update
+package queries
 
 import (
 	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries/find"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/save"
 	"github.com/stretchr/testify/require"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
 )
 
-// ByEntity will request an update for a wrapped entity object in the storage
-// ByEntity parameter is the wrapped entity that has the updated values.
-type ByEntity struct{ Entity frameless.Entity }
+// UpdateEntity will request an update for a wrapped entity object in the storage
+// UpdateEntity parameter is the wrapped entity that has the updated values.
+type UpdateEntity struct{ Entity frameless.Entity }
 
-func (quc ByEntity) Test(suite *testing.T, storage frameless.ExternalResource, reset func()) {
-	suite.Run("ByEntity", func(spec *testing.T) {
+func (quc UpdateEntity) Test(suite *testing.T, storage frameless.ExternalResource, reset func()) {
+	suite.Run("UpdateEntity", func(spec *testing.T) {
 
 		suite.Run("dependency", func(t *testing.T) {
-			save.Entity{Entity: quc.Entity}.Test(t, storage, reset)
+			SaveEntity{Entity: quc.Entity}.Test(t, storage, reset)
 		})
 
 		setup := func() (string, func()) {
 			entity := fixtures.New(quc.Entity)
-			require.Nil(spec, storage.Exec(save.Entity{Entity: entity}).Err())
+			require.Nil(spec, storage.Exec(SaveEntity{Entity: entity}).Err())
 
 			ID, ok := externalresources.LookupID(entity)
 
 			if !ok {
-				spec.Fatal(queryerrors.ErrIDRequired)
+				spec.Fatal(ErrIDRequired)
 			}
 
 			require.True(spec, len(ID) > 0)
@@ -46,11 +43,11 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.ExternalResource, r
 			newEntity := fixtures.New(quc.Entity)
 			externalresources.SetID(newEntity, ID)
 
-			updateResults := storage.Exec(ByEntity{Entity: newEntity})
+			updateResults := storage.Exec(UpdateEntity{Entity: newEntity})
 			require.NotNil(t, updateResults)
 			require.Nil(t, updateResults.Err())
 
-			iterator := storage.Exec(find.ByID{Type: quc.Entity, ID: ID})
+			iterator := storage.Exec(FindByID{Type: quc.Entity, ID: ID})
 
 			actually := fixtures.New(quc.Entity)
 			iterators.DecodeNext(iterator, actually)
@@ -65,7 +62,7 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.ExternalResource, r
 
 			newEntity := fixtures.New(quc.Entity)
 			externalresources.SetID(newEntity, "hitchhiker's guide to the galaxy")
-			require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
+			require.Error(t, storage.Exec(UpdateEntity{Entity: newEntity}).Err())
 
 		})
 
@@ -73,12 +70,8 @@ func (quc ByEntity) Test(suite *testing.T, storage frameless.ExternalResource, r
 			defer reset()
 
 			newEntity := fixtures.New(entityWithoutIDField{})
-			require.Error(t, storage.Exec(ByEntity{Entity: newEntity}).Err())
+			require.Error(t, storage.Exec(UpdateEntity{Entity: newEntity}).Err())
 		})
 
 	})
-}
-
-type entityWithoutIDField struct {
-	Data string
 }

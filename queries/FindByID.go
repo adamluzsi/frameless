@@ -1,10 +1,8 @@
-package find
+package queries
 
 import (
 	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/save"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -12,20 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ByID request a business entity from a storage that implement it's test.
+// FindByID request a business entity from a storage that implement it's test.
 // Type is an empty struct from the given business entity type, and ID is a string
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-type ByID struct {
+type FindByID struct {
 	Type frameless.Entity
 	ID   string
 }
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc ByID) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc FindByID) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
 	spec.Run("dependency", func(t *testing.T) {
-		save.Entity{Entity: quc.Type}.Test(t, storage, reset)
+		SaveEntity{Entity: quc.Type}.Test(t, storage, reset)
 	})
 	defer reset()
 
@@ -34,11 +32,11 @@ func (quc ByID) Test(spec *testing.T, storage frameless.ExternalResource, reset 
 	for i := 0; i < 10; i++ {
 
 		entity := fixtures.New(quc.Type)
-		require.Nil(spec, storage.Exec(save.Entity{entity}).Err())
+		require.Nil(spec, storage.Exec(SaveEntity{entity}).Err())
 		ID, ok := externalresources.LookupID(entity)
 
 		if !ok {
-			spec.Fatal(queryerrors.ErrIDRequired)
+			spec.Fatal(ErrIDRequired)
 		}
 
 		require.True(spec, len(ID) > 0)
@@ -47,7 +45,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.ExternalResource, reset 
 	}
 
 	spec.Run("when no value stored that the query request", func(t *testing.T) {
-		iterator := storage.Exec(ByID{Type: quc.Type, ID: "The Cake Is a Lie"})
+		iterator := storage.Exec(FindByID{Type: quc.Type, ID: "The Cake Is a Lie"})
 		defer iterator.Close()
 
 		if iterator.Next() {
@@ -63,7 +61,7 @@ func (quc ByID) Test(spec *testing.T, storage frameless.ExternalResource, reset 
 			var entity frameless.Entity
 
 			func() {
-				iterator := storage.Exec(ByID{Type: quc.Type, ID: ID})
+				iterator := storage.Exec(FindByID{Type: quc.Type, ID: ID})
 
 				defer iterator.Close()
 

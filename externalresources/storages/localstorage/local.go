@@ -7,17 +7,13 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/adamluzsi/frameless/externalresources"
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/save"
+	"github.com/adamluzsi/frameless/queries"
 	"io/ioutil"
 	"reflect"
 	"strconv"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries/destroy"
-	"github.com/adamluzsi/frameless/queries/find"
-	"github.com/adamluzsi/frameless/queries/update"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/boltdb/bolt"
 )
@@ -40,7 +36,7 @@ func (storage *Local) Close() error {
 
 func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
-	case save.Entity:
+	case queries.SaveEntity:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 
 			if currentID, ok := externalresources.LookupID(quc.Entity); !ok || currentID != "" {
@@ -76,7 +72,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 		}))
 
-	case find.ByID:
+	case queries.FindByID:
 		key, err := storage.IDToBytes(quc.ID)
 
 		if err != nil {
@@ -112,7 +108,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewSingleElement(entity)
 
-	case find.All:
+	case queries.FindAll:
 		r, w := iterators.NewPipe()
 
 		go storage.DB.View(func(tx *bolt.Tx) error {
@@ -138,7 +134,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 		return r
 
-	case destroy.ByID:
+	case queries.DeleteByID:
 
 		ID, err := storage.IDToBytes(quc.ID)
 
@@ -160,16 +156,16 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 			return bucket.Delete(ID)
 		}))
 
-	case destroy.ByEntity:
+	case queries.DeleteByEntity:
 		ID, found := externalresources.LookupID(quc.Entity)
 
 		if !found || ID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
 		}
 
-		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
 
-	case update.ByEntity:
+	case queries.UpdateEntity:
 		encodedID, found := externalresources.LookupID(quc.Entity)
 
 		if !found || encodedID == "" {
@@ -199,7 +195,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	default:
-		return iterators.NewError(queryerrors.ErrNotImplemented)
+		return iterators.NewError(queries.ErrNotImplemented)
 
 	}
 }

@@ -2,7 +2,7 @@ package reflects_test
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queries/find"
+	"github.com/adamluzsi/frameless/queries"
 	"testing"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -23,9 +23,9 @@ func TestFullyQualifiedName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := find.All{Type: StructObject{}}
+			o := queries.FindAll{Type: StructObject{}}
 
-			require.Equal(t, `"github.com/adamluzsi/frameless/queries/find".All`, ExampleFullyQualifiedName(o))
+			require.Equal(t, `"github.com/adamluzsi/frameless/queries".FindAll`, ExampleFullyQualifiedName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

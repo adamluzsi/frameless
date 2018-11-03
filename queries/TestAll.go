@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestAll(t *testing.T, e frameless.ExternalResource, r func()) {
-	TestExportedEntity(t, e, r)
-	TestUnexportedEntity(t, e, r)
-	TestNotImplementedQuery(t, e, r)
+func TestAll(t *testing.T, e frameless.ExternalResource, reset func()) {
+	TestExportedEntity(t, e, reset)
+	TestUnexportedEntity(t, e, reset)
+	TestNotImplementedQuery(t, e, reset)
 }

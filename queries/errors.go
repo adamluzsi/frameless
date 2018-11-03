@@ -1,8 +1,6 @@
-package queryerrors
+package queries
 
-import (
-	"github.com/adamluzsi/frameless"
-)
+import "github.com/adamluzsi/frameless"
 
 const ErrNotImplemented frameless.Error = "ErrNotImplemented"
 

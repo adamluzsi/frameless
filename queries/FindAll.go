@@ -1,10 +1,8 @@
-package find
+package queries
 
 import (
 	"github.com/adamluzsi/frameless/externalresources"
 	"github.com/adamluzsi/frameless/queries/fixtures"
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/save"
 	"reflect"
 	"testing"
 
@@ -13,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// All can return business entities from a given storage that implement it's test
+// FindAll can return business entities from a given storage that implement it's test
 // The "Type" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-type All struct{ Type frameless.Entity }
+type FindAll struct{ Type frameless.Entity }
 
-func (quc All) Test(t *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc FindAll) Test(t *testing.T, storage frameless.ExternalResource, reset func()) {
 	t.Run("when value stored in the database", func(t *testing.T) {
 		defer reset()
 
@@ -28,18 +26,18 @@ func (quc All) Test(t *testing.T, storage frameless.ExternalResource, reset func
 		for i := 0; i < 10; i++ {
 
 			entity := fixtures.New(quc.Type)
-			require.Nil(t, storage.Exec(save.Entity{Entity: entity}).Err())
+			require.Nil(t, storage.Exec(SaveEntity{Entity: entity}).Err())
 
 			id, found := externalresources.LookupID(entity)
 
 			if !found {
-				t.Fatal(queryerrors.ErrIDRequired)
+				t.Fatal(ErrIDRequired)
 			}
 
 			ids = append(ids, id)
 		}
 
-		i := storage.Exec(All{Type: quc.Type})
+		i := storage.Exec(FindAll{Type: quc.Type})
 		defer i.Close()
 
 		for i.Next() {
@@ -50,7 +48,7 @@ func (quc All) Test(t *testing.T, storage frameless.ExternalResource, reset func
 			id, found := externalresources.LookupID(entity)
 
 			if !found {
-				t.Fatal(queryerrors.ErrIDRequired)
+				t.Fatal(ErrIDRequired)
 			}
 
 			require.Contains(t, ids, id)
@@ -61,7 +59,7 @@ func (quc All) Test(t *testing.T, storage frameless.ExternalResource, reset func
 	//t.Run("when no value present in the database", func(t *testing.T) {
 	//	defer reset()
 	//
-	//	i := storage.Exec(All{Type: quc.Type})
+	//	i := storage.Exec(FindAll{Type: quc.Type})
 	//	count, err := iterateover.AndCountTotalIterations(i)
 	//	require.Nil(t, err)
 	//	require.Equal(t, 0, count)

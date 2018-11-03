@@ -4,15 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"github.com/adamluzsi/frameless/externalresources"
-	"github.com/adamluzsi/frameless/queries/queryerrors"
-	"github.com/adamluzsi/frameless/queries/save"
+	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
 	"sync"
-
-	"github.com/adamluzsi/frameless/queries/destroy"
-	"github.com/adamluzsi/frameless/queries/find"
-	"github.com/adamluzsi/frameless/queries/update"
 
 	"github.com/adamluzsi/frameless/iterators"
 
@@ -38,7 +33,7 @@ func (storage *Memory) Close() error {
 func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 
-	case save.Entity:
+	case queries.SaveEntity:
 		storage.Mutex.Lock()
 		defer storage.Mutex.Unlock()
 
@@ -55,7 +50,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		storage.TableFor(quc.Entity)[id] = quc.Entity
 		return iterators.NewError(externalresources.SetID(quc.Entity, id))
 
-	case find.ByID:
+	case queries.FindByID:
 		storage.Mutex.RLock()
 		defer storage.Mutex.RUnlock()
 
@@ -67,7 +62,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 			return iterators.NewEmpty()
 		}
 
-	case find.All:
+	case queries.FindAll:
 		storage.Mutex.RLock()
 		defer storage.Mutex.RUnlock()
 
@@ -80,7 +75,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewSlice(entities)
 
-	case destroy.ByID:
+	case queries.DeleteByID:
 		storage.Mutex.Lock()
 		defer storage.Mutex.Unlock()
 
@@ -92,16 +87,16 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewEmpty()
 
-	case destroy.ByEntity:
+	case queries.DeleteByEntity:
 		ID, found := externalresources.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
 		}
 
-		return storage.Exec(destroy.ByID{Type: quc.Entity, ID: ID})
+		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
 
-	case update.ByEntity:
+	case queries.UpdateEntity:
 		storage.Mutex.Lock()
 		defer storage.Mutex.Unlock()
 
@@ -122,7 +117,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewEmpty()
 
 	default:
-		return iterators.NewError(queryerrors.ErrNotImplemented)
+		return iterators.NewError(queries.ErrNotImplemented)
 
 	}
 }

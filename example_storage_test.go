@@ -3,13 +3,12 @@ package frameless_test
 import (
 	"fmt"
 	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
 	"io"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries/destroy"
-	"github.com/adamluzsi/frameless/queries/find"
 
 	"github.com/adamluzsi/frameless"
 )
@@ -46,13 +45,13 @@ func (storage *MyStorage) Store(e frameless.Entity) error {
 
 func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
-	case find.ByID:
-		// implementation for queries.ByID with the given external resource connection
+	case queries.FindByID:
+		// implementation for queries.DeleteByID with the given external resource connection
 
 		fmt.Printf("searching in %s table for %s ID\n", reflects.FullyQualifiedName(quc.Type), quc.ID)
 
 		return iterators.NewEmpty()
-	case destroy.ByEntity:
+	case queries.DeleteByEntity:
 
 		ID, found := externalresources.LookupID(quc.Entity)
 
@@ -83,10 +82,10 @@ func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite
 		// or you can create NewMyStorage(interface{}) as well for controlled initialization of your storage implementation,
 		// and use it here for initialize the object
 
-		spec.Run("queries.ByID", func(t *testing.T) {
+		spec.Run("queries.DeleteByID", func(t *testing.T) {
 
-			// this will test our implementation against the expected behavior in the ByID specification
-			find.ByID{Type: MyEntity{}}.Test(t, storage, reset)
+			// this will test our implementation against the expected behavior in the DeleteByID specification
+			queries.FindByID{Type: MyEntity{}}.Test(t, storage, reset)
 		})
 
 	})
