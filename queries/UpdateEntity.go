@@ -14,7 +14,7 @@ import (
 // UpdateEntity parameter is the wrapped entity that has the updated values.
 type UpdateEntity struct{ Entity frameless.Entity }
 
-func (quc UpdateEntity) Test(suite *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Resource, reset func()) {
 	suite.Run("UpdateEntity", func(spec *testing.T) {
 
 		suite.Run("dependency", func(t *testing.T) {

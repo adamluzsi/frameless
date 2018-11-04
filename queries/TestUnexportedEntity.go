@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestUnexportedEntity(t *testing.T, e frameless.ExternalResource, r func()) {
+func TestUnexportedEntity(t *testing.T, e frameless.Resource, r func()) {
 	t.Run("test query acceptance with unexported entities", func(suite *testing.T) {
 		suite.Run("save", func(t *testing.T) {
 			SaveEntity{Entity: &unexportedEntity{}}.Test(t, e, r)

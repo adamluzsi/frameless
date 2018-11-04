@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.ExternalResource = mockstorage.NewMock()
+var _ frameless.Resource = mockstorage.NewMock()
 
 func TestMock(t *testing.T) {
 

@@ -21,7 +21,7 @@ type FindByID struct {
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc FindByID) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc FindByID) Test(spec *testing.T, storage frameless.Resource, reset func()) {
 	spec.Run("dependency", func(t *testing.T) {
 		SaveEntity{Entity: quc.Type}.Test(t, storage, reset)
 	})

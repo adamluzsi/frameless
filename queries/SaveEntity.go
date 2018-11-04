@@ -12,7 +12,7 @@ type SaveEntity struct {
 	Entity frameless.Entity
 }
 
-func (q SaveEntity) Test(t *testing.T, s frameless.ExternalResource, resetDB func()) {
+func (q SaveEntity) Test(t *testing.T, s frameless.Resource, resetDB func()) {
 	t.Run("persist an SaveEntity", func(t *testing.T) {
 
 		if ID, _ := externalresources.LookupID(q.Entity); ID != "" {

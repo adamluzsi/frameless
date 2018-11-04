@@ -16,7 +16,7 @@ type DeleteByEntity struct {
 }
 
 // Test will test that an DeleteByEntity is implemented by a generic specification
-func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Resource, reset func()) {
 	defer reset()
 
 	spec.Run("dependency", func(t *testing.T) {

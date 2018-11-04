@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestNotImplementedQuery(t *testing.T, e frameless.ExternalResource, r func()) {
+func TestNotImplementedQuery(t *testing.T, e frameless.Resource, r func()) {
 	t.Run("test external resource behavior with not implemented / unknown query", func(t *testing.T) {
 		defer r()
 
@@ -29,4 +29,4 @@ func TestNotImplementedQuery(t *testing.T, e frameless.ExternalResource, r func(
 
 type notImplementedQuery struct{}
 
-func (_ notImplementedQuery) Test(t *testing.T, e frameless.ExternalResource, reset func()) { t.Fail() }
+func (_ notImplementedQuery) Test(t *testing.T, e frameless.Resource, reset func()) { t.Fail() }

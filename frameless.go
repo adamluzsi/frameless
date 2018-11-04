@@ -54,7 +54,7 @@ type Entity = interface{}
 	During my research, I played around multiple solutions, and the one I liked the most is the following:
 	You describe in a shared specification, in a test that is Exposed and importable by the external interface specification,
 	and in that you describe what is your expectation from the use-case point of view from the provided external resource,
-	when you call it with a specific data structure. for more about this, read the "Query" and "ExternalResource" type.
+	when you call it with a specific data structure. for more about this, read the "Query" and "Resource" type.
 
 	Here is a definition from Robert Martin:
 
@@ -88,7 +88,7 @@ type Interactor = interface{}
 
 /*
 
-	Query is a ExternalResource specific component.
+	Query is a Resource specific component.
 
 		TL;DR:
 			Query imposes discipline upon scope usage.
@@ -114,23 +114,23 @@ type Query interface {
 	// To cover your behavior easily it is advised to use multiple test run with different contexts.
 	// I personally prefer the testing#T.Run to create test contexts.
 	// test should receive a tear-down/cleanup function as the last argument that will used to reset to the initial state the external resource.
-	Test(t *testing.T, e ExternalResource, reset func())
+	Test(t *testing.T, r Resource, reset func())
 }
 
 /*
-	ExternalResource are resources that implements interactions (queries) that the use case depends on.
+	Resource are resources that implements interactions (queries) that the use case depends on.
 
 		TL;DR:
-			ExternalResource imposes discipline upon dependency inversion.
+			Resource (External) imposes discipline upon dependency inversion.
 			You encapsulate all the technology specific implementations,
-			behind a stable but easily extendable interface,
+			as a separate structure that adapt to a predefined stable but easily extendable interface,
 			so you can try anything out while frameworks and ORMs evolve,
 			yet your domain rules will be keep safe from this changes.
 
 	By removing tight integration and encapsulate it behind such a generic interface like this,
 	we can freely swap the implementation and make testing much more easier for the domain rules.
 
-	One specific ExternalResource that received multiple implementations is the "storage",
+	One specific Resource that received multiple implementations is the "storage",
 	but the usage of these is generally applicable to any kind of external resource which you have to interact from use-cases or from controllers.
 
 	While at first this may seems boilerplate and you would feel a nice ORM would do the same,
@@ -150,8 +150,13 @@ type Query interface {
 	The design heavily inspirited by the combination of Liskov substitution principle with the dependency inversion principle.
 	While the External Resource interface provides a stable abstraction, the actual implementations can fulfil the implementations with the specific technology.
 	This helps to easily remove any concrete dependency from other layers by only referring to a common stable non volatile interface.
+
+	Indeed, software designers and architects work hard to reduce the volatility of interfaces.
+	They try to find ways to add functionality to implementations without making changes to the interfaces.
+	This is Software Design 101.
+
 */
-type ExternalResource interface {
+type Resource interface {
 	io.Closer
 	// Exec expect a Query object and  implements the Query#Test -s  each application Query.Test that used with the given storage.
 	// This way for example the controller defines what is required in order to fulfil a business use case and storage implement that..
@@ -165,6 +170,16 @@ type ExternalResource interface {
 	// By convention the Query name should start with the Task to be achieved and than followed by type.
 	// 	example: UpdateUserByName, DeleteUser, InvalidateUser
 	// In the case of dedicated pkg for a specific generic query use case, the pkg name can represent the CRUD functionality as well.
+	//
+	// You may ask why did I choose to have one entry point for each of my external resource,
+	// instead having dedicated functions for each query usage required by different interactors.
+	// It's because the look of the Resource was greatly affected by my own conversation,
+	// which is described more deeply at the Query interface.
+	// To sum it up the relevant part from the Query interface is that I choose to use raw data structures as input
+	// for different use-cases with the Resource and describe the expected behavior attached to that raw data structure.
+	// This way it is ensured that the specification of an expected behavior is placed next to the interactor's Query structure
+	// and not defined directly into the Resource specification.
+	// I personally found a great productivity and flexibility in this convention.
 	Exec(Query) Iterator
 }
 

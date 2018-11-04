@@ -21,7 +21,7 @@ type DeleteByID struct {
 }
 
 // Test will test that an DeleteByID is implemented by a generic specification
-func (quc DeleteByID) Test(spec *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc DeleteByID) Test(spec *testing.T, storage frameless.Resource, reset func()) {
 	defer reset()
 
 	spec.Run("dependency", func(t *testing.T) {

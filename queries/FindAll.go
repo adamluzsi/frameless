@@ -17,7 +17,7 @@ import (
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type FindAll struct{ Type frameless.Entity }
 
-func (quc FindAll) Test(t *testing.T, storage frameless.ExternalResource, reset func()) {
+func (quc FindAll) Test(t *testing.T, storage frameless.Resource, reset func()) {
 	t.Run("when value stored in the database", func(t *testing.T) {
 		defer reset()
 
