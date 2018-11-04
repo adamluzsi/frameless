@@ -1,8 +1,8 @@
 package fixtures
 
 import (
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"math/rand"
 	"reflect"
 	"sync"

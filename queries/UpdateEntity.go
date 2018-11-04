@@ -1,9 +1,9 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
 

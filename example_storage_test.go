@@ -2,9 +2,9 @@ package frameless_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"io"
 	"testing"
 

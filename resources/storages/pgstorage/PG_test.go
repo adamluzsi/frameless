@@ -2,8 +2,8 @@ package pgstorage_test
 
 import (
 	"database/sql"
-	"github.com/adamluzsi/frameless/resources/storages/pgstorage"
 	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources/storages/pgstorage"
 	"os"
 	"testing"
 )
