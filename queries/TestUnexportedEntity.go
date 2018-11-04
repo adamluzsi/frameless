@@ -23,7 +23,7 @@ func TestUnexportedEntity(t *testing.T, e frameless.Resource, r func()) {
 				UpdateEntity{Entity: unexportedEntity{}}.Test(t, e, r)
 			})
 		})
-		suite.Run("destroy", func(spec *testing.T) {
+		suite.Run("delete", func(spec *testing.T) {
 			spec.Run("DeleteByID", func(t *testing.T) {
 				DeleteByID{Type: unexportedEntity{}}.Test(t, e, r)
 			})
@@ -32,4 +32,9 @@ func TestUnexportedEntity(t *testing.T, e frameless.Resource, r func()) {
 			})
 		})
 	})
+}
+
+type unexportedEntity struct {
+	ExtID string `ext:"ID"`
+	Data  string
 }
