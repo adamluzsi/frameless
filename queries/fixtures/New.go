@@ -1,7 +1,7 @@
 package fixtures
 
 import (
-	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/reflects"
 	"math/rand"
 	"reflect"
@@ -32,8 +32,8 @@ func New(entity frameless.Entity) frameless.Entity {
 
 	newEntity := ptr.Interface()
 
-	if _, ok := externalresources.LookupID(newEntity); ok {
-		externalresources.SetID(newEntity, "")
+	if _, ok := resources.LookupID(newEntity); ok {
+		resources.SetID(newEntity, "")
 	}
 
 	return newEntity

@@ -1,4 +1,4 @@
-package externalresources
+package resources
 
 import (
 	"reflect"

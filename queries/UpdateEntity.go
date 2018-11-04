@@ -1,7 +1,7 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 	"github.com/stretchr/testify/require"
@@ -25,7 +25,7 @@ func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Resource, reset
 			entity := fixtures.New(quc.Entity)
 			require.Nil(spec, storage.Exec(SaveEntity{Entity: entity}).Err())
 
-			ID, ok := externalresources.LookupID(entity)
+			ID, ok := resources.LookupID(entity)
 
 			if !ok {
 				spec.Fatal(ErrIDRequired)
@@ -41,7 +41,7 @@ func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Resource, reset
 			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
-			externalresources.SetID(newEntity, ID)
+			resources.SetID(newEntity, ID)
 
 			updateResults := storage.Exec(UpdateEntity{Entity: newEntity})
 			require.NotNil(t, updateResults)
@@ -61,7 +61,7 @@ func (quc UpdateEntity) Test(suite *testing.T, storage frameless.Resource, reset
 			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
-			externalresources.SetID(newEntity, "hitchhiker's guide to the galaxy")
+			resources.SetID(newEntity, "hitchhiker's guide to the galaxy")
 			require.Error(t, storage.Exec(UpdateEntity{Entity: newEntity}).Err())
 
 		})

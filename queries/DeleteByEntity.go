@@ -1,7 +1,7 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless/queries/fixtures"
@@ -25,7 +25,7 @@ func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Resource, rese
 
 	expected := fixtures.New(quc.Entity)
 	require.Nil(spec, storage.Exec(SaveEntity{Entity: expected}).Err())
-	ID, ok := externalresources.LookupID(expected)
+	ID, ok := resources.LookupID(expected)
 
 	if !ok {
 		spec.Fatal(ErrIDRequired)

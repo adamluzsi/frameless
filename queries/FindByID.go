@@ -1,7 +1,7 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/externalresources"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/queries/fixtures"
 	"testing"
 
@@ -33,7 +33,7 @@ func (quc FindByID) Test(spec *testing.T, storage frameless.Resource, reset func
 
 		entity := fixtures.New(quc.Type)
 		require.Nil(spec, storage.Exec(SaveEntity{entity}).Err())
-		ID, ok := externalresources.LookupID(entity)
+		ID, ok := resources.LookupID(entity)
 
 		if !ok {
 			spec.Fatal(ErrIDRequired)
@@ -70,7 +70,7 @@ func (quc FindByID) Test(spec *testing.T, storage frameless.Resource, reset func
 				}
 			}()
 
-			actualID, ok := externalresources.LookupID(entity)
+			actualID, ok := resources.LookupID(entity)
 
 			if !ok {
 				t.Fatal("can't find ID in the returned value")
