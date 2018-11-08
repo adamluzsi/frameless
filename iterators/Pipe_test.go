@@ -87,7 +87,7 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 
 	// normally next should not be called after a Close, but in the test I have to define the behavior
 	// so in order to prevent over-engineering in sender Encode method,
-	for i := 0; i < 42; i++ {
+	for i := 0; i < 1024; i++ {
 		runtime.Gosched()
 	}
 
