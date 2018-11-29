@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-func TestNotImplementedQuery(t *testing.T, e frameless.Resource, r func()) {
+func TestNotImplementedQuery(t *testing.T, r frameless.Resource) {
 	t.Run("test external resource behavior with not implemented / unknown query", func(t *testing.T) {
-		defer r()
+		defer r.Exec(Purge{})
 
-		i := e.Exec(notImplementedQuery{})
+		i := r.Exec(notImplementedQuery{})
 
 		if i == nil {
 			t.Fatal("NullObject pattern violated, iterator was expected even for unknown queries")
@@ -29,4 +29,4 @@ func TestNotImplementedQuery(t *testing.T, e frameless.Resource, r func()) {
 
 type notImplementedQuery struct{}
 
-func (_ notImplementedQuery) Test(t *testing.T, e frameless.Resource, reset func()) { t.Fail() }
+func (_ notImplementedQuery) Test(t *testing.T, r frameless.Resource) { t.Fail() }

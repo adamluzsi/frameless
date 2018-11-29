@@ -16,15 +16,15 @@ type DeleteByEntity struct {
 }
 
 // Test will test that an DeleteByEntity is implemented by a generic specification
-func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Resource, reset func()) {
-	defer reset()
+func (quc DeleteByEntity) Test(spec *testing.T, r frameless.Resource) {
+	defer r.Exec(Purge{})
 
 	spec.Run("dependency", func(t *testing.T) {
-		SaveEntity{Entity: quc.Entity}.Test(t, storage, reset)
+		SaveEntity{Entity: quc.Entity}.Test(t, r)
 	})
 
 	expected := fixtures.New(quc.Entity)
-	require.Nil(spec, storage.Exec(SaveEntity{Entity: expected}).Err())
+	require.Nil(spec, r.Exec(SaveEntity{Entity: expected}).Err())
 	ID, ok := resources.LookupID(expected)
 
 	if !ok {
@@ -33,12 +33,12 @@ func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Resource, rese
 
 	spec.Run("value is Deleted by providing an SaveEntity, and than it should not be findable afterwards", func(t *testing.T) {
 
-		deleteResults := storage.Exec(DeleteByEntity{Entity: expected})
+		deleteResults := r.Exec(DeleteByEntity{Entity: expected})
 		require.NotNil(t, deleteResults)
 		require.Nil(t, deleteResults.Err())
 
 		// TODO: fix it to use BaseValueOf SaveEntity
-		iterator := storage.Exec(FindByID{Type: quc.Entity, ID: ID})
+		iterator := r.Exec(FindByID{Type: quc.Entity, ID: ID})
 		defer iterator.Close()
 
 		if iterator.Next() {
@@ -49,10 +49,10 @@ func (quc DeleteByEntity) Test(spec *testing.T, storage frameless.Resource, rese
 
 	})
 
-	spec.Run("when entity doesn't have storage ID field", func(t *testing.T) {
-		defer reset()
+	spec.Run("when entity doesn't have r ID field", func(t *testing.T) {
+		defer r.Exec(Purge{})
 
 		newEntity := fixtures.New(entityWithoutIDField{})
-		require.Error(t, storage.Exec(DeleteByEntity{Entity: newEntity}).Err())
+		require.Error(t, r.Exec(DeleteByEntity{Entity: newEntity}).Err())
 	})
 }

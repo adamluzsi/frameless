@@ -15,13 +15,13 @@ type User struct {
 type InactiveUsers struct{} // <- Query
 
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
-func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource, resetStorage func()) {
+func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 	suite.Run("dependency", func(t *testing.T) {
-		queries.SaveEntity{Entity: &User{}}.Test(t, storage, resetStorage)
+		queries.SaveEntity{Entity: &User{}}.Test(t, storage)
 	})
 
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
-		defer resetStorage()
+		defer storage.Exec(queries.Purge{})
 
 		spec.Log("Given 10 users stored in the storage")
 		inactiveUsers := []*User{}

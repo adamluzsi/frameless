@@ -116,6 +116,10 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewEmpty()
 
+	case queries.Purge:
+		storage.Purge()
+		return iterators.NewEmpty()
+
 	default:
 		return iterators.NewError(queries.ErrNotImplemented)
 

@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-type testable func(t *testing.T, resource frameless.Resource, reset func())
+type testable func(t *testing.T, resource frameless.Resource)
 
-func (fn testable) Test(t *testing.T, resource frameless.Resource, reset func()) {
-	fn(t, resource, reset)
+func (fn testable) Test(t *testing.T, resource frameless.Resource) {
+	fn(t, resource)
 }

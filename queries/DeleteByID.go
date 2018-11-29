@@ -21,11 +21,11 @@ type DeleteByID struct {
 }
 
 // Test will test that an DeleteByID is implemented by a generic specification
-func (quc DeleteByID) Test(spec *testing.T, storage frameless.Resource, reset func()) {
-	defer reset()
+func (quc DeleteByID) Test(spec *testing.T, r frameless.Resource) {
+	defer r.Exec(Purge{})
 
 	spec.Run("dependency", func(t *testing.T) {
-		SaveEntity{Entity: quc.Type}.Test(t, storage, reset)
+		SaveEntity{Entity: quc.Type}.Test(t, r)
 	})
 
 	ids := []string{}
@@ -33,7 +33,7 @@ func (quc DeleteByID) Test(spec *testing.T, storage frameless.Resource, reset fu
 	for i := 0; i < 10; i++ {
 
 		entity := fixtures.New(quc.Type)
-		require.Nil(spec, storage.Exec(SaveEntity{Entity: entity}).Err())
+		require.Nil(spec, r.Exec(SaveEntity{Entity: entity}).Err())
 		ID, ok := resources.LookupID(entity)
 
 		if !ok {
@@ -48,11 +48,11 @@ func (quc DeleteByID) Test(spec *testing.T, storage frameless.Resource, reset fu
 	spec.Run("value is Deleted after exec", func(t *testing.T) {
 		for _, ID := range ids {
 
-			deleteResults := storage.Exec(DeleteByID{Type: quc.Type, ID: ID})
+			deleteResults := r.Exec(DeleteByID{Type: quc.Type, ID: ID})
 			require.NotNil(t, deleteResults)
 			require.Nil(t, deleteResults.Err())
 
-			iterator := storage.Exec(DeleteByID{Type: quc.Type, ID: ID})
+			iterator := r.Exec(DeleteByID{Type: quc.Type, ID: ID})
 			defer iterator.Close()
 
 			var entity frameless.Entity

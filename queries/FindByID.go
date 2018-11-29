@@ -21,18 +21,18 @@ type FindByID struct {
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc FindByID) Test(spec *testing.T, storage frameless.Resource, reset func()) {
+func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 	spec.Run("dependency", func(t *testing.T) {
-		SaveEntity{Entity: quc.Type}.Test(t, storage, reset)
+		SaveEntity{Entity: quc.Type}.Test(t, r)
 	})
-	defer reset()
+	defer r.Exec(Purge{})
 
 	ids := []string{}
 
 	for i := 0; i < 10; i++ {
 
 		entity := fixtures.New(quc.Type)
-		require.Nil(spec, storage.Exec(SaveEntity{entity}).Err())
+		require.Nil(spec, r.Exec(SaveEntity{entity}).Err())
 		ID, ok := resources.LookupID(entity)
 
 		if !ok {
@@ -45,7 +45,7 @@ func (quc FindByID) Test(spec *testing.T, storage frameless.Resource, reset func
 	}
 
 	spec.Run("when no value stored that the query request", func(t *testing.T) {
-		iterator := storage.Exec(FindByID{Type: quc.Type, ID: "The Cake Is a Lie"})
+		iterator := r.Exec(FindByID{Type: quc.Type, ID: "The Cake Is a Lie"})
 		defer iterator.Close()
 
 		if iterator.Next() {
@@ -61,7 +61,7 @@ func (quc FindByID) Test(spec *testing.T, storage frameless.Resource, reset func
 			var entity frameless.Entity
 
 			func() {
-				iterator := storage.Exec(FindByID{Type: quc.Type, ID: ID})
+				iterator := r.Exec(FindByID{Type: quc.Type, ID: ID})
 
 				defer iterator.Close()
 

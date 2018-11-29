@@ -194,6 +194,13 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 			return bucket.Put(ID, value)
 		}))
 
+	case queries.Purge:
+		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
+			return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+				return tx.DeleteBucket(name)
+			})
+		}))
+
 	default:
 		return iterators.NewError(queries.ErrNotImplemented)
 

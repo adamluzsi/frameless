@@ -114,7 +114,7 @@ type Query interface {
 	// To cover your behavior easily it is advised to use multiple test run with different contexts.
 	// I personally prefer the testing#T.Run to create test contexts.
 	// test should receive a tear-down/cleanup function as the last argument that will used to reset to the initial state the external resource.
-	Test(t *testing.T, r Resource, reset func())
+	Test(t *testing.T, r Resource)
 }
 
 /*

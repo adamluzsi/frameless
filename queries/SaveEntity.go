@@ -12,7 +12,7 @@ type SaveEntity struct {
 	Entity frameless.Entity
 }
 
-func (q SaveEntity) Test(t *testing.T, s frameless.Resource, resetDB func()) {
+func (q SaveEntity) Test(t *testing.T, r frameless.Resource) {
 	t.Run("persist an SaveEntity", func(t *testing.T) {
 
 		if ID, _ := resources.LookupID(q.Entity); ID != "" {
@@ -20,29 +20,29 @@ func (q SaveEntity) Test(t *testing.T, s frameless.Resource, resetDB func()) {
 		}
 
 		e := fixtures.New(q.Entity)
-		i := s.Exec(SaveEntity{Entity: e})
+		i := r.Exec(SaveEntity{Entity: e})
 
 		require.NotNil(t, i)
 		require.Nil(t, i.Err())
 
 		ID, ok := resources.LookupID(e)
 		require.True(t, ok, "ID is not defined in the entity struct src definition")
-		require.True(t, len(ID) > 0, "it's expected that storage set the storage ID in the entity")
+		require.True(t, len(ID) > 0, "it'r expected that storage set the storage ID in the entity")
 
 	})
 
 	t.Run("when entity doesn't have storage ID field", func(t *testing.T) {
-		defer resetDB()
+		defer r.Exec(Purge{})
 
 		newEntity := fixtures.New(entityWithoutIDField{})
-		require.Error(t, s.Exec(SaveEntity{Entity: newEntity}).Err())
+		require.Error(t, r.Exec(SaveEntity{Entity: newEntity}).Err())
 	})
 
 	t.Run("when entity already have an ID", func(t *testing.T) {
-		defer resetDB()
+		defer r.Exec(Purge{})
 
 		newEntity := fixtures.New(q.Entity)
 		resources.SetID(newEntity, "Hello world!")
-		require.Error(t, s.Exec(SaveEntity{Entity: newEntity}).Err())
+		require.Error(t, r.Exec(SaveEntity{Entity: newEntity}).Err())
 	})
 }

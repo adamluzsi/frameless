@@ -82,10 +82,10 @@ func ThisIsHowYouCanCreateTestToTestQueryUseCaseIntegrationsIntoTheStorage(suite
 		// or you can create NewMyStorage(interface{}) as well for controlled initialization of your storage implementation,
 		// and use it here for initialize the object
 
-		spec.Run("queries.DeleteByID", func(t *testing.T) {
+		spec.Run("queries.FindByID", func(t *testing.T) {
 
 			// this will test our implementation against the expected behavior in the DeleteByID specification
-			queries.FindByID{Type: MyEntity{}}.Test(t, storage, reset)
+			queries.FindByID{Type: MyEntity{}}.Test(t, storage)
 		})
 
 	})
