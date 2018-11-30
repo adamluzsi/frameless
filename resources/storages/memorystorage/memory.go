@@ -87,7 +87,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		return iterators.NewEmpty()
 
-	case queries.DeleteByEntity:
+	case queries.DeleteEntity:
 		ID, found := resources.LookupID(quc.Entity)
 
 		if !found {

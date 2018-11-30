@@ -51,7 +51,7 @@ func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
 		fmt.Printf("searching in %s table for %s ID\n", reflects.FullyQualifiedName(quc.Type), quc.ID)
 
 		return iterators.NewEmpty()
-	case queries.DeleteByEntity:
+	case queries.DeleteEntity:
 
 		ID, found := resources.LookupID(quc.Entity)
 

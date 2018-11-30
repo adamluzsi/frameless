@@ -27,8 +27,8 @@ func TestUnexportedEntity(t *testing.T, r frameless.Resource) {
 			spec.Run("DeleteByID", func(t *testing.T) {
 				DeleteByID{Type: unexportedEntity{}}.Test(t, r)
 			})
-			spec.Run("DeleteByEntity", func(t *testing.T) {
-				DeleteByEntity{Entity: unexportedEntity{}}.Test(t, r)
+			spec.Run("DeleteEntity", func(t *testing.T) {
+				DeleteEntity{Entity: unexportedEntity{}}.Test(t, r)
 			})
 		})
 	})

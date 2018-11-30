@@ -11,14 +11,12 @@
 
 	Minimum Requirement
 
-	In order to make this package work, you have to implement the SaveEntity, FindByID and Purge query.
-	Most of the other queries depends either on above mentioned queries in different combination.
-	The Purge query mainly necessary for setting up test cases.
-	By implementing the Purge query, you have to keep in mind,
-	that your database during testing will be purged for cleanup purpose,
-	and if you need something to be present in your other tests,
-	you have to ensure that data by explicit context creation for the given test that depends on that.
-	Also I personally highly suggest to clean up after each of your test run, that modify the external resource state.
+	In order to make this package work, you have to implement the TestMinimumRequirements specification.
+	Most of the other queries specification depends on the queries mentioned in the min requirement specification.
+	Keep in mind, that you have no guarantee on your database content during test execution, because some specification
+	may alter the content of the resource (db), or delete from it.
+	If you need specific data in the resource you want to test with, you must ensure in the test execution that
+	such context is correctly provisioned, and after test execution, cleaned up.
 	One last thing this package queries depends on is the presence of ID field in the received data structures / entities.
 
  */

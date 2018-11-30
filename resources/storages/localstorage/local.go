@@ -156,7 +156,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 			return bucket.Delete(ID)
 		}))
 
-	case queries.DeleteByEntity:
+	case queries.DeleteEntity:
 		ID, found := resources.LookupID(quc.Entity)
 
 		if !found || ID == "" {

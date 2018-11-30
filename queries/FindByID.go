@@ -25,7 +25,6 @@ func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 	spec.Run("dependency", func(t *testing.T) {
 		SaveEntity{Entity: quc.Type}.Test(t, r)
 	})
-	defer r.Exec(Purge{})
 
 	ids := []string{}
 
@@ -43,6 +42,12 @@ func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 		ids = append(ids, ID)
 
 	}
+
+	defer func() {
+		for _, id := range ids {
+			require.Nil(spec, r.Exec(DeleteByID{Type: quc.Type, ID: id}).Err())
+		}
+	}()
 
 	spec.Run("when no value stored that the query request", func(t *testing.T) {
 		iterator := r.Exec(FindByID{Type: quc.Type, ID: "The Cake Is a Lie"})

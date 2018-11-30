@@ -2,6 +2,7 @@ package frameless_test
 
 import (
 	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -21,10 +22,10 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 	})
 
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
-		defer storage.Exec(queries.Purge{})
+
+		var inactiveUsers []*User
 
 		spec.Log("Given 10 users stored in the storage")
-		inactiveUsers := []*User{}
 		for i := 0; i < 10; i++ {
 			u := &User{IsActive: i < 7}
 
@@ -51,9 +52,14 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 
 			require.Equal(t, len(inactiveUsers), count)
 		})
+
+		for _, u := range inactiveUsers {
+			id, ok := resources.LookupID(u)
+			require.True(spec, ok)
+			require.NotEmpty(spec, id)
+			storage.Exec(queries.DeleteByID{Type: *u, ID: id})
+		}
 	})
 }
-
-type UsersNameBeginWith struct{ Prefix string }
 
 func ExampleQueryUseCase() {}

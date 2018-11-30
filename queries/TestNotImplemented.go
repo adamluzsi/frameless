@@ -7,7 +7,6 @@ import (
 
 func TestNotImplementedQuery(t *testing.T, r frameless.Resource) {
 	t.Run("test external resource behavior with not implemented / unknown query", func(t *testing.T) {
-		defer r.Exec(Purge{})
 
 		i := r.Exec(notImplementedQuery{})
 

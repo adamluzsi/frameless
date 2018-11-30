@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
@@ -10,14 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DeleteByEntity request a destroy of a specific entity that is wrapped in the query use case object
-type DeleteByEntity struct {
+// DeleteEntity request a destroy of a specific entity that is wrapped in the query use case object
+type DeleteEntity struct {
 	Entity frameless.Entity
 }
 
-// Test will test that an DeleteByEntity is implemented by a generic specification
-func (quc DeleteByEntity) Test(spec *testing.T, r frameless.Resource) {
-	defer r.Exec(Purge{})
+// Test will test that an DeleteEntity is implemented by a generic specification
+func (quc DeleteEntity) Test(spec *testing.T, r frameless.Resource) {
 
 	spec.Run("dependency", func(t *testing.T) {
 		SaveEntity{Entity: quc.Entity}.Test(t, r)
@@ -31,14 +31,15 @@ func (quc DeleteByEntity) Test(spec *testing.T, r frameless.Resource) {
 		spec.Fatal(ErrIDRequired)
 	}
 
-	spec.Run("value is Deleted by providing an SaveEntity, and than it should not be findable afterwards", func(t *testing.T) {
+	defer r.Exec(DeleteByID{Type: reflects.BaseValueOf(quc.Entity).Interface(), ID: ID})
 
-		deleteResults := r.Exec(DeleteByEntity{Entity: expected})
+	spec.Run("value is Deleted by providing an Entity, and then it should not be findable afterwards", func(t *testing.T) {
+
+		deleteResults := r.Exec(DeleteEntity{Entity: expected})
 		require.NotNil(t, deleteResults)
 		require.Nil(t, deleteResults.Err())
 
-		// TODO: fix it to use BaseValueOf SaveEntity
-		iterator := r.Exec(FindByID{Type: quc.Entity, ID: ID})
+		iterator := r.Exec(FindByID{Type: reflects.BaseValueOf(quc.Entity).Interface(), ID: ID})
 		defer iterator.Close()
 
 		if iterator.Next() {
@@ -50,9 +51,7 @@ func (quc DeleteByEntity) Test(spec *testing.T, r frameless.Resource) {
 	})
 
 	spec.Run("when entity doesn't have r ID field", func(t *testing.T) {
-		defer r.Exec(Purge{})
-
 		newEntity := fixtures.New(entityWithoutIDField{})
-		require.Error(t, r.Exec(DeleteByEntity{Entity: newEntity}).Err())
+		require.Error(t, r.Exec(DeleteEntity{Entity: newEntity}).Err())
 	})
 }

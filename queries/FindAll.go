@@ -20,9 +20,8 @@ type FindAll struct{ Type frameless.Entity }
 
 func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 	t.Run("when value stored in the database", func(t *testing.T) {
-		defer r.Exec(Purge{})
 
-		ids := []string{}
+		var ids []string
 
 		for i := 0; i < 10; i++ {
 
@@ -37,6 +36,12 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 
 			ids = append(ids, id)
 		}
+
+		defer func() {
+			for _, id := range ids {
+				require.Nil(t, r.Exec(DeleteByID{Type: quc.Type, ID: id}).Err())
+			}
+		}()
 
 		i := r.Exec(FindAll{Type: quc.Type})
 		defer i.Close()
@@ -58,9 +63,6 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 	})
 
 	t.Run("when no value present in the database", func(t *testing.T) {
-		defer r.Exec(Purge{})
-		r.Exec(Purge{})
-
 		i := r.Exec(FindAll{Type: quc.Type})
 		count, err := iterators.Count(i)
 		require.Nil(t, err)

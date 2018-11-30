@@ -3,6 +3,7 @@ package queries
 import (
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -21,7 +22,7 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 			SaveEntity{Entity: quc.Entity}.Test(t, r)
 		})
 
-		setup := func() string {
+		setup := func(t *testing.T) (string, func()) {
 			entity := fixtures.New(quc.Entity)
 			require.Nil(spec, r.Exec(SaveEntity{Entity: entity}).Err())
 
@@ -33,12 +34,16 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 
 			require.True(spec, len(ID) > 0)
 
-			return ID
+			td := func() {
+				require.Nil(t, r.Exec(DeleteByID{Type: reflects.BaseValueOf(quc.Entity).Interface(), ID: ID}).Err())
+			}
+
+			return ID, td
 		}
 
 		spec.Run("values returned", func(t *testing.T) {
-			ID := setup()
-			defer r.Exec(Purge{})
+			ID, td := setup(t)
+			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
 			resources.SetID(newEntity, ID)
@@ -57,8 +62,8 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 		})
 
 		spec.Run("values in the r but the requested entity that should be updated is not exists", func(t *testing.T) {
-			setup()
-			defer r.Exec(Purge{})
+			_, td := setup(t)
+			defer td()
 
 			newEntity := fixtures.New(quc.Entity)
 			resources.SetID(newEntity, "hitchhiker's guide to the galaxy")
@@ -66,9 +71,7 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 
 		})
 
-		spec.Run("given entity doesn't have r ID field", func(t *testing.T) {
-			defer r.Exec(Purge{})
-
+		spec.Run("given entity doesn't have an ID field", func(t *testing.T) {
 			newEntity := fixtures.New(entityWithoutIDField{})
 			require.Error(t, r.Exec(UpdateEntity{Entity: newEntity}).Err())
 		})
