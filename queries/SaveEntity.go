@@ -40,7 +40,6 @@ func (q SaveEntity) Test(t *testing.T, r frameless.Resource) {
 		require.Equal(t, e, actual)
 		require.Nil(t, r.Exec(DeleteByID{Type: Type, ID: ID}).Err())
 
-
 	})
 
 	t.Run("when entity doesn't have storage ID field", func(t *testing.T) {

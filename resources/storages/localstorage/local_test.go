@@ -16,7 +16,7 @@ func ExampleNewLocal() {
 	localstorage.NewLocal("path/to/local/db/file")
 }
 
-func NewSubject(t testing.TB) (*localstorage.Local) {
+func NewSubject(t testing.TB) *localstorage.Local {
 	dbPath := filepath.Join(os.TempDir(), uuid.NewV4().String())
 	storage, err := localstorage.NewLocal(dbPath)
 	require.Nil(t, err)
@@ -24,7 +24,7 @@ func NewSubject(t testing.TB) (*localstorage.Local) {
 }
 
 func TestLocal(t *testing.T) {
-	s:= NewSubject(t)
+	s := NewSubject(t)
 	defer s.Close()
 	queries.TestAll(t, s)
 }
