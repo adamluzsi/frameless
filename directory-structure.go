@@ -3,32 +3,28 @@
 Screaming Architecture
 
 A human oriented directory structure can decrease the project learning curve for new team members.
-I had the pleasure to work with people I highly respect because of they personality and/or experience in software engineering.
 Usually each team has it's own flavor when it comes to structuring the project code base.
-I have to credit, most of the reasoning really easily fits into a developer thinking when they are in the "flow",
-so there is always a point of view that able to justify why something should be organized in one way or another.
-Most of the approach that I learned from different sources has usually at least one thing in common.
-They organize code base usually around code dependencies or around class hierarchy.
-I feel that this by on its own not a good or bad thing at all.
+Some framework may even prefer a folder structure idiom based on MVC or similar architectural pattern.
 
-The sneaky problems usually unfold when a new team member join the project,
-and he needs someone actively to understand the high level concepts what this project try to achieve.
+When a new member joins the team, usually this is the first layer that person encounter.
+And if they need someone else who actively help them to understand the high level concepts of that project,
+then usually there is a good change to find some task regarding improvements in the project structuring.
 If the domain knowledge implicitly required for the project to be understood,
 it will be harder for the new recruit to join to productive work.
 
-My directory structuring was no exception to this, until I received a really important feedback.
-It came from my wife. She often sit next to me when I sometimes work at home, and she mentioned,
+The directory structuring I prefer aims to express project audience and they use-cases which together hopefully describe the project purpose.
+In the subject, the feedback that helped me the most came from my wife.
+She often sit next to me when I work at home, and she mentioned,
 that she likes my code because she can read it like a book.
 This gave me the idea for the directory structuring then.
-My wife is not in the IT, yet I love to ask her opinion on my creations,
-because she always give back a honest opinion on the subjects.
-And one of the most important lesson I learned by asking her opinion,
-is that the more dependency and IT knowledge required for a project,
-the more time it takes to present her and explain her what I currently work on, which usually correlate with new recruits learning curve.
+My wife is not an IT specialist, therefore her feedback especially valuable in this topic.
+It is because the more dependency and IT knowledge required for a project to be undershoot clearly on high level,
+usually lineal with the project learning curve of the new team members.
 So I started to keep in mind that my application should be easy to understood on high level, even without programming experience.
-Therefore I usually try my best to split codebase trough domain parts.
-Than I put those domain parts into separate directories, called suffixed with "services".
-A service here in this terminology means purely domain functionality and nothing regarding External Interfaces like HTTP API.
+Therefore I usually try my best to split codebase trough domain parts like audience, use-case and product line.
+Product lines usually represented as top level directories suffixed with "-service".
+Services in this terminology not necessarily mean an external interface like HTTP API,
+but a set of use-case that connected together.
 
 Let me present it with an example.
 This is an application I create for my friend as a present.
