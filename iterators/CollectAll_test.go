@@ -42,6 +42,16 @@ func TestAndCollectAll_IteratorResourceFailsForSomeReason_ErrReturned(t *testing
 	expectedDecodeError := errors.New("Boom Decode!")
 	i.StubDecode = func(interface{}) error { return expectedDecodeError }
 	require.Error(t, expectedDecodeError, iterators.CollectAll(i, &[]int{}))
+}
+
+func TestAndCollectAll_IteratorHasErrInTheBegining_ErrReturned(t *testing.T) {
+	t.Parallel()
+
+	i := iterators.NewMock(iterators.NewEmpty())
+	expectedDecodeError := errors.New("Boom Decode!")
+	i.StubErr = func() error { return expectedDecodeError }
+
+	require.Error(t, expectedDecodeError, iterators.CollectAll(i, &[]int{}))
 	i.ResetDecode()
 
 	expectedErrError := errors.New("Boom Err!")
