@@ -74,5 +74,5 @@ If you was not able to find out by now, please send me a mail or leave open an i
 and tell me what was your experience with this.
 There is no wrong answer, so don't hesitate to express your opinion and experience.
 
- */
+*/
 package frameless
