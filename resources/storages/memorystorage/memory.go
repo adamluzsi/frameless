@@ -1,14 +1,13 @@
 package memorystorage
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 	"reflect"
 	"sync"
 
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 
 	"github.com/adamluzsi/frameless"
@@ -41,7 +40,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 			return iterators.Errorf("entity already have an ID: %s", currentID)
 		}
 
-		id, err := RandID()
+		id, err := fixtures.RandomString(42)
 
 		if err != nil {
 			return iterators.NewError(err)
@@ -145,21 +144,4 @@ func (storage *Memory) TableFor(e frameless.Entity) Table {
 	}
 
 	return storage.DB[name]
-}
-
-func RandID() (string, error) {
-	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
-
-	bytes := make([]byte, 42)
-	_, err := rand.Read(bytes)
-
-	if err != nil {
-		return "", err
-	}
-
-	for i, b := range bytes {
-		bytes[i] = letters[b%byte(len(letters))]
-	}
-
-	return base64.URLEncoding.EncodeToString(bytes), nil
 }
