@@ -1,0 +1,54 @@
+package fixtures_test
+
+import (
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"math/rand"
+	"sync"
+	"testing"
+	"time"
+)
+
+func TestRandomString(t *testing.T) {
+	t.Run("when random string requested", func(t *testing.T) {
+		t.Run("it is expected to return one", func(t *testing.T) {
+
+
+			ExpectedLength := rand.New(rand.NewSource(time.Now().Unix())).Intn(41) + 1
+
+			str, err := fixtures.RandomString(ExpectedLength)
+
+			require.Nil(t, err)
+
+			t.Run("and the received string length is expected to be just as much as the input parameter requested", func(t *testing.T) {
+				require.Equal(t, ExpectedLength, len(str))
+			})
+
+			t.Run("and the received string should be random and not repeating", func(t *testing.T) {
+
+				var wg sync.WaitGroup
+
+				for i := 0; i < 1024; i++ {
+					wg.Add(1)
+
+					go func() {
+						defer wg.Done()
+						othStr, oerr := fixtures.RandomString(ExpectedLength)
+						require.Nil(t, oerr)
+
+						assert.NotEqual(t, str, othStr)
+					}()
+				}
+
+				wg.Wait()
+
+				if t.Failed() {
+					t.FailNow()
+				}
+
+			})
+
+		})
+	})
+}
