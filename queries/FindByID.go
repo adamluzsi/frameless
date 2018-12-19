@@ -1,7 +1,7 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 

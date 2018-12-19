@@ -1,7 +1,7 @@
 package fixtures_test
 
 import (
-	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/fixtures"
 	"testing"
 
 	"github.com/stretchr/testify/require"

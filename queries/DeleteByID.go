@@ -4,7 +4,7 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
-	"github.com/adamluzsi/frameless/queries/fixtures"
+	"github.com/adamluzsi/frameless/fixtures"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/stretchr/testify/require"
