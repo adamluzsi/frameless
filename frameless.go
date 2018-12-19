@@ -88,11 +88,11 @@ type Interactor = interface{}
 
 /*
 
-	Query is a Resource specific component.
+	Query is a data structure that describe expected behavior from the external resource it consume it.
 
 		TL;DR:
-			Query imposes discipline upon scope usage.
-			So Query is a behavior specification and a data structure that helps use-cases to focus on the "what" instead of the "how".
+			Query imposes discipline upon where you implement what, and thus separate the scope of the interactor and the external resource.
+			Simply put Query is a behavior specification and a data structure that helps use-cases to focus on the "what" instead of the "how".
 
 	The main purpose is to Use Case specific behavior requirements from the technology specific implementation
 	The Use Case implementation should never specify low level implementation of the storage usage, but represent it with a Query data structure that passed to the storage.
@@ -107,6 +107,10 @@ type Interactor = interface{}
 
 	By convention the Query name should start with "[EntityName][FindLogicDescription]" so it is easy to distinguish it from other exported Structures,
 	example: UserByName, UsersByName, UserByEmail
+
+	One side note here from my personal experience is that, I often saw SQL and other similar inputs was being tested,
+	which I believe is a common mistake of testing implementation instead of behavior.
+	By first describing the behavior before we know anything from the resource, In my opinion can help in keeping focus on the "what" more easily.
 
 */
 type Query interface {
