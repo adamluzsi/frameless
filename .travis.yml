@@ -36,3 +36,9 @@ branches:
 notifications:
   email:
     - adamluzsi@gmail.com
+
+services:
+  - postgresql
+
+env:
+  - SKIP_CRYPTO_RAND_TEST=TRUE

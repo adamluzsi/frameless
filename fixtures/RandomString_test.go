@@ -1,16 +1,23 @@
 package fixtures_test
 
 import (
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"math/rand"
+	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRandomString(t *testing.T) {
+
+	if os.Getenv("SKIP_CRYPTO_RAND_TEST") == "TRUE" {
+		t.Skip()
+	}
+
 	t.Run("when random string requested", func(t *testing.T) {
 		t.Run("it is expected to return one", func(t *testing.T) {
 
