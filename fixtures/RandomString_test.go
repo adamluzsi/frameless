@@ -14,7 +14,6 @@ func TestRandomString(t *testing.T) {
 	t.Run("when random string requested", func(t *testing.T) {
 		t.Run("it is expected to return one", func(t *testing.T) {
 
-
 			ExpectedLength := rand.New(rand.NewSource(time.Now().Unix())).Intn(41) + 1
 
 			str, err := fixtures.RandomString(ExpectedLength)
