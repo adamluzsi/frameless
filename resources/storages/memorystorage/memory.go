@@ -1,11 +1,12 @@
 package memorystorage
 
 import (
+	"reflect"
+	"sync"
+
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
-	"reflect"
-	"sync"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
@@ -15,14 +16,16 @@ import (
 
 func NewMemory() *Memory {
 	return &Memory{
-		DB:    make(map[string]Table),
-		Mutex: &sync.RWMutex{},
+		DB:              make(map[string]Table),
+		Mutex:           &sync.RWMutex{},
+		implementations: make(map[string]func(*Memory) frameless.Iterator),
 	}
 }
 
 type Memory struct {
-	DB    map[string]Table
-	Mutex *sync.RWMutex
+	DB              map[string]Table
+	Mutex           *sync.RWMutex
+	implementations map[string]func(*Memory) frameless.Iterator
 }
 
 func (storage *Memory) Close() error {
@@ -57,9 +60,9 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 
 		if found {
 			return iterators.NewSingleElement(entity)
-		} else {
-			return iterators.NewEmpty()
 		}
+
+		return iterators.NewEmpty()
 
 	case queries.FindAll:
 		storage.Mutex.RLock()
@@ -120,7 +123,15 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewEmpty()
 
 	default:
-		return iterators.NewError(queries.ErrNotImplemented)
+
+		queryID := reflects.FullyQualifiedName(quc)
+		imp, ok := storage.implementations[queryID]
+
+		if !ok {
+			return iterators.NewError(queries.ErrNotImplemented)
+		}
+
+		return imp(storage)
 
 	}
 }
@@ -144,4 +155,9 @@ func (storage *Memory) TableFor(e frameless.Entity) Table {
 	}
 
 	return storage.DB[name]
+}
+
+func (storage *Memory) Implement(query frameless.Query, imp func(*Memory) frameless.Iterator) {
+	queryID := reflects.FullyQualifiedName(query)
+	storage.implementations[queryID] = imp
 }
