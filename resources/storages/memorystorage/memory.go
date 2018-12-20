@@ -18,14 +18,14 @@ func NewMemory() *Memory {
 	return &Memory{
 		DB:              make(map[string]Table),
 		Mutex:           &sync.RWMutex{},
-		implementations: make(map[string]func(*Memory) frameless.Iterator),
+		implementations: make(map[string]Implementation),
 	}
 }
 
 type Memory struct {
 	DB              map[string]Table
 	Mutex           *sync.RWMutex
-	implementations map[string]func(*Memory) frameless.Iterator
+	implementations map[string]Implementation
 }
 
 func (storage *Memory) Close() error {
@@ -131,7 +131,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 			return iterators.NewError(queries.ErrNotImplemented)
 		}
 
-		return imp(storage)
+		return imp(storage, quc)
 
 	}
 }
@@ -157,7 +157,9 @@ func (storage *Memory) TableFor(e frameless.Entity) Table {
 	return storage.DB[name]
 }
 
-func (storage *Memory) Implement(query frameless.Query, imp func(*Memory) frameless.Iterator) {
+type Implementation func(*Memory, frameless.Query) frameless.Iterator
+
+func (storage *Memory) Implement(query frameless.Query, imp Implementation) {
 	queryID := reflects.FullyQualifiedName(query)
 	storage.implementations[queryID] = imp
 }

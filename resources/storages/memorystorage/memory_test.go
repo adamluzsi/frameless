@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/stretchr/testify/require"
@@ -34,17 +35,26 @@ func TestImplement(t *testing.T) {
 
 	t.Run("when subject query is manually implemented", func(t *testing.T) {
 
-		storage.Implement(ImplementedQuery{}, func(*memorystorage.Memory) frameless.Iterator {
-			return iterators.NewSingleElement("Works!")
+		storage.Implement(ImplementedQuery{}, func(m *memorystorage.Memory, q frameless.Query) frameless.Iterator {
+			query := q.(ImplementedQuery)
+
+			return iterators.NewSingleElement(query.Text)
 		})
 
 		t.Run("it is expected to execute the implementation function and return it's value", func(t *testing.T) {
-			i := storage.Exec(ImplementedQuery{})
+
+			ExpectedValue, err := fixtures.RandomString(42)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			i := storage.Exec(ImplementedQuery{Text: ExpectedValue})
 
 			var value string
 
 			require.Nil(t, iterators.First(i, &value))
-			require.Equal(t, "Works!", value)
+			require.Equal(t, ExpectedValue, value)
 			require.Nil(t, i.Err())
 		})
 
@@ -57,7 +67,7 @@ func (NotImplementedQuery) Test(t *testing.T, r frameless.Resource) {
 	panic("not implemented")
 }
 
-type ImplementedQuery struct{}
+type ImplementedQuery struct{ Text string }
 
 func (ImplementedQuery) Test(t *testing.T, r frameless.Resource) {
 	panic("not implemented")
