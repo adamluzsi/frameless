@@ -35,7 +35,7 @@ func (storage *Memory) Close() error {
 func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 
-	case queries.SaveEntity:
+	case queries.Save:
 		storage.Mutex.Lock()
 		defer storage.Mutex.Unlock()
 

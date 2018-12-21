@@ -18,12 +18,12 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 	suite.Run("UpdateEntity", func(spec *testing.T) {
 
 		suite.Run("dependency", func(t *testing.T) {
-			SaveEntity{Entity: quc.Entity}.Test(t, r)
+			Save{Entity: quc.Entity}.Test(t, r)
 		})
 
 		setup := func(t *testing.T) (string, func()) {
 			entity := fixtures.New(quc.Entity)
-			require.Nil(spec, r.Exec(SaveEntity{Entity: entity}).Err())
+			require.Nil(spec, r.Exec(Save{Entity: entity}).Err())
 
 			ID, ok := resources.LookupID(entity)
 

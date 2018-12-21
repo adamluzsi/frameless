@@ -5,4 +5,4 @@ import (
 	"github.com/adamluzsi/frameless/queries"
 )
 
-var _ frameless.Query = queries.SaveEntity{}
+var _ frameless.Query = queries.Save{}

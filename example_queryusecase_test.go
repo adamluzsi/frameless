@@ -18,7 +18,7 @@ type InactiveUsers struct{} // <- Query
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
 func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 	suite.Run("dependency", func(t *testing.T) {
-		queries.SaveEntity{Entity: &User{}}.Test(t, storage)
+		queries.Save{Entity: &User{}}.Test(t, storage)
 	})
 
 	suite.Run("Query For Inactive Users", func(spec *testing.T) {
@@ -33,7 +33,7 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 				inactiveUsers = append(inactiveUsers, u)
 			}
 
-			require.Nil(suite, storage.Exec(queries.SaveEntity{Entity: u}).Err())
+			require.Nil(suite, storage.Exec(queries.Save{Entity: u}).Err())
 		}
 
 		suite.Run("All Inactive users returned on search", func(t *testing.T) {

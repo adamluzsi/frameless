@@ -25,7 +25,7 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 		for i := 0; i < 10; i++ {
 
 			entity := fixtures.New(quc.Type)
-			require.Nil(t, r.Exec(SaveEntity{Entity: entity}).Err())
+			require.Nil(t, r.Exec(Save{Entity: entity}).Err())
 
 			id, found := resources.LookupID(entity)
 

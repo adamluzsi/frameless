@@ -23,7 +23,7 @@ type FindByID struct {
 // also the caller should do the teardown as well
 func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 	spec.Run("dependency", func(t *testing.T) {
-		SaveEntity{Entity: quc.Type}.Test(t, r)
+		Save{Entity: quc.Type}.Test(t, r)
 	})
 
 	ids := []string{}
@@ -31,7 +31,7 @@ func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 	for i := 0; i < 10; i++ {
 
 		entity := fixtures.New(quc.Type)
-		require.Nil(spec, r.Exec(SaveEntity{entity}).Err())
+		require.Nil(spec, r.Exec(Save{entity}).Err())
 		ID, ok := resources.LookupID(entity)
 
 		if !ok {

@@ -20,11 +20,11 @@ type DeleteEntity struct {
 func (quc DeleteEntity) Test(spec *testing.T, r frameless.Resource) {
 
 	spec.Run("dependency", func(t *testing.T) {
-		SaveEntity{Entity: quc.Entity}.Test(t, r)
+		Save{Entity: quc.Entity}.Test(t, r)
 	})
 
 	expected := fixtures.New(quc.Entity)
-	require.Nil(spec, r.Exec(SaveEntity{Entity: expected}).Err())
+	require.Nil(spec, r.Exec(Save{Entity: expected}).Err())
 	ID, ok := resources.LookupID(expected)
 
 	if !ok {

@@ -14,7 +14,7 @@ func (q Purge) Test(t *testing.T, r frameless.Resource) {
 	t.Run("purge out all data from the given resource", func(t *testing.T) {
 
 		fixture := fixtures.New(unexportedEntity{})
-		res := r.Exec(SaveEntity{fixture})
+		res := r.Exec(Save{fixture})
 		id, ok := resources.LookupID(fixture)
 
 		require.True(t, ok)

@@ -36,7 +36,7 @@ func (storage *Local) Close() error {
 
 func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	switch quc := quc.(type) {
-	case queries.SaveEntity:
+	case queries.Save:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 
 			if currentID, ok := resources.LookupID(quc.Entity); !ok || currentID != "" {

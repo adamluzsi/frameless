@@ -10,21 +10,21 @@ import (
 	"testing"
 )
 
-type SaveEntity struct {
+type Save struct {
 	Entity frameless.Entity
 }
 
-func (q SaveEntity) Test(t *testing.T, r frameless.Resource) {
+func (q Save) Test(t *testing.T, r frameless.Resource) {
 	Type := reflects.BaseValueOf(q.Entity).Interface()
 
-	t.Run("persist an SaveEntity", func(t *testing.T) {
+	t.Run("persist an Save", func(t *testing.T) {
 
 		if ID, _ := resources.LookupID(q.Entity); ID != "" {
 			t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 		}
 
 		e := fixtures.New(q.Entity)
-		i := r.Exec(SaveEntity{Entity: e})
+		i := r.Exec(Save{Entity: e})
 
 		require.NotNil(t, i)
 		require.Nil(t, i.Err())
@@ -44,12 +44,12 @@ func (q SaveEntity) Test(t *testing.T, r frameless.Resource) {
 
 	t.Run("when entity doesn't have storage ID field", func(t *testing.T) {
 		newEntity := fixtures.New(entityWithoutIDField{})
-		require.Error(t, r.Exec(SaveEntity{Entity: newEntity}).Err())
+		require.Error(t, r.Exec(Save{Entity: newEntity}).Err())
 	})
 
 	t.Run("when entity already have an ID", func(t *testing.T) {
 		newEntity := fixtures.New(q.Entity)
 		resources.SetID(newEntity, "Hello world!")
-		require.Error(t, r.Exec(SaveEntity{Entity: newEntity}).Err())
+		require.Error(t, r.Exec(Save{Entity: newEntity}).Err())
 	})
 }

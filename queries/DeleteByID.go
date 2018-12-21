@@ -23,7 +23,7 @@ type DeleteByID struct {
 func (q DeleteByID) Test(t *testing.T, r frameless.Resource) {
 
 	t.Run("dependency", func(t *testing.T) {
-		SaveEntity{Entity: q.Type}.Test(t, r)
+		Save{Entity: q.Type}.Test(t, r)
 	})
 
 	t.Run("given database is populated", func(t *testing.T) {
@@ -32,7 +32,7 @@ func (q DeleteByID) Test(t *testing.T, r frameless.Resource) {
 		for i := 0; i < 10; i++ {
 
 			entity := fixtures.New(q.Type)
-			require.Nil(t, r.Exec(SaveEntity{Entity: entity}).Err())
+			require.Nil(t, r.Exec(Save{Entity: entity}).Err())
 			ID, ok := resources.LookupID(entity)
 
 			if !ok {

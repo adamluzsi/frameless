@@ -8,7 +8,7 @@ import (
 func TestExportedEntity(t *testing.T, r frameless.Resource) {
 	t.Run("test query acceptance with Exported entities", func(suite *testing.T) {
 		suite.Run("save", func(t *testing.T) {
-			SaveEntity{Entity: &ExportedEntity{}}.Test(t, r)
+			Save{Entity: &ExportedEntity{}}.Test(t, r)
 		})
 		suite.Run("find", func(spec *testing.T) {
 			spec.Run("DeleteByID", func(t *testing.T) {
