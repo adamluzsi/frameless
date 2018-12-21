@@ -14,6 +14,7 @@ import (
 
 func TestRandomString(t *testing.T) {
 
+	// TODO fix this
 	if os.Getenv("SKIP_CRYPTO_RAND_TEST") == "TRUE" {
 		t.Skip()
 	}
