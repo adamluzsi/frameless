@@ -1,4 +1,4 @@
-package queries
+package errors
 
 import "github.com/adamluzsi/frameless"
 

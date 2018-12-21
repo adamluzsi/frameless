@@ -5,6 +5,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless/errors"
 	"github.com/stretchr/testify/require"
 	"testing"
 
@@ -29,7 +30,7 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 			ID, ok := resources.LookupID(entity)
 
 			if !ok {
-				spec.Fatal(ErrIDRequired)
+				spec.Fatal(errors.ErrIDRequired)
 			}
 
 			require.True(spec, len(ID) > 0)

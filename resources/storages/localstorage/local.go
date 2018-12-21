@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
+	"github.com/adamluzsi/frameless/errors"
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/resources"
 	"io/ioutil"
@@ -202,7 +203,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	default:
-		return iterators.NewError(queries.ErrNotImplemented)
+		return iterators.NewError(errors.ErrNotImplemented)
 
 	}
 }

@@ -1,6 +1,7 @@
 package memorystorage
 
 import (
+	"github.com/adamluzsi/frameless/errors"
 	"reflect"
 	"sync"
 
@@ -128,7 +129,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		imp, ok := storage.implementations[queryID]
 
 		if !ok {
-			return iterators.NewError(queries.ErrNotImplemented)
+			return iterators.NewError(errors.ErrNotImplemented)
 		}
 
 		return imp(storage, quc)

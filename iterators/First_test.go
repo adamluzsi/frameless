@@ -49,5 +49,7 @@ func TestFirst_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *te
 
 	i := iterators.NewEmpty()
 
-	require.Equal(t, iterators.ErrNoNextElement, iterators.First(i, &Entity{}))
+	var ExpectedError error = iterators.ErrNoNextElement
+
+	require.Equal(t, ExpectedError, iterators.First(i, &Entity{}))
 }

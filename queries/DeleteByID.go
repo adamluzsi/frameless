@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"github.com/adamluzsi/frameless/errors"
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
@@ -36,7 +37,7 @@ func (q DeleteByID) Test(t *testing.T, r frameless.Resource) {
 			ID, ok := resources.LookupID(entity)
 
 			if !ok {
-				t.Fatal(ErrIDRequired)
+				t.Fatal(errors.ErrIDRequired)
 			}
 
 			require.True(t, len(ID) > 0)

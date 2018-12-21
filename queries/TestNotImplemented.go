@@ -2,6 +2,7 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/errors"
 	"testing"
 )
 
@@ -20,7 +21,7 @@ func TestNotImplementedQuery(t *testing.T, r frameless.Resource) {
 			t.Fatal("error expected for unimplemented queries")
 		}
 
-		if err != ErrNotImplemented {
+		if err != errors.ErrNotImplemented {
 			t.Fatalf("expected ErrNotImplemented but received: %s", err.Error())
 		}
 	})

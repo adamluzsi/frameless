@@ -1,6 +1,7 @@
 package queries
 
 import (
+	"github.com/adamluzsi/frameless/errors"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
@@ -31,7 +32,7 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 			id, found := resources.LookupID(entity)
 
 			if !found {
-				t.Fatal(ErrIDRequired)
+				t.Fatal(errors.ErrIDRequired)
 			}
 
 			ids = append(ids, id)
@@ -54,7 +55,7 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 			id, found := resources.LookupID(entity)
 
 			if !found {
-				t.Fatal(ErrIDRequired)
+				t.Fatal(errors.ErrIDRequired)
 			}
 
 			require.Contains(t, ids, id)
