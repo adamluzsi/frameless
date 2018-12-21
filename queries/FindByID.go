@@ -1,12 +1,11 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/errors"
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +35,7 @@ func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 		ID, ok := resources.LookupID(entity)
 
 		if !ok {
-			spec.Fatal(errors.ErrIDRequired)
+			spec.Fatal(frameless.ErrIDRequired)
 		}
 
 		require.True(spec, len(ID) > 0)

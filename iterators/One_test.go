@@ -15,7 +15,7 @@ func TestOne(t *testing.T) {
 
 			i := iterators.NewEmpty()
 			var e frameless.Entity
-			require.Equal(t, iterators.One(i, &e), iterators.ErrNoNextElement)
+			require.Equal(t, iterators.One(i, &e), frameless.ErrNotFound)
 		})
 
 		t.Run("when iterator have one element exactly", func(t *testing.T) {

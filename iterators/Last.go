@@ -26,7 +26,7 @@ func Last(i frameless.Iterator, e frameless.Entity) (err error) {
 	}
 
 	if !iterated {
-		return ErrNoNextElement
+		return frameless.ErrNotFound
 	}
 
 	return i.Err()

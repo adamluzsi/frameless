@@ -16,7 +16,7 @@ func First(i frameless.Iterator, e frameless.Entity) (err error) {
 	}()
 
 	if !i.Next() {
-		return ErrNoNextElement
+		return frameless.ErrNotFound
 	}
 
 	if err := i.Decode(e); err != nil {

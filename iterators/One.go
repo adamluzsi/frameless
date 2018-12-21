@@ -10,7 +10,7 @@ func One(i frameless.Iterator, e frameless.Entity) error {
 	}
 
 	if !i.Next() {
-		return ErrNoNextElement
+		return frameless.ErrNotFound
 	}
 
 	if err := i.Decode(e); err != nil {

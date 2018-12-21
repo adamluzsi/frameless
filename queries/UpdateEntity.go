@@ -1,15 +1,13 @@
 package queries
 
 import (
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/errors"
 	"github.com/stretchr/testify/require"
 	"testing"
-
-	"github.com/adamluzsi/frameless"
 )
 
 // UpdateEntity will request an update for a wrapped entity object in the storage
@@ -30,7 +28,7 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 			ID, ok := resources.LookupID(entity)
 
 			if !ok {
-				spec.Fatal(errors.ErrIDRequired)
+				spec.Fatal(frameless.ErrIDRequired)
 			}
 
 			require.True(spec, len(ID) > 0)

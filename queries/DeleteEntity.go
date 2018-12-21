@@ -1,14 +1,13 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/errors"
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless/fixtures"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,7 +28,7 @@ func (quc DeleteEntity) Test(spec *testing.T, r frameless.Resource) {
 	ID, ok := resources.LookupID(expected)
 
 	if !ok {
-		spec.Fatal(errors.ErrIDRequired)
+		spec.Fatal(frameless.ErrIDRequired)
 	}
 
 	defer r.Exec(DeleteByID{Type: reflects.BaseValueOf(quc.Entity).Interface(), ID: ID})

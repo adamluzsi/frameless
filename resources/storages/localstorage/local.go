@@ -6,14 +6,13 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
-	"github.com/adamluzsi/frameless/errors"
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/resources"
 	"io/ioutil"
 	"reflect"
 	"strconv"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/boltdb/bolt"
@@ -203,7 +202,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	default:
-		return iterators.NewError(errors.ErrNotImplemented)
+		return iterators.NewError(frameless.ErrNotImplemented)
 
 	}
 }

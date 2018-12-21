@@ -1,13 +1,12 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless/errors"
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless/fixtures"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,7 +36,7 @@ func (q DeleteByID) Test(t *testing.T, r frameless.Resource) {
 			ID, ok := resources.LookupID(entity)
 
 			if !ok {
-				t.Fatal(errors.ErrIDRequired)
+				t.Fatal(frameless.ErrIDRequired)
 			}
 
 			require.True(t, len(ID) > 0)

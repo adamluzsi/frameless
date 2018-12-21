@@ -1,10 +1,9 @@
 package memorystorage_test
 
 import (
-	"github.com/adamluzsi/frameless/errors"
+	"github.com/adamluzsi/frameless"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/queries"
@@ -30,7 +29,7 @@ func TestImplement(t *testing.T) {
 		t.Run("it is expected to return not implemented query error", func(t *testing.T) {
 			storage := ExampleMemory()
 			i := storage.Exec(NotImplementedQuery{})
-			require.Equal(t, errors.ErrNotImplemented, i.Err())
+			require.Equal(t, frameless.ErrNotImplemented, i.Err())
 		})
 	})
 
