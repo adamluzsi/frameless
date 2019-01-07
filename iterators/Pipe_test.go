@@ -4,6 +4,7 @@ import (
 	"errors"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless"
 
@@ -89,6 +90,7 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	// so in order to prevent over-engineering in sender Encode method,
 	for i := 0; i < 1024; i++ {
 		runtime.Gosched()
+		time.Sleep(time.Nanosecond)
 	}
 
 	require.Nil(t, r.Close()) // I release the resource,
