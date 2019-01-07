@@ -2,7 +2,6 @@ package frameless_test
 
 import (
 	"github.com/adamluzsi/frameless/queries"
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -54,7 +53,7 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 		})
 
 		for _, u := range inactiveUsers {
-			id, ok := resources.LookupID(u)
+			id, ok := queries.LookupID(u)
 			require.True(spec, ok)
 			require.NotEmpty(spec, id)
 			storage.Exec(queries.DeleteByID{Type: *u, ID: id})

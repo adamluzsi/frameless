@@ -5,7 +5,7 @@ import (
 	"github.com/adamluzsi/frameless/queries"
 )
 
-func ExampleQueryUseCase_storageFind(storage frameless.Resource) error {
+func ExampleQuery_storageFind(storage frameless.Resource) error {
 	// InactiveUsers is a custom application specific query use case and specified by test next to the controller who use it.
 	iterator := storage.Exec(InactiveUsers{})
 
@@ -26,7 +26,7 @@ func ExampleQueryUseCase_storageFind(storage frameless.Resource) error {
 	return nil
 }
 
-func ExampleQueryUseCase_storageExec(storage frameless.Resource) error {
+func ExampleQuery_storageExec(storage frameless.Resource) error {
 	// DeleteByID is a common query use case which specified with test in the queries package
 	// Of course you can implement your own as well
 	return storage.Exec(queries.DeleteByID{Type: User{}, ID: "42"}).Err()
