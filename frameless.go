@@ -146,10 +146,6 @@ type Query interface {
 
 	So this interface aims to reduce interconnection between use-case layer and external interface layer.
 	The first is that you define Query structures that define the behavior which needs to be implemented.
-	The second but optionally requirement for this interface is a string field: `ext:"ID"`.
-	which links the Entity structure to an external resource object.
-	If the external resource use complex types to represent ID objects, they have to implement the serialization
-	and the deserialization as well under the hood, without bothering the use-case or entity layer with it.
 
 	The design heavily inspirited by the combination of Liskov substitution principle with the dependency inversion principle.
 	While the External Resource interface provides a stable abstraction, the actual implementations can fulfil the implementations with the specific technology.
