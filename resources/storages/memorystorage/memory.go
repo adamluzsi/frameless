@@ -7,7 +7,6 @@ import (
 
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
@@ -39,7 +38,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		storage.Mutex.Lock()
 		defer storage.Mutex.Unlock()
 
-		if currentID, ok := resources.LookupID(quc.Entity); !ok || currentID != "" {
+		if currentID, ok := queries.LookupID(quc.Entity); !ok || currentID != "" {
 			return iterators.Errorf("entity already have an ID: %s", currentID)
 		}
 
@@ -50,7 +49,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		}
 
 		storage.TableFor(quc.Entity)[id] = quc.Entity
-		return iterators.NewError(resources.SetID(quc.Entity, id))
+		return iterators.NewError(queries.SetID(quc.Entity, id))
 
 	case queries.FindByID:
 		storage.Mutex.RLock()
@@ -90,7 +89,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewEmpty()
 
 	case queries.DeleteEntity:
-		ID, found := resources.LookupID(quc.Entity)
+		ID, found := queries.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
@@ -102,7 +101,7 @@ func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
 		storage.Mutex.Lock()
 		defer storage.Mutex.Unlock()
 
-		ID, found := resources.LookupID(quc.Entity)
+		ID, found := queries.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())

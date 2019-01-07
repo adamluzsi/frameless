@@ -2,8 +2,6 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -13,9 +11,9 @@ type Purge struct{}
 func (q Purge) Test(t *testing.T, r frameless.Resource) {
 	t.Run("purge out all data from the given resource", func(t *testing.T) {
 
-		fixture := fixtures.New(unexportedEntity{})
+		fixture := newFixture(unexportedEntity{})
 		res := r.Exec(Save{fixture})
-		id, ok := resources.LookupID(fixture)
+		id, ok := LookupID(fixture)
 
 		require.True(t, ok)
 		require.NotEmpty(t, id)

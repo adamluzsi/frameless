@@ -2,9 +2,7 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/resources"
 	"reflect"
 	"testing"
 
@@ -24,10 +22,10 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 
 		for i := 0; i < 10; i++ {
 
-			entity := fixtures.New(quc.Type)
+			entity := newFixture(quc.Type)
 			require.Nil(t, r.Exec(Save{Entity: entity}).Err())
 
-			id, found := resources.LookupID(entity)
+			id, found := LookupID(entity)
 
 			if !found {
 				t.Fatal(frameless.ErrIDRequired)
@@ -50,7 +48,7 @@ func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
 
 			require.Nil(t, i.Decode(entity))
 
-			id, found := resources.LookupID(entity)
+			id, found := LookupID(entity)
 
 			if !found {
 				t.Fatal(frameless.ErrIDRequired)

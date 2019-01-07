@@ -1,4 +1,4 @@
-package resources
+package queries
 
 import "github.com/adamluzsi/frameless/reflects"
 

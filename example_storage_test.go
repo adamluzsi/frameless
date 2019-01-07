@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
 	"io"
 	"testing"
 
@@ -35,7 +34,7 @@ func (storage *MyStorage) Store(e frameless.Entity) error {
 	case *MyEntity:
 		myEntity := e.(*MyEntity)
 		fmt.Println("save in db", myEntity)
-		return resources.SetID(myEntity, "42")
+		return queries.SetID(myEntity, "42")
 
 	default:
 		panic("not implemented")
@@ -53,7 +52,7 @@ func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
 		return iterators.NewEmpty()
 	case queries.DeleteEntity:
 
-		ID, found := resources.LookupID(quc.Entity)
+		ID, found := queries.LookupID(quc.Entity)
 
 		if !found {
 			return iterators.Errorf("this implementation depending on an ID field in the entity")

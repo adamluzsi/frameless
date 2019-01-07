@@ -2,8 +2,6 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -30,9 +28,9 @@ func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 
 	for i := 0; i < 10; i++ {
 
-		entity := fixtures.New(quc.Type)
+		entity := newFixture(quc.Type)
 		require.Nil(spec, r.Exec(Save{entity}).Err())
-		ID, ok := resources.LookupID(entity)
+		ID, ok := LookupID(entity)
 
 		if !ok {
 			spec.Fatal(frameless.ErrIDRequired)
@@ -75,7 +73,7 @@ func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
 				}
 			}()
 
-			actualID, ok := resources.LookupID(entity)
+			actualID, ok := LookupID(entity)
 
 			if !ok {
 				t.Fatal("can't find ID in the returned value")

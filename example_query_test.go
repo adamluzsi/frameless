@@ -61,4 +61,4 @@ func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
 	})
 }
 
-func ExampleQueryUseCase() {}
+func ExampleQuery() {}

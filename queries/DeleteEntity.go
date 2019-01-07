@@ -3,10 +3,7 @@ package queries
 import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
-
-	"github.com/adamluzsi/frameless/fixtures"
 
 	"github.com/stretchr/testify/require"
 )
@@ -23,9 +20,9 @@ func (quc DeleteEntity) Test(spec *testing.T, r frameless.Resource) {
 		Save{Entity: quc.Entity}.Test(t, r)
 	})
 
-	expected := fixtures.New(quc.Entity)
+	expected := newFixture(quc.Entity)
 	require.Nil(spec, r.Exec(Save{Entity: expected}).Err())
-	ID, ok := resources.LookupID(expected)
+	ID, ok := LookupID(expected)
 
 	if !ok {
 		spec.Fatal(frameless.ErrIDRequired)
@@ -51,7 +48,7 @@ func (quc DeleteEntity) Test(spec *testing.T, r frameless.Resource) {
 	})
 
 	spec.Run("when entity doesn't have r ID field", func(t *testing.T) {
-		newEntity := fixtures.New(entityWithoutIDField{})
+		newEntity := newFixture(entityWithoutIDField{})
 		require.Error(t, r.Exec(DeleteEntity{Entity: newEntity}).Err())
 	})
 }

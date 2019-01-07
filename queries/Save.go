@@ -2,10 +2,8 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -19,21 +17,21 @@ func (q Save) Test(t *testing.T, r frameless.Resource) {
 
 	t.Run("persist an Save", func(t *testing.T) {
 
-		if ID, _ := resources.LookupID(q.Entity); ID != "" {
+		if ID, _ := LookupID(q.Entity); ID != "" {
 			t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 		}
 
-		e := fixtures.New(q.Entity)
+		e := newFixture(q.Entity)
 		i := r.Exec(Save{Entity: e})
 
 		require.NotNil(t, i)
 		require.Nil(t, i.Err())
 
-		ID, ok := resources.LookupID(e)
+		ID, ok := LookupID(e)
 		require.True(t, ok, "ID is not defined in the entity struct src definition")
 		require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
-		actual := fixtures.New(q.Entity)
+		actual := newFixture(q.Entity)
 
 		i = r.Exec(FindByID{Type: Type, ID: ID})
 		require.Nil(t, iterators.DecodeNext(i, actual))
@@ -43,13 +41,13 @@ func (q Save) Test(t *testing.T, r frameless.Resource) {
 	})
 
 	t.Run("when entity doesn't have storage ID field", func(t *testing.T) {
-		newEntity := fixtures.New(entityWithoutIDField{})
+		newEntity := newFixture(entityWithoutIDField{})
 		require.Error(t, r.Exec(Save{Entity: newEntity}).Err())
 	})
 
 	t.Run("when entity already have an ID", func(t *testing.T) {
-		newEntity := fixtures.New(q.Entity)
-		resources.SetID(newEntity, "Hello world!")
+		newEntity := newFixture(q.Entity)
+		SetID(newEntity, "Hello world!")
 		require.Error(t, r.Exec(Save{Entity: newEntity}).Err())
 	})
 }

@@ -2,10 +2,8 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -22,10 +20,10 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 		})
 
 		setup := func(t *testing.T) (string, func()) {
-			entity := fixtures.New(quc.Entity)
+			entity := newFixture(quc.Entity)
 			require.Nil(spec, r.Exec(Save{Entity: entity}).Err())
 
-			ID, ok := resources.LookupID(entity)
+			ID, ok := LookupID(entity)
 
 			if !ok {
 				spec.Fatal(frameless.ErrIDRequired)
@@ -44,8 +42,8 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 			ID, td := setup(t)
 			defer td()
 
-			newEntity := fixtures.New(quc.Entity)
-			resources.SetID(newEntity, ID)
+			newEntity := newFixture(quc.Entity)
+			SetID(newEntity, ID)
 
 			updateResults := r.Exec(UpdateEntity{Entity: newEntity})
 			require.NotNil(t, updateResults)
@@ -53,7 +51,7 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 
 			iterator := r.Exec(FindByID{Type: quc.Entity, ID: ID})
 
-			actually := fixtures.New(quc.Entity)
+			actually := newFixture(quc.Entity)
 			iterators.DecodeNext(iterator, actually)
 
 			require.Equal(t, newEntity, actually)
@@ -64,14 +62,14 @@ func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
 			_, td := setup(t)
 			defer td()
 
-			newEntity := fixtures.New(quc.Entity)
-			resources.SetID(newEntity, "hitchhiker's guide to the galaxy")
+			newEntity := newFixture(quc.Entity)
+			SetID(newEntity, "hitchhiker's guide to the galaxy")
 			require.Error(t, r.Exec(UpdateEntity{Entity: newEntity}).Err())
 
 		})
 
 		spec.Run("given entity doesn't have an ID field", func(t *testing.T) {
-			newEntity := fixtures.New(entityWithoutIDField{})
+			newEntity := newFixture(entityWithoutIDField{})
 			require.Error(t, r.Exec(UpdateEntity{Entity: newEntity}).Err())
 		})
 

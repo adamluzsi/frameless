@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/queries"
-	"github.com/adamluzsi/frameless/resources"
 	"io/ioutil"
 	"reflect"
 	"strconv"
@@ -39,7 +38,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 	case queries.Save:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
 
-			if currentID, ok := resources.LookupID(quc.Entity); !ok || currentID != "" {
+			if currentID, ok := queries.LookupID(quc.Entity); !ok || currentID != "" {
 				return fmt.Errorf("entity already have an ID: %s", currentID)
 			}
 
@@ -58,7 +57,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 
 			encodedID := strconv.FormatUint(uIntID, 10)
 
-			if err = resources.SetID(quc.Entity, encodedID); err != nil {
+			if err = queries.SetID(quc.Entity, encodedID); err != nil {
 				return err
 			}
 
@@ -157,7 +156,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		}))
 
 	case queries.DeleteEntity:
-		ID, found := resources.LookupID(quc.Entity)
+		ID, found := queries.LookupID(quc.Entity)
 
 		if !found || ID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
@@ -166,7 +165,7 @@ func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
 		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
 
 	case queries.UpdateEntity:
-		encodedID, found := resources.LookupID(quc.Entity)
+		encodedID, found := queries.LookupID(quc.Entity)
 
 		if !found || encodedID == "" {
 			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))

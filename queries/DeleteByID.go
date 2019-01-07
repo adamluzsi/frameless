@@ -2,10 +2,7 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
-
-	"github.com/adamluzsi/frameless/fixtures"
 
 	"github.com/stretchr/testify/require"
 )
@@ -31,9 +28,9 @@ func (q DeleteByID) Test(t *testing.T, r frameless.Resource) {
 
 		for i := 0; i < 10; i++ {
 
-			entity := fixtures.New(q.Type)
+			entity := newFixture(q.Type)
 			require.Nil(t, r.Exec(Save{Entity: entity}).Err())
-			ID, ok := resources.LookupID(entity)
+			ID, ok := LookupID(entity)
 
 			if !ok {
 				t.Fatal(frameless.ErrIDRequired)
