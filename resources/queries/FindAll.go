@@ -3,6 +3,7 @@ package queries
 import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/frameless/resources"
 	"reflect"
 	"testing"
 
@@ -15,7 +16,7 @@ import (
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type FindAll struct{ Type frameless.Entity }
 
-func (quc FindAll) Test(t *testing.T, r frameless.Resource) {
+func (quc FindAll) Test(t *testing.T, r resources.Resource) {
 	t.Run("when value stored in the database", func(t *testing.T) {
 
 		var ids []string

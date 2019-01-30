@@ -2,7 +2,7 @@ package reflects_test
 
 import (
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"testing"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -25,7 +25,7 @@ func TestFullyQualifiedName(t *testing.T) {
 
 			o := queries.FindAll{Type: StructObject{}}
 
-			require.Equal(t, `"github.com/adamluzsi/frameless/queries".FindAll`, ExampleFullyQualifiedName(o))
+			require.Equal(t, `"github.com/adamluzsi/frameless/resources/queries".FindAll`, ExampleFullyQualifiedName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

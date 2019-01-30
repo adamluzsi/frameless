@@ -4,6 +4,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -12,7 +13,7 @@ import (
 // UpdateEntity parameter is the wrapped entity that has the updated values.
 type UpdateEntity struct{ Entity frameless.Entity }
 
-func (quc UpdateEntity) Test(suite *testing.T, r frameless.Resource) {
+func (quc UpdateEntity) Test(suite *testing.T, r resources.Resource) {
 	suite.Run("UpdateEntity", func(spec *testing.T) {
 
 		suite.Run("dependency", func(t *testing.T) {

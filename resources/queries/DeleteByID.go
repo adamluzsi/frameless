@@ -2,6 +2,7 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,7 @@ type DeleteByID struct {
 }
 
 // Test will test that an DeleteByID is implemented by a generic specification
-func (q DeleteByID) Test(t *testing.T, r frameless.Resource) {
+func (q DeleteByID) Test(t *testing.T, r resources.Resource) {
 
 	t.Run("dependency", func(t *testing.T) {
 		Save{Entity: q.Type}.Test(t, r)

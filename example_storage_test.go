@@ -2,8 +2,9 @@ package frameless_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"io"
 	"testing"
 
@@ -42,7 +43,7 @@ func (storage *MyStorage) Store(e frameless.Entity) error {
 	}
 }
 
-func (storage *MyStorage) Exec(quc frameless.Query) frameless.Iterator {
+func (storage *MyStorage) Exec(quc resources.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 	case queries.FindByID:
 		// implementation for queries.DeleteByID with the given external resource connection

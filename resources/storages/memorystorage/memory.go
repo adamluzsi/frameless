@@ -2,15 +2,15 @@ package memorystorage
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"reflect"
 	"sync"
 
-	"github.com/adamluzsi/frameless/queries"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources/queries"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
-
 )
 
 func NewMemory() *Memory {
@@ -31,7 +31,7 @@ func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *Memory) Exec(quc frameless.Query) frameless.Iterator {
+func (storage *Memory) Exec(quc resources.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 
 	case queries.Save:
@@ -156,9 +156,9 @@ func (storage *Memory) TableFor(e frameless.Entity) Table {
 	return storage.DB[name]
 }
 
-type Implementation func(*Memory, frameless.Query) frameless.Iterator
+type Implementation func(*Memory, resources.Query) frameless.Iterator
 
-func (storage *Memory) Implement(query frameless.Query, imp Implementation) {
+func (storage *Memory) Implement(query resources.Query, imp Implementation) {
 	queryID := reflects.FullyQualifiedName(query)
 	storage.implementations[queryID] = imp
 }

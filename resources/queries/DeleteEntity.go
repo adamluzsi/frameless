@@ -3,6 +3,7 @@ package queries
 import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,7 @@ type DeleteEntity struct {
 }
 
 // Test will test that an DeleteEntity is implemented by a generic specification
-func (quc DeleteEntity) Test(spec *testing.T, r frameless.Resource) {
+func (quc DeleteEntity) Test(spec *testing.T, r resources.Resource) {
 
 	spec.Run("dependency", func(t *testing.T) {
 		Save{Entity: quc.Entity}.Test(t, r)

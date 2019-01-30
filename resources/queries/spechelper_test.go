@@ -1,13 +1,13 @@
 package queries_test
 
 import (
-	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 )
 
-type testable func(t *testing.T, resource frameless.Resource)
+type testable func(t *testing.T, resource resources.Resource)
 
-func (fn testable) Test(t *testing.T, resource frameless.Resource) {
+func (fn testable) Test(t *testing.T, resource resources.Resource) {
 	fn(t, resource)
 }
 

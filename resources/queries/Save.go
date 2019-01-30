@@ -4,6 +4,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -12,7 +13,7 @@ type Save struct {
 	Entity frameless.Entity
 }
 
-func (q Save) Test(t *testing.T, r frameless.Resource) {
+func (q Save) Test(t *testing.T, r resources.Resource) {
 	Type := reflects.BaseValueOf(q.Entity).Interface()
 
 	t.Run("persist an Save", func(t *testing.T) {

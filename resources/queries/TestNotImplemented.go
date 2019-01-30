@@ -2,10 +2,11 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 )
 
-func TestNotImplementedQuery(t *testing.T, r frameless.Resource) {
+func TestNotImplementedQuery(t *testing.T, r resources.Resource) {
 	t.Run("test external resource behavior with not implemented / unknown query", func(t *testing.T) {
 
 		i := r.Exec(notImplementedQuery{})
@@ -28,4 +29,4 @@ func TestNotImplementedQuery(t *testing.T, r frameless.Resource) {
 
 type notImplementedQuery struct{}
 
-func (_ notImplementedQuery) Test(t *testing.T, r frameless.Resource) { t.Fail() }
+func (_ notImplementedQuery) Test(t *testing.T, r resources.Resource) { t.Fail() }

@@ -1,7 +1,7 @@
 package localstorage_test
 
 import (
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"github.com/satori/go.uuid"
 	"os"
 	"path/filepath"

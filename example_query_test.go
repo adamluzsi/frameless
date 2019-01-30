@@ -1,10 +1,10 @@
 package frameless_test
 
 import (
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,7 +15,7 @@ type User struct {
 type InactiveUsers struct{} // <- Query
 
 // Remove extra T from Test, it is only added here so the full page example can work in godoc
-func (quc InactiveUsers) TTest(suite *testing.T, storage frameless.Resource) {
+func (quc InactiveUsers) TTest(suite *testing.T, storage resources.Resource) {
 	suite.Run("dependency", func(t *testing.T) {
 		queries.Save{Entity: &User{}}.Test(t, storage)
 	})

@@ -2,6 +2,7 @@ package mockstorage_test
 
 import (
 	"errors"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/Pallinder/go-randomdata"
@@ -11,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.Resource = mockstorage.NewMock()
+var _ resources.Resource = mockstorage.NewMock()
 
 func TestMock(t *testing.T) {
 
@@ -20,7 +21,7 @@ func TestMock(t *testing.T) {
 	expected := randomdata.SillyName()
 	var actually string
 
-	ExecStub := func(frameless.Query) frameless.Iterator {
+	ExecStub := func(resources.Query) frameless.Iterator {
 		return iterators.NewSingleElement(expected)
 	}
 

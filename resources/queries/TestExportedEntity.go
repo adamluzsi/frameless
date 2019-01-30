@@ -1,11 +1,11 @@
 package queries
 
 import (
-	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 )
 
-func TestExportedEntity(t *testing.T, r frameless.Resource) {
+func TestExportedEntity(t *testing.T, r resources.Resource) {
 	t.Run("test query acceptance with Exported entities", func(suite *testing.T) {
 		suite.Run("save", func(t *testing.T) {
 			Save{Entity: &ExportedEntity{}}.Test(t, r)

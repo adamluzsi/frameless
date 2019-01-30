@@ -1,7 +1,7 @@
 package queries_test
 
 import (
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"testing"
 
 	"github.com/adamluzsi/frameless"

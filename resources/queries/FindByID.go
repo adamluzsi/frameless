@@ -2,6 +2,7 @@ package queries
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -19,7 +20,7 @@ type FindByID struct {
 
 // Test requires to be executed in a context where storage populated already with values for a given type
 // also the caller should do the teardown as well
-func (quc FindByID) Test(spec *testing.T, r frameless.Resource) {
+func (quc FindByID) Test(spec *testing.T, r resources.Resource) {
 	spec.Run("dependency", func(t *testing.T) {
 		Save{Entity: quc.Type}.Test(t, r)
 	})

@@ -2,11 +2,12 @@ package memorystorage_test
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
@@ -35,7 +36,7 @@ func TestImplement(t *testing.T) {
 
 	t.Run("when subject query is manually implemented", func(t *testing.T) {
 
-		storage.Implement(ImplementedQuery{}, func(m *memorystorage.Memory, q frameless.Query) frameless.Iterator {
+		storage.Implement(ImplementedQuery{}, func(m *memorystorage.Memory, q resources.Query) frameless.Iterator {
 			query := q.(ImplementedQuery)
 
 			return iterators.NewSingleElement(query.Text)
@@ -63,12 +64,12 @@ func TestImplement(t *testing.T) {
 
 type NotImplementedQuery struct{}
 
-func (NotImplementedQuery) Test(t *testing.T, r frameless.Resource) {
+func (NotImplementedQuery) Test(t *testing.T, r resources.Resource) {
 	panic("not implemented")
 }
 
 type ImplementedQuery struct{ Text string }
 
-func (ImplementedQuery) Test(t *testing.T, r frameless.Resource) {
+func (ImplementedQuery) Test(t *testing.T, r resources.Resource) {
 	panic("not implemented")
 }

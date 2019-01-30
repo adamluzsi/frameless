@@ -7,7 +7,8 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/queries"
+	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless/resources/queries"
 	"io/ioutil"
 	"reflect"
 	"strconv"
@@ -33,7 +34,7 @@ func (storage *Local) Close() error {
 	return storage.DB.Close()
 }
 
-func (storage *Local) Exec(quc frameless.Query) frameless.Iterator {
+func (storage *Local) Exec(quc resources.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 	case queries.Save:
 		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
