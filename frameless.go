@@ -147,3 +147,12 @@ type Error string
 
 // Error implement the error interface
 func (err Error) Error() string { return string(err) }
+
+/*
+Spec represent a shared specification that intention is to request specific behavior for commonly used components.
+One example could be an external resource that used by an interactor, and you want ensure the expected behivour from the dependency,
+by describing the behaviour in a shared specification.
+*/
+type Spec interface {
+	Test(*testing.T)
+}
