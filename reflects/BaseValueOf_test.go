@@ -2,25 +2,28 @@ package reflects_test
 
 import (
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
 )
 
 func TestBaseValueOf(t *testing.T) {
-	t.Run("FullyQualifiedName", func(spec *testing.T) {
+	subject := func(input interface{}) reflect.Value {
+		return reflects.BaseValueOf(input)
+	}
 
-		subject := func(obj interface{}) string {
-			return reflects.BaseValueOf(obj).Type().Name()
-		}
-
-		SpecForPrimitiveNames(spec, subject)
-
-		cases := make(map[interface{}]reflect.Value)
-
-		cases[StructObject{}] = reflect.ValueOf(StructObject{})
-		cases[&StructObject{}] = reflect.ValueOf(StructObject{})
-		o := &StructObject{}
-		cases[&o] = reflect.ValueOf(StructObject{})
-
+	SpecForPrimitiveNames(t, func(obj interface{}) string {
+		return subject(obj).Type().Name()
 	})
+
+	expectedValue := reflect.ValueOf(StructObject{})
+	expectedValueType := expectedValue.Type()
+
+	plainStruct := StructObject{}
+	ptrToStruct := &plainStruct
+	ptrToPtr := &ptrToStruct
+
+	require.Equal(t, expectedValueType, subject(plainStruct).Type())
+	require.Equal(t, expectedValueType, subject(ptrToStruct).Type())
+	require.Equal(t, expectedValueType, subject(ptrToPtr).Type())
 }
