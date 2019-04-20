@@ -1,6 +1,7 @@
 package memorystorage
 
 import (
+	"fmt"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/resources"
 	"reflect"
@@ -15,124 +16,109 @@ import (
 
 func NewMemory() *Memory {
 	return &Memory{
-		DB:              make(map[string]Table),
-		Mutex:           &sync.RWMutex{},
-		implementations: make(map[string]Implementation),
+		DB:    make(map[string]MemoryTable),
+		Mutex: &sync.RWMutex{},
 	}
 }
 
+type MemoryTable map[string]interface{}
+
 type Memory struct {
-	DB              map[string]Table
-	Mutex           *sync.RWMutex
-	implementations map[string]Implementation
+	DB    map[string]MemoryTable
+	Mutex *sync.RWMutex
+}
+
+func (storage *Memory) Update(entity interface{}) error {
+	storage.Mutex.Lock()
+	defer storage.Mutex.Unlock()
+
+	ID, found := queries.LookupID(entity)
+
+	if !found {
+		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
+	}
+
+	table := storage.TableFor(entity)
+
+	if _, ok := table[ID]; !ok {
+		return fmt.Errorf("%s id not found in the %s table", ID, reflects.FullyQualifiedName(entity))
+	}
+
+	table[ID] = entity
+
+	return nil
+}
+
+func (storage *Memory) Delete(entity interface{}) error {
+	ID, found := queries.LookupID(entity)
+
+	if !found {
+		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
+	}
+
+	return storage.DeleteByID(entity, ID)
+}
+
+func (storage *Memory) DeleteByID(Entity interface{}, ID string) error {
+	storage.Mutex.Lock()
+	defer storage.Mutex.Unlock()
+
+	table := storage.TableFor(Entity)
+
+	if _, ok := table[ID]; ok {
+		delete(table, ID)
+	}
+
+	return nil
+}
+
+func (storage *Memory) FindAll(Type interface{}) frameless.Iterator {
+	storage.Mutex.RLock()
+	defer storage.Mutex.RUnlock()
+
+	table := storage.TableFor(Type)
+
+	var entities []interface{}
+	for _, entity := range table {
+		entities = append(entities, entity)
+	}
+
+	return iterators.NewSlice(entities)
+}
+
+func (storage *Memory) Save(entity interface{}) error {
+	storage.Mutex.Lock()
+	defer storage.Mutex.Unlock()
+
+	if currentID, ok := queries.LookupID(entity); !ok || currentID != "" {
+		return fmt.Errorf("entity already have an ID: %s", currentID)
+	}
+
+	id, err := fixtures.RandomString(42)
+
+	if err != nil {
+		return err
+	}
+
+	storage.TableFor(entity)[id] = entity
+	return queries.SetID(entity, id)
+}
+
+func (storage *Memory) FindByID(ID string, ptr interface{}) (bool, error) {
+	storage.Mutex.RLock()
+	defer storage.Mutex.RUnlock()
+
+	entity, found := storage.TableFor(ptr)[ID]
+
+	if found {
+		return true, reflects.Link(entity, ptr)
+	}
+
+	return false, nil
 }
 
 func (storage *Memory) Close() error {
 	return nil
-}
-
-func (storage *Memory) Exec(quc resources.Query) frameless.Iterator {
-	switch quc := quc.(type) {
-
-	case queries.Save:
-		storage.Mutex.Lock()
-		defer storage.Mutex.Unlock()
-
-		if currentID, ok := queries.LookupID(quc.Entity); !ok || currentID != "" {
-			return iterators.Errorf("entity already have an ID: %s", currentID)
-		}
-
-		id, err := fixtures.RandomString(42)
-
-		if err != nil {
-			return iterators.NewError(err)
-		}
-
-		storage.TableFor(quc.Entity)[id] = quc.Entity
-		return iterators.NewError(queries.SetID(quc.Entity, id))
-
-	case queries.FindByID:
-		storage.Mutex.RLock()
-		defer storage.Mutex.RUnlock()
-
-		entity, found := storage.TableFor(quc.Type)[quc.ID]
-
-		if found {
-			return iterators.NewSingleElement(entity)
-		}
-
-		return iterators.NewEmpty()
-
-	case queries.FindAll:
-		storage.Mutex.RLock()
-		defer storage.Mutex.RUnlock()
-
-		table := storage.TableFor(quc.Type)
-
-		entities := []frameless.Entity{}
-		for _, entity := range table {
-			entities = append(entities, entity)
-		}
-
-		return iterators.NewSlice(entities)
-
-	case queries.DeleteByID:
-		storage.Mutex.Lock()
-		defer storage.Mutex.Unlock()
-
-		table := storage.TableFor(quc.Type)
-
-		if _, ok := table[quc.ID]; ok {
-			delete(table, quc.ID)
-		}
-
-		return iterators.NewEmpty()
-
-	case queries.DeleteEntity:
-		ID, found := queries.LookupID(quc.Entity)
-
-		if !found {
-			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
-		}
-
-		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
-
-	case queries.UpdateEntity:
-		storage.Mutex.Lock()
-		defer storage.Mutex.Unlock()
-
-		ID, found := queries.LookupID(quc.Entity)
-
-		if !found {
-			return iterators.Errorf("can't find ID in %s", reflect.TypeOf(quc).Name())
-		}
-
-		table := storage.TableFor(quc.Entity)
-
-		if _, ok := table[ID]; !ok {
-			return iterators.Errorf("%s id not found in the %s table", ID, reflects.FullyQualifiedName(quc.Entity))
-		}
-
-		table[ID] = quc.Entity
-
-		return iterators.NewEmpty()
-
-	case queries.Purge:
-		storage.Purge()
-		return iterators.NewEmpty()
-
-	default:
-
-		queryID := reflects.FullyQualifiedName(quc)
-		imp, ok := storage.implementations[queryID]
-
-		if !ok {
-			return iterators.NewError(frameless.ErrNotImplemented)
-		}
-
-		return imp(storage, quc)
-
-	}
 }
 
 func (storage *Memory) Purge() {
@@ -144,21 +130,54 @@ func (storage *Memory) Purge() {
 	}
 }
 
-type Table map[string]frameless.Entity
-
-func (storage *Memory) TableFor(e frameless.Entity) Table {
+func (storage *Memory) TableFor(e interface{}) MemoryTable {
 	name := reflects.FullyQualifiedName(e)
 
 	if _, ok := storage.DB[name]; !ok {
-		storage.DB[name] = make(Table)
+		storage.DB[name] = make(MemoryTable)
 	}
 
 	return storage.DB[name]
 }
 
-type Implementation func(*Memory, resources.Query) frameless.Iterator
+func (storage *Memory) Exec(quc resources.Query) frameless.Iterator {
+	switch quc := quc.(type) {
 
-func (storage *Memory) Implement(query resources.Query, imp Implementation) {
-	queryID := reflects.FullyQualifiedName(query)
-	storage.implementations[queryID] = imp
+	case queries.Save:
+		return iterators.NewError(storage.Save(quc.Entity))
+
+	case queries.FindByID:
+		entityPtr := reflects.New(quc.Type)
+		found, err := storage.FindByID(quc.ID, entityPtr)
+
+		if !found {
+			return iterators.NewEmpty()
+		}
+
+		if err != nil {
+			return iterators.NewError(err)
+		}
+
+		return iterators.NewSingleElement(entityPtr)
+
+	case queries.FindAll:
+		return storage.FindAll(quc.Type)
+
+	case queries.DeleteByID:
+		return iterators.NewError(storage.DeleteByID(quc.Type, quc.ID))
+
+	case queries.DeleteEntity:
+		return iterators.NewError(storage.Delete(quc.Entity))
+
+	case queries.UpdateEntity:
+		return iterators.NewError(storage.Update(quc.Entity))
+
+	case queries.Purge:
+		storage.Purge()
+		return iterators.NewEmpty()
+
+	default:
+		return iterators.NewError(frameless.ErrNotImplemented)
+
+	}
 }
