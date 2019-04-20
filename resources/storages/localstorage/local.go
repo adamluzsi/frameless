@@ -10,7 +10,6 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/queries"
 	"io/ioutil"
-	"reflect"
 	"strconv"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -29,6 +28,180 @@ type Local struct {
 	CompressionLevel int
 }
 
+func (storage *Local) Purge() error {
+	return storage.DB.Update(func(tx *bolt.Tx) error {
+		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+			return tx.DeleteBucket(name)
+		})
+	})
+}
+
+func (storage *Local) Save(entity interface{}) error {
+	return storage.DB.Update(func(tx *bolt.Tx) error {
+
+		if currentID, ok := queries.LookupID(entity); !ok || currentID != "" {
+			return fmt.Errorf("entity already have an ID: %s", currentID)
+		}
+
+		bucketName := storage.BucketNameFor(entity)
+		bucket, err := tx.CreateBucketIfNotExists(bucketName)
+
+		if err != nil {
+			return err
+		}
+
+		uIntID, err := bucket.NextSequence()
+
+		if err != nil {
+			return err
+		}
+
+		encodedID := strconv.FormatUint(uIntID, 10)
+
+		if err = queries.SetID(entity, encodedID); err != nil {
+			return err
+		}
+
+		value, err := storage.Serialize(entity)
+
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(storage.uintToBytes(uIntID), value)
+
+	})
+}
+
+func (storage *Local) Update(ptr interface{}) error {
+	encodedID, found := queries.LookupID(ptr)
+
+	if !found || encodedID == "" {
+		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(ptr))
+	}
+
+	ID, err := storage.IDToBytes(encodedID)
+
+	if err != nil {
+		return err
+	}
+
+	value, err := storage.Serialize(ptr)
+
+	if err != nil {
+		return err
+	}
+
+	return storage.DB.Update(func(tx *bolt.Tx) error {
+		bucket, err := storage.BucketFor(tx, ptr)
+
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(ID, value)
+	})
+}
+
+func (storage *Local) Delete(Entity interface{}) error {
+	ID, found := queries.LookupID(Entity)
+
+	if !found || ID == "" {
+		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(Entity))
+	}
+
+	return storage.DeleteByID(Entity, ID)
+}
+
+func (storage *Local) FindAll(Type interface{}) frameless.Iterator {
+	r, w := iterators.NewPipe()
+
+	go func() {
+		defer w.Close()
+
+		err := storage.DB.View(func(tx *bolt.Tx) error {
+
+			bucket := tx.Bucket(storage.BucketNameFor(Type))
+
+			if bucket == nil {
+				return nil
+			}
+
+			return bucket.ForEach(func(IDbytes, encodedEntity []byte) error {
+				entity := reflects.New(Type)
+
+				if err := storage.Deserialize(encodedEntity, entity); err != nil {
+					return err
+				}
+
+				return w.Encode(entity) // iterators.ErrClosed will cancel ForEach execution
+			})
+
+		})
+
+		if err != nil {
+			w.Error(err)
+		}
+	}()
+
+	return r
+}
+
+func (storage *Local) FindByID(ID string, ptr interface{}) (bool, error) {
+	var found = false
+
+	key, err := storage.IDToBytes(ID)
+
+	if err != nil {
+		return false, nil
+	}
+
+	err = storage.DB.View(func(tx *bolt.Tx) error {
+		bucket, err := storage.BucketFor(tx, ptr)
+
+		if err != nil {
+			return err
+		}
+
+		encodedValue := bucket.Get(key)
+		found = encodedValue != nil
+
+		if encodedValue == nil {
+			return nil
+		}
+
+		return storage.Deserialize(encodedValue, ptr)
+	})
+
+	return found, err
+}
+
+func (storage *Local) DeleteByID(Type interface{}, ID string) error {
+
+	ByteID, err := storage.IDToBytes(ID)
+
+	if err != nil {
+		return err
+	}
+
+	return storage.DB.Update(func(tx *bolt.Tx) error {
+		bucket, err := storage.BucketFor(tx, Type)
+
+		if err != nil {
+			return err
+		}
+
+		if v := bucket.Get(ByteID); v == nil {
+			return fmt.Errorf("%s is not found", ByteID)
+		}
+
+		return bucket.Delete(ByteID)
+	})
+
+}
+
+
+
 // Close the Local database and release the file lock
 func (storage *Local) Close() error {
 	return storage.DB.Close()
@@ -37,169 +210,37 @@ func (storage *Local) Close() error {
 func (storage *Local) Exec(quc resources.Query) frameless.Iterator {
 	switch quc := quc.(type) {
 	case queries.Save:
-		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
-
-			if currentID, ok := queries.LookupID(quc.Entity); !ok || currentID != "" {
-				return fmt.Errorf("entity already have an ID: %s", currentID)
-			}
-
-			bucketName := storage.BucketNameFor(quc.Entity)
-			bucket, err := tx.CreateBucketIfNotExists(bucketName)
-
-			if err != nil {
-				return err
-			}
-
-			uIntID, err := bucket.NextSequence()
-
-			if err != nil {
-				return err
-			}
-
-			encodedID := strconv.FormatUint(uIntID, 10)
-
-			if err = queries.SetID(quc.Entity, encodedID); err != nil {
-				return err
-			}
-
-			value, err := storage.Serialize(quc.Entity)
-
-			if err != nil {
-				return err
-			}
-
-			return bucket.Put(storage.uintToBytes(uIntID), value)
-
-		}))
+		return iterators.NewError(storage.Save(quc.Entity))
 
 	case queries.FindByID:
-		key, err := storage.IDToBytes(quc.ID)
+		entity := reflects.New(quc.Type)
+
+		ok, err := storage.FindByID(quc.ID, entity)
 
 		if err != nil {
 			return iterators.NewError(err)
 		}
 
-		entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
-
-		err = storage.DB.View(func(tx *bolt.Tx) error {
-			bucket, err := storage.BucketFor(tx, quc.Type)
-
-			if err != nil {
-				return err
-			}
-
-			encodedValue := bucket.Get(key)
-
-			if encodedValue == nil {
-				entity = nil
-				return nil
-			}
-
-			return storage.Deserialize(encodedValue, entity)
-		})
-
-		if err != nil {
-			return iterators.NewError(err)
-		}
-
-		if entity == nil {
+		if !ok {
 			return iterators.NewEmpty()
 		}
 
 		return iterators.NewSingleElement(entity)
 
 	case queries.FindAll:
-		r, w := iterators.NewPipe()
-
-		go storage.DB.View(func(tx *bolt.Tx) error {
-			defer w.Close()
-
-			bucket := tx.Bucket(storage.BucketNameFor(quc.Type))
-
-			if bucket == nil {
-				return nil
-			}
-
-			if err := bucket.ForEach(func(IDbytes, encodedEntity []byte) error {
-				entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
-				storage.Deserialize(encodedEntity, entity)
-				return w.Encode(entity) // iterators.ErrClosed will cancel ForEach execution
-			}); err != nil {
-				w.Error(err)
-				return err
-			}
-
-			return nil
-		})
-
-		return r
+		return storage.FindAll(quc.Type)
 
 	case queries.DeleteByID:
-
-		ID, err := storage.IDToBytes(quc.ID)
-
-		if err != nil {
-			return iterators.NewError(err)
-		}
-
-		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
-			bucket, err := storage.BucketFor(tx, quc.Type)
-
-			if err != nil {
-				return err
-			}
-
-			if v := bucket.Get(ID); v == nil {
-				return fmt.Errorf("%s is not found", quc.ID)
-			}
-
-			return bucket.Delete(ID)
-		}))
+		return iterators.NewError(storage.DeleteByID(quc.Type, quc.ID))
 
 	case queries.DeleteEntity:
-		ID, found := queries.LookupID(quc.Entity)
-
-		if !found || ID == "" {
-			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
-		}
-
-		return storage.Exec(queries.DeleteByID{Type: quc.Entity, ID: ID})
+		return iterators.NewError(storage.Delete(quc.Entity))
 
 	case queries.UpdateEntity:
-		encodedID, found := queries.LookupID(quc.Entity)
-
-		if !found || encodedID == "" {
-			return iterators.Errorf("can't find ID in %s", reflects.FullyQualifiedName(quc.Entity))
-		}
-
-		ID, err := storage.IDToBytes(encodedID)
-
-		if err != nil {
-			return iterators.NewError(err)
-		}
-
-		value, err := storage.Serialize(quc.Entity)
-
-		if err != nil {
-			return iterators.NewError(err)
-		}
-
-		return iterators.NewError(storage.DB.Batch(func(tx *bolt.Tx) error {
-			bucket, err := storage.BucketFor(tx, quc.Entity)
-
-			if err != nil {
-				return err
-			}
-
-			return bucket.Put(ID, value)
-		}))
+		return iterators.NewError(storage.Update(quc.Entity))
 
 	case queries.Purge:
-		return iterators.NewError(storage.DB.Update(func(tx *bolt.Tx) error {
-			return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
-				return tx.DeleteBucket(name)
-			})
-		}))
+		return iterators.NewError(storage.Purge())
 
 	default:
 		return iterators.NewError(frameless.ErrNotImplemented)

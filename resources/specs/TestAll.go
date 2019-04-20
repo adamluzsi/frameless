@@ -4,7 +4,8 @@ import (
 	"testing"
 )
 
-type resource interface {
+type Resource interface {
+	Purge
 	Save
 	Update
 	Delete
@@ -13,8 +14,10 @@ type resource interface {
 	DeleteByID
 }
 
-func TestAll(t *testing.T, r resource) {
-	TestMinimumRequirements(t, r)
-	TestExportedEntity(t, r)
-	TestUnexportedEntity(t, r)
+func TestAll(t *testing.T, r Resource) {
+	t.Run(`specs`, func(t *testing.T) {
+		TestMinimumRequirements(t, r)
+		TestExportedEntity(t, r)
+		TestUnexportedEntity(t, r)
+	})
 }

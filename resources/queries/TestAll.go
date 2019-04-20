@@ -6,8 +6,10 @@ import (
 )
 
 func TestAll(t *testing.T, r resources.Resource) {
-	TestMinimumRequirements(t, r)
-	TestNotImplementedQuery(t, r)
-	TestExportedEntity(t, r)
-	TestUnexportedEntity(t, r)
+	t.Run(`queries`, func(t *testing.T) {
+		TestMinimumRequirements(t, r)
+		TestNotImplementedQuery(t, r)
+		TestExportedEntity(t, r)
+		TestUnexportedEntity(t, r)
+	})
 }

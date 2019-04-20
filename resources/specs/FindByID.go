@@ -10,7 +10,7 @@ import (
 )
 
 type FindByID interface {
-	FindByID(ID string, PTR interface {}) (bool, error)
+	FindByID(ID string, ptr interface {}) (bool, error)
 }
 
 type FindByIDSpec struct {
@@ -51,6 +51,8 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 
 	t.Run("when no value stored that the query request", func(t *testing.T) {
 		ptr := reflects.New(spec.Type)
+
+
 		ok, err := spec.Subject.FindByID("not existing ID", ptr)
 
 		require.Nil(t, err)

@@ -1,7 +1,7 @@
 package localstorage_test
 
 import (
-	"github.com/adamluzsi/frameless/resources/queries"
+	"github.com/adamluzsi/frameless/resources/specs"
 	"github.com/satori/go.uuid"
 	"os"
 	"path/filepath"
@@ -26,5 +26,6 @@ func NewSubject(t testing.TB) *localstorage.Local {
 func TestLocal(t *testing.T) {
 	s := NewSubject(t)
 	defer s.Close()
-	queries.TestAll(t, s)
+	//queries.TestAll(t, s)
+	specs.TestAll(t, s)
 }

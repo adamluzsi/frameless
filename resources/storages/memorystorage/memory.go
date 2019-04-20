@@ -121,13 +121,29 @@ func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *Memory) Purge() {
+func (storage *Memory) Purge() (rerr error) {
+	defer func() {
+		r := recover()
+
+		if r == nil {
+			return
+		}
+
+		err, ok := r.(error)
+
+		if ok {
+			rerr = err
+		}
+	}()
+
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
 	for k, _ := range storage.DB {
 		delete(storage.DB, k)
 	}
+
+	return
 }
 
 func (storage *Memory) TableFor(e interface{}) MemoryTable {
@@ -173,8 +189,7 @@ func (storage *Memory) Exec(quc resources.Query) frameless.Iterator {
 		return iterators.NewError(storage.Update(quc.Entity))
 
 	case queries.Purge:
-		storage.Purge()
-		return iterators.NewEmpty()
+		return iterators.NewError(storage.Purge())
 
 	default:
 		return iterators.NewError(frameless.ErrNotImplemented)

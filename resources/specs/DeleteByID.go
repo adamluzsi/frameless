@@ -10,7 +10,7 @@ import (
 
 // DeleteByID request to destroy a business entity in the storage that implement it's test.
 type DeleteByID interface {
-	DeleteByID(Entity interface {}, ID string) error
+	DeleteByID(Type interface {}, ID string) error
 }
 
 type DeleteByIDSpec struct {
