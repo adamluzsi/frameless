@@ -32,4 +32,4 @@
 
 
 */
-package resourcespecs
+package specs
