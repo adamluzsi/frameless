@@ -79,8 +79,8 @@ func (f *PipeSender) Encode(e frameless.Entity) error {
 	}
 }
 
-// Error send an error object to the PipeReceiver side, so it will be accessable with iterator.Err()
-func (f *PipeSender) Error(err error) (rErr error) {
+// Error send an error object to the PipeReceiver side, so it will be accessible with iterator.Err()
+func (f *PipeSender) Error(err error) {
 	defer func() { recover() }()
 	f.err <- err
 	return

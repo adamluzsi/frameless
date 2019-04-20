@@ -111,7 +111,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 
 	go func() {
 		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
-		require.Nil(t, w.Error(expected))
+		w.Error(expected)
 		require.Nil(t, w.Close())
 	}()
 
