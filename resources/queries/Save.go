@@ -22,21 +22,20 @@ func (q Save) Test(t *testing.T, r resources.Resource) {
 			t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 		}
 
-		e := newFixture(q.Entity)
-		i := r.Exec(Save{Entity: e})
+		expected := newFixture(q.Entity)
+		i := r.Exec(Save{Entity: expected})
 
 		require.NotNil(t, i)
 		require.Nil(t, i.Err())
 
-		ID, ok := LookupID(e)
+		ID, ok := LookupID(expected)
 		require.True(t, ok, "ID is not defined in the entity struct src definition")
-		require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
-
-		actual := newFixture(q.Entity)
+		require.NotEmpty(t, ID, "it was expected that Save set the storage ID in the entity")
 
 		i = r.Exec(FindByID{Type: Type, ID: ID})
+		actual := reflects.New(Type)
 		require.Nil(t, iterators.DecodeNext(i, actual))
-		require.Equal(t, e, actual)
+		require.Equal(t, expected, actual)
 		require.Nil(t, r.Exec(DeleteByID{Type: Type, ID: ID}).Err())
 
 	})
