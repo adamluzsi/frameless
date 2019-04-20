@@ -207,15 +207,15 @@ func (storage *Local) Close() error {
 	return storage.DB.Close()
 }
 
-func (storage *Local) Exec(quc resources.Query) frameless.Iterator {
-	switch quc := quc.(type) {
+func (storage *Local) Exec(query resources.Query) frameless.Iterator {
+	switch query := query.(type) {
 	case queries.Save:
-		return iterators.NewError(storage.Save(quc.Entity))
+		return iterators.NewError(storage.Save(query.Entity))
 
 	case queries.FindByID:
-		entity := reflects.New(quc.Type)
+		entity := reflects.New(query.Type)
 
-		ok, err := storage.FindByID(quc.ID, entity)
+		ok, err := storage.FindByID(query.ID, entity)
 
 		if err != nil {
 			return iterators.NewError(err)
@@ -228,16 +228,16 @@ func (storage *Local) Exec(quc resources.Query) frameless.Iterator {
 		return iterators.NewSingleElement(entity)
 
 	case queries.FindAll:
-		return storage.FindAll(quc.Type)
+		return storage.FindAll(query.Type)
 
 	case queries.DeleteByID:
-		return iterators.NewError(storage.DeleteByID(quc.Type, quc.ID))
+		return iterators.NewError(storage.DeleteByID(query.Type, query.ID))
 
 	case queries.DeleteEntity:
-		return iterators.NewError(storage.Delete(quc.Entity))
+		return iterators.NewError(storage.Delete(query.Entity))
 
 	case queries.UpdateEntity:
-		return iterators.NewError(storage.Update(quc.Entity))
+		return iterators.NewError(storage.Update(query.Entity))
 
 	case queries.Purge:
 		return iterators.NewError(storage.Purge())
