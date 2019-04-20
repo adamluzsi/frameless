@@ -81,9 +81,12 @@ func (f *PipeSender) Encode(e frameless.Entity) error {
 
 // Error send an error object to the PipeReceiver side, so it will be accessible with iterator.Err()
 func (f *PipeSender) Error(err error) {
+	if err == nil {
+		return
+	}
+
 	defer func() { recover() }()
 	f.err <- err
-	return
 }
 
 // Close close the feed and err channel, which eventually notify the receiver that no more value expected

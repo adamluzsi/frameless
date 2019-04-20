@@ -122,3 +122,26 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 	require.Nil(t, r.Close())           // I release the resource because than and go on
 	require.Equal(t, expected, r.Err()) // The last error should be available later
 }
+
+func TestNewPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothing(t *testing.T) {
+	t.Parallel()
+
+	r, w := iterators.NewPipe()
+
+	go func() {
+		for i := 0; i < 10; i++ {
+			w.Error(nil)
+		}
+
+		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+
+		require.Nil(t, w.Close())
+	}()
+
+	require.True(t, r.Next())
+	require.Nil(t, r.Decode(&Entity{}))
+	require.False(t, r.Next())
+	require.Equal(t, nil, r.Err())
+	require.Nil(t, r.Close())
+	require.Equal(t, nil, r.Err())
+}
