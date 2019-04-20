@@ -10,12 +10,12 @@ import (
 )
 
 type Delete interface {
-	Delete(frameless.Entity) error
+	Delete(interface {}) error
 }
 
 // DeleteSpec request a destroy of a specific entity that is wrapped in the query use case object
 type DeleteSpec struct {
-	Entity frameless.Entity
+	Entity interface {}
 
 	Subject interface {
 		Save

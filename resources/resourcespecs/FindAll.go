@@ -11,7 +11,7 @@ import (
 )
 
 type FindAll interface {
-	FindAll(T frameless.Entity) frameless.Iterator
+	FindAll(Type interface {}) frameless.Iterator
 }
 
 // FindAllSpec can return business entities from a given storage that implement it's test
@@ -19,7 +19,7 @@ type FindAll interface {
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type FindAllSpec struct {
-	Type frameless.Entity
+	Type interface {}
 
 	Subject interface {
 		FindAll

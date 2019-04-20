@@ -1,11 +1,10 @@
 package resourcespecs
 
 import (
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 )
 
-func newFixture(entity frameless.Entity) frameless.Entity {
+func newFixture(entity interface {}) interface {} {
 
 	newEntity := fixtures.New(entity)
 
@@ -15,4 +14,9 @@ func newFixture(entity frameless.Entity) frameless.Entity {
 
 	return newEntity
 
+}
+
+
+type entityWithoutIDField struct {
+	Data string
 }

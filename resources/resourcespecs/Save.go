@@ -3,17 +3,16 @@ package resourcespecs
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
 )
 
 type Save interface {
-	Save(frameless.Entity) error
+	Save(interface {}) error
 }
 
 type SaveSpec struct {
-	Entity frameless.Entity
+	Entity interface {}
 
 	Subject interface {
 		Save

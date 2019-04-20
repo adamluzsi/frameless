@@ -10,11 +10,11 @@ import (
 
 // DeleteByID request to destroy a business entity in the storage that implement it's test.
 type DeleteByID interface {
-	DeleteByID(Entity frameless.Entity, ID string) error
+	DeleteByID(Entity interface {}, ID string) error
 }
 
 type DeleteByIDSpec struct {
-	Type frameless.Entity
+	Type interface {}
 	ID   string
 
 	Subject interface {

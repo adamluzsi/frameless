@@ -8,13 +8,13 @@ import (
 )
 
 type Update interface {
-	Update(frameless.Entity) error
+	Update(ptr interface {}) error
 }
 
 // UpdateSpec will request an update for a wrapped entity object in the storage
 // UpdateEntity parameter is the wrapped entity that has the updated values.
 type UpdateSpec struct {
-	Entity frameless.Entity
+	Entity interface {}
 
 	Subject interface {
 		Update

@@ -1,6 +1,7 @@
 package resourcespecs
 
 import (
+	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -9,11 +10,11 @@ import (
 )
 
 type FindByID interface {
-	FindByID(ID string, ptr frameless.Entity) (bool, error)
+	FindByID(ID string, PTR interface {}) (bool, error)
 }
 
 type FindByIDSpec struct {
-	Type frameless.Entity
+	Type interface {}
 
 	Subject interface {
 		FindByID
@@ -22,50 +23,50 @@ type FindByIDSpec struct {
 	}
 }
 
-func (quc FindByIDSpec) Test(spec *testing.T) {
+func (spec FindByIDSpec) Test(t *testing.T) {
 
 	ids := []string{}
 
 	for i := 0; i < 10; i++ {
 
-		entity := newFixture(quc.Type)
+		entity := newFixture(spec.Type)
 
-		require.Nil(spec, quc.Subject.Save(entity))
+		require.Nil(t, spec.Subject.Save(entity))
 		ID, ok := LookupID(entity)
 
 		if !ok {
-			spec.Fatal(frameless.ErrIDRequired)
+			t.Fatal(frameless.ErrIDRequired)
 		}
 
-		require.True(spec, len(ID) > 0)
+		require.True(t, len(ID) > 0)
 		ids = append(ids, ID)
 
 	}
 
 	defer func() {
 		for _, id := range ids {
-			require.Nil(spec, quc.Subject.DeleteByID(quc.Type, id))
+			require.Nil(t, spec.Subject.DeleteByID(spec.Type, id))
 		}
 	}()
 
-	spec.Run("when no value stored that the query request", func(t *testing.T) {
-		var entity frameless.Entity
-		ok, err := quc.Subject.FindByID("not existing ID", &entity)
+	t.Run("when no value stored that the query request", func(t *testing.T) {
+		ptr := reflects.New(spec.Type)
+		ok, err := spec.Subject.FindByID("not existing ID", ptr)
 
 		require.Nil(t, err)
 		require.False(t, ok)
 	})
 
-	spec.Run("values returned", func(t *testing.T) {
+	t.Run("values returned", func(t *testing.T) {
 		for _, ID := range ids {
 
-			var entity frameless.Entity
+			entityPtr := reflects.New(spec.Type)
+			ok, err := spec.Subject.FindByID(ID, entityPtr)
 
-			ok, err := quc.Subject.FindByID(ID, &entity)
 			require.Nil(t, err)
 			require.True(t, ok)
 
-			actualID, ok := LookupID(entity)
+			actualID, ok := LookupID(entityPtr)
 
 			if !ok {
 				t.Fatal("can't find ID in the returned value")
