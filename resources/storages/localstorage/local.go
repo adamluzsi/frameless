@@ -93,7 +93,7 @@ func (storage *Local) Update(ptr interface{}) error {
 	}
 
 	return storage.DB.Update(func(tx *bolt.Tx) error {
-		bucket, err := storage.BucketFor(tx, ptr)
+		bucket, err := tx.CreateBucketIfNotExists(storage.BucketNameFor(ptr))
 
 		if err != nil {
 			return err
@@ -148,7 +148,7 @@ func (storage *Local) FindAll(Type interface{}) frameless.Iterator {
 }
 
 func (storage *Local) FindByID(ID string, ptr interface{}) (bool, error) {
-	var found = false
+	var found bool
 
 	key, err := storage.IDToBytes(ID)
 
@@ -157,10 +157,11 @@ func (storage *Local) FindByID(ID string, ptr interface{}) (bool, error) {
 	}
 
 	err = storage.DB.View(func(tx *bolt.Tx) error {
-		bucket, err := storage.BucketFor(tx, ptr)
+		bucket := tx.Bucket(storage.BucketNameFor(ptr))
 
-		if err != nil {
-			return err
+		if bucket == nil {
+			found = false
+			return nil
 		}
 
 		encodedValue := bucket.Get(key)
@@ -185,10 +186,10 @@ func (storage *Local) DeleteByID(Type interface{}, ID string) error {
 	}
 
 	return storage.DB.Update(func(tx *bolt.Tx) error {
-		bucket, err := storage.BucketFor(tx, Type)
+		bucket := tx.Bucket(storage.BucketNameFor(Type))
 
-		if err != nil {
-			return err
+		if bucket == nil {
+			return nil
 		}
 
 		if v := bucket.Get(ByteID); v == nil {
@@ -199,8 +200,6 @@ func (storage *Local) DeleteByID(Type interface{}, ID string) error {
 	})
 
 }
-
-
 
 // Close the Local database and release the file lock
 func (storage *Local) Close() error {
@@ -250,18 +249,6 @@ func (storage *Local) Exec(query resources.Query) frameless.Iterator {
 
 func (storage *Local) BucketNameFor(e frameless.Entity) []byte {
 	return []byte(reflects.FullyQualifiedName(e))
-}
-
-func (storage *Local) BucketFor(tx *bolt.Tx, e frameless.Entity) (*bolt.Bucket, error) {
-	bucket := tx.Bucket(storage.BucketNameFor(e))
-
-	var err error
-
-	if bucket == nil {
-		err = fmt.Errorf("No entity created before with type %s", reflects.FullyQualifiedName(e))
-	}
-
-	return bucket, err
 }
 
 func (storage *Local) IDToBytes(ID string) ([]byte, error) {

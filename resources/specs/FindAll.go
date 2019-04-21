@@ -23,20 +23,21 @@ type FindAllSpec struct {
 
 	Subject interface {
 		FindAll
+
 		Save
-		Delete
+		DeleteByID
 	}
 }
 
-func (quc FindAllSpec) Test(t *testing.T) {
+func (spec FindAllSpec) Test(t *testing.T) {
 	t.Run("when value stored in the database", func(t *testing.T) {
 
 		var ids []string
 
 		for i := 0; i < 10; i++ {
 
-			entity := newFixture(quc.Type)
-			require.Nil(t, quc.Subject.Save(entity))
+			entity := newFixture(spec.Type)
+			require.Nil(t, spec.Subject.Save(entity))
 
 			id, found := LookupID(entity)
 
@@ -46,14 +47,14 @@ func (quc FindAllSpec) Test(t *testing.T) {
 
 			ids = append(ids, id)
 
-			defer quc.Subject.Delete(entity)
+			defer spec.Subject.DeleteByID(spec.Type, id)
 		}
 
-		i := quc.Subject.FindAll(quc.Type)
+		i := spec.Subject.FindAll(spec.Type)
 		defer i.Close()
 
 		for i.Next() {
-			entity := reflect.New(reflect.TypeOf(quc.Type)).Interface()
+			entity := reflect.New(reflect.TypeOf(spec.Type)).Interface()
 
 			require.Nil(t, i.Decode(entity))
 
@@ -69,7 +70,7 @@ func (quc FindAllSpec) Test(t *testing.T) {
 	})
 
 	t.Run("when no value present in the database", func(t *testing.T) {
-		i := quc.Subject.FindAll(quc.Type)
+		i := spec.Subject.FindAll(spec.Type)
 		count, err := iterators.Count(i)
 		require.Nil(t, err)
 		require.Equal(t, 0, count)

@@ -16,11 +16,7 @@ type FindByID interface {
 type FindByIDSpec struct {
 	Type interface {}
 
-	Subject interface {
-		FindByID
-		Save
-		DeleteByID
-	}
+	Subject MinimumRequirements
 }
 
 func (spec FindByIDSpec) Test(t *testing.T) {

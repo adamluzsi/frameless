@@ -4,13 +4,13 @@ import (
 	"testing"
 )
 
-type minimumRequirementsDependency interface {
+type MinimumRequirements interface {
 	Save
 	FindByID
 	DeleteByID
 }
 
-func TestMinimumRequirements(t *testing.T, r minimumRequirementsDependency) {
+func TestMinimumRequirements(t *testing.T, r MinimumRequirements) {
 	t.Run("TestMinimumRequirements", func(t *testing.T) {
 
 		shared := func(t *testing.T, entity interface {}) {

@@ -5,17 +5,17 @@ import (
 )
 
 type Resource interface {
+	MinimumRequirements
+
 	Purge
-	Save
 	Update
 	Delete
 	FindAll
-	FindByID
-	DeleteByID
 }
 
 func TestAll(t *testing.T, r Resource) {
 	t.Run(`specs`, func(t *testing.T) {
+		PurgeSpec{Subject: r}.Test(t)
 		TestMinimumRequirements(t, r)
 		TestExportedEntity(t, r)
 		TestUnexportedEntity(t, r)

@@ -3,7 +3,6 @@ package specs
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/stretchr/testify/require"
 )
 
@@ -14,16 +13,16 @@ type Purge interface {
 type PurgeSpec struct {
 	Subject interface {
 		Purge
-		Save
-		FindByID
+
+		MinimumRequirements
 	}
 }
 
-func (q PurgeSpec) Test(t *testing.T, r resources.Resource) {
+func (spec PurgeSpec) Test(t *testing.T) {
 	t.Run("purge out all data from the given resource", func(t *testing.T) {
 
 		fixture := newFixture(unexportedEntity{})
-		err := q.Subject.Save(fixture)
+		err := spec.Subject.Save(fixture)
 		id, ok := LookupID(fixture)
 
 		require.True(t, ok)
@@ -31,14 +30,14 @@ func (q PurgeSpec) Test(t *testing.T, r resources.Resource) {
 		require.Nil(t, err)
 
 		var value unexportedEntity
-		ok, err = q.Subject.FindByID(id, &value)
+		ok, err = spec.Subject.FindByID(id, &value)
 		require.True(t, ok)
 		require.Nil(t, err)
 		require.Equal(t, fixture, &value)
 
-		require.Nil(t, q.Subject.Purge())
+		require.Nil(t, spec.Subject.Purge())
 
-		ok, err = q.Subject.FindByID(id, &unexportedEntity{})
+		ok, err = spec.Subject.FindByID(id, &unexportedEntity{})
 		require.Nil(t, err)
 		require.False(t, ok)
 
