@@ -7,6 +7,7 @@ import (
 
 func TestAll(t *testing.T, r resources.Resource) {
 	t.Run(`queries`, func(t *testing.T) {
+		Purge{}.Test(t, r)
 		TestMinimumRequirements(t, r)
 		TestNotImplementedQuery(t, r)
 		TestExportedEntity(t, r)

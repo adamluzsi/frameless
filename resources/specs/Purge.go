@@ -11,7 +11,7 @@ type Purge interface {
 }
 
 type PurgeSpec struct {
-	Subject interface {
+	Subject interface{
 		Purge
 
 		MinimumRequirements
