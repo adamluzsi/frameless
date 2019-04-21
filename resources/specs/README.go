@@ -11,7 +11,7 @@
 
 	Minimum Requirement from resource point of view
 
-	In order to make this package work, you have to implement the TestMinimumRequirements specification.
+	In order to make this package work, you have to implement the TestMinimumRequirementsWithExampleEntities specification.
 	Most of the other resourcespecs specification depends on the resourcespecs mentioned in the min requirement specification.
 	Keep in mind, that you have no guarantee on your resource content during test execution, because some specification
 	may alter the content of the resource (db), or delete from it.

@@ -16,7 +16,7 @@ type Resource interface {
 func TestAll(t *testing.T, r Resource) {
 	t.Run(`specs`, func(t *testing.T) {
 		PurgeSpec{Subject: r}.Test(t)
-		TestMinimumRequirements(t, r)
+		TestMinimumRequirementsWithExampleEntities(t, r)
 		TestExportedEntity(t, r)
 		TestUnexportedEntity(t, r)
 	})

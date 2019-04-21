@@ -1,6 +1,8 @@
 package specs
 
 import (
+	"fmt"
+	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 )
 
@@ -10,17 +12,20 @@ type MinimumRequirements interface {
 	DeleteByID
 }
 
-func TestMinimumRequirements(t *testing.T, r MinimumRequirements) {
-	t.Run("TestMinimumRequirements", func(t *testing.T) {
+func TestMinimumRequirementsWithExampleEntities(t *testing.T, r MinimumRequirements) {
+	t.Run(`Minimum Requirements`, func(t *testing.T) {
+		TestMinimumRequirementsWith(t, r, ExportedEntity{})
+		TestMinimumRequirementsWith(t, r, unexportedEntity{})
+	})
+}
 
-		shared := func(t *testing.T, entity interface{}) {
-			SaveSpec{Entity: entity, Subject: r}.Test(t)
-			FindByIDSpec{Type: entity, Subject: r}.Test(t)
-			DeleteByIDSpec{Type: entity, Subject: r}.Test(t)
-		}
+func TestMinimumRequirementsWith(t *testing.T, r MinimumRequirements, TypeAsStruct interface{}) {
+	qualifiedName := reflects.FullyQualifiedName(TypeAsStruct)
+	testRunName := fmt.Sprintf(`Test Minimum Requirements For %s`, qualifiedName)
 
-		shared(t, ExportedEntity{})
-		shared(t, unexportedEntity{})
-
+	t.Run(testRunName, func(t *testing.T) {
+		SaveSpec{Entity: TypeAsStruct, Subject: r}.Test(t)
+		FindByIDSpec{Type: TypeAsStruct, Subject: r}.Test(t)
+		DeleteByIDSpec{Type: TypeAsStruct, Subject: r}.Test(t)
 	})
 }
