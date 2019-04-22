@@ -13,6 +13,7 @@ func TestMinimumRequirements(t *testing.T, r resources.Resource) {
 			Save{Entity: entity}.Test(t, r)
 			FindByID{Type: entity}.Test(t, r)
 			DeleteByID{Type: entity}.Test(t, r)
+			Truncate{Type: entity}.Test(t, r)
 		}
 
 		shared(t, ExportedEntity{})
