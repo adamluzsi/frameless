@@ -10,11 +10,11 @@ import (
 )
 
 type FindByID interface {
-	FindByID(ID string, ptr interface {}) (bool, error)
+	FindByID(ID string, ptr interface{}) (bool, error)
 }
 
 type FindByIDSpec struct {
-	Type interface {}
+	Type interface{}
 
 	Subject MinimumRequirements
 }
@@ -48,7 +48,6 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 	t.Run("when no value stored that the query request", func(t *testing.T) {
 		ptr := reflects.New(spec.Type)
 
-
 		ok, err := spec.Subject.FindByID("not existing ID", ptr)
 
 		require.Nil(t, err)
@@ -75,4 +74,10 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 		}
 	})
 
+}
+
+func TestFindByID(t *testing.T, r MinimumRequirements, e interface{}) {
+	t.Run(`FindByID`, func(t *testing.T) {
+		FindByIDSpec{Type: e, Subject: r}.Test(t)
+	})
 }

@@ -10,12 +10,14 @@ type Purge interface {
 	Purge() error
 }
 
-type PurgeSpec struct {
-	Subject interface{
-		Purge
+type iPurge interface {
+	Purge
 
-		MinimumRequirements
-	}
+	MinimumRequirements
+}
+
+type PurgeSpec struct {
+	Subject iPurge
 }
 
 func (spec PurgeSpec) Test(t *testing.T) {
@@ -41,5 +43,11 @@ func (spec PurgeSpec) Test(t *testing.T) {
 		require.Nil(t, err)
 		require.False(t, ok)
 
+	})
+}
+
+func TestPurge(t *testing.T, r iPurge, e interface{}) {
+	t.Run(`Purge`, func(t *testing.T) {
+		PurgeSpec{Subject: r}.Test(t)
 	})
 }

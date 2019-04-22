@@ -16,7 +16,3 @@ func newFixture(entity interface {}) interface {} {
 
 }
 
-
-type entityWithoutIDField struct {
-	Data string
-}

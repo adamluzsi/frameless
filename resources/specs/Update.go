@@ -8,27 +8,27 @@ import (
 )
 
 type Update interface {
-	Update(ptr interface {}) error
+	Update(ptr interface{}) error
 }
 
-// UpdateSpec will request an update for a wrapped entity object in the storage
-// UpdateEntity parameter is the wrapped entity that has the updated values.
-type UpdateSpec struct {
-	Entity interface {}
+type iUpdate interface {
+	Update
 
-	Subject interface {
-		Update
-		Save
-		Delete
-		FindByID
-	}
+	MinimumRequirements
+}
+
+// UpdateSpec will request an update for a wrapped entity object in the resource
+type UpdateSpec struct {
+	Type interface{}
+
+	Subject iUpdate
 }
 
 func (quc UpdateSpec) Test(suite *testing.T) {
 	suite.Run("Update", func(spec *testing.T) {
 
 		setup := func(t *testing.T) (string, func()) {
-			entity := newFixture(quc.Entity)
+			entity := newFixture(quc.Type)
 			require.Nil(spec, quc.Subject.Save(entity))
 
 			ID, ok := LookupID(entity)
@@ -39,7 +39,7 @@ func (quc UpdateSpec) Test(suite *testing.T) {
 
 			require.True(spec, len(ID) > 0)
 
-			td := func() { require.Nil(t, quc.Subject.Delete(entity)) }
+			td := func() { require.Nil(t, quc.Subject.DeleteByID(quc.Type, ID)) }
 
 			return ID, td
 		}
@@ -48,13 +48,13 @@ func (quc UpdateSpec) Test(suite *testing.T) {
 			ID, td := setup(t)
 			defer td()
 
-			newEntity := newFixture(quc.Entity)
-			SetID(newEntity, ID)
+			newEntity := newFixture(quc.Type)
+			require.Nil(t, SetID(newEntity, ID))
 
 			err := quc.Subject.Update(newEntity)
 			require.Nil(t, err)
 
-			actually := newFixture(quc.Entity)
+			actually := newFixture(quc.Type)
 			ok, err := quc.Subject.FindByID(ID, actually)
 			require.True(t, ok)
 			require.Nil(t, err)
@@ -67,8 +67,8 @@ func (quc UpdateSpec) Test(suite *testing.T) {
 			_, td := setup(t)
 			defer td()
 
-			newEntity := newFixture(quc.Entity)
-			SetID(newEntity, "hitchhiker's guide to the galaxy")
+			newEntity := newFixture(quc.Type)
+			require.Nil(t, SetID(newEntity, "hitchhiker's guide to the galaxy"))
 			require.Error(t, quc.Subject.Update(newEntity))
 		})
 
@@ -78,5 +78,11 @@ func (quc UpdateSpec) Test(suite *testing.T) {
 			require.Error(t, quc.Subject.Update(newEntity))
 		})
 
+	})
+}
+
+func TestUpdate(t *testing.T, r iUpdate, e interface{}) {
+	t.Run(`Update`, func(t *testing.T) {
+		UpdateSpec{Type: e, Subject: r}.Test(t)
 	})
 }

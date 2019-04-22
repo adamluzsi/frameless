@@ -36,6 +36,18 @@ func (storage *Local) Purge() error {
 	})
 }
 
+func (storage *Local) Truncate(Type interface{}) error {
+	return storage.DB.Update(func(tx *bolt.Tx) error {
+		bucketName := storage.BucketNameFor(Type)
+
+		if b := tx.Bucket(bucketName); b != nil {
+			return tx.DeleteBucket(bucketName)
+		}
+
+		return nil
+	})
+}
+
 func (storage *Local) Save(entity interface{}) error {
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 
@@ -240,6 +252,9 @@ func (storage *Local) Exec(query resources.Query) frameless.Iterator {
 
 	case queries.Purge:
 		return iterators.NewError(storage.Purge())
+
+	case queries.Truncate:
+		return iterators.NewError(storage.Truncate(query.Type))
 
 	default:
 		return iterators.NewError(frameless.ErrNotImplemented)

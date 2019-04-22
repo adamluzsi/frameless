@@ -15,7 +15,6 @@ type DeleteByID interface {
 
 type DeleteByIDSpec struct {
 	Type interface {}
-	ID   string
 
 	Subject MinimumRequirements
 }
@@ -59,4 +58,10 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 		})
 	})
 
+}
+
+func TestDeleteByID(t *testing.T, r MinimumRequirements, e interface{}) {
+	t.Run(`DeleteByID`, func(t *testing.T) {
+		DeleteByIDSpec{Subject:r, Type: e}.Test(t)
+	})
 }

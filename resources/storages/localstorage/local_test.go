@@ -26,6 +26,6 @@ func NewSubject(t testing.TB) *localstorage.Local {
 func TestLocal(t *testing.T) {
 	s := NewSubject(t)
 	defer s.Close()
-	//queries.TestAll(t, s)
-	specs.TestAll(t, s)
+	//queries.TestAllWithExampleEntities(t, s)
+	specs.TestAllWithExampleEntities(t, s)
 }

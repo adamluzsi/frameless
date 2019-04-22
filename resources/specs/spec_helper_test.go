@@ -16,7 +16,3 @@ type IDInTagNameNextToIDField struct {
 type UnidentifiableID struct {
 	UserID string
 }
-
-type InterfaceObject interface{}
-
-type StructObject struct{}

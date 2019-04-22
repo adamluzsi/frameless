@@ -156,15 +156,28 @@ func (storage *Memory) TableFor(e interface{}) MemoryTable {
 	return storage.DB[name]
 }
 
-func (storage *Memory) Exec(quc resources.Query) frameless.Iterator {
-	switch quc := quc.(type) {
+func (storage *Memory) Truncate(Type interface{}) error {
+	storage.Mutex.Lock()
+	defer storage.Mutex.Unlock()
+
+	name := reflects.FullyQualifiedName(Type)
+
+	if _, ok := storage.DB[name]; ok {
+		delete(storage.DB, name)
+	}
+
+	return nil
+}
+
+func (storage *Memory) Exec(query resources.Query) frameless.Iterator {
+	switch query := query.(type) {
 
 	case queries.Save:
-		return iterators.NewError(storage.Save(quc.Entity))
+		return iterators.NewError(storage.Save(query.Entity))
 
 	case queries.FindByID:
-		entityPtr := reflects.New(quc.Type)
-		found, err := storage.FindByID(quc.ID, entityPtr)
+		entityPtr := reflects.New(query.Type)
+		found, err := storage.FindByID(query.ID, entityPtr)
 
 		if !found {
 			return iterators.NewEmpty()
@@ -177,19 +190,22 @@ func (storage *Memory) Exec(quc resources.Query) frameless.Iterator {
 		return iterators.NewSingleElement(entityPtr)
 
 	case queries.FindAll:
-		return storage.FindAll(quc.Type)
+		return storage.FindAll(query.Type)
 
 	case queries.DeleteByID:
-		return iterators.NewError(storage.DeleteByID(quc.Type, quc.ID))
+		return iterators.NewError(storage.DeleteByID(query.Type, query.ID))
 
 	case queries.DeleteEntity:
-		return iterators.NewError(storage.Delete(quc.Entity))
+		return iterators.NewError(storage.Delete(query.Entity))
 
 	case queries.UpdateEntity:
-		return iterators.NewError(storage.Update(quc.Entity))
+		return iterators.NewError(storage.Update(query.Entity))
 
 	case queries.Purge:
 		return iterators.NewError(storage.Purge())
+
+	case queries.Truncate:
+		return iterators.NewError(storage.Truncate(query.Type))
 
 	default:
 		return iterators.NewError(frameless.ErrNotImplemented)

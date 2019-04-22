@@ -11,7 +11,13 @@ import (
 )
 
 type FindAll interface {
-	FindAll(Type interface {}) frameless.Iterator
+	FindAll(Type interface{}) frameless.Iterator
+}
+
+type iFindAll interface {
+	FindAll
+
+	MinimumRequirements
 }
 
 // FindAllSpec can return business entities from a given storage that implement it's test
@@ -19,14 +25,9 @@ type FindAll interface {
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type FindAllSpec struct {
-	Type interface {}
+	Type interface{}
 
-	Subject interface {
-		FindAll
-
-		Save
-		DeleteByID
-	}
+	Subject iFindAll
 }
 
 func (spec FindAllSpec) Test(t *testing.T) {
@@ -76,4 +77,10 @@ func (spec FindAllSpec) Test(t *testing.T) {
 		require.Equal(t, 0, count)
 	})
 
+}
+
+func TestFindAll(t *testing.T, r iFindAll, e interface{}) {
+	t.Run(`FindAll`, func(t *testing.T) {
+		FindAllSpec{Type: e, Subject: r}.Test(t)
+	})
 }

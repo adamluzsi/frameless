@@ -15,5 +15,5 @@ func ExampleMemory() *memorystorage.Memory {
 func TestMemory(t *testing.T) {
 	storage := ExampleMemory()
 	queries.TestAll(t, storage)
-	specs.TestAll(t, storage)
+	specs.TestAllWithExampleEntities(t, storage)
 }
