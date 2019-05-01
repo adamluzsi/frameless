@@ -90,6 +90,20 @@ func (mr *MockResourceMockRecorder) FindByID(arg0, arg1 interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockResource)(nil).FindByID), arg0, arg1)
 }
 
+// Purge mocks base method
+func (m *MockResource) Purge() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Purge")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Purge indicates an expected call of Purge
+func (mr *MockResourceMockRecorder) Purge() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Purge", reflect.TypeOf((*MockResource)(nil).Purge))
+}
+
 // Save mocks base method
 func (m *MockResource) Save(arg0 interface{}) error {
 	m.ctrl.T.Helper()
@@ -102,6 +116,20 @@ func (m *MockResource) Save(arg0 interface{}) error {
 func (mr *MockResourceMockRecorder) Save(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockResource)(nil).Save), arg0)
+}
+
+// Truncate mocks base method
+func (m *MockResource) Truncate(arg0 interface{}) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Truncate", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Truncate indicates an expected call of Truncate
+func (mr *MockResourceMockRecorder) Truncate(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Truncate", reflect.TypeOf((*MockResource)(nil).Truncate), arg0)
 }
 
 // Update mocks base method
