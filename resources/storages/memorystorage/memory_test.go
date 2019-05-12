@@ -1,7 +1,7 @@
 package memorystorage_test
 
 import (
-	"github.com/adamluzsi/frameless/resources/storages"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
 
 	"testing"
@@ -13,5 +13,5 @@ func ExampleMemory() *memorystorage.Memory {
 
 func TestMemory(t *testing.T) {
 	storage := ExampleMemory()
-	storages.TestCommonSpec(t, storage)
+	resources.TestCommonSpec(t, storage)
 }
