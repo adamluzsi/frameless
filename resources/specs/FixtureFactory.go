@@ -10,7 +10,7 @@ type FixtureFactory interface {
 	// Create create a new struct instance based on the received input struct type.
 	// Create also populate the struct field with dummy values.
 	// It is expected that the newly created fixture will have no content for extID field.
-	Create(Type interface{}) (StructPTR interface{})
+	Create(EntityType interface{}) (StructPTR interface{})
 }
 
 type FixtureFactorySpec struct {
