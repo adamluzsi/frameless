@@ -2,9 +2,9 @@ package fixtures_test
 
 import (
 	"github.com/adamluzsi/frameless/fixtures"
-	"testing"
-
 	"github.com/stretchr/testify/require"
+	"testing"
+	"time"
 )
 
 func TestNew(t *testing.T) {
@@ -124,6 +124,16 @@ func SharedSpecAssertions(t *testing.T, subject func() *Example) {
 
 		require.Nil(t, subject().Func)
 	})
+	t.Run(`duration`, func(t *testing.T) {
+		t.Parallel()
+
+		require.NotEqual(t, time.Duration(0), subject().Duration)
+	})
+	t.Run(`time`, func(t *testing.T) {
+		t.Parallel()
+
+		require.NotEqual(t, time.Time{}, subject().Time)
+	})
 }
 
 type Example struct {
@@ -154,6 +164,8 @@ type Example struct {
 	StringPtr     *string
 	IntPtr        *int
 	Func          func()
+	Duration      time.Duration
+	Time          time.Time
 	ExampleStruct
 }
 

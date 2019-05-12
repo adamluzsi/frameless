@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/frameless"
@@ -60,7 +61,12 @@ func newValue(value reflect.Value) reflect.Value {
 		return reflect.ValueOf(rand.Int31())
 
 	case reflect.Int64:
-		return reflect.ValueOf(rand.Int63())
+		switch value.Interface().(type) {
+		case time.Duration:
+			return reflect.ValueOf(time.Duration(rand.Int63()))
+		default:
+			return reflect.ValueOf(rand.Int63())
+		}
 
 	case reflect.Uint:
 		return reflect.ValueOf(uint(rand.Uint32()))
@@ -108,7 +114,12 @@ func newValue(value reflect.Value) reflect.Value {
 		return reflect.ValueOf(uintptr(rand.Int()))
 
 	case reflect.Struct:
-		return reflect.ValueOf(New(value.Interface())).Elem()
+		switch value.Interface().(type) {
+		case time.Time:
+			return reflect.ValueOf(time.Now().UTC().Add(time.Duration(rand.Int()) * time.Hour))
+		default:
+			return reflect.ValueOf(New(value.Interface())).Elem()
+		}
 
 	default:
 		//reflect.UnsafePointer
