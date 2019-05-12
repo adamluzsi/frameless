@@ -13,14 +13,14 @@ type MinimumRequirements interface {
 	Truncate
 }
 
-func TestMinimumRequirements(t *testing.T, r MinimumRequirements, TypeAsStruct interface{}) {
+func TestMinimumRequirements(t *testing.T, r MinimumRequirements, TypeAsStruct interface{}, fixture FixtureFactory) {
 	qualifiedName := reflects.FullyQualifiedName(TypeAsStruct)
 	testRunName := fmt.Sprintf(`Test Minimum Requirements For %s`, qualifiedName)
 
 	t.Run(testRunName, func(t *testing.T) {
-		TestSave(t, r, TypeAsStruct)
-		TestFindByID(t, r, TypeAsStruct)
-		TestDeleteByID(t, r, TypeAsStruct)
-		TestTruncate(t, r, TypeAsStruct)
+		TestSave(t, r, TypeAsStruct, fixture)
+		TestFindByID(t, r, TypeAsStruct, fixture)
+		TestDeleteByID(t, r, TypeAsStruct, fixture)
+		TestTruncate(t, r, TypeAsStruct, fixture)
 	})
 }

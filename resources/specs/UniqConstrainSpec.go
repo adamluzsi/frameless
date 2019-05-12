@@ -1,65 +1,69 @@
 package specs
 
 import (
+	"github.com/adamluzsi/frameless/reflects"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-type SaveSpec struct {
+type UniqConstrainSpec struct {
 	// Struct that is the subject of this spec
-	Type          interface{}
+	EntityType interface{}
+	FixtureFactory
 
 	// the combination of which the values must be uniq
+	// The values for this are the struct Fields that together represent a uniq constrain
+	// if you only want to make uniq one certain field across the resource,
+	// then you only have to provide that only value in the slice
 	UniqConstrain []string
 
 	// the resource object that implements the specification
 	Subject MinimumRequirements
 }
 
-func (spec SaveSpec) Test(t *testing.T) {
-	t.Run("persist an Save", func(t *testing.T) {
+func (spec UniqConstrainSpec) Test(t *testing.T) {
+	require.Nil(t, spec.Subject.Truncate(spec.EntityType))
 
-		if ID, _ := LookupID(spec.Type); ID != "" {
-			t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
+	e1 := spec.FixtureFactory.Create(spec.EntityType)
+	e2 := spec.FixtureFactory.Create(spec.EntityType)
+	e3 := spec.FixtureFactory.Create(spec.EntityType)
+
+	v1 := reflect.ValueOf(e1)
+	v2 := reflect.ValueOf(e2)
+	v3 := reflect.ValueOf(e2)
+
+	for _, field := range spec.UniqConstrain {
+		val := v1.Elem().FieldByName(field)
+
+		if val.Kind() == reflect.Invalid {
+			t.Fatalf(`field %s is not found in %s`, field, reflects.FullyQualifiedName(spec.EntityType))
 		}
 
-		e := newFixture(spec.Type)
-		err := spec.Subject.Save(e)
+		v2.Elem().FieldByName(field).Set(val)
+		v3.Elem().FieldByName(field).Set(val)
+	}
 
-		require.Nil(t, err)
+	require.Nil(t, spec.Subject.Save(e1))
+	require.Error(t,
+		spec.Subject.Save(e2),
+		`expected that this value is cannot be saved since uniq constrain prevent it`,
+	)
 
-		ID, ok := LookupID(e)
-		require.True(t, ok, "ID is not defined in the entity struct src definition")
-		require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
+	t.Log(`after we delete the value that keeps the uniq constrain`)
+	id, found := LookupID(e1)
+	require.True(t, found)
+	require.Nil(t, spec.Subject.DeleteByID(e1, id))
 
-		actual := newFixture(spec.Type)
+	t.Logf(`it should allow us to save similar object in the resource`)
+	require.Nil(t, spec.Subject.Save(e3))
 
-		ok, err = spec.Subject.FindByID(ID, actual)
-		require.True(t, ok)
-		require.Nil(t, err)
-		require.Equal(t, e, actual)
-
-		require.Nil(t, spec.Subject.DeleteByID(spec.Type, ID))
-
-	})
-
-	t.Run("when entity doesn't have storage ID field", func(t *testing.T) {
-		newEntity := newFixture(entityWithoutIDField{})
-
-		require.Error(t, spec.Subject.Save(newEntity))
-	})
-
-	t.Run("when entity already have an ID", func(t *testing.T) {
-		newEntity := newFixture(spec.Type)
-		SetID(newEntity, "Hello world!")
-
-		require.Error(t, spec.Subject.Save(newEntity))
-	})
 }
 
-func TestSave(t *testing.T, r MinimumRequirements, e interface{}) {
-	t.Run(`Save`, func(t *testing.T) {
-		SaveSpec{Type: e, Subject: r}.Test(t)
+func TestUniqConstrain(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory, uniqConstrain ...string) {
+	t.Run(`UniqConstrainSpec`, func(t *testing.T) {
+		require.NotEmpty(t, uniqConstrain)
+		UniqConstrainSpec{EntityType: e, FixtureFactory: f, UniqConstrain: uniqConstrain, Subject: r}.Test(t)
 	})
 }

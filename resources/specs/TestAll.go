@@ -15,33 +15,28 @@ type Resource interface {
 	Purge
 }
 
-func TestAll(t *testing.T, r Resource, e interface{}) {
+func TestAll(t *testing.T, r Resource, e interface{}, f FixtureFactory) {
 	t.Run(`specs`, func(t *testing.T) {
 
 		t.Run(`CREATE`, func(t *testing.T) {
-			TestSave(t, r, e)
+			TestSave(t, r, e, f)
 		})
 
 		t.Run(`READ`, func(t *testing.T) {
-			TestFindAll(t, r, e)
-			TestFindByID(t, r, e)
+			TestFindAll(t, r, e, f)
+			TestFindByID(t, r, e, f)
 		})
 
 		t.Run(`UPDATE`, func(t *testing.T) {
-			TestUpdate(t, r, e)
+			TestUpdate(t, r, e, f)
 		})
 
 		t.Run(`DELETE`, func(t *testing.T) {
-			TestDelete(t, r, e)
-			TestDeleteByID(t, r, e)
-			TestTruncate(t, r, e)
-			TestPurge(t, r, e)
+			TestDelete(t, r, e, f)
+			TestDeleteByID(t, r, e, f)
+			TestTruncate(t, r, e, f)
+			TestPurge(t, r, e, f)
 		})
 
 	})
-}
-
-func TestAllWithExampleEntities(t *testing.T, r Resource) {
-	TestAll(t, r, ExportedEntity{})
-	TestAll(t, r, unexportedEntity{})
 }

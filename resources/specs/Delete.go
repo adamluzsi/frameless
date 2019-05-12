@@ -13,23 +13,30 @@ type Delete interface {
 	Delete(Entity interface{}) error
 }
 
+// DeleteSpec request a destroy of a specific entity that is wrapped in the query use case object
+type DeleteSpec struct {
+	EntityType interface{}
+	FixtureFactory
+	Subject iDelete
+}
+
 type iDelete interface {
 	Delete
 
 	MinimumRequirements
 }
 
-// DeleteSpec request a destroy of a specific entity that is wrapped in the query use case object
-type DeleteSpec struct {
-	Entity interface{}
-
-	Subject iDelete
-}
-
 // Test will test that an DeleteSpec is implemented by a generic specification
 func (spec DeleteSpec) Test(t *testing.T) {
 
-	expected := newFixture(spec.Entity)
+	if _, hasExtID := LookupID(spec.EntityType); !hasExtID {
+		t.Fatalf(
+			`entity type that doesn't include external resource ID field is not compatible with this contract (%s)`,
+			reflects.FullyQualifiedName(spec.EntityType),
+		)
+	}
+
+	expected := spec.FixtureFactory.Create(spec.EntityType)
 	require.Nil(t, spec.Subject.Save(expected))
 	ID, ok := LookupID(expected)
 
@@ -37,30 +44,23 @@ func (spec DeleteSpec) Test(t *testing.T) {
 		t.Fatal(frameless.ErrIDRequired)
 	}
 
-	defer spec.Subject.DeleteByID(reflects.BaseValueOf(spec.Entity).Interface(), ID)
+	defer spec.Subject.DeleteByID(reflects.BaseValueOf(spec.EntityType).Interface(), ID)
 
-	t.Run("value is Deleted by providing an Type, and then it should not be findable afterwards", func(t *testing.T) {
+	t.Run("value is Deleted by providing an EntityType, and then it should not be findable afterwards", func(t *testing.T) {
 
 		err := spec.Subject.Delete(expected)
 		require.Nil(t, err)
 
-		e := newFixture(spec.Entity)
+		e := spec.FixtureFactory.Create(spec.EntityType)
 		ok, err := spec.Subject.FindByID(ID, e)
 		require.Nil(t, err)
 		require.False(t, ok)
 
 	})
-
-	t.Run("when entity doesn't have r ID field", func(t *testing.T) {
-		newEntity := newFixture(entityWithoutIDField{})
-
-		require.Error(t, spec.Subject.Delete(newEntity))
-	})
 }
 
-
-func TestDelete(t *testing.T, r iDelete, e interface{}) {
+func TestDelete(t *testing.T, r iDelete, e interface{}, f FixtureFactory) {
 	t.Run(`Delete`, func(t *testing.T) {
-		DeleteSpec{Entity: e, Subject: r}.Test(t)
+		DeleteSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
 	})
 }

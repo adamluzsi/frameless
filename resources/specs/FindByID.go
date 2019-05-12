@@ -14,18 +14,18 @@ type FindByID interface {
 }
 
 type FindByIDSpec struct {
-	Type interface{}
-
+	EntityType interface{}
+	FixtureFactory
 	Subject MinimumRequirements
 }
 
 func (spec FindByIDSpec) Test(t *testing.T) {
 
-	ids := []string{}
+	var ids []string
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 12; i++ {
 
-		entity := newFixture(spec.Type)
+		entity := spec.FixtureFactory.Create(spec.EntityType)
 
 		require.Nil(t, spec.Subject.Save(entity))
 		ID, ok := LookupID(entity)
@@ -41,12 +41,12 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 
 	defer func() {
 		for _, id := range ids {
-			require.Nil(t, spec.Subject.DeleteByID(spec.Type, id))
+			require.Nil(t, spec.Subject.DeleteByID(spec.EntityType, id))
 		}
 	}()
 
 	t.Run("when no value stored that the query request", func(t *testing.T) {
-		ptr := reflects.New(spec.Type)
+		ptr := reflects.New(spec.EntityType)
 
 		ok, err := spec.Subject.FindByID("not existing ID", ptr)
 
@@ -57,7 +57,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 	t.Run("values returned", func(t *testing.T) {
 		for _, ID := range ids {
 
-			entityPtr := reflects.New(spec.Type)
+			entityPtr := reflects.New(spec.EntityType)
 			ok, err := spec.Subject.FindByID(ID, entityPtr)
 
 			require.Nil(t, err)
@@ -76,8 +76,8 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 
 }
 
-func TestFindByID(t *testing.T, r MinimumRequirements, e interface{}) {
+func TestFindByID(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
 	t.Run(`FindByID`, func(t *testing.T) {
-		FindByIDSpec{Type: e, Subject: r}.Test(t)
+		FindByIDSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 	})
 }

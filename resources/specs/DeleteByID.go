@@ -14,8 +14,8 @@ type DeleteByID interface {
 }
 
 type DeleteByIDSpec struct {
-	Type interface {}
-
+	EntityType interface {}
+	FixtureFactory
 	Subject MinimumRequirements
 }
 
@@ -26,7 +26,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 
-			entity := newFixture(spec.Type)
+			entity := spec.FixtureFactory.Create(spec.EntityType)
 			require.Nil(t, spec.Subject.Save(entity))
 			ID, ok := LookupID(entity)
 
@@ -41,7 +41,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 
 		t.Run("using delete by id makes entity with ID not find-able", func(t *testing.T) {
 			for _, ID := range ids {
-				e := newFixture(spec.Type)
+				e := spec.FixtureFactory.Create(spec.EntityType)
 
 				ok, err := spec.Subject.FindByID(ID, e)
 				require.True(t, ok)
@@ -60,8 +60,8 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 
 }
 
-func TestDeleteByID(t *testing.T, r MinimumRequirements, e interface{}) {
+func TestDeleteByID(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
 	t.Run(`DeleteByID`, func(t *testing.T) {
-		DeleteByIDSpec{Subject:r, Type: e}.Test(t)
+		DeleteByIDSpec{Subject:r, EntityType: e, FixtureFactory: f}.Test(t)
 	})
 }
