@@ -7,8 +7,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/resources/queries"
+	"github.com/adamluzsi/frameless/resources/specs"
 	"io/ioutil"
 	"strconv"
 
@@ -51,7 +50,7 @@ func (storage *Local) Truncate(Type interface{}) error {
 func (storage *Local) Save(entity interface{}) error {
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 
-		if currentID, ok := queries.LookupID(entity); !ok || currentID != "" {
+		if currentID, ok := specs.LookupID(entity); !ok || currentID != "" {
 			return fmt.Errorf("entity already have an ID: %s", currentID)
 		}
 
@@ -70,7 +69,7 @@ func (storage *Local) Save(entity interface{}) error {
 
 		encodedID := strconv.FormatUint(uIntID, 10)
 
-		if err = queries.SetID(entity, encodedID); err != nil {
+		if err = specs.SetID(entity, encodedID); err != nil {
 			return err
 		}
 
@@ -86,7 +85,7 @@ func (storage *Local) Save(entity interface{}) error {
 }
 
 func (storage *Local) Update(ptr interface{}) error {
-	encodedID, found := queries.LookupID(ptr)
+	encodedID, found := specs.LookupID(ptr)
 
 	if !found || encodedID == "" {
 		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(ptr))
@@ -116,7 +115,7 @@ func (storage *Local) Update(ptr interface{}) error {
 }
 
 func (storage *Local) Delete(Entity interface{}) error {
-	ID, found := queries.LookupID(Entity)
+	ID, found := specs.LookupID(Entity)
 
 	if !found || ID == "" {
 		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(Entity))
@@ -216,50 +215,6 @@ func (storage *Local) DeleteByID(Type interface{}, ID string) error {
 // Close the Local database and release the file lock
 func (storage *Local) Close() error {
 	return storage.DB.Close()
-}
-
-func (storage *Local) Exec(query resources.Query) frameless.Iterator {
-	switch query := query.(type) {
-	case queries.Save:
-		return iterators.NewError(storage.Save(query.Entity))
-
-	case queries.FindByID:
-		entity := reflects.New(query.Type)
-
-		ok, err := storage.FindByID(query.ID, entity)
-
-		if err != nil {
-			return iterators.NewError(err)
-		}
-
-		if !ok {
-			return iterators.NewEmpty()
-		}
-
-		return iterators.NewSingleElement(entity)
-
-	case queries.FindAll:
-		return storage.FindAll(query.Type)
-
-	case queries.DeleteByID:
-		return iterators.NewError(storage.DeleteByID(query.Type, query.ID))
-
-	case queries.DeleteEntity:
-		return iterators.NewError(storage.Delete(query.Entity))
-
-	case queries.UpdateEntity:
-		return iterators.NewError(storage.Update(query.Entity))
-
-	case queries.Purge:
-		return iterators.NewError(storage.Purge())
-
-	case queries.Truncate:
-		return iterators.NewError(storage.Truncate(query.Type))
-
-	default:
-		return iterators.NewError(frameless.ErrNotImplemented)
-
-	}
 }
 
 func (storage *Local) BucketNameFor(e frameless.Entity) []byte {
