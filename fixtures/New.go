@@ -116,7 +116,7 @@ func newValue(value reflect.Value) reflect.Value {
 	case reflect.Struct:
 		switch value.Interface().(type) {
 		case time.Time:
-			return reflect.ValueOf(time.Now().UTC().Add(time.Duration(rand.Int()) * time.Hour))
+			return reflect.ValueOf(RandomTimeUTC())
 		default:
 			return reflect.ValueOf(New(value.Interface())).Elem()
 		}
