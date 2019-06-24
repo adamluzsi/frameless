@@ -1,9 +1,0 @@
-{
-  "Tools": [
-    {
-      "Repository": "github.com/golang/mock/mockgen",
-      "Commit": "73dc87cad333b55a02058f4b3d872dbbafddc2b0"
-    }
-  ],
-  "RetoolVersion": "1.3.7"
-}

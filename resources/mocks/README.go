@@ -6,5 +6,5 @@
 //
 package mocks
 
-//go:generate retool do mockgen -package mocks -destination MockResource.go github.com/adamluzsi/frameless/resources/specs Resource
+//go:generate mockgen -package mocks -destination MockResource.go github.com/adamluzsi/frameless/resources/specs Resource
 //
