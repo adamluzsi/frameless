@@ -93,12 +93,7 @@ func (storage *Memory) Save(entity interface{}) error {
 		return fmt.Errorf("entity already have an ID: %s", currentID)
 	}
 
-	id, err := fixtures.RandomString(42)
-
-	if err != nil {
-		return err
-	}
-
+	id := fixtures.RandomString(42)
 	storage.TableFor(entity)[id] = entity
 	return specs.SetID(entity, id)
 }

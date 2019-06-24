@@ -24,9 +24,7 @@ func TestRandomString(t *testing.T) {
 
 			ExpectedLength := rand.New(rand.NewSource(time.Now().Unix())).Intn(41) + 1
 
-			str, err := fixtures.RandomString(ExpectedLength)
-
-			require.Nil(t, err)
+			str := fixtures.RandomString(ExpectedLength)
 
 			t.Run("and the received string length is expected to be just as much as the input parameter requested", func(t *testing.T) {
 				require.Equal(t, ExpectedLength, len(str))
@@ -41,9 +39,7 @@ func TestRandomString(t *testing.T) {
 
 					go func() {
 						defer wg.Done()
-						othStr, oerr := fixtures.RandomString(ExpectedLength)
-						require.Nil(t, oerr)
-
+						othStr := fixtures.RandomString(ExpectedLength)
 						assert.NotEqual(t, str, othStr)
 					}()
 				}
