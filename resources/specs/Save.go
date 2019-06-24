@@ -44,8 +44,8 @@ func (spec SaveSpec) Test(t *testing.T) {
 		actual := spec.FixtureFactory.Create(spec.EntityType)
 
 		ok, err = spec.Subject.FindByID(ID, actual)
-		require.True(t, ok)
 		require.Nil(t, err)
+		require.True(t, ok)
 		require.Equal(t, e, actual)
 
 		require.Nil(t, spec.Subject.DeleteByID(spec.EntityType, ID))
