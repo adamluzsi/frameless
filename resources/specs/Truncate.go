@@ -40,17 +40,17 @@ func (spec TruncateSpec) Test(t *testing.T) {
 	t.Run("delete all records based on what entity object it receives", func(t *testing.T) {
 
 		eID := populateFor(t, spec.EntityType)
-		oID := populateFor(t, TruncateTestEntity{})
+		oID := populateFor(t, TestEntity{})
 
 		require.True(t, isStored(t, eID, spec.EntityType))
-		require.True(t, isStored(t, oID, TruncateTestEntity{}))
+		require.True(t, isStored(t, oID, TestEntity{}))
 
 		require.Nil(t, spec.Subject.Truncate(spec.EntityType))
 
 		require.False(t, isStored(t, eID, spec.EntityType))
-		require.True(t, isStored(t, oID, TruncateTestEntity{}))
+		require.True(t, isStored(t, oID, TestEntity{}))
 
-		require.Nil(t, spec.Subject.DeleteByID(TruncateTestEntity{}, oID))
+		require.Nil(t, spec.Subject.DeleteByID(TestEntity{}, oID))
 
 	})
 }
@@ -61,6 +61,3 @@ func TestTruncate(t *testing.T, r MinimumRequirements, e interface{}, f FixtureF
 	})
 }
 
-type TruncateTestEntity struct {
-	ID string `ext:"ID"`
-}
