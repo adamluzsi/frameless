@@ -1,13 +1,13 @@
 package specs
 
 import (
+	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterators"
-
-	"github.com/stretchr/testify/require"
 )
 
 type FindAll interface {
@@ -31,56 +31,59 @@ type iFindAll interface {
 }
 
 func (spec FindAllSpec) Test(t *testing.T) {
-	t.Run("when value stored in the database", func(t *testing.T) {
+	t.Run(`FindAll`, func(t *testing.T) {
+		t.Run(reflects.FullyQualifiedName(spec.EntityType), func(t *testing.T) {
 
-		var ids []string
+			t.Run("when value stored in the database", func(t *testing.T) {
 
-		for i := 0; i < 10; i++ {
+				var ids []string
 
-			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Save(entity))
+				for i := 0; i < 10; i++ {
 
-			id, found := LookupID(entity)
+					entity := spec.FixtureFactory.Create(spec.EntityType)
+					require.Nil(t, spec.Subject.Save(entity))
 
-			if !found {
-				t.Fatal(frameless.ErrIDRequired)
-			}
+					id, found := LookupID(entity)
 
-			ids = append(ids, id)
+					if !found {
+						t.Fatal(frameless.ErrIDRequired)
+					}
 
-			defer spec.Subject.DeleteByID(spec.EntityType, id)
-		}
+					ids = append(ids, id)
 
-		i := spec.Subject.FindAll(spec.EntityType)
-		defer i.Close()
+					defer spec.Subject.DeleteByID(spec.EntityType, id)
+				}
 
-		for i.Next() {
-			entity := reflect.New(reflect.TypeOf(spec.EntityType)).Interface()
+				i := spec.Subject.FindAll(spec.EntityType)
+				defer i.Close()
 
-			require.Nil(t, i.Decode(entity))
+				for i.Next() {
+					entity := reflect.New(reflect.TypeOf(spec.EntityType)).Interface()
 
-			id, found := LookupID(entity)
+					require.Nil(t, i.Decode(entity))
 
-			if !found {
-				t.Fatal(frameless.ErrIDRequired)
-			}
+					id, found := LookupID(entity)
 
-			require.Contains(t, ids, id)
-		}
+					if !found {
+						t.Fatal(frameless.ErrIDRequired)
+					}
 
+					require.Contains(t, ids, id)
+				}
+
+			})
+
+			t.Run("when no value present in the database", func(t *testing.T) {
+				i := spec.Subject.FindAll(spec.EntityType)
+				count, err := iterators.Count(i)
+				require.Nil(t, err)
+				require.Equal(t, 0, count)
+			})
+
+		})
 	})
-
-	t.Run("when no value present in the database", func(t *testing.T) {
-		i := spec.Subject.FindAll(spec.EntityType)
-		count, err := iterators.Count(i)
-		require.Nil(t, err)
-		require.Equal(t, 0, count)
-	})
-
 }
 
 func TestFindAll(t *testing.T, r iFindAll, e interface{}, f FixtureFactory) {
-	t.Run(`FindAll`, func(t *testing.T) {
-		FindAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
-	})
+	FindAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }
