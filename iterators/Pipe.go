@@ -74,7 +74,7 @@ func (f *PipeSender) Encode(e frameless.Entity) error {
 	select {
 	case f.feed <- e:
 		return nil
-	case _, _ = <-f.done:
+	case <-f.done:
 		return ErrClosed
 	}
 }
