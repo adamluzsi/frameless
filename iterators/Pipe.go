@@ -11,7 +11,8 @@ func NewPipe() (*PipeReceiver, *PipeSender) {
 	feed := make(chan frameless.Entity)
 	done := make(chan struct{}, 1)
 	err := make(chan error, 1)
-	return &PipeReceiver{feed: feed, done: done, err: err}, &PipeSender{feed: feed, done: done, err: err}
+	return &PipeReceiver{feed: feed, done: done, err: err},
+		&PipeSender{feed: feed, done: done, err: err}
 }
 
 // PipeReceiver implements iterator interface while it's still being able to receive values, used for streaming

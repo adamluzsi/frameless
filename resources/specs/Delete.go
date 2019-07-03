@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -10,7 +11,7 @@ import (
 )
 
 type Delete interface {
-	Delete(Entity interface{}) error
+	Delete(ctx context.Context, Entity interface{}) error
 }
 
 // DeleteSpec request a destroy of a specific entity that is wrapped in the query use case object
@@ -37,22 +38,22 @@ func (spec DeleteSpec) Test(t *testing.T) {
 	}
 
 	expected := spec.FixtureFactory.Create(spec.EntityType)
-	require.Nil(t, spec.Subject.Save(expected))
+	require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), expected))
 	ID, ok := LookupID(expected)
 
 	if !ok {
 		t.Fatal(frameless.ErrIDRequired)
 	}
 
-	defer spec.Subject.DeleteByID(reflects.BaseValueOf(spec.EntityType).Interface(), ID)
+	defer spec.Subject.DeleteByID(spec.Context(spec.EntityType), reflects.BaseValueOf(spec.EntityType).Interface(), ID)
 
 	t.Run("value is Deleted by providing an EntityType, and then it should not be findable afterwards", func(t *testing.T) {
 
-		err := spec.Subject.Delete(expected)
+		err := spec.Subject.Delete(spec.Context(spec.EntityType), expected)
 		require.Nil(t, err)
 
 		e := spec.FixtureFactory.Create(spec.EntityType)
-		ok, err := spec.Subject.FindByID(ID, e)
+		ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), e, ID)
 		require.Nil(t, err)
 		require.False(t, ok)
 

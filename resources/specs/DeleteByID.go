@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -8,9 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DeleteByID request to destroy a business entity in the storage that implement it's test.
+// DeleteByID request to destroy a business entity in the resource that implement it's test.
 type DeleteByID interface {
-	DeleteByID(Type interface {}, ID string) error
+	DeleteByID(ctx context.Context, Type interface{}, ID string) error
 }
 
 type DeleteByIDSpec struct {
@@ -27,7 +28,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 		for i := 0; i < 10; i++ {
 
 			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Save(entity))
+			require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), entity))
 			ID, ok := LookupID(entity)
 
 			if !ok {
@@ -43,14 +44,14 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 			for _, ID := range ids {
 				e := spec.FixtureFactory.Create(spec.EntityType)
 
-				ok, err := spec.Subject.FindByID(ID, e)
+				ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), e, ID)
 				require.True(t, ok)
 				require.Nil(t, err)
 
-				err = spec.Subject.DeleteByID(e, ID)
+				err = spec.Subject.DeleteByID(spec.Context(spec.EntityType), e, ID)
 				require.Nil(t, err)
 
-				ok, err = spec.Subject.FindByID(ID, e)
+				ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), e, ID)
 				require.Nil(t, err)
 				require.False(t, ok)
 

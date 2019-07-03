@@ -1,9 +1,10 @@
 package specs
 
 import (
+	"context"
+	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 	"testing"
-	"github.com/adamluzsi/testcase"
 )
 
 type FixtureFactory interface {
@@ -11,6 +12,8 @@ type FixtureFactory interface {
 	// Create also populate the struct field with dummy values.
 	// It is expected that the newly created fixture will have no content for extID field.
 	Create(EntityType interface{}) (StructPTR interface{})
+	// Context able to provide the specs with a context object for a certain entity Type.
+	Context(EntityType interface{}) (ctx context.Context)
 }
 
 type FixtureFactorySpec struct {
@@ -48,6 +51,26 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 				require.True(t, has)
 				require.Empty(t, extID)
 			})
+		})
+	})
+
+	s.Describe(`Context`, func(s *testcase.Spec) {
+		subject := func(t *testcase.T) context.Context {
+			return spec.FixtureFactory.Context(spec.Type)
+		}
+
+		s.Then(`it will return a context`, func(t *testcase.T) {
+			require.NotNil(t, subject(t))
+		})
+
+		s.Then(`the context expected to be not cancelled`, func(t *testcase.T) {
+			ctx := subject(t)
+
+			select  {
+			case <-ctx.Done():
+				t.Fatal(`received context is cancelled/Done`)
+			default:
+			}
 		})
 	})
 }

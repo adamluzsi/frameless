@@ -3,6 +3,7 @@ package localstorage
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -27,7 +28,7 @@ type Local struct {
 	CompressionLevel int
 }
 
-func (storage *Local) Purge() error {
+func (storage *Local) Purge(ctx context.Context) error {
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
 			return tx.DeleteBucket(name)
@@ -35,7 +36,7 @@ func (storage *Local) Purge() error {
 	})
 }
 
-func (storage *Local) Truncate(Type interface{}) error {
+func (storage *Local) Truncate(ctx context.Context, Type interface{}) error {
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 		bucketName := storage.BucketNameFor(Type)
 
@@ -47,14 +48,14 @@ func (storage *Local) Truncate(Type interface{}) error {
 	})
 }
 
-func (storage *Local) Save(entity interface{}) error {
+func (storage *Local) Save(ctx context.Context, ptr interface{}) error {
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 
-		if currentID, ok := specs.LookupID(entity); !ok || currentID != "" {
+		if currentID, ok := specs.LookupID(ptr); !ok || currentID != "" {
 			return fmt.Errorf("entity already have an ID: %s", currentID)
 		}
 
-		bucketName := storage.BucketNameFor(entity)
+		bucketName := storage.BucketNameFor(ptr)
 		bucket, err := tx.CreateBucketIfNotExists(bucketName)
 
 		if err != nil {
@@ -69,11 +70,11 @@ func (storage *Local) Save(entity interface{}) error {
 
 		encodedID := strconv.FormatUint(uIntID, 10)
 
-		if err = specs.SetID(entity, encodedID); err != nil {
+		if err = specs.SetID(ptr, encodedID); err != nil {
 			return err
 		}
 
-		value, err := storage.Serialize(entity)
+		value, err := storage.Serialize(ptr)
 
 		if err != nil {
 			return err
@@ -84,7 +85,7 @@ func (storage *Local) Save(entity interface{}) error {
 	})
 }
 
-func (storage *Local) Update(ptr interface{}) error {
+func (storage *Local) Update(ctx context.Context, ptr interface{}) error {
 	encodedID, found := specs.LookupID(ptr)
 
 	if !found || encodedID == "" {
@@ -114,17 +115,17 @@ func (storage *Local) Update(ptr interface{}) error {
 	})
 }
 
-func (storage *Local) Delete(Entity interface{}) error {
+func (storage *Local) Delete(ctx context.Context, Entity interface{}) error {
 	ID, found := specs.LookupID(Entity)
 
 	if !found || ID == "" {
 		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(Entity))
 	}
 
-	return storage.DeleteByID(Entity, ID)
+	return storage.DeleteByID(context.TODO(), Entity, ID)
 }
 
-func (storage *Local) FindAll(Type interface{}) frameless.Iterator {
+func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {
 	r, w := iterators.NewPipe()
 
 	go func() {
@@ -158,7 +159,7 @@ func (storage *Local) FindAll(Type interface{}) frameless.Iterator {
 	return r
 }
 
-func (storage *Local) FindByID(ID string, ptr interface{}) (bool, error) {
+func (storage *Local) FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error) {
 	var found bool
 
 	key, err := storage.IDToBytes(ID)
@@ -188,7 +189,7 @@ func (storage *Local) FindByID(ID string, ptr interface{}) (bool, error) {
 	return found, err
 }
 
-func (storage *Local) DeleteByID(Type interface{}, ID string) error {
+func (storage *Local) DeleteByID(ctx context.Context, Type interface{}, ID string) error {
 
 	ByteID, err := storage.IDToBytes(ID)
 

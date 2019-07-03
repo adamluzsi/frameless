@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 
@@ -10,7 +11,7 @@ import (
 )
 
 type FindByID interface {
-	FindByID(ID string, ptr interface{}) (bool, error)
+	FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error)
 }
 
 type FindByIDSpec struct {
@@ -27,7 +28,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 
 		entity := spec.FixtureFactory.Create(spec.EntityType)
 
-		require.Nil(t, spec.Subject.Save(entity))
+		require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), entity))
 		ID, ok := LookupID(entity)
 
 		if !ok {
@@ -41,14 +42,14 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 
 	defer func() {
 		for _, id := range ids {
-			require.Nil(t, spec.Subject.DeleteByID(spec.EntityType, id))
+			require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), spec.EntityType, id))
 		}
 	}()
 
 	t.Run("when no value stored that the query request", func(t *testing.T) {
 		ptr := reflects.New(spec.EntityType)
 
-		ok, err := spec.Subject.FindByID("not existing ID", ptr)
+		ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), ptr, "not existing ID")
 
 		require.Nil(t, err)
 		require.False(t, ok)
@@ -58,7 +59,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 		for _, ID := range ids {
 
 			entityPtr := reflects.New(spec.EntityType)
-			ok, err := spec.Subject.FindByID(ID, entityPtr)
+			ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), entityPtr, ID)
 
 			require.Nil(t, err)
 			require.True(t, ok)

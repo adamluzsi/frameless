@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 type Save interface {
-	Save(interface{}) error
+	Save(ctx context.Context, ptr interface{}) error
 }
 
 type SaveSpec struct {
@@ -33,7 +34,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		}
 
 		e := spec.FixtureFactory.Create(spec.EntityType)
-		err := spec.Subject.Save(e)
+		err := spec.Subject.Save(spec.Context(spec.EntityType), e)
 
 		require.Nil(t, err)
 
@@ -43,19 +44,19 @@ func (spec SaveSpec) Test(t *testing.T) {
 
 		actual := spec.FixtureFactory.Create(spec.EntityType)
 
-		ok, err = spec.Subject.FindByID(ID, actual)
+		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), actual, ID)
 		require.Nil(t, err)
 		require.True(t, ok)
 		require.Equal(t, e, actual)
 
-		require.Nil(t, spec.Subject.DeleteByID(spec.EntityType, ID))
+		require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), spec.EntityType, ID))
 
 	})
 
 	t.Run("when entity already have an ID", func(t *testing.T) {
 		newEntity := spec.FixtureFactory.Create(spec.EntityType)
 		require.Nil(t, SetID(newEntity, "Hello world!"))
-		require.Error(t, spec.Subject.Save(newEntity))
+		require.Error(t, spec.Subject.Save(spec.Context(spec.EntityType), newEntity))
 	})
 }
 

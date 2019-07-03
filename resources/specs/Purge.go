@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 type Purge interface {
-	Purge() error
+	Purge(ctx context.Context) error
 }
 
 type PurgeSpec struct {
@@ -27,7 +28,7 @@ func (spec PurgeSpec) Test(t *testing.T) {
 	t.Run("purge out all data from the given resource", func(t *testing.T) {
 
 		fixture := spec.FixtureFactory.Create(spec.EntityType)
-		err := spec.Subject.Save(fixture)
+		err := spec.Subject.Save(spec.Context(spec.EntityType), fixture)
 		id, ok := LookupID(fixture)
 
 		require.True(t, ok)
@@ -35,14 +36,14 @@ func (spec PurgeSpec) Test(t *testing.T) {
 		require.Nil(t, err)
 
 		value := reflects.New(spec.EntityType)
-		ok, err = spec.Subject.FindByID(id, value)
+		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), value, id)
 		require.True(t, ok)
 		require.Nil(t, err)
 		require.Equal(t, fixture, value)
 
-		require.Nil(t, spec.Subject.Purge())
+		require.Nil(t, spec.Subject.Purge(spec.Context(spec.EntityType)))
 
-		ok, err = spec.Subject.FindByID(id, reflects.New(spec.EntityType))
+		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), reflects.New(spec.EntityType), id)
 		require.Nil(t, err)
 		require.False(t, ok)
 

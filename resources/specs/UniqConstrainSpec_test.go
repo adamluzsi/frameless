@@ -1,6 +1,7 @@
 package specs_test
 
 import (
+	"context"
 	"errors"
 	"github.com/adamluzsi/frameless/resources/specs"
 	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
@@ -28,8 +29,8 @@ type UniqStorage struct {
 	*memorystorage.Memory
 }
 
-func (s *UniqStorage) Save(e interface{}) error {
-	switch e := e.(type) {
+func (s *UniqStorage) Save(ctx context.Context, ptr interface{}) error {
+	switch e := ptr.(type) {
 	case SampleStruct:
 		table := s.TableFor(e)
 		for _, entity := range table {
@@ -38,5 +39,5 @@ func (s *UniqStorage) Save(e interface{}) error {
 			}
 		}
 	}
-	return s.Memory.Save(e)
+	return s.Memory.Save(ctx, ptr)
 }

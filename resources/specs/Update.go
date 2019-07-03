@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 )
 
 type Update interface {
-	Update(ptr interface{}) error
+	Update(ctx context.Context, ptr interface{}) error
 }
 
 // UpdateSpec will request an update for a wrapped entity object in the resource
@@ -37,7 +38,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 		setup := func(t *testing.T) (string, func()) {
 			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Save(entity))
+			require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), entity))
 
 			ID, ok := LookupID(entity)
 
@@ -47,7 +48,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 			require.True(t, len(ID) > 0)
 
-			td := func() { require.Nil(t, spec.Subject.DeleteByID(spec.EntityType, ID)) }
+			td := func() { require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), spec.EntityType, ID)) }
 
 			return ID, td
 		}
@@ -59,11 +60,11 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 			newEntity := spec.FixtureFactory.Create(spec.EntityType)
 			require.Nil(t, SetID(newEntity, ID))
 
-			err := spec.Subject.Update(newEntity)
+			err := spec.Subject.Update(spec.Context(spec.EntityType), newEntity)
 			require.Nil(t, err)
 
 			actually := spec.FixtureFactory.Create(spec.EntityType)
-			ok, err := spec.Subject.FindByID(ID, actually)
+			ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), actually, ID)
 			require.True(t, ok)
 			require.Nil(t, err)
 
@@ -77,7 +78,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 			newEntity := spec.FixtureFactory.Create(spec.EntityType)
 			require.Nil(t, SetID(newEntity, "hitchhiker's guide to the galaxy"))
-			require.Error(t, spec.Subject.Update(newEntity))
+			require.Error(t, spec.Subject.Update(spec.Context(spec.EntityType), newEntity))
 		})
 
 	})

@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources/specs"
 )
@@ -15,4 +16,8 @@ func (f GenericFixtureFactory) Create(entity interface{}) interface{} {
 		}
 	}
 	return newEntity
+}
+
+func (f GenericFixtureFactory) Context(entity interface{}) context.Context {
+	return context.Background()
 }

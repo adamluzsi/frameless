@@ -1,6 +1,7 @@
 package memorystorage
 
 import (
+	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/resources/specs"
@@ -27,42 +28,42 @@ type Memory struct {
 	Mutex *sync.RWMutex
 }
 
-func (storage *Memory) Update(entity interface{}) error {
+func (storage *Memory) Update(ctx context.Context, entityPtr interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
-	ID, found := specs.LookupID(entity)
+	ID, found := specs.LookupID(entityPtr)
 
 	if !found {
-		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
+		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entityPtr).Name())
 	}
 
-	table := storage.TableFor(entity)
+	table := storage.TableFor(entityPtr)
 
 	if _, ok := table[ID]; !ok {
-		return fmt.Errorf("%s id not found in the %s table", ID, reflects.FullyQualifiedName(entity))
+		return fmt.Errorf("%s id not found in the %s table", ID, reflects.FullyQualifiedName(entityPtr))
 	}
 
-	table[ID] = entity
+	table[ID] = entityPtr
 
 	return nil
 }
 
-func (storage *Memory) Delete(entity interface{}) error {
+func (storage *Memory) Delete(ctx context.Context, entity interface{}) error {
 	ID, found := specs.LookupID(entity)
 
 	if !found {
 		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
 	}
 
-	return storage.DeleteByID(entity, ID)
+	return storage.DeleteByID(context.TODO(), entity, ID)
 }
 
-func (storage *Memory) DeleteByID(Entity interface{}, ID string) error {
+func (storage *Memory) DeleteByID(ctx context.Context, Type interface{}, ID string) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
-	table := storage.TableFor(Entity)
+	table := storage.TableFor(Type)
 
 	if _, ok := table[ID]; ok {
 		delete(table, ID)
@@ -71,7 +72,7 @@ func (storage *Memory) DeleteByID(Entity interface{}, ID string) error {
 	return nil
 }
 
-func (storage *Memory) FindAll(Type interface{}) frameless.Iterator {
+func (storage *Memory) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {
 	storage.Mutex.RLock()
 	defer storage.Mutex.RUnlock()
 
@@ -85,20 +86,20 @@ func (storage *Memory) FindAll(Type interface{}) frameless.Iterator {
 	return iterators.NewSlice(entities)
 }
 
-func (storage *Memory) Save(entity interface{}) error {
+func (storage *Memory) Save(ctx context.Context, ptr interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
-	if currentID, ok := specs.LookupID(entity); !ok || currentID != "" {
+	if currentID, ok := specs.LookupID(ptr); !ok || currentID != "" {
 		return fmt.Errorf("entity already have an ID: %s", currentID)
 	}
 
 	id := fixtures.RandomString(42)
-	storage.TableFor(entity)[id] = entity
-	return specs.SetID(entity, id)
+	storage.TableFor(ptr)[id] = ptr
+	return specs.SetID(ptr, id)
 }
 
-func (storage *Memory) FindByID(ID string, ptr interface{}) (bool, error) {
+func (storage *Memory) FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error) {
 	storage.Mutex.RLock()
 	defer storage.Mutex.RUnlock()
 
@@ -115,7 +116,7 @@ func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *Memory) Purge() (rerr error) {
+func (storage *Memory) Purge(ctx context.Context) (rerr error) {
 	defer func() {
 		r := recover()
 
@@ -150,7 +151,7 @@ func (storage *Memory) TableFor(e interface{}) MemoryTable {
 	return storage.DB[name]
 }
 
-func (storage *Memory) Truncate(Type interface{}) error {
+func (storage *Memory) Truncate(ctx context.Context, Type interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 

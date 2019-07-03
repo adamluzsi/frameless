@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/reflects"
 	"testing"
 
@@ -8,7 +9,7 @@ import (
 )
 
 type Truncate interface {
-	Truncate(Type interface{}) error
+	Truncate(ctx context.Context, Type interface{}) error
 }
 
 type TruncateSpec struct {
@@ -21,7 +22,7 @@ func (spec TruncateSpec) Test(t *testing.T) {
 
 	populateFor := func(t *testing.T, Type interface{}) string {
 		fixture := spec.FixtureFactory.Create(Type)
-		require.Nil(t, spec.Subject.Save(fixture))
+		require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), fixture))
 
 		id, ok := LookupID(fixture)
 		require.True(t, ok)
@@ -32,7 +33,7 @@ func (spec TruncateSpec) Test(t *testing.T) {
 
 	isStored := func(t *testing.T, ID string, Type interface{}) bool {
 		entity := reflects.New(Type)
-		ok, err := spec.Subject.FindByID(ID, entity)
+		ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), entity, ID)
 		require.Nil(t, err)
 		return ok
 	}
@@ -45,12 +46,12 @@ func (spec TruncateSpec) Test(t *testing.T) {
 		require.True(t, isStored(t, eID, spec.EntityType))
 		require.True(t, isStored(t, oID, TestEntity{}))
 
-		require.Nil(t, spec.Subject.Truncate(spec.EntityType))
+		require.Nil(t, spec.Subject.Truncate(spec.Context(spec.EntityType), spec.EntityType))
 
 		require.False(t, isStored(t, eID, spec.EntityType))
 		require.True(t, isStored(t, oID, TestEntity{}))
 
-		require.Nil(t, spec.Subject.DeleteByID(TestEntity{}, oID))
+		require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), TestEntity{}, oID))
 
 	})
 }
