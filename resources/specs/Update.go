@@ -63,7 +63,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 			err := spec.Subject.Update(spec.Context(spec.EntityType), newEntity)
 			require.Nil(t, err)
 
-			actually := spec.FixtureFactory.Create(spec.EntityType)
+			actually := reflects.New(spec.EntityType)
 			ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), actually, ID)
 			require.True(t, ok)
 			require.Nil(t, err)
@@ -72,7 +72,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 		})
 
-		t.Run("values in the r but the requested entity that should be updated is not exists", func(t *testing.T) {
+		t.Run("when request id does not exist it will return with error", func(t *testing.T) {
 			_, td := setup(t)
 			defer td()
 

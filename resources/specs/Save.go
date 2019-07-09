@@ -42,7 +42,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		require.True(t, ok, "ID is not defined in the entity struct src definition")
 		require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
-		actual := spec.FixtureFactory.Create(spec.EntityType)
+		actual := reflects.New(spec.EntityType)
 
 		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), actual, ID)
 		require.Nil(t, err)
