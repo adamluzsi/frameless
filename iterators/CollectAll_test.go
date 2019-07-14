@@ -21,6 +21,19 @@ func TestAndCollectAll_NonPointerValues(t *testing.T) {
 	require.Equal(t, expected, actually)
 }
 
+func TestAndCollectAll_PlainStructTypes(t *testing.T) {
+	t.Parallel()
+
+	var expected []Entity = []Entity{Entity{"A"}, Entity{"B"}, Entity{"C"}, Entity{"D"}}
+	var actually []Entity
+
+	i := iterators.NewSlice(expected)
+
+	require.Nil(t, iterators.CollectAll(i, &actually))
+
+	require.Equal(t, expected, actually)
+}
+
 func TestAndCollectAll_PointerValues(t *testing.T) {
 	t.Parallel()
 
