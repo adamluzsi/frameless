@@ -14,8 +14,9 @@ func NewSQLRows(rows SQLRows, mapper SQLRowMapper) *SQLRowsIterator {
 // by using this wrapping around it.
 // it also makes testing easier with the same frameless.Iterator interface.
 type SQLRowsIterator struct {
-	rows   SQLRows
-	mapper SQLRowMapper
+	rows    SQLRows
+	mapper  SQLRowMapper
+	current interface{}
 }
 
 func (i *SQLRowsIterator) Close() error {
