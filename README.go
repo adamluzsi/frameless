@@ -11,26 +11,58 @@ This research project primary was created for myself, to refresh and sort out my
 
 The reason
 
-While I had the pleasure to work with software engineers that I respected for both personality and knowledge,
-there was one commonly returning feeling that kept bothering me.
-And It was that most frameworks that offer convention over configuration usually picture everything within the context,
-therefore *vendor if developers follow those conventions blindly, they fall prey on reveres dependency inversion.
-One such case when you hear a sentence like "It is risky to upgrade the xy framework version without enough time to see through everything."
+There is a nice trade-off between using certain conventions or a framework that try to collect experience
+and build safety guards for those who may not experienced the same pitfalls yet.
+Using a framework on hand allows new recruits to able to create value for the company,
+on the other hand, hides a lot of internals from them
+and prevents understanding certain problems from simplicity point of view.
+As a side effect, frameworks often leak into the design of the application.
+It is nice to have something that able to provide ability to avoid common pitfalls,
+but I believe, that it is important to keep in front of our eye,
+that if we have a hammer, we should not think about every problem as nails.
+There is nothing wrong using frameworks, but we have to make sure,
+they are only used for a certain problem only, and not for gluing together everything.
+For example, if a framework provide help handling HTTP requests,
+we should not over using it, to external resources (like DB), business logic (use-cases) and business entities.
+As long we discipline ourselves to keep everything for what it meant to,
+we will receive maintainability, observability and minimal mental model needs in our project.
+Trough this, we can make sure, that our application use certain knowledge from the framework,
+and not an "xy framework app" that is heavily vendor locked to that framework.
+Having to deep connection with a framework can easily cause our application
+to be volatile against breaking changes in the framework.
 
-Most of these framework requires disciplined following its conventions,
-which I acknowledge for team saleability and productivity reasons.
-But at the same time, I see that it is also counter-intuitive because if software design gets mixed up with the framework,
-your team scalability may be boosted in the short term, but suffer productivity bottlenecks in the long run.
-There is a countless example for this when you think about legacy applications that you would not like to touch it.
-And for cases where you say it's easier to rewrite it than fix it,
-there is still no guarantee that that rewriting will not suffer from the same pitfalls.
+This conventions that I collected in this project are serve me one purpose,
+which is to overcome the fact that as a human, we are in generally bad at programming.
+We have limited mental model capacity, and it takes time to build it up, and if one mistake made during that,
+the wrongly build mental model will cause bugs, and it needs minimum rubber duck debugging to fix the model.
+And to fight this and similar problems all the techniques here aim to minimise during programming
+the required mental model, help practice roles alone such as the "driver" and the "navigator"
+and in general to design the application in a way, where existing code base more or less protected from changes.
+The later is especially useful, because modern programming relies on scientific approach to test the system,
+and providing full edge case coverage can be exponentially hard.
+Don't mix it together with the test coverage % that only check whether the code path
+is being used once from a test case or not.
+Therefore when a code being used by the masses (users), it is likely used in a way
+that we didn't explicitly specified, and in order to not break expected system behaviors,
+minimising the need to change existing code base can help in general.
+I heavily sympathise on TDD/BDD but even with a full % coverage,
+the edge cases between components are in general harder to test than in simple unit tests with contracts.
 
-I'm in no position to define this is good or not. The software made this way could be really high quality.
-All I could say that I like to have fast test builds and space to try out new technology while not affect software design by it.
+The quality of the software in this project therefore defined by factors as
+how likely you have to change existing code base,
+how fast you receive back feedback regarding your change,
+at what quality level it able to provide feedback about system behavior changes,
+and how big mental model you need to build in order to understand the application on high level.
 
-But because people expecting results to be delivered, and if possible by yesterday,
-It's rare to have a moment to think every project through.
-And because I like to think through things, play in mind what could be the future outcome of a given decision...
+
+The Pressure
+
+Because different stakeholders expect results to be delivered, and if possible as soon as possible,
+It's rare to have a moment to think every decision through in a life of a project.
+The most often challenging ones are decisions made to avoid some boilerplate in the name of minimalism,
+but on the long run results in interface violations because rewrites.
+
+I like to think through things, play in mind that what could be the future outcome of a given decision...
 How will it affect maintainability?
 How easy will the code be consumed if someone joins the team of that project and want to read it alone?
 How much effort will be required to build the mental model for the code?
@@ -38,6 +70,8 @@ These are the questions I like to sort out beforehand by building principles tha
 
 You will not find anything regarding complete out of the box solutions,
 just some idea and practice I like to follow while working on projects.
+Please don't expect in this repo examples in a way, that you can easily wire into your project.
+You can check projects that use idioms from here if you interested in such examples.
 
 
 
@@ -89,17 +123,6 @@ Pike's rules 1 and 2 restate Tony Hoare's famous maxim "Premature optimization i
 Ken Thompson rephrased Pike's rules 3 and 4 as "When in doubt, use brute force.".
 Rules 3 and 4 are instances of the design philosophy KISS.
 Rule 5 was previously stated by Fred Brooks in The Mythical Man-Month.
-
-
-
-
-Last notes
-
-As a last note, most of the interfaces defined here may only contain a few or just one function signature,
-it is because I tried to remove everything that is YAGNI in order to achieve a final goal for a given project.
-Query is the typical example of this because you only implement those that you use it. and nothing more.
-I would like to ask you, to feel free to express your opinion, I like to listen to new perspectives,
-so please feel free to create an issue on github where we can discuss this!
 
 
 
