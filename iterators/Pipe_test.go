@@ -2,11 +2,9 @@ package iterators_test
 
 import (
 	"errors"
+	"github.com/adamluzsi/frameless"
 	"sync"
 	"testing"
-	"time"
-
-	"github.com/adamluzsi/frameless"
 
 	"github.com/stretchr/testify/require"
 
@@ -121,7 +119,9 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 }
 
 func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndReceiverNotifiedAfterTheError(t *testing.T) {
-	t.Skip(`WIP`)
+	// if there will be a use-case where iterator Err being checked before iter.Next
+	// then this test will be resurrected and will be implemented.
+	t.Skip(`YAGNI`)
 
 	if testing.Short() {
 		t.Skip()
@@ -133,14 +133,18 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndR
 
 	r, w := iterators.NewPipe()
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
 		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
-		time.Sleep(1 * time.Millisecond) // take a nap before telling about the error here
+		wg.Wait()
 		w.Error(expected)
 		require.Nil(t, w.Close())
 	}()
 
-	require.Nil(t, r.Err())             // no error so far
+	require.Nil(t, r.Err()) // no error so far
+	wg.Done()
 	require.True(t, r.Next())           // everything goes smoothly, I'm notified about next value
 	require.Nil(t, r.Decode(&Entity{})) // I even able to decode it as well
 	require.Equal(t, expected, r.Err()) // Also tells me that something went wrong during/after the processing
