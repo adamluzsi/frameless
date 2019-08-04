@@ -115,6 +115,10 @@ func (storage *Memory) FindByID(ctx context.Context, ptr interface{}, ID string)
 	storage.Mutex.RLock()
 	defer storage.Mutex.RUnlock()
 
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
 	entity, found := storage.TableFor(ptr)[ID]
 
 	if found {

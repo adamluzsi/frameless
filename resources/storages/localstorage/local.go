@@ -168,6 +168,10 @@ func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.I
 }
 
 func (storage *Local) FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
 	var found bool
 
 	key, err := storage.IDToBytes(ID)
