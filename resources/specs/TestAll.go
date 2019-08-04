@@ -12,7 +12,6 @@ type Resource interface {
 	Delete
 	DeleteByID
 	Truncate
-	Purge
 }
 
 func TestAll(t *testing.T, r Resource, e interface{}, f FixtureFactory) {
@@ -35,7 +34,6 @@ func TestAll(t *testing.T, r Resource, e interface{}, f FixtureFactory) {
 			TestDelete(t, r, e, f)
 			TestDeleteByID(t, r, e, f)
 			TestTruncate(t, r, e, f)
-			TestPurge(t, r, e, f)
 		})
 
 	})

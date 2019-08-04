@@ -28,14 +28,6 @@ type Local struct {
 	CompressionLevel int
 }
 
-func (storage *Local) Purge(ctx context.Context) error {
-	return storage.DB.Update(func(tx *bolt.Tx) error {
-		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
-			return tx.DeleteBucket(name)
-		})
-	})
-}
-
 func (storage *Local) Truncate(ctx context.Context, Type interface{}) error {
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 		bucketName := storage.BucketNameFor(Type)

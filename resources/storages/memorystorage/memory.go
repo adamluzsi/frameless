@@ -132,31 +132,6 @@ func (storage *Memory) Close() error {
 	return nil
 }
 
-func (storage *Memory) Purge(ctx context.Context) (rerr error) {
-	defer func() {
-		r := recover()
-
-		if r == nil {
-			return
-		}
-
-		err, ok := r.(error)
-
-		if ok {
-			rerr = err
-		}
-	}()
-
-	storage.Mutex.Lock()
-	defer storage.Mutex.Unlock()
-
-	for k, _ := range storage.DB {
-		delete(storage.DB, k)
-	}
-
-	return
-}
-
 func (storage *Memory) TableFor(e interface{}) MemoryTable {
 	name := reflects.FullyQualifiedName(e)
 
