@@ -1,6 +1,6 @@
 package iterators_test
 
-//go:generate mockgen
+//go:generate mockgen -destination SQLRows_mocks_test.go -source SQLRows.go -package iterators_test
 
 import (
 	"context"

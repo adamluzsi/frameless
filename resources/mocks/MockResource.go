@@ -91,20 +91,6 @@ func (mr *MockResourceMockRecorder) FindByID(arg0, arg1, arg2 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FindByID", reflect.TypeOf((*MockResource)(nil).FindByID), arg0, arg1, arg2)
 }
 
-// Purge mocks base method
-func (m *MockResource) Purge(arg0 context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Purge", arg0)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Purge indicates an expected call of Purge
-func (mr *MockResourceMockRecorder) Purge(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Purge", reflect.TypeOf((*MockResource)(nil).Purge), arg0)
-}
-
 // Save mocks base method
 func (m *MockResource) Save(arg0 context.Context, arg1 interface{}) error {
 	m.ctrl.T.Helper()
