@@ -150,6 +150,10 @@ func (storage *Memory) Truncate(ctx context.Context, Type interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	name := reflects.FullyQualifiedName(Type)
 
 	if _, ok := storage.DB[name]; ok {

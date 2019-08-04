@@ -29,6 +29,10 @@ type Local struct {
 }
 
 func (storage *Local) Truncate(ctx context.Context, Type interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 		bucketName := storage.BucketNameFor(Type)
 
