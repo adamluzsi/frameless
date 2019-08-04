@@ -2,7 +2,7 @@ package iterators_test
 
 import (
 	"errors"
-	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -65,7 +65,7 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 }
 
 func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
-	// This test cannot run in Parallel mode, because we need to ask the scheduler to run the other routines
+	t.Parallel()
 
 	// skip when only short test expected
 	// this test is slow because it has sleep in it
@@ -80,24 +80,21 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 
 	r, w := iterators.NewPipe()
 
-	go func() {
-		defer w.Close()
-
-		require.Equal(t, iterators.ErrClosed, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
-	}()
-
-	// normally next should not be called after a Close, but in the test I have to define the behavior
-	// so in order to prevent over-engineering in sender Encode method,
-	for i := 0; i < 1024; i++ {
-		runtime.Gosched()
-		time.Sleep(time.Nanosecond)
-	}
-
 	require.Nil(t, r.Close()) // I release the resource,
 	// for example something went wrong during the processing on my side (receiver) and I can't continue work,
 	// but I want to note this to the sender as well
 	require.Nil(t, r.Close()) // multiple times because defer ensure and other reasons
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		defer w.Close()
+		require.Equal(t, iterators.ErrClosed, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+	}()
+
+	wg.Wait()
 	require.False(t, r.Next())            // the sender is notified about this and stopped sending messages
 	require.Error(t, r.Decode(&Entity{})) // and for some reason when I want to decode, it tells me the iterator closed. It was the sender who close it
 }
