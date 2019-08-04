@@ -118,11 +118,11 @@ func (storage *Local) Update(ctx context.Context, ptr interface{}) error {
 func (storage *Local) Delete(ctx context.Context, Entity interface{}) error {
 	ID, found := specs.LookupID(Entity)
 
-	if !found || ID == "" {
+	if !found {
 		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(Entity))
 	}
 
-	return storage.DeleteByID(context.TODO(), Entity, ID)
+	return storage.DeleteByID(ctx, Entity, ID)
 }
 
 func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {
@@ -190,6 +190,9 @@ func (storage *Local) FindByID(ctx context.Context, ptr interface{}, ID string) 
 }
 
 func (storage *Local) DeleteByID(ctx context.Context, Type interface{}, ID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	ByteID, err := storage.IDToBytes(ID)
 

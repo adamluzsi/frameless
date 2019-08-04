@@ -2,10 +2,9 @@ package specs
 
 import (
 	"context"
-	"testing"
-
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/testcase"
+	"testing"
 
 	"github.com/stretchr/testify/require"
 )
@@ -29,39 +28,86 @@ type iDelete interface {
 
 // Test will test that an DeleteSpec is implemented by a generic specification
 func (spec DeleteSpec) Test(t *testing.T) {
+	s := testcase.NewSpec(t)
 
-	if _, hasExtID := LookupID(spec.EntityType); !hasExtID {
-		t.Fatalf(
-			`entity type that doesn't include external resource ID field is not compatible with this contract (%s)`,
-			reflects.FullyQualifiedName(spec.EntityType),
-		)
-	}
+	s.Before(func(t *testcase.T) {
+		_, hasID := LookupID(spec.EntityType)
+		require.True(t, hasID, frameless.ErrIDRequired.Error())
+	})
 
-	expected := spec.FixtureFactory.Create(spec.EntityType)
-	require.Nil(t, spec.Subject.Save(spec.Context(), expected))
-	ID, ok := LookupID(expected)
+	s.Describe(`Delete`, func(s *testcase.Spec) {
 
-	if !ok {
-		t.Fatal(frameless.ErrIDRequired)
-	}
+		subject := func(t *testcase.T) error {
+			return spec.Subject.Delete(
+				t.I(`ctx`).(context.Context),
+				t.I(`entity`),
+			)
+		}
 
-	defer spec.Subject.DeleteByID(spec.Context(), reflects.BaseValueOf(spec.EntityType).Interface(), ID)
+		s.Let(`ctx`, func(t *testcase.T) interface{} {
+			return spec.Context()
+		})
 
-	t.Run("value is Deleted by providing an EntityType, and then it should not be findable afterwards", func(t *testing.T) {
+		s.Let(`entity`, func(t *testcase.T) interface{} {
+			return spec.FixtureFactory.Create(spec.EntityType)
+		})
 
-		err := spec.Subject.Delete(spec.Context(), expected)
-		require.Nil(t, err)
+		s.Before(func(t *testcase.T) {
+			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+		})
 
-		e := spec.FixtureFactory.Create(spec.EntityType)
-		ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
-		require.Nil(t, err)
-		require.False(t, ok)
+		s.When(`ID is set in the entity object`, func(s *testcase.Spec) {
+			s.Around(func(t *testcase.T) func() {
+				entity := t.I(`entity`)
+				require.Nil(t, spec.Subject.Save(spec.Context(), entity))
+				id, ok := LookupID(entity)
+				require.True(t, ok, frameless.ErrIDRequired.Error())
 
+				return func() {
+					_ = spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
+				}
+			})
+
+			s.Then(`it is expected to delete the object in the resource`, func(t *testcase.T) {
+				entity := t.I(`entity`)
+				ID, _ := LookupID(entity)
+
+				err := subject(t)
+				require.Nil(t, err)
+
+				e := spec.FixtureFactory.Create(spec.EntityType)
+				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
+				require.Nil(t, err)
+				require.False(t, ok)
+			})
+		})
+
+		s.When(`ID is has no value or empty in the entity`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				id, ok := LookupID(t.I(`entity`))
+				require.True(t, ok)
+				require.Empty(t, id)
+			})
+
+			s.Test(`it is expected to return with error`, func(t *testcase.T) {
+				require.Error(t, subject(t))
+			})
+		})
+
+		s.When(`context arg is canceled`, func(s *testcase.Spec) {
+			s.Let(`ctx`, func(t *testcase.T) interface{} {
+				ctx, cancel := context.WithCancel(spec.Context())
+				cancel()
+				return ctx
+			})
+
+			s.Then(`it will respond with ctx canceled error`, func(t *testcase.T) {
+				require.Equal(t, context.Canceled, subject(t))
+			})
+		})
 	})
 }
 
 func TestDelete(t *testing.T, r iDelete, e interface{}, f FixtureFactory) {
-	t.Run(`Delete`, func(t *testing.T) {
-		DeleteSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
-	})
+	DeleteSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
 }

@@ -56,20 +56,28 @@ func (storage *Memory) Delete(ctx context.Context, entity interface{}) error {
 		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
 	}
 
-	return storage.DeleteByID(context.TODO(), entity, ID)
+	return storage.DeleteByID(ctx, entity, ID)
 }
 
 func (storage *Memory) DeleteByID(ctx context.Context, Type interface{}, ID string) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
-	table := storage.TableFor(Type)
-
-	if _, ok := table[ID]; ok {
-		delete(table, ID)
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	return nil
+	table := storage.TableFor(Type)
+
+	_, ok := table[ID]
+
+	if !ok {
+		return frameless.ErrNotFound
+	}
+
+	delete(table, ID)
+
+	return ctx.Err()
 }
 
 func (storage *Memory) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {

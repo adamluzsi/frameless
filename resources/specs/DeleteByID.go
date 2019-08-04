@@ -2,6 +2,8 @@ package specs
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/testcase"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -15,54 +17,121 @@ type DeleteByID interface {
 }
 
 type DeleteByIDSpec struct {
-	EntityType interface {}
+	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
 func (spec DeleteByIDSpec) Test(t *testing.T) {
+	s := testcase.NewSpec(t)
 
-	t.Run("given database is populated", func(t *testing.T) {
-		var ids []string
+	s.Describe(`DeleteByID`, func(s *testcase.Spec) {
 
-		for i := 0; i < 10; i++ {
-
-			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Save(spec.Context(), entity))
-			ID, ok := LookupID(entity)
-
-			if !ok {
-				t.Fatal(frameless.ErrIDRequired)
-			}
-
-			require.True(t, len(ID) > 0)
-			ids = append(ids, ID)
-
+		subject := func(t *testcase.T) error {
+			return spec.Subject.DeleteByID(
+				t.I(`ctx`).(context.Context),
+				spec.EntityType,
+				t.I(`id`).(string),
+			)
 		}
 
-		t.Run("using delete by id makes entity with ID not find-able", func(t *testing.T) {
-			for _, ID := range ids {
-				e := spec.FixtureFactory.Create(spec.EntityType)
+		s.Let(`ctx`, func(t *testcase.T) interface{} {
+			return spec.Context()
+		})
 
-				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
-				require.True(t, ok)
+		s.Before(func(t *testcase.T) {
+			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+		})
+
+		s.Let(`entity`, func(t *testcase.T) interface{} {
+			return spec.FixtureFactory.Create(spec.EntityType)
+		})
+
+		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
+			})
+
+			s.Let(`id`, func(t *testcase.T) interface{} {
+				id, ok := LookupID(t.I(`entity`))
+				require.True(t, ok, frameless.ErrIDRequired.Error())
+				require.NotEmpty(t, id)
+				return id
+			})
+
+			s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
+				require.Nil(t, subject(t))
+				e := reflects.New(spec.EntityType)
+				found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`).(string))
 				require.Nil(t, err)
+				require.False(t, found)
+			})
 
-				err = spec.Subject.DeleteByID(spec.Context(), e, ID)
-				require.Nil(t, err)
+			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
+				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
+					return spec.FixtureFactory.Create(spec.EntityType)
+				})
+				s.Before(func(t *testcase.T) {
+					require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`oth-entity`)))
+				})
 
-				ok, err = spec.Subject.FindByID(spec.Context(), e, ID)
-				require.Nil(t, err)
-				require.False(t, ok)
+				s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
+					require.Nil(t, subject(t))
 
-			}
+					othID, ok := LookupID(t.I(`oth-entity`))
+					require.True(t, ok, frameless.ErrIDRequired.Error())
+
+					e := reflects.New(spec.EntityType)
+					found, err := spec.Subject.FindByID(spec.Context(), e, othID)
+					require.Nil(t, err)
+					require.True(t, found)
+				})
+			})
+
+			s.And(`the entity was deleted then`, func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					require.Nil(t, subject(t))
+				})
+
+				s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
+					require.Error(t, subject(t))
+				})
+			})
+		})
+
+		s.When(`entity never saved before in the resource`, func(s *testcase.Spec) {
+			s.Let(`id`, func(t *testcase.T) interface{} {
+				id, _ := LookupID(t.I(`entity`))
+				return id
+			})
+
+			s.Before(func(t *testcase.T) {
+				require.Empty(t, t.I(`id`).(string))
+			})
+
+			s.Then(`it will return with error, because you cannot delete something that does not exist`, func(t *testcase.T) {
+				require.Error(t, subject(t))
+			})
+		})
+
+		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
+			s.Let(`id`, func(t *testcase.T) interface{} {
+				return ``
+			})
+
+			s.Let(`ctx`, func(t *testcase.T) interface{} {
+				ctx, cancel := context.WithCancel(spec.Context())
+				cancel()
+				return ctx
+			})
+
+			s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+				require.Equal(t, context.Canceled, subject(t))
+			})
 		})
 	})
-
 }
 
 func TestDeleteByID(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	t.Run(`DeleteByID`, func(t *testing.T) {
-		DeleteByIDSpec{Subject:r, EntityType: e, FixtureFactory: f}.Test(t)
-	})
+	DeleteByIDSpec{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
 }
