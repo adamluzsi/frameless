@@ -28,7 +28,7 @@ func (spec PurgeSpec) Test(t *testing.T) {
 	t.Run("purge out all data from the given resource", func(t *testing.T) {
 
 		fixture := spec.FixtureFactory.Create(spec.EntityType)
-		err := spec.Subject.Save(spec.Context(spec.EntityType), fixture)
+		err := spec.Subject.Save(spec.Context(), fixture)
 		id, ok := LookupID(fixture)
 
 		require.True(t, ok)
@@ -36,14 +36,14 @@ func (spec PurgeSpec) Test(t *testing.T) {
 		require.Nil(t, err)
 
 		value := reflects.New(spec.EntityType)
-		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), value, id)
+		ok, err = spec.Subject.FindByID(spec.Context(), value, id)
 		require.True(t, ok)
 		require.Nil(t, err)
 		require.Equal(t, fixture, value)
 
-		require.Nil(t, spec.Subject.Purge(spec.Context(spec.EntityType)))
+		require.Nil(t, spec.Subject.Purge(spec.Context()))
 
-		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), reflects.New(spec.EntityType), id)
+		ok, err = spec.Subject.FindByID(spec.Context(), reflects.New(spec.EntityType), id)
 		require.Nil(t, err)
 		require.False(t, ok)
 

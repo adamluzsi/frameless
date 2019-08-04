@@ -22,7 +22,7 @@ func (spec TruncateSpec) Test(t *testing.T) {
 
 	populateFor := func(t *testing.T, Type interface{}) string {
 		fixture := spec.FixtureFactory.Create(Type)
-		require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), fixture))
+		require.Nil(t, spec.Subject.Save(spec.Context(), fixture))
 
 		id, ok := LookupID(fixture)
 		require.True(t, ok)
@@ -33,7 +33,7 @@ func (spec TruncateSpec) Test(t *testing.T) {
 
 	isStored := func(t *testing.T, ID string, Type interface{}) bool {
 		entity := reflects.New(Type)
-		ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), entity, ID)
+		ok, err := spec.Subject.FindByID(spec.Context(), entity, ID)
 		require.Nil(t, err)
 		return ok
 	}
@@ -46,12 +46,12 @@ func (spec TruncateSpec) Test(t *testing.T) {
 		require.True(t, isStored(t, eID, spec.EntityType))
 		require.True(t, isStored(t, oID, TestEntity{}))
 
-		require.Nil(t, spec.Subject.Truncate(spec.Context(spec.EntityType), spec.EntityType))
+		require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 
 		require.False(t, isStored(t, eID, spec.EntityType))
 		require.True(t, isStored(t, oID, TestEntity{}))
 
-		require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), TestEntity{}, oID))
+		require.Nil(t, spec.Subject.DeleteByID(spec.Context(), TestEntity{}, oID))
 
 	})
 }

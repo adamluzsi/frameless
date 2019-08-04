@@ -42,7 +42,7 @@ func (spec FindAllSpec) Test(t *testing.T) {
 				for i := 0; i < 10; i++ {
 
 					entity := spec.FixtureFactory.Create(spec.EntityType)
-					require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), entity))
+					require.Nil(t, spec.Subject.Save(spec.Context(), entity))
 
 					id, found := LookupID(entity)
 
@@ -52,10 +52,10 @@ func (spec FindAllSpec) Test(t *testing.T) {
 
 					ids = append(ids, id)
 
-					defer spec.Subject.DeleteByID(spec.Context(spec.EntityType), spec.EntityType, id)
+					defer spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
 				}
 
-				i := spec.Subject.FindAll(spec.Context(spec.EntityType), spec.EntityType)
+				i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
 				defer i.Close()
 
 				for i.Next() {
@@ -75,7 +75,7 @@ func (spec FindAllSpec) Test(t *testing.T) {
 			})
 
 			t.Run("when no value present in the database", func(t *testing.T) {
-				i := spec.Subject.FindAll(spec.Context(spec.EntityType), spec.EntityType)
+				i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
 				count, err := iterators.Count(i)
 				require.Nil(t, err)
 				require.Equal(t, 0, count)

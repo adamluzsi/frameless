@@ -38,7 +38,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 		setup := func(t *testing.T) (string, func()) {
 			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), entity))
+			require.Nil(t, spec.Subject.Save(spec.Context(), entity))
 
 			ID, ok := LookupID(entity)
 
@@ -48,7 +48,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 			require.True(t, len(ID) > 0)
 
-			td := func() { require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), spec.EntityType, ID)) }
+			td := func() { require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, ID)) }
 
 			return ID, td
 		}
@@ -60,11 +60,11 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 			newEntity := spec.FixtureFactory.Create(spec.EntityType)
 			require.Nil(t, SetID(newEntity, ID))
 
-			err := spec.Subject.Update(spec.Context(spec.EntityType), newEntity)
+			err := spec.Subject.Update(spec.Context(), newEntity)
 			require.Nil(t, err)
 
 			actually := reflects.New(spec.EntityType)
-			ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), actually, ID)
+			ok, err := spec.Subject.FindByID(spec.Context(), actually, ID)
 			require.True(t, ok)
 			require.Nil(t, err)
 
@@ -78,7 +78,7 @@ func (spec UpdateSpec) Test(suite *testing.T) {
 
 			newEntity := spec.FixtureFactory.Create(spec.EntityType)
 			require.Nil(t, SetID(newEntity, "hitchhiker's guide to the galaxy"))
-			require.Error(t, spec.Subject.Update(spec.Context(spec.EntityType), newEntity))
+			require.Error(t, spec.Subject.Update(spec.Context(), newEntity))
 		})
 
 	})

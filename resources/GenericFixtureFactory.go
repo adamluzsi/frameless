@@ -18,6 +18,6 @@ func (f GenericFixtureFactory) Create(entity interface{}) interface{} {
 	return newEntity
 }
 
-func (f GenericFixtureFactory) Context(entity interface{}) context.Context {
+func (f GenericFixtureFactory) Context() (ctx context.Context) {
 	return context.Background()
 }

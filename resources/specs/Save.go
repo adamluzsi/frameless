@@ -34,7 +34,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		}
 
 		e := spec.FixtureFactory.Create(spec.EntityType)
-		err := spec.Subject.Save(spec.Context(spec.EntityType), e)
+		err := spec.Subject.Save(spec.Context(), e)
 
 		require.Nil(t, err)
 
@@ -44,19 +44,19 @@ func (spec SaveSpec) Test(t *testing.T) {
 
 		actual := reflects.New(spec.EntityType)
 
-		ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), actual, ID)
+		ok, err = spec.Subject.FindByID(spec.Context(), actual, ID)
 		require.Nil(t, err)
 		require.True(t, ok)
 		require.Equal(t, e, actual)
 
-		require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), spec.EntityType, ID))
+		require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, ID))
 
 	})
 
 	t.Run("when entity already have an ID", func(t *testing.T) {
 		newEntity := spec.FixtureFactory.Create(spec.EntityType)
 		require.Nil(t, SetID(newEntity, "Hello world!"))
-		require.Error(t, spec.Subject.Save(spec.Context(spec.EntityType), newEntity))
+		require.Error(t, spec.Subject.Save(spec.Context(), newEntity))
 	})
 }
 

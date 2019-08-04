@@ -24,7 +24,7 @@ type UniqConstrainSpec struct {
 }
 
 func (spec UniqConstrainSpec) Test(t *testing.T) {
-	require.Nil(t, spec.Subject.Truncate(spec.Context(spec.EntityType), spec.EntityType))
+	require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 
 	e1 := spec.FixtureFactory.Create(spec.EntityType)
 	e2 := spec.FixtureFactory.Create(spec.EntityType)
@@ -45,19 +45,19 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 		v3.Elem().FieldByName(field).Set(val)
 	}
 
-	require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), e1))
+	require.Nil(t, spec.Subject.Save(spec.Context(), e1))
 	require.Error(t,
-		spec.Subject.Save(spec.Context(spec.EntityType), e2),
+		spec.Subject.Save(spec.Context(), e2),
 		`expected that this value is cannot be saved since uniq constrain prevent it`,
 	)
 
 	t.Log(`after we delete the value that keeps the uniq constrain`)
 	id, found := LookupID(e1)
 	require.True(t, found)
-	require.Nil(t, spec.Subject.DeleteByID(spec.Context(spec.EntityType), e1, id))
+	require.Nil(t, spec.Subject.DeleteByID(spec.Context(), e1, id))
 
 	t.Logf(`it should allow us to save similar object in the resource`)
-	require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), e3))
+	require.Nil(t, spec.Subject.Save(spec.Context(), e3))
 
 }
 

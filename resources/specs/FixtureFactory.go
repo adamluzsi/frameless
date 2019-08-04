@@ -13,7 +13,7 @@ type FixtureFactory interface {
 	// It is expected that the newly created fixture will have no content for extID field.
 	Create(EntityType interface{}) (StructPTR interface{})
 	// Context able to provide the specs with a context object for a certain entity Type.
-	Context(EntityType interface{}) (ctx context.Context)
+	Context() (ctx context.Context)
 }
 
 type FixtureFactorySpec struct {
@@ -56,7 +56,7 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 
 	s.Describe(`Context`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) context.Context {
-			return spec.FixtureFactory.Context(spec.Type)
+			return spec.FixtureFactory.Context()
 		}
 
 		s.Then(`it will return a context`, func(t *testcase.T) {

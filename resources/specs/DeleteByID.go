@@ -28,7 +28,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 		for i := 0; i < 10; i++ {
 
 			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Save(spec.Context(spec.EntityType), entity))
+			require.Nil(t, spec.Subject.Save(spec.Context(), entity))
 			ID, ok := LookupID(entity)
 
 			if !ok {
@@ -44,14 +44,14 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 			for _, ID := range ids {
 				e := spec.FixtureFactory.Create(spec.EntityType)
 
-				ok, err := spec.Subject.FindByID(spec.Context(spec.EntityType), e, ID)
+				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 				require.True(t, ok)
 				require.Nil(t, err)
 
-				err = spec.Subject.DeleteByID(spec.Context(spec.EntityType), e, ID)
+				err = spec.Subject.DeleteByID(spec.Context(), e, ID)
 				require.Nil(t, err)
 
-				ok, err = spec.Subject.FindByID(spec.Context(spec.EntityType), e, ID)
+				ok, err = spec.Subject.FindByID(spec.Context(), e, ID)
 				require.Nil(t, err)
 				require.False(t, ok)
 
