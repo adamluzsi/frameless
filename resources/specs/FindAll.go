@@ -4,8 +4,8 @@ import (
 	"context"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -32,55 +32,87 @@ type iFindAll interface {
 }
 
 func (spec FindAllSpec) Test(t *testing.T) {
-	t.Run(`FindAll`, func(t *testing.T) {
-		t.Run(reflects.FullyQualifiedName(spec.EntityType), func(t *testing.T) {
+	s := testcase.NewSpec(t)
 
-			t.Run("when value stored in the database", func(t *testing.T) {
+	s.Describe(`FindAll`, func(s *testcase.Spec) {
 
-				var ids []string
+		subject := func(t *testcase.T) frameless.Iterator {
+			return spec.Subject.FindAll(
+				t.I(`ctx`).(context.Context),
+				spec.EntityType,
+			)
+		}
 
-				for i := 0; i < 10; i++ {
+		s.Let(`ctx`, func(t *testcase.T) interface{} {
+			return spec.Context()
+		})
 
-					entity := spec.FixtureFactory.Create(spec.EntityType)
-					require.Nil(t, spec.Subject.Save(spec.Context(), entity))
+		s.Before(func(t *testcase.T) {
+			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+		})
 
-					id, found := LookupID(entity)
+		s.Let(`entity`, func(t *testcase.T) interface{} {
+			return spec.FixtureFactory.Create(spec.EntityType)
+		})
 
-					if !found {
-						t.Fatal(frameless.ErrIDRequired)
-					}
+		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 
-					ids = append(ids, id)
-
-					defer spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
-				}
-
-				i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
-				defer i.Close()
-
-				for i.Next() {
-					entity := reflect.New(reflect.TypeOf(spec.EntityType)).Interface()
-
-					require.Nil(t, i.Decode(entity))
-
-					id, found := LookupID(entity)
-
-					if !found {
-						t.Fatal(frameless.ErrIDRequired)
-					}
-
-					require.Contains(t, ids, id)
-				}
-
+			s.Before(func(t *testcase.T) {
+				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
 			})
 
-			t.Run("when no value present in the database", func(t *testing.T) {
-				i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
-				count, err := iterators.Count(i)
+			s.Then(`the entity will be returned as part of the results of the iterator`, func(t *testcase.T) {
+				all := subject(t)
+				var entities []interface{}
+				require.Nil(t, iterators.CollectAll(all, &entities))
+				require.Equal(t, 1, len(entities))
+				require.Contains(t, entities, reflects.BaseValueOf(t.I(`entity`)).Interface())
+			})
+
+			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
+				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
+					return spec.FixtureFactory.Create(spec.EntityType)
+				})
+				s.Before(func(t *testcase.T) {
+					require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`oth-entity`)))
+				})
+
+				s.Then(`all entity will be fetched`, func(t *testcase.T) {
+					all := subject(t)
+					var entities []interface{}
+					require.Nil(t, iterators.CollectAll(all, &entities))
+					require.Equal(t, 2, len(entities))
+					require.Contains(t, entities, reflects.BaseValueOf(t.I(`entity`)).Interface())
+					require.Contains(t, entities, reflects.BaseValueOf(t.I(`oth-entity`)).Interface())
+				})
+			})
+		})
+
+		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+			})
+
+			s.Then(`the iterator will have no result`, func(t *testcase.T) {
+				count, err := iterators.Count(subject(t))
 				require.Nil(t, err)
 				require.Equal(t, 0, count)
 			})
+		})
 
+		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
+			s.Let(`ctx`, func(t *testcase.T) interface{} {
+				ctx, cancel := context.WithCancel(spec.Context())
+				cancel()
+				return ctx
+			})
+
+			s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+				iter := subject(t)
+				err := iter.Err()
+				require.Error(t, err)
+				require.Equal(t, context.Canceled, err)
+			})
 		})
 	})
 }

@@ -128,6 +128,10 @@ func (storage *Local) Delete(ctx context.Context, Entity interface{}) error {
 func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {
 	r, w := iterators.NewPipe()
 
+	if err := ctx.Err(); err != nil {
+		return iterators.NewError(err)
+	}
+
 	go func() {
 		defer w.Close()
 
@@ -140,6 +144,10 @@ func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.I
 			}
 
 			return bucket.ForEach(func(IDbytes, encodedEntity []byte) error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+
 				entity := reflects.New(Type)
 
 				if err := storage.Deserialize(encodedEntity, entity); err != nil {

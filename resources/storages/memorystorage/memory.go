@@ -84,6 +84,10 @@ func (storage *Memory) FindAll(ctx context.Context, Type interface{}) frameless.
 	storage.Mutex.RLock()
 	defer storage.Mutex.RUnlock()
 
+	if err := ctx.Err(); err != nil {
+		return iterators.NewError(err)
+	}
+
 	table := storage.TableFor(Type)
 
 	var entities []interface{}
