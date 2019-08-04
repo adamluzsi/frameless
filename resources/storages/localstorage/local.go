@@ -41,6 +41,10 @@ func (storage *Local) Truncate(ctx context.Context, Type interface{}) error {
 }
 
 func (storage *Local) Save(ctx context.Context, ptr interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 
 		if currentID, ok := specs.LookupID(ptr); !ok || currentID != "" {

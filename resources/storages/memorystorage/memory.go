@@ -106,6 +106,10 @@ func (storage *Memory) Save(ctx context.Context, ptr interface{}) error {
 		return fmt.Errorf("entity already have an ID: %s", currentID)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	id := fixtures.RandomString(42)
 	storage.TableFor(ptr)[id] = ptr
 	return specs.SetID(ptr, id)
