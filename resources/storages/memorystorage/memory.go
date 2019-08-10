@@ -32,6 +32,10 @@ func (storage *Memory) Update(ctx context.Context, entityPtr interface{}) error 
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	ID, found := specs.LookupID(entityPtr)
 
 	if !found {

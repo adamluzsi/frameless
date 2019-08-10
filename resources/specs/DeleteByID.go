@@ -26,7 +26,6 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Describe(`DeleteByID`, func(s *testcase.Spec) {
-
 		subject := func(t *testcase.T) error {
 			return spec.Subject.DeleteByID(
 				t.I(`ctx`).(context.Context),

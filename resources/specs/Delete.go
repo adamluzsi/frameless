@@ -29,11 +29,7 @@ type iDelete interface {
 // Test will test that an DeleteSpec is implemented by a generic specification
 func (spec DeleteSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-
-	s.Before(func(t *testcase.T) {
-		_, hasID := LookupID(spec.EntityType)
-		require.True(t, hasID, frameless.ErrIDRequired.Error())
-	})
+	extIDFieldRequired(s, spec.EntityType)
 
 	s.Describe(`Delete`, func(s *testcase.Spec) {
 

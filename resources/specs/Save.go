@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 
@@ -23,15 +22,7 @@ type SaveSpec struct {
 
 func (spec SaveSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-
-	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
-	})
-
-	s.Test(`ext id field required`, func(t *testcase.T) {
-		_, hasExtID := LookupID(spec.EntityType)
-		require.True(t, hasExtID, frameless.ErrIDRequired.Error())
-	})
+	extIDFieldRequired(s, spec.EntityType)
 
 	s.Describe(`Save`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
@@ -47,6 +38,10 @@ func (spec SaveSpec) Test(t *testing.T) {
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
 			return spec.FixtureFactory.Create(spec.EntityType)
+		})
+
+		s.Before(func(t *testcase.T) {
+			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 		})
 
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {

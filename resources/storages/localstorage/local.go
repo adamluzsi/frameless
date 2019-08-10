@@ -86,6 +86,10 @@ func (storage *Local) Save(ctx context.Context, ptr interface{}) error {
 }
 
 func (storage *Local) Update(ctx context.Context, ptr interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	encodedID, found := specs.LookupID(ptr)
 
 	if !found || encodedID == "" {
