@@ -16,3 +16,7 @@ func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 		require.True(t, hasExtID, frameless.ErrIDRequired.Error())
 	})
 }
+
+func name(e frameless.Entity) string {
+	return reflects.BaseTypeOf(e).Name()
+}
