@@ -68,6 +68,20 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 				require.Equal(t, t.I(`entity`), t.I(`ptr`))
 			})
 
+			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
+				s.Let(`ctx`, func(t *testcase.T) interface{} {
+					ctx, cancel := context.WithCancel(spec.Context())
+					cancel()
+					return ctx
+				})
+
+				s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+					found, err := subject(t)
+					require.Equal(t, context.Canceled, err)
+					require.False(t, found)
+				})
+			})
+
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					return spec.FixtureFactory.Create(spec.EntityType)
@@ -99,21 +113,6 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 			})
 		})
 
-		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
-			s.Let(`id`, func(t *testcase.T) interface{} { return `` })
-
-			s.Let(`ctx`, func(t *testcase.T) interface{} {
-				ctx, cancel := context.WithCancel(spec.Context())
-				cancel()
-				return ctx
-			})
-
-			s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
-				found, err := subject(t)
-				require.Equal(t, context.Canceled, err)
-				require.False(t, found)
-			})
-		})
 	})
 
 	s.Test(`E2E`, func(t *testcase.T) {

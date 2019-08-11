@@ -224,7 +224,7 @@ func (storage *Local) DeleteByID(ctx context.Context, Type interface{}, ID strin
 		}
 
 		if v := bucket.Get(ByteID); v == nil {
-			return fmt.Errorf("%s is not found", ByteID)
+			return frameless.ErrNotFound
 		}
 
 		return bucket.Delete(ByteID)

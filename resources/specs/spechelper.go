@@ -2,6 +2,7 @@ package specs
 
 import (
 	"fmt"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"

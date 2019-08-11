@@ -66,6 +66,18 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 				require.False(t, found)
 			})
 
+			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
+				s.Let(`ctx`, func(t *testcase.T) interface{} {
+					ctx, cancel := context.WithCancel(spec.Context())
+					cancel()
+					return ctx
+				})
+
+				s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+					require.Equal(t, context.Canceled, subject(t))
+				})
+			})
+
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					return spec.FixtureFactory.Create(spec.EntityType)
@@ -93,7 +105,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 				})
 
 				s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
-					require.Error(t, subject(t))
+					require.Equal(t, frameless.ErrNotFound, subject(t))
 				})
 			})
 		})
@@ -113,21 +125,6 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 			})
 		})
 
-		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
-			s.Let(`id`, func(t *testcase.T) interface{} {
-				return ``
-			})
-
-			s.Let(`ctx`, func(t *testcase.T) interface{} {
-				ctx, cancel := context.WithCancel(spec.Context())
-				cancel()
-				return ctx
-			})
-
-			s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
-				require.Equal(t, context.Canceled, subject(t))
-			})
-		})
 	})
 }
 
