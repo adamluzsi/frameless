@@ -61,7 +61,13 @@ func (spec FindAllSpec) Test(t *testing.T) {
 				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
 			})
 
-			s.Then(`the entity will be returned as part of the results of the iterator`, func(t *testcase.T) {
+			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
+				count, err := iterators.Count(subject(t))
+				require.Nil(t, err)
+				require.Equal(t, 1, count)
+			})
+
+			s.Then(`then the returned iterator includes the stored entity`, func(t *testcase.T) {
 				all := subject(t)
 				var entities []interface{}
 				require.Nil(t, iterators.CollectAll(all, &entities))
