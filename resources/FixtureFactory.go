@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"context"
@@ -40,7 +40,7 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 			}
 		})
 
-		s.When(`when struct has resource external ID`, func(s *testcase.Spec) {
+		s.When(`when struct has Resource external ID`, func(s *testcase.Spec) {
 			if _, hasExtID := LookupID(spec.Type); !hasExtID {
 				return
 			}
@@ -64,13 +64,7 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 		})
 
 		s.Then(`the context expected to be not cancelled`, func(t *testcase.T) {
-			ctx := subject(t)
-
-			select  {
-			case <-ctx.Done():
-				t.Fatal(`received context is cancelled/Done`)
-			default:
-			}
+			require.Nil(t, subject(t).Err())
 		})
 	})
 }

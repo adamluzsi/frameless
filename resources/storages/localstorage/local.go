@@ -8,7 +8,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources"
 	"io/ioutil"
 	"strconv"
 
@@ -51,7 +51,7 @@ func (storage *Local) Save(ctx context.Context, ptr interface{}) error {
 
 	return storage.DB.Update(func(tx *bolt.Tx) error {
 
-		if currentID, ok := specs.LookupID(ptr); !ok || currentID != "" {
+		if currentID, ok := resources.LookupID(ptr); !ok || currentID != "" {
 			return fmt.Errorf("entity already have an ID: %s", currentID)
 		}
 
@@ -70,7 +70,7 @@ func (storage *Local) Save(ctx context.Context, ptr interface{}) error {
 
 		encodedID := strconv.FormatUint(uIntID, 10)
 
-		if err = specs.SetID(ptr, encodedID); err != nil {
+		if err = resources.SetID(ptr, encodedID); err != nil {
 			return err
 		}
 
@@ -90,7 +90,7 @@ func (storage *Local) Update(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
-	encodedID, found := specs.LookupID(ptr)
+	encodedID, found := resources.LookupID(ptr)
 
 	if !found || encodedID == "" {
 		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(ptr))
@@ -120,7 +120,7 @@ func (storage *Local) Update(ctx context.Context, ptr interface{}) error {
 }
 
 func (storage *Local) Delete(ctx context.Context, Entity interface{}) error {
-	ID, found := specs.LookupID(Entity)
+	ID, found := resources.LookupID(Entity)
 
 	if !found {
 		return fmt.Errorf("can't find ID in %s", reflects.FullyQualifiedName(Entity))

@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"github.com/adamluzsi/frameless/reflects"

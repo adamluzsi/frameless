@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func (spec FindAllSpec) Test(t *testing.T) {
 			return spec.FixtureFactory.Create(spec.EntityType)
 		})
 
-		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
+		s.When(`entity was saved in the Resource`, func(s *testcase.Spec) {
 
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
@@ -75,7 +75,7 @@ func (spec FindAllSpec) Test(t *testing.T) {
 				require.Contains(t, entities, reflects.BaseValueOf(t.I(`entity`)).Interface())
 			})
 
-			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
+			s.And(`more similar entity is saved in the Resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					return spec.FixtureFactory.Create(spec.EntityType)
 				})
@@ -94,7 +94,7 @@ func (spec FindAllSpec) Test(t *testing.T) {
 			})
 		})
 
-		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
+		s.When(`no entity saved before in the Resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 			})

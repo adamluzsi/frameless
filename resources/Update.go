@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type Update interface {
 	Update(ctx context.Context, ptr interface{}) error
 }
 
-// UpdateSpec will request an update for a wrapped entity object in the resource
+// UpdateSpec will request an update for a wrapped entity object in the Resource
 type UpdateSpec struct {
 	EntityType interface{}
 	FixtureFactory

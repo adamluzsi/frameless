@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"context"
@@ -67,7 +67,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		s.When(`entity was already saved once`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) { require.Nil(t, subject(t)) })
 
-			s.Then(`it will raise error because ext:ID field already points to an resource entry`, func(t *testcase.T) {
+			s.Then(`it will raise error because ext:ID field already points to an Resource entry`, func(t *testcase.T) {
 				t.Log(`this should not be misinterpreted as uniq value`)
 				t.Log(`it is only about that the ext:ID field is already pointing to something`)
 				require.Error(t, subject(t))

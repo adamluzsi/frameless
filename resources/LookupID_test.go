@@ -1,7 +1,7 @@
-package specs_test
+package resources_test
 
 import (
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -10,7 +10,7 @@ import (
 func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := specs.LookupID(IDInFieldName{"ok"})
+	id, ok := resources.LookupID(IDInFieldName{"ok"})
 
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
@@ -19,7 +19,7 @@ func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
 func TestLookupID_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := specs.LookupID(&IDInFieldName{"ok"})
+	id, ok := resources.LookupID(&IDInFieldName{"ok"})
 
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
@@ -34,7 +34,7 @@ func TestLookupID_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	ptr1 = &IDInFieldName{"ok"}
 	ptr2 = &ptr1
 
-	id, ok := specs.LookupID(ptr2)
+	id, ok := resources.LookupID(ptr2)
 
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
@@ -43,7 +43,7 @@ func TestLookupID_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 func TestLookupID_IDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := specs.LookupID(IDInTagName{"KO"})
+	id, ok := resources.LookupID(IDInTagName{"KO"})
 
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
@@ -52,7 +52,7 @@ func TestLookupID_IDGivenByTag_IDReturned(t *testing.T) {
 func TestLookupID_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
 	t.Parallel()
 
-	id, ok := specs.LookupID(IDInTagNameNextToIDField{DI: "KO", ID: "OK"})
+	id, ok := resources.LookupID(IDInTagNameNextToIDField{DI: "KO", ID: "OK"})
 
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
@@ -61,7 +61,7 @@ func TestLookupID_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedBy
 func TestLookupID_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := specs.LookupID(&IDInTagName{"KO"})
+	id, ok := resources.LookupID(&IDInTagName{"KO"})
 
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
@@ -70,7 +70,7 @@ func TestLookupID_PointerIDGivenByTag_IDReturned(t *testing.T) {
 func TestLookupID_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	t.Parallel()
 
-	id, ok := specs.LookupID(UnidentifiableID{"ok"})
+	id, ok := resources.LookupID(UnidentifiableID{"ok"})
 
 	require.False(t, ok)
 	require.Equal(t, "", id)

@@ -1,9 +1,9 @@
-package specs_test
+package resources_test
 
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
 	"testing"
 )
@@ -18,7 +18,7 @@ func TestUniqConstrainSpec_Test(t *testing.T) {
 	t.Skip(`TODO`)
 	storage := NewUniqStorage()
 
-	specs.TestUniqConstrain(t, storage, SampleStruct{}, nil, `Name`)
+	resources.TestUniqConstrain(t, storage, SampleStruct{}, nil, `Name`)
 }
 
 func NewUniqStorage() *UniqStorage {

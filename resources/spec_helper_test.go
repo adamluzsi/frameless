@@ -1,4 +1,4 @@
-package specs_test
+package resources_test
 
 type IDInFieldName struct {
 	ID string

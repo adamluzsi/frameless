@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources"
 	"reflect"
 	"sync"
 
@@ -36,7 +36,7 @@ func (storage *Memory) Update(ctx context.Context, entityPtr interface{}) error 
 		return err
 	}
 
-	ID, found := specs.LookupID(entityPtr)
+	ID, found := resources.LookupID(entityPtr)
 
 	if !found {
 		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entityPtr).Name())
@@ -54,7 +54,7 @@ func (storage *Memory) Update(ctx context.Context, entityPtr interface{}) error 
 }
 
 func (storage *Memory) Delete(ctx context.Context, entity interface{}) error {
-	ID, found := specs.LookupID(entity)
+	ID, found := resources.LookupID(entity)
 
 	if !found {
 		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
@@ -106,7 +106,7 @@ func (storage *Memory) Save(ctx context.Context, ptr interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 
-	if currentID, ok := specs.LookupID(ptr); !ok || currentID != "" {
+	if currentID, ok := resources.LookupID(ptr); !ok || currentID != "" {
 		return fmt.Errorf("entity already have an ID: %s", currentID)
 	}
 
@@ -116,7 +116,7 @@ func (storage *Memory) Save(ctx context.Context, ptr interface{}) error {
 
 	id := fixtures.RandomString(42)
 	storage.TableFor(ptr)[id] = ptr
-	return specs.SetID(ptr, id)
+	return resources.SetID(ptr, id)
 }
 
 func (storage *Memory) FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error) {

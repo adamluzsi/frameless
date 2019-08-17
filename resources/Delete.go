@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"context"
@@ -64,7 +64,7 @@ func (spec DeleteSpec) Test(t *testing.T) {
 				}
 			})
 
-			s.Then(`it is expected to delete the object in the resource`, func(t *testcase.T) {
+			s.Then(`it is expected to delete the object in the Resource`, func(t *testcase.T) {
 				entity := t.I(`entity`)
 				ID, _ := LookupID(entity)
 

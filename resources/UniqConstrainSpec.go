@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"github.com/adamluzsi/frameless/reflects"
@@ -15,11 +15,11 @@ type UniqConstrainSpec struct {
 
 	// the combination of which the values must be uniq
 	// The values for this are the struct Fields that together represent a uniq constrain
-	// if you only want to make uniq one certain field across the resource,
+	// if you only want to make uniq one certain field across the Resource,
 	// then you only have to provide that only value in the slice
 	UniqConstrain []string
 
-	// the resource object that implements the specification
+	// the Resource object that implements the specification
 	Subject MinimumRequirements
 }
 
@@ -56,7 +56,7 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 	require.True(t, found)
 	require.Nil(t, spec.Subject.DeleteByID(spec.Context(), e1, id))
 
-	t.Logf(`it should allow us to save similar object in the resource`)
+	t.Logf(`it should allow us to save similar object in the Resource`)
 	require.Nil(t, spec.Subject.Save(spec.Context(), e3))
 
 }

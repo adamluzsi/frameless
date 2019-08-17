@@ -1,4 +1,4 @@
-package specs
+package resources
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DeleteByID request to destroy a business entity in the resource that implement it's test.
+// DeleteByID request to destroy a business entity in the Resource that implement it's test.
 type DeleteByID interface {
 	DeleteByID(ctx context.Context, Type interface{}, ID string) error
 }
@@ -46,7 +46,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 			return spec.FixtureFactory.Create(spec.EntityType)
 		})
 
-		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
+		s.When(`entity was saved in the Resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
 			})
@@ -58,7 +58,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 				return id
 			})
 
-			s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
+			s.Then(`the entity will no longer be find-able in the Resource by the id`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				e := reflects.New(spec.EntityType)
 				found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`).(string))
@@ -78,7 +78,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 				})
 			})
 
-			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
+			s.And(`more similar entity is saved in the Resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					return spec.FixtureFactory.Create(spec.EntityType)
 				})
@@ -110,7 +110,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 			})
 		})
 
-		s.When(`entity never saved before in the resource`, func(s *testcase.Spec) {
+		s.When(`entity never saved before in the Resource`, func(s *testcase.Spec) {
 			s.Let(`id`, func(t *testcase.T) interface{} {
 				id, _ := LookupID(t.I(`entity`))
 				return id
