@@ -104,7 +104,7 @@ func (spec UpdateSpec) Test(t *testing.T) {
 				return newEntity
 			})
 
-			s.Then(`then it will update stored entity values`, func(t *testcase.T) {
+			s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
 				require.Error(t, subject(t))
 			})
 		})

@@ -104,7 +104,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 				require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 			})
 
-			s.Then(`the iterator will have no result`, func(t *testcase.T) {
+			s.Then(`the it will have no result`, func(t *testcase.T) {
 				found, err := subject(t)
 				require.Nil(t, err)
 				require.False(t, found)
