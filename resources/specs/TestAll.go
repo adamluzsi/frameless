@@ -1,20 +1,22 @@
-package resources
+package specs
 
 import (
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources"
 )
 
-type Resource interface {
-	Save
-	FindByID
-	FindAll
-	Update
-	Delete
-	DeleteByID
-	Truncate
+type resource interface {
+	resources.Save
+	resources.FindByID
+	resources.FindAll
+	resources.Update
+	resources.Delete
+	resources.DeleteByID
+	resources.Truncate
 }
 
-func TestAll(t *testing.T, r Resource, e interface{}, f FixtureFactory) {
+func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 	t.Run(`CREATE`, func(t *testing.T) {
 		TestSave(t, r, e, f)
 	})

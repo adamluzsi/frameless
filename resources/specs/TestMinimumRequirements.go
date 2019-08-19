@@ -1,14 +1,16 @@
-package resources
+package specs
 
 import (
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources"
 )
 
 type MinimumRequirements interface {
-	Save
-	FindByID
-	DeleteByID
-	Truncate
+	resources.Save
+	resources.FindByID
+	resources.DeleteByID
+	resources.Truncate
 }
 
 func TestMinimumRequirements(t *testing.T, r MinimumRequirements, TypeAsStruct interface{}, fixture FixtureFactory) {

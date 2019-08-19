@@ -1,8 +1,9 @@
 package resources_test
 
 import (
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/stretchr/testify/require"
 )

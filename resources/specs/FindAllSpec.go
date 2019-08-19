@@ -1,19 +1,17 @@
-package resources
+package specs
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/adamluzsi/frameless"
 )
-
-type FindAll interface {
-	FindAll(ctx context.Context, Type interface{}) frameless.Iterator
-}
 
 // FindAllSpec can return business entities from a given storage that implement it's test
 // The "EntityType" is a Empty struct for the specific entity (struct) type that should be returned.
@@ -22,11 +20,11 @@ type FindAll interface {
 type FindAllSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject iFindAll
+	Subject findAllSpecSubject
 }
 
-type iFindAll interface {
-	FindAll
+type findAllSpecSubject interface {
+	resources.FindAll
 
 	MinimumRequirements
 }
@@ -123,6 +121,6 @@ func (spec FindAllSpec) Test(t *testing.T) {
 	})
 }
 
-func TestFindAll(t *testing.T, r iFindAll, e interface{}, f FixtureFactory) {
+func TestFindAll(t *testing.T, r findAllSpecSubject, e interface{}, f FixtureFactory) {
 	FindAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }

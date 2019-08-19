@@ -1,3 +1,5 @@
 package resources
 
-type TestEntity struct{ ID string `ext:"ID"` }
+type TestEntity struct {
+	ID string `ext:"ID"`
+}

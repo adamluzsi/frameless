@@ -1,16 +1,14 @@
-package resources
+package specs
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
-
-type Truncate interface {
-	Truncate(ctx context.Context, Type interface{}) error
-}
 
 type TruncateSpec struct {
 	EntityType interface{}
@@ -48,17 +46,17 @@ func (spec TruncateSpec) Test(t *testing.T) {
 			t.Log("delete all records based on what entity object it receives")
 
 			eID := spec.populateFor(t, spec.EntityType)
-			oID := spec.populateFor(t, TestEntity{})
+			oID := spec.populateFor(t, resources.TestEntity{})
 
 			require.True(t, spec.isStored(t, eID, spec.EntityType))
-			require.True(t, spec.isStored(t, oID, TestEntity{}))
+			require.True(t, spec.isStored(t, oID, resources.TestEntity{}))
 
 			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 
 			require.False(t, spec.isStored(t, eID, spec.EntityType))
-			require.True(t, spec.isStored(t, oID, TestEntity{}))
+			require.True(t, spec.isStored(t, oID, resources.TestEntity{}))
 
-			require.Nil(t, spec.Subject.DeleteByID(spec.Context(), TestEntity{}, oID))
+			require.Nil(t, spec.Subject.DeleteByID(spec.Context(), resources.TestEntity{}, oID))
 
 		})
 	})
@@ -68,7 +66,7 @@ func (spec TruncateSpec) populateFor(t testing.TB, Type interface{}) string {
 	fixture := spec.FixtureFactory.Create(Type)
 	require.Nil(t, spec.Subject.Save(spec.Context(), fixture))
 
-	id, ok := LookupID(fixture)
+	id, ok := resources.LookupID(fixture)
 	require.True(t, ok)
 	require.NotEmpty(t, id)
 

@@ -1,8 +1,9 @@
 package resources
 
 import (
-	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
+
+	"github.com/adamluzsi/frameless/reflects"
 )
 
 func LookupID(i interface{}) (string, bool) {

@@ -1,18 +1,16 @@
-package resources
+package specs
 
 import (
 	"context"
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
 )
-
-type Save interface {
-	Save(ctx context.Context, ptr interface{}) error
-}
 
 type SaveSpec struct {
 	EntityType interface{}
@@ -47,7 +45,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {
 			s.Then(`entity field that is marked as ext:ID will updated`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				id, _ := LookupID(t.I(`entity`))
+				id, _ := resources.LookupID(t.I(`entity`))
 				require.NotEmpty(t, id)
 			})
 
@@ -55,7 +53,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 				require.Nil(t, subject(t))
 
 				entity := t.I(`entity`)
-				id, _ := LookupID(entity)
+				id, _ := resources.LookupID(entity)
 				ptr := reflects.New(spec.EntityType)
 				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
 				require.Nil(t, err)
@@ -89,7 +87,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		s.Test(`E2E`, func(t *testcase.T) {
 			t.Run("persist an Save", func(t *testing.T) {
 
-				if ID, _ := LookupID(spec.EntityType); ID != "" {
+				if ID, _ := resources.LookupID(spec.EntityType); ID != "" {
 					t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 				}
 
@@ -98,7 +96,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 
 				require.Nil(t, err)
 
-				ID, ok := LookupID(e)
+				ID, ok := resources.LookupID(e)
 				require.True(t, ok, "ID is not defined in the entity struct src definition")
 				require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
@@ -115,7 +113,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 
 			t.Run("when entity already have an ID", func(t *testing.T) {
 				newEntity := spec.FixtureFactory.Create(spec.EntityType)
-				require.Nil(t, SetID(newEntity, "Hello world!"))
+				require.Nil(t, resources.SetID(newEntity, "Hello world!"))
 				require.Error(t, spec.Subject.Save(spec.Context(), newEntity))
 			})
 		})

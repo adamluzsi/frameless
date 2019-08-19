@@ -1,20 +1,17 @@
-package resources
+package specs
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/testcase"
 	"testing"
+
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/testcase"
 
 	"github.com/adamluzsi/frameless"
 
 	"github.com/stretchr/testify/require"
 )
-
-// DeleteByID request to destroy a business entity in the Resource that implement it's test.
-type DeleteByID interface {
-	DeleteByID(ctx context.Context, Type interface{}, ID string) error
-}
 
 type DeleteByIDSpec struct {
 	EntityType interface{}
@@ -52,7 +49,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 			})
 
 			s.Let(`id`, func(t *testcase.T) interface{} {
-				id, ok := LookupID(t.I(`entity`))
+				id, ok := resources.LookupID(t.I(`entity`))
 				require.True(t, ok, frameless.ErrIDRequired.Error())
 				require.NotEmpty(t, id)
 				return id
@@ -89,7 +86,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 				s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 					require.Nil(t, subject(t))
 
-					othID, ok := LookupID(t.I(`oth-entity`))
+					othID, ok := resources.LookupID(t.I(`oth-entity`))
 					require.True(t, ok, frameless.ErrIDRequired.Error())
 
 					e := reflects.New(spec.EntityType)
@@ -112,7 +109,7 @@ func (spec DeleteByIDSpec) Test(t *testing.T) {
 
 		s.When(`entity never saved before in the Resource`, func(s *testcase.Spec) {
 			s.Let(`id`, func(t *testcase.T) interface{} {
-				id, _ := LookupID(t.I(`entity`))
+				id, _ := resources.LookupID(t.I(`entity`))
 				return id
 			})
 

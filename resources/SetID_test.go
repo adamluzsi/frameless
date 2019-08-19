@@ -1,8 +1,9 @@
 package resources_test
 
 import (
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +50,7 @@ func TestSetID_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 func TestSetID_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	t.Parallel()
 
-	var subject interface {} = &IDInFieldName{}
+	var subject interface{} = &IDInFieldName{}
 	require.Nil(t, resources.SetID(subject, "OK"))
 	require.Equal(t, "OK", subject.(*IDInFieldName).ID)
 }

@@ -1,11 +1,12 @@
-package resources_test
+package specs_test
 
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
+	"github.com/adamluzsi/frameless/resources/specs"
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
 )
 
 type SampleStruct struct {
@@ -18,7 +19,7 @@ func TestUniqConstrainSpec_Test(t *testing.T) {
 	t.Skip(`TODO`)
 	storage := NewUniqStorage()
 
-	resources.TestUniqConstrain(t, storage, SampleStruct{}, nil, `Name`)
+	specs.TestUniqConstrain(t, storage, SampleStruct{}, nil, `Name`)
 }
 
 func NewUniqStorage() *UniqStorage {

@@ -1,9 +1,11 @@
-package resources
+package specs
 
 import (
-	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +54,7 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 	)
 
 	t.Log(`after we delete the value that keeps the uniq constrain`)
-	id, found := LookupID(e1)
+	id, found := resources.LookupID(e1)
 	require.True(t, found)
 	require.Nil(t, spec.Subject.DeleteByID(spec.Context(), e1, id))
 

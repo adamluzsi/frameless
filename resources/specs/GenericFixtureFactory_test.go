@@ -1,14 +1,15 @@
-package resources_test
+package specs_test
 
 import (
-	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless/resources/specs"
 	"testing"
+
 )
 
 func TestGenericFixtureFactory(t *testing.T) {
-	resources.FixtureFactorySpec{
+	specs.FixtureFactorySpec{
 		Type:           GenericFixtureFactoryExampleType{},
-		FixtureFactory: resources.GenericFixtureFactory{},
+		FixtureFactory: specs.GenericFixtureFactory{},
 	}.Test(t)
 }
 

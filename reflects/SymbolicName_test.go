@@ -2,7 +2,7 @@ package reflects_test
 
 import (
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless/resources/specs"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -21,9 +21,9 @@ func TestName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := resources.SaveSpec{}
+			o := specs.SaveSpec{}
 
-			require.Equal(t, `resources.SaveSpec`, ExampleSymbolicName(o))
+			require.Equal(t, `specs.SaveSpec`, ExampleSymbolicName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

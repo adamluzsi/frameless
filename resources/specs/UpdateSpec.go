@@ -1,29 +1,27 @@
-package resources
+package specs
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-type Update interface {
-	Update(ctx context.Context, ptr interface{}) error
-}
 
 // UpdateSpec will request an update for a wrapped entity object in the Resource
 type UpdateSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject iUpdate
+	Subject updateSpecSubject
 }
 
-type iUpdate interface {
-	Update
+type updateSpecSubject interface {
+	resources.Update
 
 	MinimumRequirements
 }
@@ -51,7 +49,7 @@ func (spec UpdateSpec) Test(t *testing.T) {
 			})
 
 			s.Let(`entity.id`, func(t *testcase.T) interface{} {
-				id, ok := LookupID(t.I(`entity`))
+				id, ok := resources.LookupID(t.I(`entity`))
 				require.True(t, ok, frameless.ErrIDRequired)
 				return id
 			})
@@ -60,7 +58,7 @@ func (spec UpdateSpec) Test(t *testing.T) {
 				entity := t.I(`entity`)
 				require.Nil(t, spec.Subject.Save(spec.Context(), entity))
 				return func() {
-					id, _ := LookupID(entity)
+					id, _ := resources.LookupID(entity)
 					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id))
 				}
 			})
@@ -68,8 +66,8 @@ func (spec UpdateSpec) Test(t *testing.T) {
 			s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 				s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
 					newEntity := spec.FixtureFactory.Create(spec.EntityType)
-					id, _ := LookupID(t.I(`entity`))
-					require.Nil(t, SetID(newEntity, id))
+					id, _ := resources.LookupID(t.I(`entity`))
+					require.Nil(t, resources.SetID(newEntity, id))
 					return newEntity
 				})
 
@@ -102,7 +100,7 @@ func (spec UpdateSpec) Test(t *testing.T) {
 		s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
 			s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
 				newEntity := spec.FixtureFactory.Create(spec.EntityType)
-				require.Nil(t, SetID(newEntity, fixtures.RandomString(42)))
+				require.Nil(t, resources.SetID(newEntity, fixtures.RandomString(42)))
 				return newEntity
 			})
 
@@ -114,6 +112,6 @@ func (spec UpdateSpec) Test(t *testing.T) {
 	})
 }
 
-func TestUpdate(t *testing.T, r iUpdate, e interface{}, f FixtureFactory) {
+func TestUpdate(t *testing.T, r updateSpecSubject, e interface{}, f FixtureFactory) {
 	UpdateSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
 }

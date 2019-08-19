@@ -1,27 +1,25 @@
-package resources
+package specs
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/testcase"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
 )
-
-type Delete interface {
-	Delete(ctx context.Context, Entity interface{}) error
-}
 
 // DeleteSpec request a destroy of a specific entity that is wrapped in the query use case object
 type DeleteSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject iDelete
+	Subject deleteSpecSubject
 }
 
-type iDelete interface {
-	Delete
+type deleteSpecSubject interface {
+	resources.Delete
 
 	MinimumRequirements
 }
@@ -56,7 +54,7 @@ func (spec DeleteSpec) Test(t *testing.T) {
 			s.Around(func(t *testcase.T) func() {
 				entity := t.I(`entity`)
 				require.Nil(t, spec.Subject.Save(spec.Context(), entity))
-				id, ok := LookupID(entity)
+				id, ok := resources.LookupID(entity)
 				require.True(t, ok, frameless.ErrIDRequired.Error())
 
 				return func() {
@@ -66,7 +64,7 @@ func (spec DeleteSpec) Test(t *testing.T) {
 
 			s.Then(`it is expected to delete the object in the Resource`, func(t *testcase.T) {
 				entity := t.I(`entity`)
-				ID, _ := LookupID(entity)
+				ID, _ := resources.LookupID(entity)
 
 				err := subject(t)
 				require.Nil(t, err)
@@ -80,7 +78,7 @@ func (spec DeleteSpec) Test(t *testing.T) {
 
 		s.When(`ID is has no value or empty in the entity`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				id, ok := LookupID(t.I(`entity`))
+				id, ok := resources.LookupID(t.I(`entity`))
 				require.True(t, ok)
 				require.Empty(t, id)
 			})
@@ -104,6 +102,6 @@ func (spec DeleteSpec) Test(t *testing.T) {
 	})
 }
 
-func TestDelete(t *testing.T, r iDelete, e interface{}, f FixtureFactory) {
+func TestDelete(t *testing.T, r deleteSpecSubject, e interface{}, f FixtureFactory) {
 	DeleteSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
 }

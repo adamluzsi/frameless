@@ -1,18 +1,16 @@
-package resources
+package specs
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
-	"testing"
 
 	"github.com/stretchr/testify/require"
 )
-
-type FindByID interface {
-	FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error)
-}
 
 type FindByIDSpec struct {
 	EntityType interface{}
@@ -56,7 +54,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 			})
 
 			s.Let(`id`, func(t *testcase.T) interface{} {
-				id, ok := LookupID(t.I(`entity`))
+				id, ok := resources.LookupID(t.I(`entity`))
 				require.True(t, ok)
 				return id
 			})
@@ -123,7 +121,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 			entity := spec.FixtureFactory.Create(spec.EntityType)
 
 			require.Nil(t, spec.Subject.Save(spec.Context(), entity))
-			ID, ok := LookupID(entity)
+			ID, ok := resources.LookupID(entity)
 
 			if !ok {
 				t.Fatal(frameless.ErrIDRequired)
@@ -158,7 +156,7 @@ func (spec FindByIDSpec) Test(t *testing.T) {
 				require.Nil(t, err)
 				require.True(t, ok)
 
-				actualID, ok := LookupID(entityPtr)
+				actualID, ok := resources.LookupID(entityPtr)
 
 				if !ok {
 					t.Fatal("can't find ID in the returned value")
