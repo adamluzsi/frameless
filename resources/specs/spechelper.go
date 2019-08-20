@@ -2,6 +2,7 @@ package specs
 
 import (
 	"fmt"
+	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
 
@@ -11,6 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type resource interface {
+	resources.Saver
+	resources.Finder
+	resources.FinderAll
+	resources.Updater
+	resources.Deleter
+	resources.Truncater
+}
+
 func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 	entityTypeName := reflects.FullyQualifiedName(entityType)
 	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
@@ -18,4 +28,26 @@ func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 		_, hasExtID := resources.LookupID(reflects.New(entityType))
 		require.True(t, hasExtID, frameless.ErrIDRequired.Error())
 	})
+}
+
+func createEntities(ff FixtureFactory, T interface{}) []interface{} {
+	var es []interface{}
+	for i := 0; i < benchmarkSamplingCount; i++ {
+		es = append(es, ff.Create(T))
+	}
+	return es
+}
+
+func saveEntities(tb testing.TB, s resources.Saver, f FixtureFactory, es ...interface{}) []string {
+	var ids []string
+	for _, e := range es {
+		require.Nil(tb, s.Save(f.Context(), e))
+		id, _ := resources.LookupID(e)
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func cleanup(tb testing.TB, t resources.Truncater, f FixtureFactory, T interface{}) {
+	require.Nil(tb, t.Truncate(f.Context(), T))
 }

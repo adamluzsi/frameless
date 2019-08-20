@@ -2,18 +2,7 @@ package specs
 
 import (
 	"testing"
-
-	"github.com/adamluzsi/frameless/resources"
 )
-
-type resource interface {
-	resources.Saver
-	resources.Finder
-	resources.FinderAll
-	resources.Updater
-	resources.Deleter
-	resources.Truncater
-}
 
 func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 	t.Run(`CREATE`, func(t *testing.T) {
@@ -30,7 +19,7 @@ func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 	})
 
 	t.Run(`DELETE`, func(t *testing.T) {
-		Deleter{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
+		DeleterSpec{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
 		TruncaterSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 	})
 }

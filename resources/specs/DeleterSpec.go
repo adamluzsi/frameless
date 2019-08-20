@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type Deleter struct {
+type DeleterSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
-func (spec Deleter) Test(t *testing.T) {
+func (spec DeleterSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`Deleter`, func(s *testcase.Spec) {
+	s.Describe(`DeleteByID`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
 			return spec.Subject.DeleteByID(
 				t.I(`ctx`).(context.Context),
@@ -122,5 +122,18 @@ func (spec Deleter) Test(t *testing.T) {
 			})
 		})
 
+	})
+}
+
+func (spec DeleterSpec) Benchmark(b *testing.B) {
+	b.Run(`DeleteByID`, func(b *testing.B) {
+		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
+		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+		b.ResetTimer()
+		for _, id := range ids {
+			require.Nil(b, spec.Subject.DeleteByID(spec.FixtureFactory.Context(), spec.EntityType, id))
+		}
+		b.StopTimer()
 	})
 }
