@@ -12,16 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type FinderByIDSpec struct {
+type FinderSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
-func (spec FinderByIDSpec) Test(t *testing.T) {
+func (spec FinderSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`FinderByID`, func(s *testcase.Spec) {
+	s.Describe(`Finder`, func(s *testcase.Spec) {
 
 		subject := func(t *testcase.T) (bool, error) {
 			return spec.Subject.FindByID(
@@ -170,6 +170,6 @@ func (spec FinderByIDSpec) Test(t *testing.T) {
 
 }
 
-func TestFinderByID(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	FinderByIDSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+func TestFinder(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
+	FinderSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }

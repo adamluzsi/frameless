@@ -8,7 +8,7 @@ import (
 
 type resource interface {
 	resources.Saver
-	resources.FinderByID
+	resources.Finder
 	resources.FinderAll
 	resources.Updater
 	resources.Deleter
@@ -21,8 +21,8 @@ func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 	})
 
 	t.Run(`READ`, func(t *testing.T) {
+		TestFinder(t, r, e, f)
 		TestFinderAll(t, r, e, f)
-		TestFinderByID(t, r, e, f)
 	})
 
 	t.Run(`UPDATE`, func(t *testing.T) {

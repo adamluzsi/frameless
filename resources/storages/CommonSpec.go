@@ -9,7 +9,7 @@ import (
 
 type Resource interface {
 	resources.Saver
-	resources.FinderByID
+	resources.Finder
 	resources.FinderAll
 	resources.Updater
 	resources.Deleter
