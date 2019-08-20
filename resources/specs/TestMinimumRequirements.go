@@ -13,9 +13,9 @@ type MinimumRequirements interface {
 	resources.Truncater
 }
 
-func TestMinimumRequirements(t *testing.T, r MinimumRequirements, TypeAsStruct interface{}, fixture FixtureFactory) {
-	TestSaver(t, r, TypeAsStruct, fixture)
-	TestFinder(t, r, TypeAsStruct, fixture)
-	TestDeleter(t, r, TypeAsStruct, fixture)
-	TestTruncater(t, r, TypeAsStruct, fixture)
+func TestMinimumRequirements(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
+	SaverSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+	FinderSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+	Deleter{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
+	TruncaterSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }

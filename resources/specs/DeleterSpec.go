@@ -124,7 +124,3 @@ func (spec Deleter) Test(t *testing.T) {
 
 	})
 }
-
-func TestDeleter(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	Deleter{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
-}

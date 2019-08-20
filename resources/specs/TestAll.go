@@ -17,20 +17,20 @@ type resource interface {
 
 func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 	t.Run(`CREATE`, func(t *testing.T) {
-		TestSaver(t, r, e, f)
+		SaverSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 	})
 
 	t.Run(`READ`, func(t *testing.T) {
-		TestFinder(t, r, e, f)
-		TestFinderAll(t, r, e, f)
+		FinderSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+		FinderAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 	})
 
 	t.Run(`UPDATE`, func(t *testing.T) {
-		TestUpdater(t, r, e, f)
+		UpdaterSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
 	})
 
 	t.Run(`DELETE`, func(t *testing.T) {
-		TestDeleter(t, r, e, f)
-		TestTruncater(t, r, e, f)
+		Deleter{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
+		TruncaterSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 	})
 }

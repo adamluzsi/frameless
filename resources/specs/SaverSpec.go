@@ -119,7 +119,3 @@ func (spec SaverSpec) Test(t *testing.T) {
 		})
 	})
 }
-
-func TestSaver(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	SaverSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
-}

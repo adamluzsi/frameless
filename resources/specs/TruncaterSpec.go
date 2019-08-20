@@ -79,7 +79,3 @@ func (spec TruncaterSpec) isStored(t testing.TB, ID string, Type interface{}) bo
 	require.Nil(t, err)
 	return ok
 }
-
-func TestTruncater(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	TruncaterSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
-}

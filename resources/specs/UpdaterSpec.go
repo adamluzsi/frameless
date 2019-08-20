@@ -111,7 +111,3 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 
 	})
 }
-
-func TestUpdater(t *testing.T, r updateSpecSubject, e interface{}, f FixtureFactory) {
-	UpdaterSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
-}

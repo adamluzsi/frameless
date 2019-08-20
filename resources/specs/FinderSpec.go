@@ -169,7 +169,3 @@ func (spec FinderSpec) Test(t *testing.T) {
 	})
 
 }
-
-func TestFinder(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	FinderSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
-}

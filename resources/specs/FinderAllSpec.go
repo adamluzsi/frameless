@@ -120,7 +120,3 @@ func (spec FinderAllSpec) Test(t *testing.T) {
 		})
 	})
 }
-
-func TestFinderAll(t *testing.T, r findAllSpecSubject, e interface{}, f FixtureFactory) {
-	FinderAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
-}
