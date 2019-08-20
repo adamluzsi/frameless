@@ -12,7 +12,6 @@ type resource interface {
 	resources.FinderAll
 	resources.Updater
 	resources.Deleter
-	resources.DeleterByID
 	resources.Truncater
 }
 
@@ -32,7 +31,6 @@ func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 
 	t.Run(`DELETE`, func(t *testing.T) {
 		TestDeleter(t, r, e, f)
-		TestDeleterByID(t, r, e, f)
 		TestTruncater(t, r, e, f)
 	})
 }

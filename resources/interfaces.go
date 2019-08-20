@@ -14,13 +14,9 @@ type Truncater interface {
 	Truncate(ctx context.Context, Type interface{}) error
 }
 
-// DeleterByID request to destroy a business entity in the Resource that implement it's test.
-type DeleterByID interface {
-	DeleteByID(ctx context.Context, Type interface{}, ID string) error
-}
-
+// Deleter request to destroy a business entity in the Resource that implement it's test.
 type Deleter interface {
-	Delete(ctx context.Context, Entity interface{}) error
+	DeleteByID(ctx context.Context, Type interface{}, ID string) error
 }
 
 type FinderAll interface {

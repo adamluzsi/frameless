@@ -13,16 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type DeleterByIDSpec struct {
+type Deleter struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
-func (spec DeleterByIDSpec) Test(t *testing.T) {
+func (spec Deleter) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`DeleterByID`, func(s *testcase.Spec) {
+	s.Describe(`Deleter`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
 			return spec.Subject.DeleteByID(
 				t.I(`ctx`).(context.Context),
@@ -125,6 +125,6 @@ func (spec DeleterByIDSpec) Test(t *testing.T) {
 	})
 }
 
-func TestDeleterByID(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	DeleterByIDSpec{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
+func TestDeleter(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
+	Deleter{Subject: r, EntityType: e, FixtureFactory: f}.Test(t)
 }

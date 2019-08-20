@@ -13,7 +13,6 @@ type Resource interface {
 	resources.FinderAll
 	resources.Updater
 	resources.Deleter
-	resources.DeleterByID
 	resources.Truncater
 }
 

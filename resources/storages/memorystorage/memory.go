@@ -53,16 +53,6 @@ func (storage *Memory) Update(ctx context.Context, entityPtr interface{}) error 
 	return nil
 }
 
-func (storage *Memory) Delete(ctx context.Context, entity interface{}) error {
-	ID, found := resources.LookupID(entity)
-
-	if !found {
-		return fmt.Errorf("can't find ID in %s", reflect.TypeOf(entity).Name())
-	}
-
-	return storage.DeleteByID(ctx, entity, ID)
-}
-
 func (storage *Memory) DeleteByID(ctx context.Context, Type interface{}, ID string) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
