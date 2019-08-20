@@ -155,5 +155,6 @@ One example could be an external resource that used by an interactor, and you wa
 by describing the behaviour in a shared specification.
 */
 type Spec interface {
-	Test(*testing.T)
+	Test(t *testing.T)
+	Benchmark(b *testing.B)
 }

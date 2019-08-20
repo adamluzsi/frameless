@@ -62,6 +62,18 @@ func (spec TruncaterSpec) Test(t *testing.T) {
 	})
 }
 
+func (spec TruncaterSpec) Benchmark(b *testing.B) {
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	b.Run(`TruncaterSpec`, func(b *testing.B) {
+		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
+
+		b.ResetTimer()
+		require.Nil(b, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+		b.StopTimer()
+	})
+}
+
 func (spec TruncaterSpec) populateFor(t testing.TB, Type interface{}) string {
 	fixture := spec.FixtureFactory.Create(Type)
 	require.Nil(t, spec.Subject.Save(spec.Context(), fixture))

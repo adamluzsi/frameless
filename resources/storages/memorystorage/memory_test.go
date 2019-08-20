@@ -13,5 +13,10 @@ func ExampleMemory() *memorystorage.Memory {
 
 func TestMemory(t *testing.T) {
 	storage := ExampleMemory()
-	storages.TestCommonSpec(t, storage)
+	storages.CommonSpec{Subject: storage}.Test(t)
+}
+
+func BenchmarkMemory(b *testing.B) {
+	storage := ExampleMemory()
+	storages.CommonSpec{Subject: storage}.Benchmark(b)
 }

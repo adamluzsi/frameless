@@ -126,10 +126,12 @@ func (spec DeleterSpec) Test(t *testing.T) {
 }
 
 func (spec DeleterSpec) Benchmark(b *testing.B) {
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`DeleteByID`, func(b *testing.B) {
 		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+
 		b.ResetTimer()
 		for _, id := range ids {
 			require.Nil(b, spec.Subject.DeleteByID(spec.FixtureFactory.Context(), spec.EntityType, id))

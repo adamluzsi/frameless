@@ -10,14 +10,9 @@ import (
 type Resource interface {
 	resources.Saver
 	resources.Finder
-	resources.FinderAll
 	resources.Updater
 	resources.Deleter
 	resources.Truncater
-}
-
-func TestCommonSpec(t *testing.T, r Resource) {
-	CommonSpec{Subject: r}.Test(t)
 }
 
 type CommonSpec struct {
@@ -26,8 +21,25 @@ type CommonSpec struct {
 }
 
 func (spec CommonSpec) Test(t *testing.T) {
-	specs.TestAll(t, spec.Subject, ExportedEntity{}, spec.FixtureFactory)
-	specs.TestAll(t, spec.Subject, unexportedEntity{}, spec.FixtureFactory)
+	specs.CommonSpec{
+		Subject:        spec.Subject,
+		EntityType:     ExportedEntity{},
+		FixtureFactory: spec.FixtureFactory,
+	}.Test(t)
+
+	specs.CommonSpec{
+		Subject:        spec.Subject,
+		EntityType:     unexportedEntity{},
+		FixtureFactory: spec.FixtureFactory,
+	}.Test(t)
+}
+
+func (spec CommonSpec) Benchmark(b *testing.B) {
+	specs.CommonSpec{
+		Subject:        spec.Subject,
+		EntityType:     ExportedEntity{},
+		FixtureFactory: spec.FixtureFactory,
+	}.Benchmark(b)
 }
 
 type ExportedEntity struct {

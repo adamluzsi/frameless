@@ -22,11 +22,12 @@ type Finder interface {
 	// It was an intentional decision to not use error to represent "not found" case,
 	// but tell explicitly this information in the form of return bool value.
 	FindByID(ctx context.Context, ptr interface{}, id string) (_found bool, _err error)
+	// FindAll will return all entity that has <T> type
+	FindAll(ctx context.Context, T interface{}) frameless.Iterator
 }
 
 type FinderAll interface {
-	// FindAll will return all entity that has <T> type
-	FindAll(ctx context.Context, T interface{}) frameless.Iterator
+
 }
 
 type Updater interface {
