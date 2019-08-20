@@ -7,32 +7,32 @@ import (
 )
 
 type resource interface {
-	resources.Save
-	resources.FindByID
-	resources.FindAll
-	resources.Update
-	resources.Delete
-	resources.DeleteByID
-	resources.Truncate
+	resources.Saver
+	resources.FinderByID
+	resources.FinderAll
+	resources.Updater
+	resources.Deleter
+	resources.DeleterByID
+	resources.Truncater
 }
 
 func TestAll(t *testing.T, r resource, e interface{}, f FixtureFactory) {
 	t.Run(`CREATE`, func(t *testing.T) {
-		TestSave(t, r, e, f)
+		TestSaver(t, r, e, f)
 	})
 
 	t.Run(`READ`, func(t *testing.T) {
-		TestFindAll(t, r, e, f)
-		TestFindByID(t, r, e, f)
+		TestFinderAll(t, r, e, f)
+		TestFinderByID(t, r, e, f)
 	})
 
 	t.Run(`UPDATE`, func(t *testing.T) {
-		TestUpdate(t, r, e, f)
+		TestUpdater(t, r, e, f)
 	})
 
 	t.Run(`DELETE`, func(t *testing.T) {
-		TestDelete(t, r, e, f)
-		TestDeleteByID(t, r, e, f)
-		TestTruncate(t, r, e, f)
+		TestDeleter(t, r, e, f)
+		TestDeleterByID(t, r, e, f)
+		TestTruncater(t, r, e, f)
 	})
 }

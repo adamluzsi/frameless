@@ -11,25 +11,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// DeleteSpec request a destroy of a specific entity that is wrapped in the query use case object
-type DeleteSpec struct {
+// DeleterSpec request a destroy of a specific entity that is wrapped in the query use case object
+type DeleterSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject deleteSpecSubject
 }
 
 type deleteSpecSubject interface {
-	resources.Delete
+	resources.Deleter
 
 	MinimumRequirements
 }
 
-// Test will test that an DeleteSpec is implemented by a generic specification
-func (spec DeleteSpec) Test(t *testing.T) {
+// Test will test that an DeleterSpec is implemented by a generic specification
+func (spec DeleterSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	extIDFieldRequired(s, spec.EntityType)
 
-	s.Describe(`Delete`, func(s *testcase.Spec) {
+	s.Describe(`Deleter`, func(s *testcase.Spec) {
 
 		subject := func(t *testcase.T) error {
 			return spec.Subject.Delete(
@@ -102,6 +102,6 @@ func (spec DeleteSpec) Test(t *testing.T) {
 	})
 }
 
-func TestDelete(t *testing.T, r deleteSpecSubject, e interface{}, f FixtureFactory) {
-	DeleteSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
+func TestDeleter(t *testing.T, r deleteSpecSubject, e interface{}, f FixtureFactory) {
+	DeleterSpec{EntityType: e, FixtureFactory: f, Subject: r}.Test(t)
 }

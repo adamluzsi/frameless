@@ -12,17 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type SaveSpec struct {
+type SaverSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
-func (spec SaveSpec) Test(t *testing.T) {
+func (spec SaverSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	extIDFieldRequired(s, spec.EntityType)
 
-	s.Describe(`Save`, func(s *testcase.Spec) {
+	s.Describe(`Saver`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
 			return spec.Subject.Save(
 				t.I(`ctx`).(context.Context),
@@ -85,7 +85,7 @@ func (spec SaveSpec) Test(t *testing.T) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			t.Run("persist an Save", func(t *testing.T) {
+			t.Run("persist an Saver", func(t *testing.T) {
 
 				if ID, _ := resources.LookupID(spec.EntityType); ID != "" {
 					t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
@@ -120,6 +120,6 @@ func (spec SaveSpec) Test(t *testing.T) {
 	})
 }
 
-func TestSave(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	SaveSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+func TestSaver(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
+	SaverSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }

@@ -10,16 +10,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type TruncateSpec struct {
+type TruncaterSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
-func (spec TruncateSpec) Test(t *testing.T) {
+func (spec TruncaterSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`Truncate`, func(s *testcase.Spec) {
+	s.Describe(`Truncater`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
 			return spec.Subject.Truncate(
 				t.I(`ctx`).(context.Context),
@@ -62,7 +62,7 @@ func (spec TruncateSpec) Test(t *testing.T) {
 	})
 }
 
-func (spec TruncateSpec) populateFor(t testing.TB, Type interface{}) string {
+func (spec TruncaterSpec) populateFor(t testing.TB, Type interface{}) string {
 	fixture := spec.FixtureFactory.Create(Type)
 	require.Nil(t, spec.Subject.Save(spec.Context(), fixture))
 
@@ -73,13 +73,13 @@ func (spec TruncateSpec) populateFor(t testing.TB, Type interface{}) string {
 	return id
 }
 
-func (spec TruncateSpec) isStored(t testing.TB, ID string, Type interface{}) bool {
+func (spec TruncaterSpec) isStored(t testing.TB, ID string, Type interface{}) bool {
 	entity := reflects.New(Type)
 	ok, err := spec.Subject.FindByID(spec.Context(), entity, ID)
 	require.Nil(t, err)
 	return ok
 }
 
-func TestTruncate(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
-	TruncateSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+func TestTruncater(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory) {
+	TruncaterSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }

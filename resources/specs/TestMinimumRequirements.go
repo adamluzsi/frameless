@@ -7,15 +7,15 @@ import (
 )
 
 type MinimumRequirements interface {
-	resources.Save
-	resources.FindByID
-	resources.DeleteByID
-	resources.Truncate
+	resources.Saver
+	resources.FinderByID
+	resources.DeleterByID
+	resources.Truncater
 }
 
 func TestMinimumRequirements(t *testing.T, r MinimumRequirements, TypeAsStruct interface{}, fixture FixtureFactory) {
-	TestSave(t, r, TypeAsStruct, fixture)
-	TestFindByID(t, r, TypeAsStruct, fixture)
-	TestDeleteByID(t, r, TypeAsStruct, fixture)
-	TestTruncate(t, r, TypeAsStruct, fixture)
+	TestSaver(t, r, TypeAsStruct, fixture)
+	TestFinderByID(t, r, TypeAsStruct, fixture)
+	TestDeleterByID(t, r, TypeAsStruct, fixture)
+	TestTruncater(t, r, TypeAsStruct, fixture)
 }

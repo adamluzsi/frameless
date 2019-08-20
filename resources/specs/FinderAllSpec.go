@@ -13,26 +13,26 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-// FindAllSpec can return business entities from a given storage that implement it's test
+// FinderAllSpec can return business entities from a given storage that implement it's test
 // The "EntityType" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-type FindAllSpec struct {
+type FinderAllSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject findAllSpecSubject
 }
 
 type findAllSpecSubject interface {
-	resources.FindAll
+	resources.FinderAll
 
 	MinimumRequirements
 }
 
-func (spec FindAllSpec) Test(t *testing.T) {
+func (spec FinderAllSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`FindAll`, func(s *testcase.Spec) {
+	s.Describe(`FinderAll`, func(s *testcase.Spec) {
 
 		subject := func(t *testcase.T) frameless.Iterator {
 			return spec.Subject.FindAll(
@@ -121,6 +121,6 @@ func (spec FindAllSpec) Test(t *testing.T) {
 	})
 }
 
-func TestFindAll(t *testing.T, r findAllSpecSubject, e interface{}, f FixtureFactory) {
-	FindAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
+func TestFinderAll(t *testing.T, r findAllSpecSubject, e interface{}, f FixtureFactory) {
+	FinderAllSpec{EntityType: e, Subject: r, FixtureFactory: f}.Test(t)
 }

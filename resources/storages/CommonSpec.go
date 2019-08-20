@@ -8,13 +8,13 @@ import (
 )
 
 type Resource interface {
-	resources.Save
-	resources.FindByID
-	resources.FindAll
-	resources.Update
-	resources.Delete
-	resources.DeleteByID
-	resources.Truncate
+	resources.Saver
+	resources.FinderByID
+	resources.FinderAll
+	resources.Updater
+	resources.Deleter
+	resources.DeleterByID
+	resources.Truncater
 }
 
 func TestCommonSpec(t *testing.T, r Resource) {
