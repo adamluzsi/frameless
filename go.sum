@@ -8,6 +8,10 @@ github.com/adamluzsi/testcase v0.0.0-20190714215144-d4dbd6534e4d h1:o4Nzhufpp4qG
 github.com/adamluzsi/testcase v0.0.0-20190714215144-d4dbd6534e4d/go.mod h1:v7gx5uOqLnIsGEIZf4ve0HqzpCS36W6at4JTRsZTJpA=
 github.com/adamluzsi/testcase v0.0.0-20190803211906-0997483d600d h1:wxca1Ff5MwvFW/ppQRRC7wP5qtKbZvo3Wt84F1/ZwM8=
 github.com/adamluzsi/testcase v0.0.0-20190803211906-0997483d600d/go.mod h1:v7gx5uOqLnIsGEIZf4ve0HqzpCS36W6at4JTRsZTJpA=
+github.com/adamluzsi/testcase v0.0.0-20190819214834-99cb234a195c h1:OBAY3hXJhbzWK855kj3Ie+kwpYdQBVDIy/SChe0tb3s=
+github.com/adamluzsi/testcase v0.0.0-20190819214834-99cb234a195c/go.mod h1:v7gx5uOqLnIsGEIZf4ve0HqzpCS36W6at4JTRsZTJpA=
+github.com/adamluzsi/testcase v0.0.0-20190822231812-946b420be6a4 h1:SZoWRBPbFmpIgELjU9NuYScpK4IFmnUJ+bi5gnnhT5o=
+github.com/adamluzsi/testcase v0.0.0-20190822231812-946b420be6a4/go.mod h1:v7gx5uOqLnIsGEIZf4ve0HqzpCS36W6at4JTRsZTJpA=
 github.com/boltdb/bolt v1.3.1 h1:JQmyP4ZBrce+ZQu0dY660FMfatumYDLun9hBCUVIkF4=
 github.com/boltdb/bolt v1.3.1/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
