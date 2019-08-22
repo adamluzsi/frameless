@@ -210,18 +210,26 @@ func (spec findByIDSpec) Test(t *testing.T) {
 func (spec findByIDSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`FindByID`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(benchmarkEntityVolumeCount, spec.FixtureFactory, spec.EntityType)
 		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
+		var executionTimes int
 		b.ResetTimer()
-		for _ , id := range ids {
-			ptr := reflects.New(spec.EntityType)
-			found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
-			require.Nil(b, err)
-			require.True(b, found)
+	wrk:
+		for {
+			for _, id := range ids {
+				ptr := reflects.New(spec.EntityType)
+				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
+				require.Nil(b, err)
+				require.True(b, found)
+
+				executionTimes++
+				if b.N <= executionTimes {
+					break wrk
+				}
+			}
 		}
-		b.StopTimer()
 	})
 }
 
@@ -330,13 +338,14 @@ func (spec findAllSpec) Test(t *testing.T) {
 func (spec findAllSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`FindAll`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(benchmarkEntityVolumeCount, spec.FixtureFactory, spec.EntityType)
 		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
 		b.ResetTimer()
-		i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
-		_, _ = iterators.Count(i)
-		b.StopTimer()
+		for i := 0; i < b.N; i++ {
+			i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
+			_, _ = iterators.Count(i)
+		}
 	})
 }

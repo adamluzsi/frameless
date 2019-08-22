@@ -123,13 +123,12 @@ func (spec SaverSpec) Test(t *testing.T) {
 func (spec SaverSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`SaverSpec`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(b.N, spec.FixtureFactory, spec.EntityType)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
 		b.ResetTimer()
 		for _, ptr := range es {
 			require.Nil(b, spec.Subject.Save(spec.Context(), ptr))
 		}
-		b.StopTimer()
 	})
 }

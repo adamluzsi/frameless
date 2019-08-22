@@ -6,25 +6,27 @@ import (
 	"strconv"
 )
 
-var benchmarkSamplingCount int
+const msgNotMeasurable = `not measurable spec`
+
+var benchmarkEntityVolumeCount int
 
 func init() {
-	benchmarkSamplingCount = 128
+	benchmarkEntityVolumeCount = 128
 
-	bsc, ok := os.LookupEnv(`BENCHMARK_SAMPLING_COUNT`)
+	bsc, ok := os.LookupEnv(`BENCHMARK_ENTITY_VOLUME_COUNT`)
 	if !ok {
 		return
 	}
 
 	i, err := strconv.Atoi(bsc)
 	if err != nil {
-		fmt.Println(fmt.Sprintf(`WARNING - BENCHMARK_SAMPLING_COUNT env var value not convertable to int, will be ignored`))
+		fmt.Println(fmt.Sprintf(`WARNING - BENCHMARK_ENTITY_VOLUME_COUNT env var value not convertable to int, will be ignored`))
 		return
 	}
 
-	benchmarkSamplingCount = i
+	benchmarkEntityVolumeCount = i
 }
 
-func BenchmarkSamplingCount() int {
-	return benchmarkSamplingCount
+func BenchmarkEntityVolumeCount() int {
+	return benchmarkEntityVolumeCount
 }

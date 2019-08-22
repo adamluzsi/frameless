@@ -25,6 +25,10 @@ type UniqConstrainSpec struct {
 	Subject MinimumRequirements
 }
 
+func (spec UniqConstrainSpec) Benchmark(b *testing.B) {
+	b.Skip(msgNotMeasurable)
+}
+
 func (spec UniqConstrainSpec) Test(t *testing.T) {
 	require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 
