@@ -210,7 +210,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 func (spec findByIDSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`FindByID`, func(b *testing.B) {
-		es := createEntities(benchmarkEntityVolumeCount, spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
@@ -338,7 +338,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 func (spec findAllSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`FindAll`, func(b *testing.B) {
-		es := createEntities(benchmarkEntityVolumeCount, spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 

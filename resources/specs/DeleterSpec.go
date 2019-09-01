@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/testcase"
+
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/testcase"
 
 	"github.com/adamluzsi/frameless"
 
@@ -127,14 +128,27 @@ func (spec DeleterSpec) Test(t *testing.T) {
 
 func (spec DeleterSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
-	b.Run(`DeleteByID`, func(b *testing.B) {
-		es := createEntities(b.N, spec.FixtureFactory, spec.EntityType)
-		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
-		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
-		b.ResetTimer()
-		for _, id := range ids {
-			require.Nil(b, spec.Subject.DeleteByID(spec.FixtureFactory.Context(), spec.EntityType, id))
+	b.Run(`DeleteByID`, func(b *testing.B) {
+		var total int
+	wrk:
+		for {
+
+			b.StopTimer()
+			es := createEntities(spec.FixtureFactory, spec.EntityType)
+			ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
+			b.StartTimer()
+
+			for _, id := range ids {
+				require.Nil(b, spec.Subject.DeleteByID(spec.FixtureFactory.Context(), spec.EntityType, id))
+				total++
+
+				if total == b.N {
+					break wrk
+				}
+			}
+
 		}
 	})
 }

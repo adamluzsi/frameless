@@ -115,7 +115,7 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 func (spec UpdaterSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`UpdaterSpec`, func(b *testing.B) {
-		es := createEntities(benchmarkEntityVolumeCount, spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		 saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 

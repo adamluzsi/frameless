@@ -30,9 +30,9 @@ func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 	})
 }
 
-func createEntities(count int, f FixtureFactory, T interface{}) []interface{} {
+func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	var es []interface{}
-	for i := 0; i < count; i++ {
+	for i := 0; i < benchmarkEntityVolumeCount; i++ {
 		es = append(es, f.Create(T))
 	}
 	return es
