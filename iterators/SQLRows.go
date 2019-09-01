@@ -42,7 +42,7 @@ type SQLRowScanner interface {
 }
 
 type SQLRowMapper interface {
-	Map(s SQLRowScanner, e frameless.Entity) error
+	Map(s SQLRowScanner, ptr frameless.Entity) error
 }
 
 type SQLRowMapperFunc func(SQLRowScanner, frameless.Entity) error
