@@ -62,7 +62,7 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 	require.True(t, found)
 	require.Nil(t, spec.Subject.DeleteByID(spec.Context(), e1, id))
 
-	t.Logf(`it should allow us to save similar object in the Resource`)
+	t.Logf(`it should allow us to save similar object in the resource`)
 	require.Nil(t, spec.Subject.Save(spec.Context(), e3))
 
 }
