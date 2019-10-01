@@ -41,23 +41,29 @@ func (spec TruncaterSpec) Test(t *testing.T) {
 			})
 		})
 
-		s.Test(`E2E`, func(t *testcase.T) {
-
-			t.Log("delete all records based on what entity object it receives")
-
+		s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 			eID := spec.populateFor(t, spec.EntityType)
-			oID := spec.populateFor(t, resources.TestEntity{})
-
 			require.True(t, spec.isStored(t, eID, spec.EntityType))
-			require.True(t, spec.isStored(t, oID, resources.TestEntity{}))
-
 			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
-
 			require.False(t, spec.isStored(t, eID, spec.EntityType))
-			require.True(t, spec.isStored(t, oID, resources.TestEntity{}))
+		})
 
-			require.Nil(t, spec.Subject.DeleteByID(spec.Context(), resources.TestEntity{}, oID))
+		s.Then(`it should not affect other entities`, func(t *testcase.T) {
+			t.Skip(`TODO/POC`)
 
+			ff, ok := spec.FixtureFactory.(interface{ OthEntityType(e interface{}) interface{} })
+			if !ok {
+				t.Skip(`OthEntityType not yet implemented`)
+			}
+
+			spec.populateFor(t, spec.EntityType)
+			othT := ff.OthEntityType(spec.EntityType)
+			oID := spec.populateFor(t, othT)
+
+			require.True(t, spec.isStored(t, oID, othT))
+			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+			require.True(t, spec.isStored(t, oID, othT))
+			require.Nil(t, spec.Subject.DeleteByID(spec.Context(), othT, oID))
 		})
 	})
 }
