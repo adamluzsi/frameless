@@ -246,7 +246,7 @@ type findAllSpec struct {
 func (spec findAllSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`FinderAll`, func(s *testcase.Spec) {
+	s.Describe(`FindAll`, func(s *testcase.Spec) {
 
 		subject := func(t *testcase.T) frameless.Iterator {
 			return spec.Subject.FindAll(
@@ -279,7 +279,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 				require.Equal(t, 1, count)
 			})
 
-			s.Then(`then the returned iterator includes the stored entity`, func(t *testcase.T) {
+			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
 				all := subject(t)
 				var entities []interface{}
 				require.Nil(t, iterators.CollectAll(all, &entities))

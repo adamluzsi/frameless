@@ -15,7 +15,6 @@ import (
 type resource interface {
 	resources.Saver
 	resources.Finder
-	resources.FinderAll
 	resources.Updater
 	resources.Deleter
 	resources.Truncater

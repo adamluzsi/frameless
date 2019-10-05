@@ -26,10 +26,6 @@ type Finder interface {
 	FindAll(ctx context.Context, T interface{}) frameless.Iterator
 }
 
-type FinderAll interface {
-
-}
-
 type Updater interface {
 	// Update will takes a ptr that points to an entity
 	// and update the corresponding stored entity with the received entity field values
