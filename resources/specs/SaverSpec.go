@@ -43,7 +43,7 @@ func (spec SaverSpec) Test(t *testing.T) {
 		})
 
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {
-			s.Then(`entity field that is marked as ext:ID will updated`, func(t *testcase.T) {
+			s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				id, _ := resources.LookupID(t.I(`entity`))
 				require.NotEmpty(t, id)
