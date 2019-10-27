@@ -76,17 +76,17 @@ func (m *MockSQLRowMapper) EXPECT() *MockSQLRowMapperMockRecorder {
 }
 
 // Map mocks base method
-func (m *MockSQLRowMapper) Map(s iterators.SQLRowScanner, e frameless.Entity) error {
+func (m *MockSQLRowMapper) Map(s iterators.SQLRowScanner, ptr frameless.Entity) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Map", s, e)
+	ret := m.ctrl.Call(m, "Map", s, ptr)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Map indicates an expected call of Map
-func (mr *MockSQLRowMapperMockRecorder) Map(s, e interface{}) *gomock.Call {
+func (mr *MockSQLRowMapperMockRecorder) Map(s, ptr interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Map", reflect.TypeOf((*MockSQLRowMapper)(nil).Map), s, e)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Map", reflect.TypeOf((*MockSQLRowMapper)(nil).Map), s, ptr)
 }
 
 // MockSQLRows is a mock of SQLRows interface
