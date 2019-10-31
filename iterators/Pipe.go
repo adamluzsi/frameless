@@ -21,7 +21,7 @@ type PipeReceiver struct {
 	done chan<- struct{}
 	err  <-chan error
 
-	current frameless.Entity
+	current interface{}
 	lastErr error
 }
 

@@ -134,7 +134,7 @@ type Iterator interface {
 	Err() error
 	// Decode will populate an object with values and/or return error
 	// this is required to retrieve the current value from the iterator
-	Decode(Entity) error
+	Decode(ptr interface{}) error
 }
 
 /*

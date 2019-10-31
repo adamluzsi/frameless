@@ -29,7 +29,7 @@ func (lambda EncoderFunc) Encode(i interface{}) error {
 // Decoder is the interface for populating/replacing a public struct with values that retried from an external resource
 type Decoder interface {
 	// Decode will populate an object with values and/or return error
-	Decode(frameless.Entity) error
+	Decode(ptr interface{}) error
 }
 
 // DecoderFunc enables to use anonymous functions to be a valid DecoderFunc

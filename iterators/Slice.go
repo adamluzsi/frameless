@@ -24,29 +24,29 @@ type Slice struct {
 	index int
 }
 
-func (this *Slice) Close() error {
-	this.open = false
+func (i *Slice) Close() error {
+	i.open = false
 
 	return nil
 }
 
-func (this *Slice) Err() error {
+func (i *Slice) Err() error {
 	return nil
 }
 
-func (this *Slice) Next() bool {
-	if !this.open {
+func (i *Slice) Next() bool {
+	if !i.open {
 		return false
 	}
 
-	this.index++
-	return this.rows.Len() > this.index
+	i.index++
+	return i.rows.Len() > i.index
 }
 
-func (this *Slice) Decode(i interface{}) error {
-	if !this.open {
+func (i *Slice) Decode(ptr interface{}) error {
+	if !i.open {
 		return ErrClosed
 	}
 
-	return reflects.Link(this.rows.Index(this.index).Interface(), i)
+	return reflects.Link(i.rows.Index(i.index).Interface(), ptr)
 }

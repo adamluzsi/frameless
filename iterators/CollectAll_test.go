@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAndCollectAll_NonPointerValues(t *testing.T) {
+func TestCollectAll_NonPointerValues(t *testing.T) {
 	t.Parallel()
 
 	var expected []int = []int{1, 2, 3, 4, 5}
@@ -21,7 +21,7 @@ func TestAndCollectAll_NonPointerValues(t *testing.T) {
 	require.Equal(t, expected, actually)
 }
 
-func TestAndCollectAll_PlainStructTypes(t *testing.T) {
+func TestCollectAll_PlainStructTypes(t *testing.T) {
 	t.Parallel()
 
 	var expected []Entity = []Entity{Entity{"A"}, Entity{"B"}, Entity{"C"}, Entity{"D"}}
@@ -34,7 +34,7 @@ func TestAndCollectAll_PlainStructTypes(t *testing.T) {
 	require.Equal(t, expected, actually)
 }
 
-func TestAndCollectAll_PointerValues(t *testing.T) {
+func TestCollectAll_PointerValues(t *testing.T) {
 	t.Parallel()
 
 	var expected []*Entity = []*Entity{&Entity{"A"}, &Entity{"B"}, &Entity{"C"}, &Entity{"D"}}
@@ -47,7 +47,7 @@ func TestAndCollectAll_PointerValues(t *testing.T) {
 	require.Equal(t, expected, actually)
 }
 
-func TestAndCollectAll_IteratorResourceFailsForSomeReason_ErrReturned(t *testing.T) {
+func TestCollectAll_IteratorResourceFailsForSomeReason_ErrReturned(t *testing.T) {
 	t.Parallel()
 
 	i := iterators.NewMock(iterators.NewSlice([]int{42, 43, 44}))
@@ -57,7 +57,7 @@ func TestAndCollectAll_IteratorResourceFailsForSomeReason_ErrReturned(t *testing
 	require.Error(t, expectedDecodeError, iterators.CollectAll(i, &[]int{}))
 }
 
-func TestAndCollectAll_IteratorHasErrInTheBegining_ErrReturned(t *testing.T) {
+func TestCollectAll_IteratorHasErrInTheBegining_ErrReturned(t *testing.T) {
 	t.Parallel()
 
 	i := iterators.NewMock(iterators.NewEmpty())

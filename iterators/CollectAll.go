@@ -6,10 +6,10 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-func CollectAll(i frameless.Iterator, PointerToTheSlice interface{}) error {
+func CollectAll(i frameless.Iterator, slicePtr interface{}) error {
 	defer i.Close()
 
-	ptr := reflect.ValueOf(PointerToTheSlice)
+	ptr := reflect.ValueOf(slicePtr)
 
 	slice := ptr.Elem()
 

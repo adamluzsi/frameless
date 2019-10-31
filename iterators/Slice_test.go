@@ -72,5 +72,5 @@ func TestNewSlice_SliceGivenButWrongTypeFetched_PanicSent(t *testing.T) {
 	require.True(t, i.Next())
 
 	var v string
-	require.Error(t, i.Decode(&v), "reflect.Set: value of type int is not assignable to type string")
+	require.EqualError(t, i.Decode(&v), "reflect.Set: value of type int is not assignable to type string")
 }
