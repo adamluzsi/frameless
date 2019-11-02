@@ -11,29 +11,29 @@ import (
 // and then you map the line content to a certain data structure,
 // in order to not expose what steps needed in order to unserialize the input stream,
 // thus protect the business rules from this information.
-func Map(iter frameless.Iterator, transform MapTransformFunc) frameless.Iterator {
-	return &mapIterator{src: iter, transform: transform}
+func Map(iter frameless.Iterator, transform MapTransformFunc) *MapIter {
+	return &MapIter{src: iter, transform: transform}
 }
 
 type MapTransformFunc = func(d Decoder, ptr interface{}) error
 
-type mapIterator struct {
+type MapIter struct {
 	src       frameless.Iterator
 	transform MapTransformFunc
 }
 
-func (i *mapIterator) Close() error {
+func (i *MapIter) Close() error {
 	return i.src.Close()
 }
 
-func (i *mapIterator) Next() bool {
+func (i *MapIter) Next() bool {
 	return i.src.Next()
 }
 
-func (i *mapIterator) Err() error {
+func (i *MapIter) Err() error {
 	return i.src.Err()
 }
 
-func (i *mapIterator) Decode(dst frameless.Entity) error {
+func (i *MapIter) Decode(dst frameless.Entity) error {
 	return i.transform(i.src, dst)
 }

@@ -20,7 +20,7 @@ func TestWithCallback(t *testing.T) {
 			i := iterators.WithCallback(input, iterators.Callback{})
 
 			var actually []int
-			require.Nil(t, iterators.CollectAll(i, &actually))
+			require.Nil(t, iterators.Collect(i, &actually))
 			require.Equal(t, 3, len(actually))
 			require.ElementsMatch(t, expected, actually)
 		})

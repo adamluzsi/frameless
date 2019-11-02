@@ -86,7 +86,7 @@ func (storage *Memory) FindAll(ctx context.Context, Type interface{}) frameless.
 
 	var entities []interface{}
 	for _, entity := range table {
-		entities = append(entities, entity)
+		entities = append(entities, reflect.ValueOf(entity).Elem().Interface())
 	}
 
 	return iterators.NewSlice(entities)
@@ -120,10 +120,20 @@ func (storage *Memory) FindByID(ctx context.Context, ptr interface{}, ID string)
 	entity, found := storage.TableFor(ptr)[ID]
 
 	if found {
-		return true, reflects.Link(entity, ptr)
+		return true, storage.link(entity, ptr)
 	}
 
 	return false, nil
+}
+
+func (storage *Memory) link(entity interface{}, ptr interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf(`%v`, r)
+		}
+	}()
+	reflect.ValueOf(ptr).Elem().Set(reflect.ValueOf(entity).Elem())
+	return nil
 }
 
 func (storage *Memory) Close() error {
@@ -131,7 +141,7 @@ func (storage *Memory) Close() error {
 }
 
 func (storage *Memory) TableFor(e interface{}) MemoryTable {
-	name := reflects.FullyQualifiedName(e)
+	name := reflects.FullyQualifiedName(reflects.BaseValueOf(e).Interface())
 
 	if _, ok := storage.DB[name]; !ok {
 		storage.DB[name] = make(MemoryTable)

@@ -7,14 +7,17 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
+	"io/ioutil"
+	"reflect"
+	"strconv"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/resources"
-	"io/ioutil"
-	"strconv"
+
+	"github.com/boltdb/bolt"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/boltdb/bolt"
 )
 
 func NewLocal(path string) (*Local, error) {
@@ -120,6 +123,7 @@ func (storage *Local) Update(ctx context.Context, ptr interface{}) error {
 }
 
 func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {
+	T := reflect.TypeOf(Type)
 	r, w := iterators.NewPipe()
 
 	if err := ctx.Err(); err != nil {
@@ -142,13 +146,14 @@ func (storage *Local) FindAll(ctx context.Context, Type interface{}) frameless.I
 					return err
 				}
 
-				entity := reflects.New(Type)
+				ptr := reflect.New(T).Interface()
 
-				if err := storage.Deserialize(encodedEntity, entity); err != nil {
+				if err := storage.Deserialize(encodedEntity, ptr); err != nil {
 					return err
 				}
 
-				return w.Encode(entity) // iterators.ErrClosed will cancel ForEach execution
+				// iterators.ErrClosed will cancel ForEach execution
+				return w.Encode(reflect.ValueOf(ptr).Elem().Interface())
 			})
 
 		})
@@ -257,7 +262,7 @@ func (storage *Local) Serialize(e frameless.Entity) ([]byte, error) {
 	return storage.compress(buf.Bytes())
 }
 
-func (storage *Local) Deserialize(CompressedAndSerialized []byte, ptr frameless.Entity) error {
+func (storage *Local) Deserialize(CompressedAndSerialized []byte, ptr interface{}) error {
 	serialized, err := storage.decompress(CompressedAndSerialized)
 	if err != nil {
 		return err

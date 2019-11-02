@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/testcase"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
 )
@@ -282,9 +283,9 @@ func (spec findAllSpec) Test(t *testing.T) {
 			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
 				all := subject(t)
 				var entities []interface{}
-				require.Nil(t, iterators.CollectAll(all, &entities))
+				require.Nil(t, iterators.Collect(all, &entities))
 				require.Equal(t, 1, len(entities))
-				require.Contains(t, entities, reflects.BaseValueOf(t.I(`entity`)).Interface())
+				contains(t, entities, t.I(`entity`))
 			})
 
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
@@ -298,10 +299,10 @@ func (spec findAllSpec) Test(t *testing.T) {
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {
 					all := subject(t)
 					var entities []interface{}
-					require.Nil(t, iterators.CollectAll(all, &entities))
+					require.Nil(t, iterators.Collect(all, &entities))
 					require.Equal(t, 2, len(entities))
-					require.Contains(t, entities, reflects.BaseValueOf(t.I(`entity`)).Interface())
-					require.Contains(t, entities, reflects.BaseValueOf(t.I(`oth-entity`)).Interface())
+					contains(t, entities, t.I(`entity`))
+					contains(t, entities, t.I(`oth-entity`))
 				})
 			})
 		})

@@ -17,7 +17,7 @@ func SharedErrCases(t *testing.T, subject func(frameless.Iterator, frameless.Ent
 		t.Run("Closing", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock(iterators.NewSingleElement(&Entity{Text: "close"}))
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "close"}))
 
 			i.StubClose = func() error { return expected }
 
@@ -27,7 +27,7 @@ func SharedErrCases(t *testing.T, subject func(frameless.Iterator, frameless.Ent
 		t.Run("Decode", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock(iterators.NewSingleElement(&Entity{Text: "decode"}))
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "decode"}))
 
 			i.StubDecode = func(interface{}) error { return expected }
 
@@ -37,7 +37,7 @@ func SharedErrCases(t *testing.T, subject func(frameless.Iterator, frameless.Ent
 		t.Run("Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock(iterators.NewSingleElement(&Entity{Text: "err"}))
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "err"}))
 
 			i.StubErr = func() error { return expected }
 
@@ -47,7 +47,7 @@ func SharedErrCases(t *testing.T, subject func(frameless.Iterator, frameless.Ent
 		t.Run("Decode+Close Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock(iterators.NewSingleElement(&Entity{Text: "err"}))
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "err"}))
 
 			i.StubDecode = func(interface{}) error { return expected }
 			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }
@@ -58,7 +58,7 @@ func SharedErrCases(t *testing.T, subject func(frameless.Iterator, frameless.Ent
 		t.Run("Err+Close Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock(iterators.NewSingleElement(&Entity{Text: "err"}))
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "err"}))
 
 			i.StubErr = func() error { return expected }
 			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }

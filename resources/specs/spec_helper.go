@@ -2,23 +2,17 @@ package specs
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
 
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-)
 
-type resource interface {
-	resources.Saver
-	resources.Finder
-	resources.Updater
-	resources.Deleter
-	resources.Truncater
-}
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/reflects"
+)
 
 func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 	entityTypeName := reflects.FullyQualifiedName(entityType)
@@ -49,4 +43,12 @@ func saveEntities(tb testing.TB, s resources.Saver, f FixtureFactory, es ...inte
 
 func cleanup(tb testing.TB, t resources.Truncater, f FixtureFactory, T interface{}) {
 	require.Nil(tb, t.Truncate(f.Context(), T))
+}
+
+func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs ...interface{}) {
+	containsRefVal := reflect.ValueOf(contains)
+	if containsRefVal.Kind() == reflect.Ptr {
+		contains = containsRefVal.Elem().Interface()
+	}
+	require.Contains(tb, slice, contains, msgAndArgs...)
 }

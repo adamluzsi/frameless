@@ -42,7 +42,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 		i = iterators.WithConcurrentAccess(i)
 
 		var vs []int
-		require.Nil(t, iterators.CollectAll(i, &vs))
+		require.Nil(t, iterators.Collect(i, &vs))
 		require.ElementsMatch(t, []int{1, 2}, vs)
 	})
 

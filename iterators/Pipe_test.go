@@ -2,17 +2,25 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-func ExampleNewPipe() (frameless.Iterator, *iterators.PipeSender) {
-	return iterators.NewPipe()
+func ExampleNewPipe() {
+	var (
+		iter   frameless.Iterator
+		sender *iterators.PipeSender
+	)
+
+	iter, sender = iterators.NewPipe()
+	_ = iter   // send to caller for consuming it
+	_ = sender // use it to send values for each iter.Next() call
 }
 
 func TestNewPipe_SimpleFeedScenario(t *testing.T) {
@@ -20,12 +28,12 @@ func TestNewPipe_SimpleFeedScenario(t *testing.T) {
 
 	r, w := iterators.NewPipe()
 
-	var expected Entity = Entity{Text: "hitchhiker's guide to the galaxy"}
+	var expected = Entity{Text: "hitchhiker's guide to the galaxy"}
 	var actually Entity
 
 	go func() {
 		defer w.Close()
-		require.Nil(t, w.Encode(&expected))
+		require.Nil(t, w.Encode(expected))
 	}()
 
 	require.True(t, r.Next())            // first next should return the value mean to be sent
@@ -57,9 +65,9 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 		}
 	}()
 
-	require.Nil(t, iterators.CollectAll(r, &actually)) // When I collect everything with Collect All and close the resource
-	require.True(t, len(actually) > 0)                 // the collection includes all the sent values
-	require.Equal(t, expected, actually)               // which is exactly the same that mean to be sent.
+	require.Nil(t, iterators.Collect(r, &actually)) // When I collect everything with Collect All and close the resource
+	require.True(t, len(actually) > 0)              // the collection includes all the sent values
+	require.Equal(t, expected, actually)            // which is exactly the same that mean to be sent.
 }
 
 func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
@@ -105,7 +113,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 	r, w := iterators.NewPipe()
 
 	go func() {
-		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
 		w.Error(expected)
 		require.Nil(t, w.Close())
 	}()
@@ -137,7 +145,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndR
 	wg.Add(1)
 
 	go func() {
-		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
 		wg.Wait()
 		w.Error(expected)
 		require.Nil(t, w.Close())
@@ -162,7 +170,7 @@ func TestNewPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNo
 			w.Error(nil)
 		}
 
-		require.Nil(t, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
 
 		require.Nil(t, w.Close())
 	}()

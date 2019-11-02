@@ -77,7 +77,7 @@ func TestScanner_Split(t *testing.T) {
 	i := ExampleScanner_Split()
 
 	lines := []string{}
-	iterators.CollectAll(i, &lines)
+	iterators.Collect(i, &lines)
 	require.Equal(t, 4, len(lines))
 	require.Equal(t, `a`, lines[0])
 	require.Equal(t, `b`, lines[1])

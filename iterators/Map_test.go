@@ -3,13 +3,14 @@ package iterators_test
 import (
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
 	"strings"
 	"testing"
+
+	"github.com/adamluzsi/testcase"
+	"github.com/stretchr/testify/require"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 func TestMap(t *testing.T) {
@@ -32,14 +33,14 @@ func TestMap(t *testing.T) {
 				if err := d.Decode(&s); err != nil {
 					return err
 				}
-				s = strings.ToUpper(s)
-				return reflects.Link(&s, ptr)
+				*ptr.(*string) = strings.ToUpper(s)
+				return nil
 			}
 		})
 
 		s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
 			var values []string
-			require.Nil(t, iterators.CollectAll(subject(t), &values))
+			require.Nil(t, iterators.Collect(subject(t), &values))
 			require.ElementsMatch(t, []string{`A`, `B`, `C`}, values)
 		})
 
@@ -68,9 +69,10 @@ func TestMap(t *testing.T) {
 
 			toUpper := func(d iterators.Decoder, ptr interface{}) error {
 				var s string
-				_ = d.Decode(&s)
+				require.Nil(t, d.Decode(&s))
 				s = strings.ToUpper(s)
-				return reflects.Link(&s, ptr)
+				*ptr.(*string) = s
+				return nil
 			}
 
 			withIndex := func() func(d iterators.Decoder, ptr interface{}) error {
@@ -79,22 +81,22 @@ func TestMap(t *testing.T) {
 				return func(d iterators.Decoder, ptr interface{}) error {
 					defer func() { index++ }()
 					var s string
-					_ = d.Decode(&s)
-					s = fmt.Sprintf(`%s%d`, s, index)
-					return reflects.Link(&s, ptr)
+					require.Nil(t, d.Decode(&s))
+					*ptr.(*string) = fmt.Sprintf(`%s%d`, s, index)
+					return nil
 				}
 			}
 
 			i := t.I(`input stream`).(frameless.Iterator)
 			i = iterators.Map(i, toUpper)
 			i = iterators.Map(i, withIndex())
-			return i
 
+			return i
 		}
 
 		s.Then(`it will execute all the map steps in the final iterator composition`, func(t *testcase.T) {
 			var values []string
-			require.Nil(t, iterators.CollectAll(subject(t), &values))
+			require.Nil(t, iterators.Collect(subject(t), &values))
 			require.ElementsMatch(t, []string{`A0`, `B1`, `C2`}, values)
 		})
 	})

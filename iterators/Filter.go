@@ -8,13 +8,13 @@ import (
 )
 
 func Filter(i frameless.Iterator, selectorFunc interface{}) *FilterIterator {
-	iter := &FilterIterator{src: i, filterFunc: selectorFunc}
+	iter := &FilterIterator{iterator: i, filterFunc: selectorFunc}
 	iter.init()
 	return iter
 }
 
 type FilterIterator struct {
-	src        frameless.Iterator
+	iterator   frameless.Iterator
 	filterFunc interface{}
 	matcher    func(interface{}) bool
 
@@ -38,14 +38,16 @@ func (fi *FilterIterator) init() {
 
 		vrets := v.Call([]reflect.Value{varg})
 
+		const ErrSignatureMismatch = `Filter function expects only one return value: func(type T)(T) bool`
+
 		if len(vrets) != 1 {
-			panic(`Filter function expects one return value`)
+			panic(ErrSignatureMismatch)
 		}
 
 		isMatching, ok := vrets[0].Interface().(bool)
 
 		if !ok {
-			panic(`Filter matcher function must return boolean`)
+			panic(ErrSignatureMismatch)
 		}
 
 		return isMatching
@@ -53,7 +55,7 @@ func (fi *FilterIterator) init() {
 }
 
 func (fi *FilterIterator) Close() error {
-	return fi.src.Close()
+	return fi.iterator.Close()
 }
 
 func (fi *FilterIterator) Err() error {
@@ -61,7 +63,7 @@ func (fi *FilterIterator) Err() error {
 		return fi.err
 	}
 
-	return fi.src.Err()
+	return fi.iterator.Err()
 }
 
 func (fi *FilterIterator) Decode(e frameless.Entity) error {
@@ -70,13 +72,11 @@ func (fi *FilterIterator) Decode(e frameless.Entity) error {
 
 func (fi *FilterIterator) Next() bool {
 
-	hasNext := fi.src.Next()
-
-	if !hasNext {
+	if !fi.iterator.Next() {
 		return false
 	}
 
-	if err := fi.src.Decode(&fi.next); err != nil {
+	if err := fi.iterator.Decode(&fi.next); err != nil {
 		fi.err = err
 		return false
 	}
