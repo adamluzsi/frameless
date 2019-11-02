@@ -6,10 +6,9 @@ import (
 
 	"github.com/adamluzsi/frameless"
 
-	"github.com/adamluzsi/frameless/reflects"
+	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/stretchr/testify/require"
 )
 
 var _ frameless.Iterator = iterators.NewMock(iterators.NewEmpty())
@@ -81,8 +80,7 @@ func TestMock_Decode(t *testing.T) {
 	require.Equal(t, 43, value)
 
 	m.StubDecode = func(i interface{}) error {
-		src := 4242
-		reflects.Link(&src, i)
+		*i.(*int) = 4242
 		return expectedError
 	}
 

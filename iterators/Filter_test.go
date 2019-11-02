@@ -44,7 +44,7 @@ func TestFilter(t *testing.T) {
 				require.NotNil(t, i)
 
 				var numbers []int
-				require.Nil(t, iterators.CollectAll(i, &numbers))
+				require.Nil(t, iterators.Collect(i, &numbers))
 				require.Equal(t, originalInput, numbers)
 			})
 
@@ -53,8 +53,33 @@ func TestFilter(t *testing.T) {
 				require.NotNil(t, i)
 
 				var numbers []int
-				require.Nil(t, iterators.CollectAll(i, &numbers))
+				require.Nil(t, iterators.Collect(i, &numbers))
 				require.Equal(t, []int{6, 7, 8, 9}, numbers)
+			})
+
+			t.Run(`when filter function specify a struct type`, func(t *testing.T) {
+				type T struct{ Int int }
+				s := []T{{Int: 1}, {Int: 2}, {Int: 3}, {Int: 4}}
+				i := iterators.Filter(iterators.NewSlice(s), func(t T) bool { return 2 < t.Int })
+
+				var res []T
+				require.Nil(t, iterators.Collect(i, &res))
+				require.NotNil(t, res)
+				require.Equal(t, 2, len(res))
+				require.ElementsMatch(t, res, []T{{Int: 3}, {Int: 4}})
+			})
+
+			t.Run(`when filter function specify a pointer type`, func(t *testing.T) {
+				t.Skip()
+				type T struct{ Int int }
+				s := []*T{{Int: 1}, {Int: 2}, {Int: 3}, {Int: 4}}
+				i := iterators.Filter(iterators.NewSlice(s), func(t *T) bool { return 2 < t.Int })
+
+				var res []*T
+				require.Nil(t, iterators.Collect(i, &res))
+				require.NotNil(t, res)
+				require.Equal(t, 2, len(res))
+				require.ElementsMatch(t, res, []*T{{Int: 3}, {Int: 4}})
 			})
 
 			t.Run("but iterator encounter an exception", func(t *testing.T) {
@@ -76,7 +101,7 @@ func TestFilter(t *testing.T) {
 					})
 				})
 
-				t.Run("during somewhere which stated in the src iterator Err", func(t *testing.T) {
+				t.Run("during somewhere which stated in the iterator iterator Err", func(t *testing.T) {
 
 					iterator = func() frameless.Iterator {
 						m := iterators.NewMock(srcI())

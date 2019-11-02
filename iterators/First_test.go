@@ -26,7 +26,7 @@ func TestFirst_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
 func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewMock(iterators.NewSlice([]*Entity{&Entity{Text: "hy!"}}))
+	i := iterators.NewMock(iterators.NewSlice([]Entity{{Text: "hy!"}}))
 
 	closed := false
 	i.StubClose = func() error {

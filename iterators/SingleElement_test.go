@@ -5,9 +5,10 @@ import (
 
 	"github.com/adamluzsi/frameless"
 
-	randomdata "github.com/Pallinder/go-randomdata"
-	"github.com/adamluzsi/frameless/iterators"
+	"github.com/Pallinder/go-randomdata"
 	"github.com/stretchr/testify/require"
+
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 var _ frameless.Iterator = iterators.NewSingleElement("")
@@ -21,13 +22,13 @@ var RandomName = randomdata.SillyName()
 func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	t.Parallel()
 
-	var expected ExampleStruct = ExampleStruct{Name: RandomName}
+	var expected = ExampleStruct{Name: RandomName}
 	var actually ExampleStruct
 
-	i := iterators.NewSingleElement(&expected)
+	i := iterators.NewSingleElement(expected)
 	defer i.Close()
 
-	iterators.DecodeNext(i, &actually)
+	require.Nil(t, iterators.DecodeNext(i, &actually))
 
 	require.Equal(t, expected, actually)
 }
@@ -52,7 +53,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 func TestNewSingleElement_NextCalled_DecodeShouldDoNothing(t *testing.T) {
 	t.Parallel()
 
-	var expected ExampleStruct = ExampleStruct{Name: RandomName}
+	var expected = ExampleStruct{Name: RandomName}
 	var actually ExampleStruct
 
 	i := iterators.NewSingleElement(&expected)

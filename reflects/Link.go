@@ -4,13 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-
-	"github.com/adamluzsi/frameless"
 )
 
 // Link will make destination interface be linked with the src value.
-// if the src is a pointer to a value, the value will be linked
-func Link(src, dst frameless.Entity) (err error) {
+//
+func Link(src, ptr interface{}) (err error) {
+	vPtr := reflect.ValueOf(ptr)
+
+	if vPtr.Kind() != reflect.Ptr {
+		return errors.New(`pointer type destination expected`)
+	}
 
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -18,15 +21,7 @@ func Link(src, dst frameless.Entity) (err error) {
 		}
 	}()
 
-	value := reflect.ValueOf(src)
-
-	if value.Kind() != reflect.Ptr {
-		ptr := reflect.New(reflect.TypeOf(src))
-		ptr.Elem().Set(value)
-		value = ptr
-	}
-
-	reflect.ValueOf(dst).Elem().Set(value.Elem())
+	vPtr.Elem().Set(reflect.ValueOf(src))
 
 	return nil
 }
