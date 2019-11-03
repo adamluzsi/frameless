@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
@@ -51,7 +50,9 @@ func (spec TruncaterSpec) Test(t *testing.T) {
 		s.Then(`it should not affect other entities`, func(t *testcase.T) {
 			t.Skip(`TODO/POC`)
 
-			ff, ok := spec.FixtureFactory.(interface{ OthEntityType(e interface{}) interface{} })
+			ff, ok := spec.FixtureFactory.(interface {
+				OthEntityType(e interface{}) interface{}
+			})
 			if !ok {
 				t.Skip(`OthEntityType not yet implemented`)
 			}
@@ -76,7 +77,7 @@ func (spec TruncaterSpec) Benchmark(b *testing.B) {
 		// the correct throughput, and hangs forever
 		// so I just check empty db truncate then.
 		// This anyway not a thing that is often used.
-		for i:=0; i< b.N; i++ {
+		for i := 0; i < b.N; i++ {
 			require.Nil(b, spec.Subject.Truncate(spec.Context(), spec.EntityType))
 		}
 	})
@@ -94,7 +95,7 @@ func (spec TruncaterSpec) populateFor(t testing.TB, Type interface{}) string {
 }
 
 func (spec TruncaterSpec) isStored(t testing.TB, ID string, Type interface{}) bool {
-	entity := reflects.New(Type)
+	entity := newEntityBasedOn(Type)
 	ok, err := spec.Subject.FindByID(spec.Context(), entity, ID)
 	require.Nil(t, err)
 	return ok

@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 
@@ -75,7 +74,7 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 					require.Nil(t, subject(t))
 
 					id := t.I(`entity.id`).(string)
-					actually := reflects.New(spec.EntityType)
+					actually := newEntityBasedOn(spec.EntityType)
 					ok, err := spec.Subject.FindByID(spec.Context(), actually, id)
 					require.True(t, ok)
 					require.Nil(t, err)
@@ -116,7 +115,7 @@ func (spec UpdaterSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	b.Run(`UpdaterSpec`, func(b *testing.B) {
 		es := createEntities(spec.FixtureFactory, spec.EntityType)
-		 saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
+		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
 		var executionTimes int

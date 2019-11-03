@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/testcase"
 
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/frameless"
@@ -58,7 +57,7 @@ func (spec DeleterSpec) Test(t *testing.T) {
 
 			s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				e := reflects.New(spec.EntityType)
+				e := newEntityBasedOn(spec.EntityType)
 				found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`).(string))
 				require.Nil(t, err)
 				require.False(t, found)
@@ -90,7 +89,7 @@ func (spec DeleterSpec) Test(t *testing.T) {
 					othID, ok := resources.LookupID(t.I(`oth-entity`))
 					require.True(t, ok, frameless.ErrIDRequired.Error())
 
-					e := reflects.New(spec.EntityType)
+					e := newEntityBasedOn(spec.EntityType)
 					found, err := spec.Subject.FindByID(spec.Context(), e, othID)
 					require.Nil(t, err)
 					require.True(t, found)

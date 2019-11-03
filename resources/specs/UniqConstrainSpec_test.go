@@ -3,8 +3,9 @@ package specs_test
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless/resources/specs"
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources/specs"
 
 	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
 )

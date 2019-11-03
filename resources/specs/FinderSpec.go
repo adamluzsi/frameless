@@ -8,7 +8,6 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/stretchr/testify/require"
@@ -74,7 +73,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		})
 
 		s.Let(`ptr`, func(t *testcase.T) interface{} {
-			return reflects.New(spec.EntityType)
+			return newEntityBasedOn(spec.EntityType)
 		})
 
 		s.Before(func(t *testcase.T) {
@@ -177,7 +176,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		}()
 
 		t.Run("when no value stored that the query request", func(t *testing.T) {
-			ptr := reflects.New(spec.EntityType)
+			ptr := newEntityBasedOn(spec.EntityType)
 
 			ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
 
@@ -188,7 +187,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		t.Run("values returned", func(t *testing.T) {
 			for _, ID := range ids {
 
-				entityPtr := reflects.New(spec.EntityType)
+				entityPtr := newEntityBasedOn(spec.EntityType)
 				ok, err := spec.Subject.FindByID(spec.Context(), entityPtr, ID)
 
 				require.Nil(t, err)
@@ -220,7 +219,7 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 	wrk:
 		for {
 			for _, id := range ids {
-				ptr := reflects.New(spec.EntityType)
+				ptr := newEntityBasedOn(spec.EntityType)
 				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
 				require.Nil(b, err)
 				require.True(b, found)
