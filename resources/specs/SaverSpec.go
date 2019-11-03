@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/frameless/resources"
 
-	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
@@ -54,7 +53,7 @@ func (spec SaverSpec) Test(t *testing.T) {
 
 				entity := t.I(`entity`)
 				id, _ := resources.LookupID(entity)
-				ptr := reflects.New(spec.EntityType)
+				ptr := newEntityBasedOn(spec.EntityType)
 				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
 				require.Nil(t, err)
 				require.True(t, found)
@@ -100,7 +99,7 @@ func (spec SaverSpec) Test(t *testing.T) {
 				require.True(t, ok, "ID is not defined in the entity struct src definition")
 				require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
-				actual := reflects.New(spec.EntityType)
+				actual := newEntityBasedOn(spec.EntityType)
 
 				ok, err = spec.Subject.FindByID(spec.Context(), actual, ID)
 				require.Nil(t, err)

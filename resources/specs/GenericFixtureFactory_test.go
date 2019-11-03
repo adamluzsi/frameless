@@ -1,9 +1,9 @@
 package specs_test
 
 import (
-	"github.com/adamluzsi/frameless/resources/specs"
 	"testing"
 
+	"github.com/adamluzsi/frameless/resources/specs"
 )
 
 func TestGenericFixtureFactory(t *testing.T) {

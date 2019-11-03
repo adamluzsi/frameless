@@ -18,7 +18,7 @@ func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 	entityTypeName := reflects.FullyQualifiedName(entityType)
 	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
 	s.Test(desc, func(t *testcase.T) {
-		_, hasExtID := resources.LookupID(reflects.New(entityType))
+		_, hasExtID := resources.LookupID(newEntityBasedOn(entityType))
 		require.True(t, hasExtID, frameless.ErrIDRequired.Error())
 	})
 }
@@ -51,4 +51,8 @@ func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs
 		contains = containsRefVal.Elem().Interface()
 	}
 	require.Contains(tb, slice, contains, msgAndArgs...)
+}
+
+func newEntityBasedOn(T interface{}) interface{} {
+	return reflect.New(reflect.TypeOf(T)).Interface()
 }
