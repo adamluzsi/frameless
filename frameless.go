@@ -132,9 +132,9 @@ type Iterator interface {
 	Next() bool
 	// Err return the cause if for some reason by default the More return false all the time
 	Err() error
-	// Decode will populate an object with values and/or return error
+	// Decoder will populate an object with values and/or return error
 	// this is required to retrieve the current value from the iterator
-	Decode(ptr interface{}) error
+	Decoder
 }
 
 /*
@@ -157,4 +157,45 @@ by describing the behaviour in a shared specification.
 type Spec interface {
 	Test(t *testing.T)
 	Benchmark(b *testing.B)
+}
+
+// Signaler represent communication type of interactions about message state handling.
+type Signaler interface {
+	// Acknowledgement represent a success confirmation back to a caller.
+	//
+	// For example, in data networking, telecommunications, and computer buses,
+	// an acknowledgement (ACK) is a signal that is passed between communicating processes,
+	// computers, or devices to signify acknowledgement, or receipt of message, as part of a communications protocol.
+	Acknowledgement() error
+	// NegativeAcknowledgement represent a signal that tells the caller that the received resource must be considered as not handled,
+	// and should be handled over again eventually.
+	//
+	// The negative-acknowledgement (NAK or NACK) signal is sent to reject a previously received message,
+	// or to indicate some kind of error.
+	//
+	// Acknowledgements and negative acknowledgements inform a sender of the receiver's state
+	// so that it can adjust its own state accordingly.
+	NegativeAcknowledgement() error
+}
+
+// Decoder is the interface to represent value decoding into a passed pointer type.
+// Most commonly this happens with value decoding that was received from some sort of external resource.
+type Decoder interface {
+	// Decode will populate/replace/configure the value of the received pointer type
+	// and in case of failure, returns an error.
+	Decode(ptr interface{}) error
+}
+
+// @WIP
+// check if iterator can be a queue
+type Queue interface {
+	io.Closer
+	Add(interface{}) error
+	// TODO check if iterator can be used here.
+	Remove() (msg QueueMessage, hasNext bool, err error)
+}
+
+type QueueMessage interface {
+	Signaler
+	Decoder
 }
