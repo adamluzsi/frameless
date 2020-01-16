@@ -3,6 +3,8 @@ package frameless
 import (
 	"io"
 	"testing"
+
+	"github.com/adamluzsi/frameless/transactions"
 )
 
 /*
@@ -199,3 +201,6 @@ type QueueMessage interface {
 	Signaler
 	Decoder
 }
+
+// TODO: add description
+type TransactionManager = transactions.Manager
