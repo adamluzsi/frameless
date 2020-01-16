@@ -5,10 +5,10 @@
 package iterators_test
 
 import (
-	frameless "github.com/adamluzsi/frameless"
+	reflect "reflect"
+
 	iterators "github.com/adamluzsi/frameless/iterators"
 	gomock "github.com/golang/mock/gomock"
-	reflect "reflect"
 )
 
 // MockSQLRowScanner is a mock of SQLRowScanner interface
@@ -76,7 +76,7 @@ func (m *MockSQLRowMapper) EXPECT() *MockSQLRowMapperMockRecorder {
 }
 
 // Map mocks base method
-func (m *MockSQLRowMapper) Map(s iterators.SQLRowScanner, ptr frameless.Entity) error {
+func (m *MockSQLRowMapper) Map(s iterators.SQLRowScanner, ptr interface{}) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Map", s, ptr)
 	ret0, _ := ret[0].(error)

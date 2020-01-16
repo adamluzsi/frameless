@@ -4,6 +4,8 @@ import (
 	"io"
 	"testing"
 
+	"github.com/adamluzsi/frameless/errs"
+	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/transactions"
 )
 
@@ -126,18 +128,7 @@ Clients use an iterator to access and traverse an aggregate without knowing its 
 Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
 https://en.wikipedia.org/wiki/Iterator_pattern
 */
-type Iterator interface {
-	// this is required to make it able to cancel iterators where resource being used behind the scene
-	// for all other case where the underling io is handled on higher level, it should simply return nil
-	io.Closer
-	// Next will ensure that Decode return the next item when it is executed
-	Next() bool
-	// Err return the cause if for some reason by default the More return false all the time
-	Err() error
-	// Decoder will populate an object with values and/or return error
-	// this is required to retrieve the current value from the iterator
-	Decoder
-}
+type Iterator = iterators.Iterator
 
 /*
 	Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
@@ -146,10 +137,7 @@ type Iterator interface {
 			const ErrSomething frameless.Error = "something is an error"
 
 */
-type Error string
-
-// Error implement the error interface
-func (err Error) Error() string { return string(err) }
+type Error = errs.Error
 
 /*
 Spec represent a shared specification that intention is to request specific behavior for commonly used components.
@@ -180,13 +168,7 @@ type Signaler interface {
 	NegativeAcknowledgement() error
 }
 
-// Decoder is the interface to represent value decoding into a passed pointer type.
-// Most commonly this happens with value decoding that was received from some sort of external resource.
-type Decoder interface {
-	// Decode will populate/replace/configure the value of the received pointer type
-	// and in case of failure, returns an error.
-	Decode(ptr interface{}) error
-}
+type Decoder iterators.Decoder
 
 // @WIP
 // check if iterator can be a queue

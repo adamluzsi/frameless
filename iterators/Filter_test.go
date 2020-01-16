@@ -5,15 +5,13 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
 )
 
 func ExampleFilter() error {
-	var iter frameless.Iterator
+	var iter iterators.Iterator
 	iter = iterators.NewSlice([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
 	iter = iterators.Filter(iter, func(n int) bool { return n > 2 })
 
@@ -37,7 +35,7 @@ func TestFilter(t *testing.T) {
 
 		t.Run("given the iterator has set of elements", func(t *testing.T) {
 			originalInput := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-			iterator := func() frameless.Iterator { return iterators.NewSlice(originalInput) }
+			iterator := func() iterators.Iterator { return iterators.NewSlice(originalInput) }
 
 			t.Run("when filter allow everything", func(t *testing.T) {
 				i := iterators.Filter(iterator(), func(interface{}) bool { return true })
@@ -87,9 +85,9 @@ func TestFilter(t *testing.T) {
 
 				t.Run("during Decode", func(t *testing.T) {
 
-					iterator = func() frameless.Iterator {
+					iterator = func() iterators.Iterator {
 						m := iterators.NewMock(srcI())
-						m.StubDecode = func(frameless.Entity) error { return fmt.Errorf("Boom!") }
+						m.StubDecode = func(interface{}) error { return fmt.Errorf("Boom!") }
 						return m
 					}
 
@@ -103,7 +101,7 @@ func TestFilter(t *testing.T) {
 
 				t.Run("during somewhere which stated in the iterator iterator Err", func(t *testing.T) {
 
-					iterator = func() frameless.Iterator {
+					iterator = func() iterators.Iterator {
 						m := iterators.NewMock(srcI())
 						m.StubErr = func() error { return fmt.Errorf("Boom!!") }
 						return m
@@ -118,7 +116,7 @@ func TestFilter(t *testing.T) {
 
 				t.Run("during Closing the iterator", func(t *testing.T) {
 
-					iterator = func() frameless.Iterator {
+					iterator = func() iterators.Iterator {
 						m := iterators.NewMock(srcI())
 						m.StubClose = func() error { return fmt.Errorf("Boom!!!") }
 						return m

@@ -1,14 +1,13 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 )
 
 // NewPipe return a receiver and a sender.
 // This can be used with resources that
 func NewPipe() (*PipeReceiver, *PipeSender) {
-	feed := make(chan frameless.Entity)
+	feed := make(chan interface{})
 	done := make(chan struct{}, 1)
 	err := make(chan error, 1)
 	return &PipeReceiver{feed: feed, done: done, err: err},
@@ -17,7 +16,7 @@ func NewPipe() (*PipeReceiver, *PipeSender) {
 
 // PipeReceiver implements iterator interface while it's still being able to receive values, used for streaming
 type PipeReceiver struct {
-	feed <-chan frameless.Entity
+	feed <-chan interface{}
 	done chan<- struct{}
 	err  <-chan error
 
@@ -64,14 +63,14 @@ func (i *PipeReceiver) Decode(e interface{}) error {
 
 // PipeSender provides access to feed a pipe receiver with entities
 type PipeSender struct {
-	feed chan<- frameless.Entity
+	feed chan<- interface{}
 	done <-chan struct{}
 	err  chan<- error
 }
 
 // Encode send value to the PipeReceiver
 // and returns ErrClosed error if no more value expected on the receiver side
-func (f *PipeSender) Encode(e frameless.Entity) error {
+func (f *PipeSender) Encode(e interface{}) error {
 	select {
 	case f.feed <- e:
 		return nil

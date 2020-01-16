@@ -1,16 +1,14 @@
 package iterators
 
-import (
-	"github.com/adamluzsi/frameless"
-)
+import "github.com/adamluzsi/frameless/errs"
 
-func One(i frameless.Iterator, e frameless.Entity) error {
+func One(i Iterator, e interface{}) error {
 	if err := i.Err(); err != nil {
 		return err
 	}
 
 	if !i.Next() {
-		return frameless.ErrNotFound
+		return errs.ErrNotFound
 	}
 
 	if err := i.Decode(e); err != nil {

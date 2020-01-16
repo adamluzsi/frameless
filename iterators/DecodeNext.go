@@ -1,13 +1,11 @@
 package iterators
 
-import (
-	"github.com/adamluzsi/frameless"
-)
+import "github.com/adamluzsi/frameless/errs"
 
-func DecodeNext(i frameless.Iterator, e frameless.Entity) error {
+func DecodeNext(i Iterator, e interface{}) error {
 
 	if !i.Next() {
-		return frameless.ErrNotFound
+		return errs.ErrNotFound
 	}
 
 	return i.Decode(e)

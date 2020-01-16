@@ -1,9 +1,10 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/iterators"
 	"strings"
 	"testing"
+
+	"github.com/adamluzsi/frameless/iterators"
 
 	"github.com/stretchr/testify/require"
 )

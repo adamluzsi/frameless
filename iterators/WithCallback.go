@@ -1,12 +1,11 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless"
 	"io"
 )
 
-func WithCallback(i frameless.Iterator, c Callback) frameless.Iterator {
-	return &CallbackIterator{Iterator: i, Callback: c,}
+func WithCallback(i Iterator, c Callback) Iterator {
+	return &CallbackIterator{Iterator: i, Callback: c}
 }
 
 type Callback struct {
@@ -14,7 +13,7 @@ type Callback struct {
 }
 
 type CallbackIterator struct {
-	frameless.Iterator
+	Iterator
 	Callback
 }
 
@@ -33,7 +32,7 @@ func (i *CallbackIterator) Close() error {
 //	panic("implement me")
 //}
 //
-//func (*CallbackIterator) Decode(frameless.Entity) error {
+//func (*CallbackIterator) Decode(interface{}) error {
 //	panic("implement me")
 //}
 //

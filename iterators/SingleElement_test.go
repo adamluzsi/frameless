@@ -3,15 +3,13 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/Pallinder/go-randomdata"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-var _ frameless.Iterator = iterators.NewSingleElement("")
+var _ iterators.Iterator = iterators.NewSingleElement("")
 
 type ExampleStruct struct {
 	Name string

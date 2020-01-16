@@ -1,10 +1,8 @@
 package iterators
 
-import (
-	"github.com/adamluzsi/frameless"
-)
+import "github.com/adamluzsi/frameless/errs"
 
-func Last(i frameless.Iterator, e frameless.Entity) (err error) {
+func Last(i Iterator, e interface{}) (err error) {
 
 	defer func() {
 		cErr := i.Close()
@@ -26,7 +24,7 @@ func Last(i frameless.Iterator, e frameless.Entity) (err error) {
 	}
 
 	if !iterated {
-		return frameless.ErrNotFound
+		return errs.ErrNotFound
 	}
 
 	return i.Err()

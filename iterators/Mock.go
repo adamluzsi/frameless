@@ -1,10 +1,6 @@
 package iterators
 
-import (
-	"github.com/adamluzsi/frameless"
-)
-
-func NewMock(i frameless.Iterator) *Mock {
+func NewMock(i Iterator) *Mock {
 	return &Mock{
 		iterator: i,
 
@@ -16,7 +12,7 @@ func NewMock(i frameless.Iterator) *Mock {
 }
 
 type Mock struct {
-	iterator frameless.Iterator
+	iterator Iterator
 
 	StubDecode func(interface{}) error
 	StubClose  func() error

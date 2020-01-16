@@ -2,10 +2,11 @@ package iterators_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless"
+	"testing"
+
+	"github.com/adamluzsi/frameless/errs"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestOne(t *testing.T) {
@@ -14,8 +15,8 @@ func TestOne(t *testing.T) {
 			t.Parallel()
 
 			i := iterators.NewEmpty()
-			var e frameless.Entity
-			require.Equal(t, iterators.One(i, &e), frameless.ErrNotFound)
+			var e interface{}
+			require.Equal(t, iterators.One(i, &e), errs.ErrNotFound)
 		})
 
 		t.Run("when iterator have one element exactly", func(t *testing.T) {

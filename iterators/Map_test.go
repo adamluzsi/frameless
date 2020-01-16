@@ -9,7 +9,6 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 )
 
@@ -17,8 +16,8 @@ func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
 
-	subject := func(t *testcase.T) frameless.Iterator {
-		return iterators.Map(t.I(`input stream`).(frameless.Iterator),
+	subject := func(t *testcase.T) iterators.Iterator {
+		return iterators.Map(t.I(`input stream`).(iterators.Iterator),
 			t.I(`transform`).(iterators.MapTransformFunc))
 	}
 
@@ -65,7 +64,7 @@ func TestMap(t *testing.T) {
 	})
 
 	s.Describe(`map used in a daisy chain style`, func(s *testcase.Spec) {
-		subject := func(t *testcase.T) frameless.Iterator {
+		subject := func(t *testcase.T) iterators.Iterator {
 
 			toUpper := func(d iterators.Decoder, ptr interface{}) error {
 				var s string
@@ -87,7 +86,7 @@ func TestMap(t *testing.T) {
 				}
 			}
 
-			i := t.I(`input stream`).(frameless.Iterator)
+			i := t.I(`input stream`).(iterators.Iterator)
 			i = iterators.Map(i, toUpper)
 			i = iterators.Map(i, withIndex())
 

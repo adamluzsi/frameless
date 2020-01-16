@@ -1,9 +1,9 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless"
 	"testing"
 
+	"github.com/adamluzsi/frameless/errs"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
@@ -50,5 +50,5 @@ func TestLast_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *tes
 
 	i := iterators.NewEmpty()
 
-	require.Equal(t, frameless.ErrNotFound, iterators.Last(i, &Entity{}))
+	require.Equal(t, errs.ErrNotFound, iterators.Last(i, &Entity{}))
 }

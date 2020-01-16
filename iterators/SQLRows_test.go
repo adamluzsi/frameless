@@ -7,15 +7,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless"
+	"testing"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/testcase"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
-func ExampleNewSQLRows(ctx context.Context, db *sql.DB) (error) {
+func ExampleNewSQLRows(ctx context.Context, db *sql.DB) error {
 	userIDs, err := db.QueryContext(ctx, `SELECT id FROM users`)
 
 	if err != nil {
@@ -26,7 +26,7 @@ func ExampleNewSQLRows(ctx context.Context, db *sql.DB) (error) {
 		asdf string
 	}
 
-	iter := iterators.NewSQLRows(userIDs, iterators.SQLRowMapperFunc(func(scanner iterators.SQLRowScanner, entity frameless.Entity) error {
+	iter := iterators.NewSQLRows(userIDs, iterators.SQLRowMapperFunc(func(scanner iterators.SQLRowScanner, entity interface{}) error {
 		value := entity.(*mytype)
 		return scanner.Scan(&value.asdf)
 	}))
@@ -46,7 +46,7 @@ func ExampleNewSQLRows(ctx context.Context, db *sql.DB) (error) {
 
 func TestSQLRows(t *testing.T) {
 	s := testcase.NewSpec(t)
-	subject := func(t *testcase.T) frameless.Iterator {
+	subject := func(t *testcase.T) iterators.Iterator {
 		return iterators.NewSQLRows(t.I(`rows`).(iterators.SQLRows),
 			t.I(`mapper`).(iterators.SQLRowMapper))
 	}
@@ -57,7 +57,7 @@ func TestSQLRows(t *testing.T) {
 	s.After(func(t *testcase.T) { t.I(`rows.mock.ctrl`).(*gomock.Controller).Finish() })
 
 	s.Let(`mapper`, func(t *testcase.T) interface{} {
-		return iterators.SQLRowMapperFunc(func(s iterators.SQLRowScanner, e frameless.Entity) error {
+		return iterators.SQLRowMapperFunc(func(s iterators.SQLRowScanner, e interface{}) error {
 			ptr := e.(*testType)
 			return s.Scan(&ptr.Text)
 		})

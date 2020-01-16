@@ -1,11 +1,9 @@
 package frameless
 
-const ErrNotImplemented Error = "ErrNotImplemented"
+import "github.com/adamluzsi/frameless/errs"
 
-const ErrNotFound Error = "ErrNotFound"
-
-const ErrIDRequired Error = `
-Can't find the ID in the current structure
-if there is no ID in the subject structure
-custom test needed that explicitly defines how ID is stored and retried from an entity
-`
+const (
+	ErrNotImplemented Error = errs.ErrNotImplemented
+	ErrNotFound       Error = errs.ErrNotFound
+	ErrIDRequired     Error = errs.ErrIDRequired
+)

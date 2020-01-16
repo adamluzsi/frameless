@@ -1,18 +1,17 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless"
 	"io"
 )
 
 func NewSQLRows(rows SQLRows, mapper SQLRowMapper) *SQLRowsIterator {
-	return &SQLRowsIterator{rows: rows, mapper: mapper,}
+	return &SQLRowsIterator{rows: rows, mapper: mapper}
 }
 
 // SQLRowsIterator allow you to use the same iterator pattern with sql.Rows structure.
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
-// it also makes testing easier with the same frameless.Iterator interface.
+// it also makes testing easier with the same Iterator interface.
 type SQLRowsIterator struct {
 	rows    SQLRows
 	mapper  SQLRowMapper
@@ -31,7 +30,7 @@ func (i *SQLRowsIterator) Err() error {
 	return i.rows.Err()
 }
 
-func (i *SQLRowsIterator) Decode(e frameless.Entity) error {
+func (i *SQLRowsIterator) Decode(e interface{}) error {
 	return i.mapper.Map(i.rows, e)
 }
 
@@ -42,12 +41,12 @@ type SQLRowScanner interface {
 }
 
 type SQLRowMapper interface {
-	Map(s SQLRowScanner, ptr frameless.Entity) error
+	Map(s SQLRowScanner, ptr interface{}) error
 }
 
-type SQLRowMapperFunc func(SQLRowScanner, frameless.Entity) error
+type SQLRowMapperFunc func(SQLRowScanner, interface{}) error
 
-func (fn SQLRowMapperFunc) Map(s SQLRowScanner, e frameless.Entity) error {
+func (fn SQLRowMapperFunc) Map(s SQLRowScanner, e interface{}) error {
 	return fn(s, e)
 }
 

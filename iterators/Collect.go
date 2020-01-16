@@ -2,11 +2,9 @@ package iterators
 
 import (
 	"reflect"
-
-	"github.com/adamluzsi/frameless"
 )
 
-func Collect(i frameless.Iterator, slicePtr interface{}) (err error) {
+func Collect(i Iterator, slicePtr interface{}) (err error) {
 	defer func() {
 		closeErr := i.Close()
 		if err == nil {

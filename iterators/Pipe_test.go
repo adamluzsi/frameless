@@ -5,8 +5,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -14,7 +12,7 @@ import (
 
 func ExampleNewPipe() {
 	var (
-		iter   frameless.Iterator
+		iter   iterators.Iterator
 		sender *iterators.PipeSender
 	)
 

@@ -4,14 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-var _ frameless.Iterator = iterators.NewMock(iterators.NewEmpty())
+var _ iterators.Iterator = iterators.NewMock(iterators.NewEmpty())
 
 func TestMock_Err(t *testing.T) {
 	t.Parallel()

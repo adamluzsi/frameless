@@ -3,13 +3,11 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.Iterator = iterators.NewSlice([]string{"A", "B", "C"})
+var _ iterators.Iterator = iterators.NewSlice([]string{"A", "B", "C"})
 
 func TestNewSlice_SliceGiven_SliceIterableAndValuesReturnedWithDecode(t *testing.T) {
 	t.Parallel()

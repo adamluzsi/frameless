@@ -3,18 +3,17 @@ package iterators
 import (
 	"reflect"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func Filter(i frameless.Iterator, selectorFunc interface{}) *FilterIterator {
+func Filter(i Iterator, selectorFunc interface{}) *FilterIterator {
 	iter := &FilterIterator{iterator: i, filterFunc: selectorFunc}
 	iter.init()
 	return iter
 }
 
 type FilterIterator struct {
-	iterator   frameless.Iterator
+	iterator   Iterator
 	filterFunc interface{}
 	matcher    func(interface{}) bool
 
@@ -66,7 +65,7 @@ func (fi *FilterIterator) Err() error {
 	return fi.iterator.Err()
 }
 
-func (fi *FilterIterator) Decode(e frameless.Entity) error {
+func (fi *FilterIterator) Decode(e interface{}) error {
 	return reflects.Link(fi.next, e)
 }
 

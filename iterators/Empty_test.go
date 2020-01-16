@@ -4,12 +4,11 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleNewEmpty() frameless.Iterator {
+func ExampleNewEmpty() iterators.Iterator {
 	return iterators.NewEmpty()
 }
 

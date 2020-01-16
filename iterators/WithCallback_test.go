@@ -2,11 +2,12 @@ package iterators_test
 
 import (
 	"errors"
+	"io"
+	"testing"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"io"
-	"testing"
 )
 
 func TestWithCallback(t *testing.T) {

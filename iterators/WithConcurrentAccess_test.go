@@ -2,19 +2,19 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless"
+	"sync"
+	"testing"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"sync"
-	"testing"
 )
 
 func TestWithConcurrentAccess(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test(`it will protect against concurrent access`, func(t *testcase.T) {
-		var i frameless.Iterator
+		var i iterators.Iterator
 		i = iterators.NewSlice([]int{1, 2})
 		i = iterators.WithConcurrentAccess(i)
 		require.True(t, i.Next())
@@ -37,7 +37,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 	})
 
 	s.Test(`classic behavior`, func(t *testcase.T) {
-		var i frameless.Iterator
+		var i iterators.Iterator
 		i = iterators.NewSlice([]int{1, 2})
 		i = iterators.WithConcurrentAccess(i)
 

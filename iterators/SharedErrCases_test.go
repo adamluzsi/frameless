@@ -4,13 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
 
-func SharedErrCases(t *testing.T, subject func(frameless.Iterator, frameless.Entity) error) {
+func SharedErrCases(t *testing.T, subject func(iterators.Iterator, interface{}) error) {
 	t.Run("ErrCases", func(t *testing.T) {
 		expected := errors.New("error")
 

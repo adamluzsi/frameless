@@ -8,7 +8,6 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 )
 
@@ -18,7 +17,7 @@ func TestCollect(t *testing.T) {
 
 	subject := func(t *testcase.T) error {
 		return iterators.Collect(
-			t.I(`iterator`).(frameless.Iterator),
+			t.I(`iterator`).(iterators.Iterator),
 			t.I(`slice ptr`),
 		)
 	}

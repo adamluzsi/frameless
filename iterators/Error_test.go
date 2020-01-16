@@ -4,13 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.Iterator = iterators.NewError(errors.New(""))
+var _ iterators.Iterator = iterators.NewError(errors.New(""))
 
 func TestNewError_ErrorGiven_NotIterableIteratorReturnedWithError(t *testing.T) {
 	t.Parallel()
