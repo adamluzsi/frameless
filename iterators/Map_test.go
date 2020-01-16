@@ -16,8 +16,8 @@ func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
 
-	subject := func(t *testcase.T) iterators.Iterator {
-		return iterators.Map(t.I(`input stream`).(iterators.Iterator),
+	subject := func(t *testcase.T) iterators.Interface {
+		return iterators.Map(t.I(`input stream`).(iterators.Interface),
 			t.I(`transform`).(iterators.MapTransformFunc))
 	}
 
@@ -64,7 +64,7 @@ func TestMap(t *testing.T) {
 	})
 
 	s.Describe(`map used in a daisy chain style`, func(s *testcase.Spec) {
-		subject := func(t *testcase.T) iterators.Iterator {
+		subject := func(t *testcase.T) iterators.Interface {
 
 			toUpper := func(d iterators.Decoder, ptr interface{}) error {
 				var s string
@@ -86,7 +86,7 @@ func TestMap(t *testing.T) {
 				}
 			}
 
-			i := t.I(`input stream`).(iterators.Iterator)
+			i := t.I(`input stream`).(iterators.Interface)
 			i = iterators.Map(i, toUpper)
 			i = iterators.Map(i, withIndex())
 

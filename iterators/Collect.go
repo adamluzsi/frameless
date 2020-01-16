@@ -4,7 +4,7 @@ import (
 	"reflect"
 )
 
-func Collect(i Iterator, slicePtr interface{}) (err error) {
+func Collect(i Interface, slicePtr interface{}) (err error) {
 	defer func() {
 		closeErr := i.Close()
 		if err == nil {

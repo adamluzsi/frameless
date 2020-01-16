@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleNewEmpty() iterators.Iterator {
+func ExampleNewEmpty() iterators.Interface {
 	return iterators.NewEmpty()
 }
 

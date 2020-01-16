@@ -17,7 +17,7 @@ func TestCollect(t *testing.T) {
 
 	subject := func(t *testcase.T) error {
 		return iterators.Collect(
-			t.I(`iterator`).(iterators.Iterator),
+			t.I(`iterator`).(iterators.Interface),
 			t.I(`slice ptr`),
 		)
 	}

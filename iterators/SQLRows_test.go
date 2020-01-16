@@ -46,7 +46,7 @@ func ExampleNewSQLRows(ctx context.Context, db *sql.DB) error {
 
 func TestSQLRows(t *testing.T) {
 	s := testcase.NewSpec(t)
-	subject := func(t *testcase.T) iterators.Iterator {
+	subject := func(t *testcase.T) iterators.Interface {
 		return iterators.NewSQLRows(t.I(`rows`).(iterators.SQLRows),
 			t.I(`mapper`).(iterators.SQLRowMapper))
 	}

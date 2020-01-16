@@ -1,6 +1,6 @@
 package iterators
 
-// NewError returns an Iterator that only can do is returning an Err and never have next element
+// NewError returns an Interface that only can do is returning an Err and never have next element
 func NewError(err error) *Error {
 	return &Error{err}
 }

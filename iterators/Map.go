@@ -7,14 +7,14 @@ package iterators
 // and then you map the line content to a certain data structure,
 // in order to not expose what steps needed in order to unserialize the input stream,
 // thus protect the business rules from this information.
-func Map(iter Iterator, transform MapTransformFunc) *MapIter {
+func Map(iter Interface, transform MapTransformFunc) *MapIter {
 	return &MapIter{src: iter, transform: transform}
 }
 
 type MapTransformFunc = func(d Decoder, ptr interface{}) error
 
 type MapIter struct {
-	src       Iterator
+	src       Interface
 	transform MapTransformFunc
 }
 

@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ iterators.Iterator = iterators.NewSlice([]string{"A", "B", "C"})
+var _ iterators.Interface = iterators.NewSlice([]string{"A", "B", "C"})
 
 func TestNewSlice_SliceGiven_SliceIterableAndValuesReturnedWithDecode(t *testing.T) {
 	t.Parallel()

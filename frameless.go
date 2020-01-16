@@ -128,7 +128,7 @@ Clients use an iterator to access and traverse an aggregate without knowing its 
 Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
 https://en.wikipedia.org/wiki/Iterator_pattern
 */
-type Iterator = iterators.Iterator
+type Iterator = iterators.Interface
 
 /*
 	Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.

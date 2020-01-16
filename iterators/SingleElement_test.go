@@ -9,7 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-var _ iterators.Iterator = iterators.NewSingleElement("")
+var _ iterators.Interface = iterators.NewSingleElement("")
 
 type ExampleStruct struct {
 	Name string

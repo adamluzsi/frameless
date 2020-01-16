@@ -4,8 +4,8 @@ import (
 	"io"
 )
 
-func WithCallback(i Iterator, c Callback) Iterator {
-	return &CallbackIterator{Iterator: i, Callback: c}
+func WithCallback(i Interface, c Callback) Interface {
+	return &CallbackIterator{Interface: i, Callback: c}
 }
 
 type Callback struct {
@@ -13,15 +13,15 @@ type Callback struct {
 }
 
 type CallbackIterator struct {
-	Iterator
+	Interface
 	Callback
 }
 
 func (i *CallbackIterator) Close() error {
 	if i.Callback.OnClose != nil {
-		return i.Callback.OnClose(i.Iterator)
+		return i.Callback.OnClose(i.Interface)
 	}
-	return i.Iterator.Close()
+	return i.Interface.Close()
 }
 
 //func (*CallbackIterator) Next() bool {

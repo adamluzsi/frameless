@@ -3,7 +3,7 @@ package iterators
 import "github.com/adamluzsi/frameless/errs"
 
 // First decode the first next value of the iterator and close the iterator
-func First(i Iterator, ptr interface{}) (err error) {
+func First(i Interface, ptr interface{}) (err error) {
 	defer func() {
 		cErr := i.Close()
 

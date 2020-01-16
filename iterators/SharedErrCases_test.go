@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func SharedErrCases(t *testing.T, subject func(iterators.Iterator, interface{}) error) {
+func SharedErrCases(t *testing.T, subject func(iterators.Interface, interface{}) error) {
 	t.Run("ErrCases", func(t *testing.T) {
 		expected := errors.New("error")
 

@@ -2,7 +2,7 @@ package iterators
 
 import "github.com/adamluzsi/frameless/errs"
 
-func One(i Iterator, e interface{}) error {
+func One(i Interface, e interface{}) error {
 	if err := i.Err(); err != nil {
 		return err
 	}

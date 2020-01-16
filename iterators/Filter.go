@@ -6,14 +6,14 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func Filter(i Iterator, selectorFunc interface{}) *FilterIterator {
+func Filter(i Interface, selectorFunc interface{}) *FilterIterator {
 	iter := &FilterIterator{iterator: i, filterFunc: selectorFunc}
 	iter.init()
 	return iter
 }
 
 type FilterIterator struct {
-	iterator   Iterator
+	iterator   Interface
 	filterFunc interface{}
 	matcher    func(interface{}) bool
 

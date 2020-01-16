@@ -11,7 +11,7 @@ func NewSQLRows(rows SQLRows, mapper SQLRowMapper) *SQLRowsIterator {
 // SQLRowsIterator allow you to use the same iterator pattern with sql.Rows structure.
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
-// it also makes testing easier with the same Iterator interface.
+// it also makes testing easier with the same Interface interface.
 type SQLRowsIterator struct {
 	rows    SQLRows
 	mapper  SQLRowMapper

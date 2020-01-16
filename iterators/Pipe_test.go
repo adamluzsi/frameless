@@ -12,7 +12,7 @@ import (
 
 func ExampleNewPipe() {
 	var (
-		iter   iterators.Iterator
+		iter   iterators.Interface
 		sender *iterators.PipeSender
 	)
 

@@ -9,7 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-var _ iterators.Iterator = iterators.NewMock(iterators.NewEmpty())
+var _ iterators.Interface = iterators.NewMock(iterators.NewEmpty())
 
 func TestMock_Err(t *testing.T) {
 	t.Parallel()

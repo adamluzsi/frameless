@@ -2,7 +2,7 @@ package iterators
 
 import "github.com/adamluzsi/frameless/errs"
 
-func Last(i Iterator, e interface{}) (err error) {
+func Last(i Interface, e interface{}) (err error) {
 
 	defer func() {
 		cErr := i.Close()

@@ -2,11 +2,11 @@ package iterators
 
 import "io"
 
-// Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
+// Interface define a separate object that encapsulates accessing and traversing an aggregate object.
 // Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
 // Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
 // https://en.wikipedia.org/wiki/Iterator_pattern
-type Iterator interface {
+type Interface interface {
 	// this is required to make it able to cancel iterators where resource being used behind the scene
 	// for all other case where the underling io is handled on higher level, it should simply return nil
 	io.Closer

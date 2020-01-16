@@ -1,6 +1,6 @@
 package iterators
 
-func NewMock(i Iterator) *Mock {
+func NewMock(i Interface) *Mock {
 	return &Mock{
 		iterator: i,
 
@@ -12,7 +12,7 @@ func NewMock(i Iterator) *Mock {
 }
 
 type Mock struct {
-	iterator Iterator
+	iterator Interface
 
 	StubDecode func(interface{}) error
 	StubClose  func() error

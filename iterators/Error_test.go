@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ iterators.Iterator = iterators.NewError(errors.New(""))
+var _ iterators.Interface = iterators.NewError(errors.New(""))
 
 func TestNewError_ErrorGiven_NotIterableIteratorReturnedWithError(t *testing.T) {
 	t.Parallel()
