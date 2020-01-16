@@ -4,18 +4,17 @@ import (
 	"context"
 )
 
-type Queue interface {
+type Interface interface {
 	Publisher
 	Subscriber
 }
 
 type Publisher interface {
-	Publish(ctx context.Context, request Request) (committer Signaler, err error)
+	Publish(ctx context.Context, msgs ...Message) error
 }
 
-type Request interface {
-	Values() []interface{}
-	Meta() map[string][]string
+type Message interface {
+	Value() interface{}
 }
 
 type Subscriber interface {
@@ -23,7 +22,7 @@ type Subscriber interface {
 }
 
 type Response interface {
-	Value() interface{}
+	Message
 	Signaler
 }
 
