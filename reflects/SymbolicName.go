@@ -2,11 +2,10 @@ package reflects
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless"
 	"path/filepath"
 )
 
-func SymbolicName(e frameless.Entity) string {
+func SymbolicName(e interface{}) string {
 	t := BaseTypeOf(e)
 
 	if t.PkgPath() == "" {

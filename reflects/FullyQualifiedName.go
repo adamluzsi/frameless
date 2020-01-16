@@ -2,10 +2,9 @@ package reflects
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless"
 )
 
-func FullyQualifiedName(e frameless.Entity) string {
+func FullyQualifiedName(e interface{}) string {
 	t := BaseTypeOf(e)
 
 	if t.PkgPath() == "" {

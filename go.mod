@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/Pallinder/go-randomdata v1.2.0
-	github.com/adamluzsi/testcase v0.1.0
+	github.com/adamluzsi/testcase v0.2.0
 	github.com/boltdb/bolt v1.3.1
 	github.com/golang/mock v1.3.1
 	github.com/satori/go.uuid v1.2.0
