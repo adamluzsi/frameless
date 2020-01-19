@@ -1,7 +1,5 @@
 package iterators
 
-import "github.com/adamluzsi/frameless/errs"
-
 // First decode the first next value of the iterator and close the iterator
 func First(i Interface, ptr interface{}) (err error) {
 	defer func() {
@@ -13,7 +11,7 @@ func First(i Interface, ptr interface{}) (err error) {
 	}()
 
 	if !i.Next() {
-		return errs.ErrNotFound
+		return ErrNotFound
 	}
 
 	if err := i.Decode(ptr); err != nil {

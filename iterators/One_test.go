@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/errs"
-	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
+
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 func TestOne(t *testing.T) {
@@ -16,7 +16,7 @@ func TestOne(t *testing.T) {
 
 			i := iterators.NewEmpty()
 			var e interface{}
-			require.Equal(t, iterators.One(i, &e), errs.ErrNotFound)
+			require.Equal(t, iterators.One(i, &e), iterators.ErrNotFound)
 		})
 
 		t.Run("when iterator have one element exactly", func(t *testing.T) {

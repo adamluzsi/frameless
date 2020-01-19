@@ -3,7 +3,6 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/errs"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
 )
@@ -29,5 +28,5 @@ func TestDecodeNext_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(
 
 	i := iterators.NewEmpty()
 
-	require.Equal(t, errs.ErrNotFound, iterators.DecodeNext(i, &Entity{}))
+	require.Equal(t, iterators.ErrNotFound, iterators.DecodeNext(i, &Entity{}))
 }

@@ -1,7 +1,5 @@
 package iterators
 
-import "github.com/adamluzsi/frameless/errs"
-
 func Last(i Interface, e interface{}) (err error) {
 
 	defer func() {
@@ -24,7 +22,7 @@ func Last(i Interface, e interface{}) (err error) {
 	}
 
 	if !iterated {
-		return errs.ErrNotFound
+		return ErrNotFound
 	}
 
 	return i.Err()
