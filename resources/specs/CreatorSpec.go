@@ -11,19 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type SaverSpec struct {
+type CreatorSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject MinimumRequirements
 }
 
-func (spec SaverSpec) Test(t *testing.T) {
+func (spec CreatorSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	extIDFieldRequired(s, spec.EntityType)
 
-	s.Describe(`Saver`, func(s *testcase.Spec) {
+	s.Describe(`Creator`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
-			return spec.Subject.Save(
+			return spec.Subject.Create(
 				t.I(`ctx`).(context.Context),
 				t.I(`entity`),
 			)
@@ -84,14 +84,14 @@ func (spec SaverSpec) Test(t *testing.T) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			t.Run("persist an Saver", func(t *testing.T) {
+			t.Run("persist an Creator", func(t *testing.T) {
 
 				if ID, _ := resources.LookupID(spec.EntityType); ID != "" {
 					t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
 				}
 
 				e := spec.FixtureFactory.Create(spec.EntityType)
-				err := spec.Subject.Save(spec.Context(), e)
+				err := spec.Subject.Create(spec.Context(), e)
 
 				require.Nil(t, err)
 
@@ -113,21 +113,21 @@ func (spec SaverSpec) Test(t *testing.T) {
 			t.Run("when entity already have an ID", func(t *testing.T) {
 				newEntity := spec.FixtureFactory.Create(spec.EntityType)
 				require.Nil(t, resources.SetID(newEntity, "Hello world!"))
-				require.Error(t, spec.Subject.Save(spec.Context(), newEntity))
+				require.Error(t, spec.Subject.Create(spec.Context(), newEntity))
 			})
 		})
 	})
 }
 
-func (spec SaverSpec) Benchmark(b *testing.B) {
+func (spec CreatorSpec) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
-	b.Run(`SaverSpec`, func(b *testing.B) {
+	b.Run(`CreatorSpec`, func(b *testing.B) {
 		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
 		b.ResetTimer()
 		for _, ptr := range es {
-			require.Nil(b, spec.Subject.Save(spec.Context(), ptr))
+			require.Nil(b, spec.Subject.Create(spec.Context(), ptr))
 		}
 	})
 }

@@ -31,7 +31,7 @@ type UniqStorage struct {
 	*memorystorage.Memory
 }
 
-func (s *UniqStorage) Save(ctx context.Context, ptr interface{}) error {
+func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 	switch e := ptr.(type) {
 	case SampleStruct:
 		table := s.TableFor(e)
@@ -41,5 +41,5 @@ func (s *UniqStorage) Save(ctx context.Context, ptr interface{}) error {
 			}
 		}
 	}
-	return s.Memory.Save(ctx, ptr)
+	return s.Memory.Create(ctx, ptr)
 }

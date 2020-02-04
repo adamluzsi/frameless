@@ -6,13 +6,13 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-type Saver interface {
-	// Save takes a ptr to a entity<T> and save it into the resource.
+type Creator interface {
+	// Create takes a ptr to a entity<T> and store it into the resource.
 	// It also updates the entity<T> ext:"ID" field with the associated uniq resource id.
 	// The reason behind this links the id and not returning the id is that,
-	// in most case the Save error value is the only thing that is checked for errors,
+	// in most case the Create error value is the only thing that is checked for errors,
 	// and introducing an extra value also introduce boiler plates in the handling.
-	Save(ctx context.Context, ptr interface{}) error
+	Create(ctx context.Context, ptr interface{}) error
 }
 
 type Finder interface {

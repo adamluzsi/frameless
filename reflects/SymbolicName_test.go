@@ -21,9 +21,9 @@ func TestName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := specs.SaverSpec{}
+			o := specs.CreatorSpec{}
 
-			require.Equal(t, `specs.SaverSpec`, ExampleSymbolicName(o))
+			require.Equal(t, `specs.CreatorSpec`, ExampleSymbolicName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

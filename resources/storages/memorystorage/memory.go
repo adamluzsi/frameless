@@ -92,7 +92,7 @@ func (storage *Memory) FindAll(ctx context.Context, Type interface{}) frameless.
 	return iterators.NewSlice(entities)
 }
 
-func (storage *Memory) Save(ctx context.Context, ptr interface{}) error {
+func (storage *Memory) Create(ctx context.Context, ptr interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 

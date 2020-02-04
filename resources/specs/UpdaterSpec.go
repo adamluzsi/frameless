@@ -55,7 +55,7 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 
 			s.Around(func(t *testcase.T) func() {
 				entity := t.I(`entity`)
-				require.Nil(t, spec.Subject.Save(spec.Context(), entity))
+				require.Nil(t, spec.Subject.Create(spec.Context(), entity))
 				return func() {
 					id, _ := resources.LookupID(entity)
 					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id))

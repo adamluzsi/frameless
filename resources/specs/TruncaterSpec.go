@@ -85,7 +85,7 @@ func (spec TruncaterSpec) Benchmark(b *testing.B) {
 
 func (spec TruncaterSpec) populateFor(t testing.TB, Type interface{}) string {
 	fixture := spec.FixtureFactory.Create(Type)
-	require.Nil(t, spec.Subject.Save(spec.Context(), fixture))
+	require.Nil(t, spec.Subject.Create(spec.Context(), fixture))
 
 	id, ok := resources.LookupID(fixture)
 	require.True(t, ok)

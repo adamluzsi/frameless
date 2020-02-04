@@ -38,7 +38,7 @@ func (q *InMemory) getQueue() chan Message {
 
 type InMemoryMessage struct {
 	msg   Message
-	queue InMemory
+	queue *InMemory
 }
 
 func (m *InMemoryMessage) Value() interface{} {

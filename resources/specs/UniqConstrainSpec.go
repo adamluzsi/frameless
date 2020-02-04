@@ -51,9 +51,9 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 		v3.Elem().FieldByName(field).Set(val)
 	}
 
-	require.Nil(t, spec.Subject.Save(spec.Context(), e1))
+	require.Nil(t, spec.Subject.Create(spec.Context(), e1))
 	require.Error(t,
-		spec.Subject.Save(spec.Context(), e2),
+		spec.Subject.Create(spec.Context(), e2),
 		`expected that this value is cannot be saved since uniq constrain prevent it`,
 	)
 
@@ -63,7 +63,7 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 	require.Nil(t, spec.Subject.DeleteByID(spec.Context(), e1, id))
 
 	t.Logf(`it should allow us to save similar object in the resource`)
-	require.Nil(t, spec.Subject.Save(spec.Context(), e3))
+	require.Nil(t, spec.Subject.Create(spec.Context(), e3))
 
 }
 

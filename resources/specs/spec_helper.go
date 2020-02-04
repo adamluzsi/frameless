@@ -31,10 +31,10 @@ func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	return es
 }
 
-func saveEntities(tb testing.TB, s resources.Saver, f FixtureFactory, es ...interface{}) []string {
+func saveEntities(tb testing.TB, s resources.Creator, f FixtureFactory, es ...interface{}) []string {
 	var ids []string
 	for _, e := range es {
-		require.Nil(tb, s.Save(f.Context(), e))
+		require.Nil(tb, s.Create(f.Context(), e))
 		id, _ := resources.LookupID(e)
 		ids = append(ids, id)
 	}

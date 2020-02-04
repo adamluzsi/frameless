@@ -47,7 +47,7 @@ func (storage *Local) Truncate(ctx context.Context, Type interface{}) error {
 	})
 }
 
-func (storage *Local) Save(ctx context.Context, ptr interface{}) error {
+func (storage *Local) Create(ctx context.Context, ptr interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

@@ -87,7 +87,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
+				require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`entity`)))
 			})
 
 			s.Let(`id`, func(t *testcase.T) interface{} {
@@ -122,7 +122,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 					return spec.FixtureFactory.Create(spec.EntityType)
 				})
 				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`oth-entity`)))
+					require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
 				})
 
 				s.Then(`the entity`, func(t *testcase.T) {
@@ -157,7 +157,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 
 			entity := spec.FixtureFactory.Create(spec.EntityType)
 
-			require.Nil(t, spec.Subject.Save(spec.Context(), entity))
+			require.Nil(t, spec.Subject.Create(spec.Context(), entity))
 			ID, ok := resources.LookupID(entity)
 
 			if !ok {
@@ -270,7 +270,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
+				require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`entity`)))
 			})
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
@@ -292,7 +292,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 					return spec.FixtureFactory.Create(spec.EntityType)
 				})
 				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`oth-entity`)))
+					require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
 				})
 
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {

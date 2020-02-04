@@ -45,7 +45,7 @@ func (spec DeleterSpec) Test(t *testing.T) {
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`entity`)))
+				require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`entity`)))
 			})
 
 			s.Let(`id`, func(t *testcase.T) interface{} {
@@ -80,7 +80,7 @@ func (spec DeleterSpec) Test(t *testing.T) {
 					return spec.FixtureFactory.Create(spec.EntityType)
 				})
 				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.Save(spec.Context(), t.I(`oth-entity`)))
+					require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
 				})
 
 				s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
