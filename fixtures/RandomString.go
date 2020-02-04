@@ -8,7 +8,6 @@ func RandomString(length int) (string) {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
 	bytes := make([]byte, length)
-
 	if _, err := rand.Read(bytes); err != nil {
 		panic(err)
 	}
