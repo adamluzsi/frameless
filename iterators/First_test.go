@@ -3,8 +3,9 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
+
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 func TestFirst_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
@@ -15,11 +16,10 @@ func TestFirst_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
 
 	i := iterators.NewMock(iterators.NewSlice([]int{expected, 4, 2}))
 
-	if err := iterators.First(i, &actually); err != nil {
-		t.Fatal(err)
-	}
-
+	found, err := iterators.First(i, &actually)
+	require.Nil(t, err)
 	require.Equal(t, expected, actually)
+	require.True(t, found)
 }
 
 func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
@@ -33,10 +33,10 @@ func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
 		return nil
 	}
 
-	if err := iterators.First(i, &Entity{}); err != nil {
+	_, err := iterators.First(i, &Entity{})
+	if err != nil {
 		t.Fatal(err)
 	}
-
 	require.True(t, closed)
 }
 
@@ -47,9 +47,7 @@ func TestFirst_WhenErrorOccursDuring(t *testing.T) {
 func TestFirst_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewEmpty()
-
-	var ExpectedError error = iterators.ErrNotFound
-
-	require.Equal(t, ExpectedError, iterators.First(i, &Entity{}))
+	found, err := iterators.First(iterators.NewEmpty(), &Entity{})
+	require.Nil(t, err)
+	require.False(t, found)
 }

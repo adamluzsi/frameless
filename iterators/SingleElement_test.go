@@ -26,8 +26,9 @@ func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	i := iterators.NewSingleElement(expected)
 	defer i.Close()
 
-	require.Nil(t, iterators.DecodeNext(i, &actually))
-
+	found, err := iterators.First(i, &actually)
+	require.Nil(t, err)
+	require.True(t, found)
 	require.Equal(t, expected, actually)
 }
 

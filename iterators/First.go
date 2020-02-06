@@ -1,7 +1,7 @@
 package iterators
 
 // First decode the first next value of the iterator and close the iterator
-func First(i Interface, ptr interface{}) (err error) {
+func First(i Interface, ptr interface{}) (found bool, err error) {
 	defer func() {
 		cErr := i.Close()
 
@@ -11,12 +11,16 @@ func First(i Interface, ptr interface{}) (err error) {
 	}()
 
 	if !i.Next() {
-		return ErrNotFound
+		return false, nil
 	}
 
 	if err := i.Decode(ptr); err != nil {
-		return err
+		return false, err
 	}
 
-	return i.Err()
+	if err := i.Err(); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }

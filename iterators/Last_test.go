@@ -3,8 +3,9 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/iterators"
 	"github.com/stretchr/testify/require"
+
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
@@ -15,10 +16,9 @@ func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
 
 	i := iterators.NewMock(iterators.NewSlice([]int{4, 2, expected}))
 
-	if err := iterators.Last(i, &actually); err != nil {
-		t.Fatal(err)
-	}
-
+	found, err := iterators.Last(i, &actually)
+	require.Nil(t, err)
+	require.True(t, found)
 	require.Equal(t, expected, actually)
 }
 
@@ -33,7 +33,8 @@ func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 		return nil
 	}
 
-	if err := iterators.Last(i, &Entity{}); err != nil {
+	_, err := iterators.Last(i, &Entity{})
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +48,7 @@ func TestLast_WhenErrorOccursDuring(t *testing.T) {
 func TestLast_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewEmpty()
-
-	require.Equal(t, iterators.ErrNotFound, iterators.Last(i, &Entity{}))
+	found, err := iterators.Last(iterators.NewEmpty(), &Entity{})
+	require.Nil(t, err)
+	require.False(t, found)
 }

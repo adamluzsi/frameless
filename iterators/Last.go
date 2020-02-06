@@ -1,7 +1,6 @@
 package iterators
 
-func Last(i Interface, e interface{}) (err error) {
-
+func Last(i Interface, e interface{}) (found bool, err error) {
 	defer func() {
 		cErr := i.Close()
 
@@ -13,18 +12,20 @@ func Last(i Interface, e interface{}) (err error) {
 	iterated := false
 
 	for i.Next() {
-
 		iterated = true
 
 		if err := i.Decode(e); err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	if !iterated {
-		return ErrNotFound
+		return false, nil
 	}
 
-	return i.Err()
+	if err := i.Err(); err != nil {
+		return false, err
+	}
 
+	return true, nil
 }
