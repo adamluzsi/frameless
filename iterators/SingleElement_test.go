@@ -35,7 +35,7 @@ func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
 	t.Parallel()
 
-	var expected ExampleStruct = ExampleStruct{Name: RandomName}
+	var expected = ExampleStruct{Name: RandomName}
 
 	i := iterators.NewSingleElement(&expected)
 	defer i.Close()
