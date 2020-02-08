@@ -9,11 +9,11 @@ import (
 	"github.com/adamluzsi/frameless/fixtures"
 )
 
-func TestRandomSelectFromSlice(t *testing.T) {
+func TestRandomElementFromSlice(t *testing.T) {
 	pool := []int{1, 2, 3, 4, 5}
 	resSet := make(map[int]struct{})
 	for i := 0; i < 1024; i++ {
-		res := fixtures.RandomSelectFromSlice(pool).(int)
+		res := fixtures.RandomElementFromSlice(pool).(int)
 		resSet[res] = struct{}{}
 		require.Contains(t, pool, res)
 	}
