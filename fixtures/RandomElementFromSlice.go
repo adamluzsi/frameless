@@ -5,7 +5,6 @@ import (
 	"reflect"
 )
 
-
 func RandomElementFromSlice(slice interface{}) interface{} {
 	s := reflect.ValueOf(slice)
 	index := rand.New(randomSource).Intn(s.Len())
