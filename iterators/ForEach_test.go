@@ -43,7 +43,7 @@ func TestForEach(t *testing.T) {
 				}
 			})
 
-			s.And(`but an error returned by the function`, func(s *testcase.Spec) {
+			s.And(`an error returned by the function`, func(s *testcase.Spec) {
 				const errMsg = `boom`
 				s.Let(`fn.Err`, func(t *testcase.T) interface{} { return errors.New(errMsg) })
 
@@ -75,19 +75,39 @@ func TestForEach(t *testing.T) {
 
 			andErrorReturnedWhenNextElementIsDecoded(s)
 
-			s.And(`error returned when iterator being closed`, func(s *testcase.Spec) {
-				const closeErrMsg = `boom on close`
-				s.Before(func(t *testcase.T) {
-					i := iterators.NewMock(t.I(`iterator`).(iterators.Interface))
-					i.StubClose = func() error { return errors.New(closeErrMsg) }
-					t.Let(`iterator`, i)
+			var andAnErrorReturnedWhenIteratorBeingClosed = func(s *testcase.Spec) {
+				s.And(`error returned when iterator being closed`, func(s *testcase.Spec) {
+					const closeErrMsg = `boom on close`
+					s.Before(func(t *testcase.T) {
+						i := iterators.NewMock(t.I(`iterator`).(iterators.Interface))
+						i.StubClose = func() error { return errors.New(closeErrMsg) }
+						t.Let(`iterator`, i)
+					})
+
+					s.Then(`it will propagate back the error`, func(t *testcase.T) {
+						require.EqualError(t, subject(t), closeErrMsg)
+					})
+
+					andErrorReturnedWhenNextElementIsDecoded(s)
+				})
+			}
+
+			andAnErrorReturnedWhenIteratorBeingClosed(s)
+
+			s.And(`break error returned from the block`, func(s *testcase.Spec) {
+				s.Let(`fn.Err`, func(t *testcase.T) interface{} { return iterators.Break })
+
+				s.Then(`it finish without an error`, func(t *testcase.T) {
+					require.Nil(t, subject(t))
 				})
 
-				s.Then(`it will propagate back the error`, func(t *testcase.T) {
-					require.EqualError(t, subject(t), closeErrMsg)
+				s.Then(`it will cancel the iteration`, func(t *testcase.T) {
+					_ = subject(t)
+					require.True(t, len(t.I(`elements`).([]int)) > 1)
+					require.Len(t, t.I(`iterated ones`).(map[int]struct{}), 1)
 				})
 
-				andErrorReturnedWhenNextElementIsDecoded(s)
+				andAnErrorReturnedWhenIteratorBeingClosed(s)
 			})
 		})
 	})
