@@ -1,5 +1,11 @@
 github.com/Pallinder/go-randomdata v1.2.0 h1:DZ41wBchNRb/0GfsePLiSwb0PHZmT67XY00lCDlaYPg=
 github.com/Pallinder/go-randomdata v1.2.0/go.mod h1:yHmJgulpD2Nfrm0cR9tI/+oAgRqCQQixsA8HyRZfV9Y=
+github.com/adamluzsi/testcase v0.0.0-20200311011800-abf4559f6087 h1:AmOqqRjO1KNe1ndtO6YqBk8loqByJ+r/qgKDwDjtmKQ=
+github.com/adamluzsi/testcase v0.0.0-20200311011800-abf4559f6087/go.mod h1:5fkkVjnuSXgj9BFcfki1zXwmECPRRHbg8ihPetnCU9o=
+github.com/adamluzsi/testcase v0.0.0-20200311224430-027b73f70b3c h1:7rJ8EhGGMYYEFP/ZN3rgmP43hVK9fN/zWvdfUavGvVQ=
+github.com/adamluzsi/testcase v0.0.0-20200311224430-027b73f70b3c/go.mod h1:5fkkVjnuSXgj9BFcfki1zXwmECPRRHbg8ihPetnCU9o=
+github.com/adamluzsi/testcase v0.0.0-20200311225700-8d8777f2f819 h1:Qm3piCwTrxlx8QZu53frtubNc2S/mQlKemJBS+2R5Wo=
+github.com/adamluzsi/testcase v0.0.0-20200311225700-8d8777f2f819/go.mod h1:5fkkVjnuSXgj9BFcfki1zXwmECPRRHbg8ihPetnCU9o=
 github.com/adamluzsi/testcase v0.1.0 h1:Qs2KRe5BzFGPolnqYiOvnJh7LUbvxincoy0CCD0Gtcg=
 github.com/adamluzsi/testcase v0.1.0/go.mod h1:TQEoKRTCzl+HxyhnSG30/6OPpC/HPKz+hsElhv5fL6Y=
 github.com/adamluzsi/testcase v0.2.0 h1:5sBoGI+iYDxuAe02NCEyuq+GPnQRNMCnHNb+Ta5PGMw=
@@ -11,6 +17,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/golang/mock v1.3.1 h1:qGJ6qTW+x6xX/my+8YUVl4WNpX9B7+/l2tRsHGZ7f2s=
 github.com/golang/mock v1.3.1/go.mod h1:sBzyDLLjw3U8JLTeZvSv8jJB+tU5PVekmnlKIyFUx0Y=
+github.com/golang/mock v1.4.0 h1:Rd1kQnQu0Hq3qvJppYSG0HtP+f5LPPUiDswTLiEegLg=
+github.com/golang/mock v1.4.0/go.mod h1:UOMv5ysSaYNkG+OFQykRIcU/QvvxJf3p21QfJ2Bt3cw=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/satori/go.uuid v1.2.0 h1:0uYX9dsZ2yD7q2RtLRtPSdGDWzjeM3TbMJP9utgA0ww=
@@ -35,6 +43,7 @@ golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20191027211539-f8518d3b3627 h1:/FZUR3d/QsXe4AcJyJFCc40TOj3y6Hs23Y3YJlvVkWo=
 golang.org/x/sys v0.0.0-20191027211539-f8518d3b3627/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/text v0.0.0-20170915032832-14c0d48ead0c/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
 golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
@@ -49,3 +58,5 @@ gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.4 h1:/eiJrUcujPVeJ3xlSWaiNi3uSVmDGBK1pDHUHAnao1I=
 gopkg.in/yaml.v2 v2.2.4/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
+rsc.io/quote/v3 v3.1.0/go.mod h1:yEA65RcK8LyAZtP9Kv3t0HmxON59tX3rD+tICJqUlj0=
+rsc.io/sampler v1.3.0/go.mod h1:T1hPZKmBbMNahiBKFy5HrXp6adAjACjK9JXDnKaTXpA=
