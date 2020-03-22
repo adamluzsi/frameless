@@ -38,7 +38,7 @@ func (spec CreatorSpec) Test(t *testing.T) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 		})
 
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {

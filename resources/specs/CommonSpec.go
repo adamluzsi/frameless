@@ -20,7 +20,6 @@ func (spec CommonSpec) Test(t *testing.T) {
 	FinderSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
 	UpdaterSpec{EntityType: spec.EntityType, FixtureFactory: spec.FixtureFactory, Subject: spec.Subject}.Test(t)
 	DeleterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
-	TruncaterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
 }
 
 func (spec CommonSpec) Benchmark(b *testing.B) {
@@ -28,5 +27,4 @@ func (spec CommonSpec) Benchmark(b *testing.B) {
 	FinderSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
 	UpdaterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
 	DeleterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
-	TruncaterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
 }

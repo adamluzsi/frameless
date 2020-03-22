@@ -150,7 +150,7 @@ func (storage *Memory) TableFor(e interface{}) MemoryTable {
 	return storage.DB[name]
 }
 
-func (storage *Memory) Truncate(ctx context.Context, Type interface{}) error {
+func (storage *Memory) DeleteAll(ctx context.Context, Type interface{}) error {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
 

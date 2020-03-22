@@ -6,5 +6,4 @@ type MinimumRequirements interface {
 	resources.Creator
 	resources.Finder
 	resources.Deleter
-	resources.Truncater
 }

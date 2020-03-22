@@ -12,7 +12,6 @@ type Resource interface {
 	resources.Finder
 	resources.Updater
 	resources.Deleter
-	resources.Truncater
 }
 
 type CommonSpec struct {

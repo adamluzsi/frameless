@@ -77,7 +77,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 		})
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -138,7 +138,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			s.Let(`id`, func(t *testcase.T) interface{} { return `` })
 
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 			})
 
 			s.Then(`it will have no result`, func(t *testcase.T) {
@@ -260,7 +260,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 		})
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -308,7 +308,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.Truncate(spec.Context(), spec.EntityType))
+				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {

@@ -41,8 +41,8 @@ func saveEntities(tb testing.TB, s resources.Creator, f FixtureFactory, es ...in
 	return ids
 }
 
-func cleanup(tb testing.TB, t resources.Truncater, f FixtureFactory, T interface{}) {
-	require.Nil(tb, t.Truncate(f.Context(), T))
+func cleanup(tb testing.TB, t resources.Deleter, f FixtureFactory, T interface{}) {
+	require.Nil(tb, t.DeleteAll(f.Context(), T))
 }
 
 func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs ...interface{}) {

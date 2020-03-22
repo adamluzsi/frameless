@@ -32,13 +32,10 @@ type Updater interface {
 	Update(ctx context.Context, ptr interface{}) error
 }
 
-type Truncater interface {
-	// Truncate will erase all entity from the resource that has <T> type
-	Truncate(ctx context.Context, T interface{}) error
-}
-
 // Deleter request to destroy a business entity in the Resource that implement it's test.
 type Deleter interface {
 	// DeleteByID will remove a <T> type entity from the storage by a given ID
 	DeleteByID(ctx context.Context, T interface{}, id string) error
+	// DeleteAll will erase all entity from the resource that has <T> type
+	DeleteAll(ctx context.Context, T interface{}) error
 }
