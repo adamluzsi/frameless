@@ -4,10 +4,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Pallinder/go-randomdata"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/reflects"
 )
 
@@ -15,7 +15,7 @@ type Example struct {
 	Name string
 }
 
-var RandomName = randomdata.SillyName()
+var RandomName = fixtures.RandomString(42)
 
 func ExampleLink() {
 	var src = Example{Name: RandomName}

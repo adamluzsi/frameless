@@ -5,4 +5,4 @@ import (
 	"time"
 )
 
-var randomSource = rand.NewSource(time.Now().Unix())
+var rnd = rand.New(rand.NewSource(time.Now().Unix()))

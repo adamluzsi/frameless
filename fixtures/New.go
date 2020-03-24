@@ -1,13 +1,13 @@
 package fixtures
 
 import (
-	"github.com/adamluzsi/frameless/reflects"
 	"math/rand"
 	"reflect"
 	"sync"
 	"time"
 
-	"github.com/Pallinder/go-randomdata"
+	"github.com/adamluzsi/frameless/reflects"
+
 	"github.com/adamluzsi/frameless"
 )
 
@@ -41,24 +41,24 @@ func newValue(value reflect.Value) reflect.Value {
 	case reflect.Bool:
 		mutex.Lock()
 		defer mutex.Unlock()
-		return reflect.ValueOf(randomdata.Boolean())
+		return reflect.ValueOf(rnd.Intn(2) == 0)
 
 	case reflect.String:
 		mutex.Lock()
 		defer mutex.Unlock()
-		return reflect.ValueOf(randomdata.SillyName())
+		return reflect.ValueOf(RandomString(7))
 
 	case reflect.Int:
-		return reflect.ValueOf(rand.Int())
+		return reflect.ValueOf(rnd.Int())
 
 	case reflect.Int8:
-		return reflect.ValueOf(int8(rand.Int()))
+		return reflect.ValueOf(int8(rnd.Int()))
 
 	case reflect.Int16:
-		return reflect.ValueOf(int16(rand.Int()))
+		return reflect.ValueOf(int16(rnd.Int()))
 
 	case reflect.Int32:
-		return reflect.ValueOf(rand.Int31())
+		return reflect.ValueOf(rnd.Int31())
 
 	case reflect.Int64:
 		switch value.Interface().(type) {

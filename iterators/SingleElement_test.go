@@ -3,9 +3,9 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/Pallinder/go-randomdata"
 	"github.com/stretchr/testify/require"
 
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 )
 
@@ -15,7 +15,7 @@ type ExampleStruct struct {
 	Name string
 }
 
-var RandomName = randomdata.SillyName()
+var RandomName = fixtures.RandomString(42)
 
 func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	t.Parallel()
@@ -42,7 +42,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 
 	require.True(t, i.Next())
 
-	checkAmount := randomdata.Number(1, 100)
+	checkAmount := fixtures.RandomIntByRange(1, 100)
 	for n := 0; n < checkAmount; n++ {
 		require.False(t, i.Next())
 	}

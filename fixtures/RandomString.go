@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 )
 
-func RandomString(length int) (string) {
+func RandomString(length int) string {
 	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 
 	bytes := make([]byte, length)
