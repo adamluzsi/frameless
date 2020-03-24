@@ -69,7 +69,7 @@ type OPCETXAdapter struct {
 }
 
 func (t OPCETXAdapter) BeginTx(context.Context) (ptr interface{}, err error) {
-	return &OPCETx{id: fixtures.RandomString(42)}, nil
+	return &OPCETx{id: fixtures.Random.String()}, nil
 }
 
 func (t OPCETXAdapter) Commit(ptr interface{}) error {

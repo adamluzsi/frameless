@@ -46,7 +46,7 @@ func TestOnePhaseCommitTxManager(t *testing.T) {
 	s.When(`ctx has no tx management enabled`, func(s *testcase.Spec) {
 
 		s.And(`an error occurs during tx creation`, func(s *testcase.Spec) {
-			var beginTxErrMsg = fixtures.RandomString(12)
+			var beginTxErrMsg = fixtures.Random.String()
 			s.Let(`BeginTxErr`, func(t *testcase.T) interface{} { return errors.New(beginTxErrMsg) })
 
 			s.Then(`during the tx fetch from the context, the error will be returned`, func(t *testcase.T) {
@@ -56,7 +56,7 @@ func TestOnePhaseCommitTxManager(t *testing.T) {
 		})
 
 		s.And(`an error occurs with the tx commit phase`, func(s *testcase.Spec) {
-			var txErrMsg = fixtures.RandomString(12)
+			var txErrMsg = fixtures.Random.String()
 			s.Let(`TxErr`, func(t *testcase.T) interface{} { return errors.New(txErrMsg) })
 
 			s.Then(`during the  tx fetch from the context, the error will be returned`, func(t *testcase.T) {
@@ -100,7 +100,7 @@ func TestOnePhaseCommitTxManager(t *testing.T) {
 		})
 
 		s.And(`an error occurs during tx creation`, func(s *testcase.Spec) {
-			var beginTxErrMsg = fixtures.RandomString(12)
+			var beginTxErrMsg = fixtures.Random.String()
 			s.Let(`BeginTxErr`, func(t *testcase.T) interface{} { return errors.New(beginTxErrMsg) })
 
 			s.Then(`during the tx fetch from the context, the error will be returned`, func(t *testcase.T) {
@@ -110,7 +110,7 @@ func TestOnePhaseCommitTxManager(t *testing.T) {
 		})
 
 		s.And(`an error occurs with the tx commit phase`, func(s *testcase.Spec) {
-			var txErrMsg = fixtures.RandomString(12)
+			var txErrMsg = fixtures.Random.String()
 			s.Let(`TxErr`, func(t *testcase.T) interface{} { return errors.New(txErrMsg) })
 
 			s.Then(`during the  tx fetch from the context, the error will be returned`, func(t *testcase.T) {
@@ -184,7 +184,7 @@ type TxAdapter struct {
 }
 
 func (t TxAdapter) BeginTx(context.Context) (ptr interface{}, err error) {
-	return &Tx{id: fixtures.RandomString(42), Err: t.TxErr}, t.BeginTxErr
+	return &Tx{id: fixtures.Random.String(), Err: t.TxErr}, t.BeginTxErr
 }
 
 func (t TxAdapter) Commit(ptr interface{}) error {

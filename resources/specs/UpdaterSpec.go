@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/testcase"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
 )
@@ -99,7 +100,7 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 		s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
 			s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
 				newEntity := spec.FixtureFactory.Create(spec.EntityType)
-				require.Nil(t, resources.SetID(newEntity, fixtures.RandomString(42)))
+				require.Nil(t, resources.SetID(newEntity, fixtures.Random.String()))
 				return newEntity
 			})
 

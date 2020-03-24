@@ -15,7 +15,7 @@ type ExampleStruct struct {
 	Name string
 }
 
-var RandomName = fixtures.RandomString(42)
+var RandomName = fixtures.Random.String()
 
 func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 	t.Parallel()
@@ -42,7 +42,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 
 	require.True(t, i.Next())
 
-	checkAmount := fixtures.RandomIntByRange(1, 100)
+	checkAmount := fixtures.Random.IntBetween(1, 100)
 	for n := 0; n < checkAmount; n++ {
 		require.False(t, i.Next())
 	}

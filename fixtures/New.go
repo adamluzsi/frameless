@@ -1,7 +1,6 @@
 package fixtures
 
 import (
-	"math/rand"
 	"reflect"
 	"sync"
 	"time"
@@ -41,53 +40,53 @@ func newValue(value reflect.Value) reflect.Value {
 	case reflect.Bool:
 		mutex.Lock()
 		defer mutex.Unlock()
-		return reflect.ValueOf(rnd.Intn(2) == 0)
+		return reflect.ValueOf(Random.IntN(2) == 0)
 
 	case reflect.String:
 		mutex.Lock()
 		defer mutex.Unlock()
-		return reflect.ValueOf(RandomString(7))
+		return reflect.ValueOf(Random.String())
 
 	case reflect.Int:
-		return reflect.ValueOf(rnd.Int())
+		return reflect.ValueOf(Random.Int())
 
 	case reflect.Int8:
-		return reflect.ValueOf(int8(rnd.Int()))
+		return reflect.ValueOf(int8(Random.Int()))
 
 	case reflect.Int16:
-		return reflect.ValueOf(int16(rnd.Int()))
+		return reflect.ValueOf(int16(Random.Int()))
 
 	case reflect.Int32:
-		return reflect.ValueOf(rnd.Int31())
+		return reflect.ValueOf(int32(Random.Int()))
 
 	case reflect.Int64:
 		switch value.Interface().(type) {
 		case time.Duration:
-			return reflect.ValueOf(time.Duration(rand.Int63()))
+			return reflect.ValueOf(time.Duration(Random.Int()))
 		default:
-			return reflect.ValueOf(rand.Int63())
+			return reflect.ValueOf(int64(Random.Int()))
 		}
 
 	case reflect.Uint:
-		return reflect.ValueOf(uint(rand.Uint32()))
+		return reflect.ValueOf(uint(Random.Int()))
 
 	case reflect.Uint8:
-		return reflect.ValueOf(uint8(rand.Uint32()))
+		return reflect.ValueOf(uint8(Random.Int()))
 
 	case reflect.Uint16:
-		return reflect.ValueOf(uint16(rand.Uint64()))
+		return reflect.ValueOf(uint16(Random.Int()))
 
 	case reflect.Uint32:
-		return reflect.ValueOf(rand.Uint32())
+		return reflect.ValueOf(uint32(Random.Int()))
 
 	case reflect.Uint64:
-		return reflect.ValueOf(rand.Uint64())
+		return reflect.ValueOf(uint64(Random.Int()))
 
 	case reflect.Float32:
-		return reflect.ValueOf(rand.Float32())
+		return reflect.ValueOf(Random.Float32())
 
 	case reflect.Float64:
-		return reflect.ValueOf(rand.Float64())
+		return reflect.ValueOf(Random.Float64())
 
 	case reflect.Complex64:
 		return reflect.ValueOf(complex64(42))
@@ -111,12 +110,12 @@ func newValue(value reflect.Value) reflect.Value {
 		return reflect.New(value.Type().Elem())
 
 	case reflect.Uintptr:
-		return reflect.ValueOf(uintptr(rand.Int()))
+		return reflect.ValueOf(uintptr(Random.Int()))
 
 	case reflect.Struct:
 		switch value.Interface().(type) {
 		case time.Time:
-			return reflect.ValueOf(RandomTimeUTC())
+			return reflect.ValueOf(Random.Time())
 		default:
 			return reflect.ValueOf(New(value.Interface())).Elem()
 		}

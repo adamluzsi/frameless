@@ -3,10 +3,11 @@ package memorystorage
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/resources"
 	"reflect"
 	"sync"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/frameless/reflects"
 
@@ -104,7 +105,7 @@ func (storage *Memory) Create(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
-	id := fixtures.RandomString(42)
+	id := fixtures.Random.String()
 	storage.TableFor(ptr)[id] = ptr
 	return resources.SetID(ptr, id)
 }

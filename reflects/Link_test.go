@@ -15,7 +15,7 @@ type Example struct {
 	Name string
 }
 
-var RandomName = fixtures.RandomString(42)
+var RandomName = fixtures.Random.String()
 
 func ExampleLink() {
 	var src = Example{Name: RandomName}
