@@ -3,6 +3,7 @@ package storages
 import (
 	"testing"
 
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/specs"
 )
@@ -16,7 +17,7 @@ type Resource interface {
 
 type CommonSpec struct {
 	Subject        Resource
-	FixtureFactory specs.GenericFixtureFactory
+	FixtureFactory fixtures.GenericFixtureFactory
 }
 
 func (spec CommonSpec) Test(t *testing.T) {
