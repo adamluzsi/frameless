@@ -5,6 +5,11 @@ sudo: false
 
 language: go
 
+install:
+  - go get ./...
+  - go generate tools.go
+  - go generate ./...
+
 script:
   - go test ./... -v
   - go test ./... -count=100 -race
@@ -36,9 +41,3 @@ branches:
 notifications:
   email:
     - adamluzsi@gmail.com
-
-services:
-  - postgresql
-
-env:
-  - SKIP_CRYPTO_RAND_TEST=TRUE
