@@ -101,7 +101,26 @@ func TestRandomizer(t *testing.T) {
 		s.Then(`it will return a value between the range`, func(t *testcase.T) {
 			out := subject(t)
 			require.True(t, t.I(`min`).(int) <= out, `expected that from <= than out`)
-			require.True(t, out < t.I(`max`).(int), `expected that out is < than max`)
+			require.True(t, out <= t.I(`max`).(int), `expected that out is <= than max`)
+		})
+
+		s.And(`min and max is in the negative range`, func(s *testcase.Spec) {
+			s.LetValue(`min`, -128)
+			s.LetValue(`max`, -64)
+
+			s.Then(`it will return a value between the range`, func(t *testcase.T) {
+				out := subject(t)
+				require.True(t, t.I(`min`).(int) <= out, `expected that from <= than out`)
+				require.True(t, out <= t.I(`max`).(int), `expected that out is <= than max`)
+			})
+		})
+
+		s.And(`min and max equal`, func(s *testcase.Spec) {
+			s.Let(`max`, func(t *testcase.T) interface{} { return t.I(`min`) })
+
+			s.Then(`it returns the min and max value since the range can only have one value`, func(t *testcase.T) {
+				require.Equal(t, t.I(`max`), subject(t))
+			})
 		})
 	})
 
@@ -217,6 +236,22 @@ func TestRandomizer(t *testing.T) {
 
 		s.Then(`it will generate different time on each call`, func(t *testcase.T) {
 			require.NotEqual(t, subject(t), subject(t))
+		})
+
+		s.And(`from is before 1970-01-01 (unix timestamp 0)`, func(s *testcase.Spec) {
+			s.Let(`from`, func(t *testcase.T) interface{} {
+				return time.Unix(0, 0).UTC().AddDate(0, -1, 0)
+			})
+
+			s.Let(`to`, func(t *testcase.T) interface{} {
+				return t.I(`from`).(time.Time).AddDate(0, 0, 1)
+			})
+
+			s.Then(`it will generate a random time between 'from' and 'to'`, func(t *testcase.T) {
+				out := subject(t)
+				require.True(t, t.I(`from`).(time.Time).Unix() <= out.Unix(), `expected that from <= than out`)
+				require.True(t, out.Unix() < t.I(`to`).(time.Time).Unix(), `expected that out is < than to`)
+			})
 		})
 	})
 

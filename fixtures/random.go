@@ -48,10 +48,9 @@ func (r *Randomizer) Float64() float64 {
 	return rand.New(r.Source).Float64()
 }
 
-// IntBetween returns, as an int, a non-negative pseudo-random number based on the received int range's [min,max).
-// It panics if n <= 0.
+// IntBetween returns, as an int, a non-negative pseudo-random number based on the received int range's [min,max].
 func (r *Randomizer) IntBetween(min, max int) int {
-	return min + r.IntN(max-min)
+	return min + r.IntN((max+1)-min)
 }
 
 func (r *Randomizer) ElementFromSlice(slice interface{}) interface{} {
@@ -92,8 +91,7 @@ func (r *Randomizer) StringN(length int) string {
 	return string(bytes)
 }
 
-// TimeBetween returns, as an time.Time, a non-negative pseudo-random time in [from,to).
-// It panics if from == to.
+// TimeBetween returns, as an time.Time, a non-negative pseudo-random time in [from,to].
 func (r *Randomizer) TimeBetween(from, to time.Time) time.Time {
 	return time.Unix(int64(r.IntBetween(int(from.Unix()), int(to.Unix()))), 0).UTC()
 }
