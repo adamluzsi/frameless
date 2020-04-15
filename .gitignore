@@ -1,1 +1,3 @@
 /db
+*_mocks_test.go
+*_mock_test.go
