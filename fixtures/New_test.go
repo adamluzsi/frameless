@@ -1,10 +1,11 @@
 package fixtures_test
 
 import (
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew(t *testing.T) {

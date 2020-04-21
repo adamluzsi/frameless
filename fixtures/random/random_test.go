@@ -1,4 +1,4 @@
-package fixtures_test
+package random_test
 
 import (
 	"fmt"
@@ -9,25 +9,28 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/adamluzsi/frameless/fixtures/random"
 )
 
 func TestRandomizer(t *testing.T) {
 	s := testcase.NewSpec(t)
-
-	var rnd = func(t *testcase.T) *fixtures.Randomizer {
-		return t.I(`randomizer`).(*fixtures.Randomizer)
-	}
 	s.Let(`randomizer`, func(t *testcase.T) interface{} {
-		return &fixtures.Randomizer{Source: rand.NewSource(time.Now().Unix())}
+		return &random.Random{Source: rand.NewSource(time.Now().Unix())}
 	})
 	s.Let(`source`, func(t *testcase.T) interface{} {
 		return rand.NewSource(time.Now().Unix())
 	})
+	SpecRandomizerMethods(s)
+}
+
+func SpecRandomizerMethods(s *testcase.Spec) {
+	var randomizer = func(t *testcase.T) *random.Random {
+		return t.I(`randomizer`).(*random.Random)
+	}
 
 	s.Describe(`Int`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) int {
-			return rnd(t).Int()
+			return randomizer(t).Int()
 		}
 
 		s.Then(`it returns a non-negative pseudo-random int`, func(t *testcase.T) {
@@ -42,7 +45,7 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`Float32`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) float32 {
-			return rnd(t).Float32()
+			return randomizer(t).Float32()
 		}
 
 		s.Then(`it returns, as a float32, a pseudo-random number in [0.0,1.0).`, func(t *testcase.T) {
@@ -56,7 +59,7 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`Float64`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) float64 {
-			return rnd(t).Float64()
+			return randomizer(t).Float64()
 		}
 
 		s.Then(`it returns, as a float64, a pseudo-random number in [0.0,1.0).`, func(t *testcase.T) {
@@ -70,11 +73,11 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`IntN`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) int {
-			return rnd(t).IntN(t.I(`n`).(int))
+			return randomizer(t).IntN(t.I(`n`).(int))
 		}
 
 		s.Let(`n`, func(t *testcase.T) interface{} {
-			return rnd(t).IntN(42) + 42 // ensure it is not zero for the test
+			return randomizer(t).IntN(42) + 42 // ensure it is not zero for the test
 		})
 
 		s.Test(`returns with random number excluding the received`, func(t *testcase.T) {
@@ -86,16 +89,16 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`IntBetween`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) int {
-			return rnd(t).IntBetween(t.I(`min`).(int), t.I(`max`).(int))
+			return randomizer(t).IntBetween(t.I(`min`).(int), t.I(`max`).(int))
 		}
 
 		s.Let(`min`, func(t *testcase.T) interface{} {
-			return rnd(t).IntN(42)
+			return randomizer(t).IntN(42)
 		})
 
 		s.Let(`max`, func(t *testcase.T) interface{} {
 			// +1 in the end to ensure that `max` is bigger than `min`
-			return rnd(t).IntN(42) + t.I(`min`).(int) + 1
+			return randomizer(t).IntN(42) + t.I(`min`).(int) + 1
 		})
 
 		s.Then(`it will return a value between the range`, func(t *testcase.T) {
@@ -129,7 +132,7 @@ func TestRandomizer(t *testing.T) {
 			pool := []int{1, 2, 3, 4, 5}
 			resSet := make(map[int]struct{})
 			for i := 0; i < 1024; i++ {
-				res := rnd(t).ElementFromSlice(pool).(int)
+				res := randomizer(t).ElementFromSlice(pool).(int)
 				resSet[res] = struct{}{}
 				require.Contains(t, pool, res)
 			}
@@ -144,7 +147,7 @@ func TestRandomizer(t *testing.T) {
 			for _, k := range keys {
 				srcMap[k] = struct{}{}
 			}
-			require.Contains(t, keys, rnd(t).KeyFromMap(srcMap).(int))
+			require.Contains(t, keys, randomizer(t).KeyFromMap(srcMap).(int))
 		})
 
 		s.Test(`randomness`, func(t *testcase.T) {
@@ -155,7 +158,7 @@ func TestRandomizer(t *testing.T) {
 			}
 			resSet := make(map[int]struct{})
 			for i := 0; i < 1024; i++ {
-				res := rnd(t).KeyFromMap(srcMap).(int)
+				res := randomizer(t).KeyFromMap(srcMap).(int)
 				resSet[res] = struct{}{}
 				require.Contains(t, keys, res)
 			}
@@ -165,10 +168,10 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`StringN`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) string {
-			return rnd(t).StringN(t.I(`length`).(int))
+			return randomizer(t).StringN(t.I(`length`).(int))
 		}
 		s.Let(`length`, func(t *testcase.T) interface{} {
-			return rnd(t).IntN(42) + 5
+			return randomizer(t).IntN(42) + 5
 		})
 
 		s.Then(`it create a string with a given length`, func(t *testcase.T) {
@@ -184,7 +187,7 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`Bool`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) bool {
-			return rnd(t).Bool()
+			return randomizer(t).Bool()
 		}
 
 		s.Then(`it return with random bool on each calls`, func(t *testcase.T) {
@@ -198,7 +201,7 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`String`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) string {
-			return rnd(t).String()
+			return randomizer(t).String()
 		}
 
 		s.Then(`it create strings with different lengths`, func(t *testcase.T) {
@@ -217,7 +220,7 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`TimeBetween`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) time.Time {
-			return rnd(t).TimeBetween(t.I(`from`).(time.Time), t.I(`to`).(time.Time))
+			return randomizer(t).TimeBetween(t.I(`from`).(time.Time), t.I(`to`).(time.Time))
 		}
 
 		s.Let(`from`, func(t *testcase.T) interface{} {
@@ -257,7 +260,7 @@ func TestRandomizer(t *testing.T) {
 
 	s.Describe(`Time`, func(s *testcase.Spec) {
 		var subject = func(t *testcase.T) time.Time {
-			return rnd(t).Time()
+			return randomizer(t).Time()
 		}
 
 		s.Then(`it will generate different time on each call`, func(t *testcase.T) {

@@ -6,15 +6,13 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/reflects"
-
-	"github.com/adamluzsi/frameless"
 )
 
 // New returns a populated entity for a given business data entity.
 // This is primary and only used for testing.
 // With fixtures, it become easy to create generic query objects that use test cases that does not specify the concrete Structure type.
-func New(entity frameless.Entity) frameless.Entity {
-	ptr := reflect.New(reflects.BaseTypeOf(entity))
+func New(T interface{}) (pointer interface{}) {
+	ptr := reflect.New(reflects.BaseTypeOf(T))
 	elem := ptr.Elem()
 
 	for i := 0; i < elem.NumField(); i++ {
@@ -40,7 +38,7 @@ func newValue(value reflect.Value) reflect.Value {
 	case reflect.Bool:
 		mutex.Lock()
 		defer mutex.Unlock()
-		return reflect.ValueOf(Random.IntN(2) == 0)
+		return reflect.ValueOf(Random.Bool())
 
 	case reflect.String:
 		mutex.Lock()

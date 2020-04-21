@@ -6,9 +6,9 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-type GenericFixtureFactory struct{}
+type FixtureFactory struct{}
 
-func (f GenericFixtureFactory) Create(entity interface{}) interface{} {
+func (f FixtureFactory) Create(entity interface{}) interface{} {
 	newEntity := New(entity)
 	if _, ok := resources.LookupID(newEntity); ok {
 		if err := resources.SetID(newEntity, ""); err != nil {
@@ -18,6 +18,6 @@ func (f GenericFixtureFactory) Create(entity interface{}) interface{} {
 	return newEntity
 }
 
-func (f GenericFixtureFactory) Context() (ctx context.Context) {
+func (f FixtureFactory) Context() (ctx context.Context) {
 	return context.Background()
 }

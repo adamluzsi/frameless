@@ -17,7 +17,7 @@ type Resource interface {
 
 type CommonSpec struct {
 	Subject        Resource
-	FixtureFactory fixtures.GenericFixtureFactory
+	FixtureFactory fixtures.FixtureFactory
 }
 
 func (spec CommonSpec) Test(t *testing.T) {

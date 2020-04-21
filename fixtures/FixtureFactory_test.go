@@ -10,7 +10,7 @@ import (
 func TestGenericFixtureFactory(t *testing.T) {
 	specs.FixtureFactorySpec{
 		Type:           GenericFixtureFactoryExampleType{},
-		FixtureFactory: fixtures.GenericFixtureFactory{},
+		FixtureFactory: fixtures.FixtureFactory{},
 	}.Test(t)
 }
 
