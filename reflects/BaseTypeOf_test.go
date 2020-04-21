@@ -1,10 +1,11 @@
 package reflects_test
 
 import (
-	"github.com/adamluzsi/frameless/reflects"
-	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBaseTypeOf(t *testing.T) {

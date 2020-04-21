@@ -1,6 +1,5 @@
 package transactions
 
-
 type stack []stackElement
 
 func (stack *stack) Lookup(key interface{}) (interface{}, bool) {

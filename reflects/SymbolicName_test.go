@@ -1,10 +1,11 @@
 package reflects_test
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/resources/specs"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func ExampleSymbolicName(i interface{}) string {
