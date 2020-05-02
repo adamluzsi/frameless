@@ -175,7 +175,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			}
 		}()
 
-		t.Run("when no value stored that the query request", func(t *testing.T) {
+		t.T.Run("when no value stored that the query request", func(t *testing.T) {
 			ptr := newEntityBasedOn(spec.EntityType)
 
 			ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
@@ -184,7 +184,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			require.False(t, ok)
 		})
 
-		t.Run("values returned", func(t *testing.T) {
+		t.T.Run("values returned", func(t *testing.T) {
 			for _, ID := range ids {
 
 				entityPtr := newEntityBasedOn(spec.EntityType)

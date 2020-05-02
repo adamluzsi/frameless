@@ -84,7 +84,7 @@ func (spec CreatorSpec) Test(t *testing.T) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			t.Run("persist an Creator", func(t *testing.T) {
+			t.T.Run("persist an Creator", func(t *testing.T) {
 
 				if ID, _ := resources.LookupID(spec.EntityType); ID != "" {
 					t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
@@ -110,7 +110,7 @@ func (spec CreatorSpec) Test(t *testing.T) {
 
 			})
 
-			t.Run("when entity already have an ID", func(t *testing.T) {
+			t.T.Run("when entity already have an ID", func(t *testing.T) {
 				newEntity := spec.FixtureFactory.Create(spec.EntityType)
 				require.Nil(t, resources.SetID(newEntity, "Hello world!"))
 				require.Error(t, spec.Subject.Create(spec.Context(), newEntity))
