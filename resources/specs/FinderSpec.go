@@ -269,8 +269,14 @@ func (spec findAllSpec) Test(t *testing.T) {
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 
-			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`entity`)))
+			s.Around(func(t *testcase.T) func() {
+				entity := t.I(`entity`)
+				require.Nil(t, spec.Subject.Create(spec.Context(), entity))
+				return func() {
+					id, ok := resources.LookupID(entity)
+					require.True(t, ok)
+					_ = spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
+				}
 			})
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
@@ -291,8 +297,14 @@ func (spec findAllSpec) Test(t *testing.T) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					return spec.FixtureFactory.Create(spec.EntityType)
 				})
-				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
+				s.Around(func(t *testcase.T) func() {
+					entity := t.I(`oth-entity`)
+					require.Nil(t, spec.Subject.Create(spec.Context(), entity))
+					return func() {
+						id, ok := resources.LookupID(entity)
+						require.True(t, ok)
+						_ = spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
+					}
 				})
 
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {
