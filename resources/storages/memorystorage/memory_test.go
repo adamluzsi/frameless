@@ -1,7 +1,8 @@
 package memorystorage_test
 
 import (
-	"github.com/adamluzsi/frameless/resources/storages"
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/adamluzsi/frameless/resources/specs"
 	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
 
 	"testing"
@@ -12,11 +13,24 @@ func ExampleMemory() *memorystorage.Memory {
 }
 
 func TestMemory(t *testing.T) {
-	storage := ExampleMemory()
-	storages.CommonSpec{Subject: storage}.Test(t)
+	subject := ExampleMemory()
+	specs.CreatorSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.FinderSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.UpdaterSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.DeleterSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.OnePhaseCommitProtocolSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 }
 
 func BenchmarkMemory(b *testing.B) {
-	storage := ExampleMemory()
-	storages.CommonSpec{Subject: storage}.Benchmark(b)
+	subject := ExampleMemory()
+	specs.CreatorSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.FinderSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.UpdaterSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.DeleterSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.OnePhaseCommitProtocolSpec{EntityType: exampleEntity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+}
+
+type exampleEntity struct {
+	ExtID string `ext:"ID"`
+	Data  string
 }
