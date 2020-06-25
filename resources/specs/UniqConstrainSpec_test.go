@@ -7,7 +7,7 @@ import (
 
 	"github.com/adamluzsi/frameless/resources/specs"
 
-	"github.com/adamluzsi/frameless/resources/storages/memorystorage"
+	"github.com/adamluzsi/frameless/resources/memorystorage"
 )
 
 type SampleStruct struct {
