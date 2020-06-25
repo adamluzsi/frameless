@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/frameless/errs"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/transactions"
 )
 
 /*
@@ -169,19 +168,3 @@ type Signaler interface {
 }
 
 type Decoder iterators.Decoder
-
-// @WIP
-// check if iterator can be a queue
-type Queue interface {
-	io.Closer
-	Add(interface{}) error
-	// TODO check if iterator can be used here.
-	Remove() (msg QueueMessage, hasNext bool, err error)
-}
-
-type QueueMessage interface {
-	Signaler
-	Decoder
-}
-
-type TransactionManager = transactions.Manager
