@@ -22,7 +22,7 @@ type UniqConstrainSpec struct {
 	UniqConstrain []string
 
 	// the Resource object that implements the specification
-	Subject MinimumRequirements
+	Subject minimumRequirements
 }
 
 func (spec UniqConstrainSpec) Benchmark(b *testing.B) {
@@ -67,7 +67,7 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 
 }
 
-func TestUniqConstrain(t *testing.T, r MinimumRequirements, e interface{}, f FixtureFactory, uniqConstrain ...string) {
+func TestUniqConstrain(t *testing.T, r minimumRequirements, e interface{}, f FixtureFactory, uniqConstrain ...string) {
 	t.Run(`UniqConstrainSpec`, func(t *testing.T) {
 		require.NotEmpty(t, uniqConstrain)
 		UniqConstrainSpec{EntityType: e, FixtureFactory: f, UniqConstrain: uniqConstrain, Subject: r}.Test(t)

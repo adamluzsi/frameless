@@ -16,7 +16,7 @@ import (
 type FinderSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject MinimumRequirements
+	Subject minimumRequirements
 }
 
 func (spec FinderSpec) Test(t *testing.T) {
@@ -52,7 +52,7 @@ func (spec FinderSpec) Benchmark(b *testing.B) {
 type findByIDSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject MinimumRequirements
+	Subject minimumRequirements
 }
 
 func (spec findByIDSpec) Test(t *testing.T) {
@@ -240,7 +240,7 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 type findAllSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject MinimumRequirements
+	Subject minimumRequirements
 }
 
 func (spec findAllSpec) Test(t *testing.T) {

@@ -23,7 +23,7 @@ type UpdaterSpec struct {
 type updateSpecSubject interface {
 	resources.Updater
 
-	MinimumRequirements
+	minimumRequirements
 }
 
 func (spec UpdaterSpec) Test(t *testing.T) {

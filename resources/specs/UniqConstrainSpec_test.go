@@ -34,7 +34,7 @@ type UniqStorage struct {
 func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 	switch e := ptr.(type) {
 	case SampleStruct:
-		table := s.TableFor(e)
+		table := s.TableFor(ctx, e)
 		for _, entity := range table {
 			if entity.(SampleStruct).Name == e.Name {
 				return errors.New(`uniq constrain violation`)

@@ -11,7 +11,7 @@ type CommonSpec struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject interface {
-		MinimumRequirements
+		minimumRequirements
 		resources.Updater
 	}
 }
@@ -20,7 +20,7 @@ func (spec CommonSpec) Test(t *testing.T) {
 	t.Run(reflects.SymbolicName(spec.EntityType), func(t *testing.T) {
 		CreatorSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
 		FinderSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
-		UpdaterSpec{EntityType: spec.EntityType, FixtureFactory: spec.FixtureFactory, Subject: spec.Subject}.Test(t)
+		UpdaterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
 		DeleterSpec{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
 	})
 }

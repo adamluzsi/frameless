@@ -14,7 +14,7 @@ import (
 type CreatorSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject MinimumRequirements
+	Subject minimumRequirements
 }
 
 func (spec CreatorSpec) Test(t *testing.T) {

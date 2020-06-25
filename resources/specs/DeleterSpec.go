@@ -16,7 +16,7 @@ import (
 type DeleterSpec struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject MinimumRequirements
+	Subject minimumRequirements
 }
 
 func (spec DeleterSpec) Test(t *testing.T) {

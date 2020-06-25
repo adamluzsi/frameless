@@ -14,6 +14,12 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
+type minimumRequirements interface {
+	resources.Creator
+	resources.Finder
+	resources.Deleter
+}
+
 func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
 	entityTypeName := reflects.FullyQualifiedName(entityType)
 	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
