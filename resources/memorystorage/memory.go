@@ -196,23 +196,22 @@ type ctxKeyForTx struct{}
 
 type tx struct {
 	done     bool
+	depth    int
 	memory   *Memory
 	eventLog []txEvent
 }
 
 type txEvent func(context.Context, *Memory) error
 
-const (
-	errTxExist errs.Error = `it is forbidden to run two transaction in the same context`
-	errTxDone  errs.Error = `transaction has already been committed or rolled back`
-)
+const errTxDone errs.Error = `transaction has already been committed or rolled back`
 
 func (storage *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 	storage.Mutex.Lock()
 	defer storage.Mutex.Unlock()
-	_, err := storage.getTx(ctx)
+	currentTx, err := storage.getTx(ctx)
 	if err == nil {
-		return nil, errTxExist
+		currentTx.depth++
+		return ctx, nil
 	}
 
 	txMemory := NewMemory()
@@ -235,8 +234,13 @@ func (storage *Memory) CommitTx(ctx context.Context) error {
 		return err
 	}
 
+	if tx.depth > 0 {
+		tx.depth--
+		return nil
+	}
+
 	eventLog := tx.eventLog
-	
+
 	if err := storage.RollbackTx(ctx); err != nil {
 		return err
 	}
@@ -255,6 +259,8 @@ func (storage *Memory) RollbackTx(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	tx.depth = 0
 	tx.memory = nil
 	tx.eventLog = nil
 	tx.done = true
