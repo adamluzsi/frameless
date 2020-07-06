@@ -31,14 +31,15 @@ func (spec OnePhaseCommitProtocolSpec) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	s.HasSideEffect()
 
+	s.Around(func(t *testcase.T) func() {
+		clean := func() {
+			require.Nil(t, spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.EntityType))
+		}
+		clean()
+		return clean
+	})
+
 	s.Context(`OnePhaseCommitProtocolSpec`, func(s *testcase.Spec) {
-		s.Around(func(t *testcase.T) func() {
-			clean := func() {
-				require.Nil(t, spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.EntityType))
-			}
-			clean()
-			return clean
-		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()

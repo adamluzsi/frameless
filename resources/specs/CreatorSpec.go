@@ -19,7 +19,12 @@ type CreatorSpec struct {
 
 func (spec CreatorSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-	extIDFieldRequired(s, spec.EntityType)
+
+	s.Before(func(t *testcase.T) {
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+	})
+
+	thenExternalIDFieldIsExpected(s, spec.EntityType)
 
 	s.Describe(`Creator`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
@@ -35,10 +40,6 @@ func (spec CreatorSpec) Test(t *testing.T) {
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
 			return spec.FixtureFactory.Create(spec.EntityType)
-		})
-
-		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 		})
 
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {

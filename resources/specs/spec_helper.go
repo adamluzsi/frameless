@@ -20,7 +20,7 @@ type minimumRequirements interface {
 	resources.Deleter
 }
 
-func extIDFieldRequired(s *testcase.Spec, entityType interface{}) {
+func thenExternalIDFieldIsExpected(s *testcase.Spec, entityType interface{}) {
 	entityTypeName := reflects.FullyQualifiedName(entityType)
 	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
 	s.Test(desc, func(t *testcase.T) {

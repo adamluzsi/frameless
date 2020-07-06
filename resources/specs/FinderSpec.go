@@ -58,6 +58,12 @@ type findByIDSpec struct {
 func (spec findByIDSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	s.Before(func(t *testcase.T) {
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+	})
+
+	thenExternalIDFieldIsExpected(s, spec.EntityType)
+
 	s.Describe(`FindByID`, func(s *testcase.Spec) {
 
 		subject := func(t *testcase.T) (bool, error) {
@@ -74,10 +80,6 @@ func (spec findByIDSpec) Test(t *testing.T) {
 
 		s.Let(`ptr`, func(t *testcase.T) interface{} {
 			return newEntityBasedOn(spec.EntityType)
-		})
-
-		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 		})
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {

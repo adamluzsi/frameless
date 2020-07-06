@@ -28,7 +28,12 @@ type updateSpecSubject interface {
 
 func (spec UpdaterSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-	extIDFieldRequired(s, spec.EntityType)
+
+	s.Before(func(t *testcase.T) {
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+	})
+
+	thenExternalIDFieldIsExpected(s, spec.EntityType)
 
 	s.Describe(`Updater`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
