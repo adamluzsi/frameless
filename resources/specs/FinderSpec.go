@@ -161,22 +161,16 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			entity := spec.FixtureFactory.Create(spec.EntityType)
 
 			require.Nil(t, spec.Subject.Create(spec.Context(), entity))
-			ID, ok := resources.LookupID(entity)
-
+			id, ok := resources.LookupID(entity)
 			if !ok {
-				t.Fatal(frameless.ErrIDRequired)
+				t.Fatal(ErrIDRequired)
 			}
 
-			require.True(t, len(ID) > 0)
-			ids = append(ids, ID)
+			require.True(t, len(id) > 0)
+			ids = append(ids, id)
+			t.Defer(func(id string) { require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)) }, id)
 
 		}
-
-		defer func() {
-			for _, id := range ids {
-				require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id))
-			}
-		}()
 
 		t.T.Run("when no value stored that the query request", func(t *testing.T) {
 			ptr := newEntityBasedOn(spec.EntityType)
@@ -190,13 +184,12 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		t.T.Run("values returned", func(t *testing.T) {
 			for _, ID := range ids {
 
-				entityPtr := newEntityBasedOn(spec.EntityType)
-				ok, err := spec.Subject.FindByID(spec.Context(), entityPtr, ID)
-
+				e := newEntityBasedOn(spec.EntityType)
+				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 				require.Nil(t, err)
 				require.True(t, ok)
 
-				actualID, ok := resources.LookupID(entityPtr)
+				actualID, ok := resources.LookupID(e)
 
 				if !ok {
 					t.Fatal("can't find ID in the returned value")

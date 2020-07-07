@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/testcase"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 
@@ -55,7 +54,7 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 
 			s.Let(`entity.id`, func(t *testcase.T) interface{} {
 				id, ok := resources.LookupID(t.I(`entity`))
-				require.True(t, ok, frameless.ErrIDRequired)
+				require.True(t, ok, ErrIDRequired)
 				return id
 			})
 

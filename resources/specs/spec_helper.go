@@ -14,6 +14,12 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
+const ErrIDRequired frameless.Error = `
+Can't find the ID in the current structure
+if there is no ID in the subject structure
+custom test needed that explicitly defines how ID is stored and retried from an entity
+`
+
 type minimumRequirements interface {
 	resources.Creator
 	resources.Finder
@@ -25,7 +31,7 @@ func thenExternalIDFieldIsExpected(s *testcase.Spec, entityType interface{}) {
 	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
 	s.Test(desc, func(t *testcase.T) {
 		_, hasExtID := resources.LookupID(newEntityBasedOn(entityType))
-		require.True(t, hasExtID, frameless.ErrIDRequired.Error())
+		require.True(t, hasExtID, ErrIDRequired.Error())
 	})
 }
 

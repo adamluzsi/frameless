@@ -59,7 +59,7 @@ func (spec DeleterSpec) specDeleteByID(s *testcase.Spec) {
 
 		s.Let(`id`, func(t *testcase.T) interface{} {
 			id, ok := resources.LookupID(t.I(`entity`))
-			require.True(t, ok, frameless.ErrIDRequired.Error())
+			require.True(t, ok, ErrIDRequired.Error())
 			require.NotEmpty(t, id)
 			return id
 		})
@@ -96,7 +96,7 @@ func (spec DeleterSpec) specDeleteByID(s *testcase.Spec) {
 				require.Nil(t, subject(t))
 
 				othID, ok := resources.LookupID(t.I(`oth-entity`))
-				require.True(t, ok, frameless.ErrIDRequired.Error())
+				require.True(t, ok, ErrIDRequired.Error())
 
 				e := newEntityBasedOn(spec.EntityType)
 				found, err := spec.Subject.FindByID(spec.Context(), e, othID)
