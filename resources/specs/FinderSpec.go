@@ -26,6 +26,7 @@ func (spec FinderSpec) Test(t *testing.T) {
 			FixtureFactory: spec.FixtureFactory,
 			Subject:        spec.Subject,
 		}.Test(t)
+
 		findAllSpec{
 			EntityType:     spec.EntityType,
 			FixtureFactory: spec.FixtureFactory,
@@ -248,8 +249,11 @@ type findAllSpec struct {
 func (spec findAllSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Describe(`FindAll`, func(s *testcase.Spec) {
+	s.Before(func(t *testcase.T) {
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+	})
 
+	s.Describe(`FindAll`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) frameless.Iterator {
 			return spec.Subject.FindAll(
 				t.I(`ctx`).(context.Context),
