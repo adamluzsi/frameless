@@ -157,19 +157,13 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		var ids []string
 
 		for i := 0; i < 12; i++ {
-
 			entity := spec.FixtureFactory.Create(spec.EntityType)
-
 			require.Nil(t, spec.Subject.Create(spec.Context(), entity))
 			id, ok := resources.LookupID(entity)
-			if !ok {
-				t.Fatal(ErrIDRequired)
-			}
-
+			require.True(t, ok, ErrIDRequired.Error())
 			require.True(t, len(id) > 0)
 			ids = append(ids, id)
-			t.Defer(func(id string) { require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)) }, id)
-
+			t.Defer(spec.Subject.DeleteByID, spec.Context(), spec.EntityType, id)
 		}
 
 		t.T.Run("when no value stored that the query request", func(t *testing.T) {
@@ -183,20 +177,14 @@ func (spec findByIDSpec) Test(t *testing.T) {
 
 		t.T.Run("values returned", func(t *testing.T) {
 			for _, ID := range ids {
-
 				e := newEntityBasedOn(spec.EntityType)
 				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 				require.Nil(t, err)
 				require.True(t, ok)
 
 				actualID, ok := resources.LookupID(e)
-
-				if !ok {
-					t.Fatal("can't find ID in the returned value")
-				}
-
+				require.True(t, ok, "can't find ID in the returned value")
 				require.Equal(t, ID, actualID)
-
 			}
 		})
 	})
