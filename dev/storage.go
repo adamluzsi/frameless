@@ -1,112 +1,55 @@
-package memorystorage
+package dev
 
 import (
 	"context"
 	"fmt"
 	"reflect"
+	"runtime"
 	"sync"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/errs"
-	"github.com/adamluzsi/frameless/resources"
-
-	"github.com/adamluzsi/frameless/reflects"
-
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources"
 )
 
-func NewMemory() *Memory {
-	return &Memory{
-		DB:    make(map[string]MemoryTable),
-		Mutex: &sync.RWMutex{},
+func NewStorage() *Storage {
+	return &Storage{
 	}
 }
 
-type MemoryTable map[string]interface{}
-
-type Memory struct {
-	DB    map[string]MemoryTable
-	Mutex *sync.RWMutex
+// Storage is an event source principles based development in memory storage,
+// that allows easy debugging and tracing during development for fast and descriptive feedback loops.
+type Storage struct {
+	mutex  sync.RWMutex
+	events []StorageEvent
 }
 
-func (storage *Memory) Update(ctx context.Context, entityPtr interface{}) error {
-	storage.Mutex.Lock()
-	defer storage.Mutex.Unlock()
-
-	storage.addToTxEventLog(ctx, func(ctx context.Context, memory *Memory) error {
-		return memory.Update(ctx, entityPtr)
-	})
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	id, found := resources.LookupID(entityPtr)
-
-	if !found {
-		return fmt.Errorf("can't find id in %s", reflect.TypeOf(entityPtr).Name())
-	}
-
-	table := storage.TableFor(ctx, entityPtr)
-
-	if _, ok := table[id]; !ok {
-		return fmt.Errorf("%s id not found in the %s table", id, reflects.FullyQualifiedName(entityPtr))
-	}
-
-	table[id] = entityPtr
-
-	return nil
+type StorageEvent struct {
+	EntityType string
+	Event      string
+	ID         string
+	Entity     interface{}
+	Trace      []string
 }
 
-func (storage *Memory) DeleteByID(ctx context.Context, Type interface{}, id string) error {
-	storage.Mutex.Lock()
-	defer storage.Mutex.Unlock()
-
-	storage.addToTxEventLog(ctx, func(ctx context.Context, memory *Memory) error {
-		return memory.DeleteByID(ctx, Type, id)
-	})
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	table := storage.TableFor(ctx, Type)
-
-	_, ok := table[id]
-
-	if !ok {
-		return frameless.ErrNotFound
-	}
-
-	delete(table, id)
-
-	return ctx.Err()
+type StorageTransaction struct {
+	done   bool
+	events []StorageEvent
+	parent StorageEventsManager
 }
 
-func (storage *Memory) FindAll(ctx context.Context, Type interface{}) frameless.Iterator {
-	storage.Mutex.RLock()
-	defer storage.Mutex.RUnlock()
-
-	if err := ctx.Err(); err != nil {
-		return iterators.NewError(err)
-	}
-
-	table := storage.TableFor(ctx, Type)
-
-	var entities []interface{}
-	for _, entity := range table {
-		entities = append(entities, reflect.ValueOf(entity).Elem().Interface())
-	}
-
-	return iterators.NewSlice(entities)
+type StorageEventsManager interface {
+	AddEvent(StorageEvent)
+	Events() []StorageEvent
 }
 
-func (storage *Memory) Create(ctx context.Context, ptr interface{}) error {
-	storage.Mutex.Lock()
-	defer storage.Mutex.Unlock()
-
-	if currentID, ok := resources.LookupID(ptr); !ok || currentID != "" {
+func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
+	if currentID, ok := resources.LookupID(ptr); !ok {
+		return fmt.Errorf("entity don't have ID field")
+	} else if currentID != "" {
 		return fmt.Errorf("entity already have an ID: %s", currentID)
 	}
 
@@ -114,182 +57,301 @@ func (storage *Memory) Create(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
+	trace := s.getTrace()
 	id := fixtures.Random.String()
-	storage.TableFor(ctx, ptr)[id] = ptr
 
-	storage.addToTxEventLog(ctx, func(ctx context.Context, memory *Memory) error {
-		storage.Mutex.Lock()
-		defer storage.Mutex.Unlock()
-		memory.TableFor(ctx, ptr)[id] = ptr
-		return nil
+	if err := resources.SetID(ptr, id); err != nil {
+		return err
+	}
+
+	return s.InTx(ctx, func(tx *StorageTransaction) {
+		tx.AddEvent(StorageEvent{
+			EntityType: StorageEventTypeNameFor(ptr),
+			Event:      `Create`,
+			ID:         id,
+			Entity:     reflects.BaseValueOf(ptr).Interface(),
+			Trace:      trace,
+		})
 	})
-
-	return resources.SetID(ptr, id)
 }
 
-func (storage *Memory) FindByID(ctx context.Context, ptr interface{}, ID string) (bool, error) {
-	storage.Mutex.RLock()
-	defer storage.Mutex.RUnlock()
-
+func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id string) (_found bool, _err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
 
-	entity, found := storage.TableFor(ctx, ptr)[ID]
+	iter := s.FindAll(ctx, reflects.BaseValueOf(ptr).Interface())
+	defer iter.Close()
 
-	if found {
-		return true, storage.link(entity, ptr)
+	current := reflect.New(reflects.BaseTypeOf(ptr)).Interface()
+
+	for iter.Next() {
+		if err := iter.Decode(current); err != nil {
+			return false, err
+		}
+
+		currentID, _ := resources.LookupID(current)
+		if currentID == id {
+			err := reflects.Link(reflects.BaseValueOf(current).Interface(), ptr)
+			return err == nil, err
+		}
 	}
 
 	return false, nil
 }
 
-func (storage *Memory) link(entity interface{}, ptr interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf(`%v`, r)
-		}
-	}()
-	reflect.ValueOf(ptr).Elem().Set(reflect.ValueOf(entity).Elem())
-	return nil
-}
-
-func (storage *Memory) Close() error {
-	return nil
-}
-
-func (storage *Memory) TableFor(ctx context.Context, e interface{}) MemoryTable {
-	name := reflects.FullyQualifiedName(reflects.BaseValueOf(e).Interface())
-	return storage.getContextMemory(ctx).getTable(name)
-}
-
-func (storage *Memory) getTable(name string) MemoryTable {
-	if _, ok := storage.DB[name]; !ok {
-		storage.DB[name] = make(MemoryTable)
+func (s *Storage) FindAll(ctx context.Context, T interface{}) frameless.Iterator {
+	if err := ctx.Err(); err != nil {
+		return iterators.NewError(err)
 	}
 
-	return storage.DB[name]
+	var all []interface{}
+	if err := s.InTx(ctx, func(tx *StorageTransaction) {
+		view := StorageEventViewFor(tx)
+		table, ok := view[StorageEventTypeNameFor(T)]
+		if !ok {
+			return
+		}
+
+		for _, entity := range table {
+			all = append(all, entity)
+		}
+	}); err != nil {
+		return iterators.NewError(err)
+	}
+
+	return iterators.NewSlice(all)
 }
 
-func (storage *Memory) DeleteAll(ctx context.Context, Type interface{}) error {
-	storage.Mutex.Lock()
-	defer storage.Mutex.Unlock()
-
-	storage.addToTxEventLog(ctx, func(ctx context.Context, memory *Memory) error {
-		return memory.DeleteAll(ctx, Type)
-	})
-
+func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	name := reflects.FullyQualifiedName(Type)
-
-	if _, ok := storage.DB[name]; ok {
-		delete(storage.DB, name)
+	trace := s.getTrace()
+	id, ok := resources.LookupID(ptr)
+	if !ok {
+		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	return nil
+	found, err := s.FindByID(ctx, reflect.New(reflects.BaseTypeOf(ptr)).Interface(), id)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf(`entitiy not found`)
+	}
+
+	return s.InTx(ctx, func(tx *StorageTransaction) {
+		tx.AddEvent(StorageEvent{
+			EntityType: StorageEventTypeNameFor(ptr),
+			Event:      `Update`,
+			ID:         id,
+			Entity:     reflects.BaseValueOf(ptr).Interface(),
+			Trace:      trace,
+		})
+	})
 }
 
-type ctxKeyForTx struct{}
+func (s *Storage) DeleteByID(ctx context.Context, T interface{}, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
-type tx struct {
-	done     bool
-	depth    int
-	memory   *Memory
-	eventLog []txEvent
+	trace := s.getTrace()
+
+	found, err := s.FindByID(ctx, reflect.New(reflect.TypeOf(T)).Interface(), id)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf(`entitiy not found`)
+	}
+
+	return s.InTx(ctx, func(tx *StorageTransaction) {
+		tx.AddEvent(StorageEvent{
+			EntityType: StorageEventTypeNameFor(T),
+			Event:      `DeleteByID`,
+			ID:         id,
+			Trace:      trace,
+		})
+	})
 }
 
-type txEvent func(context.Context, *Memory) error
-
-const errTxDone errs.Error = `transaction has already been committed or rolled back`
-
-func (storage *Memory) BeginTx(ctx context.Context) (context.Context, error) {
-	storage.Mutex.Lock()
-	defer storage.Mutex.Unlock()
-	currentTx, err := storage.getTx(ctx)
-	if err == nil {
-		currentTx.depth++
-		return ctx, nil
+func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	txMemory := NewMemory()
-	for name, table := range storage.DB {
-		tt := txMemory.getTable(name)
-		for id, entity := range table {
-			tt[id] = entity
-		}
+	trace := s.getTrace()
+
+	return s.InTx(ctx, func(tx *StorageTransaction) {
+		tx.AddEvent(StorageEvent{
+			EntityType: StorageEventTypeNameFor(T),
+			Event:      `DeleteAll`,
+			Trace:      trace,
+		})
+	})
+}
+
+func (s *Storage) BeginTx(ctx context.Context) (context.Context, error) {
+	var em StorageEventsManager
+
+	tx, ok := s.lookupTx(ctx)
+	if ok && tx.done {
+		return ctx, fmt.Errorf(`current context transaction already done`)
 	}
 
-	return context.WithValue(ctx, ctxKeyForTx{}, &tx{
-		memory:   txMemory,
-		eventLog: []txEvent{},
+	if ok {
+		em = tx
+	} else {
+		em = s
+	}
+
+	return context.WithValue(ctx, ctxKeyForStorageTransaction{}, &StorageTransaction{
+		done:   false,
+		events: []StorageEvent{},
+		parent: em,
 	}), nil
 }
 
-func (storage *Memory) CommitTx(ctx context.Context) error {
-	tx, err := storage.getTx(ctx)
-	if err != nil {
-		return err
+const (
+	errTxDone errs.Error = `transaction has already been committed or rolled back`
+	errNoTx   errs.Error = `no transaction found in the given context`
+)
+
+func (s *Storage) CommitTx(ctx context.Context) error {
+	tx, ok := s.lookupTx(ctx)
+	if !ok {
+		return errNoTx
+	}
+	if tx.done {
+		return errTxDone
 	}
 
-	if tx.depth > 0 {
-		tx.depth--
-		return nil
+	for _, event := range tx.events {
+		tx.parent.AddEvent(event)
 	}
 
-	eventLog := tx.eventLog
-
-	if err := storage.RollbackTx(ctx); err != nil {
-		return err
-	}
-
-	for _, event := range eventLog {
-		if err := event(ctx, storage); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (storage *Memory) RollbackTx(ctx context.Context) error {
-	tx, err := storage.getTx(ctx)
-	if err != nil {
-		return err
-	}
-
-	tx.depth = 0
-	tx.memory = nil
-	tx.eventLog = nil
 	tx.done = true
 	return nil
 }
 
-func (storage *Memory) getContextMemory(ctx context.Context) *Memory {
-	tx, err := storage.getTx(ctx)
-	if err == nil {
-		return tx.memory
+func (s *Storage) RollbackTx(ctx context.Context) error {
+	tx, ok := s.lookupTx(ctx)
+	if !ok {
+		return errNoTx
+	}
+	if tx.done {
+		return errTxDone
 	}
 
-	return storage
+	tx.done = true
+	tx.events = []StorageEvent{}
+	return nil
 }
 
-func (storage *Memory) getTx(ctx context.Context) (*tx, error) {
-	tx, ok := ctx.Value(ctxKeyForTx{}).(*tx)
-	if !ok || tx == nil || tx.done {
-		return nil, errTxDone
+/**********************************************************************************************************************/
+
+// History will return a list of  the event history of the
+type History struct {
+	events []StorageEvent
+}
+
+func (h History) LogWith(l interface {Log(args ...interface{}) }) {
+	for _, e := range h.events {
+		l.Log(fmt.Sprintf(`%s <%s> @ %s`, e.Event, e.EntityType, e.Trace[0]))
+	}
+}
+
+func (s *Storage) History() History {
+	return History{events: s.Events()}
+}
+
+func (s *Storage) getTrace() []string {
+	const maxTraceLength = 5
+	var trace []string
+
+	for i := 0; i < 100; i++ {
+		_, file, line, ok := runtime.Caller(2 + i)
+		if ok {
+			trace = append(trace, fmt.Sprintf(`%s:%d`, file, line))
+		}
+
+		if maxTraceLength <= len(trace) {
+			break
+		}
 	}
 
-	return tx, nil
+	return trace
 }
 
-func (storage *Memory) addToTxEventLog(ctx context.Context, event txEvent) {
-	tx, err := storage.getTx(ctx)
+/**********************************************************************************************************************/
+
+func (s *Storage) AddEvent(event StorageEvent) {
+	s.events = append(s.events, event)
+}
+
+func (s *Storage) Events() []StorageEvent {
+	return s.events
+}
+
+func (tx *StorageTransaction) AddEvent(event StorageEvent) {
+	tx.events = append(tx.events, event)
+}
+
+func (tx StorageTransaction) Events() []StorageEvent {
+	var es []StorageEvent
+	es = append(es, tx.parent.Events()...)
+	es = append(es, tx.events...)
+	return es
+}
+
+/**********************************************************************************************************************/
+
+type StorageEventView map[string]map[string]interface{} // id => entity
+
+func StorageEventViewFor(eh StorageEventsManager) StorageEventView {
+	var view = make(StorageEventView)
+	for _, event := range eh.Events() {
+		if _, ok := view[event.EntityType]; !ok {
+			view[event.EntityType] = make(map[string]interface{})
+		}
+
+		switch event.Event {
+		case `Create`, `Update`:
+			view[event.EntityType][event.ID] = event.Entity
+		case `DeleteByID`:
+			delete(view[event.EntityType], event.ID)
+		case `DeleteAll`:
+			delete(view, event.EntityType)
+		}
+	}
+
+	return view
+}
+
+/**********************************************************************************************************************/
+
+type ctxKeyForStorageTransaction struct{}
+
+func (s *Storage) lookupTx(ctx context.Context) (*StorageTransaction, bool) {
+	tx, ok := ctx.Value(ctxKeyForStorageTransaction{}).(*StorageTransaction)
+	return tx, ok
+}
+
+func (s *Storage) InTx(ctx context.Context, fn func(tx *StorageTransaction)) error {
+	ctx, err := s.BeginTx(ctx)
 	if err != nil {
-		return
+		return err
 	}
 
-	tx.eventLog = append(tx.eventLog, event)
+	tx, _ := s.lookupTx(ctx)
+	fn(tx)
+
+	return s.CommitTx(ctx)
+}
+
+func StorageEventTypeNameFor(T interface{}) string {
+	return reflects.FullyQualifiedName(reflects.BaseValueOf(T).Interface())
 }
