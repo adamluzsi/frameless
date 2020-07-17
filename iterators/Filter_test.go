@@ -2,15 +2,17 @@ package iterators_test
 
 import (
 	"fmt"
-	"math/rand"
+	"log"
 	"testing"
 
+	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-func ExampleFilter() error {
+func ExampleFilter() {
 	var iter iterators.Interface
 	iter = iterators.NewSlice([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
 	iter = iterators.Filter(iter, func(n int) bool { return n > 2 })
@@ -20,13 +22,15 @@ func ExampleFilter() error {
 		var n int
 
 		if err := iter.Decode(&n); err != nil {
-			return err
+			log.Fatal(err)
 		}
 
 		fmt.Println(n)
 	}
 
-	return iter.Err()
+	if err := iter.Err(); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func TestFilter(t *testing.T) {
@@ -138,57 +142,69 @@ func TestFilter(t *testing.T) {
 }
 
 func BenchmarkFilter(b *testing.B) {
-	for i := 0; i < b.N; i++ {
+	s := testcase.NewSpec(b)
 
-		b.StopTimer()
-		var inputs []int
-		for i := 0; i < 1024; i++ {
-			inputs = append(inputs, rand.Intn(1000))
-		}
-		srcIter := iterators.NewSlice(inputs)
-		b.StartTimer()
-
-		_, err := iterators.Count(iterators.Filter(srcIter, func(n int) bool { return n > 500 }))
-		require.Nil(b, err)
-
+	var logic = func(n int) bool {
+		return n > 500
 	}
-}
 
-func BenchmarkFilter_implementedWithPipe(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-
-		b.StopTimer()
-		var inputs []int
+	s.Let(`iter`, func(t *testcase.T) interface{} {
+		var values []int
 		for i := 0; i < 1024; i++ {
-			inputs = append(inputs, rand.Intn(1000))
+			values = append(values, fixtures.Random.IntN(1000))
 		}
-		srcIter := iterators.NewSlice(inputs)
+		return iterators.NewSlice(values)
+	})
 
+	s.Let(`pipe-iter`, func(t *testcase.T) interface{} {
+		srcIter := t.I(`iter`).(iterators.Interface)
 		r, w := iterators.NewPipe()
 
 		go func() {
 			defer srcIter.Close()
 			defer w.Close()
+
 			for srcIter.Next() {
 				var n int
 				_ = srcIter.Decode(&n)
 
-				if n > 500 {
-					_ = w.Encode(&n)
+				if logic(n) {
+					_ = w.Encode(n)
 				}
 			}
 			w.Error(srcIter.Err())
 		}()
+		return r
+	})
 
-		b.StartTimer()
+	s.Let(`filter-iter`, func(t *testcase.T) interface{} {
+		return iterators.Filter(t.I(`iter`).(iterators.Interface), logic)
+	})
 
-		for r.Next() {
+	s.Before(func(t *testcase.T) {
+		t.I(`filter-iter`) // eager load
+		t.I(`pipe-iter`)   // eager load
+	})
+
+	s.Test(`filter iterator with pipe iterator`, func(t *testcase.T) {
+		iter := t.I(`pipe-iter`).(iterators.Interface)
+		for iter.Next() {
 			var n int
-			require.Nil(b, r.Decode(&n))
+			require.Nil(b, iter.Decode(&n))
 		}
-		require.Nil(b, r.Err())
-		_ = r.Close()
 
-	}
+		require.Nil(b, iter.Err())
+		require.Nil(b, iter.Close())
+	})
 
+	s.Test(`filter iterator with filter iterator`, func(t *testcase.T) {
+		iter := t.I(`filter-iter`).(iterators.Interface)
+		for iter.Next() {
+			var n int
+			require.Nil(b, iter.Decode(&n))
+		}
+
+		require.Nil(b, iter.Err())
+		require.Nil(b, iter.Close())
+	})
 }
