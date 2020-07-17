@@ -8,8 +8,6 @@ import (
 
 	"github.com/adamluzsi/frameless/resources"
 
-	"github.com/adamluzsi/frameless"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -111,7 +109,7 @@ func (spec DeleterSpec) specDeleteByID(s *testcase.Spec) {
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
-				require.Equal(t, frameless.ErrNotFound, subject(t))
+				require.Error(t, subject(t))
 			})
 		})
 	})

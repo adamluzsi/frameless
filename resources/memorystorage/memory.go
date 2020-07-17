@@ -76,7 +76,8 @@ func (storage *Memory) DeleteByID(ctx context.Context, Type interface{}, id stri
 	_, ok := table[id]
 
 	if !ok {
-		return frameless.ErrNotFound
+		const notFound frameless.Error = "ErrNotFound"
+		return notFound
 	}
 
 	delete(table, id)

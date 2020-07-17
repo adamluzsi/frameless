@@ -7,6 +7,7 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
+	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
 )
 
@@ -180,28 +181,41 @@ func (spec OnePhaseCommitProtocolSpec) Spec(tb testing.TB) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			ctx := spec.FixtureFactory.Context()
+			defer spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.EntityType)
 
-			var err error
-			ctx, err = spec.Subject.BeginTx(ctx)
+			var (
+				ctx   = spec.FixtureFactory.Context()
+				count int
+				err   error
+			)
+
+			ctxWithLevel1Tx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			ctx, err = spec.Subject.BeginTx(ctx)
+			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.EntityType)))
+			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.EntityType))
 			require.Nil(t, err)
+			require.Equal(t, 1, count)
 
-			entity := spec.FixtureFactory.Create(spec.EntityType)
-			require.Nil(t, spec.Subject.Create(ctx, entity))
-			id, ok := resources.LookupID(entity)
-			require.True(t, ok)
-			require.NotEmpty(t, id)
-			t.Defer(spec.Subject.DeleteByID, spec.FixtureFactory.Context(), spec.EntityType, id)
-
-			require.Nil(t, spec.Subject.CommitTx(ctx), `"inner" tx should be considered done`)
-			require.Nil(t, spec.Subject.CommitTx(ctx), `"outer" tx should be considered done`)
-
-			t.Log(`after everything is committed, the stored entity should be findable`)
-			found, err := spec.Subject.FindByID(spec.FixtureFactory.Context(), spec.newEntity(), id)
+			ctxWithLevel2Tx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			require.True(t, found)
+			require.Nil(t, err)
+			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.EntityType)))
+			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.EntityType))
+			require.Nil(t, err)
+			require.Equal(t, 2, count)
+
+			t.Log(`before commit, entities should be absent from the resource`)
+			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.EntityType))
+			require.Nil(t, err)
+			require.Equal(t, 0, count)
+
+			require.Nil(t, spec.Subject.CommitTx(ctxWithLevel2Tx), `"inner" tx should be considered done`)
+			require.Nil(t, spec.Subject.CommitTx(ctxWithLevel1Tx), `"outer" tx should be considered done`)
+
+			t.Log(`after everything is committed, entities should be in the resource`)
+			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.EntityType))
+			require.Nil(t, err)
+			require.Equal(t, 2, count)
 		})
 	})
 }
