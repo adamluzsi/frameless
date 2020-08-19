@@ -72,7 +72,7 @@ func SpecForPrimitiveNames(spec *testing.T, subject func(entity frameless.Entity
 	spec.Run("when given object is a string", func(t *testing.T) {
 		t.Parallel()
 
-		require.Equal(t, "string", subject(string(42)))
+		require.Equal(t, "string", subject(`42`))
 	})
 
 	spec.Run("when given object is a int", func(t *testing.T) {
