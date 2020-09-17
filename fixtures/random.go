@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/adamluzsi/frameless/fixtures/random"
+	"github.com/adamluzsi/testcase/fixtures/random"
 )
 
 var Random = random.NewRandom(rand.NewSource(time.Now().Unix()))
