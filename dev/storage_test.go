@@ -23,8 +23,8 @@ var _ interface {
 } = &dev.Storage{}
 
 var (
-	_ dev.StorageEventsManager = &dev.Storage{}
-	_ dev.StorageEventsManager = &dev.StorageTransaction{}
+	_ dev.StorageEventManager = &dev.Storage{}
+	_ dev.StorageEventManager = &dev.StorageTransaction{}
 )
 
 func TestStorage_smoketest(t *testing.T) {

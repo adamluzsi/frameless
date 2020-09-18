@@ -16,8 +16,7 @@ import (
 )
 
 func NewStorage() *Storage {
-	return &Storage{
-	}
+	return &Storage{}
 }
 
 // Storage is an event source principles based development in memory storage,
@@ -38,12 +37,16 @@ type StorageEvent struct {
 type StorageTransaction struct {
 	done   bool
 	events []StorageEvent
-	parent StorageEventsManager
+	parent StorageEventManager
 }
 
-type StorageEventsManager interface {
-	AddEvent(StorageEvent)
+type StorageEventViewer interface {
 	Events() []StorageEvent
+}
+
+type StorageEventManager interface {
+	AddEvent(StorageEvent)
+	StorageEventViewer
 }
 
 func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
@@ -64,7 +67,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
-	return s.InTx(ctx, func(tx *StorageTransaction) {
+	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
 			EntityType: StorageEventTypeNameFor(ptr),
 			Event:      `Create`,
@@ -72,6 +75,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 			Entity:     reflects.BaseValueOf(ptr).Interface(),
 			Trace:      trace,
 		})
+		return nil
 	})
 }
 
@@ -106,16 +110,17 @@ func (s *Storage) FindAll(ctx context.Context, T interface{}) frameless.Iterator
 	}
 
 	var all []interface{}
-	if err := s.InTx(ctx, func(tx *StorageTransaction) {
-		view := StorageEventViewFor(tx)
+	if err := s.InTx(ctx, func(tx *StorageTransaction) error {
+		view := tx.View()
 		table, ok := view[StorageEventTypeNameFor(T)]
 		if !ok {
-			return
+			return nil
 		}
 
 		for _, entity := range table {
 			all = append(all, entity)
 		}
+		return nil
 	}); err != nil {
 		return iterators.NewError(err)
 	}
@@ -142,7 +147,7 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 		return fmt.Errorf(`entitiy not found`)
 	}
 
-	return s.InTx(ctx, func(tx *StorageTransaction) {
+	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
 			EntityType: StorageEventTypeNameFor(ptr),
 			Event:      `Update`,
@@ -150,6 +155,7 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 			Entity:     reflects.BaseValueOf(ptr).Interface(),
 			Trace:      trace,
 		})
+		return nil
 	})
 }
 
@@ -168,13 +174,14 @@ func (s *Storage) DeleteByID(ctx context.Context, T interface{}, id string) erro
 		return fmt.Errorf(`entitiy not found`)
 	}
 
-	return s.InTx(ctx, func(tx *StorageTransaction) {
+	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
 			EntityType: StorageEventTypeNameFor(T),
 			Event:      `DeleteByID`,
 			ID:         id,
 			Trace:      trace,
 		})
+		return nil
 	})
 }
 
@@ -185,17 +192,18 @@ func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
 
 	trace := s.getTrace()
 
-	return s.InTx(ctx, func(tx *StorageTransaction) {
+	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
 			EntityType: StorageEventTypeNameFor(T),
 			Event:      `DeleteAll`,
 			Trace:      trace,
 		})
+		return nil
 	})
 }
 
 func (s *Storage) BeginTx(ctx context.Context) (context.Context, error) {
-	var em StorageEventsManager
+	var em StorageEventManager
 
 	tx, ok := s.lookupTx(ctx)
 	if ok && tx.done {
@@ -258,7 +266,7 @@ type History struct {
 	events []StorageEvent
 }
 
-func (h History) LogWith(l interface {Log(args ...interface{}) }) {
+func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
 	for _, e := range h.events {
 		l.Log(fmt.Sprintf(`%s <%s> @ %s`, e.Event, e.EntityType, e.Trace[0]))
 	}
@@ -307,11 +315,15 @@ func (tx StorageTransaction) Events() []StorageEvent {
 	return es
 }
 
+func (tx StorageTransaction) View() StorageEventView {
+	return StorageEventViewFor(tx)
+}
+
 /**********************************************************************************************************************/
 
-type StorageEventView map[string]map[string]interface{} // id => entity
+type StorageEventView map[string]map[string]interface{} // T => id => entity
 
-func StorageEventViewFor(eh StorageEventsManager) StorageEventView {
+func StorageEventViewFor(eh StorageEventViewer) StorageEventView {
 	var view = make(StorageEventView)
 	for _, event := range eh.Events() {
 		if _, ok := view[event.EntityType]; !ok {
@@ -340,14 +352,17 @@ func (s *Storage) lookupTx(ctx context.Context) (*StorageTransaction, bool) {
 	return tx, ok
 }
 
-func (s *Storage) InTx(ctx context.Context, fn func(tx *StorageTransaction)) error {
+func (s *Storage) InTx(ctx context.Context, fn func(tx *StorageTransaction) error) error {
 	ctx, err := s.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 
 	tx, _ := s.lookupTx(ctx)
-	fn(tx)
+	if err := fn(tx); err != nil {
+		_ = s.RollbackTx(ctx)
+		return err
+	}
 
 	return s.CommitTx(ctx)
 }

@@ -5,9 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/adamluzsi/frameless/dev"
 	"github.com/adamluzsi/frameless/resources/specs"
-
-	"github.com/adamluzsi/frameless/resources/memorystorage"
 )
 
 type SampleStruct struct {
@@ -24,22 +23,38 @@ func TestUniqConstrainSpec_Test(t *testing.T) {
 }
 
 func NewUniqStorage() *UniqStorage {
-	return &UniqStorage{Memory: memorystorage.NewMemory()}
+	return &UniqStorage{Storage: dev.NewStorage()}
 }
 
 type UniqStorage struct {
-	*memorystorage.Memory
+	*dev.Storage
 }
 
 func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 	switch e := ptr.(type) {
-	case SampleStruct:
-		table := s.TableFor(ctx, e)
-		for _, entity := range table {
-			if entity.(SampleStruct).Name == e.Name {
-				return errors.New(`uniq constrain violation`)
+	case *SampleStruct:
+
+		if err := s.Storage.InTx(ctx, func(tx *dev.StorageTransaction) error {
+			view := tx.View()
+
+			table, ok := view[dev.StorageEventTypeNameFor(ptr)]
+			if !ok {
+				return nil
 			}
+
+			for _, entity := range table {
+				name := entity.(SampleStruct).Name
+
+				if name == e.Name {
+					return errors.New(`uniq constrain violation`)
+				}
+			}
+
+			return nil
+		}); err != nil {
+			return err
 		}
+		
 	}
-	return s.Memory.Create(ctx, ptr)
+	return s.Storage.Create(ctx, ptr)
 }
