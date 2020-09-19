@@ -1,3 +1,4 @@
+// TODO: make subscription publishing related to tx commit instead to be done on the fly
 package dev
 
 import (
@@ -22,16 +23,25 @@ func NewStorage() *Storage {
 // Storage is an event source principles based development in memory storage,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Storage struct {
-	mutex  sync.RWMutex
-	events []StorageEvent
+	mutex         sync.RWMutex
+	events        []StorageEvent
+	subscriptions subscriptions
 }
 
+const (
+	createEvent     = `Create`
+	updateEvent     = `Update`
+	deleteAllEvent  = `DeleteAll`
+	deleteByIDEvent = `DeleteByID`
+)
+
 type StorageEvent struct {
-	EntityType string
-	Event      string
-	ID         string
-	Entity     interface{}
-	Trace      []string
+	T              interface{}
+	EntityTypeName string
+	Event          string
+	ID             string
+	Entity         interface{}
+	Trace          []string
 }
 
 type StorageTransaction struct {
@@ -69,11 +79,12 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 
 	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
-			EntityType: StorageEventTypeNameFor(ptr),
-			Event:      `Create`,
-			ID:         id,
-			Entity:     reflects.BaseValueOf(ptr).Interface(),
-			Trace:      trace,
+			T:              reflects.BaseValueOf(ptr),
+			EntityTypeName: s.EntityTypeNameFor(ptr),
+			Event:          createEvent,
+			ID:             id,
+			Entity:         reflects.BaseValueOf(ptr).Interface(),
+			Trace:          trace,
 		})
 		return nil
 	})
@@ -112,7 +123,7 @@ func (s *Storage) FindAll(ctx context.Context, T interface{}) frameless.Iterator
 	var all []interface{}
 	if err := s.InTx(ctx, func(tx *StorageTransaction) error {
 		view := tx.View()
-		table, ok := view[StorageEventTypeNameFor(T)]
+		table, ok := view[s.EntityTypeNameFor(T)]
 		if !ok {
 			return nil
 		}
@@ -149,11 +160,12 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 
 	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
-			EntityType: StorageEventTypeNameFor(ptr),
-			Event:      `Update`,
-			ID:         id,
-			Entity:     reflects.BaseValueOf(ptr).Interface(),
-			Trace:      trace,
+			T:              reflects.BaseValueOf(ptr),
+			EntityTypeName: s.EntityTypeNameFor(ptr),
+			Event:          updateEvent,
+			ID:             id,
+			Entity:         reflects.BaseValueOf(ptr).Interface(),
+			Trace:          trace,
 		})
 		return nil
 	})
@@ -176,10 +188,11 @@ func (s *Storage) DeleteByID(ctx context.Context, T interface{}, id string) erro
 
 	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
-			EntityType: StorageEventTypeNameFor(T),
-			Event:      `DeleteByID`,
-			ID:         id,
-			Trace:      trace,
+			T:              T,
+			EntityTypeName: s.EntityTypeNameFor(T),
+			Event:          deleteByIDEvent,
+			ID:             id,
+			Trace:          trace,
 		})
 		return nil
 	})
@@ -194,9 +207,10 @@ func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
 
 	return s.InTx(ctx, func(tx *StorageTransaction) error {
 		tx.AddEvent(StorageEvent{
-			EntityType: StorageEventTypeNameFor(T),
-			Event:      `DeleteAll`,
-			Trace:      trace,
+			T:              T,
+			EntityTypeName: s.EntityTypeNameFor(T),
+			Event:          deleteAllEvent,
+			Trace:          trace,
 		})
 		return nil
 	})
@@ -237,8 +251,28 @@ func (s *Storage) CommitTx(ctx context.Context) error {
 		return errTxDone
 	}
 
+	subCTX := context.Background()
+
 	for _, event := range tx.events {
 		tx.parent.AddEvent(event)
+
+		// should publish events only when they hit the main storage not a parent transaction
+		if _, ok := tx.parent.(*Storage); ok {
+			for _, sub := range s.getSubscriptions(event.EntityTypeName, event.Event) {
+				// TODO: clarify what to do when error is encountered in a subscription
+				// 	This call in theory async in most implementation.
+				switch event.Event {
+				case deleteAllEvent:
+					_ = sub.handle(subCTX, event.EntityTypeName)
+				case deleteByIDEvent:
+					ptr := reflect.New(reflect.TypeOf(event.T)).Interface()
+					_ = resources.SetID(ptr, event.ID)
+					_ = sub.handle(subCTX, reflects.BaseValueOf(ptr).Interface())
+				case createEvent, updateEvent:
+					_ = sub.handle(subCTX, event.Entity)
+				}
+			}
+		}
 	}
 
 	tx.done = true
@@ -259,6 +293,94 @@ func (s *Storage) RollbackTx(ctx context.Context) error {
 	return nil
 }
 
+func (s *Storage) InTx(ctx context.Context, fn func(tx *StorageTransaction) error) error {
+	ctx, err := s.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+
+	tx, _ := s.lookupTx(ctx)
+	if err := fn(tx); err != nil {
+		_ = s.RollbackTx(ctx)
+		return err
+	}
+
+	return s.CommitTx(ctx)
+}
+
+/**********************************************************************************************************************/
+
+// event name -> <T> as name -> event subscribers
+type subscriptions map[string]map[string][]*subscription
+
+type subscription struct {
+	subscriber resources.Subscriber
+	closed     bool
+}
+
+func (s *subscription) handle(ctx context.Context, T interface{}) error {
+	if s.closed {
+		return nil
+	}
+
+	return s.subscriber.Handle(ctx, T)
+}
+
+func (s *subscription) error(ctx context.Context, err error) error {
+	if s.closed {
+		return nil
+	}
+
+	return s.subscriber.Error(ctx, err)
+}
+
+func (s *subscription) Close() error {
+	// TODO: marking subscription as closed don't remove it from the active subscriptions
+	// 	Make sure that you remove closed subscriptions eventually.
+	s.closed = true
+	return nil
+}
+
+func (s *Storage) getSubscriptions(entityTypeName string, name string) []*subscription {
+	if s.subscriptions == nil {
+		s.subscriptions = make(subscriptions)
+	}
+
+	if _, ok := s.subscriptions[name]; !ok {
+		s.subscriptions[name] = make(map[string][]*subscription)
+	}
+
+	if _, ok := s.subscriptions[name][entityTypeName]; !ok {
+		s.subscriptions[name][entityTypeName] = make([]*subscription, 0)
+	}
+
+	return s.subscriptions[name][entityTypeName]
+}
+
+func (s *Storage) appendToSubscription(T interface{}, name string, subscriber resources.Subscriber) resources.Subscription {
+	entityTypeName := s.EntityTypeNameFor(T)
+	_ = s.getSubscriptions(entityTypeName, name) // init
+	sub := &subscription{subscriber: subscriber}
+	s.subscriptions[name][entityTypeName] = append(s.subscriptions[name][entityTypeName], sub)
+	return sub
+}
+
+func (s *Storage) SubscribeToCreate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(T, createEvent, subscriber), nil
+}
+
+func (s *Storage) SubscribeToUpdate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(T, updateEvent, subscriber), nil
+}
+
+func (s *Storage) SubscribeToDeleteByID(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(T, deleteByIDEvent, subscriber), nil
+}
+
+func (s *Storage) SubscribeToDeleteAll(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(T, deleteAllEvent, subscriber), nil
+}
+
 /**********************************************************************************************************************/
 
 // History will return a list of  the event history of the
@@ -268,7 +390,7 @@ type History struct {
 
 func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
 	for _, e := range h.events {
-		l.Log(fmt.Sprintf(`%s <%s> @ %s`, e.Event, e.EntityType, e.Trace[0]))
+		l.Log(fmt.Sprintf(`%s <%s> @ %s`, e.Event, e.EntityTypeName, e.Trace[0]))
 	}
 }
 
@@ -326,17 +448,17 @@ type StorageEventView map[string]map[string]interface{} // T => id => entity
 func StorageEventViewFor(eh StorageEventViewer) StorageEventView {
 	var view = make(StorageEventView)
 	for _, event := range eh.Events() {
-		if _, ok := view[event.EntityType]; !ok {
-			view[event.EntityType] = make(map[string]interface{})
+		if _, ok := view[event.EntityTypeName]; !ok {
+			view[event.EntityTypeName] = make(map[string]interface{})
 		}
 
 		switch event.Event {
-		case `Create`, `Update`:
-			view[event.EntityType][event.ID] = event.Entity
-		case `DeleteByID`:
-			delete(view[event.EntityType], event.ID)
-		case `DeleteAll`:
-			delete(view, event.EntityType)
+		case createEvent, updateEvent:
+			view[event.EntityTypeName][event.ID] = event.Entity
+		case deleteByIDEvent:
+			delete(view[event.EntityTypeName], event.ID)
+		case deleteAllEvent:
+			delete(view, event.EntityTypeName)
 		}
 	}
 
@@ -352,21 +474,6 @@ func (s *Storage) lookupTx(ctx context.Context) (*StorageTransaction, bool) {
 	return tx, ok
 }
 
-func (s *Storage) InTx(ctx context.Context, fn func(tx *StorageTransaction) error) error {
-	ctx, err := s.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-
-	tx, _ := s.lookupTx(ctx)
-	if err := fn(tx); err != nil {
-		_ = s.RollbackTx(ctx)
-		return err
-	}
-
-	return s.CommitTx(ctx)
-}
-
-func StorageEventTypeNameFor(T interface{}) string {
+func (s *Storage) EntityTypeNameFor(T interface{}) string {
 	return reflects.FullyQualifiedName(reflects.BaseValueOf(T).Interface())
 }

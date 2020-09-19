@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"testing"
@@ -67,4 +68,68 @@ func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs
 
 func newEntityBasedOn(T interface{}) interface{} {
 	return reflect.New(reflect.TypeOf(T)).Interface()
+}
+
+func requireNotContainsList(tb testing.TB, list interface{}, listOfNotContainedElements interface{}, msgAndArgs ...interface{}) {
+	v := reflect.ValueOf(listOfNotContainedElements)
+
+	for i := 0; i < v.Len(); i++ {
+		require.NotContains(tb, list, v.Index(i).Interface(), msgAndArgs...)
+	}
+}
+
+func requireContainsList(tb testing.TB, list interface{}, listOfContainedElements interface{}, msgAndArgs ...interface{}) {
+	v := reflect.ValueOf(listOfContainedElements)
+
+	for i := 0; i < v.Len(); i++ {
+		require.Contains(tb, list, v.Index(i).Interface(), msgAndArgs...)
+	}
+}
+
+func toBaseValue(e interface{}) interface{} {
+	return reflects.BaseValueOf(e).Interface()
+}
+
+func toBaseValues(in []interface{}) []interface{} {
+	var baseEntities []interface{}
+	for _, e := range in {
+		baseEntities = append(baseEntities, toBaseValue(e))
+	}
+	return baseEntities
+}
+
+func newEventSubscriber(tb testing.TB) *eventSubscriber {
+	return &eventSubscriber{
+		tb:     tb,
+		events: make([]interface{}, 0),
+	}
+}
+
+type eventSubscriber struct {
+	tb        testing.TB
+	events    []interface{}
+	errors    []error
+	returnErr error
+}
+
+func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
+	s.verifyContext(ctx)
+	s.events = append(s.events, event)
+	return s.returnErr
+}
+
+func (s *eventSubscriber) Error(ctx context.Context, err error) error {
+	s.verifyContext(ctx)
+	s.errors = append(s.errors, err)
+	return s.returnErr
+}
+
+func (s *eventSubscriber) verifyContext(ctx context.Context) {
+	require.NotNil(s.tb, ctx)
+	select {
+	case <-ctx.Done():
+		s.tb.Fatal(`it was not expected to have a ctx finished`)
+	default:
+	}
+	require.Nil(s.tb, ctx.Err())
 }

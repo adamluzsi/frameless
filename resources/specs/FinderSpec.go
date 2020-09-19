@@ -218,7 +218,7 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 }
 
 // findAllSpec can return business entities from a given storage that implement it's test
-// The "EntityType" is a Empty struct for the specific entity (struct) type that should be returned.
+// The "EntityTypeName" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type findAllSpec struct {

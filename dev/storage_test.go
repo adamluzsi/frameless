@@ -78,6 +78,9 @@ func TestStorage(t *testing.T) {
 	specs.UpdaterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.DeleterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.OnePhaseCommitProtocolSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.CreatorPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.UpdaterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.DeleterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 }
 
 func BenchmarkStorage(b *testing.B) {
@@ -87,6 +90,9 @@ func BenchmarkStorage(b *testing.B) {
 	specs.UpdaterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
 	specs.DeleterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
 	specs.OnePhaseCommitProtocolSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.CreatorPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.UpdaterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.DeleterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
 }
 
 type Entity struct {

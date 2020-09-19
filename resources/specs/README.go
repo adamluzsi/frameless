@@ -36,7 +36,7 @@
 
 	This package depends on a fact that there is a string field ID in a business entity struct,
 	or at least a tag `ext:"ID"`. This allows the package to create specifications that assumes,
-	that the ID field links the EntityType structure to an external Resource object.
+	that the ID field links the EntityTypeName structure to an external Resource object.
 	The Resource specs package doesn't care about the content of the ID string field,
 	and don't have assumptions other than the existence of the field ID on a struct
 

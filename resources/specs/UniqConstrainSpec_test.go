@@ -37,7 +37,7 @@ func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 		if err := s.Storage.InTx(ctx, func(tx *dev.StorageTransaction) error {
 			view := tx.View()
 
-			table, ok := view[dev.StorageEventTypeNameFor(ptr)]
+			table, ok := view[s.Storage.EntityTypeNameFor(ptr)]
 			if !ok {
 				return nil
 			}
