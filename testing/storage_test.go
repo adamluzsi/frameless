@@ -1,11 +1,11 @@
-package dev_test
+package testing_test
 
 import (
 	"context"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/dev"
+	flt "github.com/adamluzsi/frameless/testing"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
@@ -20,16 +20,16 @@ var _ interface {
 	resources.Updater
 	resources.Deleter
 	resources.OnePhaseCommitProtocol
-} = &dev.Storage{}
+} = &flt.Storage{}
 
 var (
-	_ dev.StorageEventManager = &dev.Storage{}
-	_ dev.StorageEventManager = &dev.StorageTransaction{}
+	_ flt.StorageEventManager = &flt.Storage{}
+	_ flt.StorageEventManager = &flt.StorageTransaction{}
 )
 
 func TestStorage_smoketest(t *testing.T) {
 	var (
-		subject = dev.NewStorage()
+		subject = flt.NewStorage()
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -72,7 +72,7 @@ func TestStorage_smoketest(t *testing.T) {
 }
 
 func TestStorage(t *testing.T) {
-	subject := dev.NewStorage()
+	subject := flt.NewStorage()
 	specs.CreatorSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.FinderSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.UpdaterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
@@ -84,7 +84,7 @@ func TestStorage(t *testing.T) {
 }
 
 func BenchmarkStorage(b *testing.B) {
-	subject := dev.NewStorage()
+	subject := flt.NewStorage()
 	specs.CreatorSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
 	specs.FinderSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
 	specs.UpdaterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)

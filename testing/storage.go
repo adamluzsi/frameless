@@ -1,5 +1,5 @@
 // TODO: make subscription publishing related to tx commit instead to be done on the fly
-package dev
+package testing
 
 import (
 	"context"

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless/dev"
 	"github.com/adamluzsi/frameless/resources/specs"
+	. "github.com/adamluzsi/frameless/testing"
 )
 
 type SampleStruct struct {
@@ -23,18 +23,18 @@ func TestUniqConstrainSpec_Test(t *testing.T) {
 }
 
 func NewUniqStorage() *UniqStorage {
-	return &UniqStorage{Storage: dev.NewStorage()}
+	return &UniqStorage{Storage: NewStorage()}
 }
 
 type UniqStorage struct {
-	*dev.Storage
+	*Storage
 }
 
 func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 	switch e := ptr.(type) {
 	case *SampleStruct:
 
-		if err := s.Storage.InTx(ctx, func(tx *dev.StorageTransaction) error {
+		if err := s.Storage.InTx(ctx, func(tx *StorageTransaction) error {
 			view := tx.View()
 
 			table, ok := view[s.Storage.EntityTypeNameFor(ptr)]
@@ -54,7 +54,7 @@ func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 		}); err != nil {
 			return err
 		}
-		
+
 	}
 	return s.Storage.Create(ctx, ptr)
 }
