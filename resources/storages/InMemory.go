@@ -1,5 +1,5 @@
 // TODO: make subscription publishing related to tx commit instead to be done on the fly
-package testing
+package storages
 
 import (
 	"context"
@@ -16,13 +16,13 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-func NewStorage() *Storage {
-	return &Storage{}
+func NewInMemory() *InMemory {
+	return &InMemory{}
 }
 
-// Storage is an event source principles based development in memory storage,
+// InMemory is an event source principles based development in memory storage,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
-type Storage struct {
+type InMemory struct {
 	mutex         sync.RWMutex
 	events        []StorageEvent
 	subscriptions subscriptions
@@ -59,7 +59,7 @@ type StorageEventManager interface {
 	StorageEventViewer
 }
 
-func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
+func (s *InMemory) Create(ctx context.Context, ptr interface{}) error {
 	if currentID, ok := resources.LookupID(ptr); !ok {
 		return fmt.Errorf("entity don't have ID field")
 	} else if currentID != "" {
@@ -90,7 +90,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 	})
 }
 
-func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id string) (_found bool, _err error) {
+func (s *InMemory) FindByID(ctx context.Context, ptr interface{}, id string) (_found bool, _err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -115,7 +115,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id string) (_fo
 	return false, nil
 }
 
-func (s *Storage) FindAll(ctx context.Context, T interface{}) frameless.Iterator {
+func (s *InMemory) FindAll(ctx context.Context, T interface{}) frameless.Iterator {
 	if err := ctx.Err(); err != nil {
 		return iterators.NewError(err)
 	}
@@ -139,7 +139,7 @@ func (s *Storage) FindAll(ctx context.Context, T interface{}) frameless.Iterator
 	return iterators.NewSlice(all)
 }
 
-func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
+func (s *InMemory) Update(ctx context.Context, ptr interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 	})
 }
 
-func (s *Storage) DeleteByID(ctx context.Context, T interface{}, id string) error {
+func (s *InMemory) DeleteByID(ctx context.Context, T interface{}, id string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -198,7 +198,7 @@ func (s *Storage) DeleteByID(ctx context.Context, T interface{}, id string) erro
 	})
 }
 
-func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
+func (s *InMemory) DeleteAll(ctx context.Context, T interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
 	})
 }
 
-func (s *Storage) BeginTx(ctx context.Context) (context.Context, error) {
+func (s *InMemory) BeginTx(ctx context.Context) (context.Context, error) {
 	var em StorageEventManager
 
 	tx, ok := s.lookupTx(ctx)
@@ -242,7 +242,7 @@ const (
 	errNoTx   errs.Error = `no transaction found in the given context`
 )
 
-func (s *Storage) CommitTx(ctx context.Context) error {
+func (s *InMemory) CommitTx(ctx context.Context) error {
 	tx, ok := s.lookupTx(ctx)
 	if !ok {
 		return errNoTx
@@ -257,7 +257,7 @@ func (s *Storage) CommitTx(ctx context.Context) error {
 		tx.parent.AddEvent(event)
 
 		// should publish events only when they hit the main storage not a parent transaction
-		if _, ok := tx.parent.(*Storage); ok {
+		if _, ok := tx.parent.(*InMemory); ok {
 			for _, sub := range s.getSubscriptions(event.EntityTypeName, event.Event) {
 				// TODO: clarify what to do when error is encountered in a subscription
 				// 	This call in theory async in most implementation.
@@ -279,7 +279,7 @@ func (s *Storage) CommitTx(ctx context.Context) error {
 	return nil
 }
 
-func (s *Storage) RollbackTx(ctx context.Context) error {
+func (s *InMemory) RollbackTx(ctx context.Context) error {
 	tx, ok := s.lookupTx(ctx)
 	if !ok {
 		return errNoTx
@@ -293,7 +293,7 @@ func (s *Storage) RollbackTx(ctx context.Context) error {
 	return nil
 }
 
-func (s *Storage) InTx(ctx context.Context, fn func(tx *StorageTransaction) error) error {
+func (s *InMemory) InTx(ctx context.Context, fn func(tx *StorageTransaction) error) error {
 	ctx, err := s.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -341,7 +341,7 @@ func (s *subscription) Close() error {
 	return nil
 }
 
-func (s *Storage) getSubscriptions(entityTypeName string, name string) []*subscription {
+func (s *InMemory) getSubscriptions(entityTypeName string, name string) []*subscription {
 	if s.subscriptions == nil {
 		s.subscriptions = make(subscriptions)
 	}
@@ -357,7 +357,7 @@ func (s *Storage) getSubscriptions(entityTypeName string, name string) []*subscr
 	return s.subscriptions[name][entityTypeName]
 }
 
-func (s *Storage) appendToSubscription(T interface{}, name string, subscriber resources.Subscriber) resources.Subscription {
+func (s *InMemory) appendToSubscription(T interface{}, name string, subscriber resources.Subscriber) resources.Subscription {
 	entityTypeName := s.EntityTypeNameFor(T)
 	_ = s.getSubscriptions(entityTypeName, name) // init
 	sub := &subscription{subscriber: subscriber}
@@ -365,19 +365,19 @@ func (s *Storage) appendToSubscription(T interface{}, name string, subscriber re
 	return sub
 }
 
-func (s *Storage) SubscribeToCreate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *InMemory) SubscribeToCreate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(T, createEvent, subscriber), nil
 }
 
-func (s *Storage) SubscribeToUpdate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *InMemory) SubscribeToUpdate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(T, updateEvent, subscriber), nil
 }
 
-func (s *Storage) SubscribeToDeleteByID(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *InMemory) SubscribeToDeleteByID(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(T, deleteByIDEvent, subscriber), nil
 }
 
-func (s *Storage) SubscribeToDeleteAll(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *InMemory) SubscribeToDeleteAll(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(T, deleteAllEvent, subscriber), nil
 }
 
@@ -394,11 +394,11 @@ func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
 	}
 }
 
-func (s *Storage) History() History {
+func (s *InMemory) History() History {
 	return History{events: s.Events()}
 }
 
-func (s *Storage) getTrace() []string {
+func (s *InMemory) getTrace() []string {
 	const maxTraceLength = 5
 	var trace []string
 
@@ -418,11 +418,11 @@ func (s *Storage) getTrace() []string {
 
 /**********************************************************************************************************************/
 
-func (s *Storage) AddEvent(event StorageEvent) {
+func (s *InMemory) AddEvent(event StorageEvent) {
 	s.events = append(s.events, event)
 }
 
-func (s *Storage) Events() []StorageEvent {
+func (s *InMemory) Events() []StorageEvent {
 	return s.events
 }
 
@@ -469,11 +469,11 @@ func StorageEventViewFor(eh StorageEventViewer) StorageEventView {
 
 type ctxKeyForStorageTransaction struct{}
 
-func (s *Storage) lookupTx(ctx context.Context) (*StorageTransaction, bool) {
+func (s *InMemory) lookupTx(ctx context.Context) (*StorageTransaction, bool) {
 	tx, ok := ctx.Value(ctxKeyForStorageTransaction{}).(*StorageTransaction)
 	return tx, ok
 }
 
-func (s *Storage) EntityTypeNameFor(T interface{}) string {
+func (s *InMemory) EntityTypeNameFor(T interface{}) string {
 	return reflects.FullyQualifiedName(reflects.BaseValueOf(T).Interface())
 }
