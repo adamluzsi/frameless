@@ -231,7 +231,7 @@ func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 		em = s
 	}
 
-	return context.WithValue(ctx, ctxKeyForStorageTransaction{}, &MemoryTransaction{
+	return context.WithValue(ctx, ctxKeyForMemoryTransaction{}, &MemoryTransaction{
 		done:   false,
 		events: []MemoryEvent{},
 		parent: em,
@@ -477,10 +477,11 @@ func (tx MemoryTransaction) Events() []MemoryEvent {
 
 /**********************************************************************************************************************/
 
-type StorageEventView map[string]map[string]interface{} // entity type name => id => entity
+type MemoryView map[string]MemoryTableView  // entity type name => table view
+type MemoryTableView map[string]interface{} // id => entity <T>
 
-func memoryEventViewFor(eh MemoryEventViewer) StorageEventView {
-	var view = make(StorageEventView)
+func memoryEventViewFor(eh MemoryEventViewer) MemoryView {
+	var view = make(MemoryView)
 	for _, event := range eh.Events() {
 		if _, ok := view[event.EntityTypeName]; !ok {
 			view[event.EntityTypeName] = make(map[string]interface{})
@@ -499,19 +500,27 @@ func memoryEventViewFor(eh MemoryEventViewer) StorageEventView {
 	return view
 }
 
-func (tx MemoryTransaction) View() StorageEventView {
+func (tx MemoryTransaction) View() MemoryView {
 	return memoryEventViewFor(tx)
+}
+
+func (tx MemoryTransaction) ViewFor(T interface{}) MemoryTableView {
+	return tx.View()[entityTypeNameFor(T)]
 }
 
 /**********************************************************************************************************************/
 
-type ctxKeyForStorageTransaction struct{}
+type ctxKeyForMemoryTransaction struct{}
 
 func (s *Memory) lookupTx(ctx context.Context) (*MemoryTransaction, bool) {
-	tx, ok := ctx.Value(ctxKeyForStorageTransaction{}).(*MemoryTransaction)
+	tx, ok := ctx.Value(ctxKeyForMemoryTransaction{}).(*MemoryTransaction)
 	return tx, ok
 }
 
-func (s *Memory) EntityTypeNameFor(T interface{}) string {
+func entityTypeNameFor(T interface{}) string {
 	return reflects.FullyQualifiedName(reflects.BaseValueOf(T).Interface())
+}
+
+func (s *Memory) EntityTypeNameFor(T interface{}) string {
+	return entityTypeNameFor(T)
 }
