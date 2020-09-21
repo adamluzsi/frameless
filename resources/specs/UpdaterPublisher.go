@@ -75,7 +75,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 			entityPtr := spec.createEntity()
 			require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
 			id, _ := resources.LookupID(entityPtr)
-			t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, spec.context(), spec.EntityType, id)
 			t.Let(entityKey, entityPtr)
 
 			t.Log(`given a subscription is made`)

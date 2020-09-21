@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/fixtures"
@@ -70,7 +71,7 @@ func TestStorage_smoketest(t *testing.T) {
 	subject.History().LogWith(t)
 }
 
-func TestStorage(t *testing.T) {
+func TestMemory(t *testing.T) {
 	subject := storages.NewInMemory()
 	specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
@@ -80,6 +81,23 @@ func TestStorage(t *testing.T) {
 	specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 	specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+}
+
+func TestInMemory_DisableEventLogging(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const storageKey = `storage`
+	storage := func(t *testcase.T) *storages.InMemory {
+		return t.I(storageKey).(*storages.InMemory)
+	}
+	s.Let(storageKey, func(t *testcase.T) interface{} {
+		return storages.NewInMemory()
+	})
+
+	subject := func(t *testcase.T) {
+		storage(t).DisableEventLogging()
+	}
+
 }
 
 func BenchmarkStorage(b *testing.B) {

@@ -84,7 +84,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				for _, entity := range entities {
 					require.Nil(t, spec.Subject.Create(ctx(t), entity))
 					id, _ := resources.LookupID(entity)
-					t.Defer(spec.Subject.DeleteByID, ctx(t), spec.EntityType, id)
+					// we use a new context here to enforce that the cleaning will be done outside of any context.
+					// It might fail but will ensure proper cleanup.
+					t.Defer(spec.Subject.DeleteByID, spec.context(), spec.EntityType, id)
 				}
 				t.Let(eventsKey, toBaseValues(entities))
 			})

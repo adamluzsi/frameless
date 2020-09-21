@@ -23,21 +23,21 @@ func TestUniqConstrainSpec_Test(t *testing.T) {
 }
 
 func NewUniqStorage() *UniqStorage {
-	return &UniqStorage{InMemory: storages.NewInMemory()}
+	return &UniqStorage{Memory: storages.NewMemory()}
 }
 
 type UniqStorage struct {
-	*storages.InMemory
+	*storages.Memory
 }
 
 func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 	switch e := ptr.(type) {
 	case *SampleStruct:
 
-		if err := s.InMemory.InTx(ctx, func(tx *storages.StorageTransaction) error {
+		if err := s.Memory.InTx(ctx, func(tx *storages.MemoryTransaction) error {
 			view := tx.View()
 
-			table, ok := view[s.InMemory.EntityTypeNameFor(ptr)]
+			table, ok := view[s.Memory.EntityTypeNameFor(ptr)]
 			if !ok {
 				return nil
 			}
@@ -56,5 +56,5 @@ func (s *UniqStorage) Create(ctx context.Context, ptr interface{}) error {
 		}
 
 	}
-	return s.InMemory.Create(ctx, ptr)
+	return s.Memory.Create(ctx, ptr)
 }
