@@ -73,26 +73,26 @@ func TestStorage_smoketest(t *testing.T) {
 
 func TestStorage(t *testing.T) {
 	subject := flt.NewStorage()
-	specs.CreatorSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.FinderSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.UpdaterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.DeleterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.OnePhaseCommitProtocolSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.CreatorPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.UpdaterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.DeleterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+	specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
 }
 
 func BenchmarkStorage(b *testing.B) {
 	subject := flt.NewStorage()
-	specs.CreatorSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.FinderSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.UpdaterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.DeleterSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.OnePhaseCommitProtocolSpec{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.CreatorPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.UpdaterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.DeleterPublisherSpec{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
 }
 
 type Entity struct {

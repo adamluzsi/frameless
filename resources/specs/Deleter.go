@@ -11,24 +11,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type DeleterSpec struct {
+type Deleter struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
 
-func (spec DeleterSpec) Test(t *testing.T) {
+func (spec Deleter) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Describe(`DeleteByID`, spec.specDeleteByID)
 	s.Describe(`DeleteAll`, spec.specDeleteAll)
 }
 
-func (spec DeleterSpec) Benchmark(b *testing.B) {
+func (spec Deleter) Benchmark(b *testing.B) {
 	b.Run(`DeleteByID`, spec.benchmarkDeleteByID)
 	b.Run(`DeleteAll`, spec.benchmarkDeleteAll)
 }
 
-func (spec DeleterSpec) specDeleteByID(s *testcase.Spec) {
+func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 	subject := func(t *testcase.T) error {
 		return spec.Subject.DeleteByID(
@@ -130,7 +130,7 @@ func (spec DeleterSpec) specDeleteByID(s *testcase.Spec) {
 	})
 }
 
-func (spec DeleterSpec) benchmarkDeleteByID(b *testing.B) {
+func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 
@@ -155,7 +155,7 @@ wrk:
 	}
 }
 
-func (spec DeleterSpec) specDeleteAll(s *testcase.Spec) {
+func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
 		return spec.Subject.DeleteAll(
 			t.I(`ctx`).(context.Context),
@@ -205,7 +205,7 @@ func (spec DeleterSpec) specDeleteAll(s *testcase.Spec) {
 	})
 }
 
-func (spec DeleterSpec) benchmarkDeleteAll(b *testing.B) {
+func (spec Deleter) benchmarkDeleteAll(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 	// for some reason, doing setup with timer stop/start
@@ -219,7 +219,7 @@ func (spec DeleterSpec) benchmarkDeleteAll(b *testing.B) {
 	b.StopTimer()
 }
 
-func (spec DeleterSpec) populateFor(t testing.TB, Type interface{}) string {
+func (spec Deleter) populateFor(t testing.TB, Type interface{}) string {
 	fixture := spec.FixtureFactory.Create(Type)
 	require.Nil(t, spec.Subject.Create(spec.Context(), fixture))
 
@@ -230,7 +230,7 @@ func (spec DeleterSpec) populateFor(t testing.TB, Type interface{}) string {
 	return id
 }
 
-func (spec DeleterSpec) isStored(t testing.TB, ID string, Type interface{}) bool {
+func (spec Deleter) isStored(t testing.TB, ID string, Type interface{}) bool {
 	entity := newEntityBasedOn(Type)
 	ok, err := spec.Subject.FindByID(spec.Context(), entity, ID)
 	require.Nil(t, err)

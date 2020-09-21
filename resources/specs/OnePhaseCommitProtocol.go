@@ -11,7 +11,7 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-type OnePhaseCommitProtocolSpec struct {
+type OnePhaseCommitProtocol struct {
 	EntityType     interface{}
 	FixtureFactory FixtureFactory
 	Subject        interface {
@@ -20,15 +20,15 @@ type OnePhaseCommitProtocolSpec struct {
 	}
 }
 
-func (spec OnePhaseCommitProtocolSpec) Test(t *testing.T) {
+func (spec OnePhaseCommitProtocol) Test(t *testing.T) {
 	spec.Spec(t)
 }
 
-func (spec OnePhaseCommitProtocolSpec) Benchmark(b *testing.B) {
+func (spec OnePhaseCommitProtocol) Benchmark(b *testing.B) {
 	spec.Spec(b)
 }
 
-func (spec OnePhaseCommitProtocolSpec) Spec(tb testing.TB) {
+func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	s.HasSideEffect()
 
@@ -40,7 +40,7 @@ func (spec OnePhaseCommitProtocolSpec) Spec(tb testing.TB) {
 		return clean
 	})
 
-	s.Context(`OnePhaseCommitProtocolSpec`, func(s *testcase.Spec) {
+	s.Context(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()
@@ -220,6 +220,6 @@ func (spec OnePhaseCommitProtocolSpec) Spec(tb testing.TB) {
 	})
 }
 
-func (spec OnePhaseCommitProtocolSpec) newEntity() interface{} {
+func (spec OnePhaseCommitProtocol) newEntity() interface{} {
 	return reflect.New(reflect.TypeOf(spec.EntityType)).Interface()
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-type DeleterPublisherSpec struct {
+type DeleterPublisher struct {
 	Subject interface {
 		minimumRequirements
 		resources.DeleterPublisher
@@ -20,23 +20,23 @@ type DeleterPublisherSpec struct {
 	FixtureFactory FixtureFactory
 }
 
-func (spec DeleterPublisherSpec) Test(t *testing.T) {
-	t.Run(`DeleterPublisherSpec`, func(t *testing.T) {
+func (spec DeleterPublisher) Test(t *testing.T) {
+	t.Run(`DeleterPublisher`, func(t *testing.T) {
 		spec.Spec(testcase.NewSpec(t))
 	})
 }
 
-func (spec DeleterPublisherSpec) Benchmark(b *testing.B) {
-	b.Run(`DeleterPublisherSpec`, func(b *testing.B) {
+func (spec DeleterPublisher) Benchmark(b *testing.B) {
+	b.Run(`DeleterPublisher`, func(b *testing.B) {
 		spec.Spec(testcase.NewSpec(b))
 	})
 }
 
-func (spec DeleterPublisherSpec) Spec(s *testcase.Spec) {
+func (spec DeleterPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToDeleteByID`, spec.specSubscribeToDeleteByID)
 }
 
-func (spec DeleterPublisherSpec) specSubscribeToDeleteByID(s *testcase.Spec) {
+func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	const contextKey = `getContext`
 	const subscriberKey = `subscriber`
 	const subscriptionKey = `subscription`
@@ -197,7 +197,7 @@ func (spec DeleterPublisherSpec) specSubscribeToDeleteByID(s *testcase.Spec) {
 	})
 }
 
-func (spec DeleterPublisherSpec) specSubscribeToDeleteAll(s *testcase.Spec) {
+func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	const contextKey = `getContext`
 	const subscriberKey = `subscriber`
 	const subscriptionKey = `subscription`
@@ -320,7 +320,7 @@ func (spec DeleterPublisherSpec) specSubscribeToDeleteAll(s *testcase.Spec) {
 	})
 }
 
-func (spec DeleterPublisherSpec) hasDeleteEntity(tb testing.TB, list []interface{}, e interface{}) {
+func (spec DeleterPublisher) hasDeleteEntity(tb testing.TB, list []interface{}, e interface{}) {
 	var matchingIDFound bool
 	for _, entity := range list {
 		expectedID, _ := resources.LookupID(entity)
@@ -333,7 +333,7 @@ func (spec DeleterPublisherSpec) hasDeleteEntity(tb testing.TB, list []interface
 	require.True(tb, matchingIDFound, `it was expected to includes the delete event entry`)
 }
 
-func (spec DeleterPublisherSpec) doesNotHaveDeleteEntity(tb testing.TB, list []interface{}, e interface{}) {
+func (spec DeleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, list []interface{}, e interface{}) {
 	var matchingIDFound bool
 	for _, entity := range list {
 		expectedID, _ := resources.LookupID(entity)
@@ -346,15 +346,15 @@ func (spec DeleterPublisherSpec) doesNotHaveDeleteEntity(tb testing.TB, list []i
 	require.False(tb, matchingIDFound, `it was expected to doesn't have the delete event entry`)
 }
 
-func (spec DeleterPublisherSpec) context() context.Context {
+func (spec DeleterPublisher) context() context.Context {
 	return spec.FixtureFactory.Context()
 }
 
-func (spec DeleterPublisherSpec) createEntity() interface{} {
+func (spec DeleterPublisher) createEntity() interface{} {
 	return spec.FixtureFactory.Create(spec.EntityType)
 }
 
-func (spec DeleterPublisherSpec) createEntities() []interface{} {
+func (spec DeleterPublisher) createEntities() []interface{} {
 	var es []interface{}
 	count := fixtures.Random.IntBetween(3, 7)
 	for i := 0; i < count; i++ {

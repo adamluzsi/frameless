@@ -11,7 +11,7 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-type UpdaterPublisherSpec struct {
+type UpdaterPublisher struct {
 	Subject interface {
 		minimumRequirements
 		resources.Updater
@@ -21,19 +21,19 @@ type UpdaterPublisherSpec struct {
 	FixtureFactory FixtureFactory
 }
 
-func (spec UpdaterPublisherSpec) Test(t *testing.T) {
-	t.Run(`UpdaterPublisherSpec`, func(t *testing.T) {
+func (spec UpdaterPublisher) Test(t *testing.T) {
+	t.Run(`UpdaterPublisher`, func(t *testing.T) {
 		spec.Spec(testcase.NewSpec(t))
 	})
 }
 
-func (spec UpdaterPublisherSpec) Benchmark(b *testing.B) {
-	b.Run(`UpdaterPublisherSpec`, func(b *testing.B) {
+func (spec UpdaterPublisher) Benchmark(b *testing.B) {
+	b.Run(`UpdaterPublisher`, func(b *testing.B) {
 		spec.Spec(testcase.NewSpec(b))
 	})
 }
 
-func (spec UpdaterPublisherSpec) Spec(s *testcase.Spec) {
+func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
 		const contextKey = `getContext`
 		const subscriberKey = `subscriber`
@@ -196,15 +196,15 @@ func (spec UpdaterPublisherSpec) Spec(s *testcase.Spec) {
 	})
 }
 
-func (spec UpdaterPublisherSpec) context() context.Context {
+func (spec UpdaterPublisher) context() context.Context {
 	return spec.FixtureFactory.Context()
 }
 
-func (spec UpdaterPublisherSpec) createEntity() interface{} {
+func (spec UpdaterPublisher) createEntity() interface{} {
 	return spec.FixtureFactory.Create(spec.EntityType)
 }
 
-func (spec UpdaterPublisherSpec) createEntities() []interface{} {
+func (spec UpdaterPublisher) createEntities() []interface{} {
 	var es []interface{}
 	count := fixtures.Random.IntBetween(3, 7)
 	for i := 0; i < count; i++ {

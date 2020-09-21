@@ -3,7 +3,9 @@ package specs
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
@@ -14,6 +16,27 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/reflects"
 )
+
+var benchmarkEntityVolumeCount int
+
+func init() {
+	benchmarkEntityVolumeCount = 128
+
+	bsc, ok := os.LookupEnv(`BENCHMARK_ENTITY_VOLUME_COUNT`)
+	if !ok {
+		return
+	}
+
+	i, err := strconv.Atoi(bsc)
+	if err != nil {
+		fmt.Println(fmt.Sprintf(`WARNING - BENCHMARK_ENTITY_VOLUME_COUNT env var value not convertable to int, will be ignored`))
+		return
+	}
+
+	benchmarkEntityVolumeCount = i
+}
+
+const msgNotMeasurable = `not measurable spec`
 
 const ErrIDRequired frameless.Error = `
 Can't find the ID in the current structure

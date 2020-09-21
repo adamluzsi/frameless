@@ -13,14 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type FinderSpec struct {
+type Finder struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
 
-func (spec FinderSpec) Test(t *testing.T) {
-	t.Run(`FinderSpec`, func(t *testing.T) {
+func (spec Finder) Test(t *testing.T) {
+	t.Run(`Finder`, func(t *testing.T) {
 		findByIDSpec{
 			EntityType:     spec.EntityType,
 			FixtureFactory: spec.FixtureFactory,
@@ -35,8 +35,8 @@ func (spec FinderSpec) Test(t *testing.T) {
 	})
 }
 
-func (spec FinderSpec) Benchmark(b *testing.B) {
-	b.Run(`FinderSpec`, func(b *testing.B) {
+func (spec Finder) Benchmark(b *testing.B) {
+	b.Run(`Finder`, func(b *testing.B) {
 		findByIDSpec{
 			EntityType:     spec.EntityType,
 			FixtureFactory: spec.FixtureFactory,

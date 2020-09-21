@@ -24,9 +24,9 @@ func TestFullyQualifiedName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := specs.CreatorSpec{}
+			o := specs.Creator{}
 
-			require.Equal(t, `"github.com/adamluzsi/frameless/resources/specs".CreatorSpec`, ExampleFullyQualifiedName(o))
+			require.Equal(t, `"github.com/adamluzsi/frameless/resources/specs".Creator`, ExampleFullyQualifiedName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

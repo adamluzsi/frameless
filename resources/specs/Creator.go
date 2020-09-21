@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type CreatorSpec struct {
+type Creator struct {
 	EntityType interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
 
-func (spec CreatorSpec) Test(t *testing.T) {
+func (spec Creator) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
@@ -120,9 +120,9 @@ func (spec CreatorSpec) Test(t *testing.T) {
 	})
 }
 
-func (spec CreatorSpec) Benchmark(b *testing.B) {
+func (spec Creator) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
-	b.Run(`CreatorSpec`, func(b *testing.B) {
+	b.Run(`Creator`, func(b *testing.B) {
 		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
 

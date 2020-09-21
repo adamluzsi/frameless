@@ -12,20 +12,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// UpdaterSpec will request an update for a wrapped entity object in the Resource
-type UpdaterSpec struct {
+// Updater will request an update for a wrapped entity object in the Resource
+type Updater struct {
 	EntityType interface{}
 	FixtureFactory
-	Subject updateSpecSubject
+	Subject interface {
+		resources.Updater
+		minimumRequirements
+	}
 }
 
-type updateSpecSubject interface {
-	resources.Updater
-
-	minimumRequirements
-}
-
-func (spec UpdaterSpec) Test(t *testing.T) {
+func (spec Updater) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
@@ -116,9 +113,9 @@ func (spec UpdaterSpec) Test(t *testing.T) {
 	})
 }
 
-func (spec UpdaterSpec) Benchmark(b *testing.B) {
+func (spec Updater) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
-	b.Run(`UpdaterSpec`, func(b *testing.B) {
+	b.Run(`Updater`, func(b *testing.B) {
 		es := createEntities(spec.FixtureFactory, spec.EntityType)
 		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
