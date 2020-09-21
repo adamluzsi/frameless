@@ -5,5 +5,5 @@ import (
 )
 
 func ExampleStorage() {
-	storages.NewInMemory()
+	storages.NewMemory()
 }
