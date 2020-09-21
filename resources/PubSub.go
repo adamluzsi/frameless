@@ -11,19 +11,19 @@ type CreatorPublisher interface {
 	//
 	// If event stream repeatability from a certain point is a requirement,
 	// it needs to be further specified with a resource contract.
-	SubscribeToCreate(T, Subscriber) (Subscription, error)
+	SubscribeToCreate(context.Context, T, Subscriber) (Subscription, error)
 }
 
 type UpdaterPublisher interface {
 	// SubscribeToUpdate create a subscription to the update event feed.
 	// If event stream repeatability from a certain point is a requirement,
 	// it needs to be further specified with a resource contract.
-	SubscribeToUpdate(T, Subscriber) (Subscription, error)
+	SubscribeToUpdate(context.Context, T, Subscriber) (Subscription, error)
 }
 
 type DeleterPublisher interface {
-	SubscribeToDeleteByID(T, Subscriber) (Subscription, error)
-	SubscribeToDeleteAll(T, Subscriber) (Subscription, error)
+	SubscribeToDeleteByID(context.Context, T, Subscriber) (Subscription, error)
+	SubscribeToDeleteAll(context.Context, T, Subscriber) (Subscription, error)
 }
 
 type Subscription interface {

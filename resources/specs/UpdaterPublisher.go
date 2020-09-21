@@ -41,11 +41,14 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 		getSubscriber := func(t *testcase.T, key string) *eventSubscriber {
 			return t.I(key).(*eventSubscriber)
 		}
+		getContext := func(t *testcase.T) context.Context {
+			return t.I(contextKey).(context.Context)
+		}
 		subscriber := func(t *testcase.T) *eventSubscriber {
 			return getSubscriber(t, subscriberKey)
 		}
 		subject := func(t *testcase.T) (resources.Subscription, error) {
-			subscription, err := spec.Subject.SubscribeToUpdate(spec.EntityType, subscriber(t))
+			subscription, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.EntityType, subscriber(t))
 			if err == nil && subscription != nil {
 				t.Let(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -58,9 +61,6 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 			require.NotNil(t, sub)
 		}
 
-		getContext := func(t *testcase.T) context.Context {
-			return t.I(contextKey).(context.Context)
-		}
 		s.Let(contextKey, func(t *testcase.T) interface{} {
 			return spec.context()
 		})
@@ -127,7 +127,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t)
 					t.Let(othSubscriberKey, othSubscriber)
-					sub, err := spec.Subject.SubscribeToUpdate(spec.EntityType, othSubscriber)
+					sub, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.EntityType, othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, sub)
 					t.Defer(sub.Close)

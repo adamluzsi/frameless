@@ -36,7 +36,10 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
 		const subscriberKey = `subscriber`
 		const subscriptionKey = `subscription`
-		const contextKey = `ctx`
+		const contextKey = `getContext`
+		getContext := func(t *testcase.T) context.Context {
+			return t.I(contextKey).(context.Context)
+		}
 		getSubscriber := func(t *testcase.T, key string) *eventSubscriber {
 			return t.I(key).(*eventSubscriber)
 		}
@@ -44,7 +47,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 			return getSubscriber(t, subscriberKey)
 		}
 		subject := func(t *testcase.T) (resources.Subscription, error) {
-			subscription, err := spec.Subject.SubscribeToCreate(spec.EntityType, subscriber(t))
+			subscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.EntityType, subscriber(t))
 			if err == nil && subscription != nil {
 				t.Let(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -57,9 +60,6 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 			return subscription
 		}
 
-		ctx := func(t *testcase.T) context.Context {
-			return t.I(contextKey).(context.Context)
-		}
 		s.Let(contextKey, func(t *testcase.T) interface{} {
 			return spec.context()
 		})
@@ -82,7 +82,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				entities := spec.createEntities()
 				for _, entity := range entities {
-					require.Nil(t, spec.Subject.Create(ctx(t), entity))
+					require.Nil(t, spec.Subject.Create(getContext(t), entity))
 					id, _ := resources.LookupID(entity)
 					// we use a new context here to enforce that the cleaning will be done outside of any context.
 					// It might fail but will ensure proper cleanup.
@@ -105,9 +105,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
 						entities := spec.createEntities()
 						for _, entity := range entities {
-							require.Nil(t, spec.Subject.Create(ctx(t), entity))
+							require.Nil(t, spec.Subject.Create(getContext(t), entity))
 							id, _ := resources.LookupID(entity)
-							t.Defer(spec.Subject.DeleteByID, ctx(t), spec.EntityType, id)
+							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
 						}
 					})
 
@@ -125,7 +125,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t)
 					t.Let(othSubscriberKey, othSubscriber)
-					newSubscription, err := spec.Subject.SubscribeToCreate(spec.EntityType, othSubscriber)
+					newSubscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.EntityType, othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, newSubscription)
 					t.Defer(newSubscription.Close)
@@ -145,9 +145,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
 						entities := spec.createEntities()
 						for _, entity := range entities {
-							require.Nil(t, spec.Subject.Create(ctx(t), entity))
+							require.Nil(t, spec.Subject.Create(getContext(t), entity))
 							id, _ := resources.LookupID(entity)
-							t.Defer(spec.Subject.DeleteByID, ctx(t), spec.EntityType, id)
+							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
 						}
 						t.Let(furtherEventsKey, toBaseValues(entities))
 					})
@@ -179,16 +179,16 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 
 					s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
 						require.Empty(t, subscriber(t).events)
-						require.Nil(t, res.CommitTx(ctx(t)))
+						require.Nil(t, res.CommitTx(getContext(t)))
 					})
 
 					s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-						require.Nil(t, res.CommitTx(ctx(t)))
+						require.Nil(t, res.CommitTx(getContext(t)))
 						require.ElementsMatch(t, t.I(eventsKey), subscriber(t).events)
 					})
 
 					s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-						require.Nil(t, res.RollbackTx(ctx(t)))
+						require.Nil(t, res.RollbackTx(getContext(t)))
 						require.Empty(t, subscriber(t).events)
 					})
 				})

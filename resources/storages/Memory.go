@@ -391,28 +391,34 @@ func (s *Memory) getSubscriptions(entityTypeName string, name string) []*subscri
 	return s.subscriptions[name][entityTypeName]
 }
 
-func (s *Memory) appendToSubscription(T interface{}, name string, subscriber resources.Subscriber) resources.Subscription {
+func (s *Memory) appendToSubscription(ctx context.Context, T interface{}, name string, subscriber resources.Subscriber) (resources.Subscription, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	entityTypeName := s.EntityTypeNameFor(T)
 	_ = s.getSubscriptions(entityTypeName, name) // init
 	sub := &subscription{subscriber: subscriber}
 	s.subscriptions[name][entityTypeName] = append(s.subscriptions[name][entityTypeName], sub)
-	return sub
+	return sub, nil
 }
 
-func (s *Memory) SubscribeToCreate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(T, createEvent, subscriber), nil
+func (s *Memory) SubscribeToCreate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(ctx, T, createEvent, subscriber)
 }
 
-func (s *Memory) SubscribeToUpdate(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(T, updateEvent, subscriber), nil
+func (s *Memory) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(ctx, T, updateEvent, subscriber)
 }
 
-func (s *Memory) SubscribeToDeleteByID(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(T, deleteByIDEvent, subscriber), nil
+func (s *Memory) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(ctx, T, deleteByIDEvent, subscriber)
 }
 
-func (s *Memory) SubscribeToDeleteAll(T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(T, deleteAllEvent, subscriber), nil
+func (s *Memory) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+	return s.appendToSubscription(ctx, T, deleteAllEvent, subscriber)
 }
 
 /**********************************************************************************************************************/
