@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type UniqConstrainSpec struct {
+type uniqConstrainSpec struct {
 	// Struct that is the subject of this spec
 	EntityType interface{}
 	FixtureFactory
@@ -25,11 +25,11 @@ type UniqConstrainSpec struct {
 	Subject minimumRequirements
 }
 
-func (spec UniqConstrainSpec) Benchmark(b *testing.B) {
+func (spec uniqConstrainSpec) Benchmark(b *testing.B) {
 	b.Skip(msgNotMeasurable)
 }
 
-func (spec UniqConstrainSpec) Test(t *testing.T) {
+func (spec uniqConstrainSpec) Test(t *testing.T) {
 	require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
 
 	e1 := spec.FixtureFactory.Create(spec.EntityType)
@@ -68,8 +68,8 @@ func (spec UniqConstrainSpec) Test(t *testing.T) {
 }
 
 func TestUniqConstrain(t *testing.T, r minimumRequirements, e interface{}, f FixtureFactory, uniqConstrain ...string) {
-	t.Run(`UniqConstrainSpec`, func(t *testing.T) {
+	t.Run(`uniqConstrainSpec`, func(t *testing.T) {
 		require.NotEmpty(t, uniqConstrain)
-		UniqConstrainSpec{EntityType: e, FixtureFactory: f, UniqConstrain: uniqConstrain, Subject: r}.Test(t)
+		uniqConstrainSpec{EntityType: e, FixtureFactory: f, UniqConstrain: uniqConstrain, Subject: r}.Test(t)
 	})
 }
