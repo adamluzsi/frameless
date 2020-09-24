@@ -34,6 +34,7 @@ func (spec DeleterPublisher) Benchmark(b *testing.B) {
 
 func (spec DeleterPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToDeleteByID`, spec.specSubscribeToDeleteByID)
+	s.Describe(`#SubscribeToDeleteAll`, spec.specSubscribeToDeleteAll)
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
@@ -285,7 +286,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 
 				s.Then(`new subscriber only receive events made after the subscription`, func(t *testcase.T) {
 					require.Contains(t, othSubscriber(t).Events(), spec.EntityType)
-					require.Len(t, othSubscriber(t), 1)
+					require.Len(t, othSubscriber(t).Events(), 1)
 				})
 			})
 		})

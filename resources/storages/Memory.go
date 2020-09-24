@@ -280,7 +280,7 @@ func (s *Memory) notifySubscriptions(ctx context.Context, event MemoryEvent) {
 		// 	This call in theory async in most implementation.
 		switch event.Event {
 		case deleteAllEvent:
-			sub.publish(ctx, event.EntityTypeName)
+			sub.publish(ctx, event.T)
 		case deleteByIDEvent:
 			ptr := reflect.New(reflect.TypeOf(event.T)).Interface()
 			resources.SetID(ptr, event.ID)
