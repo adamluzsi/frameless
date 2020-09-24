@@ -177,8 +177,10 @@ func (s *eventSubscriber) verifyContext(ctx context.Context) {
 	require.Nil(s.tb, ctx.Err())
 }
 
+var WaitForLenTimeout = 3 * time.Second
+
 func waitForLen(length func() int, expectedMinimumLen int) {
-	timer := time.NewTimer(time.Minute)
+	timer := time.NewTimer(WaitForLenTimeout)
 	defer timer.Stop()
 	var timeIsUp int32
 	go func() {
@@ -203,9 +205,11 @@ const (
 func getContext(t *testcase.T) context.Context {
 	return t.I(contextKey).(context.Context)
 }
+
 func getSubscriber(t *testcase.T, key string) *eventSubscriber {
 	return t.I(key).(*eventSubscriber)
 }
+
 func subscriber(t *testcase.T) *eventSubscriber {
 	return getSubscriber(t, subscriberKey)
 }
@@ -214,5 +218,6 @@ func wait() {
 	times := runtime.NumCPU() * 42
 	for i := 0; i < times; i++ {
 		runtime.Gosched()
+		time.Sleep(time.Microsecond)
 	}
 }
