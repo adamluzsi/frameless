@@ -8,8 +8,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/errs"
+	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
@@ -117,7 +116,7 @@ func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id string) (_fou
 	return false, nil
 }
 
-func (s *Memory) FindAll(ctx context.Context, T interface{}) frameless.Iterator {
+func (s *Memory) FindAll(ctx context.Context, T interface{}) iterators.Interface {
 	if err := ctx.Err(); err != nil {
 		return iterators.NewError(err)
 	}
@@ -240,8 +239,8 @@ func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 const (
-	errTxDone errs.Error = `transaction has already been committed or rolled back`
-	errNoTx   errs.Error = `no transaction found in the given context`
+	errTxDone consterror.Error = `transaction has already been committed or rolled back`
+	errNoTx   consterror.Error = `no transaction found in the given context`
 )
 
 func (s *Memory) CommitTx(ctx context.Context) error {

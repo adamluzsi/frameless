@@ -2,10 +2,6 @@ package frameless
 
 import (
 	"io"
-	"testing"
-
-	"github.com/adamluzsi/frameless/errs"
-	"github.com/adamluzsi/frameless/iterators"
 )
 
 /*
@@ -120,51 +116,3 @@ type Interactor = interface{}
 type Resource interface {
 	io.Closer
 }
-
-/*
-Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
-Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
-Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
-https://en.wikipedia.org/wiki/Iterator_pattern
-*/
-type Iterator = iterators.Interface
-
-/*
-	Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
-
-		TL;DR:
-			const ErrSomething frameless.Error = "something is an error"
-
-*/
-type Error = errs.Error
-
-/*
-Spec represent a shared specification that intention is to request specific behavior for commonly used components.
-One example could be an external resource that used by an interactor, and you want ensure the expected behivour from the dependency,
-by describing the behaviour in a shared specification.
-*/
-type Spec interface {
-	Test(t *testing.T)
-	Benchmark(b *testing.B)
-}
-
-// Signaler represent communication type of interactions about message state handling.
-type Signaler interface {
-	// Acknowledgement represent a success confirmation back to a caller.
-	//
-	// For example, in data networking, telecommunications, and computer buses,
-	// an acknowledgement (ACK) is a signal that is passed between communicating processes,
-	// computers, or devices to signify acknowledgement, or receipt of message, as part of a communications protocol.
-	Acknowledgement() error
-	// NegativeAcknowledgement represent a signal that tells the caller that the received resource must be considered as not handled,
-	// and should be handled over again eventually.
-	//
-	// The negative-acknowledgement (NAK or NACK) signal is sent to reject a previously received message,
-	// or to indicate some kind of error.
-	//
-	// Acknowledgements and negative acknowledgements inform a sender of the receiver's state
-	// so that it can adjust its own state accordingly.
-	NegativeAcknowledgement() error
-}
-
-type Decoder iterators.Decoder

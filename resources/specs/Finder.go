@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/testcase"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
 
@@ -235,7 +234,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 	})
 
 	s.Describe(`FindAll`, func(s *testcase.Spec) {
-		subject := func(t *testcase.T) frameless.Iterator {
+		subject := func(t *testcase.T) iterators.Interface {
 			return spec.Subject.FindAll(
 				t.I(`ctx`).(context.Context),
 				spec.EntityType,

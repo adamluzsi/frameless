@@ -1,10 +1,10 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless/errs"
+	"github.com/adamluzsi/frameless/consterror"
 )
 
 const (
 	// ErrClosed is the value that will be returned if a iterator has been closed but next decode is called
-	ErrClosed errs.Error = "Closed"
+	ErrClosed consterror.Error = "Closed"
 )

@@ -3,7 +3,7 @@ package resources
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 type Creator interface {
@@ -23,7 +23,7 @@ type Finder interface {
 	// but tell explicitly this information in the form of return bool value.
 	FindByID(ctx context.Context, ptr interface{}, id string) (_found bool, _err error)
 	// FindAll will return all entity that has <T> type
-	FindAll(context.Context, T) frameless.Iterator
+	FindAll(context.Context, T) iterators.Interface
 }
 
 type Updater interface {

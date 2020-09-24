@@ -7,7 +7,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
@@ -72,8 +71,8 @@ func TestStorage_smokeTest(t *testing.T) {
 	subject.History().LogWith(t)
 }
 
-func getMemorySpecs(subject *storages.Memory) []frameless.Spec {
-	return []frameless.Spec{
+func getMemorySpecs(subject *storages.Memory) []specs.Interface {
+	return []specs.Interface{
 		specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
 		specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
 		specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},

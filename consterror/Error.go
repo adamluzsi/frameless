@@ -1,4 +1,4 @@
-package errs
+package consterror
 
 /*
 	Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
