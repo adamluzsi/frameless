@@ -28,10 +28,16 @@ func (spec Creator) Test(t *testing.T) {
 
 	s.Describe(`Creator`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
-			return spec.Subject.Create(
-				t.I(`ctx`).(context.Context),
+			ctx := t.I(`ctx`).(context.Context)
+			err := spec.Subject.Create(
+				ctx,
 				t.I(`entity`),
 			)
+			if err == nil {
+				id, _ := resources.LookupID(t.I(`entity`))
+				t.Defer(spec.Subject.DeleteByID, ctx, spec.EntityType, id)
+			}
+			return err
 		}
 
 		s.Let(`ctx`, func(t *testcase.T) interface{} {

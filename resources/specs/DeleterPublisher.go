@@ -37,18 +37,6 @@ func (spec DeleterPublisher) Spec(s *testcase.Spec) {
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
-	const contextKey = `getContext`
-	const subscriberKey = `subscriber`
-	const subscriptionKey = `subscription`
-	getSubscriber := func(t *testcase.T, key string) *eventSubscriber {
-		return t.I(key).(*eventSubscriber)
-	}
-	getContext := func(t *testcase.T) context.Context {
-		return t.I(contextKey).(context.Context)
-	}
-	subscriber := func(t *testcase.T) *eventSubscriber {
-		return getSubscriber(t, subscriberKey)
-	}
 	subject := func(t *testcase.T) (resources.Subscription, error) {
 		subscription, err := spec.Subject.SubscribeToDeleteByID(getContext(t), spec.EntityType, subscriber(t))
 		if err == nil && subscription != nil {
@@ -85,17 +73,19 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	})
 
 	s.Test(`and no events made after the subscription time then subscriber doesn't receive any event`, func(t *testcase.T) {
-		require.Empty(t, subscriber(t).events)
+		wait()
+		require.Empty(t, subscriber(t).Events())
 	})
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			id, _ := resources.LookupID(t.I(entityKey))
 			require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.EntityType, id))
+			waitForLen(subscriber(t).EventsLen, 1)
 		})
 
 		s.Then(`subscriber receive the delete event where ID can be located`, func(t *testcase.T) {
-			spec.hasDeleteEntity(t, subscriber(t).events, t.I(entityKey))
+			spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(entityKey))
 		})
 
 		s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
@@ -109,10 +99,11 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 					require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
 					id, _ := resources.LookupID(entityPtr)
 					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.EntityType, id))
+					wait()
 				})
 
 				s.Then(`subscriber no longer receive them`, func(t *testcase.T) {
-					require.Len(t, subscriber(t).events, 1)
+					require.Len(t, subscriber(t).Events(), 1)
 				})
 			})
 		})
@@ -132,14 +123,14 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 			})
 
 			s.Then(`original subscriber still received the old delete event`, func(t *testcase.T) {
-				require.Len(t, subscriber(t).events, 1)
+				require.Len(t, subscriber(t).Events(), 1)
 				expectedID, _ := resources.LookupID(t.I(entityKey))
-				actualID, _ := resources.LookupID(subscriber(t).events[0])
+				actualID, _ := resources.LookupID(subscriber(t).Events()[0])
 				require.Equal(t, expectedID, actualID)
 			})
 
 			s.Then(`new subscriber do not receive any events`, func(t *testcase.T) {
-				require.Empty(t, othSubscriber(t).events)
+				require.Empty(t, othSubscriber(t).Events())
 			})
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
@@ -151,66 +142,70 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 					id, _ := resources.LookupID(entityPtr)
 					t.Let(furtherEventKey, toBaseValue(entityPtr))
 					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.EntityType, id))
+					waitForLen(subscriber(t).EventsLen, 2)
+					waitForLen(getSubscriber(t, othSubscriberKey).EventsLen, 1)
 				})
 
 				s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-					spec.hasDeleteEntity(t, subscriber(t).events, t.I(entityKey))
-					spec.hasDeleteEntity(t, subscriber(t).events, t.I(furtherEventKey))
+					spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(entityKey))
+					spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(furtherEventKey))
 				})
 
 				s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-					spec.doesNotHaveDeleteEntity(t, othSubscriber(t).events, t.I(entityKey))
+					spec.doesNotHaveDeleteEntity(t, othSubscriber(t).Events(), t.I(entityKey))
 				})
 
 				s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
-					spec.hasDeleteEntity(t, subscriber(t).events, t.I(furtherEventKey))
+					spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(furtherEventKey))
 				})
 			})
 		})
+	})
 
-		if res, ok := spec.Subject.(resources.OnePhaseCommitProtocol); ok {
-			s.Describe(`relationship with OnePhaseCommitProtocol`, func(s *testcase.Spec) {
-				s.Let(contextKey, func(t *testcase.T) interface{} {
-					t.Log(`given we are in transaction`)
-					ctxInTx, err := res.BeginTx(spec.context())
-					require.Nil(t, err)
-					t.Defer(res.RollbackTx, ctxInTx)
-					return ctxInTx
-				})
+	s.Describe(`relationship with OnePhaseCommitProtocol`,
+		spec.specOnePhaseCommitProtocolForSubscribeToDeleteByID)
+}
 
-				s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-					require.Empty(t, subscriber(t).events)
-					require.Nil(t, res.CommitTx(getContext(t)))
-				})
+func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteByID(s *testcase.Spec) {
+	res, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
+	if !ok {
+		return
+	}
 
-				s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-					require.Nil(t, res.CommitTx(getContext(t)))
-					spec.hasDeleteEntity(t, subscriber(t).events, t.I(entityKey))
-				})
+	const entityKey = `entity`
 
-				s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-					require.Nil(t, res.RollbackTx(getContext(t)))
-					require.Empty(t, subscriber(t).events)
-				})
-			})
-		}
+	s.Before(func(t *testcase.T) {
+		id, _ := resources.LookupID(t.I(entityKey))
+		require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.EntityType, id))
+	})
+
+	s.Let(contextKey, func(t *testcase.T) interface{} {
+		t.Log(`given we are in transaction`)
+		ctxInTx, err := res.BeginTx(spec.context())
+		require.Nil(t, err)
+		t.Defer(res.RollbackTx, ctxInTx)
+		return ctxInTx
+	})
+
+	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
+		wait()
+		require.Empty(t, subscriber(t).Events())
+		require.Nil(t, res.CommitTx(getContext(t)))
+	})
+
+	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
+		require.Nil(t, res.CommitTx(getContext(t)))
+		waitForLen(subscriber(t).EventsLen, 1)
+		spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(entityKey))
+	})
+
+	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
+		require.Nil(t, res.RollbackTx(getContext(t)))
+		require.Empty(t, subscriber(t).Events())
 	})
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
-	const contextKey = `getContext`
-	const subscriberKey = `subscriber`
-	const subscriptionKey = `subscription`
-
-	getSubscriber := func(t *testcase.T, key string) *eventSubscriber {
-		return t.I(key).(*eventSubscriber)
-	}
-	getContext := func(t *testcase.T) context.Context {
-		return t.I(contextKey).(context.Context)
-	}
-	subscriber := func(t *testcase.T) *eventSubscriber {
-		return getSubscriber(t, subscriberKey)
-	}
 	subject := func(t *testcase.T) (resources.Subscription, error) {
 		subscription, err := spec.Subject.SubscribeToDeleteAll(getContext(t), spec.EntityType, subscriber(t))
 		if err == nil && subscription != nil {
@@ -239,16 +234,17 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	})
 
 	s.Test(`and no events made after the subscription time then subscriber doesn't receive any event`, func(t *testcase.T) {
-		require.Empty(t, subscriber(t).events)
+		require.Empty(t, subscriber(t).Events())
 	})
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.EntityType))
+			waitForLen(subscriber(t).EventsLen, 1)
 		})
 
 		s.Then(`subscriber receive the delete event where ID can be located`, func(t *testcase.T) {
-			require.Contains(t, subscriber(t).events, spec.EntityType)
+			require.Contains(t, subscriber(t).Events(), spec.EntityType)
 		})
 
 		s.And(`then new subscriber registered`, func(s *testcase.Spec) {
@@ -259,64 +255,82 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.Subject.SubscribeToDeleteByID(getContext(t), spec.EntityType, othSubscriber)
+				sub, err := spec.Subject.SubscribeToDeleteAll(getContext(t), spec.EntityType, othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
 			})
 
 			s.Then(`original subscriber still received the old delete event`, func(t *testcase.T) {
-				require.Contains(t, subscriber(t).events, spec.EntityType)
+				require.Contains(t, subscriber(t).Events(), spec.EntityType)
 			})
 
 			s.Then(`new subscriber do not receive any events`, func(t *testcase.T) {
-				require.Empty(t, othSubscriber(t).events)
+				wait()
+				require.Empty(t, othSubscriber(t).Events())
 			})
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				const furtherEventKey = `further event`
 				s.Before(func(t *testcase.T) {
 					require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.EntityType))
+					waitForLen(subscriber(t).EventsLen, 2)
+					waitForLen(getSubscriber(t, othSubscriberKey).EventsLen, 1)
 				})
 
 				s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-					require.Contains(t, subscriber(t).events, spec.EntityType)
-					require.Len(t, subscriber(t).events, 2)
+					require.Contains(t, subscriber(t).Events(), spec.EntityType)
+					require.Len(t, subscriber(t).Events(), 2)
 				})
 
 				s.Then(`new subscriber only receive events made after the subscription`, func(t *testcase.T) {
-					require.Contains(t, othSubscriber(t).events, spec.EntityType)
+					require.Contains(t, othSubscriber(t).Events(), spec.EntityType)
 					require.Len(t, othSubscriber(t), 1)
 				})
 			})
 		})
 
-		if res, ok := spec.Subject.(resources.OnePhaseCommitProtocol); ok {
-			s.Describe(`relationship with OnePhaseCommitProtocol`, func(s *testcase.Spec) {
-				s.Let(contextKey, func(t *testcase.T) interface{} {
-					t.Log(`given we are in transaction`)
-					ctxInTx, err := res.BeginTx(spec.context())
-					require.Nil(t, err)
-					t.Defer(res.RollbackTx, ctxInTx)
-					return ctxInTx
-				})
+	})
 
-				s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-					require.Empty(t, subscriber(t).events)
-					require.Nil(t, res.CommitTx(getContext(t)))
-				})
+	s.Describe(`relationship with OnePhaseCommitProtocol`,
+		spec.specOnePhaseCommitProtocolForSubscribeToDeleteAll)
+}
 
-				s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-					require.Nil(t, res.CommitTx(getContext(t)))
-					require.Contains(t, subscriber(t).events, spec.EntityType)
-				})
+func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteAll(s *testcase.Spec) {
+	res, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
+	if !ok {
+		return
+	}
 
-				s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-					require.Nil(t, res.RollbackTx(getContext(t)))
-					require.Empty(t, subscriber(t).events)
-				})
-			})
-		}
+	s.Before(func(t *testcase.T) {
+		t.Log(`given DeleteAll event made`)
+		require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.EntityType))
+	})
+
+	s.Let(contextKey, func(t *testcase.T) interface{} {
+		t.Log(`given we are in transaction`)
+		ctxInTx, err := res.BeginTx(spec.context())
+		require.Nil(t, err)
+		t.Defer(res.RollbackTx, ctxInTx)
+		return ctxInTx
+	})
+
+	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
+		wait()
+		require.Empty(t, subscriber(t).Events())
+		require.Nil(t, res.CommitTx(getContext(t)))
+	})
+
+	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
+		require.Nil(t, res.CommitTx(getContext(t)))
+		waitForLen(subscriber(t).EventsLen, 1)
+		require.Contains(t, subscriber(t).Events(), spec.EntityType)
+	})
+
+	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
+		require.Nil(t, res.RollbackTx(getContext(t)))
+		wait()
+		require.Empty(t, subscriber(t).Events())
 	})
 }
 

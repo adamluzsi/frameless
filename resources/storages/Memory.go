@@ -46,6 +46,7 @@ type MemoryEvent struct {
 }
 
 type MemoryTransaction struct {
+	mutex  sync.Mutex
 	done   bool
 	events []MemoryEvent
 	parent MemoryEventManager
@@ -257,25 +258,12 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 	memory, isFinalCommit := tx.parent.(*Memory)
 
 	for _, event := range tx.events {
+		event := event
 		tx.parent.AddEvent(event)
 
 		// should publish events only when they hit the main storage not a parent transaction
 		if isFinalCommit {
-			// subscriptions
-			for _, sub := range s.getSubscriptions(event.EntityTypeName, event.Event) {
-				// TODO: clarify what to do when error is encountered in a subscription
-				// 	This call in theory async in most implementation.
-				switch event.Event {
-				case deleteAllEvent:
-					_ = sub.handle(subCTX, event.EntityTypeName)
-				case deleteByIDEvent:
-					ptr := reflect.New(reflect.TypeOf(event.T)).Interface()
-					_ = resources.SetID(ptr, event.ID)
-					_ = sub.handle(subCTX, reflects.BaseValueOf(ptr).Interface())
-				case createEvent, updateEvent:
-					_ = sub.handle(subCTX, event.Entity)
-				}
-			}
+			s.notifySubscriptions(subCTX, event)
 		}
 	}
 
@@ -285,6 +273,23 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 
 	tx.done = true
 	return nil
+}
+
+func (s *Memory) notifySubscriptions(ctx context.Context, event MemoryEvent) {
+	for _, sub := range s.getSubscriptions(event.EntityTypeName, event.Event) {
+		// TODO: clarify what to do when error is encountered in a subscription
+		// 	This call in theory async in most implementation.
+		switch event.Event {
+		case deleteAllEvent:
+			sub.publish(ctx, event.EntityTypeName)
+		case deleteByIDEvent:
+			ptr := reflect.New(reflect.TypeOf(event.T)).Interface()
+			resources.SetID(ptr, event.ID)
+			sub.publish(ctx, reflects.BaseValueOf(ptr).Interface())
+		case createEvent, updateEvent:
+			sub.publish(ctx, event.Entity)
+		}
+	}
 }
 
 func (s *Memory) RollbackTx(ctx context.Context) error {
@@ -331,7 +336,7 @@ func (s *Memory) concentrateEvents() {
 
 	for entityTypeName, idToEntityMap := range view {
 		for id, entity := range idToEntityMap {
-			s.AddEvent(MemoryEvent{
+			s.addEventUnsafe(MemoryEvent{
 				Event:          createEvent,
 				T:              entity,
 				EntityTypeName: entityTypeName,
@@ -347,32 +352,88 @@ func (s *Memory) concentrateEvents() {
 // event name -> <T> as name -> event subscribers
 type subscriptions map[string]map[string][]*subscription
 
+func newSubscription(subscriber resources.Subscriber) *subscription {
+	var s subscription
+	s.subscriber = subscriber
+	s.queue = make(chan interface{})
+	s.context, s.cancel = context.WithCancel(context.Background())
+	s.subscribe()
+	return &s
+}
+
 type subscription struct {
 	subscriber resources.Subscriber
-	closed     bool
+
+	context context.Context
+	cancel  func()
+
+	// protect against async usage of the storage such as
+	// 		storage.SubscribeToCreate(ctx, subscriber)
+	// 		go storage.Create(ctx, &entity)
+	//
+	mutex   sync.Mutex
+	wrkWG   sync.WaitGroup
+	queueWG sync.WaitGroup
+	queue   chan interface{}
 }
 
-func (s *subscription) handle(ctx context.Context, T interface{}) error {
-	if s.closed {
-		return nil
+func (s *subscription) publish(ctx context.Context, T interface{}) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	select {
+	case <-s.context.Done():
+		return
+	default:
 	}
 
-	return s.subscriber.Handle(ctx, T)
+	s.queueWG.Add(1)
+
+	go func() {
+		defer s.queueWG.Done()
+		s.queue <- T
+	}()
 }
 
-func (s *subscription) error(ctx context.Context, err error) error {
-	if s.closed {
-		return nil
-	}
+// subscribe ensures that only one handle will fired to a subscriber#Handle func.
+func (s *subscription) subscribe() {
+	s.wrkWG.Add(1)
+	go func() {
+		defer s.wrkWG.Done()
 
-	return s.subscriber.Error(ctx, err)
+		for entity := range s.queue {
+			if err := s.subscriber.Handle(context.Background(), entity); err != nil {
+				fmt.Println(`ERROR`, err.Error())
+			}
+		}
+	}()
 }
 
-func (s *subscription) Close() error {
-	// TODO: marking subscription as closed don't remove it from the active subscriptions
-	// 	Make sure that you remove closed subscriptions eventually.
-	s.closed = true
+func (s *subscription) Close() (rErr error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	defer func() {
+		if r := recover(); r != nil {
+			rErr = fmt.Errorf(`%v`, r)
+		}
+	}()
+
+	s.cancel()       // prevent publish
+	s.queueWG.Wait() // wait for pending publishes
+	close(s.queue)   // signal worker that no more publish is expected
+	s.wrkWG.Wait()   // wait for worker to finish
 	return nil
+}
+
+// closing the subscription will not remove it from the active subscriptions (for now).
+// TODO: remove closed subscriptions from the active subscriptions
+func (s *subscription) isClosed() bool {
+	select {
+	case <-s.context.Done():
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Memory) getSubscriptions(entityTypeName string, name string) []*subscription {
@@ -400,7 +461,7 @@ func (s *Memory) appendToSubscription(ctx context.Context, T interface{}, name s
 
 	entityTypeName := s.EntityTypeNameFor(T)
 	_ = s.getSubscriptions(entityTypeName, name) // init
-	sub := &subscription{subscriber: subscriber}
+	sub := newSubscription(subscriber)
 	s.subscriptions[name][entityTypeName] = append(s.subscriptions[name][entityTypeName], sub)
 	return sub, nil
 }
@@ -463,6 +524,12 @@ func (s *Memory) getTrace() []string {
 /**********************************************************************************************************************/
 
 func (s *Memory) AddEvent(event MemoryEvent) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.addEventUnsafe(event)
+}
+
+func (s *Memory) addEventUnsafe(event MemoryEvent) {
 	s.events = append(s.events, event)
 }
 
@@ -471,6 +538,8 @@ func (s *Memory) Events() []MemoryEvent {
 }
 
 func (tx *MemoryTransaction) AddEvent(event MemoryEvent) {
+	tx.mutex.Lock()
+	defer tx.mutex.Unlock()
 	tx.events = append(tx.events, event)
 }
 

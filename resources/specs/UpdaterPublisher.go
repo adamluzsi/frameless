@@ -35,18 +35,6 @@ func (spec UpdaterPublisher) Benchmark(b *testing.B) {
 
 func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
-		const contextKey = `getContext`
-		const subscriberKey = `subscriber`
-		const subscriptionKey = `subscription`
-		getSubscriber := func(t *testcase.T, key string) *eventSubscriber {
-			return t.I(key).(*eventSubscriber)
-		}
-		getContext := func(t *testcase.T) context.Context {
-			return t.I(contextKey).(context.Context)
-		}
-		subscriber := func(t *testcase.T) *eventSubscriber {
-			return getSubscriber(t, subscriberKey)
-		}
 		subject := func(t *testcase.T) (resources.Subscription, error) {
 			subscription, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.EntityType, subscriber(t))
 			if err == nil && subscription != nil {
@@ -83,7 +71,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 		})
 
 		s.Test(`and no events made after the subscription time then subscriber doesn't receive any event`, func(t *testcase.T) {
-			require.Empty(t, subscriber(t).events)
+			require.Empty(t, subscriber(t).Events())
 		})
 
 		s.And(`update event made`, func(s *testcase.Spec) {
@@ -94,10 +82,11 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				require.Nil(t, resources.SetID(updatedEntityPtr, id))
 				require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
 				t.Let(updatedEntityKey, toBaseValue(updatedEntityPtr))
+				waitForLen(subscriber(t).EventsLen, 1)
 			})
 
 			s.Then(`subscriber receive the event`, func(t *testcase.T) {
-				require.Contains(t, subscriber(t).events, t.I(updatedEntityKey))
+				require.Contains(t, subscriber(t).Events(), t.I(updatedEntityKey))
 			})
 
 			s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
@@ -111,10 +100,11 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						updatedEntityPtr := spec.createEntity()
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
+						waitForLen(subscriber(t).EventsLen, 1)
 					})
 
 					s.Then(`subscriber no longer receive them`, func(t *testcase.T) {
-						require.Len(t, subscriber(t).events, 1)
+						require.Len(t, subscriber(t).Events(), 1)
 					})
 				})
 			})
@@ -134,11 +124,12 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				})
 
 				s.Then(`original subscriber still receive old events`, func(t *testcase.T) {
-					require.Contains(t, subscriber(t).events, t.I(updatedEntityKey))
+					require.Contains(t, subscriber(t).Events(), t.I(updatedEntityKey))
 				})
 
 				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
-					require.Empty(t, othSubscriber(t).events)
+					wait()
+					require.Empty(t, othSubscriber(t).Events())
 				})
 
 				s.And(`a further event is made`, func(s *testcase.Spec) {
@@ -149,50 +140,73 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
 						t.Let(furtherEventUpdateKey, toBaseValue(updatedEntityPtr))
+						waitForLen(subscriber(t).EventsLen, 2)
+						waitForLen(getSubscriber(t, othSubscriberKey).EventsLen, 1)
 					})
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-						require.Contains(t, subscriber(t).events, t.I(updatedEntityKey), `missing old update events`)
-						require.Contains(t, subscriber(t).events, t.I(furtherEventUpdateKey), `missing new update events`)
+						require.Contains(t, subscriber(t).Events(), t.I(updatedEntityKey), `missing old update events`)
+						require.Contains(t, subscriber(t).Events(), t.I(furtherEventUpdateKey), `missing new update events`)
 					})
 
 					s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-						require.NotContains(t, othSubscriber(t).events, t.I(updatedEntityKey))
+						wait()
+						require.NotContains(t, othSubscriber(t).Events(), t.I(updatedEntityKey))
 					})
 
 					s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
-						require.Contains(t, othSubscriber(t).events, t.I(furtherEventUpdateKey))
+						require.Contains(t, othSubscriber(t).Events(), t.I(furtherEventUpdateKey))
 					})
 				})
 			})
-
-			if res, ok := spec.Subject.(resources.OnePhaseCommitProtocol); ok {
-				s.Describe(`relationship with OnePhaseCommitProtocol`, func(s *testcase.Spec) {
-					s.Let(contextKey, func(t *testcase.T) interface{} {
-						t.Log(`given we are in transaction`)
-						ctxInTx, err := res.BeginTx(spec.context())
-						require.Nil(t, err)
-						t.Defer(res.RollbackTx, ctxInTx)
-						return ctxInTx
-					})
-
-					s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-						require.Empty(t, subscriber(t).events)
-						require.Nil(t, res.CommitTx(getContext(t)))
-					})
-
-					s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-						require.Nil(t, res.CommitTx(getContext(t)))
-						require.Contains(t, subscriber(t).events, t.I(updatedEntityKey))
-					})
-
-					s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-						require.Nil(t, res.RollbackTx(getContext(t)))
-						require.Empty(t, subscriber(t).events)
-					})
-				})
-			}
 		})
+
+		s.Describe(`relationship with OnePhaseCommitProtocol`, spec.specOnePhaseCommitProtocol)
+
+	})
+}
+
+func (spec UpdaterPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
+	res, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
+	if !ok {
+		return
+	}
+
+	const entityKey = `entity`
+	const updatedEntityKey = `updated-entity`
+
+	s.Before(func(t *testcase.T) {
+		id, _ := resources.LookupID(t.I(entityKey))
+		updatedEntityPtr := spec.createEntity()
+		require.Nil(t, resources.SetID(updatedEntityPtr, id))
+		require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
+		t.Let(updatedEntityKey, toBaseValue(updatedEntityPtr))
+	})
+
+	s.Let(contextKey, func(t *testcase.T) interface{} {
+		t.Log(`given we are in transaction`)
+		ctxInTx, err := res.BeginTx(spec.context())
+		require.Nil(t, err)
+		t.Defer(res.RollbackTx, ctxInTx)
+		return ctxInTx
+	})
+
+	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
+		wait()
+		require.Empty(t, subscriber(t).Events())
+		require.Nil(t, res.CommitTx(getContext(t)))
+	})
+
+	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
+		require.Nil(t, res.CommitTx(getContext(t)))
+		waitForLen(subscriber(t).EventsLen, 1)
+		require.Contains(t, subscriber(t).Events(), t.I(updatedEntityKey))
+	})
+
+	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
+		require.Nil(t, res.RollbackTx(getContext(t)))
+		wait()
+		require.Empty(t, subscriber(t).Events())
 	})
 }
 

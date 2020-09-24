@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
@@ -27,7 +28,7 @@ var (
 	_ storages.MemoryEventManager = &storages.MemoryTransaction{}
 )
 
-func TestStorage_smoketest(t *testing.T) {
+func TestStorage_smokeTest(t *testing.T) {
 	var (
 		subject = storages.NewMemory()
 		ctx     = context.Background()
@@ -71,46 +72,53 @@ func TestStorage_smoketest(t *testing.T) {
 	subject.History().LogWith(t)
 }
 
-func TestMemory(t *testing.T) {
-	subject := storages.NewMemory()
-	specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+func getMemorySpecs(subject *storages.Memory) []frameless.Spec {
+	return []frameless.Spec{
+		specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}},
+	}
 }
 
-func TestMemory_DisableEventLogging(t *testing.T) {
-	subject := storages.NewMemory()
-	subject.DisableEventLogging()
-	specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
-	specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Test(t)
+func TestMemory(t *testing.T) {
+	for _, spec := range getMemorySpecs(storages.NewMemory()) {
+		spec.Test(t)
+	}
 
-	fmt.Println(`log len:`, len(subject.Events()))
-	require.Empty(t, subject.Events(),
-		`after all the specs, the memory storage was expected to be empty.`+
-			` If the storage has values, it means something is not cleaning up properly in the specs.`)
+	t.Run(`#DisableEventLogging`, func(t *testing.T) {
+		subject := storages.NewMemory()
+		subject.DisableEventLogging()
+
+		for _, spec := range getMemorySpecs(subject) {
+			spec.Test(t)
+		}
+
+		fmt.Println(`log len:`, len(subject.Events()))
+		require.Empty(t, subject.Events(),
+			`after all the specs, the memory storage was expected to be empty.`+
+				` If the storage has values, it means something is not cleaning up properly in the specs.`)
+	})
 }
 
 func BenchmarkMemory(b *testing.B) {
-	subject := storages.NewMemory()
-	specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
-	specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}}.Benchmark(b)
+	b.Run(`with event log`, func(b *testing.B) {
+		for _, spec := range getMemorySpecs(storages.NewMemory()) {
+			spec.Benchmark(b)
+		}
+	})
+
+	b.Run(`without event log`, func(b *testing.B) {
+		subject := storages.NewMemory()
+		subject.DisableEventLogging()
+		for _, spec := range getMemorySpecs(subject) {
+			spec.Benchmark(b)
+		}
+	})
 }
 
 type Entity struct {

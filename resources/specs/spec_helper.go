@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless/resources"
 
@@ -133,18 +137,34 @@ type eventSubscriber struct {
 	events    []interface{}
 	errors    []error
 	returnErr error
+
+	mutex sync.Mutex
 }
 
 func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
 	s.events = append(s.events, event)
 	return s.returnErr
 }
 
 func (s *eventSubscriber) Error(ctx context.Context, err error) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
 	s.errors = append(s.errors, err)
 	return s.returnErr
+}
+
+func (s *eventSubscriber) EventsLen() int {
+	return len(s.Events())
+}
+
+func (s *eventSubscriber) Events() []interface{} {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.events
 }
 
 func (s *eventSubscriber) verifyContext(ctx context.Context) {
@@ -155,4 +175,44 @@ func (s *eventSubscriber) verifyContext(ctx context.Context) {
 	default:
 	}
 	require.Nil(s.tb, ctx.Err())
+}
+
+func waitForLen(length func() int, expectedMinimumLen int) {
+	timer := time.NewTimer(time.Minute)
+	defer timer.Stop()
+	var timeIsUp int32
+	go func() {
+		<-timer.C
+		atomic.AddInt32(&timeIsUp, 1)
+	}()
+	for timeIsUp == 0 {
+		if expectedMinimumLen <= length() {
+			return
+		}
+		time.Sleep(time.Millisecond)
+		runtime.Gosched()
+	}
+}
+
+const (
+	contextKey      = `context`
+	subscriberKey   = `subscriber`
+	subscriptionKey = `subscription`
+)
+
+func getContext(t *testcase.T) context.Context {
+	return t.I(contextKey).(context.Context)
+}
+func getSubscriber(t *testcase.T, key string) *eventSubscriber {
+	return t.I(key).(*eventSubscriber)
+}
+func subscriber(t *testcase.T) *eventSubscriber {
+	return getSubscriber(t, subscriberKey)
+}
+
+func wait() {
+	times := runtime.NumCPU() * 42
+	for i := 0; i < times; i++ {
+		runtime.Gosched()
+	}
 }
