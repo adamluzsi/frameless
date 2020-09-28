@@ -2,7 +2,6 @@ package storages_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -97,7 +96,6 @@ func TestMemory(t *testing.T) {
 			spec.Test(t)
 		}
 
-		fmt.Println(`log len:`, len(subject.Events()))
 		require.Empty(t, subject.Events(),
 			`after all the specs, the memory storage was expected to be empty.`+
 				` If the storage has values, it means something is not cleaning up properly in the specs.`)
