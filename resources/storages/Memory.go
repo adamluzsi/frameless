@@ -78,7 +78,7 @@ func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
 	return s.createEventFor(ctx, ptr, s.getTrace())
 }
 
-func (s *Memory) CreateEventFor(ctx context.Context, ptr interface{}) error {
+func (s *Memory) CreateEventForEntityWithID(ctx context.Context, ptr interface{}) error {
 	return s.createEventFor(ctx, ptr, s.getTrace())
 }
 
