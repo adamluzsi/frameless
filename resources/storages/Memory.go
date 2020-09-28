@@ -29,10 +29,10 @@ type Memory struct {
 }
 
 const (
-	createEvent     = `Create`
-	updateEvent     = `Update`
-	deleteAllEvent  = `DeleteAll`
-	deleteByIDEvent = `DeleteByID`
+	CreateEvent     = `Create`
+	UpdateEvent     = `Update`
+	DeleteAllEvent  = `DeleteAll`
+	DeleteByIDEvent = `DeleteByID`
 )
 
 type MemoryEvent struct {
@@ -71,18 +71,24 @@ func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
-	trace := s.getTrace()
-	id := fixtures.Random.String()
-
-	if err := resources.SetID(ptr, id); err != nil {
+	if err := resources.SetID(ptr, fixtures.Random.String()); err != nil {
 		return err
 	}
 
+	return s.createEventFor(ctx, ptr, s.getTrace())
+}
+
+func (s *Memory) CreateEventFor(ctx context.Context, ptr interface{}) error {
+	return s.createEventFor(ctx, ptr, s.getTrace())
+}
+
+func (s *Memory) createEventFor(ctx context.Context, ptr interface{}, trace []string) error {
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
+		id, _ := resources.LookupID(ptr)
 		tx.AddEvent(MemoryEvent{
 			T:              reflects.BaseValueOf(ptr),
 			EntityTypeName: s.EntityTypeNameFor(ptr),
-			Event:          createEvent,
+			Event:          CreateEvent,
 			ID:             id,
 			Entity:         reflects.BaseValueOf(ptr).Interface(),
 			Trace:          trace,
@@ -163,7 +169,7 @@ func (s *Memory) Update(ctx context.Context, ptr interface{}) error {
 		tx.AddEvent(MemoryEvent{
 			T:              reflects.BaseValueOf(ptr),
 			EntityTypeName: s.EntityTypeNameFor(ptr),
-			Event:          updateEvent,
+			Event:          UpdateEvent,
 			ID:             id,
 			Entity:         reflects.BaseValueOf(ptr).Interface(),
 			Trace:          trace,
@@ -191,7 +197,7 @@ func (s *Memory) DeleteByID(ctx context.Context, T interface{}, id string) error
 		tx.AddEvent(MemoryEvent{
 			T:              T,
 			EntityTypeName: s.EntityTypeNameFor(T),
-			Event:          deleteByIDEvent,
+			Event:          DeleteByIDEvent,
 			ID:             id,
 			Trace:          trace,
 		})
@@ -210,7 +216,7 @@ func (s *Memory) DeleteAll(ctx context.Context, T interface{}) error {
 		tx.AddEvent(MemoryEvent{
 			T:              T,
 			EntityTypeName: s.EntityTypeNameFor(T),
-			Event:          deleteAllEvent,
+			Event:          DeleteAllEvent,
 			Trace:          trace,
 		})
 		return nil
@@ -279,13 +285,13 @@ func (s *Memory) notifySubscriptions(ctx context.Context, event MemoryEvent) {
 		// TODO: clarify what to do when error is encountered in a subscription
 		// 	This call in theory async in most implementation.
 		switch event.Event {
-		case deleteAllEvent:
+		case DeleteAllEvent:
 			sub.publish(ctx, event.T)
-		case deleteByIDEvent:
+		case DeleteByIDEvent:
 			ptr := reflect.New(reflect.TypeOf(event.T)).Interface()
 			resources.SetID(ptr, event.ID)
 			sub.publish(ctx, reflects.BaseValueOf(ptr).Interface())
-		case createEvent, updateEvent:
+		case CreateEvent, UpdateEvent:
 			sub.publish(ctx, event.Entity)
 		}
 	}
@@ -336,7 +342,7 @@ func (s *Memory) concentrateEvents() {
 	for entityTypeName, idToEntityMap := range view {
 		for id, entity := range idToEntityMap {
 			s.addEventUnsafe(MemoryEvent{
-				Event:          createEvent,
+				Event:          CreateEvent,
 				T:              entity,
 				EntityTypeName: entityTypeName,
 				ID:             id,
@@ -466,19 +472,19 @@ func (s *Memory) appendToSubscription(ctx context.Context, T interface{}, name s
 }
 
 func (s *Memory) SubscribeToCreate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(ctx, T, createEvent, subscriber)
+	return s.appendToSubscription(ctx, T, CreateEvent, subscriber)
 }
 
 func (s *Memory) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(ctx, T, updateEvent, subscriber)
+	return s.appendToSubscription(ctx, T, UpdateEvent, subscriber)
 }
 
 func (s *Memory) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(ctx, T, deleteByIDEvent, subscriber)
+	return s.appendToSubscription(ctx, T, DeleteByIDEvent, subscriber)
 }
 
 func (s *Memory) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
-	return s.appendToSubscription(ctx, T, deleteAllEvent, subscriber)
+	return s.appendToSubscription(ctx, T, DeleteAllEvent, subscriber)
 }
 
 /**********************************************************************************************************************/
@@ -562,11 +568,11 @@ func memoryEventViewFor(eh MemoryEventViewer) MemoryView {
 		}
 
 		switch event.Event {
-		case createEvent, updateEvent:
+		case CreateEvent, UpdateEvent:
 			view[event.EntityTypeName][event.ID] = event.Entity
-		case deleteByIDEvent:
+		case DeleteByIDEvent:
 			delete(view[event.EntityTypeName], event.ID)
-		case deleteAllEvent:
+		case DeleteAllEvent:
 			delete(view, event.EntityTypeName)
 		}
 	}
