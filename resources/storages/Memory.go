@@ -26,6 +26,10 @@ type Memory struct {
 	events              []MemoryEvent
 	subscriptions       subscriptions
 	disableEventLogging bool
+
+	// txNamespace allow multiple memory storage to manage transactions on the same context
+	txNamespace     string
+	txNamespaceInit sync.Once
 }
 
 const (
@@ -223,6 +227,14 @@ func (s *Memory) DeleteAll(ctx context.Context, T interface{}) error {
 	})
 }
 
+func (s *Memory) getTxCtxKey() interface{} {
+	s.txNamespaceInit.Do(func() {
+		s.txNamespace = fixtures.SecureRandom.StringN(42)
+	})
+
+	return ctxKeyForMemoryTransaction{ID: s.txNamespace}
+}
+
 func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 	var em MemoryEventManager
 
@@ -237,7 +249,7 @@ func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 		em = s
 	}
 
-	return context.WithValue(ctx, ctxKeyForMemoryTransaction{}, &MemoryTransaction{
+	return context.WithValue(ctx, s.getTxCtxKey(), &MemoryTransaction{
 		done:   false,
 		events: []MemoryEvent{},
 		parent: em,
@@ -590,10 +602,12 @@ func (tx MemoryTransaction) ViewFor(T interface{}) MemoryTableView {
 
 /**********************************************************************************************************************/
 
-type ctxKeyForMemoryTransaction struct{}
+type ctxKeyForMemoryTransaction struct {
+	ID string
+}
 
 func (s *Memory) lookupTx(ctx context.Context) (*MemoryTransaction, bool) {
-	tx, ok := ctx.Value(ctxKeyForMemoryTransaction{}).(*MemoryTransaction)
+	tx, ok := ctx.Value(s.getTxCtxKey()).(*MemoryTransaction)
 	return tx, ok
 }
 

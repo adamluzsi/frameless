@@ -100,6 +100,20 @@ func TestMemory(t *testing.T) {
 			`after all the specs, the memory storage was expected to be empty.`+
 				` If the storage has values, it means something is not cleaning up properly in the specs.`)
 	})
+
+	t.Run(`multiple instance can manage they tx on the same context`, func(t *testing.T) {
+		subject1 := storages.NewMemory()
+		subject2 := storages.NewMemory()
+
+		ctx := context.Background()
+		ctx, err := subject1.BeginTx(ctx)
+		require.Nil(t, err)
+		ctx, err = subject2.BeginTx(ctx)
+		require.Nil(t, err)
+
+		require.Nil(t, subject1.CommitTx(ctx))
+		require.Nil(t, subject2.CommitTx(ctx))
+	})
 }
 
 func BenchmarkMemory(b *testing.B) {
