@@ -78,7 +78,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				}
 				t.Let(eventsKey, toBaseValues(entities))
 
-				waitForLen(subscriber(t).EventsLen, len(entities))
+				WaitForLen(subscriber(t).EventsLen, len(entities))
 			})
 
 			s.Then(`subscriber receive those events`, func(t *testcase.T) {
@@ -100,7 +100,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
 						}
 
-						waitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{})))
+						WaitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{})))
 					})
 
 					s.Then(`handler don't receive the new events`, func(t *testcase.T) {
@@ -129,7 +129,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 
 				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
 					t.Log(`new subscriber don't have the vents since it subscribed after events had been already fired`)
-					wait() // wait a little to receive events if we receive any
+					Wait() // Wait a little to receive events if we receive any
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
@@ -144,9 +144,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 						}
 						t.Let(furtherEventsKey, toBaseValues(entities))
 
-						waitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{}))+len(t.I(furtherEventsKey).([]interface{})))
+						WaitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{}))+len(t.I(furtherEventsKey).([]interface{})))
 
-						waitForLen(othSubscriber(t).EventsLen, len(t.I(furtherEventsKey).([]interface{})))
+						WaitForLen(othSubscriber(t).EventsLen, len(t.I(furtherEventsKey).([]interface{})))
 					})
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
@@ -198,20 +198,20 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		wait()
+		Wait()
 		require.Empty(t, subscriber(t).Events())
 		require.Nil(t, res.CommitTx(getContext(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		waitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{})))
+		WaitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{})))
 		require.ElementsMatch(t, t.I(eventsKey), subscriber(t).Events())
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
 		require.Nil(t, res.RollbackTx(getContext(t)))
-		wait()
+		Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 }

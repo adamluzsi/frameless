@@ -5,12 +5,9 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"runtime"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/resources"
@@ -177,25 +174,6 @@ func (s *eventSubscriber) verifyContext(ctx context.Context) {
 	require.Nil(s.tb, ctx.Err())
 }
 
-var WaitForLenTimeout = 3 * time.Second
-
-func waitForLen(length func() int, expectedMinimumLen int) {
-	timer := time.NewTimer(WaitForLenTimeout)
-	defer timer.Stop()
-	var timeIsUp int32
-	go func() {
-		<-timer.C
-		atomic.AddInt32(&timeIsUp, 1)
-	}()
-	for timeIsUp == 0 {
-		if expectedMinimumLen <= length() {
-			return
-		}
-		time.Sleep(time.Millisecond)
-		runtime.Gosched()
-	}
-}
-
 const (
 	contextKey      = `context`
 	subscriberKey   = `subscriber`
@@ -212,12 +190,4 @@ func getSubscriber(t *testcase.T, key string) *eventSubscriber {
 
 func subscriber(t *testcase.T) *eventSubscriber {
 	return getSubscriber(t, subscriberKey)
-}
-
-func wait() {
-	times := runtime.NumCPU() * 42
-	for i := 0; i < times; i++ {
-		runtime.Gosched()
-		time.Sleep(time.Microsecond)
-	}
 }
