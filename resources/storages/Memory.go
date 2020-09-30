@@ -501,13 +501,12 @@ func (s *Memory) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscr
 
 /**********************************************************************************************************************/
 
-// History will return a list of  the event history of the
-type History struct {
-	Memory *Memory
+type logger interface {
+	Log(args ...interface{})
 }
 
-func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
-	for _, e := range h.Memory.events {
+func (s *Memory) logEventHistory(l logger, events []MemoryEvent) {
+	for _, e := range events {
 		var trace string
 		if 0 < len(e.Trace) {
 			trace = e.Trace[0]
@@ -516,8 +515,19 @@ func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
 	}
 }
 
-func (s *Memory) History() History {
-	return History{Memory: s}
+func (s *Memory) LogHistory(l logger) {
+	s.logEventHistory(l, s.events)
+}
+
+func (s *Memory) LogContextHistory(l logger, ctx context.Context) {
+	s.LogHistory(l)
+
+	tx, ok := s.lookupTx(ctx)
+	if !ok {
+		return
+	}
+
+	s.logEventHistory(l, tx.events)
 }
 
 func (s *Memory) getTrace() []string {
