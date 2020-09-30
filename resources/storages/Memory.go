@@ -123,7 +123,7 @@ func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id string) (_fou
 		}
 	}
 
-	return false, nil
+	return false, iter.Err()
 }
 
 func (s *Memory) FindAll(ctx context.Context, T interface{}) iterators.Interface {
@@ -503,11 +503,11 @@ func (s *Memory) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscr
 
 // History will return a list of  the event history of the
 type History struct {
-	events []MemoryEvent
+	Memory *Memory
 }
 
 func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
-	for _, e := range h.events {
+	for _, e := range h.Memory.events {
 		var trace string
 		if 0 < len(e.Trace) {
 			trace = e.Trace[0]
@@ -517,7 +517,7 @@ func (h History) LogWith(l interface{ Log(args ...interface{}) }) {
 }
 
 func (s *Memory) History() History {
-	return History{events: s.Events()}
+	return History{Memory: s}
 }
 
 func (s *Memory) getTrace() []string {

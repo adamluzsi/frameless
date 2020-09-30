@@ -105,14 +105,32 @@ func TestMemory(t *testing.T) {
 		subject1 := storages.NewMemory()
 		subject2 := storages.NewMemory()
 
+		defer subject1.History().LogWith(t)
+		defer subject2.History().LogWith(t)
+
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
 		require.Nil(t, err)
 		ctx, err = subject2.BeginTx(ctx)
 		require.Nil(t, err)
 
-		require.Nil(t, subject1.CommitTx(ctx))
+		t.Log(`when in subject 1 store an entity`)
+		entity := &Entity{Data: `42`}
+		require.Nil(t, subject1.Create(ctx, entity))
+
+		t.Log(`and subject 2 finish tx`)
 		require.Nil(t, subject2.CommitTx(ctx))
+		t.Log(`and subject 2 then try to find this entity`)
+		found, err := subject2.FindByID(context.Background(), &Entity{}, entity.ID)
+		require.Nil(t, err)
+		require.False(t, found, `it should not see the uncommitted entity`)
+
+		t.Log(`but after subject 1 commit the tx`)
+		require.Nil(t, subject1.CommitTx(ctx))
+		t.Log(`subject 1 can see the new entity`)
+		found, err = subject1.FindByID(context.Background(), &Entity{}, entity.ID)
+		require.Nil(t, err)
+		require.True(t, found)
 	})
 }
 

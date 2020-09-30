@@ -1,6 +1,7 @@
 package specs
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -41,6 +42,54 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 	})
 
 	s.Context(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
+
+		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on context with finished tx`, func(t *testcase.T) {
+			ctx := spec.FixtureFactory.Context()
+			ctx, err := spec.Subject.BeginTx(ctx)
+			require.Nil(t, err)
+			ptr := spec.FixtureFactory.Create(spec.EntityType)
+			require.Nil(t, spec.Subject.Create(ctx, ptr))
+			id, _ := resources.LookupID(ptr)
+			t.Defer(spec.Subject.DeleteByID, spec.FixtureFactory.Context(), spec.EntityType, id)
+			require.Nil(t, spec.Subject.CommitTx(ctx))
+
+			_, err = spec.Subject.FindByID(ctx, spec.EntityType, id)
+			require.Error(t, err)
+			require.Error(t, spec.Subject.Create(ctx, spec.FixtureFactory.Create(spec.EntityType)))
+			require.Error(t, spec.Subject.FindAll(ctx, spec.EntityType).Err())
+
+			if updater, ok := spec.Subject.(resources.Updater); ok {
+				require.Error(t, updater.Update(ctx, ptr),
+					fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished tx`,
+						spec.Subject))
+			}
+
+			require.Error(t, spec.Subject.DeleteByID(ctx, spec.EntityType, id))
+			require.Error(t, spec.Subject.DeleteAll(ctx, spec.EntityType))
+		})
+		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on context with finished tx`, func(t *testcase.T) {
+			ctx := spec.FixtureFactory.Context()
+			ctx, err := spec.Subject.BeginTx(ctx)
+			require.Nil(t, err)
+			ptr := spec.FixtureFactory.Create(spec.EntityType)
+			require.Nil(t, spec.Subject.Create(ctx, ptr))
+			id, _ := resources.LookupID(ptr)
+			require.Nil(t, spec.Subject.RollbackTx(ctx))
+
+			_, err = spec.Subject.FindByID(ctx, spec.EntityType, id)
+			require.Error(t, err)
+			require.Error(t, spec.Subject.FindAll(ctx, spec.EntityType).Err())
+			require.Error(t, spec.Subject.Create(ctx, spec.FixtureFactory.Create(spec.EntityType)))
+
+			if updater, ok := spec.Subject.(resources.Updater); ok {
+				require.Error(t, updater.Update(ctx, ptr),
+					fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished tx`,
+						spec.Subject))
+			}
+
+			require.Error(t, spec.Subject.DeleteByID(ctx, spec.EntityType, id))
+			require.Error(t, spec.Subject.DeleteAll(ctx, spec.EntityType))
+		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()
