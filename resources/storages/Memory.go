@@ -238,7 +238,7 @@ func (s *Memory) getTxCtxKey() interface{} {
 func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 	var em MemoryEventManager
 
-	tx, ok := s.lookupTx(ctx)
+	tx, ok := s.LookupTx(ctx)
 	if ok && tx.done {
 		return ctx, fmt.Errorf(`current context transaction already done`)
 	}
@@ -262,7 +262,7 @@ const (
 )
 
 func (s *Memory) CommitTx(ctx context.Context) error {
-	tx, ok := s.lookupTx(ctx)
+	tx, ok := s.LookupTx(ctx)
 	if !ok {
 		return errNoTx
 	}
@@ -310,7 +310,7 @@ func (s *Memory) notifySubscriptions(ctx context.Context, event MemoryEvent) {
 }
 
 func (s *Memory) RollbackTx(ctx context.Context) error {
-	tx, ok := s.lookupTx(ctx)
+	tx, ok := s.LookupTx(ctx)
 	if !ok {
 		return errNoTx
 	}
@@ -329,7 +329,7 @@ func (s *Memory) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error)
 		return err
 	}
 
-	tx, _ := s.lookupTx(ctx)
+	tx, _ := s.LookupTx(ctx)
 	if err := fn(tx); err != nil {
 		_ = s.RollbackTx(ctx)
 		return err
@@ -522,7 +522,7 @@ func (s *Memory) LogHistory(l logger) {
 func (s *Memory) LogContextHistory(l logger, ctx context.Context) {
 	s.LogHistory(l)
 
-	tx, ok := s.lookupTx(ctx)
+	tx, ok := s.LookupTx(ctx)
 	if !ok {
 		return
 	}
@@ -616,7 +616,7 @@ type ctxKeyForMemoryTransaction struct {
 	ID string
 }
 
-func (s *Memory) lookupTx(ctx context.Context) (*MemoryTransaction, bool) {
+func (s *Memory) LookupTx(ctx context.Context) (*MemoryTransaction, bool) {
 	tx, ok := ctx.Value(s.getTxCtxKey()).(*MemoryTransaction)
 	return tx, ok
 }
