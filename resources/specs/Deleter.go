@@ -180,7 +180,7 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		eID := spec.populateFor(t, spec.EntityType)
 		require.True(t, spec.isStored(t, eID, spec.EntityType))
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(t, subject(t))
 		require.False(t, spec.isStored(t, eID, spec.EntityType))
 	})
 
