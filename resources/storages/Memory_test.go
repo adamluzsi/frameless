@@ -260,6 +260,35 @@ func TestMemory_LogHistory(t *testing.T) {
 	})
 }
 
+func TestMemory_LookupTxEvent(t *testing.T) {
+	s := storages.NewMemory()
+
+	t.Run(`when outside of tx`, func(t *testing.T) {
+		_, ok := s.LookupTx(context.Background())
+		require.False(t, ok)
+	})
+
+	t.Run(`when during tx`, func(t *testing.T) {
+		ctx, err := s.BeginTx(context.Background())
+		require.Nil(t, err)
+		defer s.RollbackTx(ctx)
+
+		e := Entity{Data: `42`}
+		require.Nil(t, s.Create(ctx, &e))
+		found, err := s.FindByID(ctx, &Entity{}, e.ID)
+		require.Nil(t, err)
+		require.True(t, found)
+		found, err = s.FindByID(context.Background(), &Entity{}, e.ID)
+		require.Nil(t, err)
+		require.False(t, found)
+
+		tx, ok := s.LookupTx(ctx)
+		require.True(t, ok)
+		_, ok = tx.View()[s.EntityTypeNameFor(Entity{})][e.ID]
+		require.True(t, ok)
+	})
+}
+
 func BenchmarkMemory(b *testing.B) {
 	b.Run(`with event log`, func(b *testing.B) {
 		for _, spec := range getMemorySpecs(storages.NewMemory()) {
