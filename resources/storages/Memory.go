@@ -22,7 +22,11 @@ func NewMemory() *Memory {
 // Memory is an event source principles based development in memory storage,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Memory struct {
-	mutex               sync.Mutex
+	Options struct {
+		AsyncSubscriptionHandling bool
+	}
+
+	mutex               sync.RWMutex
 	events              []MemoryEvent
 	subscriptions       subscriptions
 	disableEventLogging bool
@@ -49,7 +53,7 @@ type MemoryEvent struct {
 }
 
 type MemoryTransaction struct {
-	mutex  sync.Mutex
+	mutex  sync.RWMutex
 	done   bool
 	events []MemoryEvent
 	parent MemoryEventManager
@@ -348,7 +352,7 @@ func (s *Memory) concentrateEvents() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	view := memoryEventViewFor(s)
+	view := memoryEventViewFor(s.events)
 	s.events = nil // reset
 
 	for entityTypeName, idToEntityMap := range view {
@@ -369,16 +373,18 @@ func (s *Memory) concentrateEvents() {
 // event name -> <T> as name -> event subscribers
 type subscriptions map[string]map[string][]*subscription
 
-func newSubscription(subscriber resources.Subscriber) *subscription {
-	var s subscription
-	s.subscriber = subscriber
-	s.queue = make(chan interface{})
-	s.context, s.cancel = context.WithCancel(context.Background())
-	s.subscribe()
-	return &s
+func (s *Memory) newSubscription(subscriber resources.Subscriber) *subscription {
+	var sub subscription
+	sub.storage = s
+	sub.subscriber = subscriber
+	sub.queue = make(chan interface{})
+	sub.context, sub.cancel = context.WithCancel(context.Background())
+	sub.subscribe()
+	return &sub
 }
 
 type subscription struct {
+	storage    *Memory
 	subscriber resources.Subscriber
 
 	context context.Context
@@ -394,7 +400,7 @@ type subscription struct {
 	queue   chan interface{}
 }
 
-func (s *subscription) publish(ctx context.Context, T interface{}) {
+func (s *subscription) publish(ctx context.Context, entity interface{}) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -404,11 +410,15 @@ func (s *subscription) publish(ctx context.Context, T interface{}) {
 	default:
 	}
 
-	s.queueWG.Add(1)
+	if !s.storage.Options.AsyncSubscriptionHandling {
+		s.handle(entity)
+		return
+	}
 
+	s.queueWG.Add(1)
 	go func() {
 		defer s.queueWG.Done()
-		s.queue <- T
+		s.queue <- entity
 	}()
 }
 
@@ -419,11 +429,15 @@ func (s *subscription) subscribe() {
 		defer s.wrkWG.Done()
 
 		for entity := range s.queue {
-			if err := s.subscriber.Handle(context.Background(), entity); err != nil {
-				fmt.Println(`ERROR`, err.Error())
-			}
+			s.handle(entity)
 		}
 	}()
+}
+
+func (s *subscription) handle(entity interface{}) {
+	if err := s.subscriber.Handle(context.Background(), entity); err != nil {
+		fmt.Println(`ERROR`, err.Error())
+	}
 }
 
 func (s *subscription) Close() (rErr error) {
@@ -478,7 +492,7 @@ func (s *Memory) appendToSubscription(ctx context.Context, T interface{}, name s
 
 	entityTypeName := s.EntityTypeNameFor(T)
 	_ = s.getSubscriptions(entityTypeName, name) // init
-	sub := newSubscription(subscriber)
+	sub := s.newSubscription(subscriber)
 	s.subscriptions[name][entityTypeName] = append(s.subscriptions[name][entityTypeName], sub)
 	return sub, nil
 }
@@ -561,7 +575,9 @@ func (s *Memory) addEventUnsafe(event MemoryEvent) {
 }
 
 func (s *Memory) Events() []MemoryEvent {
-	return s.events
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+	return append([]MemoryEvent{}, s.events...)
 }
 
 func (tx *MemoryTransaction) AddEvent(event MemoryEvent) {
@@ -571,6 +587,8 @@ func (tx *MemoryTransaction) AddEvent(event MemoryEvent) {
 }
 
 func (tx MemoryTransaction) Events() []MemoryEvent {
+	tx.mutex.RLock()
+	defer tx.mutex.RUnlock()
 	var es []MemoryEvent
 	es = append(es, tx.parent.Events()...)
 	es = append(es, tx.events...)
@@ -582,9 +600,9 @@ func (tx MemoryTransaction) Events() []MemoryEvent {
 type MemoryView map[string]MemoryTableView  // entity type name => table view
 type MemoryTableView map[string]interface{} // id => entity <T>
 
-func memoryEventViewFor(eh MemoryEventViewer) MemoryView {
+func memoryEventViewFor(events []MemoryEvent) MemoryView {
 	var view = make(MemoryView)
-	for _, event := range eh.Events() {
+	for _, event := range events {
 		if _, ok := view[event.EntityTypeName]; !ok {
 			view[event.EntityTypeName] = make(map[string]interface{})
 		}
@@ -603,7 +621,7 @@ func memoryEventViewFor(eh MemoryEventViewer) MemoryView {
 }
 
 func (tx MemoryTransaction) View() MemoryView {
-	return memoryEventViewFor(tx)
+	return memoryEventViewFor(tx.Events())
 }
 
 func (tx MemoryTransaction) ViewFor(T interface{}) MemoryTableView {

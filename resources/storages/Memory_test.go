@@ -2,7 +2,10 @@ package storages_test
 
 import (
 	"context"
+	"github.com/adamluzsi/testcase"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -188,12 +191,158 @@ func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 }
 
-type fakeLogger struct {
-	logs []interface{}
+func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var subscriber = func(t *testcase.T) *HangingSubscriber { return t.I(`HangingSubscriber`).(*HangingSubscriber) }
+	s.Let(`HangingSubscriber`, func(t *testcase.T) interface{} {
+		return NewHangingSubscriber()
+	})
+
+	var newMemory = func(t *testcase.T) *storages.Memory {
+		s := storages.NewMemory()
+		ctx := context.Background()
+		subscription, err := s.SubscribeToCreate(ctx, Entity{}, subscriber(t))
+		require.Nil(t, err)
+		t.Defer(subscription.Close)
+		subscription, err = s.SubscribeToUpdate(ctx, Entity{}, subscriber(t))
+		require.Nil(t, err)
+		t.Defer(subscription.Close)
+		subscription, err = s.SubscribeToDeleteAll(ctx, Entity{}, subscriber(t))
+		require.Nil(t, err)
+		t.Defer(subscription.Close)
+		subscription, err = s.SubscribeToDeleteByID(ctx, Entity{}, subscriber(t))
+		require.Nil(t, err)
+		t.Defer(subscription.Close)
+		return s
+	}
+
+	var subject = func(t *testcase.T) *storages.Memory {
+		s := newMemory(t)
+		s.Options.AsyncSubscriptionHandling = t.I(`AsyncSubscriptionHandling`).(bool)
+		return s
+	}
+
+	s.Before(func(t *testcase.T) {
+		if testing.Short() {
+			t.Skip()
+		}
+	})
+
+	const hangingDuration = 500 * time.Millisecond
+
+	thenCreateUpdateDeleteWill := func(s *testcase.Spec, willHang bool) {
+		var desc string
+		if willHang {
+			desc = `event is blocking until subscriber finishes handling the event`
+		} else {
+			desc = `event should not hang while the subscriber is busy`
+		}
+		desc = ` ` + desc
+
+		var assertion = func(t testing.TB, expected, actual time.Duration) {
+			if willHang {
+				require.LessOrEqual(t, int64(expected), int64(actual))
+			} else {
+				require.Greater(t, int64(expected), int64(actual))
+			}
+		}
+
+		s.Then(`Create`+desc, func(t *testcase.T) {
+			memory := subject(t)
+			sub := subscriber(t)
+
+			initialTime := time.Now()
+			sub.HangFor(hangingDuration)
+			require.Nil(t, memory.Create(context.Background(), &Entity{Data: `42`}))
+			finishTime := time.Now()
+
+			assertion(t, hangingDuration, finishTime.Sub(initialTime))
+		})
+
+		s.Then(`Update`+desc, func(t *testcase.T) {
+			memory := subject(t)
+			sub := subscriber(t)
+
+			ent := Entity{Data: `42`}
+			require.Nil(t, memory.Create(context.Background(), &ent))
+			ent.Data = `foo`
+
+			initialTime := time.Now()
+			sub.HangFor(hangingDuration)
+			require.Nil(t, memory.Update(context.Background(), &ent))
+			finishTime := time.Now()
+
+			assertion(t, hangingDuration, finishTime.Sub(initialTime))
+		})
+
+		s.Then(`DeleteByID`+desc, func(t *testcase.T) {
+			memory := subject(t)
+			sub := subscriber(t)
+
+			ent := Entity{Data: `42`}
+			require.Nil(t, memory.Create(context.Background(), &ent))
+
+			initialTime := time.Now()
+			sub.HangFor(hangingDuration)
+			require.Nil(t, memory.DeleteByID(context.Background(), Entity{}, ent.ID))
+			finishTime := time.Now()
+
+			assertion(t, hangingDuration, finishTime.Sub(initialTime))
+		})
+
+		s.Then(`DeleteAll`+desc, func(t *testcase.T) {
+			memory := subject(t)
+			sub := subscriber(t)
+
+			initialTime := time.Now()
+			sub.HangFor(hangingDuration)
+			require.Nil(t, memory.DeleteAll(context.Background(), Entity{}))
+			finishTime := time.Now()
+
+			assertion(t, hangingDuration, finishTime.Sub(initialTime))
+		})
+	}
+
+	s.When(`is enabled`, func(s *testcase.Spec) {
+		s.LetValue(`AsyncSubscriptionHandling`, true)
+
+		thenCreateUpdateDeleteWill(s, false)
+	})
+
+	s.When(`is disabled`, func(s *testcase.Spec) {
+		s.LetValue(`AsyncSubscriptionHandling`, false)
+
+		thenCreateUpdateDeleteWill(s, true)
+	})
 }
 
-func (l *fakeLogger) Log(args ...interface{}) {
-	l.logs = append(l.logs, args...)
+func NewHangingSubscriber() *HangingSubscriber {
+	return &HangingSubscriber{}
+}
+
+type HangingSubscriber struct {
+	m sync.RWMutex
+}
+
+func (h *HangingSubscriber) HangFor(d time.Duration) {
+	h.m.Lock()
+	go func() {
+		defer h.m.Unlock()
+		<-time.After(d)
+	}()
+}
+
+func (h *HangingSubscriber) Handle(ctx context.Context, ent interface{}) error {
+	h.m.RLock()
+	defer h.m.RUnlock()
+	return nil
+}
+
+func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
+	h.m.RLock()
+	defer h.m.RUnlock()
+	return nil
 }
 
 func TestMemory_LogHistory(t *testing.T) {
@@ -258,6 +407,14 @@ func TestMemory_LogHistory(t *testing.T) {
 
 		require.Nil(t, s.RollbackTx(ctx))
 	})
+}
+
+type fakeLogger struct {
+	logs []interface{}
+}
+
+func (l *fakeLogger) Log(args ...interface{}) {
+	l.logs = append(l.logs, args...)
 }
 
 func TestMemory_LookupTxEvent(t *testing.T) {
