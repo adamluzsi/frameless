@@ -218,7 +218,7 @@ func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 
 	var subject = func(t *testcase.T) *storages.Memory {
 		s := newMemory(t)
-		s.Options.EnableAsyncSubscriptionHandling = t.I(`EnableAsyncSubscriptionHandling`).(bool)
+		s.Options.DisableAsyncSubscriptionHandling = t.I(`DisableAsyncSubscriptionHandling`).(bool)
 		return s
 	}
 
@@ -310,13 +310,13 @@ func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 	}
 
 	s.When(`is enabled`, func(s *testcase.Spec) {
-		s.LetValue(`EnableAsyncSubscriptionHandling`, true)
+		s.LetValue(`DisableAsyncSubscriptionHandling`, false)
 
 		thenCreateUpdateDeleteWill(s, false)
 	})
 
 	s.When(`is disabled`, func(s *testcase.Spec) {
-		s.LetValue(`EnableAsyncSubscriptionHandling`, false)
+		s.LetValue(`DisableAsyncSubscriptionHandling`, true)
 
 		thenCreateUpdateDeleteWill(s, true)
 	})

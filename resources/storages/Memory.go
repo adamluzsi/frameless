@@ -23,8 +23,8 @@ func NewMemory() *Memory {
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Memory struct {
 	Options struct {
-		DisableEventLogging             bool
-		EnableAsyncSubscriptionHandling bool
+		DisableEventLogging              bool
+		DisableAsyncSubscriptionHandling bool
 	}
 
 	mutex         sync.RWMutex
@@ -406,7 +406,7 @@ func (s *subscription) publish(ctx context.Context, entity interface{}) {
 	default:
 	}
 
-	if !s.storage.Options.EnableAsyncSubscriptionHandling {
+	if s.storage.Options.DisableAsyncSubscriptionHandling {
 		s.handle(entity)
 		return
 	}
