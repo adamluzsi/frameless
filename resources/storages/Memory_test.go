@@ -88,19 +88,6 @@ func TestMemory(t *testing.T) {
 	for _, spec := range getMemorySpecs(storages.NewMemory()) {
 		spec.Test(t)
 	}
-
-	t.Run(`#DisableEventLogging`, func(t *testing.T) {
-		subject := storages.NewMemory()
-		subject.DisableEventLogging()
-
-		for _, spec := range getMemorySpecs(subject) {
-			spec.Test(t)
-		}
-
-		require.Empty(t, subject.Events(),
-			`after all the specs, the memory storage was expected to be empty.`+
-				` If the storage has values, it means something is not cleaning up properly in the specs.`)
-	})
 }
 
 func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
@@ -191,6 +178,18 @@ func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 }
 
+func TestMemory_Options_EventLogging_disable(t *testing.T) {
+	subject := storages.NewMemory()
+	subject.Options.DisableEventLogging = true
+
+	for _, spec := range getMemorySpecs(subject) {
+		spec.Test(t)
+	}
+
+	require.Empty(t, subject.Events(),
+		`after all the specs, the memory storage was expected to be empty.`+
+			` If the storage has values, it means something is not cleaning up properly in the specs.`)
+}
 func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -219,7 +218,7 @@ func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 
 	var subject = func(t *testcase.T) *storages.Memory {
 		s := newMemory(t)
-		s.Options.AsyncSubscriptionHandling = t.I(`AsyncSubscriptionHandling`).(bool)
+		s.Options.EnableAsyncSubscriptionHandling = t.I(`EnableAsyncSubscriptionHandling`).(bool)
 		return s
 	}
 
@@ -302,16 +301,22 @@ func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
 		})
+
+		s.Test(`E2E`, func(t *testcase.T) {
+			for _, spec := range getMemorySpecs(subject(t)) {
+				spec.Test(t.T)
+			}
+		})
 	}
 
 	s.When(`is enabled`, func(s *testcase.Spec) {
-		s.LetValue(`AsyncSubscriptionHandling`, true)
+		s.LetValue(`EnableAsyncSubscriptionHandling`, true)
 
 		thenCreateUpdateDeleteWill(s, false)
 	})
 
 	s.When(`is disabled`, func(s *testcase.Spec) {
-		s.LetValue(`AsyncSubscriptionHandling`, false)
+		s.LetValue(`EnableAsyncSubscriptionHandling`, false)
 
 		thenCreateUpdateDeleteWill(s, true)
 	})
@@ -455,7 +460,7 @@ func BenchmarkMemory(b *testing.B) {
 
 	b.Run(`without event log`, func(b *testing.B) {
 		subject := storages.NewMemory()
-		subject.DisableEventLogging()
+		subject.Options.DisableEventLogging = true
 		for _, spec := range getMemorySpecs(subject) {
 			spec.Benchmark(b)
 		}

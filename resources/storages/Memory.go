@@ -23,13 +23,13 @@ func NewMemory() *Memory {
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Memory struct {
 	Options struct {
-		AsyncSubscriptionHandling bool
+		DisableEventLogging             bool
+		EnableAsyncSubscriptionHandling bool
 	}
 
-	mutex               sync.RWMutex
-	events              []MemoryEvent
-	subscriptions       subscriptions
-	disableEventLogging bool
+	mutex         sync.RWMutex
+	events        []MemoryEvent
+	subscriptions subscriptions
 
 	// txNamespace allow multiple memory storage to manage transactions on the same context
 	txNamespace     string
@@ -288,7 +288,7 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 		}
 	}
 
-	if isFinalCommit && memory.disableEventLogging {
+	if isFinalCommit && memory.Options.DisableEventLogging {
 		memory.concentrateEvents()
 	}
 
@@ -343,10 +343,6 @@ func (s *Memory) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error)
 }
 
 /**********************************************************************************************************************/
-
-func (s *Memory) DisableEventLogging() {
-	s.disableEventLogging = true
-}
 
 func (s *Memory) concentrateEvents() {
 	s.mutex.Lock()
@@ -410,7 +406,7 @@ func (s *subscription) publish(ctx context.Context, entity interface{}) {
 	default:
 	}
 
-	if !s.storage.Options.AsyncSubscriptionHandling {
+	if !s.storage.Options.EnableAsyncSubscriptionHandling {
 		s.handle(entity)
 		return
 	}
