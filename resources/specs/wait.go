@@ -2,7 +2,6 @@ package specs
 
 import (
 	"runtime"
-	"sync/atomic"
 	"time"
 )
 
@@ -26,17 +25,10 @@ type Waiter struct {
 }
 
 func (w Waiter) WaitForLen(length func() int, expectedMinimumLen int) {
-	timer := time.NewTimer(w.WaitTimeout)
-	defer timer.Stop()
-	var timeIsUp int32
-	go func() {
-		<-timer.C
-		atomic.AddInt32(&timeIsUp, 1)
-	}()
-	for timeIsUp == 0 {
-		if expectedMinimumLen <= length() {
-			return
-		}
+	initialTime := time.Now()
+	finishTime := initialTime.Add(w.WaitTimeout)
+	expectationMet := func() bool { return expectedMinimumLen <= length() }
+	for time.Now().Before(finishTime) && !expectationMet() {
 		w.Wait()
 	}
 }
