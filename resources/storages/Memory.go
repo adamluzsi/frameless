@@ -464,6 +464,9 @@ func (s *subscription) isClosed() bool {
 }
 
 func (s *Memory) getSubscriptions(entityTypeName string, name string) []*subscription {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
 	if s.subscriptions == nil {
 		s.subscriptions = make(subscriptions)
 	}
