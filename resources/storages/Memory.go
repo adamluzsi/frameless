@@ -536,7 +536,7 @@ func (s *Memory) LogContextHistory(l logger, ctx context.Context) {
 	s.LogHistory(l)
 
 	tx, ok := s.LookupTx(ctx)
-	if !ok {
+	if !ok || tx.done {
 		return
 	}
 

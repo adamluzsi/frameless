@@ -412,6 +412,27 @@ func TestMemory_LogHistory(t *testing.T) {
 
 		require.Nil(t, s.RollbackTx(ctx))
 	})
+
+	t.Run(`storage transaction history from context when context already done`, func(t *testing.T) {
+		s := storages.NewMemory()
+
+		ctx, err := s.BeginTx(context.Background())
+		require.Nil(t, err)
+
+		e := Entity{Data: `42`}
+		require.Nil(t, s.Create(ctx, &e))
+		require.Nil(t, s.DeleteByID(ctx, Entity{}, e.ID))
+		require.Nil(t, s.DeleteAll(ctx, Entity{}))
+
+		require.Nil(t, s.CommitTx(ctx))
+
+		l := &fakeLogger{}
+		s.LogContextHistory(l, ctx)
+		require.Len(t, l.logs, 3)
+		require.Contains(t, l.logs[0], `Create`)
+		require.Contains(t, l.logs[1], `DeleteByID`)
+		require.Contains(t, l.logs[2], `DeleteAll`)
+	})
 }
 
 type fakeLogger struct {
