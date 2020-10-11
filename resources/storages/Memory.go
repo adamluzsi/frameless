@@ -1,9 +1,11 @@
-// TODO: make subscription publishing related to tx commit instead to be done on the fly
+// TODO: make subscription publishing related to tx commit instead to be commit on the fly
 package storages
 
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sync"
@@ -23,8 +25,9 @@ func NewMemory() *Memory {
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Memory struct {
 	Options struct {
-		DisableEventLogging              bool
-		DisableAsyncSubscriptionHandling bool
+		DisableEventLogging                  bool
+		DisableAsyncSubscriptionHandling     bool
+		DisableRelativePathResolvingForTrace bool
 	}
 
 	mutex         sync.RWMutex
@@ -37,6 +40,9 @@ type Memory struct {
 }
 
 const (
+	BeginTxEvent    = `BeginTx`
+	CommitTxEvent   = `CommitTx`
+	RollbackTxEvent = `RollbackTx`
 	CreateEvent     = `Create`
 	UpdateEvent     = `Update`
 	DeleteAllEvent  = `DeleteAll`
@@ -49,14 +55,18 @@ type MemoryEvent struct {
 	Event          string
 	ID             string
 	Entity         interface{}
-	Trace          []string
+	Trace          []TraceElem
 }
 
 type MemoryTransaction struct {
 	mutex  sync.RWMutex
-	done   bool
 	events []MemoryEvent
 	parent MemoryEventManager
+
+	done struct {
+		commit   bool
+		rollback bool
+	}
 }
 
 type MemoryEventViewer interface {
@@ -90,7 +100,7 @@ func (s *Memory) CreateEventForEntityWithID(ctx context.Context, ptr interface{}
 	return s.createEventFor(ctx, ptr, s.getTrace())
 }
 
-func (s *Memory) createEventFor(ctx context.Context, ptr interface{}, trace []string) error {
+func (s *Memory) createEventFor(ctx context.Context, ptr interface{}, trace []TraceElem) error {
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
 		id, _ := resources.LookupID(ptr)
 		tx.AddEvent(MemoryEvent{
@@ -243,8 +253,8 @@ func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 	var em MemoryEventManager
 
 	tx, ok := s.LookupTx(ctx)
-	if ok && tx.done {
-		return ctx, fmt.Errorf(`current context transaction already done`)
+	if ok && tx.isDone() {
+		return ctx, fmt.Errorf(`current context transaction already commit`)
 	}
 
 	if ok {
@@ -253,15 +263,23 @@ func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 		em = s
 	}
 
+	events := make([]MemoryEvent, 0)
+
+	if s.isTxEventLogged(ctx) {
+		events = append(events, MemoryEvent{
+			Event: BeginTxEvent,
+			Trace: s.getTrace(),
+		})
+	}
+
 	return context.WithValue(ctx, s.getTxCtxKey(), &MemoryTransaction{
-		done:   false,
-		events: []MemoryEvent{},
+		events: events,
 		parent: em,
 	}), nil
 }
 
 const (
-	errTxDone consterror.Error = `transaction has already been committed or rolled back`
+	errTxDone consterror.Error = `transaction has already been commit or rolled back`
 	errNoTx   consterror.Error = `no transaction found in the given context`
 )
 
@@ -270,11 +288,17 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 	if !ok {
 		return errNoTx
 	}
-	if tx.done {
+	if tx.isDone() {
 		return errTxDone
 	}
 
-	subCTX := context.Background()
+	if s.isTxEventLogged(ctx) {
+		tx.AddEvent(MemoryEvent{
+			Event:  CommitTxEvent,
+			Entity: nil,
+			Trace:  s.getTrace(),
+		})
+	}
 
 	memory, isFinalCommit := tx.parent.(*Memory)
 
@@ -284,7 +308,7 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 
 		// should publish events only when they hit the main storage not a parent transaction
 		if isFinalCommit {
-			s.notifySubscriptions(subCTX, event)
+			s.notifySubscriptions(event)
 		}
 	}
 
@@ -292,11 +316,12 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 		memory.concentrateEvents()
 	}
 
-	tx.done = true
+	tx.done.commit = true
 	return nil
 }
 
-func (s *Memory) notifySubscriptions(ctx context.Context, event MemoryEvent) {
+func (s *Memory) notifySubscriptions(event MemoryEvent) {
+	ctx := context.Background()
 	for _, sub := range s.getSubscriptions(event.EntityTypeName, event.Event) {
 		// TODO: clarify what to do when error is encountered in a subscription
 		// 	This call in theory async in most implementation.
@@ -318,16 +343,43 @@ func (s *Memory) RollbackTx(ctx context.Context) error {
 	if !ok {
 		return errNoTx
 	}
-	if tx.done {
+	if tx.isDone() {
 		return errTxDone
 	}
 
-	tx.done = true
-	tx.events = []MemoryEvent{}
+	if s.isTxEventLogged(ctx) {
+		tx.AddEvent(MemoryEvent{
+			Event:  RollbackTxEvent,
+			Entity: nil,
+			Trace:  s.getTrace(),
+		})
+	}
+
+	tx.done.rollback = true
 	return nil
 }
 
+type (
+	noTxEventLogCtxKey   struct{}
+	noTxEventLogCtxValue struct{}
+)
+
+func (s *Memory) doNotLogTxEvent(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noTxEventLogCtxKey{}, noTxEventLogCtxValue{})
+}
+
+func (s *Memory) isTxEventLogged(ctx context.Context) bool {
+	if ctx == nil {
+		return true
+	}
+
+	_, ok := ctx.Value(noTxEventLogCtxKey{}).(noTxEventLogCtxValue)
+	return !ok
+}
+
 func (s *Memory) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error) error {
+	ctx = s.doNotLogTxEvent(ctx)
+
 	ctx, err := s.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -520,11 +572,22 @@ type logger interface {
 
 func (s *Memory) logEventHistory(l logger, events []MemoryEvent) {
 	for _, e := range events {
-		var trace string
+		var formattedTracePath string
 		if 0 < len(e.Trace) {
-			trace = e.Trace[0]
+			traceElem := e.Trace[0]
+			formattedTracePath = fmt.Sprintf(`%s:%d`, s.fmtTracePath(traceElem.Path), traceElem.Line)
 		}
-		l.Log(fmt.Sprintf(`%s <%#v> @ %s`, e.Event, e.Entity, trace))
+
+		switch e.Event {
+		case BeginTxEvent, CommitTxEvent, RollbackTxEvent:
+			l.Log(fmt.Sprintf(`%s @ %s`, e.Event, formattedTracePath))
+		case DeleteByIDEvent:
+			l.Log(fmt.Sprintf(`%s <%T#%s> @ %s`, e.Event, e.T, e.ID, formattedTracePath))
+		case DeleteAllEvent:
+			l.Log(fmt.Sprintf(`%s <%T> @ %s`, e.Event, e.T, formattedTracePath))
+		default:
+			l.Log(fmt.Sprintf(`%s <%#v> @ %s`, e.Event, e.Entity, formattedTracePath))
+		}
 	}
 }
 
@@ -536,21 +599,39 @@ func (s *Memory) LogContextHistory(l logger, ctx context.Context) {
 	s.LogHistory(l)
 
 	tx, ok := s.LookupTx(ctx)
-	if !ok || tx.done {
+	if !ok || tx.done.commit {
 		return
 	}
 
 	s.logEventHistory(l, tx.events)
 }
 
-func (s *Memory) getTrace() []string {
-	const maxTraceLength = 5
-	var trace []string
+var wd, wdErr = os.Getwd()
 
-	for i := 0; i < 100; i++ {
+func (s *Memory) fmtTracePath(file string) string {
+	if s.Options.DisableRelativePathResolvingForTrace {
+		return file
+	}
+	if wdErr != nil {
+		return file
+	}
+	if rel, err := filepath.Rel(wd, file); err == nil {
+		return rel
+	}
+	return file
+}
+
+func (s *Memory) getTrace() []TraceElem {
+	const maxTraceLength = 5
+	var trace []TraceElem
+
+	for i := 0; i < 128; i++ {
 		_, file, line, ok := runtime.Caller(2 + i)
 		if ok {
-			trace = append(trace, fmt.Sprintf(`%s:%d`, file, line))
+			trace = append(trace, TraceElem{
+				Path: file,
+				Line: line,
+			})
 		}
 
 		if maxTraceLength <= len(trace) {
@@ -633,6 +714,10 @@ type ctxKeyForMemoryTransaction struct {
 	ID string
 }
 
+func (tx MemoryTransaction) isDone() bool {
+	return tx.done.commit || tx.done.rollback
+}
+
 func (s *Memory) LookupTx(ctx context.Context) (*MemoryTransaction, bool) {
 	tx, ok := ctx.Value(s.getTxCtxKey()).(*MemoryTransaction)
 	return tx, ok
@@ -644,4 +729,9 @@ func entityTypeNameFor(T interface{}) string {
 
 func (s *Memory) EntityTypeNameFor(T interface{}) string {
 	return entityTypeNameFor(T)
+}
+
+type TraceElem struct {
+	Path string
+	Line int
 }

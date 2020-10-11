@@ -2,7 +2,12 @@ package storages_test
 
 import (
 	"context"
+	"fmt"
 	"github.com/adamluzsi/testcase"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -350,97 +355,317 @@ func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
 	return nil
 }
 
-func TestMemory_LogHistory(t *testing.T) {
-	t.Run(`asking storage history directly`, func(t *testing.T) {
-		s := storages.NewMemory()
+func TestMemory_historyLogging(t *testing.T) {
+	s := testcase.NewSpec(t)
 
-		e := Entity{Data: `42`}
-		require.Nil(t, s.Create(context.Background(), &e))
-		require.Nil(t, s.DeleteByID(context.Background(), Entity{}, e.ID))
-		require.Nil(t, s.DeleteAll(context.Background(), Entity{}))
-
-		l := &fakeLogger{}
-		s.LogHistory(l)
-		require.Len(t, l.logs, 3)
-		require.Contains(t, l.logs[0], `Create`)
-		require.Contains(t, l.logs[1], `DeleteByID`)
-		require.Contains(t, l.logs[2], `DeleteAll`)
+	getStorage := func(t *testcase.T) *storages.Memory { return t.I(`storage`).(*storages.Memory) }
+	s.Let(`storage`, func(t *testcase.T) interface{} {
+		return storages.NewMemory()
 	})
 
-	t.Run(`storage history when used with tx`, func(t *testing.T) {
-		s := storages.NewMemory()
+	logContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
+		requireLogContains(tb, logMessages, msgParts, true)
+	}
 
-		ctx, err := s.BeginTx(context.Background())
-		require.Nil(t, err)
+	logNotContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
+		requireLogContains(tb, logMessages, msgParts, false)
+	}
 
-		e := Entity{Data: `42`}
-		require.Nil(t, s.Create(ctx, &e))
-		require.Nil(t, s.DeleteByID(ctx, Entity{}, e.ID))
-		require.Nil(t, s.DeleteAll(ctx, Entity{}))
+	logCount := func(tb testing.TB, logMessages []string, expected string) int {
+		var total int
+		for _, logMessage := range logMessages {
+			total += strings.Count(logMessage, expected)
+		}
+		return total
+	}
 
-		l := &fakeLogger{}
-		s.LogHistory(l)
-		require.Len(t, l.logs, 0)
+	const (
+		createEventLogName     = `Create`
+		updateEventLogName     = `Update`
+		deleteByIDEventLogName = `DeleteByID`
+		deleteAllLogEventName  = `DeleteAll`
+		beginTxLogEventName    = `BeginTx`
+		commitTxLogEventName   = `CommitTx`
+		rollbackTxLogEventName = `RollbackTx`
+	)
 
-		require.Nil(t, s.CommitTx(ctx))
-
-		l = &fakeLogger{}
-		s.LogHistory(l)
-		require.Len(t, l.logs, 3)
-		require.Contains(t, l.logs[0], `Create`)
-		require.Contains(t, l.logs[1], `DeleteByID`)
-		require.Contains(t, l.logs[2], `DeleteAll`)
-	})
-
-	t.Run(`storage transaction history from context`, func(t *testing.T) {
-		s := storages.NewMemory()
-
-		ctx, err := s.BeginTx(context.Background())
-		require.Nil(t, err)
-
+	triggerMutatingEvents := func(t *testcase.T, ctx context.Context) {
+		s := getStorage(t)
 		e := Entity{Data: `42`}
 		require.Nil(t, s.Create(ctx, &e))
+		e.Data = `foo/baz/bar`
+		require.Nil(t, s.Update(ctx, &e))
 		require.Nil(t, s.DeleteByID(ctx, Entity{}, e.ID))
 		require.Nil(t, s.DeleteAll(ctx, Entity{}))
+	}
 
-		l := &fakeLogger{}
-		s.LogContextHistory(l, ctx)
-		require.Len(t, l.logs, 3)
-		require.Contains(t, l.logs[0], `Create`)
-		require.Contains(t, l.logs[1], `DeleteByID`)
-		require.Contains(t, l.logs[2], `DeleteAll`)
+	thenMutatingEventsLogged := func(s *testcase.Spec, subject func(t *testcase.T) []string) {
+		s.Then(`it will log out which mutate the state of the storage`, func(t *testcase.T) {
+			logContains(t, subject(t),
+				createEventLogName,
+				updateEventLogName,
+				deleteByIDEventLogName,
+				deleteAllLogEventName,
+			)
+		})
+	}
 
-		require.Nil(t, s.RollbackTx(ctx))
+	s.Describe(`#LogHistory`, func(s *testcase.Spec) {
+		var subject = func(t *testcase.T) []string {
+			l := &fakeLogger{}
+			getStorage(t).LogHistory(l)
+			return l.logs
+		}
+
+		s.After(func(t *testcase.T) {
+			if t.Failed() {
+				getStorage(t).LogHistory(t)
+			}
+		})
+
+		s.When(`nothing commit with the storage`, func(s *testcase.Spec) {
+			s.Then(`it won't log anything`, func(t *testcase.T) {
+				require.Empty(t, subject(t))
+			})
+		})
+
+		s.When(`storage used without tx`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				triggerMutatingEvents(t, context.Background())
+			})
+
+			thenMutatingEventsLogged(s, subject)
+
+			s.Then(`there should be no commit related notes`, func(t *testcase.T) {
+				logNotContains(t, subject(t), beginTxLogEventName, commitTxLogEventName)
+			})
+		})
+
+		s.When(`storage used through a commit tx`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				s := getStorage(t)
+				ctx, err := s.BeginTx(context.Background())
+				require.Nil(t, err)
+				triggerMutatingEvents(t, ctx)
+				require.Nil(t, s.CommitTx(ctx))
+			})
+
+			thenMutatingEventsLogged(s, subject)
+
+			s.Then(`it will contains commit mentions in the log message`, func(t *testcase.T) {
+				logContains(t, subject(t),
+					beginTxLogEventName,
+					commitTxLogEventName,
+				)
+			})
+		})
 	})
 
-	t.Run(`storage transaction history from context when context already done`, func(t *testing.T) {
-		s := storages.NewMemory()
+	s.Describe(`#LogContextHistory`, func(s *testcase.Spec) {
+		getCTX := func(t *testcase.T) context.Context { return t.I(`ctx`).(context.Context) }
+		s.Let(`ctx`, func(t *testcase.T) interface{} {
+			return context.Background()
+		})
+		var subject = func(t *testcase.T) []string {
+			l := &fakeLogger{}
+			getStorage(t).LogContextHistory(l, getCTX(t))
+			return l.logs
+		}
 
-		ctx, err := s.BeginTx(context.Background())
-		require.Nil(t, err)
+		s.After(func(t *testcase.T) {
+			if t.Failed() {
+				getStorage(t).LogContextHistory(t, getCTX(t))
+			}
+		})
 
-		e := Entity{Data: `42`}
-		require.Nil(t, s.Create(ctx, &e))
-		require.Nil(t, s.DeleteByID(ctx, Entity{}, e.ID))
-		require.Nil(t, s.DeleteAll(ctx, Entity{}))
+		s.When(`nothing commit with the storage`, func(s *testcase.Spec) {
+			s.Then(`it won't log anything`, func(t *testcase.T) {
+				require.Empty(t, subject(t))
+			})
+		})
 
-		require.Nil(t, s.CommitTx(ctx))
+		s.When(`storage used without tx`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				triggerMutatingEvents(t, getCTX(t))
+			})
 
-		l := &fakeLogger{}
-		s.LogContextHistory(l, ctx)
-		require.Len(t, l.logs, 3)
-		require.Contains(t, l.logs[0], `Create`)
-		require.Contains(t, l.logs[1], `DeleteByID`)
-		require.Contains(t, l.logs[2], `DeleteAll`)
+			thenMutatingEventsLogged(s, subject)
+
+			s.Then(`there should be no commit related notes`, func(t *testcase.T) {
+				logNotContains(t, subject(t), beginTxLogEventName, commitTxLogEventName)
+			})
+		})
+
+		s.When(`we are in transaction`, func(s *testcase.Spec) {
+			s.Let(`ctx`, func(t *testcase.T) interface{} {
+				s := getStorage(t)
+				ctx, err := s.BeginTx(context.Background())
+				require.Nil(t, err)
+				return ctx
+			})
+
+			s.And(`events triggered that affects the storage state`, func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					triggerMutatingEvents(t, getCTX(t))
+				})
+
+				thenMutatingEventsLogged(s, subject)
+
+				s.Then(`begin tx logged`, func(t *testcase.T) {
+					logContains(t, subject(t), beginTxLogEventName)
+				})
+
+				s.Then(`no commit yet`, func(t *testcase.T) {
+					logNotContains(t, subject(t), commitTxLogEventName)
+				})
+
+				s.And(`after commit`, func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						require.Nil(t, getStorage(t).CommitTx(getCTX(t)))
+					})
+
+					thenMutatingEventsLogged(s, subject)
+
+					s.Then(`begin has a corresponding commit`, func(t *testcase.T) {
+						logContains(t, subject(t), beginTxLogEventName, commitTxLogEventName)
+					})
+
+					s.Then(`there is no duplicate events logged`, func(t *testcase.T) {
+						logs := subject(t)
+						require.Equal(t, 1, logCount(t, logs, beginTxLogEventName))
+						require.Equal(t, 1, logCount(t, logs, commitTxLogEventName))
+					})
+				})
+
+				s.And(`after rollback`, func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						require.Nil(t, getStorage(t).RollbackTx(getCTX(t)))
+					})
+
+					thenMutatingEventsLogged(s, subject)
+
+					s.Then(`it will have begin and rollback`, func(t *testcase.T) {
+						logContains(t, subject(t), beginTxLogEventName, rollbackTxLogEventName)
+					})
+
+					s.Then(`there is no duplicate events logged`, func(t *testcase.T) {
+						logs := subject(t)
+						require.Equal(t, 1, logCount(t, logs, beginTxLogEventName))
+					})
+				})
+			})
+
+			s.Then(`begin tx logged`, func(t *testcase.T) {
+				logContains(t, subject(t), beginTxLogEventName)
+			})
+
+			s.Then(`no commit yet`, func(t *testcase.T) {
+				logNotContains(t, subject(t), commitTxLogEventName)
+			})
+		})
 	})
+
+	s.Describe(`#DisableRelativePathResolvingForTrace`, func(s *testcase.Spec) {
+		var subject = func(t *testcase.T) []string {
+			l := &fakeLogger{}
+			getStorage(t).LogHistory(l)
+			t.Log(l.logs)
+			return l.logs
+		}
+
+		s.Before(func(t *testcase.T) {
+			t.Log(`given we triggered an event that should have trace`)
+			getStorage(t).Create(context.Background(), &Entity{Data: `example data`})
+
+			_, filePath, _, ok := runtime.Caller(0)
+			require.True(t, ok)
+			t.Let(`trace-file-base`, filepath.Base(filePath))
+			t.Let(`trace-file-abs`, filePath)
+		})
+
+		s.Let(`wd`, func(t *testcase.T) interface{} {
+			wd, err := os.Getwd()
+			if err != nil {
+				t.Skip(`wd can't be resolved on this platform`)
+			}
+			return wd
+		})
+
+		s.When(`by default relative path resolving is expected`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				getStorage(t).Options.DisableRelativePathResolvingForTrace = false
+			})
+
+			s.Then(`the trace paths should be relative`, func(t *testcase.T) {
+				logNotContains(t, subject(t), t.I(`wd`).(string))
+			})
+		})
+
+		s.When(`relative path resolving is disabled`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				getStorage(t).Options.DisableRelativePathResolvingForTrace = true
+			})
+
+			s.Then(`the trace paths should be relative`, func(t *testcase.T) {
+				logContains(t, subject(t), t.I(`wd`).(string))
+			})
+		})
+	})
+}
+
+func requireLogContains(tb testing.TB, logMessages []string, msgParts []string, shouldContain bool) {
+	var testingLogs []func()
+	defer func() {
+		if tb.Failed() {
+			for _, log := range testingLogs {
+				log()
+			}
+		}
+	}()
+	testLog := func(args ...interface{}) {
+		testingLogs = append(testingLogs, func() {
+			tb.Log(args...)
+		})
+	}
+
+	var logMessagesIndex int
+	for _, msgPart := range msgParts {
+		var matched bool
+	matching:
+		for !matched {
+			if len(logMessages) <= logMessagesIndex {
+				break matching
+			}
+
+			if strings.Contains(logMessages[logMessagesIndex], msgPart) {
+				matched = true
+				break matching
+			}
+
+			logMessagesIndex++
+		}
+
+		if (shouldContain && matched) || (!shouldContain && !matched) {
+			testLog(fmt.Sprintf(`%s matched`, msgPart))
+			continue
+		}
+
+		var format = `message part was expected to not found but logs contained: %s`
+		if shouldContain {
+			format = `message part was expected but not found: %s`
+		}
+		tb.Fatal(fmt.Sprintf(format, msgPart))
+	}
 }
 
 type fakeLogger struct {
-	logs []interface{}
+	logs []string
 }
 
 func (l *fakeLogger) Log(args ...interface{}) {
-	l.logs = append(l.logs, args...)
+	for _, arg := range args {
+		l.logs = append(l.logs, fmt.Sprint(arg))
+	}
 }
 
 func TestMemory_LookupTxEvent(t *testing.T) {
