@@ -82,7 +82,9 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			id, _ := resources.LookupID(t.I(entityKey))
 			require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.EntityType, id))
-			WaitForLen(subscriber(t).EventsLen, 1)
+			WaitWhile(func() bool {
+				return subscriber(t).EventsLen() < 1
+			})
 		})
 
 		s.Then(`subscriber receive the delete event where ID can be located`, func(t *testcase.T) {
@@ -143,8 +145,12 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 					id, _ := resources.LookupID(entityPtr)
 					t.Let(furtherEventKey, toBaseValue(entityPtr))
 					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.EntityType, id))
-					WaitForLen(subscriber(t).EventsLen, 2)
-					WaitForLen(getSubscriber(t, othSubscriberKey).EventsLen, 1)
+					WaitWhile(func() bool {
+						return subscriber(t).EventsLen() < 2
+					})
+					WaitWhile(func() bool {
+						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
+					})
 				})
 
 				s.Then(`original subscriber receives all events`, func(t *testcase.T) {
@@ -196,7 +202,9 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteByID(
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		WaitForLen(subscriber(t).EventsLen, 1)
+		WaitWhile(func() bool {
+			return subscriber(t).EventsLen() < 1
+		})
 		spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(entityKey))
 	})
 
@@ -241,7 +249,9 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.EntityType))
-			WaitForLen(subscriber(t).EventsLen, 1)
+			WaitWhile(func() bool {
+				return subscriber(t).EventsLen() < 1
+			})
 		})
 
 		s.Then(`subscriber receive the delete event where ID can be located`, func(t *testcase.T) {
@@ -275,8 +285,12 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 				const furtherEventKey = `further event`
 				s.Before(func(t *testcase.T) {
 					require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.EntityType))
-					WaitForLen(subscriber(t).EventsLen, 2)
-					WaitForLen(getSubscriber(t, othSubscriberKey).EventsLen, 1)
+					WaitWhile(func() bool {
+						return subscriber(t).EventsLen() < 2
+					})
+					WaitWhile(func() bool {
+						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
+					})
 				})
 
 				s.Then(`original subscriber receives all events`, func(t *testcase.T) {
@@ -324,7 +338,9 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteAll(s
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		WaitForLen(subscriber(t).EventsLen, 1)
+		WaitWhile(func() bool {
+			return subscriber(t).EventsLen() < 1
+		})
 		require.Contains(t, subscriber(t).Events(), spec.EntityType)
 	})
 

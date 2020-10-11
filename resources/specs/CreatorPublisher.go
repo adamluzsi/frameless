@@ -78,7 +78,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				}
 				t.Let(eventsKey, toBaseValues(entities))
 
-				WaitForLen(subscriber(t).EventsLen, len(entities))
+				WaitWhile(func() bool {
+					return subscriber(t).EventsLen() < len(entities)
+				})
 			})
 
 			s.Then(`subscriber receive those events`, func(t *testcase.T) {
@@ -100,7 +102,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
 						}
 
-						WaitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{})))
+						WaitWhile(func() bool {
+							return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))
+						})
 					})
 
 					s.Then(`handler don't receive the new events`, func(t *testcase.T) {
@@ -144,9 +148,13 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 						}
 						t.Let(furtherEventsKey, toBaseValues(entities))
 
-						WaitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{}))+len(t.I(furtherEventsKey).([]interface{})))
+						WaitWhile(func() bool {
+							return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))+len(t.I(furtherEventsKey).([]interface{}))
+						})
 
-						WaitForLen(othSubscriber(t).EventsLen, len(t.I(furtherEventsKey).([]interface{})))
+						WaitWhile(func() bool {
+							return othSubscriber(t).EventsLen() < len(t.I(furtherEventsKey).([]interface{}))
+						})
 					})
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
@@ -205,7 +213,9 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		WaitForLen(subscriber(t).EventsLen, len(t.I(eventsKey).([]interface{})))
+		WaitWhile(func() bool {
+			return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))
+		})
 		require.ElementsMatch(t, t.I(eventsKey), subscriber(t).Events())
 	})
 

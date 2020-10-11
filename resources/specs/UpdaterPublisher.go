@@ -82,7 +82,9 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				require.Nil(t, resources.SetID(updatedEntityPtr, id))
 				require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
 				t.Let(updatedEntityKey, toBaseValue(updatedEntityPtr))
-				WaitForLen(subscriber(t).EventsLen, 1)
+				WaitWhile(func() bool {
+					return subscriber(t).EventsLen() < 1
+				})
 			})
 
 			s.Then(`subscriber receive the event`, func(t *testcase.T) {
@@ -100,7 +102,9 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						updatedEntityPtr := spec.createEntity()
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
-						WaitForLen(subscriber(t).EventsLen, 1)
+						WaitWhile(func() bool {
+							return subscriber(t).EventsLen() < 1
+						})
 					})
 
 					s.Then(`subscriber no longer receive them`, func(t *testcase.T) {
@@ -140,8 +144,12 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
 						t.Let(furtherEventUpdateKey, toBaseValue(updatedEntityPtr))
-						WaitForLen(subscriber(t).EventsLen, 2)
-						WaitForLen(getSubscriber(t, othSubscriberKey).EventsLen, 1)
+						WaitWhile(func() bool {
+							return subscriber(t).EventsLen() < 2
+						})
+						WaitWhile(func() bool {
+							return getSubscriber(t, othSubscriberKey).EventsLen() < 1
+						})
 					})
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
@@ -199,7 +207,9 @@ func (spec UpdaterPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		WaitForLen(subscriber(t).EventsLen, 1)
+		WaitWhile(func() bool {
+			return subscriber(t).EventsLen() < 1
+		})
 		require.Contains(t, subscriber(t).Events(), t.I(updatedEntityKey))
 	})
 
