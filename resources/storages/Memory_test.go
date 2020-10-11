@@ -6,6 +6,7 @@ import (
 	"github.com/adamluzsi/testcase"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -575,12 +576,11 @@ func TestMemory_historyLogging(t *testing.T) {
 
 		s.Before(func(t *testcase.T) {
 			t.Log(`given we triggered an event that should have trace`)
-			getStorage(t).Create(context.Background(), &Entity{Data: `example data`})
+			getStorage(t).Create(context.Background(), &Entity{Data: `example data #1`})
 
 			_, filePath, _, ok := runtime.Caller(0)
 			require.True(t, ok)
 			t.Let(`trace-file-base`, filepath.Base(filePath))
-			t.Let(`trace-file-abs`, filePath)
 		})
 
 		s.Let(`wd`, func(t *testcase.T) interface{} {
@@ -594,6 +594,28 @@ func TestMemory_historyLogging(t *testing.T) {
 		s.When(`by default relative path resolving is expected`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				getStorage(t).Options.DisableRelativePathResolvingForTrace = false
+			})
+
+			s.And(`event triggered with from go core library (like with reflection)`, func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					rvfn := reflect.ValueOf(getStorage(t).Create)
+
+					rvfn.Call([]reflect.Value{
+						reflect.ValueOf(context.Background()),
+						reflect.ValueOf(&Entity{Data: `example data #2`}),
+					})
+				})
+
+				s.Then(`the trace should not contain the core lib`, func(t *testcase.T) {
+					logNotContains(t, subject(t), runtime.GOROOT())
+				})
+
+				s.Then(`trace points to the real origin path`, func(t *testcase.T) {
+					logs := subject(t)
+					require.Greater(t, len(logs), 1)
+					last := logs[len(logs)-1]
+					require.Contains(t, last, t.I(`trace-file-base`))
+				})
 			})
 
 			s.Then(`the trace paths should be relative`, func(t *testcase.T) {

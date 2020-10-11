@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/adamluzsi/frameless/consterror"
@@ -623,11 +624,13 @@ func (s *Memory) fmtTracePath(file string) string {
 
 func (s *Memory) getTrace() []TraceElem {
 	const maxTraceLength = 5
-	var trace []TraceElem
+	goroot := runtime.GOROOT()
 
+	var trace []TraceElem
 	for i := 0; i < 128; i++ {
 		_, file, line, ok := runtime.Caller(2 + i)
-		if ok {
+
+		if ok && !strings.Contains(file, goroot) {
 			trace = append(trace, TraceElem{
 				Path: file,
 				Line: line,
