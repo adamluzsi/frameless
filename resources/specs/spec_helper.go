@@ -55,7 +55,7 @@ func thenExternalIDFieldIsExpected(s *testcase.Spec, entityType interface{}) {
 	entityTypeName := reflects.FullyQualifiedName(entityType)
 	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
 	s.Test(desc, func(t *testcase.T) {
-		_, hasExtID := resources.LookupID(newEntityBasedOn(entityType))
+		_, hasExtID := resources.LookupID(newEntity(entityType))
 		require.True(t, hasExtID, ErrIDRequired.Error())
 	})
 }
@@ -90,7 +90,7 @@ func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs
 	require.Contains(tb, slice, contains, msgAndArgs...)
 }
 
-func newEntityBasedOn(T interface{}) interface{} {
+func newEntity(T interface{}) interface{} {
 	return reflect.New(reflect.TypeOf(T)).Interface()
 }
 

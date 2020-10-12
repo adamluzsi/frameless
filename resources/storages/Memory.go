@@ -80,24 +80,28 @@ type MemoryEventManager interface {
 }
 
 func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
-	if currentID, ok := resources.LookupID(ptr); !ok {
+	id, ok := resources.LookupID(ptr)
+	if !ok {
 		return fmt.Errorf("entity don't have ID field")
-	} else if currentID != "" {
-		return fmt.Errorf("entity already have an ID: %s", currentID)
 	}
 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	if err := resources.SetID(ptr, fixtures.Random.String()); err != nil {
-		return err
+	if id == `` {
+		if err := resources.SetID(ptr, fixtures.Random.String()); err != nil {
+			return err
+		}
 	}
 
-	return s.createEventFor(ctx, ptr, s.getTrace())
-}
+	id, _ = resources.LookupID(ptr)
+	if found, err := s.FindByID(ctx, reflect.New(reflects.BaseTypeOf(ptr)).Interface(), id); err != nil {
+		return err
+	} else if found {
+		return fmt.Errorf(`%T already exists with id: %s`, ptr, id)
+	}
 
-func (s *Memory) CreateEventForEntityWithID(ctx context.Context, ptr interface{}) error {
 	return s.createEventFor(ctx, ptr, s.getTrace())
 }
 

@@ -54,7 +54,7 @@ func (spec Creator) Test(t *testing.T) {
 
 				entity := getEntity(t)
 				id, _ := resources.LookupID(entity)
-				ptr := newEntityBasedOn(spec.T)
+				ptr := newEntity(spec.T)
 				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
 				require.Nil(t, err)
 				require.True(t, found)
@@ -75,14 +75,20 @@ func (spec Creator) Test(t *testing.T) {
 		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				id, _ := resources.LookupID(getEntity(t))
-				spec.Subject.DeleteByID(spec.Context(), spec.T, id)
+				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 			})
 
-			s.Then(`it will raise error because ext:ID field already points to an Resource entry`, func(t *testcase.T) {
-				t.Log(`this should not be misinterpreted as uniq value`)
-				t.Log(`it is only about that the ext:ID field is already pointing to something`)
-				require.Error(t, subject(t))
+			s.Then(`it will accept it`, func(t *testcase.T) {
+				require.Nil(t, subject(t))
+			})
+
+			s.Then(`persisted object can be found`, func(t *testcase.T) {
+				require.Nil(t, subject(t))
+				ptr := newEntity(spec.T)
+				id, _ := resources.LookupID(getEntity(t))
+				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
+				require.Nil(t, err)
+				require.True(t, found)
 			})
 		})
 
@@ -114,7 +120,7 @@ func (spec Creator) Test(t *testing.T) {
 				require.True(t, ok, "ID is not defined in the entity struct src definition")
 				require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
-				actual := newEntityBasedOn(spec.T)
+				actual := newEntity(spec.T)
 
 				ok, err = spec.Subject.FindByID(spec.Context(), actual, ID)
 				require.Nil(t, err)
@@ -123,12 +129,6 @@ func (spec Creator) Test(t *testing.T) {
 
 				require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, ID))
 
-			})
-
-			t.T.Run("when entity already have an ID", func(t *testing.T) {
-				newEntity := spec.FixtureFactory.Create(spec.T)
-				require.Nil(t, resources.SetID(newEntity, "Hello world!"))
-				require.Error(t, spec.Subject.Create(spec.Context(), newEntity))
 			})
 		})
 	})

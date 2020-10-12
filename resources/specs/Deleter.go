@@ -64,7 +64,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			e := newEntityBasedOn(spec.T)
+			e := newEntity(spec.T)
 			found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`).(string))
 			require.Nil(t, err)
 			require.False(t, found)
@@ -96,7 +96,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 				othID, ok := resources.LookupID(t.I(`oth-entity`))
 				require.True(t, ok, ErrIDRequired.Error())
 
-				e := newEntityBasedOn(spec.T)
+				e := newEntity(spec.T)
 				found, err := spec.Subject.FindByID(spec.Context(), e, othID)
 				require.Nil(t, err)
 				require.True(t, found)
@@ -231,7 +231,7 @@ func (spec Deleter) populateFor(t testing.TB, Type interface{}) string {
 }
 
 func (spec Deleter) isStored(t testing.TB, ID string, Type interface{}) bool {
-	entity := newEntityBasedOn(Type)
+	entity := newEntity(Type)
 	ok, err := spec.Subject.FindByID(spec.Context(), entity, ID)
 	require.Nil(t, err)
 	return ok

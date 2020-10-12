@@ -79,7 +79,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		})
 
 		s.Let(`ptr`, func(t *testcase.T) interface{} {
-			return newEntityBasedOn(spec.T)
+			return newEntity(spec.T)
 		})
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -166,7 +166,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		}
 
 		t.T.Run("when no value stored that the query request", func(t *testing.T) {
-			ptr := newEntityBasedOn(spec.T)
+			ptr := newEntity(spec.T)
 
 			ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
 
@@ -176,7 +176,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 
 		t.T.Run("values returned", func(t *testing.T) {
 			for _, ID := range ids {
-				e := newEntityBasedOn(spec.T)
+				e := newEntity(spec.T)
 				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 				require.Nil(t, err)
 				require.True(t, ok)
@@ -202,7 +202,7 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 	wrk:
 		for {
 			for _, id := range ids {
-				ptr := newEntityBasedOn(spec.T)
+				ptr := newEntity(spec.T)
 				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
 				require.Nil(b, err)
 				require.True(b, found)

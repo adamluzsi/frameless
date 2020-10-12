@@ -76,7 +76,7 @@ func (spec Updater) Test(t *testing.T) {
 					require.Nil(t, subject(t))
 
 					id := t.I(`entity.id`).(string)
-					actually := newEntityBasedOn(spec.T)
+					actually := newEntity(spec.T)
 					ok, err := spec.Subject.FindByID(spec.Context(), actually, id)
 					require.True(t, ok)
 					require.Nil(t, err)
