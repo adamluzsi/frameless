@@ -8,7 +8,7 @@ import (
 )
 
 type CRUD struct {
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 	Subject interface {
 		minimumRequirements
@@ -17,19 +17,19 @@ type CRUD struct {
 }
 
 func (spec CRUD) Test(t *testing.T) {
-	t.Run(reflects.SymbolicName(spec.EntityType), func(t *testing.T) {
-		Creator{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
-		Finder{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
-		Updater{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
-		Deleter{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
+	t.Run(reflects.SymbolicName(spec.T), func(t *testing.T) {
+		Creator{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
+		Finder{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
+		Updater{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
+		Deleter{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Test(t)
 	})
 }
 
 func (spec CRUD) Benchmark(b *testing.B) {
-	b.Run(reflects.SymbolicName(spec.EntityType), func(b *testing.B) {
-		Creator{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
-		Finder{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
-		Updater{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
-		Deleter{EntityType: spec.EntityType, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
+	b.Run(reflects.SymbolicName(spec.T), func(b *testing.B) {
+		Creator{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
+		Finder{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
+		Updater{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
+		Deleter{T: spec.T, Subject: spec.Subject, FixtureFactory: spec.FixtureFactory}.Benchmark(b)
 	})
 }

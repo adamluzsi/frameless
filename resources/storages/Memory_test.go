@@ -79,14 +79,14 @@ func TestStorage_smokeTest(t *testing.T) {
 
 func getMemorySpecs(subject *storages.Memory) []specs.Interface {
 	return []specs.Interface{
-		specs.Creator{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.Finder{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.Updater{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.Deleter{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.OnePhaseCommitProtocol{EntityType: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.CreatorPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.UpdaterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.DeleterPublisher{Subject: subject, EntityType: Entity{}, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Creator{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Finder{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Updater{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Deleter{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.OnePhaseCommitProtocol{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.CreatorPublisher{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.UpdaterPublisher{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.DeleterPublisher{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
 	}
 }
 

@@ -17,7 +17,7 @@ type UpdaterPublisher struct {
 		resources.Updater
 		resources.UpdaterPublisher
 	}
-	EntityType     interface{}
+	T              interface{}
 	FixtureFactory FixtureFactory
 }
 
@@ -36,7 +36,7 @@ func (spec UpdaterPublisher) Benchmark(b *testing.B) {
 func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (resources.Subscription, error) {
-			subscription, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.EntityType, subscriber(t))
+			subscription, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.T, subscriber(t))
 			if err == nil && subscription != nil {
 				t.Let(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -63,7 +63,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 			entityPtr := spec.createEntity()
 			require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
 			id, _ := resources.LookupID(entityPtr)
-			t.Defer(spec.Subject.DeleteByID, spec.context(), spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, spec.context(), spec.T, id)
 			t.Let(entityKey, entityPtr)
 
 			t.Log(`given a subscription is made`)
@@ -121,7 +121,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t)
 					t.Let(othSubscriberKey, othSubscriber)
-					sub, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.EntityType, othSubscriber)
+					sub, err := spec.Subject.SubscribeToUpdate(getContext(t), spec.T, othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, sub)
 					t.Defer(sub.Close)
@@ -225,7 +225,7 @@ func (spec UpdaterPublisher) context() context.Context {
 }
 
 func (spec UpdaterPublisher) createEntity() interface{} {
-	return spec.FixtureFactory.Create(spec.EntityType)
+	return spec.FixtureFactory.Create(spec.T)
 }
 
 func (spec UpdaterPublisher) createEntities() []interface{} {

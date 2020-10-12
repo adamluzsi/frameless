@@ -14,7 +14,7 @@ import (
 
 // Updater will request an update for a wrapped entity object in the Resource
 type Updater struct {
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 	Subject interface {
 		resources.Updater
@@ -26,10 +26,10 @@ func (spec Updater) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	})
 
-	thenExternalIDFieldIsExpected(s, spec.EntityType)
+	thenExternalIDFieldIsExpected(s, spec.T)
 
 	s.Describe(`Updater`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
@@ -46,7 +46,7 @@ func (spec Updater) Test(t *testing.T) {
 		s.When(`an entity already stored`, func(s *testcase.Spec) {
 
 			s.Let(`entity`, func(t *testcase.T) interface{} {
-				return spec.FixtureFactory.Create(spec.EntityType)
+				return spec.FixtureFactory.Create(spec.T)
 			})
 
 			s.Let(`entity.id`, func(t *testcase.T) interface{} {
@@ -60,13 +60,13 @@ func (spec Updater) Test(t *testing.T) {
 				require.Nil(t, spec.Subject.Create(spec.Context(), entity))
 				return func() {
 					id, _ := resources.LookupID(entity)
-					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id))
+					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, id))
 				}
 			})
 
 			s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 				s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
-					newEntity := spec.FixtureFactory.Create(spec.EntityType)
+					newEntity := spec.FixtureFactory.Create(spec.T)
 					id, _ := resources.LookupID(t.I(`entity`))
 					require.Nil(t, resources.SetID(newEntity, id))
 					return newEntity
@@ -76,7 +76,7 @@ func (spec Updater) Test(t *testing.T) {
 					require.Nil(t, subject(t))
 
 					id := t.I(`entity.id`).(string)
-					actually := newEntityBasedOn(spec.EntityType)
+					actually := newEntityBasedOn(spec.T)
 					ok, err := spec.Subject.FindByID(spec.Context(), actually, id)
 					require.True(t, ok)
 					require.Nil(t, err)
@@ -100,7 +100,7 @@ func (spec Updater) Test(t *testing.T) {
 
 		s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
 			s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
-				newEntity := spec.FixtureFactory.Create(spec.EntityType)
+				newEntity := spec.FixtureFactory.Create(spec.T)
 				require.Nil(t, resources.SetID(newEntity, fixtures.Random.String()))
 				return newEntity
 			})
@@ -114,11 +114,11 @@ func (spec Updater) Test(t *testing.T) {
 }
 
 func (spec Updater) Benchmark(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 	b.Run(`Updater`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.T)
 		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
-		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 
 		var executionTimes int
 		b.ResetTimer()

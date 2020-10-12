@@ -16,7 +16,7 @@ type CreatorPublisher struct {
 		minimumRequirements
 		resources.CreatorPublisher
 	}
-	EntityType     interface{}
+	T              interface{}
 	FixtureFactory FixtureFactory
 }
 
@@ -35,7 +35,7 @@ func (spec CreatorPublisher) Benchmark(b *testing.B) {
 func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (resources.Subscription, error) {
-			subscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.EntityType, subscriber(t))
+			subscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.T, subscriber(t))
 			if err == nil && subscription != nil {
 				t.Let(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -74,7 +74,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 					id, _ := resources.LookupID(entity)
 					// we use a new context here to enforce that the cleaning will be done outside of any context.
 					// It might fail but will ensure proper cleanup.
-					t.Defer(spec.Subject.DeleteByID, spec.context(), spec.EntityType, id)
+					t.Defer(spec.Subject.DeleteByID, spec.context(), spec.T, id)
 				}
 				t.Let(eventsKey, toBaseValues(entities))
 
@@ -99,7 +99,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 						for _, entity := range entities {
 							require.Nil(t, spec.Subject.Create(getContext(t), entity))
 							id, _ := resources.LookupID(entity)
-							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
+							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
 						}
 
 						WaitWhile(func() bool {
@@ -121,7 +121,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t)
 					t.Let(othSubscriberKey, othSubscriber)
-					newSubscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.EntityType, othSubscriber)
+					newSubscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.T, othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, newSubscription)
 					t.Defer(newSubscription.Close)
@@ -144,7 +144,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 						for _, entity := range entities {
 							require.Nil(t, spec.Subject.Create(getContext(t), entity))
 							id, _ := resources.LookupID(entity)
-							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.EntityType, id)
+							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
 						}
 						t.Let(furtherEventsKey, toBaseValues(entities))
 
@@ -192,7 +192,7 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 			id, _ := resources.LookupID(entity)
 			// we use a new context here to enforce that the cleaning will be done outside of any context.
 			// It might fail but will ensure proper cleanup.
-			t.Defer(spec.Subject.DeleteByID, spec.context(), spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, spec.context(), spec.T, id)
 		}
 		t.Let(eventsKey, toBaseValues(entities))
 	})
@@ -231,7 +231,7 @@ func (spec CreatorPublisher) context() context.Context {
 }
 
 func (spec CreatorPublisher) createEntity() interface{} {
-	return spec.FixtureFactory.Create(spec.EntityType)
+	return spec.FixtureFactory.Create(spec.T)
 }
 
 func (spec CreatorPublisher) createEntities() []interface{} {

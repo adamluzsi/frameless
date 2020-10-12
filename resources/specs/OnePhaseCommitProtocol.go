@@ -13,7 +13,7 @@ import (
 )
 
 type OnePhaseCommitProtocol struct {
-	EntityType     interface{}
+	T              interface{}
 	FixtureFactory FixtureFactory
 	Subject        interface {
 		minimumRequirements
@@ -35,7 +35,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 	s.Around(func(t *testcase.T) func() {
 		clean := func() {
-			require.Nil(t, spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.EntityType))
+			require.Nil(t, spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.T))
 		}
 		clean()
 		return clean
@@ -47,16 +47,16 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			ctx := spec.FixtureFactory.Context()
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			ptr := spec.FixtureFactory.Create(spec.EntityType)
+			ptr := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(ctx, ptr))
 			id, _ := resources.LookupID(ptr)
-			t.Defer(spec.Subject.DeleteByID, spec.FixtureFactory.Context(), spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, spec.FixtureFactory.Context(), spec.T, id)
 			require.Nil(t, spec.Subject.CommitTx(ctx))
 
-			_, err = spec.Subject.FindByID(ctx, spec.EntityType, id)
+			_, err = spec.Subject.FindByID(ctx, spec.T, id)
 			require.Error(t, err)
-			require.Error(t, spec.Subject.Create(ctx, spec.FixtureFactory.Create(spec.EntityType)))
-			require.Error(t, spec.Subject.FindAll(ctx, spec.EntityType).Err())
+			require.Error(t, spec.Subject.Create(ctx, spec.FixtureFactory.Create(spec.T)))
+			require.Error(t, spec.Subject.FindAll(ctx, spec.T).Err())
 
 			if updater, ok := spec.Subject.(resources.Updater); ok {
 				require.Error(t, updater.Update(ctx, ptr),
@@ -64,22 +64,22 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 						spec.Subject))
 			}
 
-			require.Error(t, spec.Subject.DeleteByID(ctx, spec.EntityType, id))
-			require.Error(t, spec.Subject.DeleteAll(ctx, spec.EntityType))
+			require.Error(t, spec.Subject.DeleteByID(ctx, spec.T, id))
+			require.Error(t, spec.Subject.DeleteAll(ctx, spec.T))
 		})
 		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on context with finished tx`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			ptr := spec.FixtureFactory.Create(spec.EntityType)
+			ptr := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(ctx, ptr))
 			id, _ := resources.LookupID(ptr)
 			require.Nil(t, spec.Subject.RollbackTx(ctx))
 
-			_, err = spec.Subject.FindByID(ctx, spec.EntityType, id)
+			_, err = spec.Subject.FindByID(ctx, spec.T, id)
 			require.Error(t, err)
-			require.Error(t, spec.Subject.FindAll(ctx, spec.EntityType).Err())
-			require.Error(t, spec.Subject.Create(ctx, spec.FixtureFactory.Create(spec.EntityType)))
+			require.Error(t, spec.Subject.FindAll(ctx, spec.T).Err())
+			require.Error(t, spec.Subject.Create(ctx, spec.FixtureFactory.Create(spec.T)))
 
 			if updater, ok := spec.Subject.(resources.Updater); ok {
 				require.Error(t, updater.Update(ctx, ptr),
@@ -87,21 +87,21 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 						spec.Subject))
 			}
 
-			require.Error(t, spec.Subject.DeleteByID(ctx, spec.EntityType, id))
-			require.Error(t, spec.Subject.DeleteAll(ctx, spec.EntityType))
+			require.Error(t, spec.Subject.DeleteByID(ctx, spec.T, id))
+			require.Error(t, spec.Subject.DeleteAll(ctx, spec.T))
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			entity := spec.FixtureFactory.Create(spec.EntityType)
+			entity := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(ctx, entity))
 
 			id, ok := resources.LookupID(entity)
 			require.True(t, ok)
 			require.NotEmpty(t, id)
-			t.Defer(spec.Subject.DeleteByID, ctx, spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, ctx, spec.T, id)
 
 			found, err := spec.Subject.FindByID(spec.FixtureFactory.Context(), spec.newEntity(), id)
 			require.Nil(t, err)
@@ -120,7 +120,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			ctx := spec.FixtureFactory.Context()
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			entity := spec.FixtureFactory.Create(spec.EntityType)
+			entity := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(ctx, entity))
 
 			id, ok := resources.LookupID(entity)
@@ -140,12 +140,12 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()
-			entity := spec.FixtureFactory.Create(spec.EntityType)
+			entity := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(ctx, entity))
 			id, ok := resources.LookupID(entity)
 			require.True(t, ok)
 			require.NotEmpty(t, id)
-			t.Defer(spec.Subject.DeleteByID, ctx, spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, ctx, spec.T, id)
 
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
@@ -153,7 +153,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			found, err := spec.Subject.FindByID(ctx, spec.newEntity(), id)
 			require.Nil(t, err)
 			require.True(t, found)
-			require.Nil(t, spec.Subject.DeleteByID(ctx, spec.EntityType, id))
+			require.Nil(t, spec.Subject.DeleteByID(ctx, spec.T, id))
 
 			found, err = spec.Subject.FindByID(ctx, spec.newEntity(), id)
 			require.Nil(t, err)
@@ -172,12 +172,12 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
 			ctx := spec.FixtureFactory.Context()
-			entity := spec.FixtureFactory.Create(spec.EntityType)
+			entity := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(ctx, entity))
 			id, ok := resources.LookupID(entity)
 			require.True(t, ok)
 			require.NotEmpty(t, id)
-			t.Defer(spec.Subject.DeleteByID, ctx, spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, ctx, spec.T, id)
 
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
@@ -185,7 +185,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			found, err := spec.Subject.FindByID(ctx, spec.newEntity(), id)
 			require.Nil(t, err)
 			require.True(t, found)
-			require.Nil(t, spec.Subject.DeleteByID(ctx, spec.EntityType, id))
+			require.Nil(t, spec.Subject.DeleteByID(ctx, spec.T, id))
 
 			found, err = spec.Subject.FindByID(ctx, spec.newEntity(), id)
 			require.Nil(t, err)
@@ -230,7 +230,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			defer spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.EntityType)
+			defer spec.Subject.DeleteAll(spec.FixtureFactory.Context(), spec.T)
 
 			var (
 				ctx   = spec.FixtureFactory.Context()
@@ -240,21 +240,21 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			ctxWithLevel1Tx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.EntityType)))
-			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.EntityType))
+			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.T)))
+			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.T))
 			require.Nil(t, err)
 			require.Equal(t, 1, count)
 
 			ctxWithLevel2Tx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
 			require.Nil(t, err)
-			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.EntityType)))
-			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.EntityType))
+			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.T)))
+			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.T))
 			require.Nil(t, err)
 			require.Equal(t, 2, count)
 
 			t.Log(`before commit, entities should be absent from the resource`)
-			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.EntityType))
+			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.T))
 			require.Nil(t, err)
 			require.Equal(t, 0, count)
 
@@ -262,7 +262,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, spec.Subject.CommitTx(ctxWithLevel1Tx), `"outer" tx should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.EntityType))
+			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.T))
 			require.Nil(t, err)
 			require.Equal(t, 2, count)
 		})
@@ -270,5 +270,5 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 }
 
 func (spec OnePhaseCommitProtocol) newEntity() interface{} {
-	return reflect.New(reflect.TypeOf(spec.EntityType)).Interface()
+	return reflect.New(reflect.TypeOf(spec.T)).Interface()
 }

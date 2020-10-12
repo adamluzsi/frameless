@@ -12,7 +12,7 @@ import (
 
 type uniqConstraint struct {
 	// Struct that is the subject of this spec
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 
 	// the combination of which the values must be uniq
@@ -30,11 +30,11 @@ func (spec uniqConstraint) Benchmark(b *testing.B) {
 }
 
 func (spec uniqConstraint) Test(t *testing.T) {
-	require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+	require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 
-	e1 := spec.FixtureFactory.Create(spec.EntityType)
-	e2 := spec.FixtureFactory.Create(spec.EntityType)
-	e3 := spec.FixtureFactory.Create(spec.EntityType)
+	e1 := spec.FixtureFactory.Create(spec.T)
+	e2 := spec.FixtureFactory.Create(spec.T)
+	e3 := spec.FixtureFactory.Create(spec.T)
 
 	v1 := reflect.ValueOf(e1)
 	v2 := reflect.ValueOf(e2)
@@ -44,7 +44,7 @@ func (spec uniqConstraint) Test(t *testing.T) {
 		val := v1.Elem().FieldByName(field)
 
 		if val.Kind() == reflect.Invalid {
-			t.Fatalf(`field %s is not found in %s`, field, reflects.FullyQualifiedName(spec.EntityType))
+			t.Fatalf(`field %s is not found in %s`, field, reflects.FullyQualifiedName(spec.T))
 		}
 
 		v2.Elem().FieldByName(field).Set(val)
@@ -70,6 +70,6 @@ func (spec uniqConstraint) Test(t *testing.T) {
 func TestUniqConstrain(t *testing.T, r minimumRequirements, e interface{}, f FixtureFactory, uniqConstrain ...string) {
 	t.Run(`uniqConstraint`, func(t *testing.T) {
 		require.NotEmpty(t, uniqConstrain)
-		uniqConstraint{EntityType: e, FixtureFactory: f, UniqConstrain: uniqConstrain, Subject: r}.Test(t)
+		uniqConstraint{T: e, FixtureFactory: f, UniqConstrain: uniqConstrain, Subject: r}.Test(t)
 	})
 }

@@ -13,7 +13,7 @@ import (
 )
 
 type Finder struct {
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
@@ -21,13 +21,13 @@ type Finder struct {
 func (spec Finder) Test(t *testing.T) {
 	t.Run(`Finder`, func(t *testing.T) {
 		findByIDSpec{
-			EntityType:     spec.EntityType,
+			T:              spec.T,
 			FixtureFactory: spec.FixtureFactory,
 			Subject:        spec.Subject,
 		}.Test(t)
 
 		findAllSpec{
-			EntityType:     spec.EntityType,
+			T:              spec.T,
 			FixtureFactory: spec.FixtureFactory,
 			Subject:        spec.Subject,
 		}.Test(t)
@@ -37,12 +37,12 @@ func (spec Finder) Test(t *testing.T) {
 func (spec Finder) Benchmark(b *testing.B) {
 	b.Run(`Finder`, func(b *testing.B) {
 		findByIDSpec{
-			EntityType:     spec.EntityType,
+			T:              spec.T,
 			FixtureFactory: spec.FixtureFactory,
 			Subject:        spec.Subject,
 		}.Benchmark(b)
 		findAllSpec{
-			EntityType:     spec.EntityType,
+			T:              spec.T,
 			FixtureFactory: spec.FixtureFactory,
 			Subject:        spec.Subject,
 		}.Benchmark(b)
@@ -50,7 +50,7 @@ func (spec Finder) Benchmark(b *testing.B) {
 }
 
 type findByIDSpec struct {
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
@@ -59,10 +59,10 @@ func (spec findByIDSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	})
 
-	thenExternalIDFieldIsExpected(s, spec.EntityType)
+	thenExternalIDFieldIsExpected(s, spec.T)
 
 	s.Describe(`FindByID`, func(s *testcase.Spec) {
 
@@ -79,11 +79,11 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		})
 
 		s.Let(`ptr`, func(t *testcase.T) interface{} {
-			return newEntityBasedOn(spec.EntityType)
+			return newEntityBasedOn(spec.T)
 		})
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
-			return spec.FixtureFactory.Create(spec.EntityType)
+			return spec.FixtureFactory.Create(spec.T)
 		})
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
@@ -121,7 +121,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-					return spec.FixtureFactory.Create(spec.EntityType)
+					return spec.FixtureFactory.Create(spec.T)
 				})
 				s.Before(func(t *testcase.T) {
 					require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
@@ -140,7 +140,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			s.Let(`id`, func(t *testcase.T) interface{} { return `` })
 
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 			})
 
 			s.Then(`it will have no result`, func(t *testcase.T) {
@@ -156,17 +156,17 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		var ids []string
 
 		for i := 0; i < 12; i++ {
-			entity := spec.FixtureFactory.Create(spec.EntityType)
+			entity := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(spec.Context(), entity))
 			id, ok := resources.LookupID(entity)
 			require.True(t, ok, ErrIDRequired.Error())
 			require.True(t, len(id) > 0)
 			ids = append(ids, id)
-			t.Defer(spec.Subject.DeleteByID, spec.Context(), spec.EntityType, id)
+			t.Defer(spec.Subject.DeleteByID, spec.Context(), spec.T, id)
 		}
 
 		t.T.Run("when no value stored that the query request", func(t *testing.T) {
-			ptr := newEntityBasedOn(spec.EntityType)
+			ptr := newEntityBasedOn(spec.T)
 
 			ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
 
@@ -176,7 +176,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 
 		t.T.Run("values returned", func(t *testing.T) {
 			for _, ID := range ids {
-				e := newEntityBasedOn(spec.EntityType)
+				e := newEntityBasedOn(spec.T)
 				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 				require.Nil(t, err)
 				require.True(t, ok)
@@ -191,18 +191,18 @@ func (spec findByIDSpec) Test(t *testing.T) {
 }
 
 func (spec findByIDSpec) Benchmark(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 	b.Run(`FindByID`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.T)
 		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
-		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 
 		var executionTimes int
 		b.ResetTimer()
 	wrk:
 		for {
 			for _, id := range ids {
-				ptr := newEntityBasedOn(spec.EntityType)
+				ptr := newEntityBasedOn(spec.T)
 				found, err := spec.Subject.FindByID(spec.Context(), ptr, id)
 				require.Nil(b, err)
 				require.True(b, found)
@@ -221,7 +221,7 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type findAllSpec struct {
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
@@ -230,14 +230,14 @@ func (spec findAllSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	})
 
 	s.Describe(`FindAll`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) iterators.Interface {
 			return spec.Subject.FindAll(
 				t.I(`ctx`).(context.Context),
-				spec.EntityType,
+				spec.T,
 			)
 		}
 
@@ -246,11 +246,11 @@ func (spec findAllSpec) Test(t *testing.T) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 		})
 
 		s.Let(`entity`, func(t *testcase.T) interface{} {
-			return spec.FixtureFactory.Create(spec.EntityType)
+			return spec.FixtureFactory.Create(spec.T)
 		})
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
@@ -261,7 +261,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 				return func() {
 					id, ok := resources.LookupID(entity)
 					require.True(t, ok)
-					_ = spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
+					_ = spec.Subject.DeleteByID(spec.Context(), spec.T, id)
 				}
 			})
 
@@ -281,7 +281,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-					return spec.FixtureFactory.Create(spec.EntityType)
+					return spec.FixtureFactory.Create(spec.T)
 				})
 				s.Around(func(t *testcase.T) func() {
 					entity := t.I(`oth-entity`)
@@ -289,7 +289,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 					return func() {
 						id, ok := resources.LookupID(entity)
 						require.True(t, ok)
-						_ = spec.Subject.DeleteByID(spec.Context(), spec.EntityType, id)
+						_ = spec.Subject.DeleteByID(spec.Context(), spec.T, id)
 					}
 				})
 
@@ -306,7 +306,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
@@ -334,15 +334,15 @@ func (spec findAllSpec) Test(t *testing.T) {
 }
 
 func (spec findAllSpec) Benchmark(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 	b.Run(`FindAll`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.T)
 		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
-		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			i := spec.Subject.FindAll(spec.Context(), spec.EntityType)
+			i := spec.Subject.FindAll(spec.Context(), spec.T)
 			_, _ = iterators.Count(i)
 		}
 	})

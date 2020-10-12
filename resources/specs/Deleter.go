@@ -12,7 +12,7 @@ import (
 )
 
 type Deleter struct {
-	EntityType interface{}
+	T interface{}
 	FixtureFactory
 	Subject minimumRequirements
 }
@@ -33,7 +33,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
 		return spec.Subject.DeleteByID(
 			t.I(`ctx`).(context.Context),
-			spec.EntityType,
+			spec.T,
 			t.I(`id`).(string),
 		)
 	}
@@ -43,11 +43,11 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 	})
 
 	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	})
 
 	s.Let(`entity`, func(t *testcase.T) interface{} {
-		return spec.FixtureFactory.Create(spec.EntityType)
+		return spec.FixtureFactory.Create(spec.T)
 	})
 
 	s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
@@ -64,7 +64,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			e := newEntityBasedOn(spec.EntityType)
+			e := newEntityBasedOn(spec.T)
 			found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`).(string))
 			require.Nil(t, err)
 			require.False(t, found)
@@ -84,7 +84,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-				return spec.FixtureFactory.Create(spec.EntityType)
+				return spec.FixtureFactory.Create(spec.T)
 			})
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
@@ -96,7 +96,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 				othID, ok := resources.LookupID(t.I(`oth-entity`))
 				require.True(t, ok, ErrIDRequired.Error())
 
-				e := newEntityBasedOn(spec.EntityType)
+				e := newEntityBasedOn(spec.T)
 				found, err := spec.Subject.FindByID(spec.Context(), e, othID)
 				require.Nil(t, err)
 				require.True(t, found)
@@ -131,20 +131,20 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 }
 
 func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
-	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
+	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 
 	var total int
 wrk:
 	for {
 
 		b.StopTimer()
-		es := createEntities(spec.FixtureFactory, spec.EntityType)
+		es := createEntities(spec.FixtureFactory, spec.T)
 		ids := saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
 		b.StartTimer()
 
 		for _, id := range ids {
-			require.Nil(b, spec.Subject.DeleteByID(spec.FixtureFactory.Context(), spec.EntityType, id))
+			require.Nil(b, spec.Subject.DeleteByID(spec.FixtureFactory.Context(), spec.T, id))
 			total++
 
 			if total == b.N {
@@ -159,7 +159,7 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
 		return spec.Subject.DeleteAll(
 			t.I(`ctx`).(context.Context),
-			spec.EntityType,
+			spec.T,
 		)
 	}
 
@@ -178,10 +178,10 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	})
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
-		eID := spec.populateFor(t, spec.EntityType)
-		require.True(t, spec.isStored(t, eID, spec.EntityType))
+		eID := spec.populateFor(t, spec.T)
+		require.True(t, spec.isStored(t, eID, spec.T))
 		require.Nil(t, subject(t))
-		require.False(t, spec.isStored(t, eID, spec.EntityType))
+		require.False(t, spec.isStored(t, eID, spec.T))
 	})
 
 	s.Then(`it should not affect other entities`, func(t *testcase.T) {
@@ -194,27 +194,27 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 			t.Skip(`OthEntityType not yet implemented`)
 		}
 
-		spec.populateFor(t, spec.EntityType)
-		othT := ff.OthEntityType(spec.EntityType)
+		spec.populateFor(t, spec.T)
+		othT := ff.OthEntityType(spec.T)
 		oID := spec.populateFor(t, othT)
 
 		require.True(t, spec.isStored(t, oID, othT))
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 		require.True(t, spec.isStored(t, oID, othT))
 		require.Nil(t, spec.Subject.DeleteByID(spec.Context(), othT, oID))
 	})
 }
 
 func (spec Deleter) benchmarkDeleteAll(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
-	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.EntityType)
+	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
+	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 	// for some reason, doing setup with timer stop/start
 	// makes this test unable to measure
 	// the correct throughput, and hangs forever
 	// so I just check empty db truncate then.
 	// This anyway not a thing that is often used.
 	for i := 0; i < b.N; i++ {
-		require.Nil(b, spec.Subject.DeleteAll(spec.Context(), spec.EntityType))
+		require.Nil(b, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	}
 	b.StopTimer()
 }

@@ -1,0 +1,7 @@
+Support use-cases where desired ID is already known.
+This should simplify designs where otherwise join table would be required.
+This also support scenarios where CQRS based distributed environments wanted to be used
+
+- remove empty ID requirement from resource save
+	* if ID provided, ID must be unique
+- support Entity#Validate() error in Create/Update
