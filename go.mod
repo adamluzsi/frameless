@@ -7,6 +7,6 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/mock v1.4.4
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/tools v0.0.0-20201010145503-6e5c6d77ddcc // indirect
+	golang.org/x/tools v0.0.0-20201028141808-0dcbe3655aa6 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
 )
