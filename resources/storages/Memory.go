@@ -54,7 +54,7 @@ type MemoryEvent struct {
 	T              interface{}
 	EntityTypeName string
 	Event          string
-	ID             string
+	ID             interface{}
 	Entity         interface{}
 	Trace          []TraceElem
 }
@@ -80,22 +80,17 @@ type MemoryEventManager interface {
 }
 
 func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
-	id, ok := resources.LookupID(ptr)
-	if !ok {
-		return fmt.Errorf("entity don't have ID field")
+	if _, ok := resources.LookupID(ptr); !ok {
+		if err := resources.SetID(ptr, fixtures.Random.String()); err != nil {
+			return err
+		}
 	}
 
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	if id == `` {
-		if err := resources.SetID(ptr, fixtures.Random.String()); err != nil {
-			return err
-		}
-	}
-
-	id, _ = resources.LookupID(ptr)
+	id, _ := resources.LookupID(ptr)
 	if found, err := s.FindByID(ctx, reflect.New(reflects.BaseTypeOf(ptr)).Interface(), id); err != nil {
 		return err
 	} else if found {
@@ -120,7 +115,7 @@ func (s *Memory) createEventFor(ctx context.Context, ptr interface{}, trace []Tr
 	})
 }
 
-func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id string) (_found bool, _err error) {
+func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id interface{}) (_found bool, _err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -135,8 +130,7 @@ func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id string) (_fou
 			return false, err
 		}
 
-		currentID, _ := resources.LookupID(current)
-		if currentID == id {
+		if currentID, ok := resources.LookupID(current); ok && currentID == id {
 			err := reflects.Link(reflects.BaseValueOf(current).Interface(), ptr)
 			return err == nil, err
 		}
@@ -201,7 +195,7 @@ func (s *Memory) Update(ctx context.Context, ptr interface{}) error {
 	})
 }
 
-func (s *Memory) DeleteByID(ctx context.Context, T interface{}, id string) error {
+func (s *Memory) DeleteByID(ctx context.Context, T, id interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -687,6 +681,29 @@ func (tx MemoryTransaction) Events() []MemoryEvent {
 type MemoryView map[string]MemoryTableView  // entity type name => table view
 type MemoryTableView map[string]interface{} // id => entity <T>
 
+func (v MemoryTableView) FindByID(id interface{}) interface{} {
+	return v[v.key(id)]
+}
+
+func (v MemoryTableView) setByID(id, ent interface{}) {
+	v[v.key(id)] = ent
+}
+
+func (v MemoryTableView) delByID(id interface{}) {
+	delete(v, v.key(id))
+}
+
+func (v MemoryTableView) key(id interface{}) string {
+	switch id := id.(type) {
+	case string:
+		return id
+	case *string:
+		return *id
+	default:
+		return fmt.Sprintf(`%#v`, id)
+	}
+}
+
 func memoryEventViewFor(events []MemoryEvent) MemoryView {
 	var view = make(MemoryView)
 	for _, event := range events {
@@ -696,9 +713,9 @@ func memoryEventViewFor(events []MemoryEvent) MemoryView {
 
 		switch event.Event {
 		case CreateEvent, UpdateEvent:
-			view[event.EntityTypeName][event.ID] = event.Entity
+			view[event.EntityTypeName].setByID(event.ID, event.Entity)
 		case DeleteByIDEvent:
-			delete(view[event.EntityTypeName], event.ID)
+			view[event.EntityTypeName].delByID(event.ID)
 		case DeleteAllEvent:
 			delete(view, event.EntityTypeName)
 		}

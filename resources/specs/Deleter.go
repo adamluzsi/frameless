@@ -219,7 +219,7 @@ func (spec Deleter) benchmarkDeleteAll(b *testing.B) {
 	b.StopTimer()
 }
 
-func (spec Deleter) populateFor(t testing.TB, Type interface{}) string {
+func (spec Deleter) populateFor(t testing.TB, Type interface{}) interface{} {
 	fixture := spec.FixtureFactory.Create(Type)
 	require.Nil(t, spec.Subject.Create(spec.Context(), fixture))
 
@@ -230,7 +230,7 @@ func (spec Deleter) populateFor(t testing.TB, Type interface{}) string {
 	return id
 }
 
-func (spec Deleter) isStored(t testing.TB, ID string, Type interface{}) bool {
+func (spec Deleter) isStored(t testing.TB, ID, Type interface{}) bool {
 	entity := newEntity(Type)
 	ok, err := spec.Subject.FindByID(spec.Context(), entity, ID)
 	require.Nil(t, err)

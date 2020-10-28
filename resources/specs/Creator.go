@@ -20,8 +20,6 @@ type Creator struct {
 func (spec Creator) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	thenExternalIDFieldIsExpected(s, spec.T)
-
 	s.Describe(`Creator`, func(s *testcase.Spec) {
 		getEntity := func(t *testcase.T) interface{} { return t.I(`entity`) }
 		subject := func(t *testcase.T) error {

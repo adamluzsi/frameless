@@ -62,8 +62,6 @@ func (spec findByIDSpec) Test(t *testing.T) {
 		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	})
 
-	thenExternalIDFieldIsExpected(s, spec.T)
-
 	s.Describe(`FindByID`, func(s *testcase.Spec) {
 
 		subject := func(t *testcase.T) (bool, error) {
@@ -153,14 +151,13 @@ func (spec findByIDSpec) Test(t *testing.T) {
 	})
 
 	s.Test(`E2E`, func(t *testcase.T) {
-		var ids []string
+		var ids []interface{}
 
 		for i := 0; i < 12; i++ {
 			entity := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.Subject.Create(spec.Context(), entity))
 			id, ok := resources.LookupID(entity)
 			require.True(t, ok, ErrIDRequired.Error())
-			require.True(t, len(id) > 0)
 			ids = append(ids, id)
 			t.Defer(spec.Subject.DeleteByID, spec.Context(), spec.T, id)
 		}

@@ -1,21 +1,55 @@
 package resources
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func LookupID(i interface{}) (string, bool) {
+func SetID(ptr interface{}, id interface{}) error {
+	r := reflect.ValueOf(ptr)
 
-	_, val, ok := idReflectValue(reflects.BaseValueOf(i))
-
-	if ok {
-		return val.String(), true
+	if r.Kind() != reflect.Ptr {
+		return errors.New("ptr should be given, else Pass By Value prevent setting struct ID field remotely")
 	}
 
-	return "", false
+	_, val, ok := idReflectValue(r)
 
+	if !ok {
+		return errors.New("could not locate ID field in the given structure")
+	}
+
+	val.Set(reflect.ValueOf(id))
+
+	return nil
+}
+
+func LookupID(i interface{}) (id interface{}, ok bool) {
+	_, val, ok := idReflectValue(reflects.BaseValueOf(i))
+
+	if !ok {
+		return nil, false
+	}
+
+	return val.Interface(), !isNil(val)
+}
+
+func isNil(val reflect.Value) bool {
+	switch val.Kind() {
+	case reflect.Interface:
+		fmt.Println(`?`)
+		return isNil(val.Elem())
+
+	case reflect.Ptr, reflect.Slice, reflect.Chan, reflect.Func, reflect.Map:
+		fmt.Println(`??`)
+		return val.IsNil()
+
+	default:
+		return !val.IsValid() || val.IsZero()
+
+	}
 }
 
 func idReflectValue(val reflect.Value) (reflect.StructField, reflect.Value, bool) {

@@ -51,15 +51,6 @@ type minimumRequirements interface {
 	resources.Deleter
 }
 
-func thenExternalIDFieldIsExpected(s *testcase.Spec, entityType interface{}) {
-	entityTypeName := reflects.FullyQualifiedName(entityType)
-	desc := fmt.Sprintf(`An ext:ID field is given in %s`, entityTypeName)
-	s.Test(desc, func(t *testcase.T) {
-		_, hasExtID := resources.LookupID(newEntity(entityType))
-		require.True(t, hasExtID, ErrIDRequired.Error())
-	})
-}
-
 func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	var es []interface{}
 	for i := 0; i < benchmarkEntityVolumeCount; i++ {
@@ -68,8 +59,8 @@ func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	return es
 }
 
-func saveEntities(tb testing.TB, s resources.Creator, f FixtureFactory, es ...interface{}) []string {
-	var ids []string
+func saveEntities(tb testing.TB, s resources.Creator, f FixtureFactory, es ...interface{}) []interface{} {
+	var ids []interface{}
 	for _, e := range es {
 		require.Nil(tb, s.Create(f.Context(), e))
 		id, _ := resources.LookupID(e)

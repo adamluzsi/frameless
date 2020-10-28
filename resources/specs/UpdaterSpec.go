@@ -29,8 +29,6 @@ func (spec Updater) Test(t *testing.T) {
 		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
 	})
 
-	thenExternalIDFieldIsExpected(s, spec.T)
-
 	s.Describe(`Updater`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) error {
 			return spec.Subject.Update(
