@@ -112,3 +112,17 @@ func TestForEach(t *testing.T) {
 		})
 	})
 }
+
+func TestForEach_CompatbilityWithEmptyInterface(t *testing.T) {
+	slice := []int{1, 2, 3, 4, 5}
+
+	var found []int
+	require.Nil(t, iterators.ForEach(iterators.NewSlice(slice), func(i interface{}) error {
+		n, ok := i.(int)
+		require.True(t, ok, `expected that under the empty interface it will be an int`)
+		found = append(found, n)
+		return nil
+	}))
+
+	require.ElementsMatch(t, slice, found)
+}
