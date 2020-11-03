@@ -3,6 +3,7 @@ package storages_test
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 	"os"
 	"path/filepath"
@@ -633,6 +634,152 @@ func TestMemory_historyLogging(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestMemory_RegisterIDGenerator(t *testing.T) {
+	var (
+		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
+			err := t.I(`memory`).(*storages.Memory).Create(context.Background(), ptr)
+			id, _ := resources.LookupID(ptr)
+			return id, err
+		}
+		subject = func(t *testcase.T) (interface{}, error) {
+			return createAndReturnID(t, t.I(`ptr`))
+		}
+		onSuccess = func(t *testcase.T) interface{} {
+			id, err := subject(t)
+			require.Nil(t, err)
+			t.Logf(`%T`, id)
+			return id
+		}
+	)
+
+	s := testcase.NewSpec(t)
+	s.Let(`memory`, func(t *testcase.T) interface{} {
+		return storages.NewMemory()
+	})
+
+	var thenGeneratedIDsAreUnique = func(s *testcase.Spec) {
+		s.Then(`generated ids are more or less unique in small number`, func(t *testcase.T) {
+			T := reflects.BaseTypeOf(t.I(`ptr`))
+
+			var ids []interface{}
+			for i := 0; i < 128; i++ {
+				id, err := createAndReturnID(t, reflect.New(T).Interface())
+				require.Nil(t, err)
+				require.NotContains(t, ids, id)
+				ids = append(ids, id)
+			}
+		})
+	}
+
+	var commonlySupportedIDTypes = func(s *testcase.Spec) {
+
+		s.And(`and entity id type is string`, func(s *testcase.Spec) {
+			type EntWithStringIDField struct {
+				ID string `ext:"ID"`
+			}
+
+			s.Let(`ptr`, func(t *testcase.T) interface{} {
+				return &EntWithStringIDField{}
+			})
+
+			s.Then(`it should create a random string value`, func(t *testcase.T) {
+				id, ok := onSuccess(t).(string)
+				require.True(t, ok)
+				require.NotEmpty(t, id)
+			})
+
+			thenGeneratedIDsAreUnique(s)
+		})
+
+		s.And(`and entity id type is int`, func(s *testcase.Spec) {
+			type EntWithIntIDField struct {
+				ID int `ext:"ID"`
+			}
+
+			s.Let(`ptr`, func(t *testcase.T) interface{} {
+				return &EntWithIntIDField{}
+			})
+
+			s.Then(`it should create a random string value`, func(t *testcase.T) {
+				id, ok := onSuccess(t).(int)
+				require.True(t, ok)
+				require.NotEmpty(t, id)
+			})
+
+			thenGeneratedIDsAreUnique(s)
+		})
+
+		s.And(`and entity id type is int64`, func(s *testcase.Spec) {
+			type EntWithInt64IDField struct {
+				ID int64 `ext:"ID"`
+			}
+
+			s.Let(`ptr`, func(t *testcase.T) interface{} {
+				return &EntWithInt64IDField{}
+			})
+
+			s.Then(`it should create a random string value`, func(t *testcase.T) {
+				id, ok := onSuccess(t).(int64)
+				require.True(t, ok)
+				require.NotEmpty(t, id)
+			})
+
+			thenGeneratedIDsAreUnique(s)
+		})
+
+		s.And(`and entity id type is an unregistered type`, func(s *testcase.Spec) {
+			type (
+				UnregisteredIDType         struct{}
+				EntWithUnregisteredIDField struct {
+					ID UnregisteredIDType `ext:"ID"`
+				}
+			)
+
+			s.Let(`ptr`, func(t *testcase.T) interface{} {
+				return &EntWithUnregisteredIDField{}
+			})
+
+			s.Then(`it should create an error`, func(t *testcase.T) {
+				_, err := subject(t)
+				require.Error(t, err)
+			})
+		})
+	}
+
+	s.When(`nothing registered`, func(s *testcase.Spec) {
+		commonlySupportedIDTypes(s)
+	})
+
+	s.When(`custom id type is registered`, func(s *testcase.Spec) {
+		type CustomIDType struct {
+			V string
+		}
+
+		type EntWithCustomIDType struct {
+			ID CustomIDType `ext:"ID"`
+		}
+
+		s.Before(func(t *testcase.T) {
+			t.I(`memory`).(*storages.Memory).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
+				return CustomIDType{V: fixtures.Random.String()}, nil
+			})
+		})
+
+		s.Let(`ptr`, func(t *testcase.T) interface{} {
+			return &EntWithCustomIDType{}
+		})
+
+		s.Then(`it should use the assign id successfully`, func(t *testcase.T) {
+			id, ok := onSuccess(t).(CustomIDType)
+			require.True(t, ok)
+			require.NotEmpty(t, id.V)
+		})
+
+		thenGeneratedIDsAreUnique(s)
+	})
+
 }
 
 func requireLogContains(tb testing.TB, logMessages []string, msgParts []string, shouldContain bool) {

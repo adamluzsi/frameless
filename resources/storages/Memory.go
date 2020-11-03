@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/fixtures"
@@ -19,7 +20,7 @@ import (
 )
 
 func NewMemory() *Memory {
-	return &Memory{}
+	return  &Memory{}
 }
 
 // Memory is an event source principles based development in memory storage,
@@ -38,6 +39,17 @@ type Memory struct {
 	// txNamespace allow multiple memory storage to manage transactions on the same context
 	txNamespace     string
 	txNamespaceInit sync.Once
+
+	idGenerator     *IDGenerator
+	idGeneratorInit sync.Once
+}
+
+func (s *Memory) IDGenerator() *IDGenerator {
+	s.idGeneratorInit.Do(func() {
+		s.idGenerator = newIDGenerator()
+	})
+
+	return s.idGenerator
 }
 
 const (
@@ -81,7 +93,12 @@ type MemoryEventManager interface {
 
 func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
 	if _, ok := resources.LookupID(ptr); !ok {
-		if err := resources.SetID(ptr, fixtures.Random.String()); err != nil {
+		newID, err := s.IDGenerator().generateID(reflects.BaseValueOf(ptr).Interface())
+		if err != nil {
+			return err
+		}
+
+		if err := resources.SetID(ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -641,6 +658,47 @@ func (s *Memory) getTrace() []TraceElem {
 	}
 
 	return trace
+}
+
+/**********************************************************************************************************************/
+
+func newIDGenerator() *IDGenerator {
+	v := make(IDGenerator)
+	return &v
+}
+
+type IDGenerator map[string]func() (interface{}, error)
+
+func (g *IDGenerator) Register(T resources.T, genFunc func() (interface{}, error)) {
+	(*g)[reflects.FullyQualifiedName(T)] = genFunc
+}
+
+func (g *IDGenerator) generateID(T resources.T) (interface{}, error) {
+	if genFunc, ok := (*g)[reflects.FullyQualifiedName(T)]; ok {
+		return genFunc()
+	}
+
+	id, _ := resources.LookupID(T)
+
+	var moreOrLessUniqueInt = func() int64 {
+		return time.Now().UnixNano() +
+			int64(fixtures.SecureRandom.IntBetween(100000, 900000)) +
+			int64(fixtures.SecureRandom.IntBetween(1000000, 9000000)) +
+			int64(fixtures.SecureRandom.IntBetween(10000000, 90000000)) +
+			int64(fixtures.SecureRandom.IntBetween(100000000, 900000000))
+	}
+
+	// for now we don't support ptr based id's
+	switch id.(type) {
+	case string:
+		return fixtures.Random.String(), nil
+	case int:
+		return int(moreOrLessUniqueInt()), nil
+	case int64:
+		return moreOrLessUniqueInt(), nil
+	default:
+		return nil, fmt.Errorf(`id generator for %T is not registered`, T)
+	}
 }
 
 /**********************************************************************************************************************/
