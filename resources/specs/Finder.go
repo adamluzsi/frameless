@@ -68,7 +68,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			return spec.Subject.FindByID(
 				t.I(`ctx`).(context.Context),
 				t.I(`ptr`),
-				t.I(`id`).(string),
+				t.I(`id`),
 			)
 		}
 

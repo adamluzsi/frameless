@@ -34,7 +34,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		return spec.Subject.DeleteByID(
 			t.I(`ctx`).(context.Context),
 			spec.T,
-			t.I(`id`).(string),
+			t.I(`id`),
 		)
 	}
 
@@ -65,7 +65,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
 			e := newEntity(spec.T)
-			found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`).(string))
+			found, err := spec.Subject.FindByID(spec.Context(), e, t.I(`id`))
 			require.Nil(t, err)
 			require.False(t, found)
 		})
@@ -121,7 +121,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			require.Empty(t, t.I(`id`).(string))
+			require.Empty(t, t.I(`id`))
 		})
 
 		s.Then(`it will return with error, because you cannot delete something that does not exist`, func(t *testcase.T) {
