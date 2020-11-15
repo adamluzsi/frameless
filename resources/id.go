@@ -15,7 +15,7 @@ func SetID(ptr interface{}, id interface{}) error {
 		return errors.New("ptr should be given, else Pass By Value prevent setting struct ID field remotely")
 	}
 
-	_, val, ok := idReflectValue(r)
+	_, val, ok := LookupIDStructField(ptr)
 
 	if !ok {
 		return errors.New("could not locate ID field in the given structure")
@@ -27,7 +27,7 @@ func SetID(ptr interface{}, id interface{}) error {
 }
 
 func LookupID(i interface{}) (id interface{}, ok bool) {
-	_, val, ok := idReflectValue(reflects.BaseValueOf(i))
+	_, val, ok := LookupIDStructField(i)
 
 	if !ok {
 		return nil, false
@@ -52,23 +52,16 @@ func isNil(val reflect.Value) bool {
 	}
 }
 
-func idReflectValue(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
-
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
-	}
+func LookupIDStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
+	val := reflects.BaseValueOf(ent)
 
 	sf, byTag, ok := lookupByTag(val)
-
 	if ok {
 		return sf, byTag, true
 	}
 
 	const name = `ID`
-
-	byName := val.FieldByName(name)
-
-	if byName.Kind() != reflect.Invalid {
+	if byName := val.FieldByName(name); byName.Kind() != reflect.Invalid {
 		sf, _ := val.Type().FieldByName(name)
 		return sf, byName, true
 	}

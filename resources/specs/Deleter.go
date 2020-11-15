@@ -121,7 +121,9 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			require.Empty(t, t.I(`id`))
+			found, err := spec.Subject.FindByID(spec.Context(), newEntity(spec.T), t.I(`id`))
+			require.Nil(t, err)
+			require.False(t, found)
 		})
 
 		s.Then(`it will return with error, because you cannot delete something that does not exist`, func(t *testcase.T) {

@@ -1,6 +1,7 @@
 package resources_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
@@ -167,4 +168,36 @@ func TestSetID_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	var subject interface{} = &IDByIDField{}
 	require.Nil(t, resources.SetID(subject, "OK"))
 	require.Equal(t, "OK", subject.(*IDByIDField).ID)
+}
+
+func TestLookupIDStructField(t *testing.T) {
+	var (
+		field reflect.StructField
+		value reflect.Value
+		ok    bool
+	)
+
+	field, value, ok = resources.LookupIDStructField(IDByIDField{ID: `42`})
+	require.True(t, ok)
+	require.Equal(t, `ID`, field.Name)
+	require.Equal(t, `42`, value.Interface())
+
+	field, value, ok = resources.LookupIDStructField(IDByTag{DI: `42`})
+	require.True(t, ok)
+	require.Equal(t, `DI`, field.Name)
+	require.Equal(t, `42`, value.Interface())
+
+	field, value, ok = resources.LookupIDStructField(IDAsInterface{ID: 42})
+	require.True(t, ok)
+	require.Equal(t, `ID`, field.Name)
+	require.Equal(t, 42, value.Interface())
+
+	idValue := `42`
+	field, value, ok = resources.LookupIDStructField(IDAsPointer{ID: &idValue})
+	require.True(t, ok)
+	require.Equal(t, `ID`, field.Name)
+	require.Equal(t, &idValue, value.Interface())
+
+	field, value, ok =resources.LookupIDStructField(UnidentifiableID{})
+	require.False(t, ok)
 }

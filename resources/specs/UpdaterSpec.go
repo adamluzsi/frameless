@@ -6,7 +6,6 @@ import (
 
 	"github.com/adamluzsi/testcase"
 
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/stretchr/testify/require"
@@ -73,7 +72,7 @@ func (spec Updater) Test(t *testing.T) {
 				s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 					require.Nil(t, subject(t))
 
-					id := t.I(`entity.id`).(string)
+					id := t.I(`entity.id`)
 					actually := newEntity(spec.T)
 					ok, err := spec.Subject.FindByID(spec.Context(), actually, id)
 					require.True(t, ok)
@@ -99,7 +98,13 @@ func (spec Updater) Test(t *testing.T) {
 		s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
 			s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
 				newEntity := spec.FixtureFactory.Create(spec.T)
-				require.Nil(t, resources.SetID(newEntity, fixtures.Random.String()))
+				{
+					// make sure entity have id that is not present in the storage
+					require.Nil(t, spec.Subject.Create(spec.Context(), newEntity))
+					id, ok := resources.LookupID(newEntity)
+					require.True(t, ok)
+					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, id))
+				}
 				return newEntity
 			})
 

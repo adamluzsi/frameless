@@ -78,17 +78,21 @@ func TestStorage_smokeTest(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecs(subject *storages.Memory) []specs.Interface {
+func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff specs.FixtureFactory) []specs.Interface {
 	return []specs.Interface{
-		specs.Creator{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.Finder{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.Updater{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.Deleter{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.OnePhaseCommitProtocol{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.CreatorPublisher{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.UpdaterPublisher{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
-		specs.DeleterPublisher{T: Entity{}, Subject: subject, FixtureFactory: fixtures.FixtureFactory{}},
+		specs.Creator{T: T, Subject: subject, FixtureFactory: ff},
+		specs.Finder{T: T, Subject: subject, FixtureFactory: ff},
+		specs.Updater{T: T, Subject: subject, FixtureFactory: ff},
+		specs.Deleter{T: T, Subject: subject, FixtureFactory: ff},
+		specs.OnePhaseCommitProtocol{T: T, Subject: subject, FixtureFactory: ff},
+		specs.CreatorPublisher{T: T, Subject: subject, FixtureFactory: ff},
+		specs.UpdaterPublisher{T: T, Subject: subject, FixtureFactory: ff},
+		specs.DeleterPublisher{T: T, Subject: subject, FixtureFactory: ff},
 	}
+}
+
+func getMemorySpecs(subject *storages.Memory) []specs.Interface {
+	return getMemorySpecsForT(subject, Entity{}, fixtures.FixtureFactory{})
 }
 
 func TestMemory(t *testing.T) {
@@ -779,7 +783,6 @@ func TestMemory_RegisterIDGenerator(t *testing.T) {
 
 		thenGeneratedIDsAreUnique(s)
 	})
-
 }
 
 func requireLogContains(tb testing.TB, logMessages []string, msgParts []string, shouldContain bool) {
@@ -885,4 +888,30 @@ func BenchmarkMemory(b *testing.B) {
 type Entity struct {
 	ID   string `ext:"ID"`
 	Data string
+}
+
+func TestMemory_SaveEntityWithCustomKeyType(t *testing.T) {
+	for _, spec := range getMemorySpecsForT(storages.NewMemory(), EntityWithStructID{}, FFForEntityWithStructID{}) {
+		spec.Test(t)
+	}
+}
+
+type EntityWithStructID struct {
+	ID   struct{ V int } `ext:"ID"`
+	Data string
+}
+
+type FFForEntityWithStructID struct {
+	fixtures.FixtureFactory
+}
+
+func (ff FFForEntityWithStructID) Create(T resources.T) interface{} {
+	switch T.(type) {
+	case EntityWithStructID:
+		ent := ff.FixtureFactory.Create(T).(*EntityWithStructID)
+		ent.ID = struct{ V int }{V: fixtures.Random.Int()}
+		return ent
+	default:
+		return ff.FixtureFactory.Create(T)
+	}
 }
