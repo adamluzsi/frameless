@@ -103,12 +103,7 @@ func (spec Creator) Test(t *testing.T) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			t.T.Run("persist an Creator", func(t *testing.T) {
-
-				if ID, _ := resources.LookupID(spec.T); ID != "" {
-					t.Fatalf("expected entity shouldn't have any ID yet, but have %s", ID)
-				}
-
+			t.T.Run("persist on #Create", func(t *testing.T) {
 				e := spec.FixtureFactory.Create(spec.T)
 				err := spec.Subject.Create(spec.Context(), e)
 
@@ -126,7 +121,6 @@ func (spec Creator) Test(t *testing.T) {
 				require.Equal(t, e, actual)
 
 				require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, ID))
-
 			})
 		})
 	})
