@@ -29,13 +29,8 @@ func (spec Deleter) Benchmark(b *testing.B) {
 }
 
 func (spec Deleter) specDeleteByID(s *testcase.Spec) {
-
-	subject := func(t *testcase.T) error {
-		return spec.Subject.DeleteByID(
-			t.I(`ctx`).(context.Context),
-			spec.T,
-			t.I(`id`),
-		)
+	var subject = func(t *testcase.T) error {
+		return spec.Subject.DeleteByID(t.I(`ctx`).(context.Context), spec.T, t.I(`id`))
 	}
 
 	s.Let(`ctx`, func(t *testcase.T) interface{} {

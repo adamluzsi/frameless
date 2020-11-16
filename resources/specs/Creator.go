@@ -106,7 +106,6 @@ func (spec Creator) Test(t *testing.T) {
 			t.T.Run("persist on #Create", func(t *testing.T) {
 				e := spec.FixtureFactory.Create(spec.T)
 				err := spec.Subject.Create(spec.Context(), e)
-
 				require.Nil(t, err)
 
 				ID, ok := resources.LookupID(e)
@@ -114,7 +113,6 @@ func (spec Creator) Test(t *testing.T) {
 				require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
 				actual := newEntity(spec.T)
-
 				ok, err = spec.Subject.FindByID(spec.Context(), actual, ID)
 				require.Nil(t, err)
 				require.True(t, ok)
