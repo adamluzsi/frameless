@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/resources"
@@ -35,6 +36,11 @@ func init() {
 	}
 
 	benchmarkEntityVolumeCount = i
+}
+
+var Waiter = testcase.Waiter{
+	WaitDuration: time.Microsecond,
+	WaitTimeout:  time.Minute,
 }
 
 const msgNotMeasurable = `not measurable spec`

@@ -78,7 +78,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				}
 				t.Let(eventsKey, toBaseValues(entities))
 
-				WaitWhile(func() bool {
+				Waiter.WaitWhile(func() bool {
 					return subscriber(t).EventsLen() < len(entities)
 				})
 			})
@@ -102,7 +102,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
 						}
 
-						WaitWhile(func() bool {
+						Waiter.WaitWhile(func() bool {
 							return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))
 						})
 					})
@@ -133,7 +133,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 
 				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
 					t.Log(`new subscriber don't have the vents since it subscribed after events had been already fired`)
-					Wait() // Wait a little to receive events if we receive any
+					Waiter.Wait() // Wait a little to receive events if we receive any
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
@@ -148,11 +148,11 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 						}
 						t.Let(furtherEventsKey, toBaseValues(entities))
 
-						WaitWhile(func() bool {
+						Waiter.WaitWhile(func() bool {
 							return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))+len(t.I(furtherEventsKey).([]interface{}))
 						})
 
-						WaitWhile(func() bool {
+						Waiter.WaitWhile(func() bool {
 							return othSubscriber(t).EventsLen() < len(t.I(furtherEventsKey).([]interface{}))
 						})
 					})
@@ -206,22 +206,22 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		Wait()
+		Waiter.Wait()
 		require.Empty(t, subscriber(t).Events())
 		require.Nil(t, res.CommitTx(getContext(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		WaitWhile(func() bool {
-			return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))
+
+		Waiter.Assert(t, func(tb testing.TB) {
+			require.ElementsMatch(tb, t.I(eventsKey), subscriber(t).Events())
 		})
-		require.ElementsMatch(t, t.I(eventsKey), subscriber(t).Events())
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
 		require.Nil(t, res.RollbackTx(getContext(t)))
-		Wait()
+		Waiter.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 }

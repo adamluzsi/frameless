@@ -197,9 +197,11 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			require.Nil(t, spec.Subject.RollbackTx(ctx))
 
-			found, err = spec.Subject.FindByID(spec.FixtureFactory.Context(), spec.newEntity(), id)
-			require.Nil(t, err)
-			require.True(t, found)
+			Waiter.Assert(t, func(tb testing.TB) {
+				found, err = spec.Subject.FindByID(spec.FixtureFactory.Context(), spec.newEntity(), id)
+				require.Nil(tb, err)
+				require.True(tb, found)
+			})
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
@@ -250,8 +252,8 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, err)
 			require.Nil(t, spec.Subject.Create(ctxWithLevel1Tx, spec.FixtureFactory.Create(spec.T)))
 			count, err = iterators.Count(spec.Subject.FindAll(ctxWithLevel1Tx, spec.T))
-			require.Nil(t, err)
-			require.Equal(t, 2, count)
+			require.Nil(tb, err)
+			require.Equal(tb, 2, count)
 
 			t.Log(`before commit, entities should be absent from the resource`)
 			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.T))
@@ -262,9 +264,11 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, spec.Subject.CommitTx(ctxWithLevel1Tx), `"outer" tx should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.T))
-			require.Nil(t, err)
-			require.Equal(t, 2, count)
+			Waiter.Assert(t, func(tb testing.TB) {
+				count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.T))
+				require.Nil(tb, err)
+				require.Equal(tb, 2, count)
+			})
 		})
 	})
 }
