@@ -53,7 +53,7 @@ func TestSQLRows(t *testing.T) {
 
 	type testType struct{ Text string }
 
-	s.Let(`rows.mock.ctrl`, func(t *testcase.T) interface{} { return gomock.NewController(t.T) })
+	s.Let(`rows.mock.ctrl`, func(t *testcase.T) interface{} { return gomock.NewController(t.TB) })
 	s.After(func(t *testcase.T) { t.I(`rows.mock.ctrl`).(*gomock.Controller).Finish() })
 
 	s.Let(`mapper`, func(t *testcase.T) interface{} {

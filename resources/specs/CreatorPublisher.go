@@ -66,8 +66,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 		})
 
 		s.And(`events made`, func(s *testcase.Spec) {
-			const eventsKey = `events`
-			s.Before(func(t *testcase.T) {
+			events := s.Let(`events`, func(t *testcase.T) interface{} {
 				entities := spec.createEntities()
 				for _, entity := range entities {
 					require.Nil(t, spec.Subject.Create(getContext(t), entity))
@@ -75,16 +74,20 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 					// we use a new context here to enforce that the cleaning will be done outside of any context.
 					// It might fail but will ensure proper cleanup.
 					t.Defer(spec.Subject.DeleteByID, spec.context(), spec.T, id)
+					IsFindable(t, spec.Subject, getContext(t), newEntityFunc(spec.T), id)
 				}
-				t.Let(eventsKey, toBaseValues(entities))
 
-				Waiter.WaitWhile(func() bool {
+				// wait until the subscriber received the events
+				AsyncTester.WaitWhile(func() bool {
 					return subscriber(t).EventsLen() < len(entities)
 				})
-			})
+
+				return toBaseValues(entities)
+			}).EagerLoading(s)
+			getEvents := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 
 			s.Then(`subscriber receive those events`, func(t *testcase.T) {
-				require.ElementsMatch(t, t.I(eventsKey).([]interface{}), subscriber(t).Events())
+				require.ElementsMatch(t, getEvents(t), subscriber(t).Events())
 			})
 
 			s.And(`subscription is cancelled by close`, func(s *testcase.Spec) {
@@ -100,15 +103,14 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 							require.Nil(t, spec.Subject.Create(getContext(t), entity))
 							id, _ := resources.LookupID(entity)
 							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
+							IsFindable(t, spec.Subject, getContext(t), newEntityFunc(spec.T), id)
 						}
 
-						Waiter.WaitWhile(func() bool {
-							return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))
-						})
+						AsyncTester.Wait()
 					})
 
 					s.Then(`handler don't receive the new events`, func(t *testcase.T) {
-						require.ElementsMatch(t, t.I(eventsKey).([]interface{}), subscriber(t).Events())
+						require.ElementsMatch(t, getEvents(t), subscriber(t).Events())
 					})
 				})
 			})
@@ -128,46 +130,48 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				})
 
 				s.Then(`original subscriber still receive old events`, func(t *testcase.T) {
-					require.ElementsMatch(t, subscriber(t).Events(), t.I(eventsKey).([]interface{}))
+					require.ElementsMatch(t, subscriber(t).Events(), getEvents(t))
 				})
 
 				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
 					t.Log(`new subscriber don't have the vents since it subscribed after events had been already fired`)
-					Waiter.Wait() // Wait a little to receive events if we receive any
+					AsyncTester.Wait() // Wait a little to receive events if we receive any
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
 				s.And(`further events made`, func(s *testcase.Spec) {
-					const furtherEventsKey = `further events`
-					s.Before(func(t *testcase.T) {
+					furtherEvents := s.Let(`further events`, func(t *testcase.T) interface{} {
 						entities := spec.createEntities()
 						for _, entity := range entities {
 							require.Nil(t, spec.Subject.Create(getContext(t), entity))
 							id, _ := resources.LookupID(entity)
 							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
+							IsFindable(t, spec.Subject, getContext(t), newEntityFunc(spec.T), id)
 						}
-						t.Let(furtherEventsKey, toBaseValues(entities))
 
-						Waiter.WaitWhile(func() bool {
-							return subscriber(t).EventsLen() < len(t.I(eventsKey).([]interface{}))+len(t.I(furtherEventsKey).([]interface{}))
+						AsyncTester.WaitWhile(func() bool {
+							return subscriber(t).EventsLen() < len(getEvents(t))+len(entities)
 						})
 
-						Waiter.WaitWhile(func() bool {
-							return othSubscriber(t).EventsLen() < len(t.I(furtherEventsKey).([]interface{}))
+						AsyncTester.WaitWhile(func() bool {
+							return othSubscriber(t).EventsLen() < len(entities)
 						})
-					})
+
+						return toBaseValues(entities)
+					}).EagerLoading(s)
+					getFurtherEvents := func(t *testcase.T) []interface{} { return furtherEvents.Get(t).([]interface{}) }
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-						requireContainsList(t, subscriber(t).Events(), t.I(eventsKey), `missing old events`)
-						requireContainsList(t, subscriber(t).Events(), t.I(furtherEventsKey), `missing new events`)
+						requireContainsList(t, subscriber(t).Events(), events.Get(t), `missing old events`)
+						requireContainsList(t, subscriber(t).Events(), getFurtherEvents(t), `missing new events`)
 					})
 
 					s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-						requireNotContainsList(t, othSubscriber(t).Events(), t.I(eventsKey))
+						requireNotContainsList(t, othSubscriber(t).Events(), getEvents(t))
 					})
 
 					s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
-						requireContainsList(t, othSubscriber(t).Events(), t.I(furtherEventsKey))
+						requireContainsList(t, othSubscriber(t).Events(), getFurtherEvents(t))
 					})
 				})
 			})
@@ -206,7 +210,7 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 		require.Nil(t, res.CommitTx(getContext(t)))
 	})
@@ -214,14 +218,14 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
 
-		Waiter.Assert(t, func(tb testing.TB) {
+		AsyncTester.Assert(t, func(tb testing.TB) {
 			require.ElementsMatch(tb, t.I(eventsKey), subscriber(t).Events())
 		})
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
 		require.Nil(t, res.RollbackTx(getContext(t)))
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 }

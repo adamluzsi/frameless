@@ -162,27 +162,23 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			t.Defer(spec.Subject.DeleteByID, spec.Context(), spec.T, id)
 		}
 
-		t.T.Run("when no value stored that the query request", func(t *testing.T) {
-			ptr := newEntity(spec.T)
+		t.Log("when no value stored that the query request")
+		ptr := newEntity(spec.T)
+		ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
+		require.Nil(t, err)
+		require.False(t, ok)
 
-			ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
-
+		t.Log("values returned")
+		for _, ID := range ids {
+			e := newEntity(spec.T)
+			ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 			require.Nil(t, err)
-			require.False(t, ok)
-		})
+			require.True(t, ok)
 
-		t.T.Run("values returned", func(t *testing.T) {
-			for _, ID := range ids {
-				e := newEntity(spec.T)
-				ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
-				require.Nil(t, err)
-				require.True(t, ok)
-
-				actualID, ok := resources.LookupID(e)
-				require.True(t, ok, "can't find ID in the returned value")
-				require.Equal(t, ID, actualID)
-			}
-		})
+			actualID, ok := resources.LookupID(e)
+			require.True(t, ok, "can't find ID in the returned value")
+			require.Equal(t, ID, actualID)
+		}
 	})
 
 }

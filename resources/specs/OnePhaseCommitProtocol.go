@@ -178,30 +178,14 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.True(t, ok)
 			require.NotEmpty(t, id)
 			t.Defer(spec.Subject.DeleteByID, ctx, spec.T, id)
-
 			ctx, err := spec.Subject.BeginTx(ctx)
 			require.Nil(t, err)
-
-			found, err := spec.Subject.FindByID(ctx, spec.newEntity(), id)
-			require.Nil(t, err)
-			require.True(t, found)
+			IsFindable(t, spec.Subject, ctx, spec.newEntity, id)
 			require.Nil(t, spec.Subject.DeleteByID(ctx, spec.T, id))
-
-			found, err = spec.Subject.FindByID(ctx, spec.newEntity(), id)
-			require.Nil(t, err)
-			require.False(t, found)
-
-			found, err = spec.Subject.FindByID(spec.FixtureFactory.Context(), spec.newEntity(), id)
-			require.Nil(t, err)
-			require.True(t, found)
-
+			IsAbsent(t, spec.Subject, ctx, spec.newEntity, id)
+			IsFindable(t, spec.Subject, spec.FixtureFactory.Context(), spec.newEntity, id)
 			require.Nil(t, spec.Subject.RollbackTx(ctx))
-
-			Waiter.Assert(t, func(tb testing.TB) {
-				found, err = spec.Subject.FindByID(spec.FixtureFactory.Context(), spec.newEntity(), id)
-				require.Nil(tb, err)
-				require.True(tb, found)
-			})
+			IsFindable(t, spec.Subject, spec.FixtureFactory.Context(), spec.newEntity, id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
@@ -264,7 +248,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, spec.Subject.CommitTx(ctxWithLevel1Tx), `"outer" tx should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			Waiter.Assert(t, func(tb testing.TB) {
+			AsyncTester.Assert(t, func(tb testing.TB) {
 				count, err = iterators.Count(spec.Subject.FindAll(ctx, spec.T))
 				require.Nil(tb, err)
 				require.Equal(tb, 2, count)
@@ -272,6 +256,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 		})
 	})
 }
+
 
 func (spec OnePhaseCommitProtocol) newEntity() interface{} {
 	return reflect.New(reflect.TypeOf(spec.T)).Interface()

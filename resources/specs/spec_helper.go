@@ -3,15 +3,13 @@ package specs
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/consterror"
+	"github.com/adamluzsi/frameless/resources"
 	"os"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
-	"time"
-
-	"github.com/adamluzsi/frameless/consterror"
-	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
@@ -36,11 +34,6 @@ func init() {
 	}
 
 	benchmarkEntityVolumeCount = i
-}
-
-var Waiter = testcase.Waiter{
-	WaitDuration: time.Microsecond,
-	WaitTimeout:  time.Minute,
 }
 
 const msgNotMeasurable = `not measurable spec`
@@ -89,6 +82,10 @@ func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs
 
 func newEntity(T interface{}) interface{} {
 	return reflect.New(reflect.TypeOf(T)).Interface()
+}
+
+func newEntityFunc(T interface{}) func() interface{} {
+	return func() interface{} { return newEntity(T) }
 }
 
 func requireNotContainsList(tb testing.TB, list interface{}, listOfNotContainedElements interface{}, msgAndArgs ...interface{}) {

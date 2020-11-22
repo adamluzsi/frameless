@@ -314,9 +314,7 @@ func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			for _, spec := range getMemorySpecs(subject(t)) {
-				spec.Test(t.T)
-			}
+			specs.Run(t.TB, getMemorySpecs(subject(t))...)
 		})
 	}
 

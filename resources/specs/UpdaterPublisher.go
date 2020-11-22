@@ -82,7 +82,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				require.Nil(t, resources.SetID(updatedEntityPtr, id))
 				require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
 				t.Let(updatedEntityKey, toBaseValue(updatedEntityPtr))
-				Waiter.WaitWhile(func() bool {
+				AsyncTester.WaitWhile(func() bool {
 					return subscriber(t).EventsLen() < 1
 				})
 			})
@@ -102,7 +102,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						updatedEntityPtr := spec.createEntity()
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
-						Waiter.WaitWhile(func() bool {
+						AsyncTester.WaitWhile(func() bool {
 							return subscriber(t).EventsLen() < 1
 						})
 					})
@@ -132,7 +132,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				})
 
 				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
-					Waiter.Wait()
+					AsyncTester.Wait()
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
@@ -144,10 +144,10 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(getContext(t), updatedEntityPtr))
 						t.Let(furtherEventUpdateKey, toBaseValue(updatedEntityPtr))
-						Waiter.WaitWhile(func() bool {
+						AsyncTester.WaitWhile(func() bool {
 							return subscriber(t).EventsLen() < 2
 						})
-						Waiter.WaitWhile(func() bool {
+						AsyncTester.WaitWhile(func() bool {
 							return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 						})
 					})
@@ -158,7 +158,7 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 					})
 
 					s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-						Waiter.Wait()
+						AsyncTester.Wait()
 						require.NotContains(t, othSubscriber(t).Events(), t.I(updatedEntityKey))
 					})
 
@@ -200,14 +200,14 @@ func (spec UpdaterPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 		require.Nil(t, res.CommitTx(getContext(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		Waiter.Assert(t, func(tb testing.TB) {
+		AsyncTester.Assert(t, func(tb testing.TB) {
 			require.False(tb, subscriber(t).EventsLen() < 1)
 			require.Contains(tb, subscriber(t).Events(), t.I(updatedEntityKey))
 		})
@@ -215,7 +215,7 @@ func (spec UpdaterPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
 		require.Nil(t, res.RollbackTx(getContext(t)))
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 }

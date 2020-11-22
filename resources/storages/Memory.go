@@ -20,7 +20,7 @@ import (
 )
 
 func NewMemory() *Memory {
-	return  &Memory{}
+	return &Memory{}
 }
 
 // Memory is an event source principles based development in memory storage,
@@ -108,7 +108,7 @@ func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
 	}
 
 	id, _ := resources.LookupID(ptr)
-	if found, err := s.FindByID(ctx, reflect.New(reflects.BaseTypeOf(ptr)).Interface(), id); err != nil {
+	if found, err := s.FindByID(ctx, s.newPtr(ptr), id); err != nil {
 		return err
 	} else if found {
 		return fmt.Errorf(`%T already exists with id: %s`, ptr, id)
@@ -140,7 +140,7 @@ func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id interface{}) 
 	iter := s.FindAll(ctx, reflects.BaseValueOf(ptr).Interface())
 	defer iter.Close()
 
-	current := reflect.New(reflects.BaseTypeOf(ptr)).Interface()
+	current := s.newPtr(ptr)
 
 	for iter.Next() {
 		if err := iter.Decode(current); err != nil {
@@ -191,7 +191,7 @@ func (s *Memory) Update(ctx context.Context, ptr interface{}) error {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	found, err := s.FindByID(ctx, reflect.New(reflects.BaseTypeOf(ptr)).Interface(), id)
+	found, err := s.FindByID(ctx, s.newPtr(ptr), id)
 	if err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func (s *Memory) DeleteByID(ctx context.Context, T, id interface{}) error {
 
 	trace := s.getTrace()
 
-	found, err := s.FindByID(ctx, reflect.New(reflect.TypeOf(T)).Interface(), id)
+	found, err := s.FindByID(ctx, s.newPtr(T), id)
 	if err != nil {
 		return err
 	}
@@ -345,8 +345,8 @@ func (s *Memory) notifySubscriptions(event MemoryEvent) {
 		case DeleteAllEvent:
 			sub.publish(ctx, event.T)
 		case DeleteByIDEvent:
-			ptr := reflect.New(reflect.TypeOf(event.T)).Interface()
-			resources.SetID(ptr, event.ID)
+			ptr := s.newPtr(event.T)
+			_ = resources.SetID(ptr, event.ID)
 			sub.publish(ctx, reflects.BaseValueOf(ptr).Interface())
 		case CreateEvent, UpdateEvent:
 			sub.publish(ctx, event.Entity)
@@ -408,6 +408,11 @@ func (s *Memory) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error)
 	}
 
 	return s.CommitTx(ctx)
+}
+
+func (s *Memory) newPtr(ent interface{}) interface{} {
+	T := reflects.BaseTypeOf(ent)
+	return reflect.New(T).Interface()
 }
 
 /**********************************************************************************************************************/

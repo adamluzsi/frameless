@@ -74,7 +74,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	})
 
 	s.Test(`and no events made after the subscription time then subscriber doesn't receive any event`, func(t *testcase.T) {
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 
@@ -82,7 +82,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			id, _ := resources.LookupID(t.I(entityKey))
 			require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
-			Waiter.WaitWhile(func() bool {
+			AsyncTester.WaitWhile(func() bool {
 				return subscriber(t).EventsLen() < 1
 			})
 		})
@@ -102,7 +102,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 					require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
 					id, _ := resources.LookupID(entityPtr)
 					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
-					Waiter.Wait()
+					AsyncTester.Wait()
 				})
 
 				s.Then(`subscriber no longer receive them`, func(t *testcase.T) {
@@ -145,10 +145,10 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 					id, _ := resources.LookupID(entityPtr)
 					t.Let(furtherEventKey, toBaseValue(entityPtr))
 					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
-					Waiter.WaitWhile(func() bool {
+					AsyncTester.WaitWhile(func() bool {
 						return subscriber(t).EventsLen() < 2
 					})
-					Waiter.WaitWhile(func() bool {
+					AsyncTester.WaitWhile(func() bool {
 						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 					})
 				})
@@ -195,14 +195,14 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteByID(
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 		require.Nil(t, res.CommitTx(getContext(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		Waiter.Assert(t, func(tb testing.TB) {
+		AsyncTester.Assert(t, func(tb testing.TB) {
 			require.False(tb, subscriber(t).EventsLen() < 1)
 			spec.hasDeleteEntity(tb, subscriber(t).Events(), t.I(entityKey))
 		})
@@ -249,7 +249,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.T))
-			Waiter.WaitWhile(func() bool {
+			AsyncTester.WaitWhile(func() bool {
 				return subscriber(t).EventsLen() < 1
 			})
 		})
@@ -277,7 +277,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 			})
 
 			s.Then(`new subscriber do not receive any events`, func(t *testcase.T) {
-				Waiter.Wait()
+				AsyncTester.Wait()
 				require.Empty(t, othSubscriber(t).Events())
 			})
 
@@ -285,10 +285,10 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 				const furtherEventKey = `further event`
 				s.Before(func(t *testcase.T) {
 					require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.T))
-					Waiter.WaitWhile(func() bool {
+					AsyncTester.WaitWhile(func() bool {
 						return subscriber(t).EventsLen() < 2
 					})
-					Waiter.WaitWhile(func() bool {
+					AsyncTester.WaitWhile(func() bool {
 						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 					})
 				})
@@ -331,14 +331,14 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteAll(s
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 		require.Nil(t, res.CommitTx(getContext(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(getContext(t)))
-		Waiter.Assert(t, func(tb testing.TB) {
+		AsyncTester.Assert(t, func(tb testing.TB) {
 			require.False(tb, subscriber(t).EventsLen() < 1)
 			require.Contains(t, subscriber(t).Events(), spec.T)
 		})
@@ -346,7 +346,7 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteAll(s
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
 		require.Nil(t, res.RollbackTx(getContext(t)))
-		Waiter.Wait()
+		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 }
