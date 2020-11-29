@@ -28,6 +28,10 @@ func (spec Creator) Test(t *testing.T) {
 			ptr = s.Let(`entity`, func(t *testcase.T) interface{} {
 				return spec.FixtureFactory.Create(spec.T)
 			})
+			getID = func(t *testcase.T) interface{} {
+				id, _ := resources.LookupID(ptr.Get(t))
+				return id
+			}
 		)
 		subject := func(t *testcase.T) error {
 			ctx := ctx.Get(t).(context.Context)
@@ -35,6 +39,7 @@ func (spec Creator) Test(t *testing.T) {
 			if err == nil {
 				id, _ := resources.LookupID(ptr.Get(t))
 				t.Defer(spec.Subject.DeleteByID, ctx, spec.T, id)
+				IsFindable(t, spec.Subject, ctx, newEntityFunc(spec.T), id)
 			}
 			return err
 		}
@@ -42,29 +47,19 @@ func (spec Creator) Test(t *testing.T) {
 		s.When(`entity was not saved before`, func(s *testcase.Spec) {
 			s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				id, _ := resources.LookupID(ptr.Get(t))
-				require.NotEmpty(t, id)
+				require.NotEmpty(t, getID(t))
 			})
 
 			s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-
-				entity := ptr.Get(t)
-				id, _ := resources.LookupID(entity)
-				ptr := IsFindable(t, spec.Subject, spec.Context(), spec.newEntity, id)
-				require.Equal(t, entity, ptr)
+				require.Equal(t, ptr.Get(t), IsFindable(t, spec.Subject, spec.Context(), spec.newEntity, getID(t)))
 			})
 		})
 
 		s.When(`entity was already saved once`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				AsyncTester.WaitWhile(func() bool {
-					id, _ := resources.LookupID(ptr.Get(t))
-					found, err := spec.Subject.FindByID(spec.Context(), spec.newEntity(), id)
-					require.Nil(t, err)
-					return !found
-				})
+				IsFindable(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), getID(t))
 			})
 
 			s.Then(`it will raise error because ext:ID field already points to a existing record`, func(t *testcase.T) {
@@ -75,20 +70,9 @@ func (spec Creator) Test(t *testing.T) {
 		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				AsyncTester.WaitWhile(func() bool {
-					id, _ := resources.LookupID(ptr.Get(t))
-					found, err := spec.Subject.FindByID(spec.Context(), spec.newEntity(), id)
-					require.Nil(t, err)
-					return !found
-				})
-
-				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
-				AsyncTester.WaitWhile(func() bool {
-					id, _ := resources.LookupID(ptr.Get(t))
-					found, err := spec.Subject.FindByID(spec.Context(), spec.newEntity(), id)
-					require.Nil(t, err)
-					return found
-				})
+				IsFindable(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), getID(t))
+				require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, getID(t)))
+				IsAbsent(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), getID(t))
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
@@ -97,8 +81,7 @@ func (spec Creator) Test(t *testing.T) {
 
 			s.Then(`persisted object can be found`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				id, _ := resources.LookupID(ptr.Get(t))
-				IsFindable(t, spec.Subject, spec.Context(), spec.newEntity, id)
+				IsFindable(t, spec.Subject, spec.Context(), spec.newEntity, getID(t))
 			})
 		})
 

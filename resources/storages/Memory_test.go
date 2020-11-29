@@ -201,8 +201,17 @@ func TestMemory_Options_EventLogging_disable(t *testing.T) {
 		`after all the specs, the memory storage was expected to be empty.`+
 			` If the storage has values, it means something is not cleaning up properly in the specs.`)
 }
+
 func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
-	s := testcase.NewSpec(t)
+	SpecMemory_Options_AsyncSubscriptionHandling(t)
+}
+
+func BenchmarkMemory_Options_AsyncSubscriptionHandling(b *testing.B) {
+	SpecMemory_Options_AsyncSubscriptionHandling(b)
+}
+
+func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
+	s := testcase.NewSpec(tb)
 
 	var subscriber = func(t *testcase.T) *HangingSubscriber { return t.I(`HangingSubscriber`).(*HangingSubscriber) }
 	s.Let(`HangingSubscriber`, func(t *testcase.T) interface{} {
@@ -322,7 +331,7 @@ func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
 		s.LetValue(`DisableAsyncSubscriptionHandling`, false)
 
 		thenCreateUpdateDeleteWill(s, false)
-	})
+	}, testcase.SkipBenchmark())
 
 	s.When(`is disabled`, func(s *testcase.Spec) {
 		s.LetValue(`DisableAsyncSubscriptionHandling`, true)
@@ -838,7 +847,7 @@ func (l *fakeLogger) Log(args ...interface{}) {
 	}
 }
 
-func TestMemory_LookupTxEvent(t *testing.T) {
+func TestMemory_LookupTx(t *testing.T) {
 	s := storages.NewMemory()
 
 	t.Run(`when outside of tx`, func(t *testing.T) {

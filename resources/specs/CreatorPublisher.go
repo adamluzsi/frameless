@@ -35,7 +35,7 @@ func (spec CreatorPublisher) Benchmark(b *testing.B) {
 func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (resources.Subscription, error) {
-			subscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.T, subscriber(t))
+			subscription, err := spec.Subject.SubscribeToCreate(ctxGet(t), spec.T, subscriber(t))
 			if err == nil && subscription != nil {
 				t.Let(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -48,7 +48,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 			return subscription
 		}
 
-		s.Let(contextKey, func(t *testcase.T) interface{} {
+		ctx.Let(s, func(t *testcase.T) interface{} {
 			return spec.context()
 		})
 
@@ -68,13 +68,9 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 		s.And(`events made`, func(s *testcase.Spec) {
 			events := s.Let(`events`, func(t *testcase.T) interface{} {
 				entities := spec.createEntities()
+
 				for _, entity := range entities {
-					require.Nil(t, spec.Subject.Create(getContext(t), entity))
-					id, _ := resources.LookupID(entity)
-					// we use a new context here to enforce that the cleaning will be done outside of any context.
-					// It might fail but will ensure proper cleanup.
-					t.Defer(spec.Subject.DeleteByID, spec.context(), spec.T, id)
-					IsFindable(t, spec.Subject, getContext(t), newEntityFunc(spec.T), id)
+					CreateEntity(t, spec.Subject, ctxGet(t), entity)
 				}
 
 				// wait until the subscriber received the events
@@ -100,12 +96,8 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
 						entities := spec.createEntities()
 						for _, entity := range entities {
-							require.Nil(t, spec.Subject.Create(getContext(t), entity))
-							id, _ := resources.LookupID(entity)
-							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
-							IsFindable(t, spec.Subject, getContext(t), newEntityFunc(spec.T), id)
+							CreateEntity(t, spec.Subject, ctxGet(t), entity)
 						}
-
 						AsyncTester.Wait()
 					})
 
@@ -123,7 +115,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t)
 					t.Let(othSubscriberKey, othSubscriber)
-					newSubscription, err := spec.Subject.SubscribeToCreate(getContext(t), spec.T, othSubscriber)
+					newSubscription, err := spec.Subject.SubscribeToCreate(ctxGet(t), spec.T, othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, newSubscription)
 					t.Defer(newSubscription.Close)
@@ -143,10 +135,7 @@ func (spec CreatorPublisher) Spec(s *testcase.Spec) {
 					furtherEvents := s.Let(`further events`, func(t *testcase.T) interface{} {
 						entities := spec.createEntities()
 						for _, entity := range entities {
-							require.Nil(t, spec.Subject.Create(getContext(t), entity))
-							id, _ := resources.LookupID(entity)
-							t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
-							IsFindable(t, spec.Subject, getContext(t), newEntityFunc(spec.T), id)
+							CreateEntity(t, spec.Subject, ctxGet(t), entity)
 						}
 
 						AsyncTester.WaitWhile(func() bool {
@@ -187,21 +176,15 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 		return
 	}
 
-	const eventsKey = `events`
-
-	s.Before(func(t *testcase.T) {
+	events := s.Let(`events`, func(t *testcase.T) interface{} {
 		entities := spec.createEntities()
 		for _, entity := range entities {
-			require.Nil(t, spec.Subject.Create(getContext(t), entity))
-			id, _ := resources.LookupID(entity)
-			// we use a new context here to enforce that the cleaning will be done outside of any context.
-			// It might fail but will ensure proper cleanup.
-			t.Defer(spec.Subject.DeleteByID, spec.context(), spec.T, id)
+			CreateEntity(t, spec.Subject, ctxGet(t), entity)
 		}
-		t.Let(eventsKey, toBaseValues(entities))
-	})
+		return toBaseValues(entities)
+	}).EagerLoading(s)
 
-	s.Let(contextKey, func(t *testcase.T) interface{} {
+	ctx.Let(s, func(t *testcase.T) interface{} {
 		t.Log(`given we are in transaction`)
 		ctxInTx, err := res.BeginTx(spec.context())
 		require.Nil(t, err)
@@ -212,19 +195,19 @@ func (spec CreatorPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
 		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
-		require.Nil(t, res.CommitTx(getContext(t)))
+		require.Nil(t, res.CommitTx(ctxGet(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-		require.Nil(t, res.CommitTx(getContext(t)))
+		require.Nil(t, res.CommitTx(ctxGet(t)))
 
 		AsyncTester.Assert(t, func(tb testing.TB) {
-			require.ElementsMatch(tb, t.I(eventsKey), subscriber(t).Events())
+			require.ElementsMatch(tb, events.Get(t), subscriber(t).Events())
 		})
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-		require.Nil(t, res.RollbackTx(getContext(t)))
+		require.Nil(t, res.RollbackTx(ctxGet(t)))
 		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})

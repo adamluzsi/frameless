@@ -318,6 +318,8 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 
 	memory, isFinalCommit := tx.parent.(*Memory)
 
+	tx.mutex.Lock()
+	defer tx.mutex.Unlock()
 	for _, event := range tx.events {
 		event := event
 		tx.parent.AddEvent(event)
@@ -730,7 +732,7 @@ func (tx *MemoryTransaction) AddEvent(event MemoryEvent) {
 	tx.events = append(tx.events, event)
 }
 
-func (tx MemoryTransaction) Events() []MemoryEvent {
+func (tx *MemoryTransaction) Events() []MemoryEvent {
 	tx.mutex.RLock()
 	defer tx.mutex.RUnlock()
 	var es []MemoryEvent
@@ -787,11 +789,11 @@ func memoryEventViewFor(events []MemoryEvent) MemoryView {
 	return view
 }
 
-func (tx MemoryTransaction) View() MemoryView {
+func (tx *MemoryTransaction) View() MemoryView {
 	return memoryEventViewFor(tx.Events())
 }
 
-func (tx MemoryTransaction) ViewFor(T interface{}) MemoryTableView {
+func (tx *MemoryTransaction) ViewFor(T interface{}) MemoryTableView {
 	return tx.View()[entityTypeNameFor(T)]
 }
 
@@ -801,7 +803,9 @@ type ctxKeyForMemoryTransaction struct {
 	ID string
 }
 
-func (tx MemoryTransaction) isDone() bool {
+func (tx *MemoryTransaction) isDone() bool {
+	tx.mutex.RLock()
+	defer tx.mutex.RUnlock()
 	return tx.done.commit || tx.done.rollback
 }
 

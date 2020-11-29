@@ -29,42 +29,36 @@ func (spec Updater) Test(t *testing.T) {
 	})
 
 	s.Describe(`Updater`, func(s *testcase.Spec) {
-		subject := func(t *testcase.T) error {
-			return spec.Subject.Update(
-				t.I(`ctx`).(context.Context),
-				t.I(`entity-with-changes`),
-			)
-		}
+		var (
+			requestContext    = testcase.Var{Name: `request-context`}
+			entityWithChanges = testcase.Var{Name: `entity-with-changes`}
+			subject           = func(t *testcase.T) error {
+				return spec.Subject.Update(
+					requestContext.Get(t).(context.Context),
+					entityWithChanges.Get(t),
+				)
+			}
+		)
 
-		s.Let(`ctx`, func(t *testcase.T) interface{} {
+		ctx.Let(s, func(t *testcase.T) interface{} {
 			return spec.Context()
 		})
 
+		requestContext.Let(s, func(t *testcase.T) interface{} {
+			return ctx.Get(t)
+		})
+
 		s.When(`an entity already stored`, func(s *testcase.Spec) {
-
-			s.Let(`entity`, func(t *testcase.T) interface{} {
-				return spec.FixtureFactory.Create(spec.T)
-			})
-
-			s.Let(`entity.id`, func(t *testcase.T) interface{} {
-				id, ok := resources.LookupID(t.I(`entity`))
-				require.True(t, ok, ErrIDRequired)
-				return id
-			})
-
-			s.Around(func(t *testcase.T) func() {
-				entity := t.I(`entity`)
-				require.Nil(t, spec.Subject.Create(spec.Context(), entity))
-				return func() {
-					id, _ := resources.LookupID(entity)
-					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, id))
-				}
-			})
+			entity := s.Let(`entity`, func(t *testcase.T) interface{} {
+				ent := spec.FixtureFactory.Create(spec.T)
+				CreateEntity(t, spec.Subject, ctxGet(t), ent)
+				return ent
+			}).EagerLoading(s)
 
 			s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
-				s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
+				entityWithChanges.Let(s, func(t *testcase.T) interface{} {
 					newEntity := spec.FixtureFactory.Create(spec.T)
-					id, _ := resources.LookupID(t.I(`entity`))
+					id, _ := resources.LookupID(entity.Get(t))
 					require.Nil(t, resources.SetID(newEntity, id))
 					return newEntity
 				})
@@ -72,18 +66,12 @@ func (spec Updater) Test(t *testing.T) {
 				s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 					require.Nil(t, subject(t))
 
-					id := t.I(`entity.id`)
-					actually := newEntity(spec.T)
-					ok, err := spec.Subject.FindByID(spec.Context(), actually, id)
-					require.True(t, ok)
-					require.Nil(t, err)
-
-					require.Equal(t, t.I(`entity-with-changes`), actually)
+					HasEntity(t, spec.Subject, spec.Context(), entityWithChanges.Get(t))
 				})
 
 				s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-					s.Let(`ctx`, func(t *testcase.T) interface{} {
-						ctx, cancel := context.WithCancel(spec.Context())
+					requestContext.Let(s, func(t *testcase.T) interface{} {
+						ctx, cancel := context.WithCancel(ctx.Get(t).(context.Context))
 						cancel()
 						return ctx
 					})
@@ -96,15 +84,10 @@ func (spec Updater) Test(t *testing.T) {
 		})
 
 		s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
-			s.Let(`entity-with-changes`, func(t *testcase.T) interface{} {
+			entityWithChanges.Let(s, func(t *testcase.T) interface{} {
 				newEntity := spec.FixtureFactory.Create(spec.T)
-				{
-					// make sure entity have id that is not present in the storage
-					require.Nil(t, spec.Subject.Create(spec.Context(), newEntity))
-					id, ok := resources.LookupID(newEntity)
-					require.True(t, ok)
-					require.Nil(t, spec.Subject.DeleteByID(spec.Context(), spec.T, id))
-				}
+				CreateEntity(t, spec.Subject, ctxGet(t), newEntity)
+				DeleteEntity(t, spec.Subject, ctxGet(t), newEntity)
 				return newEntity
 			})
 
@@ -117,24 +100,15 @@ func (spec Updater) Test(t *testing.T) {
 }
 
 func (spec Updater) Benchmark(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
-	b.Run(`Updater`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.T)
-		saveEntities(b, spec.Subject, spec.FixtureFactory, es...)
-		defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
+	s := testcase.NewSpec(b)
 
-		var executionTimes int
-		b.ResetTimer()
-	wrk:
-		for {
-			for _, ptr := range es {
-				require.Nil(b, spec.Subject.Update(spec.Context(), ptr))
+	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
+		ptr := newEntity(spec.T)
+		CreateEntity(t, spec.Subject, spec.Context(), ptr)
+		return ptr
+	}).EagerLoading(s)
 
-				executionTimes++
-				if b.N <= executionTimes {
-					break wrk
-				}
-			}
-		}
+	s.Test(``, func(t *testcase.T) {
+		require.Nil(b, spec.Subject.Update(spec.Context(), ent.Get(t)))
 	})
 }

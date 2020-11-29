@@ -39,7 +39,7 @@ func (spec DeleterPublisher) Spec(s *testcase.Spec) {
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) (resources.Subscription, error) {
-		subscription, err := spec.Subject.SubscribeToDeleteByID(getContext(t), spec.T, subscriber(t))
+		subscription, err := spec.Subject.SubscribeToDeleteByID(ctxGet(t), spec.T, subscriber(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -52,7 +52,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 		require.NotNil(t, sub)
 	}
 
-	s.Let(contextKey, func(t *testcase.T) interface{} {
+	ctx.Let(s, func(t *testcase.T) interface{} {
 		return spec.context()
 	})
 
@@ -61,14 +61,13 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	})
 
 	const entityKey = `entity`
-	s.Before(func(t *testcase.T) {
-		t.Log(`given an entity is stored`)
+	entity := s.Let(entityKey, func(t *testcase.T) interface{} {
 		entityPtr := spec.createEntity()
-		require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
-		id, _ := resources.LookupID(entityPtr)
-		t.Defer(spec.Subject.DeleteByID, getContext(t), spec.T, id)
-		t.Let(entityKey, entityPtr)
+		CreateEntity(t, spec.Subject, ctxGet(t), entityPtr)
+		return entityPtr
+	}).EagerLoading(s)
 
+	s.Before(func(t *testcase.T) {
 		t.Log(`given a subscription is made`)
 		onSuccess(t)
 	})
@@ -80,15 +79,15 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			id, _ := resources.LookupID(t.I(entityKey))
-			require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
+			DeleteEntity(t, spec.Subject, ctxGet(t), entity.Get(t))
+
 			AsyncTester.WaitWhile(func() bool {
 				return subscriber(t).EventsLen() < 1
 			})
 		})
 
 		s.Then(`subscriber receive the delete event where ID can be located`, func(t *testcase.T) {
-			spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(entityKey))
+			spec.hasDeleteEntity(t, subscriber(t).Events(), entity.Get(t))
 		})
 
 		s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
@@ -99,9 +98,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 			s.And(`more events made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					entityPtr := spec.createEntity()
-					require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
-					id, _ := resources.LookupID(entityPtr)
-					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
+					CreateEntity(t, spec.Subject, ctxGet(t), entityPtr)
+					DeleteEntity(t, spec.Subject, ctxGet(t), entityPtr)
 					AsyncTester.Wait()
 				})
 
@@ -119,7 +117,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.Subject.SubscribeToDeleteByID(getContext(t), spec.T, othSubscriber)
+				sub, err := spec.Subject.SubscribeToDeleteByID(ctxGet(t), spec.T, othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -127,7 +125,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 			s.Then(`original subscriber still received the old delete event`, func(t *testcase.T) {
 				require.Len(t, subscriber(t).Events(), 1)
-				expectedID, _ := resources.LookupID(t.I(entityKey))
+				expectedID, _ := resources.LookupID(entity.Get(t))
 				actualID, _ := resources.LookupID(subscriber(t).Events()[0])
 				require.Equal(t, expectedID, actualID)
 			})
@@ -138,55 +136,53 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				const furtherEventKey = `further event`
-				s.Before(func(t *testcase.T) {
+				furtherEvent := s.Let(furtherEventKey, func(t *testcase.T) interface{} {
 					t.Log(`given an another entity is stored`)
 					entityPtr := spec.createEntity()
-					require.Nil(t, spec.Subject.Create(getContext(t), entityPtr))
-					id, _ := resources.LookupID(entityPtr)
-					t.Let(furtherEventKey, toBaseValue(entityPtr))
-					require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
+					CreateEntity(t, spec.Subject, ctxGet(t), entityPtr)
+					DeleteEntity(t, spec.Subject, ctxGet(t), entityPtr)
 					AsyncTester.WaitWhile(func() bool {
 						return subscriber(t).EventsLen() < 2
 					})
 					AsyncTester.WaitWhile(func() bool {
 						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 					})
-				})
+					return toBaseValue(entityPtr)
+				}).EagerLoading(s)
 
 				s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-					spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(entityKey))
-					spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(furtherEventKey))
+					spec.hasDeleteEntity(t, subscriber(t).Events(), entity.Get(t))
+					spec.hasDeleteEntity(t, subscriber(t).Events(), furtherEvent.Get(t))
 				})
 
 				s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-					spec.doesNotHaveDeleteEntity(t, othSubscriber(t).Events(), t.I(entityKey))
+					spec.doesNotHaveDeleteEntity(t, othSubscriber(t).Events(), entity.Get(t))
 				})
 
 				s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
-					spec.hasDeleteEntity(t, subscriber(t).Events(), t.I(furtherEventKey))
+					spec.hasDeleteEntity(t, subscriber(t).Events(), furtherEvent.Get(t))
 				})
 			})
 		})
 	})
 
-	s.Describe(`relationship with OnePhaseCommitProtocol`,
-		spec.specOnePhaseCommitProtocolForSubscribeToDeleteByID)
+	s.Describe(`relationship with OnePhaseCommitProtocol`, func(s *testcase.Spec) {
+		spec.specOnePhaseCommitProtocolForSubscribeToDeleteByID(s, entity)
+	})
 }
 
-func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteByID(s *testcase.Spec) {
+func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteByID(s *testcase.Spec, entity testcase.Var) {
 	res, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
 	if !ok {
 		return
 	}
 
-	const entityKey = `entity`
-
 	s.Before(func(t *testcase.T) {
-		id, _ := resources.LookupID(t.I(entityKey))
-		require.Nil(t, spec.Subject.DeleteByID(getContext(t), spec.T, id))
+		t.Log(`given the entity is deleted`)
+		DeleteEntity(t, spec.Subject, ctxGet(t), entity.Get(t))
 	})
 
-	s.Let(contextKey, func(t *testcase.T) interface{} {
+	ctx.Let(s, func(t *testcase.T) interface{} {
 		t.Log(`given we are in transaction`)
 		ctxInTx, err := res.BeginTx(spec.context())
 		require.Nil(t, err)
@@ -197,26 +193,26 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteByID(
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
 		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
-		require.Nil(t, res.CommitTx(getContext(t)))
+		require.Nil(t, res.CommitTx(ctxGet(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-		require.Nil(t, res.CommitTx(getContext(t)))
+		require.Nil(t, res.CommitTx(ctxGet(t)))
 		AsyncTester.Assert(t, func(tb testing.TB) {
 			require.False(tb, subscriber(t).EventsLen() < 1)
-			spec.hasDeleteEntity(tb, subscriber(t).Events(), t.I(entityKey))
+			spec.hasDeleteEntity(tb, subscriber(t).Events(), entity.Get(t))
 		})
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-		require.Nil(t, res.RollbackTx(getContext(t)))
+		require.Nil(t, res.RollbackTx(ctxGet(t)))
 		require.Empty(t, subscriber(t).Events())
 	})
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) (resources.Subscription, error) {
-		subscription, err := spec.Subject.SubscribeToDeleteAll(getContext(t), spec.T, subscriber(t))
+		subscription, err := spec.Subject.SubscribeToDeleteAll(ctxGet(t), spec.T, subscriber(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -233,7 +229,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 		return newEventSubscriber(t)
 	})
 
-	s.Let(contextKey, func(t *testcase.T) interface{} {
+	ctx.Let(s, func(t *testcase.T) interface{} {
 		return spec.context()
 	})
 
@@ -248,7 +244,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.T))
+			require.Nil(t, spec.Subject.DeleteAll(ctxGet(t), spec.T))
 			AsyncTester.WaitWhile(func() bool {
 				return subscriber(t).EventsLen() < 1
 			})
@@ -266,7 +262,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.Subject.SubscribeToDeleteAll(getContext(t), spec.T, othSubscriber)
+				sub, err := spec.Subject.SubscribeToDeleteAll(ctxGet(t), spec.T, othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -284,7 +280,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				const furtherEventKey = `further event`
 				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.T))
+					require.Nil(t, spec.Subject.DeleteAll(ctxGet(t), spec.T))
 					AsyncTester.WaitWhile(func() bool {
 						return subscriber(t).EventsLen() < 2
 					})
@@ -312,32 +308,34 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 }
 
 func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteAll(s *testcase.Spec) {
-	res, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
+	specSubject, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
 	if !ok {
 		return
 	}
 
-	s.Before(func(t *testcase.T) {
-		t.Log(`given DeleteAll event made`)
-		require.Nil(t, spec.Subject.DeleteAll(getContext(t), spec.T))
-	})
-
-	s.Let(contextKey, func(t *testcase.T) interface{} {
-		t.Log(`given we are in transaction`)
-		ctxInTx, err := res.BeginTx(spec.context())
-		require.Nil(t, err)
-		t.Defer(res.RollbackTx, ctxInTx)
-		return ctxInTx
-	})
+	var (
+		ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
+			t.Log(`given we are in transaction`)
+			ctxInTx, err := specSubject.BeginTx(spec.context())
+			require.Nil(t, err)
+			t.Defer(specSubject.RollbackTx, ctxInTx)
+			return ctxInTx
+		})
+		subject = func(t *testcase.T) error {
+			return spec.Subject.DeleteAll(ctx.Get(t).(context.Context), spec.T)
+		}
+	)
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
+		require.Nil(t, subject(t))
 		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
-		require.Nil(t, res.CommitTx(getContext(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-		require.Nil(t, res.CommitTx(getContext(t)))
+		require.Nil(t, subject(t))
+		AsyncTester.Wait()
+		require.Nil(t, specSubject.CommitTx(ctxGet(t)))
 		AsyncTester.Assert(t, func(tb testing.TB) {
 			require.False(tb, subscriber(t).EventsLen() < 1)
 			require.Contains(t, subscriber(t).Events(), spec.T)
@@ -345,36 +343,42 @@ func (spec DeleterPublisher) specOnePhaseCommitProtocolForSubscribeToDeleteAll(s
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-		require.Nil(t, res.RollbackTx(getContext(t)))
+		require.Nil(t, subject(t))
+		AsyncTester.Wait()
+		require.Nil(t, specSubject.RollbackTx(ctxGet(t)))
 		AsyncTester.Wait()
 		require.Empty(t, subscriber(t).Events())
 	})
 }
 
 func (spec DeleterPublisher) hasDeleteEntity(tb testing.TB, list []interface{}, e interface{}) {
-	var matchingIDFound bool
-	for _, entity := range list {
-		expectedID, _ := resources.LookupID(entity)
-		actualID, _ := resources.LookupID(e)
-		if expectedID == actualID {
-			matchingIDFound = true
-			break
+	AsyncTester.Assert(tb, func(tb testing.TB) {
+		var matchingIDFound bool
+		for _, entity := range list {
+			expectedID, _ := resources.LookupID(entity)
+			actualID, _ := resources.LookupID(e)
+			if expectedID == actualID {
+				matchingIDFound = true
+				break
+			}
 		}
-	}
-	require.True(tb, matchingIDFound, `it was expected to includes the delete event entry`)
+		require.True(tb, matchingIDFound, `it was expected to includes the delete event entry`)
+	})
 }
 
 func (spec DeleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, list []interface{}, e interface{}) {
-	var matchingIDFound bool
-	for _, entity := range list {
-		expectedID, _ := resources.LookupID(entity)
-		actualID, _ := resources.LookupID(e)
-		if expectedID == actualID {
-			matchingIDFound = true
-			break
+	AsyncTester.Assert(tb, func(tb testing.TB) {
+		var matchingIDFound bool
+		for _, entity := range list {
+			expectedID, _ := resources.LookupID(entity)
+			actualID, _ := resources.LookupID(e)
+			if expectedID == actualID {
+				matchingIDFound = true
+				break
+			}
 		}
-	}
-	require.False(tb, matchingIDFound, `it was expected to doesn't have the delete event entry`)
+		require.False(tb, matchingIDFound, `it was expected to doesn't have the delete event entry`)
+	})
 }
 
 func (spec DeleterPublisher) context() context.Context {

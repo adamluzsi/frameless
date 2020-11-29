@@ -58,12 +58,12 @@ func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	return es
 }
 
-func saveEntities(tb testing.TB, s resources.Creator, f FixtureFactory, es ...interface{}) []interface{} {
+func saveEntities(tb testing.TB, s minimumRequirements, f FixtureFactory, es ...interface{}) []interface{} {
 	var ids []interface{}
 	for _, e := range es {
 		require.Nil(tb, s.Create(f.Context(), e))
-		id, _ := resources.LookupID(e)
-		ids = append(ids, id)
+		CreateEntity(tb, s, f.Context(), e)
+		ids = append(ids, HasID(tb, e))
 	}
 	return ids
 }
@@ -102,6 +102,10 @@ func requireContainsList(tb testing.TB, list interface{}, listOfContainedElement
 	for i := 0; i < v.Len(); i++ {
 		require.Contains(tb, list, v.Index(i).Interface(), msgAndArgs...)
 	}
+}
+
+func toT(ent interface{}) resources.T {
+	return reflects.BaseValueOf(ent).Interface()
 }
 
 func toBaseValue(e interface{}) interface{} {
@@ -174,8 +178,15 @@ const (
 	subscriptionKey = `subscription`
 )
 
-func getContext(t *testcase.T) context.Context {
-	return t.I(contextKey).(context.Context)
+var ctx = testcase.Var{
+	Name: contextKey,
+	Init: func(t *testcase.T) interface{} {
+		return context.Background()
+	},
+}
+
+func ctxGet(t *testcase.T) context.Context {
+	return ctx.Get(t).(context.Context)
 }
 
 func getSubscriber(t *testcase.T, key string) *eventSubscriber {
