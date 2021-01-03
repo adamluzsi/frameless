@@ -17,6 +17,8 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
+type T = resources.T
+
 var benchmarkEntityVolumeCount int
 
 func init() {

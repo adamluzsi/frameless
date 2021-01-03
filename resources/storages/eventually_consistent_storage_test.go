@@ -57,8 +57,7 @@ func NewEventuallyConsistentStorage() *EventuallyConsistentStorage {
 
 type EventuallyConsistentStorage struct {
 	*storages.Memory
-	jobs chan func()
-
+	jobs    chan func()
 	workers struct {
 		cancel func()
 	}
@@ -117,6 +116,31 @@ func (e *EventuallyConsistentStorage) DeleteAll(ctx context.Context, T resources
 	})
 }
 
+type eventuallyConsistentStorageTxKey struct{} //--> *sync.WaitGroup
+
+func (e *EventuallyConsistentStorage) BeginTx(ctx context.Context) (context.Context, error) {
+	ctx = context.WithValue(ctx, eventuallyConsistentStorageTxKey{}, &sync.WaitGroup{})
+	return e.Memory.BeginTx(ctx)
+}
+
+func (e *EventuallyConsistentStorage) txlock(tx context.Context) *sync.WaitGroup {
+	txWG, ok := tx.Value(eventuallyConsistentStorageTxKey{}).(*sync.WaitGroup)
+	if !ok {
+		return &sync.WaitGroup{}
+	}
+	return txWG
+}
+
+func (e *EventuallyConsistentStorage) CommitTx(tx context.Context) error {
+	e.txlock(tx).Wait()
+	return e.Memory.CommitTx(tx)
+}
+
+func (e *EventuallyConsistentStorage) RollbackTx(tx context.Context) error {
+	e.txlock(tx).Wait()
+	return e.Memory.RollbackTx(tx)
+}
+
 func (e *EventuallyConsistentStorage) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -145,13 +169,15 @@ func (e *EventuallyConsistentStorage) eventually(ctx context.Context, fn func(ct
 		return err
 	}
 
+	wg := e.txlock(tx)
+	wg.Add(1)
 	e.jobs <- func() {
+		defer wg.Done()
 		const (
 			max = int(time.Millisecond)
 			min = int(time.Microsecond)
 		)
 		time.Sleep(time.Duration(fixtures.Random.IntBetween(min, max)))
-
 		_ = e.Memory.CommitTx(tx)
 	}
 

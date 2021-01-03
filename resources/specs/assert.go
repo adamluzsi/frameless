@@ -13,7 +13,7 @@ import (
 
 var AsyncTester = testcase.AsyncTester{
 	WaitDuration: time.Millisecond,
-	WaitTimeout:  time.Minute,
+	WaitTimeout:  5 * time.Second,
 }
 
 type NewEntityFunc func() interface{}
