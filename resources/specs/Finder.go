@@ -2,6 +2,7 @@ package specs
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -13,9 +14,9 @@ import (
 )
 
 type Finder struct {
-	T interface{}
-	FixtureFactory
+	T
 	Subject minimumRequirements
+	FixtureFactory
 }
 
 func (spec Finder) Test(t *testing.T) {
@@ -50,133 +51,65 @@ func (spec Finder) Benchmark(b *testing.B) {
 }
 
 type findByIDSpec struct {
-	T interface{}
-	FixtureFactory
+	T
 	Subject minimumRequirements
+	FixtureFactory
 }
 
 func (spec findByIDSpec) Test(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
-	})
-
-	s.Describe(`FindByID`, func(s *testcase.Spec) {
-
-		var (
-			ctx = s.Let(`ctx`, func(t *testcase.T) interface{} {
-				return spec.Context()
-			})
-			ptr = s.Let(`ptr`, func(t *testcase.T) interface{} {
-				return newEntity(spec.T)
-			})
-			id      = testcase.Var{Name: `id`}
-			subject = func(t *testcase.T) (bool, error) {
-				return spec.Subject.FindByID(
-					ctx.Get(t).(context.Context),
-					ptr.Get(t),
-					id.Get(t),
-				)
+	FindOne{
+		T:              spec.T,
+		FixtureFactory: spec.FixtureFactory,
+		Subject:        spec.Subject,
+		MethodName:     "FindByID",
+		ToQuery: func(tb testing.TB, ent T) QueryOne {
+			id, ok := resources.LookupID(ent)
+			if !ok { // if no id found create a dummy ID
+				// since an id is required always to use FindByID
+				// we generate a dummy id in case the received entity don't have one.
+				// This helps to avoid error cases where ID is not set actually.
+				// For those we have further specification later
+				id = spec.createDummyID(tb)
 			}
-		)
 
-		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
-			return spec.FixtureFactory.Create(spec.T)
-		})
+			return func(tb testing.TB, ctx context.Context, ptr T) (found bool, err error) {
+				return spec.Subject.FindByID(ctx, ptr, id)
+			}
+		},
 
-		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				CreateEntity(t, spec.Subject, spec.Context(), entity.Get(t))
-				newID, ok := resources.LookupID(entity.Get(t))
-				require.True(t, ok)
-				id.Set(t, newID)
-			})
+		Describe: func(s *testcase.Spec) {
 
-			s.Then(`the entity will be returned`, func(t *testcase.T) {
-				found, err := subject(t)
+			s.Test(`#E2E`, func(t *testcase.T) {
+				var ids []interface{}
+
+				for i := 0; i < 12; i++ {
+					entity := spec.FixtureFactory.Create(spec.T)
+					CreateEntity(t, spec.Subject, spec.Context(), entity)
+					id, ok := resources.LookupID(entity)
+					require.True(t, ok, ErrIDRequired.Error())
+					ids = append(ids, id)
+				}
+
+				t.Log("when no value stored that the query request")
+				ptr := newEntity(spec.T)
+				ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
 				require.Nil(t, err)
-				require.True(t, found)
-				require.Equal(t, entity.Get(t), ptr.Get(t))
-			})
+				require.False(t, ok)
 
-			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-				ctx.Let(s, func(t *testcase.T) interface{} {
-					ctx, cancel := context.WithCancel(spec.Context())
-					cancel()
-					return ctx
-				})
-
-				s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
-					found, err := subject(t)
-					require.Equal(t, context.Canceled, err)
-					require.False(t, found)
-				})
-			})
-
-			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
-				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-					return spec.FixtureFactory.Create(spec.T)
-				})
-				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.Create(spec.Context(), t.I(`oth-entity`)))
-				})
-
-				s.Then(`the entity`, func(t *testcase.T) {
-					found, err := subject(t)
+				t.Log("values returned")
+				for _, ID := range ids {
+					e := newEntity(spec.T)
+					ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
 					require.Nil(t, err)
-					require.True(t, found)
-					require.Equal(t, t.I(`entity`), t.I(`ptr`))
-				})
+					require.True(t, ok)
+
+					actualID, ok := resources.LookupID(e)
+					require.True(t, ok, "can't find ID in the returned value")
+					require.Equal(t, ID, actualID)
+				}
 			})
-		})
-
-		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
-			s.Let(`id`, func(t *testcase.T) interface{} { return `` })
-
-			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
-			})
-
-			s.Then(`it will have no result`, func(t *testcase.T) {
-				found, err := subject(t)
-				require.Nil(t, err)
-				require.False(t, found)
-			})
-		})
-
-	})
-
-	s.Test(`E2E`, func(t *testcase.T) {
-		var ids []interface{}
-
-		for i := 0; i < 12; i++ {
-			entity := spec.FixtureFactory.Create(spec.T)
-			CreateEntity(t, spec.Subject, spec.Context(), entity)
-			id, ok := resources.LookupID(entity)
-			require.True(t, ok, ErrIDRequired.Error())
-			ids = append(ids, id)
-		}
-
-		t.Log("when no value stored that the query request")
-		ptr := newEntity(spec.T)
-		ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
-		require.Nil(t, err)
-		require.False(t, ok)
-
-		t.Log("values returned")
-		for _, ID := range ids {
-			e := newEntity(spec.T)
-			ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
-			require.Nil(t, err)
-			require.True(t, ok)
-
-			actualID, ok := resources.LookupID(e)
-			require.True(t, ok, "can't find ID in the returned value")
-			require.Equal(t, ID, actualID)
-		}
-	})
-
+		},
+	}.Test(t)
 }
 
 func (spec findByIDSpec) Benchmark(b *testing.B) {
@@ -198,14 +131,23 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 	})
 }
 
+func (spec findByIDSpec) createDummyID(tb testing.TB) interface{} {
+	ent := spec.FixtureFactory.Create(spec.T)
+	ctx := spec.FixtureFactory.Context()
+	CreateEntity(tb, spec.Subject, ctx, ent)
+	id := HasID(tb, ent)
+	DeleteEntity(tb, spec.Subject, ctx, ent)
+	return id
+}
+
 // findAllSpec can return business entities from a given storage that implement it's test
 // The "EntityTypeName" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type findAllSpec struct {
-	T interface{}
-	FixtureFactory
+	T
 	Subject minimumRequirements
+	FixtureFactory
 }
 
 func (spec findAllSpec) Test(t *testing.T) {
@@ -313,4 +255,133 @@ func (spec findAllSpec) Benchmark(b *testing.B) {
 		_, err := iterators.Count(spec.Subject.FindAll(spec.Context(), spec.T))
 		require.Nil(t, err)
 	})
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// QueryOne is the generic representation of a query that meant to find one result.
+// It is really similar to resources.Finder#FindByID,
+// with the exception that the closure meant to know the query method name on the subject
+// and the inputs it requires.
+//
+// QueryOne is generated through ToQuery factory function in FindOne resource contract specification.
+type QueryOne func(tb testing.TB, ctx context.Context, ptr T) (found bool, err error)
+
+type FindOne struct {
+	T
+	Subject minimumRequirements
+	FixtureFactory
+	// MethodName is the name of the test subject QueryOne method of this contract specification.
+	MethodName string
+	// ToQuery takes an entity ptr and returns with a closure that has the knowledge about how to query on the Subject resource to find the entity.
+	//
+	// By convention, any preparation action that affect the Storage must take place prior to returning the closure.
+	// The QueryOne closure should only have the Method call with the already mapped values.
+	// ToQuery will be evaluated in the beginning of the testing,
+	// and executed after all the test context preparation is done.
+	ToQuery func(tb testing.TB, ent T) QueryOne
+	// Describe allow further specification describing for a given FindOne query function.
+	// If none specified, this field will be ignored
+	Describe func(s *testcase.Spec)
+}
+
+func (spec FindOne) Test(t *testing.T) {
+	spec.Spec(t)
+}
+
+func (spec FindOne) Benchmark(b *testing.B) {
+	spec.Spec(b)
+}
+
+func (spec FindOne) Spec(tb testing.TB) {
+	testcase.NewSpec(tb).Describe(`#`+spec.MethodName, func(s *testcase.Spec) {
+		var (
+			ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
+				return spec.Context()
+			})
+			entity = s.Let(`entity`, func(t *testcase.T) interface{} {
+				return spec.FixtureFactory.Create(spec.T)
+			})
+			ptr = s.Let(`ptr`, func(t *testcase.T) interface{} {
+				return newEntity(spec.T)
+			})
+			query = s.Let(`query`, func(t *testcase.T) interface{} {
+				t.Log(entity.Get(t))
+				return spec.ToQuery(t, spec.copyPtrValue(entity.Get(t)))
+			})
+			subject = func(t *testcase.T) (bool, error) {
+				return query.Get(t).(QueryOne)(t, ctx.Get(t).(context.Context), ptr.Get(t))
+			}
+		)
+
+		s.Before(func(t *testcase.T) {
+			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+		})
+
+		s.When(`entity was present in the resource`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				CreateEntity(t, spec.Subject, spec.Context(), entity.Get(t))
+				HasID(t, entity.Get(t))
+			})
+
+			s.Then(`the entity will be returned`, func(t *testcase.T) {
+				found, err := subject(t)
+				require.Nil(t, err)
+				require.True(t, found)
+				require.Equal(t, entity.Get(t), ptr.Get(t))
+			})
+
+			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
+				ctx.Let(s, func(t *testcase.T) interface{} {
+					ctx, cancel := context.WithCancel(spec.Context())
+					cancel()
+					return ctx
+				})
+
+				s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+					found, err := subject(t)
+					require.Equal(t, context.Canceled, err)
+					require.False(t, found)
+				})
+			})
+
+			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
+				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
+					ent := spec.FixtureFactory.Create(spec.T)
+					CreateEntity(tb, spec.Subject, spec.Context(), ent)
+					return ent
+				}).EagerLoading(s)
+
+				s.Then(`still the correct entity is returned`, func(t *testcase.T) {
+					found, err := subject(t)
+					require.Nil(t, err)
+					require.True(t, found)
+					require.Equal(t, t.I(`entity`), t.I(`ptr`))
+				})
+			})
+		})
+
+		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+			})
+
+			s.Then(`it will have no result`, func(t *testcase.T) {
+				found, err := subject(t)
+				require.Nil(t, err)
+				require.False(t, found)
+			})
+		})
+
+		if spec.Describe != nil {
+			spec.Describe(s)
+		}
+	})
+}
+
+func (spec FindOne) copyPtrValue(ptr interface{}) interface{} {
+	rv := reflect.ValueOf(ptr)
+	copyRV := reflect.New(rv.Elem().Type())
+	copyRV.Elem().Set(rv.Elem()) // copy with pass by value
+	return copyRV.Interface()
 }

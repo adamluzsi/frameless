@@ -28,6 +28,10 @@ github.com/adamluzsi/testcase v0.23.1 h1:OAmZ8elhX9xjfpJyQnFudiwKjImmPKFun0fkqFR
 github.com/adamluzsi/testcase v0.23.1/go.mod h1:XbeWK6OxmDgjHJHHvphW8JDldeXZGLYk7RNFBZlRDy0=
 github.com/adamluzsi/testcase v0.23.2 h1:prc0hXwKXCNaKRz7hqljiVf1tMAkFdtYPtY8txnjx1I=
 github.com/adamluzsi/testcase v0.23.2/go.mod h1:XbeWK6OxmDgjHJHHvphW8JDldeXZGLYk7RNFBZlRDy0=
+github.com/adamluzsi/testcase v0.23.5 h1:xKGTZO2ypy9GUziSlaukSimfqKg1RML48HeKMK8rBAw=
+github.com/adamluzsi/testcase v0.23.5/go.mod h1:B9pPUxuTaB6KWBnuHZ4sNM9lSCvWG/21/Ix3y09u64s=
+github.com/adamluzsi/testcase v0.24.0 h1:zLVpZtDthg1AGcw6PJ0YrAh5X1yhHnyR6ULqdM23dsE=
+github.com/adamluzsi/testcase v0.24.0/go.mod h1:B9pPUxuTaB6KWBnuHZ4sNM9lSCvWG/21/Ix3y09u64s=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
