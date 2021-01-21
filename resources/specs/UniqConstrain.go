@@ -30,7 +30,7 @@ func (spec uniqConstraint) Benchmark(b *testing.B) {
 }
 
 func (spec uniqConstraint) Test(t *testing.T) {
-	require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+	DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 
 	e1 := spec.FixtureFactory.Create(spec.T)
 	e2 := spec.FixtureFactory.Create(spec.T)

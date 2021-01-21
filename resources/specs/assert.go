@@ -11,10 +11,12 @@ import (
 	"time"
 )
 
-var AsyncTester = testcase.AsyncTester{
+var Waiter = testcase.Waiter{
 	WaitDuration: time.Millisecond,
 	WaitTimeout:  5 * time.Second,
 }
+
+var AsyncTester = testcase.Retry{Strategy: Waiter}
 
 type NewEntityFunc func() interface{}
 

@@ -25,7 +25,7 @@ func (spec Updater) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+		DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 	})
 
 	s.Describe(`Updater`, func(s *testcase.Spec) {

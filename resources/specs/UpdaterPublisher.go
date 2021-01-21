@@ -36,7 +36,7 @@ func (spec UpdaterPublisher) Benchmark(b *testing.B) {
 func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 	s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (resources.Subscription, error) {
-			subscription, err := spec.Subject.SubscribeToUpdate(ctxGet(t), spec.T, subscriber(t))
+			subscription, err := spec.Subject.SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))
 			if err == nil && subscription != nil {
 				t.Let(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -73,8 +73,8 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 			onSuccess(t)
 		})
 
-		s.Test(`and no events made after the subscription time then subscriber doesn't receive any event`, func(t *testcase.T) {
-			require.Empty(t, subscriber(t).Events())
+		s.Test(`and no events made after the subscription time then subscriberGet doesn't receive any event`, func(t *testcase.T) {
+			require.Empty(t, subscriberGet(t).Events())
 		})
 
 		s.And(`update event made`, func(s *testcase.Spec) {
@@ -83,12 +83,12 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 				entityWithNewValuesPtr := spec.createEntity()
 				require.Nil(t, resources.SetID(entityWithNewValuesPtr, getID(t)))
 				UpdateEntity(t, spec.Subject, ctxGet(t), entityWithNewValuesPtr)
-				AsyncTester.WaitWhile(func() bool { return subscriber(t).EventsLen() < 1 })
+				Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
 				return toBaseValue(entityWithNewValuesPtr)
 			}).EagerLoading(s)
 
-			s.Then(`subscriber receive the event`, func(t *testcase.T) {
-				require.Contains(t, subscriber(t).Events(), updatedEntity.Get(t))
+			s.Then(`subscriberGet receive the event`, func(t *testcase.T) {
+				require.Contains(t, subscriberGet(t).Events(), updatedEntity.Get(t))
 			})
 
 			s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
@@ -102,19 +102,19 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						updatedEntityPtr := spec.createEntity()
 						require.Nil(t, resources.SetID(updatedEntityPtr, id))
 						require.Nil(t, spec.Subject.Update(ctxGet(t), updatedEntityPtr))
-						AsyncTester.WaitWhile(func() bool {
-							return subscriber(t).EventsLen() < 1
+						Waiter.While(func() bool {
+							return subscriberGet(t).EventsLen() < 1
 						})
 					})
 
-					s.Then(`subscriber no longer receive them`, func(t *testcase.T) {
-						require.Len(t, subscriber(t).Events(), 1)
+					s.Then(`subscriberGet no longer receive them`, func(t *testcase.T) {
+						require.Len(t, subscriberGet(t).Events(), 1)
 					})
 				})
 			})
 
-			s.And(`then new subscriber registered`, func(s *testcase.Spec) {
-				const othSubscriberKey = `oth-subscriber`
+			s.And(`then new subscriberGet registered`, func(s *testcase.Spec) {
+				const othSubscriberKey = `oth-subscriberGet`
 				othSubscriber := func(t *testcase.T) *eventSubscriber {
 					return getSubscriber(t, othSubscriberKey)
 				}
@@ -127,12 +127,12 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 					t.Defer(sub.Close)
 				})
 
-				s.Then(`original subscriber still receive old events`, func(t *testcase.T) {
-					require.Contains(t, subscriber(t).Events(), updatedEntity.Get(t))
+				s.Then(`original subscriberGet still receive old events`, func(t *testcase.T) {
+					require.Contains(t, subscriberGet(t).Events(), updatedEntity.Get(t))
 				})
 
-				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
-					AsyncTester.Wait()
+				s.Then(`new subscriberGet do not receive old events`, func(t *testcase.T) {
+					Waiter.Wait()
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
@@ -141,26 +141,26 @@ func (spec UpdaterPublisher) Spec(s *testcase.Spec) {
 						updatedEntityPtr := spec.createEntity()
 						require.Nil(t, resources.SetID(updatedEntityPtr, getID(t)))
 						UpdateEntity(t, spec.Subject, ctxGet(t), updatedEntityPtr)
-						AsyncTester.WaitWhile(func() bool {
-							return subscriber(t).EventsLen() < 2
+						Waiter.While(func() bool {
+							return subscriberGet(t).EventsLen() < 2
 						})
-						AsyncTester.WaitWhile(func() bool {
+						Waiter.While(func() bool {
 							return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 						})
 						return toBaseValue(updatedEntityPtr)
 					}).EagerLoading(s)
 
-					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-						require.Contains(t, subscriber(t).Events(), updatedEntity.Get(t), `missing old update events`)
-						require.Contains(t, subscriber(t).Events(), furtherEventUpdate.Get(t), `missing new update events`)
+					s.Then(`original subscriberGet receives all events`, func(t *testcase.T) {
+						require.Contains(t, subscriberGet(t).Events(), updatedEntity.Get(t), `missing old update events`)
+						require.Contains(t, subscriberGet(t).Events(), furtherEventUpdate.Get(t), `missing new update events`)
 					})
 
-					s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-						AsyncTester.Wait()
+					s.Then(`new subscriberGet don't receive back old events`, func(t *testcase.T) {
+						Waiter.Wait()
 						require.NotContains(t, othSubscriber(t).Events(), updatedEntity.Get(t))
 					})
 
-					s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
+					s.Then(`new subscriberGet will receive new events`, func(t *testcase.T) {
 						require.Contains(t, othSubscriber(t).Events(), furtherEventUpdate.Get(t))
 					})
 				})
@@ -201,23 +201,23 @@ func (spec UpdaterPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
 	})
 
 	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		AsyncTester.Wait()
-		require.Empty(t, subscriber(t).Events())
+		Waiter.Wait()
+		require.Empty(t, subscriberGet(t).Events())
 		require.Nil(t, res.CommitTx(ctxGet(t)))
 	})
 
 	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 		require.Nil(t, res.CommitTx(ctxGet(t)))
 		AsyncTester.Assert(t, func(tb testing.TB) {
-			require.False(tb, subscriber(t).EventsLen() < 1)
-			require.Contains(tb, subscriber(t).Events(), toBaseValue(updatedEntity.Get(t)))
+			require.False(tb, subscriberGet(t).EventsLen() < 1)
+			require.Contains(tb, subscriberGet(t).Events(), toBaseValue(updatedEntity.Get(t)))
 		})
 	})
 
 	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
 		require.Nil(t, res.RollbackTx(ctxGet(t)))
-		AsyncTester.Wait()
-		require.Empty(t, subscriber(t).Events())
+		Waiter.Wait()
+		require.Empty(t, subscriberGet(t).Events())
 	})
 }
 

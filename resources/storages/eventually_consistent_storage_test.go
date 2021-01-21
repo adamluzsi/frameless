@@ -16,10 +16,10 @@ import (
 func TestEventuallyConsistentStorage(t *testing.T) {
 	if testing.Short() {
 		original := specs.AsyncTester
-		specs.AsyncTester = testcase.AsyncTester{
+		specs.AsyncTester = testcase.Retry{Strategy: testcase.Waiter{
 			WaitDuration: time.Microsecond,
 			WaitTimeout:  5 * time.Second,
-		}
+		}}
 		defer func() { specs.AsyncTester = original }()
 	}
 
@@ -30,7 +30,8 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 
 	storage := NewEventuallyConsistentStorage()
 	storage.Spawn()
-	defer storage.Close()
+	t.Cleanup(func() { storage.Close() })
+	//defer storage.Close()
 
 	ff := fixtures.FixtureFactory{}
 	require.NotNil(t, ff.Context())
@@ -87,8 +88,8 @@ func (e *EventuallyConsistentStorage) nullFn(fn func()) func() {
 }
 
 func (e *EventuallyConsistentStorage) Close() error {
-	close(e.jobs)
 	e.nullFn(e.workers.cancel)()
+	close(e.jobs)
 	return nil
 }
 

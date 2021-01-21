@@ -153,9 +153,7 @@ type findAllSpec struct {
 func (spec findAllSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Before(func(t *testcase.T) {
-		require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
-	})
+	DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 
 	s.Describe(`FindAll`, func(s *testcase.Spec) {
 		var (
@@ -168,7 +166,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+			DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 		})
 
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -307,7 +305,7 @@ func (spec FindOne) Spec(tb testing.TB) {
 			})
 			query = s.Let(`query`, func(t *testcase.T) interface{} {
 				t.Log(entity.Get(t))
-				return spec.ToQuery(t, spec.copyPtrValue(entity.Get(t)))
+				return spec.ToQuery(t, entity.Get(t))
 			})
 			subject = func(t *testcase.T) (bool, error) {
 				return query.Get(t).(QueryOne)(t, ctx.Get(t).(context.Context), ptr.Get(t))
@@ -315,7 +313,7 @@ func (spec FindOne) Spec(tb testing.TB) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+			DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 		})
 
 		s.When(`entity was present in the resource`, func(s *testcase.Spec) {
@@ -363,7 +361,7 @@ func (spec FindOne) Spec(tb testing.TB) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, spec.Subject.DeleteAll(spec.Context(), spec.T))
+				DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 			})
 
 			s.Then(`it will have no result`, func(t *testcase.T) {

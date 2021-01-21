@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/testcase/fixtures"
 	"os"
 	"reflect"
 	"strconv"
@@ -123,27 +124,26 @@ func toBaseValues(in []interface{}) []interface{} {
 }
 
 func newEventSubscriber(tb testing.TB) *eventSubscriber {
-	return &eventSubscriber{
-		tb:     tb,
-		events: make([]interface{}, 0),
-	}
+	return &eventSubscriber{TB: tb}
 }
 
 type eventSubscriber struct {
-	tb        testing.TB
-	events    []interface{}
-	errors    []error
-	returnErr error
+	TB        testing.TB
+	Name      string
+	ReturnErr error
 
-	mutex sync.Mutex
+	events []interface{}
+	errors []error
+	mutex  sync.Mutex
 }
 
 func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	s.TB.Logf(`%s %#v`, s.Name, event)
 	s.verifyContext(ctx)
 	s.events = append(s.events, event)
-	return s.returnErr
+	return s.ReturnErr
 }
 
 func (s *eventSubscriber) Error(ctx context.Context, err error) error {
@@ -151,7 +151,7 @@ func (s *eventSubscriber) Error(ctx context.Context, err error) error {
 	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
 	s.errors = append(s.errors, err)
-	return s.returnErr
+	return s.ReturnErr
 }
 
 func (s *eventSubscriber) EventsLen() int {
@@ -165,18 +165,18 @@ func (s *eventSubscriber) Events() []interface{} {
 }
 
 func (s *eventSubscriber) verifyContext(ctx context.Context) {
-	require.NotNil(s.tb, ctx)
+	require.NotNil(s.TB, ctx)
 	select {
 	case <-ctx.Done():
-		s.tb.Fatal(`it was not expected to have a ctx finished`)
+		s.TB.Fatal(`it was not expected to have a ctx finished`)
 	default:
 	}
-	require.Nil(s.tb, ctx.Err())
+	require.Nil(s.TB, ctx.Err())
 }
 
 const (
 	contextKey      = `context`
-	subscriberKey   = `subscriber`
+	subscriberKey   = `subscriberGet`
 	subscriptionKey = `subscription`
 )
 
@@ -191,10 +191,41 @@ func ctxGet(t *testcase.T) context.Context {
 	return ctx.Get(t).(context.Context)
 }
 
-func getSubscriber(t *testcase.T, key string) *eventSubscriber {
-	return t.I(key).(*eventSubscriber)
+func ctxLetWithFixtureFactory(s *testcase.Spec, ff FixtureFactory) testcase.Var {
+	return ctx.Let(s, func(t *testcase.T) interface{} {
+		return ff.Context()
+	})
 }
 
-func subscriber(t *testcase.T) *eventSubscriber {
-	return getSubscriber(t, subscriberKey)
+var (
+	subscriber = testcase.Var{
+		Name: subscriberKey,
+		Init: func(t *testcase.T) interface{} {
+			return newEventSubscriber(t)
+		},
+	}
+	subscription = testcase.Var{
+		Name: subscriptionKey,
+	}
+)
+
+func subscriberGet(t *testcase.T) *eventSubscriber {
+	return subscriber.Get(t).(*eventSubscriber)
+}
+
+func getSubscriber(t *testcase.T, key string) *eventSubscriber {
+	return testcase.Var{Name: key, Init: subscriber.Init}.Get(t).(*eventSubscriber)
+}
+
+func subscriptionGet(t *testcase.T) resources.Subscriber {
+	return subscription.Get(t).(resources.Subscriber)
+}
+
+func genEntities(ff FixtureFactory, T T) []interface{} {
+	var es []interface{}
+	count := fixtures.Random.IntBetween(3, 7)
+	for i := 0; i < count; i++ {
+		es = append(es, ff.Create(T))
+	}
+	return es
 }
