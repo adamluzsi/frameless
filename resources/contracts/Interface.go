@@ -1,4 +1,4 @@
-package specs
+package contracts
 
 import "testing"
 

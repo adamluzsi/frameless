@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources/contracts"
 	"github.com/adamluzsi/frameless/resources/storages"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
@@ -15,12 +15,12 @@ import (
 
 func TestEventuallyConsistentStorage(t *testing.T) {
 	if testing.Short() {
-		original := specs.AsyncTester
-		specs.AsyncTester = testcase.Retry{Strategy: testcase.Waiter{
+		original := contracts.AsyncTester
+		contracts.AsyncTester = testcase.Retry{Strategy: testcase.Waiter{
 			WaitDuration: time.Microsecond,
 			WaitTimeout:  5 * time.Second,
 		}}
-		defer func() { specs.AsyncTester = original }()
+		defer func() { contracts.AsyncTester = original }()
 	}
 
 	type Entity struct {
@@ -37,15 +37,15 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	require.NotNil(t, ff.Context())
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
-	specs.Run(t,
-		specs.Creator{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.CreatorPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.Updater{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.UpdaterPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.Deleter{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.DeleterPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.Finder{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		specs.OnePhaseCommitProtocol{Subject: storage, T: Entity{}, FixtureFactory: ff},
+	contracts.Run(t,
+		contracts.Creator{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.CreatorPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.Updater{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.UpdaterPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.Deleter{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.DeleterPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.Finder{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{Subject: storage, T: Entity{}, FixtureFactory: ff},
 	)
 }
 

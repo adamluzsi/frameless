@@ -19,7 +19,7 @@ import (
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources/contracts"
 	"github.com/adamluzsi/frameless/resources/storages"
 )
 
@@ -78,20 +78,20 @@ func TestStorage_smokeTest(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff specs.FixtureFactory) []specs.Interface {
-	return []specs.Interface{
-		specs.Creator{T: T, Subject: subject, FixtureFactory: ff},
-		specs.Finder{T: T, Subject: subject, FixtureFactory: ff},
-		specs.Updater{T: T, Subject: subject, FixtureFactory: ff},
-		specs.Deleter{T: T, Subject: subject, FixtureFactory: ff},
-		specs.OnePhaseCommitProtocol{T: T, Subject: subject, FixtureFactory: ff},
-		specs.CreatorPublisher{T: T, Subject: subject, FixtureFactory: ff},
-		specs.UpdaterPublisher{T: T, Subject: subject, FixtureFactory: ff},
-		specs.DeleterPublisher{T: T, Subject: subject, FixtureFactory: ff},
+func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.FixtureFactory) []contracts.Interface {
+	return []contracts.Interface{
+		contracts.Creator{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.Finder{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.Updater{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.Deleter{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.CreatorPublisher{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.UpdaterPublisher{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.DeleterPublisher{T: T, Subject: subject, FixtureFactory: ff},
 	}
 }
 
-func getMemorySpecs(subject *storages.Memory) []specs.Interface {
+func getMemorySpecs(subject *storages.Memory) []contracts.Interface {
 	return getMemorySpecsForT(subject, Entity{}, fixtures.FixtureFactory{})
 }
 
@@ -323,7 +323,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			specs.Run(t.TB, getMemorySpecs(subject(t))...)
+			contracts.Run(t.TB, getMemorySpecs(subject(t))...)
 		})
 	}
 

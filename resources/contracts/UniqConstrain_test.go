@@ -1,11 +1,11 @@
-package specs_test
+package contracts_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources/specs"
+	"github.com/adamluzsi/frameless/resources/contracts"
 	"github.com/adamluzsi/frameless/resources/storages"
 )
 
@@ -19,7 +19,7 @@ func TestUniqConstrainSpec_Test(t *testing.T) {
 	t.Skip(`TODO`)
 	storage := NewUniqStorage()
 
-	specs.TestUniqConstrain(t, storage, SampleStruct{}, nil, `Name`)
+	contracts.TestUniqConstrain(t, storage, SampleStruct{}, nil, `Name`)
 }
 
 func NewUniqStorage() *UniqStorage {
