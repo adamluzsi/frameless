@@ -13,12 +13,12 @@ import (
 
 // Updater will request an update for a wrapped entity object in the Resource
 type Updater struct {
-	T interface{}
-	FixtureFactory
 	Subject interface {
 		resources.Updater
 		minimumRequirements
 	}
+	T interface{}
+	FixtureFactory
 }
 
 func (spec Updater) Test(t *testing.T) {

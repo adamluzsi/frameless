@@ -8,12 +8,12 @@ import (
 )
 
 type CRUD struct {
-	T interface{}
-	FixtureFactory
 	Subject interface {
 		minimumRequirements
 		resources.Updater
 	}
+	T interface{}
+	FixtureFactory
 }
 
 func (spec CRUD) Test(t *testing.T) {

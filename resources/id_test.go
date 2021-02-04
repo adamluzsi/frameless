@@ -198,6 +198,6 @@ func TestLookupIDStructField(t *testing.T) {
 	require.Equal(t, `ID`, field.Name)
 	require.Equal(t, &idValue, value.Interface())
 
-	field, value, ok =resources.LookupIDStructField(UnidentifiableID{})
+	field, value, ok = resources.LookupIDStructField(UnidentifiableID{})
 	require.False(t, ok)
 }

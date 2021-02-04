@@ -11,9 +11,9 @@ import (
 )
 
 type Deleter struct {
-	T interface{}
-	FixtureFactory
 	Subject minimumRequirements
+	T       interface{}
+	FixtureFactory
 }
 
 func (spec Deleter) Test(t *testing.T) {

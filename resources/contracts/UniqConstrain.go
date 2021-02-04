@@ -11,6 +11,9 @@ import (
 )
 
 type uniqConstraint struct {
+	// the Resource object that implements the specification
+	Subject minimumRequirements
+
 	// Struct that is the subject of this spec
 	T interface{}
 	FixtureFactory
@@ -20,9 +23,6 @@ type uniqConstraint struct {
 	// if you only want to make uniq one certain field across the Resource,
 	// then you only have to provide that only value in the slice
 	UniqConstrain []string
-
-	// the Resource object that implements the specification
-	Subject minimumRequirements
 }
 
 func (spec uniqConstraint) Benchmark(b *testing.B) {

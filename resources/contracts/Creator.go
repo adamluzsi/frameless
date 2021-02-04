@@ -12,9 +12,9 @@ import (
 )
 
 type Creator struct {
-	T interface{}
-	FixtureFactory
 	Subject minimumRequirements
+	T       interface{}
+	FixtureFactory
 }
 
 func (spec Creator) Test(t *testing.T) {

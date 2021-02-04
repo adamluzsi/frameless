@@ -11,12 +11,12 @@ import (
 )
 
 type OnePhaseCommitProtocol struct {
-	T              interface{}
-	FixtureFactory FixtureFactory
-	Subject        interface {
+	Subject interface {
 		minimumRequirements
 		resources.OnePhaseCommitProtocol
 	}
+	T              interface{}
+	FixtureFactory FixtureFactory
 }
 
 func (spec OnePhaseCommitProtocol) Test(t *testing.T) {

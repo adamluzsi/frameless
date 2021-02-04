@@ -14,8 +14,8 @@ import (
 )
 
 type Finder struct {
-	T
 	Subject minimumRequirements
+	T
 	FixtureFactory
 }
 

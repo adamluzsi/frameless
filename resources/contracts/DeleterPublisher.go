@@ -258,7 +258,6 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	})
 }
 
-
 func (spec DeleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
