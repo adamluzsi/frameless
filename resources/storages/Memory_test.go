@@ -323,7 +323,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			testcase.RunContracts(t, getMemorySpecs(subject(t))...)
+			testcase.RunContract(t, getMemorySpecs(subject(t))...)
 		})
 	}
 
