@@ -38,6 +38,8 @@ github.com/adamluzsi/testcase v0.29.0 h1:Oi8wXkcjzuq6evwhsMALFO0B6GcGsL4TVqFJ1C9
 github.com/adamluzsi/testcase v0.29.0/go.mod h1:a+LrfddTIYP8tcO5S44rkYCi0F0ui/wxFS2F0Qb0NnQ=
 github.com/adamluzsi/testcase v0.29.1 h1:zMm4lqBI7cPLfY5qxVdQE0ZsFGi7NY8EJBaexxkBpFw=
 github.com/adamluzsi/testcase v0.29.1/go.mod h1:a+LrfddTIYP8tcO5S44rkYCi0F0ui/wxFS2F0Qb0NnQ=
+github.com/adamluzsi/testcase v0.33.0 h1:2OCYLP0B85AwOxmuglMEOw+j/f19lH4C6uZab0jmkao=
+github.com/adamluzsi/testcase v0.33.0/go.mod h1:a+LrfddTIYP8tcO5S44rkYCi0F0ui/wxFS2F0Qb0NnQ=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

@@ -37,7 +37,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	require.NotNil(t, ff.Context())
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
-	contracts.Run(t,
+	testcase.RunContracts(t,
 		contracts.Creator{Subject: storage, T: Entity{}, FixtureFactory: ff},
 		contracts.CreatorPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
 		contracts.Updater{Subject: storage, T: Entity{}, FixtureFactory: ff},

@@ -78,8 +78,8 @@ func TestStorage_smokeTest(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.FixtureFactory) []contracts.Interface {
-	return []contracts.Interface{
+func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.FixtureFactory) []testcase.Contract {
+	return []testcase.Contract{
 		contracts.Creator{T: T, Subject: subject, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: subject, FixtureFactory: ff},
 		contracts.Updater{T: T, Subject: subject, FixtureFactory: ff},
@@ -91,7 +91,7 @@ func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.Fi
 	}
 }
 
-func getMemorySpecs(subject *storages.Memory) []contracts.Interface {
+func getMemorySpecs(subject *storages.Memory) []testcase.Contract {
 	return getMemorySpecsForT(subject, Entity{}, fixtures.FixtureFactory{})
 }
 
@@ -323,7 +323,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			contracts.Run(t.TB, getMemorySpecs(subject(t))...)
+			testcase.RunContracts(t, getMemorySpecs(subject(t))...)
 		})
 	}
 

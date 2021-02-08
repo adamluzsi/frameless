@@ -1,6 +1,8 @@
 package contracts
 
-import "testing"
+import (
+	"github.com/adamluzsi/testcase"
+)
 
 // Interface represent a resource specification also known as "contract".
 //
@@ -15,21 +17,4 @@ import "testing"
 // at high level and only focus on the expected behavior,
 // instead of going into implementation details.
 //
-type Interface interface {
-	Test(t *testing.T)
-	Benchmark(b *testing.B)
-}
-
-func Run(tb testing.TB, specs ...Interface) {
-	for _, spec := range specs {
-		spec := spec
-		switch tb := tb.(type) {
-		case *testing.T:
-			spec.Test(tb)
-		case *testing.B:
-			spec.Benchmark(tb)
-		default:
-			tb.Fatalf(`unknown test runner type: %T`, tb)
-		}
-	}
-}
+type Interface = testcase.Contract
