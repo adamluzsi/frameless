@@ -3,7 +3,7 @@ module github.com/adamluzsi/frameless
 go 1.14
 
 require (
-	github.com/adamluzsi/testcase v0.34.0
+	github.com/adamluzsi/testcase v0.34.1
 	github.com/golang/mock v1.4.4
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/mod v0.4.1 // indirect
