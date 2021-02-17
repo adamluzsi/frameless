@@ -19,6 +19,7 @@ type Deleter struct {
 func (spec Deleter) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	defer s.Finish()
+	debug(s, spec)
 	s.Describe(`DeleteByID`, spec.specDeleteByID)
 	s.Describe(`DeleteAll`, spec.specDeleteAll)
 }
@@ -97,7 +98,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		})
 	})
 
-	//s.When(`entity never saved before in the resource`, func(s *testcase.Spec) {
+	//s.When(`entity never saved before in the resource`, func(s *testcase.spec) {
 	//	s.Let(`id`, func(t *testcase.T) interface{} {
 	//		id, _ := resources.LookupID(entity.Get(t))
 	//		return id

@@ -20,43 +20,38 @@ type Finder struct {
 }
 
 func (spec Finder) Test(t *testing.T) {
-	t.Run(`Finder`, func(t *testing.T) {
-		findByIDSpec{
-			T:              spec.T,
-			FixtureFactory: spec.FixtureFactory,
-			Subject:        spec.Subject,
-		}.Test(t)
-
-		findAllSpec{
-			T:              spec.T,
-			FixtureFactory: spec.FixtureFactory,
-			Subject:        spec.Subject,
-		}.Test(t)
-	})
+	spec.spec(t)
 }
 
 func (spec Finder) Benchmark(b *testing.B) {
-	b.Run(`Finder`, func(b *testing.B) {
-		findByIDSpec{
-			T:              spec.T,
-			FixtureFactory: spec.FixtureFactory,
-			Subject:        spec.Subject,
-		}.Benchmark(b)
-		findAllSpec{
-			T:              spec.T,
-			FixtureFactory: spec.FixtureFactory,
-			Subject:        spec.Subject,
-		}.Benchmark(b)
-	})
+	spec.spec(b)
 }
 
-type findByIDSpec struct {
+func (spec Finder) spec(tb testing.TB) {
+	s := testcase.NewSpec(tb)
+	const name = `Finder`
+	s.Context(name, func(s *testcase.Spec) {
+		testcase.RunContract(s,
+			findByID{
+				T:              spec.T,
+				FixtureFactory: spec.FixtureFactory,
+				Subject:        spec.Subject,
+			},
+			findAll{
+				T:              spec.T,
+				FixtureFactory: spec.FixtureFactory,
+				Subject:        spec.Subject,
+			})
+	}, testcase.Group(name))
+}
+
+type findByID struct {
 	T
 	Subject minimumRequirements
 	FixtureFactory
 }
 
-func (spec findByIDSpec) Test(t *testing.T) {
+func (spec findByID) Test(t *testing.T) {
 	FindOne{
 		T:              spec.T,
 		FixtureFactory: spec.FixtureFactory,
@@ -77,7 +72,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 			}
 		},
 
-		Describe: func(s *testcase.Spec) {
+		Spec: func(s *testcase.Spec) {
 
 			s.Test(`#E2E`, func(t *testcase.T) {
 				var ids []interface{}
@@ -112,7 +107,7 @@ func (spec findByIDSpec) Test(t *testing.T) {
 	}.Test(t)
 }
 
-func (spec findByIDSpec) Benchmark(b *testing.B) {
+func (spec findByID) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
@@ -131,7 +126,7 @@ func (spec findByIDSpec) Benchmark(b *testing.B) {
 	})
 }
 
-func (spec findByIDSpec) createDummyID(tb testing.TB) interface{} {
+func (spec findByID) createDummyID(tb testing.TB) interface{} {
 	ent := spec.FixtureFactory.Create(spec.T)
 	ctx := spec.FixtureFactory.Context()
 	CreateEntity(tb, spec.Subject, ctx, ent)
@@ -140,18 +135,19 @@ func (spec findByIDSpec) createDummyID(tb testing.TB) interface{} {
 	return id
 }
 
-// findAllSpec can return business entities from a given storage that implement it's test
+// findAll can return business entities from a given storage that implement it's test
 // The "EntityTypeName" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-type findAllSpec struct {
+type findAll struct {
 	T
 	Subject minimumRequirements
 	FixtureFactory
 }
 
-func (spec findAllSpec) Test(t *testing.T) {
+func (spec findAll) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
+	debug(s, spec.Subject)
 
 	DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 
@@ -239,7 +235,7 @@ func (spec findAllSpec) Test(t *testing.T) {
 	})
 }
 
-func (spec findAllSpec) Benchmark(b *testing.B) {
+func (spec findAll) Benchmark(b *testing.B) {
 	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
 
 	s := testcase.NewSpec(b)
@@ -278,21 +274,22 @@ type FindOne struct {
 	// ToQuery will be evaluated in the beginning of the testing,
 	// and executed after all the test context preparation is done.
 	ToQuery func(tb testing.TB, ent T) QueryOne
-	// Describe allow further specification describing for a given FindOne query function.
+	// Spec allow further specification describing for a given FindOne query function.
 	// If none specified, this field will be ignored
-	Describe func(s *testcase.Spec)
+	Spec func(s *testcase.Spec)
 }
 
 func (spec FindOne) Test(t *testing.T) {
-	spec.Spec(t)
+	spec.spec(t)
 }
 
 func (spec FindOne) Benchmark(b *testing.B) {
-	spec.Spec(b)
+	spec.spec(b)
 }
 
-func (spec FindOne) Spec(tb testing.TB) {
+func (spec FindOne) spec(tb testing.TB) {
 	testcase.NewSpec(tb).Describe(`#`+spec.MethodName, func(s *testcase.Spec) {
+		debug(s, spec.Subject)
 		var (
 			ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
 				return spec.Context()
@@ -371,8 +368,8 @@ func (spec FindOne) Spec(tb testing.TB) {
 			})
 		})
 
-		if spec.Describe != nil {
-			spec.Describe(s)
+		if spec.Spec != nil {
+			spec.Spec(s)
 		}
 	})
 }

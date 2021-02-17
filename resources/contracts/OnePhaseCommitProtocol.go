@@ -20,17 +20,18 @@ type OnePhaseCommitProtocol struct {
 }
 
 func (spec OnePhaseCommitProtocol) Test(t *testing.T) {
-	spec.Spec(t)
+	spec.spec(t)
 }
 
 func (spec OnePhaseCommitProtocol) Benchmark(b *testing.B) {
-	spec.Spec(b)
+	spec.spec(b)
 }
 
-func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
+func (spec OnePhaseCommitProtocol) spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	defer s.Finish()
 	s.HasSideEffect()
+	debug(s, spec.Subject)
 
 	// clean ahead before testing suite
 	DeleteAllEntity(tb, spec.Subject, spec.Context(), spec.T)

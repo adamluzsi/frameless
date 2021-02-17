@@ -20,20 +20,21 @@ type DeleterPublisher struct {
 }
 
 func (spec DeleterPublisher) Test(t *testing.T) {
-	t.Run(`DeleterPublisher`, func(t *testing.T) {
-		spec.Spec(testcase.NewSpec(t))
-	})
+	spec.spec(t)
 }
 
 func (spec DeleterPublisher) Benchmark(b *testing.B) {
-	b.Run(`DeleterPublisher`, func(b *testing.B) {
-		spec.Spec(testcase.NewSpec(b))
-	})
+	spec.spec(b)
 }
 
-func (spec DeleterPublisher) Spec(s *testcase.Spec) {
-	s.Describe(`#SubscribeToDeleteByID`, spec.specSubscribeToDeleteByID)
-	s.Describe(`#SubscribeToDeleteAll`, spec.specSubscribeToDeleteAll)
+func (spec DeleterPublisher) spec(tb testing.TB) {
+	s := testcase.NewSpec(tb)
+	debug(s, spec.Subject)
+	const name = `DeleterPublisher`
+	s.Context(name, func(s *testcase.Spec) {
+		s.Describe(`#SubscribeToDeleteByID`, spec.specSubscribeToDeleteByID)
+		s.Describe(`#SubscribeToDeleteAll`, spec.specSubscribeToDeleteAll)
+	}, testcase.Group(name))
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {

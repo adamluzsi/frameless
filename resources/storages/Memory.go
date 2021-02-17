@@ -826,3 +826,11 @@ type TraceElem struct {
 	Path string
 	Line int
 }
+
+// debug
+
+func (s *Memory) DebugStart() {
+	s.concentrateEvents()
+}
+
+func (s *Memory) DebugStop() {}
