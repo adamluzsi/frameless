@@ -24,7 +24,6 @@ type Updater struct {
 func (spec Updater) Test(t *testing.T) {
 	const name = `Updater`
 	testcase.NewSpec(t).Context(name, func(s *testcase.Spec) {
-		debug(s, spec.Subject)
 
 		s.Before(func(t *testcase.T) {
 			DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)

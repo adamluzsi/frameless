@@ -33,7 +33,6 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	const name = `UpdaterPublisher`
 	s.Context(name, func(s *testcase.Spec) {
-		debug(s, spec.Subject)
 		s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
 			subject := func(t *testcase.T) (resources.Subscription, error) {
 				subscription, err := spec.Subject.SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))

@@ -31,7 +31,6 @@ func (spec OnePhaseCommitProtocol) spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	defer s.Finish()
 	s.HasSideEffect()
-	debug(s, spec.Subject)
 
 	// clean ahead before testing suite
 	DeleteAllEntity(tb, spec.Subject, spec.Context(), spec.T)

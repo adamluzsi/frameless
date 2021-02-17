@@ -147,7 +147,6 @@ type findAll struct {
 
 func (spec findAll) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-	debug(s, spec.Subject)
 
 	DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
 
@@ -289,7 +288,6 @@ func (spec FindOne) Benchmark(b *testing.B) {
 
 func (spec FindOne) spec(tb testing.TB) {
 	testcase.NewSpec(tb).Describe(`#`+spec.MethodName, func(s *testcase.Spec) {
-		debug(s, spec.Subject)
 		var (
 			ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
 				return spec.Context()

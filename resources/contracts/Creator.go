@@ -19,7 +19,6 @@ type Creator struct {
 
 func (spec Creator) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-	debug(s, spec.Subject)
 
 	s.Describe(`Creator`, func(s *testcase.Spec) {
 		var (

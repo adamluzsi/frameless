@@ -29,7 +29,6 @@ func (spec CreatorPublisher) Benchmark(b *testing.B) {
 func (spec CreatorPublisher) spec(tb testing.TB) {
 	const name = `CreatorPublisher`
 	testcase.NewSpec(tb).Context(name, func(s *testcase.Spec) {
-		debug(s, spec.Subject)
 		s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
 			subject := func(t *testcase.T) (resources.Subscription, error) {
 				subscription, err := spec.Subject.SubscribeToCreate(ctxGet(t), spec.T, subscriberGet(t))

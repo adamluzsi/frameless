@@ -29,7 +29,6 @@ func (spec DeleterPublisher) Benchmark(b *testing.B) {
 
 func (spec DeleterPublisher) spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
-	debug(s, spec.Subject)
 	const name = `DeleterPublisher`
 	s.Context(name, func(s *testcase.Spec) {
 		s.Describe(`#SubscribeToDeleteByID`, spec.specSubscribeToDeleteByID)
