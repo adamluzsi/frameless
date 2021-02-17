@@ -3,14 +3,15 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/consterror"
-	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/testcase/fixtures"
 	"os"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/consterror"
+	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/testcase/fixtures"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"

@@ -3,9 +3,10 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
 )

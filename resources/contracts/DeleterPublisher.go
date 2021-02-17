@@ -2,10 +2,11 @@ package contracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/fixtures"
 	"github.com/stretchr/testify/require"
-	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
 )

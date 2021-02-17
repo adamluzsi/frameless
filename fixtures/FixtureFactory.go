@@ -2,8 +2,9 @@ package fixtures
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
+
+	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless/resources"
 )

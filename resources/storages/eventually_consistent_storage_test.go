@@ -2,15 +2,16 @@ package storages_test
 
 import (
 	"context"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/contracts"
 	"github.com/adamluzsi/frameless/resources/storages"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestEventuallyConsistentStorage(t *testing.T) {

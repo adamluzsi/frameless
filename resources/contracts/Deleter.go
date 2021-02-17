@@ -2,8 +2,9 @@ package contracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/resources"
 	"testing"
+
+	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/testcase"
 

@@ -3,8 +3,6 @@ package storages_test
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/testcase"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,6 +11,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
 

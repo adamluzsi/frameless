@@ -3,12 +3,13 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 var Waiter = testcase.Waiter{
