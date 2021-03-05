@@ -80,7 +80,8 @@ type Subscriber interface {
 	// Context may or may not have meta information about the received event.
 	// To ensure expectations, define a resource specification <contract> about what must be included in the context.
 	Handle(ctx context.Context, ent interface{}) error
-	// Error allow the subscription implementation to communicate unexpected situations that needs to be handled by the subscriber.
+	// Error allow the subscription implementation to be notified about unexpected situations
+	// that needs to be handled by the subscriber.
 	// For e.g. the connection is lost and the subscriber might have cached values
 	// that must be invalidated on the next successful Handle call
 	Error(ctx context.Context, err error) error

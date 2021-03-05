@@ -196,7 +196,7 @@ func (s *Memory) Update(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`entitiy not found`)
+		return fmt.Errorf(`%T entitiy not found by id: %v`, ptr, id)
 	}
 
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
@@ -224,7 +224,7 @@ func (s *Memory) DeleteByID(ctx context.Context, T, id interface{}) error {
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`entitiy not found`)
+		return fmt.Errorf(`%T entitiy not found by id: %v`, T, id)
 	}
 
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
