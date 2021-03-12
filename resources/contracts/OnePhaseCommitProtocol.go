@@ -55,39 +55,47 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
-			DeleteAllEntity(tb, spec.resourceGet(t), spec.Context(), spec.T)
+			DeleteAllEntity(t, spec.resourceGet(t), spec.Context(), spec.T)
 		})
 	})
 
-	s.After(func(t *testcase.T) { DeleteAllEntity(tb, spec.resourceGet(t), spec.Context(), spec.T) })
+	s.Around(func(t *testcase.T) func() {
+		r := spec.resourceGet(t)
+		// early load the resource ensure proper cleanup
+		return func() {
+			DeleteAllEntity(t, r, spec.Context(), spec.T)
+		}
+	})
 
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 
 		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			ctx := spec.Context()
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 			ptr := spec.FixtureFactory.Create(spec.T)
-			require.Nil(t, spec.resourceGet(t).Create(ctx, ptr))
-			id, _ := resources.LookupID(ptr)
-			t.Defer(spec.resourceGet(t).DeleteByID, spec.Context(), spec.T, id)
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctx))
+			CreateEntity(t, spec.resourceGet(t), tx, ptr)
+			id := HasID(t, ptr)
 
-			_, err = spec.resourceGet(t).FindByID(ctx, spec.T, id)
+			require.Nil(t, spec.resourceGet(t).CommitTx(tx))
+
+			t.Log(`using the tx context after commit should yield error`)
+			_, err = spec.resourceGet(t).FindByID(tx, spec.T, id)
 			require.Error(t, err)
-			require.Error(t, spec.resourceGet(t).Create(ctx, spec.FixtureFactory.Create(spec.T)))
-			require.Error(t, spec.resourceGet(t).FindAll(ctx, spec.T).Err())
+			require.Error(t, spec.resourceGet(t).Create(tx, spec.FixtureFactory.Create(spec.T)))
+			require.Error(t, spec.resourceGet(t).FindAll(tx, spec.T).Err())
 
 			if updater, ok := spec.resourceGet(t).(resources.Updater); ok {
-				require.Error(t, updater.Update(ctx, ptr),
+				require.Error(t, updater.Update(tx, ptr),
 					fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished tx`,
 						spec.resourceGet(t)))
 			}
 
-			require.Error(t, spec.resourceGet(t).DeleteByID(ctx, spec.T, id))
-			require.Error(t, spec.resourceGet(t).DeleteAll(ctx, spec.T))
+			require.Error(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
+			require.Error(t, spec.resourceGet(t).DeleteAll(tx, spec.T))
+
+			Waiter.Wait()
 		})
-		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
+		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			ctx := spec.Context()
 			ctx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
@@ -112,81 +120,73 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
-			ctx := spec.Context()
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 
 			entity := spec.FixtureFactory.Create(spec.T)
-			require.Nil(t, spec.resourceGet(t).Create(ctx, entity))
+			CreateEntity(t, spec.resourceGet(t), tx, entity)
 			id := HasID(t, entity)
 
-			IsFindable(t, spec.resourceGet(t), ctx, newEntityFunc(spec.T), id)          // can be found in tx Context
+			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)           // can be found in tx Context
 			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id) // is absent from the global Context
 
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctx)) // after the commit
+			require.Nil(t, spec.resourceGet(t).CommitTx(tx)) // after the commit
 
 			actually := IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
 			require.Equal(t, entity, actually)
 		})
 
 		s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
-			ctx := spec.Context()
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 			entity := spec.FixtureFactory.Create(spec.T)
-			require.Nil(t, spec.resourceGet(t).Create(ctx, entity))
+			//require.Nil(t, spec.resourceGet(t).Create(tx, entity))
+			CreateEntity(t, spec.resourceGet(t), tx, entity)
 
-			id, ok := resources.LookupID(entity)
-			require.True(t, ok)
-			require.NotEmpty(t, id)
+			id := HasID(t, entity)
+			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
+			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
 
-			found, err := spec.resourceGet(t).FindByID(spec.Context(), newEntity(spec.T), id)
-			require.Nil(t, err)
-			require.False(t, found)
+			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
 
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctx))
-
-			found, err = spec.resourceGet(t).FindByID(spec.Context(), newEntity(spec.T), id)
-			require.Nil(t, err)
-			require.False(t, found)
+			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
 		})
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
 			ctx := spec.Context()
 			entity := spec.FixtureFactory.Create(spec.T)
-			require.Nil(t, spec.resourceGet(t).Create(ctx, entity))
+
+			CreateEntity(t, spec.resourceGet(t), ctx, entity)
 			id := HasID(t, entity)
 			t.Defer(spec.resourceGet(t).DeleteByID, ctx, spec.T, id)
 
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			tx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 
-			IsFindable(t, spec.resourceGet(t), ctx, newEntityFunc(spec.T), id)
-			require.Nil(t, spec.resourceGet(t).DeleteByID(ctx, spec.T, id))
-			IsAbsent(t, spec.resourceGet(t), ctx, newEntityFunc(spec.T), id)
+			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
+			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
+			IsAbsent(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
 
 			// in global Context it is findable
 			IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
 
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctx))
+			require.Nil(t, spec.resourceGet(t).CommitTx(tx))
 			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
 		})
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
 			ctx := spec.Context()
 			entity := spec.FixtureFactory.Create(spec.T)
-			require.Nil(t, spec.resourceGet(t).Create(ctx, entity))
-			id, ok := resources.LookupID(entity)
-			require.True(t, ok)
-			require.NotEmpty(t, id)
-			t.Defer(spec.resourceGet(t).DeleteByID, ctx, spec.T, id)
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			CreateEntity(t, spec.resourceGet(t), ctx, entity)
+			id := HasID(t, entity)
+
+			tx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
-			IsFindable(t, spec.resourceGet(t), ctx, newEntityFunc(spec.T), id)
-			require.Nil(t, spec.resourceGet(t).DeleteByID(ctx, spec.T, id))
-			IsAbsent(t, spec.resourceGet(t), ctx, newEntityFunc(spec.T), id)
+			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
+			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
+			IsAbsent(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
 			IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctx))
+			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
 			IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
 		})
 

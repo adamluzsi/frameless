@@ -12,8 +12,8 @@ import (
 )
 
 type DeleterPublisher struct {
+	T
 	Subject        func(testing.TB) DeleterPublisherSubject
-	T              interface{}
 	FixtureFactory FixtureFactory
 }
 

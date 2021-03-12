@@ -10,8 +10,8 @@ import (
 )
 
 type CreatorPublisher struct {
+	T
 	Subject        func(testing.TB) CreatorPublisherSubject
-	T              interface{}
 	FixtureFactory FixtureFactory
 }
 

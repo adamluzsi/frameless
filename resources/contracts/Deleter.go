@@ -12,8 +12,8 @@ import (
 )
 
 type Deleter struct {
+	T
 	Subject func(testing.TB) CRD
-	T       interface{}
 	FixtureFactory
 }
 

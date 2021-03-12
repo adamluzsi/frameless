@@ -1,4 +1,4 @@
-package storages_test
+package inmemory_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/resources/storages/inmemory"
 	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
@@ -21,7 +22,6 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/contracts"
-	"github.com/adamluzsi/frameless/resources/storages"
 )
 
 var _ interface {
@@ -30,16 +30,16 @@ var _ interface {
 	resources.Updater
 	resources.Deleter
 	resources.OnePhaseCommitProtocol
-} = &storages.Memory{}
+} = &inmemory.Storage{}
 
 var (
-	_ storages.MemoryEventManager = &storages.Memory{}
-	_ storages.MemoryEventManager = &storages.MemoryTransaction{}
+	_ inmemory.MemoryEventManager = &inmemory.Storage{}
+	_ inmemory.MemoryEventManager = &inmemory.MemoryTransaction{}
 )
 
 func TestStorage_smokeTest(t *testing.T) {
 	var (
-		subject = storages.NewMemory()
+		subject = inmemory.New()
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -79,7 +79,7 @@ func TestStorage_smokeTest(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.FixtureFactory) []testcase.Contract {
+func getMemorySpecsForT(subject *inmemory.Storage, T resources.T, ff contracts.FixtureFactory) []testcase.Contract {
 	return []testcase.Contract{
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
@@ -92,12 +92,12 @@ func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.Fi
 	}
 }
 
-func getMemorySpecs(subject *storages.Memory) []testcase.Contract {
+func getMemorySpecs(subject *inmemory.Storage) []testcase.Contract {
 	return getMemorySpecsForT(subject, Entity{}, fixtures.FixtureFactory{})
 }
 
 func TestMemory(t *testing.T) {
-	for _, spec := range getMemorySpecs(storages.NewMemory()) {
+	for _, spec := range getMemorySpecs(inmemory.New()) {
 		spec.Test(t)
 	}
 }
@@ -106,8 +106,8 @@ func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	ff := fixtures.FixtureFactory{}
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
-		subject1 := storages.NewMemory()
-		subject2 := storages.NewMemory()
+		subject1 := inmemory.New()
+		subject2 := inmemory.New()
 
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
@@ -135,8 +135,8 @@ func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 
 	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
-		subject1 := storages.NewMemory()
-		subject2 := storages.NewMemory()
+		subject1 := inmemory.New()
+		subject2 := inmemory.New()
 
 		ctx := ff.Context()
 		e1 := ff.Create(Entity{}).(*Entity)
@@ -191,7 +191,7 @@ func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 }
 
 func TestMemory_Options_EventLogging_disable(t *testing.T) {
-	subject := storages.NewMemory()
+	subject := inmemory.New()
 	subject.Options.DisableEventLogging = true
 
 	for _, spec := range getMemorySpecs(subject) {
@@ -219,8 +219,8 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		return NewHangingSubscriber()
 	})
 
-	var newMemory = func(t *testcase.T) *storages.Memory {
-		s := storages.NewMemory()
+	var newMemory = func(t *testcase.T) *inmemory.Storage {
+		s := inmemory.New()
 		ctx := context.Background()
 		subscription, err := s.SubscribeToCreate(ctx, Entity{}, subscriber(t))
 		require.Nil(t, err)
@@ -237,7 +237,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		return s
 	}
 
-	var subject = func(t *testcase.T) *storages.Memory {
+	var subject = func(t *testcase.T) *inmemory.Storage {
 		s := newMemory(t)
 		s.Options.DisableAsyncSubscriptionHandling = t.I(`DisableAsyncSubscriptionHandling`).(bool)
 		return s
@@ -372,9 +372,9 @@ func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
 func TestMemory_historyLogging(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	getStorage := func(t *testcase.T) *storages.Memory { return t.I(`storage`).(*storages.Memory) }
+	getStorage := func(t *testcase.T) *inmemory.Storage { return t.I(`storage`).(*inmemory.Storage) }
 	s.Let(`storage`, func(t *testcase.T) interface{} {
-		return storages.NewMemory()
+		return inmemory.New()
 	})
 
 	logContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
@@ -651,7 +651,7 @@ func TestMemory_historyLogging(t *testing.T) {
 func TestMemory_RegisterIDGenerator(t *testing.T) {
 	var (
 		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
-			err := t.I(`memory`).(*storages.Memory).Create(context.Background(), ptr)
+			err := t.I(`memory`).(*inmemory.Storage).Create(context.Background(), ptr)
 			id, _ := resources.LookupID(ptr)
 			return id, err
 		}
@@ -668,7 +668,7 @@ func TestMemory_RegisterIDGenerator(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 	s.Let(`memory`, func(t *testcase.T) interface{} {
-		return storages.NewMemory()
+		return inmemory.New()
 	})
 
 	var thenGeneratedIDsAreUnique = func(s *testcase.Spec) {
@@ -774,7 +774,7 @@ func TestMemory_RegisterIDGenerator(t *testing.T) {
 		}
 
 		s.Before(func(t *testcase.T) {
-			t.I(`memory`).(*storages.Memory).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
+			t.I(`memory`).(*inmemory.Storage).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
 				return CustomIDType{V: fixtures.Random.String()}, nil
 			})
 		})
@@ -849,7 +849,7 @@ func (l *fakeLogger) Log(args ...interface{}) {
 }
 
 func TestMemory_LookupTx(t *testing.T) {
-	s := storages.NewMemory()
+	s := inmemory.New()
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
 		_, ok := s.LookupTx(context.Background())
@@ -879,13 +879,13 @@ func TestMemory_LookupTx(t *testing.T) {
 
 func BenchmarkMemory(b *testing.B) {
 	b.Run(`with event log`, func(b *testing.B) {
-		for _, spec := range getMemorySpecs(storages.NewMemory()) {
+		for _, spec := range getMemorySpecs(inmemory.New()) {
 			spec.Benchmark(b)
 		}
 	})
 
 	b.Run(`without event log`, func(b *testing.B) {
-		subject := storages.NewMemory()
+		subject := inmemory.New()
 		subject.Options.DisableEventLogging = true
 		for _, spec := range getMemorySpecs(subject) {
 			spec.Benchmark(b)
@@ -899,7 +899,7 @@ type Entity struct {
 }
 
 func TestMemory_SaveEntityWithCustomKeyType(t *testing.T) {
-	for _, spec := range getMemorySpecsForT(storages.NewMemory(), EntityWithStructID{}, FFForEntityWithStructID{}) {
+	for _, spec := range getMemorySpecsForT(inmemory.New(), EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}
 }

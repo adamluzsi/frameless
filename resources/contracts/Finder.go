@@ -15,8 +15,8 @@ import (
 )
 
 type Finder struct {
-	Subject func(testing.TB) CRD
 	T
+	Subject func(testing.TB) CRD
 	FixtureFactory
 }
 
@@ -73,9 +73,8 @@ func (spec findByID) Test(t *testing.T) {
 			}
 		},
 
-		Specify: func(s *testcase.Spec) {
-
-			s.Test(`#E2E`, func(t *testcase.T) {
+		Specify: func(tb testing.TB) {
+			testcase.NewSpec(tb).Test(`#E2E`, func(t *testcase.T) {
 				r := spec.Subject(t)
 
 				var ids []interface{}
@@ -293,7 +292,7 @@ type FindOne struct {
 	ToQuery func(tb testing.TB, resource /* CRD */ interface{}, ent T) QueryOne
 	// Specify allow further specification describing for a given FindOne query function.
 	// If none specified, this field will be ignored
-	Specify func(s *testcase.Spec)
+	Specify func(testing.TB)
 }
 
 func (spec FindOne) Test(t *testing.T) {
@@ -365,7 +364,7 @@ func (spec FindOne) Spec(tb testing.TB) {
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					ent := spec.FixtureFactory.Create(spec.T)
-					CreateEntity(tb, resourceGet(t), spec.Context(), ent)
+					CreateEntity(t, resourceGet(t), spec.Context(), ent)
 					return ent
 				}).EagerLoading(s)
 
@@ -391,7 +390,9 @@ func (spec FindOne) Spec(tb testing.TB) {
 		})
 
 		if spec.Specify != nil {
-			spec.Specify(s)
+			s.Test(`Specify`, func(t *testcase.T) {
+				spec.Specify(t)
+			})
 		}
 	})
 }

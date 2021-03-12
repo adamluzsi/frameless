@@ -2,6 +2,8 @@ package storages_test
 
 import (
 	"context"
+	"errors"
+	"runtime/debug"
 	"sync"
 	"testing"
 	"time"
@@ -9,60 +11,56 @@ import (
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/frameless/resources/contracts"
-	"github.com/adamluzsi/frameless/resources/storages"
+	"github.com/adamluzsi/frameless/resources/storages/inmemory"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEventuallyConsistentStorage(t *testing.T) {
-	if testing.Short() {
-		original := contracts.AsyncTester
-		contracts.AsyncTester = testcase.Retry{Strategy: testcase.Waiter{
-			WaitDuration: time.Microsecond,
-			WaitTimeout:  5 * time.Second,
-		}}
-		defer func() { contracts.AsyncTester = original }()
-	}
-
 	type Entity struct {
 		ID   string `ext:"ID"`
 		Data string
 	}
 
-	storage := NewEventuallyConsistentStorage()
-	storage.Spawn()
-	t.Cleanup(func() { storage.Close() })
-	//defer storage.Close()
+	newStorage := func(tb testing.TB) *EventuallyConsistentStorage {
+		storage := NewEventuallyConsistentStorage()
+		tb.Cleanup(func() { _ = storage.Close() })
+		return storage
+	}
 
 	ff := fixtures.FixtureFactory{}
 	require.NotNil(t, ff.Context())
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
 	testcase.RunContract(t,
-		contracts.Creator{Subject: func(tb testing.TB) contracts.CRD { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.CreatorPublisher{Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.Updater{Subject: func(tb testing.TB) contracts.UpdaterSubject { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.UpdaterPublisher{Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.Deleter{Subject: func(tb testing.TB) contracts.CRD { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.DeleterPublisher{Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.Finder{Subject: func(tb testing.TB) contracts.CRD { return storage }, T: Entity{}, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.Creator{Subject: func(tb testing.TB) contracts.CRD { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.CreatorPublisher{Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.Updater{Subject: func(tb testing.TB) contracts.UpdaterSubject { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.UpdaterPublisher{Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.Deleter{Subject: func(tb testing.TB) contracts.CRD { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.DeleterPublisher{Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.Finder{Subject: func(tb testing.TB) contracts.CRD { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return newStorage(tb) }, T: Entity{}, FixtureFactory: ff},
 	)
 }
 
 func NewEventuallyConsistentStorage() *EventuallyConsistentStorage {
-	return &EventuallyConsistentStorage{
-		Memory: storages.NewMemory(),
-		jobs:   make(chan func(), 100),
-	}
+	e := &EventuallyConsistentStorage{Storage: inmemory.New()}
+	e.jobs.queue = make(chan func(), 100)
+	e.Spawn()
+	return e
 }
 
 type EventuallyConsistentStorage struct {
-	*storages.Memory
-	jobs    chan func()
+	*inmemory.Storage
+	jobs struct {
+		queue chan func()
+		wg    sync.WaitGroup
+	}
 	workers struct {
 		cancel func()
 	}
+	closed bool
 }
 
 func (e *EventuallyConsistentStorage) Spawn() {
@@ -89,58 +87,91 @@ func (e *EventuallyConsistentStorage) nullFn(fn func()) func() {
 }
 
 func (e *EventuallyConsistentStorage) Close() error {
+	e.jobs.wg.Wait()
 	e.nullFn(e.workers.cancel)()
-	close(e.jobs)
+	close(e.jobs.queue)
+	e.closed = true
 	return nil
 }
 
 func (e *EventuallyConsistentStorage) Create(ctx context.Context, ptr interface{}) error {
+	if err := e.errOnDoneTx(ctx); err != nil {
+		return err
+	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Memory.Create(ctx, ptr)
+		return e.Storage.Create(ctx, ptr)
 	})
 }
 
 func (e *EventuallyConsistentStorage) Update(ctx context.Context, ptr interface{}) error {
+	if err := e.errOnDoneTx(ctx); err != nil {
+		return err
+	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Memory.Update(ctx, ptr)
+		return e.Storage.Update(ctx, ptr)
 	})
 }
 
 func (e *EventuallyConsistentStorage) DeleteByID(ctx context.Context, T resources.T, id interface{}) error {
+	if err := e.errOnDoneTx(ctx); err != nil {
+		return err
+	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Memory.DeleteByID(ctx, T, id)
+		return e.Storage.DeleteByID(ctx, T, id)
 	})
 }
 
 func (e *EventuallyConsistentStorage) DeleteAll(ctx context.Context, T resources.T) error {
+	if err := e.errOnDoneTx(ctx); err != nil {
+		return err
+	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Memory.DeleteAll(ctx, T)
+		return e.Storage.DeleteAll(ctx, T)
 	})
 }
 
-type eventuallyConsistentStorageTxKey struct{} //--> *sync.WaitGroup
+type (
+	eventuallyConsistentStorageTxKey   struct{}
+	eventuallyConsistentStorageTxValue struct {
+		sync.WaitGroup
+		done bool
+	}
+)
 
 func (e *EventuallyConsistentStorage) BeginTx(ctx context.Context) (context.Context, error) {
-	ctx = context.WithValue(ctx, eventuallyConsistentStorageTxKey{}, &sync.WaitGroup{})
-	return e.Memory.BeginTx(ctx)
+	if err := e.errOnDoneTx(ctx); err != nil {
+		return nil, err
+	}
+	ctx = context.WithValue(ctx, eventuallyConsistentStorageTxKey{}, &eventuallyConsistentStorageTxValue{})
+	return e.Storage.BeginTx(ctx)
 }
 
-func (e *EventuallyConsistentStorage) txlock(tx context.Context) *sync.WaitGroup {
-	txWG, ok := tx.Value(eventuallyConsistentStorageTxKey{}).(*sync.WaitGroup)
-	if !ok {
-		return &sync.WaitGroup{}
+func (e *EventuallyConsistentStorage) errOnDoneTx(ctx context.Context) error {
+	if v, ok := e.lookupTx(ctx); ok && v.done {
+		return errors.New(`tx is already done`)
 	}
-	return txWG
+	return nil
+}
+
+func (e *EventuallyConsistentStorage) lookupTx(ctx context.Context) (*eventuallyConsistentStorageTxValue, bool) {
+	v, ok := ctx.Value(eventuallyConsistentStorageTxKey{}).(*eventuallyConsistentStorageTxValue)
+	return v, ok
 }
 
 func (e *EventuallyConsistentStorage) CommitTx(tx context.Context) error {
-	e.txlock(tx).Wait()
-	return e.Memory.CommitTx(tx)
+	if v, ok := e.lookupTx(tx); ok {
+		v.WaitGroup.Wait()
+		v.done = true
+	}
+	return e.Storage.CommitTx(tx)
 }
 
 func (e *EventuallyConsistentStorage) RollbackTx(tx context.Context) error {
-	e.txlock(tx).Wait()
-	return e.Memory.RollbackTx(tx)
+	if v, ok := e.lookupTx(tx); ok {
+		v.WaitGroup.Wait()
+		v.done = true
+	}
+	return e.Storage.RollbackTx(tx)
 }
 
 func (e *EventuallyConsistentStorage) worker(ctx context.Context, wg *sync.WaitGroup) {
@@ -151,7 +182,7 @@ wrk:
 		select {
 		case <-ctx.Done():
 			break wrk
-		case fn, ok := <-e.jobs:
+		case fn, ok := <-e.jobs.queue:
 			if !ok {
 				break wrk
 			}
@@ -161,26 +192,39 @@ wrk:
 }
 
 func (e *EventuallyConsistentStorage) eventually(ctx context.Context, fn func(ctx context.Context) error) error {
-	tx, err := e.Memory.BeginTx(ctx)
+	if e.closed {
+		debug.PrintStack()
+		return errors.New(`closed`)
+	}
+
+	tx, err := e.Storage.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 
 	if err := fn(tx); err != nil {
-		_ = e.Memory.RollbackTx(tx)
+		_ = e.Storage.RollbackTx(tx)
 		return err
 	}
 
-	wg := e.txlock(tx)
-	wg.Add(1)
-	e.jobs <- func() {
-		defer wg.Done()
+	var txWG = &sync.WaitGroup{}
+	if v, ok := e.lookupTx(tx); ok {
+		txWG = &v.WaitGroup
+	}
+
+	txWG.Add(1)
+	e.jobs.wg.Add(1)
+
+	e.jobs.queue <- func() {
+		defer e.jobs.wg.Done()
+		defer txWG.Done()
+
 		const (
 			max = int(time.Millisecond)
 			min = int(time.Microsecond)
 		)
 		time.Sleep(time.Duration(fixtures.Random.IntBetween(min, max)))
-		_ = e.Memory.CommitTx(tx)
+		_ = e.Storage.CommitTx(tx)
 	}
 
 	return nil

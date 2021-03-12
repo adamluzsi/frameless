@@ -1,5 +1,5 @@
 // TODO: make subscription publishing related to tx commit instead to be commit on the fly
-package storages
+package inmemory
 
 import (
 	"context"
@@ -19,13 +19,13 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-func NewMemory() *Memory {
-	return &Memory{}
+func New() *Storage {
+	return &Storage{}
 }
 
-// Memory is an event source principles based development in memory storage,
+// Storage is an event source principles based development in memory storage,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
-type Memory struct {
+type Storage struct {
 	Options struct {
 		DisableEventLogging                  bool
 		DisableAsyncSubscriptionHandling     bool
@@ -44,7 +44,7 @@ type Memory struct {
 	idGeneratorInit sync.Once
 }
 
-func (s *Memory) IDGenerator() *IDGenerator {
+func (s *Storage) IDGenerator() *IDGenerator {
 	s.idGeneratorInit.Do(func() {
 		s.idGenerator = newIDGenerator()
 	})
@@ -91,7 +91,7 @@ type MemoryEventManager interface {
 	MemoryEventViewer
 }
 
-func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
+func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 	if _, ok := resources.LookupID(ptr); !ok {
 		newID, err := s.IDGenerator().generateID(reflects.BaseValueOf(ptr).Interface())
 		if err != nil {
@@ -117,7 +117,7 @@ func (s *Memory) Create(ctx context.Context, ptr interface{}) error {
 	return s.createEventFor(ctx, ptr, s.getTrace())
 }
 
-func (s *Memory) createEventFor(ctx context.Context, ptr interface{}, trace []TraceElem) error {
+func (s *Storage) createEventFor(ctx context.Context, ptr interface{}, trace []TraceElem) error {
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
 		id, _ := resources.LookupID(ptr)
 		tx.AddEvent(MemoryEvent{
@@ -132,7 +132,7 @@ func (s *Memory) createEventFor(ctx context.Context, ptr interface{}, trace []Tr
 	})
 }
 
-func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id interface{}) (_found bool, _err error) {
+func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{}) (_found bool, _err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -156,7 +156,7 @@ func (s *Memory) FindByID(ctx context.Context, ptr interface{}, id interface{}) 
 	return false, iter.Err()
 }
 
-func (s *Memory) FindAll(ctx context.Context, T interface{}) iterators.Interface {
+func (s *Storage) FindAll(ctx context.Context, T interface{}) iterators.Interface {
 	if err := ctx.Err(); err != nil {
 		return iterators.NewError(err)
 	}
@@ -180,7 +180,7 @@ func (s *Memory) FindAll(ctx context.Context, T interface{}) iterators.Interface
 	return iterators.NewSlice(all)
 }
 
-func (s *Memory) Update(ctx context.Context, ptr interface{}) error {
+func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -212,7 +212,7 @@ func (s *Memory) Update(ctx context.Context, ptr interface{}) error {
 	})
 }
 
-func (s *Memory) DeleteByID(ctx context.Context, T, id interface{}) error {
+func (s *Storage) DeleteByID(ctx context.Context, T, id interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -239,7 +239,7 @@ func (s *Memory) DeleteByID(ctx context.Context, T, id interface{}) error {
 	})
 }
 
-func (s *Memory) DeleteAll(ctx context.Context, T interface{}) error {
+func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -257,7 +257,7 @@ func (s *Memory) DeleteAll(ctx context.Context, T interface{}) error {
 	})
 }
 
-func (s *Memory) getTxCtxKey() interface{} {
+func (s *Storage) getTxCtxKey() interface{} {
 	s.txNamespaceInit.Do(func() {
 		s.txNamespace = fixtures.SecureRandom.StringN(42)
 	})
@@ -265,7 +265,7 @@ func (s *Memory) getTxCtxKey() interface{} {
 	return ctxKeyForMemoryTransaction{ID: s.txNamespace}
 }
 
-func (s *Memory) BeginTx(ctx context.Context) (context.Context, error) {
+func (s *Storage) BeginTx(ctx context.Context) (context.Context, error) {
 	var em MemoryEventManager
 
 	tx, ok := s.LookupTx(ctx)
@@ -299,7 +299,7 @@ const (
 	errNoTx   consterror.Error = `no transaction found in the given context`
 )
 
-func (s *Memory) CommitTx(ctx context.Context) error {
+func (s *Storage) CommitTx(ctx context.Context) error {
 	tx, ok := s.LookupTx(ctx)
 	if !ok {
 		return errNoTx
@@ -316,7 +316,7 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 		})
 	}
 
-	memory, isFinalCommit := tx.parent.(*Memory)
+	memory, isFinalCommit := tx.parent.(*Storage)
 
 	tx.mutex.Lock()
 	defer tx.mutex.Unlock()
@@ -338,7 +338,7 @@ func (s *Memory) CommitTx(ctx context.Context) error {
 	return nil
 }
 
-func (s *Memory) notifySubscriptions(event MemoryEvent) {
+func (s *Storage) notifySubscriptions(event MemoryEvent) {
 	ctx := context.Background()
 	for _, sub := range s.getSubscriptions(event.EntityTypeName, event.Event) {
 		// TODO: clarify what to do when error is encountered in a subscription
@@ -356,7 +356,7 @@ func (s *Memory) notifySubscriptions(event MemoryEvent) {
 	}
 }
 
-func (s *Memory) RollbackTx(ctx context.Context) error {
+func (s *Storage) RollbackTx(ctx context.Context) error {
 	tx, ok := s.LookupTx(ctx)
 	if !ok {
 		return errNoTx
@@ -382,11 +382,11 @@ type (
 	noTxEventLogCtxValue struct{}
 )
 
-func (s *Memory) doNotLogTxEvent(ctx context.Context) context.Context {
+func (s *Storage) doNotLogTxEvent(ctx context.Context) context.Context {
 	return context.WithValue(ctx, noTxEventLogCtxKey{}, noTxEventLogCtxValue{})
 }
 
-func (s *Memory) isTxEventLogged(ctx context.Context) bool {
+func (s *Storage) isTxEventLogged(ctx context.Context) bool {
 	if ctx == nil {
 		return true
 	}
@@ -395,7 +395,7 @@ func (s *Memory) isTxEventLogged(ctx context.Context) bool {
 	return !ok
 }
 
-func (s *Memory) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error) error {
+func (s *Storage) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error) error {
 	ctx = s.doNotLogTxEvent(ctx)
 
 	ctx, err := s.BeginTx(ctx)
@@ -412,14 +412,14 @@ func (s *Memory) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error)
 	return s.CommitTx(ctx)
 }
 
-func (s *Memory) newPtr(ent interface{}) interface{} {
+func (s *Storage) newPtr(ent interface{}) interface{} {
 	T := reflects.BaseTypeOf(ent)
 	return reflect.New(T).Interface()
 }
 
 /**********************************************************************************************************************/
 
-func (s *Memory) concentrateEvents() {
+func (s *Storage) concentrateEvents() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -444,7 +444,7 @@ func (s *Memory) concentrateEvents() {
 // event name -> <T> as name -> event subscribers
 type subscriptions map[string]map[string][]*subscription
 
-func (s *Memory) newSubscription(subscriber resources.Subscriber) *subscription {
+func (s *Storage) newSubscription(subscriber resources.Subscriber) *subscription {
 	var sub subscription
 	sub.storage = s
 	sub.subscriber = subscriber
@@ -455,7 +455,7 @@ func (s *Memory) newSubscription(subscriber resources.Subscriber) *subscription 
 }
 
 type subscription struct {
-	storage    *Memory
+	storage    *Storage
 	subscriber resources.Subscriber
 
 	context context.Context
@@ -538,7 +538,7 @@ func (s *subscription) isClosed() bool {
 	}
 }
 
-func (s *Memory) getSubscriptions(entityTypeName string, name string) []*subscription {
+func (s *Storage) getSubscriptions(entityTypeName string, name string) []*subscription {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -557,7 +557,7 @@ func (s *Memory) getSubscriptions(entityTypeName string, name string) []*subscri
 	return s.subscriptions[name][entityTypeName]
 }
 
-func (s *Memory) appendToSubscription(ctx context.Context, T interface{}, name string, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) appendToSubscription(ctx context.Context, T interface{}, name string, subscriber resources.Subscriber) (resources.Subscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -571,19 +571,19 @@ func (s *Memory) appendToSubscription(ctx context.Context, T interface{}, name s
 	return sub, nil
 }
 
-func (s *Memory) SubscribeToCreate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToCreate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(ctx, T, CreateEvent, subscriber)
 }
 
-func (s *Memory) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(ctx, T, UpdateEvent, subscriber)
 }
 
-func (s *Memory) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(ctx, T, DeleteByIDEvent, subscriber)
 }
 
-func (s *Memory) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
 	return s.appendToSubscription(ctx, T, DeleteAllEvent, subscriber)
 }
 
@@ -593,7 +593,7 @@ type logger interface {
 	Log(args ...interface{})
 }
 
-func (s *Memory) logEventHistory(l logger, events []MemoryEvent) {
+func (s *Storage) logEventHistory(l logger, events []MemoryEvent) {
 	for _, e := range events {
 		var formattedTracePath string
 		if 0 < len(e.Trace) {
@@ -614,11 +614,11 @@ func (s *Memory) logEventHistory(l logger, events []MemoryEvent) {
 	}
 }
 
-func (s *Memory) LogHistory(l logger) {
+func (s *Storage) LogHistory(l logger) {
 	s.logEventHistory(l, s.events)
 }
 
-func (s *Memory) LogContextHistory(l logger, ctx context.Context) {
+func (s *Storage) LogContextHistory(l logger, ctx context.Context) {
 	s.LogHistory(l)
 
 	tx, ok := s.LookupTx(ctx)
@@ -631,7 +631,7 @@ func (s *Memory) LogContextHistory(l logger, ctx context.Context) {
 
 var wd, wdErr = os.Getwd()
 
-func (s *Memory) fmtTracePath(file string) string {
+func (s *Storage) fmtTracePath(file string) string {
 	if s.Options.DisableRelativePathResolvingForTrace {
 		return file
 	}
@@ -644,7 +644,7 @@ func (s *Memory) fmtTracePath(file string) string {
 	return file
 }
 
-func (s *Memory) getTrace() []TraceElem {
+func (s *Storage) getTrace() []TraceElem {
 	const maxTraceLength = 5
 	goroot := runtime.GOROOT()
 
@@ -710,17 +710,17 @@ func (g *IDGenerator) generateID(T resources.T) (interface{}, error) {
 
 /**********************************************************************************************************************/
 
-func (s *Memory) AddEvent(event MemoryEvent) {
+func (s *Storage) AddEvent(event MemoryEvent) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.addEventUnsafe(event)
 }
 
-func (s *Memory) addEventUnsafe(event MemoryEvent) {
+func (s *Storage) addEventUnsafe(event MemoryEvent) {
 	s.events = append(s.events, event)
 }
 
-func (s *Memory) Events() []MemoryEvent {
+func (s *Storage) Events() []MemoryEvent {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	return append([]MemoryEvent{}, s.events...)
@@ -809,7 +809,7 @@ func (tx *MemoryTransaction) isDone() bool {
 	return tx.done.commit || tx.done.rollback
 }
 
-func (s *Memory) LookupTx(ctx context.Context) (*MemoryTransaction, bool) {
+func (s *Storage) LookupTx(ctx context.Context) (*MemoryTransaction, bool) {
 	tx, ok := ctx.Value(s.getTxCtxKey()).(*MemoryTransaction)
 	return tx, ok
 }
@@ -818,7 +818,7 @@ func entityTypeNameFor(T interface{}) string {
 	return reflects.FullyQualifiedName(reflects.BaseValueOf(T).Interface())
 }
 
-func (s *Memory) EntityTypeNameFor(T interface{}) string {
+func (s *Storage) EntityTypeNameFor(T interface{}) string {
 	return entityTypeNameFor(T)
 }
 
