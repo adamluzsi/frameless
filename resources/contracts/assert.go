@@ -90,19 +90,11 @@ func DeleteEntity(tb testing.TB, subject minimumRequirements, ctx context.Contex
 }
 
 func DeleteAllEntity(tb testing.TB, subject minimumRequirements, ctx context.Context, T resources.T) {
-	getCount := func(tb testing.TB) int {
+	require.Nil(tb, subject.DeleteAll(ctx, T))
+	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
+	AsyncTester.Assert(tb, func(tb testing.TB) {
 		count, err := iterators.Count(subject.FindAll(ctx, T))
 		require.Nil(tb, err)
-		return count
-	}
-
-	if getCount(tb) == 0 {
-		return
-	}
-
-	require.Nil(tb, subject.DeleteAll(ctx, T))
-
-	AsyncTester.Assert(tb, func(tb testing.TB) {
-		require.True(tb, getCount(tb) == 0, fmt.Sprintf(`no %T was expected to be found in %T`, T, subject))
+		require.True(tb, count == 0, fmt.Sprintf(`no %T was expected to be found in %T`, T, subject))
 	})
 }
