@@ -40,7 +40,7 @@ func init() {
 	benchmarkEntityVolumeCount = i
 }
 
-const msgNotMeasurable = `not measurable spec`
+const msgNotMeasurable = `not measurable Spec`
 
 const ErrIDRequired consterror.Error = `
 Can't find the ID in the current structure
@@ -48,7 +48,15 @@ if there is no ID in the subject structure
 custom test needed that explicitly defines how ID is stored and retried from an entity
 `
 
-type minimumRequirements interface {
+type crud interface {
+	resources.Creator
+	resources.Finder
+	resources.Updater
+	resources.Deleter
+}
+
+// CRD is the minimum requirements to write easily behavioral specification for a resource.
+type CRD interface {
 	resources.Creator
 	resources.Finder
 	resources.Deleter
@@ -62,7 +70,7 @@ func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	return es
 }
 
-func saveEntities(tb testing.TB, s minimumRequirements, f FixtureFactory, es ...interface{}) []interface{} {
+func saveEntities(tb testing.TB, s CRD, f FixtureFactory, es ...interface{}) []interface{} {
 	var ids []interface{}
 	for _, e := range es {
 		require.Nil(tb, s.Create(f.Context(), e))
@@ -176,7 +184,7 @@ func (s *eventSubscriber) verifyContext(ctx context.Context) {
 }
 
 const (
-	contextKey      = `context`
+	contextKey      = `Context`
 	subscriberKey   = `subscriberGet`
 	subscriptionKey = `subscription`
 )

@@ -81,14 +81,14 @@ func TestStorage_smokeTest(t *testing.T) {
 
 func getMemorySpecsForT(subject *storages.Memory, T resources.T, ff contracts.FixtureFactory) []testcase.Contract {
 	return []testcase.Contract{
-		contracts.Creator{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.Finder{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.Updater{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.Deleter{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.CreatorPublisher{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.UpdaterPublisher{T: T, Subject: subject, FixtureFactory: ff},
-		contracts.DeleterPublisher{T: T, Subject: subject, FixtureFactory: ff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return subject }, FixtureFactory: ff},
+		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
 	}
 }
 

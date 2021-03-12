@@ -26,7 +26,7 @@
 	Keep in mind, that you have no guarantee on your Resource content during test execution, because some specification
 	may alter the content of the Resource (db), or delete from it.
 	If you need specific data in the Resource you want to test with, you must ensure in the test execution that
-	such context is correctly provisioned, and after test execution, cleaned up.
+	such Context is correctly provisioned, and after test execution, cleaned up.
 	If you use such data-set in a external Resource that needs to be kept intact,
 	I advise you to use separate environments for test execution and manual testing.
 

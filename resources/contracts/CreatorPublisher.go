@@ -10,28 +10,36 @@ import (
 )
 
 type CreatorPublisher struct {
-	Subject interface {
-		minimumRequirements
-		resources.CreatorPublisher
-	}
+	Subject        func(testing.TB) CreatorPublisherSubject
 	T              interface{}
 	FixtureFactory FixtureFactory
 }
 
+type CreatorPublisherSubject interface {
+	CRD
+	resources.CreatorPublisher
+}
+
 func (spec CreatorPublisher) Test(t *testing.T) {
-	spec.spec(t)
+	spec.Spec(t)
 }
 
 func (spec CreatorPublisher) Benchmark(b *testing.B) {
-	spec.spec(b)
+	spec.Spec(b)
 }
 
-func (spec CreatorPublisher) spec(tb testing.TB) {
+func (spec CreatorPublisher) Spec(tb testing.TB) {
 	const name = `CreatorPublisher`
 	testcase.NewSpec(tb).Context(name, func(s *testcase.Spec) {
 		s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
+			resource := s.Let(`resource`, func(t *testcase.T) interface{} {
+				return spec.Subject(t)
+			})
+			resourceGet := func(t *testcase.T) CreatorPublisherSubject {
+				return resource.Get(t).(CreatorPublisherSubject)
+			}
 			subject := func(t *testcase.T) (resources.Subscription, error) {
-				subscription, err := spec.Subject.SubscribeToCreate(ctxGet(t), spec.T, subscriberGet(t))
+				subscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), spec.T, subscriberGet(t))
 				if err == nil && subscription != nil {
 					t.Let(subscriptionKey, subscription)
 					t.Defer(subscription.Close)
@@ -64,7 +72,7 @@ func (spec CreatorPublisher) spec(tb testing.TB) {
 					entities := genEntities(spec.FixtureFactory, spec.T)
 
 					for _, entity := range entities {
-						CreateEntity(t, spec.Subject, ctxGet(t), entity)
+						CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 					}
 
 					// wait until the subscriberGet received the events
@@ -90,7 +98,7 @@ func (spec CreatorPublisher) spec(tb testing.TB) {
 						s.Before(func(t *testcase.T) {
 							entities := genEntities(spec.FixtureFactory, spec.T)
 							for _, entity := range entities {
-								CreateEntity(t, spec.Subject, ctxGet(t), entity)
+								CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 							}
 							Waiter.Wait()
 						})
@@ -109,7 +117,7 @@ func (spec CreatorPublisher) spec(tb testing.TB) {
 					s.Before(func(t *testcase.T) {
 						othSubscriber := newEventSubscriber(t)
 						t.Let(othSubscriberKey, othSubscriber)
-						newSubscription, err := spec.Subject.SubscribeToCreate(ctxGet(t), spec.T, othSubscriber)
+						newSubscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), spec.T, othSubscriber)
 						require.Nil(t, err)
 						require.NotNil(t, newSubscription)
 						t.Defer(newSubscription.Close)
@@ -129,7 +137,7 @@ func (spec CreatorPublisher) spec(tb testing.TB) {
 						furtherEvents := s.Let(`further events`, func(t *testcase.T) interface{} {
 							entities := genEntities(spec.FixtureFactory, spec.T)
 							for _, entity := range entities {
-								CreateEntity(t, spec.Subject, ctxGet(t), entity)
+								CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 							}
 
 							Waiter.While(func() bool {

@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -14,7 +15,7 @@ import (
 )
 
 type Finder struct {
-	Subject minimumRequirements
+	Subject func(testing.TB) CRD
 	T
 	FixtureFactory
 }
@@ -47,7 +48,7 @@ func (spec Finder) spec(tb testing.TB) {
 
 type findByID struct {
 	T
-	Subject minimumRequirements
+	Subject func(testing.TB) CRD
 	FixtureFactory
 }
 
@@ -57,29 +58,30 @@ func (spec findByID) Test(t *testing.T) {
 		FixtureFactory: spec.FixtureFactory,
 		Subject:        spec.Subject,
 		MethodName:     "FindByID",
-		ToQuery: func(tb testing.TB, ent T) QueryOne {
+		ToQuery: func(tb testing.TB, resource interface{}, ent T) QueryOne {
 			id, ok := resources.LookupID(ent)
 			if !ok { // if no id found create a dummy ID
 				// since an id is required always to use FindByID
 				// we generate a dummy id in case the received entity don't have one.
 				// This helps to avoid error cases where ID is not set actually.
 				// For those we have further specification later
-				id = spec.createDummyID(tb)
+				id = spec.createDummyID(tb, resource.(CRD))
 			}
 
 			return func(tb testing.TB, ctx context.Context, ptr T) (found bool, err error) {
-				return spec.Subject.FindByID(ctx, ptr, id)
+				return resource.(resources.Finder).FindByID(ctx, ptr, id)
 			}
 		},
 
-		Spec: func(s *testcase.Spec) {
+		Specify: func(s *testcase.Spec) {
 
 			s.Test(`#E2E`, func(t *testcase.T) {
-				var ids []interface{}
+				r := spec.Subject(t)
 
+				var ids []interface{}
 				for i := 0; i < 12; i++ {
 					entity := spec.FixtureFactory.Create(spec.T)
-					CreateEntity(t, spec.Subject, spec.Context(), entity)
+					CreateEntity(t, r, spec.Context(), entity)
 					id, ok := resources.LookupID(entity)
 					require.True(t, ok, ErrIDRequired.Error())
 					ids = append(ids, id)
@@ -87,14 +89,14 @@ func (spec findByID) Test(t *testing.T) {
 
 				t.Log("when no value stored that the query request")
 				ptr := newEntity(spec.T)
-				ok, err := spec.Subject.FindByID(spec.Context(), ptr, "not existing ID")
+				ok, err := r.FindByID(spec.Context(), ptr, "not existing ID")
 				require.Nil(t, err)
 				require.False(t, ok)
 
 				t.Log("values returned")
 				for _, ID := range ids {
 					e := newEntity(spec.T)
-					ok, err := spec.Subject.FindByID(spec.Context(), e, ID)
+					ok, err := r.FindByID(spec.Context(), e, ID)
 					require.Nil(t, err)
 					require.True(t, ok)
 
@@ -109,10 +111,11 @@ func (spec findByID) Test(t *testing.T) {
 
 func (spec findByID) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
+	r := spec.Subject(b)
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newEntity(spec.T)
-		CreateEntity(t, spec.Subject, spec.Context(), ptr)
+		CreateEntity(t, r, spec.Context(), ptr)
 		return ptr
 	}).EagerLoading(s)
 
@@ -121,17 +124,17 @@ func (spec findByID) Benchmark(b *testing.B) {
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		_, err := spec.Subject.FindByID(spec.Context(), spec.T, id.Get(t))
+		_, err := r.FindByID(spec.Context(), spec.T, id.Get(t))
 		require.Nil(t, err)
 	})
 }
 
-func (spec findByID) createDummyID(tb testing.TB) interface{} {
+func (spec findByID) createDummyID(tb testing.TB, r CRD) interface{} {
 	ent := spec.FixtureFactory.Create(spec.T)
 	ctx := spec.FixtureFactory.Context()
-	CreateEntity(tb, spec.Subject, ctx, ent)
+	CreateEntity(tb, r, ctx, ent)
 	id := HasID(tb, ent)
-	DeleteEntity(tb, spec.Subject, ctx, ent)
+	DeleteEntity(tb, r, ctx, ent)
 	return id
 }
 
@@ -141,14 +144,28 @@ func (spec findByID) createDummyID(tb testing.TB) interface{} {
 // NewEntityForTest used only for testing and should not be provided outside of testing
 type findAll struct {
 	T
-	Subject minimumRequirements
+	Subject func(testing.TB) CRD
 	FixtureFactory
 }
 
 func (spec findAll) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
+	var (
+		resource = s.Let(`resource`, func(t *testcase.T) interface{} {
+			return spec.Subject(t)
+		})
+		resourceGet = func(t *testcase.T) CRD {
+			return resource.Get(t).(CRD)
+		}
+	)
+
+	beforeAll := &sync.Once{}
+	s.Before(func(t *testcase.T) {
+		beforeAll.Do(func() {
+			DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
+		})
+	})
 
 	s.Describe(`FindAll`, func(s *testcase.Spec) {
 		var (
@@ -156,12 +173,12 @@ func (spec findAll) Test(t *testing.T) {
 				return spec.Context()
 			})
 			subject = func(t *testcase.T) iterators.Interface {
-				return spec.Subject.FindAll(ctx.Get(t).(context.Context), spec.T)
+				return resourceGet(t).FindAll(ctx.Get(t).(context.Context), spec.T)
 			}
 		)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
+			DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
 		})
 
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -170,7 +187,7 @@ func (spec findAll) Test(t *testing.T) {
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				CreateEntity(t, spec.Subject, spec.Context(), entity.Get(t))
+				CreateEntity(t, resourceGet(t), spec.Context(), entity.Get(t))
 			})
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
@@ -190,7 +207,7 @@ func (spec findAll) Test(t *testing.T) {
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				othEntity := s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					ent := spec.FixtureFactory.Create(spec.T)
-					CreateEntity(t, spec.Subject, spec.Context(), ent)
+					CreateEntity(t, resourceGet(t), spec.Context(), ent)
 					return ent
 				}).EagerLoading(s)
 
@@ -207,7 +224,7 @@ func (spec findAll) Test(t *testing.T) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
+				DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
@@ -224,7 +241,7 @@ func (spec findAll) Test(t *testing.T) {
 				return ctx
 			})
 
-			s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 				iter := subject(t)
 				err := iter.Err()
 				require.Error(t, err)
@@ -235,17 +252,18 @@ func (spec findAll) Test(t *testing.T) {
 }
 
 func (spec findAll) Benchmark(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
+	r := spec.Subject(b)
+	cleanup(b, r, spec.FixtureFactory, spec.T)
 
 	s := testcase.NewSpec(b)
 
 	s.Before(func(t *testcase.T) {
-		saveEntities(t, spec.Subject, spec.FixtureFactory,
+		saveEntities(t, r, spec.FixtureFactory,
 			createEntities(spec.FixtureFactory, spec.T)...)
 	})
 
 	s.Test(``, func(t *testcase.T) {
-		_, err := iterators.Count(spec.Subject.FindAll(spec.Context(), spec.T))
+		_, err := iterators.Count(r.FindAll(spec.Context(), spec.T))
 		require.Nil(t, err)
 	})
 }
@@ -262,7 +280,7 @@ type QueryOne func(tb testing.TB, ctx context.Context, ptr T) (found bool, err e
 
 type FindOne struct {
 	T
-	Subject minimumRequirements
+	Subject func(testing.TB) CRD
 	FixtureFactory
 	// MethodName is the name of the test subject QueryOne method of this contract specification.
 	MethodName string
@@ -271,22 +289,22 @@ type FindOne struct {
 	// By convention, any preparation action that affect the Storage must take place prior to returning the closure.
 	// The QueryOne closure should only have the Method call with the already mapped values.
 	// ToQuery will be evaluated in the beginning of the testing,
-	// and executed after all the test context preparation is done.
-	ToQuery func(tb testing.TB, ent T) QueryOne
-	// Spec allow further specification describing for a given FindOne query function.
+	// and executed after all the test Context preparation is done.
+	ToQuery func(tb testing.TB, resource /* CRD */ interface{}, ent T) QueryOne
+	// Specify allow further specification describing for a given FindOne query function.
 	// If none specified, this field will be ignored
-	Spec func(s *testcase.Spec)
+	Specify func(s *testcase.Spec)
 }
 
 func (spec FindOne) Test(t *testing.T) {
-	spec.spec(t)
+	spec.Spec(t)
 }
 
 func (spec FindOne) Benchmark(b *testing.B) {
-	spec.spec(b)
+	spec.Spec(b)
 }
 
-func (spec FindOne) spec(tb testing.TB) {
+func (spec FindOne) Spec(tb testing.TB) {
 	testcase.NewSpec(tb).Describe(`#`+spec.MethodName, func(s *testcase.Spec) {
 		var (
 			ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
@@ -298,9 +316,15 @@ func (spec FindOne) spec(tb testing.TB) {
 			ptr = s.Let(`ptr`, func(t *testcase.T) interface{} {
 				return newEntity(spec.T)
 			})
+			resource = s.Let(`resource`, func(t *testcase.T) interface{} {
+				return spec.Subject(t)
+			})
+			resourceGet = func(t *testcase.T) CRD {
+				return resource.Get(t).(CRD)
+			}
 			query = s.Let(`query`, func(t *testcase.T) interface{} {
 				t.Log(entity.Get(t))
-				return spec.ToQuery(t, entity.Get(t))
+				return spec.ToQuery(t, resourceGet(t), entity.Get(t))
 			})
 			subject = func(t *testcase.T) (bool, error) {
 				return query.Get(t).(QueryOne)(t, ctx.Get(t).(context.Context), ptr.Get(t))
@@ -308,12 +332,12 @@ func (spec FindOne) spec(tb testing.TB) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
+			DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
 		})
 
 		s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				CreateEntity(t, spec.Subject, spec.Context(), entity.Get(t))
+				CreateEntity(t, resourceGet(t), spec.Context(), entity.Get(t))
 				HasID(t, entity.Get(t))
 			})
 
@@ -331,7 +355,7 @@ func (spec FindOne) spec(tb testing.TB) {
 					return ctx
 				})
 
-				s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+				s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 					found, err := subject(t)
 					require.Equal(t, context.Canceled, err)
 					require.False(t, found)
@@ -341,7 +365,7 @@ func (spec FindOne) spec(tb testing.TB) {
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					ent := spec.FixtureFactory.Create(spec.T)
-					CreateEntity(tb, spec.Subject, spec.Context(), ent)
+					CreateEntity(tb, resourceGet(t), spec.Context(), ent)
 					return ent
 				}).EagerLoading(s)
 
@@ -356,7 +380,7 @@ func (spec FindOne) spec(tb testing.TB) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
+				DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
 			})
 
 			s.Then(`it will have no result`, func(t *testcase.T) {
@@ -366,8 +390,8 @@ func (spec FindOne) spec(tb testing.TB) {
 			})
 		})
 
-		if spec.Spec != nil {
-			spec.Spec(s)
+		if spec.Specify != nil {
+			spec.Specify(s)
 		}
 	})
 }

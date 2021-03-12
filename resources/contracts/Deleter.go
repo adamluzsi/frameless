@@ -12,14 +12,28 @@ import (
 )
 
 type Deleter struct {
-	Subject minimumRequirements
+	Subject func(testing.TB) CRD
 	T       interface{}
 	FixtureFactory
+}
+
+func (spec Deleter) resource() testcase.Var {
+	return testcase.Var{
+		Name: "resource",
+		Init: func(t *testcase.T) interface{} {
+			return spec.Subject(t)
+		},
+	}
+}
+
+func (spec Deleter) resourceGet(t *testcase.T) CRD {
+	return spec.resource().Get(t).(CRD)
 }
 
 func (spec Deleter) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	defer s.Finish()
+	spec.resource().Let(s, nil)
 	s.Describe(`DeleteByID`, spec.specDeleteByID)
 	s.Describe(`DeleteAll`, spec.specDeleteAll)
 }
@@ -34,12 +48,12 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		ctx     = ctxLetWithFixtureFactory(s, spec)
 		id      = testcase.Var{Name: `id`}
 		subject = func(t *testcase.T) error {
-			return spec.Subject.DeleteByID(ctx.Get(t).(context.Context), spec.T, id.Get(t))
+			return spec.resourceGet(t).DeleteByID(ctx.Get(t).(context.Context), spec.T, id.Get(t))
 		}
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, spec.Subject, spec.Context(), spec.T)
+		DeleteAllEntity(t, spec.resourceGet(t), spec.Context(), spec.T)
 	})
 
 	entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -49,7 +63,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 	s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) interface{} {
 			ent := entity.Get(t)
-			CreateEntity(t, spec.Subject, spec.Context(), ent)
+			CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
 			id, ok := resources.LookupID(ent)
 			require.True(t, ok, ErrIDRequired.Error())
 			return id
@@ -57,7 +71,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsAbsent(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), id.Get(t))
+			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -67,7 +81,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 				return ctx
 			})
 
-			s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 				require.Equal(t, context.Canceled, subject(t))
 			})
 		})
@@ -75,21 +89,21 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			othEntity := s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 				ent := spec.FixtureFactory.Create(spec.T)
-				CreateEntity(t, spec.Subject, spec.Context(), ent)
+				CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
 				return ent
 			}).EagerLoading(s)
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				othID, _ := resources.LookupID(othEntity.Get(t))
-				IsFindable(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), othID)
+				IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), othID)
 			})
 		})
 
-		s.And(`the entity was deleted then`, func(s *testcase.Spec) {
+		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsAbsent(t, spec.Subject, ctx.Get(t).(context.Context), newEntityFunc(spec.T), id.Get(t))
+				IsAbsent(t, spec.resourceGet(t), ctx.Get(t).(context.Context), newEntityFunc(spec.T), id.Get(t))
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
@@ -97,34 +111,19 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 			})
 		})
 	})
-
-	//s.When(`entity never saved before in the resource`, func(s *testcase.spec) {
-	//	s.Let(`id`, func(t *testcase.T) interface{} {
-	//		id, _ := resources.LookupID(entity.Get(t))
-	//		return id
-	//	})
-	//
-	//	s.Before(func(t *testcase.T) {
-	//		found, err := spec.Subject.FindByID(spec.Context(), newEntity(spec.T), id.Get(t))
-	//		require.Nil(t, err)
-	//		require.False(t, found)
-	//	})
-	//
-	//	s.Then(`it will return with error, because you cannot delete something that does not exist`, func(t *testcase.T) {
-	//		require.Error(t, subject(t))
-	//	})
-	//})
 }
 
 func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
-	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
-
 	s := testcase.NewSpec(b)
+
+	s.Around(func(t *testcase.T) func() {
+		cleanup(b, spec.resourceGet(t), spec.FixtureFactory, spec.T)
+		return func() { cleanup(b, spec.resourceGet(t), spec.FixtureFactory, spec.T) }
+	})
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newEntity(spec.T)
-		CreateEntity(t, spec.Subject, spec.Context(), ptr)
+		CreateEntity(t, spec.resourceGet(t), spec.Context(), ptr)
 		return ptr
 	}).EagerLoading(s)
 
@@ -133,13 +132,13 @@ func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		require.Nil(b, spec.Subject.DeleteByID(spec.Context(), spec.T, id.Get(t)))
+		require.Nil(b, spec.resourceGet(t).DeleteByID(spec.Context(), spec.T, id.Get(t)))
 	})
 }
 
 func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
-		return spec.Subject.DeleteAll(
+		return spec.resourceGet(t).DeleteAll(
 			t.I(`ctx`).(context.Context),
 			spec.T,
 		)
@@ -154,31 +153,32 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 			return ctx
 		})
 
-		s.Then(`it expected to return with context cancel error`, func(t *testcase.T) {
+		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 			require.Equal(t, context.Canceled, subject(t))
 		})
 	})
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		ent := spec.FixtureFactory.Create(spec.T)
-		CreateEntity(t, spec.Subject, spec.Context(), ent)
+		CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
 		eID := HasID(t, ent)
-		IsFindable(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), eID)
+		IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), eID)
 		require.Nil(t, subject(t))
-		IsAbsent(t, spec.Subject, spec.Context(), newEntityFunc(spec.T), eID)
+		IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), eID)
 	})
 }
 
 func (spec Deleter) benchmarkDeleteAll(b *testing.B) {
-	cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
-	defer cleanup(b, spec.Subject, spec.FixtureFactory, spec.T)
+	r := spec.Subject(b)
+	cleanup(b, r, spec.FixtureFactory, spec.T)
+	defer cleanup(b, r, spec.FixtureFactory, spec.T)
 	// for some reason, doing setup with timer stop/start
 	// makes this test unable to measure
 	// the correct throughput, and hangs forever
 	// so I just check empty delete all.
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		require.Nil(b, spec.Subject.DeleteAll(spec.Context(), spec.T))
+		require.Nil(b, r.DeleteAll(spec.Context(), spec.T))
 	}
 	b.StopTimer()
 }

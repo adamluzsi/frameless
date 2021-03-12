@@ -39,14 +39,14 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
 	testcase.RunContract(t,
-		contracts.Creator{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.CreatorPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.Updater{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.UpdaterPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.Deleter{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.DeleterPublisher{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.Finder{Subject: storage, T: Entity{}, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{Subject: storage, T: Entity{}, FixtureFactory: ff},
+		contracts.Creator{Subject: func(tb testing.TB) contracts.CRD { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.CreatorPublisher{Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.Updater{Subject: func(tb testing.TB) contracts.UpdaterSubject { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.UpdaterPublisher{Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.Deleter{Subject: func(tb testing.TB) contracts.CRD { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.DeleterPublisher{Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.Finder{Subject: func(tb testing.TB) contracts.CRD { return storage }, T: Entity{}, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return storage }, T: Entity{}, FixtureFactory: ff},
 	)
 }
 

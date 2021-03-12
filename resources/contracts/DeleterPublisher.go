@@ -12,12 +12,27 @@ import (
 )
 
 type DeleterPublisher struct {
-	Subject interface {
-		minimumRequirements
-		resources.DeleterPublisher
-	}
+	Subject        func(testing.TB) DeleterPublisherSubject
 	T              interface{}
 	FixtureFactory FixtureFactory
+}
+
+type DeleterPublisherSubject interface {
+	CRD
+	resources.DeleterPublisher
+}
+
+func (spec DeleterPublisher) resource() testcase.Var {
+	return testcase.Var{
+		Name: "resource",
+		Init: func(t *testcase.T) interface{} {
+			return spec.Subject(t)
+		},
+	}
+}
+
+func (spec DeleterPublisher) resourceGet(t *testcase.T) DeleterPublisherSubject {
+	return spec.resource().Get(t).(DeleterPublisherSubject)
 }
 
 func (spec DeleterPublisher) Test(t *testing.T) {
@@ -30,6 +45,7 @@ func (spec DeleterPublisher) Benchmark(b *testing.B) {
 
 func (spec DeleterPublisher) spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
+	spec.resource().Let(s, nil)
 	const name = `DeleterPublisher`
 	s.Context(name, func(s *testcase.Spec) {
 		s.Describe(`#SubscribeToDeleteByID`, spec.specSubscribeToDeleteByID)
@@ -39,7 +55,7 @@ func (spec DeleterPublisher) spec(tb testing.TB) {
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) (resources.Subscription, error) {
-		subscription, err := spec.Subject.SubscribeToDeleteByID(ctxGet(t), spec.T, subscriberGet(t))
+		subscription, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), spec.T, subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -63,7 +79,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	const entityKey = `entity`
 	entity := s.Let(entityKey, func(t *testcase.T) interface{} {
 		entityPtr := spec.createEntity()
-		CreateEntity(t, spec.Subject, ctxGet(t), entityPtr)
+		CreateEntity(t, spec.resourceGet(t), ctxGet(t), entityPtr)
 		return entityPtr
 	}).EagerLoading(s)
 
@@ -79,7 +95,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			DeleteEntity(t, spec.Subject, ctxGet(t), entity.Get(t))
+			DeleteEntity(t, spec.resourceGet(t), ctxGet(t), entity.Get(t))
 
 			Waiter.While(func() bool {
 				return subscriberGet(t).EventsLen() < 1
@@ -98,8 +114,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 			s.And(`more events made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					entityPtr := spec.createEntity()
-					CreateEntity(t, spec.Subject, ctxGet(t), entityPtr)
-					DeleteEntity(t, spec.Subject, ctxGet(t), entityPtr)
+					CreateEntity(t, spec.resourceGet(t), ctxGet(t), entityPtr)
+					DeleteEntity(t, spec.resourceGet(t), ctxGet(t), entityPtr)
 					Waiter.Wait()
 				})
 
@@ -117,7 +133,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.Subject.SubscribeToDeleteByID(ctxGet(t), spec.T, othSubscriber)
+				sub, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), spec.T, othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -139,8 +155,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 				furtherEvent := s.Let(furtherEventKey, func(t *testcase.T) interface{} {
 					t.Log(`given an another entity is stored`)
 					entityPtr := spec.createEntity()
-					CreateEntity(t, spec.Subject, ctxGet(t), entityPtr)
-					DeleteEntity(t, spec.Subject, ctxGet(t), entityPtr)
+					CreateEntity(t, spec.resourceGet(t), ctxGet(t), entityPtr)
+					DeleteEntity(t, spec.resourceGet(t), ctxGet(t), entityPtr)
 					Waiter.While(func() bool {
 						return subscriberGet(t).EventsLen() < 2
 					})
@@ -169,7 +185,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) (resources.Subscription, error) {
-		subscription, err := spec.Subject.SubscribeToDeleteAll(ctxGet(t), spec.T, subscriberGet(t))
+		subscription, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), spec.T, subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -201,7 +217,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.Subject.DeleteAll(ctxGet(t), spec.T))
+			require.Nil(t, spec.resourceGet(t).DeleteAll(ctxGet(t), spec.T))
 			Waiter.While(func() bool {
 				return subscriberGet(t).EventsLen() < 1
 			})
@@ -219,7 +235,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.Subject.SubscribeToDeleteAll(ctxGet(t), spec.T, othSubscriber)
+				sub, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), spec.T, othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -236,7 +252,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.Subject.DeleteAll(ctxGet(t), spec.T))
+					require.Nil(t, spec.resourceGet(t).DeleteAll(ctxGet(t), spec.T))
 					Waiter.While(func() bool {
 						return subscriberGet(t).EventsLen() < 2
 					})

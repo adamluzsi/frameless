@@ -59,7 +59,7 @@ func HasEntity(tb testing.TB, subject resources.Finder, ctx context.Context, ent
 	})
 }
 
-func CreateEntity(tb testing.TB, subject minimumRequirements, ctx context.Context, ptr interface{}) {
+func CreateEntity(tb testing.TB, subject CRD, ctx context.Context, ptr interface{}) {
 	T := toT(ptr)
 	require.Nil(tb, subject.Create(ctx, ptr))
 	id := HasID(tb, ptr)
@@ -81,7 +81,7 @@ func UpdateEntity(tb testing.TB, subject interface {
 	})
 }
 
-func DeleteEntity(tb testing.TB, subject minimumRequirements, ctx context.Context, ent interface{}) {
+func DeleteEntity(tb testing.TB, subject CRD, ctx context.Context, ent interface{}) {
 	T := toT(ent)
 	id := HasID(tb, ent)
 	IsFindable(tb, subject, ctx, newEntityFunc(T), id)
@@ -89,7 +89,7 @@ func DeleteEntity(tb testing.TB, subject minimumRequirements, ctx context.Contex
 	IsAbsent(tb, subject, ctx, newEntityFunc(T), id)
 }
 
-func DeleteAllEntity(tb testing.TB, subject minimumRequirements, ctx context.Context, T resources.T) {
+func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context, T resources.T) {
 	require.Nil(tb, subject.DeleteAll(ctx, T))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	AsyncTester.Assert(tb, func(tb testing.TB) {

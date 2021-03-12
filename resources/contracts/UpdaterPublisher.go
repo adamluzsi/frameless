@@ -1,7 +1,6 @@
 package contracts
 
 import (
-	"context"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -12,30 +11,46 @@ import (
 )
 
 type UpdaterPublisher struct {
-	Subject interface {
-		minimumRequirements
-		resources.Updater
-		resources.UpdaterPublisher
+	T
+	Subject func(testing.TB) UpdaterPublisherSubject
+	FixtureFactory
+}
+
+type UpdaterPublisherSubject interface {
+	CRD
+	resources.Updater
+	resources.UpdaterPublisher
+}
+
+func (spec UpdaterPublisher) resource() testcase.Var {
+	return testcase.Var{
+		Name: "resource",
+		Init: func(t *testcase.T) interface{} {
+			return spec.Subject(t)
+		},
 	}
-	T              interface{}
-	FixtureFactory FixtureFactory
+}
+
+func (spec UpdaterPublisher) resourceGet(t *testcase.T) UpdaterPublisherSubject {
+	return spec.resource().Get(t).(UpdaterPublisherSubject)
 }
 
 func (spec UpdaterPublisher) Test(t *testing.T) {
-	spec.spec(t)
+	spec.Spec(t)
 }
 
 func (spec UpdaterPublisher) Benchmark(b *testing.B) {
-	spec.spec(b)
+	spec.Spec(b)
 }
 
-func (spec UpdaterPublisher) spec(tb testing.TB) {
+func (spec UpdaterPublisher) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
+	spec.resource().Let(s, nil)
 	const name = `UpdaterPublisher`
 	s.Context(name, func(s *testcase.Spec) {
 		s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
 			subject := func(t *testcase.T) (resources.Subscription, error) {
-				subscription, err := spec.Subject.SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))
+				subscription, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))
 				if err == nil && subscription != nil {
 					t.Let(subscriptionKey, subscription)
 					t.Defer(subscription.Close)
@@ -49,7 +64,7 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 			}
 
 			ctx.Let(s, func(t *testcase.T) interface{} {
-				return spec.context()
+				return spec.Context()
 			})
 
 			s.Let(subscriberKey, func(t *testcase.T) interface{} {
@@ -59,7 +74,7 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 			const entityKey = `entity`
 			entity := s.Let(entityKey, func(t *testcase.T) interface{} {
 				ptr := spec.createEntity()
-				CreateEntity(t, spec.Subject, ctxGet(t), ptr)
+				CreateEntity(t, spec.resourceGet(t), ctxGet(t), ptr)
 				return ptr
 			}).EagerLoading(s)
 			getID := func(t *testcase.T) interface{} {
@@ -81,7 +96,7 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 				updatedEntity := s.Let(updatedEntityKey, func(t *testcase.T) interface{} {
 					entityWithNewValuesPtr := spec.createEntity()
 					require.Nil(t, resources.SetID(entityWithNewValuesPtr, getID(t)))
-					UpdateEntity(t, spec.Subject, ctxGet(t), entityWithNewValuesPtr)
+					UpdateEntity(t, spec.resourceGet(t), ctxGet(t), entityWithNewValuesPtr)
 					Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
 					return toBaseValue(entityWithNewValuesPtr)
 				}).EagerLoading(s)
@@ -100,7 +115,7 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 							id, _ := resources.LookupID(t.I(entityKey))
 							updatedEntityPtr := spec.createEntity()
 							require.Nil(t, resources.SetID(updatedEntityPtr, id))
-							require.Nil(t, spec.Subject.Update(ctxGet(t), updatedEntityPtr))
+							require.Nil(t, spec.resourceGet(t).Update(ctxGet(t), updatedEntityPtr))
 							Waiter.While(func() bool {
 								return subscriberGet(t).EventsLen() < 1
 							})
@@ -120,7 +135,7 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 					s.Before(func(t *testcase.T) {
 						othSubscriber := newEventSubscriber(t)
 						t.Let(othSubscriberKey, othSubscriber)
-						sub, err := spec.Subject.SubscribeToUpdate(ctxGet(t), spec.T, othSubscriber)
+						sub, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), spec.T, othSubscriber)
 						require.Nil(t, err)
 						require.NotNil(t, sub)
 						t.Defer(sub.Close)
@@ -139,7 +154,7 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 						furtherEventUpdate := s.Let(`further event update`, func(t *testcase.T) interface{} {
 							updatedEntityPtr := spec.createEntity()
 							require.Nil(t, resources.SetID(updatedEntityPtr, getID(t)))
-							UpdateEntity(t, spec.Subject, ctxGet(t), updatedEntityPtr)
+							UpdateEntity(t, spec.resourceGet(t), ctxGet(t), updatedEntityPtr)
 							Waiter.While(func() bool {
 								return subscriberGet(t).EventsLen() < 2
 							})
@@ -165,64 +180,8 @@ func (spec UpdaterPublisher) spec(tb testing.TB) {
 					})
 				})
 			})
-
-			s.Describe(`relationship with OnePhaseCommitProtocol`, spec.specOnePhaseCommitProtocol)
-
 		})
 	}, testcase.Group(name))
-}
-
-func (spec UpdaterPublisher) specOnePhaseCommitProtocol(s *testcase.Spec) {
-	res, ok := spec.Subject.(resources.OnePhaseCommitProtocol)
-	if !ok {
-		return
-	}
-
-	const entityKey = `entity`
-
-	//TODO: fix, remove implicit reference to outer layer value definition
-	entity := testcase.Var{Name: entityKey}
-
-	updatedEntity := s.Let(`updated-entity`, func(t *testcase.T) interface{} {
-		id, _ := resources.LookupID(entity.Get(t))
-		updatedEntityPtr := spec.createEntity()
-		require.Nil(t, resources.SetID(updatedEntityPtr, id))
-		require.Nil(t, spec.Subject.Update(ctxGet(t), updatedEntityPtr))
-		HasEntity(t, spec.Subject, ctxGet(t), updatedEntityPtr)
-		return updatedEntityPtr
-	}).EagerLoading(s)
-
-	ctx.Let(s, func(t *testcase.T) interface{} {
-		t.Log(`given we are in transaction`)
-		ctxInTx, err := res.BeginTx(spec.context())
-		require.Nil(t, err)
-		t.Defer(res.RollbackTx, ctxInTx)
-		return ctxInTx
-	})
-
-	s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-		Waiter.Wait()
-		require.Empty(t, subscriberGet(t).Events())
-		require.Nil(t, res.CommitTx(ctxGet(t)))
-	})
-
-	s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-		require.Nil(t, res.CommitTx(ctxGet(t)))
-		AsyncTester.Assert(t, func(tb testing.TB) {
-			require.False(tb, subscriberGet(t).EventsLen() < 1)
-			require.Contains(tb, subscriberGet(t).Events(), toBaseValue(updatedEntity.Get(t)))
-		})
-	})
-
-	s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-		require.Nil(t, res.RollbackTx(ctxGet(t)))
-		Waiter.Wait()
-		require.Empty(t, subscriberGet(t).Events())
-	})
-}
-
-func (spec UpdaterPublisher) context() context.Context {
-	return spec.FixtureFactory.Context()
 }
 
 func (spec UpdaterPublisher) createEntity() interface{} {

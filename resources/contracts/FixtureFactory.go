@@ -14,7 +14,7 @@ type FixtureFactory interface {
 	// Create also populate the struct field with dummy values.
 	// It is expected that the newly created fixture will have no content for extID field.
 	Create(T interface{}) (ptr interface{})
-	// Context able to provide the specs with a context object for a certain entity Type.
+	// Context able to provide the specs with a Context object for a certain entity Type.
 	Context() (ctx context.Context)
 }
 
@@ -61,11 +61,11 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 			return spec.FixtureFactory.Context()
 		}
 
-		s.Then(`it will return a context`, func(t *testcase.T) {
+		s.Then(`it will return a Context`, func(t *testcase.T) {
 			require.NotNil(t, subject(t))
 		})
 
-		s.Then(`the context expected to be not cancelled`, func(t *testcase.T) {
+		s.Then(`the Context expected to be not cancelled`, func(t *testcase.T) {
 			require.Nil(t, subject(t).Err())
 		})
 	})
