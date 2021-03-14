@@ -71,7 +71,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id.Get(t))
+			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -96,14 +96,14 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				othID, _ := resources.LookupID(othEntity.Get(t))
-				IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), othID)
+				IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), othID)
 			})
 		})
 
 		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsAbsent(t, spec.resourceGet(t), ctx.Get(t).(context.Context), newEntityFunc(spec.T), id.Get(t))
+				IsAbsent(t, spec.T, spec.resourceGet(t), ctx.Get(t).(context.Context), id.Get(t))
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
@@ -162,9 +162,9 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 		ent := spec.FixtureFactory.Create(spec.T)
 		CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
 		eID := HasID(t, ent)
-		IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), eID)
+		IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), eID)
 		require.Nil(t, subject(t))
-		IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), eID)
+		IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), eID)
 	})
 }
 

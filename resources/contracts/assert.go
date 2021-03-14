@@ -19,8 +19,6 @@ var Waiter = testcase.Waiter{
 
 var AsyncTester = testcase.Retry{Strategy: Waiter}
 
-type NewEntityFunc func() interface{}
-
 func HasID(tb testing.TB, ent interface{}) (id interface{}) {
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var ok bool
@@ -31,10 +29,11 @@ func HasID(tb testing.TB, ent interface{}) (id interface{}) {
 	return
 }
 
-func IsFindable(tb testing.TB, subject resources.Finder, ctx context.Context, newEntity NewEntityFunc, id interface{}) interface{} {
+func IsFindable(tb testing.TB, T T, subject resources.Finder, ctx context.Context, id interface{}) interface{} {
 	var ptr interface{}
+	newFn := newEntityFunc(T)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
-		ptr = newEntity()
+		ptr = newFn()
 		found, err := subject.FindByID(ctx, ptr, id)
 		require.Nil(tb, err)
 		require.True(tb, found)
@@ -42,9 +41,10 @@ func IsFindable(tb testing.TB, subject resources.Finder, ctx context.Context, ne
 	return ptr
 }
 
-func IsAbsent(tb testing.TB, subject resources.Finder, ctx context.Context, newEntity NewEntityFunc, id interface{}) {
+func IsAbsent(tb testing.TB, T T, subject resources.Finder, ctx context.Context, id interface{}) {
+	n := newEntityFunc(T)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
-		found, err := subject.FindByID(ctx, newEntity(), id)
+		found, err := subject.FindByID(ctx, n(), id)
 		require.Nil(tb, err)
 		require.False(tb, found)
 	})
@@ -53,9 +53,8 @@ func IsAbsent(tb testing.TB, subject resources.Finder, ctx context.Context, newE
 func HasEntity(tb testing.TB, subject resources.Finder, ctx context.Context, ent interface{}) {
 	T := toT(ent)
 	id := HasID(tb, ent)
-	newFunc := newEntityFunc(T)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
-		require.Equal(tb, ent, IsFindable(tb, subject, ctx, newFunc, id))
+		require.Equal(tb, ent, IsFindable(tb, T, subject, ctx, id))
 	})
 }
 
@@ -64,7 +63,7 @@ func CreateEntity(tb testing.TB, subject CRD, ctx context.Context, ptr interface
 	require.Nil(tb, subject.Create(ctx, ptr))
 	id := HasID(tb, ptr)
 	tb.Cleanup(func() { _ = subject.DeleteByID(ctx, T, id) })
-	IsFindable(tb, subject, ctx, newEntityFunc(T), id)
+	IsFindable(tb, T, subject, ctx, id)
 }
 
 func UpdateEntity(tb testing.TB, subject interface {
@@ -76,7 +75,7 @@ func UpdateEntity(tb testing.TB, subject interface {
 	id, _ := resources.LookupID(ptr)
 	require.Nil(tb, subject.Update(ctx, ptr))
 	AsyncTester.Assert(tb, func(tb testing.TB) {
-		entity := IsFindable(tb, subject, ctx, newEntityFunc(T), id)
+		entity := IsFindable(tb, T, subject, ctx, id)
 		require.Equal(tb, ptr, entity)
 	})
 }
@@ -84,9 +83,9 @@ func UpdateEntity(tb testing.TB, subject interface {
 func DeleteEntity(tb testing.TB, subject CRD, ctx context.Context, ent interface{}) {
 	T := toT(ent)
 	id := HasID(tb, ent)
-	IsFindable(tb, subject, ctx, newEntityFunc(T), id)
+	IsFindable(tb, T, subject, ctx, id)
 	require.Nil(tb, subject.DeleteByID(ctx, T, id))
-	IsAbsent(tb, subject, ctx, newEntityFunc(T), id)
+	IsAbsent(tb, T, subject, ctx, id)
 }
 
 func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context, T resources.T) {

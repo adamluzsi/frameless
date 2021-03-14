@@ -127,12 +127,12 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			CreateEntity(t, spec.resourceGet(t), tx, entity)
 			id := HasID(t, entity)
 
-			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)           // can be found in tx Context
-			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id) // is absent from the global Context
+			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)                          // can be found in tx Context
+			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id) // is absent from the global Context
 
 			require.Nil(t, spec.resourceGet(t).CommitTx(tx)) // after the commit
 
-			actually := IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			actually := IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 			require.Equal(t, entity, actually)
 		})
 
@@ -144,12 +144,12 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			CreateEntity(t, spec.resourceGet(t), tx, entity)
 
 			id := HasID(t, entity)
-			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
-			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
+			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 
 			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
 
-			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 		})
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
@@ -163,15 +163,15 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			tx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 
-			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
+			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
 			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
-			IsAbsent(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
+			IsAbsent(t, spec.T, spec.resourceGet(t), tx, id)
 
 			// in global Context it is findable
-			IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 
 			require.Nil(t, spec.resourceGet(t).CommitTx(tx))
-			IsAbsent(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 		})
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
@@ -182,12 +182,12 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			tx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
-			IsFindable(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
+			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
 			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
-			IsAbsent(t, spec.resourceGet(t), tx, newEntityFunc(spec.T), id)
-			IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			IsAbsent(t, spec.T, spec.resourceGet(t), tx, id)
+			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
-			IsFindable(t, spec.resourceGet(t), spec.Context(), newEntityFunc(spec.T), id)
+			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
@@ -226,26 +226,26 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, err)
 			e1 := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(tx1, e1))
-			IsFindable(t, spec.resourceGet(t), tx1, newEntityFunc(spec.T), HasID(t, e1))
+			IsFindable(t, spec.T, spec.resourceGet(t), tx1, HasID(t, e1))
 
 			tx2InTx1, err := spec.resourceGet(t).BeginTx(globalContext)
 			require.Nil(t, err)
 
 			e2 := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(tx2InTx1, e2))
-			IsFindable(t, spec.resourceGet(t), tx2InTx1, newEntityFunc(spec.T), HasID(t, e2)) // tx2 entity should be visible
-			IsFindable(t, spec.resourceGet(t), tx1, newEntityFunc(spec.T), HasID(t, e1))      // so the entity made in tx1
+			IsFindable(t, spec.T, spec.resourceGet(t), tx2InTx1, HasID(t, e2)) // tx2 entity should be visible
+			IsFindable(t, spec.T, spec.resourceGet(t), tx1, HasID(t, e1))      // so the entity made in tx1
 
 			t.Log(`before commit, entities should be absent from the resource`)
-			IsAbsent(t, spec.resourceGet(t), globalContext, newEntityFunc(spec.T), HasID(t, e1))
-			IsAbsent(t, spec.resourceGet(t), globalContext, newEntityFunc(spec.T), HasID(t, e2))
+			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e1))
+			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e2))
 
 			require.Nil(t, spec.resourceGet(t).CommitTx(tx2InTx1), `"inner" tx should be considered done`)
 			require.Nil(t, spec.resourceGet(t).CommitTx(tx1), `"outer" tx should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			IsFindable(t, spec.resourceGet(t), globalContext, newEntityFunc(spec.T), HasID(t, e1))
-			IsFindable(t, spec.resourceGet(t), globalContext, newEntityFunc(spec.T), HasID(t, e2))
+			IsFindable(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e1))
+			IsFindable(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e2))
 		})
 
 		s.Describe(`CreatorPublisher`, spec.specCreatorPublisher)
