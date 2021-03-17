@@ -12,23 +12,22 @@ func Collect(i Interface, slicePtr interface{}) (err error) {
 		}
 	}()
 
-	ptr := reflect.ValueOf(slicePtr)
-	slice := ptr.Elem()
-	sliceElementType := slice.Type().Elem()
+	var (
+		ptr       = reflect.ValueOf(slicePtr)
+		sliceType = reflect.TypeOf(ptr.Elem().Interface())
+		elemType  = sliceType.Elem()
+	)
 
-	var values []reflect.Value
-
+	slice := reflect.MakeSlice(sliceType, 0, 0)
 	for i.Next() {
-		elem := reflect.New(sliceElementType)
-
+		elem := reflect.New(elemType)
 		if err := i.Decode(elem.Interface()); err != nil {
 			return err
 		}
 
-		values = append(values, elem.Elem())
+		slice = reflect.Append(slice, elem.Elem())
 	}
 
-	slice.Set(reflect.Append(slice, values...))
-
+	ptr.Elem().Set(slice)
 	return i.Err()
 }
