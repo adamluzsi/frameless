@@ -127,7 +127,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			CreateEntity(t, spec.resourceGet(t), tx, entity)
 			id := HasID(t, entity)
 
-			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)                          // can be found in tx Context
+			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)           // can be found in tx Context
 			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id) // is absent from the global Context
 
 			require.Nil(t, spec.resourceGet(t).CommitTx(tx)) // after the commit

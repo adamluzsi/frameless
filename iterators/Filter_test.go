@@ -25,7 +25,7 @@ func ExampleFilter() {
 			log.Fatal(err)
 		}
 
-		fmt.Println(n)
+		_ = n
 	}
 
 	if err := iter.Err(); err != nil {

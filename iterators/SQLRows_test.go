@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -38,7 +37,6 @@ func ExampleNewSQLRows(ctx context.Context, db *sql.DB) error {
 		if err := iter.Decode(&t); err != nil {
 			return err
 		}
-		fmt.Println(t)
 	}
 
 	return iter.Err()

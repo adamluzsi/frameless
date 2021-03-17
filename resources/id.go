@@ -2,7 +2,6 @@ package resources
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -39,11 +38,9 @@ func LookupID(i interface{}) (id interface{}, ok bool) {
 func isNil(val reflect.Value) bool {
 	switch val.Kind() {
 	case reflect.Interface:
-		fmt.Println(`?`)
 		return isNil(val.Elem())
 
 	case reflect.Ptr, reflect.Slice, reflect.Chan, reflect.Func, reflect.Map:
-		fmt.Println(`??`)
 		return val.IsNil()
 
 	default:
