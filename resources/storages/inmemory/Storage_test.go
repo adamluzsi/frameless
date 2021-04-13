@@ -102,7 +102,7 @@ func TestMemory(t *testing.T) {
 	}
 }
 
-func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
+func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	ff := fixtures.FixtureFactory{}
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
@@ -190,7 +190,7 @@ func TestMemory_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 }
 
-func TestMemory_Options_EventLogging_disable(t *testing.T) {
+func TestStorage_Options_EventLogging_disable(t *testing.T) {
 	subject := inmemory.New()
 	subject.Options.DisableEventLogging = true
 
@@ -203,7 +203,7 @@ func TestMemory_Options_EventLogging_disable(t *testing.T) {
 			` If the storage has values, it means something is not cleaning up properly in the specs.`)
 }
 
-func TestMemory_Options_AsyncSubscriptionHandling(t *testing.T) {
+func TestStorage_Options_AsyncSubscriptionHandling(t *testing.T) {
 	SpecMemory_Options_AsyncSubscriptionHandling(t)
 }
 
@@ -369,7 +369,7 @@ func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
 	return nil
 }
 
-func TestMemory_historyLogging(t *testing.T) {
+func TestStorage_historyLogging(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	getStorage := func(t *testcase.T) *inmemory.Storage { return t.I(`storage`).(*inmemory.Storage) }
@@ -648,7 +648,7 @@ func TestMemory_historyLogging(t *testing.T) {
 	})
 }
 
-func TestMemory_RegisterIDGenerator(t *testing.T) {
+func TestStorage_RegisterIDGenerator(t *testing.T) {
 	var (
 		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
 			err := t.I(`memory`).(*inmemory.Storage).Create(context.Background(), ptr)
@@ -848,7 +848,7 @@ func (l *fakeLogger) Log(args ...interface{}) {
 	}
 }
 
-func TestMemory_LookupTx(t *testing.T) {
+func TestStorage_LookupTx(t *testing.T) {
 	s := inmemory.New()
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
@@ -877,6 +877,14 @@ func TestMemory_LookupTx(t *testing.T) {
 	})
 }
 
+func TestStorage_InTx_whenContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.Equal(t, context.Canceled,
+		inmemory.New().InTx(ctx, func(tx *inmemory.MemoryTransaction) error { return nil }))
+}
+
 func BenchmarkMemory(b *testing.B) {
 	b.Run(`with event log`, func(b *testing.B) {
 		for _, spec := range getMemorySpecs(inmemory.New()) {
@@ -898,7 +906,7 @@ type Entity struct {
 	Data string
 }
 
-func TestMemory_SaveEntityWithCustomKeyType(t *testing.T) {
+func TestStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 	for _, spec := range getMemorySpecsForT(inmemory.New(), EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}

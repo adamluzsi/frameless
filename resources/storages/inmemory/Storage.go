@@ -157,10 +157,6 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 }
 
 func (s *Storage) FindAll(ctx context.Context, T interface{}) iterators.Interface {
-	if err := ctx.Err(); err != nil {
-		return iterators.NewError(err)
-	}
-
 	var all []interface{}
 	if err := s.InTx(ctx, func(tx *MemoryTransaction) error {
 		view := tx.View()
@@ -181,10 +177,6 @@ func (s *Storage) FindAll(ctx context.Context, T interface{}) iterators.Interfac
 }
 
 func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
 	trace := s.getTrace()
 	id, ok := resources.LookupID(ptr)
 	if !ok {
@@ -213,10 +205,6 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 }
 
 func (s *Storage) DeleteByID(ctx context.Context, T, id interface{}) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
 	trace := s.getTrace()
 
 	found, err := s.FindByID(ctx, s.newPtr(T), id)
@@ -240,12 +228,7 @@ func (s *Storage) DeleteByID(ctx context.Context, T, id interface{}) error {
 }
 
 func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
 	trace := s.getTrace()
-
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
 		tx.AddEvent(MemoryEvent{
 			T:              T,
@@ -396,6 +379,10 @@ func (s *Storage) isTxEventLogged(ctx context.Context) bool {
 }
 
 func (s *Storage) InTx(ctx context.Context, fn func(tx *MemoryTransaction) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	ctx = s.doNotLogTxEvent(ctx)
 
 	ctx, err := s.BeginTx(ctx)
