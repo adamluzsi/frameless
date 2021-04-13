@@ -21,14 +21,14 @@ type Finder struct {
 }
 
 func (spec Finder) Test(t *testing.T) {
-	spec.spec(t)
+	spec.Spec(t)
 }
 
 func (spec Finder) Benchmark(b *testing.B) {
-	spec.spec(b)
+	spec.Spec(b)
 }
 
-func (spec Finder) spec(tb testing.TB) {
+func (spec Finder) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	const name = `Finder`
 	s.Context(name, func(s *testcase.Spec) {
@@ -57,7 +57,7 @@ func (spec findByID) Test(t *testing.T) {
 		T:              spec.T,
 		FixtureFactory: spec.FixtureFactory,
 		Subject:        spec.Subject,
-		MethodName:     "FindByID",
+		MethodName:     ".FindByID",
 		ToQuery: func(tb testing.TB, resource interface{}, ent T) QueryOne {
 			id, ok := resources.LookupID(ent)
 			if !ok { // if no id found create a dummy ID
@@ -74,7 +74,7 @@ func (spec findByID) Test(t *testing.T) {
 		},
 
 		Specify: func(tb testing.TB) {
-			testcase.NewSpec(tb).Test(`#E2E`, func(t *testcase.T) {
+			testcase.NewSpec(tb).Test(`E2E`, func(t *testcase.T) {
 				r := spec.Subject(t)
 
 				var ids []interface{}
@@ -304,7 +304,7 @@ func (spec FindOne) Benchmark(b *testing.B) {
 }
 
 func (spec FindOne) Spec(tb testing.TB) {
-	testcase.NewSpec(tb).Describe(`#`+spec.MethodName, func(s *testcase.Spec) {
+	testcase.NewSpec(tb).Describe(spec.MethodName, func(s *testcase.Spec) {
 		var (
 			ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
 				return spec.Context()

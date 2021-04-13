@@ -140,7 +140,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 			entity := spec.FixtureFactory.Create(spec.T)
-			//require.Nil(t, spec.resourceGet(t).Create(tx, entity))
+			//require.Nil(t, Spec.resourceGet(t).Create(tx, entity))
 			CreateEntity(t, spec.resourceGet(t), tx, entity)
 
 			id := HasID(t, entity)
