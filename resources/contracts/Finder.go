@@ -196,10 +196,7 @@ func (spec findAll) Test(t *testing.T) {
 			})
 
 			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
-				all := subject(t)
-				var entities []interface{}
-				require.Nil(t, iterators.Collect(all, &entities))
-				require.Equal(t, 1, len(entities))
+				entities := spec.findAllN(t, subject, 1)
 				contains(t, entities, entity.Get(t))
 			})
 
@@ -211,10 +208,7 @@ func (spec findAll) Test(t *testing.T) {
 				}).EagerLoading(s)
 
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {
-					all := subject(t)
-					var entities []interface{}
-					require.Nil(t, iterators.Collect(all, &entities))
-					require.Equal(t, 2, len(entities))
+					entities := spec.findAllN(t, subject, 2)
 					contains(t, entities, entity.Get(t))
 					contains(t, entities, othEntity.Get(t))
 				})
@@ -248,6 +242,17 @@ func (spec findAll) Test(t *testing.T) {
 			})
 		})
 	})
+}
+
+func (spec findAll) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Interface, n int) []interface{} {
+	var entities []interface{}
+	AsyncTester.Assert(t, func(tb testing.TB) {
+		all := subject(t)
+		entities = []interface{}{}
+		require.Nil(t, iterators.Collect(all, &entities))
+		require.Equal(t, n, len(entities))
+	})
+	return entities
 }
 
 func (spec findAll) Benchmark(b *testing.B) {
