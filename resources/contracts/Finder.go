@@ -190,14 +190,18 @@ func (spec findAll) Test(t *testing.T) {
 			})
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
-				count, err := iterators.Count(subject(t))
-				require.Nil(t, err)
-				require.Equal(t, 1, count)
+				AsyncTester.Assert(t, func(tb testing.TB) {
+					count, err := iterators.Count(subject(t))
+					require.Nil(tb, err)
+					require.Equal(tb, 1, count)
+				})
 			})
 
 			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
-				entities := spec.findAllN(t, subject, 1)
-				contains(t, entities, entity.Get(t))
+				AsyncTester.Assert(t, func(tb testing.TB) {
+					entities := spec.findAllN(t, subject, 1)
+					contains(tb, entities, entity.Get(t))
+				})
 			})
 
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
@@ -208,9 +212,11 @@ func (spec findAll) Test(t *testing.T) {
 				}).EagerLoading(s)
 
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {
-					entities := spec.findAllN(t, subject, 2)
-					contains(t, entities, entity.Get(t))
-					contains(t, entities, othEntity.Get(t))
+					AsyncTester.Assert(t, func(tb testing.TB) {
+						entities := spec.findAllN(t, subject, 2)
+						contains(tb, entities, entity.Get(t))
+						contains(tb, entities, othEntity.Get(t))
+					})
 				})
 			})
 		})
