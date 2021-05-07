@@ -79,7 +79,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, spec.resourceGet(t).CommitTx(tx))
 
 			t.Log(`using the tx context after commit should yield error`)
-			_, err = spec.resourceGet(t).FindByID(tx, spec.T, id)
+			_, err = spec.resourceGet(t).FindByID(tx, newEntity(spec.T), id)
 			require.Error(t, err)
 			require.Error(t, spec.resourceGet(t).Create(tx, spec.FixtureFactory.Create(spec.T)))
 			require.Error(t, spec.resourceGet(t).FindAll(tx, spec.T).Err())

@@ -123,7 +123,7 @@ func (spec findByID) Benchmark(b *testing.B) {
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		_, err := r.FindByID(spec.Context(), spec.T, id.Get(t))
+		_, err := r.FindByID(spec.Context(), newEntity(spec.T), id.Get(t))
 		require.Nil(t, err)
 	})
 }
