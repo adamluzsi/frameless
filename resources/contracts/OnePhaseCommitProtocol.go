@@ -104,7 +104,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			id, _ := resources.LookupID(ptr)
 			require.Nil(t, spec.resourceGet(t).RollbackTx(ctx))
 
-			_, err = spec.resourceGet(t).FindByID(ctx, spec.T, id)
+			_, err = spec.resourceGet(t).FindByID(ctx, newEntity(spec.T), id)
 			require.Error(t, err)
 			require.Error(t, spec.resourceGet(t).FindAll(ctx, spec.T).Err())
 			require.Error(t, spec.resourceGet(t).Create(ctx, spec.FixtureFactory.Create(spec.T)))
