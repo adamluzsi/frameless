@@ -19,7 +19,7 @@ import (
 	"github.com/adamluzsi/frameless/resources"
 )
 
-func New() *Storage {
+func NewStorage() *Storage {
 	return &Storage{}
 }
 

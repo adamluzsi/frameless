@@ -93,7 +93,7 @@ func (spec Creator) Test(t *testing.T) {
 		})
 
 		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
-			s.Let(`ctx`, func(t *testcase.T) interface{} {
+			ctx.Let(s, func(t *testcase.T) interface{} {
 				ctx, cancel := context.WithCancel(spec.Context())
 				cancel()
 				return ctx

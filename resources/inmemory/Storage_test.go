@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources/storages/inmemory"
+	"github.com/adamluzsi/frameless/resources/inmemory"
 	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
@@ -39,7 +39,7 @@ var (
 
 func TestStorage_smokeTest(t *testing.T) {
 	var (
-		subject = inmemory.New()
+		subject = inmemory.NewStorage()
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -97,7 +97,7 @@ func getMemorySpecs(subject *inmemory.Storage) []testcase.Contract {
 }
 
 func TestMemory(t *testing.T) {
-	for _, spec := range getMemorySpecs(inmemory.New()) {
+	for _, spec := range getMemorySpecs(inmemory.NewStorage()) {
 		spec.Test(t)
 	}
 }
@@ -106,8 +106,8 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	ff := fixtures.FixtureFactory{}
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
-		subject1 := inmemory.New()
-		subject2 := inmemory.New()
+		subject1 := inmemory.NewStorage()
+		subject2 := inmemory.NewStorage()
 
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
@@ -135,8 +135,8 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 
 	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
-		subject1 := inmemory.New()
-		subject2 := inmemory.New()
+		subject1 := inmemory.NewStorage()
+		subject2 := inmemory.NewStorage()
 
 		ctx := ff.Context()
 		e1 := ff.Create(Entity{}).(*Entity)
@@ -191,7 +191,7 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 }
 
 func TestStorage_Options_EventLogging_disable(t *testing.T) {
-	subject := inmemory.New()
+	subject := inmemory.NewStorage()
 	subject.Options.DisableEventLogging = true
 
 	for _, spec := range getMemorySpecs(subject) {
@@ -220,7 +220,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 	})
 
 	var newMemory = func(t *testcase.T) *inmemory.Storage {
-		s := inmemory.New()
+		s := inmemory.NewStorage()
 		ctx := context.Background()
 		subscription, err := s.SubscribeToCreate(ctx, Entity{}, subscriber(t))
 		require.Nil(t, err)
@@ -374,7 +374,7 @@ func TestStorage_historyLogging(t *testing.T) {
 
 	getStorage := func(t *testcase.T) *inmemory.Storage { return t.I(`storage`).(*inmemory.Storage) }
 	s.Let(`storage`, func(t *testcase.T) interface{} {
-		return inmemory.New()
+		return inmemory.NewStorage()
 	})
 
 	logContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
@@ -668,7 +668,7 @@ func TestStorage_RegisterIDGenerator(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 	s.Let(`memory`, func(t *testcase.T) interface{} {
-		return inmemory.New()
+		return inmemory.NewStorage()
 	})
 
 	var thenGeneratedIDsAreUnique = func(s *testcase.Spec) {
@@ -849,7 +849,7 @@ func (l *fakeLogger) Log(args ...interface{}) {
 }
 
 func TestStorage_LookupTx(t *testing.T) {
-	s := inmemory.New()
+	s := inmemory.NewStorage()
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
 		_, ok := s.LookupTx(context.Background())
@@ -882,18 +882,18 @@ func TestStorage_InTx_whenContextCancelled(t *testing.T) {
 	cancel()
 
 	require.Equal(t, context.Canceled,
-		inmemory.New().InTx(ctx, func(tx *inmemory.MemoryTransaction) error { return nil }))
+		inmemory.NewStorage().InTx(ctx, func(tx *inmemory.MemoryTransaction) error { return nil }))
 }
 
 func BenchmarkMemory(b *testing.B) {
 	b.Run(`with event log`, func(b *testing.B) {
-		for _, spec := range getMemorySpecs(inmemory.New()) {
+		for _, spec := range getMemorySpecs(inmemory.NewStorage()) {
 			spec.Benchmark(b)
 		}
 	})
 
 	b.Run(`without event log`, func(b *testing.B) {
-		subject := inmemory.New()
+		subject := inmemory.NewStorage()
 		subject.Options.DisableEventLogging = true
 		for _, spec := range getMemorySpecs(subject) {
 			spec.Benchmark(b)
@@ -907,7 +907,7 @@ type Entity struct {
 }
 
 func TestStorage_SaveEntityWithCustomKeyType(t *testing.T) {
-	for _, spec := range getMemorySpecsForT(inmemory.New(), EntityWithStructID{}, FFForEntityWithStructID{}) {
+	for _, spec := range getMemorySpecsForT(inmemory.NewStorage(), EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}
 }

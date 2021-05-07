@@ -27,7 +27,7 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
 
-	s.Describe(`Create`, func(s *testcase.Spec) {
+	s.Describe(`.Create`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
 			return spec.FixtureFactory.Create(spec.Type)
 		}
@@ -43,20 +43,20 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 		})
 
 		s.When(`when struct has Resource external ID`, func(s *testcase.Spec) {
-			if _, hasExtID := resources.LookupID(spec.Type); !hasExtID {
+			if _, _, hasExtIDField := resources.LookupIDStructField(spec.Type); !hasExtIDField {
 				return
 			}
 
 			s.Then(`it should leave it empty without any value for the fixtures`, func(t *testcase.T) {
 				fixture := subject(t)
 				extID, has := resources.LookupID(fixture)
-				require.True(t, has)
+				require.False(t, has)
 				require.Empty(t, extID)
 			})
 		})
 	})
 
-	s.Describe(`Context`, func(s *testcase.Spec) {
+	s.Describe(`.Context`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) context.Context {
 			return spec.FixtureFactory.Context()
 		}
@@ -69,4 +69,8 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 			require.Nil(t, subject(t).Err())
 		})
 	})
+}
+
+func (spec FixtureFactorySpec) Benchmark(b *testing.B) {
+	b.Skip()
 }

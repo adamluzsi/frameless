@@ -2,7 +2,10 @@ package resources
 
 import (
 	"context"
+	"errors"
+	"github.com/adamluzsi/frameless/reflects"
 	"io"
+	"reflect"
 
 	"github.com/adamluzsi/frameless/iterators"
 )
@@ -24,7 +27,7 @@ type Finder interface {
 	// It also reports if there was an unexpected exception during the execution.
 	// It was an intentional decision to not use error to represent "not found" case,
 	// but tell explicitly this information in the form of return bool value.
-	FindByID(ctx context.Context, ptr, id interface{}) (_found bool, _err error)
+	FindByID(ctx context.Context, ptr, id interface{}) (found bool, err error)
 	// FindAll will return all entity that has <T> type
 	FindAll(context.Context, T) iterators.Interface
 }
@@ -70,11 +73,6 @@ type Subscription interface {
 	io.Closer
 }
 
-//type ReplayableSubscription interface {
-//	Subscriber
-//	ReplayEventsFrom(ctx context.Context, eventID string) error
-//}
-
 type Subscriber interface {
 	// Handle handles the the subscribed event.
 	// Context may or may not have meta information about the received event.
@@ -86,3 +84,83 @@ type Subscriber interface {
 	// that must be invalidated on the next successful Handle call
 	Error(ctx context.Context, err error) error
 }
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+func SetID(ptr interface{}, id interface{}) error {
+	r := reflect.ValueOf(ptr)
+
+	if r.Kind() != reflect.Ptr {
+		return errors.New("ptr should be given, else Pass By Value prevent setting struct ID field remotely")
+	}
+
+	_, val, ok := LookupIDStructField(ptr)
+
+	if !ok {
+		return errors.New("could not locate ID field in the given structure")
+	}
+
+	val.Set(reflect.ValueOf(id))
+
+	return nil
+}
+
+func LookupID(i interface{}) (id interface{}, ok bool) {
+	_, val, ok := LookupIDStructField(i)
+
+	if !ok {
+		return nil, false
+	}
+
+	return val.Interface(), !isNil(val)
+}
+
+func isNil(val reflect.Value) bool {
+	switch val.Kind() {
+	case reflect.Interface:
+		return isNil(val.Elem())
+
+	case reflect.Ptr, reflect.Slice, reflect.Chan, reflect.Func, reflect.Map:
+		return val.IsNil()
+
+	default:
+		return !val.IsValid() || val.IsZero()
+
+	}
+}
+
+func LookupIDStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
+	val := reflects.BaseValueOf(ent)
+
+	sf, byTag, ok := lookupByTag(val)
+	if ok {
+		return sf, byTag, true
+	}
+
+	const name = `ID`
+	if byName := val.FieldByName(name); byName.Kind() != reflect.Invalid {
+		sf, _ := val.Type().FieldByName(name)
+		return sf, byName, true
+	}
+
+	return reflect.StructField{}, reflect.Value{}, false
+
+}
+
+func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
+
+	for i := 0; i < val.NumField(); i++ {
+		valueField := val.Field(i)
+		structField := val.Type().Field(i)
+		tag := structField.Tag
+
+		if tag.Get("ext") == "ID" {
+			return structField, valueField, true
+		}
+	}
+
+	return reflect.StructField{}, reflect.Value{}, false
+
+}
+
+//--------------------------------------------------------------------------------------------------------------------//

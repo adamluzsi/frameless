@@ -251,14 +251,21 @@ func (spec findAll) Test(t *testing.T) {
 }
 
 func (spec findAll) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Interface, n int) []interface{} {
-	var entities []interface{}
+	sliceRType := reflect.SliceOf(reflect.TypeOf(spec.T))
+	var entities interface{}
 	AsyncTester.Assert(t, func(tb testing.TB) {
 		all := subject(t)
-		entities = []interface{}{}
+		entities = reflect.MakeSlice(sliceRType, 0, 0).Interface()
 		require.Nil(t, iterators.Collect(all, &entities))
-		require.Equal(t, n, len(entities))
+		require.Len(t, entities, n)
 	})
-	return entities
+
+	var out = []interface{}{}
+	rslice := reflect.ValueOf(entities)
+	for i := 0; i < rslice.Len(); i++ {
+		out = append(out, rslice.Index(i).Interface())
+	}
+	return out
 }
 
 func (spec findAll) Benchmark(b *testing.B) {
