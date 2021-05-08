@@ -1,9 +1,8 @@
 package reflects_test
 
 import (
+	contracts2 "github.com/adamluzsi/frameless/contracts"
 	"testing"
-
-	"github.com/adamluzsi/frameless/resources/contracts"
 
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
@@ -23,9 +22,9 @@ func TestFullyQualifiedName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := contracts.Creator{}
+			o := contracts2.Creator{}
 
-			require.Equal(t, `"github.com/adamluzsi/frameless/resources/contracts".Creator`, ExampleFullyQualifiedName(o))
+			require.Equal(t, `"github.com/adamluzsi/frameless/contracts".Creator`, ExampleFullyQualifiedName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

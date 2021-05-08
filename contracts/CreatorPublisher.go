@@ -1,12 +1,11 @@
 package contracts
 
 import (
+	"github.com/adamluzsi/frameless"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-
-	"github.com/adamluzsi/frameless/resources"
 )
 
 type CreatorPublisher struct {
@@ -17,7 +16,7 @@ type CreatorPublisher struct {
 
 type CreatorPublisherSubject interface {
 	CRD
-	resources.CreatorPublisher
+	frameless.CreatorPublisher
 }
 
 func (spec CreatorPublisher) Test(t *testing.T) {
@@ -38,7 +37,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 			resourceGet := func(t *testcase.T) CreatorPublisherSubject {
 				return resource.Get(t).(CreatorPublisherSubject)
 			}
-			subject := func(t *testcase.T) (resources.Subscription, error) {
+			subject := func(t *testcase.T) (frameless.Subscription, error) {
 				subscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), spec.T, subscriberGet(t))
 				if err == nil && subscription != nil {
 					t.Let(subscriptionKey, subscription)
@@ -46,7 +45,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 				}
 				return subscription, err
 			}
-			onSuccess := func(t *testcase.T) resources.Subscription {
+			onSuccess := func(t *testcase.T) frameless.Subscription {
 				subscription, err := subject(t)
 				require.Nil(t, err)
 				return subscription
@@ -90,7 +89,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 
 				s.And(`subscription is cancelled by close`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
-						sub := t.I(subscriptionKey).(resources.Subscription)
+						sub := t.I(subscriptionKey).(frameless.Subscription)
 						require.Nil(t, sub.Close())
 					})
 

@@ -3,11 +3,11 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless"
 	"testing"
 	"time"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
@@ -23,14 +23,14 @@ func HasID(tb testing.TB, ent interface{}) (id interface{}) {
 	tb.Helper()
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var ok bool
-		id, ok = resources.LookupID(ent)
+		id, ok = frameless.LookupID(ent)
 		require.True(tb, ok)
 		require.NotEmpty(tb, id)
 	})
 	return
 }
 
-func IsFindable(tb testing.TB, T T, subject resources.Finder, ctx context.Context, id interface{}) interface{} {
+func IsFindable(tb testing.TB, T T, subject frameless.Finder, ctx context.Context, id interface{}) interface{} {
 	tb.Helper()
 	var ptr interface{}
 	newFn := newEntityFunc(T)
@@ -43,7 +43,7 @@ func IsFindable(tb testing.TB, T T, subject resources.Finder, ctx context.Contex
 	return ptr
 }
 
-func IsAbsent(tb testing.TB, T T, subject resources.Finder, ctx context.Context, id interface{}) {
+func IsAbsent(tb testing.TB, T T, subject frameless.Finder, ctx context.Context, id interface{}) {
 	tb.Helper()
 	n := newEntityFunc(T)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
@@ -53,7 +53,7 @@ func IsAbsent(tb testing.TB, T T, subject resources.Finder, ctx context.Context,
 	})
 }
 
-func HasEntity(tb testing.TB, subject resources.Finder, ctx context.Context, ent interface{}) {
+func HasEntity(tb testing.TB, subject frameless.Finder, ctx context.Context, ent interface{}) {
 	tb.Helper()
 	T := toT(ent)
 	id := HasID(tb, ent)
@@ -75,13 +75,13 @@ func CreateEntity(tb testing.TB, subject CRD, ctx context.Context, ptr interface
 }
 
 func UpdateEntity(tb testing.TB, subject interface {
-	resources.Finder
-	resources.Updater
-	resources.Deleter
+	frameless.Finder
+	frameless.Updater
+	frameless.Deleter
 }, ctx context.Context, ptr interface{}) {
 	tb.Helper()
 	T := toT(ptr)
-	id, _ := resources.LookupID(ptr)
+	id, _ := frameless.LookupID(ptr)
 	// IsFindable ensures that by the time Update is executed,
 	// the entity is present in the resource.
 	IsFindable(tb, T, subject, ctx, id)
@@ -101,7 +101,7 @@ func DeleteEntity(tb testing.TB, subject CRD, ctx context.Context, ent interface
 	IsAbsent(tb, T, subject, ctx, id)
 }
 
-func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context, T resources.T) {
+func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context, T frameless.T) {
 	tb.Helper()
 	require.Nil(tb, subject.DeleteAll(ctx, T))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this

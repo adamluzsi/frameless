@@ -10,7 +10,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase/fixtures"
 
 	"github.com/adamluzsi/testcase"
@@ -19,7 +18,7 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-type T = resources.T
+type T = frameless.T
 
 var benchmarkEntityVolumeCount int
 
@@ -49,17 +48,17 @@ custom test needed that explicitly defines how ID is stored and retried from an 
 `
 
 type crud interface {
-	resources.Creator
-	resources.Finder
-	resources.Updater
-	resources.Deleter
+	frameless.Creator
+	frameless.Finder
+	frameless.Updater
+	frameless.Deleter
 }
 
 // CRD is the minimum requirements to write easily behavioral specification for a resource.
 type CRD interface {
-	resources.Creator
-	resources.Finder
-	resources.Deleter
+	frameless.Creator
+	frameless.Finder
+	frameless.Deleter
 }
 
 func createEntities(f FixtureFactory, T interface{}) []interface{} {
@@ -80,7 +79,7 @@ func saveEntities(tb testing.TB, s CRD, f FixtureFactory, es ...interface{}) []i
 	return ids
 }
 
-func cleanup(tb testing.TB, t resources.Deleter, f FixtureFactory, T interface{}) {
+func cleanup(tb testing.TB, t frameless.Deleter, f FixtureFactory, T interface{}) {
 	require.Nil(tb, t.DeleteAll(f.Context(), T))
 }
 
@@ -116,7 +115,7 @@ func requireContainsList(tb testing.TB, list interface{}, listOfContainedElement
 	}
 }
 
-func toT(ent interface{}) resources.T {
+func toT(ent interface{}) frameless.T {
 	return reflects.BaseValueOf(ent).Interface()
 }
 
@@ -226,8 +225,8 @@ func getSubscriber(t *testcase.T, key string) *eventSubscriber {
 	return testcase.Var{Name: key, Init: subscriber.Init}.Get(t).(*eventSubscriber)
 }
 
-func subscriptionGet(t *testcase.T) resources.Subscriber {
-	return subscription.Get(t).(resources.Subscriber)
+func subscriptionGet(t *testcase.T) frameless.Subscriber {
+	return subscription.Get(t).(frameless.Subscriber)
 }
 
 func genEntities(ff FixtureFactory, T T) []interface{} {

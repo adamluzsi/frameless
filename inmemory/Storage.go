@@ -15,7 +15,6 @@ import (
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources"
 )
 
 func NewStorage() *Storage {
@@ -91,13 +90,13 @@ type MemoryEventManager interface {
 }
 
 func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
-	if _, ok := resources.LookupID(ptr); !ok {
+	if _, ok := frameless.LookupID(ptr); !ok {
 		newID, err := s.IDGenerator().generateID(reflects.BaseValueOf(ptr).Interface())
 		if err != nil {
 			return err
 		}
 
-		if err := resources.SetID(ptr, newID); err != nil {
+		if err := frameless.SetID(ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -106,7 +105,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
-	id, _ := resources.LookupID(ptr)
+	id, _ := frameless.LookupID(ptr)
 	if found, err := s.FindByID(ctx, s.newPtr(ptr), id); err != nil {
 		return err
 	} else if found {
@@ -118,7 +117,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 
 func (s *Storage) createEventFor(ctx context.Context, ptr interface{}, trace []TraceElem) error {
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
-		id, _ := resources.LookupID(ptr)
+		id, _ := frameless.LookupID(ptr)
 		tx.AddEvent(MemoryEvent{
 			T:              reflects.BaseValueOf(ptr),
 			EntityTypeName: s.EntityTypeNameFor(ptr),
@@ -146,7 +145,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 			return false, err
 		}
 
-		if currentID, ok := resources.LookupID(current); ok && currentID == id {
+		if currentID, ok := frameless.LookupID(current); ok && currentID == id {
 			err := reflects.Link(reflects.BaseValueOf(current).Interface(), ptr)
 			return err == nil, err
 		}
@@ -177,7 +176,7 @@ func (s *Storage) FindAll(ctx context.Context, T interface{}) iterators.Interfac
 
 func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 	trace := s.getTrace()
-	id, ok := resources.LookupID(ptr)
+	id, ok := frameless.LookupID(ptr)
 	if !ok {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
@@ -330,7 +329,7 @@ func (s *Storage) notifySubscriptions(event MemoryEvent) {
 			sub.publish(ctx, event.T)
 		case DeleteByIDEvent:
 			ptr := s.newPtr(event.T)
-			_ = resources.SetID(ptr, event.ID)
+			_ = frameless.SetID(ptr, event.ID)
 			sub.publish(ctx, reflects.BaseValueOf(ptr).Interface())
 		case CreateEvent, UpdateEvent:
 			sub.publish(ctx, event.Entity)
@@ -430,7 +429,7 @@ func (s *Storage) concentrateEvents() {
 // event name -> <T> as name -> event subscribers
 type subscriptions map[string]map[string][]*subscription
 
-func (s *Storage) newSubscription(subscriber resources.Subscriber) *subscription {
+func (s *Storage) newSubscription(subscriber frameless.Subscriber) *subscription {
 	var sub subscription
 	sub.storage = s
 	sub.subscriber = subscriber
@@ -442,7 +441,7 @@ func (s *Storage) newSubscription(subscriber resources.Subscriber) *subscription
 
 type subscription struct {
 	storage    *Storage
-	subscriber resources.Subscriber
+	subscriber frameless.Subscriber
 
 	context context.Context
 	cancel  func()
@@ -543,7 +542,7 @@ func (s *Storage) getSubscriptions(entityTypeName string, name string) []*subscr
 	return s.subscriptions[name][entityTypeName]
 }
 
-func (s *Storage) appendToSubscription(ctx context.Context, T interface{}, name string, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) appendToSubscription(ctx context.Context, T interface{}, name string, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -557,19 +556,19 @@ func (s *Storage) appendToSubscription(ctx context.Context, T interface{}, name 
 	return sub, nil
 }
 
-func (s *Storage) SubscribeToCreate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToCreate(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return s.appendToSubscription(ctx, T, CreateEvent, subscriber)
 }
 
-func (s *Storage) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return s.appendToSubscription(ctx, T, UpdateEvent, subscriber)
 }
 
-func (s *Storage) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return s.appendToSubscription(ctx, T, DeleteByIDEvent, subscriber)
 }
 
-func (s *Storage) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (s *Storage) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return s.appendToSubscription(ctx, T, DeleteAllEvent, subscriber)
 }
 
@@ -662,16 +661,16 @@ func newIDGenerator() *IDGenerator {
 
 type IDGenerator map[string]func() (interface{}, error)
 
-func (g *IDGenerator) Register(T resources.T, genFunc func() (interface{}, error)) {
+func (g *IDGenerator) Register(T frameless.T, genFunc func() (interface{}, error)) {
 	(*g)[reflects.FullyQualifiedName(T)] = genFunc
 }
 
-func (g *IDGenerator) generateID(T resources.T) (interface{}, error) {
+func (g *IDGenerator) generateID(T frameless.T) (interface{}, error) {
 	if genFunc, ok := (*g)[reflects.FullyQualifiedName(T)]; ok {
 		return genFunc()
 	}
 
-	id, _ := resources.LookupID(T)
+	id, _ := frameless.LookupID(T)
 
 	var moreOrLessUniqueInt = func() int64 {
 		return time.Now().UnixNano() +

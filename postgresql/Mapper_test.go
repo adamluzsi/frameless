@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/adamluzsi/frameless/resources/postgresql"
 	"testing"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources/postgresql"
 	"github.com/stretchr/testify/require"
 )
 

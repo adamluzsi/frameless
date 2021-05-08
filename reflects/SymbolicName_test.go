@@ -1,10 +1,10 @@
 package reflects_test
 
 import (
+	contracts2 "github.com/adamluzsi/frameless/contracts"
 	"testing"
 
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources/contracts"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,7 +22,7 @@ func TestName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := contracts.Creator{}
+			o := contracts2.Creator{}
 
 			require.Equal(t, `contracts.Creator`, ExampleSymbolicName(o))
 		})

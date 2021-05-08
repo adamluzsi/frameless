@@ -3,6 +3,9 @@ package inmemory_test
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless"
+	contracts2 "github.com/adamluzsi/frameless/contracts"
+	inmemory2 "github.com/adamluzsi/frameless/inmemory"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,33 +16,30 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/resources/inmemory"
 	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/resources/contracts"
 )
 
 var _ interface {
-	resources.Creator
-	resources.Finder
-	resources.Updater
-	resources.Deleter
-	resources.OnePhaseCommitProtocol
-} = &inmemory.Storage{}
+	frameless.Creator
+	frameless.Finder
+	frameless.Updater
+	frameless.Deleter
+	frameless.OnePhaseCommitProtocol
+} = &inmemory2.Storage{}
 
 var (
-	_ inmemory.MemoryEventManager = &inmemory.Storage{}
-	_ inmemory.MemoryEventManager = &inmemory.MemoryTransaction{}
+	_ inmemory2.MemoryEventManager = &inmemory2.Storage{}
+	_ inmemory2.MemoryEventManager = &inmemory2.MemoryTransaction{}
 )
 
 func TestStorage_smokeTest(t *testing.T) {
 	var (
-		subject = inmemory.NewStorage()
+		subject = inmemory2.NewStorage()
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -79,25 +79,25 @@ func TestStorage_smokeTest(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecsForT(subject *inmemory.Storage, T resources.T, ff contracts.FixtureFactory) []testcase.Contract {
+func getMemorySpecsForT(subject *inmemory2.Storage, T frameless.T, ff contracts2.FixtureFactory) []testcase.Contract {
 	return []testcase.Contract{
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return subject }, FixtureFactory: ff},
-		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
-		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
-		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts2.Creator{T: T, Subject: func(tb testing.TB) contracts2.CRD { return subject }, FixtureFactory: ff},
+		contracts2.Finder{T: T, Subject: func(tb testing.TB) contracts2.CRD { return subject }, FixtureFactory: ff},
+		contracts2.Updater{T: T, Subject: func(tb testing.TB) contracts2.UpdaterSubject { return subject }, FixtureFactory: ff},
+		contracts2.Deleter{T: T, Subject: func(tb testing.TB) contracts2.CRD { return subject }, FixtureFactory: ff},
+		contracts2.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts2.OnePhaseCommitProtocolSubject { return subject }, FixtureFactory: ff},
+		contracts2.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts2.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts2.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts2.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts2.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts2.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
 	}
 }
 
-func getMemorySpecs(subject *inmemory.Storage) []testcase.Contract {
+func getMemorySpecs(subject *inmemory2.Storage) []testcase.Contract {
 	return getMemorySpecsForT(subject, Entity{}, fixtures.FixtureFactory{})
 }
 
 func TestMemory(t *testing.T) {
-	for _, spec := range getMemorySpecs(inmemory.NewStorage()) {
+	for _, spec := range getMemorySpecs(inmemory2.NewStorage()) {
 		spec.Test(t)
 	}
 }
@@ -106,8 +106,8 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	ff := fixtures.FixtureFactory{}
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
-		subject1 := inmemory.NewStorage()
-		subject2 := inmemory.NewStorage()
+		subject1 := inmemory2.NewStorage()
+		subject2 := inmemory2.NewStorage()
 
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
@@ -135,21 +135,21 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 
 	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
-		subject1 := inmemory.NewStorage()
-		subject2 := inmemory.NewStorage()
+		subject1 := inmemory2.NewStorage()
+		subject2 := inmemory2.NewStorage()
 
 		ctx := ff.Context()
 		e1 := ff.Create(Entity{}).(*Entity)
 		e2 := ff.Create(Entity{}).(*Entity)
 
 		require.Nil(t, subject1.Create(ctx, e1))
-		id1, ok := resources.LookupID(e1)
+		id1, ok := frameless.LookupID(e1)
 		require.True(t, ok)
 		require.NotEmpty(t, id1)
 		t.Cleanup(func() { _ = subject1.DeleteByID(ff.Context(), Entity{}, id1) })
 
 		require.Nil(t, subject2.Create(ctx, e2))
-		id2, ok := resources.LookupID(e2)
+		id2, ok := frameless.LookupID(e2)
 		require.True(t, ok)
 		require.NotEmpty(t, id2)
 		t.Cleanup(func() { _ = subject2.DeleteByID(ff.Context(), Entity{}, id2) })
@@ -191,7 +191,7 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 }
 
 func TestStorage_Options_EventLogging_disable(t *testing.T) {
-	subject := inmemory.NewStorage()
+	subject := inmemory2.NewStorage()
 	subject.Options.DisableEventLogging = true
 
 	for _, spec := range getMemorySpecs(subject) {
@@ -219,8 +219,8 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		return NewHangingSubscriber()
 	})
 
-	var newMemory = func(t *testcase.T) *inmemory.Storage {
-		s := inmemory.NewStorage()
+	var newMemory = func(t *testcase.T) *inmemory2.Storage {
+		s := inmemory2.NewStorage()
 		ctx := context.Background()
 		subscription, err := s.SubscribeToCreate(ctx, Entity{}, subscriber(t))
 		require.Nil(t, err)
@@ -237,7 +237,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		return s
 	}
 
-	var subject = func(t *testcase.T) *inmemory.Storage {
+	var subject = func(t *testcase.T) *inmemory2.Storage {
 		s := newMemory(t)
 		s.Options.DisableAsyncSubscriptionHandling = t.I(`DisableAsyncSubscriptionHandling`).(bool)
 		return s
@@ -372,9 +372,9 @@ func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
 func TestStorage_historyLogging(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	getStorage := func(t *testcase.T) *inmemory.Storage { return t.I(`storage`).(*inmemory.Storage) }
+	getStorage := func(t *testcase.T) *inmemory2.Storage { return t.I(`storage`).(*inmemory2.Storage) }
 	s.Let(`storage`, func(t *testcase.T) interface{} {
-		return inmemory.NewStorage()
+		return inmemory2.NewStorage()
 	})
 
 	logContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
@@ -651,8 +651,8 @@ func TestStorage_historyLogging(t *testing.T) {
 func TestStorage_RegisterIDGenerator(t *testing.T) {
 	var (
 		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
-			err := t.I(`memory`).(*inmemory.Storage).Create(context.Background(), ptr)
-			id, _ := resources.LookupID(ptr)
+			err := t.I(`memory`).(*inmemory2.Storage).Create(context.Background(), ptr)
+			id, _ := frameless.LookupID(ptr)
 			return id, err
 		}
 		subject = func(t *testcase.T) (interface{}, error) {
@@ -668,7 +668,7 @@ func TestStorage_RegisterIDGenerator(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 	s.Let(`memory`, func(t *testcase.T) interface{} {
-		return inmemory.NewStorage()
+		return inmemory2.NewStorage()
 	})
 
 	var thenGeneratedIDsAreUnique = func(s *testcase.Spec) {
@@ -774,7 +774,7 @@ func TestStorage_RegisterIDGenerator(t *testing.T) {
 		}
 
 		s.Before(func(t *testcase.T) {
-			t.I(`memory`).(*inmemory.Storage).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
+			t.I(`memory`).(*inmemory2.Storage).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
 				return CustomIDType{V: fixtures.Random.String()}, nil
 			})
 		})
@@ -849,7 +849,7 @@ func (l *fakeLogger) Log(args ...interface{}) {
 }
 
 func TestStorage_LookupTx(t *testing.T) {
-	s := inmemory.NewStorage()
+	s := inmemory2.NewStorage()
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
 		_, ok := s.LookupTx(context.Background())
@@ -882,18 +882,18 @@ func TestStorage_InTx_whenContextCancelled(t *testing.T) {
 	cancel()
 
 	require.Equal(t, context.Canceled,
-		inmemory.NewStorage().InTx(ctx, func(tx *inmemory.MemoryTransaction) error { return nil }))
+		inmemory2.NewStorage().InTx(ctx, func(tx *inmemory2.MemoryTransaction) error { return nil }))
 }
 
 func BenchmarkMemory(b *testing.B) {
 	b.Run(`with event log`, func(b *testing.B) {
-		for _, spec := range getMemorySpecs(inmemory.NewStorage()) {
+		for _, spec := range getMemorySpecs(inmemory2.NewStorage()) {
 			spec.Benchmark(b)
 		}
 	})
 
 	b.Run(`without event log`, func(b *testing.B) {
-		subject := inmemory.NewStorage()
+		subject := inmemory2.NewStorage()
 		subject.Options.DisableEventLogging = true
 		for _, spec := range getMemorySpecs(subject) {
 			spec.Benchmark(b)
@@ -907,7 +907,7 @@ type Entity struct {
 }
 
 func TestStorage_SaveEntityWithCustomKeyType(t *testing.T) {
-	for _, spec := range getMemorySpecsForT(inmemory.NewStorage(), EntityWithStructID{}, FFForEntityWithStructID{}) {
+	for _, spec := range getMemorySpecsForT(inmemory2.NewStorage(), EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}
 }
@@ -921,7 +921,7 @@ type FFForEntityWithStructID struct {
 	fixtures.FixtureFactory
 }
 
-func (ff FFForEntityWithStructID) Create(T resources.T) interface{} {
+func (ff FFForEntityWithStructID) Create(T frameless.T) interface{} {
 	switch T.(type) {
 	case EntityWithStructID:
 		ent := ff.FixtureFactory.Create(T).(*EntityWithStructID)

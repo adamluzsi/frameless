@@ -1,4 +1,4 @@
 
-package resources
+package frameless
 
 type T = interface{}

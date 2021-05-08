@@ -1,13 +1,12 @@
 package contracts
 
 import (
+	"github.com/adamluzsi/frameless"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/fixtures"
 	"github.com/stretchr/testify/require"
-
-	"github.com/adamluzsi/frameless/resources"
 )
 
 type UpdaterPublisher struct {
@@ -18,8 +17,8 @@ type UpdaterPublisher struct {
 
 type UpdaterPublisherSubject interface {
 	CRD
-	resources.Updater
-	resources.UpdaterPublisher
+	frameless.Updater
+	frameless.UpdaterPublisher
 }
 
 func (spec UpdaterPublisher) resource() testcase.Var {
@@ -49,7 +48,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 	const name = `UpdaterPublisher`
 	s.Context(name, func(s *testcase.Spec) {
 		s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
-			subject := func(t *testcase.T) (resources.Subscription, error) {
+			subject := func(t *testcase.T) (frameless.Subscription, error) {
 				subscription, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))
 				if err == nil && subscription != nil {
 					t.Let(subscriptionKey, subscription)
@@ -78,7 +77,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 				return ptr
 			}).EagerLoading(s)
 			getID := func(t *testcase.T) interface{} {
-				id, _ := resources.LookupID(entity.Get(t))
+				id, _ := frameless.LookupID(entity.Get(t))
 				return id
 			}
 
@@ -95,7 +94,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 				const updatedEntityKey = `updated-entity`
 				updatedEntity := s.Let(updatedEntityKey, func(t *testcase.T) interface{} {
 					entityWithNewValuesPtr := spec.createEntity()
-					require.Nil(t, resources.SetID(entityWithNewValuesPtr, getID(t)))
+					require.Nil(t, frameless.SetID(entityWithNewValuesPtr, getID(t)))
 					UpdateEntity(t, spec.resourceGet(t), ctxGet(t), entityWithNewValuesPtr)
 					Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
 					return toBaseValue(entityWithNewValuesPtr)
@@ -107,14 +106,14 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 
 				s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
-						require.Nil(t, t.I(subscriptionKey).(resources.Subscription).Close())
+						require.Nil(t, t.I(subscriptionKey).(frameless.Subscription).Close())
 					})
 
 					s.And(`more events made`, func(s *testcase.Spec) {
 						s.Before(func(t *testcase.T) {
-							id, _ := resources.LookupID(t.I(entityKey))
+							id, _ := frameless.LookupID(t.I(entityKey))
 							updatedEntityPtr := spec.createEntity()
-							require.Nil(t, resources.SetID(updatedEntityPtr, id))
+							require.Nil(t, frameless.SetID(updatedEntityPtr, id))
 							require.Nil(t, spec.resourceGet(t).Update(ctxGet(t), updatedEntityPtr))
 							Waiter.While(func() bool {
 								return subscriberGet(t).EventsLen() < 1
@@ -153,7 +152,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 					s.And(`a further event is made`, func(s *testcase.Spec) {
 						furtherEventUpdate := s.Let(`further event update`, func(t *testcase.T) interface{} {
 							updatedEntityPtr := spec.createEntity()
-							require.Nil(t, resources.SetID(updatedEntityPtr, getID(t)))
+							require.Nil(t, frameless.SetID(updatedEntityPtr, getID(t)))
 							UpdateEntity(t, spec.resourceGet(t), ctxGet(t), updatedEntityPtr)
 							Waiter.While(func() bool {
 								return subscriberGet(t).EventsLen() < 2

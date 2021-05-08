@@ -2,9 +2,8 @@ package contracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless"
 	"testing"
-
-	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/adamluzsi/testcase"
 
@@ -64,7 +63,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) interface{} {
 			ent := entity.Get(t)
 			CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
-			id, ok := resources.LookupID(ent)
+			id, ok := frameless.LookupID(ent)
 			require.True(t, ok, ErrIDRequired.Error())
 			return id
 		}).EagerLoading(s)
@@ -95,7 +94,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				othID, _ := resources.LookupID(othEntity.Get(t))
+				othID, _ := frameless.LookupID(othEntity.Get(t))
 				IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), othID)
 			})
 		})

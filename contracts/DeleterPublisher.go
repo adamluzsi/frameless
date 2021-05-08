@@ -2,13 +2,12 @@ package contracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/fixtures"
 	"github.com/stretchr/testify/require"
-
-	"github.com/adamluzsi/frameless/resources"
 )
 
 type DeleterPublisher struct {
@@ -19,7 +18,7 @@ type DeleterPublisher struct {
 
 type DeleterPublisherSubject interface {
 	CRD
-	resources.DeleterPublisher
+	frameless.DeleterPublisher
 }
 
 func (spec DeleterPublisher) resource() testcase.Var {
@@ -54,7 +53,7 @@ func (spec DeleterPublisher) spec(tb testing.TB) {
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
-	subject := func(t *testcase.T) (resources.Subscription, error) {
+	subject := func(t *testcase.T) (frameless.Subscription, error) {
 		subscription, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), spec.T, subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
@@ -108,7 +107,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 		s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				require.Nil(t, t.I(subscriptionKey).(resources.Subscription).Close())
+				require.Nil(t, t.I(subscriptionKey).(frameless.Subscription).Close())
 			})
 
 			s.And(`more events made`, func(s *testcase.Spec) {
@@ -141,8 +140,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 			s.Then(`original subscriberGet still received the old delete event`, func(t *testcase.T) {
 				require.Len(t, subscriberGet(t).Events(), 1)
-				expectedID, _ := resources.LookupID(entity.Get(t))
-				actualID, _ := resources.LookupID(subscriberGet(t).Events()[0])
+				expectedID, _ := frameless.LookupID(entity.Get(t))
+				actualID, _ := frameless.LookupID(subscriberGet(t).Events()[0])
 				require.Equal(t, expectedID, actualID)
 			})
 
@@ -184,7 +183,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 }
 
 func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
-	subject := func(t *testcase.T) (resources.Subscription, error) {
+	subject := func(t *testcase.T) (frameless.Subscription, error) {
 		subscription, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), spec.T, subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
@@ -279,8 +278,8 @@ func (spec DeleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []int
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, entity := range getList() {
-			expectedID, _ := resources.LookupID(entity)
-			actualID, _ := resources.LookupID(e)
+			expectedID, _ := frameless.LookupID(entity)
+			actualID, _ := frameless.LookupID(e)
 			if expectedID == actualID {
 				matchingIDFound = true
 				break
@@ -294,8 +293,8 @@ func (spec DeleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, entity := range getList() {
-			expectedID, _ := resources.LookupID(entity)
-			actualID, _ := resources.LookupID(e)
+			expectedID, _ := frameless.LookupID(entity)
+			actualID, _ := frameless.LookupID(e)
 			if expectedID == actualID {
 				matchingIDFound = true
 				break

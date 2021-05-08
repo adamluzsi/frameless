@@ -2,11 +2,10 @@ package contracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
-
-	"github.com/adamluzsi/frameless/resources"
 
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +19,7 @@ type Updater struct {
 
 type UpdaterSubject interface {
 	CRD
-	resources.Updater
+	frameless.Updater
 }
 
 func (spec Updater) resource() testcase.Var {
@@ -75,8 +74,8 @@ func (spec Updater) Test(t *testing.T) {
 				s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 					entityWithChanges.Let(s, func(t *testcase.T) interface{} {
 						newEntity := spec.FixtureFactory.Create(spec.T)
-						id, _ := resources.LookupID(entity.Get(t))
-						require.Nil(t, resources.SetID(newEntity, id))
+						id, _ := frameless.LookupID(entity.Get(t))
+						require.Nil(t, frameless.SetID(newEntity, id))
 						return newEntity
 					})
 

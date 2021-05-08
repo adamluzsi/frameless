@@ -2,9 +2,9 @@ package contracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless"
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
@@ -43,13 +43,13 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 		})
 
 		s.When(`when struct has Resource external ID`, func(s *testcase.Spec) {
-			if _, _, hasExtIDField := resources.LookupIDStructField(spec.Type); !hasExtIDField {
+			if _, _, hasExtIDField := frameless.LookupIDStructField(spec.Type); !hasExtIDField {
 				return
 			}
 
 			s.Then(`it should leave it empty without any value for the fixtures`, func(t *testcase.T) {
 				fixture := subject(t)
-				extID, has := resources.LookupID(fixture)
+				extID, has := frameless.LookupID(fixture)
 				require.False(t, has)
 				require.Empty(t, extID)
 			})

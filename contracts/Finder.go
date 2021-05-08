@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless"
 	"reflect"
 	"sync"
 	"testing"
@@ -9,8 +10,6 @@ import (
 	"github.com/adamluzsi/testcase"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/resources"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,7 +58,7 @@ func (spec findByID) Test(t *testing.T) {
 		Subject:        spec.Subject,
 		MethodName:     ".FindByID",
 		ToQuery: func(tb testing.TB, resource interface{}, ent T) QueryOne {
-			id, ok := resources.LookupID(ent)
+			id, ok := frameless.LookupID(ent)
 			if !ok { // if no id found create a dummy ID
 				// since an id is required always to use FindByID
 				// we generate a dummy id in case the received entity don't have one.
@@ -69,7 +68,7 @@ func (spec findByID) Test(t *testing.T) {
 			}
 
 			return func(tb testing.TB, ctx context.Context, ptr T) (found bool, err error) {
-				return resource.(resources.Finder).FindByID(ctx, ptr, id)
+				return resource.(frameless.Finder).FindByID(ctx, ptr, id)
 			}
 		},
 
@@ -81,7 +80,7 @@ func (spec findByID) Test(t *testing.T) {
 				for i := 0; i < 12; i++ {
 					entity := spec.FixtureFactory.Create(spec.T)
 					CreateEntity(t, r, spec.Context(), entity)
-					id, ok := resources.LookupID(entity)
+					id, ok := frameless.LookupID(entity)
 					require.True(t, ok, ErrIDRequired.Error())
 					ids = append(ids, id)
 				}
@@ -99,7 +98,7 @@ func (spec findByID) Test(t *testing.T) {
 					require.Nil(t, err)
 					require.True(t, ok)
 
-					actualID, ok := resources.LookupID(e)
+					actualID, ok := frameless.LookupID(e)
 					require.True(t, ok, "can't find ID in the returned value")
 					require.Equal(t, ID, actualID)
 				}

@@ -2,13 +2,13 @@ package postgresql_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/resources/postgresql"
 	"github.com/stretchr/testify/require"
 	"testing"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/resources/contracts"
-	"github.com/adamluzsi/frameless/resources/postgresql"
 	"github.com/adamluzsi/testcase"
 )
 

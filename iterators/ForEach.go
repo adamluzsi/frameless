@@ -1,11 +1,10 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless"
 	"reflect"
 )
 
-const Break frameless.Error = `iterators:break`
+const Break consterr = `iterators:break`
 
 func ForEach(i Interface, fn interface{}) (rErr error) {
 	defer func() {
