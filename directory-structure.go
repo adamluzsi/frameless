@@ -1,3 +1,5 @@
+package frameless
+
 /*
 
 Screaming Architecture
@@ -75,4 +77,3 @@ and tell me what was your experience with this.
 There is no wrong answer, so don't hesitate to express your opinion and experience.
 
 */
-package frameless

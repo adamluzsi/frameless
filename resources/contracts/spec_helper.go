@@ -3,13 +3,13 @@ package contracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless"
 	"os"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase/fixtures"
 
@@ -42,7 +42,7 @@ func init() {
 
 const msgNotMeasurable = `not measurable Spec`
 
-const ErrIDRequired consterror.Error = `
+const ErrIDRequired frameless.Error = `
 Can't find the ID in the current structure
 if there is no ID in the subject structure
 custom test needed that explicitly defines how ID is stored and retried from an entity

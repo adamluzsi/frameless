@@ -1,9 +1,9 @@
-// TODO: make subscription publishing related to tx commit instead to be commit on the fly
 package inmemory
 
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adamluzsi/frameless/consterror"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
@@ -278,8 +277,8 @@ func (s *Storage) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 const (
-	errTxDone consterror.Error = `transaction has already been commit or rolled back`
-	errNoTx   consterror.Error = `no transaction found in the given context`
+	errTxDone frameless.Error = `transaction has already been commit or rolled back`
+	errNoTx   frameless.Error = `no transaction found in the given context`
 )
 
 func (s *Storage) CommitTx(ctx context.Context) error {

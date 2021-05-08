@@ -201,3 +201,25 @@ func TestLookupIDStructField(t *testing.T) {
 	field, value, ok = resources.LookupIDStructField(UnidentifiableID{})
 	require.False(t, ok)
 }
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+type IDByIDField struct {
+	ID string
+}
+
+type IDByTag struct {
+	DI string `ext:"ID"`
+}
+
+type IDAsInterface struct {
+	ID interface{} `ext:"ID"`
+}
+
+type IDAsPointer struct {
+	ID *string `ext:"ID"`
+}
+
+type UnidentifiableID struct {
+	UserID string
+}

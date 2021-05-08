@@ -3,7 +3,6 @@ package reflects_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/resources/contracts"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -61,7 +60,7 @@ func TestFullyQualifiedName(t *testing.T) {
 
 }
 
-func SpecForPrimitiveNames(spec *testing.T, subject func(entity frameless.Entity) string) {
+func SpecForPrimitiveNames(spec *testing.T, subject func(entity interface{}) string) {
 
 	spec.Run("when given object is a bool", func(t *testing.T) {
 		t.Parallel()
