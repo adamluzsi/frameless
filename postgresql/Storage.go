@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/resources"
+	"github.com/adamluzsi/frameless"
 
 	"github.com/lib/pq"
 )
@@ -41,7 +41,7 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 	defer free()
 
-	if _, ok := resources.LookupID(ptr); !ok {
+	if _, ok := frameless.LookupID(ptr); !ok {
 		// TODO: add serialize TX level here
 
 		id, err := pg.Mapping.NewID(ctx)
@@ -49,7 +49,7 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 			return err
 		}
 
-		if err := resources.SetID(ptr, id); err != nil {
+		if err := frameless.SetID(ptr, id); err != nil {
 			return err
 		}
 	}
@@ -126,7 +126,7 @@ func (pg *Storage) DeleteByID(ctx context.Context, T, id interface{}) (rErr erro
 		message   = reflect.New(reflect.TypeOf(T)).Interface()
 	)
 
-	if err := resources.SetID(message, sid); err != nil {
+	if err := frameless.SetID(message, sid); err != nil {
 		return err
 	}
 
@@ -193,7 +193,7 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 	query += fmt.Sprintf("\nWHERE %q = %s", pg.Mapping.IDName(), idPlaceHolder)
 
-	id, ok := resources.LookupID(ptr)
+	id, ok := frameless.LookupID(ptr)
 	if !ok {
 		return fmt.Errorf(`missing entity id`)
 	}
@@ -303,7 +303,7 @@ func (pg *Storage) notify(ctx context.Context, tx SQLClient, name string, v inte
 	return err
 }
 
-func (pg *Storage) newPostgresSubscription(connstr string, name string, T interface{}, subscriber resources.Subscriber) (*postgresCommonSubscription, error) {
+func (pg *Storage) newPostgresSubscription(connstr string, name string, T interface{}, subscriber frameless.Subscriber) (*postgresCommonSubscription, error) {
 	const (
 		minReconnectInterval = 10 * time.Second
 		maxReconnectInterval = time.Minute
@@ -319,7 +319,7 @@ func (pg *Storage) newPostgresSubscription(connstr string, name string, T interf
 type postgresCommonSubscription struct {
 	// T       interface{}
 	rType      reflect.Type
-	subscriber resources.Subscriber
+	subscriber frameless.Subscriber
 	listener   *pq.Listener
 	exit       struct {
 		wg       sync.WaitGroup
@@ -394,7 +394,7 @@ func (sub *postgresCommonSubscription) reportProblemToSubscriber(_ pq.ListenerEv
 	}
 }
 
-func (pg *Storage) SubscribeToCreate(_ context.Context, T interface{}, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (pg *Storage) SubscribeToCreate(_ context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getCreateSubscriptionName(), T, subscriber)
 }
 
@@ -402,7 +402,7 @@ func (pg *Storage) getCreateSubscriptionName() string {
 	return `create_` + pg.Mapping.TableName()
 }
 
-func (pg *Storage) SubscribeToUpdate(_ context.Context, T resources.T, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (pg *Storage) SubscribeToUpdate(_ context.Context, T frameless.T, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getUpdateSubscriptionName(), T, subscriber)
 }
 
@@ -410,7 +410,7 @@ func (pg *Storage) getUpdateSubscriptionName() string {
 	return `update_` + pg.Mapping.TableName()
 }
 
-func (pg *Storage) SubscribeToDeleteByID(_ context.Context, T resources.T, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (pg *Storage) SubscribeToDeleteByID(_ context.Context, T frameless.T, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getDeleteByIDSubscriptionName(), T, subscriber)
 }
 
@@ -418,7 +418,7 @@ func (pg *Storage) getDeleteByIDSubscriptionName() string {
 	return `delete_by_id_` + pg.Mapping.TableName()
 }
 
-func (pg *Storage) SubscribeToDeleteAll(_ context.Context, T resources.T, subscriber resources.Subscriber) (resources.Subscription, error) {
+func (pg *Storage) SubscribeToDeleteAll(_ context.Context, T frameless.T, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getDeleteAllSubscriptionName(), T, subscriber)
 }
 

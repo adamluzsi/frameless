@@ -2,8 +2,8 @@ package postgresql
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/resources"
 )
 
 type Mapping /* T */ interface {
@@ -29,5 +29,5 @@ type Pool interface {
 	// GetClient returns the current context's sql client.
 	// This can be a simple *sql.DB or if we within a transaction, then an *sql.Tx
 	GetClient(ctx context.Context) (client SQLClient, free func(), err error)
-	resources.OnePhaseCommitProtocol
+	frameless.OnePhaseCommitProtocol
 }

@@ -2,7 +2,7 @@ package postgresql_test
 
 import (
 	"database/sql"
-	"github.com/adamluzsi/frameless/resources/postgresql"
+	"github.com/adamluzsi/frameless/postgresql"
 )
 
 var (

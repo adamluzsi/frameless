@@ -2,7 +2,7 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/resources/postgresql"
+	"github.com/adamluzsi/frameless/postgresql"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
