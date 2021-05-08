@@ -11,12 +11,24 @@ install:
   - go generate ./...
 
 script:
-  - go test ./... -v
-  - go test ./... -count=1 -race
+  - ./bin/go-test ./... -v
+  - ./bin/go-test ./... -count=1 -race
+
+services:
+  - postgresql
+
+before_script:
+  - psql -c 'create database travis_ci' -U postgres
+
+env:
+  global:
+    - PGUSER=postgres
+    - PGPASSWORD=postgres
+    - PGPORT=5432
+    - DATABASE_URL="postgres://postgres:postgres@localhost:5432/travis_ci?sslmode=disable"
 
 os:
   - linux
-  - osx
 
 # Skip the install step. Don't `go get` dependencies. Only build with the code
 # in vendor/

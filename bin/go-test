@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -e
+
+(
+	type go
+) 1>/dev/null
+
+main() {
+	go-on-each-mod-wd go test "${@}"
+}
+
+go-on-each-mod-wd() {
+	(
+		set -e
+		shopt -s nullglob globstar
+		local gmpath path
+		for gmpath in **/go.mod; do
+			if [[ ${gmpath} =~ .*/vendor/.* ]]; then
+				continue
+			fi
+			path=${gmpath%"go.mod"}
+			cd "${path}"
+			"${@}"
+		done
+		if [[ ! -e go.mod ]]; then
+			"${@}"
+		fi
+	)
+}
+
+main "${@}"
