@@ -80,7 +80,7 @@ func saveEntities(tb testing.TB, s CRD, f FixtureFactory, es ...interface{}) []i
 }
 
 func cleanup(tb testing.TB, t frameless.Deleter, f FixtureFactory, T interface{}) {
-	require.Nil(tb, t.DeleteAll(f.Context(), T))
+	require.Nil(tb, t.DeleteAll(f.Context()))
 }
 
 func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs ...interface{}) {

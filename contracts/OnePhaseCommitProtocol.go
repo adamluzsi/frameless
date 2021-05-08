@@ -82,7 +82,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			_, err = spec.resourceGet(t).FindByID(tx, newEntity(spec.T), id)
 			require.Error(t, err)
 			require.Error(t, spec.resourceGet(t).Create(tx, spec.FixtureFactory.Create(spec.T)))
-			require.Error(t, spec.resourceGet(t).FindAll(tx, spec.T).Err())
+			require.Error(t, spec.resourceGet(t).FindAll(tx).Err())
 
 			if updater, ok := spec.resourceGet(t).(frameless.Updater); ok {
 				require.Error(t, updater.Update(tx, ptr),
@@ -90,8 +90,8 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 						spec.resourceGet(t)))
 			}
 
-			require.Error(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
-			require.Error(t, spec.resourceGet(t).DeleteAll(tx, spec.T))
+			require.Error(t, spec.resourceGet(t).DeleteByID(tx, id))
+			require.Error(t, spec.resourceGet(t).DeleteAll(tx))
 
 			Waiter.Wait()
 		})
@@ -106,7 +106,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			_, err = spec.resourceGet(t).FindByID(ctx, newEntity(spec.T), id)
 			require.Error(t, err)
-			require.Error(t, spec.resourceGet(t).FindAll(ctx, spec.T).Err())
+			require.Error(t, spec.resourceGet(t).FindAll(ctx).Err())
 			require.Error(t, spec.resourceGet(t).Create(ctx, spec.FixtureFactory.Create(spec.T)))
 
 			if updater, ok := spec.resourceGet(t).(frameless.Updater); ok {
@@ -115,8 +115,8 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 						spec.resourceGet(t)))
 			}
 
-			require.Error(t, spec.resourceGet(t).DeleteByID(ctx, spec.T, id))
-			require.Error(t, spec.resourceGet(t).DeleteAll(ctx, spec.T))
+			require.Error(t, spec.resourceGet(t).DeleteByID(ctx, id))
+			require.Error(t, spec.resourceGet(t).DeleteAll(ctx))
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
@@ -158,13 +158,13 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			CreateEntity(t, spec.resourceGet(t), ctx, entity)
 			id := HasID(t, entity)
-			t.Defer(spec.resourceGet(t).DeleteByID, ctx, spec.T, id)
+			t.Defer(spec.resourceGet(t).DeleteByID, ctx, id)
 
 			tx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 
 			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
-			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
+			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, id))
 			IsAbsent(t, spec.T, spec.resourceGet(t), tx, id)
 
 			// in global Context it is findable
@@ -183,7 +183,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			tx, err := spec.resourceGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
-			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, spec.T, id))
+			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, id))
 			IsAbsent(t, spec.T, spec.resourceGet(t), tx, id)
 			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
@@ -282,7 +282,7 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		})
 		eventsGet := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).SubscribeToCreate(ctxGet(t), spec.T, subscriberGet(t))
+			return publisher(t).SubscribeToCreate(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -357,7 +357,7 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		})
 		eventsGet := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return updaterPublisher(t).SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))
+			return updaterPublisher(t).SubscribeToUpdate(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -428,7 +428,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return spec.FixtureFactory.Create(spec.T)
 		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).SubscribeToDeleteByID(ctxGet(t), spec.T, subscriberGet(t))
+			return publisher(t).SubscribeToDeleteByID(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -486,7 +486,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return spec.FixtureFactory.Create(spec.T)
 		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).SubscribeToDeleteAll(ctxGet(t), spec.T, subscriberGet(t))
+			return publisher(t).SubscribeToDeleteAll(ctxGet(t), subscriberGet(t))
 		}
 
 		s.Before(func(t *testcase.T) {

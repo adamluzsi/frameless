@@ -44,7 +44,7 @@ func (spec Creator) Test(t *testing.T) {
 			err := resourceGet(t).Create(ctx, ptr.Get(t))
 			if err == nil {
 				id, _ := extid.Lookup(ptr.Get(t))
-				t.Defer(resourceGet(t).DeleteByID, ctx, spec.T, id)
+				t.Defer(resourceGet(t).DeleteByID, ctx, id)
 				IsFindable(t, spec.T, resourceGet(t), ctx, id)
 			}
 			return err
@@ -77,7 +77,7 @@ func (spec Creator) Test(t *testing.T) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				IsFindable(t, spec.T, resourceGet(t), spec.Context(), getID(t))
-				require.Nil(t, resourceGet(t).DeleteByID(spec.Context(), spec.T, getID(t)))
+				require.Nil(t, resourceGet(t).DeleteByID(spec.Context(), getID(t)))
 				IsAbsent(t, spec.T, resourceGet(t), spec.Context(), getID(t))
 			})
 
@@ -113,7 +113,7 @@ func (spec Creator) Test(t *testing.T) {
 			require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
 			require.Equal(t, e, IsFindable(t, spec.T, resourceGet(t), spec.Context(), ID))
-			require.Nil(t, resourceGet(t).DeleteByID(spec.Context(), spec.T, ID))
+			require.Nil(t, resourceGet(t).DeleteByID(spec.Context(), ID))
 		})
 	})
 }

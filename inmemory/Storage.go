@@ -18,13 +18,14 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func NewStorage() *Storage {
-	return &Storage{}
+func NewStorage(T interface{}) *Storage {
+	return &Storage{T: T}
 }
 
 // Storage is an event source principles based development in memory storage,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Storage struct {
+	T       interface{}
 	Options struct {
 		DisableEventLogging                  bool
 		DisableAsyncSubscriptionHandling     bool
@@ -136,7 +137,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 		return false, err
 	}
 
-	iter := s.FindAll(ctx, reflects.BaseValueOf(ptr).Interface())
+	iter := s.FindAll(ctx)
 	defer iter.Close()
 
 	current := s.newPtr(ptr)
@@ -155,11 +156,11 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 	return false, iter.Err()
 }
 
-func (s *Storage) FindAll(ctx context.Context, T interface{}) iterators.Interface {
+func (s *Storage) FindAll(ctx context.Context) iterators.Interface {
 	var all []interface{}
 	if err := s.InTx(ctx, func(tx *MemoryTransaction) error {
 		view := tx.View()
-		table, ok := view[s.EntityTypeNameFor(T)]
+		table, ok := view[s.EntityTypeNameFor(s.T)]
 		if !ok {
 			return nil
 		}
@@ -203,21 +204,21 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 	})
 }
 
-func (s *Storage) DeleteByID(ctx context.Context, T, id interface{}) error {
+func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
 	trace := s.getTrace()
 
-	found, err := s.FindByID(ctx, s.newPtr(T), id)
+	found, err := s.FindByID(ctx, s.newPtr(s.T), id)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`%T entitiy not found by id: %v`, T, id)
+		return fmt.Errorf(`%T entitiy not found by id: %v`, s.T, id)
 	}
 
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
 		tx.AddEvent(MemoryEvent{
-			T:              T,
-			EntityTypeName: s.EntityTypeNameFor(T),
+			T:              s.T,
+			EntityTypeName: s.EntityTypeNameFor(s.T),
 			Event:          DeleteByIDEvent,
 			ID:             id,
 			Trace:          trace,
@@ -226,12 +227,12 @@ func (s *Storage) DeleteByID(ctx context.Context, T, id interface{}) error {
 	})
 }
 
-func (s *Storage) DeleteAll(ctx context.Context, T interface{}) error {
+func (s *Storage) DeleteAll(ctx context.Context) error {
 	trace := s.getTrace()
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
 		tx.AddEvent(MemoryEvent{
-			T:              T,
-			EntityTypeName: s.EntityTypeNameFor(T),
+			T:              s.T,
+			EntityTypeName: s.EntityTypeNameFor(s.T),
 			Event:          DeleteAllEvent,
 			Trace:          trace,
 		})
@@ -557,20 +558,20 @@ func (s *Storage) appendToSubscription(ctx context.Context, T interface{}, name 
 	return sub, nil
 }
 
-func (s *Storage) SubscribeToCreate(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.appendToSubscription(ctx, T, CreateEvent, subscriber)
+func (s *Storage) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+	return s.appendToSubscription(ctx, s.T, CreateEvent, subscriber)
 }
 
-func (s *Storage) SubscribeToUpdate(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.appendToSubscription(ctx, T, UpdateEvent, subscriber)
+func (s *Storage) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+	return s.appendToSubscription(ctx, s.T, UpdateEvent, subscriber)
 }
 
-func (s *Storage) SubscribeToDeleteByID(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.appendToSubscription(ctx, T, DeleteByIDEvent, subscriber)
+func (s *Storage) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+	return s.appendToSubscription(ctx, s.T, DeleteByIDEvent, subscriber)
 }
 
-func (s *Storage) SubscribeToDeleteAll(ctx context.Context, T interface{}, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.appendToSubscription(ctx, T, DeleteAllEvent, subscriber)
+func (s *Storage) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+	return s.appendToSubscription(ctx, s.T, DeleteAllEvent, subscriber)
 }
 
 /**********************************************************************************************************************/

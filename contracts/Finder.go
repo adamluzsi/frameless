@@ -172,7 +172,7 @@ func (spec findAll) Test(t *testing.T) {
 				return spec.Context()
 			})
 			subject = func(t *testcase.T) iterators.Interface {
-				return resourceGet(t).FindAll(ctx.Get(t).(context.Context), spec.T)
+				return resourceGet(t).FindAll(ctx.Get(t).(context.Context))
 			}
 		)
 
@@ -280,7 +280,7 @@ func (spec findAll) Benchmark(b *testing.B) {
 	})
 
 	s.Test(``, func(t *testcase.T) {
-		_, err := iterators.Count(r.FindAll(spec.Context(), spec.T))
+		_, err := iterators.Count(r.FindAll(spec.Context()))
 		require.Nil(t, err)
 	})
 }

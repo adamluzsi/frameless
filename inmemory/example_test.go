@@ -5,5 +5,5 @@ import (
 )
 
 func ExampleStorage() {
-	inmemory2.NewStorage()
+	inmemory2.NewStorage(Entity{})
 }

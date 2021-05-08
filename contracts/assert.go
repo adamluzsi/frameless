@@ -71,7 +71,7 @@ func CreateEntity(tb testing.TB, subject CRD, ctx context.Context, ptr interface
 	T := toT(ptr)
 	require.Nil(tb, subject.Create(ctx, ptr))
 	id := HasID(tb, ptr)
-	tb.Cleanup(func() { _ = subject.DeleteByID(ctx, T, id) })
+	tb.Cleanup(func() { _ = subject.DeleteByID(ctx, id) })
 	IsFindable(tb, T, subject, ctx, id)
 }
 
@@ -98,16 +98,16 @@ func DeleteEntity(tb testing.TB, subject CRD, ctx context.Context, ent interface
 	T := toT(ent)
 	id := HasID(tb, ent)
 	IsFindable(tb, T, subject, ctx, id)
-	require.Nil(tb, subject.DeleteByID(ctx, T, id))
+	require.Nil(tb, subject.DeleteByID(ctx, id))
 	IsAbsent(tb, T, subject, ctx, id)
 }
 
 func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context, T frameless.T) {
 	tb.Helper()
-	require.Nil(tb, subject.DeleteAll(ctx, T))
+	require.Nil(tb, subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	AsyncTester.Assert(tb, func(tb testing.TB) {
-		count, err := iterators.Count(subject.FindAll(ctx, T))
+		count, err := iterators.Count(subject.FindAll(ctx))
 		require.Nil(tb, err)
 		require.True(tb, count == 0, fmt.Sprintf(`no %T was expected to be found in %T`, T, subject))
 	})

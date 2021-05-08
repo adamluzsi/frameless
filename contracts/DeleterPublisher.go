@@ -55,7 +55,7 @@ func (spec DeleterPublisher) spec(tb testing.TB) {
 
 func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		subscription, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), spec.T, subscriberGet(t))
+		subscription, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -133,7 +133,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), spec.T, othSubscriber)
+				sub, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -185,7 +185,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		subscription, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), spec.T, subscriberGet(t))
+		subscription, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Let(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -217,7 +217,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).DeleteAll(ctxGet(t), spec.T))
+			require.Nil(t, spec.resourceGet(t).DeleteAll(ctxGet(t)))
 			Waiter.While(func() bool {
 				return subscriberGet(t).EventsLen() < 1
 			})
@@ -235,7 +235,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t)
 				t.Let(othSubscriberKey, othSubscriber)
-				sub, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), spec.T, othSubscriber)
+				sub, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -252,7 +252,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					require.Nil(t, spec.resourceGet(t).DeleteAll(ctxGet(t), spec.T))
+					require.Nil(t, spec.resourceGet(t).DeleteAll(ctxGet(t)))
 					Waiter.While(func() bool {
 						return subscriberGet(t).EventsLen() < 2
 					})

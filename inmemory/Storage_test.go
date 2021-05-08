@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless"
-	contracts2 "github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/frameless/extid"
-	inmemory2 "github.com/adamluzsi/frameless/inmemory"
+	"github.com/adamluzsi/frameless/inmemory"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,16 +31,16 @@ var _ interface {
 	frameless.Updater
 	frameless.Deleter
 	frameless.OnePhaseCommitProtocol
-} = &inmemory2.Storage{}
+} = &inmemory.Storage{}
 
 var (
-	_ inmemory2.MemoryEventManager = &inmemory2.Storage{}
-	_ inmemory2.MemoryEventManager = &inmemory2.MemoryTransaction{}
+	_ inmemory.MemoryEventManager = &inmemory.Storage{}
+	_ inmemory.MemoryEventManager = &inmemory.MemoryTransaction{}
 )
 
 func TestStorage_smokeTest(t *testing.T) {
 	var (
-		subject = inmemory2.NewStorage()
+		subject = inmemory.NewStorage(Entity{})
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -48,57 +48,57 @@ func TestStorage_smokeTest(t *testing.T) {
 
 	require.Nil(t, subject.Create(ctx, &Entity{Data: `A`}))
 	require.Nil(t, subject.Create(ctx, &Entity{Data: `B`}))
-	count, err = iterators.Count(subject.FindAll(ctx, Entity{}))
+	count, err = iterators.Count(subject.FindAll(ctx))
 	require.Nil(t, err)
 	require.Equal(t, 2, count)
 
-	require.Nil(t, subject.DeleteAll(ctx, Entity{}))
-	count, err = iterators.Count(subject.FindAll(ctx, Entity{}))
+	require.Nil(t, subject.DeleteAll(ctx))
+	count, err = iterators.Count(subject.FindAll(ctx))
 	require.Nil(t, err)
 	require.Equal(t, 0, count)
 
 	tx1CTX, err := subject.BeginTx(ctx)
 	require.Nil(t, err)
 	require.Nil(t, subject.Create(tx1CTX, &Entity{Data: `C`}))
-	count, err = iterators.Count(subject.FindAll(tx1CTX, Entity{}))
+	count, err = iterators.Count(subject.FindAll(tx1CTX))
 	require.Nil(t, err)
 	require.Equal(t, 1, count)
 	require.Nil(t, subject.RollbackTx(tx1CTX))
-	count, err = iterators.Count(subject.FindAll(ctx, Entity{}))
+	count, err = iterators.Count(subject.FindAll(ctx))
 	require.Nil(t, err)
 	require.Equal(t, 0, count)
 
 	tx2CTX, err := subject.BeginTx(ctx)
 	require.Nil(t, err)
 	require.Nil(t, subject.Create(tx2CTX, &Entity{Data: `D`}))
-	count, err = iterators.Count(subject.FindAll(tx2CTX, Entity{}))
+	count, err = iterators.Count(subject.FindAll(tx2CTX))
 	require.Nil(t, err)
 	require.Equal(t, 1, count)
 	require.Nil(t, subject.CommitTx(tx2CTX))
-	count, err = iterators.Count(subject.FindAll(ctx, Entity{}))
+	count, err = iterators.Count(subject.FindAll(ctx))
 	require.Nil(t, err)
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecsForT(subject *inmemory2.Storage, T frameless.T, ff contracts2.FixtureFactory) []testcase.Contract {
+func getMemorySpecsForT(subject *inmemory.Storage, T frameless.T, ff contracts.FixtureFactory) []testcase.Contract {
 	return []testcase.Contract{
-		contracts2.Creator{T: T, Subject: func(tb testing.TB) contracts2.CRD { return subject }, FixtureFactory: ff},
-		contracts2.Finder{T: T, Subject: func(tb testing.TB) contracts2.CRD { return subject }, FixtureFactory: ff},
-		contracts2.Updater{T: T, Subject: func(tb testing.TB) contracts2.UpdaterSubject { return subject }, FixtureFactory: ff},
-		contracts2.Deleter{T: T, Subject: func(tb testing.TB) contracts2.CRD { return subject }, FixtureFactory: ff},
-		contracts2.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts2.OnePhaseCommitProtocolSubject { return subject }, FixtureFactory: ff},
-		contracts2.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts2.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
-		contracts2.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts2.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
-		contracts2.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts2.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return subject }, FixtureFactory: ff},
+		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
 	}
 }
 
-func getMemorySpecs(subject *inmemory2.Storage) []testcase.Contract {
-	return getMemorySpecsForT(subject, Entity{}, fixtures.FixtureFactory{})
+func getMemorySpecs(subject *inmemory.Storage, T interface{}) []testcase.Contract {
+	return getMemorySpecsForT(subject,T, fixtures.FixtureFactory{})
 }
 
 func TestMemory(t *testing.T) {
-	for _, spec := range getMemorySpecs(inmemory2.NewStorage()) {
+	for _, spec := range getMemorySpecs(inmemory.NewStorage(Entity{}), Entity{}) {
 		spec.Test(t)
 	}
 }
@@ -107,8 +107,8 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	ff := fixtures.FixtureFactory{}
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
-		subject1 := inmemory2.NewStorage()
-		subject2 := inmemory2.NewStorage()
+		subject1 := inmemory.NewStorage(Entity{})
+		subject2 := inmemory.NewStorage(Entity{})
 
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
@@ -136,8 +136,8 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	})
 
 	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
-		subject1 := inmemory2.NewStorage()
-		subject2 := inmemory2.NewStorage()
+		subject1 := inmemory.NewStorage(Entity{})
+		subject2 := inmemory.NewStorage(Entity{})
 
 		ctx := ff.Context()
 		e1 := ff.Create(Entity{}).(*Entity)
@@ -147,13 +147,13 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 		id1, ok := extid.Lookup(e1)
 		require.True(t, ok)
 		require.NotEmpty(t, id1)
-		t.Cleanup(func() { _ = subject1.DeleteByID(ff.Context(), Entity{}, id1) })
+		t.Cleanup(func() { _ = subject1.DeleteByID(ff.Context(), id1) })
 
 		require.Nil(t, subject2.Create(ctx, e2))
 		id2, ok := extid.Lookup(e2)
 		require.True(t, ok)
 		require.NotEmpty(t, id2)
-		t.Cleanup(func() { _ = subject2.DeleteByID(ff.Context(), Entity{}, id2) })
+		t.Cleanup(func() { _ = subject2.DeleteByID(ff.Context(), id2) })
 
 		ctx, err := subject1.BeginTx(ctx)
 		require.Nil(t, err)
@@ -163,11 +163,11 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 		found, err := subject1.FindByID(ctx, &Entity{}, id1)
 		require.Nil(t, err)
 		require.True(t, found)
-		require.Nil(t, subject1.DeleteByID(ctx, Entity{}, id1))
+		require.Nil(t, subject1.DeleteByID(ctx, id1))
 
 		found, err = subject2.FindByID(ctx, &Entity{}, id2)
 		require.True(t, found)
-		require.Nil(t, subject2.DeleteByID(ctx, Entity{}, id2))
+		require.Nil(t, subject2.DeleteByID(ctx, id2))
 
 		found, err = subject1.FindByID(ctx, &Entity{}, id1)
 		require.Nil(t, err)
@@ -192,10 +192,10 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 }
 
 func TestStorage_Options_EventLogging_disable(t *testing.T) {
-	subject := inmemory2.NewStorage()
+	subject := inmemory.NewStorage(Entity{})
 	subject.Options.DisableEventLogging = true
 
-	for _, spec := range getMemorySpecs(subject) {
+	for _, spec := range getMemorySpecs(subject, Entity{}) {
 		spec.Test(t)
 	}
 
@@ -220,25 +220,25 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		return NewHangingSubscriber()
 	})
 
-	var newMemory = func(t *testcase.T) *inmemory2.Storage {
-		s := inmemory2.NewStorage()
+	var newMemory = func(t *testcase.T) *inmemory.Storage {
+		s := inmemory.NewStorage(Entity{})
 		ctx := context.Background()
-		subscription, err := s.SubscribeToCreate(ctx, Entity{}, subscriber(t))
+		subscription, err := s.SubscribeToCreate(ctx, subscriber(t))
 		require.Nil(t, err)
 		t.Defer(subscription.Close)
-		subscription, err = s.SubscribeToUpdate(ctx, Entity{}, subscriber(t))
+		subscription, err = s.SubscribeToUpdate(ctx, subscriber(t))
 		require.Nil(t, err)
 		t.Defer(subscription.Close)
-		subscription, err = s.SubscribeToDeleteAll(ctx, Entity{}, subscriber(t))
+		subscription, err = s.SubscribeToDeleteAll(ctx, subscriber(t))
 		require.Nil(t, err)
 		t.Defer(subscription.Close)
-		subscription, err = s.SubscribeToDeleteByID(ctx, Entity{}, subscriber(t))
+		subscription, err = s.SubscribeToDeleteByID(ctx, subscriber(t))
 		require.Nil(t, err)
 		t.Defer(subscription.Close)
 		return s
 	}
 
-	var subject = func(t *testcase.T) *inmemory2.Storage {
+	var subject = func(t *testcase.T) *inmemory.Storage {
 		s := newMemory(t)
 		s.Options.DisableAsyncSubscriptionHandling = t.I(`DisableAsyncSubscriptionHandling`).(bool)
 		return s
@@ -306,7 +306,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 
 			initialTime := time.Now()
 			sub.HangFor(hangingDuration)
-			require.Nil(t, memory.DeleteByID(context.Background(), Entity{}, ent.ID))
+			require.Nil(t, memory.DeleteByID(context.Background(), ent.ID))
 			finishTime := time.Now()
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
@@ -318,14 +318,14 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 
 			initialTime := time.Now()
 			sub.HangFor(hangingDuration)
-			require.Nil(t, memory.DeleteAll(context.Background(), Entity{}))
+			require.Nil(t, memory.DeleteAll(context.Background()))
 			finishTime := time.Now()
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			testcase.RunContract(t, getMemorySpecs(subject(t))...)
+			testcase.RunContract(t, getMemorySpecs(subject(t), Entity{})...)
 		})
 	}
 
@@ -373,9 +373,9 @@ func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
 func TestStorage_historyLogging(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	getStorage := func(t *testcase.T) *inmemory2.Storage { return t.I(`storage`).(*inmemory2.Storage) }
+	getStorage := func(t *testcase.T) *inmemory.Storage { return t.I(`storage`).(*inmemory.Storage) }
 	s.Let(`storage`, func(t *testcase.T) interface{} {
-		return inmemory2.NewStorage()
+		return inmemory.NewStorage(Entity{})
 	})
 
 	logContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
@@ -410,8 +410,8 @@ func TestStorage_historyLogging(t *testing.T) {
 		require.Nil(t, s.Create(ctx, &e))
 		e.Data = `foo/baz/bar`
 		require.Nil(t, s.Update(ctx, &e))
-		require.Nil(t, s.DeleteByID(ctx, Entity{}, e.ID))
-		require.Nil(t, s.DeleteAll(ctx, Entity{}))
+		require.Nil(t, s.DeleteByID(ctx, e.ID))
+		require.Nil(t, s.DeleteAll(ctx))
 	}
 
 	thenMutatingEventsLogged := func(s *testcase.Spec, subject func(t *testcase.T) []string) {
@@ -652,7 +652,7 @@ func TestStorage_historyLogging(t *testing.T) {
 func TestStorage_RegisterIDGenerator(t *testing.T) {
 	var (
 		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
-			err := t.I(`memory`).(*inmemory2.Storage).Create(context.Background(), ptr)
+			err := t.I(`memory`).(*inmemory.Storage).Create(context.Background(), ptr)
 			id, _ := extid.Lookup(ptr)
 			return id, err
 		}
@@ -669,7 +669,7 @@ func TestStorage_RegisterIDGenerator(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 	s.Let(`memory`, func(t *testcase.T) interface{} {
-		return inmemory2.NewStorage()
+		return inmemory.NewStorage(Entity{})
 	})
 
 	var thenGeneratedIDsAreUnique = func(s *testcase.Spec) {
@@ -775,7 +775,7 @@ func TestStorage_RegisterIDGenerator(t *testing.T) {
 		}
 
 		s.Before(func(t *testcase.T) {
-			t.I(`memory`).(*inmemory2.Storage).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
+			t.I(`memory`).(*inmemory.Storage).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
 				return CustomIDType{V: fixtures.Random.String()}, nil
 			})
 		})
@@ -850,7 +850,7 @@ func (l *fakeLogger) Log(args ...interface{}) {
 }
 
 func TestStorage_LookupTx(t *testing.T) {
-	s := inmemory2.NewStorage()
+	s := inmemory.NewStorage(Entity{})
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
 		_, ok := s.LookupTx(context.Background())
@@ -883,20 +883,20 @@ func TestStorage_InTx_whenContextCancelled(t *testing.T) {
 	cancel()
 
 	require.Equal(t, context.Canceled,
-		inmemory2.NewStorage().InTx(ctx, func(tx *inmemory2.MemoryTransaction) error { return nil }))
+		inmemory.NewStorage(Entity{}).InTx(ctx, func(tx *inmemory.MemoryTransaction) error { return nil }))
 }
 
 func BenchmarkMemory(b *testing.B) {
 	b.Run(`with event log`, func(b *testing.B) {
-		for _, spec := range getMemorySpecs(inmemory2.NewStorage()) {
+		for _, spec := range getMemorySpecs(inmemory.NewStorage(Entity{}), Entity{}) {
 			spec.Benchmark(b)
 		}
 	})
 
 	b.Run(`without event log`, func(b *testing.B) {
-		subject := inmemory2.NewStorage()
+		subject := inmemory.NewStorage(Entity{})
 		subject.Options.DisableEventLogging = true
-		for _, spec := range getMemorySpecs(subject) {
+		for _, spec := range getMemorySpecs(subject, Entity{}) {
 			spec.Benchmark(b)
 		}
 	})
@@ -908,7 +908,7 @@ type Entity struct {
 }
 
 func TestStorage_SaveEntityWithCustomKeyType(t *testing.T) {
-	for _, spec := range getMemorySpecsForT(inmemory2.NewStorage(), EntityWithStructID{}, FFForEntityWithStructID{}) {
+	for _, spec := range getMemorySpecsForT(inmemory.NewStorage(EntityWithStructID{}), EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"github.com/adamluzsi/frameless"
-	contracts2 "github.com/adamluzsi/frameless/contracts"
-	inmemory2 "github.com/adamluzsi/frameless/inmemory"
+	"github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/inmemory"
 	"runtime/debug"
 	"sync"
 	"testing"
@@ -21,23 +21,23 @@ type getContractsSubject interface {
 	frameless.Finder
 	frameless.Updater
 	frameless.Deleter
-	contracts2.UpdaterSubject
-	contracts2.OnePhaseCommitProtocolSubject
-	contracts2.CreatorPublisherSubject
-	contracts2.UpdaterPublisherSubject
-	contracts2.DeleterPublisherSubject
+	contracts.UpdaterSubject
+	contracts.OnePhaseCommitProtocolSubject
+	contracts.CreatorPublisherSubject
+	contracts.UpdaterPublisherSubject
+	contracts.DeleterPublisherSubject
 }
 
-func getContracts(T interface{}, ff contracts2.FixtureFactory, newSubject func(tb testing.TB) getContractsSubject) []testcase.Contract {
+func getContracts(T interface{}, ff contracts.FixtureFactory, newSubject func(tb testing.TB) getContractsSubject) []testcase.Contract {
 	return []testcase.Contract{
-		contracts2.Creator{T: T, Subject: func(tb testing.TB) contracts2.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts2.CreatorPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.Updater{T: T, Subject: func(tb testing.TB) contracts2.UpdaterSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts2.UpdaterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.Deleter{T: T, Subject: func(tb testing.TB) contracts2.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts2.DeleterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.Finder{T: T, Subject: func(tb testing.TB) contracts2.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts2.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts2.OnePhaseCommitProtocolSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return newSubject(tb) }, FixtureFactory: ff},
 	}
 }
 
@@ -52,7 +52,7 @@ func TestContracts(t *testing.T) {
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
 	testcase.RunContract(t, getContracts(Entity{}, ff, func(tb testing.TB) getContractsSubject {
-		return inmemory2.NewStorage()
+		return inmemory.NewStorage(Entity{})
 	})...)
 }
 
@@ -65,7 +65,7 @@ func TestFixtureFactory(t *testing.T) {
 			Data string
 		}
 
-		testcase.RunContract(t, contracts2.FixtureFactorySpec{
+		testcase.RunContract(t, contracts.FixtureFactorySpec{
 			Type:           T{},
 			FixtureFactory: fixtures.FixtureFactory{},
 		})
@@ -77,7 +77,7 @@ func TestFixtureFactory(t *testing.T) {
 			Data string
 		}
 
-		testcase.RunContract(t, contracts2.FixtureFactorySpec{
+		testcase.RunContract(t, contracts.FixtureFactorySpec{
 			Type:           T{},
 			FixtureFactory: fixtures.FixtureFactory{},
 		})
@@ -97,21 +97,21 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
 	testcase.RunContract(t, getContracts(Entity{}, ff, func(tb testing.TB) getContractsSubject {
-		storage := NewEventuallyConsistentStorage()
+		storage := NewEventuallyConsistentStorage(Entity{})
 		tb.Cleanup(func() { _ = storage.Close() })
 		return storage
 	})...)
 }
 
-func NewEventuallyConsistentStorage() *EventuallyConsistentStorage {
-	e := &EventuallyConsistentStorage{Storage: inmemory2.NewStorage()}
+func NewEventuallyConsistentStorage(T interface{}) *EventuallyConsistentStorage {
+	e := &EventuallyConsistentStorage{Storage: inmemory.NewStorage(T)}
 	e.jobs.queue = make(chan func(), 100)
 	e.Spawn()
 	return e
 }
 
 type EventuallyConsistentStorage struct {
-	*inmemory2.Storage
+	*inmemory.Storage
 	jobs struct {
 		queue chan func()
 		wg    sync.WaitGroup
@@ -171,21 +171,21 @@ func (e *EventuallyConsistentStorage) Update(ctx context.Context, ptr interface{
 	})
 }
 
-func (e *EventuallyConsistentStorage) DeleteByID(ctx context.Context, T frameless.T, id interface{}) error {
+func (e *EventuallyConsistentStorage) DeleteByID(ctx context.Context, id interface{}) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Storage.DeleteByID(ctx, T, id)
+		return e.Storage.DeleteByID(ctx, id)
 	})
 }
 
-func (e *EventuallyConsistentStorage) DeleteAll(ctx context.Context, T frameless.T) error {
+func (e *EventuallyConsistentStorage) DeleteAll(ctx context.Context) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Storage.DeleteAll(ctx, T)
+		return e.Storage.DeleteAll(ctx)
 	})
 }
 

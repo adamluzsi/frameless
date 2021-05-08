@@ -50,7 +50,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 	s.Context(name, func(s *testcase.Spec) {
 		s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
 			subject := func(t *testcase.T) (frameless.Subscription, error) {
-				subscription, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), spec.T, subscriberGet(t))
+				subscription, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), subscriberGet(t))
 				if err == nil && subscription != nil {
 					t.Let(subscriptionKey, subscription)
 					t.Defer(subscription.Close)
@@ -135,7 +135,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 					s.Before(func(t *testcase.T) {
 						othSubscriber := newEventSubscriber(t)
 						t.Let(othSubscriberKey, othSubscriber)
-						sub, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), spec.T, othSubscriber)
+						sub, err := spec.resourceGet(t).SubscribeToUpdate(ctxGet(t), othSubscriber)
 						require.Nil(t, err)
 						require.NotNil(t, sub)
 						t.Defer(sub.Close)

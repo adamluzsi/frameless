@@ -38,7 +38,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 				return resource.Get(t).(CreatorPublisherSubject)
 			}
 			subject := func(t *testcase.T) (frameless.Subscription, error) {
-				subscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), spec.T, subscriberGet(t))
+				subscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), subscriberGet(t))
 				if err == nil && subscription != nil {
 					t.Let(subscriptionKey, subscription)
 					t.Defer(subscription.Close)
@@ -116,7 +116,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 					s.Before(func(t *testcase.T) {
 						othSubscriber := newEventSubscriber(t)
 						t.Let(othSubscriberKey, othSubscriber)
-						newSubscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), spec.T, othSubscriber)
+						newSubscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), othSubscriber)
 						require.Nil(t, err)
 						require.NotNil(t, newSubscription)
 						t.Defer(newSubscription.Close)

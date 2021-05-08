@@ -47,7 +47,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 		ctx     = ctxLetWithFixtureFactory(s, spec)
 		id      = testcase.Var{Name: `id`}
 		subject = func(t *testcase.T) error {
-			return spec.resourceGet(t).DeleteByID(ctx.Get(t).(context.Context), spec.T, id.Get(t))
+			return spec.resourceGet(t).DeleteByID(ctx.Get(t).(context.Context), id.Get(t))
 		}
 	)
 
@@ -131,16 +131,13 @@ func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		require.Nil(b, spec.resourceGet(t).DeleteByID(spec.Context(), spec.T, id.Get(t)))
+		require.Nil(b, spec.resourceGet(t).DeleteByID(spec.Context(), id.Get(t)))
 	})
 }
 
 func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
-		return spec.resourceGet(t).DeleteAll(
-			t.I(`ctx`).(context.Context),
-			spec.T,
-		)
+		return spec.resourceGet(t).DeleteAll(t.I(`ctx`).(context.Context))
 	}
 
 	s.Let(`ctx`, func(t *testcase.T) interface{} { return spec.Context() })
@@ -177,7 +174,7 @@ func (spec Deleter) benchmarkDeleteAll(b *testing.B) {
 	// so I just check empty delete all.
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		require.Nil(b, r.DeleteAll(spec.Context(), spec.T))
+		require.Nil(b, r.DeleteAll(spec.Context()))
 	}
 	b.StopTimer()
 }
