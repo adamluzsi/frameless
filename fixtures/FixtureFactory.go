@@ -3,6 +3,7 @@ package fixtures
 import (
 	"context"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"reflect"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -14,7 +15,7 @@ func (f FixtureFactory) Create(T frameless.T) interface{} {
 	v := reflect.New(reflects.BaseTypeOf(T))
 	fv := reflects.BaseValueOf(New(T))
 
-	field, _, ok := frameless.LookupIDStructField(T)
+	field, _, ok := extid.LookupStructField(T)
 	for i := 0; i < fv.NumField(); i++ {
 		if ok && fv.Type().Field(i).Name == field.Name {
 			continue

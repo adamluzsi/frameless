@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -140,8 +141,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 
 			s.Then(`original subscriberGet still received the old delete event`, func(t *testcase.T) {
 				require.Len(t, subscriberGet(t).Events(), 1)
-				expectedID, _ := frameless.LookupID(entity.Get(t))
-				actualID, _ := frameless.LookupID(subscriberGet(t).Events()[0])
+				expectedID, _ := extid.Lookup(entity.Get(t))
+				actualID, _ := extid.Lookup(subscriberGet(t).Events()[0])
 				require.Equal(t, expectedID, actualID)
 			})
 
@@ -278,8 +279,8 @@ func (spec DeleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []int
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, entity := range getList() {
-			expectedID, _ := frameless.LookupID(entity)
-			actualID, _ := frameless.LookupID(e)
+			expectedID, _ := extid.Lookup(entity)
+			actualID, _ := extid.Lookup(e)
 			if expectedID == actualID {
 				matchingIDFound = true
 				break
@@ -293,8 +294,8 @@ func (spec DeleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, entity := range getList() {
-			expectedID, _ := frameless.LookupID(entity)
-			actualID, _ := frameless.LookupID(e)
+			expectedID, _ := extid.Lookup(entity)
+			actualID, _ := extid.Lookup(e)
 			if expectedID == actualID {
 				matchingIDFound = true
 				break

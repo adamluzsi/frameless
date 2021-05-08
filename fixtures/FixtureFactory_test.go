@@ -15,7 +15,7 @@ func TestGenericFixtureFactory(t *testing.T) {
 }
 
 type GenericFixtureFactoryExampleType struct {
-	ID  string `ext:ID`
+	ID  string `ext:"ID"`
 	STR string
 	BDY string
 }

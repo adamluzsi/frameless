@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -74,8 +75,8 @@ func (spec Updater) Test(t *testing.T) {
 				s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 					entityWithChanges.Let(s, func(t *testcase.T) interface{} {
 						newEntity := spec.FixtureFactory.Create(spec.T)
-						id, _ := frameless.LookupID(entity.Get(t))
-						require.Nil(t, frameless.SetID(newEntity, id))
+						id, _ := extid.Lookup(entity.Get(t))
+						require.Nil(t, extid.Set(newEntity, id))
 						return newEntity
 					})
 

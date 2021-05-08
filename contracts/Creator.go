@@ -2,7 +2,7 @@ package contracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -35,7 +35,7 @@ func (spec Creator) Test(t *testing.T) {
 				return spec.FixtureFactory.Create(spec.T)
 			})
 			getID = func(t *testcase.T) interface{} {
-				id, _ := frameless.LookupID(ptr.Get(t))
+				id, _ := extid.Lookup(ptr.Get(t))
 				return id
 			}
 		)
@@ -43,7 +43,7 @@ func (spec Creator) Test(t *testing.T) {
 			ctx := ctx.Get(t).(context.Context)
 			err := resourceGet(t).Create(ctx, ptr.Get(t))
 			if err == nil {
-				id, _ := frameless.LookupID(ptr.Get(t))
+				id, _ := extid.Lookup(ptr.Get(t))
 				t.Defer(resourceGet(t).DeleteByID, ctx, spec.T, id)
 				IsFindable(t, spec.T, resourceGet(t), ctx, id)
 			}
@@ -108,7 +108,7 @@ func (spec Creator) Test(t *testing.T) {
 			err := resourceGet(t).Create(spec.Context(), e)
 			require.Nil(t, err)
 
-			ID, ok := frameless.LookupID(e)
+			ID, ok := extid.Lookup(e)
 			require.True(t, ok, "ID is not defined in the entity struct src definition")
 			require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 

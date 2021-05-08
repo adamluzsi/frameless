@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"sync"
 	"testing"
 
@@ -100,7 +101,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			require.Nil(t, err)
 			ptr := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(ctx, ptr))
-			id, _ := frameless.LookupID(ptr)
+			id, _ := extid.Lookup(ptr)
 			require.Nil(t, spec.resourceGet(t).RollbackTx(ctx))
 
 			_, err = spec.resourceGet(t).FindByID(ctx, newEntity(spec.T), id)

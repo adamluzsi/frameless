@@ -1,23 +1,23 @@
-package frameless_test
+package extid_test
 
 import (
-	"github.com/adamluzsi/frameless"
 	"reflect"
 	"testing"
 
+	"github.com/adamluzsi/frameless/extid"
 	"github.com/stretchr/testify/require"
 )
 
 func TestID_E2E(t *testing.T) {
 	ptr := &IDAsInterface{}
 
-	_, ok := frameless.LookupID(ptr)
+	_, ok := extid.Lookup(ptr)
 	require.False(t, ok)
 
 	idVal := 42
-	require.Nil(t, frameless.SetID(ptr, idVal))
+	require.Nil(t, extid.Set(ptr, idVal))
 
-	id, ok := frameless.LookupID(ptr)
+	id, ok := extid.Lookup(ptr)
 	require.True(t, ok)
 	require.Equal(t, idVal, id)
 }
@@ -25,7 +25,7 @@ func TestID_E2E(t *testing.T) {
 func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(IDByIDField{"ok"})
+	id, ok := extid.Lookup(IDByIDField{"ok"})
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -33,7 +33,7 @@ func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
 func TestLookupID_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(&IDByIDField{"ok"})
+	id, ok := extid.Lookup(&IDByIDField{"ok"})
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -47,7 +47,7 @@ func TestLookupID_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	ptr1 = &IDByIDField{"ok"}
 	ptr2 = &ptr1
 
-	id, ok := frameless.LookupID(ptr2)
+	id, ok := extid.Lookup(ptr2)
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -55,7 +55,7 @@ func TestLookupID_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 func TestLookupID_IDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(IDByTag{"KO"})
+	id, ok := extid.Lookup(IDByTag{"KO"})
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
 }
@@ -68,7 +68,7 @@ func TestLookupID_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedBy
 		DI string `ext:"ID"`
 	}
 
-	id, ok := frameless.LookupID(IDByTagNameNextToIDField{DI: "KO", ID: "OK"})
+	id, ok := extid.Lookup(IDByTagNameNextToIDField{DI: "KO", ID: "OK"})
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
 }
@@ -76,7 +76,7 @@ func TestLookupID_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedBy
 func TestLookupID_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(&IDByTag{"KO"})
+	id, ok := extid.Lookup(&IDByTag{"KO"})
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
 }
@@ -84,7 +84,7 @@ func TestLookupID_PointerIDGivenByTag_IDReturned(t *testing.T) {
 func TestLookupID_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(UnidentifiableID{"ok"})
+	id, ok := extid.Lookup(UnidentifiableID{"ok"})
 	require.False(t, ok)
 	require.Nil(t, id)
 }
@@ -92,7 +92,7 @@ func TestLookupID_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) 
 func TestLookupID_InterfaceTypeWithValue_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(&IDAsInterface{ID: `foo`})
+	id, ok := extid.Lookup(&IDAsInterface{ID: `foo`})
 	require.True(t, ok)
 	require.Equal(t, "foo", id)
 }
@@ -100,7 +100,7 @@ func TestLookupID_InterfaceTypeWithValue_IDReturned(t *testing.T) {
 func TestLookupID_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(&IDAsInterface{})
+	id, ok := extid.Lookup(&IDAsInterface{})
 	require.False(t, ok)
 	require.Nil(t, id)
 }
@@ -109,7 +109,7 @@ func TestLookupID_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundR
 	t.Parallel()
 
 	var idVal *string
-	id, ok := frameless.LookupID(&IDAsInterface{ID: idVal})
+	id, ok := extid.Lookup(&IDAsInterface{ID: idVal})
 	require.False(t, ok)
 	require.Nil(t, id)
 }
@@ -117,7 +117,7 @@ func TestLookupID_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundR
 func TestLookupID_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := frameless.LookupID(&IDAsPointer{})
+	id, ok := extid.Lookup(&IDAsPointer{})
 	require.False(t, ok)
 	require.Nil(t, id)
 }
@@ -126,7 +126,7 @@ func TestLookupID_PointerTypeWithValue_ValueReturned(t *testing.T) {
 	t.Parallel()
 
 	idVal := `foo`
-	id, ok := frameless.LookupID(&IDAsPointer{ID: &idVal})
+	id, ok := extid.Lookup(&IDAsPointer{ID: &idVal})
 	require.True(t, ok)
 	require.Equal(t, &idVal, id)
 }
@@ -136,20 +136,20 @@ func TestLookupID_PointerTypeWithValue_ValueReturned(t *testing.T) {
 func TestSetID_NonPtrStructGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
 	t.Parallel()
 
-	require.Error(t, frameless.SetID(IDByIDField{}, "Pass by Value"))
+	require.Error(t, extid.Set(IDByIDField{}, "Pass by Value"))
 }
 
 func TestSetID_PtrStructGivenButIDIsCannotBeIndentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
 	t.Parallel()
 
-	require.Error(t, frameless.SetID(&UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
+	require.Error(t, extid.Set(&UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
 }
 
 func TestSetID_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	subject := &IDByIDField{}
-	require.Nil(t, frameless.SetID(subject, "OK"))
+	require.Nil(t, extid.Set(subject, "OK"))
 	require.Equal(t, "OK", subject.ID)
 }
 
@@ -157,7 +157,7 @@ func TestSetID_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	subject := &IDByTag{}
-	require.Nil(t, frameless.SetID(subject, "OK"))
+	require.Nil(t, extid.Set(subject, "OK"))
 	require.Equal(t, "OK", subject.DI)
 }
 
@@ -165,9 +165,11 @@ func TestSetID_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	var subject interface{} = &IDByIDField{}
-	require.Nil(t, frameless.SetID(subject, "OK"))
+	require.Nil(t, extid.Set(subject, "OK"))
 	require.Equal(t, "OK", subject.(*IDByIDField).ID)
 }
+
+//--------------------------------------------------------------------------------------------------------------------//
 
 func TestLookupIDStructField(t *testing.T) {
 	var (
@@ -176,28 +178,28 @@ func TestLookupIDStructField(t *testing.T) {
 		ok    bool
 	)
 
-	field, value, ok = frameless.LookupIDStructField(IDByIDField{ID: `42`})
+	field, value, ok = extid.LookupStructField(IDByIDField{ID: `42`})
 	require.True(t, ok)
 	require.Equal(t, `ID`, field.Name)
 	require.Equal(t, `42`, value.Interface())
 
-	field, value, ok = frameless.LookupIDStructField(IDByTag{DI: `42`})
+	field, value, ok = extid.LookupStructField(IDByTag{DI: `42`})
 	require.True(t, ok)
 	require.Equal(t, `DI`, field.Name)
 	require.Equal(t, `42`, value.Interface())
 
-	field, value, ok = frameless.LookupIDStructField(IDAsInterface{ID: 42})
+	field, value, ok = extid.LookupStructField(IDAsInterface{ID: 42})
 	require.True(t, ok)
 	require.Equal(t, `ID`, field.Name)
 	require.Equal(t, 42, value.Interface())
 
 	idValue := `42`
-	field, value, ok = frameless.LookupIDStructField(IDAsPointer{ID: &idValue})
+	field, value, ok = extid.LookupStructField(IDAsPointer{ID: &idValue})
 	require.True(t, ok)
 	require.Equal(t, `ID`, field.Name)
 	require.Equal(t, &idValue, value.Interface())
 
-	field, value, ok = frameless.LookupIDStructField(UnidentifiableID{})
+	field, value, ok = extid.LookupStructField(UnidentifiableID{})
 	require.False(t, ok)
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless"
 	contracts2 "github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/extid"
 	inmemory2 "github.com/adamluzsi/frameless/inmemory"
 	"os"
 	"path/filepath"
@@ -143,13 +144,13 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 		e2 := ff.Create(Entity{}).(*Entity)
 
 		require.Nil(t, subject1.Create(ctx, e1))
-		id1, ok := frameless.LookupID(e1)
+		id1, ok := extid.Lookup(e1)
 		require.True(t, ok)
 		require.NotEmpty(t, id1)
 		t.Cleanup(func() { _ = subject1.DeleteByID(ff.Context(), Entity{}, id1) })
 
 		require.Nil(t, subject2.Create(ctx, e2))
-		id2, ok := frameless.LookupID(e2)
+		id2, ok := extid.Lookup(e2)
 		require.True(t, ok)
 		require.NotEmpty(t, id2)
 		t.Cleanup(func() { _ = subject2.DeleteByID(ff.Context(), Entity{}, id2) })
@@ -652,7 +653,7 @@ func TestStorage_RegisterIDGenerator(t *testing.T) {
 	var (
 		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
 			err := t.I(`memory`).(*inmemory2.Storage).Create(context.Background(), ptr)
-			id, _ := frameless.LookupID(ptr)
+			id, _ := extid.Lookup(ptr)
 			return id, err
 		}
 		subject = func(t *testcase.T) (interface{}, error) {

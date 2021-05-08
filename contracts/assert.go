@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func HasID(tb testing.TB, ent interface{}) (id interface{}) {
 	tb.Helper()
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var ok bool
-		id, ok = frameless.LookupID(ent)
+		id, ok = extid.Lookup(ent)
 		require.True(tb, ok)
 		require.NotEmpty(tb, id)
 	})
@@ -81,7 +82,7 @@ func UpdateEntity(tb testing.TB, subject interface {
 }, ctx context.Context, ptr interface{}) {
 	tb.Helper()
 	T := toT(ptr)
-	id, _ := frameless.LookupID(ptr)
+	id, _ := extid.Lookup(ptr)
 	// IsFindable ensures that by the time Update is executed,
 	// the entity is present in the resource.
 	IsFindable(tb, T, subject, ctx, id)

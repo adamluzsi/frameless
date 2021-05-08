@@ -3,6 +3,7 @@ package contracts
 import (
 	"context"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"reflect"
 	"sync"
 	"testing"
@@ -58,7 +59,7 @@ func (spec findByID) Test(t *testing.T) {
 		Subject:        spec.Subject,
 		MethodName:     ".FindByID",
 		ToQuery: func(tb testing.TB, resource interface{}, ent T) QueryOne {
-			id, ok := frameless.LookupID(ent)
+			id, ok := extid.Lookup(ent)
 			if !ok { // if no id found create a dummy ID
 				// since an id is required always to use FindByID
 				// we generate a dummy id in case the received entity don't have one.
@@ -80,7 +81,7 @@ func (spec findByID) Test(t *testing.T) {
 				for i := 0; i < 12; i++ {
 					entity := spec.FixtureFactory.Create(spec.T)
 					CreateEntity(t, r, spec.Context(), entity)
-					id, ok := frameless.LookupID(entity)
+					id, ok := extid.Lookup(entity)
 					require.True(t, ok, ErrIDRequired.Error())
 					ids = append(ids, id)
 				}
@@ -98,7 +99,7 @@ func (spec findByID) Test(t *testing.T) {
 					require.Nil(t, err)
 					require.True(t, ok)
 
-					actualID, ok := frameless.LookupID(e)
+					actualID, ok := extid.Lookup(e)
 					require.True(t, ok, "can't find ID in the returned value")
 					require.Equal(t, ID, actualID)
 				}

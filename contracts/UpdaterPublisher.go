@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -77,7 +78,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 				return ptr
 			}).EagerLoading(s)
 			getID := func(t *testcase.T) interface{} {
-				id, _ := frameless.LookupID(entity.Get(t))
+				id, _ := extid.Lookup(entity.Get(t))
 				return id
 			}
 
@@ -94,7 +95,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 				const updatedEntityKey = `updated-entity`
 				updatedEntity := s.Let(updatedEntityKey, func(t *testcase.T) interface{} {
 					entityWithNewValuesPtr := spec.createEntity()
-					require.Nil(t, frameless.SetID(entityWithNewValuesPtr, getID(t)))
+					require.Nil(t, extid.Set(entityWithNewValuesPtr, getID(t)))
 					UpdateEntity(t, spec.resourceGet(t), ctxGet(t), entityWithNewValuesPtr)
 					Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
 					return toBaseValue(entityWithNewValuesPtr)
@@ -111,9 +112,9 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 
 					s.And(`more events made`, func(s *testcase.Spec) {
 						s.Before(func(t *testcase.T) {
-							id, _ := frameless.LookupID(t.I(entityKey))
+							id, _ := extid.Lookup(t.I(entityKey))
 							updatedEntityPtr := spec.createEntity()
-							require.Nil(t, frameless.SetID(updatedEntityPtr, id))
+							require.Nil(t, extid.Set(updatedEntityPtr, id))
 							require.Nil(t, spec.resourceGet(t).Update(ctxGet(t), updatedEntityPtr))
 							Waiter.While(func() bool {
 								return subscriberGet(t).EventsLen() < 1
@@ -152,7 +153,7 @@ func (spec UpdaterPublisher) Spec(tb testing.TB) {
 					s.And(`a further event is made`, func(s *testcase.Spec) {
 						furtherEventUpdate := s.Let(`further event update`, func(t *testcase.T) interface{} {
 							updatedEntityPtr := spec.createEntity()
-							require.Nil(t, frameless.SetID(updatedEntityPtr, getID(t)))
+							require.Nil(t, extid.Set(updatedEntityPtr, getID(t)))
 							UpdateEntity(t, spec.resourceGet(t), ctxGet(t), updatedEntityPtr)
 							Waiter.While(func() bool {
 								return subscriberGet(t).EventsLen() < 2

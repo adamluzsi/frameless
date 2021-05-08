@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -90,13 +91,13 @@ type MemoryEventManager interface {
 }
 
 func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
-	if _, ok := frameless.LookupID(ptr); !ok {
+	if _, ok := extid.Lookup(ptr); !ok {
 		newID, err := s.IDGenerator().generateID(reflects.BaseValueOf(ptr).Interface())
 		if err != nil {
 			return err
 		}
 
-		if err := frameless.SetID(ptr, newID); err != nil {
+		if err := extid.Set(ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -105,7 +106,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 		return err
 	}
 
-	id, _ := frameless.LookupID(ptr)
+	id, _ := extid.Lookup(ptr)
 	if found, err := s.FindByID(ctx, s.newPtr(ptr), id); err != nil {
 		return err
 	} else if found {
@@ -117,7 +118,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 
 func (s *Storage) createEventFor(ctx context.Context, ptr interface{}, trace []TraceElem) error {
 	return s.InTx(ctx, func(tx *MemoryTransaction) error {
-		id, _ := frameless.LookupID(ptr)
+		id, _ := extid.Lookup(ptr)
 		tx.AddEvent(MemoryEvent{
 			T:              reflects.BaseValueOf(ptr),
 			EntityTypeName: s.EntityTypeNameFor(ptr),
@@ -145,7 +146,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 			return false, err
 		}
 
-		if currentID, ok := frameless.LookupID(current); ok && currentID == id {
+		if currentID, ok := extid.Lookup(current); ok && currentID == id {
 			err := reflects.Link(reflects.BaseValueOf(current).Interface(), ptr)
 			return err == nil, err
 		}
@@ -176,7 +177,7 @@ func (s *Storage) FindAll(ctx context.Context, T interface{}) iterators.Interfac
 
 func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 	trace := s.getTrace()
-	id, ok := frameless.LookupID(ptr)
+	id, ok := extid.Lookup(ptr)
 	if !ok {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
@@ -329,7 +330,7 @@ func (s *Storage) notifySubscriptions(event MemoryEvent) {
 			sub.publish(ctx, event.T)
 		case DeleteByIDEvent:
 			ptr := s.newPtr(event.T)
-			_ = frameless.SetID(ptr, event.ID)
+			_ = extid.Set(ptr, event.ID)
 			sub.publish(ctx, reflects.BaseValueOf(ptr).Interface())
 		case CreateEvent, UpdateEvent:
 			sub.publish(ctx, event.Entity)
@@ -670,7 +671,7 @@ func (g *IDGenerator) generateID(T frameless.T) (interface{}, error) {
 		return genFunc()
 	}
 
-	id, _ := frameless.LookupID(T)
+	id, _ := extid.Lookup(T)
 
 	var moreOrLessUniqueInt = func() int64 {
 		return time.Now().UnixNano() +
