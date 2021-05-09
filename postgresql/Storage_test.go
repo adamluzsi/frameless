@@ -22,9 +22,12 @@ type StorageTestEntity struct {
 func TestEntityStorage(t *testing.T) {
 	postgresql.WithDebug(t)
 
+	T := StorageTestEntity{}
+	ff := fixtures.FixtureFactory{}
 	pool := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
 
 	subject := &postgresql.Storage{
+		T:    StorageTestEntity{},
 		Pool: pool,
 		Mapping: postgresql.Mapper{
 			Table:   "storage_test_entities",
@@ -46,8 +49,6 @@ func TestEntityStorage(t *testing.T) {
 
 	migrateEntityStorage(t, pool)
 
-	T := StorageTestEntity{}
-	ff := fixtures.FixtureFactory{}
 	testcase.RunContract(t,
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
