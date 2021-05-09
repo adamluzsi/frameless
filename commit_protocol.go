@@ -19,10 +19,10 @@ type OnePhaseCommitProtocol interface {
 	//   ctx, err = r.BeginTx(ctx)
 	//
 	BeginTx(context.Context) (context.Context, error)
-	// Commit commits the current transaction.
+	// CommitTx Commit commits the current transaction.
 	// All changes made by the transaction become visible to others and are guaranteed to be durable if a crash occurs.
 	CommitTx(context.Context) error
-	// Rollback rolls back the current transaction and causes all the updates made by the transaction to be discarded.
+	// RollbackTx rolls back the current transaction and causes all the updates made by the transaction to be discarded.
 	RollbackTx(context.Context) error
 }
 

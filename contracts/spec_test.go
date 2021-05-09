@@ -21,8 +21,8 @@ type getContractsSubject interface {
 	frameless.Finder
 	frameless.Updater
 	frameless.Deleter
+	frameless.OnePhaseCommitProtocol
 	contracts.UpdaterSubject
-	contracts.OnePhaseCommitProtocolSubject
 	contracts.CreatorPublisherSubject
 	contracts.UpdaterPublisherSubject
 	contracts.DeleterPublisherSubject
@@ -37,7 +37,10 @@ func getContracts(T interface{}, ff contracts.FixtureFactory, newSubject func(tb
 		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
 		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
+			s := newSubject(tb)
+			return s, s
+		}, FixtureFactory: ff},
 	}
 }
 

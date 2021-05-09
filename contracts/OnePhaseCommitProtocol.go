@@ -14,27 +14,37 @@ import (
 
 type OnePhaseCommitProtocol struct {
 	T
-	Subject        func(testing.TB) OnePhaseCommitProtocolSubject
-
+	Subject        func(testing.TB) (frameless.OnePhaseCommitProtocol, CRD)
 	FixtureFactory FixtureFactory
 }
 
-type OnePhaseCommitProtocolSubject interface {
-	CRD
-	frameless.OnePhaseCommitProtocol
-}
-
-func (spec OnePhaseCommitProtocol) resource() testcase.Var {
+func (spec OnePhaseCommitProtocol) manager() testcase.Var {
 	return testcase.Var{
-		Name: "resource",
+		Name: "commit protocol manager",
 		Init: func(t *testcase.T) interface{} {
-			return spec.Subject(t)
+			commitProtocol, resource := spec.Subject(t)
+			spec.resource().Set(t, resource)
+			return commitProtocol
 		},
 	}
 }
 
-func (spec OnePhaseCommitProtocol) resourceGet(t *testcase.T) OnePhaseCommitProtocolSubject {
-	return spec.resource().Get(t).(OnePhaseCommitProtocolSubject)
+func (spec OnePhaseCommitProtocol) managerGet(t *testcase.T) frameless.OnePhaseCommitProtocol {
+	return spec.manager().Get(t).(frameless.OnePhaseCommitProtocol)
+}
+
+func (spec OnePhaseCommitProtocol) resource() testcase.Var {
+	return testcase.Var{
+		Name: "commit protocol managed resource",
+		Init: func(t *testcase.T) interface{} {
+			spec.manager().Get(t) // lazy load init
+			return spec.resource().Get(t)
+		},
+	}
+}
+
+func (spec OnePhaseCommitProtocol) resourceGet(t *testcase.T) CRD {
+	return spec.resource().Get(t).(CRD)
 }
 
 func (spec OnePhaseCommitProtocol) Test(t *testing.T) {
@@ -71,13 +81,13 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 
 		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
+			tx, err := spec.managerGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 			ptr := spec.FixtureFactory.Create(spec.T)
 			CreateEntity(t, spec.resourceGet(t), tx, ptr)
 			id := HasID(t, ptr)
 
-			require.Nil(t, spec.resourceGet(t).CommitTx(tx))
+			require.Nil(t, spec.managerGet(t).CommitTx(tx))
 
 			t.Log(`using the tx context after commit should yield error`)
 			_, err = spec.resourceGet(t).FindByID(tx, newEntity(spec.T), id)
@@ -98,12 +108,12 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 		})
 		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			ctx := spec.Context()
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			ctx, err := spec.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 			ptr := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(ctx, ptr))
 			id, _ := extid.Lookup(ptr)
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctx))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctx))
 
 			_, err = spec.resourceGet(t).FindByID(ctx, newEntity(spec.T), id)
 			require.Error(t, err)
@@ -121,7 +131,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
+			tx, err := spec.managerGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 
 			entity := spec.FixtureFactory.Create(spec.T)
@@ -131,14 +141,14 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)           // can be found in tx Context
 			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id) // is absent from the global Context
 
-			require.Nil(t, spec.resourceGet(t).CommitTx(tx)) // after the commit
+			require.Nil(t, spec.managerGet(t).CommitTx(tx)) // after the commit
 
 			actually := IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 			require.Equal(t, entity, actually)
 		})
 
 		s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := spec.resourceGet(t).BeginTx(spec.Context())
+			tx, err := spec.managerGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 			entity := spec.FixtureFactory.Create(spec.T)
 			//require.Nil(t, Spec.resourceGet(t).Create(tx, entity))
@@ -148,7 +158,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
 			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 
-			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
+			require.Nil(t, spec.managerGet(t).RollbackTx(tx))
 
 			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 		})
@@ -161,7 +171,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			id := HasID(t, entity)
 			t.Defer(spec.resourceGet(t).DeleteByID, ctx, id)
 
-			tx, err := spec.resourceGet(t).BeginTx(ctx)
+			tx, err := spec.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 
 			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
@@ -171,7 +181,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			// in global Context it is findable
 			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 
-			require.Nil(t, spec.resourceGet(t).CommitTx(tx))
+			require.Nil(t, spec.managerGet(t).CommitTx(tx))
 			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 		})
 
@@ -181,30 +191,30 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			CreateEntity(t, spec.resourceGet(t), ctx, entity)
 			id := HasID(t, entity)
 
-			tx, err := spec.resourceGet(t).BeginTx(ctx)
+			tx, err := spec.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 			IsFindable(t, spec.T, spec.resourceGet(t), tx, id)
 			require.Nil(t, spec.resourceGet(t).DeleteByID(tx, id))
 			IsAbsent(t, spec.T, spec.resourceGet(t), tx, id)
 			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
-			require.Nil(t, spec.resourceGet(t).RollbackTx(tx))
+			require.Nil(t, spec.managerGet(t).RollbackTx(tx))
 			IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
 			ctx := spec.Context()
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			ctx, err := spec.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctx))
-			require.Error(t, spec.resourceGet(t).CommitTx(ctx))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctx))
+			require.Error(t, spec.managerGet(t).CommitTx(ctx))
 		})
 
 		s.Test(`RollbackTx multiple times will yield error`, func(t *testcase.T) {
 			ctx := spec.Context()
-			ctx, err := spec.resourceGet(t).BeginTx(ctx)
+			ctx, err := spec.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctx))
-			require.Error(t, spec.resourceGet(t).RollbackTx(ctx))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctx))
+			require.Error(t, spec.managerGet(t).RollbackTx(ctx))
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure emulate multi level transaction`, func(t *testcase.T) {
@@ -223,13 +233,13 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			var globalContext = spec.Context()
 
-			tx1, err := spec.resourceGet(t).BeginTx(globalContext)
+			tx1, err := spec.managerGet(t).BeginTx(globalContext)
 			require.Nil(t, err)
 			e1 := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(tx1, e1))
 			IsFindable(t, spec.T, spec.resourceGet(t), tx1, HasID(t, e1))
 
-			tx2InTx1, err := spec.resourceGet(t).BeginTx(globalContext)
+			tx2InTx1, err := spec.managerGet(t).BeginTx(globalContext)
 			require.Nil(t, err)
 
 			e2 := spec.FixtureFactory.Create(spec.T)
@@ -241,8 +251,8 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e1))
 			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e2))
 
-			require.Nil(t, spec.resourceGet(t).CommitTx(tx2InTx1), `"inner" tx should be considered done`)
-			require.Nil(t, spec.resourceGet(t).CommitTx(tx1), `"outer" tx should be considered done`)
+			require.Nil(t, spec.managerGet(t).CommitTx(tx2InTx1), `"inner" tx should be considered done`)
+			require.Nil(t, spec.managerGet(t).CommitTx(tx1), `"outer" tx should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
 			IsFindable(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e1))
@@ -273,9 +283,9 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := spec.resourceGet(t).BeginTx(spec.FixtureFactory.Context())
+			ctxInTx, err := spec.managerGet(t).BeginTx(spec.FixtureFactory.Context())
 			require.Nil(t, err)
-			t.Defer(spec.resourceGet(t).RollbackTx, ctxInTx)
+			t.Defer(spec.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
 		})
 		events := s.Let(`events`, func(t *testcase.T) interface{} {
@@ -307,11 +317,11 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
 			Waiter.Wait()
 			require.Empty(t, subscriberGet(t).Events())
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 		})
 
 		s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 
 			AsyncTester.Assert(t, func(tb testing.TB) {
 				require.ElementsMatch(tb, toBaseValues(eventsGet(t)), subscriberGet(t).Events())
@@ -319,7 +329,7 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		})
 
 		s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctxGet(t)))
 			Waiter.Wait()
 			require.Empty(t, subscriberGet(t).Events())
 		})
@@ -348,9 +358,9 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := spec.resourceGet(t).BeginTx(spec.FixtureFactory.Context())
+			ctxInTx, err := spec.managerGet(t).BeginTx(spec.FixtureFactory.Context())
 			require.Nil(t, err)
-			t.Defer(spec.resourceGet(t).RollbackTx, ctxInTx)
+			t.Defer(spec.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
 		})
 		events := s.Let(`events`, func(t *testcase.T) interface{} {
@@ -387,11 +397,11 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
 			Waiter.Wait()
 			require.Empty(t, subscriberGet(t).Events())
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 		})
 
 		s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 
 			AsyncTester.Assert(t, func(tb testing.TB) {
 				require.ElementsMatch(tb, toBaseValues(eventsGet(t)), subscriberGet(t).Events())
@@ -399,7 +409,7 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		})
 
 		s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctxGet(t)))
 			Waiter.Wait()
 			require.Empty(t, subscriberGet(t).Events())
 		})
@@ -420,9 +430,9 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := spec.resourceGet(t).BeginTx(spec.FixtureFactory.Context())
+			ctxInTx, err := spec.managerGet(t).BeginTx(spec.FixtureFactory.Context())
 			require.Nil(t, err)
-			t.Defer(spec.resourceGet(t).RollbackTx, ctxInTx)
+			t.Defer(spec.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
 		})
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -456,11 +466,11 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		s.Then(`before a commit, delete events will be absent`, func(t *testcase.T) {
 			Waiter.Wait()
 			require.Empty(t, subscriberGet(t).Events())
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 		})
 
 		s.Then(`after a commit, delete events will arrive to the subscriber`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 			AsyncTester.Assert(t, func(tb testing.TB) {
 				require.False(tb, subscriberGet(t).EventsLen() < 1)
 			})
@@ -468,7 +478,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		})
 
 		s.Then(`after a rollback, there won't be any delete events sent to the subscriber`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctxGet(t)))
 			require.Empty(t, subscriberGet(t).Events())
 		})
 	})
@@ -478,9 +488,9 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := spec.resourceGet(t).BeginTx(spec.FixtureFactory.Context())
+			ctxInTx, err := spec.managerGet(t).BeginTx(spec.FixtureFactory.Context())
 			require.Nil(t, err)
-			t.Defer(spec.resourceGet(t).RollbackTx, ctxInTx)
+			t.Defer(spec.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
 		})
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -514,7 +524,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		})
 
 		s.Then(`after a commit, delete all event will arrive to the subscriber`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).CommitTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 			AsyncTester.Assert(t, func(tb testing.TB) {
 				require.True(tb, subscriberGet(t).EventsLen() == 1,
 					`one event was expected, but didn't arrived`)
@@ -522,12 +532,12 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		})
 
 		s.Then(`after a rollback, there won't be any delete events sent to the subscriber`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctxGet(t)))
 			require.Empty(t, subscriberGet(t).Events())
 		})
 
 		s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-			require.Nil(t, spec.resourceGet(t).RollbackTx(ctxGet(t)))
+			require.Nil(t, spec.managerGet(t).RollbackTx(ctxGet(t)))
 			Waiter.Wait()
 			require.Empty(t, subscriberGet(t).Events())
 		})

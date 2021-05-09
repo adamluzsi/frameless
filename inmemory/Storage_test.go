@@ -86,15 +86,15 @@ func getMemorySpecsForT(subject *inmemory.Storage, T frameless.T, ff contracts.F
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
 		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject { return subject }, FixtureFactory: ff},
 		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
 		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
 		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return subject, subject }, FixtureFactory: ff},
 	}
 }
 
 func getMemorySpecs(subject *inmemory.Storage, T interface{}) []testcase.Contract {
-	return getMemorySpecsForT(subject,T, fixtures.FixtureFactory{})
+	return getMemorySpecsForT(subject, T, fixtures.FixtureFactory{})
 }
 
 func TestMemory(t *testing.T) {

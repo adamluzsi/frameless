@@ -44,6 +44,10 @@ type Storage struct {
 	idGeneratorInit sync.Once
 }
 
+type CommitProtocolManager interface {
+	frameless.OnePhaseCommitProtocol
+}
+
 func (s *Storage) IDGenerator() *IDGenerator {
 	s.idGeneratorInit.Do(func() {
 		s.idGenerator = newIDGenerator()
