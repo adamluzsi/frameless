@@ -6,9 +6,10 @@ import (
 )
 
 func GetDatabaseURL(tb testing.TB) string {
-	databaseURL, ok := os.LookupEnv(`DATABASE_URL`)
+	const envKey = `POSTGRES_DATABASE_URL`
+	databaseURL, ok := os.LookupEnv(envKey)
 	if !ok {
-		tb.Skip(`DATABASE_URL missing`)
+		tb.Skipf(`%s env variable is missing`, envKey)
 	}
 	return databaseURL
 }

@@ -1,7 +1,7 @@
 package reflects_test
 
 import (
-	contracts2 "github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/contracts"
 	"testing"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -22,7 +22,7 @@ func TestFullyQualifiedName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := contracts2.Creator{}
+			o := contracts.Creator{}
 
 			require.Equal(t, `"github.com/adamluzsi/frameless/contracts".Creator`, ExampleFullyQualifiedName(o))
 		})

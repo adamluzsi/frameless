@@ -15,6 +15,7 @@ import (
 type OnePhaseCommitProtocol struct {
 	T
 	Subject        func(testing.TB) OnePhaseCommitProtocolSubject
+
 	FixtureFactory FixtureFactory
 }
 

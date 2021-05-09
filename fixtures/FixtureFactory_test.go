@@ -1,14 +1,14 @@
 package fixtures_test
 
 import (
-	contracts2 "github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/contracts"
 	"testing"
 
 	"github.com/adamluzsi/frameless/fixtures"
 )
 
 func TestGenericFixtureFactory(t *testing.T) {
-	contracts2.FixtureFactorySpec{
+	contracts.FixtureFactorySpec{
 		Type:           GenericFixtureFactoryExampleType{},
 		FixtureFactory: fixtures.FixtureFactory{},
 	}.Test(t)
