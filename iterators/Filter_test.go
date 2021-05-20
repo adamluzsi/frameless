@@ -72,7 +72,6 @@ func TestFilter(t *testing.T) {
 			})
 
 			t.Run(`when filter function specify a pointer type`, func(t *testing.T) {
-				t.Skip()
 				type T struct{ Int int }
 				s := []*T{{Int: 1}, {Int: 2}, {Int: 3}, {Int: 4}}
 				i := iterators.Filter(iterators.NewSlice(s), func(t *T) bool { return 2 < t.Int })
