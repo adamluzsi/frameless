@@ -20,10 +20,11 @@ type EventLog struct {
 		DisableAsyncSubscriptionHandling bool
 	}
 
-	mutex             sync.RWMutex
-	events            []Event
-	subscriptions     map[ /* subID */ string]*Subscription
-	subscriptionsInit sync.Once
+	events []Event
+	eMutex sync.RWMutex
+
+	subscriptions map[ /* subID */ string]*Subscription
+	sMutex        sync.Mutex
 
 	// txNamespace allow multiple memory memory to manage transactions on the same context
 	txNamespace     string
@@ -55,22 +56,22 @@ func (s *EventLog) Append(ctx context.Context, event Event) error {
 	if tx, ok := s.LookupTx(ctx); ok && !tx.isDone() {
 		return tx.Append(ctx, event)
 	}
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.eMutex.Lock()
+	defer s.eMutex.Unlock()
 	s.events = append(s.events, event)
 	s.notifySubscriptions(event)
 	return nil
 }
 
 func (s *EventLog) Rewrite(mapper func(es []Event) []Event) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.eMutex.Lock()
+	defer s.eMutex.Unlock()
 	s.events = mapper(s.events)
 }
 
 func (s *EventLog) Events() []Event {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
+	s.eMutex.RLock()
+	defer s.eMutex.RUnlock()
 	return append([]Event{}, s.events...)
 }
 
@@ -284,10 +285,11 @@ func (s *Subscription) isClosed() bool {
 }
 
 func (s *EventLog) withSubscriptions(blk func(subscriptions map[ /* subID */ string]*Subscription)) {
-	s.subscriptionsInit.Do(func() {
+	s.sMutex.Lock()
+	defer s.sMutex.Unlock()
+	if s.subscriptions == nil {
 		s.subscriptions = make(map[string]*Subscription)
-	})
-
+	}
 	blk(s.subscriptions)
 }
 

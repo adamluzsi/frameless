@@ -6,6 +6,7 @@ sudo: false
 language: go
 
 install:
+  - go clean --modcache
   - go get ./...
   - go generate tools.go
   - go generate ./...
