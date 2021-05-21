@@ -40,7 +40,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 			subject := func(t *testcase.T) (frameless.Subscription, error) {
 				subscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), subscriberGet(t))
 				if err == nil && subscription != nil {
-					t.Let(subscriptionKey, subscription)
+					t.Set(subscriptionKey, subscription)
 					t.Defer(subscription.Close)
 				}
 				return subscription, err
@@ -54,7 +54,7 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 			ctxLetWithFixtureFactory(s, spec.FixtureFactory)
 
 			s.Let(subscriberKey, func(t *testcase.T) interface{} {
-				return newEventSubscriber(t)
+				return newEventSubscriber(t, `Create`)
 			})
 
 			s.Before(func(t *testcase.T) {
@@ -114,8 +114,8 @@ func (spec CreatorPublisher) Spec(tb testing.TB) {
 						return getSubscriber(t, othSubscriberKey)
 					}
 					s.Before(func(t *testcase.T) {
-						othSubscriber := newEventSubscriber(t)
-						t.Let(othSubscriberKey, othSubscriber)
+						othSubscriber := newEventSubscriber(t, `Create`)
+						t.Set(othSubscriberKey, othSubscriber)
 						newSubscription, err := resourceGet(t).SubscribeToCreate(ctxGet(t), othSubscriber)
 						require.Nil(t, err)
 						require.NotNil(t, newSubscription)

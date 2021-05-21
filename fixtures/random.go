@@ -1,11 +1,6 @@
 package fixtures
 
-import (
-	"math/rand"
-	"time"
+import "github.com/adamluzsi/testcase/fixtures"
 
-	"github.com/adamluzsi/testcase/fixtures/random"
-)
-
-var Random = random.NewRandom(rand.NewSource(time.Now().Unix()))
-var SecureRandom = random.NewRandom(random.CryptoSeed{})
+var Random = fixtures.Random
+var SecureRandom = fixtures.SecureRandom

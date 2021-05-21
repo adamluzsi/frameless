@@ -13,6 +13,7 @@ type FixtureFactory interface {
 	// Create create a newEntity struct instance based on the received input struct type.
 	// Create also populate the struct field with dummy values.
 	// It is expected that the newly created fixture will have no content for extID field.
+	//Create(testing.TB, context.Context, any) any
 	Create(T interface{}) (ptr interface{})
 	// Context able to provide the specs with a Context object for a certain entity Type.
 	Context() (ctx context.Context)

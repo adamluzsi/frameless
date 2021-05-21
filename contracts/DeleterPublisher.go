@@ -57,7 +57,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
 		subscription, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
-			t.Let(subscriptionKey, subscription)
+			t.Set(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
 		}
 		return subscription, err
@@ -72,8 +72,10 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 		return spec.context()
 	})
 
+	const subName = `DeleteByID`
+
 	s.Let(subscriberKey, func(t *testcase.T) interface{} {
-		return newEventSubscriber(t)
+		return newEventSubscriber(t, subName)
 	})
 
 	const entityKey = `entity`
@@ -131,8 +133,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteByID(s *testcase.Spec) {
 				return getSubscriber(t, othSubscriberKey)
 			}
 			s.Before(func(t *testcase.T) {
-				othSubscriber := newEventSubscriber(t)
-				t.Let(othSubscriberKey, othSubscriber)
+				othSubscriber := newEventSubscriber(t, subName)
+				t.Set(othSubscriberKey, othSubscriber)
 				sub, err := spec.resourceGet(t).SubscribeToDeleteByID(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
@@ -187,7 +189,7 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
 		subscription, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
-			t.Let(subscriptionKey, subscription)
+			t.Set(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
 		}
 		return subscription, err
@@ -198,8 +200,10 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 		require.NotNil(t, sub)
 	}
 
+	const subName = `DeleteAll`
+
 	s.Let(subscriberKey, func(t *testcase.T) interface{} {
-		return newEventSubscriber(t)
+		return newEventSubscriber(t, subName)
 	})
 
 	ctx.Let(s, func(t *testcase.T) interface{} {
@@ -233,8 +237,8 @@ func (spec DeleterPublisher) specSubscribeToDeleteAll(s *testcase.Spec) {
 				return getSubscriber(t, othSubscriberKey)
 			}
 			s.Before(func(t *testcase.T) {
-				othSubscriber := newEventSubscriber(t)
-				t.Let(othSubscriberKey, othSubscriber)
+				othSubscriber := newEventSubscriber(t, subName)
+				t.Set(othSubscriberKey, othSubscriber)
 				sub, err := spec.resourceGet(t).SubscribeToDeleteAll(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)

@@ -131,14 +131,15 @@ func toBaseValues(in []interface{}) []interface{} {
 	return baseEntities
 }
 
-func newEventSubscriber(tb testing.TB) *eventSubscriber {
-	return &eventSubscriber{TB: tb}
+func newEventSubscriber(tb testing.TB, name string) *eventSubscriber {
+	return &eventSubscriber{TB: tb, Name: name}
 }
 
 type eventSubscriber struct {
-	TB        testing.TB
-	Name      string
-	ReturnErr error
+	TB         testing.TB
+	Name       string
+	ReturnErr  error
+	ContextErr error
 
 	events []interface{}
 	errors []error
@@ -148,7 +149,7 @@ type eventSubscriber struct {
 func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.TB.Logf(`%s %#v`, s.Name, event)
+	s.TB.Logf(`name:%q event:%#v`, s.Name, event)
 	s.verifyContext(ctx)
 	s.events = append(s.events, event)
 	return s.ReturnErr
@@ -173,13 +174,11 @@ func (s *eventSubscriber) Events() []interface{} {
 }
 
 func (s *eventSubscriber) verifyContext(ctx context.Context) {
-	require.NotNil(s.TB, ctx)
-	select {
-	case <-ctx.Done():
-		s.TB.Fatal(`it was not expected to have a ctx finished`)
-	default:
+	if s.ContextErr == nil {
+		return
 	}
-	require.Nil(s.TB, ctx.Err())
+	require.NotNil(s.TB, ctx)
+	require.Equal(s.TB, s.ContextErr, ctx.Err())
 }
 
 const (
@@ -206,10 +205,16 @@ func ctxLetWithFixtureFactory(s *testcase.Spec, ff FixtureFactory) testcase.Var 
 }
 
 var (
+	subscribedEvent = testcase.Var{
+		Name: `subscribed event`,
+		Init: func(t *testcase.T) interface{} {
+			return `unknown`
+		},
+	}
 	subscriber = testcase.Var{
 		Name: subscriberKey,
 		Init: func(t *testcase.T) interface{} {
-			return newEventSubscriber(t)
+			return newEventSubscriber(t, subscribedEvent.Get(t).(string))
 		},
 	}
 	subscription = testcase.Var{

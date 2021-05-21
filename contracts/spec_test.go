@@ -55,7 +55,7 @@ func TestContracts(t *testing.T) {
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
 	testcase.RunContract(t, getContracts(Entity{}, ff, func(tb testing.TB) getContractsSubject {
-		return inmemory.NewStorage(Entity{})
+		return inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
 	})...)
 }
 
@@ -107,7 +107,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 }
 
 func NewEventuallyConsistentStorage(T interface{}) *EventuallyConsistentStorage {
-	e := &EventuallyConsistentStorage{Storage: inmemory.NewStorage(T)}
+	e := &EventuallyConsistentStorage{Storage: inmemory.NewStorage(T, inmemory.NewEventLog())}
 	e.jobs.queue = make(chan func(), 100)
 	e.Spawn()
 	return e
@@ -205,7 +205,7 @@ func (e *EventuallyConsistentStorage) BeginTx(ctx context.Context) (context.Cont
 		return nil, err
 	}
 	ctx = context.WithValue(ctx, eventuallyConsistentStorageTxKey{}, &eventuallyConsistentStorageTxValue{})
-	return e.Storage.BeginTx(ctx)
+	return e.EventLog.BeginTx(ctx)
 }
 
 func (e *EventuallyConsistentStorage) errOnDoneTx(ctx context.Context) error {
@@ -225,7 +225,7 @@ func (e *EventuallyConsistentStorage) CommitTx(tx context.Context) error {
 		v.WaitGroup.Wait()
 		v.done = true
 	}
-	return e.Storage.CommitTx(tx)
+	return e.EventLog.CommitTx(tx)
 }
 
 func (e *EventuallyConsistentStorage) RollbackTx(tx context.Context) error {
@@ -233,7 +233,7 @@ func (e *EventuallyConsistentStorage) RollbackTx(tx context.Context) error {
 		v.WaitGroup.Wait()
 		v.done = true
 	}
-	return e.Storage.RollbackTx(tx)
+	return e.EventLog.RollbackTx(tx)
 }
 
 func (e *EventuallyConsistentStorage) worker(ctx context.Context, wg *sync.WaitGroup) {
@@ -259,13 +259,13 @@ func (e *EventuallyConsistentStorage) eventually(ctx context.Context, fn func(ct
 		return errors.New(`closed`)
 	}
 
-	tx, err := e.Storage.BeginTx(ctx)
+	tx, err := e.EventLog.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 
 	if err := fn(tx); err != nil {
-		_ = e.Storage.RollbackTx(tx)
+		_ = e.EventLog.RollbackTx(tx)
 		return err
 	}
 
@@ -286,7 +286,7 @@ func (e *EventuallyConsistentStorage) eventually(ctx context.Context, fn func(ct
 			min = int(time.Microsecond)
 		)
 		time.Sleep(time.Duration(fixtures.Random.IntBetween(min, max)))
-		_ = e.Storage.CommitTx(tx)
+		_ = e.EventLog.CommitTx(tx)
 	}
 
 	return nil
