@@ -25,7 +25,7 @@ env:
     - PGUSER=postgres
     - PGPASSWORD=postgres
     - PGPORT=5432
-    - DATABASE_URL="postgres://postgres:postgres@localhost:5432/travis_ci?sslmode=disable"
+    - POSTGRES_DATABASE_URL="postgres://postgres:postgres@localhost:5432/travis_ci?sslmode=disable"
 
 os:
   - linux
