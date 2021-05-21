@@ -64,7 +64,7 @@ func TestForEach(t *testing.T) {
 					s.Before(func(t *testcase.T) {
 						i := iterators.NewMock(t.I(`iterator`).(iterators.Interface))
 						i.StubDecode = func(interface{}) error { return errors.New(decodeErrMsg) }
-						t.Let(`iterator`, i)
+						t.Set(`iterator`, i)
 					})
 
 					s.Then(`it will return the decode error back`, func(t *testcase.T) {
@@ -81,7 +81,7 @@ func TestForEach(t *testing.T) {
 					s.Before(func(t *testcase.T) {
 						i := iterators.NewMock(t.I(`iterator`).(iterators.Interface))
 						i.StubClose = func() error { return errors.New(closeErrMsg) }
-						t.Let(`iterator`, i)
+						t.Set(`iterator`, i)
 					})
 
 					s.Then(`it will propagate back the error`, func(t *testcase.T) {

@@ -2,21 +2,15 @@ package inmemory_test
 
 import (
 	"context"
-	"fmt"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/inmemory"
-	"os"
-	"path/filepath"
-	"reflect"
-	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/extid"
+	"github.com/adamluzsi/frameless/inmemory"
+
 	"github.com/adamluzsi/testcase"
 
 	"github.com/stretchr/testify/require"
@@ -30,17 +24,15 @@ var _ interface {
 	frameless.Finder
 	frameless.Updater
 	frameless.Deleter
+	frameless.CreatorPublisher
+	frameless.UpdaterPublisher
+	frameless.DeleterPublisher
 	frameless.OnePhaseCommitProtocol
 } = &inmemory.Storage{}
 
-var (
-	_ inmemory.MemoryEventManager = &inmemory.Storage{}
-	_ inmemory.MemoryEventManager = &inmemory.MemoryTransaction{}
-)
-
 func TestStorage_smokeTest(t *testing.T) {
 	var (
-		subject = inmemory.NewStorage(Entity{})
+		subject = inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -80,7 +72,7 @@ func TestStorage_smokeTest(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getMemorySpecsForT(subject *inmemory.Storage, T frameless.T, ff contracts.FixtureFactory) []testcase.Contract {
+func getStorageSpecsForT(subject *inmemory.Storage, T frameless.T, ff contracts.FixtureFactory) []testcase.Contract {
 	return []testcase.Contract{
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
@@ -93,12 +85,12 @@ func getMemorySpecsForT(subject *inmemory.Storage, T frameless.T, ff contracts.F
 	}
 }
 
-func getMemorySpecs(subject *inmemory.Storage, T interface{}) []testcase.Contract {
-	return getMemorySpecsForT(subject, T, fixtures.FixtureFactory{})
+func getStoragerySpecs(subject *inmemory.Storage, T interface{}) []testcase.Contract {
+	return getStorageSpecsForT(subject, T, fixtures.FixtureFactory{})
 }
 
-func TestMemory(t *testing.T) {
-	for _, spec := range getMemorySpecs(inmemory.NewStorage(Entity{}), Entity{}) {
+func TestStorage(t *testing.T) {
+	for _, spec := range getStoragerySpecs(inmemory.NewStorage(Entity{}, inmemory.NewEventLog()), Entity{}) {
 		spec.Test(t)
 	}
 }
@@ -107,8 +99,8 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	ff := fixtures.FixtureFactory{}
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
-		subject1 := inmemory.NewStorage(Entity{})
-		subject2 := inmemory.NewStorage(Entity{})
+		subject1 := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
+		subject2 := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
 
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
@@ -129,15 +121,15 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 
 		t.Log(`but after subject 1 commit the tx`)
 		require.Nil(t, subject1.CommitTx(ctx))
-		t.Log(`subject 1 can see the new entity`)
+		t.Log(`subject 1 can see the newT entity`)
 		found, err = subject1.FindByID(context.Background(), &Entity{}, entity.ID)
 		require.Nil(t, err)
 		require.True(t, found)
 	})
 
 	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
-		subject1 := inmemory.NewStorage(Entity{})
-		subject2 := inmemory.NewStorage(Entity{})
+		subject1 := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
+		subject2 := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
 
 		ctx := ff.Context()
 		e1 := ff.Create(Entity{}).(*Entity)
@@ -192,36 +184,29 @@ func TestStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 }
 
 func TestStorage_Options_EventLogging_disable(t *testing.T) {
-	subject := inmemory.NewStorage(Entity{})
+	memory := inmemory.NewEventLog()
+	subject := inmemory.NewStorage(Entity{}, memory)
 	subject.Options.DisableEventLogging = true
 
-	for _, spec := range getMemorySpecs(subject, Entity{}) {
+	for _, spec := range getStoragerySpecs(subject, Entity{}) {
 		spec.Test(t)
 	}
 
-	require.Empty(t, subject.Events(),
+	require.Empty(t, memory.Events(),
 		`after all the specs, the memory storage was expected to be empty.`+
 			` If the storage has values, it means something is not cleaning up properly in the specs.`)
 }
 
 func TestStorage_Options_AsyncSubscriptionHandling(t *testing.T) {
-	SpecMemory_Options_AsyncSubscriptionHandling(t)
-}
-
-func BenchmarkMemory_Options_AsyncSubscriptionHandling(b *testing.B) {
-	SpecMemory_Options_AsyncSubscriptionHandling(b)
-}
-
-func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
-	s := testcase.NewSpec(tb)
+	s := testcase.NewSpec(t)
 
 	var subscriber = func(t *testcase.T) *HangingSubscriber { return t.I(`HangingSubscriber`).(*HangingSubscriber) }
 	s.Let(`HangingSubscriber`, func(t *testcase.T) interface{} {
 		return NewHangingSubscriber()
 	})
 
-	var newMemory = func(t *testcase.T) *inmemory.Storage {
-		s := inmemory.NewStorage(Entity{})
+	var newStorage = func(t *testcase.T) *inmemory.Storage {
+		s := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
 		ctx := context.Background()
 		subscription, err := s.SubscribeToCreate(ctx, subscriber(t))
 		require.Nil(t, err)
@@ -239,8 +224,8 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 	}
 
 	var subject = func(t *testcase.T) *inmemory.Storage {
-		s := newMemory(t)
-		s.Options.DisableAsyncSubscriptionHandling = t.I(`DisableAsyncSubscriptionHandling`).(bool)
+		s := newStorage(t)
+		s.EventLog.Options.DisableAsyncSubscriptionHandling = t.I(`DisableAsyncSubscriptionHandling`).(bool)
 		return s
 	}
 
@@ -325,7 +310,7 @@ func SpecMemory_Options_AsyncSubscriptionHandling(tb testing.TB) {
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			testcase.RunContract(t, getMemorySpecs(subject(t), Entity{})...)
+			testcase.RunContract(t, getStoragerySpecs(subject(t), Entity{})...)
 		})
 	}
 
@@ -370,490 +355,71 @@ func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
 	return nil
 }
 
-func TestStorage_historyLogging(t *testing.T) {
-	s := testcase.NewSpec(t)
+func TestStorage_NewIDFunc(t *testing.T) {
+	t.Run(`when NewID is absent`, func(t *testing.T) {
+		storage := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
+		storage.NewID = nil
 
-	getStorage := func(t *testcase.T) *inmemory.Storage { return t.I(`storage`).(*inmemory.Storage) }
-	s.Let(`storage`, func(t *testcase.T) interface{} {
-		return inmemory.NewStorage(Entity{})
+		ptr := &Entity{Data: "42"}
+		require.Nil(t, storage.Create(context.Background(), ptr))
+		require.NotEmpty(t, ptr.ID)
 	})
 
-	logContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
-		requireLogContains(tb, logMessages, msgParts, true)
-	}
-
-	logNotContains := func(tb testing.TB, logMessages []string, msgParts ...string) {
-		requireLogContains(tb, logMessages, msgParts, false)
-	}
-
-	logCount := func(tb testing.TB, logMessages []string, expected string) int {
-		var total int
-		for _, logMessage := range logMessages {
-			total += strings.Count(logMessage, expected)
-		}
-		return total
-	}
-
-	const (
-		createEventLogName     = `Create`
-		updateEventLogName     = `Update`
-		deleteByIDEventLogName = `DeleteByID`
-		deleteAllLogEventName  = `DeleteAll`
-		beginTxLogEventName    = `BeginTx`
-		commitTxLogEventName   = `CommitTx`
-		rollbackTxLogEventName = `RollbackTx`
-	)
-
-	triggerMutatingEvents := func(t *testcase.T, ctx context.Context) {
-		s := getStorage(t)
-		e := Entity{Data: `42`}
-		require.Nil(t, s.Create(ctx, &e))
-		e.Data = `foo/baz/bar`
-		require.Nil(t, s.Update(ctx, &e))
-		require.Nil(t, s.DeleteByID(ctx, e.ID))
-		require.Nil(t, s.DeleteAll(ctx))
-	}
-
-	thenMutatingEventsLogged := func(s *testcase.Spec, subject func(t *testcase.T) []string) {
-		s.Then(`it will log out which mutate the state of the storage`, func(t *testcase.T) {
-			logContains(t, subject(t),
-				createEventLogName,
-				updateEventLogName,
-				deleteByIDEventLogName,
-				deleteAllLogEventName,
-			)
-		})
-	}
-
-	s.Describe(`#LogHistory`, func(s *testcase.Spec) {
-		var subject = func(t *testcase.T) []string {
-			l := &fakeLogger{}
-			getStorage(t).LogHistory(l)
-			return l.logs
+	t.Run(`when NewID is provided`, func(t *testing.T) {
+		storage := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
+		expectedID := fixtures.Random.String()
+		storage.NewID = func(ctx context.Context) (interface{}, error) {
+			return expectedID, nil
 		}
 
-		s.After(func(t *testcase.T) {
-			if t.Failed() {
-				getStorage(t).LogHistory(t)
-			}
-		})
-
-		s.When(`nothing commit with the storage`, func(s *testcase.Spec) {
-			s.Then(`it won't log anything`, func(t *testcase.T) {
-				require.Empty(t, subject(t))
-			})
-		})
-
-		s.When(`storage used without tx`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				triggerMutatingEvents(t, context.Background())
-			})
-
-			thenMutatingEventsLogged(s, subject)
-
-			s.Then(`there should be no commit related notes`, func(t *testcase.T) {
-				logNotContains(t, subject(t), beginTxLogEventName, commitTxLogEventName)
-			})
-		})
-
-		s.When(`storage used through a commit tx`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				s := getStorage(t)
-				ctx, err := s.BeginTx(context.Background())
-				require.Nil(t, err)
-				triggerMutatingEvents(t, ctx)
-				require.Nil(t, s.CommitTx(ctx))
-			})
-
-			thenMutatingEventsLogged(s, subject)
-
-			s.Then(`it will contains commit mentions in the log message`, func(t *testcase.T) {
-				logContains(t, subject(t),
-					beginTxLogEventName,
-					commitTxLogEventName,
-				)
-			})
-		})
-	})
-
-	s.Describe(`#LogContextHistory`, func(s *testcase.Spec) {
-		getCTX := func(t *testcase.T) context.Context { return t.I(`ctx`).(context.Context) }
-		s.Let(`ctx`, func(t *testcase.T) interface{} {
-			return context.Background()
-		})
-		var subject = func(t *testcase.T) []string {
-			l := &fakeLogger{}
-			getStorage(t).LogContextHistory(l, getCTX(t))
-			return l.logs
-		}
-
-		s.After(func(t *testcase.T) {
-			if t.Failed() {
-				getStorage(t).LogContextHistory(t, getCTX(t))
-			}
-		})
-
-		s.When(`nothing commit with the storage`, func(s *testcase.Spec) {
-			s.Then(`it won't log anything`, func(t *testcase.T) {
-				require.Empty(t, subject(t))
-			})
-		})
-
-		s.When(`storage used without tx`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				triggerMutatingEvents(t, getCTX(t))
-			})
-
-			thenMutatingEventsLogged(s, subject)
-
-			s.Then(`there should be no commit related notes`, func(t *testcase.T) {
-				logNotContains(t, subject(t), beginTxLogEventName, commitTxLogEventName)
-			})
-		})
-
-		s.When(`we are in transaction`, func(s *testcase.Spec) {
-			s.Let(`ctx`, func(t *testcase.T) interface{} {
-				s := getStorage(t)
-				ctx, err := s.BeginTx(context.Background())
-				require.Nil(t, err)
-				return ctx
-			})
-
-			s.And(`events triggered that affects the storage state`, func(s *testcase.Spec) {
-				s.Before(func(t *testcase.T) {
-					triggerMutatingEvents(t, getCTX(t))
-				})
-
-				thenMutatingEventsLogged(s, subject)
-
-				s.Then(`begin tx logged`, func(t *testcase.T) {
-					logContains(t, subject(t), beginTxLogEventName)
-				})
-
-				s.Then(`no commit yet`, func(t *testcase.T) {
-					logNotContains(t, subject(t), commitTxLogEventName)
-				})
-
-				s.And(`after commit`, func(s *testcase.Spec) {
-					s.Before(func(t *testcase.T) {
-						require.Nil(t, getStorage(t).CommitTx(getCTX(t)))
-					})
-
-					thenMutatingEventsLogged(s, subject)
-
-					s.Then(`begin has a corresponding commit`, func(t *testcase.T) {
-						logContains(t, subject(t), beginTxLogEventName, commitTxLogEventName)
-					})
-
-					s.Then(`there is no duplicate events logged`, func(t *testcase.T) {
-						logs := subject(t)
-						require.Equal(t, 1, logCount(t, logs, beginTxLogEventName))
-						require.Equal(t, 1, logCount(t, logs, commitTxLogEventName))
-					})
-				})
-
-				s.And(`after rollback`, func(s *testcase.Spec) {
-					s.Before(func(t *testcase.T) {
-						require.Nil(t, getStorage(t).RollbackTx(getCTX(t)))
-					})
-
-					thenMutatingEventsLogged(s, subject)
-
-					s.Then(`it will have begin and rollback`, func(t *testcase.T) {
-						logContains(t, subject(t), beginTxLogEventName, rollbackTxLogEventName)
-					})
-
-					s.Then(`there is no duplicate events logged`, func(t *testcase.T) {
-						logs := subject(t)
-						require.Equal(t, 1, logCount(t, logs, beginTxLogEventName))
-					})
-				})
-			})
-
-			s.Then(`begin tx logged`, func(t *testcase.T) {
-				logContains(t, subject(t), beginTxLogEventName)
-			})
-
-			s.Then(`no commit yet`, func(t *testcase.T) {
-				logNotContains(t, subject(t), commitTxLogEventName)
-			})
-		})
-	})
-
-	s.Describe(`#DisableRelativePathResolvingForTrace`, func(s *testcase.Spec) {
-		var subject = func(t *testcase.T) []string {
-			l := &fakeLogger{}
-			getStorage(t).LogHistory(l)
-			t.Log(l.logs)
-			return l.logs
-		}
-
-		s.Before(func(t *testcase.T) {
-			t.Log(`given we triggered an event that should have trace`)
-			getStorage(t).Create(context.Background(), &Entity{Data: `example data #1`})
-
-			_, filePath, _, ok := runtime.Caller(0)
-			require.True(t, ok)
-			t.Let(`trace-file-base`, filepath.Base(filePath))
-		})
-
-		s.Let(`wd`, func(t *testcase.T) interface{} {
-			wd, err := os.Getwd()
-			if err != nil {
-				t.Skip(`wd can't be resolved on this platform`)
-			}
-			return wd
-		})
-
-		s.When(`by default relative path resolving is expected`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				getStorage(t).Options.DisableRelativePathResolvingForTrace = false
-			})
-
-			s.And(`event triggered with from go core library (like with reflection)`, func(s *testcase.Spec) {
-				s.Before(func(t *testcase.T) {
-					rvfn := reflect.ValueOf(getStorage(t).Create)
-
-					rvfn.Call([]reflect.Value{
-						reflect.ValueOf(context.Background()),
-						reflect.ValueOf(&Entity{Data: `example data #2`}),
-					})
-				})
-
-				s.Then(`the trace should not contain the core lib`, func(t *testcase.T) {
-					logNotContains(t, subject(t), runtime.GOROOT())
-				})
-
-				s.Then(`trace points to the real origin path`, func(t *testcase.T) {
-					logs := subject(t)
-					require.Greater(t, len(logs), 1)
-					last := logs[len(logs)-1]
-					require.Contains(t, last, t.I(`trace-file-base`))
-				})
-			})
-
-			s.Then(`the trace paths should be relative`, func(t *testcase.T) {
-				logNotContains(t, subject(t), t.I(`wd`).(string))
-			})
-		})
-
-		s.When(`relative path resolving is disabled`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				getStorage(t).Options.DisableRelativePathResolvingForTrace = true
-			})
-
-			s.Then(`the trace paths should be relative`, func(t *testcase.T) {
-				logContains(t, subject(t), t.I(`wd`).(string))
-			})
-		})
+		ptr := &Entity{Data: "42"}
+		require.Nil(t, storage.Create(context.Background(), ptr))
+		require.Equal(t, expectedID, ptr.ID)
 	})
 }
 
-func TestStorage_RegisterIDGenerator(t *testing.T) {
-	var (
-		createAndReturnID = func(t *testcase.T, ptr interface{}) (interface{}, error) {
-			err := t.I(`memory`).(*inmemory.Storage).Create(context.Background(), ptr)
-			id, _ := extid.Lookup(ptr)
-			return id, err
-		}
-		subject = func(t *testcase.T) (interface{}, error) {
-			return createAndReturnID(t, t.I(`ptr`))
-		}
-		onSuccess = func(t *testcase.T) interface{} {
-			id, err := subject(t)
-			require.Nil(t, err)
-			t.Logf(`%T`, id)
-			return id
-		}
-	)
+func TestStorage_CompressEvents_smokeTest(t *testing.T) {
+	el := inmemory.NewEventLog()
 
-	s := testcase.NewSpec(t)
-	s.Let(`memory`, func(t *testcase.T) interface{} {
-		return inmemory.NewStorage(Entity{})
-	})
-
-	var thenGeneratedIDsAreUnique = func(s *testcase.Spec) {
-		s.Then(`generated ids are more or less unique in small number`, func(t *testcase.T) {
-			T := reflects.BaseTypeOf(t.I(`ptr`))
-
-			var ids []interface{}
-			for i := 0; i < 128; i++ {
-				id, err := createAndReturnID(t, reflect.New(T).Interface())
-				require.Nil(t, err)
-				require.NotContains(t, ids, id)
-				ids = append(ids, id)
-			}
-		})
+	type A struct {
+		ID string `ext:"ID"`
+		V  string
+	}
+	type B struct {
+		ID string `ext:"ID"`
+		V  string
 	}
 
-	var commonlySupportedIDTypes = func(s *testcase.Spec) {
+	ctx := context.Background()
+	aS := inmemory.NewStorage(A{}, el)
+	bS := inmemory.NewStorage(B{}, el)
+	bS.Options.DisableEventLogging = true
 
-		s.And(`and entity id type is string`, func(s *testcase.Spec) {
-			type EntWithStringIDField struct {
-				ID string `ext:"ID"`
-			}
+	a := &A{V: "42"}
+	require.Nil(t, aS.Create(ctx, a))
+	a.V = "24"
+	require.Nil(t, aS.Update(ctx, a))
+	require.Nil(t, aS.DeleteByID(ctx, a.ID))
+	require.Len(t, el.Events(), 3)
 
-			s.Let(`ptr`, func(t *testcase.T) interface{} {
-				return &EntWithStringIDField{}
-			})
+	b := &B{V: "4242"}
+	require.Nil(t, bS.Create(ctx, b))
+	require.Len(t, el.Events(), 4)
+	b.V = "2424"
+	require.Nil(t, bS.Update(ctx, b))
+	require.Len(t, el.Events(), 4)
+	require.Nil(t, bS.DeleteByID(ctx, b.ID))
+	require.Len(t, el.Events(), 3)
 
-			s.Then(`it should create a random string value`, func(t *testcase.T) {
-				id, ok := onSuccess(t).(string)
-				require.True(t, ok)
-				require.NotEmpty(t, id)
-			})
-
-			thenGeneratedIDsAreUnique(s)
-		})
-
-		s.And(`and entity id type is int`, func(s *testcase.Spec) {
-			type EntWithIntIDField struct {
-				ID int `ext:"ID"`
-			}
-
-			s.Let(`ptr`, func(t *testcase.T) interface{} {
-				return &EntWithIntIDField{}
-			})
-
-			s.Then(`it should create a random string value`, func(t *testcase.T) {
-				id, ok := onSuccess(t).(int)
-				require.True(t, ok)
-				require.NotEmpty(t, id)
-			})
-
-			thenGeneratedIDsAreUnique(s)
-		})
-
-		s.And(`and entity id type is int64`, func(s *testcase.Spec) {
-			type EntWithInt64IDField struct {
-				ID int64 `ext:"ID"`
-			}
-
-			s.Let(`ptr`, func(t *testcase.T) interface{} {
-				return &EntWithInt64IDField{}
-			})
-
-			s.Then(`it should create a random string value`, func(t *testcase.T) {
-				id, ok := onSuccess(t).(int64)
-				require.True(t, ok)
-				require.NotEmpty(t, id)
-			})
-
-			thenGeneratedIDsAreUnique(s)
-		})
-
-		s.And(`and entity id type is an unregistered type`, func(s *testcase.Spec) {
-			type (
-				UnregisteredIDType         struct{}
-				EntWithUnregisteredIDField struct {
-					ID UnregisteredIDType `ext:"ID"`
-				}
-			)
-
-			s.Let(`ptr`, func(t *testcase.T) interface{} {
-				return &EntWithUnregisteredIDField{}
-			})
-
-			s.Then(`it should create an error`, func(t *testcase.T) {
-				_, err := subject(t)
-				require.Error(t, err)
-			})
-		})
-	}
-
-	s.When(`nothing registered`, func(s *testcase.Spec) {
-		commonlySupportedIDTypes(s)
-	})
-
-	s.When(`custom id type is registered`, func(s *testcase.Spec) {
-		type CustomIDType struct {
-			V string
-		}
-
-		type EntWithCustomIDType struct {
-			ID CustomIDType `ext:"ID"`
-		}
-
-		s.Before(func(t *testcase.T) {
-			t.I(`memory`).(*inmemory.Storage).IDGenerator().Register(EntWithCustomIDType{}, func() (interface{}, error) {
-				return CustomIDType{V: fixtures.Random.String()}, nil
-			})
-		})
-
-		s.Let(`ptr`, func(t *testcase.T) interface{} {
-			return &EntWithCustomIDType{}
-		})
-
-		s.Then(`it should use the assign id successfully`, func(t *testcase.T) {
-			id, ok := onSuccess(t).(CustomIDType)
-			require.True(t, ok)
-			require.NotEmpty(t, id.V)
-		})
-
-		thenGeneratedIDsAreUnique(s)
-	})
-}
-
-func requireLogContains(tb testing.TB, logMessages []string, msgParts []string, shouldContain bool) {
-	var testingLogs []func()
-	defer func() {
-		if tb.Failed() {
-			for _, log := range testingLogs {
-				log()
-			}
-		}
-	}()
-	testLog := func(args ...interface{}) {
-		testingLogs = append(testingLogs, func() {
-			tb.Log(args...)
-		})
-	}
-
-	var logMessagesIndex int
-	for _, msgPart := range msgParts {
-		var matched bool
-	matching:
-		for !matched {
-			if len(logMessages) <= logMessagesIndex {
-				break matching
-			}
-
-			if strings.Contains(logMessages[logMessagesIndex], msgPart) {
-				matched = true
-				break matching
-			}
-
-			logMessagesIndex++
-		}
-
-		if (shouldContain && matched) || (!shouldContain && !matched) {
-			testLog(fmt.Sprintf(`%s matched`, msgPart))
-			continue
-		}
-
-		var format = `message part was expected to not found but logs contained: %s`
-		if shouldContain {
-			format = `message part was expected but not found: %s`
-		}
-		tb.Fatal(fmt.Sprintf(format, msgPart))
-	}
-}
-
-type fakeLogger struct {
-	logs []string
-}
-
-func (l *fakeLogger) Log(args ...interface{}) {
-	for _, arg := range args {
-		l.logs = append(l.logs, fmt.Sprint(arg))
-	}
+	aS.CompressEvents()
+	require.Len(t, el.Events(), 0, `both storage events are compressed, the event log should be empty`)
 }
 
 func TestStorage_LookupTx(t *testing.T) {
-	s := inmemory.NewStorage(Entity{})
+	s := inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
-		_, ok := s.LookupTx(context.Background())
+		_, ok := s.EventLog.LookupTx(context.Background())
 		require.False(t, ok)
 	})
 
@@ -871,50 +437,26 @@ func TestStorage_LookupTx(t *testing.T) {
 		require.Nil(t, err)
 		require.False(t, found)
 
-		tx, ok := s.LookupTx(ctx)
+		_, ok := s.EventLog.LookupTx(ctx)
 		require.True(t, ok)
-		_, ok = tx.View()[s.EntityTypeNameFor(Entity{})][e.ID]
+		_, ok = s.View(ctx)[e.ID]
 		require.True(t, ok)
-	})
-}
-
-func TestStorage_InTx_whenContextCancelled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	require.Equal(t, context.Canceled,
-		inmemory.NewStorage(Entity{}).InTx(ctx, func(tx *inmemory.MemoryTransaction) error { return nil }))
-}
-
-func BenchmarkMemory(b *testing.B) {
-	b.Run(`with event log`, func(b *testing.B) {
-		for _, spec := range getMemorySpecs(inmemory.NewStorage(Entity{}), Entity{}) {
-			spec.Benchmark(b)
-		}
-	})
-
-	b.Run(`without event log`, func(b *testing.B) {
-		subject := inmemory.NewStorage(Entity{})
-		subject.Options.DisableEventLogging = true
-		for _, spec := range getMemorySpecs(subject, Entity{}) {
-			spec.Benchmark(b)
-		}
 	})
 }
 
 type Entity struct {
-	ID   string `ext:"ID"`
+	ID   string `ext:"Namespace"`
 	Data string
 }
 
 func TestStorage_SaveEntityWithCustomKeyType(t *testing.T) {
-	for _, spec := range getMemorySpecsForT(inmemory.NewStorage(EntityWithStructID{}), EntityWithStructID{}, FFForEntityWithStructID{}) {
+	for _, spec := range getStorageSpecsForT(inmemory.NewStorage(EntityWithStructID{}, inmemory.NewEventLog()), EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}
 }
 
 type EntityWithStructID struct {
-	ID   struct{ V int } `ext:"ID"`
+	ID   struct{ V int } `ext:"Namespace"`
 	Data string
 }
 

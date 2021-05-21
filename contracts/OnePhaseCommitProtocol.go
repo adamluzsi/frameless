@@ -19,14 +19,7 @@ type OnePhaseCommitProtocol struct {
 }
 
 func (spec OnePhaseCommitProtocol) manager() testcase.Var {
-	return testcase.Var{
-		Name: "commit protocol manager",
-		Init: func(t *testcase.T) interface{} {
-			commitProtocol, resource := spec.Subject(t)
-			spec.resource().Set(t, resource)
-			return commitProtocol
-		},
-	}
+	return testcase.Var{Name: "commit protocol manager"}
 }
 
 func (spec OnePhaseCommitProtocol) managerGet(t *testcase.T) frameless.OnePhaseCommitProtocol {
@@ -34,13 +27,7 @@ func (spec OnePhaseCommitProtocol) managerGet(t *testcase.T) frameless.OnePhaseC
 }
 
 func (spec OnePhaseCommitProtocol) resource() testcase.Var {
-	return testcase.Var{
-		Name: "commit protocol managed resource",
-		Init: func(t *testcase.T) interface{} {
-			spec.manager().Get(t) // lazy load init
-			return spec.resource().Get(t)
-		},
-	}
+	return testcase.Var{Name: "commit protocol managed resource"}
 }
 
 func (spec OnePhaseCommitProtocol) resourceGet(t *testcase.T) CRD {
@@ -60,7 +47,11 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 	defer s.Finish()
 	s.HasSideEffect()
 
-	spec.resource().Let(s, nil)
+	s.Before(func(t *testcase.T) {
+		manager, crd := spec.Subject(t)
+		spec.manager().Set(t, manager)
+		spec.resource().Set(t, crd)
+	})
 
 	// clean ahead before testing suite
 	once := &sync.Once{}
@@ -80,7 +71,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 
-		s.Test(`BeginTx+CommitTx -> Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
+		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			tx, err := spec.managerGet(t).BeginTx(spec.Context())
 			require.Nil(t, err)
 			ptr := spec.FixtureFactory.Create(spec.T)
@@ -279,6 +270,7 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 	}
 
 	s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
+		subscribedEvent.LetValue(s, `Create`)
 		subscriber.Let(s, nil)
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
@@ -354,6 +346,7 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 	}
 
 	s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
+		subscribedEvent.LetValue(s, `Update`)
 		subscriber.Let(s, nil)
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
@@ -426,6 +419,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 	}
 
 	s.Describe(`#SubscribeToDeleteByID`, func(s *testcase.Spec) {
+		subscribedEvent.LetValue(s, `DeleteByID`)
 		subscriber.Let(s, nil)
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
@@ -484,6 +478,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 	})
 
 	s.Describe(`#SubscribeToDeleteAll`, func(s *testcase.Spec) {
+		subscribedEvent.LetValue(s, `DeleteAll`)
 		subscriber.Let(s, nil)
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
