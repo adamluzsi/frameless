@@ -44,7 +44,7 @@ func TestStorage(t *testing.T) {
 
 	T := StorageTestEntity{}
 	ff := fixtures.FixtureFactory{}
-	pool := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
+	pool := &postgresql.SinglePool{DSN: GetDatabaseURL(t)}
 
 	subject := &postgresql.Storage{
 		T:       StorageTestEntity{},
@@ -70,7 +70,7 @@ func TestStorage(t *testing.T) {
 func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 	T := StorageTestEntity{}
 	ff := fixtures.FixtureFactory{}
-	pool := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
+	pool := &postgresql.SinglePool{DSN: GetDatabaseURL(t)}
 	migrateEntityStorage(t, pool)
 
 	mapper := StorageTestEntityMapping()
@@ -95,7 +95,7 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 }
 
 
-func migrateEntityStorage(tb testing.TB, pool *postgresql.DefaultPool) {
+func migrateEntityStorage(tb testing.TB, pool *postgresql.SinglePool) {
 	ctx := context.Background()
 	client, free, err := pool.GetClient(ctx)
 	require.Nil(tb, err)

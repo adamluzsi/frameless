@@ -20,13 +20,13 @@ func TestClientPool(t *testing.T) {
 	dsn := s.Let(`data source name`, func(t *testcase.T) interface{} {
 		return GetDatabaseURL(t)
 	})
-	clientPool := s.Let(`DefaultPool`, func(t *testcase.T) interface{} {
-		return &postgresql.DefaultPool{
+	clientPool := s.Let(`SinglePool`, func(t *testcase.T) interface{} {
+		return &postgresql.SinglePool{
 			DSN: dsn.Get(t).(string),
 		}
 	})
-	clientPoolGet := func(t *testcase.T) *postgresql.DefaultPool {
-		return clientPool.Get(t).(*postgresql.DefaultPool)
+	clientPoolGet := func(t *testcase.T) *postgresql.SinglePool {
+		return clientPool.Get(t).(*postgresql.SinglePool)
 	}
 
 	s.Describe(`.GetDSN`, func(s *testcase.Spec) {
@@ -40,8 +40,8 @@ func TestClientPool(t *testing.T) {
 	})
 }
 
-func TestDefaultPool_LookupTx(t *testing.T) {
-	p := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
+func TestSinglePool_LookupTx(t *testing.T) {
+	p := &postgresql.SinglePool{DSN: GetDatabaseURL(t)}
 
 	ctx := context.Background()
 	ctxWithTx, err := p.BeginTx(ctx)
@@ -61,10 +61,10 @@ func TestDefaultPool_LookupTx(t *testing.T) {
 	require.Equal(t, client, txClient)
 }
 
-func TestDefaultPool_PoolContract(t *testing.T) {
+func TestSinglePool_PoolContract(t *testing.T) {
 	testcase.RunContract(t, contracts.Pool{
 		Subject: func(tb testing.TB) (postgresql.Pool, flcontracts.CRD) {
-			p := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
+			p := &postgresql.SinglePool{DSN: GetDatabaseURL(t)}
 			migrateEntityStorage(tb, p)
 			s := &postgresql.Storage{
 				T:       StorageTestEntity{},
@@ -96,11 +96,11 @@ func TestDefaultPool_PoolContract(t *testing.T) {
 	})
 }
 
-func TestDefaultPool_OnePhaseCommitProtocolContract(t *testing.T) {
+func TestSinglePool_OnePhaseCommitProtocolContract(t *testing.T) {
 	testcase.RunContract(t, flcontracts.OnePhaseCommitProtocol{
 		T: StorageTestEntity{},
 		Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, flcontracts.CRD) {
-			p := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
+			p := &postgresql.SinglePool{DSN: GetDatabaseURL(t)}
 			migrateEntityStorage(tb, p)
 
 			s := &postgresql.Storage{
@@ -111,5 +111,16 @@ func TestDefaultPool_OnePhaseCommitProtocolContract(t *testing.T) {
 			return p, s
 		},
 		FixtureFactory: fixtures.FixtureFactory{},
+	})
+}
+
+func TestSinglePool_GetClient_threadSafe(t *testing.T) {
+	p := &postgresql.SinglePool{DSN: GetDatabaseURL(t)}
+
+	ctx := context.Background()
+	testcase.Race(func() {
+		_, free, err := p.GetClient(ctx)
+		require.Nil(t, err)
+		defer free()
 	})
 }

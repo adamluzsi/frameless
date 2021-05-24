@@ -1,6 +1,6 @@
 package postgresql
 
 var (
-	_ Pool    = &DefaultPool{}
+	_ Pool    = &SinglePool{}
 	_ Mapping = &Mapper{}
 )
