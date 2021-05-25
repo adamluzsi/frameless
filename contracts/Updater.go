@@ -2,9 +2,10 @@ package contracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
-	"testing"
 
 	"github.com/adamluzsi/testcase"
 

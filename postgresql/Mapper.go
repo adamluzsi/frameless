@@ -2,6 +2,7 @@ package postgresql
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/iterators"
 )
 

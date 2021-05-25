@@ -3,12 +3,13 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless"
 	"os"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
 
 	"github.com/adamluzsi/testcase/fixtures"
 

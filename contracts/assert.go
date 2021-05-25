@@ -3,10 +3,11 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/testcase"

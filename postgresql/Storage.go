@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/adamluzsi/frameless/extid"
 	"log"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"

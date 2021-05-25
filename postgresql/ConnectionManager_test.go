@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/postgresql"
-	"io"
-	"testing"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"

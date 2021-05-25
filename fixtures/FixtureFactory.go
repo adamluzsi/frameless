@@ -2,9 +2,10 @@ package fixtures
 
 import (
 	"context"
+	"reflect"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
-	"reflect"
 
 	"github.com/adamluzsi/frameless/reflects"
 )

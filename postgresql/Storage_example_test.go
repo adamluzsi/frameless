@@ -2,9 +2,10 @@ package postgresql_test
 
 import (
 	"context"
+	"math/rand"
+
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/postgresql"
-	"math/rand"
 )
 
 func ExampleStorage() {

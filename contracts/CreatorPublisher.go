@@ -1,8 +1,9 @@
 package contracts
 
 import (
-	"github.com/adamluzsi/frameless"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"

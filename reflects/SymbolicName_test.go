@@ -1,8 +1,9 @@
 package reflects_test
 
 import (
-	"github.com/adamluzsi/frameless/contracts"
 	"testing"
+
+	"github.com/adamluzsi/frameless/contracts"
 
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"

@@ -2,11 +2,12 @@ package contracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
 	"reflect"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/testcase"
 

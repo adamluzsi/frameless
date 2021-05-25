@@ -3,10 +3,11 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"

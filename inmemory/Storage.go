@@ -26,7 +26,7 @@ type Storage struct {
 	NewID    func(ctx context.Context) (interface{}, error)
 
 	Options struct {
-		DisableEventLogging                  bool
+		DisableEventLogging bool
 	}
 
 	mutex sync.RWMutex

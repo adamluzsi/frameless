@@ -1,3 +1,3 @@
 package postgresql
 
-type T = interface {}
+type T = interface{}

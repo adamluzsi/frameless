@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"github.com/adamluzsi/frameless/postgresql"
 	"testing"
+
+	"github.com/adamluzsi/frameless/postgresql"
 
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"

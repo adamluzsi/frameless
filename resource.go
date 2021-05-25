@@ -2,8 +2,9 @@ package frameless
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/iterators"
 	"io"
+
+	"github.com/adamluzsi/frameless/iterators"
 )
 
 //------------------------------------------------------ C/R/U/D -----------------------------------------------------//
