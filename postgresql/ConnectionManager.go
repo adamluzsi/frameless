@@ -5,31 +5,40 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
+
+	_ "github.com/lib/pq" // side-effect loading
 )
 
-type SinglePool struct {
+func NewConnectionManager(dsn string) *ConnectionManager {
+	return &ConnectionManager{DSN: dsn}
+}
+
+type ConnectionManager struct {
 	DSN string
 
 	mutex      sync.Mutex
 	connection *sql.DB
 }
 
-func (c *SinglePool) GetDSN() string {
-	return c.DSN
+type Connection interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-func (c *SinglePool) GetClient(ctx context.Context) (SQLClient, func(), error) {
-	free := func() {} // free is not used because this is a single Pool
+// GetConnection returns the current context's sql connection.
+// This can be a *sql.DB or if we within a transaction, then a *sql.Tx.
+func (c *ConnectionManager) GetConnection(ctx context.Context) (Connection, error) {
 	if tx, ok := c.lookupTx(ctx); ok {
-		return tx, free, nil
+		return tx, nil
 	}
 
 	client, err := c.getConnection()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return client, free, nil
+	return client, nil
 }
 
 type (
@@ -40,7 +49,7 @@ type (
 	}
 )
 
-func (c *SinglePool) BeginTx(ctx context.Context) (context.Context, error) {
+func (c *ConnectionManager) BeginTx(ctx context.Context) (context.Context, error) {
 	if tx, ok := c.lookupTx(ctx); ok && tx.Tx != nil {
 		tx.depth++
 		return ctx, nil
@@ -59,7 +68,7 @@ func (c *SinglePool) BeginTx(ctx context.Context) (context.Context, error) {
 	return context.WithValue(ctx, ctxDefaultPoolTxKey{}, &ctxDefaultPoolTxValue{Tx: tx}), nil
 }
 
-func (c *SinglePool) CommitTx(ctx context.Context) error {
+func (c *ConnectionManager) CommitTx(ctx context.Context) error {
 	tx, ok := c.lookupTx(ctx)
 	if !ok {
 		return fmt.Errorf(`no postgresql transaction found in the current context`)
@@ -73,7 +82,7 @@ func (c *SinglePool) CommitTx(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func (c *SinglePool) RollbackTx(ctx context.Context) error {
+func (c *ConnectionManager) RollbackTx(ctx context.Context) error {
 	tx, ok := c.lookupTx(ctx)
 	if !ok {
 		return fmt.Errorf(`no postgres tx in the given context`)
@@ -82,16 +91,16 @@ func (c *SinglePool) RollbackTx(ctx context.Context) error {
 	return tx.Rollback()
 }
 
-func (c *SinglePool) LookupTx(ctx context.Context) (SQLClient, bool) {
+func (c *ConnectionManager) LookupTx(ctx context.Context) (Connection, bool) {
 	return c.lookupTx(ctx)
 }
 
-func (c *SinglePool) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValue, bool) {
+func (c *ConnectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValue, bool) {
 	tx, ok := ctx.Value(ctxDefaultPoolTxKey{}).(*ctxDefaultPoolTxValue)
 	return tx, ok
 }
 
-func (c *SinglePool) getConnection() (*sql.DB, error) {
+func (c *ConnectionManager) getConnection() (*sql.DB, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	setConnection := func() error {
@@ -113,4 +122,13 @@ func (c *SinglePool) getConnection() (*sql.DB, error) {
 		}
 	}
 	return c.connection, nil
+}
+
+func (c *ConnectionManager) Close() error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if c.connection == nil {
+		return nil
+	}
+	return c.connection.Close()
 }

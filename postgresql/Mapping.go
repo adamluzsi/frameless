@@ -2,7 +2,6 @@ package postgresql
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 )
 
@@ -20,14 +19,4 @@ type Mapping /* T */ interface {
 	// ToArgs convert an entity ptr to a list of query argument that can be used for CREATE or UPDATE purpose.
 	ToArgs(ptr interface{}) ([]interface{}, error)
 	iterators.SQLRowMapper
-}
-
-type Pool interface {
-	// GetDSN returns the sql data source name.
-	// This data source name should be usable with sql.Open
-	GetDSN() string
-	// GetClient returns the current context's sql client.
-	// This can be a simple *sql.DB or if we within a transaction, then an *sql.Tx
-	GetClient(ctx context.Context) (client SQLClient, free func(), err error)
-	frameless.OnePhaseCommitProtocol
 }

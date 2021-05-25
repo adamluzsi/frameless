@@ -18,13 +18,21 @@ import (
 	"github.com/lib/pq"
 )
 
+func NewStorage(T interface{}, cm *ConnectionManager, m Mapping) *Storage {
+	return &Storage{
+		T:                 T,
+		ConnectionManager: cm,
+		Mapping:           m,
+	}
+}
+
 // Storage is a frameless external resource supplier to store a certain entity type.
 //
 // SRP: DBA
 type Storage struct {
-	T       interface{}
-	Pool    Pool
-	Mapping Mapping
+	T                 interface{}
+	ConnectionManager *ConnectionManager
+	Mapping           Mapping
 }
 
 func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
@@ -37,11 +45,10 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 	defer func() { rErr = td(rErr) }()
 
-	client, free, err := pg.Pool.GetClient(ctx)
+	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
 		return err
 	}
-	defer free()
 
 	if _, ok := extid.Lookup(ptr); !ok {
 		// TODO: add serialize TX level here
@@ -60,23 +67,22 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 	if err != nil {
 		return err
 	}
-	if _, err := client.ExecContext(ctx, query, args...); err != nil {
+	if _, err := c.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
 
-	return pg.notify(ctx, client, pg.getCreateSubscriptionName(), ptr)
+	return pg.notify(ctx, c, pg.getCreateSubscriptionName(), ptr)
 }
 
 func (pg *Storage) FindByID(ctx context.Context, ptr, id interface{}) (bool, error) {
-	client, free, err := pg.Pool.GetClient(ctx)
+	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
 		return false, err
 	}
-	defer free()
 
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableName(), pg.Mapping.IDName())
 
-	err = pg.Mapping.Map(client.QueryRowContext(ctx, query, id), ptr)
+	err = pg.Mapping.Map(c.QueryRowContext(ctx, query, id), ptr)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -94,11 +100,10 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 	}
 	defer func() { rErr = td(rErr) }()
 
-	client, free, err := pg.Pool.GetClient(ctx)
+	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
 		return err
 	}
-	defer free()
 
 	var (
 		tableName = pg.Mapping.TableName()
@@ -107,12 +112,12 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
 
-	if _, err := client.ExecContext(ctx, query); err != nil {
+	if _, err := c.ExecContext(ctx, query); err != nil {
 		return err
 	}
 
 	if message != nil {
-		if err := pg.notify(ctx, client, topicName, message); err != nil {
+		if err := pg.notify(ctx, c, topicName, message); err != nil {
 			return err
 		}
 	}
@@ -138,13 +143,12 @@ func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) 
 	}
 	defer func() { rErr = td(rErr) }()
 
-	client, free, err := pg.Pool.GetClient(ctx)
+	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
 		return err
 	}
-	defer free()
 
-	result, err := client.ExecContext(ctx, query, id)
+	result, err := c.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -159,7 +163,7 @@ func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) 
 	}
 
 	if message != nil {
-		if err := pg.notify(ctx, client, topicName, message); err != nil {
+		if err := pg.notify(ctx, c, topicName, message); err != nil {
 			return err
 		}
 	}
@@ -208,13 +212,12 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 	defer func() { rErr = td(rErr) }()
 
-	client, free, err := pg.Pool.GetClient(ctx)
+	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
 		return err
 	}
-	defer free()
 
-	if res, err := client.ExecContext(ctx, query, args...); err != nil {
+	if res, err := c.ExecContext(ctx, query, args...); err != nil {
 		return err
 	} else {
 		affected, err := res.RowsAffected()
@@ -226,19 +229,18 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 		}
 	}
 
-	return pg.notify(ctx, client, pg.getUpdateSubscriptionName(), ptr)
+	return pg.notify(ctx, c, pg.getUpdateSubscriptionName(), ptr)
 }
 
 func (pg *Storage) FindAll(ctx context.Context) iterators.Interface {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableName())
 
-	client, free, err := pg.Pool.GetClient(ctx)
+	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
 		return iterators.NewError(err)
 	}
-	defer free()
 
-	rows, err := client.QueryContext(ctx, query)
+	rows, err := c.QueryContext(ctx, query)
 	if err != nil {
 		return iterators.NewError(err)
 	}
@@ -247,15 +249,15 @@ func (pg *Storage) FindAll(ctx context.Context) iterators.Interface {
 }
 
 func (pg *Storage) BeginTx(ctx context.Context) (context.Context, error) {
-	return pg.Pool.BeginTx(ctx)
+	return pg.ConnectionManager.BeginTx(ctx)
 }
 
 func (pg *Storage) CommitTx(ctx context.Context) error {
-	return pg.Pool.CommitTx(ctx)
+	return pg.ConnectionManager.CommitTx(ctx)
 }
 
 func (pg *Storage) RollbackTx(ctx context.Context) error {
-	return pg.Pool.RollbackTx(ctx)
+	return pg.ConnectionManager.RollbackTx(ctx)
 }
 
 func (pg *Storage) withTx(ctx context.Context) (context.Context, func(error) error, error) {
@@ -295,7 +297,7 @@ func (pg *Storage) queryColumnList() string {
 
 //--------------------------------------------------------------------------------------------------------------------//
 
-func (pg *Storage) notify(ctx context.Context, tx SQLClient, name string, v interface{}) error {
+func (pg *Storage) notify(ctx context.Context, tx Connection, name string, v interface{}) error {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -398,7 +400,7 @@ func (sub *postgresCommonSubscription) reportProblemToSubscriber(_ pq.ListenerEv
 }
 
 func (pg *Storage) SubscribeToCreate(_ context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getCreateSubscriptionName(), subscriber)
+	return pg.newPostgresSubscription(pg.ConnectionManager.DSN, pg.getCreateSubscriptionName(), subscriber)
 }
 
 func (pg *Storage) getCreateSubscriptionName() string {
@@ -406,7 +408,7 @@ func (pg *Storage) getCreateSubscriptionName() string {
 }
 
 func (pg *Storage) SubscribeToUpdate(_ context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getUpdateSubscriptionName(), subscriber)
+	return pg.newPostgresSubscription(pg.ConnectionManager.DSN, pg.getUpdateSubscriptionName(), subscriber)
 }
 
 func (pg *Storage) getUpdateSubscriptionName() string {
@@ -414,7 +416,7 @@ func (pg *Storage) getUpdateSubscriptionName() string {
 }
 
 func (pg *Storage) SubscribeToDeleteByID(_ context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getDeleteByIDSubscriptionName(), subscriber)
+	return pg.newPostgresSubscription(pg.ConnectionManager.DSN, pg.getDeleteByIDSubscriptionName(), subscriber)
 }
 
 func (pg *Storage) getDeleteByIDSubscriptionName() string {
@@ -422,7 +424,7 @@ func (pg *Storage) getDeleteByIDSubscriptionName() string {
 }
 
 func (pg *Storage) SubscribeToDeleteAll(_ context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return pg.newPostgresSubscription(pg.Pool.GetDSN(), pg.getDeleteAllSubscriptionName(), subscriber)
+	return pg.newPostgresSubscription(pg.ConnectionManager.DSN, pg.getDeleteAllSubscriptionName(), subscriber)
 }
 
 func (pg *Storage) getDeleteAllSubscriptionName() string {
