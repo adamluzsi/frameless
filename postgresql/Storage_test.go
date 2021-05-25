@@ -39,7 +39,7 @@ func StorageTestEntityMapping() postgresql.Mapper {
 	}
 }
 
-func TestEntityStorage(t *testing.T) {
+func TestStorage(t *testing.T) {
 	postgresql.WithDebug(t)
 
 	T := StorageTestEntity{}
@@ -66,13 +66,40 @@ func TestEntityStorage(t *testing.T) {
 	)
 }
 
+
+func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
+	T := StorageTestEntity{}
+	ff := fixtures.FixtureFactory{}
+	pool := &postgresql.DefaultPool{DSN: GetDatabaseURL(t)}
+	migrateEntityStorage(t, pool)
+
+	mapper := StorageTestEntityMapping()
+	mapper.Table = `public.` + mapper.Table
+
+	subject := &postgresql.Storage{
+		T:       StorageTestEntity{},
+		Pool:    pool,
+		Mapping: mapper,
+	}
+
+	testcase.RunContract(t,
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return pool, subject }, FixtureFactory: ff},
+		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return subject }, FixtureFactory: ff},
+	)
+}
+
+
 func migrateEntityStorage(tb testing.TB, pool *postgresql.DefaultPool) {
 	ctx := context.Background()
 	client, free, err := pool.GetClient(ctx)
 	require.Nil(tb, err)
 	defer free()
-	_, err = client.ExecContext(ctx, storageTestMigrateDOWN)
-	require.Nil(tb, err)
 	_, err = client.ExecContext(ctx, storageTestMigrateUP)
 	require.Nil(tb, err)
 

@@ -28,7 +28,7 @@ type Storage struct {
 }
 
 func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
-	query := fmt.Sprintf("INSERT INTO %q (%s)\n", pg.Mapping.TableName(), pg.queryColumnList())
+	query := fmt.Sprintf("INSERT INTO %s (%s)\n", pg.Mapping.TableName(), pg.queryColumnList())
 	query += fmt.Sprintf("VALUES (%s)\n", pg.queryColumnPlaceHolders(pg.newPrepareStatementPlaceholderGenerator()))
 
 	ctx, td, err := pg.withTx(ctx)
@@ -74,7 +74,7 @@ func (pg *Storage) FindByID(ctx context.Context, ptr, id interface{}) (bool, err
 	}
 	defer free()
 
-	query := fmt.Sprintf(`SELECT %s FROM %q WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableName(), pg.Mapping.IDName())
+	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableName(), pg.Mapping.IDName())
 
 	err = pg.Mapping.Map(client.QueryRowContext(ctx, query, id), ptr)
 	if err == sql.ErrNoRows {
@@ -104,7 +104,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 		tableName = pg.Mapping.TableName()
 		topicName = pg.getDeleteAllSubscriptionName()
 		message   = reflect.New(reflect.TypeOf(pg.T)).Elem().Interface()
-		query     = fmt.Sprintf(`DELETE FROM "%s"`, tableName)
+		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
 
 	if _, err := client.ExecContext(ctx, query); err != nil {
@@ -123,7 +123,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) {
 	var (
 		sid       = id.(string)
-		query     = `DELETE FROM "` + pg.Mapping.TableName() + `" WHERE "id" = $1`
+		query     = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, pg.Mapping.TableName())
 		topicName = pg.getDeleteByIDSubscriptionName()
 		message   = reflect.New(reflect.TypeOf(pg.T)).Interface()
 	)
@@ -182,7 +182,7 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 
 	var (
-		query           = fmt.Sprintf("UPDATE %q", pg.Mapping.TableName())
+		query           = fmt.Sprintf("UPDATE %s", pg.Mapping.TableName())
 		nextPlaceHolder = pg.newPrepareStatementPlaceholderGenerator()
 		idPlaceHolder   = nextPlaceHolder()
 		querySetParts   []string
@@ -230,7 +230,7 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 }
 
 func (pg *Storage) FindAll(ctx context.Context) iterators.Interface {
-	query := fmt.Sprintf(`SELECT %s FROM %q`, pg.queryColumnList(), pg.Mapping.TableName())
+	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableName())
 
 	client, free, err := pg.Pool.GetClient(ctx)
 	if err != nil {
@@ -288,7 +288,7 @@ func (pg *Storage) queryColumnList() string {
 		dst = make([]string, 0, len(src))
 	)
 	for _, name := range src {
-		dst = append(dst, fmt.Sprintf(`%q`, name))
+		dst = append(dst, fmt.Sprintf(`%s`, name))
 	}
 	return strings.Join(dst, `, `)
 }
@@ -320,7 +320,7 @@ func (pg *Storage) newPostgresSubscription(connstr string, name string, subscrib
 }
 
 type postgresCommonSubscription struct {
-	T       interface{}
+	T          interface{}
 	rType      reflect.Type
 	subscriber frameless.Subscriber
 	listener   *pq.Listener
