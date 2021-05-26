@@ -233,7 +233,7 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 	return pg.notify(ctx, c, pg.getUpdateSubscriptionName(), ptr)
 }
 
-func (pg *Storage) FindAll(ctx context.Context) iterators.Interface {
+func (pg *Storage) FindAll(ctx context.Context) frameless.Iterator {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableName())
 
 	c, err := pg.ConnectionManager.GetConnection(ctx)

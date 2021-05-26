@@ -4,6 +4,8 @@ github.com/adamluzsi/frameless v0.36.2 h1:H1aBRudYU7Fl/EovoHjahkkncC+k2GNrv+OGCs
 github.com/adamluzsi/frameless v0.36.2/go.mod h1:dSu8ymz2Fiz7shtI6078L+CFAN4CCHOlIKCB0YBGivk=
 github.com/adamluzsi/frameless v0.37.0 h1:s4Ht77pN0Y7jm1/izkyxWmCTnF8La0Ejn+CXEhIKyaY=
 github.com/adamluzsi/frameless v0.37.0/go.mod h1:dSu8ymz2Fiz7shtI6078L+CFAN4CCHOlIKCB0YBGivk=
+github.com/adamluzsi/frameless v0.39.0 h1:BDRuTHEsf+s+79vGgKxe8xEgH/TFWiav2BOj4B3DPRA=
+github.com/adamluzsi/frameless v0.39.0/go.mod h1:dSu8ymz2Fiz7shtI6078L+CFAN4CCHOlIKCB0YBGivk=
 github.com/adamluzsi/testcase v0.42.2 h1:CPTq+xWP6dLnbDVB7jRjMZPl/5kXL5gVykCAonXv1OU=
 github.com/adamluzsi/testcase v0.42.2/go.mod h1:I7+WLGTC75atF0ML93ubFZQzs3E2sI/HsyC4FRSOVvQ=
 github.com/adamluzsi/testcase v0.42.3 h1:6nEJ4Vp60rxSxVbn87VN3e6wsnPpAwDccdGq2FjMKf4=
@@ -46,6 +48,8 @@ golang.org/x/sys v0.0.0-20210510120138-977fb7262007/go.mod h1:oPkhp1MJrh7nUepCBc
 golang.org/x/sys v0.0.0-20210521090106-6ca3eb03dfc2/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1 h1:lCnv+lfrU9FRPGf8NeRuWAAPjNnema5WtBinMgs1fD8=
 golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea h1:+WiDlPBBaO+h9vPNZi8uJ3k4BkKQB7Iow3aqwHVA5hI=
+golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
@@ -54,6 +58,8 @@ golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtn
 golang.org/x/tools v0.1.0/go.mod h1:xkSsbof2nBLbhDlRMhhhyNLN/zl3eTqcnHD5viDpcZ0=
 golang.org/x/tools v0.1.1 h1:wGiQel/hW0NnEkJUk8lbzkX2gFJU6PFxf1v5OlCfuOs=
 golang.org/x/tools v0.1.1/go.mod h1:o0xws9oXOQQZyjljx8fwUC0k7L1pTE6eaCbjGeHmOkk=
+golang.org/x/tools v0.1.2 h1:kRBLX7v7Af8W7Gdbbc908OJcdgtK8bOz9Uaj8/F1ACA=
+golang.org/x/tools v0.1.2/go.mod h1:o0xws9oXOQQZyjljx8fwUC0k7L1pTE6eaCbjGeHmOkk=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 h1:go1bK/D/BFZV2I8cIQd1NKEZ+0owSTG1fDTci4IqFcE=
