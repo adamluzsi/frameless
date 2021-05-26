@@ -23,16 +23,3 @@ func (i *CallbackIterator) Close() error {
 	}
 	return i.Interface.Close()
 }
-
-//func (*CallbackIterator) Next() bool {
-//	panic("implement me")
-//}
-//
-//func (*CallbackIterator) Err() error {
-//	panic("implement me")
-//}
-//
-//func (*CallbackIterator) Decode(interface{}) error {
-//	panic("implement me")
-//}
-//

@@ -3,7 +3,6 @@ package contracts_test
 import (
 	"context"
 	"errors"
-	"runtime/debug"
 	"sync"
 	"testing"
 	"time"
@@ -256,7 +255,6 @@ wrk:
 
 func (e *EventuallyConsistentStorage) eventually(ctx context.Context, fn func(ctx context.Context) error) error {
 	if e.closed {
-		debug.PrintStack()
 		return errors.New(`closed`)
 	}
 
