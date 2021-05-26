@@ -3,8 +3,6 @@ package frameless
 import (
 	"context"
 	"io"
-
-	"github.com/adamluzsi/frameless/iterators"
 )
 
 //------------------------------------------------------ C/R/U/D -----------------------------------------------------//
@@ -26,7 +24,7 @@ type Finder /* T, ID */ interface {
 	// but tell explicitly this information in the form of return bool value.
 	FindByID(ctx context.Context, ptr /* *T */, id /* ID */ interface{}) (found bool, err error)
 	// FindAll will return all entity that has <T> type
-	FindAll(context.Context) iterators.Interface
+	FindAll(context.Context) Iterator
 }
 
 type Updater /* T */ interface {

@@ -103,7 +103,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 	return true, nil
 }
 
-func (s *Storage) FindAll(ctx context.Context) iterators.Interface {
+func (s *Storage) FindAll(ctx context.Context) frameless.Iterator {
 	if err := ctx.Err(); err != nil {
 		return iterators.NewError(err)
 	}

@@ -182,7 +182,7 @@ func (spec findAll) Test(t *testing.T) {
 			ctx = s.Let(`ctx`, func(t *testcase.T) interface{} {
 				return spec.Context()
 			})
-			subject = func(t *testcase.T) iterators.Interface {
+			subject = func(t *testcase.T) frameless.Iterator {
 				return resourceGet(t).FindAll(ctx.Get(t).(context.Context))
 			}
 		)
@@ -261,7 +261,7 @@ func (spec findAll) Test(t *testing.T) {
 	})
 }
 
-func (spec findAll) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Interface, n int) []interface{} {
+func (spec findAll) findAllN(t *testcase.T, subject func(t *testcase.T) frameless.Iterator, n int) []interface{} {
 	sliceRType := reflect.SliceOf(reflect.TypeOf(spec.T))
 	var entities interface{}
 	AsyncTester.Assert(t, func(tb testing.TB) {

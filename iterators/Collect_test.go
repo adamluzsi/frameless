@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
@@ -22,7 +23,7 @@ func TestCollect(t *testing.T) {
 		})
 		subject = func(t *testcase.T) error {
 			return iterators.Collect(
-				iterator.Get(t).(iterators.Interface),
+				iterator.Get(t).(frameless.Iterator),
 				slicePtr.Get(t),
 			)
 		}
