@@ -88,8 +88,8 @@ func (spec findByID) Test(t *testing.T) {
 				}
 
 				t.Log("when no value stored that the query request")
-				ptr := newEntity(spec.T)
-				ok, err := r.FindByID(spec.Context(), ptr, "not existing ID")
+				ctx := spec.Context()
+				ok, err := r.FindByID(spec.Context(), newEntity(spec.T), spec.createNonActiveID(tb, r, ctx))
 				require.Nil(t, err)
 				require.False(t, ok)
 
@@ -107,6 +107,16 @@ func (spec findByID) Test(t *testing.T) {
 			})
 		},
 	}.Test(t)
+}
+
+func (spec findByID) createNonActiveID(tb testing.TB, r CRD, ctx context.Context) interface{} {
+	tb.Helper()
+	ptr := newEntity(spec.T)
+	tb.Logf(`%#v`, ptr)
+	CreateEntity(tb, r, ctx, ptr)
+	id, _ := extid.Lookup(ptr)
+	DeleteEntity(tb, r, ctx, ptr)
+	return id
 }
 
 func (spec findByID) Benchmark(b *testing.B) {

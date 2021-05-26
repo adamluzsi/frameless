@@ -450,13 +450,23 @@ type Entity struct {
 }
 
 func TestStorage_SaveEntityWithCustomKeyType(t *testing.T) {
-	for _, spec := range getStorageSpecsForT(inmemory.NewStorage(EntityWithStructID{}, inmemory.NewEventLog()), EntityWithStructID{}, FFForEntityWithStructID{}) {
+
+	storage := inmemory.NewStorage(EntityWithStructID{}, inmemory.NewEventLog())
+	var counter int
+	storage.NewID = func(ctx context.Context) (interface{}, error) {
+		counter++
+		var e EntityWithStructID
+		e.ID.V = counter
+		return e.ID, nil
+	}
+
+	for _, spec := range getStorageSpecsForT(storage, EntityWithStructID{}, FFForEntityWithStructID{}) {
 		spec.Test(t)
 	}
 }
 
 type EntityWithStructID struct {
-	ID   struct{ V int } `ext:"Namespace"`
+	ID   struct{ V int } `ext:"ID"`
 	Data string
 }
 
