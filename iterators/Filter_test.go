@@ -5,6 +5,8 @@ import (
 	"log"
 	"testing"
 
+	"github.com/adamluzsi/frameless"
+
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 
@@ -206,4 +208,21 @@ func BenchmarkFilter(b *testing.B) {
 		require.Nil(b, iter.Err())
 		require.Nil(b, iter.Close())
 	})
+}
+
+func TestFilter_decoderUsesConcreteType(t *testing.T) {
+	stub := &StubIterator{
+		Decoder: frameless.DecoderFunc(func(ptr interface{}) error {
+			i := ptr.(*int)
+			*i = 42
+			return nil
+		}),
+	}
+
+	iter := iterators.Filter(stub, func(i int) bool { return true })
+
+	var i int
+	iter.Next()
+	require.Nil(t, iter.Decode(&i))
+	require.Equal(t, 42, i)
 }

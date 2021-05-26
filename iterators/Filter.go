@@ -6,25 +6,32 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func Filter(i Interface, selectorFunc interface{}) *FilterIterator {
-	iter := &FilterIterator{iterator: i, filterFunc: selectorFunc}
+func Filter(i Interface, selectorFunc interface{}) Interface {
+	iter := &filter{iterator: i, filterFunc: selectorFunc}
 	iter.init()
 	return iter
 }
 
-type FilterIterator struct {
+type filter struct {
 	iterator   Interface
 	filterFunc interface{}
 	matcher    func(interface{}) bool
+	rType      reflect.Type
 
 	next interface{}
 	err  error
 }
 
-func (fi *FilterIterator) init() {
+func (fi *filter) init() {
 	// TODO: Check arity and types here, rather than dying badly elsewhere.
 	v := reflect.ValueOf(fi.filterFunc)
 	ft := v.Type()
+
+	if ft.NumIn() != 1 {
+		panic(`invalid Filter function signature`)
+	}
+
+	fi.rType = ft.In(0)
 
 	fi.matcher = func(arg interface{}) bool {
 		var varg reflect.Value
@@ -53,11 +60,11 @@ func (fi *FilterIterator) init() {
 	}
 }
 
-func (fi *FilterIterator) Close() error {
+func (fi *filter) Close() error {
 	return fi.iterator.Close()
 }
 
-func (fi *FilterIterator) Err() error {
+func (fi *filter) Err() error {
 	if fi.err != nil {
 		return fi.err
 	}
@@ -65,25 +72,25 @@ func (fi *FilterIterator) Err() error {
 	return fi.iterator.Err()
 }
 
-func (fi *FilterIterator) Decode(e interface{}) error {
+func (fi *filter) Decode(e interface{}) error {
 	return reflects.Link(fi.next, e)
 }
 
-func (fi *FilterIterator) Next() bool {
-
+func (fi *filter) Next() bool {
 	if !fi.iterator.Next() {
 		return false
 	}
 
-	if err := fi.iterator.Decode(&fi.next); err != nil {
+	nextRV := reflect.New(fi.rType)
+	if err := fi.iterator.Decode(nextRV.Interface()); err != nil {
 		fi.err = err
 		return false
 	}
 
+	fi.next = nextRV.Elem().Interface()
 	if fi.matcher(fi.next) {
 		return true
 	}
 
 	return fi.Next()
-
 }
