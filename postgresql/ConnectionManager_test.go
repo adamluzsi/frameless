@@ -70,7 +70,7 @@ func TestConnectionManager_Close(t *testing.T) {
 }
 
 func TestConnectionManager_PoolContract(t *testing.T) {
-	testcase.RunContract(t, PoolSpec{
+	testcase.RunContract(t, ConnectionManagerSpec{
 		Subject: func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD) {
 			p := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
 			migrateEntityStorage(tb, p)
@@ -132,7 +132,7 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 	})
 }
 
-type PoolSpec struct {
+type ConnectionManagerSpec struct {
 	Subject    func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD)
 	DriverName string
 	contracts.FixtureFactory
@@ -146,15 +146,15 @@ type PoolSpec struct {
 	HasTable func(ctx context.Context, client postgresql.Connection, name string) (bool, error)
 }
 
-func (spec PoolSpec) Test(t *testing.T) {
+func (spec ConnectionManagerSpec) Test(t *testing.T) {
 	spec.Spec(t)
 }
 
-func (spec PoolSpec) Benchmark(b *testing.B) {
+func (spec ConnectionManagerSpec) Benchmark(b *testing.B) {
 	spec.Spec(b)
 }
 
-func (spec PoolSpec) cm() testcase.Var {
+func (spec ConnectionManagerSpec) cm() testcase.Var {
 	return testcase.Var{
 		Name: "*postgresql.ConnectionManager",
 		Init: func(t *testcase.T) interface{} {
@@ -165,11 +165,11 @@ func (spec PoolSpec) cm() testcase.Var {
 	}
 }
 
-func (spec PoolSpec) cmGet(t *testcase.T) *postgresql.ConnectionManager {
+func (spec ConnectionManagerSpec) cmGet(t *testcase.T) *postgresql.ConnectionManager {
 	return spec.cm().Get(t).(*postgresql.ConnectionManager)
 }
 
-func (spec PoolSpec) resource() testcase.Var {
+func (spec ConnectionManagerSpec) resource() testcase.Var {
 	return testcase.Var{
 		Name: "resource",
 		Init: func(t *testcase.T) interface{} {
@@ -179,11 +179,11 @@ func (spec PoolSpec) resource() testcase.Var {
 	}
 }
 
-func (spec PoolSpec) resourceGet(t *testcase.T) contracts.CRD {
+func (spec ConnectionManagerSpec) resourceGet(t *testcase.T) contracts.CRD {
 	return spec.resource().Get(t).(contracts.CRD)
 }
 
-func (spec PoolSpec) Spec(tb testing.TB) {
+func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 
 	s.Describe(`.DSN`, func(s *testcase.Spec) {
@@ -304,12 +304,12 @@ func (spec PoolSpec) Spec(tb testing.TB) {
 	})
 }
 
-func (spec PoolSpec) makeTestTableName() string {
+func (spec ConnectionManagerSpec) makeTestTableName() string {
 	const charset = "abcdefghijklmnopqrstuvwxyz"
 	return `test_` + fixtures.Random.StringNWithCharset(6, charset)
 }
 
-func (spec PoolSpec) cleanupTable(t *testcase.T, name string) {
+func (spec ConnectionManagerSpec) cleanupTable(t *testcase.T, name string) {
 	ctx := spec.Context()
 	client, err := spec.cmGet(t).GetConnection(ctx)
 	require.NoError(t, err)
