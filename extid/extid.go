@@ -32,7 +32,7 @@ func Lookup(i interface{}) (id interface{}, ok bool) {
 		return nil, false
 	}
 
-	return val.Interface(), !isNil(val)
+	return val.Interface(), !reflects.IsValueEmpty(val)
 }
 
 func LookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
@@ -43,27 +43,22 @@ func LookupStructField(ent interface{}) (reflect.StructField, reflect.Value, boo
 		return sf, byTag, true
 	}
 
-	const name = `ID`
-	if byName := val.FieldByName(name); byName.Kind() != reflect.Invalid {
-		sf, _ := val.Type().FieldByName(name)
+	const (
+		lower = `id`
+		upper = `ID`
+	)
+
+	if byName := val.FieldByName(lower); byName.Kind() != reflect.Invalid {
+		sf, _ := val.Type().FieldByName(lower)
+		return sf, byName, true
+	}
+
+	if byName := val.FieldByName(upper); byName.Kind() != reflect.Invalid {
+		sf, _ := val.Type().FieldByName(upper)
 		return sf, byName, true
 	}
 
 	return reflect.StructField{}, reflect.Value{}, false
-}
-
-func isNil(val reflect.Value) bool {
-	switch val.Kind() {
-	case reflect.Interface:
-		return isNil(val.Elem())
-
-	case reflect.Ptr, reflect.Slice, reflect.Chan, reflect.Func, reflect.Map:
-		return val.IsNil()
-
-	default:
-		return !val.IsValid() || val.IsZero()
-
-	}
 }
 
 func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {

@@ -1,6 +1,7 @@
 package extid_test
 
 import (
+	"github.com/adamluzsi/frameless/fixtures"
 	"reflect"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestID_E2E(t *testing.T) {
 func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(IDByIDField{"ok"})
+	id, ok := extid.Lookup(IDByIDField{ID:"ok"})
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -33,7 +34,7 @@ func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDByIDField{"ok"})
+	id, ok := extid.Lookup(&IDByIDField{ID:"ok"})
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -52,12 +53,21 @@ func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	require.Equal(t, "ok", id)
 }
 
-func TestLookup_IDGivenByTag_IDReturned(t *testing.T) {
+func TestLookup_IDGivenByUppercaseTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(IDByTag{"KO"})
+	id, ok := extid.Lookup(IDByUppercaseTag{DI: "KO"})
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
+}
+
+func TestLookup_IDGivenByLowercaseTag_IDReturned(t *testing.T) {
+	t.Parallel()
+
+	expected := fixtures.Random.String()
+	id, ok := extid.Lookup(IDByLowercaseTag{DI: expected})
+	require.True(t, ok)
+	require.Equal(t, expected, id)
 }
 
 func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
@@ -76,7 +86,7 @@ func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTa
 func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDByTag{"KO"})
+	id, ok := extid.Lookup(&IDByUppercaseTag{DI:"KO"})
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
 }
@@ -84,7 +94,7 @@ func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(UnidentifiableID{"ok"})
+	id, ok := extid.Lookup(UnidentifiableID{UserID:"ok"})
 	require.False(t, ok)
 	require.Nil(t, id)
 }
@@ -156,7 +166,7 @@ func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 	t.Parallel()
 
-	subject := &IDByTag{}
+	subject := &IDByUppercaseTag{}
 	require.Nil(t, extid.Set(subject, "OK"))
 	require.Equal(t, "OK", subject.DI)
 }
@@ -183,7 +193,7 @@ func TestLookupStructField(t *testing.T) {
 	require.Equal(t, `ID`, field.Name)
 	require.Equal(t, `42`, value.Interface())
 
-	field, value, ok = extid.LookupStructField(IDByTag{DI: `42`})
+	field, value, ok = extid.LookupStructField(IDByUppercaseTag{DI: `42`})
 	require.True(t, ok)
 	require.Equal(t, `DI`, field.Name)
 	require.Equal(t, `42`, value.Interface())
@@ -209,8 +219,12 @@ type IDByIDField struct {
 	ID string
 }
 
-type IDByTag struct {
+type IDByUppercaseTag struct {
 	DI string `ext:"ID"`
+}
+
+type IDByLowercaseTag struct {
+	DI string `ext:"id"`
 }
 
 type IDAsInterface struct {
