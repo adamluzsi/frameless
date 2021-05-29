@@ -22,7 +22,7 @@ func TestID_E2E(t *testing.T) {
 	require.Equal(t, idVal, id)
 }
 
-func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
+func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(IDByIDField{"ok"})
@@ -30,7 +30,7 @@ func TestLookupID_IDGivenByFieldName_IDReturned(t *testing.T) {
 	require.Equal(t, "ok", id)
 }
 
-func TestLookupID_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
+func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(&IDByIDField{"ok"})
@@ -38,7 +38,7 @@ func TestLookupID_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	require.Equal(t, "ok", id)
 }
 
-func TestLookupID_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
+func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	var ptr1 *IDByIDField
@@ -52,7 +52,7 @@ func TestLookupID_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	require.Equal(t, "ok", id)
 }
 
-func TestLookupID_IDGivenByTag_IDReturned(t *testing.T) {
+func TestLookup_IDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(IDByTag{"KO"})
@@ -60,7 +60,7 @@ func TestLookupID_IDGivenByTag_IDReturned(t *testing.T) {
 	require.Equal(t, "KO", id)
 }
 
-func TestLookupID_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
+func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
 	t.Parallel()
 
 	type IDByTagNameNextToIDField struct {
@@ -73,7 +73,7 @@ func TestLookupID_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedBy
 	require.Equal(t, "KO", id)
 }
 
-func TestLookupID_PointerIDGivenByTag_IDReturned(t *testing.T) {
+func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(&IDByTag{"KO"})
@@ -81,7 +81,7 @@ func TestLookupID_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	require.Equal(t, "KO", id)
 }
 
-func TestLookupID_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
+func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(UnidentifiableID{"ok"})
@@ -89,7 +89,7 @@ func TestLookupID_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) 
 	require.Nil(t, id)
 }
 
-func TestLookupID_InterfaceTypeWithValue_IDReturned(t *testing.T) {
+func TestLookup_InterfaceTypeWithValue_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(&IDAsInterface{ID: `foo`})
@@ -97,7 +97,7 @@ func TestLookupID_InterfaceTypeWithValue_IDReturned(t *testing.T) {
 	require.Equal(t, "foo", id)
 }
 
-func TestLookupID_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
+func TestLookup_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(&IDAsInterface{})
@@ -105,7 +105,7 @@ func TestLookupID_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
 	require.Nil(t, id)
 }
 
-func TestLookupID_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundReturned(t *testing.T) {
+func TestLookup_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
 	var idVal *string
@@ -114,7 +114,7 @@ func TestLookupID_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundR
 	require.Nil(t, id)
 }
 
-func TestLookupID_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T) {
+func TestLookup_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup(&IDAsPointer{})
@@ -122,7 +122,7 @@ func TestLookupID_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T)
 	require.Nil(t, id)
 }
 
-func TestLookupID_PointerTypeWithValue_ValueReturned(t *testing.T) {
+func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
 	t.Parallel()
 
 	idVal := `foo`
@@ -133,19 +133,19 @@ func TestLookupID_PointerTypeWithValue_ValueReturned(t *testing.T) {
 
 // ------------------------------------------------------------------------------------------------------------------ //
 
-func TestSetID_NonPtrStructGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
+func TestSet_NonPtrStructGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
 	t.Parallel()
 
 	require.Error(t, extid.Set(IDByIDField{}, "Pass by Value"))
 }
 
-func TestSetID_PtrStructGivenButIDIsCannotBeIndentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
+func TestSet_PtrStructGivenButIDIsCannotBeIndentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
 	t.Parallel()
 
 	require.Error(t, extid.Set(&UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
 }
 
-func TestSetID_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
+func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	subject := &IDByIDField{}
@@ -153,7 +153,7 @@ func TestSetID_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 	require.Equal(t, "OK", subject.ID)
 }
 
-func TestSetID_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
+func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	subject := &IDByTag{}
@@ -161,7 +161,7 @@ func TestSetID_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 	require.Equal(t, "OK", subject.DI)
 }
 
-func TestSetID_InterfaceTypeGiven_IDSaved(t *testing.T) {
+func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	var subject interface{} = &IDByIDField{}
@@ -171,7 +171,7 @@ func TestSetID_InterfaceTypeGiven_IDSaved(t *testing.T) {
 
 //--------------------------------------------------------------------------------------------------------------------//
 
-func TestLookupIDStructField(t *testing.T) {
+func TestLookupStructField(t *testing.T) {
 	var (
 		field reflect.StructField
 		value reflect.Value
