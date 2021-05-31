@@ -6,6 +6,8 @@ github.com/adamluzsi/frameless v0.37.0 h1:s4Ht77pN0Y7jm1/izkyxWmCTnF8La0Ejn+CXEh
 github.com/adamluzsi/frameless v0.37.0/go.mod h1:dSu8ymz2Fiz7shtI6078L+CFAN4CCHOlIKCB0YBGivk=
 github.com/adamluzsi/frameless v0.39.0 h1:BDRuTHEsf+s+79vGgKxe8xEgH/TFWiav2BOj4B3DPRA=
 github.com/adamluzsi/frameless v0.39.0/go.mod h1:dSu8ymz2Fiz7shtI6078L+CFAN4CCHOlIKCB0YBGivk=
+github.com/adamluzsi/frameless v0.40.0 h1:L/Df4VyHH/N7zWf1rADGpI1vyTfVxLNbuU9E0X2VMi0=
+github.com/adamluzsi/frameless v0.40.0/go.mod h1:nXc3XniuUwXO/oY+lOHrJHHZnlOr0xWw32ht1lUs19A=
 github.com/adamluzsi/testcase v0.42.2 h1:CPTq+xWP6dLnbDVB7jRjMZPl/5kXL5gVykCAonXv1OU=
 github.com/adamluzsi/testcase v0.42.2/go.mod h1:I7+WLGTC75atF0ML93ubFZQzs3E2sI/HsyC4FRSOVvQ=
 github.com/adamluzsi/testcase v0.42.3 h1:6nEJ4Vp60rxSxVbn87VN3e6wsnPpAwDccdGq2FjMKf4=
@@ -50,6 +52,8 @@ golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1 h1:lCnv+lfrU9FRPGf8NeRuWAAPj
 golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea h1:+WiDlPBBaO+h9vPNZi8uJ3k4BkKQB7Iow3aqwHVA5hI=
 golang.org/x/sys v0.0.0-20210525143221-35b2ab0089ea/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20210601080250-7ecdf8ef093b h1:qh4f65QIVFjq9eBURLEYWqaEXmOyqdUyiBSgaXWccWk=
+golang.org/x/sys v0.0.0-20210601080250-7ecdf8ef093b/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
