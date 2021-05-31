@@ -43,7 +43,7 @@ func (spec Updater) Test(t *testing.T) {
 		spec.resource().Let(s, nil)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, spec.resourceGet(t), spec.Context(), spec.T)
+			DeleteAllEntity(t, spec.resourceGet(t), spec.Context())
 		})
 
 		s.Describe(`Updater`, func(s *testcase.Spec) {

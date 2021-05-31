@@ -1,9 +1,10 @@
 package extid_test
 
 import (
-	"github.com/adamluzsi/frameless/fixtures"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/fixtures"
 
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/stretchr/testify/require"

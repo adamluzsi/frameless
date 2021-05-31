@@ -1,11 +1,12 @@
 package reflects_test
 
 import (
+	"reflect"
+	"testing"
+
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"reflect"
-	"testing"
 )
 
 func TestIsValueEmpty(t *testing.T) {

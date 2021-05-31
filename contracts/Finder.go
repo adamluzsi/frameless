@@ -173,7 +173,7 @@ func (spec findAll) Test(t *testing.T) {
 	beforeAll := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		beforeAll.Do(func() {
-			DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
+			DeleteAllEntity(t, resourceGet(t), spec.Context())
 		})
 	})
 
@@ -188,7 +188,7 @@ func (spec findAll) Test(t *testing.T) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
+			DeleteAllEntity(t, resourceGet(t), spec.Context())
 		})
 
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -234,7 +234,7 @@ func (spec findAll) Test(t *testing.T) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
+				DeleteAllEntity(t, resourceGet(t), spec.Context())
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
@@ -360,7 +360,7 @@ func (spec FindOne) Spec(tb testing.TB) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
+			DeleteAllEntity(t, resourceGet(t), spec.Context())
 		})
 
 		s.When(`entity was present in the resource`, func(s *testcase.Spec) {
@@ -408,7 +408,7 @@ func (spec FindOne) Spec(tb testing.TB) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				DeleteAllEntity(t, resourceGet(t), spec.Context(), spec.T)
+				DeleteAllEntity(t, resourceGet(t), spec.Context())
 			})
 
 			s.Then(`it will have no result`, func(t *testcase.T) {

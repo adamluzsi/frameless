@@ -53,7 +53,7 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, spec.resourceGet(t), spec.Context(), spec.T)
+		DeleteAllEntity(t, spec.resourceGet(t), spec.Context())
 	})
 
 	entity := s.Let(`entity`, func(t *testcase.T) interface{} {

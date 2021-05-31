@@ -58,7 +58,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
-			DeleteAllEntity(t, spec.resourceGet(t), spec.Context(), spec.T)
+			DeleteAllEntity(t, spec.resourceGet(t), spec.Context())
 		})
 	})
 
@@ -66,7 +66,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 		r := spec.resourceGet(t)
 		// early load the resource ensure proper cleanup
 		return func() {
-			DeleteAllEntity(t, r, spec.Context(), spec.T)
+			DeleteAllEntity(t, r, spec.Context())
 		}
 	})
 
@@ -221,7 +221,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			t.Defer(DeleteAllEntity, t, spec.resourceGet(t), spec.Context(), spec.T)
+			t.Defer(DeleteAllEntity, t, spec.resourceGet(t), spec.Context())
 
 			var globalContext = spec.Context()
 
@@ -511,7 +511,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			CreateEntity(t, spec.resourceGet(t), ctxGet(t), entity.Get(t))
 
 			t.Log(`and then the entity is also deleted`)
-			DeleteAllEntity(t, spec.resourceGet(t), ctxGet(t), spec.T)
+			DeleteAllEntity(t, spec.resourceGet(t), ctxGet(t))
 			Waiter.Wait()
 		})
 
