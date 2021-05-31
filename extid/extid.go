@@ -2,9 +2,8 @@ package extid
 
 import (
 	"errors"
-	"reflect"
-
 	"github.com/adamluzsi/frameless/reflects"
+	"reflect"
 )
 
 func Set(ptr interface{}, id interface{}) error {
@@ -27,11 +26,9 @@ func Set(ptr interface{}, id interface{}) error {
 
 func Lookup(i interface{}) (id interface{}, ok bool) {
 	_, val, ok := LookupStructField(i)
-
 	if !ok {
 		return nil, false
 	}
-
 	return val.Interface(), !reflects.IsValueEmpty(val)
 }
 
@@ -43,16 +40,7 @@ func LookupStructField(ent interface{}) (reflect.StructField, reflect.Value, boo
 		return sf, byTag, true
 	}
 
-	const (
-		lower = `id`
-		upper = `ID`
-	)
-
-	if byName := val.FieldByName(lower); byName.Kind() != reflect.Invalid {
-		sf, _ := val.Type().FieldByName(lower)
-		return sf, byName, true
-	}
-
+	const upper = `ID`
 	if byName := val.FieldByName(upper); byName.Kind() != reflect.Invalid {
 		sf, _ := val.Type().FieldByName(upper)
 		return sf, byName, true
@@ -62,12 +50,16 @@ func LookupStructField(ent interface{}) (reflect.StructField, reflect.Value, boo
 }
 
 func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
+	const (
+		lower = "id"
+		upper = "ID"
+	)
 	for i := 0; i < val.NumField(); i++ {
 		valueField := val.Field(i)
 		structField := val.Type().Field(i)
 		tag := structField.Tag
 
-		if tagValue := tag.Get("ext"); tagValue == "ID" {
+		if tagValue := tag.Get("ext"); tagValue == upper || tagValue == lower {
 			return structField, valueField, true
 		}
 	}

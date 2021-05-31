@@ -26,7 +26,7 @@ func TestID_E2E(t *testing.T) {
 func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(IDByIDField{ID:"ok"})
+	id, ok := extid.Lookup(IDByIDField{ID: "ok"})
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -34,7 +34,7 @@ func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDByIDField{ID:"ok"})
+	id, ok := extid.Lookup(&IDByIDField{ID: "ok"})
 	require.True(t, ok)
 	require.Equal(t, "ok", id)
 }
@@ -86,7 +86,7 @@ func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTa
 func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDByUppercaseTag{DI:"KO"})
+	id, ok := extid.Lookup(&IDByUppercaseTag{DI: "KO"})
 	require.True(t, ok)
 	require.Equal(t, "KO", id)
 }
@@ -94,7 +94,7 @@ func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(UnidentifiableID{UserID:"ok"})
+	id, ok := extid.Lookup(UnidentifiableID{UserID: "ok"})
 	require.False(t, ok)
 	require.Nil(t, id)
 }
@@ -194,6 +194,11 @@ func TestLookupStructField(t *testing.T) {
 	require.Equal(t, `42`, value.Interface())
 
 	field, value, ok = extid.LookupStructField(IDByUppercaseTag{DI: `42`})
+	require.True(t, ok)
+	require.Equal(t, `DI`, field.Name)
+	require.Equal(t, `42`, value.Interface())
+
+	field, value, ok = extid.LookupStructField(IDByLowercaseTag{DI: `42`})
 	require.True(t, ok)
 	require.Equal(t, `DI`, field.Name)
 	require.Equal(t, `42`, value.Interface())
