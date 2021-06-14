@@ -6,16 +6,15 @@ import (
 
 // NewPipe return a receiver and a sender.
 // This can be used with resources that
-func NewPipe() (*PipeReceiver, *PipeSender) {
+func NewPipe() (*PipeIn, *PipeOut) {
 	feed := make(chan interface{})
 	done := make(chan struct{}, 1)
 	err := make(chan error, 1)
-	return &PipeReceiver{feed: feed, done: done, err: err},
-		&PipeSender{feed: feed, done: done, err: err}
+	return &PipeIn{feed: feed, done: done, err: err}, &PipeOut{feed: feed, done: done, err: err}
 }
 
-// PipeReceiver implements iterator interface while it's still being able to receive values, used for streaming
-type PipeReceiver struct {
+// PipeOut implements iterator interface while it's still being able to receive values, used for streaming
+type PipeOut struct {
 	feed <-chan interface{}
 	done chan<- struct{}
 	err  <-chan error
@@ -25,7 +24,7 @@ type PipeReceiver struct {
 }
 
 // Close sends a signal back that no more value should be sent because receiver stop listening
-func (i *PipeReceiver) Close() error {
+func (i *PipeOut) Close() error {
 	defer func() { recover() }()
 	i.done <- struct{}{}
 	close(i.done)
@@ -34,7 +33,7 @@ func (i *PipeReceiver) Close() error {
 
 // Next set the current entity for the next value
 // returns false if no next value
-func (i *PipeReceiver) Next() bool {
+func (i *PipeOut) Next() bool {
 	e, ok := <-i.feed
 
 	if !ok {
@@ -46,7 +45,7 @@ func (i *PipeReceiver) Next() bool {
 }
 
 // Err returns an error object that the pipe sender want to present for the pipe receiver
-func (i *PipeReceiver) Err() error {
+func (i *PipeOut) Err() error {
 	err, ok := <-i.err
 
 	if ok {
@@ -57,20 +56,20 @@ func (i *PipeReceiver) Err() error {
 }
 
 // Decode will link the current buffered value to the pointer value that is given as "e"
-func (i *PipeReceiver) Decode(e interface{}) error {
-	return reflects.Link(i.current, e)
+func (i *PipeOut) Decode(ptr interface{}) error {
+	return reflects.Link(i.current, ptr)
 }
 
-// PipeSender provides access to feed a pipe receiver with entities
-type PipeSender struct {
+// PipeIn provides access to feed a pipe receiver with entities
+type PipeIn struct {
 	feed chan<- interface{}
 	done <-chan struct{}
 	err  chan<- error
 }
 
-// Encode send value to the PipeReceiver
+// Encode send value to the PipeOut
 // and returns ErrClosed error if no more value expected on the receiver side
-func (f *PipeSender) Encode(e interface{}) error {
+func (f *PipeIn) Encode(e interface{}) error {
 	select {
 	case f.feed <- e:
 		return nil
@@ -79,8 +78,8 @@ func (f *PipeSender) Encode(e interface{}) error {
 	}
 }
 
-// Error send an error object to the PipeReceiver side, so it will be accessible with iterator.Err()
-func (f *PipeSender) Error(err error) {
+// Error send an error object to the PipeOut side, so it will be accessible with iterator.Err()
+func (f *PipeIn) Error(err error) {
 	if err == nil {
 		return
 	}
@@ -90,7 +89,7 @@ func (f *PipeSender) Error(err error) {
 }
 
 // Close close the feed and err channel, which eventually notify the receiver that no more value expected
-func (f *PipeSender) Close() error {
+func (f *PipeIn) Close() error {
 	defer func() { recover() }()
 	close(f.feed)
 	close(f.err)

@@ -159,7 +159,7 @@ func BenchmarkFilter(b *testing.B) {
 
 	s.Let(`pipe-iter`, func(t *testcase.T) interface{} {
 		srcIter := t.I(`iter`).(iterators.Interface)
-		r, w := iterators.NewPipe()
+		w, r := iterators.NewPipe()
 
 		go func() {
 			defer srcIter.Close()

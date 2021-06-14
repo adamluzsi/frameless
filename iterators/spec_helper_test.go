@@ -2,12 +2,13 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/stretchr/testify/require"
 	"io"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/adamluzsi/frameless/iterators"
+	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless"
 )

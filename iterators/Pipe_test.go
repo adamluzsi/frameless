@@ -13,10 +13,10 @@ import (
 func ExampleNewPipe() {
 	var (
 		iter   iterators.Interface
-		sender *iterators.PipeSender
+		sender *iterators.PipeIn
 	)
 
-	iter, sender = iterators.NewPipe()
+	sender, iter = iterators.NewPipe()
 	_ = iter   // send to caller for consuming it
 	_ = sender // use it to send values for each iter.Next() call
 }
@@ -24,7 +24,7 @@ func ExampleNewPipe() {
 func TestNewPipe_SimpleFeedScenario(t *testing.T) {
 	t.Parallel()
 
-	r, w := iterators.NewPipe()
+	w, r := iterators.NewPipe()
 
 	var expected = Entity{Text: "hitchhiker's guide to the galaxy"}
 	var actually Entity
@@ -45,7 +45,7 @@ func TestNewPipe_SimpleFeedScenario(t *testing.T) {
 func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 	t.Parallel()
 
-	r, w := iterators.NewPipe()
+	w, r := iterators.NewPipe()
 
 	var actually []*Entity
 	var expected []*Entity = []*Entity{
@@ -82,7 +82,7 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 		t.Skip()
 	}
 
-	r, w := iterators.NewPipe()
+	w, r := iterators.NewPipe()
 
 	require.Nil(t, r.Close()) // I release the resource,
 	// for example something went wrong during the processing on my side (receiver) and I can't continue work,
@@ -108,7 +108,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *te
 
 	expected := errors.New("Boom!")
 
-	r, w := iterators.NewPipe()
+	w, r := iterators.NewPipe()
 
 	go func() {
 		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
@@ -137,7 +137,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndR
 
 	expected := errors.New("Boom!")
 
-	r, w := iterators.NewPipe()
+	w, r := iterators.NewPipe()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -161,7 +161,7 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndR
 func TestNewPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothing(t *testing.T) {
 	t.Parallel()
 
-	r, w := iterators.NewPipe()
+	w, r := iterators.NewPipe()
 
 	go func() {
 		for i := 0; i < 10; i++ {
