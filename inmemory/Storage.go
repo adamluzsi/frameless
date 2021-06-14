@@ -3,50 +3,24 @@ package inmemory
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"sync"
-	"time"
-
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
+	"reflect"
+	"sync"
 )
 
-func NewStorage(T interface{}, m *EventLog) *Storage {
-	return &Storage{T: T, EventLog: m}
+func NewStorage(T frameless.T, m *Memory) *Storage {
+	return &Storage{T: T, Memory: m}
 }
 
-// Storage is an EventLog based development in memory storage,
-// that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type Storage struct {
-	T        interface{}
-	EventLog *EventLog
-	NewID    func(ctx context.Context) (interface{}, error)
-
-	Options struct {
-		DisableEventLogging bool
-	}
-
-	mutex sync.RWMutex
+	T      frameless.T
+	Memory *Memory
+	NewID  func(context.Context) (interface{}, error)
 }
-
-// Name Types
-const (
-	CreateEvent     = `Create`
-	UpdateEvent     = `Update`
-	DeleteAllEvent  = `DeleteAll`
-	DeleteByIDEvent = `DeleteByID`
-)
-
-type (
-	StorageEventType  struct{ T interface{} }
-	StorageEventValue struct {
-		Name  string
-		Value interface{}
-	}
-)
 
 func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 	if _, ok := extid.Lookup(ptr); !ok {
@@ -65,23 +39,17 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 	}
 
 	id, _ := extid.Lookup(ptr)
-	if found, err := s.FindByID(ctx, s.newT(ptr), id); err != nil {
+	if found, err := s.FindByID(ctx, s.newT(), id); err != nil {
 		return err
 	} else if found {
-		return fmt.Errorf(`%T already exists with id: %s`, ptr, id)
+		return fmt.Errorf(`%T already exists with id: %s`, s.T, id)
 	}
 
-	return s.append(ctx, Event{
-		Type: StorageEventType{T: s.T},
-		Value: StorageEventValue{
-			Name:  CreateEvent,
-			Value: s.getV(ptr),
-		},
-		Trace: NewTrace(0),
-	})
+	s.Memory.Set(ctx, s.Namespace(), s.IDToMemoryKey(id), base(ptr))
+	return nil
 }
 
-func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{}) (_found bool, _err error) {
+func (s *Storage) FindByID(ctx context.Context, ptr, id interface{}) (found bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -89,9 +57,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr interface{}, id interface{})
 		return false, err
 	}
 
-	view := s.View(ctx)
-
-	ent, ok := view.FindByID(id)
+	ent, ok := s.Memory.Get(ctx, s.Namespace(), s.IDToMemoryKey(id))
 	if !ok {
 		return false, nil
 	}
@@ -110,13 +76,35 @@ func (s *Storage) FindAll(ctx context.Context) frameless.Iterator {
 	if err := s.isDoneTx(ctx); err != nil {
 		return iterators.NewError(err)
 	}
+	return s.Memory.All(s.T, ctx, s.Namespace())
+}
 
-	view := s.View(ctx)
-	rList := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(s.T)), 0, 0)
-	for _, ent := range view {
-		rList = reflect.Append(rList, reflect.ValueOf(ent))
+func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	return iterators.NewSlice(rList.Interface())
+	if err := s.isDoneTx(ctx); err != nil {
+		return err
+	}
+	if s.Memory.Del(ctx, s.Namespace(), s.IDToMemoryKey(id)) {
+		return nil
+	}
+	return errNotFound(s.T, id)
+}
+
+func (s *Storage) DeleteAll(ctx context.Context) error {
+	iter := s.FindAll(ctx)
+	defer iter.Close()
+	for iter.Next() {
+		ptr := s.newT()
+		if err := iter.Decode(ptr); err != nil {
+			return err
+		}
+
+		id, _ := extid.Lookup(ptr)
+		_ = s.Memory.Del(ctx, s.Namespace(), s.IDToMemoryKey(id))
+	}
+	return iter.Err()
 }
 
 func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
@@ -125,274 +113,367 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	found, err := s.FindByID(ctx, s.newT(ptr), id)
+	found, err := s.FindByID(ctx, s.newT(), id)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`%T entitiy not found by id: %v`, ptr, id)
+		return errNotFound(s.T, id)
 	}
 
-	return s.append(ctx, Event{
-		Type: StorageEventType{T: s.T},
-		Value: StorageEventValue{
-			Name:  UpdateEvent,
-			Value: s.getV(ptr),
-		},
-		Trace: NewTrace(0),
-	})
+	s.Memory.Set(ctx, s.Namespace(), s.IDToMemoryKey(id), base(ptr))
+	return nil
 }
 
-func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
-	found, err := s.FindByID(ctx, s.newT(s.T), id)
-	if err != nil {
-		return err
+func (s *Storage) FindByIDs(ctx context.Context, ids ...interface{}) frameless.Iterator {
+	var m memoryActions = s.Memory
+	if tx, ok := s.Memory.LookupTx(ctx); ok {
+		m = tx
 	}
-	if !found {
-		return fmt.Errorf(`%T entitiy not found by id: %v`, s.T, id)
+	all := m.all(s.Namespace())
+	var vs = make(map[string]interface{}, len(ids))
+	for _, id := range ids {
+		key := s.IDToMemoryKey(id)
+		v, ok := all[key]
+		if !ok {
+			return iterators.NewError(errNotFound(s.T, id))
+		}
+		vs[key] = v
 	}
+	return iterators.NewSlice(s.Memory.toTSlice(s.T, vs))
+}
 
-	vPTR := s.newT(s.T)
-	if err := extid.Set(vPTR, id); err != nil {
-		return err
+func (s *Storage) Upsert(ctx context.Context, ptrs ...interface{}) error {
+	var m memoryActions = s.Memory
+	if tx, ok := s.Memory.LookupTx(ctx); ok {
+		m = tx
 	}
-	return s.append(ctx, Event{
-		Type: StorageEventType{T: s.T},
-		Value: StorageEventValue{
-			Name:  DeleteByIDEvent,
-			Value: s.getV(vPTR),
-		},
-		Trace: NewTrace(0),
-	})
-}
-
-func (s *Storage) DeleteAll(ctx context.Context) error {
-	if err := s.isDoneTx(ctx); err != nil {
-		return err
+	for _, ptr := range ptrs {
+		id, ok := extid.Lookup(ptr)
+		if !ok {
+			nid, err := s.newID(ctx)
+			if err != nil {
+				return err
+			}
+			id = nid
+			if err := extid.Set(ptr, nid); err != nil {
+				return err
+			}
+		}
+		key := s.IDToMemoryKey(id)
+		m.set(s.Namespace(), key, base(ptr))
 	}
-
-	return s.append(ctx, Event{
-		Type: StorageEventType{T: s.T},
-		Value: StorageEventValue{
-			Name:  DeleteAllEvent,
-			Value: s.getT(s.T),
-		},
-		Trace: NewTrace(0),
-	})
+	return nil
 }
 
-func (s *Storage) BeginTx(ctx context.Context) (context.Context, error) {
-	return s.EventLog.BeginTx(ctx)
-}
+//func (s *Storage) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//	panic("implement me")
+//}
+//
+//func (s *Storage) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//	panic("implement me")
+//}
+//
+//func (s *Storage) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//	panic("implement me")
+//}
+//
+//func (s *Storage) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//	panic("implement me")
+//}
 
-func (s *Storage) CommitTx(ctx context.Context) error {
-	return s.EventLog.CommitTx(ctx)
-}
-
-func (s *Storage) RollbackTx(ctx context.Context) error {
-	return s.EventLog.RollbackTx(ctx)
-}
-
-func (s *Storage) LookupTx(ctx context.Context) (*Tx, bool) {
-	return s.EventLog.LookupTx(ctx)
+func (s *Storage) newT() interface{} {
+	return reflect.New(reflect.TypeOf(s.T)).Interface()
 }
 
 func (s *Storage) newID(ctx context.Context) (interface{}, error) {
 	if s.NewID != nil {
 		return s.NewID(ctx)
 	}
-
-	id, _ := extid.Lookup(s.T)
-
-	var moreOrLessUniqueInt = func() int64 {
-		return time.Now().UnixNano() +
-			int64(fixtures.SecureRandom.IntBetween(100000, 900000)) +
-			int64(fixtures.SecureRandom.IntBetween(1000000, 9000000)) +
-			int64(fixtures.SecureRandom.IntBetween(10000000, 90000000)) +
-			int64(fixtures.SecureRandom.IntBetween(100000000, 900000000))
-	}
-
-	// TODO: deprecate the unsafe id generation approach.
-	//       Fixtures are not unique enough for this responsibility.
-	//
-	switch id.(type) {
-	case string:
-		return fixtures.Random.String(), nil
-	case int:
-		return int(moreOrLessUniqueInt()), nil
-	case int64:
-		return moreOrLessUniqueInt(), nil
-	default:
-		return fixtures.New(reflect.New(reflect.TypeOf(id)).Elem().Interface()), nil
-	}
+	return newDummyID(s.T)
 }
 
-func (s *Storage) getT(v interface{}) interface{} {
-	return reflects.BaseValueOf(s.newT(v)).Interface()
+func (s *Storage) IDToMemoryKey(id frameless.T) string {
+	return fmt.Sprintf(`%#v`, id)
 }
 
-func (s *Storage) getV(v interface{}) interface{} {
-	return reflects.BaseValueOf(v).Interface()
+func (s *Storage) Namespace() string {
+	return fmt.Sprintf(`%T`, s.T)
 }
 
-func (s *Storage) newT(ent interface{}) interface{} {
-	T := reflects.BaseTypeOf(ent)
-	return reflect.New(T).Interface()
-}
-
-func (s *Storage) View(ctx context.Context) StorageView {
-	var events []Event
-	if tx, ok := s.EventLog.LookupTx(ctx); ok {
-		events = tx.Events()
-	} else {
-		events = s.EventLog.Events()
-	}
-	return s.view(events)
-}
-
-func (s *Storage) view(events []Event) StorageView {
-	var view = make(StorageView)
-	eventType := StorageEventType{T: s.T}
-	for _, event := range events {
-		if event.Type != eventType {
-			continue
-		}
-
-		v := event.Value.(StorageEventValue)
-		switch v.Name {
-		case CreateEvent, UpdateEvent:
-			id, ok := extid.Lookup(v.Value)
-			if !ok {
-				panic(fmt.Errorf(`missing id in event value: %#v<%T>`, v.Value, v.Value))
-			}
-
-			view.setByID(id, v.Value)
-		case DeleteByIDEvent:
-			id, ok := extid.Lookup(v.Value)
-			if !ok {
-				panic(fmt.Errorf(`missing id in event value: %#v<%T>`, v.Value, v.Value))
-			}
-
-			view.delByID(id)
-		case DeleteAllEvent:
-			view = make(StorageView)
-		}
-	}
-
-	return view
-}
-
-func (s *Storage) append(ctx context.Context, event Event) error {
-	if err := s.EventLog.Append(ctx, event); err != nil {
-		return err
-	}
-	if s.Options.DisableEventLogging {
-		s.CompressEvents()
-	}
-	return nil
-}
-
-func (s *Storage) CompressEvents() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.EventLog.Rewrite(func(es []Event) []Event {
-		v := s.view(es)
-		out := make([]Event, 0, len(es))
-		eventType := StorageEventType{T: s.T}
-
-		// keep not related events
-		for _, event := range es {
-			if event.Type == eventType {
-				continue
-			}
-			out = append(out, event)
-		}
-		// append current view
-		for _, ent := range v {
-			out = append(out, Event{
-				Type: eventType,
-				Value: StorageEventValue{
-					Name:  CreateEvent,
-					Value: ent,
-				},
-				Trace: []Stack{},
-			})
-		}
-		return out
-	})
-}
-
-func (s *Storage) subscribe(ctx context.Context, subscriber frameless.Subscriber, name string) (frameless.Subscription, error) {
-	eventType := StorageEventType{T: s.T}
-	return s.EventLog.AddSubscription(ctx, StubSubscriber{
-		HandleFunc: func(ctx context.Context, event Event) error {
-			if event.Type != eventType {
-				return nil
-			}
-
-			v := event.Value.(StorageEventValue)
-			if v.Name != name {
-				return nil
-			}
-
-			return subscriber.Handle(ctx, v.Value)
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.Error(ctx, err)
-		},
-	})
-}
-
-func (s *Storage) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.subscribe(ctx, subscriber, CreateEvent)
-}
-
-func (s *Storage) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.subscribe(ctx, subscriber, UpdateEvent)
-}
-
-func (s *Storage) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.subscribe(ctx, subscriber, DeleteByIDEvent)
-}
-
-func (s *Storage) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.subscribe(ctx, subscriber, DeleteAllEvent)
-}
-
-type StorageView map[ /* Namespace */ string] /* entity<T> */ interface{}
-
-func (v StorageView) FindByID(id interface{}) (interface{}, bool) {
-	value, ok := v[v.key(id)]
-	return value, ok
-}
-
-func (v StorageView) setByID(id, ent interface{}) {
-	v[v.key(id)] = ent
-}
-
-func (v StorageView) delByID(id interface{}) {
-	delete(v, v.key(id))
-}
-
-func (v StorageView) key(id interface{}) string {
-	switch id := id.(type) {
-	case string:
-		return id
-	case *string:
-		return *id
-	default:
-		return fmt.Sprintf(`%#v`, id)
-	}
+func (s *Storage) getV(ptr interface{}) interface{} {
+	return reflects.BaseValueOf(ptr).Interface()
 }
 
 func (s *Storage) isDoneTx(ctx context.Context) error {
-	tx, ok := s.EventLog.LookupTx(ctx)
+	tx, ok := s.Memory.LookupTx(ctx)
 	if !ok {
 		return nil
 	}
-	if tx.isDone() {
+	if tx.done {
 		return errTxDone
 	}
 	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func NewMemory() *Memory {
+	return &Memory{}
+}
+
+type Memory struct {
+	m      sync.Mutex
+	tables map[string]MemoryNamespace
+
+	tx struct {
+		init sync.Once
+		ns   string
+	}
+}
+
+type memoryActions interface {
+	all(namespace string) map[string]interface{}
+	get(namespace string, key string) (interface{}, bool)
+	set(namespace, key string, value interface{})
+	del(namespace string, key string) bool
+}
+
+func base(ent frameless.T) interface{} {
+	return reflects.BaseValueOf(ent).Interface()
+}
+
+func (m *Memory) Get(ctx context.Context, namespace string, key string) (interface{}, bool) {
+	if tx, ok := m.LookupTx(ctx); ok && !tx.done {
+		return tx.get(namespace, key)
+	}
+	return m.get(namespace, key)
+}
+
+func (m *Memory) All(T frameless.T, ctx context.Context, namespace string) frameless.Iterator {
+	if tx, ok := m.LookupTx(ctx); ok && !tx.done {
+		return iterators.NewSlice(m.toTSlice(T, tx.all(namespace)))
+	}
+	return iterators.NewSlice(m.toTSlice(T, m.all(namespace)))
+}
+
+func (m *Memory) toTSlice(T frameless.T, vs map[string]interface{}) interface{} {
+	rslice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(T)), 0, len(vs))
+	for _, v := range vs {
+		rslice = reflect.Append(rslice, reflect.ValueOf(v))
+	}
+	return rslice.Interface()
+}
+
+func (m *Memory) all(namespace string) map[string]interface{} {
+	m.m.Lock()
+	defer m.m.Unlock()
+	var vs = make(map[string]interface{})
+	for k, v := range m.namespace(namespace) {
+		vs[k] = v
+	}
+	return vs
+}
+
+func (m *Memory) get(namespace string, key string) (interface{}, bool) {
+	m.m.Lock()
+	defer m.m.Unlock()
+	ns := m.namespace(namespace)
+	v, ok := ns[key]
+	return v, ok
+}
+
+func (m *Memory) Set(ctx context.Context, namespace, key string, value interface{}) {
+	if tx, ok := m.LookupTx(ctx); ok {
+		tx.set(namespace, key, value)
+		return
+	}
+
+	m.set(namespace, key, value)
+}
+
+func (m *Memory) set(namespace, key string, value interface{}) {
+	m.m.Lock()
+	defer m.m.Unlock()
+	tbl := m.namespace(namespace)
+	tbl[key] = base(value)
+	return
+}
+
+func (m *Memory) Del(ctx context.Context, namespace string, key string) bool {
+	if tx, ok := m.LookupTx(ctx); ok {
+		return tx.del(namespace, key)
+	}
+	return m.del(namespace, key)
+}
+
+func (m *Memory) del(namespace string, key string) bool {
+	m.m.Lock()
+	defer m.m.Unlock()
+	ns := m.namespace(namespace)
+	if _, ok := ns[key]; !ok {
+		return false
+	}
+	delete(ns, key)
+	return true
+}
+
+type MemoryNamespace map[string]interface{}
+
+func (m *Memory) namespace(name string) MemoryNamespace {
+	if m.tables == nil {
+		m.tables = make(map[string]MemoryNamespace)
+	}
+	if _, ok := m.tables[name]; !ok {
+		m.tables[name] = make(MemoryNamespace)
+	}
+	return m.tables[name]
+}
+
+type MemoryTx struct {
+	m       sync.Mutex
+	done    bool
+	super   memoryActions
+	changes map[string]memoryTxChanges
+}
+
+type memoryTxChanges struct {
+	Values  MemoryNamespace
+	Deleted map[string]struct{}
+}
+
+func (tx *MemoryTx) all(namespace string) map[string]interface{} {
+	tx.m.Lock()
+	defer tx.m.Unlock()
+	svs := tx.super.all(namespace)
+	cvs := tx.getChanges(namespace)
+	avs := make(map[string]interface{})
+	for k, v := range svs {
+		avs[k] = v
+	}
+	for k, _ := range cvs.Deleted {
+		delete(avs, k)
+	}
+	for k, v := range cvs.Values {
+		avs[k] = v
+	}
+	return avs
+}
+
+func (tx *MemoryTx) get(namespace string, key string) (interface{}, bool) {
+	tx.m.Lock()
+	defer tx.m.Unlock()
+	changes := tx.getChanges(namespace)
+	v, ok := changes.Values[key]
+	if ok {
+		return v, ok
+	}
+	if _, isDeleted := changes.Deleted[key]; isDeleted {
+		return nil, false
+	}
+	return tx.super.get(namespace, key)
+}
+
+func (tx *MemoryTx) set(namespace, key string, value interface{}) {
+	tx.m.Lock()
+	defer tx.m.Unlock()
+	tx.getChanges(namespace).Values[key] = value
+}
+
+func (tx *MemoryTx) del(namespace, key string) bool {
+	if _, ok := tx.get(namespace, key); !ok {
+		return false
+	}
+	tx.m.Lock()
+	defer tx.m.Unlock()
+	changes := tx.getChanges(namespace)
+	delete(changes.Values, key)
+	changes.Deleted[key] = struct{}{}
+	return true
+}
+
+func (tx *MemoryTx) commit() error {
+	if tx.done {
+		return errTxDone
+	}
+	tx.m.Lock()
+	defer tx.m.Unlock()
+	tx.done = true
+	for namespace, values := range tx.changes {
+		for key, _ := range values.Deleted {
+			tx.super.del(namespace, key)
+		}
+		for key, value := range values.Values {
+			tx.super.set(namespace, key, value)
+		}
+	}
+	return nil
+}
+
+func (tx *MemoryTx) rollback() error {
+	if tx.done {
+		return errTxDone
+	}
+	tx.done = true
+	super, ok := tx.super.(*MemoryTx)
+	if !ok {
+		return nil
+	}
+	// We rollback recursively because most resource don't support multi level transactions
+	// and I would like to avoid supporting it here until I have proper use-case with it.
+	// Then adding a flag to turn off this behavior should be easy-peasy.
+	return super.rollback()
+}
+
+func (tx *MemoryTx) getChanges(name string) memoryTxChanges {
+	if tx.changes == nil {
+		tx.changes = make(map[string]memoryTxChanges)
+	}
+	if _, ok := tx.changes[name]; !ok {
+		tx.changes[name] = memoryTxChanges{
+			Values:  make(MemoryNamespace),
+			Deleted: make(map[string]struct{}),
+		}
+	}
+	return tx.changes[name]
+}
+
+type ctxKeyMemoryTx struct{ NS string }
+
+func (m *Memory) ctxKeyMemoryTx() ctxKeyMemoryTx {
+	m.tx.init.Do(func() {
+		m.tx.ns = fixtures.SecureRandom.StringN(8)
+	})
+
+	return ctxKeyMemoryTx{NS: m.tx.ns}
+}
+
+func (m *Memory) BeginTx(ctx context.Context) (context.Context, error) {
+	var super memoryActions = m
+	if tx, ok := m.LookupTx(ctx); ok {
+		super = tx
+	}
+	return context.WithValue(ctx, m.ctxKeyMemoryTx(), &MemoryTx{super: super}), nil
+}
+
+func (m *Memory) CommitTx(ctx context.Context) error {
+	if tx, ok := m.LookupTx(ctx); ok {
+		return tx.commit()
+	}
+	return errNoTx
+}
+
+func (m *Memory) RollbackTx(ctx context.Context) error {
+	if tx, ok := m.LookupTx(ctx); ok {
+		return tx.rollback()
+	}
+	return errNoTx
+}
+
+func (m *Memory) LookupTx(ctx context.Context) (*MemoryTx, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	tx, ok := ctx.Value(m.ctxKeyMemoryTx()).(*MemoryTx)
+	return tx, ok
 }
