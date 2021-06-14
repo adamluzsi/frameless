@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+type Traceable interface {
+	GetTrace() []Stack
+	SetTrace([]Stack)
+}
+
 func NewTrace(offset int) []Stack {
 	const maxTraceLength = 5
 	goRoot := runtime.GOROOT()

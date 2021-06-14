@@ -2,6 +2,7 @@ package inmemory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/stubs"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -12,7 +13,7 @@ import (
 
 var (
 	_ inmemory.EventManager            = &inmemory.EventLog{}
-	_ inmemory.EventManager            = &inmemory.Tx{}
+	_ inmemory.EventManager            = &inmemory.EventLogTx{}
 	_ frameless.OnePhaseCommitProtocol = &inmemory.EventLog{}
 )
 
@@ -57,13 +58,10 @@ func (spec SpecMemory) ctxGet(t *testcase.T) context.Context {
 }
 
 func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
-	type AddTestEvent struct{}
+	type AddTestEvent struct{ V string }
 	var (
 		event = s.Let(`event`, func(t *testcase.T) interface{} {
-			return inmemory.Event{
-				Type:  AddTestEvent{},
-				Value: `hello world`,
-			}
+			return AddTestEvent{V: `hello world`}
 		})
 		eventGet = func(t *testcase.T) inmemory.Event {
 			return event.Get(t).(inmemory.Event)
@@ -94,7 +92,7 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 		})
 
 		s.Then(`Add will execute in the scope of transaction`, func(t *testcase.T) {
-
+			t.Skip(`TODO`)
 		})
 	})
 }
@@ -104,7 +102,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 		return []inmemory.Event{}
 	})
 	subscriber := s.Let(`inmemory.MemorySubscriber`, func(t *testcase.T) interface{} {
-		return inmemory.StubSubscriber{
+		return stubs.Subscriber{
 			HandleFunc: func(ctx context.Context, event inmemory.Event) error {
 				testcase.Append(t, handledEvents, event)
 				return nil
@@ -114,11 +112,11 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			},
 		}
 	})
-	subscriberGet := func(t *testcase.T) inmemory.Subscriber {
-		return subscriber.Get(t).(inmemory.Subscriber)
+	subscriberGet := func(t *testcase.T) frameless.Subscriber {
+		return subscriber.Get(t).(frameless.Subscriber)
 	}
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		return spec.memoryGet(t).AddSubscription(spec.ctxGet(t), subscriberGet(t))
+		return spec.memoryGet(t).Subscribe(spec.ctxGet(t), subscriberGet(t))
 	}
 	onSuccess := func(t *testcase.T) frameless.Subscription {
 		subscription, err := subject(t)
@@ -128,16 +126,12 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 	}
 
 	type (
-		TestEventType  struct{}
-		TestEventValue struct{ V int }
+		TestEvent struct{ V int }
 	)
 
 	s.When(`events added to the *inmemory.EventLog`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.memoryGet(t).Append(spec.ctxGet(t), inmemory.Event{
-				Type:  TestEventType{},
-				Value: TestEventValue{V: 42},
-			}))
+			require.Nil(t, spec.memoryGet(t).Append(spec.ctxGet(t), TestEvent{V: 42}))
 		})
 
 		s.Then(`since there wasn't any subscription, nothing is received in the subscriber`, func(t *testcase.T) {
@@ -153,11 +147,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 		_ = subscription
 
 		s.And(`event is added to *inmemory.EventLog`, func(s *testcase.Spec) {
-			expected := inmemory.Event{
-				Type:  TestEventType{},
-				Value: TestEventValue{V: 42},
-				Trace: []inmemory.Stack{},
-			}
+			expected := TestEvent{V: 42}
 
 			s.Before(func(t *testcase.T) {
 				t.Log(`and event added to the event store`)
@@ -211,4 +201,27 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			})
 		})
 	})
+}
+
+func TestEventLog_optionsDisabledAsyncSubscriptionHandling_subscriptionCanAppendEvents(t *testing.T) {
+	type (
+		AEvent struct{}
+		BEvent struct{}
+	)
+
+	ctx := context.Background()
+	eventLog := inmemory.NewEventLog()
+	eventLog.Options.DisableAsyncSubscriptionHandling = true
+
+	sub, err := eventLog.Subscribe(ctx, stubs.Subscriber{
+		HandleFunc: func(ctx context.Context, ent interface{}) error {
+			if ent == (BEvent{}) {
+				return nil
+			}
+			return eventLog.Append(ctx, BEvent{})
+		},
+	})
+	require.Nil(t, err)
+	defer sub.Close()
+	require.Nil(t, eventLog.Append(ctx, AEvent{}))
 }

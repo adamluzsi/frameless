@@ -55,7 +55,7 @@ func TestContracts(t *testing.T) {
 	require.NotNil(t, ff.Create(Entity{}).(*Entity))
 
 	testcase.RunContract(t, getContracts(Entity{}, ff, func(tb testing.TB) getContractsSubject {
-		return inmemory.NewStorage(Entity{}, inmemory.NewEventLog())
+		return inmemory.NewEventLogStorage(Entity{}, inmemory.NewEventLog())
 	})...)
 }
 
@@ -107,14 +107,14 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 }
 
 func NewEventuallyConsistentStorage(T interface{}) *EventuallyConsistentStorage {
-	e := &EventuallyConsistentStorage{Storage: inmemory.NewStorage(T, inmemory.NewEventLog())}
+	e := &EventuallyConsistentStorage{EventLogStorage: inmemory.NewEventLogStorage(T, inmemory.NewEventLog())}
 	e.jobs.queue = make(chan func(), 100)
 	e.Spawn()
 	return e
 }
 
 type EventuallyConsistentStorage struct {
-	*inmemory.Storage
+	*inmemory.EventLogStorage
 	jobs struct {
 		queue chan func()
 		wg    sync.WaitGroup
@@ -161,7 +161,7 @@ func (e *EventuallyConsistentStorage) Create(ctx context.Context, ptr interface{
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Storage.Create(ctx, ptr)
+		return e.EventLogStorage.Create(ctx, ptr)
 	})
 }
 
@@ -170,7 +170,7 @@ func (e *EventuallyConsistentStorage) Update(ctx context.Context, ptr interface{
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Storage.Update(ctx, ptr)
+		return e.EventLogStorage.Update(ctx, ptr)
 	})
 }
 
@@ -179,7 +179,7 @@ func (e *EventuallyConsistentStorage) DeleteByID(ctx context.Context, id interfa
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Storage.DeleteByID(ctx, id)
+		return e.EventLogStorage.DeleteByID(ctx, id)
 	})
 }
 
@@ -188,7 +188,7 @@ func (e *EventuallyConsistentStorage) DeleteAll(ctx context.Context) error {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.Storage.DeleteAll(ctx)
+		return e.EventLogStorage.DeleteAll(ctx)
 	})
 }
 

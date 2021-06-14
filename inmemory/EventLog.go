@@ -31,11 +31,7 @@ type EventLog struct {
 	txNamespaceInit sync.Once
 }
 
-type Event struct {
-	Type  interface{}
-	Value interface{}
-	Trace []Stack
-}
+type Event = interface{}
 
 type EventViewer interface {
 	Events() []Event
@@ -46,10 +42,25 @@ type EventManager interface {
 	EventViewer
 }
 
+type EventLogEvent struct {
+	Type  string
+	Name  string
+	Trace []Stack
+}
+
+func (et EventLogEvent) GetTrace() []Stack      { return et.Trace }
+func (et EventLogEvent) SetTrace(trace []Stack) { et.Trace = trace }
+
+const (
+	txEventLogEventType = "Tx"
+)
+
+func (et EventLogEvent) String() string {
+	return fmt.Sprintf(`%s`, et.Name)
+}
+
 func (s *EventLog) Append(ctx context.Context, event Event) error {
-	if event.Trace == nil {
-		event.Trace = NewTrace(2)
-	}
+	ensureTrace(event)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -57,8 +68,8 @@ func (s *EventLog) Append(ctx context.Context, event Event) error {
 		return tx.Append(ctx, event)
 	}
 	s.eMutex.Lock()
-	defer s.eMutex.Unlock()
 	s.events = append(s.events, event)
+	s.eMutex.Unlock()
 	s.notifySubscriptions(event)
 	return nil
 }
@@ -80,11 +91,11 @@ func (s *EventLog) getTxCtxKey() interface{} {
 		s.txNamespace = fixtures.SecureRandom.StringN(42)
 	})
 
-	return ctxKeyTx{Namespace: s.txNamespace}
+	return ctxKeyEventLogTx{Namespace: s.txNamespace}
 }
 
-func (s *EventLog) LookupTx(ctx context.Context) (*Tx, bool) {
-	tx, ok := ctx.Value(s.getTxCtxKey()).(*Tx)
+func (s *EventLog) LookupTx(ctx context.Context) (*EventLogTx, bool) {
+	tx, ok := ctx.Value(s.getTxCtxKey()).(*EventLogTx)
 	return tx, ok
 }
 
@@ -99,10 +110,18 @@ func (s *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 	} else {
 		em = s
 	}
-	return context.WithValue(ctx, s.getTxCtxKey(), &Tx{
+	tx = &EventLogTx{
 		events: make([]Event, 0),
 		parent: em,
-	}), nil
+	}
+	if err := tx.Append(ctx, EventLogEvent{
+		Type:  txEventLogEventType,
+		Name:  "BeginTx",
+		Trace: NewTrace(0),
+	}); err != nil {
+		return ctx, err
+	}
+	return context.WithValue(ctx, s.getTxCtxKey(), tx), nil
 }
 
 const (
@@ -117,6 +136,13 @@ func (s *EventLog) CommitTx(ctx context.Context) error {
 	}
 	if tx.isDone() {
 		return errTxDone
+	}
+	if err := tx.Append(ctx, EventLogEvent{
+		Type:  txEventLogEventType,
+		Name:  "CommitTx",
+		Trace: NewTrace(0),
+	}); err != nil {
+		return err
 	}
 	tx.done.commit = true
 	for _, event := range tx.events {
@@ -135,11 +161,18 @@ func (s *EventLog) RollbackTx(ctx context.Context) error {
 	if tx.isDone() {
 		return errTxDone
 	}
+	if err := tx.Append(ctx, EventLogEvent{
+		Type:  txEventLogEventType,
+		Name:  "RollbackTx",
+		Trace: NewTrace(0),
+	}); err != nil {
+		return err
+	}
 	tx.done.rollback = true
 	return nil
 }
 
-func (s *EventLog) Atomic(ctx context.Context, fn func(tx *Tx) error) error {
+func (s *EventLog) Atomic(ctx context.Context, fn func(tx *EventLogTx) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -158,15 +191,38 @@ func (s *EventLog) Atomic(ctx context.Context, fn func(tx *Tx) error) error {
 	return s.CommitTx(ctx)
 }
 
-func (s *EventLog) notifySubscriptions(event Event) {
-	s.withSubscriptions(func(subscriptions map[string]*Subscription) {
-		for _, sub := range subscriptions {
-			sub.publish(event)
+func (s *EventLog) Compress() {
+	s.Rewrite(func(es []Event) []Event {
+		out := make([]Event, 0, len(es))
+		for _, event := range es {
+			switch v := event.(type) {
+			case EventLogEvent:
+				if v.Type == txEventLogEventType {
+					continue
+				}
+
+				out = append(out, event)
+			default:
+				out = append(out, event)
+			}
 		}
+		return out
 	})
 }
 
-func (s *EventLog) newSubscription(ctx context.Context, subscriber Subscriber) *Subscription {
+func (s *EventLog) notifySubscriptions(event Event) {
+	s.sMutex.Lock()
+	var subs []*Subscription
+	for _, sub := range s.subscriptions {
+		subs = append(subs, sub)
+	}
+	s.sMutex.Unlock()
+	for _, sub := range subs {
+		sub.publish(event)
+	}
+}
+
+func (s *EventLog) newSubscription(ctx context.Context, subscriber frameless.Subscriber) *Subscription {
 	var sub Subscription
 
 	sub.id = fixtures.SecureRandom.StringN(128) // replace with actual unique id maybe?
@@ -181,27 +237,10 @@ func (s *EventLog) newSubscription(ctx context.Context, subscriber Subscriber) *
 	return &sub
 }
 
-type Subscriber interface {
-	Handle(ctx context.Context, event Event) error
-	Error(ctx context.Context, err error) error
-}
-
-type StubSubscriber struct {
-	HandleFunc func(ctx context.Context, event Event) error
-	ErrorFunc  func(ctx context.Context, err error) error
-}
-
-func (m StubSubscriber) Handle(ctx context.Context, event Event) error {
-	return m.HandleFunc(ctx, event)
-}
-func (m StubSubscriber) Error(ctx context.Context, err error) error {
-	return m.ErrorFunc(ctx, err)
-}
-
 type Subscription struct {
 	id         string
 	memory     *EventLog
-	subscriber Subscriber
+	subscriber frameless.Subscriber /*[Event]*/
 
 	context context.Context
 	cancel  func()
@@ -209,15 +248,15 @@ type Subscription struct {
 	// 		memory.SubscribeToCreate(ctx, subscriber)
 	// 		go memory.Create(ctx, &entity)
 	//
-	mutex   sync.Mutex
-	wrkWG   sync.WaitGroup
-	queueWG sync.WaitGroup
-	queue   chan Event
+	shutdownMutex sync.RWMutex
+	wrkWG         sync.WaitGroup
+	queueWG       sync.WaitGroup
+	queue         chan Event
 }
 
 func (s *Subscription) publish(event Event) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.shutdownMutex.RLock()
+	defer s.shutdownMutex.RUnlock()
 
 	select {
 	case <-s.context.Done():
@@ -253,18 +292,16 @@ func (s *Subscription) handle(event Event) {
 }
 
 func (s *Subscription) Close() (rErr error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+	s.shutdownMutex.Lock()
+	defer s.shutdownMutex.Unlock()
 	defer func() {
 		if r := recover(); r != nil {
 			rErr = fmt.Errorf(`%v`, r)
 		}
 	}()
 
-	s.memory.withSubscriptions(func(subs map[string]*Subscription) {
-		// GC the closed subscription from the active subscriptions
-		delete(subs, s.id)
-	})
+	// GC the closed subscription from the active subscriptions
+	s.memory.delSubscription(s)
 
 	s.cancel()       // prevent publish
 	s.queueWG.Wait() // wait for pending publishes
@@ -284,16 +321,32 @@ func (s *Subscription) isClosed() bool {
 	}
 }
 
-func (s *EventLog) withSubscriptions(blk func(subscriptions map[ /* subID */ string]*Subscription)) {
+func (s *EventLog) getSubscriptionsUnsafe() map[string]*Subscription {
+	if s.subscriptions == nil {
+		s.subscriptions = make(map[string]*Subscription)
+	}
+	return s.subscriptions
+}
+
+func (s *EventLog) addSubscription(subscription *Subscription) {
 	s.sMutex.Lock()
 	defer s.sMutex.Unlock()
 	if s.subscriptions == nil {
 		s.subscriptions = make(map[string]*Subscription)
 	}
-	blk(s.subscriptions)
+	s.subscriptions[subscription.id] = subscription
 }
 
-func (s *EventLog) AddSubscription(ctx context.Context, subscriber Subscriber) (frameless.Subscription, error) {
+func (s *EventLog) delSubscription(sub *Subscription) {
+	s.sMutex.Lock()
+	defer s.sMutex.Unlock()
+	if s.subscriptions == nil {
+		return
+	}
+	delete(s.subscriptions, sub.id)
+}
+
+func (s *EventLog) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -301,14 +354,11 @@ func (s *EventLog) AddSubscription(ctx context.Context, subscriber Subscriber) (
 	}
 
 	sub := s.newSubscription(ctx, subscriber)
-	s.withSubscriptions(func(subscriptions map[string]*Subscription) {
-		subscriptions[sub.id] = sub
-	})
-
+	s.addSubscription(sub)
 	return sub, nil
 }
 
-type Tx struct {
+type EventLogTx struct {
 	mutex  sync.RWMutex
 	events []Event
 	parent EventManager
@@ -320,12 +370,10 @@ type Tx struct {
 	}
 }
 
-type ctxKeyTx struct{ Namespace string }
+type ctxKeyEventLogTx struct{ Namespace string }
 
-func (tx *Tx) Append(ctx context.Context, event Event) error {
-	if event.Trace == nil {
-		event.Trace = NewTrace(2)
-	}
+func (tx *EventLogTx) Append(ctx context.Context, event Event) error {
+	ensureTrace(event)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -335,7 +383,7 @@ func (tx *Tx) Append(ctx context.Context, event Event) error {
 	return nil
 }
 
-func (tx *Tx) Events() []Event {
+func (tx *EventLogTx) Events() []Event {
 	tx.mutex.RLock()
 	defer tx.mutex.RUnlock()
 	var es []Event
@@ -344,8 +392,18 @@ func (tx *Tx) Events() []Event {
 	return es
 }
 
-func (tx *Tx) isDone() bool {
+func (tx *EventLogTx) isDone() bool {
 	tx.mutex.RLock()
 	defer tx.mutex.RUnlock()
 	return tx.done.commit || tx.done.rollback
+}
+
+func ensureTrace(event Event) {
+	traceable, ok := event.(Traceable)
+	if !ok {
+		return
+	}
+	if traceable.GetTrace() == nil {
+		traceable.SetTrace(NewTrace(3))
+	}
 }
