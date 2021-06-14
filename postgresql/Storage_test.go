@@ -40,7 +40,7 @@ func StorageTestEntityMapping() postgresql.Mapper {
 	}
 }
 
-func TestNewStorage_smokeTest(t *testing.T) {
+func TestNewStorage_smoke(t *testing.T) {
 	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
 	defer cm.Close()
 	migrateEntityStorage(t, cm)
