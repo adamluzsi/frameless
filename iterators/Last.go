@@ -20,7 +20,7 @@ func Last(i Interface, e interface{}) (found bool, err error) {
 	}
 
 	if !iterated {
-		return false, nil
+		return false, i.Err()
 	}
 
 	if err := i.Err(); err != nil {

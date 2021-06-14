@@ -40,8 +40,8 @@ func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
 	require.True(t, closed)
 }
 
-func TestFirst_WhenErrorOccursDuring(t *testing.T) {
-	SharedErrCases(t, iterators.First)
+func TestFirst_errors(t *testing.T) {
+	FirstAndLastSharedErrorTestCases(t, iterators.First)
 }
 
 func TestFirst_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {

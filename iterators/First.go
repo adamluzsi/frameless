@@ -11,7 +11,7 @@ func First(i Interface, ptr interface{}) (found bool, err error) {
 	}()
 
 	if !i.Next() {
-		return false, nil
+		return false, i.Err()
 	}
 
 	if err := i.Decode(ptr); err != nil {

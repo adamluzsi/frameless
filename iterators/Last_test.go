@@ -42,7 +42,7 @@ func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 }
 
 func TestLast_WhenErrorOccursDuring(t *testing.T) {
-	SharedErrCases(t, iterators.Last)
+	FirstAndLastSharedErrorTestCases(t, iterators.Last)
 }
 
 func TestLast_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {

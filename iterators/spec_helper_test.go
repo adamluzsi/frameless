@@ -2,8 +2,12 @@ package iterators_test
 
 import (
 	"errors"
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/adamluzsi/frameless/iterators"
+	"github.com/stretchr/testify/require"
 	"io"
 	"sync"
+	"testing"
 
 	"github.com/adamluzsi/frameless"
 )
@@ -59,4 +63,78 @@ func (s *StubIterator) Next() bool {
 
 func (s *StubIterator) Err() error {
 	return nil
+}
+
+func FirstAndLastSharedErrorTestCases(t *testing.T, subject func(iterators.Interface, interface{}) (bool, error)) {
+	t.Run("error test-cases", func(t *testing.T) {
+		expectedErr := errors.New(fixtures.Random.StringN(4))
+
+		t.Run("Closing", func(t *testing.T) {
+			t.Parallel()
+
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "close"}))
+
+			i.StubClose = func() error { return expectedErr }
+
+			_, err := subject(i, &Entity{})
+			require.Equal(t, expectedErr, err)
+		})
+
+		t.Run("Decode", func(t *testing.T) {
+			t.Parallel()
+
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "decode"}))
+
+			i.StubDecode = func(interface{}) error { return expectedErr }
+
+			found, err := subject(i, &Entity{})
+			require.Equal(t, false, found)
+			require.Equal(t, expectedErr, err)
+		})
+
+		t.Run("Err", func(t *testing.T) {
+			t.Parallel()
+
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "err"}))
+
+			i.StubErr = func() error { return expectedErr }
+
+			found, err := subject(i, &Entity{})
+			require.Equal(t, false, found)
+			require.Equal(t, expectedErr, err)
+		})
+
+		t.Run("Decode+Close Err", func(t *testing.T) {
+			t.Parallel()
+
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "err"}))
+
+			i.StubDecode = func(interface{}) error { return expectedErr }
+			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }
+
+			found, err := subject(i, &Entity{})
+			require.Equal(t, false, found)
+			require.Equal(t, expectedErr, err)
+		})
+
+		t.Run("Err+Close Err", func(t *testing.T) {
+			t.Parallel()
+
+			i := iterators.NewMock(iterators.NewSingleElement(Entity{Text: "err"}))
+
+			i.StubErr = func() error { return expectedErr }
+			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }
+
+			found, err := subject(i, &Entity{})
+			require.Equal(t, false, found)
+			require.Equal(t, expectedErr, err)
+		})
+
+		t.Run(`empty iterator with .Err()`, func(t *testing.T) {
+			i := iterators.NewError(expectedErr)
+			found, err := subject(i, &Entity{})
+			require.Equal(t, false, found)
+			require.Equal(t, expectedErr, err)
+		})
+	})
 }
