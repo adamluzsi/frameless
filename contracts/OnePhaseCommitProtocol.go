@@ -227,17 +227,23 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 
 			tx1, err := spec.managerGet(t).BeginTx(globalContext)
 			require.Nil(t, err)
+			t.Log(`given tx1 is began`)
+
 			e1 := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(tx1, e1))
 			IsFindable(t, spec.T, spec.resourceGet(t), tx1, HasID(t, e1))
+			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e1))
+			t.Logf("and e1 is created in tx1: %#v", e1)
 
-			tx2InTx1, err := spec.managerGet(t).BeginTx(globalContext)
+			tx2InTx1, err := spec.managerGet(t).BeginTx(tx1)
 			require.Nil(t, err)
+			t.Log(`and tx2 is began using tx1 as a base`)
 
 			e2 := spec.FixtureFactory.Create(spec.T)
 			require.Nil(t, spec.resourceGet(t).Create(tx2InTx1, e2))
-			IsFindable(t, spec.T, spec.resourceGet(t), tx2InTx1, HasID(t, e2)) // tx2 entity should be visible
-			IsFindable(t, spec.T, spec.resourceGet(t), tx1, HasID(t, e1))      // so the entity made in tx1
+			IsFindable(t, spec.T, spec.resourceGet(t), tx2InTx1, HasID(t, e2))    // tx2 can see e2
+			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e2)) // global don't see e2
+			t.Logf(`and e2 is created in tx2 %#v`, e2)
 
 			t.Log(`before commit, entities should be absent from the resource`)
 			IsAbsent(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e1))
@@ -330,8 +336,8 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 }
 
 func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
-	updater := func(t *testcase.T) crud {
-		u, ok := spec.resourceGet(t).(crud)
+	updater := func(t *testcase.T) UpdaterSubject {
+		u, ok := spec.resourceGet(t).(UpdaterSubject)
 		if !ok {
 			t.Skipf(`%T doesn't supply resources.Updater`, spec.resourceGet(t))
 		}

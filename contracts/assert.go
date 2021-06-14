@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,11 +36,12 @@ func IsFindable(tb testing.TB, T T, subject frameless.Finder, ctx context.Contex
 	tb.Helper()
 	var ptr interface{}
 	newFn := newEntityFunc(T)
+	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", T, id)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		ptr = newFn()
 		found, err := subject.FindByID(ctx, ptr, id)
 		require.Nil(tb, err)
-		require.True(tb, found)
+		require.True(tb, found, errMessage)
 	})
 	return ptr
 }
@@ -47,10 +49,11 @@ func IsFindable(tb testing.TB, T T, subject frameless.Finder, ctx context.Contex
 func IsAbsent(tb testing.TB, T T, subject frameless.Finder, ctx context.Context, id interface{}) {
 	tb.Helper()
 	n := newEntityFunc(T)
+	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", T, id)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		found, err := subject.FindByID(ctx, n(), id)
 		require.Nil(tb, err)
-		require.False(tb, found)
+		require.False(tb, found, errMessage)
 	})
 }
 
@@ -71,8 +74,15 @@ func CreateEntity(tb testing.TB, subject CRD, ctx context.Context, ptr interface
 	T := toT(ptr)
 	require.Nil(tb, subject.Create(ctx, ptr))
 	id := HasID(tb, ptr)
-	tb.Cleanup(func() { _ = subject.DeleteByID(ctx, id) })
+	tb.Cleanup(func() {
+		found, err := subject.FindByID(ctx, newEntity(T), id)
+		if err != nil || !found {
+			return
+		}
+		_ = subject.DeleteByID(ctx, id)
+	})
 	IsFindable(tb, T, subject, ctx, id)
+	tb.Logf("given entity is created: %#v", ptr)
 }
 
 func UpdateEntity(tb testing.TB, subject interface {
@@ -91,6 +101,7 @@ func UpdateEntity(tb testing.TB, subject interface {
 		entity := IsFindable(tb, T, subject, ctx, id)
 		require.Equal(tb, ptr, entity)
 	})
+	tb.Logf(`entity is updated: %#v`, ptr)
 }
 
 func DeleteEntity(tb testing.TB, subject CRD, ctx context.Context, ent interface{}) {
@@ -100,6 +111,7 @@ func DeleteEntity(tb testing.TB, subject CRD, ctx context.Context, ent interface
 	IsFindable(tb, T, subject, ctx, id)
 	require.Nil(tb, subject.DeleteByID(ctx, id))
 	IsAbsent(tb, T, subject, ctx, id)
+	tb.Logf("entity is deleted: %#v", ent)
 }
 
 func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context) {

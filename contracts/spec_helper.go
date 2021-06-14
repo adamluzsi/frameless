@@ -40,20 +40,11 @@ func init() {
 	benchmarkEntityVolumeCount = i
 }
 
-const msgNotMeasurable = `not measurable Spec`
-
 const ErrIDRequired frameless.Error = `
 Can't find the ID in the current structure
 if there is no ID in the subject structure
 custom test needed that explicitly defines how ID is stored and retried from an entity
 `
-
-type crud interface {
-	frameless.Creator
-	frameless.Finder
-	frameless.Updater
-	frameless.Deleter
-}
 
 // CRD is the minimum requirements to write easily behavioral specification for a resource.
 type CRD interface {
@@ -150,7 +141,6 @@ type eventSubscriber struct {
 func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.TB.Logf(`name:%q event:%#v`, s.Name, event)
 	s.verifyContext(ctx)
 	s.events = append(s.events, event)
 	return s.ReturnErr
