@@ -266,9 +266,9 @@ func (spec OnePhaseCommitProtocol) Context() context.Context {
 }
 
 func (spec OnePhaseCommitProtocol) specPublisher(s *testcase.Spec) {
-	s.Describe(`/Creator`, spec.specCreatorPublisher)
-	s.Describe(`/Updater`, spec.specUpdaterPublisher)
-	s.Describe(`/Deleter`, spec.specDeleterPublisher)
+	s.Context(`Creator`, spec.specCreatorPublisher)
+	s.Context(`Updater`, spec.specUpdaterPublisher)
+	s.Context(`Deleter`, spec.specDeleterPublisher)
 }
 
 func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
