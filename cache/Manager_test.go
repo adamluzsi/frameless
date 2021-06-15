@@ -44,16 +44,19 @@ func TestManager(t *testing.T) {
 func NewManager(tb testing.TB) (*cache.Manager, cache.Source, frameless.OnePhaseCommitProtocol) {
 	eventLog := inmemory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
-	source := inmemory.NewEventLogStorage(TestEntity{}, eventLog)
+	cacheHitStorage := inmemory.NewEventLogStorage(cache.Hit{}, eventLog)
+	cacheEntityStorage := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, `TestEntity#CacheStorage`)
+	sourceEntityStorage := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, `TestEntity#SourceStorage`)
+
 	storage := TestCacheStorage{
-		Hits:                   inmemory.NewEventLogStorage(cache.Hit{}, eventLog),
-		Entities:               inmemory.NewEventLogStorage(TestEntity{}, eventLog),
+		Hits:                   cacheHitStorage,
+		Entities:               cacheEntityStorage,
 		OnePhaseCommitProtocol: eventLog,
 	}
-	manager, err := cache.NewManager(TestEntity{}, storage, source)
+	manager, err := cache.NewManager(TestEntity{}, storage, sourceEntityStorage)
 	require.Nil(tb, err)
 	tb.Cleanup(func() { _ = manager.Close() })
-	return manager, source, eventLog
+	return manager, sourceEntityStorage, eventLog
 }
 
 type TestCacheStorage struct {

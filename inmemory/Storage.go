@@ -16,10 +16,16 @@ func NewStorage(T frameless.T, m *Memory) *Storage {
 	return &Storage{T: T, Memory: m}
 }
 
+func NewStorageWithNamespace(T frameless.T, m *Memory, ns string) *Storage {
+	return &Storage{T: T, Memory: m, Namespace: ns}
+}
+
 type Storage struct {
-	T      frameless.T
-	Memory *Memory
-	NewID  func(context.Context) (interface{}, error)
+	T             frameless.T
+	Memory        *Memory
+	NewID         func(context.Context) (interface{}, error)
+	Namespace     string
+	initNamespace sync.Once
 }
 
 func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
@@ -45,7 +51,7 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
 		return fmt.Errorf(`%T already exists with id: %s`, s.T, id)
 	}
 
-	s.Memory.Set(ctx, s.Namespace(), s.IDToMemoryKey(id), base(ptr))
+	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
 	return nil
 }
 
@@ -57,7 +63,7 @@ func (s *Storage) FindByID(ctx context.Context, ptr, id interface{}) (found bool
 		return false, err
 	}
 
-	ent, ok := s.Memory.Get(ctx, s.Namespace(), s.IDToMemoryKey(id))
+	ent, ok := s.Memory.Get(ctx, s.GetNamespace(), s.IDToMemoryKey(id))
 	if !ok {
 		return false, nil
 	}
@@ -76,7 +82,7 @@ func (s *Storage) FindAll(ctx context.Context) frameless.Iterator {
 	if err := s.isDoneTx(ctx); err != nil {
 		return iterators.NewError(err)
 	}
-	return s.Memory.All(s.T, ctx, s.Namespace())
+	return s.Memory.All(s.T, ctx, s.GetNamespace())
 }
 
 func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
@@ -86,7 +92,7 @@ func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
 	if err := s.isDoneTx(ctx); err != nil {
 		return err
 	}
-	if s.Memory.Del(ctx, s.Namespace(), s.IDToMemoryKey(id)) {
+	if s.Memory.Del(ctx, s.GetNamespace(), s.IDToMemoryKey(id)) {
 		return nil
 	}
 	return errNotFound(s.T, id)
@@ -102,7 +108,7 @@ func (s *Storage) DeleteAll(ctx context.Context) error {
 		}
 
 		id, _ := extid.Lookup(ptr)
-		_ = s.Memory.Del(ctx, s.Namespace(), s.IDToMemoryKey(id))
+		_ = s.Memory.Del(ctx, s.GetNamespace(), s.IDToMemoryKey(id))
 	}
 	return iter.Err()
 }
@@ -121,7 +127,7 @@ func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
 		return errNotFound(s.T, id)
 	}
 
-	s.Memory.Set(ctx, s.Namespace(), s.IDToMemoryKey(id), base(ptr))
+	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
 	return nil
 }
 
@@ -130,7 +136,7 @@ func (s *Storage) FindByIDs(ctx context.Context, ids ...interface{}) frameless.I
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
 	}
-	all := m.all(s.Namespace())
+	all := m.all(s.GetNamespace())
 	var vs = make(map[string]interface{}, len(ids))
 	for _, id := range ids {
 		key := s.IDToMemoryKey(id)
@@ -161,7 +167,7 @@ func (s *Storage) Upsert(ctx context.Context, ptrs ...interface{}) error {
 			}
 		}
 		key := s.IDToMemoryKey(id)
-		m.set(s.Namespace(), key, base(ptr))
+		m.set(s.GetNamespace(), key, base(ptr))
 	}
 	return nil
 }
@@ -197,8 +203,14 @@ func (s *Storage) IDToMemoryKey(id frameless.T) string {
 	return fmt.Sprintf(`%#v`, id)
 }
 
-func (s *Storage) Namespace() string {
-	return fmt.Sprintf(`%T`, s.T)
+func (s *Storage) GetNamespace() string {
+	s.initNamespace.Do(func() {
+		if 0 < len(s.Namespace) {
+			return
+		}
+		s.Namespace = reflects.FullyQualifiedName(s.T)
+	})
+	return s.Namespace
 }
 
 func (s *Storage) getV(ptr interface{}) interface{} {

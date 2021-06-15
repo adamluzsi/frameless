@@ -194,7 +194,7 @@ func TestEventLogStorage_Options_CompressEventLog(t *testing.T) {
 	}
 
 	for _, event := range memory.Events() {
-		t.Logf("storageID:%s -> event:%#v", subject.StorageID(), event)
+		t.Logf("storageID:%s -> event:%#v", subject.GetNamespace(), event)
 	}
 
 	require.Empty(t, memory.Events(),
@@ -513,11 +513,11 @@ func TestEventLogStorage_Create_withAsyncSubscriptions(t *testing.T) {
 	contracts.IsFindable(t, TestEntity{}, storage, ctx, ent.ID)
 }
 
-func TestEventLogStorage_multipleStorageForSameEntity(t *testing.T) {
+func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *testing.T) {
 	ctx := context.Background()
 	eventLog := inmemory.NewEventLog()
-	s1 := inmemory.NewEventLogStorage(TestEntity{}, eventLog)
-	s2 := inmemory.NewEventLogStorage(TestEntity{}, eventLog)
+	s1 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#A")
+	s2 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#B")
 	ent := fixtures.FixtureFactory{}.Create(TestEntity{}).(*TestEntity)
 	contracts.CreateEntity(t, s1, ctx, ent)
 	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))

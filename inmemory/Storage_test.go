@@ -20,12 +20,11 @@ func TestStorage(t *testing.T) {
 	})...)
 }
 
-func TestStorage_multipleStorageForSameEntity(t *testing.T) {
-	t.Skip(`TODO`)
+func TestStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *testing.T) {
 	ctx := context.Background()
 	memory := inmemory.NewMemory()
-	s1 := inmemory.NewStorage(TestEntity{}, memory)
-	s2 := inmemory.NewStorage(TestEntity{}, memory)
+	s1 := inmemory.NewStorageWithNamespace(TestEntity{}, memory, "TestEntity#A")
+	s2 := inmemory.NewStorageWithNamespace(TestEntity{}, memory, "TestEntity#B")
 	ent := fixtures.FixtureFactory{}.Create(TestEntity{}).(*TestEntity)
 	contracts.CreateEntity(t, s1, ctx, ent)
 	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))

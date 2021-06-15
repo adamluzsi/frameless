@@ -8,13 +8,16 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/frameless/stubs"
-	"github.com/adamluzsi/testcase/fixtures"
 	"reflect"
 	"sync"
 )
 
 func NewEventLogStorage(T interface{}, m *EventLog) *EventLogStorage {
 	return &EventLogStorage{T: T, EventLog: m}
+}
+
+func NewEventLogStorageWithNamespace(T interface{}, m *EventLog, ns string) *EventLogStorage {
+	return &EventLogStorage{T: T, EventLog: m, Namespace: ns}
 }
 
 // EventLogStorage is an EventLog based development in memory storage,
@@ -24,13 +27,18 @@ type EventLogStorage struct {
 	EventLog *EventLog
 	NewID    func(ctx context.Context) (interface{}, error)
 
+	// Namespace separates different storage events in the event log.
+	// By default same entities reside under the same Namespace through their fully qualified name used as namespace ID.
+	// If you want create multiple EventLogStorage that works with the same entity but act as separate storages,
+	// you need to assign a unique Namespace for each of these EventLogStorage.
+	Namespace     string
+	initNamespace sync.Once
+
 	Options struct {
 		CompressEventLog bool
 	}
 
-	mutex  sync.RWMutex
-	id     string
-	idInit sync.Once
+	mutex sync.RWMutex
 }
 
 // Name Types
@@ -42,7 +50,7 @@ const (
 )
 
 type EventLogStorageEvent struct {
-	StorageID string
+	Namespace string
 	T         interface{}
 	Name      string
 	Value     interface{}
@@ -51,16 +59,20 @@ type EventLogStorageEvent struct {
 
 func (e EventLogStorageEvent) GetTrace() []Stack      { return e.Trace }
 func (e EventLogStorageEvent) SetTrace(trace []Stack) { e.Trace = trace }
-func (e EventLogStorageEvent) String() string         { return fmt.Sprintf("%T %s %#v", e.T, e.Name, e.Value) }
+func (e EventLogStorageEvent) String() string         { return fmt.Sprintf("%s %#v", e.Name, e.Value) }
 
-func (s *EventLogStorage) StorageID() string {
-	s.idInit.Do(func() { s.id = fixtures.SecureRandom.StringN(8) })
-	return s.id
+func (s *EventLogStorage) GetNamespace() string {
+	s.initNamespace.Do(func() {
+		if 0 < len(s.Namespace) {
+			return
+		}
+		s.Namespace = reflects.FullyQualifiedName(s.T)
+	})
+	return s.Namespace
 }
 
 func (s *EventLogStorage) ownEvent(e EventLogStorageEvent) bool {
-	return reflect.TypeOf(s.T) == reflect.TypeOf(e.T) &&
-		e.StorageID == s.StorageID()
+	return e.Namespace == s.GetNamespace()
 }
 
 func (s *EventLogStorage) Create(ctx context.Context, ptr interface{}) error {
@@ -87,8 +99,7 @@ func (s *EventLogStorage) Create(ctx context.Context, ptr interface{}) error {
 	}
 
 	return s.append(ctx, EventLogStorageEvent{
-		StorageID: s.StorageID(),
-		T:         s.T,
+		Namespace: s.GetNamespace(),
 		Name:      CreateEvent,
 		Value:     s.getV(ptr),
 		Trace:     NewTrace(0),
@@ -148,8 +159,7 @@ func (s *EventLogStorage) Update(ctx context.Context, ptr interface{}) error {
 	}
 
 	return s.append(ctx, EventLogStorageEvent{
-		StorageID: s.StorageID(),
-		T:         s.T,
+		Namespace: s.GetNamespace(),
 		Name:      UpdateEvent,
 		Value:     s.getV(ptr),
 		Trace:     NewTrace(0),
@@ -170,8 +180,7 @@ func (s *EventLogStorage) DeleteByID(ctx context.Context, id interface{}) error 
 		return err
 	}
 	return s.append(ctx, EventLogStorageEvent{
-		StorageID: s.StorageID(),
-		T:         s.T,
+		Namespace: s.GetNamespace(),
 		Name:      DeleteByIDEvent,
 		Value:     s.getV(vPTR),
 		Trace:     NewTrace(0),
@@ -184,8 +193,7 @@ func (s *EventLogStorage) DeleteAll(ctx context.Context) error {
 	}
 
 	return s.append(ctx, EventLogStorageEvent{
-		StorageID: s.StorageID(),
-		T:         s.T,
+		Namespace: s.GetNamespace(),
 		Name:      DeleteAllEvent,
 		Value:     s.T,
 		Trace:     NewTrace(0),
@@ -307,7 +315,7 @@ func (s *EventLogStorage) view(events []Event) StorageView {
 		if !ok {
 			continue
 		}
-		if !s.ownEvent(v) {
+		if v.Namespace != s.GetNamespace() {
 			continue
 		}
 
@@ -355,7 +363,7 @@ func (s *EventLogStorage) Compress() {
 
 		// keep not related events
 		for _, event := range es {
-			if se, ok := event.(EventLogStorageEvent); ok && s.ownEvent(se) {
+			if se, ok := event.(EventLogStorageEvent); ok && se.Namespace == s.GetNamespace() {
 				continue
 			}
 			out = append(out, event)
@@ -363,8 +371,7 @@ func (s *EventLogStorage) Compress() {
 		// append current view
 		for _, ent := range v {
 			out = append(out, EventLogStorageEvent{
-				StorageID: s.StorageID(),
-				T:         s.T,
+				Namespace: s.GetNamespace(),
 				Name:      CreateEvent,
 				Value:     ent,
 			})
@@ -380,7 +387,7 @@ func (s *EventLogStorage) Subscribe(ctx context.Context, subscriber frameless.Su
 			if !ok {
 				return nil
 			}
-			if !s.ownEvent(v) {
+			if v.Namespace != s.GetNamespace() {
 				return nil
 			}
 
@@ -411,7 +418,7 @@ func (s *EventLogStorage) subscribe(ctx context.Context, subscriber frameless.Su
 			if !ok {
 				return nil
 			}
-			if !s.ownEvent(v) {
+			if v.Namespace != s.GetNamespace() {
 				return nil
 			}
 			if v.Name != name {
