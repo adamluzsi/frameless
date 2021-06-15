@@ -124,12 +124,12 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 
 func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 	p := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-
 	ctx := context.Background()
-	testcase.Race(func() {
+	blk := func() {
 		_, err := p.GetConnection(ctx)
 		require.Nil(t, err)
-	})
+	}
+	testcase.Race(blk, blk)
 }
 
 type ConnectionManagerSpec struct {
