@@ -96,7 +96,7 @@ func (m *Manager) deleteCachedEntity(ctx context.Context, id interface{}) (rErr 
 	return s.DeleteByID(ctx, id)
 }
 
-func (m *Manager) cacheQuery(
+func (m *Manager) CacheQueryMany(
 	ctx context.Context,
 	name string,
 	query func() frameless.Iterator,
@@ -145,13 +145,13 @@ func (m *Manager) cacheQuery(
 	return iterators.NewSlice(vs)
 }
 
-func (m *Manager) cacheQueryOne(
+func (m *Manager) CacheQueryOne(
 	ctx context.Context,
 	queryID string,
 	ptr interface{},
 	query func(ptr interface{}) (found bool, err error),
 ) (_found bool, _err error) {
-	return iterators.First(m.cacheQuery(ctx, queryID, func() iterators.Interface {
+	return iterators.First(m.CacheQueryMany(ctx, queryID, func() iterators.Interface {
 		ptr := m.newRT()
 		found, err := query(ptr.Interface())
 		if err != nil {
@@ -178,20 +178,22 @@ func (m *Manager) Create(ctx context.Context, ptr interface{}) error {
 }
 
 func (m *Manager) FindByID(ctx context.Context, ptr, id interface{}) (bool, error) {
-	//found, err := m.Storage.CacheEntity(ctx).FindByID(ctx, ptr, id)
-	//if err != nil {
-	//	return false, err
-	//}
-	//if found {
-	//	return true, nil
-	//}
-	return m.cacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), ptr, func(ptr interface{}) (found bool, err error) {
+	// fast path
+	found, err := m.Storage.CacheEntity(ctx).FindByID(ctx, ptr, id)
+	if err != nil {
+		return false, err
+	}
+	if found {
+		return true, nil
+	}
+	// slow path
+	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), ptr, func(ptr interface{}) (found bool, err error) {
 		return m.Source.FindByID(ctx, ptr, id)
 	})
 }
 
 func (m *Manager) FindAll(ctx context.Context) frameless.Iterator {
-	return m.cacheQuery(ctx, `FindAll`, func() frameless.Iterator {
+	return m.CacheQueryMany(ctx, `FindAll`, func() frameless.Iterator {
 		return m.Source.FindAll(ctx)
 	})
 }
