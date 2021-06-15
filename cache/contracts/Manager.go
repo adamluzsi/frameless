@@ -35,9 +35,7 @@ type Cache interface {
 	frameless.Finder
 	frameless.Updater
 	frameless.Deleter
-	frameless.CreatorPublisher
-	frameless.UpdaterPublisher
-	frameless.DeleterPublisher
+	frameless.Publisher
 }
 
 func (spec Manager) Test(t *testing.T) {
@@ -74,40 +72,26 @@ func (spec Manager) Spec(tb testing.TB) {
 				},
 				FixtureFactory: spec.FixtureFactory,
 			},
-			contracts.CreatorPublisher{T: spec.T,
-				Subject: func(tb testing.TB) contracts.CreatorPublisherSubject {
-					return newManager(tb)
+			contracts.Publisher{T: spec.T,
+				Subject: func(tb testing.TB) contracts.PublisherSubject {
+					manager, source, _ := spec.Subject(tb)
+					if _, ok := source.(frameless.Updater); !ok {
+						tb.Skip()
+					}
+					return manager
 				},
 				FixtureFactory: spec.FixtureFactory,
 			},
-			contracts.DeleterPublisher{T: spec.T,
-				Subject: func(tb testing.TB) contracts.DeleterPublisherSubject {
-					return newManager(tb)
-				},
-				FixtureFactory: spec.FixtureFactory,
-			},
-
 			contracts.Updater{T: spec.T,
 				Subject: func(tb testing.TB) contracts.UpdaterSubject {
 					m, r, _ := spec.Subject(tb)
-					if _, ok := r.(cache.ExtendedSource); !ok {
-						tb.Skipf(`%T doesn't implement cache.UpdaterSource`, r)
+					if _, ok := r.(frameless.Updater); !ok {
+						tb.Skip()
 					}
 					return m
 				},
 				FixtureFactory: spec.FixtureFactory,
 			},
-			contracts.UpdaterPublisher{T: spec.T,
-				Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject {
-					m, r, _ := spec.Subject(tb)
-					if _, ok := r.(cache.ExtendedSource); !ok {
-						tb.Skipf(`%T doesn't implement cache.UpdaterSource`, r)
-					}
-					return m
-				},
-				FixtureFactory: spec.FixtureFactory,
-			},
-
 			contracts.OnePhaseCommitProtocol{
 				T: spec.T,
 				Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {

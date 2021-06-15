@@ -373,6 +373,37 @@ func (s *EventLogStorage) Compress() {
 	})
 }
 
+func (s *EventLogStorage) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, stubs.Subscriber{
+		HandleFunc: func(ctx context.Context, event Event) error {
+			v, ok := event.(EventLogStorageEvent)
+			if !ok {
+				return nil
+			}
+			if !s.ownEvent(v) {
+				return nil
+			}
+
+			switch v.Name {
+			case CreateEvent:
+				return subscriber.Handle(ctx, frameless.EventCreate{Entity: v.Value})
+			case UpdateEvent:
+				return subscriber.Handle(ctx, frameless.EventUpdate{Entity: v.Value})
+			case DeleteByIDEvent:
+				id, _ := extid.Lookup(v.Value)
+				return subscriber.Handle(ctx, frameless.EventDeleteByID{ID: id})
+			case DeleteAllEvent:
+				return subscriber.Handle(ctx, frameless.EventDeleteAll{})
+			default:
+				return nil
+			}
+		},
+		ErrorFunc: func(ctx context.Context, err error) error {
+			return subscriber.Error(ctx, err)
+		},
+	})
+}
+
 func (s *EventLogStorage) subscribe(ctx context.Context, subscriber frameless.Subscriber, name string) (frameless.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, stubs.Subscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {

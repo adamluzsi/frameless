@@ -257,9 +257,7 @@ func (spec OnePhaseCommitProtocol) Spec(tb testing.TB) {
 			IsFindable(t, spec.T, spec.resourceGet(t), globalContext, HasID(t, e2))
 		})
 
-		s.Describe(`CreatorPublisher`, spec.specCreatorPublisher)
-		s.Describe(`UpdaterPublisher`, spec.specUpdaterPublisher)
-		s.Describe(`DeleterPublisher`, spec.specDeleterPublisher)
+		s.Describe(`Publisher`, spec.specPublisher)
 	})
 }
 
@@ -267,18 +265,30 @@ func (spec OnePhaseCommitProtocol) Context() context.Context {
 	return spec.FixtureFactory.Context()
 }
 
+func (spec OnePhaseCommitProtocol) specPublisher(s *testcase.Spec) {
+	s.Describe(`/Creator`, spec.specCreatorPublisher)
+	s.Describe(`/Updater`, spec.specUpdaterPublisher)
+	s.Describe(`/Deleter`, spec.specDeleterPublisher)
+}
+
 func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
-	publisher := func(t *testcase.T) frameless.CreatorPublisher {
-		p, ok := spec.resourceGet(t).(frameless.CreatorPublisher)
+	publisher := func(t *testcase.T) creatorPublisherSubject {
+		p, ok := spec.resourceGet(t).(creatorPublisherSubject)
 		if !ok {
-			t.Skipf(`%T doesn't supply resources.CreatorPublisher`, spec.resourceGet(t))
+			t.Skipf(`%T doesn't supply frameless Publisher and Creator`, spec.resourceGet(t))
 		}
 		return p
 	}
 
-	s.Describe(`#SubscribeToCreate`, func(s *testcase.Spec) {
+	s.Describe(`.Subscribe/Create`, func(s *testcase.Spec) {
 		subscribedEvent.LetValue(s, `Create`)
 		subscriber.Let(s, nil)
+		subscriberFilter.Let(s, func(t *testcase.T) interface{} {
+			return func(event interface{}) bool {
+				_, ok := event.(frameless.EventCreate)
+				return ok
+			}
+		})
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
@@ -292,7 +302,7 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		})
 		eventsGet := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).SubscribeToCreate(ctxGet(t), subscriberGet(t))
+			return publisher(t).Subscribe(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -322,8 +332,12 @@ func (spec OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 
+			var es []frameless.EventCreate
+			for _, ent := range eventsGet(t) {
+				es = append(es, frameless.EventCreate{Entity: base(ent)})
+			}
 			AsyncTester.Assert(t, func(tb testing.TB) {
-				require.ElementsMatch(tb, toBaseValues(eventsGet(t)), subscriberGet(t).Events())
+				require.ElementsMatch(tb, es, subscriberGet(t).Events())
 			})
 		})
 
@@ -344,17 +358,23 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		return u
 	}
 
-	updaterPublisher := func(t *testcase.T) frameless.UpdaterPublisher {
-		u, ok := spec.resourceGet(t).(frameless.UpdaterPublisher)
+	updaterPublisher := func(t *testcase.T) updaterPublisherSubject {
+		u, ok := spec.resourceGet(t).(updaterPublisherSubject)
 		if !ok {
-			t.Skipf(`%T doesn't supply resources.UpdaterPublisher`, spec.resourceGet(t))
+			t.Skipf(`%T doesn't supply frameless Updater+Publisher`, spec.resourceGet(t))
 		}
 		return u
 	}
 
-	s.Describe(`#SubscribeToUpdate`, func(s *testcase.Spec) {
+	s.Describe(`.Subscribe/Update`, func(s *testcase.Spec) {
 		subscribedEvent.LetValue(s, `Update`)
 		subscriber.Let(s, nil)
+		subscriberFilter.Let(s, func(t *testcase.T) interface{} {
+			return func(event interface{}) bool {
+				_, ok := event.(frameless.EventUpdate)
+				return ok
+			}
+		})
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
@@ -368,7 +388,7 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		})
 		eventsGet := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return updaterPublisher(t).SubscribeToUpdate(ctxGet(t), subscriberGet(t))
+			return updaterPublisher(t).Subscribe(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -403,8 +423,12 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		s.Then(`after a commit, events will be present`, func(t *testcase.T) {
 			require.Nil(t, spec.managerGet(t).CommitTx(ctxGet(t)))
 
+			var es []frameless.EventUpdate
+			for _, ent := range eventsGet(t) {
+				es = append(es, frameless.EventUpdate{Entity: base(ent)})
+			}
 			AsyncTester.Assert(t, func(tb testing.TB) {
-				require.ElementsMatch(tb, toBaseValues(eventsGet(t)), subscriberGet(t).Events())
+				require.ElementsMatch(tb, es, subscriberGet(t).Events())
 			})
 		})
 
@@ -417,10 +441,10 @@ func (spec OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 }
 
 func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
-	publisher := func(t *testcase.T) frameless.DeleterPublisher {
-		u, ok := spec.resourceGet(t).(frameless.DeleterPublisher)
+	publisher := func(t *testcase.T) deleterPublisherSubject {
+		u, ok := spec.resourceGet(t).(deleterPublisherSubject)
 		if !ok {
-			t.Skipf(`%T doesn't supply resources.DeleterPublisher`, spec.resourceGet(t))
+			t.Skipf(`%T doesn't supply frameless Deleter+Publisher`, spec.resourceGet(t))
 		}
 		return u
 	}
@@ -428,6 +452,12 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 	s.Describe(`#SubscribeToDeleteByID`, func(s *testcase.Spec) {
 		subscribedEvent.LetValue(s, `DeleteByID`)
 		subscriber.Let(s, nil)
+		subscriberFilter.Let(s, func(t *testcase.T) interface{} {
+			return func(event interface{}) bool {
+				_, ok := event.(frameless.EventDeleteByID)
+				return ok
+			}
+		})
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
@@ -440,7 +470,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return spec.FixtureFactory.Create(spec.T)
 		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).SubscribeToDeleteByID(ctxGet(t), subscriberGet(t))
+			return publisher(t).Subscribe(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -448,7 +478,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return sub
 		}
 
-		hasDeleteEntity := DeleterPublisher{}.hasDeleteEntity
+		hasDeleteEntity := deleterPublisher{}.hasDeleteEntity
 
 		s.Before(func(t *testcase.T) {
 			t.Log(`given a subscription is made`)
@@ -475,7 +505,8 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			AsyncTester.Assert(t, func(tb testing.TB) {
 				require.False(tb, subscriberGet(t).EventsLen() < 1)
 			})
-			hasDeleteEntity(t, subscriberGet(t).Events, entity.Get(t))
+
+			hasDeleteEntity(t, subscriberGet(t).Events, frameless.EventDeleteByID{ID: HasID(t, entity.Get(t))})
 		})
 
 		s.Then(`after a rollback, there won't be any delete events sent to the subscriber`, func(t *testcase.T) {
@@ -487,6 +518,12 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 	s.Describe(`#SubscribeToDeleteAll`, func(s *testcase.Spec) {
 		subscribedEvent.LetValue(s, `DeleteAll`)
 		subscriber.Let(s, nil)
+		subscriberFilter.Let(s, func(t *testcase.T) interface{} {
+			return func(event interface{}) bool {
+				_, ok := event.(frameless.EventDeleteAll)
+				return ok
+			}
+		})
 		subscription.Let(s, nil)
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
@@ -499,7 +536,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return spec.FixtureFactory.Create(spec.T)
 		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).SubscribeToDeleteAll(ctxGet(t), subscriberGet(t))
+			return publisher(t).Subscribe(ctxGet(t), subscriberGet(t))
 		}
 
 		s.Before(func(t *testcase.T) {
@@ -530,6 +567,7 @@ func (spec OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			AsyncTester.Assert(t, func(tb testing.TB) {
 				require.True(tb, subscriberGet(t).EventsLen() == 1,
 					`one event was expected, but didn't arrived`)
+				require.Contains(tb, subscriberGet(t).Events(), frameless.EventDeleteAll{})
 			})
 		})
 

@@ -34,13 +34,12 @@ type Source interface {
 	frameless.Creator
 	frameless.Finder
 	frameless.Deleter
-	frameless.CreatorPublisher
-	frameless.DeleterPublisher
+	frameless.Publisher
 }
 
 type ExtendedSource interface {
 	frameless.Updater
-	frameless.UpdaterPublisher
+	frameless.Publisher
 }
 
 func (m *Manager) Init(ctx context.Context) error {
@@ -239,23 +238,6 @@ func (m *Manager) DeleteAll(ctx context.Context) error {
 	return m.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (m *Manager) SubscribeToCreate(ctx context.Context, s frameless.Subscriber) (frameless.Subscription, error) {
-	return m.Source.SubscribeToCreate(ctx, s)
-}
-
-func (m *Manager) SubscribeToUpdate(ctx context.Context, s frameless.Subscriber) (frameless.Subscription, error) {
-	switch src := m.Source.(type) {
-	case ExtendedSource:
-		return src.SubscribeToUpdate(ctx, s)
-	default:
-		return nil, frameless.Error(`NotImplemented`)
-	}
-}
-
-func (m *Manager) SubscribeToDeleteByID(ctx context.Context, s frameless.Subscriber) (frameless.Subscription, error) {
-	return m.Source.SubscribeToDeleteByID(ctx, s)
-}
-
-func (m *Manager) SubscribeToDeleteAll(ctx context.Context, s frameless.Subscriber) (frameless.Subscription, error) {
-	return m.Source.SubscribeToDeleteAll(ctx, s)
+func (m *Manager) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+	return m.Source.Subscribe(ctx, subscriber)
 }

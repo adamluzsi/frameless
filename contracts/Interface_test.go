@@ -11,7 +11,5 @@ var _ = []testcase.Contract{
 	contracts.Updater{},
 	contracts.Deleter{},
 	contracts.OnePhaseCommitProtocol{},
-	contracts.CreatorPublisher{},
-	contracts.UpdaterPublisher{},
-	contracts.DeleterPublisher{},
+	contracts.Publisher{},
 }

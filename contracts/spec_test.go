@@ -23,19 +23,15 @@ type getContractsSubject interface {
 	frameless.Deleter
 	frameless.OnePhaseCommitProtocol
 	contracts.UpdaterSubject
-	contracts.CreatorPublisherSubject
-	contracts.UpdaterPublisherSubject
-	contracts.DeleterPublisherSubject
+	contracts.PublisherSubject
 }
 
 func getContracts(T interface{}, ff contracts.FixtureFactory, newSubject func(tb testing.TB) getContractsSubject) []testcase.Contract {
 	return []testcase.Contract{
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.CreatorPublisher{T: T, Subject: func(tb testing.TB) contracts.CreatorPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
+		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
 		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.UpdaterPublisher{T: T, Subject: func(tb testing.TB) contracts.UpdaterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
 		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.DeleterPublisher{T: T, Subject: func(tb testing.TB) contracts.DeleterPublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
 		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
 			s := newSubject(tb)

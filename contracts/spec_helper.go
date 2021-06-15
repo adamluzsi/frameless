@@ -111,20 +111,20 @@ func toT(ent interface{}) frameless.T {
 	return reflects.BaseValueOf(ent).Interface()
 }
 
-func toBaseValue(e interface{}) interface{} {
+func base(e interface{}) interface{} {
 	return reflects.BaseValueOf(e).Interface()
 }
 
 func toBaseValues(in []interface{}) []interface{} {
 	var baseEntities []interface{}
 	for _, e := range in {
-		baseEntities = append(baseEntities, toBaseValue(e))
+		baseEntities = append(baseEntities, base(e))
 	}
 	return baseEntities
 }
 
-func newEventSubscriber(tb testing.TB, name string) *eventSubscriber {
-	return &eventSubscriber{TB: tb, Name: name}
+func newEventSubscriber(tb testing.TB, name string, filter func(interface{}) bool) *eventSubscriber {
+	return &eventSubscriber{TB: tb, Name: name, Filter: filter}
 }
 
 type eventSubscriber struct {
@@ -132,17 +132,27 @@ type eventSubscriber struct {
 	Name       string
 	ReturnErr  error
 	ContextErr error
+	Filter     func(event interface{}) bool
 
 	events []interface{}
 	errors []error
 	mutex  sync.Mutex
 }
 
+func (s *eventSubscriber) filter(event interface{}) bool {
+	if s.Filter == nil {
+		return true
+	}
+	return s.Filter(event)
+}
+
 func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
-	s.events = append(s.events, event)
+	if s.filter(event) {
+		s.events = append(s.events, event)
+	}
 	return s.ReturnErr
 }
 
@@ -202,10 +212,21 @@ var (
 			return `unknown`
 		},
 	}
+	subscriberFilter = testcase.Var{
+		Name: `subscriber event filter`,
+		Init: func(t *testcase.T) interface{} {
+			return func(interface{}) bool { return true }
+		},
+	}
 	subscriber = testcase.Var{
 		Name: subscriberKey,
 		Init: func(t *testcase.T) interface{} {
-			return newEventSubscriber(t, subscribedEvent.Get(t).(string))
+			s := newEventSubscriber(
+				t,
+				subscribedEvent.Get(t).(string),
+				subscriberFilter.Get(t).(func(interface{}) bool),
+			)
+			return s
 		},
 	}
 	subscription = testcase.Var{

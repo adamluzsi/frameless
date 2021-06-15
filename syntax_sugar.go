@@ -1,3 +1,6 @@
 package frameless
 
-type T = interface{}
+type (
+	T  = interface{}
+	ID = interface{}
+)

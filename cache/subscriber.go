@@ -7,36 +7,11 @@ import (
 )
 
 func (m *Manager) subscribe(ctx context.Context) error {
-	subscribe := func(blk func() (frameless.Subscription, error)) error {
-		sub, err := blk()
-		if err != nil {
-			return err
-		}
-		m.trap(func() { _ = sub.Close() })
-		return nil
-	}
-	if err := subscribe(func() (frameless.Subscription, error) {
-		return m.Source.SubscribeToCreate(ctx, m.getSubscriberCreate())
-	}); err != nil {
+	subscription, err := m.Source.Subscribe(ctx, &managerSubscriber{Manager: m})
+	if err != nil {
 		return err
 	}
-	if err := subscribe(func() (frameless.Subscription, error) {
-		return m.Source.SubscribeToDeleteByID(ctx, m.getSubscriberDeleteByID())
-	}); err != nil {
-		return err
-	}
-	if err := subscribe(func() (frameless.Subscription, error) {
-		return m.Source.SubscribeToDeleteAll(ctx, m.getSubscriberDeleteAll())
-	}); err != nil {
-		return err
-	}
-	if src, ok := m.Source.(ExtendedSource); ok {
-		if err := subscribe(func() (frameless.Subscription, error) {
-			return src.SubscribeToUpdate(ctx, m.getSubscriberUpdate())
-		}); err != nil {
-			return err
-		}
-	}
+	m.trap(func() { _ = subscription.Close() })
 	return nil
 }
 
@@ -61,66 +36,44 @@ func (m subscriber) Error(ctx context.Context, err error) error {
 	return nil
 }
 
-func (m *Manager) getSubscriberCreate() frameless.Subscriber {
-	// deleting cache hits is enough,
-	// as they will be lazy evaluated
-	return subscriber{
-		HandleFunc: func(ctx context.Context, ent interface{}) error {
-			return m.Storage.CacheHit(ctx).DeleteAll(ctx)
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			return m.Storage.CacheHit(ctx).DeleteAll(ctx)
-		},
+type managerSubscriber struct {
+	Manager *Manager
+}
+
+func (sub *managerSubscriber) Handle(ctx context.Context, event interface{}) error {
+	switch event := event.(type) {
+	case frameless.EventCreate:
+		return sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
+
+	case frameless.EventUpdate:
+		if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+			return err
+		}
+		id, _ := extid.Lookup(event.Entity)
+		return sub.Manager.deleteCachedEntity(ctx, id)
+
+	case frameless.EventDeleteByID:
+		// TODO: why is this not triggered on Manager.DeleteByID ?
+		if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+			return err
+		}
+		return sub.Manager.deleteCachedEntity(ctx, event.ID)
+
+	case frameless.EventDeleteAll:
+		if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+			return err
+		}
+		return sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
+
+	default:
+		// ignore unknown event
+		return nil
 	}
 }
 
-func (m *Manager) getSubscriberUpdate() frameless.Subscriber {
-	return subscriber{
-		HandleFunc: func(ctx context.Context, ent interface{}) error {
-			if err := m.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
-				return err
-			}
-			id, _ := extid.Lookup(ent)
-			return m.deleteCachedEntity(ctx, id)
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			_ = m.Storage.CacheHit(ctx).DeleteAll(ctx)
-			_ = m.Storage.CacheEntity(ctx).DeleteAll(ctx)
-			return nil
-		},
-	}
-}
-
-func (m *Manager) getSubscriberDeleteAll() frameless.Subscriber {
-	return subscriber{
-		HandleFunc: func(ctx context.Context, ent interface{}) error {
-			if err := m.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
-				return err
-			}
-			return m.Storage.CacheEntity(ctx).DeleteAll(ctx)
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			_ = m.Storage.CacheHit(ctx).DeleteAll(ctx)
-			_ = m.Storage.CacheEntity(ctx).DeleteAll(ctx)
-			return nil
-		},
-	}
-}
-
-func (m *Manager) getSubscriberDeleteByID() frameless.Subscriber {
-	return subscriber{
-		HandleFunc: func(ctx context.Context, ent interface{}) error {
-			// TODO: why is this not triggered on Manager.DeleteByID ?
-			if err := m.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
-				return err
-			}
-			id, _ := extid.Lookup(ent)
-			return m.deleteCachedEntity(ctx, id)
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			_ = m.Storage.CacheHit(ctx).DeleteAll(ctx)
-			_ = m.Storage.CacheEntity(ctx).DeleteAll(ctx)
-			return nil
-		},
-	}
+func (sub *managerSubscriber) Error(ctx context.Context, err error) error {
+	// TODO: log.Println("ERROR", err.Error())
+	_ = sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
+	_ = sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
+	return nil
 }
