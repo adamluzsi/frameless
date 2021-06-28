@@ -3,6 +3,7 @@ package inmemory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/reflects"
 	"sync"
 
 	"github.com/adamluzsi/frameless"
@@ -26,9 +27,9 @@ type EventLog struct {
 	subscriptions map[ /* subID */ string]*Subscription
 	sMutex        sync.Mutex
 
-	// txNamespace allow multiple memory memory to manage transactions on the same context
-	txNamespace     string
-	txNamespaceInit sync.Once
+	// namespace allow multiple memory memory to manage transactions on the same context
+	namespace     string
+	namespaceInit sync.Once
 }
 
 type Event = interface{}
@@ -59,56 +60,59 @@ func (et EventLogEvent) String() string {
 	return fmt.Sprintf(`%s`, et.Name)
 }
 
-func (s *EventLog) Append(ctx context.Context, event Event) error {
+func (el *EventLog) Append(ctx context.Context, event Event) error {
 	ensureTrace(event)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if tx, ok := s.LookupTx(ctx); ok && !tx.isDone() {
+	if tx, ok := el.LookupTx(ctx); ok && !tx.isDone() {
 		return tx.Append(ctx, event)
 	}
-	s.eMutex.Lock()
-	s.events = append(s.events, event)
-	s.eMutex.Unlock()
-	s.notifySubscriptions(event)
+	el.eMutex.Lock()
+	el.events = append(el.events, event)
+	el.eMutex.Unlock()
+	el.notifySubscriptions(ctx, event)
 	return nil
 }
 
-func (s *EventLog) Rewrite(mapper func(es []Event) []Event) {
-	s.eMutex.Lock()
-	defer s.eMutex.Unlock()
-	s.events = mapper(s.events)
+func (el *EventLog) Rewrite(mapper func(es []Event) []Event) {
+	el.eMutex.Lock()
+	defer el.eMutex.Unlock()
+	el.events = mapper(el.events)
 }
 
-func (s *EventLog) Events() []Event {
-	s.eMutex.RLock()
-	defer s.eMutex.RUnlock()
-	return append([]Event{}, s.events...)
+func (el *EventLog) Events() []Event {
+	el.eMutex.RLock()
+	defer el.eMutex.RUnlock()
+	return append([]Event{}, el.events...)
 }
 
-func (s *EventLog) getTxCtxKey() interface{} {
-	s.txNamespaceInit.Do(func() {
-		s.txNamespace = fixtures.SecureRandom.StringN(42)
+func (el *EventLog) getCtxNS() string {
+	el.namespaceInit.Do(func() {
+		el.namespace = fixtures.SecureRandom.StringN(42)
 	})
-
-	return ctxKeyEventLogTx{Namespace: s.txNamespace}
+	return el.namespace
 }
 
-func (s *EventLog) LookupTx(ctx context.Context) (*EventLogTx, bool) {
-	tx, ok := ctx.Value(s.getTxCtxKey()).(*EventLogTx)
+func (el *EventLog) getTxCtxKey() interface{} {
+	return ctxKeyEventLogTx{Namespace: el.getCtxNS()}
+}
+
+func (el *EventLog) LookupTx(ctx context.Context) (*EventLogTx, bool) {
+	tx, ok := ctx.Value(el.getTxCtxKey()).(*EventLogTx)
 	return tx, ok
 }
 
-func (s *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
+func (el *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 	var em EventManager
-	tx, ok := s.LookupTx(ctx)
+	tx, ok := el.LookupTx(ctx)
 	if ok && tx.isDone() {
 		return ctx, fmt.Errorf(`current context transaction already commit`)
 	}
 	if ok {
 		em = tx
 	} else {
-		em = s
+		em = el
 	}
 	tx = &EventLogTx{
 		events: make([]Event, 0),
@@ -121,7 +125,7 @@ func (s *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 	}); err != nil {
 		return ctx, err
 	}
-	return context.WithValue(ctx, s.getTxCtxKey(), tx), nil
+	return context.WithValue(ctx, el.getTxCtxKey(), tx), nil
 }
 
 const (
@@ -129,8 +133,8 @@ const (
 	errNoTx   frameless.Error = `no transaction found in the given context`
 )
 
-func (s *EventLog) CommitTx(ctx context.Context) error {
-	tx, ok := s.LookupTx(ctx)
+func (el *EventLog) CommitTx(ctx context.Context) error {
+	tx, ok := el.LookupTx(ctx)
 	if !ok {
 		return errNoTx
 	}
@@ -153,8 +157,8 @@ func (s *EventLog) CommitTx(ctx context.Context) error {
 	return nil
 }
 
-func (s *EventLog) RollbackTx(ctx context.Context) error {
-	tx, ok := s.LookupTx(ctx)
+func (el *EventLog) RollbackTx(ctx context.Context) error {
+	tx, ok := el.LookupTx(ctx)
 	if !ok {
 		return errNoTx
 	}
@@ -172,27 +176,27 @@ func (s *EventLog) RollbackTx(ctx context.Context) error {
 	return nil
 }
 
-func (s *EventLog) Atomic(ctx context.Context, fn func(tx *EventLogTx) error) error {
+func (el *EventLog) Atomic(ctx context.Context, fn func(tx *EventLogTx) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	ctx, err := s.BeginTx(ctx)
+	ctx, err := el.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 
-	tx, _ := s.LookupTx(ctx)
+	tx, _ := el.LookupTx(ctx)
 	if err := fn(tx); err != nil {
-		_ = s.RollbackTx(ctx)
+		_ = el.RollbackTx(ctx)
 		return err
 	}
 
-	return s.CommitTx(ctx)
+	return el.CommitTx(ctx)
 }
 
-func (s *EventLog) Compress() {
-	s.Rewrite(func(es []Event) []Event {
+func (el *EventLog) Compress() {
+	el.Rewrite(func(es []Event) []Event {
 		out := make([]Event, 0, len(es))
 		for _, event := range es {
 			switch v := event.(type) {
@@ -210,26 +214,26 @@ func (s *EventLog) Compress() {
 	})
 }
 
-func (s *EventLog) notifySubscriptions(event Event) {
-	s.sMutex.Lock()
+func (el *EventLog) notifySubscriptions(ctx context.Context, event Event) {
+	el.sMutex.Lock()
 	var subs []*Subscription
-	for _, sub := range s.subscriptions {
+	for _, sub := range el.subscriptions {
 		subs = append(subs, sub)
 	}
-	s.sMutex.Unlock()
+	el.sMutex.Unlock()
 	for _, sub := range subs {
-		sub.publish(event)
+		sub.publish(ctx, event)
 	}
 }
 
-func (s *EventLog) newSubscription(ctx context.Context, subscriber frameless.Subscriber) *Subscription {
+func (el *EventLog) newSubscription(ctx context.Context, subscriber frameless.Subscriber) *Subscription {
 	var sub Subscription
 
 	sub.id = fixtures.SecureRandom.StringN(128) // replace with actual unique id maybe?
 
-	sub.memory = s
+	sub.eventLog = el
 	sub.subscriber = subscriber
-	sub.queue = make(chan Event)
+	sub.queue = make(chan subscriptionEvent)
 	sub.context, sub.cancel = context.WithCancel(ctx)
 
 	sub.wrkWG.Add(1)
@@ -239,22 +243,27 @@ func (s *EventLog) newSubscription(ctx context.Context, subscriber frameless.Sub
 
 type Subscription struct {
 	id         string
-	memory     *EventLog
+	eventLog   *EventLog
 	subscriber frameless.Subscriber /*[Event]*/
 
 	context context.Context
 	cancel  func()
-	// protect against async usage of the memory such as
+	// protect against async usage of the eventLog such as
 	// 		memory.SubscribeToCreate(ctx, subscriber)
 	// 		go memory.Create(ctx, &entity)
 	//
 	shutdownMutex sync.RWMutex
 	wrkWG         sync.WaitGroup
 	queueWG       sync.WaitGroup
-	queue         chan Event
+	queue         chan subscriptionEvent
 }
 
-func (s *Subscription) publish(event Event) {
+type subscriptionEvent struct {
+	ctx   context.Context
+	event Event
+}
+
+func (s *Subscription) publish(ctx context.Context, event Event) {
 	s.shutdownMutex.RLock()
 	defer s.shutdownMutex.RUnlock()
 
@@ -264,15 +273,21 @@ func (s *Subscription) publish(event Event) {
 	default:
 	}
 
-	if s.memory.Options.DisableAsyncSubscriptionHandling {
-		s.handle(event)
+	if s.eventLog.Options.DisableAsyncSubscriptionHandling {
+		s.handle(subscriptionEvent{
+			ctx:   ctx,
+			event: event,
+		})
 		return
 	}
 
 	s.queueWG.Add(1)
 	go func() {
 		defer s.queueWG.Done()
-		s.queue <- event
+		s.queue <- subscriptionEvent{
+			ctx:   ctx,
+			event: event,
+		}
 	}()
 }
 
@@ -285,8 +300,13 @@ func (s *Subscription) worker() {
 	}
 }
 
-func (s *Subscription) handle(event Event) {
-	if err := s.subscriber.Handle(s.context, event); err != nil {
+func (s *Subscription) handle(se subscriptionEvent) {
+	ctx := s.context
+	mm, ok := s.eventLog.lookupMetaMap(se.ctx)
+	if ok {
+		ctx = context.WithValue(ctx, s.eventLog.ctxKeyMeta(), mm)
+	}
+	if err := s.subscriber.Handle(ctx, se.event); err != nil {
 		fmt.Println(`ERROR`, err.Error())
 	}
 }
@@ -301,7 +321,7 @@ func (s *Subscription) Close() (rErr error) {
 	}()
 
 	// GC the closed subscription from the active subscriptions
-	s.memory.delSubscription(s)
+	s.eventLog.delSubscription(s)
 
 	s.cancel()       // prevent publish
 	s.queueWG.Wait() // wait for pending publishes
@@ -321,40 +341,40 @@ func (s *Subscription) isClosed() bool {
 	}
 }
 
-func (s *EventLog) getSubscriptionsUnsafe() map[string]*Subscription {
-	if s.subscriptions == nil {
-		s.subscriptions = make(map[string]*Subscription)
+func (el *EventLog) getSubscriptionsUnsafe() map[string]*Subscription {
+	if el.subscriptions == nil {
+		el.subscriptions = make(map[string]*Subscription)
 	}
-	return s.subscriptions
+	return el.subscriptions
 }
 
-func (s *EventLog) addSubscription(subscription *Subscription) {
-	s.sMutex.Lock()
-	defer s.sMutex.Unlock()
-	if s.subscriptions == nil {
-		s.subscriptions = make(map[string]*Subscription)
+func (el *EventLog) addSubscription(subscription *Subscription) {
+	el.sMutex.Lock()
+	defer el.sMutex.Unlock()
+	if el.subscriptions == nil {
+		el.subscriptions = make(map[string]*Subscription)
 	}
-	s.subscriptions[subscription.id] = subscription
+	el.subscriptions[subscription.id] = subscription
 }
 
-func (s *EventLog) delSubscription(sub *Subscription) {
-	s.sMutex.Lock()
-	defer s.sMutex.Unlock()
-	if s.subscriptions == nil {
+func (el *EventLog) delSubscription(sub *Subscription) {
+	el.sMutex.Lock()
+	defer el.sMutex.Unlock()
+	if el.subscriptions == nil {
 		return
 	}
-	delete(s.subscriptions, sub.id)
+	delete(el.subscriptions, sub.id)
 }
 
-func (s *EventLog) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (el *EventLog) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
 	}
 
-	sub := s.newSubscription(ctx, subscriber)
-	s.addSubscription(sub)
+	sub := el.newSubscription(ctx, subscriber)
+	el.addSubscription(sub)
 	return sub, nil
 }
 

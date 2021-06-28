@@ -87,7 +87,7 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff co
 }
 
 func getStoragerySpecs(subject *inmemory.EventLogStorage, T interface{}) []testcase.Contract {
-	return getStorageSpecsForT(subject, T, fixtures.FixtureFactory{})
+	return getStorageSpecsForT(subject, T, fixtures.Factory)
 }
 
 func TestEventLogStorage(t *testing.T) {
@@ -97,7 +97,7 @@ func TestEventLogStorage(t *testing.T) {
 }
 
 func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
-	ff := fixtures.FixtureFactory{}
+	ff := fixtures.Factory
 
 	t.Run(`with create in different tx`, func(t *testing.T) {
 		subject1 := inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog())
@@ -133,16 +133,16 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		subject2 := inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog())
 
 		ctx := ff.Context()
-		e1 := ff.Create(TestEntity{}).(*TestEntity)
-		e2 := ff.Create(TestEntity{}).(*TestEntity)
+		e1 := ff.Create(TestEntity{}).(TestEntity)
+		e2 := ff.Create(TestEntity{}).(TestEntity)
 
-		require.Nil(t, subject1.Create(ctx, e1))
+		require.Nil(t, subject1.Create(ctx, &e1))
 		id1, ok := extid.Lookup(e1)
 		require.True(t, ok)
 		require.NotEmpty(t, id1)
 		t.Cleanup(func() { _ = subject1.DeleteByID(ff.Context(), id1) })
 
-		require.Nil(t, subject2.Create(ctx, e2))
+		require.Nil(t, subject2.Create(ctx, &e2))
 		id2, ok := extid.Lookup(e2)
 		require.True(t, ok)
 		require.NotEmpty(t, id2)
@@ -460,7 +460,7 @@ func TestEventLogStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 		return e.ID, nil
 	}
 
-	for _, spec := range getStorageSpecsForT(storage, EntityWithStructID{}, FFForEntityWithStructID{}) {
+	for _, spec := range getStorageSpecsForT(storage, EntityWithStructID{}, FFForEntityWithStructID{FixtureFactory: fixtures.Factory}) {
 		spec.Test(t)
 	}
 }
@@ -471,13 +471,13 @@ type EntityWithStructID struct {
 }
 
 type FFForEntityWithStructID struct {
-	fixtures.FixtureFactory
+	contracts.FixtureFactory
 }
 
 func (ff FFForEntityWithStructID) Create(T frameless.T) interface{} {
 	switch T.(type) {
 	case EntityWithStructID:
-		ent := ff.FixtureFactory.Create(T).(*EntityWithStructID)
+		ent := ff.FixtureFactory.Create(T).(EntityWithStructID)
 		ent.ID = struct{ V int }{V: fixtures.Random.Int()}
 		return ent
 	default:
@@ -494,7 +494,7 @@ func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
 			inmemory.LogHistoryOnFailure(tb, eventLog)
 			return storage, eventLog
 		},
-		FixtureFactory: fixtures.FixtureFactory{},
+		FixtureFactory: fixtures.Factory,
 	})
 }
 
@@ -518,7 +518,7 @@ func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *
 	eventLog := inmemory.NewEventLog()
 	s1 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#A")
 	s2 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#B")
-	ent := fixtures.FixtureFactory{}.Create(TestEntity{}).(*TestEntity)
-	contracts.CreateEntity(t, s1, ctx, ent)
+	ent := fixtures.Factory.Create(TestEntity{}).(TestEntity)
+	contracts.CreateEntity(t, s1, ctx, &ent)
 	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))
 }

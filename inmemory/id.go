@@ -35,6 +35,6 @@ func newDummyID(T frameless.T) (interface{}, error) {
 	case int64:
 		return moreOrLessUniqueInt(), nil
 	default:
-		return fixtures.New(reflect.New(reflect.TypeOf(id)).Elem().Interface()), nil
+		return fixtures.Factory.Create(reflect.New(reflect.TypeOf(id)).Elem().Interface()), nil
 	}
 }

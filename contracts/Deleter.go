@@ -17,53 +17,57 @@ type Deleter struct {
 	FixtureFactory
 }
 
-func (spec Deleter) resource() testcase.Var {
+func (c Deleter) resource() testcase.Var {
 	return testcase.Var{
 		Name: "resource",
 		Init: func(t *testcase.T) interface{} {
-			return spec.Subject(t)
+			return c.Subject(t)
 		},
 	}
 }
 
-func (spec Deleter) resourceGet(t *testcase.T) CRD {
-	return spec.resource().Get(t).(CRD)
+func (c Deleter) resourceGet(t *testcase.T) CRD {
+	return c.resource().Get(t).(CRD)
 }
 
-func (spec Deleter) Test(t *testing.T) {
-	s := testcase.NewSpec(t)
-	defer s.Finish()
-	spec.resource().Let(s, nil)
-	s.Describe(`DeleteByID`, spec.specDeleteByID)
-	s.Describe(`DeleteAll`, spec.specDeleteAll)
+func (c Deleter) Test(t *testing.T) {
+	c.Spec(t)
 }
 
-func (spec Deleter) Benchmark(b *testing.B) {
-	b.Run(`DeleteByID`, spec.benchmarkDeleteByID)
-	b.Run(`DeleteAll`, spec.benchmarkDeleteAll)
+func (c Deleter) Benchmark(b *testing.B) {
+	b.Run(`DeleteByID`, c.benchmarkDeleteByID)
+	b.Run(`DeleteAll`, c.benchmarkDeleteAll)
 }
 
-func (spec Deleter) specDeleteByID(s *testcase.Spec) {
+func (c Deleter) Spec(tb testing.TB) {
+	spec(tb, c, func(s *testcase.Spec) {
+		c.resource().Let(s, nil)
+		s.Describe(`DeleteByID`, c.specDeleteByID)
+		s.Describe(`DeleteAll`, c.specDeleteAll)
+	})
+}
+
+func (c Deleter) specDeleteByID(s *testcase.Spec) {
 	var (
-		ctx     = ctxLetWithFixtureFactory(s, spec)
+		ctx     = ctxLetWithFixtureFactory(s, c)
 		id      = testcase.Var{Name: `id`}
 		subject = func(t *testcase.T) error {
-			return spec.resourceGet(t).DeleteByID(ctx.Get(t).(context.Context), id.Get(t))
+			return c.resourceGet(t).DeleteByID(ctx.Get(t).(context.Context), id.Get(t))
 		}
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, spec.resourceGet(t), spec.Context())
+		DeleteAllEntity(t, c.resourceGet(t), c.Context())
 	})
 
 	entity := s.Let(`entity`, func(t *testcase.T) interface{} {
-		return spec.FixtureFactory.Create(spec.T)
+		return CreatePTR(c.FixtureFactory, c.T)
 	})
 
 	s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) interface{} {
 			ent := entity.Get(t)
-			CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
+			CreateEntity(t, c.resourceGet(t), c.Context(), ent)
 			id, ok := extid.Lookup(ent)
 			require.True(t, ok, ErrIDRequired.Error())
 			return id
@@ -71,12 +75,12 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), id.Get(t))
+			IsAbsent(t, c.T, c.resourceGet(t), c.Context(), id.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
 			ctx.Let(s, func(t *testcase.T) interface{} {
-				ctx, cancel := context.WithCancel(spec.Context())
+				ctx, cancel := context.WithCancel(c.Context())
 				cancel()
 				return ctx
 			})
@@ -88,22 +92,22 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			othEntity := s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-				ent := spec.FixtureFactory.Create(spec.T)
-				CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
+				ent := CreatePTR(c.FixtureFactory, c.T)
+				CreateEntity(t, c.resourceGet(t), c.Context(), ent)
 				return ent
 			}).EagerLoading(s)
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				othID, _ := extid.Lookup(othEntity.Get(t))
-				IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), othID)
+				IsFindable(t, c.T, c.resourceGet(t), c.Context(), othID)
 			})
 		})
 
 		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsAbsent(t, spec.T, spec.resourceGet(t), ctx.Get(t).(context.Context), id.Get(t))
+				IsAbsent(t, c.T, c.resourceGet(t), ctx.Get(t).(context.Context), id.Get(t))
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
@@ -113,17 +117,17 @@ func (spec Deleter) specDeleteByID(s *testcase.Spec) {
 	})
 }
 
-func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
+func (c Deleter) benchmarkDeleteByID(b *testing.B) {
 	s := testcase.NewSpec(b)
 
 	s.Around(func(t *testcase.T) func() {
-		cleanup(b, spec.resourceGet(t), spec.FixtureFactory, spec.T)
-		return func() { cleanup(b, spec.resourceGet(t), spec.FixtureFactory, spec.T) }
+		cleanup(b, c.resourceGet(t), c.FixtureFactory, c.T)
+		return func() { cleanup(b, c.resourceGet(t), c.FixtureFactory, c.T) }
 	})
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
-		ptr := newEntity(spec.T)
-		CreateEntity(t, spec.resourceGet(t), spec.Context(), ptr)
+		ptr := newT(c.T)
+		CreateEntity(t, c.resourceGet(t), c.Context(), ptr)
 		return ptr
 	}).EagerLoading(s)
 
@@ -132,20 +136,20 @@ func (spec Deleter) benchmarkDeleteByID(b *testing.B) {
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		require.Nil(b, spec.resourceGet(t).DeleteByID(spec.Context(), id.Get(t)))
+		require.Nil(b, c.resourceGet(t).DeleteByID(c.Context(), id.Get(t)))
 	})
 }
 
-func (spec Deleter) specDeleteAll(s *testcase.Spec) {
+func (c Deleter) specDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
-		return spec.resourceGet(t).DeleteAll(t.I(`ctx`).(context.Context))
+		return c.resourceGet(t).DeleteAll(t.I(`ctx`).(context.Context))
 	}
 
-	s.Let(`ctx`, func(t *testcase.T) interface{} { return spec.Context() })
+	s.Let(`ctx`, func(t *testcase.T) interface{} { return c.Context() })
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 		s.Let(`ctx`, func(t *testcase.T) interface{} {
-			ctx, cancel := context.WithCancel(spec.Context())
+			ctx, cancel := context.WithCancel(c.Context())
 			cancel()
 			return ctx
 		})
@@ -156,26 +160,26 @@ func (spec Deleter) specDeleteAll(s *testcase.Spec) {
 	})
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
-		ent := spec.FixtureFactory.Create(spec.T)
-		CreateEntity(t, spec.resourceGet(t), spec.Context(), ent)
+		ent := CreatePTR(c.FixtureFactory, c.T)
+		CreateEntity(t, c.resourceGet(t), c.Context(), ent)
 		eID := HasID(t, ent)
-		IsFindable(t, spec.T, spec.resourceGet(t), spec.Context(), eID)
+		IsFindable(t, c.T, c.resourceGet(t), c.Context(), eID)
 		require.Nil(t, subject(t))
-		IsAbsent(t, spec.T, spec.resourceGet(t), spec.Context(), eID)
+		IsAbsent(t, c.T, c.resourceGet(t), c.Context(), eID)
 	})
 }
 
-func (spec Deleter) benchmarkDeleteAll(b *testing.B) {
-	r := spec.Subject(b)
-	cleanup(b, r, spec.FixtureFactory, spec.T)
-	defer cleanup(b, r, spec.FixtureFactory, spec.T)
+func (c Deleter) benchmarkDeleteAll(b *testing.B) {
+	r := c.Subject(b)
+	cleanup(b, r, c.FixtureFactory, c.T)
+	defer cleanup(b, r, c.FixtureFactory, c.T)
 	// for some reason, doing setup with timer stop/start
 	// makes this test unable to measure
 	// the correct throughput, and hangs forever
 	// so I just check empty delete all.
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		require.Nil(b, r.DeleteAll(spec.Context()))
+		require.Nil(b, r.DeleteAll(c.Context()))
 	}
 	b.StopTimer()
 }

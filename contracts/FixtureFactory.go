@@ -15,7 +15,7 @@ type FixtureFactory interface {
 	// Create also populate the struct field with dummy values.
 	// It is expected that the newly created fixture will have no content for extID field.
 	//Create(testing.TB, context.Context, any) any
-	Create(T interface{}) (ptr interface{})
+	Create(T interface{}) interface{}
 	// Context able to provide the specs with a Context object for a certain entity Type.
 	Context() (ctx context.Context)
 }
@@ -25,13 +25,13 @@ type FixtureFactorySpec struct {
 	FixtureFactory
 }
 
-func (spec FixtureFactorySpec) Test(t *testing.T) {
+func (c FixtureFactorySpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
 
 	s.Describe(`.Create`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
-			return spec.FixtureFactory.Create(spec.Type)
+			return c.FixtureFactory.Create(c.Type)
 		}
 
 		s.Then(`each created fixture value is uniq`, func(t *testcase.T) {
@@ -44,8 +44,8 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 			}
 		})
 
-		s.When(`when struct has Resource external ID`, func(s *testcase.Spec) {
-			if _, _, hasExtIDField := extid.LookupStructField(spec.Type); !hasExtIDField {
+		s.When(`struct has Resource external ID`, func(s *testcase.Spec) {
+			if _, _, hasExtIDField := extid.LookupStructField(c.Type); !hasExtIDField {
 				return
 			}
 
@@ -60,7 +60,7 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 
 	s.Describe(`.Context`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) context.Context {
-			return spec.FixtureFactory.Context()
+			return c.FixtureFactory.Context()
 		}
 
 		s.Then(`it will return a Context`, func(t *testcase.T) {
@@ -73,6 +73,6 @@ func (spec FixtureFactorySpec) Test(t *testing.T) {
 	})
 }
 
-func (spec FixtureFactorySpec) Benchmark(b *testing.B) {
+func (c FixtureFactorySpec) Benchmark(b *testing.B) {
 	b.Skip()
 }

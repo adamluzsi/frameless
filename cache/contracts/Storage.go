@@ -203,7 +203,7 @@ func (c EntityStorage) describeCacheDataUpsert(s *testcase.Spec) {
 
 	var (
 		newEntWithTeardown = func(t *testcase.T) interface{} {
-			ent := c.FixtureFactory.Create(c.T)
+			ent := contracts.CreatePTR(c.FixtureFactory, c.T)
 			t.Cleanup(func() {
 				ctx := ctxGet(t)
 				id, ok := extid.Lookup(ent)
@@ -311,7 +311,7 @@ func (c EntityStorage) describeCacheDataUpsert(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				t.Log(`and entity 1 has updated content`)
 				id := c.getID(t, ent1.Get(t))
-				n := c.FixtureFactory.Create(c.T)
+				n := contracts.CreatePTR(c.FixtureFactory, c.T)
 				require.Nil(t, extid.Set(n, id))
 				ent1.Set(t, n)
 			})
@@ -367,7 +367,7 @@ func (c EntityStorage) describeCacheDataFindByIDs(s *testcase.Spec) {
 
 	var (
 		newEntityInit = func(t *testcase.T) interface{} {
-			ptr := c.FixtureFactory.Create(c.T)
+			ptr := contracts.CreatePTR(c.FixtureFactory, c.T)
 			contracts.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
 			return ptr
 		}

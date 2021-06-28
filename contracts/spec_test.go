@@ -16,27 +16,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type getContractsSubject interface {
-	frameless.Creator
-	frameless.Finder
-	frameless.Updater
-	frameless.Deleter
+type ContractsSubject struct {
 	frameless.OnePhaseCommitProtocol
-	contracts.UpdaterSubject
-	contracts.PublisherSubject
+	frameless.MetaAccessor
+	CRUD interface {
+		frameless.Creator
+		frameless.Finder
+		frameless.Updater
+		frameless.Deleter
+	}
+	PublisherSubject interface {
+		contracts.PublisherSubject
+		contracts.UpdaterSubject
+	}
 }
 
-func getContracts(T interface{}, ff contracts.FixtureFactory, newSubject func(tb testing.TB) getContractsSubject) []testcase.Contract {
+func getContracts(T interface{}, ff contracts.FixtureFactory, newSubject func(tb testing.TB) ContractsSubject) []testcase.Contract {
 	return []testcase.Contract{
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return newSubject(tb) }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
-			s := newSubject(tb)
-			return s, s
-		}, FixtureFactory: ff},
+		contracts.Creator{T: T,
+			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
+			FixtureFactory: ff,
+		},
+		contracts.Publisher{T: T,
+			Subject:        func(tb testing.TB) contracts.PublisherSubject { return newSubject(tb).PublisherSubject },
+			FixtureFactory: ff,
+		},
+		contracts.Updater{T: T,
+			Subject:        func(tb testing.TB) contracts.UpdaterSubject { return newSubject(tb).PublisherSubject },
+			FixtureFactory: ff,
+		},
+		contracts.Deleter{T: T,
+			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
+			FixtureFactory: ff,
+		},
+		contracts.Finder{T: T,
+			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
+			FixtureFactory: ff,
+		},
+		contracts.OnePhaseCommitProtocol{T: T,
+			Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
+				s := newSubject(tb)
+				return s.OnePhaseCommitProtocol, s.CRUD
+			},
+			FixtureFactory: ff,
+		},
+		contracts.MetaAccessor{T: T,
+			V: "", // [string] but should work with other types as well
+			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
+				s := newSubject(tb)
+				return contracts.MetaAccessorSubject{
+					MetaAccessor: s.MetaAccessor,
+					CRD:          s.CRUD,
+					Publisher:    s.PublisherSubject,
+				}
+			},
+			FixtureFactory: ff,
+		},
 	}
 }
 
@@ -46,13 +81,24 @@ func TestContracts(t *testing.T) {
 		Data string
 	}
 
-	ff := fixtures.FixtureFactory{}
+	T := Entity{}
+	ff := fixtures.Factory
 	require.NotNil(t, ff.Context())
-	require.NotNil(t, ff.Create(Entity{}).(*Entity))
+	require.NotEmpty(t, ff.Create(T).(Entity))
+	testcase.RunContract(t, getContracts(T, ff, NewEventLogStorageContractSubject(T))...)
+}
 
-	testcase.RunContract(t, getContracts(Entity{}, ff, func(tb testing.TB) getContractsSubject {
-		return inmemory.NewEventLogStorage(Entity{}, inmemory.NewEventLog())
-	})...)
+func NewEventLogStorageContractSubject(T interface{}) func(testing.TB) ContractsSubject {
+	return func(tb testing.TB) ContractsSubject {
+		eventLog := inmemory.NewEventLog()
+		storage := inmemory.NewEventLogStorage(T, eventLog)
+		return ContractsSubject{
+			OnePhaseCommitProtocol: eventLog,
+			MetaAccessor:           eventLog,
+			CRUD:                   storage,
+			PublisherSubject:       storage,
+		}
+	}
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
@@ -66,7 +112,7 @@ func TestFixtureFactory(t *testing.T) {
 
 		testcase.RunContract(t, contracts.FixtureFactorySpec{
 			Type:           T{},
-			FixtureFactory: fixtures.FixtureFactory{},
+			FixtureFactory: fixtures.Factory,
 		})
 	})
 
@@ -78,7 +124,7 @@ func TestFixtureFactory(t *testing.T) {
 
 		testcase.RunContract(t, contracts.FixtureFactorySpec{
 			Type:           T{},
-			FixtureFactory: fixtures.FixtureFactory{},
+			FixtureFactory: fixtures.Factory,
 		})
 	})
 }
@@ -90,23 +136,31 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 		ID   string `ext:"ID"`
 		Data string
 	}
-
-	ff := fixtures.FixtureFactory{}
+	T := Entity{}
+	ff := fixtures.Factory
 	require.NotNil(t, ff.Context())
-	require.NotNil(t, ff.Create(Entity{}).(*Entity))
+	require.NotEmpty(t, ff.Create(T).(Entity))
 
-	testcase.RunContract(t, getContracts(Entity{}, ff, func(tb testing.TB) getContractsSubject {
-		storage := NewEventuallyConsistentStorage(Entity{})
+	testcase.RunContract(t, getContracts(T, ff, func(tb testing.TB) ContractsSubject {
+		eventLog := inmemory.NewEventLog()
+		storage := NewEventuallyConsistentStorage(T, eventLog)
 		tb.Cleanup(func() { _ = storage.Close() })
-		return storage
+		return ContractsSubject{
+			// EventuallyConsistentStorage must be used as commit manager
+			// because the async go jobs requires waiting in the .CommitTx.
+			OnePhaseCommitProtocol: storage,
+			MetaAccessor:           eventLog,
+			CRUD:                   storage,
+			PublisherSubject:       storage,
+		}
 	})...)
 }
 
-func NewEventuallyConsistentStorage(T interface{}) *EventuallyConsistentStorage {
-	e := &EventuallyConsistentStorage{EventLogStorage: inmemory.NewEventLogStorage(T, inmemory.NewEventLog())}
-	e.jobs.queue = make(chan func(), 100)
-	e.Spawn()
-	return e
+func NewEventuallyConsistentStorage(T interface{}, eventLog *inmemory.EventLog) *EventuallyConsistentStorage {
+	storage := &EventuallyConsistentStorage{EventLogStorage: inmemory.NewEventLogStorage(T, eventLog)}
+	storage.jobs.queue = make(chan func(), 100)
+	storage.Spawn()
+	return storage
 }
 
 type EventuallyConsistentStorage struct {

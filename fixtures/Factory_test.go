@@ -11,7 +11,7 @@ import (
 func TestGenericFixtureFactory(t *testing.T) {
 	contracts.FixtureFactorySpec{
 		Type:           GenericFixtureFactoryExampleType{},
-		FixtureFactory: fixtures.FixtureFactory{},
+		FixtureFactory: fixtures.Factory,
 	}.Test(t)
 }
 

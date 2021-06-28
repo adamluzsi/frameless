@@ -35,7 +35,7 @@ func HasID(tb testing.TB, ent interface{}) (id interface{}) {
 func IsFindable(tb testing.TB, T T, subject frameless.Finder, ctx context.Context, id interface{}) interface{} {
 	tb.Helper()
 	var ptr interface{}
-	newFn := newEntityFunc(T)
+	newFn := newTFunc(T)
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", T, id)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		ptr = newFn()
@@ -48,7 +48,7 @@ func IsFindable(tb testing.TB, T T, subject frameless.Finder, ctx context.Contex
 
 func IsAbsent(tb testing.TB, T T, subject frameless.Finder, ctx context.Context, id interface{}) {
 	tb.Helper()
-	n := newEntityFunc(T)
+	n := newTFunc(T)
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", T, id)
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		found, err := subject.FindByID(ctx, n(), id)
@@ -75,7 +75,7 @@ func CreateEntity(tb testing.TB, subject CRD, ctx context.Context, ptr interface
 	require.Nil(tb, subject.Create(ctx, ptr))
 	id := HasID(tb, ptr)
 	tb.Cleanup(func() {
-		found, err := subject.FindByID(ctx, newEntity(T), id)
+		found, err := subject.FindByID(ctx, newT(T), id)
 		if err != nil || !found {
 			return
 		}

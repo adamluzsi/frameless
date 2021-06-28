@@ -41,7 +41,7 @@ type Resource interface {
 }
 
 func GetContracts(T frameless.T, subject func(testing.TB) (Resource, frameless.OnePhaseCommitProtocol)) []testcase.Contract {
-	ff := fixtures.FixtureFactory{}
+	ff := fixtures.Factory
 	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {

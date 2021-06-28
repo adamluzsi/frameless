@@ -56,7 +56,7 @@ type CRD interface {
 func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	var es []interface{}
 	for i := 0; i < benchmarkEntityVolumeCount; i++ {
-		es = append(es, f.Create(T))
+		es = append(es, CreatePTR(f, T))
 	}
 	return es
 }
@@ -83,12 +83,12 @@ func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs
 	require.Contains(tb, slice, contains, msgAndArgs...)
 }
 
-func newEntity(T interface{}) interface{} {
+func newT(T interface{}) interface{} {
 	return reflect.New(reflect.TypeOf(T)).Interface()
 }
 
-func newEntityFunc(T interface{}) func() interface{} {
-	return func() interface{} { return newEntity(T) }
+func newTFunc(T interface{}) func() interface{} {
+	return func() interface{} { return newT(T) }
 }
 
 func requireNotContainsList(tb testing.TB, list interface{}, listOfNotContainedElements interface{}, msgAndArgs ...interface{}) {
@@ -147,8 +147,10 @@ func (s *eventSubscriber) filter(event interface{}) bool {
 }
 
 func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
+	s.TB.Helper()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	s.TB.Logf("%T", event)
 	s.verifyContext(ctx)
 	if s.filter(event) {
 		s.events = append(s.events, event)
@@ -234,6 +236,12 @@ var (
 	}
 )
 
+func subscriberLet(s *testcase.Spec, name string, filter func(event interface{}) bool) {
+	subscriber.Let(s, func(t *testcase.T) interface{} {
+		return newEventSubscriber(t, name, filter)
+	})
+}
+
 func subscriberGet(t *testcase.T) *eventSubscriber {
 	return subscriber.Get(t).(*eventSubscriber)
 }
@@ -250,7 +258,23 @@ func genEntities(ff FixtureFactory, T T) []interface{} {
 	var es []interface{}
 	count := fixtures.Random.IntBetween(3, 7)
 	for i := 0; i < count; i++ {
-		es = append(es, ff.Create(T))
+		es = append(es, CreatePTR(ff, T))
 	}
 	return es
+}
+
+func spec(tb testing.TB, c Interface, blk func(s *testcase.Spec)) {
+	s := testcase.NewSpec(tb)
+	defer s.Finish()
+	var name = reflect.TypeOf(c).Name()
+	if stringer, ok := c.(fmt.Stringer); ok {
+		name = stringer.String()
+	}
+	s.Context(name, blk, testcase.Group(name))
+}
+
+func CreatePTR(ff FixtureFactory, T T) interface{} {
+	ptr := reflect.New(reflect.TypeOf(T))
+	ptr.Elem().Set(reflect.ValueOf(ff.Create(T)))
+	return ptr.Interface()
 }

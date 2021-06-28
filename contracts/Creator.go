@@ -17,23 +17,38 @@ type Creator struct {
 	FixtureFactory
 }
 
-func (spec Creator) Test(t *testing.T) {
-	s := testcase.NewSpec(t)
+func (c Creator) Test(t *testing.T) {
+	c.Spec(t)
+}
 
-	resource := s.Let(`resource`, func(t *testcase.T) interface{} {
-		return spec.Subject(t)
+func (c Creator) Benchmark(b *testing.B) {
+	resource := c.Subject(b)
+	cleanup(b, resource, c.FixtureFactory, c.T)
+	b.Run(`Creator`, func(b *testing.B) {
+		es := createEntities(c.FixtureFactory, c.T)
+		defer cleanup(b, resource, c.FixtureFactory, c.T)
+
+		b.ResetTimer()
+		for _, ptr := range es {
+			require.Nil(b, resource.Create(c.Context(), ptr))
+		}
 	})
-	resourceGet := func(t *testcase.T) CRD {
-		return resource.Get(t).(CRD)
-	}
+}
 
-	s.Describe(`Creator`, func(s *testcase.Spec) {
+func (c Creator) Spec(tb testing.TB) {
+	spec(tb, c, func(s *testcase.Spec) {
+		resource := s.Let(`resource`, func(t *testcase.T) interface{} {
+			return c.Subject(t)
+		})
+		resourceGet := func(t *testcase.T) CRD {
+			return resource.Get(t).(CRD)
+		}
 		var (
 			ctx = s.Let(`ctx`, func(t *testcase.T) interface{} {
-				return spec.Context()
+				return c.Context()
 			})
 			ptr = s.Let(`entity`, func(t *testcase.T) interface{} {
-				return spec.FixtureFactory.Create(spec.T)
+				return CreatePTR(c.FixtureFactory, c.T)
 			})
 			getID = func(t *testcase.T) interface{} {
 				id, _ := extid.Lookup(ptr.Get(t))
@@ -46,7 +61,7 @@ func (spec Creator) Test(t *testing.T) {
 			if err == nil {
 				id, _ := extid.Lookup(ptr.Get(t))
 				t.Defer(resourceGet(t).DeleteByID, ctx, id)
-				IsFindable(t, spec.T, resourceGet(t), ctx, id)
+				IsFindable(t, c.T, resourceGet(t), ctx, id)
 			}
 			return err
 		}
@@ -59,14 +74,14 @@ func (spec Creator) Test(t *testing.T) {
 
 			s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				require.Equal(t, ptr.Get(t), IsFindable(t, spec.T, resourceGet(t), spec.Context(), getID(t)))
+				require.Equal(t, ptr.Get(t), IsFindable(t, c.T, resourceGet(t), c.Context(), getID(t)))
 			})
 		})
 
 		s.When(`entity was already saved once`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsFindable(t, spec.T, resourceGet(t), spec.Context(), getID(t))
+				IsFindable(t, c.T, resourceGet(t), c.Context(), getID(t))
 			})
 
 			s.Then(`it will raise error because ext:ID field already points to a existing record`, func(t *testcase.T) {
@@ -77,9 +92,9 @@ func (spec Creator) Test(t *testing.T) {
 		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsFindable(t, spec.T, resourceGet(t), spec.Context(), getID(t))
-				require.Nil(t, resourceGet(t).DeleteByID(spec.Context(), getID(t)))
-				IsAbsent(t, spec.T, resourceGet(t), spec.Context(), getID(t))
+				IsFindable(t, c.T, resourceGet(t), c.Context(), getID(t))
+				require.Nil(t, resourceGet(t).DeleteByID(c.Context(), getID(t)))
+				IsAbsent(t, c.T, resourceGet(t), c.Context(), getID(t))
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
@@ -88,13 +103,13 @@ func (spec Creator) Test(t *testing.T) {
 
 			s.Then(`persisted object can be found`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsFindable(t, spec.T, resourceGet(t), spec.Context(), getID(t))
+				IsFindable(t, c.T, resourceGet(t), c.Context(), getID(t))
 			})
 		})
 
 		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 			ctx.Let(s, func(t *testcase.T) interface{} {
-				ctx, cancel := context.WithCancel(spec.Context())
+				ctx, cancel := context.WithCancel(c.Context())
 				cancel()
 				return ctx
 			})
@@ -105,30 +120,16 @@ func (spec Creator) Test(t *testing.T) {
 		})
 
 		s.Test(`persist on #Create`, func(t *testcase.T) {
-			e := spec.FixtureFactory.Create(spec.T)
-			err := resourceGet(t).Create(spec.Context(), e)
+			e := CreatePTR(c.FixtureFactory, c.T)
+			err := resourceGet(t).Create(c.Context(), e)
 			require.Nil(t, err)
 
 			ID, ok := extid.Lookup(e)
 			require.True(t, ok, "ID is not defined in the entity struct src definition")
 			require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
-			require.Equal(t, e, IsFindable(t, spec.T, resourceGet(t), spec.Context(), ID))
-			require.Nil(t, resourceGet(t).DeleteByID(spec.Context(), ID))
+			require.Equal(t, e, IsFindable(t, c.T, resourceGet(t), c.Context(), ID))
+			require.Nil(t, resourceGet(t).DeleteByID(c.Context(), ID))
 		})
-	})
-}
-
-func (spec Creator) Benchmark(b *testing.B) {
-	resource := spec.Subject(b)
-	cleanup(b, resource, spec.FixtureFactory, spec.T)
-	b.Run(`Creator`, func(b *testing.B) {
-		es := createEntities(spec.FixtureFactory, spec.T)
-		defer cleanup(b, resource, spec.FixtureFactory, spec.T)
-
-		b.ResetTimer()
-		for _, ptr := range es {
-			require.Nil(b, resource.Create(spec.Context(), ptr))
-		}
 	})
 }

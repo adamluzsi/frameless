@@ -2,14 +2,15 @@ package contracts_test
 
 import (
 	"github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/testcase"
 )
 
-var _ = []testcase.Contract{
+var _ = []contracts.Interface{
 	contracts.Creator{},
 	contracts.Finder{},
 	contracts.Updater{},
 	contracts.Deleter{},
 	contracts.OnePhaseCommitProtocol{},
 	contracts.Publisher{},
+	contracts.MetaAccessor{},
+	contracts.MetaAccessorBasic{},
 }

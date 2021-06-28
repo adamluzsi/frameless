@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"github.com/adamluzsi/testcase"
+	"testing"
 )
 
 // Interface represent a resource specification also known as "contract".
@@ -17,4 +18,7 @@ import (
 // at high level and only focus on the expected behavior,
 // instead of going into implementation details.
 //
-type Interface = testcase.Contract
+type Interface interface {
+	testcase.Contract
+	Spec(tb testing.TB)
+}

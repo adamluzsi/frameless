@@ -25,7 +25,7 @@ func TestStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *testing.
 	memory := inmemory.NewMemory()
 	s1 := inmemory.NewStorageWithNamespace(TestEntity{}, memory, "TestEntity#A")
 	s2 := inmemory.NewStorageWithNamespace(TestEntity{}, memory, "TestEntity#B")
-	ent := fixtures.FixtureFactory{}.Create(TestEntity{}).(*TestEntity)
-	contracts.CreateEntity(t, s1, ctx, ent)
+	ent := fixtures.Factory.Create(TestEntity{}).(TestEntity)
+	contracts.CreateEntity(t, s1, ctx, &ent)
 	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))
 }
