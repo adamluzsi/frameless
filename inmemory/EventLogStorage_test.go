@@ -83,6 +83,26 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff co
 		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff},
 		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return subject, subject }, FixtureFactory: ff},
 		cachecontracts.EntityStorage{T: T, Subject: func(tb testing.TB) (storage cache.EntityStorage, cpm frameless.OnePhaseCommitProtocol) { return subject, subject.EventLog }, FixtureFactory: ff},
+		contracts.MetaAccessor{T: T, V: "string",
+			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
+				return contracts.MetaAccessorSubject{
+					MetaAccessor: subject.EventLog,
+					CRD:          subject,
+					Publisher:    subject,
+				}
+			},
+			FixtureFactory: ff,
+		},
+		contracts.MetaAccessor{T: T, V: int(42),
+			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
+				return contracts.MetaAccessorSubject{
+					MetaAccessor: subject.EventLog,
+					CRD:          subject,
+					Publisher:    subject,
+				}
+			},
+			FixtureFactory: ff,
+		},
 	}
 }
 

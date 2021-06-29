@@ -10,13 +10,24 @@ import (
 	"testing"
 )
 
-var _ Resource = &inmemory.Storage{}
+var (
+	_ frameless.MetaAccessor           = &inmemory.Memory{}
+	_ frameless.OnePhaseCommitProtocol = &inmemory.Memory{}
+)
 
 func TestStorage(t *testing.T) {
-	testcase.RunContract(t, GetContracts(TestEntity{}, func(tb testing.TB) (Resource, frameless.OnePhaseCommitProtocol) {
+	testcase.RunContract(t, GetContracts(TestEntity{}, func(tb testing.TB) ContractSubject {
 		m := inmemory.NewMemory()
 		s := inmemory.NewStorage(TestEntity{}, m)
-		return s, m
+		return ContractSubject{
+			Creator:                s,
+			Finder:                 s,
+			Updater:                s,
+			Deleter:                s,
+			EntityStorage:          s,
+			OnePhaseCommitProtocol: m,
+			MetaAccessor:           m,
+		}
 	})...)
 }
 

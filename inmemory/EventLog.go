@@ -32,6 +32,51 @@ type EventLog struct {
 	namespaceInit sync.Once
 }
 
+type (
+	ctxKeyEventLogMeta   struct{ NS string }
+	ctxValueEventLogMeta map[string]interface{}
+)
+
+func (el *EventLog) ctxKeyMeta() ctxKeyEventLogMeta {
+	return ctxKeyEventLogMeta{NS: el.getCtxNS()}
+}
+
+func (el *EventLog) lookupMetaMap(ctx context.Context) (ctxValueEventLogMeta, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	m, ok := ctx.Value(el.ctxKeyMeta()).(ctxValueEventLogMeta)
+	return m, ok
+}
+
+func (el *EventLog) SetMeta(ctx context.Context, key string, value interface{}) (context.Context, error) {
+	if ctx == nil {
+		return ctx, fmt.Errorf(`input context.Context was nil`)
+	}
+	m, ok := el.lookupMetaMap(ctx)
+	if !ok {
+		m = make(ctxValueEventLogMeta)
+		ctx = context.WithValue(ctx, el.ctxKeyMeta(), m)
+	}
+	m[key] = base(value)
+	return ctx, nil
+}
+
+func (el *EventLog) LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error) {
+	if ctx == nil {
+		return false, nil
+	}
+	m, ok := el.lookupMetaMap(ctx)
+	if !ok {
+		return false, nil
+	}
+	v, ok := m[key]
+	if !ok {
+		return false, nil
+	}
+	return true, reflects.Link(v, ptr)
+}
+
 type Event = interface{}
 
 type EventViewer interface {

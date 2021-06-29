@@ -15,6 +15,7 @@ var (
 	_ inmemory.EventManager            = &inmemory.EventLog{}
 	_ inmemory.EventManager            = &inmemory.EventLogTx{}
 	_ frameless.OnePhaseCommitProtocol = &inmemory.EventLog{}
+	_ frameless.MetaAccessor           = &inmemory.EventLog{}
 )
 
 func TestMemory(t *testing.T) {

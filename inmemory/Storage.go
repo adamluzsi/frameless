@@ -238,10 +238,55 @@ type Memory struct {
 	m      sync.Mutex
 	tables map[string]MemoryNamespace
 
-	tx struct {
-		init sync.Once
-		ns   string
+	ns struct {
+		init  sync.Once
+		value string
 	}
+}
+
+type (
+	ctxKeyMemoryMeta   struct{ NS string }
+	ctxValueMemoryMeta map[string]interface{}
+)
+
+func (m *Memory) ctxKeyMeta() ctxKeyMemoryMeta {
+	return ctxKeyMemoryMeta{NS: m.getNS()}
+}
+
+func (m *Memory) lookupMetaMap(ctx context.Context) (ctxValueMemoryMeta, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	mm, ok := ctx.Value(m.ctxKeyMeta()).(ctxValueMemoryMeta)
+	return mm, ok
+}
+
+func (m *Memory) SetMeta(ctx context.Context, key string, value interface{}) (context.Context, error) {
+	if ctx == nil {
+		return ctx, fmt.Errorf(`input context.Context was nil`)
+	}
+	mm, ok := m.lookupMetaMap(ctx)
+	if !ok {
+		mm = make(ctxValueMemoryMeta)
+		ctx = context.WithValue(ctx, m.ctxKeyMeta(), m)
+	}
+	mm[key] = base(value)
+	return ctx, nil
+}
+
+func (m *Memory) LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error) {
+	if ctx == nil {
+		return false, nil
+	}
+	mm, ok := m.lookupMetaMap(ctx)
+	if !ok {
+		return false, nil
+	}
+	v, ok := mm[key]
+	if !ok {
+		return false, nil
+	}
+	return true, reflects.Link(v, ptr)
 }
 
 type memoryActions interface {
@@ -450,14 +495,18 @@ func (tx *MemoryTx) getChanges(name string) memoryTxChanges {
 	return tx.changes[name]
 }
 
+func (m *Memory) getNS() string {
+	m.ns.init.Do(func() {
+		m.ns.value = fixtures.SecureRandom.StringN(8)
+	})
+
+	return m.ns.value
+}
+
 type ctxKeyMemoryTx struct{ NS string }
 
 func (m *Memory) ctxKeyMemoryTx() ctxKeyMemoryTx {
-	m.tx.init.Do(func() {
-		m.tx.ns = fixtures.SecureRandom.StringN(8)
-	})
-
-	return ctxKeyMemoryTx{NS: m.tx.ns}
+	return ctxKeyMemoryTx{NS: m.getNS()}
 }
 
 func (m *Memory) BeginTx(ctx context.Context) (context.Context, error) {

@@ -29,7 +29,7 @@ type TestEntity struct {
 	List []string
 }
 
-type Resource interface {
+type ContractSubject struct {
 	frameless.Creator
 	frameless.Finder
 	frameless.Updater
@@ -37,37 +37,35 @@ type Resource interface {
 	//frameless.CreatorPublisher
 	//frameless.UpdaterPublisher
 	//frameless.DeleterPublisher
-	cache.EntityStorage
+	EntityStorage cache.EntityStorage
+	frameless.OnePhaseCommitProtocol
+	frameless.MetaAccessor
 }
 
-func GetContracts(T frameless.T, subject func(testing.TB) (Resource, frameless.OnePhaseCommitProtocol)) []testcase.Contract {
+func GetContracts(T frameless.T, subject func(testing.TB) ContractSubject) []testcase.Contract {
 	ff := fixtures.Factory
 	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
-				resource, _ := subject(tb)
-				return resource
+				return subject(tb)
 			},
 			FixtureFactory: ff,
 		},
 		contracts.Finder{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
-				resource, _ := subject(tb)
-				return resource
+				return subject(tb)
 			},
 			FixtureFactory: ff,
 		},
 		contracts.Updater{T: T,
 			Subject: func(tb testing.TB) contracts.UpdaterSubject {
-				resource, _ := subject(tb)
-				return resource
+				return subject(tb)
 			},
 			FixtureFactory: ff,
 		},
 		contracts.Deleter{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
-				resource, _ := subject(tb)
-				return resource
+				return subject(tb)
 			},
 			FixtureFactory: ff,
 		},
@@ -94,16 +92,27 @@ func GetContracts(T frameless.T, subject func(testing.TB) (Resource, frameless.O
 		//},
 		contracts.OnePhaseCommitProtocol{T: T,
 			Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
-				resource, cpm := subject(tb)
-				return cpm, resource
+				s := subject(tb)
+				return s.OnePhaseCommitProtocol, s
 			},
 			FixtureFactory: ff,
 		},
 		cachecontracts.EntityStorage{T: T,
 			Subject: func(tb testing.TB) (cache.EntityStorage, frameless.OnePhaseCommitProtocol) {
-				resource, cpm := subject(tb)
-				return resource, cpm
+				s := subject(tb)
+				return s.EntityStorage, s.OnePhaseCommitProtocol
 			}, FixtureFactory: ff,
 		},
+		//contracts.MetaAccessor{T: T, V: "string",
+		//	Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
+		//		s := subject(tb)
+		//		return contracts.MetaAccessorSubject{
+		//			MetaAccessor: s.MetaAccessor,
+		//			CRD:          s,
+		//			Publisher:    s.Publisher,
+		//		}
+		//	},
+		//	FixtureFactory: ff,
+		//},
 	}
 }
