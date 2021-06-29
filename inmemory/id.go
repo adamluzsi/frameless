@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/fixtures"
-	"reflect"
-	"time"
+	"strconv"
+	"sync"
 )
 
 func errNotFound(T, id frameless.T) error {
@@ -16,25 +15,36 @@ func errNotFound(T, id frameless.T) error {
 func newDummyID(T frameless.T) (interface{}, error) {
 	id, _ := extid.Lookup(T)
 
-	var moreOrLessUniqueInt = func() int64 {
-		return time.Now().UnixNano() +
-			int64(fixtures.SecureRandom.IntBetween(100000, 900000)) +
-			int64(fixtures.SecureRandom.IntBetween(1000000, 9000000)) +
-			int64(fixtures.SecureRandom.IntBetween(10000000, 90000000)) +
-			int64(fixtures.SecureRandom.IntBetween(100000000, 900000000))
-	}
-
-	// TODO: deprecate the unsafe id generation approach.
-	//       Fixtures are not unique enough for this responsibility.
-	//
 	switch id.(type) {
 	case string:
-		return fixtures.Random.StringN(13), nil
+		return genStringUID(), nil
 	case int:
-		return int(moreOrLessUniqueInt()), nil
+		return int(genInt64UID()), nil
+	case int8:
+		return int8(genInt64UID()), nil
+	case int16:
+		return int16(genInt64UID()), nil
+	case int32:
+		return int32(genInt64UID()), nil
 	case int64:
-		return moreOrLessUniqueInt(), nil
+		return genInt64UID(), nil
 	default:
-		return fixtures.Factory.Create(reflect.New(reflect.TypeOf(id)).Elem().Interface()), nil
+		return nil, fmt.Errorf("%T id field type %T is not supported by default, please provide id generator: .NewID", T, id)
 	}
+}
+
+var (
+	uidMutex  = &sync.Mutex{}
+	uidSerial int64
+)
+
+func genStringUID() string {
+	return strconv.FormatInt(genInt64UID(), 10)
+}
+
+func genInt64UID() int64 {
+	uidMutex.Lock()
+	defer uidMutex.Unlock()
+	uidSerial++
+	return uidSerial
 }
