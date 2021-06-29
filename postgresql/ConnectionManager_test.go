@@ -9,10 +9,10 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/postgresql"
 
 	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/fixtures"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,7 +82,7 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 			return p, s
 		},
 		DriverName:     "postgres",
-		FixtureFactory: fixtures.FixtureFactory{},
+		FixtureFactory: &fixtures.Factory{},
 		CreateTable: func(ctx context.Context, client postgresql.Connection, name string) error {
 			_, err := client.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %q ();`, name))
 			return err
@@ -118,7 +118,7 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 			}
 			return p, s
 		},
-		FixtureFactory: fixtures.FixtureFactory{},
+		FixtureFactory: &fixtures.Factory{},
 	})
 }
 

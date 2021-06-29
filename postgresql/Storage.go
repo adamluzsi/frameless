@@ -287,6 +287,7 @@ func (pg *Storage) queryColumnList() string {
 type notifyEvent struct {
 	Name string          `json:"name"`
 	Data json.RawMessage `json:"data"`
+	Meta metaMap
 }
 
 const (
@@ -330,6 +331,12 @@ func (pg *Storage) notify(ctx context.Context, tx Connection, v interface{}) err
 		return nil
 	}
 
+	if mm, ok := pg.ConnectionManager.lookupMetaMap(ctx); ok {
+		event.Meta = mm
+	} else {
+		event.Meta = metaMap{}
+	}
+
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return err
@@ -346,6 +353,7 @@ func (pg *Storage) newPostgresSubscription(ctx context.Context, subscriber frame
 	)
 	var sub postgresCommonSubscription
 	sub.T = pg.T
+	sub.cm = pg.ConnectionManager
 	sub.ctx = ctx
 	sub.rType = reflect.TypeOf(pg.T)
 	sub.subscriber = subscriber
@@ -356,6 +364,7 @@ func (pg *Storage) newPostgresSubscription(ctx context.Context, subscriber frame
 
 type postgresCommonSubscription struct {
 	T          interface{}
+	cm         *ConnectionManager
 	ctx        context.Context
 	rType      reflect.Type
 	subscriber frameless.Subscriber
@@ -419,7 +428,12 @@ wrk:
 				event = frameless.EventDeleteAll{}
 			}
 
-			sub.handleError(sub.ctx, sub.subscriber.Handle(sub.ctx, event))
+			ctx := sub.ctx
+			if ne.Meta != nil {
+				ctx = sub.cm.setMetaMap(ctx, ne.Meta)
+			}
+
+			sub.handleError(ctx, sub.subscriber.Handle(ctx, event))
 
 			continue wrk
 		case <-time.After(time.Minute):

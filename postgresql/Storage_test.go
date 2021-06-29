@@ -76,9 +76,9 @@ func TestNewStorage_smoke(t *testing.T) {
 
 func TestStorage(t *testing.T) {
 	T := StorageTestEntity{}
-	ff := fixtures.FixtureFactory{}
-	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
+	ff := fixtures.Factory
 
+	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
 	subject := &postgresql.Storage{
 		T:                 T,
 		ConnectionManager: cm,
@@ -94,12 +94,22 @@ func TestStorage(t *testing.T) {
 		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: ff},
 		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.MetaAccessor{T: T, V: "string",
+			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
+				return contracts.MetaAccessorSubject{
+					MetaAccessor: cm,
+					CRD:          subject,
+					Publisher:    subject,
+				}
+			},
+			FixtureFactory: ff,
+		},
 	)
 }
 
 func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 	T := StorageTestEntity{}
-	ff := fixtures.FixtureFactory{}
+	ff := fixtures.Factory
 	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
 	migrateEntityStorage(t, cm)
 
