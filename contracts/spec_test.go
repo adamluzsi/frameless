@@ -31,7 +31,7 @@ type ContractsSubject struct {
 	}
 }
 
-func getContracts(T interface{}, ff contracts.FixtureFactory, newSubject func(tb testing.TB) ContractsSubject) []testcase.Contract {
+func getContracts(T interface{}, ff func(tb testing.TB) contracts.FixtureFactory, newSubject func(tb testing.TB) ContractsSubject) []testcase.Contract {
 	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
@@ -82,10 +82,12 @@ func TestContracts(t *testing.T) {
 	}
 
 	T := Entity{}
-	ff := fixtures.Factory
-	require.NotNil(t, ff.Context())
-	require.NotEmpty(t, ff.Create(T).(Entity))
-	testcase.RunContract(t, getContracts(T, ff, NewEventLogStorageContractSubject(T))...)
+	testcase.RunContract(t, getContracts(T, func(tb testing.TB) contracts.FixtureFactory {
+		ff := fixtures.NewFactory()
+		require.NotNil(t, ff.Context())
+		require.NotEmpty(t, ff.Create(T).(Entity))
+		return ff
+	}, NewEventLogStorageContractSubject(T))...)
 }
 
 func NewEventLogStorageContractSubject(T interface{}) func(testing.TB) ContractsSubject {
@@ -110,9 +112,11 @@ func TestFixtureFactory(t *testing.T) {
 			Data string
 		}
 
-		testcase.RunContract(t, contracts.FixtureFactorySpec{
-			Type:           T{},
-			FixtureFactory: fixtures.Factory,
+		testcase.RunContract(t, contracts.FixtureFactoryContract{
+			Type: T{},
+			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+				return fixtures.NewFactory()
+			},
 		})
 	})
 
@@ -122,9 +126,11 @@ func TestFixtureFactory(t *testing.T) {
 			Data string
 		}
 
-		testcase.RunContract(t, contracts.FixtureFactorySpec{
-			Type:           T{},
-			FixtureFactory: fixtures.Factory,
+		testcase.RunContract(t, contracts.FixtureFactoryContract{
+			Type: T{},
+			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+				return fixtures.NewFactory()
+			},
 		})
 	})
 }
@@ -137,23 +143,26 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 		Data string
 	}
 	T := Entity{}
-	ff := fixtures.Factory
-	require.NotNil(t, ff.Context())
-	require.NotEmpty(t, ff.Create(T).(Entity))
-
-	testcase.RunContract(t, getContracts(T, ff, func(tb testing.TB) ContractsSubject {
-		eventLog := inmemory.NewEventLog()
-		storage := NewEventuallyConsistentStorage(T, eventLog)
-		tb.Cleanup(func() { _ = storage.Close() })
-		return ContractsSubject{
-			// EventuallyConsistentStorage must be used as commit manager
-			// because the async go jobs requires waiting in the .CommitTx.
-			OnePhaseCommitProtocol: storage,
-			MetaAccessor:           eventLog,
-			CRUD:                   storage,
-			PublisherSubject:       storage,
-		}
-	})...)
+	testcase.RunContract(t, getContracts(T,
+		func(tb testing.TB) contracts.FixtureFactory {
+			ff := fixtures.NewFactory()
+			require.NotNil(t, ff.Context())
+			require.NotEmpty(t, ff.Create(T).(Entity))
+			return ff
+		},
+		func(tb testing.TB) ContractsSubject {
+			eventLog := inmemory.NewEventLog()
+			storage := NewEventuallyConsistentStorage(T, eventLog)
+			tb.Cleanup(func() { _ = storage.Close() })
+			return ContractsSubject{
+				// EventuallyConsistentStorage must be used as commit manager
+				// because the async go jobs requires waiting in the .CommitTx.
+				OnePhaseCommitProtocol: storage,
+				MetaAccessor:           eventLog,
+				CRUD:                   storage,
+				PublisherSubject:       storage,
+			}
+		})...)
 }
 
 func NewEventuallyConsistentStorage(T interface{}, eventLog *inmemory.EventLog) *EventuallyConsistentStorage {

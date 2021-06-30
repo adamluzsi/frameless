@@ -1,18 +1,18 @@
 package contracts
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 type Publisher struct {
 	T
-	Subject func(testing.TB) PublisherSubject
-	FixtureFactory
+	Subject        func(testing.TB) PublisherSubject
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 type PublisherSubject interface {
@@ -62,7 +62,7 @@ func (c Publisher) Spec(tb testing.TB) {
 type creatorPublisher struct {
 	T
 	Subject        func(testing.TB) creatorPublisherSubject
-	FixtureFactory FixtureFactory
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 type creatorPublisherSubject interface {
@@ -84,6 +84,7 @@ func (c creatorPublisher) String() string {
 
 func (c creatorPublisher) Spec(tb testing.TB) {
 	spec(tb, c, func(s *testcase.Spec) {
+		factoryLet(s, c.FixtureFactory)
 		s.Describe(`.Subscribe/Create`, func(s *testcase.Spec) {
 			resource := s.Let(`resource`, func(t *testcase.T) interface{} {
 				return c.Subject(t)
@@ -111,7 +112,9 @@ func (c creatorPublisher) Spec(tb testing.TB) {
 				return subscription
 			}
 
-			ctxLetWithFixtureFactory(s, c.FixtureFactory)
+			ctx.Let(s, func(t *testcase.T) interface{} {
+				return factoryGet(t).Context()
+			})
 
 			s.Let(subscriberKey, func(t *testcase.T) interface{} {
 				return newEventSubscriber(t, `Create`, nil)
@@ -128,7 +131,7 @@ func (c creatorPublisher) Spec(tb testing.TB) {
 
 			s.And(`events made`, func(s *testcase.Spec) {
 				events := s.Let(`events`, func(t *testcase.T) interface{} {
-					entities := genEntities(c.FixtureFactory, c.T)
+					entities := genEntities(factoryGet(t), c.T)
 
 					for _, entity := range entities {
 						CreateEntity(t, resourceGet(t), ctxGet(t), entity)
@@ -159,7 +162,7 @@ func (c creatorPublisher) Spec(tb testing.TB) {
 
 					s.And(`more events made`, func(s *testcase.Spec) {
 						s.Before(func(t *testcase.T) {
-							entities := genEntities(c.FixtureFactory, c.T)
+							entities := genEntities(factoryGet(t), c.T)
 							for _, entity := range entities {
 								CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 							}
@@ -198,7 +201,7 @@ func (c creatorPublisher) Spec(tb testing.TB) {
 
 					s.And(`further events made`, func(s *testcase.Spec) {
 						furtherEvents := s.Let(`further events`, func(t *testcase.T) interface{} {
-							entities := genEntities(c.FixtureFactory, c.T)
+							entities := genEntities(factoryGet(t), c.T)
 							for _, entity := range entities {
 								CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 							}
@@ -240,8 +243,8 @@ func (c creatorPublisher) Spec(tb testing.TB) {
 
 type deleterPublisher struct {
 	T
-	Subject func(testing.TB) deleterPublisherSubject
-	FixtureFactory
+	Subject        func(testing.TB) deleterPublisherSubject
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 type deleterPublisherSubject interface {
@@ -275,6 +278,7 @@ func (c deleterPublisher) Benchmark(b *testing.B) {
 func (c deleterPublisher) Spec(tb testing.TB) {
 	spec(tb, c, func(s *testcase.Spec) {
 		c.resource().Let(s, nil)
+		factoryLet(s, c.FixtureFactory)
 		s.Describe(`.Subscribe/DeleteByID`, c.specEventDeleteByID)
 		s.Describe(`.Subscribe/DeleteAll`, c.specEventDeleteAll)
 	})
@@ -303,7 +307,7 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	})
 
 	ctx.Let(s, func(t *testcase.T) interface{} {
-		return c.Context()
+		return factoryGet(t).Context()
 	})
 
 	const subName = `DeleteByID`
@@ -314,7 +318,7 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 
 	const entityKey = `entity`
 	entity := s.Let(entityKey, func(t *testcase.T) interface{} {
-		entityPtr := c.createT()
+		entityPtr := CreatePTR(factoryGet(t), c.T)
 		CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
 		return entityPtr
 	}).EagerLoading(s)
@@ -349,7 +353,7 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 
 			s.And(`more events made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					entityPtr := c.createT()
+					entityPtr := CreatePTR(factoryGet(t), c.T)
 					CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
 					DeleteEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
 					Waiter.Wait()
@@ -390,7 +394,7 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 				const furtherEventKey = `further event`
 				furtherEvent := s.Let(furtherEventKey, func(t *testcase.T) interface{} {
 					t.Log(`given an another entity is stored`)
-					entityPtr := c.createT()
+					entityPtr := CreatePTR(factoryGet(t), c.T)
 					CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
 					DeleteEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
 					Waiter.While(func() bool {
@@ -447,7 +451,7 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 	})
 
 	ctx.Let(s, func(t *testcase.T) interface{} {
-		return c.Context()
+		return factoryGet(t).Context()
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -559,14 +563,10 @@ func (c deleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func() 
 	})
 }
 
-func (c deleterPublisher) createT() interface{} {
-	return CreatePTR(c.FixtureFactory, c.T)
-}
-
 type updaterPublisher struct {
 	T
-	Subject func(testing.TB) updaterPublisherSubject
-	FixtureFactory
+	Subject        func(testing.TB) updaterPublisherSubject
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 type updaterPublisherSubject interface {
@@ -603,6 +603,7 @@ func (c updaterPublisher) Benchmark(b *testing.B) {
 func (c updaterPublisher) Spec(tb testing.TB) {
 	spec(tb, c, func(s *testcase.Spec) {
 		c.resource().Let(s, nil)
+		factoryLet(s, c.FixtureFactory)
 		subscriberFilter.Let(s, func(t *testcase.T) interface{} {
 			return func(event interface{}) bool {
 				_, ok := event.(frameless.EventUpdate)
@@ -625,7 +626,7 @@ func (c updaterPublisher) Spec(tb testing.TB) {
 			}
 
 			ctx.Let(s, func(t *testcase.T) interface{} {
-				return c.Context()
+				return factoryGet(t).Context()
 			})
 
 			const subName = `Update`
@@ -635,7 +636,7 @@ func (c updaterPublisher) Spec(tb testing.TB) {
 
 			const entityKey = `entity`
 			entity := s.Let(entityKey, func(t *testcase.T) interface{} {
-				ptr := c.createT()
+				ptr := CreatePTR(factoryGet(t), c.T)
 				CreateEntity(t, c.resourceGet(t), ctxGet(t), ptr)
 				return ptr
 			}).EagerLoading(s)
@@ -656,7 +657,7 @@ func (c updaterPublisher) Spec(tb testing.TB) {
 			s.And(`update event made`, func(s *testcase.Spec) {
 				const updatedEntityKey = `updated-entity`
 				updatedEntity := s.Let(updatedEntityKey, func(t *testcase.T) interface{} {
-					entityWithNewValuesPtr := c.createT()
+					entityWithNewValuesPtr := CreatePTR(factoryGet(t), c.T)
 					require.Nil(t, extid.Set(entityWithNewValuesPtr, getID(t)))
 					UpdateEntity(t, c.resourceGet(t), ctxGet(t), entityWithNewValuesPtr)
 					Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
@@ -675,7 +676,7 @@ func (c updaterPublisher) Spec(tb testing.TB) {
 					s.And(`more events made`, func(s *testcase.Spec) {
 						s.Before(func(t *testcase.T) {
 							id, _ := extid.Lookup(t.I(entityKey))
-							updatedEntityPtr := c.createT()
+							updatedEntityPtr := CreatePTR(factoryGet(t), c.T)
 							require.Nil(t, extid.Set(updatedEntityPtr, id))
 							require.Nil(t, c.resourceGet(t).Update(ctxGet(t), updatedEntityPtr))
 							Waiter.While(func() bool {
@@ -714,7 +715,7 @@ func (c updaterPublisher) Spec(tb testing.TB) {
 
 					s.And(`a further event is made`, func(s *testcase.Spec) {
 						furtherEventUpdate := s.Let(`further event update`, func(t *testcase.T) interface{} {
-							updatedEntityPtr := c.createT()
+							updatedEntityPtr := CreatePTR(factoryGet(t), c.T)
 							require.Nil(t, extid.Set(updatedEntityPtr, getID(t)))
 							UpdateEntity(t, c.resourceGet(t), ctxGet(t), updatedEntityPtr)
 							Waiter.While(func() bool {
@@ -744,17 +745,4 @@ func (c updaterPublisher) Spec(tb testing.TB) {
 			})
 		})
 	})
-}
-
-func (c updaterPublisher) createT() interface{} {
-	return CreatePTR(c.FixtureFactory, c.T)
-}
-
-func (c updaterPublisher) createEntities() []interface{} {
-	var es []interface{}
-	count := fixtures.Random.IntBetween(3, 7)
-	for i := 0; i < count; i++ {
-		es = append(es, c.createT())
-	}
-	return es
 }

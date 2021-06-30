@@ -27,7 +27,7 @@ var (
 type Manager struct {
 	T              frameless.T
 	Subject        func(testing.TB) (Cache, cache.Source, frameless.OnePhaseCommitProtocol)
-	FixtureFactory contracts.FixtureFactory
+	FixtureFactory func(testing.TB) contracts.FixtureFactory
 }
 
 type Cache interface {
@@ -52,6 +52,7 @@ func (c Manager) Spec(tb testing.TB) {
 			m, _, _ := c.Subject(tb)
 			return m
 		}
+		factoryLet(s, c.FixtureFactory)
 
 		testcase.RunContract(s,
 			contracts.Creator{T: c.T,
@@ -119,10 +120,10 @@ func (c Manager) Spec(tb testing.TB) {
 func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcase.Spec) {
 	s.Context(reflects.SymbolicName(c.T), func(s *testcase.Spec) {
 		s.Let(`value`, func(t *testcase.T) interface{} {
-			ptr := c.createT()
-			require.Nil(t, c.sourceGet(t).Create(c.context(), ptr))
+			ptr := c.createT(t)
+			require.Nil(t, c.sourceGet(t).Create(c.context(t), ptr))
 			id, _ := extid.Lookup(ptr)
-			t.Defer(c.sourceGet(t).DeleteByID, c.context(), id)
+			t.Defer(c.sourceGet(t).DeleteByID, c.context(t), id)
 			return ptr
 		})
 
@@ -131,16 +132,16 @@ func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcas
 			id, _ := extid.Lookup(v)
 
 			// cache
-			_, _ = c.managerGet(t).FindByID(c.context(), c.newT(), id)   // should trigger caching
-			_, _ = iterators.Count(c.managerGet(t).FindAll(c.context())) // should trigger caching
+			_, _ = c.managerGet(t).FindByID(c.context(t), c.newT(), id)   // should trigger caching
+			_, _ = iterators.Count(c.managerGet(t).FindAll(c.context(t))) // should trigger caching
 
 			// mutate
-			vUpdated := c.createT()
+			vUpdated := c.createT(t)
 			require.Nil(t, extid.Set(vUpdated, id))
-			contracts.UpdateEntity(t, c.managerGet(t), c.context(), vUpdated)
+			contracts.UpdateEntity(t, c.managerGet(t), c.context(t), vUpdated)
 			waiter.Wait()
 
-			ptr := contracts.IsFindable(t, c.T, c.managerGet(t), c.context(), id) // should trigger caching
+			ptr := contracts.IsFindable(t, c.T, c.managerGet(t), c.context(t), id) // should trigger caching
 			require.Equal(t, vUpdated, ptr)
 		})
 
@@ -149,14 +150,14 @@ func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcas
 			id, _ := extid.Lookup(v)
 
 			// cache
-			_, _ = c.managerGet(t).FindByID(c.context(), c.newT(), id)   // should trigger caching
-			_, _ = iterators.Count(c.managerGet(t).FindAll(c.context())) // should trigger caching
+			_, _ = c.managerGet(t).FindByID(c.context(t), c.newT(), id)   // should trigger caching
+			_, _ = iterators.Count(c.managerGet(t).FindAll(c.context(t))) // should trigger caching
 
 			// delete
-			require.Nil(t, c.managerGet(t).DeleteByID(c.context(), id))
+			require.Nil(t, c.managerGet(t).DeleteByID(c.context(t), id))
 
 			// assert
-			contracts.IsAbsent(t, c.T, c.managerGet(t), c.context(), id)
+			contracts.IsAbsent(t, c.T, c.managerGet(t), c.context(t), id)
 		})
 
 		s.Test(`a delete all entity in the storage should invalidate the local cache unit entity state`, func(t *testcase.T) {
@@ -164,14 +165,14 @@ func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcas
 			id, _ := extid.Lookup(v)
 
 			// cache
-			_, _ = c.managerGet(t).FindByID(c.context(), c.newT(), id)   // should trigger caching
-			_, _ = iterators.Count(c.managerGet(t).FindAll(c.context())) // should trigger caching
+			_, _ = c.managerGet(t).FindByID(c.context(t), c.newT(), id)   // should trigger caching
+			_, _ = iterators.Count(c.managerGet(t).FindAll(c.context(t))) // should trigger caching
 
 			// delete
-			require.Nil(t, c.managerGet(t).DeleteAll(c.context()))
+			require.Nil(t, c.managerGet(t).DeleteAll(c.context(t)))
 			waiter.Wait()
 
-			contracts.IsAbsent(t, c.T, c.managerGet(t), c.context(), id) // should trigger caching for not found
+			contracts.IsAbsent(t, c.T, c.managerGet(t), c.context(t), id) // should trigger caching for not found
 		})
 	})
 }
@@ -216,11 +217,11 @@ func (stub *StubSource) FindByID(ctx context.Context, ptr, id interface{}) (_fou
 func (c Manager) describeResultCaching(s *testcase.Spec) {
 	s.Context(reflects.SymbolicName(c.T), func(s *testcase.Spec) {
 		value := s.Let(`stored value`, func(t *testcase.T) interface{} {
-			ptr := c.createT()
+			ptr := c.createT(t)
 			storage := c.sourceGet(t)
-			require.Nil(t, storage.Create(c.context(), ptr))
+			require.Nil(t, storage.Create(c.context(t), ptr))
 			id, _ := extid.Lookup(ptr)
-			t.Defer(storage.DeleteByID, c.context(), id)
+			t.Defer(storage.DeleteByID, c.context(t), id)
 			return ptr
 		})
 
@@ -228,7 +229,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 			v := c.newT()
 			id, found := extid.Lookup(value.Get(t))
 			require.True(t, found)
-			found, err := c.managerGet(t).FindByID(c.context(), v, id)
+			found, err := c.managerGet(t).FindByID(c.context(t), v, id)
 			require.Nil(t, err)
 			require.True(t, found)
 			require.Equal(t, value.Get(t), v)
@@ -238,7 +239,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				id, found := extid.Lookup(value.Get(t))
 				require.True(t, found)
-				v := contracts.IsFindable(t, c.T, c.sourceGet(t), c.context(), id)
+				v := contracts.IsFindable(t, c.T, c.sourceGet(t), c.context(t), id)
 				require.Equal(t, value.Get(t), v)
 			})
 
@@ -246,14 +247,14 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 				valueWithNewContent := s.Let(`value-with-new-content`, func(t *testcase.T) interface{} {
 					id, found := extid.Lookup(value.Get(t))
 					require.True(t, found)
-					nv := c.createT()
+					nv := c.createT(t)
 					require.Nil(t, extid.Set(nv, id))
 					return nv
 				})
 
 				s.Before(func(t *testcase.T) {
 					ptr := valueWithNewContent.Get(t)
-					contracts.UpdateEntity(t, c.managerGet(t), c.context(), ptr)
+					contracts.UpdateEntity(t, c.managerGet(t), c.context(t), ptr)
 					waiter.Wait()
 				})
 
@@ -261,11 +262,11 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 					id, found := extid.Lookup(value.Get(t))
 					require.True(t, found)
 					require.NotEmpty(t, id)
-					contracts.HasEntity(t, c.managerGet(t), c.context(), valueWithNewContent.Get(t))
+					contracts.HasEntity(t, c.managerGet(t), c.context(t), valueWithNewContent.Get(t))
 
 					async.Assert(t, func(tb testing.TB) {
 						v := c.newT()
-						found, err := c.managerGet(t).FindByID(c.context(), v, id)
+						found, err := c.managerGet(t).FindByID(c.context(t), v, id)
 						require.Nil(tb, err)
 						require.True(tb, found)
 						tb.Log(`actually`, v)
@@ -283,7 +284,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 
 				for i := 0; i < 42; i++ {
 					v := c.newT()
-					found, err := c.managerGet(t).FindByID(c.context(), v, id)
+					found, err := c.managerGet(t).FindByID(c.context(t), v, id)
 					require.Nil(t, err)
 					require.True(t, found)
 					require.Equal(t, value, v)
@@ -311,13 +312,13 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 					require.True(t, found)
 
 					// trigger caching
-					nv = contracts.IsFindable(t, c.T, c.managerGet(t), c.context(), id)
+					nv = contracts.IsFindable(t, c.T, c.managerGet(t), c.context(t), id)
 					require.Equal(t, value, nv)
 					numberOfFindByIDCallAfterEntityIsFound := stubGet(t).count.FindByID
 					waiter.Wait()
 
 					nv = c.newT()
-					found, err = c.managerGet(t).FindByID(c.context(), nv, id) // should use cached value
+					found, err = c.managerGet(t).FindByID(c.context(t), nv, id) // should use cached value
 					require.Nil(t, err)
 					require.True(t, found)
 					require.Equal(t, value, nv)
@@ -328,14 +329,14 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 	}, testcase.Flaky(time.Minute))
 }
 
-func (c Manager) context() context.Context {
-	return c.FixtureFactory.Context()
+func (c Manager) context(t *testcase.T) context.Context {
+	return factoryGet(t).Context()
 }
 
 func (c Manager) newT() interface{} {
 	return reflect.New(reflect.TypeOf(c.T)).Interface()
 }
 
-func (c Manager) createT() interface{} {
-	return contracts.CreatePTR(c.FixtureFactory, c.T)
+func (c Manager) createT(t *testcase.T) interface{} {
+	return contracts.CreatePTR(factoryGet(t), c.T)
 }

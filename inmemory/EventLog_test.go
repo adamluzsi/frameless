@@ -88,12 +88,14 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			tx, err := spec.memoryGet(t).BeginTx(spec.ctxGet(t))
 			require.Nil(t, err)
-			t.Defer(spec.memoryGet(t).RollbackTx, tx)
 			spec.ctx().Set(t, tx)
 		})
 
 		s.Then(`Add will execute in the scope of transaction`, func(t *testcase.T) {
-			t.Skip(`TODO`)
+			require.NoError(t, subject(t))
+			require.NotContains(t, spec.memoryGet(t).Events(), eventGet(t))
+			require.NoError(t, spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
+			require.Contains(t, spec.memoryGet(t).Events(), eventGet(t))
 		})
 	})
 }

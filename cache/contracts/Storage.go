@@ -18,7 +18,7 @@ import (
 type Storage struct {
 	T              frameless.T
 	Subject        func(testing.TB) cache.Storage
-	FixtureFactory contracts.FixtureFactory
+	FixtureFactory func(testing.TB) contracts.FixtureFactory
 }
 
 func (c Storage) storage() testcase.Var {
@@ -49,12 +49,13 @@ func (c Storage) Benchmark(b *testing.B) {
 func (c Storage) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 	defer s.Finish()
+	factoryLet(s, c.FixtureFactory)
 
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
 			var (
-				ctx     = c.FixtureFactory.Context()
+				ctx     = c.FixtureFactory(t).Context()
 				storage = c.storageGet(t)
 			)
 			contracts.DeleteAllEntity(t, storage.CacheHit(ctx), ctx)
@@ -64,7 +65,7 @@ func (c Storage) Spec(tb testing.TB) {
 
 	s.Describe(`cache.HitStorage`, func(s *testcase.Spec) {
 		newStorage := func(tb testing.TB) cache.HitStorage {
-			return c.Subject(tb).CacheHit(c.FixtureFactory.Context())
+			return c.Subject(tb).CacheHit(c.FixtureFactory(tb).Context())
 		}
 		testcase.RunContract(s,
 			contracts.Creator{
@@ -99,7 +100,7 @@ func (c Storage) Spec(tb testing.TB) {
 				T: c.T,
 				Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
 					storage := c.Subject(tb)
-					return storage, storage.CacheEntity(c.FixtureFactory.Context())
+					return storage, storage.CacheEntity(c.FixtureFactory(tb).Context())
 				},
 				FixtureFactory: c.FixtureFactory,
 			},
@@ -108,9 +109,9 @@ func (c Storage) Spec(tb testing.TB) {
 }
 
 type EntityStorage struct {
-	T       frameless.T
-	Subject func(tb testing.TB) (cache.EntityStorage, frameless.OnePhaseCommitProtocol)
-	contracts.FixtureFactory
+	T              frameless.T
+	Subject        func(testing.TB) (cache.EntityStorage, frameless.OnePhaseCommitProtocol)
+	FixtureFactory func(testing.TB) contracts.FixtureFactory
 }
 
 func (c EntityStorage) Test(t *testing.T) {
@@ -123,6 +124,7 @@ func (c EntityStorage) Benchmark(b *testing.B) {
 
 func (c EntityStorage) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
+	factoryLet(s, c.FixtureFactory)
 
 	s.Before(func(t *testcase.T) {
 		ds, cpm := c.Subject(t)
@@ -203,7 +205,7 @@ func (c EntityStorage) describeCacheDataUpsert(s *testcase.Spec) {
 
 	var (
 		newEntWithTeardown = func(t *testcase.T) interface{} {
-			ent := contracts.CreatePTR(c.FixtureFactory, c.T)
+			ent := contracts.CreatePTR(factoryGet(t), c.T)
 			t.Cleanup(func() {
 				ctx := ctxGet(t)
 				id, ok := extid.Lookup(ent)
@@ -311,7 +313,7 @@ func (c EntityStorage) describeCacheDataUpsert(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				t.Log(`and entity 1 has updated content`)
 				id := c.getID(t, ent1.Get(t))
-				n := contracts.CreatePTR(c.FixtureFactory, c.T)
+				n := contracts.CreatePTR(factoryGet(t), c.T)
 				require.Nil(t, extid.Set(n, id))
 				ent1.Set(t, n)
 			})
@@ -367,7 +369,7 @@ func (c EntityStorage) describeCacheDataFindByIDs(s *testcase.Spec) {
 
 	var (
 		newEntityInit = func(t *testcase.T) interface{} {
-			ptr := contracts.CreatePTR(c.FixtureFactory, c.T)
+			ptr := contracts.CreatePTR(factoryGet(t), c.T)
 			contracts.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
 			return ptr
 		}

@@ -25,7 +25,9 @@ func TestManager_creator(t *testing.T) {
 			manager, _, _ := NewManager(tb)
 			return manager
 		},
-		FixtureFactory: fixtures.Factory,
+		FixtureFactory: func(tb testing.TB) fc.FixtureFactory {
+			return fixtures.NewFactory()
+		},
 	})
 }
 
@@ -36,7 +38,9 @@ func TestManager(t *testing.T) {
 			Subject: func(tb testing.TB) (contracts.Cache, cache.Source, frameless.OnePhaseCommitProtocol) {
 				return NewManager(tb)
 			},
-			FixtureFactory: fixtures.Factory,
+			FixtureFactory: func(tb testing.TB) fc.FixtureFactory {
+				return fixtures.NewFactory()
+			},
 		},
 	)
 }

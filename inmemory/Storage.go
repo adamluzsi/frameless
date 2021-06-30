@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"reflect"
@@ -496,10 +495,7 @@ func (tx *MemoryTx) getChanges(name string) memoryTxChanges {
 }
 
 func (m *Memory) getNS() string {
-	m.ns.init.Do(func() {
-		m.ns.value = fixtures.SecureRandom.StringN(8)
-	})
-
+	m.ns.init.Do(func() { m.ns.value = genStringUID() })
 	return m.ns.value
 }
 

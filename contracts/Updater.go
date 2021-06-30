@@ -2,8 +2,9 @@ package contracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/extid"
 	"testing"
+
+	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/testcase"
@@ -13,9 +14,9 @@ import (
 
 // Updater will request an update for a wrapped entity object in the Resource
 type Updater struct {
-	T
-	Subject func(testing.TB) UpdaterSubject
-	FixtureFactory
+	T              T
+	Subject        func(testing.TB) UpdaterSubject
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 type UpdaterSubject interface {
@@ -42,24 +43,26 @@ func (c Updater) Test(t *testing.T) {
 
 func (c Updater) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
+	factoryLet(s, c.FixtureFactory)
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newT(c.T)
-		CreateEntity(t, c.resourceGet(t), c.Context(), ptr)
+		CreateEntity(t, c.resourceGet(t), factoryGet(t).Context(), ptr)
 		return ptr
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		require.Nil(b, c.resourceGet(t).Update(c.Context(), ent.Get(t)))
+		require.Nil(b, c.resourceGet(t).Update(factoryGet(t).Context(), ent.Get(t)))
 	})
 }
 
 func (c Updater) Spec(tb testing.TB) {
 	spec(tb, c, func(s *testcase.Spec) {
 		c.resource().Let(s, nil)
+		factoryLet(s, c.FixtureFactory)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, c.resourceGet(t), c.Context())
+			DeleteAllEntity(t, c.resourceGet(t), factoryGet(t).Context())
 		})
 
 		var (
@@ -74,7 +77,7 @@ func (c Updater) Spec(tb testing.TB) {
 		)
 
 		ctx.Let(s, func(t *testcase.T) interface{} {
-			return c.Context()
+			return factoryGet(t).Context()
 		})
 
 		requestContext.Let(s, func(t *testcase.T) interface{} {
@@ -83,14 +86,14 @@ func (c Updater) Spec(tb testing.TB) {
 
 		s.When(`an entity already stored`, func(s *testcase.Spec) {
 			entity := s.Let(`entity`, func(t *testcase.T) interface{} {
-				ent := CreatePTR(c.FixtureFactory, c.T)
+				ent := CreatePTR(factoryGet(t), c.T)
 				CreateEntity(t, c.resourceGet(t), ctxGet(t), ent)
 				return ent
 			}).EagerLoading(s)
 
 			s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 				entityWithChanges.Let(s, func(t *testcase.T) interface{} {
-					newEntity := CreatePTR(c.FixtureFactory, c.T)
+					newEntity := CreatePTR(factoryGet(t), c.T)
 					id, _ := extid.Lookup(entity.Get(t))
 					require.Nil(t, extid.Set(newEntity, id))
 					return newEntity
@@ -99,7 +102,7 @@ func (c Updater) Spec(tb testing.TB) {
 				s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 					require.Nil(t, subject(t))
 
-					HasEntity(t, c.resourceGet(t), c.Context(), entityWithChanges.Get(t))
+					HasEntity(t, c.resourceGet(t), factoryGet(t).Context(), entityWithChanges.Get(t))
 				})
 
 				s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -118,7 +121,7 @@ func (c Updater) Spec(tb testing.TB) {
 
 		s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
 			entityWithChanges.Let(s, func(t *testcase.T) interface{} {
-				newEntity := CreatePTR(c.FixtureFactory, c.T)
+				newEntity := CreatePTR(factoryGet(t), c.T)
 				CreateEntity(t, c.resourceGet(t), ctxGet(t), newEntity)
 				DeleteEntity(t, c.resourceGet(t), ctxGet(t), newEntity)
 				return newEntity

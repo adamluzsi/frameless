@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
 )
 
 func NewEventLog() *EventLog {
@@ -133,9 +132,7 @@ func (el *EventLog) Events() []Event {
 }
 
 func (el *EventLog) getCtxNS() string {
-	el.namespaceInit.Do(func() {
-		el.namespace = fixtures.SecureRandom.StringN(42)
-	})
+	el.namespaceInit.Do(func() { el.namespace = genStringUID() })
 	return el.namespace
 }
 
@@ -274,8 +271,7 @@ func (el *EventLog) notifySubscriptions(ctx context.Context, event Event) {
 func (el *EventLog) newSubscription(ctx context.Context, subscriber frameless.Subscriber) *Subscription {
 	var sub Subscription
 
-	sub.id = fixtures.SecureRandom.StringN(128) // replace with actual unique id maybe?
-
+	sub.id = genStringUID() // replace with actual unique id maybe?
 	sub.eventLog = el
 	sub.subscriber = subscriber
 	sub.queue = make(chan subscriptionEvent)

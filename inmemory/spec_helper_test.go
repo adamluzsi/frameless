@@ -43,31 +43,33 @@ type ContractSubject struct {
 }
 
 func GetContracts(T frameless.T, subject func(testing.TB) ContractSubject) []testcase.Contract {
-	ff := fixtures.Factory
+	fff := func(testing.TB) contracts.FixtureFactory {
+		return fixtures.NewFactory()
+	}
 	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
 				return subject(tb)
 			},
-			FixtureFactory: ff,
+			FixtureFactory: fff,
 		},
 		contracts.Finder{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
 				return subject(tb)
 			},
-			FixtureFactory: ff,
+			FixtureFactory: fff,
 		},
 		contracts.Updater{T: T,
 			Subject: func(tb testing.TB) contracts.UpdaterSubject {
 				return subject(tb)
 			},
-			FixtureFactory: ff,
+			FixtureFactory: fff,
 		},
 		contracts.Deleter{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
 				return subject(tb)
 			},
-			FixtureFactory: ff,
+			FixtureFactory: fff,
 		},
 		//contracts.CreatorPublisher{T: T,
 		//	Subject: func(tb testing.TB) contracts.CreatorPublisherSubject {
@@ -95,13 +97,13 @@ func GetContracts(T frameless.T, subject func(testing.TB) ContractSubject) []tes
 				s := subject(tb)
 				return s.OnePhaseCommitProtocol, s
 			},
-			FixtureFactory: ff,
+			FixtureFactory: fff,
 		},
 		cachecontracts.EntityStorage{T: T,
 			Subject: func(tb testing.TB) (cache.EntityStorage, frameless.OnePhaseCommitProtocol) {
 				s := subject(tb)
 				return s.EntityStorage, s.OnePhaseCommitProtocol
-			}, FixtureFactory: ff,
+			}, FixtureFactory: fff,
 		},
 		//contracts.MetaAccessor{T: T, V: "string",
 		//	Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
