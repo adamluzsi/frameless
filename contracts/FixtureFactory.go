@@ -20,18 +20,19 @@ type FixtureFactory interface {
 	Context() (ctx context.Context)
 }
 
-type FixtureFactorySpec struct {
-	Type interface{}
-	FixtureFactory
+type FixtureFactoryContract struct {
+	Type           interface{}
+	FixtureFactory func(tb testing.TB) FixtureFactory
 }
 
-func (c FixtureFactorySpec) Test(t *testing.T) {
+func (c FixtureFactoryContract) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
+	factoryLet(s, c.FixtureFactory)
 
 	s.Describe(`.Create`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
-			return c.FixtureFactory.Create(c.Type)
+			return factoryGet(t).Create(c.Type)
 		}
 
 		s.Then(`each created fixture value is uniq`, func(t *testcase.T) {
@@ -60,7 +61,7 @@ func (c FixtureFactorySpec) Test(t *testing.T) {
 
 	s.Describe(`.Context`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) context.Context {
-			return c.FixtureFactory.Context()
+			return factoryGet(t).Context()
 		}
 
 		s.Then(`it will return a Context`, func(t *testcase.T) {
@@ -73,6 +74,6 @@ func (c FixtureFactorySpec) Test(t *testing.T) {
 	})
 }
 
-func (c FixtureFactorySpec) Benchmark(b *testing.B) {
+func (c FixtureFactoryContract) Benchmark(b *testing.B) {
 	b.Skip()
 }

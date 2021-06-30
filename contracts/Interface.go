@@ -1,8 +1,9 @@
 package contracts
 
 import (
-	"github.com/adamluzsi/testcase"
 	"testing"
+
+	"github.com/adamluzsi/testcase"
 )
 
 // Interface represent a resource specification also known as "contract".

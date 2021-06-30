@@ -201,12 +201,6 @@ func ctxGet(t *testcase.T) context.Context {
 	return ctx.Get(t).(context.Context)
 }
 
-func ctxLetWithFixtureFactory(s *testcase.Spec, ff FixtureFactory) testcase.Var {
-	return ctx.Let(s, func(t *testcase.T) interface{} {
-		return ff.Context()
-	})
-}
-
 var (
 	subscribedEvent = testcase.Var{
 		Name: `subscribed event`,
@@ -277,4 +271,16 @@ func CreatePTR(ff FixtureFactory, T T) interface{} {
 	ptr := reflect.New(reflect.TypeOf(T))
 	ptr.Elem().Set(reflect.ValueOf(ff.Create(T)))
 	return ptr.Interface()
+}
+
+var factory = testcase.Var{Name: "FixtureFactory"}
+
+func factoryLet(s *testcase.Spec, fff func(testing.TB) FixtureFactory) {
+	factory.Let(s, func(t *testcase.T) interface{} {
+		return fff(t)
+	})
+}
+
+func factoryGet(t *testcase.T) FixtureFactory {
+	return factory.Get(t).(FixtureFactory)
 }

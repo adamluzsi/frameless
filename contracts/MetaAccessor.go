@@ -2,18 +2,19 @@ package contracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/stubs"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 type MetaAccessor struct {
-	T, V    T
-	Subject func(testing.TB) MetaAccessorSubject
-	FixtureFactory
+	T, V           T
+	Subject        func(testing.TB) MetaAccessorSubject
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 var accessor = testcase.Var{Name: `frameless.MetaAccessor`}
@@ -63,9 +64,9 @@ func (c MetaAccessor) Spec(tb testing.TB) {
 
 type MetaAccessorBasic struct {
 	// V is the value T type that can be set and looked up with frameless.MetaAccessor.
-	V       T
-	Subject func(testing.TB) frameless.MetaAccessor
-	FixtureFactory
+	V              T
+	Subject        func(testing.TB) frameless.MetaAccessor
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 func (c MetaAccessorBasic) Test(t *testing.T) {
@@ -78,6 +79,7 @@ func (c MetaAccessorBasic) Benchmark(b *testing.B) {
 
 func (c MetaAccessorBasic) Spec(tb testing.TB) {
 	spec(tb, c, func(s *testcase.Spec) {
+		factoryLet(s, c.FixtureFactory)
 		accessor.Let(s, func(t *testcase.T) interface{} {
 			return c.Subject(t)
 		})
@@ -89,7 +91,7 @@ func (c MetaAccessorBasic) Spec(tb testing.TB) {
 				ctx    = ctx.Let(s, nil)
 				key    = s.Let(`key`, func(t *testcase.T) interface{} { return t.Random.String() })
 				keyGet = func(t *testcase.T) string { return key.Get(t).(string) }
-				value  = s.Let(`value`, func(t *testcase.T) interface{} { return c.FixtureFactory.Create(c.V) })
+				value  = s.Let(`value`, func(t *testcase.T) interface{} { return factoryGet(t).Create(c.V) })
 			)
 			subjectSetMeta := func(t *testcase.T) (context.Context, error) {
 				return accessorGet(t).SetMeta(ctxGet(t), keyGet(t), value.Get(t))
@@ -124,9 +126,9 @@ func (c MetaAccessorBasic) Spec(tb testing.TB) {
 }
 
 type MetaAccessorPublisher struct {
-	T, V    T
-	Subject func(testing.TB) MetaAccessorSubject
-	FixtureFactory
+	T, V           T
+	Subject        func(testing.TB) MetaAccessorSubject
+	FixtureFactory func(testing.TB) FixtureFactory
 }
 
 func (c MetaAccessorPublisher) Test(t *testing.T) {
@@ -139,6 +141,7 @@ func (c MetaAccessorPublisher) Benchmark(b *testing.B) {
 
 func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 	spec(tb, c, func(s *testcase.Spec) {
+		factoryLet(s, c.FixtureFactory)
 		metaAccessorSubject.Let(s, func(t *testcase.T) interface{} {
 			return c.Subject(t)
 		})
@@ -147,9 +150,9 @@ func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 		})
 
 		s.Test(".SetMeta -> .Create -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-			ctx := c.FixtureFactory.Context()
+			ctx := factoryGet(t).Context()
 			key := t.Random.String()
-			expected := base(c.FixtureFactory.Create(c.V))
+			expected := base(factoryGet(t).Create(c.V))
 
 			var actual interface{}
 			sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
@@ -170,7 +173,7 @@ func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 
 			ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
 			require.NoError(t, err)
-			CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, CreatePTR(c.FixtureFactory, c.T))
+			CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, CreatePTR(factoryGet(t), c.T))
 
 			AsyncTester.Assert(t, func(t testing.TB) {
 				require.Equal(t, expected, actual)
@@ -178,11 +181,11 @@ func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 		})
 
 		s.Test(".SetMeta -> .DeleteByID -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-			ctx := c.FixtureFactory.Context()
+			ctx := factoryGet(t).Context()
 			key := t.Random.String()
-			expected := base(c.FixtureFactory.Create(c.V))
+			expected := base(factoryGet(t).Create(c.V))
 
-			ptr := CreatePTR(c.FixtureFactory, c.T)
+			ptr := CreatePTR(factoryGet(t), c.T)
 			CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
 			id := HasID(t, ptr)
 
@@ -214,11 +217,11 @@ func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 		})
 
 		s.Test(".SetMeta -> .DeleteAll -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-			ctx := c.FixtureFactory.Context()
+			ctx := factoryGet(t).Context()
 			key := t.Random.String()
-			expected := base(c.FixtureFactory.Create(c.V))
+			expected := base(factoryGet(t).Create(c.V))
 
-			ptr := CreatePTR(c.FixtureFactory, c.T)
+			ptr := CreatePTR(factoryGet(t), c.T)
 			CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
 
 			var actual interface{}
@@ -254,11 +257,11 @@ func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 				t.Skipf(`frameless.Updater is not implemented by %T`, metaAccessorSubjectGet(t).CRD)
 			}
 
-			ctx := c.FixtureFactory.Context()
+			ctx := factoryGet(t).Context()
 			key := t.Random.String()
-			expected := base(c.FixtureFactory.Create(c.V))
+			expected := base(factoryGet(t).Create(c.V))
 
-			ptr := CreatePTR(c.FixtureFactory, c.T)
+			ptr := CreatePTR(factoryGet(t), c.T)
 			CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
 			id := HasID(t, ptr)
 
@@ -280,7 +283,7 @@ func (c MetaAccessorPublisher) Spec(tb testing.TB) {
 			require.NoError(t, err)
 			t.Defer(sub.Close)
 
-			updPTR := CreatePTR(c.FixtureFactory, c.T)
+			updPTR := CreatePTR(factoryGet(t), c.T)
 			require.NoError(t, extid.Set(updPTR, id))
 			ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
 			require.NoError(t, err)
