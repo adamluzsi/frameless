@@ -9,10 +9,10 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/postgresql"
 
 	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/fixtures"
 	"github.com/stretchr/testify/require"
 )
 
@@ -81,8 +81,10 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 			}
 			return p, s
 		},
-		DriverName:     "postgres",
-		FixtureFactory: &fixtures.Factory{},
+		DriverName: "postgres",
+		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			return fixtures.NewFactory()
+		},
 		CreateTable: func(ctx context.Context, client postgresql.Connection, name string) error {
 			_, err := client.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %q ();`, name))
 			return err
@@ -118,7 +120,9 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 			}
 			return p, s
 		},
-		FixtureFactory: &fixtures.Factory{},
+		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			return fixtures.NewFactory()
+		},
 	})
 }
 
@@ -133,9 +137,9 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 }
 
 type ConnectionManagerSpec struct {
-	Subject    func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD)
-	DriverName string
-	contracts.FixtureFactory
+	Subject        func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD)
+	FixtureFactory func(testing.TB) contracts.FixtureFactory
+	DriverName     string
 
 	// CreateTable to create a dummy table with a specific name.
 	// This is used to confirm transaction behaviors.
@@ -146,53 +150,65 @@ type ConnectionManagerSpec struct {
 	HasTable func(ctx context.Context, client postgresql.Connection, name string) (bool, error)
 }
 
-func (spec ConnectionManagerSpec) Test(t *testing.T) {
-	spec.Spec(t)
+func (c ConnectionManagerSpec) Test(t *testing.T) {
+	c.Spec(t)
 }
 
-func (spec ConnectionManagerSpec) Benchmark(b *testing.B) {
-	spec.Spec(b)
+func (c ConnectionManagerSpec) Benchmark(b *testing.B) {
+	c.Spec(b)
 }
 
-func (spec ConnectionManagerSpec) cm() testcase.Var {
+func (c ConnectionManagerSpec) cm() testcase.Var {
 	return testcase.Var{
 		Name: "*postgresql.ConnectionManager",
 		Init: func(t *testcase.T) interface{} {
-			pool, resource := spec.Subject(t)
-			spec.resource().Set(t, resource)
+			pool, resource := c.Subject(t)
+			c.resource().Set(t, resource)
 			return pool
 		},
 	}
 }
 
-func (spec ConnectionManagerSpec) cmGet(t *testcase.T) *postgresql.ConnectionManager {
-	return spec.cm().Get(t).(*postgresql.ConnectionManager)
+func (c ConnectionManagerSpec) cmGet(t *testcase.T) *postgresql.ConnectionManager {
+	return c.cm().Get(t).(*postgresql.ConnectionManager)
 }
 
-func (spec ConnectionManagerSpec) resource() testcase.Var {
+func (c ConnectionManagerSpec) resource() testcase.Var {
 	return testcase.Var{
 		Name: "resource",
 		Init: func(t *testcase.T) interface{} {
-			_ = spec.cm().Get(t)
-			return spec.resource().Get(t)
+			_ = c.cm().Get(t)
+			return c.resource().Get(t)
 		},
 	}
 }
 
-func (spec ConnectionManagerSpec) resourceGet(t *testcase.T) contracts.CRD {
-	return spec.resource().Get(t).(contracts.CRD)
+func (c ConnectionManagerSpec) resourceGet(t *testcase.T) contracts.CRD {
+	return c.resource().Get(t).(contracts.CRD)
 }
 
-func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
+func (c ConnectionManagerSpec) factory() testcase.Var {
+	return testcase.Var{
+		Name: "factory",
+		Init: func(t *testcase.T) interface{} {
+			return c.FixtureFactory(t)
+		},
+	}
+}
+func (c ConnectionManagerSpec) factoryGet(t *testcase.T) contracts.FixtureFactory {
+	return c.factory().Get(t).(contracts.FixtureFactory)
+}
+
+func (c ConnectionManagerSpec) Spec(tb testing.TB) {
 	s := testcase.NewSpec(tb)
 
 	s.Describe(`.DSN`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) string {
-			return spec.cmGet(t).DSN
+			return c.cmGet(t).DSN
 		}
 
 		s.Then(`it should return data source name that is usable with sql.Open`, func(t *testcase.T) {
-			db, err := sql.Open(spec.DriverName, subject(t))
+			db, err := sql.Open(c.DriverName, subject(t))
 			require.NoError(t, err)
 			t.Defer(db.Close)
 			require.NotNil(t, db)
@@ -202,10 +218,10 @@ func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
 
 	s.Describe(`.GetClient`, func(s *testcase.Spec) {
 		ctx := s.Let(`context`, func(t *testcase.T) interface{} {
-			return spec.Context()
+			return c.factoryGet(t).Context()
 		})
 		subject := func(t *testcase.T) (postgresql.Connection, error) {
-			return spec.cmGet(t).GetConnection(ctx.Get(t).(context.Context))
+			return c.cmGet(t).GetConnection(ctx.Get(t).(context.Context))
 		}
 
 		s.Then(`it returns a client without an error`, func(t *testcase.T) {
@@ -216,34 +232,34 @@ func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
 	})
 
 	s.Test(`.BeginTx + .GetClient = transaction`, func(t *testcase.T) {
-		p := spec.cmGet(t)
+		p := c.cmGet(t)
 
-		tx, err := p.BeginTx(spec.Context())
+		tx, err := p.BeginTx(c.factoryGet(t).Context())
 		require.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
 		connection, err := p.GetConnection(tx)
 		require.NoError(t, err)
 
-		name := spec.makeTestTableName()
-		require.Nil(t, spec.CreateTable(tx, connection, name))
-		defer spec.cleanupTable(t, name)
+		name := c.makeTestTableName()
+		require.Nil(t, c.CreateTable(tx, connection, name))
+		defer c.cleanupTable(t, name)
 
 		require.NoError(t, p.RollbackTx(tx))
 
-		ctx := spec.Context()
+		ctx := c.factoryGet(t).Context()
 		connection, err = p.GetConnection(ctx)
 		require.NoError(t, err)
 
-		has, err := spec.HasTable(ctx, connection, name)
+		has, err := c.HasTable(ctx, connection, name)
 		require.NoError(t, err)
 		require.False(t, has, `it wasn't expected that the created dummy table present after rollback`)
 	})
 
 	s.Test(`.GetClient is in no transaction without context from a .BeginTx`, func(t *testcase.T) {
-		p := spec.cmGet(t)
+		p := c.cmGet(t)
 
-		ctx := spec.Context()
+		ctx := c.factoryGet(t).Context()
 
 		tx, err := p.BeginTx(ctx)
 		require.NoError(t, err)
@@ -252,26 +268,26 @@ func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
 		connection, err := p.GetConnection(ctx) // ctx -> no transaction
 		require.NoError(t, err)
 
-		name := spec.makeTestTableName()
-		require.Nil(t, spec.CreateTable(tx, connection, name))
-		defer spec.cleanupTable(t, name)
+		name := c.makeTestTableName()
+		require.Nil(t, c.CreateTable(tx, connection, name))
+		defer c.cleanupTable(t, name)
 
 		require.NoError(t, p.RollbackTx(tx))
 
 		connection, err = p.GetConnection(ctx)
 		require.NoError(t, err)
 
-		has, err := spec.HasTable(ctx, connection, name)
+		has, err := c.HasTable(ctx, connection, name)
 		require.NoError(t, err)
 		require.True(t, has, `it was expected that the created dummy table present`)
 
-		spec.cleanupTable(t, name)
+		c.cleanupTable(t, name)
 	})
 
 	s.Test(`.BeginTx + .GetClient + .CommitTx`, func(t *testcase.T) {
-		p := spec.cmGet(t)
+		p := c.cmGet(t)
 
-		ctx := spec.Context()
+		ctx := c.factoryGet(t).Context()
 
 		tx, err := p.BeginTx(ctx)
 		require.NoError(t, err)
@@ -280,14 +296,14 @@ func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
 		connection, err := p.GetConnection(tx)
 		require.NoError(t, err)
 
-		name := spec.makeTestTableName()
-		require.Nil(t, spec.CreateTable(tx, connection, name))
-		defer spec.cleanupTable(t, name)
+		name := c.makeTestTableName()
+		require.Nil(t, c.CreateTable(tx, connection, name))
+		defer c.cleanupTable(t, name)
 
 		connection, err = p.GetConnection(ctx) // in no tx
 		require.NoError(t, err)
 
-		has, err := spec.HasTable(ctx, connection, name)
+		has, err := c.HasTable(ctx, connection, name)
 		require.NoError(t, err)
 		require.False(t, has, `it was expected that the created dummy table is not observable outside of the transaction`)
 
@@ -296,29 +312,29 @@ func (spec ConnectionManagerSpec) Spec(tb testing.TB) {
 		connection, err = p.GetConnection(ctx)
 		require.NoError(t, err)
 
-		has, err = spec.HasTable(ctx, connection, name)
+		has, err = c.HasTable(ctx, connection, name)
 		require.NoError(t, err)
 		require.True(t, has, `it was expected that the created dummy table present after commit`)
 
-		spec.cleanupTable(t, name)
+		c.cleanupTable(t, name)
 	})
 }
 
-func (spec ConnectionManagerSpec) makeTestTableName() string {
+func (c ConnectionManagerSpec) makeTestTableName() string {
 	const charset = "abcdefghijklmnopqrstuvwxyz"
 	return `test_` + fixtures.Random.StringNWithCharset(6, charset)
 }
 
-func (spec ConnectionManagerSpec) cleanupTable(t *testcase.T, name string) {
-	ctx := spec.Context()
-	client, err := spec.cmGet(t).GetConnection(ctx)
+func (c ConnectionManagerSpec) cleanupTable(t *testcase.T, name string) {
+	ctx := c.factoryGet(t).Context()
+	client, err := c.cmGet(t).GetConnection(ctx)
 	require.NoError(t, err)
 
-	has, err := spec.HasTable(ctx, client, name)
+	has, err := c.HasTable(ctx, client, name)
 	require.NoError(t, err)
 	if !has {
 		return
 	}
 
-	require.Nil(t, spec.DeleteTable(ctx, client, name))
+	require.Nil(t, c.DeleteTable(ctx, client, name))
 }

@@ -76,7 +76,6 @@ func TestNewStorage_smoke(t *testing.T) {
 
 func TestStorage(t *testing.T) {
 	T := StorageTestEntity{}
-	ff := fixtures.Factory
 
 	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
 	subject := &postgresql.Storage{
@@ -87,13 +86,16 @@ func TestStorage(t *testing.T) {
 
 	migrateEntityStorage(t, cm)
 
+	fff := func(tb testing.TB) contracts.FixtureFactory {
+		return fixtures.NewFactory()
+	}
 	testcase.RunContract(t,
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: ff},
-		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: fff},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: fff},
+		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff},
 		contracts.MetaAccessor{T: T, V: "string",
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
@@ -102,14 +104,13 @@ func TestStorage(t *testing.T) {
 					Publisher:    subject,
 				}
 			},
-			FixtureFactory: ff,
+			FixtureFactory: fff,
 		},
 	)
 }
 
 func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 	T := StorageTestEntity{}
-	ff := fixtures.Factory
 	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
 	migrateEntityStorage(t, cm)
 
@@ -122,13 +123,16 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 		Mapping:           mapper,
 	}
 
+	fff := func(tb testing.TB) contracts.FixtureFactory {
+		return fixtures.NewFactory()
+	}
 	testcase.RunContract(t,
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: ff},
-		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: fff},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: fff},
+		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff},
 	)
 }
 
