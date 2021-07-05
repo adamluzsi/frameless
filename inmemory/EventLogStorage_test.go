@@ -74,8 +74,8 @@ func TestEventLogStorage_smoke(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff func(testing.TB) contracts.FixtureFactory) []testcase.Contract {
-	return []testcase.Contract{
+func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff func(testing.TB) contracts.FixtureFactory) []interface{} {
+	return []interface{}{
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
@@ -106,16 +106,14 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff fu
 	}
 }
 
-func getStorageSpecs(subject *inmemory.EventLogStorage, T interface{}) []testcase.Contract {
+func getStorageSpecs(subject *inmemory.EventLogStorage, T interface{}) []interface{} {
 	return getStorageSpecsForT(subject, T, func(tb testing.TB) contracts.FixtureFactory {
 		return fixtures.NewFactory()
 	})
 }
 
 func TestEventLogStorage(t *testing.T) {
-	for _, spec := range getStorageSpecs(inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog()), TestEntity{}) {
-		spec.Test(t)
-	}
+	testcase.RunContract(t, getStorageSpecs(inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog()), TestEntity{})...)
 }
 
 func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
@@ -210,9 +208,7 @@ func TestEventLogStorage_Options_CompressEventLog(t *testing.T) {
 	subject := inmemory.NewEventLogStorage(TestEntity{}, memory)
 	subject.Options.CompressEventLog = true
 
-	for _, spec := range getStorageSpecs(subject, TestEntity{}) {
-		spec.Test(t)
-	}
+	testcase.RunContract(t, getStorageSpecs(subject, TestEntity{})...)
 
 	for _, event := range memory.Events() {
 		t.Logf("storageID:%s -> event:%#v", subject.GetNamespace(), event)
@@ -481,11 +477,9 @@ func TestEventLogStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 		return e.ID, nil
 	}
 
-	for _, spec := range getStorageSpecsForT(storage, EntityWithStructID{}, func(tb testing.TB) contracts.FixtureFactory {
+	testcase.RunContract(t, getStorageSpecsForT(storage, EntityWithStructID{}, func(tb testing.TB) contracts.FixtureFactory {
 		return FFForEntityWithStructID{FixtureFactory: fixtures.NewFactory()}
-	}) {
-		spec.Test(t)
-	}
+	})...)
 }
 
 type EntityWithStructID struct {

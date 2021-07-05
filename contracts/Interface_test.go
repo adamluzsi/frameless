@@ -1,16 +1,18 @@
-package contracts_test
+package contracts
 
-import (
-	"github.com/adamluzsi/frameless/contracts"
-)
 
-var _ = []contracts.Interface{
-	contracts.Creator{},
-	contracts.Finder{},
-	contracts.Updater{},
-	contracts.Deleter{},
-	contracts.OnePhaseCommitProtocol{},
-	contracts.Publisher{},
-	contracts.MetaAccessor{},
-	contracts.MetaAccessorBasic{},
+var _ = []Interface{
+	Creator{},
+	Finder{},
+	FindOne{},
+	Updater{},
+	Deleter{},
+	OnePhaseCommitProtocol{},
+	Publisher{},
+	creatorPublisher{},
+	updaterPublisher{},
+	deleterPublisher{},
+	MetaAccessor{},
+	MetaAccessorBasic{},
+	MetaAccessorPublisher{},
 }

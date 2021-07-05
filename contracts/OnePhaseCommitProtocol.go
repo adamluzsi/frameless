@@ -35,16 +35,14 @@ func (c OnePhaseCommitProtocol) resourceGet(t *testcase.T) CRD {
 }
 
 func (c OnePhaseCommitProtocol) Test(t *testing.T) {
-	c.Spec(t)
+	c.Spec(testcase.NewSpec(t))
 }
 
 func (c OnePhaseCommitProtocol) Benchmark(b *testing.B) {
-	c.Spec(b)
+	c.Spec(testcase.NewSpec(b))
 }
 
-func (c OnePhaseCommitProtocol) Spec(tb testing.TB) {
-	s := testcase.NewSpec(tb)
-	defer s.Finish()
+func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 	s.HasSideEffect()
 	factoryLet(s, c.FixtureFactory)
 

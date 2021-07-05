@@ -39,81 +39,79 @@ type Cache interface {
 }
 
 func (c Manager) Test(t *testing.T) {
-	c.Spec(t)
+	c.Spec(testcase.NewSpec(t))
 }
 
 func (c Manager) Benchmark(b *testing.B) {
-	c.Spec(b)
+	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Manager) Spec(tb testing.TB) {
-	testcase.NewSpec(tb).Describe(`Manager`, func(s *testcase.Spec) {
-		newManager := func(tb testing.TB) Cache {
-			m, _, _ := c.Subject(tb)
-			return m
-		}
-		factoryLet(s, c.FixtureFactory)
+func (c Manager) Spec(s *testcase.Spec) {
+	newManager := func(tb testing.TB) Cache {
+		m, _, _ := c.Subject(tb)
+		return m
+	}
+	factoryLet(s, c.FixtureFactory)
 
-		testcase.RunContract(s,
-			contracts.Creator{T: c.T,
-				Subject: func(tb testing.TB) contracts.CRD {
-					return newManager(tb)
-				},
-				FixtureFactory: c.FixtureFactory,
+	testcase.RunContract(s,
+		contracts.Creator{T: c.T,
+			Subject: func(tb testing.TB) contracts.CRD {
+				return newManager(tb)
 			},
-			contracts.Finder{T: c.T,
-				Subject: func(tb testing.TB) contracts.CRD {
-					return newManager(tb)
-				},
-				FixtureFactory: c.FixtureFactory,
+			FixtureFactory: c.FixtureFactory,
+		},
+		contracts.Finder{T: c.T,
+			Subject: func(tb testing.TB) contracts.CRD {
+				return newManager(tb)
 			},
-			contracts.Deleter{T: c.T,
-				Subject: func(tb testing.TB) contracts.CRD {
-					return newManager(tb)
-				},
-				FixtureFactory: c.FixtureFactory,
+			FixtureFactory: c.FixtureFactory,
+		},
+		contracts.Deleter{T: c.T,
+			Subject: func(tb testing.TB) contracts.CRD {
+				return newManager(tb)
 			},
-			contracts.Publisher{T: c.T,
-				Subject: func(tb testing.TB) contracts.PublisherSubject {
-					manager, source, _ := c.Subject(tb)
-					if _, ok := source.(frameless.Updater); !ok {
-						tb.Skip()
-					}
-					return manager
-				},
-				FixtureFactory: c.FixtureFactory,
+			FixtureFactory: c.FixtureFactory,
+		},
+		contracts.Publisher{T: c.T,
+			Subject: func(tb testing.TB) contracts.PublisherSubject {
+				manager, source, _ := c.Subject(tb)
+				if _, ok := source.(frameless.Updater); !ok {
+					tb.Skip()
+				}
+				return manager
 			},
-			contracts.Updater{T: c.T,
-				Subject: func(tb testing.TB) contracts.UpdaterSubject {
-					m, r, _ := c.Subject(tb)
-					if _, ok := r.(frameless.Updater); !ok {
-						tb.Skip()
-					}
-					return m
-				},
-				FixtureFactory: c.FixtureFactory,
+			FixtureFactory: c.FixtureFactory,
+		},
+		contracts.Updater{T: c.T,
+			Subject: func(tb testing.TB) contracts.UpdaterSubject {
+				m, r, _ := c.Subject(tb)
+				if _, ok := r.(frameless.Updater); !ok {
+					tb.Skip()
+				}
+				return m
 			},
-			contracts.OnePhaseCommitProtocol{
-				T: c.T,
-				Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
-					m, _, cpm := c.Subject(tb)
-					return cpm, m
-				},
-				FixtureFactory: c.FixtureFactory,
+			FixtureFactory: c.FixtureFactory,
+		},
+		contracts.OnePhaseCommitProtocol{
+			T: c.T,
+			Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
+				m, _, cpm := c.Subject(tb)
+				return cpm, m
 			},
-		)
+			FixtureFactory: c.FixtureFactory,
+		},
+	)
 
-		s.Context(``, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				manager, resource, cpm := c.Subject(t)
-				c.manager().Set(t, manager)
-				c.source().Set(t, resource)
-				c.onePhaseCommitProtocolManager().Set(t, cpm)
-			})
-
-			c.describeResultCaching(s)
-			c.describeCacheInvalidationByEventsThatMutatesAnEntity(s)
+	s.Context(``, func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			manager, resource, cpm := c.Subject(t)
+			c.manager().Set(t, manager)
+			c.source().Set(t, resource)
+			c.onePhaseCommitProtocolManager().Set(t, cpm)
 		})
+
+		c.describeResultCaching(s)
+		c.describeCacheInvalidationByEventsThatMutatesAnEntity(s)
 	})
 }
 

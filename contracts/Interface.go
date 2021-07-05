@@ -1,8 +1,6 @@
 package contracts
 
 import (
-	"testing"
-
 	"github.com/adamluzsi/testcase"
 )
 
@@ -21,5 +19,5 @@ import (
 //
 type Interface interface {
 	testcase.Contract
-	Spec(tb testing.TB)
+	testcase.OpenContract
 }

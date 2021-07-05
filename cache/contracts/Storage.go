@@ -39,15 +39,14 @@ func (c Storage) dataStorageGet(t *testcase.T) cache.EntityStorage {
 }
 
 func (c Storage) Test(t *testing.T) {
-	c.Spec(t)
+	c.Spec(testcase.NewSpec(t))
 }
 
 func (c Storage) Benchmark(b *testing.B) {
-	c.Spec(b)
+	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Storage) Spec(tb testing.TB) {
-	s := testcase.NewSpec(tb)
+func (c Storage) Spec(s *testcase.Spec) {
 	defer s.Finish()
 	factoryLet(s, c.FixtureFactory)
 
@@ -115,15 +114,14 @@ type EntityStorage struct {
 }
 
 func (c EntityStorage) Test(t *testing.T) {
-	c.Spec(t)
+	c.Spec(testcase.NewSpec(t))
 }
 
 func (c EntityStorage) Benchmark(b *testing.B) {
-	c.Spec(b)
+	c.Spec(testcase.NewSpec(b))
 }
 
-func (c EntityStorage) Spec(tb testing.TB) {
-	s := testcase.NewSpec(tb)
+func (c EntityStorage) Spec(s *testcase.Spec) {
 	factoryLet(s, c.FixtureFactory)
 
 	s.Before(func(t *testcase.T) {

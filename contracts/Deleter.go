@@ -31,7 +31,7 @@ func (c Deleter) resourceGet(t *testcase.T) CRD {
 }
 
 func (c Deleter) Test(t *testing.T) {
-	c.Spec(t)
+	c.Spec(testcase.NewSpec(t))
 }
 
 func (c Deleter) Benchmark(b *testing.B) {
@@ -39,13 +39,11 @@ func (c Deleter) Benchmark(b *testing.B) {
 	b.Run(`DeleteAll`, c.benchmarkDeleteAll)
 }
 
-func (c Deleter) Spec(tb testing.TB) {
-	spec(tb, c, func(s *testcase.Spec) {
-		c.resource().Let(s, nil)
-		factoryLet(s, c.FixtureFactory)
-		s.Describe(`DeleteByID`, c.specDeleteByID)
-		s.Describe(`DeleteAll`, c.specDeleteAll)
-	})
+func (c Deleter) Spec(s *testcase.Spec) {
+	c.resource().Let(s, nil)
+	factoryLet(s, c.FixtureFactory)
+	s.Describe(`DeleteByID`, c.specDeleteByID)
+	s.Describe(`DeleteAll`, c.specDeleteAll)
 }
 
 func (c Deleter) specDeleteByID(s *testcase.Spec) {
