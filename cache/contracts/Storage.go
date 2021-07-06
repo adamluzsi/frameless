@@ -135,8 +135,7 @@ func (c EntityStorage) Spec(s *testcase.Spec) {
 			ds, _ := c.Subject(tb)
 			return ds
 		}
-		s.Test(`CRUD`, func(t *testcase.T) {
-			testcase.RunContract(t,
+			testcase.RunContract(s,
 				contracts.Creator{T: c.T,
 					Subject: func(tb testing.TB) contracts.CRD {
 						return newStorage(tb)
@@ -169,7 +168,6 @@ func (c EntityStorage) Spec(s *testcase.Spec) {
 					FixtureFactory: c.FixtureFactory,
 				},
 			)
-		})
 
 		s.Describe(`.FindByIDs`, c.describeCacheDataFindByIDs)
 		s.Describe(`.Upsert`, c.describeCacheDataUpsert)

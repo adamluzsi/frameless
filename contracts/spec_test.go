@@ -31,8 +31,8 @@ type ContractsSubject struct {
 	}
 }
 
-func getContracts(T interface{}, ff func(tb testing.TB) contracts.FixtureFactory, newSubject func(tb testing.TB) ContractsSubject) []interface{} {
-	return []interface{}{
+func getContracts(T interface{}, ff func(tb testing.TB) contracts.FixtureFactory, newSubject func(tb testing.TB) ContractsSubject) []testcase.Contract {
+	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
 			FixtureFactory: ff,
@@ -113,7 +113,7 @@ func TestFixtureFactory(t *testing.T) {
 		}
 
 		testcase.RunContract(t, contracts.FixtureFactoryContract{
-			Type: T{},
+			T: T{},
 			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
 				return fixtures.NewFactory()
 			},
@@ -127,7 +127,7 @@ func TestFixtureFactory(t *testing.T) {
 		}
 
 		testcase.RunContract(t, contracts.FixtureFactoryContract{
-			Type: T{},
+			T: T{},
 			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
 				return fixtures.NewFactory()
 			},

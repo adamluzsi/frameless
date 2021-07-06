@@ -10,7 +10,7 @@ import (
 
 func TestGenericFixtureFactory(t *testing.T) {
 	contracts.FixtureFactoryContract{
-		Type:           GenericFixtureFactoryExampleType{},
+		T: GenericFixtureFactoryExampleType{},
 		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
 			return fixtures.NewFactory()
 		},

@@ -21,18 +21,25 @@ type FixtureFactory interface {
 }
 
 type FixtureFactoryContract struct {
-	Type           interface{}
+	T              interface{}
 	FixtureFactory func(tb testing.TB) FixtureFactory
 }
 
-func (c FixtureFactoryContract) Test(t *testing.T) {
-	s := testcase.NewSpec(t)
+func (c FixtureFactoryContract) String() string {
+	return "FixtureFactory"
+}
+
+func (c FixtureFactoryContract) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+
+func (c FixtureFactoryContract) Benchmark(b *testing.B) { b.Skip() }
+
+func (c FixtureFactoryContract) Spec(s *testcase.Spec) {
 	s.Parallel()
 	factoryLet(s, c.FixtureFactory)
 
 	s.Describe(`.Create`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
-			return factoryGet(t).Create(c.Type)
+			return factoryGet(t).Create(c.T)
 		}
 
 		s.Then(`each created fixture value is uniq`, func(t *testcase.T) {
@@ -46,7 +53,7 @@ func (c FixtureFactoryContract) Test(t *testing.T) {
 		})
 
 		s.When(`struct has Resource external ID`, func(s *testcase.Spec) {
-			if _, _, hasExtIDField := extid.LookupStructField(c.Type); !hasExtIDField {
+			if _, _, hasExtIDField := extid.LookupStructField(c.T); !hasExtIDField {
 				return
 			}
 
@@ -72,8 +79,4 @@ func (c FixtureFactoryContract) Test(t *testing.T) {
 			require.Nil(t, subject(t).Err())
 		})
 	})
-}
-
-func (c FixtureFactoryContract) Benchmark(b *testing.B) {
-	b.Skip()
 }

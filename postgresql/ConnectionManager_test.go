@@ -136,6 +136,8 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 	testcase.Race(blk, blk)
 }
 
+var _ testcase.Contract = ConnectionManagerSpec{}
+
 type ConnectionManagerSpec struct {
 	Subject        func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD)
 	FixtureFactory func(testing.TB) contracts.FixtureFactory
@@ -148,14 +150,6 @@ type ConnectionManagerSpec struct {
 	DeleteTable func(ctx context.Context, client postgresql.Connection, name string) error
 	// HasTable reports if a table exist with a given name.
 	HasTable func(ctx context.Context, client postgresql.Connection, name string) (bool, error)
-}
-
-func (c ConnectionManagerSpec) Test(t *testing.T) {
-	c.Spec(t)
-}
-
-func (c ConnectionManagerSpec) Benchmark(b *testing.B) {
-	c.Spec(b)
 }
 
 func (c ConnectionManagerSpec) cm() testcase.Var {
@@ -199,9 +193,7 @@ func (c ConnectionManagerSpec) factoryGet(t *testcase.T) contracts.FixtureFactor
 	return c.factory().Get(t).(contracts.FixtureFactory)
 }
 
-func (c ConnectionManagerSpec) Spec(tb testing.TB) {
-	s := testcase.NewSpec(tb)
-
+func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 	s.Describe(`.DSN`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) string {
 			return c.cmGet(t).DSN

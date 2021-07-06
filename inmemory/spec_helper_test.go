@@ -42,11 +42,11 @@ type ContractSubject struct {
 	frameless.MetaAccessor
 }
 
-func GetContracts(T frameless.T, subject func(testing.TB) ContractSubject) []interface{} {
+func GetContracts(T frameless.T, subject func(testing.TB) ContractSubject) []testcase.Contract {
 	fff := func(testing.TB) contracts.FixtureFactory {
 		return fixtures.NewFactory()
 	}
-	return []interface{}{
+	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject: func(tb testing.TB) contracts.CRD {
 				return subject(tb)

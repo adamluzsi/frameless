@@ -74,8 +74,8 @@ func TestEventLogStorage_smoke(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff func(testing.TB) contracts.FixtureFactory) []interface{} {
-	return []interface{}{
+func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff func(testing.TB) contracts.FixtureFactory) []testcase.Contract {
+	return []testcase.Contract{
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
 		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
@@ -106,7 +106,7 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff fu
 	}
 }
 
-func getStorageSpecs(subject *inmemory.EventLogStorage, T interface{}) []interface{} {
+func getStorageSpecs(subject *inmemory.EventLogStorage, T interface{}) []testcase.Contract {
 	return getStorageSpecsForT(subject, T, func(tb testing.TB) contracts.FixtureFactory {
 		return fixtures.NewFactory()
 	})
