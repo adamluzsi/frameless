@@ -3,6 +3,8 @@ package contracts_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/adamluzsi/frameless/spechelper"
 	"sync"
 	"testing"
 	"time"
@@ -83,7 +85,7 @@ func TestContracts(t *testing.T) {
 
 	T := Entity{}
 	testcase.RunContract(t, getContracts(T, func(tb testing.TB) contracts.FixtureFactory {
-		ff := fixtures.NewFactory()
+		ff := fixtures.NewFactory(tb)
 		require.NotNil(t, ff.Context())
 		require.NotEmpty(t, ff.Create(T).(Entity))
 		return ff
@@ -115,7 +117,7 @@ func TestFixtureFactory(t *testing.T) {
 		testcase.RunContract(t, contracts.FixtureFactoryContract{
 			T: T{},
 			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
-				return fixtures.NewFactory()
+				return fixtures.NewFactory(tb)
 			},
 		})
 	})
@@ -129,7 +131,7 @@ func TestFixtureFactory(t *testing.T) {
 		testcase.RunContract(t, contracts.FixtureFactoryContract{
 			T: T{},
 			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
-				return fixtures.NewFactory()
+				return fixtures.NewFactory(tb)
 			},
 		})
 	})
@@ -145,7 +147,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	T := Entity{}
 	testcase.RunContract(t, getContracts(T,
 		func(tb testing.TB) contracts.FixtureFactory {
-			ff := fixtures.NewFactory()
+			ff := fixtures.NewFactory(tb)
 			require.NotNil(t, ff.Context())
 			require.NotEmpty(t, ff.Create(T).(Entity))
 			return ff
@@ -348,4 +350,38 @@ func (e *EventuallyConsistentStorage) eventually(ctx context.Context, fn func(ct
 	}
 
 	return nil
+}
+
+func TestFixtureFactory_testcaseTNestingSupport(t *testing.T) {
+	s := testcase.NewSpec(t)
+	type Entity struct {
+		ID      string `ext:"id"`
+		X, Y, Z string
+	}
+
+	v := s.Let(`TestFixtureFactory_testcaseTNestingSupport#var`, func(t *testcase.T) interface{} { return 42 })
+	vGet := func(t *testcase.T) int { return v.Get(t).(int) }
+
+	spechelper.Resource{T: Entity{}, V: "string",
+		Subject: func(tb testing.TB) spechelper.ResourceSubject {
+			t, ok := tb.(*testcase.T)
+			require.True(t, ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
+			require.Equal(t, 42, vGet(t))
+
+			el := inmemory.NewEventLog()
+			stg := inmemory.NewEventLogStorage(Entity{}, el)
+			return spechelper.ResourceSubject{
+				MetaAccessor:           el,
+				OnePhaseCommitProtocol: el,
+				CRUD:                   stg,
+			}
+		},
+		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			t, ok := tb.(*testcase.T)
+			require.True(t, ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
+			require.Equal(t, 42, vGet(t))
+
+			return fixtures.NewFactory(tb)
+		},
+	}.Spec(s)
 }

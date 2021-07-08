@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -149,7 +150,10 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		key := t.Random.String()
 		expected := base(factoryGet(t).Create(c.V))
 
-		var actual interface{}
+		var (
+			actual interface{}
+			mutex  sync.RWMutex
+		)
 		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventCreate); !ok {
@@ -159,6 +163,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
 				require.NoError(t, err)
 				require.True(t, found)
+				mutex.Lock()
+				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
@@ -171,6 +177,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, CreatePTR(factoryGet(t), c.T))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
+			mutex.RLock()
+			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
 		})
 	})
@@ -184,7 +192,10 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
 		id := HasID(t, ptr)
 
-		var actual interface{}
+		var (
+			actual interface{}
+			mutex  sync.RWMutex
+		)
 		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventDeleteByID); !ok {
@@ -195,6 +206,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
 				require.NoError(t, err)
 				require.True(t, found)
+				mutex.Lock()
+				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
@@ -207,6 +220,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		require.Nil(t, metaAccessorSubjectGet(t).CRD.DeleteByID(ctx, id))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
+			mutex.RLock()
+			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
 		})
 	})
@@ -219,7 +234,10 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		ptr := CreatePTR(factoryGet(t), c.T)
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
 
-		var actual interface{}
+		var (
+			actual interface{}
+			mutex  sync.RWMutex
+		)
 		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventDeleteAll); !ok {
@@ -230,6 +248,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
 				require.NoError(t, err)
 				require.True(t, found)
+				mutex.Lock()
+				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
@@ -242,6 +262,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		require.Nil(t, metaAccessorSubjectGet(t).CRD.DeleteAll(ctx))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
+			mutex.RLock()
+			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
 		})
 	})
@@ -260,7 +282,10 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
 		id := HasID(t, ptr)
 
-		var actual interface{}
+		var (
+			actual interface{}
+			mutex  sync.RWMutex
+		)
 		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventUpdate); !ok {
@@ -271,6 +296,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
 				require.NoError(t, err)
 				require.True(t, found)
+				mutex.Lock()
+				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
@@ -285,6 +312,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		require.Nil(t, crud.Update(ctx, updPTR))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
+			mutex.RLock()
+			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
 		})
 	})

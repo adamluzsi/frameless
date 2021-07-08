@@ -26,7 +26,7 @@ func TestManager_creator(t *testing.T) {
 			return manager
 		},
 		FixtureFactory: func(tb testing.TB) fc.FixtureFactory {
-			return fixtures.NewFactory()
+			return fixtures.NewFactory(tb)
 		},
 	})
 }
@@ -39,7 +39,7 @@ func TestManager(t *testing.T) {
 				return NewManager(tb)
 			},
 			FixtureFactory: func(tb testing.TB) fc.FixtureFactory {
-				return fixtures.NewFactory()
+				return fixtures.NewFactory(tb)
 			},
 		},
 	)

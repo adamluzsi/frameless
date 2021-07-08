@@ -3,6 +3,7 @@ package inmemory_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/cache"
+	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/frameless/stubs"
 	"sync"
 	"testing"
@@ -108,7 +109,7 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff fu
 
 func getStorageSpecs(subject *inmemory.EventLogStorage, T interface{}) []testcase.Contract {
 	return getStorageSpecsForT(subject, T, func(tb testing.TB) contracts.FixtureFactory {
-		return fixtures.NewFactory()
+		return fixtures.NewFactory(tb)
 	})
 }
 
@@ -150,7 +151,7 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		subject1 := inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog())
 		subject2 := inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog())
 
-		ff := fixtures.NewFactory()
+		ff := fixtures.NewFactory(t)
 		ctx := ff.Context()
 		e1 := ff.Create(TestEntity{}).(TestEntity)
 		e2 := ff.Create(TestEntity{}).(TestEntity)
@@ -478,7 +479,7 @@ func TestEventLogStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 	}
 
 	testcase.RunContract(t, getStorageSpecsForT(storage, EntityWithStructID{}, func(tb testing.TB) contracts.FixtureFactory {
-		return FFForEntityWithStructID{FixtureFactory: fixtures.NewFactory()}
+		return FFForEntityWithStructID{FixtureFactory: fixtures.NewFactory(tb)}
 	})...)
 }
 
@@ -512,7 +513,7 @@ func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
 			return storage, eventLog
 		},
 		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
-			return fixtures.NewFactory()
+			return fixtures.NewFactory(tb)
 		},
 	})
 }
@@ -537,7 +538,30 @@ func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *
 	eventLog := inmemory.NewEventLog()
 	s1 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#A")
 	s2 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#B")
-	ent := fixtures.NewFactory().Create(TestEntity{}).(TestEntity)
+	ent := fixtures.NewFactory(t).Create(TestEntity{}).(TestEntity)
 	contracts.CreateEntity(t, s1, ctx, &ent)
 	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))
+}
+
+func TestEventLogStorage_contracts(t *testing.T) {
+	s := testcase.NewSpec(t)
+	type Entity struct {
+		ID      string `ext:"id"`
+		X, Y, Z string
+	}
+
+	spechelper.Resource{T: Entity{}, V: "string",
+		Subject: func(tb testing.TB) spechelper.ResourceSubject {
+			el := inmemory.NewEventLog()
+			stg := inmemory.NewEventLogStorage(Entity{}, el)
+			return spechelper.ResourceSubject{
+				MetaAccessor:           el,
+				OnePhaseCommitProtocol: el,
+				CRUD:                   stg,
+			}
+		},
+		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			return fixtures.NewFactory(tb)
+		},
+	}.Spec(s)
 }

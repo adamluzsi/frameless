@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -727,6 +728,11 @@ func (c updaterPublisher) Spec(s *testcase.Spec) {
 
 					s.Then(`new subscriberGet don't receive back old events`, func(t *testcase.T) {
 						Waiter.Wait()
+						if reflect.DeepEqual(base(updatedEntity.Get(t)), base(furtherEventUpdate.Get(t))) {
+							t.Log("skipping test because original entity looks the same as the new variant")
+							t.Log("this can happen when the entity have only one field: ID")
+							return
+						}
 						require.NotContains(t, othSubscriber(t).Events(), frameless.EventUpdate{Entity: updatedEntity.Get(t)})
 					})
 

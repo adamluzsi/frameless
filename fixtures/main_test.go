@@ -12,7 +12,7 @@ func TestGenericFixtureFactory(t *testing.T) {
 	contracts.FixtureFactoryContract{
 		T: GenericFixtureFactoryExampleType{},
 		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
-			return fixtures.NewFactory()
+			return fixtures.NewFactory(tb)
 		},
 	}.Test(t)
 }

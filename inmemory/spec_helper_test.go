@@ -43,8 +43,8 @@ type ContractSubject struct {
 }
 
 func GetContracts(T frameless.T, subject func(testing.TB) ContractSubject) []testcase.Contract {
-	fff := func(testing.TB) contracts.FixtureFactory {
-		return fixtures.NewFactory()
+	fff := func(tb testing.TB) contracts.FixtureFactory {
+		return fixtures.NewFactory(tb)
 	}
 	return []testcase.Contract{
 		contracts.Creator{T: T,
