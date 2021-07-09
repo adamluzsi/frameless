@@ -1,5 +1,7 @@
 github.com/adamluzsi/frameless v0.46.0 h1:RgwHYefRATWDJSjyCYeJY244SVUkqgxD/fxsNHrVOL4=
 github.com/adamluzsi/frameless v0.46.0/go.mod h1:i9/8DgLeNq7PZ6+pZE62FyrpwoX38FotED082yOWEyM=
+github.com/adamluzsi/frameless v0.47.0 h1:3swN1C1mLMNFVcD4Gktnir//AU2518gEtf7o+6pgS70=
+github.com/adamluzsi/frameless v0.47.0/go.mod h1:/wGP5TkjIWkiD7A0SRw8X/s3suvh2Yp8WQQeAAm/WDk=
 github.com/adamluzsi/testcase v0.48.0 h1:dua4ZKtbyAi9U3JOBOR05T1wIBsW3mkKvkNTgwygTrE=
 github.com/adamluzsi/testcase v0.48.0/go.mod h1:I7+WLGTC75atF0ML93ubFZQzs3E2sI/HsyC4FRSOVvQ=
 github.com/adamluzsi/testcase v0.49.0 h1:dnTgA/VxQRwtBVeYINHoj216wjQ/P6rC9Qrfu8DWzWg=

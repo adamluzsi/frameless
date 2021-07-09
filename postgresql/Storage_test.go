@@ -2,6 +2,7 @@ package postgresql_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/spechelper"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -87,7 +88,7 @@ func TestStorage(t *testing.T) {
 	migrateEntityStorage(t, cm)
 
 	fff := func(tb testing.TB) contracts.FixtureFactory {
-		return fixtures.NewFactory()
+		return fixtures.NewFactory(tb)
 	}
 	testcase.RunContract(t,
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
@@ -109,6 +110,30 @@ func TestStorage(t *testing.T) {
 	)
 }
 
+func TestStorage_contracts(t *testing.T) {
+	s := testcase.NewSpec(t)
+	T := StorageTestEntity{}
+	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
+	stg := &postgresql.Storage{T: T,
+		ConnectionManager: cm,
+		Mapping:           StorageTestEntityMapping(),
+	}
+
+	migrateEntityStorage(t, cm)
+	spechelper.Resource{T: T, V: "string",
+		Subject: func(tb testing.TB) spechelper.ResourceSubject {
+			return spechelper.ResourceSubject{
+				MetaAccessor:           cm,
+				OnePhaseCommitProtocol: cm,
+				CRUD:                   stg,
+			}
+		},
+		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			return fixtures.NewFactory(tb)
+		},
+	}.Spec(s)
+}
+
 func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 	T := StorageTestEntity{}
 	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
@@ -124,7 +149,7 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 	}
 
 	fff := func(tb testing.TB) contracts.FixtureFactory {
-		return fixtures.NewFactory()
+		return fixtures.NewFactory(tb)
 	}
 	testcase.RunContract(t,
 		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},

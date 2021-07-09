@@ -83,7 +83,7 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 		},
 		DriverName: "postgres",
 		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
-			return fixtures.NewFactory()
+			return fixtures.NewFactory(tb)
 		},
 		CreateTable: func(ctx context.Context, client postgresql.Connection, name string) error {
 			_, err := client.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %q ();`, name))
@@ -121,7 +121,7 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 			return p, s
 		},
 		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
-			return fixtures.NewFactory()
+			return fixtures.NewFactory(tb)
 		},
 	})
 }
