@@ -550,11 +550,11 @@ func TestEventLogStorage_contracts(t *testing.T) {
 		X, Y, Z string
 	}
 
-	spechelper.Resource{T: Entity{}, V: "string",
-		Subject: func(tb testing.TB) spechelper.ResourceSubject {
+	spechelper.Contract{T: Entity{}, V: "string",
+		Subject: func(tb testing.TB) spechelper.ContractSubject {
 			el := inmemory.NewEventLog()
 			stg := inmemory.NewEventLogStorage(Entity{}, el)
-			return spechelper.ResourceSubject{
+			return spechelper.ContractSubject{
 				MetaAccessor:           el,
 				OnePhaseCommitProtocol: el,
 				CRUD:                   stg,

@@ -73,37 +73,36 @@ func (c findByID) Spec(s *testcase.Spec) {
 		},
 
 		Specify: func(tb testing.TB) {
-			testcase.NewSpec(tb).Test(`E2E`, func(t *testcase.T) {
-				r := c.Subject(t)
-				ff := c.FixtureFactory(t)
+			t := tb.(*testcase.T)
+			r := c.Subject(t)
+			ff := c.FixtureFactory(t)
 
-				var ids []interface{}
-				for i := 0; i < 12; i++ {
-					entity := CreatePTR(ff, c.T)
-					CreateEntity(t, r, ff.Context(), entity)
-					id, ok := extid.Lookup(entity)
-					require.True(t, ok, ErrIDRequired.Error())
-					ids = append(ids, id)
-				}
+			var ids []interface{}
+			for i := 0; i < 12; i++ {
+				entity := CreatePTR(ff, c.T)
+				CreateEntity(t, r, ff.Context(), entity)
+				id, ok := extid.Lookup(entity)
+				require.True(t, ok, ErrIDRequired.Error())
+				ids = append(ids, id)
+			}
 
-				t.Log("when no value stored that the query request")
-				ctx := ff.Context()
-				ok, err := r.FindByID(ff.Context(), newT(c.T), c.createNonActiveID(t, ctx, r, ff))
+			t.Log("when no value stored that the query request")
+			ctx := ff.Context()
+			ok, err := r.FindByID(ff.Context(), newT(c.T), c.createNonActiveID(t, ctx, r, ff))
+			require.Nil(t, err)
+			require.False(t, ok)
+
+			t.Log("values returned")
+			for _, ID := range ids {
+				e := newT(c.T)
+				ok, err := r.FindByID(ff.Context(), e, ID)
 				require.Nil(t, err)
-				require.False(t, ok)
+				require.True(t, ok)
 
-				t.Log("values returned")
-				for _, ID := range ids {
-					e := newT(c.T)
-					ok, err := r.FindByID(ff.Context(), e, ID)
-					require.Nil(t, err)
-					require.True(t, ok)
-
-					actualID, ok := extid.Lookup(e)
-					require.True(t, ok, "can't find ID in the returned value")
-					require.Equal(t, ID, actualID)
-				}
-			})
+				actualID, ok := extid.Lookup(e)
+				require.True(t, ok, "can't find ID in the returned value")
+				require.Equal(t, ID, actualID)
+			}
 		},
 	})
 }

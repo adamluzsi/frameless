@@ -362,15 +362,15 @@ func TestFixtureFactory_testcaseTNestingSupport(t *testing.T) {
 	v := s.Let(`TestFixtureFactory_testcaseTNestingSupport#var`, func(t *testcase.T) interface{} { return 42 })
 	vGet := func(t *testcase.T) int { return v.Get(t).(int) }
 
-	spechelper.Resource{T: Entity{}, V: "string",
-		Subject: func(tb testing.TB) spechelper.ResourceSubject {
+	spechelper.Contract{T: Entity{}, V: "string",
+		Subject: func(tb testing.TB) spechelper.ContractSubject {
 			t, ok := tb.(*testcase.T)
 			require.True(t, ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			require.Equal(t, 42, vGet(t))
 
 			el := inmemory.NewEventLog()
 			stg := inmemory.NewEventLogStorage(Entity{}, el)
-			return spechelper.ResourceSubject{
+			return spechelper.ContractSubject{
 				MetaAccessor:           el,
 				OnePhaseCommitProtocol: el,
 				CRUD:                   stg,

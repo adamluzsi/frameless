@@ -19,13 +19,12 @@ var (
 )
 
 func TestMemory(t *testing.T) {
-	SpecMemory{}.Spec(t)
+	SpecMemory{}.Spec(testcase.NewSpec(t))
 }
 
 type SpecMemory struct{}
 
-func (spec SpecMemory) Spec(tb testing.TB) {
-	s := testcase.NewSpec(tb)
+func (spec SpecMemory) Spec(s *testcase.Spec) {
 	spec.ctx().Let(s, nil)
 	spec.memory().Let(s, nil)
 	s.Describe(`.Add`, spec.SpecAdd)

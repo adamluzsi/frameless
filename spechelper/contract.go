@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-type Resource struct {
+type Contract struct {
 	T, V           frameless.T
-	Subject        func(testing.TB) ResourceSubject
+	Subject        func(testing.TB) ContractSubject
 	FixtureFactory func(testing.TB) contracts.FixtureFactory
 }
 
-type ResourceSubject struct {
+type ContractSubject struct {
 	frameless.MetaAccessor
 	frameless.OnePhaseCommitProtocol
 	CRUD interface {
@@ -25,15 +25,15 @@ type ResourceSubject struct {
 	}
 }
 
-func (c Resource) Test(t *testing.T) {
+func (c Contract) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c Resource) Benchmark(b *testing.B) {
+func (c Contract) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Resource) Spec(s *testcase.Spec) {
+func (c Contract) Spec(s *testcase.Spec) {
 	testcase.RunContract(s,
 		contracts.Creator{T: c.T,
 			Subject: func(tb testing.TB) contracts.CRD {
