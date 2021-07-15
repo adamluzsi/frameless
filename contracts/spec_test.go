@@ -361,13 +361,15 @@ func TestFixtureFactory_testcaseTNestingSupport(t *testing.T) {
 
 	v := s.Let(`TestFixtureFactory_testcaseTNestingSupport#var`, func(t *testcase.T) interface{} { return 42 })
 	vGet := func(t *testcase.T) int { return v.Get(t).(int) }
+	varWithNoInit := testcase.Var{Name: "var_with_no_init"}
+	varWithNoInit.LetValue(s, 42)
 
 	spechelper.Contract{T: Entity{}, V: "string",
 		Subject: func(tb testing.TB) spechelper.ContractSubject {
 			t, ok := tb.(*testcase.T)
 			require.True(t, ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			require.Equal(t, 42, vGet(t))
-
+			require.Equal(t, 42, varWithNoInit.Get(t).(int))
 			el := inmemory.NewEventLog()
 			stg := inmemory.NewEventLogStorage(Entity{}, el)
 			return spechelper.ContractSubject{
@@ -380,7 +382,7 @@ func TestFixtureFactory_testcaseTNestingSupport(t *testing.T) {
 			t, ok := tb.(*testcase.T)
 			require.True(t, ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			require.Equal(t, 42, vGet(t))
-
+			require.Equal(t, 42, varWithNoInit.Get(t).(int))
 			return fixtures.NewFactory(tb)
 		},
 	}.Spec(s)
