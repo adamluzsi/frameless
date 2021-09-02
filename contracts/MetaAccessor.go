@@ -7,7 +7,7 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/stubs"
+	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
@@ -154,7 +154,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventCreate); !ok {
 					return nil
@@ -196,7 +196,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventDeleteByID); !ok {
 					return nil
@@ -238,7 +238,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventDeleteAll); !ok {
 					return nil
@@ -286,7 +286,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, stubs.Subscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.EventUpdate); !ok {
 					return nil

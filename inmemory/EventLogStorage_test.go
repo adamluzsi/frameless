@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/spechelper"
-	"github.com/adamluzsi/frameless/stubs"
+	"github.com/adamluzsi/frameless/doubles"
 	"sync"
 	"testing"
 	"time"
@@ -524,7 +524,7 @@ func TestEventLogStorage_Create_withAsyncSubscriptions(t *testing.T) {
 	storage := inmemory.NewEventLogStorage(TestEntity{}, eventLog)
 	ctx := context.Background()
 
-	sub, err := storage.SubscribeToCreate(ctx, stubs.Subscriber{})
+	sub, err := storage.SubscribeToCreate(ctx, doubles.StubSubscriber{})
 	require.Nil(t, err)
 	t.Cleanup(func() { require.Nil(t, sub.Close()) })
 

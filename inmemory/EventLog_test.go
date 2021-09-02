@@ -2,7 +2,7 @@ package inmemory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/stubs"
+	"github.com/adamluzsi/frameless/doubles"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -104,7 +104,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 		return []inmemory.Event{}
 	})
 	subscriber := s.Let(`inmemory.MemorySubscriber`, func(t *testcase.T) interface{} {
-		return stubs.Subscriber{
+		return doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event inmemory.Event) error {
 				testcase.Append(t, handledEvents, event)
 				return nil
@@ -215,7 +215,7 @@ func TestEventLog_optionsDisabledAsyncSubscriptionHandling_subscriptionCanAppend
 	eventLog := inmemory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
 
-	sub, err := eventLog.Subscribe(ctx, stubs.Subscriber{
+	sub, err := eventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, ent interface{}) error {
 			if ent == (BEvent{}) {
 				return nil

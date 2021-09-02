@@ -1,29 +1,29 @@
-package stubs_test
+package doubles_test
 
 import (
 	"context"
 	"errors"
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/stubs"
+	"github.com/adamluzsi/frameless/doubles"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
 
-var _ frameless.Subscriber = stubs.Subscriber{}
+var _ frameless.Subscriber = doubles.StubSubscriber{}
 
 func TestSubscriber(t *testing.T) {
 	type Entity struct{ V int }
 	ctx := context.Background()
 	t.Run(`.Error`, func(t *testing.T) {
 		t.Run(`.ErrorFunc is absent`, func(t *testing.T) {
-			stub := stubs.Subscriber{}
+			stub := doubles.StubSubscriber{}
 			require.Nil(t, stub.Error(ctx, errors.New(fixtures.Random.String())))
 		})
 		t.Run(`.ErrorFunc is provided`, func(t *testing.T) {
 			expectedInError := errors.New(fixtures.Random.String())
 			expectedOutError := errors.New(fixtures.Random.String())
-			stub := stubs.Subscriber{ErrorFunc: func(ctx context.Context, err error) error {
+			stub := doubles.StubSubscriber{ErrorFunc: func(ctx context.Context, err error) error {
 				require.Equal(t, expectedInError, err)
 				return expectedOutError
 			}}
@@ -32,13 +32,13 @@ func TestSubscriber(t *testing.T) {
 	})
 	t.Run(`.Handle`, func(t *testing.T) {
 		t.Run(`.HandleFunc is absent`, func(t *testing.T) {
-			stub := stubs.Subscriber{}
+			stub := doubles.StubSubscriber{}
 			require.Nil(t, stub.Handle(ctx, Entity{}))
 		})
 		t.Run(`.HandleFunc is provided`, func(t *testing.T) {
 			expectedEntity := Entity{V: fixtures.Random.Int()}
 			expectedOutError := errors.New(fixtures.Random.String())
-			stub := stubs.Subscriber{HandleFunc: func(ctx context.Context, ent interface{}) error {
+			stub := doubles.StubSubscriber{HandleFunc: func(ctx context.Context, ent interface{}) error {
 				require.Equal(t, expectedEntity, ent)
 				return expectedOutError
 			}}

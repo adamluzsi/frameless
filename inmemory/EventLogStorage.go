@@ -7,7 +7,7 @@ import (
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/stubs"
+	"github.com/adamluzsi/frameless/doubles"
 	"reflect"
 	"sync"
 )
@@ -381,7 +381,7 @@ func (s *EventLogStorage) Compress() {
 }
 
 func (s *EventLogStorage) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, stubs.Subscriber{
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
 			if !ok {
@@ -412,7 +412,7 @@ func (s *EventLogStorage) Subscribe(ctx context.Context, subscriber frameless.Su
 }
 
 func (s *EventLogStorage) subscribe(ctx context.Context, subscriber frameless.Subscriber, name string) (frameless.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, stubs.Subscriber{
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
 			if !ok {
