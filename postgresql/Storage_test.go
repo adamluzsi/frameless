@@ -2,8 +2,9 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/spechelper"
 	"testing"
+
+	"github.com/adamluzsi/frameless/spechelper"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/postgresql"
@@ -120,9 +121,9 @@ func TestStorage_contracts(t *testing.T) {
 	}
 
 	migrateEntityStorage(t, cm)
-	spechelper.Resource{T: T, V: "string",
-		Subject: func(tb testing.TB) spechelper.ResourceSubject {
-			return spechelper.ResourceSubject{
+	spechelper.Contract{T: T, V: "string",
+		Subject: func(tb testing.TB) spechelper.ContractSubject {
+			return spechelper.ContractSubject{
 				MetaAccessor:           cm,
 				OnePhaseCommitProtocol: cm,
 				CRUD:                   stg,

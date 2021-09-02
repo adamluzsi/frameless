@@ -5,12 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/adamluzsi/frameless/reflects"
 	"log"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless/extid"
 
@@ -41,11 +42,11 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 	query := fmt.Sprintf("INSERT INTO %s (%s)\n", pg.Mapping.TableName(), pg.queryColumnList())
 	query += fmt.Sprintf("VALUES (%s)\n", pg.queryColumnPlaceHolders(pg.newPrepareStatementPlaceholderGenerator()))
 
-	ctx, td, err := pg.withTx(ctx)
+	ctx, err := pg.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { rErr = td(rErr) }()
+	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
@@ -96,11 +97,11 @@ func (pg *Storage) FindByID(ctx context.Context, ptr, id interface{}) (bool, err
 }
 
 func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
-	ctx, td, err := pg.withTx(ctx)
+	ctx, err := pg.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { rErr = td(rErr) }()
+	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
@@ -126,11 +127,11 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) {
 	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, pg.Mapping.TableName())
 
-	ctx, td, err := pg.withTx(ctx)
+	ctx, err := pg.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { rErr = td(rErr) }()
+	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
@@ -193,11 +194,11 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 
 	args = append([]interface{}{id}, args...)
 
-	ctx, td, err := pg.withTx(ctx)
+	ctx, err = pg.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { rErr = td(rErr) }()
+	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
@@ -245,22 +246,6 @@ func (pg *Storage) CommitTx(ctx context.Context) error {
 
 func (pg *Storage) RollbackTx(ctx context.Context) error {
 	return pg.ConnectionManager.RollbackTx(ctx)
-}
-
-func (pg *Storage) withTx(ctx context.Context) (context.Context, func(error) error, error) {
-	tx, err := pg.BeginTx(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return tx, func(rErr error) error {
-		if rErr != nil {
-			_ = pg.RollbackTx(tx)
-			return rErr
-		}
-
-		return pg.CommitTx(tx)
-	}, nil
 }
 
 func (pg *Storage) queryColumnPlaceHolders(nextPlaceholder func() string) string {
