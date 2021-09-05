@@ -126,8 +126,11 @@ func TestFixtureFactory(t *testing.T) {
 
 		testcase.RunContract(t, contracts.FixtureFactory{
 			T: T{},
-			FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
+			Subject: func(tb testing.TB) frameless.FixtureFactory {
 				return fixtures.NewFactory(tb)
+			},
+			Context: func(tb testing.TB) context.Context {
+				return context.Background()
 			},
 		})
 	})
@@ -140,8 +143,11 @@ func TestFixtureFactory(t *testing.T) {
 
 		testcase.RunContract(t, contracts.FixtureFactory{
 			T: T{},
-			FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
+			Subject: func(tb testing.TB) frameless.FixtureFactory {
 				return fixtures.NewFactory(tb)
+			},
+			Context: func(tb testing.TB) context.Context {
+				return context.Background()
 			},
 		})
 	})

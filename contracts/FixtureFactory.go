@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"context"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -11,8 +12,9 @@ import (
 )
 
 type FixtureFactory struct {
-	T              interface{}
-	FixtureFactory func(tb testing.TB) frameless.FixtureFactory
+	T       interface{}
+	Subject func(testing.TB) frameless.FixtureFactory
+	Context func(testing.TB) context.Context
 }
 
 func (c FixtureFactory) String() string {
@@ -25,11 +27,11 @@ func (c FixtureFactory) Benchmark(b *testing.B) { b.Skip() }
 
 func (c FixtureFactory) Spec(s *testcase.Spec) {
 	s.Parallel()
-	factoryLet(s, c.FixtureFactory)
+	factoryLet(s, c.Subject)
 
 	s.Describe(`.Create`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
-			return factoryGet(t).Fixture(c.T, nil)
+			return factoryGet(t).Fixture(c.T, c.Context(t))
 		}
 
 		s.Then(`each created fixture value is uniq`, func(t *testcase.T) {

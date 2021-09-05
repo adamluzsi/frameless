@@ -1,6 +1,7 @@
 package fixtures_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
@@ -12,8 +13,11 @@ import (
 func TestGenericFixtureFactory(t *testing.T) {
 	contracts.FixtureFactory{
 		T: GenericFixtureFactoryExampleType{},
-		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
+		Subject: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	}.Test(t)
 }
