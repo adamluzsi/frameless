@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/spechelper"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/spechelper"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/contracts"
@@ -33,27 +34,32 @@ type ContractsSubject struct {
 	}
 }
 
-func getContracts(T interface{}, ff func(tb testing.TB) contracts.FixtureFactory, newSubject func(tb testing.TB) ContractsSubject) []testcase.Contract {
+func getContracts(T interface{}, ff func(tb testing.TB) frameless.FixtureFactory, c func(testing.TB) context.Context, newSubject func(tb testing.TB) ContractsSubject) []testcase.Contract {
 	return []testcase.Contract{
 		contracts.Creator{T: T,
 			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
 			FixtureFactory: ff,
+			Context:        c,
 		},
 		contracts.Publisher{T: T,
 			Subject:        func(tb testing.TB) contracts.PublisherSubject { return newSubject(tb).PublisherSubject },
 			FixtureFactory: ff,
+			Context:        c,
 		},
 		contracts.Updater{T: T,
 			Subject:        func(tb testing.TB) contracts.UpdaterSubject { return newSubject(tb).PublisherSubject },
 			FixtureFactory: ff,
+			Context:        c,
 		},
 		contracts.Deleter{T: T,
 			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
 			FixtureFactory: ff,
+			Context:        c,
 		},
 		contracts.Finder{T: T,
 			Subject:        func(tb testing.TB) contracts.CRD { return newSubject(tb).CRUD },
 			FixtureFactory: ff,
+			Context:        c,
 		},
 		contracts.OnePhaseCommitProtocol{T: T,
 			Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
@@ -61,6 +67,7 @@ func getContracts(T interface{}, ff func(tb testing.TB) contracts.FixtureFactory
 				return s.OnePhaseCommitProtocol, s.CRUD
 			},
 			FixtureFactory: ff,
+			Context:        c,
 		},
 		contracts.MetaAccessor{T: T,
 			V: "", // [string] but should work with other types as well
@@ -73,6 +80,7 @@ func getContracts(T interface{}, ff func(tb testing.TB) contracts.FixtureFactory
 				}
 			},
 			FixtureFactory: ff,
+			Context:        c,
 		},
 	}
 }
@@ -84,11 +92,13 @@ func TestContracts(t *testing.T) {
 	}
 
 	T := Entity{}
-	testcase.RunContract(t, getContracts(T, func(tb testing.TB) contracts.FixtureFactory {
+	testcase.RunContract(t, getContracts(T, func(tb testing.TB) frameless.FixtureFactory {
 		ff := fixtures.NewFactory(tb)
 		require.NotNil(t, ff.Context())
 		require.NotEmpty(t, ff.Create(T).(Entity))
 		return ff
+	}, func(tb testing.TB) context.Context {
+		return context.Background()
 	}, NewEventLogStorageContractSubject(T))...)
 }
 
@@ -114,9 +124,9 @@ func TestFixtureFactory(t *testing.T) {
 			Data string
 		}
 
-		testcase.RunContract(t, contracts.FixtureFactoryContract{
+		testcase.RunContract(t, contracts.FixtureFactory{
 			T: T{},
-			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 				return fixtures.NewFactory(tb)
 			},
 		})
@@ -128,9 +138,9 @@ func TestFixtureFactory(t *testing.T) {
 			Data string
 		}
 
-		testcase.RunContract(t, contracts.FixtureFactoryContract{
+		testcase.RunContract(t, contracts.FixtureFactory{
 			T: T{},
-			FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+			FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 				return fixtures.NewFactory(tb)
 			},
 		})
@@ -146,11 +156,14 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	}
 	T := Entity{}
 	testcase.RunContract(t, getContracts(T,
-		func(tb testing.TB) contracts.FixtureFactory {
+		func(tb testing.TB) frameless.FixtureFactory {
 			ff := fixtures.NewFactory(tb)
 			require.NotNil(t, ff.Context())
 			require.NotEmpty(t, ff.Create(T).(Entity))
 			return ff
+		},
+		func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 		func(tb testing.TB) ContractsSubject {
 			eventLog := inmemory.NewEventLog()
@@ -378,12 +391,15 @@ func TestFixtureFactory_testcaseTNestingSupport(t *testing.T) {
 				CRUD:                   stg,
 			}
 		},
-		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			t, ok := tb.(*testcase.T)
 			require.True(t, ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			require.Equal(t, 42, vGet(t))
 			require.Equal(t, 42, varWithNoInit.Get(t).(int))
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	}.Spec(s)
 }

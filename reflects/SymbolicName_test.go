@@ -9,8 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleSymbolicName(i interface{}) string {
-	return reflects.SymbolicName(i)
+func ExampleSymbolicName() {
+	type T struct{}
+	name := reflects.SymbolicName(T{})
+	_ = name
 }
 
 func TestName(t *testing.T) {
@@ -25,7 +27,7 @@ func TestName(t *testing.T) {
 
 			o := contracts.Creator{}
 
-			require.Equal(t, `contracts.Creator`, ExampleSymbolicName(o))
+			require.Equal(t, `contracts.Creator`, reflects.SymbolicName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

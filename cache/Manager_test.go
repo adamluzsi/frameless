@@ -2,6 +2,8 @@ package cache_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/cache/contracts"
@@ -10,7 +12,6 @@ import (
 	"github.com/adamluzsi/frameless/inmemory"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 type TestEntity struct {
@@ -25,8 +26,11 @@ func TestManager_creator(t *testing.T) {
 			manager, _, _ := NewManager(tb)
 			return manager
 		},
-		FixtureFactory: func(tb testing.TB) fc.FixtureFactory {
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	})
 }
@@ -38,8 +42,11 @@ func TestManager(t *testing.T) {
 			Subject: func(tb testing.TB) (contracts.Cache, cache.Source, frameless.OnePhaseCommitProtocol) {
 				return NewManager(tb)
 			},
-			FixtureFactory: func(tb testing.TB) fc.FixtureFactory {
+			FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 				return fixtures.NewFactory(tb)
+			},
+			Context: func(tb testing.TB) context.Context {
+				return context.Background()
 			},
 		},
 	)

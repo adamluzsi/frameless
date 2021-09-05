@@ -1,7 +1,12 @@
 package contracts
 
 import (
+	"context"
 	"fmt"
+	"reflect"
+	"sync"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/contracts"
@@ -10,15 +15,13 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
-	"reflect"
-	"sync"
-	"testing"
 )
 
 type Storage struct {
 	T              frameless.T
 	Subject        func(testing.TB) cache.Storage
-	FixtureFactory func(testing.TB) contracts.FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 func (c Storage) storage() testcase.Var {
@@ -54,7 +57,7 @@ func (c Storage) Spec(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
 			var (
-				ctx     = c.FixtureFactory(t).Context()
+				ctx     = c.Context(t)
 				storage = c.storageGet(t)
 			)
 			contracts.DeleteAllEntity(t, storage.CacheHit(ctx), ctx)
@@ -64,7 +67,7 @@ func (c Storage) Spec(s *testcase.Spec) {
 
 	s.Describe(`cache.HitStorage`, func(s *testcase.Spec) {
 		newStorage := func(tb testing.TB) cache.HitStorage {
-			return c.Subject(tb).CacheHit(c.FixtureFactory(tb).Context())
+			return c.Subject(tb).CacheHit(c.Context(tb))
 		}
 		testcase.RunContract(s,
 			contracts.Creator{
@@ -73,6 +76,7 @@ func (c Storage) Spec(s *testcase.Spec) {
 					return newStorage(tb)
 				},
 				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
 			},
 			contracts.Finder{
 				T: c.T,
@@ -80,6 +84,7 @@ func (c Storage) Spec(s *testcase.Spec) {
 					return newStorage(tb)
 				},
 				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
 			},
 			contracts.Updater{
 				T: c.T,
@@ -87,6 +92,7 @@ func (c Storage) Spec(s *testcase.Spec) {
 					return newStorage(tb)
 				},
 				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
 			},
 			contracts.Deleter{
 				T: c.T,
@@ -94,14 +100,16 @@ func (c Storage) Spec(s *testcase.Spec) {
 					return newStorage(tb)
 				},
 				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
 			},
 			contracts.OnePhaseCommitProtocol{
 				T: c.T,
 				Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
 					storage := c.Subject(tb)
-					return storage, storage.CacheEntity(c.FixtureFactory(tb).Context())
+					return storage, storage.CacheEntity(c.Context(tb))
 				},
 				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
 			},
 		)
 	})
@@ -110,7 +118,8 @@ func (c Storage) Spec(s *testcase.Spec) {
 type EntityStorage struct {
 	T              frameless.T
 	Subject        func(testing.TB) (cache.EntityStorage, frameless.OnePhaseCommitProtocol)
-	FixtureFactory func(testing.TB) contracts.FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 func (c EntityStorage) Test(t *testing.T) {
@@ -135,39 +144,44 @@ func (c EntityStorage) Spec(s *testcase.Spec) {
 			ds, _ := c.Subject(tb)
 			return ds
 		}
-			testcase.RunContract(s,
-				contracts.Creator{T: c.T,
-					Subject: func(tb testing.TB) contracts.CRD {
-						return newStorage(tb)
-					},
-					FixtureFactory: c.FixtureFactory,
+		testcase.RunContract(s,
+			contracts.Creator{T: c.T,
+				Subject: func(tb testing.TB) contracts.CRD {
+					return newStorage(tb)
 				},
-				contracts.Finder{T: c.T,
-					Subject: func(tb testing.TB) contracts.CRD {
-						return newStorage(tb)
-					},
-					FixtureFactory: c.FixtureFactory,
+				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
+			},
+			contracts.Finder{T: c.T,
+				Subject: func(tb testing.TB) contracts.CRD {
+					return newStorage(tb)
 				},
-				contracts.Updater{T: c.T,
-					Subject: func(tb testing.TB) contracts.UpdaterSubject {
-						return newStorage(tb)
-					},
-					FixtureFactory: c.FixtureFactory,
+				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
+			},
+			contracts.Updater{T: c.T,
+				Subject: func(tb testing.TB) contracts.UpdaterSubject {
+					return newStorage(tb)
 				},
-				contracts.Deleter{T: c.T,
-					Subject: func(tb testing.TB) contracts.CRD {
-						return newStorage(tb)
-					},
-					FixtureFactory: c.FixtureFactory,
+				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
+			},
+			contracts.Deleter{T: c.T,
+				Subject: func(tb testing.TB) contracts.CRD {
+					return newStorage(tb)
 				},
-				contracts.OnePhaseCommitProtocol{T: c.T,
-					Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
-						ds, cpm := c.Subject(tb)
-						return cpm, ds
-					},
-					FixtureFactory: c.FixtureFactory,
+				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
+			},
+			contracts.OnePhaseCommitProtocol{T: c.T,
+				Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
+					ds, cpm := c.Subject(tb)
+					return cpm, ds
 				},
-			)
+				FixtureFactory: c.FixtureFactory,
+				Context:        c.Context,
+			},
+		)
 
 		s.Describe(`.FindByIDs`, c.describeCacheDataFindByIDs)
 		s.Describe(`.Upsert`, c.describeCacheDataUpsert)

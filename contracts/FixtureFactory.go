@@ -1,45 +1,35 @@
 package contracts
 
 import (
-	"context"
 	"testing"
 
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
 
-type FixtureFactory interface {
-	// Create create a newEntity struct instance based on the received input struct type.
-	// Create also populate the struct field with dummy values.
-	// It is expected that the newly created fixture will have no content for extID field.
-	//Create(testing.TB, context.Context, any) any
-	Create(T interface{}) interface{}
-	// Context able to provide the specs with a Context object for a certain entity Type.
-	Context() (ctx context.Context)
-}
-
-type FixtureFactoryContract struct {
+type FixtureFactory struct {
 	T              interface{}
-	FixtureFactory func(tb testing.TB) FixtureFactory
+	FixtureFactory func(tb testing.TB) frameless.FixtureFactory
 }
 
-func (c FixtureFactoryContract) String() string {
+func (c FixtureFactory) String() string {
 	return "FixtureFactory"
 }
 
-func (c FixtureFactoryContract) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+func (c FixtureFactory) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
-func (c FixtureFactoryContract) Benchmark(b *testing.B) { b.Skip() }
+func (c FixtureFactory) Benchmark(b *testing.B) { b.Skip() }
 
-func (c FixtureFactoryContract) Spec(s *testcase.Spec) {
+func (c FixtureFactory) Spec(s *testcase.Spec) {
 	s.Parallel()
 	factoryLet(s, c.FixtureFactory)
 
 	s.Describe(`.Create`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
-			return factoryGet(t).Create(c.T)
+			return factoryGet(t).Fixture(c.T, nil)
 		}
 
 		s.Then(`each created fixture value is uniq`, func(t *testcase.T) {
@@ -63,20 +53,6 @@ func (c FixtureFactoryContract) Spec(s *testcase.Spec) {
 				require.False(t, has)
 				require.Empty(t, extID)
 			})
-		})
-	})
-
-	s.Describe(`.Context`, func(s *testcase.Spec) {
-		subject := func(t *testcase.T) context.Context {
-			return factoryGet(t).Context()
-		}
-
-		s.Then(`it will return a Context`, func(t *testcase.T) {
-			require.NotNil(t, subject(t))
-		})
-
-		s.Then(`the Context expected to be not cancelled`, func(t *testcase.T) {
-			require.Nil(t, subject(t).Err())
 		})
 	})
 }

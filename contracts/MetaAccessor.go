@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/doubles"
+	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +15,8 @@ import (
 type MetaAccessor struct {
 	T, V           T
 	Subject        func(testing.TB) MetaAccessorSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 var accessor = testcase.Var{Name: `frameless.MetaAccessor`}
@@ -57,6 +58,7 @@ func (c MetaAccessor) Spec(s *testcase.Spec) {
 				return c.Subject(tb)
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 	)
 }
@@ -65,7 +67,7 @@ type MetaAccessorBasic struct {
 	// V is the value T type that can be set and looked up with frameless.MetaAccessor.
 	V              T
 	Subject        func(testing.TB) frameless.MetaAccessor
-	FixtureFactory func(testing.TB) FixtureFactory
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 func (c MetaAccessorBasic) Test(t *testing.T) {
@@ -89,7 +91,7 @@ func (c MetaAccessorBasic) Spec(s *testcase.Spec) {
 			ctx    = ctx.Let(s, nil)
 			key    = s.Let(`key`, func(t *testcase.T) interface{} { return t.Random.String() })
 			keyGet = func(t *testcase.T) string { return key.Get(t).(string) }
-			value  = s.Let(`value`, func(t *testcase.T) interface{} { return factoryGet(t).Create(c.V) })
+			value  = s.Let(`value`, func(t *testcase.T) interface{} { return factoryGet(t).Fixture(c.V, nil) })
 		)
 		subjectSetMeta := func(t *testcase.T) (context.Context, error) {
 			return accessorGet(t).SetMeta(ctxGet(t), keyGet(t), value.Get(t))
@@ -125,7 +127,8 @@ func (c MetaAccessorBasic) Spec(s *testcase.Spec) {
 type MetaAccessorPublisher struct {
 	T, V           T
 	Subject        func(testing.TB) MetaAccessorSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 func (c MetaAccessorPublisher) Test(t *testing.T) {
@@ -146,9 +149,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .Create -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		ctx := factoryGet(t).Context()
+		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Create(c.V))
+		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		var (
 			actual interface{}
@@ -184,9 +187,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .DeleteByID -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		ctx := factoryGet(t).Context()
+		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Create(c.V))
+		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
@@ -227,9 +230,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .DeleteAll -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		ctx := factoryGet(t).Context()
+		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Create(c.V))
+		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
@@ -274,9 +277,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			t.Skipf(`frameless.Updater is not implemented by %T`, metaAccessorSubjectGet(t).CRD)
 		}
 
-		ctx := factoryGet(t).Context()
+		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Create(c.V))
+		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
 		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)

@@ -1,16 +1,20 @@
 package fixtures
 
 import (
+	"context"
+	"testing"
+
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/fixtures"
 	"github.com/adamluzsi/testcase/random"
-	"testing"
 )
 
-func NewFactory(tb testing.TB) *fixtures.Factory {
-	return &fixtures.Factory{
-		Random:  getRandom(tb),
-		Options: []fixtures.Option{fixtures.SkipByTag(`ext`, "id", "ID")},
+func NewFactory(tb testing.TB) *Factory {
+	return &Factory{
+		Factory: &fixtures.Factory{
+			Random:  getRandom(tb),
+			Options: []fixtures.Option{fixtures.SkipByTag(`ext`, "id", "ID")},
+		},
 	}
 }
 
@@ -21,4 +25,10 @@ func getRandom(tb testing.TB) *random.Random {
 		return tcTB.Random
 	}
 	return Random
+}
+
+type Factory struct{ *fixtures.Factory }
+
+func (f *Factory) Fixture(T interface{}, ctx context.Context) (_T interface{}) {
+	return f.Factory.Create(T)
 }

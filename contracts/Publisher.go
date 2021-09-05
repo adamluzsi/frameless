@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -13,7 +14,8 @@ import (
 type Publisher struct {
 	T
 	Subject        func(testing.TB) PublisherSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 type PublisherSubject interface {
@@ -37,12 +39,14 @@ func (c Publisher) Spec(s *testcase.Spec) {
 			Subject: func(tb testing.TB) creatorPublisherSubject {
 				return c.Subject(tb)
 			},
+			Context:        c.Context,
 			FixtureFactory: c.FixtureFactory,
 		},
 		deleterPublisher{T: c.T,
 			Subject: func(tb testing.TB) deleterPublisherSubject {
 				return c.Subject(tb)
 			},
+			Context:        c.Context,
 			FixtureFactory: c.FixtureFactory,
 		},
 		updaterPublisher{T: c.T,
@@ -53,6 +57,7 @@ func (c Publisher) Spec(s *testcase.Spec) {
 				}
 				return publisher
 			},
+			Context:        c.Context,
 			FixtureFactory: c.FixtureFactory,
 		},
 	)
@@ -61,7 +66,8 @@ func (c Publisher) Spec(s *testcase.Spec) {
 type creatorPublisher struct {
 	T
 	Subject        func(testing.TB) creatorPublisherSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 type creatorPublisherSubject interface {
@@ -111,7 +117,7 @@ func (c creatorPublisher) Spec(s *testcase.Spec) {
 		}
 
 		ctx.Let(s, func(t *testcase.T) interface{} {
-			return factoryGet(t).Context()
+			return c.Context(t)
 		})
 
 		s.Let(subscriberKey, func(t *testcase.T) interface{} {
@@ -241,7 +247,8 @@ func (c creatorPublisher) Spec(s *testcase.Spec) {
 type deleterPublisher struct {
 	T
 	Subject        func(testing.TB) deleterPublisherSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 type deleterPublisherSubject interface {
@@ -302,7 +309,7 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	})
 
 	ctx.Let(s, func(t *testcase.T) interface{} {
-		return factoryGet(t).Context()
+		return c.Context(t)
 	})
 
 	const subName = `DeleteByID`
@@ -446,7 +453,7 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 	})
 
 	ctx.Let(s, func(t *testcase.T) interface{} {
-		return factoryGet(t).Context()
+		return c.Context(t)
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -561,7 +568,8 @@ func (c deleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func() 
 type updaterPublisher struct {
 	T
 	Subject        func(testing.TB) updaterPublisherSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 type updaterPublisherSubject interface {
@@ -620,7 +628,7 @@ func (c updaterPublisher) Spec(s *testcase.Spec) {
 		}
 
 		ctx.Let(s, func(t *testcase.T) interface{} {
-			return factoryGet(t).Context()
+			return c.Context(t)
 		})
 
 		const subName = `Update`

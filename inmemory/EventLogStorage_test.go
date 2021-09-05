@@ -2,12 +2,13 @@ package inmemory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/cache"
-	"github.com/adamluzsi/frameless/spechelper"
-	"github.com/adamluzsi/frameless/doubles"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/cache"
+	"github.com/adamluzsi/frameless/doubles"
+	"github.com/adamluzsi/frameless/spechelper"
 
 	"github.com/adamluzsi/frameless"
 	cachecontracts "github.com/adamluzsi/frameless/cache/contracts"
@@ -75,15 +76,20 @@ func TestEventLogStorage_smoke(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff func(testing.TB) contracts.FixtureFactory) []testcase.Contract {
+func getStorageSpecsForT(
+	subject *inmemory.EventLogStorage,
+	T frameless.T,
+	ff func(testing.TB) frameless.FixtureFactory,
+	cf func(testing.TB) context.Context,
+) []testcase.Contract {
 	return []testcase.Contract{
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff},
-		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return subject, subject }, FixtureFactory: ff},
-		cachecontracts.EntityStorage{T: T, Subject: func(tb testing.TB) (storage cache.EntityStorage, cpm frameless.OnePhaseCommitProtocol) { return subject, subject.EventLog }, FixtureFactory: ff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff, Context: cf},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff, Context: cf},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: ff, Context: cf},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff, Context: cf},
+		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff, Context: cf},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return subject, subject }, FixtureFactory: ff, Context: cf},
+		cachecontracts.EntityStorage{T: T, Subject: func(tb testing.TB) (storage cache.EntityStorage, cpm frameless.OnePhaseCommitProtocol) { return subject, subject.EventLog }, FixtureFactory: ff, Context: cf},
 		contracts.MetaAccessor{T: T, V: "string",
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
@@ -92,7 +98,7 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff fu
 					Publisher:    subject,
 				}
 			},
-			FixtureFactory: ff,
+			FixtureFactory: ff, Context: cf,
 		},
 		contracts.MetaAccessor{T: T, V: int(42),
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
@@ -102,14 +108,16 @@ func getStorageSpecsForT(subject *inmemory.EventLogStorage, T frameless.T, ff fu
 					Publisher:    subject,
 				}
 			},
-			FixtureFactory: ff,
+			FixtureFactory: ff, Context: cf,
 		},
 	}
 }
 
 func getStorageSpecs(subject *inmemory.EventLogStorage, T interface{}) []testcase.Contract {
-	return getStorageSpecsForT(subject, T, func(tb testing.TB) contracts.FixtureFactory {
+	return getStorageSpecsForT(subject, T, func(tb testing.TB) frameless.FixtureFactory {
 		return fixtures.NewFactory(tb)
+	}, func(tb testing.TB) context.Context {
+		return context.Background()
 	})
 }
 
@@ -478,8 +486,10 @@ func TestEventLogStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 		return e.ID, nil
 	}
 
-	testcase.RunContract(t, getStorageSpecsForT(storage, EntityWithStructID{}, func(tb testing.TB) contracts.FixtureFactory {
+	testcase.RunContract(t, getStorageSpecsForT(storage, EntityWithStructID{}, func(tb testing.TB) frameless.FixtureFactory {
 		return FFForEntityWithStructID{FixtureFactory: fixtures.NewFactory(tb)}
+	}, func(tb testing.TB) context.Context {
+		return context.Background()
 	})...)
 }
 
@@ -489,17 +499,17 @@ type EntityWithStructID struct {
 }
 
 type FFForEntityWithStructID struct {
-	contracts.FixtureFactory
+	frameless.FixtureFactory
 }
 
-func (ff FFForEntityWithStructID) Create(T frameless.T) interface{} {
+func (ff FFForEntityWithStructID) Fixture(T interface{}, ctx context.Context) interface{} {
 	switch T.(type) {
 	case EntityWithStructID:
-		ent := ff.FixtureFactory.Create(T).(EntityWithStructID)
+		ent := ff.FixtureFactory.Fixture(T, ctx).(EntityWithStructID)
 		ent.ID = struct{ V int }{V: fixtures.Random.Int()}
 		return ent
 	default:
-		return ff.FixtureFactory.Create(T)
+		return ff.FixtureFactory.Fixture(T, ctx)
 	}
 }
 
@@ -512,8 +522,11 @@ func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
 			inmemory.LogHistoryOnFailure(tb, eventLog)
 			return storage, eventLog
 		},
-		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	})
 }
@@ -560,8 +573,11 @@ func TestEventLogStorage_contracts(t *testing.T) {
 				CRUD:                   stg,
 			}
 		},
-		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	}.Spec(s)
 }

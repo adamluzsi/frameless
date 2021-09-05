@@ -2,11 +2,11 @@ package contracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/testcase"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/testcase"
 )
 
 var ctx = testcase.Var{
@@ -26,12 +26,12 @@ func newT(T frameless.T) interface{} {
 
 var factory = testcase.Var{Name: "fixture factory"}
 
-func factoryLet(s *testcase.Spec, ff func(testing.TB) contracts.FixtureFactory) {
+func factoryLet(s *testcase.Spec, ff func(testing.TB) frameless.FixtureFactory) {
 	factory.Let(s, func(t *testcase.T) interface{} {
 		return ff(t)
 	})
 }
 
-func factoryGet(t *testcase.T) contracts.FixtureFactory {
-	return factory.Get(t).(contracts.FixtureFactory)
+func factoryGet(t *testcase.T) frameless.FixtureFactory {
+	return factory.Get(t).(frameless.FixtureFactory)
 }

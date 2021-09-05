@@ -1,16 +1,19 @@
 package spechelper
 
 import (
+	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/testcase"
-	"testing"
 )
 
 type Contract struct {
 	T, V           frameless.T
 	Subject        func(testing.TB) ContractSubject
-	FixtureFactory func(testing.TB) contracts.FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 type ContractSubject struct {
@@ -40,30 +43,35 @@ func (c Contract) Spec(s *testcase.Spec) {
 				return c.Subject(tb).CRUD
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 		contracts.Finder{T: c.T,
 			Subject: func(tb testing.TB) contracts.CRD {
 				return c.Subject(tb).CRUD
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 		contracts.Deleter{T: c.T,
 			Subject: func(tb testing.TB) contracts.CRD {
 				return c.Subject(tb).CRUD
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 		contracts.Updater{T: c.T,
 			Subject: func(tb testing.TB) contracts.UpdaterSubject {
 				return c.Subject(tb).CRUD
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 		contracts.Publisher{T: c.T,
 			Subject: func(tb testing.TB) contracts.PublisherSubject {
 				return c.Subject(tb).CRUD
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 		contracts.MetaAccessor{T: c.T, V: c.V,
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
@@ -75,6 +83,7 @@ func (c Contract) Spec(s *testcase.Spec) {
 				}
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 		contracts.OnePhaseCommitProtocol{T: c.T,
 			Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
@@ -82,6 +91,7 @@ func (c Contract) Spec(s *testcase.Spec) {
 				return subject.OnePhaseCommitProtocol, subject.CRUD
 			},
 			FixtureFactory: c.FixtureFactory,
+			Context:        c.Context,
 		},
 	)
 }

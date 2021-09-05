@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -15,7 +16,8 @@ import (
 type OnePhaseCommitProtocol struct {
 	T
 	Subject        func(testing.TB) (frameless.OnePhaseCommitProtocol, CRD)
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 func (c OnePhaseCommitProtocol) manager() testcase.Var {
@@ -56,7 +58,7 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
-			DeleteAllEntity(t, c.resourceGet(t), factoryGet(t).Context())
+			DeleteAllEntity(t, c.resourceGet(t), c.Context(t))
 		})
 	})
 
@@ -64,14 +66,14 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 		r := c.resourceGet(t)
 		// early load the resource ensure proper cleanup
 		return func() {
-			DeleteAllEntity(t, r, factoryGet(t).Context())
+			DeleteAllEntity(t, r, c.Context(t))
 		}
 	})
 
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 
 		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			tx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			tx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 			ptr := CreatePTR(factoryGet(t), c.T)
 			CreateEntity(t, c.resourceGet(t), tx, ptr)
@@ -97,7 +99,7 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 			Waiter.Wait()
 		})
 		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			ctx := factoryGet(t).Context()
+			ctx := c.Context(t)
 			ctx, err := c.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 			ptr := CreatePTR(factoryGet(t), c.T)
@@ -121,7 +123,7 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			tx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 
 			entity := CreatePTR(factoryGet(t), c.T)
@@ -129,16 +131,16 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 			id := HasID(t, entity)
 
 			IsFindable(t, c.T, c.resourceGet(t), tx, id)                    // can be found in tx Context
-			IsAbsent(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id) // is absent from the global Context
+			IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), id) // is absent from the global Context
 
 			require.Nil(t, c.managerGet(t).CommitTx(tx)) // after the commit
 
-			actually := IsFindable(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			actually := IsFindable(t, c.T, c.resourceGet(t), c.Context(t), id)
 			require.Equal(t, entity, actually)
 		})
 
 		s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			tx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 			entity := CreatePTR(factoryGet(t), c.T)
 			//require.Nil(t, Spec.resourceGet(t).Create(tx, entity))
@@ -146,15 +148,15 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 
 			id := HasID(t, entity)
 			IsFindable(t, c.T, c.resourceGet(t), tx, id)
-			IsAbsent(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), id)
 
 			require.Nil(t, c.managerGet(t).RollbackTx(tx))
 
-			IsAbsent(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), id)
 		})
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
-			ctx := factoryGet(t).Context()
+			ctx := c.Context(t)
 			entity := CreatePTR(factoryGet(t), c.T)
 
 			CreateEntity(t, c.resourceGet(t), ctx, entity)
@@ -169,14 +171,14 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 			IsAbsent(t, c.T, c.resourceGet(t), tx, id)
 
 			// in global Context it is findable
-			IsFindable(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			IsFindable(t, c.T, c.resourceGet(t), c.Context(t), id)
 
 			require.Nil(t, c.managerGet(t).CommitTx(tx))
-			IsAbsent(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), id)
 		})
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
-			ctx := factoryGet(t).Context()
+			ctx := c.Context(t)
 			entity := CreatePTR(factoryGet(t), c.T)
 			CreateEntity(t, c.resourceGet(t), ctx, entity)
 			id := HasID(t, entity)
@@ -186,13 +188,13 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 			IsFindable(t, c.T, c.resourceGet(t), tx, id)
 			require.Nil(t, c.resourceGet(t).DeleteByID(tx, id))
 			IsAbsent(t, c.T, c.resourceGet(t), tx, id)
-			IsFindable(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			IsFindable(t, c.T, c.resourceGet(t), c.Context(t), id)
 			require.Nil(t, c.managerGet(t).RollbackTx(tx))
-			IsFindable(t, c.T, c.resourceGet(t), factoryGet(t).Context(), id)
+			IsFindable(t, c.T, c.resourceGet(t), c.Context(t), id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
-			ctx := factoryGet(t).Context()
+			ctx := c.Context(t)
 			ctx, err := c.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 			require.Nil(t, c.managerGet(t).CommitTx(ctx))
@@ -200,7 +202,7 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 		})
 
 		s.Test(`RollbackTx multiple times will yield error`, func(t *testcase.T) {
-			ctx := factoryGet(t).Context()
+			ctx := c.Context(t)
 			ctx, err := c.managerGet(t).BeginTx(ctx)
 			require.Nil(t, err)
 			require.Nil(t, c.managerGet(t).RollbackTx(ctx))
@@ -219,9 +221,9 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			t.Defer(DeleteAllEntity, t, c.resourceGet(t), factoryGet(t).Context())
+			t.Defer(DeleteAllEntity, t, c.resourceGet(t), c.Context(t))
 
-			var globalContext = factoryGet(t).Context()
+			var globalContext = c.Context(t)
 
 			tx1, err := c.managerGet(t).BeginTx(globalContext)
 			require.Nil(t, err)
@@ -281,7 +283,7 @@ func (c OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		})
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			ctxInTx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 			t.Defer(c.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
@@ -362,7 +364,7 @@ func (c OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		})
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			ctxInTx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 			t.Defer(c.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
@@ -389,7 +391,7 @@ func (c OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 
 			t.Log(`and then events created in the storage outside of the current transaction`)
 			for _, ptr := range eventsGet(t) {
-				CreateEntity(t, c.resourceGet(t), factoryGet(t).Context(), ptr)
+				CreateEntity(t, c.resourceGet(t), c.Context(t), ptr)
 			}
 
 			t.Log(`then events being updated`)
@@ -440,7 +442,7 @@ func (c OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		})
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			ctxInTx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 			t.Defer(c.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx
@@ -501,7 +503,7 @@ func (c OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 		})
 		ctx.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.managerGet(t).BeginTx(factoryGet(t).Context())
+			ctxInTx, err := c.managerGet(t).BeginTx(c.Context(t))
 			require.Nil(t, err)
 			t.Defer(c.managerGet(t).RollbackTx, ctxInTx)
 			return ctxInTx

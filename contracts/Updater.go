@@ -16,7 +16,8 @@ import (
 type Updater struct {
 	T              T
 	Subject        func(testing.TB) UpdaterSubject
-	FixtureFactory func(testing.TB) FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
 type UpdaterSubject interface {
@@ -42,7 +43,7 @@ func (c Updater) Spec(s *testcase.Spec) {
 	factoryLet(s, c.FixtureFactory)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, c.resourceGet(t), factoryGet(t).Context())
+		DeleteAllEntity(t, c.resourceGet(t), c.Context(t))
 	})
 
 	var (
@@ -57,7 +58,7 @@ func (c Updater) Spec(s *testcase.Spec) {
 	)
 
 	ctx.Let(s, func(t *testcase.T) interface{} {
-		return factoryGet(t).Context()
+		return c.Context(t)
 	})
 
 	requestContext.Let(s, func(t *testcase.T) interface{} {
@@ -82,7 +83,7 @@ func (c Updater) Spec(s *testcase.Spec) {
 			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 
-				HasEntity(t, c.resourceGet(t), factoryGet(t).Context(), entityWithChanges.Get(t))
+				HasEntity(t, c.resourceGet(t), c.Context(t), entityWithChanges.Get(t))
 			})
 
 			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -123,11 +124,11 @@ func (c Updater) Benchmark(b *testing.B) {
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newT(c.T)
-		CreateEntity(t, c.resourceGet(t), factoryGet(t).Context(), ptr)
+		CreateEntity(t, c.resourceGet(t), c.Context(t), ptr)
 		return ptr
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		require.Nil(b, c.resourceGet(t).Update(factoryGet(t).Context(), ent.Get(t)))
+		require.Nil(b, c.resourceGet(t).Update(c.Context(t), ent.Get(t)))
 	})
 }

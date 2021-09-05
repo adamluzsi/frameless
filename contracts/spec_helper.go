@@ -53,7 +53,7 @@ type CRD interface {
 	frameless.Deleter
 }
 
-func createEntities(f FixtureFactory, T interface{}) []interface{} {
+func createEntities(f frameless.FixtureFactory, T interface{}) []interface{} {
 	var es []interface{}
 	for i := 0; i < benchmarkEntityVolumeCount; i++ {
 		es = append(es, CreatePTR(f, T))
@@ -61,18 +61,8 @@ func createEntities(f FixtureFactory, T interface{}) []interface{} {
 	return es
 }
 
-func saveEntities(tb testing.TB, s CRD, f FixtureFactory, es ...interface{}) []interface{} {
-	var ids []interface{}
-	for _, e := range es {
-		require.Nil(tb, s.Create(f.Context(), e))
-		CreateEntity(tb, s, f.Context(), e)
-		ids = append(ids, HasID(tb, e))
-	}
-	return ids
-}
-
-func cleanup(tb testing.TB, t frameless.Deleter, f FixtureFactory, T interface{}) {
-	require.Nil(tb, t.DeleteAll(f.Context()))
+func cleanup(tb testing.TB, ctx context.Context, t frameless.Deleter) {
+	require.Nil(tb, t.DeleteAll(ctx))
 }
 
 func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs ...interface{}) {
@@ -113,14 +103,6 @@ func toT(ent interface{}) frameless.T {
 
 func base(e interface{}) interface{} {
 	return reflects.BaseValueOf(e).Interface()
-}
-
-func toBaseValues(in []interface{}) []interface{} {
-	var baseEntities []interface{}
-	for _, e := range in {
-		baseEntities = append(baseEntities, base(e))
-	}
-	return baseEntities
 }
 
 func newEventSubscriber(tb testing.TB, name string, filter func(interface{}) bool) *eventSubscriber {
@@ -244,11 +226,7 @@ func getSubscriber(t *testcase.T, key string) *eventSubscriber {
 	return testcase.Var{Name: key, Init: subscriber.Init}.Get(t).(*eventSubscriber)
 }
 
-func subscriptionGet(t *testcase.T) frameless.Subscriber {
-	return subscription.Get(t).(frameless.Subscriber)
-}
-
-func genEntities(ff FixtureFactory, T T) []interface{} {
+func genEntities(ff frameless.FixtureFactory, T T) []interface{} {
 	var es []interface{}
 	count := fixtures.Random.IntBetween(3, 7)
 	for i := 0; i < count; i++ {
@@ -257,30 +235,20 @@ func genEntities(ff FixtureFactory, T T) []interface{} {
 	return es
 }
 
-func spec(tb testing.TB, c Interface, blk func(s *testcase.Spec)) {
-	s := testcase.NewSpec(tb)
-	defer s.Finish()
-	var name = reflect.TypeOf(c).Name()
-	if stringer, ok := c.(fmt.Stringer); ok {
-		name = stringer.String()
-	}
-	s.Context(name, blk, testcase.Group(name))
-}
-
-func CreatePTR(ff FixtureFactory, T T) interface{} {
+func CreatePTR(ff frameless.FixtureFactory, T T) interface{} {
 	ptr := reflect.New(reflect.TypeOf(T))
-	ptr.Elem().Set(reflect.ValueOf(ff.Create(T)))
+	ptr.Elem().Set(reflect.ValueOf(ff.Fixture(T, nil)))
 	return ptr.Interface()
 }
 
 var factory = testcase.Var{Name: "FixtureFactory"}
 
-func factoryLet(s *testcase.Spec, fff func(testing.TB) FixtureFactory) {
+func factoryLet(s *testcase.Spec, fff func(testing.TB) frameless.FixtureFactory) {
 	factory.Let(s, func(t *testcase.T) interface{} {
 		return fff(t)
 	})
 }
 
-func factoryGet(t *testcase.T) FixtureFactory {
-	return factory.Get(t).(FixtureFactory)
+func factoryGet(t *testcase.T) frameless.FixtureFactory {
+	return factory.Get(t).(frameless.FixtureFactory)
 }
