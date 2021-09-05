@@ -82,7 +82,10 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 			return p, s
 		},
 		DriverName: "postgres",
-		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
+		},
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
 		},
 		CreateTable: func(ctx context.Context, client postgresql.Connection, name string) error {
@@ -120,8 +123,11 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 			}
 			return p, s
 		},
-		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	})
 }
@@ -140,7 +146,8 @@ var _ testcase.Contract = ConnectionManagerSpec{}
 
 type ConnectionManagerSpec struct {
 	Subject        func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD)
-	FixtureFactory func(testing.TB) contracts.FixtureFactory
+	Context        func(testing.TB) context.Context
+	FixtureFactory func(testing.TB) frameless.FixtureFactory
 	DriverName     string
 
 	// CreateTable to create a dummy table with a specific name.
@@ -210,7 +217,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 
 	s.Describe(`.GetClient`, func(s *testcase.Spec) {
 		ctx := s.Let(`context`, func(t *testcase.T) interface{} {
-			return c.factoryGet(t).Context()
+			return c.Context(t)
 		})
 		subject := func(t *testcase.T) (postgresql.Connection, error) {
 			return c.cmGet(t).GetConnection(ctx.Get(t).(context.Context))
@@ -226,7 +233,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 	s.Test(`.BeginTx + .GetClient = transaction`, func(t *testcase.T) {
 		p := c.cmGet(t)
 
-		tx, err := p.BeginTx(c.factoryGet(t).Context())
+		tx, err := p.BeginTx(c.Context(t))
 		require.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
@@ -239,7 +246,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 
 		require.NoError(t, p.RollbackTx(tx))
 
-		ctx := c.factoryGet(t).Context()
+		ctx := c.Context(t)
 		connection, err = p.GetConnection(ctx)
 		require.NoError(t, err)
 
@@ -251,7 +258,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 	s.Test(`.GetClient is in no transaction without context from a .BeginTx`, func(t *testcase.T) {
 		p := c.cmGet(t)
 
-		ctx := c.factoryGet(t).Context()
+		ctx := c.Context(t)
 
 		tx, err := p.BeginTx(ctx)
 		require.NoError(t, err)
@@ -279,7 +286,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 	s.Test(`.BeginTx + .GetClient + .CommitTx`, func(t *testcase.T) {
 		p := c.cmGet(t)
 
-		ctx := c.factoryGet(t).Context()
+		ctx := c.Context(t)
 
 		tx, err := p.BeginTx(ctx)
 		require.NoError(t, err)
@@ -318,7 +325,7 @@ func (c ConnectionManagerSpec) makeTestTableName() string {
 }
 
 func (c ConnectionManagerSpec) cleanupTable(t *testcase.T, name string) {
-	ctx := c.factoryGet(t).Context()
+	ctx := c.Context(t)
 	client, err := c.cmGet(t).GetConnection(ctx)
 	require.NoError(t, err)
 

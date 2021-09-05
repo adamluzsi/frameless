@@ -88,16 +88,18 @@ func TestStorage(t *testing.T) {
 
 	migrateEntityStorage(t, cm)
 
-	fff := func(tb testing.TB) contracts.FixtureFactory {
+	fff := func(tb testing.TB) frameless.FixtureFactory {
 		return fixtures.NewFactory(tb)
 	}
+	cf := func(testing.TB) context.Context { return context.Background() }
+
 	testcase.RunContract(t,
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: fff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: fff},
-		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: fff, Context: cf},
+		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff, Context: cf},
 		contracts.MetaAccessor{T: T, V: "string",
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
@@ -107,6 +109,7 @@ func TestStorage(t *testing.T) {
 				}
 			},
 			FixtureFactory: fff,
+			Context:        cf,
 		},
 	)
 }
@@ -129,8 +132,11 @@ func TestStorage_contracts(t *testing.T) {
 				CRUD:                   stg,
 			}
 		},
-		FixtureFactory: func(tb testing.TB) contracts.FixtureFactory {
+		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
+		},
+		Context: func(tb testing.TB) context.Context {
+			return context.Background()
 		},
 	}.Spec(s)
 }
@@ -149,16 +155,19 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 		Mapping:           mapper,
 	}
 
-	fff := func(tb testing.TB) contracts.FixtureFactory {
+	fff := func(tb testing.TB) frameless.FixtureFactory {
 		return fixtures.NewFactory(tb)
 	}
+	cf := func(testing.TB) context.Context {
+		return context.Background()
+	}
 	testcase.RunContract(t,
-		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
-		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
-		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: fff},
-		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff},
-		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: fff},
-		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff},
+		contracts.Creator{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.Finder{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.Updater{T: T, Subject: func(tb testing.TB) contracts.UpdaterSubject { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: fff, Context: cf},
+		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return cm, subject }, FixtureFactory: fff, Context: cf},
+		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff, Context: cf},
 	)
 }
 
