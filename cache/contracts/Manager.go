@@ -37,7 +37,9 @@ type Cache interface {
 	frameless.Finder
 	frameless.Updater
 	frameless.Deleter
-	frameless.Publisher
+	frameless.CreatorPublisher
+	frameless.UpdaterPublisher
+	frameless.DeleterPublisher
 }
 
 func (c Manager) Test(t *testing.T) {

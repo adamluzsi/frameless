@@ -3,12 +3,13 @@ package cache
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sync"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"reflect"
-	"sync"
 )
 
 func NewManager(T T, storage Storage, source Source) (*Manager, error) {
@@ -34,12 +35,13 @@ type Source interface {
 	frameless.Creator
 	frameless.Finder
 	frameless.Deleter
-	frameless.Publisher
+	frameless.CreatorPublisher
+	frameless.DeleterPublisher
 }
 
 type ExtendedSource interface {
 	frameless.Updater
-	frameless.Publisher
+	frameless.UpdaterPublisher
 }
 
 func (m *Manager) Init(ctx context.Context) error {
@@ -240,6 +242,18 @@ func (m *Manager) DeleteAll(ctx context.Context) error {
 	return m.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (m *Manager) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return m.Source.Subscribe(ctx, subscriber)
+func (m *Manager) CreatorEvents(ctx context.Context, creatorSubscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
+	return m.Source.CreatorEvents(ctx, creatorSubscriber)
+}
+
+func (m *Manager) DeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
+	return m.Source.DeleterEvents(ctx, s)
+}
+
+func (m *Manager) UpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+	es, ok := m.Source.(ExtendedSource)
+	if !ok {
+		return nil, fmt.Errorf("%T doesn't implement frameless.UpdaterPublisher", m.Source)
+	}
+	return es.UpdaterEvents(ctx, s)
 }

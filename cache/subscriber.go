@@ -2,16 +2,34 @@ package cache
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
 )
 
 func (m *Manager) subscribe(ctx context.Context) error {
-	subscription, err := m.Source.Subscribe(ctx, &managerSubscriber{Manager: m})
+	subscriber := &managerSubscriber{Manager: m}
+
+	subscription, err := m.Source.CreatorEvents(ctx, subscriber)
 	if err != nil {
 		return err
 	}
 	m.trap(func() { _ = subscription.Close() })
+
+	subscription, err = m.Source.DeleterEvents(ctx, subscriber)
+	if err != nil {
+		return err
+	}
+	m.trap(func() { _ = subscription.Close() })
+
+	if src, ok := m.Source.(ExtendedSource); ok {
+		subscription, err := src.UpdaterEvents(ctx, subscriber)
+		if err != nil {
+			return err
+		}
+		m.trap(func() { _ = subscription.Close() })
+	}
+
 	return nil
 }
 
@@ -40,35 +58,31 @@ type managerSubscriber struct {
 	Manager *Manager
 }
 
-func (sub *managerSubscriber) Handle(ctx context.Context, event interface{}) error {
-	switch event := event.(type) {
-	case frameless.EventCreate:
-		return sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
+func (sub *managerSubscriber) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent) error {
+	return sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
+}
 
-	case frameless.EventUpdate:
-		if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
-			return err
-		}
-		id, _ := extid.Lookup(event.Entity)
-		return sub.Manager.deleteCachedEntity(ctx, id)
-
-	case frameless.EventDeleteByID:
-		// TODO: why is this not triggered on Manager.DeleteByID ?
-		if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
-			return err
-		}
-		return sub.Manager.deleteCachedEntity(ctx, event.ID)
-
-	case frameless.EventDeleteAll:
-		if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
-			return err
-		}
-		return sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
-
-	default:
-		// ignore unknown event
-		return nil
+func (sub *managerSubscriber) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent) error {
+	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+		return err
 	}
+	id, _ := extid.Lookup(event.Entity)
+	return sub.Manager.deleteCachedEntity(ctx, id)
+}
+
+func (sub *managerSubscriber) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent) error {
+	// TODO: why is this not triggered on Manager.DeleteByID ?
+	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+		return err
+	}
+	return sub.Manager.deleteCachedEntity(ctx, event.ID)
+}
+
+func (sub *managerSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
+	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+		return err
+	}
+	return sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
 func (sub *managerSubscriber) Error(ctx context.Context, err error) error {

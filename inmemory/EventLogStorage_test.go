@@ -29,7 +29,9 @@ var _ interface {
 	frameless.Finder
 	frameless.Updater
 	frameless.Deleter
-	frameless.Publisher
+	frameless.CreatorPublisher
+	frameless.UpdaterPublisher
+	frameless.DeleterPublisher
 	frameless.OnePhaseCommitProtocol
 	cache.EntityStorage
 } = &inmemory.EventLogStorage{}
@@ -94,7 +96,7 @@ func getStorageSpecsForT(
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
 					MetaAccessor: subject.EventLog,
-					CRD:          subject,
+					Resource:     subject,
 					Publisher:    subject,
 				}
 			},
@@ -104,7 +106,7 @@ func getStorageSpecsForT(
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
 					MetaAccessor: subject.EventLog,
-					CRD:          subject,
+					Resource:     subject,
 					Publisher:    subject,
 				}
 			},

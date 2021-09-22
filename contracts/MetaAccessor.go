@@ -27,8 +27,12 @@ func accessorGet(t *testcase.T) frameless.MetaAccessor {
 
 type MetaAccessorSubject struct {
 	frameless.MetaAccessor
-	CRD
-	frameless.Publisher
+	Resource  CRD
+	Publisher interface {
+		frameless.CreatorPublisher
+		frameless.UpdaterPublisher
+		frameless.DeleterPublisher
+	}
 }
 
 var metaAccessorSubject = testcase.Var{Name: `MetaAccessorSubject`}
@@ -157,11 +161,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.CreatorEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(frameless.EventCreate); !ok {
-					return nil
-				}
+				_ = event.(frameless.CreateEvent)
 				v := newT(c.V)
 				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
 				require.NoError(t, err)
@@ -177,7 +179,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 
 		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
 		require.NoError(t, err)
-		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, CreatePTR(factoryGet(t), c.T))
+		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, CreatePTR(factoryGet(t), c.T))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
 			mutex.RLock()
@@ -192,16 +194,16 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
+		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
 		id := HasID(t, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.DeleterEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(frameless.EventDeleteByID); !ok {
+				if _, ok := event.(frameless.DeleteByIDEvent); !ok {
 					return nil
 				}
 
@@ -220,7 +222,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 
 		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
 		require.NoError(t, err)
-		require.Nil(t, metaAccessorSubjectGet(t).CRD.DeleteByID(ctx, id))
+		require.Nil(t, metaAccessorSubjectGet(t).Resource.DeleteByID(ctx, id))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
 			mutex.RLock()
@@ -235,15 +237,15 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
+		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.DeleterEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(frameless.EventDeleteAll); !ok {
+				if _, ok := event.(frameless.DeleteAllEvent); !ok {
 					return nil
 				}
 
@@ -262,7 +264,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 
 		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
 		require.NoError(t, err)
-		require.Nil(t, metaAccessorSubjectGet(t).CRD.DeleteAll(ctx))
+		require.Nil(t, metaAccessorSubjectGet(t).Resource.DeleteAll(ctx))
 
 		AsyncTester.Assert(t, func(t testing.TB) {
 			mutex.RLock()
@@ -272,9 +274,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .Update -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		crud, ok := metaAccessorSubjectGet(t).CRD.(UpdaterSubject)
+		crud, ok := metaAccessorSubjectGet(t).Resource.(UpdaterSubject)
 		if !ok {
-			t.Skipf(`frameless.Updater is not implemented by %T`, metaAccessorSubjectGet(t).CRD)
+			t.Skipf(`frameless.Updater is not implemented by %T`, metaAccessorSubjectGet(t).Resource)
 		}
 
 		ctx := c.Context(t)
@@ -282,16 +284,16 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, metaAccessorSubjectGet(t).CRD, ctx, ptr)
+		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
 		id := HasID(t, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.Subscribe(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.UpdaterEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(frameless.EventUpdate); !ok {
+				if _, ok := event.(frameless.UpdateEvent); !ok {
 					return nil
 				}
 

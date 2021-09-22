@@ -75,7 +75,7 @@ func getContracts(T interface{}, ff func(tb testing.TB) frameless.FixtureFactory
 				s := newSubject(tb)
 				return contracts.MetaAccessorSubject{
 					MetaAccessor: s.MetaAccessor,
-					CRD:          s.CRUD,
+					Resource:     s.CRUD,
 					Publisher:    s.PublisherSubject,
 				}
 			},

@@ -1,6 +1,10 @@
 package doubles
 
-import "context"
+import (
+	"context"
+
+	"github.com/adamluzsi/frameless"
+)
 
 type StubSubscriber /*[T]*/ struct {
 	HandleFunc func(ctx context.Context, event interface{}) error
@@ -12,6 +16,22 @@ func (s StubSubscriber) Handle(ctx context.Context, event interface{}) error {
 		return nil
 	}
 	return s.HandleFunc(ctx, event)
+}
+
+func (s StubSubscriber) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent) error {
+	return s.Handle(ctx, event)
+}
+
+func (s StubSubscriber) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent) error {
+	return s.Handle(ctx, event)
+}
+
+func (s StubSubscriber) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent) error {
+	return s.Handle(ctx, event)
+}
+
+func (s StubSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
+	return s.Handle(ctx, event)
 }
 
 func (s StubSubscriber) Error(ctx context.Context, err error) error {

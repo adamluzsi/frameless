@@ -20,12 +20,28 @@ type ContractSubject struct {
 	frameless.MetaAccessor
 	frameless.OnePhaseCommitProtocol
 	CRUD interface {
-		frameless.Creator
-		frameless.Finder
-		frameless.Updater
-		frameless.Deleter
-		frameless.Publisher
+		CRUD
+		Publisher
 	}
+}
+
+type CRUD interface {
+	frameless.Creator
+	frameless.Finder
+	frameless.Updater
+	frameless.Deleter
+}
+
+type Publisher interface {
+	frameless.CreatorPublisher
+	frameless.UpdaterPublisher
+	frameless.DeleterPublisher
+}
+
+type Subscriber interface {
+	frameless.CreatorSubscriber
+	frameless.UpdaterSubscriber
+	frameless.DeleterSubscriber
 }
 
 func (c Contract) Test(t *testing.T) {
@@ -78,7 +94,7 @@ func (c Contract) Spec(s *testcase.Spec) {
 				subject := c.Subject(tb)
 				return contracts.MetaAccessorSubject{
 					MetaAccessor: subject.MetaAccessor,
-					CRD:          subject.CRUD,
+					Resource:     subject.CRUD,
 					Publisher:    subject.CRUD,
 				}
 			},

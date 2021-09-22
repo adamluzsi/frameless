@@ -3,13 +3,14 @@ package inmemory
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sync"
+
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/adamluzsi/frameless/doubles"
-	"reflect"
-	"sync"
 )
 
 func NewEventLogStorage(T interface{}, m *EventLog) *EventLogStorage {
@@ -380,7 +381,7 @@ func (s *EventLogStorage) Compress() {
 	})
 }
 
-func (s *EventLogStorage) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) CreatorEvents(ctx context.Context, subscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
@@ -393,14 +394,58 @@ func (s *EventLogStorage) Subscribe(ctx context.Context, subscriber frameless.Su
 
 			switch v.Name {
 			case CreateEvent:
-				return subscriber.Handle(ctx, frameless.EventCreate{Entity: v.Value})
+				return subscriber.HandleCreateEvent(ctx, frameless.CreateEvent{Entity: v.Value})
+			default:
+				return nil
+			}
+		},
+		ErrorFunc: func(ctx context.Context, err error) error {
+			return subscriber.Error(ctx, err)
+		},
+	})
+}
+
+func (s *EventLogStorage) UpdaterEvents(ctx context.Context, subscriber frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
+		HandleFunc: func(ctx context.Context, event Event) error {
+			v, ok := event.(EventLogStorageEvent)
+			if !ok {
+				return nil
+			}
+			if v.Namespace != s.GetNamespace() {
+				return nil
+			}
+
+			switch v.Name {
 			case UpdateEvent:
-				return subscriber.Handle(ctx, frameless.EventUpdate{Entity: v.Value})
+				return subscriber.HandleUpdateEvent(ctx, frameless.UpdateEvent{Entity: v.Value})
+			default:
+				return nil
+			}
+		},
+		ErrorFunc: func(ctx context.Context, err error) error {
+			return subscriber.Error(ctx, err)
+		},
+	})
+}
+
+func (s *EventLogStorage) DeleterEvents(ctx context.Context, subscriber frameless.DeleterSubscriber) (frameless.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
+		HandleFunc: func(ctx context.Context, event Event) error {
+			v, ok := event.(EventLogStorageEvent)
+			if !ok {
+				return nil
+			}
+			if v.Namespace != s.GetNamespace() {
+				return nil
+			}
+
+			switch v.Name {
 			case DeleteByIDEvent:
 				id, _ := extid.Lookup(v.Value)
-				return subscriber.Handle(ctx, frameless.EventDeleteByID{ID: id})
+				return subscriber.HandleDeleteByIDEvent(ctx, frameless.DeleteByIDEvent{ID: id})
 			case DeleteAllEvent:
-				return subscriber.Handle(ctx, frameless.EventDeleteAll{})
+				return subscriber.HandleDeleteAllEvent(ctx, frameless.DeleteAllEvent{})
 			default:
 				return nil
 			}

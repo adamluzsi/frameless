@@ -20,7 +20,9 @@ type Publisher struct {
 
 type PublisherSubject interface {
 	CRD
-	frameless.Publisher
+	frameless.CreatorPublisher
+	frameless.UpdaterPublisher
+	frameless.DeleterPublisher
 }
 
 func (c Publisher) Test(t *testing.T) {
@@ -35,23 +37,16 @@ func (c Publisher) String() string { return `Publisher` }
 
 func (c Publisher) Spec(s *testcase.Spec) {
 	testcase.RunContract(s,
-		creatorPublisher{T: c.T,
-			Subject: func(tb testing.TB) creatorPublisherSubject {
+		CreatorPublisher{T: c.T,
+			Subject: func(tb testing.TB) CreatorPublisherSubject {
 				return c.Subject(tb)
 			},
 			Context:        c.Context,
 			FixtureFactory: c.FixtureFactory,
 		},
-		deleterPublisher{T: c.T,
-			Subject: func(tb testing.TB) deleterPublisherSubject {
-				return c.Subject(tb)
-			},
-			Context:        c.Context,
-			FixtureFactory: c.FixtureFactory,
-		},
-		updaterPublisher{T: c.T,
-			Subject: func(tb testing.TB) updaterPublisherSubject {
-				publisher, ok := c.Subject(tb).(updaterPublisherSubject)
+		UpdaterPublisher{T: c.T,
+			Subject: func(tb testing.TB) UpdaterPublisherSubject {
+				publisher, ok := c.Subject(tb).(UpdaterPublisherSubject)
 				if !ok {
 					tb.Skip()
 				}
@@ -60,50 +55,51 @@ func (c Publisher) Spec(s *testcase.Spec) {
 			Context:        c.Context,
 			FixtureFactory: c.FixtureFactory,
 		},
+		DeleterPublisher{T: c.T,
+			Subject: func(tb testing.TB) DeleterPublisherSubject {
+				return c.Subject(tb)
+			},
+			Context:        c.Context,
+			FixtureFactory: c.FixtureFactory,
+		},
 	)
 }
 
-type creatorPublisher struct {
+type CreatorPublisher struct {
 	T
-	Subject        func(testing.TB) creatorPublisherSubject
+	Subject        func(testing.TB) CreatorPublisherSubject
 	Context        func(testing.TB) context.Context
 	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
-type creatorPublisherSubject interface {
+type CreatorPublisherSubject interface {
 	CRD
-	frameless.Publisher
+	frameless.CreatorPublisher
 }
 
-func (c creatorPublisher) Test(t *testing.T) {
+func (c CreatorPublisher) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c creatorPublisher) Benchmark(b *testing.B) {
+func (c CreatorPublisher) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c creatorPublisher) String() string {
+func (c CreatorPublisher) String() string {
 	return `CreatorPublisher`
 }
 
-func (c creatorPublisher) Spec(s *testcase.Spec) {
+func (c CreatorPublisher) Spec(s *testcase.Spec) {
 	factoryLet(s, c.FixtureFactory)
 	s.Describe(`.Subscribe/Create`, func(s *testcase.Spec) {
 		resource := s.Let(`resource`, func(t *testcase.T) interface{} {
 			return c.Subject(t)
 		})
-		resourceGet := func(t *testcase.T) creatorPublisherSubject {
-			return resource.Get(t).(creatorPublisherSubject)
+		resourceGet := func(t *testcase.T) CreatorPublisherSubject {
+			return resource.Get(t).(CreatorPublisherSubject)
 		}
-		subscriberFilter.Let(s, func(t *testcase.T) interface{} {
-			return func(event interface{}) bool {
-				_, ok := event.(frameless.EventCreate)
-				return ok
-			}
-		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			subscription, err := resourceGet(t).Subscribe(ctxGet(t), subscriberGet(t))
+			subscription, err := resourceGet(t).CreatorEvents(ctxGet(t), subscriberGet(t))
 			if err == nil && subscription != nil {
 				t.Set(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -146,13 +142,13 @@ func (c creatorPublisher) Spec(s *testcase.Spec) {
 					return subscriberGet(t).EventsLen() < len(entities)
 				})
 
-				var events []frameless.EventCreate
+				var events []frameless.CreateEvent
 				for _, entity := range entities {
-					events = append(events, frameless.EventCreate{Entity: base(entity)})
+					events = append(events, frameless.CreateEvent{Entity: base(entity)})
 				}
 				return events
 			}).EagerLoading(s)
-			getEvents := func(t *testcase.T) []frameless.EventCreate { return events.Get(t).([]frameless.EventCreate) }
+			getEvents := func(t *testcase.T) []frameless.CreateEvent { return events.Get(t).([]frameless.CreateEvent) }
 
 			s.Then(`subscriberGet receive those events`, func(t *testcase.T) {
 				require.ElementsMatch(t, getEvents(t), subscriberGet(t).Events())
@@ -187,7 +183,7 @@ func (c creatorPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t, `Create`, nil)
 					t.Set(othSubscriberKey, othSubscriber)
-					newSubscription, err := resourceGet(t).Subscribe(ctxGet(t), othSubscriber)
+					newSubscription, err := resourceGet(t).CreatorEvents(ctxGet(t), othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, newSubscription)
 					t.Defer(newSubscription.Close)
@@ -218,13 +214,13 @@ func (c creatorPublisher) Spec(s *testcase.Spec) {
 							return othSubscriber(t).EventsLen() < len(entities)
 						})
 
-						var events []frameless.EventCreate
+						var events []frameless.CreateEvent
 						for _, ent := range entities {
-							events = append(events, frameless.EventCreate{Entity: base(ent)})
+							events = append(events, frameless.CreateEvent{Entity: base(ent)})
 						}
 						return events
 					}).EagerLoading(s)
-					getFurtherEvents := func(t *testcase.T) []frameless.EventCreate { return furtherEvents.Get(t).([]frameless.EventCreate) }
+					getFurtherEvents := func(t *testcase.T) []frameless.CreateEvent { return furtherEvents.Get(t).([]frameless.CreateEvent) }
 
 					s.Then(`original subscriberGet receives all events`, func(t *testcase.T) {
 						requireContainsList(t, subscriberGet(t).Events(), events.Get(t), `missing old events`)
@@ -244,19 +240,19 @@ func (c creatorPublisher) Spec(s *testcase.Spec) {
 	})
 }
 
-type deleterPublisher struct {
+type DeleterPublisher struct {
 	T
-	Subject        func(testing.TB) deleterPublisherSubject
+	Subject        func(testing.TB) DeleterPublisherSubject
 	Context        func(testing.TB) context.Context
 	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
-type deleterPublisherSubject interface {
+type DeleterPublisherSubject interface {
 	CRD
-	frameless.Publisher
+	frameless.DeleterPublisher
 }
 
-func (c deleterPublisher) resource() testcase.Var {
+func (c DeleterPublisher) resource() testcase.Var {
 	return testcase.Var{
 		Name: "resource",
 		Init: func(t *testcase.T) interface{} {
@@ -265,30 +261,30 @@ func (c deleterPublisher) resource() testcase.Var {
 	}
 }
 
-func (c deleterPublisher) resourceGet(t *testcase.T) deleterPublisherSubject {
-	return c.resource().Get(t).(deleterPublisherSubject)
+func (c DeleterPublisher) resourceGet(t *testcase.T) DeleterPublisherSubject {
+	return c.resource().Get(t).(DeleterPublisherSubject)
 }
 
-func (c deleterPublisher) String() string { return `DeleterPublisher` }
+func (c DeleterPublisher) String() string { return `DeleterPublisher` }
 
-func (c deleterPublisher) Test(t *testing.T) {
+func (c DeleterPublisher) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c deleterPublisher) Benchmark(b *testing.B) {
+func (c DeleterPublisher) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c deleterPublisher) Spec(s *testcase.Spec) {
+func (c DeleterPublisher) Spec(s *testcase.Spec) {
 	c.resource().Let(s, nil)
 	factoryLet(s, c.FixtureFactory)
 	s.Describe(`.Subscribe/DeleteByID`, c.specEventDeleteByID)
 	s.Describe(`.Subscribe/DeleteAll`, c.specEventDeleteAll)
 }
 
-func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
+func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		subscription, err := c.resourceGet(t).Subscribe(ctxGet(t), subscriberGet(t))
+		subscription, err := c.resourceGet(t).DeleterEvents(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Set(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -300,14 +296,6 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 		require.Nil(t, err)
 		require.NotNil(t, sub)
 	}
-
-	subscriberFilter.Let(s, func(t *testcase.T) interface{} {
-		return func(event interface{}) bool {
-			_, ok := event.(frameless.EventDeleteByID)
-			return ok
-		}
-	})
-
 	ctx.Let(s, func(t *testcase.T) interface{} {
 		return c.Context(t)
 	})
@@ -375,7 +363,7 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t, subName, nil)
 				t.Set(othSubscriberKey, othSubscriber)
-				sub, err := c.resourceGet(t).Subscribe(ctxGet(t), othSubscriber)
+				sub, err := c.resourceGet(t).DeleterEvents(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -425,9 +413,9 @@ func (c deleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	})
 }
 
-func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
+func (c DeleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		subscription, err := c.resourceGet(t).Subscribe(ctxGet(t), subscriberGet(t))
+		subscription, err := c.resourceGet(t).DeleterEvents(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Set(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -439,13 +427,6 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 		require.Nil(t, err)
 		require.NotNil(t, sub)
 	}
-	subscriberFilter.Let(s, func(t *testcase.T) interface{} {
-		return func(event interface{}) bool {
-			_, ok := event.(frameless.EventDeleteAll)
-			return ok
-		}
-	})
-
 	const subName = `DeleteAll`
 
 	s.Let(subscriberKey, func(t *testcase.T) interface{} {
@@ -474,7 +455,7 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 		})
 
 		s.Then(`subscriberGet receive the delete event where ID can be located`, func(t *testcase.T) {
-			require.Contains(t, subscriberGet(t).Events(), frameless.EventDeleteAll{})
+			require.Contains(t, subscriberGet(t).Events(), frameless.DeleteAllEvent{})
 		})
 
 		s.And(`then new subscriberGet registered`, func(s *testcase.Spec) {
@@ -485,14 +466,14 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t, subName, nil)
 				t.Set(othSubscriberKey, othSubscriber)
-				sub, err := c.resourceGet(t).Subscribe(ctxGet(t), othSubscriber)
+				sub, err := c.resourceGet(t).DeleterEvents(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
 			})
 
 			s.Then(`original subscriberGet still received the old delete event`, func(t *testcase.T) {
-				require.Contains(t, subscriberGet(t).Events(), frameless.EventDeleteAll{})
+				require.Contains(t, subscriberGet(t).Events(), frameless.DeleteAllEvent{})
 			})
 
 			s.Then(`new subscriberGet do not receive any events`, func(t *testcase.T) {
@@ -512,12 +493,12 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 				})
 
 				s.Then(`original subscriberGet receives all events`, func(t *testcase.T) {
-					require.Contains(t, subscriberGet(t).Events(), frameless.EventDeleteAll{})
+					require.Contains(t, subscriberGet(t).Events(), frameless.DeleteAllEvent{})
 					require.Len(t, subscriberGet(t).Events(), 2)
 				})
 
 				s.Then(`new subscriberGet only receive events made after the subscription`, func(t *testcase.T) {
-					require.Contains(t, othSubscriber(t).Events(), frameless.EventDeleteAll{})
+					require.Contains(t, othSubscriber(t).Events(), frameless.DeleteAllEvent{})
 					require.Len(t, othSubscriber(t).Events(), 1)
 				})
 			})
@@ -525,11 +506,11 @@ func (c deleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 	})
 }
 
-func (c deleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
+func (c DeleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, event := range getList() {
-			eventDeleteByID, ok := event.(frameless.EventDeleteByID)
+			eventDeleteByID, ok := event.(frameless.DeleteByIDEvent)
 			if !ok {
 				continue
 			}
@@ -545,11 +526,11 @@ func (c deleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []interf
 	})
 }
 
-func (c deleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
+func (c DeleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
 	AsyncTester.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, event := range getList() {
-			eventDeleteByID, ok := event.(frameless.EventDeleteByID)
+			eventDeleteByID, ok := event.(frameless.DeleteByIDEvent)
 			if !ok {
 				continue
 			}
@@ -565,20 +546,20 @@ func (c deleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func() 
 	})
 }
 
-type updaterPublisher struct {
+type UpdaterPublisher struct {
 	T
-	Subject        func(testing.TB) updaterPublisherSubject
+	Subject        func(testing.TB) UpdaterPublisherSubject
 	Context        func(testing.TB) context.Context
 	FixtureFactory func(testing.TB) frameless.FixtureFactory
 }
 
-type updaterPublisherSubject interface {
+type UpdaterPublisherSubject interface {
 	CRD
 	frameless.Updater
-	frameless.Publisher
+	frameless.UpdaterPublisher
 }
 
-func (c updaterPublisher) resource() testcase.Var {
+func (c UpdaterPublisher) resource() testcase.Var {
 	return testcase.Var{
 		Name: "resource",
 		Init: func(t *testcase.T) interface{} {
@@ -587,34 +568,28 @@ func (c updaterPublisher) resource() testcase.Var {
 	}
 }
 
-func (c updaterPublisher) resourceGet(t *testcase.T) updaterPublisherSubject {
-	return c.resource().Get(t).(updaterPublisherSubject)
+func (c UpdaterPublisher) resourceGet(t *testcase.T) UpdaterPublisherSubject {
+	return c.resource().Get(t).(UpdaterPublisherSubject)
 }
 
-func (c updaterPublisher) String() string {
+func (c UpdaterPublisher) String() string {
 	return `UpdaterPublisher`
 }
 
-func (c updaterPublisher) Test(t *testing.T) {
+func (c UpdaterPublisher) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c updaterPublisher) Benchmark(b *testing.B) {
+func (c UpdaterPublisher) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c updaterPublisher) Spec(s *testcase.Spec) {
+func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 	c.resource().Let(s, nil)
 	factoryLet(s, c.FixtureFactory)
-	subscriberFilter.Let(s, func(t *testcase.T) interface{} {
-		return func(event interface{}) bool {
-			_, ok := event.(frameless.EventUpdate)
-			return ok
-		}
-	})
 	s.Describe(`.Subscribe/Update`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			subscription, err := c.resourceGet(t).Subscribe(ctxGet(t), subscriberGet(t))
+			subscription, err := c.resourceGet(t).UpdaterEvents(ctxGet(t), subscriberGet(t))
 			if err == nil && subscription != nil {
 				t.Set(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -667,7 +642,7 @@ func (c updaterPublisher) Spec(s *testcase.Spec) {
 			}).EagerLoading(s)
 
 			s.Then(`subscriberGet receive the event`, func(t *testcase.T) {
-				require.Contains(t, subscriberGet(t).Events(), frameless.EventUpdate{Entity: updatedEntity.Get(t)})
+				require.Contains(t, subscriberGet(t).Events(), frameless.UpdateEvent{Entity: updatedEntity.Get(t)})
 			})
 
 			s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
@@ -700,14 +675,14 @@ func (c updaterPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t, subName, nil)
 					t.Set(othSubscriberKey, othSubscriber)
-					sub, err := c.resourceGet(t).Subscribe(ctxGet(t), othSubscriber)
+					sub, err := c.resourceGet(t).UpdaterEvents(ctxGet(t), othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, sub)
 					t.Defer(sub.Close)
 				})
 
 				s.Then(`original subscriberGet still receive old events`, func(t *testcase.T) {
-					require.Contains(t, subscriberGet(t).Events(), frameless.EventUpdate{Entity: updatedEntity.Get(t)})
+					require.Contains(t, subscriberGet(t).Events(), frameless.UpdateEvent{Entity: updatedEntity.Get(t)})
 				})
 
 				s.Then(`new subscriberGet do not receive old events`, func(t *testcase.T) {
@@ -730,8 +705,8 @@ func (c updaterPublisher) Spec(s *testcase.Spec) {
 					}).EagerLoading(s)
 
 					s.Then(`original subscriberGet receives all events`, func(t *testcase.T) {
-						require.Contains(t, subscriberGet(t).Events(), frameless.EventUpdate{Entity: updatedEntity.Get(t)}, `missing old update events`)
-						require.Contains(t, subscriberGet(t).Events(), frameless.EventUpdate{Entity: furtherEventUpdate.Get(t)}, `missing new update events`)
+						require.Contains(t, subscriberGet(t).Events(), frameless.UpdateEvent{Entity: updatedEntity.Get(t)}, `missing old update events`)
+						require.Contains(t, subscriberGet(t).Events(), frameless.UpdateEvent{Entity: furtherEventUpdate.Get(t)}, `missing new update events`)
 					})
 
 					s.Then(`new subscriberGet don't receive back old events`, func(t *testcase.T) {
@@ -741,11 +716,11 @@ func (c updaterPublisher) Spec(s *testcase.Spec) {
 							t.Log("this can happen when the entity have only one field: ID")
 							return
 						}
-						require.NotContains(t, othSubscriber(t).Events(), frameless.EventUpdate{Entity: updatedEntity.Get(t)})
+						require.NotContains(t, othSubscriber(t).Events(), frameless.UpdateEvent{Entity: updatedEntity.Get(t)})
 					})
 
 					s.Then(`new subscriberGet will receive new events`, func(t *testcase.T) {
-						require.Contains(t, othSubscriber(t).Events(), frameless.EventUpdate{Entity: furtherEventUpdate.Get(t)})
+						require.Contains(t, othSubscriber(t).Events(), frameless.UpdateEvent{Entity: furtherEventUpdate.Get(t)})
 					})
 				})
 			})

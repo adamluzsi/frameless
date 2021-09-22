@@ -3,14 +3,20 @@ package doubles_test
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/doubles"
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/doubles"
+	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/stretchr/testify/require"
 )
 
-var _ frameless.Subscriber = doubles.StubSubscriber{}
+var (
+	_ frameless.Subscriber        = doubles.StubSubscriber{}
+	_ frameless.CreatorSubscriber = doubles.StubSubscriber{}
+	_ frameless.UpdaterSubscriber = doubles.StubSubscriber{}
+	_ frameless.DeleterSubscriber = doubles.StubSubscriber{}
+)
 
 func TestSubscriber(t *testing.T) {
 	type Entity struct{ V int }

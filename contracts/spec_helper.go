@@ -121,6 +121,22 @@ type eventSubscriber struct {
 	mutex  sync.Mutex
 }
 
+func (s *eventSubscriber) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent) error {
+	return s.Handle(ctx, event)
+}
+
+func (s *eventSubscriber) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent) error {
+	return s.Handle(ctx, event)
+}
+
+func (s *eventSubscriber) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent) error {
+	return s.Handle(ctx, event)
+}
+
+func (s *eventSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
+	return s.Handle(ctx, event)
+}
+
 func (s *eventSubscriber) filter(event interface{}) bool {
 	if s.Filter == nil {
 		return true
@@ -202,7 +218,7 @@ var (
 			s := newEventSubscriber(
 				t,
 				subscribedEvent.Get(t).(string),
-				subscriberFilter.Get(t).(func(interface{}) bool),
+				func(i interface{}) bool { return true },
 			)
 			return s
 		},
