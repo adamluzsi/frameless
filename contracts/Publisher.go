@@ -99,7 +99,7 @@ func (c CreatorPublisher) Spec(s *testcase.Spec) {
 			return resource.Get(t).(CreatorPublisherSubject)
 		}
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			subscription, err := resourceGet(t).CreatorEvents(ctxGet(t), subscriberGet(t))
+			subscription, err := resourceGet(t).SubscribeToCreatorEvents(ctxGet(t), subscriberGet(t))
 			if err == nil && subscription != nil {
 				t.Set(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -183,7 +183,7 @@ func (c CreatorPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t, `Create`, nil)
 					t.Set(othSubscriberKey, othSubscriber)
-					newSubscription, err := resourceGet(t).CreatorEvents(ctxGet(t), othSubscriber)
+					newSubscription, err := resourceGet(t).SubscribeToCreatorEvents(ctxGet(t), othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, newSubscription)
 					t.Defer(newSubscription.Close)
@@ -284,7 +284,7 @@ func (c DeleterPublisher) Spec(s *testcase.Spec) {
 
 func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		subscription, err := c.resourceGet(t).DeleterEvents(ctxGet(t), subscriberGet(t))
+		subscription, err := c.resourceGet(t).SubscribeToDeleterEvents(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Set(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -363,7 +363,7 @@ func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t, subName, nil)
 				t.Set(othSubscriberKey, othSubscriber)
-				sub, err := c.resourceGet(t).DeleterEvents(ctxGet(t), othSubscriber)
+				sub, err := c.resourceGet(t).SubscribeToDeleterEvents(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -415,7 +415,7 @@ func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 
 func (c DeleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		subscription, err := c.resourceGet(t).DeleterEvents(ctxGet(t), subscriberGet(t))
+		subscription, err := c.resourceGet(t).SubscribeToDeleterEvents(ctxGet(t), subscriberGet(t))
 		if err == nil && subscription != nil {
 			t.Set(subscriptionKey, subscription)
 			t.Defer(subscription.Close)
@@ -466,7 +466,7 @@ func (c DeleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				othSubscriber := newEventSubscriber(t, subName, nil)
 				t.Set(othSubscriberKey, othSubscriber)
-				sub, err := c.resourceGet(t).DeleterEvents(ctxGet(t), othSubscriber)
+				sub, err := c.resourceGet(t).SubscribeToDeleterEvents(ctxGet(t), othSubscriber)
 				require.Nil(t, err)
 				require.NotNil(t, sub)
 				t.Defer(sub.Close)
@@ -589,7 +589,7 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 	factoryLet(s, c.FixtureFactory)
 	s.Describe(`.Subscribe/Update`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			subscription, err := c.resourceGet(t).UpdaterEvents(ctxGet(t), subscriberGet(t))
+			subscription, err := c.resourceGet(t).SubscribeToUpdaterEvents(ctxGet(t), subscriberGet(t))
 			if err == nil && subscription != nil {
 				t.Set(subscriptionKey, subscription)
 				t.Defer(subscription.Close)
@@ -675,7 +675,7 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					othSubscriber := newEventSubscriber(t, subName, nil)
 					t.Set(othSubscriberKey, othSubscriber)
-					sub, err := c.resourceGet(t).UpdaterEvents(ctxGet(t), othSubscriber)
+					sub, err := c.resourceGet(t).SubscribeToUpdaterEvents(ctxGet(t), othSubscriber)
 					require.Nil(t, err)
 					require.NotNil(t, sub)
 					t.Defer(sub.Close)

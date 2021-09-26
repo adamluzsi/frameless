@@ -5,23 +5,6 @@ import (
 	"io"
 )
 
-// SubscribeFunc create a subscription that will consume an event feed.
-// If event stream repeatability from a certain point is a requirement,
-// it needs to be further specified with a resource contract.
-type SubscribeFunc func(context.Context, Subscriber /* [Event] */) (Subscription, error)
-
-type Subscriber /* [Event] */ interface {
-	// Handle handles the the subscribed event.
-	// Context may or may not have meta information about the received event.
-	// To ensure expectations, define a resource specification <contract> about what must be included in the context.
-	Handle(ctx context.Context, event /* [Event] */ interface{}) error
-	// Error allow the subscription implementation to be notified about unexpected situations
-	// that needs to be handled by the subscriber.
-	// For e.g. the connection is lost and the subscriber might have cached values
-	// that must be invalidated on the next successful Handle call
-	Error(ctx context.Context, err error) error
-}
-
 type Subscription interface {
 	io.Closer
 }
@@ -45,7 +28,7 @@ type (
 	}
 
 	CreatorPublisher /* [EventCreate[Entity]] */ interface {
-		CreatorEvents(context.Context, CreatorSubscriber /* [EventCreate[Entity]] */) (Subscription, error)
+		SubscribeToCreatorEvents(context.Context, CreatorSubscriber /* [EventCreate[Entity]] */) (Subscription, error)
 	}
 )
 
@@ -58,7 +41,7 @@ type (
 	}
 
 	UpdaterPublisher interface {
-		UpdaterEvents(context.Context, UpdaterSubscriber /* [EventUpdate[Entity]] */) (Subscription, error)
+		SubscribeToUpdaterEvents(context.Context, UpdaterSubscriber /* [EventUpdate[Entity]] */) (Subscription, error)
 	}
 )
 
@@ -73,6 +56,6 @@ type (
 	}
 
 	DeleterPublisher interface {
-		DeleterEvents(context.Context, DeleterSubscriber) (Subscription, error)
+		SubscribeToDeleterEvents(context.Context, DeleterSubscriber) (Subscription, error)
 	}
 )

@@ -381,7 +381,7 @@ func (s *EventLogStorage) Compress() {
 	})
 }
 
-func (s *EventLogStorage) CreatorEvents(ctx context.Context, subscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToCreatorEvents(ctx context.Context, subscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
@@ -405,7 +405,7 @@ func (s *EventLogStorage) CreatorEvents(ctx context.Context, subscriber frameles
 	})
 }
 
-func (s *EventLogStorage) UpdaterEvents(ctx context.Context, subscriber frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToUpdaterEvents(ctx context.Context, subscriber frameless.UpdaterSubscriber) (frameless.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
@@ -429,7 +429,7 @@ func (s *EventLogStorage) UpdaterEvents(ctx context.Context, subscriber frameles
 	})
 }
 
-func (s *EventLogStorage) DeleterEvents(ctx context.Context, subscriber frameless.DeleterSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToDeleterEvents(ctx context.Context, subscriber frameless.DeleterSubscriber) (frameless.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
@@ -456,7 +456,7 @@ func (s *EventLogStorage) DeleterEvents(ctx context.Context, subscriber frameles
 	})
 }
 
-func (s *EventLogStorage) subscribe(ctx context.Context, subscriber frameless.Subscriber, name string) (frameless.Subscription, error) {
+func (s *EventLogStorage) subscribe(ctx context.Context, subscriber EventLogSubscriber, name string) (frameless.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent)
@@ -478,19 +478,19 @@ func (s *EventLogStorage) subscribe(ctx context.Context, subscriber frameless.Su
 	})
 }
 
-func (s *EventLogStorage) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToCreate(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
 	return s.subscribe(ctx, subscriber, CreateEvent)
 }
 
-func (s *EventLogStorage) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToUpdate(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
 	return s.subscribe(ctx, subscriber, UpdateEvent)
 }
 
-func (s *EventLogStorage) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToDeleteByID(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
 	return s.subscribe(ctx, subscriber, DeleteByIDEvent)
 }
 
-func (s *EventLogStorage) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage) SubscribeToDeleteAll(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
 	return s.subscribe(ctx, subscriber, DeleteAllEvent)
 }
 

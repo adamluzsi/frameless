@@ -2,8 +2,9 @@ package inmemory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/doubles"
 	"testing"
+
+	"github.com/adamluzsi/frameless/doubles"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/inmemory"
@@ -114,8 +115,8 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			},
 		}
 	})
-	subscriberGet := func(t *testcase.T) frameless.Subscriber {
-		return subscriber.Get(t).(frameless.Subscriber)
+	subscriberGet := func(t *testcase.T) inmemory.EventLogSubscriber {
+		return subscriber.Get(t).(inmemory.EventLogSubscriber)
 	}
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
 		return spec.memoryGet(t).Subscribe(spec.ctxGet(t), subscriberGet(t))

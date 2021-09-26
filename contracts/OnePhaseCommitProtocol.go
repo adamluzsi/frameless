@@ -293,7 +293,7 @@ func (c OnePhaseCommitProtocol) specCreatorPublisher(s *testcase.Spec) {
 		})
 		eventsGet := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).CreatorEvents(ctxGet(t), subscriberGet(t))
+			return publisher(t).SubscribeToCreatorEvents(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -374,7 +374,7 @@ func (c OnePhaseCommitProtocol) specUpdaterPublisher(s *testcase.Spec) {
 		})
 		eventsGet := func(t *testcase.T) []interface{} { return events.Get(t).([]interface{}) }
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return updaterPublisher(t).UpdaterEvents(ctxGet(t), subscriberGet(t))
+			return updaterPublisher(t).SubscribeToUpdaterEvents(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -451,7 +451,7 @@ func (c OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return CreatePTR(factoryGet(t), c.T)
 		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).DeleterEvents(ctxGet(t), subscriberGet(t))
+			return publisher(t).SubscribeToDeleterEvents(ctxGet(t), subscriberGet(t))
 		}
 		onSuccess := func(t *testcase.T) frameless.Subscription {
 			sub, err := subject(t)
@@ -512,7 +512,7 @@ func (c OnePhaseCommitProtocol) specDeleterPublisher(s *testcase.Spec) {
 			return CreatePTR(factoryGet(t), c.T)
 		})
 		subject := func(t *testcase.T) (frameless.Subscription, error) {
-			return publisher(t).DeleterEvents(ctxGet(t), subscriberGet(t))
+			return publisher(t).SubscribeToDeleterEvents(ctxGet(t), subscriberGet(t))
 		}
 
 		s.Before(func(t *testcase.T) {

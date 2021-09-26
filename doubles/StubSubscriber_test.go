@@ -12,7 +12,6 @@ import (
 )
 
 var (
-	_ frameless.Subscriber        = doubles.StubSubscriber{}
 	_ frameless.CreatorSubscriber = doubles.StubSubscriber{}
 	_ frameless.UpdaterSubscriber = doubles.StubSubscriber{}
 	_ frameless.DeleterSubscriber = doubles.StubSubscriber{}

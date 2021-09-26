@@ -242,18 +242,18 @@ func (m *Manager) DeleteAll(ctx context.Context) error {
 	return m.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (m *Manager) CreatorEvents(ctx context.Context, creatorSubscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
-	return m.Source.CreatorEvents(ctx, creatorSubscriber)
+func (m *Manager) SubscribeToCreatorEvents(ctx context.Context, creatorSubscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
+	return m.Source.SubscribeToCreatorEvents(ctx, creatorSubscriber)
 }
 
-func (m *Manager) DeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
-	return m.Source.DeleterEvents(ctx, s)
+func (m *Manager) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
+	return m.Source.SubscribeToDeleterEvents(ctx, s)
 }
 
-func (m *Manager) UpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+func (m *Manager) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
 	es, ok := m.Source.(ExtendedSource)
 	if !ok {
 		return nil, fmt.Errorf("%T doesn't implement frameless.UpdaterPublisher", m.Source)
 	}
-	return es.UpdaterEvents(ctx, s)
+	return es.SubscribeToUpdaterEvents(ctx, s)
 }

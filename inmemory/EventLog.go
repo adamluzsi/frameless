@@ -3,8 +3,9 @@ package inmemory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/reflects"
 	"sync"
+
+	"github.com/adamluzsi/frameless/reflects"
 
 	"github.com/adamluzsi/frameless"
 )
@@ -268,7 +269,7 @@ func (el *EventLog) notifySubscriptions(ctx context.Context, event Event) {
 	}
 }
 
-func (el *EventLog) newSubscription(ctx context.Context, subscriber frameless.Subscriber) *Subscription {
+func (el *EventLog) newSubscription(ctx context.Context, subscriber EventLogSubscriber) *Subscription {
 	var sub Subscription
 
 	sub.id = genStringUID() // replace with actual unique id maybe?
@@ -285,7 +286,7 @@ func (el *EventLog) newSubscription(ctx context.Context, subscriber frameless.Su
 type Subscription struct {
 	id         string
 	eventLog   *EventLog
-	subscriber frameless.Subscriber /*[Event]*/
+	subscriber EventLogSubscriber /*[Event]*/
 
 	context context.Context
 	cancel  func()
@@ -407,7 +408,7 @@ func (el *EventLog) delSubscription(sub *Subscription) {
 	delete(el.subscriptions, sub.id)
 }
 
-func (el *EventLog) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+func (el *EventLog) Subscribe(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -467,4 +468,17 @@ func ensureTrace(event Event) {
 	if traceable.GetTrace() == nil {
 		traceable.SetTrace(NewTrace(3))
 	}
+}
+
+
+type EventLogSubscriber /* [Event] */ interface {
+	// Handle handles the the subscribed event.
+	// Context may or may not have meta information about the received event.
+	// To ensure expectations, define a resource specification <contract> about what must be included in the context.
+	Handle(ctx context.Context, event /* [Event] */ interface{}) error
+	// Error allow the subscription implementation to be notified about unexpected situations
+	// that needs to be handled by the subscriber.
+	// For e.g. the connection is lost and the subscriber might have cached values
+	// that must be invalidated on the next successful Handle call
+	Error(ctx context.Context, err error) error
 }

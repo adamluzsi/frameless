@@ -161,7 +161,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.CreatorEvents(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				_ = event.(frameless.CreateEvent)
 				v := newT(c.V)
@@ -201,7 +201,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.DeleterEvents(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.DeleteByIDEvent); !ok {
 					return nil
@@ -243,7 +243,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.DeleterEvents(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.DeleteAllEvent); !ok {
 					return nil
@@ -291,7 +291,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.UpdaterEvents(ctx, doubles.StubSubscriber{
+		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToUpdaterEvents(ctx, doubles.StubSubscriber{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.UpdateEvent); !ok {
 					return nil

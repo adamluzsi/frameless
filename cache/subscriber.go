@@ -10,20 +10,20 @@ import (
 func (m *Manager) subscribe(ctx context.Context) error {
 	subscriber := &managerSubscriber{Manager: m}
 
-	subscription, err := m.Source.CreatorEvents(ctx, subscriber)
+	subscription, err := m.Source.SubscribeToCreatorEvents(ctx, subscriber)
 	if err != nil {
 		return err
 	}
 	m.trap(func() { _ = subscription.Close() })
 
-	subscription, err = m.Source.DeleterEvents(ctx, subscriber)
+	subscription, err = m.Source.SubscribeToDeleterEvents(ctx, subscriber)
 	if err != nil {
 		return err
 	}
 	m.trap(func() { _ = subscription.Close() })
 
 	if src, ok := m.Source.(ExtendedSource); ok {
-		subscription, err := src.UpdaterEvents(ctx, subscriber)
+		subscription, err := src.SubscribeToUpdaterEvents(ctx, subscriber)
 		if err != nil {
 			return err
 		}
