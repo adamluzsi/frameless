@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-type Mapper struct {
+type Mapper /* [ID] */ struct {
 	// Table is the entity's table name
 	Table string
 	// ID is the entity's id column name
@@ -19,15 +19,15 @@ type Mapper struct {
 	MapFn    iterators.SQLRowMapperFunc
 }
 
-func (m Mapper) TableName() string {
+func (m Mapper) TableRef() string {
 	return m.Table
 }
 
-func (m Mapper) IDName() string {
+func (m Mapper) IDRef() string {
 	return m.ID
 }
 
-func (m Mapper) ColumnNames() []string {
+func (m Mapper) ColumnRefs() []string {
 	return m.Columns
 }
 

@@ -7,13 +7,18 @@ import (
 )
 
 type Mapping /* T */ interface {
-	// TableName is the entity's postgresql table name.
-	TableName() string
-	// IDName is the entity's id column name, which can be used to access an individual record for update purpose.
-	IDName() string
-	// ColumnNames are the table's column names.
+	// TableRef is the entity's postgresql table name.
+	//   eg.:
+	//     - "public"."table_name"
+	//     - "table_name"
+	//     - table_name
+	//
+	TableRef() string
+	// IDRef is the entity's id column name, which can be used to access an individual record for update purpose.
+	IDRef() string
+	// ColumnRefs are the table's column names.
 	// The order of the column names related to Row mapping and query argument passing.
-	ColumnNames() []string
+	ColumnRefs() []string
 	// NewID creates a stateless entity id that can be used by CREATE operation.
 	// Serial and similar id solutions not supported without serialize transactions.
 	NewID(context.Context) (interface{}, error)

@@ -104,7 +104,7 @@ func TestStorage(t *testing.T) {
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
 					MetaAccessor: cm,
-					CRD:          subject,
+					Resource:     subject,
 					Publisher:    subject,
 				}
 			},

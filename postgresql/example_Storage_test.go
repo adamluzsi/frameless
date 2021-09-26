@@ -3,6 +3,7 @@ package postgresql_test
 import (
 	"context"
 	"math/rand"
+	"os"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/postgresql"
@@ -14,9 +15,11 @@ func ExampleStorage() {
 		Value string
 	}
 
-	dsn := GetDatabaseURL(nil)
+	dsn := os.Getenv(`POSTGRES_DATABASE_URL`)
 	cm := postgresql.NewConnectionManager(dsn)
-	postgresql.NewStorage(Entity{}, cm, postgresql.Mapper{
+	defer cm.Close()
+
+	storage, err := postgresql.NewStorage(Entity{}, cm, postgresql.Mapper{
 		Table:   "entities",
 		ID:      "id",
 		Columns: []string{`id`, `value`},
@@ -33,4 +36,8 @@ func ExampleStorage() {
 			return s.Scan(&ent.ID, &ent.Value)
 		},
 	})
+	if err != nil {
+		panic(err)
+	}
+	defer storage.Close()
 }

@@ -3,13 +3,9 @@ package postgresql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
-	"log"
-	"reflect"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/adamluzsi/frameless/reflects"
 
@@ -17,16 +13,15 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-
-	"github.com/lib/pq"
 )
 
-func NewStorage(T interface{}, cm *ConnectionManager, m Mapping) *Storage {
-	return &Storage{
+func NewStorage(T interface{}, cm *ConnectionManager, m Mapping) (*Storage, error) {
+	strg := &Storage{
 		T:                 T,
 		ConnectionManager: cm,
 		Mapping:           m,
 	}
+	return strg, strg.Init()
 }
 
 // Storage is a frameless external resource supplier to store a certain entity type.
@@ -36,10 +31,32 @@ type Storage struct {
 	T                 interface{}
 	ConnectionManager *ConnectionManager
 	Mapping           Mapping
+
+	sub struct {
+		Init    sync.Once
+		Manager *SubscriptionManager
+	}
+}
+
+func (pg *Storage) Init() error {
+	_, err := pg.getSubscriptionManager()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (pg *Storage) Close() error {
+	if pg.sub.Manager != nil {
+		if err := pg.sub.Manager.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
-	query := fmt.Sprintf("INSERT INTO %s (%s)\n", pg.Mapping.TableName(), pg.queryColumnList())
+	query := fmt.Sprintf("INSERT INTO %s (%s)\n", pg.Mapping.TableRef(), pg.queryColumnList())
 	query += fmt.Sprintf("VALUES (%s)\n", pg.queryColumnPlaceHolders(pg.newPrepareStatementPlaceholderGenerator()))
 
 	ctx, err := pg.BeginTx(ctx)
@@ -74,7 +91,7 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 		return err
 	}
 
-	return pg.notify(ctx, c, frameless.EventCreate{Entity: base(ptr)})
+	return pg.notify(ctx, c, frameless.CreateEvent{Entity: base(ptr)})
 }
 
 func (pg *Storage) FindByID(ctx context.Context, ptr, id interface{}) (bool, error) {
@@ -83,7 +100,7 @@ func (pg *Storage) FindByID(ctx context.Context, ptr, id interface{}) (bool, err
 		return false, err
 	}
 
-	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableName(), pg.Mapping.IDName())
+	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableRef(), pg.Mapping.IDRef())
 
 	err = pg.Mapping.Map(c.QueryRowContext(ctx, query, id), ptr)
 	if err == sql.ErrNoRows {
@@ -109,7 +126,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 	}
 
 	var (
-		tableName = pg.Mapping.TableName()
+		tableName = pg.Mapping.TableRef()
 		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
 
@@ -117,7 +134,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 		return err
 	}
 
-	if err := pg.notify(ctx, c, frameless.EventDeleteAll{}); err != nil {
+	if err := pg.notify(ctx, c, frameless.DeleteAllEvent{}); err != nil {
 		return err
 	}
 
@@ -125,7 +142,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 }
 
 func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) {
-	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, pg.Mapping.TableName())
+	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, pg.Mapping.TableRef())
 
 	ctx, err := pg.BeginTx(ctx)
 	if err != nil {
@@ -152,7 +169,7 @@ func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) 
 		return fmt.Errorf(`ErrNotFound`)
 	}
 
-	if err := pg.notify(ctx, c, frameless.EventDeleteByID{ID: id}); err != nil {
+	if err := pg.notify(ctx, c, frameless.DeleteByIDEvent{ID: id}); err != nil {
 		return err
 	}
 
@@ -174,18 +191,18 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 
 	var (
-		query           = fmt.Sprintf("UPDATE %s", pg.Mapping.TableName())
+		query           = fmt.Sprintf("UPDATE %s", pg.Mapping.TableRef())
 		nextPlaceHolder = pg.newPrepareStatementPlaceholderGenerator()
 		idPlaceHolder   = nextPlaceHolder()
 		querySetParts   []string
 	)
-	for _, name := range pg.Mapping.ColumnNames() {
+	for _, name := range pg.Mapping.ColumnRefs() {
 		querySetParts = append(querySetParts, fmt.Sprintf(`%q = %s`, name, nextPlaceHolder()))
 	}
 	if len(querySetParts) > 0 {
 		query += fmt.Sprintf("\nSET %s", strings.Join(querySetParts, `, `))
 	}
-	query += fmt.Sprintf("\nWHERE %q = %s", pg.Mapping.IDName(), idPlaceHolder)
+	query += fmt.Sprintf("\nWHERE %q = %s", pg.Mapping.IDRef(), idPlaceHolder)
 
 	id, ok := extid.Lookup(ptr)
 	if !ok {
@@ -217,11 +234,11 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 		}
 	}
 
-	return pg.notify(ctx, c, frameless.EventUpdate{Entity: base(ptr)})
+	return pg.notify(ctx, c, frameless.UpdateEvent{Entity: base(ptr)})
 }
 
 func (pg *Storage) FindAll(ctx context.Context) frameless.Iterator {
-	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableName())
+	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableRef())
 
 	c, err := pg.ConnectionManager.GetConnection(ctx)
 	if err != nil {
@@ -250,7 +267,7 @@ func (pg *Storage) RollbackTx(ctx context.Context) error {
 
 func (pg *Storage) queryColumnPlaceHolders(nextPlaceholder func() string) string {
 	var phs []string
-	for range pg.Mapping.ColumnNames() {
+	for range pg.Mapping.ColumnRefs() {
 		phs = append(phs, nextPlaceholder())
 	}
 	return strings.Join(phs, `, `)
@@ -258,7 +275,7 @@ func (pg *Storage) queryColumnPlaceHolders(nextPlaceholder func() string) string
 
 func (pg *Storage) queryColumnList() string {
 	var (
-		src = pg.Mapping.ColumnNames()
+		src = pg.Mapping.ColumnRefs()
 		dst = make([]string, 0, len(src))
 	)
 	for _, name := range src {
@@ -267,203 +284,51 @@ func (pg *Storage) queryColumnList() string {
 	return strings.Join(dst, `, `)
 }
 
-//--------------------------------------------------------------------------------------------------------------------//
-
-type notifyEvent struct {
-	Name string          `json:"name"`
-	Data json.RawMessage `json:"data"`
-	Meta metaMap
-}
-
-const (
-	notifyCreateEvent     = `create`
-	notifyUpdateEvent     = `update`
-	notifyDeleteByIDEvent = `delete_by_id`
-	notifyDeleteAllEvent  = `delete_all`
-)
-
-func (pg *Storage) notify(ctx context.Context, tx Connection, v interface{}) error {
-	var event notifyEvent
-	switch v := v.(type) {
-	case frameless.EventCreate:
-		event.Name = notifyCreateEvent
-		bs, err := json.Marshal(v.Entity)
-		if err != nil {
-			return err
-		}
-		event.Data = bs
-
-	case frameless.EventUpdate:
-		event.Name = notifyUpdateEvent
-		bs, err := json.Marshal(v.Entity)
-		if err != nil {
-			return err
-		}
-		event.Data = bs
-
-	case frameless.EventDeleteByID:
-		event.Name = notifyDeleteByIDEvent
-		bs, err := json.Marshal(v.ID)
-		if err != nil {
-			return err
-		}
-		event.Data = bs
-
-	case frameless.EventDeleteAll:
-		event.Name = notifyDeleteAllEvent
-
-	default:
-		return nil
-	}
-
-	if mm, ok := pg.ConnectionManager.lookupMetaMap(ctx); ok {
-		event.Meta = mm
-	} else {
-		event.Meta = metaMap{}
-	}
-
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.ExecContext(ctx, `SELECT pg_notify($1, $2)`, pg.getSubscriptionName(), string(payload))
-	return err
-}
-
-func (pg *Storage) newPostgresSubscription(ctx context.Context, subscriber frameless.Subscriber) (*postgresCommonSubscription, error) {
-	const (
-		minReconnectInterval = 10 * time.Second
-		maxReconnectInterval = time.Minute
-	)
-	var sub postgresCommonSubscription
-	sub.T = pg.T
-	sub.cm = pg.ConnectionManager
-	sub.ctx = ctx
-	sub.rType = reflect.TypeOf(pg.T)
-	sub.subscriber = subscriber
-	sub.listener = pq.NewListener(pg.ConnectionManager.DSN, minReconnectInterval, maxReconnectInterval, sub.reportProblemToSubscriber)
-	sub.exit.context, sub.exit.signaler = context.WithCancel(context.Background())
-	return &sub, sub.start(pg.getSubscriptionName())
-}
-
-type postgresCommonSubscription struct {
-	T          interface{}
-	cm         *ConnectionManager
-	ctx        context.Context
-	rType      reflect.Type
-	subscriber frameless.Subscriber
-	listener   *pq.Listener
-	exit       struct {
-		wg       sync.WaitGroup
-		context  context.Context
-		signaler func()
-	}
-}
-
-func (sub *postgresCommonSubscription) start(name string) error {
-	if err := sub.listener.Listen(name); err != nil {
-		return err
-	}
-
-	sub.exit.wg.Add(1)
-	go sub.handler()
-	return nil
-}
-
-func (sub *postgresCommonSubscription) handler() {
-	defer sub.exit.wg.Done()
-
-wrk:
-	for {
-		select {
-		case <-sub.exit.context.Done():
-			break wrk
-
-		case n := <-sub.listener.Notify:
-			var ne notifyEvent
-			if sub.handleError(sub.ctx, json.Unmarshal([]byte(n.Extra), &ne)) {
-				continue wrk
-			}
-
-			var event interface{}
-			switch ne.Name {
-			case notifyCreateEvent:
-				ptr := reflect.New(sub.rType)
-				if json.Unmarshal(ne.Data, ptr.Interface()) != nil {
-					continue wrk
-				}
-				event = frameless.EventCreate{Entity: ptr.Elem().Interface()}
-
-			case notifyUpdateEvent:
-				ptr := reflect.New(sub.rType)
-				if json.Unmarshal(ne.Data, ptr.Interface()) != nil {
-					continue wrk
-				}
-				event = frameless.EventUpdate{Entity: ptr.Elem().Interface()}
-
-			case notifyDeleteByIDEvent:
-				id, _ := extid.Lookup(reflect.New(sub.rType).Interface())
-				if json.Unmarshal(ne.Data, &id) != nil {
-					continue wrk
-				}
-				event = frameless.EventDeleteByID{ID: id}
-
-			case notifyDeleteAllEvent:
-				event = frameless.EventDeleteAll{}
-			}
-
-			ctx := sub.ctx
-			if ne.Meta != nil {
-				ctx = sub.cm.setMetaMap(ctx, ne.Meta)
-			}
-
-			sub.handleError(ctx, sub.subscriber.Handle(ctx, event))
-
-			continue wrk
-		case <-time.After(time.Minute):
-			sub.handleError(sub.ctx, sub.listener.Ping())
-			continue wrk
-		}
-	}
-}
-
-func (sub *postgresCommonSubscription) handleError(ctx context.Context, err error) (isErrorHandled bool) {
-	if err == nil {
-		return false
-	}
-
-	if sErr := sub.subscriber.Error(ctx, err); sErr != nil {
-		log.Println(`ERROR`, sErr.Error())
-	}
-
-	return true
-}
-
-func (sub *postgresCommonSubscription) Close() error {
-	if sub.exit.signaler == nil || sub.listener == nil {
-		return nil
-	}
-
-	sub.exit.signaler()
-	sub.exit.wg.Wait()
-	return sub.listener.Close()
-}
-
-func (sub *postgresCommonSubscription) reportProblemToSubscriber(_ pq.ListenerEventType, err error) {
-	if err != nil {
-		_ = sub.subscriber.Error(context.Background(), err)
-	}
-}
-
-func (pg *Storage) Subscribe(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-	return pg.newPostgresSubscription(ctx, subscriber)
-}
-
-func (pg *Storage) getSubscriptionName() string {
-	return pg.Mapping.TableName() + `_notify`
-}
-
 func base(ptr interface{}) interface{} {
 	return reflects.BaseValueOf(ptr).Interface()
+}
+
+func (pg *Storage) getSubscriptionManager() (_ *SubscriptionManager, rErr error) {
+	pg.sub.Init.Do(func() {
+		sm, err := NewSubscriptionManager(pg.T, context.Background(), pg.ConnectionManager, pg.Mapping)
+		if err != nil {
+			rErr = err
+			pg.sub.Init = sync.Once{}
+			return
+		}
+		pg.sub.Manager = sm
+	})
+	return pg.sub.Manager, rErr
+}
+
+func (pg *Storage) notify(ctx context.Context, c Connection, event interface{}) error {
+	sm, err := pg.getSubscriptionManager()
+	if err != nil {
+		return err
+	}
+	return sm.Notify(ctx, c, event)
+}
+
+func (pg *Storage) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber) (frameless.Subscription, error) {
+	sm, err := pg.getSubscriptionManager()
+	if err != nil {
+		return nil, err
+	}
+	return sm.SubscribeToCreatorEvents(ctx, s)
+}
+
+func (pg *Storage) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+	sm, err := pg.getSubscriptionManager()
+	if err != nil {
+		return nil, err
+	}
+	return sm.SubscribeToUpdaterEvents(ctx, s)
+}
+
+func (pg *Storage) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
+	sm, err := pg.getSubscriptionManager()
+	if err != nil {
+		return nil, err
+	}
+	return sm.SubscribeToDeleterEvents(ctx, s)
 }
