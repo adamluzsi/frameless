@@ -23,7 +23,7 @@ func TestSubscriber(t *testing.T) {
 	t.Run(`.Error`, func(t *testing.T) {
 		t.Run(`.ErrorFunc is absent`, func(t *testing.T) {
 			stub := doubles.StubSubscriber{}
-			require.Nil(t, stub.Error(ctx, errors.New(fixtures.Random.String())))
+			require.Nil(t, stub.HandleError(ctx, errors.New(fixtures.Random.String())))
 		})
 		t.Run(`.ErrorFunc is provided`, func(t *testing.T) {
 			expectedInError := errors.New(fixtures.Random.String())
@@ -32,7 +32,7 @@ func TestSubscriber(t *testing.T) {
 				require.Equal(t, expectedInError, err)
 				return expectedOutError
 			}}
-			require.Equal(t, expectedOutError, stub.Error(ctx, expectedInError))
+			require.Equal(t, expectedOutError, stub.HandleError(ctx, expectedInError))
 		})
 	})
 	t.Run(`.Handle`, func(t *testing.T) {

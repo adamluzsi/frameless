@@ -46,7 +46,7 @@ func (m subscriber) Handle(ctx context.Context, ent interface{}) error {
 	return nil
 }
 
-func (m subscriber) Error(ctx context.Context, err error) error {
+func (m subscriber) HandleError(ctx context.Context, err error) error {
 	if m.ErrorFunc != nil {
 		return m.ErrorFunc(ctx, err)
 	}
@@ -85,7 +85,7 @@ func (sub *managerSubscriber) HandleDeleteAllEvent(ctx context.Context, event fr
 	return sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (sub *managerSubscriber) Error(ctx context.Context, err error) error {
+func (sub *managerSubscriber) HandleError(ctx context.Context, err error) error {
 	// TODO: log.Println("ERROR", err.Error())
 	_ = sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
 	_ = sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)

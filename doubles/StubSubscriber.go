@@ -34,7 +34,7 @@ func (s StubSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameles
 	return s.Handle(ctx, event)
 }
 
-func (s StubSubscriber) Error(ctx context.Context, err error) error {
+func (s StubSubscriber) HandleError(ctx context.Context, err error) error {
 	if s.ErrorFunc == nil {
 		return nil
 	}

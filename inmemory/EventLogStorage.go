@@ -400,7 +400,7 @@ func (s *EventLogStorage) SubscribeToCreatorEvents(ctx context.Context, subscrib
 			}
 		},
 		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.Error(ctx, err)
+			return subscriber.HandleError(ctx, err)
 		},
 	})
 }
@@ -424,7 +424,7 @@ func (s *EventLogStorage) SubscribeToUpdaterEvents(ctx context.Context, subscrib
 			}
 		},
 		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.Error(ctx, err)
+			return subscriber.HandleError(ctx, err)
 		},
 	})
 }
@@ -451,7 +451,7 @@ func (s *EventLogStorage) SubscribeToDeleterEvents(ctx context.Context, subscrib
 			}
 		},
 		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.Error(ctx, err)
+			return subscriber.HandleError(ctx, err)
 		},
 	})
 }
@@ -473,7 +473,7 @@ func (s *EventLogStorage) subscribe(ctx context.Context, subscriber EventLogSubs
 			return subscriber.Handle(ctx, v.Value)
 		},
 		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.Error(ctx, err)
+			return subscriber.HandleError(ctx, err)
 		},
 	})
 }

@@ -480,5 +480,5 @@ type EventLogSubscriber /* [Event] */ interface {
 	// that needs to be handled by the subscriber.
 	// For e.g. the connection is lost and the subscriber might have cached values
 	// that must be invalidated on the next successful Handle call
-	Error(ctx context.Context, err error) error
+	HandleError(ctx context.Context, err error) error
 }

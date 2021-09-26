@@ -382,7 +382,7 @@ func (h *HangingSubscriber) Handle(ctx context.Context, ent interface{}) error {
 	return nil
 }
 
-func (h *HangingSubscriber) Error(ctx context.Context, err error) error {
+func (h *HangingSubscriber) HandleError(ctx context.Context, err error) error {
 	h.m.RLock()
 	defer h.m.RUnlock()
 	return nil

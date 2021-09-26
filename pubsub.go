@@ -9,22 +9,12 @@ type Subscription interface {
 	io.Closer
 }
 
-type SubscriberErrorHandler interface {
-	// Error allow the subscription implementation to be notified about unexpected situations
-	// that needs to be handled by the subscriber.
-	// For e.g. the connection is lost and the subscriber might have cached values
-	// that must be invalidated on the next successful Handle call
-	Error(ctx context.Context, err error) error
-}
-
-//--------------------------------------------------------------------------------------------------------------------//
-
 type (
 	CreateEvent /* [Entity] */ struct{ Entity T }
 
 	CreatorSubscriber /* [Event] */ interface {
 		HandleCreateEvent(ctx context.Context, event CreateEvent) error
-		SubscriberErrorHandler
+		ErrorHandler
 	}
 
 	CreatorPublisher /* [EventCreate[Entity]] */ interface {
@@ -37,7 +27,7 @@ type (
 
 	UpdaterSubscriber /* [Event] */ interface {
 		HandleUpdateEvent(ctx context.Context, event UpdateEvent) error
-		SubscriberErrorHandler
+		ErrorHandler
 	}
 
 	UpdaterPublisher interface {
@@ -52,7 +42,7 @@ type (
 	DeleterSubscriber /* [Event] */ interface {
 		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent /* [EventDeleteByID[Entity,ID]] */) error
 		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent /* [EventDeleteAll[Entity]] */) error
-		SubscriberErrorHandler
+		ErrorHandler
 	}
 
 	DeleterPublisher interface {

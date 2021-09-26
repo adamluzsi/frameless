@@ -156,7 +156,7 @@ func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
 	return s.ReturnErr
 }
 
-func (s *eventSubscriber) Error(ctx context.Context, err error) error {
+func (s *eventSubscriber) HandleError(ctx context.Context, err error) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
