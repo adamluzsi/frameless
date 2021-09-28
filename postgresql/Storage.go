@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/adamluzsi/frameless/reflects"
 
@@ -15,42 +14,41 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-func NewStorage(T interface{}, cm *ConnectionManager, m Mapping) (*Storage, error) {
-	strg := &Storage{
-		T:                 T,
-		ConnectionManager: cm,
-		Mapping:           m,
+func NewStorageByDSN(T interface{}, m Mapping, dsn string) (*Storage, error) {
+	cm := NewConnectionManager(dsn)
+	sm, err := NewListenNotifySubscriptionManager(T, m, dsn, cm)
+	if err != nil {
+		return nil, err
 	}
-	return strg, strg.Init()
+	return &Storage{
+		T:                   T,
+		Mapping:             m,
+		ConnectionManager:   cm,
+		SubscriptionManager: sm,
+	}, nil
 }
 
 // Storage is a frameless external resource supplier to store a certain entity type.
+// The Storage supplier itself is a stateless entity.
+//
 //
 // SRP: DBA
 type Storage struct {
-	T                 interface{}
-	ConnectionManager *ConnectionManager
-	Mapping           Mapping
-
-	sub struct {
-		Init    sync.Once
-		Manager *SubscriptionManager
-	}
-}
-
-func (pg *Storage) Init() error {
-	_, err := pg.getSubscriptionManager()
-	if err != nil {
-		return err
-	}
-	return nil
+	T                   interface{}
+	Mapping             Mapping
+	ConnectionManager   ConnectionManager
+	SubscriptionManager SubscriptionManager
+	MetaAccessor
 }
 
 func (pg *Storage) Close() error {
-	if pg.sub.Manager != nil {
-		if err := pg.sub.Manager.Close(); err != nil {
-			return err
-		}
+	cmErr := pg.ConnectionManager.Close()
+	smErr := pg.SubscriptionManager.Close()
+	if cmErr != nil {
+		return cmErr
+	}
+	if smErr != nil {
+		return smErr
 	}
 	return nil
 }
@@ -65,7 +63,7 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
-	c, err := pg.ConnectionManager.GetConnection(ctx)
+	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -91,11 +89,11 @@ func (pg *Storage) Create(ctx context.Context, ptr interface{}) (rErr error) {
 		return err
 	}
 
-	return pg.notify(ctx, c, frameless.CreateEvent{Entity: base(ptr)})
+	return pg.SubscriptionManager.PublishCreateEvent(ctx, frameless.CreateEvent{Entity: base(ptr)})
 }
 
 func (pg *Storage) FindByID(ctx context.Context, ptr, id interface{}) (bool, error) {
-	c, err := pg.ConnectionManager.GetConnection(ctx)
+	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -120,7 +118,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 	}
 	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
-	c, err := pg.ConnectionManager.GetConnection(ctx)
+	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -134,7 +132,7 @@ func (pg *Storage) DeleteAll(ctx context.Context) (rErr error) {
 		return err
 	}
 
-	if err := pg.notify(ctx, c, frameless.DeleteAllEvent{}); err != nil {
+	if err := pg.SubscriptionManager.PublishDeleteAllEvent(ctx, frameless.DeleteAllEvent{}); err != nil {
 		return err
 	}
 
@@ -150,7 +148,7 @@ func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) 
 	}
 	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
-	c, err := pg.ConnectionManager.GetConnection(ctx)
+	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -169,7 +167,7 @@ func (pg *Storage) DeleteByID(ctx context.Context, id interface{}) (rErr error) 
 		return fmt.Errorf(`ErrNotFound`)
 	}
 
-	if err := pg.notify(ctx, c, frameless.DeleteByIDEvent{ID: id}); err != nil {
+	if err := pg.SubscriptionManager.PublishDeleteByIDEvent(ctx, frameless.DeleteByIDEvent{ID: id}); err != nil {
 		return err
 	}
 
@@ -217,7 +215,7 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 	}
 	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
 
-	c, err := pg.ConnectionManager.GetConnection(ctx)
+	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -234,13 +232,13 @@ func (pg *Storage) Update(ctx context.Context, ptr interface{}) (rErr error) {
 		}
 	}
 
-	return pg.notify(ctx, c, frameless.UpdateEvent{Entity: base(ptr)})
+	return pg.SubscriptionManager.PublishUpdateEvent(ctx, frameless.UpdateEvent{Entity: base(ptr)})
 }
 
 func (pg *Storage) FindAll(ctx context.Context) frameless.Iterator {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableRef())
 
-	c, err := pg.ConnectionManager.GetConnection(ctx)
+	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return iterators.NewError(err)
 	}
@@ -288,47 +286,14 @@ func base(ptr interface{}) interface{} {
 	return reflects.BaseValueOf(ptr).Interface()
 }
 
-func (pg *Storage) getSubscriptionManager() (_ *SubscriptionManager, rErr error) {
-	pg.sub.Init.Do(func() {
-		sm, err := NewSubscriptionManager(pg.T, context.Background(), pg.ConnectionManager, pg.Mapping)
-		if err != nil {
-			rErr = err
-			pg.sub.Init = sync.Once{}
-			return
-		}
-		pg.sub.Manager = sm
-	})
-	return pg.sub.Manager, rErr
-}
-
-func (pg *Storage) notify(ctx context.Context, c Connection, event interface{}) error {
-	sm, err := pg.getSubscriptionManager()
-	if err != nil {
-		return err
-	}
-	return sm.Notify(ctx, c, event)
-}
-
 func (pg *Storage) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber) (frameless.Subscription, error) {
-	sm, err := pg.getSubscriptionManager()
-	if err != nil {
-		return nil, err
-	}
-	return sm.SubscribeToCreatorEvents(ctx, s)
+	return pg.SubscriptionManager.SubscribeToCreatorEvents(ctx, s)
 }
 
 func (pg *Storage) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
-	sm, err := pg.getSubscriptionManager()
-	if err != nil {
-		return nil, err
-	}
-	return sm.SubscribeToUpdaterEvents(ctx, s)
+	return pg.SubscriptionManager.SubscribeToUpdaterEvents(ctx, s)
 }
 
 func (pg *Storage) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
-	sm, err := pg.getSubscriptionManager()
-	if err != nil {
-		return nil, err
-	}
-	return sm.SubscribeToDeleterEvents(ctx, s)
+	return pg.SubscriptionManager.SubscribeToDeleterEvents(ctx, s)
 }

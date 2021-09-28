@@ -11,58 +11,62 @@ import (
 	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/postgresql"
+	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
-
-var _ interface {
-	io.Closer
-	// GetClient returns the current context's sql client.
-	// This can be a simple *sql.DB or if we within a transaction, then an *sql.Tx
-	GetConnection(ctx context.Context) (client postgresql.Connection, err error)
-	frameless.OnePhaseCommitProtocol
-} = &postgresql.ConnectionManager{}
 
 var (
 	_ postgresql.Connection = &sql.DB{}
 	_ postgresql.Connection = &sql.Tx{}
 )
 
+func _() {
+	var cm postgresql.ConnectionManager
+	var _ interface {
+		io.Closer
+		Connection(ctx context.Context) (postgresql.Connection, error)
+		frameless.OnePhaseCommitProtocol
+	} = cm
+}
+
+func TestConnectionManager_Connection(t *testing.T) {
+	ctx := context.Background()
+	p := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+
+	connectionWithoutTx, err := p.Connection(ctx)
+	require.NoError(t, err)
+	connectionWithoutTxAgain, err := p.Connection(ctx)
+	require.NoError(t, err)
+	require.Equal(t, connectionWithoutTx, connectionWithoutTxAgain)
+
+	ctxWithTx, err := p.BeginTx(ctx)
+	require.Nil(t, err)
+	defer func() { _ = p.RollbackTx(ctxWithTx) }()
+	connectionWithTx, err := p.Connection(ctxWithTx)
+	require.NoError(t, err)
+	connectionWithTxAgain, err := p.Connection(ctxWithTx)
+	require.NoError(t, err)
+	require.Equal(t, connectionWithTx, connectionWithTxAgain)
+
+	require.NotEqual(t, connectionWithTx, connectionWithoutTx)
+}
+
 func TestNewConnectionManager(t *testing.T) {
-	cm := postgresql.NewConnectionManager(GetDatabaseURL(t))
+	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	background := context.Background()
-	c, err := cm.GetConnection(background)
+	c, err := cm.Connection(background)
 	require.NoError(t, err)
 	_, err = c.ExecContext(background, `SELECT TRUE`)
 	require.NoError(t, err)
 	require.NoError(t, cm.Close())
 }
 
-func TestConnectionManager_LookupTx(t *testing.T) {
-	p := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-
-	ctx := context.Background()
-	ctxWithTx, err := p.BeginTx(ctx)
-	require.Nil(t, err)
-	defer func() { _ = p.RollbackTx(ctxWithTx) }()
-
-	_, ok := p.LookupTx(context.Background())
-	require.False(t, ok, `no tx expected in background`)
-
-	client, err := p.GetConnection(ctxWithTx)
-	require.NoError(t, err)
-
-	txClient, ok := p.LookupTx(ctxWithTx)
-	require.True(t, ok, `no tx expected in background`)
-
-	require.Equal(t, client, txClient)
-}
-
 func TestConnectionManager_Close(t *testing.T) {
-	cm := postgresql.NewConnectionManager(GetDatabaseURL(t))
+	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	background := context.Background()
-	c, err := cm.GetConnection(background)
+	c, err := cm.Connection(background)
 	require.NoError(t, err)
 	_, err = c.ExecContext(background, `SELECT TRUE`)
 	require.NoError(t, err)
@@ -71,15 +75,9 @@ func TestConnectionManager_Close(t *testing.T) {
 
 func TestConnectionManager_PoolContract(t *testing.T) {
 	testcase.RunContract(t, ConnectionManagerSpec{
-		Subject: func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD) {
-			p := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-			migrateEntityStorage(tb, p)
-			s := &postgresql.Storage{
-				T:                 StorageTestEntity{},
-				ConnectionManager: p,
-				Mapping:           StorageTestEntityMapping(),
-			}
-			return p, s
+		Subject: func(tb testing.TB) (postgresql.ConnectionManager, contracts.CRD) {
+			s := NewStorage(t)
+			return s.ConnectionManager, s
 		},
 		DriverName: "postgres",
 		Context: func(tb testing.TB) context.Context {
@@ -111,17 +109,10 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 	testcase.RunContract(t, contracts.OnePhaseCommitProtocol{
-		T: StorageTestEntity{},
+		T: psh.TestEntity{},
 		Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
-			p := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-			migrateEntityStorage(tb, p)
-
-			s := &postgresql.Storage{
-				T:                 StorageTestEntity{},
-				ConnectionManager: p,
-				Mapping:           StorageTestEntityMapping(),
-			}
-			return p, s
+			s := NewStorage(tb)
+			return s, s
 		},
 		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
 			return fixtures.NewFactory(tb)
@@ -133,10 +124,10 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 }
 
 func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
-	p := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
+	p := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	ctx := context.Background()
 	blk := func() {
-		_, err := p.GetConnection(ctx)
+		_, err := p.Connection(ctx)
 		require.Nil(t, err)
 	}
 	testcase.Race(blk, blk)
@@ -145,7 +136,7 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 var _ testcase.Contract = ConnectionManagerSpec{}
 
 type ConnectionManagerSpec struct {
-	Subject        func(tb testing.TB) (*postgresql.ConnectionManager, contracts.CRD)
+	Subject        func(tb testing.TB) (postgresql.ConnectionManager, contracts.CRD)
 	Context        func(testing.TB) context.Context
 	FixtureFactory func(testing.TB) frameless.FixtureFactory
 	DriverName     string
@@ -161,7 +152,7 @@ type ConnectionManagerSpec struct {
 
 func (c ConnectionManagerSpec) cm() testcase.Var {
 	return testcase.Var{
-		Name: "*postgresql.ConnectionManager",
+		Name: "*ConnectionManager",
 		Init: func(t *testcase.T) interface{} {
 			pool, resource := c.Subject(t)
 			c.resource().Set(t, resource)
@@ -170,8 +161,8 @@ func (c ConnectionManagerSpec) cm() testcase.Var {
 	}
 }
 
-func (c ConnectionManagerSpec) cmGet(t *testcase.T) *postgresql.ConnectionManager {
-	return c.cm().Get(t).(*postgresql.ConnectionManager)
+func (c ConnectionManagerSpec) cmGet(t *testcase.T) postgresql.ConnectionManager {
+	return c.cm().Get(t).(postgresql.ConnectionManager)
 }
 
 func (c ConnectionManagerSpec) resource() testcase.Var {
@@ -201,26 +192,26 @@ func (c ConnectionManagerSpec) factoryGet(t *testcase.T) contracts.FixtureFactor
 }
 
 func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
-	s.Describe(`.DSN`, func(s *testcase.Spec) {
-		subject := func(t *testcase.T) string {
-			return c.cmGet(t).DSN
-		}
-
-		s.Then(`it should return data source name that is usable with sql.Open`, func(t *testcase.T) {
-			db, err := sql.Open(c.DriverName, subject(t))
-			require.NoError(t, err)
-			t.Defer(db.Close)
-			require.NotNil(t, db)
-			require.Nil(t, db.Ping())
-		})
-	})
+	//s.Describe(`.DSN`, func(s *testcase.Spec) {
+	//	subject := func(t *testcase.T) string {
+	//		return c.cmGet(t).DSN
+	//	}
+	//
+	//	s.Then(`it should return data source name that is usable with sql.Open`, func(t *testcase.T) {
+	//		db, err := sql.Open(c.DriverName, subject(t))
+	//		require.NoError(t, err)
+	//		t.Defer(db.Close)
+	//		require.NotNil(t, db)
+	//		require.Nil(t, db.Ping())
+	//	})
+	//})
 
 	s.Describe(`.GetClient`, func(s *testcase.Spec) {
 		ctx := s.Let(`context`, func(t *testcase.T) interface{} {
 			return c.Context(t)
 		})
 		subject := func(t *testcase.T) (postgresql.Connection, error) {
-			return c.cmGet(t).GetConnection(ctx.Get(t).(context.Context))
+			return c.cmGet(t).Connection(ctx.Get(t).(context.Context))
 		}
 
 		s.Then(`it returns a client without an error`, func(t *testcase.T) {
@@ -237,7 +228,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 		require.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
-		connection, err := p.GetConnection(tx)
+		connection, err := p.Connection(tx)
 		require.NoError(t, err)
 
 		name := c.makeTestTableName()
@@ -247,7 +238,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 		require.NoError(t, p.RollbackTx(tx))
 
 		ctx := c.Context(t)
-		connection, err = p.GetConnection(ctx)
+		connection, err = p.Connection(ctx)
 		require.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)
@@ -264,7 +255,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 		require.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
-		connection, err := p.GetConnection(ctx) // ctx -> no transaction
+		connection, err := p.Connection(ctx) // ctx -> no transaction
 		require.NoError(t, err)
 
 		name := c.makeTestTableName()
@@ -273,7 +264,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 
 		require.NoError(t, p.RollbackTx(tx))
 
-		connection, err = p.GetConnection(ctx)
+		connection, err = p.Connection(ctx)
 		require.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)
@@ -292,14 +283,14 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 		require.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
-		connection, err := p.GetConnection(tx)
+		connection, err := p.Connection(tx)
 		require.NoError(t, err)
 
 		name := c.makeTestTableName()
 		require.Nil(t, c.CreateTable(tx, connection, name))
 		defer c.cleanupTable(t, name)
 
-		connection, err = p.GetConnection(ctx) // in no tx
+		connection, err = p.Connection(ctx) // in no tx
 		require.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)
@@ -308,7 +299,7 @@ func (c ConnectionManagerSpec) Spec(s *testcase.Spec) {
 
 		require.NoError(t, p.CommitTx(tx))
 
-		connection, err = p.GetConnection(ctx)
+		connection, err = p.Connection(ctx)
 		require.NoError(t, err)
 
 		has, err = c.HasTable(ctx, connection, name)
@@ -326,7 +317,7 @@ func (c ConnectionManagerSpec) makeTestTableName() string {
 
 func (c ConnectionManagerSpec) cleanupTable(t *testcase.T, name string) {
 	ctx := c.Context(t)
-	client, err := c.cmGet(t).GetConnection(ctx)
+	client, err := c.cmGet(t).Connection(ctx)
 	require.NoError(t, err)
 
 	has, err := c.HasTable(ctx, client, name)

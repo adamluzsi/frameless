@@ -12,7 +12,7 @@ func ExampleConnectionManager() {
 
 	ctx := context.Background()
 
-	c, err := connectionManager.GetConnection(ctx)
+	c, err := connectionManager.Connection(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -34,7 +34,7 @@ func ExampleConnectionManager_BeginTx() {
 		panic(err)
 	}
 
-	c, err := connectionManager.GetConnection(tx)
+	c, err := connectionManager.Connection(tx)
 	if err != nil {
 		panic(err)
 	}
@@ -60,7 +60,7 @@ func ExampleConnectionManager_CommitTx() {
 		panic(err)
 	}
 
-	c, err := connectionManager.GetConnection(tx)
+	c, err := connectionManager.Connection(tx)
 	if err != nil {
 		panic(err)
 	}
@@ -86,7 +86,7 @@ func ExampleConnectionManager_RollbackTx() {
 		panic(err)
 	}
 
-	c, err := connectionManager.GetConnection(tx)
+	c, err := connectionManager.Connection(tx)
 	if err != nil {
 		panic(err)
 	}

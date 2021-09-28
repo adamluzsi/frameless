@@ -1,11 +1,11 @@
-package postgresql_test
+package spechelper
 
 import (
 	"os"
 	"testing"
 )
 
-func GetDatabaseURL(tb testing.TB) string {
+func DatabaseURL(tb testing.TB) string {
 	const envKey = `POSTGRES_DATABASE_URL`
 	databaseURL, ok := os.LookupEnv(envKey)
 	if !ok {

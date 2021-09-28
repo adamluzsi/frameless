@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"reflect"
 	"sync"
 	"time"
@@ -12,6 +13,17 @@ import (
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/lib/pq"
 )
+
+type SubscriptionManager /* [Entity] */ interface {
+	io.Closer
+	PublishCreateEvent(ctx context.Context, e frameless.CreateEvent) error
+	PublishUpdateEvent(ctx context.Context, e frameless.UpdateEvent) error
+	PublishDeleteByIDEvent(ctx context.Context, e frameless.DeleteByIDEvent) error
+	PublishDeleteAllEvent(ctx context.Context, e frameless.DeleteAllEvent) error
+	SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber) (frameless.Subscription, error)
+	SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error)
+	SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error)
+}
 
 type cudNotifyEvent struct {
 	Name string          `json:"name"`
@@ -26,24 +38,27 @@ const (
 	notifyDeleteAllEvent  = `delete_all`
 )
 
-func NewSubscriptionManager(T T, ctx context.Context, cm *ConnectionManager, m Mapping) (*SubscriptionManager, error) {
-	es := &SubscriptionManager{
+func NewListenNotifySubscriptionManager(T T, m Mapping, dsn string, cm ConnectionManager) (*ListenNotifySubscriptionManager, error) {
+	es := &ListenNotifySubscriptionManager{
 		T:                 T,
+		DSN:               dsn,
 		ConnectionManager: cm,
 		Mapping:           m,
 	}
-	return es, es.Init(ctx)
+	return es, es.Init()
 }
 
-type SubscriptionManager struct {
+type ListenNotifySubscriptionManager struct {
 	T                    interface{}
-	ConnectionManager    *ConnectionManager
 	Mapping              Mapping
+	DSN                  string
+	MetaAccessor         MetaAccessor
+	ConnectionManager    ConnectionManager
 	ReconnectMinInterval time.Duration
-	ReconnectMaxInterval time.Duration
+	Listener             *pq.Listener
 
-	init     sync.Once
-	listener *pq.Listener
+	ReconnectMaxInterval time.Duration
+	init                 sync.Once
 
 	rType struct {
 		Entity reflect.Type
@@ -62,20 +77,63 @@ type SubscriptionManager struct {
 	}
 }
 
-func (sm *SubscriptionManager) Close() error {
-	if sm.listener == nil {
-		return nil
-	}
-	if err := sm.listener.Close(); err != nil {
+func (sm *ListenNotifySubscriptionManager) PublishCreateEvent(ctx context.Context, e frameless.CreateEvent) error {
+	c, err := sm.ConnectionManager.Connection(ctx)
+	if err != nil {
 		return err
 	}
-	sm.listener = nil
+	return sm.Notify(ctx, c, e)
+}
+
+func (sm *ListenNotifySubscriptionManager) PublishUpdateEvent(ctx context.Context, e frameless.UpdateEvent) error {
+	c, err := sm.ConnectionManager.Connection(ctx)
+	if err != nil {
+		return err
+	}
+	return sm.Notify(ctx, c, e)
+}
+
+func (sm *ListenNotifySubscriptionManager) PublishDeleteByIDEvent(ctx context.Context, e frameless.DeleteByIDEvent) error {
+	c, err := sm.ConnectionManager.Connection(ctx)
+	if err != nil {
+		return err
+	}
+	return sm.Notify(ctx, c, e)
+}
+
+func (sm *ListenNotifySubscriptionManager) PublishDeleteAllEvent(ctx context.Context, e frameless.DeleteAllEvent) error {
+	c, err := sm.ConnectionManager.Connection(ctx)
+	if err != nil {
+		return err
+	}
+	return sm.Notify(ctx, c, e)
+}
+
+func (sm *ListenNotifySubscriptionManager) Close() error {
+	if sm.Listener == nil {
+		return nil
+	}
+	if err := sm.Listener.Close(); err != nil {
+		return err
+	}
+	sm.Listener = nil
 	sm.init = sync.Once{}
 	return nil
 }
 
-func (sm *SubscriptionManager) Init(ctx context.Context) (rErr error) {
+// Init will initialize the ListenNotifySubscriptionManager
+// The ctx argument must represent a process lifetime level context.Context.
+// Otherwise, context.Background() is expected for it.
+func (sm *ListenNotifySubscriptionManager) Init() (rErr error) {
 	sm.init.Do(func() {
+		if sm.Listener == nil && sm.DSN == "" {
+			rErr = fmt.Errorf("missing data_source_name")
+			return
+		}
+		if sm.ConnectionManager == nil {
+			rErr = fmt.Errorf("missing *postgresql.ConnectionManager")
+			return
+		}
 		if sm.ReconnectMinInterval == 0 {
 			const defaultReconnectMinInterval = 10 * time.Second
 			sm.ReconnectMinInterval = defaultReconnectMinInterval
@@ -84,28 +142,29 @@ func (sm *SubscriptionManager) Init(ctx context.Context) (rErr error) {
 			const defaultReconnectMaxInterval = time.Minute
 			sm.ReconnectMaxInterval = defaultReconnectMaxInterval
 		}
-		if sm.ConnectionManager == nil {
-			rErr = fmt.Errorf("missing *postgresql.ConnectionManager")
-			return
-		}
-		sm.exit.context, sm.exit.signaler = context.WithCancel(ctx)
+
+		sm.exit.context, sm.exit.signaler = context.WithCancel(context.Background())
 
 		_, rTypeID, ok := extid.LookupStructField(sm.T)
 		if !ok {
 			rErr = fmt.Errorf("%T doesn't have extid field", sm.T)
 			return
 		}
+
 		sm.rType.ID = rTypeID.Type()
 		sm.rType.Entity = reflect.TypeOf(sm.T)
 
-		sm.listener = pq.NewListener(
-			sm.ConnectionManager.DSN,
-			sm.ReconnectMinInterval,
-			sm.ReconnectMaxInterval,
-			sm.reportProblemToSubscriber(ctx),
-		)
+		if sm.Listener == nil {
+			sm.Listener = pq.NewListener(
+				sm.DSN,
+				sm.ReconnectMinInterval,
+				sm.ReconnectMaxInterval,
+				sm.reportProblemToSubscriber,
+			)
+		}
 
-		if err := sm.listener.Listen(sm.channel()); err != nil {
+		err := sm.Listener.Listen(sm.channel())
+		if err != nil && err != pq.ErrChannelAlreadyOpen {
 			rErr = err
 			return
 		}
@@ -115,14 +174,17 @@ func (sm *SubscriptionManager) Init(ctx context.Context) (rErr error) {
 		go sm.worker(sm.exit.context, &wg)
 
 	})
+	if rErr != nil {
+		sm.init = sync.Once{}
+	}
 	return
 }
 
-func (sm *SubscriptionManager) channel() string {
+func (sm *ListenNotifySubscriptionManager) channel() string {
 	return sm.Mapping.TableRef() + `_cud_events`
 }
 
-func (sm *SubscriptionManager) Notify(ctx context.Context, c Connection, event interface{}) error {
+func (sm *ListenNotifySubscriptionManager) Notify(ctx context.Context, c Connection, event interface{}) error {
 	var notifyEvent cudNotifyEvent
 	switch event := event.(type) {
 	case frameless.CreateEvent:
@@ -156,7 +218,7 @@ func (sm *SubscriptionManager) Notify(ctx context.Context, c Connection, event i
 		return fmt.Errorf("unknown event: %T", event)
 	}
 
-	if mm, ok := sm.ConnectionManager.lookupMetaMap(ctx); ok {
+	if mm, ok := sm.MetaAccessor.lookupMetaMap(ctx); ok {
 		notifyEvent.Meta = mm
 	} else {
 		notifyEvent.Meta = metaMap{}
@@ -171,7 +233,7 @@ func (sm *SubscriptionManager) Notify(ctx context.Context, c Connection, event i
 	return err
 }
 
-func (sm *SubscriptionManager) worker(ctx context.Context, wg *sync.WaitGroup) {
+func (sm *ListenNotifySubscriptionManager) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 wrk:
@@ -180,7 +242,11 @@ wrk:
 		case <-ctx.Done():
 			break wrk
 
-		case n := <-sm.listener.Notify:
+		case n, ok := <-sm.Listener.Notify:
+			if !ok {
+				break wrk
+			}
+
 			var ne cudNotifyEvent
 			if sm.handleError(ctx, json.Unmarshal([]byte(n.Extra), &ne)) {
 				continue wrk
@@ -190,15 +256,15 @@ wrk:
 
 			continue wrk
 		case <-time.After(time.Minute):
-			sm.handleError(ctx, sm.listener.Ping())
+			sm.handleError(ctx, sm.Listener.Ping())
 			continue wrk
 		}
 	}
 }
 
-func (sm *SubscriptionManager) handleNotifyEvent(ctx context.Context, ne cudNotifyEvent) {
+func (sm *ListenNotifySubscriptionManager) handleNotifyEvent(ctx context.Context, ne cudNotifyEvent) {
 	if ne.Meta != nil {
-		ctx = sm.ConnectionManager.setMetaMap(ctx, ne.Meta)
+		ctx = sm.MetaAccessor.setMetaMap(ctx, ne.Meta)
 	}
 
 	switch ne.Name {
@@ -216,7 +282,7 @@ func (sm *SubscriptionManager) handleNotifyEvent(ctx context.Context, ne cudNoti
 	}
 }
 
-func (sm *SubscriptionManager) handleCreateEvent(ctx context.Context, data []byte) error {
+func (sm *ListenNotifySubscriptionManager) handleCreateEvent(ctx context.Context, data []byte) error {
 	ptr := reflect.New(sm.rType.Entity)
 	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
 		return err
@@ -231,7 +297,7 @@ func (sm *SubscriptionManager) handleCreateEvent(ctx context.Context, data []byt
 
 	return nil
 }
-func (sm *SubscriptionManager) handleUpdateEvent(ctx context.Context, data []byte) error {
+func (sm *ListenNotifySubscriptionManager) handleUpdateEvent(ctx context.Context, data []byte) error {
 	ptr := reflect.New(sm.rType.Entity)
 	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
 		return err
@@ -246,7 +312,7 @@ func (sm *SubscriptionManager) handleUpdateEvent(ctx context.Context, data []byt
 
 	return nil
 }
-func (sm *SubscriptionManager) handleDeleteByIDEvent(ctx context.Context, data []byte) error {
+func (sm *ListenNotifySubscriptionManager) handleDeleteByIDEvent(ctx context.Context, data []byte) error {
 	ptr := reflect.New(sm.rType.ID)
 	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
 		return err
@@ -262,7 +328,7 @@ func (sm *SubscriptionManager) handleDeleteByIDEvent(ctx context.Context, data [
 	return nil
 }
 
-func (sm *SubscriptionManager) handleDeleteAllEvent(ctx context.Context, data []byte) error {
+func (sm *ListenNotifySubscriptionManager) handleDeleteAllEvent(ctx context.Context, data []byte) error {
 	event := frameless.DeleteAllEvent{}
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -272,19 +338,17 @@ func (sm *SubscriptionManager) handleDeleteAllEvent(ctx context.Context, data []
 	return nil
 }
 
-func (sm *SubscriptionManager) reportProblemToSubscriber(ctx context.Context) func(_ pq.ListenerEventType, err error) {
-	return func(_ pq.ListenerEventType, err error) {
-		if err == nil {
-			return
-		}
-		_ = sm.handleError(ctx, err)
+func (sm *ListenNotifySubscriptionManager) reportProblemToSubscriber(_ pq.ListenerEventType, err error) {
+	if err == nil {
+		return
 	}
+	_ = sm.handleError(context.Background(), err)
 }
 
 // handleError will attempt to handle an error.
 // If there is an error value there, then it will Notify subscribers about the error, and return with a true.
 // In case there is no error, the function returns and "isErrorHandled" as false.
-func (sm *SubscriptionManager) handleError(ctx context.Context, err error) (isErrorHandled bool) {
+func (sm *ListenNotifySubscriptionManager) handleError(ctx context.Context, err error) (isErrorHandled bool) {
 	if err == nil {
 		return false
 	}
@@ -304,7 +368,7 @@ func (sm *SubscriptionManager) handleError(ctx context.Context, err error) (isEr
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (sm *SubscriptionManager) nextSerial() int64 {
+func (sm *ListenNotifySubscriptionManager) nextSerial() int64 {
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 
@@ -337,7 +401,7 @@ func (s *subscription) Close() error {
 	return nil
 }
 
-func (sm *SubscriptionManager) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber) (frameless.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber) (frameless.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
@@ -349,10 +413,10 @@ func (sm *SubscriptionManager) SubscribeToCreatorEvents(ctx context.Context, s f
 		sm.subs.lock.Lock()
 		defer sm.subs.lock.Unlock()
 		delete(sm.subs.creator, id)
-	}}, nil
+	}}, sm.Init()
 }
 
-func (sm *SubscriptionManager) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
@@ -364,10 +428,10 @@ func (sm *SubscriptionManager) SubscribeToUpdaterEvents(ctx context.Context, s f
 		sm.subs.lock.Lock()
 		defer sm.subs.lock.Unlock()
 		delete(sm.subs.updater, id)
-	}}, nil
+	}}, sm.Init()
 }
 
-func (sm *SubscriptionManager) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
@@ -379,5 +443,5 @@ func (sm *SubscriptionManager) SubscribeToDeleterEvents(ctx context.Context, s f
 		sm.subs.lock.Lock()
 		defer sm.subs.lock.Unlock()
 		delete(sm.subs.deleter, id)
-	}}, nil
+	}}, sm.Init()
 }

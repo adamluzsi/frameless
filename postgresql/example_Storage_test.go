@@ -15,11 +15,7 @@ func ExampleStorage() {
 		Value string
 	}
 
-	dsn := os.Getenv(`POSTGRES_DATABASE_URL`)
-	cm := postgresql.NewConnectionManager(dsn)
-	defer cm.Close()
-
-	storage, err := postgresql.NewStorage(Entity{}, cm, postgresql.Mapper{
+	mapping := postgresql.Mapper{
 		Table:   "entities",
 		ID:      "id",
 		Columns: []string{`id`, `value`},
@@ -35,9 +31,11 @@ func ExampleStorage() {
 			ent := ptr.(*Entity)
 			return s.Scan(&ent.ID, &ent.Value)
 		},
-	})
+	}
+
+	stg, err := postgresql.NewStorageByDSN(Entity{}, mapping, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		panic(err)
 	}
-	defer storage.Close()
+	defer stg.Close()
 }

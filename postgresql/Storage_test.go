@@ -8,54 +8,20 @@ import (
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/postgresql"
+	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
 	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/testcase"
 )
 
-type StorageTestEntity struct {
-	ID  string `ext:"ID"`
-	Foo string
-	Bar string
-	Baz string
-}
-
-func StorageTestEntityMapping() postgresql.Mapper {
-	return postgresql.Mapper{
-		Table:   "storage_test_entities",
-		ID:      "id",
-		Columns: []string{`id`, `foo`, `bar`, `baz`},
-		NewIDFn: func(ctx context.Context) (interface{}, error) {
-			return fixtures.Random.StringN(42), nil
-		},
-		ToArgsFn: func(ptr interface{}) ([]interface{}, error) {
-			ent := ptr.(*StorageTestEntity)
-			return []interface{}{ent.ID, ent.Foo, ent.Bar, ent.Baz}, nil
-		},
-		MapFn: func(s iterators.SQLRowScanner, ptr interface{}) error {
-			ent := ptr.(*StorageTestEntity)
-			return s.Scan(&ent.ID, &ent.Foo, &ent.Bar, &ent.Baz)
-		},
-	}
-}
-
 func TestNewStorage_smoke(t *testing.T) {
-	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-	defer cm.Close()
-	migrateEntityStorage(t, cm)
-
-	storage := &postgresql.Storage{
-		T:                 StorageTestEntity{},
-		ConnectionManager: cm,
-		Mapping:           StorageTestEntityMapping(),
-	}
+	storage := NewStorage(t)
 
 	ctx := context.Background()
 
-	ent := &StorageTestEntity{
+	ent := &psh.TestEntity{
 		Foo: "foo",
 		Bar: "bar",
 		Baz: "baz",
@@ -64,29 +30,34 @@ func TestNewStorage_smoke(t *testing.T) {
 	require.NoError(t, storage.Create(ctx, ent))
 	require.NotEmpty(t, ent.ID)
 
-	var ent2 StorageTestEntity
+	var ent2 psh.TestEntity
 	found, err := storage.FindByID(ctx, &ent2, ent.ID)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, *ent, ent2)
 
 	require.NoError(t, storage.DeleteByID(ctx, ent.ID))
-	found, err = storage.FindByID(ctx, &StorageTestEntity{}, ent.ID)
+	found, err = storage.FindByID(ctx, &psh.TestEntity{}, ent.ID)
 	require.NoError(t, err)
 	require.False(t, found, `should be deleted`)
 }
 
 func TestStorage(t *testing.T) {
-	T := StorageTestEntity{}
+	T := psh.TestEntity{}
+	mapping := psh.TestEntityMapping()
 
-	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
+	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+	sm, err := postgresql.NewListenNotifySubscriptionManager(T, mapping, psh.DatabaseURL(t), cm)
+	require.NoError(t, err)
+
 	subject := &postgresql.Storage{
-		T:                 T,
-		ConnectionManager: cm,
-		Mapping:           StorageTestEntityMapping(),
+		T:                   T,
+		ConnectionManager:   cm,
+		SubscriptionManager: sm,
+		Mapping:             mapping,
 	}
 
-	migrateEntityStorage(t, cm)
+	psh.MigrateTestEntity(t, cm)
 
 	fff := func(tb testing.TB) frameless.FixtureFactory {
 		return fixtures.NewFactory(tb)
@@ -103,7 +74,7 @@ func TestStorage(t *testing.T) {
 		contracts.MetaAccessor{T: T, V: "string",
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{
-					MetaAccessor: cm,
+					MetaAccessor: subject,
 					Resource:     subject,
 					Publisher:    subject,
 				}
@@ -116,20 +87,15 @@ func TestStorage(t *testing.T) {
 
 func TestStorage_contracts(t *testing.T) {
 	s := testcase.NewSpec(t)
-	T := StorageTestEntity{}
-	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-	stg := &postgresql.Storage{T: T,
-		ConnectionManager: cm,
-		Mapping:           StorageTestEntityMapping(),
-	}
+	T := psh.TestEntity{}
+	storage := NewStorage(t)
 
-	migrateEntityStorage(t, cm)
 	spechelper.Contract{T: T, V: "string",
 		Subject: func(tb testing.TB) spechelper.ContractSubject {
 			return spechelper.ContractSubject{
-				MetaAccessor:           cm,
-				OnePhaseCommitProtocol: cm,
-				CRUD:                   stg,
+				MetaAccessor:           storage,
+				OnePhaseCommitProtocol: storage,
+				CRUD:                   storage,
 			}
 		},
 		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
@@ -142,18 +108,14 @@ func TestStorage_contracts(t *testing.T) {
 }
 
 func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
-	T := StorageTestEntity{}
-	cm := &postgresql.ConnectionManager{DSN: GetDatabaseURL(t)}
-	migrateEntityStorage(t, cm)
+	T := psh.TestEntity{}
+	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+	psh.MigrateTestEntity(t, cm)
 
-	mapper := StorageTestEntityMapping()
+	mapper := psh.TestEntityMapping()
 	mapper.Table = `public.` + mapper.Table
 
-	subject := &postgresql.Storage{
-		T:                 StorageTestEntity{},
-		ConnectionManager: cm,
-		Mapping:           mapper,
-	}
+	subject := NewStorage(t)
 
 	fff := func(tb testing.TB) frameless.FixtureFactory {
 		return fixtures.NewFactory(tb)
@@ -170,33 +132,3 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: fff, Context: cf},
 	)
 }
-
-func migrateEntityStorage(tb testing.TB, cm *postgresql.ConnectionManager) {
-	ctx := context.Background()
-	c, err := cm.GetConnection(ctx)
-	require.Nil(tb, err)
-	_, err = c.ExecContext(ctx, storageTestMigrateDOWN)
-	require.Nil(tb, err)
-	_, err = c.ExecContext(ctx, storageTestMigrateUP)
-	require.Nil(tb, err)
-
-	tb.Cleanup(func() {
-		client, err := cm.GetConnection(ctx)
-		require.Nil(tb, err)
-		_, err = client.ExecContext(ctx, storageTestMigrateDOWN)
-		require.Nil(tb, err)
-	})
-}
-
-const storageTestMigrateUP = `
-CREATE TABLE "storage_test_entities" (
-    id	TEXT	NOT	NULL	PRIMARY KEY,
-	foo	TEXT	NOT	NULL,
-	bar	TEXT	NOT	NULL,
-	baz	TEXT	NOT	NULL
-);
-`
-
-const storageTestMigrateDOWN = `
-DROP TABLE IF EXISTS "storage_test_entities";
-`

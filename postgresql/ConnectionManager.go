@@ -3,22 +3,22 @@ package postgresql
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
+	"io"
 	"sync"
 
 	_ "github.com/lib/pq" // side-effect loading
 )
 
-func NewConnectionManager(dsn string) *ConnectionManager {
-	return &ConnectionManager{DSN: dsn}
-}
+type ConnectionManager interface {
+	io.Closer
+	// Connection returns the current context's connection.
+	// This can be a *sql.DB or if we are within a transaction, then an *sql.Tx
+	Connection(ctx context.Context) (Connection, error)
 
-type ConnectionManager struct {
-	DSN string
-
-	mutex      sync.Mutex
-	connection *sql.DB
+	BeginTx(ctx context.Context) (context.Context, error)
+	CommitTx(ctx context.Context) error
+	RollbackTx(ctx context.Context) error
 }
 
 type Connection interface {
@@ -27,9 +27,29 @@ type Connection interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-// GetConnection returns the current context's sql connection.
+func NewConnectionManager(dsn string) ConnectionManager {
+	return &connectionManager{DSN: dsn}
+}
+
+type connectionManager struct {
+	DSN string
+
+	mutex      sync.Mutex
+	connection *sql.DB
+}
+
+func (c *connectionManager) Close() error {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	if c.connection == nil {
+		return nil
+	}
+	return c.connection.Close()
+}
+
+// Connection returns the current context's sql connection.
 // This can be a *sql.DB or if we within a transaction, then a *sql.Tx.
-func (c *ConnectionManager) GetConnection(ctx context.Context) (Connection, error) {
+func (c *connectionManager) Connection(ctx context.Context) (Connection, error) {
 	if tx, ok := c.lookupTx(ctx); ok {
 		return tx, nil
 	}
@@ -50,7 +70,7 @@ type (
 	}
 )
 
-func (c *ConnectionManager) BeginTx(ctx context.Context) (context.Context, error) {
+func (c *connectionManager) BeginTx(ctx context.Context) (context.Context, error) {
 	if tx, ok := c.lookupTx(ctx); ok && tx.Tx != nil {
 		tx.depth++
 		return ctx, nil
@@ -69,7 +89,7 @@ func (c *ConnectionManager) BeginTx(ctx context.Context) (context.Context, error
 	return context.WithValue(ctx, ctxDefaultPoolTxKey{}, &ctxDefaultPoolTxValue{Tx: tx}), nil
 }
 
-func (c *ConnectionManager) CommitTx(ctx context.Context) error {
+func (c *connectionManager) CommitTx(ctx context.Context) error {
 	tx, ok := c.lookupTx(ctx)
 	if !ok {
 		return fmt.Errorf(`no postgresql transaction found in the current context`)
@@ -83,7 +103,7 @@ func (c *ConnectionManager) CommitTx(ctx context.Context) error {
 	return tx.Commit()
 }
 
-func (c *ConnectionManager) RollbackTx(ctx context.Context) error {
+func (c *connectionManager) RollbackTx(ctx context.Context) error {
 	tx, ok := c.lookupTx(ctx)
 	if !ok {
 		return fmt.Errorf(`no postgres tx in the given context`)
@@ -92,16 +112,12 @@ func (c *ConnectionManager) RollbackTx(ctx context.Context) error {
 	return tx.Rollback()
 }
 
-func (c *ConnectionManager) LookupTx(ctx context.Context) (Connection, bool) {
-	return c.lookupTx(ctx)
-}
-
-func (c *ConnectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValue, bool) {
+func (c *connectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValue, bool) {
 	tx, ok := ctx.Value(ctxDefaultPoolTxKey{}).(*ctxDefaultPoolTxValue)
 	return tx, ok
 }
 
-func (c *ConnectionManager) getConnection() (*sql.DB, error) {
+func (c *connectionManager) getConnection() (*sql.DB, error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	setConnection := func() error {
@@ -123,61 +139,4 @@ func (c *ConnectionManager) getConnection() (*sql.DB, error) {
 		}
 	}
 	return c.connection, nil
-}
-
-func (c *ConnectionManager) Close() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.connection == nil {
-		return nil
-	}
-	return c.connection.Close()
-}
-
-type ctxMetaKey struct{}
-type metaMap map[string]json.RawMessage
-
-func (c *ConnectionManager) SetMeta(ctx context.Context, key string, value interface{}) (context.Context, error) {
-	bs, err := json.Marshal(value)
-	if err != nil {
-		return ctx, err
-	}
-
-	mm, ok := c.lookupMetaMap(ctx)
-	if !ok {
-		mm = make(metaMap)
-		ctx = c.setMetaMap(ctx, mm)
-	}
-	mm[key] = bs
-
-	return ctx, nil
-}
-
-func (c *ConnectionManager) setMetaMap(ctx context.Context, mm metaMap) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	return context.WithValue(ctx, ctxMetaKey{}, mm)
-}
-func (c *ConnectionManager) lookupMetaMap(ctx context.Context) (metaMap, bool) {
-	if ctx == nil {
-		return nil, false
-	}
-	mm, ok := ctx.Value(ctxMetaKey{}).(metaMap)
-	return mm, ok
-}
-
-func (c *ConnectionManager) LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error) {
-	if ctx == nil {
-		return false, nil
-	}
-	mm, ok := c.lookupMetaMap(ctx)
-	if !ok {
-		return false, nil
-	}
-	bs, ok := mm[key]
-	if !ok {
-		return false, nil
-	}
-	return true, json.Unmarshal(bs, ptr)
 }
