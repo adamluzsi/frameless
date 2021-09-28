@@ -30,5 +30,5 @@ func getRandom(tb testing.TB) *random.Random {
 type Factory struct{ *fixtures.Factory }
 
 func (f *Factory) Fixture(T interface{}, ctx context.Context) (_T interface{}) {
-	return f.Factory.Create(T)
+	return f.Factory.Fixture(T, ctx)
 }

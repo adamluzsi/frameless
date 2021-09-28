@@ -161,22 +161,22 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		subject1 := inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog())
 		subject2 := inmemory.NewEventLogStorage(TestEntity{}, inmemory.NewEventLog())
 
+		ctx := context.Background()
 		ff := fixtures.NewFactory(t)
-		ctx := ff.Context()
-		e1 := ff.Create(TestEntity{}).(TestEntity)
-		e2 := ff.Create(TestEntity{}).(TestEntity)
+		e1 := ff.Fixture(TestEntity{}, ctx).(TestEntity)
+		e2 := ff.Fixture(TestEntity{}, ctx).(TestEntity)
 
 		require.Nil(t, subject1.Create(ctx, &e1))
 		id1, ok := extid.Lookup(e1)
 		require.True(t, ok)
 		require.NotEmpty(t, id1)
-		t.Cleanup(func() { _ = subject1.DeleteByID(ff.Context(), id1) })
+		t.Cleanup(func() { _ = subject1.DeleteByID(context.Background(), id1) })
 
 		require.Nil(t, subject2.Create(ctx, &e2))
 		id2, ok := extid.Lookup(e2)
 		require.True(t, ok)
 		require.NotEmpty(t, id2)
-		t.Cleanup(func() { _ = subject2.DeleteByID(ff.Context(), id2) })
+		t.Cleanup(func() { _ = subject2.DeleteByID(context.Background(), id2) })
 
 		ctx, err := subject1.BeginTx(ctx)
 		require.Nil(t, err)
@@ -200,14 +200,14 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		require.Nil(t, err)
 		require.False(t, found)
 
-		found, err = subject1.FindByID(ff.Context(), &TestEntity{}, id1)
+		found, err = subject1.FindByID(context.Background(), &TestEntity{}, id1)
 		require.Nil(t, err)
 		require.True(t, found)
 
 		require.Nil(t, subject1.CommitTx(ctx))
 		require.Nil(t, subject2.CommitTx(ctx))
 
-		found, err = subject1.FindByID(ff.Context(), &TestEntity{}, id1)
+		found, err = subject1.FindByID(context.Background(), &TestEntity{}, id1)
 		require.Nil(t, err)
 		require.False(t, found)
 
@@ -553,7 +553,7 @@ func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *
 	eventLog := inmemory.NewEventLog()
 	s1 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#A")
 	s2 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#B")
-	ent := fixtures.NewFactory(t).Create(TestEntity{}).(TestEntity)
+	ent := fixtures.NewFactory(t).Fixture(TestEntity{}, ctx).(TestEntity)
 	contracts.CreateEntity(t, s1, ctx, &ent)
 	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))
 }

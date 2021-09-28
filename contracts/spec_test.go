@@ -94,8 +94,7 @@ func TestContracts(t *testing.T) {
 	T := Entity{}
 	testcase.RunContract(t, getContracts(T, func(tb testing.TB) frameless.FixtureFactory {
 		ff := fixtures.NewFactory(tb)
-		require.NotNil(t, ff.Context())
-		require.NotEmpty(t, ff.Create(T).(Entity))
+		require.NotEmpty(t, ff.Fixture(T, context.Background()).(Entity))
 		return ff
 	}, func(tb testing.TB) context.Context {
 		return context.Background()
@@ -164,8 +163,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	testcase.RunContract(t, getContracts(T,
 		func(tb testing.TB) frameless.FixtureFactory {
 			ff := fixtures.NewFactory(tb)
-			require.NotNil(t, ff.Context())
-			require.NotEmpty(t, ff.Create(T).(Entity))
+			require.NotEmpty(t, ff.Fixture(T, context.Background()).(Entity))
 			return ff
 		},
 		func(tb testing.TB) context.Context {
