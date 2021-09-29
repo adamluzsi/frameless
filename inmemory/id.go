@@ -2,10 +2,11 @@ package inmemory
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
 	"strconv"
 	"sync"
+
+	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/extid"
 )
 
 func errNotFound(T, id frameless.T) error {

@@ -1,6 +1,5 @@
 package contracts
 
-
 var _ = []Interface{
 	Creator{},
 	Finder{},

@@ -470,7 +470,6 @@ func ensureTrace(event Event) {
 	}
 }
 
-
 type EventLogSubscriber /* [Event] */ interface {
 	// Handle handles the the subscribed event.
 	// Context may or may not have meta information about the received event.

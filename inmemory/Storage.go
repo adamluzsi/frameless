@@ -3,12 +3,13 @@ package inmemory
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sync"
+
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
-	"reflect"
-	"sync"
 )
 
 func NewStorage(T frameless.T, m *Memory) *Storage {

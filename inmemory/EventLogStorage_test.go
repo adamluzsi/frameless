@@ -91,7 +91,9 @@ func getStorageSpecsForT(
 		contracts.Deleter{T: T, Subject: func(tb testing.TB) contracts.CRD { return subject }, FixtureFactory: ff, Context: cf},
 		contracts.Publisher{T: T, Subject: func(tb testing.TB) contracts.PublisherSubject { return subject }, FixtureFactory: ff, Context: cf},
 		contracts.OnePhaseCommitProtocol{T: T, Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) { return subject, subject }, FixtureFactory: ff, Context: cf},
-		cachecontracts.EntityStorage{T: T, Subject: func(tb testing.TB) (storage cache.EntityStorage, cpm frameless.OnePhaseCommitProtocol) { return subject, subject.EventLog }, FixtureFactory: ff, Context: cf},
+		cachecontracts.EntityStorage{T: T, Subject: func(tb testing.TB) (storage cache.EntityStorage, cpm frameless.OnePhaseCommitProtocol) {
+			return subject, subject.EventLog
+		}, FixtureFactory: ff, Context: cf},
 		contracts.MetaAccessor{T: T, V: "string",
 			Subject: func(tb testing.TB) contracts.MetaAccessorSubject {
 				return contracts.MetaAccessorSubject{

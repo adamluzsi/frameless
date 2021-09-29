@@ -10,22 +10,22 @@ type Subscription interface {
 }
 
 type (
-	CreateEvent /* [Entity] */ struct{ Entity T }
+	CreateEvent/* [Entity] */ struct{ Entity T }
 
-	CreatorSubscriber /* [Event] */ interface {
+	CreatorSubscriber/* [Event] */ interface {
 		HandleCreateEvent(ctx context.Context, event CreateEvent) error
 		ErrorHandler
 	}
 
-	CreatorPublisher /* [EventCreate[Entity]] */ interface {
+	CreatorPublisher/* [EventCreate[Entity]] */ interface {
 		SubscribeToCreatorEvents(context.Context, CreatorSubscriber /* [EventCreate[Entity]] */) (Subscription, error)
 	}
 )
 
 type (
-	UpdateEvent /* [Entity] */ struct{ Entity T }
+	UpdateEvent/* [Entity] */ struct{ Entity T }
 
-	UpdaterSubscriber /* [Event] */ interface {
+	UpdaterSubscriber/* [Event] */ interface {
 		HandleUpdateEvent(ctx context.Context, event UpdateEvent) error
 		ErrorHandler
 	}
@@ -36,10 +36,10 @@ type (
 )
 
 type (
-	DeleteByIDEvent /* [Entity, ID] */ struct{ ID ID }
-	DeleteAllEvent /* [Entity] */      struct{}
+	DeleteByIDEvent/* [Entity, ID] */ struct{ ID ID }
+	DeleteAllEvent/* [Entity] */ struct{}
 
-	DeleterSubscriber /* [Event] */ interface {
+	DeleterSubscriber/* [Event] */ interface {
 		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent /* [EventDeleteByID[Entity,ID]] */) error
 		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent /* [EventDeleteAll[Entity]] */) error
 		ErrorHandler

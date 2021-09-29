@@ -41,25 +41,26 @@ const (
 func NewListenNotifySubscriptionManager(T T, m Mapping, dsn string, cm ConnectionManager) (*ListenNotifySubscriptionManager, error) {
 	es := &ListenNotifySubscriptionManager{
 		T:                 T,
+		Mapping:           m,
 		DSN:               dsn,
 		ConnectionManager: cm,
-		Mapping:           m,
 	}
 	return es, es.Init()
 }
 
 type ListenNotifySubscriptionManager struct {
-	T                    interface{}
-	Mapping              Mapping
-	DSN                  string
-	MetaAccessor         MetaAccessor
-	ConnectionManager    ConnectionManager
-	ReconnectMinInterval time.Duration
+	T       interface{}
+	Mapping Mapping
+
+	MetaAccessor      MetaAccessor
+	ConnectionManager ConnectionManager
+
 	Listener             *pq.Listener
-
+	DSN                  string
+	ReconnectMinInterval time.Duration
 	ReconnectMaxInterval time.Duration
-	init                 sync.Once
 
+	init  sync.Once
 	rType struct {
 		Entity reflect.Type
 		ID     reflect.Type
@@ -181,7 +182,7 @@ func (sm *ListenNotifySubscriptionManager) Init() (rErr error) {
 }
 
 func (sm *ListenNotifySubscriptionManager) channel() string {
-	return sm.Mapping.TableRef() + `_cud_events`
+	return sm.Mapping.TableRef() + `=>cud_events`
 }
 
 func (sm *ListenNotifySubscriptionManager) Notify(ctx context.Context, c Connection, event interface{}) error {
@@ -262,6 +263,27 @@ wrk:
 	}
 }
 
+// handleError will attempt to handle an error.
+// If there is an error value there, then it will Notify subscribers about the error, and return with a true.
+// In case there is no error, the function returns and "isErrorHandled" as false.
+func (sm *ListenNotifySubscriptionManager) handleError(ctx context.Context, err error) (isErrorHandled bool) {
+	if err == nil {
+		return false
+	}
+	sm.subs.lock.RLock()
+	defer sm.subs.lock.RUnlock()
+	for _, sub := range sm.subs.creator {
+		_ = sub.HandleError(ctx, err)
+	}
+	for _, sub := range sm.subs.updater {
+		_ = sub.HandleError(ctx, err)
+	}
+	for _, sub := range sm.subs.deleter {
+		_ = sub.HandleError(ctx, err)
+	}
+	return true
+}
+
 func (sm *ListenNotifySubscriptionManager) handleNotifyEvent(ctx context.Context, ne cudNotifyEvent) {
 	if ne.Meta != nil {
 		ctx = sm.MetaAccessor.setMetaMap(ctx, ne.Meta)
@@ -281,7 +303,6 @@ func (sm *ListenNotifySubscriptionManager) handleNotifyEvent(ctx context.Context
 		_ = sm.handleDeleteAllEvent(ctx, ne.Data)
 	}
 }
-
 func (sm *ListenNotifySubscriptionManager) handleCreateEvent(ctx context.Context, data []byte) error {
 	ptr := reflect.New(sm.rType.Entity)
 	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
@@ -312,6 +333,7 @@ func (sm *ListenNotifySubscriptionManager) handleUpdateEvent(ctx context.Context
 
 	return nil
 }
+
 func (sm *ListenNotifySubscriptionManager) handleDeleteByIDEvent(ctx context.Context, data []byte) error {
 	ptr := reflect.New(sm.rType.ID)
 	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
@@ -343,27 +365,6 @@ func (sm *ListenNotifySubscriptionManager) reportProblemToSubscriber(_ pq.Listen
 		return
 	}
 	_ = sm.handleError(context.Background(), err)
-}
-
-// handleError will attempt to handle an error.
-// If there is an error value there, then it will Notify subscribers about the error, and return with a true.
-// In case there is no error, the function returns and "isErrorHandled" as false.
-func (sm *ListenNotifySubscriptionManager) handleError(ctx context.Context, err error) (isErrorHandled bool) {
-	if err == nil {
-		return false
-	}
-	sm.subs.lock.RLock()
-	defer sm.subs.lock.RUnlock()
-	for _, sub := range sm.subs.creator {
-		_ = sub.HandleError(ctx, err)
-	}
-	for _, sub := range sm.subs.updater {
-		_ = sub.HandleError(ctx, err)
-	}
-	for _, sub := range sm.subs.deleter {
-		_ = sub.HandleError(ctx, err)
-	}
-	return true
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
