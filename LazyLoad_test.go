@@ -62,4 +62,10 @@ func TestLazyLoad(t *testing.T) {
 			require.Equal(t, expected, *llv().(*int))
 		})
 	})
+
+	s.Test(`safe for concurrent use`, func(t *testcase.T) {
+		llv := subject(t)
+
+		testcase.Race(func() { llv() }, func() { llv() })
+	})
 }
