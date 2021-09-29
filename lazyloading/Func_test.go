@@ -1,16 +1,16 @@
-package frameless_test
+package lazyloading_test
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/lazyloading"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
 
-func ExampleLazyLoad() {
-	value := frameless.LazyLoad(func() interface{} {
+func ExampleFunc() {
+	value := lazyloading.Func(func() interface{} {
 		// my expensive calculation's result
 		return 42
 	})
@@ -19,7 +19,7 @@ func ExampleLazyLoad() {
 	fmt.Println(value().(int))
 }
 
-func TestLazyLoad(t *testing.T) {
+func TestFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	initWasCalled := s.LetValue(`init was called`, false)
@@ -31,7 +31,7 @@ func TestLazyLoad(t *testing.T) {
 		return init.Get(t).(func() interface{})
 	}
 	subject := func(t *testcase.T) func() interface{} {
-		return frameless.LazyLoad(initGet(t))
+		return lazyloading.Func(initGet(t))
 	}
 
 	s.Test(`assuming that init block always yield a different value`, func(t *testcase.T) {
