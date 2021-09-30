@@ -158,7 +158,7 @@ func (sm *ListenNotifySubscriptionManager) Init() (rErr error) {
 				sm.DSN,
 				sm.ReconnectMinInterval,
 				sm.ReconnectMaxInterval,
-				sm.reportProblemToSubscriber,
+				sm.ListenerEventCallback,
 			)
 		}
 
@@ -358,7 +358,7 @@ func (sm *ListenNotifySubscriptionManager) handleDeleteAllEvent(ctx context.Cont
 	return nil
 }
 
-func (sm *ListenNotifySubscriptionManager) reportProblemToSubscriber(_ pq.ListenerEventType, err error) {
+func (sm *ListenNotifySubscriptionManager) ListenerEventCallback(_ pq.ListenerEventType, err error) {
 	if err == nil {
 		return
 	}
