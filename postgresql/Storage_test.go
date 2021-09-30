@@ -47,8 +47,7 @@ func TestStorage(t *testing.T) {
 	mapping := psh.TestEntityMapping()
 
 	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
-	sm, err := postgresql.NewListenNotifySubscriptionManager(T, mapping, psh.DatabaseURL(t), cm)
-	require.NoError(t, err)
+	sm := postgresql.NewListenNotifySubscriptionManager(T, mapping, psh.DatabaseURL(t), cm)
 
 	subject := &postgresql.Storage{
 		T:                   T,

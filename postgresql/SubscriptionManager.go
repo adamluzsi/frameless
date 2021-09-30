@@ -38,14 +38,13 @@ const (
 	notifyDeleteAllEvent  = `delete_all`
 )
 
-func NewListenNotifySubscriptionManager(T T, m Mapping, dsn string, cm ConnectionManager) (*ListenNotifySubscriptionManager, error) {
-	es := &ListenNotifySubscriptionManager{
+func NewListenNotifySubscriptionManager(T T, m Mapping, dsn string, cm ConnectionManager) *ListenNotifySubscriptionManager {
+	return &ListenNotifySubscriptionManager{
 		T:                 T,
 		Mapping:           m,
 		DSN:               dsn,
 		ConnectionManager: cm,
 	}
-	return es, es.Init()
 }
 
 type ListenNotifySubscriptionManager struct {
@@ -111,13 +110,12 @@ func (sm *ListenNotifySubscriptionManager) PublishDeleteAllEvent(ctx context.Con
 }
 
 func (sm *ListenNotifySubscriptionManager) Close() error {
-	if sm.Listener == nil {
-		return nil
+	if sm.Listener != nil {
+		if err := sm.Listener.Close(); err != nil {
+			return err
+		}
+		sm.Listener = nil
 	}
-	if err := sm.Listener.Close(); err != nil {
-		return err
-	}
-	sm.Listener = nil
 	sm.init = sync.Once{}
 	return nil
 }

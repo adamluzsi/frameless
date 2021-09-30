@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/adamluzsi/frameless/reflects"
@@ -14,18 +15,15 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-func NewStorageByDSN(T interface{}, m Mapping, dsn string) (*Storage, error) {
+func NewStorageByDSN(T interface{}, m Mapping, dsn string) *Storage {
 	cm := NewConnectionManager(dsn)
-	sm, err := NewListenNotifySubscriptionManager(T, m, dsn, cm)
-	if err != nil {
-		return nil, err
-	}
+	sm := NewListenNotifySubscriptionManager(T, m, dsn, cm)
 	return &Storage{
 		T:                   T,
 		Mapping:             m,
 		ConnectionManager:   cm,
 		SubscriptionManager: sm,
-	}, nil
+	}
 }
 
 // Storage is a frameless external resource supplier to store a certain entity type.
@@ -42,8 +40,14 @@ type Storage struct {
 }
 
 func (pg *Storage) Close() error {
-	cmErr := pg.ConnectionManager.Close()
-	smErr := pg.SubscriptionManager.Close()
+	cls := func(c io.Closer) error {
+		if c == nil {
+			return nil
+		}
+		return c.Close()
+	}
+	cmErr := cls(pg.ConnectionManager)
+	smErr := cls(pg.SubscriptionManager)
 	if cmErr != nil {
 		return cmErr
 	}

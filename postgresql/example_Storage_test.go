@@ -33,9 +33,6 @@ func ExampleStorage() {
 		},
 	}
 
-	stg, err := postgresql.NewStorageByDSN(Entity{}, mapping, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		panic(err)
-	}
+	stg := postgresql.NewStorageByDSN(Entity{}, mapping, os.Getenv("DATABASE_URL"))
 	defer stg.Close()
 }

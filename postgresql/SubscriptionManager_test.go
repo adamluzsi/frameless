@@ -24,8 +24,7 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 	cm := postgresql.NewConnectionManager(dsn)
 	deferClose(t, cm)
 
-	sm, err := postgresql.NewListenNotifySubscriptionManager(psh.TestEntity{}, mapping, dsn, cm)
-	require.NoError(t, err)
+	sm := postgresql.NewListenNotifySubscriptionManager(psh.TestEntity{}, mapping, dsn, cm)
 	deferClose(t, sm)
 
 	var last psh.TestEntity
