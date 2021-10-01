@@ -162,8 +162,7 @@ func (sm *ListenNotifySubscriptionManager) Init() (rErr error) {
 			)
 		}
 
-		err := sm.Listener.Listen(sm.channel())
-		if err != nil && err != pq.ErrChannelAlreadyOpen {
+		if err := sm.Listener.Listen(sm.channel()); err != nil && err != pq.ErrChannelAlreadyOpen {
 			rErr = err
 			return
 		}
