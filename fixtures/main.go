@@ -32,3 +32,7 @@ type Factory struct{ *fixtures.Factory }
 func (f *Factory) Fixture(T interface{}, ctx context.Context) (_T interface{}) {
 	return f.Factory.Fixture(T, ctx)
 }
+
+func (f *Factory) RegisterType(T interface{}, constructor func(context.Context) (T interface{})) {
+	f.Factory.RegisterType(T, constructor)
+}

@@ -29,7 +29,7 @@ func (c FixtureFactory) Spec(s *testcase.Spec) {
 	s.Parallel()
 	factoryLet(s, c.Subject)
 
-	s.Describe(`.Create`, func(s *testcase.Spec) {
+	s.Describe(`.Fixture`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) interface{} {
 			return factoryGet(t).Fixture(c.T, c.Context(t))
 		}
@@ -54,6 +54,24 @@ func (c FixtureFactory) Spec(s *testcase.Spec) {
 				extID, has := extid.Lookup(fixture)
 				require.False(t, has)
 				require.Empty(t, extID)
+			})
+		})
+
+		s.Describe(`.RegisterType`, func(s *testcase.Spec) {
+			type T struct{ V int }
+			expectedT := s.Let(`expectedT`, func(t *testcase.T) interface{} {
+				return T{V: t.Random.Int()}
+			})
+			s.Before(func(t *testcase.T) {
+				factoryGet(t).RegisterType(T{}, func(context.Context) interface{} {
+					return expectedT.Get(t).(T)
+				})
+			})
+
+			s.Then(`constructor passed with .RegisterType is used to construct the custom type`, func(t *testcase.T) {
+				actualT, ok := factoryGet(t).Fixture(T{}, c.Context(t)).(T)
+				require.True(t, ok)
+				require.Equal(t, expectedT.Get(t).(T), actualT)
 			})
 		})
 	})
