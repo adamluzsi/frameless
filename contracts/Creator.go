@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/testcase"
@@ -65,7 +66,7 @@ func (c Creator) Spec(s *testcase.Spec) {
 		if err == nil {
 			id, _ := extid.Lookup(ptr.Get(t))
 			t.Defer(resourceGet(t).DeleteByID, ctx, id)
-			IsFindable(t, c.T, resourceGet(t), ctx, id)
+			assert.IsFindable(t, c.T, resourceGet(t), ctx, id)
 		}
 		return err
 	}
@@ -78,14 +79,14 @@ func (c Creator) Spec(s *testcase.Spec) {
 
 		s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			require.Equal(t, ptr.Get(t), IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t)))
+			require.Equal(t, ptr.Get(t), assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t)))
 		})
 	})
 
 	s.When(`entity was already saved once`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
 		})
 
 		s.Then(`it will raise error because ext:ID field already points to a existing record`, func(t *testcase.T) {
@@ -96,9 +97,9 @@ func (c Creator) Spec(s *testcase.Spec) {
 	s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
 			require.Nil(t, resourceGet(t).DeleteByID(c.Context(t), getID(t)))
-			IsAbsent(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			assert.IsAbsent(t, c.T, resourceGet(t), c.Context(t), getID(t))
 		})
 
 		s.Then(`it will accept it`, func(t *testcase.T) {
@@ -107,7 +108,7 @@ func (c Creator) Spec(s *testcase.Spec) {
 
 		s.Then(`persisted object can be found`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
 		})
 	})
 
@@ -132,7 +133,7 @@ func (c Creator) Spec(s *testcase.Spec) {
 		require.True(t, ok, "ID is not defined in the entity struct src definition")
 		require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
 
-		require.Equal(t, e, IsFindable(t, c.T, resourceGet(t), c.Context(t), ID))
+		require.Equal(t, e, assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), ID))
 		require.Nil(t, resourceGet(t).DeleteByID(c.Context(t), ID))
 	})
 }

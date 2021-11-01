@@ -10,6 +10,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
@@ -60,8 +61,8 @@ func (c Storage) Spec(s *testcase.Spec) {
 				ctx     = c.Context(t)
 				storage = c.storageGet(t)
 			)
-			contracts.DeleteAllEntity(t, storage.CacheHit(ctx), ctx)
-			contracts.DeleteAllEntity(t, storage.CacheEntity(ctx), ctx)
+			assert.DeleteAllEntity(t, storage.CacheHit(ctx), ctx)
+			assert.DeleteAllEntity(t, storage.CacheEntity(ctx), ctx)
 		})
 	})
 
@@ -287,8 +288,8 @@ func (c EntityStorage) describeCacheDataUpsert(s *testcase.Spec) {
 
 	s.When(`entities present in the storage`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			contracts.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ent1.Get(t))
-			contracts.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ent2.Get(t))
+			assert.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ent1.Get(t))
+			assert.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ent2.Get(t))
 		})
 
 		entities.Let(s, func(t *testcase.T) interface{} {
@@ -380,7 +381,7 @@ func (c EntityStorage) describeCacheDataFindByIDs(s *testcase.Spec) {
 	var (
 		newEntityInit = func(t *testcase.T) interface{} {
 			ptr := contracts.CreatePTR(factoryGet(t), c.T)
-			contracts.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
+			assert.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
 			return ptr
 		}
 		ent1 = s.Let(`stored entity 1`, newEntityInit)
@@ -422,7 +423,7 @@ func (c EntityStorage) describeCacheDataFindByIDs(s *testcase.Spec) {
 		})
 
 		s.Before(func(t *testcase.T) {
-			contracts.DeleteEntity(t, c.dataStorageGet(t), ctxGet(t), ent1.Get(t))
+			assert.DeleteEntity(t, c.dataStorageGet(t), ctxGet(t), ent1.Get(t))
 		})
 
 		s.Then(`it will eventually yield error`, func(t *testcase.T) {
@@ -443,6 +444,6 @@ func (c EntityStorage) ensureExtID(t *testcase.T, ptr interface{}) {
 		return
 	}
 
-	contracts.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
-	contracts.DeleteEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
+	assert.CreateEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
+	assert.DeleteEntity(t, c.dataStorageGet(t), ctxGet(t), ptr)
 }

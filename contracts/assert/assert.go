@@ -1,32 +1,26 @@
-package contracts
+package assert
 
+// TODO: move this file to spechelper
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
-	"time"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/extid"
+	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
 )
 
-var Waiter = testcase.Waiter{
-	WaitDuration: time.Millisecond,
-	WaitTimeout:  5 * time.Second,
-}
-
-var AsyncTester = testcase.Retry{Strategy: Waiter}
-
 func HasID(tb testing.TB, ent interface{}) (id interface{}) {
 	tb.Helper()
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	Eventually.Assert(tb, func(tb testing.TB) {
 		var ok bool
 		id, ok = extid.Lookup(ent)
-		require.True(tb, ok)
+		assert.Must(tb).True(ok)
 		require.NotEmpty(tb, id)
 	})
 	return
@@ -37,7 +31,7 @@ func IsFindable(tb testing.TB, T T, subject frameless.Finder, ctx context.Contex
 	var ptr interface{}
 	newFn := newTFunc(T)
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", T, id)
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	Eventually.Assert(tb, func(tb testing.TB) {
 		ptr = newFn()
 		found, err := subject.FindByID(ctx, ptr, id)
 		require.Nil(tb, err)
@@ -50,7 +44,7 @@ func IsAbsent(tb testing.TB, T T, subject frameless.Finder, ctx context.Context,
 	tb.Helper()
 	n := newTFunc(T)
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", T, id)
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	Eventually.Assert(tb, func(tb testing.TB) {
 		found, err := subject.FindByID(ctx, n(), id)
 		require.Nil(tb, err)
 		require.False(tb, found, errMessage)
@@ -61,7 +55,7 @@ func HasEntity(tb testing.TB, subject frameless.Finder, ctx context.Context, ent
 	tb.Helper()
 	T := toT(ent)
 	id := HasID(tb, ent)
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	Eventually.Assert(tb, func(tb testing.TB) {
 		// IsFindable yields the currently found value
 		// that might be not yet the value we expect to see
 		// so the .Assert block ensure multiple tries
@@ -97,7 +91,7 @@ func UpdateEntity(tb testing.TB, subject interface {
 	// the entity is present in the resource.
 	IsFindable(tb, T, subject, ctx, id)
 	require.Nil(tb, subject.Update(ctx, ptr))
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	Eventually.Assert(tb, func(tb testing.TB) {
 		entity := IsFindable(tb, T, subject, ctx, id)
 		require.Equal(tb, ptr, entity)
 	})
@@ -118,9 +112,27 @@ func DeleteAllEntity(tb testing.TB, subject CRD, ctx context.Context) {
 	tb.Helper()
 	require.Nil(tb, subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	Eventually.Assert(tb, func(tb testing.TB) {
 		count, err := iterators.Count(subject.FindAll(ctx))
 		require.Nil(tb, err)
 		require.True(tb, count == 0, `no entity was expected to be found`)
 	})
+}
+
+func CountIs(tb testing.TB, iter frameless.Iterator, expected int) {
+	tb.Helper()
+	count, err := iterators.Count(iter)
+	assert.Must(tb).Nil(err)
+	assert.Must(tb).Equal(expected, count)
+}
+
+func TakePtr(T T) (ptrOf T) {
+	rv := reflect.ValueOf(T)
+	ptr := reflect.New(rv.Type())
+	ptr.Elem().Set(rv)
+	return ptr.Interface()
+}
+
+func takeValue(ptr interface{}) T {
+	return reflect.ValueOf(ptr).Elem().Interface()
 }

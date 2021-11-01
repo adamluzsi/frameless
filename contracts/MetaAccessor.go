@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/testcase"
@@ -179,9 +180,9 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 
 		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
 		require.NoError(t, err)
-		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, CreatePTR(factoryGet(t), c.T))
+		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, CreatePTR(factoryGet(t), c.T))
 
-		AsyncTester.Assert(t, func(t testing.TB) {
+		assert.Eventually.Assert(t, func(t testing.TB) {
 			mutex.RLock()
 			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
@@ -194,8 +195,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
-		id := HasID(t, ptr)
+		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
+		id := assert.HasID(t, ptr)
 
 		var (
 			actual interface{}
@@ -224,7 +225,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		require.NoError(t, err)
 		require.Nil(t, metaAccessorSubjectGet(t).Resource.DeleteByID(ctx, id))
 
-		AsyncTester.Assert(t, func(t testing.TB) {
+		assert.Eventually.Assert(t, func(t testing.TB) {
 			mutex.RLock()
 			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
@@ -237,7 +238,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
+		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
 
 		var (
 			actual interface{}
@@ -266,7 +267,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		require.NoError(t, err)
 		require.Nil(t, metaAccessorSubjectGet(t).Resource.DeleteAll(ctx))
 
-		AsyncTester.Assert(t, func(t testing.TB) {
+		assert.Eventually.Assert(t, func(t testing.TB) {
 			mutex.RLock()
 			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)
@@ -284,8 +285,8 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		expected := base(factoryGet(t).Fixture(c.V, nil))
 
 		ptr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
-		id := HasID(t, ptr)
+		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
+		id := assert.HasID(t, ptr)
 
 		var (
 			actual interface{}
@@ -316,7 +317,7 @@ func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
 		require.NoError(t, err)
 		require.Nil(t, crud.Update(ctx, updPTR))
 
-		AsyncTester.Assert(t, func(t testing.TB) {
+		assert.Eventually.Assert(t, func(t testing.TB) {
 			mutex.RLock()
 			defer mutex.RUnlock()
 			require.Equal(t, expected, actual)

@@ -17,12 +17,12 @@ type Contract struct {
 }
 
 type ContractSubject struct {
-	frameless.MetaAccessor
-	frameless.OnePhaseCommitProtocol
 	CRUD interface {
 		CRUD
 		Publisher
 	}
+	frameless.MetaAccessor
+	frameless.OnePhaseCommitProtocol
 }
 
 type CRUD interface {

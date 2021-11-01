@@ -76,7 +76,7 @@ func (s *EventLogStorage) ownEvent(e EventLogStorageEvent) bool {
 	return e.Namespace == s.GetNamespace()
 }
 
-func (s *EventLogStorage) Create(ctx context.Context, ptr interface{}) error {
+func (s *EventLogStorage) Create(ctx context.Context, ptr interface{}, opts ...interface{}) error {
 	if _, ok := extid.Lookup(ptr); !ok {
 		newID, err := s.newID(ctx)
 		if err != nil {

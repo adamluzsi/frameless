@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/cache"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/frameless"
@@ -146,10 +147,10 @@ func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcas
 			// mutate
 			vUpdated := c.createT(t)
 			require.Nil(t, extid.Set(vUpdated, id))
-			contracts.UpdateEntity(t, c.managerGet(t), c.Context(t), vUpdated)
+			assert.UpdateEntity(t, c.managerGet(t), c.Context(t), vUpdated)
 			waiter.Wait()
 
-			ptr := contracts.IsFindable(t, c.T, c.managerGet(t), c.Context(t), id) // should trigger caching
+			ptr := assert.IsFindable(t, c.T, c.managerGet(t), c.Context(t), id) // should trigger caching
 			require.Equal(t, vUpdated, ptr)
 		})
 
@@ -165,7 +166,7 @@ func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcas
 			require.Nil(t, c.managerGet(t).DeleteByID(c.Context(t), id))
 
 			// assert
-			contracts.IsAbsent(t, c.T, c.managerGet(t), c.Context(t), id)
+			assert.IsAbsent(t, c.T, c.managerGet(t), c.Context(t), id)
 		})
 
 		s.Test(`a delete all entity in the storage should invalidate the local cache unit entity state`, func(t *testcase.T) {
@@ -180,7 +181,7 @@ func (c Manager) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcas
 			require.Nil(t, c.managerGet(t).DeleteAll(c.Context(t)))
 			waiter.Wait()
 
-			contracts.IsAbsent(t, c.T, c.managerGet(t), c.Context(t), id) // should trigger caching for not found
+			assert.IsAbsent(t, c.T, c.managerGet(t), c.Context(t), id) // should trigger caching for not found
 		})
 	})
 }
@@ -247,7 +248,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				id, found := extid.Lookup(value.Get(t))
 				require.True(t, found)
-				v := contracts.IsFindable(t, c.T, c.sourceGet(t), c.Context(t), id)
+				v := assert.IsFindable(t, c.T, c.sourceGet(t), c.Context(t), id)
 				require.Equal(t, value.Get(t), v)
 			})
 
@@ -262,7 +263,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 
 				s.Before(func(t *testcase.T) {
 					ptr := valueWithNewContent.Get(t)
-					contracts.UpdateEntity(t, c.managerGet(t), c.Context(t), ptr)
+					assert.UpdateEntity(t, c.managerGet(t), c.Context(t), ptr)
 					waiter.Wait()
 				})
 
@@ -270,7 +271,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 					id, found := extid.Lookup(value.Get(t))
 					require.True(t, found)
 					require.NotEmpty(t, id)
-					contracts.HasEntity(t, c.managerGet(t), c.Context(t), valueWithNewContent.Get(t))
+					assert.HasEntity(t, c.managerGet(t), c.Context(t), valueWithNewContent.Get(t))
 
 					async.Assert(t, func(tb testing.TB) {
 						v := c.newT()
@@ -320,7 +321,7 @@ func (c Manager) describeResultCaching(s *testcase.Spec) {
 					require.True(t, found)
 
 					// trigger caching
-					nv = contracts.IsFindable(t, c.T, c.managerGet(t), c.Context(t), id)
+					nv = assert.IsFindable(t, c.T, c.managerGet(t), c.Context(t), id)
 					require.Equal(t, value, nv)
 					numberOfFindByIDCallAfterEntityIsFound := stubGet(t).count.FindByID
 					waiter.Wait()

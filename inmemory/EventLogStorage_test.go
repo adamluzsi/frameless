@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/cache"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/frameless/spechelper"
 
@@ -547,7 +548,7 @@ func TestEventLogStorage_Create_withAsyncSubscriptions(t *testing.T) {
 
 	ent := TestEntity{Data: fixtures.Random.StringN(4)}
 	require.Nil(t, storage.Create(ctx, &ent))
-	contracts.IsFindable(t, TestEntity{}, storage, ctx, ent.ID)
+	assert.IsFindable(t, TestEntity{}, storage, ctx, ent.ID)
 }
 
 func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *testing.T) {
@@ -556,8 +557,8 @@ func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *
 	s1 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#A")
 	s2 := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, "TestEntity#B")
 	ent := fixtures.NewFactory(t).Fixture(TestEntity{}, ctx).(TestEntity)
-	contracts.CreateEntity(t, s1, ctx, &ent)
-	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))
+	assert.CreateEntity(t, s1, ctx, &ent)
+	assert.IsAbsent(t, TestEntity{}, s2, ctx, assert.HasID(t, ent))
 }
 
 func TestEventLogStorage_contracts(t *testing.T) {

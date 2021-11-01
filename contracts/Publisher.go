@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/testcase"
 	"github.com/stretchr/testify/require"
@@ -134,11 +135,11 @@ func (c CreatorPublisher) Spec(s *testcase.Spec) {
 				entities := genEntities(factoryGet(t), c.T)
 
 				for _, entity := range entities {
-					CreateEntity(t, resourceGet(t), ctxGet(t), entity)
+					assert.CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 				}
 
 				// wait until the subscriberGet received the events
-				Waiter.While(func() bool {
+				assert.Waiter.While(func() bool {
 					return subscriberGet(t).EventsLen() < len(entities)
 				})
 
@@ -164,9 +165,9 @@ func (c CreatorPublisher) Spec(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
 						entities := genEntities(factoryGet(t), c.T)
 						for _, entity := range entities {
-							CreateEntity(t, resourceGet(t), ctxGet(t), entity)
+							assert.CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 						}
-						Waiter.Wait()
+						assert.Waiter.Wait()
 					})
 
 					s.Then(`handler don't receive the new events`, func(t *testcase.T) {
@@ -195,7 +196,7 @@ func (c CreatorPublisher) Spec(s *testcase.Spec) {
 
 				s.Then(`new subscriberGet do not receive old events`, func(t *testcase.T) {
 					t.Log(`new subscriberGet don't have the vents since it subscribed after events had been already fired`)
-					Waiter.Wait() // Wait a little to receive events if we receive any
+					assert.Waiter.Wait() // Wait a little to receive events if we receive any
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
@@ -203,14 +204,14 @@ func (c CreatorPublisher) Spec(s *testcase.Spec) {
 					furtherEvents := s.Let(`further events`, func(t *testcase.T) interface{} {
 						entities := genEntities(factoryGet(t), c.T)
 						for _, entity := range entities {
-							CreateEntity(t, resourceGet(t), ctxGet(t), entity)
+							assert.CreateEntity(t, resourceGet(t), ctxGet(t), entity)
 						}
 
-						Waiter.While(func() bool {
+						assert.Waiter.While(func() bool {
 							return subscriberGet(t).EventsLen() < len(getEvents(t))+len(entities)
 						})
 
-						Waiter.While(func() bool {
+						assert.Waiter.While(func() bool {
 							return othSubscriber(t).EventsLen() < len(entities)
 						})
 
@@ -309,7 +310,7 @@ func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	const entityKey = `entity`
 	entity := s.Let(entityKey, func(t *testcase.T) interface{} {
 		entityPtr := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
+		assert.CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
 		return entityPtr
 	}).EagerLoading(s)
 
@@ -319,15 +320,15 @@ func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 	})
 
 	s.Test(`and no events made after the subscription time then subscriberGet doesn't receive any event`, func(t *testcase.T) {
-		Waiter.Wait()
+		assert.Waiter.Wait()
 		require.Empty(t, subscriberGet(t).Events())
 	})
 
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			DeleteEntity(t, c.resourceGet(t), ctxGet(t), entity.Get(t))
+			assert.DeleteEntity(t, c.resourceGet(t), ctxGet(t), entity.Get(t))
 
-			Waiter.While(func() bool {
+			assert.Waiter.While(func() bool {
 				return subscriberGet(t).EventsLen() < 1
 			})
 		})
@@ -344,9 +345,9 @@ func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 			s.And(`more events made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					entityPtr := CreatePTR(factoryGet(t), c.T)
-					CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
-					DeleteEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
-					Waiter.Wait()
+					assert.CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
+					assert.DeleteEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
+					assert.Waiter.Wait()
 				})
 
 				s.Then(`subscriberGet no longer receive them`, func(t *testcase.T) {
@@ -385,12 +386,12 @@ func (c DeleterPublisher) specEventDeleteByID(s *testcase.Spec) {
 				furtherEvent := s.Let(furtherEventKey, func(t *testcase.T) interface{} {
 					t.Log(`given an another entity is stored`)
 					entityPtr := CreatePTR(factoryGet(t), c.T)
-					CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
-					DeleteEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
-					Waiter.While(func() bool {
+					assert.CreateEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
+					assert.DeleteEntity(t, c.resourceGet(t), ctxGet(t), entityPtr)
+					assert.Waiter.While(func() bool {
 						return subscriberGet(t).EventsLen() < 2
 					})
-					Waiter.While(func() bool {
+					assert.Waiter.While(func() bool {
 						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 					})
 					return base(entityPtr)
@@ -449,7 +450,7 @@ func (c DeleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 	s.And(`delete event made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			require.Nil(t, c.resourceGet(t).DeleteAll(ctxGet(t)))
-			Waiter.While(func() bool {
+			assert.Waiter.While(func() bool {
 				return subscriberGet(t).EventsLen() < 1
 			})
 		})
@@ -477,17 +478,17 @@ func (c DeleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 			})
 
 			s.Then(`new subscriberGet do not receive any events`, func(t *testcase.T) {
-				Waiter.Wait()
+				assert.Waiter.Wait()
 				require.Empty(t, othSubscriber(t).Events())
 			})
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
 					require.Nil(t, c.resourceGet(t).DeleteAll(ctxGet(t)))
-					Waiter.While(func() bool {
+					assert.Waiter.While(func() bool {
 						return subscriberGet(t).EventsLen() < 2
 					})
-					Waiter.While(func() bool {
+					assert.Waiter.While(func() bool {
 						return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 					})
 				})
@@ -507,7 +508,7 @@ func (c DeleterPublisher) specEventDeleteAll(s *testcase.Spec) {
 }
 
 func (c DeleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	assert.Eventually.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, event := range getList() {
 			eventDeleteByID, ok := event.(frameless.DeleteByIDEvent)
@@ -527,7 +528,7 @@ func (c DeleterPublisher) hasDeleteEntity(tb testing.TB, getList func() []interf
 }
 
 func (c DeleterPublisher) doesNotHaveDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
-	AsyncTester.Assert(tb, func(tb testing.TB) {
+	assert.Eventually.Assert(tb, func(tb testing.TB) {
 		var matchingIDFound bool
 		for _, event := range getList() {
 			eventDeleteByID, ok := event.(frameless.DeleteByIDEvent)
@@ -614,7 +615,7 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 		const entityKey = `entity`
 		entity := s.Let(entityKey, func(t *testcase.T) interface{} {
 			ptr := CreatePTR(factoryGet(t), c.T)
-			CreateEntity(t, c.resourceGet(t), ctxGet(t), ptr)
+			assert.CreateEntity(t, c.resourceGet(t), ctxGet(t), ptr)
 			return ptr
 		}).EagerLoading(s)
 		getID := func(t *testcase.T) interface{} {
@@ -636,8 +637,8 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 			updatedEntity := s.Let(updatedEntityKey, func(t *testcase.T) interface{} {
 				entityWithNewValuesPtr := CreatePTR(factoryGet(t), c.T)
 				require.Nil(t, extid.Set(entityWithNewValuesPtr, getID(t)))
-				UpdateEntity(t, c.resourceGet(t), ctxGet(t), entityWithNewValuesPtr)
-				Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
+				assert.UpdateEntity(t, c.resourceGet(t), ctxGet(t), entityWithNewValuesPtr)
+				assert.Waiter.While(func() bool { return subscriberGet(t).EventsLen() < 1 })
 				return base(entityWithNewValuesPtr)
 			}).EagerLoading(s)
 
@@ -656,7 +657,7 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 						updatedEntityPtr := CreatePTR(factoryGet(t), c.T)
 						require.Nil(t, extid.Set(updatedEntityPtr, id))
 						require.Nil(t, c.resourceGet(t).Update(ctxGet(t), updatedEntityPtr))
-						Waiter.While(func() bool {
+						assert.Waiter.While(func() bool {
 							return subscriberGet(t).EventsLen() < 1
 						})
 					})
@@ -686,7 +687,7 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 				})
 
 				s.Then(`new subscriberGet do not receive old events`, func(t *testcase.T) {
-					Waiter.Wait()
+					assert.Waiter.Wait()
 					require.Empty(t, othSubscriber(t).Events())
 				})
 
@@ -694,11 +695,11 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 					furtherEventUpdate := s.Let(`further event update`, func(t *testcase.T) interface{} {
 						updatedEntityPtr := CreatePTR(factoryGet(t), c.T)
 						require.Nil(t, extid.Set(updatedEntityPtr, getID(t)))
-						UpdateEntity(t, c.resourceGet(t), ctxGet(t), updatedEntityPtr)
-						Waiter.While(func() bool {
+						assert.UpdateEntity(t, c.resourceGet(t), ctxGet(t), updatedEntityPtr)
+						assert.Waiter.While(func() bool {
 							return subscriberGet(t).EventsLen() < 2
 						})
-						Waiter.While(func() bool {
+						assert.Waiter.While(func() bool {
 							return getSubscriber(t, othSubscriberKey).EventsLen() < 1
 						})
 						return base(updatedEntityPtr)
@@ -710,7 +711,7 @@ func (c UpdaterPublisher) Spec(s *testcase.Spec) {
 					})
 
 					s.Then(`new subscriberGet don't receive back old events`, func(t *testcase.T) {
-						Waiter.Wait()
+						assert.Waiter.Wait()
 						if reflect.DeepEqual(base(updatedEntity.Get(t)), base(furtherEventUpdate.Get(t))) {
 							t.Log("skipping test because original entity looks the same as the new variant")
 							t.Log("this can happen when the entity have only one field: ID")

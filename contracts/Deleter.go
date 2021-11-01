@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/testcase"
@@ -60,7 +61,7 @@ func (c Deleter) specDeleteByID(s *testcase.Spec) {
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, c.resourceGet(t), c.Context(t))
+		assert.DeleteAllEntity(t, c.resourceGet(t), c.Context(t))
 	})
 
 	entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -70,7 +71,7 @@ func (c Deleter) specDeleteByID(s *testcase.Spec) {
 	s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) interface{} {
 			ent := entity.Get(t)
-			CreateEntity(t, c.resourceGet(t), c.Context(t), ent)
+			assert.CreateEntity(t, c.resourceGet(t), c.Context(t), ent)
 			id, ok := extid.Lookup(ent)
 			require.True(t, ok, ErrIDRequired.Error())
 			return id
@@ -78,7 +79,7 @@ func (c Deleter) specDeleteByID(s *testcase.Spec) {
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			require.Nil(t, subject(t))
-			IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), id.Get(t))
+			assert.IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), id.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -96,21 +97,21 @@ func (c Deleter) specDeleteByID(s *testcase.Spec) {
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			othEntity := s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 				ent := CreatePTR(factoryGet(t), c.T)
-				CreateEntity(t, c.resourceGet(t), c.Context(t), ent)
+				assert.CreateEntity(t, c.resourceGet(t), c.Context(t), ent)
 				return ent
 			}).EagerLoading(s)
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 				othID, _ := extid.Lookup(othEntity.Get(t))
-				IsFindable(t, c.T, c.resourceGet(t), c.Context(t), othID)
+				assert.IsFindable(t, c.T, c.resourceGet(t), c.Context(t), othID)
 			})
 		})
 
 		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				require.Nil(t, subject(t))
-				IsAbsent(t, c.T, c.resourceGet(t), ctx.Get(t).(context.Context), id.Get(t))
+				assert.IsAbsent(t, c.T, c.resourceGet(t), ctx.Get(t).(context.Context), id.Get(t))
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
@@ -130,12 +131,12 @@ func (c Deleter) benchmarkDeleteByID(b *testing.B) {
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newT(c.T)
-		CreateEntity(t, c.resourceGet(t), c.Context(t), ptr)
+		assert.CreateEntity(t, c.resourceGet(t), c.Context(t), ptr)
 		return ptr
 	}).EagerLoading(s)
 
 	id := s.Let(`id`, func(t *testcase.T) interface{} {
-		return HasID(t, ent.Get(t))
+		return assert.HasID(t, ent.Get(t))
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
@@ -164,11 +165,11 @@ func (c Deleter) specDeleteAll(s *testcase.Spec) {
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		ent := CreatePTR(factoryGet(t), c.T)
-		CreateEntity(t, c.resourceGet(t), c.Context(t), ent)
-		eID := HasID(t, ent)
-		IsFindable(t, c.T, c.resourceGet(t), c.Context(t), eID)
+		assert.CreateEntity(t, c.resourceGet(t), c.Context(t), ent)
+		eID := assert.HasID(t, ent)
+		assert.IsFindable(t, c.T, c.resourceGet(t), c.Context(t), eID)
 		require.Nil(t, subject(t))
-		IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), eID)
+		assert.IsAbsent(t, c.T, c.resourceGet(t), c.Context(t), eID)
 	})
 }
 

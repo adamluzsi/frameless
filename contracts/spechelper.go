@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts/assert"
 
 	"github.com/adamluzsi/testcase/fixtures"
 
@@ -95,10 +96,6 @@ func requireContainsList(tb testing.TB, list interface{}, listOfContainedElement
 	for i := 0; i < v.Len(); i++ {
 		require.Contains(tb, list, v.Index(i).Interface(), msgAndArgs...)
 	}
-}
-
-func toT(ent interface{}) frameless.T {
-	return reflects.BaseValueOf(ent).Interface()
 }
 
 func base(e interface{}) interface{} {
@@ -252,9 +249,7 @@ func genEntities(ff frameless.FixtureFactory, T T) []interface{} {
 }
 
 func CreatePTR(ff frameless.FixtureFactory, T T) interface{} {
-	ptr := reflect.New(reflect.TypeOf(T))
-	ptr.Elem().Set(reflect.ValueOf(ff.Fixture(T, nil)))
-	return ptr.Interface()
+	return assert.TakePtr(ff.Fixture(T, nil))
 }
 
 var factory = testcase.Var{Name: "FixtureFactory"}
@@ -268,3 +263,4 @@ func factoryLet(s *testcase.Spec, fff func(testing.TB) frameless.FixtureFactory)
 func factoryGet(t *testcase.T) frameless.FixtureFactory {
 	return factory.Get(t).(frameless.FixtureFactory)
 }
+

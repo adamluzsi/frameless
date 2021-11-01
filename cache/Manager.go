@@ -172,7 +172,7 @@ func (m *Manager) newRT() reflect.Value {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) Create(ctx context.Context, ptr interface{}) error {
+func (m *Manager) Create(ctx context.Context, ptr interface{}, opts ...interface{}) error {
 	if err := m.Source.Create(ctx, ptr); err != nil {
 		return err
 	}

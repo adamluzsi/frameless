@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/frameless"
@@ -43,7 +44,7 @@ func (c Updater) Spec(s *testcase.Spec) {
 	factoryLet(s, c.FixtureFactory)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, c.resourceGet(t), c.Context(t))
+		assert.DeleteAllEntity(t, c.resourceGet(t), c.Context(t))
 	})
 
 	var (
@@ -68,7 +69,7 @@ func (c Updater) Spec(s *testcase.Spec) {
 	s.When(`an entity already stored`, func(s *testcase.Spec) {
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
 			ent := CreatePTR(factoryGet(t), c.T)
-			CreateEntity(t, c.resourceGet(t), ctxGet(t), ent)
+			assert.CreateEntity(t, c.resourceGet(t), ctxGet(t), ent)
 			return ent
 		}).EagerLoading(s)
 
@@ -83,7 +84,7 @@ func (c Updater) Spec(s *testcase.Spec) {
 			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 				require.Nil(t, subject(t))
 
-				HasEntity(t, c.resourceGet(t), c.Context(t), entityWithChanges.Get(t))
+				assert.HasEntity(t, c.resourceGet(t), c.Context(t), entityWithChanges.Get(t))
 			})
 
 			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -103,8 +104,8 @@ func (c Updater) Spec(s *testcase.Spec) {
 	s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
 		entityWithChanges.Let(s, func(t *testcase.T) interface{} {
 			newEntity := CreatePTR(factoryGet(t), c.T)
-			CreateEntity(t, c.resourceGet(t), ctxGet(t), newEntity)
-			DeleteEntity(t, c.resourceGet(t), ctxGet(t), newEntity)
+			assert.CreateEntity(t, c.resourceGet(t), ctxGet(t), newEntity)
+			assert.DeleteEntity(t, c.resourceGet(t), ctxGet(t), newEntity)
 			return newEntity
 		})
 
@@ -124,7 +125,7 @@ func (c Updater) Benchmark(b *testing.B) {
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newT(c.T)
-		CreateEntity(t, c.resourceGet(t), c.Context(t), ptr)
+		assert.CreateEntity(t, c.resourceGet(t), c.Context(t), ptr)
 		return ptr
 	}).EagerLoading(s)
 

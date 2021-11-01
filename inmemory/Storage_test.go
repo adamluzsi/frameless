@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/inmemory"
 	"github.com/adamluzsi/testcase"
@@ -38,6 +38,6 @@ func TestStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *testing.
 	s1 := inmemory.NewStorageWithNamespace(TestEntity{}, memory, "TestEntity#A")
 	s2 := inmemory.NewStorageWithNamespace(TestEntity{}, memory, "TestEntity#B")
 	ent := fixtures.NewFactory(t).Fixture(TestEntity{}, ctx).(TestEntity)
-	contracts.CreateEntity(t, s1, ctx, &ent)
-	contracts.IsAbsent(t, TestEntity{}, s2, ctx, contracts.HasID(t, ent))
+	assert.CreateEntity(t, s1, ctx, &ent)
+	assert.IsAbsent(t, TestEntity{}, s2, ctx, assert.HasID(t, ent))
 }

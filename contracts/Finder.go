@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/contracts/assert"
 	"github.com/adamluzsi/frameless/extid"
-
 	"github.com/adamluzsi/testcase"
 
 	"github.com/adamluzsi/frameless/iterators"
@@ -85,7 +85,7 @@ func (c findByID) Spec(s *testcase.Spec) {
 			var ids []interface{}
 			for i := 0; i < 12; i++ {
 				entity := CreatePTR(ff, c.T)
-				CreateEntity(t, r, c.Context(t), entity)
+				assert.CreateEntity(t, r, c.Context(t), entity)
 				id, ok := extid.Lookup(entity)
 				require.True(t, ok, ErrIDRequired.Error())
 				ids = append(ids, id)
@@ -122,12 +122,12 @@ func (c findByID) Benchmark(b *testing.B) {
 
 	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
 		ptr := newT(c.T)
-		CreateEntity(t, r, c.Context(t), ptr)
+		assert.CreateEntity(t, r, c.Context(t), ptr)
 		return ptr
 	}).EagerLoading(s)
 
 	id := s.Let(`id`, func(t *testcase.T) interface{} {
-		return HasID(t, ent.Get(t))
+		return assert.HasID(t, ent.Get(t))
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
@@ -140,9 +140,9 @@ func (c findByID) createNonActiveID(tb testing.TB, ctx context.Context, r CRD, f
 	tb.Helper()
 	ptr := CreatePTR(ff, c.T)
 	tb.Logf(`%#v`, ptr)
-	CreateEntity(tb, r, ctx, ptr)
+	assert.CreateEntity(tb, r, ctx, ptr)
 	id, _ := extid.Lookup(ptr)
-	DeleteEntity(tb, r, ctx, ptr)
+	assert.DeleteEntity(tb, r, ctx, ptr)
 	return id
 }
 
@@ -172,7 +172,7 @@ func (c findAll) Spec(s *testcase.Spec) {
 	beforeAll := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		beforeAll.Do(func() {
-			DeleteAllEntity(t, resourceGet(t), c.Context(t))
+			assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
 		})
 	})
 
@@ -187,7 +187,7 @@ func (c findAll) Spec(s *testcase.Spec) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, resourceGet(t), c.Context(t))
+			assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
 		})
 
 		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
@@ -196,11 +196,11 @@ func (c findAll) Spec(s *testcase.Spec) {
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				CreateEntity(t, resourceGet(t), c.Context(t), entity.Get(t))
+				assert.CreateEntity(t, resourceGet(t), c.Context(t), entity.Get(t))
 			})
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
-				AsyncTester.Assert(t, func(tb testing.TB) {
+				assert.Eventually.Assert(t, func(tb testing.TB) {
 					count, err := iterators.Count(subject(t))
 					require.Nil(tb, err)
 					require.Equal(tb, 1, count)
@@ -208,7 +208,7 @@ func (c findAll) Spec(s *testcase.Spec) {
 			})
 
 			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
-				AsyncTester.Assert(t, func(tb testing.TB) {
+				assert.Eventually.Assert(t, func(tb testing.TB) {
 					entities := c.findAllN(t, subject, 1)
 					contains(tb, entities, entity.Get(t))
 				})
@@ -217,12 +217,12 @@ func (c findAll) Spec(s *testcase.Spec) {
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 				othEntity := s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 					ent := CreatePTR(factoryGet(t), c.T)
-					CreateEntity(t, resourceGet(t), c.Context(t), ent)
+					assert.CreateEntity(t, resourceGet(t), c.Context(t), ent)
 					return ent
 				}).EagerLoading(s)
 
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {
-					AsyncTester.Assert(t, func(tb testing.TB) {
+					assert.Eventually.Assert(t, func(tb testing.TB) {
 						entities := c.findAllN(t, subject, 2)
 						contains(tb, entities, entity.Get(t))
 						contains(tb, entities, othEntity.Get(t))
@@ -233,7 +233,7 @@ func (c findAll) Spec(s *testcase.Spec) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				DeleteAllEntity(t, resourceGet(t), c.Context(t))
+				assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
@@ -268,16 +268,16 @@ func (c findAll) Benchmark(b *testing.B) {
 func (c findByID) createDummyID(t *testcase.T, r CRD) interface{} {
 	ent := CreatePTR(factoryGet(t), c.T)
 	ctx := c.Context(t)
-	CreateEntity(t, r, ctx, ent)
-	id := HasID(t, ent)
-	DeleteEntity(t, r, ctx, ent)
+	assert.CreateEntity(t, r, ctx, ent)
+	id := assert.HasID(t, ent)
+	assert.DeleteEntity(t, r, ctx, ent)
 	return id
 }
 
 func (c findAll) findAllN(t *testcase.T, subject func(t *testcase.T) frameless.Iterator, n int) []interface{} {
 	sliceRType := reflect.SliceOf(reflect.TypeOf(c.T))
 	var entities interface{}
-	AsyncTester.Assert(t, func(tb testing.TB) {
+	assert.Eventually.Assert(t, func(tb testing.TB) {
 		all := subject(t)
 		entities = reflect.MakeSlice(sliceRType, 0, 0).Interface()
 		require.Nil(t, iterators.Collect(all, &entities))
@@ -353,13 +353,13 @@ func (c FindOne) Spec(s *testcase.Spec) {
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAllEntity(t, resourceGet(t), c.Context(t))
+		assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
 	})
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			CreateEntity(t, resourceGet(t), c.Context(t), entity.Get(t))
-			HasID(t, entity.Get(t))
+			assert.CreateEntity(t, resourceGet(t), c.Context(t), entity.Get(t))
+			assert.HasID(t, entity.Get(t))
 		})
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
@@ -386,7 +386,7 @@ func (c FindOne) Spec(s *testcase.Spec) {
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			s.Let(`oth-entity`, func(t *testcase.T) interface{} {
 				ent := CreatePTR(factoryGet(t), c.T)
-				CreateEntity(t, resourceGet(t), c.Context(t), ent)
+				assert.CreateEntity(t, resourceGet(t), c.Context(t), ent)
 				return ent
 			}).EagerLoading(s)
 
@@ -401,7 +401,7 @@ func (c FindOne) Spec(s *testcase.Spec) {
 
 	s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			DeleteAllEntity(t, resourceGet(t), c.Context(t))
+			assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
 		})
 
 		s.Then(`it will have no result`, func(t *testcase.T) {

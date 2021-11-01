@@ -28,7 +28,7 @@ type Storage struct {
 	initNamespace sync.Once
 }
 
-func (s *Storage) Create(ctx context.Context, ptr interface{}) error {
+func (s *Storage) Create(ctx context.Context, ptr interface{}, opts ...interface{}) error {
 	if _, ok := extid.Lookup(ptr); !ok {
 		newID, err := s.newID(ctx)
 		if err != nil {
