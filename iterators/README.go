@@ -13,9 +13,9 @@
 	As a general rule of thumb, if the consumer is not the final destination of the data stream,
 	the consumer should use the pipeline pattern, in order to avoid bottleneck with local resources.
 
-	Interface define a separate object that encapsulates accessing and traversing an aggregate object.
+	frameless.Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
 	Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
-	Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
+	frameless.Iterator design inspirited by https://golang.org/pkg/encoding/json/#Decoder
 
 
 

@@ -1,9 +1,6 @@
 package frameless
 
-type (
-	T  = interface{}
-	ID = interface{}
-)
+type T = interface{}
 
 // Option is a custom struct type with fields that hold details about the requested option's property
 //opts

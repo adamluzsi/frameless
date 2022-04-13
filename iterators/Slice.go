@@ -2,51 +2,47 @@ package iterators
 
 import (
 	"reflect"
-
-	"github.com/adamluzsi/frameless/reflects"
 )
 
-func NewSlice(slice interface{}) *Slice {
+func NewSlice[T any](slice []T) *Slice[T] {
 	if reflect.TypeOf(slice).Kind() != reflect.Slice {
 		panic("TypeError")
 	}
 
-	return &Slice{
-		open:  true,
-		rows:  reflect.ValueOf(slice),
-		index: -1,
-	}
+	return &Slice[T]{Slice: slice}
 }
 
-type Slice struct {
-	rows  reflect.Value
-	open  bool
-	index int
+type Slice[T any] struct {
+	Slice []T
+
+	closed bool
+	index  int
+	value  T
 }
 
-func (i *Slice) Close() error {
-	i.open = false
-
+func (i *Slice[T]) Close() error {
+	i.closed = true
 	return nil
 }
 
-func (i *Slice) Err() error {
+func (i *Slice[T]) Err() error {
 	return nil
 }
 
-func (i *Slice) Next() bool {
-	if !i.open {
+func (i *Slice[T]) Next() bool {
+	if i.closed {
 		return false
 	}
 
-	i.index++
-	return i.rows.Len() > i.index
-}
-
-func (i *Slice) Decode(ptr interface{}) error {
-	if !i.open {
-		return ErrClosed
+	if len(i.Slice) <= i.index {
+		return false
 	}
 
-	return reflects.Link(i.rows.Index(i.index).Interface(), ptr)
+	i.value = i.Slice[i.index]
+	i.index++
+	return true
+}
+
+func (i *Slice[T]) Value() T {
+	return i.value
 }

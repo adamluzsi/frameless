@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/testcase/assert"
 )
 
-var _ iterators.Interface = iterators.NewMock(iterators.NewEmpty())
+var _ frameless.Iterator[any] = iterators.NewMock[any](iterators.Empty[any]())
 
 func TestMock_Err(t *testing.T) {
 	t.Parallel()
@@ -17,16 +17,16 @@ func TestMock_Err(t *testing.T) {
 	originalError := errors.New("Boom! original")
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.NewMock(iterators.NewError(originalError))
+	m := iterators.NewMock[any](iterators.NewError[any](originalError))
 
 	// default is the wrapped iterator
-	require.Error(t, originalError, m.Err())
+	assert.Must(t).NotNil(originalError, m.Err())
 
 	m.StubErr = func() error { return expectedError }
-	require.Error(t, expectedError, m.Err())
+	assert.Must(t).NotNil(expectedError, m.Err())
 
 	m.ResetErr()
-	require.Error(t, originalError, m.Err())
+	assert.Must(t).NotNil(originalError, m.Err())
 
 }
 
@@ -35,59 +35,49 @@ func TestMock_Close(t *testing.T) {
 
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.NewMock(iterators.NewEmpty())
+	m := iterators.NewMock[any](iterators.Empty[any]())
 
 	// default is the wrapped iterator
-	require.Nil(t, m.Close())
+	assert.Must(t).Nil(m.Close())
 
 	m.StubClose = func() error { return expectedError }
-	require.Error(t, expectedError, m.Close())
+	assert.Must(t).NotNil(expectedError, m.Close())
 
 	m.ResetClose()
-	require.Nil(t, m.Close())
+	assert.Must(t).Nil(m.Close())
 }
 
 func TestMock_Next(t *testing.T) {
 	t.Parallel()
 
-	m := iterators.NewMock(iterators.NewEmpty())
+	m := iterators.NewMock[any](iterators.Empty[any]())
 
-	require.False(t, m.Next())
+	assert.Must(t).False(m.Next())
 
 	m.StubNext = func() bool { return true }
-	require.True(t, m.Next())
+	assert.Must(t).True(m.Next())
 
 	m.ResetNext()
-	require.False(t, m.Next())
+	assert.Must(t).False(m.Next())
 }
 
 func TestMock_Decode(t *testing.T) {
 	t.Parallel()
 
-	var value int
-	expectedError := errors.New("Boom! stub")
+	m := iterators.NewMock[int](iterators.NewSlice[int]([]int{42, 43, 44}))
 
-	m := iterators.NewMock(iterators.NewSlice([]int{42, 43, 44}))
+	assert.Must(t).True(m.Next())
+	assert.Must(t).Equal(42, m.Value())
 
-	require.True(t, m.Next())
-	require.Nil(t, m.Decode(&value))
-	require.Equal(t, 42, value)
+	assert.Must(t).True(m.Next())
+	assert.Must(t).Equal(43, m.Value())
 
-	require.True(t, m.Next())
-	require.Nil(t, m.Decode(&value))
-	require.Equal(t, 43, value)
-
-	m.StubDecode = func(i interface{}) error {
-		*i.(*int) = 4242
-		return expectedError
+	m.StubValue = func() int {
+		return 4242
 	}
+	assert.Must(t).Equal(4242, m.Value())
 
-	require.Error(t, expectedError, m.Decode(&value))
-	require.Equal(t, 4242, value)
-
-	m.ResetDecode()
-	require.True(t, m.Next())
-	require.Nil(t, m.Decode(&value))
-	require.Equal(t, 44, value)
-
+	m.ResetValue()
+	assert.Must(t).True(m.Next())
+	assert.Must(t).Equal(44, m.Value())
 }

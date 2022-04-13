@@ -12,25 +12,24 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func NewStorage(T frameless.T, m *Memory) *Storage {
-	return &Storage{T: T, Memory: m}
+func NewStorage[Ent, ID any](m *Memory) *Storage[Ent, ID] {
+	return &Storage[Ent, ID]{Memory: m}
 }
 
-func NewStorageWithNamespace(T frameless.T, m *Memory, ns string) *Storage {
-	return &Storage{T: T, Memory: m, Namespace: ns}
+func NewStorageWithNamespace[Ent, ID any](m *Memory, ns string) *Storage[Ent, ID] {
+	return &Storage[Ent, ID]{Memory: m, Namespace: ns}
 }
 
-type Storage struct {
-	T             frameless.T
+type Storage[Ent, ID any] struct {
 	Memory        *Memory
-	NewID         func(context.Context) (interface{}, error)
+	NewID         func(context.Context) (ID, error)
 	Namespace     string
 	initNamespace sync.Once
 }
 
-func (s *Storage) Create(ctx context.Context, ptr interface{}, opts ...interface{}) error {
-	if _, ok := extid.Lookup(ptr); !ok {
-		newID, err := s.newID(ctx)
+func (s *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
+	if _, ok := extid.Lookup[ID](ptr); !ok {
+		newID, err := s.MakeID(ctx)
 		if err != nil {
 			return err
 		}
@@ -44,18 +43,18 @@ func (s *Storage) Create(ctx context.Context, ptr interface{}, opts ...interface
 		return err
 	}
 
-	id, _ := extid.Lookup(ptr)
-	if found, err := s.FindByID(ctx, s.newT(), id); err != nil {
+	id, _ := extid.Lookup[ID](ptr)
+	if found, err := s.FindByID(ctx, new(Ent), id); err != nil {
 		return err
 	} else if found {
-		return fmt.Errorf(`%T already exists with id: %s`, s.T, id)
+		return fmt.Errorf(`%T already exists with id: %v`, *new(Ent), id)
 	}
 
 	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
 	return nil
 }
 
-func (s *Storage) FindByID(ctx context.Context, ptr, id interface{}) (found bool, err error) {
+func (s *Storage[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (found bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
@@ -75,17 +74,17 @@ func (s *Storage) FindByID(ctx context.Context, ptr, id interface{}) (found bool
 	return true, nil
 }
 
-func (s *Storage) FindAll(ctx context.Context) frameless.Iterator {
+func (s *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
-		return iterators.NewError(err)
+		return iterators.NewError[Ent](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.NewError(err)
+		return iterators.NewError[Ent](err)
 	}
-	return s.Memory.All(s.T, ctx, s.GetNamespace())
+	return memoryAll[Ent](s.Memory, ctx, s.GetNamespace())
 }
 
-func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
+func (s *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -95,69 +94,64 @@ func (s *Storage) DeleteByID(ctx context.Context, id interface{}) error {
 	if s.Memory.Del(ctx, s.GetNamespace(), s.IDToMemoryKey(id)) {
 		return nil
 	}
-	return errNotFound(s.T, id)
+	return errNotFound(*new(Ent), id)
 }
 
-func (s *Storage) DeleteAll(ctx context.Context) error {
+func (s *Storage[Ent, ID]) DeleteAll(ctx context.Context) error {
 	iter := s.FindAll(ctx)
 	defer iter.Close()
 	for iter.Next() {
-		ptr := s.newT()
-		if err := iter.Decode(ptr); err != nil {
-			return err
-		}
-
-		id, _ := extid.Lookup(ptr)
+		id, _ := extid.Lookup[ID](iter.Value())
 		_ = s.Memory.Del(ctx, s.GetNamespace(), s.IDToMemoryKey(id))
 	}
 	return iter.Err()
 }
 
-func (s *Storage) Update(ctx context.Context, ptr interface{}) error {
-	id, ok := extid.Lookup(ptr)
+func (s *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
+	id, ok := extid.Lookup[ID](ptr)
 	if !ok {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	found, err := s.FindByID(ctx, s.newT(), id)
+	found, err := s.FindByID(ctx, new(Ent), id)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return errNotFound(s.T, id)
+		return errNotFound(*new(Ent), id)
 	}
 
 	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
 	return nil
 }
 
-func (s *Storage) FindByIDs(ctx context.Context, ids ...interface{}) frameless.Iterator {
+func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) frameless.Iterator[Ent] {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
 	}
 	all := m.all(s.GetNamespace())
-	var vs = make(map[string]interface{}, len(ids))
+	var vs = make(map[string]Ent, len(ids))
 	for _, id := range ids {
 		key := s.IDToMemoryKey(id)
 		v, ok := all[key]
 		if !ok {
-			return iterators.NewError(errNotFound(s.T, id))
+			return iterators.NewError[Ent](errNotFound(*new(Ent), id))
 		}
-		vs[key] = v
+		vs[key] = v.(Ent)
 	}
-	return iterators.NewSlice(s.Memory.toTSlice(s.T, vs))
+	return iterators.NewSlice[Ent](toSlice[Ent, string](vs))
 }
 
-func (s *Storage) Upsert(ctx context.Context, ptrs ...interface{}) error {
+func (s *Storage[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) error {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
 	}
 	for _, ptr := range ptrs {
-		id, ok := extid.Lookup(ptr)
+		id, ok := extid.Lookup[ID](ptr)
 		if !ok {
-			nid, err := s.newID(ctx)
+			nid, err := s.MakeID(ctx)
 			if err != nil {
 				return err
 			}
@@ -172,52 +166,56 @@ func (s *Storage) Upsert(ctx context.Context, ptrs ...interface{}) error {
 	return nil
 }
 
-//func (s *Storage) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//func (s *Storage[Ent,ID]) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 //	panic("implement me")
 //}
 //
-//func (s *Storage) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//func (s *Storage[Ent,ID]) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 //	panic("implement me")
 //}
 //
-//func (s *Storage) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//func (s *Storage[Ent,ID]) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 //	panic("implement me")
 //}
 //
-//func (s *Storage) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
+//func (s *Storage[Ent,ID]) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
 //	panic("implement me")
 //}
 
-func (s *Storage) newT() interface{} {
-	return reflect.New(reflect.TypeOf(s.T)).Interface()
-}
-
-func (s *Storage) newID(ctx context.Context) (interface{}, error) {
+func (s *Storage[Ent, ID]) MakeID(ctx context.Context) (ID, error) {
 	if s.NewID != nil {
 		return s.NewID(ctx)
 	}
-	return newDummyID(s.T)
+	iid, err := newDummyID(*new(ID))
+	if err != nil {
+		return *new(ID), err
+	}
+	id, ok := iid.(ID)
+	if !ok {
+		return *new(ID), fmt.Errorf("newID failed")
+	}
+	return id, nil
 }
 
-func (s *Storage) IDToMemoryKey(id frameless.T) string {
+func (s *Storage[Ent, ID]) IDToMemoryKey(id frameless.T) string {
 	return fmt.Sprintf(`%#v`, id)
 }
 
-func (s *Storage) GetNamespace() string {
+func (s *Storage[Ent, ID]) GetNamespace() string {
 	s.initNamespace.Do(func() {
 		if 0 < len(s.Namespace) {
 			return
 		}
-		s.Namespace = reflects.FullyQualifiedName(s.T)
+		s.Namespace = reflects.FullyQualifiedName(*new(Ent))
 	})
 	return s.Namespace
 }
 
-func (s *Storage) getV(ptr interface{}) interface{} {
+func (s *Storage[Ent, ID]) getV(ptr interface{}) interface{} {
 	return reflects.BaseValueOf(ptr).Interface()
 }
 
-func (s *Storage) isDoneTx(ctx context.Context) error {
+func (s *Storage[Ent, ID]) isDoneTx(ctx context.Context) error {
 	tx, ok := s.Memory.LookupTx(ctx)
 	if !ok {
 		return nil
@@ -307,11 +305,16 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 	return m.get(namespace, key)
 }
 
-func (m *Memory) All(T frameless.T, ctx context.Context, namespace string) frameless.Iterator {
+func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) frameless.Iterator[Ent] {
+	var T Ent
+	return iterators.NewSlice[Ent](m.All(T, ctx, namespace).([]Ent))
+}
+
+func (m *Memory) All(T frameless.T, ctx context.Context, namespace string) (sliceOfT interface{}) {
 	if tx, ok := m.LookupTx(ctx); ok && !tx.done {
-		return iterators.NewSlice(m.toTSlice(T, tx.all(namespace)))
+		return m.toTSlice(T, tx.all(namespace))
 	}
-	return iterators.NewSlice(m.toTSlice(T, m.all(namespace)))
+	return m.toTSlice(T, m.all(namespace))
 }
 
 func (m *Memory) toTSlice(T frameless.T, vs map[string]interface{}) interface{} {

@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestBaseValueOf(t *testing.T) {
@@ -24,7 +24,7 @@ func TestBaseValueOf(t *testing.T) {
 	ptrToStruct := &plainStruct
 	ptrToPtr := &ptrToStruct
 
-	require.Equal(t, expectedValueType, subject(plainStruct).Type())
-	require.Equal(t, expectedValueType, subject(ptrToStruct).Type())
-	require.Equal(t, expectedValueType, subject(ptrToPtr).Type())
+	assert.Must(t).Equal(expectedValueType, subject(plainStruct).Type())
+	assert.Must(t).Equal(expectedValueType, subject(ptrToStruct).Type())
+	assert.Must(t).Equal(expectedValueType, subject(ptrToPtr).Type())
 }

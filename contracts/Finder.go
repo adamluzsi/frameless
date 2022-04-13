@@ -3,146 +3,145 @@ package contracts
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts/assert"
+	. "github.com/adamluzsi/frameless/contracts/asserts"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/stretchr/testify/require"
 )
 
-type Finder struct {
-	T
-	Subject        func(testing.TB) CRD
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type Finder[Ent, ID any] struct {
+	Subject func(testing.TB) FinderSubject[Ent, ID]
+	MakeCtx func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
 }
 
-func (c Finder) Test(t *testing.T) {
+type FinderSubject[Ent, ID any] CRD[Ent, ID]
+
+func (c Finder[Ent, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c Finder) Benchmark(b *testing.B) {
+func (c Finder[Ent, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Finder) Spec(s *testcase.Spec) {
+func (c Finder[Ent, ID]) Spec(s *testcase.Spec) {
 	testcase.RunContract(s,
-		findByID{
-			T:              c.T,
-			FixtureFactory: c.FixtureFactory,
-			Subject:        c.Subject,
-			Context:        c.Context,
+		findByID[Ent, ID]{
+			Subject: c.Subject,
+			Context: c.MakeCtx,
+			MakeEnt: c.MakeEnt,
 		},
-		findAll{
-			T:              c.T,
-			FixtureFactory: c.FixtureFactory,
-			Subject:        c.Subject,
-			Context:        c.Context,
+		findAll[Ent, ID]{
+			Subject: c.Subject,
+			Context: c.MakeCtx,
+			MakeEnt: c.MakeEnt,
 		},
 	)
 }
 
-type findByID struct {
-	T
-	Subject        func(testing.TB) CRD
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type findByID[Ent, ID any] struct {
+	Subject func(testing.TB) FinderSubject[Ent, ID]
+	Context func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
 }
 
-func (c findByID) Spec(s *testcase.Spec) {
-	testcase.RunContract(s, FindOne{
-		T:              c.T,
-		FixtureFactory: c.FixtureFactory,
-		Context:        c.Context,
-		Subject:        c.Subject,
-		MethodName:     "FindByID",
-		ToQuery: func(tb testing.TB, resource interface{}, ent T) QueryOne {
-			id, ok := extid.Lookup(ent)
+func (c findByID[Ent, ID]) String() string {
+	return "Finder.FindByID"
+}
+
+func (c findByID[Ent, ID]) Spec(s *testcase.Spec) {
+	testcase.RunContract(s, FindOne[Ent, ID]{
+		Subject:    c.Subject,
+		MakeCtx:    c.Context,
+		MakeEnt:    c.MakeEnt,
+		MethodName: "FindByID",
+		ToQuery: func(tb testing.TB, resource FinderSubject[Ent, ID], ent Ent) QueryOne[Ent] {
+			id, ok := extid.Lookup[ID](ent)
 			if !ok { // if no id found create a dummy ID
 				// since an id is required always to use FindByID
 				// we generate a dummy id in case the received entity don't have one.
 				// This helps to avoid error cases where ID is not set actually.
 				// For those we have further specification later
-				id = c.createDummyID(tb.(*testcase.T), resource.(CRD))
+				id = c.createDummyID(tb.(*testcase.T), resource)
 			}
 
-			return func(tb testing.TB, ctx context.Context, ptr T) (found bool, err error) {
-				return resource.(frameless.Finder).FindByID(ctx, ptr, id)
+			return func(tb testing.TB, ctx context.Context, ptr *Ent) (found bool, err error) {
+				return resource.FindByID(ctx, ptr, id)
 			}
 		},
 
 		Specify: func(tb testing.TB) {
 			t := tb.(*testcase.T)
 			r := c.Subject(t)
-			ff := c.FixtureFactory(t)
 
-			var ids []interface{}
+			var ids []ID
 			for i := 0; i < 12; i++ {
-				entity := CreatePTR(ff, c.T)
-				assert.CreateEntity(t, r, c.Context(t), entity)
-				id, ok := extid.Lookup(entity)
-				require.True(t, ok, ErrIDRequired.Error())
+				ent := c.MakeEnt(t)
+				Create[Ent, ID](t, r, c.Context(t), &ent)
+				id, ok := extid.Lookup[ID](&ent)
+				t.Must.True(ok, ErrIDRequired.Error())
 				ids = append(ids, id)
 			}
 
 			t.Log("when no value stored that the query request")
 			ctx := c.Context(t)
-			ok, err := r.FindByID(c.Context(t), newT(c.T), c.createNonActiveID(t, ctx, r, ff))
-			require.Nil(t, err)
-			require.False(t, ok)
+			ok, err := r.FindByID(c.Context(t), new(Ent), c.createNonActiveID(t, ctx, r))
+			t.Must.Nil(err)
+			t.Must.False(ok)
 
 			t.Log("values returned")
-			for _, ID := range ids {
-				e := newT(c.T)
-				ok, err := r.FindByID(c.Context(t), e, ID)
-				require.Nil(t, err)
-				require.True(t, ok)
+			for _, id := range ids {
+				e := new(Ent)
+				ok, err := r.FindByID(c.Context(t), e, id)
+				t.Must.Nil(err)
+				t.Must.True(ok)
 
-				actualID, ok := extid.Lookup(e)
-				require.True(t, ok, "can't find ID in the returned value")
-				require.Equal(t, ID, actualID)
+				actualID, ok := extid.Lookup[ID](e)
+				t.Must.True(ok, "can't find ID in the returned value")
+				t.Must.Equal(id, actualID)
 			}
 		},
 	})
 }
 
-func (c findByID) Test(t *testing.T) {
+func (c findByID[Ent, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c findByID) Benchmark(b *testing.B) {
+func (c findByID[Ent, ID]) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
 	r := c.Subject(b)
 
-	ent := s.Let(`ent`, func(t *testcase.T) interface{} {
-		ptr := newT(c.T)
-		assert.CreateEntity(t, r, c.Context(t), ptr)
+	ent := testcase.Let(s, func(t *testcase.T) *Ent {
+		ptr := new(Ent)
+		Create[Ent, ID](t, r, c.Context(t), ptr)
 		return ptr
 	}).EagerLoading(s)
 
-	id := s.Let(`id`, func(t *testcase.T) interface{} {
-		return assert.HasID(t, ent.Get(t))
+	id := testcase.Let(s, func(t *testcase.T) ID {
+		return HasID[Ent, ID](t, ent.Get(t))
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		_, err := r.FindByID(c.Context(t), newT(c.T), id.Get(t))
-		require.Nil(t, err)
+		_, err := r.FindByID(c.Context(t), new(Ent), id.Get(t))
+		t.Must.Nil(err)
 	})
 }
 
-func (c findByID) createNonActiveID(tb testing.TB, ctx context.Context, r CRD, ff frameless.FixtureFactory) interface{} {
+func (c findByID[Ent, ID]) createNonActiveID(tb testing.TB, ctx context.Context, r FinderSubject[Ent, ID]) ID {
 	tb.Helper()
-	ptr := CreatePTR(ff, c.T)
-	tb.Logf(`%#v`, ptr)
-	assert.CreateEntity(tb, r, ctx, ptr)
-	id, _ := extid.Lookup(ptr)
-	assert.DeleteEntity(tb, r, ctx, ptr)
+	ent := c.MakeEnt(tb)
+	ptr := &ent
+	Create[Ent, ID](tb, r, ctx, ptr)
+	id, _ := extid.Lookup[ID](ptr)
+	Delete[Ent, ID](tb, r, ctx, ptr)
 	return id
 }
 
@@ -150,82 +149,79 @@ func (c findByID) createNonActiveID(tb testing.TB, ctx context.Context, r CRD, f
 // The "EntityTypeName" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-type findAll struct {
-	T
-	Subject        func(testing.TB) CRD
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type findAll[Ent, ID any] struct {
+	Subject func(testing.TB) FinderSubject[Ent, ID]
+	Context func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
 }
 
-func (c findAll) Spec(s *testcase.Spec) {
-	factoryLet(s, c.FixtureFactory)
+func (c findAll[Ent, ID]) String() string {
+	return "Finder.FindAll"
+}
 
-	var (
-		resource = s.Let(`resource`, func(t *testcase.T) interface{} {
-			return c.Subject(t)
-		})
-		resourceGet = func(t *testcase.T) CRD {
-			return resource.Get(t).(CRD)
-		}
-	)
+func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
+	resource := testcase.Let(s, func(t *testcase.T) FinderSubject[Ent, ID] {
+		return c.Subject(t)
+	})
 
 	beforeAll := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		beforeAll.Do(func() {
-			assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
+			DeleteAll[Ent, ID](t, resource.Get(t), c.Context(t))
 		})
 	})
 
 	s.Describe(`FindAll`, func(s *testcase.Spec) {
 		var (
-			ctx = s.Let(`ctx`, func(t *testcase.T) interface{} {
+			ctx = testcase.Let(s, func(t *testcase.T) context.Context {
 				return c.Context(t)
 			})
-			subject = func(t *testcase.T) frameless.Iterator {
-				return resourceGet(t).FindAll(ctx.Get(t).(context.Context))
+			subject = func(t *testcase.T) frameless.Iterator[Ent] {
+				return resource.Get(t).FindAll(ctx.Get(t))
 			}
 		)
 
 		s.Before(func(t *testcase.T) {
-			assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
+			DeleteAll[Ent, ID](t, resource.Get(t), c.Context(t))
 		})
 
-		entity := s.Let(`entity`, func(t *testcase.T) interface{} {
-			return CreatePTR(factoryGet(t), c.T)
+		entity := testcase.Let(s, func(t *testcase.T) *Ent {
+			ent := c.MakeEnt(t)
+			return &ent
 		})
 
 		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				assert.CreateEntity(t, resourceGet(t), c.Context(t), entity.Get(t))
+				Create[Ent, ID](t, resource.Get(t), c.Context(t), entity.Get(t))
 			})
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
-				assert.Eventually.Assert(t, func(tb testing.TB) {
+				Eventually.Assert(t, func(tb assert.It) {
 					count, err := iterators.Count(subject(t))
-					require.Nil(tb, err)
-					require.Equal(tb, 1, count)
+					assert.Must(tb).Nil(err)
+					assert.Must(tb).Equal(1, count)
 				})
 			})
 
 			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
-				assert.Eventually.Assert(t, func(tb testing.TB) {
+				Eventually.Assert(t, func(tb assert.It) {
 					entities := c.findAllN(t, subject, 1)
-					contains(tb, entities, entity.Get(t))
+					contains[Ent](tb, entities, *entity.Get(t))
 				})
 			})
 
 			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
-				othEntity := s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-					ent := CreatePTR(factoryGet(t), c.T)
-					assert.CreateEntity(t, resourceGet(t), c.Context(t), ent)
-					return ent
+				othEntity := testcase.Let(s, func(t *testcase.T) *Ent {
+					ent := c.MakeEnt(t)
+					Create[Ent, ID](t, resource.Get(t), c.Context(t), &ent)
+					return &ent
 				}).EagerLoading(s)
 
 				s.Then(`all entity will be fetched`, func(t *testcase.T) {
-					assert.Eventually.Assert(t, func(tb testing.TB) {
+					Eventually.Assert(t, func(tb assert.It) {
 						entities := c.findAllN(t, subject, 2)
-						contains(tb, entities, entity.Get(t))
-						contains(tb, entities, othEntity.Get(t))
+						contains[Ent](tb, entities, *entity.Get(t))
+						contains[Ent](tb, entities, *othEntity.Get(t))
 					})
 				})
 			})
@@ -233,18 +229,18 @@ func (c findAll) Spec(s *testcase.Spec) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
+				DeleteAll[Ent, ID](t, resource.Get(t), c.Context(t))
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
 				count, err := iterators.Count(subject(t))
-				require.Nil(t, err)
-				require.Equal(t, 0, count)
+				t.Must.Nil(err)
+				t.Must.Equal(0, count)
 			})
 		})
 
 		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
-			s.Let(`ctx`, func(t *testcase.T) interface{} {
+			ctx.Let(s, func(t *testcase.T) context.Context {
 				ctx, cancel := context.WithCancel(c.Context(t))
 				cancel()
 				return ctx
@@ -252,44 +248,39 @@ func (c findAll) Spec(s *testcase.Spec) {
 
 			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 				iter := subject(t)
+				_ = iter.Next()
 				err := iter.Err()
-				require.Error(t, err)
-				require.Equal(t, context.Canceled, err)
+				t.Must.NotNil(err)
+				t.Must.Equal(context.Canceled, err)
 			})
 		})
 	})
 }
-func (c findAll) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+func (c findAll[Ent, ID]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
-func (c findAll) Benchmark(b *testing.B) {
+func (c findAll[Ent, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c findByID) createDummyID(t *testcase.T, r CRD) interface{} {
-	ent := CreatePTR(factoryGet(t), c.T)
+func (c findByID[Ent, ID]) createDummyID(t *testcase.T, r FinderSubject[Ent, ID]) ID {
+	ent := c.MakeEnt(t)
 	ctx := c.Context(t)
-	assert.CreateEntity(t, r, ctx, ent)
-	id := assert.HasID(t, ent)
-	assert.DeleteEntity(t, r, ctx, ent)
+	Create[Ent, ID](t, r, ctx, &ent)
+	id := HasID[Ent, ID](t, &ent)
+	Delete[Ent, ID](t, r, ctx, &ent)
 	return id
 }
 
-func (c findAll) findAllN(t *testcase.T, subject func(t *testcase.T) frameless.Iterator, n int) []interface{} {
-	sliceRType := reflect.SliceOf(reflect.TypeOf(c.T))
-	var entities interface{}
-	assert.Eventually.Assert(t, func(tb testing.TB) {
+func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) frameless.Iterator[Ent], n int) []Ent {
+	var entities []Ent
+	Eventually.Assert(t, func(tb assert.It) {
+		var err error
 		all := subject(t)
-		entities = reflect.MakeSlice(sliceRType, 0, 0).Interface()
-		require.Nil(t, iterators.Collect(all, &entities))
-		require.Len(t, entities, n)
+		entities, err = iterators.Collect(all)
+		assert.Must(tb).Nil(err)
+		assert.Must(tb).Equal(n, len(entities))
 	})
-
-	var out = []interface{}{}
-	rslice := reflect.ValueOf(entities)
-	for i := 0; i < rslice.Len(); i++ {
-		out = append(out, rslice.Index(i).Interface())
-	}
-	return out
+	return entities
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -300,13 +291,12 @@ func (c findAll) findAllN(t *testcase.T, subject func(t *testcase.T) frameless.I
 // and the inputs it requires.
 //
 // QueryOne is generated through ToQuery factory function in FindOne resource contract specification.
-type QueryOne func(tb testing.TB, ctx context.Context, ptr T) (found bool, err error)
+type QueryOne[Ent any] func(tb testing.TB, ctx context.Context, ptr *Ent) (found bool, err error)
 
-type FindOne struct {
-	T
-	Subject        func(testing.TB) CRD
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type FindOne[Ent, ID any] struct {
+	Subject func(testing.TB) FinderSubject[Ent, ID]
+	MakeCtx func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
 	// MethodName is the name of the test subject QueryOne method of this contract specification.
 	MethodName string
 	// ToQuery takes an entity ptr and returns with a closure that has the knowledge about how to query on the Subject resource to find the entity.
@@ -315,99 +305,95 @@ type FindOne struct {
 	// The QueryOne closure should only have the Method call with the already mapped values.
 	// ToQuery will be evaluated in the beginning of the testing,
 	// and executed after all the test Context preparation is done.
-	ToQuery func(tb testing.TB, resource /* CRD */ interface{}, ent T) QueryOne
+	ToQuery func(tb testing.TB, resource FinderSubject[Ent, ID], ent Ent) QueryOne[Ent]
 	// Specify allow further specification describing for a given FindOne query function.
 	// If none specified, this field will be ignored
 	Specify func(testing.TB)
 }
 
-func (c FindOne) String() string {
+func (c FindOne[Ent, ID]) String() string {
 	return fmt.Sprintf(".%s", c.MethodName)
 }
 
-func (c FindOne) Spec(s *testcase.Spec) {
-	factoryLet(s, c.FixtureFactory)
+func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 	var (
-		ctx = s.Let(ctx.Name, func(t *testcase.T) interface{} {
-			return c.Context(t)
+		ctx = testcase.Let(s, func(t *testcase.T) context.Context {
+			return c.MakeCtx(t)
 		})
-		entity = s.Let(`entity`, func(t *testcase.T) interface{} {
-			return CreatePTR(factoryGet(t), c.T)
+		entity = testcase.Let(s, func(t *testcase.T) *Ent {
+			ent := c.MakeEnt(t)
+			return &ent
 		})
-		ptr = s.Let(`ptr`, func(t *testcase.T) interface{} {
-			return newT(c.T)
+		ptr = testcase.Let(s, func(t *testcase.T) *Ent {
+			return new(Ent)
 		})
-		resource = s.Let(`resource`, func(t *testcase.T) interface{} {
+		resource = testcase.Let(s, func(t *testcase.T) FinderSubject[Ent, ID] {
 			return c.Subject(t)
 		})
-		resourceGet = func(t *testcase.T) CRD {
-			return resource.Get(t).(CRD)
-		}
-		query = s.Let(`query`, func(t *testcase.T) interface{} {
+		query = testcase.Let(s, func(t *testcase.T) QueryOne[Ent] {
 			t.Log(entity.Get(t))
-			return c.ToQuery(t, resourceGet(t), entity.Get(t))
+			return c.ToQuery(t, resource.Get(t), *entity.Get(t))
 		})
 		subject = func(t *testcase.T) (bool, error) {
-			return query.Get(t).(QueryOne)(t, ctx.Get(t).(context.Context), ptr.Get(t))
+			return query.Get(t)(t, ctx.Get(t), ptr.Get(t))
 		}
 	)
 
 	s.Before(func(t *testcase.T) {
-		assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
+		DeleteAll[Ent, ID](t, resource.Get(t), c.MakeCtx(t))
 	})
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			assert.CreateEntity(t, resourceGet(t), c.Context(t), entity.Get(t))
-			assert.HasID(t, entity.Get(t))
+			Create[Ent, ID](t, resource.Get(t), c.MakeCtx(t), entity.Get(t))
+			HasID[Ent, ID](t, entity.Get(t))
 		})
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
 			found, err := subject(t)
-			require.Nil(t, err)
-			require.True(t, found)
-			require.Equal(t, entity.Get(t), ptr.Get(t))
+			t.Must.Nil(err)
+			t.Must.True(found)
+			t.Must.Equal(entity.Get(t), ptr.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-			ctx.Let(s, func(t *testcase.T) interface{} {
-				ctx, cancel := context.WithCancel(c.Context(t))
+			ctx.Let(s, func(t *testcase.T) context.Context {
+				ctx, cancel := context.WithCancel(c.MakeCtx(t))
 				cancel()
 				return ctx
 			})
 
 			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 				found, err := subject(t)
-				require.Equal(t, context.Canceled, err)
-				require.False(t, found)
+				t.Must.ErrorIs(context.Canceled, err)
+				t.Must.False(found)
 			})
 		})
 
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
-			s.Let(`oth-entity`, func(t *testcase.T) interface{} {
-				ent := CreatePTR(factoryGet(t), c.T)
-				assert.CreateEntity(t, resourceGet(t), c.Context(t), ent)
-				return ent
-			}).EagerLoading(s)
+			s.Before(func(t *testcase.T) {
+				ent := c.MakeEnt(t)
+				Create[Ent, ID](t, resource.Get(t), c.MakeCtx(t), &ent)
+			})
 
 			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
 				found, err := subject(t)
-				require.Nil(t, err)
-				require.True(t, found)
-				require.Equal(t, t.I(`entity`), t.I(`ptr`))
+				t.Must.Nil(err)
+				t.Must.True(found)
+				t.Must.Equal(entity.Get(t), ptr.Get(t))
 			})
 		})
 	})
 
-	s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
+	s.When(`no entity is saved in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			assert.DeleteAllEntity(t, resourceGet(t), c.Context(t))
+			DeleteAll[Ent, ID](t, resource.Get(t), c.MakeCtx(t))
 		})
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
 			found, err := subject(t)
-			require.Nil(t, err)
-			require.False(t, found)
+			t.Must.Nil(err)
+			t.Must.False(found)
 		})
 	})
 
@@ -418,17 +404,10 @@ func (c FindOne) Spec(s *testcase.Spec) {
 	}
 }
 
-func (c FindOne) Test(t *testing.T) {
+func (c FindOne[Ent, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c FindOne) Benchmark(b *testing.B) {
+func (c FindOne[Ent, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
-}
-
-func (c FindOne) copyPtrValue(ptr interface{}) interface{} {
-	rv := reflect.ValueOf(ptr)
-	copyRV := reflect.New(rv.Elem().Type())
-	copyRV.Elem().Set(rv.Elem()) // copy with pass by value
-	return copyRV.Interface()
 }

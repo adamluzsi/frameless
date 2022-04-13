@@ -5,17 +5,17 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/lazyloading"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 type MyStruct struct {
-	lazyLoadedVar lazyloading.Var
+	lazyLoadedVar lazyloading.Var[int]
 }
 
 func (ms *MyStruct) Num() int {
-	return ms.lazyLoadedVar.Do(func() interface{} {
+	return ms.lazyLoadedVar.Do(func() int {
 		return rand.Int()
-	}).(int)
+	})
 }
 
 func ExampleVar() {
@@ -26,8 +26,8 @@ func ExampleVar() {
 
 func TestMyStruct_Value(t *testing.T) {
 	ms1 := &MyStruct{}
-	require.Equal(t, ms1.Num(), ms1.Num())
+	assert.Must(t).Equal(ms1.Num(), ms1.Num())
 
 	ms2 := &MyStruct{}
-	require.NotEqual(t, ms1.Num(), ms2.Num())
+	assert.Must(t).NotEqual(ms1.Num(), ms2.Num())
 }

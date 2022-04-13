@@ -6,86 +6,82 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts/assert"
+	. "github.com/adamluzsi/frameless/contracts/asserts"
 	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/frameless/extid"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
-type MetaAccessor struct {
-	T, V           T
-	Subject        func(testing.TB) MetaAccessorSubject
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type MetaAccessor[Ent, ID, V any] struct {
+	Subject func(testing.TB) MetaAccessorSubject[Ent, ID, V]
+	MakeCtx func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
+	MakeV   func(testing.TB) V
 }
 
-var accessor = testcase.Var{Name: `frameless.MetaAccessor`}
-
-func accessorGet(t *testcase.T) frameless.MetaAccessor {
-	return accessor.Get(t).(frameless.MetaAccessor)
-}
-
-type MetaAccessorSubject struct {
+type MetaAccessorSubject[Ent any, ID any, V any] struct {
 	frameless.MetaAccessor
-	Resource  CRD
+	Resource  CRD[Ent, ID]
 	Publisher interface {
-		frameless.CreatorPublisher
-		frameless.UpdaterPublisher
-		frameless.DeleterPublisher
+		frameless.CreatorPublisher[Ent]
+		frameless.UpdaterPublisher[Ent]
+		frameless.DeleterPublisher[ID]
 	}
 }
 
-var metaAccessorSubject = testcase.Var{Name: `MetaAccessorSubject`}
-
-func metaAccessorSubjectGet(t *testcase.T) MetaAccessorSubject {
-	return metaAccessorSubject.Get(t).(MetaAccessorSubject)
+func (c MetaAccessor[Ent, ID, V]) metaAccessorSubject() testcase.Var[MetaAccessorSubject[Ent, ID, V]] {
+	return testcase.Var[MetaAccessorSubject[Ent, ID, V]]{ID: `MetaAccessorSubject`}
 }
 
-func (c MetaAccessor) Test(t *testing.T) {
+func (c MetaAccessor[Ent, ID, V]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c MetaAccessor) Benchmark(b *testing.B) {
+func (c MetaAccessor[Ent, ID, V]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c MetaAccessor) Spec(s *testcase.Spec) {
+func (c MetaAccessor[Ent, ID, V]) Spec(s *testcase.Spec) {
 	testcase.RunContract(s,
-		MetaAccessorBasic{V: c.V,
+		MetaAccessorBasic[V]{
 			Subject: func(tb testing.TB) frameless.MetaAccessor {
 				return c.Subject(tb).MetaAccessor
 			},
-			FixtureFactory: c.FixtureFactory,
+			MakeV: c.MakeV,
 		},
-		MetaAccessorPublisher{T: c.T, V: c.V,
-			Subject: func(tb testing.TB) MetaAccessorSubject {
+		MetaAccessorPublisher[Ent, ID, V]{
+			Subject: func(tb testing.TB) MetaAccessorSubject[Ent, ID, V] {
 				return c.Subject(tb)
 			},
-			FixtureFactory: c.FixtureFactory,
-			Context:        c.Context,
+			Context: c.MakeCtx,
+			MakeEnt: c.MakeEnt,
+			MakeV:   c.MakeV,
 		},
 	)
 }
 
-type MetaAccessorBasic struct {
-	// V is the value T type that can be set and looked up with frameless.MetaAccessor.
-	V              T
-	Subject        func(testing.TB) frameless.MetaAccessor
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+// MetaAccessorBasic
+// V is the value T type that can be set and looked up with frameless.MetaAccessor.
+type MetaAccessorBasic[V any] struct {
+	Subject func(testing.TB) frameless.MetaAccessor
+	MakeV   func(testing.TB) V
 }
 
-func (c MetaAccessorBasic) Test(t *testing.T) {
+func (c MetaAccessorBasic[V]) metaAccessorSubject() testcase.Var[frameless.MetaAccessor] {
+	return testcase.Var[frameless.MetaAccessor]{ID: `MetaAccessorBasicSubject`}
+}
+
+func (c MetaAccessorBasic[V]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c MetaAccessorBasic) Benchmark(b *testing.B) {
+func (c MetaAccessorBasic[V]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c MetaAccessorBasic) Spec(s *testcase.Spec) {
-	factoryLet(s, c.FixtureFactory)
-	accessor.Let(s, func(t *testcase.T) interface{} {
+func (c MetaAccessorBasic[V]) Spec(s *testcase.Spec) {
+	c.metaAccessorSubject().Let(s, func(t *testcase.T) frameless.MetaAccessor {
 		return c.Subject(t)
 	})
 
@@ -93,234 +89,235 @@ func (c MetaAccessorBasic) Spec(s *testcase.Spec) {
 	// LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error)
 	s.Describe(`.SetMeta+.LookupMeta`, func(s *testcase.Spec) {
 		var (
-			ctx    = ctx.Let(s, nil)
-			key    = s.Let(`key`, func(t *testcase.T) interface{} { return t.Random.String() })
-			keyGet = func(t *testcase.T) string { return key.Get(t).(string) }
-			value  = s.Let(`value`, func(t *testcase.T) interface{} { return factoryGet(t).Fixture(c.V, nil) })
+			ctx   = ctxVar.Let(s, nil)
+			key   = testcase.Let(s, func(t *testcase.T) string { return t.Random.String() })
+			value = testcase.Let(s, func(t *testcase.T) V { return c.MakeV(t) })
 		)
 		subjectSetMeta := func(t *testcase.T) (context.Context, error) {
-			return accessorGet(t).SetMeta(ctxGet(t), keyGet(t), value.Get(t))
+			return c.metaAccessorSubject().Get(t).SetMeta(ctx.Get(t), key.Get(t), value.Get(t))
 		}
 		subjectLookupMeta := func(t *testcase.T, ptr interface{} /*[V]*/) (bool, error) {
-			return accessorGet(t).LookupMeta(ctxGet(t), keyGet(t), ptr)
+			return c.metaAccessorSubject().Get(t).LookupMeta(ctx.Get(t), key.Get(t), ptr)
 		}
 
 		s.Test(`on an empty context the lookup will yield no result without an issue`, func(t *testcase.T) {
-			found, err := subjectLookupMeta(t, newT(c.V))
-			require.NoError(t, err)
-			require.False(t, found)
+			found, err := subjectLookupMeta(t, new(V))
+			t.Must.Nil(err)
+			t.Must.False(found)
 		})
 
 		s.When(`value is set in a context`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				newContext, err := subjectSetMeta(t)
-				require.NoError(t, err)
+				t.Must.Nil(err)
 				ctx.Set(t, newContext)
 			})
 
 			s.Then(`value can be found with lookup`, func(t *testcase.T) {
-				ptr := newT(c.V)
+				ptr := new(V)
 				found, err := subjectLookupMeta(t, ptr)
-				require.NoError(t, err)
-				require.True(t, found)
-				require.Equal(t, base(ptr), value.Get(t))
+				t.Must.Nil(err)
+				t.Must.True(found)
+				t.Must.Equal(base(ptr), value.Get(t))
 			})
 		})
 	})
 }
 
-type MetaAccessorPublisher struct {
-	T, V           T
-	Subject        func(testing.TB) MetaAccessorSubject
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type MetaAccessorPublisher[Ent any, ID any, V any] struct {
+	Subject func(testing.TB) MetaAccessorSubject[Ent, ID, V]
+	Context func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
+	MakeV   func(testing.TB) V
 }
 
-func (c MetaAccessorPublisher) Test(t *testing.T) {
+func (c MetaAccessorPublisher[Ent, ID, V]) subject() testcase.Var[MetaAccessorSubject[Ent, ID, V]] {
+	return testcase.Var[MetaAccessorSubject[Ent, ID, V]]{
+		ID: `subject`,
+		Init: func(t *testcase.T) MetaAccessorSubject[Ent, ID, V] {
+			return c.Subject(t)
+		},
+	}
+}
+
+func (c MetaAccessorPublisher[Ent, ID, V]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c MetaAccessorPublisher) Benchmark(b *testing.B) {
+func (c MetaAccessorPublisher[Ent, ID, V]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c MetaAccessorPublisher) Spec(s *testcase.Spec) {
-	factoryLet(s, c.FixtureFactory)
-	metaAccessorSubject.Let(s, func(t *testcase.T) interface{} {
-		return c.Subject(t)
-	})
-	accessor.Let(s, func(t *testcase.T) interface{} {
-		return metaAccessorSubjectGet(t).MetaAccessor
-	})
-
+func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 	s.Test(".SetMeta -> .Create -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
 		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Fixture(c.V, nil))
+		expected := c.MakeV(t)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[Ent, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				_ = event.(frameless.CreateEvent)
-				v := newT(c.V)
-				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
-				require.NoError(t, err)
-				require.True(t, found)
+				_ = event.(frameless.CreateEvent[Ent])
+				v := new(V)
+				found, err := c.subject().Get(t).LookupMeta(ctx, key, v)
+				t.Must.Nil(err)
+				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
-				actual = base(v)
+				actual = *v
 				return nil
 			},
 		})
-		require.NoError(t, err)
+		t.Must.Nil(err)
 		t.Defer(sub.Close)
 
-		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
-		require.NoError(t, err)
-		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, CreatePTR(factoryGet(t), c.T))
+		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
+		t.Must.Nil(err)
+		v2 := c.MakeEnt(t)
+		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, &v2)
 
-		assert.Eventually.Assert(t, func(t testing.TB) {
+		Eventually.Assert(t, func(it assert.It) {
 			mutex.RLock()
 			defer mutex.RUnlock()
-			require.Equal(t, expected, actual)
+			it.Must.Equal(expected, actual)
 		})
 	})
 
 	s.Test(".SetMeta -> .DeleteByID -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
 		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Fixture(c.V, nil))
+		expected := c.MakeV(t)
+		ptr := toPtr(c.MakeEnt(t))
 
-		ptr := CreatePTR(factoryGet(t), c.T)
-		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
-		id := assert.HasID(t, ptr)
+		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, ptr)
+		id := HasID[Ent, ID](t, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber[Ent, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(frameless.DeleteByIDEvent); !ok {
+				if _, ok := event.(frameless.DeleteByIDEvent[ID]); !ok {
 					return nil
 				}
 
-				v := newT(c.V)
-				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
-				require.NoError(t, err)
-				require.True(t, found)
+				v := new(V)
+				found, err := c.subject().Get(t).LookupMeta(ctx, key, v)
+				t.Must.Nil(err)
+				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
 		})
-		require.NoError(t, err)
+		t.Must.Nil(err)
 		t.Defer(sub.Close)
 
-		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
-		require.NoError(t, err)
-		require.Nil(t, metaAccessorSubjectGet(t).Resource.DeleteByID(ctx, id))
+		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
+		t.Must.Nil(err)
+		t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(ctx, id))
 
-		assert.Eventually.Assert(t, func(t testing.TB) {
+		Eventually.Assert(t, func(it assert.It) {
 			mutex.RLock()
 			defer mutex.RUnlock()
-			require.Equal(t, expected, actual)
+			it.Must.Equal(expected, actual)
 		})
 	})
 
 	s.Test(".SetMeta -> .DeleteAll -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
 		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Fixture(c.V, nil))
+		expected := c.MakeV(t)
 
-		ptr := CreatePTR(factoryGet(t), c.T)
-		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
+		ptr := toPtr(c.MakeEnt(t))
+		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber[Ent, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(frameless.DeleteAllEvent); !ok {
 					return nil
 				}
 
-				v := newT(c.V)
-				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
-				require.NoError(t, err)
-				require.True(t, found)
+				v := new(V)
+				found, err := c.subject().Get(t).LookupMeta(ctx, key, v)
+				t.Must.Nil(err)
+				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
 		})
-		require.NoError(t, err)
+		t.Must.Nil(err)
 		t.Defer(sub.Close)
 
-		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
-		require.NoError(t, err)
-		require.Nil(t, metaAccessorSubjectGet(t).Resource.DeleteAll(ctx))
+		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
+		t.Must.Nil(err)
+		t.Must.Nil(c.subject().Get(t).Resource.DeleteAll(ctx))
 
-		assert.Eventually.Assert(t, func(t testing.TB) {
+		Eventually.Assert(t, func(it assert.It) {
 			mutex.RLock()
 			defer mutex.RUnlock()
-			require.Equal(t, expected, actual)
+			it.Must.Equal(expected, actual)
 		})
 	})
 
 	s.Test(".SetMeta -> .Update -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		crud, ok := metaAccessorSubjectGet(t).Resource.(UpdaterSubject)
+		res, ok := c.subject().Get(t).Resource.(UpdaterSubject[Ent, ID])
 		if !ok {
-			t.Skipf(`frameless.Updater is not implemented by %T`, metaAccessorSubjectGet(t).Resource)
+			t.Skipf(`frameless.Updater is not implemented by %T`, c.subject().Get(t).Resource)
 		}
 
 		ctx := c.Context(t)
 		key := t.Random.String()
-		expected := base(factoryGet(t).Fixture(c.V, nil))
+		expected := c.MakeV(t)
 
-		ptr := CreatePTR(factoryGet(t), c.T)
-		assert.CreateEntity(t, metaAccessorSubjectGet(t).Resource, ctx, ptr)
-		id := assert.HasID(t, ptr)
+		ptr := toPtr(c.MakeEnt(t))
+		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, ptr)
+		id := HasID[Ent, ID](t, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := metaAccessorSubjectGet(t).Publisher.SubscribeToUpdaterEvents(ctx, doubles.StubSubscriber{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToUpdaterEvents(ctx, doubles.StubSubscriber[Ent, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(frameless.UpdateEvent); !ok {
+				if _, ok := event.(frameless.UpdateEvent[Ent]); !ok {
 					return nil
 				}
 
-				v := newT(c.V)
-				found, err := metaAccessorSubjectGet(t).LookupMeta(ctx, key, v)
-				require.NoError(t, err)
-				require.True(t, found)
+				v := new(V)
+				found, err := c.subject().Get(t).LookupMeta(ctx, key, v)
+				t.Must.Nil(err)
+				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
 				actual = base(v)
 				return nil
 			},
 		})
-		require.NoError(t, err)
+		t.Must.Nil(err)
 		t.Defer(sub.Close)
 
-		updPTR := CreatePTR(factoryGet(t), c.T)
-		require.NoError(t, extid.Set(updPTR, id))
-		ctx, err = accessorGet(t).SetMeta(ctx, key, expected)
-		require.NoError(t, err)
-		require.Nil(t, crud.Update(ctx, updPTR))
+		updPTR := toPtr(c.MakeEnt(t))
+		t.Must.Nil(extid.Set(updPTR, id))
+		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
+		t.Must.Nil(err)
+		t.Must.Nil(res.Update(ctx, updPTR))
 
-		assert.Eventually.Assert(t, func(t testing.TB) {
+		Eventually.Assert(t, func(it assert.It) {
 			mutex.RLock()
 			defer mutex.RUnlock()
-			require.Equal(t, expected, actual)
+			it.Must.Equal(expected, actual)
 		})
 	})
 }

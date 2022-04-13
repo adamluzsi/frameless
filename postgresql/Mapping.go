@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-type Mapping /* T */ interface {
+type Mapping[Ent any] interface {
 	// TableRef is the entity's postgresql table name.
 	//   eg.:
 	//     - "public"."table_name"
@@ -24,5 +24,5 @@ type Mapping /* T */ interface {
 	NewID(context.Context) (interface{}, error)
 	// ToArgs convert an entity ptr to a list of query argument that can be used for CREATE or UPDATE purpose.
 	ToArgs(ptr interface{}) ([]interface{}, error)
-	iterators.SQLRowMapper
+	iterators.SQLRowMapper[Ent]
 }

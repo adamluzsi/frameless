@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestErrorf(t *testing.T) {
-	i := iterators.Errorf("%s", "hello world!")
-	require.NotNil(t, i)
-	require.Equal(t, "hello world!", i.Err().Error())
+	i := iterators.Errorf[any]("%s", "hello world!")
+	assert.Must(t).NotNil(i)
+	assert.Must(t).Equal("hello world!", i.Err().Error())
 }

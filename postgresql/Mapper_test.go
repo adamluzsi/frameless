@@ -7,14 +7,15 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/testcase/random"
 
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMapper_Map(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
 	type X struct {
 		Foo int
 	}
@@ -25,7 +26,7 @@ func TestMapper_Map(t *testing.T) {
 	}}
 
 	t.Run(`happy-path`, func(t *testing.T) {
-		expectedInt := fixtures.Random.Int()
+		expectedInt := rnd.Int()
 		scanner := FakeSQLRowScanner{ScanFunc: func(i ...interface{}) error {
 			return reflects.Link(expectedInt, i[0])
 		}}
@@ -54,6 +55,7 @@ func (scanner FakeSQLRowScanner) Scan(i ...interface{}) error {
 }
 
 func TestMapper_ToArgs(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
 	type X struct {
 		Foo int64
 	}
@@ -64,7 +66,7 @@ func TestMapper_ToArgs(t *testing.T) {
 			return []interface{}{sql.NullInt64{Int64: x.Foo, Valid: true}}, nil
 		}}
 
-		x := X{Foo: int64(fixtures.Random.Int())}
+		x := X{Foo: int64(rnd.Int())}
 
 		args, err := m.ToArgsFn(&x)
 		require.Nil(t, err)
@@ -81,14 +83,15 @@ func TestMapper_ToArgs(t *testing.T) {
 			return nil, expectedErr
 		}}
 
-		_, err := m.ToArgsFn(&X{Foo: int64(fixtures.Random.Int())})
+		_, err := m.ToArgsFn(&X{Foo: int64(rnd.Int())})
 		require.Equal(t, expectedErr, err)
 	})
 }
 
 func TestMapper_NewID(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
 	t.Run(`happy-path`, func(t *testing.T) {
-		expectedID := fixtures.Random.Int()
+		expectedID := rnd.Int()
 		m := postgresql.Mapper{NewIDFn: func(ctx context.Context) (interface{}, error) {
 			return expectedID, nil
 		}}

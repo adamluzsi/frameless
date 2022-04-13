@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/contracts"
+	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/stretchr/testify/require"
 )
 
 func ExampleSymbolicName() {
@@ -25,9 +25,9 @@ func TestName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := contracts.Creator{}
+			o := contracts.Creator[int, string]{}
 
-			require.Equal(t, `contracts.Creator`, reflects.SymbolicName(o))
+			assert.Must(t).Equal(`contracts.Creator[int,string]`, reflects.SymbolicName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {
@@ -35,19 +35,19 @@ func TestName(t *testing.T) {
 
 			var i InterfaceObject = &StructObject{}
 
-			require.Equal(t, `reflects_test.StructObject`, subject(i))
+			assert.Must(t).Equal(`reflects_test.StructObject`, subject(i))
 		})
 
 		spec.Run("when given object is a struct", func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, `reflects_test.StructObject`, subject(StructObject{}))
+			assert.Must(t).Equal(`reflects_test.StructObject`, subject(StructObject{}))
 		})
 
 		spec.Run("when given object is a pointer of a struct", func(t *testing.T) {
 			t.Parallel()
 
-			require.Equal(t, `reflects_test.StructObject`, subject(&StructObject{}))
+			assert.Must(t).Equal(`reflects_test.StructObject`, subject(&StructObject{}))
 		})
 
 		spec.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
@@ -55,7 +55,7 @@ func TestName(t *testing.T) {
 
 			o := &StructObject{}
 
-			require.Equal(t, `reflects_test.StructObject`, subject(&o))
+			assert.Must(t).Equal(`reflects_test.StructObject`, subject(&o))
 		})
 
 	})

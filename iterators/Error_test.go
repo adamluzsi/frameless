@@ -4,19 +4,20 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
-var _ iterators.Interface = iterators.NewError(errors.New(""))
+var _ frameless.Iterator[any] = iterators.NewError[any](errors.New("boom"))
 
 func TestNewError_ErrorGiven_NotIterableIteratorReturnedWithError(t *testing.T) {
 	t.Parallel()
 
 	expectedError := errors.New("Boom!")
-	i := iterators.NewError(expectedError)
-	require.False(t, i.Next())
-	require.Nil(t, i.Decode(nil))
-	require.Error(t, expectedError, i.Err())
-	require.Nil(t, i.Close())
+	i := iterators.NewError[any](expectedError)
+	assert.Must(t).False(i.Next())
+	assert.Must(t).Nil(i.Value())
+	assert.Must(t).NotNil(expectedError, i.Err())
+	assert.Must(t).Nil(i.Close())
 }

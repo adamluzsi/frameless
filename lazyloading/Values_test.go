@@ -3,16 +3,16 @@ package lazyloading_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/lazyloading"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/random"
 )
 
 func TestValues(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	loader := s.Let(`Values`, func(t *testcase.T) interface{} {
+	loader := testcase.Let(s, func(t *testcase.T) interface{} {
 		return &lazyloading.Values{}
 	})
 	loaderGet := func(t *testcase.T) *lazyloading.Values {
@@ -20,11 +20,11 @@ func TestValues(t *testing.T) {
 	}
 
 	s.Describe(`.Get`, func(s *testcase.Spec) {
-		key := s.Let(`key`, func(t *testcase.T) interface{} {
+		key := testcase.Let(s, func(t *testcase.T) interface{} {
 			return t.Random.Int()
 		})
 		initCallCount := s.LetValue(`init call count`, int(0))
-		init := s.Let(`init`, func(t *testcase.T) interface{} {
+		init := testcase.Let(s, func(t *testcase.T) interface{} {
 			return func() interface{} { return t.Random.Int() }
 		})
 		subject := func(t *testcase.T) interface{} {
@@ -35,14 +35,14 @@ func TestValues(t *testing.T) {
 		}
 
 		s.Then(`it yield the same result all the time`, func(t *testcase.T) {
-			require.Equal(t, subject(t), subject(t))
+			assert.Must(t).Equal(subject(t), subject(t))
 		})
 
 		s.Then(`on multiple call, value constructed only once`, func(t *testcase.T) {
 			for i := 0; i < 42; i++ {
 				subject(t)
 			}
-			require.Equal(t, 1, initCallCount.Get(t).(int))
+			assert.Must(t).Equal(1, initCallCount.Get(t).(int))
 		})
 
 		s.When(`when init block returns with nil`, func(s *testcase.Spec) {
@@ -54,7 +54,7 @@ func TestValues(t *testing.T) {
 				for i := 0; i < 42; i++ {
 					subject(t)
 				}
-				require.Equal(t, 1, initCallCount.Get(t).(int))
+				assert.Must(t).Equal(1, initCallCount.Get(t).(int))
 			})
 		})
 	})
@@ -63,6 +63,7 @@ func TestValues(t *testing.T) {
 func BenchmarkLazyLoader_Get(b *testing.B) {
 	const sampling = 42
 
+	rnd := random.New(random.CryptoSeed{})
 	getIndex := func(len, index int) int {
 		for {
 			if index < len {
@@ -77,8 +78,8 @@ func BenchmarkLazyLoader_Get(b *testing.B) {
 		vs := make(map[string]func() interface{})
 		var keys = make([]string, 0)
 		for i := 0; i < sampling; i++ {
-			key := fixtures.Random.String()
-			value := fixtures.Random.Int()
+			key := rnd.String()
+			value := rnd.Int()
 			vs[key] = func() interface{} { return value }
 			keys = append(keys, key)
 		}
@@ -95,7 +96,7 @@ func BenchmarkLazyLoader_Get(b *testing.B) {
 		keys := make([]int, 0)
 		for i := 0; i < sampling; i++ {
 			keys = append(keys, i)
-			ll.Get(i, func() interface{} { return fixtures.Random.Int() })
+			ll.Get(i, func() interface{} { return rnd.Int() })
 		}
 		keysLen := len(keys)
 

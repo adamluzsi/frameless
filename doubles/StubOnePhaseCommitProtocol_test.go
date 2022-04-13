@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/inmemory"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/frameless/resources/inmemory"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
@@ -29,9 +29,9 @@ func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
 
 	t.Run(`stub works when set`, func(t *testing.T) {
 		_, rerr := sopcp.BeginTx(ctx)
-		require.Equal(t, beginErr, rerr)
-		require.Equal(t, commitErr, sopcp.CommitTx(ctx))
-		require.Equal(t, rollbackErr, sopcp.RollbackTx(ctx))
+		assert.Must(t).Equal(beginErr, rerr)
+		assert.Must(t).Equal(commitErr, sopcp.CommitTx(ctx))
+		assert.Must(t).Equal(rollbackErr, sopcp.RollbackTx(ctx))
 		sopcp.BeginTxFunc = nil
 		sopcp.CommitTxFunc = nil
 		sopcp.RollbackTxFunc = nil
@@ -39,28 +39,28 @@ func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
 
 	t.Run(`commit with embedded`, func(t *testing.T) {
 		tx, err := sopcp.BeginTx(ctx)
-		require.NoError(t, err)
+		assert.Must(t).Nil(err)
 		m.Set(tx, `ns`, `key`, `value`)
 		t.Cleanup(func() { m.Del(ctx, `ns`, `key`) })
 		_, ok := m.Get(ctx, `ns`, `key`)
-		require.False(t, ok)
+		assert.Must(t).False(ok)
 		_, ok = m.Get(tx, `ns`, `key`)
-		require.True(t, ok)
-		require.NoError(t, sopcp.CommitTx(tx))
+		assert.Must(t).True(ok)
+		assert.Must(t).Nil(sopcp.CommitTx(tx))
 		_, ok = m.Get(ctx, `ns`, `key`)
-		require.True(t, ok)
+		assert.Must(t).True(ok)
 	})
 
 	t.Run(`rollback with embedded`, func(t *testing.T) {
 		tx, err := sopcp.BeginTx(ctx)
-		require.NoError(t, err)
+		assert.Must(t).Nil(err)
 		m.Set(tx, `ns`, `key`, `value`)
 		_, ok := m.Get(ctx, `ns`, `key`)
-		require.False(t, ok)
+		assert.Must(t).False(ok)
 		_, ok = m.Get(tx, `ns`, `key`)
-		require.True(t, ok)
-		require.NoError(t, sopcp.RollbackTx(tx))
+		assert.Must(t).True(ok)
+		assert.Must(t).Nil(sopcp.RollbackTx(tx))
 		_, ok = m.Get(ctx, `ns`, `key`)
-		require.False(t, ok)
+		assert.Must(t).False(ok)
 	})
 }

@@ -1,15 +1,5 @@
 package iterators
 
-import (
-	"github.com/adamluzsi/frameless"
-)
-
-type (
-	Interface   = frameless.Iterator
-	Decoder     = frameless.Decoder
-	DecoderFunc = frameless.DecoderFunc
-)
-
 // Encoder is a scope isolation boundary.
 // One use-case for this is for example the Presenter object that encapsulate the external resource presentation mechanism from it's user.
 //

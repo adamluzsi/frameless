@@ -4,136 +4,139 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts/assert"
+	. "github.com/adamluzsi/frameless/contracts/asserts"
+
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/testcase"
-
-	"github.com/stretchr/testify/require"
 )
 
-type Creator struct {
-	T
-	Subject        func(testing.TB) CRD
-	Context        func(testing.TB) context.Context
-	FixtureFactory func(testing.TB) frameless.FixtureFactory
+type Creator[Ent any, ID any] struct {
+	Subject func(testing.TB) CreatorSubject[Ent, ID]
+	MakeCtx func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
 }
 
-func (c Creator) Test(t *testing.T) {
+type CreatorSubject[Ent, ID any] CRD[Ent, ID]
+
+func (c Creator[T, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c Creator) Benchmark(b *testing.B) {
+func (c Creator[Ent, ID]) Benchmark(b *testing.B) {
 	resource := c.Subject(b)
-	ff := c.FixtureFactory(b)
-	cleanup(b, c.Context(b), resource)
+	cleanup[Ent, ID](b, c.MakeCtx(b), resource)
 	b.Run(`Creator`, func(b *testing.B) {
-		es := createEntities(ff, c.T)
-		defer cleanup(b, c.Context(b), resource)
-		ctx := c.Context(b)
+		var (
+			ctx = c.MakeCtx(b)
+			es  []*Ent
+		)
+		for i := 0; i < b.N; i++ {
+			ent := c.MakeEnt(b)
+			es = append(es, &ent)
+		}
+		defer cleanup[Ent, ID](b, c.MakeCtx(b), resource)
 
 		b.ResetTimer()
-		for _, ptr := range es {
-			require.Nil(b, resource.Create(ctx, ptr))
+		for i := 0; i < b.N; i++ {
+			_ = resource.Create(ctx, es[i])
 		}
+		b.StopTimer()
 	})
 }
 
-func (c Creator) Spec(s *testcase.Spec) {
-	factoryLet(s, c.FixtureFactory)
-	resource := s.Let(`resource`, func(t *testcase.T) interface{} {
-		return c.Subject(t)
-	})
-	resourceGet := func(t *testcase.T) CRD {
-		return resource.Get(t).(CRD)
-	}
+func (c Creator[Ent, ID]) Spec(s *testcase.Spec) {
 	var (
-		ctx = s.Let(`ctx`, func(t *testcase.T) interface{} {
-			return c.Context(t)
+		resource = testcase.Let(s, func(t *testcase.T) CRD[Ent, ID] {
+			return c.Subject(t)
 		})
-		ptr = s.Let(`entity`, func(t *testcase.T) interface{} {
-			return CreatePTR(factoryGet(t), c.T)
+		ctxVar = testcase.Let(s, func(t *testcase.T) context.Context {
+			return c.MakeCtx(t)
 		})
-		getID = func(t *testcase.T) interface{} {
-			id, _ := extid.Lookup(ptr.Get(t))
+		ptr = testcase.Let(s, func(t *testcase.T) *Ent {
+			v := c.MakeEnt(t)
+			return &v
+		})
+		getID = func(t *testcase.T) ID {
+			id, _ := extid.Lookup[ID](ptr.Get(t))
 			return id
 		}
 	)
 	subject := func(t *testcase.T) error {
-		ctx := ctx.Get(t).(context.Context)
-		err := resourceGet(t).Create(ctx, ptr.Get(t))
+		ctx := ctxVar.Get(t)
+		err := resource.Get(t).Create(ctx, ptr.Get(t))
 		if err == nil {
-			id, _ := extid.Lookup(ptr.Get(t))
-			t.Defer(resourceGet(t).DeleteByID, ctx, id)
-			assert.IsFindable(t, c.T, resourceGet(t), ctx, id)
+			id, _ := extid.Lookup[ID](ptr.Get(t))
+			t.Defer(resource.Get(t).DeleteByID, ctx, id)
+			IsFindable[Ent, ID](t, resource.Get(t), ctx, id)
 		}
 		return err
 	}
 
 	s.When(`entity was not saved before`, func(s *testcase.Spec) {
 		s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
-			require.Nil(t, subject(t))
-			require.NotEmpty(t, getID(t))
+			t.Must.Nil(subject(t))
+			t.Must.NotEmpty(getID(t))
 		})
 
 		s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
-			require.Nil(t, subject(t))
-			require.Equal(t, ptr.Get(t), assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t)))
+			t.Must.Nil(subject(t))
+			t.Must.Equal(ptr.Get(t), IsFindable[Ent, ID](t, resource.Get(t), c.MakeCtx(t), getID(t)))
 		})
 	})
 
 	s.When(`entity was already saved once`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, subject(t))
-			assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			t.Must.Nil(subject(t))
+			IsFindable[Ent, ID](t, resource.Get(t), c.MakeCtx(t), getID(t))
 		})
 
 		s.Then(`it will raise error because ext:ID field already points to a existing record`, func(t *testcase.T) {
-			require.Error(t, subject(t))
+			t.Must.NotNil(subject(t))
 		})
 	})
 
 	s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, subject(t))
-			assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
-			require.Nil(t, resourceGet(t).DeleteByID(c.Context(t), getID(t)))
-			assert.IsAbsent(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			t.Must.Nil(subject(t))
+			IsFindable[Ent, ID](t, resource.Get(t), c.MakeCtx(t), getID(t))
+			t.Must.Nil(resource.Get(t).DeleteByID(c.MakeCtx(t), getID(t)))
+			IsAbsent[Ent, ID](t, resource.Get(t), c.MakeCtx(t), getID(t))
 		})
 
 		s.Then(`it will accept it`, func(t *testcase.T) {
-			require.Nil(t, subject(t))
+			t.Must.Nil(subject(t))
 		})
 
 		s.Then(`persisted object can be found`, func(t *testcase.T) {
-			require.Nil(t, subject(t))
-			assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), getID(t))
+			t.Must.Nil(subject(t))
+			IsFindable[Ent, ID](t, resource.Get(t), c.MakeCtx(t), getID(t))
 		})
 	})
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
-		ctx.Let(s, func(t *testcase.T) interface{} {
-			ctx, cancel := context.WithCancel(c.Context(t))
+		ctxVar.Let(s, func(t *testcase.T) context.Context {
+			ctx, cancel := context.WithCancel(c.MakeCtx(t))
 			cancel()
 			return ctx
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			require.Equal(t, context.Canceled, subject(t))
+			t.Must.Equal(context.Canceled, subject(t))
 		})
 	})
 
 	s.Test(`persist on #Create`, func(t *testcase.T) {
-		e := CreatePTR(factoryGet(t), c.T)
-		err := resourceGet(t).Create(c.Context(t), e)
-		require.Nil(t, err)
+		e := c.MakeEnt(t)
 
-		ID, ok := extid.Lookup(e)
-		require.True(t, ok, "ID is not defined in the entity struct src definition")
-		require.NotEmpty(t, ID, "it's expected that storage set the storage ID in the entity")
+		err := resource.Get(t).Create(c.MakeCtx(t), &e)
+		t.Must.Nil(err)
 
-		require.Equal(t, e, assert.IsFindable(t, c.T, resourceGet(t), c.Context(t), ID))
-		require.Nil(t, resourceGet(t).DeleteByID(c.Context(t), ID))
+		id, ok := extid.Lookup[ID](&e)
+		t.Must.True(ok, "ID is not defined in the entity struct src definition")
+		t.Must.NotEmpty(id, "it's expected that storage set the storage ID in the entity")
+
+		t.Must.Equal(e, *IsFindable[Ent, ID](t, resource.Get(t), c.MakeCtx(t), id))
+		t.Must.Nil(resource.Get(t).DeleteByID(c.MakeCtx(t), id))
 	})
 }

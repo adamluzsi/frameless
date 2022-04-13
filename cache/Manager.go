@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"sync"
 
 	"github.com/adamluzsi/frameless"
@@ -12,18 +11,16 @@ import (
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-func NewManager(T T, storage Storage, source Source) (*Manager, error) {
-	var r = &Manager{T: T, Storage: storage, Source: source}
+func NewManager[Ent, ID any](storage Storage[Ent, ID], source Source[Ent, ID]) (*Manager[Ent, ID], error) {
+	var r = &Manager[Ent, ID]{Storage: storage, Source: source}
 	return r, r.Init(context.Background())
 }
 
-type Manager struct {
-	T T
-
+type Manager[Ent, ID any] struct {
 	// Source is the location of the original data
-	Source Source
+	Source Source[Ent, ID]
 	// Storage is the storage that keeps the cached data.
-	Storage Storage
+	Storage Storage[Ent, ID]
 
 	init  sync.Once
 	close func()
@@ -31,26 +28,26 @@ type Manager struct {
 
 // Source is the minimum expected interface that is expected from a Source resources that needs caching.
 // On top of this, cache.Manager also supports Updater, CreatorPublisher, UpdaterPublisher and DeleterPublisher.
-type Source interface {
-	frameless.Creator
-	frameless.Finder
-	frameless.Deleter
-	frameless.CreatorPublisher
-	frameless.DeleterPublisher
+type Source[Ent, ID any] interface {
+	frameless.Creator[Ent]
+	frameless.Finder[Ent, ID]
+	frameless.Deleter[ID]
+	frameless.CreatorPublisher[Ent]
+	frameless.DeleterPublisher[ID]
 }
 
-type ExtendedSource interface {
-	frameless.Updater
-	frameless.UpdaterPublisher
+type ExtendedSource[Ent, ID any] interface {
+	frameless.Updater[Ent]
+	frameless.UpdaterPublisher[Ent]
 }
 
-func (m *Manager) Init(ctx context.Context) error {
+func (m *Manager[Ent, ID]) Init(ctx context.Context) error {
 	var rErr error
 	m.init.Do(func() { rErr = m.subscribe(ctx) })
 	return rErr
 }
 
-func (m *Manager) trap(next func()) {
+func (m *Manager[Ent, ID]) trap(next func()) {
 	if m.close == nil {
 		m.close = func() {}
 	}
@@ -62,7 +59,7 @@ func (m *Manager) trap(next func()) {
 	}
 }
 
-func (m *Manager) Close() error {
+func (m *Manager[Ent, ID]) Close() error {
 	if m.close == nil {
 		return nil
 	}
@@ -70,12 +67,12 @@ func (m *Manager) Close() error {
 	return nil
 }
 
-func (m *Manager) entityTypeName() string {
-	return reflects.SymbolicName(m.T)
+func (m *Manager[Ent, ID]) entityTypeName() string {
+	return reflects.SymbolicName(*new(Ent))
 }
 
-func (m *Manager) deleteCachedEntity(ctx context.Context, id interface{}) (rErr error) {
-	ptr := m.newRT().Interface()
+func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr error) {
+	ptr := new(Ent)
 	s := m.Storage.CacheEntity(ctx)
 	ctx, err := m.Storage.BeginTx(ctx)
 	if err != nil {
@@ -98,21 +95,21 @@ func (m *Manager) deleteCachedEntity(ctx context.Context, id interface{}) (rErr 
 	return s.DeleteByID(ctx, id)
 }
 
-func (m *Manager) CacheQueryMany(
+func (m *Manager[Ent, ID]) CacheQueryMany(
 	ctx context.Context,
 	name string,
-	query func() frameless.Iterator,
-) frameless.Iterator {
+	query func() frameless.Iterator[Ent],
+) frameless.Iterator[Ent] {
 	// TODO: double check
 	if ctx != nil && ctx.Err() != nil {
-		return iterators.NewError(ctx.Err())
+		return iterators.NewError[Ent](ctx.Err())
 	}
 
-	queryID := fmt.Sprintf(`0:%T/%s`, m.T, name) // add version epoch
-	var hit Hit
+	queryID := fmt.Sprintf(`0:%T/%s`, *new(Ent), name) // add version epoch
+	var hit Hit[ID]
 	found, err := m.Storage.CacheHit(ctx).FindByID(ctx, &hit, queryID)
 	if err != nil {
-		return iterators.NewError(err)
+		return iterators.NewError[Ent](err)
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
@@ -124,62 +121,74 @@ func (m *Manager) CacheQueryMany(
 	// If this becomes the case, it should be possible to change this into a streaming approach
 	// where iterator being iterated element by element,
 	// and records being created during then in the Storage
-	var vs, ids []interface{}
-	if err := iterators.Collect(query(), &vs); err != nil {
-		return iterators.NewError(err)
+	var ids []ID
+	res, err := iterators.Collect(query())
+	if err != nil {
+		return iterators.NewError[Ent](err)
 	}
-	for _, v := range vs {
-		id, _ := extid.Lookup(v)
+	for _, v := range res {
+		id, _ := extid.Lookup[ID](v)
 		ids = append(ids, id)
 	}
 
-	if err := m.Storage.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
-		return iterators.NewError(err)
+	var vs []*Ent
+	for _, ent := range res {
+		vs = append(vs, &ent)
 	}
 
-	if err := m.Storage.CacheHit(ctx).Create(ctx, &Hit{
+	if err := m.Storage.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
+		return iterators.NewError[Ent](err)
+	}
+
+	if err := m.Storage.CacheHit(ctx).Create(ctx, &Hit[ID]{
 		QueryID:   queryID,
 		EntityIDs: ids,
 	}); err != nil {
-		return iterators.NewError(err)
+		return iterators.NewError[Ent](err)
 	}
 
-	return iterators.NewSlice(vs)
+	return iterators.NewSlice[Ent](res)
 }
 
-func (m *Manager) CacheQueryOne(
+func (m *Manager[Ent, ID]) CacheQueryOne(
 	ctx context.Context,
 	queryID string,
-	ptr interface{},
-	query func(ptr interface{}) (found bool, err error),
+	ptr *Ent,
+	query func(ptr *Ent) (found bool, err error),
 ) (_found bool, _err error) {
-	return iterators.First(m.CacheQueryMany(ctx, queryID, func() iterators.Interface {
-		ptr := m.newRT()
-		found, err := query(ptr.Interface())
+	iter := m.CacheQueryMany(ctx, queryID, func() frameless.Iterator[Ent] {
+		ptr := new(Ent)
+		found, err := query(ptr)
 		if err != nil {
-			return iterators.NewError(err)
+			return iterators.NewError[Ent](err)
 		}
 		if !found {
-			return iterators.NewEmpty()
+			return iterators.Empty[Ent]()
 		}
-		return iterators.NewSlice([]interface{}{ptr.Elem().Interface()})
-	}), ptr)
-}
+		return iterators.NewSlice[Ent]([]Ent{*ptr})
+	})
 
-func (m *Manager) newRT() reflect.Value {
-	return reflect.New(reflect.TypeOf(m.T))
+	v, found, err := iterators.First[Ent](iter)
+	if err != nil {
+		return false, err
+	}
+	if !found {
+		return false, nil
+	}
+	*ptr = v
+	return true, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager) Create(ctx context.Context, ptr interface{}, opts ...interface{}) error {
+func (m *Manager[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	if err := m.Source.Create(ctx, ptr); err != nil {
 		return err
 	}
 	return m.Storage.CacheEntity(ctx).Create(ctx, ptr)
 }
 
-func (m *Manager) FindByID(ctx context.Context, ptr, id interface{}) (bool, error) {
+func (m *Manager[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (bool, error) {
 	// fast path
 	found, err := m.Storage.CacheEntity(ctx).FindByID(ctx, ptr, id)
 	if err != nil {
@@ -189,20 +198,20 @@ func (m *Manager) FindByID(ctx context.Context, ptr, id interface{}) (bool, erro
 		return true, nil
 	}
 	// slow path
-	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), ptr, func(ptr interface{}) (found bool, err error) {
+	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), ptr, func(ptr *Ent) (found bool, err error) {
 		return m.Source.FindByID(ctx, ptr, id)
 	})
 }
 
-func (m *Manager) FindAll(ctx context.Context) frameless.Iterator {
-	return m.CacheQueryMany(ctx, `FindAll`, func() frameless.Iterator {
+func (m *Manager[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
+	return m.CacheQueryMany(ctx, `FindAll`, func() frameless.Iterator[Ent] {
 		return m.Source.FindAll(ctx)
 	})
 }
 
-func (m *Manager) Update(ctx context.Context, ptr interface{}) error {
+func (m *Manager[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	switch src := m.Source.(type) {
-	case ExtendedSource:
+	case ExtendedSource[Ent, ID]:
 		if err := src.Update(ctx, ptr); err != nil {
 			return err
 		}
@@ -212,14 +221,14 @@ func (m *Manager) Update(ctx context.Context, ptr interface{}) error {
 	}
 }
 
-func (m *Manager) DeleteByID(ctx context.Context, id interface{}) error {
+func (m *Manager[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := m.Source.DeleteByID(ctx, id); err != nil {
 		return err
 	}
 
 	// TODO: unsafe without additional tx layer
 	dataStorage := m.Storage.CacheEntity(ctx)
-	found, err := dataStorage.FindByID(ctx, m.newRT().Interface(), id)
+	found, err := dataStorage.FindByID(ctx, new(Ent), id)
 	if err != nil {
 		return err
 	}
@@ -235,23 +244,23 @@ func (m *Manager) DeleteByID(ctx context.Context, id interface{}) error {
 	return nil
 }
 
-func (m *Manager) DeleteAll(ctx context.Context) error {
+func (m *Manager[Ent, ID]) DeleteAll(ctx context.Context) error {
 	if err := m.Source.DeleteAll(ctx); err != nil {
 		return err
 	}
 	return m.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (m *Manager) SubscribeToCreatorEvents(ctx context.Context, creatorSubscriber frameless.CreatorSubscriber) (frameless.Subscription, error) {
+func (m *Manager[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, creatorSubscriber frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error) {
 	return m.Source.SubscribeToCreatorEvents(ctx, creatorSubscriber)
 }
 
-func (m *Manager) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
+func (m *Manager[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber[ID]) (frameless.Subscription, error) {
 	return m.Source.SubscribeToDeleterEvents(ctx, s)
 }
 
-func (m *Manager) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
-	es, ok := m.Source.(ExtendedSource)
+func (m *Manager[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber[Ent]) (frameless.Subscription, error) {
+	es, ok := m.Source.(ExtendedSource[Ent, ID])
 	if !ok {
 		return nil, fmt.Errorf("%T doesn't implement frameless.UpdaterPublisher", m.Source)
 	}

@@ -10,42 +10,42 @@ type Subscription interface {
 }
 
 type (
-	CreateEvent/* [Entity] */ struct{ Entity T }
+	CreateEvent[Ent any] struct{ Entity Ent }
 
-	CreatorSubscriber/* [Event] */ interface {
-		HandleCreateEvent(ctx context.Context, event CreateEvent) error
+	CreatorSubscriber[Ent any] interface {
+		HandleCreateEvent(ctx context.Context, event CreateEvent[Ent]) error
 		ErrorHandler
 	}
 
-	CreatorPublisher/* [EventCreate[Entity]] */ interface {
-		SubscribeToCreatorEvents(context.Context, CreatorSubscriber /* [EventCreate[Entity]] */) (Subscription, error)
+	CreatorPublisher[Ent any] interface {
+		SubscribeToCreatorEvents(context.Context, CreatorSubscriber[Ent]) (Subscription, error)
 	}
 )
 
 type (
-	UpdateEvent/* [Entity] */ struct{ Entity T }
+	UpdateEvent[Ent any] struct{ Entity Ent }
 
-	UpdaterSubscriber/* [Event] */ interface {
-		HandleUpdateEvent(ctx context.Context, event UpdateEvent) error
+	UpdaterSubscriber[Ent any] interface {
+		HandleUpdateEvent(ctx context.Context, event UpdateEvent[Ent]) error
 		ErrorHandler
 	}
 
-	UpdaterPublisher interface {
-		SubscribeToUpdaterEvents(context.Context, UpdaterSubscriber /* [EventUpdate[Entity]] */) (Subscription, error)
+	UpdaterPublisher[Ent any] interface {
+		SubscribeToUpdaterEvents(context.Context, UpdaterSubscriber[Ent]) (Subscription, error)
 	}
 )
 
 type (
-	DeleteByIDEvent/* [Entity, ID] */ struct{ ID ID }
-	DeleteAllEvent/* [Entity] */ struct{}
+	DeleteByIDEvent[ID any] struct{ ID ID }
+	DeleteAllEvent          struct{}
 
-	DeleterSubscriber/* [Event] */ interface {
-		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent /* [EventDeleteByID[Entity,ID]] */) error
-		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent /* [EventDeleteAll[Entity]] */) error
+	DeleterSubscriber[ID any] interface {
+		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent[ID]) error
+		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent) error
 		ErrorHandler
 	}
 
-	DeleterPublisher interface {
-		SubscribeToDeleterEvents(context.Context, DeleterSubscriber) (Subscription, error)
+	DeleterPublisher[ID any] interface {
+		SubscribeToDeleterEvents(context.Context, DeleterSubscriber[ID]) (Subscription, error)
 	}
 )

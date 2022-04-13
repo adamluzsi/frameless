@@ -1,96 +1,39 @@
 package iterators
 
 import (
-	"reflect"
-
-	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless"
 )
 
-func Filter(i Interface, selectorFunc interface{}) Interface {
-	iter := &filter{iterator: i, filterFunc: selectorFunc}
-	iter.init()
-	return iter
+func Filter[T any](i frameless.Iterator[T], filter func(T) bool) *FilterIter[T] {
+	return &FilterIter[T]{Iterator: i, Filter: filter}
 }
 
-type filter struct {
-	iterator   Interface
-	filterFunc interface{}
-	matcher    func(interface{}) bool
-	rType      reflect.Type
+type FilterIter[T any] struct {
+	Iterator frameless.Iterator[T]
+	Filter   func(T) bool
 
-	next interface{}
-	err  error
+	value T
 }
 
-func (fi *filter) init() {
-	// TODO: Check arity and types here, rather than dying badly elsewhere.
-	v := reflect.ValueOf(fi.filterFunc)
-	ft := v.Type()
-
-	if ft.NumIn() != 1 {
-		panic(`invalid Filter function signature`)
-	}
-
-	fi.rType = ft.In(0)
-
-	fi.matcher = func(arg interface{}) bool {
-		var varg reflect.Value
-
-		if arg != nil {
-			varg = reflect.ValueOf(arg)
-		} else {
-			varg = reflect.Zero(ft.In(0))
-		}
-
-		vrets := v.Call([]reflect.Value{varg})
-
-		const ErrSignatureMismatch = `Filter function expects only one return value: func(type T)(T) bool`
-
-		if len(vrets) != 1 {
-			panic(ErrSignatureMismatch)
-		}
-
-		isMatching, ok := vrets[0].Interface().(bool)
-
-		if !ok {
-			panic(ErrSignatureMismatch)
-		}
-
-		return isMatching
-	}
+func (i *FilterIter[T]) Close() error {
+	return i.Iterator.Close()
 }
 
-func (fi *filter) Close() error {
-	return fi.iterator.Close()
+func (i *FilterIter[T]) Err() error {
+	return i.Iterator.Err()
 }
 
-func (fi *filter) Err() error {
-	if fi.err != nil {
-		return fi.err
-	}
-
-	return fi.iterator.Err()
+func (i *FilterIter[T]) Value() T {
+	return i.value
 }
 
-func (fi *filter) Decode(e interface{}) error {
-	return reflects.Link(fi.next, e)
-}
-
-func (fi *filter) Next() bool {
-	if !fi.iterator.Next() {
+func (i *FilterIter[T]) Next() bool {
+	if !i.Iterator.Next() {
 		return false
 	}
-
-	nextRV := reflect.New(fi.rType)
-	if err := fi.iterator.Decode(nextRV.Interface()); err != nil {
-		fi.err = err
-		return false
-	}
-
-	fi.next = nextRV.Elem().Interface()
-	if fi.matcher(fi.next) {
+	i.value = i.Iterator.Value()
+	if i.Filter(i.value) {
 		return true
 	}
-
-	return fi.Next()
+	return i.Next()
 }

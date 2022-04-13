@@ -2,43 +2,24 @@ package contracts
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"reflect"
-	"strconv"
 	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts/assert"
 
-	"github.com/adamluzsi/testcase/fixtures"
+	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/frameless/reflects"
 )
 
-type T = frameless.T
-
-var benchmarkEntityVolumeCount int
-
-func init() {
-	benchmarkEntityVolumeCount = 128
-
-	bsc, ok := os.LookupEnv(`BENCHMARK_ENTITY_VOLUME_COUNT`)
-	if !ok {
-		return
-	}
-
-	i, err := strconv.Atoi(bsc)
-	if err != nil {
-		fmt.Println(fmt.Sprintf(`WARNING - BENCHMARK_ENTITY_VOLUME_COUNT env var value not convertable to int, will be ignored`))
-		return
-	}
-
-	benchmarkEntityVolumeCount = i
+// CRD is the minimum requirements to write easily behavioral specification for a resource.
+type CRD[T any, ID any] interface {
+	frameless.Creator[T]
+	frameless.Finder[T, ID]
+	frameless.Deleter[ID]
 }
 
 const ErrIDRequired frameless.Error = `
@@ -47,31 +28,12 @@ if there is no ID in the subject structure
 custom test needed that explicitly defines how ID is stored and retried from an entity
 `
 
-// CRD is the minimum requirements to write easily behavioral specification for a resource.
-type CRD interface {
-	frameless.Creator
-	frameless.Finder
-	frameless.Deleter
+func cleanup[T any, ID any](tb testing.TB, ctx context.Context, t frameless.Deleter[ID]) {
+	assert.Must(tb).Nil(t.DeleteAll(ctx))
 }
 
-func createEntities(f frameless.FixtureFactory, T interface{}) []interface{} {
-	var es []interface{}
-	for i := 0; i < benchmarkEntityVolumeCount; i++ {
-		es = append(es, CreatePTR(f, T))
-	}
-	return es
-}
-
-func cleanup(tb testing.TB, ctx context.Context, t frameless.Deleter) {
-	require.Nil(tb, t.DeleteAll(ctx))
-}
-
-func contains(tb testing.TB, slice interface{}, contains interface{}, msgAndArgs ...interface{}) {
-	containsRefVal := reflect.ValueOf(contains)
-	if containsRefVal.Kind() == reflect.Ptr {
-		contains = containsRefVal.Elem().Interface()
-	}
-	require.Contains(tb, slice, contains, msgAndArgs...)
+func contains[Ent any](tb testing.TB, slice []Ent, contains Ent, msgAndArgs ...interface{}) {
+	assert.Must(tb).Contain(slice, contains, msgAndArgs...)
 }
 
 func newT(T interface{}) interface{} {
@@ -83,10 +45,11 @@ func newTFunc(T interface{}) func() interface{} {
 }
 
 func requireNotContainsList(tb testing.TB, list interface{}, listOfNotContainedElements interface{}, msgAndArgs ...interface{}) {
-	v := reflect.ValueOf(listOfNotContainedElements)
+	tb.Helper()
 
+	v := reflect.ValueOf(listOfNotContainedElements)
 	for i := 0; i < v.Len(); i++ {
-		require.NotContains(tb, list, v.Index(i).Interface(), msgAndArgs...)
+		assert.Must(tb).NotContain(list, v.Index(i).Interface(), msgAndArgs...)
 	}
 }
 
@@ -94,21 +57,12 @@ func requireContainsList(tb testing.TB, list interface{}, listOfContainedElement
 	v := reflect.ValueOf(listOfContainedElements)
 
 	for i := 0; i < v.Len(); i++ {
-		require.Contains(tb, list, v.Index(i).Interface(), msgAndArgs...)
+		assert.Must(tb).Contain(list, v.Index(i).Interface(), msgAndArgs...)
 	}
 }
 
-func base(e interface{}) interface{} {
-	return reflects.BaseValueOf(e).Interface()
-}
-
-func newEventSubscriber(tb testing.TB, name string, filter func(interface{}) bool) *eventSubscriber {
-	return &eventSubscriber{TB: tb, Name: name, Filter: filter}
-}
-
-type eventSubscriber struct {
+type eventSubscriber[Ent, ID any] struct {
 	TB         testing.TB
-	Name       string
 	ReturnErr  error
 	ContextErr error
 	Filter     func(event interface{}) bool
@@ -118,30 +72,30 @@ type eventSubscriber struct {
 	mutex  sync.Mutex
 }
 
-func (s *eventSubscriber) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent) error {
+func (s *eventSubscriber[Ent, ID]) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent[Ent]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent) error {
+func (s *eventSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent[Ent]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent) error {
+func (s *eventSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent[ID]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
+func (s *eventSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber) filter(event interface{}) bool {
+func (s *eventSubscriber[Ent, ID]) filter(event interface{}) bool {
 	if s.Filter == nil {
 		return true
 	}
 	return s.Filter(event)
 }
 
-func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
+func (s *eventSubscriber[Ent, ID]) Handle(ctx context.Context, event interface{}) error {
 	s.TB.Helper()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -153,7 +107,7 @@ func (s *eventSubscriber) Handle(ctx context.Context, event interface{}) error {
 	return s.ReturnErr
 }
 
-func (s *eventSubscriber) HandleError(ctx context.Context, err error) error {
+func (s *eventSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
@@ -161,106 +115,141 @@ func (s *eventSubscriber) HandleError(ctx context.Context, err error) error {
 	return s.ReturnErr
 }
 
-func (s *eventSubscriber) EventsLen() int {
+func (s *eventSubscriber[Ent, ID]) EventsLen() int {
 	return len(s.Events())
 }
 
-func (s *eventSubscriber) Events() []interface{} {
+func (s *eventSubscriber[Ent, ID]) Events() []interface{} {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.events
 }
 
-func (s *eventSubscriber) verifyContext(ctx context.Context) {
+func filterEventSubscriberEvents[Ent, ID, T any](s *eventSubscriber[Ent, ID]) []T {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	var out []T
+	for _, e := range s.events {
+		v, ok := e.(T)
+		if !ok {
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func (s *eventSubscriber[Ent, ID]) CreateEvents() []frameless.CreateEvent[Ent] {
+	return filterEventSubscriberEvents[Ent, ID, frameless.CreateEvent[Ent]](s)
+}
+
+func (s *eventSubscriber[Ent, ID]) UpdateEvents() []frameless.UpdateEvent[Ent] {
+	return filterEventSubscriberEvents[Ent, ID, frameless.UpdateEvent[Ent]](s)
+}
+
+func (s *eventSubscriber[Ent, ID]) DeleteEvents() []any {
+	var out []any
+	for _, v := range filterEventSubscriberEvents[Ent, ID, frameless.DeleteByIDEvent[ID]](s) {
+		out = append(out, v)
+	}
+	for _, v := range filterEventSubscriberEvents[Ent, ID, frameless.DeleteAllEvent](s) {
+		out = append(out, v)
+	}
+	return out
+}
+
+func (s *eventSubscriber[Ent, ID]) verifyContext(ctx context.Context) {
 	if s.ContextErr == nil {
 		return
 	}
-	require.NotNil(s.TB, ctx)
-	require.Equal(s.TB, s.ContextErr, ctx.Err())
+	assert.Must(s.TB).NotNil(ctx)
+	assert.Must(s.TB).Equal(s.ContextErr, ctx.Err())
 }
 
-const (
-	contextKey      = `Context`
-	subscriberKey   = `subscriberGet`
-	subscriptionKey = `subscription`
-)
-
-var ctx = testcase.Var{
-	Name: contextKey,
-	Init: func(t *testcase.T) interface{} {
+var ctxVar = testcase.Var[context.Context]{
+	ID: "context.Context",
+	Init: func(t *testcase.T) context.Context {
 		return context.Background()
 	},
 }
 
-func ctxGet(t *testcase.T) context.Context {
-	return ctx.Get(t).(context.Context)
-}
-
 var (
-	subscribedEvent = testcase.Var{
-		Name: `subscribed event`,
-		Init: func(t *testcase.T) interface{} {
-			return `unknown`
-		},
-	}
-	subscriberFilter = testcase.Var{
-		Name: `subscriber event filter`,
-		Init: func(t *testcase.T) interface{} {
+	subscriberFilter = testcase.Var[func(interface{}) bool]{
+		ID: `subscriber event filter`,
+		Init: func(t *testcase.T) func(interface{}) bool {
 			return func(interface{}) bool { return true }
 		},
 	}
-	subscriber = testcase.Var{
-		Name: subscriberKey,
-		Init: func(t *testcase.T) interface{} {
-			s := newEventSubscriber(
-				t,
-				subscribedEvent.Get(t).(string),
-				func(i interface{}) bool { return true },
-			)
-			return s
-		},
-	}
-	subscription = testcase.Var{
-		Name: subscriptionKey,
-	}
 )
 
-func subscriberLet(s *testcase.Spec, name string, filter func(event interface{}) bool) {
-	subscriber.Let(s, func(t *testcase.T) interface{} {
-		return newEventSubscriber(t, name, filter)
+func letSubscription[Ent, ID any](s *testcase.Spec) testcase.Var[frameless.Subscription] {
+	return testcase.Let[frameless.Subscription](s, nil)
+}
+
+func newEventSubscriber[Ent, ID any](tb testing.TB, filter func(interface{}) bool) *eventSubscriber[Ent, ID] {
+	return &eventSubscriber[Ent, ID]{TB: tb, Filter: filter}
+}
+
+func createSubscriptionFilter[Ent any](event interface{}) bool {
+	if _, ok := event.(frameless.CreateEvent[Ent]); ok {
+		return true
+	}
+	return false
+}
+
+func updateSubscriptionFilter[Ent any](event interface{}) bool {
+	if _, ok := event.(frameless.UpdateEvent[Ent]); ok {
+		return true
+	}
+	return false
+}
+
+func deleteSubscriptionFilter[ID any](event interface{}) bool {
+	if _, ok := event.(frameless.DeleteAllEvent); ok {
+		return true
+	}
+	if _, ok := event.(frameless.DeleteByIDEvent[ID]); ok {
+		return true
+	}
+	return false
+}
+
+func letSubscriber[Ent, ID any](s *testcase.Spec, filter func(interface{}) bool) testcase.Var[*eventSubscriber[Ent, ID]] {
+	return testcase.Let(s, func(t *testcase.T) *eventSubscriber[Ent, ID] {
+		return newEventSubscriber[Ent, ID](t, filter)
 	})
 }
 
-func subscriberGet(t *testcase.T) *eventSubscriber {
-	return subscriber.Get(t).(*eventSubscriber)
-}
-
-func getSubscriber(t *testcase.T, key string) *eventSubscriber {
-	return testcase.Var{Name: key, Init: subscriber.Init}.Get(t).(*eventSubscriber)
-}
-
-func genEntities(ff frameless.FixtureFactory, T T) []interface{} {
-	var es []interface{}
-	count := fixtures.Random.IntBetween(3, 7)
+func genEntities[T any](t *testcase.T, MakeEnt func(testing.TB) T) []*T {
+	var es []*T
+	count := t.Random.IntBetween(3, 7)
 	for i := 0; i < count; i++ {
-		es = append(es, CreatePTR(ff, T))
+		ent := MakeEnt(t)
+		es = append(es, &ent)
 	}
 	return es
 }
 
-func CreatePTR(ff frameless.FixtureFactory, T T) interface{} {
-	return assert.TakePtr(ff.Fixture(T, nil))
-}
-
-var factory = testcase.Var{Name: "FixtureFactory"}
+var factory = testcase.Var[frameless.FixtureFactory]{ID: "FixtureFactory"}
 
 func factoryLet(s *testcase.Spec, fff func(testing.TB) frameless.FixtureFactory) {
-	factory.Let(s, func(t *testcase.T) interface{} {
-		return fff(t)
-	})
+	factory.Let(s, func(t *testcase.T) frameless.FixtureFactory { return fff(t) })
 }
 
 func factoryGet(t *testcase.T) frameless.FixtureFactory {
-	return factory.Get(t).(frameless.FixtureFactory)
+	return factory.Get(t)
 }
 
+func toPtr[T any](v T) *T { return &v }
+
+func base(e interface{}) interface{} {
+	return reflects.BaseValueOf(e).Interface()
+}
+
+func typeAssertTo[ToType any](in []any) (out []ToType) {
+	for _, e := range in {
+		out = append(out, e.(ToType))
+	}
+	return out
+}

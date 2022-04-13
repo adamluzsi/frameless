@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/doubles"
+	"github.com/adamluzsi/frameless/resources/inmemory"
+	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/inmemory"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -32,23 +32,23 @@ func (spec SpecMemory) Spec(s *testcase.Spec) {
 	s.Describe(`.AddSubscription`, spec.SpecAddSubscription)
 }
 
-func (spec SpecMemory) memory() testcase.Var {
-	return testcase.Var{
-		Name: `*inmemory.EventLog`,
-		Init: func(t *testcase.T) interface{} {
+func (spec SpecMemory) memory() testcase.Var[*inmemory.EventLog] {
+	return testcase.Var[*inmemory.EventLog]{
+		ID: `*inmemory.EventLog`,
+		Init: func(t *testcase.T) *inmemory.EventLog {
 			return inmemory.NewEventLog()
 		},
 	}
 }
 
 func (spec SpecMemory) memoryGet(t *testcase.T) *inmemory.EventLog {
-	return spec.memory().Get(t).(*inmemory.EventLog)
+	return spec.memory().Get(t)
 }
 
-func (spec SpecMemory) ctx() testcase.Var {
-	return testcase.Var{
-		Name: `context.Context`,
-		Init: func(t *testcase.T) interface{} {
+func (spec SpecMemory) ctx() testcase.Var[context.Context] {
+	return testcase.Var[context.Context]{
+		ID: `context.Context`,
+		Init: func(t *testcase.T) context.Context {
 			return context.Background()
 		},
 	}
@@ -61,7 +61,7 @@ func (spec SpecMemory) ctxGet(t *testcase.T) context.Context {
 func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 	type AddTestEvent struct{ V string }
 	var (
-		event = s.Let(`event`, func(t *testcase.T) interface{} {
+		event = testcase.Let(s, func(t *testcase.T) interface{} {
 			return AddTestEvent{V: `hello world`}
 		})
 		eventGet = func(t *testcase.T) inmemory.Event {
@@ -73,39 +73,39 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 	)
 
 	s.When(`context is canceled`, func(s *testcase.Spec) {
-		spec.ctx().Let(s, func(t *testcase.T) interface{} {
+		spec.ctx().Let(s, func(t *testcase.T) context.Context {
 			c, cancel := context.WithCancel(context.Background())
 			cancel()
 			return c
 		})
 
 		s.Then(`atomic returns with context canceled error`, func(t *testcase.T) {
-			require.Equal(t, context.Canceled, subject(t))
+			assert.Must(t).Equal(context.Canceled, subject(t))
 		})
 	})
 
 	s.When(`during transaction`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			tx, err := spec.memoryGet(t).BeginTx(spec.ctxGet(t))
-			require.Nil(t, err)
+			assert.Must(t).Nil(err)
 			spec.ctx().Set(t, tx)
 		})
 
 		s.Then(`Add will execute in the scope of transaction`, func(t *testcase.T) {
-			require.NoError(t, subject(t))
-			require.NotContains(t, spec.memoryGet(t).Events(), eventGet(t))
-			require.NoError(t, spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
-			require.Contains(t, spec.memoryGet(t).Events(), eventGet(t))
+			assert.Must(t).Nil(subject(t))
+			assert.Must(t).NotContain(spec.memoryGet(t).Events(), eventGet(t))
+			assert.Must(t).Nil(spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
+			assert.Must(t).Contain(spec.memoryGet(t).Events(), eventGet(t))
 		})
 	})
 }
 
 func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
-	handledEvents := s.Let(`handled inmemory.Event`, func(t *testcase.T) interface{} {
+	handledEvents := testcase.Let(s, func(t *testcase.T) interface{} {
 		return []inmemory.Event{}
 	})
-	subscriber := s.Let(`inmemory.MemorySubscriber`, func(t *testcase.T) interface{} {
-		return doubles.StubSubscriber{
+	subscriber := testcase.Let(s, func(t *testcase.T) inmemory.EventLogSubscriber {
+		return doubles.StubSubscriber[any, any]{
 			HandleFunc: func(ctx context.Context, event inmemory.Event) error {
 				testcase.Append(t, handledEvents, event)
 				return nil
@@ -115,15 +115,12 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			},
 		}
 	})
-	subscriberGet := func(t *testcase.T) inmemory.EventLogSubscriber {
-		return subscriber.Get(t).(inmemory.EventLogSubscriber)
-	}
 	subject := func(t *testcase.T) (frameless.Subscription, error) {
-		return spec.memoryGet(t).Subscribe(spec.ctxGet(t), subscriberGet(t))
+		return spec.memoryGet(t).Subscribe(spec.ctxGet(t), subscriber.Get(t))
 	}
 	onSuccess := func(t *testcase.T) frameless.Subscription {
 		subscription, err := subject(t)
-		require.Nil(t, err)
+		assert.Must(t).Nil(err)
 		t.Defer(subscription.Close)
 		return subscription
 	}
@@ -134,16 +131,16 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 
 	s.When(`events added to the *inmemory.EventLog`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			require.Nil(t, spec.memoryGet(t).Append(spec.ctxGet(t), TestEvent{V: 42}))
+			assert.Must(t).Nil(spec.memoryGet(t).Append(spec.ctxGet(t), TestEvent{V: 42}))
 		})
 
 		s.Then(`since there wasn't any subscription, nothing is received in the subscriber`, func(t *testcase.T) {
-			require.Empty(t, handledEvents.Get(t))
+			assert.Must(t).Empty(handledEvents.Get(t))
 		})
 	})
 
 	s.When(`subscription is made`, func(s *testcase.Spec) {
-		subscription := s.Let(`Subscription`, func(t *testcase.T) interface{} {
+		subscription := testcase.Let(s, func(t *testcase.T) interface{} {
 			t.Log(`given the subscription is made`)
 			return onSuccess(t)
 		}).EagerLoading(s)
@@ -155,50 +152,50 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				t.Log(`and event added to the event store`)
 				m := spec.memoryGet(t)
-				require.Nil(t, m.Append(spec.ctxGet(t), expected))
+				assert.Must(t).Nil(m.Append(spec.ctxGet(t), expected))
 				waiter.Wait()
 			})
 
 			s.Then(`events will be emitted to the subscriber`, func(t *testcase.T) {
-				retry.Assert(t, func(tb testing.TB) {
-					require.Contains(tb, handledEvents.Get(t), expected)
+				retry.Assert(t, func(tb assert.It) {
+					assert.Must(tb).Contain(handledEvents.Get(t), expected)
 				})
 			})
 
 			s.And(`during transaction`, func(s *testcase.Spec) {
-				spec.ctx().Let(s, func(t *testcase.T) interface{} {
+				spec.ctx().Let(s, func(t *testcase.T) context.Context {
 					c := spec.ctx().Init(t).(context.Context)
 					tx, err := spec.memoryGet(t).BeginTx(c)
-					require.Nil(t, err)
+					assert.Must(t).Nil(err)
 					t.Defer(spec.memoryGet(t).RollbackTx, tx)
 					return tx
 				})
 
 				s.Then(`no events will emitted during the transaction`, func(t *testcase.T) {
 					waiter.Wait()
-					require.Empty(t, handledEvents.Get(t))
+					assert.Must(t).Empty(handledEvents.Get(t))
 				})
 
 				s.And(`after commit`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
-						require.Nil(t, spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
+						assert.Must(t).Nil(spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
 					})
 
 					s.Then(`event(s) will be emitted`, func(t *testcase.T) {
-						retry.Assert(t, func(tb testing.TB) {
-							require.Contains(tb, handledEvents.Get(t), expected)
+						retry.Assert(t, func(tb assert.It) {
+							assert.Must(tb).Contain(handledEvents.Get(t), expected)
 						})
 					})
 				})
 
 				s.And(`after rollback`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
-						require.Nil(t, spec.memoryGet(t).RollbackTx(spec.ctxGet(t)))
+						assert.Must(t).Nil(spec.memoryGet(t).RollbackTx(spec.ctxGet(t)))
 					})
 
 					s.Then(`no event(s) will emitted after the transaction`, func(t *testcase.T) {
 						waiter.Wait()
-						require.Empty(t, handledEvents.Get(t))
+						assert.Must(t).Empty(handledEvents.Get(t))
 					})
 				})
 			})
@@ -216,7 +213,7 @@ func TestEventLog_optionsDisabledAsyncSubscriptionHandling_subscriptionCanAppend
 	eventLog := inmemory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
 
-	sub, err := eventLog.Subscribe(ctx, doubles.StubSubscriber{
+	sub, err := eventLog.Subscribe(ctx, doubles.StubSubscriber[any, any]{
 		HandleFunc: func(ctx context.Context, ent interface{}) error {
 			if ent == (BEvent{}) {
 				return nil
@@ -224,7 +221,7 @@ func TestEventLog_optionsDisabledAsyncSubscriptionHandling_subscriptionCanAppend
 			return eventLog.Append(ctx, BEvent{})
 		},
 	})
-	require.Nil(t, err)
+	assert.Must(t).Nil(err)
 	defer sub.Close()
-	require.Nil(t, eventLog.Append(ctx, AEvent{}))
+	assert.Must(t).Nil(eventLog.Append(ctx, AEvent{}))
 }

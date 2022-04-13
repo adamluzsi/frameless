@@ -8,10 +8,9 @@ import (
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/cache/contracts"
 	fc "github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/fixtures"
-	"github.com/adamluzsi/frameless/inmemory"
+	"github.com/adamluzsi/frameless/resources/inmemory"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 type TestEntity struct {
@@ -19,62 +18,69 @@ type TestEntity struct {
 	Value string
 }
 
+func makeTestEntity(tb testing.TB) TestEntity {
+	t := tb.(*testcase.T)
+	return TestEntity{Value: t.Random.String()}
+}
+
+func makeCtx(tb testing.TB) context.Context {
+	return context.Background()
+}
+
 func TestManager_creator(t *testing.T) {
-	testcase.RunContract(t, fc.Creator{
-		T: TestEntity{},
-		Subject: func(tb testing.TB) fc.CRD {
-			manager, _, _ := NewManager(tb)
-			return manager
+	testcase.RunContract(t, fc.Creator[TestEntity, string]{
+		Subject: func(tb testing.TB) fc.CreatorSubject[TestEntity, string] {
+			return NewManager(tb).Cache
 		},
-		FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
-			return fixtures.NewFactory(tb)
-		},
-		Context: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
+		MakeEnt: makeTestEntity,
+		MakeCtx: makeCtx,
 	})
 }
 
 func TestManager(t *testing.T) {
 	testcase.RunContract(t,
-		contracts.Manager{
-			T: TestEntity{},
-			Subject: func(tb testing.TB) (contracts.Cache, cache.Source, frameless.OnePhaseCommitProtocol) {
+		contracts.Manager[TestEntity, string]{
+			Subject: func(tb testing.TB) contracts.ManagerSubject[TestEntity, string] {
 				return NewManager(tb)
 			},
-			FixtureFactory: func(tb testing.TB) frameless.FixtureFactory {
-				return fixtures.NewFactory(tb)
-			},
-			Context: func(tb testing.TB) context.Context {
-				return context.Background()
-			},
+			MakeCtx: makeCtx,
+			MakeEnt: makeTestEntity,
 		},
 	)
 }
 
-func NewManager(tb testing.TB) (*cache.Manager, cache.Source, frameless.OnePhaseCommitProtocol) {
+func NewManager(tb testing.TB) contracts.ManagerSubject[TestEntity, string] {
 	eventLog := inmemory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
-	cacheHitStorage := inmemory.NewEventLogStorage(cache.Hit{}, eventLog)
-	cacheEntityStorage := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, `TestEntity#CacheStorage`)
-	sourceEntityStorage := inmemory.NewEventLogStorageWithNamespace(TestEntity{}, eventLog, `TestEntity#SourceStorage`)
+	cacheHitStorage := inmemory.NewEventLogStorage[cache.Hit[string], string](eventLog)
+	cacheEntityStorage := inmemory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#CacheStorage`)
+	sourceEntityStorage := inmemory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#SourceStorage`)
 
 	storage := TestCacheStorage{
 		Hits:                   cacheHitStorage,
 		Entities:               cacheEntityStorage,
 		OnePhaseCommitProtocol: eventLog,
 	}
-	manager, err := cache.NewManager(TestEntity{}, storage, sourceEntityStorage)
-	require.Nil(tb, err)
+	manager, err := cache.NewManager[TestEntity, string](storage, sourceEntityStorage)
+	assert.Must(tb).Nil(err)
 	tb.Cleanup(func() { _ = manager.Close() })
-	return manager, sourceEntityStorage, eventLog
+	return contracts.ManagerSubject[TestEntity, string]{
+		Cache:         manager,
+		Source:        sourceEntityStorage,
+		CommitManager: eventLog,
+	}
 }
 
 type TestCacheStorage struct {
-	Hits     cache.HitStorage
-	Entities cache.EntityStorage
+	Hits     cache.HitStorage[string]
+	Entities cache.EntityStorage[TestEntity, string]
 	frameless.OnePhaseCommitProtocol
 }
 
-func (s TestCacheStorage) CacheEntity(ctx context.Context) cache.EntityStorage { return s.Entities }
-func (s TestCacheStorage) CacheHit(ctx context.Context) cache.HitStorage       { return s.Hits }
+func (s TestCacheStorage) CacheEntity(ctx context.Context) cache.EntityStorage[TestEntity, string] {
+	return s.Entities
+}
+
+func (s TestCacheStorage) CacheHit(ctx context.Context) cache.HitStorage[string] {
+	return s.Hits
+}

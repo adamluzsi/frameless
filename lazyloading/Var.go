@@ -5,20 +5,20 @@ import (
 	"sync"
 )
 
-type Var struct {
+type Var[T any] struct {
 	// Init will set the constructor block for the variable's value
-	Init func() (interface{}, error)
+	Init func() (T, error)
 
 	do struct {
 		once sync.Once
 	}
 	value struct {
 		init  sync.Once
-		value interface{}
+		value T
 	}
 }
 
-func (i *Var) Value() (interface{}, error) {
+func (i *Var[T]) Value() (T, error) {
 	var rErr error
 	i.value.init.Do(func() {
 		if i.Init == nil {
@@ -37,8 +37,8 @@ func (i *Var) Value() (interface{}, error) {
 //
 // When Var defined as a struct field, and used from the method of the struct with a pointer receiver,
 // then it will streamline the lazy loading process for that struct field.
-func (i *Var) Do(init func() interface{}) interface{} {
-	i.do.once.Do(func() { i.Init = func() (interface{}, error) { return init(), nil } })
+func (i *Var[T]) Do(init func() T) T {
+	i.do.once.Do(func() { i.Init = func() (T, error) { return init(), nil } })
 	v, err := i.Value()
 	if err != nil {
 		panic(fmt.Errorf("invalid usage of .Do, with init block that yields error"))
@@ -46,7 +46,7 @@ func (i *Var) Do(init func() interface{}) interface{} {
 	return v
 }
 
-func (i *Var) DoErr(init func() (interface{}, error)) (interface{}, error) {
+func (i *Var[T]) DoErr(init func() (T, error)) (T, error) {
 	i.do.once.Do(func() { i.Init = init })
 	return i.Value()
 }

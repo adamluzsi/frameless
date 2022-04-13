@@ -6,16 +6,13 @@ import (
 	"sync"
 
 	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
 )
 
 func errNotFound(T, id frameless.T) error {
-	return fmt.Errorf(`%T entitiy not found by id: %v`, T, id)
+	return fmt.Errorf(`%T entity not found by id: %v`, T, id)
 }
 
-func newDummyID(T frameless.T) (interface{}, error) {
-	id, _ := extid.Lookup(T)
-
+func newDummyID(id any) (interface{}, error) {
 	switch id.(type) {
 	case string:
 		return genStringUID(), nil
@@ -30,7 +27,7 @@ func newDummyID(T frameless.T) (interface{}, error) {
 	case int64:
 		return genInt64UID(), nil
 	default:
-		return nil, fmt.Errorf("%T id field type %T is not supported by default, please provide id generator: .NewID", T, id)
+		return nil, fmt.Errorf("%T id type is not supported by default, please provide id generator in the .NewID field", id)
 	}
 }
 

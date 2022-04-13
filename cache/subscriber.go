@@ -7,8 +7,8 @@ import (
 	"github.com/adamluzsi/frameless/extid"
 )
 
-func (m *Manager) subscribe(ctx context.Context) error {
-	subscriber := &managerSubscriber{Manager: m}
+func (m *Manager[Ent, ID]) subscribe(ctx context.Context) error {
+	subscriber := &managerSubscriber[Ent, ID]{Manager: m}
 
 	subscription, err := m.Source.SubscribeToCreatorEvents(ctx, subscriber)
 	if err != nil {
@@ -22,7 +22,7 @@ func (m *Manager) subscribe(ctx context.Context) error {
 	}
 	m.trap(func() { _ = subscription.Close() })
 
-	if src, ok := m.Source.(ExtendedSource); ok {
+	if src, ok := m.Source.(ExtendedSource[Ent, ID]); ok {
 		subscription, err := src.SubscribeToUpdaterEvents(ctx, subscriber)
 		if err != nil {
 			return err
@@ -54,23 +54,23 @@ func (m subscriber) HandleError(ctx context.Context, err error) error {
 	return nil
 }
 
-type managerSubscriber struct {
-	Manager *Manager
+type managerSubscriber[Ent, ID any] struct {
+	Manager *Manager[Ent, ID]
 }
 
-func (sub *managerSubscriber) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent) error {
+func (sub *managerSubscriber[Ent, ID]) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent[Ent]) error {
 	return sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
 }
 
-func (sub *managerSubscriber) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent) error {
+func (sub *managerSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent[Ent]) error {
 	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
-	id, _ := extid.Lookup(event.Entity)
+	id, _ := extid.Lookup[ID](event.Entity)
 	return sub.Manager.deleteCachedEntity(ctx, id)
 }
 
-func (sub *managerSubscriber) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent) error {
+func (sub *managerSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent[ID]) error {
 	// TODO: why is this not triggered on Manager.DeleteByID ?
 	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
@@ -78,14 +78,14 @@ func (sub *managerSubscriber) HandleDeleteByIDEvent(ctx context.Context, event f
 	return sub.Manager.deleteCachedEntity(ctx, event.ID)
 }
 
-func (sub *managerSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
+func (sub *managerSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
 	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
 	return sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (sub *managerSubscriber) HandleError(ctx context.Context, err error) error {
+func (sub *managerSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) error {
 	// TODO: log.Println("ERROR", err.Error())
 	_ = sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
 	_ = sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)

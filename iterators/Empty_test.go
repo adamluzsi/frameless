@@ -5,33 +5,31 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
-func ExampleNewEmpty() iterators.Interface {
-	return iterators.NewEmpty()
+func ExampleEmpty() {
+	iterators.Empty[any]()
 }
 
-func TestNewEmpty(suite *testing.T) {
+func TestEmpty(suite *testing.T) {
 	suite.Run("#Close", func(spec *testing.T) {
 
 		spec.Run("when called once", func(t *testing.T) {
 			t.Parallel()
-
-			subject := ExampleNewEmpty()
-
-			require.Nil(t, subject.Close())
+			subject := iterators.Empty[any]()
+			assert.Must(t).Nil(subject.Close())
 		})
 
 		spec.Run("when called multiple", func(t *testing.T) {
 			t.Parallel()
 
-			subject := ExampleNewEmpty()
+			subject := iterators.Empty[any]()
 
 			times := rand.Intn(42) + 1
 
 			for i := 0; i < times; i++ {
-				require.Nil(t, subject.Close())
+				assert.Must(t).Nil(subject.Close())
 			}
 		})
 
@@ -42,20 +40,20 @@ func TestNewEmpty(suite *testing.T) {
 		spec.Run("when called once", func(t *testing.T) {
 			t.Parallel()
 
-			subject := ExampleNewEmpty()
+			subject := iterators.Empty[any]()
 
-			require.False(t, subject.Next())
+			assert.Must(t).False(subject.Next())
 		})
 
 		spec.Run("when called multiple", func(t *testing.T) {
 			t.Parallel()
 
-			subject := ExampleNewEmpty()
+			subject := iterators.Empty[any]()
 
 			times := rand.Intn(42) + 1
 
 			for i := 0; i < times; i++ {
-				require.False(t, subject.Next())
+				assert.Must(t).False(subject.Next())
 			}
 		})
 
@@ -64,16 +62,12 @@ func TestNewEmpty(suite *testing.T) {
 	suite.Run("#Err", func(t *testing.T) {
 		t.Parallel()
 
-		require.Nil(t, ExampleNewEmpty().Err())
+		assert.Must(t).Nil(iterators.Empty[any]().Err())
 	})
 
-	suite.Run("#Decode", func(t *testing.T) {
+	suite.Run("#Value", func(t *testing.T) {
 		t.Parallel()
-
-		subject := ExampleNewEmpty()
-		var entity interface{}
-
-		require.Nil(t, subject.Decode(&entity))
-		require.Nil(t, entity)
+		subject := iterators.Empty[int]()
+		assert.Must(t).Equal(0, subject.Value())
 	})
 }

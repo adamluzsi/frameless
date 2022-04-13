@@ -1,13 +1,14 @@
 package reflects_test
 
 import (
+	"fmt"
+	"math/rand"
 	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/reflects"
 )
 
@@ -15,7 +16,7 @@ type Example struct {
 	Name string
 }
 
-var RandomName = fixtures.Random.String()
+var RandomName = fmt.Sprintf("%d", rand.Int())
 
 func ExampleLink() {
 	var src = Example{Name: RandomName}
@@ -30,41 +31,45 @@ func TestLink(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
 
+	var (
+		src = testcase.Var[any]{ID: "src"}
+		ptr = testcase.Var[any]{ID: "ptr"}
+	)
 	subject := func(t *testcase.T) error {
-		return reflects.Link(t.I(`src`), t.I(`ptr`))
+		return reflects.Link(src.Get(t), ptr.Get(t))
 	}
 
 	andPtrPointsToAEmptyInterface := func(s *testcase.Spec) {
 		s.And(`ptr points to an empty interface type`, func(s *testcase.Spec) {
-			s.Let(`ptr`, func(t *testcase.T) interface{} {
+			ptr.Let(s, func(t *testcase.T) any {
 				var i interface{}
 				return &i
 			})
 
 			s.Then(`it will link the value`, func(t *testcase.T) {
-				require.Nil(t, subject(t))
-				require.Equal(t, t.I(`src`), *t.I(`ptr`).(*interface{}))
+				assert.Must(t).Nil(subject(t))
+				assert.Must(t).Equal(src.Get(t), *ptr.Get(t).(*any))
 			})
 		})
 	}
 
 	andPtrPointsToSomethingWithTheSameType := func(s *testcase.Spec, ptrValue func() interface{}) {
 		s.And(`ptr is pointing to the same type`, func(s *testcase.Spec) {
-			s.Let(`ptr`, func(t *testcase.T) interface{} {
+			ptr.Let(s, func(t *testcase.T) any {
 				return ptrValue()
 			})
 
 			s.Then(`ptr pointed value equal with source value`, func(t *testcase.T) {
-				require.Nil(t, subject(t))
+				assert.Must(t).Nil(subject(t))
 
-				require.Equal(t, t.I(`src`), reflect.ValueOf(t.I(`ptr`)).Elem().Interface())
+				assert.Must(t).Equal(src.Get(t), reflect.ValueOf(ptr.Get(t)).Elem().Interface())
 			})
 		})
 	}
 
 	s.When(`to be linked value is`, func(s *testcase.Spec) {
 		s.Context(`a primitive non pointer type`, func(s *testcase.Spec) {
-			s.Let(`src`, func(t *testcase.T) interface{} {
+			src.Let(s, func(t *testcase.T) interface{} {
 				return `Hello, World!`
 			})
 
@@ -78,7 +83,7 @@ func TestLink(t *testing.T) {
 		type T struct{ str string }
 
 		s.Context(`a struct type`, func(s *testcase.Spec) {
-			s.Let(`src`, func(t *testcase.T) interface{} {
+			src.Let(s, func(t *testcase.T) interface{} {
 				return T{str: RandomName}
 			})
 
@@ -89,7 +94,7 @@ func TestLink(t *testing.T) {
 		})
 
 		s.Context(`a pointer to a struct type`, func(s *testcase.Spec) {
-			s.Let(`src`, func(t *testcase.T) interface{} {
+			src.Let(s, func(t *testcase.T) interface{} {
 				return &T{str: RandomName}
 			})
 

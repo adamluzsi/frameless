@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/reflects"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestBaseTypeOf(t *testing.T) {
@@ -23,7 +23,7 @@ func TestBaseTypeOf(t *testing.T) {
 	ptrToStruct := &plainStruct
 	ptrToPtr := &ptrToStruct
 
-	require.Equal(t, expectedValueType, subject(plainStruct))
-	require.Equal(t, expectedValueType, subject(ptrToStruct))
-	require.Equal(t, expectedValueType, subject(ptrToPtr))
+	assert.Must(t).Equal(expectedValueType, subject(plainStruct))
+	assert.Must(t).Equal(expectedValueType, subject(ptrToStruct))
+	assert.Must(t).Equal(expectedValueType, subject(ptrToPtr))
 }

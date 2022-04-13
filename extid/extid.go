@@ -25,12 +25,31 @@ func Set(ptr interface{}, id interface{}) error {
 	return nil
 }
 
-func Lookup(i interface{}) (id interface{}, ok bool) {
+func Lookup[ID any](i interface{}) (id ID, ok bool) {
 	_, val, ok := LookupStructField(i)
 	if !ok {
-		return nil, false
+		return id, false
 	}
-	return val.Interface(), !reflects.IsValueEmpty(val)
+
+	id, ok = val.Interface().(ID)
+	if !ok {
+		return id, false
+	}
+	if isEmpty(id) {
+		return id, false
+	}
+	return id, ok
+}
+
+func isEmpty(i interface{}) (ok bool) {
+	rv := reflect.ValueOf(i)
+	defer func() {
+		if v := recover(); v == nil {
+			return
+		}
+		ok = rv.IsZero()
+	}()
+	return rv.IsNil()
 }
 
 func LookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {

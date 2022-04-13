@@ -1,15 +1,15 @@
 module github.com/adamluzsi/frameless
 
-go 1.14
+go 1.18
 
 require (
-	github.com/adamluzsi/testcase v0.60.1
-	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/adamluzsi/testcase v0.73.0
 	github.com/golang/mock v1.6.0
-	github.com/stretchr/testify v1.7.0
-	golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9 // indirect
+)
+
+require (
 	golang.org/x/mod v0.5.1 // indirect
-	golang.org/x/sys v0.0.0-20211031064116-611d5d643895 // indirect
-	golang.org/x/tools v0.1.7 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	golang.org/x/sys v0.0.0-20220227234510-4e6760a101f9 // indirect
+	golang.org/x/tools v0.1.9 // indirect
+	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )

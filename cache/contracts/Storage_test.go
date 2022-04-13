@@ -5,8 +5,11 @@ import (
 	frmlscontracts "github.com/adamluzsi/frameless/contracts"
 )
 
+type ExampleEnt struct{ ID ExampleID }
+type ExampleID string
+
 var _ = []frmlscontracts.Interface{
-	contracts.EntityStorage{},
-	contracts.Manager{},
-	contracts.Storage{},
+	contracts.EntityStorage[ExampleEnt, ExampleID]{},
+	contracts.Manager[ExampleEnt, ExampleID]{},
+	contracts.Storage[ExampleEnt, ExampleID]{},
 }

@@ -1,57 +1,57 @@
 package iterators
 
-func NewMock(i Interface) *Mock {
-	return &Mock{
-		iterator: i,
+import "github.com/adamluzsi/frameless"
 
-		StubDecode: i.Decode,
-		StubClose:  i.Close,
-		StubNext:   i.Next,
-		StubErr:    i.Err,
+func NewMock[T any](i frameless.Iterator[T]) *Mock[T] {
+	return &Mock[T]{
+		Iterator:  i,
+		StubValue: i.Value,
+		StubClose: i.Close,
+		StubNext:  i.Next,
+		StubErr:   i.Err,
 	}
 }
 
-type Mock struct {
-	iterator Interface
-
-	StubDecode func(interface{}) error
-	StubClose  func() error
-	StubNext   func() bool
-	StubErr    func() error
+type Mock[T any] struct {
+	Iterator  frameless.Iterator[T]
+	StubValue func() T
+	StubClose func() error
+	StubNext  func() bool
+	StubErr   func() error
 }
 
 // wrapper
 
-func (m *Mock) Close() error {
+func (m *Mock[T]) Close() error {
 	return m.StubClose()
 }
 
-func (m *Mock) Next() bool {
+func (m *Mock[T]) Next() bool {
 	return m.StubNext()
 }
 
-func (m *Mock) Err() error {
+func (m *Mock[T]) Err() error {
 	return m.StubErr()
 }
 
-func (m *Mock) Decode(i interface{}) error {
-	return m.StubDecode(i)
+func (m *Mock[T]) Value() T {
+	return m.StubValue()
 }
 
 // Reseting stubs
 
-func (m *Mock) ResetClose() {
-	m.StubClose = m.iterator.Close
+func (m *Mock[T]) ResetClose() {
+	m.StubClose = m.Iterator.Close
 }
 
-func (m *Mock) ResetNext() {
-	m.StubNext = m.iterator.Next
+func (m *Mock[T]) ResetNext() {
+	m.StubNext = m.Iterator.Next
 }
 
-func (m *Mock) ResetErr() {
-	m.StubErr = m.iterator.Err
+func (m *Mock[T]) ResetErr() {
+	m.StubErr = m.Iterator.Err
 }
 
-func (m *Mock) ResetDecode() {
-	m.StubDecode = m.iterator.Decode
+func (m *Mock[T]) ResetValue() {
+	m.StubValue = m.Iterator.Value
 }

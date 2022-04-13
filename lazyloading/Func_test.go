@@ -6,7 +6,7 @@ import (
 
 	"github.com/adamluzsi/frameless/lazyloading"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func ExampleFunc() {
@@ -23,7 +23,7 @@ func TestFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	initWasCalled := s.LetValue(`init was called`, false)
-	init := s.Let(`init block`, func(t *testcase.T) interface{} {
+	init := testcase.Let(s, func(t *testcase.T) interface{} {
 		initWasCalled.Set(t, true)
 		return func() interface{} { return t.Random.Int() }
 	})
@@ -35,18 +35,18 @@ func TestFunc(t *testing.T) {
 	}
 
 	s.Test(`assuming that init block always yield a different value`, func(t *testcase.T) {
-		require.NotEqual(t, initGet(t)(), initGet(t)())
+		t.Must.NotEqual(initGet(t)(), initGet(t)())
 	})
 
 	s.Then(`calling lazy loaded value multiple times return the same result`, func(t *testcase.T) {
 		llv := subject(t)
-		require.Equal(t, llv(), llv())
+		t.Must.Equal(llv(), llv())
 	})
 
 	s.Then(`before calling lazy loaded value, init block is not used`, func(t *testcase.T) {
-		require.False(t, initWasCalled.Get(t).(bool))
+		assert.Must(t).False(initWasCalled.Get(t).(bool))
 		subject(t)()
-		require.True(t, initWasCalled.Get(t).(bool))
+		assert.Must(t).True(initWasCalled.Get(t).(bool))
 	})
 
 	s.When(`wrapped value is a pointer type`, func(s *testcase.Spec) {
@@ -59,7 +59,7 @@ func TestFunc(t *testing.T) {
 			llv := subject(t)
 			expected := t.Random.Int()
 			*llv().(*int) = expected
-			require.Equal(t, expected, *llv().(*int))
+			assert.Must(t).Equal(expected, *llv().(*int))
 		})
 	})
 

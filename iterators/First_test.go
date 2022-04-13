@@ -3,29 +3,26 @@ package iterators_test
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestFirst_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
 	t.Parallel()
 
 	var expected int = 42
-	var actually int
+	i := iterators.NewSlice([]int{expected, 4, 2})
 
-	i := iterators.NewMock(iterators.NewSlice([]int{expected, 4, 2}))
-
-	found, err := iterators.First(i, &actually)
-	require.Nil(t, err)
-	require.Equal(t, expected, actually)
-	require.True(t, found)
+	actually, found, err := iterators.First[int](i)
+	assert.Must(t).Nil(err)
+	assert.Must(t).Equal(expected, actually)
+	assert.Must(t).True(found)
 }
 
-func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
+func TestFirst_AfterFirstValue_IteratorIsClosed(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewMock(iterators.NewSlice([]Entity{{Text: "hy!"}}))
+	i := iterators.NewMock[Entity](iterators.NewSlice[Entity]([]Entity{{Text: "hy!"}}))
 
 	closed := false
 	i.StubClose = func() error {
@@ -33,21 +30,21 @@ func TestFirst_AfterFirstValueDecoded_IteratorIsClosed(t *testing.T) {
 		return nil
 	}
 
-	_, err := iterators.First(i, &Entity{})
+	_, _, err := iterators.First[Entity](i)
 	if err != nil {
 		t.Fatal(err)
 	}
-	require.True(t, closed)
+	assert.Must(t).True(closed)
 }
 
 func TestFirst_errors(t *testing.T) {
-	FirstAndLastSharedErrorTestCases(t, iterators.First)
+	FirstAndLastSharedErrorTestCases(t, iterators.First[Entity])
 }
 
 func TestFirst_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {
 	t.Parallel()
 
-	found, err := iterators.First(iterators.NewEmpty(), &Entity{})
-	require.Nil(t, err)
-	require.False(t, found)
+	_, found, err := iterators.First[Entity](iterators.Empty[Entity]())
+	assert.Must(t).Nil(err)
+	assert.Must(t).False(found)
 }

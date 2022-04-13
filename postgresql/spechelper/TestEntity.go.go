@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/fixtures"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/testcase/random"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,21 +17,21 @@ type TestEntity struct {
 	Baz string
 }
 
-func TestEntityMapping() postgresql.Mapper {
-	return postgresql.Mapper{
+func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
+	return postgresql.Mapper[TestEntity, string]{
 		Table:   "test_entities",
 		ID:      "id",
 		Columns: []string{`id`, `foo`, `bar`, `baz`},
-		NewIDFn: func(ctx context.Context) (interface{}, error) {
-			return fixtures.Random.StringN(42), nil
+		NewIDFn: func(ctx context.Context) (string, error) {
+			rnd := random.New(random.CryptoSeed{})
+			return rnd.StringNWithCharset(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"), nil
 		},
-		ToArgsFn: func(ptr interface{}) ([]interface{}, error) {
-			ent := ptr.(*TestEntity)
+		ToArgsFn: func(ent *TestEntity) ([]interface{}, error) {
 			return []interface{}{ent.ID, ent.Foo, ent.Bar, ent.Baz}, nil
 		},
-		MapFn: func(s iterators.SQLRowScanner, ptr interface{}) error {
-			ent := ptr.(*TestEntity)
-			return s.Scan(&ent.ID, &ent.Foo, &ent.Bar, &ent.Baz)
+		MapFn: func(s iterators.SQLRowScanner) (TestEntity, error) {
+			var ent TestEntity
+			return ent, s.Scan(&ent.ID, &ent.Foo, &ent.Bar, &ent.Baz)
 		},
 	}
 }

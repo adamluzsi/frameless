@@ -24,11 +24,11 @@ func ExampleSet() {
 func ExampleLookup() {
 	ent := Entity{}
 
-	_, ok := extid.Lookup(ent)
+	_, ok := extid.Lookup[string](ent)
 	fmt.Println(`found:`, ok) // false
 
 	ent.ID = `42`
-	id, ok := extid.Lookup(ent)
+	id, ok := extid.Lookup[string](ent)
 	fmt.Println(`found:`, ok)    // true
 	fmt.Println(`id value:`, id) // "42"
 }

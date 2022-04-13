@@ -14,7 +14,7 @@ func NewEventLog() *EventLog {
 	return &EventLog{}
 }
 
-// EventLog is an event source principles based development in memory memory,
+// EventLog is an event source principles based in memory resource,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
 type EventLog struct {
 	Options struct {
@@ -120,10 +120,43 @@ func (el *EventLog) Append(ctx context.Context, event Event) error {
 	return nil
 }
 
+func RewriteEventLog[EventType any](el *EventLog, rewrite func(es []EventType) []EventType) {
+	el.Rewrite(func(es []Event) []Event {
+		var (
+			events         = make([]Event, 0, len(es))
+			affectedEvents = make([]EventType, 0)
+		)
+
+		// keep not related events
+		for _, event := range es {
+			if affectedEvent, ok := event.(EventType); ok {
+				affectedEvents = append(affectedEvents, affectedEvent)
+				continue
+			}
+
+			events = append(events, event)
+		}
+
+		// add rewritten events
+		for _, event := range rewrite(affectedEvents) {
+			events = append(events, event)
+		}
+
+		return events
+	})
+}
+
 func (el *EventLog) Rewrite(mapper func(es []Event) []Event) {
 	el.eMutex.Lock()
 	defer el.eMutex.Unlock()
 	el.events = mapper(el.events)
+}
+
+func (el *EventLog) EventsInContext(ctx context.Context) []Event {
+	if tx, ok := el.LookupTx(ctx); ok {
+		return tx.Events()
+	}
+	return el.Events()
 }
 
 func (el *EventLog) Events() []Event {

@@ -4,64 +4,81 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestWithConcurrentAccess(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test(`it will protect against concurrent access`, func(t *testcase.T) {
-		var i iterators.Interface
+		var i frameless.Iterator[int]
 		i = iterators.NewSlice([]int{1, 2})
 		i = iterators.WithConcurrentAccess(i)
-		require.True(t, i.Next())
 
 		var wg sync.WaitGroup
-		wg.Add(1)
-		defer wg.Wait()
+		wg.Add(2)
+
+		var a, b int
+		flag := make(chan struct{})
 		go func() {
 			defer wg.Done()
-
-			require.True(t, i.Next())
-			var v int
-			require.Nil(t, i.Decode(&v))
-			require.Equal(t, 2, v)
+			<-flag
+			t.Log("a:start")
+			assert.Must(t).True(i.Next())
+			time.Sleep(time.Millisecond)
+			a = i.Value()
+			t.Log("a:done")
+		}()
+		go func() {
+			defer wg.Done()
+			<-flag
+			t.Log("b:start")
+			assert.Must(t).True(i.Next())
+			time.Sleep(time.Millisecond)
+			b = i.Value()
+			t.Log("b:done")
 		}()
 
-		var v int
-		require.Nil(t, i.Decode(&v))
-		require.Equal(t, 1, v)
+		close(flag) // start
+		t.Log("wait")
+		wg.Wait()
+		t.Log("wait done")
+
+		assert.Must(t).ContainExactly([]int{1, 2}, []int{a, b})
 	})
 
 	s.Test(`classic behavior`, func(t *testcase.T) {
-		var i iterators.Interface
+		var i frameless.Iterator[int]
 		i = iterators.NewSlice([]int{1, 2})
 		i = iterators.WithConcurrentAccess(i)
 
 		var vs []int
-		require.Nil(t, iterators.Collect(i, &vs))
-		require.ElementsMatch(t, []int{1, 2}, vs)
+		vs, err := iterators.Collect(i)
+		assert.Must(t).Nil(err)
+		assert.Must(t).ContainExactly([]int{1, 2}, vs)
 	})
 
 	s.Test(`proxy like behavior for underlying iterator object`, func(t *testcase.T) {
-		m := iterators.NewMock(iterators.NewEmpty())
+		m := iterators.NewMock[int](iterators.Empty[int]())
 		m.StubErr = func() error {
 			return errors.New(`ErrErr`)
 		}
 		m.StubClose = func() error {
 			return errors.New(`ErrClose`)
 		}
-		i := iterators.WithConcurrentAccess(m)
+		i := iterators.WithConcurrentAccess[int](m)
 
 		err := i.Close()
-		require.Error(t, err)
-		require.Equal(t, `ErrClose`, err.Error())
+		assert.Must(t).NotNil(err)
+		assert.Must(t).Equal(`ErrClose`, err.Error())
 
 		err = i.Err()
-		require.Error(t, err)
-		require.Equal(t, `ErrErr`, err.Error())
+		assert.Must(t).NotNil(err)
+		assert.Must(t).Equal(`ErrErr`, err.Error())
 	})
 }

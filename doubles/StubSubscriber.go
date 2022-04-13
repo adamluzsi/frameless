@@ -6,35 +6,35 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-type StubSubscriber /*[T]*/ struct {
+type StubSubscriber[Ent any, ID any] struct {
 	HandleFunc func(ctx context.Context, event interface{}) error
 	ErrorFunc  func(ctx context.Context, err error) error
 }
 
-func (s StubSubscriber) Handle(ctx context.Context, event interface{}) error {
+func (s StubSubscriber[Ent, ID]) Handle(ctx context.Context, event interface{}) error {
 	if s.HandleFunc == nil {
 		return nil
 	}
 	return s.HandleFunc(ctx, event)
 }
 
-func (s StubSubscriber) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent) error {
+func (s StubSubscriber[Ent, ID]) HandleCreateEvent(ctx context.Context, event frameless.CreateEvent[Ent]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s StubSubscriber) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent) error {
+func (s StubSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, event frameless.UpdateEvent[Ent]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s StubSubscriber) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent) error {
+func (s StubSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, event frameless.DeleteByIDEvent[ID]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s StubSubscriber) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
+func (s StubSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event frameless.DeleteAllEvent) error {
 	return s.Handle(ctx, event)
 }
 
-func (s StubSubscriber) HandleError(ctx context.Context, err error) error {
+func (s StubSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) error {
 	if s.ErrorFunc == nil {
 		return nil
 	}

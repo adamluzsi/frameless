@@ -5,47 +5,42 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/testcase/assert"
 )
 
-func ExampleNewPipe() {
+func ExamplePipe() {
 	var (
-		iter   iterators.Interface
-		sender *iterators.PipeIn
+		i *iterators.PipeIn[int]
+		o *iterators.PipeOut[int]
 	)
 
-	sender, iter = iterators.NewPipe()
-	_ = iter   // send to caller for consuming it
-	_ = sender // use it to send values for each iter.Next() call
+	i, o = iterators.Pipe[int]()
+	_ = i // use it to send values
+	_ = o // use it to consume values on each iteration (iter.Next())
 }
 
-func TestNewPipe_SimpleFeedScenario(t *testing.T) {
+func TestPipe_SimpleFeedScenario(t *testing.T) {
 	t.Parallel()
+	w, r := iterators.Pipe[Entity]()
 
-	w, r := iterators.NewPipe()
-
-	var expected = Entity{Text: "hitchhiker's guide to the galaxy"}
-	var actually Entity
+	expected := Entity{Text: "hitchhiker's guide to the galaxy"}
 
 	go func() {
 		defer w.Close()
-		require.Nil(t, w.Encode(expected))
+		assert.Must(t).True(w.Value(expected))
 	}()
 
-	require.True(t, r.Next())            // first next should return the value mean to be sent
-	require.Nil(t, r.Decode(&actually))  // and decode it
-	require.Equal(t, expected, actually) // the exactly same value passed in
-	require.False(t, r.Next())           // no more values left, sender done with its work
-	require.Nil(t, r.Err())              // No error sent so there must be no err received
-	require.Nil(t, r.Close())            // Than I release this resource too
+	assert.Must(t).True(r.Next())             // first next should return the value mean to be sent
+	assert.Must(t).Equal(expected, r.Value()) // the exactly same value passed in
+	assert.Must(t).False(r.Next())            // no more values left, sender done with its work
+	assert.Must(t).Nil(r.Err())               // No error sent so there must be no err received
+	assert.Must(t).Nil(r.Close())             // Than I release this resource too
 }
 
-func TestNewPipe_FetchWithCollectAll(t *testing.T) {
+func TestPipe_FetchWithCollectAll(t *testing.T) {
 	t.Parallel()
-
-	w, r := iterators.NewPipe()
+	w, r := iterators.Pipe[*Entity]()
 
 	var actually []*Entity
 	var expected []*Entity = []*Entity{
@@ -59,16 +54,17 @@ func TestNewPipe_FetchWithCollectAll(t *testing.T) {
 		defer w.Close()
 
 		for _, e := range expected {
-			w.Encode(e)
+			w.Value(e)
 		}
 	}()
 
-	require.Nil(t, iterators.Collect(r, &actually)) // When I collect everything with Collect All and close the resource
-	require.True(t, len(actually) > 0)              // the collection includes all the sent values
-	require.Equal(t, expected, actually)            // which is exactly the same that mean to be sent.
+	actually, err := iterators.Collect[*Entity](r)
+	assert.Must(t).Nil(err)                  // When I collect everything with Collect All and close the resource
+	assert.Must(t).True(len(actually) > 0)   // the collection includes all the sent values
+	assert.Must(t).Equal(expected, actually) // which is exactly the same that mean to be sent.
 }
 
-func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
+func TestPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	t.Parallel()
 
 	// skip when only short test expected
@@ -82,12 +78,12 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 		t.Skip()
 	}
 
-	w, r := iterators.NewPipe()
+	w, r := iterators.Pipe[*Entity]()
 
-	require.Nil(t, r.Close()) // I release the resource,
+	assert.Must(t).Nil(r.Close()) // I release the resource,
 	// for example something went wrong during the processing on my side (receiver) and I can't continue work,
 	// but I want to note this to the sender as well
-	require.Nil(t, r.Close()) // multiple times because defer ensure and other reasons
+	assert.Must(t).Nil(r.Close()) // multiple times because defer ensure and other reasons
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -95,38 +91,37 @@ func TestNewPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer w.Close()
-		require.Equal(t, iterators.ErrClosed, w.Encode(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		assert.Must(t).Equal(false, w.Value(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 	}()
 
 	wg.Wait()
-	require.False(t, r.Next())            // the sender is notified about this and stopped sending messages
-	require.Error(t, r.Decode(&Entity{})) // and for some reason when I want to decode, it tells me the iterator closed. It was the sender who close it
+	assert.Must(t).False(r.Next()) // the sender is notified about this and stopped sending messages
 }
 
-func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *testing.T) {
+func TestPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *testing.T) {
 	t.Parallel()
 
-	expected := errors.New("Boom!")
-
-	w, r := iterators.NewPipe()
+	w, r := iterators.Pipe[Entity]()
+	value := Entity{Text: "hitchhiker's guide to the galaxy"}
+	expected := errors.New("boom")
 
 	go func() {
-		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
+		assert.Must(t).True(w.Value(value))
 		w.Error(expected)
-		require.Nil(t, w.Close())
+		assert.Must(t).Nil(w.Close())
 	}()
 
-	require.True(t, r.Next())           // everything goes smoothly, I'm notified about next value
-	require.Nil(t, r.Decode(&Entity{})) // I even able to decode it as well
-	require.False(t, r.Next())          // Than the sender is notify me that I will not receive any more value
-	require.Equal(t, expected, r.Err()) // Also tells me that something went wrong during the processing
-	require.Nil(t, r.Close())           // I release the resource because than and go on
-	require.Equal(t, expected, r.Err()) // The last error should be available later
+	assert.Must(t).True(r.Next())           // everything goes smoothly, I'm notified about next value
+	assert.Must(t).Equal(value, r.Value())  // I even able to decode it as well
+	assert.Must(t).False(r.Next())          // Than the sender is notify me that I will not receive any more value
+	assert.Must(t).Equal(expected, r.Err()) // Also tells me that something went wrong during the processing
+	assert.Must(t).Nil(r.Close())           // I release the resource because than and go on
+	assert.Must(t).Equal(expected, r.Err()) // The last error should be available later
 }
 
-func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndReceiverNotifiedAfterTheError(t *testing.T) {
+func TestPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndReceiverNotifiedAfterTheError(t *testing.T) {
 	// if there will be a use-case where iterator Err being checked before iter.Next
-	// then this test will be resurrected and will be implemented.
+	// then this test will be resurrected and will be implemented.[int]
 	t.Skip(`YAGNI`)
 
 	if testing.Short() {
@@ -136,47 +131,48 @@ func TestNewPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndR
 	t.Parallel()
 
 	expected := errors.New("Boom!")
+	value := Entity{Text: "hitchhiker's guide to the galaxy"}
 
-	w, r := iterators.NewPipe()
+	w, r := iterators.Pipe[Entity]()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
-		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
+		assert.Must(t).True(w.Value(value))
 		wg.Wait()
 		w.Error(expected)
-		require.Nil(t, w.Close())
+		assert.Must(t).Nil(w.Close())
 	}()
 
-	require.Nil(t, r.Err()) // no error so far
+	assert.Must(t).Nil(r.Err()) // no error so far
 	wg.Done()
-	require.True(t, r.Next())           // everything goes smoothly, I'm notified about next value
-	require.Nil(t, r.Decode(&Entity{})) // I even able to decode it as well
-	require.Equal(t, expected, r.Err()) // Also tells me that something went wrong during/after the processing
-	require.Nil(t, r.Close())           // I release the resource because than and go on
-	require.Equal(t, expected, r.Err()) // The last error should be available later
+	assert.Must(t).True(r.Next())           // everything goes smoothly, I'm notified about next value
+	assert.Must(t).Equal(value, r.Value())  // I even able to decode it as well
+	assert.Must(t).Equal(expected, r.Err()) // Also tells me that something went wrong during/after the processing
+	assert.Must(t).Nil(r.Close())           // I release the resource because than and go on
+	assert.Must(t).Equal(expected, r.Err()) // The last error should be available later
 }
 
-func TestNewPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothing(t *testing.T) {
+func TestPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothing(t *testing.T) {
 	t.Parallel()
 
-	w, r := iterators.NewPipe()
+	value := Entity{Text: "hitchhiker's guide to the galaxy"}
+	w, r := iterators.Pipe[Entity]()
 
 	go func() {
 		for i := 0; i < 10; i++ {
 			w.Error(nil)
 		}
 
-		require.Nil(t, w.Encode(Entity{Text: "hitchhiker's guide to the galaxy"}))
-
-		require.Nil(t, w.Close())
+		assert.Must(t).True(w.Value(value))
+		assert.Must(t).Nil(w.Close())
 	}()
 
-	require.True(t, r.Next())
-	require.Nil(t, r.Decode(&Entity{}))
-	require.False(t, r.Next())
-	require.Equal(t, nil, r.Err())
-	require.Nil(t, r.Close())
-	require.Equal(t, nil, r.Err())
+	assert.Must(t).True(r.Next())
+	assert.Must(t).Equal(value, r.Value())
+	assert.Must(t).False(r.Next())
+	assert.Must(t).Equal(nil, r.Err())
+	assert.Must(t).Nil(r.Close())
+	assert.Must(t).Equal(nil, r.Err())
 }

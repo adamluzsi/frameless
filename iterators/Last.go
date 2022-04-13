@@ -1,31 +1,25 @@
 package iterators
 
-func Last(i Interface, e interface{}) (found bool, err error) {
+import "github.com/adamluzsi/frameless"
+
+func Last[T any](i frameless.Iterator[T]) (value T, found bool, err error) {
 	defer func() {
 		cErr := i.Close()
-
 		if err == nil && cErr != nil {
 			err = cErr
 		}
 	}()
-
 	iterated := false
-
+	var v T
 	for i.Next() {
 		iterated = true
-
-		if err := i.Decode(e); err != nil {
-			return false, err
-		}
+		v = i.Value()
 	}
-
-	if !iterated {
-		return false, i.Err()
-	}
-
 	if err := i.Err(); err != nil {
-		return false, err
+		return v, false, err
 	}
-
-	return true, nil
+	if !iterated {
+		return v, false, nil
+	}
+	return v, true, nil
 }

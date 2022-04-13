@@ -2,24 +2,26 @@ package iterators
 
 import (
 	"io"
+
+	"github.com/adamluzsi/frameless"
 )
 
-func WithCallback(i Interface, c Callback) Interface {
-	return &CallbackIterator{Interface: i, Callback: c}
+func WithCallback[T any](i frameless.Iterator[T], c Callback) frameless.Iterator[T] {
+	return &CallbackIterator[T]{Iterator: i, Callback: c}
 }
 
 type Callback struct {
 	OnClose func(io.Closer) error
 }
 
-type CallbackIterator struct {
-	Interface
+type CallbackIterator[T any] struct {
+	frameless.Iterator[T]
 	Callback
 }
 
-func (i *CallbackIterator) Close() error {
+func (i *CallbackIterator[T]) Close() error {
 	if i.Callback.OnClose != nil {
-		return i.Callback.OnClose(i.Interface)
+		return i.Callback.OnClose(i.Iterator)
 	}
-	return i.Interface.Close()
+	return i.Iterator.Close()
 }

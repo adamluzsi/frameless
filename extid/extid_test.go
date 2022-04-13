@@ -4,40 +4,40 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/adamluzsi/frameless/fixtures"
+	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/random"
 
 	"github.com/adamluzsi/frameless/extid"
-	"github.com/stretchr/testify/require"
 )
 
 func TestID_E2E(t *testing.T) {
 	ptr := &IDAsInterface{}
 
-	_, ok := extid.Lookup(ptr)
-	require.False(t, ok)
+	_, ok := extid.Lookup[any](ptr)
+	assert.Must(t).False(ok)
 
 	idVal := 42
-	require.Nil(t, extid.Set(ptr, idVal))
+	assert.Must(t).Nil(extid.Set(ptr, idVal))
 
-	id, ok := extid.Lookup(ptr)
-	require.True(t, ok)
-	require.Equal(t, idVal, id)
+	id, ok := extid.Lookup[any](ptr)
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(idVal, id)
 }
 
 func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(IDByIDField{ID: "ok"})
-	require.True(t, ok)
-	require.Equal(t, "ok", id)
+	id, ok := extid.Lookup[string](IDByIDField{ID: "ok"})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("ok", id)
 }
 
 func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDByIDField{ID: "ok"})
-	require.True(t, ok)
-	require.Equal(t, "ok", id)
+	id, ok := extid.Lookup[string](&IDByIDField{ID: "ok"})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("ok", id)
 }
 
 func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
@@ -49,26 +49,26 @@ func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	ptr1 = &IDByIDField{"ok"}
 	ptr2 = &ptr1
 
-	id, ok := extid.Lookup(ptr2)
-	require.True(t, ok)
-	require.Equal(t, "ok", id)
+	id, ok := extid.Lookup[string](ptr2)
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("ok", id)
 }
 
 func TestLookup_IDGivenByUppercaseTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(IDByUppercaseTag{DI: "KO"})
-	require.True(t, ok)
-	require.Equal(t, "KO", id)
+	id, ok := extid.Lookup[string](IDByUppercaseTag{DI: "KO"})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("KO", id)
 }
 
 func TestLookup_IDGivenByLowercaseTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	expected := fixtures.Random.String()
-	id, ok := extid.Lookup(IDByLowercaseTag{DI: expected})
-	require.True(t, ok)
-	require.Equal(t, expected, id)
+	expected := random.New(random.CryptoSeed{}).String()
+	id, ok := extid.Lookup[string](IDByLowercaseTag{DI: expected})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(expected, id)
 }
 
 func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
@@ -79,67 +79,74 @@ func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTa
 		DI string `ext:"ID"`
 	}
 
-	id, ok := extid.Lookup(IDByTagNameNextToIDField{DI: "KO", ID: "OK"})
-	require.True(t, ok)
-	require.Equal(t, "KO", id)
+	id, ok := extid.Lookup[string](IDByTagNameNextToIDField{DI: "KO", ID: "OK"})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("KO", id)
 }
 
 func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDByUppercaseTag{DI: "KO"})
-	require.True(t, ok)
-	require.Equal(t, "KO", id)
+	id, ok := extid.Lookup[string](&IDByUppercaseTag{DI: "KO"})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("KO", id)
 }
 
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(UnidentifiableID{UserID: "ok"})
-	require.False(t, ok)
-	require.Nil(t, id)
+	id, ok := extid.Lookup[any](UnidentifiableID{UserID: "ok"})
+	assert.Must(t).False(ok)
+	assert.Must(t).Nil(id)
 }
 
 func TestLookup_InterfaceTypeWithValue_IDReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDAsInterface{ID: `foo`})
-	require.True(t, ok)
-	require.Equal(t, "foo", id)
+	id, ok := extid.Lookup[any](&IDAsInterface{ID: `foo`})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal("foo", id)
 }
 
 func TestLookup_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDAsInterface{})
-	require.False(t, ok)
-	require.Nil(t, id)
+	id, ok := extid.Lookup[any](&IDAsInterface{})
+	assert.Must(t).False(ok)
+	assert.Must(t).Nil(id)
 }
 
 func TestLookup_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
 	var idVal *string
-	id, ok := extid.Lookup(&IDAsInterface{ID: idVal})
-	require.False(t, ok)
-	require.Nil(t, id)
+	id, ok := extid.Lookup[any](&IDAsInterface{ID: idVal})
+	assert.Must(t).False(ok)
+	assert.Must(t).Nil(id)
 }
 
 func TestLookup_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T) {
 	t.Parallel()
 
-	id, ok := extid.Lookup(&IDAsPointer{})
-	require.False(t, ok)
-	require.Nil(t, id)
+	id, ok := extid.Lookup[*string](&IDAsPointer{})
+	assert.Must(t).False(ok)
+	assert.Must(t).Nil(id)
 }
 
 func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
 	t.Parallel()
 
 	idVal := `foo`
-	id, ok := extid.Lookup(&IDAsPointer{ID: &idVal})
-	require.True(t, ok)
-	require.Equal(t, &idVal, id)
+	id, ok := extid.Lookup[*string](&IDAsPointer{ID: &idVal})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(&idVal, id)
+}
+
+func TestLookup_IDFieldWithZeroValueFound_NotOkReturned(t *testing.T) {
+	t.Parallel()
+
+	_, ok := extid.Lookup[string](IDByIDField{ID: ""})
+	assert.Must(t).False(ok, "zero value should be not OK")
 }
 
 // ------------------------------------------------------------------------------------------------------------------ //
@@ -147,37 +154,37 @@ func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
 func TestSet_NonPtrStructGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
 	t.Parallel()
 
-	require.Error(t, extid.Set(IDByIDField{}, "Pass by Value"))
+	assert.Must(t).NotNil(extid.Set(IDByIDField{}, "Pass by Value"))
 }
 
-func TestSet_PtrStructGivenButIDIsCannotBeIndentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
+func TestSet_PtrStructGivenButIDIsCannotBeIdentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
 	t.Parallel()
 
-	require.Error(t, extid.Set(&UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
+	assert.Must(t).NotNil(extid.Set(&UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
 }
 
 func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	subject := &IDByIDField{}
-	require.Nil(t, extid.Set(subject, "OK"))
-	require.Equal(t, "OK", subject.ID)
+	assert.Must(t).Nil(extid.Set(subject, "OK"))
+	assert.Must(t).Equal("OK", subject.ID)
 }
 
 func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	subject := &IDByUppercaseTag{}
-	require.Nil(t, extid.Set(subject, "OK"))
-	require.Equal(t, "OK", subject.DI)
+	assert.Must(t).Nil(extid.Set(subject, "OK"))
+	assert.Must(t).Equal("OK", subject.DI)
 }
 
 func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	t.Parallel()
 
 	var subject interface{} = &IDByIDField{}
-	require.Nil(t, extid.Set(subject, "OK"))
-	require.Equal(t, "OK", subject.(*IDByIDField).ID)
+	assert.Must(t).Nil(extid.Set(subject, "OK"))
+	assert.Must(t).Equal("OK", subject.(*IDByIDField).ID)
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
@@ -190,33 +197,33 @@ func TestLookupStructField(t *testing.T) {
 	)
 
 	field, value, ok = extid.LookupStructField(IDByIDField{ID: `42`})
-	require.True(t, ok)
-	require.Equal(t, `ID`, field.Name)
-	require.Equal(t, `42`, value.Interface())
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(`ID`, field.Name)
+	assert.Must(t).Equal(`42`, value.Interface())
 
 	field, value, ok = extid.LookupStructField(IDByUppercaseTag{DI: `42`})
-	require.True(t, ok)
-	require.Equal(t, `DI`, field.Name)
-	require.Equal(t, `42`, value.Interface())
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(`DI`, field.Name)
+	assert.Must(t).Equal(`42`, value.Interface())
 
 	field, value, ok = extid.LookupStructField(IDByLowercaseTag{DI: `42`})
-	require.True(t, ok)
-	require.Equal(t, `DI`, field.Name)
-	require.Equal(t, `42`, value.Interface())
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(`DI`, field.Name)
+	assert.Must(t).Equal(`42`, value.Interface())
 
 	field, value, ok = extid.LookupStructField(IDAsInterface{ID: 42})
-	require.True(t, ok)
-	require.Equal(t, `ID`, field.Name)
-	require.Equal(t, 42, value.Interface())
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(`ID`, field.Name)
+	assert.Must(t).Equal(42, value.Interface())
 
 	idValue := `42`
 	field, value, ok = extid.LookupStructField(IDAsPointer{ID: &idValue})
-	require.True(t, ok)
-	require.Equal(t, `ID`, field.Name)
-	require.Equal(t, &idValue, value.Interface())
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(`ID`, field.Name)
+	assert.Must(t).Equal(&idValue, value.Interface())
 
 	field, value, ok = extid.LookupStructField(UnidentifiableID{})
-	require.False(t, ok)
+	assert.Must(t).False(ok)
 }
 
 //--------------------------------------------------------------------------------------------------------------------//

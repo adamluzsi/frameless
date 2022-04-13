@@ -6,12 +6,12 @@ import (
 
 	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestIsValueEmpty(t *testing.T) {
 	s := testcase.NewSpec(t)
-	val := testcase.Var{Name: `input value`}
+	val := testcase.Var[any]{ID: `input value`}
 	subject := func(t *testcase.T) bool {
 		return reflects.IsValueEmpty(reflect.ValueOf(val.Get(t)))
 	}
@@ -23,7 +23,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -34,7 +34,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -45,7 +45,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as non-empty`, func(t *testcase.T) {
-			require.False(t, subject(t))
+			assert.Must(t).False(subject(t))
 		})
 	})
 
@@ -56,7 +56,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -66,7 +66,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -76,7 +76,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as non-empty`, func(t *testcase.T) {
-			require.False(t, subject(t))
+			assert.Must(t).False(subject(t))
 		})
 	})
 
@@ -87,7 +87,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -97,7 +97,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -111,7 +111,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as non-empty`, func(t *testcase.T) {
-			require.False(t, subject(t))
+			assert.Must(t).False(subject(t))
 		})
 	})
 
@@ -122,7 +122,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -132,7 +132,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as non-empty`, func(t *testcase.T) {
-			require.False(t, subject(t))
+			assert.Must(t).False(subject(t))
 		})
 	})
 
@@ -143,7 +143,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			require.True(t, subject(t))
+			assert.Must(t).True(subject(t))
 		})
 	})
 
@@ -153,7 +153,7 @@ func TestIsValueEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as non-empty`, func(t *testcase.T) {
-			require.False(t, subject(t))
+			assert.Must(t).False(subject(t))
 		})
 	})
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func ExampleFinishTx() {
@@ -53,20 +53,19 @@ func TestRecover(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		action    = testcase.Var{Name: `action`}
-		actionLet = func(s *testcase.Spec, fn func() error) { action.Let(s, func(t *testcase.T) interface{} { return fn }) }
-		actionGet = func(t *testcase.T) func() error { return action.Get(t).(func() error) }
+		action    = testcase.Var[func() error]{ID: `action`}
+		actionLet = func(s *testcase.Spec, fn func() error) { action.Let(s, func(t *testcase.T) func() error { return fn }) }
 	)
 	subject := func(t *testcase.T) (err error) {
 		defer frameless.Recover(&err)
-		return actionGet(t)()
+		return action.Get(t)()
 	}
 
 	s.When(`action ends without error`, func(s *testcase.Spec) {
 		actionLet(s, func() error { return nil })
 
 		s.Then(`it will do nothing`, func(t *testcase.T) {
-			require.Nil(t, subject(t))
+			assert.Must(t).Nil(subject(t))
 		})
 	})
 
@@ -75,7 +74,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { return expectedErr })
 
 		s.Then(`it will pass the received error through`, func(t *testcase.T) {
-			require.Equal(t, expectedErr, subject(t))
+			assert.Must(t).Equal(expectedErr, subject(t))
 		})
 	})
 
@@ -84,7 +83,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(expectedErr) })
 
 		s.Then(`it will capture the error from panic and returns with it`, func(t *testcase.T) {
-			require.Equal(t, expectedErr, subject(t))
+			assert.Must(t).Equal(expectedErr, subject(t))
 		})
 	})
 
@@ -93,7 +92,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(expectedErr) })
 
 		s.Then(`it will capture the error from panic and returns with it`, func(t *testcase.T) {
-			require.Equal(t, expectedErr, subject(t))
+			assert.Must(t).Equal(expectedErr, subject(t))
 		})
 	})
 
@@ -102,7 +101,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(msg) })
 
 		s.Then(`it will capture the panic value and create an error from it, where message is the panic object is formatted with fmt`, func(t *testcase.T) {
-			require.Equal(t, errors.New("boom"), subject(t))
+			assert.Must(t).Equal(errors.New("boom"), subject(t))
 		})
 	})
 
@@ -124,7 +123,7 @@ func TestRecover(t *testing.T) {
 				finished = true
 			}()
 			wg.Wait()
-			require.False(t, finished)
+			assert.Must(t).False(finished)
 		})
 	})
 }
@@ -133,7 +132,7 @@ func TestFinishTx(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		errp = s.Let(`error pointer`, func(t *testcase.T) interface{} {
+		errp = testcase.Let(s, func(t *testcase.T) interface{} {
 			var err error
 			return &err
 		})
@@ -148,12 +147,12 @@ func TestFinishTx(t *testing.T) {
 
 	var (
 		CommitErr = fmt.Errorf(`CommitErr`)
-		commitFn  = s.Let(`commit fn`, func(t *testcase.T) interface{} {
+		commitFn  = testcase.Let(s, func(t *testcase.T) interface{} {
 			return func() error { return CommitErr }
 		})
 		commitFnGet = func(t *testcase.T) func() error { return commitFn.Get(t).(func() error) }
 		rolledBack  = s.LetValue(`rolled back`, false)
-		rollbackFn  = s.Let(`rollback fn`, func(t *testcase.T) interface{} {
+		rollbackFn  = testcase.Let(s, func(t *testcase.T) interface{} {
 			return func() error {
 				rolledBack.Set(t, true)
 				return nil
@@ -172,7 +171,7 @@ func TestFinishTx(t *testing.T) {
 		})
 
 		s.Then(`it will panic as this is an invalid use-case for this function`, func(t *testcase.T) {
-			require.Panics(t, func() { subject(t) })
+			t.Must.Panic(func() { subject(t) })
 		})
 	})
 
@@ -184,7 +183,7 @@ func TestFinishTx(t *testing.T) {
 
 		s.Then(`it will commit and return the commit error value`, func(t *testcase.T) {
 			subject(t)
-			require.Equal(t, CommitErr, *errpGet(t))
+			assert.Must(t).Equal(CommitErr, *errpGet(t))
 		})
 	})
 
@@ -197,8 +196,8 @@ func TestFinishTx(t *testing.T) {
 
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
-			require.True(t, rolledBack.Get(t).(bool))
-			require.Equal(t, expectedErr, *errpGet(t))
+			assert.Must(t).True(rolledBack.Get(t).(bool))
+			assert.Must(t).Equal(expectedErr, *errpGet(t))
 		})
 	})
 }
@@ -207,7 +206,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		errp = s.Let(`error pointer`, func(t *testcase.T) interface{} {
+		errp = testcase.Let(s, func(t *testcase.T) interface{} {
 			var err error
 			return &err
 		})
@@ -226,7 +225,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 		rolledBack    = s.LetValue(`rolled back`, false)
 		rolledBackGet = func(t *testcase.T) bool { return rolledBack.Get(t).(bool) }
 	)
-	cpm := s.Let(`commit manager`, func(t *testcase.T) interface{} {
+	cpm := testcase.Let(s, func(t *testcase.T) interface{} {
 		return &doubles.StubOnePhaseCommitProtocol{
 			OnePhaseCommitProtocol: nil,
 			BeginTxFunc: func(ctx context.Context) (context.Context, error) {
@@ -246,10 +245,10 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 	}
 
 	var (
-		tx = s.Let(`context.Context with transaction`, func(t *testcase.T) interface{} {
+		tx = testcase.Let(s, func(t *testcase.T) interface{} {
 			ctx := context.Background()
 			tx, err := cpmGet(t).BeginTx(ctx)
-			require.NoError(t, err)
+			t.Must.Nil(err)
 			return tx
 		})
 		txGet = func(t *testcase.T) context.Context { return tx.Get(t).(context.Context) }
@@ -265,7 +264,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 		})
 
 		s.Then(`it will panic as this is an invalid use-case for this function`, func(t *testcase.T) {
-			require.Panics(t, func() { subject(t) })
+			assert.Must(t).Panic(func() { subject(t) })
 		})
 	})
 
@@ -277,7 +276,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 
 		s.Then(`it will commit and return the commit error value`, func(t *testcase.T) {
 			subject(t)
-			require.Equal(t, CommitTxErr, *errpGet(t))
+			assert.Must(t).Equal(CommitTxErr, *errpGet(t))
 		})
 	})
 
@@ -290,8 +289,8 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
-			require.True(t, rolledBackGet(t))
-			require.Equal(t, expectedErr, *errpGet(t))
+			assert.Must(t).True(rolledBackGet(t))
+			assert.Must(t).Equal(expectedErr, *errpGet(t))
 		})
 	})
 }

@@ -2,25 +2,28 @@ package iterators
 
 import (
 	"sync"
+
+	"github.com/adamluzsi/frameless"
 )
 
 // WithConcurrentAccess allows you to convert any iterator into one that is safe to use from concurrent access.
 // The caveat with this, that this protection only allows 1 Decode call for each Next call.
-func WithConcurrentAccess(i Interface) *ConcurrentAccessIterator {
-	return &ConcurrentAccessIterator{Interface: i}
+func WithConcurrentAccess[T any](i frameless.Iterator[T]) *ConcurrentAccessIterator[T] {
+	return &ConcurrentAccessIterator[T]{Iterator: i}
 }
 
-type ConcurrentAccessIterator struct {
-	Interface
+type ConcurrentAccessIterator[T any] struct {
+	frameless.Iterator[T]
+
 	mutex sync.Mutex
 }
 
-func (i *ConcurrentAccessIterator) Next() bool {
+func (i *ConcurrentAccessIterator[T]) Next() bool {
 	i.mutex.Lock()
-	return i.Interface.Next()
+	return i.Iterator.Next()
 }
 
-func (i *ConcurrentAccessIterator) Decode(ptr interface{}) error {
+func (i *ConcurrentAccessIterator[T]) Value() T {
 	defer i.mutex.Unlock()
-	return i.Interface.Decode(ptr)
+	return i.Iterator.Value()
 }

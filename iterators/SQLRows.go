@@ -4,34 +4,51 @@ import (
 	"io"
 )
 
-func NewSQLRows(rows SQLRows, mapper SQLRowMapper) *SQLRowsIterator {
-	return &SQLRowsIterator{rows: rows, mapper: mapper}
+func NewSQLRows[T any](rows SQLRows, mapper SQLRowMapper[T]) *SQLRowsIterator[T] {
+	return &SQLRowsIterator[T]{Rows: rows, Mapper: mapper}
 }
 
 // SQLRowsIterator allow you to use the same iterator pattern with sql.Rows structure.
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
 // it also makes testing easier with the same Interface interface.
-type SQLRowsIterator struct {
-	rows    SQLRows
-	mapper  SQLRowMapper
-	current interface{}
+type SQLRowsIterator[T any] struct {
+	Rows   SQLRows
+	Mapper SQLRowMapper[T]
+
+	value T
+	err   error
 }
 
-func (i *SQLRowsIterator) Close() error {
-	return i.rows.Close()
+func (i *SQLRowsIterator[T]) Close() error {
+	return i.Rows.Close()
 }
 
-func (i *SQLRowsIterator) Next() bool {
-	return i.rows.Next()
+func (i *SQLRowsIterator[T]) Next() bool {
+	if i.err != nil {
+		return false
+	}
+	if !i.Rows.Next() {
+		return false
+	}
+	v, err := i.Mapper.Map(i.Rows)
+	if err != nil {
+		i.err = err
+		return false
+	}
+	i.value = v
+	return true
 }
 
-func (i *SQLRowsIterator) Err() error {
-	return i.rows.Err()
+func (i *SQLRowsIterator[T]) Err() error {
+	if i.err != nil {
+		return i.err
+	}
+	return i.Rows.Err()
 }
 
-func (i *SQLRowsIterator) Decode(e interface{}) error {
-	return i.mapper.Map(i.rows, e)
+func (i *SQLRowsIterator[T]) Value() T {
+	return i.value
 }
 
 // sql rows iterator dependencies
@@ -40,15 +57,13 @@ type SQLRowScanner interface {
 	Scan(...interface{}) error
 }
 
-type SQLRowMapper interface {
-	Map(s SQLRowScanner, ptr interface{}) error
+type SQLRowMapper[T any] interface {
+	Map(s SQLRowScanner) (T, error)
 }
 
-type SQLRowMapperFunc func(SQLRowScanner, interface{}) error
+type SQLRowMapperFunc[T any] func(SQLRowScanner) (T, error)
 
-func (fn SQLRowMapperFunc) Map(s SQLRowScanner, e interface{}) error {
-	return fn(s, e)
-}
+func (fn SQLRowMapperFunc[T]) Map(s SQLRowScanner) (T, error) { return fn(s) }
 
 type SQLRows interface {
 	io.Closer
