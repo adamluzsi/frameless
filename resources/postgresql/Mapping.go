@@ -23,6 +23,6 @@ type Mapping[Ent any] interface {
 	// Serial and similar id solutions not supported without serialize transactions.
 	NewID(context.Context) (interface{}, error)
 	// ToArgs convert an entity ptr to a list of query argument that can be used for CREATE or UPDATE purpose.
-	ToArgs(ptr interface{}) ([]interface{}, error)
+	ToArgs(ptr *Ent) ([]interface{}, error)
 	iterators.SQLRowMapper[Ent]
 }

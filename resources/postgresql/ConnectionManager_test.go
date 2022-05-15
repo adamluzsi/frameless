@@ -37,9 +37,11 @@ func TestConnectionManager_Connection(t *testing.T) {
 
 	connectionWithoutTx, err := p.Connection(ctx)
 	require.NoError(t, err)
+	require.Nil(t, connectionWithoutTx.QueryRowContext(ctx,"SELECT").Scan())
+
 	connectionWithoutTxAgain, err := p.Connection(ctx)
 	require.NoError(t, err)
-	require.Equal(t, connectionWithoutTx, connectionWithoutTxAgain)
+	require.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx,"SELECT").Scan())
 
 	ctxWithTx, err := p.BeginTx(ctx)
 	require.Nil(t, err)
@@ -75,9 +77,9 @@ func TestConnectionManager_Close(t *testing.T) {
 
 func TestConnectionManager_PoolContract(t *testing.T) {
 	testcase.RunContract(t, ConnectionManagerContract{
-		Subject: func(tb testing.TB) (postgresql.ConnectionManager, contracts.CRD) {
-			s := NewStorage(t)
-			return s.ConnectionManager, s
+		Subject: func(tb testing.TB) postgresql.ConnectionManager {
+			s := NewTestEntityStorage(t)
+			return s.ConnectionManager
 		},
 		DriverName: "postgres",
 		MakeCtx: func(tb testing.TB) context.Context {
@@ -106,19 +108,18 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 	testcase.RunContract(t, contracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-		Subject: func(tb testing.TB) (frameless.OnePhaseCommitProtocol, contracts.CRD) {
-			s := NewStorage(tb)
-			return s, s
+		Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+			s := NewTestEntityStorage(tb)
+
+			return contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
+				Resource:      s,
+				CommitManager: s,
+			}
 		},
 		MakeCtx: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEnt: func(tb testing.TB) psh.TestEntity {
-			t := tb.(*testcase.T)
-			ent := t.Random.Make(psh.TestEntity{}).(psh.TestEntity)
-			ent.ID = ""
-			return ent
-		},
+		MakeEnt: psh.MakeTestEntity,
 	})
 }
 

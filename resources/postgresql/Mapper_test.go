@@ -20,9 +20,9 @@ func TestMapper_Map(t *testing.T) {
 		Foo int
 	}
 
-	m := postgresql.Mapper{MapFn: func(s iterators.SQLRowScanner, ptr interface{}) error {
-		x := ptr.(*X)
-		return s.Scan(&x.Foo)
+	m := postgresql.Mapper[X, int]{MapFn: func(s iterators.SQLRowScanner) (X, error) {
+		var x X
+		return x, s.Scan(&x.Foo)
 	}}
 
 	t.Run(`happy-path`, func(t *testing.T) {
@@ -31,8 +31,8 @@ func TestMapper_Map(t *testing.T) {
 			return reflects.Link(expectedInt, i[0])
 		}}
 
-		var x X
-		require.Nil(t, m.Map(scanner, &x))
+		x, err := m.Map(scanner)
+		require.Nil(t, err)
 		require.Equal(t, expectedInt, x.Foo)
 	})
 
@@ -42,7 +42,8 @@ func TestMapper_Map(t *testing.T) {
 			return expectedErr
 		}}
 
-		require.Equal(t, expectedErr, m.Map(scanner, &X{}))
+		_, err := m.Map(scanner)
+		require.Equal(t, expectedErr, err)
 	})
 }
 
@@ -61,9 +62,8 @@ func TestMapper_ToArgs(t *testing.T) {
 	}
 
 	t.Run(`happy-path`, func(t *testing.T) {
-		m := postgresql.Mapper{ToArgsFn: func(ptr interface{}) ([]interface{}, error) {
-			x := ptr.(*X)
-			return []interface{}{sql.NullInt64{Int64: x.Foo, Valid: true}}, nil
+		m := postgresql.Mapper[X, int64]{ToArgsFn: func(ptr *X) ([]interface{}, error) {
+			return []interface{}{sql.NullInt64{Int64: ptr.Foo, Valid: true}}, nil
 		}}
 
 		x := X{Foo: int64(rnd.Int())}
@@ -79,7 +79,7 @@ func TestMapper_ToArgs(t *testing.T) {
 
 	t.Run(`rainy-path`, func(t *testing.T) {
 		expectedErr := errors.New(`boom`)
-		m := postgresql.Mapper{ToArgsFn: func(ptr interface{}) ([]interface{}, error) {
+		m := postgresql.Mapper[X, int64]{ToArgsFn: func(ptr *X) ([]interface{}, error) {
 			return nil, expectedErr
 		}}
 
@@ -92,7 +92,7 @@ func TestMapper_NewID(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	t.Run(`happy-path`, func(t *testing.T) {
 		expectedID := rnd.Int()
-		m := postgresql.Mapper{NewIDFn: func(ctx context.Context) (interface{}, error) {
+		m := postgresql.Mapper[any, int]{NewIDFn: func(ctx context.Context) (int, error) {
 			return expectedID, nil
 		}}
 
@@ -104,7 +104,7 @@ func TestMapper_NewID(t *testing.T) {
 
 	t.Run(`rainy-path`, func(t *testing.T) {
 		expectedErr := errors.New(`boom`)
-		m := postgresql.Mapper{NewIDFn: func(ctx context.Context) (interface{}, error) {
+		m := postgresql.Mapper[any, any]{NewIDFn: func(ctx context.Context) (any, error) {
 			return nil, expectedErr
 		}}
 

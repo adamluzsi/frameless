@@ -15,24 +15,23 @@ func ExampleStorage() {
 		Value string
 	}
 
-	mapping := postgresql.Mapper{
+	mapping := postgresql.Mapper[Entity, int]{
 		Table:   "entities",
 		ID:      "id",
 		Columns: []string{`id`, `value`},
-		NewIDFn: func(ctx context.Context) (interface{}, error) {
+		NewIDFn: func(ctx context.Context) (int, error) {
 			// only example, don't do this in production code.
 			return rand.Int(), nil
 		},
-		ToArgsFn: func(ptr interface{}) ([]interface{}, error) {
-			ent := ptr.(*Entity)
+		ToArgsFn: func(ent *Entity) ([]interface{}, error) {
 			return []interface{}{ent.ID, ent.Value}, nil
 		},
-		MapFn: func(s iterators.SQLRowScanner, ptr interface{}) error {
-			ent := ptr.(*Entity)
-			return s.Scan(&ent.ID, &ent.Value)
+		MapFn: func(s iterators.SQLRowScanner) (Entity, error) {
+			var ent Entity
+			return ent, s.Scan(&ent.ID, &ent.Value)
 		},
 	}
 
-	stg := postgresql.NewStorageByDSN(Entity{}, mapping, os.Getenv("DATABASE_URL"))
+	stg := postgresql.NewStorageByDSN[Entity, int](mapping, os.Getenv("DATABASE_URL"))
 	defer stg.Close()
 }

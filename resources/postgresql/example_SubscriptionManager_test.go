@@ -12,8 +12,8 @@ func ExampleSubscriptionManager() {
 	}
 
 	connectionManager := postgresql.NewConnectionManager(os.Getenv(`DATABASE_URL`))
-	mapping := postgresql.Mapper{ /* real mapping data here */ }
+	mapping := postgresql.Mapper[ExampleEntity, string]{ /* real mapping data here */ }
 
-	subscriptionManager := postgresql.NewListenNotifySubscriptionManager(ExampleEntity{}, mapping, os.Getenv("DATABASE_URL"), connectionManager)
+	subscriptionManager := postgresql.NewListenNotifySubscriptionManager[ExampleEntity, string](mapping, os.Getenv("DATABASE_URL"), connectionManager)
 	defer subscriptionManager.Close()
 }

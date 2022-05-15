@@ -10,8 +10,8 @@ import (
 	"github.com/adamluzsi/frameless/postgresql"
 	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
 	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
 	"github.com/lib/pq"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,14 +24,14 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 	cm := postgresql.NewConnectionManager(dsn)
 	deferClose(t, cm)
 
-	sm := postgresql.NewListenNotifySubscriptionManager(psh.TestEntity{}, mapping, dsn, cm)
+	sm := postgresql.NewListenNotifySubscriptionManager[psh.TestEntity, string](mapping, dsn, cm)
 	deferClose(t, sm)
 
 	var last psh.TestEntity
-	sub, err := sm.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber{
+	sub, err := sm.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[psh.TestEntity, string]{
 		HandleFunc: func(ctx context.Context, event interface{}) error {
-			ce := event.(frameless.CreateEvent)
-			last = ce.Entity.(psh.TestEntity)
+			ce := event.(frameless.CreateEvent[psh.TestEntity])
+			last = ce.Entity
 			return nil
 		},
 	})
@@ -44,10 +44,10 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 		Bar: "bar",
 		Baz: "baz",
 	}
-	require.NoError(t, sm.PublishCreateEvent(ctx, frameless.CreateEvent{Entity: expected}))
+	require.NoError(t, sm.PublishCreateEvent(ctx, frameless.CreateEvent[psh.TestEntity]{Entity: expected}))
 
-	testcase.Retry{Strategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(tb testing.TB) {
-		require.Equal(tb, expected, last)
+	testcase.Retry{Strategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(it assert.It) {
+		it.Must.Equal(expected, last)
 	})
 }
 
@@ -58,12 +58,11 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 	cm := postgresql.NewConnectionManager(dsn)
 	deferClose(t, cm)
 
-	callback := func(event pq.ListenerEventType, err error) { assert.NoError(t, err) }
+	callback := func(event pq.ListenerEventType, err error) { assert.Must(t).Nil(err) }
 	listener := pq.NewListener(dsn, 10*time.Second, time.Minute, callback)
 	deferClose(t, listener)
 
-	sm1 := postgresql.ListenNotifySubscriptionManager{
-		T:                 psh.TestEntity{},
+	sm1 := postgresql.ListenNotifySubscriptionManager[psh.TestEntity, string]{
 		Mapping:           psh.TestEntityMapping(),
 		DSN:               "", // empty intentionally
 		ConnectionManager: cm,
@@ -72,10 +71,10 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 	// no defer close intentionally
 
 	var last psh.TestEntity
-	sub, err := sm1.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber{
+	sub, err := sm1.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[psh.TestEntity, string]{
 		HandleFunc: func(ctx context.Context, event interface{}) error {
-			ce := event.(frameless.CreateEvent)
-			last = ce.Entity.(psh.TestEntity)
+			ce := event.(frameless.CreateEvent[psh.TestEntity])
+			last = ce.Entity
 			return nil
 		},
 	})
@@ -89,16 +88,15 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 		Baz: "baz",
 	}
 
-	sm2 := postgresql.ListenNotifySubscriptionManager{
-		T:                 psh.TestEntity{},
+	sm2 := postgresql.ListenNotifySubscriptionManager[psh.TestEntity, string]{
 		Mapping:           psh.TestEntityMapping(),
 		DSN:               "", // empty intentionally
 		ConnectionManager: cm,
 		Listener:          listener,
 	}
-	require.NoError(t, sm2.PublishCreateEvent(ctx, frameless.CreateEvent{Entity: expected}))
+	require.NoError(t, sm2.PublishCreateEvent(ctx, frameless.CreateEvent[psh.TestEntity]{Entity: expected}))
 
-	testcase.Retry{Strategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(tb testing.TB) {
-		require.Equal(tb, expected, last)
+	testcase.Retry{Strategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(it assert.It) {
+		it.Must.Equal(expected, last)
 	})
 }

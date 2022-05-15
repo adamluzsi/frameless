@@ -15,9 +15,9 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-func NewStorageByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Storage {
+func NewStorageByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Storage[Ent, ID] {
 	cm := NewConnectionManager(dsn)
-	sm := NewListenNotifySubscriptionManager[Ent](m, dsn, cm)
+	sm := NewListenNotifySubscriptionManager[Ent, ID](m, dsn, cm)
 	return &Storage[Ent, ID]{
 		Mapping:             m,
 		ConnectionManager:   cm,
@@ -33,7 +33,7 @@ func NewStorageByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Storage {
 type Storage[Ent, ID any] struct {
 	Mapping             Mapping[Ent]
 	ConnectionManager   ConnectionManager
-	SubscriptionManager SubscriptionManager
+	SubscriptionManager SubscriptionManager[Ent, ID]
 	MetaAccessor
 }
 
@@ -55,7 +55,7 @@ func (pg *Storage[Ent, ID]) Close() error {
 	return nil
 }
 
-func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr interface{}) (rErr error) {
+func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
 	query := fmt.Sprintf("INSERT INTO %s (%s)\n", pg.Mapping.TableRef(), pg.queryColumnList())
 	query += fmt.Sprintf("VALUES (%s)\n", pg.queryColumnPlaceHolders(pg.newPrepareStatementPlaceholderGenerator()))
 
@@ -70,7 +70,7 @@ func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr interface{}) (rErr e
 		return err
 	}
 
-	if _, ok := extid.Lookup(ptr); !ok {
+	if _, ok := extid.Lookup[ID](ptr); !ok {
 		// TODO: add serialize TX level here
 
 		id, err := pg.Mapping.NewID(ctx)
@@ -91,10 +91,10 @@ func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr interface{}) (rErr e
 		return err
 	}
 
-	return pg.SubscriptionManager.PublishCreateEvent(ctx, frameless.CreateEvent{Entity: base(ptr)})
+	return pg.SubscriptionManager.PublishCreateEvent(ctx, frameless.CreateEvent[Ent]{Entity: *ptr})
 }
 
-func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, ptr, id interface{}) (bool, error) {
+func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (bool, error) {
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return false, err
@@ -102,7 +102,7 @@ func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, ptr, id interface{}) (
 
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableRef(), pg.Mapping.IDRef())
 
-	err = pg.Mapping.Map(c.QueryRowContext(ctx, query, id), ptr)
+	v, err := pg.Mapping.Map(c.QueryRowContext(ctx, query, id))
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -110,6 +110,7 @@ func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, ptr, id interface{}) (
 		return false, err
 	}
 
+	*ptr = v
 	return true, nil
 }
 
@@ -141,7 +142,7 @@ func (pg *Storage[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	return nil
 }
 
-func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id interface{}) (rErr error) {
+func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
 	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, pg.Mapping.TableRef())
 
 	ctx, err := pg.BeginTx(ctx)
@@ -169,7 +170,7 @@ func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id interface{}) (rEr
 		return fmt.Errorf(`ErrNotFound`)
 	}
 
-	if err := pg.SubscriptionManager.PublishDeleteByIDEvent(ctx, frameless.DeleteByIDEvent{ID: id}); err != nil {
+	if err := pg.SubscriptionManager.PublishDeleteByIDEvent(ctx, frameless.DeleteByIDEvent[ID]{ID: id}); err != nil {
 		return err
 	}
 
@@ -184,7 +185,7 @@ func (pg *Storage[Ent, ID]) newPrepareStatementPlaceholderGenerator() func() str
 	}
 }
 
-func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr interface{}) (rErr error) {
+func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) (rErr error) {
 	args, err := pg.Mapping.ToArgs(ptr)
 	if err != nil {
 		return err
@@ -204,7 +205,7 @@ func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr interface{}) (rErr e
 	}
 	query += fmt.Sprintf("\nWHERE %q = %s", pg.Mapping.IDRef(), idPlaceHolder)
 
-	id, ok := extid.Lookup(ptr)
+	id, ok := extid.Lookup[ID](ptr)
 	if !ok {
 		return fmt.Errorf(`missing entity id`)
 	}
@@ -234,23 +235,23 @@ func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr interface{}) (rErr e
 		}
 	}
 
-	return pg.SubscriptionManager.PublishUpdateEvent(ctx, frameless.UpdateEvent{Entity: base(ptr)})
+	return pg.SubscriptionManager.PublishUpdateEvent(ctx, frameless.UpdateEvent[Ent]{Entity: *ptr})
 }
 
-func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator {
+func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableRef())
 
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
-		return iterators.NewError(err)
+		return iterators.NewError[Ent](err)
 	}
 
 	rows, err := c.QueryContext(ctx, query)
 	if err != nil {
-		return iterators.NewError(err)
+		return iterators.NewError[Ent](err)
 	}
 
-	return iterators.NewSQLRows(rows, pg.Mapping)
+	return iterators.NewSQLRows[Ent](rows, pg.Mapping)
 }
 
 func (pg *Storage[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
@@ -279,6 +280,8 @@ func (pg *Storage[Ent, ID]) queryColumnList() string {
 		dst = make([]string, 0, len(src))
 	)
 	for _, name := range src {
+		// TODO: replace with the commented out version
+		// dst = append(dst, fmt.Sprintf(`%q`, name))
 		dst = append(dst, fmt.Sprintf(`%s`, name))
 	}
 	return strings.Join(dst, `, `)
@@ -288,14 +291,14 @@ func base(ptr interface{}) interface{} {
 	return reflects.BaseValueOf(ptr).Interface()
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber) (frameless.Subscription, error) {
+func (pg *Storage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToCreatorEvents(ctx, s)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber) (frameless.Subscription, error) {
+func (pg *Storage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber[Ent]) (frameless.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToUpdaterEvents(ctx, s)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber) (frameless.Subscription, error) {
+func (pg *Storage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber[ID]) (frameless.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToDeleterEvents(ctx, s)
 }

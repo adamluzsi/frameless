@@ -2,10 +2,12 @@ package spechelper
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless/iterators"
 	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 	"github.com/stretchr/testify/require"
 )
@@ -17,14 +19,23 @@ type TestEntity struct {
 	Baz string
 }
 
+func MakeTestEntity(tb testing.TB) TestEntity {
+	te := tb.(*testcase.T).Random.Make(TestEntity{}).(TestEntity)
+	te.ID = ""
+	return te
+}
+
 func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
+	var counter int
 	return postgresql.Mapper[TestEntity, string]{
 		Table:   "test_entities",
 		ID:      "id",
 		Columns: []string{`id`, `foo`, `bar`, `baz`},
 		NewIDFn: func(ctx context.Context) (string, error) {
+			counter++
 			rnd := random.New(random.CryptoSeed{})
-			return rnd.StringNWithCharset(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ"), nil
+			rndstr := rnd.StringNWithCharset(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+			return fmt.Sprintf("%d-%s", counter, rndstr), nil
 		},
 		ToArgsFn: func(ent *TestEntity) ([]interface{}, error) {
 			return []interface{}{ent.ID, ent.Foo, ent.Bar, ent.Baz}, nil
