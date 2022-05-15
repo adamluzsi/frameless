@@ -46,7 +46,7 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 	}
 	require.NoError(t, sm.PublishCreateEvent(ctx, frameless.CreateEvent[psh.TestEntity]{Entity: expected}))
 
-	testcase.Retry{Strategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(it assert.It) {
+	testcase.Eventually{RetryStrategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(it assert.It) {
 		it.Must.Equal(expected, last)
 	})
 }
@@ -96,7 +96,7 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 	}
 	require.NoError(t, sm2.PublishCreateEvent(ctx, frameless.CreateEvent[psh.TestEntity]{Entity: expected}))
 
-	testcase.Retry{Strategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(it assert.It) {
+	testcase.Eventually{RetryStrategy: testcase.Waiter{WaitTimeout: time.Second}}.Assert(t, func(it assert.It) {
 		it.Must.Equal(expected, last)
 	})
 }

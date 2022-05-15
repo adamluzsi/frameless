@@ -11,6 +11,6 @@ var Waiter = testcase.Waiter{
 	WaitTimeout:  5 * time.Second,
 }
 
-var Eventually = testcase.Retry{
-	Strategy: &Waiter,
+var Eventually = testcase.Eventually{
+	RetryStrategy: &Waiter,
 }

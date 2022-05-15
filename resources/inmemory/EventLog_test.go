@@ -157,7 +157,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			})
 
 			s.Then(`events will be emitted to the subscriber`, func(t *testcase.T) {
-				retry.Assert(t, func(tb assert.It) {
+				eventually.Assert(t, func(tb assert.It) {
 					assert.Must(tb).Contain(handledEvents.Get(t), expected)
 				})
 			})
@@ -182,7 +182,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 					})
 
 					s.Then(`event(s) will be emitted`, func(t *testcase.T) {
-						retry.Assert(t, func(tb assert.It) {
+						eventually.Assert(t, func(tb assert.It) {
 							assert.Must(tb).Contain(handledEvents.Get(t), expected)
 						})
 					})

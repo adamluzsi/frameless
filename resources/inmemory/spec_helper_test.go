@@ -18,8 +18,8 @@ var (
 		WaitDuration: time.Millisecond,
 		WaitTimeout:  3 * time.Second,
 	}
-	retry = testcase.Retry{
-		Strategy: waiter,
+	eventually = testcase.Eventually{
+		RetryStrategy: waiter,
 	}
 )
 

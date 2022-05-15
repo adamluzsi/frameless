@@ -22,7 +22,7 @@ var (
 		WaitDuration: time.Millisecond,
 		WaitTimeout:  time.Second,
 	}
-	async = testcase.Retry{Strategy: &waiter}
+	async = testcase.Eventually{RetryStrategy: &waiter}
 )
 
 type Manager[Ent, ID any] struct {
