@@ -8,7 +8,7 @@ import (
 
 var Waiter = testcase.Waiter{
 	WaitDuration: time.Millisecond,
-	WaitTimeout:  5 * time.Second,
+	Timeout:  5 * time.Second,
 }
 
 var Eventually = testcase.Eventually{

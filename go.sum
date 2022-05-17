@@ -1,5 +1,5 @@
-github.com/adamluzsi/testcase v0.75.0 h1:I1YGITiFVUA9nrPBLfRUpRn75ueiOCWFv1u6LQLnDJM=
-github.com/adamluzsi/testcase v0.75.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+github.com/adamluzsi/testcase v0.76.2 h1:2Vl2NoJW9flnyWJCZiv79EaM+XDRmkTsLqcBmSNkgVM=
+github.com/adamluzsi/testcase v0.76.2/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=

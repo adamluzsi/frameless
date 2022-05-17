@@ -20,7 +20,7 @@ import (
 var (
 	waiter = testcase.Waiter{
 		WaitDuration: time.Millisecond,
-		WaitTimeout:  time.Second,
+		Timeout:  time.Second,
 	}
 	async = testcase.Eventually{RetryStrategy: &waiter}
 )

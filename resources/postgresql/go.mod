@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/adamluzsi/frameless v0.63.0
-	github.com/adamluzsi/testcase v0.75.0
+	github.com/adamluzsi/testcase v0.76.2
 	github.com/lib/pq v1.10.5
 	github.com/stretchr/testify v1.7.1
 )

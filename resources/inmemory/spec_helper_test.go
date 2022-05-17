@@ -16,7 +16,7 @@ import (
 var (
 	waiter = testcase.Waiter{
 		WaitDuration: time.Millisecond,
-		WaitTimeout:  3 * time.Second,
+		Timeout:  3 * time.Second,
 	}
 	eventually = testcase.Eventually{
 		RetryStrategy: waiter,
