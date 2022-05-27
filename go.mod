@@ -3,7 +3,7 @@ module github.com/adamluzsi/frameless
 go 1.18
 
 require (
-	github.com/adamluzsi/testcase v0.76.2
+	github.com/adamluzsi/testcase v0.78.3
 	github.com/golang/mock v1.6.0
 )
 
