@@ -6,30 +6,27 @@ import (
 	"time"
 )
 
-type fileInfo struct {
-	path     string
-	size     int64
-	mode     fs.FileMode
-	modeTime time.Time
-	isDir    bool
-	sys      any
+type FileInfo struct {
+	Path        string
+	FileSize    int64
+	FileMode    fs.FileMode
+	ModifiedAt  time.Time
+	IsDirectory bool
+	System      any
 }
 
-func (fi fileInfo) Name() string       { return filepath.Base(fi.path) }
-func (fi fileInfo) Size() int64        { return fi.size }
-func (fi fileInfo) Mode() fs.FileMode  { return fi.mode }
-func (fi fileInfo) ModTime() time.Time { return fi.modeTime }
-func (fi fileInfo) IsDir() bool        { return fi.isDir }
-func (fi fileInfo) Sys() any           { return fi.sys }
+func (fi FileInfo) Name() string       { return filepath.Base(fi.Path) }
+func (fi FileInfo) Size() int64        { return fi.FileSize }
+func (fi FileInfo) Mode() fs.FileMode  { return fi.FileMode }
+func (fi FileInfo) ModTime() time.Time { return fi.ModifiedAt }
+func (fi FileInfo) IsDir() bool        { return fi.IsDirectory }
+func (fi FileInfo) Sys() any           { return fi.System }
 
-type dirEntry struct {
-	path  string
-	isDir bool
-	mode  fs.FileMode
-	info  fs.FileInfo
+type DirEntry struct {
+	FileInfo fs.FileInfo
 }
 
-func (de dirEntry) Name() string               { return filepath.Base(de.path) }
-func (de dirEntry) IsDir() bool                { return de.isDir }
-func (de dirEntry) Type() fs.FileMode          { return de.mode.Type() }
-func (de dirEntry) Info() (fs.FileInfo, error) { return de.info, nil }
+func (de DirEntry) Name() string               { return de.FileInfo.Name() }
+func (de DirEntry) IsDir() bool                { return de.FileInfo.IsDir() }
+func (de DirEntry) Type() fs.FileMode          { return de.FileInfo.Mode().Type() }
+func (de DirEntry) Info() (fs.FileInfo, error) { return de.FileInfo, nil }

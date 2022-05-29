@@ -9,16 +9,16 @@ import (
 
 // Open opens the named file for reading. If successful, methods on
 // the returned file can be used for reading; the associated file
-// descriptor has mode O_RDONLY.
+// descriptor has FileMode O_RDONLY.
 // If there is an error, it will be of type *PathError.
 func Open(fsys FileSystem, name string) (File, error) {
 	return fsys.OpenFile(name, os.O_RDONLY, 0)
 }
 
 // Create creates or truncates the named file. If the file already exists,
-// it is truncated. If the file does not exist, it is created with mode 0666
+// it is truncated. If the file does not exist, it is created with FileMode 0666
 // (before umask). If successful, methods on the returned File can
-// be used for I/O; the associated file descriptor has mode O_RDWR.
+// be used for I/O; the associated file descriptor has FileMode O_RDWR.
 // If there is an error, it will be of type *PathError.
 func Create(fsys FileSystem, name string) (File, error) {
 	return fsys.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
@@ -57,11 +57,15 @@ func WalkDir(fsys FileSystem, root string, fn fs.WalkDirFunc) error {
 	if err != nil {
 		err = fn(root, nil, err)
 	} else {
-		err = walkDir(fsys, root, dirEntry{
-			path:  root,
-			isDir: info.IsDir(),
-			mode:  info.Mode(),
-			info:  info,
+		err = walkDir(fsys, root, DirEntry{
+			FileInfo: FileInfo{
+				Path:        root,
+				FileSize:    info.Size(),
+				FileMode:    info.Mode(),
+				ModifiedAt:  info.ModTime(),
+				IsDirectory: info.IsDir(),
+				System:      info.Sys(),
+			},
 		}, fn)
 	}
 	if err == fs.SkipDir {

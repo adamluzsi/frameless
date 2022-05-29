@@ -77,7 +77,7 @@ func TestReadDir(t *testing.T) {
 
 // TestWalkDir
 //
-// TODO: make stub tests to cover all rainy-path
+// TODO: make stub tests to cover all rainy-Path
 func TestWalkDir(t *testing.T) {
 	it := assert.MakeIt(t)
 	fsys := makeFS(t)

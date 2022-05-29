@@ -6,26 +6,12 @@ import (
 )
 
 type File interface {
-	fs.File
-	io.Writer
-	io.Reader
 	io.Closer
+	io.Reader
+	io.Writer
 	io.Seeker
-	// ReadDir reads the contents of the directory associated with the file f
-	// and returns a slice of DirEntry values in directory order.
-	// Subsequent calls on the same file will yield later DirEntry records in the directory.
-	//
-	// If n > 0, ReadDir returns at most n DirEntry records.
-	// In this case, if ReadDir returns an empty slice, it will return an error explaining why.
-	// At the end of a directory, the error is io.EOF.
-	//
-	// If n <= 0, ReadDir returns all the DirEntry records remaining in the directory.
-	// When it succeeds, it returns a nil error (not io.EOF).
-	//
-	// A directory is a unique type of file that contains only the information needed to access files
-	// or other directories. As a result, a directory occupies less space than other types of files.
-	// File systems consist of groups of directories and the files within the directories.
-	ReadDir(n int) ([]fs.DirEntry, error)
+	fs.File
+	fs.ReadDirFile
 }
 
 // FileSystem is a header interface for representing a file-system.

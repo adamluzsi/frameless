@@ -66,12 +66,12 @@ func (mfs *Memory) Stat(name string) (fs.FileInfo, error) {
 			Err:  os.ErrNotExist,
 		}
 	}
-	return fileInfo{
-		path:     entry.path,
-		size:     int64(len(entry.data)),
-		mode:     entry.mode,
-		modeTime: entry.modeTime,
-		isDir:    entry.isDir,
+	return FileInfo{
+		Path:        entry.path,
+		FileSize:    int64(len(entry.data)),
+		FileMode:    entry.mode,
+		ModifiedAt:  entry.modeTime,
+		IsDirectory: entry.isDir,
 	}, nil
 }
 
@@ -136,12 +136,7 @@ func (mfs *Memory) getDirEntriesFn(dirPath string) []fs.DirEntry {
 		if dp != dirPath {
 			continue
 		}
-		des = append(des, dirEntry{
-			path:  entry.path,
-			isDir: entry.isDir,
-			mode:  entry.mode,
-			info:  entry.fileInfo(),
-		})
+		des = append(des, DirEntry{FileInfo: entry.fileInfo()})
 	}
 	return des
 }
@@ -196,14 +191,14 @@ type memoryEntry struct {
 	mutex    sync.Mutex
 }
 
-func (entry memoryEntry) fileInfo() fileInfo {
-	return fileInfo{
-		path:     entry.path,
-		size:     int64(len(entry.data)),
-		mode:     entry.mode,
-		modeTime: entry.modeTime,
-		isDir:    entry.isDir,
-		sys:      nil,
+func (entry memoryEntry) fileInfo() FileInfo {
+	return FileInfo{
+		Path:        entry.path,
+		FileSize:    int64(len(entry.data)),
+		FileMode:    entry.mode,
+		ModifiedAt:  entry.modeTime,
+		IsDirectory: entry.isDir,
+		System:      nil,
 	}
 }
 
@@ -239,18 +234,18 @@ func (f *MemoryFile) Sync() error {
 
 func (f *MemoryFile) Stat() (fs.FileInfo, error) {
 	defer f.fileWriteLock()()
-	return fileInfo{
-		path:     f.entry.path,
-		size:     int64(len(f.buffer.Bytes())),
-		mode:     f.entry.mode,
-		modeTime: f.entry.modeTime,
-		isDir:    f.entry.isDir,
-		sys:      nil,
+	return FileInfo{
+		Path:        f.entry.path,
+		FileSize:    int64(len(f.buffer.Bytes())),
+		FileMode:    f.entry.mode,
+		ModifiedAt:  f.entry.modeTime,
+		IsDirectory: f.entry.isDir,
+		System:      nil,
 	}, nil
 }
 
 func (f *MemoryFile) Read(bytes []byte) (int, error) {
-	if !flagHasRead(f.openFlag) {
+	if !HasOpenFlagRead(f.openFlag) {
 		return 0, &fs.PathError{
 			Op:   "read",
 			Path: f.entry.path,
@@ -262,7 +257,7 @@ func (f *MemoryFile) Read(bytes []byte) (int, error) {
 }
 
 func (f *MemoryFile) Write(p []byte) (n int, err error) {
-	if !flagHasWrite(f.openFlag) {
+	if !HasOpenFlagWrite(f.openFlag) {
 		return 0, &fs.PathError{
 			Op:   "write",
 			Path: f.entry.path,

@@ -1,10 +1,11 @@
-package filesystems
+package filesystems_test
 
 import (
 	"os"
 	"strconv"
 	"testing"
 
+	ffs "github.com/adamluzsi/frameless/resources/filesystems"
 	"github.com/adamluzsi/testcase/assert"
 )
 
@@ -59,25 +60,25 @@ func TestFlagHas(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.Desc, func(t *testing.T) {
-			t.Run("#flagHasRead", func(t *testing.T) {
+			t.Run("#HasOpenFlagRead", func(t *testing.T) {
 				it := assert.MakeIt(t)
 
 				t.Log(tc.FlagBase)
 				t.Log(strconv.FormatInt(int64((tc.FlagBase|os.O_APPEND)&os.O_RDONLY), 2))
 
-				it.Must.Equal(tc.HasRead, flagHasRead(tc.FlagBase))
-				it.Must.Equal(tc.HasRead, flagHasRead(tc.FlagBase|os.O_APPEND))
-				it.Must.Equal(tc.HasRead, flagHasRead(tc.FlagBase|os.O_TRUNC))
-				it.Must.Equal(tc.HasRead, flagHasRead(tc.FlagBase|os.O_CREATE))
-				it.Must.Equal(tc.HasRead, flagHasRead(tc.FlagBase|os.O_CREATE|os.O_EXCL))
+				it.Must.Equal(tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase))
+				it.Must.Equal(tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_APPEND))
+				it.Must.Equal(tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_TRUNC))
+				it.Must.Equal(tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_CREATE))
+				it.Must.Equal(tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_CREATE|os.O_EXCL))
 			})
-			t.Run("flagHasWrite", func(t *testing.T) {
+			t.Run("HasOpenFlagWrite", func(t *testing.T) {
 				it := assert.MakeIt(t)
-				it.Must.Equal(tc.HasWrite, flagHasWrite(tc.FlagBase))
-				it.Must.Equal(tc.HasWrite, flagHasWrite(tc.FlagBase|os.O_APPEND))
-				it.Must.Equal(tc.HasWrite, flagHasWrite(tc.FlagBase|os.O_TRUNC))
-				it.Must.Equal(tc.HasWrite, flagHasWrite(tc.FlagBase|os.O_CREATE))
-				it.Must.Equal(tc.HasWrite, flagHasWrite(tc.FlagBase|os.O_CREATE|os.O_EXCL))
+				it.Must.Equal(tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase))
+				it.Must.Equal(tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_APPEND))
+				it.Must.Equal(tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_TRUNC))
+				it.Must.Equal(tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_CREATE))
+				it.Must.Equal(tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_CREATE|os.O_EXCL))
 			})
 		})
 	}

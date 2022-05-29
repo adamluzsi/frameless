@@ -4,7 +4,7 @@ import (
 	"os"
 )
 
-func flagHasRead(flag int) bool {
+func HasOpenFlagRead(flag int) bool {
 	if flag&os.O_RDWR != 0 {
 		return true
 	}
@@ -14,6 +14,6 @@ func flagHasRead(flag int) bool {
 	return true
 }
 
-func flagHasWrite(flag int) bool {
+func HasOpenFlagWrite(flag int) bool {
 	return flag&os.O_RDWR != 0 || flag&os.O_WRONLY != 0
 }

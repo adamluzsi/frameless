@@ -134,14 +134,13 @@ func (c FileSystem) specOpenFile(s *testcase.Spec) {
 			info, err := file.Stat()
 			t.Must.Nil(err)
 			t.Must.True(info.IsDir())
-			t.Must.NotEmpty(info.Name())
 		})
 	})
 
 	s.When("name points to an existing file", func(s *testcase.Spec) {
 		content := testcase.Let(s, func(t *testcase.T) string {
 			str := t.Random.String()
-			t.Log("content", str)
+			t.Log("initial file content:", str)
 			return str
 		})
 		s.Before(func(t *testcase.T) {
@@ -552,7 +551,6 @@ func (c FileSystem) specStat(s *testcase.Spec) {
 		s.Then("it will return directory stat", func(t *testcase.T) {
 			info, err := subject(t)
 			t.Must.Nil(err)
-			t.Must.NotEmpty(info.Name())
 			t.Must.True(info.IsDir())
 		})
 	})
@@ -785,7 +783,7 @@ func (c FileSystem) specFile_Seek(s *testcase.Spec) {
 		})
 	})
 
-	s.When("whence from beginning", func(s *testcase.Spec) {
+	s.When("whence from the end", func(s *testcase.Spec) {
 		whence.LetValue(s, io.SeekEnd)
 
 		s.Then("it will seek starting from the end", func(t *testcase.T) {
@@ -919,7 +917,7 @@ func (c FileSystem) writeToFile(t *testcase.T, file frameless.File, data []byte)
 func (c FileSystem) isPathError(t *testcase.T, err error) *fs.PathError {
 	t.Helper()
 	var pathError *fs.PathError
-	t.Must.True(errors.As(err, &pathError))
+	t.Must.True(errors.As(err, &pathError), "*fs.PathError was expected")
 	return pathError
 }
 
@@ -963,7 +961,7 @@ func (c FileSystem) assertFileContent(t *testcase.T, name string, expected []byt
 		defer file.Close()
 		info, err := file.Stat()
 		it.Must.Nil(err)
-		it.Must.Equal(int64(len(expected)), info.Size())
+		it.Should.Equal(int64(len(expected)), info.Size())
 		c.assertReaderEquals(it, expected, file)
 	})
 }
