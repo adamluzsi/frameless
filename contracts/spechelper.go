@@ -231,16 +231,6 @@ func genEntities[T any](t *testcase.T, MakeEnt func(testing.TB) T) []*T {
 	return es
 }
 
-var factory = testcase.Var[frameless.FixtureFactory]{ID: "FixtureFactory"}
-
-func factoryLet(s *testcase.Spec, fff func(testing.TB) frameless.FixtureFactory) {
-	factory.Let(s, func(t *testcase.T) frameless.FixtureFactory { return fff(t) })
-}
-
-func factoryGet(t *testcase.T) frameless.FixtureFactory {
-	return factory.Get(t)
-}
-
 func toPtr[T any](v T) *T { return &v }
 
 func base(e interface{}) interface{} {

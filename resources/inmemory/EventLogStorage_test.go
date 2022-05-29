@@ -532,21 +532,6 @@ type EntityWithStructID struct {
 	Data string
 }
 
-type FFForEntityWithStructID struct {
-	frameless.FixtureFactory
-}
-
-func (ff FFForEntityWithStructID) Fixture(T interface{}, ctx context.Context) interface{} {
-	switch T.(type) {
-	case EntityWithStructID:
-		ent := ff.FixtureFactory.Fixture(T, ctx).(EntityWithStructID)
-		ent.ID = struct{ V int }{V: random.New(random.CryptoSeed{}).Int()}
-		return ent
-	default:
-		return ff.FixtureFactory.Fixture(T, ctx)
-	}
-}
-
 func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
 	testcase.RunContract(t, cachecontracts.EntityStorage[TestEntity, string]{
 		Subject: func(tb testing.TB) (cache.EntityStorage[TestEntity, string], frameless.OnePhaseCommitProtocol) {
