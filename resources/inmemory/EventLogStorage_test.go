@@ -32,8 +32,9 @@ var _ interface {
 	frameless.UpdaterPublisher[TestEntity]
 	frameless.DeleterPublisher[string]
 	frameless.OnePhaseCommitProtocol
-	cache.EntityStorage[TestEntity, string]
 } = &inmemory2.EventLogStorage[TestEntity, string]{}
+
+var _ cache.EntityStorage[TestEntity, string] = &inmemory2.EventLogStorage[TestEntity, string]{}
 
 func TestEventLogStorage_smoke(t *testing.T) {
 	var (
