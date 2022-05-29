@@ -13,7 +13,7 @@ import (
 
 func makeFS(tb testing.TB) ffs.FileSystem {
 	if _, ok := os.LookupEnv("USE_FS"); ok {
-		return &ffs.LFS{RootPath: tb.TempDir()}
+		return &ffs.Local{RootPath: tb.TempDir()}
 	}
 	return &ffs.Memory{}
 }

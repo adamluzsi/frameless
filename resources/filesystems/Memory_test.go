@@ -21,7 +21,7 @@ func TestMemory_contractsFileSystem(t *testing.T) {
 
 func TestMemory_smoke(t *testing.T) {
 	it := assert.MakeIt(t)
-	mfs := &filesystems.LFS{}
+	mfs := &filesystems.Local{}
 
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filesystems.ModeUserRWX)

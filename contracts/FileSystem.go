@@ -50,7 +50,7 @@ func (c FileSystem) Spec(s *testcase.Spec) {
 
 func (c FileSystem) fileSystem() testcase.Var[frameless.FileSystem] {
 	return testcase.Var[frameless.FileSystem]{
-		ID: "frameless.LFS",
+		ID: "frameless.Local",
 		Init: func(t *testcase.T) frameless.FileSystem {
 			return c.Subject(t)
 		},
@@ -304,7 +304,7 @@ func (c FileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testcase.
 
 	s.And("we also pass the append file opening flag (os.O_APPEND)", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Log("os.O_APPEND tells the underlying LFS that all the write calls you do on that file handler should always append to the file so you don't need to set the offset to write on the correct part of the file.")
+			t.Log("os.O_APPEND tells the underlying Local that all the write calls you do on that file handler should always append to the file so you don't need to set the offset to write on the correct part of the file.")
 			flag.Set(t, flag.Get(t)|os.O_APPEND)
 		})
 

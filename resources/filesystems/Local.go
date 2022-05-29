@@ -10,13 +10,13 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-// LFS provides local file system access through the frameless.FileSystem interface.
-type LFS struct {
+// Local provides local file system access through the frameless.FileSystem interface.
+type Local struct {
 	// RootPath is an optional parameter to jail the file system access for file access.
 	RootPath string
 }
 
-func (fs LFS) path(name, op string) (string, error) {
+func (fs Local) path(name, op string) (string, error) {
 	if fs.RootPath == "" {
 		return name, nil
 	}
@@ -42,7 +42,7 @@ func (fs LFS) path(name, op string) (string, error) {
 	return path, nil
 }
 
-func (fs LFS) OpenFile(name string, flag int, perm fs.FileMode) (frameless.File, error) {
+func (fs Local) OpenFile(name string, flag int, perm fs.FileMode) (frameless.File, error) {
 	path, err := fs.path(name, "open")
 	if err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func (fs LFS) OpenFile(name string, flag int, perm fs.FileMode) (frameless.File,
 	return os.OpenFile(path, flag, perm)
 }
 
-func (fs LFS) Mkdir(name string, perm fs.FileMode) error {
+func (fs Local) Mkdir(name string, perm fs.FileMode) error {
 	path, err := fs.path(name, "mkdir")
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func (fs LFS) Mkdir(name string, perm fs.FileMode) error {
 	return os.Mkdir(path, perm)
 }
 
-func (fs LFS) Remove(name string) error {
+func (fs Local) Remove(name string) error {
 	path, err := fs.path(name, "remove")
 	if err != nil {
 		return err
@@ -66,7 +66,7 @@ func (fs LFS) Remove(name string) error {
 	return os.Remove(path)
 }
 
-func (fs LFS) Stat(name string) (fs.FileInfo, error) {
+func (fs Local) Stat(name string) (fs.FileInfo, error) {
 	path, err := fs.path(name, "stat")
 	if err != nil {
 		return nil, err

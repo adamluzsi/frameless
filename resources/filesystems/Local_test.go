@@ -13,17 +13,17 @@ import (
 	"github.com/adamluzsi/testcase"
 )
 
-func TestLFS_contractsFileSystem(t *testing.T) {
+func TestLocal_contractsFileSystem(t *testing.T) {
 	contracts.FileSystem{
 		Subject: func(tb testing.TB) frameless.FileSystem {
-			return filesystems.LFS{
+			return filesystems.Local{
 				RootPath: t.TempDir(),
 			}
 		},
 	}.Test(t)
 }
 
-func TestLFS_rootPath(t *testing.T) {
+func TestLocal_rootPath(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	getSysTmpDir := func(t *testcase.T) string {
@@ -59,7 +59,7 @@ func TestLFS_rootPath(t *testing.T) {
 
 	s.Test("without .RootPath set, fs is not jailed", func(t *testcase.T) {
 		tmpDir := t.TempDir()
-		fs := filesystems.LFS{}
+		fs := filesystems.Local{}
 
 		name := tmpFile(t, tmpDir)
 		t.Must.Nil(touchFile(t, fs, name))
@@ -74,7 +74,7 @@ func TestLFS_rootPath(t *testing.T) {
 
 	s.Test("with .RootPath set, fs is jailed and path used as relative path", func(t *testcase.T) {
 		tmpDir := t.TempDir()
-		fs := filesystems.LFS{RootPath: tmpDir}
+		fs := filesystems.Local{RootPath: tmpDir}
 
 		name := makeName(t)
 		t.Must.Nil(touchFile(t, fs, name))

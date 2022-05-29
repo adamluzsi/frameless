@@ -10,8 +10,8 @@ import (
 	"github.com/adamluzsi/frameless/resources/filesystems"
 )
 
-func ExampleLFS() {
-	fsys := filesystems.LFS{}
+func ExampleLocal() {
+	fsys := filesystems.Local{}
 
 	file, err := fsys.OpenFile("test", os.O_RDWR|os.O_CREATE|os.O_EXCL, filesystems.ModeUserRWX)
 	if err != nil {
