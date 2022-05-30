@@ -90,7 +90,7 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 			t.Must.Nil(c.manager().Get(t).CommitTx(tx))
 
 			t.Log(`using the tx context after commit should yield error`)
-			_, err = c.resource().Get(t).FindByID(tx, new(Ent), id)
+			_, _, err = c.resource().Get(t).FindByID(tx, id)
 			t.Must.NotNil(err)
 			t.Must.NotNil(c.resource().Get(t).Create(tx, toPtr(c.MakeEnt(t))))
 			t.Must.NotNil(c.resource().Get(t).FindAll(tx).Err())
@@ -115,7 +115,7 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 			id, _ := extid.Lookup[ID](ptr)
 			t.Must.Nil(c.manager().Get(t).RollbackTx(ctx))
 
-			_, err = c.resource().Get(t).FindByID(ctx, new(Ent), id)
+			_, _, err = c.resource().Get(t).FindByID(ctx, id)
 			t.Must.NotNil(err)
 			t.Must.NotNil(c.resource().Get(t).FindAll(ctx).Err())
 			t.Must.NotNil(c.resource().Get(t).Create(ctx, toPtr(c.MakeEnt(t))))

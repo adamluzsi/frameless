@@ -37,11 +37,11 @@ func TestConnectionManager_Connection(t *testing.T) {
 
 	connectionWithoutTx, err := p.Connection(ctx)
 	require.NoError(t, err)
-	require.Nil(t, connectionWithoutTx.QueryRowContext(ctx,"SELECT").Scan())
+	require.Nil(t, connectionWithoutTx.QueryRowContext(ctx, "SELECT").Scan())
 
 	connectionWithoutTxAgain, err := p.Connection(ctx)
 	require.NoError(t, err)
-	require.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx,"SELECT").Scan())
+	require.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx, "SELECT").Scan())
 
 	ctxWithTx, err := p.BeginTx(ctx)
 	require.Nil(t, err)
@@ -76,7 +76,7 @@ func TestConnectionManager_Close(t *testing.T) {
 }
 
 func TestConnectionManager_PoolContract(t *testing.T) {
-	testcase.RunContract(t, ConnectionManagerContract{
+	testcase.RunSuite(t, ConnectionManagerContract{
 		Subject: func(tb testing.TB) postgresql.ConnectionManager {
 			s := NewTestEntityStorage(t)
 			return s.ConnectionManager
@@ -107,7 +107,7 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 }
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunContract(t, contracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
+	testcase.RunSuite(t, contracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
 		Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
 			s := NewTestEntityStorage(tb)
 
@@ -133,7 +133,7 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 	testcase.Race(blk, blk)
 }
 
-var _ testcase.Contract = ConnectionManagerContract{}
+var _ testcase.Suite = ConnectionManagerContract{}
 
 type ConnectionManagerContract struct {
 	Subject func(tb testing.TB) postgresql.ConnectionManager

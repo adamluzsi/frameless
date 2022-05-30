@@ -36,7 +36,7 @@ func (c Publisher[Ent, ID]) Benchmark(b *testing.B) {
 func (c Publisher[Ent, ID]) String() string { return `Publisher` }
 
 func (c Publisher[Ent, ID]) Spec(s *testcase.Spec) {
-	testcase.RunContract(s,
+	testcase.RunSuite(s,
 		CreatorPublisher[Ent, ID]{
 			Subject: func(tb testing.TB) CreatorPublisherSubject[Ent, ID] {
 				return c.Subject(tb)

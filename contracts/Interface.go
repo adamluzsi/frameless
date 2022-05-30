@@ -18,6 +18,6 @@ import (
 // instead of going into implementation details.
 //
 type Interface interface {
-	testcase.Contract
-	testcase.OpenContract
+	testcase.Suite
+	testcase.OpenSuite
 }

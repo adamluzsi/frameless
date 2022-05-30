@@ -21,9 +21,7 @@ type Finder[Ent any, ID any] interface {
 	// It also reports if there was an unexpected exception during the execution.
 	// It was an intentional decision to not use error to represent "not found" case,
 	// but tell explicitly this information in the form of return bool value.
-	//
-	// TODO: move ptr from argument into returned value
-	FindByID(ctx context.Context, ptr *Ent, id ID) (found bool, err error)
+	FindByID(ctx context.Context, id ID) (ent Ent, found bool, err error)
 	// FindAll will return all entity that has <T> type
 	FindAll(context.Context) Iterator[Ent]
 }

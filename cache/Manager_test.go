@@ -8,7 +8,7 @@ import (
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/cache/contracts"
 	fc "github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/resources/inmemory"
+	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -28,7 +28,7 @@ func makeCtx(tb testing.TB) context.Context {
 }
 
 func TestManager_creator(t *testing.T) {
-	testcase.RunContract(t, fc.Creator[TestEntity, string]{
+	testcase.RunSuite(t, fc.Creator[TestEntity, string]{
 		Subject: func(tb testing.TB) fc.CreatorSubject[TestEntity, string] {
 			return NewManager(tb).Cache
 		},
@@ -38,7 +38,7 @@ func TestManager_creator(t *testing.T) {
 }
 
 func TestManager(t *testing.T) {
-	testcase.RunContract(t,
+	testcase.RunSuite(t,
 		contracts.Manager[TestEntity, string]{
 			Subject: func(tb testing.TB) contracts.ManagerSubject[TestEntity, string] {
 				return NewManager(tb)
@@ -50,11 +50,11 @@ func TestManager(t *testing.T) {
 }
 
 func NewManager(tb testing.TB) contracts.ManagerSubject[TestEntity, string] {
-	eventLog := inmemory.NewEventLog()
+	eventLog := memory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
-	cacheHitStorage := inmemory.NewEventLogStorage[cache.Hit[string], string](eventLog)
-	cacheEntityStorage := inmemory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#CacheStorage`)
-	sourceEntityStorage := inmemory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#SourceStorage`)
+	cacheHitStorage := memory.NewEventLogStorage[cache.Hit[string], string](eventLog)
+	cacheEntityStorage := memory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#CacheStorage`)
+	sourceEntityStorage := memory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#SourceStorage`)
 
 	storage := TestCacheStorage{
 		Hits:                   cacheHitStorage,

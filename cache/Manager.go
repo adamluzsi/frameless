@@ -72,7 +72,6 @@ func (m *Manager[Ent, ID]) entityTypeName() string {
 }
 
 func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr error) {
-	ptr := new(Ent)
 	s := m.Storage.CacheEntity(ctx)
 	ctx, err := m.Storage.BeginTx(ctx)
 	if err != nil {
@@ -85,7 +84,7 @@ func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr 
 		}
 		rErr = m.Storage.CommitTx(ctx)
 	}()
-	found, err := s.FindByID(ctx, ptr, id)
+	_, found, err := s.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -106,8 +105,7 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 	}
 
 	queryID := fmt.Sprintf(`0:%T/%s`, *new(Ent), name) // add version epoch
-	var hit Hit[ID]
-	found, err := m.Storage.CacheHit(ctx).FindByID(ctx, &hit, queryID)
+	hit, found, err := m.Storage.CacheHit(ctx).FindByID(ctx, queryID)
 	if err != nil {
 		return iterators.NewError[Ent](err)
 	}
@@ -153,30 +151,27 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 func (m *Manager[Ent, ID]) CacheQueryOne(
 	ctx context.Context,
 	queryID string,
-	ptr *Ent,
-	query func(ptr *Ent) (found bool, err error),
-) (_found bool, _err error) {
+	query func() (ent Ent, found bool, err error),
+) (_ent Ent, _found bool, _err error) {
 	iter := m.CacheQueryMany(ctx, queryID, func() frameless.Iterator[Ent] {
-		ptr := new(Ent)
-		found, err := query(ptr)
+		ent, found, err := query()
 		if err != nil {
 			return iterators.NewError[Ent](err)
 		}
 		if !found {
 			return iterators.Empty[Ent]()
 		}
-		return iterators.NewSlice[Ent]([]Ent{*ptr})
+		return iterators.NewSlice[Ent]([]Ent{ent})
 	})
 
-	v, found, err := iterators.First[Ent](iter)
+	ent, found, err := iterators.First[Ent](iter)
 	if err != nil {
-		return false, err
+		return ent, false, err
 	}
 	if !found {
-		return false, nil
+		return ent, false, nil
 	}
-	*ptr = v
-	return true, nil
+	return ent, true, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -188,18 +183,18 @@ func (m *Manager[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	return m.Storage.CacheEntity(ctx).Create(ctx, ptr)
 }
 
-func (m *Manager[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (bool, error) {
+func (m *Manager[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
 	// fast path
-	found, err := m.Storage.CacheEntity(ctx).FindByID(ctx, ptr, id)
+	ent, found, err := m.Storage.CacheEntity(ctx).FindByID(ctx, id)
 	if err != nil {
-		return false, err
+		return ent, false, err
 	}
 	if found {
-		return true, nil
+		return ent, true, nil
 	}
 	// slow path
-	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), ptr, func(ptr *Ent) (found bool, err error) {
-		return m.Source.FindByID(ctx, ptr, id)
+	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), func() (ent Ent, found bool, err error) {
+		return m.Source.FindByID(ctx, id)
 	})
 }
 
@@ -228,7 +223,7 @@ func (m *Manager[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 
 	// TODO: unsafe without additional tx layer
 	dataStorage := m.Storage.CacheEntity(ctx)
-	found, err := dataStorage.FindByID(ctx, new(Ent), id)
+	_, found, err := dataStorage.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}

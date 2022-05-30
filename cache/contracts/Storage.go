@@ -77,7 +77,7 @@ func (c Storage[Ent, ID]) Spec(s *testcase.Spec) {
 			}
 			return cache.Hit[ID]{EntityIDs: ids}
 		}
-		testcase.RunContract(s,
+		testcase.RunSuite(s,
 			contracts.Creator[cache.Hit[ID], string]{
 				Subject: func(tb testing.TB) contracts.CreatorSubject[cache.Hit[ID], string] {
 					return hitStorage(tb)
@@ -147,7 +147,7 @@ func (c EntityStorage[Ent, ID]) Spec(s *testcase.Spec) {
 			ds, _ := c.Subject(tb)
 			return ds
 		}
-		testcase.RunContract(s,
+		testcase.RunSuite(s,
 			contracts.Creator[Ent, ID]{
 				Subject: func(tb testing.TB) contracts.CreatorSubject[Ent, ID] {
 					return newStorage(tb)
@@ -220,7 +220,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 				if !ok {
 					return
 				}
-				found, err := c.dataStorage().Get(t).FindByID(ctx, new(Ent), id)
+				_, found, err := c.dataStorage().Get(t).FindByID(ctx, id)
 				if err != nil || !found {
 					return
 				}
@@ -242,19 +242,17 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 
 			ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 			assert.Must(t).True(ok, `entity 1 should have id`)
-			actual1 := new(Ent)
-			found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), actual1, ent1ID)
+			actual1, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
 			assert.Must(t).Nil(err)
 			assert.Must(t).True(found, `entity 1 was expected to be stored`)
-			assert.Must(t).Equal(ent1.Get(t), actual1)
+			assert.Must(t).Equal(*ent1.Get(t), actual1)
 
 			ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 			assert.Must(t).True(ok, `entity 2 should have id`)
-			actual2 := new(Ent)
-			found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), actual2, ent2ID)
+			actual2, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
 			assert.Must(t).Nil(err)
 			assert.Must(t).True(found, `entity 2 was expected to be stored`)
-			assert.Must(t).Equal(ent2.Get(t), actual2)
+			assert.Must(t).Equal(*ent2.Get(t), actual2)
 		})
 
 		s.And(`entities already have a storage string id`, func(s *testcase.Spec) {
@@ -268,15 +266,15 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 
 				ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 				assert.Must(t).True(ok, `entity 1 should have id`)
-				actual1 := new(Ent)
-				found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), actual1, ent1ID)
+
+				actual1, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
 				assert.Must(t).Nil(err)
 				assert.Must(t).True(found, `entity 1 was expected to be stored`)
-				assert.Must(t).Equal(ent1.Get(t), actual1)
+				assert.Must(t).Equal(*ent1.Get(t), actual1)
 
 				ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 				assert.Must(t).True(ok, `entity 2 should have id`)
-				found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), new(Ent), ent2ID)
+				_, found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
 				assert.Must(t).Nil(err)
 				assert.Must(t).True(found, `entity 2 was expected to be stored`)
 			})
@@ -299,13 +297,13 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 			ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 			assert.Must(t).True(ok, `entity 1 should have id`)
 
-			found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), new(Ent), ent1ID)
+			_, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
 			assert.Must(t).Nil(err)
 			assert.Must(t).True(found, `entity 1 was expected to be stored`)
 
 			ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 			assert.Must(t).True(ok, `entity 2 should have id`)
-			found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), new(Ent), ent2ID)
+			_, found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
 			assert.Must(t).Nil(err)
 			assert.Must(t).True(found, `entity 2 was expected to be stored`)
 		})
@@ -332,15 +330,15 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 
 				ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 				assert.Must(t).True(ok, `entity 1 should have id`)
-				actual := new(Ent)
-				found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), actual, ent1ID)
+
+				actual, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
 				assert.Must(t).Nil(err)
 				assert.Must(t).True(found, `entity 1 was expected to be stored`)
-				assert.Must(t).Equal(ent1.Get(t), actual)
+				assert.Must(t).Equal(ent1.Get(t), &actual)
 
 				ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 				assert.Must(t).True(ok, `entity 2 should have id`)
-				found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), new(Ent), ent2ID)
+				_, found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
 				assert.Must(t).Nil(err)
 				assert.Must(t).True(found, `entity 2 was expected to be stored`)
 			})

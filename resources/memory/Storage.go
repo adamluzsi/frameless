@@ -1,4 +1,4 @@
-package inmemory
+package memory
 
 import (
 	"context"
@@ -44,34 +44,30 @@ func (s *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	}
 
 	id, _ := extid.Lookup[ID](ptr)
-	if found, err := s.FindByID(ctx, new(Ent), id); err != nil {
+	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
 		return fmt.Errorf(`%T already exists with id: %v`, *new(Ent), id)
 	}
 
 	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
+
 	return nil
 }
 
-func (s *Storage[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (found bool, err error) {
+func (s *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _found bool, _err error) {
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return _ent, false, err
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return false, err
+		return _ent, false, err
 	}
 
 	ent, ok := s.Memory.Get(ctx, s.GetNamespace(), s.IDToMemoryKey(id))
 	if !ok {
-		return false, nil
+		return _ent, false, nil
 	}
-
-	if err := reflects.Link(ent, ptr); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return ent.(Ent), true, nil
 }
 
 func (s *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
@@ -113,7 +109,7 @@ func (s *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	found, err := s.FindByID(ctx, new(Ent), id)
+	_, found, err := s.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}

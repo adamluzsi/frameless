@@ -32,7 +32,7 @@ func (c Finder[Ent, ID]) Benchmark(b *testing.B) {
 }
 
 func (c Finder[Ent, ID]) Spec(s *testcase.Spec) {
-	testcase.RunContract(s,
+	testcase.RunSuite(s,
 		findByID[Ent, ID]{
 			Subject: c.Subject,
 			Context: c.MakeCtx,
@@ -57,7 +57,7 @@ func (c findByID[Ent, ID]) String() string {
 }
 
 func (c findByID[Ent, ID]) Spec(s *testcase.Spec) {
-	testcase.RunContract(s, FindOne[Ent, ID]{
+	testcase.RunSuite(s, FindOne[Ent, ID]{
 		Subject:    c.Subject,
 		MakeCtx:    c.Context,
 		MakeEnt:    c.MakeEnt,
@@ -65,15 +65,15 @@ func (c findByID[Ent, ID]) Spec(s *testcase.Spec) {
 		ToQuery: func(tb testing.TB, resource FinderSubject[Ent, ID], ent Ent) QueryOne[Ent] {
 			id, ok := extid.Lookup[ID](ent)
 			if !ok { // if no id found create a dummy ID
-				// since an id is required always to use FindByID
-				// we generate a dummy id in case the received entity don't have one.
-				// This helps to avoid error cases where ID is not set actually.
-				// For those we have further specification later
+				// Since an id is always required to use FindByID,
+				// we generate a dummy id if the received entity doesn't have one.
+				// This helps to avoid error cases where ID is not actually set.
+				// For those, we have further specifications later.
 				id = c.createDummyID(tb.(*testcase.T), resource)
 			}
 
-			return func(tb testing.TB, ctx context.Context, ptr *Ent) (found bool, err error) {
-				return resource.FindByID(ctx, ptr, id)
+			return func(tb testing.TB, ctx context.Context) (ent Ent, found bool, err error) {
+				return resource.FindByID(ctx, id)
 			}
 		},
 
@@ -92,18 +92,17 @@ func (c findByID[Ent, ID]) Spec(s *testcase.Spec) {
 
 			t.Log("when no value stored that the query request")
 			ctx := c.Context(t)
-			ok, err := r.FindByID(c.Context(t), new(Ent), c.createNonActiveID(t, ctx, r))
+			_, ok, err := r.FindByID(c.Context(t), c.createNonActiveID(t, ctx, r))
 			t.Must.Nil(err)
 			t.Must.False(ok)
 
 			t.Log("values returned")
 			for _, id := range ids {
-				e := new(Ent)
-				ok, err := r.FindByID(c.Context(t), e, id)
+				ent, ok, err := r.FindByID(c.Context(t), id)
 				t.Must.Nil(err)
 				t.Must.True(ok)
 
-				actualID, ok := extid.Lookup[ID](e)
+				actualID, ok := extid.Lookup[ID](ent)
 				t.Must.True(ok, "can't find ID in the returned value")
 				t.Must.Equal(id, actualID)
 			}
@@ -130,7 +129,7 @@ func (c findByID[Ent, ID]) Benchmark(b *testing.B) {
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
-		_, err := r.FindByID(c.Context(t), new(Ent), id.Get(t))
+		_, _, err := r.FindByID(c.Context(t), id.Get(t))
 		t.Must.Nil(err)
 	})
 }
@@ -291,7 +290,7 @@ func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) fr
 // and the inputs it requires.
 //
 // QueryOne is generated through ToQuery factory function in FindOne resource contract specification.
-type QueryOne[Ent any] func(tb testing.TB, ctx context.Context, ptr *Ent) (found bool, err error)
+type QueryOne[Ent any] func(tb testing.TB, ctx context.Context) (ent Ent, found bool, err error)
 
 type FindOne[Ent, ID any] struct {
 	Subject func(testing.TB) FinderSubject[Ent, ID]
@@ -324,9 +323,6 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 			ent := c.MakeEnt(t)
 			return &ent
 		})
-		ptr = testcase.Let(s, func(t *testcase.T) *Ent {
-			return new(Ent)
-		})
 		resource = testcase.Let(s, func(t *testcase.T) FinderSubject[Ent, ID] {
 			return c.Subject(t)
 		})
@@ -334,8 +330,8 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 			t.Log(entity.Get(t))
 			return c.ToQuery(t, resource.Get(t), *entity.Get(t))
 		})
-		subject = func(t *testcase.T) (bool, error) {
-			return query.Get(t)(t, ctx.Get(t), ptr.Get(t))
+		subject = func(t *testcase.T) (Ent, bool, error) {
+			return query.Get(t)(t, ctx.Get(t))
 		}
 	)
 
@@ -350,10 +346,10 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
-			found, err := subject(t)
+			ent, found, err := subject(t)
 			t.Must.Nil(err)
 			t.Must.True(found)
-			t.Must.Equal(entity.Get(t), ptr.Get(t))
+			t.Must.Equal(*entity.Get(t), ent)
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -364,7 +360,7 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 			})
 
 			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-				found, err := subject(t)
+				_, found, err := subject(t)
 				t.Must.ErrorIs(context.Canceled, err)
 				t.Must.False(found)
 			})
@@ -377,10 +373,10 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 			})
 
 			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
-				found, err := subject(t)
+				ent, found, err := subject(t)
 				t.Must.Nil(err)
 				t.Must.True(found)
-				t.Must.Equal(entity.Get(t), ptr.Get(t))
+				t.Must.Equal(*entity.Get(t), ent)
 			})
 		})
 	})
@@ -391,7 +387,7 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
-			found, err := subject(t)
+			_, found, err := subject(t)
 			t.Must.Nil(err)
 			t.Must.False(found)
 		})

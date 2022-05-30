@@ -7,8 +7,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/adamluzsi/frameless/reflects"
-
 	"github.com/adamluzsi/frameless/extid"
 
 	"github.com/adamluzsi/frameless"
@@ -94,24 +92,23 @@ func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
 	return pg.SubscriptionManager.PublishCreateEvent(ctx, frameless.CreateEvent[Ent]{Entity: *ptr})
 }
 
-func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (bool, error) {
+func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
-		return false, err
+		return *new(Ent), false, err
 	}
 
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, pg.queryColumnList(), pg.Mapping.TableRef(), pg.Mapping.IDRef())
 
 	v, err := pg.Mapping.Map(c.QueryRowContext(ctx, query, id))
 	if err == sql.ErrNoRows {
-		return false, nil
+		return *new(Ent), false, nil
 	}
 	if err != nil {
-		return false, err
+		return *new(Ent), false, err
 	}
 
-	*ptr = v
-	return true, nil
+	return v, true, nil
 }
 
 func (pg *Storage[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
@@ -285,10 +282,6 @@ func (pg *Storage[Ent, ID]) queryColumnList() string {
 		dst = append(dst, fmt.Sprintf(`%s`, name))
 	}
 	return strings.Join(dst, `, `)
-}
-
-func base(ptr interface{}) interface{} {
-	return reflects.BaseValueOf(ptr).Interface()
 }
 
 func (pg *Storage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error) {

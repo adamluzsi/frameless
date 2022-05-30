@@ -43,7 +43,7 @@ func (c MetaAccessor[Ent, ID, V]) Benchmark(b *testing.B) {
 }
 
 func (c MetaAccessor[Ent, ID, V]) Spec(s *testcase.Spec) {
-	testcase.RunContract(s,
+	testcase.RunSuite(s,
 		MetaAccessorBasic[V]{
 			Subject: func(tb testing.TB) frameless.MetaAccessor {
 				return c.Subject(tb).MetaAccessor

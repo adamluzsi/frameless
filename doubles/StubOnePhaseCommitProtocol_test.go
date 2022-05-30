@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/resources/inmemory"
+	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
-	m := inmemory.NewMemory()
+	m := memory.NewMemory()
 
 	var (
 		beginErr    = fmt.Errorf("BeginTxFunc")

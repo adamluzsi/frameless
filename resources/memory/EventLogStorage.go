@@ -1,4 +1,4 @@
-package inmemory
+package memory
 
 import (
 	"context"
@@ -90,7 +90,7 @@ func (s *EventLogStorage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	}
 
 	id, _ := extid.Lookup[ID](ptr)
-	if found, err := s.FindByID(ctx, new(Ent), id); err != nil {
+	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
 		return fmt.Errorf(`%T already exists with id: %v`, *new(Ent), id)
@@ -104,25 +104,17 @@ func (s *EventLogStorage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (_found bool, _err error) {
+func (s *EventLogStorage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _found bool, _err error) {
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return *new(Ent), false, err
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return false, err
+		return *new(Ent), false, err
 	}
 
 	view := s.View(ctx)
 	ent, ok := view.FindByID(id)
-	if !ok {
-		return false, nil
-	}
-
-	if err := reflects.Link(ent, ptr); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return ent, ok, nil
 }
 
 func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
@@ -147,7 +139,7 @@ func (s *EventLogStorage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	found, err := s.FindByID(ctx, new(Ent), id)
+	_, found, err := s.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -164,7 +156,7 @@ func (s *EventLogStorage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 }
 
 func (s *EventLogStorage[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
-	found, err := s.FindByID(ctx, new(Ent), id)
+	_, found, err := s.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -203,8 +195,7 @@ func (s *EventLogStorage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) fra
 	go func() {
 		defer i.Close()
 		for _, id := range ids {
-			ptr := new(Ent)
-			found, err := s.FindByID(ctx, ptr, id)
+			ent, found, err := s.FindByID(ctx, id)
 			if err != nil {
 				i.Error(err)
 				return
@@ -213,7 +204,7 @@ func (s *EventLogStorage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) fra
 				i.Error(fmt.Errorf(`%T with %v id is not found`, *new(Ent), id))
 				return
 			}
-			if ok := i.Value(*ptr); !ok {
+			if ok := i.Value(ent); !ok {
 				break
 			}
 		}
@@ -243,7 +234,7 @@ func (s *EventLogStorage[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) (rE
 			continue
 		}
 
-		found, err := s.FindByID(tx, new(Ent), id)
+		_, found, err := s.FindByID(tx, id)
 		if err != nil {
 			return err
 		}

@@ -45,7 +45,7 @@ func (c Contract[Ent, ID, V]) Benchmark(b *testing.B) {
 }
 
 func (c Contract[Ent, ID, V]) Spec(s *testcase.Spec) {
-	testcase.RunContract(s,
+	testcase.RunSuite(s,
 		contracts.Creator[Ent, ID]{
 			Subject: func(tb testing.TB) contracts.CreatorSubject[Ent, ID] {
 				return c.Subject(tb).Resource

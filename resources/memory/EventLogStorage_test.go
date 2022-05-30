@@ -1,4 +1,4 @@
-package inmemory_test
+package memory_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	. "github.com/adamluzsi/frameless/contracts/asserts"
 	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/frameless/resources"
-	inmemory2 "github.com/adamluzsi/frameless/resources/inmemory"
+	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 
@@ -32,13 +32,13 @@ var _ interface {
 	frameless.UpdaterPublisher[TestEntity]
 	frameless.DeleterPublisher[string]
 	frameless.OnePhaseCommitProtocol
-} = &inmemory2.EventLogStorage[TestEntity, string]{}
+} = &memory.EventLogStorage[TestEntity, string]{}
 
-var _ cache.EntityStorage[TestEntity, string] = &inmemory2.EventLogStorage[TestEntity, string]{}
+var _ cache.EntityStorage[TestEntity, string] = &memory.EventLogStorage[TestEntity, string]{}
 
 func TestEventLogStorage_smoke(t *testing.T) {
 	var (
-		subject = inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+		subject = memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 		ctx     = context.Background()
 		count   int
 		err     error
@@ -84,17 +84,17 @@ func TestEventLogStorage_smoke(t *testing.T) {
 }
 
 func getStorageSpecsForT[Ent, ID any](
-	subject *inmemory2.EventLogStorage[Ent, ID],
+	subject *memory.EventLogStorage[Ent, ID],
 	MakeCtx func(testing.TB) context.Context,
 	MakeEnt func(testing.TB) Ent,
-) []testcase.Contract {
+) []testcase.Suite {
 	makeStringV := func(tb testing.TB) string {
 		return tb.(*testcase.T).Random.String()
 	}
 	makeIntV := func(tb testing.TB) int {
 		return tb.(*testcase.T).Random.Int()
 	}
-	return []testcase.Contract{
+	return []testcase.Suite{
 		contracts.Creator[Ent, ID]{Subject: func(tb testing.TB) contracts.CreatorSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
 		contracts.Finder[Ent, ID]{Subject: func(tb testing.TB) contracts.FinderSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
 		contracts.Updater[Ent, ID]{Subject: func(tb testing.TB) contracts.UpdaterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
@@ -134,25 +134,25 @@ func getStorageSpecsForT[Ent, ID any](
 }
 
 func getStorageSpecs[Ent, ID any](
-	subject *inmemory2.EventLogStorage[Ent, ID],
+	subject *memory.EventLogStorage[Ent, ID],
 	makeEnt func(testing.TB) Ent,
-) []testcase.Contract {
+) []testcase.Suite {
 	makeContext := func(testing.TB) context.Context { return context.Background() }
 	return getStorageSpecsForT[Ent, ID](subject, makeContext, makeEnt)
 }
 
 func TestEventLogStorage(t *testing.T) {
-	storage := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
-	// inmemory.LogHistoryOnFailure(t, storage.EventLog)
+	storage := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
+	// memory.LogHistoryOnFailure(t, storage.EventLog)
 	contracts := getStorageSpecs[TestEntity](storage, makeTestEntity)
-	testcase.RunContract(t, contracts...)
+	testcase.RunSuite(t, contracts...)
 }
 
 func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	t.Run(`with create in different tx`, func(t *testing.T) {
-		subject1 := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
-		subject2 := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+		subject1 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
+		subject2 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 
 		ctx := context.Background()
 		ctx, err := subject1.BeginTx(ctx)
@@ -167,21 +167,21 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		t.Log(`and subject 2 finish tx`)
 		assert.Must(t).Nil(subject2.CommitTx(ctx))
 		t.Log(`and subject 2 then try to find this entity`)
-		found, err := subject2.FindByID(context.Background(), &TestEntity{}, entity.ID)
+		_, found, err := subject2.FindByID(context.Background(), entity.ID)
 		assert.Must(t).Nil(err)
 		assert.Must(t).False(found, `it should not see the uncommitted entity`)
 
 		t.Log(`but after subject 1 commit the tx`)
 		assert.Must(t).Nil(subject1.CommitTx(ctx))
 		t.Log(`subject 1 can see the newT entity`)
-		found, err = subject1.FindByID(context.Background(), &TestEntity{}, entity.ID)
+		_, found, err = subject1.FindByID(context.Background(), entity.ID)
 		assert.Must(t).Nil(err)
 		assert.Must(t).True(found)
 	})
 
 	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
-		subject1 := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
-		subject2 := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+		subject1 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
+		subject2 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 
 		ctx := context.Background()
 		e1 := rnd.Make(TestEntity{}).(TestEntity)
@@ -206,31 +206,31 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		ctx, err = subject2.BeginTx(ctx)
 		assert.Must(t).Nil(err)
 
-		found, err := subject1.FindByID(ctx, &TestEntity{}, id1)
+		_, found, err := subject1.FindByID(ctx, id1)
 		assert.Must(t).Nil(err)
 		assert.Must(t).True(found)
 		assert.Must(t).Nil(subject1.DeleteByID(ctx, id1))
 
-		found, err = subject2.FindByID(ctx, &TestEntity{}, id2)
+		_, found, err = subject2.FindByID(ctx, id2)
 		assert.Must(t).True(found)
 		assert.Must(t).Nil(subject2.DeleteByID(ctx, id2))
 
-		found, err = subject1.FindByID(ctx, &TestEntity{}, id1)
+		_, found, err = subject1.FindByID(ctx, id1)
 		assert.Must(t).Nil(err)
 		assert.Must(t).False(found)
 
-		found, err = subject2.FindByID(ctx, &TestEntity{}, id2)
+		_, found, err = subject2.FindByID(ctx, id2)
 		assert.Must(t).Nil(err)
 		assert.Must(t).False(found)
 
-		found, err = subject1.FindByID(context.Background(), &TestEntity{}, id1)
+		_, found, err = subject1.FindByID(context.Background(), id1)
 		assert.Must(t).Nil(err)
 		assert.Must(t).True(found)
 
 		assert.Must(t).Nil(subject1.CommitTx(ctx))
 		assert.Must(t).Nil(subject2.CommitTx(ctx))
 
-		found, err = subject1.FindByID(context.Background(), &TestEntity{}, id1)
+		_, found, err = subject1.FindByID(context.Background(), id1)
 		assert.Must(t).Nil(err)
 		assert.Must(t).False(found)
 
@@ -238,17 +238,17 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 }
 
 func TestEventLogStorage_Options_CompressEventLog(t *testing.T) {
-	memory := inmemory2.NewEventLog()
-	subject := inmemory2.NewEventLogStorage[TestEntity, string](memory)
+	m := memory.NewEventLog()
+	subject := memory.NewEventLogStorage[TestEntity, string](m)
 	subject.Options.CompressEventLog = true
 
-	testcase.RunContract(t, getStorageSpecs[TestEntity, string](subject, makeTestEntity)...)
+	testcase.RunSuite(t, getStorageSpecs[TestEntity, string](subject, makeTestEntity)...)
 
-	for _, event := range memory.Events() {
+	for _, event := range m.Events() {
 		t.Logf("storageID:%s -> event:%#v", subject.GetNamespace(), event)
 	}
 
-	assert.Must(t).Empty(memory.Events(),
+	assert.Must(t).Empty(m.Events(),
 		`after all the specs, the memory storage was expected to be empty.`+
 			` If the storage has values, it means something is not cleaning up properly in the specs.`)
 }
@@ -262,8 +262,8 @@ func TestEventLogStorage_Options_AsyncSubscriptionHandling(t *testing.T) {
 
 	var subscriber = func(t *testcase.T) *HangingSubscriber { return hangingSubscriber.Get(t) }
 
-	var newStorage = func(t *testcase.T) *inmemory2.EventLogStorage[TestEntity, string] {
-		s := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+	var newStorage = func(t *testcase.T) *memory.EventLogStorage[TestEntity, string] {
+		s := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 		ctx := context.Background()
 		subscription, err := s.SubscribeToCreate(ctx, subscriber(t))
 		assert.Must(t).Nil(err)
@@ -282,7 +282,7 @@ func TestEventLogStorage_Options_AsyncSubscriptionHandling(t *testing.T) {
 
 	disableAsyncSubscriptionHandling := testcase.Var[bool]{ID: "DisableAsyncSubscriptionHandling"}
 
-	var subject = func(t *testcase.T) *inmemory2.EventLogStorage[TestEntity, string] {
+	var subject = func(t *testcase.T) *memory.EventLogStorage[TestEntity, string] {
 		s := newStorage(t)
 		s.EventLog.Options.DisableAsyncSubscriptionHandling = disableAsyncSubscriptionHandling.Get(t)
 		return s
@@ -314,62 +314,62 @@ func TestEventLogStorage_Options_AsyncSubscriptionHandling(t *testing.T) {
 		}
 
 		s.Then(`Create`+desc, func(t *testcase.T) {
-			memory := subject(t)
+			m := subject(t)
 			sub := subscriber(t)
 
 			initialTime := time.Now()
 			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(memory.Create(context.Background(), &TestEntity{Data: `42`}))
+			assert.Must(t).Nil(m.Create(context.Background(), &TestEntity{Data: `42`}))
 			finishTime := time.Now()
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
 		})
 
 		s.Then(`Update`+desc, func(t *testcase.T) {
-			memory := subject(t)
+			m := subject(t)
 			sub := subscriber(t)
 
 			ent := TestEntity{Data: `42`}
-			assert.Must(t).Nil(memory.Create(context.Background(), &ent))
+			assert.Must(t).Nil(m.Create(context.Background(), &ent))
 			ent.Data = `foo`
 
 			initialTime := time.Now()
 			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(memory.Update(context.Background(), &ent))
+			assert.Must(t).Nil(m.Update(context.Background(), &ent))
 			finishTime := time.Now()
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
 		})
 
 		s.Then(`DeleteByID`+desc, func(t *testcase.T) {
-			memory := subject(t)
+			m := subject(t)
 			sub := subscriber(t)
 
 			ent := TestEntity{Data: `42`}
-			assert.Must(t).Nil(memory.Create(context.Background(), &ent))
+			assert.Must(t).Nil(m.Create(context.Background(), &ent))
 
 			initialTime := time.Now()
 			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(memory.DeleteByID(context.Background(), ent.ID))
+			assert.Must(t).Nil(m.DeleteByID(context.Background(), ent.ID))
 			finishTime := time.Now()
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
 		})
 
 		s.Then(`DeleteAll`+desc, func(t *testcase.T) {
-			memory := subject(t)
+			m := subject(t)
 			sub := subscriber(t)
 
 			initialTime := time.Now()
 			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(memory.DeleteAll(context.Background()))
+			assert.Must(t).Nil(m.DeleteAll(context.Background()))
 			finishTime := time.Now()
 
 			assertion(t, hangingDuration, finishTime.Sub(initialTime))
 		})
 
 		s.Test(`E2E`, func(t *testcase.T) {
-			testcase.RunContract(t, getStorageSpecs[TestEntity, string](subject(t), makeTestEntity)...)
+			testcase.RunSuite(t, getStorageSpecs[TestEntity, string](subject(t), makeTestEntity)...)
 		})
 	}
 
@@ -416,7 +416,7 @@ func (h *HangingSubscriber) HandleError(ctx context.Context, err error) error {
 
 func TestEventLogStorage_NewIDFunc(t *testing.T) {
 	t.Run(`when NewID is absent`, func(t *testing.T) {
-		storage := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+		storage := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 		storage.MakeID = nil
 
 		ptr := &TestEntity{Data: "42"}
@@ -425,7 +425,7 @@ func TestEventLogStorage_NewIDFunc(t *testing.T) {
 	})
 
 	t.Run(`when NewID is provided`, func(t *testing.T) {
-		storage := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+		storage := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 		expectedID := random.New(random.CryptoSeed{}).String()
 		storage.MakeID = func(ctx context.Context) (string, error) {
 			return expectedID, nil
@@ -438,7 +438,7 @@ func TestEventLogStorage_NewIDFunc(t *testing.T) {
 }
 
 func TestEventLogStorage_CompressEvents_smoke(t *testing.T) {
-	el := inmemory2.NewEventLog()
+	el := memory.NewEventLog()
 
 	type A struct {
 		ID string `ext:"ID"`
@@ -450,8 +450,8 @@ func TestEventLogStorage_CompressEvents_smoke(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	aS := inmemory2.NewEventLogStorage[A, string](el)
-	bS := inmemory2.NewEventLogStorage[B, string](el)
+	aS := memory.NewEventLogStorage[A, string](el)
+	bS := memory.NewEventLogStorage[B, string](el)
 	bS.Options.CompressEventLog = true
 
 	a := &A{V: "42"}
@@ -475,7 +475,7 @@ func TestEventLogStorage_CompressEvents_smoke(t *testing.T) {
 }
 
 func TestEventLogStorage_LookupTx(t *testing.T) {
-	s := inmemory2.NewEventLogStorage[TestEntity, string](inmemory2.NewEventLog())
+	s := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 
 	t.Run(`when outside of tx`, func(t *testing.T) {
 		_, ok := s.EventLog.LookupTx(context.Background())
@@ -489,10 +489,10 @@ func TestEventLogStorage_LookupTx(t *testing.T) {
 
 		e := TestEntity{Data: `42`}
 		assert.Must(t).Nil(s.Create(ctx, &e))
-		found, err := s.FindByID(ctx, &TestEntity{}, e.ID)
+		_, found, err := s.FindByID(ctx, e.ID)
 		assert.Must(t).Nil(err)
 		assert.Must(t).True(found)
-		found, err = s.FindByID(context.Background(), &TestEntity{}, e.ID)
+		_, found, err = s.FindByID(context.Background(), e.ID)
 		assert.Must(t).Nil(err)
 		assert.Must(t).False(found)
 
@@ -505,7 +505,7 @@ func TestEventLogStorage_LookupTx(t *testing.T) {
 
 func TestEventLogStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 
-	storage := inmemory2.NewEventLogStorage[EntityWithStructID, StructID](inmemory2.NewEventLog())
+	storage := memory.NewEventLogStorage[EntityWithStructID, StructID](memory.NewEventLog())
 	var counter int
 	storage.MakeID = func(ctx context.Context) (StructID, error) {
 		counter++
@@ -521,7 +521,7 @@ func TestEventLogStorage_SaveEntityWithCustomKeyType(t *testing.T) {
 
 	contracts := getStorageSpecsForT[EntityWithStructID, StructID](storage, makeContext, makeEntityWithStructID)
 
-	testcase.RunContract(t, contracts...)
+	testcase.RunSuite(t, contracts...)
 }
 
 type StructID struct {
@@ -534,11 +534,11 @@ type EntityWithStructID struct {
 }
 
 func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
-	testcase.RunContract(t, cachecontracts.EntityStorage[TestEntity, string]{
+	testcase.RunSuite(t, cachecontracts.EntityStorage[TestEntity, string]{
 		Subject: func(tb testing.TB) (cache.EntityStorage[TestEntity, string], frameless.OnePhaseCommitProtocol) {
-			eventLog := inmemory2.NewEventLog()
-			storage := inmemory2.NewEventLogStorage[TestEntity, string](eventLog)
-			inmemory2.LogHistoryOnFailure(tb, eventLog)
+			eventLog := memory.NewEventLog()
+			storage := memory.NewEventLogStorage[TestEntity, string](eventLog)
+			memory.LogHistoryOnFailure(tb, eventLog)
 			return storage, eventLog
 		},
 		MakeCtx: func(tb testing.TB) context.Context {
@@ -549,9 +549,9 @@ func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
 }
 
 func TestEventLogStorage_Create_withAsyncSubscriptions(t *testing.T) {
-	eventLog := inmemory2.NewEventLog()
+	eventLog := memory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = false
-	storage := inmemory2.NewEventLogStorage[TestEntity, string](eventLog)
+	storage := memory.NewEventLogStorage[TestEntity, string](eventLog)
 	ctx := context.Background()
 
 	sub, err := storage.SubscribeToCreate(ctx, doubles.StubSubscriber[TestEntity, string]{})
@@ -565,9 +565,9 @@ func TestEventLogStorage_Create_withAsyncSubscriptions(t *testing.T) {
 
 func TestEventLogStorage_multipleStorageForSameEntityUnderDifferentNamespace(t *testing.T) {
 	ctx := context.Background()
-	eventLog := inmemory2.NewEventLog()
-	s1 := inmemory2.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, "TestEntity#A")
-	s2 := inmemory2.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, "TestEntity#B")
+	eventLog := memory.NewEventLog()
+	s1 := memory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, "TestEntity#A")
+	s2 := memory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, "TestEntity#B")
 	ent := random.New(random.CryptoSeed{}).Make(TestEntity{}).(TestEntity)
 	ent.ID = ""
 	Create[TestEntity, string](t, s1, ctx, &ent)
@@ -593,8 +593,8 @@ func TestEventLogStorage_contracts(t *testing.T) {
 	}
 	resources.Contract[Entity, string, string]{
 		Subject: func(tb testing.TB) resources.ContractSubject[Entity, string] {
-			el := inmemory2.NewEventLog()
-			stg := inmemory2.NewEventLogStorage[Entity, string](el)
+			el := memory.NewEventLog()
+			stg := memory.NewEventLogStorage[Entity, string](el)
 			return resources.ContractSubject[Entity, string]{
 				MetaAccessor:  el,
 				CommitManager: el,

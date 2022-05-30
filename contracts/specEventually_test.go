@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/resources"
-	inmemory2 "github.com/adamluzsi/frameless/resources/inmemory"
+	inmemory2 "github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
@@ -20,7 +20,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunContract(t, resources.Contract[Entity, string, string]{
+	testcase.RunSuite(t, resources.Contract[Entity, string, string]{
 		Subject: ContractSubjectFnEventuallyConsistentStorage[Entity, string](),
 		MakeCtx: func(tb testing.TB) context.Context {
 			return context.Background()

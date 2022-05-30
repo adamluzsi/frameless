@@ -44,14 +44,13 @@ func TestNewStorage_smoke(t *testing.T) {
 	require.NoError(t, storage.Create(ctx, ent))
 	require.NotEmpty(t, ent.ID)
 
-	var ent2 psh.TestEntity
-	found, err := storage.FindByID(ctx, &ent2, ent.ID)
+	ent2, found, err := storage.FindByID(ctx, ent.ID)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, *ent, ent2)
 
 	require.NoError(t, storage.DeleteByID(ctx, ent.ID))
-	found, err = storage.FindByID(ctx, &psh.TestEntity{}, ent.ID)
+	_, found, err = storage.FindByID(ctx, ent.ID)
 	require.NoError(t, err)
 	require.False(t, found, `should be deleted`)
 }
@@ -68,7 +67,7 @@ func TestStorage(t *testing.T) {
 
 	psh.MigrateTestEntity(t, cm)
 
-	testcase.RunContract(t,
+	testcase.RunSuite(t,
 		contracts.Creator[psh.TestEntity, string]{
 			Subject: func(tb testing.TB) contracts.CreatorSubject[psh.TestEntity, string] { return subject },
 			MakeEnt: psh.MakeTestEntity,
@@ -142,7 +141,7 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 
 	subject := NewTestEntityStorage(t)
 
-	testcase.RunContract(t, contracts.Creator[psh.TestEntity, string]{
+	testcase.RunSuite(t, contracts.Creator[psh.TestEntity, string]{
 		Subject: func(tb testing.TB) contracts.CreatorSubject[psh.TestEntity, string] { return subject },
 		MakeCtx: psh.MakeCtx,
 		MakeEnt: psh.MakeTestEntity,

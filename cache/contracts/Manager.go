@@ -20,7 +20,7 @@ import (
 var (
 	waiter = testcase.Waiter{
 		WaitDuration: time.Millisecond,
-		Timeout:  time.Second,
+		Timeout:      time.Second,
 	}
 	async = testcase.Eventually{RetryStrategy: &waiter}
 )
@@ -67,7 +67,7 @@ func (c Manager[Ent, ID]) Spec(s *testcase.Spec) {
 		return c.ManagerSubject().Get(tb.(*testcase.T)).Cache
 	}
 
-	testcase.RunContract(s,
+	testcase.RunSuite(s,
 		contracts.Creator[Ent, ID]{
 			Subject: func(tb testing.TB) contracts.CreatorSubject[Ent, ID] {
 				return newManager(tb)
@@ -145,7 +145,7 @@ func (c Manager[Ent, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _ = c.manager().Get(t).FindByID(c.MakeCtx(t), new(Ent), id)   // should trigger caching
+			_, _, _ = c.manager().Get(t).FindByID(c.MakeCtx(t), id)          // should trigger caching
 			_, _ = iterators.Count(c.manager().Get(t).FindAll(c.MakeCtx(t))) // should trigger caching
 
 			// mutate
@@ -163,7 +163,7 @@ func (c Manager[Ent, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _ = c.manager().Get(t).FindByID(c.MakeCtx(t), new(Ent), id)   // should trigger caching
+			_, _, _ = c.manager().Get(t).FindByID(c.MakeCtx(t), id)          // should trigger caching
 			_, _ = iterators.Count(c.manager().Get(t).FindAll(c.MakeCtx(t))) // should trigger caching
 
 			// delete
@@ -178,7 +178,7 @@ func (c Manager[Ent, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _ = c.manager().Get(t).FindByID(c.MakeCtx(t), new(Ent), id)   // should trigger caching
+			_, _, _ = c.manager().Get(t).FindByID(c.MakeCtx(t), id)          // should trigger caching
 			_, _ = iterators.Count(c.manager().Get(t).FindAll(c.MakeCtx(t))) // should trigger caching
 
 			// delete
@@ -216,14 +216,14 @@ type SpySource[Ent, ID any] struct {
 	}
 }
 
-func (stub *SpySource[Ent, ID]) FindByID(ctx context.Context, ptr *Ent, id ID) (_found bool, _err error) {
+func (stub *SpySource[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _found bool, _err error) {
 	stub.count.FindByID++
-	return stub.Source.FindByID(ctx, ptr, id)
+	return stub.Source.FindByID(ctx, id)
 }
 
 func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 	s.Context(reflects.SymbolicName(*new(Ent)), func(s *testcase.Spec) {
-		value := testcase.Let(s, func(t *testcase.T) interface{} {
+		value := testcase.Let(s, func(t *testcase.T) *Ent {
 			ptr := c.createT(t)
 			storage := c.source().Get(t)
 			assert.Must(t).Nil(storage.Create(c.MakeCtx(t), ptr))
@@ -233,13 +233,12 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 		})
 
 		s.Then(`it will return the value`, func(t *testcase.T) {
-			v := new(Ent)
 			id, found := extid.Lookup[ID](value.Get(t))
 			assert.Must(t).True(found)
-			found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), v, id)
+			v, found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), id)
 			assert.Must(t).Nil(err)
 			assert.Must(t).True(found)
-			assert.Must(t).Equal(value.Get(t), v)
+			assert.Must(t).Equal(*value.Get(t), v)
 		})
 
 		s.And(`after value already cached`, func(s *testcase.Spec) {
@@ -272,12 +271,11 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 					HasEntity[Ent, ID](t, c.manager().Get(t), c.MakeCtx(t), valueWithNewContent.Get(t))
 
 					async.Assert(t, func(it assert.It) {
-						v := new(Ent)
-						found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), v, id)
+						v, found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), id)
 						it.Must.Nil(err)
 						it.Must.True(found)
 						it.Log(`actually`, v)
-						it.Must.Equal(valueWithNewContent.Get(t), v)
+						it.Must.Equal(*valueWithNewContent.Get(t), v)
 					})
 				})
 			})
@@ -290,11 +288,10 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 				assert.Must(t).True(found)
 
 				for i := 0; i < 42; i++ {
-					v := new(Ent)
-					found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), v, id)
+					v, found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), id)
 					assert.Must(t).Nil(err)
 					assert.Must(t).True(found)
-					assert.Must(t).Equal(value, v)
+					assert.Must(t).Equal(*value, v)
 				}
 			})
 
@@ -307,25 +304,20 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 				})
 
 				s.Then(`it will only bother the storage for the value once`, func(t *testcase.T) {
-					var (
-						nv  *Ent
-						err error
-					)
-					value := value.Get(t)
-					id, found := extid.Lookup[ID](value)
+					var err error
+					val := value.Get(t)
+					id, found := extid.Lookup[ID](val)
 					assert.Must(t).True(found)
 
 					// trigger caching
-					nv = IsFindable[Ent, ID](t, c.manager().Get(t), c.MakeCtx(t), id)
-					assert.Must(t).Equal(value, nv)
+					assert.Must(t).Equal(val, IsFindable[Ent, ID](t, c.manager().Get(t), c.MakeCtx(t), id))
 					numberOfFindByIDCallAfterEntityIsFound := spy.Get(t).count.FindByID
 					waiter.Wait()
 
-					nv = new(Ent)
-					found, err = c.manager().Get(t).FindByID(c.MakeCtx(t), nv, id) // should use cached value
+					nv, found, err := c.manager().Get(t).FindByID(c.MakeCtx(t), id) // should use cached val
 					assert.Must(t).Nil(err)
 					assert.Must(t).True(found)
-					assert.Must(t).Equal(value, nv)
+					assert.Must(t).Equal(*val, nv)
 					assert.Must(t).Equal(numberOfFindByIDCallAfterEntityIsFound, spy.Get(t).count.FindByID)
 				})
 			})

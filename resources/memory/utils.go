@@ -1,4 +1,4 @@
-package inmemory
+package memory
 
 func toSlice[Ent any, key comparable](m map[key]Ent) []Ent {
 	list := make([]Ent, 0, len(m))

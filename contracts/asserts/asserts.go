@@ -31,22 +31,22 @@ func HasID[T any, ID any](tb testing.TB, ptr *T) (id ID) {
 
 func IsFindable[T any, ID any](tb testing.TB, subject frameless.Finder[T, ID], ctx context.Context, id ID) *T {
 	tb.Helper()
-	var ptr *T
+	var ent T
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(T), id)
 	Eventually.Assert(tb, func(it assert.It) {
-		ptr = new(T)
-		found, err := subject.FindByID(ctx, ptr, id)
+		e, found, err := subject.FindByID(ctx, id)
 		it.Must.Nil(err)
 		it.Must.True(found, errMessage)
+		ent = e
 	})
-	return ptr
+	return &ent
 }
 
 func IsAbsent[T any, ID any](tb testing.TB, subject frameless.Finder[T, ID], ctx context.Context, id ID) {
 	tb.Helper()
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", *new(T), id)
 	Eventually.Assert(tb, func(it assert.It) {
-		found, err := subject.FindByID(ctx, new(T), id)
+		_, found, err := subject.FindByID(ctx, id)
 		it.Must.Nil(err)
 		it.Must.False(found, errMessage)
 	})
@@ -69,7 +69,7 @@ func Create[T any, ID any](tb testing.TB, subject resource[T, ID], ctx context.C
 	assert.Must(tb).Nil(subject.Create(ctx, ptr))
 	id := HasID[T, ID](tb, ptr)
 	tb.Cleanup(func() {
-		found, err := subject.FindByID(ctx, new(T), id)
+		_, found, err := subject.FindByID(ctx, id)
 		if err != nil || !found {
 			return
 		}

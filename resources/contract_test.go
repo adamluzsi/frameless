@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/resources"
-	inmemory2 "github.com/adamluzsi/frameless/resources/inmemory"
+	inmemory2 "github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase"
 )
 
@@ -15,7 +15,7 @@ func TestContract(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunContract(t, resources.Contract[Entity, string, string]{
+	testcase.RunSuite(t, resources.Contract[Entity, string, string]{
 		Subject: func(tb testing.TB) resources.ContractSubject[Entity, string] {
 			eventLog := inmemory2.NewEventLog()
 			storage := inmemory2.NewEventLogStorage[Entity, string](eventLog)

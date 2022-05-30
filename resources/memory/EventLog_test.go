@@ -1,11 +1,11 @@
-package inmemory_test
+package memory_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/resources/inmemory"
+	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/frameless"
@@ -13,10 +13,10 @@ import (
 )
 
 var (
-	_ inmemory.EventManager            = &inmemory.EventLog{}
-	_ inmemory.EventManager            = &inmemory.EventLogTx{}
-	_ frameless.OnePhaseCommitProtocol = &inmemory.EventLog{}
-	_ frameless.MetaAccessor           = &inmemory.EventLog{}
+	_ memory.EventManager              = &memory.EventLog{}
+	_ memory.EventManager              = &memory.EventLogTx{}
+	_ frameless.OnePhaseCommitProtocol = &memory.EventLog{}
+	_ frameless.MetaAccessor           = &memory.EventLog{}
 )
 
 func TestMemory(t *testing.T) {
@@ -32,16 +32,16 @@ func (spec SpecMemory) Spec(s *testcase.Spec) {
 	s.Describe(`.AddSubscription`, spec.SpecAddSubscription)
 }
 
-func (spec SpecMemory) memory() testcase.Var[*inmemory.EventLog] {
-	return testcase.Var[*inmemory.EventLog]{
-		ID: `*inmemory.EventLog`,
-		Init: func(t *testcase.T) *inmemory.EventLog {
-			return inmemory.NewEventLog()
+func (spec SpecMemory) memory() testcase.Var[*memory.EventLog] {
+	return testcase.Var[*memory.EventLog]{
+		ID: `*memory.EventLog`,
+		Init: func(t *testcase.T) *memory.EventLog {
+			return memory.NewEventLog()
 		},
 	}
 }
 
-func (spec SpecMemory) memoryGet(t *testcase.T) *inmemory.EventLog {
+func (spec SpecMemory) memoryGet(t *testcase.T) *memory.EventLog {
 	return spec.memory().Get(t)
 }
 
@@ -64,8 +64,8 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 		event = testcase.Let(s, func(t *testcase.T) interface{} {
 			return AddTestEvent{V: `hello world`}
 		})
-		eventGet = func(t *testcase.T) inmemory.Event {
-			return event.Get(t).(inmemory.Event)
+		eventGet = func(t *testcase.T) memory.Event {
+			return event.Get(t).(memory.Event)
 		}
 		subject = func(t *testcase.T) error {
 			return spec.memoryGet(t).Append(spec.ctxGet(t), eventGet(t))
@@ -102,11 +102,11 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 
 func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 	handledEvents := testcase.Let(s, func(t *testcase.T) interface{} {
-		return []inmemory.Event{}
+		return []memory.Event{}
 	})
-	subscriber := testcase.Let(s, func(t *testcase.T) inmemory.EventLogSubscriber {
+	subscriber := testcase.Let(s, func(t *testcase.T) memory.EventLogSubscriber {
 		return doubles.StubSubscriber[any, any]{
-			HandleFunc: func(ctx context.Context, event inmemory.Event) error {
+			HandleFunc: func(ctx context.Context, event memory.Event) error {
 				testcase.Append(t, handledEvents, event)
 				return nil
 			},
@@ -129,7 +129,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 		TestEvent struct{ V int }
 	)
 
-	s.When(`events added to the *inmemory.EventLog`, func(s *testcase.Spec) {
+	s.When(`events added to the *memory.EventLog`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			assert.Must(t).Nil(spec.memoryGet(t).Append(spec.ctxGet(t), TestEvent{V: 42}))
 		})
@@ -146,7 +146,7 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 		}).EagerLoading(s)
 		_ = subscription
 
-		s.And(`event is added to *inmemory.EventLog`, func(s *testcase.Spec) {
+		s.And(`event is added to *memory.EventLog`, func(s *testcase.Spec) {
 			expected := TestEvent{V: 42}
 
 			s.Before(func(t *testcase.T) {
@@ -210,7 +210,7 @@ func TestEventLog_optionsDisabledAsyncSubscriptionHandling_subscriptionCanAppend
 	)
 
 	ctx := context.Background()
-	eventLog := inmemory.NewEventLog()
+	eventLog := memory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
 
 	sub, err := eventLog.Subscribe(ctx, doubles.StubSubscriber[any, any]{

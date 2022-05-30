@@ -1,4 +1,4 @@
-package inmemory_test
+package memory_test
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 var (
 	waiter = testcase.Waiter{
 		WaitDuration: time.Millisecond,
-		Timeout:  3 * time.Second,
+		Timeout:      3 * time.Second,
 	}
 	eventually = testcase.Eventually{
 		RetryStrategy: waiter,
@@ -66,8 +66,8 @@ func GetContracts[Ent, ID any](
 	subject func(testing.TB) ContractSubject[Ent, ID],
 	makeCtx func(testing.TB) context.Context,
 	makeEnt func(testing.TB) Ent,
-) []testcase.Contract {
-	return []testcase.Contract{
+) []testcase.Suite {
+	return []testcase.Suite{
 		contracts.Creator[Ent, ID]{
 			Subject: func(tb testing.TB) contracts.CreatorSubject[Ent, ID] {
 				return subject(tb).Resource
