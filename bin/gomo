@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -e
+shopt -s nullglob globstar
+
+declare gmpath path
+for gmpath in **/go.mod; do
+  if [[ ${gmpath} =~ .*/vendor/.* ]]; then
+    continue
+  fi
+  path=${gmpath%"go.mod"}
+  cd "${path}"
+  "${@}"
+done
+
+if [[ ! -e go.mod ]]; then
+  "${@}"
+fi
