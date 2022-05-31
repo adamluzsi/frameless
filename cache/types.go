@@ -9,8 +9,6 @@ import (
 	"github.com/adamluzsi/frameless"
 )
 
-type T = frameless.T
-
 type Storage[Ent, ID any] interface {
 	CacheEntity(ctx context.Context) EntityStorage[Ent, ID]
 	CacheHit(ctx context.Context) HitStorage[ID]

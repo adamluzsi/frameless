@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-
-	"github.com/adamluzsi/frameless"
 )
 
-func errNotFound(T, id frameless.T) error {
+func errNotFound(T, id any) error {
 	return fmt.Errorf(`%T entity not found by id: %v`, T, id)
 }
 

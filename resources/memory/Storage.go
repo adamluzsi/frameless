@@ -193,7 +193,7 @@ func (s *Storage[Ent, ID]) MakeID(ctx context.Context) (ID, error) {
 	return id, nil
 }
 
-func (s *Storage[Ent, ID]) IDToMemoryKey(id frameless.T) string {
+func (s *Storage[Ent, ID]) IDToMemoryKey(id any) string {
 	return fmt.Sprintf(`%#v`, id)
 }
 
@@ -290,7 +290,7 @@ type memoryActions interface {
 	del(namespace string, key string) bool
 }
 
-func base(ent frameless.T) interface{} {
+func base(ent any) interface{} {
 	return reflects.BaseValueOf(ent).Interface()
 }
 
@@ -306,14 +306,14 @@ func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) framel
 	return iterators.NewSlice[Ent](m.All(T, ctx, namespace).([]Ent))
 }
 
-func (m *Memory) All(T frameless.T, ctx context.Context, namespace string) (sliceOfT interface{}) {
+func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {
 	if tx, ok := m.LookupTx(ctx); ok && !tx.done {
 		return m.toTSlice(T, tx.all(namespace))
 	}
 	return m.toTSlice(T, m.all(namespace))
 }
 
-func (m *Memory) toTSlice(T frameless.T, vs map[string]interface{}) interface{} {
+func (m *Memory) toTSlice(T any, vs map[string]interface{}) interface{} {
 	rslice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(T)), 0, len(vs))
 	for _, v := range vs {
 		rslice = reflect.Append(rslice, reflect.ValueOf(v))
