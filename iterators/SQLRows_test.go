@@ -1,25 +1,28 @@
 package iterators_test
 
-//go:generate mockgen -destination SQLRows_mocks_test.go -source SQLRows.go -package iterators_test
-
 import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/frameless/reflects"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"github.com/golang/mock/gomock"
 )
 
-func ExampleNewSQLRows(ctx context.Context, db *sql.DB) error {
+func ExampleNewSQLRows() {
+	var (
+		ctx context.Context
+		db  *sql.DB
+	)
 	userIDs, err := db.QueryContext(ctx, `SELECT id FROM users`)
 
 	if err != nil {
-		return err
+		panic(err)
 	}
 
 	type mytype struct {
@@ -39,7 +42,9 @@ func ExampleNewSQLRows(ctx context.Context, db *sql.DB) error {
 		v := iter.Value()
 		_ = v
 	}
-	return iter.Err()
+	if err := iter.Err(); err != nil {
+		panic(err)
+	}
 }
 
 func TestSQLRows(t *testing.T) {
@@ -52,13 +57,6 @@ func TestSQLRows(t *testing.T) {
 	subject := func(t *testcase.T) frameless.Iterator[testType] {
 		return iterators.NewSQLRows(rows.Get(t), mapper.Get(t))
 	}
-
-	rowsmockctrl := testcase.Let(s, func(t *testcase.T) *gomock.Controller {
-		c := gomock.NewController(t.TB)
-		t.Defer(c.Finish)
-		return c
-	})
-
 	mapper.Let(s, func(t *testcase.T) iterators.SQLRowMapper[testType] {
 		return iterators.SQLRowMapperFunc[testType](func(s iterators.SQLRowScanner) (testType, error) {
 			var v testType
@@ -69,11 +67,9 @@ func TestSQLRows(t *testing.T) {
 	s.When(`rows`, func(s *testcase.Spec) {
 		s.Context(`has no values`, func(s *testcase.Spec) {
 			rows.Let(s, func(t *testcase.T) iterators.SQLRows {
-				mock := NewMockSQLRows(rowsmockctrl.Get(t))
-				mock.EXPECT().Next().Return(false).AnyTimes()
-				mock.EXPECT().Err().Return(nil).AnyTimes()
-				mock.EXPECT().Close().Return(nil).AnyTimes()
-				return mock
+				return &SQLRowsStub{
+					Iterator: iterators.Empty[[]any](),
+				}
 			})
 
 			s.Then(`it will false to next`, func(t *testcase.T) {
@@ -97,24 +93,9 @@ func TestSQLRows(t *testing.T) {
 
 		s.Context(`has value(s)`, func(s *testcase.Spec) {
 			rows.Let(s, func(t *testcase.T) iterators.SQLRows {
-				mock := NewMockSQLRows(rowsmockctrl.Get(t))
-
-				value := &testType{Text: `42`}
-
-				mock.EXPECT().Next().DoAndReturn(func() bool {
-					return value != nil
-				}).AnyTimes()
-
-				mock.EXPECT().Scan(gomock.Any()).DoAndReturn(func(dest ...interface{}) error {
-					assert.Must(t).Equal(1, len(dest))
-					*(dest[0].(*string)) = value.Text
-					value = nil
-					return nil
-				})
-
-				mock.EXPECT().Err().Return(nil)
-				mock.EXPECT().Close().Return(nil)
-				return mock
+				return &SQLRowsStub{
+					Iterator: iterators.NewSlice([][]any{[]any{`42`}}),
+				}
 			})
 
 			s.Then(`it will decode values into the passed ptr`, func(t *testcase.T) {
@@ -133,19 +114,17 @@ func TestSQLRows(t *testing.T) {
 			s.And(`error happen during scanning`, func(s *testcase.Spec) {
 				expectedErr := errors.New(`boom`)
 				rows.Let(s, func(t *testcase.T) iterators.SQLRows {
-					mock := NewMockSQLRows(rowsmockctrl.Get(t))
-					mock.EXPECT().Next().Return(true)
-					mock.EXPECT().Err().Return(nil).AnyTimes()
-					mock.EXPECT().Close().Return(nil)
-					mock.EXPECT().Scan(gomock.Any()).Return(expectedErr)
-					return mock
+					return &SQLRowsStub{
+						Iterator: iterators.NewSlice[[]any]([][]any{{`42`}}),
+						ScanErr:  expectedErr,
+					}
 				})
 
 				s.Then(`it will be propagated during decode`, func(t *testcase.T) {
 					iter := subject(t)
 					defer iter.Close()
-					assert.Must(t).False(iter.Next())
-					assert.Must(t).Equal(expectedErr, iter.Err())
+					t.Must.False(iter.Next())
+					t.Must.ErrorIs(expectedErr, iter.Err())
 				})
 			})
 
@@ -153,18 +132,43 @@ func TestSQLRows(t *testing.T) {
 	})
 
 	s.When(`close encounter error`, func(s *testcase.Spec) {
+		expectedErr := errors.New(`boom`)
 		rows.Let(s, func(t *testcase.T) iterators.SQLRows {
-			mock := NewMockSQLRows(rowsmockctrl.Get(t))
-			mock.EXPECT().Close().Return(errors.New(`boom`))
-			return mock
+			return &SQLRowsStub{
+				Iterator: iterators.Empty[[]any](),
+				CloseErr: expectedErr,
+			}
 		})
 
 		s.Then(`it will be propagated during iterator closing`, func(t *testcase.T) {
-			iter := subject(t)
-			err := iter.Close()
-			assert.Must(t).NotNil(err)
-			assert.Must(t).Equal(`boom`, err.Error())
+			t.Must.ErrorIs(expectedErr, subject(t).Close())
 		})
 	})
 
+}
+
+type SQLRowsStub struct {
+	frameless.Iterator[[]any]
+	CloseErr error
+	ScanErr  error
+}
+
+func (s *SQLRowsStub) Close() error {
+	return s.CloseErr
+}
+
+func (s *SQLRowsStub) Scan(dest ...interface{}) error {
+	if s.ScanErr != nil {
+		return s.ScanErr
+	}
+	args := s.Iterator.Value()
+	if len(args) != len(dest) {
+		return fmt.Errorf("scan argument count mismatch")
+	}
+	for i, dst := range dest {
+		if err := reflects.Link(args[i], dst); err != nil {
+			return err
+		}
+	}
+	return nil
 }
