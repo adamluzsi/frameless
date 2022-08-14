@@ -4,27 +4,27 @@ import (
 	"io"
 )
 
-func NewSQLRows[T any](rows SQLRows, mapper SQLRowMapper[T]) *SQLRowsIterator[T] {
-	return &SQLRowsIterator[T]{Rows: rows, Mapper: mapper}
+func SQLRows[T any](rows ISQLRows, mapper SQLRowMapper[T]) *SQLRowsIter[T] {
+	return &SQLRowsIter[T]{Rows: rows, Mapper: mapper}
 }
 
-// SQLRowsIterator allow you to use the same iterator pattern with sql.Rows structure.
+// SQLRowsIter allow you to use the same iterator pattern with sql.Rows structure.
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
 // it also makes testing easier with the same Interface interface.
-type SQLRowsIterator[T any] struct {
-	Rows   SQLRows
+type SQLRowsIter[T any] struct {
+	Rows   ISQLRows
 	Mapper SQLRowMapper[T]
 
 	value T
 	err   error
 }
 
-func (i *SQLRowsIterator[T]) Close() error {
+func (i *SQLRowsIter[T]) Close() error {
 	return i.Rows.Close()
 }
 
-func (i *SQLRowsIterator[T]) Next() bool {
+func (i *SQLRowsIter[T]) Next() bool {
 	if i.err != nil {
 		return false
 	}
@@ -40,14 +40,14 @@ func (i *SQLRowsIterator[T]) Next() bool {
 	return true
 }
 
-func (i *SQLRowsIterator[T]) Err() error {
+func (i *SQLRowsIter[T]) Err() error {
 	if i.err != nil {
 		return i.err
 	}
 	return i.Rows.Err()
 }
 
-func (i *SQLRowsIterator[T]) Value() T {
+func (i *SQLRowsIter[T]) Value() T {
 	return i.value
 }
 
@@ -65,7 +65,7 @@ type SQLRowMapperFunc[T any] func(SQLRowScanner) (T, error)
 
 func (fn SQLRowMapperFunc[T]) Map(s SQLRowScanner) (T, error) { return fn(s) }
 
-type SQLRows interface {
+type ISQLRows interface {
 	io.Closer
 	Next() bool
 	Err() error

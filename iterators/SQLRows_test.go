@@ -29,7 +29,7 @@ func ExampleNewSQLRows() {
 		asdf string
 	}
 
-	iter := iterators.NewSQLRows[mytype](userIDs, iterators.SQLRowMapperFunc[mytype](func(scanner iterators.SQLRowScanner) (mytype, error) {
+	iter := iterators.SQLRows[mytype](userIDs, iterators.SQLRowMapperFunc[mytype](func(scanner iterators.SQLRowScanner) (mytype, error) {
 		var value mytype
 		if err := scanner.Scan(&value.asdf); err != nil {
 			return mytype{}, err
@@ -52,10 +52,10 @@ func TestSQLRows(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 
-	rows := testcase.Var[iterators.SQLRows]{ID: "iterators.SQLRows"}
+	rows := testcase.Var[iterators.ISQLRows]{ID: "iterators.SQLRows"}
 	mapper := testcase.Var[iterators.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
 	subject := func(t *testcase.T) frameless.Iterator[testType] {
-		return iterators.NewSQLRows(rows.Get(t), mapper.Get(t))
+		return iterators.SQLRows(rows.Get(t), mapper.Get(t))
 	}
 	mapper.Let(s, func(t *testcase.T) iterators.SQLRowMapper[testType] {
 		return iterators.SQLRowMapperFunc[testType](func(s iterators.SQLRowScanner) (testType, error) {
@@ -66,7 +66,7 @@ func TestSQLRows(t *testing.T) {
 
 	s.When(`rows`, func(s *testcase.Spec) {
 		s.Context(`has no values`, func(s *testcase.Spec) {
-			rows.Let(s, func(t *testcase.T) iterators.SQLRows {
+			rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
 				return &SQLRowsStub{
 					Iterator: iterators.Empty[[]any](),
 				}
@@ -92,9 +92,9 @@ func TestSQLRows(t *testing.T) {
 		})
 
 		s.Context(`has value(s)`, func(s *testcase.Spec) {
-			rows.Let(s, func(t *testcase.T) iterators.SQLRows {
+			rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
 				return &SQLRowsStub{
-					Iterator: iterators.NewSlice([][]any{[]any{`42`}}),
+					Iterator: iterators.Slice([][]any{[]any{`42`}}),
 				}
 			})
 
@@ -113,9 +113,9 @@ func TestSQLRows(t *testing.T) {
 
 			s.And(`error happen during scanning`, func(s *testcase.Spec) {
 				expectedErr := errors.New(`boom`)
-				rows.Let(s, func(t *testcase.T) iterators.SQLRows {
+				rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
 					return &SQLRowsStub{
-						Iterator: iterators.NewSlice[[]any]([][]any{{`42`}}),
+						Iterator: iterators.Slice[[]any]([][]any{{`42`}}),
 						ScanErr:  expectedErr,
 					}
 				})
@@ -133,7 +133,7 @@ func TestSQLRows(t *testing.T) {
 
 	s.When(`close encounter error`, func(s *testcase.Spec) {
 		expectedErr := errors.New(`boom`)
-		rows.Let(s, func(t *testcase.T) iterators.SQLRows {
+		rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
 			return &SQLRowsStub{
 				Iterator: iterators.Empty[[]any](),
 				CloseErr: expectedErr,

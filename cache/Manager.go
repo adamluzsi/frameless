@@ -101,13 +101,13 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 ) frameless.Iterator[Ent] {
 	// TODO: double check
 	if ctx != nil && ctx.Err() != nil {
-		return iterators.NewError[Ent](ctx.Err())
+		return iterators.Error[Ent](ctx.Err())
 	}
 
 	queryID := fmt.Sprintf(`0:%T/%s`, *new(Ent), name) // add version epoch
 	hit, found, err := m.Storage.CacheHit(ctx).FindByID(ctx, queryID)
 	if err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
@@ -122,7 +122,7 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 	var ids []ID
 	res, err := iterators.Collect(query())
 	if err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	for _, v := range res {
 		id, _ := extid.Lookup[ID](v)
@@ -135,17 +135,17 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 	}
 
 	if err := m.Storage.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 
 	if err := m.Storage.CacheHit(ctx).Create(ctx, &Hit[ID]{
 		QueryID:   queryID,
 		EntityIDs: ids,
 	}); err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 
-	return iterators.NewSlice[Ent](res)
+	return iterators.Slice[Ent](res)
 }
 
 func (m *Manager[Ent, ID]) CacheQueryOne(
@@ -156,12 +156,12 @@ func (m *Manager[Ent, ID]) CacheQueryOne(
 	iter := m.CacheQueryMany(ctx, queryID, func() frameless.Iterator[Ent] {
 		ent, found, err := query()
 		if err != nil {
-			return iterators.NewError[Ent](err)
+			return iterators.Error[Ent](err)
 		}
 		if !found {
 			return iterators.Empty[Ent]()
 		}
-		return iterators.NewSlice[Ent]([]Ent{ent})
+		return iterators.Slice[Ent]([]Ent{ent})
 	})
 
 	ent, found, err := iterators.First[Ent](iter)

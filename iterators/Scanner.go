@@ -5,21 +5,20 @@ import (
 	"io"
 )
 
-func NewScanner[T string | []byte](rc io.Reader) *Scanner[T] {
-	return &Scanner[T]{
-		Scanner: bufio.NewScanner(rc),
-		Reader:  rc,
+func Scanner[T string | []byte](s *bufio.Scanner, closer io.Closer) *ScannerIter[T] {
+	return &ScannerIter[T]{
+		Scanner: s,
+		Closer:  closer,
 	}
 }
 
-type Scanner[T string | []byte] struct {
+type ScannerIter[T string | []byte] struct {
 	*bufio.Scanner
-	Reader io.Reader
-
-	value T
+	Closer io.Closer
+	value  T
 }
 
-func (i *Scanner[T]) Next() bool {
+func (i *ScannerIter[T]) Next() bool {
 	if i.Scanner.Err() != nil {
 		return false
 	}
@@ -37,19 +36,17 @@ func (i *Scanner[T]) Next() bool {
 	return true
 }
 
-func (i *Scanner[T]) Err() error {
+func (i *ScannerIter[T]) Err() error {
 	return i.Scanner.Err()
 }
 
-func (i *Scanner[T]) Close() error {
-	rc, ok := i.Reader.(io.ReadCloser)
-	if !ok {
+func (i *ScannerIter[T]) Close() error {
+	if i.Closer == nil {
 		return nil
 	}
-
-	return rc.Close()
+	return i.Closer.Close()
 }
 
-func (i *Scanner[T]) Value() T {
+func (i *ScannerIter[T]) Value() T {
 	return i.value
 }

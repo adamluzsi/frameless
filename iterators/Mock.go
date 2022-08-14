@@ -2,8 +2,8 @@ package iterators
 
 import "github.com/adamluzsi/frameless"
 
-func NewMock[T any](i frameless.Iterator[T]) *Mock[T] {
-	return &Mock[T]{
+func Stub[T any](i frameless.Iterator[T]) *StubIter[T] {
+	return &StubIter[T]{
 		Iterator:  i,
 		StubValue: i.Value,
 		StubClose: i.Close,
@@ -12,7 +12,7 @@ func NewMock[T any](i frameless.Iterator[T]) *Mock[T] {
 	}
 }
 
-type Mock[T any] struct {
+type StubIter[T any] struct {
 	Iterator  frameless.Iterator[T]
 	StubValue func() T
 	StubClose func() error
@@ -22,36 +22,36 @@ type Mock[T any] struct {
 
 // wrapper
 
-func (m *Mock[T]) Close() error {
+func (m *StubIter[T]) Close() error {
 	return m.StubClose()
 }
 
-func (m *Mock[T]) Next() bool {
+func (m *StubIter[T]) Next() bool {
 	return m.StubNext()
 }
 
-func (m *Mock[T]) Err() error {
+func (m *StubIter[T]) Err() error {
 	return m.StubErr()
 }
 
-func (m *Mock[T]) Value() T {
+func (m *StubIter[T]) Value() T {
 	return m.StubValue()
 }
 
 // Reseting stubs
 
-func (m *Mock[T]) ResetClose() {
+func (m *StubIter[T]) ResetClose() {
 	m.StubClose = m.Iterator.Close
 }
 
-func (m *Mock[T]) ResetNext() {
+func (m *StubIter[T]) ResetNext() {
 	m.StubNext = m.Iterator.Next
 }
 
-func (m *Mock[T]) ResetErr() {
+func (m *StubIter[T]) ResetErr() {
 	m.StubErr = m.Iterator.Err
 }
 
-func (m *Mock[T]) ResetValue() {
+func (m *StubIter[T]) ResetValue() {
 	m.StubValue = m.Iterator.Value
 }

@@ -9,14 +9,15 @@ import (
 // Interface design inspirited by https://golang.org/pkg/encoding/json/#Decoder
 // https://en.wikipedia.org/wiki/Iterator_pattern
 type Iterator[V any] interface {
-	// Closer is required to make it able to cancel iterators where resource being used behind the scene
-	// for all other case where the underling io is handled on higher level, it should simply return nil
+	// Closer is required to make it able to cancel iterators where resources are being used behind the scene
+	// for all other cases where the underling io is handled on a higher level, it should simply return nil
 	io.Closer
-	// Err return the cause if for some reason by default the More return false all the time
+	// Err return the error cause.
 	Err() error
-	// Next will ensure that Decode return the next item when it is executed
+	// Next will ensure that Value returns the next item when executed.
+	// If the next value is not retrievable, Next should return false and ensure Err() will return the error cause.
 	Next() bool
 	// Value returns the current value in the iterator.
-	// The action should be repeatable without side effect.
+	// The action should be repeatable without side effects.
 	Value() V
 }

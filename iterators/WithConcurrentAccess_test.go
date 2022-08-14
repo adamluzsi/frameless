@@ -17,7 +17,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 
 	s.Test(`it will protect against concurrent access`, func(t *testcase.T) {
 		var i frameless.Iterator[int]
-		i = iterators.NewSlice([]int{1, 2})
+		i = iterators.Slice([]int{1, 2})
 		i = iterators.WithConcurrentAccess(i)
 
 		var wg sync.WaitGroup
@@ -54,7 +54,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 
 	s.Test(`classic behavior`, func(t *testcase.T) {
 		var i frameless.Iterator[int]
-		i = iterators.NewSlice([]int{1, 2})
+		i = iterators.Slice([]int{1, 2})
 		i = iterators.WithConcurrentAccess(i)
 
 		var vs []int
@@ -64,7 +64,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 	})
 
 	s.Test(`proxy like behavior for underlying iterator object`, func(t *testcase.T) {
-		m := iterators.NewMock[int](iterators.Empty[int]())
+		m := iterators.Stub[int](iterators.Empty[int]())
 		m.StubErr = func() error {
 			return errors.New(`ErrErr`)
 		}

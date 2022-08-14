@@ -36,7 +36,7 @@ func TestCollect(t *testing.T) {
 
 	s.When(`iterator has elements`, func(s *testcase.Spec) {
 		iterator.Let(s, func(t *testcase.T) frameless.Iterator[int] {
-			return iterators.NewSlice([]int{1, 2, 3})
+			return iterators.Slice([]int{1, 2, 3})
 		})
 
 		s.Then(`it will collect the values`, func(t *testcase.T) {
@@ -51,7 +51,7 @@ func TestCollect(t *testing.T) {
 
 		s.Context(`Close`, func(s *testcase.Spec) {
 			iterator.Let(s, func(t *testcase.T) frameless.Iterator[int] {
-				i := iterators.NewMock[int](iterators.NewSlice([]int{42, 43, 44}))
+				i := iterators.Stub[int](iterators.Slice([]int{42, 43, 44}))
 				i.StubClose = func() error { return expectedErr }
 				return i
 			})
@@ -64,7 +64,7 @@ func TestCollect(t *testing.T) {
 
 		s.Context(`Err`, func(s *testcase.Spec) {
 			iterator.Let(s, func(t *testcase.T) frameless.Iterator[int] {
-				i := iterators.NewMock[int](iterators.NewSlice([]int{42, 43, 44}))
+				i := iterators.Stub[int](iterators.Slice([]int{42, 43, 44}))
 				i.StubErr = func() error { return expectedErr }
 				return i
 			})
@@ -82,7 +82,7 @@ func TestCollect_emptySlice(t *testing.T) {
 	slice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(T)), 0, 0).Interface()
 	t.Logf(`%T`, slice)
 	t.Logf(`%#v`, slice)
-	vs, err := iterators.Collect[int](iterators.NewSlice[int]([]int{42}))
+	vs, err := iterators.Collect[int](iterators.Slice[int]([]int{42}))
 	assert.Must(t).Nil(err)
 	assert.Must(t).Equal([]int{42}, vs)
 }

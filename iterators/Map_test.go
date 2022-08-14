@@ -17,7 +17,7 @@ func TestMap(t *testing.T) {
 	s.Parallel()
 
 	inputStream := testcase.Let(s, func(t *testcase.T) frameless.Iterator[string] {
-		return iterators.NewSlice([]string{`a`, `b`, `c`})
+		return iterators.Slice([]string{`a`, `b`, `c`})
 	})
 	transform := testcase.Var[iterators.MapTransformFunc[string, string]]{ID: `iterators.MapTransformFunc`}
 
@@ -85,7 +85,7 @@ func TestMap(t *testing.T) {
 
 	s.Describe(`proxy like behavior for underlying iterator object`, func(s *testcase.Spec) {
 		inputStream.Let(s, func(t *testcase.T) frameless.Iterator[string] {
-			m := iterators.NewMock[string](iterators.Empty[string]())
+			m := iterators.Stub[string](iterators.Empty[string]())
 			m.StubErr = func() error {
 				return errors.New(`ErrErr`)
 			}
@@ -111,5 +111,4 @@ func TestMap(t *testing.T) {
 			t.Must.Equal(`ErrErr`, err.Error())
 		})
 	})
-
 }

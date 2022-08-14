@@ -11,7 +11,7 @@ import (
 func TestCount_andCountTotalIterations_IteratorGiven_AllTheRecordsCounted(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewSlice[int]([]int{1, 2, 3})
+	i := iterators.Slice[int]([]int{1, 2, 3})
 	total, err := iterators.Count[int](i)
 	assert.Must(t).Nil(err)
 	assert.Must(t).Equal(3, total)
@@ -20,8 +20,8 @@ func TestCount_andCountTotalIterations_IteratorGiven_AllTheRecordsCounted(t *tes
 func TestCount_errorOnCloseReturned(t *testing.T) {
 	t.Parallel()
 
-	s := iterators.NewSlice[int]([]int{1, 2, 3})
-	m := iterators.NewMock[int](s)
+	s := iterators.Slice[int]([]int{1, 2, 3})
+	m := iterators.Stub[int](s)
 
 	expected := errors.New("boom")
 	m.StubClose = func() error {

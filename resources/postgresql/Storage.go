@@ -240,15 +240,15 @@ func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent]
 
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 
 	rows, err := c.QueryContext(ctx, query)
 	if err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 
-	return iterators.NewSQLRows[Ent](rows, pg.Mapping)
+	return iterators.SQLRows[Ent](rows, pg.Mapping)
 }
 
 func (pg *Storage[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {

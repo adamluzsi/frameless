@@ -72,10 +72,10 @@ func (s *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _foun
 
 func (s *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	return memoryAll[Ent](s.Memory, ctx, s.GetNamespace())
 }
@@ -132,11 +132,11 @@ func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) frameless.I
 		key := s.IDToMemoryKey(id)
 		v, ok := all[key]
 		if !ok {
-			return iterators.NewError[Ent](errNotFound(*new(Ent), id))
+			return iterators.Error[Ent](errNotFound(*new(Ent), id))
 		}
 		vs[key] = v.(Ent)
 	}
-	return iterators.NewSlice[Ent](toSlice[Ent, string](vs))
+	return iterators.Slice[Ent](toSlice[Ent, string](vs))
 }
 
 func (s *Storage[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) error {
@@ -303,7 +303,7 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 
 func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) frameless.Iterator[Ent] {
 	var T Ent
-	return iterators.NewSlice[Ent](m.All(T, ctx, namespace).([]Ent))
+	return iterators.Slice[Ent](m.All(T, ctx, namespace).([]Ent))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {

@@ -12,7 +12,7 @@ func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
 
 	var expected int = 42
 
-	i := iterators.NewMock[int](iterators.NewSlice[int]([]int{4, 2, expected}))
+	i := iterators.Stub[int](iterators.Slice[int]([]int{4, 2, expected}))
 
 	actually, found, err := iterators.Last[int](i)
 	assert.Must(t).Nil(err)
@@ -23,7 +23,7 @@ func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
 func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewMock[Entity](iterators.NewSlice[Entity]([]Entity{{Text: "hy!"}}))
+	i := iterators.Stub[Entity](iterators.Slice[Entity]([]Entity{{Text: "hy!"}}))
 
 	closed := false
 	i.StubClose = func() error {

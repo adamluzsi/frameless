@@ -11,7 +11,7 @@ import (
 // and then you map the line content to a certain data structure,
 // in order to not expose what steps needed in order to deserialize the input stream,
 // thus protect the business rules from this information.
-func Map[T any, V any](iter frameless.Iterator[T], transform MapTransformFunc[T, V]) frameless.Iterator[V] {
+func Map[T any, V any](iter frameless.Iterator[T], transform MapTransformFunc[T, V]) *MapIter[T, V] {
 	return &MapIter[T, V]{Iterator: iter, Transform: transform}
 }
 

@@ -73,7 +73,7 @@ func (f *PipeIn[T]) Value(v T) (ok bool) {
 	}
 }
 
-// Error send an error object to the PipeOut side, so it will be accessible with iterator.Err()
+// ErrorIter send an error object to the PipeOut side, so it will be accessible with iterator.Err()
 func (f *PipeIn[T]) Error(err error) {
 	if err == nil {
 		return

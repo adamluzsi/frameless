@@ -52,7 +52,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(frameles
 			t.Parallel()
 
 			expected := Entity{Text: "close"}
-			i := iterators.NewSingleValue[Entity](expected)
+			i := iterators.SingleValue[Entity](expected)
 
 			v, ok, err := subject(i)
 			assert.Must(t).Nil(err)
@@ -63,7 +63,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(frameles
 		t.Run("Closing", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock[Entity](iterators.NewSingleValue[Entity](Entity{Text: "close"}))
+			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "close"}))
 
 			i.StubClose = func() error { return expectedErr }
 
@@ -74,7 +74,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(frameles
 		t.Run("Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock[Entity](iterators.NewSingleValue[Entity](Entity{Text: "err"}))
+			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "err"}))
 			i.StubErr = func() error { return expectedErr }
 
 			_, _, err := subject(i)
@@ -84,7 +84,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(frameles
 		t.Run("Err+Close Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.NewMock[Entity](iterators.NewSingleValue[Entity](Entity{Text: "err"}))
+			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "err"}))
 			i.StubErr = func() error { return expectedErr }
 			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }
 
@@ -93,7 +93,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(frameles
 		})
 
 		t.Run(`empty iterator with .Err()`, func(t *testing.T) {
-			i := iterators.NewError[Entity](expectedErr)
+			i := iterators.Error[Entity](expectedErr)
 			_, found, err := subject(i)
 			assert.Must(t).Equal(false, found)
 			assert.Must(t).Equal(expectedErr, err)

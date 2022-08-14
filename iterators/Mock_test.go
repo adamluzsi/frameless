@@ -9,7 +9,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-var _ frameless.Iterator[any] = iterators.NewMock[any](iterators.Empty[any]())
+var _ frameless.Iterator[any] = iterators.Stub[any](iterators.Empty[any]())
 
 func TestMock_Err(t *testing.T) {
 	t.Parallel()
@@ -17,7 +17,7 @@ func TestMock_Err(t *testing.T) {
 	originalError := errors.New("Boom! original")
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.NewMock[any](iterators.NewError[any](originalError))
+	m := iterators.Stub[any](iterators.Error[any](originalError))
 
 	// default is the wrapped iterator
 	assert.Must(t).NotNil(originalError, m.Err())
@@ -35,7 +35,7 @@ func TestMock_Close(t *testing.T) {
 
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.NewMock[any](iterators.Empty[any]())
+	m := iterators.Stub[any](iterators.Empty[any]())
 
 	// default is the wrapped iterator
 	assert.Must(t).Nil(m.Close())
@@ -50,7 +50,7 @@ func TestMock_Close(t *testing.T) {
 func TestMock_Next(t *testing.T) {
 	t.Parallel()
 
-	m := iterators.NewMock[any](iterators.Empty[any]())
+	m := iterators.Stub[any](iterators.Empty[any]())
 
 	assert.Must(t).False(m.Next())
 
@@ -64,7 +64,7 @@ func TestMock_Next(t *testing.T) {
 func TestMock_Decode(t *testing.T) {
 	t.Parallel()
 
-	m := iterators.NewMock[int](iterators.NewSlice[int]([]int{42, 43, 44}))
+	m := iterators.Stub[int](iterators.Slice[int]([]int{42, 43, 44}))
 
 	assert.Must(t).True(m.Next())
 	assert.Must(t).Equal(42, m.Value())

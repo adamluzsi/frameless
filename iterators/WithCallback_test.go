@@ -17,7 +17,7 @@ func TestWithCallback(t *testing.T) {
 	s.When(`no callback is defined`, func(s *testcase.Spec) {
 		s.Then(`it will execute iterator calls like it is not even there`, func(t *testcase.T) {
 			expected := []int{1, 2, 3}
-			input := iterators.NewSlice(expected)
+			input := iterators.Slice(expected)
 			i := iterators.WithCallback[int](input, iterators.Callback{})
 
 			actually, err := iterators.Collect(i)
@@ -31,7 +31,7 @@ func TestWithCallback(t *testing.T) {
 		s.Then(`the callback receive the Close func call`, func(t *testcase.T) {
 			var closeHook []string
 
-			m := iterators.NewMock[int](iterators.NewSlice[int]([]int{1, 2, 3}))
+			m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
 			m.StubClose = func() error {
 				closeHook = append(closeHook, `during`)
 				return nil
@@ -58,7 +58,7 @@ func TestWithCallback(t *testing.T) {
 				s.Then(`error received`, func(t *testcase.T) {
 					expectedErr := errors.New(`boom`)
 
-					m := iterators.NewMock[int](iterators.NewSlice[int]([]int{1, 2, 3}))
+					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
 					m.StubClose = func() error { return expectedErr }
 					i := iterators.WithCallback[int](m, iterators.Callback{
 						OnClose: func(closer io.Closer) error {
@@ -73,7 +73,7 @@ func TestWithCallback(t *testing.T) {
 				s.Then(`error held back`, func(t *testcase.T) {
 					expectedErr := errors.New(`boom`)
 
-					m := iterators.NewMock[int](iterators.NewSlice[int]([]int{1, 2, 3}))
+					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
 					m.StubClose = func() error { return expectedErr }
 					i := iterators.WithCallback[int](m, iterators.Callback{
 						OnClose: func(closer io.Closer) error {
@@ -89,7 +89,7 @@ func TestWithCallback(t *testing.T) {
 		s.And(`callback prevent call from being called`, func(s *testcase.Spec) {
 			s.Then(`close will never happen`, func(t *testcase.T) {
 				var closed bool
-				m := iterators.NewMock[int](iterators.NewSlice[int]([]int{1, 2, 3}))
+				m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
 				m.StubClose = func() error {
 					closed = true
 					return nil

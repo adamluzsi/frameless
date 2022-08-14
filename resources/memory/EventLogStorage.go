@@ -119,10 +119,10 @@ func (s *EventLogStorage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent En
 
 func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.NewError[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 
 	res := make([]Ent, 0)
@@ -130,7 +130,7 @@ func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterat
 	for _, ent := range view {
 		res = append(res, ent)
 	}
-	return iterators.NewSlice(res)
+	return iterators.Slice(res)
 }
 
 func (s *EventLogStorage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {

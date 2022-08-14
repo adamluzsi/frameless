@@ -12,7 +12,7 @@ import (
 	"github.com/adamluzsi/frameless/iterators"
 )
 
-var _ frameless.Iterator[any] = iterators.NewSingleValue[any]("")
+var _ frameless.Iterator[any] = iterators.SingleValue[any]("")
 
 type ExampleStruct struct {
 	Name string
@@ -25,7 +25,7 @@ func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 
 	var expected = ExampleStruct{Name: RandomName}
 
-	i := iterators.NewSingleValue[ExampleStruct](expected)
+	i := iterators.SingleValue[ExampleStruct](expected)
 	defer i.Close()
 
 	actually, found, err := iterators.First[ExampleStruct](i)
@@ -39,7 +39,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 
 	var expected = ExampleStruct{Name: RandomName}
 
-	i := iterators.NewSingleValue(&expected)
+	i := iterators.SingleValue(&expected)
 	defer i.Close()
 
 	assert.Must(t).True(i.Next())
@@ -54,7 +54,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 func TestNewSingleElement_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.NewSingleValue(&ExampleStruct{Name: RandomName})
+	i := iterators.SingleValue(&ExampleStruct{Name: RandomName})
 	i.Close()
 	assert.Must(t).False(i.Next())
 	assert.Must(t).Nil(i.Err())

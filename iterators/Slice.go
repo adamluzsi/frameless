@@ -4,15 +4,15 @@ import (
 	"reflect"
 )
 
-func NewSlice[T any](slice []T) *Slice[T] {
+func Slice[T any](slice []T) *SliceIter[T] {
 	if reflect.TypeOf(slice).Kind() != reflect.Slice {
 		panic("TypeError")
 	}
 
-	return &Slice[T]{Slice: slice}
+	return &SliceIter[T]{Slice: slice}
 }
 
-type Slice[T any] struct {
+type SliceIter[T any] struct {
 	Slice []T
 
 	closed bool
@@ -20,16 +20,16 @@ type Slice[T any] struct {
 	value  T
 }
 
-func (i *Slice[T]) Close() error {
+func (i *SliceIter[T]) Close() error {
 	i.closed = true
 	return nil
 }
 
-func (i *Slice[T]) Err() error {
+func (i *SliceIter[T]) Err() error {
 	return nil
 }
 
-func (i *Slice[T]) Next() bool {
+func (i *SliceIter[T]) Next() bool {
 	if i.closed {
 		return false
 	}
@@ -43,6 +43,6 @@ func (i *Slice[T]) Next() bool {
 	return true
 }
 
-func (i *Slice[T]) Value() T {
+func (i *SliceIter[T]) Value() T {
 	return i.value
 }

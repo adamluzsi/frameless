@@ -116,7 +116,7 @@ func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (frameless.
 		entry:      f,
 		openFlag:   flag,
 		buffer:     buffers.New(f.data),
-		dirEntries: iterators.NewSlice(mfs.getDirEntriesFn(path)),
+		dirEntries: iterators.Slice(mfs.getDirEntriesFn(path)),
 	}, nil
 }
 

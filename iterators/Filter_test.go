@@ -14,7 +14,7 @@ import (
 
 func ExampleFilter() {
 	var iter frameless.Iterator[int]
-	iter = iterators.NewSlice([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+	iter = iterators.Slice([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
 	iter = iterators.Filter[int](iter, func(n int) bool { return n > 2 })
 
 	defer iter.Close()
@@ -32,7 +32,7 @@ func TestFilter(t *testing.T) {
 
 		t.Run("given the iterator has set of elements", func(t *testing.T) {
 			originalInput := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-			iterator := func() frameless.Iterator[int] { return iterators.NewSlice[int](originalInput) }
+			iterator := func() frameless.Iterator[int] { return iterators.Slice[int](originalInput) }
 
 			t.Run("when filter allow everything", func(t *testing.T) {
 				i := iterators.Filter(iterator(), func(int) bool { return true })
@@ -58,7 +58,7 @@ func TestFilter(t *testing.T) {
 				t.Run("during somewhere which stated in the iterator iterator Err", func(t *testing.T) {
 
 					iterator = func() frameless.Iterator[int] {
-						m := iterators.NewMock(srcI())
+						m := iterators.Stub(srcI())
 						m.StubErr = func() error { return fmt.Errorf("Boom!!") }
 						return m
 					}
@@ -73,7 +73,7 @@ func TestFilter(t *testing.T) {
 				t.Run("during Closing the iterator", func(t *testing.T) {
 
 					iterator = func() frameless.Iterator[int] {
-						m := iterators.NewMock(srcI())
+						m := iterators.Stub(srcI())
 						m.StubClose = func() error { return fmt.Errorf("Boom!!!") }
 						return m
 					}
@@ -103,7 +103,7 @@ func BenchmarkFilter(b *testing.B) {
 	}
 
 	makeSubject := func() *iterators.FilterIter[int] {
-		return iterators.Filter[int](iterators.NewSlice[int](values), logic)
+		return iterators.Filter[int](iterators.Slice[int](values), logic)
 	}
 
 	b.ResetTimer()
