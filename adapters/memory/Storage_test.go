@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/adapters/memory"
 	. "github.com/adamluzsi/frameless/contracts/asserts"
-	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 )

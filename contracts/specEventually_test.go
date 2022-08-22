@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/resources"
-	inmemory2 "github.com/adamluzsi/frameless/resources/memory"
+	"github.com/adamluzsi/frameless/adapters"
+	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
@@ -20,7 +20,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resources.Contract[Entity, string, string]{
+	testcase.RunSuite(t, adapters.Contract[Entity, string, string]{
 		Subject: ContractSubjectFnEventuallyConsistentStorage[Entity, string](),
 		MakeCtx: func(tb testing.TB) context.Context {
 			return context.Background()
@@ -35,14 +35,14 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	})
 }
 
-func ContractSubjectFnEventuallyConsistentStorage[Ent, ID any]() func(testing.TB) resources.ContractSubject[Ent, ID] {
-	return func(tb testing.TB) resources.ContractSubject[Ent, ID] {
+func ContractSubjectFnEventuallyConsistentStorage[Ent, ID any]() func(testing.TB) adapters.ContractSubject[Ent, ID] {
+	return func(tb testing.TB) adapters.ContractSubject[Ent, ID] {
 		eventLog := inmemory2.NewEventLog()
 		storage := &EventuallyConsistentStorage[Ent, ID]{EventLogStorage: inmemory2.NewEventLogStorage[Ent, ID](eventLog)}
 		storage.jobs.queue = make(chan func(), 100)
 		storage.Spawn()
 		tb.Cleanup(func() { assert.Must(tb).Nil(storage.Close()) })
-		return resources.ContractSubject[Ent, ID]{
+		return adapters.ContractSubject[Ent, ID]{
 			Resource:      storage,
 			MetaAccessor:  eventLog,
 			CommitManager: storage,

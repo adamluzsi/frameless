@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/adamluzsi/frameless/resources/filesystems"
+	"github.com/adamluzsi/frameless/adapters/filesystems"
 )
 
 func ExampleLocal() {

@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/frameless/buffers"
-	"github.com/adamluzsi/frameless/resources/filesystems"
 	"github.com/adamluzsi/testcase"
 )
 

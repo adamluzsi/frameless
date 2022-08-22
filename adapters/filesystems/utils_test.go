@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	ffs "github.com/adamluzsi/frameless/resources/filesystems"
+	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase/assert"
 )
 

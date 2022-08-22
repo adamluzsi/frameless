@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless"
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/cache"
 	"github.com/adamluzsi/frameless/cache/contracts"
 	fc "github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

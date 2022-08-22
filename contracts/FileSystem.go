@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless"
+	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/frameless/reflects"
-	ffs "github.com/adamluzsi/frameless/resources/filesystems"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

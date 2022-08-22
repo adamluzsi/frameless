@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/adamluzsi/frameless/adapters"
 	"github.com/adamluzsi/frameless/postgresql"
-	"github.com/adamluzsi/frameless/resources"
 	"github.com/adamluzsi/testcase/assert"
 
 	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
@@ -118,9 +118,9 @@ func TestStorage_contracts(t *testing.T) {
 	s := testcase.NewSpec(t)
 	storage := NewTestEntityStorage(t)
 
-	resources.Contract[psh.TestEntity, string, string]{
-		Subject: func(tb testing.TB) resources.ContractSubject[psh.TestEntity, string] {
-			return resources.ContractSubject[psh.TestEntity, string]{
+	adapters.Contract[psh.TestEntity, string, string]{
+		Subject: func(tb testing.TB) adapters.ContractSubject[psh.TestEntity, string] {
+			return adapters.ContractSubject[psh.TestEntity, string]{
 				MetaAccessor:  storage,
 				CommitManager: storage,
 				Resource:      storage,

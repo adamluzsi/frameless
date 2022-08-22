@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources"
-	inmemory2 "github.com/adamluzsi/frameless/resources/memory"
+	"github.com/adamluzsi/frameless/adapters"
+	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"
@@ -18,11 +18,11 @@ func TestContracts(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resources.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resources.ContractSubject[Entity, string] {
+	testcase.RunSuite(t, adapters.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
 			eventLog := inmemory2.NewEventLog()
 			storage := inmemory2.NewEventLogStorage[Entity, string](eventLog)
-			return resources.ContractSubject[Entity, string]{
+			return adapters.ContractSubject[Entity, string]{
 				Resource:      storage,
 				MetaAccessor:  eventLog,
 				CommitManager: eventLog,
@@ -53,15 +53,15 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 	varWithNoInit := testcase.Var[int]{ID: "var_with_no_init"}
 	varWithNoInit.LetValue(s, 42)
 
-	resources.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resources.ContractSubject[Entity, string] {
+	adapters.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
 			t, ok := tb.(*testcase.T)
 			assert.Must(t).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			assert.Must(t).Equal(42, vGet(t))
 			assert.Must(t).Equal(42, varWithNoInit.Get(t))
 			el := inmemory2.NewEventLog()
 			stg := inmemory2.NewEventLogStorage[Entity, string](el)
-			return resources.ContractSubject[Entity, string]{
+			return adapters.ContractSubject[Entity, string]{
 				MetaAccessor:  el,
 				CommitManager: el,
 				Resource:      stg,

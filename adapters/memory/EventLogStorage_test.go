@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adamluzsi/frameless/adapters"
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/cache"
 	. "github.com/adamluzsi/frameless/contracts/asserts"
 	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/resources"
-	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 
@@ -591,11 +591,11 @@ func TestEventLogStorage_contracts(t *testing.T) {
 	makeV := func(tb testing.TB) string {
 		return tb.(*testcase.T).Random.String()
 	}
-	resources.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resources.ContractSubject[Entity, string] {
+	adapters.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
 			el := memory.NewEventLog()
 			stg := memory.NewEventLogStorage[Entity, string](el)
-			return resources.ContractSubject[Entity, string]{
+			return adapters.ContractSubject[Entity, string]{
 				MetaAccessor:  el,
 				CommitManager: el,
 				Resource:      stg,

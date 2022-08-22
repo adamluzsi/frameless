@@ -1,11 +1,11 @@
-package resources_test
+package adapters_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources"
-	inmemory2 "github.com/adamluzsi/frameless/resources/memory"
+	"github.com/adamluzsi/frameless/adapters"
+	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase"
 )
 
@@ -15,11 +15,11 @@ func TestContract(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resources.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resources.ContractSubject[Entity, string] {
+	testcase.RunSuite(t, adapters.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
 			eventLog := inmemory2.NewEventLog()
 			storage := inmemory2.NewEventLogStorage[Entity, string](eventLog)
-			return resources.ContractSubject[Entity, string]{
+			return adapters.ContractSubject[Entity, string]{
 				Resource:      storage,
 				MetaAccessor:  eventLog,
 				CommitManager: eventLog,

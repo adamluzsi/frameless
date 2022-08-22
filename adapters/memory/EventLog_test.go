@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/resources/memory"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/frameless"

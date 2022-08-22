@@ -1,4 +1,4 @@
-package resources
+package adapters
 
 import (
 	"context"

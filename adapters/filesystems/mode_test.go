@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"testing"
 
-	"github.com/adamluzsi/frameless/resources/filesystems"
+	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"
 )
 
