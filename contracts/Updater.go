@@ -17,6 +17,9 @@ type Updater[Ent any, ID any] struct {
 	Subject func(testing.TB) UpdaterSubject[Ent, ID]
 	MakeCtx func(testing.TB) context.Context
 	MakeEnt func(testing.TB) Ent
+	// ChangeEnt is an optional option that allows fine control over
+	// what will be changed on an Entity during the test of Update method.
+	ChangeEnt func(testing.TB, *Ent)
 }
 
 type UpdaterSubject[Ent any, ID any] interface {
@@ -68,10 +71,16 @@ func (c Updater[Ent, ID]) Spec(s *testcase.Spec) {
 
 		s.And(`and the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 			entityWithChanges.Let(s, func(t *testcase.T) *Ent {
-				newEntity := toPtr(c.MakeEnt(t))
-				id, _ := extid.Lookup[ID](entity.Get(t))
-				assert.Must(t).Nil(extid.Set(newEntity, id))
-				return newEntity
+				id, ok := extid.Lookup[ID](entity.Get(t))
+				t.Must.True(ok)
+				var ent = entity.Get(t)
+				if c.ChangeEnt != nil {
+					c.ChangeEnt(t, ent)
+				} else {
+					ent = toPtr(c.MakeEnt(t))
+				}
+				assert.Must(t).Nil(extid.Set(ent, id))
+				return ent
 			})
 
 			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
