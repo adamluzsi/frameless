@@ -2,36 +2,40 @@ package memory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/doubles"
+	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/comproto/contracts"
+	"github.com/adamluzsi/frameless/ports/crud"
+	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/ports/meta/contracts"
+	"github.com/adamluzsi/frameless/ports/pubsub"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
+	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/adapters"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/cache"
-	. "github.com/adamluzsi/frameless/contracts/asserts"
-	"github.com/adamluzsi/frameless/doubles"
+	"github.com/adamluzsi/frameless/ports/crud/cache"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 
-	"github.com/adamluzsi/frameless"
-	cachecontracts "github.com/adamluzsi/frameless/cache/contracts"
-	"github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/extid"
+	"github.com/adamluzsi/frameless/ports/crud/cache/contracts"
 	"github.com/adamluzsi/testcase"
-
-	"github.com/adamluzsi/frameless/iterators"
 )
 
 var _ interface {
-	frameless.Creator[TestEntity]
-	frameless.Finder[TestEntity, string]
-	frameless.Updater[TestEntity]
-	frameless.Deleter[string]
-	frameless.CreatorPublisher[TestEntity]
-	frameless.UpdaterPublisher[TestEntity]
-	frameless.DeleterPublisher[string]
-	frameless.OnePhaseCommitProtocol
+	crud.Creator[TestEntity]
+	crud.Finder[TestEntity, string]
+	crud.Updater[TestEntity]
+	crud.Deleter[string]
+	pubsub.CreatorPublisher[TestEntity]
+	pubsub.UpdaterPublisher[TestEntity]
+	pubsub.DeleterPublisher[string]
+	comproto.OnePhaseCommitProtocol
 } = &memory.EventLogStorage[TestEntity, string]{}
 
 var _ cache.EntityStorage[TestEntity, string] = &memory.EventLogStorage[TestEntity, string]{}
@@ -95,20 +99,20 @@ func getStorageSpecsForT[Ent, ID any](
 		return tb.(*testcase.T).Random.Int()
 	}
 	return []testcase.Suite{
-		contracts.Creator[Ent, ID]{Subject: func(tb testing.TB) contracts.CreatorSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		contracts.Finder[Ent, ID]{Subject: func(tb testing.TB) contracts.FinderSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		contracts.Updater[Ent, ID]{Subject: func(tb testing.TB) contracts.UpdaterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		contracts.Deleter[Ent, ID]{Subject: func(tb testing.TB) contracts.DeleterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		contracts.Publisher[Ent, ID]{Subject: func(tb testing.TB) contracts.PublisherSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		contracts.OnePhaseCommitProtocol[Ent, ID]{Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject[Ent, ID] {
-			return contracts.OnePhaseCommitProtocolSubject[Ent, ID]{Resource: subject, CommitManager: subject}
+		crudcontracts.Creator[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.CreatorSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
+		crudcontracts.Finder[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.FinderSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
+		crudcontracts.Updater[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
+		crudcontracts.Deleter[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.DeleterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
+		pubsubcontracts.Publisher[Ent, ID]{Subject: func(tb testing.TB) pubsubcontracts.PublisherSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
+		comprotocontracts.OnePhaseCommitProtocol[Ent, ID]{Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+			return comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID]{Resource: subject, CommitManager: subject}
 		}, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		cachecontracts.EntityStorage[Ent, ID]{Subject: func(tb testing.TB) (storage cache.EntityStorage[Ent, ID], cpm frameless.OnePhaseCommitProtocol) {
+		cachecontracts.EntityStorage[Ent, ID]{Subject: func(tb testing.TB) (storage cache.EntityStorage[Ent, ID], cpm comproto.OnePhaseCommitProtocol) {
 			return subject, subject.EventLog
 		}, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		contracts.MetaAccessor[Ent, ID, string]{
-			Subject: func(tb testing.TB) contracts.MetaAccessorSubject[Ent, ID, string] {
-				return contracts.MetaAccessorSubject[Ent, ID, string]{
+		frmetacontracts.MetaAccessor[Ent, ID, string]{
+			Subject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Ent, ID, string] {
+				return frmetacontracts.MetaAccessorSubject[Ent, ID, string]{
 					MetaAccessor: subject.EventLog,
 					Resource:     subject,
 					Publisher:    subject,
@@ -118,9 +122,9 @@ func getStorageSpecsForT[Ent, ID any](
 			MakeCtx: MakeCtx,
 			MakeV:   makeStringV,
 		},
-		contracts.MetaAccessor[Ent, ID, int]{
-			Subject: func(tb testing.TB) contracts.MetaAccessorSubject[Ent, ID, int] {
-				return contracts.MetaAccessorSubject[Ent, ID, int]{
+		frmetacontracts.MetaAccessor[Ent, ID, int]{
+			Subject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Ent, ID, int] {
+				return frmetacontracts.MetaAccessorSubject[Ent, ID, int]{
 					MetaAccessor: subject.EventLog,
 					Resource:     subject,
 					Publisher:    subject,
@@ -150,7 +154,7 @@ func TestEventLogStorage(t *testing.T) {
 
 func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
-	t.Run(`with create in different tx`, func(t *testing.T) {
+	t.Run(`with create in different comproto`, func(t *testing.T) {
 		subject1 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 		subject2 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 
@@ -164,14 +168,14 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		entity := &TestEntity{Data: `42`}
 		assert.Must(t).Nil(subject1.Create(ctx, entity))
 
-		t.Log(`and subject 2 finish tx`)
+		t.Log(`and subject 2 finish comproto`)
 		assert.Must(t).Nil(subject2.CommitTx(ctx))
 		t.Log(`and subject 2 then try to find this entity`)
 		_, found, err := subject2.FindByID(context.Background(), entity.ID)
 		assert.Must(t).Nil(err)
 		assert.Must(t).False(found, `it should not see the uncommitted entity`)
 
-		t.Log(`but after subject 1 commit the tx`)
+		t.Log(`but after subject 1 commit the comproto`)
 		assert.Must(t).Nil(subject1.CommitTx(ctx))
 		t.Log(`subject 1 can see the newT entity`)
 		_, found, err = subject1.FindByID(context.Background(), entity.ID)
@@ -179,7 +183,7 @@ func TestEventLogStorage_multipleInstanceTransactionOnTheSameContext(t *testing.
 		assert.Must(t).True(found)
 	})
 
-	t.Run(`deletes across tx instances in the same context`, func(t *testing.T) {
+	t.Run(`deletes across comproto instances in the same context`, func(t *testing.T) {
 		subject1 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 		subject2 := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 
@@ -477,12 +481,12 @@ func TestEventLogStorage_CompressEvents_smoke(t *testing.T) {
 func TestEventLogStorage_LookupTx(t *testing.T) {
 	s := memory.NewEventLogStorage[TestEntity, string](memory.NewEventLog())
 
-	t.Run(`when outside of tx`, func(t *testing.T) {
+	t.Run(`when outside of comproto`, func(t *testing.T) {
 		_, ok := s.EventLog.LookupTx(context.Background())
 		assert.Must(t).False(ok)
 	})
 
-	t.Run(`when during tx`, func(t *testing.T) {
+	t.Run(`when during comproto`, func(t *testing.T) {
 		ctx, err := s.BeginTx(context.Background())
 		assert.Must(t).Nil(err)
 		defer s.RollbackTx(ctx)
@@ -535,7 +539,7 @@ type EntityWithStructID struct {
 
 func TestEventLogStorage_implementsCacheDataStorage(t *testing.T) {
 	testcase.RunSuite(t, cachecontracts.EntityStorage[TestEntity, string]{
-		Subject: func(tb testing.TB) (cache.EntityStorage[TestEntity, string], frameless.OnePhaseCommitProtocol) {
+		Subject: func(tb testing.TB) (cache.EntityStorage[TestEntity, string], comproto.OnePhaseCommitProtocol) {
 			eventLog := memory.NewEventLog()
 			storage := memory.NewEventLogStorage[TestEntity, string](eventLog)
 			memory.LogHistoryOnFailure(tb, eventLog)
@@ -591,11 +595,11 @@ func TestEventLogStorage_contracts(t *testing.T) {
 	makeV := func(tb testing.TB) string {
 		return tb.(*testcase.T).Random.String()
 	}
-	adapters.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
+	contracts2.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) contracts2.ContractSubject[Entity, string] {
 			el := memory.NewEventLog()
 			stg := memory.NewEventLogStorage[Entity, string](el)
-			return adapters.ContractSubject[Entity, string]{
+			return contracts2.ContractSubject[Entity, string]{
 				MetaAccessor:  el,
 				CommitManager: el,
 				Resource:      stg,

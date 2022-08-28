@@ -46,7 +46,7 @@ Therefore when a code being used by the masses (users), it is likely used in a w
 that we didn't explicitly specified, and in order to not break expected system behaviors,
 minimising the need to change existing code base can help in general.
 I heavily sympathise on TDD/BDD but even with a full % coverage,
-the edge cases between components are in general harder to test than in simple unit tests with contracts.
+the edge cases between components are in general harder to test than in simple unit tests with resource.
 
 The quality of the software in this project therefore defined by factors as
 how likely you have to change existing code base,
@@ -111,7 +111,7 @@ Prove it with user story and tests.
 If it is "hard to test", take a break and think over.
 
 Rule 7.
-Use contracts wherever it makes sense instead of concrete type declarations to enforce dependency inversion.
+Use resource wherever it makes sense instead of concrete type declarations to enforce dependency inversion.
 
 Rule 8.
 Try creating code parts that a stranger could understand within 15m,

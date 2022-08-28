@@ -3,16 +3,19 @@ package postgresql_test
 import (
 	"context"
 	"database/sql"
+	"github.com/adamluzsi/frameless/ports/comproto/contracts"
+	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	"github.com/adamluzsi/frameless/ports/meta/contracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters"
-	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/assert"
 
-	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
+	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/testcase"
 )
 
@@ -68,26 +71,26 @@ func TestStorage(t *testing.T) {
 	psh.MigrateTestEntity(t, cm)
 
 	testcase.RunSuite(t,
-		contracts.Creator[psh.TestEntity, string]{
-			Subject: func(tb testing.TB) contracts.CreatorSubject[psh.TestEntity, string] { return subject },
+		crudcontracts.Creator[psh.TestEntity, string]{
+			Subject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		contracts.Finder[psh.TestEntity, string]{Subject: func(tb testing.TB) contracts.FinderSubject[psh.TestEntity, string] { return subject },
+		crudcontracts.Finder[psh.TestEntity, string]{Subject: func(tb testing.TB) crudcontracts.FinderSubject[psh.TestEntity, string] { return subject },
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		contracts.Updater[psh.TestEntity, string]{Subject: func(tb testing.TB) contracts.UpdaterSubject[psh.TestEntity, string] { return subject },
+		crudcontracts.Updater[psh.TestEntity, string]{Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[psh.TestEntity, string] { return subject },
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		contracts.Deleter[psh.TestEntity, string]{Subject: func(tb testing.TB) contracts.DeleterSubject[psh.TestEntity, string] { return subject },
+		crudcontracts.Deleter[psh.TestEntity, string]{Subject: func(tb testing.TB) crudcontracts.DeleterSubject[psh.TestEntity, string] { return subject },
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		contracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-			Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
-				return contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
+		comprotocontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
+			Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+				return comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
 					Resource:      subject,
 					CommitManager: cm,
 				}
@@ -95,13 +98,13 @@ func TestStorage(t *testing.T) {
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		contracts.Publisher[psh.TestEntity, string]{Subject: func(tb testing.TB) contracts.PublisherSubject[psh.TestEntity, string] { return subject },
+		pubsubcontracts.Publisher[psh.TestEntity, string]{Subject: func(tb testing.TB) pubsubcontracts.PublisherSubject[psh.TestEntity, string] { return subject },
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		contracts.MetaAccessor[psh.TestEntity, string, string]{
-			Subject: func(tb testing.TB) contracts.MetaAccessorSubject[psh.TestEntity, string, string] {
-				return contracts.MetaAccessorSubject[psh.TestEntity, string, string]{
+		frmetacontracts.MetaAccessor[psh.TestEntity, string, string]{
+			Subject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[psh.TestEntity, string, string] {
+				return frmetacontracts.MetaAccessorSubject[psh.TestEntity, string, string]{
 					MetaAccessor: subject,
 					Resource:     subject,
 					Publisher:    subject,
@@ -118,9 +121,9 @@ func TestStorage_contracts(t *testing.T) {
 	s := testcase.NewSpec(t)
 	storage := NewTestEntityStorage(t)
 
-	adapters.Contract[psh.TestEntity, string, string]{
-		Subject: func(tb testing.TB) adapters.ContractSubject[psh.TestEntity, string] {
-			return adapters.ContractSubject[psh.TestEntity, string]{
+	contracts2.Contract[psh.TestEntity, string, string]{
+		Subject: func(tb testing.TB) contracts2.ContractSubject[psh.TestEntity, string] {
+			return contracts2.ContractSubject[psh.TestEntity, string]{
 				MetaAccessor:  storage,
 				CommitManager: storage,
 				Resource:      storage,
@@ -141,8 +144,8 @@ func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
 
 	subject := NewTestEntityStorage(t)
 
-	testcase.RunSuite(t, contracts.Creator[psh.TestEntity, string]{
-		Subject: func(tb testing.TB) contracts.CreatorSubject[psh.TestEntity, string] { return subject },
+	testcase.RunSuite(t, crudcontracts.Creator[psh.TestEntity, string]{
+		Subject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
 		MakeCtx: psh.MakeCtx,
 		MakeEnt: psh.MakeTestEntity,
 	})

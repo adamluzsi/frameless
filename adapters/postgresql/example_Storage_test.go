@@ -5,8 +5,8 @@ import (
 	"math/rand"
 	"os"
 
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	"github.com/adamluzsi/frameless/pkg/iterators"
 )
 
 func ExampleStorage() {

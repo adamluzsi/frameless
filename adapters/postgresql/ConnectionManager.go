@@ -106,7 +106,7 @@ func (c *connectionManager) CommitTx(ctx context.Context) error {
 func (c *connectionManager) RollbackTx(ctx context.Context) error {
 	tx, ok := c.lookupTx(ctx)
 	if !ok {
-		return fmt.Errorf(`no postgres tx in the given context`)
+		return fmt.Errorf(`no postgres comproto in the given context`)
 	}
 
 	return tx.Rollback()

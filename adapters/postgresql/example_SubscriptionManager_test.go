@@ -3,7 +3,7 @@ package postgresql_test
 import (
 	"os"
 
-	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
 )
 
 func ExampleSubscriptionManager() {

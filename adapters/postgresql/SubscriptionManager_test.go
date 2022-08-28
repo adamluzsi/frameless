@@ -2,13 +2,13 @@ package postgresql_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/postgresql"
-	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
+	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/lib/pq"
@@ -30,7 +30,7 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 	var last psh.TestEntity
 	sub, err := sm.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[psh.TestEntity, string]{
 		HandleFunc: func(ctx context.Context, event interface{}) error {
-			ce := event.(frameless.CreateEvent[psh.TestEntity])
+			ce := event.(pubsub.CreateEvent[psh.TestEntity])
 			last = ce.Entity
 			return nil
 		},
@@ -44,7 +44,7 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 		Bar: "bar",
 		Baz: "baz",
 	}
-	require.NoError(t, sm.PublishCreateEvent(ctx, frameless.CreateEvent[psh.TestEntity]{Entity: expected}))
+	require.NoError(t, sm.PublishCreateEvent(ctx, pubsub.CreateEvent[psh.TestEntity]{Entity: expected}))
 
 	testcase.Eventually{RetryStrategy: testcase.Waiter{Timeout: time.Second}}.Assert(t, func(it assert.It) {
 		it.Must.Equal(expected, last)
@@ -73,7 +73,7 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 	var last psh.TestEntity
 	sub, err := sm1.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[psh.TestEntity, string]{
 		HandleFunc: func(ctx context.Context, event interface{}) error {
-			ce := event.(frameless.CreateEvent[psh.TestEntity])
+			ce := event.(pubsub.CreateEvent[psh.TestEntity])
 			last = ce.Entity
 			return nil
 		},
@@ -94,7 +94,7 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 		ConnectionManager: cm,
 		Listener:          listener,
 	}
-	require.NoError(t, sm2.PublishCreateEvent(ctx, frameless.CreateEvent[psh.TestEntity]{Entity: expected}))
+	require.NoError(t, sm2.PublishCreateEvent(ctx, pubsub.CreateEvent[psh.TestEntity]{Entity: expected}))
 
 	testcase.Eventually{RetryStrategy: testcase.Waiter{Timeout: time.Second}}.Assert(t, func(it assert.It) {
 		it.Must.Equal(expected, last)

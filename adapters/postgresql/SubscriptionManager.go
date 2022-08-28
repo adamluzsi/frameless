@@ -4,23 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"io"
 	"sync"
 	"time"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/lib/pq"
 )
 
 type SubscriptionManager[Ent, ID any] interface {
 	io.Closer
-	PublishCreateEvent(ctx context.Context, e frameless.CreateEvent[Ent]) error
-	PublishUpdateEvent(ctx context.Context, e frameless.UpdateEvent[Ent]) error
-	PublishDeleteByIDEvent(ctx context.Context, e frameless.DeleteByIDEvent[ID]) error
-	PublishDeleteAllEvent(ctx context.Context, e frameless.DeleteAllEvent) error
-	SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error)
-	SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber[Ent]) (frameless.Subscription, error)
-	SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber[ID]) (frameless.Subscription, error)
+	PublishCreateEvent(ctx context.Context, e pubsub.CreateEvent[Ent]) error
+	PublishUpdateEvent(ctx context.Context, e pubsub.UpdateEvent[Ent]) error
+	PublishDeleteByIDEvent(ctx context.Context, e pubsub.DeleteByIDEvent[ID]) error
+	PublishDeleteAllEvent(ctx context.Context, e pubsub.DeleteAllEvent) error
+	SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error)
+	SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error)
+	SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error)
 }
 
 type cudNotifyEvent struct {
@@ -59,9 +59,9 @@ type ListenNotifySubscriptionManager[Ent, ID any] struct {
 	subs struct {
 		lock    sync.RWMutex
 		serial  int64
-		creator map[int64]frameless.CreatorSubscriber[Ent]
-		updater map[int64]frameless.UpdaterSubscriber[Ent]
-		deleter map[int64]frameless.DeleterSubscriber[ID]
+		creator map[int64]pubsub.CreatorSubscriber[Ent]
+		updater map[int64]pubsub.UpdaterSubscriber[Ent]
+		deleter map[int64]pubsub.DeleterSubscriber[ID]
 	}
 	exit struct {
 		context  context.Context
@@ -69,7 +69,7 @@ type ListenNotifySubscriptionManager[Ent, ID any] struct {
 	}
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishCreateEvent(ctx context.Context, e frameless.CreateEvent[Ent]) error {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishCreateEvent(ctx context.Context, e pubsub.CreateEvent[Ent]) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishCreateEvent(ctx conte
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishUpdateEvent(ctx context.Context, e frameless.UpdateEvent[Ent]) error {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishUpdateEvent(ctx context.Context, e pubsub.UpdateEvent[Ent]) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishUpdateEvent(ctx conte
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteByIDEvent(ctx context.Context, e frameless.DeleteByIDEvent[ID]) error {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteByIDEvent(ctx context.Context, e pubsub.DeleteByIDEvent[ID]) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -93,7 +93,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteByIDEvent(ctx c
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteAllEvent(ctx context.Context, e frameless.DeleteAllEvent) error {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteAllEvent(ctx context.Context, e pubsub.DeleteAllEvent) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -168,7 +168,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) channel() string {
 func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, c Connection, event interface{}) error {
 	var notifyEvent cudNotifyEvent
 	switch event := event.(type) {
-	case frameless.CreateEvent[Ent]:
+	case pubsub.CreateEvent[Ent]:
 		notifyEvent.Name = notifyCreateEvent
 		bs, err := json.Marshal(event.Entity)
 		if err != nil {
@@ -176,7 +176,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, 
 		}
 		notifyEvent.Data = bs
 
-	case frameless.UpdateEvent[Ent]:
+	case pubsub.UpdateEvent[Ent]:
 		notifyEvent.Name = notifyUpdateEvent
 		bs, err := json.Marshal(event.Entity)
 		if err != nil {
@@ -184,7 +184,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, 
 		}
 		notifyEvent.Data = bs
 
-	case frameless.DeleteByIDEvent[ID]:
+	case pubsub.DeleteByIDEvent[ID]:
 		notifyEvent.Name = notifyDeleteByIDEvent
 		bs, err := json.Marshal(event.ID)
 		if err != nil {
@@ -192,7 +192,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, 
 		}
 		notifyEvent.Data = bs
 
-	case frameless.DeleteAllEvent:
+	case pubsub.DeleteAllEvent:
 		notifyEvent.Name = notifyDeleteAllEvent
 
 	default:
@@ -288,7 +288,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleCreateEvent(ctx contex
 	if err := json.Unmarshal(data, ptr); err != nil {
 		return err
 	}
-	event := frameless.CreateEvent[Ent]{Entity: *ptr}
+	event := pubsub.CreateEvent[Ent]{Entity: *ptr}
 
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -303,7 +303,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleUpdateEvent(ctx contex
 	if err := json.Unmarshal(data, ptr); err != nil {
 		return err
 	}
-	event := frameless.UpdateEvent[Ent]{Entity: *ptr}
+	event := pubsub.UpdateEvent[Ent]{Entity: *ptr}
 
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -319,7 +319,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteByIDEvent(ctx co
 	if err := json.Unmarshal(data, id); err != nil {
 		return err
 	}
-	event := frameless.DeleteByIDEvent[ID]{ID: *id}
+	event := pubsub.DeleteByIDEvent[ID]{ID: *id}
 
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -331,7 +331,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteByIDEvent(ctx co
 }
 
 func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteAllEvent(ctx context.Context, data []byte) error {
-	event := frameless.DeleteAllEvent{}
+	event := pubsub.DeleteAllEvent{}
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
 	for _, sub := range sm.subs.deleter {
@@ -382,12 +382,12 @@ func (s *subscription) Close() error {
 	return nil
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 	if sm.subs.creator == nil {
-		sm.subs.creator = make(map[int64]frameless.CreatorSubscriber[Ent])
+		sm.subs.creator = make(map[int64]pubsub.CreatorSubscriber[Ent])
 	}
 	sm.subs.creator[id] = s
 	return &subscription{CloseFn: func() {
@@ -397,12 +397,12 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToCreatorEvents(ctx
 	}}, sm.Init()
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber[Ent]) (frameless.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 	if sm.subs.updater == nil {
-		sm.subs.updater = make(map[int64]frameless.UpdaterSubscriber[Ent])
+		sm.subs.updater = make(map[int64]pubsub.UpdaterSubscriber[Ent])
 	}
 	sm.subs.updater[id] = s
 	return &subscription{CloseFn: func() {
@@ -412,12 +412,12 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToUpdaterEvents(ctx
 	}}, sm.Init()
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber[ID]) (frameless.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 	if sm.subs.deleter == nil {
-		sm.subs.deleter = make(map[int64]frameless.DeleterSubscriber[ID])
+		sm.subs.deleter = make(map[int64]pubsub.DeleterSubscriber[ID])
 	}
 	sm.subs.deleter[id] = s
 	return &subscription{CloseFn: func() {

@@ -3,13 +3,11 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/iterators"
+	reflects2 "github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"reflect"
 	"sync"
-
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/reflects"
 )
 
 func NewStorage[Ent, ID any](m *Memory) *Storage[Ent, ID] {
@@ -70,7 +68,7 @@ func (s *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _foun
 	return ent.(Ent), true, nil
 }
 
-func (s *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
+func (s *Storage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
 		return iterators.Error[Ent](err)
 	}
@@ -121,7 +119,7 @@ func (s *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	return nil
 }
 
-func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) frameless.Iterator[Ent] {
+func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent] {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
@@ -202,13 +200,13 @@ func (s *Storage[Ent, ID]) GetNamespace() string {
 		if 0 < len(s.Namespace) {
 			return
 		}
-		s.Namespace = reflects.FullyQualifiedName(*new(Ent))
+		s.Namespace = reflects2.FullyQualifiedName(*new(Ent))
 	})
 	return s.Namespace
 }
 
 func (s *Storage[Ent, ID]) getV(ptr interface{}) interface{} {
-	return reflects.BaseValueOf(ptr).Interface()
+	return reflects2.BaseValueOf(ptr).Interface()
 }
 
 func (s *Storage[Ent, ID]) isDoneTx(ctx context.Context) error {
@@ -280,7 +278,7 @@ func (m *Memory) LookupMeta(ctx context.Context, key string, ptr interface{}) (_
 	if !ok {
 		return false, nil
 	}
-	return true, reflects.Link(v, ptr)
+	return true, reflects2.Link(v, ptr)
 }
 
 type memoryActions interface {
@@ -291,7 +289,7 @@ type memoryActions interface {
 }
 
 func base(ent any) interface{} {
-	return reflects.BaseValueOf(ent).Interface()
+	return reflects2.BaseValueOf(ent).Interface()
 }
 
 func (m *Memory) Get(ctx context.Context, namespace string, key string) (interface{}, bool) {
@@ -301,7 +299,7 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 	return m.get(namespace, key)
 }
 
-func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) frameless.Iterator[Ent] {
+func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) iterators.Iterator[Ent] {
 	var T Ent
 	return iterators.Slice[Ent](m.All(T, ctx, namespace).([]Ent))
 }

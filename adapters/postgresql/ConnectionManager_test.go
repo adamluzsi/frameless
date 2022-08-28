@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"io"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/contracts"
-	"github.com/adamluzsi/frameless/postgresql"
-	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
 	"github.com/adamluzsi/testcase/random"
 
 	"github.com/adamluzsi/testcase"
@@ -27,7 +27,7 @@ func _() {
 	var _ interface {
 		io.Closer
 		Connection(ctx context.Context) (postgresql.Connection, error)
-		frameless.OnePhaseCommitProtocol
+		comproto.OnePhaseCommitProtocol
 	} = cm
 }
 
@@ -107,11 +107,11 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 }
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunSuite(t, contracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-		Subject: func(tb testing.TB) contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+	testcase.RunSuite(t, comprotocontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
+		Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
 			s := NewTestEntityStorage(tb)
 
-			return contracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
+			return comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
 				Resource:      s,
 				CommitManager: s,
 			}
@@ -257,7 +257,7 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 		require.Nil(t, c.CreateTable(tx, connection, name))
 		defer c.cleanupTable(t, name)
 
-		connection, err = p.Connection(ctx) // in no tx
+		connection, err = p.Connection(ctx) // in no comproto
 		require.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)

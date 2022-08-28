@@ -3,13 +3,12 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/doubles"
+	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"sync"
-
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/doubles"
-	"github.com/adamluzsi/frameless/extid"
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/reflects"
 )
 
 func NewEventLogStorage[Ent, ID any](m *EventLog) *EventLogStorage[Ent, ID] {
@@ -117,7 +116,7 @@ func (s *EventLogStorage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent En
 	return ent, ok, nil
 }
 
-func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
+func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
 		return iterators.Error[Ent](err)
 	}
@@ -189,7 +188,7 @@ func (s *EventLogStorage[Ent, ID]) DeleteAll(ctx context.Context) error {
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) frameless.Iterator[Ent] {
+func (s *EventLogStorage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent] {
 	// building an id index becomes possible when the ids type became known after go generics
 	i, o := iterators.Pipe[Ent]()
 	go func() {
@@ -361,7 +360,7 @@ func (s *EventLogStorage[Ent, ID]) Compress() {
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, subscriber frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, subscriber pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent[Ent, ID])
@@ -374,7 +373,7 @@ func (s *EventLogStorage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context,
 
 			switch v.Name {
 			case CreateEvent:
-				return subscriber.HandleCreateEvent(ctx, frameless.CreateEvent[Ent]{Entity: v.Value})
+				return subscriber.HandleCreateEvent(ctx, pubsub.CreateEvent[Ent]{Entity: v.Value})
 			default:
 				return nil
 			}
@@ -385,7 +384,7 @@ func (s *EventLogStorage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context,
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, subscriber frameless.UpdaterSubscriber[Ent]) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, subscriber pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent[Ent, ID])
@@ -398,7 +397,7 @@ func (s *EventLogStorage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context,
 
 			switch v.Name {
 			case UpdateEvent:
-				return subscriber.HandleUpdateEvent(ctx, frameless.UpdateEvent[Ent]{Entity: v.Value})
+				return subscriber.HandleUpdateEvent(ctx, pubsub.UpdateEvent[Ent]{Entity: v.Value})
 			default:
 				return nil
 			}
@@ -409,7 +408,7 @@ func (s *EventLogStorage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context,
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, subscriber frameless.DeleterSubscriber[ID]) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, subscriber pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent[Ent, ID])
@@ -423,9 +422,9 @@ func (s *EventLogStorage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context,
 			switch v.Name {
 			case DeleteByIDEvent:
 				id, _ := extid.Lookup[ID](v.Value)
-				return subscriber.HandleDeleteByIDEvent(ctx, frameless.DeleteByIDEvent[ID]{ID: id})
+				return subscriber.HandleDeleteByIDEvent(ctx, pubsub.DeleteByIDEvent[ID]{ID: id})
 			case DeleteAllEvent:
-				return subscriber.HandleDeleteAllEvent(ctx, frameless.DeleteAllEvent{})
+				return subscriber.HandleDeleteAllEvent(ctx, pubsub.DeleteAllEvent{})
 			default:
 				return nil
 			}
@@ -436,7 +435,7 @@ func (s *EventLogStorage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context,
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) subscribe(ctx context.Context, subscriber EventLogSubscriber, name string) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) subscribe(ctx context.Context, subscriber EventLogSubscriber, name string) (pubsub.Subscription, error) {
 	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
 			v, ok := event.(EventLogStorageEvent[Ent, ID])
@@ -458,19 +457,19 @@ func (s *EventLogStorage[Ent, ID]) subscribe(ctx context.Context, subscriber Eve
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToCreate(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToCreate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, CreateEvent)
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToUpdate(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToUpdate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, UpdateEvent)
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToDeleteByID(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToDeleteByID(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, DeleteByIDEvent)
 }
 
-func (s *EventLogStorage[Ent, ID]) SubscribeToDeleteAll(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
+func (s *EventLogStorage[Ent, ID]) SubscribeToDeleteAll(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, DeleteAllEvent)
 }
 

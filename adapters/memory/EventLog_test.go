@@ -2,21 +2,23 @@ package memory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/doubles"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/meta"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/doubles"
 	"github.com/adamluzsi/testcase/assert"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/testcase"
 )
 
 var (
-	_ memory.EventManager              = &memory.EventLog{}
-	_ memory.EventManager              = &memory.EventLogTx{}
-	_ frameless.OnePhaseCommitProtocol = &memory.EventLog{}
-	_ frameless.MetaAccessor           = &memory.EventLog{}
+	_ memory.EventManager             = &memory.EventLog{}
+	_ memory.EventManager             = &memory.EventLogTx{}
+	_ comproto.OnePhaseCommitProtocol = &memory.EventLog{}
+	_ meta.MetaAccessor               = &memory.EventLog{}
 )
 
 func TestMemory(t *testing.T) {
@@ -115,10 +117,10 @@ func (spec SpecMemory) SpecAddSubscription(s *testcase.Spec) {
 			},
 		}
 	})
-	subject := func(t *testcase.T) (frameless.Subscription, error) {
+	subject := func(t *testcase.T) (pubsub.Subscription, error) {
 		return spec.memoryGet(t).Subscribe(spec.ctxGet(t), subscriber.Get(t))
 	}
-	onSuccess := func(t *testcase.T) frameless.Subscription {
+	onSuccess := func(t *testcase.T) pubsub.Subscription {
 		subscription, err := subject(t)
 		assert.Must(t).Nil(err)
 		t.Defer(subscription.Close)

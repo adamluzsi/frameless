@@ -3,9 +3,9 @@ package contracts_test
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/spechelper/resource"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters"
 	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"
 
@@ -18,11 +18,11 @@ func TestContracts(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, adapters.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
+	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
 			eventLog := inmemory2.NewEventLog()
 			storage := inmemory2.NewEventLogStorage[Entity, string](eventLog)
-			return adapters.ContractSubject[Entity, string]{
+			return resource.ContractSubject[Entity, string]{
 				Resource:      storage,
 				MetaAccessor:  eventLog,
 				CommitManager: eventLog,
@@ -53,15 +53,15 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 	varWithNoInit := testcase.Var[int]{ID: "var_with_no_init"}
 	varWithNoInit.LetValue(s, 42)
 
-	adapters.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) adapters.ContractSubject[Entity, string] {
+	resource.Contract[Entity, string, string]{
+		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
 			t, ok := tb.(*testcase.T)
 			assert.Must(t).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			assert.Must(t).Equal(42, vGet(t))
 			assert.Must(t).Equal(42, varWithNoInit.Get(t))
 			el := inmemory2.NewEventLog()
 			stg := inmemory2.NewEventLogStorage[Entity, string](el)
-			return adapters.ContractSubject[Entity, string]{
+			return resource.ContractSubject[Entity, string]{
 				MetaAccessor:  el,
 				CommitManager: el,
 				Resource:      stg,

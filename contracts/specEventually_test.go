@@ -3,11 +3,11 @@ package contracts_test
 import (
 	"context"
 	"errors"
+	"github.com/adamluzsi/frameless/spechelper/resource"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/adapters"
 	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -20,7 +20,7 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, adapters.Contract[Entity, string, string]{
+	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
 		Subject: ContractSubjectFnEventuallyConsistentStorage[Entity, string](),
 		MakeCtx: func(tb testing.TB) context.Context {
 			return context.Background()
@@ -35,14 +35,14 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	})
 }
 
-func ContractSubjectFnEventuallyConsistentStorage[Ent, ID any]() func(testing.TB) adapters.ContractSubject[Ent, ID] {
-	return func(tb testing.TB) adapters.ContractSubject[Ent, ID] {
+func ContractSubjectFnEventuallyConsistentStorage[Ent, ID any]() func(testing.TB) resource.ContractSubject[Ent, ID] {
+	return func(tb testing.TB) resource.ContractSubject[Ent, ID] {
 		eventLog := inmemory2.NewEventLog()
 		storage := &EventuallyConsistentStorage[Ent, ID]{EventLogStorage: inmemory2.NewEventLogStorage[Ent, ID](eventLog)}
 		storage.jobs.queue = make(chan func(), 100)
 		storage.Spawn()
 		tb.Cleanup(func() { assert.Must(tb).Nil(storage.Close()) })
-		return adapters.ContractSubject[Ent, ID]{
+		return resource.ContractSubject[Ent, ID]{
 			Resource:      storage,
 			MetaAccessor:  eventLog,
 			CommitManager: storage,
@@ -147,7 +147,7 @@ func (e *EventuallyConsistentStorage[Ent, ID]) BeginTx(ctx context.Context) (con
 
 func (e *EventuallyConsistentStorage[Ent, ID]) errOnDoneTx(ctx context.Context) error {
 	if v, ok := e.lookupTx(ctx); ok && v.done {
-		return errors.New(`tx is already done`)
+		return errors.New(`comproto is already done`)
 	}
 	return nil
 }

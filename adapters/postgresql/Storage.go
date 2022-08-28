@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"io"
 	"strings"
 
-	"github.com/adamluzsi/frameless/extid"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
 
-	"github.com/adamluzsi/frameless"
-	"github.com/adamluzsi/frameless/iterators"
+	"github.com/adamluzsi/frameless/pkg/iterators"
 )
 
 func NewStorageByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Storage[Ent, ID] {
@@ -61,7 +62,7 @@ func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
 	if err != nil {
 		return err
 	}
-	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
@@ -89,7 +90,7 @@ func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
 		return err
 	}
 
-	return pg.SubscriptionManager.PublishCreateEvent(ctx, frameless.CreateEvent[Ent]{Entity: *ptr})
+	return pg.SubscriptionManager.PublishCreateEvent(ctx, pubsub.CreateEvent[Ent]{Entity: *ptr})
 }
 
 func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
@@ -116,7 +117,7 @@ func (pg *Storage[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	if err != nil {
 		return err
 	}
-	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
@@ -132,7 +133,7 @@ func (pg *Storage[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
 		return err
 	}
 
-	if err := pg.SubscriptionManager.PublishDeleteAllEvent(ctx, frameless.DeleteAllEvent{}); err != nil {
+	if err := pg.SubscriptionManager.PublishDeleteAllEvent(ctx, pubsub.DeleteAllEvent{}); err != nil {
 		return err
 	}
 
@@ -146,7 +147,7 @@ func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) 
 	if err != nil {
 		return err
 	}
-	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
@@ -167,7 +168,7 @@ func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) 
 		return fmt.Errorf(`ErrNotFound`)
 	}
 
-	if err := pg.SubscriptionManager.PublishDeleteByIDEvent(ctx, frameless.DeleteByIDEvent[ID]{ID: id}); err != nil {
+	if err := pg.SubscriptionManager.PublishDeleteByIDEvent(ctx, pubsub.DeleteByIDEvent[ID]{ID: id}); err != nil {
 		return err
 	}
 
@@ -213,7 +214,7 @@ func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) (rErr error) {
 	if err != nil {
 		return err
 	}
-	defer frameless.FinishOnePhaseCommit(&rErr, pg, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, pg, ctx)
 
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
@@ -232,10 +233,10 @@ func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) (rErr error) {
 		}
 	}
 
-	return pg.SubscriptionManager.PublishUpdateEvent(ctx, frameless.UpdateEvent[Ent]{Entity: *ptr})
+	return pg.SubscriptionManager.PublishUpdateEvent(ctx, pubsub.UpdateEvent[Ent]{Entity: *ptr})
 }
 
-func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) frameless.Iterator[Ent] {
+func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableRef())
 
 	c, err := pg.ConnectionManager.Connection(ctx)
@@ -284,14 +285,14 @@ func (pg *Storage[Ent, ID]) queryColumnList() string {
 	return strings.Join(dst, `, `)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s frameless.CreatorSubscriber[Ent]) (frameless.Subscription, error) {
+func (pg *Storage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToCreatorEvents(ctx, s)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s frameless.UpdaterSubscriber[Ent]) (frameless.Subscription, error) {
+func (pg *Storage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToUpdaterEvents(ctx, s)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s frameless.DeleterSubscriber[ID]) (frameless.Subscription, error) {
+func (pg *Storage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToDeleterEvents(ctx, s)
 }

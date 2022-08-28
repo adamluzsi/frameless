@@ -1,8 +1,10 @@
 package filesystems
 
-import "github.com/adamluzsi/frameless"
+import (
+	"github.com/adamluzsi/frameless/ports/filesystem"
+)
 
 type (
-	File       = frameless.File
-	FileSystem = frameless.FileSystem
+	File       = filesystem.File
+	FileSystem = filesystem.FileSystem
 )

@@ -6,11 +6,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/random"
 
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/reflects"
+	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/stretchr/testify/require"
 )
 

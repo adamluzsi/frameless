@@ -1,13 +1,12 @@
 package filesystems
 
 import (
+	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
-
-	"github.com/adamluzsi/frameless"
 )
 
 // Local provides local file system access through the frameless.FileSystem interface.
@@ -42,7 +41,7 @@ func (fs Local) path(name, op string) (string, error) {
 	return path, nil
 }
 
-func (fs Local) OpenFile(name string, flag int, perm fs.FileMode) (frameless.File, error) {
+func (fs Local) OpenFile(name string, flag int, perm fs.FileMode) (filesystem.File, error) {
 	path, err := fs.path(name, "open")
 	if err != nil {
 		return nil, err

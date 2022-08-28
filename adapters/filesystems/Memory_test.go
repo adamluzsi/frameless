@@ -1,19 +1,19 @@
 package filesystems_test
 
 import (
+	"github.com/adamluzsi/frameless/ports/filesystem"
+	"github.com/adamluzsi/frameless/ports/filesystem/contracts"
 	"io"
 	"os"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/adapters/filesystems"
-	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestMemory_contractsFileSystem(t *testing.T) {
-	contracts.FileSystem{
-		Subject: func(tb testing.TB) frameless.FileSystem {
+	filesystemcontracts.FileSystem{
+		Subject: func(tb testing.TB) filesystem.FileSystem {
 			return &filesystems.Memory{}
 		},
 	}.Test(t)

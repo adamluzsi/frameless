@@ -4,8 +4,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/adamluzsi/frameless/postgresql"
-	psh "github.com/adamluzsi/frameless/postgresql/spechelper"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
 	"github.com/stretchr/testify/assert"
 )
 

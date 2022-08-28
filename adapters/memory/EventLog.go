@@ -3,11 +3,10 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/consterr"
+	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"sync"
-
-	"github.com/adamluzsi/frameless/reflects"
-
-	"github.com/adamluzsi/frameless"
 )
 
 func NewEventLog() *EventLog {
@@ -205,8 +204,8 @@ func (el *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 const (
-	errTxDone frameless.Error = `transaction has already been commit or rolled back`
-	errNoTx   frameless.Error = `no transaction found in the given context`
+	errTxDone consterr.Error = `transaction has already been commit or rolled back`
+	errNoTx   consterr.Error = `no transaction found in the given context`
 )
 
 func (el *EventLog) CommitTx(ctx context.Context) error {
@@ -441,7 +440,7 @@ func (el *EventLog) delSubscription(sub *Subscription) {
 	delete(el.subscriptions, sub.id)
 }
 
-func (el *EventLog) Subscribe(ctx context.Context, subscriber EventLogSubscriber) (frameless.Subscription, error) {
+func (el *EventLog) Subscribe(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

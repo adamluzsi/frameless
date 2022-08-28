@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/iterators"
-	"github.com/adamluzsi/frameless/postgresql"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 	"github.com/stretchr/testify/require"

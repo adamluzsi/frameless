@@ -1,5 +1,12 @@
 package contracts
 
+import (
+	"github.com/adamluzsi/frameless/ports/comproto/contracts"
+	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	"github.com/adamluzsi/frameless/ports/meta/contracts"
+	contracts2 "github.com/adamluzsi/frameless/ports/pubsub/contracts"
+)
+
 type (
 	EntType   struct{ ID IDType }
 	IDType    struct{}
@@ -8,17 +15,17 @@ type (
 )
 
 var _ = []Interface{
-	Creator[EntType, IDType]{},
-	Finder[EntType, IDType]{},
-	FindOne[EntType, IDType]{},
-	Updater[EntType, IDType]{},
-	Deleter[EntType, IDType]{},
-	OnePhaseCommitProtocol[EntType, IDType]{},
-	Publisher[EntType, IDType]{},
-	CreatorPublisher[EntType, IDType]{},
-	UpdaterPublisher[EntType, IDType]{},
-	DeleterPublisher[EntType, IDType]{},
-	MetaAccessor[EntType, KeyType, ValueType]{},
-	MetaAccessorBasic[ValueType]{},
-	MetaAccessorPublisher[EntType, KeyType, ValueType]{},
+	crudcontracts.Creator[EntType, IDType]{},
+	crudcontracts.Finder[EntType, IDType]{},
+	crudcontracts.FindOne[EntType, IDType]{},
+	crudcontracts.Updater[EntType, IDType]{},
+	crudcontracts.Deleter[EntType, IDType]{},
+	comprotocontracts.OnePhaseCommitProtocol[EntType, IDType]{},
+	contracts2.Publisher[EntType, IDType]{},
+	contracts2.CreatorPublisher[EntType, IDType]{},
+	contracts2.UpdaterPublisher[EntType, IDType]{},
+	contracts2.DeleterPublisher[EntType, IDType]{},
+	frmetacontracts.MetaAccessor[EntType, KeyType, ValueType]{},
+	frmetacontracts.MetaAccessorBasic[ValueType]{},
+	frmetacontracts.MetaAccessorPublisher[EntType, KeyType, ValueType]{},
 }

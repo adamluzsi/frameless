@@ -2,20 +2,20 @@ package filesystems_test
 
 import (
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/filesystem"
+	"github.com/adamluzsi/frameless/ports/filesystem/contracts"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/adapters/filesystems"
-	"github.com/adamluzsi/frameless/contracts"
 	"github.com/adamluzsi/testcase"
 )
 
 func TestLocal_contractsFileSystem(t *testing.T) {
-	contracts.FileSystem{
-		Subject: func(tb testing.TB) frameless.FileSystem {
+	filesystemcontracts.FileSystem{
+		Subject: func(tb testing.TB) filesystem.FileSystem {
 			return filesystems.Local{
 				RootPath: t.TempDir(),
 			}

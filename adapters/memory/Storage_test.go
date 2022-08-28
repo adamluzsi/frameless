@@ -2,18 +2,19 @@ package memory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/meta"
+	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"testing"
 
-	"github.com/adamluzsi/frameless"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	. "github.com/adamluzsi/frameless/contracts/asserts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 )
 
 var (
-	_ frameless.MetaAccessor           = &memory.Memory{}
-	_ frameless.OnePhaseCommitProtocol = &memory.Memory{}
+	_ meta.MetaAccessor               = &memory.Memory{}
+	_ comproto.OnePhaseCommitProtocol = &memory.Memory{}
 )
 
 func TestStorage(t *testing.T) {
