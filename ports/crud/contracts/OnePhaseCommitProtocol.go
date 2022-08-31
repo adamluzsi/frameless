@@ -1,11 +1,10 @@
-package comprotocontracts
+package crudcontracts
 
 import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/ports/pubsub/contracts"
@@ -277,8 +276,8 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 }
 
 func (c OnePhaseCommitProtocol[Ent, ID]) specPurger(s *testcase.Spec) {
-	purger := func(t *testcase.T) crudcontracts.PurgerSubject[Ent, ID] {
-		p, ok := c.resource().Get(t).(crudcontracts.PurgerSubject[Ent, ID])
+	purger := func(t *testcase.T) PurgerSubject[Ent, ID] {
+		p, ok := c.resource().Get(t).(PurgerSubject[Ent, ID])
 		if !ok {
 			t.Skipf(`%T doesn't supply contract.PurgerSubject`, c.resource().Get(t))
 		}
@@ -398,8 +397,8 @@ func (c OnePhaseCommitProtocol[Ent, ID]) specCreatorPublisher(s *testcase.Spec) 
 }
 
 func (c OnePhaseCommitProtocol[Ent, ID]) specUpdaterPublisher(s *testcase.Spec) {
-	updater := func(t *testcase.T) crudcontracts.UpdaterSubject[Ent, ID] {
-		u, ok := c.resource().Get(t).(crudcontracts.UpdaterSubject[Ent, ID])
+	updater := func(t *testcase.T) UpdaterSubject[Ent, ID] {
+		u, ok := c.resource().Get(t).(UpdaterSubject[Ent, ID])
 		if !ok {
 			t.Skipf(`%T doesn't supply resources.Updater`, c.resource().Get(t))
 		}

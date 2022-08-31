@@ -5,7 +5,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -104,8 +103,8 @@ func getStorageSpecsForT[Ent, ID any](
 		crudcontracts.Updater[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
 		crudcontracts.Deleter[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.DeleterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
 		pubsubcontracts.Publisher[Ent, ID]{Subject: func(tb testing.TB) pubsubcontracts.PublisherSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		comprotocontracts.OnePhaseCommitProtocol[Ent, ID]{Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
-			return comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID]{Resource: subject, CommitManager: subject}
+		crudcontracts.OnePhaseCommitProtocol[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+			return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{Resource: subject, CommitManager: subject}
 		}, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
 		cachecontracts.EntityStorage[Ent, ID]{Subject: func(tb testing.TB) (storage cache.EntityStorage[Ent, ID], cpm comproto.OnePhaseCommitProtocol) {
 			return subject, subject.EventLog

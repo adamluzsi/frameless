@@ -1,7 +1,6 @@
 package contracts
 
 import (
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/meta/contracts"
 	contracts2 "github.com/adamluzsi/frameless/ports/pubsub/contracts"
@@ -20,7 +19,7 @@ var _ = []Interface{
 	crudcontracts.FindOne[EntType, IDType]{},
 	crudcontracts.Updater[EntType, IDType]{},
 	crudcontracts.Deleter[EntType, IDType]{},
-	comprotocontracts.OnePhaseCommitProtocol[EntType, IDType]{},
+	crudcontracts.OnePhaseCommitProtocol[EntType, IDType]{},
 	contracts2.Publisher[EntType, IDType]{},
 	contracts2.CreatorPublisher[EntType, IDType]{},
 	contracts2.UpdaterPublisher[EntType, IDType]{},

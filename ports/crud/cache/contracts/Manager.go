@@ -5,7 +5,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -115,10 +114,10 @@ func (c Manager[Ent, ID]) Spec(s *testcase.Spec) {
 			MakeEnt: c.MakeEnt,
 			MakeCtx: c.MakeCtx,
 		},
-		comprotocontracts.OnePhaseCommitProtocol[Ent, ID]{
-			Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+		crudcontracts.OnePhaseCommitProtocol[Ent, ID]{
+			Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
 				subject := c.Subject(tb)
-				return comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
+				return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
 					Resource:      subject.Cache,
 					CommitManager: subject.CommitManager,
 				}

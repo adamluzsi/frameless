@@ -3,7 +3,6 @@ package memory_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/meta"
@@ -120,10 +119,10 @@ func GetContracts[Ent, ID any](
 		//	},
 		//	FixtureFactory: ff,
 		//},
-		comprotocontracts.OnePhaseCommitProtocol[Ent, ID]{
-			Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+		crudcontracts.OnePhaseCommitProtocol[Ent, ID]{
+			Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
 				s := subject(tb)
-				return comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
+				return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
 					Resource:      s.Resource,
 					CommitManager: s.CommitManager,
 				}

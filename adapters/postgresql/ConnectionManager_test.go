@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
+	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"io"
 	"testing"
 
@@ -107,11 +107,11 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 }
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunSuite(t, comprotocontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-		Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
+		Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
 			s := NewTestEntityStorage(tb)
 
-			return comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
+			return crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
 				Resource:      s,
 				CommitManager: s,
 			}

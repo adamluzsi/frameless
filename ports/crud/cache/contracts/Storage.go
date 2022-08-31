@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
@@ -107,10 +106,10 @@ func (c Storage[Ent, ID]) Spec(s *testcase.Spec) {
 				MakeCtx: c.Context,
 				MakeEnt: makeCacheHit,
 			},
-			comprotocontracts.OnePhaseCommitProtocol[cache.Hit[ID], string]{
-				Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
+			crudcontracts.OnePhaseCommitProtocol[cache.Hit[ID], string]{
+				Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
 					storage := c.Subject(tb)
-					return comprotocontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string]{
+					return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string]{
 						Resource:      storage.CacheHit(c.Context(tb)),
 						CommitManager: storage,
 					}
@@ -177,10 +176,10 @@ func (c EntityStorage[Ent, ID]) Spec(s *testcase.Spec) {
 				MakeEnt: c.MakeEnt,
 				MakeCtx: c.MakeCtx,
 			},
-			comprotocontracts.OnePhaseCommitProtocol[Ent, ID]{
-				Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+			crudcontracts.OnePhaseCommitProtocol[Ent, ID]{
+				Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
 					ds, cpm := c.Subject(tb)
-					return comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
+					return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
 						Resource:      ds,
 						CommitManager: cpm,
 					}

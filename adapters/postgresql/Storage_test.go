@@ -3,7 +3,6 @@ package postgresql_test
 import (
 	"context"
 	"database/sql"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/meta/contracts"
 	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
@@ -88,9 +87,9 @@ func TestStorage(t *testing.T) {
 			MakeEnt: psh.MakeTestEntity,
 			MakeCtx: psh.MakeCtx,
 		},
-		comprotocontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-			Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
-				return comprotocontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
+		crudcontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
+			Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+				return crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
 					Resource:      subject,
 					CommitManager: cm,
 				}

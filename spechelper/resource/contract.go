@@ -3,7 +3,6 @@ package resource
 import (
 	"context"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/meta"
@@ -127,10 +126,10 @@ func (c Contract[Ent, ID, V]) Spec(s *testcase.Spec) {
 			MakeEnt: c.MakeEnt,
 			MakeV:   c.MakeV,
 		},
-		comprotocontracts.OnePhaseCommitProtocol[Ent, ID]{
-			Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+		crudcontracts.OnePhaseCommitProtocol[Ent, ID]{
+			Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
 				subject := c.Subject(tb)
-				return comprotocontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
+				return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
 					Resource:      subject.Resource,
 					CommitManager: subject.CommitManager,
 				}
