@@ -360,7 +360,7 @@ func (c OnePhaseCommitProtocol[Ent, ID]) specCreatorPublisher(s *testcase.Spec) 
 		s.Before(func(t *testcase.T) {
 			t.Log(`given a subscription is made`)
 			sub := onSuccess(t)
-			t.Must.NotNil(t, sub)
+			t.Must.NotNil(sub)
 			subscription.Set(t, sub)
 			t.Defer(sub.Close)
 

@@ -270,7 +270,7 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 				s.Then(`it will return the new value instead the old one`, func(t *testcase.T) {
 					id, found := extid.Lookup[ID](value.Get(t))
 					assert.Must(t).True(found)
-					t.Must.NotEmpty(t, id)
+					t.Must.NotEmpty(id)
 					HasEntity[Ent, ID](t, c.manager().Get(t), c.MakeCtx(t), valueWithNewContent.Get(t))
 
 					async.Assert(t, func(it assert.It) {
