@@ -1,7 +1,7 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/consterr"
+	"github.com/adamluzsi/frameless/pkg/errs"
 	"github.com/adamluzsi/frameless/pkg/iterators"
 	"reflect"
 	"testing"
@@ -46,7 +46,7 @@ func TestCollect(t *testing.T) {
 	})
 
 	s.Describe(`iterator returns error during`, func(s *testcase.Spec) {
-		const expectedErr consterr.Error = "boom"
+		const expectedErr errs.Error = "boom"
 
 		s.Context(`Close`, func(s *testcase.Spec) {
 			iterator.Let(s, func(t *testcase.T) iterators.Iterator[int] {

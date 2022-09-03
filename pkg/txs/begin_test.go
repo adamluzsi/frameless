@@ -11,19 +11,14 @@ import (
 
 func Test(t *testing.T) {
 	s := testcase.NewSpec(t)
-	s.Context("cascading transaction", SpecCascading)
-	s.Context("isolated transaction", SpecIsolated)
-}
+	s.HasSideEffect()
 
-func SpecCascading(s *testcase.Spec) {
 	comprotocontracts.OnePhaseCommitProtocol{
 		Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
 			return CPProxy{
-				BeginTxFn: func(ctx context.Context) (context.Context, error) {
-					return txs.Begin(ctx), nil
-				},
-				CommitTxFn:   txs.CommitTx,
-				RollbackTxFn: txs.RollbackTx,
+				BeginTxFn:    txs.Begin,
+				CommitTxFn:   txs.Commit,
+				RollbackTxFn: txs.Rollback,
 			}
 		},
 		MakeCtx: func(tb testing.TB) context.Context {
@@ -33,135 +28,121 @@ func SpecCascading(s *testcase.Spec) {
 
 	s.Test("on commit, no rollback is executed", func(t *testcase.T) {
 		ctx := context.Background()
-		tx1 := txs.Begin(ctx)
+		tx1, _ := txs.Begin(ctx)
 
 		var i = 24
 		t.Must.NoError(txs.OnRollback(tx1, func() { i = 24 }))
 		i = 42
-		t.Must.NoError(txs.CommitTx(tx1))
+		t.Must.NoError(txs.Commit(tx1))
 		t.Must.Equal(42, i)
 	})
 
 	s.Test("on rollback, rollback steps are executed in LIFO order", func(t *testcase.T) {
 		ctx := context.Background()
-		tx1 := txs.Begin(ctx)
+		tx1, _ := txs.Begin(ctx)
 
 		ns := make([]int, 0, 2)
 		t.Must.NoError(txs.OnRollback(tx1, func() { ns = append(ns, 42) }))
 		t.Must.NoError(txs.OnRollback(tx1, func() { ns = append(ns, 24) }))
-		t.Must.NoError(txs.RollbackTx(tx1))
+		t.Must.NoError(txs.Rollback(tx1))
 		t.Must.Equal([]int{24, 42}, ns)
 	})
 
 	s.Test("after rollback, adding further rollback steps yields a tx done error", func(t *testcase.T) {
-		ctx := txs.Begin(context.Background())
-		t.Must.NoError(txs.RollbackTx(ctx))
+		ctx, _ := txs.Begin(context.Background())
+		t.Must.NoError(txs.Rollback(ctx))
 		t.Must.ErrorIs(txs.ErrTxDone, txs.OnRollback(ctx, func() {}))
 	})
 
 	s.Test("on multiple rollback, rollback steps are executed only once", func(t *testcase.T) {
 		ctx := context.Background()
-		tx1 := txs.Begin(ctx)
+		tx1, _ := txs.Begin(ctx)
 
 		var n int
 		t.Must.NoError(txs.OnRollback(tx1, func() { n += 42 }))
 
-		t.Must.NoError(txs.RollbackTx(tx1))
+		t.Must.NoError(txs.Rollback(tx1))
 		t.Must.Equal(42, n)
 
-		t.Must.ErrorIs(txs.ErrTxDone, txs.RollbackTx(tx1))
+		t.Must.ErrorIs(txs.ErrTxDone, txs.Rollback(tx1))
 		t.Must.Equal(42, n)
+	})
+
+	s.Test("on multiple commit, the second call yields tx is already done error", func(t *testcase.T) {
+		ctx, _ := txs.Begin(context.Background())
+		t.Must.NoError(txs.Commit(ctx))
+		t.Must.ErrorIs(txs.ErrTxDone, txs.Commit(ctx))
+	})
+
+	s.Test("on multiple rollback, the second call yields tx is already done error", func(t *testcase.T) {
+		ctx, _ := txs.Begin(context.Background())
+		t.Must.NoError(txs.Rollback(ctx))
+		t.Must.ErrorIs(txs.ErrTxDone, txs.Rollback(ctx))
 	})
 
 	s.Test("on multi tx stage, the most outer tx rollback override the commits", func(t *testcase.T) {
 		ctx := context.Background()
-		tx1 := txs.Begin(ctx)
+		tx1, _ := txs.Begin(ctx)
 
 		var n int
-		tx2 := txs.Begin(tx1)
+		tx2, _ := txs.Begin(tx1)
 		t.Must.NoError(txs.OnRollback(tx2, func() { n += 42 }))
 
 		// commit in the inner layer
-		t.Must.NoError(txs.CommitTx(tx2))
+		t.Must.NoError(txs.Commit(tx2))
 
 		// rollback at higher level
-		t.Must.NoError(txs.RollbackTx(tx1))
-		t.Must.Equal(42, n)
-	})
-}
-
-func SpecIsolated(s *testcase.Spec) {
-	comprotocontracts.OnePhaseCommitProtocol{
-		Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
-			return CPProxy{
-				BeginTxFn: func(ctx context.Context) (context.Context, error) {
-					return txs.BeginIsolated(ctx), nil
-				},
-				CommitTxFn:   txs.CommitTx,
-				RollbackTxFn: txs.RollbackTx,
-			}
-		},
-		MakeCtx: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-	}.Spec(s)
-
-	s.Test("on commit, no rollback is executed", func(t *testcase.T) {
-		ctx := context.Background()
-		tx1 := txs.BeginIsolated(ctx)
-
-		var i = 24
-		t.Must.NoError(txs.OnRollback(tx1, func() { i = 24 }))
-		i = 42
-		t.Must.NoError(txs.CommitTx(tx1))
-		t.Must.Equal(42, i)
-	})
-
-	s.Test("on rollback, rollback steps are executed in LIFO order", func(t *testcase.T) {
-		ctx := context.Background()
-		tx1 := txs.BeginIsolated(ctx)
-
-		ns := make([]int, 0, 2)
-		t.Must.NoError(txs.OnRollback(tx1, func() { ns = append(ns, 42) }))
-		t.Must.NoError(txs.OnRollback(tx1, func() { ns = append(ns, 24) }))
-		t.Must.NoError(txs.RollbackTx(tx1))
-		t.Must.Equal([]int{24, 42}, ns)
-	})
-
-	s.Test("after rollback, adding further rollback steps yields a tx done error", func(t *testcase.T) {
-		ctx := txs.BeginIsolated(context.Background())
-		t.Must.NoError(txs.RollbackTx(ctx))
-		t.Must.ErrorIs(txs.ErrTxDone, txs.OnRollback(ctx, func() {}))
-	})
-
-	s.Test("on multiple rollback, rollback steps are executed only once", func(t *testcase.T) {
-		ctx := context.Background()
-		tx1 := txs.BeginIsolated(ctx)
-
-		var n int
-		t.Must.NoError(txs.OnRollback(tx1, func() { n += 42 }))
-
-		t.Must.NoError(txs.RollbackTx(tx1))
-		t.Must.Equal(42, n)
-
-		t.Must.ErrorIs(txs.ErrTxDone, txs.RollbackTx(tx1))
+		t.Must.NoError(txs.Rollback(tx1))
 		t.Must.Equal(42, n)
 	})
 
-	s.Test("on multi tx stage, the most outer tx can't trigger rollback of the inner committed tx", func(t *testcase.T) {
-		ctx := context.Background()
-		tx1 := txs.BeginIsolated(ctx)
+	s.Test("on rollback, if rollback step encounters an error, it is propagated back as Rollback results", func(t *testcase.T) {
+		ctx, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		expectedErr := t.Random.Error()
+		t.Must.NoError(txs.OnRollback(ctx, func() error { return expectedErr }))
+		t.Must.ErrorIs(expectedErr, txs.Rollback(ctx))
+	})
 
-		var n int
-		tx2 := txs.BeginIsolated(tx1)
-		t.Must.NoError(txs.OnRollback(tx2, func() { n += 42 }))
+	s.Test("on rollback, if parent rollback step encounters an error, it is propagated back as Rollback results", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		expectedErr := t.Random.Error()
+		t.Must.NoError(txs.OnRollback(tx1, func() error { return expectedErr }))
+		t.Must.ErrorIs(expectedErr, txs.Rollback(tx2))
+	})
 
-		// commit in the inner layers
-		t.Must.NoError(txs.CommitTx(tx2))
+	s.Test("on rollback, if rollback step encounters an error, it is propagated back through the Finish err pointer argument", func(t *testcase.T) {
+		expectedErr := t.Random.Error()
+		ctx, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		t.Must.NoError(txs.OnRollback(ctx, func() error { return expectedErr }))
 
-		// rollback at higher level
-		t.Must.NoError(txs.RollbackTx(tx1))
-		t.Must.Equal(0, n)
+		expectedOthErr := t.Random.Error()
+		rErr := expectedOthErr
+		txs.Finish(&rErr, ctx)
+		t.Must.Contain(rErr.Error(), expectedErr.Error())
+		t.Must.Contain(rErr.Error(), expectedOthErr.Error())
+	})
+
+	s.Test("transaction allows concurrent interactions", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		defer txs.Commit(tx1)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		makingSubTx := func() {
+			var rErr error
+			tx, berr := txs.Begin(tx1)
+			t.Should.NoError(berr)
+			defer txs.Finish(&rErr, tx)
+		}
+		addingRollbackStep := func() {
+			t.Should.NoError(txs.OnRollback(tx2, func() {}))
+		}
+		testcase.Race(makingSubTx, makingSubTx, addingRollbackStep, addingRollbackStep)
 	})
 }
 
@@ -169,7 +150,7 @@ func Example_pkgLevelTxFunctions() {
 	ctx := context.Background()
 
 	_ = func(ctx context.Context) (rerr error) {
-		tx := txs.Begin(ctx)
+		tx, _ := txs.Begin(ctx)
 		defer txs.Finish(&rerr, tx)
 
 		txs.OnRollback(tx, func() {
@@ -186,11 +167,11 @@ func Test_smoke(tt *testing.T) {
 	ns := make([]int, 0, 2)
 
 	_ = func(ctx context.Context) (rerr error) {
-		tx1 := txs.Begin(ctx)
+		tx1, _ := txs.Begin(ctx)
 		defer txs.Finish(&rerr, tx1)
 
 		_ = func(ctx context.Context) (rerr error) {
-			tx2 := txs.Begin(ctx)
+			tx2, _ := txs.Begin(ctx)
 			defer txs.Finish(&rerr, tx2)
 			txs.OnRollback(tx2, func() { ns = append(ns, 42) })
 			txs.OnRollback(tx2, func() { ns = append(ns, 24) })

@@ -1,14 +1,13 @@
 package teardown
 
 import (
+	"github.com/adamluzsi/frameless/pkg/errs"
 	"sync"
-
-	"github.com/adamluzsi/testcase/sandbox"
 )
 
 type Teardown struct {
 	mutex sync.Mutex
-	fns   []func()
+	fns   []func() error
 }
 
 // Defer function defers the execution of a function until the current test case returns.
@@ -32,46 +31,35 @@ type Teardown struct {
 //	- basically anything that has the io.Closer interface
 //
 // https://github.com/golang/go/issues/41891
-func (td *Teardown) Defer(fn func()) {
+func (td *Teardown) Defer(fn func() error) {
 	td.mutex.Lock()
 	defer td.mutex.Unlock()
-	td.fns = append(td.fns, func() { td.withRecover(fn) })
+	td.fns = append(td.fns, fn)
 }
 
-func (td *Teardown) Finish() {
-	// handle Deferred functions which are deferred during the execution of a defer function
-	for !td.isEmpty() {
-		td.run()
+func (td *Teardown) Finish() error {
+	var errors errs.Errors
+	for !td.isEmpty() { // handle Deferred functions deferred during the execution of a deferred function
+		errors = append(errors, td.run()...)
 	}
+	return errors.Err()
 }
 
 func (td *Teardown) isEmpty() bool {
 	return len(td.fns) == 0
 }
 
-func (td *Teardown) add(fn func()) {
-	td.mutex.Lock()
-	defer td.mutex.Unlock()
-	td.fns = append(td.fns, func() { td.withRecover(fn) })
-}
-
-func (td *Teardown) withRecover(fn func()) {
-	runOutcome := sandbox.Run(fn)
-	if runOutcome.Goexit { // ignore goexit
-		return
-	}
-	if !runOutcome.OK { // propagate panic
-		panic(runOutcome.PanicValue)
-	}
-	return
-}
-
-func (td *Teardown) run() {
+func (td *Teardown) run() (errs []error) {
 	td.mutex.Lock()
 	fns := td.fns
 	td.fns = nil
 	td.mutex.Unlock()
-	for _, cu := range fns {
-		defer cu()
+	for _, fn := range fns {
+		defer func(fn func() error) {
+			if err := fn(); err != nil {
+				errs = append(errs, err)
+			}
+		}(fn)
 	}
+	return
 }

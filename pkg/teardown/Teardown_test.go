@@ -14,72 +14,46 @@ import (
 func TestTeardown_Defer_order(t *testing.T) {
 	td := &teardown.Teardown{}
 	var res []int
-	td.Defer(func() { res = append(res, 3) })
-	td.Defer(func() { res = append(res, 2) })
-	td.Defer(func() { res = append(res, 1) })
-	td.Defer(func() { res = append(res, 0) })
-	td.Finish()
-	//
-	assert.Must(t).Equal([]int{0, 1, 2, 3}, res)
+	td.Defer(func() error { res = append(res, 3); return nil })
+	td.Defer(func() error { res = append(res, 2); return nil })
+	td.Defer(func() error { res = append(res, 1); return nil })
+	td.Defer(func() error { res = append(res, 0); return nil })
+	assert.NoError(t, td.Finish())
+	assert.Equal(t, []int{0, 1, 2, 3}, res)
 }
 
 func TestTeardown_Defer_commonFunctionSignatures(t *testing.T) {
 	td := &teardown.Teardown{}
 	var res []int
-	td.Defer(func() { res = append(res, 1) })
-	td.Defer(func() { res = append(res, 0) })
-	td.Finish()
-	//
-	assert.Must(t).Equal([]int{0, 1}, res)
+	td.Defer(func() error { res = append(res, 1); return nil })
+	td.Defer(func() error { res = append(res, 0); return nil })
+	assert.NoError(t, td.Finish())
+	assert.Equal(t, []int{0, 1}, res)
 }
 
-func TestTeardown_Defer_ignoresGoExit(t *testing.T) {
-	t.Run(`spike`, func(t *testing.T) {
-		var a, b, c bool
-		out := sandbox.Run(func() {
-			td := &teardown.Teardown{}
-			td.Defer(func() {
-				defer func() {
-					a = true
-				}()
-				defer func() {
-					b = true
-					runtime.Goexit()
-				}()
-				defer func() {
-					c = true
-				}()
-				runtime.Goexit()
-			})
-			td.Finish()
-		})
-		//
-		assert.True(t, out.OK)
-		assert.Must(t).True(a)
-		assert.Must(t).True(b)
-		assert.Must(t).True(c)
-	})
-
+func TestTeardown_Defer_smoke(t *testing.T) {
 	var a, b, c bool
 	out := sandbox.Run(func() {
 		td := &teardown.Teardown{}
 		defer td.Finish()
-		td.Defer(func() {
+		td.Defer(func() error {
 			a = true
+			return nil
 		})
-		td.Defer(func() {
+		td.Defer(func() error {
 			b = true
-			runtime.Goexit()
+			return nil
 		})
-		td.Defer(func() {
+		td.Defer(func() error {
 			c = true
+			return nil
 		})
 	})
 	//
 	assert.True(t, out.OK)
-	assert.Must(t).True(a)
-	assert.Must(t).True(b)
-	assert.Must(t).True(c)
+	assert.True(t, a)
+	assert.True(t, b)
+	assert.True(t, c)
 }
 
 func TestTeardown_Defer_panic(t *testing.T) {
@@ -88,39 +62,42 @@ func TestTeardown_Defer_panic(t *testing.T) {
 	const expectedPanicMessage = `boom`
 
 	td := &teardown.Teardown{}
-	td.Defer(func() { a = true })
-	td.Defer(func() { b = true; panic(expectedPanicMessage) })
-	td.Defer(func() { c = true })
+	td.Defer(func() error { a = true; return nil })
+	td.Defer(func() error { b = true; panic(expectedPanicMessage); return nil })
+	td.Defer(func() error { c = true; return nil })
 
 	actualPanicValue := func() (r interface{}) {
 		defer func() { r = recover() }()
-		td.Finish()
+		assert.NoError(t, td.Finish())
 		return nil
 	}()
 	//
-	assert.Must(t).True(a)
-	assert.Must(t).True(b)
-	assert.Must(t).True(c)
-	assert.Must(t).Equal(expectedPanicMessage, actualPanicValue)
+	assert.True(t, a)
+	assert.True(t, b)
+	assert.True(t, c)
+	assert.Equal(t, expectedPanicMessage, actualPanicValue)
 }
 
 func TestTeardown_Defer_withinCleanup(t *testing.T) {
 	var a, b, c bool
 	td := &teardown.Teardown{}
-	td.Defer(func() {
+	td.Defer(func() error {
 		a = true
-		td.Defer(func() {
+		td.Defer(func() error {
 			b = true
-			td.Defer(func() {
+			td.Defer(func() error {
 				c = true
+				return nil
 			})
+			return nil
 		})
+		return nil
 	})
 	td.Finish()
 	//
-	assert.Must(t).True(a)
-	assert.Must(t).True(b)
-	assert.Must(t).True(c)
+	assert.True(t, a)
+	assert.True(t, b)
+	assert.True(t, c)
 }
 
 func TestTeardown_Defer_withVariadicArgument(t *testing.T) {
@@ -133,7 +110,7 @@ func TestTeardown_Defer_withVariadicArgument(t *testing.T) {
 		t.Defer(func(n int, text ...string) { total++ }, 42, "a", "b", "c")
 	})
 	s.Finish()
-	assert.Must(t).Equal(4, total)
+	assert.Equal(t, 4, total)
 }
 
 func TestTeardown_Defer_withVariadicArgument_argumentPassed(t *testing.T) {
@@ -151,13 +128,13 @@ func TestTeardown_Defer_withVariadicArgument_argumentPassed(t *testing.T) {
 		t.Defer(sum, 4, 5, 6)
 	})
 	s.Finish()
-	assert.Must(t).Equal(1+2+3+4+5+6, total)
+	assert.Equal(t, 1+2+3+4+5+6, total)
 }
 
 func TestTeardown_Defer_runtimeGoexit(t *testing.T) {
 	t.Run(`spike`, func(t *testing.T) {
 		var ran bool
-		defer func() { assert.Must(t).True(ran) }()
+		defer func() { assert.True(t, ran) }()
 		t.Run(``, func(t *testing.T) {
 			t.Cleanup(func() { ran = true })
 			t.Cleanup(func() { runtime.Goexit() })
@@ -166,12 +143,12 @@ func TestTeardown_Defer_runtimeGoexit(t *testing.T) {
 
 	sandbox.Run(func() {
 		var ran bool
-		defer func() { assert.Must(t).True(ran) }()
+		defer func() { assert.True(t, ran) }()
 		td := &teardown.Teardown{}
-		td.Defer(func() { ran = true })
-		td.Defer(func() { runtime.Goexit() })
-		td.Finish()
-		assert.Must(t).True(ran)
+		td.Defer(func() error { ran = true; return nil })
+		td.Defer(func() error { runtime.Goexit(); return nil })
+		assert.NoError(t, td.Finish())
+		assert.True(t, ran)
 	})
 }
 
@@ -192,8 +169,9 @@ func TestTeardown_Defer_isThreadSafe(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			start.Wait()
-			td.Defer(func() {
+			td.Defer(func() error {
 				out.Store(n, struct{}{})
+				return nil
 			})
 		}()
 	}
@@ -206,15 +184,15 @@ func TestTeardown_Defer_isThreadSafe(t *testing.T) {
 
 	for i := 0; i < sampling; i++ {
 		_, ok := out.Load(i)
-		assert.Must(t).True(ok)
+		assert.True(t, ok)
 	}
 }
 
 func TestTeardown_Finish_idempotent(t *testing.T) {
 	var count int
 	td := &teardown.Teardown{}
-	td.Defer(func() { count++ })
-	td.Finish()
-	td.Finish()
-	assert.Must(t).Equal(1, count)
+	td.Defer(func() error { count++; return nil })
+	assert.NoError(t, td.Finish())
+	assert.NoError(t, td.Finish())
+	assert.Equal(t, 1, count)
 }

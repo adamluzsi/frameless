@@ -6,30 +6,24 @@ import (
 
 type contextKey struct{}
 
-func Begin(ctx context.Context) context.Context {
+func Begin(ctx context.Context) (context.Context, error) {
+	if err := checkContext(ctx); err != nil {
+		return ctx, err
+	}
 	ctx, cancel := context.WithCancel(ctx)
-	return context.WithValue(ctx, contextKey{}, &cascadingTx{
-		baseTx: baseTx{
-			parent: getTx(ctx),
-			cancel: cancel,
-		},
-	})
-}
-
-func BeginIsolated(ctx context.Context) context.Context {
-	ctx, cancel := context.WithCancel(ctx)
-	return context.WithValue(ctx, contextKey{}, &baseTx{
-		parent: getTx(ctx),
+	parent, _ := lookupTx(ctx)
+	return context.WithValue(ctx, contextKey{}, &transaction{
+		parent: parent,
 		cancel: cancel,
-	})
+	}), nil
 }
 
 func Finish(returnError *error, tx context.Context) {
 	if *returnError == nil {
-		*returnError = CommitTx(tx)
+		*returnError = Commit(tx)
 		return
 	}
-	rbErr := RollbackTx(tx)
+	rbErr := Rollback(tx)
 	if rbErr == nil {
 		return
 	}
@@ -39,37 +33,57 @@ func Finish(returnError *error, tx context.Context) {
 	}
 }
 
-func CommitTx(ctx context.Context) error {
+func Commit(ctx context.Context) error {
 	tx, ok := lookupTx(ctx)
 	if !ok {
 		return ErrNoTx
+	}
+	if tx.isDone() {
+		return ErrTxDone
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
 
-func RollbackTx(ctx context.Context) error {
+func Rollback(ctx context.Context) error {
 	tx, ok := lookupTx(ctx)
 	if !ok {
 		return ErrNoTx
+	}
+	if tx.isDone() {
+		return ErrTxDone
+	}
+	if err := checkContext(ctx); err != nil {
+		return err
 	}
 	return tx.Rollback()
 }
 
-func OnRollback(ctx context.Context, step func()) error {
-
+func OnRollback[StepFn func() | func() error](ctx context.Context, step StepFn) error {
 	tx, ok := lookupTx(ctx)
 	if !ok {
 		return ErrNoTx
 	}
-	return tx.OnRollback(step)
+	switch fn := any(step).(type) {
+	case func():
+		return tx.OnRollback(func() error { fn(); return nil })
+	case func() error:
+		return tx.OnRollback(fn)
+	default:
+		panic("not implemented")
+	}
 }
 
-func getTx(ctx context.Context) transaction {
-	tx, _ := lookupTx(ctx)
-	return tx
-}
-
-func lookupTx(ctx context.Context) (transaction, bool) {
-	tx, ok := ctx.Value(contextKey{}).(transaction)
+func lookupTx(ctx context.Context) (*transaction, bool) {
+	tx, ok := ctx.Value(contextKey{}).(*transaction)
 	return tx, ok
+}
+
+func checkContext(ctx context.Context) error {
+	if ctx == nil {
+		return ErrNoCtx
+	}
+	return ctx.Err()
 }

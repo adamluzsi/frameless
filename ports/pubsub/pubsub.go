@@ -2,7 +2,7 @@ package pubsub
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/consterr"
+	"github.com/adamluzsi/frameless/pkg/errs"
 	"io"
 )
 
@@ -15,7 +15,7 @@ type (
 
 	CreatorSubscriber[Ent any] interface {
 		HandleCreateEvent(ctx context.Context, event CreateEvent[Ent]) error
-		consterr.ErrorHandler
+		errs.ErrorHandler
 	}
 
 	CreatorPublisher[Ent any] interface {
@@ -28,7 +28,7 @@ type (
 
 	UpdaterSubscriber[Ent any] interface {
 		HandleUpdateEvent(ctx context.Context, event UpdateEvent[Ent]) error
-		consterr.ErrorHandler
+		errs.ErrorHandler
 	}
 
 	UpdaterPublisher[Ent any] interface {
@@ -43,7 +43,7 @@ type (
 	DeleterSubscriber[ID any] interface {
 		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent[ID]) error
 		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent) error
-		consterr.ErrorHandler
+		errs.ErrorHandler
 	}
 
 	DeleterPublisher[ID any] interface {

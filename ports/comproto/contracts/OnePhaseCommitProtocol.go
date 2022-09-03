@@ -104,4 +104,33 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 			t.Must.NotNil(c.subject().Get(t).CommitTx(tx1), `"outer" comproto should be already done`)
 		})
 	})
+
+	s.When("context has an error", func(s *testcase.Spec) {
+		cancel := testcase.Let[func()](s, nil)
+		ctx := testcase.Let(s, func(t *testcase.T) context.Context {
+			c, cfn := context.WithCancel(c.MakeCtx(t))
+			cancel.Set(t, cfn)
+			return c
+		}).EagerLoading(s)
+
+		s.Test("BeginTx returns the error", func(t *testcase.T) {
+			cancel.Get(t)()
+			_, err := c.subject().Get(t).BeginTx(ctx.Get(t))
+			t.Must.ErrorIs(ctx.Get(t).Err(), err)
+		})
+
+		s.Test("CommitTx returns error on context.Context.Error", func(t *testcase.T) {
+			tx, err := c.subject().Get(t).BeginTx(ctx.Get(t))
+			t.Must.NoError(err)
+			cancel.Get(t)()
+			t.Must.ErrorIs(ctx.Get(t).Err(), c.subject().Get(t).CommitTx(tx))
+		})
+
+		s.Test("RollbackTx returns error on context.Context.Error", func(t *testcase.T) {
+			tx, err := c.subject().Get(t).BeginTx(ctx.Get(t))
+			t.Must.NoError(err)
+			cancel.Get(t)()
+			t.Must.ErrorIs(ctx.Get(t).Err(), c.subject().Get(t).CommitTx(tx))
+		})
+	})
 }

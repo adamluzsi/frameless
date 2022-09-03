@@ -2,12 +2,12 @@ package buffers
 
 import (
 	"bytes"
-	"github.com/adamluzsi/frameless/pkg/consterr"
+	"github.com/adamluzsi/frameless/pkg/errs"
 	"io"
 	"io/fs"
 )
 
-const ErrSeekNegativePosition consterr.Error = "buffers: negative position"
+const ErrSeekNegativePosition errs.Error = "buffers: negative position"
 
 func New[T []byte | string](data T) *Buffer {
 	return &Buffer{buffer: *bytes.NewBuffer([]byte(data)), position: 0}
