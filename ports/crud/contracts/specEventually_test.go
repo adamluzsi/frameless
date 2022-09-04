@@ -1,4 +1,4 @@
-package contracts_test
+package crudcontracts_test
 
 import (
 	"context"

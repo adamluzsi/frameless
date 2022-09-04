@@ -1,10 +1,10 @@
-package contracts
+package internal
 
 import (
 	"github.com/adamluzsi/testcase"
 )
 
-// Interface represent a resource specification also known as "contract".
+// Contract represent a resource specification also known as "contract".
 //
 // The main goal of a resource Spec is to introduce dependency injection pattern
 // at logical level between consumers and suppliers.
@@ -17,7 +17,7 @@ import (
 // at high level and only focus on the expected behavior,
 // instead of going into implementation details.
 //
-type Interface interface {
+type Contract interface {
 	testcase.Suite
 	testcase.OpenSuite
 }
