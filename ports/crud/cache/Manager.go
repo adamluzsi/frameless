@@ -3,7 +3,7 @@ package cache
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errs"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
@@ -213,7 +213,7 @@ func (m *Manager[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 		}
 		return m.Storage.CacheEntity(ctx).Upsert(ctx, ptr)
 	default:
-		return errs.Error(`not implemented`)
+		return errutils.Error(`not implemented`)
 	}
 }
 

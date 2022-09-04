@@ -1,7 +1,7 @@
 package teardown
 
 import (
-	"github.com/adamluzsi/frameless/pkg/errs"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 	"sync"
 )
 
@@ -38,7 +38,7 @@ func (td *Teardown) Defer(fn func() error) {
 }
 
 func (td *Teardown) Finish() error {
-	var errors errs.Errors
+	var errors errutils.Errors
 	for !td.isEmpty() { // handle Deferred functions deferred during the execution of a deferred function
 		errors = append(errors, td.run()...)
 	}

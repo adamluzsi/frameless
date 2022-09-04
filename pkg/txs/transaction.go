@@ -1,7 +1,7 @@
 package txs
 
 import (
-	"github.com/adamluzsi/frameless/pkg/errs"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/teardown"
 )
 
@@ -38,18 +38,7 @@ func (tx *transaction) Rollback() (rErr error) {
 		if tx.parent == nil {
 			return
 		}
-		pErr := tx.parent.Rollback()
-		if pErr == nil {
-			return
-		}
-		if rErr == nil {
-			rErr = pErr
-			return
-		}
-		rErr = errs.Errors{
-			pErr,
-			rErr,
-		}
+		rErr = errutils.Merge(rErr, tx.parent.Rollback())
 	}()
 	return tx.rollbacks.Finish()
 }

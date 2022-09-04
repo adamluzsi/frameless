@@ -1,10 +1,10 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless/pkg/errs"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 )
 
-const Break errs.Error = `iterators:break`
+const Break errutils.Error = `iterators:break`
 
 func ForEach[T any](i Iterator[T], fn func(T) error) (rErr error) {
 	defer func() {

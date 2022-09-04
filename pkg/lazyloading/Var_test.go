@@ -2,7 +2,7 @@ package lazyloading_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errs"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/lazyloading"
@@ -182,7 +182,7 @@ func TestVar(t *testing.T) {
 		})
 
 		s.When(`block yields an error`, func(s *testcase.Spec) {
-			const expectedErr errs.Error = "boom"
+			const expectedErr errutils.Error = "boom"
 			blk.Let(s, func(t *testcase.T) func() (int, error) {
 				return func() (int, error) {
 					return 0, expectedErr

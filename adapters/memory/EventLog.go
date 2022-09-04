@@ -3,7 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errs"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"sync"
@@ -204,8 +204,8 @@ func (el *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 const (
-	errTxDone errs.Error = `transaction has already been commit or rolled back`
-	errNoTx   errs.Error = `no transaction found in the given context`
+	errTxDone errutils.Error = `transaction has already been commit or rolled back`
+	errNoTx   errutils.Error = `no transaction found in the given context`
 )
 
 func (el *EventLog) CommitTx(ctx context.Context) error {
