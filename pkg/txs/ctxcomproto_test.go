@@ -3,6 +3,7 @@ package txs_test
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/txs"
 	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/testcase"
@@ -171,6 +172,18 @@ func Test(t *testing.T) {
 		t.Must.NoError(txs.Commit(tx2))
 		t.Must.Nil(tx1.Err())
 		t.Must.NoError(txs.Commit(tx1))
+	})
+
+	s.Test("suppose a rollback is done in a sub tx, the top tx's Finish don't misinform a rollback error", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		t.Must.NoError(txs.Rollback(tx2))
+		var expectedErr error = errutils.Error(t.Random.Error().Error())
+		actualErr := expectedErr
+		txs.Finish(&actualErr, tx1)
+		t.Must.Equal(expectedErr, actualErr)
 	})
 }
 

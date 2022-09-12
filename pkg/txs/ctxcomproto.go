@@ -24,13 +24,14 @@ func Finish(returnError *error, tx context.Context) {
 		*returnError = Commit(tx)
 		return
 	}
-	rbErr := Rollback(tx)
-	if rbErr == nil {
+	rollbackErr := Rollback(tx)
+	if rollbackErr == nil ||
+		rollbackErr == ErrTxDone {
 		return
 	}
 	*returnError = &txRollbackError{
 		Cause: *returnError,
-		Err:   rbErr,
+		Err:   rollbackErr,
 	}
 }
 
