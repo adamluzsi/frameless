@@ -31,9 +31,10 @@ func (tx *transaction) Commit() error {
 }
 
 func (tx *transaction) Rollback() (rErr error) {
-	if err := tx.finish(); err != nil {
-		return err
+	if tx.done {
+		return ErrTxDone
 	}
+	defer func() { rErr = errutils.Merge(rErr, tx.finish()) }()
 	defer func() {
 		if tx.parent == nil {
 			return

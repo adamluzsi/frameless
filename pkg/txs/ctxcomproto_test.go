@@ -144,6 +144,13 @@ func Test(t *testing.T) {
 		}
 		testcase.Race(makingSubTx, makingSubTx, addingRollbackStep, addingRollbackStep)
 	})
+
+	s.Test("during rollback, the original context is not yet cancelled", func(t *testcase.T) {
+		ctx, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		t.Must.NoError(txs.OnRollback(ctx, func() error { return ctx.Err() }))
+		t.Must.NoError(txs.Rollback(ctx))
+	})
 }
 
 func Example_pkgLevelTxFunctions() {
