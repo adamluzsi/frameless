@@ -151,6 +151,27 @@ func Test(t *testing.T) {
 		t.Must.NoError(txs.OnRollback(ctx, func() error { return ctx.Err() }))
 		t.Must.NoError(txs.Rollback(ctx))
 	})
+
+	s.Test("committing the sub context should not cancel the parent context", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		t.Must.NoError(txs.Commit(tx2))
+		t.Must.Nil(tx1.Err())
+		t.Must.NoError(txs.Commit(tx1))
+	})
+
+	s.Test("suppose in a multi transaction setup, the context provided for a rollback step is not cancelled, even if committed context is", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		t.Must.NoError(txs.OnRollback(tx2, func(ctx context.Context) error { return ctx.Err() }))
+		t.Must.NoError(txs.Commit(tx2))
+		t.Must.Nil(tx1.Err())
+		t.Must.NoError(txs.Commit(tx1))
+	})
 }
 
 func Example_pkgLevelTxFunctions() {

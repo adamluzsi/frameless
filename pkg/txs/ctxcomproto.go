@@ -13,8 +13,9 @@ func Begin(ctx context.Context) (context.Context, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	parent, _ := lookupTx(ctx)
 	return context.WithValue(ctx, contextKey{}, &transaction{
-		parent: parent,
-		cancel: cancel,
+		parent:  parent,
+		context: ctx,
+		cancel:  cancel,
 	}), nil
 }
 
@@ -61,16 +62,24 @@ func Rollback(ctx context.Context) error {
 	return tx.Rollback()
 }
 
-func OnRollback[StepFn func() | func() error](ctx context.Context, step StepFn) error {
+type onRollbackStepFn interface {
+	func(ctx context.Context) error |
+		func() error |
+		func()
+}
+
+func OnRollback[StepFn onRollbackStepFn](ctx context.Context, step StepFn) error {
 	tx, ok := lookupTx(ctx)
 	if !ok {
 		return ErrNoTx
 	}
 	switch fn := any(step).(type) {
-	case func():
-		return tx.OnRollback(func() error { fn(); return nil })
-	case func() error:
+	case func(context.Context) error:
 		return tx.OnRollback(fn)
+	case func() error:
+		return tx.OnRollback(func(context.Context) error { return fn() })
+	case func():
+		return tx.OnRollback(func(context.Context) error { fn(); return nil })
 	default:
 		panic("not implemented")
 	}

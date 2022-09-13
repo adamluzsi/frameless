@@ -1,6 +1,7 @@
 package txs
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/teardown"
 )
@@ -8,15 +9,18 @@ import (
 type transaction struct {
 	parent    *transaction
 	done      bool
+	context   context.Context
 	cancel    func()
 	rollbacks teardown.Teardown
 }
 
-func (tx *transaction) OnRollback(fn func() error) error {
+func (tx *transaction) OnRollback(fn func(context.Context) error) error {
 	if tx.done {
 		return ErrTxDone
 	}
-	tx.rollbacks.Defer(fn)
+	tx.rollbacks.Defer(func() error {
+		return fn(tx.context)
+	})
 	return nil
 }
 
@@ -25,7 +29,9 @@ func (tx *transaction) Commit() error {
 		return err
 	}
 	if tx.parent != nil {
-		return tx.parent.OnRollback(tx.rollbacks.Finish)
+		return tx.parent.OnRollback(func(context.Context) error {
+			return tx.rollbacks.Finish()
+		})
 	}
 	return nil
 }
