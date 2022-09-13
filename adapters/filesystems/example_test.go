@@ -2,6 +2,7 @@ package filesystems_test
 
 import (
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -35,19 +36,19 @@ func ExampleLocal() {
 	fsys.Mkdir("a", filesystems.ModeUserRWX)
 
 	file2Name := filepath.Join("a", "test.txt")
-	file2, err := filesystems.Create(fsys, file2Name)
+	file2, err := filesystem.Create(fsys, file2Name)
 	if err != nil {
 		panic(err)
 	}
 	file2.Close()
 
-	file2, err = filesystems.Open(fsys, file2Name)
+	file2, err = filesystem.Open(fsys, file2Name)
 	if err != nil {
 		panic(err)
 	}
 	file2.Close()
 
-	filesystems.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		return fs.SkipDir
 	})
 }
@@ -77,19 +78,19 @@ func ExampleMemory() {
 	fsys.Mkdir("a", filesystems.ModeUserRWX)
 
 	file2Name := filepath.Join("a", "test.txt")
-	file2, err := filesystems.Create(fsys, file2Name)
+	file2, err := filesystem.Create(fsys, file2Name)
 	if err != nil {
 		panic(err)
 	}
 	file2.Close()
 
-	file2, err = filesystems.Open(fsys, file2Name)
+	file2, err = filesystem.Open(fsys, file2Name)
 	if err != nil {
 		panic(err)
 	}
 	file2.Close()
 
-	filesystems.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		return fs.SkipDir
 	})
 }

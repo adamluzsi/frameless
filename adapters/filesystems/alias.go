@@ -6,5 +6,7 @@ import (
 
 type (
 	File       = filesystem.File
+	FileInfo   = filesystem.FileInfo
+	DirEntry   = filesystem.DirEntry
 	FileSystem = filesystem.FileSystem
 )

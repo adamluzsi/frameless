@@ -1,6 +1,7 @@
-package filesystems_test
+package filesystem_test
 
 import (
+	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -22,7 +23,7 @@ func Test_createAndOpen(t *testing.T) {
 	it := assert.MakeIt(t)
 	fsys := makeFS(t)
 	name := "test.txt"
-	file, err := ffs.Create(fsys, name)
+	file, err := filesystem.Create(fsys, name)
 	it.Must.Nil(err)
 	fileInfo, err := file.Stat()
 	it.Must.Nil(err)
@@ -35,7 +36,7 @@ func Test_createAndOpen(t *testing.T) {
 	it.Must.Equal(len([]byte(data)), n)
 	it.Must.Nil(file.Close())
 
-	file, err = ffs.Open(fsys, name)
+	file, err = filesystem.Open(fsys, name)
 	it.Must.Nil(err)
 
 	bs, err := io.ReadAll(file)
@@ -50,24 +51,24 @@ func TestReadDir(t *testing.T) {
 	dirName := "test.d"
 
 	t.Log("on missing dir, it yields error")
-	_, err := ffs.ReadDir(fsys, dirName)
+	_, err := filesystem.ReadDir(fsys, dirName)
 	it.Must.ErrorIs(fs.ErrNotExist, err)
 
 	t.Log("on empty dir, returns an empty list")
 	it.Must.Nil(fsys.Mkdir(dirName, ffs.ModeUserRWX))
-	dirEntries, err := ffs.ReadDir(fsys, dirName)
+	dirEntries, err := filesystem.ReadDir(fsys, dirName)
 	it.Must.Nil(err)
 	it.Must.Empty(dirEntries)
 
 	t.Log("on dir with entries, return the list in sorted order")
 	for _, fileName := range []string{"c", "a", "b"} {
 		filePath := filepath.Join(dirName, fileName)
-		f, err := ffs.Create(fsys, filePath)
+		f, err := filesystem.Create(fsys, filePath)
 		it.Must.Nil(err)
 		it.Must.Nil(f.Close())
 		t.Cleanup(func() { fsys.Remove(filePath) })
 	}
-	dirEntries, err = ffs.ReadDir(fsys, dirName)
+	dirEntries, err = filesystem.ReadDir(fsys, dirName)
 	it.Must.Nil(err)
 	it.Must.Equal(3, len(dirEntries))
 	it.Must.Equal("a", dirEntries[0].Name())
@@ -102,7 +103,7 @@ func TestWalkDir(t *testing.T) {
 	touchFile(t, "a/c/9")
 
 	var names []string
-	it.Must.Nil(ffs.WalkDir(fsys, "a", func(path string, d fs.DirEntry, err error) error {
+	it.Must.Nil(filesystem.WalkDir(fsys, "a", func(path string, d fs.DirEntry, err error) error {
 		it.Must.Nil(err)
 		names = append(names, d.Name())
 		return nil
@@ -110,7 +111,7 @@ func TestWalkDir(t *testing.T) {
 	it.Must.Equal([]string{"a", "1", "2", "3", "c", "7", "8", "9"}, names)
 
 	names = nil
-	it.Must.Nil(ffs.WalkDir(fsys, "a/c", func(path string, d fs.DirEntry, err error) error {
+	it.Must.Nil(filesystem.WalkDir(fsys, "a/c", func(path string, d fs.DirEntry, err error) error {
 		it.Must.Nil(err)
 		names = append(names, d.Name())
 		return nil
@@ -118,7 +119,7 @@ func TestWalkDir(t *testing.T) {
 	it.Must.Equal([]string{"c", "7", "8", "9"}, names)
 
 	names = nil
-	it.Must.Nil(ffs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	it.Must.Nil(filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			t.Log(err.Error())
 		}
@@ -129,7 +130,7 @@ func TestWalkDir(t *testing.T) {
 	it.Must.Equal([]string{".", "a", "1", "2", "3", "c", "7", "8", "9", "b", "4", "5", "6"}, names)
 
 	names = nil
-	it.Must.Nil(ffs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	it.Must.Nil(filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		it.Must.Nil(err)
 		names = append(names, d.Name())
 

@@ -3,7 +3,6 @@ package filesystems
 import (
 	"github.com/adamluzsi/frameless/pkg/buffers"
 	"github.com/adamluzsi/frameless/pkg/iterators"
-	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -74,7 +73,7 @@ func (mfs *Memory) Stat(name string) (fs.FileInfo, error) {
 	}, nil
 }
 
-func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (filesystem.File, error) {
+func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
 	path := mfs.path(name)
 	if flag&os.O_CREATE != 0 {
 		defer mfs.wlock()()
