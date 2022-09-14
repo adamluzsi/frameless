@@ -174,6 +174,16 @@ func Test(t *testing.T) {
 		t.Must.NoError(txs.Commit(tx1))
 	})
 
+	s.Test("suppose in a multi transaction setup, and the top level transaction is rolled back, the context provided for a rollback step is not cancelled", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		t.Must.NoError(txs.OnRollback(tx2, func(ctx context.Context) error { return ctx.Err() }))
+		t.Must.NoError(txs.Commit(tx2), "commit successful TX2")
+		t.Must.NoError(txs.Rollback(tx1), "error at top level, rollback TX1")
+	})
+
 	s.Test("suppose a rollback is done in a sub tx, the top tx's Finish don't misinform a rollback error", func(t *testcase.T) {
 		tx1, err := txs.Begin(context.Background())
 		t.Must.NoError(err)
@@ -184,6 +194,32 @@ func Test(t *testing.T) {
 		actualErr := expectedErr
 		txs.Finish(&actualErr, tx1)
 		t.Must.Equal(expectedErr, actualErr)
+	})
+
+	s.Test("rollbacking back on multiple tx level yield no rollback error on Finish", func(t *testcase.T) {
+		assertNoFinishErrOnRollback := func(ctx context.Context) {
+			var expectedErr error = errutils.Error(t.Random.Error().Error())
+			actualErr := expectedErr
+			txs.Finish(&actualErr, ctx)
+			t.Must.Equal(expectedErr, actualErr,
+				"equality check intentionally to see no error wrapping is going on")
+		}
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		tx2, err := txs.Begin(tx1)
+		t.Must.NoError(err)
+		assertNoFinishErrOnRollback(tx2)
+		assertNoFinishErrOnRollback(tx1)
+	})
+
+	s.Test("on rollback error, original value can be unwrapped", func(t *testcase.T) {
+		tx1, err := txs.Begin(context.Background())
+		t.Must.NoError(err)
+		expectedErr := errutils.Error(t.Random.Error().Error())
+		t.Must.NoError(txs.OnRollback(tx1, func(ctx context.Context) error { return expectedErr }))
+		var actualErr error = expectedErr
+		txs.Finish(&actualErr, tx1)
+		t.Must.ErrorIs(expectedErr, actualErr)
 	})
 }
 

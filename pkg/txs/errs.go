@@ -19,3 +19,7 @@ type txRollbackError struct {
 func (err *txRollbackError) Error() string {
 	return fmt.Sprintf("%s (rollback: %s)", err.Cause, err.Err)
 }
+
+func (err *txRollbackError) Unwrap() error {
+	return err.Cause
+}

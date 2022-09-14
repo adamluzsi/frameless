@@ -10,9 +10,9 @@ func Begin(ctx context.Context) (context.Context, error) {
 	if err := checkContext(ctx); err != nil {
 		return ctx, err
 	}
-	ctx, cancel := context.WithCancel(ctx)
 	parent, _ := lookupTx(ctx)
-	return context.WithValue(ctx, contextKey{}, &transaction{
+	subctx, cancel := context.WithCancel(ctx)
+	return context.WithValue(subctx, contextKey{}, &transaction{
 		parent:  parent,
 		context: ctx,
 		cancel:  cancel,
