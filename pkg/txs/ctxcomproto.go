@@ -64,9 +64,7 @@ func Rollback(ctx context.Context) error {
 }
 
 type onRollbackStepFn interface {
-	func(ctx context.Context) error |
-		func() error |
-		func()
+	func(ctx context.Context) error | func()
 }
 
 func OnRollback[StepFn onRollbackStepFn](ctx context.Context, step StepFn) error {

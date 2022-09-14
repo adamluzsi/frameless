@@ -101,7 +101,7 @@ func Test(t *testing.T) {
 		ctx, err := txs.Begin(context.Background())
 		t.Must.NoError(err)
 		expectedErr := t.Random.Error()
-		t.Must.NoError(txs.OnRollback(ctx, func() error { return expectedErr }))
+		t.Must.NoError(txs.OnRollback(ctx, func(ctx context.Context) error { return expectedErr }))
 		t.Must.ErrorIs(expectedErr, txs.Rollback(ctx))
 	})
 
@@ -111,7 +111,7 @@ func Test(t *testing.T) {
 		tx2, err := txs.Begin(tx1)
 		t.Must.NoError(err)
 		expectedErr := t.Random.Error()
-		t.Must.NoError(txs.OnRollback(tx1, func() error { return expectedErr }))
+		t.Must.NoError(txs.OnRollback(tx1, func(context.Context) error { return expectedErr }))
 		t.Must.ErrorIs(expectedErr, txs.Rollback(tx2))
 	})
 
@@ -119,7 +119,7 @@ func Test(t *testing.T) {
 		expectedErr := t.Random.Error()
 		ctx, err := txs.Begin(context.Background())
 		t.Must.NoError(err)
-		t.Must.NoError(txs.OnRollback(ctx, func() error { return expectedErr }))
+		t.Must.NoError(txs.OnRollback(ctx, func(context.Context) error { return expectedErr }))
 
 		expectedOthErr := t.Random.Error()
 		rErr := expectedOthErr
@@ -149,7 +149,7 @@ func Test(t *testing.T) {
 	s.Test("during rollback, the original context is not yet cancelled", func(t *testcase.T) {
 		ctx, err := txs.Begin(context.Background())
 		t.Must.NoError(err)
-		t.Must.NoError(txs.OnRollback(ctx, func() error { return ctx.Err() }))
+		t.Must.NoError(txs.OnRollback(ctx, func(context.Context) error { return ctx.Err() }))
 		t.Must.NoError(txs.Rollback(ctx))
 	})
 
