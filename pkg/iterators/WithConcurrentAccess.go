@@ -5,7 +5,7 @@ import (
 )
 
 // WithConcurrentAccess allows you to convert any iterator into one that is safe to use from concurrent access.
-// The caveat with this, that this protection only allows 1 Decode call for each Next call.
+// The caveat with this is that this protection only allows 1 Decode call for each Next call.
 func WithConcurrentAccess[T any](i Iterator[T]) *ConcurrentAccessIterator[T] {
 	return &ConcurrentAccessIterator[T]{Iterator: i}
 }
