@@ -221,6 +221,17 @@ func Test(t *testing.T) {
 		txs.Finish(&actualErr, tx1)
 		t.Must.ErrorIs(expectedErr, actualErr)
 	})
+
+	s.Test("on context cancellation, the context of the rollback is still not cancelled", func(t *testcase.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		tx1, err := txs.Begin(ctx)
+		t.Must.NoError(err)
+		t.Must.NoError(txs.OnRollback(tx1, func(ctx context.Context) error { return ctx.Err() }))
+
+		cancel()                          // cancel the context
+		t.Must.NoError(txs.Rollback(tx1)) // rollback the tx
+	})
 }
 
 func Example_pkgLevelTxFunctions() {

@@ -2,6 +2,7 @@ package txs
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/contexts"
 )
 
 type contextKey struct{}
@@ -14,7 +15,7 @@ func Begin(ctx context.Context) (context.Context, error) {
 	subctx, cancel := context.WithCancel(ctx)
 	return context.WithValue(subctx, contextKey{}, &transaction{
 		parent:  parent,
-		context: ctx,
+		context: contexts.Detach(ctx),
 		cancel:  cancel,
 	}), nil
 }
@@ -56,9 +57,6 @@ func Rollback(ctx context.Context) error {
 	}
 	if tx.isDone() {
 		return ErrTxDone
-	}
-	if err := checkContext(ctx); err != nil {
-		return err
 	}
 	return tx.Rollback()
 }
