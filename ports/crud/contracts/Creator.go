@@ -24,7 +24,7 @@ func (c Creator[T, ID]) Test(t *testing.T) {
 
 func (c Creator[Ent, ID]) Benchmark(b *testing.B) {
 	resource := c.Subject(b)
-	spechelper.Cleanup[Ent, ID](b, c.MakeCtx(b), resource)
+	spechelper.TryCleanup(b, c.MakeCtx(b), resource)
 	b.Run(`Creator`, func(b *testing.B) {
 		var (
 			ctx = c.MakeCtx(b)
@@ -34,7 +34,7 @@ func (c Creator[Ent, ID]) Benchmark(b *testing.B) {
 			ent := c.MakeEnt(b)
 			es = append(es, &ent)
 		}
-		defer spechelper.Cleanup[Ent, ID](b, c.MakeCtx(b), resource)
+		defer spechelper.TryCleanup(b, c.MakeCtx(b), resource)
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -46,7 +46,7 @@ func (c Creator[Ent, ID]) Benchmark(b *testing.B) {
 
 func (c Creator[Ent, ID]) Spec(s *testcase.Spec) {
 	var (
-		resource = testcase.Let(s, func(t *testcase.T) spechelper.CRD[Ent, ID] {
+		resource = testcase.Let(s, func(t *testcase.T) CreatorSubject[Ent, ID] {
 			return c.Subject(t)
 		})
 		ctxVar = testcase.Let(s, func(t *testcase.T) context.Context {

@@ -7,6 +7,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"sync"
 	"testing"
@@ -140,6 +141,8 @@ func (c EntityStorage[Ent, ID]) Spec(s *testcase.Spec) {
 		ds, cpm := c.Subject(t)
 		c.dataStorage().Set(t, ds)
 		c.cpm().Set(t, cpm)
+
+		spechelper.TryCleanup(t, c.MakeCtx(t), c.dataStorage().Get(t))
 	})
 
 	s.Describe(`cache.EntityStorage`, func(s *testcase.Spec) {
@@ -238,21 +241,21 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 		})
 
 		s.Then(`they will be saved`, func(t *testcase.T) {
-			assert.Must(t).Nil(subject(t))
+			t.Must.Nil(subject(t))
 
 			ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
-			assert.Must(t).True(ok, `entity 1 should have id`)
+			t.Must.True(ok, `entity 1 should have id`)
 			actual1, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
-			assert.Must(t).Nil(err)
-			assert.Must(t).True(found, `entity 1 was expected to be stored`)
-			assert.Must(t).Equal(*ent1.Get(t), actual1)
+			t.Must.Nil(err)
+			t.Must.True(found, `entity 1 was expected to be stored`)
+			t.Must.Equal(*ent1.Get(t), actual1)
 
 			ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
-			assert.Must(t).True(ok, `entity 2 should have id`)
+			t.Must.True(ok, `entity 2 should have id`)
 			actual2, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
-			assert.Must(t).Nil(err)
-			assert.Must(t).True(found, `entity 2 was expected to be stored`)
-			assert.Must(t).Equal(*ent2.Get(t), actual2)
+			t.Must.Nil(err)
+			t.Must.True(found, `entity 2 was expected to be stored`)
+			t.Must.Equal(*ent2.Get(t), actual2)
 		})
 
 		s.And(`entities already have a storage string id`, func(s *testcase.Spec) {
@@ -262,21 +265,21 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 			})
 
 			s.Then(`they will be saved`, func(t *testcase.T) {
-				assert.Must(t).Nil(subject(t))
+				t.Must.Nil(subject(t))
 
 				ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
-				assert.Must(t).True(ok, `entity 1 should have id`)
+				t.Must.True(ok, `entity 1 should have id`)
 
 				actual1, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
-				assert.Must(t).Nil(err)
-				assert.Must(t).True(found, `entity 1 was expected to be stored`)
-				assert.Must(t).Equal(*ent1.Get(t), actual1)
+				t.Must.Nil(err)
+				t.Must.True(found, `entity 1 was expected to be stored`)
+				t.Must.Equal(*ent1.Get(t), actual1)
 
 				ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
-				assert.Must(t).True(ok, `entity 2 should have id`)
+				t.Must.True(ok, `entity 2 should have id`)
 				_, found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
-				assert.Must(t).Nil(err)
-				assert.Must(t).True(found, `entity 2 was expected to be stored`)
+				t.Must.Nil(err)
+				t.Must.True(found, `entity 2 was expected to be stored`)
 			})
 		})
 	})
@@ -292,27 +295,27 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 		})
 
 		s.Then(`they will be saved`, func(t *testcase.T) {
-			assert.Must(t).Nil(subject(t))
+			t.Must.Nil(subject(t))
 
 			ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
-			assert.Must(t).True(ok, `entity 1 should have id`)
+			t.Must.True(ok, `entity 1 should have id`)
 
 			_, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
-			assert.Must(t).Nil(err)
-			assert.Must(t).True(found, `entity 1 was expected to be stored`)
+			t.Must.Nil(err)
+			t.Must.True(found, `entity 1 was expected to be stored`)
 
 			ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
-			assert.Must(t).True(ok, `entity 2 should have id`)
+			t.Must.True(ok, `entity 2 should have id`)
 			_, found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
-			assert.Must(t).Nil(err)
-			assert.Must(t).True(found, `entity 2 was expected to be stored`)
+			t.Must.Nil(err)
+			t.Must.True(found, `entity 2 was expected to be stored`)
 		})
 
 		s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
-			assert.Must(t).Nil(subject(t))
+			t.Must.Nil(subject(t))
 			count, err := iterators.Count(c.dataStorage().Get(t).FindAll(ctxGet(t)))
-			assert.Must(t).Nil(err)
-			assert.Must(t).Equal(len(entities.Get(t)), count)
+			t.Must.Nil(err)
+			t.Must.Equal(len(entities.Get(t)), count)
 		})
 
 		s.And(`at least one of the entity that being upsert has updated content`, func(s *testcase.Spec) {
@@ -321,33 +324,33 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 				id := c.getID(t, ent1.Get(t))
 				ent := c.MakeEnt(t)
 				n := &ent
-				assert.Must(t).Nil(extid.Set(n, id))
+				t.Must.Nil(extid.Set(n, id))
 				ent1.Set(t, n)
 			})
 
 			s.Then(`the updated data will be saved`, func(t *testcase.T) {
-				assert.Must(t).Nil(subject(t))
+				t.Must.Nil(subject(t))
 
 				ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
-				assert.Must(t).True(ok, `entity 1 should have id`)
+				t.Must.True(ok, `entity 1 should have id`)
 
 				actual, found, err := c.dataStorage().Get(t).FindByID(ctxGet(t), ent1ID)
-				assert.Must(t).Nil(err)
-				assert.Must(t).True(found, `entity 1 was expected to be stored`)
-				assert.Must(t).Equal(ent1.Get(t), &actual)
+				t.Must.Nil(err)
+				t.Must.True(found, `entity 1 was expected to be stored`)
+				t.Must.Equal(ent1.Get(t), &actual)
 
 				ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
-				assert.Must(t).True(ok, `entity 2 should have id`)
+				t.Must.True(ok, `entity 2 should have id`)
 				_, found, err = c.dataStorage().Get(t).FindByID(ctxGet(t), ent2ID)
-				assert.Must(t).Nil(err)
-				assert.Must(t).True(found, `entity 2 was expected to be stored`)
+				t.Must.Nil(err)
+				t.Must.True(found, `entity 2 was expected to be stored`)
 			})
 
 			s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
-				assert.Must(t).Nil(subject(t))
+				t.Must.Nil(subject(t))
 				count, err := iterators.Count(c.dataStorage().Get(t).FindAll(ctxGet(t)))
-				assert.Must(t).Nil(err)
-				assert.Must(t).Equal(len(entities.Get(t)), count)
+				t.Must.Nil(err)
+				t.Must.Equal(len(entities.Get(t)), count)
 			})
 		})
 	})
@@ -379,8 +382,8 @@ func (c EntityStorage[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 
 		s.Then(`result is an empty list`, func(t *testcase.T) {
 			count, err := iterators.Count(subject(t))
-			assert.Must(t).Nil(err)
-			assert.Must(t).Equal(0, count)
+			t.Must.Nil(err)
+			t.Must.Equal(0, count)
 		})
 	})
 

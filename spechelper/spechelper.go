@@ -16,10 +16,10 @@ import (
 )
 
 // CRD is the minimum requirements to write easily behavioral specification for a resource.
-type CRD[T any, ID any] interface {
-	crud.Creator[T]
-	crud.Finder[T, ID]
-	crud.Deleter[ID]
+type CRD[Ent, ID any] interface {
+	crud.Creator[Ent]
+	crud.ByIDFinder[Ent, ID]
+	crud.ByIDDeleter[ID]
 }
 
 const ErrIDRequired errutils.Error = `
@@ -28,7 +28,20 @@ if there is no ID in the subject structure
 custom test needed that explicitly defines how ID is stored and retried from an entity
 `
 
-func Cleanup[T any, ID any](tb testing.TB, ctx context.Context, t crud.Deleter[ID]) {
+func TryCleanup(tb testing.TB, ctx context.Context, resource any) bool {
+	tb.Helper()
+	if purger, ok := resource.(crud.Purger); ok {
+		assert.Must(tb).Nil(purger.Purge(ctx))
+		return true
+	}
+	if deleter, ok := resource.(crud.AllDeleter); ok {
+		assert.Must(tb).Nil(deleter.DeleteAll(ctx))
+		return true
+	}
+	return false
+}
+
+func Cleanup(tb testing.TB, ctx context.Context, t crud.AllDeleter) {
 	assert.Must(tb).Nil(t.DeleteAll(ctx))
 }
 
@@ -85,6 +98,9 @@ func (s *eventSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, ev
 }
 
 func (s *eventSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event pubsub.DeleteAllEvent) error {
+	if s.TB != nil {
+		s.TB.Helper()
+	}
 	return s.Handle(ctx, event)
 }
 

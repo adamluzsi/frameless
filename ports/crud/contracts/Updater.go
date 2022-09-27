@@ -41,7 +41,7 @@ func (c Updater[Ent, ID]) Spec(s *testcase.Spec) {
 	c.resource().Let(s, nil)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAll[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t))
+		spechelper.TryCleanup(t, c.MakeCtx(t), c.resource().Get(t))
 	})
 
 	var (

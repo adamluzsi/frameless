@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
@@ -16,12 +17,15 @@ type Deleter[Ent, ID any] struct {
 	MakeEnt func(testing.TB) Ent
 }
 
-type DeleterSubject[Ent, ID any] spechelper.CRD[Ent, ID]
+type DeleterSubject[Ent, ID any] interface {
+	spechelper.CRD[Ent, ID]
+	crud.Deleter[ID]
+}
 
-func (c Deleter[Ent, ID]) resource() testcase.Var[spechelper.CRD[Ent, ID]] {
-	return testcase.Var[spechelper.CRD[Ent, ID]]{
+func (c Deleter[Ent, ID]) resource() testcase.Var[DeleterSubject[Ent, ID]] {
+	return testcase.Var[DeleterSubject[Ent, ID]]{
 		ID: "resource",
-		Init: func(t *testcase.T) spechelper.CRD[Ent, ID] {
+		Init: func(t *testcase.T) DeleterSubject[Ent, ID] {
 			return c.Subject(t)
 		},
 	}
@@ -54,7 +58,7 @@ func (c Deleter[Ent, ID]) specDeleteByID(s *testcase.Spec) {
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAll[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t))
+		spechelper.TryCleanup(t, c.MakeCtx(t), c.resource().Get(t))
 	})
 
 	entity := testcase.Let(s, func(t *testcase.T) *Ent {
@@ -119,8 +123,8 @@ func (c Deleter[Ent, ID]) benchmarkDeleteByID(b *testing.B) {
 	s := testcase.NewSpec(b)
 
 	s.Around(func(t *testcase.T) func() {
-		spechelper.Cleanup[Ent, ID](b, c.MakeCtx(b), c.resource().Get(t))
-		return func() { spechelper.Cleanup[Ent, ID](b, c.MakeCtx(b), c.resource().Get(t)) }
+		spechelper.TryCleanup(t, c.MakeCtx(b), c.resource().Get(t))
+		return func() { spechelper.TryCleanup(t, c.MakeCtx(b), c.resource().Get(t)) }
 	})
 
 	ent := testcase.Let(s, func(t *testcase.T) *Ent {
@@ -170,8 +174,8 @@ func (c Deleter[Ent, ID]) specDeleteAll(s *testcase.Spec) {
 func (c Deleter[Ent, ID]) benchmarkDeleteAll(b *testing.B) {
 	r := c.Subject(b)
 	ctx := c.MakeCtx(b)
-	spechelper.Cleanup[Ent, ID](b, ctx, r)
-	defer spechelper.Cleanup[Ent, ID](b, ctx, r)
+	spechelper.TryCleanup(b, ctx, r)
+	defer spechelper.TryCleanup(b, ctx, r)
 	// for some reason, doing setup with timer stop/start
 	// makes this test unable to measure
 	// the correct throughput, and hangs forever

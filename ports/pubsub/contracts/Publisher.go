@@ -415,9 +415,13 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
 		t.Must.Empty(subscriber.Get(t).Events())
 	})
 
-	s.And(`delete event is made`, func(s *testcase.Spec) {
+	s.And(`delete all event is made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(c.resource().Get(t).DeleteAll(spechelper.ContextVar.Get(t)))
+			allDeleter, ok := c.resource().Get(t).(crud.AllDeleter)
+			if !ok {
+				t.Skipf("crud.AllDeleter is not supported by %T", c.resource().Get(t))
+			}
+			t.Must.Nil(allDeleter.DeleteAll(spechelper.ContextVar.Get(t)))
 			Waiter.While(func() bool {
 				return subscriber.Get(t).EventsLen() < 1
 			})
@@ -447,13 +451,14 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.Nil(c.resource().Get(t).DeleteAll(spechelper.ContextVar.Get(t)))
-					Waiter.While(func() bool {
-						return subscriber.Get(t).EventsLen() < 2
-					})
-					Waiter.While(func() bool {
-						return othSubscriber.Get(t).EventsLen() < 1
-					})
+					if spechelper.TryCleanup(t, c.Context(t), c.resource().Get(t)) {
+						Waiter.While(func() bool {
+							return subscriber.Get(t).EventsLen() < 2
+						})
+						Waiter.While(func() bool {
+							return othSubscriber.Get(t).EventsLen() < 1
+						})
+					}
 				})
 
 				s.Then(`original subscriber receives all events`, func(t *testcase.T) {

@@ -3,6 +3,7 @@ package frmetacontracts
 import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/doubles"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/meta"
@@ -265,7 +266,12 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 
 		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
 		t.Must.Nil(err)
-		t.Must.Nil(c.subject().Get(t).Resource.DeleteAll(ctx))
+
+		allDeleter, ok := c.subject().Get(t).Resource.(crud.AllDeleter)
+		if !ok {
+			t.Skip()
+		}
+		t.Must.Nil(allDeleter.DeleteAll(ctx))
 
 		Eventually.Assert(t, func(it assert.It) {
 			mutex.RLock()

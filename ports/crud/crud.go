@@ -17,12 +17,20 @@ type Creator[Ent any] interface {
 }
 
 type Finder[Ent any, ID any] interface {
+	ByIDFinder[Ent, ID]
+	AllFinder[Ent, ID]
+}
+
+type ByIDFinder[Ent any, ID any] interface {
 	// FindByID will link an entity that is found in the resource to the received ptr,
 	// and report back if it succeeded finding the entity in the resource.
 	// It also reports if there was an unexpected exception during the execution.
 	// It was an intentional decision to not use error to represent "not found" case,
 	// but tell explicitly this information in the form of return bool value.
 	FindByID(ctx context.Context, id ID) (ent Ent, found bool, err error)
+}
+
+type AllFinder[Ent any, ID any] interface {
 	// FindAll will return all entity that has <V> type
 	FindAll(context.Context) iterators.Iterator[Ent]
 }
@@ -35,8 +43,16 @@ type Updater[Ent any] interface {
 
 // Deleter request to destroy a business entity in the Resource that implement it's test.
 type Deleter[ID any] interface {
+	ByIDDeleter[ID]
+	AllDeleter
+}
+
+type ByIDDeleter[ID any] interface {
 	// DeleteByID will remove a <V> type entity from the storage by a given ID
 	DeleteByID(ctx context.Context, id ID) error
+}
+
+type AllDeleter interface {
 	// DeleteAll will erase all entity from the resource that has <V> type
 	DeleteAll(context.Context) error
 }

@@ -69,17 +69,7 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 	// clean ahead before testing suite
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
-		once.Do(func() {
-			DeleteAll[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t))
-		})
-	})
-
-	s.Around(func(t *testcase.T) func() {
-		r := c.resource().Get(t)
-		// early load the resource ensure proper cleanup
-		return func() {
-			DeleteAll[Ent, ID](t, r, c.MakeCtx(t))
-		}
+		once.Do(func() { spechelper.TryCleanup(t, c.MakeCtx(t), c.resource().Get(t)) })
 	})
 
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
@@ -97,7 +87,10 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 			_, _, err = c.resource().Get(t).FindByID(tx, id)
 			t.Must.NotNil(err)
 			t.Must.NotNil(c.resource().Get(t).Create(tx, spechelper.ToPtr(c.MakeEnt(t))))
-			t.Must.NotNil(c.resource().Get(t).FindAll(tx).Err())
+
+			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Ent, ID]); ok {
+				t.Must.NotNil(allFinder.FindAll(tx).Err())
+			}
 
 			if updater, ok := c.resource().Get(t).(crud.Updater[Ent]); ok {
 				t.Must.NotNil(updater.Update(tx, ptr),
@@ -106,7 +99,9 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 			}
 
 			t.Must.NotNil(c.resource().Get(t).DeleteByID(tx, id))
-			t.Must.NotNil(c.resource().Get(t).DeleteAll(tx))
+			if allDeleter, ok := c.resource().Get(t).(crud.AllDeleter); ok {
+				t.Must.NotNil(allDeleter.DeleteAll(tx))
+			}
 
 			Waiter.Wait()
 		})
@@ -121,7 +116,11 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 
 			_, _, err = c.resource().Get(t).FindByID(ctx, id)
 			t.Must.NotNil(err)
-			t.Must.NotNil(c.resource().Get(t).FindAll(ctx).Err())
+
+			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Ent, ID]); ok {
+				t.Must.NotNil(allFinder.FindAll(ctx).Err())
+			}
+
 			t.Must.NotNil(c.resource().Get(t).Create(ctx, spechelper.ToPtr(c.MakeEnt(t))))
 
 			if updater, ok := c.resource().Get(t).(crud.Updater[Ent]); ok {
@@ -131,7 +130,10 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 			}
 
 			t.Must.NotNil(c.resource().Get(t).DeleteByID(ctx, id))
-			t.Must.NotNil(c.resource().Get(t).DeleteAll(ctx))
+
+			if allDeleter, ok := c.resource().Get(t).(crud.AllDeleter); ok {
+				t.Must.NotNil(allDeleter.DeleteAll(ctx))
+			}
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
@@ -586,9 +588,16 @@ func (c OnePhaseCommitProtocol[Ent, ID]) specDeleterPublisher(s *testcase.Spec) 
 			// TODO: why this makes a DeleteAll event somehow?
 			Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity.Get(t))
 
+			allDeleter, ok := c.resource().Get(t).(crud.AllDeleter)
+			if !ok {
+				t.Skipf("crud.AllDeleter is not supported by %T", c.resource().Get(t))
+			}
+
 			t.Log(`and then the entity is also deleted`)
-			DeleteAll[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t))
-			Waiter.Wait()
+			t.Must.NoError(allDeleter.DeleteAll(spechelper.ContextVar.Get(t)))
+			Eventually.Assert(t, func(it assert.It) {
+				IsAbsent[Ent, ID](it, c.resource().Get(t), c.MakeCtx(t), HasID[Ent, ID](it, entity.Get(t)))
+			})
 		})
 
 		s.Then(`before a commit, deleteAll events will be absent`, func(t *testcase.T) {

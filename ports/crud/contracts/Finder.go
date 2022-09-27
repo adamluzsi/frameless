@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
@@ -20,7 +21,10 @@ type Finder[Ent, ID any] struct {
 	MakeEnt func(testing.TB) Ent
 }
 
-type FinderSubject[Ent, ID any] spechelper.CRD[Ent, ID]
+type FinderSubject[Ent, ID any] interface {
+	spechelper.CRD[Ent, ID]
+	crud.AllFinder[Ent, ID]
+}
 
 func (c Finder[Ent, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
@@ -164,9 +168,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 
 	beforeAll := &sync.Once{}
 	s.Before(func(t *testcase.T) {
-		beforeAll.Do(func() {
-			DeleteAll[Ent, ID](t, resource.Get(t), c.Context(t))
-		})
+		beforeAll.Do(func() { spechelper.TryCleanup(t, c.Context(t), resource.Get(t)) })
 	})
 
 	s.Describe(`FindAll`, func(s *testcase.Spec) {
@@ -180,7 +182,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 		)
 
 		s.Before(func(t *testcase.T) {
-			DeleteAll[Ent, ID](t, resource.Get(t), c.Context(t))
+			spechelper.TryCleanup(t, c.Context(t), resource.Get(t))
 		})
 
 		entity := testcase.Let(s, func(t *testcase.T) *Ent {
@@ -227,7 +229,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 
 		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				DeleteAll[Ent, ID](t, resource.Get(t), c.Context(t))
+				spechelper.TryCleanup(t, c.Context(t), resource.Get(t))
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
@@ -335,7 +337,7 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 	)
 
 	s.Before(func(t *testcase.T) {
-		DeleteAll[Ent, ID](t, resource.Get(t), c.MakeCtx(t))
+		spechelper.TryCleanup(t, c.MakeCtx(t), resource.Get(t))
 	})
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
@@ -382,7 +384,7 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`no entity is saved in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			DeleteAll[Ent, ID](t, resource.Get(t), c.MakeCtx(t))
+			spechelper.TryCleanup(t, c.MakeCtx(t), resource.Get(t))
 		})
 
 		s.Then(`it will have no result`, func(t *testcase.T) {

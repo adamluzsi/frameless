@@ -1,6 +1,7 @@
 package crudcontracts
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
@@ -12,6 +13,7 @@ import (
 type Purger[Ent, ID any] struct {
 	Subject func(testing.TB) PurgerSubject[Ent, ID]
 	MakeEnt func(testing.TB) Ent
+	MakeCtx func(testing.TB) context.Context
 }
 
 type PurgerSubject[Ent, ID any] interface {
@@ -31,14 +33,22 @@ func (c Purger[Ent, ID]) Spec(s *testcase.Spec) {
 }
 
 func (c Purger[Ent, ID]) specPurge(s *testcase.Spec) {
-	spechelper.ContextVar.Bind(s)
+	spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
+		return c.MakeCtx(t)
+	})
+
 	subject := func(t *testcase.T) error {
 		return c.resourceGet(t).Purge(spechelper.ContextVar.Get(t))
 	}
 
 	s.Then(`after the purge, resource is empty`, func(t *testcase.T) {
+		r := c.resourceGet(t)
+		allFinder, ok := r.(crud.AllFinder[Ent, ID])
+		if !ok {
+			t.Skip("crud.AllFinder is not supported")
+		}
 		t.Must.Nil(subject(t))
-		CountIs(t, c.resourceGet(t).FindAll(spechelper.ContextVar.Get(t)), 0)
+		CountIs(t, allFinder.FindAll(c.MakeCtx(t)), 0)
 	})
 
 	s.When(`entities is created prior to Purge`, func(s *testcase.Spec) {
@@ -51,8 +61,13 @@ func (c Purger[Ent, ID]) specPurge(s *testcase.Spec) {
 		})
 
 		s.Then(`it will purge the entities`, func(t *testcase.T) {
+			r := c.resourceGet(t)
+			allFinder, ok := r.(crud.AllFinder[Ent, ID])
+			if !ok {
+				t.Skip("crud.AllFinder is not supported")
+			}
 			t.Must.Nil(subject(t))
-			CountIs(t, c.resourceGet(t).FindAll(spechelper.ContextVar.Get(t)), 0)
+			CountIs(t, allFinder.FindAll(spechelper.ContextVar.Get(t)), 0)
 		})
 	})
 }
