@@ -2,18 +2,19 @@ package iterators_test
 
 import (
 	"fmt"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"log"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 )
 
 func ExampleFilter() {
-	var iter iterators2.Iterator[int]
-	iter = iterators2.Slice([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
-	iter = iterators2.Filter[int](iter, func(n int) bool { return n > 2 })
+	var iter iterators.Iterator[int]
+	iter = iterators.Slice([]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+	iter = iterators.Filter[int](iter, func(n int) bool { return n > 2 })
 
 	defer iter.Close()
 	for iter.Next() {
@@ -30,22 +31,22 @@ func TestFilter(t *testing.T) {
 
 		t.Run("given the iterator has set of elements", func(t *testing.T) {
 			originalInput := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-			iterator := func() iterators2.Iterator[int] { return iterators2.Slice[int](originalInput) }
+			iterator := func() iterators.Iterator[int] { return iterators.Slice[int](originalInput) }
 
 			t.Run("when filter allow everything", func(t *testing.T) {
-				i := iterators2.Filter(iterator(), func(int) bool { return true })
+				i := iterators.Filter(iterator(), func(int) bool { return true })
 				assert.Must(t).NotNil(i)
 
-				numbers, err := iterators2.Collect[int](i)
+				numbers, err := iterators.Collect[int](i)
 				assert.Must(t).Nil(err)
 				assert.Must(t).Equal(originalInput, numbers)
 			})
 
 			t.Run("when filter disallow part of the value stream", func(t *testing.T) {
-				i := iterators2.Filter(iterator(), func(n int) bool { return 5 < n })
+				i := iterators.Filter(iterator(), func(n int) bool { return 5 < n })
 				assert.Must(t).NotNil(i)
 
-				numbers, err := iterators2.Collect[int](i)
+				numbers, err := iterators.Collect[int](i)
 				assert.Must(t).Nil(err)
 				assert.Must(t).Equal([]int{6, 7, 8, 9}, numbers)
 			})
@@ -55,14 +56,14 @@ func TestFilter(t *testing.T) {
 
 				t.Run("during somewhere which stated in the iterator iterator Err", func(t *testing.T) {
 
-					iterator = func() iterators2.Iterator[int] {
-						m := iterators2.Stub(srcI())
+					iterator = func() iterators.Iterator[int] {
+						m := iterators.Stub(srcI())
 						m.StubErr = func() error { return fmt.Errorf("Boom!!") }
 						return m
 					}
 
 					t.Run("it is expect to report the error with the Err method", func(t *testing.T) {
-						i := iterators2.Filter[int](iterator(), func(int) bool { return true })
+						i := iterators.Filter[int](iterator(), func(int) bool { return true })
 						assert.Must(t).NotNil(i)
 						assert.Must(t).Equal(i.Err(), fmt.Errorf("Boom!!"))
 					})
@@ -70,14 +71,14 @@ func TestFilter(t *testing.T) {
 
 				t.Run("during Closing the iterator", func(t *testing.T) {
 
-					iterator = func() iterators2.Iterator[int] {
-						m := iterators2.Stub(srcI())
+					iterator = func() iterators.Iterator[int] {
+						m := iterators.Stub(srcI())
 						m.StubClose = func() error { return fmt.Errorf("Boom!!!") }
 						return m
 					}
 
 					t.Run("it is expect to report the error with the Err method", func(t *testing.T) {
-						i := iterators2.Filter(iterator(), func(int) bool { return true })
+						i := iterators.Filter(iterator(), func(int) bool { return true })
 						assert.Must(t).NotNil(i)
 						assert.Must(t).Nil(i.Err())
 						assert.Must(t).Equal(i.Close(), fmt.Errorf("Boom!!!"))
@@ -100,8 +101,8 @@ func BenchmarkFilter(b *testing.B) {
 		values = append(values, rnd.IntN(1000))
 	}
 
-	makeSubject := func() *iterators2.FilterIter[int] {
-		return iterators2.Filter[int](iterators2.Slice[int](values), logic)
+	makeSubject := func() *iterators.FilterIter[int] {
+		return iterators.Filter[int](iterators.Slice[int](values), logic)
 	}
 
 	b.ResetTimer()

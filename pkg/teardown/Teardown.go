@@ -1,8 +1,9 @@
 package teardown
 
 import (
-	"github.com/adamluzsi/frameless/pkg/errutils"
 	"sync"
+
+	"github.com/adamluzsi/frameless/pkg/errutils"
 )
 
 type Teardown struct {

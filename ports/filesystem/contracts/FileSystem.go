@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/reflects"
-	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -13,6 +11,9 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/ports/filesystem"
 
 	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"

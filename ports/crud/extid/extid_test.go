@@ -1,9 +1,10 @@
 package extid_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/crud/extid"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"

@@ -2,10 +2,11 @@ package crudcontracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-	"testing"
 
 	"github.com/adamluzsi/testcase"
 )
@@ -133,7 +134,7 @@ func (c Creator[Ent, ID]) Spec(s *testcase.Spec) {
 
 		id, ok := extid.Lookup[ID](&e)
 		t.Must.True(ok, "ID is not defined in the entity struct src definition")
-		t.Must.NotEmpty(id, "it's expected that storage set the storage ID in the entity")
+		t.Must.NotEmpty(id, "it's expected that repository set the external ID in the entity")
 
 		t.Must.Equal(e, *IsFindable[Ent, ID](t, resource.Get(t), c.MakeCtx(t), id))
 		t.Must.Nil(resource.Get(t).DeleteByID(c.MakeCtx(t), id))

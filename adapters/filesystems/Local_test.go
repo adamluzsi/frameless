@@ -2,11 +2,12 @@ package filesystems_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/filesystem/contracts"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	filesystemcontracts "github.com/adamluzsi/frameless/ports/filesystem/contracts"
 
 	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"

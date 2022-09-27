@@ -9,7 +9,7 @@ type ExampleEnt struct{ ID ExampleID }
 type ExampleID string
 
 var _ = []frmlscontracts.Contract{
-	cachecontracts.EntityStorage[ExampleEnt, ExampleID]{},
+	cachecontracts.EntityRepository[ExampleEnt, ExampleID]{},
 	cachecontracts.Manager[ExampleEnt, ExampleID]{},
-	cachecontracts.Storage[ExampleEnt, ExampleID]{},
+	cachecontracts.Repository[ExampleEnt, ExampleID]{},
 }

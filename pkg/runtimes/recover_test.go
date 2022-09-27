@@ -2,12 +2,13 @@ package runtimes_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/runtimes"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
 	"runtime"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/runtimes"
+	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestRecover(t *testing.T) {

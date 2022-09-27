@@ -1,9 +1,10 @@
 package filesystem_test
 
 import (
+	"io/fs"
+
 	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/frameless/ports/filesystem"
-	"io/fs"
 )
 
 func ExampleOpen() {

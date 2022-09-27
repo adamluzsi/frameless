@@ -4,39 +4,40 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/pubsub"
 	"io"
 	"strings"
+
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-func NewStorageByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Storage[Ent, ID] {
+func NewRepositoryByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Repository[Ent, ID] {
 	cm := NewConnectionManager(dsn)
 	sm := NewListenNotifySubscriptionManager[Ent, ID](m, dsn, cm)
-	return &Storage[Ent, ID]{
+	return &Repository[Ent, ID]{
 		Mapping:             m,
 		ConnectionManager:   cm,
 		SubscriptionManager: sm,
 	}
 }
 
-// Storage is a frameless external resource supplier to store a certain entity type.
-// The Storage supplier itself is a stateless entity.
+// Repository is a frameless external resource supplier to store a certain entity type.
+// The Repository supplier itself is a stateless entity.
 //
 //
 // SRP: DBA
-type Storage[Ent, ID any] struct {
+type Repository[Ent, ID any] struct {
 	Mapping             Mapping[Ent]
 	ConnectionManager   ConnectionManager
 	SubscriptionManager SubscriptionManager[Ent, ID]
 	MetaAccessor
 }
 
-func (pg *Storage[Ent, ID]) Close() error {
+func (pg *Repository[Ent, ID]) Close() error {
 	cls := func(c io.Closer) error {
 		if c == nil {
 			return nil
@@ -54,7 +55,7 @@ func (pg *Storage[Ent, ID]) Close() error {
 	return nil
 }
 
-func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
+func (pg *Repository[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
 	query := fmt.Sprintf("INSERT INTO %s (%s)\n", pg.Mapping.TableRef(), pg.queryColumnList())
 	query += fmt.Sprintf("VALUES (%s)\n", pg.queryColumnPlaceHolders(pg.newPrepareStatementPlaceholderGenerator()))
 
@@ -93,7 +94,7 @@ func (pg *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) (rErr error) {
 	return pg.SubscriptionManager.PublishCreateEvent(ctx, pubsub.CreateEvent[Ent]{Entity: *ptr})
 }
 
-func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
+func (pg *Repository[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
 	c, err := pg.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return *new(Ent), false, err
@@ -112,7 +113,7 @@ func (pg *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, err
 	return v, true, nil
 }
 
-func (pg *Storage[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
+func (pg *Repository[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	ctx, err := pg.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -140,7 +141,7 @@ func (pg *Storage[Ent, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	return nil
 }
 
-func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
+func (pg *Repository[Ent, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
 	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, pg.Mapping.TableRef())
 
 	ctx, err := pg.BeginTx(ctx)
@@ -175,7 +176,7 @@ func (pg *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) 
 	return nil
 }
 
-func (pg *Storage[Ent, ID]) newPrepareStatementPlaceholderGenerator() func() string {
+func (pg *Repository[Ent, ID]) newPrepareStatementPlaceholderGenerator() func() string {
 	var index = 0
 	return func() string {
 		index++
@@ -183,7 +184,7 @@ func (pg *Storage[Ent, ID]) newPrepareStatementPlaceholderGenerator() func() str
 	}
 }
 
-func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) (rErr error) {
+func (pg *Repository[Ent, ID]) Update(ctx context.Context, ptr *Ent) (rErr error) {
 	args, err := pg.Mapping.ToArgs(ptr)
 	if err != nil {
 		return err
@@ -236,7 +237,7 @@ func (pg *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) (rErr error) {
 	return pg.SubscriptionManager.PublishUpdateEvent(ctx, pubsub.UpdateEvent[Ent]{Entity: *ptr})
 }
 
-func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
+func (pg *Repository[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, pg.queryColumnList(), pg.Mapping.TableRef())
 
 	c, err := pg.ConnectionManager.Connection(ctx)
@@ -252,19 +253,19 @@ func (pg *Storage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent]
 	return iterators.SQLRows[Ent](rows, pg.Mapping)
 }
 
-func (pg *Storage[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+func (pg *Repository[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
 	return pg.ConnectionManager.BeginTx(ctx)
 }
 
-func (pg *Storage[Ent, ID]) CommitTx(ctx context.Context) error {
+func (pg *Repository[Ent, ID]) CommitTx(ctx context.Context) error {
 	return pg.ConnectionManager.CommitTx(ctx)
 }
 
-func (pg *Storage[Ent, ID]) RollbackTx(ctx context.Context) error {
+func (pg *Repository[Ent, ID]) RollbackTx(ctx context.Context) error {
 	return pg.ConnectionManager.RollbackTx(ctx)
 }
 
-func (pg *Storage[Ent, ID]) queryColumnPlaceHolders(nextPlaceholder func() string) string {
+func (pg *Repository[Ent, ID]) queryColumnPlaceHolders(nextPlaceholder func() string) string {
 	var phs []string
 	for range pg.Mapping.ColumnRefs() {
 		phs = append(phs, nextPlaceholder())
@@ -272,7 +273,7 @@ func (pg *Storage[Ent, ID]) queryColumnPlaceHolders(nextPlaceholder func() strin
 	return strings.Join(phs, `, `)
 }
 
-func (pg *Storage[Ent, ID]) queryColumnList() string {
+func (pg *Repository[Ent, ID]) queryColumnList() string {
 	var (
 		src = pg.Mapping.ColumnRefs()
 		dst = make([]string, 0, len(src))
@@ -285,14 +286,14 @@ func (pg *Storage[Ent, ID]) queryColumnList() string {
 	return strings.Join(dst, `, `)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
+func (pg *Repository[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToCreatorEvents(ctx, s)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
+func (pg *Repository[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToUpdaterEvents(ctx, s)
 }
 
-func (pg *Storage[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
+func (pg *Repository[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
 	return pg.SubscriptionManager.SubscribeToDeleterEvents(ctx, s)
 }

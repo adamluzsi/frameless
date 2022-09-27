@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/pubsub"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/adamluzsi/frameless/ports/pubsub"
 
 	"github.com/lib/pq"
 )

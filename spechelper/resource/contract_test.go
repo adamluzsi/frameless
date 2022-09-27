@@ -2,10 +2,11 @@ package resource_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/spechelper/resource"
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"testing"
 
-	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
+	"github.com/adamluzsi/frameless/spechelper/resource"
+
 	"github.com/adamluzsi/testcase"
 )
 
@@ -17,10 +18,10 @@ func TestContract(t *testing.T) {
 
 	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
 		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
-			eventLog := inmemory2.NewEventLog()
-			storage := inmemory2.NewEventLogStorage[Entity, string](eventLog)
+			eventLog := memory.NewEventLog()
+			repository := memory.NewEventLogRepository[Entity, string](eventLog)
 			return resource.ContractSubject[Entity, string]{
-				Resource:      storage,
+				Resource:      repository,
 				MetaAccessor:  eventLog,
 				CommitManager: eventLog,
 			}

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 )
@@ -58,11 +59,11 @@ type managerSubscriber[Ent, ID any] struct {
 }
 
 func (sub *managerSubscriber[Ent, ID]) HandleCreateEvent(ctx context.Context, event pubsub.CreateEvent[Ent]) error {
-	return sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
+	return sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx)
 }
 
 func (sub *managerSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, event pubsub.UpdateEvent[Ent]) error {
-	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+	if err := sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
 	id, _ := extid.Lookup[ID](event.Entity)
@@ -71,22 +72,22 @@ func (sub *managerSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, ev
 
 func (sub *managerSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, event pubsub.DeleteByIDEvent[ID]) error {
 	// TODO: why is this not triggered on Manager.DeleteByID ?
-	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+	if err := sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
 	return sub.Manager.deleteCachedEntity(ctx, event.ID)
 }
 
 func (sub *managerSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event pubsub.DeleteAllEvent) error {
-	if err := sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+	if err := sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
-	return sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
+	return sub.Manager.Repository.CacheEntity(ctx).DeleteAll(ctx)
 }
 
 func (sub *managerSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) error {
 	// TODO: log.Println("ERROR", err.Error())
-	_ = sub.Manager.Storage.CacheHit(ctx).DeleteAll(ctx)
-	_ = sub.Manager.Storage.CacheEntity(ctx).DeleteAll(ctx)
+	_ = sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx)
+	_ = sub.Manager.Repository.CacheEntity(ctx).DeleteAll(ctx)
 	return nil
 }

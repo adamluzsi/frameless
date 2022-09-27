@@ -2,9 +2,10 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/pubsub"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/ports/pubsub"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"

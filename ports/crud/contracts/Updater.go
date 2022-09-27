@@ -2,11 +2,12 @@ package crudcontracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-	"testing"
 
 	"github.com/adamluzsi/testcase/assert"
 
@@ -104,7 +105,7 @@ func (c Updater[Ent, ID]) Spec(s *testcase.Spec) {
 		})
 	})
 
-	s.When(`the received entity has ext.ID that is unknown in the storage`, func(s *testcase.Spec) {
+	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
 		entityWithChanges.Let(s, func(t *testcase.T) *Ent {
 			newEntity := spechelper.ToPtr(c.MakeEnt(t))
 			Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), newEntity)

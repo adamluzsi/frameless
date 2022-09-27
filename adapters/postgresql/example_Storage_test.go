@@ -9,7 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-func ExampleStorage() {
+func ExampleRepository() {
 	type Entity struct {
 		ID    int `ext:"ID"`
 		Value string
@@ -32,6 +32,6 @@ func ExampleStorage() {
 		},
 	}
 
-	stg := postgresql.NewStorageByDSN[Entity, int](mapping, os.Getenv("DATABASE_URL"))
+	stg := postgresql.NewRepositoryByDSN[Entity, int](mapping, os.Getenv("DATABASE_URL"))
 	defer stg.Close()
 }

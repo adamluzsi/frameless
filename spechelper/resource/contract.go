@@ -2,14 +2,15 @@ package resource
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/meta"
-	"github.com/adamluzsi/frameless/ports/meta/contracts"
+	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	"github.com/adamluzsi/frameless/ports/pubsub/contracts"
-	"testing"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 
 	"github.com/adamluzsi/testcase"
 )

@@ -3,9 +3,10 @@ package doubles_test
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	"testing"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"

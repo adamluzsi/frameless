@@ -2,9 +2,10 @@ package errutils_test
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/testcase"
-	"testing"
 )
 
 func TestErrors(t *testing.T) {

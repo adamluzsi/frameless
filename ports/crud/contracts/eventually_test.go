@@ -3,25 +3,26 @@ package crudcontracts_test
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless/spechelper/resource"
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"sync"
 	"testing"
 	"time"
 
-	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
+	"github.com/adamluzsi/frameless/spechelper/resource"
+
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 )
 
-func TestEventuallyConsistentStorage(t *testing.T) {
+func TestEventuallyConsistentResource(t *testing.T) {
 	type Entity struct {
 		ID   string `ext:"ID"`
 		Data string
 	}
 
 	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		Subject: ContractSubjectFnEventuallyConsistentStorage[Entity, string](),
+		Subject: ContractSubjectFnEventuallyConsistentResource[Entity, string](),
 		MakeCtx: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
@@ -35,23 +36,23 @@ func TestEventuallyConsistentStorage(t *testing.T) {
 	})
 }
 
-func ContractSubjectFnEventuallyConsistentStorage[Ent, ID any]() func(testing.TB) resource.ContractSubject[Ent, ID] {
+func ContractSubjectFnEventuallyConsistentResource[Ent, ID any]() func(testing.TB) resource.ContractSubject[Ent, ID] {
 	return func(tb testing.TB) resource.ContractSubject[Ent, ID] {
-		eventLog := inmemory2.NewEventLog()
-		storage := &EventuallyConsistentStorage[Ent, ID]{EventLogStorage: inmemory2.NewEventLogStorage[Ent, ID](eventLog)}
-		storage.jobs.queue = make(chan func(), 100)
-		storage.Spawn()
-		tb.Cleanup(func() { assert.Must(tb).Nil(storage.Close()) })
+		eventLog := memory.NewEventLog()
+		repo := &EventuallyConsistentResource[Ent, ID]{EventLogRepository: memory.NewEventLogRepository[Ent, ID](eventLog)}
+		repo.jobs.queue = make(chan func(), 100)
+		repo.Spawn()
+		tb.Cleanup(func() { assert.Must(tb).Nil(repo.Close()) })
 		return resource.ContractSubject[Ent, ID]{
-			Resource:      storage,
+			Resource:      repo,
 			MetaAccessor:  eventLog,
-			CommitManager: storage,
+			CommitManager: repo,
 		}
 	}
 }
 
-type EventuallyConsistentStorage[Ent, ID any] struct {
-	*inmemory2.EventLogStorage[Ent, ID]
+type EventuallyConsistentResource[Ent, ID any] struct {
+	*memory.EventLogRepository[Ent, ID]
 	jobs struct {
 		queue chan func()
 		wg    sync.WaitGroup
@@ -62,7 +63,7 @@ type EventuallyConsistentStorage[Ent, ID any] struct {
 	closed bool
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) Spawn() {
+func (e *EventuallyConsistentResource[Ent, ID]) Spawn() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -77,7 +78,7 @@ func (e *EventuallyConsistentStorage[Ent, ID]) Spawn() {
 	go e.worker(ctx, &wg)
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) nullFn(fn func()) func() {
+func (e *EventuallyConsistentResource[Ent, ID]) nullFn(fn func()) func() {
 	return func() {
 		if fn != nil {
 			fn()
@@ -85,7 +86,7 @@ func (e *EventuallyConsistentStorage[Ent, ID]) nullFn(fn func()) func() {
 	}
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) Close() error {
+func (e *EventuallyConsistentResource[Ent, ID]) Close() error {
 	e.jobs.wg.Wait()
 	e.nullFn(e.workers.cancel)()
 	close(e.jobs.queue)
@@ -93,71 +94,71 @@ func (e *EventuallyConsistentStorage[Ent, ID]) Close() error {
 	return nil
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
+func (e *EventuallyConsistentResource[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.EventLogStorage.Create(ctx, ptr)
+		return e.EventLogRepository.Create(ctx, ptr)
 	})
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
+func (e *EventuallyConsistentResource[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.EventLogStorage.Update(ctx, ptr)
+		return e.EventLogRepository.Update(ctx, ptr)
 	})
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (e *EventuallyConsistentResource[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.EventLogStorage.DeleteByID(ctx, id)
+		return e.EventLogRepository.DeleteByID(ctx, id)
 	})
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) DeleteAll(ctx context.Context) error {
+func (e *EventuallyConsistentResource[Ent, ID]) DeleteAll(ctx context.Context) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
 	return e.eventually(ctx, func(ctx context.Context) error {
-		return e.EventLogStorage.DeleteAll(ctx)
+		return e.EventLogRepository.DeleteAll(ctx)
 	})
 }
 
 type (
-	eventuallyConsistentStorageTxKey   struct{}
-	eventuallyConsistentStorageTxValue struct {
+	eventuallyConsistentResourceTxKey   struct{}
+	eventuallyConsistentResourceTxValue struct {
 		sync.WaitGroup
 		done bool
 	}
 )
 
-func (e *EventuallyConsistentStorage[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+func (e *EventuallyConsistentResource[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, eventuallyConsistentStorageTxKey{}, &eventuallyConsistentStorageTxValue{})
+	ctx = context.WithValue(ctx, eventuallyConsistentResourceTxKey{}, &eventuallyConsistentResourceTxValue{})
 	return e.EventLog.BeginTx(ctx)
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) errOnDoneTx(ctx context.Context) error {
+func (e *EventuallyConsistentResource[Ent, ID]) errOnDoneTx(ctx context.Context) error {
 	if v, ok := e.lookupTx(ctx); ok && v.done {
 		return errors.New(`comproto is already done`)
 	}
 	return nil
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) lookupTx(ctx context.Context) (*eventuallyConsistentStorageTxValue, bool) {
-	v, ok := ctx.Value(eventuallyConsistentStorageTxKey{}).(*eventuallyConsistentStorageTxValue)
+func (e *EventuallyConsistentResource[Ent, ID]) lookupTx(ctx context.Context) (*eventuallyConsistentResourceTxValue, bool) {
+	v, ok := ctx.Value(eventuallyConsistentResourceTxKey{}).(*eventuallyConsistentResourceTxValue)
 	return v, ok
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) CommitTx(tx context.Context) error {
+func (e *EventuallyConsistentResource[Ent, ID]) CommitTx(tx context.Context) error {
 	if v, ok := e.lookupTx(tx); ok {
 		v.WaitGroup.Wait()
 		v.done = true
@@ -165,7 +166,7 @@ func (e *EventuallyConsistentStorage[Ent, ID]) CommitTx(tx context.Context) erro
 	return e.EventLog.CommitTx(tx)
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) RollbackTx(tx context.Context) error {
+func (e *EventuallyConsistentResource[Ent, ID]) RollbackTx(tx context.Context) error {
 	if v, ok := e.lookupTx(tx); ok {
 		v.WaitGroup.Wait()
 		v.done = true
@@ -173,7 +174,7 @@ func (e *EventuallyConsistentStorage[Ent, ID]) RollbackTx(tx context.Context) er
 	return e.EventLog.RollbackTx(tx)
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) worker(ctx context.Context, wg *sync.WaitGroup) {
+func (e *EventuallyConsistentResource[Ent, ID]) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 wrk:
@@ -190,7 +191,7 @@ wrk:
 	}
 }
 
-func (e *EventuallyConsistentStorage[Ent, ID]) eventually(ctx context.Context, fn func(ctx context.Context) error) error {
+func (e *EventuallyConsistentResource[Ent, ID]) eventually(ctx context.Context, fn func(ctx context.Context) error) error {
 	if e.closed {
 		return errors.New(`closed`)
 	}

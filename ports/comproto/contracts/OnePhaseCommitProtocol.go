@@ -2,9 +2,10 @@ package comprotocontracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/testcase"
-	"testing"
 )
 
 type OnePhaseCommitProtocol struct {

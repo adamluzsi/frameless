@@ -3,10 +3,11 @@ package contracts_test
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/spechelper/resource"
 	"testing"
 
-	inmemory2 "github.com/adamluzsi/frameless/adapters/memory"
+	"github.com/adamluzsi/frameless/spechelper/resource"
+
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"
@@ -20,10 +21,10 @@ func TestContracts(t *testing.T) {
 
 	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
 		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
-			eventLog := inmemory2.NewEventLog()
-			storage := inmemory2.NewEventLogStorage[Entity, string](eventLog)
+			eventLog := memory.NewEventLog()
+			repository := memory.NewEventLogRepository[Entity, string](eventLog)
 			return resource.ContractSubject[Entity, string]{
-				Resource:      storage,
+				Resource:      repository,
 				MetaAccessor:  eventLog,
 				CommitManager: eventLog,
 			}
@@ -59,8 +60,8 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 			assert.Must(t).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			assert.Must(t).Equal(42, vGet(t))
 			assert.Must(t).Equal(42, varWithNoInit.Get(t))
-			el := inmemory2.NewEventLog()
-			stg := inmemory2.NewEventLogStorage[Entity, string](el)
+			el := memory.NewEventLog()
+			stg := memory.NewEventLogRepository[Entity, string](el)
 			return resource.ContractSubject[Entity, string]{
 				MetaAccessor:  el,
 				CommitManager: el,

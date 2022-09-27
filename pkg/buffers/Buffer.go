@@ -2,9 +2,10 @@ package buffers
 
 import (
 	"bytes"
-	"github.com/adamluzsi/frameless/pkg/errutils"
 	"io"
 	"io/fs"
+
+	"github.com/adamluzsi/frameless/pkg/errutils"
 )
 
 const ErrSeekNegativePosition errutils.Error = "buffers: negative position"

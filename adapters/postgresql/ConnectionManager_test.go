@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"io"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/comproto"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
@@ -78,7 +79,7 @@ func TestConnectionManager_Close(t *testing.T) {
 func TestConnectionManager_PoolContract(t *testing.T) {
 	testcase.RunSuite(t, ConnectionManagerContract{
 		Subject: func(tb testing.TB) postgresql.ConnectionManager {
-			s := NewTestEntityStorage(t)
+			s := NewTestEntityRepository(t)
 			return s.ConnectionManager
 		},
 		DriverName: "postgres",
@@ -109,7 +110,7 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
 		Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
-			s := NewTestEntityStorage(tb)
+			s := NewTestEntityRepository(tb)
 
 			return crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
 				Resource:      s,

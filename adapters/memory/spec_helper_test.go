@@ -2,16 +2,17 @@ package memory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
-	"github.com/adamluzsi/frameless/ports/meta"
-	"github.com/adamluzsi/testcase/assert"
 	"testing"
 	"time"
 
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/crud"
+	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/contracts"
+	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	"github.com/adamluzsi/frameless/ports/meta"
+	"github.com/adamluzsi/testcase/assert"
+
 	"github.com/adamluzsi/frameless/ports/crud/cache"
-	"github.com/adamluzsi/frameless/ports/crud/cache/contracts"
 	"github.com/adamluzsi/testcase"
 )
 
@@ -59,8 +60,8 @@ type ContractSubject[Ent, ID any] struct {
 	//frameless.CreatorPublisher
 	//frameless.UpdaterPublisher
 	//frameless.DeleterPublisher
-	EntityStorage cache.EntityStorage[Ent, ID]
-	CommitManager comproto.OnePhaseCommitProtocol
+	EntityRepository cache.EntityRepository[Ent, ID]
+	CommitManager    comproto.OnePhaseCommitProtocol
 	meta.MetaAccessor
 }
 
@@ -130,10 +131,10 @@ func GetContracts[Ent, ID any](
 			MakeCtx: makeCtx,
 			MakeEnt: makeEnt,
 		},
-		cachecontracts.EntityStorage[Ent, ID]{
-			Subject: func(tb testing.TB) (cache.EntityStorage[Ent, ID], comproto.OnePhaseCommitProtocol) {
+		cachecontracts.EntityRepository[Ent, ID]{
+			Subject: func(tb testing.TB) (cache.EntityRepository[Ent, ID], comproto.OnePhaseCommitProtocol) {
 				s := subject(tb)
-				return s.EntityStorage, s.CommitManager
+				return s.EntityRepository, s.CommitManager
 			},
 			MakeCtx: makeCtx,
 			MakeEnt: makeEnt,

@@ -2,8 +2,9 @@ package extid
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/reflects"
 	"reflect"
+
+	"github.com/adamluzsi/frameless/pkg/reflects"
 )
 
 func Set(ptr interface{}, id interface{}) error {

@@ -2,17 +2,18 @@ package cachecontracts
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-	"testing"
-	"time"
 
 	"github.com/adamluzsi/frameless/ports/crud/cache"
 	"github.com/adamluzsi/testcase/assert"
@@ -143,7 +144,7 @@ func (c Manager[Ent, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s
 			return ptr
 		})
 
-		s.Test(`an update to the storage should invalidate the local cache unit entity state`, func(t *testcase.T) {
+		s.Test(`an update to the repository should invalidate the local cache unit entity state`, func(t *testcase.T) {
 			v := value.Get(t)
 			id, _ := extid.Lookup[ID](v)
 
@@ -161,7 +162,7 @@ func (c Manager[Ent, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s
 			assert.Must(t).Equal(vUpdated, ptr)
 		})
 
-		s.Test(`a delete by id to the storage should invalidate the local cache unit entity state`, func(t *testcase.T) {
+		s.Test(`a delete by id to the repository should invalidate the local cache unit entity state`, func(t *testcase.T) {
 			v := value.Get(t)
 			id, _ := extid.Lookup[ID](v)
 
@@ -176,7 +177,7 @@ func (c Manager[Ent, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s
 			IsAbsent[Ent, ID](t, c.manager().Get(t), c.MakeCtx(t), id)
 		})
 
-		s.Test(`a delete all entity in the storage should invalidate the local cache unit entity state`, func(t *testcase.T) {
+		s.Test(`a delete all entity in the repository should invalidate the local cache unit entity state`, func(t *testcase.T) {
 			v := value.Get(t)
 			id, _ := extid.Lookup[ID](v)
 
@@ -228,10 +229,10 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 	s.Context(reflects.SymbolicName(*new(Ent)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) *Ent {
 			ptr := c.createT(t)
-			storage := c.source().Get(t)
-			assert.Must(t).Nil(storage.Create(c.MakeCtx(t), ptr))
+			repository := c.source().Get(t)
+			assert.Must(t).Nil(repository.Create(c.MakeCtx(t), ptr))
 			id, _ := extid.Lookup[ID](ptr)
-			t.Defer(storage.DeleteByID, c.MakeCtx(t), id)
+			t.Defer(repository.DeleteByID, c.MakeCtx(t), id)
 			return ptr
 		})
 
@@ -298,7 +299,7 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 				}
 			})
 
-			s.When(`the storage is sensitive to continuous requests`, func(s *testcase.Spec) {
+			s.When(`the repository is sensitive to continuous requests`, func(s *testcase.Spec) {
 				spy := testcase.Let(s, func(t *testcase.T) *SpySource[Ent, ID] {
 					return &SpySource[Ent, ID]{Source: c.source().Get(t)}
 				})
@@ -306,7 +307,7 @@ func (c Manager[Ent, ID]) describeResultCaching(s *testcase.Spec) {
 					c.source().Set(t, spy.Get(t))
 				})
 
-				s.Then(`it will only bother the storage for the value once`, func(t *testcase.T) {
+				s.Then(`it will only bother the repository for the value once`, func(t *testcase.T) {
 					var err error
 					val := value.Get(t)
 					id, found := extid.Lookup[ID](val)

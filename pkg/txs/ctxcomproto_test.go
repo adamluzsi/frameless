@@ -3,11 +3,12 @@ package txs_test
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/txs"
 	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"github.com/adamluzsi/testcase"
-	"testing"
 )
 
 func Test(t *testing.T) {

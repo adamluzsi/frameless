@@ -1,8 +1,6 @@
 package filesystems
 
 import (
-	"github.com/adamluzsi/frameless/pkg/buffers"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"io"
 	"io/fs"
 	"os"
@@ -10,6 +8,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/adamluzsi/frameless/pkg/buffers"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
 type Memory struct {
@@ -114,7 +115,7 @@ func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (File, erro
 		entry:      f,
 		openFlag:   flag,
 		buffer:     buffers.New(f.data),
-		dirEntries: iterators2.Slice(mfs.getDirEntriesFn(path)),
+		dirEntries: iterators.Slice(mfs.getDirEntriesFn(path)),
 	}, nil
 }
 
@@ -206,7 +207,7 @@ type MemoryFile struct {
 	buffer   *buffers.Buffer
 	mutex    sync.Mutex
 
-	dirEntries iterators2.Iterator[fs.DirEntry]
+	dirEntries iterators.Iterator[fs.DirEntry]
 }
 
 func (f *MemoryFile) fileWriteLock() func() {
@@ -287,7 +288,7 @@ func (f *MemoryFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	}
 	defer f.fileWriteLock()()
 	if n < 0 {
-		return iterators2.Collect(f.dirEntries)
+		return iterators.Collect(f.dirEntries)
 	}
 	if n == 0 {
 		return []fs.DirEntry{}, nil

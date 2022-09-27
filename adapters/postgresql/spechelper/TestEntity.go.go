@@ -51,20 +51,20 @@ func MigrateTestEntity(tb testing.TB, cm postgresql.ConnectionManager) {
 	ctx := context.Background()
 	c, err := cm.Connection(ctx)
 	require.Nil(tb, err)
-	_, err = c.ExecContext(ctx, storageTestMigrateDOWN)
+	_, err = c.ExecContext(ctx, testMigrateDOWN)
 	require.Nil(tb, err)
-	_, err = c.ExecContext(ctx, storageTestMigrateUP)
+	_, err = c.ExecContext(ctx, testMigrateUP)
 	require.Nil(tb, err)
 
 	tb.Cleanup(func() {
 		client, err := cm.Connection(ctx)
 		require.Nil(tb, err)
-		_, err = client.ExecContext(ctx, storageTestMigrateDOWN)
+		_, err = client.ExecContext(ctx, testMigrateDOWN)
 		require.Nil(tb, err)
 	})
 }
 
-const storageTestMigrateUP = `
+const testMigrateUP = `
 CREATE TABLE "test_entities" (
     id	TEXT	NOT	NULL	PRIMARY KEY,
 	foo	TEXT	NOT	NULL,
@@ -73,6 +73,6 @@ CREATE TABLE "test_entities" (
 );
 `
 
-const storageTestMigrateDOWN = `
+const testMigrateDOWN = `
 DROP TABLE IF EXISTS "test_entities";
 `

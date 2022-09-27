@@ -2,13 +2,14 @@ package buffers_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/buffers"
-	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/buffers"
+	"github.com/adamluzsi/frameless/ports/filesystem"
 
 	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"

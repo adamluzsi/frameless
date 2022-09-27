@@ -1,9 +1,10 @@
 package iterators_test
 
 import (
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/testcase"
 )
 
 func TestFunc(t *testing.T) {
@@ -13,8 +14,8 @@ func TestFunc(t *testing.T) {
 	var (
 		fn = testcase.Let[FN](s, nil)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) *iterators2.FuncIter[string] {
-		return iterators2.Func[string](fn.Get(t))
+	subject := testcase.Let(s, func(t *testcase.T) *iterators.FuncIter[string] {
+		return iterators.Func[string](fn.Get(t))
 	})
 
 	s.When("func yields values", func(s *testcase.Spec) {
@@ -40,7 +41,7 @@ func TestFunc(t *testing.T) {
 		})
 
 		s.Test("then value collected without an issue", func(t *testcase.T) {
-			vs, err := iterators2.Collect[string](subject.Get(t))
+			vs, err := iterators.Collect[string](subject.Get(t))
 			t.Must.Nil(err)
 			t.Must.Equal(values.Get(t), vs)
 		})

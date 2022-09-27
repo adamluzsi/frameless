@@ -1,10 +1,11 @@
 package iterators_test
 
 import (
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
+	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
-	"testing"
 )
 
 func TestReduce(t *testing.T) {
@@ -18,8 +19,8 @@ func TestReduce(t *testing.T) {
 				t.Random.StringNC(4, random.CharsetAlpha()),
 			}
 		})
-		iter = testcase.Let(s, func(t *testcase.T) iterators2.Iterator[string] {
-			return iterators2.Slice(src.Get(t))
+		iter = testcase.Let(s, func(t *testcase.T) iterators.Iterator[string] {
+			return iterators.Slice(src.Get(t))
 		})
 		initial = testcase.Let(s, func(t *testcase.T) int {
 			return t.Random.Int()
@@ -31,7 +32,7 @@ func TestReduce(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) (int, error) {
-		return iterators2.Reduce(iter.Get(t), initial.Get(t), reducer.Get(t))
+		return iterators.Reduce(iter.Get(t), initial.Get(t), reducer.Get(t))
 	}
 
 	expectedErr := testcase.Let(s, func(t *testcase.T) error {
@@ -45,8 +46,8 @@ func TestReduce(t *testing.T) {
 	})
 
 	s.When("Iterator.Close encounters an error", func(s *testcase.Spec) {
-		iter.Let(s, func(t *testcase.T) iterators2.Iterator[string] {
-			stub := iterators2.Stub(iter.Init(t))
+		iter.Let(s, func(t *testcase.T) iterators.Iterator[string] {
+			stub := iterators.Stub(iter.Init(t))
 			stub.StubClose = func() error {
 				return expectedErr.Get(t)
 			}
@@ -60,8 +61,8 @@ func TestReduce(t *testing.T) {
 	})
 
 	s.When("Iterator.Err yields an error an error", func(s *testcase.Spec) {
-		iter.Let(s, func(t *testcase.T) iterators2.Iterator[string] {
-			stub := iterators2.Stub(iter.Init(t))
+		iter.Let(s, func(t *testcase.T) iterators.Iterator[string] {
+			stub := iterators.Stub(iter.Init(t))
 			stub.StubErr = func() error {
 				return expectedErr.Get(t)
 			}
@@ -85,8 +86,8 @@ func TestReduce_reducerWithError(t *testing.T) {
 				t.Random.StringNC(3, random.CharsetAlpha()),
 			}
 		})
-		iter = testcase.Let(s, func(t *testcase.T) iterators2.Iterator[string] {
-			return iterators2.Slice(src.Get(t))
+		iter = testcase.Let(s, func(t *testcase.T) iterators.Iterator[string] {
+			return iterators.Slice(src.Get(t))
 		})
 		initial = testcase.Let(s, func(t *testcase.T) int {
 			return t.Random.Int()
@@ -98,7 +99,7 @@ func TestReduce_reducerWithError(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) (int, error) {
-		return iterators2.Reduce(iter.Get(t), initial.Get(t), reducer.Get(t))
+		return iterators.Reduce(iter.Get(t), initial.Get(t), reducer.Get(t))
 	}
 
 	s.Then("it will reduce", func(t *testcase.T) {

@@ -1,8 +1,9 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/iterators"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase/assert"
 )

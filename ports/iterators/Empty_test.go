@@ -1,9 +1,10 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/iterators"
 	"math/rand"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase/assert"
 )

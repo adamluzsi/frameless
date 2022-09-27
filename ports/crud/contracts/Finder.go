@@ -3,13 +3,14 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/spechelper"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/crud"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/frameless/spechelper"
+	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -147,7 +148,7 @@ func (c findByID[Ent, ID]) createNonActiveID(tb testing.TB, ctx context.Context,
 	return id
 }
 
-// findAll can return business entities from a given storage that implement it's test
+// findAll can return business entities from a given resource that implement it's test
 // The "EntityTypeName" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
@@ -176,7 +177,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 			ctx = testcase.Let(s, func(t *testcase.T) context.Context {
 				return c.Context(t)
 			})
-			subject = func(t *testcase.T) iterators2.Iterator[Ent] {
+			subject = func(t *testcase.T) iterators.Iterator[Ent] {
 				return resource.Get(t).FindAll(ctx.Get(t))
 			}
 		)
@@ -197,7 +198,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
 				Eventually.Assert(t, func(tb assert.It) {
-					count, err := iterators2.Count(subject(t))
+					count, err := iterators.Count(subject(t))
 					assert.Must(tb).Nil(err)
 					assert.Must(tb).Equal(1, count)
 				})
@@ -233,7 +234,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
-				count, err := iterators2.Count(subject(t))
+				count, err := iterators.Count(subject(t))
 				t.Must.Nil(err)
 				t.Must.Equal(0, count)
 			})
@@ -271,12 +272,12 @@ func (c findByID[Ent, ID]) createDummyID(t *testcase.T, r FinderSubject[Ent, ID]
 	return id
 }
 
-func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) iterators2.Iterator[Ent], n int) []Ent {
+func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Iterator[Ent], n int) []Ent {
 	var entities []Ent
 	Eventually.Assert(t, func(tb assert.It) {
 		var err error
 		all := subject(t)
-		entities, err = iterators2.Collect(all)
+		entities, err = iterators.Collect(all)
 		assert.Must(tb).Nil(err)
 		assert.Must(tb).Equal(n, len(entities))
 	})
@@ -301,7 +302,7 @@ type FindOne[Ent, ID any] struct {
 	MethodName string
 	// ToQuery takes an entity ptr and returns with a closure that has the knowledge about how to query on the Subject resource to find the entity.
 	//
-	// By convention, any preparation action that affect the Storage must take place prior to returning the closure.
+	// By convention, any preparation action that affect the resource must take place prior to returning the closure.
 	// The QueryOne closure should only have the Method call with the already mapped values.
 	// ToQuery will be evaluated in the beginning of the testing,
 	// and executed after all the test Context preparation is done.

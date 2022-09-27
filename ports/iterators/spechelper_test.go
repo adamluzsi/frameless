@@ -2,9 +2,10 @@ package iterators_test
 
 import (
 	"errors"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"io"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
@@ -42,7 +43,7 @@ func (b *BrokenReader) Read(p []byte) (n int, err error) { return 0, io.ErrUnexp
 
 type x struct{ data string }
 
-func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterators2.Iterator[Entity]) (T, bool, error)) {
+func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterators.Iterator[Entity]) (T, bool, error)) {
 	t.Run("error test-cases", func(t *testing.T) {
 		expectedErr := errors.New(random.New(random.CryptoSeed{}).StringN(4))
 
@@ -50,7 +51,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterator
 			t.Parallel()
 
 			expected := Entity{Text: "close"}
-			i := iterators2.SingleValue[Entity](expected)
+			i := iterators.SingleValue[Entity](expected)
 
 			v, ok, err := subject(i)
 			assert.Must(t).Nil(err)
@@ -61,7 +62,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterator
 		t.Run("Closing", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators2.Stub[Entity](iterators2.SingleValue[Entity](Entity{Text: "close"}))
+			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "close"}))
 
 			i.StubClose = func() error { return expectedErr }
 
@@ -72,7 +73,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterator
 		t.Run("Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators2.Stub[Entity](iterators2.SingleValue[Entity](Entity{Text: "err"}))
+			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "err"}))
 			i.StubErr = func() error { return expectedErr }
 
 			_, _, err := subject(i)
@@ -82,7 +83,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterator
 		t.Run("Err+Close Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators2.Stub[Entity](iterators2.SingleValue[Entity](Entity{Text: "err"}))
+			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "err"}))
 			i.StubErr = func() error { return expectedErr }
 			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }
 
@@ -91,7 +92,7 @@ func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterator
 		})
 
 		t.Run(`empty iterator with .Err()`, func(t *testing.T) {
-			i := iterators2.Error[Entity](expectedErr)
+			i := iterators.Error[Entity](expectedErr)
 			_, found, err := subject(i)
 			assert.Must(t).Equal(false, found)
 			assert.Must(t).Equal(expectedErr, err)

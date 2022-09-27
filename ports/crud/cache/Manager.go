@@ -3,25 +3,26 @@ package cache
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	"sync"
 )
 
-func NewManager[Ent, ID any](storage Storage[Ent, ID], source Source[Ent, ID]) (*Manager[Ent, ID], error) {
-	var r = &Manager[Ent, ID]{Storage: storage, Source: source}
+func NewManager[Ent, ID any](repository Repository[Ent, ID], source Source[Ent, ID]) (*Manager[Ent, ID], error) {
+	var r = &Manager[Ent, ID]{Repository: repository, Source: source}
 	return r, r.Init(context.Background())
 }
 
 type Manager[Ent, ID any] struct {
 	// Source is the location of the original data
 	Source Source[Ent, ID]
-	// Storage is the storage that keeps the cached data.
-	Storage Storage[Ent, ID]
+	// Repository is the resource that keeps the cached data.
+	Repository Repository[Ent, ID]
 
 	init  sync.Once
 	close func()
@@ -73,17 +74,17 @@ func (m *Manager[Ent, ID]) entityTypeName() string {
 }
 
 func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr error) {
-	s := m.Storage.CacheEntity(ctx)
-	ctx, err := m.Storage.BeginTx(ctx)
+	s := m.Repository.CacheEntity(ctx)
+	ctx, err := m.Repository.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if rErr != nil {
-			_ = m.Storage.RollbackTx(ctx)
+			_ = m.Repository.RollbackTx(ctx)
 			return
 		}
-		rErr = m.Storage.CommitTx(ctx)
+		rErr = m.Repository.CommitTx(ctx)
 	}()
 	_, found, err := s.FindByID(ctx, id)
 	if err != nil {
@@ -98,32 +99,32 @@ func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr 
 func (m *Manager[Ent, ID]) CacheQueryMany(
 	ctx context.Context,
 	name string,
-	query func() iterators2.Iterator[Ent],
-) iterators2.Iterator[Ent] {
+	query func() iterators.Iterator[Ent],
+) iterators.Iterator[Ent] {
 	// TODO: double check
 	if ctx != nil && ctx.Err() != nil {
-		return iterators2.Error[Ent](ctx.Err())
+		return iterators.Error[Ent](ctx.Err())
 	}
 
 	queryID := fmt.Sprintf(`0:%T/%s`, *new(Ent), name) // add version epoch
-	hit, found, err := m.Storage.CacheHit(ctx).FindByID(ctx, queryID)
+	hit, found, err := m.Repository.CacheHit(ctx).FindByID(ctx, queryID)
 	if err != nil {
-		return iterators2.Error[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
 		//       we invalidate the hit and try again
-		return m.Storage.CacheEntity(ctx).FindByIDs(ctx, hit.EntityIDs...)
+		return m.Repository.CacheEntity(ctx).FindByIDs(ctx, hit.EntityIDs...)
 	}
 
 	// this naive MVP approach might take a big burden on the memory.
 	// If this becomes the case, it should be possible to change this into a streaming approach
 	// where iterator being iterated element by element,
-	// and records being created during then in the Storage
+	// and records being created during then in the Repository
 	var ids []ID
-	res, err := iterators2.Collect(query())
+	res, err := iterators.Collect(query())
 	if err != nil {
-		return iterators2.Error[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	for _, v := range res {
 		id, _ := extid.Lookup[ID](v)
@@ -135,18 +136,18 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 		vs = append(vs, &ent)
 	}
 
-	if err := m.Storage.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
-		return iterators2.Error[Ent](err)
+	if err := m.Repository.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
+		return iterators.Error[Ent](err)
 	}
 
-	if err := m.Storage.CacheHit(ctx).Create(ctx, &Hit[ID]{
+	if err := m.Repository.CacheHit(ctx).Create(ctx, &Hit[ID]{
 		QueryID:   queryID,
 		EntityIDs: ids,
 	}); err != nil {
-		return iterators2.Error[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 
-	return iterators2.Slice[Ent](res)
+	return iterators.Slice[Ent](res)
 }
 
 func (m *Manager[Ent, ID]) CacheQueryOne(
@@ -154,18 +155,18 @@ func (m *Manager[Ent, ID]) CacheQueryOne(
 	queryID string,
 	query func() (ent Ent, found bool, err error),
 ) (_ent Ent, _found bool, _err error) {
-	iter := m.CacheQueryMany(ctx, queryID, func() iterators2.Iterator[Ent] {
+	iter := m.CacheQueryMany(ctx, queryID, func() iterators.Iterator[Ent] {
 		ent, found, err := query()
 		if err != nil {
-			return iterators2.Error[Ent](err)
+			return iterators.Error[Ent](err)
 		}
 		if !found {
-			return iterators2.Empty[Ent]()
+			return iterators.Empty[Ent]()
 		}
-		return iterators2.Slice[Ent]([]Ent{ent})
+		return iterators.Slice[Ent]([]Ent{ent})
 	})
 
-	ent, found, err := iterators2.First[Ent](iter)
+	ent, found, err := iterators.First[Ent](iter)
 	if err != nil {
 		return ent, false, err
 	}
@@ -181,12 +182,12 @@ func (m *Manager[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	if err := m.Source.Create(ctx, ptr); err != nil {
 		return err
 	}
-	return m.Storage.CacheEntity(ctx).Create(ctx, ptr)
+	return m.Repository.CacheEntity(ctx).Create(ctx, ptr)
 }
 
 func (m *Manager[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
 	// fast path
-	ent, found, err := m.Storage.CacheEntity(ctx).FindByID(ctx, id)
+	ent, found, err := m.Repository.CacheEntity(ctx).FindByID(ctx, id)
 	if err != nil {
 		return ent, false, err
 	}
@@ -199,8 +200,8 @@ func (m *Manager[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, erro
 	})
 }
 
-func (m *Manager[Ent, ID]) FindAll(ctx context.Context) iterators2.Iterator[Ent] {
-	return m.CacheQueryMany(ctx, `FindAll`, func() iterators2.Iterator[Ent] {
+func (m *Manager[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
+	return m.CacheQueryMany(ctx, `FindAll`, func() iterators.Iterator[Ent] {
 		return m.Source.FindAll(ctx)
 	})
 }
@@ -211,7 +212,7 @@ func (m *Manager[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 		if err := src.Update(ctx, ptr); err != nil {
 			return err
 		}
-		return m.Storage.CacheEntity(ctx).Upsert(ctx, ptr)
+		return m.Repository.CacheEntity(ctx).Upsert(ctx, ptr)
 	default:
 		return errutils.Error(`not implemented`)
 	}
@@ -223,18 +224,18 @@ func (m *Manager[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	}
 
 	// TODO: unsafe without additional comproto layer
-	dataStorage := m.Storage.CacheEntity(ctx)
-	_, found, err := dataStorage.FindByID(ctx, id)
+	dataRepository := m.Repository.CacheEntity(ctx)
+	_, found, err := dataRepository.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return nil
 	}
-	if err := dataStorage.DeleteByID(ctx, id); err != nil {
+	if err := dataRepository.DeleteByID(ctx, id); err != nil {
 		return err
 	}
-	if err := m.Storage.CacheHit(ctx).DeleteAll(ctx); err != nil {
+	if err := m.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -244,7 +245,7 @@ func (m *Manager[Ent, ID]) DeleteAll(ctx context.Context) error {
 	if err := m.Source.DeleteAll(ctx); err != nil {
 		return err
 	}
-	return m.Storage.CacheEntity(ctx).DeleteAll(ctx)
+	return m.Repository.CacheEntity(ctx).DeleteAll(ctx)
 }
 
 func (m *Manager[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, creatorSubscriber pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {

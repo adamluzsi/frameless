@@ -2,10 +2,11 @@ package contexts_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/contexts"
-	"github.com/adamluzsi/testcase"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/pkg/contexts"
+	"github.com/adamluzsi/testcase"
 )
 
 var _ context.Context = contexts.Detach(context.Background())

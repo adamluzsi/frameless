@@ -3,10 +3,11 @@ package memory
 import (
 	"context"
 	"fmt"
+	"sync"
+
 	"github.com/adamluzsi/frameless/pkg/errutils"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	"sync"
 )
 
 func NewEventLog() *EventLog {

@@ -3,15 +3,16 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
+	"sync"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	"github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-	"sync"
-	"testing"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -366,7 +367,7 @@ func (c OnePhaseCommitProtocol[Ent, ID]) specCreatorPublisher(s *testcase.Spec) 
 			subscription.Set(t, sub)
 			t.Defer(sub.Close)
 
-			t.Log(`and then events created in the storage`)
+			t.Log(`and then events created in the repository`)
 			for _, entity := range events.Get(t) {
 				Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity)
 			}
@@ -447,7 +448,7 @@ func (c OnePhaseCommitProtocol[Ent, ID]) specUpdaterPublisher(s *testcase.Spec) 
 			subscription.Set(t, sub)
 			t.Defer(sub.Close)
 
-			t.Log(`and then events created in the storage outside of the current transaction`)
+			t.Log(`and then events created in the repository outside of the current transaction`)
 			for _, ptr := range events.Get(t) {
 				Create[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t), ptr)
 			}

@@ -1,8 +1,9 @@
 package containers_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/containers"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/containers"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"

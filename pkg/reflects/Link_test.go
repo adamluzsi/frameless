@@ -2,10 +2,11 @@ package reflects_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/reflects"
 	"math/rand"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/reflects"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

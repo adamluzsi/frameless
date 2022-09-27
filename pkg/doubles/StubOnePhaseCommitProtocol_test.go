@@ -3,8 +3,9 @@ package doubles_test
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/doubles"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/doubles"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"

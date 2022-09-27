@@ -3,11 +3,12 @@ package frcasserts
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 	sh "github.com/adamluzsi/frameless/spechelper"
-	"testing"
 
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -112,15 +113,15 @@ func DeleteAll[Ent, ID any](tb testing.TB, subject deleteAllDeleter[Ent, ID], ct
 	assert.Must(tb).Nil(subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	Eventually.Assert(tb, func(it assert.It) {
-		count, err := iterators2.Count(subject.FindAll(ctx))
+		count, err := iterators.Count(subject.FindAll(ctx))
 		it.Must.Nil(err)
 		it.Should.True(count == 0, `no entity was expected to be found`)
 	})
 }
 
-func CountIs[T any](tb testing.TB, iter iterators2.Iterator[T], expected int) {
+func CountIs[T any](tb testing.TB, iter iterators.Iterator[T], expected int) {
 	tb.Helper()
-	count, err := iterators2.Count(iter)
+	count, err := iterators.Count(iter)
 	assert.Must(tb).Nil(err)
 	assert.Must(tb).Equal(expected, count)
 }

@@ -3,29 +3,30 @@ package memory
 import (
 	"context"
 	"fmt"
-	reflects2 "github.com/adamluzsi/frameless/pkg/reflects"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"reflect"
 	"sync"
+
+	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-func NewStorage[Ent, ID any](m *Memory) *Storage[Ent, ID] {
-	return &Storage[Ent, ID]{Memory: m}
+func NewRepository[Ent, ID any](m *Memory) *Repository[Ent, ID] {
+	return &Repository[Ent, ID]{Memory: m}
 }
 
-func NewStorageWithNamespace[Ent, ID any](m *Memory, ns string) *Storage[Ent, ID] {
-	return &Storage[Ent, ID]{Memory: m, Namespace: ns}
+func NewRepositoryWithNamespace[Ent, ID any](m *Memory, ns string) *Repository[Ent, ID] {
+	return &Repository[Ent, ID]{Memory: m, Namespace: ns}
 }
 
-type Storage[Ent, ID any] struct {
+type Repository[Ent, ID any] struct {
 	Memory        *Memory
 	NewID         func(context.Context) (ID, error)
 	Namespace     string
 	initNamespace sync.Once
 }
 
-func (s *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
+func (s *Repository[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	if _, ok := extid.Lookup[ID](ptr); !ok {
 		newID, err := s.MakeID(ctx)
 		if err != nil {
@@ -53,7 +54,7 @@ func (s *Storage[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
 	return nil
 }
 
-func (s *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _found bool, _err error) {
+func (s *Repository[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _found bool, _err error) {
 	if err := ctx.Err(); err != nil {
 		return _ent, false, err
 	}
@@ -68,17 +69,17 @@ func (s *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _foun
 	return ent.(Ent), true, nil
 }
 
-func (s *Storage[Ent, ID]) FindAll(ctx context.Context) iterators2.Iterator[Ent] {
+func (s *Repository[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
-		return iterators2.Error[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators2.Error[Ent](err)
+		return iterators.Error[Ent](err)
 	}
 	return memoryAll[Ent](s.Memory, ctx, s.GetNamespace())
 }
 
-func (s *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (s *Repository[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -91,7 +92,7 @@ func (s *Storage[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	return errNotFound(*new(Ent), id)
 }
 
-func (s *Storage[Ent, ID]) DeleteAll(ctx context.Context) error {
+func (s *Repository[Ent, ID]) DeleteAll(ctx context.Context) error {
 	iter := s.FindAll(ctx)
 	defer iter.Close()
 	for iter.Next() {
@@ -101,7 +102,7 @@ func (s *Storage[Ent, ID]) DeleteAll(ctx context.Context) error {
 	return iter.Err()
 }
 
-func (s *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
+func (s *Repository[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	id, ok := extid.Lookup[ID](ptr)
 	if !ok {
 		return fmt.Errorf(`entity doesn't have id field`)
@@ -119,7 +120,7 @@ func (s *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	return nil
 }
 
-func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators2.Iterator[Ent] {
+func (s *Repository[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent] {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
@@ -130,14 +131,14 @@ func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators2.
 		key := s.IDToMemoryKey(id)
 		v, ok := all[key]
 		if !ok {
-			return iterators2.Error[Ent](errNotFound(*new(Ent), id))
+			return iterators.Error[Ent](errNotFound(*new(Ent), id))
 		}
 		vs[key] = v.(Ent)
 	}
-	return iterators2.Slice[Ent](toSlice[Ent, string](vs))
+	return iterators.Slice[Ent](toSlice[Ent, string](vs))
 }
 
-func (s *Storage[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) error {
+func (s *Repository[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) error {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
@@ -160,23 +161,7 @@ func (s *Storage[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) error {
 	return nil
 }
 
-//func (s *Storage[Ent,ID]) SubscribeToCreate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-//	panic("implement me")
-//}
-//
-//func (s *Storage[Ent,ID]) SubscribeToUpdate(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-//	panic("implement me")
-//}
-//
-//func (s *Storage[Ent,ID]) SubscribeToDeleteByID(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-//	panic("implement me")
-//}
-//
-//func (s *Storage[Ent,ID]) SubscribeToDeleteAll(ctx context.Context, subscriber frameless.Subscriber) (frameless.Subscription, error) {
-//	panic("implement me")
-//}
-
-func (s *Storage[Ent, ID]) MakeID(ctx context.Context) (ID, error) {
+func (s *Repository[Ent, ID]) MakeID(ctx context.Context) (ID, error) {
 	if s.NewID != nil {
 		return s.NewID(ctx)
 	}
@@ -191,25 +176,25 @@ func (s *Storage[Ent, ID]) MakeID(ctx context.Context) (ID, error) {
 	return id, nil
 }
 
-func (s *Storage[Ent, ID]) IDToMemoryKey(id any) string {
+func (s *Repository[Ent, ID]) IDToMemoryKey(id any) string {
 	return fmt.Sprintf(`%#v`, id)
 }
 
-func (s *Storage[Ent, ID]) GetNamespace() string {
+func (s *Repository[Ent, ID]) GetNamespace() string {
 	s.initNamespace.Do(func() {
 		if 0 < len(s.Namespace) {
 			return
 		}
-		s.Namespace = reflects2.FullyQualifiedName(*new(Ent))
+		s.Namespace = reflects.FullyQualifiedName(*new(Ent))
 	})
 	return s.Namespace
 }
 
-func (s *Storage[Ent, ID]) getV(ptr interface{}) interface{} {
-	return reflects2.BaseValueOf(ptr).Interface()
+func (s *Repository[Ent, ID]) getV(ptr interface{}) interface{} {
+	return reflects.BaseValueOf(ptr).Interface()
 }
 
-func (s *Storage[Ent, ID]) isDoneTx(ctx context.Context) error {
+func (s *Repository[Ent, ID]) isDoneTx(ctx context.Context) error {
 	tx, ok := s.Memory.LookupTx(ctx)
 	if !ok {
 		return nil
@@ -278,7 +263,7 @@ func (m *Memory) LookupMeta(ctx context.Context, key string, ptr interface{}) (_
 	if !ok {
 		return false, nil
 	}
-	return true, reflects2.Link(v, ptr)
+	return true, reflects.Link(v, ptr)
 }
 
 type memoryActions interface {
@@ -289,7 +274,7 @@ type memoryActions interface {
 }
 
 func base(ent any) interface{} {
-	return reflects2.BaseValueOf(ent).Interface()
+	return reflects.BaseValueOf(ent).Interface()
 }
 
 func (m *Memory) Get(ctx context.Context, namespace string, key string) (interface{}, bool) {
@@ -299,9 +284,9 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 	return m.get(namespace, key)
 }
 
-func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) iterators2.Iterator[Ent] {
+func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) iterators.Iterator[Ent] {
 	var T Ent
-	return iterators2.Slice[Ent](m.All(T, ctx, namespace).([]Ent))
+	return iterators.Slice[Ent](m.All(T, ctx, namespace).([]Ent))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {

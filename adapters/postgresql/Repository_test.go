@@ -3,11 +3,12 @@ package postgresql_test
 import (
 	"context"
 	"database/sql"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
-	"github.com/adamluzsi/frameless/ports/meta/contracts"
+	"testing"
+
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
 	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
-	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/assert"
@@ -32,8 +33,8 @@ func TestPostgresConnection(t *testing.T) {
 	it.Must.True(b)
 }
 
-func TestNewStorage_smoke(t *testing.T) {
-	storage := NewTestEntityStorage(t)
+func TestNewRepository_smoke(t *testing.T) {
+	repository := NewTestEntityRepository(t)
 
 	ctx := context.Background()
 
@@ -43,25 +44,25 @@ func TestNewStorage_smoke(t *testing.T) {
 		Baz: "baz",
 	}
 
-	require.NoError(t, storage.Create(ctx, ent))
+	require.NoError(t, repository.Create(ctx, ent))
 	require.NotEmpty(t, ent.ID)
 
-	ent2, found, err := storage.FindByID(ctx, ent.ID)
+	ent2, found, err := repository.FindByID(ctx, ent.ID)
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, *ent, ent2)
 
-	require.NoError(t, storage.DeleteByID(ctx, ent.ID))
-	_, found, err = storage.FindByID(ctx, ent.ID)
+	require.NoError(t, repository.DeleteByID(ctx, ent.ID))
+	_, found, err = repository.FindByID(ctx, ent.ID)
 	require.NoError(t, err)
 	require.False(t, found, `should be deleted`)
 }
 
-func TestStorage(t *testing.T) {
+func TestRepository(t *testing.T) {
 	mapping := psh.TestEntityMapping()
 	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	sm := postgresql.NewListenNotifySubscriptionManager[psh.TestEntity, string](mapping, psh.DatabaseURL(t), cm)
-	subject := &postgresql.Storage[psh.TestEntity, string]{
+	subject := &postgresql.Repository[psh.TestEntity, string]{
 		ConnectionManager:   cm,
 		SubscriptionManager: sm,
 		Mapping:             mapping,
@@ -116,16 +117,16 @@ func TestStorage(t *testing.T) {
 	)
 }
 
-func TestStorage_contracts(t *testing.T) {
+func TestRepository_contracts(t *testing.T) {
 	s := testcase.NewSpec(t)
-	storage := NewTestEntityStorage(t)
+	repository := NewTestEntityRepository(t)
 
 	contracts2.Contract[psh.TestEntity, string, string]{
 		Subject: func(tb testing.TB) contracts2.ContractSubject[psh.TestEntity, string] {
 			return contracts2.ContractSubject[psh.TestEntity, string]{
-				MetaAccessor:  storage,
-				CommitManager: storage,
-				Resource:      storage,
+				MetaAccessor:  repository,
+				CommitManager: repository,
+				Resource:      repository,
 			}
 		},
 		MakeEnt: psh.MakeTestEntity,
@@ -134,14 +135,14 @@ func TestStorage_contracts(t *testing.T) {
 	}.Spec(s)
 }
 
-func TestStorage_mappingHasSchemaInTableName(t *testing.T) {
+func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	psh.MigrateTestEntity(t, cm)
 
 	mapper := psh.TestEntityMapping()
 	mapper.Table = `public.` + mapper.Table
 
-	subject := NewTestEntityStorage(t)
+	subject := NewTestEntityRepository(t)
 
 	testcase.RunSuite(t, crudcontracts.Creator[psh.TestEntity, string]{
 		Subject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },

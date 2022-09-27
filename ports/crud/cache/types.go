@@ -5,18 +5,19 @@ package cache
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-type Storage[Ent, ID any] interface {
-	CacheEntity(ctx context.Context) EntityStorage[Ent, ID]
-	CacheHit(ctx context.Context) HitStorage[ID]
+type Repository[Ent, ID any] interface {
+	CacheEntity(ctx context.Context) EntityRepository[Ent, ID]
+	CacheHit(ctx context.Context) HitRepository[ID]
 	comproto.OnePhaseCommitProtocol
 }
 
-type EntityStorage[Ent, ID any] interface {
+type EntityRepository[Ent, ID any] interface {
 	crud.Creator[Ent]
 	crud.Updater[Ent]
 	crud.Finder[Ent, ID]
@@ -25,8 +26,8 @@ type EntityStorage[Ent, ID any] interface {
 	Upsert(ctx context.Context, ptrs ...*Ent) error
 }
 
-// HitStorage is the query hit result storage.
-type HitStorage[EntID any] interface {
+// HitRepository is the query hit result repository.
+type HitRepository[EntID any] interface {
 	crud.Creator[Hit[EntID]]
 	crud.Updater[Hit[EntID]]
 	crud.Finder[Hit[EntID], string]

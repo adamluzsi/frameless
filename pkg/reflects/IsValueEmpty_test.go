@@ -1,9 +1,10 @@
 package reflects_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/reflects"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/reflects"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

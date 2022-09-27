@@ -2,11 +2,12 @@ package filesystems_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/adamluzsi/frameless/ports/filesystem"
 
 	"github.com/adamluzsi/frameless/adapters/filesystems"
 )

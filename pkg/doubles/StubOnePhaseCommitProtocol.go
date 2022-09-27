@@ -2,6 +2,7 @@ package doubles
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 )
 

@@ -2,10 +2,11 @@ package cache_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/contracts"
 	fc "github.com/adamluzsi/frameless/ports/crud/contracts"
-	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/crud/cache"
@@ -52,35 +53,35 @@ func TestManager(t *testing.T) {
 func NewManager(tb testing.TB) cachecontracts.ManagerSubject[TestEntity, string] {
 	eventLog := memory.NewEventLog()
 	eventLog.Options.DisableAsyncSubscriptionHandling = true
-	cacheHitStorage := memory.NewEventLogStorage[cache.Hit[string], string](eventLog)
-	cacheEntityStorage := memory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#CacheStorage`)
-	sourceEntityStorage := memory.NewEventLogStorageWithNamespace[TestEntity, string](eventLog, `TestEntity#SourceStorage`)
+	cacheHitRepository := memory.NewEventLogRepository[cache.Hit[string], string](eventLog)
+	cacheEntityRepository := memory.NewEventLogRepositoryWithNamespace[TestEntity, string](eventLog, `TestEntity#CacheRepository`)
+	sourceEntityRepository := memory.NewEventLogRepositoryWithNamespace[TestEntity, string](eventLog, `TestEntity#SourceRepository`)
 
-	storage := TestCacheStorage{
-		Hits:                   cacheHitStorage,
-		Entities:               cacheEntityStorage,
+	testCacheRepository := TestCacheRepository{
+		Hits:                   cacheHitRepository,
+		Entities:               cacheEntityRepository,
 		OnePhaseCommitProtocol: eventLog,
 	}
-	manager, err := cache.NewManager[TestEntity, string](storage, sourceEntityStorage)
+	manager, err := cache.NewManager[TestEntity, string](testCacheRepository, sourceEntityRepository)
 	assert.Must(tb).Nil(err)
 	tb.Cleanup(func() { _ = manager.Close() })
 	return cachecontracts.ManagerSubject[TestEntity, string]{
 		Cache:         manager,
-		Source:        sourceEntityStorage,
+		Source:        sourceEntityRepository,
 		CommitManager: eventLog,
 	}
 }
 
-type TestCacheStorage struct {
-	Hits     cache.HitStorage[string]
-	Entities cache.EntityStorage[TestEntity, string]
+type TestCacheRepository struct {
+	Hits     cache.HitRepository[string]
+	Entities cache.EntityRepository[TestEntity, string]
 	comproto.OnePhaseCommitProtocol
 }
 
-func (s TestCacheStorage) CacheEntity(ctx context.Context) cache.EntityStorage[TestEntity, string] {
+func (s TestCacheRepository) CacheEntity(ctx context.Context) cache.EntityRepository[TestEntity, string] {
 	return s.Entities
 }
 
-func (s TestCacheStorage) CacheHit(ctx context.Context) cache.HitStorage[string] {
+func (s TestCacheRepository) CacheHit(ctx context.Context) cache.HitRepository[string] {
 	return s.Hits
 }

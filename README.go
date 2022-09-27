@@ -228,7 +228,7 @@ Supplier is a specific implementation of an external resource that required for 
 		so you can try anything out while frameworks and ORMs evolve,
 		yet your domain rules will be keep safe from this changes.
 
-A common example for a Supplier is a Entity Storage implementation, also known as Entity Repositories.
+A common example for a Supplier is a Entity Repository implementation, also known as Entity Repositories.
 
 */
 package frameless

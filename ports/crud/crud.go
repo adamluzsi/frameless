@@ -4,6 +4,7 @@ package crud
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
@@ -48,7 +49,7 @@ type Deleter[ID any] interface {
 }
 
 type ByIDDeleter[ID any] interface {
-	// DeleteByID will remove a <V> type entity from the storage by a given ID
+	// DeleteByID will remove a <V> type entity from the repository by a given ID
 	DeleteByID(ctx context.Context, id ID) error
 }
 
@@ -60,7 +61,7 @@ type AllDeleter interface {
 // Purger supplies functionality to purge a resource completely.
 // On high level this looks similar to what Deleter do,
 // but in case of an event logged resource, this will purge all the events.
-// After a purge, it is not expected to have anything in the storage.
+// After a purge, it is not expected to have anything in the repository.
 // It is heavily discouraged to use Purge for domain interactions.
 type Purger interface {
 	// Purge will completely wipe all state from the given resource.

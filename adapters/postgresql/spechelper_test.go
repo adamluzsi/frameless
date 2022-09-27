@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func NewTestEntityStorage(tb testing.TB) *postgresql.Storage[psh.TestEntity, string] {
-	stg := postgresql.NewStorageByDSN[psh.TestEntity, string](psh.TestEntityMapping(), psh.DatabaseURL(tb))
+func NewTestEntityRepository(tb testing.TB) *postgresql.Repository[psh.TestEntity, string] {
+	stg := postgresql.NewRepositoryByDSN[psh.TestEntity, string](psh.TestEntityMapping(), psh.DatabaseURL(tb))
 	psh.MigrateTestEntity(tb, stg.ConnectionManager)
 	deferClose(tb, stg)
 	return stg

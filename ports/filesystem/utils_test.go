@@ -1,12 +1,13 @@
 package filesystem_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/filesystem"
 
 	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase/assert"

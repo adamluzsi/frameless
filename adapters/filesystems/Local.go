@@ -1,12 +1,13 @@
 package filesystems
 
 import (
-	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/adamluzsi/frameless/ports/filesystem"
 )
 
 // Local provides local file system access through the frameless.FileSystem interface.

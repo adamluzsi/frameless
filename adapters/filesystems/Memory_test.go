@@ -1,11 +1,12 @@
 package filesystems_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/filesystem"
-	"github.com/adamluzsi/frameless/ports/filesystem/contracts"
 	"io"
 	"os"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/filesystem"
+	filesystemcontracts "github.com/adamluzsi/frameless/ports/filesystem/contracts"
 
 	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase/assert"

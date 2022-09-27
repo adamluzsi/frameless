@@ -1,9 +1,9 @@
 package internal
 
 import (
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
-	"github.com/adamluzsi/frameless/ports/meta/contracts"
-	"github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 )
 
 type (

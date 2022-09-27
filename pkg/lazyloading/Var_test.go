@@ -2,8 +2,9 @@ package lazyloading_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errutils"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/errutils"
 
 	"github.com/adamluzsi/frameless/pkg/lazyloading"
 	"github.com/adamluzsi/testcase"

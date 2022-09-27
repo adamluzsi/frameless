@@ -1,11 +1,12 @@
 package teardown_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/teardown"
-	"github.com/adamluzsi/testcase/sandbox"
 	"runtime"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/teardown"
+	"github.com/adamluzsi/testcase/sandbox"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

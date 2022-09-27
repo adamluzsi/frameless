@@ -1,9 +1,10 @@
 package reflects_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/reflects"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/reflects"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
 
 	"github.com/adamluzsi/testcase/assert"
 )

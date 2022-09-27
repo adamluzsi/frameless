@@ -2,15 +2,16 @@ package iterators_test
 
 import (
 	"fmt"
-	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"math/rand"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 )
 
-var _ iterators2.Iterator[any] = iterators2.SingleValue[any]("")
+var _ iterators.Iterator[any] = iterators.SingleValue[any]("")
 
 type ExampleStruct struct {
 	Name string
@@ -23,10 +24,10 @@ func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 
 	var expected = ExampleStruct{Name: RandomName}
 
-	i := iterators2.SingleValue[ExampleStruct](expected)
+	i := iterators.SingleValue[ExampleStruct](expected)
 	defer i.Close()
 
-	actually, found, err := iterators2.First[ExampleStruct](i)
+	actually, found, err := iterators.First[ExampleStruct](i)
 	assert.Must(t).Nil(err)
 	assert.Must(t).True(found)
 	assert.Must(t).Equal(expected, actually)
@@ -37,7 +38,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 
 	var expected = ExampleStruct{Name: RandomName}
 
-	i := iterators2.SingleValue(&expected)
+	i := iterators.SingleValue(&expected)
 	defer i.Close()
 
 	assert.Must(t).True(i.Next())
@@ -52,7 +53,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 func TestNewSingleElement_CloseCalled_DecodeWarnsAboutThis(t *testing.T) {
 	t.Parallel()
 
-	i := iterators2.SingleValue(&ExampleStruct{Name: RandomName})
+	i := iterators.SingleValue(&ExampleStruct{Name: RandomName})
 	i.Close()
 	assert.Must(t).False(i.Next())
 	assert.Must(t).Nil(i.Err())
