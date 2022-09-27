@@ -11,7 +11,7 @@ import (
 
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
 func NewStorageByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Storage[Ent, ID] {

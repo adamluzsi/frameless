@@ -3,7 +3,7 @@ package postgresql
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
 type Mapping[Ent any] interface {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
 func ExampleMapper() {
