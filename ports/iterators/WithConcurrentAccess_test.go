@@ -2,7 +2,7 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"sync"
 	"testing"
 	"time"
@@ -15,9 +15,9 @@ func TestWithConcurrentAccess(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test(`it will protect against concurrent access`, func(t *testcase.T) {
-		var i iterators.Iterator[int]
-		i = iterators.Slice([]int{1, 2})
-		i = iterators.WithConcurrentAccess(i)
+		var i iterators2.Iterator[int]
+		i = iterators2.Slice([]int{1, 2})
+		i = iterators2.WithConcurrentAccess(i)
 
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -52,25 +52,25 @@ func TestWithConcurrentAccess(t *testing.T) {
 	})
 
 	s.Test(`classic behavior`, func(t *testcase.T) {
-		var i iterators.Iterator[int]
-		i = iterators.Slice([]int{1, 2})
-		i = iterators.WithConcurrentAccess(i)
+		var i iterators2.Iterator[int]
+		i = iterators2.Slice([]int{1, 2})
+		i = iterators2.WithConcurrentAccess(i)
 
 		var vs []int
-		vs, err := iterators.Collect(i)
+		vs, err := iterators2.Collect(i)
 		assert.Must(t).Nil(err)
 		assert.Must(t).ContainExactly([]int{1, 2}, vs)
 	})
 
 	s.Test(`proxy like behavior for underlying iterator object`, func(t *testcase.T) {
-		m := iterators.Stub[int](iterators.Empty[int]())
+		m := iterators2.Stub[int](iterators2.Empty[int]())
 		m.StubErr = func() error {
 			return errors.New(`ErrErr`)
 		}
 		m.StubClose = func() error {
 			return errors.New(`ErrClose`)
 		}
-		i := iterators.WithConcurrentAccess[int](m)
+		i := iterators2.WithConcurrentAccess[int](m)
 
 		err := i.Close()
 		assert.Must(t).NotNil(err)

@@ -4,7 +4,7 @@ package crud
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
 type Creator[Ent any] interface {

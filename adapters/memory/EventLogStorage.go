@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/doubles"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"sync"
 )
@@ -116,12 +116,12 @@ func (s *EventLogStorage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent En
 	return ent, ok, nil
 }
 
-func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
+func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) iterators2.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 
 	res := make([]Ent, 0)
@@ -129,7 +129,7 @@ func (s *EventLogStorage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterat
 	for _, ent := range view {
 		res = append(res, ent)
 	}
-	return iterators.Slice(res)
+	return iterators2.Slice(res)
 }
 
 func (s *EventLogStorage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
@@ -188,9 +188,9 @@ func (s *EventLogStorage[Ent, ID]) DeleteAll(ctx context.Context) error {
 	})
 }
 
-func (s *EventLogStorage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent] {
+func (s *EventLogStorage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators2.Iterator[Ent] {
 	// building an id index becomes possible when the ids type became known after go generics
-	i, o := iterators.Pipe[Ent]()
+	i, o := iterators2.Pipe[Ent]()
 	go func() {
 		defer i.Close()
 		for _, id := range ids {

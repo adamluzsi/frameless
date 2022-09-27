@@ -2,7 +2,7 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"io"
 	"testing"
 
@@ -17,10 +17,10 @@ func TestWithCallback(t *testing.T) {
 	s.When(`no callback is defined`, func(s *testcase.Spec) {
 		s.Then(`it will execute iterator calls like it is not even there`, func(t *testcase.T) {
 			expected := []int{1, 2, 3}
-			input := iterators.Slice(expected)
-			i := iterators.WithCallback[int](input, iterators.Callback{})
+			input := iterators2.Slice(expected)
+			i := iterators2.WithCallback[int](input, iterators2.Callback{})
 
-			actually, err := iterators.Collect(i)
+			actually, err := iterators2.Collect(i)
 			assert.Must(t).Nil(err)
 			assert.Must(t).Equal(3, len(actually))
 			assert.Must(t).ContainExactly(expected, actually)
@@ -31,13 +31,13 @@ func TestWithCallback(t *testing.T) {
 		s.Then(`the callback receive the Close func call`, func(t *testcase.T) {
 			var closeHook []string
 
-			m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
+			m := iterators2.Stub[int](iterators2.Slice[int]([]int{1, 2, 3}))
 			m.StubClose = func() error {
 				closeHook = append(closeHook, `during`)
 				return nil
 			}
 
-			i := iterators.WithCallback[int](m, iterators.Callback{
+			i := iterators2.WithCallback[int](m, iterators2.Callback{
 				OnClose: func(closer io.Closer) error {
 					closeHook = append(closeHook, `before`)
 					err := closer.Close()
@@ -58,9 +58,9 @@ func TestWithCallback(t *testing.T) {
 				s.Then(`error received`, func(t *testcase.T) {
 					expectedErr := errors.New(`boom`)
 
-					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
+					m := iterators2.Stub[int](iterators2.Slice[int]([]int{1, 2, 3}))
 					m.StubClose = func() error { return expectedErr }
-					i := iterators.WithCallback[int](m, iterators.Callback{
+					i := iterators2.WithCallback[int](m, iterators2.Callback{
 						OnClose: func(closer io.Closer) error {
 							return closer.Close()
 						}})
@@ -73,9 +73,9 @@ func TestWithCallback(t *testing.T) {
 				s.Then(`error held back`, func(t *testcase.T) {
 					expectedErr := errors.New(`boom`)
 
-					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
+					m := iterators2.Stub[int](iterators2.Slice[int]([]int{1, 2, 3}))
 					m.StubClose = func() error { return expectedErr }
-					i := iterators.WithCallback[int](m, iterators.Callback{
+					i := iterators2.WithCallback[int](m, iterators2.Callback{
 						OnClose: func(closer io.Closer) error {
 							_ = closer.Close()
 							return nil
@@ -89,13 +89,13 @@ func TestWithCallback(t *testing.T) {
 		s.And(`callback prevent call from being called`, func(s *testcase.Spec) {
 			s.Then(`close will never happen`, func(t *testcase.T) {
 				var closed bool
-				m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
+				m := iterators2.Stub[int](iterators2.Slice[int]([]int{1, 2, 3}))
 				m.StubClose = func() error {
 					closed = true
 					return nil
 				}
 
-				i := iterators.WithCallback[int](m, iterators.Callback{
+				i := iterators2.WithCallback[int](m, iterators2.Callback{
 					OnClose: func(closer io.Closer) error {
 						return nil // ignore closer explicitly
 					},

@@ -5,9 +5,9 @@ package cache
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
+	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
 type Storage[Ent, ID any] interface {

@@ -1,7 +1,7 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"testing"
 	"time"
 
@@ -19,14 +19,14 @@ func TestBatch(t *testing.T) {
 			}
 			return vs
 		})
-		src = testcase.Let[iterators.Iterator[int]](s, func(t *testcase.T) iterators.Iterator[int] {
-			return iterators.Slice(values.Get(t))
+		src = testcase.Let[iterators2.Iterator[int]](s, func(t *testcase.T) iterators2.Iterator[int] {
+			return iterators2.Slice(values.Get(t))
 		})
-		config = testcase.Let(s, func(t *testcase.T) iterators.BatchConfig {
-			return iterators.BatchConfig{}
+		config = testcase.Let(s, func(t *testcase.T) iterators2.BatchConfig {
+			return iterators2.BatchConfig{}
 		})
-		subject = testcase.Let[*iterators.BatchIter[int]](s, func(t *testcase.T) *iterators.BatchIter[int] {
-			return iterators.Batch(src.Get(t), config.Get(t))
+		subject = testcase.Let[*iterators2.BatchIter[int]](s, func(t *testcase.T) *iterators2.BatchIter[int] {
+			return iterators2.Batch(src.Get(t), config.Get(t))
 		})
 	)
 
@@ -51,8 +51,8 @@ func TestBatch(t *testing.T) {
 	s.When("batch size is defined", func(s *testcase.Spec) {
 		size := testcase.Let[int](s, nil)
 
-		config.Let(s, func(t *testcase.T) iterators.BatchConfig {
-			return iterators.BatchConfig{Size: size.Get(t)}
+		config.Let(s, func(t *testcase.T) iterators2.BatchConfig {
+			return iterators2.BatchConfig{Size: size.Get(t)}
 		})
 
 		s.And("it is valid positive value", func(s *testcase.Spec) {
@@ -87,8 +87,8 @@ func TestBatch(t *testing.T) {
 	s.When("batch timeout is defined", func(s *testcase.Spec) {
 		timeout := testcase.Let[time.Duration](s, nil)
 
-		config.Let(s, func(t *testcase.T) iterators.BatchConfig {
-			return iterators.BatchConfig{
+		config.Let(s, func(t *testcase.T) iterators2.BatchConfig {
+			return iterators2.BatchConfig{
 				Timeout: timeout.Get(t),
 				Size:    len(values.Get(t)) * 2,
 			}
@@ -100,11 +100,11 @@ func TestBatch(t *testing.T) {
 			})
 
 			type Pipe struct {
-				In  *iterators.PipeIn[int]
-				Out *iterators.PipeOut[int]
+				In  *iterators2.PipeIn[int]
+				Out *iterators2.PipeOut[int]
 			}
 			pipe := testcase.Let[Pipe](s, func(t *testcase.T) Pipe {
-				in, out := iterators.Pipe[int]()
+				in, out := iterators2.Pipe[int]()
 				t.Defer(in.Close)
 				t.Defer(out.Close)
 				go func() {
@@ -120,7 +120,7 @@ func TestBatch(t *testing.T) {
 					Out: out,
 				}
 			})
-			src.Let(s, func(t *testcase.T) iterators.Iterator[int] {
+			src.Let(s, func(t *testcase.T) iterators2.Iterator[int] {
 				return pipe.Get(t).Out
 			})
 

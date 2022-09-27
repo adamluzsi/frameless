@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errutils"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"sync"
 )
@@ -98,17 +98,17 @@ func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr 
 func (m *Manager[Ent, ID]) CacheQueryMany(
 	ctx context.Context,
 	name string,
-	query func() iterators.Iterator[Ent],
-) iterators.Iterator[Ent] {
+	query func() iterators2.Iterator[Ent],
+) iterators2.Iterator[Ent] {
 	// TODO: double check
 	if ctx != nil && ctx.Err() != nil {
-		return iterators.Error[Ent](ctx.Err())
+		return iterators2.Error[Ent](ctx.Err())
 	}
 
 	queryID := fmt.Sprintf(`0:%T/%s`, *new(Ent), name) // add version epoch
 	hit, found, err := m.Storage.CacheHit(ctx).FindByID(ctx, queryID)
 	if err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
@@ -121,9 +121,9 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 	// where iterator being iterated element by element,
 	// and records being created during then in the Storage
 	var ids []ID
-	res, err := iterators.Collect(query())
+	res, err := iterators2.Collect(query())
 	if err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 	for _, v := range res {
 		id, _ := extid.Lookup[ID](v)
@@ -136,17 +136,17 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 	}
 
 	if err := m.Storage.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 
 	if err := m.Storage.CacheHit(ctx).Create(ctx, &Hit[ID]{
 		QueryID:   queryID,
 		EntityIDs: ids,
 	}); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 
-	return iterators.Slice[Ent](res)
+	return iterators2.Slice[Ent](res)
 }
 
 func (m *Manager[Ent, ID]) CacheQueryOne(
@@ -154,18 +154,18 @@ func (m *Manager[Ent, ID]) CacheQueryOne(
 	queryID string,
 	query func() (ent Ent, found bool, err error),
 ) (_ent Ent, _found bool, _err error) {
-	iter := m.CacheQueryMany(ctx, queryID, func() iterators.Iterator[Ent] {
+	iter := m.CacheQueryMany(ctx, queryID, func() iterators2.Iterator[Ent] {
 		ent, found, err := query()
 		if err != nil {
-			return iterators.Error[Ent](err)
+			return iterators2.Error[Ent](err)
 		}
 		if !found {
-			return iterators.Empty[Ent]()
+			return iterators2.Empty[Ent]()
 		}
-		return iterators.Slice[Ent]([]Ent{ent})
+		return iterators2.Slice[Ent]([]Ent{ent})
 	})
 
-	ent, found, err := iterators.First[Ent](iter)
+	ent, found, err := iterators2.First[Ent](iter)
 	if err != nil {
 		return ent, false, err
 	}
@@ -199,8 +199,8 @@ func (m *Manager[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, erro
 	})
 }
 
-func (m *Manager[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
-	return m.CacheQueryMany(ctx, `FindAll`, func() iterators.Iterator[Ent] {
+func (m *Manager[Ent, ID]) FindAll(ctx context.Context) iterators2.Iterator[Ent] {
+	return m.CacheQueryMany(ctx, `FindAll`, func() iterators2.Iterator[Ent] {
 		return m.Source.FindAll(ctx)
 	})
 }

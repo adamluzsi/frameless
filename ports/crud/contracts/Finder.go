@@ -3,9 +3,9 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"sync"
@@ -176,7 +176,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 			ctx = testcase.Let(s, func(t *testcase.T) context.Context {
 				return c.Context(t)
 			})
-			subject = func(t *testcase.T) iterators.Iterator[Ent] {
+			subject = func(t *testcase.T) iterators2.Iterator[Ent] {
 				return resource.Get(t).FindAll(ctx.Get(t))
 			}
 		)
@@ -197,7 +197,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 
 			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
 				Eventually.Assert(t, func(tb assert.It) {
-					count, err := iterators.Count(subject(t))
+					count, err := iterators2.Count(subject(t))
 					assert.Must(tb).Nil(err)
 					assert.Must(tb).Equal(1, count)
 				})
@@ -233,7 +233,7 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 			})
 
 			s.Then(`the iterator will have no result`, func(t *testcase.T) {
-				count, err := iterators.Count(subject(t))
+				count, err := iterators2.Count(subject(t))
 				t.Must.Nil(err)
 				t.Must.Equal(0, count)
 			})
@@ -271,12 +271,12 @@ func (c findByID[Ent, ID]) createDummyID(t *testcase.T, r FinderSubject[Ent, ID]
 	return id
 }
 
-func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Iterator[Ent], n int) []Ent {
+func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) iterators2.Iterator[Ent], n int) []Ent {
 	var entities []Ent
 	Eventually.Assert(t, func(tb assert.It) {
 		var err error
 		all := subject(t)
-		entities, err = iterators.Collect(all)
+		entities, err = iterators2.Collect(all)
 		assert.Must(tb).Nil(err)
 		assert.Must(tb).Equal(n, len(entities))
 	})

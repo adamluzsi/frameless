@@ -2,7 +2,7 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"sync"
 	"testing"
 
@@ -11,18 +11,18 @@ import (
 
 func ExamplePipe() {
 	var (
-		i *iterators.PipeIn[int]
-		o *iterators.PipeOut[int]
+		i *iterators2.PipeIn[int]
+		o *iterators2.PipeOut[int]
 	)
 
-	i, o = iterators.Pipe[int]()
+	i, o = iterators2.Pipe[int]()
 	_ = i // use it to send values
 	_ = o // use it to consume values on each iteration (iter.Next())
 }
 
 func TestPipe_SimpleFeedScenario(t *testing.T) {
 	t.Parallel()
-	w, r := iterators.Pipe[Entity]()
+	w, r := iterators2.Pipe[Entity]()
 
 	expected := Entity{Text: "hitchhiker's guide to the galaxy"}
 
@@ -40,7 +40,7 @@ func TestPipe_SimpleFeedScenario(t *testing.T) {
 
 func TestPipe_FetchWithCollectAll(t *testing.T) {
 	t.Parallel()
-	w, r := iterators.Pipe[*Entity]()
+	w, r := iterators2.Pipe[*Entity]()
 
 	var actually []*Entity
 	var expected []*Entity = []*Entity{
@@ -58,7 +58,7 @@ func TestPipe_FetchWithCollectAll(t *testing.T) {
 		}
 	}()
 
-	actually, err := iterators.Collect[*Entity](r)
+	actually, err := iterators2.Collect[*Entity](r)
 	assert.Must(t).Nil(err)                  // When I collect everything with Collect All and close the resource
 	assert.Must(t).True(len(actually) > 0)   // the collection includes all the sent values
 	assert.Must(t).Equal(expected, actually) // which is exactly the same that mean to be sent.
@@ -78,7 +78,7 @@ func TestPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 		t.Skip()
 	}
 
-	w, r := iterators.Pipe[*Entity]()
+	w, r := iterators2.Pipe[*Entity]()
 
 	assert.Must(t).Nil(r.Close()) // I release the resource,
 	// for example something went wrong during the processing on my side (receiver) and I can't continue work,
@@ -101,7 +101,7 @@ func TestPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 func TestPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *testing.T) {
 	t.Parallel()
 
-	w, r := iterators.Pipe[Entity]()
+	w, r := iterators2.Pipe[Entity]()
 	value := Entity{Text: "hitchhiker's guide to the galaxy"}
 	expected := errors.New("boom")
 
@@ -133,7 +133,7 @@ func TestPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndRece
 	expected := errors.New("Boom!")
 	value := Entity{Text: "hitchhiker's guide to the galaxy"}
 
-	w, r := iterators.Pipe[Entity]()
+	w, r := iterators2.Pipe[Entity]()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -158,7 +158,7 @@ func TestPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothi
 	t.Parallel()
 
 	value := Entity{Text: "hitchhiker's guide to the galaxy"}
-	w, r := iterators.Pipe[Entity]()
+	w, r := iterators2.Pipe[Entity]()
 
 	go func() {
 		for i := 0; i < 10; i++ {

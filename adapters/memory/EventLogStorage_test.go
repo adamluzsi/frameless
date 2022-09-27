@@ -3,11 +3,11 @@ package memory_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/doubles"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/meta/contracts"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"

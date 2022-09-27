@@ -2,7 +2,7 @@ package iterators_test
 
 import (
 	"github.com/adamluzsi/frameless/pkg/errutils"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"reflect"
 	"testing"
 
@@ -15,15 +15,15 @@ func TestCollect(t *testing.T) {
 	s.NoSideEffect()
 
 	var (
-		iterator = testcase.Var[iterators.Iterator[int]]{ID: `iterator`}
+		iterator = testcase.Var[iterators2.Iterator[int]]{ID: `iterator`}
 		subject  = func(t *testcase.T) ([]int, error) {
-			return iterators.Collect(iterator.Get(t))
+			return iterators2.Collect(iterator.Get(t))
 		}
 	)
 
 	s.When(`no elements in iterator`, func(s *testcase.Spec) {
-		iterator.Let(s, func(t *testcase.T) iterators.Iterator[int] {
-			return iterators.Empty[int]()
+		iterator.Let(s, func(t *testcase.T) iterators2.Iterator[int] {
+			return iterators2.Empty[int]()
 		})
 
 		s.Then(`no element appended to the slice`, func(t *testcase.T) {
@@ -34,8 +34,8 @@ func TestCollect(t *testing.T) {
 	})
 
 	s.When(`iterator has elements`, func(s *testcase.Spec) {
-		iterator.Let(s, func(t *testcase.T) iterators.Iterator[int] {
-			return iterators.Slice([]int{1, 2, 3})
+		iterator.Let(s, func(t *testcase.T) iterators2.Iterator[int] {
+			return iterators2.Slice([]int{1, 2, 3})
 		})
 
 		s.Then(`it will collect the values`, func(t *testcase.T) {
@@ -49,8 +49,8 @@ func TestCollect(t *testing.T) {
 		const expectedErr errutils.Error = "boom"
 
 		s.Context(`Close`, func(s *testcase.Spec) {
-			iterator.Let(s, func(t *testcase.T) iterators.Iterator[int] {
-				i := iterators.Stub[int](iterators.Slice([]int{42, 43, 44}))
+			iterator.Let(s, func(t *testcase.T) iterators2.Iterator[int] {
+				i := iterators2.Stub[int](iterators2.Slice([]int{42, 43, 44}))
 				i.StubClose = func() error { return expectedErr }
 				return i
 			})
@@ -62,8 +62,8 @@ func TestCollect(t *testing.T) {
 		})
 
 		s.Context(`Err`, func(s *testcase.Spec) {
-			iterator.Let(s, func(t *testcase.T) iterators.Iterator[int] {
-				i := iterators.Stub[int](iterators.Slice([]int{42, 43, 44}))
+			iterator.Let(s, func(t *testcase.T) iterators2.Iterator[int] {
+				i := iterators2.Stub[int](iterators2.Slice([]int{42, 43, 44}))
 				i.StubErr = func() error { return expectedErr }
 				return i
 			})
@@ -81,7 +81,7 @@ func TestCollect_emptySlice(t *testing.T) {
 	slice := reflect.MakeSlice(reflect.SliceOf(reflect.TypeOf(T)), 0, 0).Interface()
 	t.Logf(`%T`, slice)
 	t.Logf(`%#v`, slice)
-	vs, err := iterators.Collect[int](iterators.Slice[int]([]int{42}))
+	vs, err := iterators2.Collect[int](iterators2.Slice[int]([]int{42}))
 	assert.Must(t).Nil(err)
 	assert.Must(t).Equal([]int{42}, vs)
 }

@@ -3,9 +3,9 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	reflects2 "github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"reflect"
 	"sync"
 )
@@ -68,12 +68,12 @@ func (s *Storage[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _foun
 	return ent.(Ent), true, nil
 }
 
-func (s *Storage[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
+func (s *Storage[Ent, ID]) FindAll(ctx context.Context) iterators2.Iterator[Ent] {
 	if err := ctx.Err(); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators2.Error[Ent](err)
 	}
 	return memoryAll[Ent](s.Memory, ctx, s.GetNamespace())
 }
@@ -119,7 +119,7 @@ func (s *Storage[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	return nil
 }
 
-func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent] {
+func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators2.Iterator[Ent] {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
@@ -130,11 +130,11 @@ func (s *Storage[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.I
 		key := s.IDToMemoryKey(id)
 		v, ok := all[key]
 		if !ok {
-			return iterators.Error[Ent](errNotFound(*new(Ent), id))
+			return iterators2.Error[Ent](errNotFound(*new(Ent), id))
 		}
 		vs[key] = v.(Ent)
 	}
-	return iterators.Slice[Ent](toSlice[Ent, string](vs))
+	return iterators2.Slice[Ent](toSlice[Ent, string](vs))
 }
 
 func (s *Storage[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) error {
@@ -299,9 +299,9 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 	return m.get(namespace, key)
 }
 
-func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) iterators.Iterator[Ent] {
+func memoryAll[Ent any](m *Memory, ctx context.Context, namespace string) iterators2.Iterator[Ent] {
 	var T Ent
-	return iterators.Slice[Ent](m.All(T, ctx, namespace).([]Ent))
+	return iterators2.Slice[Ent](m.All(T, ctx, namespace).([]Ent))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {

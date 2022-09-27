@@ -1,7 +1,7 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	"github.com/adamluzsi/frameless/ports/iterators"
 	"math/rand"
 	"testing"
 

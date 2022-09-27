@@ -2,13 +2,13 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"testing"
 
 	"github.com/adamluzsi/testcase/assert"
 )
 
-var _ iterators.Iterator[any] = iterators.Stub[any](iterators.Empty[any]())
+var _ iterators2.Iterator[any] = iterators2.Stub[any](iterators2.Empty[any]())
 
 func TestMock_Err(t *testing.T) {
 	t.Parallel()
@@ -16,7 +16,7 @@ func TestMock_Err(t *testing.T) {
 	originalError := errors.New("Boom! original")
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.Stub[any](iterators.Error[any](originalError))
+	m := iterators2.Stub[any](iterators2.Error[any](originalError))
 
 	// default is the wrapped iterator
 	assert.Must(t).NotNil(originalError, m.Err())
@@ -34,7 +34,7 @@ func TestMock_Close(t *testing.T) {
 
 	expectedError := errors.New("Boom! stub")
 
-	m := iterators.Stub[any](iterators.Empty[any]())
+	m := iterators2.Stub[any](iterators2.Empty[any]())
 
 	// default is the wrapped iterator
 	assert.Must(t).Nil(m.Close())
@@ -49,7 +49,7 @@ func TestMock_Close(t *testing.T) {
 func TestMock_Next(t *testing.T) {
 	t.Parallel()
 
-	m := iterators.Stub[any](iterators.Empty[any]())
+	m := iterators2.Stub[any](iterators2.Empty[any]())
 
 	assert.Must(t).False(m.Next())
 
@@ -63,7 +63,7 @@ func TestMock_Next(t *testing.T) {
 func TestMock_Decode(t *testing.T) {
 	t.Parallel()
 
-	m := iterators.Stub[int](iterators.Slice[int]([]int{42, 43, 44}))
+	m := iterators2.Stub[int](iterators2.Slice[int]([]int{42, 43, 44}))
 
 	assert.Must(t).True(m.Next())
 	assert.Must(t).Equal(42, m.Value())

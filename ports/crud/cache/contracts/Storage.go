@@ -3,10 +3,10 @@ package cachecontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/iterators"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
 	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"sync"
@@ -313,7 +313,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 
 		s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
 			t.Must.Nil(subject(t))
-			count, err := iterators.Count(c.dataStorage().Get(t).FindAll(ctxGet(t)))
+			count, err := iterators2.Count(c.dataStorage().Get(t).FindAll(ctxGet(t)))
 			t.Must.Nil(err)
 			t.Must.Equal(len(entities.Get(t)), count)
 		})
@@ -348,7 +348,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 
 			s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
 				t.Must.Nil(subject(t))
-				count, err := iterators.Count(c.dataStorage().Get(t).FindAll(ctxGet(t)))
+				count, err := iterators2.Count(c.dataStorage().Get(t).FindAll(ctxGet(t)))
 				t.Must.Nil(err)
 				t.Must.Equal(len(entities.Get(t)), count)
 			})
@@ -359,7 +359,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 func (c EntityStorage[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 	var (
 		ids     = testcase.Var[[]ID]{ID: `entities ids`}
-		subject = func(t *testcase.T) iterators.Iterator[Ent] {
+		subject = func(t *testcase.T) iterators2.Iterator[Ent] {
 			return c.dataStorage().Get(t).FindByIDs(ctxGet(t), ids.Get(t)...)
 		}
 	)
@@ -381,7 +381,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 		})
 
 		s.Then(`result is an empty list`, func(t *testcase.T) {
-			count, err := iterators.Count(subject(t))
+			count, err := iterators2.Count(subject(t))
 			t.Must.Nil(err)
 			t.Must.Equal(0, count)
 		})
@@ -394,7 +394,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
 			expected := append([]Ent{}, *ent1.Get(t), *ent2.Get(t))
-			actual, err := iterators.Collect(subject(t))
+			actual, err := iterators2.Collect(subject(t))
 			t.Must.Nil(err)
 			t.Must.ContainExactly(expected, actual)
 		})
@@ -410,7 +410,7 @@ func (c EntityStorage[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 		})
 
 		s.Then(`it will eventually yield error`, func(t *testcase.T) {
-			_, err := iterators.Collect(subject(t))
+			_, err := iterators2.Collect(subject(t))
 			t.Must.NotNil(err)
 		})
 	})

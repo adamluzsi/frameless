@@ -1,7 +1,7 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"testing"
 
 	"github.com/adamluzsi/testcase/assert"
@@ -12,9 +12,9 @@ func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
 
 	var expected int = 42
 
-	i := iterators.Stub[int](iterators.Slice[int]([]int{4, 2, expected}))
+	i := iterators2.Stub[int](iterators2.Slice[int]([]int{4, 2, expected}))
 
-	actually, found, err := iterators.Last[int](i)
+	actually, found, err := iterators2.Last[int](i)
 	assert.Must(t).Nil(err)
 	assert.Must(t).True(found)
 	assert.Must(t).Equal(expected, actually)
@@ -23,7 +23,7 @@ func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
 func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 	t.Parallel()
 
-	i := iterators.Stub[Entity](iterators.Slice[Entity]([]Entity{{Text: "hy!"}}))
+	i := iterators2.Stub[Entity](iterators2.Slice[Entity]([]Entity{{Text: "hy!"}}))
 
 	closed := false
 	i.StubClose = func() error {
@@ -31,7 +31,7 @@ func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 		return nil
 	}
 
-	_, _, err := iterators.Last[Entity](i)
+	_, _, err := iterators2.Last[Entity](i)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,13 +40,13 @@ func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 }
 
 func TestLast_WhenErrorOccursDuring(t *testing.T) {
-	FirstAndLastSharedErrorTestCases(t, iterators.Last[Entity])
+	FirstAndLastSharedErrorTestCases(t, iterators2.Last[Entity])
 }
 
 func TestLast_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *testing.T) {
 	t.Parallel()
 
-	_, found, err := iterators.Last[Entity](iterators.Empty[Entity]())
+	_, found, err := iterators2.Last[Entity](iterators2.Empty[Entity]())
 	assert.Must(t).Nil(err)
 	assert.Must(t).False(found)
 }

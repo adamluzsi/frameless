@@ -3,7 +3,7 @@ package iterators_test
 import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errutils"
-	"github.com/adamluzsi/frameless/pkg/iterators"
+	iterators2 "github.com/adamluzsi/frameless/ports/iterators"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -13,15 +13,15 @@ import (
 func TestForEach(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	iter := testcase.Var[iterators.Iterator[int]]{ID: "frameless.Iterator"}
+	iter := testcase.Var[iterators2.Iterator[int]]{ID: "frameless.Iterator"}
 	fn := testcase.Var[func(int) error]{ID: "ForEach fn"}
 	var subject = func(t *testcase.T) error {
-		return iterators.ForEach[int](iter.Get(t), fn.Get(t))
+		return iterators2.ForEach[int](iter.Get(t), fn.Get(t))
 	}
 
 	s.When(`iterator has values`, func(s *testcase.Spec) {
 		elements := testcase.Let(s, func(t *testcase.T) []int { return []int{1, 2, 3} })
-		iter.Let(s, func(t *testcase.T) iterators.Iterator[int] { return iterators.Slice(elements.Get(t)) })
+		iter.Let(s, func(t *testcase.T) iterators2.Iterator[int] { return iterators2.Slice(elements.Get(t)) })
 
 		s.And(`function block given`, func(s *testcase.Spec) {
 			iteratedOnes := testcase.Let(s, func(t *testcase.T) map[int]struct{} { return make(map[int]struct{}) })
@@ -63,7 +63,7 @@ func TestForEach(t *testing.T) {
 				s.And(`error returned when iterator being closed`, func(s *testcase.Spec) {
 					const closeErr errutils.Error = `boom on close`
 					s.Before(func(t *testcase.T) {
-						i := iterators.Stub(iter.Get(t))
+						i := iterators2.Stub(iter.Get(t))
 						i.StubClose = func() error { return closeErr }
 						iter.Set(t, i)
 					})
@@ -77,7 +77,7 @@ func TestForEach(t *testing.T) {
 			andAnErrorReturnedWhenIteratorBeingClosed(s)
 
 			s.And(`break error returned from the block`, func(s *testcase.Spec) {
-				fnErr.Let(s, func(t *testcase.T) error { return iterators.Break })
+				fnErr.Let(s, func(t *testcase.T) error { return iterators2.Break })
 
 				s.Then(`it finish without an error`, func(t *testcase.T) {
 					t.Must.Nil(subject(t))
@@ -99,7 +99,7 @@ func TestForEach_CompatbilityWithEmptyInterface(t *testing.T) {
 	slice := []int{1, 2, 3, 4, 5}
 
 	var found []int
-	assert.Must(t).Nil(iterators.ForEach[int](iterators.Slice[int](slice), func(n int) error {
+	assert.Must(t).Nil(iterators2.ForEach[int](iterators2.Slice[int](slice), func(n int) error {
 		found = append(found, n)
 		return nil
 	}))
