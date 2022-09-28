@@ -32,6 +32,6 @@ func ExampleRepository() {
 		},
 	}
 
-	stg := postgresql.NewRepositoryByDSN[Entity, int](mapping, os.Getenv("DATABASE_URL"))
+	stg := postgresql.NewRepositoryWithDSN[Entity, int](os.Getenv("DATABASE_URL"), mapping)
 	defer stg.Close()
 }

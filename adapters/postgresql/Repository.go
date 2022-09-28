@@ -15,7 +15,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-func NewRepositoryByDSN[Ent, ID any](m Mapping[Ent], dsn string) *Repository[Ent, ID] {
+func NewRepositoryWithDSN[Ent, ID any](dsn string, m Mapping[Ent]) *Repository[Ent, ID] {
 	cm := NewConnectionManager(dsn)
 	sm := NewListenNotifySubscriptionManager[Ent, ID](m, dsn, cm)
 	return &Repository[Ent, ID]{

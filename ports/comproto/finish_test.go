@@ -210,7 +210,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
 			assert.Must(t).True(rolledBackGet(t))
-			assert.Must(t).Equal(expectedErr, *errpGet(t))
+			assert.Must(t).ErrorIs(expectedErr, *errpGet(t))
 		})
 	})
 }

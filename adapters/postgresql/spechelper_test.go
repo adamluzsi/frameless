@@ -10,7 +10,7 @@ import (
 )
 
 func NewTestEntityRepository(tb testing.TB) *postgresql.Repository[psh.TestEntity, string] {
-	stg := postgresql.NewRepositoryByDSN[psh.TestEntity, string](psh.TestEntityMapping(), psh.DatabaseURL(tb))
+	stg := postgresql.NewRepositoryWithDSN[psh.TestEntity, string](psh.DatabaseURL(tb), psh.TestEntityMapping())
 	psh.MigrateTestEntity(tb, stg.ConnectionManager)
 	deferClose(tb, stg)
 	return stg
