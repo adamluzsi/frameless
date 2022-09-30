@@ -253,10 +253,3 @@ func ToPtr[T any](v T) *T { return &v }
 func Base(e interface{}) interface{} {
 	return reflects.BaseValueOf(e).Interface()
 }
-
-func TypeAssertTo[ToType any](in []any) (out []ToType) {
-	for _, e := range in {
-		out = append(out, e.(ToType))
-	}
-	return out
-}

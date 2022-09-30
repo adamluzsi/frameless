@@ -106,14 +106,15 @@ func (c OnePhaseCommitProtocol[Ent, ID]) Spec(s *testcase.Spec) {
 
 			Waiter.Wait()
 		})
-		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
+
+		s.Test(`BeginTx+RollbackTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			ctx := c.MakeCtx(t)
 			ctx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
 			ptr := spechelper.ToPtr(c.MakeEnt(t))
-			t.Must.Nil(c.resource().Get(t).Create(ctx, ptr))
+			t.Must.NoError(c.resource().Get(t).Create(ctx, ptr))
 			id, _ := extid.Lookup[ID](ptr)
-			t.Must.Nil(c.manager().Get(t).RollbackTx(ctx))
+			t.Must.NoError(c.manager().Get(t).RollbackTx(ctx))
 
 			_, _, err = c.resource().Get(t).FindByID(ctx, id)
 			t.Must.NotNil(err)

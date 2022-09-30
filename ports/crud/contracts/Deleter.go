@@ -19,8 +19,8 @@ type Deleter[Ent, ID any] struct {
 }
 
 type DeleterSubject[Ent, ID any] interface {
-	spechelper.CRD[Ent, ID]
-	crud.Deleter[ID]
+	AllDeleterSubject[Ent, ID]
+	ByIDDeleterSubject[Ent, ID]
 }
 
 func (c Deleter[Ent, ID]) resource() testcase.Var[DeleterSubject[Ent, ID]] {
@@ -37,17 +37,58 @@ func (c Deleter[Ent, ID]) Test(t *testing.T) {
 }
 
 func (c Deleter[Ent, ID]) Benchmark(b *testing.B) {
-	b.Run(`DeleteByID`, c.benchmarkDeleteByID)
-	b.Run(`DeleteAll`, c.benchmarkDeleteAll)
+	c.Spec(testcase.NewSpec(b))
 }
 
 func (c Deleter[Ent, ID]) Spec(s *testcase.Spec) {
-	c.resource().Let(s, nil)
-	s.Describe(`DeleteByID`, c.specDeleteByID)
-	s.Describe(`DeleteAll`, c.specDeleteAll)
+	ByIDDeleter[Ent, ID]{
+		Subject: func(tb testing.TB) ByIDDeleterSubject[Ent, ID] {
+			return c.Subject(tb)
+		},
+		MakeCtx: c.MakeCtx,
+		MakeEnt: c.MakeEnt,
+	}.Spec(s)
+	
+	AllDeleter[Ent, ID]{
+		Subject: func(tb testing.TB) AllDeleterSubject[Ent, ID] {
+			return c.Subject(tb)
+		},
+		MakeCtx: c.MakeCtx,
+		MakeEnt: c.MakeEnt,
+	}.Spec(s)
 }
 
-func (c Deleter[Ent, ID]) specDeleteByID(s *testcase.Spec) {
+type ByIDDeleter[Ent, ID any] struct {
+	Subject func(testing.TB) ByIDDeleterSubject[Ent, ID]
+	MakeCtx func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
+}
+
+type ByIDDeleterSubject[Ent, ID any] spechelper.CRD[Ent, ID]
+
+func (c ByIDDeleter[Ent, ID]) resource() testcase.Var[ByIDDeleterSubject[Ent, ID]] {
+	return testcase.Var[ByIDDeleterSubject[Ent, ID]]{
+		ID: "resource",
+		Init: func(t *testcase.T) ByIDDeleterSubject[Ent, ID] {
+			return c.Subject(t)
+		},
+	}
+}
+
+func (c ByIDDeleter[Ent, ID]) Test(t *testing.T) {
+	c.Spec(testcase.NewSpec(t))
+}
+
+func (c ByIDDeleter[Ent, ID]) Benchmark(b *testing.B) {
+	c.Spec(testcase.NewSpec(b))
+}
+
+func (c ByIDDeleter[Ent, ID]) Spec(s *testcase.Spec) {
+	c.resource().Let(s, nil)
+	s.Describe(`DeleteByID`, c.specDeleteByID)
+}
+
+func (c ByIDDeleter[Ent, ID]) specDeleteByID(s *testcase.Spec) {
 	var (
 		ctxVar = spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
 			return c.MakeCtx(t)
@@ -120,7 +161,7 @@ func (c Deleter[Ent, ID]) specDeleteByID(s *testcase.Spec) {
 	})
 }
 
-func (c Deleter[Ent, ID]) benchmarkDeleteByID(b *testing.B) {
+func (c ByIDDeleter[Ent, ID]) benchmarkDeleteByID(b *testing.B) {
 	s := testcase.NewSpec(b)
 
 	s.Around(func(t *testcase.T) func() {
@@ -143,10 +184,43 @@ func (c Deleter[Ent, ID]) benchmarkDeleteByID(b *testing.B) {
 	})
 }
 
-func (c Deleter[Ent, ID]) specDeleteAll(s *testcase.Spec) {
-	ctx := testcase.Let(s, func(t *testcase.T) context.Context { return c.MakeCtx(t) })
+type AllDeleter[Ent, ID any] struct {
+	Subject func(testing.TB) AllDeleterSubject[Ent, ID]
+	MakeCtx func(testing.TB) context.Context
+	MakeEnt func(testing.TB) Ent
+}
 
-	subject := func(t *testcase.T) error {
+type AllDeleterSubject[Ent, ID any] interface {
+	spechelper.CRD[Ent, ID]
+	crud.AllDeleter
+}
+
+func (c AllDeleter[Ent, ID]) resource() testcase.Var[AllDeleterSubject[Ent, ID]] {
+	return testcase.Var[AllDeleterSubject[Ent, ID]]{
+		ID: "resource",
+		Init: func(t *testcase.T) AllDeleterSubject[Ent, ID] {
+			return c.Subject(t)
+		},
+	}
+}
+
+func (c AllDeleter[Ent, ID]) Test(t *testing.T) {
+	c.Spec(testcase.NewSpec(t))
+}
+
+func (c AllDeleter[Ent, ID]) Benchmark(b *testing.B) {
+	b.Run(`DeleteAll`, c.benchmarkDeleteAll)
+}
+
+func (c AllDeleter[Ent, ID]) Spec(s *testcase.Spec) {
+	s.Describe(`DeleteAll`, c.specDeleteAll)
+}
+
+func (c AllDeleter[Ent, ID]) specDeleteAll(s *testcase.Spec) {
+	var (
+		ctx = testcase.Let(s, func(t *testcase.T) context.Context { return c.MakeCtx(t) })
+	)
+	act := func(t *testcase.T) error {
 		return c.resource().Get(t).DeleteAll(ctx.Get(t))
 	}
 
@@ -158,7 +232,7 @@ func (c Deleter[Ent, ID]) specDeleteAll(s *testcase.Spec) {
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.Equal(context.Canceled, subject(t))
+			t.Must.Equal(context.Canceled, act(t))
 		})
 	})
 
@@ -167,12 +241,12 @@ func (c Deleter[Ent, ID]) specDeleteAll(s *testcase.Spec) {
 		Create[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t), &ent)
 		entID := HasID[Ent, ID](t, &ent)
 		IsFindable[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t), entID)
-		t.Must.Nil(subject(t))
+		t.Must.Nil(act(t))
 		IsAbsent[Ent, ID](t, c.resource().Get(t), c.MakeCtx(t), entID)
 	})
 }
 
-func (c Deleter[Ent, ID]) benchmarkDeleteAll(b *testing.B) {
+func (c AllDeleter[Ent, ID]) benchmarkDeleteAll(b *testing.B) {
 	r := c.Subject(b)
 	ctx := c.MakeCtx(b)
 	spechelper.TryCleanup(b, ctx, r)

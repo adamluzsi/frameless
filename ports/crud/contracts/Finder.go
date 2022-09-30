@@ -3,10 +3,10 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
@@ -23,8 +23,8 @@ type Finder[Ent, ID any] struct {
 }
 
 type FinderSubject[Ent, ID any] interface {
-	spechelper.CRD[Ent, ID]
-	crud.AllFinder[Ent, ID]
+	ByIDFinderSubject[Ent, ID]
+	AllFinderSubject[Ent, ID]
 }
 
 func (c Finder[Ent, ID]) Test(t *testing.T) {
@@ -37,36 +37,44 @@ func (c Finder[Ent, ID]) Benchmark(b *testing.B) {
 
 func (c Finder[Ent, ID]) Spec(s *testcase.Spec) {
 	testcase.RunSuite(s,
-		findByID[Ent, ID]{
-			Subject: c.Subject,
+		ByIDFinder[Ent, ID]{
+			Subject: func(tb testing.TB) ByIDFinderSubject[Ent, ID] {
+				return c.Subject(tb).(ByIDFinderSubject[Ent, ID])
+			},
 			Context: c.MakeCtx,
 			MakeEnt: c.MakeEnt,
 		},
-		findAll[Ent, ID]{
-			Subject: c.Subject,
+		AllFinder[Ent, ID]{
+			Subject: func(tb testing.TB) AllFinderSubject[Ent, ID] {
+				return c.Subject(tb).(AllFinderSubject[Ent, ID])
+			},
 			Context: c.MakeCtx,
 			MakeEnt: c.MakeEnt,
 		},
 	)
 }
 
-type findByID[Ent, ID any] struct {
-	Subject func(testing.TB) FinderSubject[Ent, ID]
+type ByIDFinder[Ent, ID any] struct {
+	Subject func(testing.TB) ByIDFinderSubject[Ent, ID]
 	Context func(testing.TB) context.Context
 	MakeEnt func(testing.TB) Ent
 }
 
-func (c findByID[Ent, ID]) String() string {
+type ByIDFinderSubject[Ent, ID any] spechelper.CRD[Ent, ID]
+
+func (c ByIDFinder[Ent, ID]) Name() string {
 	return "Finder.FindByID"
 }
 
-func (c findByID[Ent, ID]) Spec(s *testcase.Spec) {
+func (c ByIDFinder[Ent, ID]) Spec(s *testcase.Spec) {
 	testcase.RunSuite(s, FindOne[Ent, ID]{
-		Subject:    c.Subject,
+		Subject: func(tb testing.TB) FindOneSubject[Ent, ID] {
+			return c.Subject(tb)
+		},
 		MakeCtx:    c.Context,
 		MakeEnt:    c.MakeEnt,
 		MethodName: "FindByID",
-		ToQuery: func(tb testing.TB, resource FinderSubject[Ent, ID], ent Ent) QueryOne[Ent] {
+		ToQuery: func(tb testing.TB, resource FindOneSubject[Ent, ID], ent Ent) QueryOne[Ent] {
 			id, ok := extid.Lookup[ID](ent)
 			if !ok { // if no id found create a dummy ID
 				// Since an id is always required to use FindByID,
@@ -114,11 +122,11 @@ func (c findByID[Ent, ID]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c findByID[Ent, ID]) Test(t *testing.T) {
+func (c ByIDFinder[Ent, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c findByID[Ent, ID]) Benchmark(b *testing.B) {
+func (c ByIDFinder[Ent, ID]) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
 	r := c.Subject(b)
 
@@ -138,7 +146,7 @@ func (c findByID[Ent, ID]) Benchmark(b *testing.B) {
 	})
 }
 
-func (c findByID[Ent, ID]) createNonActiveID(tb testing.TB, ctx context.Context, r FinderSubject[Ent, ID]) ID {
+func (c ByIDFinder[Ent, ID]) createNonActiveID(tb testing.TB, ctx context.Context, r ByIDFinderSubject[Ent, ID]) ID {
 	tb.Helper()
 	ent := c.MakeEnt(tb)
 	ptr := &ent
@@ -148,22 +156,27 @@ func (c findByID[Ent, ID]) createNonActiveID(tb testing.TB, ctx context.Context,
 	return id
 }
 
-// findAll can return business entities from a given resource that implement it's test
+// AllFinder can return business entities from a given resource that implement it's test
 // The "EntityTypeName" is a Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-type findAll[Ent, ID any] struct {
-	Subject func(testing.TB) FinderSubject[Ent, ID]
+type AllFinder[Ent, ID any] struct {
+	Subject func(testing.TB) AllFinderSubject[Ent, ID]
 	Context func(testing.TB) context.Context
 	MakeEnt func(testing.TB) Ent
 }
 
-func (c findAll[Ent, ID]) String() string {
+type AllFinderSubject[Ent, ID any] interface {
+	spechelper.CRD[Ent, ID]
+	crud.AllFinder[Ent, ID]
+}
+
+func (c AllFinder[Ent, ID]) Name() string {
 	return "Finder.FindAll"
 }
 
-func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
-	resource := testcase.Let(s, func(t *testcase.T) FinderSubject[Ent, ID] {
+func (c AllFinder[Ent, ID]) Spec(s *testcase.Spec) {
+	resource := testcase.Let(s, func(t *testcase.T) AllFinderSubject[Ent, ID] {
 		return c.Subject(t)
 	})
 
@@ -257,13 +270,13 @@ func (c findAll[Ent, ID]) Spec(s *testcase.Spec) {
 		})
 	})
 }
-func (c findAll[Ent, ID]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+func (c AllFinder[Ent, ID]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
-func (c findAll[Ent, ID]) Benchmark(b *testing.B) {
+func (c AllFinder[Ent, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c findByID[Ent, ID]) createDummyID(t *testcase.T, r FinderSubject[Ent, ID]) ID {
+func (c ByIDFinder[Ent, ID]) createDummyID(t *testcase.T, r ByIDFinderSubject[Ent, ID]) ID {
 	ent := c.MakeEnt(t)
 	ctx := c.Context(t)
 	Create[Ent, ID](t, r, ctx, &ent)
@@ -272,7 +285,7 @@ func (c findByID[Ent, ID]) createDummyID(t *testcase.T, r FinderSubject[Ent, ID]
 	return id
 }
 
-func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Iterator[Ent], n int) []Ent {
+func (c AllFinder[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) iterators.Iterator[Ent], n int) []Ent {
 	var entities []Ent
 	Eventually.Assert(t, func(tb assert.It) {
 		var err error
@@ -295,7 +308,7 @@ func (c findAll[Ent, ID]) findAllN(t *testcase.T, subject func(t *testcase.T) it
 type QueryOne[Ent any] func(tb testing.TB, ctx context.Context) (ent Ent, found bool, err error)
 
 type FindOne[Ent, ID any] struct {
-	Subject func(testing.TB) FinderSubject[Ent, ID]
+	Subject func(testing.TB) FindOneSubject[Ent, ID]
 	MakeCtx func(testing.TB) context.Context
 	MakeEnt func(testing.TB) Ent
 	// MethodName is the name of the test subject QueryOne method of this contract specification.
@@ -306,13 +319,15 @@ type FindOne[Ent, ID any] struct {
 	// The QueryOne closure should only have the Method call with the already mapped values.
 	// ToQuery will be evaluated in the beginning of the testing,
 	// and executed after all the test Context preparation is done.
-	ToQuery func(tb testing.TB, resource FinderSubject[Ent, ID], ent Ent) QueryOne[Ent]
+	ToQuery func(tb testing.TB, resource FindOneSubject[Ent, ID], ent Ent) QueryOne[Ent]
 	// Specify allow further specification describing for a given FindOne query function.
 	// If none specified, this field will be ignored
 	Specify func(testing.TB)
 }
 
-func (c FindOne[Ent, ID]) String() string {
+type FindOneSubject[Ent, ID any] spechelper.CRD[Ent, ID]
+
+func (c FindOne[Ent, ID]) Name() string {
 	return fmt.Sprintf(".%s", c.MethodName)
 }
 
@@ -325,7 +340,7 @@ func (c FindOne[Ent, ID]) Spec(s *testcase.Spec) {
 			ent := c.MakeEnt(t)
 			return &ent
 		})
-		resource = testcase.Let(s, func(t *testcase.T) FinderSubject[Ent, ID] {
+		resource = testcase.Let(s, func(t *testcase.T) FindOneSubject[Ent, ID] {
 			return c.Subject(t)
 		})
 		query = testcase.Let(s, func(t *testcase.T) QueryOne[Ent] {
