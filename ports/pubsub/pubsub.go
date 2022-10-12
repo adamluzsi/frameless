@@ -12,28 +12,28 @@ type Subscription interface {
 }
 
 type (
-	CreateEvent[Ent any] struct{ Entity Ent }
+	CreateEvent[Entity any] struct{ Entity Entity }
 
-	CreatorSubscriber[Ent any] interface {
-		HandleCreateEvent(ctx context.Context, event CreateEvent[Ent]) error
+	CreatorSubscriber[Entity any] interface {
+		HandleCreateEvent(ctx context.Context, event CreateEvent[Entity]) error
 		errutils.ErrorHandler
 	}
 
-	CreatorPublisher[Ent any] interface {
-		SubscribeToCreatorEvents(context.Context, CreatorSubscriber[Ent]) (Subscription, error)
+	CreatorPublisher[Entity any] interface {
+		SubscribeToCreatorEvents(context.Context, CreatorSubscriber[Entity]) (Subscription, error)
 	}
 )
 
 type (
-	UpdateEvent[Ent any] struct{ Entity Ent }
+	UpdateEvent[Entity any] struct{ Entity Entity }
 
-	UpdaterSubscriber[Ent any] interface {
-		HandleUpdateEvent(ctx context.Context, event UpdateEvent[Ent]) error
+	UpdaterSubscriber[Entity any] interface {
+		HandleUpdateEvent(ctx context.Context, event UpdateEvent[Entity]) error
 		errutils.ErrorHandler
 	}
 
-	UpdaterPublisher[Ent any] interface {
-		SubscribeToUpdaterEvents(context.Context, UpdaterSubscriber[Ent]) (Subscription, error)
+	UpdaterPublisher[Entity any] interface {
+		SubscribeToUpdaterEvents(context.Context, UpdaterSubscriber[Entity]) (Subscription, error)
 	}
 )
 

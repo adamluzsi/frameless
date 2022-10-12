@@ -16,14 +16,14 @@ func Test(t *testing.T) {
 	s.HasSideEffect()
 
 	comprotocontracts.OnePhaseCommitProtocol{
-		Subject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
+		MakeSubject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
 			return CPProxy{
 				BeginTxFn:    txs.Begin,
 				CommitTxFn:   txs.Commit,
 				RollbackTxFn: txs.Rollback,
 			}
 		},
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
 	}.Spec(s)

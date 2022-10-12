@@ -13,16 +13,16 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub"
 )
 
-func NewManager[Ent, ID any](repository Repository[Ent, ID], source Source[Ent, ID]) (*Manager[Ent, ID], error) {
-	var r = &Manager[Ent, ID]{Repository: repository, Source: source}
+func NewManager[Entity, ID any](repository Repository[Entity, ID], source Source[Entity, ID]) (*Manager[Entity, ID], error) {
+	var r = &Manager[Entity, ID]{Repository: repository, Source: source}
 	return r, r.Init(context.Background())
 }
 
-type Manager[Ent, ID any] struct {
+type Manager[Entity, ID any] struct {
 	// Source is the location of the original data
-	Source Source[Ent, ID]
+	Source Source[Entity, ID]
 	// Repository is the resource that keeps the cached data.
-	Repository Repository[Ent, ID]
+	Repository Repository[Entity, ID]
 
 	init  sync.Once
 	close func()
@@ -30,26 +30,26 @@ type Manager[Ent, ID any] struct {
 
 // Source is the minimum expected interface that is expected from a Source resources that needs caching.
 // On top of this, cache.Manager also supports Updater, CreatorPublisher, UpdaterPublisher and DeleterPublisher.
-type Source[Ent, ID any] interface {
-	crud.Creator[Ent]
-	crud.Finder[Ent, ID]
+type Source[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.Finder[Entity, ID]
 	crud.Deleter[ID]
-	pubsub.CreatorPublisher[Ent]
+	pubsub.CreatorPublisher[Entity]
 	pubsub.DeleterPublisher[ID]
 }
 
-type ExtendedSource[Ent, ID any] interface {
-	crud.Updater[Ent]
-	pubsub.UpdaterPublisher[Ent]
+type ExtendedSource[Entity, ID any] interface {
+	crud.Updater[Entity]
+	pubsub.UpdaterPublisher[Entity]
 }
 
-func (m *Manager[Ent, ID]) Init(ctx context.Context) error {
+func (m *Manager[Entity, ID]) Init(ctx context.Context) error {
 	var rErr error
 	m.init.Do(func() { rErr = m.subscribe(ctx) })
 	return rErr
 }
 
-func (m *Manager[Ent, ID]) trap(next func()) {
+func (m *Manager[Entity, ID]) trap(next func()) {
 	if m.close == nil {
 		m.close = func() {}
 	}
@@ -61,7 +61,7 @@ func (m *Manager[Ent, ID]) trap(next func()) {
 	}
 }
 
-func (m *Manager[Ent, ID]) Close() error {
+func (m *Manager[Entity, ID]) Close() error {
 	if m.close == nil {
 		return nil
 	}
@@ -69,11 +69,11 @@ func (m *Manager[Ent, ID]) Close() error {
 	return nil
 }
 
-func (m *Manager[Ent, ID]) entityTypeName() string {
-	return reflects.SymbolicName(*new(Ent))
+func (m *Manager[Entity, ID]) entityTypeName() string {
+	return reflects.SymbolicName(*new(Entity))
 }
 
-func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr error) {
+func (m *Manager[Entity, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr error) {
 	s := m.Repository.CacheEntity(ctx)
 	ctx, err := m.Repository.BeginTx(ctx)
 	if err != nil {
@@ -96,20 +96,20 @@ func (m *Manager[Ent, ID]) deleteCachedEntity(ctx context.Context, id ID) (rErr 
 	return s.DeleteByID(ctx, id)
 }
 
-func (m *Manager[Ent, ID]) CacheQueryMany(
+func (m *Manager[Entity, ID]) CacheQueryMany(
 	ctx context.Context,
 	name string,
-	query func() iterators.Iterator[Ent],
-) iterators.Iterator[Ent] {
+	query func() iterators.Iterator[Entity],
+) iterators.Iterator[Entity] {
 	// TODO: double check
 	if ctx != nil && ctx.Err() != nil {
-		return iterators.Error[Ent](ctx.Err())
+		return iterators.Error[Entity](ctx.Err())
 	}
 
-	queryID := fmt.Sprintf(`0:%T/%s`, *new(Ent), name) // add version epoch
+	queryID := fmt.Sprintf(`0:%T/%s`, *new(Entity), name) // add version epoch
 	hit, found, err := m.Repository.CacheHit(ctx).FindByID(ctx, queryID)
 	if err != nil {
-		return iterators.Error[Ent](err)
+		return iterators.Error[Entity](err)
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
@@ -124,49 +124,49 @@ func (m *Manager[Ent, ID]) CacheQueryMany(
 	var ids []ID
 	res, err := iterators.Collect(query())
 	if err != nil {
-		return iterators.Error[Ent](err)
+		return iterators.Error[Entity](err)
 	}
 	for _, v := range res {
 		id, _ := extid.Lookup[ID](v)
 		ids = append(ids, id)
 	}
 
-	var vs []*Ent
+	var vs []*Entity
 	for _, ent := range res {
 		vs = append(vs, &ent)
 	}
 
 	if err := m.Repository.CacheEntity(ctx).Upsert(ctx, vs...); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators.Error[Entity](err)
 	}
 
 	if err := m.Repository.CacheHit(ctx).Create(ctx, &Hit[ID]{
 		QueryID:   queryID,
 		EntityIDs: ids,
 	}); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators.Error[Entity](err)
 	}
 
-	return iterators.Slice[Ent](res)
+	return iterators.Slice[Entity](res)
 }
 
-func (m *Manager[Ent, ID]) CacheQueryOne(
+func (m *Manager[Entity, ID]) CacheQueryOne(
 	ctx context.Context,
 	queryID string,
-	query func() (ent Ent, found bool, err error),
-) (_ent Ent, _found bool, _err error) {
-	iter := m.CacheQueryMany(ctx, queryID, func() iterators.Iterator[Ent] {
+	query func() (ent Entity, found bool, err error),
+) (_ent Entity, _found bool, _err error) {
+	iter := m.CacheQueryMany(ctx, queryID, func() iterators.Iterator[Entity] {
 		ent, found, err := query()
 		if err != nil {
-			return iterators.Error[Ent](err)
+			return iterators.Error[Entity](err)
 		}
 		if !found {
-			return iterators.Empty[Ent]()
+			return iterators.Empty[Entity]()
 		}
-		return iterators.Slice[Ent]([]Ent{ent})
+		return iterators.Slice[Entity]([]Entity{ent})
 	})
 
-	ent, found, err := iterators.First[Ent](iter)
+	ent, found, err := iterators.First[Entity](iter)
 	if err != nil {
 		return ent, false, err
 	}
@@ -178,14 +178,14 @@ func (m *Manager[Ent, ID]) CacheQueryOne(
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (m *Manager[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
+func (m *Manager[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if err := m.Source.Create(ctx, ptr); err != nil {
 		return err
 	}
 	return m.Repository.CacheEntity(ctx).Create(ctx, ptr)
 }
 
-func (m *Manager[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, error) {
+func (m *Manager[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
 	// fast path
 	ent, found, err := m.Repository.CacheEntity(ctx).FindByID(ctx, id)
 	if err != nil {
@@ -195,20 +195,20 @@ func (m *Manager[Ent, ID]) FindByID(ctx context.Context, id ID) (Ent, bool, erro
 		return ent, true, nil
 	}
 	// slow path
-	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), func() (ent Ent, found bool, err error) {
+	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), func() (ent Entity, found bool, err error) {
 		return m.Source.FindByID(ctx, id)
 	})
 }
 
-func (m *Manager[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
-	return m.CacheQueryMany(ctx, `FindAll`, func() iterators.Iterator[Ent] {
+func (m *Manager[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+	return m.CacheQueryMany(ctx, `FindAll`, func() iterators.Iterator[Entity] {
 		return m.Source.FindAll(ctx)
 	})
 }
 
-func (m *Manager[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
+func (m *Manager[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	switch src := m.Source.(type) {
-	case ExtendedSource[Ent, ID]:
+	case ExtendedSource[Entity, ID]:
 		if err := src.Update(ctx, ptr); err != nil {
 			return err
 		}
@@ -218,7 +218,7 @@ func (m *Manager[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
 	}
 }
 
-func (m *Manager[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (m *Manager[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := m.Source.DeleteByID(ctx, id); err != nil {
 		return err
 	}
@@ -241,23 +241,23 @@ func (m *Manager[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
 	return nil
 }
 
-func (m *Manager[Ent, ID]) DeleteAll(ctx context.Context) error {
+func (m *Manager[Entity, ID]) DeleteAll(ctx context.Context) error {
 	if err := m.Source.DeleteAll(ctx); err != nil {
 		return err
 	}
 	return m.Repository.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (m *Manager[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, creatorSubscriber pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
+func (m *Manager[Entity, ID]) SubscribeToCreatorEvents(ctx context.Context, creatorSubscriber pubsub.CreatorSubscriber[Entity]) (pubsub.Subscription, error) {
 	return m.Source.SubscribeToCreatorEvents(ctx, creatorSubscriber)
 }
 
-func (m *Manager[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
+func (m *Manager[Entity, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
 	return m.Source.SubscribeToDeleterEvents(ctx, s)
 }
 
-func (m *Manager[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
-	es, ok := m.Source.(ExtendedSource[Ent, ID])
+func (m *Manager[Entity, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Entity]) (pubsub.Subscription, error) {
+	es, ok := m.Source.(ExtendedSource[Entity, ID])
 	if !ok {
 		return nil, fmt.Errorf("%T doesn't implement frameless.UpdaterPublisher", m.Source)
 	}

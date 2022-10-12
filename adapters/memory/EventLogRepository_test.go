@@ -87,10 +87,10 @@ func TestEventLogRepository_smoke(t *testing.T) {
 	assert.Must(t).Equal(0, count)
 }
 
-func getRepositorySpecsForT[Ent, ID any](
-	subject *memory.EventLogRepository[Ent, ID],
-	MakeCtx func(testing.TB) context.Context,
-	MakeEnt func(testing.TB) Ent,
+func getRepositorySpecsForT[Entity, ID any](
+	subject *memory.EventLogRepository[Entity, ID],
+	MakeContext func(testing.TB) context.Context,
+	MakeEntity func(testing.TB) Entity,
 ) []testcase.Suite {
 	makeStringV := func(tb testing.TB) string {
 		return tb.(*testcase.T).Random.String()
@@ -99,50 +99,50 @@ func getRepositorySpecsForT[Ent, ID any](
 		return tb.(*testcase.T).Random.Int()
 	}
 	return []testcase.Suite{
-		crudcontracts.Creator[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.CreatorSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		crudcontracts.Finder[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.FinderSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		crudcontracts.Updater[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		crudcontracts.Deleter[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.DeleterSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		pubsubcontracts.Publisher[Ent, ID]{Subject: func(tb testing.TB) pubsubcontracts.PublisherSubject[Ent, ID] { return subject }, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		crudcontracts.OnePhaseCommitProtocol[Ent, ID]{Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
-			return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{Resource: subject, CommitManager: subject}
-		}, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		cachecontracts.EntityRepository[Ent, ID]{Subject: func(tb testing.TB) (repository cache.EntityRepository[Ent, ID], cpm comproto.OnePhaseCommitProtocol) {
+		crudcontracts.Creator[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		crudcontracts.Finder[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		crudcontracts.Updater[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		crudcontracts.Deleter[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		pubsubcontracts.Publisher[Entity, ID]{MakeSubject: func(tb testing.TB) pubsubcontracts.PublisherSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		crudcontracts.OnePhaseCommitProtocol[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
+			return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{Resource: subject, CommitManager: subject}
+		}, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		cachecontracts.EntityRepository[Entity, ID]{MakeSubject: func(tb testing.TB) (repository cache.EntityRepository[Entity, ID], cpm comproto.OnePhaseCommitProtocol) {
 			return subject, subject.EventLog
-		}, MakeEnt: MakeEnt, MakeCtx: MakeCtx},
-		frmetacontracts.MetaAccessor[Ent, ID, string]{
-			Subject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Ent, ID, string] {
-				return frmetacontracts.MetaAccessorSubject[Ent, ID, string]{
+		}, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		frmetacontracts.MetaAccessor[Entity, ID, string]{
+			MakeSubject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Entity, ID, string] {
+				return frmetacontracts.MetaAccessorSubject[Entity, ID, string]{
 					MetaAccessor: subject.EventLog,
 					Resource:     subject,
 					Publisher:    subject,
 				}
 			},
-			MakeEnt: MakeEnt,
-			MakeCtx: MakeCtx,
-			MakeV:   makeStringV,
+			MakeEntity:  MakeEntity,
+			MakeContext: MakeContext,
+			MakeV:       makeStringV,
 		},
-		frmetacontracts.MetaAccessor[Ent, ID, int]{
-			Subject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Ent, ID, int] {
-				return frmetacontracts.MetaAccessorSubject[Ent, ID, int]{
+		frmetacontracts.MetaAccessor[Entity, ID, int]{
+			MakeSubject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Entity, ID, int] {
+				return frmetacontracts.MetaAccessorSubject[Entity, ID, int]{
 					MetaAccessor: subject.EventLog,
 					Resource:     subject,
 					Publisher:    subject,
 				}
 			},
-			MakeEnt: MakeEnt,
-			MakeCtx: MakeCtx,
-			MakeV:   makeIntV,
+			MakeEntity:  MakeEntity,
+			MakeContext: MakeContext,
+			MakeV:       makeIntV,
 		},
 	}
 }
 
-func getRepositorySpecs[Ent, ID any](
-	subject *memory.EventLogRepository[Ent, ID],
-	makeEnt func(testing.TB) Ent,
+func getRepositorySpecs[Entity, ID any](
+	subject *memory.EventLogRepository[Entity, ID],
+	MakeEntity func(testing.TB) Entity,
 ) []testcase.Suite {
 	makeContext := func(testing.TB) context.Context { return context.Background() }
-	return getRepositorySpecsForT[Ent, ID](subject, makeContext, makeEnt)
+	return getRepositorySpecsForT[Entity, ID](subject, makeContext, MakeEntity)
 }
 
 func TestEventLogRepository(t *testing.T) {
@@ -538,16 +538,16 @@ type EntityWithStructID struct {
 
 func TestEventLogRepository_implementsCacheEntityRepository(t *testing.T) {
 	testcase.RunSuite(t, cachecontracts.EntityRepository[TestEntity, string]{
-		Subject: func(tb testing.TB) (cache.EntityRepository[TestEntity, string], comproto.OnePhaseCommitProtocol) {
+		MakeSubject: func(tb testing.TB) (cache.EntityRepository[TestEntity, string], comproto.OnePhaseCommitProtocol) {
 			eventLog := memory.NewEventLog()
 			repository := memory.NewEventLogRepository[TestEntity, string](eventLog)
 			memory.LogHistoryOnFailure(tb, eventLog)
 			return repository, eventLog
 		},
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEnt: makeTestEntity,
+		MakeEntity: makeTestEntity,
 	})
 }
 
@@ -595,7 +595,7 @@ func TestEventLogRepository_contracts(t *testing.T) {
 		return tb.(*testcase.T).Random.String()
 	}
 	contracts2.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) contracts2.ContractSubject[Entity, string] {
+		MakeSubject: func(tb testing.TB) contracts2.ContractSubject[Entity, string] {
 			el := memory.NewEventLog()
 			stg := memory.NewEventLogRepository[Entity, string](el)
 			return contracts2.ContractSubject[Entity, string]{
@@ -604,8 +604,8 @@ func TestEventLogRepository_contracts(t *testing.T) {
 				Resource:      stg,
 			}
 		},
-		MakeCtx: makeContext,
-		MakeEnt: makeEntity,
-		MakeV:   makeV,
+		MakeContext: makeContext,
+		MakeEntity:  makeEntity,
+		MakeV:       makeV,
 	}.Spec(s)
 }

@@ -24,28 +24,28 @@ func makeTestEntity(tb testing.TB) TestEntity {
 	return TestEntity{Value: t.Random.String()}
 }
 
-func makeCtx(tb testing.TB) context.Context {
+func MakeContext(tb testing.TB) context.Context {
 	return context.Background()
 }
 
 func TestManager_creator(t *testing.T) {
 	testcase.RunSuite(t, fc.Creator[TestEntity, string]{
-		Subject: func(tb testing.TB) fc.CreatorSubject[TestEntity, string] {
+		MakeSubject: func(tb testing.TB) fc.CreatorSubject[TestEntity, string] {
 			return NewManager(tb).Cache
 		},
-		MakeEnt: makeTestEntity,
-		MakeCtx: makeCtx,
+		MakeEntity:  makeTestEntity,
+		MakeContext: MakeContext,
 	})
 }
 
 func TestManager(t *testing.T) {
 	testcase.RunSuite(t,
 		cachecontracts.Manager[TestEntity, string]{
-			Subject: func(tb testing.TB) cachecontracts.ManagerSubject[TestEntity, string] {
+			MakeSubject: func(tb testing.TB) cachecontracts.ManagerSubject[TestEntity, string] {
 				return NewManager(tb)
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeTestEntity,
+			MakeContext: MakeContext,
+			MakeEntity:  makeTestEntity,
 		},
 	)
 }

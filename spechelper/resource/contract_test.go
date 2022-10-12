@@ -17,7 +17,7 @@ func TestContract(t *testing.T) {
 	}
 
 	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
+		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
 			eventLog := memory.NewEventLog()
 			repository := memory.NewEventLogRepository[Entity, string](eventLog)
 			return resource.ContractSubject[Entity, string]{
@@ -26,10 +26,10 @@ func TestContract(t *testing.T) {
 				CommitManager: eventLog,
 			}
 		},
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEnt: func(tb testing.TB) Entity {
+		MakeEntity: func(tb testing.TB) Entity {
 			t := tb.(*testcase.T)
 			return Entity{Data: t.Random.String()}
 		},

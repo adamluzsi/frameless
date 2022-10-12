@@ -78,12 +78,12 @@ func TestConnectionManager_Close(t *testing.T) {
 
 func TestConnectionManager_PoolContract(t *testing.T) {
 	testcase.RunSuite(t, ConnectionManagerContract{
-		Subject: func(tb testing.TB) postgresql.ConnectionManager {
+		MakeSubject: func(tb testing.TB) postgresql.ConnectionManager {
 			s := NewTestEntityRepository(t)
 			return s.ConnectionManager
 		},
 		DriverName: "postgres",
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
 		CreateTable: func(ctx context.Context, client postgresql.Connection, name string) error {
@@ -109,7 +109,7 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-		Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+		MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
 			s := NewTestEntityRepository(tb)
 
 			return crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
@@ -117,10 +117,10 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 				CommitManager: s,
 			}
 		},
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEnt: psh.MakeTestEntity,
+		MakeEntity: psh.MakeTestEntity,
 	})
 }
 
@@ -137,8 +137,8 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 var _ testcase.Suite = ConnectionManagerContract{}
 
 type ConnectionManagerContract struct {
-	Subject func(tb testing.TB) postgresql.ConnectionManager
-	MakeCtx func(testing.TB) context.Context
+	MakeSubject func(tb testing.TB) postgresql.ConnectionManager
+	MakeContext func(testing.TB) context.Context
 
 	DriverName string
 	// CreateTable to create a dummy table with a specific name.
@@ -154,7 +154,7 @@ func (c ConnectionManagerContract) cm() testcase.Var[postgresql.ConnectionManage
 	return testcase.Var[postgresql.ConnectionManager]{
 		ID: "postgresql.ConnectionManager",
 		Init: func(t *testcase.T) postgresql.ConnectionManager {
-			return c.Subject(t)
+			return c.MakeSubject(t)
 		},
 	}
 }
@@ -176,7 +176,7 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 
 	s.Describe(`.GetClient`, func(s *testcase.Spec) {
 		ctx := s.Let("ctx", func(t *testcase.T) interface{} {
-			return c.MakeCtx(t)
+			return c.MakeContext(t)
 		})
 		subject := func(t *testcase.T) (postgresql.Connection, error) {
 			return c.cm().Get(t).Connection(ctx.Get(t).(context.Context))
@@ -192,7 +192,7 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 	s.Test(`.BeginTx + .GetClient = transaction`, func(t *testcase.T) {
 		p := c.cm().Get(t)
 
-		tx, err := p.BeginTx(c.MakeCtx(t))
+		tx, err := p.BeginTx(c.MakeContext(t))
 		require.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
@@ -205,7 +205,7 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 
 		require.NoError(t, p.RollbackTx(tx))
 
-		ctx := c.MakeCtx(t)
+		ctx := c.MakeContext(t)
 		connection, err = p.Connection(ctx)
 		require.NoError(t, err)
 
@@ -217,7 +217,7 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 	s.Test(`.GetClient is in no transaction without context from a .BeginTx`, func(t *testcase.T) {
 		p := c.cm().Get(t)
 
-		ctx := c.MakeCtx(t)
+		ctx := c.MakeContext(t)
 
 		tx, err := p.BeginTx(ctx)
 		require.NoError(t, err)
@@ -245,7 +245,7 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 	s.Test(`.BeginTx + .GetClient + .CommitTx`, func(t *testcase.T) {
 		p := c.cm().Get(t)
 
-		ctx := c.MakeCtx(t)
+		ctx := c.MakeContext(t)
 
 		tx, err := p.BeginTx(ctx)
 		require.NoError(t, err)
@@ -284,7 +284,7 @@ func (c ConnectionManagerContract) makeTestTableName() string {
 }
 
 func (c ConnectionManagerContract) cleanupTable(t *testcase.T, name string) {
-	ctx := c.MakeCtx(t)
+	ctx := c.MakeContext(t)
 	client, err := c.cm().Get(t).Connection(ctx)
 	require.NoError(t, err)
 

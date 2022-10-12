@@ -14,7 +14,7 @@ import (
 
 func TestMemory_contractsFileSystem(t *testing.T) {
 	filesystemcontracts.FileSystem{
-		Subject: func(tb testing.TB) filesystem.FileSystem {
+		MakeSubject: func(tb testing.TB) filesystem.FileSystem {
 			return &filesystems.Memory{}
 		},
 	}.Test(t)

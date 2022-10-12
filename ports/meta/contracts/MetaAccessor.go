@@ -18,50 +18,50 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type MetaAccessor[Ent, ID, V any] struct {
-	Subject func(testing.TB) MetaAccessorSubject[Ent, ID, V]
-	MakeCtx func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
-	MakeV   func(testing.TB) V
+type MetaAccessor[Entity, ID, V any] struct {
+	MakeSubject func(testing.TB) MetaAccessorSubject[Entity, ID, V]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
+	MakeV       func(testing.TB) V
 }
 
-type MetaAccessorSubject[Ent any, ID any, V any] struct {
+type MetaAccessorSubject[Entity any, ID any, V any] struct {
 	meta.MetaAccessor
-	Resource  spechelper.CRD[Ent, ID]
+	Resource  spechelper.CRD[Entity, ID]
 	Publisher interface {
-		pubsub.CreatorPublisher[Ent]
-		pubsub.UpdaterPublisher[Ent]
+		pubsub.CreatorPublisher[Entity]
+		pubsub.UpdaterPublisher[Entity]
 		pubsub.DeleterPublisher[ID]
 	}
 }
 
-func (c MetaAccessor[Ent, ID, V]) metaAccessorSubject() testcase.Var[MetaAccessorSubject[Ent, ID, V]] {
-	return testcase.Var[MetaAccessorSubject[Ent, ID, V]]{ID: `MetaAccessorSubject`}
+func (c MetaAccessor[Entity, ID, V]) metaAccessorSubject() testcase.Var[MetaAccessorSubject[Entity, ID, V]] {
+	return testcase.Var[MetaAccessorSubject[Entity, ID, V]]{ID: `MetaAccessorSubject`}
 }
 
-func (c MetaAccessor[Ent, ID, V]) Test(t *testing.T) {
+func (c MetaAccessor[Entity, ID, V]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c MetaAccessor[Ent, ID, V]) Benchmark(b *testing.B) {
+func (c MetaAccessor[Entity, ID, V]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c MetaAccessor[Ent, ID, V]) Spec(s *testcase.Spec) {
+func (c MetaAccessor[Entity, ID, V]) Spec(s *testcase.Spec) {
 	testcase.RunSuite(s,
 		MetaAccessorBasic[V]{
-			Subject: func(tb testing.TB) meta.MetaAccessor {
-				return c.Subject(tb).MetaAccessor
+			MakeSubject: func(tb testing.TB) meta.MetaAccessor {
+				return c.MakeSubject(tb).MetaAccessor
 			},
 			MakeV: c.MakeV,
 		},
-		MetaAccessorPublisher[Ent, ID, V]{
-			Subject: func(tb testing.TB) MetaAccessorSubject[Ent, ID, V] {
-				return c.Subject(tb)
+		MetaAccessorPublisher[Entity, ID, V]{
+			MakeSubject: func(tb testing.TB) MetaAccessorSubject[Entity, ID, V] {
+				return c.MakeSubject(tb)
 			},
-			Context: c.MakeCtx,
-			MakeEnt: c.MakeEnt,
-			MakeV:   c.MakeV,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeEntity,
+			MakeV:       c.MakeV,
 		},
 	)
 }
@@ -69,8 +69,8 @@ func (c MetaAccessor[Ent, ID, V]) Spec(s *testcase.Spec) {
 // MetaAccessorBasic
 // V is the value T type that can be set and looked up with frameless.MetaAccessor.
 type MetaAccessorBasic[V any] struct {
-	Subject func(testing.TB) meta.MetaAccessor
-	MakeV   func(testing.TB) V
+	MakeSubject func(testing.TB) meta.MetaAccessor
+	MakeV       func(testing.TB) V
 }
 
 func (c MetaAccessorBasic[V]) metaAccessorSubject() testcase.Var[meta.MetaAccessor] {
@@ -87,7 +87,7 @@ func (c MetaAccessorBasic[V]) Benchmark(b *testing.B) {
 
 func (c MetaAccessorBasic[V]) Spec(s *testcase.Spec) {
 	c.metaAccessorSubject().Let(s, func(t *testcase.T) meta.MetaAccessor {
-		return c.Subject(t)
+		return c.MakeSubject(t)
 	})
 
 	// SetMeta(ctx context.Context, key string, value interface{}) (context.Context, error)
@@ -129,33 +129,33 @@ func (c MetaAccessorBasic[V]) Spec(s *testcase.Spec) {
 	})
 }
 
-type MetaAccessorPublisher[Ent any, ID any, V any] struct {
-	Subject func(testing.TB) MetaAccessorSubject[Ent, ID, V]
-	Context func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
-	MakeV   func(testing.TB) V
+type MetaAccessorPublisher[Entity any, ID any, V any] struct {
+	MakeSubject func(testing.TB) MetaAccessorSubject[Entity, ID, V]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
+	MakeV       func(testing.TB) V
 }
 
-func (c MetaAccessorPublisher[Ent, ID, V]) subject() testcase.Var[MetaAccessorSubject[Ent, ID, V]] {
-	return testcase.Var[MetaAccessorSubject[Ent, ID, V]]{
+func (c MetaAccessorPublisher[Entity, ID, V]) subject() testcase.Var[MetaAccessorSubject[Entity, ID, V]] {
+	return testcase.Var[MetaAccessorSubject[Entity, ID, V]]{
 		ID: `subject`,
-		Init: func(t *testcase.T) MetaAccessorSubject[Ent, ID, V] {
-			return c.Subject(t)
+		Init: func(t *testcase.T) MetaAccessorSubject[Entity, ID, V] {
+			return c.MakeSubject(t)
 		},
 	}
 }
 
-func (c MetaAccessorPublisher[Ent, ID, V]) Test(t *testing.T) {
+func (c MetaAccessorPublisher[Entity, ID, V]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c MetaAccessorPublisher[Ent, ID, V]) Benchmark(b *testing.B) {
+func (c MetaAccessorPublisher[Entity, ID, V]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
+func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 	s.Test(".SetMeta -> .Create -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		ctx := c.Context(t)
+		ctx := c.MakeContext(t)
 		key := t.Random.String()
 		expected := c.MakeV(t)
 
@@ -163,9 +163,9 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := c.subject().Get(t).Publisher.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[Ent, ID]{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToCreatorEvents(ctx, doubles.StubSubscriber[Entity, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				_ = event.(pubsub.CreateEvent[Ent])
+				_ = event.(pubsub.CreateEvent[Entity])
 				v := new(V)
 				found, err := c.subject().Get(t).LookupMeta(ctx, key, v)
 				t.Must.Nil(err)
@@ -181,8 +181,8 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 
 		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
 		t.Must.Nil(err)
-		v2 := c.MakeEnt(t)
-		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, &v2)
+		v2 := c.MakeEntity(t)
+		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, &v2)
 
 		Eventually.Assert(t, func(it assert.It) {
 			mutex.RLock()
@@ -192,19 +192,19 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .DeleteByID -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		ctx := c.Context(t)
+		ctx := c.MakeContext(t)
 		key := t.Random.String()
 		expected := c.MakeV(t)
-		ptr := spechelper.ToPtr(c.MakeEnt(t))
+		ptr := spechelper.ToPtr(c.MakeEntity(t))
 
-		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, ptr)
-		id := HasID[Ent, ID](t, ptr)
+		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
+		id := HasID[Entity, ID](t, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := c.subject().Get(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber[Ent, ID]{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber[Entity, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(pubsub.DeleteByIDEvent[ID]); !ok {
 					return nil
@@ -235,18 +235,18 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .DeleteAll -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		ctx := c.Context(t)
+		ctx := c.MakeContext(t)
 		key := t.Random.String()
 		expected := c.MakeV(t)
 
-		ptr := spechelper.ToPtr(c.MakeEnt(t))
-		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, ptr)
+		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := c.subject().Get(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber[Ent, ID]{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToDeleterEvents(ctx, doubles.StubSubscriber[Entity, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
 				if _, ok := event.(pubsub.DeleteAllEvent); !ok {
 					return nil
@@ -282,26 +282,26 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(".SetMeta -> .Update -> .Subscribe -> .LookupMeta", func(t *testcase.T) {
-		res, ok := c.subject().Get(t).Resource.(crudcontracts.UpdaterSubject[Ent, ID])
+		res, ok := c.subject().Get(t).Resource.(crudcontracts.UpdaterSubject[Entity, ID])
 		if !ok {
 			t.Skipf(`frameless.Updater is not implemented by %T`, c.subject().Get(t).Resource)
 		}
 
-		ctx := c.Context(t)
+		ctx := c.MakeContext(t)
 		key := t.Random.String()
 		expected := c.MakeV(t)
 
-		ptr := spechelper.ToPtr(c.MakeEnt(t))
-		Create[Ent, ID](t, c.subject().Get(t).Resource, ctx, ptr)
-		id := HasID[Ent, ID](t, ptr)
+		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
+		id := HasID[Entity, ID](t, ptr)
 
 		var (
 			actual interface{}
 			mutex  sync.RWMutex
 		)
-		sub, err := c.subject().Get(t).Publisher.SubscribeToUpdaterEvents(ctx, doubles.StubSubscriber[Ent, ID]{
+		sub, err := c.subject().Get(t).Publisher.SubscribeToUpdaterEvents(ctx, doubles.StubSubscriber[Entity, ID]{
 			HandleFunc: func(ctx context.Context, event interface{}) error {
-				if _, ok := event.(pubsub.UpdateEvent[Ent]); !ok {
+				if _, ok := event.(pubsub.UpdateEvent[Entity]); !ok {
 					return nil
 				}
 
@@ -318,7 +318,7 @@ func (c MetaAccessorPublisher[Ent, ID, V]) Spec(s *testcase.Spec) {
 		t.Must.Nil(err)
 		t.Defer(sub.Close)
 
-		updPTR := spechelper.ToPtr(c.MakeEnt(t))
+		updPTR := spechelper.ToPtr(c.MakeEntity(t))
 		t.Must.Nil(extid.Set(updPTR, id))
 		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
 		t.Must.Nil(err)

@@ -1,7 +1,7 @@
 package memory
 
-func toSlice[Ent any, key comparable](m map[key]Ent) []Ent {
-	list := make([]Ent, 0, len(m))
+func toSlice[Entity any, key comparable](m map[key]Entity) []Entity {
+	list := make([]Entity, 0, len(m))
 	for _, ent := range m {
 		list = append(list, ent)
 	}

@@ -50,97 +50,97 @@ func makeContext(tb testing.TB) context.Context {
 	return context.Background()
 }
 
-type ContractSubject[Ent, ID any] struct {
+type ContractSubject[Entity, ID any] struct {
 	Resource interface {
-		crud.Creator[Ent]
-		crud.Finder[Ent, ID]
-		crud.Updater[Ent]
+		crud.Creator[Entity]
+		crud.Finder[Entity, ID]
+		crud.Updater[Entity]
 		crud.Deleter[ID]
 	}
 	//frameless.CreatorPublisher
 	//frameless.UpdaterPublisher
 	//frameless.DeleterPublisher
-	EntityRepository cache.EntityRepository[Ent, ID]
+	EntityRepository cache.EntityRepository[Entity, ID]
 	CommitManager    comproto.OnePhaseCommitProtocol
 	meta.MetaAccessor
 }
 
-func GetContracts[Ent, ID any](
-	subject func(testing.TB) ContractSubject[Ent, ID],
-	makeCtx func(testing.TB) context.Context,
-	makeEnt func(testing.TB) Ent,
+func GetContracts[Entity, ID any](
+	subject func(testing.TB) ContractSubject[Entity, ID],
+	MakeContext func(testing.TB) context.Context,
+	MakeEntity func(testing.TB) Entity,
 ) []testcase.Suite {
 	return []testcase.Suite{
-		crudcontracts.Creator[Ent, ID]{
-			Subject: func(tb testing.TB) crudcontracts.CreatorSubject[Ent, ID] {
+		crudcontracts.Creator[Entity, ID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
 				return subject(tb).Resource
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeEnt,
+			MakeContext: MakeContext,
+			MakeEntity:  MakeEntity,
 		},
-		crudcontracts.Finder[Ent, ID]{
-			Subject: func(tb testing.TB) crudcontracts.FinderSubject[Ent, ID] {
-				return subject(tb).Resource
+		crudcontracts.Finder[Entity, ID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
+				return subject(tb).Resource.(crudcontracts.FinderSubject[Entity, ID])
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeEnt,
+			MakeContext: MakeContext,
+			MakeEntity:  MakeEntity,
 		},
-		crudcontracts.Updater[Ent, ID]{
-			Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[Ent, ID] {
+		crudcontracts.Updater[Entity, ID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
 				return subject(tb).Resource
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeEnt,
+			MakeContext: MakeContext,
+			MakeEntity:  MakeEntity,
 		},
-		crudcontracts.Deleter[Ent, ID]{
-			Subject: func(tb testing.TB) crudcontracts.DeleterSubject[Ent, ID] {
+		crudcontracts.Deleter[Entity, ID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
 				return subject(tb).Resource
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeEnt,
+			MakeContext: MakeContext,
+			MakeEntity:  MakeEntity,
 		},
 		//resource.CreatorPublisher{T: T,
-		//	Subject: func(tb testing.TB) resource.CreatorPublisherSubject {
+		//	MakeSubject: func(tb testing.TB) resource.CreatorPublisherSubject {
 		//		resource, _ := ns(tb)
 		//		return resource
 		//	},
 		//	FixtureFactory: ff,
 		//},
 		//resource.UpdaterPublisher{T: T,
-		//	Subject: func(tb testing.TB) resource.UpdaterPublisherSubject {
+		//	MakeSubject: func(tb testing.TB) resource.UpdaterPublisherSubject {
 		//		resource, _ := ns(tb)
 		//		return resource
 		//	},
 		//	FixtureFactory: ff,
 		//},
 		//resource.DeleterPublisher{T: T,
-		//	Subject: func(tb testing.TB) resource.DeleterPublisherSubject {
+		//	MakeSubject: func(tb testing.TB) resource.DeleterPublisherSubject {
 		//		resource, _ := ns(tb)
 		//		return resource
 		//	},
 		//	FixtureFactory: ff,
 		//},
-		crudcontracts.OnePhaseCommitProtocol[Ent, ID]{
-			Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
+		crudcontracts.OnePhaseCommitProtocol[Entity, ID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
 				s := subject(tb)
-				return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
+				return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
 					Resource:      s.Resource,
 					CommitManager: s.CommitManager,
 				}
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeEnt,
+			MakeContext: MakeContext,
+			MakeEntity:  MakeEntity,
 		},
-		cachecontracts.EntityRepository[Ent, ID]{
-			Subject: func(tb testing.TB) (cache.EntityRepository[Ent, ID], comproto.OnePhaseCommitProtocol) {
+		cachecontracts.EntityRepository[Entity, ID]{
+			MakeSubject: func(tb testing.TB) (cache.EntityRepository[Entity, ID], comproto.OnePhaseCommitProtocol) {
 				s := subject(tb)
 				return s.EntityRepository, s.CommitManager
 			},
-			MakeCtx: makeCtx,
-			MakeEnt: makeEnt,
+			MakeContext: MakeContext,
+			MakeEntity:  MakeEntity,
 		},
 		//resource.MetaAccessor{T: T, V: "string",
-		//	Subject: func(tb testing.TB) resource.MetaAccessorSubject {
+		//	MakeSubject: func(tb testing.TB) resource.MetaAccessorSubject {
 		//		s := subject(tb)
 		//		return resource.MetaAccessorSubject{
 		//			MetaAccessor: s.MetaAccessor,
@@ -149,7 +149,7 @@ func GetContracts[Ent, ID any](
 		//		}
 		//	},
 		//	FixtureFactory: ff,
-		//	Context:        cf,
+		//	MakeContext:        cf,
 		//},
 	}
 }

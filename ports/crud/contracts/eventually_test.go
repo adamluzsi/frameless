@@ -22,11 +22,11 @@ func TestEventuallyConsistentResource(t *testing.T) {
 	}
 
 	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		Subject: ContractSubjectFnEventuallyConsistentResource[Entity, string](),
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeSubject: ContractSubjectFnEventuallyConsistentResource[Entity, string](),
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEnt: func(tb testing.TB) Entity {
+		MakeEntity: func(tb testing.TB) Entity {
 			t := tb.(*testcase.T)
 			return Entity{Data: t.Random.String()}
 		},
@@ -36,14 +36,14 @@ func TestEventuallyConsistentResource(t *testing.T) {
 	})
 }
 
-func ContractSubjectFnEventuallyConsistentResource[Ent, ID any]() func(testing.TB) resource.ContractSubject[Ent, ID] {
-	return func(tb testing.TB) resource.ContractSubject[Ent, ID] {
+func ContractSubjectFnEventuallyConsistentResource[Entity, ID any]() func(testing.TB) resource.ContractSubject[Entity, ID] {
+	return func(tb testing.TB) resource.ContractSubject[Entity, ID] {
 		eventLog := memory.NewEventLog()
-		repo := &EventuallyConsistentResource[Ent, ID]{EventLogRepository: memory.NewEventLogRepository[Ent, ID](eventLog)}
+		repo := &EventuallyConsistentResource[Entity, ID]{EventLogRepository: memory.NewEventLogRepository[Entity, ID](eventLog)}
 		repo.jobs.queue = make(chan func(), 100)
 		repo.Spawn()
 		tb.Cleanup(func() { assert.Must(tb).Nil(repo.Close()) })
-		return resource.ContractSubject[Ent, ID]{
+		return resource.ContractSubject[Entity, ID]{
 			Resource:      repo,
 			MetaAccessor:  eventLog,
 			CommitManager: repo,
@@ -51,8 +51,8 @@ func ContractSubjectFnEventuallyConsistentResource[Ent, ID any]() func(testing.T
 	}
 }
 
-type EventuallyConsistentResource[Ent, ID any] struct {
-	*memory.EventLogRepository[Ent, ID]
+type EventuallyConsistentResource[Entity, ID any] struct {
+	*memory.EventLogRepository[Entity, ID]
 	jobs struct {
 		queue chan func()
 		wg    sync.WaitGroup
@@ -63,7 +63,7 @@ type EventuallyConsistentResource[Ent, ID any] struct {
 	closed bool
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) Spawn() {
+func (e *EventuallyConsistentResource[Entity, ID]) Spawn() {
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -78,7 +78,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) Spawn() {
 	go e.worker(ctx, &wg)
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) nullFn(fn func()) func() {
+func (e *EventuallyConsistentResource[Entity, ID]) nullFn(fn func()) func() {
 	return func() {
 		if fn != nil {
 			fn()
@@ -86,7 +86,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) nullFn(fn func()) func() {
 	}
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) Close() error {
+func (e *EventuallyConsistentResource[Entity, ID]) Close() error {
 	e.jobs.wg.Wait()
 	e.nullFn(e.workers.cancel)()
 	close(e.jobs.queue)
@@ -94,7 +94,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) Close() error {
 	return nil
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
+func (e *EventuallyConsistentResource[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
@@ -103,7 +103,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) Create(ctx context.Context, ptr 
 	})
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
+func (e *EventuallyConsistentResource[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) Update(ctx context.Context, ptr 
 	})
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (e *EventuallyConsistentResource[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) DeleteByID(ctx context.Context, 
 	})
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) DeleteAll(ctx context.Context) error {
+func (e *EventuallyConsistentResource[Entity, ID]) DeleteAll(ctx context.Context) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ type (
 	}
 )
 
-func (e *EventuallyConsistentResource[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+func (e *EventuallyConsistentResource[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return nil, err
 	}
@@ -146,19 +146,19 @@ func (e *EventuallyConsistentResource[Ent, ID]) BeginTx(ctx context.Context) (co
 	return e.EventLog.BeginTx(ctx)
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) errOnDoneTx(ctx context.Context) error {
+func (e *EventuallyConsistentResource[Entity, ID]) errOnDoneTx(ctx context.Context) error {
 	if v, ok := e.lookupTx(ctx); ok && v.done {
 		return errors.New(`comproto is already done`)
 	}
 	return nil
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) lookupTx(ctx context.Context) (*eventuallyConsistentResourceTxValue, bool) {
+func (e *EventuallyConsistentResource[Entity, ID]) lookupTx(ctx context.Context) (*eventuallyConsistentResourceTxValue, bool) {
 	v, ok := ctx.Value(eventuallyConsistentResourceTxKey{}).(*eventuallyConsistentResourceTxValue)
 	return v, ok
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) CommitTx(tx context.Context) error {
+func (e *EventuallyConsistentResource[Entity, ID]) CommitTx(tx context.Context) error {
 	if v, ok := e.lookupTx(tx); ok {
 		v.WaitGroup.Wait()
 		v.done = true
@@ -166,7 +166,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) CommitTx(tx context.Context) err
 	return e.EventLog.CommitTx(tx)
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) RollbackTx(tx context.Context) error {
+func (e *EventuallyConsistentResource[Entity, ID]) RollbackTx(tx context.Context) error {
 	if v, ok := e.lookupTx(tx); ok {
 		v.WaitGroup.Wait()
 		v.done = true
@@ -174,7 +174,7 @@ func (e *EventuallyConsistentResource[Ent, ID]) RollbackTx(tx context.Context) e
 	return e.EventLog.RollbackTx(tx)
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) worker(ctx context.Context, wg *sync.WaitGroup) {
+func (e *EventuallyConsistentResource[Entity, ID]) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 wrk:
@@ -191,7 +191,7 @@ wrk:
 	}
 }
 
-func (e *EventuallyConsistentResource[Ent, ID]) eventually(ctx context.Context, fn func(ctx context.Context) error) error {
+func (e *EventuallyConsistentResource[Entity, ID]) eventually(ctx context.Context, fn func(ctx context.Context) error) error {
 	if e.closed {
 		return errors.New(`closed`)
 	}

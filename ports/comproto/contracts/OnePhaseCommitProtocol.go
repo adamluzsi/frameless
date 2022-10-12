@@ -9,8 +9,8 @@ import (
 )
 
 type OnePhaseCommitProtocol struct {
-	Subject func(testing.TB) OnePhaseCommitProtocolSubject
-	MakeCtx func(testing.TB) context.Context
+	MakeSubject func(testing.TB) OnePhaseCommitProtocolSubject
+	MakeContext func(testing.TB) context.Context
 }
 
 type OnePhaseCommitProtocolSubject comproto.OnePhaseCommitProtocol
@@ -19,7 +19,7 @@ func (c OnePhaseCommitProtocol) subject() testcase.Var[comproto.OnePhaseCommitPr
 	return testcase.Var[comproto.OnePhaseCommitProtocol]{
 		ID: "commit protocol manager",
 		Init: func(t *testcase.T) comproto.OnePhaseCommitProtocol {
-			return c.Subject(t)
+			return c.MakeSubject(t)
 		},
 	}
 }
@@ -37,40 +37,40 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 		s.HasSideEffect()
 
 		s.Test(`BeginTx + CommitTx, no error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).BeginTx(c.MakeCtx(t))
+			tx, err := c.subject().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(c.subject().Get(t).CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + multiple CommitTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).BeginTx(c.MakeCtx(t))
+			tx, err := c.subject().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(c.subject().Get(t).CommitTx(tx))
 			t.Must.NotNil(c.subject().Get(t).CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx, no error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).BeginTx(c.MakeCtx(t))
+			tx, err := c.subject().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(c.subject().Get(t).RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + multiple RollbackTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).BeginTx(c.MakeCtx(t))
+			tx, err := c.subject().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(c.subject().Get(t).RollbackTx(tx))
 			t.Must.NotNil(c.subject().Get(t).RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx + CommitTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).BeginTx(c.MakeCtx(t))
+			tx, err := c.subject().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(c.subject().Get(t).RollbackTx(tx))
 			t.Must.NotNil(c.subject().Get(t).CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + CommitTx + RollbackTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).BeginTx(c.MakeCtx(t))
+			tx, err := c.subject().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(c.subject().Get(t).CommitTx(tx))
 			t.Must.NotNil(c.subject().Get(t).RollbackTx(tx))
@@ -88,7 +88,7 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			var globalContext = c.MakeCtx(t)
+			var globalContext = c.MakeContext(t)
 
 			tx1, err := c.subject().Get(t).BeginTx(globalContext)
 			t.Must.Nil(err)
@@ -109,7 +109,7 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 	s.When("context has an error", func(s *testcase.Spec) {
 		cancel := testcase.Let[func()](s, nil)
 		ctx := testcase.Let(s, func(t *testcase.T) context.Context {
-			c, cfn := context.WithCancel(c.MakeCtx(t))
+			c, cfn := context.WithCancel(c.MakeContext(t))
 			cancel.Set(t, cfn)
 			return c
 		}).EagerLoading(s)
