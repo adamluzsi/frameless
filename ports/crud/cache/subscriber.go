@@ -7,8 +7,8 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub"
 )
 
-func (m *Manager[Ent, ID]) subscribe(ctx context.Context) error {
-	subscriber := &managerSubscriber[Ent, ID]{Manager: m}
+func (m *Manager[Entity, ID]) subscribe(ctx context.Context) error {
+	subscriber := &managerSubscriber[Entity, ID]{Manager: m}
 
 	subscription, err := m.Source.SubscribeToCreatorEvents(ctx, subscriber)
 	if err != nil {
@@ -22,7 +22,7 @@ func (m *Manager[Ent, ID]) subscribe(ctx context.Context) error {
 	}
 	m.trap(func() { _ = subscription.Close() })
 
-	if src, ok := m.Source.(ExtendedSource[Ent, ID]); ok {
+	if src, ok := m.Source.(ExtendedSource[Entity, ID]); ok {
 		subscription, err := src.SubscribeToUpdaterEvents(ctx, subscriber)
 		if err != nil {
 			return err
@@ -54,15 +54,15 @@ func (m subscriber) HandleError(ctx context.Context, err error) error {
 	return nil
 }
 
-type managerSubscriber[Ent, ID any] struct {
-	Manager *Manager[Ent, ID]
+type managerSubscriber[Entity, ID any] struct {
+	Manager *Manager[Entity, ID]
 }
 
-func (sub *managerSubscriber[Ent, ID]) HandleCreateEvent(ctx context.Context, event pubsub.CreateEvent[Ent]) error {
+func (sub *managerSubscriber[Entity, ID]) HandleCreateEvent(ctx context.Context, event pubsub.CreateEvent[Entity]) error {
 	return sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx)
 }
 
-func (sub *managerSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, event pubsub.UpdateEvent[Ent]) error {
+func (sub *managerSubscriber[Entity, ID]) HandleUpdateEvent(ctx context.Context, event pubsub.UpdateEvent[Entity]) error {
 	if err := sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func (sub *managerSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, ev
 	return sub.Manager.deleteCachedEntity(ctx, id)
 }
 
-func (sub *managerSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, event pubsub.DeleteByIDEvent[ID]) error {
+func (sub *managerSubscriber[Entity, ID]) HandleDeleteByIDEvent(ctx context.Context, event pubsub.DeleteByIDEvent[ID]) error {
 	// TODO: why is this not triggered on Manager.DeleteByID ?
 	if err := sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
@@ -78,14 +78,14 @@ func (sub *managerSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context
 	return sub.Manager.deleteCachedEntity(ctx, event.ID)
 }
 
-func (sub *managerSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event pubsub.DeleteAllEvent) error {
+func (sub *managerSubscriber[Entity, ID]) HandleDeleteAllEvent(ctx context.Context, event pubsub.DeleteAllEvent) error {
 	if err := sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx); err != nil {
 		return err
 	}
 	return sub.Manager.Repository.CacheEntity(ctx).DeleteAll(ctx)
 }
 
-func (sub *managerSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) error {
+func (sub *managerSubscriber[Entity, ID]) HandleError(ctx context.Context, err error) error {
 	// TODO: log.Println("ERROR", err.Error())
 	_ = sub.Manager.Repository.CacheHit(ctx).DeleteAll(ctx)
 	_ = sub.Manager.Repository.CacheEntity(ctx).DeleteAll(ctx)

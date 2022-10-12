@@ -12,17 +12,17 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub"
 )
 
-func NewEventLogRepository[Ent, ID any](m *EventLog) *EventLogRepository[Ent, ID] {
-	return &EventLogRepository[Ent, ID]{EventLog: m}
+func NewEventLogRepository[Entity, ID any](m *EventLog) *EventLogRepository[Entity, ID] {
+	return &EventLogRepository[Entity, ID]{EventLog: m}
 }
 
-func NewEventLogRepositoryWithNamespace[Ent, ID any](m *EventLog, ns string) *EventLogRepository[Ent, ID] {
-	return &EventLogRepository[Ent, ID]{EventLog: m, Namespace: ns}
+func NewEventLogRepositoryWithNamespace[Entity, ID any](m *EventLog, ns string) *EventLogRepository[Entity, ID] {
+	return &EventLogRepository[Entity, ID]{EventLog: m, Namespace: ns}
 }
 
 // EventLogRepository is an EventLog based development in memory repository,
 // that allows easy debugging and tracing during development for fast and descriptive feedback loops.
-type EventLogRepository[Ent, ID any] struct {
+type EventLogRepository[Entity, ID any] struct {
 	EventLog *EventLog
 	MakeID   func(ctx context.Context) (ID, error)
 
@@ -48,34 +48,34 @@ const (
 	DeleteByIDEvent = `DeleteByID`
 )
 
-type EventLogRepositoryEvent[Ent, ID any] struct {
+type EventLogRepositoryEvent[Entity, ID any] struct {
 	Namespace string
 	Name      string
-	Value     Ent
+	Value     Entity
 	Trace     []Stack
 }
 
-func (e EventLogRepositoryEvent[Ent, ID]) GetTrace() []Stack      { return e.Trace }
-func (e EventLogRepositoryEvent[Ent, ID]) SetTrace(trace []Stack) { e.Trace = trace }
-func (e EventLogRepositoryEvent[Ent, ID]) String() string {
+func (e EventLogRepositoryEvent[Entity, ID]) GetTrace() []Stack      { return e.Trace }
+func (e EventLogRepositoryEvent[Entity, ID]) SetTrace(trace []Stack) { e.Trace = trace }
+func (e EventLogRepositoryEvent[Entity, ID]) String() string {
 	return fmt.Sprintf("%s %#v", e.Name, e.Value)
 }
 
-func (s *EventLogRepository[Ent, ID]) GetNamespace() string {
+func (s *EventLogRepository[Entity, ID]) GetNamespace() string {
 	s.initNamespace.Do(func() {
 		if 0 < len(s.Namespace) {
 			return
 		}
-		s.Namespace = reflects.FullyQualifiedName(*new(Ent))
+		s.Namespace = reflects.FullyQualifiedName(*new(Entity))
 	})
 	return s.Namespace
 }
 
-func (s *EventLogRepository[Ent, ID]) ownEvent(e EventLogRepositoryEvent[Ent, ID]) bool {
+func (s *EventLogRepository[Entity, ID]) ownEvent(e EventLogRepositoryEvent[Entity, ID]) bool {
 	return e.Namespace == s.GetNamespace()
 }
 
-func (s *EventLogRepository[Ent, ID]) Create(ctx context.Context, ptr *Ent) error {
+func (s *EventLogRepository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if _, ok := extid.Lookup[ID](ptr); !ok {
 		newID, err := s.newID(ctx)
 		if err != nil {
@@ -95,10 +95,10 @@ func (s *EventLogRepository[Ent, ID]) Create(ctx context.Context, ptr *Ent) erro
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return fmt.Errorf(`%T already exists with id: %v`, *new(Ent), id)
+		return fmt.Errorf(`%T already exists with id: %v`, *new(Entity), id)
 	}
 
-	return s.append(ctx, EventLogRepositoryEvent[Ent, ID]{
+	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
 		Namespace: s.GetNamespace(),
 		Name:      CreateEvent,
 		Value:     *ptr,
@@ -106,12 +106,12 @@ func (s *EventLogRepository[Ent, ID]) Create(ctx context.Context, ptr *Ent) erro
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent Ent, _found bool, _err error) {
+func (s *EventLogRepository[Entity, ID]) FindByID(ctx context.Context, id ID) (_ent Entity, _found bool, _err error) {
 	if err := ctx.Err(); err != nil {
-		return *new(Ent), false, err
+		return *new(Entity), false, err
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return *new(Ent), false, err
+		return *new(Entity), false, err
 	}
 
 	view := s.View(ctx)
@@ -119,15 +119,15 @@ func (s *EventLogRepository[Ent, ID]) FindByID(ctx context.Context, id ID) (_ent
 	return ent, ok, nil
 }
 
-func (s *EventLogRepository[Ent, ID]) FindAll(ctx context.Context) iterators.Iterator[Ent] {
+func (s *EventLogRepository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
 	if err := ctx.Err(); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators.Error[Entity](err)
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.Error[Ent](err)
+		return iterators.Error[Entity](err)
 	}
 
-	res := make([]Ent, 0)
+	res := make([]Entity, 0)
 	view := s.View(ctx)
 	for _, ent := range view {
 		res = append(res, ent)
@@ -135,7 +135,7 @@ func (s *EventLogRepository[Ent, ID]) FindAll(ctx context.Context) iterators.Ite
 	return iterators.Slice(res)
 }
 
-func (s *EventLogRepository[Ent, ID]) Update(ctx context.Context, ptr *Ent) error {
+func (s *EventLogRepository[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	id, ok := extid.Lookup[ID](ptr)
 	if !ok {
 		return fmt.Errorf(`entity doesn't have id field`)
@@ -149,7 +149,7 @@ func (s *EventLogRepository[Ent, ID]) Update(ctx context.Context, ptr *Ent) erro
 		return fmt.Errorf(`%T entity not found by id: %v`, ptr, id)
 	}
 
-	return s.append(ctx, EventLogRepositoryEvent[Ent, ID]{
+	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
 		Namespace: s.GetNamespace(),
 		Name:      UpdateEvent,
 		Value:     *ptr,
@@ -157,20 +157,20 @@ func (s *EventLogRepository[Ent, ID]) Update(ctx context.Context, ptr *Ent) erro
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (s *EventLogRepository[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	_, found, err := s.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`%T entity not found by id: %v`, *new(Ent), id)
+		return fmt.Errorf(`%T entity not found by id: %v`, *new(Entity), id)
 	}
 
-	ptr := new(Ent)
+	ptr := new(Entity)
 	if err := extid.Set(ptr, id); err != nil {
 		return err
 	}
-	return s.append(ctx, EventLogRepositoryEvent[Ent, ID]{
+	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
 		Namespace: s.GetNamespace(),
 		Name:      DeleteByIDEvent,
 		Value:     *ptr,
@@ -178,22 +178,22 @@ func (s *EventLogRepository[Ent, ID]) DeleteByID(ctx context.Context, id ID) err
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) DeleteAll(ctx context.Context) error {
+func (s *EventLogRepository[Entity, ID]) DeleteAll(ctx context.Context) error {
 	if err := s.isDoneTx(ctx); err != nil {
 		return err
 	}
 
-	return s.append(ctx, EventLogRepositoryEvent[Ent, ID]{
+	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
 		Namespace: s.GetNamespace(),
 		Name:      DeleteAllEvent,
-		Value:     *new(Ent),
+		Value:     *new(Entity),
 		Trace:     NewTrace(0),
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent] {
+func (s *EventLogRepository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
 	// building an id index becomes possible when the ids type became known after go generics
-	i, o := iterators.Pipe[Ent]()
+	i, o := iterators.Pipe[Entity]()
 	go func() {
 		defer i.Close()
 		for _, id := range ids {
@@ -203,7 +203,7 @@ func (s *EventLogRepository[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) 
 				return
 			}
 			if !found {
-				i.Error(fmt.Errorf(`%T with %v id is not found`, *new(Ent), id))
+				i.Error(fmt.Errorf(`%T with %v id is not found`, *new(Entity), id))
 				return
 			}
 			if ok := i.Value(ent); !ok {
@@ -214,7 +214,7 @@ func (s *EventLogRepository[Ent, ID]) FindByIDs(ctx context.Context, ids ...ID) 
 	return o
 }
 
-func (s *EventLogRepository[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) (rErr error) {
+func (s *EventLogRepository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rErr error) {
 	tx, err := s.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -253,23 +253,23 @@ func (s *EventLogRepository[Ent, ID]) Upsert(ctx context.Context, ptrs ...*Ent) 
 	return nil
 }
 
-func (s *EventLogRepository[Ent, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+func (s *EventLogRepository[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
 	return s.EventLog.BeginTx(ctx)
 }
 
-func (s *EventLogRepository[Ent, ID]) CommitTx(ctx context.Context) error {
+func (s *EventLogRepository[Entity, ID]) CommitTx(ctx context.Context) error {
 	return s.EventLog.CommitTx(ctx)
 }
 
-func (s *EventLogRepository[Ent, ID]) RollbackTx(ctx context.Context) error {
+func (s *EventLogRepository[Entity, ID]) RollbackTx(ctx context.Context) error {
 	return s.EventLog.RollbackTx(ctx)
 }
 
-func (s *EventLogRepository[Ent, ID]) LookupTx(ctx context.Context) (*EventLogTx, bool) {
+func (s *EventLogRepository[Entity, ID]) LookupTx(ctx context.Context) (*EventLogTx, bool) {
 	return s.EventLog.LookupTx(ctx)
 }
 
-func (s *EventLogRepository[Ent, ID]) newID(ctx context.Context) (interface{}, error) {
+func (s *EventLogRepository[Entity, ID]) newID(ctx context.Context) (interface{}, error) {
 	if s.MakeID != nil {
 		return s.MakeID(ctx)
 	}
@@ -277,10 +277,10 @@ func (s *EventLogRepository[Ent, ID]) newID(ctx context.Context) (interface{}, e
 	return newDummyID(id)
 }
 
-func (s *EventLogRepository[Ent, ID]) Events(ctx context.Context) []EventLogRepositoryEvent[Ent, ID] {
-	var events []EventLogRepositoryEvent[Ent, ID]
+func (s *EventLogRepository[Entity, ID]) Events(ctx context.Context) []EventLogRepositoryEvent[Entity, ID] {
+	var events []EventLogRepositoryEvent[Entity, ID]
 	for _, eventLogEvent := range s.EventLog.EventsInContext(ctx) {
-		v, ok := eventLogEvent.(EventLogRepositoryEvent[Ent, ID])
+		v, ok := eventLogEvent.(EventLogRepositoryEvent[Entity, ID])
 		if !ok {
 			continue
 		}
@@ -292,12 +292,12 @@ func (s *EventLogRepository[Ent, ID]) Events(ctx context.Context) []EventLogRepo
 	return events
 }
 
-func (s *EventLogRepository[Ent, ID]) View(ctx context.Context) EventLogRepositoryView[Ent, ID] {
+func (s *EventLogRepository[Entity, ID]) View(ctx context.Context) EventLogRepositoryView[Entity, ID] {
 	return s.view(s.Events(ctx))
 }
 
-func (s *EventLogRepository[Ent, ID]) view(events []EventLogRepositoryEvent[Ent, ID]) EventLogRepositoryView[Ent, ID] {
-	var view = make(EventLogRepositoryView[Ent, ID])
+func (s *EventLogRepository[Entity, ID]) view(events []EventLogRepositoryEvent[Entity, ID]) EventLogRepositoryView[Entity, ID] {
+	var view = make(EventLogRepositoryView[Entity, ID])
 	for _, event := range events {
 		switch event.Name {
 		case CreateEvent, UpdateEvent:
@@ -315,14 +315,14 @@ func (s *EventLogRepository[Ent, ID]) view(events []EventLogRepositoryEvent[Ent,
 
 			view.delByID(id)
 		case DeleteAllEvent:
-			view = make(EventLogRepositoryView[Ent, ID])
+			view = make(EventLogRepositoryView[Entity, ID])
 		}
 	}
 
 	return view
 }
 
-func (s *EventLogRepository[Ent, ID]) append(ctx context.Context, event EventLogRepositoryEvent[Ent, ID]) error {
+func (s *EventLogRepository[Entity, ID]) append(ctx context.Context, event EventLogRepositoryEvent[Entity, ID]) error {
 	if err := s.EventLog.Append(ctx, event); err != nil {
 		return err
 	}
@@ -332,15 +332,15 @@ func (s *EventLogRepository[Ent, ID]) append(ctx context.Context, event EventLog
 	return nil
 }
 
-func (s *EventLogRepository[Ent, ID]) Compress() {
+func (s *EventLogRepository[Entity, ID]) Compress() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	s.EventLog.Compress()
-	RewriteEventLog(s.EventLog, func(in []EventLogRepositoryEvent[Ent, ID]) []EventLogRepositoryEvent[Ent, ID] {
+	RewriteEventLog(s.EventLog, func(in []EventLogRepositoryEvent[Entity, ID]) []EventLogRepositoryEvent[Entity, ID] {
 		var (
-			out = make([]EventLogRepositoryEvent[Ent, ID], 0, len(in))
-			own = make([]EventLogRepositoryEvent[Ent, ID], 0, 0)
+			out = make([]EventLogRepositoryEvent[Entity, ID], 0, len(in))
+			own = make([]EventLogRepositoryEvent[Entity, ID], 0, 0)
 		)
 		// append other EventLogRepository events'
 		for _, e := range in {
@@ -353,7 +353,7 @@ func (s *EventLogRepository[Ent, ID]) Compress() {
 		// append own events from view
 		v := s.view(own)
 		for _, ent := range v {
-			out = append(out, EventLogRepositoryEvent[Ent, ID]{
+			out = append(out, EventLogRepositoryEvent[Entity, ID]{
 				Namespace: s.GetNamespace(),
 				Name:      CreateEvent,
 				Value:     ent,
@@ -363,10 +363,10 @@ func (s *EventLogRepository[Ent, ID]) Compress() {
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, subscriber pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
+func (s *EventLogRepository[Entity, ID]) SubscribeToCreatorEvents(ctx context.Context, subscriber pubsub.CreatorSubscriber[Entity]) (pubsub.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Ent, ID])
+			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
 			if !ok {
 				return nil
 			}
@@ -376,7 +376,7 @@ func (s *EventLogRepository[Ent, ID]) SubscribeToCreatorEvents(ctx context.Conte
 
 			switch v.Name {
 			case CreateEvent:
-				return subscriber.HandleCreateEvent(ctx, pubsub.CreateEvent[Ent]{Entity: v.Value})
+				return subscriber.HandleCreateEvent(ctx, pubsub.CreateEvent[Entity]{Entity: v.Value})
 			default:
 				return nil
 			}
@@ -387,10 +387,10 @@ func (s *EventLogRepository[Ent, ID]) SubscribeToCreatorEvents(ctx context.Conte
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, subscriber pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
+func (s *EventLogRepository[Entity, ID]) SubscribeToUpdaterEvents(ctx context.Context, subscriber pubsub.UpdaterSubscriber[Entity]) (pubsub.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Ent, ID])
+			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
 			if !ok {
 				return nil
 			}
@@ -400,7 +400,7 @@ func (s *EventLogRepository[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Conte
 
 			switch v.Name {
 			case UpdateEvent:
-				return subscriber.HandleUpdateEvent(ctx, pubsub.UpdateEvent[Ent]{Entity: v.Value})
+				return subscriber.HandleUpdateEvent(ctx, pubsub.UpdateEvent[Entity]{Entity: v.Value})
 			default:
 				return nil
 			}
@@ -411,10 +411,10 @@ func (s *EventLogRepository[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Conte
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, subscriber pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
+func (s *EventLogRepository[Entity, ID]) SubscribeToDeleterEvents(ctx context.Context, subscriber pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Ent, ID])
+			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
 			if !ok {
 				return nil
 			}
@@ -438,10 +438,10 @@ func (s *EventLogRepository[Ent, ID]) SubscribeToDeleterEvents(ctx context.Conte
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) subscribe(ctx context.Context, subscriber EventLogSubscriber, name string) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Ent, ID]{
+func (s *EventLogRepository[Entity, ID]) subscribe(ctx context.Context, subscriber EventLogSubscriber, name string) (pubsub.Subscription, error) {
+	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
 		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Ent, ID])
+			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
 			if !ok {
 				return nil
 			}
@@ -460,38 +460,38 @@ func (s *EventLogRepository[Ent, ID]) subscribe(ctx context.Context, subscriber 
 	})
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToCreate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
+func (s *EventLogRepository[Entity, ID]) SubscribeToCreate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, CreateEvent)
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToUpdate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
+func (s *EventLogRepository[Entity, ID]) SubscribeToUpdate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, UpdateEvent)
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToDeleteByID(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
+func (s *EventLogRepository[Entity, ID]) SubscribeToDeleteByID(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, DeleteByIDEvent)
 }
 
-func (s *EventLogRepository[Ent, ID]) SubscribeToDeleteAll(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
+func (s *EventLogRepository[Entity, ID]) SubscribeToDeleteAll(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
 	return s.subscribe(ctx, subscriber, DeleteAllEvent)
 }
 
-type EventLogRepositoryView[Ent, ID any] map[ /* Namespace */ string] /* entity<T> */ Ent
+type EventLogRepositoryView[Entity, ID any] map[ /* Namespace */ string] /* entity<T> */ Entity
 
-func (v EventLogRepositoryView[Ent, ID]) FindByID(id ID) (Ent, bool) {
+func (v EventLogRepositoryView[Entity, ID]) FindByID(id ID) (Entity, bool) {
 	value, ok := v[v.key(id)]
 	return value, ok
 }
 
-func (v EventLogRepositoryView[Ent, ID]) setByID(id ID, ent Ent) {
+func (v EventLogRepositoryView[Entity, ID]) setByID(id ID, ent Entity) {
 	v[v.key(id)] = ent
 }
 
-func (v EventLogRepositoryView[Ent, ID]) delByID(id ID) {
+func (v EventLogRepositoryView[Entity, ID]) delByID(id ID) {
 	delete(v, v.key(id))
 }
 
-func (v EventLogRepositoryView[Ent, ID]) key(id any) string {
+func (v EventLogRepositoryView[Entity, ID]) key(id any) string {
 	switch id := id.(type) {
 	case string:
 		return id
@@ -504,7 +504,7 @@ func (v EventLogRepositoryView[Ent, ID]) key(id any) string {
 	}
 }
 
-func (s *EventLogRepository[Ent, ID]) isDoneTx(ctx context.Context) error {
+func (s *EventLogRepository[Entity, ID]) isDoneTx(ctx context.Context) error {
 	tx, ok := s.EventLog.LookupTx(ctx)
 	if !ok {
 		return nil

@@ -18,62 +18,62 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type Repository[Ent, ID any] struct {
-	Subject func(testing.TB) cache.Repository[Ent, ID]
-	Context func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
+type Repository[Entity, ID any] struct {
+	MakeSubject func(testing.TB) cache.Repository[Entity, ID]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
 }
 
-func (c Repository[Ent, ID]) repository() testcase.Var[cache.Repository[Ent, ID]] {
-	return testcase.Var[cache.Repository[Ent, ID]]{
+func (c Repository[Entity, ID]) repository() testcase.Var[cache.Repository[Entity, ID]] {
+	return testcase.Var[cache.Repository[Entity, ID]]{
 		ID: "cache.Repository",
-		Init: func(t *testcase.T) cache.Repository[Ent, ID] {
-			return c.Subject(t)
+		Init: func(t *testcase.T) cache.Repository[Entity, ID] {
+			return c.MakeSubject(t)
 		},
 	}
 }
 
-func (c Repository[Ent, ID]) repositoryGet(t *testcase.T) cache.Repository[Ent, ID] {
+func (c Repository[Entity, ID]) repositoryGet(t *testcase.T) cache.Repository[Entity, ID] {
 	return c.repository().Get(t)
 }
 
-func (c Repository[Ent, ID]) Test(t *testing.T) {
+func (c Repository[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c Repository[Ent, ID]) Benchmark(b *testing.B) {
+func (c Repository[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Repository[Ent, ID]) Spec(s *testcase.Spec) {
+func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 	defer s.Finish()
 
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
 			var (
-				ctx        = c.Context(t)
+				ctx        = c.MakeContext(t)
 				repository = c.repository().Get(t)
 			)
 			DeleteAll[cache.Hit[ID], string](t, repository.CacheHit(ctx), ctx)
-			DeleteAll[Ent, ID](t, repository.CacheEntity(ctx), ctx)
+			DeleteAll[Entity, ID](t, repository.CacheEntity(ctx), ctx)
 		})
 	})
 
 	s.Describe(`cache.HitRepository`, func(s *testcase.Spec) {
 		hitRepository := func(tb testing.TB) cache.HitRepository[ID] {
 			t := tb.(*testcase.T)
-			return c.repository().Get(t).CacheHit(c.Context(tb))
+			return c.repository().Get(t).CacheHit(c.MakeContext(tb))
 		}
 		makeCacheHit := func(tb testing.TB) cache.Hit[ID] {
 			t := tb.(*testcase.T)
-			ctx := c.Context(tb)
-			repository := c.repository().Get(t).CacheEntity(c.Context(tb))
+			ctx := c.MakeContext(tb)
+			repository := c.repository().Get(t).CacheEntity(c.MakeContext(tb))
 			n := t.Random.IntBetween(3, 7)
 			ids := make([]ID, 0, n)
 			for i := 0; i < n; i++ {
-				ent := c.MakeEnt(t)
-				Create[Ent, ID](t, repository, ctx, &ent)
+				ent := c.MakeEntity(t)
+				Create[Entity, ID](t, repository, ctx, &ent)
 				id, _ := extid.Lookup[ID](ent)
 				ids = append(ids, id)
 			}
@@ -81,115 +81,115 @@ func (c Repository[Ent, ID]) Spec(s *testcase.Spec) {
 		}
 		testcase.RunSuite(s,
 			crudcontracts.Creator[cache.Hit[ID], string]{
-				Subject: func(tb testing.TB) crudcontracts.CreatorSubject[cache.Hit[ID], string] {
+				MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[cache.Hit[ID], string] {
 					return hitRepository(tb)
 				},
-				MakeCtx: c.Context,
-				MakeEnt: makeCacheHit,
+				MakeContext: c.MakeContext,
+				MakeEntity:  makeCacheHit,
 			},
 			crudcontracts.Finder[cache.Hit[ID], string]{
-				Subject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[ID], string] {
-					return hitRepository(tb)
+				MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[ID], string] {
+					return hitRepository(tb).(crudcontracts.FinderSubject[cache.Hit[ID], string])
 				},
-				MakeCtx: c.Context,
-				MakeEnt: makeCacheHit,
+				MakeContext: c.MakeContext,
+				MakeEntity:  makeCacheHit,
 			},
 			crudcontracts.Updater[cache.Hit[ID], string]{
-				Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[cache.Hit[ID], string] {
+				MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[cache.Hit[ID], string] {
 					return hitRepository(tb)
 				},
-				MakeCtx: c.Context,
-				MakeEnt: makeCacheHit,
+				MakeContext: c.MakeContext,
+				MakeEntity:  makeCacheHit,
 			},
 			crudcontracts.Deleter[cache.Hit[ID], string]{
-				Subject: func(tb testing.TB) crudcontracts.DeleterSubject[cache.Hit[ID], string] {
+				MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[cache.Hit[ID], string] {
 					return hitRepository(tb)
 				},
-				MakeCtx: c.Context,
-				MakeEnt: makeCacheHit,
+				MakeContext: c.MakeContext,
+				MakeEntity:  makeCacheHit,
 			},
 			crudcontracts.OnePhaseCommitProtocol[cache.Hit[ID], string]{
-				Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
-					repository := c.Subject(tb)
+				MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
+					repository := c.MakeSubject(tb)
 					return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string]{
-						Resource:      repository.CacheHit(c.Context(tb)),
+						Resource:      repository.CacheHit(c.MakeContext(tb)),
 						CommitManager: repository,
 					}
 				},
-				MakeCtx: c.Context,
-				MakeEnt: makeCacheHit,
+				MakeContext: c.MakeContext,
+				MakeEntity:  makeCacheHit,
 			},
 		)
 	})
 }
 
-type EntityRepository[Ent, ID any] struct {
-	Subject func(testing.TB) (cache.EntityRepository[Ent, ID], comproto.OnePhaseCommitProtocol)
-	MakeCtx func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
+type EntityRepository[Entity, ID any] struct {
+	MakeSubject func(testing.TB) (cache.EntityRepository[Entity, ID], comproto.OnePhaseCommitProtocol)
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
 }
 
-func (c EntityRepository[Ent, ID]) Test(t *testing.T) {
+func (c EntityRepository[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c EntityRepository[Ent, ID]) Benchmark(b *testing.B) {
+func (c EntityRepository[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c EntityRepository[Ent, ID]) Spec(s *testcase.Spec) {
+func (c EntityRepository[Entity, ID]) Spec(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		ds, cpm := c.Subject(t)
+		ds, cpm := c.MakeSubject(t)
 		c.dataRepository().Set(t, ds)
 		c.cpm().Set(t, cpm)
 
-		spechelper.TryCleanup(t, c.MakeCtx(t), c.dataRepository().Get(t))
+		spechelper.TryCleanup(t, c.MakeContext(t), c.dataRepository().Get(t))
 	})
 
 	s.Describe(`cache.EntityRepository`, func(s *testcase.Spec) {
-		newRepository := func(tb testing.TB) cache.EntityRepository[Ent, ID] {
-			ds, _ := c.Subject(tb)
+		newRepository := func(tb testing.TB) cache.EntityRepository[Entity, ID] {
+			ds, _ := c.MakeSubject(tb)
 			return ds
 		}
 		testcase.RunSuite(s,
-			crudcontracts.Creator[Ent, ID]{
-				Subject: func(tb testing.TB) crudcontracts.CreatorSubject[Ent, ID] {
+			crudcontracts.Creator[Entity, ID]{
+				MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
 					return newRepository(tb)
 				},
-				MakeEnt: c.MakeEnt,
-				MakeCtx: c.MakeCtx,
+				MakeEntity:  c.MakeEntity,
+				MakeContext: c.MakeContext,
 			},
-			crudcontracts.Finder[Ent, ID]{
-				Subject: func(tb testing.TB) crudcontracts.FinderSubject[Ent, ID] {
+			crudcontracts.Finder[Entity, ID]{
+				MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
+					return newRepository(tb).(crudcontracts.FinderSubject[Entity, ID])
+				},
+				MakeEntity:  c.MakeEntity,
+				MakeContext: c.MakeContext,
+			},
+			crudcontracts.Updater[Entity, ID]{
+				MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
 					return newRepository(tb)
 				},
-				MakeEnt: c.MakeEnt,
-				MakeCtx: c.MakeCtx,
+				MakeEntity:  c.MakeEntity,
+				MakeContext: c.MakeContext,
 			},
-			crudcontracts.Updater[Ent, ID]{
-				Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[Ent, ID] {
+			crudcontracts.Deleter[Entity, ID]{
+				MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
 					return newRepository(tb)
 				},
-				MakeEnt: c.MakeEnt,
-				MakeCtx: c.MakeCtx,
+				MakeEntity:  c.MakeEntity,
+				MakeContext: c.MakeContext,
 			},
-			crudcontracts.Deleter[Ent, ID]{
-				Subject: func(tb testing.TB) crudcontracts.DeleterSubject[Ent, ID] {
-					return newRepository(tb)
-				},
-				MakeEnt: c.MakeEnt,
-				MakeCtx: c.MakeCtx,
-			},
-			crudcontracts.OnePhaseCommitProtocol[Ent, ID]{
-				Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID] {
-					ds, cpm := c.Subject(tb)
-					return crudcontracts.OnePhaseCommitProtocolSubject[Ent, ID]{
+			crudcontracts.OnePhaseCommitProtocol[Entity, ID]{
+				MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
+					ds, cpm := c.MakeSubject(tb)
+					return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
 						Resource:      ds,
 						CommitManager: cpm,
 					}
 				},
-				MakeEnt: c.MakeEnt,
-				MakeCtx: c.MakeCtx,
+				MakeEntity:  c.MakeEntity,
+				MakeContext: c.MakeContext,
 			},
 		)
 
@@ -198,25 +198,25 @@ func (c EntityRepository[Ent, ID]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c EntityRepository[Ent, ID]) dataRepository() testcase.Var[cache.EntityRepository[Ent, ID]] {
-	return testcase.Var[cache.EntityRepository[Ent, ID]]{ID: "cache.EntityRepository"}
+func (c EntityRepository[Entity, ID]) dataRepository() testcase.Var[cache.EntityRepository[Entity, ID]] {
+	return testcase.Var[cache.EntityRepository[Entity, ID]]{ID: "cache.EntityRepository"}
 }
 
-func (c EntityRepository[Ent, ID]) cpm() testcase.Var[comproto.OnePhaseCommitProtocol] {
+func (c EntityRepository[Entity, ID]) cpm() testcase.Var[comproto.OnePhaseCommitProtocol] {
 	return testcase.Var[comproto.OnePhaseCommitProtocol]{ID: `frameless.OnePhaseCommitProtocol`}
 }
 
-func (c EntityRepository[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
+func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 	var (
-		entities = testcase.Var[[]*Ent]{ID: `entities`}
+		entities = testcase.Var[[]*Entity]{ID: `entities`}
 		subject  = func(t *testcase.T) error {
 			return c.dataRepository().Get(t).Upsert(ctxGet(t), entities.Get(t)...)
 		}
 	)
 
 	var (
-		newEntWithTeardown = func(t *testcase.T) *Ent {
-			ent := c.MakeEnt(t)
+		newEntWithTeardown = func(t *testcase.T) *Entity {
+			ent := c.MakeEntity(t)
 			ptr := &ent
 			t.Cleanup(func() {
 				ctx := ctxGet(t)
@@ -237,8 +237,8 @@ func (c EntityRepository[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 	)
 
 	s.When(`entities absent from the repository`, func(s *testcase.Spec) {
-		entities.Let(s, func(t *testcase.T) []*Ent {
-			return []*Ent{ent1.Get(t), ent2.Get(t)}
+		entities.Let(s, func(t *testcase.T) []*Entity {
+			return []*Entity{ent1.Get(t), ent2.Get(t)}
 		})
 
 		s.Then(`they will be saved`, func(t *testcase.T) {
@@ -287,12 +287,12 @@ func (c EntityRepository[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 
 	s.When(`entities present in the repository`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			Create[Ent, ID](t, c.dataRepository().Get(t), ctxGet(t), ent1.Get(t))
-			Create[Ent, ID](t, c.dataRepository().Get(t), ctxGet(t), ent2.Get(t))
+			Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ent1.Get(t))
+			Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ent2.Get(t))
 		})
 
-		entities.Let(s, func(t *testcase.T) []*Ent {
-			return []*Ent{ent1.Get(t), ent2.Get(t)}
+		entities.Let(s, func(t *testcase.T) []*Entity {
+			return []*Entity{ent1.Get(t), ent2.Get(t)}
 		})
 
 		s.Then(`they will be saved`, func(t *testcase.T) {
@@ -323,7 +323,7 @@ func (c EntityRepository[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				t.Log(`and entity 1 has updated content`)
 				id := c.getID(t, ent1.Get(t))
-				ent := c.MakeEnt(t)
+				ent := c.MakeEntity(t)
 				n := &ent
 				t.Must.Nil(extid.Set(n, id))
 				ent1.Set(t, n)
@@ -357,19 +357,19 @@ func (c EntityRepository[Ent, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 	})
 }
 
-func (c EntityRepository[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
+func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 	var (
 		ids     = testcase.Var[[]ID]{ID: `entities ids`}
-		subject = func(t *testcase.T) iterators.Iterator[Ent] {
+		subject = func(t *testcase.T) iterators.Iterator[Entity] {
 			return c.dataRepository().Get(t).FindByIDs(ctxGet(t), ids.Get(t)...)
 		}
 	)
 
 	var (
-		newEntityInit = func(t *testcase.T) *Ent {
-			ent := c.MakeEnt(t)
+		newEntityInit = func(t *testcase.T) *Entity {
+			ent := c.MakeEntity(t)
 			ptr := &ent
-			Create[Ent, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
+			Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
 			return ptr
 		}
 		ent1 = testcase.Let(s, newEntityInit)
@@ -394,7 +394,7 @@ func (c EntityRepository[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) 
 		})
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
-			expected := append([]Ent{}, *ent1.Get(t), *ent2.Get(t))
+			expected := append([]Entity{}, *ent1.Get(t), *ent2.Get(t))
 			actual, err := iterators.Collect(subject(t))
 			t.Must.Nil(err)
 			t.Must.ContainExactly(expected, actual)
@@ -407,7 +407,7 @@ func (c EntityRepository[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) 
 		})
 
 		s.Before(func(t *testcase.T) {
-			Delete[Ent, ID](t, c.dataRepository().Get(t), ctxGet(t), ent1.Get(t))
+			Delete[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ent1.Get(t))
 		})
 
 		s.Then(`it will eventually yield error`, func(t *testcase.T) {
@@ -417,17 +417,17 @@ func (c EntityRepository[Ent, ID]) describeCacheDataFindByIDs(s *testcase.Spec) 
 	})
 }
 
-func (c EntityRepository[Ent, ID]) getID(tb testing.TB, ent interface{}) ID {
+func (c EntityRepository[Entity, ID]) getID(tb testing.TB, ent interface{}) ID {
 	id, ok := extid.Lookup[ID](ent)
 	assert.Must(tb).True(ok, `id was expected to be present for the entity`+fmt.Sprintf(` (%#v)`, ent))
 	return id
 }
 
-func (c EntityRepository[Ent, ID]) ensureExtID(t *testcase.T, ptr *Ent) {
+func (c EntityRepository[Entity, ID]) ensureExtID(t *testcase.T, ptr *Entity) {
 	if _, ok := extid.Lookup[ID](ptr); ok {
 		return
 	}
 
-	Create[Ent, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
-	Delete[Ent, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
+	Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
+	Delete[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
 }

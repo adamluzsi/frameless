@@ -17,9 +17,9 @@ import (
 )
 
 // CRD is the minimum requirements to write easily behavioral specification for a resource.
-type CRD[Ent, ID any] interface {
-	crud.Creator[Ent]
-	crud.ByIDFinder[Ent, ID]
+type CRD[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.ByIDFinder[Entity, ID]
 	crud.ByIDDeleter[ID]
 }
 
@@ -46,7 +46,7 @@ func Cleanup(tb testing.TB, ctx context.Context, t crud.AllDeleter) {
 	assert.Must(tb).Nil(t.DeleteAll(ctx))
 }
 
-func Contains[Ent any](tb testing.TB, slice []Ent, contains Ent, msgAndArgs ...interface{}) {
+func Contains[Entity any](tb testing.TB, slice []Entity, contains Entity, msgAndArgs ...interface{}) {
 	assert.Must(tb).Contain(slice, contains, msgAndArgs...)
 }
 
@@ -75,7 +75,7 @@ func RequireContainsList(tb testing.TB, list interface{}, listOfContainedElement
 	}
 }
 
-type eventSubscriber[Ent, ID any] struct {
+type eventSubscriber[Entity, ID any] struct {
 	TB         testing.TB
 	ReturnErr  error
 	ContextErr error
@@ -86,33 +86,33 @@ type eventSubscriber[Ent, ID any] struct {
 	mutex  sync.Mutex
 }
 
-func (s *eventSubscriber[Ent, ID]) HandleCreateEvent(ctx context.Context, event pubsub.CreateEvent[Ent]) error {
+func (s *eventSubscriber[Entity, ID]) HandleCreateEvent(ctx context.Context, event pubsub.CreateEvent[Entity]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber[Ent, ID]) HandleUpdateEvent(ctx context.Context, event pubsub.UpdateEvent[Ent]) error {
+func (s *eventSubscriber[Entity, ID]) HandleUpdateEvent(ctx context.Context, event pubsub.UpdateEvent[Entity]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber[Ent, ID]) HandleDeleteByIDEvent(ctx context.Context, event pubsub.DeleteByIDEvent[ID]) error {
+func (s *eventSubscriber[Entity, ID]) HandleDeleteByIDEvent(ctx context.Context, event pubsub.DeleteByIDEvent[ID]) error {
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber[Ent, ID]) HandleDeleteAllEvent(ctx context.Context, event pubsub.DeleteAllEvent) error {
+func (s *eventSubscriber[Entity, ID]) HandleDeleteAllEvent(ctx context.Context, event pubsub.DeleteAllEvent) error {
 	if s.TB != nil {
 		s.TB.Helper()
 	}
 	return s.Handle(ctx, event)
 }
 
-func (s *eventSubscriber[Ent, ID]) filter(event interface{}) bool {
+func (s *eventSubscriber[Entity, ID]) filter(event interface{}) bool {
 	if s.Filter == nil {
 		return true
 	}
 	return s.Filter(event)
 }
 
-func (s *eventSubscriber[Ent, ID]) Handle(ctx context.Context, event interface{}) error {
+func (s *eventSubscriber[Entity, ID]) Handle(ctx context.Context, event interface{}) error {
 	s.TB.Helper()
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -124,7 +124,7 @@ func (s *eventSubscriber[Ent, ID]) Handle(ctx context.Context, event interface{}
 	return s.ReturnErr
 }
 
-func (s *eventSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) error {
+func (s *eventSubscriber[Entity, ID]) HandleError(ctx context.Context, err error) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.verifyContext(ctx)
@@ -132,17 +132,17 @@ func (s *eventSubscriber[Ent, ID]) HandleError(ctx context.Context, err error) e
 	return s.ReturnErr
 }
 
-func (s *eventSubscriber[Ent, ID]) EventsLen() int {
+func (s *eventSubscriber[Entity, ID]) EventsLen() int {
 	return len(s.Events())
 }
 
-func (s *eventSubscriber[Ent, ID]) Events() []interface{} {
+func (s *eventSubscriber[Entity, ID]) Events() []interface{} {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.events
 }
 
-func filterEventSubscriberEvents[Ent, ID, T any](s *eventSubscriber[Ent, ID]) []T {
+func filterEventSubscriberEvents[Entity, ID, T any](s *eventSubscriber[Entity, ID]) []T {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -157,26 +157,26 @@ func filterEventSubscriberEvents[Ent, ID, T any](s *eventSubscriber[Ent, ID]) []
 	return out
 }
 
-func (s *eventSubscriber[Ent, ID]) CreateEvents() []pubsub.CreateEvent[Ent] {
-	return filterEventSubscriberEvents[Ent, ID, pubsub.CreateEvent[Ent]](s)
+func (s *eventSubscriber[Entity, ID]) CreateEvents() []pubsub.CreateEvent[Entity] {
+	return filterEventSubscriberEvents[Entity, ID, pubsub.CreateEvent[Entity]](s)
 }
 
-func (s *eventSubscriber[Ent, ID]) UpdateEvents() []pubsub.UpdateEvent[Ent] {
-	return filterEventSubscriberEvents[Ent, ID, pubsub.UpdateEvent[Ent]](s)
+func (s *eventSubscriber[Entity, ID]) UpdateEvents() []pubsub.UpdateEvent[Entity] {
+	return filterEventSubscriberEvents[Entity, ID, pubsub.UpdateEvent[Entity]](s)
 }
 
-func (s *eventSubscriber[Ent, ID]) DeleteEvents() []any {
+func (s *eventSubscriber[Entity, ID]) DeleteEvents() []any {
 	var out []any
-	for _, v := range filterEventSubscriberEvents[Ent, ID, pubsub.DeleteByIDEvent[ID]](s) {
+	for _, v := range filterEventSubscriberEvents[Entity, ID, pubsub.DeleteByIDEvent[ID]](s) {
 		out = append(out, v)
 	}
-	for _, v := range filterEventSubscriberEvents[Ent, ID, pubsub.DeleteAllEvent](s) {
+	for _, v := range filterEventSubscriberEvents[Entity, ID, pubsub.DeleteAllEvent](s) {
 		out = append(out, v)
 	}
 	return out
 }
 
-func (s *eventSubscriber[Ent, ID]) verifyContext(ctx context.Context) {
+func (s *eventSubscriber[Entity, ID]) verifyContext(ctx context.Context) {
 	if s.ContextErr == nil {
 		return
 	}
@@ -200,23 +200,23 @@ var (
 	}
 )
 
-func LetSubscription[Ent, ID any](s *testcase.Spec) testcase.Var[pubsub.Subscription] {
+func LetSubscription[Entity, ID any](s *testcase.Spec) testcase.Var[pubsub.Subscription] {
 	return testcase.Let[pubsub.Subscription](s, nil)
 }
 
-func NewEventSubscriber[Ent, ID any](tb testing.TB, filter func(interface{}) bool) *eventSubscriber[Ent, ID] {
-	return &eventSubscriber[Ent, ID]{TB: tb, Filter: filter}
+func NewEventSubscriber[Entity, ID any](tb testing.TB, filter func(interface{}) bool) *eventSubscriber[Entity, ID] {
+	return &eventSubscriber[Entity, ID]{TB: tb, Filter: filter}
 }
 
-func CreateSubscriptionFilter[Ent any](event interface{}) bool {
-	if _, ok := event.(pubsub.CreateEvent[Ent]); ok {
+func CreateSubscriptionFilter[Entity any](event interface{}) bool {
+	if _, ok := event.(pubsub.CreateEvent[Entity]); ok {
 		return true
 	}
 	return false
 }
 
-func UpdateSubscriptionFilter[Ent any](event interface{}) bool {
-	if _, ok := event.(pubsub.UpdateEvent[Ent]); ok {
+func UpdateSubscriptionFilter[Entity any](event interface{}) bool {
+	if _, ok := event.(pubsub.UpdateEvent[Entity]); ok {
 		return true
 	}
 	return false
@@ -232,17 +232,17 @@ func DeleteSubscriptionFilter[ID any](event interface{}) bool {
 	return false
 }
 
-func LetSubscriber[Ent, ID any](s *testcase.Spec, filter func(interface{}) bool) testcase.Var[*eventSubscriber[Ent, ID]] {
-	return testcase.Let(s, func(t *testcase.T) *eventSubscriber[Ent, ID] {
-		return NewEventSubscriber[Ent, ID](t, filter)
+func LetSubscriber[Entity, ID any](s *testcase.Spec, filter func(interface{}) bool) testcase.Var[*eventSubscriber[Entity, ID]] {
+	return testcase.Let(s, func(t *testcase.T) *eventSubscriber[Entity, ID] {
+		return NewEventSubscriber[Entity, ID](t, filter)
 	})
 }
 
-func GenEntities[T any](t *testcase.T, MakeEnt func(testing.TB) T) []*T {
+func GenEntities[T any](t *testcase.T, MakeEntity func(testing.TB) T) []*T {
 	var es []*T
 	count := t.Random.IntBetween(3, 7)
 	for i := 0; i < count; i++ {
-		ent := MakeEnt(t)
+		ent := MakeEntity(t)
 		es = append(es, &ent)
 	}
 	return es

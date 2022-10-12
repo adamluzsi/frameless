@@ -11,19 +11,19 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-type Repository[Ent, ID any] interface {
-	CacheEntity(ctx context.Context) EntityRepository[Ent, ID]
+type Repository[Entity, ID any] interface {
+	CacheEntity(ctx context.Context) EntityRepository[Entity, ID]
 	CacheHit(ctx context.Context) HitRepository[ID]
 	comproto.OnePhaseCommitProtocol
 }
 
-type EntityRepository[Ent, ID any] interface {
-	crud.Creator[Ent]
-	crud.Updater[Ent]
-	crud.Finder[Ent, ID]
+type EntityRepository[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.Updater[Entity]
+	crud.Finder[Entity, ID]
 	crud.Deleter[ID]
-	FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Ent]
-	Upsert(ctx context.Context, ptrs ...*Ent) error
+	FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity]
+	Upsert(ctx context.Context, ptrs ...*Entity) error
 }
 
 // HitRepository is the query hit result repository.

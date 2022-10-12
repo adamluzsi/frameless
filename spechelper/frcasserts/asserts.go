@@ -13,7 +13,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-func HasID[Ent, ID any](tb testing.TB, ptr *Ent) (id ID) {
+func HasID[Entity, ID any](tb testing.TB, ptr *Entity) (id ID) {
 	tb.Helper()
 	Eventually.Assert(tb, func(it assert.It) {
 		var ok bool
@@ -24,10 +24,10 @@ func HasID[Ent, ID any](tb testing.TB, ptr *Ent) (id ID) {
 	return
 }
 
-func IsFindable[Ent, ID any](tb testing.TB, subject crud.ByIDFinder[Ent, ID], ctx context.Context, id ID) *Ent {
+func IsFindable[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID], ctx context.Context, id ID) *Entity {
 	tb.Helper()
-	var ent Ent
-	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(Ent), id)
+	var ent Entity
+	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(Entity), id)
 	Eventually.Assert(tb, func(it assert.It) {
 		e, found, err := subject.FindByID(ctx, id)
 		it.Must.Nil(err)
@@ -37,9 +37,9 @@ func IsFindable[Ent, ID any](tb testing.TB, subject crud.ByIDFinder[Ent, ID], ct
 	return &ent
 }
 
-func IsAbsent[Ent, ID any](tb testing.TB, subject crud.ByIDFinder[Ent, ID], ctx context.Context, id ID) {
+func IsAbsent[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID], ctx context.Context, id ID) {
 	tb.Helper()
-	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", *new(Ent), id)
+	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", *new(Entity), id)
 	Eventually.Assert(tb, func(it assert.It) {
 		_, found, err := subject.FindByID(ctx, id)
 		it.Must.Nil(err)
@@ -47,9 +47,9 @@ func IsAbsent[Ent, ID any](tb testing.TB, subject crud.ByIDFinder[Ent, ID], ctx 
 	})
 }
 
-func HasEntity[Ent, ID any](tb testing.TB, subject crud.ByIDFinder[Ent, ID], ctx context.Context, ptr *Ent) {
+func HasEntity[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
-	id := HasID[Ent, ID](tb, ptr)
+	id := HasID[Entity, ID](tb, ptr)
 	Eventually.Assert(tb, func(it assert.It) {
 		// IsFindable yields the currently found value
 		// that might be not yet the value we expect to see
@@ -58,11 +58,11 @@ func HasEntity[Ent, ID any](tb testing.TB, subject crud.ByIDFinder[Ent, ID], ctx
 	})
 }
 
-func Create[Ent, ID any](tb testing.TB, subject sh.CRD[Ent, ID], ctx context.Context, ptr *Ent) {
+func Create[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
 
 	assert.Must(tb).Nil(subject.Create(ctx, ptr))
-	id := HasID[Ent, ID](tb, ptr)
+	id := HasID[Entity, ID](tb, ptr)
 	tb.Cleanup(func() {
 		_, found, err := subject.FindByID(ctx, id)
 		if err != nil || !found {
@@ -70,45 +70,45 @@ func Create[Ent, ID any](tb testing.TB, subject sh.CRD[Ent, ID], ctx context.Con
 		}
 		_ = subject.DeleteByID(ctx, id)
 	})
-	IsFindable[Ent, ID](tb, subject, ctx, id)
+	IsFindable[Entity, ID](tb, subject, ctx, id)
 	tb.Logf("given entity is created: %#v", ptr)
 }
 
-type updater[Ent, ID any] interface {
-	crud.Updater[Ent]
-	crud.ByIDFinder[Ent, ID]
+type updater[Entity, ID any] interface {
+	crud.Updater[Entity]
+	crud.ByIDFinder[Entity, ID]
 	crud.ByIDDeleter[ID]
 }
 
-func Update[Ent, ID any](tb testing.TB, subject updater[Ent, ID], ctx context.Context, ptr *Ent) {
+func Update[Entity, ID any](tb testing.TB, subject updater[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
 	id, _ := extid.Lookup[ID](ptr)
 	// IsFindable ensures that by the time Update is executed,
 	// the entity is present in the resource.
-	IsFindable[Ent, ID](tb, subject, ctx, id)
+	IsFindable[Entity, ID](tb, subject, ctx, id)
 	assert.Must(tb).Nil(subject.Update(ctx, ptr))
 	Eventually.Assert(tb, func(it assert.It) {
-		entity := IsFindable[Ent, ID](it, subject, ctx, id)
+		entity := IsFindable[Entity, ID](it, subject, ctx, id)
 		it.Must.Equal(ptr, entity)
 	})
 	tb.Logf(`entity is updated: %#v`, ptr)
 }
 
-func Delete[Ent, ID any](tb testing.TB, subject sh.CRD[Ent, ID], ctx context.Context, ptr *Ent) {
+func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
-	id := HasID[Ent, ID](tb, ptr)
-	IsFindable[Ent, ID](tb, subject, ctx, id)
+	id := HasID[Entity, ID](tb, ptr)
+	IsFindable[Entity, ID](tb, subject, ctx, id)
 	assert.Must(tb).Nil(subject.DeleteByID(ctx, id))
-	IsAbsent[Ent, ID](tb, subject, ctx, id)
+	IsAbsent[Entity, ID](tb, subject, ctx, id)
 	tb.Logf("entity is deleted: %#v", ptr)
 }
 
-type deleteAllDeleter[Ent, ID any] interface {
-	crud.AllFinder[Ent, ID]
+type deleteAllDeleter[Entity, ID any] interface {
+	crud.AllFinder[Entity, ID]
 	crud.AllDeleter
 }
 
-func DeleteAll[Ent, ID any](tb testing.TB, subject deleteAllDeleter[Ent, ID], ctx context.Context) {
+func DeleteAll[Entity, ID any](tb testing.TB, subject deleteAllDeleter[Entity, ID], ctx context.Context) {
 	tb.Helper()
 	assert.Must(tb).Nil(subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this

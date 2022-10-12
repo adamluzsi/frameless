@@ -13,14 +13,14 @@ import (
 	"github.com/lib/pq"
 )
 
-type SubscriptionManager[Ent, ID any] interface {
+type SubscriptionManager[Entity, ID any] interface {
 	io.Closer
-	PublishCreateEvent(ctx context.Context, e pubsub.CreateEvent[Ent]) error
-	PublishUpdateEvent(ctx context.Context, e pubsub.UpdateEvent[Ent]) error
+	PublishCreateEvent(ctx context.Context, e pubsub.CreateEvent[Entity]) error
+	PublishUpdateEvent(ctx context.Context, e pubsub.UpdateEvent[Entity]) error
 	PublishDeleteByIDEvent(ctx context.Context, e pubsub.DeleteByIDEvent[ID]) error
 	PublishDeleteAllEvent(ctx context.Context, e pubsub.DeleteAllEvent) error
-	SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error)
-	SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error)
+	SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Entity]) (pubsub.Subscription, error)
+	SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Entity]) (pubsub.Subscription, error)
 	SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error)
 }
 
@@ -37,16 +37,16 @@ const (
 	notifyDeleteAllEvent  = `delete_all`
 )
 
-func NewListenNotifySubscriptionManager[Ent, ID any](m Mapping[Ent], dsn string, cm ConnectionManager) *ListenNotifySubscriptionManager[Ent, ID] {
-	return &ListenNotifySubscriptionManager[Ent, ID]{
+func NewListenNotifySubscriptionManager[Entity, ID any](m Mapping[Entity], dsn string, cm ConnectionManager) *ListenNotifySubscriptionManager[Entity, ID] {
+	return &ListenNotifySubscriptionManager[Entity, ID]{
 		Mapping:           m,
 		DSN:               dsn,
 		ConnectionManager: cm,
 	}
 }
 
-type ListenNotifySubscriptionManager[Ent, ID any] struct {
-	Mapping Mapping[Ent]
+type ListenNotifySubscriptionManager[Entity, ID any] struct {
+	Mapping Mapping[Entity]
 
 	MetaAccessor      MetaAccessor
 	ConnectionManager ConnectionManager
@@ -60,8 +60,8 @@ type ListenNotifySubscriptionManager[Ent, ID any] struct {
 	subs struct {
 		lock    sync.RWMutex
 		serial  int64
-		creator map[int64]pubsub.CreatorSubscriber[Ent]
-		updater map[int64]pubsub.UpdaterSubscriber[Ent]
+		creator map[int64]pubsub.CreatorSubscriber[Entity]
+		updater map[int64]pubsub.UpdaterSubscriber[Entity]
 		deleter map[int64]pubsub.DeleterSubscriber[ID]
 	}
 	exit struct {
@@ -70,7 +70,7 @@ type ListenNotifySubscriptionManager[Ent, ID any] struct {
 	}
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishCreateEvent(ctx context.Context, e pubsub.CreateEvent[Ent]) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) PublishCreateEvent(ctx context.Context, e pubsub.CreateEvent[Entity]) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishCreateEvent(ctx conte
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishUpdateEvent(ctx context.Context, e pubsub.UpdateEvent[Ent]) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) PublishUpdateEvent(ctx context.Context, e pubsub.UpdateEvent[Entity]) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishUpdateEvent(ctx conte
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteByIDEvent(ctx context.Context, e pubsub.DeleteByIDEvent[ID]) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) PublishDeleteByIDEvent(ctx context.Context, e pubsub.DeleteByIDEvent[ID]) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteByIDEvent(ctx c
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteAllEvent(ctx context.Context, e pubsub.DeleteAllEvent) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) PublishDeleteAllEvent(ctx context.Context, e pubsub.DeleteAllEvent) error {
 	c, err := sm.ConnectionManager.Connection(ctx)
 	if err != nil {
 		return err
@@ -102,7 +102,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) PublishDeleteAllEvent(ctx co
 	return sm.Notify(ctx, c, e)
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) Close() error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) Close() error {
 	if sm.Listener != nil {
 		if err := sm.Listener.Close(); err != nil {
 			return err
@@ -116,7 +116,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Close() error {
 // Init will initialize the ListenNotifySubscriptionManager
 // The ctx argument must represent a process lifetime level context.Context.
 // Otherwise, context.Background() is expected for it.
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) Init() (rErr error) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) Init() (rErr error) {
 	sm.init.Do(func() {
 		if sm.Listener == nil && sm.DSN == "" {
 			rErr = fmt.Errorf("missing data_source_name")
@@ -162,14 +162,14 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Init() (rErr error) {
 	return
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) channel() string {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) channel() string {
 	return sm.Mapping.TableRef() + `=>cud_events`
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, c Connection, event interface{}) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) Notify(ctx context.Context, c Connection, event interface{}) error {
 	var notifyEvent cudNotifyEvent
 	switch event := event.(type) {
-	case pubsub.CreateEvent[Ent]:
+	case pubsub.CreateEvent[Entity]:
 		notifyEvent.Name = notifyCreateEvent
 		bs, err := json.Marshal(event.Entity)
 		if err != nil {
@@ -177,7 +177,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, 
 		}
 		notifyEvent.Data = bs
 
-	case pubsub.UpdateEvent[Ent]:
+	case pubsub.UpdateEvent[Entity]:
 		notifyEvent.Name = notifyUpdateEvent
 		bs, err := json.Marshal(event.Entity)
 		if err != nil {
@@ -215,7 +215,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) Notify(ctx context.Context, 
 	return err
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) worker(ctx context.Context, wg *sync.WaitGroup) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) worker(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 wrk:
@@ -247,7 +247,7 @@ wrk:
 // handleError will attempt to handle an error.
 // If there is an error value there, then it will Notify subscribers about the error, and return with a true.
 // In case there is no error, the function returns and "isErrorHandled" as false.
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleError(ctx context.Context, err error) (isErrorHandled bool) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) handleError(ctx context.Context, err error) (isErrorHandled bool) {
 	if err == nil {
 		return false
 	}
@@ -265,7 +265,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleError(ctx context.Cont
 	return true
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleNotifyEvent(ctx context.Context, ne cudNotifyEvent) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) handleNotifyEvent(ctx context.Context, ne cudNotifyEvent) {
 	if ne.Meta != nil {
 		ctx = sm.MetaAccessor.setMetaMap(ctx, ne.Meta)
 	}
@@ -284,12 +284,12 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleNotifyEvent(ctx contex
 		_ = sm.handleDeleteAllEvent(ctx, ne.Data)
 	}
 }
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleCreateEvent(ctx context.Context, data []byte) error {
-	ptr := new(Ent)
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) handleCreateEvent(ctx context.Context, data []byte) error {
+	ptr := new(Entity)
 	if err := json.Unmarshal(data, ptr); err != nil {
 		return err
 	}
-	event := pubsub.CreateEvent[Ent]{Entity: *ptr}
+	event := pubsub.CreateEvent[Entity]{Entity: *ptr}
 
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -299,12 +299,12 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleCreateEvent(ctx contex
 
 	return nil
 }
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleUpdateEvent(ctx context.Context, data []byte) error {
-	ptr := new(Ent)
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) handleUpdateEvent(ctx context.Context, data []byte) error {
+	ptr := new(Entity)
 	if err := json.Unmarshal(data, ptr); err != nil {
 		return err
 	}
-	event := pubsub.UpdateEvent[Ent]{Entity: *ptr}
+	event := pubsub.UpdateEvent[Entity]{Entity: *ptr}
 
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -315,7 +315,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleUpdateEvent(ctx contex
 	return nil
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteByIDEvent(ctx context.Context, data []byte) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) handleDeleteByIDEvent(ctx context.Context, data []byte) error {
 	id := new(ID)
 	if err := json.Unmarshal(data, id); err != nil {
 		return err
@@ -331,7 +331,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteByIDEvent(ctx co
 	return nil
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteAllEvent(ctx context.Context, data []byte) error {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) handleDeleteAllEvent(ctx context.Context, data []byte) error {
 	event := pubsub.DeleteAllEvent{}
 	sm.subs.lock.RLock()
 	defer sm.subs.lock.RUnlock()
@@ -341,7 +341,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) handleDeleteAllEvent(ctx con
 	return nil
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) ListenerEventCallback(_ pq.ListenerEventType, err error) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) ListenerEventCallback(_ pq.ListenerEventType, err error) {
 	if err == nil {
 		return
 	}
@@ -350,7 +350,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) ListenerEventCallback(_ pq.L
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) nextSerial() int64 {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) nextSerial() int64 {
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 
@@ -383,12 +383,12 @@ func (s *subscription) Close() error {
 	return nil
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Ent]) (pubsub.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Entity]) (pubsub.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 	if sm.subs.creator == nil {
-		sm.subs.creator = make(map[int64]pubsub.CreatorSubscriber[Ent])
+		sm.subs.creator = make(map[int64]pubsub.CreatorSubscriber[Entity])
 	}
 	sm.subs.creator[id] = s
 	return &subscription{CloseFn: func() {
@@ -398,12 +398,12 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToCreatorEvents(ctx
 	}}, sm.Init()
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Ent]) (pubsub.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Entity]) (pubsub.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()
 	if sm.subs.updater == nil {
-		sm.subs.updater = make(map[int64]pubsub.UpdaterSubscriber[Ent])
+		sm.subs.updater = make(map[int64]pubsub.UpdaterSubscriber[Entity])
 	}
 	sm.subs.updater[id] = s
 	return &subscription{CloseFn: func() {
@@ -413,7 +413,7 @@ func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToUpdaterEvents(ctx
 	}}, sm.Init()
 }
 
-func (sm *ListenNotifySubscriptionManager[Ent, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
+func (sm *ListenNotifySubscriptionManager[Entity, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
 	id := sm.nextSerial()
 	sm.subs.lock.Lock()
 	defer sm.subs.lock.Unlock()

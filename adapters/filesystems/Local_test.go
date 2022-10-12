@@ -15,7 +15,7 @@ import (
 
 func TestLocal_contractsFileSystem(t *testing.T) {
 	filesystemcontracts.FileSystem{
-		Subject: func(tb testing.TB) filesystems.FileSystem {
+		MakeSubject: func(tb testing.TB) filesystems.FileSystem {
 			return filesystems.Local{
 				RootPath: t.TempDir(),
 			}

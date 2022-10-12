@@ -15,88 +15,88 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type Publisher[Ent, ID any] struct {
-	Subject func(testing.TB) PublisherSubject[Ent, ID]
-	MakeCtx func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
+type Publisher[Entity, ID any] struct {
+	MakeSubject func(testing.TB) PublisherSubject[Entity, ID]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
 }
 
-type PublisherSubject[Ent, ID any] interface {
-	spechelper.CRD[Ent, ID]
-	pubsub.CreatorPublisher[Ent]
-	pubsub.UpdaterPublisher[Ent]
+type PublisherSubject[Entity, ID any] interface {
+	spechelper.CRD[Entity, ID]
+	pubsub.CreatorPublisher[Entity]
+	pubsub.UpdaterPublisher[Entity]
 	pubsub.DeleterPublisher[ID]
 }
 
-func (c Publisher[Ent, ID]) Test(t *testing.T) {
+func (c Publisher[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c Publisher[Ent, ID]) Benchmark(b *testing.B) {
+func (c Publisher[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Publisher[Ent, ID]) String() string { return `Publisher` }
+func (c Publisher[Entity, ID]) String() string { return `Publisher` }
 
-func (c Publisher[Ent, ID]) Spec(s *testcase.Spec) {
+func (c Publisher[Entity, ID]) Spec(s *testcase.Spec) {
 	testcase.RunSuite(s,
-		CreatorPublisher[Ent, ID]{
-			Subject: func(tb testing.TB) CreatorPublisherSubject[Ent, ID] {
-				return c.Subject(tb)
+		CreatorPublisher[Entity, ID]{
+			MakeSubject: func(tb testing.TB) CreatorPublisherSubject[Entity, ID] {
+				return c.MakeSubject(tb)
 			},
-			Context: c.MakeCtx,
-			MakeEnt: c.MakeEnt,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeEntity,
 		},
-		UpdaterPublisher[Ent, ID]{
-			Subject: func(tb testing.TB) UpdaterPublisherSubject[Ent, ID] {
-				publisher, ok := c.Subject(tb).(UpdaterPublisherSubject[Ent, ID])
+		UpdaterPublisher[Entity, ID]{
+			MakeSubject: func(tb testing.TB) UpdaterPublisherSubject[Entity, ID] {
+				publisher, ok := c.MakeSubject(tb).(UpdaterPublisherSubject[Entity, ID])
 				if !ok {
 					tb.Skip()
 				}
 				return publisher
 			},
-			Context: c.MakeCtx,
-			MakeEnt: c.MakeEnt,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeEntity,
 		},
-		DeleterPublisher[Ent, ID]{
-			Subject: func(tb testing.TB) DeleterPublisherSubject[Ent, ID] {
-				return c.Subject(tb)
+		DeleterPublisher[Entity, ID]{
+			MakeSubject: func(tb testing.TB) DeleterPublisherSubject[Entity, ID] {
+				return c.MakeSubject(tb)
 			},
-			Context: c.MakeCtx,
-			MakeEnt: c.MakeEnt,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeEntity,
 		},
 	)
 }
 
-type CreatorPublisher[Ent, ID any] struct {
-	Subject func(testing.TB) CreatorPublisherSubject[Ent, ID]
-	Context func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
+type CreatorPublisher[Entity, ID any] struct {
+	MakeSubject func(testing.TB) CreatorPublisherSubject[Entity, ID]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
 }
 
-type CreatorPublisherSubject[Ent, ID any] interface {
-	spechelper.CRD[Ent, ID]
-	pubsub.CreatorPublisher[Ent]
+type CreatorPublisherSubject[Entity, ID any] interface {
+	spechelper.CRD[Entity, ID]
+	pubsub.CreatorPublisher[Entity]
 }
 
-func (c CreatorPublisher[Ent, ID]) Test(t *testing.T) {
+func (c CreatorPublisher[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c CreatorPublisher[Ent, ID]) Benchmark(b *testing.B) {
+func (c CreatorPublisher[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c CreatorPublisher[Ent, ID]) String() string {
+func (c CreatorPublisher[Entity, ID]) String() string {
 	return `CreatorPublisher`
 }
 
-func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
+func (c CreatorPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 	s.Describe(`.Subscribe/Create`, func(s *testcase.Spec) {
-		subscriber := spechelper.LetSubscriber[Ent, ID](s, nil)
-		subscription := spechelper.LetSubscription[Ent, ID](s)
-		resource := testcase.Let(s, func(t *testcase.T) CreatorPublisherSubject[Ent, ID] {
-			return c.Subject(t)
+		subscriber := spechelper.LetSubscriber[Entity, ID](s, nil)
+		subscription := spechelper.LetSubscription[Entity, ID](s)
+		resource := testcase.Let(s, func(t *testcase.T) CreatorPublisherSubject[Entity, ID] {
+			return c.MakeSubject(t)
 		})
 		subject := func(t *testcase.T) (pubsub.Subscription, error) {
 			sub, err := resource.Get(t).SubscribeToCreatorEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
@@ -113,7 +113,7 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 		}
 
 		spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-			return c.Context(t)
+			return c.MakeContext(t)
 		})
 
 		s.Before(func(t *testcase.T) {
@@ -126,11 +126,11 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.And(`events made`, func(s *testcase.Spec) {
-			events := testcase.Let(s, func(t *testcase.T) []pubsub.CreateEvent[Ent] {
-				entities := spechelper.GenEntities[Ent](t, c.MakeEnt)
+			events := testcase.Let(s, func(t *testcase.T) []pubsub.CreateEvent[Entity] {
+				entities := spechelper.GenEntities[Entity](t, c.MakeEntity)
 
 				for _, entity := range entities {
-					Create[Ent, ID](t, resource.Get(t), spechelper.ContextVar.Get(t), entity)
+					Create[Entity, ID](t, resource.Get(t), spechelper.ContextVar.Get(t), entity)
 				}
 
 				// wait until the subscriber received the events
@@ -138,9 +138,9 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 					return subscriber.Get(t).EventsLen() < len(entities)
 				})
 
-				var events []pubsub.CreateEvent[Ent]
+				var events []pubsub.CreateEvent[Entity]
 				for _, entity := range entities {
-					events = append(events, pubsub.CreateEvent[Ent]{Entity: *entity})
+					events = append(events, pubsub.CreateEvent[Entity]{Entity: *entity})
 				}
 				return events
 			}).EagerLoading(s)
@@ -157,9 +157,9 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 
 				s.And(`more events are made`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
-						entities := spechelper.GenEntities[Ent](t, c.MakeEnt)
+						entities := spechelper.GenEntities[Entity](t, c.MakeEntity)
 						for _, entity := range entities {
-							Create[Ent, ID](t, resource.Get(t), spechelper.ContextVar.Get(t), entity)
+							Create[Entity, ID](t, resource.Get(t), spechelper.ContextVar.Get(t), entity)
 						}
 						Waiter.Wait()
 					})
@@ -171,7 +171,7 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 			})
 
 			s.And(`then new subscriber registered`, func(s *testcase.Spec) {
-				othSubscriber := spechelper.LetSubscriber[Ent, ID](s, nil)
+				othSubscriber := spechelper.LetSubscriber[Entity, ID](s, nil)
 				s.Before(func(t *testcase.T) {
 					newSubscription, err := resource.Get(t).SubscribeToCreatorEvents(spechelper.ContextVar.Get(t), othSubscriber.Get(t))
 					t.Must.Nil(err)
@@ -190,10 +190,10 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 				})
 
 				s.And(`further events made`, func(s *testcase.Spec) {
-					furtherEvents := testcase.Let(s, func(t *testcase.T) []pubsub.CreateEvent[Ent] {
-						entities := spechelper.GenEntities[Ent](t, c.MakeEnt)
+					furtherEvents := testcase.Let(s, func(t *testcase.T) []pubsub.CreateEvent[Entity] {
+						entities := spechelper.GenEntities[Entity](t, c.MakeEntity)
 						for _, entity := range entities {
-							Create[Ent, ID](t, resource.Get(t), spechelper.ContextVar.Get(t), entity)
+							Create[Entity, ID](t, resource.Get(t), spechelper.ContextVar.Get(t), entity)
 						}
 
 						Waiter.While(func() bool {
@@ -204,9 +204,9 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 							return othSubscriber.Get(t).EventsLen() < len(entities)
 						})
 
-						var events []pubsub.CreateEvent[Ent]
+						var events []pubsub.CreateEvent[Entity]
 						for _, ent := range entities {
-							events = append(events, pubsub.CreateEvent[Ent]{Entity: *ent})
+							events = append(events, pubsub.CreateEvent[Entity]{Entity: *ent})
 						}
 						return events
 					}).EagerLoading(s)
@@ -229,45 +229,45 @@ func (c CreatorPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 	})
 }
 
-type DeleterPublisher[Ent, ID any] struct {
-	Subject func(testing.TB) DeleterPublisherSubject[Ent, ID]
-	Context func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
+type DeleterPublisher[Entity, ID any] struct {
+	MakeSubject func(testing.TB) DeleterPublisherSubject[Entity, ID]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
 }
 
-type DeleterPublisherSubject[Ent, ID any] interface {
-	spechelper.CRD[Ent, ID]
+type DeleterPublisherSubject[Entity, ID any] interface {
+	spechelper.CRD[Entity, ID]
 	pubsub.DeleterPublisher[ID]
 }
 
-func (c DeleterPublisher[Ent, ID]) resource() testcase.Var[DeleterPublisherSubject[Ent, ID]] {
-	return testcase.Var[DeleterPublisherSubject[Ent, ID]]{
+func (c DeleterPublisher[Entity, ID]) resource() testcase.Var[DeleterPublisherSubject[Entity, ID]] {
+	return testcase.Var[DeleterPublisherSubject[Entity, ID]]{
 		ID: "DeleterPublisherSubject",
-		Init: func(t *testcase.T) DeleterPublisherSubject[Ent, ID] {
-			return c.Subject(t)
+		Init: func(t *testcase.T) DeleterPublisherSubject[Entity, ID] {
+			return c.MakeSubject(t)
 		},
 	}
 }
 
-func (c DeleterPublisher[Ent, ID]) String() string { return `DeleterPublisher` }
+func (c DeleterPublisher[Entity, ID]) String() string { return `DeleterPublisher` }
 
-func (c DeleterPublisher[Ent, ID]) Test(t *testing.T) {
+func (c DeleterPublisher[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c DeleterPublisher[Ent, ID]) Benchmark(b *testing.B) {
+func (c DeleterPublisher[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c DeleterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
+func (c DeleterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 	c.resource().Let(s, nil)
 	s.Describe(`.Subscribe/DeleteByID`, c.specEventDeleteByID)
 	s.Describe(`.Subscribe/DeleteAll`, c.specEventDeleteAll)
 }
 
-func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
-	subscriber := spechelper.LetSubscriber[Ent, ID](s, spechelper.DeleteSubscriptionFilter[ID])
-	subscription := spechelper.LetSubscription[Ent, ID](s)
+func (c DeleterPublisher[Entity, ID]) specEventDeleteByID(s *testcase.Spec) {
+	subscriber := spechelper.LetSubscriber[Entity, ID](s, spechelper.DeleteSubscriptionFilter[ID])
+	subscription := spechelper.LetSubscription[Entity, ID](s)
 	subject := func(t *testcase.T) (pubsub.Subscription, error) {
 		sub, err := c.resource().Get(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
 		if err == nil && sub != nil {
@@ -282,12 +282,12 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
 		t.Must.NotNil(sub)
 	}
 	spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-		return c.Context(t)
+		return c.MakeContext(t)
 	})
 
-	entity := testcase.Let(s, func(t *testcase.T) *Ent {
-		entityPtr := spechelper.ToPtr(c.MakeEnt(t))
-		Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
+	entity := testcase.Let(s, func(t *testcase.T) *Entity {
+		entityPtr := spechelper.ToPtr(c.MakeEntity(t))
+		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 		return entityPtr
 	}).EagerLoading(s)
 
@@ -303,7 +303,7 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
 
 	s.And(`delete event is made`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			Delete[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity.Get(t))
+			Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity.Get(t))
 
 			Waiter.While(func() bool {
 				return subscriber.Get(t).EventsLen() < 1
@@ -321,9 +321,9 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
 
 			s.And(`more events are made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					entityPtr := spechelper.ToPtr(c.MakeEnt(t))
-					Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
-					Delete[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
+					entityPtr := spechelper.ToPtr(c.MakeEntity(t))
+					Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
+					Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 					Waiter.Wait()
 				})
 
@@ -334,7 +334,7 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
 		})
 
 		s.And(`then new subscriber is registered`, func(s *testcase.Spec) {
-			othSubscriber := spechelper.LetSubscriber[Ent, ID](s, nil).EagerLoading(s)
+			othSubscriber := spechelper.LetSubscriber[Entity, ID](s, nil).EagerLoading(s)
 			s.Before(func(t *testcase.T) {
 				sub, err := c.resource().Get(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), othSubscriber.Get(t))
 				t.Must.Nil(err)
@@ -355,11 +355,11 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				const furtherEventKey = `further event`
-				furtherEvent := testcase.Let(s, func(t *testcase.T) Ent {
+				furtherEvent := testcase.Let(s, func(t *testcase.T) Entity {
 					t.Log(`given an another entity is stored`)
-					entityPtr := spechelper.ToPtr(c.MakeEnt(t))
-					Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
-					Delete[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
+					entityPtr := spechelper.ToPtr(c.MakeEntity(t))
+					Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
+					Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 					Waiter.While(func() bool {
 						return subscriber.Get(t).EventsLen() < 2
 					})
@@ -386,9 +386,9 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteByID(s *testcase.Spec) {
 	})
 }
 
-func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
-	subscriber := spechelper.LetSubscriber[Ent, ID](s, spechelper.DeleteSubscriptionFilter[ID])
-	subscription := spechelper.LetSubscription[Ent, ID](s)
+func (c DeleterPublisher[Entity, ID]) specEventDeleteAll(s *testcase.Spec) {
+	subscriber := spechelper.LetSubscriber[Entity, ID](s, spechelper.DeleteSubscriptionFilter[ID])
+	subscription := spechelper.LetSubscription[Entity, ID](s)
 	subject := func(t *testcase.T) (pubsub.Subscription, error) {
 		sub, err := c.resource().Get(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
 		if err == nil && sub != nil {
@@ -404,7 +404,7 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
 	}
 
 	spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-		return c.Context(t)
+		return c.MakeContext(t)
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -433,7 +433,7 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
 		})
 
 		s.And(`then new subscriber registered`, func(s *testcase.Spec) {
-			othSubscriber := spechelper.LetSubscriber[Ent, ID](s, spechelper.DeleteSubscriptionFilter[ID])
+			othSubscriber := spechelper.LetSubscriber[Entity, ID](s, spechelper.DeleteSubscriptionFilter[ID])
 			s.Before(func(t *testcase.T) {
 				sub, err := c.resource().Get(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), othSubscriber.Get(t))
 				t.Must.Nil(err)
@@ -452,7 +452,7 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
 
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					if spechelper.TryCleanup(t, c.Context(t), c.resource().Get(t)) {
+					if spechelper.TryCleanup(t, c.MakeContext(t), c.resource().Get(t)) {
 						Waiter.While(func() bool {
 							return subscriber.Get(t).EventsLen() < 2
 						})
@@ -476,7 +476,7 @@ func (c DeleterPublisher[Ent, ID]) specEventDeleteAll(s *testcase.Spec) {
 	})
 }
 
-func (c DeleterPublisher[Ent, ID]) HasDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
+func (c DeleterPublisher[Entity, ID]) HasDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
 	Eventually.Assert(tb, func(it assert.It) {
 		var matchingIDFound bool
 		for _, event := range getList() {
@@ -497,7 +497,7 @@ func (c DeleterPublisher[Ent, ID]) HasDeleteEntity(tb testing.TB, getList func()
 	})
 }
 
-func (c DeleterPublisher[Ent, ID]) doesNotHaveDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
+func (c DeleterPublisher[Entity, ID]) doesNotHaveDeleteEntity(tb testing.TB, getList func() []interface{}, e interface{}) {
 	Eventually.Assert(tb, func(it assert.It) {
 		var matchingIDFound bool
 		for _, event := range getList() {
@@ -517,43 +517,43 @@ func (c DeleterPublisher[Ent, ID]) doesNotHaveDeleteEntity(tb testing.TB, getLis
 	})
 }
 
-type UpdaterPublisher[Ent, ID any] struct {
-	Subject func(testing.TB) UpdaterPublisherSubject[Ent, ID]
-	Context func(testing.TB) context.Context
-	MakeEnt func(testing.TB) Ent
+type UpdaterPublisher[Entity, ID any] struct {
+	MakeSubject func(testing.TB) UpdaterPublisherSubject[Entity, ID]
+	MakeContext func(testing.TB) context.Context
+	MakeEntity  func(testing.TB) Entity
 }
 
-type UpdaterPublisherSubject[Ent, ID any] interface {
-	spechelper.CRD[Ent, ID]
-	crud.Updater[Ent]
-	pubsub.UpdaterPublisher[Ent]
+type UpdaterPublisherSubject[Entity, ID any] interface {
+	spechelper.CRD[Entity, ID]
+	crud.Updater[Entity]
+	pubsub.UpdaterPublisher[Entity]
 }
 
-func (c UpdaterPublisher[Ent, ID]) resource() testcase.Var[UpdaterPublisherSubject[Ent, ID]] {
-	return testcase.Var[UpdaterPublisherSubject[Ent, ID]]{
+func (c UpdaterPublisher[Entity, ID]) resource() testcase.Var[UpdaterPublisherSubject[Entity, ID]] {
+	return testcase.Var[UpdaterPublisherSubject[Entity, ID]]{
 		ID: "resource",
-		Init: func(t *testcase.T) UpdaterPublisherSubject[Ent, ID] {
-			return c.Subject(t)
+		Init: func(t *testcase.T) UpdaterPublisherSubject[Entity, ID] {
+			return c.MakeSubject(t)
 		},
 	}
 }
 
-func (c UpdaterPublisher[Ent, ID]) String() string {
+func (c UpdaterPublisher[Entity, ID]) String() string {
 	return `UpdaterPublisher`
 }
 
-func (c UpdaterPublisher[Ent, ID]) Test(t *testing.T) {
+func (c UpdaterPublisher[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c UpdaterPublisher[Ent, ID]) Benchmark(b *testing.B) {
+func (c UpdaterPublisher[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
+func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 	c.resource().Let(s, nil)
-	subscriber := spechelper.LetSubscriber[Ent, ID](s, spechelper.UpdateSubscriptionFilter[Ent])
-	subscription := spechelper.LetSubscription[Ent, ID](s)
+	subscriber := spechelper.LetSubscriber[Entity, ID](s, spechelper.UpdateSubscriptionFilter[Entity])
+	subscription := spechelper.LetSubscription[Entity, ID](s)
 
 	s.Describe(`.Subscribe/Update`, func(s *testcase.Spec) {
 		subject := func(t *testcase.T) (pubsub.Subscription, error) {
@@ -571,13 +571,13 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 		}
 
 		spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-			return c.Context(t)
+			return c.MakeContext(t)
 		})
 
 		const entityKey = `entity`
 		entity := s.Let(entityKey, func(t *testcase.T) interface{} {
-			ptr := spechelper.ToPtr(c.MakeEnt(t))
-			Create[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
+			ptr := spechelper.ToPtr(c.MakeEntity(t))
+			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
 			return ptr
 		}).EagerLoading(s)
 		getID := func(t *testcase.T) ID {
@@ -595,16 +595,16 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.And(`update event is made`, func(s *testcase.Spec) {
-			updatedEntity := testcase.Let(s, func(t *testcase.T) Ent {
-				entityWithNewValuesPtr := spechelper.ToPtr(c.MakeEnt(t))
+			updatedEntity := testcase.Let(s, func(t *testcase.T) Entity {
+				entityWithNewValuesPtr := spechelper.ToPtr(c.MakeEntity(t))
 				t.Must.Nil(extid.Set(entityWithNewValuesPtr, getID(t)))
-				Update[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityWithNewValuesPtr)
+				Update[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityWithNewValuesPtr)
 				Waiter.While(func() bool { return subscriber.Get(t).EventsLen() < 1 })
 				return *entityWithNewValuesPtr
 			}).EagerLoading(s)
 
 			s.Then(`subscriber receive the event`, func(t *testcase.T) {
-				t.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Ent]{Entity: updatedEntity.Get(t)})
+				t.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Entity]{Entity: updatedEntity.Get(t)})
 			})
 
 			s.And(`subscription is cancelled via Close`, func(s *testcase.Spec) {
@@ -615,7 +615,7 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 				s.And(`more events are made`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
 						id, _ := extid.Lookup[ID](entity.Get(t))
-						updatedEntityPtr := spechelper.ToPtr(c.MakeEnt(t))
+						updatedEntityPtr := spechelper.ToPtr(c.MakeEntity(t))
 						t.Must.Nil(extid.Set(updatedEntityPtr, id))
 						t.Must.Nil(c.resource().Get(t).Update(spechelper.ContextVar.Get(t), updatedEntityPtr))
 						Waiter.While(func() bool {
@@ -632,7 +632,7 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 			})
 
 			s.And(`then new subscriber registered`, func(s *testcase.Spec) {
-				othSubscriber := spechelper.LetSubscriber[Ent, ID](s, spechelper.UpdateSubscriptionFilter[Ent])
+				othSubscriber := spechelper.LetSubscriber[Entity, ID](s, spechelper.UpdateSubscriptionFilter[Entity])
 				s.Before(func(t *testcase.T) {
 					sub, err := c.resource().Get(t).SubscribeToUpdaterEvents(spechelper.ContextVar.Get(t), othSubscriber.Get(t))
 					t.Must.Nil(err)
@@ -641,7 +641,7 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 				})
 
 				s.Then(`original subscriber still receive old events`, func(t *testcase.T) {
-					t.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Ent]{Entity: updatedEntity.Get(t)})
+					t.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Entity]{Entity: updatedEntity.Get(t)})
 				})
 
 				s.Then(`new subscriber do not receive old events`, func(t *testcase.T) {
@@ -650,10 +650,10 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 				})
 
 				s.And(`a further event is made`, func(s *testcase.Spec) {
-					furtherEventUpdate := testcase.Let(s, func(t *testcase.T) Ent {
-						updatedEntityPtr := spechelper.ToPtr(c.MakeEnt(t))
+					furtherEventUpdate := testcase.Let(s, func(t *testcase.T) Entity {
+						updatedEntityPtr := spechelper.ToPtr(c.MakeEntity(t))
 						t.Must.Nil(extid.Set(updatedEntityPtr, getID(t)))
-						Update[Ent, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), updatedEntityPtr)
+						Update[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), updatedEntityPtr)
 						Waiter.While(func() bool {
 							return subscriber.Get(t).EventsLen() < 2
 						})
@@ -665,8 +665,8 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
 						Eventually.Assert(t, func(it assert.It) {
-							it.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Ent]{Entity: updatedEntity.Get(t)}, `missing old update events`)
-							it.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Ent]{Entity: furtherEventUpdate.Get(t)}, `missing new update events`)
+							it.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Entity]{Entity: updatedEntity.Get(t)}, `missing old update events`)
+							it.Must.Contain(subscriber.Get(t).Events(), pubsub.UpdateEvent[Entity]{Entity: furtherEventUpdate.Get(t)}, `missing new update events`)
 						})
 					})
 
@@ -677,11 +677,11 @@ func (c UpdaterPublisher[Ent, ID]) Spec(s *testcase.Spec) {
 							t.Log("this can happen when the entity have only one field: ID")
 							return
 						}
-						t.Must.NotContain(othSubscriber.Get(t).Events(), pubsub.UpdateEvent[Ent]{Entity: updatedEntity.Get(t)})
+						t.Must.NotContain(othSubscriber.Get(t).Events(), pubsub.UpdateEvent[Entity]{Entity: updatedEntity.Get(t)})
 					})
 
 					s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
-						t.Must.Contain(othSubscriber.Get(t).Events(), pubsub.UpdateEvent[Ent]{Entity: furtherEventUpdate.Get(t)})
+						t.Must.Contain(othSubscriber.Get(t).Events(), pubsub.UpdateEvent[Entity]{Entity: furtherEventUpdate.Get(t)})
 					})
 				})
 			})

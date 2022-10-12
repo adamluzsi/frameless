@@ -20,7 +20,7 @@ func TestContracts(t *testing.T) {
 	}
 
 	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
+		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
 			eventLog := memory.NewEventLog()
 			repository := memory.NewEventLogRepository[Entity, string](eventLog)
 			return resource.ContractSubject[Entity, string]{
@@ -29,10 +29,10 @@ func TestContracts(t *testing.T) {
 				CommitManager: eventLog,
 			}
 		},
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEnt: func(tb testing.TB) Entity {
+		MakeEntity: func(tb testing.TB) Entity {
 			t := tb.(*testcase.T)
 			return Entity{Data: t.Random.String()}
 		},
@@ -55,7 +55,7 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 	varWithNoInit.LetValue(s, 42)
 
 	resource.Contract[Entity, string, string]{
-		Subject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
+		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
 			t, ok := tb.(*testcase.T)
 			assert.Must(t).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			assert.Must(t).Equal(42, vGet(t))
@@ -68,7 +68,7 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 				Resource:      stg,
 			}
 		},
-		MakeEnt: func(tb testing.TB) Entity {
+		MakeEntity: func(tb testing.TB) Entity {
 			t, ok := tb.(*testcase.T)
 			assert.Must(tb).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
 			t.Must.Equal(42, vGet(t))
@@ -79,7 +79,7 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 				Z: t.Random.String(),
 			}
 		},
-		MakeCtx: func(tb testing.TB) context.Context {
+		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
 		MakeV: func(tb testing.TB) string {

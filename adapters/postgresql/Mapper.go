@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-type Mapper[Ent, ID any] struct {
+type Mapper[Entity, ID any] struct {
 	// Table is the entity's table name
 	Table string
 	// ID is the entity's id column name
@@ -15,30 +15,30 @@ type Mapper[Ent, ID any] struct {
 	Columns []string
 
 	NewIDFn  func(ctx context.Context) (ID, error)
-	ToArgsFn func(ptr *Ent) ([]interface{}, error)
-	MapFn    iterators.SQLRowMapperFunc[Ent]
+	ToArgsFn func(ptr *Entity) ([]interface{}, error)
+	MapFn    iterators.SQLRowMapperFunc[Entity]
 }
 
-func (m Mapper[Ent, ID]) TableRef() string {
+func (m Mapper[Entity, ID]) TableRef() string {
 	return m.Table
 }
 
-func (m Mapper[Ent, ID]) IDRef() string {
+func (m Mapper[Entity, ID]) IDRef() string {
 	return m.ID
 }
 
-func (m Mapper[Ent, ID]) ColumnRefs() []string {
+func (m Mapper[Entity, ID]) ColumnRefs() []string {
 	return m.Columns
 }
 
-func (m Mapper[Ent, ID]) NewID(ctx context.Context) (interface{}, error) {
+func (m Mapper[Entity, ID]) NewID(ctx context.Context) (interface{}, error) {
 	return m.NewIDFn(ctx)
 }
 
-func (m Mapper[Ent, ID]) ToArgs(ptr *Ent) ([]interface{}, error) {
+func (m Mapper[Entity, ID]) ToArgs(ptr *Entity) ([]interface{}, error) {
 	return m.ToArgsFn(ptr)
 }
 
-func (m Mapper[Ent, ID]) Map(s iterators.SQLRowScanner) (Ent, error) {
+func (m Mapper[Entity, ID]) Map(s iterators.SQLRowScanner) (Entity, error) {
 	return m.MapFn(s)
 }

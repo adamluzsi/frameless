@@ -21,7 +21,7 @@ import (
 )
 
 type FileSystem struct {
-	Subject func(testing.TB) filesystem.FileSystem
+	MakeSubject func(testing.TB) filesystem.FileSystem
 }
 
 func (c FileSystem) String() string {
@@ -53,7 +53,7 @@ func (c FileSystem) fileSystem() testcase.Var[filesystem.FileSystem] {
 	return testcase.Var[filesystem.FileSystem]{
 		ID: "frameless.Local",
 		Init: func(t *testcase.T) filesystem.FileSystem {
-			return c.Subject(t)
+			return c.MakeSubject(t)
 		},
 	}
 }

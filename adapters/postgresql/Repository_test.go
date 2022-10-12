@@ -72,47 +72,47 @@ func TestRepository(t *testing.T) {
 
 	testcase.RunSuite(t,
 		crudcontracts.Creator[psh.TestEntity, string]{
-			Subject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
+			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
 		},
-		crudcontracts.Finder[psh.TestEntity, string]{Subject: func(tb testing.TB) crudcontracts.FinderSubject[psh.TestEntity, string] { return subject },
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
+		crudcontracts.Finder[psh.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[psh.TestEntity, string] { return subject },
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
 		},
-		crudcontracts.Updater[psh.TestEntity, string]{Subject: func(tb testing.TB) crudcontracts.UpdaterSubject[psh.TestEntity, string] { return subject },
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
+		crudcontracts.Updater[psh.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[psh.TestEntity, string] { return subject },
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
 		},
-		crudcontracts.Deleter[psh.TestEntity, string]{Subject: func(tb testing.TB) crudcontracts.DeleterSubject[psh.TestEntity, string] { return subject },
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
+		crudcontracts.Deleter[psh.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[psh.TestEntity, string] { return subject },
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
 		},
 		crudcontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-			Subject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
 				return crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
 					Resource:      subject,
 					CommitManager: cm,
 				}
 			},
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
 		},
-		pubsubcontracts.Publisher[psh.TestEntity, string]{Subject: func(tb testing.TB) pubsubcontracts.PublisherSubject[psh.TestEntity, string] { return subject },
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
+		pubsubcontracts.Publisher[psh.TestEntity, string]{MakeSubject: func(tb testing.TB) pubsubcontracts.PublisherSubject[psh.TestEntity, string] { return subject },
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
 		},
 		frmetacontracts.MetaAccessor[psh.TestEntity, string, string]{
-			Subject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[psh.TestEntity, string, string] {
+			MakeSubject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[psh.TestEntity, string, string] {
 				return frmetacontracts.MetaAccessorSubject[psh.TestEntity, string, string]{
 					MetaAccessor: subject,
 					Resource:     subject,
 					Publisher:    subject,
 				}
 			},
-			MakeEnt: psh.MakeTestEntity,
-			MakeCtx: psh.MakeCtx,
-			MakeV:   psh.MakeString,
+			MakeEntity:  psh.MakeTestEntity,
+			MakeContext: psh.MakeContext,
+			MakeV:       psh.MakeString,
 		},
 	)
 }
@@ -122,16 +122,16 @@ func TestRepository_contracts(t *testing.T) {
 	repository := NewTestEntityRepository(t)
 
 	contracts2.Contract[psh.TestEntity, string, string]{
-		Subject: func(tb testing.TB) contracts2.ContractSubject[psh.TestEntity, string] {
+		MakeSubject: func(tb testing.TB) contracts2.ContractSubject[psh.TestEntity, string] {
 			return contracts2.ContractSubject[psh.TestEntity, string]{
 				MetaAccessor:  repository,
 				CommitManager: repository,
 				Resource:      repository,
 			}
 		},
-		MakeEnt: psh.MakeTestEntity,
-		MakeCtx: psh.MakeCtx,
-		MakeV:   psh.MakeString,
+		MakeEntity:  psh.MakeTestEntity,
+		MakeContext: psh.MakeContext,
+		MakeV:       psh.MakeString,
 	}.Spec(s)
 }
 
@@ -145,8 +145,8 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 	subject := NewTestEntityRepository(t)
 
 	testcase.RunSuite(t, crudcontracts.Creator[psh.TestEntity, string]{
-		Subject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
-		MakeCtx: psh.MakeCtx,
-		MakeEnt: psh.MakeTestEntity,
+		MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
+		MakeContext: psh.MakeContext,
+		MakeEntity:  psh.MakeTestEntity,
 	})
 }
