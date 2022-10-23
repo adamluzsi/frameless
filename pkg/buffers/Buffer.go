@@ -5,10 +5,10 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
-const ErrSeekNegativePosition errutils.Error = "buffers: negative position"
+const ErrSeekNegativePosition errorutil.Error = "buffers: negative position"
 
 func New[T []byte | string](data T) *Buffer {
 	return &Buffer{buffer: *bytes.NewBuffer([]byte(data)), position: 0}

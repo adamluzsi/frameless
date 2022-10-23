@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 )
@@ -205,8 +205,8 @@ func (el *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 const (
-	errTxDone errutils.Error = `transaction has already been commit or rolled back`
-	errNoTx   errutils.Error = `no transaction found in the given context`
+	errTxDone errorutil.Error = `transaction has already been commit or rolled back`
+	errNoTx   errorutil.Error = `no transaction found in the given context`
 )
 
 func (el *EventLog) CommitTx(ctx context.Context) error {

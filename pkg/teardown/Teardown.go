@@ -3,7 +3,7 @@ package teardown
 import (
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
 type Teardown struct {
@@ -39,7 +39,7 @@ func (td *Teardown) Defer(fn func() error) {
 }
 
 func (td *Teardown) Finish() error {
-	var errors errutils.Errors
+	var errors errorutil.Errors
 	for !td.isEmpty() { // handle Deferred functions deferred during the execution of a deferred function
 		errors = append(errors, td.run()...)
 	}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase"
@@ -46,7 +46,7 @@ func TestForEach(t *testing.T) {
 			})
 
 			s.And(`an error returned by the function`, func(s *testcase.Spec) {
-				const expectedErr errutils.Error = `boom`
+				const expectedErr errorutil.Error = `boom`
 				fnErr.Let(s, func(t *testcase.T) error { return expectedErr })
 
 				s.Then(`it will return the error`, func(t *testcase.T) {
@@ -62,7 +62,7 @@ func TestForEach(t *testing.T) {
 
 			var andAnErrorReturnedWhenIteratorBeingClosed = func(s *testcase.Spec) {
 				s.And(`error returned when iterator being closed`, func(s *testcase.Spec) {
-					const closeErr errutils.Error = `boom on close`
+					const closeErr errorutil.Error = `boom on close`
 					s.Before(func(t *testcase.T) {
 						i := iterators.Stub(iter.Get(t))
 						i.StubClose = func() error { return closeErr }

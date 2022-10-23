@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -214,7 +214,7 @@ func (m *Manager[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		}
 		return m.Repository.CacheEntity(ctx).Upsert(ctx, ptr)
 	default:
-		return errutils.Error(`not implemented`)
+		return errorutil.Error(`not implemented`)
 	}
 }
 

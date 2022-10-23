@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 
 	"github.com/adamluzsi/frameless/pkg/lazyloading"
 	"github.com/adamluzsi/testcase"
@@ -183,7 +183,7 @@ func TestVar(t *testing.T) {
 		})
 
 		s.When(`block yields an error`, func(s *testcase.Spec) {
-			const expectedErr errutils.Error = "boom"
+			const expectedErr errorutil.Error = "boom"
 			blk.Let(s, func(t *testcase.T) func() (int, error) {
 				return func() (int, error) {
 					return 0, expectedErr

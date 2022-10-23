@@ -2,9 +2,8 @@ package pubsub
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"io"
-
-	"github.com/adamluzsi/frameless/pkg/errutils"
 )
 
 type Subscription interface {
@@ -16,7 +15,7 @@ type (
 
 	CreatorSubscriber[Entity any] interface {
 		HandleCreateEvent(ctx context.Context, event CreateEvent[Entity]) error
-		errutils.ErrorHandler
+		errorutil.ErrorHandler
 	}
 
 	CreatorPublisher[Entity any] interface {
@@ -29,7 +28,7 @@ type (
 
 	UpdaterSubscriber[Entity any] interface {
 		HandleUpdateEvent(ctx context.Context, event UpdateEvent[Entity]) error
-		errutils.ErrorHandler
+		errorutil.ErrorHandler
 	}
 
 	UpdaterPublisher[Entity any] interface {
@@ -44,7 +43,7 @@ type (
 	DeleterSubscriber[ID any] interface {
 		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent[ID]) error
 		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent) error
-		errutils.ErrorHandler
+		errorutil.ErrorHandler
 	}
 
 	DeleterPublisher[ID any] interface {

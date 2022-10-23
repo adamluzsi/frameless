@@ -3,7 +3,7 @@ package comproto
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
 func FinishTx(errp *error, commit, rollback func() error) {
@@ -11,7 +11,7 @@ func FinishTx(errp *error, commit, rollback func() error) {
 		panic(fmt.Errorf(`error pointer cannot be nil for Finish Tx methods`))
 	}
 	if *errp != nil {
-		*errp = errutils.Merge(*errp, rollback())
+		*errp = errorutil.Merge(*errp, rollback())
 		return
 	}
 	*errp = commit()

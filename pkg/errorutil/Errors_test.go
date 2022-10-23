@@ -1,18 +1,18 @@
-package errutils_test
+package errorutil_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errutils"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/testcase"
 )
 
 func TestErrors(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	subject := testcase.Let(s, func(t *testcase.T) errutils.Errors {
-		return errutils.Errors{}
+	subject := testcase.Let(s, func(t *testcase.T) errorutil.Errors {
+		return errorutil.Errors{}
 	})
 
 	s.Describe(".Error", func(s *testcase.Spec) {
@@ -98,7 +98,7 @@ func TestErrors(t *testing.T) {
 			})
 
 			s.Then("error value is returned", func(t *testcase.T) {
-				out := act(t).(errutils.Errors)
+				out := act(t).(errorutil.Errors)
 				t.Must.Contain(out, expectedErr1.Get(t))
 				t.Must.Contain(out, expectedErr2.Get(t))
 			})
@@ -169,7 +169,7 @@ func TestToErr_slice(t *testing.T) {
 		errs = testcase.Let[[]error](s, nil)
 	)
 	act := func(t *testcase.T) error {
-		return errutils.Merge(errs.Get(t)...)
+		return errorutil.Merge(errs.Get(t)...)
 	}
 
 	s.When("error list is empty", func(s *testcase.Spec) {
@@ -209,7 +209,7 @@ func TestToErr_slice(t *testing.T) {
 		})
 
 		s.Then("error value is returned", func(t *testcase.T) {
-			out := act(t).(errutils.Errors)
+			out := act(t).(errorutil.Errors)
 			t.Must.Contain(out, expectedErr1.Get(t))
 			t.Must.Contain(out, expectedErr2.Get(t))
 		})
