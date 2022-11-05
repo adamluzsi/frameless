@@ -39,11 +39,11 @@ func (td *Teardown) Defer(fn func() error) {
 }
 
 func (td *Teardown) Finish() error {
-	var errors errorutil.Errors
+	var errors []error
 	for !td.isEmpty() { // handle Deferred functions deferred during the execution of a deferred function
 		errors = append(errors, td.run()...)
 	}
-	return errors.Err()
+	return errorutil.Merge(errors...)
 }
 
 func (td *Teardown) isEmpty() bool {
