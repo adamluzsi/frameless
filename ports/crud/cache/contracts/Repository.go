@@ -86,6 +86,8 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				},
 				MakeContext: c.MakeContext,
 				MakeEntity:  makeCacheHit,
+
+				SupportIDReuse: true,
 			},
 			crudcontracts.Finder[cache.Hit[ID], string]{
 				MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[ID], string] {
@@ -158,6 +160,8 @@ func (c EntityRepository[Entity, ID]) Spec(s *testcase.Spec) {
 				},
 				MakeEntity:  c.MakeEntity,
 				MakeContext: c.MakeContext,
+
+				SupportIDReuse: true,
 			},
 			crudcontracts.Finder[Entity, ID]{
 				MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {

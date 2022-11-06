@@ -99,7 +99,7 @@ func getRepositorySpecsForT[Entity, ID any](
 		return tb.(*testcase.T).Random.Int()
 	}
 	return []testcase.Suite{
-		crudcontracts.Creator[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
+		crudcontracts.Creator[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext, SupportIDReuse: true},
 		crudcontracts.Finder[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
 		crudcontracts.Updater[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},
 		crudcontracts.Deleter[Entity, ID]{MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] { return subject }, MakeEntity: MakeEntity, MakeContext: MakeContext},

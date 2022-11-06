@@ -35,6 +35,8 @@ func TestManager_creator(t *testing.T) {
 		},
 		MakeEntity:  makeTestEntity,
 		MakeContext: MakeContext,
+
+		SupportIDReuse: true,
 	})
 }
 

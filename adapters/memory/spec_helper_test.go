@@ -77,6 +77,8 @@ func GetContracts[Entity, ID any](
 			},
 			MakeContext: MakeContext,
 			MakeEntity:  MakeEntity,
+
+			SupportIDReuse: true,
 		},
 		crudcontracts.Finder[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {

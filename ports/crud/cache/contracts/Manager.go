@@ -78,6 +78,8 @@ func (c Manager[Entity, ID]) Spec(s *testcase.Spec) {
 			},
 			MakeEntity:  c.MakeEntity,
 			MakeContext: c.MakeContext,
+
+			SupportIDReuse: true,
 		},
 		crudcontracts.Finder[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {

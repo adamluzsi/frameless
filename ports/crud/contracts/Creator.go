@@ -15,6 +15,9 @@ type Creator[Entity, ID any] struct {
 	MakeSubject func(testing.TB) CreatorSubject[Entity, ID]
 	MakeContext func(testing.TB) context.Context
 	MakeEntity  func(testing.TB) Entity
+	// SupportIDReuse is an optional configuration value that tells the contract
+	// that recreating an entity with an ID which belongs to a previously deleted entity is accepted.
+	SupportIDReuse bool
 }
 
 type CreatorSubject[Entity, ID any] spechelper.CRD[Entity, ID]
@@ -96,23 +99,45 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 	})
 
-	s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			t.Must.Nil(subject(t))
-			IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-			t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
-			IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-		})
+	if c.SupportIDReuse {
+		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
+				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			})
 
-		s.Then(`it will accept it`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
-		})
+			s.Then(`it will accept it`, func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+			})
 
-		s.Then(`persisted object can be found`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
-			IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			s.Then(`persisted object can be found`, func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			})
 		})
-	})
+	}
+
+	if c.SupportIDReuse {
+		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
+				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			})
+
+			s.Then(`it will accept it`, func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+			})
+
+			s.Then(`persisted object can be found`, func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			})
+		})
+	}
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 		ctxVar.Let(s, func(t *testcase.T) context.Context {

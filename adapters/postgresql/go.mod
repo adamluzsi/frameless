@@ -3,7 +3,7 @@ module github.com/adamluzsi/frameless/adapters/postgresql
 go 1.18
 
 require (
-	github.com/adamluzsi/frameless v0.81.0
+	github.com/adamluzsi/frameless v0.87.0
 	github.com/adamluzsi/testcase v0.108.2
 	github.com/lib/pq v1.10.6
 	github.com/stretchr/testify v1.7.1

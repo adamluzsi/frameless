@@ -72,9 +72,10 @@ func TestRepository(t *testing.T) {
 
 	testcase.RunSuite(t,
 		crudcontracts.Creator[psh.TestEntity, string]{
-			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
-			MakeEntity:  psh.MakeTestEntity,
-			MakeContext: psh.MakeContext,
+			MakeSubject:    func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
+			MakeEntity:     psh.MakeTestEntity,
+			MakeContext:    psh.MakeContext,
+			SupportIDReuse: true,
 		},
 		crudcontracts.Finder[psh.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[psh.TestEntity, string] { return subject },
 			MakeEntity:  psh.MakeTestEntity,
@@ -148,5 +149,7 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 		MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[psh.TestEntity, string] { return subject },
 		MakeContext: psh.MakeContext,
 		MakeEntity:  psh.MakeTestEntity,
+
+		SupportIDReuse: true,
 	})
 }
