@@ -1,6 +1,7 @@
 package reflects_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
@@ -9,8 +10,8 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-func ExampleFullyQualifiedName(i interface{}) string {
-	return reflects.FullyQualifiedName(i)
+func ExampleFullyQualifiedName() {
+	fmt.Println(reflects.FullyQualifiedName(any(nil)))
 }
 
 func TestFullyQualifiedName(t *testing.T) {
@@ -25,7 +26,7 @@ func TestFullyQualifiedName(t *testing.T) {
 
 			o := crudcontracts.Creator[int, string]{}
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/ports/crud/contracts".Creator[int,string]`, ExampleFullyQualifiedName(o))
+			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/ports/crud/contracts".Creator[int,string]`, subject(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

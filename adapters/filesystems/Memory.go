@@ -190,7 +190,7 @@ type memoryEntry struct {
 	mutex    sync.Mutex
 }
 
-func (entry memoryEntry) fileInfo() FileInfo {
+func (entry *memoryEntry) fileInfo() FileInfo {
 	return FileInfo{
 		Path:        entry.path,
 		FileSize:    int64(len(entry.data)),

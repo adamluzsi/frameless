@@ -1,2 +1,4 @@
 github.com/adamluzsi/testcase v0.108.2 h1:TClr4LsAO5OKIL7woESE7RAKQfanZOLCEI+KFRTrfiA=
 github.com/adamluzsi/testcase v0.108.2/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+github.com/adamluzsi/testcase v0.115.0 h1:i8HaPTdTu1wfk1ctbvnJU6yrjfJ1nieu7MUUsfDkrx4=
+github.com/adamluzsi/testcase v0.115.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=

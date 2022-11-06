@@ -14,7 +14,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-func ExampleNewSQLRows() {
+func ExampleSQLRows() {
 	var (
 		ctx context.Context
 		db  *sql.DB

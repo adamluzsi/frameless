@@ -7,6 +7,8 @@ github.com/adamluzsi/frameless v0.87.0/go.mod h1:a+VcNvYhuCb7Pi0hu88l3Iqicj/77T0
 github.com/adamluzsi/testcase v0.91.0 h1:Fh95dB3vWmQXqrJQoa2tYy03Ufz/NKLfiLgNo3n4IjQ=
 github.com/adamluzsi/testcase v0.91.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
 github.com/adamluzsi/testcase v0.108.2/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+github.com/adamluzsi/testcase v0.115.0 h1:i8HaPTdTu1wfk1ctbvnJU6yrjfJ1nieu7MUUsfDkrx4=
+github.com/adamluzsi/testcase v0.115.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

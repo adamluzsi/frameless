@@ -64,7 +64,7 @@ func TestTeardown_Defer_panic(t *testing.T) {
 
 	td := &teardown.Teardown{}
 	td.Defer(func() error { a = true; return nil })
-	td.Defer(func() error { b = true; panic(expectedPanicMessage); return nil })
+	td.Defer(func() error { b = true; panic(expectedPanicMessage) })
 	td.Defer(func() error { c = true; return nil })
 
 	actualPanicValue := func() (r interface{}) {

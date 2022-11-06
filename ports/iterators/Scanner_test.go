@@ -2,6 +2,7 @@ package iterators_test
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -10,6 +11,28 @@ import (
 
 	"github.com/adamluzsi/testcase/assert"
 )
+
+func ExampleScanner() {
+	reader := strings.NewReader("a\nb\nc\nd")
+	i := iterators.Scanner[string](bufio.NewScanner(reader), nil)
+	i.Split(bufio.ScanLines)
+
+	for i.Next() {
+		fmt.Println(i.Text())
+	}
+	fmt.Println(i.Err())
+}
+
+func ExampleScanner_Split() {
+	reader := strings.NewReader("a\nb\nc\nd")
+	i := iterators.Scanner[string](bufio.NewScanner(reader), nil)
+	i.Split(bufio.ScanLines)
+
+	for i.Next() {
+		fmt.Println(i.Text())
+	}
+	fmt.Println(i.Err())
+}
 
 func TestScanner_SingleLineGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()
@@ -75,15 +98,10 @@ func TestScanner_NilReaderGiven_ErrorReturned(t *testing.T) {
 	assert.Must(t).NotNil(io.ErrUnexpectedEOF, i.Err())
 }
 
-func ExampleScanner_Split() *iterators.ScannerIter[string] {
+func TestScanner_Split(t *testing.T) {
 	reader := strings.NewReader("a\nb\nc\nd")
 	i := iterators.Scanner[string](bufio.NewScanner(reader), nil)
 	i.Split(bufio.ScanLines)
-	return i
-}
-
-func TestScanner_Split(t *testing.T) {
-	i := ExampleScanner_Split()
 
 	lines, err := iterators.Collect[string](i)
 	assert.Must(t).Nil(err)
