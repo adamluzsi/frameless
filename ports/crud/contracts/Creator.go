@@ -18,6 +18,9 @@ type Creator[Entity, ID any] struct {
 	// SupportIDReuse is an optional configuration value that tells the contract
 	// that recreating an entity with an ID which belongs to a previously deleted entity is accepted.
 	SupportIDReuse bool
+	// SupportRecreate is an optional configuration value that tells the contract
+	// that deleting an Entity then recreating it with the same values is supported by the Creator.
+	SupportRecreate bool
 }
 
 type CreatorSubject[Entity, ID any] spechelper.CRD[Entity, ID]
@@ -134,6 +137,28 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 			s.Then(`persisted object can be found`, func(t *testcase.T) {
 				t.Must.Nil(subject(t))
+				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			})
+		})
+	}
+
+	if c.SupportRecreate {
+		s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
+				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+				t.Must.NoError(extid.Set(ptr.Get(t), *new(ID)), "setting the id to zero value failed")
+			})
+
+			s.Then(`it will accept it`, func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+			})
+
+			s.Then(`persisted object can be found`, func(t *testcase.T) {
+				t.Must.Nil(subject(t))
+
 				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 			})
 		})
