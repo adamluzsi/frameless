@@ -15,7 +15,7 @@ func LookupUserError(err error) (UserError, bool) {
 }
 
 type UserError struct {
-	// Err is the wrapped error which is the Cause of this UserError.
+	// Err is an optional error value the wrapped error which is the Cause of this UserError.
 	Err error
 	// Code is a constant string value that expresses the user's error scenario.
 	// The caller who receives the error will use this code to present the UserError to their users and,
@@ -30,7 +30,11 @@ type UserError struct {
 }
 
 func (err UserError) Error() string {
-	return err.Err.Error()
+	msg := err.Message + " (" + err.Code + ")"
+	if err.Err != nil {
+		msg = msg + "\n" + err.Err.Error()
+	}
+	return msg
 }
 
 func (err UserError) Unwrap() error {
