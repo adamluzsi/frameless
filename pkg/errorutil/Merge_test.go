@@ -1,179 +1,220 @@
-package errorutil
+package errorutil_test
 
 import (
 	"errors"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/testcase/let"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
 )
 
-func TestErrors(t *testing.T) {
-	s := testcase.NewSpec(t)
+type (
+	ErrType1 struct{}
+	ErrType2 struct{ V int }
+)
 
-	subject := testcase.Let(s, func(t *testcase.T) multiError {
-		return multiError{}
-	})
+func (err ErrType1) Error() string { return "ErrType1" }
+func (err ErrType2) Error() string { return "ErrType2" }
 
-	s.Describe(".Error", func(s *testcase.Spec) {
-		act := func(t *testcase.T) string {
-			return subject.Get(t).Error()
-		}
-
-		s.Then("on empty", func(t *testcase.T) {
-			t.Must.Empty(act(t))
-		})
-
-		s.When("a valid error value is part of the error list", func(s *testcase.Spec) {
-			expectedErr := testcase.Let(s, func(t *testcase.T) error {
-				return t.Random.Error()
-			})
-
-			s.Before(func(t *testcase.T) {
-				subject.Set(t, append(subject.Get(t), expectedErr.Get(t)))
-			})
-
-			s.Then("error value is returned", func(t *testcase.T) {
-				t.Must.Equal(expectedErr.Get(t).Error(), act(t))
-			})
-		})
-
-		s.When("multiple value is present in the error list", func(s *testcase.Spec) {
-			var (
-				expectedErr1 = testcase.Let(s, func(t *testcase.T) error {
-					return t.Random.Error()
-				})
-				expectedErr2 = testcase.Let(s, func(t *testcase.T) error {
-					return t.Random.Error()
-				})
-			)
-
-			s.Before(func(t *testcase.T) {
-				subject.Set(t, append(subject.Get(t), expectedErr1.Get(t), expectedErr2.Get(t)))
-			})
-
-			s.Then("error value is returned", func(t *testcase.T) {
-				out := act(t)
-				t.Must.Contain(out, expectedErr1.Get(t).Error())
-				t.Must.Contain(out, expectedErr2.Get(t).Error())
-			})
-		})
-	})
-
-	s.Describe(".As or errors.As(err, target)", func(s *testcase.Spec) {
-		var (
-			target = testcase.Let[*TargetErrorType](s, func(t *testcase.T) *TargetErrorType {
-				return &TargetErrorType{}
-			})
-		)
-		act := func(t *testcase.T) bool {
-			return errors.As(subject.Get(t), target.Get(t))
-		}
-
-		s.When("error list is empty", func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				t.Must.Empty(subject.Get(t))
-			})
-
-			s.Then("target value not found", func(t *testcase.T) {
-				t.Must.False(act(t))
-			})
-		})
-
-		s.When("error values are present", func(s *testcase.Spec) {
-			var (
-				expectedErr1 = testcase.Let(s, func(t *testcase.T) error {
-					return t.Random.Error()
-				})
-				expectedErr2 = testcase.Let[error](s, nil)
-			)
-
-			s.Before(func(t *testcase.T) {
-				subject.Set(t, append(subject.Get(t), expectedErr1.Get(t), expectedErr2.Get(t)))
-			})
-
-			s.And("target is part of them", func(s *testcase.Spec) {
-				expectedErr2.Let(s, func(t *testcase.T) error {
-					return TargetErrorType{ID: t.Random.Int()}
-				})
-
-				s.Then("then target is found", func(t *testcase.T) {
-					t.Must.True(act(t))
-
-					t.Must.Equal(*target.Get(t), expectedErr2.Get(t))
-				})
-			})
-
-			s.And("target is not part of them", func(s *testcase.Spec) {
-				expectedErr2.Let(s, func(t *testcase.T) error {
-					return t.Random.Error()
-				})
-
-				s.Then("then target is not found", func(t *testcase.T) {
-					t.Must.False(act(t))
-				})
-			})
-		})
-	})
-}
-
-func TestToErr_slice(t *testing.T) {
+func TestMerge(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
 		errs = testcase.Let[[]error](s, nil)
 	)
 	act := func(t *testcase.T) error {
-		return Merge(errs.Get(t)...)
+		return errorutil.Merge(errs.Get(t)...)
 	}
 
-	s.When("error list is empty", func(s *testcase.Spec) {
+	s.When("no error is supplied", func(s *testcase.Spec) {
 		errs.Let(s, func(t *testcase.T) []error {
 			return []error{}
 		})
 
-		s.Then("it returns nil", func(t *testcase.T) {
+		s.Then("it will return with nil", func(t *testcase.T) {
 			t.Must.Nil(act(t))
+		})
+
+		s.Then("errors.Is yield false", func(t *testcase.T) {
+			err := act(t)
+			t.Must.False(errors.Is(err, ErrType1{}))
+			t.Must.False(errors.Is(err, ErrType2{}))
+		})
+
+		s.Then("errors.As yield false", func(t *testcase.T) {
+			err := act(t)
+			t.Must.False(errors.As(err, &ErrType1{}))
+			t.Must.False(errors.As(err, &ErrType2{}))
 		})
 	})
 
-	s.When("a valid error value is part of the error list", func(s *testcase.Spec) {
-		expectedErr := testcase.Let(s, func(t *testcase.T) error {
-			return t.Random.Error()
-		})
+	s.When("an error value is supplied", func(s *testcase.Spec) {
+		expectedErr := let.Error(s)
+
 		errs.Let(s, func(t *testcase.T) []error {
 			return []error{expectedErr.Get(t)}
 		})
 
-		s.Then("error value is returned", func(t *testcase.T) {
-			t.Must.ErrorIs(expectedErr.Get(t), act(t))
+		s.Then("the exact value is returned", func(t *testcase.T) {
+			t.Must.Equal(expectedErr.Get(t), act(t))
+		})
+
+		s.Then("errors.Is yield false", func(t *testcase.T) {
+			err := act(t)
+			t.Must.False(errors.Is(err, ErrType1{}))
+			t.Must.False(errors.Is(err, ErrType2{}))
+		})
+
+		s.Then("errors.As yield false", func(t *testcase.T) {
+			err := act(t)
+			t.Must.False(errors.As(err, &ErrType1{}))
+			t.Must.False(errors.As(err, &ErrType2{}))
+		})
+
+		s.And("the error value is a typed error value", func(s *testcase.Spec) {
+			expectedErr.LetValue(s, ErrType1{})
+
+			s.Then("the exact value is returned", func(t *testcase.T) {
+				t.Must.Equal(expectedErr.Get(t), act(t))
+			})
+
+			s.Then("errors.Is will find wrapped error", func(t *testcase.T) {
+				err := act(t)
+				t.Must.True(errors.Is(err, ErrType1{}))
+				t.Must.False(errors.Is(err, ErrType2{}))
+			})
+
+			s.Then("errors.As will find the wrapped error", func(t *testcase.T) {
+				err := act(t)
+				t.Must.True(errors.As(err, &ErrType1{}))
+				t.Must.False(errors.As(err, &ErrType2{}))
+			})
+		})
+
+		s.And("but the error value is nil", func(s *testcase.Spec) {
+			expectedErr.LetValue(s, nil)
+
+			s.Then("it will return with nil", func(t *testcase.T) {
+				t.Must.Nil(act(t))
+			})
+
+			s.Then("errors.Is yield false", func(t *testcase.T) {
+				err := act(t)
+				t.Must.False(errors.Is(err, ErrType1{}))
+				t.Must.False(errors.Is(err, ErrType2{}))
+			})
+
+			s.Then("errors.As yield false", func(t *testcase.T) {
+				err := act(t)
+				t.Must.False(errors.As(err, &ErrType1{}))
+				t.Must.False(errors.As(err, &ErrType2{}))
+			})
 		})
 	})
 
-	s.When("multiple value is present in the error list", func(s *testcase.Spec) {
-		var (
-			expectedErr1 = testcase.Let(s, func(t *testcase.T) error {
-				return t.Random.Error()
-			})
-			expectedErr2 = testcase.Let(s, func(t *testcase.T) error {
-				return t.Random.Error()
-			})
-		)
+	s.When("multiple error values are supplied", func(s *testcase.Spec) {
+		expectedErr1 := let.Error(s)
+		expectedErr2 := let.Error(s)
+		expectedErr3 := let.Error(s)
+
 		errs.Let(s, func(t *testcase.T) []error {
-			return []error{expectedErr1.Get(t), expectedErr2.Get(t)}
+			return []error{
+				expectedErr1.Get(t),
+				expectedErr2.Get(t),
+				expectedErr3.Get(t),
+			}
 		})
 
-		s.Then("error value is returned", func(t *testcase.T) {
-			out := act(t).(multiError)
-			t.Must.Contain(out, expectedErr1.Get(t))
-			t.Must.Contain(out, expectedErr2.Get(t))
+		s.Then("retruned value includes all three error value", func(t *testcase.T) {
+			err := act(t)
+			t.Must.ErrorIs(expectedErr1.Get(t), err)
+			t.Must.ErrorIs(expectedErr2.Get(t), err)
+			t.Must.ErrorIs(expectedErr2.Get(t), err)
+		})
+
+		s.Then("errors.Is yield false", func(t *testcase.T) {
+			err := act(t)
+			t.Must.False(errors.Is(err, ErrType1{}))
+			t.Must.False(errors.Is(err, ErrType2{}))
+		})
+
+		s.Then("errors.As yield false", func(t *testcase.T) {
+			err := act(t)
+			t.Must.False(errors.As(err, &ErrType1{}))
+			t.Must.False(errors.As(err, &ErrType2{}))
+		})
+
+		s.And("the errors has a typed error value", func(s *testcase.Spec) {
+			expectedErr2.LetValue(s, ErrType1{})
+
+			s.Then("the named error value is returned", func(t *testcase.T) {
+				t.Must.ErrorIs(expectedErr2.Get(t), act(t))
+			})
+
+			s.Then("errors.Is can find the wrapped error", func(t *testcase.T) {
+				err := act(t)
+				t.Must.True(errors.Is(err, ErrType1{}))
+				t.Must.False(errors.Is(err, ErrType2{}))
+			})
+
+			s.Then("errors.As can find the wrapped error", func(t *testcase.T) {
+				err := act(t)
+				t.Must.True(errors.As(err, &ErrType1{}))
+				t.Must.False(errors.As(err, &ErrType2{}))
+			})
+		})
+
+		s.And("the errors has multiple typed error value", func(s *testcase.Spec) {
+			expectedErr2.LetValue(s, ErrType1{})
+			expectedErr3.Let(s, func(t *testcase.T) error {
+				return ErrType2{V: t.Random.Int()}
+			})
+
+			s.Then("returned error contains all typed error", func(t *testcase.T) {
+				t.Must.ErrorIs(expectedErr2.Get(t), act(t))
+				t.Must.ErrorIs(expectedErr3.Get(t), act(t))
+			})
+
+			s.Then("errors.Is can find the wrapped error", func(t *testcase.T) {
+				err := act(t)
+				t.Must.True(errors.Is(err, expectedErr2.Get(t)))
+				t.Must.True(errors.Is(err, expectedErr3.Get(t)))
+				t.Must.False(errors.Is(err, ErrType2{}))
+			})
+
+			s.Then("errors.As can find the wrapped error", func(t *testcase.T) {
+				err := act(t)
+				t.Must.True(errors.As(err, &ErrType1{}))
+
+				var gotErrWithAs ErrType2
+				t.Must.True(errors.As(err, &gotErrWithAs))
+				t.Must.NotNil(gotErrWithAs)
+				t.Must.Equal(expectedErr3.Get(t), gotErrWithAs)
+			})
+		})
+
+		s.And("but the error values are nil", func(s *testcase.Spec) {
+			expectedErr1.LetValue(s, nil)
+			expectedErr2.LetValue(s, nil)
+			expectedErr3.LetValue(s, nil)
+
+			s.Then("it will return with nil", func(t *testcase.T) {
+				t.Must.Nil(act(t))
+			})
+
+			s.Then("errors.Is yield false", func(t *testcase.T) {
+				err := act(t)
+				t.Must.False(errors.Is(err, ErrType1{}))
+				t.Must.False(errors.Is(err, ErrType2{}))
+			})
+
+			s.Then("errors.As yield false", func(t *testcase.T) {
+				err := act(t)
+				t.Must.False(errors.As(err, &ErrType1{}))
+				t.Must.False(errors.As(err, &ErrType2{}))
+			})
 		})
 	})
-}
 
-type TargetErrorType struct {
-	ID int
-}
-
-func (err TargetErrorType) Error() string {
-	return "42"
 }

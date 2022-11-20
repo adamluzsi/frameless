@@ -48,3 +48,12 @@ func (errs multiError) As(target any) bool {
 	}
 	return false
 }
+
+func (errs multiError) Is(target error) bool {
+	for _, err := range errs {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
