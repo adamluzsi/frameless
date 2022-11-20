@@ -13,10 +13,12 @@ func ExampleUserError() {
 
 	err := fmt.Errorf("foo bar baz")
 	err = errorutil.UserError{
-		Err:     err,
-		Code:    "foo-is-forbidden-with-active-baz",
-		Message: fmt.Sprintf("It is forbidden to execute Foo(ID:%d) when you have an active Baz (ID:%d)", fooEntityID, bazEntityID),
+		ID:      "foo-is-forbidden-with-active-baz",
+		Message: "It is forbidden to execute Foo when you have an active Baz",
 	}
+
+	// add some details using error wrapping
+	err = fmt.Errorf("%w -> Foo(ID:%d) /Baz(ID:%d)", err, fooEntityID, bazEntityID)
 
 	// retrieve with errors pkg
 	if ue := (errorutil.UserError{}); errors.As(err, &ue) {
@@ -36,10 +38,8 @@ func ExampleUserError() {
 }
 
 func ExampleIsUserError() {
-	err := fmt.Errorf("foo bar baz")
-	err = errorutil.UserError{
-		Err:     err,
-		Code:    "const-err-scenario-code",
+	err := errorutil.UserError{
+		ID:      "const-err-scenario-code",
 		Message: "some message for the dev",
 	}
 	if errorutil.IsUserError(err) {
@@ -48,10 +48,8 @@ func ExampleIsUserError() {
 }
 
 func ExampleLookupUserError() {
-	err := fmt.Errorf("foo bar baz")
-	err = errorutil.UserError{
-		Err:     err,
-		Code:    "const-err-scenario-code",
+	err := errorutil.UserError{
+		ID:      "const-err-scenario-code",
 		Message: "some message for the dev",
 	}
 	if userError, ok := errorutil.LookupUserError(err); ok {
