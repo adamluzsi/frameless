@@ -13,8 +13,8 @@ func TestUserError(t *testing.T) {
 
 	s.Test("when user error has no documentation", func(t *testcase.T) {
 		usrErr := errorutil.UserError{
-			ID:      t.Random.UUID(),
-			Message: t.Random.Error().Error(),
+			ID:      "foo-bar-baz",
+			Message: "foo is not ",
 		}
 		err := fmt.Errorf("wrapped: %w", usrErr)
 		gotUserErr, ok := errorutil.LookupUserError(err)
@@ -25,6 +25,30 @@ func TestUserError(t *testing.T) {
 		t.Must.Contain(err.Error(), "wrapped: ")
 		t.Must.Contain(err.Error(), usrErr.Message)
 		t.Must.Contain(err.Error(), usrErr.ID)
+
+		gotUsrErr := errorutil.UserError{}
+		t.Must.True(errors.As(err, &gotUsrErr))
+		t.Must.Equal(usrErr, gotUsrErr)
+		t.Must.True(errors.Is(err, usrErr))
+	})
+
+	s.Test("when user error .With used to add documentation", func(t *testcase.T) {
+		usrErr := errorutil.UserError{
+			ID:      "foo-bar-baz",
+			Message: "foo is not ",
+		}
+
+		var err error = usrErr.With().Detail("some detail")
+		err = fmt.Errorf("wrapped: %w", err)
+		gotUserErr, ok := errorutil.LookupUserError(err)
+		t.Must.True(ok)
+		t.Must.Equal(usrErr, gotUserErr)
+		t.Must.True(errorutil.IsUserError(err))
+		t.Must.ErrorIs(usrErr, err)
+		t.Must.Contain(err.Error(), "wrapped: ")
+		t.Must.Contain(err.Error(), usrErr.Message)
+		t.Must.Contain(err.Error(), usrErr.ID)
+		t.Must.Contain(err.Error(), "some detail")
 
 		gotUsrErr := errorutil.UserError{}
 		t.Must.True(errors.As(err, &gotUsrErr))
