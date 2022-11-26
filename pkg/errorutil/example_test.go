@@ -95,7 +95,7 @@ func ExampleWith_Context() {
 	err := fmt.Errorf("foo bar baz")
 	ctx := context.Background()
 
-	err = errorutil.With{Err: err}.
+	err = errorutil.With(err).
 		Context(ctx)
 
 	_, _ = errorutil.LookupContext(err) // ctx, true
@@ -104,7 +104,7 @@ func ExampleWith_Context() {
 func ExampleWith_Detail() {
 	err := fmt.Errorf("foo bar baz")
 
-	err = errorutil.With{Err: err}.
+	err = errorutil.With(err).
 		Detail("it was the foo or bar or baz")
 
 	_, _ = errorutil.LookupDetail(err) // "it was the foo or bar or baz", true
@@ -113,7 +113,7 @@ func ExampleWith_Detail() {
 func ExampleWith_Detailf() {
 	err := fmt.Errorf("foo bar baz")
 
-	err = errorutil.With{Err: err}.
+	err = errorutil.With(err).
 		Detailf("--> %s <--", "it was the foo or bar or baz")
 
 	_, _ = errorutil.LookupDetail(err) // "--> it was the foo or bar or baz <--", true

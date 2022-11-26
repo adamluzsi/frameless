@@ -1,6 +1,8 @@
 package errorutil
 
-import "github.com/adamluzsi/frameless/pkg/errorutil/internal"
+import (
+	"github.com/adamluzsi/frameless/pkg/internal"
+)
 
 var (
 	_ internal.ErrorAs     = multiError{}

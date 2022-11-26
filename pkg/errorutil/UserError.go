@@ -2,7 +2,7 @@ package errorutil
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/errorutil/internal/constant"
+	"github.com/adamluzsi/frameless/pkg/internal/constant"
 )
 
 func IsUserError(err error) bool {
@@ -35,6 +35,6 @@ func (err UserError) Error() string {
 	return "[" + string(err.ID) + "] " + string(err.Message)
 }
 
-func (err UserError) With() With {
-	return With{Err: err}
+func (err UserError) With() WithErr {
+	return WithErr{Err: err}
 }

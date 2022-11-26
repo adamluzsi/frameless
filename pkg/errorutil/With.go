@@ -6,12 +6,12 @@ import (
 	"fmt"
 )
 
-type With struct {
-	Err error
-}
+func With(err error) WithErr { return WithErr{Err: err} }
 
-func (w With) Error() string { return w.Err.Error() }
-func (w With) Unwrap() error { return w.Err }
+type WithErr struct{ Err error }
+
+func (w WithErr) Error() string { return w.Err.Error() }
+func (w WithErr) Unwrap() error { return w.Err }
 
 func LookupContext(err error) (context.Context, bool) {
 	var detail errorWithContext
@@ -23,8 +23,8 @@ func LookupContext(err error) (context.Context, bool) {
 
 // Context will combine an error with a context, so the current context can be used at the place of error handling.
 // This can be useful if tracing ID and other helpful values are kept in the context.
-func (w With) Context(ctx context.Context) With {
-	return With{Err: errorWithContext{
+func (w WithErr) Context(ctx context.Context) WithErr {
+	return WithErr{Err: errorWithContext{
 		Err: w.Err,
 		Ctx: ctx,
 	}}
@@ -52,8 +52,8 @@ func LookupDetail(err error) (string, bool) {
 }
 
 // Detail will return an error that has explanation as detail attached to it.
-func (w With) Detail(detail string) With {
-	return With{Err: errorWithDetail{
+func (w WithErr) Detail(detail string) WithErr {
+	return WithErr{Err: errorWithDetail{
 		Err:    w.Err,
 		Detail: detail,
 	}}
@@ -61,8 +61,8 @@ func (w With) Detail(detail string) With {
 
 // Detailf will return an error that has explanation as detail attached to it.
 // Detailf formats according to a fmt format specifier and returns the resulting string.
-func (w With) Detailf(format string, a ...any) error {
-	return With{Err: errorWithDetail{
+func (w WithErr) Detailf(format string, a ...any) error {
+	return WithErr{Err: errorWithDetail{
 		Err:    w.Err,
 		Detail: fmt.Sprintf(format, a...),
 	}}
