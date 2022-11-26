@@ -2,3 +2,7 @@ github.com/adamluzsi/testcase v0.108.2 h1:TClr4LsAO5OKIL7woESE7RAKQfanZOLCEI+KFR
 github.com/adamluzsi/testcase v0.108.2/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
 github.com/adamluzsi/testcase v0.115.0 h1:i8HaPTdTu1wfk1ctbvnJU6yrjfJ1nieu7MUUsfDkrx4=
 github.com/adamluzsi/testcase v0.115.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+github.com/adamluzsi/testcase v0.119.0 h1:3phPvuj1MKgocu/+ijTsjdMerdWyf8XZJ6MXm6yKMzs=
+github.com/adamluzsi/testcase v0.119.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+github.com/adamluzsi/testcase v0.119.1 h1:a19WWIsjvrXyU3thVM98CPkDAhXDxgs93RNdHSfNeHs=
+github.com/adamluzsi/testcase v0.119.1/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
