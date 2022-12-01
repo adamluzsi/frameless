@@ -94,6 +94,35 @@ func TestWith_Context(t *testing.T) {
 	})
 }
 
+func TestWith_Wrap(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		err    = let.Error(s)
+		usrErr = testcase.Let(s, func(t *testcase.T) errorutil.UserError {
+			return errorutil.UserError{
+				ID:      "42",
+				Message: "The answer to the ultimate question of life, the universe, and everything.",
+			}
+		})
+	)
+	act := func(t *testcase.T) error {
+		return errorutil.WithErr{Err: err.Get(t)}.Wrap(usrErr.Get(t))
+	}
+
+	s.Then("wrapped error can be checked with errors.Is", func(t *testcase.T) {
+		gotErr := act(t)
+		t.Must.True(errors.Is(gotErr, usrErr.Get(t)))
+	})
+
+	s.Then("wrapped error can be checked with errors.As", func(t *testcase.T) {
+		gotErr := act(t)
+		var gotUsrErr errorutil.UserError
+		t.Must.True(errors.As(gotErr, &gotUsrErr))
+		t.Must.Equal(usrErr.Get(t), gotUsrErr)
+	})
+}
+
 func TestWith_Detail(t *testing.T) {
 	s := testcase.NewSpec(t)
 

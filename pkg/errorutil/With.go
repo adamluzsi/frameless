@@ -11,6 +11,11 @@ func With(err error) WithErr { return WithErr{Err: err} }
 type WithErr struct{ Err error }
 
 func (w WithErr) Error() string { return w.Err.Error() }
+
+func (w WithErr) Wrap(err error) WithErr {
+	return WithErr{Err: Merge(w.Err, err)}
+}
+
 func (w WithErr) Unwrap() error { return w.Err }
 
 func LookupContext(err error) (context.Context, bool) {
