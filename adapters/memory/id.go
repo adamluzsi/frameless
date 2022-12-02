@@ -2,12 +2,14 @@ package memory
 
 import (
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"strconv"
 	"sync"
 )
 
 func errNotFound(T, id any) error {
-	return fmt.Errorf(`%T entity not found by id: %v`, T, id)
+	return errorutil.With(crud.ErrNotFound).Detailf(`%T entity not found by id: %v`, T, id)
 }
 
 func newDummyID(id any) (interface{}, error) {

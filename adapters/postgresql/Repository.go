@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"io"
 	"strings"
 
@@ -27,7 +29,6 @@ func NewRepositoryWithDSN[Entity, ID any](dsn string, m Mapping[Entity]) *Reposi
 
 // Repository is a frameless external resource supplier to store a certain entity type.
 // The Repository supplier itself is a stateless entity.
-//
 //
 // SRP: DBA
 type Repository[Entity, ID any] struct {
@@ -70,7 +71,7 @@ func (pg *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr
 		return err
 	}
 
-	if _, ok := extid.Lookup[ID](ptr); !ok {
+	if id, ok := extid.Lookup[ID](ptr); !ok {
 		// TODO: add serialize TX level here
 
 		id, err := pg.Mapping.NewID(ctx)
@@ -80,6 +81,17 @@ func (pg *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr
 
 		if err := extid.Set(ptr, id); err != nil {
 			return err
+		}
+	} else {
+		_, found, err := pg.FindByID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if found {
+			return errorutil.With(crud.ErrAlreadyExists).
+				Detailf(`%T already exists with id: %v`, *new(Entity), id).
+				Context(ctx).
+				Unwrap()
 		}
 	}
 
@@ -166,7 +178,7 @@ func (pg *Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr e
 	}
 
 	if count == 0 {
-		return fmt.Errorf(`ErrNotFound`)
+		return crud.ErrNotFound
 	}
 
 	if err := pg.SubscriptionManager.PublishDeleteByIDEvent(ctx, pubsub.DeleteByIDEvent[ID]{ID: id}); err != nil {
@@ -230,7 +242,7 @@ func (pg *Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr
 			return err
 		}
 		if affected == 0 {
-			return fmt.Errorf(`deployment environment not found`)
+			return crud.ErrNotFound
 		}
 	}
 

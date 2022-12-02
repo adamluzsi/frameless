@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"sync"
 
 	"github.com/adamluzsi/frameless/pkg/doubles"
@@ -95,7 +97,10 @@ func (s *EventLogRepository[Entity, ID]) Create(ctx context.Context, ptr *Entity
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return fmt.Errorf(`%T already exists with id: %v`, *new(Entity), id)
+		return errorutil.With(crud.ErrAlreadyExists).
+			Detailf(`%T already exists with id: %v`, *new(Entity), id).
+			Context(ctx).
+			Unwrap()
 	}
 
 	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
@@ -146,7 +151,8 @@ func (s *EventLogRepository[Entity, ID]) Update(ctx context.Context, ptr *Entity
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`%T entity not found by id: %v`, ptr, id)
+		return errorutil.With(crud.ErrNotFound).
+			Detailf(`%T entity not found by id: %v`, ptr, id)
 	}
 
 	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
@@ -163,7 +169,8 @@ func (s *EventLogRepository[Entity, ID]) DeleteByID(ctx context.Context, id ID) 
 		return err
 	}
 	if !found {
-		return fmt.Errorf(`%T entity not found by id: %v`, *new(Entity), id)
+		return errorutil.With(crud.ErrNotFound).
+			Detailf(`%T entity not found by id: %v`, *new(Entity), id)
 	}
 
 	ptr := new(Entity)

@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -98,7 +99,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Then(`it will raise error because ext:ID field already points to a existing record`, func(t *testcase.T) {
-			t.Must.NotNil(subject(t))
+			t.Must.ErrorIs(crud.ErrAlreadyExists, subject(t))
 		})
 	})
 

@@ -155,7 +155,7 @@ func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
-				t.Must.NotNil(subject(t))
+				t.Must.ErrorIs(crud.ErrNotFound, subject(t))
 			})
 		})
 	})

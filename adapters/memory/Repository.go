@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"reflect"
 	"sync"
 
@@ -46,7 +48,10 @@ func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error 
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return fmt.Errorf(`%T already exists with id: %v`, *new(Entity), id)
+		return errorutil.With(crud.ErrAlreadyExists).
+			Detailf(`%T already exists with id: %v`, *new(Entity), id).
+			Context(ctx).
+			Unwrap()
 	}
 
 	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))

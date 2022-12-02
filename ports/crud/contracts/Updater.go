@@ -117,7 +117,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
-			assert.Must(t).NotNil(subject(t))
+			t.Must.ErrorIs(crud.ErrNotFound, subject(t))
 		})
 	})
 }

@@ -66,7 +66,7 @@ func (w WithErr) Detail(detail string) WithErr {
 
 // Detailf will return an error that has explanation as detail attached to it.
 // Detailf formats according to a fmt format specifier and returns the resulting string.
-func (w WithErr) Detailf(format string, a ...any) error {
+func (w WithErr) Detailf(format string, a ...any) WithErr {
 	return WithErr{Err: errorWithDetail{
 		Err:    w.Err,
 		Detail: fmt.Sprintf(format, a...),
