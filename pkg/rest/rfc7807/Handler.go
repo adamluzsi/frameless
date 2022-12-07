@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/internal/constant"
 	"net/http"
@@ -61,13 +62,22 @@ func (h Handler[Extensions]) HandleError(w http.ResponseWriter, r *http.Request,
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(dto.Status)
-	_ = json.NewEncoder(w).Encode(dto)
+	bytes, err := json.Marshal(dto)
+	if err != nil {
+		fmt.Println("WARN", "rfc7807.Handler", "json.Marshal", err.Error())
+		return
+	}
+	_, _ = w.Write(bytes)
 }
 
 func (h Handler[Extensions]) toTitleCase(id constant.String) string {
 	title := string(id)
 	title = strings.ReplaceAll(title, "-", " ")
 	title = strings.ReplaceAll(title, "_", " ")
-	title = strings.ToTitle(title)
+	title = strings.ToLower(title)
+	if chars := []rune(title); 0 < len(chars) {
+		fl := strings.ToUpper(string(chars[0:1]))
+		title = fl + string(chars[1:])
+	}
 	return title
 }

@@ -1,7 +1,5 @@
 package frameless_test
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestSandbox(t *testing.T) {}

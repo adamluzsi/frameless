@@ -14,14 +14,14 @@ import (
 // https://www.rfc-editor.org/rfc/rfc7807
 //
 // Example:
-// 		{
-// 		   "type": "/errors/incorrect-user-pass",
-// 		   "title": "Incorrect username or password.",
-// 		   "status": 401,
-// 		   "detail": "Authentication failed due to incorrect username or password.",
-// 		   "instance": "/login/log/abc123"
-// 		}
 //
+//	{
+//	   "type": "/errors/incorrect-user-pass",
+//	   "title": "Incorrect username or password.",
+//	   "status": 401,
+//	   "detail": "Authentication failed due to incorrect username or password.",
+//	   "instance": "/login/log/abc123"
+//	}
 type DTO[Extensions any] struct {
 	// Type is a URI reference that identifies the problem type.
 	// Ideally, the URI should resolve to human-readable information describing the type, but that’s not necessary.
@@ -117,7 +117,7 @@ func (v DTO[Extensions]) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !v.isExtensionsTypeIsAStruct() {
+	if !v.hasExtensions() {
 		return base, err
 	}
 	extra, err := json.Marshal(v.Extensions)
@@ -145,7 +145,7 @@ func (v *DTO[Extensions]) UnmarshalJSON(bytes []byte) error {
 	v.Status = base.Status
 	v.Detail = base.Detail
 	v.Instance = base.Instance
-	if !v.isExtensionsTypeIsAStruct() {
+	if !v.hasExtensions() {
 		return nil
 	}
 	var ext Extensions
@@ -156,6 +156,10 @@ func (v *DTO[Extensions]) UnmarshalJSON(bytes []byte) error {
 	return nil
 }
 
-func (v DTO[Extensions]) isExtensionsTypeIsAStruct() bool {
-	return reflect.TypeOf(*new(Extensions)).Kind() == reflect.Struct
+func (v DTO[Extensions]) hasExtensions() bool {
+	rt := reflect.TypeOf(*new(Extensions))
+	if rt == nil {
+		return false
+	}
+	return rt.Kind() == reflect.Struct && rt.NumField() != 0
 }
