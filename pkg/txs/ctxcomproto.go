@@ -31,7 +31,7 @@ func Finish(returnError *error, tx context.Context) {
 		rollbackErr == ErrTxDone {
 		return
 	}
-	*returnError = &txRollbackError{
+	*returnError = &TxRollbackError{
 		Cause: *returnError,
 		Err:   rollbackErr,
 	}

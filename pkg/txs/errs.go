@@ -12,15 +12,15 @@ const (
 	ErrNoTx   errorutil.Error = "no transaction present in the current context"
 )
 
-type txRollbackError struct {
+type TxRollbackError struct {
 	Err   error
 	Cause error
 }
 
-func (err *txRollbackError) Error() string {
+func (err *TxRollbackError) Error() string {
 	return fmt.Sprintf("%s (rollback: %s)", err.Cause, err.Err)
 }
 
-func (err *txRollbackError) Unwrap() error {
+func (err *TxRollbackError) Unwrap() error {
 	return err.Cause
 }
