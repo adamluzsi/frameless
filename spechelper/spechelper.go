@@ -253,3 +253,7 @@ func ToPtr[T any](v T) *T { return &v }
 func Base(e interface{}) interface{} {
 	return reflects.BaseValueOf(e).Interface()
 }
+
+func ToLet[T any](mkfn func(testing.TB) T) func(t *testcase.T) T {
+	return func(t *testcase.T) T { return mkfn(t) }
+}
