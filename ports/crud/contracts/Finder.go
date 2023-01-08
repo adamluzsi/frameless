@@ -168,7 +168,7 @@ type AllFinder[Entity, ID any] struct {
 
 type AllFinderSubject[Entity, ID any] interface {
 	spechelper.CRD[Entity, ID]
-	crud.AllFinder[Entity, ID]
+	crud.AllFinder[Entity]
 }
 
 func (c AllFinder[Entity, ID]) Name() string {

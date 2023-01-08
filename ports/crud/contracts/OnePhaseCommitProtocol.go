@@ -89,7 +89,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Must.NotNil(err)
 			t.Must.NotNil(c.resource().Get(t).Create(tx, spechelper.ToPtr(c.MakeEntity(t))))
 
-			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity, ID]); ok {
+			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity]); ok {
 				t.Must.NotNil(allFinder.FindAll(tx).Err())
 			}
 
@@ -119,7 +119,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			_, _, err = c.resource().Get(t).FindByID(ctx, id)
 			t.Must.NotNil(err)
 
-			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity, ID]); ok {
+			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity]); ok {
 				t.Must.NotNil(allFinder.FindAll(ctx).Err())
 			}
 

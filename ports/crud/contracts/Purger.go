@@ -44,7 +44,7 @@ func (c Purger[Entity, ID]) specPurge(s *testcase.Spec) {
 
 	s.Then(`after the purge, resource is empty`, func(t *testcase.T) {
 		r := c.resourceGet(t)
-		allFinder, ok := r.(crud.AllFinder[Entity, ID])
+		allFinder, ok := r.(crud.AllFinder[Entity])
 		if !ok {
 			t.Skip("crud.AllFinder is not supported")
 		}
@@ -63,7 +63,7 @@ func (c Purger[Entity, ID]) specPurge(s *testcase.Spec) {
 
 		s.Then(`it will purge the entities`, func(t *testcase.T) {
 			r := c.resourceGet(t)
-			allFinder, ok := r.(crud.AllFinder[Entity, ID])
+			allFinder, ok := r.(crud.AllFinder[Entity])
 			if !ok {
 				t.Skip("crud.AllFinder is not supported")
 			}

@@ -19,7 +19,7 @@ type Creator[Entity any] interface {
 
 type Finder[Entity, ID any] interface {
 	ByIDFinder[Entity, ID]
-	AllFinder[Entity, ID]
+	AllFinder[Entity]
 }
 
 type ByIDFinder[Entity, ID any] interface {
@@ -31,7 +31,7 @@ type ByIDFinder[Entity, ID any] interface {
 	FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error)
 }
 
-type AllFinder[Entity, ID any] interface {
+type AllFinder[Entity any] interface {
 	// FindAll will return all entity that has <V> type
 	FindAll(context.Context) iterators.Iterator[Entity]
 }

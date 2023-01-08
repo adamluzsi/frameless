@@ -5,7 +5,7 @@ package rest
 //	if v, ok := res.(crud.Creator[Entity]); ok {
 //		r.Creator = v
 //	}
-//	if v, ok := res.(crud.AllFinder[Entity, ID]); ok {
+//	if v, ok := res.(crud.AllFinder[Entity]); ok {
 //		r.AllFinder = v
 //	}
 //	if v, ok := res.(crud.ByIDFinder[Entity, ID]); ok {

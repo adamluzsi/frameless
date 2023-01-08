@@ -104,7 +104,7 @@ func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx conte
 }
 
 type deleteAllDeleter[Entity, ID any] interface {
-	crud.AllFinder[Entity, ID]
+	crud.AllFinder[Entity]
 	crud.AllDeleter
 }
 

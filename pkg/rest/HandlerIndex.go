@@ -8,7 +8,7 @@ import (
 )
 
 func (h Handler[Entity, ID, DTO]) index(w http.ResponseWriter, r *http.Request) {
-	finder, ok := h.Resource.(crud.AllFinder[Entity, ID])
+	finder, ok := h.Resource.(crud.AllFinder[Entity])
 	if !ok {
 		h.errMethodNotAllowed(w, r)
 		return
