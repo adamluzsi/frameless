@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/ports/crud"
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
-	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -73,7 +72,7 @@ func (c ByIDFinder[Entity, ID]) Spec(s *testcase.Spec) {
 		MakeContext: c.MakeContext,
 		MakeEntity:  c.MakeEntity,
 		MethodName:  "FindByID",
-		ToQuery: func(tb testing.TB, resource FindOneSubject[Entity, ID], ent Entity) QueryOne[Entity] {
+		ToQuery: func(tb testing.TB, resource FindOneSubject[Entity, ID], ent Entity) QueryOneFunc[Entity] {
 			id, ok := extid.Lookup[ID](ent)
 			if !ok { // if no id found create a dummy ID
 				// Since an id is always required to use FindByID,
@@ -175,100 +174,22 @@ func (c AllFinder[Entity, ID]) Name() string {
 }
 
 func (c AllFinder[Entity, ID]) Spec(s *testcase.Spec) {
-	resource := testcase.Let(s, func(t *testcase.T) AllFinderSubject[Entity, ID] {
-		return c.MakeSubject(t)
-	})
-
-	beforeAll := &sync.Once{}
-	s.Before(func(t *testcase.T) {
-		beforeAll.Do(func() { spechelper.TryCleanup(t, c.MakeContext(t), resource.Get(t)) })
-	})
-
-	s.Describe(`FindAll`, func(s *testcase.Spec) {
-		var (
-			ctx = testcase.Let(s, func(t *testcase.T) context.Context {
-				return c.MakeContext(t)
-			})
-			subject = func(t *testcase.T) iterators.Iterator[Entity] {
-				return resource.Get(t).FindAll(ctx.Get(t))
+	QueryMany[Entity, ID]{
+		MakeSubject: func(tb testing.TB) QueryManySubject[Entity, ID] {
+			resource := c.MakeSubject(tb)
+			return QueryManySubject[Entity, ID]{
+				Resource: resource,
+				MakeQuery: func(tb testing.TB, ctx context.Context) iterators.Iterator[Entity] {
+					return resource.FindAll(ctx)
+				},
 			}
-		)
-
-		s.Before(func(t *testcase.T) {
-			spechelper.TryCleanup(t, c.MakeContext(t), resource.Get(t))
-		})
-
-		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			ent := c.MakeEntity(t)
-			return &ent
-		})
-
-		s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				Create[Entity, ID](t, resource.Get(t), c.MakeContext(t), entity.Get(t))
-			})
-
-			s.Then(`the entity will returns the all the entity in volume`, func(t *testcase.T) {
-				Eventually.Assert(t, func(tb assert.It) {
-					count, err := iterators.Count(subject(t))
-					assert.Must(tb).Nil(err)
-					assert.Must(tb).Equal(1, count)
-				})
-			})
-
-			s.Then(`the returned iterator includes the stored entity`, func(t *testcase.T) {
-				Eventually.Assert(t, func(tb assert.It) {
-					entities := c.findAllN(t, subject, 1)
-					spechelper.Contains[Entity](tb, entities, *entity.Get(t))
-				})
-			})
-
-			s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
-				othEntity := testcase.Let(s, func(t *testcase.T) *Entity {
-					ent := c.MakeEntity(t)
-					Create[Entity, ID](t, resource.Get(t), c.MakeContext(t), &ent)
-					return &ent
-				}).EagerLoading(s)
-
-				s.Then(`all entity will be fetched`, func(t *testcase.T) {
-					Eventually.Assert(t, func(tb assert.It) {
-						entities := c.findAllN(t, subject, 2)
-						spechelper.Contains[Entity](tb, entities, *entity.Get(t))
-						spechelper.Contains[Entity](tb, entities, *othEntity.Get(t))
-					})
-				})
-			})
-		})
-
-		s.When(`no entity saved before in the resource`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				spechelper.TryCleanup(t, c.MakeContext(t), resource.Get(t))
-			})
-
-			s.Then(`the iterator will have no result`, func(t *testcase.T) {
-				count, err := iterators.Count(subject(t))
-				t.Must.Nil(err)
-				t.Must.Equal(0, count)
-			})
-		})
-
-		s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
-			ctx.Let(s, func(t *testcase.T) context.Context {
-				ctx, cancel := context.WithCancel(c.MakeContext(t))
-				cancel()
-				return ctx
-			})
-
-			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-				iter := subject(t)
-				_ = iter.Next()
-				err := iter.Err()
-				t.Must.NotNil(err)
-				t.Must.Equal(context.Canceled, err)
-			})
-		})
-	})
+		},
+		MakeContext:        c.MakeContext,
+		MakeIncludedEntity: c.MakeEntity,
+		MakeExcludedEntity: nil, // intentionally empty
+	}.Spec(s)
 }
+
 func (c AllFinder[Entity, ID]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
 func (c AllFinder[Entity, ID]) Benchmark(b *testing.B) {
@@ -298,27 +219,19 @@ func (c AllFinder[Entity, ID]) findAllN(t *testcase.T, subject func(t *testcase.
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// QueryOne is the generic representation of a query that meant to find one result.
-// It is really similar to resources.Finder#FindByID,
-// with the exception that the closure meant to know the query method name on the subject
-// and the inputs it requires.
-//
-// QueryOne is generated through ToQuery factory function in FindOne resource contract specification.
-type QueryOne[Entity any] func(tb testing.TB, ctx context.Context) (ent Entity, found bool, err error)
-
 type FindOne[Entity, ID any] struct {
 	MakeSubject func(testing.TB) FindOneSubject[Entity, ID]
 	MakeContext func(testing.TB) context.Context
 	MakeEntity  func(testing.TB) Entity
-	// MethodName is the name of the test subject QueryOne method of this contract specification.
+	// MethodName is the name of the test subject QueryOneFunc method of this contract specification.
 	MethodName string
 	// ToQuery takes an entity ptr and returns with a closure that has the knowledge about how to query on the MakeSubject resource to find the entity.
 	//
 	// By convention, any preparation action that affect the resource must take place prior to returning the closure.
-	// The QueryOne closure should only have the Method call with the already mapped values.
+	// The QueryOneFunc closure should only have the Method call with the already mapped values.
 	// ToQuery will be evaluated in the beginning of the testing,
 	// and executed after all the test Context preparation is done.
-	ToQuery func(tb testing.TB, resource FindOneSubject[Entity, ID], ent Entity) QueryOne[Entity]
+	ToQuery func(tb testing.TB, resource FindOneSubject[Entity, ID], ent Entity) QueryOneFunc[Entity]
 	// Specify allow further specification describing for a given FindOne query function.
 	// If none specified, this field will be ignored
 	Specify func(testing.TB)
@@ -342,7 +255,7 @@ func (c FindOne[Entity, ID]) Spec(s *testcase.Spec) {
 		resource = testcase.Let(s, func(t *testcase.T) FindOneSubject[Entity, ID] {
 			return c.MakeSubject(t)
 		})
-		query = testcase.Let(s, func(t *testcase.T) QueryOne[Entity] {
+		query = testcase.Let(s, func(t *testcase.T) QueryOneFunc[Entity] {
 			t.Log(entity.Get(t))
 			return c.ToQuery(t, resource.Get(t), *entity.Get(t))
 		})

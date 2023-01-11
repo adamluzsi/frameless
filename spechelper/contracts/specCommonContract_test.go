@@ -54,12 +54,17 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 	varWithNoInit := testcase.Var[int]{ID: "var_with_no_init"}
 	varWithNoInit.LetValue(s, 42)
 
+	mustBeTCT := func(tb testing.TB) *testcase.T {
+		t, ok := tb.(*testcase.T)
+		assert.Must(tb).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
+		return t
+	}
+
 	resource.Contract[Entity, string, string]{
 		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
-			t, ok := tb.(*testcase.T)
-			assert.Must(t).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
-			assert.Must(t).Equal(42, vGet(t))
-			assert.Must(t).Equal(42, varWithNoInit.Get(t))
+			t := mustBeTCT(tb)
+			t.Must.Equal(42, vGet(t))
+			t.Must.Equal(42, varWithNoInit.Get(t))
 			el := memory.NewEventLog()
 			stg := memory.NewEventLogRepository[Entity, string](el)
 			return resource.ContractSubject[Entity, string]{
@@ -69,8 +74,7 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 			}
 		},
 		MakeEntity: func(tb testing.TB) Entity {
-			t, ok := tb.(*testcase.T)
-			assert.Must(tb).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
+			t := mustBeTCT(tb)
 			t.Must.Equal(42, vGet(t))
 			t.Must.Equal(42, varWithNoInit.Get(t))
 			return Entity{
@@ -80,10 +84,11 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 			}
 		},
 		MakeContext: func(tb testing.TB) context.Context {
+			_ = mustBeTCT(tb)
 			return context.Background()
 		},
 		MakeV: func(tb testing.TB) string {
-			return tb.(*testcase.T).Random.String()
+			return mustBeTCT(tb).Random.String()
 		},
 	}.Spec(s)
 }
