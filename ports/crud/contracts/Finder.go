@@ -2,7 +2,6 @@ package crudcontracts
 
 import (
 	"context"
-	"fmt"
 	"github.com/adamluzsi/frameless/ports/crud"
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"testing"
@@ -65,27 +64,27 @@ func (c ByIDFinder[Entity, ID]) Name() string {
 }
 
 func (c ByIDFinder[Entity, ID]) Spec(s *testcase.Spec) {
-	testcase.RunSuite(s, FindOne[Entity, ID]{
-		MakeSubject: func(tb testing.TB) FindOneSubject[Entity, ID] {
-			return c.MakeSubject(tb)
+	testcase.RunSuite(s, QueryOne[Entity, ID]{
+		MakeSubject: func(tb testing.TB) QueryOneSubject[Entity, ID] {
+			res := c.MakeSubject(tb)
+			return QueryOneSubject[Entity, ID]{
+				Resource: res,
+				Query: func(tb testing.TB, ctx context.Context, ent Entity) (_ Entity, found bool, _ error) {
+					id, ok := extid.Lookup[ID](ent)
+					if !ok { // if no id found create a dummy ID
+						// Since an id is always required to use FindByID,
+						// we generate a dummy id if the received entity doesn't have one.
+						// This helps to avoid error cases where ID is not actually set.
+						// For those, we have further specifications later.
+						id = c.createDummyID(tb.(*testcase.T), res)
+					}
+					return res.FindByID(ctx, id)
+				},
+			}
 		},
 		MakeContext: c.MakeContext,
 		MakeEntity:  c.MakeEntity,
-		MethodName:  "FindByID",
-		ToQuery: func(tb testing.TB, resource FindOneSubject[Entity, ID], ent Entity) QueryOneFunc[Entity] {
-			id, ok := extid.Lookup[ID](ent)
-			if !ok { // if no id found create a dummy ID
-				// Since an id is always required to use FindByID,
-				// we generate a dummy id if the received entity doesn't have one.
-				// This helps to avoid error cases where ID is not actually set.
-				// For those, we have further specifications later.
-				id = c.createDummyID(tb.(*testcase.T), resource)
-			}
-
-			return func(tb testing.TB, ctx context.Context) (ent Entity, found bool, err error) {
-				return resource.FindByID(ctx, id)
-			}
-		},
+		QueryName:   "FindByID",
 
 		Specify: func(tb testing.TB) {
 			t := tb.(*testcase.T)
@@ -215,124 +214,4 @@ func (c AllFinder[Entity, ID]) findAllN(t *testcase.T, subject func(t *testcase.
 		assert.Must(tb).Equal(n, len(entities))
 	})
 	return entities
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-type FindOne[Entity, ID any] struct {
-	MakeSubject func(testing.TB) FindOneSubject[Entity, ID]
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
-	// MethodName is the name of the test subject QueryOneFunc method of this contract specification.
-	MethodName string
-	// ToQuery takes an entity ptr and returns with a closure that has the knowledge about how to query on the MakeSubject resource to find the entity.
-	//
-	// By convention, any preparation action that affect the resource must take place prior to returning the closure.
-	// The QueryOneFunc closure should only have the Method call with the already mapped values.
-	// ToQuery will be evaluated in the beginning of the testing,
-	// and executed after all the test Context preparation is done.
-	ToQuery func(tb testing.TB, resource FindOneSubject[Entity, ID], ent Entity) QueryOneFunc[Entity]
-	// Specify allow further specification describing for a given FindOne query function.
-	// If none specified, this field will be ignored
-	Specify func(testing.TB)
-}
-
-type FindOneSubject[Entity, ID any] spechelper.CRD[Entity, ID]
-
-func (c FindOne[Entity, ID]) Name() string {
-	return fmt.Sprintf(".%s", c.MethodName)
-}
-
-func (c FindOne[Entity, ID]) Spec(s *testcase.Spec) {
-	var (
-		ctx = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.MakeContext(t)
-		})
-		entity = testcase.Let(s, func(t *testcase.T) *Entity {
-			ent := c.MakeEntity(t)
-			return &ent
-		})
-		resource = testcase.Let(s, func(t *testcase.T) FindOneSubject[Entity, ID] {
-			return c.MakeSubject(t)
-		})
-		query = testcase.Let(s, func(t *testcase.T) QueryOneFunc[Entity] {
-			t.Log(entity.Get(t))
-			return c.ToQuery(t, resource.Get(t), *entity.Get(t))
-		})
-		subject = func(t *testcase.T) (Entity, bool, error) {
-			return query.Get(t)(t, ctx.Get(t))
-		}
-	)
-
-	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(t), resource.Get(t))
-	})
-
-	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			Create[Entity, ID](t, resource.Get(t), c.MakeContext(t), entity.Get(t))
-			HasID[Entity, ID](t, entity.Get(t))
-		})
-
-		s.Then(`the entity will be returned`, func(t *testcase.T) {
-			ent, found, err := subject(t)
-			t.Must.Nil(err)
-			t.Must.True(found)
-			t.Must.Equal(*entity.Get(t), ent)
-		})
-
-		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-			ctx.Let(s, func(t *testcase.T) context.Context {
-				ctx, cancel := context.WithCancel(c.MakeContext(t))
-				cancel()
-				return ctx
-			})
-
-			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-				_, found, err := subject(t)
-				t.Must.ErrorIs(context.Canceled, err)
-				t.Must.False(found)
-			})
-		})
-
-		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				ent := c.MakeEntity(t)
-				Create[Entity, ID](t, resource.Get(t), c.MakeContext(t), &ent)
-			})
-
-			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
-				ent, found, err := subject(t)
-				t.Must.Nil(err)
-				t.Must.True(found)
-				t.Must.Equal(*entity.Get(t), ent)
-			})
-		})
-	})
-
-	s.When(`no entity is saved in the resource`, func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			spechelper.TryCleanup(t, c.MakeContext(t), resource.Get(t))
-		})
-
-		s.Then(`it will have no result`, func(t *testcase.T) {
-			_, found, err := subject(t)
-			t.Must.Nil(err)
-			t.Must.False(found)
-		})
-	})
-
-	if c.Specify != nil {
-		s.Test(`Specify`, func(t *testcase.T) {
-			c.Specify(t)
-		})
-	}
-}
-
-func (c FindOne[Entity, ID]) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
-}
-
-func (c FindOne[Entity, ID]) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
 }

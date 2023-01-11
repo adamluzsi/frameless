@@ -16,7 +16,7 @@ type (
 var _ = []Contract{
 	crudcontracts.Creator[EntType, IDType]{},
 	crudcontracts.Finder[EntType, IDType]{},
-	crudcontracts.FindOne[EntType, IDType]{},
+	crudcontracts.QueryOne[EntType, IDType]{},
 	crudcontracts.Updater[EntType, IDType]{},
 	crudcontracts.Deleter[EntType, IDType]{},
 	crudcontracts.OnePhaseCommitProtocol[EntType, IDType]{},

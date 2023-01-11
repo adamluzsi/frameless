@@ -257,3 +257,10 @@ func Base(e interface{}) interface{} {
 func ToLet[T any](mkfn func(testing.TB) T) func(t *testcase.T) T {
 	return func(t *testcase.T) T { return mkfn(t) }
 }
+
+func ToLetPtr[T any](mkfn func(testing.TB) T) func(t *testcase.T) *T {
+	return func(t *testcase.T) *T {
+		v := mkfn(t)
+		return &v
+	}
+}
