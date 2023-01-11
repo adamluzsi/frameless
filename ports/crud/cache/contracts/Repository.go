@@ -3,17 +3,16 @@ package cachecontracts
 import (
 	"context"
 	"fmt"
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/crud/cache"
 	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-
-	"github.com/adamluzsi/frameless/ports/crud/cache"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

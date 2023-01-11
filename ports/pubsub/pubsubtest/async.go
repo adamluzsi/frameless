@@ -1,4 +1,4 @@
-package frcasserts
+package pubsubtest
 
 import (
 	"time"

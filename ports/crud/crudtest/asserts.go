@@ -1,9 +1,10 @@
-package frcasserts
+package crudtest
 
 import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -12,6 +13,15 @@ import (
 
 	"github.com/adamluzsi/testcase/assert"
 )
+
+var Waiter = assert.Waiter{
+	WaitDuration: time.Millisecond,
+	Timeout:      5 * time.Second,
+}
+
+var Eventually = assert.Eventually{
+	RetryStrategy: &Waiter,
+}
 
 func HasID[Entity, ID any](tb testing.TB, ptr *Entity) (id ID) {
 	tb.Helper()

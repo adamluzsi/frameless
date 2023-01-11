@@ -2,6 +2,7 @@ package frmetacontracts
 
 import (
 	"context"
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"sync"
 	"testing"
 
@@ -12,8 +13,6 @@ import (
 	"github.com/adamluzsi/frameless/ports/meta"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/spechelper"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

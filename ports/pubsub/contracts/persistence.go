@@ -3,8 +3,8 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/frameless/spechelper"
-	"github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"testing"
@@ -83,7 +83,7 @@ func (c Volatile[V]) Spec(s *testcase.Spec) {
 				sub := b.GivenWeHaveSubscription(s)
 
 				s.Then("messages published previously won't arrive", func(t *testcase.T) {
-					frcasserts.Waiter.Wait()
+					pubsubtest.Waiter.Wait()
 
 					t.Eventually(func(it assert.It) {
 						it.Must.Empty(sub.Get(t).Values())

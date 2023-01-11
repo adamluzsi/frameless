@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"sync"
 	"testing"
 	"time"
@@ -15,7 +16,6 @@ import (
 	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
 
 	"github.com/adamluzsi/frameless/adapters/memory"

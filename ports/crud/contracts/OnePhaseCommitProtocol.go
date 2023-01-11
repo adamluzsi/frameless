@@ -3,6 +3,7 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"sync"
 	"testing"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 	"github.com/adamluzsi/frameless/spechelper"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

@@ -7,8 +7,8 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
+	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/frameless/spechelper"
-	"github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"sync"
@@ -76,7 +76,7 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 			c.WhenIsEmpty(s)
 
 			s.Then("subscription didn't received anything", func(t *testcase.T) {
-				frcasserts.Waiter.Wait()
+				pubsubtest.Waiter.Wait()
 				t.Must.Empty(sub.Get(t).Values())
 			})
 		})
@@ -200,7 +200,7 @@ func (c pubsubBase[V]) WhenIsEmpty(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("when the publisher is empty")
 		t.Must.Nil(c.subject().Get(t).Purge(c.MakeContext(t)))
-		frcasserts.Waiter.Wait()
+		pubsubtest.Waiter.Wait()
 	})
 }
 
@@ -211,7 +211,7 @@ func (c pubsubBase[V]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[V]) 
 			vals = append(vals, v.Get(t))
 		}
 		t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), vals...))
-		frcasserts.Waiter.Wait()
+		pubsubtest.Waiter.Wait()
 	})
 }
 

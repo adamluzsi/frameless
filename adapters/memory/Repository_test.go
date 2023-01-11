@@ -2,13 +2,12 @@ package memory_test
 
 import (
 	"context"
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"testing"
 
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/meta"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-
-	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 )

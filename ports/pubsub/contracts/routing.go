@@ -3,8 +3,8 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/frameless/spechelper"
-	"github.com/adamluzsi/frameless/spechelper/frcasserts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"testing"
@@ -67,7 +67,7 @@ func (c Queue[V]) Spec(s *testcase.Spec) {
 					for _, v := range values {
 						expected = append(expected, v.Get(t))
 					}
-					frcasserts.Waiter.Wait()
+					pubsubtest.Waiter.Wait()
 
 					t.Eventually(func(it assert.It) {
 						it.Must.NotEmpty(sub1.Get(t).Values())
@@ -146,7 +146,7 @@ func (c Broadcast[V]) Spec(s *testcase.Spec) {
 						expected = append(expected, v.Get(t))
 					}
 
-					frcasserts.Waiter.Wait()
+					pubsubtest.Waiter.Wait()
 
 					t.Eventually(func(it assert.It) {
 						it.Must.ContainExactly(expected, sub1.Get(t).Values())

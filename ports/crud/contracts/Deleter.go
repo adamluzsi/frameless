@@ -2,13 +2,12 @@ package crudcontracts
 
 import (
 	"context"
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/spechelper"
-	. "github.com/adamluzsi/frameless/spechelper/frcasserts"
-
 	"github.com/adamluzsi/testcase"
 )
 
