@@ -280,8 +280,7 @@ func (s *EventLogRepository[Entity, ID]) newID(ctx context.Context) (interface{}
 	if s.MakeID != nil {
 		return s.MakeID(ctx)
 	}
-	var id ID
-	return newDummyID(id)
+	return MakeID[ID](ctx)
 }
 
 func (s *EventLogRepository[Entity, ID]) Events(ctx context.Context) []EventLogRepositoryEvent[Entity, ID] {

@@ -23,14 +23,14 @@ func NewRepositoryWithNamespace[Entity, ID any](m *Memory, ns string) *Repositor
 
 type Repository[Entity, ID any] struct {
 	Memory        *Memory
-	NewID         func(context.Context) (ID, error)
+	MakeID        func(context.Context) (ID, error)
 	Namespace     string
 	initNamespace sync.Once
 }
 
 func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if _, ok := extid.Lookup[ID](ptr); !ok {
-		newID, err := s.MakeID(ctx)
+		newID, err := s.mkID(ctx)
 		if err != nil {
 			return err
 		}
@@ -151,7 +151,7 @@ func (s *Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) er
 	for _, ptr := range ptrs {
 		id, ok := extid.Lookup[ID](ptr)
 		if !ok {
-			nid, err := s.MakeID(ctx)
+			nid, err := s.mkID(ctx)
 			if err != nil {
 				return err
 			}
@@ -166,19 +166,11 @@ func (s *Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) er
 	return nil
 }
 
-func (s *Repository[Entity, ID]) MakeID(ctx context.Context) (ID, error) {
-	if s.NewID != nil {
-		return s.NewID(ctx)
+func (s *Repository[Entity, ID]) mkID(ctx context.Context) (ID, error) {
+	if s.MakeID != nil {
+		return s.MakeID(ctx)
 	}
-	iid, err := newDummyID(*new(ID))
-	if err != nil {
-		return *new(ID), err
-	}
-	id, ok := iid.(ID)
-	if !ok {
-		return *new(ID), fmt.Errorf("newID failed")
-	}
-	return id, nil
+	return MakeID[ID](ctx)
 }
 
 func (s *Repository[Entity, ID]) IDToMemoryKey(id any) string {
