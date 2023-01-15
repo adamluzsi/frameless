@@ -5,11 +5,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/internal/constant"
 )
 
-func IsUserError(err error) bool {
-	_, ok := LookupUserError(err)
-	return ok
-}
-
 func LookupUserError(err error) (UserError, bool) {
 	var ue UserError
 	return ue, errors.As(err, &ue)

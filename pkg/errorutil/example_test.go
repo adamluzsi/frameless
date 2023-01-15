@@ -34,9 +34,6 @@ func ExampleUserError() {
 	if userError, ok := errorutil.LookupUserError(err); ok {
 		fmt.Printf("%#v\n", userError)
 	}
-	if errorutil.IsUserError(err) {
-		fmt.Println("it's a Layer 8 error")
-	}
 }
 
 func ExampleUserError_With() {
@@ -48,16 +45,6 @@ func ExampleUserError_With() {
 	// returns with Err that has additional concrete details
 	_ = usrErr.With().Detailf("Foo(ID:%d) /Baz(ID:%d)", 42, 7)
 
-}
-
-func ExampleIsUserError() {
-	err := errorutil.UserError{
-		ID:      "constant-err-scenario-code",
-		Message: "some message for the dev",
-	}
-	if errorutil.IsUserError(err) {
-		fmt.Println("it's a Layer 8 error")
-	}
 }
 
 func ExampleLookupUserError() {
@@ -91,7 +78,7 @@ func ExampleMerge() {
 	_ = err
 }
 
-func ExampleWith_Context() {
+func ExampleWithErr_Context() {
 	err := fmt.Errorf("foo bar baz")
 	ctx := context.Background()
 
@@ -101,7 +88,7 @@ func ExampleWith_Context() {
 	_, _ = errorutil.LookupContext(err) // ctx, true
 }
 
-func ExampleWith_Detail() {
+func ExampleWithErr_Detail() {
 	err := fmt.Errorf("foo bar baz")
 
 	err = errorutil.With(err).
@@ -110,7 +97,7 @@ func ExampleWith_Detail() {
 	_, _ = errorutil.LookupDetail(err) // "it was the foo or bar or baz", true
 }
 
-func ExampleWith_Detailf() {
+func ExampleWithErr_Detailf() {
 	err := fmt.Errorf("foo bar baz")
 
 	err = errorutil.With(err).
