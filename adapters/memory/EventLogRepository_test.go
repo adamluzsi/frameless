@@ -40,6 +40,23 @@ var _ interface {
 
 var _ cache.EntityRepository[TestEntity, string] = &memory.EventLogRepository[TestEntity, string]{}
 
+func TestEventLogRepository(t *testing.T) {
+	testcase.RunSuite(t, GetContracts[TestEntity, string](func(tb testing.TB) ContractSubject[TestEntity, string] {
+		m := memory.NewEventLog()
+		s := memory.NewEventLogRepository[TestEntity, string](m)
+		return ContractSubject[TestEntity, string]{
+			Resource:         s,
+			EntityRepository: s,
+			CommitManager:    m,
+			MetaAccessor:     m,
+		}
+	}, makeContext, makeTestEntity)...)
+
+	repository := memory.NewEventLogRepository[TestEntity, string](memory.NewEventLog())
+	contracts := getRepositorySpecs[TestEntity](repository, makeTestEntity)
+	testcase.RunSuite(t, contracts...)
+}
+
 func TestEventLogRepository_smoke(t *testing.T) {
 	var (
 		subject = memory.NewEventLogRepository[TestEntity, string](memory.NewEventLog())
@@ -143,12 +160,6 @@ func getRepositorySpecs[Entity, ID any](
 ) []testcase.Suite {
 	makeContext := func(testing.TB) context.Context { return context.Background() }
 	return getRepositorySpecsForT[Entity, ID](subject, makeContext, MakeEntity)
-}
-
-func TestEventLogRepository(t *testing.T) {
-	repository := memory.NewEventLogRepository[TestEntity, string](memory.NewEventLog())
-	contracts := getRepositorySpecs[TestEntity](repository, makeTestEntity)
-	testcase.RunSuite(t, contracts...)
 }
 
 func TestEventLogRepository_multipleInstanceTransactionOnTheSameContext(t *testing.T) {

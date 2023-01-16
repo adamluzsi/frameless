@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/contracts"
 	"testing"
 	"time"
 
@@ -57,9 +58,6 @@ type ContractSubject[Entity, ID any] struct {
 		crud.Updater[Entity]
 		crud.Deleter[ID]
 	}
-	//frameless.CreatorPublisher
-	//frameless.UpdaterPublisher
-	//frameless.DeleterPublisher
 	EntityRepository cache.EntityRepository[Entity, ID]
 	CommitManager    comproto.OnePhaseCommitProtocol
 	meta.MetaAccessor
@@ -123,6 +121,12 @@ func GetContracts[Entity, ID any](
 		//	},
 		//	FixtureFactory: ff,
 		//},
+		comprotocontracts.OnePhaseCommitProtocol{
+			MakeSubject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
+				return subject(tb).CommitManager
+			},
+			MakeContext: makeContext,
+		},
 		crudcontracts.OnePhaseCommitProtocol[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
 				s := subject(tb)

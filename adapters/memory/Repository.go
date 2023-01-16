@@ -486,6 +486,9 @@ func (m *Memory) ctxKeyMemoryTx() ctxKeyMemoryTx {
 }
 
 func (m *Memory) BeginTx(ctx context.Context) (context.Context, error) {
+	if err := ctx.Err(); err != nil {
+		return ctx, err
+	}
 	var super memoryActions = m
 	if tx, ok := m.LookupTx(ctx); ok {
 		super = tx
@@ -494,6 +497,9 @@ func (m *Memory) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 func (m *Memory) CommitTx(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if tx, ok := m.LookupTx(ctx); ok {
 		return tx.commit()
 	}
@@ -501,6 +507,9 @@ func (m *Memory) CommitTx(ctx context.Context) error {
 }
 
 func (m *Memory) RollbackTx(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if tx, ok := m.LookupTx(ctx); ok {
 		return tx.rollback()
 	}
