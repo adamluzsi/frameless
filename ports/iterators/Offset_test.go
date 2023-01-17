@@ -43,7 +43,7 @@ func TestOffset(t *testing.T) {
 		all, err := iterators.Collect(makeIter())
 		t.Must.NoError(err)
 
-		var exp []int
+		var exp = make([]int, 0)
 		for i := offset.Get(t); i < len(all); i++ {
 			exp = append(exp, all[i])
 		}
