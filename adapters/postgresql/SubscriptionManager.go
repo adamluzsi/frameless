@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"sync"
 	"time"
@@ -37,7 +38,7 @@ const (
 	notifyDeleteAllEvent  = `delete_all`
 )
 
-func NewListenNotifySubscriptionManager[Entity, ID any](m Mapping[Entity], dsn string, cm ConnectionManager) *ListenNotifySubscriptionManager[Entity, ID] {
+func NewListenNotifySubscriptionManager[Entity, ID any](m Mapping[Entity, ID], dsn string, cm ConnectionManager) *ListenNotifySubscriptionManager[Entity, ID] {
 	return &ListenNotifySubscriptionManager[Entity, ID]{
 		Mapping:           m,
 		DSN:               dsn,
@@ -46,7 +47,7 @@ func NewListenNotifySubscriptionManager[Entity, ID any](m Mapping[Entity], dsn s
 }
 
 type ListenNotifySubscriptionManager[Entity, ID any] struct {
-	Mapping Mapping[Entity]
+	Mapping Mapping[Entity, ID]
 
 	MetaAccessor      MetaAccessor
 	ConnectionManager ConnectionManager
@@ -220,26 +221,31 @@ func (sm *ListenNotifySubscriptionManager[Entity, ID]) worker(ctx context.Contex
 
 wrk:
 	for {
+		for sm.Listener == nil || sm.Listener.Notify == nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-clock.After(time.Microsecond):
+			}
+		}
+
 		select {
 		case <-ctx.Done():
-			break wrk
+			return
 
 		case n, ok := <-sm.Listener.Notify:
 			if !ok {
-				break wrk
+				return
 			}
-
 			var ne cudNotifyEvent
 			if sm.handleError(ctx, json.Unmarshal([]byte(n.Extra), &ne)) {
 				continue wrk
 			}
-
 			sm.handleNotifyEvent(ctx, ne)
 
-			continue wrk
 		case <-time.After(time.Minute):
 			sm.handleError(ctx, sm.Listener.Ping())
-			continue wrk
+
 		}
 	}
 }

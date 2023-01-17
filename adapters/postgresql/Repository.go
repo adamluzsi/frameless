@@ -17,7 +17,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-func NewRepositoryWithDSN[Entity, ID any](dsn string, m Mapping[Entity]) *Repository[Entity, ID] {
+func NewRepositoryWithDSN[Entity, ID any](dsn string, m Mapping[Entity, ID]) *Repository[Entity, ID] {
 	cm := NewConnectionManager(dsn)
 	sm := NewListenNotifySubscriptionManager[Entity, ID](m, dsn, cm)
 	return &Repository[Entity, ID]{
@@ -32,7 +32,7 @@ func NewRepositoryWithDSN[Entity, ID any](dsn string, m Mapping[Entity]) *Reposi
 //
 // SRP: DBA
 type Repository[Entity, ID any] struct {
-	Mapping             Mapping[Entity]
+	Mapping             Mapping[Entity, ID]
 	ConnectionManager   ConnectionManager
 	SubscriptionManager SubscriptionManager[Entity, ID]
 	MetaAccessor

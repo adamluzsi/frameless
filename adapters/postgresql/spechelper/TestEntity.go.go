@@ -8,8 +8,8 @@ import (
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
-	"github.com/stretchr/testify/require"
 )
 
 type TestEntity struct {
@@ -50,17 +50,17 @@ func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
 func MigrateTestEntity(tb testing.TB, cm postgresql.ConnectionManager) {
 	ctx := context.Background()
 	c, err := cm.Connection(ctx)
-	require.Nil(tb, err)
+	assert.Nil(tb, err)
 	_, err = c.ExecContext(ctx, testMigrateDOWN)
-	require.Nil(tb, err)
+	assert.Nil(tb, err)
 	_, err = c.ExecContext(ctx, testMigrateUP)
-	require.Nil(tb, err)
+	assert.Nil(tb, err)
 
 	tb.Cleanup(func() {
 		client, err := cm.Connection(ctx)
-		require.Nil(tb, err)
+		assert.Nil(tb, err)
 		_, err = client.ExecContext(ctx, testMigrateDOWN)
-		require.Nil(tb, err)
+		assert.Nil(tb, err)
 	})
 }
 

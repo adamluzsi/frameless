@@ -6,7 +6,7 @@ import (
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
-	"github.com/stretchr/testify/assert"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func NewTestEntityRepository(tb testing.TB) *postgresql.Repository[psh.TestEntity, string] {

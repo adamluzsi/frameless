@@ -14,7 +14,6 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 
 	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
-	"github.com/stretchr/testify/require"
 
 	"github.com/adamluzsi/testcase"
 )
@@ -44,18 +43,18 @@ func TestNewRepository_smoke(t *testing.T) {
 		Baz: "baz",
 	}
 
-	require.NoError(t, repository.Create(ctx, ent))
-	require.NotEmpty(t, ent.ID)
+	assert.NoError(t, repository.Create(ctx, ent))
+	assert.NotEmpty(t, ent.ID)
 
 	ent2, found, err := repository.FindByID(ctx, ent.ID)
-	require.NoError(t, err)
-	require.True(t, found)
-	require.Equal(t, *ent, ent2)
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, *ent, ent2)
 
-	require.NoError(t, repository.DeleteByID(ctx, ent.ID))
+	assert.NoError(t, repository.DeleteByID(ctx, ent.ID))
 	_, found, err = repository.FindByID(ctx, ent.ID)
-	require.NoError(t, err)
-	require.False(t, found, `should be deleted`)
+	assert.NoError(t, err)
+	assert.False(t, found, `should be deleted`)
 }
 
 func TestRepository(t *testing.T) {
@@ -77,7 +76,10 @@ func TestRepository(t *testing.T) {
 			MakeContext:    psh.MakeContext,
 			SupportIDReuse: true,
 		},
-		crudcontracts.Finder[psh.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[psh.TestEntity, string] { return subject },
+		crudcontracts.Finder[psh.TestEntity, string]{
+			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[psh.TestEntity, string] {
+				return any(subject).(crudcontracts.FinderSubject[psh.TestEntity, string])
+			},
 			MakeEntity:  psh.MakeTestEntity,
 			MakeContext: psh.MakeContext,
 		},

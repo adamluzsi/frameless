@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"reflect"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
@@ -15,7 +16,7 @@ import (
 	"github.com/adamluzsi/testcase/random"
 
 	"github.com/adamluzsi/testcase"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 var (
@@ -37,43 +38,43 @@ func TestConnectionManager_Connection(t *testing.T) {
 	p := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 
 	connectionWithoutTx, err := p.Connection(ctx)
-	require.NoError(t, err)
-	require.Nil(t, connectionWithoutTx.QueryRowContext(ctx, "SELECT").Scan())
+	assert.NoError(t, err)
+	assert.Nil(t, connectionWithoutTx.QueryRowContext(ctx, "SELECT").Scan())
 
 	connectionWithoutTxAgain, err := p.Connection(ctx)
-	require.NoError(t, err)
-	require.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx, "SELECT").Scan())
+	assert.NoError(t, err)
+	assert.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx, "SELECT").Scan())
 
 	ctxWithTx, err := p.BeginTx(ctx)
-	require.Nil(t, err)
+	assert.Nil(t, err)
 	defer func() { _ = p.RollbackTx(ctxWithTx) }()
 	connectionWithTx, err := p.Connection(ctxWithTx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	connectionWithTxAgain, err := p.Connection(ctxWithTx)
-	require.NoError(t, err)
-	require.Equal(t, connectionWithTx, connectionWithTxAgain)
+	assert.NoError(t, err)
+	assert.Equal(t, connectionWithTx, connectionWithTxAgain)
 
-	require.NotEqual(t, connectionWithTx, connectionWithoutTx)
+	assert.NotEqual(t, reflect.TypeOf(connectionWithTx), reflect.TypeOf(connectionWithoutTx))
 }
 
 func TestNewConnectionManager(t *testing.T) {
 	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	background := context.Background()
 	c, err := cm.Connection(background)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = c.ExecContext(background, `SELECT TRUE`)
-	require.NoError(t, err)
-	require.NoError(t, cm.Close())
+	assert.NoError(t, err)
+	assert.NoError(t, cm.Close())
 }
 
 func TestConnectionManager_Close(t *testing.T) {
 	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
 	background := context.Background()
 	c, err := cm.Connection(background)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	_, err = c.ExecContext(background, `SELECT TRUE`)
-	require.NoError(t, err)
-	require.NoError(t, cm.Close())
+	assert.NoError(t, err)
+	assert.NoError(t, cm.Close())
 }
 
 func TestConnectionManager_PoolContract(t *testing.T) {
@@ -129,7 +130,7 @@ func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 	ctx := context.Background()
 	blk := func() {
 		_, err := p.Connection(ctx)
-		require.Nil(t, err)
+		assert.Nil(t, err)
 	}
 	testcase.Race(blk, blk)
 }
@@ -184,8 +185,8 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 
 		s.Then(`it returns a client without an error`, func(t *testcase.T) {
 			client, err := subject(t)
-			require.NoError(t, err)
-			require.NotNil(t, client)
+			assert.NoError(t, err)
+			assert.NotNil(t, client)
 		})
 	})
 
@@ -193,25 +194,25 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 		p := c.cm().Get(t)
 
 		tx, err := p.BeginTx(c.MakeContext(t))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
 		connection, err := p.Connection(tx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		name := c.makeTestTableName()
-		require.Nil(t, c.CreateTable(tx, connection, name))
+		assert.Nil(t, c.CreateTable(tx, connection, name))
 		defer c.cleanupTable(t, name)
 
-		require.NoError(t, p.RollbackTx(tx))
+		assert.NoError(t, p.RollbackTx(tx))
 
 		ctx := c.MakeContext(t)
 		connection, err = p.Connection(ctx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)
-		require.NoError(t, err)
-		require.False(t, has, `it wasn't expected that the created dummy table present after rollback`)
+		assert.NoError(t, err)
+		assert.False(t, has, `it wasn't expected that the created dummy table present after rollback`)
 	})
 
 	s.Test(`.GetClient is in no transaction without context from a .BeginTx`, func(t *testcase.T) {
@@ -220,24 +221,24 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 		ctx := c.MakeContext(t)
 
 		tx, err := p.BeginTx(ctx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
 		connection, err := p.Connection(ctx) // ctx -> no transaction
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		name := c.makeTestTableName()
-		require.Nil(t, c.CreateTable(tx, connection, name))
+		assert.Nil(t, c.CreateTable(tx, connection, name))
 		defer c.cleanupTable(t, name)
 
-		require.NoError(t, p.RollbackTx(tx))
+		assert.NoError(t, p.RollbackTx(tx))
 
 		connection, err = p.Connection(ctx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)
-		require.NoError(t, err)
-		require.True(t, has, `it was expected that the created dummy table present`)
+		assert.NoError(t, err)
+		assert.True(t, has, `it was expected that the created dummy table present`)
 
 		c.cleanupTable(t, name)
 	})
@@ -248,31 +249,31 @@ func (c ConnectionManagerContract) Spec(s *testcase.Spec) {
 		ctx := c.MakeContext(t)
 
 		tx, err := p.BeginTx(ctx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		t.Defer(p.RollbackTx, tx)
 
 		connection, err := p.Connection(tx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		name := c.makeTestTableName()
-		require.Nil(t, c.CreateTable(tx, connection, name))
+		assert.Nil(t, c.CreateTable(tx, connection, name))
 		defer c.cleanupTable(t, name)
 
 		connection, err = p.Connection(ctx) // in no comproto
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		has, err := c.HasTable(ctx, connection, name)
-		require.NoError(t, err)
-		require.False(t, has, `it was expected that the created dummy table is not observable outside of the transaction`)
+		assert.NoError(t, err)
+		assert.False(t, has, `it was expected that the created dummy table is not observable outside of the transaction`)
 
-		require.NoError(t, p.CommitTx(tx))
+		assert.NoError(t, p.CommitTx(tx))
 
 		connection, err = p.Connection(ctx)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		has, err = c.HasTable(ctx, connection, name)
-		require.NoError(t, err)
-		require.True(t, has, `it was expected that the created dummy table present after commit`)
+		assert.NoError(t, err)
+		assert.True(t, has, `it was expected that the created dummy table present after commit`)
 
 		c.cleanupTable(t, name)
 	})
@@ -286,13 +287,13 @@ func (c ConnectionManagerContract) makeTestTableName() string {
 func (c ConnectionManagerContract) cleanupTable(t *testcase.T, name string) {
 	ctx := c.MakeContext(t)
 	client, err := c.cm().Get(t).Connection(ctx)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	has, err := c.HasTable(ctx, client, name)
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	if !has {
 		return
 	}
 
-	require.Nil(t, c.DeleteTable(ctx, client, name))
+	assert.Nil(t, c.DeleteTable(ctx, client, name))
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/lib/pq"
-	"github.com/stretchr/testify/require"
 )
 
 func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSchemaName(t *testing.T) {
@@ -36,7 +35,7 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 			return nil
 		},
 	})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	deferClose(t, sub)
 
 	expected := psh.TestEntity{
@@ -45,9 +44,9 @@ func TestListenerSubscriptionManager_publishWithMappingWhereTableRefIncludesSche
 		Bar: "bar",
 		Baz: "baz",
 	}
-	require.NoError(t, sm.PublishCreateEvent(ctx, pubsub.CreateEvent[psh.TestEntity]{Entity: expected}))
+	assert.NoError(t, sm.PublishCreateEvent(ctx, pubsub.CreateEvent[psh.TestEntity]{Entity: expected}))
 
-	testcase.Eventually{RetryStrategy: testcase.Waiter{Timeout: time.Second}}.Assert(t, func(it assert.It) {
+	assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
 		it.Must.Equal(expected, last)
 	})
 }
@@ -79,7 +78,7 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 			return nil
 		},
 	})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	deferClose(t, sub)
 
 	expected := psh.TestEntity{
@@ -95,7 +94,7 @@ func TestListenerSubscriptionManager_reuseListenerAcrossInstances(t *testing.T) 
 		ConnectionManager: cm,
 		Listener:          listener,
 	}
-	require.NoError(t, sm2.PublishCreateEvent(ctx, pubsub.CreateEvent[psh.TestEntity]{Entity: expected}))
+	assert.NoError(t, sm2.PublishCreateEvent(ctx, pubsub.CreateEvent[psh.TestEntity]{Entity: expected}))
 
 	testcase.Eventually{RetryStrategy: testcase.Waiter{Timeout: time.Second}}.Assert(t, func(it assert.It) {
 		it.Must.Equal(expected, last)

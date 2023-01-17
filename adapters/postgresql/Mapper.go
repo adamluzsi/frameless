@@ -31,7 +31,7 @@ func (m Mapper[Entity, ID]) ColumnRefs() []string {
 	return m.Columns
 }
 
-func (m Mapper[Entity, ID]) NewID(ctx context.Context) (interface{}, error) {
+func (m Mapper[Entity, ID]) NewID(ctx context.Context) (ID, error) {
 	return m.NewIDFn(ctx)
 }
 

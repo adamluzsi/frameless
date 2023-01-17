@@ -11,7 +11,7 @@ import (
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/stretchr/testify/require"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestMapper_Map(t *testing.T) {
@@ -32,8 +32,8 @@ func TestMapper_Map(t *testing.T) {
 		}}
 
 		x, err := m.Map(scanner)
-		require.Nil(t, err)
-		require.Equal(t, expectedInt, x.Foo)
+		assert.Nil(t, err)
+		assert.Equal(t, expectedInt, x.Foo)
 	})
 
 	t.Run(`rainy-path`, func(t *testing.T) {
@@ -43,7 +43,7 @@ func TestMapper_Map(t *testing.T) {
 		}}
 
 		_, err := m.Map(scanner)
-		require.Equal(t, expectedErr, err)
+		assert.Equal(t, expectedErr, err)
 	})
 }
 
@@ -69,9 +69,9 @@ func TestMapper_ToArgs(t *testing.T) {
 		x := X{Foo: int64(rnd.Int())}
 
 		args, err := m.ToArgsFn(&x)
-		require.Nil(t, err)
+		assert.Nil(t, err)
 
-		require.Equal(t, []interface{}{sql.NullInt64{
+		assert.Equal(t, []interface{}{sql.NullInt64{
 			Int64: x.Foo,
 			Valid: true,
 		}}, args)
@@ -84,7 +84,7 @@ func TestMapper_ToArgs(t *testing.T) {
 		}}
 
 		_, err := m.ToArgsFn(&X{Foo: int64(rnd.Int())})
-		require.Equal(t, expectedErr, err)
+		assert.Equal(t, expectedErr, err)
 	})
 }
 
@@ -97,9 +97,9 @@ func TestMapper_NewID(t *testing.T) {
 		}}
 
 		actualID, err := m.NewID(context.Background())
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
-		require.Equal(t, expectedID, actualID)
+		assert.Equal(t, expectedID, actualID)
 	})
 
 	t.Run(`rainy-path`, func(t *testing.T) {
@@ -109,6 +109,6 @@ func TestMapper_NewID(t *testing.T) {
 		}}
 
 		_, err := m.NewID(context.Background())
-		require.Equal(t, expectedErr, err)
+		assert.Equal(t, expectedErr, err)
 	})
 }
