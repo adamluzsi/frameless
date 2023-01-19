@@ -11,12 +11,14 @@ type Mapper[Entity, ID any] struct {
 	Table string
 	// ID is the entity's id column name
 	ID string
-	// Columns hold the entity's column names
+	// NewIDFn will return a new ID
+	NewIDFn func(ctx context.Context) (ID, error)
+	// Columns hold the entity's table column names.
 	Columns []string
-
-	NewIDFn  func(ctx context.Context) (ID, error)
+	// ToArgsFn will map an Entity into query arguments, that follows the order of Columns.
 	ToArgsFn func(ptr *Entity) ([]interface{}, error)
-	MapFn    iterators.SQLRowMapperFunc[Entity]
+	// MapFn will map an sql.Row into an Entity.
+	MapFn iterators.SQLRowMapperFunc[Entity]
 }
 
 func (m Mapper[Entity, ID]) TableRef() string {

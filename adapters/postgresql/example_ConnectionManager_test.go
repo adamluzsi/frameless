@@ -7,7 +7,11 @@ import (
 )
 
 func ExampleConnectionManager() {
-	connectionManager := postgresql.NewConnectionManager(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	if err != nil {
+		panic(err)
+	}
+
 	defer connectionManager.Close()
 
 	ctx := context.Background()
@@ -24,7 +28,11 @@ func ExampleConnectionManager() {
 }
 
 func ExampleConnectionManager_BeginTx() {
-	connectionManager := postgresql.NewConnectionManager(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	if err != nil {
+		panic(err)
+	}
+
 	defer connectionManager.Close()
 
 	ctx := context.Background()
@@ -50,7 +58,11 @@ func ExampleConnectionManager_BeginTx() {
 }
 
 func ExampleConnectionManager_CommitTx() {
-	connectionManager := postgresql.NewConnectionManager(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	if err != nil {
+		panic(err)
+	}
+
 	defer connectionManager.Close()
 
 	ctx := context.Background()
@@ -76,7 +88,11 @@ func ExampleConnectionManager_CommitTx() {
 }
 
 func ExampleConnectionManager_RollbackTx() {
-	connectionManager := postgresql.NewConnectionManager(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	if err != nil {
+		panic(err)
+	}
+
 	defer connectionManager.Close()
 
 	ctx := context.Background()

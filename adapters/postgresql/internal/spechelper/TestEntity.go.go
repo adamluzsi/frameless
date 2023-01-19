@@ -28,15 +28,15 @@ func MakeTestEntity(tb testing.TB) TestEntity {
 func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
 	var counter int
 	return postgresql.Mapper[TestEntity, string]{
-		Table:   "test_entities",
-		ID:      "id",
-		Columns: []string{`id`, `foo`, `bar`, `baz`},
+		Table: "test_entities",
+		ID:    "id",
 		NewIDFn: func(ctx context.Context) (string, error) {
 			counter++
 			rnd := random.New(random.CryptoSeed{})
 			rndstr := rnd.StringNWithCharset(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 			return fmt.Sprintf("%d-%s", counter, rndstr), nil
 		},
+		Columns: []string{`id`, `foo`, `bar`, `baz`},
 		ToArgsFn: func(ent *TestEntity) ([]interface{}, error) {
 			return []interface{}{ent.ID, ent.Foo, ent.Bar, ent.Baz}, nil
 		},

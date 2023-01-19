@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"io"
 	"reflect"
 	"testing"
@@ -12,7 +13,6 @@ import (
 	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	psh "github.com/adamluzsi/frameless/adapters/postgresql/spechelper"
 	"github.com/adamluzsi/testcase/random"
 
 	"github.com/adamluzsi/testcase"
@@ -35,7 +35,8 @@ func _() {
 
 func TestConnectionManager_Connection(t *testing.T) {
 	ctx := context.Background()
-	p := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
 
 	connectionWithoutTx, err := p.Connection(ctx)
 	assert.NoError(t, err)
@@ -57,8 +58,61 @@ func TestConnectionManager_Connection(t *testing.T) {
 	assert.NotEqual(t, reflect.TypeOf(connectionWithTx), reflect.TypeOf(connectionWithoutTx))
 }
 
+func TestNewConnectionManagerWithDSN(t *testing.T) {
+	ctx := context.Background()
+	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
+
+	connectionWithoutTx, err := p.Connection(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, connectionWithoutTx.QueryRowContext(ctx, "SELECT").Scan())
+
+	connectionWithoutTxAgain, err := p.Connection(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx, "SELECT").Scan())
+
+	ctxWithTx, err := p.BeginTx(ctx)
+	assert.Nil(t, err)
+	defer func() { _ = p.RollbackTx(ctxWithTx) }()
+	connectionWithTx, err := p.Connection(ctxWithTx)
+	assert.NoError(t, err)
+	connectionWithTxAgain, err := p.Connection(ctxWithTx)
+	assert.NoError(t, err)
+	assert.Equal(t, connectionWithTx, connectionWithTxAgain)
+
+	assert.NotEqual(t, reflect.TypeOf(connectionWithTx), reflect.TypeOf(connectionWithoutTx))
+}
+
+func TestNewConnectionManagerWithDB(t *testing.T) {
+	db, err := sql.Open("postgres", spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
+
+	p := postgresql.NewConnectionManagerWithDB(db)
+
+	ctx := context.Background()
+	connectionWithoutTx, err := p.Connection(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, connectionWithoutTx.QueryRowContext(ctx, "SELECT").Scan())
+
+	connectionWithoutTxAgain, err := p.Connection(ctx)
+	assert.NoError(t, err)
+	assert.Nil(t, connectionWithoutTxAgain.QueryRowContext(ctx, "SELECT").Scan())
+
+	ctxWithTx, err := p.BeginTx(ctx)
+	assert.Nil(t, err)
+	defer func() { _ = p.RollbackTx(ctxWithTx) }()
+	connectionWithTx, err := p.Connection(ctxWithTx)
+	assert.NoError(t, err)
+	connectionWithTxAgain, err := p.Connection(ctxWithTx)
+	assert.NoError(t, err)
+	assert.Equal(t, connectionWithTx, connectionWithTxAgain)
+
+	assert.NotEqual(t, reflect.TypeOf(connectionWithTx), reflect.TypeOf(connectionWithoutTx))
+}
+
 func TestNewConnectionManager(t *testing.T) {
-	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
 	background := context.Background()
 	c, err := cm.Connection(background)
 	assert.NoError(t, err)
@@ -68,7 +122,8 @@ func TestNewConnectionManager(t *testing.T) {
 }
 
 func TestConnectionManager_Close(t *testing.T) {
-	cm := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
 	background := context.Background()
 	c, err := cm.Connection(background)
 	assert.NoError(t, err)
@@ -80,40 +135,41 @@ func TestConnectionManager_Close(t *testing.T) {
 func TestConnectionManager_PoolContract(t *testing.T) {
 	testcase.RunSuite(t, ConnectionManagerContract{
 		MakeSubject: func(tb testing.TB) postgresql.ConnectionManager {
-			s := NewTestEntityRepository(t)
-			return s.ConnectionManager
+			cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(tb))
+			assert.NoError(tb, err)
+			return cm
 		},
 		DriverName: "postgres",
 		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		CreateTable: func(ctx context.Context, client postgresql.Connection, name string) error {
-			_, err := client.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %q ();`, name))
+		CreateTable: func(ctx context.Context, connection postgresql.Connection, name string) error {
+			_, err := connection.ExecContext(ctx, fmt.Sprintf(`CREATE TABLE %q ();`, name))
 			return err
 		},
-		DeleteTable: func(ctx context.Context, client postgresql.Connection, name string) error {
-			_, err := client.ExecContext(ctx, fmt.Sprintf(`DROP TABLE %q;`, name))
+		DeleteTable: func(ctx context.Context, connection postgresql.Connection, name string) error {
+			_, err := connection.ExecContext(ctx, fmt.Sprintf(`DROP TABLE %q;`, name))
 			return err
 		},
-		HasTable: func(ctx context.Context, client postgresql.Connection, name string) (bool, error) {
+		HasTable: func(ctx context.Context, connection postgresql.Connection, name string) (bool, error) {
 			var subquery string
 			subquery += "SELECT FROM information_schema.tables"
 			subquery += fmt.Sprintf("\nWHERE table_name = '%s'", name)
 			query := fmt.Sprintf(`SELECT EXISTS (%s) AS e;`, subquery)
 
 			var has bool
-			err := client.QueryRowContext(ctx, query).Scan(&has)
+			err := connection.QueryRowContext(ctx, query).Scan(&has)
 			return has, err
 		},
 	})
 }
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[psh.TestEntity, string]{
-		MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string] {
+	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string]{
+		MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
 			s := NewTestEntityRepository(tb)
 
-			return crudcontracts.OnePhaseCommitProtocolSubject[psh.TestEntity, string]{
+			return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
 				Resource:      s,
 				CommitManager: s,
 			}
@@ -121,12 +177,13 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 		MakeContext: func(tb testing.TB) context.Context {
 			return context.Background()
 		},
-		MakeEntity: psh.MakeTestEntity,
+		MakeEntity: spechelper.MakeTestEntity,
 	})
 }
 
 func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
-	p := postgresql.NewConnectionManager(psh.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
 	ctx := context.Background()
 	blk := func() {
 		_, err := p.Connection(ctx)

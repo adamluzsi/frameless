@@ -11,7 +11,11 @@ func ExampleSubscriptionManager() {
 		ID string `ext:"id"`
 	}
 
-	connectionManager := postgresql.NewConnectionManager(os.Getenv(`DATABASE_URL`))
+	connectionManager, err := postgresql.NewConnectionManagerWithDSN(os.Getenv(`DATABASE_URL`))
+	if err != nil {
+		panic(err)
+	}
+
 	mapping := postgresql.Mapper[ExampleEntity, string]{ /* real mapping data here */ }
 
 	subscriptionManager := postgresql.NewListenNotifySubscriptionManager[ExampleEntity, string](mapping, os.Getenv("DATABASE_URL"), connectionManager)

@@ -56,6 +56,10 @@ func (c OnePhaseCommitProtocol[Entity, ID]) resource() testcase.Var[spechelper.C
 	}
 }
 
+func (c OnePhaseCommitProtocol[Entity, ID]) Name() string {
+	return "crud OnePhaseCommitProtocol"
+}
+
 func (c OnePhaseCommitProtocol[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }

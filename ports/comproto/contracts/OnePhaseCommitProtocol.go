@@ -32,6 +32,10 @@ func (c OnePhaseCommitProtocol) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
+func (c OnePhaseCommitProtocol) Name() string {
+	return "comproto#psh.DatabaseURL(tb)OnePhaseCommitProtocolSubject"
+}
+
 func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 	s.Context("supplies OnePhaseCommitProtocol", func(s *testcase.Spec) {
 		s.HasSideEffect()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"sync"
@@ -13,6 +14,76 @@ import (
 
 	"github.com/lib/pq"
 )
+
+// RepositoryWithCUDEvents is a frameless external resource supplier to store a certain entity type.
+// The Repository supplier itself is a stateless entity.
+//
+// SRP: DBA
+type RepositoryWithCUDEvents[Entity, ID any] struct {
+	SubscriptionManager SubscriptionManager[Entity, ID]
+	Repository[Entity, ID]
+	MetaAccessor
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
+	ctx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
+	if err := r.Repository.Create(ctx, ptr); err != nil {
+		return err
+	}
+	return r.SubscriptionManager.PublishCreateEvent(ctx, pubsub.CreateEvent[Entity]{Entity: *ptr})
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr error) {
+	ctx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
+	if err := r.Repository.Update(ctx, ptr); err != nil {
+		return err
+	}
+	return r.SubscriptionManager.PublishUpdateEvent(ctx, pubsub.UpdateEvent[Entity]{Entity: *ptr})
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
+	ctx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
+	if err := r.Repository.DeleteByID(ctx, id); err != nil {
+		return err
+	}
+	return r.SubscriptionManager.PublishDeleteByIDEvent(ctx, pubsub.DeleteByIDEvent[ID]{ID: id})
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
+	ctx, err := r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
+	if err := r.Repository.DeleteAll(ctx); err != nil {
+		return err
+	}
+	return r.SubscriptionManager.PublishDeleteAllEvent(ctx, pubsub.DeleteAllEvent{})
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) SubscribeToCreatorEvents(ctx context.Context, s pubsub.CreatorSubscriber[Entity]) (pubsub.Subscription, error) {
+	return r.SubscriptionManager.SubscribeToCreatorEvents(ctx, s)
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) SubscribeToUpdaterEvents(ctx context.Context, s pubsub.UpdaterSubscriber[Entity]) (pubsub.Subscription, error) {
+	return r.SubscriptionManager.SubscribeToUpdaterEvents(ctx, s)
+}
+
+func (r RepositoryWithCUDEvents[Entity, ID]) SubscribeToDeleterEvents(ctx context.Context, s pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
+	return r.SubscriptionManager.SubscribeToDeleterEvents(ctx, s)
+}
 
 type SubscriptionManager[Entity, ID any] interface {
 	io.Closer

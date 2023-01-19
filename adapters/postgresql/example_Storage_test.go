@@ -32,6 +32,16 @@ func ExampleRepository() {
 		},
 	}
 
-	stg := postgresql.NewRepositoryWithDSN[Entity, int](os.Getenv("DATABASE_URL"), mapping)
-	defer stg.Close()
+	cm, err := postgresql.NewConnectionManagerWithDSN(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		panic(err)
+	}
+	defer cm.Close()
+
+	repo := postgresql.Repository[Entity, int]{
+		ConnectionManager: cm,
+		Mapping:           mapping,
+	}
+
+	_ = repo
 }

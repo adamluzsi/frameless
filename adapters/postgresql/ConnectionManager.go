@@ -4,21 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io"
-	"sync"
-
+	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side-effect loading
+	"io"
 )
 
 type ConnectionManager interface {
 	io.Closer
+	comproto.OnePhaseCommitProtocol
 	// Connection returns the current context's connection.
 	// This can be a *sql.DB or if we are within a transaction, then an *sql.Tx
 	Connection(ctx context.Context) (Connection, error)
-
-	BeginTx(ctx context.Context) (context.Context, error)
-	CommitTx(ctx context.Context) error
-	RollbackTx(ctx context.Context) error
 }
 
 type Connection interface {
@@ -27,24 +23,22 @@ type Connection interface {
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
-func NewConnectionManager(dsn string) ConnectionManager {
-	return &connectionManager{DSN: dsn}
+func NewConnectionManagerWithDSN(dsn string) (ConnectionManager, error) {
+	db, err := sql.Open(`postgres`, dsn)
+	if err != nil {
+		return nil, err
+	}
+	return &connectionManager{DB: db}, nil
 }
 
-type connectionManager struct {
-	DSN string
-
-	mutex      sync.Mutex
-	connection *sql.DB
+func NewConnectionManagerWithDB(db *sql.DB) ConnectionManager {
+	return &connectionManager{DB: db}
 }
+
+type connectionManager struct{ DB *sql.DB }
 
 func (c *connectionManager) Close() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	if c.connection == nil {
-		return nil
-	}
-	return c.connection.Close()
+	return c.DB.Close()
 }
 
 // Connection returns the current context's sql connection.
@@ -118,25 +112,8 @@ func (c *connectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValu
 }
 
 func (c *connectionManager) getConnection() (*sql.DB, error) {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	setConnection := func() error {
-		db, err := sql.Open(`postgres`, c.DSN)
-		if err != nil {
-			return err
-		}
-		c.connection = db
-		return nil
+	if err := c.DB.Ping(); err != nil {
+		return nil, err
 	}
-	if c.connection == nil {
-		if err := setConnection(); err != nil {
-			return nil, err
-		}
-	}
-	if err := c.connection.Ping(); err != nil {
-		if err := setConnection(); err != nil {
-			return nil, err
-		}
-	}
-	return c.connection, nil
+	return c.DB, nil
 }
