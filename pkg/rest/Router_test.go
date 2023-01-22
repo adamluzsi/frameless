@@ -3,9 +3,9 @@ package rest_test
 import (
 	"bytes"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"github.com/adamluzsi/frameless/pkg/rest"
 	"github.com/adamluzsi/frameless/pkg/rest/internal"
-	"github.com/adamluzsi/frameless/pkg/rest/internal/paths"
 	"github.com/adamluzsi/frameless/pkg/rest/rfc7807"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
@@ -65,7 +65,7 @@ func TestRouter(t *testing.T) {
 			s.When("the request path doesn't match the registered path", func(s *testcase.Spec) {
 				const pathPrefix = "/foo/bar/baz"
 				path.Let(s, func(t *testcase.T) string {
-					return paths.Join(pathPrefix, registeredPath.Get(t))
+					return pathutil.Join(pathPrefix, registeredPath.Get(t))
 				})
 
 				s.Then("it return path not found", func(t *testcase.T) {
@@ -99,7 +99,7 @@ func TestRouter(t *testing.T) {
 					t.Must.Equal("/", routing.Path)
 				})
 			})
-			
+
 			s.When("the request path contains the registered path", func(s *testcase.Spec) {
 				const pathRest = "/foo/bar/baz"
 				path.Let(s, func(t *testcase.T) string {

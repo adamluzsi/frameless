@@ -1,8 +1,8 @@
 package rest
 
 import (
+	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"github.com/adamluzsi/frameless/pkg/rest/internal"
-	"github.com/adamluzsi/frameless/pkg/rest/internal/paths"
 	"net/http"
 	"sync"
 )
@@ -63,7 +63,7 @@ func (router *Router) ServeHTTP(responseWriter http.ResponseWriter, request *htt
 		route   = router.route
 		handler = route.Handler
 	)
-	for _, part := range paths.Split(rc.Path) {
+	for _, part := range pathutil.Split(rc.Path) {
 		var ok bool
 		route, ok = route.Lookup(part)
 		if !ok {
@@ -76,7 +76,7 @@ func (router *Router) ServeHTTP(responseWriter http.ResponseWriter, request *htt
 		defaultErrorHandler.HandleError(responseWriter, request, ErrPathNotFound)
 		return
 	}
-	withMountPoint(rc, paths.Join(mount...))
+	withMountPoint(rc, pathutil.Join(mount...))
 	handler.ServeHTTP(responseWriter, request)
 }
 
@@ -90,7 +90,7 @@ func (router *Router) Mount(path Path, handler http.Handler) {
 
 	var ro *route
 	ro = router.route
-	for _, part := range paths.Split(path) {
+	for _, part := range pathutil.Split(path) {
 		ro = ro.Ensure(part)
 	}
 

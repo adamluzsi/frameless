@@ -414,7 +414,7 @@ func TestHandler(t *testing.T) {
 			})
 		})
 
-		s.When("paths that leads to sub resource endpoints called", func(s *testcase.Spec) {
+		s.When("pathutil that leads to sub resource endpoints called", func(s *testcase.Spec) {
 			path.Let(s, func(t *testcase.T) string {
 				return "/42/bars"
 			})

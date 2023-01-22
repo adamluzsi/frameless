@@ -5,10 +5,13 @@ import (
 	"github.com/adamluzsi/frameless/pkg/rest/restmapping"
 )
 
-type Foo struct {
-	ID  int
-	Foo int
-}
+type (
+	Foo struct {
+		ID  FooID
+		Foo int
+	}
+	FooID = int
+)
 
 type FooDTO struct {
 	ID  int `json:"id"`

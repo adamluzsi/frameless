@@ -1,8 +1,8 @@
-package paths_test
+package pathutil_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/rest/internal/paths"
+	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"github.com/adamluzsi/testcase/assert"
 	"math/rand"
 	"strings"
@@ -18,7 +18,7 @@ func TestUnshift(t *testing.T) {
 		path = testcase.Let[string](s, nil)
 	)
 	act := func(t *testcase.T) (string, string) {
-		return paths.Unshift(path.Get(t))
+		return pathutil.Unshift(path.Get(t))
 	}
 
 	s.When(`request path has value but without slash prefix`, func(s *testcase.Spec) {
@@ -84,7 +84,7 @@ func TestCanonical(t *testing.T) {
 		path = testcase.Let[string](s, nil)
 	)
 	act := func(t *testcase.T) string {
-		return paths.Canonical(path.Get(t))
+		return pathutil.Canonical(path.Get(t))
 	}
 
 	s.When(`path is a canonical non root path`, func(s *testcase.Spec) {
@@ -155,7 +155,7 @@ func TestCanonical(t *testing.T) {
 func BenchmarkCanonical(b *testing.B) {
 	const path = `/canonical/path`
 	for i := 0; i < b.N; i++ {
-		paths.Canonical(path)
+		pathutil.Canonical(path)
 	}
 }
 
@@ -166,7 +166,7 @@ func TestClean(t *testing.T) {
 		path = testcase.Let[string](s, nil)
 	)
 	act := func(t *testcase.T) string {
-		return paths.Clean(path.Get(t))
+		return pathutil.Clean(path.Get(t))
 	}
 
 	s.When(`path is a canonical non root path`, func(s *testcase.Spec) {
@@ -241,7 +241,7 @@ func TestSplit(t *testing.T) {
 		path = testcase.Let[string](s, nil)
 	)
 	act := func(t *testcase.T) []string {
-		return paths.Split(path.Get(t))
+		return pathutil.Split(path.Get(t))
 	}
 
 	s.When(`path is a canonical non root path`, func(s *testcase.Spec) {
@@ -310,9 +310,9 @@ func TestSplit(t *testing.T) {
 }
 
 func TestJoin(t *testing.T) {
-	assert.Equal(t, "/", paths.Join(""))
-	assert.Equal(t, "/test", paths.Join("test"))
-	assert.Equal(t, "/test", paths.Join("", "test"))
-	assert.Equal(t, "/test", paths.Join("", "test", ""))
-	assert.Equal(t, "/foo/bar/baz", paths.Join("foo", "/bar/", "/baz"))
+	assert.Equal(t, "/", pathutil.Join(""))
+	assert.Equal(t, "/test", pathutil.Join("test"))
+	assert.Equal(t, "/test", pathutil.Join("", "test"))
+	assert.Equal(t, "/test", pathutil.Join("", "test", ""))
+	assert.Equal(t, "/foo/bar/baz", pathutil.Join("foo", "/bar/", "/baz"))
 }
