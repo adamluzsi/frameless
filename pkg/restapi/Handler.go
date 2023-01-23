@@ -1,10 +1,10 @@
-package rest
+package restapi
 
 import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/frameless/pkg/rest/internal"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"net/http"
 )

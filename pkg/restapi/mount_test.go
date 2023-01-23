@@ -1,12 +1,12 @@
-package rest_test
+package restapi_test
 
 import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/frameless/pkg/rest"
-	"github.com/adamluzsi/frameless/pkg/rest/internal"
+	"github.com/adamluzsi/frameless/pkg/restapi"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
@@ -31,7 +31,7 @@ func TestMount(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) {
-		rest.Mount(
+		restapi.Mount(
 			serveMux.Get(t),
 			pattern.Get(t),
 			handler.Get(t),
@@ -56,7 +56,7 @@ func TestMount(t *testing.T) {
 		t.Must.Equal("/sub", routing.Path)
 	})
 
-	s.When("handler is a rest.Handler", func(s *testcase.Spec) {
+	s.When("handler is a restapi.Handler", func(s *testcase.Spec) {
 		repo := testcase.Let(s, func(t *testcase.T) *memory.Repository[Foo, FooID] {
 			return memory.NewRepository[Foo, FooID](memory.NewMemory())
 		})
@@ -68,10 +68,10 @@ func TestMount(t *testing.T) {
 		}).EagerLoading(s)
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
-			return rest.Handler[Foo, FooID, FooDTO]{
+			return restapi.Handler[Foo, FooID, FooDTO]{
 				Resource: repo.Get(t),
 				Mapping:  FooMapping{},
-				Router: rest.NewRouter(func(r *rest.Router) {
+				Router: restapi.NewRouter(func(r *restapi.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastReq.Set(t, r)
 						w.WriteHeader(http.StatusTeapot)
@@ -162,7 +162,7 @@ func TestMountPoint(tt *testing.T) {
 	t := testcase.NewT(tt, s)
 
 	charset := random.CharsetDigit()
-	mountPoint := rest.Path(fmt.Sprintf("/%s/%s/%s",
+	mountPoint := restapi.Path(fmt.Sprintf("/%s/%s/%s",
 		t.Random.StringNC(3, charset),
 		t.Random.StringNC(3, charset),
 		t.Random.StringNC(3, charset),
@@ -173,7 +173,7 @@ func TestMountPoint(tt *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 
-	gotHandler := rest.MountPoint(mountPoint, handler)
+	gotHandler := restapi.MountPoint(mountPoint, handler)
 
 	remainingPath := "/foo/bar/baz"
 	rr := httptest.NewRecorder()

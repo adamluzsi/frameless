@@ -1,8 +1,8 @@
-package rest_test
+package restapi_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/rest/restmapping"
+	"github.com/adamluzsi/frameless/pkg/restapi/restmapping"
 )
 
 type (

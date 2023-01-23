@@ -1,8 +1,8 @@
-package rest
+package restapi
 
 import (
 	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/frameless/pkg/rest/internal"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"net/http"
 	"strings"
 )

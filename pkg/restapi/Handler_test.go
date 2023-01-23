@@ -1,4 +1,4 @@
-package rest_test
+package restapi_test
 
 import (
 	"bytes"
@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/rest"
-	"github.com/adamluzsi/frameless/pkg/rest/internal"
-	"github.com/adamluzsi/frameless/pkg/rest/rfc7807"
+	"github.com/adamluzsi/frameless/pkg/restapi"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
+	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
@@ -30,15 +30,15 @@ func TestHandler(t *testing.T) {
 		resource = testcase.Let(s, func(t *testcase.T) crud.ByIDFinder[Foo, int] {
 			return mdb.Get(t)
 		})
-		mapping                = testcase.LetValue[rest.Mapping[Foo, int, FooDTO]](s, FooMapping{})
+		mapping                = testcase.LetValue[restapi.Mapping[Foo, int, FooDTO]](s, FooMapping{})
 		lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) rest.Handler[Foo, int, FooDTO] {
-		return rest.Handler[Foo, int, FooDTO]{
+	subject := testcase.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+		return restapi.Handler[Foo, int, FooDTO]{
 			Resource: resource.Get(t),
 			Mapping:  mapping.Get(t),
-			Router: rest.NewRouter(func(router *rest.Router) {
-				router.MountRoutes(rest.Routes{
+			Router: restapi.NewRouter(func(router *restapi.Router) {
+				router.MountRoutes(restapi.Routes{
 					// match anything
 					"/": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastSubResourceRequest.Set(t, r)
@@ -120,7 +120,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -164,7 +164,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[any]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -203,7 +203,7 @@ func TestHandler(t *testing.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusConflict, rr.Code)
 						errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
-						t.Must.Equal(rest.ErrEntityAlreadyExist.ID.String(), errDTO.Type.ID)
+						t.Must.Equal(restapi.ErrEntityAlreadyExist.ID.String(), errDTO.Type.ID)
 					})
 				})
 			})
@@ -219,12 +219,12 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 
 			s.When("the request body is larger than the configured limit", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) rest.Handler[Foo, int, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
 					h := subject.Super(t)
 					h.BodyReadLimit = 3
 					return h
@@ -237,7 +237,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -255,7 +255,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrMalformedID.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrMalformedID.ID.String(), errDTO.Type.ID)
 				})
 			})
 		}
@@ -289,7 +289,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -342,7 +342,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -357,7 +357,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -394,7 +394,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -409,7 +409,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -435,7 +435,7 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.And(".Routes is nil", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) rest.Handler[Foo, int, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
 					v := subject.Super(t)
 					v.Router = nil
 					return v
@@ -447,7 +447,7 @@ func TestHandler(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})

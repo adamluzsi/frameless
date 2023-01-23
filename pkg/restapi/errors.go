@@ -1,10 +1,10 @@
-package rest
+package restapi
 
 import (
 	"context"
 	"errors"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/rest/rfc7807"
+	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"net/http"
 )
 
@@ -24,7 +24,7 @@ var ErrEntityAlreadyExist = errorutil.UserError{
 }
 
 var ErrMethodNotAllowed = errorutil.UserError{
-	ID:      "rest-method-not-allowed",
+	ID:      "restapi-method-not-allowed",
 	Message: "The requested RESTful method is not supported.",
 }
 

@@ -1,4 +1,4 @@
-# package `rest`
+# package `restapi`
 
 REST API stands for Representational State Transfer
 and is an architectural pattern for creating web services.

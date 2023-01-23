@@ -1,4 +1,4 @@
-package rest
+package restapi
 
 //func MakeResource[Entity, ID any](res crud.ByIDFinder[Entity, ID]) Repository[Entity, ID] {
 //	var r Repository[Entity, ID]

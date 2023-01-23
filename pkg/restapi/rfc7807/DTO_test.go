@@ -2,7 +2,7 @@ package rfc7807_test
 
 import (
 	"encoding/json"
-	"github.com/adamluzsi/frameless/pkg/rest/rfc7807"
+	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase/assert"
 	"net/http"
 	"testing"

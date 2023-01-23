@@ -1,15 +1,12 @@
 /*
-
 Package frameless - The Hitchhiker's Guide to the Grumpytecture.
 
-
-Introduction
+# Introduction
 
 Everything you read here handle with a grain of salt because it is just my personal opinion on this subject.
 This research project primary was created for myself, to refresh and sort out my experience about design for my self.
 
-
-The reason
+# The reason
 
 There is a nice trade-off between using certain conventions or a framework that try to collect experience
 and build safety guards for those who may not experienced the same pitfalls yet.
@@ -54,8 +51,7 @@ how fast you receive back feedback regarding your change,
 at what quality level it able to provide feedback about system behavior changes,
 and how big mental model you need to build in order to understand the application on high level.
 
-
-The Pressure
+# The Pressure
 
 Because different stakeholders expect results to be delivered, and if possible as soon as possible,
 It's rare to have a moment to think every decision through in a life of a project.
@@ -73,25 +69,21 @@ just some idea and practice I like to follow while working on projects.
 Please don't expect in this repo examples in a way, that you can easily wire into your project.
 You can check projects that use idioms from here if you interested in such examples.
 
-
-
-Why Golang
+# Why Golang
 
 Most of these experience sourced from working in other languages,
 and programming in golang's minimalist environment is kinda like a chill out place for my mind,
 but the knowledge I try to form it into the code here is language independent and could be used in any other languages as well.
 In languages where there are no interfaces, I highly recommend creating the specification that ensure this simple contract.
 
-
-
-Principles that I liked and try to follow when I design
+# Principles that I liked and try to follow when I design
 
 Rule 1.
 You can't tell where a program is going to spend its time.
 Bottlenecks occur in surprising places, so don't try to guess and build in a speed hack until you've proven that's where the bottleneck really is.
 
 Rule 2.
-Measure. Don't tune for speed until you've measured, and even then, still don't tune unless one part of the code overwhelms the rest.
+Measure. Don't tune for speed until you've measured, and even then, still don't tune unless one part of the code overwhelms the restapi.
 
 Rule 3.
 Fancy algorithms are slow when n is small,
@@ -124,9 +116,7 @@ Ken Thompson rephrased Pike's rules 3 and 4 as "When in doubt, use brute force."
 Rules 3 and 4 are instances of the design philosophy KISS.
 Rule 5 was previously stated by Fred Brooks in The Mythical Man-Month.
 
-
-
-Resources
+# Resources
 
 https://12factor.net/
 https://en.wikipedia.org/wiki/Law_of_Demeter
@@ -137,17 +127,17 @@ https://en.wikipedia.org/wiki/You_aren%27t_gonna_need_it
 https://en.wikipedia.org/wiki/Single_responsibility_principle
 https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html
 
-
-
-Domain Entity
+# Domain Entity
 
 Entity encapsulate the most general and high-level rules of the application.
+
 	TL;DR:
 		These structures are representing purely data related to some kind of real world entity.
 		It may have high level functions that use it's own data.
 		It knows about nothing else but it self only.
 
 This interface here is only for documentation purpose
+
 	"An entity can be an object with methods, or it can be a set of data structures and functions"
 	Robert Martin
 
@@ -161,8 +151,7 @@ For example, you would not expect these objects to be affected by a change to pa
 No operational change to any particular application should affect the entity layer.
 By convention these structures should be placed on the top folder level of the project.
 
-
-Interactor
+# Interactor
 
 Interactor or also often referenced as Domain Logic, Business Logic or Consumer.
 Interactor implement a business rule to a specific audience of the software.
@@ -203,7 +192,6 @@ Here is a definition from Robert Martin:
 	We do, however, expect that changes to the operation of the application will affect the use-cases and therefore the software in this layer.
 	If the details of a use-case change, then some code in this layer will certainly be affected.
 
-
 When your application has all the use-case, then you decide the right external interface to expose them.
 
 	TIP:
@@ -215,9 +203,7 @@ When your application has all the use-case, then you decide the right external i
 		How would you structure and create your code in a way that you are safe from merge conflicts ?
 		How would you design your code dependency in a way that other engineers activity unlikely to affect your code ?
 
-
-
-Supplier
+# Supplier
 
 Supplier is a specific implementation of an external resource that required for an Interactor.
 
@@ -229,6 +215,5 @@ Supplier is a specific implementation of an external resource that required for 
 		yet your domain rules will be keep safe from this changes.
 
 A common example for a Supplier is a Entity Repository implementation, also known as Entity Repositories.
-
 */
 package frameless

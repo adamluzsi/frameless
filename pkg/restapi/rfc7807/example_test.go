@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/rest/rfc7807"
+	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"net/http"
 )
 

@@ -1,12 +1,12 @@
-package rest_test
+package restapi_test
 
 import (
 	"bytes"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/frameless/pkg/rest"
-	"github.com/adamluzsi/frameless/pkg/rest/internal"
-	"github.com/adamluzsi/frameless/pkg/rest/rfc7807"
+	"github.com/adamluzsi/frameless/pkg/restapi"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
+	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
 	"github.com/adamluzsi/testcase/random"
@@ -28,12 +28,12 @@ func TestRouter(t *testing.T) {
 			})
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) *rest.Router {
-		return &rest.Router{}
+	subject := testcase.Let(s, func(t *testcase.T) *restapi.Router {
+		return &restapi.Router{}
 	})
 
 	httpspec.ItBehavesLikeHandlerMiddleware(s, func(t *testcase.T, next http.Handler) http.Handler {
-		r := &rest.Router{}
+		r := &restapi.Router{}
 		r.Mount("/", next)
 		return r
 	})
@@ -58,7 +58,7 @@ func TestRouter(t *testing.T) {
 
 			errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 			t.Must.NotEmpty(errDTO)
-			t.Must.Equal(rest.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+			t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 		})
 
 		ThenRouteTheRequests := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
@@ -74,7 +74,7 @@ func TestRouter(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(rest.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -125,12 +125,12 @@ func TestRouter(t *testing.T) {
 		}
 
 		s.When("Routes are registered with .RegisterRoutes", func(s *testcase.Spec) {
-			registeredPath := testcase.Let(s, func(t *testcase.T) rest.Path {
+			registeredPath := testcase.Let(s, func(t *testcase.T) restapi.Path {
 				path := t.Random.StringNC(5, random.CharsetAlpha())
 				return fmt.Sprintf("/%s", url.PathEscape(path))
 			})
 			s.Before(func(t *testcase.T) {
-				subject.Get(t).MountRoutes(rest.Routes{
+				subject.Get(t).MountRoutes(restapi.Routes{
 					registeredPath.Get(t): handler.Get(t),
 				})
 			})
@@ -139,7 +139,7 @@ func TestRouter(t *testing.T) {
 		})
 
 		s.When("path is registered", func(s *testcase.Spec) {
-			registeredPath := testcase.Let(s, func(t *testcase.T) rest.Path {
+			registeredPath := testcase.Let(s, func(t *testcase.T) restapi.Path {
 				path := t.Random.StringNC(5, random.CharsetAlpha())
 				return fmt.Sprintf("/%s", url.PathEscape(path))
 			})
@@ -153,10 +153,10 @@ func TestRouter(t *testing.T) {
 }
 
 func TestRouter_race(t *testing.T) {
-	router := rest.Router{}
+	router := restapi.Router{}
 
 	registerRoutes := func() {
-		router.MountRoutes(rest.Routes{
+		router.MountRoutes(restapi.Routes{
 			"/foo": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 			"/bar": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
 			"/baz": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),

@@ -136,7 +136,7 @@ func TestWalkDir(t *testing.T) {
 		names = append(names, d.Name())
 
 		// intentionally skipping after name is already added,
-		// to confirm that the rest of the directory is skipped
+		// to confirm that the restapi of the directory is skipped
 		if err == nil && d.IsDir() && d.Name() == "a" {
 			return fs.SkipDir
 		}

@@ -1,4 +1,4 @@
-package rest
+package restapi
 
 //
 //type Client[DTO, Entity, ID any] struct {

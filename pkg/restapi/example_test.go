@@ -1,8 +1,8 @@
-package rest_test
+package restapi_test
 
 import (
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/rest"
+	"github.com/adamluzsi/frameless/pkg/restapi"
 	"log"
 	"net/http"
 )
@@ -12,14 +12,14 @@ func ExampleRoutes() {
 	fooRepository := memory.NewRepository[Foo, int](m)
 	barRepository := memory.NewRepository[Bar, string](m)
 
-	r := rest.NewRouter(func(router *rest.Router) {
-		router.MountRoutes(rest.Routes{
-			"/v1/api/foos": rest.Handler[Foo, int, FooDTO]{
+	r := restapi.NewRouter(func(router *restapi.Router) {
+		router.MountRoutes(restapi.Routes{
+			"/v1/api/foos": restapi.Handler[Foo, int, FooDTO]{
 				Resource: fooRepository,
 				Mapping:  FooMapping{},
-				Router: rest.NewRouter(func(router *rest.Router) {
-					router.MountRoutes(rest.Routes{
-						"/bars": rest.Handler[Bar, string, BarDTO]{
+				Router: restapi.NewRouter(func(router *restapi.Router) {
+					router.MountRoutes(restapi.Routes{
+						"/bars": restapi.Handler[Bar, string, BarDTO]{
 							Resource: barRepository,
 							Mapping:  BarMapping{},
 						}})
@@ -51,7 +51,7 @@ func ExampleHandler() {
 	m := memory.NewMemory()
 	fooRepository := memory.NewRepository[Foo, int](m)
 
-	h := rest.Handler[Foo, int, FooDTO]{
+	h := restapi.Handler[Foo, int, FooDTO]{
 		Resource: fooRepository,
 		Mapping:  FooMapping{},
 	}

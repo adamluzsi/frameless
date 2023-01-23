@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	rfc78072 "github.com/adamluzsi/frameless/pkg/rest/rfc7807"
+	rfc78072 "github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
 	"github.com/adamluzsi/testcase/let"
