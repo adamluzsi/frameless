@@ -83,9 +83,15 @@ CREATE TABLE IF NOT EXISTS frameless_postgres_locker_locks (
 );
 `
 
+var lockerMigrationConfig = MigratorConfig{
+	Namespace: "frameless/postgresql.Locker",
+	Steps: []MigratorStep{
+		MigrationStep{UpQuery: queryCreateLockerTable},
+	},
+}
+
 func (l Locker) Migrate(ctx context.Context) error {
-	_, err := l.DB.ExecContext(ctx, queryCreateLockerTable)
-	return err
+	return Migrator{DB: l.DB, Config: lockerMigrationConfig}.Up(ctx)
 }
 
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
