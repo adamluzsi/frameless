@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/adamluzsi/frameless/internal/consttypes"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/internal/constant"
 	"net/http"
 	"strings"
 )
@@ -70,7 +70,7 @@ func (h Handler[Extensions]) HandleError(w http.ResponseWriter, r *http.Request,
 	_, _ = w.Write(bytes)
 }
 
-func (h Handler[Extensions]) toTitleCase(id constant.String) string {
+func (h Handler[Extensions]) toTitleCase(id consttypes.String) string {
 	title := string(id)
 	title = strings.ReplaceAll(title, "-", " ")
 	title = strings.ReplaceAll(title, "_", " ")

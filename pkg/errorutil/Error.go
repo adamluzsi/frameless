@@ -1,9 +1,9 @@
 package errorutil
 
-// Error is an implementation for the error interface that allow you to declare exported globals with the `const` keyword.
+// Error is an implementation for the error interface that allow you to declare exported globals with the `consttypes` keyword.
 //
-//   TL;DR:
-//     const ErrSomething errorutil.Error = "something is an error"
+//	TL;DR:
+//	  consttypes ErrSomething errorutil.Error = "something is an error"
 type Error string
 
 // Error implement the error interface

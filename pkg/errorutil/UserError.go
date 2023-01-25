@@ -2,7 +2,7 @@ package errorutil
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/internal/constant"
+	"github.com/adamluzsi/frameless/internal/consttypes"
 )
 
 func LookupUserError(err error) (UserError, bool) {
@@ -17,13 +17,13 @@ type UserError struct {
 	// Traditionally this should be a string without any white space.
 	//
 	// Example: "foo-is-forbidden-with-active-baz"
-	ID constant.String
+	ID consttypes.String
 	// Message is the error message meant to be read by a developer working on the implementation of the caller.
 	// It is not expected to be seen by end users.
 	// It might be written in English for portability reasons.
 	//
 	// Example: "Authentication failed due to incorrect username or password."
-	Message constant.String
+	Message consttypes.String
 }
 
 func (err UserError) Error() string {
