@@ -7,6 +7,42 @@ import (
 	"testing"
 )
 
+func ExampleValidateStruct_string() {
+	type ExampleStruct struct {
+		V string `enum:"A;B;C;"`
+	}
+
+	_ = enum.ValidateStruct(ExampleStruct{V: "A"}) // no error
+	_ = enum.ValidateStruct(ExampleStruct{V: "D"}) // has error
+}
+
+func ExampleValidateStruct_int() {
+	type ExampleStruct struct {
+		V int `enum:"2,4,8,16,42,"`
+	}
+
+	_ = enum.ValidateStruct(ExampleStruct{V: 42}) // no error
+	_ = enum.ValidateStruct(ExampleStruct{V: 24}) // has error
+}
+
+func ExampleValidateStruct_float() {
+	type ExampleStruct struct {
+		V float64 `enum:"2.5;4.2;"`
+	}
+
+	_ = enum.ValidateStruct(ExampleStruct{V: 4.2})   // no error
+	_ = enum.ValidateStruct(ExampleStruct{V: 24.42}) // has error
+}
+
+func ExampleValidateStruct_slice() {
+	type ExampleStruct struct {
+		V []string `enum:"FOO|BAR|BAZ|"`
+	}
+
+	_ = enum.ValidateStruct(ExampleStruct{V: []string{"FOO", "BAR", "BAZ"}}) // no error
+	_ = enum.ValidateStruct(ExampleStruct{V: []string{"FOO", "BAB", "BAZ"}}) // has error because of BAB
+}
+
 func TestValidateStruct_smoke(t *testing.T) {
 	type (
 		EmptyEnumExample struct {
