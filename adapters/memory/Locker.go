@@ -9,6 +9,9 @@ import (
 
 func NewLocker() *Locker { return &Locker{} }
 
+// Locker is a memory-based shared mutex implementation.
+// Locker is not safe to call from different application instances.
+// Locker is meant to be used in a single application instance.
 type Locker struct {
 	mutex sync.Mutex
 }

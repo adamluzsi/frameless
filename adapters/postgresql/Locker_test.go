@@ -10,8 +10,30 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
+	"os"
 	"testing"
 )
+
+func ExampleLocker() {
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		panic(err)
+	}
+
+	l := postgresql.Locker{
+		Name: "my-lock",
+		DB:   db,
+	}
+
+	ctx, err := l.Lock(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	if err := l.Unlock(ctx); err != nil {
+		panic(err)
+	}
+}
 
 func TestLocker(t *testing.T) {
 	db, err := sql.Open("postgres", spechelper.DatabaseDSN(t))

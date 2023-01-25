@@ -8,6 +8,19 @@ import (
 	"testing"
 )
 
+func ExampleLocker() {
+	l := memory.NewLocker()
+
+	ctx, err := l.Lock(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	if err := l.Unlock(ctx); err != nil {
+		panic(err)
+	}
+}
+
 func TestLocker(t *testing.T) {
 	lockscontracts.Locker{
 		MakeSubject: func(tb testing.TB) locks.Locker {

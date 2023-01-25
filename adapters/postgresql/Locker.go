@@ -8,6 +8,10 @@ import (
 	"github.com/adamluzsi/frameless/ports/locks"
 )
 
+// Locker is a PG-based shared mutex implementation.
+// It depends on the existence of the frameless_postgres_locker_locks table.
+// Locker is safe to call from different application instances,
+// ensuring that only one of them can hold the lock concurrently.
 type Locker struct {
 	Name string
 	DB   *sql.DB
