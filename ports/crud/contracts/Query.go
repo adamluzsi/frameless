@@ -66,7 +66,6 @@ func (c QueryOne[Entity, ID]) Spec(s *testcase.Spec) {
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			crudtest.Create[Entity, ID](t, subject.Get(t).Resource, c.MakeContext(t), entity.Get(t))
-			crudtest.HasID[Entity, ID](t, entity.Get(t))
 		})
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
@@ -201,11 +200,11 @@ func (c QueryMany[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.And(`another similar entities are saved in the resource`, func(s *testcase.Spec) {
 			additionalEntities := testcase.Let(s, func(t *testcase.T) (ents []Entity) {
-				for i, m := 0, t.Random.IntB(3, 7); i < m; i++ {
+				t.Random.Repeat(1, 3, func() {
 					ent := c.MakeIncludedEntity(t)
 					crudtest.Create[Entity, ID](t, subject.Get(t).Resource, c.MakeContext(t), &ent)
 					ents = append(ents, ent)
-				}
+				})
 				return ents
 			}).EagerLoading(s)
 

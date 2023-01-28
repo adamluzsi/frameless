@@ -18,8 +18,8 @@ type Deleter[Entity, ID any] struct {
 }
 
 type DeleterSubject[Entity, ID any] interface {
-	AllDeleterSubject[Entity, ID]
-	ByIDDeleterSubject[Entity, ID]
+	spechelper.CRD[Entity, ID]
+	crud.AllDeleter
 }
 
 func (c Deleter[Entity, ID]) resource() testcase.Var[DeleterSubject[Entity, ID]] {

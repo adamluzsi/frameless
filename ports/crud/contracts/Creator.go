@@ -97,30 +97,10 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 			IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 		})
 
-		s.Then(`it will raise error because ext:ID field already points to a existing record`, func(t *testcase.T) {
+		s.Then(`it will return an error informing that the entity record already exists`, func(t *testcase.T) {
 			t.Must.ErrorIs(crud.ErrAlreadyExists, subject(t))
 		})
 	})
-
-	if c.SupportIDReuse {
-		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				t.Must.Nil(subject(t))
-				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
-				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-			})
-
-			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
-			})
-
-			s.Then(`persisted object can be found`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
-				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-			})
-		})
-	}
 
 	if c.SupportIDReuse {
 		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {

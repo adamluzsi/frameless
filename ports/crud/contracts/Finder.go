@@ -2,8 +2,10 @@ package crudcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/ports/crud"
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
+	"github.com/adamluzsi/testcase/let"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -20,8 +22,8 @@ type Finder[Entity, ID any] struct {
 }
 
 type FinderSubject[Entity, ID any] interface {
-	ByIDFinderSubject[Entity, ID]
-	AllFinderSubject[Entity, ID]
+	spechelper.CRD[Entity, ID]
+	crud.AllFinder[Entity]
 }
 
 func (c Finder[Entity, ID]) Test(t *testing.T) {
@@ -87,34 +89,69 @@ func (c ByIDFinder[Entity, ID]) Spec(s *testcase.Spec) {
 		QueryName:   "FindByID",
 
 		Specify: func(tb testing.TB) {
-			t := tb.(*testcase.T)
-			r := c.MakeSubject(t)
+			s := testcase.NewSpec(tb)
+			defer s.Finish()
 
-			var ids []ID
-			for i := 0; i < 12; i++ {
-				ent := c.MakeEntity(t)
-				Create[Entity, ID](t, r, c.MakeContext(t), &ent)
-				id, ok := extid.Lookup[ID](&ent)
-				t.Must.True(ok, spechelper.ErrIDRequired.Error())
-				ids = append(ids, id)
+			var (
+				resource = let.With[ByIDFinderSubject[Entity, ID]](s, c.MakeSubject)
+				ctx      = let.With[context.Context](s, c.MakeContext)
+				id       = testcase.Let[ID](s, nil)
+			)
+			act := func(t *testcase.T) (Entity, bool, error) {
+				return resource.Get(t).FindByID(ctx.Get(t), id.Get(t))
 			}
 
-			t.Log("when no value stored that the query request")
-			ctx := c.MakeContext(t)
-			_, ok, err := r.FindByID(c.MakeContext(t), c.createNonActiveID(t, ctx, r))
-			t.Must.Nil(err)
-			t.Must.False(ok)
+			s.When("id points to an existing value", func(s *testcase.Spec) {
+				ent := testcase.Let(s, func(t *testcase.T) Entity {
+					var (
+						e   = c.MakeEntity(t)
+						ctx = c.MakeContext(t)
+					)
+					t.Must.NoError(resource.Get(t).Create(ctx, &e))
+					t.Defer(resource.Get(t).DeleteByID, ctx, HasID[Entity, ID](t, &e))
+					return e
+				})
 
-			t.Log("values returned")
-			for _, id := range ids {
-				ent, ok, err := r.FindByID(c.MakeContext(t), id)
-				t.Must.Nil(err)
-				t.Must.True(ok)
+				id.Let(s, func(t *testcase.T) ID {
+					return HasID[Entity, ID](t, pointer.Of(ent.Get(t)))
+				})
 
-				actualID, ok := extid.Lookup[ID](ent)
-				t.Must.True(ok, "can't find ID in the returned value")
-				t.Must.Equal(id, actualID)
-			}
+				s.Then("it will find and return the entity", func(t *testcase.T) {
+					Eventually.Assert(t, func(it assert.It) {
+						got, found, err := act(t)
+						it.Must.NoError(err)
+						it.Must.True(found)
+						it.Must.Equal(ent.Get(t), got)
+					})
+				})
+			})
+
+			s.When("id points to an already deleted value", func(s *testcase.Spec) {
+				id.Let(s, func(t *testcase.T) ID {
+					var (
+						r   = resource.Get(t)
+						e   = c.MakeEntity(t)
+						ctx = c.MakeContext(t)
+					)
+					t.Must.NoError(r.Create(ctx, &e))
+					var id = HasID[Entity, ID](t, &e)
+					Eventually.Assert(t, func(it assert.It) {
+						_, found, err := r.FindByID(ctx, id)
+						it.Must.NoError(err)
+						it.Must.True(found)
+					})
+					t.Must.NoError(r.DeleteByID(ctx, id))
+					return id
+				}).EagerLoading(s)
+
+				s.Then("it reports that the entity is not found", func(t *testcase.T) {
+					Eventually.Assert(t, func(it assert.It) {
+						_, ok, err := act(t)
+						it.Must.Nil(err)
+						it.Must.False(ok)
+					})
+				})
+			})
 		},
 	})
 }
@@ -141,16 +178,6 @@ func (c ByIDFinder[Entity, ID]) Benchmark(b *testing.B) {
 		_, _, err := r.FindByID(c.MakeContext(t), id.Get(t))
 		t.Must.Nil(err)
 	})
-}
-
-func (c ByIDFinder[Entity, ID]) createNonActiveID(tb testing.TB, ctx context.Context, r ByIDFinderSubject[Entity, ID]) ID {
-	tb.Helper()
-	ent := c.MakeEntity(tb)
-	ptr := &ent
-	Create[Entity, ID](tb, r, ctx, ptr)
-	id, _ := extid.Lookup[ID](ptr)
-	Delete[Entity, ID](tb, r, ctx, ptr)
-	return id
 }
 
 // AllFinder can return business entities from a given resource that implement it's test
