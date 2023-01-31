@@ -3,9 +3,10 @@ package crudtest
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/pointer"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/pkg/pointer"
 
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"

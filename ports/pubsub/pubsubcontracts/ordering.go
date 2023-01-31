@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/spechelper"
+	"github.com/adamluzsi/testcase/let"
+
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -37,9 +38,9 @@ func (c FIFO[V]) Spec(s *testcase.Spec) {
 		subscription := b.GivenWeHaveSubscription(s)
 
 		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-			val2 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-			val3 := testcase.Let(s, spechelper.ToLet(c.MakeV))
+			val1 := let.With[V](s, c.MakeV)
+			val2 := let.With[V](s, c.MakeV)
+			val3 := let.With[V](s, c.MakeV)
 			b.WhenWePublish(s, val1, val2, val3)
 
 			s.Then("messages are received in their publishing order", func(t *testcase.T) {
@@ -82,9 +83,9 @@ func (c LIFO[V]) Spec(s *testcase.Spec) {
 		sub := b.GivenWeHaveSubscription(s)
 
 		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-			val2 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-			val3 := testcase.Let(s, spechelper.ToLet(c.MakeV))
+			val1 := let.With[V](s, c.MakeV)
+			val2 := let.With[V](s, c.MakeV)
+			val3 := let.With[V](s, c.MakeV)
 			b.WhenWePublish(s, val1, val2, val3)
 
 			s.Then("messages are received in their publishing order", func(t *testcase.T) {

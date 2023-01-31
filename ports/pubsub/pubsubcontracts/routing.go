@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/let"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,
@@ -36,8 +36,8 @@ func (c Queue[V]) Spec(s *testcase.Spec) {
 			sub := b.GivenWeHaveSubscription(s)
 
 			s.And("messages are published", func(s *testcase.Spec) {
-				val1 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-				val2 := testcase.Let(s, spechelper.ToLet(c.MakeV))
+				val1 := let.With[V](s, c.MakeV)
+				val2 := let.With[V](s, c.MakeV)
 				b.WhenWePublish(s, val1, val2)
 
 				s.Then("subscription receives the messages", func(t *testcase.T) {
@@ -56,7 +56,7 @@ func (c Queue[V]) Spec(s *testcase.Spec) {
 			s.And("messages are published", func(s *testcase.Spec) {
 				var values []testcase.Var[V]
 				for i := 0; i < 42; i++ {
-					values = append(values, testcase.Let(s, spechelper.ToLet(c.MakeV)))
+					values = append(values, let.With[V](s, c.MakeV))
 				}
 
 				b.WhenWePublish(s, values...)
@@ -115,8 +115,8 @@ func (c Broadcast[V]) Spec(s *testcase.Spec) {
 			sub := b.GivenWeHaveSubscription(s)
 
 			s.And("messages are published", func(s *testcase.Spec) {
-				val1 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-				val2 := testcase.Let(s, spechelper.ToLet(c.MakeV))
+				val1 := let.With[V](s, c.MakeV)
+				val2 := let.With[V](s, c.MakeV)
 				b.WhenWePublish(s, val1, val2)
 
 				s.Then("subscription receives the messages", func(t *testcase.T) {
@@ -136,7 +136,7 @@ func (c Broadcast[V]) Spec(s *testcase.Spec) {
 			s.And("messages are published", func(s *testcase.Spec) {
 				var values []testcase.Var[V]
 				for i := 0; i < 42; i++ {
-					values = append(values, testcase.Let(s, spechelper.ToLet(c.MakeV)))
+					values = append(values, let.With[V](s, c.MakeV))
 				}
 
 				b.WhenWePublish(s, values...)

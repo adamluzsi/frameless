@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
 	"github.com/adamluzsi/frameless/ports/crud"
@@ -69,7 +70,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`an entity already stored`, func(s *testcase.Spec) {
 		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			ent := spechelper.ToPtr(c.MakeEntity(t))
+			ent := pointer.Of(c.MakeEntity(t))
 			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ent)
 			return ent
 		}).EagerLoading(s)
@@ -82,7 +83,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 				if c.ChangeEntity != nil {
 					c.ChangeEntity(t, ent)
 				} else {
-					ent = spechelper.ToPtr(c.MakeEntity(t))
+					ent = pointer.Of(c.MakeEntity(t))
 				}
 				assert.Must(t).Nil(extid.Set(ent, id))
 				return ent
@@ -110,7 +111,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
 		entityWithChanges.Let(s, func(t *testcase.T) *Entity {
-			newEntity := spechelper.ToPtr(c.MakeEntity(t))
+			newEntity := pointer.Of(c.MakeEntity(t))
 			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), newEntity)
 			Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), newEntity)
 			return newEntity
@@ -130,7 +131,7 @@ func (c Updater[Entity, ID]) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
 
 	ent := testcase.Let(s, func(t *testcase.T) *Entity {
-		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		ptr := pointer.Of(c.MakeEntity(t))
 		Create[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), ptr)
 		return ptr
 	})

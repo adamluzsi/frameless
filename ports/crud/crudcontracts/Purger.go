@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
 	"github.com/adamluzsi/frameless/ports/crud"
@@ -56,7 +57,7 @@ func (c Purger[Entity, ID]) specPurge(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			n := t.Random.IntN(42)
 			for i := 0; i < n; i++ {
-				ptr := spechelper.ToPtr(c.MakeEntity(t))
+				ptr := pointer.Of(c.MakeEntity(t))
 				Create[Entity, ID](t, c.resourceGet(t), spechelper.ContextVar.Get(t), ptr)
 			}
 		})

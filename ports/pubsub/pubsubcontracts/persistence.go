@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/let"
 )
 
 // Buffered defines a publisher behaviour where if the subscription is canceled,
@@ -32,8 +32,8 @@ func (c Buffered[V]) Spec(s *testcase.Spec) {
 		b.GivenWeHadSubscriptionBefore(s)
 
 		s.And("messages are published", func(s *testcase.Spec) {
-			val1 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-			val2 := testcase.Let(s, spechelper.ToLet(c.MakeV))
+			val1 := let.With[V](s, c.MakeV)
+			val2 := let.With[V](s, c.MakeV)
 			b.WhenWePublish(s, val1, val2)
 
 			s.And("after resubscribing to the publisher", func(s *testcase.Spec) {
@@ -76,8 +76,8 @@ func (c Volatile[V]) Spec(s *testcase.Spec) {
 		b.GivenWeHadSubscriptionBefore(s)
 
 		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := testcase.Let(s, spechelper.ToLet(c.MakeV))
-			val2 := testcase.Let(s, spechelper.ToLet(c.MakeV))
+			val1 := let.With[V](s, c.MakeV)
+			val2 := let.With[V](s, c.MakeV)
 			b.WhenWePublish(s, val1, val2)
 
 			s.And("after resubscribing to the publisher", func(s *testcase.Spec) {

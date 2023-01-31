@@ -3,9 +3,10 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/pointer"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/pointer"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
@@ -84,7 +85,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			tx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
-			ptr := spechelper.ToPtr(c.MakeEntity(t))
+			ptr := pointer.Of(c.MakeEntity(t))
 			Create[Entity, ID](t, c.resource().Get(t), tx, ptr)
 			id := HasID[Entity, ID](t, pointer.Deref(ptr))
 
@@ -93,7 +94,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Log(`using the tx context after commit should yield error`)
 			_, _, err = c.resource().Get(t).FindByID(tx, id)
 			t.Must.NotNil(err)
-			t.Must.NotNil(c.resource().Get(t).Create(tx, spechelper.ToPtr(c.MakeEntity(t))))
+			t.Must.NotNil(c.resource().Get(t).Create(tx, pointer.Of(c.MakeEntity(t))))
 
 			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity]); ok {
 				t.Must.NotNil(allFinder.FindAll(tx).Err())
@@ -117,7 +118,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			ctx := c.MakeContext(t)
 			ctx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
-			ptr := spechelper.ToPtr(c.MakeEntity(t))
+			ptr := pointer.Of(c.MakeEntity(t))
 			t.Must.NoError(c.resource().Get(t).Create(ctx, ptr))
 			id, _ := extid.Lookup[ID](ptr)
 			t.Must.NoError(c.manager().Get(t).RollbackTx(ctx))
@@ -129,7 +130,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 				t.Must.NotNil(allFinder.FindAll(ctx).Err())
 			}
 
-			t.Must.NotNil(c.resource().Get(t).Create(ctx, spechelper.ToPtr(c.MakeEntity(t))))
+			t.Must.NotNil(c.resource().Get(t).Create(ctx, pointer.Of(c.MakeEntity(t))))
 
 			if updater, ok := c.resource().Get(t).(crud.Updater[Entity]); ok {
 				t.Must.NotNil(updater.Update(ctx, ptr),
@@ -148,7 +149,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			tx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 
-			entity := spechelper.ToPtr(c.MakeEntity(t))
+			entity := pointer.Of(c.MakeEntity(t))
 			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
 
@@ -164,7 +165,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 		s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
 			tx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
-			entity := spechelper.ToPtr(c.MakeEntity(t))
+			entity := pointer.Of(c.MakeEntity(t))
 			//t.Must.Nil( Spec.resource().Get(t).Create(tx, entity))
 			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
 
@@ -179,7 +180,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
-			entity := spechelper.ToPtr(c.MakeEntity(t))
+			entity := pointer.Of(c.MakeEntity(t))
 
 			Create[Entity, ID](t, c.resource().Get(t), ctx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
@@ -201,7 +202,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
-			entity := spechelper.ToPtr(c.MakeEntity(t))
+			entity := pointer.Of(c.MakeEntity(t))
 			Create[Entity, ID](t, c.resource().Get(t), ctx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
 
@@ -251,7 +252,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Must.Nil(err)
 			t.Log(`given tx1 is began`)
 
-			e1 := spechelper.ToPtr(c.MakeEntity(t))
+			e1 := pointer.Of(c.MakeEntity(t))
 			t.Must.Nil(c.resource().Get(t).Create(tx1, e1))
 			IsFindable[Entity, ID](t, c.resource().Get(t), tx1, HasID[Entity, ID](t, pointer.Deref(e1)))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
@@ -261,7 +262,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Must.Nil(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
-			e2 := spechelper.ToPtr(c.MakeEntity(t))
+			e2 := pointer.Of(c.MakeEntity(t))
 			t.Must.Nil(c.resource().Get(t).Create(tx2InTx1, e2))
 			IsFindable[Entity, ID](t, c.resource().Get(t), tx2InTx1, HasID[Entity, ID](t, pointer.Deref(e2)))    // tx2 can see e2
 			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2))) // global don't see e2
@@ -297,7 +298,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) { purger(t) }) // guard clause
 
 	s.Test(`entity created prior to transaction won't be affected by a purge after a rollback`, func(t *testcase.T) {
-		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		ptr := pointer.Of(c.MakeEntity(t))
 		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
 
 		tx, err := c.manager().Get(t).BeginTx(spechelper.ContextVar.Get(t))
@@ -312,7 +313,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 	})
 
 	s.Test(`entity created prior to transaction will be removed by a purge after the commit`, func(t *testcase.T) {
-		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		ptr := pointer.Of(c.MakeEntity(t))
 		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
 
 		tx, err := c.manager().Get(t).BeginTx(spechelper.ContextVar.Get(t))
@@ -514,7 +515,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specDeleterPublisher(s *testcase.Spe
 			return ctxInTx
 		})
 		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			return spechelper.ToPtr(c.MakeEntity(t))
+			return pointer.Of(c.MakeEntity(t))
 		})
 		subject := func(t *testcase.T) (pubsub.Subscription, error) {
 			return publisher(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
@@ -576,7 +577,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specDeleterPublisher(s *testcase.Spe
 			return ctxInTx
 		})
 		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			return spechelper.ToPtr(c.MakeEntity(t))
+			return pointer.Of(c.MakeEntity(t))
 		})
 		subject := func(t *testcase.T) (pubsub.Subscription, error) {
 			return publisher(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))

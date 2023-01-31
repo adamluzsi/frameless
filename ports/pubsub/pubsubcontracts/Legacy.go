@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 
@@ -213,21 +214,38 @@ func (c CreatorPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 					}).EagerLoading(s)
 
 					s.Then(`original subscriber receives all events`, func(t *testcase.T) {
-						spechelper.RequireContainsList(t, subscriber.Get(t).Events(), events.Get(t), `missing old events`)
-						spechelper.RequireContainsList(t, subscriber.Get(t).Events(), furtherEvents.Get(t), `missing new events`)
+						requireContainsList(t, subscriber.Get(t).Events(), events.Get(t), `missing old events`)
+						requireContainsList(t, subscriber.Get(t).Events(), furtherEvents.Get(t), `missing new events`)
 					})
 
 					s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
-						spechelper.RequireNotContainsList(t, othSubscriber.Get(t).Events(), events.Get(t))
+						requireNotContainsList(t, othSubscriber.Get(t).Events(), events.Get(t))
 					})
 
 					s.Then(`new subscriber will receive new events`, func(t *testcase.T) {
-						spechelper.RequireContainsList(t, othSubscriber.Get(t).Events(), furtherEvents.Get(t))
+						requireContainsList(t, othSubscriber.Get(t).Events(), furtherEvents.Get(t))
 					})
 				})
 			})
 		})
 	})
+}
+
+func requireContainsList(tb testing.TB, list interface{}, listOfContainedElements interface{}, msgAndArgs ...interface{}) {
+	v := reflect.ValueOf(listOfContainedElements)
+
+	for i := 0; i < v.Len(); i++ {
+		assert.Must(tb).Contain(list, v.Index(i).Interface(), msgAndArgs...)
+	}
+}
+
+func requireNotContainsList(tb testing.TB, list interface{}, listOfNotContainedElements interface{}, msgAndArgs ...interface{}) {
+	tb.Helper()
+
+	v := reflect.ValueOf(listOfNotContainedElements)
+	for i := 0; i < v.Len(); i++ {
+		assert.Must(tb).NotContain(list, v.Index(i).Interface(), msgAndArgs...)
+	}
 }
 
 type DeleterPublisher[Entity, ID any] struct {
@@ -287,7 +305,7 @@ func (c DeleterPublisher[Entity, ID]) specEventDeleteByID(s *testcase.Spec) {
 	})
 
 	entity := testcase.Let(s, func(t *testcase.T) *Entity {
-		entityPtr := spechelper.ToPtr(c.MakeEntity(t))
+		entityPtr := pointer.Of(c.MakeEntity(t))
 		crudtest.Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 		return entityPtr
 	}).EagerLoading(s)
@@ -322,7 +340,7 @@ func (c DeleterPublisher[Entity, ID]) specEventDeleteByID(s *testcase.Spec) {
 
 			s.And(`more events are made`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					entityPtr := spechelper.ToPtr(c.MakeEntity(t))
+					entityPtr := pointer.Of(c.MakeEntity(t))
 					crudtest.Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 					crudtest.Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 					pubsubtest.Waiter.Wait()
@@ -357,7 +375,7 @@ func (c DeleterPublisher[Entity, ID]) specEventDeleteByID(s *testcase.Spec) {
 			s.And(`an additional delete event is made`, func(s *testcase.Spec) {
 				furtherEvent := testcase.Let(s, func(t *testcase.T) Entity {
 					t.Log(`given an another entity is stored`)
-					entityPtr := spechelper.ToPtr(c.MakeEntity(t))
+					entityPtr := pointer.Of(c.MakeEntity(t))
 					crudtest.Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 					crudtest.Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityPtr)
 					pubsubtest.Waiter.While(func() bool {
@@ -576,7 +594,7 @@ func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 
 		const entityKey = `entity`
 		entity := s.Let(entityKey, func(t *testcase.T) interface{} {
-			ptr := spechelper.ToPtr(c.MakeEntity(t))
+			ptr := pointer.Of(c.MakeEntity(t))
 			crudtest.Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
 			return ptr
 		}).EagerLoading(s)
@@ -596,7 +614,7 @@ func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.And(`update event is made`, func(s *testcase.Spec) {
 			updatedEntity := testcase.Let(s, func(t *testcase.T) Entity {
-				entityWithNewValuesPtr := spechelper.ToPtr(c.MakeEntity(t))
+				entityWithNewValuesPtr := pointer.Of(c.MakeEntity(t))
 				t.Must.Nil(extid.Set(entityWithNewValuesPtr, getID(t)))
 				crudtest.Update[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entityWithNewValuesPtr)
 				pubsubtest.Waiter.While(func() bool { return subscriber.Get(t).EventsLen() < 1 })
@@ -615,7 +633,7 @@ func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 				s.And(`more events are made`, func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
 						id, _ := extid.Lookup[ID](entity.Get(t))
-						updatedEntityPtr := spechelper.ToPtr(c.MakeEntity(t))
+						updatedEntityPtr := pointer.Of(c.MakeEntity(t))
 						t.Must.Nil(extid.Set(updatedEntityPtr, id))
 						t.Must.Nil(c.resource().Get(t).Update(spechelper.ContextVar.Get(t), updatedEntityPtr))
 						pubsubtest.Waiter.While(func() bool {
@@ -651,7 +669,7 @@ func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 
 				s.And(`a further event is made`, func(s *testcase.Spec) {
 					furtherEventUpdate := testcase.Let(s, func(t *testcase.T) Entity {
-						updatedEntityPtr := spechelper.ToPtr(c.MakeEntity(t))
+						updatedEntityPtr := pointer.Of(c.MakeEntity(t))
 						t.Must.Nil(extid.Set(updatedEntityPtr, getID(t)))
 						crudtest.Update[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), updatedEntityPtr)
 						pubsubtest.Waiter.While(func() bool {
@@ -672,7 +690,7 @@ func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
 
 					s.Then(`new subscriber don't receive back old events`, func(t *testcase.T) {
 						pubsubtest.Waiter.Wait()
-						if reflect.DeepEqual(spechelper.Base(updatedEntity.Get(t)), spechelper.Base(furtherEventUpdate.Get(t))) {
+						if reflect.DeepEqual(updatedEntity.Get(t), furtherEventUpdate.Get(t)) {
 							t.Log("skipping test because original entity looks the same as the new variant")
 							t.Log("this can happen when the entity have only one field: ID")
 							return

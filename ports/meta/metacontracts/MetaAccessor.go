@@ -2,9 +2,10 @@ package metacontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/pointer"
 	"sync"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/pointer"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
@@ -124,7 +125,7 @@ func (c MetaAccessorBasic[V]) Spec(s *testcase.Spec) {
 				found, err := subjectLookupMeta(t, ptr)
 				t.Must.Nil(err)
 				t.Must.True(found)
-				t.Must.Equal(spechelper.Base(ptr), value.Get(t))
+				t.Must.Equal(pointer.Deref(ptr), value.Get(t))
 			})
 		})
 	})
@@ -196,7 +197,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 		ctx := c.MakeContext(t)
 		key := t.Random.String()
 		expected := c.MakeV(t)
-		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		ptr := pointer.Of(c.MakeEntity(t))
 
 		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
 		id := HasID[Entity, ID](t, pointer.Deref(ptr))
@@ -217,7 +218,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
-				actual = spechelper.Base(v)
+				actual = pointer.Deref(v)
 				return nil
 			},
 		})
@@ -240,7 +241,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 		key := t.Random.String()
 		expected := c.MakeV(t)
 
-		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		ptr := pointer.Of(c.MakeEntity(t))
 		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
 
 		var (
@@ -259,7 +260,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
-				actual = spechelper.Base(v)
+				actual = pointer.Deref(v)
 				return nil
 			},
 		})
@@ -292,7 +293,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 		key := t.Random.String()
 		expected := c.MakeV(t)
 
-		ptr := spechelper.ToPtr(c.MakeEntity(t))
+		ptr := pointer.Of(c.MakeEntity(t))
 		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
 		id := HasID[Entity, ID](t, pointer.Deref(ptr))
 
@@ -312,14 +313,14 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 				t.Must.True(found)
 				mutex.Lock()
 				defer mutex.Unlock()
-				actual = spechelper.Base(v)
+				actual = pointer.Deref(v)
 				return nil
 			},
 		})
 		t.Must.Nil(err)
 		t.Defer(sub.Close)
 
-		updPTR := spechelper.ToPtr(c.MakeEntity(t))
+		updPTR := pointer.Of(c.MakeEntity(t))
 		t.Must.Nil(extid.Set(updPTR, id))
 		ctx, err = c.subject().Get(t).SetMeta(ctx, key, expected)
 		t.Must.Nil(err)

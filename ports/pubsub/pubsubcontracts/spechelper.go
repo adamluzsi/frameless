@@ -7,12 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adamluzsi/testcase/let"
+
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -83,7 +84,7 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 		})
 
 		s.When("an event is published", func(s *testcase.Spec) {
-			val := testcase.Let(s, spechelper.ToLet(c.MakeValue))
+			val := let.With[V](s, c.MakeValue)
 
 			c.WhenWePublish(s, val)
 

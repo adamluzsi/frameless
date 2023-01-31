@@ -2,8 +2,9 @@ package crudcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/pointer"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/pointer"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 

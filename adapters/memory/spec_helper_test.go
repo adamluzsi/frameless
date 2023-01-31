@@ -2,10 +2,11 @@ package memory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
 
 	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"github.com/adamluzsi/frameless/ports/crud"

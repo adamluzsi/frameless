@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/adamluzsi/frameless/pkg/pointer"
+	"github.com/adamluzsi/testcase/let"
+
 	"github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
@@ -52,11 +55,13 @@ func (c QueryOne[Entity, ID]) Name() string {
 
 func (c QueryOne[Entity, ID]) Spec(s *testcase.Spec) {
 	var (
-		ctx     = testcase.Let(s, spechelper.ToLet(c.MakeContext))
-		entity  = testcase.Let(s, spechelper.ToLetPtr(c.MakeEntity))
-		subject = testcase.Let(s, spechelper.ToLet(c.MakeSubject))
+		ctx = let.With[context.Context](s, c.MakeContext)
+		ptr = testcase.Let(s, func(t *testcase.T) *Entity {
+			return pointer.Of(c.MakeEntity(t))
+		})
+		subject = let.With[QueryOneSubject[Entity, ID]](s, c.MakeSubject)
 		act     = func(t *testcase.T) (Entity, bool, error) {
-			return subject.Get(t).Query(t, ctx.Get(t), *entity.Get(t))
+			return subject.Get(t).Query(t, ctx.Get(t), *ptr.Get(t))
 		}
 	)
 
@@ -66,14 +71,14 @@ func (c QueryOne[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			crudtest.Create[Entity, ID](t, subject.Get(t).Resource, c.MakeContext(t), entity.Get(t))
+			crudtest.Create[Entity, ID](t, subject.Get(t).Resource, c.MakeContext(t), ptr.Get(t))
 		})
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
 			ent, found, err := act(t)
 			t.Must.Nil(err)
 			t.Must.True(found)
-			t.Must.Equal(*entity.Get(t), ent)
+			t.Must.Equal(*ptr.Get(t), ent)
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -100,7 +105,7 @@ func (c QueryOne[Entity, ID]) Spec(s *testcase.Spec) {
 				ent, found, err := act(t)
 				t.Must.Nil(err)
 				t.Must.True(found)
-				t.Must.Equal(*entity.Get(t), ent)
+				t.Must.Equal(*ptr.Get(t), ent)
 			})
 		})
 	})
@@ -178,7 +183,7 @@ func (c QueryMany[Entity, ID]) Spec(s *testcase.Spec) {
 	})
 
 	var (
-		ctx = testcase.Let(s, spechelper.ToLet(c.MakeContext))
+		ctx = let.With[context.Context](s, c.MakeContext)
 	)
 	act := func(t *testcase.T) iterators.Iterator[Entity] {
 		return subject.Get(t).MakeQuery(t, ctx.Get(t))

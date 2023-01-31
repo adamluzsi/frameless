@@ -2,12 +2,10 @@ package spechelper
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 
@@ -40,39 +38,6 @@ func TryCleanup(tb testing.TB, ctx context.Context, resource any) bool {
 		return true
 	}
 	return false
-}
-
-func Cleanup(tb testing.TB, ctx context.Context, t crud.AllDeleter) {
-	assert.Must(tb).Nil(t.DeleteAll(ctx))
-}
-
-func Contains[Entity any](tb testing.TB, slice []Entity, contains Entity, msgAndArgs ...interface{}) {
-	assert.Must(tb).Contain(slice, contains, msgAndArgs...)
-}
-
-func NewT(T interface{}) interface{} {
-	return reflect.New(reflect.TypeOf(T)).Interface()
-}
-
-func NewTFunc(T interface{}) func() interface{} {
-	return func() interface{} { return NewT(T) }
-}
-
-func RequireNotContainsList(tb testing.TB, list interface{}, listOfNotContainedElements interface{}, msgAndArgs ...interface{}) {
-	tb.Helper()
-
-	v := reflect.ValueOf(listOfNotContainedElements)
-	for i := 0; i < v.Len(); i++ {
-		assert.Must(tb).NotContain(list, v.Index(i).Interface(), msgAndArgs...)
-	}
-}
-
-func RequireContainsList(tb testing.TB, list interface{}, listOfContainedElements interface{}, msgAndArgs ...interface{}) {
-	v := reflect.ValueOf(listOfContainedElements)
-
-	for i := 0; i < v.Len(); i++ {
-		assert.Must(tb).Contain(list, v.Index(i).Interface(), msgAndArgs...)
-	}
 }
 
 type eventSubscriber[Entity, ID any] struct {
@@ -208,13 +173,6 @@ func NewEventSubscriber[Entity, ID any](tb testing.TB, filter func(interface{}) 
 	return &eventSubscriber[Entity, ID]{TB: tb, Filter: filter}
 }
 
-func CreateSubscriptionFilter[Entity any](event interface{}) bool {
-	if _, ok := event.(pubsub.CreateEvent[Entity]); ok {
-		return true
-	}
-	return false
-}
-
 func UpdateSubscriptionFilter[Entity any](event interface{}) bool {
 	if _, ok := event.(pubsub.UpdateEvent[Entity]); ok {
 		return true
@@ -246,21 +204,4 @@ func GenEntities[T any](t *testcase.T, MakeEntity func(testing.TB) T) []*T {
 		es = append(es, &ent)
 	}
 	return es
-}
-
-func ToPtr[T any](v T) *T { return &v }
-
-func Base(e interface{}) interface{} {
-	return reflects.BaseValueOf(e).Interface()
-}
-
-func ToLet[T any](mkfn func(testing.TB) T) func(t *testcase.T) T {
-	return func(t *testcase.T) T { return mkfn(t) }
-}
-
-func ToLetPtr[T any](mkfn func(testing.TB) T) func(t *testcase.T) *T {
-	return func(t *testcase.T) *T {
-		v := mkfn(t)
-		return &v
-	}
 }
