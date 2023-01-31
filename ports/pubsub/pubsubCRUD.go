@@ -2,8 +2,9 @@ package pubsub
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"io"
+
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
 type Subscription interface {

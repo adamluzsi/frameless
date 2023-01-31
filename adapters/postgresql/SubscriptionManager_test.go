@@ -2,12 +2,13 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
-	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
-	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/metacontracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 
 	"github.com/adamluzsi/frameless/ports/pubsub"
 

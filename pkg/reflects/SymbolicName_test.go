@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 
 	"github.com/adamluzsi/testcase/assert"
 )

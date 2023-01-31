@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 

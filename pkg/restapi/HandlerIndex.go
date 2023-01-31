@@ -2,9 +2,10 @@ package restapi
 
 import (
 	"encoding/json"
+	"net/http"
+
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
-	"net/http"
 )
 
 func (h Handler[Entity, ID, DTO]) index(w http.ResponseWriter, r *http.Request) {

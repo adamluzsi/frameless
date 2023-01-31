@@ -3,11 +3,12 @@ package errorutil_test
 import (
 	"context"
 	"errors"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/let"
 	"github.com/adamluzsi/testcase/random"
-	"testing"
 )
 
 func TestWith_smoke(tt *testing.T) {

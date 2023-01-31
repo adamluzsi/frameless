@@ -2,10 +2,11 @@ package pubsubcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/crud/crudtest"
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"reflect"
 	"testing"
+
+	"github.com/adamluzsi/frameless/ports/crud/crudtest"
+	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"

@@ -7,7 +7,6 @@ import (
 )
 
 // Link will make destination interface be linked with the src value.
-//
 func Link(src, ptr interface{}) (err error) {
 	vPtr := reflect.ValueOf(ptr)
 

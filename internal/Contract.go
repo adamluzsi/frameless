@@ -16,7 +16,6 @@ import (
 // Using resource Spec also force the writer of the Spec to keep things
 // at high level and only focus on the expected behavior,
 // instead of going into implementation details.
-//
 type Contract interface {
 	testcase.Suite
 	testcase.OpenSuite

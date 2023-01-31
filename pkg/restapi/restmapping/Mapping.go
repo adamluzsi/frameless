@@ -3,8 +3,9 @@ package restmapping
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"strconv"
+
+	"github.com/adamluzsi/frameless/ports/crud/extid"
 )
 
 type SetIDByExtIDTag[Entity, ID any] struct{}

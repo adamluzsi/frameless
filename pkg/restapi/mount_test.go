@@ -3,6 +3,11 @@ package restapi_test
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"github.com/adamluzsi/frameless/pkg/restapi"
@@ -10,10 +15,6 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
-	"net/http"
-	"net/http/httptest"
-	"strconv"
-	"testing"
 )
 
 func TestMount(t *testing.T) {

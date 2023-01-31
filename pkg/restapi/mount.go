@@ -1,10 +1,11 @@
 package restapi
 
 import (
-	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"net/http"
 	"strings"
+
+	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 )
 
 // Mount will help to register a handler on a request multiplexer in both as the concrete path to the handler and as a prefix match.

@@ -3,9 +3,10 @@ package errorutil_test
 import (
 	"errors"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/testcase"
-	"testing"
 )
 
 func TestUserError(t *testing.T) {

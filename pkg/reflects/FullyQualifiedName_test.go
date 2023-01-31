@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -26,7 +26,7 @@ func TestFullyQualifiedName(t *testing.T) {
 
 			o := crudcontracts.Creator[int, string]{}
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/ports/crud/contracts".Creator[int,string]`, subject(o))
+			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/ports/crud/crudcontracts".Creator[int,string]`, subject(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

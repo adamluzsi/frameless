@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/ports/crud"
-	"strings"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud/extid"

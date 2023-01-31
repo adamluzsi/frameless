@@ -1,9 +1,10 @@
 package postgresql_test
 
 import (
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"io"
 	"testing"
+
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/assert"

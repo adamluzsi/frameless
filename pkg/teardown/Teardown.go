@@ -27,9 +27,9 @@ type Teardown struct {
 // even in tests where this is not needed.
 //
 // e.g.:
-//	- mock initialization with mock controller, where the mock controller #Finish function must be executed after each testCase suite.
-//	- sql.DB / sql.Tx
-//	- basically anything that has the io.Closer interface
+//   - mock initialization with mock controller, where the mock controller #Finish function must be executed after each testCase suite.
+//   - sql.DB / sql.Tx
+//   - basically anything that has the io.Closer interface
 //
 // https://github.com/golang/go/issues/41891
 func (td *Teardown) Defer(fn func() error) {

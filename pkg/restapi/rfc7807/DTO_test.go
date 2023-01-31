@@ -2,10 +2,11 @@ package rfc7807_test
 
 import (
 	"encoding/json"
-	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
-	"github.com/adamluzsi/testcase/assert"
 	"net/http"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 func TestDTO_MarshalJSON(t *testing.T) {

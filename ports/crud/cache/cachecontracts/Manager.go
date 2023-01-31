@@ -2,19 +2,20 @@ package cachecontracts
 
 import (
 	"context"
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"testing"
 	"time"
+
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/cache"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"

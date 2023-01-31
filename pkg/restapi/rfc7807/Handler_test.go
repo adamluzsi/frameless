@@ -4,14 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	rfc78072 "github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
 	"github.com/adamluzsi/testcase/let"
 	"github.com/adamluzsi/testcase/random"
-	"net/http"
-	"testing"
 )
 
 func TestHandler(t *testing.T) {

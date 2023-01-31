@@ -3,15 +3,16 @@ package postgresql_test
 import (
 	"context"
 	"database/sql"
+	"os"
+	"testing"
+
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"github.com/adamluzsi/frameless/ports/locks"
-	lockscontracts "github.com/adamluzsi/frameless/ports/locks/contracts"
+	lockscontracts "github.com/adamluzsi/frameless/ports/locks/lockscontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
-	"os"
-	"testing"
 )
 
 func ExampleLocker() {

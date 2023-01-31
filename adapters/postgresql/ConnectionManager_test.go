@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"io"
 	"reflect"
 	"testing"
 
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/random"

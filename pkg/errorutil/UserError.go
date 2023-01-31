@@ -2,6 +2,7 @@ package errorutil
 
 import (
 	"errors"
+
 	"github.com/adamluzsi/frameless/internal/consttypes"
 )
 

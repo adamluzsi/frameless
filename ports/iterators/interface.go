@@ -4,7 +4,8 @@ package iterators
 // One use-case for this is for example the Presenter object that encapsulate the external resource presentation mechanism from it's user.
 //
 // Scope:
-// 	receive Entities, that will be used by the creator of the Encoder
+//
+//	receive Entities, that will be used by the creator of the Encoder
 type Encoder interface {
 	//
 	// Encode encode a simple message back to the wrapped communication channel

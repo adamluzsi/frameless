@@ -3,10 +3,11 @@ package crudcontracts_test
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless/adapters/memory"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/adapters/memory"
 
 	"github.com/adamluzsi/frameless/spechelper/resource"
 

@@ -1,9 +1,10 @@
 package reflects_test
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 func MustCast[T any](tb testing.TB, exp T, val any) {

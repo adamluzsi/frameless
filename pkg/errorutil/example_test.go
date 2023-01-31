@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"math/rand"
+
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
 func ExampleUserError() {

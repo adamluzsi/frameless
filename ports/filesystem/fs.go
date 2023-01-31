@@ -17,25 +17,25 @@ type File interface {
 // FileSystem is a header interface for representing a file-system.
 //
 // permission cheat sheet:
-//   +-----+---+--------------------------+
-//   | rwx | 7 | Read, write and execute  |
-//   | rw- | 6 | Read, write              |
-//   | r-x | 5 | Read, and execute        |
-//   | r-- | 4 | Read,                    |
-//   | -wx | 3 | Write and execute        |
-//   | -w- | 2 | Write                    |
-//   | --x | 1 | Execute                  |
-//   | --- | 0 | no permissions           |
-//   +------------------------------------+
 //
-//   +------------+------+-------+
-//   | Permission | Octal| Field |
-//   +------------+------+-------+
-//   | rwx------  | 0700 | User  |
-//   | ---rwx---  | 0070 | Group |
-//   | ------rwx  | 0007 | Other |
-//   +------------+------+-------+
+//	+-----+---+--------------------------+
+//	| rwx | 7 | Read, write and execute  |
+//	| rw- | 6 | Read, write              |
+//	| r-x | 5 | Read, and execute        |
+//	| r-- | 4 | Read,                    |
+//	| -wx | 3 | Write and execute        |
+//	| -w- | 2 | Write                    |
+//	| --x | 1 | Execute                  |
+//	| --- | 0 | no permissions           |
+//	+------------------------------------+
 //
+//	+------------+------+-------+
+//	| Permission | Octal| Field |
+//	+------------+------+-------+
+//	| rwx------  | 0700 | User  |
+//	| ---rwx---  | 0070 | Group |
+//	| ------rwx  | 0007 | Other |
+//	+------------+------+-------+
 type FileSystem interface {
 	// Stat returns a FileInfo describing the named file.
 	// If there is an error, it will be of type *PathError.

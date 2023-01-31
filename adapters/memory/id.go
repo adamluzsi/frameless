@@ -3,12 +3,13 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/reflects"
-	"github.com/adamluzsi/frameless/ports/crud"
 	"reflect"
 	"strconv"
 	"sync"
+
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/ports/crud"
 )
 
 func errNotFound(T, id any) error {

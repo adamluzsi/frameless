@@ -2,11 +2,12 @@ package postgresql_test
 
 import (
 	"database/sql"
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"testing"
 
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
+
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"

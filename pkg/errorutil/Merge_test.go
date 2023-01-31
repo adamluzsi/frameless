@@ -2,9 +2,10 @@ package errorutil_test
 
 import (
 	"errors"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/testcase/let"
-	"testing"
 
 	"github.com/adamluzsi/testcase"
 )

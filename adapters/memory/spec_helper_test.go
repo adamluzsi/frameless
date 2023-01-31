@@ -2,14 +2,14 @@ package memory_test
 
 import (
 	"context"
-	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/contracts"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"github.com/adamluzsi/frameless/ports/crud"
-	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/contracts"
-	"github.com/adamluzsi/frameless/ports/crud/contracts"
+	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/meta"
 	"github.com/adamluzsi/testcase/assert"
 

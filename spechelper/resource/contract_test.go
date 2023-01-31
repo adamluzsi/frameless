@@ -2,8 +2,9 @@ package resource_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/memory"
 	"testing"
+
+	"github.com/adamluzsi/frameless/adapters/memory"
 
 	"github.com/adamluzsi/frameless/spechelper/resource"
 

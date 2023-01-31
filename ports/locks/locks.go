@@ -2,6 +2,7 @@ package locks
 
 import (
 	"context"
+
 	"github.com/adamluzsi/frameless/internal/consttypes"
 )
 

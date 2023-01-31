@@ -3,9 +3,10 @@ package restapi
 import (
 	"encoding/json"
 	"errors"
-	"github.com/adamluzsi/frameless/ports/crud"
 	"io"
 	"net/http"
+
+	"github.com/adamluzsi/frameless/ports/crud"
 )
 
 func (h Handler[Entity, ID, DTO]) update(w http.ResponseWriter, r *http.Request, id ID) {

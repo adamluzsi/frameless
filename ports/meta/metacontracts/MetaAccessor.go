@@ -1,14 +1,15 @@
-package frmetacontracts
+package metacontracts
 
 import (
 	"context"
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"sync"
 	"testing"
 
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
+
 	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/frameless/ports/crud"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/meta"
 	"github.com/adamluzsi/frameless/ports/pubsub"

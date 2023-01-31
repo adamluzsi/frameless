@@ -5,9 +5,10 @@ package restapicontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/testcase"
 	"net/http"
 	"testing"
+
+	"github.com/adamluzsi/testcase"
 )
 
 type Server[DTO, ID any] struct {
@@ -48,7 +49,6 @@ func (c Server[DTO, ID]) Spec(s *testcase.Spec) {
 // link formats, or data format (XML or/and JSON).
 // All resources should be accessible through a common approach such as HTTP GET and similarly modified using a consistent approach.
 // Once a developer becomes familiar with one of your APIs, he should be able to follow a similar approach for other APIs.
-//
 func (c Server[DTO, ID]) specUniformInterface(s *testcase.Spec) {
 	s.Describe("Create", func(s *testcase.Spec) {
 
@@ -69,7 +69,6 @@ func (c Server[DTO, ID]) specUniformInterface(s *testcase.Spec) {
 // A client should know only resource URIs, and that’s all. Today, this is standard practice in web development,
 // so nothing fancy is required from your side. Keep it simple.
 // Servers and clients may also be replaced and developed independently, as long as the interface between them is not altered.
-//
 func (c Server[DTO, ID]) specClientServer(s *testcase.Spec) {
 
 }
@@ -88,7 +87,6 @@ func (c Server[DTO, ID]) specClientServer(s *testcase.Spec) {
 //
 // No client context shall be stored on the server between requests.
 // The client is responsible for managing the state of the application.
-//
 func (c Server[DTO, ID]) specStateless(s *testcase.Spec) {
 
 }

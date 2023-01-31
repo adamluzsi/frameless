@@ -2,10 +2,11 @@ package memory_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/locks"
-	lockscontracts "github.com/adamluzsi/frameless/ports/locks/contracts"
-	"testing"
+	lockscontracts "github.com/adamluzsi/frameless/ports/locks/lockscontracts"
 )
 
 func ExampleLocker() {

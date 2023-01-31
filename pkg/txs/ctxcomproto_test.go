@@ -7,7 +7,7 @@ import (
 
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/txs"
-	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/contracts"
+	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"github.com/adamluzsi/testcase"
 )
 

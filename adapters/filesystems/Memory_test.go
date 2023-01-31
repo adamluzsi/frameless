@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/filesystem"
-	filesystemcontracts "github.com/adamluzsi/frameless/ports/filesystem/contracts"
+	filesystemcontracts "github.com/adamluzsi/frameless/ports/filesystem/filesystemcontracts"
 
 	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase/assert"

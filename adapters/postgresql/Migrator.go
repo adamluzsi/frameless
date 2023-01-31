@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side effect loading
 )

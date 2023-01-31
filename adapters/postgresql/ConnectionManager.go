@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side-effect loading
-	"io"
 )
 
 type ConnectionManager interface {

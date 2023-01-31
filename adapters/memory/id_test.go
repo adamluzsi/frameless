@@ -2,9 +2,10 @@ package memory_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 func TestMakeID(t *testing.T) {

@@ -3,10 +3,11 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/ports/crud"
 	"reflect"
 	"sync"
+
+	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/ports/crud"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud/extid"

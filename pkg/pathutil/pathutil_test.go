@@ -2,11 +2,12 @@ package pathutil_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/testcase/assert"
 	"math/rand"
 	"strings"
 	"testing"
+
+	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"
 )

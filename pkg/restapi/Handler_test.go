@@ -5,6 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/pkg/restapi"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
@@ -12,11 +18,6 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
 )
 
 func TestHandler(t *testing.T) {

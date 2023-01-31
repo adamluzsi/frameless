@@ -1,9 +1,10 @@
 package iteratorcontracts
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/testcase"
-	"testing"
 )
 
 type Iterator[V any] struct {

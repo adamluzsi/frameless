@@ -1,10 +1,11 @@
 package restapi
 
 import (
-	"github.com/adamluzsi/frameless/pkg/pathutil"
-	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"net/http"
 	"sync"
+
+	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 )
 
 func NewRouter(configure ...func(*Router)) *Router {

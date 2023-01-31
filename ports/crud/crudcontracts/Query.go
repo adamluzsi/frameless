@@ -3,12 +3,13 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 // QueryOneFunc is the generic representation of a query that meant to find one result.

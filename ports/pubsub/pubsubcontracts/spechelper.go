@@ -3,6 +3,10 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
@@ -11,9 +15,6 @@ import (
 	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"sync"
-	"testing"
-	"time"
 )
 
 type PubSub[V any] interface {

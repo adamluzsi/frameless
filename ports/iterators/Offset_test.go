@@ -1,12 +1,13 @@
 package iterators_test
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/iterators"
-	iteratorcontracts "github.com/adamluzsi/frameless/ports/iterators/contracts"
+	iteratorcontracts "github.com/adamluzsi/frameless/ports/iterators/iteratorcontracts"
 	"github.com/adamluzsi/frameless/ports/iterators/ranges"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 func TestOffset_smoke(t *testing.T) {

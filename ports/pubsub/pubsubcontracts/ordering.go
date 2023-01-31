@@ -3,10 +3,11 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 // FIFO

@@ -3,6 +3,11 @@ package restapi_test
 import (
 	"bytes"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"github.com/adamluzsi/frameless/pkg/restapi"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
@@ -10,10 +15,6 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
 	"github.com/adamluzsi/testcase/random"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"testing"
 )
 
 func TestRouter(t *testing.T) {

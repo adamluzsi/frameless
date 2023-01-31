@@ -1,7 +1,7 @@
 package pubsubcontracts_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	"github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 	"github.com/adamluzsi/testcase"
 )
 

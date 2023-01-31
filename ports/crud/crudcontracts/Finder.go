@@ -2,11 +2,12 @@ package crudcontracts
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/ports/crud"
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/testcase/let"
-	"testing"
 
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"

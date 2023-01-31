@@ -6,11 +6,11 @@ import (
 
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/meta"
-	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
+	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/metacontracts"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 
 	"github.com/adamluzsi/testcase"
 )

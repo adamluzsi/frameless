@@ -2,12 +2,13 @@ package lockscontracts_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/locks"
-	lockscontracts "github.com/adamluzsi/frameless/ports/locks/contracts"
+	lockscontracts "github.com/adamluzsi/frameless/ports/locks/lockscontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 func TestLocker_memory(t *testing.T) {

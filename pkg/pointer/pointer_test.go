@@ -1,11 +1,12 @@
 package pointer_test
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
-	"testing"
 )
 
 func TestOf(tt *testing.T) {

@@ -3,9 +3,10 @@ package restapi
 import (
 	"context"
 	"errors"
+	"net/http"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
-	"net/http"
 )
 
 var ErrEntityNotFound = errorutil.UserError{

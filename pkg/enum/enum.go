@@ -2,10 +2,11 @@ package enum
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
 var ErrInvalid = errorutil.UserError{

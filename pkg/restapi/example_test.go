@@ -1,10 +1,11 @@
 package restapi_test
 
 import (
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/restapi"
 	"log"
 	"net/http"
+
+	"github.com/adamluzsi/frameless/adapters/memory"
+	"github.com/adamluzsi/frameless/pkg/restapi"
 )
 
 func ExampleRoutes() {

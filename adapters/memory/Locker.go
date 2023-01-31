@@ -3,8 +3,9 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/locks"
 	"sync"
+
+	"github.com/adamluzsi/frameless/ports/locks"
 )
 
 func NewLocker() *Locker { return &Locker{} }

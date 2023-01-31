@@ -3,6 +3,7 @@ package comproto
 import (
 	"context"
 	"fmt"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 

@@ -3,10 +3,11 @@ package restapi
 import (
 	"context"
 	"fmt"
+	"net/http"
+
 	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"github.com/adamluzsi/frameless/ports/crud"
-	"net/http"
 )
 
 type Handler[Entity, ID, DTO any] struct {

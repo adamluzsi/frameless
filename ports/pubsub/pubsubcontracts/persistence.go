@@ -3,11 +3,12 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 // Buffered defines a publisher behaviour where if the subscription is canceled,

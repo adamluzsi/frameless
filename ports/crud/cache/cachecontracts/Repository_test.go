@@ -2,7 +2,7 @@ package cachecontracts_test
 
 import (
 	frmlscontracts "github.com/adamluzsi/frameless/internal"
-	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/contracts"
+	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
 )
 
 type ExampleEnt struct{ ID ExampleID }

@@ -2,8 +2,9 @@ package internal
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/pathutil"
 	"net/http"
+
+	"github.com/adamluzsi/frameless/pkg/pathutil"
 )
 
 type routingCtxKey struct{}

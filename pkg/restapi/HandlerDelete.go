@@ -2,8 +2,9 @@ package restapi
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/ports/crud"
 	"net/http"
+
+	"github.com/adamluzsi/frameless/ports/crud"
 )
 
 func (h Handler[Entity, ID, DTO]) delete(w http.ResponseWriter, r *http.Request, id ID) {

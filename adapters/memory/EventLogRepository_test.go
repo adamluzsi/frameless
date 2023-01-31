@@ -2,20 +2,21 @@ package memory_test
 
 import (
 	"context"
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 	"sync"
 	"testing"
 	"time"
 
+	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
+
 	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
-	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/contracts"
+	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/metacontracts"
 	"github.com/adamluzsi/frameless/ports/pubsub"
-	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/contracts"
+	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
@@ -23,7 +24,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 
-	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/contracts"
+	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
 	"github.com/adamluzsi/testcase"
 )
 

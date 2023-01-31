@@ -1,10 +1,11 @@
 package enum_test
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/enum"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"testing"
 )
 
 func ExampleValidateStruct_string() {

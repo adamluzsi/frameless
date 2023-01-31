@@ -1,10 +1,11 @@
 package errorutil_test
 
 import (
+	"testing"
+
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/let"
-	"testing"
 )
 
 func TestTag(t *testing.T) {

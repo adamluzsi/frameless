@@ -2,10 +2,11 @@ package crudcontracts_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/memory"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/contracts"
-	"github.com/adamluzsi/testcase"
 	"testing"
+
+	"github.com/adamluzsi/frameless/adapters/memory"
+	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"github.com/adamluzsi/testcase"
 )
 
 func Test_memoryRepository(t *testing.T) {

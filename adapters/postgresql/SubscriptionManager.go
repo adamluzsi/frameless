@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"sync"
 	"time"
+
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/testcase/clock"
 
 	"github.com/adamluzsi/frameless/ports/pubsub"
 

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/internal/consttypes"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"net/http"
 	"strings"
+
+	"github.com/adamluzsi/frameless/internal/consttypes"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
 type Handler[Extensions any] struct {

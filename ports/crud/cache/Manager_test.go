@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
-	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/contracts"
-	fc "github.com/adamluzsi/frameless/ports/crud/contracts"
+	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
+	fc "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/crud/cache"
