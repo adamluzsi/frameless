@@ -3,6 +3,7 @@ package crudtest
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ var Eventually = assert.Eventually{
 	RetryStrategy: &Waiter,
 }
 
-func HasID[Entity, ID any](tb testing.TB, ptr *Entity) (id ID) {
+func HasID[Entity, ID any](tb testing.TB, ptr Entity) (id ID) {
 	tb.Helper()
 	Eventually.Assert(tb, func(it assert.It) {
 		var ok bool
@@ -59,7 +60,7 @@ func IsAbsent[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID]
 
 func HasEntity[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
-	id := HasID[Entity, ID](tb, ptr)
+	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
 	Eventually.Assert(tb, func(it assert.It) {
 		// IsFindable yields the currently found value
 		// that might be not yet the value we expect to see
@@ -72,7 +73,7 @@ func Create[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx conte
 	tb.Helper()
 
 	assert.Must(tb).Nil(subject.Create(ctx, ptr))
-	id := HasID[Entity, ID](tb, ptr)
+	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
 	tb.Cleanup(func() {
 		_, found, err := subject.FindByID(ctx, id)
 		if err != nil || !found {
@@ -106,7 +107,7 @@ func Update[Entity, ID any](tb testing.TB, subject updater[Entity, ID], ctx cont
 
 func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
-	id := HasID[Entity, ID](tb, ptr)
+	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
 	IsFindable[Entity, ID](tb, subject, ctx, id)
 	assert.Must(tb).Nil(subject.DeleteByID(ctx, id))
 	IsAbsent[Entity, ID](tb, subject, ctx, id)

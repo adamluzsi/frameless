@@ -109,12 +109,12 @@ func (c ByIDFinder[Entity, ID]) Spec(s *testcase.Spec) {
 						ctx = c.MakeContext(t)
 					)
 					t.Must.NoError(resource.Get(t).Create(ctx, &e))
-					t.Defer(resource.Get(t).DeleteByID, ctx, HasID[Entity, ID](t, &e))
+					t.Defer(resource.Get(t).DeleteByID, ctx, HasID[Entity, ID](t, e))
 					return e
 				})
 
 				id.Let(s, func(t *testcase.T) ID {
-					return HasID[Entity, ID](t, pointer.Of(ent.Get(t)))
+					return HasID[Entity, ID](t, ent.Get(t))
 				})
 
 				s.Then("it will find and return the entity", func(t *testcase.T) {
@@ -135,7 +135,7 @@ func (c ByIDFinder[Entity, ID]) Spec(s *testcase.Spec) {
 						ctx = c.MakeContext(t)
 					)
 					t.Must.NoError(r.Create(ctx, &e))
-					var id = HasID[Entity, ID](t, &e)
+					var id = HasID[Entity, ID](t, e)
 					Eventually.Assert(t, func(it assert.It) {
 						_, found, err := r.FindByID(ctx, id)
 						it.Must.NoError(err)
@@ -172,7 +172,7 @@ func (c ByIDFinder[Entity, ID]) Benchmark(b *testing.B) {
 	}).EagerLoading(s)
 
 	id := testcase.Let(s, func(t *testcase.T) ID {
-		return HasID[Entity, ID](t, ent.Get(t))
+		return HasID[Entity, ID](t, pointer.Deref(ent.Get(t)))
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
@@ -227,7 +227,7 @@ func (c ByIDFinder[Entity, ID]) createDummyID(t *testcase.T, r ByIDFinderSubject
 	ent := c.MakeEntity(t)
 	ctx := c.MakeContext(t)
 	Create[Entity, ID](t, r, ctx, &ent)
-	id := HasID[Entity, ID](t, &ent)
+	id := HasID[Entity, ID](t, ent)
 	Delete[Entity, ID](t, r, ctx, &ent)
 	return id
 }

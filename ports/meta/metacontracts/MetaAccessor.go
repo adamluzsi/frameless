@@ -2,6 +2,7 @@ package metacontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"sync"
 	"testing"
 
@@ -198,7 +199,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 		ptr := spechelper.ToPtr(c.MakeEntity(t))
 
 		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
-		id := HasID[Entity, ID](t, ptr)
+		id := HasID[Entity, ID](t, pointer.Deref(ptr))
 
 		var (
 			actual interface{}
@@ -293,7 +294,7 @@ func (c MetaAccessorPublisher[Entity, ID, V]) Spec(s *testcase.Spec) {
 
 		ptr := spechelper.ToPtr(c.MakeEntity(t))
 		Create[Entity, ID](t, c.subject().Get(t).Resource, ctx, ptr)
-		id := HasID[Entity, ID](t, ptr)
+		id := HasID[Entity, ID](t, pointer.Deref(ptr))
 
 		var (
 			actual interface{}

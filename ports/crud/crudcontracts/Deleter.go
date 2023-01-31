@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"testing"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
@@ -176,7 +177,7 @@ func (c ByIDDeleter[Entity, ID]) benchmarkDeleteByID(b *testing.B) {
 	}).EagerLoading(s)
 
 	id := testcase.Let(s, func(t *testcase.T) ID {
-		return HasID[Entity, ID](t, ent.Get(t))
+		return HasID[Entity, ID](t, pointer.Deref(ent.Get(t)))
 	}).EagerLoading(s)
 
 	s.Test(``, func(t *testcase.T) {
@@ -239,7 +240,7 @@ func (c AllDeleter[Entity, ID]) specDeleteAll(s *testcase.Spec) {
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		ent := c.MakeEntity(t)
 		Create[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), &ent)
-		entID := HasID[Entity, ID](t, &ent)
+		entID := HasID[Entity, ID](t, ent)
 		IsFindable[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), entID)
 		t.Must.Nil(act(t))
 		IsAbsent[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), entID)

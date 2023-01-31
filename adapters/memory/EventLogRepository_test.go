@@ -586,7 +586,7 @@ func TestEventLogRepository_multipleRepositoryForSameEntityUnderDifferentNamespa
 	ent := random.New(random.CryptoSeed{}).Make(TestEntity{}).(TestEntity)
 	ent.ID = ""
 	Create[TestEntity, string](t, s1, ctx, &ent)
-	IsAbsent[TestEntity, string](t, s2, ctx, HasID[TestEntity, string](t, &ent))
+	IsAbsent[TestEntity, string](t, s2, ctx, HasID[TestEntity, string](t, ent))
 }
 
 func TestEventLogRepository_contracts(t *testing.T) {
