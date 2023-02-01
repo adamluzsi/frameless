@@ -24,23 +24,6 @@ type ShutdownManager struct {
 	Signals []os.Signal
 }
 
-type Job func(context.Context) error
-
-func (m ShutdownManager) signals() []os.Signal {
-	if 0 < len(m.Signals) {
-		return m.Signals
-	}
-	return defaultShutdownSignals()
-}
-
-func defaultShutdownSignals() []os.Signal {
-	return []os.Signal{
-		syscall.SIGINT,
-		syscall.SIGHUP,
-		syscall.SIGTERM,
-	}
-}
-
 func (m ShutdownManager) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -58,6 +41,21 @@ func (m ShutdownManager) Run(ctx context.Context) error {
 	}()
 
 	return m.runJobs(ctx)
+}
+
+func (m ShutdownManager) signals() []os.Signal {
+	if 0 < len(m.Signals) {
+		return m.Signals
+	}
+	return defaultShutdownSignals()
+}
+
+func defaultShutdownSignals() []os.Signal {
+	return []os.Signal{
+		syscall.SIGINT,
+		syscall.SIGHUP,
+		syscall.SIGTERM,
+	}
 }
 
 func (m ShutdownManager) runJobs(ctx context.Context) error {

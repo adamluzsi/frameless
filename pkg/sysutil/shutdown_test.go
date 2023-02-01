@@ -22,24 +22,14 @@ func ExampleShutdownManager() {
 		return signal.Err()
 	}
 
-	httpServerJob := func(signal context.Context) error {
-		srv := http.Server{
-			Addr: "localhost:8080",
-			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusTeapot)
-			}),
-		}
-		go func() {
-			if err := srv.ListenAndServe(); err != nil {
-				log.Println("ERROR", err.Error())
-			}
-		}()
-		<-signal.Done()
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		return srv.Shutdown(ctx)
+	srv := http.Server{
+		Addr: "localhost:8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
 	}
+
+	httpServerJob := sysutil.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
 
 	sm := sysutil.ShutdownManager{
 		Jobs: []sysutil.Job{ // each Job will run on its own goroutine.
