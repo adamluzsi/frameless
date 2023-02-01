@@ -7,16 +7,24 @@
 In your `main` func, you could use the `sysutil.ShutdownManager`
 to manage jobs that you want to run concurrently in your application.
 
-They will run on their goroutine, and if any of them fails with an error,
-they will shut down gracefully as an atomic unit.
-Graceful shutdown has timeout, then the shutdown context will be cancelled.
+A Job, at its core, is nothing more than a synchronous function.
 
 ```go
-simpleJob := func(signal context.Context) error {
+func MyJob(signal context.Context) error {
 	<-signal.Done() // work until shutdown signal
 	return signal.Err()
 }
+```
 
+Working with synchronous functions removes the complexity of thinking about how to run your application in your main.
+You can even use the application context as a signalling control structure
+to break out from working in your application when the shutdown begins.
+
+If your application components depend on a separate shutdown signal, like how `http.Server` works,
+then you can use `JobWithShutdown` to combine them into a single `sysutil.Job` with graceful shutdown support.
+The graceful shutdown has a timeout, and the shutdown context will be cancelled afterwards.
+
+```go
 srv := http.Server{
 	Addr: "localhost:8080",
 	Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -24,11 +32,20 @@ srv := http.Server{
 	}),
 }
 
+// httpServerJob is a single func(context.Context) error, that supports graceful shutdown.
 httpServerJob := sysutil.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+```
 
+To manage the execution of these jobs, you can use the `sysutil.ShutdownManager`.
+ShutdownManager will run Jobs on their goroutine, and if any of them fails with an error,
+it will shut down the rest of the Jobs gracefully.
+This behaviour makes Jobs act as an atomic unit where you can be guaranteed that either everything works,
+or everything shuts down, and you can restart your application instance.
+
+```go
 sm := sysutil.ShutdownManager{
 	Jobs: []sysutil.Job{ // each Job will run on its own goroutine.
-		simpleJob,
+		MyJob,
 		httpServerJob,
 	},
 }
