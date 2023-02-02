@@ -1,9 +1,9 @@
-package sysutil_test
+package jobs_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/sysutil"
-	"github.com/adamluzsi/frameless/pkg/sysutil/internal"
+	"github.com/adamluzsi/frameless/pkg/jobs"
+	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 	"log"
@@ -21,7 +21,7 @@ func ExampleJobWithShutdown() {
 		}),
 	}
 
-	httpServerJob := sysutil.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+	httpServerJob := jobs.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
 	_ = httpServerJob
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -52,7 +52,7 @@ func TestJobWithShutdown_smoke(t *testing.T) {
 			startBegin, startFinished, stopBegin bool
 			stopFinished, stopGraceTimeout       bool
 		)
-		job := sysutil.JobWithShutdown(func(ctx context.Context) error {
+		job := jobs.JobWithShutdown(func(ctx context.Context) error {
 			assert.Equal(t, expectedValue, ctx.Value(expectedKey).(string))
 
 			mux.Lock()
@@ -122,7 +122,7 @@ func TestJobWithShutdown_smoke(t *testing.T) {
 			startOK bool
 			stopOK  bool
 		)
-		job := sysutil.JobWithShutdown(func() error {
+		job := jobs.JobWithShutdown(func() error {
 			mux.Lock()
 			startOK = true
 			mux.Unlock()
@@ -161,7 +161,7 @@ func TestJobWithShutdown_smoke(t *testing.T) {
 	t.Run("error is propagated back from both StartFn", func(t *testing.T) {
 		var expectedErr = random.New(random.CryptoSeed{}).Error()
 
-		job := sysutil.JobWithShutdown(func() error {
+		job := jobs.JobWithShutdown(func() error {
 			return expectedErr
 		}, func() error {
 			return nil
@@ -175,7 +175,7 @@ func TestJobWithShutdown_smoke(t *testing.T) {
 	t.Run("error is propagated back from both StopFn", func(t *testing.T) {
 		var expectedErr = random.New(random.CryptoSeed{}).Error()
 
-		job := sysutil.JobWithShutdown(func(ctx context.Context) error {
+		job := jobs.JobWithShutdown(func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		}, func() error {

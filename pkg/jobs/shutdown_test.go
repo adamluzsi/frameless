@@ -1,20 +1,48 @@
-package sysutil_test
+package jobs_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/sysutil"
-	"github.com/adamluzsi/frameless/pkg/sysutil/internal"
+	jobspkg "github.com/adamluzsi/frameless/pkg/jobs"
+	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"
+	"github.com/adamluzsi/testcase/random"
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 )
+
+func TestRun_smoke(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	key, value := rnd.String(), rnd.String()
+	expErr := rnd.Error()
+
+	baseCTX, cancel := context.WithCancel(context.WithValue(context.Background(), key, value))
+
+	var (
+		gotErr error
+		wg     sync.WaitGroup
+	)
+	wg.Add(1)
+	assert.NotWithin(t, 42*time.Millisecond, func(context.Context) {
+		defer wg.Done()
+		gotErr = jobspkg.Run(baseCTX, func(ctx context.Context) error {
+			assert.Equal(t, value, ctx.Value(key).(string))
+			<-ctx.Done()
+			return expErr
+		})
+	}, "expected to block")
+
+	cancel()
+	wg.Wait()
+	assert.Equal(t, expErr, gotErr)
+}
 
 func ExampleShutdownManager() {
 	simpleJob := func(signal context.Context) error {
@@ -29,10 +57,10 @@ func ExampleShutdownManager() {
 		}),
 	}
 
-	httpServerJob := sysutil.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+	httpServerJob := jobspkg.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
 
-	sm := sysutil.ShutdownManager{
-		Jobs: []sysutil.Job{ // each Job will run on its own goroutine.
+	sm := jobspkg.ShutdownManager{
+		Jobs: []jobspkg.Job{ // each Job will run on its own goroutine.
 			simpleJob,
 			httpServerJob,
 		},
@@ -43,17 +71,17 @@ func ExampleShutdownManager() {
 	}
 }
 
-var _ sysutil.Job = sysutil.ShutdownManager{}.Run
+var _ jobspkg.Job = jobspkg.ShutdownManager{}.Run
 
 func TestShutdownManager(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		jobs    = testcase.LetValue[[]sysutil.Job](s, nil)
+		jobs    = testcase.LetValue[[]jobspkg.Job](s, nil)
 		signals = testcase.LetValue[[]os.Signal](s, nil)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) sysutil.ShutdownManager {
-		return sysutil.ShutdownManager{
+	subject := testcase.Let(s, func(t *testcase.T) jobspkg.ShutdownManager {
+		return jobspkg.ShutdownManager{
 			Jobs:    jobs.Get(t),
 			Signals: signals.Get(t),
 		}
@@ -120,7 +148,7 @@ func TestShutdownManager(t *testing.T) {
 		})
 
 		s.When("jobs are provided", func(s *testcase.Spec) {
-			othJob := testcase.Let(s, func(t *testcase.T) sysutil.Job {
+			othJob := testcase.Let(s, func(t *testcase.T) jobspkg.Job {
 				return func(ctx context.Context) error {
 					<-ctx.Done()
 					return ctx.Err()
@@ -128,8 +156,8 @@ func TestShutdownManager(t *testing.T) {
 			})
 
 			jobDone := testcase.LetValue[bool](s, false)
-			jobs.Let(s, func(t *testcase.T) []sysutil.Job {
-				return []sysutil.Job{
+			jobs.Let(s, func(t *testcase.T) []jobspkg.Job {
+				return []jobspkg.Job{
 					func(ctx context.Context) error {
 						<-ctx.Done()
 						jobDone.Set(t, true)
@@ -178,7 +206,7 @@ func TestShutdownManager(t *testing.T) {
 			})
 
 			s.When("one of the job finish early", func(s *testcase.Spec) {
-				othJob.Let(s, func(t *testcase.T) sysutil.Job {
+				othJob.Let(s, func(t *testcase.T) jobspkg.Job {
 					return func(ctx context.Context) error {
 						return nil
 					}
@@ -199,7 +227,7 @@ func TestShutdownManager(t *testing.T) {
 			s.When("one of the job encounters an error", func(s *testcase.Spec) {
 				expectedErr := let.Error(s)
 
-				othJob.Let(s, func(t *testcase.T) sysutil.Job {
+				othJob.Let(s, func(t *testcase.T) jobspkg.Job {
 					return func(ctx context.Context) error {
 						return expectedErr.Get(t)
 					}

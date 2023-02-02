@@ -1,10 +1,10 @@
-package sysutil
+package jobs
 
 import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/contexts"
-	"github.com/adamluzsi/frameless/pkg/sysutil/internal"
+	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 )
 
 type Job func(context.Context) error
@@ -14,7 +14,7 @@ type Job func(context.Context) error
 // upon reaching the deadline, it will cancel the context passed to the shutdown function.
 // JobWithShutdown makes it easy to use components with graceful shutdown support as a Job, such as the http.Server.
 //
-//	sysutil.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+//	jobs.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
 func JobWithShutdown[StartFn, StopFn genericJobFunc](start StartFn, stop StopFn) Job {
 	return func(signal context.Context) error {
 		serveErrChan := make(chan error, 1)

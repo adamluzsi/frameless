@@ -1,14 +1,21 @@
-package sysutil
+package jobs
 
 import (
 	"context"
 	"errors"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/sysutil/internal"
+	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"os"
 	"sync"
 	"syscall"
 )
+
+func Run(ctx context.Context, jobs ...Job) error {
+	return ShutdownManager{
+		Jobs:    jobs,
+		Signals: defaultShutdownSignals(),
+	}.Run(ctx)
+}
 
 // ShutdownManager helps to manage concurrent background Jobs in your main.
 // Each Job will run in its own goroutine.

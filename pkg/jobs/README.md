@@ -1,10 +1,10 @@
-# package sysutil
+# package jobs
 
-`sysutil` package provides utilities to system integration related topics.
+`jobs` package provides utilities to background job management.
 
 ## Graceful shutdown management
 
-In your `main` func, you could use the `sysutil.ShutdownManager`
+In your `main` func, you could use the `jobs.ShutdownManager`
 to manage jobs that you want to run concurrently in your application.
 
 A Job, at its core, is nothing more than a synchronous function.
@@ -21,7 +21,7 @@ You can even use the application context as a signalling control structure
 to break out from working in your application when the shutdown begins.
 
 If your application components depend on a separate shutdown signal, like how `http.Server` works,
-then you can use `JobWithShutdown` to combine them into a single `sysutil.Job` with graceful shutdown support.
+then you can use `JobWithShutdown` to combine them into a single `jobs.Job` with graceful shutdown support.
 The graceful shutdown has a timeout, and the shutdown context will be cancelled afterwards.
 
 ```go
@@ -33,18 +33,18 @@ srv := http.Server{
 }
 
 // httpServerJob is a single func(context.Context) error, that supports graceful shutdown.
-httpServerJob := sysutil.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+httpServerJob := jobs.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
 ```
 
-To manage the execution of these jobs, you can use the `sysutil.ShutdownManager`.
+To manage the execution of these jobs, you can use the `jobs.ShutdownManager`.
 ShutdownManager will run Jobs on their goroutine, and if any of them fails with an error,
 it will shut down the rest of the Jobs gracefully.
 This behaviour makes Jobs act as an atomic unit where you can be guaranteed that either everything works,
 or everything shuts down, and you can restart your application instance.
 
 ```go
-sm := sysutil.ShutdownManager{
-	Jobs: []sysutil.Job{ // each Job will run on its own goroutine.
+sm := jobs.ShutdownManager{
+	Jobs: []jobs.Job{ // each Job will run on its own goroutine.
 		MyJob,
 		httpServerJob,
 	},
@@ -54,3 +54,7 @@ if err := sm.Run(context.Background()); err != nil {
 	log.Println("ERROR", err.Error())
 }
 ```
+
+## TODO
+- [ ] Job repeater for functions which meant to run multiple times, not until context cancellation
+- [ ] Job Scheduler for one time jobs which are meant to run periodically
