@@ -1,29 +1,41 @@
-# package jobs
+[GitHub link](https://github.com/adamluzsi/frameless/tree/main/pkg/jobs)
 
 `jobs` package provides utilities to background job management.
 
-A Job, at its core, is nothing more than a synchronous function.
+A `Job`, at its core, is nothing more than a synchronous function.
 
 ```go
 func MyJob(signal context.Context) error {
-	<-signal.Done() // work until shutdown signal
-	return signal.Err()
+	return nil
 }
 ```
 
 Working with synchronous functions removes the complexity of thinking about how to run your application in your main.
-Your components then become more stateless and focus on the domain rather than the lifecycle management.
+Your components become more stateless and focus on the domain rather than the lifecycle management, such as implementing a graceful async shutdown.
 This less stateful approach can help to make testing also easier.
+
+## Long-lived Jobs
+
+If your job requires continuous work, you can use the received context as a parent context to get notified about a shutdown event.
+This allows simplicity in your code so you don't have to differentiate if you need to cancel operations because of a request cancellation or because of a shutdown event.
+You still can separate the two cancellation types by using background context.
+
+```go
+func MyJob(signal context.Context) error {
+	<-signal.Done() // work until shutdown signal
+	return signal.Err() // returning the context error is not an issue.
+}
+```
 
 ## Short-lived Jobs with Repeat
 
-If your Job is a short-lived interaction, which meant to be executed continously between intervals,
-then you can use the `jobs.WithRepeat` to implement a continous execution that stops on a shutdown signal.
+If your Job is a short-lived interaction, which is meant to be executed continuously between intervals,
+then you can use the `jobs.WithRepeat` to implement a continuous execution that stops on a shutdown signal.
 
 ```go
 job := jobs.WithRepeat(time.Second, func(ctx context.Context) error {
-	// I'm a short-lived job, and prefer to be constantly executed,
-	// Repeat will keep repeating me every second until shutdown is signaled.
+	// I'm a short-lived job, and I prefer to be constantly executed,
+	// Repeat will keep repeating to me every second until the shutdown is signalled.
 	return nil
 })
 
@@ -35,10 +47,10 @@ if err := job(ctx); err != nil {
 }
 ```
 
-## Graceful shutdown compliant jobs
+## Graceful shutdown-compliant jobs
 
-If your application components signals shutdown with a method interaction, like how `http.Server` do,
-then you can use `jobs.WithShutdown` to combine the entrpoint method and the shutdown method into a single `jobs.Job` lambda exression.
+If your application components signal shutdown with a method interaction, like how `http.Server` do,
+then you can use `jobs.WithShutdown` to combine the entry-point method and the shutdown method into a single `jobs.Job` lambda expression.
 The graceful shutdown has a timeout, and the shutdown context will be cancelled afterwards.
 
 ```go
@@ -52,10 +64,10 @@ srv := http.Server{
 httpServerJob := jobs.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
 ```
 
-## Managing multiple Jobs with Manager
+## Managing multiple Jobs with a Manager
 
 To manage the execution of these Jobs, you can use the `jobs.Manager`.
-Manager will run Jobs on their goroutine, and if any of them fails with an error,
+The Manager will run Jobs on their goroutine, and if any of them fails with an error,
 it will signal shutdown to the other Jobs.
 Jobs which finish without an error are not considered an issue,
 and won't trigger a shutdown request to the other Jobs.
@@ -66,7 +78,7 @@ The `jobs.Manager` also takes listens to the shutdown syscalls.
 
 ```go
 sm := jobs.Manager{
-	Jobs: []jobs.Job{ // each Job will run on its own goroutine.
+	Jobs: []jobs.Job{ // each Job will run on its goroutine.
 		MyJob,
 		httpServerJob,
 	},
@@ -80,4 +92,4 @@ if err := sm.Run(context.Background()); err != nil {
 Using `jobs.Manager` is most suitable in the `main` function.
 
 ## TODO
-- [ ] Job Scheduler for one time jobs which are meant to run periodically
+- [ ] Cron like Job Scheduling support
