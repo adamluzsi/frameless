@@ -1,4 +1,4 @@
-[GitHub link](https://github.com/adamluzsi/frameless/tree/main/pkg/jobs)
+# package `jobs`
 
 `jobs` package provides utilities to background job management.
 
