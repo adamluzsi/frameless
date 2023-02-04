@@ -11,16 +11,13 @@ import (
 )
 
 func Run(ctx context.Context, jobs ...Job) error {
-	return ShutdownManager{
-		Jobs:    jobs,
-		Signals: defaultShutdownSignals(),
-	}.Run(ctx)
+	return Manager{Jobs: jobs}.Run(ctx)
 }
 
-// ShutdownManager helps to manage concurrent background Jobs in your main.
+// Manager helps to manage concurrent background Jobs in your main.
 // Each Job will run in its own goroutine.
 // If any of the Job encounters a failure, the other jobs will receive a cancellation signal.
-type ShutdownManager struct {
+type Manager struct {
 	// Jobs is the list of background job that you wish to run concurrently.
 	// They will act as a unit, if any of them fail with an error,
 	// other jobs will be notified to shut down.
@@ -31,7 +28,7 @@ type ShutdownManager struct {
 	Signals []os.Signal
 }
 
-func (m ShutdownManager) Run(ctx context.Context) error {
+func (m Manager) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -50,7 +47,7 @@ func (m ShutdownManager) Run(ctx context.Context) error {
 	return m.runJobs(ctx)
 }
 
-func (m ShutdownManager) signals() []os.Signal {
+func (m Manager) signals() []os.Signal {
 	if 0 < len(m.Signals) {
 		return m.Signals
 	}
@@ -65,7 +62,7 @@ func defaultShutdownSignals() []os.Signal {
 	}
 }
 
-func (m ShutdownManager) runJobs(ctx context.Context) error {
+func (m Manager) runJobs(ctx context.Context) error {
 	var (
 		wwg, cwg sync.WaitGroup
 		errs     []error

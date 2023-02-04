@@ -3,7 +3,6 @@ package jobs_test
 import (
 	"context"
 	jobspkg "github.com/adamluzsi/frameless/pkg/jobs"
-	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"
@@ -17,6 +16,55 @@ import (
 	"testing"
 	"time"
 )
+
+var _ runnable = jobspkg.Manager{}
+
+func ExampleManager() {
+	simpleJob := func(signal context.Context) error {
+		<-signal.Done() // work until shutdown signal
+		return signal.Err()
+	}
+
+	srv := http.Server{
+		Addr: "localhost:8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	httpServerJob := jobspkg.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+
+	sm := jobspkg.Manager{
+		Jobs: []jobspkg.Job{ // each Job will run on its own goroutine.
+			simpleJob,
+			httpServerJob,
+		},
+	}
+
+	if err := sm.Run(context.Background()); err != nil {
+		log.Println("ERROR", err.Error())
+	}
+}
+
+func ExampleRun() {
+	simpleJob := func(signal context.Context) error {
+		<-signal.Done() // work until shutdown signal
+		return signal.Err()
+	}
+
+	srv := http.Server{
+		Addr: "localhost:8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	httpServerJob := jobspkg.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+
+	if err := jobspkg.Run(context.Background(), simpleJob, httpServerJob); err != nil {
+		log.Println("ERROR", err.Error())
+	}
+}
 
 func TestRun_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
@@ -44,44 +92,17 @@ func TestRun_smoke(t *testing.T) {
 	assert.Equal(t, expErr, gotErr)
 }
 
-func ExampleShutdownManager() {
-	simpleJob := func(signal context.Context) error {
-		<-signal.Done() // work until shutdown signal
-		return signal.Err()
-	}
+var _ jobspkg.Job = jobspkg.Manager{}.Run
 
-	srv := http.Server{
-		Addr: "localhost:8080",
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusTeapot)
-		}),
-	}
-
-	httpServerJob := jobspkg.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
-
-	sm := jobspkg.ShutdownManager{
-		Jobs: []jobspkg.Job{ // each Job will run on its own goroutine.
-			simpleJob,
-			httpServerJob,
-		},
-	}
-
-	if err := sm.Run(context.Background()); err != nil {
-		log.Println("ERROR", err.Error())
-	}
-}
-
-var _ jobspkg.Job = jobspkg.ShutdownManager{}.Run
-
-func TestShutdownManager(t *testing.T) {
+func TestManager(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
 		jobs    = testcase.LetValue[[]jobspkg.Job](s, nil)
 		signals = testcase.LetValue[[]os.Signal](s, nil)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) jobspkg.ShutdownManager {
-		return jobspkg.ShutdownManager{
+	subject := testcase.Let(s, func(t *testcase.T) jobspkg.Manager {
+		return jobspkg.Manager{
 			Jobs:    jobs.Get(t),
 			Signals: signals.Get(t),
 		}
@@ -246,17 +267,4 @@ func TestShutdownManager(t *testing.T) {
 			})
 		})
 	})
-}
-
-func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
-	var (
-		notify = internal.SignalNotify
-		stop   = internal.SignalStop
-	)
-	t.Cleanup(func() {
-		internal.SignalNotify = notify
-		internal.SignalStop = stop
-	})
-	internal.SignalNotify = fn
-	internal.SignalStop = func(chan<- os.Signal) {}
 }
