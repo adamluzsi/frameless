@@ -18,7 +18,7 @@ This less stateful approach can help to make testing also easier.
 
 If your job requires continuous work, you can use the received context as a parent context to get notified about a shutdown event.
 This allows simplicity in your code so you don't have to differentiate if you need to cancel operations because of a request cancellation or because of a shutdown event.
-You still can separate the two cancellation types by using background context.
+You can still separate the two cancellation types by using background context.
 
 ```go
 func MyJob(signal context.Context) error {
