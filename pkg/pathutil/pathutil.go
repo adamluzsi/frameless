@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	separatorChar = "/"
 	separatorRune = '/'
+	separatorChar = string(separatorRune)
 )
 
 func Unshift(path string) (_pathParameter string, _remainingPath string) {

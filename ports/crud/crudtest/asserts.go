@@ -25,11 +25,11 @@ var Eventually = assert.Eventually{
 	RetryStrategy: &Waiter,
 }
 
-func HasID[Entity, ID any](tb testing.TB, ptr Entity) (id ID) {
+func HasID[Entity, ID any](tb testing.TB, ent Entity) (id ID) {
 	tb.Helper()
 	Eventually.Assert(tb, func(it assert.It) {
 		var ok bool
-		id, ok = extid.Lookup[ID](ptr)
+		id, ok = extid.Lookup[ID](ent)
 		it.Must.True(ok)
 		it.Must.NotEmpty(id)
 	})
