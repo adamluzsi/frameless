@@ -55,3 +55,24 @@ func TestLocker(t *testing.T) {
 		},
 	}.Test(t)
 }
+
+func TestLockerFactory(t *testing.T) {
+	db, err := sql.Open("postgres", spechelper.DatabaseDSN(t))
+	assert.NoError(t, err)
+
+	lockscontracts.Factory[string]{
+		MakeSubject: func(tb testing.TB) locks.Factory[string] {
+			return locks.FactoryFunc[string](func(name string) locks.Locker {
+				l := postgresql.Locker{Name: name, DB: db}
+				assert.NoError(tb, l.Migrate(context.Background()))
+				return l
+			})
+		},
+		MakeContext: func(tb testing.TB) context.Context {
+			return context.Background()
+		},
+		MakeKey: func(tb testing.TB) string {
+			return tb.(*testcase.T).Random.String()
+		},
+	}.Test(t)
+}
