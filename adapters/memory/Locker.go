@@ -71,3 +71,24 @@ func (l *Locker) lookup(ctx context.Context) (*ctxValueLock, bool) {
 	lockState, ok := ctx.Value(ctxKeyLock{}).(*ctxValueLock)
 	return lockState, ok
 }
+
+func NewLockerFactory[Key comparable]() *LockerFactory[Key] {
+	return &LockerFactory[Key]{}
+}
+
+type LockerFactory[Key comparable] struct {
+	locks map[Key]*Locker
+	mutex sync.Mutex
+}
+
+func (lf *LockerFactory[Key]) LockerFor(key Key) locks.Locker {
+	lf.mutex.Lock()
+	defer lf.mutex.Unlock()
+	if lf.locks == nil {
+		lf.locks = make(map[Key]*Locker)
+	}
+	if _, ok := lf.locks[key]; !ok {
+		lf.locks[key] = NewLocker()
+	}
+	return lf.locks[key]
+}

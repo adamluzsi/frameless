@@ -2,7 +2,6 @@ package locks
 
 import (
 	"context"
-
 	"github.com/adamluzsi/frameless/internal/consttypes"
 )
 
@@ -20,13 +19,12 @@ type Locker interface {
 	Unlock(lockCtx context.Context) error
 }
 
-const ErrNoLock consttypes.Error = `ErrNoLock`
+const ErrNoLock consttypes.Error = "ErrNoLock"
 
-//func FinishLock(l Locker, err *error, lockCtx context.Context) {
-//	if err == nil {
-//		var ph error
-//		err = &ph
-//	}
-//
-//	*err = errorutil.Merge(*err, l.Unlock(lockCtx))
-//}
+type Factory[Key comparable] interface {
+	LockerFor(Key) Locker
+}
+
+type FactoryFunc[Key comparable] func(Key) Locker
+
+func (fn FactoryFunc[Key]) LockerFor(key Key) Locker { return fn(key) }
