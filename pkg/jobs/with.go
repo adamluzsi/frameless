@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"github.com/adamluzsi/frameless/pkg/contexts"
 	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/testcase/clock"
@@ -51,5 +52,19 @@ func WithRepeat[JFN genericJob](interval internal.Interval, jfn JFN) Job {
 			}
 		}
 		return nil
+	}
+}
+
+func OnError[JFN genericJob](jfn JFN, fn func(error) error) Job {
+	job := ToJob(jfn)
+	return func(ctx context.Context) error {
+		err := job(ctx)
+		if err == nil {
+			return nil
+		}
+		if errors.Is(err, ctx.Err()) {
+			return err
+		}
+		return fn(err)
 	}
 }

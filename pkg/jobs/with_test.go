@@ -307,3 +307,45 @@ func TestWithRepeat_smoke(t *testing.T) {
 		})
 	})
 }
+
+func ExampleOnError() {
+	jobWithErrorHandling := jobs.OnError(
+		func(ctx context.Context) error { return nil },                          // job
+		func(err error) error { log.Println("ERROR", err.Error()); return nil }, // error handling
+	)
+	_ = jobWithErrorHandling
+}
+func TestOnError(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("on no error, error handler is not triggered", func(t *testcase.T) {
+		job := jobs.OnError(func() error { return nil }, func(err error) error { panic("boom") })
+		t.Must.NoError(job(context.Background()))
+	})
+
+	s.Test("on context cancellation, error handler is not triggered", func(t *testcase.T) {
+		job := jobs.OnError(func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}, func(err error) error { panic("boom") })
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		t.Must.Equal(ctx.Err(), job(ctx))
+	})
+
+	s.Test("on non context related error, error is propagated to the error handler", func(t *testcase.T) {
+		var (
+			expErrIn  = t.Random.Error()
+			expErrOut = t.Random.Error()
+			gotErrIn  error
+		)
+		job := jobs.OnError(func(ctx context.Context) error {
+			return expErrIn
+		}, func(err error) error {
+			gotErrIn = err
+			return expErrOut
+		})
+		t.Must.Equal(expErrOut, job(context.Background()))
+		t.Must.Equal(expErrIn, gotErrIn)
+	})
+}
