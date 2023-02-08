@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
@@ -47,12 +48,19 @@ func ExampleSQLRows() {
 	}
 }
 
+type SQLRows interface {
+	io.Closer
+	Next() bool
+	Err() error
+	Scan(dest ...interface{}) error
+}
+
 func TestSQLRows(t *testing.T) {
 	type testType struct{ Text string }
 
 	s := testcase.NewSpec(t)
 
-	rows := testcase.Var[iterators.ISQLRows]{ID: "iterators.SQLRows"}
+	rows := testcase.Var[SQLRows]{ID: "iterators.SQLRows"}
 	mapper := testcase.Var[iterators.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
 	subject := func(t *testcase.T) iterators.Iterator[testType] {
 		return iterators.SQLRows(rows.Get(t), mapper.Get(t))
@@ -66,7 +74,7 @@ func TestSQLRows(t *testing.T) {
 
 	s.When(`rows`, func(s *testcase.Spec) {
 		s.Context(`has no values`, func(s *testcase.Spec) {
-			rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
+			rows.Let(s, func(t *testcase.T) SQLRows {
 				return &SQLRowsStub{
 					Iterator: iterators.Empty[[]any](),
 				}
@@ -92,7 +100,7 @@ func TestSQLRows(t *testing.T) {
 		})
 
 		s.Context(`has value(s)`, func(s *testcase.Spec) {
-			rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
+			rows.Let(s, func(t *testcase.T) SQLRows {
 				return &SQLRowsStub{
 					Iterator: iterators.Slice([][]any{[]any{`42`}}),
 				}
@@ -113,7 +121,7 @@ func TestSQLRows(t *testing.T) {
 
 			s.And(`error happen during scanning`, func(s *testcase.Spec) {
 				expectedErr := errors.New(`boom`)
-				rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
+				rows.Let(s, func(t *testcase.T) SQLRows {
 					return &SQLRowsStub{
 						Iterator: iterators.Slice[[]any]([][]any{{`42`}}),
 						ScanErr:  expectedErr,
@@ -133,7 +141,7 @@ func TestSQLRows(t *testing.T) {
 
 	s.When(`close encounter error`, func(s *testcase.Spec) {
 		expectedErr := errors.New(`boom`)
-		rows.Let(s, func(t *testcase.T) iterators.ISQLRows {
+		rows.Let(s, func(t *testcase.T) SQLRows {
 			return &SQLRowsStub{
 				Iterator: iterators.Empty[[]any](),
 				CloseErr: expectedErr,

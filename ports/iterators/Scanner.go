@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-func Scanner[T string | []byte](s *bufio.Scanner, closer io.Closer) *ScannerIter[T] {
+func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer) *ScannerIter[T] {
 	return &ScannerIter[T]{
 		Scanner: s,
 		Closer:  closer,

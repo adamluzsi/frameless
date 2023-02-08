@@ -4,7 +4,7 @@ import (
 	"io"
 )
 
-func SQLRows[T any](rows ISQLRows, mapper SQLRowMapper[T]) *SQLRowsIter[T] {
+func SQLRows[T any](rows sqlRows, mapper SQLRowMapper[T]) *SQLRowsIter[T] {
 	return &SQLRowsIter[T]{Rows: rows, Mapper: mapper}
 }
 
@@ -13,11 +13,18 @@ func SQLRows[T any](rows ISQLRows, mapper SQLRowMapper[T]) *SQLRowsIter[T] {
 // by using this wrapping around it.
 // it also makes testing easier with the same Interface interface.
 type SQLRowsIter[T any] struct {
-	Rows   ISQLRows
+	Rows   sqlRows
 	Mapper SQLRowMapper[T]
 
 	value T
 	err   error
+}
+
+type sqlRows interface {
+	io.Closer
+	Next() bool
+	Err() error
+	Scan(dest ...interface{}) error
 }
 
 func (i *SQLRowsIter[T]) Close() error {
@@ -64,10 +71,3 @@ type SQLRowMapper[T any] interface {
 type SQLRowMapperFunc[T any] func(SQLRowScanner) (T, error)
 
 func (fn SQLRowMapperFunc[T]) Map(s SQLRowScanner) (T, error) { return fn(s) }
-
-type ISQLRows interface {
-	io.Closer
-	Next() bool
-	Err() error
-	Scan(dest ...interface{}) error
-}

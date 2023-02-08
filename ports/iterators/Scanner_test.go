@@ -14,7 +14,7 @@ import (
 
 func ExampleScanner() {
 	reader := strings.NewReader("a\nb\nc\nd")
-	i := iterators.Scanner[string](bufio.NewScanner(reader), nil)
+	i := iterators.BufioScanner[string](bufio.NewScanner(reader), nil)
 	i.Split(bufio.ScanLines)
 
 	for i.Next() {
@@ -25,7 +25,7 @@ func ExampleScanner() {
 
 func ExampleScanner_Split() {
 	reader := strings.NewReader("a\nb\nc\nd")
-	i := iterators.Scanner[string](bufio.NewScanner(reader), nil)
+	i := iterators.BufioScanner[string](bufio.NewScanner(reader), nil)
 	i.Split(bufio.ScanLines)
 
 	for i.Next() {
@@ -38,7 +38,7 @@ func TestScanner_SingleLineGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()
 
 	readCloser := NewReadCloser(strings.NewReader("Hello, World!"))
-	i := iterators.Scanner[string](bufio.NewScanner(readCloser), readCloser)
+	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 
 	assert.Must(t).True(i.Next())
 	assert.Must(t).Equal("Hello, World!", i.Value())
@@ -49,7 +49,7 @@ func TestScanner_nilCloserGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()
 
 	readCloser := NewReadCloser(strings.NewReader("foo\nbar\nbaz"))
-	i := iterators.Scanner[string](bufio.NewScanner(readCloser), nil)
+	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), nil)
 
 	assert.Must(t).True(i.Next())
 	assert.Must(t).Equal("foo", i.Value())
@@ -65,7 +65,7 @@ func TestScanner_ClosableIOGiven_OnCloseItIsClosed(t *testing.T) {
 	t.Parallel()
 
 	readCloser := NewReadCloser(strings.NewReader(`Hy`))
-	i := iterators.Scanner[string](bufio.NewScanner(readCloser), readCloser)
+	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 	assert.Must(t).Nil(i.Close())
 	assert.Must(t).NotNil(i.Close(), "already closed")
 }
@@ -74,7 +74,7 @@ func TestScanner_MultipleLineGiven_EachLineFetched(t *testing.T) {
 	t.Parallel()
 
 	readCloser := NewReadCloser(strings.NewReader("Hello, World!\nHow are you?\r\nThanks I'm fine!"))
-	i := iterators.Scanner[string](bufio.NewScanner(readCloser), readCloser)
+	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 
 	assert.Must(t).True(i.Next())
 	assert.Must(t).Equal("Hello, World!", i.Value())
@@ -92,7 +92,7 @@ func TestScanner_NilReaderGiven_ErrorReturned(t *testing.T) {
 	t.Parallel()
 
 	readCloser := NewReadCloser(new(BrokenReader))
-	i := iterators.Scanner[string](bufio.NewScanner(readCloser), readCloser)
+	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 
 	assert.Must(t).False(i.Next())
 	assert.Must(t).NotNil(io.ErrUnexpectedEOF, i.Err())
@@ -100,7 +100,7 @@ func TestScanner_NilReaderGiven_ErrorReturned(t *testing.T) {
 
 func TestScanner_Split(t *testing.T) {
 	reader := strings.NewReader("a\nb\nc\nd")
-	i := iterators.Scanner[string](bufio.NewScanner(reader), nil)
+	i := iterators.BufioScanner[string](bufio.NewScanner(reader), nil)
 	i.Split(bufio.ScanLines)
 
 	lines, err := iterators.Collect[string](i)
