@@ -17,7 +17,7 @@ import (
 func WithShutdown[StartFn, StopFn genericJob](start StartFn, stop StopFn) Job {
 	return func(signal context.Context) error {
 		serveErrChan := make(chan error, 1)
-		go func() { serveErrChan <- toJob(start)(signal) }()
+		go func() { serveErrChan <- ToJob(start)(signal) }()
 		select {
 		case err := <-serveErrChan:
 			return err
@@ -26,7 +26,7 @@ func WithShutdown[StartFn, StopFn genericJob](start StartFn, stop StopFn) Job {
 		}
 		ctx, cancel := context.WithTimeout(contexts.Detach(signal), internal.JobGracefulShutdownTimeout)
 		defer cancel()
-		return toJob(stop)(ctx)
+		return ToJob(stop)(ctx)
 	}
 }
 
@@ -34,7 +34,7 @@ func WithShutdown[StartFn, StopFn genericJob](start StartFn, stop StopFn) Job {
 // It is most suitable for Job(s) meant to be short-lived and executed continuously until the shutdown signal.
 func WithRepeat[JFN genericJob](interval time.Duration, jfn JFN) Job {
 	return func(ctx context.Context) error {
-		job := toJob(jfn)
+		job := ToJob(jfn)
 		if err := job(ctx); err != nil {
 			return err
 		}

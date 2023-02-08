@@ -47,6 +47,25 @@ if err := job(ctx); err != nil {
 }
 ```
 
+## Scheduled Jobs with Scheduler.WithSchedule
+
+If you need cron-like background jobs that you can schedule periodically,
+and require the guarantee that even if you have multiple instances,
+the task will only run once at every interval,
+then you may use jobs.Scheduler
+
+```go
+m := jobs.Scheduler{
+    LockerFactory: postgresql.NewLockerFactory[string](db),
+    Repository:    postgresql.NewRepository[jobs.ScheduleState, string]{/* ... */},
+}
+
+job := m.WithSchedule("db maintenance", time.Hour*24*7, func(ctx context.Context) error {
+    // this job is scheduled to run once at every seven days
+    return nil
+})
+```
+
 ## Graceful shutdown-compliant jobs
 
 If your application components signal shutdown with a method interaction, like how `http.Server` do,
@@ -90,6 +109,3 @@ if err := sm.Run(context.Background()); err != nil {
 ```
 
 Using `jobs.Manager` is most suitable in the `main` function.
-
-## TODO
-- [ ] Cron like Job Scheduling support
