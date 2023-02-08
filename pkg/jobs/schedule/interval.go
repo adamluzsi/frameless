@@ -1,0 +1,70 @@
+package schedule
+
+import (
+	"github.com/adamluzsi/testcase/clock"
+	"time"
+)
+
+type Interval time.Duration
+
+func (i Interval) UntilNext(lastRanAt time.Time) time.Duration {
+	return lastRanAt.Add(time.Duration(i)).Sub(clock.TimeNow())
+}
+
+type Monthly struct {
+	Day, Hour, Minute int
+	Location          *time.Location
+}
+
+func (i Monthly) UntilNext(lastRanAt time.Time) time.Duration {
+	loc := getLocation(i.Location)
+	now := clock.TimeNow().In(loc)
+	lastRanAt = lastRanAt.In(loc)
+
+	if lastRanAt.Year() < now.Year() {
+		return 0
+	}
+	if lastRanAt.Month() < now.Month() {
+		return 0
+	}
+
+	occurrenceAt := time.Date(now.Year(), now.Month(), i.Day,
+		i.Hour, i.Minute, 0, 0, loc).
+		AddDate(0, 1, 0)
+
+	return occurrenceAt.Sub(now)
+}
+
+type Daily struct {
+	Hour, Minute int
+	Location     *time.Location
+}
+
+func (i Daily) UntilNext(lastRanAt time.Time) time.Duration {
+	loc := getLocation(i.Location)
+	now := clock.TimeNow().In(loc)
+	lastRanAt = lastRanAt.In(loc)
+
+	if lastRanAt.Year() < now.Year() {
+		return 0
+	}
+	if lastRanAt.Month() < now.Month() {
+		return 0
+	}
+	if lastRanAt.Day() < now.Day() {
+		return 0
+	}
+
+	occurrenceAt := time.Date(now.Year(), now.Month(), now.Day(),
+		i.Hour, i.Minute, 0, 0, loc).
+		AddDate(0, 0, 1)
+
+	return occurrenceAt.Sub(now)
+}
+
+func getLocation(loc *time.Location) *time.Location {
+	if loc == nil {
+		return time.Local
+	}
+	return loc
+}

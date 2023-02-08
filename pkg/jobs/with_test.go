@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/jobs"
 	"github.com/adamluzsi/frameless/pkg/jobs/internal"
+	"github.com/adamluzsi/frameless/pkg/jobs/schedule"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
@@ -38,7 +39,7 @@ func ExampleWithShutdown() {
 }
 
 func ExampleWithRepeat() {
-	job := jobs.WithRepeat(time.Second, func(ctx context.Context) error {
+	job := jobs.WithRepeat(schedule.Interval(time.Second), func(ctx context.Context) error {
 		// I'm a short-lived job, and prefer to be constantly executed,
 		// Repeat will keep repeating me every second until shutdown is signaled.
 		return nil
@@ -212,7 +213,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		job = jobs.WithRepeat(0, job)
+		job = jobs.WithRepeat(schedule.Interval(0), job)
 
 		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
 			t.Should.NoError(job(ctx))
@@ -230,7 +231,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		job = jobs.WithRepeat(time.Hour, job)
+		job = jobs.WithRepeat(schedule.Interval(time.Hour), job)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -255,7 +256,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		job = jobs.WithRepeat(0, job)
+		job = jobs.WithRepeat(schedule.Interval(0), job)
 
 		var done int32
 		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
@@ -278,7 +279,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return expErr
 		}
 
-		job = jobs.WithRepeat(0, job)
+		job = jobs.WithRepeat(schedule.Interval(0), job)
 
 		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
 			t.Should.ErrorIs(expErr, job(ctx))
@@ -299,7 +300,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		job = jobs.WithRepeat(0, job)
+		job = jobs.WithRepeat(schedule.Interval(0), job)
 
 		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
 			t.Should.ErrorIs(expErr, job(ctx))

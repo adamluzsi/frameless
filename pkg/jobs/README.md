@@ -5,7 +5,7 @@
 A `Job`, at its core, is nothing more than a synchronous function.
 
 ```go
-func MyJob(signal context.Context) error {
+func(ctx context.Context) error {
 	return nil
 }
 ```
@@ -13,6 +13,46 @@ func MyJob(signal context.Context) error {
 Working with synchronous functions removes the complexity of thinking about how to run your application in your main.
 Your components become more stateless and focus on the domain rather than the lifecycle management, such as implementing a graceful async shutdown.
 This less stateful approach can help to make testing also easier.
+
+## Short-lived Jobs with Repeat
+
+If your Job is a short-lived interaction, which is meant to be executed continuously between intervals,
+then you can use the `jobs.WithRepeat` to implement a continuous execution that stops on a shutdown signal.
+
+```go
+job := jobs.WithRepeat(schedule.Interval(time.Second), func(ctx context.Context) error {
+	// I'm a short-lived job, and I prefer to be constantly executed,
+	// Repeat will keep repeating to me every second until the shutdown is signalled.
+	return nil
+})
+
+ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+defer cancel()
+
+if err := job(ctx); err != nil {
+	log.Println("ERROR", err.Error())
+}
+```
+
+### scheduling
+
+In the `schedule` package, you can choose from various options on how would you like to schedule your job.
+
+- Schedule by time duration interval
+```go
+schedule.Interval(time.Second) // schedule every second
+```
+
+- Schedule on a Daily basis
+```go
+schedule.Daily{Hour:12} // schedule every day at 12 o'clock
+```
+
+- Schedule on a Monthly basis
+```go
+// schedule every month at 12 o'clock on the third day
+schedule.Monthly{Day: 3, Hour:12} 
+```
 
 ## Long-lived Jobs
 
@@ -27,46 +67,30 @@ func MyJob(signal context.Context) error {
 }
 ```
 
-## Short-lived Jobs with Repeat
-
-If your Job is a short-lived interaction, which is meant to be executed continuously between intervals,
-then you can use the `jobs.WithRepeat` to implement a continuous execution that stops on a shutdown signal.
-
-```go
-job := jobs.WithRepeat(time.Second, func(ctx context.Context) error {
-	// I'm a short-lived job, and I prefer to be constantly executed,
-	// Repeat will keep repeating to me every second until the shutdown is signalled.
-	return nil
-})
-
-ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-defer cancel()
-
-if err := job(ctx); err != nil {
-	log.Println("ERROR", err.Error())
-}
-```
-
 ## Scheduled Jobs with Scheduler.WithSchedule
 
-If you need cron-like background jobs that you can schedule periodically,
-and require the guarantee that even if you have multiple instances,
-the task will only run once at every interval,
-then you may use jobs.Scheduler
+If you need cron-like background jobs with the guarantee that your background jobs are serialised
+across your application instances, and only one scheduled job can run at a time,
+then you may use jobs.Scheduler, which solves that for you.
 
 ```go
-m := jobs.Scheduler{
+m := schedule.Scheduler{
     LockerFactory: postgresql.NewLockerFactory[string](db),
     Repository:    postgresql.NewRepository[jobs.ScheduleState, string]{/* ... */},
 }
 
-job := m.WithSchedule("db maintenance", time.Hour*24*7, func(ctx context.Context) error {
+job := m.WithSchedule("db maintenance", schedule.Interval(time.Hour*24*7), func(ctx context.Context) error {
+    // this job is scheduled to run once at every seven days
+    return nil
+})
+
+job := m.WithSchedule("db maintenance", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
     // this job is scheduled to run once at every seven days
     return nil
 })
 ```
 
-## Graceful shutdown-compliant jobs
+## Using components as Job with Graceful shutdown support
 
 If your application components signal shutdown with a method interaction, like how `http.Server` do,
 then you can use `jobs.WithShutdown` to combine the entry-point method and the shutdown method into a single `jobs.Job` lambda expression.
@@ -80,7 +104,7 @@ srv := http.Server{
 	}),
 }
 
-httpServerJob := jobs.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+httpServerJob := jobs.WithShutdown(srv.ListenAndServe, srv.Shutdown)
 ```
 
 ## Managing multiple Jobs with a Manager

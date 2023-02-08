@@ -1,8 +1,10 @@
-package jobs
+package schedule
 
 import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/jobs"
+	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/locks"
 	"github.com/adamluzsi/testcase/clock"
@@ -11,10 +13,10 @@ import (
 
 type Scheduler struct {
 	LockerFactory locks.Factory[ /*name*/ string]
-	Repository    ScheduleStateRepository
+	Repository    StateRepository
 }
 
-func (s Scheduler) WithSchedule(jobid string, interval time.Duration, job Job) Job {
+func (s Scheduler) WithSchedule(jobid string, interval internal.Interval, job jobs.Job) jobs.Job {
 	locker := s.LockerFactory.LockerFor(jobid)
 
 	next := func(ctx context.Context) (_ time.Duration, rErr error) {
@@ -29,7 +31,7 @@ func (s Scheduler) WithSchedule(jobid string, interval time.Duration, job Job) J
 			return 0, err
 		}
 		if !found {
-			state = ScheduleState{
+			state = State{
 				JobID:     jobid,
 				Timestamp: time.Time{}.UTC(),
 			}
@@ -37,19 +39,16 @@ func (s Scheduler) WithSchedule(jobid string, interval time.Duration, job Job) J
 				return 0, err
 			}
 		}
-		var (
-			now    = clock.TimeNow().UTC()
-			nextAt = state.Timestamp.Add(interval)
-		)
-		if nextAt.After(now) {
-			return nextAt.Sub(now), nil
+
+		if nextAt := interval.UntilNext(state.Timestamp); 0 < nextAt {
+			return nextAt, nil
 		}
 		if err := job(ctx); err != nil {
 			return 0, err
 		}
 
-		state.Timestamp = now
-		return now.Sub(now.Add(interval)), s.Repository.Update(ctx, &state)
+		state.Timestamp = clock.TimeNow().UTC()
+		return interval.UntilNext(state.Timestamp), s.Repository.Update(ctx, &state)
 	}
 
 	return func(ctx context.Context) error {
@@ -69,14 +68,14 @@ func (s Scheduler) WithSchedule(jobid string, interval time.Duration, job Job) J
 	}
 }
 
-type ScheduleState struct {
+type State struct {
 	JobID     string `ext:"id"`
 	Timestamp time.Time
 }
 
-type ScheduleStateRepository interface {
-	crud.Creator[ScheduleState]
-	crud.Updater[ScheduleState]
+type StateRepository interface {
+	crud.Creator[State]
+	crud.Updater[State]
 	crud.ByIDDeleter[string]
-	crud.ByIDFinder[ScheduleState, string]
+	crud.ByIDFinder[State, string]
 }

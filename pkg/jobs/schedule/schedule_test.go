@@ -1,9 +1,10 @@
-package jobs_test
+package schedule_test
 
 import (
 	"context"
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/pkg/jobs"
+	"github.com/adamluzsi/frameless/pkg/jobs/schedule"
 	"github.com/adamluzsi/frameless/ports/locks"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -15,12 +16,12 @@ import (
 )
 
 func ExampleScheduler_WithSchedule() {
-	m := jobs.Scheduler{
+	m := schedule.Scheduler{
 		LockerFactory: memory.NewLockerFactory[string](),
-		Repository:    memory.NewRepository[jobs.ScheduleState, string](memory.NewMemory()),
+		Repository:    memory.NewRepository[schedule.State, string](memory.NewMemory()),
 	}
 
-	job := m.WithSchedule("db maintenance", time.Hour*24*7, func(ctx context.Context) error {
+	job := m.WithSchedule("db maintenance", schedule.Interval(time.Hour*24*7), func(ctx context.Context) error {
 		// this job is scheduled at every seven days
 		return nil
 	})
@@ -30,6 +31,8 @@ func ExampleScheduler_WithSchedule() {
 	}
 }
 
+const blockCheckWaitTime = 42 * time.Millisecond
+
 func TestScheduler(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.HasSideEffect()
@@ -38,13 +41,13 @@ func TestScheduler(t *testing.T) {
 		lockerFactory = testcase.Let(s, func(t *testcase.T) locks.Factory[string] {
 			return memory.NewLockerFactory[string]()
 		})
-		repository = testcase.Let(s, func(t *testcase.T) jobs.ScheduleStateRepository {
+		repository = testcase.Let(s, func(t *testcase.T) schedule.StateRepository {
 			m := memory.NewMemory()
-			return memory.NewRepository[jobs.ScheduleState, string](m)
+			return memory.NewRepository[schedule.State, string](m)
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) jobs.Scheduler {
-		return jobs.Scheduler{
+	subject := testcase.Let(s, func(t *testcase.T) schedule.Scheduler {
+		return schedule.Scheduler{
 			LockerFactory: lockerFactory.Get(t),
 			Repository:    repository.Get(t),
 		}
@@ -64,7 +67,7 @@ func TestScheduler(t *testing.T) {
 			})
 		)
 		act := func(t *testcase.T) jobs.Job {
-			return subject.Get(t).WithSchedule(jobID.Get(t), interval.Get(t), job.Get(t))
+			return subject.Get(t).WithSchedule(jobID.Get(t), schedule.Interval(interval.Get(t)), job.Get(t))
 		}
 
 		var Context = let.Context(s)

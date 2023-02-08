@@ -5,7 +5,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/contexts"
 	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/testcase/clock"
-	"time"
 )
 
 // WithShutdown will combine the start and stop/shutdown function into a single Job function.
@@ -32,21 +31,23 @@ func WithShutdown[StartFn, StopFn genericJob](start StartFn, stop StopFn) Job {
 
 // WithRepeat will keep repeating a given Job until shutdown is signaled.
 // It is most suitable for Job(s) meant to be short-lived and executed continuously until the shutdown signal.
-func WithRepeat[JFN genericJob](interval time.Duration, jfn JFN) Job {
+func WithRepeat[JFN genericJob](interval internal.Interval, jfn JFN) Job {
 	return func(ctx context.Context) error {
-		job := ToJob(jfn)
+		var job = ToJob(jfn)
 		if err := job(ctx); err != nil {
 			return err
 		}
+		var at = clock.TimeNow()
 	repeat:
 		for {
 			select {
 			case <-ctx.Done():
 				break repeat
-			case <-clock.After(interval):
+			case <-clock.After(interval.UntilNext(at)):
 				if err := job(ctx); err != nil {
 					return err
 				}
+				at = clock.TimeNow()
 			}
 		}
 		return nil

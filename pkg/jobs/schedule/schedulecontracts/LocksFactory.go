@@ -1,4 +1,4 @@
-package jobscontracts
+package schedulecontracts
 
 import "github.com/adamluzsi/frameless/ports/locks/lockscontracts"
 
