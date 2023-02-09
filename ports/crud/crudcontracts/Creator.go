@@ -69,7 +69,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 			return id
 		}
 	)
-	subject := func(t *testcase.T) error {
+	act := func(t *testcase.T) error {
 		ctx := ctxVar.Get(t)
 		err := resource.Get(t).Create(ctx, ptr.Get(t))
 		if err == nil {
@@ -82,42 +82,42 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`entity was not saved before`, func(s *testcase.Spec) {
 		s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.Nil(act(t))
 			t.Must.NotEmpty(getID(t))
 		})
 
 		s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.Nil(act(t))
 			t.Must.Equal(ptr.Get(t), IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t)))
 		})
 	})
 
 	s.When(`entity was already saved once`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.Nil(act(t))
 			IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 		})
 
 		s.Then(`it will return an error informing that the entity record already exists`, func(t *testcase.T) {
-			t.Must.ErrorIs(crud.ErrAlreadyExists, subject(t))
+			t.Must.ErrorIs(crud.ErrAlreadyExists, act(t))
 		})
 	})
 
 	if c.SupportIDReuse {
 		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
 				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 			})
 
 			s.Then(`persisted object can be found`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 			})
 		})
@@ -126,19 +126,20 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 	if c.SupportRecreate {
 		s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				ogEnt := *ptr.Get(t) // a deep copy might be better
+				t.Must.Nil(act(t))
 				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
 				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-				t.Must.NoError(extid.Set(ptr.Get(t), *new(ID)), "setting the id to zero value failed")
+				ptr.Set(t, &ogEnt)
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 			})
 
 			s.Then(`persisted object can be found`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 
 				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
 			})
@@ -153,7 +154,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.Equal(context.Canceled, subject(t))
+			t.Must.Equal(context.Canceled, act(t))
 		})
 	})
 
