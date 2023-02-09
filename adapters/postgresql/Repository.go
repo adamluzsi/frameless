@@ -118,7 +118,7 @@ func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
 }
 
 func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
-	var query = fmt.Sprintf(`DELETE FROM %s WHERE "id" = $1`, r.Mapping.TableRef())
+	var query = fmt.Sprintf(`DELETE FROM %s WHERE %q = $1`, r.Mapping.TableRef(), r.Mapping.IDRef())
 
 	ctx, err := r.BeginTx(ctx)
 	if err != nil {

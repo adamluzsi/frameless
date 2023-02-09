@@ -1,6 +1,7 @@
 package postgresql_test
 
 import (
+	"database/sql"
 	"io"
 	"testing"
 
@@ -27,6 +28,12 @@ func NewConnectionManager(tb testing.TB) postgresql.ConnectionManager {
 	//_, err = connection.ExecContext(context.Background(), "SELECT")
 	//assert.NoError(tb, err)
 	return cm
+}
+
+func OpenDB(tb testing.TB) *sql.DB {
+	db, err := sql.Open("postgres", spechelper.DatabaseURL(tb))
+	assert.NoError(tb, err)
+	return db
 }
 
 func deferClose(tb testing.TB, closer io.Closer) {

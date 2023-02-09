@@ -24,6 +24,10 @@ type MigratorStep interface {
 	MigrateDown(ctx context.Context, tx *sql.Tx) error
 }
 
+type Migratable interface {
+	Migrate(context.Context) error
+}
+
 func (m Migrator) Up(ctx context.Context) (rErr error) {
 	if m.Config.Namespace == "" {
 		return fmt.Errorf("missing namespace")

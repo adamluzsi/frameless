@@ -5,12 +5,11 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-
 	"github.com/adamluzsi/frameless/ports/locks"
 )
 
 // Locker is a PG-based shared mutex implementation.
-// It depends on the existence of the frameless_postgres_locker_locks table.
+// It depends on the existence of the frameless_locker_locks table.
 // Locker is safe to call from different application instances,
 // ensuring that only one of them can hold the lock concurrently.
 type Locker struct {
@@ -18,7 +17,7 @@ type Locker struct {
 	DB   *sql.DB
 }
 
-const queryLock = `INSERT INTO frameless_postgres_locker_locks (name) VALUES ($1);`
+const queryLock = `INSERT INTO frameless_locker_locks (name) VALUES ($1);`
 
 func (l Locker) Lock(ctx context.Context) (context.Context, error) {
 	if ctx == nil {
@@ -79,13 +78,13 @@ type (
 )
 
 const queryCreateLockerTable = `
-CREATE TABLE IF NOT EXISTS frameless_postgres_locker_locks (
+CREATE TABLE IF NOT EXISTS frameless_locker_locks (
     name TEXT PRIMARY KEY
 );
 `
 
 var lockerMigrationConfig = MigratorConfig{
-	Namespace: "frameless/postgresql.Locker",
+	Namespace: "frameless_locker_locks",
 	Steps: []MigratorStep{
 		MigrationStep{UpQuery: queryCreateLockerTable},
 	},
@@ -98,4 +97,17 @@ func (l Locker) Migrate(ctx context.Context) error {
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
 	v, ok := ctx.Value(lockerCtxKey{}).(*lockerCtxValue)
 	return v, ok
+}
+
+type LockerFactory[Key comparable] struct{ DB *sql.DB }
+
+func (lf LockerFactory[Key]) Migrate(ctx context.Context) error {
+	return Locker{DB: lf.DB}.Migrate(ctx)
+}
+
+func (lf LockerFactory[Key]) LockerFor(key Key) locks.Locker {
+	return Locker{
+		Name: fmt.Sprintf("%T:%v", key, key),
+		DB:   lf.DB,
+	}
 }
