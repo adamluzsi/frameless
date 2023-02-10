@@ -8,11 +8,14 @@ import (
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
+	"github.com/adamluzsi/testcase/let"
 	"github.com/adamluzsi/testcase/random"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -347,5 +350,145 @@ func TestOnError(t *testing.T) {
 		})
 		t.Must.Equal(expErrOut, job(context.Background()))
 		t.Must.Equal(expErrIn, gotErrIn)
+	})
+}
+
+func ExampleWithSignalNotify() {
+	srv := http.Server{
+		Addr: "localhost:8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	job := jobs.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+	job = jobs.WithSignalNotify(job)
+
+	if err := job(context.Background()); err != nil {
+		log.Println("ERROR", err.Error())
+	}
+}
+
+func TestWithSignalNotify(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type ContextWithCancel struct {
+		context.Context
+		Cancel func()
+	}
+	var (
+		contextCancel = testcase.Let(s, func(t *testcase.T) ContextWithCancel {
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Defer(cancel)
+			return ContextWithCancel{
+				Context: ctx,
+				Cancel:  cancel,
+			}
+		}).EagerLoading(s) // Eager Loading required to avoid data race from "go act(t)"
+		Context = testcase.Let(s, func(t *testcase.T) context.Context {
+			return contextCancel.Get(t)
+		})
+	)
+	var (
+		jobDone = testcase.LetValue[bool](s, false)
+		job     = testcase.Let(s, func(t *testcase.T) jobs.Job {
+			return func(ctx context.Context) error {
+				<-ctx.Done()
+				jobDone.Set(t, true)
+				return ctx.Err()
+			}
+		})
+		signals = testcase.LetValue[[]os.Signal](s, nil)
+	)
+	act := func(t *testcase.T) error {
+		return jobs.WithSignalNotify(job.Get(t), signals.Get(t)...)(Context.Get(t))
+	}
+
+	s.When("signal is provided", func(s *testcase.Spec) {
+		signals.Let(s, func(t *testcase.T) []os.Signal {
+			return []os.Signal{syscall.Signal(42)}
+		})
+
+		s.Then("it will use the signals to subscribe for notify", func(t *testcase.T) {
+			var run bool
+			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
+				run = true
+				t.Must.ContainExactly(signals.Get(t), sigs)
+			})
+
+			t.Must.NotWithin(time.Second, func(context.Context) {
+				t.Must.NoError(act(t))
+			})
+
+			t.Must.True(run)
+		})
+	})
+
+	s.Then("it will block", func(t *testcase.T) {
+		var done int64
+		go func() {
+			_ = act(t)
+			atomic.AddInt64(&done, 1)
+		}()
+		assert.Waiter{WaitDuration: time.Millisecond}.Wait()
+		t.Must.Equal(int64(0), atomic.LoadInt64(&done))
+	})
+
+	s.Then("on context cancellation the block stops", func(t *testcase.T) {
+		go func() {
+			time.Sleep(time.Millisecond)
+			contextCancel.Get(t).Cancel()
+		}()
+
+		t.Must.Within(time.Second, func(_ context.Context) {
+			t.Must.NoError(act(t))
+		})
+	})
+
+	s.When("subscribed signal is notified", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
+				t.Must.NotEmpty(sigs)
+				go func() { c <- t.Random.SliceElement(sigs).(os.Signal) }()
+			})
+		})
+
+		s.Then("it will not block but signal shutdown and return without an error", func(t *testcase.T) {
+			t.Must.Within(time.Second, func(ctx context.Context) {
+				Context.Set(t, ctx)
+				t.Must.NoError(act(t))
+			})
+			t.Must.True(jobDone.Get(t))
+		})
+	})
+
+	s.When("the job finish early", func(s *testcase.Spec) {
+		job.Let(s, func(t *testcase.T) jobs.Job {
+			return func(ctx context.Context) error {
+				return nil
+			}
+		})
+
+		s.Then("it returns early", func(t *testcase.T) {
+			t.Must.Within(time.Second, func(ctx context.Context) {
+				t.Must.NoError(act(t))
+			})
+		})
+	})
+
+	s.When("the job encounters an error", func(s *testcase.Spec) {
+		expectedErr := let.Error(s)
+
+		job.Let(s, func(t *testcase.T) jobs.Job {
+			return func(ctx context.Context) error {
+				return expectedErr.Get(t)
+			}
+		})
+
+		s.Then("error is returned", func(t *testcase.T) {
+			t.Must.Within(time.Second, func(ctx context.Context) {
+				t.Must.ErrorIs(expectedErr.Get(t), act(t))
+			})
+		})
 	})
 }

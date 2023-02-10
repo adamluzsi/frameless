@@ -6,6 +6,8 @@ import (
 	"github.com/adamluzsi/frameless/pkg/contexts"
 	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"github.com/adamluzsi/testcase/clock"
+	"os"
+	"syscall"
 )
 
 // WithShutdown will combine the start and stop/shutdown function into a single Job function.
@@ -66,5 +68,39 @@ func OnError[JFN genericJob](jfn JFN, fn func(error) error) Job {
 			return err
 		}
 		return fn(err)
+	}
+}
+
+func WithSignalNotify[JFN genericJob](jfn JFN, shutdownSignals ...os.Signal) Job {
+	job := ToJob(jfn)
+	if len(shutdownSignals) == 0 {
+		shutdownSignals = []os.Signal{
+			os.Interrupt,
+			syscall.SIGINT,
+			syscall.SIGTERM,
+		}
+	}
+	return func(ctx context.Context) error {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+
+		ch := make(chan os.Signal)
+		defer close(ch)
+
+		internal.SignalNotify(ch, shutdownSignals...)
+		defer internal.SignalStop(ch)
+
+		go func() {
+			for range ch {
+				cancel()
+			}
+		}()
+
+		err := job(ctx)
+		if errors.Is(err, ctx.Err()) {
+			return nil
+		}
+
+		return err
 	}
 }

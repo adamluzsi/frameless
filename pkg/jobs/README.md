@@ -146,29 +146,28 @@ srv := http.Server{
 httpServerJob := jobs.WithShutdown(srv.ListenAndServe, srv.Shutdown)
 ```
 
-## Managing multiple Jobs with a Manager
+## Notify shutdown signals to jobs
 
-To manage the execution of these Jobs, you can use the `jobs.Manager`.
-The Manager will run Jobs on their goroutine, and if any of them fails with an error,
-it will signal shutdown to the other Jobs.
-Jobs which finish without an error are not considered an issue,
-and won't trigger a shutdown request to the other Jobs.
-
-This behaviour makes Jobs act as an atomic unit where you can be guaranteed that either everything works,
-or everything shuts down, and you can safely restart your application instance.
-The `jobs.Manager` also takes listens to the shutdown syscalls.
+The `jobs.WithSignalNotify` will listen to the shutdown syscalls, and will cancel the context of your Job.
+Using `jobs.WithSignalNotify` is most suitable in the `main` function.
 
 ```go
-sm := jobs.Manager{
-	Jobs: []jobs.Job{ // each Job will run on its goroutine.
-		MyJob,
-		httpServerJob,
-	},
-}
+// HTTP server as a job
+job := jobs.WithShutdown(srv.ListenAndServe, srv.Shutdown)
 
-if err := sm.Run(context.Background()); err != nil {
+// Job will benotified about shutdown signals.
+job = jobs.WithSignalNotify(job)
+
+if err := job(context.Background()); err != nil {
 	log.Println("ERROR", err.Error())
 }
 ```
 
-Using `jobs.Manager` is most suitable in the `main` function.
+## Running your jobs in `main`
+
+The most convenient way to run your jobs in your main is by using `jobs.Run`.
+It combines Concurrent job execution with shutdown cancellation by signals.
+
+```go
+jobs.Run(ctx, job1, job2, job3)
+```

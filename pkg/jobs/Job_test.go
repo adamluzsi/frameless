@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+var _ jobs.Runnable = (jobs.Job)(nil)
+
 func TestToJob_smoke(t *testing.T) {
 	expErr := random.New(random.CryptoSeed{}).Error()
 	job := jobs.ToJob(func() error { return expErr })

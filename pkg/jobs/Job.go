@@ -16,6 +16,8 @@ import (
 // This less stateful approach can help to make testing your Job also easier.
 type Job func(context.Context) error
 
+func (fn Job) Run(ctx context.Context) error { return fn(ctx) }
+
 type Runnable interface{ Run(context.Context) error }
 
 type genericJob interface {
