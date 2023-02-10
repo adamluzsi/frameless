@@ -54,6 +54,45 @@ schedule.Daily{Hour:12} // schedule every day at 12 o'clock
 schedule.Monthly{Day: 3, Hour:12} 
 ```
 
+### Execution Order
+
+If you wish to execute Jobs in a sequential order, use `jobs.Sequence`.
+It can express dependency between jobs if one should only execute if the previous one has already succeeded. 
+
+```go
+s := jobs.Sequence{
+    func(ctx context.Context) error {
+        // first job to execute
+        return nil
+    },
+    func(ctx context.Context) error {
+        // follow-up job to execute
+        return nil
+    },
+}
+
+err := s.Run(context.Background())
+```
+
+If you need to execute jobs concurrently, use `jobs.Concurrence`.
+It guarantees that if a job fails, you receive the error back.
+It also ensures that the jobs fail together as a unit, 
+though signalling cancellation if any of the jobs has a failure.
+
+```go
+c := jobs.Concurrence{
+    func(ctx context.Context) error {
+        return nil // It runs at the same time.
+    },
+    func(ctx context.Context) error {
+        return nil // It runs at the same time.
+    },
+}
+
+err := c.Run(context.Background())
+```
+
+
 ## Long-lived Jobs
 
 If your job requires continuous work, you can use the received context as a parent context to get notified about a shutdown event.

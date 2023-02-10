@@ -246,6 +246,25 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
+	t.Run("when multiple job fails, then all collected and merged into a single error", func(t *testing.T) {
+		var (
+			expErr1 = rnd.Error()
+			expErr2 = rnd.Error()
+			expErr3 = rnd.Error()
+		)
+		s := jobs.Concurrence{
+			func(ctx context.Context) error { return expErr1 },
+			func(ctx context.Context) error { return expErr2 },
+			func(ctx context.Context) error { return expErr3 },
+		}
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			gotErr := s.Run(ctx)
+			assert.ErrorIs(t, expErr1, gotErr)
+			assert.ErrorIs(t, expErr2, gotErr)
+			assert.ErrorIs(t, expErr3, gotErr)
+		})
+	})
+
 	t.Run("when job fails with context cancellation, it is not reported back", func(t *testing.T) {
 		s := jobs.Concurrence{
 			func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() },
