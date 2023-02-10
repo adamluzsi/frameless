@@ -2,11 +2,8 @@ package jobs
 
 import (
 	"context"
-	"errors"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/jobs/internal"
 	"os"
-	"sync"
 	"syscall"
 )
 
@@ -44,7 +41,7 @@ func (m Manager) Run(ctx context.Context) error {
 		}
 	}()
 
-	return m.runJobs(ctx)
+	return append(Concurrence{}, m.Jobs...).Run(ctx)
 }
 
 func (m Manager) signals() []os.Signal {
@@ -60,45 +57,4 @@ func defaultShutdownSignals() []os.Signal {
 		syscall.SIGHUP,
 		syscall.SIGTERM,
 	}
-}
-
-func (m Manager) runJobs(ctx context.Context) error {
-	var (
-		wwg, cwg sync.WaitGroup
-		errs     []error
-		errCh    = make(chan error, len(m.Jobs))
-	)
-	ctx, cancelDueToError := context.WithCancel(ctx)
-	defer cancelDueToError()
-
-	wwg.Add(len(m.Jobs))
-	for _, job := range m.Jobs {
-		go func(j Job) {
-			defer wwg.Done()
-			errCh <- j(ctx)
-		}(job)
-	}
-
-	cwg.Add(1)
-	go func() {
-		defer cwg.Done()
-		for err := range errCh {
-			if err == nil { // shutdown with no error is OK
-				continue
-			}
-
-			cancelDueToError() // if one fails, all will shut down
-
-			if errors.Is(err, context.Canceled) { // we don't report back context cancellation error
-				continue
-			}
-
-			errs = append(errs, err)
-		}
-	}()
-
-	wwg.Wait()
-	close(errCh)
-	cwg.Wait()
-	return errorutil.Merge(errs...)
 }

@@ -17,35 +17,6 @@ import (
 	"time"
 )
 
-var _ runnable = jobspkg.Manager{}
-
-func ExampleManager() {
-	simpleJob := func(signal context.Context) error {
-		<-signal.Done() // work until shutdown signal
-		return signal.Err()
-	}
-
-	srv := http.Server{
-		Addr: "localhost:8080",
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusTeapot)
-		}),
-	}
-
-	httpServerJob := jobspkg.WithShutdown(srv.ListenAndServe, srv.Shutdown)
-
-	sm := jobspkg.Manager{
-		Jobs: []jobspkg.Job{ // each Job will run on its own goroutine.
-			simpleJob,
-			httpServerJob,
-		},
-	}
-
-	if err := sm.Run(context.Background()); err != nil {
-		log.Println("ERROR", err.Error())
-	}
-}
-
 func ExampleRun() {
 	simpleJob := func(signal context.Context) error {
 		<-signal.Done() // work until shutdown signal
@@ -92,7 +63,37 @@ func TestRun_smoke(t *testing.T) {
 	assert.Equal(t, expErr, gotErr)
 }
 
-var _ jobspkg.Job = jobspkg.Manager{}.Run
+var (
+	_ jobspkg.Job      = jobspkg.Manager{}.Run
+	_ jobspkg.Runnable = jobspkg.Manager{}
+)
+
+func ExampleManager() {
+	simpleJob := func(signal context.Context) error {
+		<-signal.Done() // work until shutdown signal
+		return signal.Err()
+	}
+
+	srv := http.Server{
+		Addr: "localhost:8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	httpServerJob := jobspkg.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+
+	sm := jobspkg.Manager{
+		Jobs: []jobspkg.Job{ // each Job will run on its own goroutine.
+			simpleJob,
+			httpServerJob,
+		},
+	}
+
+	if err := sm.Run(context.Background()); err != nil {
+		log.Println("ERROR", err.Error())
+	}
+}
 
 func TestManager(t *testing.T) {
 	s := testcase.NewSpec(t)
