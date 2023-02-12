@@ -27,7 +27,33 @@ func (h Handler[Extensions]) HandleError(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	var (
-		ctx        = r.Context()
+		ctx = r.Context()
+	)
+	dto := h.ToDTO(ctx, err)
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(dto.Status)
+	bytes, err := json.Marshal(dto)
+	if err != nil {
+		fmt.Println("WARN", "rfc7807.Handler", "json.Marshal", err.Error())
+		return
+	}
+	_, _ = w.Write(bytes)
+}
+
+func (h Handler[Extensions]) toTitleCase(id consttypes.String) string {
+	title := string(id)
+	title = strings.ReplaceAll(title, "-", " ")
+	title = strings.ReplaceAll(title, "_", " ")
+	title = strings.ToLower(title)
+	if chars := []rune(title); 0 < len(chars) {
+		fl := strings.ToUpper(string(chars[0:1]))
+		title = fl + string(chars[1:])
+	}
+	return title
+}
+
+func (h Handler[Extensions]) ToDTO(ctx context.Context, err error) DTO[Extensions] {
+	var (
 		ID         string
 		Title      string
 		Detail     []string
@@ -61,24 +87,5 @@ func (h Handler[Extensions]) HandleError(w http.ResponseWriter, r *http.Request,
 	if h.Mapping != nil {
 		h.Mapping(ctx, err, &dto)
 	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(dto.Status)
-	bytes, err := json.Marshal(dto)
-	if err != nil {
-		fmt.Println("WARN", "rfc7807.Handler", "json.Marshal", err.Error())
-		return
-	}
-	_, _ = w.Write(bytes)
-}
-
-func (h Handler[Extensions]) toTitleCase(id consttypes.String) string {
-	title := string(id)
-	title = strings.ReplaceAll(title, "-", " ")
-	title = strings.ReplaceAll(title, "_", " ")
-	title = strings.ToLower(title)
-	if chars := []rune(title); 0 < len(chars) {
-		fl := strings.ToUpper(string(chars[0:1]))
-		title = fl + string(chars[1:])
-	}
-	return title
+	return dto
 }
