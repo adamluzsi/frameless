@@ -1,9 +1,6 @@
-github.com/adamluzsi/frameless v0.105.0 h1:pQLoRLRRTdSiDU6+QKNWKPeNvI+ZN3isAZCsy5YONYo=
-github.com/adamluzsi/frameless v0.105.0/go.mod h1:7VOzwW4PXiNFibV+H73G4rfgu5v0QcWGg2oFb9AfZI4=
-github.com/adamluzsi/frameless v0.108.1 h1:T97P1sSBb17/auj0YA7tjIHbZZb0iyzpbXYkNRctU2w=
-github.com/adamluzsi/frameless v0.108.1/go.mod h1:yKywvapX5edlBeS4eo2cNhqhGBWPApmG/RLIXvytPVo=
-github.com/adamluzsi/testcase v0.127.0 h1://KZPjc8OjBsr7+MEpSC7YQXOc4UDEgHbV4jEohsZtg=
-github.com/adamluzsi/testcase v0.127.0/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
-github.com/adamluzsi/testcase v0.127.1/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+github.com/adamluzsi/frameless v0.112.0 h1:gQGHwaMKlla295iqOASvftNq+n2CY6Zyn7OZTkuH7Ro=
+github.com/adamluzsi/frameless v0.112.0/go.mod h1:yKywvapX5edlBeS4eo2cNhqhGBWPApmG/RLIXvytPVo=
+github.com/adamluzsi/testcase v0.128.1 h1:RbOKLNyOgMR8hfA3D8cGpE+3UaHc4q49+FruwjhKycE=
+github.com/adamluzsi/testcase v0.128.1/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
 github.com/lib/pq v1.10.7 h1:p7ZhMD+KsSRozJr34udlUrhboJwWAgCg34+/ZZNvZZw=
 github.com/lib/pq v1.10.7/go.mod h1:AlVN5x4E4T544tWzH6hKfbfQvm3HdbOxrmggDNAPY9o=
