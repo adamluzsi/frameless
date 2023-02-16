@@ -28,6 +28,25 @@ type ByIDFinder[Entity, ID any] interface {
 	// It also reports if there was an unexpected exception during the execution.
 	// It was an intentional decision to not use error to represent "not found" case,
 	// but tell explicitly this information in the form of return bool value.
+	//
+	//
+	// Why the return signature includes a found bool value?
+	//
+	// It serves two crucial goals.
+	// First, it forces the user through the go-vet tool that the unused variable check
+	// will fail when the found bool variable is not checked before the entity is used.
+	// It also improves readability and expresses the function's cyclomatic complexity.
+	//   -> total: 2^(n+1+1)
+	//     -> found/bool 2^(n+1)  | An entity might be found or not.
+	//     -> error 2^(n+1)       | An error might occur or not.
+	//
+	// Last but not least, it eliminates the possibility that you return an initialized pointer type
+	// that has no value and eventually causes a runtime error
+	// if you provide that valid but nil pointer to an interface variable type.
+	//   -> (MyInterface)((*Entity)(nil)) != nil
+	//
+	// You may find a similar approach in the standard library as `sql` null value types
+	// and the environment lookup in the os package.
 	FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error)
 }
 
