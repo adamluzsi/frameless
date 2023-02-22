@@ -9,6 +9,46 @@ import (
 	"testing"
 )
 
+func TestMake(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		initWasCalled = testcase.LetValue(s, false)
+		initFunc      = testcase.Let(s, func(t *testcase.T) func() int {
+			return func() int {
+				initWasCalled.Set(t, true)
+				return t.Random.Int()
+			}
+		})
+	)
+	act := func(t *testcase.T) func() int {
+		return lazyload.Make(initFunc.Get(t))
+	}
+
+	s.Test(`assuming that init block always yield a different value`, func(t *testcase.T) {
+		t.Must.NotEqual(initFunc.Get(t)(), initFunc.Get(t)())
+	})
+
+	s.Then(`calling lazy loaded value multiple times return the same result`, func(t *testcase.T) {
+		llv := act(t)
+		t.Must.Equal(llv(), llv())
+	})
+
+	s.Then(`before calling lazy loaded value, init block is not used`, func(t *testcase.T) {
+		assert.Must(t).False(initWasCalled.Get(t))
+		act(t)()
+		assert.Must(t).True(initWasCalled.Get(t))
+	})
+
+	s.Test(`safe for concurrent use`, func(t *testcase.T) {
+		llv := act(t)
+		testcase.Race(
+			func() { llv() },
+			func() { llv() },
+		)
+	})
+}
+
 func TestVar(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -63,14 +103,26 @@ func TestVar(t *testing.T) {
 				}
 			})
 
-			s.Then(".Init block used to initialize the value", func(t *testcase.T) {
+			s.Then("init block used to initialize the value", func(t *testcase.T) {
 				t.Must.Equal(expValue.Get(t), act(t))
 			})
 
-			s.Then(".Init value is cached", func(t *testcase.T) {
+			s.Then("init value is cached", func(t *testcase.T) {
 				t.Random.Repeat(3, 7, func() {
 					t.Must.Equal(expValue.Get(t), act(t))
 				})
+			})
+
+			s.Then("Var.Init remains uninitialised", func(t *testcase.T) {
+				act(t)
+
+				t.Must.Nil(lazyVar.Get(t).Init)
+			})
+
+			s.Then("calling .Get without init block beforehand don't trigger the Initialisation with Get+init", func(t *testcase.T) {
+				t.Must.Empty(lazyVar.Get(t).Get())
+				t.Must.Equal(expValue.Get(t), act(t))
+				t.Must.Equal(expValue.Get(t), lazyVar.Get(t).Get())
 			})
 		})
 	})
@@ -103,45 +155,22 @@ func TestVar(t *testing.T) {
 			})
 		})
 	})
-}
 
-func TestMake(t *testing.T) {
-	s := testcase.NewSpec(t)
+	s.Describe(".Reset", func(s *testcase.Spec) {
+		act := func(t *testcase.T) {
+			lazyVar.Get(t).Reset()
+		}
 
-	var (
-		initWasCalled = testcase.LetValue(s, false)
-		initFunc      = testcase.Let(s, func(t *testcase.T) func() int {
-			return func() int {
-				initWasCalled.Set(t, true)
-				return t.Random.Int()
-			}
+		s.Before(func(t *testcase.T) {
+			t.Log("given a value is already loaded in the Var")
+			lazyVar.Get(t).Get(t.Random.Int)
 		})
-	)
-	act := func(t *testcase.T) func() int {
-		return lazyload.Make(initFunc.Get(t))
-	}
 
-	s.Test(`assuming that init block always yield a different value`, func(t *testcase.T) {
-		t.Must.NotEqual(initFunc.Get(t)(), initFunc.Get(t)())
-	})
-
-	s.Then(`calling lazy loaded value multiple times return the same result`, func(t *testcase.T) {
-		llv := act(t)
-		t.Must.Equal(llv(), llv())
-	})
-
-	s.Then(`before calling lazy loaded value, init block is not used`, func(t *testcase.T) {
-		assert.Must(t).False(initWasCalled.Get(t))
-		act(t)()
-		assert.Must(t).True(initWasCalled.Get(t))
-	})
-
-	s.Test(`safe for concurrent use`, func(t *testcase.T) {
-		llv := act(t)
-		testcase.Race(
-			func() { llv() },
-			func() { llv() },
-		)
+		s.Then("then it will reset the state", func(t *testcase.T) {
+			act(t)
+			t.Must.Equal(0, lazyVar.Get(t).Get())
+			t.Must.Equal(42, lazyVar.Get(t).Get(func() int { return 42 }))
+		})
 	})
 }
 

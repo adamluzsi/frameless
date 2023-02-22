@@ -27,14 +27,21 @@ func (i *Var[T]) Set(v T) {
 }
 
 func (i *Var[T]) Get(inits ...func() T) T {
+	var init func() T
+	init = i.Init
 	if i.Init == nil && 0 < len(inits) {
-		for _, init := range inits {
-			i.Init = init
+		for _, fn := range inits {
+			init = fn
 			break
 		}
 	}
-	if i.Init != nil {
-		i.once.Do(func() { i.value = i.Init() })
+	if init != nil {
+		i.once.Do(func() { i.value = init() })
 	}
 	return i.value
+}
+
+func (i *Var[T]) Reset() {
+	i.once = sync.Once{}
+	i.value = *new(T)
 }
