@@ -43,7 +43,7 @@ func (c Updater[Entity, ID]) resource() testcase.Var[UpdaterSubject[Entity, ID]]
 }
 
 func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
-	c.resource().Let(s, nil)
+	c.resource().Bind(s)
 
 	s.Before(func(t *testcase.T) {
 		spechelper.TryCleanup(t, c.MakeContext(t), c.resource().Get(t))

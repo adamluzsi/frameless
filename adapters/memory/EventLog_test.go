@@ -29,8 +29,8 @@ func TestMemory(t *testing.T) {
 type SpecMemory struct{}
 
 func (spec SpecMemory) Spec(s *testcase.Spec) {
-	spec.ctx().Let(s, nil)
-	spec.memory().Let(s, nil)
+	spec.ctx().Bind(s)
+	spec.memory().Bind(s)
 	s.Describe(`.Add`, spec.SpecAdd)
 	s.Describe(`.AddSubscription`, spec.SpecAddSubscription)
 }

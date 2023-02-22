@@ -96,7 +96,7 @@ func (c MetaAccessorBasic[V]) Spec(s *testcase.Spec) {
 	// LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error)
 	s.Describe(`.SetMeta+.LookupMeta`, func(s *testcase.Spec) {
 		var (
-			ctx   = spechelper.ContextVar.Let(s, nil)
+			ctx   = spechelper.ContextVar.Bind(s)
 			key   = testcase.Let(s, func(t *testcase.T) string { return t.Random.String() })
 			value = testcase.Let(s, func(t *testcase.T) V { return c.MakeV(t) })
 		)

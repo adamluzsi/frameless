@@ -86,7 +86,7 @@ func (c ByIDDeleter[Entity, ID]) Benchmark(b *testing.B) {
 }
 
 func (c ByIDDeleter[Entity, ID]) Spec(s *testcase.Spec) {
-	c.resource().Let(s, nil)
+	c.resource().Bind(s)
 	s.Describe(`DeleteByID`, c.specDeleteByID)
 }
 

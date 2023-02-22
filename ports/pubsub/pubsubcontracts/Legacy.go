@@ -279,7 +279,7 @@ func (c DeleterPublisher[Entity, ID]) Benchmark(b *testing.B) {
 }
 
 func (c DeleterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
-	c.resource().Let(s, nil)
+	c.resource().Bind(s)
 	s.Describe(`.Subscribe/DeleteByID`, c.specEventDeleteByID)
 	s.Describe(`.Subscribe/DeleteAll`, c.specEventDeleteAll)
 }
@@ -569,7 +569,7 @@ func (c UpdaterPublisher[Entity, ID]) Benchmark(b *testing.B) {
 }
 
 func (c UpdaterPublisher[Entity, ID]) Spec(s *testcase.Spec) {
-	c.resource().Let(s, nil)
+	c.resource().Bind(s)
 	subscriber := spechelper.LetSubscriber[Entity, ID](s, spechelper.UpdateSubscriptionFilter[Entity])
 	subscription := spechelper.LetSubscription[Entity, ID](s)
 
