@@ -24,7 +24,7 @@ type MigratorStep interface {
 	MigrateDown(ctx context.Context, tx *sql.Tx) error
 }
 
-type Migratable interface {
+type Migratable interface { // TODO: replace with migration.Migratable
 	Migrate(context.Context) error
 }
 
