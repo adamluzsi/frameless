@@ -31,7 +31,7 @@ func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job task
 		}
 		if !found {
 			state = State{
-				JobID:     jobid,
+				ID:        jobid,
 				Timestamp: time.Time{}.UTC(),
 			}
 			if err := s.Repository.Create(ctx, &state); err != nil {
@@ -68,7 +68,7 @@ func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job task
 }
 
 type State struct {
-	JobID     string `ext:"id"`
+	ID        string `ext:"id"`
 	Timestamp time.Time
 }
 
