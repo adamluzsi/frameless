@@ -22,3 +22,12 @@ func IsValueEmpty(val reflect.Value) bool {
 		return !val.IsValid() || val.IsZero()
 	}
 }
+
+func IsValueNil(val reflect.Value) bool {
+	switch val.Kind() {
+	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func:
+		return val.IsNil()
+	default:
+		return false
+	}
+}
