@@ -3,8 +3,8 @@ package postgresql_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
-	"github.com/adamluzsi/frameless/pkg/tasks/schedule/schedulecontracts"
+	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
+	"github.com/adamluzsi/frameless/pkg/tasker/schedule/schedulecontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"testing"
@@ -14,7 +14,7 @@ func TestJobsScheduleStateRepository(t *testing.T) {
 	db := OpenDB(t)
 	schedulecontracts.StateRepository{
 		MakeSubject: func(tb testing.TB) schedule.StateRepository {
-			repo := &postgresql.JobsScheduleStateRepository{DB: db}
+			repo := &postgresql.TaskerScheduleStateRepository{DB: db}
 			assert.NoError(tb, repo.Migrate(context.Background()))
 			return repo
 		},
@@ -24,7 +24,7 @@ func TestJobsScheduleStateRepository(t *testing.T) {
 		MakeScheduleState: func(tb testing.TB) schedule.State {
 			t := testcase.ToT(&tb)
 			return schedule.State{
-				JobID:     t.Random.String(),
+				ID:        t.Random.String(),
 				Timestamp: t.Random.Time().UTC(),
 			}
 		},
