@@ -1,5 +1,5 @@
-// Package tasks provides utilities to background job management to achieve simplicity.
-package tasks
+// Package tasker provides utilities to background task management to achieve simplicity.
+package tasker
 
 import (
 	"context"
@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/contexts"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/tasks/internal"
+	"github.com/adamluzsi/frameless/pkg/tasker/internal"
 	"github.com/adamluzsi/testcase/clock"
 	"os"
 	"sync"
 	"syscall"
+	"time"
 )
 
-// Task is the basic unit of tasks package, that represents an executable work.
+// Task is the basic unit of tasker package, that represents an executable work.
 //
 // Task at its core, is nothing more than a synchronous function.
 // Working with synchronous functions removes the complexity of thinking about how to run your application.
@@ -35,8 +36,8 @@ type genericTask interface {
 		func()
 }
 
-func ToTask[JFN genericTask](fn JFN) Task {
-	switch v := any(fn).(type) {
+func ToTask[TFN genericTask](tfn TFN) Task {
+	switch v := any(tfn).(type) {
 	case Task:
 		return v
 	case func(context.Context) error:
@@ -50,7 +51,7 @@ func ToTask[JFN genericTask](fn JFN) Task {
 	case *Runnable:
 		return (*v).Run
 	default:
-		panic(fmt.Sprintf("%T is not supported Job func", v))
+		panic(fmt.Sprintf("%T is not supported Task func", v))
 	}
 }
 
@@ -133,7 +134,7 @@ func (c concurrence) Run(ctx context.Context) error {
 // upon reaching the deadline, it will cancel the context passed to the shutdown function.
 // WithShutdown makes it easy to use components with graceful shutdown support as a Task, such as the http.Server.
 //
-//	tasks.JobWithShutdown(srv.ListenAndServe, srv.Shutdown)
+//	tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
 func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task {
 	return func(signal context.Context) error {
 		serveErrChan := make(chan error, 1)
@@ -144,18 +145,22 @@ func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task 
 		case <-signal.Done():
 			break
 		}
-		ctx, cancel := context.WithTimeout(contexts.Detach(signal), internal.JobGracefulShutdownTimeout)
+		ctx, cancel := context.WithTimeout(contexts.Detach(signal), internal.GracefulShutdownTimeout)
 		defer cancel()
 		return ToTask(stop)(ctx)
 	}
 }
 
+type Interval interface {
+	UntilNext(lastRanAt time.Time) time.Duration
+}
+
 // WithRepeat will keep repeating a given Task until shutdown is signaled.
 // It is most suitable for Task(s) meant to be short-lived and executed continuously until the shutdown signal.
-func WithRepeat[JFN genericTask](interval internal.Interval, jfn JFN) Task {
+func WithRepeat[TFN genericTask](interval Interval, tfn TFN) Task {
 	return func(ctx context.Context) error {
-		var job = ToTask(jfn)
-		if err := job(ctx); err != nil {
+		var task = ToTask(tfn)
+		if err := task(ctx); err != nil {
 			return err
 		}
 		var at = clock.TimeNow()
@@ -165,7 +170,7 @@ func WithRepeat[JFN genericTask](interval internal.Interval, jfn JFN) Task {
 			case <-ctx.Done():
 				break repeat
 			case <-clock.After(interval.UntilNext(at)):
-				if err := job(ctx); err != nil {
+				if err := task(ctx); err != nil {
 					return err
 				}
 				at = clock.TimeNow()
@@ -175,22 +180,51 @@ func WithRepeat[JFN genericTask](interval internal.Interval, jfn JFN) Task {
 	}
 }
 
-func OnError[JFN genericTask](jfn JFN, fn func(error) error) Task {
-	job := ToTask(jfn)
+type genericErrorHandler interface {
+	func(context.Context, error) error | func(error) error
+}
+
+func OnError[TFN genericTask, EHFN genericErrorHandler](tfn TFN, ehfn EHFN) Task {
+	var erroHandler func(context.Context, error) error
+	switch v := any(ehfn).(type) {
+	case func(context.Context, error) error:
+		erroHandler = v
+	case func(error) error:
+		erroHandler = func(ctx context.Context, err error) error { return v(err) }
+	default:
+		panic(fmt.Sprintf("%T is not supported Task func", v))
+	}
+	task := ToTask(tfn)
 	return func(ctx context.Context) error {
-		err := job(ctx)
+		err := task(ctx)
 		if err == nil {
 			return nil
 		}
 		if errors.Is(err, ctx.Err()) {
 			return err
 		}
-		return fn(err)
+		return erroHandler(ctx, err)
 	}
 }
 
-func WithSignalNotify[JFN genericTask](jfn JFN, shutdownSignals ...os.Signal) Task {
-	job := ToTask(jfn)
+func IgnoreError[TFN genericTask](tfn TFN, errsToIgnore ...error) Task {
+	task := ToTask(tfn)
+	return func(ctx context.Context) error {
+		err := task.Run(ctx)
+		if len(errsToIgnore) == 0 {
+			return nil
+		}
+		for _, ignore := range errsToIgnore {
+			if errors.Is(err, ignore) {
+				return nil
+			}
+		}
+		return err
+	}
+}
+
+func WithSignalNotify[TFN genericTask](tfn TFN, shutdownSignals ...os.Signal) Task {
+	task := ToTask(tfn)
 	if len(shutdownSignals) == 0 {
 		shutdownSignals = []os.Signal{
 			os.Interrupt,
@@ -214,7 +248,7 @@ func WithSignalNotify[JFN genericTask](jfn JFN, shutdownSignals ...os.Signal) Ta
 			}
 		}()
 
-		err := job(ctx)
+		err := task(ctx)
 		if errors.Is(err, ctx.Err()) {
 			return nil
 		}
@@ -223,9 +257,9 @@ func WithSignalNotify[JFN genericTask](jfn JFN, shutdownSignals ...os.Signal) Ta
 	}
 }
 
-// Main helps to manage concurrent background Jobs in your main.
+// Main helps to manage concurrent background Tasks in your main.
 // Each Task will run in its own goroutine.
-// If any of the Task encounters a failure, the other tasks will receive a cancellation signal.
+// If any of the Task encounters a failure, the other tasker will receive a cancellation signal.
 func Main(ctx context.Context, tasks ...Task) error {
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
 }

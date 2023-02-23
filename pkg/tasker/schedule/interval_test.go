@@ -1,7 +1,7 @@
 package schedule_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
+	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/random"

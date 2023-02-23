@@ -1,10 +1,12 @@
-package tasks_test
+package tasker_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/tasks"
-	"github.com/adamluzsi/frameless/pkg/tasks/internal"
-	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
+	"fmt"
+	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/tasker"
+	"github.com/adamluzsi/frameless/pkg/tasker/internal"
+	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
@@ -36,90 +38,90 @@ func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
 }
 
 func StubShutdownTimeout(tb testing.TB, timeout time.Duration) {
-	og := internal.JobGracefulShutdownTimeout
-	tb.Cleanup(func() { internal.JobGracefulShutdownTimeout = og })
-	internal.JobGracefulShutdownTimeout = timeout
+	og := internal.GracefulShutdownTimeout
+	tb.Cleanup(func() { internal.GracefulShutdownTimeout = og })
+	internal.GracefulShutdownTimeout = timeout
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var _ tasks.Runnable = (tasks.Task)(nil)
+var _ tasker.Runnable = (tasker.Task)(nil)
 
-func TestToJob_smoke(t *testing.T) {
+func TestToTask_smoke(t *testing.T) {
 	expErr := random.New(random.CryptoSeed{}).Error()
-	job := tasks.ToTask(func() error { return expErr })
-	assert.NotNil(t, job)
-	assert.Equal(t, expErr, job(context.Background()))
+	task := tasker.ToTask(func() error { return expErr })
+	assert.NotNil(t, task)
+	assert.Equal(t, expErr, task(context.Background()))
 }
 
-func TestToJob(t *testing.T) {
+func TestToTask(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 
-	t.Run("on Job", func(t *testing.T) {
-		assert.NotNil(t, tasks.ToTask(func(ctx context.Context) error { return nil }))
+	t.Run("on Task", func(t *testing.T) {
+		assert.NotNil(t, tasker.ToTask(func(ctx context.Context) error { return nil }))
 		expErr := rnd.Error()
-		assert.Equal(t, expErr, tasks.ToTask(func(ctx context.Context) error { return expErr })(context.Background()))
-		assert.NoError(t, tasks.ToTask(func(ctx context.Context) error {
+		assert.Equal(t, expErr, tasker.ToTask(func(ctx context.Context) error { return expErr })(context.Background()))
+		assert.NoError(t, tasker.ToTask(func(ctx context.Context) error {
 			assert.Equal(t, "v", ctx.Value("k").(string))
 			return nil
 		})(context.WithValue(context.Background(), "k", "v")))
 	})
 
 	t.Run("on func() error", func(t *testing.T) {
-		assert.NotNil(t, tasks.ToTask(func() error { return nil }))
+		assert.NotNil(t, tasker.ToTask(func() error { return nil }))
 		expErr := rnd.Error()
-		assert.Equal(t, expErr, tasks.ToTask(func() error { return expErr })(context.Background()))
+		assert.Equal(t, expErr, tasker.ToTask(func() error { return expErr })(context.Background()))
 	})
 
 	t.Run("on func(context.Context)", func(t *testing.T) {
-		assert.NotNil(t, tasks.ToTask(func(ctx context.Context) {}))
+		assert.NotNil(t, tasker.ToTask(func(ctx context.Context) {}))
 		var ran bool
-		assert.NoError(t, tasks.ToTask(func(ctx context.Context) { ran = true })(context.Background()))
+		assert.NoError(t, tasker.ToTask(func(ctx context.Context) { ran = true })(context.Background()))
 		assert.True(t, ran)
 		assert.NotWithin(t, blockCheckWaitTime, func(ctx context.Context) {
-			assert.NoError(t, tasks.ToTask(func(ctx context.Context) { <-ctx.Done() })(ctx))
+			assert.NoError(t, tasker.ToTask(func(ctx context.Context) { <-ctx.Done() })(ctx))
 		})
 		type key struct{}
-		assert.NoError(t, tasks.ToTask(func(ctx context.Context) {
+		assert.NoError(t, tasker.ToTask(func(ctx context.Context) {
 			assert.Equal(t, any(42), ctx.Value(key{}))
 		})(context.WithValue(context.Background(), key{}, 42)))
 	})
 
 	t.Run("on func()", func(t *testing.T) {
 		var ran bool
-		assert.NoError(t, tasks.ToTask(func() { ran = true })(context.Background()))
+		assert.NoError(t, tasker.ToTask(func() { ran = true })(context.Background()))
 		assert.True(t, ran)
 	})
 
 	t.Run("on *Runnable", func(t *testing.T) {
 		expErr := rnd.Error()
-		var r tasks.Runnable = tasks.Sequence(func(ctx context.Context) error { return expErr })
-		job := tasks.ToTask(&r)
-		assert.NotNil(t, job)
-		assert.ErrorIs(t, expErr, job(context.Background()))
+		var r tasker.Runnable = tasker.Sequence(func(ctx context.Context) error { return expErr })
+		task := tasker.ToTask(&r)
+		assert.NotNil(t, task)
+		assert.ErrorIs(t, expErr, task(context.Background()))
 		type key struct{}
-		r = tasks.Sequence(func(ctx context.Context) {
+		r = tasker.Sequence(func(ctx context.Context) {
 			assert.Equal(t, any(42), ctx.Value(key{}))
 		})
-		assert.NoError(t, tasks.ToTask(&r)(context.WithValue(context.Background(), key{}, 42)))
+		assert.NoError(t, tasker.ToTask(&r)(context.WithValue(context.Background(), key{}, 42)))
 	})
 }
 
 func ExampleSequence() {
-	err := tasks.Sequence(
+	err := tasker.Sequence(
 		func(ctx context.Context) error {
-			// first job to execute
+			// first task to execute
 			return nil
 		},
 		func(ctx context.Context) error {
-			// follow-up job to execute
+			// follow-up task to execute
 			return nil
 		},
 	).Run(context.Background())
 	_ = err
 }
 
-var _ tasks.Runnable = tasks.Sequence[func()]()
+var _ tasker.Runnable = tasker.Sequence[func()]()
 
 func TestSequence_Run(t *testing.T) {
 	var (
@@ -130,12 +132,12 @@ func TestSequence_Run(t *testing.T) {
 	)
 
 	t.Run("when sequence is uninitialized", func(t *testing.T) {
-		var s = tasks.Sequence[func()]()
+		var s = tasker.Sequence[func()]()
 		assert.NoError(t, s.Run(ctx))
 	})
 
-	t.Run("when every job succeed", func(t *testing.T) {
-		s := tasks.Sequence(
+	t.Run("when every task succeed", func(t *testing.T) {
+		s := tasker.Sequence(
 			func(ctx context.Context) error { return nil },
 			func(ctx context.Context) error { return nil },
 			func(ctx context.Context) error { return nil },
@@ -143,9 +145,9 @@ func TestSequence_Run(t *testing.T) {
 		assert.NoError(t, s.Run(ctx))
 	})
 
-	t.Run("the tasks in the Sequence are executed in a sequence order", func(t *testing.T) {
+	t.Run("the tasker in the Sequence are executed in a sequence order", func(t *testing.T) {
 		var out []int
-		s := tasks.Sequence(
+		s := tasker.Sequence(
 			func(ctx context.Context) error { out = append(out, 1); return nil },
 			func(ctx context.Context) error { out = append(out, 2); return nil },
 			func(ctx context.Context) error { out = append(out, 3); return nil },
@@ -154,10 +156,10 @@ func TestSequence_Run(t *testing.T) {
 		assert.Equal(t, []int{1, 2, 3}, out)
 	})
 
-	t.Run("when a job fails, it breaks the sequence and we get back the failure", func(t *testing.T) {
+	t.Run("when a task fails, it breaks the sequence and we get back the failure", func(t *testing.T) {
 		expErr := rnd.Error()
 		var out []int
-		s := tasks.Sequence(
+		s := tasker.Sequence(
 			func(ctx context.Context) error { out = append(out, 1); return nil },
 			func(ctx context.Context) error { out = append(out, 2); return expErr },
 			func(ctx context.Context) error { out = append(out, 3); return nil },
@@ -166,14 +168,14 @@ func TestSequence_Run(t *testing.T) {
 		assert.Equal(t, []int{1, 2}, out)
 	})
 
-	t.Run("tasks will receive the input context", func(t *testing.T) {
+	t.Run("tasker will receive the input context", func(t *testing.T) {
 		assertContext := func(ctx context.Context) {
 			assert.NotNil(t, ctx)
 			gotValue, ok := ctx.Value(key).(string)
 			assert.True(t, ok, "key contains a value")
 			assert.Equal(t, value, gotValue, "the received value is what we expect")
 		}
-		s := tasks.Sequence(
+		s := tasker.Sequence(
 			func(ctx context.Context) error { assertContext(ctx); return nil },
 			func(ctx context.Context) error { assertContext(ctx); return nil },
 			func(ctx context.Context) error { assertContext(ctx); return nil },
@@ -183,12 +185,12 @@ func TestSequence_Run(t *testing.T) {
 }
 
 func Example_sequenceMixedWithConcurrence() {
-	_ = tasks.Sequence(
-		tasks.Concurrence(
+	_ = tasker.Sequence(
+		tasker.Concurrence(
 			func() { /* migration task 1 */ },
 			func() { /* migration task 2 */ },
 		),
-		tasks.Concurrence(
+		tasker.Concurrence(
 			func() { /* task dependent on migrations */ },
 			func() { /* task dependent on migrations */ },
 			func() { /* task dependent on migrations */ },
@@ -197,20 +199,20 @@ func Example_sequenceMixedWithConcurrence() {
 }
 
 func ExampleConcurrence() {
-	err := tasks.Concurrence(
+	err := tasker.Concurrence(
 		func(ctx context.Context) error {
-			// concurrent job 1
+			// concurrent task 1
 			return nil
 		},
 		func(ctx context.Context) error {
-			// concurrent job 2
+			// concurrent task 2
 			return nil
 		},
 	).Run(context.Background())
 	_ = err
 }
 
-var _ tasks.Runnable = tasks.Concurrence[func()]()
+var _ tasker.Runnable = tasker.Concurrence[func()]()
 
 func TestConcurrence_Run(t *testing.T) {
 	var (
@@ -221,12 +223,12 @@ func TestConcurrence_Run(t *testing.T) {
 	)
 
 	t.Run("when sequence is uninitialized", func(t *testing.T) {
-		var s = tasks.Concurrence[func()]()
+		var s = tasker.Concurrence[func()]()
 		assert.NoError(t, s.Run(ctx))
 	})
 
-	t.Run("when every job succeed", func(t *testing.T) {
-		s := tasks.Concurrence(
+	t.Run("when every task succeed", func(t *testing.T) {
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { return nil },
 			func(ctx context.Context) error { return nil },
 			func(ctx context.Context) error { return nil },
@@ -234,9 +236,9 @@ func TestConcurrence_Run(t *testing.T) {
 		assert.NoError(t, s.Run(ctx))
 	})
 
-	t.Run("the tasks are executed", func(t *testing.T) {
+	t.Run("the tasker are executed", func(t *testing.T) {
 		var out int32
-		s := tasks.Concurrence(
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { atomic.AddInt32(&out, 1); return nil },
 			func(ctx context.Context) error { atomic.AddInt32(&out, 10); return nil },
 			func(ctx context.Context) error { atomic.AddInt32(&out, 100); return nil },
@@ -250,8 +252,8 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
-	t.Run("the .Run will wait until the tasks are done", func(t *testing.T) {
-		s := tasks.Concurrence(
+	t.Run("the .Run will wait until the tasker are done", func(t *testing.T) {
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { <-ctx.Done(); return nil },
 			func(ctx context.Context) error { <-ctx.Done(); return nil },
 			func(ctx context.Context) error { <-ctx.Done(); return nil },
@@ -261,14 +263,14 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
-	t.Run("the tasks are executed concurrently", func(t *testing.T) {
+	t.Run("the tasker are executed concurrently", func(t *testing.T) {
 		var (
 			out   int32
 			done1 = make(chan struct{})
 			done2 = make(chan struct{})
 			done3 = make(chan struct{})
 		)
-		s := tasks.Concurrence(
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { atomic.AddInt32(&out, 1); <-done1; return nil },
 			func(ctx context.Context) error { atomic.AddInt32(&out, 10); <-done2; return nil },
 			func(ctx context.Context) error { atomic.AddInt32(&out, 100); <-done3; return nil },
@@ -280,9 +282,9 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
-	t.Run("when a job fails, it will interrupt the rest of the concurrent job and we get back the failure", func(t *testing.T) {
+	t.Run("when a task fails, it will interrupt the rest of the concurrent task and we get back the failure", func(t *testing.T) {
 		expErr := rnd.Error()
-		s := tasks.Concurrence(
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { <-ctx.Done(); return nil },
 			func(ctx context.Context) error { return expErr },
 			func(ctx context.Context) error { <-ctx.Done(); return nil },
@@ -292,13 +294,13 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
-	t.Run("when multiple job fails, then all collected and merged into a single error", func(t *testing.T) {
+	t.Run("when multiple task fails, then all collected and merged into a single error", func(t *testing.T) {
 		var (
 			expErr1 = rnd.Error()
 			expErr2 = rnd.Error()
 			expErr3 = rnd.Error()
 		)
-		s := tasks.Concurrence(
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { return expErr1 },
 			func(ctx context.Context) error { return expErr2 },
 			func(ctx context.Context) error { return expErr3 },
@@ -311,8 +313,8 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
-	t.Run("when job fails with context cancellation, it is not reported back", func(t *testing.T) {
-		s := tasks.Concurrence(
+	t.Run("when task fails with context cancellation, it is not reported back", func(t *testing.T) {
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() },
 			func(ctx context.Context) error { return context.Canceled },
 			func(ctx context.Context) error { <-ctx.Done(); return nil },
@@ -322,14 +324,14 @@ func TestConcurrence_Run(t *testing.T) {
 		})
 	})
 
-	t.Run("tasks will receive the input context", func(t *testing.T) {
+	t.Run("tasker will receive the input context", func(t *testing.T) {
 		assertContext := func(ctx context.Context) {
 			assert.NotNil(t, ctx)
 			gotValue, ok := ctx.Value(key).(string)
 			assert.True(t, ok, "key contains a value")
 			assert.Equal(t, value, gotValue, "the received value is what we expect")
 		}
-		s := tasks.Concurrence(
+		s := tasker.Concurrence(
 			func(ctx context.Context) error { assertContext(ctx); return nil },
 			func(ctx context.Context) error { assertContext(ctx); return nil },
 			func(ctx context.Context) error { assertContext(ctx); return nil },
@@ -360,14 +362,14 @@ func Test_Main(t *testing.T) {
 			return contextCancel.Get(t)
 		})
 
-		Jobs = testcase.LetValue[[]tasks.Task](s, nil)
+		Tasks = testcase.LetValue[[]tasker.Task](s, nil)
 	)
 	act := func(t *testcase.T) error {
-		return tasks.Main(contextCancel.Get(t), Jobs.Get(t)...)
+		return tasker.Main(contextCancel.Get(t), Tasks.Get(t)...)
 	}
 
-	s.When("no job is provided", func(s *testcase.Spec) {
-		Jobs.LetValue(s, nil)
+	s.When("no task is provided", func(s *testcase.Spec) {
+		Tasks.LetValue(s, nil)
 
 		s.Then("it returns early", func(t *testcase.T) {
 			t.Must.Within(time.Second, func(ctx context.Context) {
@@ -378,23 +380,23 @@ func Test_Main(t *testing.T) {
 		})
 	})
 
-	s.When("tasks are provided", func(s *testcase.Spec) {
-		othJob := testcase.Let(s, func(t *testcase.T) tasks.Task {
+	s.When("tasker are provided", func(s *testcase.Spec) {
+		othTask := testcase.Let(s, func(t *testcase.T) tasker.Task {
 			return func(ctx context.Context) error {
 				<-ctx.Done()
 				return ctx.Err()
 			}
 		})
 
-		jobDone := testcase.LetValue[bool](s, false)
-		Jobs.Let(s, func(t *testcase.T) []tasks.Task {
-			return []tasks.Task{
+		isDone := testcase.LetValue[bool](s, false)
+		Tasks.Let(s, func(t *testcase.T) []tasker.Task {
+			return []tasker.Task{
 				func(ctx context.Context) error {
 					<-ctx.Done()
-					jobDone.Set(t, true)
+					isDone.Set(t, true)
 					return ctx.Err()
 				},
-				othJob.Get(t),
+				othTask.Get(t),
 			}
 		})
 
@@ -432,18 +434,18 @@ func Test_Main(t *testing.T) {
 					Context.Set(t, ctx)
 					t.Must.NoError(act(t))
 				})
-				t.Must.True(jobDone.Get(t))
+				t.Must.True(isDone.Get(t))
 			})
 		})
 
-		s.When("one of the job finish early", func(s *testcase.Spec) {
-			othJob.Let(s, func(t *testcase.T) tasks.Task {
+		s.When("one of the task finish early", func(s *testcase.Spec) {
+			othTask.Let(s, func(t *testcase.T) tasker.Task {
 				return func(ctx context.Context) error {
 					return nil
 				}
 			})
 
-			s.Then("it will block and doesn't affect the other tasks", func(t *testcase.T) {
+			s.Then("it will block and doesn't affect the other tasker", func(t *testcase.T) {
 				var done int64
 				go func() {
 					_ = act(t)
@@ -451,20 +453,20 @@ func Test_Main(t *testing.T) {
 				}()
 				assert.Waiter{WaitDuration: time.Millisecond}.Wait()
 				t.Must.Equal(int64(0), atomic.LoadInt64(&done))
-				t.Must.False(jobDone.Get(t))
+				t.Must.False(isDone.Get(t))
 			})
 		})
 
-		s.When("one of the job encounters an error", func(s *testcase.Spec) {
+		s.When("one of the task encounters an error", func(s *testcase.Spec) {
 			expectedErr := let.Error(s)
 
-			othJob.Let(s, func(t *testcase.T) tasks.Task {
+			othTask.Let(s, func(t *testcase.T) tasker.Task {
 				return func(ctx context.Context) error {
 					return expectedErr.Get(t)
 				}
 			})
 
-			s.Then("it will not block but signal shutdown and return all doesn't affect the other tasks", func(t *testcase.T) {
+			s.Then("it will not block but signal shutdown and return all doesn't affect the other tasker", func(t *testcase.T) {
 				var done int64
 				go func() {
 					_ = act(t)
@@ -472,7 +474,7 @@ func Test_Main(t *testing.T) {
 				}()
 				assert.Waiter{WaitDuration: time.Millisecond}.Wait()
 				t.Must.Equal(int64(1), atomic.LoadInt64(&done))
-				t.Must.True(jobDone.Get(t))
+				t.Must.True(isDone.Get(t))
 			})
 		})
 	})
@@ -492,7 +494,7 @@ func Test_Main_smoke(t *testing.T) {
 	wg.Add(1)
 	assert.NotWithin(t, 42*time.Millisecond, func(context.Context) {
 		defer wg.Done()
-		gotErr = tasks.Main(baseCTX, func(ctx context.Context) error {
+		gotErr = tasker.Main(baseCTX, func(ctx context.Context) error {
 			assert.Equal(t, value, ctx.Value(key).(string))
 			<-ctx.Done()
 			return expErr
@@ -512,22 +514,22 @@ func ExampleWithShutdown() {
 		}),
 	}
 
-	httpServerJob := tasks.WithShutdown(srv.ListenAndServe, srv.Shutdown)
-	_ = httpServerJob
+	httpServerTask := tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+	_ = httpServerTask
 
 	ctx, cancel := context.WithCancel(context.Background())
 	// listen to a cancellation signal and then call the cancel func
 	// or use ShutdownManager.
 	_ = cancel
 
-	if err := httpServerJob(ctx); err != nil {
+	if err := httpServerTask(ctx); err != nil {
 		log.Println("ERROR", err.Error())
 	}
 }
 
 func ExampleWithRepeat() {
-	job := tasks.WithRepeat(schedule.Interval(time.Second), func(ctx context.Context) error {
-		// I'm a short-lived job, and prefer to be constantly executed,
+	task := tasker.WithRepeat(schedule.Interval(time.Second), func(ctx context.Context) error {
+		// I'm a short-lived task, and prefer to be constantly executed,
 		// Repeat will keep repeating me every second until shutdown is signaled.
 		return nil
 	})
@@ -535,7 +537,7 @@ func ExampleWithRepeat() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 	defer cancel()
 
-	if err := job(ctx); err != nil {
+	if err := task(ctx); err != nil {
 		log.Println("ERROR", err.Error())
 	}
 }
@@ -552,7 +554,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 			startBegin, startFinished, stopBegin bool
 			stopFinished, stopGraceTimeout       bool
 		)
-		job := tasks.WithShutdown(func(ctx context.Context) error {
+		task := tasker.WithShutdown(func(ctx context.Context) error {
 			assert.Equal(t, expectedValue, ctx.Value(expectedKey).(string))
 
 			mux.Lock()
@@ -576,7 +578,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 			select {
 			case <-ctx.Done():
 				t.Error("shutdown context timed out too early, not giving graceful shutdown time")
-			case <-time.After(internal.JobGracefulShutdownTimeout / 2):
+			case <-time.After(internal.GracefulShutdownTimeout / 2):
 				mux.Lock()
 				stopGraceTimeout = true
 				mux.Unlock()
@@ -595,7 +597,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 		defer cancel()
 
 		assert.NotWithin(t, blockCheckWaitTime, func(context.Context) { // expected to block
-			assert.NoError(t, job(context.WithValue(ctx, expectedKey, expectedValue)))
+			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
 		})
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
 			mux.Lock()
@@ -604,7 +606,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 			it.Must.False(startFinished)
 		})
 
-		cancel() // cancel job
+		cancel() // cancel task
 
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
 			mux.Lock()
@@ -622,7 +624,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 			startOK bool
 			stopOK  bool
 		)
-		job := tasks.WithShutdown(func() error {
+		task := tasker.WithShutdown(func() error {
 			mux.Lock()
 			startOK = true
 			mux.Unlock()
@@ -639,7 +641,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 		defer cancel()
 
 		assert.NotWithin(t, blockCheckWaitTime, func(context.Context) { // expected to block & ignore assert ctx cancel
-			assert.NoError(t, job(context.WithValue(ctx, expectedKey, expectedValue)))
+			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
 		})
 
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
@@ -649,7 +651,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 			it.Must.False(stopOK)
 		})
 
-		cancel() // cancel job
+		cancel() // cancel task
 
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
 			mux.Lock()
@@ -661,21 +663,21 @@ func TestWithShutdown_smoke(t *testing.T) {
 	t.Run("error is propagated back from both StartFn", func(t *testing.T) {
 		var expectedErr = random.New(random.CryptoSeed{}).Error()
 
-		job := tasks.WithShutdown(func() error {
+		task := tasker.WithShutdown(func() error {
 			return expectedErr
 		}, func() error {
 			return nil
 		})
 
 		assert.Within(t, time.Second, func(ctx context.Context) {
-			assert.ErrorIs(t, expectedErr, job(ctx))
+			assert.ErrorIs(t, expectedErr, task(ctx))
 		})
 	})
 
 	t.Run("error is propagated back from both StopFn", func(t *testing.T) {
 		var expectedErr = random.New(random.CryptoSeed{}).Error()
 
-		job := tasks.WithShutdown(func(ctx context.Context) error {
+		task := tasker.WithShutdown(func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		}, func() error {
@@ -685,7 +687,7 @@ func TestWithShutdown_smoke(t *testing.T) {
 		assert.Within(t, time.Second, func(ctx context.Context) {
 			ctx, cancel := context.WithCancel(ctx)
 			cancel()
-			assert.ErrorIs(t, expectedErr, job(ctx))
+			assert.ErrorIs(t, expectedErr, task(ctx))
 		})
 	})
 }
@@ -693,17 +695,17 @@ func TestWithShutdown_smoke(t *testing.T) {
 func TestWithRepeat_smoke(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	s.Test("A job is being repeated", func(t *testcase.T) {
+	s.Test("A task is being repeated", func(t *testcase.T) {
 		var count int32
-		var job tasks.Task = func(ctx context.Context) error {
+		var task tasker.Task = func(ctx context.Context) error {
 			atomic.AddInt32(&count, 1)
 			return nil
 		}
 
-		job = tasks.WithRepeat(schedule.Interval(0), job)
+		task = tasker.WithRepeat(schedule.Interval(0), task)
 
 		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.NoError(job(ctx))
+			t.Should.NoError(task(ctx))
 		})
 
 		t.Eventually(func(t assert.It) {
@@ -713,17 +715,17 @@ func TestWithRepeat_smoke(t *testing.T) {
 
 	s.Test("interval is taken between runs", func(t *testcase.T) {
 		var count int32
-		var job tasks.Task = func(ctx context.Context) error {
+		var task tasker.Task = func(ctx context.Context) error {
 			atomic.AddInt32(&count, 1)
 			return nil
 		}
 
-		job = tasks.WithRepeat(schedule.Interval(time.Hour), job)
+		task = tasker.WithRepeat(schedule.Interval(time.Hour), task)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		t.Must.NotWithin(blockCheckWaitTime, func(context.Context) {
-			t.Should.NoError(job(ctx))
+			t.Should.NoError(task(ctx))
 		})
 
 		t.Eventually(func(t assert.It) {
@@ -738,21 +740,21 @@ func TestWithRepeat_smoke(t *testing.T) {
 	})
 
 	s.Test("cancellation is propagated", func(t *testcase.T) {
-		var job tasks.Task = func(ctx context.Context) error {
+		var task tasker.Task = func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		}
 
-		job = tasks.WithRepeat(schedule.Interval(0), job)
+		task = tasker.WithRepeat(schedule.Interval(0), task)
 
 		var done int32
 		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.NoError(job(ctx))
+			t.Should.NoError(task(ctx))
 			atomic.AddInt32(&done, 1)
 		})
 
 		t.Eventually(func(t assert.It) {
-			const msg = "cancellation was expected to interrupt the wrapped job function"
+			const msg = "cancellation was expected to interrupt the wrapped task function"
 			t.Must.Equal(int32(1), atomic.LoadInt32(&done), msg)
 		})
 	})
@@ -761,25 +763,25 @@ func TestWithRepeat_smoke(t *testing.T) {
 		expErr := t.Random.Error()
 
 		var count int32
-		var job tasks.Task = func(ctx context.Context) error {
+		var task tasker.Task = func(ctx context.Context) error {
 			atomic.AddInt32(&count, 1)
 			return expErr
 		}
 
-		job = tasks.WithRepeat(schedule.Interval(0), job)
+		task = tasker.WithRepeat(schedule.Interval(0), task)
 
 		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.ErrorIs(expErr, job(ctx))
+			t.Should.ErrorIs(expErr, task(ctx))
 		})
 
-		t.Must.Equal(int32(1), atomic.LoadInt32(&count), "job was expected to run only once")
+		t.Must.Equal(int32(1), atomic.LoadInt32(&count), "task was expected to run only once")
 	})
 
 	s.Test("on error that happens eventually, the error is returned", func(t *testcase.T) {
 		expErr := t.Random.Error()
 
 		var count int32
-		var job tasks.Task = func(ctx context.Context) error {
+		var task tasker.Task = func(ctx context.Context) error {
 			if 1 < atomic.LoadInt32(&count) {
 				return expErr
 			}
@@ -787,37 +789,38 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		job = tasks.WithRepeat(schedule.Interval(0), job)
+		task = tasker.WithRepeat(schedule.Interval(0), task)
 
 		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.ErrorIs(expErr, job(ctx))
+			t.Should.ErrorIs(expErr, task(ctx))
 		})
 	})
 }
 
 func ExampleOnError() {
-	jobWithErrorHandling := tasks.OnError(
-		func(ctx context.Context) error { return nil },                          // job
-		func(err error) error { log.Println("ERROR", err.Error()); return nil }, // error handling
+	withErrorHandling := tasker.OnError(
+		func(ctx context.Context) error { return nil },                                            // task
+		func(ctx context.Context, err error) error { logger.Error(ctx, err.Error()); return nil }, // error handling
 	)
-	_ = jobWithErrorHandling
+	_ = withErrorHandling
 }
+
 func TestOnError(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("on no error, error handler is not triggered", func(t *testcase.T) {
-		job := tasks.OnError(func() error { return nil }, func(err error) error { panic("boom") })
-		t.Must.NoError(job(context.Background()))
+		task := tasker.OnError(func() error { return nil }, func(err error) error { panic("boom") })
+		t.Must.NoError(task(context.Background()))
 	})
 
 	s.Test("on context cancellation, error handler is not triggered", func(t *testcase.T) {
-		job := tasks.OnError(func(ctx context.Context) error {
+		task := tasker.OnError(func(ctx context.Context) error {
 			<-ctx.Done()
 			return ctx.Err()
 		}, func(err error) error { panic("boom") })
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		t.Must.Equal(ctx.Err(), job(ctx))
+		t.Must.Equal(ctx.Err(), task(ctx))
 	})
 
 	s.Test("on non context related error, error is propagated to the error handler", func(t *testcase.T) {
@@ -826,14 +829,81 @@ func TestOnError(t *testing.T) {
 			expErrOut = t.Random.Error()
 			gotErrIn  error
 		)
-		job := tasks.OnError(func(ctx context.Context) error {
+		task := tasker.OnError(func(ctx context.Context) error {
 			return expErrIn
 		}, func(err error) error {
 			gotErrIn = err
 			return expErrOut
 		})
-		t.Must.Equal(expErrOut, job(context.Background()))
+		t.Must.Equal(expErrOut, task(context.Background()))
 		t.Must.Equal(expErrIn, gotErrIn)
+	})
+
+	s.Test("with error handler that accepts context", func(t *testcase.T) {
+		var (
+			expErrIn  = t.Random.Error()
+			expErrOut = t.Random.Error()
+			gotErrIn  error
+		)
+		type ctxKey struct{}
+		task := tasker.OnError(func(ctx context.Context) error {
+			t.Must.Equal(any(42), ctx.Value(ctxKey{}))
+			return expErrIn
+		}, func(ctx context.Context, err error) error {
+			t.Must.Equal(any(42), ctx.Value(ctxKey{}))
+			gotErrIn = err
+			return expErrOut
+		})
+		t.Must.Equal(expErrOut, task(context.WithValue(context.Background(), ctxKey{}, any(42))))
+		t.Must.Equal(expErrIn, gotErrIn)
+	})
+}
+
+func TestIgnoreError_smoke(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("will wrap the passed task function", func(t *testcase.T) {
+		var ran bool
+		task := tasker.IgnoreError(func(ctx context.Context) error {
+			ran = true
+			t.Must.Equal(any(42), ctx.Value("key"))
+			return nil
+		})
+		t.Must.NoError(task.Run(context.WithValue(context.Background(), "key", any(42))))
+		t.Must.True(ran)
+	})
+
+	s.Test("on empty error list, all error is ignored", func(t *testcase.T) {
+		task := tasker.IgnoreError(func(ctx context.Context) error {
+			return t.Random.Error()
+		})
+		t.Must.NoError(task.Run(context.Background()))
+	})
+
+	s.Test("when errors are specified, only they will be ignored", func(t *testcase.T) {
+		errToIgnore := t.Random.Error()
+		var othErr error
+		for {
+			othErr = t.Random.Error()
+			if errToIgnore != othErr {
+				break
+			}
+		}
+		task1 := tasker.IgnoreError(func(ctx context.Context) error {
+			return othErr
+		}, errToIgnore)
+		t.Must.ErrorIs(othErr, task1.Run(context.Background()))
+		task2 := tasker.IgnoreError(func(ctx context.Context) error {
+			return errToIgnore
+		}, errToIgnore)
+		t.Must.NoError(task2.Run(context.Background()))
+	})
+	s.Test("when specified error retruned as wrapped error", func(t *testcase.T) {
+		errToIgnore := t.Random.Error()
+		task := tasker.IgnoreError(func(ctx context.Context) error {
+			return fmt.Errorf("wrapped error: %w", errToIgnore)
+		}, errToIgnore)
+		t.Must.NoError(task.Run(context.Background()))
 	})
 }
 
@@ -845,10 +915,10 @@ func ExampleWithSignalNotify() {
 		}),
 	}
 
-	job := tasks.WithShutdown(srv.ListenAndServe, srv.Shutdown)
-	job = tasks.WithSignalNotify(job)
+	task := tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+	task = tasker.WithSignalNotify(task)
 
-	if err := job(context.Background()); err != nil {
+	if err := task(context.Background()); err != nil {
 		log.Println("ERROR", err.Error())
 	}
 }
@@ -874,18 +944,18 @@ func TestWithSignalNotify(t *testing.T) {
 		})
 	)
 	var (
-		jobDone = testcase.LetValue[bool](s, false)
-		job     = testcase.Let(s, func(t *testcase.T) tasks.Task {
+		isDone = testcase.LetValue[bool](s, false)
+		task   = testcase.Let(s, func(t *testcase.T) tasker.Task {
 			return func(ctx context.Context) error {
 				<-ctx.Done()
-				jobDone.Set(t, true)
+				isDone.Set(t, true)
 				return ctx.Err()
 			}
 		})
 		signals = testcase.LetValue[[]os.Signal](s, nil)
 	)
 	act := func(t *testcase.T) error {
-		return tasks.WithSignalNotify(job.Get(t), signals.Get(t)...)(Context.Get(t))
+		return tasker.WithSignalNotify(task.Get(t), signals.Get(t)...)(Context.Get(t))
 	}
 
 	s.When("signal is provided", func(s *testcase.Spec) {
@@ -942,12 +1012,12 @@ func TestWithSignalNotify(t *testing.T) {
 				Context.Set(t, ctx)
 				t.Must.NoError(act(t))
 			})
-			t.Must.True(jobDone.Get(t))
+			t.Must.True(isDone.Get(t))
 		})
 	})
 
-	s.When("the job finish early", func(s *testcase.Spec) {
-		job.Let(s, func(t *testcase.T) tasks.Task {
+	s.When("the task finish early", func(s *testcase.Spec) {
+		task.Let(s, func(t *testcase.T) tasker.Task {
 			return func(ctx context.Context) error {
 				return nil
 			}
@@ -960,10 +1030,10 @@ func TestWithSignalNotify(t *testing.T) {
 		})
 	})
 
-	s.When("the job encounters an error", func(s *testcase.Spec) {
+	s.When("the task encounters an error", func(s *testcase.Spec) {
 		expectedErr := let.Error(s)
 
-		job.Let(s, func(t *testcase.T) tasks.Task {
+		task.Let(s, func(t *testcase.T) tasker.Task {
 			return func(ctx context.Context) error {
 				return expectedErr.Get(t)
 			}

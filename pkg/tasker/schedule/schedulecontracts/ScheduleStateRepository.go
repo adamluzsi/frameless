@@ -2,7 +2,7 @@ package schedulecontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
+	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/testcase"
 	"testing"
