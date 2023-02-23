@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/jobs/schedule"
+	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"sync"
 )

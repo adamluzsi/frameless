@@ -3,8 +3,8 @@ package postgresql_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/jobs/schedule"
-	"github.com/adamluzsi/frameless/pkg/jobs/schedule/schedulecontracts"
+	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
+	"github.com/adamluzsi/frameless/pkg/tasks/schedule/schedulecontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"testing"

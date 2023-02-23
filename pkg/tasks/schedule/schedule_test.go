@@ -3,8 +3,8 @@ package schedule_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/jobs"
-	"github.com/adamluzsi/frameless/pkg/jobs/schedule"
+	"github.com/adamluzsi/frameless/pkg/tasks"
+	"github.com/adamluzsi/frameless/pkg/tasks/schedule"
 	"github.com/adamluzsi/frameless/ports/locks"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -59,14 +59,14 @@ func TestScheduler(t *testing.T) {
 			interval = let.As[time.Duration](let.IntB(s, int(time.Hour), 24*int(time.Hour)))
 
 			ran = testcase.LetValue[int](s, 0)
-			job = testcase.Let(s, func(t *testcase.T) jobs.Job {
+			job = testcase.Let(s, func(t *testcase.T) tasks.Task {
 				return func(ctx context.Context) error {
 					ran.Set(t, ran.Get(t)+1)
 					return nil
 				}
 			})
 		)
-		act := func(t *testcase.T) jobs.Job {
+		act := func(t *testcase.T) tasks.Task {
 			return subject.Get(t).WithSchedule(jobID.Get(t), schedule.Interval(interval.Get(t)), job.Get(t))
 		}
 
@@ -108,7 +108,7 @@ func TestScheduler(t *testing.T) {
 			t.Must.Equal(1, ran.Get(t))
 		})
 
-		s.Then("concurrently competing jobs guaranteed to not do the job twice", func(t *testcase.T) {
+		s.Then("concurrently competing tasks guaranteed to not do the job twice", func(t *testcase.T) {
 			t.Random.Repeat(3, 7, func() {
 				go act(t)(Context.Get(t))
 			})
@@ -126,7 +126,7 @@ func TestScheduler(t *testing.T) {
 
 		s.When("error occurs in the job", func(s *testcase.Spec) {
 			expErr := let.Error(s)
-			job.Let(s, func(t *testcase.T) jobs.Job {
+			job.Let(s, func(t *testcase.T) tasks.Task {
 				return func(ctx context.Context) error {
 					return expErr.Get(t)
 				}
@@ -142,7 +142,7 @@ func TestScheduler(t *testing.T) {
 		s.When("error occurs eventually in the job", func(s *testcase.Spec) {
 			interval.LetValue(s, 0)
 			expErr := let.Error(s)
-			job.Let(s, func(t *testcase.T) jobs.Job {
+			job.Let(s, func(t *testcase.T) tasks.Task {
 				var ok bool
 				return func(ctx context.Context) error {
 					if !ok {

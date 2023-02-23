@@ -3,8 +3,8 @@ package schedule
 import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/jobs"
-	"github.com/adamluzsi/frameless/pkg/jobs/internal"
+	"github.com/adamluzsi/frameless/pkg/tasks"
+	"github.com/adamluzsi/frameless/pkg/tasks/internal"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/locks"
 	"github.com/adamluzsi/testcase/clock"
@@ -16,7 +16,7 @@ type Scheduler struct {
 	Repository    StateRepository
 }
 
-func (s Scheduler) WithSchedule(jobid string, interval internal.Interval, job jobs.Job) jobs.Job {
+func (s Scheduler) WithSchedule(jobid string, interval internal.Interval, job tasks.Task) tasks.Task {
 	locker := s.LockerFactory.LockerFor(jobid)
 
 	next := func(ctx context.Context) (_ time.Duration, rErr error) {
