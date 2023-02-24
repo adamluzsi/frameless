@@ -21,6 +21,21 @@ func TestLogger_smoke(t *testing.T) {
 	timecop.Travel(t, now, timecop.Freeze())
 	rnd := random.New(random.CryptoSeed{})
 
+	t.Run("log methods accept nil context", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		l := logger.Logger{Out: buf}
+		l.Debug(nil, "Debug")
+		l.Info(nil, "Info")
+		l.Warn(nil, "Warn")
+		l.Error(nil, "Error")
+		l.Fatal(nil, "Fatal")
+		assert.Contain(t, buf.String(), "Debug")
+		assert.Contain(t, buf.String(), "Info")
+		assert.Contain(t, buf.String(), "Warn")
+		assert.Contain(t, buf.String(), "Error")
+		assert.Contain(t, buf.String(), "Fatal")
+	})
+
 	t.Run("output is a valid JSON by default", func(t *testing.T) {
 		ctx := context.Background()
 		buf := &bytes.Buffer{}

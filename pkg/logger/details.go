@@ -35,6 +35,9 @@ func ContextWithDetails(ctx context.Context, details Details) context.Context {
 // getDetailsFromContext returns the details attached to the context
 func getDetailsFromContext(ctx context.Context) Details {
 	d := make(Details)
+	if ctx == nil {
+		return d
+	}
 	if v, ok := lookupValue(ctx); ok {
 		for {
 			d.Merge(v.Details)
