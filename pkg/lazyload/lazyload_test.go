@@ -184,3 +184,32 @@ func TestMake_withPointerType(t *testing.T) {
 	*(v()) = expected
 	assert.Equal(t, expected, *ptr)
 }
+
+func Benchmark_rangeVsAccessByIndex(b *testing.B) {
+	var (
+		init func()
+		_    = init
+		v    = []int{1, 2, 3}
+	)
+	b.Run("index", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			var x int
+			if init == nil && 0 < len(v) {
+				x = v[0]
+			}
+			_ = x
+		}
+	})
+	b.Run("range", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			var x int
+			if init == nil {
+				for _, e := range v {
+					x = e
+					break
+				}
+			}
+			_ = x
+		}
+	})
+}

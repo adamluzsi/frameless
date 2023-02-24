@@ -55,16 +55,16 @@ func ToTask[TFN genericTask](tfn TFN) Task {
 	}
 }
 
-func toTasks[TASK genericTask](ts []TASK) []Task {
+func toTasks[TFN genericTask](tfns []TFN) []Task {
 	var tasks []Task
-	for _, t := range ts {
+	for _, t := range tfns {
 		tasks = append(tasks, ToTask(t))
 	}
 	return tasks
 }
 
-func Sequence[TASK genericTask](ts ...TASK) Task {
-	return sequence(toTasks[TASK](ts)).Run
+func Sequence[TFN genericTask](tfns ...TFN) Task {
+	return sequence(toTasks[TFN](tfns)).Run
 }
 
 // Sequence is construct that allows you to execute a list of Task sequentially.
@@ -82,8 +82,8 @@ func (s sequence) Run(ctx context.Context) error {
 
 // Concurrence is construct that allows you to execute a list of Task concurrently.
 // If any of the Task fails with an error, all Task will receive cancellation signal.
-func Concurrence[TASK genericTask](ts ...TASK) Task {
-	return concurrence(toTasks[TASK](ts)).Run
+func Concurrence[TFN genericTask](tfns ...TFN) Task {
+	return concurrence(toTasks[TFN](tfns)).Run
 }
 
 type concurrence []Task
