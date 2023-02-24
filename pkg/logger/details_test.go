@@ -10,6 +10,17 @@ import (
 	"time"
 )
 
+func ExampleContextWithDetails() {
+	ctx := context.Background()
+
+	ctx = logger.ContextWithDetails(ctx, logger.Details{
+		"foo": "bar",
+		"baz": "qux",
+	})
+
+	logger.Info(ctx, "message") // will have details from the context
+}
+
 func TestContextWithDetails(t *testing.T) {
 	now := time.Now()
 	timecop.Travel(t, now, timecop.Freeze())

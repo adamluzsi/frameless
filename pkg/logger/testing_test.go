@@ -6,8 +6,16 @@ import (
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
+	"strings"
 	"testing"
 )
+
+func ExampleStub() {
+	var tb testing.TB
+	buf := logger.Stub(tb) // stub will clean up after itself when the test is finished
+	logger.Info(nil, "foo")
+	strings.Contains(buf.String(), "foo") // true
+}
 
 func TestStub(t *testing.T) {
 	var og logger.Logger // enforce variable type to guarantee pass by value copy

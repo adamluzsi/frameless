@@ -60,7 +60,7 @@ If you wish to execute Jobs in a sequential order, use `tasker.Sequence`.
 It can express dependency between tasks if one should only execute if the previous one has already succeeded. 
 
 ```go
-s := tasker.Sequence{
+s := tasker.Sequence(
     func(ctx context.Context) error {
         // first task to execute
         return nil
@@ -69,7 +69,7 @@ s := tasker.Sequence{
         // follow-up task to execute
         return nil
     },
-}
+)
 
 err := s.Run(context.Background())
 ```
@@ -80,16 +80,34 @@ It also ensures that the tasks fail together as a unit,
 though signalling cancellation if any of the tasks has a failure.
 
 ```go
-c := tasker.Concurrence{
+c := tasker.Concurrence(
     func(ctx context.Context) error {
         return nil // It runs at the same time.
     },
     func(ctx context.Context) error {
         return nil // It runs at the same time.
     },
-}
+)
 
 err := c.Run(context.Background())
+```
+
+You can model dependency between tasks by mixing "Sequence" and "Concurrence".
+
+```go
+task := tasker.Sequence(
+	tasker.Concurrence( // group 1 which is a prerequisite to group 2
+		func(ctx context.Context) error { return nil /* some migration task 1 */ },
+		func(ctx context.Context) error { return nil /* some migration task 2 */ },
+	),
+	tasker.Concurrence( // group 2 which depends on group 1 success
+		func(ctx context.Context) error { return nil /* a task which depending on a completed migration 1 */ },
+		func(ctx context.Context) error { return nil /* a task which depending on a completed migration 2 */ },
+		func(ctx context.Context) error { return nil /* a task which depending on a completed migration 3 */ },
+	),
+)
+
+tasker.Main(context.Background(), task)
 ```
 
 ## Long-lived Jobs

@@ -12,6 +12,39 @@ import (
 	"time"
 )
 
+func ExampleDebug() {
+	ctx := context.Background()
+	logger.Debug(ctx, "foo")
+}
+
+func ExampleInfo() {
+	ctx := context.Background()
+	logger.Info(ctx, "foo")
+}
+
+func ExampleWarn() {
+	ctx := context.Background()
+	logger.Warn(ctx, "foo")
+}
+
+func ExampleError() {
+	ctx := context.Background()
+	logger.Error(ctx, "foo")
+}
+
+func ExampleFatal() {
+	ctx := context.Background()
+	logger.Fatal(ctx, "foo")
+}
+
+func Example_withDetails() {
+	ctx := context.Background()
+	logger.Info(ctx, "foo", logger.Details{
+		"userID":    42,
+		"accountID": 24,
+	})
+}
+
 func Test_pkgFuncSmoke(t *testing.T) {
 	now := time.Now()
 	timecop.Travel(t, now, timecop.Freeze())

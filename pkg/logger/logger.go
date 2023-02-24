@@ -1,3 +1,5 @@
+// Package logger provides tooling for structured logging.
+// With logger, you can use context to add logging details to your call stack.
 package logger
 
 import (

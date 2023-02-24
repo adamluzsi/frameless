@@ -16,6 +16,23 @@ import (
 	"time"
 )
 
+func Test_smoke(t *testing.T) {
+	ctx := context.Background()
+
+	// you can add details to context, thus every logging call using this context
+	ctx = logger.ContextWithDetails(ctx, logger.Details{
+		"foo": "bar",
+		"baz": "qux",
+	})
+
+	// You can use your own Logger instance or the logger.Default logger instance if you plan to log to the STDOUT.
+	logger.Info(ctx, "foo", logger.Details{
+		"userID":    42,
+		"accountID": 24,
+	})
+
+}
+
 func TestLogger_smoke(t *testing.T) {
 	now := time.Now()
 	timecop.Travel(t, now, timecop.Freeze())
