@@ -79,7 +79,7 @@ func ExampleMerge() {
 	_ = err
 }
 
-func ExampleWithErr_Context() {
+func ExampleWithBuilder_Context() {
 	err := fmt.Errorf("foo bar baz")
 	ctx := context.Background()
 
@@ -89,7 +89,7 @@ func ExampleWithErr_Context() {
 	_, _ = errorutil.LookupContext(err) // ctx, true
 }
 
-func ExampleWithErr_Detail() {
+func ExampleWithBuilder_Detail() {
 	err := fmt.Errorf("foo bar baz")
 
 	err = errorutil.With(err).
@@ -98,7 +98,7 @@ func ExampleWithErr_Detail() {
 	_, _ = errorutil.LookupDetail(err) // "it was the foo or bar or baz", true
 }
 
-func ExampleWithErr_Detailf() {
+func ExampleWithBuilder_Detailf() {
 	err := fmt.Errorf("foo bar baz")
 
 	err = errorutil.With(err).

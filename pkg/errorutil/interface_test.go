@@ -8,6 +8,6 @@ var (
 	_ internal.ErrorAs     = multiError{}
 	_ internal.ErrorIs     = multiError{}
 	_ internal.ErrorUnwrap = &tagError{}
-	_ internal.ErrorUnwrap = errorWithContext{}
-	_ internal.ErrorUnwrap = errorWithDetail{}
+	_ internal.ErrorUnwrap = withContext{}
+	_ internal.ErrorUnwrap = withDetail{}
 )

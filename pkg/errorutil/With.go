@@ -6,20 +6,20 @@ import (
 	"fmt"
 )
 
-func With(err error) WithErr { return WithErr{Err: err} }
+func With(err error) WithBuilder { return WithBuilder{Err: err} }
 
-type WithErr struct{ Err error }
+type WithBuilder struct{ Err error }
 
-func (w WithErr) Error() string { return w.Err.Error() }
+func (w WithBuilder) Error() string { return w.Err.Error() }
 
-func (w WithErr) Wrap(err error) WithErr {
-	return WithErr{Err: Merge(w.Err, err)}
+func (w WithBuilder) Wrap(err error) WithBuilder {
+	return WithBuilder{Err: Merge(w.Err, err)}
 }
 
-func (w WithErr) Unwrap() error { return w.Err }
+func (w WithBuilder) Unwrap() error { return w.Err }
 
 func LookupContext(err error) (context.Context, bool) {
-	var detail errorWithContext
+	var detail withContext
 	if errors.As(err, &detail) {
 		return detail.Ctx, true
 	}
@@ -28,28 +28,28 @@ func LookupContext(err error) (context.Context, bool) {
 
 // Context will combine an error with a context, so the current context can be used at the place of error handling.
 // This can be useful if tracing ID and other helpful values are kept in the context.
-func (w WithErr) Context(ctx context.Context) WithErr {
-	return WithErr{Err: errorWithContext{
+func (w WithBuilder) Context(ctx context.Context) WithBuilder {
+	return WithBuilder{Err: withContext{
 		Err: w.Err,
 		Ctx: ctx,
 	}}
 }
 
-type errorWithContext struct {
+type withContext struct {
 	Err error
 	Ctx context.Context
 }
 
-func (err errorWithContext) Error() string {
+func (err withContext) Error() string {
 	return err.Err.Error()
 }
 
-func (err errorWithContext) Unwrap() error {
+func (err withContext) Unwrap() error {
 	return err.Err
 }
 
 func LookupDetail(err error) (string, bool) {
-	var detail errorWithDetail
+	var detail withDetail
 	if errors.As(err, &detail) {
 		return detail.Detail, true
 	}
@@ -57,8 +57,8 @@ func LookupDetail(err error) (string, bool) {
 }
 
 // Detail will return an error that has explanation as detail attached to it.
-func (w WithErr) Detail(detail string) WithErr {
-	return WithErr{Err: errorWithDetail{
+func (w WithBuilder) Detail(detail string) WithBuilder {
+	return WithBuilder{Err: withDetail{
 		Err:    w.Err,
 		Detail: detail,
 	}}
@@ -66,22 +66,22 @@ func (w WithErr) Detail(detail string) WithErr {
 
 // Detailf will return an error that has explanation as detail attached to it.
 // Detailf formats according to a fmt format specifier and returns the resulting string.
-func (w WithErr) Detailf(format string, a ...any) WithErr {
-	return WithErr{Err: errorWithDetail{
+func (w WithBuilder) Detailf(format string, a ...any) WithBuilder {
+	return WithBuilder{Err: withDetail{
 		Err:    w.Err,
 		Detail: fmt.Sprintf(format, a...),
 	}}
 }
 
-type errorWithDetail struct {
+type withDetail struct {
 	Err    error
 	Detail string
 }
 
-func (err errorWithDetail) Error() string {
+func (err withDetail) Error() string {
 	return fmt.Sprintf("%s\n%s", err.Err.Error(), err.Detail)
 }
 
-func (err errorWithDetail) Unwrap() error {
+func (err withDetail) Unwrap() error {
 	return err.Err
 }

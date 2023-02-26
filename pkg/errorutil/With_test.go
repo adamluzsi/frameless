@@ -25,7 +25,7 @@ func TestWith_smoke(tt *testing.T) {
 	)
 	t := testcase.NewT(tt, s)
 
-	v := errorutil.WithErr{Err: err.Get(t)}.
+	v := errorutil.With(err.Get(t)).
 		Context(ctx.Get(t)).
 		Detail(detail.Get(t))
 
@@ -55,7 +55,7 @@ func TestWith_Context(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) error {
-		return errorutil.WithErr{err.Get(t)}.Context(ctx.Get(t))
+		return errorutil.With(err.Get(t)).Context(ctx.Get(t))
 	}
 
 	s.Then("context can be looked up", func(t *testcase.T) {
@@ -108,7 +108,7 @@ func TestWith_Wrap(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) error {
-		return errorutil.WithErr{Err: err.Get(t)}.Wrap(usrErr.Get(t))
+		return errorutil.With(err.Get(t)).Wrap(usrErr.Get(t))
 	}
 
 	s.Then("wrapped error can be checked with errors.Is", func(t *testcase.T) {
@@ -134,7 +134,7 @@ func TestWith_Detail(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) error {
-		return errorutil.WithErr{err.Get(t)}.Detail(detail.Get(t))
+		return errorutil.With(err.Get(t)).Detail(detail.Get(t))
 	}
 
 	s.Then("detail can be looked up", func(t *testcase.T) {
@@ -188,7 +188,7 @@ func TestWith_Detailf(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) error {
-		return errorutil.WithErr{err.Get(t)}.Detailf(format.Get(t), detail.Get(t))
+		return errorutil.With(err.Get(t)).Detailf(format.Get(t), detail.Get(t))
 	}
 
 	s.Then("detail can be looked up", func(t *testcase.T) {

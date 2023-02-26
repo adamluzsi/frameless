@@ -31,6 +31,6 @@ func (err UserError) Error() string {
 	return "[" + string(err.ID) + "] " + string(err.Message)
 }
 
-func (err UserError) With() WithErr {
-	return WithErr{Err: err}
+func (err UserError) With() WithBuilder {
+	return WithBuilder{Err: err}
 }
