@@ -2,13 +2,75 @@ package logger_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/logger/logdto"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
+	"github.com/adamluzsi/testcase/random"
 	"testing"
 	"time"
 )
+
+func TestDetails_Merge(t *testing.T) {
+	t.Run("on populated details", func(t *testing.T) {
+		d := logger.Details{"foo": "bar", "bar": "foo"}
+		gotD := d.Merge(logger.Details{"bar": "baz", "answer": 42})
+		assert.Equal(t, d, gotD)
+		assert.Equal(t, logger.Details{
+			"foo":    "bar",
+			"bar":    "baz",
+			"answer": 42,
+		}, d)
+	})
+	t.Run("on nil details", func(t *testing.T) {
+		d := logger.Details{"foo": "bar", "bar": "foo"}
+		d.Merge(nil)
+		assert.Equal(t, logger.Details{"foo": "bar", "bar": "foo"}, d)
+	})
+}
+
+func ExampleDetails_Err() {
+	ctx := context.Background()
+	err := errors.New("boom")
+
+	logger.Error(ctx, "task failed successfully", logger.Details{}.Err(err))
+}
+
+func TestDetails_Err(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	t.Run("plain error", func(t *testing.T) {
+		expErr := rnd.Error()
+		d := logger.Details{}.Err(expErr)
+		assert.Equal(t, logger.Details{"error": logdto.Error{Message: expErr.Error()}}, d)
+	})
+	t.Run("when err is a user error", func(t *testing.T) {
+		const message = "The answer"
+		const code = "42"
+		var expErr error
+		expErr = errorutil.UserError{ID: code, Message: message}
+		expErr = fmt.Errorf("err: %w", expErr)
+		d := logger.Details{}.Err(expErr)
+		assert.Equal(t, logger.Details{"error": logdto.Error{
+			Message: expErr.Error(),
+			Code:    code,
+			Detail:  message,
+		}}, d)
+	})
+	t.Run("when err has details", func(t *testing.T) {
+		const detail = "Hello, world!"
+		var expErr error
+		expErr = rnd.Error()
+		expErr = errorutil.With(expErr).Detail(detail)
+		d := logger.Details{}.Err(expErr)
+		assert.Equal(t, logger.Details{"error": logdto.Error{
+			Message: expErr.Error(),
+			Detail:  detail,
+		}}, d)
+	})
+}
 
 func ExampleContextWithDetails() {
 	ctx := context.Background()
