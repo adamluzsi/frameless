@@ -160,20 +160,20 @@ srv := http.Server{
 	}),
 }
 
-httpServerJob := tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
+httpServerTask := tasker.WithShutdown(
+	tasker.IgnoreError(srv.ListenAndServe, http.ErrServerClosed), 
+	srv.Shutdown,
+)
 ```
 
 ## Notify shutdown signals to tasks
 
-The `tasker.WithSignalNotify` will listen to the shutdown syscalls, and will cancel the context of your Job.
-Using `tasker.WithSignalNotify` is most suitable in the `main` function.
+The `tasker.WithSignalNotify` will listen to the shutdown syscalls, and will cancel the context of your Task.
+Using `tasker.WithSignalNotify` is most suitable from the `main` function.
 
 ```go
-// HTTP server as a task
-task := tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
-
-// Job will benotified about shutdown signals.
-task = tasker.WithSignalNotify(task)
+// The task will be notified about shutdown signal call as context cancellation.
+task := tasker.WithSignalNotify(MyTask)
 
 if err := task(context.Background()); err != nil {
 	logger.Error(ctx, err.Error())
