@@ -25,6 +25,23 @@ func MakeTestEntity(tb testing.TB) TestEntity {
 	return te
 }
 
+type TestEntityDTO struct {
+	ID  string `ext:"ID" json:"id"`
+	Foo string `json:"foo"`
+	Bar string `json:"bar"`
+	Baz string `json:"baz"`
+}
+
+type TestEntityJSONMapping struct{}
+
+func (n TestEntityJSONMapping) ToDTO(ent TestEntity) (TestEntityDTO, error) {
+	return TestEntityDTO{ID: ent.ID, Foo: ent.Foo, Bar: ent.Bar, Baz: ent.Baz}, nil
+}
+
+func (n TestEntityJSONMapping) ToEnt(dto TestEntityDTO) (TestEntity, error) {
+	return TestEntity{ID: dto.ID, Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
+}
+
 func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
 	var counter int
 	return postgresql.Mapper[TestEntity, string]{

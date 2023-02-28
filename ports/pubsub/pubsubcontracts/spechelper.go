@@ -3,6 +3,7 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/spechelper"
 	"sync"
 	"testing"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"github.com/adamluzsi/testcase/let"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
-	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
@@ -21,7 +21,6 @@ import (
 type PubSub[V any] interface {
 	pubsub.Publisher[V]
 	pubsub.Subscriber[V]
-	crud.Purger
 }
 
 type pubsubBase[V any] struct {
@@ -32,8 +31,8 @@ type pubsubBase[V any] struct {
 
 func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 	s.Context(fmt.Sprintf("%s behaves like ", c.getPubSubTypeName()), func(s *testcase.Spec) {
-		sub := c.GivenWeHaveSubscription(s)
 		c.WhenIsEmpty(s)
+		sub := c.GivenWeHaveSubscription(s)
 
 		s.Describe(".Publish", func(s *testcase.Spec) {
 			var (
@@ -51,11 +50,6 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 			act := func(t *testcase.T) error {
 				return c.subject().Get(t).Publish(ctx.Get(t), msgs.Get(t)...)
 			}
-
-			s.Before(func(t *testcase.T) {
-				t.Must.Nil(c.subject().Get(t).Purge(c.MakeContext(t)))
-				t.Defer(c.subject().Get(t).Purge, c.MakeContext(t))
-			})
 
 			s.Then("it publish without an error", func(t *testcase.T) {
 				t.Must.NoError(act(t))
@@ -120,21 +114,26 @@ func (c pubsubBase[V]) cancelFnsVar() testcase.Var[[]func()] {
 }
 
 func (c pubsubBase[V]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[V] {
-	sih := subscriptionIteratorHelper[V]{Subscriber: c.subject().Get(t)}
-	sih.Start(t, c.MakeContext(t))
-	t.Defer(sih.Close)
-	return &sih
+	return &subscriptionIteratorHelper[V]{Subscriber: c.subject().Get(t)}
 }
 
 type subscriptionIteratorHelper[V any] struct {
 	Subscriber       pubsub.Subscriber[V]
 	HandlingDuration time.Duration
 
-	mutex  sync.Mutex
-	cancel func()
-	data   []V
+	mutex sync.Mutex
+	data  []V
+	wg    sync.WaitGroup
 
-	ReceivedAt time.Time
+	receivedAt time.Time
+	ackedAt    time.Time
+	cancel     func()
+}
+
+func (sih *subscriptionIteratorHelper[V]) AckedAt() time.Time {
+	sih.mutex.Lock()
+	defer sih.mutex.Unlock()
+	return sih.ackedAt
 }
 
 func (sih *subscriptionIteratorHelper[V]) Values() []V {
@@ -146,48 +145,59 @@ func (sih *subscriptionIteratorHelper[V]) Values() []V {
 func (sih *subscriptionIteratorHelper[V]) LastMessageReceivedAt() time.Time {
 	sih.mutex.Lock()
 	defer sih.mutex.Unlock()
-	return sih.ReceivedAt
+	return sih.receivedAt
 }
 
 func (sih *subscriptionIteratorHelper[V]) Start(tb testing.TB, ctx context.Context) {
+	assert.Nil(tb, sih.cancel)
 	ctx, cancel := context.WithCancel(ctx)
-	tb.Cleanup(cancel)
-	sih.cancel = cancel
-	go sih.wrk(tb, ctx)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go sih.wrk(tb, ctx, &wg)
+	sih.cancel = func() {
+		cancel()
+		wg.Wait()
+		sih.cancel = nil
+	}
 }
 
-func (sih *subscriptionIteratorHelper[V]) wrk(tb testing.TB, ctx context.Context) {
+func (sih *subscriptionIteratorHelper[V]) Stop() {
+	if sih.cancel != nil {
+		sih.cancel()
+	}
+}
+
+func (sih *subscriptionIteratorHelper[V]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
 	iter := sih.Subscriber.Subscribe(ctx)
 	for iter.Next() {
 		sih.mutex.Lock()
 		msg := iter.Value()
-		sih.ReceivedAt = time.Now().UTC()
+		sih.receivedAt = time.Now().UTC()
 		time.Sleep(sih.HandlingDuration)
 		sih.data = append(sih.data, msg.Data())
 		assert.Should(tb).NoError(msg.ACK())
+		sih.ackedAt = time.Now().UTC()
 		sih.mutex.Unlock()
 	}
 	assert.Should(tb).NoError(iter.Err())
 }
 
-func (sih *subscriptionIteratorHelper[V]) Close() error {
-	if sih.cancel != nil {
-		sih.cancel()
-	}
-	return nil
-}
-
 func (c pubsubBase[V]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[V]] {
 	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[V] {
-		return c.newSubscriptionIteratorHelper(t)
+		sih := c.newSubscriptionIteratorHelper(t)
+		sih.Start(t, c.MakeContext(t))
+		t.Cleanup(sih.Stop)
+		return sih
 	}).EagerLoading(s)
 }
 
 func (c pubsubBase[V]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("given the subscription was at least once made")
-		sub := c.newSubscriptionIteratorHelper(t)
-		t.Must.NoError(sub.Close())
+		sih := c.newSubscriptionIteratorHelper(t)
+		sih.Start(t, c.MakeContext(t))
+		sih.Stop()
 	})
 }
 
@@ -200,8 +210,7 @@ func (c pubsubBase[V]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub
 
 func (c pubsubBase[V]) WhenIsEmpty(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		t.Log("when the publisher is empty")
-		t.Must.Nil(c.subject().Get(t).Purge(c.MakeContext(t)))
+		spechelper.TryCleanup(t, c.MakeContext(t), c.subject().Get(t))
 		pubsubtest.Waiter.Wait()
 	})
 }
@@ -249,31 +258,4 @@ func (c pubsubBase[V]) EventuallyContainExactly(t *testcase.T, subscription test
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []V) {
 		it.Must.ContainExactly(expected, actual)
 	})
-}
-
-type stubSubscriber[V any] struct {
-	HandleFunc func(ctx context.Context, msg V) error
-
-	m      sync.Mutex
-	values []V
-}
-
-func (qs *stubSubscriber[V]) Messages() []V {
-	qs.m.Lock()
-	defer qs.m.Unlock()
-	return qs.values
-}
-
-func (qs *stubSubscriber[V]) Handle(ctx context.Context, v V) error {
-	qs.m.Lock()
-	defer qs.m.Lock()
-	if qs.HandleFunc != nil {
-		return qs.HandleFunc(ctx, v)
-	}
-	qs.values = append(qs.values, v)
-	return nil // TODO: cover Handle -> error case
-}
-
-func (qs *stubSubscriber[V]) HandleError(ctx context.Context, err error) error {
-	panic(err)
 }

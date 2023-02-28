@@ -3,6 +3,7 @@ package postgresql_test
 import (
 	"context"
 	"database/sql"
+	"github.com/adamluzsi/frameless/ports/migration"
 	"log"
 	"os"
 	"testing"
@@ -37,7 +38,7 @@ func ExampleLocker() {
 	}
 }
 
-var _ postgresql.Migratable = postgresql.Locker{}
+var _ migration.Migratable = postgresql.Locker{}
 
 func TestLocker(t *testing.T) {
 	db, err := sql.Open("postgres", spechelper.DatabaseDSN(t))
@@ -82,7 +83,7 @@ func ExampleLockerFactory() {
 	}
 }
 
-var _ postgresql.Migratable = postgresql.LockerFactory[int]{}
+var _ migration.Migratable = postgresql.LockerFactory[int]{}
 
 func TestNewLockerFactory(t *testing.T) {
 	db := OpenDB(t)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side effect loading
 )
@@ -22,10 +21,6 @@ type MigratorConfig struct {
 type MigratorStep interface {
 	MigrateUp(ctx context.Context, tx *sql.Tx) error
 	MigrateDown(ctx context.Context, tx *sql.Tx) error
-}
-
-type Migratable interface { // TODO: replace with migration.Migratable
-	Migrate(context.Context) error
 }
 
 func (m Migrator) Up(ctx context.Context) (rErr error) {
@@ -54,6 +49,7 @@ func (m Migrator) Up(ctx context.Context) (rErr error) {
 			return err
 		}
 	}
+
 	return nil
 }
 

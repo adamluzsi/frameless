@@ -26,7 +26,7 @@ type Repository[Entity, ID any] struct {
 
 func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
 	query := fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableRef(), r.queryColumnList())
-	query += fmt.Sprintf("VALUES (%s)\n", r.queryColumnPlaceHolders(r.newPrepareStatementPlaceholderGenerator()))
+	query += fmt.Sprintf("VALUES (%s)\n", r.queryColumnPlaceHolders(makePrepareStatementPlaceholderGenerator()))
 
 	ctx, err := r.BeginTx(ctx)
 	if err != nil {
@@ -148,14 +148,6 @@ func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr err
 	return nil
 }
 
-func (r Repository[Entity, ID]) newPrepareStatementPlaceholderGenerator() func() string {
-	var index = 0
-	return func() string {
-		index++
-		return fmt.Sprintf(`$%d`, index)
-	}
-}
-
 func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr error) {
 	args, err := r.Mapping.ToArgs(ptr)
 	if err != nil {
@@ -164,7 +156,7 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 
 	var (
 		query           = fmt.Sprintf("UPDATE %s", r.Mapping.TableRef())
-		nextPlaceHolder = r.newPrepareStatementPlaceholderGenerator()
+		nextPlaceHolder = makePrepareStatementPlaceholderGenerator()
 		idPlaceHolder   = nextPlaceHolder()
 		querySetParts   []string
 	)

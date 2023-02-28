@@ -3,11 +3,12 @@ package postgresql
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"fmt"
-	"io"
-
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side-effect loading
+	"io"
 )
 
 type ConnectionManager interface {
@@ -49,7 +50,7 @@ func (c *connectionManager) Connection(ctx context.Context) (Connection, error) 
 		return tx, nil
 	}
 
-	client, err := c.getConnection()
+	client, err := c.getConnection(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +72,7 @@ func (c *connectionManager) BeginTx(ctx context.Context) (context.Context, error
 		return ctx, nil
 	}
 
-	conn, err := c.getConnection()
+	conn, err := c.getConnection(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,9 +113,21 @@ func (c *connectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValu
 	return tx, ok
 }
 
-func (c *connectionManager) getConnection() (*sql.DB, error) {
-	if err := c.DB.Ping(); err != nil {
+func (c *connectionManager) getConnection(ctx context.Context) (*sql.DB, error) {
+	var retryCount = 42
+
+ping:
+	err := c.DB.PingContext(ctx)
+
+	if errors.Is(err, driver.ErrBadConn) && 0 < retryCount {
+		// it could be a temporary error, recovery is still possible
+		retryCount--
+		goto ping
+	}
+
+	if err != nil {
 		return nil, err
 	}
+
 	return c.DB, nil
 }
