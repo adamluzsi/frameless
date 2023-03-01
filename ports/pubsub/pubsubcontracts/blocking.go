@@ -28,33 +28,38 @@ func (c Blocking[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s is blocking pub/sub", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 
 		sub := b.GivenWeHaveSubscription(s)
 
 		s.Test("publish will block until a subscriber acknowledged the published message", func(t *testcase.T) {
-			d := 42 * 10 * time.Millisecond
-			t.Logf("processing a message takes significant time (%s)", d.String())
-			sub.Get(t).HandlingDuration = d
-
 			var publishedAtUNIXMilli int64
 			go func() {
 				t.Must.NoError(b.subject().Get(t).Publish(c.MakeContext(t), c.MakeV(t)))
-				atomic.AddInt64(&publishedAtUNIXMilli, time.Now().UTC().UnixMilli())
+				publishedAt := time.Now().UTC()
+				atomic.AddInt64(&publishedAtUNIXMilli, publishedAt.UnixMilli())
 			}()
 
-			var ackedAt time.Time
+			var (
+				receivedAt time.Time
+				ackedAt    time.Time
+			)
 			t.Eventually(func(it assert.It) {
 				ackedAt = sub.Get(t).AckedAt()
 				it.Must.False(ackedAt.IsZero())
+				receivedAt = sub.Get(t).ReceivedAt()
+				it.Must.False(receivedAt.IsZero())
 			})
 
 			var publishedAt time.Time
 			t.Eventually(func(t assert.It) {
 				unixMilli := atomic.LoadInt64(&publishedAtUNIXMilli)
 				t.Must.NotEmpty(unixMilli)
-				publishedAt = time.UnixMilli(unixMilli)
+				publishedAt = time.UnixMilli(unixMilli).UTC()
 			})
+
+			t.Must.True(receivedAt.Before(publishedAt),
+				"it was expected that the message was received before the publish was done")
 
 			t.Must.True(ackedAt.Before(publishedAt),
 				"it was expected that acknowledging time is before the publishing time")

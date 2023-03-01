@@ -30,7 +30,7 @@ func (c Queue[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s is a queue", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 
 		s.When("a subscription is made", func(s *testcase.Spec) {
 			sub := b.GivenWeHaveSubscription(s)
@@ -109,7 +109,7 @@ func (c Broadcast[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s is fan-out", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 
 		s.When("a subscription is made", func(s *testcase.Spec) {
 			sub := b.GivenWeHaveSubscription(s)

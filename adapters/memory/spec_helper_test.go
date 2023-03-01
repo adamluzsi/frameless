@@ -126,7 +126,7 @@ func GetContracts[Entity, ID any](
 			MakeSubject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
 				return subject(tb).CommitManager
 			},
-			MakeContext: makeContext,
+			MakeContext: MakeContext,
 		},
 		crudcontracts.OnePhaseCommitProtocol[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {

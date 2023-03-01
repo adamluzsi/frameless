@@ -28,7 +28,7 @@ func (c Buffered[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s is buffered", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 		b.GivenWeHadSubscriptionBefore(s)
 
 		s.And("messages are published", func(s *testcase.Spec) {
@@ -72,9 +72,9 @@ func (c Volatile[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s is volatile", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 		b.GivenWeHadSubscriptionBefore(s)
-
+		
 		s.When("messages are published", func(s *testcase.Spec) {
 			val1 := let.With[V](s, c.MakeV)
 			val2 := let.With[V](s, c.MakeV)

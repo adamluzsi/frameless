@@ -33,7 +33,7 @@ func (c FIFO[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s ordering is FIFO", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 
 		subscription := b.GivenWeHaveSubscription(s)
 
@@ -78,7 +78,7 @@ func (c LIFO[V]) Spec(s *testcase.Spec) {
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s ordering is LIFO", b.getPubSubTypeName()), func(s *testcase.Spec) {
-		b.WhenIsEmpty(s)
+		b.TryCleanup(s)
 
 		sub := b.GivenWeHaveSubscription(s)
 

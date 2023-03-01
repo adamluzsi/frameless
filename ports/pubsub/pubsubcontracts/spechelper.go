@@ -31,8 +31,12 @@ type pubsubBase[V any] struct {
 
 func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 	s.Context(fmt.Sprintf("%s behaves like ", c.getPubSubTypeName()), func(s *testcase.Spec) {
-		c.WhenIsEmpty(s)
+		c.TryCleanup(s)
 		sub := c.GivenWeHaveSubscription(s)
+
+		s.Before(func(t *testcase.T) {
+			pubsubtest.Waiter.Wait()
+		})
 
 		s.Describe(".Publish", func(s *testcase.Spec) {
 			var (
@@ -69,7 +73,7 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 		})
 
 		s.When("no events has been published published", func(s *testcase.Spec) {
-			c.WhenIsEmpty(s)
+			c.TryCleanup(s)
 
 			s.Then("subscription didn't received anything", func(t *testcase.T) {
 				pubsubtest.Waiter.Wait()
@@ -142,7 +146,7 @@ func (sih *subscriptionIteratorHelper[V]) Values() []V {
 	return append([]V{}, sih.data...)
 }
 
-func (sih *subscriptionIteratorHelper[V]) LastMessageReceivedAt() time.Time {
+func (sih *subscriptionIteratorHelper[V]) ReceivedAt() time.Time {
 	sih.mutex.Lock()
 	defer sih.mutex.Unlock()
 	return sih.receivedAt
@@ -173,14 +177,23 @@ func (sih *subscriptionIteratorHelper[V]) wrk(tb testing.TB, ctx context.Context
 	for iter.Next() {
 		sih.mutex.Lock()
 		msg := iter.Value()
+		assert.Should(tb).NotNil(msg)
+		if msg == nil {
+			break
+		}
 		sih.receivedAt = time.Now().UTC()
 		time.Sleep(sih.HandlingDuration)
 		sih.data = append(sih.data, msg.Data())
-		assert.Should(tb).NoError(msg.ACK())
 		sih.ackedAt = time.Now().UTC()
+		pubsubtest.Waiter.Wait()
+		assert.Should(tb).NoError(msg.ACK())
 		sih.mutex.Unlock()
 	}
-	assert.Should(tb).NoError(iter.Err())
+	assert.Should(tb).AnyOf(func(a *assert.AnyOf) {
+		// TODO: survey which behaviour is more natural
+		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
+		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })
+	})
 }
 
 func (c pubsubBase[V]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[V]] {
@@ -208,7 +221,7 @@ func (c pubsubBase[V]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub
 	return c.subject().Get(t).Subscribe(ctx)
 }
 
-func (c pubsubBase[V]) WhenIsEmpty(s *testcase.Spec) {
+func (c pubsubBase[V]) TryCleanup(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		spechelper.TryCleanup(t, c.MakeContext(t), c.subject().Get(t))
 		pubsubtest.Waiter.Wait()
@@ -217,12 +230,14 @@ func (c pubsubBase[V]) WhenIsEmpty(s *testcase.Spec) {
 
 func (c pubsubBase[V]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[V]) {
 	s.Before(func(t *testcase.T) {
-		var vals []V
+		//var vals []V
 		for _, v := range vars {
-			vals = append(vals, v.Get(t))
+			t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), v.Get(t)))
+			pubsubtest.Waiter.Wait()
+			//vals = append(vals, v.Get(t))
 		}
-		t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), vals...))
-		pubsubtest.Waiter.Wait()
+		//t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), vals...))
+
 	})
 }
 

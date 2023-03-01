@@ -23,11 +23,12 @@ func NewRepositoryWithNamespace[Entity, ID any](m *Memory, ns string) *Repositor
 }
 
 type Repository[Entity, ID any] struct {
-	Memory        *Memory
-	MakeID        func(context.Context) (ID, error)
-	Namespace     string
-	initNamespace sync.Once
+	Memory    *Memory
+	MakeID    func(context.Context) (ID, error)
+	Namespace string
 }
+
+const typeNameRepository = "Repository"
 
 func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if _, ok := extid.Lookup[ID](ptr); !ok {
@@ -55,7 +56,7 @@ func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error 
 			Unwrap()
 	}
 
-	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
+	s.Memory.Set(ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id), *ptr)
 
 	return nil
 }
@@ -68,7 +69,7 @@ func (s *Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (_ent Enti
 		return _ent, false, err
 	}
 
-	ent, ok := s.Memory.Get(ctx, s.GetNamespace(), s.IDToMemoryKey(id))
+	ent, ok := s.Memory.Get(ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id))
 	if !ok {
 		return _ent, false, nil
 	}
@@ -82,7 +83,7 @@ func (s *Repository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator
 	if err := s.isDoneTx(ctx); err != nil {
 		return iterators.Error[Entity](err)
 	}
-	return memoryAll[Entity](s.Memory, ctx, s.GetNamespace())
+	return memoryAll[Entity](s.Memory, ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace))
 }
 
 func (s *Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
@@ -92,7 +93,7 @@ func (s *Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := s.isDoneTx(ctx); err != nil {
 		return err
 	}
-	if s.Memory.Del(ctx, s.GetNamespace(), s.IDToMemoryKey(id)) {
+	if s.Memory.Del(ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id)) {
 		return nil
 	}
 	return errNotFound(*new(Entity), id)
@@ -103,7 +104,7 @@ func (s *Repository[Entity, ID]) DeleteAll(ctx context.Context) error {
 	defer iter.Close()
 	for iter.Next() {
 		id, _ := extid.Lookup[ID](iter.Value())
-		_ = s.Memory.Del(ctx, s.GetNamespace(), s.IDToMemoryKey(id))
+		_ = s.Memory.Del(ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id))
 	}
 	return iter.Err()
 }
@@ -122,7 +123,7 @@ func (s *Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) error 
 		return errNotFound(*new(Entity), id)
 	}
 
-	s.Memory.Set(ctx, s.GetNamespace(), s.IDToMemoryKey(id), base(ptr))
+	s.Memory.Set(ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id), *ptr)
 	return nil
 }
 
@@ -131,7 +132,7 @@ func (s *Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) itera
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
 	}
-	all := m.all(s.GetNamespace())
+	all := m.all(getNamespaceFor[Entity](typeNameRepository, &s.Namespace))
 	var vs = make(map[string]Entity, len(ids))
 	for _, id := range ids {
 		key := s.IDToMemoryKey(id)
@@ -162,7 +163,7 @@ func (s *Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) er
 			}
 		}
 		key := s.IDToMemoryKey(id)
-		m.set(s.GetNamespace(), key, base(ptr))
+		m.set(getNamespaceFor[Entity](typeNameRepository, &s.Namespace), key, *ptr)
 	}
 	return nil
 }
@@ -176,16 +177,6 @@ func (s *Repository[Entity, ID]) mkID(ctx context.Context) (ID, error) {
 
 func (s *Repository[Entity, ID]) IDToMemoryKey(id any) string {
 	return fmt.Sprintf(`%#v`, id)
-}
-
-func (s *Repository[Entity, ID]) GetNamespace() string {
-	s.initNamespace.Do(func() {
-		if 0 < len(s.Namespace) {
-			return
-		}
-		s.Namespace = reflects.FullyQualifiedName(*new(Entity))
-	})
-	return s.Namespace
 }
 
 func (s *Repository[Entity, ID]) getV(ptr interface{}) interface{} {
@@ -266,7 +257,7 @@ func (m *Memory) LookupMeta(ctx context.Context, key string, ptr interface{}) (_
 
 type memoryActions interface {
 	all(namespace string) map[string]interface{}
-	get(namespace string, key string) (interface{}, bool)
+	lookup(namespace string, key string) (interface{}, bool)
 	set(namespace, key string, value interface{})
 	del(namespace string, key string) bool
 }
@@ -277,9 +268,9 @@ func base(ent any) interface{} {
 
 func (m *Memory) Get(ctx context.Context, namespace string, key string) (interface{}, bool) {
 	if tx, ok := m.LookupTx(ctx); ok && !tx.done {
-		return tx.get(namespace, key)
+		return tx.lookup(namespace, key)
 	}
-	return m.get(namespace, key)
+	return m.lookup(namespace, key)
 }
 
 func memoryAll[Entity any](m *Memory, ctx context.Context, namespace string) iterators.Iterator[Entity] {
@@ -312,7 +303,19 @@ func (m *Memory) all(namespace string) map[string]interface{} {
 	return vs
 }
 
-func (m *Memory) get(namespace string, key string) (interface{}, bool) {
+func memoryLookup[Entity any](m *Memory, namespace string, key string) (Entity, bool) {
+	ient, ok := m.lookup(namespace, key)
+	if !ok {
+		return *new(Entity), false
+	}
+	ent, ok := ient.(Entity)
+	if !ok {
+		return *new(Entity), false
+	}
+	return ent, true
+}
+
+func (m *Memory) lookup(namespace string, key string) (interface{}, bool) {
 	m.m.Lock()
 	defer m.m.Unlock()
 	ns := m.namespace(namespace)
@@ -333,7 +336,7 @@ func (m *Memory) set(namespace, key string, value interface{}) {
 	m.m.Lock()
 	defer m.m.Unlock()
 	tbl := m.namespace(namespace)
-	tbl[key] = base(value)
+	tbl[key] = value
 	return
 }
 
@@ -397,7 +400,7 @@ func (tx *MemoryTx) all(namespace string) map[string]interface{} {
 	return avs
 }
 
-func (tx *MemoryTx) get(namespace string, key string) (interface{}, bool) {
+func (tx *MemoryTx) lookup(namespace string, key string) (interface{}, bool) {
 	tx.m.Lock()
 	defer tx.m.Unlock()
 	changes := tx.getChanges(namespace)
@@ -408,7 +411,7 @@ func (tx *MemoryTx) get(namespace string, key string) (interface{}, bool) {
 	if _, isDeleted := changes.Deleted[key]; isDeleted {
 		return nil, false
 	}
-	return tx.super.get(namespace, key)
+	return tx.super.lookup(namespace, key)
 }
 
 func (tx *MemoryTx) set(namespace, key string, value interface{}) {
@@ -418,7 +421,7 @@ func (tx *MemoryTx) set(namespace, key string, value interface{}) {
 }
 
 func (tx *MemoryTx) del(namespace, key string) bool {
-	if _, ok := tx.get(namespace, key); !ok {
+	if _, ok := tx.lookup(namespace, key); !ok {
 		return false
 	}
 	tx.m.Lock()
