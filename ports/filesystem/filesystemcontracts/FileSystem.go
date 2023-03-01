@@ -15,7 +15,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/filesystem"
 
-	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -64,12 +63,12 @@ func (c FileSystem) perm() testcase.Var[fs.FileMode] {
 		Init: func(t *testcase.T) fs.FileMode {
 			var mode fs.FileMode
 			if t.Random.Bool() {
-				mode |= ffs.ModeUserRWX
+				mode |= filesystem.ModeUserRWX
 			} else {
-				mode |= ffs.ModeUserRW
+				mode |= filesystem.ModeUserRW
 			}
 			if t.Random.Bool() {
-				mode |= ffs.ModeOtherR
+				mode |= filesystem.ModeOtherR
 			}
 			return mode
 		},
@@ -399,7 +398,7 @@ func (c FileSystem) specMkdir(s *testcase.Spec) {
 
 	s.When("when name points to an existing file", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			c.touchFile(t, c.name().Get(t), ffs.ModeUserRWX)
+			c.touchFile(t, c.name().Get(t), filesystem.ModeUserRWX)
 		})
 
 		s.Then("directory making fails", func(t *testcase.T) {
@@ -560,7 +559,7 @@ func (c FileSystem) specStat(s *testcase.Spec) {
 func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 	var (
 		n    = testcase.Let[int](s, nil)
-		file = testcase.Let(s, func(t *testcase.T) ffs.File {
+		file = testcase.Let(s, func(t *testcase.T) filesystem.File {
 			file, err := c.fileSystem().Get(t).OpenFile(c.name().Get(t), os.O_RDONLY, 0)
 			if err != nil {
 				t.Log(err.Error())
@@ -598,9 +597,9 @@ func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 		s.And("it contains files", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				c.touchFile(t, filepath.Join(".", "a"), ffs.ModeUserRWX)
-				c.touchFile(t, filepath.Join(".", "b"), ffs.ModeUserRWX)
-				c.touchFile(t, filepath.Join(".", "c"), ffs.ModeUserRWX)
+				c.touchFile(t, filepath.Join(".", "a"), filesystem.ModeUserRWX)
+				c.touchFile(t, filepath.Join(".", "b"), filesystem.ModeUserRWX)
+				c.touchFile(t, filepath.Join(".", "c"), filesystem.ModeUserRWX)
 			})
 
 			s.Then("directory entries are returned", func(t *testcase.T) {
@@ -619,7 +618,7 @@ func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 	s.When("a directory exists where the file name points", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			c.touchDir(t, c.name().Get(t), c.perm().Get(t)|ffs.ModeUserRWX)
+			c.touchDir(t, c.name().Get(t), c.perm().Get(t)|filesystem.ModeUserRWX)
 		})
 
 		dirFileNames := testcase.Var[[]string]{ID: "dirFileNames", Init: func(t *testcase.T) []string {
@@ -653,7 +652,7 @@ func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 			s.And("directory has file(s)", func(s *testcase.Spec) {
 				dirFileNames.Bind(s)
-				const expectedEntryPerm = ffs.ModeUserRWX
+				const expectedEntryPerm = filesystem.ModeUserRWX
 
 				cTime := testcase.Let[time.Time](s, nil)
 				s.Before(func(t *testcase.T) {
@@ -746,7 +745,7 @@ func (c FileSystem) specFile_Seek(s *testcase.Spec) {
 		data = testcase.Let(s, func(t *testcase.T) []byte {
 			return []byte(t.Random.String())
 		})
-		file = testcase.Let(s, func(t *testcase.T) ffs.File {
+		file = testcase.Let(s, func(t *testcase.T) filesystem.File {
 			c.saveFile(t, c.name().Get(t), data.Get(t))
 			file, err := c.fileSystem().Get(t).OpenFile(c.name().Get(t), os.O_RDWR, 0)
 			t.Must.Nil(err)
@@ -886,7 +885,7 @@ func (c FileSystem) touchFile(t *testcase.T, name string, perm fs.FileMode) {
 }
 
 func (c FileSystem) saveFile(t *testcase.T, name string, data []byte) {
-	file, err := c.fileSystem().Get(t).OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, ffs.ModeUserRWX)
+	file, err := c.fileSystem().Get(t).OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
 	t.Must.Nil(err)
 	defer func() { t.Should.Nil(file.Close()) }()
 	t.Defer(c.fileSystem().Get(t).Remove, name)

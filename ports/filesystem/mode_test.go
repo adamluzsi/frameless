@@ -1,10 +1,10 @@
-package filesystems_test
+package filesystem_test
 
 import (
+	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io/fs"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"
 )
 
@@ -170,17 +170,17 @@ func TestCanXDoY(t *testing.T) {
 		tc := tc
 		s.Test(tc.Desc, func(t *testcase.T) {
 
-			t.Must.Equal(tc.UserR, tc.FileMode&filesystems.ModeUserR != 0)
-			t.Must.Equal(tc.UserW, tc.FileMode&filesystems.ModeUserW != 0)
-			t.Must.Equal(tc.UserX, tc.FileMode&filesystems.ModeUserX != 0)
+			t.Must.Equal(tc.UserR, tc.FileMode&filesystem.ModeUserR != 0)
+			t.Must.Equal(tc.UserW, tc.FileMode&filesystem.ModeUserW != 0)
+			t.Must.Equal(tc.UserX, tc.FileMode&filesystem.ModeUserX != 0)
 
-			t.Must.Equal(tc.GroupR, tc.FileMode&filesystems.ModeGroupR != 0)
-			t.Must.Equal(tc.GroupW, tc.FileMode&filesystems.ModeGroupW != 0)
-			t.Must.Equal(tc.GroupX, tc.FileMode&filesystems.ModeGroupX != 0)
+			t.Must.Equal(tc.GroupR, tc.FileMode&filesystem.ModeGroupR != 0)
+			t.Must.Equal(tc.GroupW, tc.FileMode&filesystem.ModeGroupW != 0)
+			t.Must.Equal(tc.GroupX, tc.FileMode&filesystem.ModeGroupX != 0)
 
-			t.Must.Equal(tc.OtherR, tc.FileMode&filesystems.ModeOtherR != 0)
-			t.Must.Equal(tc.OtherW, tc.FileMode&filesystems.ModeOtherW != 0)
-			t.Must.Equal(tc.OtherX, tc.FileMode&filesystems.ModeOtherX != 0)
+			t.Must.Equal(tc.OtherR, tc.FileMode&filesystem.ModeOtherR != 0)
+			t.Must.Equal(tc.OtherW, tc.FileMode&filesystem.ModeOtherW != 0)
+			t.Must.Equal(tc.OtherX, tc.FileMode&filesystem.ModeOtherX != 0)
 
 		})
 	}

@@ -1,11 +1,11 @@
-package filesystems_test
+package filesystem_test
 
 import (
+	ffs "github.com/adamluzsi/frameless/ports/filesystem"
 	"os"
 	"strconv"
 	"testing"
 
-	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase/assert"
 )
 

@@ -1,6 +1,7 @@
 package filesystem_test
 
 import (
+	"github.com/adamluzsi/frameless/adapters/memory"
 	"io"
 	"io/fs"
 	"os"
@@ -9,15 +10,15 @@ import (
 
 	"github.com/adamluzsi/frameless/ports/filesystem"
 
-	ffs "github.com/adamluzsi/frameless/adapters/filesystems"
+	ffs "github.com/adamluzsi/frameless/adapters/localfs"
 	"github.com/adamluzsi/testcase/assert"
 )
 
-func makeFS(tb testing.TB) ffs.FileSystem {
+func makeFS(tb testing.TB) filesystem.FileSystem {
 	if _, ok := os.LookupEnv("USE_FS"); ok {
-		return &ffs.Local{RootPath: tb.TempDir()}
+		return &ffs.FileSystem{RootPath: tb.TempDir()}
 	}
-	return &ffs.Memory{}
+	return &memory.FileSystem{}
 }
 
 func Test_createAndOpen(t *testing.T) {
@@ -29,7 +30,7 @@ func Test_createAndOpen(t *testing.T) {
 	fileInfo, err := file.Stat()
 	it.Must.Nil(err)
 	it.Must.False(fileInfo.IsDir())
-	it.Must.True(fileInfo.Mode()&ffs.ModeUserRW != 0)
+	it.Must.True(fileInfo.Mode()&filesystem.ModeUserRW != 0)
 
 	data := "Hello, world!"
 	n, err := file.Write([]byte(data))
@@ -56,7 +57,7 @@ func TestReadDir(t *testing.T) {
 	it.Must.ErrorIs(fs.ErrNotExist, err)
 
 	t.Log("on empty dir, returns an empty list")
-	it.Must.Nil(fsys.Mkdir(dirName, ffs.ModeUserRWX))
+	it.Must.Nil(fsys.Mkdir(dirName, filesystem.ModeUserRWX))
 	dirEntries, err := filesystem.ReadDir(fsys, dirName)
 	it.Must.Nil(err)
 	it.Must.Empty(dirEntries)
@@ -85,20 +86,20 @@ func TestWalkDir(t *testing.T) {
 	fsys := makeFS(t)
 
 	touchFile := func(tb testing.TB, name string) {
-		file, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, ffs.ModeUserRWX)
+		file, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filesystem.ModeUserRWX)
 		assert.Must(tb).Nil(err)
 		assert.Must(tb).Nil(file.Close())
 	}
 
-	it.Must.Nil(fsys.Mkdir("a", ffs.ModeUserRWX))
+	it.Must.Nil(fsys.Mkdir("a", filesystem.ModeUserRWX))
 	touchFile(t, "a/1")
 	touchFile(t, "a/2")
 	touchFile(t, "a/3")
-	it.Must.Nil(fsys.Mkdir("b", ffs.ModeUserRWX))
+	it.Must.Nil(fsys.Mkdir("b", filesystem.ModeUserRWX))
 	touchFile(t, "b/4")
 	touchFile(t, "b/5")
 	touchFile(t, "b/6")
-	it.Must.Nil(fsys.Mkdir("a/c", ffs.ModeUserRWX))
+	it.Must.Nil(fsys.Mkdir("a/c", filesystem.ModeUserRWX))
 	touchFile(t, "a/c/7")
 	touchFile(t, "a/c/8")
 	touchFile(t, "a/c/9")

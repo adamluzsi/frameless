@@ -1,6 +1,7 @@
-package filesystems
+package memory
 
 import (
+	"github.com/adamluzsi/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -13,33 +14,33 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-type Memory struct {
-	entries  map[string]*memoryEntry
+type FileSystem struct {
+	entries  map[string]*fileSystemEntry
 	mutex    sync.RWMutex
 	initOnce sync.Once
 }
 
-func (mfs *Memory) init() {
+func (mfs *FileSystem) init() {
 	mfs.initOnce.Do(func() {
-		mfs.entries = make(map[string]*memoryEntry)
+		mfs.entries = make(map[string]*fileSystemEntry)
 	})
 }
 
-func (mfs *Memory) rlock() func() {
+func (mfs *FileSystem) rlock() func() {
 	mfs.init()
 	//mfs.mutex.RLock()
 	//return mfs.mutex.RUnlock
 	return func() {}
 }
 
-func (mfs *Memory) wlock() func() {
+func (mfs *FileSystem) wlock() func() {
 	mfs.init()
 	//mfs.mutex.Lock()
 	//return mfs.mutex.Unlock
 	return func() {}
 }
 
-func (mfs *Memory) path(name string) string {
+func (mfs *FileSystem) path(name string) string {
 	abs, err := filepath.Abs(name)
 	if err != nil {
 		return name
@@ -47,11 +48,11 @@ func (mfs *Memory) path(name string) string {
 	return abs
 }
 
-func (mfs *Memory) isRoot(path string) bool {
+func (mfs *FileSystem) isRoot(path string) bool {
 	return path == mfs.path(".")
 }
 
-func (mfs *Memory) Stat(name string) (fs.FileInfo, error) {
+func (mfs *FileSystem) Stat(name string) (fs.FileInfo, error) {
 	defer mfs.rlock()()
 	path := mfs.path(name)
 	entry, ok := mfs.entries[path]
@@ -65,7 +66,7 @@ func (mfs *Memory) Stat(name string) (fs.FileInfo, error) {
 			Err:  os.ErrNotExist,
 		}
 	}
-	return FileInfo{
+	return filesystem.FileInfo{
 		Path:        entry.path,
 		FileSize:    int64(len(entry.data)),
 		FileMode:    entry.mode,
@@ -74,7 +75,7 @@ func (mfs *Memory) Stat(name string) (fs.FileInfo, error) {
 	}, nil
 }
 
-func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (File, error) {
+func (mfs *FileSystem) OpenFile(name string, flag int, perm fs.FileMode) (filesystem.File, error) {
 	path := mfs.path(name)
 	if flag&os.O_CREATE != 0 {
 		defer mfs.wlock()()
@@ -90,7 +91,7 @@ func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (File, erro
 		}
 	}
 	if !ok && flag&os.O_CREATE != 0 {
-		f, ok = &memoryEntry{
+		f, ok = &fileSystemEntry{
 			path:     path,
 			mode:     perm,
 			modeTime: time.Now().UTC(),
@@ -111,7 +112,7 @@ func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (File, erro
 	if flag&os.O_TRUNC != 0 {
 		f.data = []byte{}
 	}
-	return &MemoryFile{
+	return &FileSystemFile{
 		entry:      f,
 		openFlag:   flag,
 		buffer:     buffers.New(f.data),
@@ -119,8 +120,8 @@ func (mfs *Memory) OpenFile(name string, flag int, perm fs.FileMode) (File, erro
 	}, nil
 }
 
-func (mfs *Memory) rootEntry(path string) *memoryEntry {
-	return &memoryEntry{
+func (mfs *FileSystem) rootEntry(path string) *fileSystemEntry {
+	return &fileSystemEntry{
 		path:     path,
 		mode:     0777,
 		modeTime: time.Now().UTC(),
@@ -128,19 +129,19 @@ func (mfs *Memory) rootEntry(path string) *memoryEntry {
 	}
 }
 
-func (mfs *Memory) getDirEntriesFn(dirPath string) []fs.DirEntry {
+func (mfs *FileSystem) getDirEntriesFn(dirPath string) []fs.DirEntry {
 	var des []fs.DirEntry
 	for path, entry := range mfs.entries {
 		dp := filepath.Dir(path)
 		if dp != dirPath {
 			continue
 		}
-		des = append(des, DirEntry{FileInfo: entry.fileInfo()})
+		des = append(des, filesystem.DirEntry{FileInfo: entry.fileInfo()})
 	}
 	return des
 }
 
-func (mfs *Memory) Mkdir(name string, perm fs.FileMode) error {
+func (mfs *FileSystem) Mkdir(name string, perm fs.FileMode) error {
 	defer mfs.wlock()()
 	path := mfs.path(name)
 	if _, ok := mfs.entries[path]; ok {
@@ -150,7 +151,7 @@ func (mfs *Memory) Mkdir(name string, perm fs.FileMode) error {
 			Err:  os.ErrExist,
 		}
 	}
-	mfs.entries[path] = &memoryEntry{
+	mfs.entries[path] = &fileSystemEntry{
 		path:     path,
 		mode:     perm | fs.ModeDir,
 		modeTime: time.Now().UTC(),
@@ -159,7 +160,7 @@ func (mfs *Memory) Mkdir(name string, perm fs.FileMode) error {
 	return nil
 }
 
-func (mfs *Memory) Remove(name string) error {
+func (mfs *FileSystem) Remove(name string) error {
 	defer mfs.wlock()()
 	path := mfs.path(name)
 	f, ok := mfs.entries[path]
@@ -181,7 +182,7 @@ func (mfs *Memory) Remove(name string) error {
 	return nil
 }
 
-type memoryEntry struct {
+type fileSystemEntry struct {
 	path     string
 	mode     fs.FileMode
 	modeTime time.Time
@@ -190,8 +191,8 @@ type memoryEntry struct {
 	mutex    sync.Mutex
 }
 
-func (entry *memoryEntry) fileInfo() FileInfo {
-	return FileInfo{
+func (entry *fileSystemEntry) fileInfo() filesystem.FileInfo {
+	return filesystem.FileInfo{
 		Path:        entry.path,
 		FileSize:    int64(len(entry.data)),
 		FileMode:    entry.mode,
@@ -201,8 +202,8 @@ func (entry *memoryEntry) fileInfo() FileInfo {
 	}
 }
 
-type MemoryFile struct {
-	entry    *memoryEntry
+type FileSystemFile struct {
+	entry    *fileSystemEntry
 	openFlag int
 	buffer   *buffers.Buffer
 	mutex    sync.Mutex
@@ -210,12 +211,12 @@ type MemoryFile struct {
 	dirEntries iterators.Iterator[fs.DirEntry]
 }
 
-func (f *MemoryFile) fileWriteLock() func() {
+func (f *FileSystemFile) fileWriteLock() func() {
 	f.mutex.Lock()
 	return f.mutex.Unlock
 }
 
-func (f *MemoryFile) Close() error {
+func (f *FileSystemFile) Close() error {
 	defer f.fileWriteLock()()
 	if err := f.Sync(); err != nil {
 		return err
@@ -223,7 +224,7 @@ func (f *MemoryFile) Close() error {
 	return f.buffer.Close()
 }
 
-func (f *MemoryFile) Sync() error {
+func (f *FileSystemFile) Sync() error {
 	f.entry.mutex.Lock()
 	defer f.entry.mutex.Unlock()
 	f.entry.data = f.buffer.Bytes()
@@ -231,9 +232,9 @@ func (f *MemoryFile) Sync() error {
 	return nil
 }
 
-func (f *MemoryFile) Stat() (fs.FileInfo, error) {
+func (f *FileSystemFile) Stat() (fs.FileInfo, error) {
 	defer f.fileWriteLock()()
-	return FileInfo{
+	return filesystem.FileInfo{
 		Path:        f.entry.path,
 		FileSize:    int64(len(f.buffer.Bytes())),
 		FileMode:    f.entry.mode,
@@ -243,8 +244,8 @@ func (f *MemoryFile) Stat() (fs.FileInfo, error) {
 	}, nil
 }
 
-func (f *MemoryFile) Read(bytes []byte) (int, error) {
-	if !HasOpenFlagRead(f.openFlag) {
+func (f *FileSystemFile) Read(bytes []byte) (int, error) {
+	if !filesystem.HasOpenFlagRead(f.openFlag) {
 		return 0, &fs.PathError{
 			Op:   "read",
 			Path: f.entry.path,
@@ -255,8 +256,8 @@ func (f *MemoryFile) Read(bytes []byte) (int, error) {
 	return f.buffer.Read(bytes)
 }
 
-func (f *MemoryFile) Write(p []byte) (n int, err error) {
-	if !HasOpenFlagWrite(f.openFlag) {
+func (f *FileSystemFile) Write(p []byte) (n int, err error) {
+	if !filesystem.HasOpenFlagWrite(f.openFlag) {
 		return 0, &fs.PathError{
 			Op:   "write",
 			Path: f.entry.path,
@@ -273,12 +274,12 @@ func (f *MemoryFile) Write(p []byte) (n int, err error) {
 	return f.buffer.Write(p)
 }
 
-func (f *MemoryFile) Seek(offset int64, whence int) (int64, error) {
+func (f *FileSystemFile) Seek(offset int64, whence int) (int64, error) {
 	defer f.fileWriteLock()()
 	return f.buffer.Seek(offset, whence)
 }
 
-func (f *MemoryFile) ReadDir(n int) ([]fs.DirEntry, error) {
+func (f *FileSystemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	if !f.entry.isDir {
 		return nil, &fs.PathError{
 			Op:   "fdopendir",

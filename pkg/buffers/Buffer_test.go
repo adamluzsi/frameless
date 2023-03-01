@@ -11,7 +11,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/buffers"
 	"github.com/adamluzsi/frameless/ports/filesystem"
 
-	"github.com/adamluzsi/frameless/adapters/filesystems"
 	"github.com/adamluzsi/testcase"
 )
 
@@ -37,7 +36,7 @@ func TestBuffer(t *testing.T) {
 		rwsc = testcase.Var[RWSC]{ID: "reference reader/writer/seeker/closer", Init: func(t *testcase.T) RWSC {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(t.TempDir(), name)
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystems.ModeUserRWX)
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
 			t.Must.Nil(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data.Get(t))
@@ -242,7 +241,7 @@ func TestBuffer_smoke(tt *testing.T) {
 		file   = func(t *testcase.T) filesystem.File {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(tmpDir, name)
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystems.ModeUserRWX)
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
 			t.Must.Nil(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data)

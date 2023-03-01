@@ -1,4 +1,4 @@
-package filesystems
+package filesystem
 
 const (
 	modeRead  = 04
