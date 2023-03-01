@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/runtimes"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side-effect loading
 	"io"
@@ -113,7 +114,8 @@ func (c *connectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValu
 	return tx, ok
 }
 
-func (c *connectionManager) getConnection(ctx context.Context) (*sql.DB, error) {
+func (c *connectionManager) getConnection(ctx context.Context) (_ *sql.DB, rErr error) {
+	defer runtimes.Recover(&rErr)
 	var retryCount = 42
 
 ping:

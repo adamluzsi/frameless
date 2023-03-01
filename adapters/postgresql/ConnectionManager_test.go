@@ -182,6 +182,12 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 	})
 }
 
+func TestConnectionManager_Connection_recoverPanic(t *testing.T) {
+	cm := postgresql.NewConnectionManagerWithDB(nil)
+	_, err := cm.Connection(context.Background())
+	assert.Error(t, err)
+}
+
 func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
 	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
