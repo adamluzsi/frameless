@@ -119,7 +119,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
@@ -163,7 +163,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[any]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
@@ -203,7 +203,7 @@ func TestHandler(t *testing.T) {
 					s.Then("it will fail to create the resource", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusConflict, rr.Code)
-						errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 						t.Must.Equal(restapi.ErrEntityAlreadyExist.ID.String(), errDTO.Type.ID)
 					})
 				})
@@ -218,7 +218,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
@@ -236,7 +236,7 @@ func TestHandler(t *testing.T) {
 					t.Log(rr.Body.String())
 					t.Must.Equal(http.StatusRequestEntityTooLarge, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
 				})
@@ -254,7 +254,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusBadRequest, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMalformedID.ID.String(), errDTO.Type.ID)
 				})
@@ -288,7 +288,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusNotFound, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
@@ -341,7 +341,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusNotFound, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
@@ -356,7 +356,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
@@ -393,7 +393,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusNotFound, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
@@ -408,7 +408,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
@@ -446,7 +446,7 @@ func TestHandler(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusNotFound, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 				})

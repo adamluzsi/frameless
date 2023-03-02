@@ -57,7 +57,7 @@ func TestRouter(t *testing.T) {
 			rr := act(t)
 			t.Must.Equal(http.StatusNotFound, rr.Code)
 
-			errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+			errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 			t.Must.NotEmpty(errDTO)
 			t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 		})
@@ -73,7 +73,7 @@ func TestRouter(t *testing.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusNotFound, rr.Code)
 
-					errDTO := respondsWithJSON[rfc7807.DTO[struct{}]](t, rr)
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 				})

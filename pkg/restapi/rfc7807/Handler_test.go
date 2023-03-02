@@ -20,10 +20,10 @@ func TestHandler(t *testing.T) {
 
 	var (
 		baseURL = testcase.LetValue(s, "")
-		mapping = testcase.LetValue[rfc78072.HandlerMappingFunc[ExampleExtension]](s, nil)
+		mapping = testcase.LetValue[rfc78072.HandlerMappingFunc](s, nil)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) rfc78072.Handler[ExampleExtension] {
-		return rfc78072.Handler[ExampleExtension]{
+	subject := testcase.Let(s, func(t *testcase.T) rfc78072.Handler {
+		return rfc78072.Handler{
 			BaseURL: baseURL.Get(t),
 			Mapping: mapping.Get(t),
 		}
@@ -38,9 +38,9 @@ func TestHandler(t *testing.T) {
 		act := func(t *testcase.T) {
 			subject.Get(t).HandleError(w.Get(t), r.Get(t), err.Get(t))
 		}
-		respondedWith := func(t *testcase.T) rfc78072.DTO[ExampleExtension] {
+		respondedWith := func(t *testcase.T) rfc78072.DTO {
 			act(t)
-			var dto rfc78072.DTO[ExampleExtension]
+			var dto rfc78072.DTO
 			t.Log(w.Get(t).Body.String())
 			t.Must.NoError(json.Unmarshal(w.Get(t).Body.Bytes(), &dto))
 			return dto
@@ -49,7 +49,7 @@ func TestHandler(t *testing.T) {
 		s.Then("it responds back with RFC7807 format encoded in JSON", func(t *testcase.T) {
 			act(t)
 
-			var dto rfc78072.DTO[ExampleExtension]
+			var dto rfc78072.DTO
 			t.Must.NoError(json.Unmarshal(w.Get(t).Body.Bytes(), &dto))
 			t.Must.Equal("internal-server-error", dto.Type.ID)
 			t.Must.Empty(dto.Type.BaseURL)
@@ -76,12 +76,14 @@ func TestHandler(t *testing.T) {
 				msg  = let.String(s)
 				key  = let.StringNC(s, 3, random.CharsetDigit())
 			)
-			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc[ExampleExtension] {
-				return func(ctx context.Context, err error, dto *rfc78072.DTO[ExampleExtension]) {
+			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+				return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 					t.Must.NotEmpty(dto.Type)
 					t.Must.NotEmpty(dto.Title)
-					dto.Extensions.Error.Code = code.Get(t)
-					dto.Extensions.Error.Message = msg.Get(t)
+					dto.Extensions = ExampleExtensionError{
+						Code:    code.Get(t),
+						Message: msg.Get(t),
+					}
 					if v, ok := ctx.Value(key.Get(t)).(string); ok {
 						dto.Detail = v
 					}
@@ -90,8 +92,8 @@ func TestHandler(t *testing.T) {
 
 			s.Then("mapping will receive a DTO with some values already configured", func(t *testcase.T) {
 				dto := respondedWith(t)
-				t.Must.Equal(code.Get(t), dto.Extensions.Error.Code)
-				t.Must.Equal(msg.Get(t), dto.Extensions.Error.Message)
+				t.Must.Equal(code.Get(t), dto.Extensions.(map[string]any)["code"].(string))
+				t.Must.Equal(msg.Get(t), dto.Extensions.(map[string]any)["message"].(string))
 			})
 
 			s.And("error has context attached to it", func(s *testcase.Spec) {
@@ -146,8 +148,8 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.And("mapping is provided", func(s *testcase.Spec) {
-				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc[ExampleExtension] {
-					return func(ctx context.Context, err error, dto *rfc78072.DTO[ExampleExtension]) {
+				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 						t.Must.Equal(string(usrErr.Get(t).ID), dto.Type.ID)
 						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
@@ -191,8 +193,8 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.And("mapping is provided", func(s *testcase.Spec) {
-				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc[ExampleExtension] {
-					return func(ctx context.Context, err error, dto *rfc78072.DTO[ExampleExtension]) {
+				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 						t.Must.Contain(detail.Get(t), dto.Detail)
 					}
 				})
@@ -209,12 +211,12 @@ func TestHandler(t *testing.T) {
 			ctx = let.Context(s)
 			err = let.Error(s)
 		)
-		act := func(t *testcase.T) rfc78072.DTO[ExampleExtension] {
+		act := func(t *testcase.T) rfc78072.DTO {
 			return subject.Get(t).ToDTO(ctx.Get(t), err.Get(t))
 		}
 
 		s.Then("it responds back with RFC7807 format encoded in JSON", func(t *testcase.T) {
-			var dto rfc78072.DTO[ExampleExtension]
+			var dto rfc78072.DTO
 			dto = act(t)
 			t.Must.NotEmpty(dto)
 			t.Must.Equal("internal-server-error", dto.Type.ID)
@@ -242,12 +244,14 @@ func TestHandler(t *testing.T) {
 				msg  = let.String(s)
 				key  = let.StringNC(s, 3, random.CharsetDigit())
 			)
-			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc[ExampleExtension] {
-				return func(ctx context.Context, err error, dto *rfc78072.DTO[ExampleExtension]) {
+			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+				return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 					t.Must.NotEmpty(dto.Type)
 					t.Must.NotEmpty(dto.Title)
-					dto.Extensions.Error.Code = code.Get(t)
-					dto.Extensions.Error.Message = msg.Get(t)
+					dto.Extensions = ExampleExtensionError{
+						Code:    code.Get(t),
+						Message: msg.Get(t),
+					}
 					if v, ok := ctx.Value(key.Get(t)).(string); ok {
 						dto.Detail = v
 					}
@@ -256,8 +260,8 @@ func TestHandler(t *testing.T) {
 
 			s.Then("mapping will receive a DTO with some values already configured", func(t *testcase.T) {
 				dto := act(t)
-				t.Must.Equal(code.Get(t), dto.Extensions.Error.Code)
-				t.Must.Equal(msg.Get(t), dto.Extensions.Error.Message)
+				t.Must.Equal(code.Get(t), dto.Extensions.(ExampleExtensionError).Code)
+				t.Must.Equal(msg.Get(t), dto.Extensions.(ExampleExtensionError).Message)
 			})
 
 			s.And("error has context attached to it", func(s *testcase.Spec) {
@@ -295,8 +299,8 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.And("mapping is provided", func(s *testcase.Spec) {
-				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc[ExampleExtension] {
-					return func(ctx context.Context, err error, dto *rfc78072.DTO[ExampleExtension]) {
+				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 						t.Must.Equal(string(usrErr.Get(t).ID), dto.Type.ID)
 						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
@@ -340,8 +344,8 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.And("mapping is provided", func(s *testcase.Spec) {
-				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc[ExampleExtension] {
-					return func(ctx context.Context, err error, dto *rfc78072.DTO[ExampleExtension]) {
+				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
+					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 						t.Must.Contain(detail.Get(t), dto.Detail)
 					}
 				})

@@ -12,17 +12,17 @@ import (
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 )
 
-type Handler[Extensions any] struct {
+type Handler struct {
 	// Mapping supplies the mapping logic that map the error value to a DTO[Extensions].
-	Mapping HandlerMappingFunc[Extensions]
+	Mapping HandlerMappingFunc
 	// BaseURL is the URI path prefix the error types should have.
 	// If none given, default is "/".
 	BaseURL string
 }
 
-type HandlerMappingFunc[Extensions any] func(ctx context.Context, err error, dto *DTO[Extensions])
+type HandlerMappingFunc func(ctx context.Context, err error, dto *DTO)
 
-func (h Handler[Extensions]) HandleError(w http.ResponseWriter, r *http.Request, err error) {
+func (h Handler) HandleError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(r.Context().Err(), context.Canceled) && errors.Is(err, context.Canceled) {
 		return
 	}
@@ -40,7 +40,7 @@ func (h Handler[Extensions]) HandleError(w http.ResponseWriter, r *http.Request,
 	_, _ = w.Write(bytes)
 }
 
-func (h Handler[Extensions]) toTitleCase(id consttypes.String) string {
+func (h Handler) toTitleCase(id consttypes.String) string {
 	title := string(id)
 	title = strings.ReplaceAll(title, "-", " ")
 	title = strings.ReplaceAll(title, "_", " ")
@@ -52,7 +52,7 @@ func (h Handler[Extensions]) toTitleCase(id consttypes.String) string {
 	return title
 }
 
-func (h Handler[Extensions]) ToDTO(ctx context.Context, err error) DTO[Extensions] {
+func (h Handler) ToDTO(ctx context.Context, err error) DTO {
 	var (
 		ID         string
 		Title      string
@@ -75,7 +75,7 @@ func (h Handler[Extensions]) ToDTO(ctx context.Context, err error) DTO[Extension
 	if detail, ok := errorutil.LookupDetail(err); ok {
 		Detail = append(Detail, detail)
 	}
-	dto := DTO[Extensions]{
+	dto := DTO{
 		Type: Type{
 			ID:      ID,
 			BaseURL: h.BaseURL,

@@ -22,7 +22,7 @@ import (
 //	   "detail": "Authentication failed due to incorrect username or password.",
 //	   "instance": "/login/log/abc123"
 //	}
-type DTO[Extensions any] struct {
+type DTO struct {
 	// Type is a URI reference that identifies the problem type.
 	// Ideally, the URI should resolve to human-readable information describing the type, but that’s not necessary.
 	// The problem type provides more specific information than the HTTP status code itself.
@@ -61,14 +61,14 @@ type DTO[Extensions any] struct {
 	//
 	// Example: "/login/log/abc123"
 	Instance string
-	// Extensions is a user-defined optional generic structure type that holds additional details in your error reply.
+	// Extensions is a user-defined optional generic type that holds additional details in your error reply.
 	// For example, suppose your company already has its error reply convention.
 	// In that case, you can use the extension as a backward compatibility layer
 	// to roll out the Handler standard in your project
 	// without breaking any API contract between your server and its clients.
 	//
 	// Example: {...,"error":{"code":"foo-bar-baz","message":"foo bar baz"}}
-	Extensions Extensions
+	Extensions any
 }
 
 type Type struct {
@@ -106,7 +106,7 @@ type baseDTO struct {
 	Instance string `json:"instance,omitempty" xml:"instance,omitempty"`
 }
 
-func (v DTO[Extensions]) MarshalJSON() ([]byte, error) {
+func (v DTO) MarshalJSON() ([]byte, error) {
 	base, err := json.Marshal(baseDTO{
 		Type:     v.Type.String(),
 		Title:    v.Title,
@@ -131,7 +131,7 @@ func (v DTO[Extensions]) MarshalJSON() ([]byte, error) {
 	return out, nil
 }
 
-func (v *DTO[Extensions]) UnmarshalJSON(bytes []byte) error {
+func (v *DTO) UnmarshalJSON(bytes []byte) error {
 	var base baseDTO
 	if err := json.Unmarshal(bytes, &base); err != nil {
 		return err
@@ -145,21 +145,31 @@ func (v *DTO[Extensions]) UnmarshalJSON(bytes []byte) error {
 	v.Status = base.Status
 	v.Detail = base.Detail
 	v.Instance = base.Instance
-	if !v.hasExtensions() {
-		return nil
-	}
-	var ext Extensions
+	var ext map[string]any
 	if err := json.Unmarshal(bytes, &ext); err != nil {
 		return err
 	}
-	v.Extensions = ext
+	delete(ext, "type")
+	delete(ext, "title")
+	delete(ext, "status")
+	delete(ext, "detail")
+	delete(ext, "instance")
+	if len(ext) != 0 {
+		v.Extensions = ext
+	}
 	return nil
 }
 
-func (v DTO[Extensions]) hasExtensions() bool {
-	rt := reflect.TypeOf(*new(Extensions))
+func (v DTO) hasExtensions() bool {
+	rt := reflect.TypeOf(v.Extensions)
 	if rt == nil {
 		return false
 	}
-	return rt.Kind() == reflect.Struct && rt.NumField() != 0
+	if rt.Kind() == reflect.Struct && rt.NumField() != 0 {
+		return true
+	}
+	if rt.Kind() == reflect.Map {
+		return true
+	}
+	return false
 }

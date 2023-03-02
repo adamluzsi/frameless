@@ -49,11 +49,11 @@ var ErrRequestEntityTooLarge = errorutil.UserError{
 	Message: "The request body was larger than the size limit allowed for the server.",
 }
 
-var defaultErrorHandler = rfc7807.Handler[struct{}]{
-	Mapping: ErrorMapping[struct{}],
+var defaultErrorHandler = rfc7807.Handler{
+	Mapping: ErrorMapping,
 }
 
-func ErrorMapping[Extensions any](ctx context.Context, err error, dto *rfc7807.DTO[Extensions]) {
+func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO) {
 	switch {
 	case errors.Is(err, ErrInternalServerError):
 		dto.Status = http.StatusInternalServerError

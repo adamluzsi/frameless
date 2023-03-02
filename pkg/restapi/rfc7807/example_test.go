@@ -16,18 +16,20 @@ type CompanyErrorStructure struct {
 
 const ErrSomeRandom errorutil.Error = "random error value"
 
-func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO[CompanyErrorStructure]) {
+func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO) {
 	switch {
 	case errors.Is(err, ErrSomeRandom):
 		dto.Type.ID = "some-random-err"
 		dto.Detail = "this is a random error type"
 	}
-	dto.Extensions.Code = dto.Type.ID
-	dto.Extensions.Message = dto.Detail
+	dto.Extensions = CompanyErrorStructure{
+		Code:    dto.Type.ID,
+		Message: dto.Detail,
+	}
 }
 
 func ExampleHandler_HandleError() {
-	h := rfc7807.Handler[CompanyErrorStructure]{
+	h := rfc7807.Handler{
 		Mapping: ErrorMapping,
 		BaseURL: "/errors",
 	}
@@ -35,5 +37,4 @@ func ExampleHandler_HandleError() {
 	_ = func(w http.ResponseWriter, r *http.Request) {
 		h.HandleError(w, r, ErrSomeRandom)
 	}
-
 }
