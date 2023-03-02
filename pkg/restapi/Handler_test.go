@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/testcase/let"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -77,7 +79,7 @@ func TestHandler(t *testing.T) {
 			return w
 		}
 
-		s.Describe(`#list`, func(s *testcase.Spec) {
+		s.Describe(`#index`, func(s *testcase.Spec) {
 			method.LetValue(s, http.MethodGet)
 			path.LetValue(s, `/`)
 
@@ -122,6 +124,82 @@ func TestHandler(t *testing.T) {
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+				})
+			})
+
+			s.When("index override is provided", func(s *testcase.Spec) {
+				override := testcase.Let[func(r *http.Request) iterators.Iterator[Foo]](s, nil)
+
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					h := subject.Super(t)
+					h.Index.Override = override.Get(t)
+					return h
+				})
+
+				s.And("it returns values without an issue", func(s *testcase.Spec) {
+					foo := testcase.Let(s, func(t *testcase.T) Foo {
+						return Foo{
+							ID:  FooID(t.Random.Int()),
+							Foo: t.Random.Int(),
+						}
+					})
+
+					receivedRequest := testcase.LetValue[*http.Request](s, nil)
+					override.Let(s, func(t *testcase.T) func(r *http.Request) iterators.Iterator[Foo] {
+						return func(r *http.Request) iterators.Iterator[Foo] {
+							receivedRequest.Set(t, r)
+							return iterators.SingleValue(foo.Get(t))
+						}
+					})
+
+					s.Then("override is used and the actual HTTP request passed to it", func(t *testcase.T) {
+						path.Set(t, path.Get(t)+"?foo=bar")
+						act(t)
+						r := receivedRequest.Get(t)
+						t.Must.NotNil(r,
+							"it was expected that the override populate the receivedRequest variable")
+						t.Must.Equal("bar", r.URL.Query().Get("foo"),
+							"it is expected that the override has access to a valid request object")
+					})
+
+					s.Then("the result will be based on the value returned by the override", func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Equal(http.StatusOK, rr.Code)
+						t.Must.ContainExactly(
+							[]FooDTO{{ID: foo.Get(t).ID, Foo: foo.Get(t).Foo}},
+							respondsWithJSON[[]FooDTO](t, rr))
+					})
+				})
+
+				s.And("the returned result has an issue", func(s *testcase.Spec) {
+					expectedErr := let.Error(s)
+
+					override.Let(s, func(t *testcase.T) func(r *http.Request) iterators.Iterator[Foo] {
+						return func(r *http.Request) iterators.Iterator[Foo] {
+							return iterators.Error[Foo](expectedErr.Get(t))
+						}
+					})
+
+					subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+						h := subject.Super(t)
+						h.ErrorHandler = rfc7807.Handler{
+							Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
+								t.Must.ErrorIs(expectedErr.Get(t), err)
+								dto.Detail = err.Error()
+								dto.Status = http.StatusTeapot
+							},
+						}
+						return h
+					})
+
+					s.Then("then the error is propagated back", func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Equal(http.StatusTeapot, rr.Code)
+
+						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+						t.Must.NotEmpty(errDTO)
+						t.Must.Equal(expectedErr.Get(t).Error(), errDTO.Detail)
+					})
 				})
 			})
 		})

@@ -8,24 +8,38 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-func (h Handler[Entity, ID, DTO]) index(w http.ResponseWriter, r *http.Request) {
+type Index[Entity, ID, DTO any] struct {
+	Override func(r *http.Request) iterators.Iterator[Entity]
+}
+
+func (ctrl Index[Entity, ID, DTO]) handle(h Handler[Entity, ID, DTO], r *http.Request) (iterators.Iterator[Entity], bool) {
+	if ctrl.Override != nil {
+		return ctrl.Override(r), true
+	}
+
 	finder, ok := h.Resource.(crud.AllFinder[Entity])
+	if !ok {
+		return nil, false
+	}
+
+	return finder.FindAll(r.Context()), true
+}
+
+func (h Handler[Entity, ID, DTO]) index(w http.ResponseWriter, r *http.Request) {
+	iter, ok := h.Index.handle(h, r)
 	if !ok {
 		h.errMethodNotAllowed(w, r)
 		return
 	}
-
-	iter := finder.FindAll(r.Context())
-	if err := iter.Err(); err != nil {
-		h.errInternalServerError(w, r, err)
-		return
-	}
-	defer iter.Close()
-
 	h.writeIterJSON(w, r, iter)
 }
 
 func (h Handler[Entity, ID, DTO]) writeIterJSON(w http.ResponseWriter, r *http.Request, iter iterators.Iterator[Entity]) {
+	if err := iter.Err(); err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+	defer func() { _ = iter.Close() }()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 

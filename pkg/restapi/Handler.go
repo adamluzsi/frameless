@@ -10,14 +10,27 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
+// Handler is a HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
+// Depending on what CRUD operation is supported by the Handler.Resource, the Handler support the following actions:
+//   - Index:  GET    /
+//   - Show:   GET    /:id
+//   - Create: POST   /
+//   - Update: PUT    /:id
+//   - Delete: Delete /:id
 type Handler[Entity, ID, DTO any] struct {
-	Resource     crud.ByIDFinder[Entity, ID]
-	Mapping      Mapping[Entity, ID, DTO]
+	// Resource is the CRUD Resource object that we wish to expose as a restful API resource.
+	Resource crud.ByIDFinder[Entity, ID]
+	// Mapping takes care mapping back and forth Entity into a DTO, and ID into a string.
+	// ID needs mapping into a string because it is used as part of the restful paths.
+	Mapping Mapping[Entity, ID, DTO]
+	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTO.
 	ErrorHandler ErrorHandler
-	Router       *Router
-
+	// Router is the sub-router, where you can define routes related to entity related paths
+	//  > .../:id/sub-routes
+	Router *Router
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	BodyReadLimit int64
+	Index         Index[Entity, ID, DTO]
 }
 
 type ErrorHandler interface {
@@ -117,3 +130,12 @@ func (h Handler[Entity, ID, DTO]) route(w http.ResponseWriter, r *http.Request) 
 
 	h.Router.ServeHTTP(w, r)
 }
+
+//
+//type Overrides[Entity, ID, DTO any] struct {
+//	Create func(r *http.Request, ent Entity) (ID, error)
+//	Index  func(r *http.Request) iterators.Iterator[Entity]
+//	Show   func(r *http.Request, id ID) (Entity, error)
+//	Update func(r *http.Request, ent Entity, id ID) (Entity, error)
+//	Delete func(r *http.Request, id ID) error
+//}
