@@ -30,7 +30,10 @@ type Handler[Entity, ID, DTO any] struct {
 	Router *Router
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	BodyReadLimit int64
-	Index         Index[Entity, ID, DTO]
+	// Index is the Restful API's index actions controller.
+	// Index is an OPTIONAL field.
+	// If you need to customise the index action, you can do so by providing a configured restapi.Index.
+	Index Index[Entity, ID, DTO]
 }
 
 type ErrorHandler interface {
