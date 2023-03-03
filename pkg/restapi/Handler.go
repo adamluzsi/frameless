@@ -30,10 +30,32 @@ type Handler[Entity, ID, DTO any] struct {
 	Router *Router
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	BodyReadLimit int64
-	// Index is the Restful API's index actions controller.
-	// Index is an OPTIONAL field.
-	// If you need to customise the index action, you can do so by providing a configured restapi.Index.
-	Index Index[Entity, ID, DTO]
+	Operations[Entity, ID, DTO]
+}
+
+// Operations is an optional config where you can customise individual restful operations.
+type Operations[Entity, ID, DTO any] struct {
+	// Index is an OPTIONAL field if you wish to customise the index operation's behaviour
+	//   GET /
+	//
+	Index IndexOperation[Entity, ID, DTO]
+	// Create is an OPTIONAL field if you wish to customise the create operation's behaviour
+	//   POST /
+	//
+	Create CreateOperation[Entity, ID, DTO]
+	// Show is an OPTIONAL field if you wish to customise the show operation's behaviour
+	//   GET /:id
+	//
+	Show ShowOperation[Entity, ID, DTO]
+	// Update is an OPTIONAL field if you wish to customise the update operation's behaviour
+	//   PUT /:id
+	//   PATCH /:id
+	//
+	Update UpdateOperation[Entity, ID, DTO]
+	// Delete is an OPTIONAL field if you wish to customise the delete operation's behaviour
+	//   DELETE /:id
+	//
+	Delete DeleteOperation[Entity, ID, DTO]
 }
 
 type ErrorHandler interface {
@@ -132,6 +154,32 @@ func (h Handler[Entity, ID, DTO]) route(w http.ResponseWriter, r *http.Request) 
 	}
 
 	h.Router.ServeHTTP(w, r)
+}
+
+type BeforeHook http.HandlerFunc
+
+func (h Handler[Entity, ID, DTO]) useBeforeHook(hook BeforeHook, w http.ResponseWriter, r *http.Request) (_continue bool) {
+	if hook == nil {
+		return true
+	}
+	usageTracker := &usageTrackerResponseWriter{ResponseWriter: w}
+	hook(usageTracker, r)
+	return !usageTracker.used
+}
+
+type usageTrackerResponseWriter struct {
+	http.ResponseWriter
+	used bool
+}
+
+func (rw *usageTrackerResponseWriter) Write(bs []byte) (int, error) {
+	rw.used = true
+	return rw.ResponseWriter.Write(bs)
+}
+
+func (rw *usageTrackerResponseWriter) WriteHeader(statusCode int) {
+	rw.used = true
+	rw.ResponseWriter.WriteHeader(statusCode)
 }
 
 //

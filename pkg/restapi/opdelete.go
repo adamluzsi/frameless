@@ -7,7 +7,15 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
+type DeleteOperation[Entity, ID, DTO any] struct {
+	BeforeHook BeforeHook
+}
+
 func (h Handler[Entity, ID, DTO]) delete(w http.ResponseWriter, r *http.Request, id ID) {
+	if !h.useBeforeHook(h.Operations.Delete.BeforeHook, w, r) {
+		return
+	}
+
 	deleter, ok := h.Resource.(crud.ByIDDeleter[ID])
 	if !ok {
 		h.errMethodNotAllowed(w, r)

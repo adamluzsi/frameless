@@ -8,11 +8,12 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-type Index[Entity, ID, DTO any] struct {
-	Override func(r *http.Request) iterators.Iterator[Entity]
+type IndexOperation[Entity, ID, DTO any] struct {
+	BeforeHook BeforeHook
+	Override   func(r *http.Request) iterators.Iterator[Entity]
 }
 
-func (ctrl Index[Entity, ID, DTO]) handle(h Handler[Entity, ID, DTO], r *http.Request) (iterators.Iterator[Entity], bool) {
+func (ctrl IndexOperation[Entity, ID, DTO]) handle(h Handler[Entity, ID, DTO], r *http.Request) (iterators.Iterator[Entity], bool) {
 	if ctrl.Override != nil {
 		return ctrl.Override(r), true
 	}
@@ -26,7 +27,10 @@ func (ctrl Index[Entity, ID, DTO]) handle(h Handler[Entity, ID, DTO], r *http.Re
 }
 
 func (h Handler[Entity, ID, DTO]) index(w http.ResponseWriter, r *http.Request) {
-	iter, ok := h.Index.handle(h, r)
+	if !h.useBeforeHook(h.Operations.Index.BeforeHook, w, r) {
+		return
+	}
+	iter, ok := h.Operations.Index.handle(h, r)
 	if !ok {
 		h.errMethodNotAllowed(w, r)
 		return

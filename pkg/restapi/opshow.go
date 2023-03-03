@@ -7,7 +7,15 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
+type ShowOperation[Entity, ID, DTO any] struct {
+	BeforeHook BeforeHook
+}
+
 func (h Handler[Entity, ID, DTO]) show(w http.ResponseWriter, r *http.Request, id ID) {
+	if !h.useBeforeHook(h.Operations.Show.BeforeHook, w, r) {
+		return
+	}
+
 	finder, ok := h.Resource.(crud.ByIDFinder[Entity, ID])
 	if !ok {
 		h.errMethodNotAllowed(w, r)

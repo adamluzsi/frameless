@@ -9,7 +9,15 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
+type CreateOperation[Entity, ID, DTO any] struct {
+	BeforeHook BeforeHook
+}
+
 func (h Handler[Entity, ID, DTO]) create(w http.ResponseWriter, r *http.Request) {
+	if !h.useBeforeHook(h.Operations.Create.BeforeHook, w, r) {
+		return
+	}
+
 	creator, ok := h.Resource.(crud.Creator[Entity])
 	if !ok {
 		h.errMethodNotAllowed(w, r)

@@ -9,7 +9,15 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
+type UpdateOperation[Entity, ID, DTO any] struct {
+	BeforeHook BeforeHook
+}
+
 func (h Handler[Entity, ID, DTO]) update(w http.ResponseWriter, r *http.Request, id ID) {
+	if !h.useBeforeHook(h.Operations.Update.BeforeHook, w, r) {
+		return
+	}
+
 	updater, ok := h.Resource.(crud.Updater[Entity])
 	if !ok {
 		h.errMethodNotAllowed(w, r)

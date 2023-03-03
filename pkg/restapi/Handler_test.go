@@ -79,6 +79,79 @@ func TestHandler(t *testing.T) {
 			return w
 		}
 
+		type WithHookFunc func(*testcase.T, *restapi.Handler[Foo, int, FooDTO], restapi.BeforeHook)
+
+		itSupportsBeforeHook := func(s *testcase.Spec, withHook WithHookFunc) {
+			s.When("BeforeHook is provided", func(s *testcase.Spec) {
+				mw := testcase.Let[restapi.BeforeHook](s, nil)
+
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					h := subject.Super(t)
+					withHook(t, &h, mw.Get(t))
+					return h
+				})
+
+				s.And("BeforeHook propagates the request forward to the next handler", func(s *testcase.Spec) {
+					var (
+						wasCalled = testcase.LetValue[bool](s, false)
+						lastReq   = testcase.LetValue[*http.Request](s, nil)
+					)
+					mw.Let(s, func(t *testcase.T) restapi.BeforeHook {
+						return func(w http.ResponseWriter, r *http.Request) {
+							wasCalled.Set(t, true)
+							lastReq.Set(t, r)
+						}
+					})
+
+					s.Then("BeforeHook is called", func(t *testcase.T) {
+						act(t)
+
+						t.Must.True(wasCalled.Get(t), "it was expected that mw was called")
+					})
+
+					s.Then("last request is valid", func(t *testcase.T) {
+						path.Set(t, path.Get(t)+"?foo=bar")
+						act(t)
+
+						r := lastReq.Get(t)
+						t.Must.NotNil(r,
+							"it was expected that the BeforeHook received a non-nil request")
+						t.Must.Equal("bar", r.URL.Query().Get("foo"),
+							"it is expected that the received request contains request data")
+					})
+				})
+
+				s.And("the BeforeHook interrupts the request processing by using http.ResponseWriter.Write", func(s *testcase.Spec) {
+					body := let.String(s)
+					mw.Let(s, func(t *testcase.T) restapi.BeforeHook {
+						return func(w http.ResponseWriter, r *http.Request) {
+							_, _ = w.Write([]byte(body.Get(t)))
+						}
+					})
+
+					s.Then("BeforeHook will be the last is called", func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Equal(http.StatusOK, rr.Code)
+						t.Must.Equal(body.Get(t), rr.Body.String())
+					})
+				})
+
+				s.And("the BeforeHook interrupts the request processing by using http.ResponseWriter.WriteHeader", func(s *testcase.Spec) {
+					mw.Let(s, func(t *testcase.T) restapi.BeforeHook {
+						return func(w http.ResponseWriter, r *http.Request) {
+							w.WriteHeader(http.StatusTeapot)
+						}
+					})
+
+					s.Then("BeforeHook will be the last is called", func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Equal(http.StatusTeapot, rr.Code)
+						t.Must.Empty(rr.Body.String())
+					})
+				})
+			})
+		}
+
 		s.Describe(`#index`, func(s *testcase.Spec) {
 			method.LetValue(s, http.MethodGet)
 			path.LetValue(s, `/`)
@@ -132,7 +205,7 @@ func TestHandler(t *testing.T) {
 
 				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
 					h := subject.Super(t)
-					h.Index.Override = override.Get(t)
+					h.Operations.Index.Override = override.Get(t)
 					return h
 				})
 
@@ -201,6 +274,10 @@ func TestHandler(t *testing.T) {
 						t.Must.Equal(expectedErr.Get(t).Error(), errDTO.Detail)
 					})
 				})
+			})
+
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
+				r.Operations.Index.BeforeHook = bh
 			})
 		})
 
@@ -319,6 +396,10 @@ func TestHandler(t *testing.T) {
 					t.Must.Equal(restapi.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
 				})
 			})
+
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
+				r.Operations.Create.BeforeHook = bh
+			})
 		})
 
 		WhenIDInThePathIsMalformed := func(s *testcase.Spec) {
@@ -370,6 +451,15 @@ func TestHandler(t *testing.T) {
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
+			})
+
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
+				r.Operations.Show.BeforeHook = func(w http.ResponseWriter, r *http.Request) {
+					id, ok := mapping.Get(t).ContextLookupID(r.Context())
+					t.Must.True(ok, "expected to find the ID in the context")
+					t.Must.Equal(dto.Get(t).ID, id)
+					bh(w, r)
+				}
 			})
 		})
 
@@ -439,6 +529,15 @@ func TestHandler(t *testing.T) {
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
+
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
+				r.Operations.Update.BeforeHook = func(w http.ResponseWriter, r *http.Request) {
+					id, ok := mapping.Get(t).ContextLookupID(r.Context())
+					t.Must.True(ok, "expected to find the ID in the context")
+					t.Must.Equal(dto.Get(t).ID, id)
+					bh(w, r)
+				}
+			})
 		})
 
 		s.Describe(`#delete`, func(s *testcase.Spec) {
@@ -490,6 +589,15 @@ func TestHandler(t *testing.T) {
 					t.Must.NotEmpty(errDTO)
 					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
+			})
+
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
+				r.Operations.Delete.BeforeHook = func(w http.ResponseWriter, r *http.Request) {
+					id, ok := mapping.Get(t).ContextLookupID(r.Context())
+					t.Must.True(ok, "expected to find the ID in the context")
+					t.Must.Equal(dto.Get(t).ID, id)
+					bh(w, r)
+				}
 			})
 		})
 
