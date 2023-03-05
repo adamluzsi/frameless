@@ -20,11 +20,11 @@ import (
 	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/crud/cache"
+	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 
-	cachecontracts "github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
+	cachecontracts "github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
 	"github.com/adamluzsi/testcase"
 )
 

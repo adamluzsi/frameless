@@ -3,14 +3,15 @@ package cachecontracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/testcase/let"
 	"sync"
 	"testing"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
+	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud/cache"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper"
@@ -55,20 +56,20 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				ctx        = c.MakeContext(t)
 				repository = c.repository().Get(t)
 			)
-			DeleteAll[cache.Hit[ID], string](t, repository.CacheHit(ctx), ctx)
-			DeleteAll[Entity, ID](t, repository.CacheEntity(ctx), ctx)
+			DeleteAll[cache.Hit[ID], string](t, repository.CacheHit(), ctx)
+			DeleteAll[Entity, ID](t, repository.CacheEntity(), ctx)
 		})
 	})
 
 	s.Describe(`cache.HitRepository`, func(s *testcase.Spec) {
 		hitRepository := func(tb testing.TB) cache.HitRepository[ID] {
 			t := tb.(*testcase.T)
-			return c.repository().Get(t).CacheHit(c.MakeContext(tb))
+			return c.repository().Get(t).CacheHit()
 		}
 		makeCacheHit := func(tb testing.TB) cache.Hit[ID] {
 			t := tb.(*testcase.T)
 			ctx := c.MakeContext(tb)
-			repository := c.repository().Get(t).CacheEntity(c.MakeContext(tb))
+			repository := c.repository().Get(t).CacheEntity()
 			n := t.Random.IntBetween(3, 7)
 			ids := make([]ID, 0, n)
 			for i := 0; i < n; i++ {
@@ -114,7 +115,7 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
 					repository := c.MakeSubject(tb)
 					return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string]{
-						Resource:      repository.CacheHit(c.MakeContext(tb)),
+						Resource:      repository.CacheHit(),
 						CommitManager: repository,
 					}
 				},
@@ -212,9 +213,10 @@ func (c EntityRepository[Entity, ID]) cpm() testcase.Var[comproto.OnePhaseCommit
 
 func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 	var (
+		ctx      = let.With[context.Context](s, c.MakeContext)
 		entities = testcase.Var[[]*Entity]{ID: `entities`}
-		subject  = func(t *testcase.T) error {
-			return c.dataRepository().Get(t).Upsert(ctxGet(t), entities.Get(t)...)
+		act      = func(t *testcase.T) error {
+			return c.dataRepository().Get(t).Upsert(ctx.Get(t), entities.Get(t)...)
 		}
 	)
 
@@ -223,7 +225,7 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 			ent := c.MakeEntity(t)
 			ptr := &ent
 			t.Cleanup(func() {
-				ctx := ctxGet(t)
+				ctx := ctx.Get(t)
 				id, ok := extid.Lookup[ID](ptr)
 				if !ok {
 					return
@@ -246,18 +248,18 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 		})
 
 		s.Then(`they will be saved`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.Nil(act(t))
 
 			ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 			t.Must.True(ok, `entity 1 should have id`)
-			actual1, found, err := c.dataRepository().Get(t).FindByID(ctxGet(t), ent1ID)
+			actual1, found, err := c.dataRepository().Get(t).FindByID(ctx.Get(t), ent1ID)
 			t.Must.Nil(err)
 			t.Must.True(found, `entity 1 was expected to be stored`)
 			t.Must.Equal(*ent1.Get(t), actual1)
 
 			ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 			t.Must.True(ok, `entity 2 should have id`)
-			actual2, found, err := c.dataRepository().Get(t).FindByID(ctxGet(t), ent2ID)
+			actual2, found, err := c.dataRepository().Get(t).FindByID(ctx.Get(t), ent2ID)
 			t.Must.Nil(err)
 			t.Must.True(found, `entity 2 was expected to be stored`)
 			t.Must.Equal(*ent2.Get(t), actual2)
@@ -270,19 +272,19 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 			})
 
 			s.Then(`they will be saved`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 
 				ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 				t.Must.True(ok, `entity 1 should have id`)
 
-				actual1, found, err := c.dataRepository().Get(t).FindByID(ctxGet(t), ent1ID)
+				actual1, found, err := c.dataRepository().Get(t).FindByID(ctx.Get(t), ent1ID)
 				t.Must.Nil(err)
 				t.Must.True(found, `entity 1 was expected to be stored`)
 				t.Must.Equal(*ent1.Get(t), actual1)
 
 				ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 				t.Must.True(ok, `entity 2 should have id`)
-				_, found, err = c.dataRepository().Get(t).FindByID(ctxGet(t), ent2ID)
+				_, found, err = c.dataRepository().Get(t).FindByID(ctx.Get(t), ent2ID)
 				t.Must.Nil(err)
 				t.Must.True(found, `entity 2 was expected to be stored`)
 			})
@@ -291,8 +293,8 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 
 	s.When(`entities present in the repository`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ent1.Get(t))
-			Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ent2.Get(t))
+			Create[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ent1.Get(t))
+			Create[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ent2.Get(t))
 		})
 
 		entities.Let(s, func(t *testcase.T) []*Entity {
@@ -300,25 +302,25 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 		})
 
 		s.Then(`they will be saved`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.Nil(act(t))
 
 			ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 			t.Must.True(ok, `entity 1 should have id`)
 
-			_, found, err := c.dataRepository().Get(t).FindByID(ctxGet(t), ent1ID)
+			_, found, err := c.dataRepository().Get(t).FindByID(ctx.Get(t), ent1ID)
 			t.Must.Nil(err)
 			t.Must.True(found, `entity 1 was expected to be stored`)
 
 			ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 			t.Must.True(ok, `entity 2 should have id`)
-			_, found, err = c.dataRepository().Get(t).FindByID(ctxGet(t), ent2ID)
+			_, found, err = c.dataRepository().Get(t).FindByID(ctx.Get(t), ent2ID)
 			t.Must.Nil(err)
 			t.Must.True(found, `entity 2 was expected to be stored`)
 		})
 
 		s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
-			t.Must.Nil(subject(t))
-			count, err := iterators.Count(c.dataRepository().Get(t).FindAll(ctxGet(t)))
+			t.Must.Nil(act(t))
+			count, err := iterators.Count(c.dataRepository().Get(t).FindAll(ctx.Get(t)))
 			t.Must.Nil(err)
 			t.Must.Equal(len(entities.Get(t)), count)
 		})
@@ -334,26 +336,26 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 			})
 
 			s.Then(`the updated data will be saved`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
+				t.Must.Nil(act(t))
 
 				ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 				t.Must.True(ok, `entity 1 should have id`)
 
-				actual, found, err := c.dataRepository().Get(t).FindByID(ctxGet(t), ent1ID)
+				actual, found, err := c.dataRepository().Get(t).FindByID(ctx.Get(t), ent1ID)
 				t.Must.Nil(err)
 				t.Must.True(found, `entity 1 was expected to be stored`)
 				t.Must.Equal(ent1.Get(t), &actual)
 
 				ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 				t.Must.True(ok, `entity 2 should have id`)
-				_, found, err = c.dataRepository().Get(t).FindByID(ctxGet(t), ent2ID)
+				_, found, err = c.dataRepository().Get(t).FindByID(ctx.Get(t), ent2ID)
 				t.Must.Nil(err)
 				t.Must.True(found, `entity 2 was expected to be stored`)
 			})
 
 			s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
-				t.Must.Nil(subject(t))
-				count, err := iterators.Count(c.dataRepository().Get(t).FindAll(ctxGet(t)))
+				t.Must.Nil(act(t))
+				count, err := iterators.Count(c.dataRepository().Get(t).FindAll(ctx.Get(t)))
 				t.Must.Nil(err)
 				t.Must.Equal(len(entities.Get(t)), count)
 			})
@@ -363,9 +365,10 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 
 func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 	var (
+		ctx     = let.With[context.Context](s, c.MakeContext)
 		ids     = testcase.Var[[]ID]{ID: `entities ids`}
 		subject = func(t *testcase.T) iterators.Iterator[Entity] {
-			return c.dataRepository().Get(t).FindByIDs(ctxGet(t), ids.Get(t)...)
+			return c.dataRepository().Get(t).FindByIDs(ctx.Get(t), ids.Get(t)...)
 		}
 	)
 
@@ -373,7 +376,7 @@ func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spe
 		newEntityInit = func(t *testcase.T) *Entity {
 			ent := c.MakeEntity(t)
 			ptr := &ent
-			Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
+			Create[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ptr)
 			return ptr
 		}
 		ent1 = testcase.Let(s, newEntityInit)
@@ -411,7 +414,7 @@ func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spe
 		})
 
 		s.Before(func(t *testcase.T) {
-			Delete[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ent1.Get(t))
+			Delete[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ent1.Get(t))
 		})
 
 		s.Then(`it will eventually yield error`, func(t *testcase.T) {
@@ -431,7 +434,7 @@ func (c EntityRepository[Entity, ID]) ensureExtID(t *testcase.T, ptr *Entity) {
 	if _, ok := extid.Lookup[ID](ptr); ok {
 		return
 	}
-
-	Create[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
-	Delete[Entity, ID](t, c.dataRepository().Get(t), ctxGet(t), ptr)
+	ctx := c.MakeContext(t)
+	Create[Entity, ID](t, c.dataRepository().Get(t), ctx, ptr)
+	Delete[Entity, ID](t, c.dataRepository().Get(t), ctx, ptr)
 }

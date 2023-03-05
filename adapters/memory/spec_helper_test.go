@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud/cache/cachecontracts"
 
 	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"github.com/adamluzsi/frameless/ports/crud"
@@ -14,7 +14,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/meta"
 	"github.com/adamluzsi/testcase/assert"
 
-	"github.com/adamluzsi/frameless/ports/crud/cache"
+	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/testcase"
 )
 

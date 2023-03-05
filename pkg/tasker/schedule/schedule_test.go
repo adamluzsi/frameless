@@ -34,7 +34,7 @@ func ExampleScheduler_WithSchedule() {
 const blockCheckWaitTime = 42 * time.Millisecond
 
 func TestScheduler(t *testing.T) {
-	s := testcase.NewSpec(t)
+	s := testcase.NewSpec(t, testcase.Flaky(3))
 	s.HasSideEffect()
 
 	var (

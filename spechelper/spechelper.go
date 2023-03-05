@@ -14,6 +14,10 @@ import (
 	"github.com/adamluzsi/testcase"
 )
 
+func MakeContext(tb testing.TB) context.Context {
+	return context.Background()
+}
+
 // CRD is the minimum requirements to write easily behavioral specification for a resource.
 type CRD[Entity, ID any] interface {
 	crud.Creator[Entity]

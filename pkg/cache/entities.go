@@ -5,17 +5,13 @@ package cache
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 
-	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
-type Repository[Entity, ID any] interface {
-	CacheEntity(ctx context.Context) EntityRepository[Entity, ID]
-	CacheHit(ctx context.Context) HitRepository[ID]
-	comproto.OnePhaseCommitProtocol
-}
+const ErrNotImplementedBySource errorutil.Error = "the method is not implemented by the cache source"
 
 type EntityRepository[Entity, ID any] interface {
 	crud.Creator[Entity]
