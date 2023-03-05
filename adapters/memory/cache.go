@@ -14,14 +14,14 @@ type CacheRepository[Entity, ID any] struct {
 	Memory *Memory
 }
 
-func (cr *CacheRepository[Entity, ID]) CacheEntity() cache.EntityRepository[Entity, ID] {
+func (cr *CacheRepository[Entity, ID]) Entities() cache.EntityRepository[Entity, ID] {
 	return &Repository[Entity, ID]{
 		Memory:    cr.Memory,
 		Namespace: fmt.Sprintf("cache.EntityRepository[%T, %T]", *new(Entity), *new(ID)),
 	}
 }
 
-func (cr *CacheRepository[Entity, ID]) CacheHit() cache.HitRepository[ID] {
+func (cr *CacheRepository[Entity, ID]) Hits() cache.HitRepository[ID] {
 	return &Repository[cache.Hit[ID], string]{
 		Memory:    cr.Memory,
 		Namespace: fmt.Sprintf("cache.HitRepository[%T]", *new(ID)),

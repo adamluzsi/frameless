@@ -56,20 +56,20 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				ctx        = c.MakeContext(t)
 				repository = c.repository().Get(t)
 			)
-			DeleteAll[cache.Hit[ID], string](t, repository.CacheHit(), ctx)
-			DeleteAll[Entity, ID](t, repository.CacheEntity(), ctx)
+			DeleteAll[cache.Hit[ID], string](t, repository.Hits(), ctx)
+			DeleteAll[Entity, ID](t, repository.Entities(), ctx)
 		})
 	})
 
 	s.Describe(`cache.HitRepository`, func(s *testcase.Spec) {
 		hitRepository := func(tb testing.TB) cache.HitRepository[ID] {
 			t := tb.(*testcase.T)
-			return c.repository().Get(t).CacheHit()
+			return c.repository().Get(t).Hits()
 		}
 		makeCacheHit := func(tb testing.TB) cache.Hit[ID] {
 			t := tb.(*testcase.T)
 			ctx := c.MakeContext(tb)
-			repository := c.repository().Get(t).CacheEntity()
+			repository := c.repository().Get(t).Entities()
 			n := t.Random.IntBetween(3, 7)
 			ids := make([]ID, 0, n)
 			for i := 0; i < n; i++ {
@@ -115,7 +115,7 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
 					repository := c.MakeSubject(tb)
 					return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string]{
-						Resource:      repository.CacheHit(),
+						Resource:      repository.Hits(),
 						CommitManager: repository,
 					}
 				},

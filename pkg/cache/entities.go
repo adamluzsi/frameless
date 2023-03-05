@@ -5,10 +5,11 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
+	"strings"
 )
 
 const ErrNotImplementedBySource errorutil.Error = "the method is not implemented by the cache source"
@@ -33,4 +34,37 @@ type HitRepository[EntID any] interface {
 type Hit[ID any] struct {
 	QueryID   string `ext:"id"`
 	EntityIDs []ID
+}
+
+type Interface[Entity, ID any] interface {
+	CachedQueryOne(ctx context.Context, queryKey string, query QueryOneFunc[Entity]) (_ent Entity, _found bool, _err error)
+	CachedQueryMany(ctx context.Context, queryKey string, query QueryManyFunc[Entity]) iterators.Iterator[Entity]
+	InvalidateByID(ctx context.Context, id ID) (rErr error)
+	DropCachedValues(ctx context.Context) error
+}
+
+type (
+	QueryOneFunc[Entity any]  func() (ent Entity, found bool, err error)
+	QueryManyFunc[Entity any] func() iterators.Iterator[Entity]
+)
+
+// QueryKey is a helper function that allows you to create QueryManyFunc Keys
+type QueryKey struct {
+	// ID is the unique identifier to know what query is being cached.
+	// A method name or any unique name could work.
+	ID string
+	// ARGS contain parameters to the query that can affect the query result.
+	// Supplying the ARGS ensures that a query call with different arguments cached individually.
+	ARGS map[string]any
+}
+
+func (qk QueryKey) Encode() string {
+	var out string = qk.ID
+	if len(qk.ARGS) == 0 {
+		return out
+	}
+	// fmt print formatting is sorting the map content before printing,
+	// which makes using the QueryKey.Encode deterministic.
+	out += ":" + strings.TrimPrefix(fmt.Sprintf("%v", qk.ARGS), "map")
+	return out
 }

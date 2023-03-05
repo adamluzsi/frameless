@@ -35,8 +35,8 @@ type Source[Entity, ID any] interface {
 }
 
 type Repository[Entity, ID any] interface {
-	CacheEntity() EntityRepository[Entity, ID]
-	CacheHit() HitRepository[ID]
+	Entities() EntityRepository[Entity, ID]
+	Hits() HitRepository[ID]
 	comproto.OnePhaseCommitProtocol
 }
 
@@ -46,7 +46,7 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
-	_, found, err := m.Repository.CacheEntity().FindByID(ctx, id)
+	_, found, err := m.Repository.Entities().FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -55,38 +55,38 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 	}
 
 	// brute force cache hit invalidation, could be easily fine-tuned later
-	if err := m.Repository.CacheHit().DeleteAll(ctx); err != nil {
+	if err := m.Repository.Hits().DeleteAll(ctx); err != nil {
 		return err
 	}
 
-	return m.Repository.CacheEntity().DeleteByID(ctx, id)
+	return m.Repository.Entities().DeleteByID(ctx, id)
 }
 
 func (m *Cache[Entity, ID]) DropCachedValues(ctx context.Context) error {
 	return errorutil.Merge(
-		m.Repository.CacheHit().DeleteAll(ctx),
-		m.Repository.CacheEntity().DeleteAll(ctx))
+		m.Repository.Hits().DeleteAll(ctx),
+		m.Repository.Entities().DeleteAll(ctx))
 }
 
-func (m *Cache[Entity, ID]) CacheQueryMany(
+func (m *Cache[Entity, ID]) CachedQueryMany(
 	ctx context.Context,
-	name string,
-	query func() iterators.Iterator[Entity],
+	queryKey string,
+	query QueryManyFunc[Entity],
 ) iterators.Iterator[Entity] {
 	// TODO: double check
 	if ctx != nil && ctx.Err() != nil {
 		return iterators.Error[Entity](ctx.Err())
 	}
 
-	queryID := fmt.Sprintf(`0:%T/%s`, *new(Entity), name) // add version epoch
-	hit, found, err := m.Repository.CacheHit().FindByID(ctx, queryID)
+	qid := fmt.Sprintf(`0:%T/%s`, *new(Entity), queryKey) // add version epoch
+	hit, found, err := m.Repository.Hits().FindByID(ctx, qid)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
 		//       we invalidate the hit and try again
-		return m.Repository.CacheEntity().FindByIDs(ctx, hit.EntityIDs...)
+		return m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
 	}
 
 	// this naive MVP approach might take a big burden on the memory.
@@ -108,12 +108,12 @@ func (m *Cache[Entity, ID]) CacheQueryMany(
 		vs = append(vs, &ent)
 	}
 
-	if err := m.Repository.CacheEntity().Upsert(ctx, vs...); err != nil {
+	if err := m.Repository.Entities().Upsert(ctx, vs...); err != nil {
 		return iterators.Error[Entity](err)
 	}
 
-	if err := m.Repository.CacheHit().Create(ctx, &Hit[ID]{
-		QueryID:   queryID,
+	if err := m.Repository.Hits().Create(ctx, &Hit[ID]{
+		QueryID:   qid,
 		EntityIDs: ids,
 	}); err != nil {
 		return iterators.Error[Entity](err)
@@ -122,12 +122,12 @@ func (m *Cache[Entity, ID]) CacheQueryMany(
 	return iterators.Slice[Entity](res)
 }
 
-func (m *Cache[Entity, ID]) CacheQueryOne(
+func (m *Cache[Entity, ID]) CachedQueryOne(
 	ctx context.Context,
-	queryID string,
-	query func() (ent Entity, found bool, err error),
+	queryKey string,
+	query QueryOneFunc[Entity],
 ) (_ent Entity, _found bool, _err error) {
-	iter := m.CacheQueryMany(ctx, queryID, func() iterators.Iterator[Entity] {
+	iter := m.CachedQueryMany(ctx, queryKey, func() iterators.Iterator[Entity] {
 		ent, found, err := query()
 		if err != nil {
 			return iterators.Error[Entity](err)
@@ -158,12 +158,12 @@ func (m *Cache[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if err := source.Create(ctx, ptr); err != nil {
 		return err
 	}
-	return m.Repository.CacheEntity().Create(ctx, ptr)
+	return m.Repository.Entities().Create(ctx, ptr)
 }
 
 func (m *Cache[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
 	// fast path
-	ent, found, err := m.Repository.CacheEntity().FindByID(ctx, id)
+	ent, found, err := m.Repository.Entities().FindByID(ctx, id)
 	if err != nil {
 		return ent, false, err
 	}
@@ -171,7 +171,11 @@ func (m *Cache[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, 
 		return ent, true, nil
 	}
 	// slow path
-	return m.CacheQueryOne(ctx, fmt.Sprintf(`FindByID#%v`, id), func() (ent Entity, found bool, err error) {
+	key := QueryKey{
+		ID:   "FindByID",
+		ARGS: map[string]any{"ID": id},
+	}
+	return m.CachedQueryOne(ctx, key.Encode(), func() (ent Entity, found bool, err error) {
 		return m.Source.FindByID(ctx, id)
 	})
 }
@@ -181,7 +185,7 @@ func (m *Cache[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Enti
 	if !ok {
 		return iterators.Errorf[Entity]("%s: %w", "FindAll", ErrNotImplementedBySource)
 	}
-	return m.CacheQueryMany(ctx, `FindAll`, func() iterators.Iterator[Entity] {
+	return m.CachedQueryMany(ctx, QueryKey{ID: "FindAll"}.Encode(), func() iterators.Iterator[Entity] {
 		return source.FindAll(ctx)
 	})
 }
@@ -194,7 +198,7 @@ func (m *Cache[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	if err := source.Update(ctx, ptr); err != nil {
 		return err
 	}
-	return m.Repository.CacheEntity().Upsert(ctx, ptr)
+	return m.Repository.Entities().Upsert(ctx, ptr)
 }
 
 func (m *Cache[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {

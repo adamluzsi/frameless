@@ -2,12 +2,15 @@ package cache_test
 
 import (
 	"github.com/adamluzsi/frameless/adapters/memory"
+	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
 	sh "github.com/adamluzsi/frameless/spechelper"
 	"github.com/adamluzsi/frameless/spechelper/testent"
 	"github.com/adamluzsi/testcase"
 	"testing"
 )
+
+var _ cache.Interface[testent.Foo, testent.FooID] = &cache.Cache[testent.Foo, testent.FooID]{}
 
 func TestCache(t *testing.T) {
 	testcase.RunSuite(t, cachecontracts.Cache[testent.Foo, testent.FooID]{
