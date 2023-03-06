@@ -1,3 +1,4 @@
+// Package cache will supply caching solutions for your crud port compatible resources.
 package cache
 
 import (
