@@ -172,6 +172,14 @@ func TestVar(t *testing.T) {
 			t.Must.Equal(42, lazyVar.Get(t).Get(func() int { return 42 }))
 		})
 	})
+
+	s.Test("race", func(t *testcase.T) {
+		lv := lazyVar.Get(t)
+		get := func() { _ = lv.Get(func() int { return 42 }) }
+		set := func() { lv.Set(42) }
+		reset := func() { lv.Reset() }
+		testcase.Race(get, get, get, set, set, set, reset, reset, reset)
+	})
 }
 
 func TestMake_withPointerType(t *testing.T) {

@@ -1,6 +1,8 @@
 package lazyload
 
-import "sync"
+import (
+	"sync"
+)
 
 // Make allows a value to be lazy evaluated when it is actually used.
 func Make[T any](init func() T) func() T {
@@ -18,30 +20,54 @@ type Var[T any] struct {
 	Init func() T
 
 	value T
-	once  sync.Once
+	done  bool
+	lock  sync.RWMutex
 }
 
 func (i *Var[T]) Set(v T) {
-	i.once.Do(func() {})
+	i.lock.Lock()
+	defer i.lock.Unlock()
 	i.value = v
+	i.done = true
 }
 
 func (i *Var[T]) Get(inits ...func() T) T {
-	var init func() T
-	init = i.Init
-	if i.Init == nil && 0 < len(inits) {
-		for _, fn := range inits {
-			init = fn
-			break
-		}
+	if v, ok := i.lookup(); ok {
+		return v
 	}
-	if init != nil {
-		i.once.Do(func() { i.value = init() })
-	}
-	return i.value
+	i.init(inits)
+	v, _ := i.lookup()
+	return v
 }
 
 func (i *Var[T]) Reset() {
-	i.once = sync.Once{}
+	i.lock.Lock()
+	defer i.lock.Unlock()
 	i.value = *new(T)
+	i.done = false
+}
+
+func (i *Var[T]) init(inits []func() T) {
+	i.lock.Lock()
+	defer i.lock.Unlock()
+	if i.done {
+		return
+	}
+	var init func() T
+	init = i.Init
+	for _, fn := range inits {
+		init = fn
+		break
+	}
+	if init == nil {
+		return
+	}
+	i.value = init()
+	i.done = true
+}
+
+func (i *Var[T]) lookup() (T, bool) {
+	i.lock.RLock()
+	defer i.lock.RUnlock()
+	return i.value, i.done
 }
