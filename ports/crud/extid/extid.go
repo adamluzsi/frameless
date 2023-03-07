@@ -2,20 +2,31 @@ package extid
 
 import (
 	"errors"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"reflect"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
 )
 
-func Set(ptr interface{}, id interface{}) error {
-	r := reflect.ValueOf(ptr)
+const errSetWithNonPtr errorutil.Error = "ptr should given as *Entity, else pass by value prevents the ID field remotely"
 
-	if r.Kind() != reflect.Ptr {
-		return errors.New("ptr should be given, else Pass By Value prevent setting struct ID field remotely")
+func Set(ptr, id any) error {
+	var (
+		r  = reflect.ValueOf(ptr)
+		rt = r.Type()
+	)
+
+	if !(rt.Kind() == reflect.Ptr && rt.Elem().Kind() != reflect.Ptr) {
+		return errSetWithNonPtr
 	}
 
-	_, val, ok := LookupStructField(ptr)
+	tr, ok := register[rt.Elem()]
+	if ok {
+		tr.Set(ptr, id)
+		return nil
+	}
 
+	_, val, ok := lookupStructField(ptr)
 	if !ok {
 		return errors.New("could not locate ID field in the given structure")
 	}
@@ -25,8 +36,12 @@ func Set(ptr interface{}, id interface{}) error {
 	return nil
 }
 
-func Lookup[ID any](i interface{}) (id ID, ok bool) {
-	_, val, ok := LookupStructField(i)
+func Lookup[ID any](ent any) (id ID, ok bool) {
+	if tr, ok := register[reflects.BaseValueOf(ent).Type()]; ok {
+		return tr.Get(ent).(ID), true
+	}
+
+	_, val, ok := lookupStructField(ent)
 	if !ok {
 		return id, false
 	}
@@ -35,7 +50,7 @@ func Lookup[ID any](i interface{}) (id ID, ok bool) {
 	if !ok {
 		return id, false
 	}
-	if isEmpty(id) {
+	if isEmpty(id) { // TODO: this doesn't feels right as ok should mean the ID is found, not that id is empty
 		return id, false
 	}
 	return id, ok
@@ -52,7 +67,7 @@ func isEmpty(i interface{}) (ok bool) {
 	return rv.IsNil()
 }
 
-func LookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
+func lookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
 	val := reflects.BaseValueOf(ent)
 
 	sf, byTag, ok := lookupByTag(val)
@@ -86,4 +101,28 @@ func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
 
 	return reflect.StructField{}, reflect.Value{}, false
 
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+func RegisterType[Entity, ID any](
+	Get func(Entity) ID,
+	Set func(*Entity, ID),
+) any {
+	register[reflect.TypeOf(*new(Entity))] = typeRegistration{
+		Get: func(ent any) any {
+			return Get(ent.(Entity))
+		},
+		Set: func(ptr any, id any) {
+			Set(ptr.(*Entity), id.(ID))
+		},
+	}
+	return nil
+}
+
+var register = map[reflect.Type]typeRegistration{}
+
+type typeRegistration struct {
+	Get func(any) any
+	Set func(any, any)
 }
