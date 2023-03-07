@@ -1,23 +1,23 @@
 package iterators
 
 // SingleValue creates an iterator that can return one single element and will ensure that Next can only be called once.
-func SingleValue[T any](v T) *SingleValueIter[T] {
-	return &SingleValueIter[T]{V: v}
+func SingleValue[T any](v T) Iterator[T] {
+	return &singleValueIter[T]{V: v}
 }
 
-type SingleValueIter[T any] struct {
+type singleValueIter[T any] struct {
 	V T
 
 	index  int
 	closed bool
 }
 
-func (i *SingleValueIter[T]) Close() error {
+func (i *singleValueIter[T]) Close() error {
 	i.closed = true
 	return nil
 }
 
-func (i *SingleValueIter[T]) Next() bool {
+func (i *singleValueIter[T]) Next() bool {
 	if i.closed {
 		return false
 	}
@@ -29,10 +29,10 @@ func (i *SingleValueIter[T]) Next() bool {
 	return false
 }
 
-func (i *SingleValueIter[T]) Err() error {
+func (i *singleValueIter[T]) Err() error {
 	return nil
 }
 
-func (i *SingleValueIter[T]) Value() T {
+func (i *singleValueIter[T]) Value() T {
 	return i.V
 }

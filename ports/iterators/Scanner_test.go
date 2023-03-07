@@ -14,22 +14,22 @@ import (
 
 func ExampleScanner() {
 	reader := strings.NewReader("a\nb\nc\nd")
-	i := iterators.BufioScanner[string](bufio.NewScanner(reader), nil)
-	i.Split(bufio.ScanLines)
-
+	sc := bufio.NewScanner(reader)
+	sc.Split(bufio.ScanLines)
+	i := iterators.BufioScanner[string](sc, nil)
 	for i.Next() {
-		fmt.Println(i.Text())
+		fmt.Println(i.Value())
 	}
 	fmt.Println(i.Err())
 }
 
 func ExampleScanner_Split() {
 	reader := strings.NewReader("a\nb\nc\nd")
-	i := iterators.BufioScanner[string](bufio.NewScanner(reader), nil)
-	i.Split(bufio.ScanLines)
-
+	scanner := bufio.NewScanner(reader)
+	scanner.Split(bufio.ScanLines)
+	i := iterators.BufioScanner[string](scanner, nil)
 	for i.Next() {
-		fmt.Println(i.Text())
+		fmt.Println(i.Value())
 	}
 	fmt.Println(i.Err())
 }
@@ -100,8 +100,9 @@ func TestScanner_NilReaderGiven_ErrorReturned(t *testing.T) {
 
 func TestScanner_Split(t *testing.T) {
 	reader := strings.NewReader("a\nb\nc\nd")
-	i := iterators.BufioScanner[string](bufio.NewScanner(reader), nil)
-	i.Split(bufio.ScanLines)
+	scanner := bufio.NewScanner(reader)
+	scanner.Split(bufio.ScanLines)
+	i := iterators.BufioScanner[string](scanner, nil)
 
 	lines, err := iterators.Collect[string](i)
 	assert.Must(t).Nil(err)

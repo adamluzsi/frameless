@@ -18,14 +18,14 @@ func TestMap(t *testing.T) {
 	inputStream := testcase.Let(s, func(t *testcase.T) iterators.Iterator[string] {
 		return iterators.Slice([]string{`a`, `b`, `c`})
 	})
-	transform := testcase.Var[iterators.MapTransformFunc[string, string]]{ID: `iterators.MapTransformFunc`}
+	transform := testcase.Var[func(string) (string, error)]{ID: `iterators.MapTransformFunc`}
 
 	subject := func(t *testcase.T) iterators.Iterator[string] {
 		return iterators.Map(inputStream.Get(t), transform.Get(t))
 	}
 
 	s.When(`map used, the new iterator will have the changed values`, func(s *testcase.Spec) {
-		transform.Let(s, func(t *testcase.T) iterators.MapTransformFunc[string, string] {
+		transform.Let(s, func(t *testcase.T) func(string) (string, error) {
 			return func(in string) (string, error) {
 				return strings.ToUpper(in), nil
 			}
@@ -39,7 +39,7 @@ func TestMap(t *testing.T) {
 
 		s.And(`some error happen during mapping`, func(s *testcase.Spec) {
 			expectedErr := errors.New(`boom`)
-			transform.Let(s, func(t *testcase.T) iterators.MapTransformFunc[string, string] {
+			transform.Let(s, func(t *testcase.T) func(string) (string, error) {
 				return func(string) (string, error) {
 					return "", expectedErr
 				}
@@ -94,7 +94,7 @@ func TestMap(t *testing.T) {
 			return m
 		})
 
-		transform.Let(s, func(t *testcase.T) iterators.MapTransformFunc[string, string] {
+		transform.Let(s, func(t *testcase.T) func(string) (string, error) {
 			return func(s string) (string, error) { return s, nil }
 		})
 

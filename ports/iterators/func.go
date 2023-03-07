@@ -1,25 +1,25 @@
 package iterators
 
-func Func[T any](next func() (v T, more bool, err error)) *FuncIter[T] {
-	return &FuncIter[T]{NextFn: next}
+func Func[T any](next func() (v T, more bool, err error)) Iterator[T] {
+	return &funcIter[T]{NextFn: next}
 }
 
-type FuncIter[T any] struct {
+type funcIter[T any] struct {
 	NextFn func() (v T, more bool, err error)
 
 	value T
 	err   error
 }
 
-func (i *FuncIter[T]) Close() error {
+func (i *funcIter[T]) Close() error {
 	return nil
 }
 
-func (i *FuncIter[T]) Err() error {
+func (i *funcIter[T]) Err() error {
 	return i.err
 }
 
-func (i *FuncIter[T]) Next() bool {
+func (i *funcIter[T]) Next() bool {
 	value, more, err := i.NextFn()
 	if err != nil {
 		i.err = err
@@ -29,6 +29,6 @@ func (i *FuncIter[T]) Next() bool {
 	return more
 }
 
-func (i *FuncIter[T]) Value() T {
+func (i *funcIter[T]) Value() T {
 	return i.value
 }

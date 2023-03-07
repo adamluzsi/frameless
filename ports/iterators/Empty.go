@@ -1,26 +1,26 @@
 package iterators
 
 // Empty iterator is used to represent nil result with Null object pattern
-func Empty[T any]() *EmptyIter[T] {
-	return &EmptyIter[T]{}
+func Empty[T any]() Iterator[T] {
+	return &emptyIter[T]{}
 }
 
-// EmptyIter iterator can help achieve Null Object Pattern when no value is logically expected and iterator should be returned
-type EmptyIter[T any] struct{}
+// emptyIter iterator can help achieve Null Object Pattern when no value is logically expected and iterator should be returned
+type emptyIter[T any] struct{}
 
-func (i *EmptyIter[T]) Close() error {
+func (i *emptyIter[T]) Close() error {
 	return nil
 }
 
-func (i *EmptyIter[T]) Next() bool {
+func (i *emptyIter[T]) Next() bool {
 	return false
 }
 
-func (i *EmptyIter[T]) Err() error {
+func (i *emptyIter[T]) Err() error {
 	return nil
 }
 
-func (i *EmptyIter[T]) Value() T {
+func (i *emptyIter[T]) Value() T {
 	var v T
 	return v
 }

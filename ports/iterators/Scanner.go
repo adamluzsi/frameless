@@ -5,20 +5,20 @@ import (
 	"io"
 )
 
-func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer) *ScannerIter[T] {
-	return &ScannerIter[T]{
+func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer) Iterator[T] {
+	return &bufioScannerIter[T]{
 		Scanner: s,
 		Closer:  closer,
 	}
 }
 
-type ScannerIter[T string | []byte] struct {
+type bufioScannerIter[T string | []byte] struct {
 	*bufio.Scanner
 	Closer io.Closer
 	value  T
 }
 
-func (i *ScannerIter[T]) Next() bool {
+func (i *bufioScannerIter[T]) Next() bool {
 	if i.Scanner.Err() != nil {
 		return false
 	}
@@ -36,17 +36,17 @@ func (i *ScannerIter[T]) Next() bool {
 	return true
 }
 
-func (i *ScannerIter[T]) Err() error {
+func (i *bufioScannerIter[T]) Err() error {
 	return i.Scanner.Err()
 }
 
-func (i *ScannerIter[T]) Close() error {
+func (i *bufioScannerIter[T]) Close() error {
 	if i.Closer == nil {
 		return nil
 	}
 	return i.Closer.Close()
 }
 
-func (i *ScannerIter[T]) Value() T {
+func (i *bufioScannerIter[T]) Value() T {
 	return i.value
 }

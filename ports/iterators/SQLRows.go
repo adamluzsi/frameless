@@ -4,15 +4,15 @@ import (
 	"io"
 )
 
-func SQLRows[T any](rows sqlRows, mapper SQLRowMapper[T]) *SQLRowsIter[T] {
-	return &SQLRowsIter[T]{Rows: rows, Mapper: mapper}
+func SQLRows[T any](rows sqlRows, mapper SQLRowMapper[T]) Iterator[T] {
+	return &sqlRowsIter[T]{Rows: rows, Mapper: mapper}
 }
 
-// SQLRowsIter allow you to use the same iterator pattern with sql.Rows structure.
+// sqlRowsIter allow you to use the same iterator pattern with sql.Rows structure.
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
 // it also makes testing easier with the same Interface interface.
-type SQLRowsIter[T any] struct {
+type sqlRowsIter[T any] struct {
 	Rows   sqlRows
 	Mapper SQLRowMapper[T]
 
@@ -27,11 +27,11 @@ type sqlRows interface {
 	Scan(dest ...interface{}) error
 }
 
-func (i *SQLRowsIter[T]) Close() error {
+func (i *sqlRowsIter[T]) Close() error {
 	return i.Rows.Close()
 }
 
-func (i *SQLRowsIter[T]) Next() bool {
+func (i *sqlRowsIter[T]) Next() bool {
 	if i.err != nil {
 		return false
 	}
@@ -47,14 +47,14 @@ func (i *SQLRowsIter[T]) Next() bool {
 	return true
 }
 
-func (i *SQLRowsIter[T]) Err() error {
+func (i *sqlRowsIter[T]) Err() error {
 	if i.err != nil {
 		return i.err
 	}
 	return i.Rows.Err()
 }
 
-func (i *SQLRowsIter[T]) Value() T {
+func (i *sqlRowsIter[T]) Value() T {
 	return i.value
 }
 

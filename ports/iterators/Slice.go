@@ -1,18 +1,10 @@
 package iterators
 
-import (
-	"reflect"
-)
-
-func Slice[T any](slice []T) *SliceIter[T] {
-	if reflect.TypeOf(slice).Kind() != reflect.Slice {
-		panic("TypeError")
-	}
-
-	return &SliceIter[T]{Slice: slice}
+func Slice[T any](slice []T) Iterator[T] {
+	return &sliceIter[T]{Slice: slice}
 }
 
-type SliceIter[T any] struct {
+type sliceIter[T any] struct {
 	Slice []T
 
 	closed bool
@@ -20,16 +12,16 @@ type SliceIter[T any] struct {
 	value  T
 }
 
-func (i *SliceIter[T]) Close() error {
+func (i *sliceIter[T]) Close() error {
 	i.closed = true
 	return nil
 }
 
-func (i *SliceIter[T]) Err() error {
+func (i *sliceIter[T]) Err() error {
 	return nil
 }
 
-func (i *SliceIter[T]) Next() bool {
+func (i *sliceIter[T]) Next() bool {
 	if i.closed {
 		return false
 	}
@@ -43,6 +35,6 @@ func (i *SliceIter[T]) Next() bool {
 	return true
 }
 
-func (i *SliceIter[T]) Value() T {
+func (i *sliceIter[T]) Value() T {
 	return i.value
 }

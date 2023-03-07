@@ -11,10 +11,8 @@ func TestFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	type FN func() (value string, more bool, err error)
-	var (
-		fn = testcase.Let[FN](s, nil)
-	)
-	subject := testcase.Let(s, func(t *testcase.T) *iterators.FuncIter[string] {
+	var fn = testcase.Let[FN](s, nil)
+	act := testcase.Let(s, func(t *testcase.T) iterators.Iterator[string] {
 		return iterators.Func[string](fn.Get(t))
 	})
 
@@ -41,7 +39,7 @@ func TestFunc(t *testing.T) {
 		})
 
 		s.Test("then value collected without an issue", func(t *testcase.T) {
-			vs, err := iterators.Collect[string](subject.Get(t))
+			vs, err := iterators.Collect[string](act.Get(t))
 			t.Must.Nil(err)
 			t.Must.Equal(values.Get(t), vs)
 		})
@@ -59,7 +57,7 @@ func TestFunc(t *testing.T) {
 		})
 
 		s.Test("then no value is fetched and error is returned with .Err()", func(t *testcase.T) {
-			iter := subject.Get(t)
+			iter := act.Get(t)
 			t.Must.False(iter.Next())
 			t.Must.ErrorIs(expectedErr.Get(t), iter.Err())
 		})

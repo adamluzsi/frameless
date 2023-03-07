@@ -1,29 +1,29 @@
 package iterators
 
-func Filter[T any](i Iterator[T], filter func(T) bool) *FilterIter[T] {
-	return &FilterIter[T]{Iterator: i, Filter: filter}
+func Filter[T any](i Iterator[T], filter func(T) bool) Iterator[T] {
+	return &filterIter[T]{Iterator: i, Filter: filter}
 }
 
-type FilterIter[T any] struct {
+type filterIter[T any] struct {
 	Iterator Iterator[T]
 	Filter   func(T) bool
 
 	value T
 }
 
-func (i *FilterIter[T]) Close() error {
+func (i *filterIter[T]) Close() error {
 	return i.Iterator.Close()
 }
 
-func (i *FilterIter[T]) Err() error {
+func (i *filterIter[T]) Err() error {
 	return i.Iterator.Err()
 }
 
-func (i *FilterIter[T]) Value() T {
+func (i *filterIter[T]) Value() T {
 	return i.value
 }
 
-func (i *FilterIter[T]) Next() bool {
+func (i *filterIter[T]) Next() bool {
 	if !i.Iterator.Next() {
 		return false
 	}

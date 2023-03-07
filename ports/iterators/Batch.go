@@ -6,38 +6,76 @@ import (
 	"time"
 )
 
-func Batch[T any](i Iterator[T], c BatchConfig) *BatchIter[T] {
-	return &BatchIter[T]{Iterator: i, Config: c}
+func Batch[T any](iter Iterator[T], size int) Iterator[[]T] {
+	return &batchIter[T]{
+		Iterator: iter,
+		Size:     size,
+	}
 }
 
-type BatchConfig struct {
+type batchIter[T any] struct {
+	Iterator Iterator[T]
+	// Size is the max amount of element that a batch will contains.
+	// Default batch Size is 100.
+	Size int
+
+	values []T
+	done   bool
+	closed bool
+}
+
+func (i *batchIter[T]) Close() error {
+	i.closed = true
+	return i.Iterator.Close()
+}
+
+func (i *batchIter[T]) Err() error {
+	return i.Iterator.Err()
+}
+
+func (i *batchIter[T]) Next() bool {
+	if i.closed {
+		return false
+	}
+	if i.done {
+		return false
+	}
+	batchSize := getBatchSize(i.Size)
+	i.values = make([]T, 0, batchSize)
+	for {
+		hasNext := i.Iterator.Next()
+		if !hasNext {
+			i.done = true
+			break
+		}
+		i.values = append(i.values, i.Iterator.Value())
+		if batchSize <= len(i.values) {
+			break
+		}
+	}
+	return 0 < len(i.values)
+}
+
+func (i *batchIter[T]) Value() []T {
+	return i.values
+}
+
+func BatchWithTimeout[T any](i Iterator[T], size int, timeout time.Duration) Iterator[[]T] {
+	return &batchWithTimeoutIter[T]{
+		Iterator: i,
+		Size:     size,
+		Timeout:  timeout,
+	}
+}
+
+type batchWithTimeoutIter[T any] struct {
+	Iterator Iterator[T]
 	// Size is the max amount of element that a batch will contains.
 	// Default batch Size is 100.
 	Size int
 	// Timeout is batching wait timout duration that the batching process is willing to wait for, before starting to build a new batch.
 	// Default batch Timeout is 100 Millisecond.
 	Timeout time.Duration
-}
-
-func (c BatchConfig) getTimeout() time.Duration {
-	const defaultTimeout = 100 * time.Millisecond
-	if c.Timeout <= 0 {
-		return defaultTimeout
-	}
-	return c.Timeout
-}
-
-func (c BatchConfig) getSize() int {
-	const defaultSize = 100
-	if c.Size <= 0 {
-		return defaultSize
-	}
-	return c.Size
-}
-
-type BatchIter[T any] struct {
-	Iterator Iterator[T]
-	Config   BatchConfig
 
 	init   sync.Once
 	stream chan T
@@ -46,7 +84,7 @@ type BatchIter[T any] struct {
 	batch []T
 }
 
-func (i *BatchIter[T]) Init() {
+func (i *batchWithTimeoutIter[T]) Init() {
 	i.init.Do(func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		i.stream = make(chan T)
@@ -55,7 +93,7 @@ func (i *BatchIter[T]) Init() {
 	})
 }
 
-func (i *BatchIter[T]) fetch(ctx context.Context) {
+func (i *batchWithTimeoutIter[T]) fetch(ctx context.Context) {
 wrk:
 	for i.Iterator.Next() {
 		select {
@@ -66,7 +104,7 @@ wrk:
 	}
 }
 
-func (i *BatchIter[T]) Close() error {
+func (i *batchWithTimeoutIter[T]) Close() error {
 	i.init.Do(func() {}) // prevent async interactions
 	if i.cancel != nil {
 		i.cancel()
@@ -75,21 +113,22 @@ func (i *BatchIter[T]) Close() error {
 }
 
 // Err return the cause if for some reason by default the More return false all the time
-func (i *BatchIter[T]) Err() error {
+func (i *batchWithTimeoutIter[T]) Err() error {
 	return i.Iterator.Err()
 }
 
-func (i *BatchIter[T]) Next() bool {
+func (i *batchWithTimeoutIter[T]) Next() bool {
 	i.Init()
 
-	size := i.Config.getSize()
+	size := getBatchSize(i.Size)
 	i.batch = make([]T, 0, size)
-	timer := time.NewTimer(i.Config.getTimeout())
-	defer stopTimer(timer)
+
+	timer := time.NewTimer(i.lookupTimeout())
+	defer i.stopTimer(timer)
 
 batching:
 	for len(i.batch) < size {
-		resetTimer(timer, i.Config.getTimeout())
+		i.resetTimer(timer, i.lookupTimeout())
 
 		select {
 		case v, open := <-i.stream:
@@ -109,11 +148,19 @@ batching:
 
 // Value returns the current value in the iterator.
 // The action should be repeatable without side effect.
-func (i *BatchIter[T]) Value() []T {
+func (i *batchWithTimeoutIter[T]) Value() []T {
 	return i.batch
 }
 
-func stopTimer(timer *time.Timer) {
+func (i *batchWithTimeoutIter[T]) lookupTimeout() time.Duration {
+	const defaultTimeout = 100 * time.Millisecond
+	if i.Timeout <= 0 {
+		return defaultTimeout
+	}
+	return i.Timeout
+}
+
+func (i *batchWithTimeoutIter[T]) stopTimer(timer *time.Timer) {
 	timer.Stop()
 	select {
 	case <-timer.C:
@@ -121,7 +168,15 @@ func stopTimer(timer *time.Timer) {
 	}
 }
 
-func resetTimer(timer *time.Timer, timeout time.Duration) {
-	stopTimer(timer)
+func (i *batchWithTimeoutIter[T]) resetTimer(timer *time.Timer, timeout time.Duration) {
+	i.stopTimer(timer)
 	timer.Reset(timeout)
+}
+
+func getBatchSize(size int) int {
+	const defaultBatchSize = 64
+	if size <= 0 {
+		return defaultBatchSize
+	}
+	return size
 }
