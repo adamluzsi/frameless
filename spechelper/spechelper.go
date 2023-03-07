@@ -25,6 +25,11 @@ type CRD[Entity, ID any] interface {
 	crud.ByIDDeleter[ID]
 }
 
+type CRUD[Entity, ID any] interface {
+	CRD[Entity, ID]
+	crud.Updater[Entity]
+}
+
 const ErrIDRequired errorutil.Error = `
 Can't find the ID in the current structure
 if there is no ID in the subject structure

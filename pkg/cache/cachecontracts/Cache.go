@@ -37,13 +37,24 @@ type Cache[Entity, ID any] struct {
 }
 
 type CacheSubject[Entity, ID any] struct {
+	Cache      cacheCache[Entity, ID]
 	Source     cacheSource[Entity, ID]
 	Repository cache.Repository[Entity, ID]
 }
 
+type cacheCache[Entity, ID any] interface {
+	cache.Interface[Entity, ID]
+	crud.Creator[Entity]
+	crud.ByIDFinder[Entity, ID]
+	crud.AllFinder[Entity]
+	crud.Updater[Entity]
+	crud.ByIDDeleter[ID]
+	crud.AllDeleter
+}
+
 type cacheSource[Entity, ID any] interface {
+	sh.CRUD[Entity, ID]
 	cache.Source[Entity, ID]
-	sh.CRD[Entity, ID]
 }
 
 func (c Cache[Entity, ID]) Test(t *testing.T) {
@@ -62,18 +73,14 @@ func (c Cache[Entity, ID]) subject() testcase.Var[CacheSubject[Entity, ID]] {
 }
 
 func (c Cache[Entity, ID]) Spec(s *testcase.Spec) {
-	newCache := func(tb testing.TB) *cache.Cache[Entity, ID] {
-		subject := c.subject().Get(tb.(*testcase.T))
-		return cache.New[Entity, ID](subject.Source, subject.Repository)
-	}
 	testcase.RunSuite(s,
 		crudcontracts.Creator[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
-				ch := newCache(tb)
+				ch := c.subject().Get(tb.(*testcase.T))
 				if _, ok := ch.Source.(crud.Creator[Entity]); !ok {
 					tb.Skip(cache.ErrNotImplementedBySource.Error())
 				}
-				return ch
+				return ch.Cache
 			},
 			MakeEntity:  c.MakeEntity,
 			MakeContext: c.MakeContext,
@@ -82,53 +89,53 @@ func (c Cache[Entity, ID]) Spec(s *testcase.Spec) {
 		},
 		crudcontracts.ByIDFinder[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.ByIDFinderSubject[Entity, ID] {
-				ch := newCache(tb)
+				ch := c.subject().Get(tb.(*testcase.T))
 				var _ crud.ByIDFinder[Entity, ID] = ch.Source
-				return ch
+				return ch.Cache
 			},
 			MakeContext: c.MakeContext,
 			MakeEntity:  c.MakeEntity,
 		},
 		crudcontracts.AllFinder[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.AllFinderSubject[Entity, ID] {
-				ch := newCache(tb)
+				ch := c.subject().Get(tb.(*testcase.T))
 				if _, ok := ch.Source.(crud.Creator[Entity]); !ok {
 					tb.Skip(cache.ErrNotImplementedBySource.Error())
 				}
-				return ch
+				return ch.Cache
 			},
 			MakeContext: c.MakeContext,
 			MakeEntity:  c.MakeEntity,
 		},
 		crudcontracts.ByIDDeleter[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.ByIDDeleterSubject[Entity, ID] {
-				ch := newCache(tb)
+				ch := c.subject().Get(tb.(*testcase.T))
 				if _, ok := ch.Source.(crud.ByIDDeleter[Entity]); !ok {
 					tb.Skip(cache.ErrNotImplementedBySource.Error())
 				}
-				return ch
+				return ch.Cache
 			},
 			MakeContext: c.MakeContext,
 			MakeEntity:  c.MakeEntity,
 		},
 		crudcontracts.AllDeleter[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.AllDeleterSubject[Entity, ID] {
-				ch := newCache(tb)
+				ch := c.subject().Get(tb.(*testcase.T))
 				if _, ok := ch.Source.(crud.AllDeleter); !ok {
 					tb.Skip(cache.ErrNotImplementedBySource.Error())
 				}
-				return ch
+				return ch.Cache
 			},
 			MakeContext: c.MakeContext,
 			MakeEntity:  c.MakeEntity,
 		},
 		crudcontracts.Updater[Entity, ID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
-				ch := newCache(tb)
+				ch := c.subject().Get(tb.(*testcase.T))
 				if _, ok := ch.Source.(crud.Updater[Entity]); !ok {
 					tb.Skip(cache.ErrNotImplementedBySource.Error())
 				}
-				return ch
+				return ch.Cache
 			},
 			MakeEntity:  c.MakeEntity,
 			MakeContext: c.MakeContext,
@@ -193,7 +200,7 @@ func (c Cache[Entity, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(
 			t.Must.NoError(extid.Set(vUpdated, entID))
 			Update[Entity, ID](t, c.cache().Get(t), ctx, vUpdated)
 			waiter.Wait()
-			
+
 			var (
 				gotEnt Entity
 				found  bool

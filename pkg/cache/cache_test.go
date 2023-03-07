@@ -16,18 +16,15 @@ func TestCache(t *testing.T) {
 	testcase.RunSuite(t, cachecontracts.Cache[testent.Foo, testent.FooID]{
 		MakeSubject: func(tb testing.TB) cachecontracts.CacheSubject[testent.Foo, testent.FooID] {
 			m := memory.NewMemory()
+			source := memory.NewRepository[testent.Foo, testent.FooID](m)
+			cacheRepository := memory.NewCacheRepository[testent.Foo, testent.FooID](m)
 			return cachecontracts.CacheSubject[testent.Foo, testent.FooID]{
-				Source:     memory.NewRepository[testent.Foo, testent.FooID](m),
-				Repository: memory.NewCacheRepository[testent.Foo, testent.FooID](m),
+				Cache:      cache.New[testent.Foo, testent.FooID](source, cacheRepository),
+				Source:     source,
+				Repository: cacheRepository,
 			}
 		},
 		MakeContext: sh.MakeContext,
 		MakeEntity:  testent.MakeFoo,
 	})
 }
-
-// EventStream: &memory.PubSub[cache.Event[string]]{
-//					Memory:    m,
-//					Namespace: "cache.Event[TestEntityID]",
-//					Blocking:  testcase.ToT(&tb).Random.Bool(),
-//				},
