@@ -18,7 +18,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type PubSub[V any] interface {
+type PubSub[V any] struct {
 	pubsub.Publisher[V]
 	pubsub.Subscriber[V]
 }
@@ -230,14 +230,11 @@ func (c pubsubBase[V]) TryCleanup(s *testcase.Spec) {
 
 func (c pubsubBase[V]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[V]) {
 	s.Before(func(t *testcase.T) {
-		//var vals []V
 		for _, v := range vars {
+			// we publish one by one intentionally to make the tests more deterministic.
 			t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), v.Get(t)))
 			pubsubtest.Waiter.Wait()
-			//vals = append(vals, v.Get(t))
 		}
-		//t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), vals...))
-
 	})
 }
 

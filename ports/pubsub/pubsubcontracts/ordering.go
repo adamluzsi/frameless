@@ -3,9 +3,9 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
-	"testing"
-
+	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase/let"
+	"testing"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -80,20 +80,29 @@ func (c LIFO[V]) Spec(s *testcase.Spec) {
 	s.Context(fmt.Sprintf("%s ordering is LIFO", b.getPubSubTypeName()), func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
-		sub := b.GivenWeHaveSubscription(s)
+		val1 := let.With[V](s, c.MakeV)
+		val2 := let.With[V](s, c.MakeV)
+		val3 := let.With[V](s, c.MakeV)
 
-		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := let.With[V](s, c.MakeV)
-			val2 := let.With[V](s, c.MakeV)
-			val3 := let.With[V](s, c.MakeV)
-			b.WhenWePublish(s, val1, val2, val3)
+		s.Then("messages are received in their publishing order", func(t *testcase.T) {
+			ps := c.MakeSubject(t)
+			sub := ps.Subscribe(c.MakeContext(t))
+			defer sub.Close()
 
-			s.Then("messages are received in their publishing order", func(t *testcase.T) {
-				t.Eventually(func(it assert.It) {
-					expected := []V{val3.Get(t), val2.Get(t), val1.Get(t)}
-					it.Must.Equal(expected, sub.Get(t).Values())
+			t.Must.NoError(ps.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
+			expected := []V{val3.Get(t), val2.Get(t), val1.Get(t)}
+
+			var got []V
+			for i, m := 0, len(expected); i < m; i++ {
+				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
+					t.Must.True(sub.Next())
 				})
-			})
+				msg := sub.Value()
+				got = append(got, msg.Data())
+				t.Must.NoError(msg.ACK())
+			}
+
+			t.Must.Equal(expected, got)
 		})
 	})
 }
