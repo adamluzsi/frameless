@@ -11,19 +11,19 @@ import (
 	"time"
 )
 
-type Blocking[V any] struct {
-	MakeSubject func(testing.TB) PubSub[V]
+type Blocking[Data any] struct {
+	MakeSubject func(testing.TB) PubSub[Data]
 	MakeContext func(testing.TB) context.Context
-	MakeV       func(testing.TB) V
+	MakeData    func(testing.TB) Data
 
 	RollbackOnPublishCancellation bool
 }
 
-func (c Blocking[V]) Spec(s *testcase.Spec) {
-	b := pubsubBase[V]{
+func (c Blocking[Data]) Spec(s *testcase.Spec) {
+	b := pubsubBase[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeV,
+		MakeValue:   c.MakeData,
 	}
 	b.Spec(s)
 
@@ -35,7 +35,7 @@ func (c Blocking[V]) Spec(s *testcase.Spec) {
 		s.Test("publish will block until a subscriber acknowledged the published message", func(t *testcase.T) {
 			var publishedAtUNIXMilli int64
 			go func() {
-				t.Must.NoError(b.subject().Get(t).Publish(c.MakeContext(t), c.MakeV(t)))
+				t.Must.NoError(b.subject().Get(t).Publish(c.MakeContext(t), c.MakeData(t)))
 				publishedAt := time.Now().UTC()
 				atomic.AddInt64(&publishedAtUNIXMilli, publishedAt.UnixMilli())
 			}()
@@ -66,7 +66,7 @@ func (c Blocking[V]) Spec(s *testcase.Spec) {
 		})
 
 		if c.RollbackOnPublishCancellation {
-			s.Test("on context cancellation, message publishing is rewoked", func(t *testcase.T) {
+			s.Test("on context cancellation, message publishing is revoked", func(t *testcase.T) {
 				sub.Get(t).Stop() // stop processing from avoiding flaky test runs
 
 				ctx, cancel := context.WithCancel(c.MakeContext(t))
@@ -75,7 +75,7 @@ func (c Blocking[V]) Spec(s *testcase.Spec) {
 					cancel()
 				}()
 
-				t.Must.ErrorIs(ctx.Err(), b.subject().Get(t).Publish(ctx, c.MakeV(t)))
+				t.Must.ErrorIs(ctx.Err(), b.subject().Get(t).Publish(ctx, c.MakeData(t)))
 
 				sub.Get(t).Start(t, c.MakeContext(t))
 
@@ -87,6 +87,6 @@ func (c Blocking[V]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c Blocking[V]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+func (c Blocking[Data]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
-func (c Blocking[V]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
+func (c Blocking[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }

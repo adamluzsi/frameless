@@ -18,17 +18,17 @@ import (
 // Therefore, the first element to be entered in this approach, gets out First.
 // In computing, FIFO approach is used as an operating system algorithm, which gives every process CPU time in the order they arrive.
 // The data structure that implements FIFO is Queue.
-type FIFO[V any] struct {
-	MakeSubject func(testing.TB) PubSub[V]
+type FIFO[Data any] struct {
+	MakeSubject func(testing.TB) PubSub[Data]
 	MakeContext func(testing.TB) context.Context
-	MakeV       func(testing.TB) V
+	MakeData    func(testing.TB) Data
 }
 
-func (c FIFO[V]) Spec(s *testcase.Spec) {
-	b := pubsubBase[V]{
+func (c FIFO[Data]) Spec(s *testcase.Spec) {
+	b := pubsubBase[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeV,
+		MakeValue:   c.MakeData,
 	}
 	b.Spec(s)
 
@@ -38,23 +38,23 @@ func (c FIFO[V]) Spec(s *testcase.Spec) {
 		subscription := b.GivenWeHaveSubscription(s)
 
 		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := let.With[V](s, c.MakeV)
-			val2 := let.With[V](s, c.MakeV)
-			val3 := let.With[V](s, c.MakeV)
+			val1 := let.With[Data](s, c.MakeData)
+			val2 := let.With[Data](s, c.MakeData)
+			val3 := let.With[Data](s, c.MakeData)
 			b.WhenWePublish(s, val1, val2, val3)
 
 			s.Then("messages are received in their publishing order", func(t *testcase.T) {
 				t.Eventually(func(it assert.It) {
-					it.Must.Equal([]V{val1.Get(t), val2.Get(t), val3.Get(t)}, subscription.Get(t).Values())
+					it.Must.Equal([]Data{val1.Get(t), val2.Get(t), val3.Get(t)}, subscription.Get(t).Values())
 				})
 			})
 		})
 	})
 }
 
-func (c FIFO[V]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+func (c FIFO[Data]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
-func (c FIFO[V]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
+func (c FIFO[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
 
 // LIFO
 //
@@ -63,26 +63,26 @@ func (c FIFO[V]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
 // Therefore, the first element to be entered in this approach, gets out Last.
 // In computing, LIFO approach is used as a queuing theory that refers to the way items are stored in types of data structures.
 // The data structure that implements LIFO is Stack.
-type LIFO[V any] struct {
-	MakeSubject func(testing.TB) PubSub[V]
+type LIFO[Data any] struct {
+	MakeSubject func(testing.TB) PubSub[Data]
 	MakeContext func(testing.TB) context.Context
-	MakeV       func(testing.TB) V
+	MakeData    func(testing.TB) Data
 }
 
-func (c LIFO[V]) Spec(s *testcase.Spec) {
-	b := pubsubBase[V]{
+func (c LIFO[Data]) Spec(s *testcase.Spec) {
+	b := pubsubBase[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeV,
+		MakeValue:   c.MakeData,
 	}
 	b.Spec(s)
 
 	s.Context(fmt.Sprintf("%s ordering is LIFO", b.getPubSubTypeName()), func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
-		val1 := let.With[V](s, c.MakeV)
-		val2 := let.With[V](s, c.MakeV)
-		val3 := let.With[V](s, c.MakeV)
+		val1 := let.With[Data](s, c.MakeData)
+		val2 := let.With[Data](s, c.MakeData)
+		val3 := let.With[Data](s, c.MakeData)
 
 		s.Then("messages are received in their publishing order", func(t *testcase.T) {
 			ps := c.MakeSubject(t)
@@ -90,9 +90,9 @@ func (c LIFO[V]) Spec(s *testcase.Spec) {
 			defer sub.Close()
 
 			t.Must.NoError(ps.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
-			expected := []V{val3.Get(t), val2.Get(t), val1.Get(t)}
+			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}
 
-			var got []V
+			var got []Data
 			for i, m := 0, len(expected); i < m; i++ {
 				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
 					t.Must.True(sub.Next())
@@ -107,6 +107,6 @@ func (c LIFO[V]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c LIFO[V]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+func (c LIFO[Data]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 
-func (c LIFO[V]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
+func (c LIFO[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }

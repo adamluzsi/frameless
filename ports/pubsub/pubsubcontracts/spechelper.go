@@ -18,18 +18,18 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type PubSub[V any] struct {
-	pubsub.Publisher[V]
-	pubsub.Subscriber[V]
+type PubSub[Data any] struct {
+	pubsub.Publisher[Data]
+	pubsub.Subscriber[Data]
 }
 
-type pubsubBase[V any] struct {
-	MakeSubject func(testing.TB) PubSub[V]
+type pubsubBase[Data any] struct {
+	MakeSubject func(testing.TB) PubSub[Data]
 	MakeContext func(testing.TB) context.Context
-	MakeValue   func(testing.TB) V
+	MakeValue   func(testing.TB) Data
 }
 
-func (c pubsubBase[V]) Spec(s *testcase.Spec) {
+func (c pubsubBase[Data]) Spec(s *testcase.Spec) {
 	s.Context(fmt.Sprintf("%s behaves like ", c.getPubSubTypeName()), func(s *testcase.Spec) {
 		c.TryCleanup(s)
 		sub := c.GivenWeHaveSubscription(s)
@@ -43,8 +43,8 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 				ctx = testcase.Let(s, func(t *testcase.T) context.Context {
 					return c.MakeContext(t)
 				})
-				msgs = testcase.Let[[]V](s, func(t *testcase.T) []V {
-					var vs []V
+				data = testcase.Let[[]Data](s, func(t *testcase.T) []Data {
+					var vs []Data
 					for i, l := 0, t.Random.IntB(3, 7); i < l; i++ {
 						vs = append(vs, c.MakeValue(t))
 					}
@@ -52,7 +52,7 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 				})
 			)
 			act := func(t *testcase.T) error {
-				return c.subject().Get(t).Publish(ctx.Get(t), msgs.Get(t)...)
+				return c.subject().Get(t).Publish(ctx.Get(t), data.Get(t)...)
 			}
 
 			s.Then("it publish without an error", func(t *testcase.T) {
@@ -82,7 +82,7 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 		})
 
 		s.When("an event is published", func(s *testcase.Spec) {
-			val := let.With[V](s, c.MakeValue)
+			val := let.With[Data](s, c.MakeValue)
 
 			c.WhenWePublish(s, val)
 
@@ -97,18 +97,18 @@ func (c pubsubBase[V]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c pubsubBase[V]) getPubSubTypeName() string {
-	return reflects.SymbolicName(*new(V))
+func (c pubsubBase[Data]) getPubSubTypeName() string {
+	return reflects.SymbolicName(*new(Data))
 }
 
-func (c pubsubBase[V]) subject() testcase.Var[PubSub[V]] {
-	return testcase.Var[PubSub[V]]{
-		ID:   fmt.Sprintf("PubSub<%T>", *new(V)),
-		Init: func(t *testcase.T) PubSub[V] { return c.MakeSubject(t) },
+func (c pubsubBase[Data]) subject() testcase.Var[PubSub[Data]] {
+	return testcase.Var[PubSub[Data]]{
+		ID:   fmt.Sprintf("PubSub<%T>", *new(Data)),
+		Init: func(t *testcase.T) PubSub[Data] { return c.MakeSubject(t) },
 	}
 }
 
-func (c pubsubBase[V]) cancelFnsVar() testcase.Var[[]func()] {
+func (c pubsubBase[Data]) cancelFnsVar() testcase.Var[[]func()] {
 	return testcase.Var[[]func()]{
 		ID: "Subscription Context Cancel Fn",
 		Init: func(t *testcase.T) []func() {
@@ -117,16 +117,16 @@ func (c pubsubBase[V]) cancelFnsVar() testcase.Var[[]func()] {
 	}
 }
 
-func (c pubsubBase[V]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[V] {
-	return &subscriptionIteratorHelper[V]{Subscriber: c.subject().Get(t)}
+func (c pubsubBase[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
+	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t)}
 }
 
-type subscriptionIteratorHelper[V any] struct {
-	Subscriber       pubsub.Subscriber[V]
+type subscriptionIteratorHelper[Data any] struct {
+	Subscriber       pubsub.Subscriber[Data]
 	HandlingDuration time.Duration
 
 	mutex sync.Mutex
-	data  []V
+	data  []Data
 	wg    sync.WaitGroup
 
 	receivedAt time.Time
@@ -134,25 +134,25 @@ type subscriptionIteratorHelper[V any] struct {
 	cancel     func()
 }
 
-func (sih *subscriptionIteratorHelper[V]) AckedAt() time.Time {
+func (sih *subscriptionIteratorHelper[Data]) AckedAt() time.Time {
 	sih.mutex.Lock()
 	defer sih.mutex.Unlock()
 	return sih.ackedAt
 }
 
-func (sih *subscriptionIteratorHelper[V]) Values() []V {
+func (sih *subscriptionIteratorHelper[Data]) Values() []Data {
 	sih.mutex.Lock()
 	defer sih.mutex.Unlock()
-	return append([]V{}, sih.data...)
+	return append([]Data{}, sih.data...)
 }
 
-func (sih *subscriptionIteratorHelper[V]) ReceivedAt() time.Time {
+func (sih *subscriptionIteratorHelper[Data]) ReceivedAt() time.Time {
 	sih.mutex.Lock()
 	defer sih.mutex.Unlock()
 	return sih.receivedAt
 }
 
-func (sih *subscriptionIteratorHelper[V]) Start(tb testing.TB, ctx context.Context) {
+func (sih *subscriptionIteratorHelper[Data]) Start(tb testing.TB, ctx context.Context) {
 	assert.Nil(tb, sih.cancel)
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
@@ -165,13 +165,13 @@ func (sih *subscriptionIteratorHelper[V]) Start(tb testing.TB, ctx context.Conte
 	}
 }
 
-func (sih *subscriptionIteratorHelper[V]) Stop() {
+func (sih *subscriptionIteratorHelper[Data]) Stop() {
 	if sih.cancel != nil {
 		sih.cancel()
 	}
 }
 
-func (sih *subscriptionIteratorHelper[V]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup) {
+func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 	iter := sih.Subscriber.Subscribe(ctx)
 	for iter.Next() {
@@ -196,8 +196,8 @@ func (sih *subscriptionIteratorHelper[V]) wrk(tb testing.TB, ctx context.Context
 	})
 }
 
-func (c pubsubBase[V]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[V]] {
-	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[V] {
+func (c pubsubBase[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
+	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[Data] {
 		sih := c.newSubscriptionIteratorHelper(t)
 		sih.Start(t, c.MakeContext(t))
 		t.Cleanup(sih.Stop)
@@ -205,7 +205,7 @@ func (c pubsubBase[V]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*s
 	}).EagerLoading(s)
 }
 
-func (c pubsubBase[V]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
+func (c pubsubBase[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("given the subscription was at least once made")
 		sih := c.newSubscriptionIteratorHelper(t)
@@ -214,21 +214,21 @@ func (c pubsubBase[V]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	})
 }
 
-func (c pubsubBase[V]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[V]] {
+func (c pubsubBase[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
 	ctx, cancel := context.WithCancel(c.MakeContext(t))
 	testcase.Append(t, c.cancelFnsVar(), cancel)
 	t.Defer(cancel)
 	return c.subject().Get(t).Subscribe(ctx)
 }
 
-func (c pubsubBase[V]) TryCleanup(s *testcase.Spec) {
+func (c pubsubBase[Data]) TryCleanup(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		spechelper.TryCleanup(t, c.MakeContext(t), c.subject().Get(t))
 		pubsubtest.Waiter.Wait()
 	})
 }
 
-func (c pubsubBase[V]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[V]) {
+func (c pubsubBase[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) {
 	s.Before(func(t *testcase.T) {
 		for _, v := range vars {
 			// we publish one by one intentionally to make the tests more deterministic.
@@ -238,9 +238,9 @@ func (c pubsubBase[V]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[V]) 
 	})
 }
 
-func (c pubsubBase[V]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[V]]], blk func(it assert.It, actual []V)) {
+func (c pubsubBase[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], blk func(it assert.It, actual []Data)) {
 	var (
-		actual []V
+		actual []Data
 		lock   sync.Mutex
 	)
 	go func() {
@@ -260,14 +260,14 @@ func (c pubsubBase[V]) EventuallyIt(t *testcase.T, subscription testcase.Var[ite
 	})
 }
 
-func (c pubsubBase[V]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[V]]], expected []V) {
-	c.EventuallyIt(t, subscription, func(it assert.It, actual []V) {
+func (c pubsubBase[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.Equal(expected, actual)
 	})
 }
 
-func (c pubsubBase[V]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[V]]], expected []V) {
-	c.EventuallyIt(t, subscription, func(it assert.It, actual []V) {
+func (c pubsubBase[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.ContainExactly(expected, actual)
 	})
 }

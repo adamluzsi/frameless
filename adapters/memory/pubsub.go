@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-type Queue[Entity any] struct {
+type Queue[Data any] struct {
 	Memory *Memory
 	// Namespace allows you to isolate two different Queue while using the same *Memory
 	Namespace string
@@ -27,10 +27,10 @@ type Queue[Entity any] struct {
 
 const typeNameQueue = "Queue"
 
-func (ps *Queue[Entity]) Publish(ctx context.Context, vs ...Entity) (rErr error) {
+func (ps *Queue[Data]) Publish(ctx context.Context, vs ...Data) (rErr error) {
 	var (
 		keys      []string
-		namespace = getNamespaceFor[Entity](typeNameQueue, &ps.Namespace)
+		namespace = getNamespaceFor[Data](typeNameQueue, &ps.Namespace)
 	)
 	if err := func(ctx context.Context) error {
 		ctx, err := ps.Memory.BeginTx(ctx)
@@ -42,7 +42,7 @@ func (ps *Queue[Entity]) Publish(ctx context.Context, vs ...Entity) (rErr error)
 		for _, v := range vs {
 			key := ps.makeKey()
 			keys = append(keys, key)
-			ps.Memory.Set(ctx, namespace, key, &pubsubRecord[Entity]{
+			ps.Memory.Set(ctx, namespace, key, &pubsubRecord[Data]{
 				key:       key,
 				value:     v,
 				createdAt: time.Now().UTC(),
@@ -59,7 +59,7 @@ func (ps *Queue[Entity]) Publish(ctx context.Context, vs ...Entity) (rErr error)
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if _, ok := memoryLookup[*pubsubRecord[Entity]](ps.Memory, namespace, key); ok {
+			if _, ok := memoryLookup[*pubsubRecord[Data]](ps.Memory, namespace, key); ok {
 				goto check
 			}
 		}
@@ -68,17 +68,17 @@ func (ps *Queue[Entity]) Publish(ctx context.Context, vs ...Entity) (rErr error)
 	return nil
 }
 
-func (ps *Queue[Entity]) Subscribe(ctx context.Context) iterators.Iterator[pubsub.Message[Entity]] {
-	return &pubsubSubscription[Entity]{
+func (ps *Queue[Data]) Subscribe(ctx context.Context) iterators.Iterator[pubsub.Message[Data]] {
+	return &pubsubSubscription[Data]{
 		ctx:       ctx,
-		pubsub:    ps,
+		q:         ps,
 		createdAt: clock.TimeNow(),
 		closed:    false,
 	}
 }
 
-func (ps *Queue[Entity]) Purge(ctx context.Context) error {
-	var namespace = getNamespaceFor[Entity](typeNameQueue, &ps.Namespace)
+func (ps *Queue[Data]) Purge(ctx context.Context) error {
+	var namespace = getNamespaceFor[Data](typeNameQueue, &ps.Namespace)
 	for key, _ := range ps.Memory.all(namespace) {
 		ps.Memory.Del(ctx, namespace, key)
 	}
@@ -92,30 +92,30 @@ type pubsubRecord[Entity any] struct {
 	taken     int32
 }
 
-func (rec *pubsubRecord[Entity]) Take() bool {
+func (rec *pubsubRecord[Data]) Take() bool {
 	return atomic.CompareAndSwapInt32(&rec.taken, 0, 1)
 }
 
-func (rec *pubsubRecord[Entity]) Release() {
+func (rec *pubsubRecord[Data]) Release() {
 	atomic.CompareAndSwapInt32(&rec.taken, 1, 0)
 }
 
-func (ps *Queue[Entity]) makeKey() string {
+func (ps *Queue[Data]) makeKey() string {
 	return random.New(random.CryptoSeed{}).UUID()
 }
 
-type pubsubSubscription[Entity any] struct {
-	ctx    context.Context
-	pubsub *Queue[Entity]
+type pubsubSubscription[Data any] struct {
+	ctx context.Context
+	q   *Queue[Data]
 
 	closed    bool
 	createdAt time.Time
 
-	value *pubsubRecord[Entity]
+	value *pubsubRecord[Data]
 	err   error
 }
 
-func (pss *pubsubSubscription[Entity]) Close() error {
+func (pss *pubsubSubscription[Data]) Close() error {
 	pss.closed = true
 	if pss.value != nil {
 		pss.value.Release()
@@ -124,11 +124,11 @@ func (pss *pubsubSubscription[Entity]) Close() error {
 	return nil
 }
 
-func (pss *pubsubSubscription[Entity]) Err() error {
+func (pss *pubsubSubscription[Data]) Err() error {
 	return pss.err
 }
 
-func (pss *pubsubSubscription[Entity]) Next() bool {
+func (pss *pubsubSubscription[Data]) Next() bool {
 fetch:
 
 	if pss.err != nil {
@@ -148,10 +148,10 @@ fetch:
 		return false
 	}
 
-	namespace := getNamespaceFor[Entity](typeNameQueue, &pss.pubsub.Namespace)
-	iter := memoryAll[*pubsubRecord[Entity]](pss.pubsub.Memory, pss.ctx, namespace)
-	iter = iterators.Filter(iter, func(r *pubsubRecord[Entity]) bool {
-		if pss.pubsub.Volatile {
+	namespace := getNamespaceFor[Data](typeNameQueue, &pss.q.Namespace)
+	iter := memoryAll[*pubsubRecord[Data]](pss.q.Memory, pss.ctx, namespace)
+	iter = iterators.Filter(iter, func(r *pubsubRecord[Data]) bool {
+		if pss.q.Volatile {
 			return pss.createdAt.Before(r.createdAt)
 		}
 		return true
@@ -166,13 +166,13 @@ fetch:
 	}
 	sort.Slice(recs, func(i, j int) bool {
 		less := recs[i].createdAt.Before(recs[j].createdAt)
-		if pss.pubsub.LIFO {
+		if pss.q.LIFO {
 			return !less
 		}
 		return less
 	})
 
-	var record *pubsubRecord[Entity]
+	var record *pubsubRecord[Data]
 	for _, rec := range recs {
 		if rec.Take() {
 			record = rec
@@ -187,33 +187,33 @@ fetch:
 	return true
 }
 
-func (pss *pubsubSubscription[Entity]) Value() pubsub.Message[Entity] {
-	return &pubsubMessage[Entity]{
+func (pss *pubsubSubscription[Data]) Value() pubsub.Message[Data] {
+	return &pubsubMessage[Data]{
 		ctx:    pss.ctx,
-		pubsub: pss.pubsub,
+		pubsub: pss.q,
 		record: pss.value,
 	}
 }
 
-type pubsubMessage[Entity any] struct {
+type pubsubMessage[Data any] struct {
 	ctx    context.Context
-	pubsub *Queue[Entity]
-	record *pubsubRecord[Entity]
+	pubsub *Queue[Data]
+	record *pubsubRecord[Data]
 }
 
-func (pm *pubsubMessage[Entity]) ACK() error {
+func (pm *pubsubMessage[Data]) ACK() error {
 	if pm.record == nil {
 		return fmt.Errorf(".Value accessed before iter.Next, nothing to ACK")
 	}
-	_, ok := pm.pubsub.Memory.lookup(getNamespaceFor[Entity](typeNameQueue, &pm.pubsub.Namespace), pm.record.key)
+	_, ok := pm.pubsub.Memory.lookup(getNamespaceFor[Data](typeNameQueue, &pm.pubsub.Namespace), pm.record.key)
 	if !ok {
 		return nil
 	}
-	pm.pubsub.Memory.Del(pm.ctx, getNamespaceFor[Entity](typeNameQueue, &pm.pubsub.Namespace), pm.record.key)
+	pm.pubsub.Memory.Del(pm.ctx, getNamespaceFor[Data](typeNameQueue, &pm.pubsub.Namespace), pm.record.key)
 	return nil
 }
 
-func (pm *pubsubMessage[Entity]) NACK() error {
+func (pm *pubsubMessage[Data]) NACK() error {
 	if pm.record == nil {
 		return fmt.Errorf(".Value accessed before iter.Next, nothing to NACK")
 	}
@@ -221,9 +221,69 @@ func (pm *pubsubMessage[Entity]) NACK() error {
 	return nil
 }
 
-func (pm *pubsubMessage[Entity]) Data() Entity {
+func (pm *pubsubMessage[Data]) Data() Data {
 	if pm.record == nil {
-		return *new(Entity)
+		return *new(Data)
 	}
 	return pm.record.value
 }
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+// FanOutExchange delivers messages to all the queues that are bound to it.
+// This is useful when you want to broadcast a message to multiple consumers.
+type FanOutExchange[Data any] struct {
+	Memory *Memory
+	// Namespace allows you to isolate two different FanOutExchange while using the same *Memory
+	Namespace string
+	// Queues contain every Queue that suppose to be bound to the FanOut Exchange
+	Queues []*Queue[Data]
+}
+
+// Publish will publish all data to all FanOutExchange.Queues in an atomic fashion.
+// It will either all succeed or all fail together.
+func (e *FanOutExchange[Data]) Publish(ctx context.Context, data ...Data) (rErr error) {
+	ctx, err := e.Memory.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, e.Memory, ctx)
+
+	for _, q := range e.Queues {
+		if err := q.Publish(ctx, data...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Purge will flush all data from the exchange's queues
+func (e *FanOutExchange[Data]) Purge(ctx context.Context) (rErr error) {
+	ctx, err := e.Memory.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, e.Memory, ctx)
+	for _, q := range e.Queues {
+		if err := q.Purge(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// MakeQueue creates a unique queue which is bound to the FanOut exchange.
+func (e *FanOutExchange[Data]) MakeQueue() *Queue[Data] {
+	q := &Queue[Data]{
+		Memory:    e.Memory,
+		Namespace: fmt.Sprintf("%s/queues/%s", e.getNamespace(), rnd.UUID()),
+	}
+	e.Queues = append(e.Queues, q)
+	return q
+}
+
+func (e *FanOutExchange[Data]) getNamespace() string {
+	return getNamespaceFor[Data]("Exchange", &e.Namespace)
+}
+
+//--------------------------------------------------------------------------------------------------------------------//

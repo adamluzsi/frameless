@@ -1,6 +1,8 @@
 package testent
 
 import (
+	"context"
+	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/testcase"
 	"testing"
 )
@@ -37,3 +39,20 @@ func (n FooJSONMapping) ToDTO(ent Foo) (FooDTO, error) {
 func (n FooJSONMapping) ToEnt(dto FooDTO) (Foo, error) {
 	return Foo{ID: FooID(dto.ID), Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
 }
+
+func MakeContext(tb testing.TB) context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	tb.Cleanup(cancel)
+	return ctx
+}
+
+type FooQueueID string
+
+type FooQueue struct {
+	ID FooQueueID `ext:"id"`
+	pubsub.Publisher[Foo]
+	pubsub.Subscriber[Foo]
+}
+
+func (fq FooQueue) SetPublisher(p pubsub.Publisher[Foo])   { fq.Publisher = p }
+func (fq FooQueue) SetSubscriber(s pubsub.Subscriber[Foo]) { fq.Subscriber = s }
