@@ -2,7 +2,6 @@ package pubsubcontracts
 
 import (
 	"context"
-	"fmt"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -20,14 +19,14 @@ type Blocking[Data any] struct {
 }
 
 func (c Blocking[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 	b.Spec(s)
 
-	s.Context(fmt.Sprintf("%s is blocking pub/sub", b.getPubSubTypeName()), func(s *testcase.Spec) {
+	s.Context("blocking pub/sub", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
 		sub := b.GivenWeHaveSubscription(s)

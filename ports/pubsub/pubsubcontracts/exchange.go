@@ -32,7 +32,7 @@ func (c FanOut[Data]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
 func (c FanOut[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
 
 func (c FanOut[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: func(tb testing.TB) PubSub[Data] {
 			exchange := c.MakeSubject(tb)
 			return PubSub[Data]{
@@ -41,7 +41,7 @@ func (c FanOut[Data]) Spec(s *testcase.Spec) {
 			}
 		},
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 	b.Spec(s)
 

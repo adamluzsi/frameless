@@ -2,7 +2,6 @@ package pubsubcontracts
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
@@ -21,15 +20,15 @@ type Queue[Data any] struct {
 }
 
 func (c Queue[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 
 	b.Spec(s)
 
-	s.Context(fmt.Sprintf("%s is a queue", b.getPubSubTypeName()), func(s *testcase.Spec) {
+	s.Context("queue", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
 		s.When("a subscription is made", func(s *testcase.Spec) {

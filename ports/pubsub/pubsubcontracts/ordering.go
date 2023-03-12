@@ -2,7 +2,6 @@ package pubsubcontracts
 
 import (
 	"context"
-	"fmt"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase/let"
 	"testing"
@@ -25,14 +24,14 @@ type FIFO[Data any] struct {
 }
 
 func (c FIFO[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 	b.Spec(s)
 
-	s.Context(fmt.Sprintf("%s ordering is FIFO", b.getPubSubTypeName()), func(s *testcase.Spec) {
+	s.Context("ordering is FIFO", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
 		subscription := b.GivenWeHaveSubscription(s)
@@ -70,14 +69,14 @@ type LIFO[Data any] struct {
 }
 
 func (c LIFO[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 	b.Spec(s)
 
-	s.Context(fmt.Sprintf("%s ordering is LIFO", b.getPubSubTypeName()), func(s *testcase.Spec) {
+	s.Context("ordering is LIFO", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
 		val1 := let.With[Data](s, c.MakeData)

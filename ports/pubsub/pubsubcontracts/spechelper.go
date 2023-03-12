@@ -10,7 +10,6 @@ import (
 
 	"github.com/adamluzsi/testcase/let"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
@@ -23,15 +22,16 @@ type PubSub[Data any] struct {
 	pubsub.Subscriber[Data]
 }
 
-type pubsubBase[Data any] struct {
+type base[Data any] struct {
 	MakeSubject func(testing.TB) PubSub[Data]
 	MakeContext func(testing.TB) context.Context
-	MakeValue   func(testing.TB) Data
+	MakeData    func(testing.TB) Data
 }
 
-func (c pubsubBase[Data]) Spec(s *testcase.Spec) {
-	s.Context(fmt.Sprintf("%s behaves like ", c.getPubSubTypeName()), func(s *testcase.Spec) {
+func (c base[Data]) Spec(s *testcase.Spec) {
+	s.Context("implements the pubsub port", func(s *testcase.Spec) {
 		c.TryCleanup(s)
+
 		sub := c.GivenWeHaveSubscription(s)
 
 		s.Before(func(t *testcase.T) {
@@ -46,7 +46,7 @@ func (c pubsubBase[Data]) Spec(s *testcase.Spec) {
 				data = testcase.Let[[]Data](s, func(t *testcase.T) []Data {
 					var vs []Data
 					for i, l := 0, t.Random.IntB(3, 7); i < l; i++ {
-						vs = append(vs, c.MakeValue(t))
+						vs = append(vs, c.MakeData(t))
 					}
 					return vs
 				})
@@ -82,7 +82,7 @@ func (c pubsubBase[Data]) Spec(s *testcase.Spec) {
 		})
 
 		s.When("an event is published", func(s *testcase.Spec) {
-			val := let.With[Data](s, c.MakeValue)
+			val := let.With[Data](s, c.MakeData)
 
 			c.WhenWePublish(s, val)
 
@@ -97,18 +97,14 @@ func (c pubsubBase[Data]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c pubsubBase[Data]) getPubSubTypeName() string {
-	return reflects.SymbolicName(*new(Data))
-}
-
-func (c pubsubBase[Data]) subject() testcase.Var[PubSub[Data]] {
+func (c base[Data]) subject() testcase.Var[PubSub[Data]] {
 	return testcase.Var[PubSub[Data]]{
 		ID:   fmt.Sprintf("PubSub<%T>", *new(Data)),
 		Init: func(t *testcase.T) PubSub[Data] { return c.MakeSubject(t) },
 	}
 }
 
-func (c pubsubBase[Data]) cancelFnsVar() testcase.Var[[]func()] {
+func (c base[Data]) cancelFnsVar() testcase.Var[[]func()] {
 	return testcase.Var[[]func()]{
 		ID: "Subscription Context Cancel Fn",
 		Init: func(t *testcase.T) []func() {
@@ -117,7 +113,7 @@ func (c pubsubBase[Data]) cancelFnsVar() testcase.Var[[]func()] {
 	}
 }
 
-func (c pubsubBase[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
+func (c base[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
 	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t)}
 }
 
@@ -196,7 +192,7 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 	})
 }
 
-func (c pubsubBase[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
+func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
 	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[Data] {
 		sih := c.newSubscriptionIteratorHelper(t)
 		sih.Start(t, c.MakeContext(t))
@@ -205,7 +201,7 @@ func (c pubsubBase[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var
 	}).EagerLoading(s)
 }
 
-func (c pubsubBase[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
+func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("given the subscription was at least once made")
 		sih := c.newSubscriptionIteratorHelper(t)
@@ -214,21 +210,38 @@ func (c pubsubBase[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	})
 }
 
-func (c pubsubBase[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
+func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
 	ctx, cancel := context.WithCancel(c.MakeContext(t))
 	testcase.Append(t, c.cancelFnsVar(), cancel)
 	t.Defer(cancel)
 	return c.subject().Get(t).Subscribe(ctx)
 }
 
-func (c pubsubBase[Data]) TryCleanup(s *testcase.Spec) {
+func (c base[Data]) TryCleanup(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(t), c.subject().Get(t))
+		if !spechelper.TryCleanup(t, c.MakeContext(t), c.subject().Get(t).Subscriber) {
+			c.drainQueue(t, c.subject().Get(t))
+		}
 		pubsubtest.Waiter.Wait()
 	})
 }
 
-func (c pubsubBase[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) {
+var DrainTimeout = 256 * time.Millisecond
+
+func (c base[Data]) drainQueue(t *testcase.T, sub pubsub.Subscriber[Data]) {
+	res := pubsubtest.Subscribe[Data](t, c.subject().Get(t), c.MakeContext(t))
+	defer res.Finish()
+	refTime := time.Now().UTC()
+	pubsubtest.Waiter.While(func() bool {
+		receivedAt := res.ReceivedAt()
+		if receivedAt.IsZero() {
+			receivedAt = refTime
+		}
+		return time.Now().UTC().Sub(receivedAt) <= DrainTimeout
+	})
+}
+
+func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) {
 	s.Before(func(t *testcase.T) {
 		for _, v := range vars {
 			// we publish one by one intentionally to make the tests more deterministic.
@@ -238,7 +251,7 @@ func (c pubsubBase[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[D
 	})
 }
 
-func (c pubsubBase[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], blk func(it assert.It, actual []Data)) {
+func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], blk func(it assert.It, actual []Data)) {
 	var (
 		actual []Data
 		lock   sync.Mutex
@@ -260,13 +273,13 @@ func (c pubsubBase[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[
 	})
 }
 
-func (c pubsubBase[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.Equal(expected, actual)
 	})
 }
 
-func (c pubsubBase[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.ContainExactly(expected, actual)
 	})

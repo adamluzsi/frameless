@@ -23,11 +23,15 @@ type AsyncResults[Data any] struct {
 	tb     testing.TB
 	values []Data
 	mutex  sync.Mutex
+	finish func()
+
+	lastReceivedAt time.Time
 }
 
 func (r *AsyncResults[Data]) Add(d Data) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	r.lastReceivedAt = time.Now().UTC()
 	r.values = append(r.values, d)
 }
 
@@ -37,9 +41,24 @@ func (r *AsyncResults[Data]) Values() []Data {
 	return append([]Data{}, r.values...)
 }
 
+func (r *AsyncResults[Data]) ReceivedAt() time.Time {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.lastReceivedAt
+}
+
 func (r *AsyncResults[Data]) Eventually(tb testing.TB, blk func(testing.TB, []Data)) {
 	tb.Helper()
 	Eventually.Assert(tb, func(it assert.It) { blk(it, r.Values()) })
+}
+
+func (r *AsyncResults[Data]) Finish() {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if r.finish == nil {
+		return
+	}
+	r.finish()
 }
 
 func Subscribe[Data any](tb testing.TB, sub pubsub.Subscriber[Data], ctx context.Context) *AsyncResults[Data] {
@@ -47,6 +66,7 @@ func Subscribe[Data any](tb testing.TB, sub pubsub.Subscriber[Data], ctx context
 	c := consumer[Data]{Subscriber: sub, OnData: r.Add}
 	c.Start(tb, ctx)
 	tb.Cleanup(c.Stop)
+	r.finish = c.Stop
 	return &r
 }
 

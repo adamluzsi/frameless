@@ -2,7 +2,6 @@ package pubsubcontracts
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
@@ -20,14 +19,14 @@ type Buffered[Data any] struct {
 }
 
 func (c Buffered[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 	b.Spec(s)
 
-	s.Context(fmt.Sprintf("%s is buffered", b.getPubSubTypeName()), func(s *testcase.Spec) {
+	s.Context("buffered", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 		b.GivenWeHadSubscriptionBefore(s)
 
@@ -64,14 +63,14 @@ type Volatile[Data any] struct {
 }
 
 func (c Volatile[Data]) Spec(s *testcase.Spec) {
-	b := pubsubBase[Data]{
+	b := base[Data]{
 		MakeSubject: c.MakeSubject,
 		MakeContext: c.MakeContext,
-		MakeValue:   c.MakeData,
+		MakeData:    c.MakeData,
 	}
 	b.Spec(s)
 
-	s.Context(fmt.Sprintf("%s is volatile", b.getPubSubTypeName()), func(s *testcase.Spec) {
+	s.Context("volatile", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 		b.GivenWeHadSubscriptionBefore(s)
 
