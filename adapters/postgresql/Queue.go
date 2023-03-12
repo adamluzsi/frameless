@@ -160,6 +160,7 @@ DELETE FROM ` + queueTableName + `
     WHERE id = (
       SELECT id
       FROM ` + queueTableName + `
+      WHERE queue = $1
       ORDER BY created_at %s 
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -210,7 +211,7 @@ fetch:
 		ordering = "DESC"
 	}
 
-	row := connection.QueryRowContext(tx, fmt.Sprintf(queryQueuePopMessage, ordering))
+	row := connection.QueryRowContext(tx, fmt.Sprintf(queryQueuePopMessage, ordering), qs.Queue.Name)
 	if err := row.Err(); err != nil {
 		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
 		if errors.Is(err, qs.CTX.Err()) {
