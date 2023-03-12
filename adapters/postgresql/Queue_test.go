@@ -41,7 +41,7 @@ func TestQueue(t *testing.T) {
 				}
 			},
 			MakeContext: sh.MakeContext,
-			MakeData:    SQLInjectionSafeMakeTestEntity,
+			MakeData:    sh.MakeTestEntity,
 		},
 		pubsubcontracts.LIFO[sh.TestEntity]{
 			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
@@ -58,7 +58,7 @@ func TestQueue(t *testing.T) {
 				}
 			},
 			MakeContext: sh.MakeContext,
-			MakeData:    SQLInjectionSafeMakeTestEntity,
+			MakeData:    sh.MakeTestEntity,
 		},
 		pubsubcontracts.Buffered[sh.TestEntity]{
 			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
@@ -73,7 +73,7 @@ func TestQueue(t *testing.T) {
 				}
 			},
 			MakeContext: sh.MakeContext,
-			MakeData:    SQLInjectionSafeMakeTestEntity,
+			MakeData:    sh.MakeTestEntity,
 		},
 		pubsubcontracts.Blocking[sh.TestEntity]{
 			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
@@ -90,7 +90,7 @@ func TestQueue(t *testing.T) {
 				}
 			},
 			MakeContext: sh.MakeContext,
-			MakeData:    SQLInjectionSafeMakeTestEntity,
+			MakeData:    sh.MakeTestEntity,
 		},
 		pubsubcontracts.Queue[sh.TestEntity]{
 			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
@@ -105,7 +105,7 @@ func TestQueue(t *testing.T) {
 				}
 			},
 			MakeContext: sh.MakeContext,
-			MakeData:    SQLInjectionSafeMakeTestEntity,
+			MakeData:    sh.MakeTestEntity,
 		},
 	)
 }
@@ -186,18 +186,6 @@ func TestQueue_smoke(t *testing.T) {
 			assert.ContainExactly(tb, expected2, foos)
 		})
 	})
-}
-
-// it seems there is an sql injection like issue, when naughty strings used in the tests
-// TODO: look for sql injection issues in the pq driver
-func SQLInjectionSafeMakeTestEntity(tb testing.TB) sh.TestEntity {
-	t := testcase.ToT(&tb)
-	return sh.TestEntity{
-		ID:  "",
-		Foo: t.Random.UUID(),
-		Bar: t.Random.UUID(),
-		Baz: t.Random.UUID(),
-	}
 }
 
 func BenchmarkQueue(b *testing.B) {
