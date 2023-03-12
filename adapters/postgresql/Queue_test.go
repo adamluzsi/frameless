@@ -18,7 +18,6 @@ import (
 var _ migration.Migratable = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{}
 
 func TestQueue(t *testing.T) {
-	t.Skip("WIP")
 	const queueName = "test_entity"
 	cm := NewConnectionManager(t)
 
