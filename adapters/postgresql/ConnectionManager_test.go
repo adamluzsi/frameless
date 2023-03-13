@@ -85,10 +85,8 @@ func TestNewConnectionManagerWithDSN(t *testing.T) {
 }
 
 func TestNewConnectionManagerWithDB(t *testing.T) {
-	db, err := sql.Open("postgres", spechelper.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
-
-	p := postgresql.NewConnectionManagerWithDB(db)
 
 	ctx := context.Background()
 	connectionWithoutTx, err := p.Connection(ctx)

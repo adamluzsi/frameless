@@ -33,7 +33,9 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
-	cm := postgresql.NewConnectionManagerWithDB(db)
+	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	assert.NoError(t, err)
+	
 	subject := &postgresql.Repository[spechelper.TestEntity, string]{
 		ConnectionManager: cm,
 		Mapping:           mapping,
