@@ -132,7 +132,7 @@ func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 			})
 
 			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-				t.Must.Equal(context.Canceled, subject(t))
+				t.Must.ErrorIs(context.Canceled, subject(t))
 			})
 		})
 
@@ -234,7 +234,7 @@ func (c AllDeleter[Entity, ID]) specDeleteAll(s *testcase.Spec) {
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.Equal(context.Canceled, act(t))
+			t.Must.ErrorIs(context.Canceled, act(t))
 		})
 	})
 

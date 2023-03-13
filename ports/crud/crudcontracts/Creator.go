@@ -154,7 +154,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.Equal(context.Canceled, act(t))
+			t.Must.ErrorIs(context.Canceled, act(t))
 		})
 	})
 

@@ -103,7 +103,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 				})
 
 				s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-					assert.Must(t).Equal(context.Canceled, subject(t))
+					assert.Must(t).ErrorIs(context.Canceled, subject(t))
 				})
 			})
 		})
