@@ -105,7 +105,7 @@ func TestLogger_smoke(t *testing.T) {
 			buf := &bytes.Buffer{}
 			l := logger.Logger{Out: buf, Separator: "|"}
 			expected := rnd.Repeat(3, 7, func() {
-				l.Info(ctx, rnd.String())
+				l.Info(ctx, rnd.UUID())
 			})
 			gotEntries := strings.Split(buf.String(), "|")
 			if li := len(gotEntries) - 1; gotEntries[li] == "" {

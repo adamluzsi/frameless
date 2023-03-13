@@ -542,54 +542,34 @@ func ExampleWithRepeat() {
 	}
 }
 
-func TestWithShutdown_smoke(t *testing.T) {
+func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 	StubShutdownTimeout(t, time.Millisecond)
 	const (
 		expectedKey   = "key"
 		expectedValue = "value"
 	)
 	t.Run("with context", func(t *testing.T) {
-		var mux sync.Mutex
 		var (
-			startBegin, startFinished, stopBegin bool
-			stopFinished, stopGraceTimeout       bool
+			startBegin, startFinished, stopBegin int32
+			stopFinished, stopGraceTimeout       int32
 		)
 		task := tasker.WithShutdown(func(ctx context.Context) error {
 			assert.Equal(t, expectedValue, ctx.Value(expectedKey).(string))
-
-			mux.Lock()
-			startBegin = true
-			mux.Unlock()
-
+			atomic.AddInt32(&startBegin, 1)
 			<-ctx.Done()
-
-			mux.Lock()
-			startFinished = true
-			mux.Unlock()
-
+			atomic.AddInt32(&startFinished, 1)
 			return nil
 		}, func(ctx context.Context) error {
 			assert.Equal(t, expectedValue, ctx.Value(expectedKey).(string))
-
-			mux.Lock()
-			stopBegin = true
-			mux.Unlock()
-
+			atomic.AddInt32(&stopBegin, 1)
 			select {
 			case <-ctx.Done():
 				t.Error("shutdown context timed out too early, not giving graceful shutdown time")
 			case <-time.After(internal.GracefulShutdownTimeout / 2):
-				mux.Lock()
-				stopGraceTimeout = true
-				mux.Unlock()
+				atomic.AddInt32(&stopGraceTimeout, 1)
 			}
-
 			<-ctx.Done()
-
-			mux.Lock()
-			stopFinished = true
-			mux.Unlock()
-
+			atomic.AddInt32(&stopFinished, 1)
 			return nil
 		})
 
@@ -600,40 +580,31 @@ func TestWithShutdown_smoke(t *testing.T) {
 			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
 		})
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
-			mux.Lock()
-			defer mux.Unlock()
-			it.Must.True(startBegin)
-			it.Must.False(startFinished)
+			it.Must.True(atomic.LoadInt32(&startBegin) == 1)
+			it.Must.True(atomic.LoadInt32(&startFinished) == 0)
 		})
 
 		cancel() // cancel task
 
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
-			mux.Lock()
-			defer mux.Unlock()
-			it.Must.True(startFinished)
-			it.Must.True(stopBegin)
-			it.Must.True(stopFinished)
-			it.Must.True(stopGraceTimeout)
+			it.Must.True(atomic.LoadInt32(&startFinished) == 1)
+			it.Must.True(atomic.LoadInt32(&stopBegin) == 1)
+			it.Must.True(atomic.LoadInt32(&stopFinished) == 1)
+			it.Must.True(atomic.LoadInt32(&stopGraceTimeout) == 1)
 		})
 	})
 
 	t.Run("smoke on without context", func(t *testing.T) {
-		var mux sync.Mutex
 		var (
-			startOK bool
-			stopOK  bool
+			startOK int32
+			stopOK  int32
 		)
 		task := tasker.WithShutdown(func() error {
-			mux.Lock()
-			startOK = true
-			mux.Unlock()
+			atomic.AddInt32(&startOK, 1)
 			time.Sleep(blockCheckWaitTime)
 			return nil
 		}, func() error {
-			mux.Lock()
-			stopOK = true
-			mux.Unlock()
+			atomic.AddInt32(&stopOK, 1)
 			return nil
 		})
 
@@ -645,18 +616,14 @@ func TestWithShutdown_smoke(t *testing.T) {
 		})
 
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
-			mux.Lock()
-			defer mux.Unlock()
-			it.Must.True(startOK)
-			it.Must.False(stopOK)
+			it.Must.True(atomic.LoadInt32(&startOK) == 1)
+			it.Must.True(atomic.LoadInt32(&stopOK) == 0)
 		})
 
 		cancel() // cancel task
 
 		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
-			mux.Lock()
-			defer mux.Unlock()
-			it.Must.True(stopOK)
+			it.Must.True(atomic.LoadInt32(&stopOK) == 1)
 		})
 	})
 

@@ -136,18 +136,23 @@ func (c concurrence) Run(ctx context.Context) error {
 //
 //	tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
 func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task {
+	startTask := ToTask(start)
+	stopTask := ToTask(stop)
 	return func(signal context.Context) error {
 		serveErrChan := make(chan error, 1)
-		go func() { serveErrChan <- ToTask(start)(signal) }()
+		go func() { serveErrChan <- startTask(signal) }()
 		select {
-		case err := <-serveErrChan:
-			return err
 		case <-signal.Done():
+			break
+		case err := <-serveErrChan:
+			if err != nil {
+				return err
+			}
 			break
 		}
 		ctx, cancel := context.WithTimeout(contexts.Detach(signal), internal.GracefulShutdownTimeout)
 		defer cancel()
-		return ToTask(stop)(ctx)
+		return stopTask(ctx)
 	}
 }
 

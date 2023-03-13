@@ -83,7 +83,7 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 		})
 
 		s.Then(`atomic returns with context canceled error`, func(t *testcase.T) {
-			assert.Must(t).Equal(context.Canceled, subject(t))
+			assert.Must(t).ErrorIs(context.Canceled, subject(t))
 		})
 	})
 
