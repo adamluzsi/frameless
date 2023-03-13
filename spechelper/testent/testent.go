@@ -18,7 +18,7 @@ type (
 )
 
 func MakeFoo(tb testing.TB) Foo {
-	te := tb.(*testcase.T).Random.Make(Foo{}).(Foo)
+	te := testcase.ToT(&tb).Random.Make(Foo{}).(Foo)
 	te.ID = ""
 	return te
 }

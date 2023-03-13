@@ -10,9 +10,11 @@ import (
 	"github.com/adamluzsi/frameless/spechelper/testent"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/pp"
 	"github.com/adamluzsi/testcase/random"
 	"testing"
+	"time"
 )
 
 var _ migration.Migratable = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{}
@@ -108,6 +110,51 @@ func TestQueue(t *testing.T) {
 			MakeData:    sh.MakeTestEntity,
 		},
 	)
+}
+
+func TestQueue_emptyQueueBreakTime(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	const queueName = "TestQueue_emptyQueueBreakTime"
+	ctx := context.Background()
+	now := time.Now().UTC()
+	timecop.Travel(t, now)
+
+	cm := NewConnectionManager(t)
+	q := postgresql.Queue[testent.Foo, testent.FooDTO]{
+		Name:                queueName,
+		ConnectionManager:   cm,
+		Mapping:             testent.FooJSONMapping{},
+		EmptyQueueBreakTime: time.Hour,
+	}
+	assert.NoError(t, q.Migrate(sh.MakeContext(t)))
+	defer q.Publish(ctx)
+
+	res := pubsubtest.Subscribe[testent.Foo](t, q, ctx)
+	time.Sleep(500 * time.Millisecond) // wait for the subscription to get ready and start .Next
+
+	foo1 := testent.MakeFoo(t)
+	assert.NoError(t, q.Publish(ctx, foo1))
+
+	waitUntilNotZero := func(ctx context.Context) {
+	wait:
+		for {
+			select {
+			case <-ctx.Done():
+				break wait
+			default:
+				if !res.ReceivedAt().IsZero() {
+					break wait
+				}
+			}
+		}
+	}
+
+	assert.NotWithin(t, 256*time.Millisecond, waitUntilNotZero)
+	timecop.Travel(t, time.Hour+time.Second)
+	assert.Within(t, time.Second, waitUntilNotZero)
 }
 
 func TestQueue_smoke(t *testing.T) {

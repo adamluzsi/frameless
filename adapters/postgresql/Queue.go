@@ -19,6 +19,8 @@ type Queue[Entity, JSONDTO any] struct {
 	ConnectionManager ConnectionManager
 	Mapping           QueueMapping[Entity, JSONDTO]
 
+	// EmptyQueueBreakTime is the time.Duration that the queue waits when the queue is empty for the given queue Name.
+	EmptyQueueBreakTime time.Duration
 	// Blocking flag will cause the Queue.Publish method to wait until the message is processed.
 	Blocking bool
 	// LIFO flag will set the queue to use a Last in First out ordering
@@ -231,7 +233,7 @@ fetch:
 			return false
 		}
 		if errors.Is(err, sql.ErrNoRows) {
-			clock.Sleep(time.Microsecond)
+			clock.Sleep(qs.getEmptyQueueBreakTime())
 			goto fetch
 		}
 		qs.err = err
@@ -261,6 +263,14 @@ fetch:
 
 func (qs *queueSubscription[Entity, JSONDTO]) Value() pubsub.Message[Entity] {
 	return qs.value
+}
+
+func (qs *queueSubscription[Entity, JSONDTO]) getEmptyQueueBreakTime() time.Duration {
+	const defaultBreakTime = 42 * time.Millisecond
+	if qs.Queue.EmptyQueueBreakTime == 0 {
+		return defaultBreakTime
+	}
+	return qs.Queue.EmptyQueueBreakTime
 }
 
 type queueMessage[Entity, JSONDTO any] struct {
