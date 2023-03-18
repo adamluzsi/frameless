@@ -82,7 +82,7 @@ func TestBuffer(t *testing.T) {
 	s.When("when seek is made", func(s *testcase.Spec) {
 		offset := testcase.Let(s, func(t *testcase.T) int64 {
 			// max offset is around half of the total data size
-			return int64(t.Random.IntN(len(data.Get(t)) / 2))
+			return int64(t.Random.IntN(1 + len(data.Get(t))/2))
 		})
 		whench := testcase.Let[int](s, nil)
 
@@ -114,7 +114,7 @@ func TestBuffer(t *testing.T) {
 		s.And("from the current that is somewhere middle", func(s *testcase.Spec) {
 			whench.LetValue(s, io.SeekCurrent)
 			s.Before(func(t *testcase.T) {
-				seekOnBoth(t, int64(t.Random.IntN(len(data.Get(t)))), io.SeekStart)
+				seekOnBoth(t, int64(t.Random.IntN(1+len(data.Get(t)))), io.SeekStart)
 			})
 
 			thenAfterSeekContentsAreMatching(s)
@@ -213,7 +213,7 @@ func TestBuffer(t *testing.T) {
 
 		s.And("seeking is made", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				seekOnBoth(t, int64(t.Random.IntN(len(data.Get(t))/2)), io.SeekStart)
+				seekOnBoth(t, int64(t.Random.IntN(1+len(data.Get(t))/2)), io.SeekStart)
 			})
 
 			thenStringAndBytesResultsAreMatchesTheRefRWSCReadContent(s)
@@ -234,7 +234,7 @@ func TestBuffer_smoke(tt *testing.T) {
 
 	var (
 		data   = []byte(t.Random.String())
-		offset = int64(t.Random.IntN(len(data)))
+		offset = int64(t.Random.IntN(1 + len(data)))
 		whench = t.Random.ElementFromSlice([]int{io.SeekStart, io.SeekCurrent, io.SeekEnd}).(int)
 		buffer = buffers.New(data)
 		tmpDir = t.TempDir()
