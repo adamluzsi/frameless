@@ -85,7 +85,7 @@ func (s *EventLogRepository[Entity, ID]) Create(ctx context.Context, ptr *Entity
 			return err
 		}
 
-		if err := extid.Set(ptr, newID); err != nil {
+		if err := extid.Set[ID](ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -175,7 +175,7 @@ func (s *EventLogRepository[Entity, ID]) DeleteByID(ctx context.Context, id ID) 
 	}
 
 	ptr := new(Entity)
-	if err := extid.Set(ptr, id); err != nil {
+	if err := extid.Set[ID](ptr, id); err != nil {
 		return err
 	}
 	return s.append(ctx, EventLogRepositoryEvent[Entity, ID]{
@@ -277,7 +277,7 @@ func (s *EventLogRepository[Entity, ID]) LookupTx(ctx context.Context) (*EventLo
 	return s.EventLog.LookupTx(ctx)
 }
 
-func (s *EventLogRepository[Entity, ID]) newID(ctx context.Context) (interface{}, error) {
+func (s *EventLogRepository[Entity, ID]) newID(ctx context.Context) (ID, error) {
 	if s.MakeID != nil {
 		return s.MakeID(ctx)
 	}

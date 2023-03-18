@@ -10,7 +10,7 @@ import (
 
 const errSetWithNonPtr errorutil.Error = "ptr should given as *Entity, else pass by value prevents the ID field remotely"
 
-func Set(ptr, id any) error {
+func Set[ID any](ptr any, id ID) error {
 	var (
 		r  = reflect.ValueOf(ptr)
 		rt = r.Type()

@@ -37,7 +37,7 @@ func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error 
 			return err
 		}
 
-		if err := extid.Set(ptr, newID); err != nil {
+		if err := extid.Set[ID](ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -158,7 +158,7 @@ func (s *Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) er
 				return err
 			}
 			id = nid
-			if err := extid.Set(ptr, nid); err != nil {
+			if err := extid.Set[ID](ptr, nid); err != nil {
 				return err
 			}
 		}
