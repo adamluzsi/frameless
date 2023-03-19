@@ -81,7 +81,7 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 			}
 			return cache.Hit[ID]{
 				EntityIDs: ids,
-				CreatedAt: time.Now().UTC(),
+				Timestamp: time.Now().UTC(),
 			}
 		}
 		testcase.RunSuite(s,

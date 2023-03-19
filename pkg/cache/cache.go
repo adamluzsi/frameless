@@ -117,7 +117,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 	if err := m.Repository.Hits().Create(ctx, &Hit[ID]{
 		QueryID:   qid,
 		EntityIDs: ids,
-		CreatedAt: clock.TimeNow().UTC(),
+		Timestamp: clock.TimeNow().UTC(),
 	}); err != nil {
 		return iterators.Error[Entity](err)
 	}

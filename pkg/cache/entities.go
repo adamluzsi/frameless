@@ -35,7 +35,7 @@ type HitRepository[EntID any] interface {
 type Hit[ID any] struct {
 	QueryID   string `ext:"id"`
 	EntityIDs []ID
-	CreatedAt time.Time
+	Timestamp time.Time
 }
 
 type Interface[Entity, ID any] interface {
