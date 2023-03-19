@@ -1,7 +1,11 @@
 package postgresql_test
 
 import (
+	"context"
 	"database/sql"
+	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/frameless/spechelper/testent"
+	"github.com/adamluzsi/testcase/random"
 	"io"
 	"testing"
 
@@ -38,4 +42,27 @@ func OpenDB(tb testing.TB) *sql.DB {
 
 func deferClose(tb testing.TB, closer io.Closer) {
 	tb.Cleanup(func() { _ = closer.Close() })
+}
+
+type FooRepositoryMapping struct{}
+
+func (m FooRepositoryMapping) TableRef() string { return "foos" }
+
+func (m FooRepositoryMapping) IDRef() string { return "id" }
+
+func (m FooRepositoryMapping) NewID(ctx context.Context) (testent.FooID, error) {
+	return testent.FooID(random.New(random.CryptoSeed{}).UUID()), nil
+}
+
+func (m FooRepositoryMapping) ColumnRefs() []string {
+	return []string{"id", "foo", "bar", "baz"}
+}
+
+func (m FooRepositoryMapping) ToArgs(ptr *testent.Foo) ([]interface{}, error) {
+	return []any{ptr.ID, ptr.Foo, ptr.Bar, ptr.Baz}, nil
+}
+
+func (m FooRepositoryMapping) Map(s iterators.SQLRowScanner) (testent.Foo, error) {
+	var foo testent.Foo
+	return foo, s.Scan(&foo.ID, &foo.Foo, &foo.Bar, &foo.Baz)
 }

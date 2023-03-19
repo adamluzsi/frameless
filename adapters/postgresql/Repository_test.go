@@ -2,6 +2,9 @@ package postgresql_test
 
 import (
 	"database/sql"
+	"github.com/adamluzsi/frameless/pkg/cache"
+	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
+	"github.com/adamluzsi/frameless/ports/comproto"
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
@@ -35,7 +38,7 @@ func TestRepository(t *testing.T) {
 
 	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
-	
+
 	subject := &postgresql.Repository[spechelper.TestEntity, string]{
 		ConnectionManager: cm,
 		Mapping:           mapping,
@@ -97,4 +100,20 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 
 		SupportIDReuse: true,
 	})
+}
+
+func TestRepository_implementsCacheEntityRepository(t *testing.T) {
+	cm := NewConnectionManager(t)
+	spechelper.MigrateTestEntity(t, cm)
+	
+	cachecontracts.EntityRepository[spechelper.TestEntity, string]{
+		MakeSubject: func(tb testing.TB) (cache.EntityRepository[spechelper.TestEntity, string], comproto.OnePhaseCommitProtocol) {
+			return postgresql.Repository[spechelper.TestEntity, string]{
+				Mapping:           spechelper.TestEntityMapping(),
+				ConnectionManager: cm,
+			}, cm
+		},
+		MakeContext: spechelper.MakeContext,
+		MakeEntity:  spechelper.MakeTestEntity,
+	}.Test(t)
 }

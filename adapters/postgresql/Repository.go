@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/lazyload"
+	"github.com/lib/pq"
 	"strings"
 
 	"github.com/adamluzsi/frameless/pkg/errorutil"
@@ -215,6 +217,153 @@ func (r Repository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 	}
 
 	return iterators.SQLRows[Entity](rows, r.Mapping)
+}
+
+func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
+	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s = ANY($1)`,
+		r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
+
+	c, err := r.ConnectionManager.Connection(ctx)
+	if err != nil {
+		return iterators.Error[Entity](err)
+	}
+
+	rows, err := c.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		return iterators.Error[Entity](err)
+	}
+
+	return &iterFindByIDs[Entity, ID]{
+		Iterator:    iterators.SQLRows[Entity](rows, r.Mapping),
+		expectedIDs: ids,
+	}
+}
+
+type iterFindByIDs[Entity, ID any] struct {
+	iterators.Iterator[Entity]
+	expectedIDs []ID
+	foundIDs    lazyload.Var[map[string]struct{}]
+}
+
+func (iter *iterFindByIDs[Entity, ID]) getFoundIDs() map[string]struct{} {
+	return iter.foundIDs.Get(func() map[string]struct{} {
+		return make(map[string]struct{})
+	})
+}
+
+func (iter *iterFindByIDs[Entity, ID]) Err() error {
+	return errorutil.Merge(iter.Iterator.Err(), iter.missingIDsErr())
+}
+
+func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
+	if len(iter.getFoundIDs()) == len(iter.expectedIDs) {
+		return nil
+	}
+
+	var missing []ID
+	for _, id := range iter.expectedIDs {
+		if _, ok := iter.getFoundIDs()[iter.idFoundKey(id)]; !ok {
+			missing = append(missing, id)
+		}
+	}
+
+	return fmt.Errorf("not all ID is retrieved by FindByIDs: %#v", missing)
+}
+
+func (iter *iterFindByIDs[Entity, ID]) Next() bool {
+	gotNext := iter.Iterator.Next()
+	if gotNext {
+		id, _ := extid.Lookup[ID](iter.Iterator.Value())
+		iter.getFoundIDs()[iter.idFoundKey(id)] = struct{}{}
+	}
+	return gotNext
+}
+
+func (iter *iterFindByIDs[Entity, ID]) idFoundKey(id ID) string {
+	return fmt.Sprintf("%v", id)
+}
+
+func (r Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rErr error) {
+	var (
+		ptrWithID    []*Entity
+		ptrWithoutID []*Entity
+	)
+	for _, ptr := range ptrs {
+		id, _ := extid.Lookup[ID](ptr)
+		if any(id) == any(*new(ID)) {
+			ptrWithoutID = append(ptrWithoutID, ptr)
+		} else {
+			ptrWithID = append(ptrWithID, ptr)
+		}
+	}
+
+	ctx, err := r.ConnectionManager.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, r.ConnectionManager, ctx)
+	return errorutil.Merge(r.upsertWithID(ctx, ptrWithID...), r.upsertWithoutID(ctx, ptrWithoutID...))
+}
+
+func (r Repository[Entity, ID]) upsertWithoutID(ctx context.Context, ptrs ...*Entity) error {
+	for _, ptr := range ptrs {
+		if err := r.Create(ctx, ptr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entity) error {
+	if len(ptrs) == 0 {
+		return nil
+	}
+
+	var (
+		query  string
+		args   []any
+		nextPH = makePrepareStatementPlaceholderGenerator()
+	)
+	query += fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableRef(), r.queryColumnList())
+	query += "VALUES \n"
+
+	for i, ptr := range ptrs {
+		separator := ","
+		if i == len(ptrs)-1 { // on last element
+			separator = ""
+		}
+
+		query += fmt.Sprintf("\t(%s)%s\n", r.queryColumnPlaceHolders(nextPH), separator)
+
+		vs, err := r.Mapping.ToArgs(ptr)
+		if err != nil {
+			return err
+		}
+		args = append(args, vs...)
+	}
+
+	query += fmt.Sprintf("ON CONFLICT (%s) DO\n", r.Mapping.IDRef())
+	query += "\tUPDATE SET\n"
+
+	columns := r.Mapping.ColumnRefs()
+	for i, col := range columns {
+		sep := ","
+		if i == len(columns)-1 { // on last element
+			sep = ""
+		}
+
+		query += fmt.Sprintf("\t\t%s = EXCLUDED.%s%s\n", col, col, sep)
+	}
+
+	c, err := r.ConnectionManager.Connection(ctx)
+	if err != nil {
+		return err
+	}
+
+	if _, err := c.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r Repository[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
