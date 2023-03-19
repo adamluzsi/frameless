@@ -9,6 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/testcase/clock"
 )
 
 func New[Entity, ID any](
@@ -116,6 +117,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 	if err := m.Repository.Hits().Create(ctx, &Hit[ID]{
 		QueryID:   qid,
 		EntityIDs: ids,
+		CreatedAt: clock.TimeNow().UTC(),
 	}); err != nil {
 		return iterators.Error[Entity](err)
 	}

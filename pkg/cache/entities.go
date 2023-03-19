@@ -10,6 +10,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"strings"
+	"time"
 )
 
 const ErrNotImplementedBySource errorutil.Error = "the method is not implemented by the cache source"
@@ -34,6 +35,7 @@ type HitRepository[EntID any] interface {
 type Hit[ID any] struct {
 	QueryID   string `ext:"id"`
 	EntityIDs []ID
+	CreatedAt time.Time
 }
 
 type Interface[Entity, ID any] interface {

@@ -6,6 +6,7 @@ import (
 	"github.com/adamluzsi/testcase/let"
 	"sync"
 	"testing"
+	"time"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
@@ -78,7 +79,10 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				id, _ := extid.Lookup[ID](ent)
 				ids = append(ids, id)
 			}
-			return cache.Hit[ID]{EntityIDs: ids}
+			return cache.Hit[ID]{
+				EntityIDs: ids,
+				CreatedAt: time.Now().UTC(),
+			}
 		}
 		testcase.RunSuite(s,
 			crudcontracts.Creator[cache.Hit[ID], string]{
