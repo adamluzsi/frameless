@@ -1,13 +1,16 @@
 package postgresql_test
 
 import (
+	"context"
 	"database/sql"
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
 	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/testcase/random"
+	"github.com/lib/pq"
 	"testing"
-
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
@@ -105,7 +108,7 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 	cm := NewConnectionManager(t)
 	spechelper.MigrateTestEntity(t, cm)
-	
+
 	cachecontracts.EntityRepository[spechelper.TestEntity, string]{
 		MakeSubject: func(tb testing.TB) (cache.EntityRepository[spechelper.TestEntity, string], comproto.OnePhaseCommitProtocol) {
 			return postgresql.Repository[spechelper.TestEntity, string]{
@@ -115,5 +118,67 @@ func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 		},
 		MakeContext: spechelper.MakeContext,
 		MakeEntity:  spechelper.MakeTestEntity,
+	}.Test(t)
+}
+
+func TestRepository_canImplementCacheHitRepository(t *testing.T) {
+	cm := NewConnectionManager(t)
+
+	func(tb testing.TB, cm postgresql.ConnectionManager) {
+		const testCacheHitMigrateUP = `CREATE TABLE "test_cache_hits" ( id TEXT PRIMARY KEY, ids TEXT[], ts TIMESTAMP WITH TIME ZONE );`
+		const testCacheHitMigrateDOWN = `DROP TABLE IF EXISTS "test_cache_hits";`
+
+		ctx := context.Background()
+		c, err := cm.Connection(ctx)
+		assert.Nil(tb, err)
+		_, err = c.ExecContext(ctx, testCacheHitMigrateDOWN)
+		assert.Nil(tb, err)
+		_, err = c.ExecContext(ctx, testCacheHitMigrateUP)
+		assert.Nil(tb, err)
+
+		tb.Cleanup(func() {
+			client, err := cm.Connection(ctx)
+			assert.Nil(tb, err)
+			_, err = client.ExecContext(ctx, testCacheHitMigrateDOWN)
+			assert.Nil(tb, err)
+		})
+	}(t, cm)
+
+	cachecontracts.HitRepository[string]{
+		MakeSubject: func(tb testing.TB) cachecontracts.HitRepositorySubject[string] {
+			return cachecontracts.HitRepositorySubject[string]{
+				Resource: postgresql.Repository[cache.Hit[string], cache.HitID]{
+					Mapping: postgresql.Mapper[cache.Hit[string], cache.HitID]{
+						Table:   "test_cache_hits",
+						ID:      "id",
+						Columns: []string{"id", "ids", "ts"},
+						ToArgsFn: func(ptr *cache.Hit[string]) ([]interface{}, error) {
+							return []any{ptr.QueryID, pq.Array(ptr.EntityIDs), ptr.Timestamp}, nil
+						},
+						MapFn: func(scanner iterators.SQLRowScanner) (cache.Hit[string], error) {
+							var hit cache.Hit[string]
+							if err := scanner.Scan(&hit.QueryID, pq.Array(&hit.EntityIDs), &hit.Timestamp); err != nil {
+								return hit, err
+							}
+							hit.Timestamp = hit.Timestamp.UTC()
+							return hit, nil
+						},
+					},
+					ConnectionManager: cm,
+				},
+				CommitManager: cm,
+			}
+		},
+		MakeContext: spechelper.MakeContext,
+		MakeHit: func(tb testing.TB) cache.Hit[string] {
+			t := tb.(*testcase.T)
+			return cache.Hit[string]{
+				QueryID: t.Random.UUID(),
+				EntityIDs: random.Slice(t.Random.IntBetween(0, 7), func() string {
+					return t.Random.UUID()
+				}),
+				Timestamp: t.Random.Time().UTC(),
+			}
+		},
 	}.Test(t)
 }
