@@ -28,15 +28,18 @@ type EntityRepository[Entity, ID any] interface {
 type HitRepository[EntID any] interface {
 	crud.Creator[Hit[EntID]]
 	crud.Updater[Hit[EntID]]
-	crud.Finder[Hit[EntID], string]
-	crud.Deleter[string]
+	crud.Finder[Hit[EntID], HitID]
+	crud.Deleter[HitID]
 }
 
-type Hit[ID any] struct {
-	QueryID   string `ext:"id"`
-	EntityIDs []ID
-	Timestamp time.Time
-}
+type (
+	Hit[ID any] struct {
+		QueryID   HitID `ext:"id"`
+		EntityIDs []ID
+		Timestamp time.Time
+	}
+	HitID = string
+)
 
 type Interface[Entity, ID any] interface {
 	CachedQueryOne(ctx context.Context, queryKey string, query QueryOneFunc[Entity]) (_ent Entity, _found bool, _err error)
@@ -60,7 +63,7 @@ type QueryKey struct {
 	ARGS map[string]any
 }
 
-func (qk QueryKey) Encode() string {
+func (qk QueryKey) Encode() HitID {
 	var out string = qk.ID
 	if len(qk.ARGS) == 0 {
 		return out
@@ -68,5 +71,5 @@ func (qk QueryKey) Encode() string {
 	// fmt print formatting is sorting the map content before printing,
 	// which makes using the QueryKey.Encode deterministic.
 	out += ":" + strings.TrimPrefix(fmt.Sprintf("%v", qk.ARGS), "map")
-	return out
+	return HitID(out)
 }

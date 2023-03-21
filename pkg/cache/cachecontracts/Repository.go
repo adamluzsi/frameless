@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/testcase/let"
+	"github.com/adamluzsi/testcase/random"
 	"sync"
 	"testing"
 	"time"
@@ -57,77 +58,110 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				ctx        = c.MakeContext(t)
 				repository = c.repository().Get(t)
 			)
-			DeleteAll[cache.Hit[ID], string](t, repository.Hits(), ctx)
+			DeleteAll[cache.Hit[ID], cache.HitID](t, repository.Hits(), ctx)
 			DeleteAll[Entity, ID](t, repository.Entities(), ctx)
 		})
 	})
 
-	s.Describe(`cache.HitRepository`, func(s *testcase.Spec) {
-		hitRepository := func(tb testing.TB) cache.HitRepository[ID] {
-			t := tb.(*testcase.T)
-			return c.repository().Get(t).Hits()
-		}
-		makeCacheHit := func(tb testing.TB) cache.Hit[ID] {
-			t := tb.(*testcase.T)
-			ctx := c.MakeContext(tb)
-			repository := c.repository().Get(t).Entities()
-			n := t.Random.IntBetween(3, 7)
-			ids := make([]ID, 0, n)
-			for i := 0; i < n; i++ {
-				ent := c.MakeEntity(t)
-				Create[Entity, ID](t, repository, ctx, &ent)
-				id, _ := extid.Lookup[ID](ent)
-				ids = append(ids, id)
-			}
-			return cache.Hit[ID]{
-				EntityIDs: ids,
-				Timestamp: time.Now().UTC(),
-			}
-		}
-		testcase.RunSuite(s,
-			crudcontracts.Creator[cache.Hit[ID], string]{
-				MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[cache.Hit[ID], string] {
-					return hitRepository(tb)
-				},
-				MakeContext: c.MakeContext,
-				MakeEntity:  makeCacheHit,
+	testcase.RunSuite(s,
+		EntityRepository[Entity, ID]{
+			MakeSubject: func(tb testing.TB) (cache.EntityRepository[Entity, ID], comproto.OnePhaseCommitProtocol) {
+				subject := c.MakeSubject(tb)
+				return subject.Entities(), subject
+			},
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeEntity,
+		},
+		HitRepository[ID]{
+			MakeSubject: func(tb testing.TB) HitRepositorySubject[ID] {
+				subject := c.MakeSubject(tb)
+				return HitRepositorySubject[ID]{
+					Resource:      subject.Hits(),
+					CommitManager: subject,
+				}
+			},
+			MakeContext: c.MakeContext,
+			MakeHit: func(tb testing.TB) cache.Hit[ID] {
+				t := tb.(*testcase.T)
+				ctx := c.MakeContext(tb)
+				repository := c.repository().Get(t).Entities()
+				return cache.Hit[ID]{
+					EntityIDs: random.Slice[ID](t.Random.IntBetween(3, 7), func() ID {
+						ent := c.MakeEntity(t)
+						Create[Entity, ID](t, repository, ctx, &ent)
+						id, _ := extid.Lookup[ID](ent)
+						return id
+					}),
+					Timestamp: time.Now().UTC(),
+				}
+			},
+		},
+	)
+}
 
-				SupportIDReuse: true,
+type HitRepository[EntID any] struct {
+	MakeSubject func(tb testing.TB) HitRepositorySubject[EntID]
+	MakeContext func(tb testing.TB) context.Context
+	MakeHit     func(tb testing.TB) cache.Hit[EntID]
+}
+
+type HitRepositorySubject[EntID any] struct {
+	Resource      cache.HitRepository[EntID]
+	CommitManager comproto.OnePhaseCommitProtocol
+}
+
+func (c HitRepository[EntID]) Test(t *testing.T) {
+	c.Spec(testcase.NewSpec(t))
+}
+
+func (c HitRepository[EntID]) Benchmark(b *testing.B) {
+	c.Spec(testcase.NewSpec(b))
+}
+
+func (c HitRepository[EntID]) Spec(s *testcase.Spec) {
+	testcase.RunSuite(s,
+		crudcontracts.Creator[cache.Hit[EntID], cache.HitID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[cache.Hit[EntID], cache.HitID] {
+				return c.MakeSubject(tb).Resource
 			},
-			crudcontracts.Finder[cache.Hit[ID], string]{
-				MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[ID], string] {
-					return hitRepository(tb).(crudcontracts.FinderSubject[cache.Hit[ID], string])
-				},
-				MakeContext: c.MakeContext,
-				MakeEntity:  makeCacheHit,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeHit,
+
+			SupportIDReuse: true,
+		},
+		crudcontracts.Finder[cache.Hit[EntID], cache.HitID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID] {
+				return c.MakeSubject(tb).Resource.(crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID])
 			},
-			crudcontracts.Updater[cache.Hit[ID], string]{
-				MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[cache.Hit[ID], string] {
-					return hitRepository(tb)
-				},
-				MakeContext: c.MakeContext,
-				MakeEntity:  makeCacheHit,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeHit,
+		},
+		crudcontracts.Updater[cache.Hit[EntID], cache.HitID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[cache.Hit[EntID], cache.HitID] {
+				return c.MakeSubject(tb).Resource
 			},
-			crudcontracts.Deleter[cache.Hit[ID], string]{
-				MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[cache.Hit[ID], string] {
-					return hitRepository(tb)
-				},
-				MakeContext: c.MakeContext,
-				MakeEntity:  makeCacheHit,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeHit,
+		},
+		crudcontracts.Deleter[cache.Hit[EntID], cache.HitID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[cache.Hit[EntID], cache.HitID] {
+				return c.MakeSubject(tb).Resource
 			},
-			crudcontracts.OnePhaseCommitProtocol[cache.Hit[ID], string]{
-				MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string] {
-					repository := c.MakeSubject(tb)
-					return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[ID], string]{
-						Resource:      repository.Hits(),
-						CommitManager: repository,
-					}
-				},
-				MakeContext: c.MakeContext,
-				MakeEntity:  makeCacheHit,
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeHit,
+		},
+		crudcontracts.OnePhaseCommitProtocol[cache.Hit[EntID], cache.HitID]{
+			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[EntID], cache.HitID] {
+				repository := c.MakeSubject(tb)
+				return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[EntID], cache.HitID]{
+					Resource:      repository.Resource,
+					CommitManager: repository.CommitManager,
+				}
 			},
-		)
-	})
+			MakeContext: c.MakeContext,
+			MakeEntity:  c.MakeHit,
+		},
+	)
 }
 
 type EntityRepository[Entity, ID any] struct {
