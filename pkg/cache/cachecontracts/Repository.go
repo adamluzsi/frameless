@@ -86,6 +86,7 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 				ctx := c.MakeContext(tb)
 				repository := c.repository().Get(t).Entities()
 				return cache.Hit[ID]{
+					QueryID: t.Random.UUID(),
 					EntityIDs: random.Slice[ID](t.Random.IntBetween(3, 7), func() ID {
 						ent := c.MakeEntity(t)
 						Create[Entity, ID](t, repository, ctx, &ent)
@@ -127,7 +128,8 @@ func (c HitRepository[EntID]) Spec(s *testcase.Spec) {
 			MakeContext: c.MakeContext,
 			MakeEntity:  c.MakeHit,
 
-			SupportIDReuse: true,
+			SupportIDReuse:  true,
+			SupportRecreate: true,
 		},
 		crudcontracts.Finder[cache.Hit[EntID], cache.HitID]{
 			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID] {
