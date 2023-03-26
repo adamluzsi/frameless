@@ -25,6 +25,14 @@ func MakeTestEntity(tb testing.TB) TestEntity {
 	return te
 }
 
+func MakeTestEntityFunc(tb testing.TB) func() TestEntity {
+	return func() TestEntity {
+		te := tb.(*testcase.T).Random.Make(TestEntity{}).(TestEntity)
+		te.ID = ""
+		return te
+	}
+}
+
 type TestEntityDTO struct {
 	ID  string `ext:"ID" json:"id"`
 	Foo string `json:"foo"`
