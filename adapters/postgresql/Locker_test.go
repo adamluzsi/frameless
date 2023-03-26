@@ -10,7 +10,6 @@ import (
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
-	"github.com/adamluzsi/frameless/ports/locks"
 	lockscontracts "github.com/adamluzsi/frameless/ports/locks/lockscontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -44,20 +43,18 @@ func TestLocker(t *testing.T) {
 	db, err := sql.Open("postgres", spechelper.DatabaseDSN(t))
 	assert.NoError(t, err)
 
-	lockscontracts.Locker{
-		MakeSubject: func(tb testing.TB) locks.Locker {
-			t := testcase.ToT(&tb)
-			l := postgresql.Locker{
-				Name: t.Random.StringNC(5, random.CharsetAlpha()),
-				DB:   db,
-			}
-			assert.NoError(tb, l.Migrate(context.Background()))
-			return l
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-	}.Test(t)
+	lockscontracts.Locker(func(tb testing.TB) lockscontracts.LockerSubject {
+		t := testcase.ToT(&tb)
+		l := postgresql.Locker{
+			Name: t.Random.StringNC(5, random.CharsetAlpha()),
+			DB:   db,
+		}
+		assert.NoError(tb, l.Migrate(context.Background()))
+		return lockscontracts.LockerSubject{
+			Locker:      l,
+			MakeContext: context.Background,
+		}
+	}).Test(t)
 }
 
 func ExampleLockerFactory() {
@@ -88,31 +85,23 @@ var _ migration.Migratable = postgresql.LockerFactory[int]{}
 func TestNewLockerFactory(t *testing.T) {
 	db := OpenDB(t)
 
-	lockscontracts.Factory[string]{
-		MakeSubject: func(tb testing.TB) locks.Factory[string] {
-			lockerFactory := postgresql.LockerFactory[string]{DB: db}
-			assert.NoError(tb, lockerFactory.Migrate(context.Background()))
-			return lockerFactory
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeKey: func(tb testing.TB) string {
-			return tb.(*testcase.T).Random.String()
-		},
-	}.Test(t)
+	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
+		lockerFactory := postgresql.LockerFactory[string]{DB: db}
+		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
+		return lockscontracts.FactorySubject[string]{
+			Factory:     lockerFactory,
+			MakeContext: context.Background,
+			MakeKey:     testcase.ToT(&tb).Random.String,
+		}
+	}).Test(t)
 
-	lockscontracts.Factory[int]{
-		MakeSubject: func(tb testing.TB) locks.Factory[int] {
-			lockerFactory := postgresql.LockerFactory[int]{DB: db}
-			assert.NoError(tb, lockerFactory.Migrate(context.Background()))
-			return lockerFactory
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeKey: func(tb testing.TB) int {
-			return tb.(*testcase.T).Random.Int()
-		},
-	}.Test(t)
+	lockscontracts.Factory[int](func(tb testing.TB) lockscontracts.FactorySubject[int] {
+		lockerFactory := postgresql.LockerFactory[int]{DB: db}
+		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
+		return lockscontracts.FactorySubject[int]{
+			Factory:     lockerFactory,
+			MakeContext: context.Background,
+			MakeKey:     testcase.ToT(&tb).Random.Int,
+		}
+	}).Test(t)
 }

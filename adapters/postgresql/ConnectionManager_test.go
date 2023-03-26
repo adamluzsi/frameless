@@ -164,20 +164,15 @@ func TestConnectionManager_PoolContract(t *testing.T) {
 }
 
 func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string]{
-		MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
-			s := NewTestEntityRepository(tb)
-
-			return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
-				Resource:      s,
-				CommitManager: s,
-			}
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeEntity: spechelper.MakeTestEntity,
-	})
+	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
+		s := NewTestEntityRepository(tb)
+		return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
+			Resource:      s,
+			CommitManager: s.ConnectionManager,
+			MakeContext:   context.Background,
+			MakeEntity:    spechelper.MakeTestEntityFunc(tb),
+		}
+	}))
 }
 
 func TestConnectionManager_Connection_recoverPanic(t *testing.T) {

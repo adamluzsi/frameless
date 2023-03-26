@@ -12,21 +12,19 @@ import (
 
 func TestJobsScheduleStateRepository(t *testing.T) {
 	db := OpenDB(t)
-	schedulecontracts.StateRepository{
-		MakeSubject: func(tb testing.TB) schedule.StateRepository {
-			repo := &postgresql.TaskerScheduleStateRepository{DB: db}
-			assert.NoError(tb, repo.Migrate(context.Background()))
-			return repo
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeScheduleState: func(tb testing.TB) schedule.State {
-			t := testcase.ToT(&tb)
-			return schedule.State{
-				ID:        t.Random.String(),
-				Timestamp: t.Random.Time().UTC(),
-			}
-		},
-	}.Test(t)
+	schedulecontracts.StateRepository(func(tb testing.TB) schedulecontracts.StateRepositorySubject {
+		repo := &postgresql.TaskerScheduleStateRepository{DB: db}
+		assert.NoError(tb, repo.Migrate(context.Background()))
+		return schedulecontracts.StateRepositorySubject{
+			StateRepository: repo,
+			MakeContext:     context.Background,
+			MakeScheduleState: func() schedule.State {
+				t := testcase.ToT(&tb)
+				return schedule.State{
+					ID:        t.Random.String(),
+					Timestamp: t.Random.Time().UTC(),
+				}
+			},
+		}
+	}).Test(t)
 }

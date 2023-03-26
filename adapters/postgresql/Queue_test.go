@@ -30,85 +30,85 @@ func TestQueue(t *testing.T) {
 	mapping := sh.TestEntityJSONMapping{}
 
 	testcase.RunSuite(t,
-		pubsubcontracts.FIFO[sh.TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
-				q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-					Name:              queueName,
-					ConnectionManager: cm,
-					Mapping:           mapping,
-				}
-				return pubsubcontracts.PubSub[sh.TestEntity]{
+		pubsubcontracts.FIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.FIFOSubject[sh.TestEntity] {
+			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+				Name:              queueName,
+				ConnectionManager: cm,
+				Mapping:           mapping,
+			}
+			return pubsubcontracts.FIFOSubject[sh.TestEntity]{
+				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
 					Publisher:  q,
 					Subscriber: q,
-				}
-			},
-			MakeContext: sh.MakeContext,
-			MakeData:    sh.MakeTestEntity,
-		},
-		pubsubcontracts.LIFO[sh.TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
-				q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-					Name:              queueName,
-					ConnectionManager: cm,
-					Mapping:           mapping,
+				},
+				MakeContext: context.Background,
+				MakeData:    sh.MakeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.LIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.LIFOSubject[sh.TestEntity] {
+			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+				Name:              queueName,
+				ConnectionManager: cm,
+				Mapping:           mapping,
 
-					LIFO: true,
-				}
-				return pubsubcontracts.PubSub[sh.TestEntity]{
+				LIFO: true,
+			}
+			return pubsubcontracts.LIFOSubject[sh.TestEntity]{
+				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
 					Publisher:  q,
 					Subscriber: q,
-				}
-			},
-			MakeContext: sh.MakeContext,
-			MakeData:    sh.MakeTestEntity,
-		},
-		pubsubcontracts.Buffered[sh.TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
-				q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-					Name:              queueName,
-					ConnectionManager: cm,
-					Mapping:           mapping,
-				}
-				return pubsubcontracts.PubSub[sh.TestEntity]{
+				},
+				MakeContext: context.Background,
+				MakeData:    sh.MakeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Buffered[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BufferedSubject[sh.TestEntity] {
+			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+				Name:              queueName,
+				ConnectionManager: cm,
+				Mapping:           mapping,
+			}
+			return pubsubcontracts.BufferedSubject[sh.TestEntity]{
+				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
 					Publisher:  q,
 					Subscriber: q,
-				}
-			},
-			MakeContext: sh.MakeContext,
-			MakeData:    sh.MakeTestEntity,
-		},
-		pubsubcontracts.Blocking[sh.TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
-				q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-					Name:              queueName,
-					ConnectionManager: cm,
-					Mapping:           mapping,
+				},
+				MakeContext: context.Background,
+				MakeData:    sh.MakeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Blocking[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BlockingSubject[sh.TestEntity] {
+			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+				Name:              queueName,
+				ConnectionManager: cm,
+				Mapping:           mapping,
 
-					Blocking: true,
-				}
-				return pubsubcontracts.PubSub[sh.TestEntity]{
+				Blocking: true,
+			}
+			return pubsubcontracts.BlockingSubject[sh.TestEntity]{
+				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
 					Publisher:  q,
 					Subscriber: q,
-				}
-			},
-			MakeContext: sh.MakeContext,
-			MakeData:    sh.MakeTestEntity,
-		},
-		pubsubcontracts.Queue[sh.TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[sh.TestEntity] {
-				q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-					Name:              queueName,
-					ConnectionManager: cm,
-					Mapping:           mapping,
-				}
-				return pubsubcontracts.PubSub[sh.TestEntity]{
+				},
+				MakeContext: context.Background,
+				MakeData:    sh.MakeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Queue[sh.TestEntity](func(tb testing.TB) pubsubcontracts.QueueSubject[sh.TestEntity] {
+			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+				Name:              queueName,
+				ConnectionManager: cm,
+				Mapping:           mapping,
+			}
+			return pubsubcontracts.QueueSubject[sh.TestEntity]{
+				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
 					Publisher:  q,
 					Subscriber: q,
-				}
-			},
-			MakeContext: sh.MakeContext,
-			MakeData:    sh.MakeTestEntity,
-		},
+				},
+				MakeContext: context.Background,
+				MakeData:    sh.MakeTestEntityFunc(tb),
+			}
+		}),
 	)
 }
 

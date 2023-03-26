@@ -6,7 +6,6 @@ import (
 	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
-	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/testcase/random"
 	"github.com/lib/pq"
@@ -50,37 +49,45 @@ func TestRepository(t *testing.T) {
 	spechelper.MigrateTestEntity(t, cm)
 
 	testcase.RunSuite(t,
-		crudcontracts.Creator[spechelper.TestEntity, string]{
-			MakeSubject:    func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] { return subject },
-			MakeEntity:     spechelper.MakeTestEntity,
-			MakeContext:    spechelper.MakeContext,
-			SupportIDReuse: true,
-		},
-		crudcontracts.Finder[spechelper.TestEntity, string]{
-			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[spechelper.TestEntity, string] {
-				return any(subject).(crudcontracts.FinderSubject[spechelper.TestEntity, string])
-			},
-			MakeEntity:  spechelper.MakeTestEntity,
-			MakeContext: spechelper.MakeContext,
-		},
-		crudcontracts.Updater[spechelper.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[spechelper.TestEntity, string] { return subject },
-			MakeEntity:  spechelper.MakeTestEntity,
-			MakeContext: spechelper.MakeContext,
-		},
-		crudcontracts.Deleter[spechelper.TestEntity, string]{MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[spechelper.TestEntity, string] { return subject },
-			MakeEntity:  spechelper.MakeTestEntity,
-			MakeContext: spechelper.MakeContext,
-		},
-		crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string]{
-			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
-				return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
-					Resource:      subject,
-					CommitManager: cm,
-				}
-			},
-			MakeEntity:  spechelper.MakeTestEntity,
-			MakeContext: spechelper.MakeContext,
-		},
+		crudcontracts.Creator[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] {
+			return crudcontracts.CreatorSubject[spechelper.TestEntity, string]{
+				Resource:        subject,
+				MakeContext:     context.Background,
+				MakeEntity:      spechelper.MakeTestEntityFunc(tb),
+				SupportIDReuse:  true,
+				SupportRecreate: true,
+			}
+		}),
+		crudcontracts.Finder[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.FinderSubject[spechelper.TestEntity, string] {
+			return crudcontracts.FinderSubject[spechelper.TestEntity, string]{
+				Resource:    subject,
+				MakeContext: context.Background,
+				MakeEntity:  spechelper.MakeTestEntityFunc(tb),
+			}
+		}),
+		crudcontracts.Updater[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.UpdaterSubject[spechelper.TestEntity, string] {
+			return crudcontracts.UpdaterSubject[spechelper.TestEntity, string]{
+				Resource:     subject,
+				MakeContext:  context.Background,
+				MakeEntity:   spechelper.MakeTestEntityFunc(tb),
+				ChangeEntity: nil, // test entity can be freely changed
+			}
+		}),
+		crudcontracts.Deleter[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.DeleterSubject[spechelper.TestEntity, string] {
+			return crudcontracts.DeleterSubject[spechelper.TestEntity, string]{
+				Resource:    subject,
+				MakeContext: context.Background,
+				MakeEntity:  spechelper.MakeTestEntityFunc(tb),
+			}
+		}),
+		crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
+			return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
+				Resource:      subject,
+				CommitManager: subject.ConnectionManager,
+				MakeContext:   context.Background,
+				MakeEntity:    spechelper.MakeTestEntityFunc(tb),
+			}
+		}),
 	)
 }
 
@@ -96,29 +103,34 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 		ConnectionManager: cm,
 	}
 
-	testcase.RunSuite(t, crudcontracts.Creator[spechelper.TestEntity, string]{
-		MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] { return subject },
-		MakeContext: spechelper.MakeContext,
-		MakeEntity:  spechelper.MakeTestEntity,
-
-		SupportIDReuse: true,
-	})
+	testcase.RunSuite(t, crudcontracts.Creator[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] {
+		return crudcontracts.CreatorSubject[spechelper.TestEntity, string]{
+			Resource:        subject,
+			MakeContext:     context.Background,
+			MakeEntity:      spechelper.MakeTestEntityFunc(tb),
+			SupportIDReuse:  true,
+			SupportRecreate: true,
+		}
+	}))
 }
 
 func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 	cm := NewConnectionManager(t)
 	spechelper.MigrateTestEntity(t, cm)
 
-	cachecontracts.EntityRepository[spechelper.TestEntity, string]{
-		MakeSubject: func(tb testing.TB) (cache.EntityRepository[spechelper.TestEntity, string], comproto.OnePhaseCommitProtocol) {
-			return postgresql.Repository[spechelper.TestEntity, string]{
-				Mapping:           spechelper.TestEntityMapping(),
-				ConnectionManager: cm,
-			}, cm
-		},
-		MakeContext: spechelper.MakeContext,
-		MakeEntity:  spechelper.MakeTestEntity,
-	}.Test(t)
+	cachecontracts.EntityRepository[spechelper.TestEntity, string](func(tb testing.TB) cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string] {
+		repo := postgresql.Repository[spechelper.TestEntity, string]{
+			Mapping:           spechelper.TestEntityMapping(),
+			ConnectionManager: cm,
+		}
+		return cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string]{
+			EntityRepository: repo,
+			CommitManager:    cm,
+			MakeContext:      context.Background,
+			MakeEntity:       spechelper.MakeTestEntityFunc(tb),
+			ChangeEntity:     nil,
+		}
+	}).Test(t)
 }
 
 func TestRepository_canImplementCacheHitRepository(t *testing.T) {
@@ -144,41 +156,41 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		})
 	}(t, cm)
 
-	cachecontracts.HitRepository[string]{
-		MakeSubject: func(tb testing.TB) cachecontracts.HitRepositorySubject[string] {
-			return cachecontracts.HitRepositorySubject[string]{
-				Resource: postgresql.Repository[cache.Hit[string], cache.HitID]{
-					Mapping: postgresql.Mapper[cache.Hit[string], cache.HitID]{
-						Table:   "test_cache_hits",
-						ID:      "id",
-						Columns: []string{"id", "ids", "ts"},
-						ToArgsFn: func(ptr *cache.Hit[string]) ([]interface{}, error) {
-							return []any{ptr.QueryID, pq.Array(ptr.EntityIDs), ptr.Timestamp}, nil
-						},
-						MapFn: func(scanner iterators.SQLRowScanner) (cache.Hit[string], error) {
-							var hit cache.Hit[string]
-							if err := scanner.Scan(&hit.QueryID, pq.Array(&hit.EntityIDs), &hit.Timestamp); err != nil {
-								return hit, err
-							}
-							hit.Timestamp = hit.Timestamp.UTC()
-							return hit, nil
-						},
-					},
-					ConnectionManager: cm,
-				},
-				CommitManager: cm,
-			}
+	hitRepo := postgresql.Repository[cache.Hit[string], cache.HitID]{
+		Mapping: postgresql.Mapper[cache.Hit[string], cache.HitID]{
+			Table:   "test_cache_hits",
+			ID:      "id",
+			Columns: []string{"id", "ids", "ts"},
+			ToArgsFn: func(ptr *cache.Hit[string]) ([]interface{}, error) {
+				return []any{ptr.QueryID, pq.Array(ptr.EntityIDs), ptr.Timestamp}, nil
+			},
+			MapFn: func(scanner iterators.SQLRowScanner) (cache.Hit[string], error) {
+				var hit cache.Hit[string]
+				if err := scanner.Scan(&hit.QueryID, pq.Array(&hit.EntityIDs), &hit.Timestamp); err != nil {
+					return hit, err
+				}
+				hit.Timestamp = hit.Timestamp.UTC()
+				return hit, nil
+			},
 		},
-		MakeContext: spechelper.MakeContext,
-		MakeHit: func(tb testing.TB) cache.Hit[string] {
-			t := tb.(*testcase.T)
-			return cache.Hit[string]{
-				QueryID: t.Random.UUID(),
-				EntityIDs: random.Slice(t.Random.IntBetween(0, 7), func() string {
-					return t.Random.UUID()
-				}),
-				Timestamp: t.Random.Time().UTC(),
-			}
-		},
-	}.Test(t)
+		ConnectionManager: cm,
+	}
+
+	cachecontracts.HitRepository[string](func(tb testing.TB) cachecontracts.HitRepositorySubject[string] {
+		return cachecontracts.HitRepositorySubject[string]{
+			Resource:      hitRepo,
+			CommitManager: cm,
+			MakeContext:   context.Background,
+			MakeHit: func() cache.Hit[string] {
+				t := tb.(*testcase.T)
+				return cache.Hit[string]{
+					QueryID: t.Random.UUID(),
+					EntityIDs: random.Slice(t.Random.IntBetween(0, 7), func() string {
+						return t.Random.UUID()
+					}),
+					Timestamp: t.Random.Time().UTC(),
+				}
+			},
+		}
+	}).Test(t)
 }
