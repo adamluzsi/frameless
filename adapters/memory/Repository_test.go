@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/spechelper/resource"
 	"testing"
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
@@ -19,16 +20,17 @@ var (
 )
 
 func TestRepository(t *testing.T) {
-	testcase.RunSuite(t, GetContracts[TestEntity, string](func(tb testing.TB) ContractSubject[TestEntity, string] {
+	testcase.RunSuite(t, resource.Contract[TestEntity, string](func(tb testing.TB) resource.ContractSubject[TestEntity, string] {
 		m := memory.NewMemory()
 		s := memory.NewRepository[TestEntity, string](m)
-		return ContractSubject[TestEntity, string]{
-			Resource:         s,
-			EntityRepository: s,
-			CommitManager:    m,
-			MetaAccessor:     m,
+		return resource.ContractSubject[TestEntity, string]{
+			Resource:      s,
+			MetaAccessor:  m,
+			CommitManager: m,
+			MakeContext:   func() context.Context { return makeContext(tb) },
+			MakeEntity:    func() TestEntity { return makeTestEntity(tb) },
 		}
-	}, makeContext, makeTestEntity)...)
+	}))
 }
 
 func TestRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *testing.T) {

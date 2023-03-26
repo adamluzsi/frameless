@@ -6,11 +6,11 @@ import (
 )
 
 var (
-	_ testcase.OpenSuite = pubsubcontracts.FIFO[any]{}
-	_ testcase.OpenSuite = pubsubcontracts.LIFO[any]{}
-	_ testcase.OpenSuite = pubsubcontracts.Buffered[any]{}
-	_ testcase.OpenSuite = pubsubcontracts.Volatile[any]{}
-	_ testcase.OpenSuite = pubsubcontracts.Queue[any]{}
-	_ testcase.OpenSuite = pubsubcontracts.FanOut[any]{}
-	_ testcase.OpenSuite = pubsubcontracts.Blocking[any]{}
+	_ testcase.OpenSuite = pubsubcontracts.FIFO[any](nil)
+	_ testcase.OpenSuite = pubsubcontracts.LIFO[any](nil)
+	_ testcase.OpenSuite = pubsubcontracts.Buffered[any](nil)
+	_ testcase.OpenSuite = pubsubcontracts.Volatile[any](nil)
+	_ testcase.OpenSuite = pubsubcontracts.Queue[any](nil)
+	_ testcase.OpenSuite = pubsubcontracts.FanOut[any](nil)
+	_ testcase.OpenSuite = pubsubcontracts.Blocking[any](nil)
 )

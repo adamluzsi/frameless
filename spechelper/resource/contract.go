@@ -2,25 +2,20 @@ package resource
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/cache"
+	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
+	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/meta"
-	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/metacontracts"
-	"github.com/adamluzsi/frameless/ports/pubsub"
-	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
-
+	"github.com/adamluzsi/frameless/ports/meta/metacontracts"
 	"github.com/adamluzsi/testcase"
 )
 
-type Contract[Entity, ID, V any] struct {
-	MakeSubject func(testing.TB) ContractSubject[Entity, ID]
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
-	MakeV       func(testing.TB) V
-}
+type Contract[Entity, ID any] func(testing.TB) ContractSubject[Entity, ID]
 
 type ContractSubject[Entity, ID any] struct {
 	Resource interface {
@@ -28,117 +23,111 @@ type ContractSubject[Entity, ID any] struct {
 		crud.Finder[Entity, ID]
 		crud.Updater[Entity]
 		crud.Deleter[ID]
-		pubsub.CreatorPublisher[Entity]
-		pubsub.UpdaterPublisher[Entity]
-		pubsub.DeleterPublisher[ID]
 	}
 	MetaAccessor  meta.MetaAccessor
 	CommitManager comproto.OnePhaseCommitProtocol
+
+	MakeContext func() context.Context
+	MakeEntity  func() Entity
 }
 
-type Subscriber[Entity, ID any] interface {
-	pubsub.CreatorSubscriber[Entity]
-	pubsub.UpdaterSubscriber[Entity]
-	pubsub.DeleterSubscriber[ID]
-}
-
-func (c Contract[Entity, ID, V]) Test(t *testing.T) {
+func (c Contract[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
-func (c Contract[Entity, ID, V]) Benchmark(b *testing.B) {
+func (c Contract[Entity, ID]) Benchmark(b *testing.B) {
 	c.Spec(testcase.NewSpec(b))
 }
 
-func (c Contract[Entity, ID, V]) Spec(s *testcase.Spec) {
+func (c Contract[Entity, ID]) Spec(s *testcase.Spec) {
 	testcase.RunSuite(s,
-		crudcontracts.Creator[Entity, ID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-
-			SupportIDReuse: true,
-		},
-		crudcontracts.Finder[Entity, ID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-		},
-		crudcontracts.Deleter[Entity, ID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-		},
-		crudcontracts.Updater[Entity, ID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-		},
-		pubsubcontracts.Publisher[Entity, ID]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PublisherSubject[Entity, ID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-		},
-		frmetacontracts.MetaAccessorBasic[bool]{
-			MakeSubject: func(tb testing.TB) meta.MetaAccessor {
-				return c.MakeSubject(tb).MetaAccessor
-			},
-			MakeV: func(tb testing.TB) bool {
-				t := tb.(*testcase.T)
-				return t.Random.Bool()
-			},
-		},
-		frmetacontracts.MetaAccessorBasic[string]{
-			MakeSubject: func(tb testing.TB) meta.MetaAccessor {
-				return c.MakeSubject(tb).MetaAccessor
-			},
-			MakeV: func(tb testing.TB) string {
-				t := tb.(*testcase.T)
-				return t.Random.String()
-			},
-		},
-		frmetacontracts.MetaAccessorBasic[int]{
-			MakeSubject: func(tb testing.TB) meta.MetaAccessor {
-				return c.MakeSubject(tb).MetaAccessor
-			},
-			MakeV: func(tb testing.TB) int {
-				t := tb.(*testcase.T)
-				return t.Random.Int()
-			},
-		},
-		frmetacontracts.MetaAccessor[Entity, ID, V]{
-			MakeSubject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[Entity, ID, V] {
-				subject := c.MakeSubject(tb)
-				return frmetacontracts.MetaAccessorSubject[Entity, ID, V]{
-					MetaAccessor: subject.MetaAccessor,
-					Resource:     subject.Resource,
-					Publisher:    subject.Resource,
-				}
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-			MakeV:       c.MakeV,
-		},
-		crudcontracts.OnePhaseCommitProtocol[Entity, ID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
-				subject := c.MakeSubject(tb)
-				return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
-					Resource:      subject.Resource,
-					CommitManager: subject.CommitManager,
-				}
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-		},
+		crudcontracts.Creator[Entity, ID](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
+			sub := c(tb)
+			return crudcontracts.CreatorSubject[Entity, ID]{
+				Resource:        sub.Resource,
+				MakeContext:     sub.MakeContext,
+				MakeEntity:      sub.MakeEntity,
+				SupportIDReuse:  true,
+				SupportRecreate: true,
+			}
+		}),
+		crudcontracts.Finder[Entity, ID](func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
+			sub := c(tb)
+			return crudcontracts.FinderSubject[Entity, ID]{
+				Resource:    sub.Resource,
+				MakeContext: sub.MakeContext,
+				MakeEntity:  sub.MakeEntity,
+			}
+		}),
+		crudcontracts.Deleter[Entity, ID](func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
+			sub := c(tb)
+			return crudcontracts.DeleterSubject[Entity, ID]{
+				Resource:    sub.Resource,
+				MakeContext: sub.MakeContext,
+				MakeEntity:  sub.MakeEntity,
+			}
+		}),
+		crudcontracts.Updater[Entity, ID](func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
+			sub := c(tb)
+			return crudcontracts.UpdaterSubject[Entity, ID]{
+				Resource:    sub.Resource,
+				MakeContext: sub.MakeContext,
+				MakeEntity:  sub.MakeEntity,
+			}
+		}),
+		metacontracts.MetaAccessor[bool](func(tb testing.TB) metacontracts.MetaAccessorSubject[bool] {
+			sub := c(tb)
+			return metacontracts.MetaAccessorSubject[bool]{
+				MetaAccessor: sub.MetaAccessor,
+				MakeContext:  sub.MakeContext,
+				MakeV:        testcase.ToT(&tb).Random.Bool,
+			}
+		}),
+		metacontracts.MetaAccessor[string](func(tb testing.TB) metacontracts.MetaAccessorSubject[string] {
+			sub := c(tb)
+			return metacontracts.MetaAccessorSubject[string]{
+				MetaAccessor: sub.MetaAccessor,
+				MakeContext:  sub.MakeContext,
+				MakeV:        testcase.ToT(&tb).Random.String,
+			}
+		}),
+		metacontracts.MetaAccessor[int](func(tb testing.TB) metacontracts.MetaAccessorSubject[int] {
+			sub := c(tb)
+			return metacontracts.MetaAccessorSubject[int]{
+				MetaAccessor: sub.MetaAccessor,
+				MakeContext:  sub.MakeContext,
+				MakeV:        testcase.ToT(&tb).Random.Int,
+			}
+		}),
+		crudcontracts.OnePhaseCommitProtocol[Entity, ID](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
+			sub := c(tb)
+			return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
+				Resource:      sub.Resource,
+				CommitManager: sub.CommitManager,
+				MakeContext:   sub.MakeContext,
+				MakeEntity:    sub.MakeEntity,
+			}
+		}),
+		comprotocontracts.OnePhaseCommitProtocol(func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
+			sub := c(tb)
+			return comprotocontracts.OnePhaseCommitProtocolSubject{
+				CommitManager: sub.CommitManager,
+				MakeContext:   sub.MakeContext,
+			}
+		}),
+		cachecontracts.EntityRepository[Entity, ID](func(tb testing.TB) cachecontracts.EntityRepositorySubject[Entity, ID] {
+			sub := c(tb)
+			res, ok := sub.Resource.(cache.EntityRepository[Entity, ID])
+			if !ok {
+				tb.Skip()
+			}
+			return cachecontracts.EntityRepositorySubject[Entity, ID]{
+				EntityRepository: res,
+				CommitManager:    sub.CommitManager,
+				MakeContext:      sub.MakeContext,
+				MakeEntity:       sub.MakeEntity,
+				ChangeEntity:     nil,
+			}
+		}),
 	)
 }

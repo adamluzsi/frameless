@@ -1,7 +1,7 @@
 package resource_test
 
 import (
-	"context"
+	"github.com/adamluzsi/frameless/spechelper/testent"
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
@@ -17,25 +17,18 @@ func TestContract(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
-			eventLog := memory.NewEventLog()
-			repository := memory.NewEventLogRepository[Entity, string](eventLog)
-			return resource.ContractSubject[Entity, string]{
-				Resource:      repository,
-				MetaAccessor:  eventLog,
-				CommitManager: eventLog,
-			}
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeEntity: func(tb testing.TB) Entity {
-			t := tb.(*testcase.T)
-			return Entity{Data: t.Random.String()}
-		},
-		MakeV: func(tb testing.TB) string {
-			return tb.(*testcase.T).Random.String()
-		},
-	})
+	testcase.RunSuite(t, resource.Contract[Entity, string](func(tb testing.TB) resource.ContractSubject[Entity, string] {
+		t := tb.(*testcase.T)
+		eventLog := memory.NewEventLog()
+		repository := memory.NewEventLogRepository[Entity, string](eventLog)
+		return resource.ContractSubject[Entity, string]{
+			Resource:      repository,
+			MetaAccessor:  eventLog,
+			CommitManager: eventLog,
+			MakeContext:   testent.MakeContextFunc(tb),
+			MakeEntity: func() Entity {
+				return Entity{Data: t.Random.String()}
+			},
+		}
+	}))
 }

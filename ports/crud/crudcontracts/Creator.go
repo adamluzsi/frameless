@@ -12,10 +12,13 @@ import (
 	"github.com/adamluzsi/testcase"
 )
 
-type Creator[Entity, ID any] struct {
-	MakeSubject func(testing.TB) CreatorSubject[Entity, ID]
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
+type Creator[Entity, ID any] func(tb testing.TB) CreatorSubject[Entity, ID]
+
+type CreatorSubject[Entity, ID any] struct {
+	Resource    spechelper.CRD[Entity, ID]
+	MakeContext func() context.Context
+	MakeEntity  func() Entity
+
 	// SupportIDReuse is an optional configuration value that tells the contract
 	// that recreating an entity with an ID which belongs to a previously deleted entity is accepted.
 	SupportIDReuse bool
@@ -24,29 +27,37 @@ type Creator[Entity, ID any] struct {
 	SupportRecreate bool
 }
 
-type CreatorSubject[Entity, ID any] spechelper.CRD[Entity, ID]
+func (c Creator[Entity, ID]) subject() testcase.Var[CreatorSubject[Entity, ID]] {
+	return testcase.Var[CreatorSubject[Entity, ID]]{
+		ID: "CreatorSubject[Entity, ID]",
+		Init: func(t *testcase.T) CreatorSubject[Entity, ID] {
+			return c(t)
+		},
+	}
+}
 
-func (c Creator[T, ID]) Test(t *testing.T) {
+func (c Creator[Entity, ID]) Test(t *testing.T) {
 	c.Spec(testcase.NewSpec(t))
 }
 
 func (c Creator[Entity, ID]) Benchmark(b *testing.B) {
-	resource := c.MakeSubject(b)
-	spechelper.TryCleanup(b, c.MakeContext(b), resource)
+	subject := c(testcase.ToT(b))
+
+	spechelper.TryCleanup(b, subject.MakeContext(), subject.Resource)
 	b.Run(`Creator`, func(b *testing.B) {
 		var (
-			ctx = c.MakeContext(b)
+			ctx = subject.MakeContext()
 			es  []*Entity
 		)
 		for i := 0; i < b.N; i++ {
-			ent := c.MakeEntity(b)
+			ent := subject.MakeEntity()
 			es = append(es, &ent)
 		}
-		defer spechelper.TryCleanup(b, c.MakeContext(b), resource)
+		defer spechelper.TryCleanup(b, subject.MakeContext(), subject.Resource)
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = resource.Create(ctx, es[i])
+			_ = subject.Resource.Create(ctx, es[i])
 		}
 		b.StopTimer()
 	})
@@ -54,14 +65,11 @@ func (c Creator[Entity, ID]) Benchmark(b *testing.B) {
 
 func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 	var (
-		resource = testcase.Let(s, func(t *testcase.T) CreatorSubject[Entity, ID] {
-			return c.MakeSubject(t)
-		})
 		ctxVar = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.MakeContext(t)
+			return c.subject().Get(t).MakeContext()
 		})
 		ptr = testcase.Let(s, func(t *testcase.T) *Entity {
-			v := c.MakeEntity(t)
+			v := c.subject().Get(t).MakeEntity()
 			return &v
 		})
 		getID = func(t *testcase.T) ID {
@@ -71,11 +79,11 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 	)
 	act := func(t *testcase.T) error {
 		ctx := ctxVar.Get(t)
-		err := resource.Get(t).Create(ctx, ptr.Get(t))
+		err := c.subject().Get(t).Resource.Create(ctx, ptr.Get(t))
 		if err == nil {
 			id, _ := extid.Lookup[ID](ptr.Get(t))
-			t.Defer(resource.Get(t).DeleteByID, ctx, id)
-			IsFindable[Entity, ID](t, resource.Get(t), ctx, id)
+			t.Defer(c.subject().Get(t).Resource.DeleteByID, ctx, id)
+			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, ctx, id)
 		}
 		return err
 	}
@@ -88,14 +96,14 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			t.Must.Equal(ptr.Get(t), IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t)))
+			t.Must.Equal(ptr.Get(t), IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t)))
 		})
 	})
 
 	s.When(`entity was already saved once`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
+			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})
 
 		s.Then(`it will return an error informing that the entity record already exists`, func(t *testcase.T) {
@@ -103,52 +111,60 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 	})
 
-	if c.SupportIDReuse {
-		s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				t.Must.Nil(act(t))
-				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
-				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-			})
-
-			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
-			})
-
-			s.Then(`persisted object can be found`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
-				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-			})
+	s.When(`entity ID is reused or provided ahead of time`, func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			if !c.subject().Get(t).SupportIDReuse {
+				t.Skip()
+			}
 		})
-	}
 
-	if c.SupportRecreate {
-		s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
-			s.Before(func(t *testcase.T) {
-				ogEnt := *ptr.Get(t) // a deep copy might be better
-				t.Must.Nil(act(t))
-				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-				t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), getID(t)))
-				IsAbsent[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-				ptr.Set(t, &ogEnt)
-			})
-
-			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
-			})
-
-			s.Then(`persisted object can be found`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
-
-				IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), getID(t))
-			})
+		s.Before(func(t *testcase.T) {
+			t.Must.Nil(act(t))
+			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(c.subject().Get(t).MakeContext(), getID(t)))
+			IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})
-	}
+
+		s.Then(`it will accept it`, func(t *testcase.T) {
+			t.Must.Nil(act(t))
+		})
+
+		s.Then(`persisted object can be found`, func(t *testcase.T) {
+			t.Must.Nil(act(t))
+			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+		})
+	})
+
+	s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			if !c.subject().Get(t).SupportRecreate {
+				t.Skip()
+			}
+		})
+
+		s.Before(func(t *testcase.T) {
+			ogEnt := *ptr.Get(t) // a deep copy might be better
+			t.Must.Nil(act(t))
+			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(c.subject().Get(t).MakeContext(), getID(t)))
+			IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			ptr.Set(t, &ogEnt)
+		})
+
+		s.Then(`it will accept it`, func(t *testcase.T) {
+			t.Must.Nil(act(t))
+		})
+
+		s.Then(`persisted object can be found`, func(t *testcase.T) {
+			t.Must.Nil(act(t))
+
+			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+		})
+	})
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 		ctxVar.Let(s, func(t *testcase.T) context.Context {
-			ctx, cancel := context.WithCancel(c.MakeContext(t))
+			ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext())
 			cancel()
 			return ctx
 		})
@@ -159,16 +175,16 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 	})
 
 	s.Test(`persist on #Create`, func(t *testcase.T) {
-		e := c.MakeEntity(t)
+		e := c.subject().Get(t).MakeEntity()
 
-		err := resource.Get(t).Create(c.MakeContext(t), &e)
+		err := c.subject().Get(t).Resource.Create(c.subject().Get(t).MakeContext(), &e)
 		t.Must.Nil(err)
 
 		id, ok := extid.Lookup[ID](&e)
 		t.Must.True(ok, "ID is not defined in the entity struct src definition")
 		t.Must.NotEmpty(id, "it's expected that repository set the external ID in the entity")
 
-		t.Must.Equal(e, *IsFindable[Entity, ID](t, resource.Get(t), c.MakeContext(t), id))
-		t.Must.Nil(resource.Get(t).DeleteByID(c.MakeContext(t), id))
+		t.Must.Equal(e, *IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), id))
+		t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(c.subject().Get(t).MakeContext(), id))
 	})
 }

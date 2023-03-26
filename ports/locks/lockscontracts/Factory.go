@@ -8,32 +8,30 @@ import (
 	"time"
 )
 
-type Factory[Key comparable] struct {
-	MakeSubject func(tb testing.TB) locks.Factory[Key]
-	MakeContext func(tb testing.TB) context.Context
-	MakeKey     func(tb testing.TB) Key
+type Factory[Key comparable] func(tb testing.TB) FactorySubject[Key]
+
+type FactorySubject[Key comparable] struct {
+	Factory     locks.Factory[Key]
+	MakeContext func() context.Context
+	MakeKey     func() Key
 }
 
 func (c Factory[Key]) Spec(s *testcase.Spec) {
-	s.Context("returned value behaves like a locks.Locker", Locker{
-		MakeSubject: func(tb testing.TB) locks.Locker {
-			t := tb.(*testcase.T)
-			lockerKey := testcase.Var[Key]{
-				ID: "lockers.LockerFor's name value",
-				Init: func(t *testcase.T) Key {
-					return c.MakeKey(t)
-				},
-			}
-			return c.MakeSubject(tb).LockerFor(lockerKey.Get(t))
-		},
-		MakeContext: c.MakeContext,
-	}.Spec)
+	subject := testcase.Let[FactorySubject[Key]](s, func(t *testcase.T) FactorySubject[Key] { return c(t) })
+
+	s.Context("returned value behaves like a locks.Locker", Locker(func(tb testing.TB) LockerSubject {
+		sub := c(tb)
+		return LockerSubject{
+			Locker:      sub.Factory.LockerFor(sub.MakeKey()),
+			MakeContext: sub.MakeContext,
+		}
+	}).Spec)
 
 	s.Test("result Lockers with different name don't interfere with each other", func(t *testcase.T) {
 		var (
-			ctx = c.MakeContext(t)
-			l1  = c.MakeSubject(t).LockerFor(c.MakeKey(t))
-			l2  = c.MakeSubject(t).LockerFor(c.MakeKey(t))
+			ctx = subject.Get(t).MakeContext()
+			l1  = subject.Get(t).Factory.LockerFor(subject.Get(t).MakeKey())
+			l2  = subject.Get(t).Factory.LockerFor(subject.Get(t).MakeKey())
 		)
 		t.Must.Within(3*time.Second, func(context.Context) {
 			lockCtx1, err := l1.Lock(ctx)

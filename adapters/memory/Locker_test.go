@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/locks"
-	lockscontracts "github.com/adamluzsi/frameless/ports/locks/lockscontracts"
+	"github.com/adamluzsi/frameless/ports/locks/lockscontracts"
 )
 
 func ExampleLocker() {
@@ -24,28 +23,22 @@ func ExampleLocker() {
 }
 
 func TestLocker(t *testing.T) {
-	lockscontracts.Locker{
-		MakeSubject: func(tb testing.TB) locks.Locker {
-			return memory.NewLocker()
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-	}.Test(t)
+	lockscontracts.Locker(func(tb testing.TB) lockscontracts.LockerSubject {
+		return lockscontracts.LockerSubject{
+			Locker:      memory.NewLocker(),
+			MakeContext: context.Background,
+		}
+	}).Test(t)
 }
 
 func TestLockerFactory(t *testing.T) {
-	lockscontracts.Factory[string]{
-		MakeSubject: func(tb testing.TB) locks.Factory[string] {
-			return memory.NewLockerFactory[string]()
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeKey: func(tb testing.TB) string {
-			return tb.(*testcase.T).Random.String()
-		},
-	}.Test(t)
+	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
+		return lockscontracts.FactorySubject[string]{
+			Factory:     memory.NewLockerFactory[string](),
+			MakeContext: context.Background,
+			MakeKey:     tb.(*testcase.T).Random.String,
+		}
+	}).Test(t)
 }
 
 func TestNewLockerFactory_race(tt *testing.T) {

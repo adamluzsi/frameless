@@ -24,7 +24,7 @@ func TestName(t *testing.T) {
 
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
-			o := crudcontracts.Creator[int, string]{}
+			o := crudcontracts.Creator[int, string](nil)
 			assert.Must(t).Equal(`crudcontracts.Creator[int,string]`, reflects.SymbolicName(o))
 		})
 

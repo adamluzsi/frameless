@@ -3,6 +3,7 @@ package crudcontracts_test
 import (
 	"context"
 	"errors"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"sync"
 	"testing"
 	"time"
@@ -22,33 +23,27 @@ func TestEventuallyConsistentResource(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		MakeSubject: ContractSubjectFnEventuallyConsistentResource[Entity, string](),
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeEntity: func(tb testing.TB) Entity {
-			t := tb.(*testcase.T)
-			return Entity{Data: t.Random.String()}
-		},
-		MakeV: func(tb testing.TB) string {
-			return tb.(*testcase.T).Random.String()
-		},
-	})
+	testcase.RunSuite(t, resource.Contract[Entity, string](ContractSubjectFnEventuallyConsistentResource[Entity, string]))
 }
 
-func ContractSubjectFnEventuallyConsistentResource[Entity, ID any]() func(testing.TB) resource.ContractSubject[Entity, ID] {
-	return func(tb testing.TB) resource.ContractSubject[Entity, ID] {
-		eventLog := memory.NewEventLog()
-		repo := &EventuallyConsistentResource[Entity, ID]{EventLogRepository: memory.NewEventLogRepository[Entity, ID](eventLog)}
-		repo.jobs.queue = make(chan func(), 100)
-		repo.Spawn()
-		tb.Cleanup(func() { assert.Must(tb).Nil(repo.Close()) })
-		return resource.ContractSubject[Entity, ID]{
-			Resource:      repo,
-			MetaAccessor:  eventLog,
-			CommitManager: repo,
-		}
+func ContractSubjectFnEventuallyConsistentResource[Entity, ID any](tb testing.TB) resource.ContractSubject[Entity, ID] {
+	eventLog := memory.NewEventLog()
+	repo := &EventuallyConsistentResource[Entity, ID]{EventLogRepository: memory.NewEventLogRepository[Entity, ID](eventLog)}
+	repo.jobs.queue = make(chan func(), 100)
+	repo.Spawn()
+	tb.Cleanup(func() { assert.Must(tb).Nil(repo.Close()) })
+	return resource.ContractSubject[Entity, ID]{
+		Resource:      repo,
+		MetaAccessor:  eventLog,
+		CommitManager: repo,
+		MakeContext: func() context.Context {
+			return context.Background()
+		},
+		MakeEntity: func() Entity {
+			v := tb.(*testcase.T).Random.Make(*new(Entity)).(Entity)
+			assert.NoError(tb, extid.Set[ID](&v, *new(ID)))
+			return v
+		},
 	}
 }
 

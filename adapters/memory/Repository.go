@@ -234,7 +234,7 @@ func (m *Memory) SetMeta(ctx context.Context, key string, value interface{}) (co
 	mm, ok := m.lookupMetaMap(ctx)
 	if !ok {
 		mm = make(ctxValueMemoryMeta)
-		ctx = context.WithValue(ctx, m.ctxKeyMeta(), m)
+		ctx = context.WithValue(ctx, m.ctxKeyMeta(), mm)
 	}
 	mm[key] = base(value)
 	return ctx, nil

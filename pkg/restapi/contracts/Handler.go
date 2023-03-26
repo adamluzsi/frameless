@@ -11,14 +11,13 @@ import (
 	"github.com/adamluzsi/testcase"
 )
 
-type Server[DTO, ID any] struct {
-	MakeSubject func(testing.TB) ServerSubject
-	MakeContext func(testing.TB) context.Context
-}
+type Server[DTO, ID any] func(testing.TB) ServerSubject
 
 type ServerSubject struct {
 	Client       http.Client
 	ResourcePath string
+
+	MakeContext func() context.Context
 }
 
 func (c Server[DTO, ID]) Name() string           { return "restapi Server" }
@@ -27,10 +26,8 @@ func (c Server[DTO, ID]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
 
 func (c Server[DTO, ID]) subject() testcase.Var[ServerSubject] {
 	return testcase.Var[ServerSubject]{
-		ID: "restapi Server Client",
-		Init: func(t *testcase.T) ServerSubject {
-			return c.MakeSubject(t)
-		},
+		ID:   "restapi Server Client",
+		Init: func(t *testcase.T) ServerSubject { return c(t) },
 	}
 }
 

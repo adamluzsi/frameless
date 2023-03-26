@@ -101,7 +101,7 @@ func BenchmarkFilter(b *testing.B) {
 		values = append(values, rnd.IntN(1000))
 	}
 
-	makeSubject := func() iterators.Iterator[int] {
+	makeIter := func() iterators.Iterator[int] {
 		return iterators.Filter[int](iterators.Slice[int](values), logic)
 	}
 
@@ -109,7 +109,7 @@ func BenchmarkFilter(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		func() {
-			iter := makeSubject()
+			iter := makeIter()
 			defer iter.Close()
 			for iter.Next() {
 				//

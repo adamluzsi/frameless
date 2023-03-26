@@ -2,13 +2,10 @@ package pubsubcontracts
 
 import (
 	"context"
-	"fmt"
 	"github.com/adamluzsi/frameless/spechelper"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/adamluzsi/testcase/let"
 
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
@@ -22,10 +19,19 @@ type PubSub[Data any] struct {
 	pubsub.Subscriber[Data]
 }
 
-type base[Data any] struct {
-	MakeSubject func(testing.TB) PubSub[Data]
-	MakeContext func(testing.TB) context.Context
-	MakeData    func(testing.TB) Data
+type base[Data any] func(testing.TB) baseSubject[Data]
+
+type baseSubject[Data any] struct {
+	PubSub      PubSub[Data]
+	MakeContext func() context.Context
+	MakeData    func() Data
+}
+
+func (c base[Data]) subject() testcase.Var[baseSubject[Data]] {
+	return testcase.Var[baseSubject[Data]]{
+		ID:   "baseSubject[Data]",
+		Init: func(t *testcase.T) baseSubject[Data] { return c(t) },
+	}
 }
 
 func (c base[Data]) Spec(s *testcase.Spec) {
@@ -41,18 +47,18 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 		s.Describe(".Publish", func(s *testcase.Spec) {
 			var (
 				ctx = testcase.Let(s, func(t *testcase.T) context.Context {
-					return c.MakeContext(t)
+					return c.subject().Get(t).MakeContext()
 				})
 				data = testcase.Let[[]Data](s, func(t *testcase.T) []Data {
 					var vs []Data
 					for i, l := 0, t.Random.IntB(3, 7); i < l; i++ {
-						vs = append(vs, c.MakeData(t))
+						vs = append(vs, c.subject().Get(t).MakeData())
 					}
 					return vs
 				})
 			)
 			act := func(t *testcase.T) error {
-				return c.subject().Get(t).Publish(ctx.Get(t), data.Get(t)...)
+				return c.subject().Get(t).PubSub.Publish(ctx.Get(t), data.Get(t)...)
 			}
 
 			s.Then("it publish without an error", func(t *testcase.T) {
@@ -82,7 +88,9 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 		})
 
 		s.When("an event is published", func(s *testcase.Spec) {
-			val := let.With[Data](s, c.MakeData)
+			val := testcase.Let(s, func(t *testcase.T) Data {
+				return c.subject().Get(t).MakeData()
+			})
 
 			c.WhenWePublish(s, val)
 
@@ -97,13 +105,6 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c base[Data]) subject() testcase.Var[PubSub[Data]] {
-	return testcase.Var[PubSub[Data]]{
-		ID:   fmt.Sprintf("PubSub<%T>", *new(Data)),
-		Init: func(t *testcase.T) PubSub[Data] { return c.MakeSubject(t) },
-	}
-}
-
 func (c base[Data]) cancelFnsVar() testcase.Var[[]func()] {
 	return testcase.Var[[]func()]{
 		ID: "Subscription Context Cancel Fn",
@@ -114,7 +115,7 @@ func (c base[Data]) cancelFnsVar() testcase.Var[[]func()] {
 }
 
 func (c base[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
-	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t)}
+	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t).PubSub}
 }
 
 type subscriptionIteratorHelper[Data any] struct {
@@ -195,7 +196,7 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
 	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[Data] {
 		sih := c.newSubscriptionIteratorHelper(t)
-		sih.Start(t, c.MakeContext(t))
+		sih.Start(t, c.subject().Get(t).MakeContext())
 		t.Cleanup(sih.Stop)
 		return sih
 	}).EagerLoading(s)
@@ -205,22 +206,22 @@ func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("given the subscription was at least once made")
 		sih := c.newSubscriptionIteratorHelper(t)
-		sih.Start(t, c.MakeContext(t))
+		sih.Start(t, c.subject().Get(t).MakeContext())
 		sih.Stop()
 	})
 }
 
 func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
-	ctx, cancel := context.WithCancel(c.MakeContext(t))
+	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext())
 	testcase.Append(t, c.cancelFnsVar(), cancel)
 	t.Defer(cancel)
-	return c.subject().Get(t).Subscribe(ctx)
+	return c.subject().Get(t).PubSub.Subscribe(ctx)
 }
 
 func (c base[Data]) TryCleanup(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		if !spechelper.TryCleanup(t, c.MakeContext(t), c.subject().Get(t).Subscriber) {
-			c.drainQueue(t, c.subject().Get(t))
+		if !spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.subject().Get(t).PubSub.Subscriber) {
+			c.drainQueue(t, c.subject().Get(t).PubSub)
 		}
 		pubsubtest.Waiter.Wait()
 	})
@@ -229,7 +230,7 @@ func (c base[Data]) TryCleanup(s *testcase.Spec) {
 var DrainTimeout = 256 * time.Millisecond
 
 func (c base[Data]) drainQueue(t *testcase.T, sub pubsub.Subscriber[Data]) {
-	res := pubsubtest.Subscribe[Data](t, c.subject().Get(t), c.MakeContext(t))
+	res := pubsubtest.Subscribe[Data](t, sub, c.subject().Get(t).MakeContext())
 	defer res.Finish()
 	refTime := time.Now().UTC()
 	pubsubtest.Waiter.While(func() bool {
@@ -245,7 +246,7 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	s.Before(func(t *testcase.T) {
 		for _, v := range vars {
 			// we publish one by one intentionally to make the tests more deterministic.
-			t.Must.NoError(c.subject().Get(t).Publish(c.MakeContext(t), v.Get(t)))
+			t.Must.NoError(c.subject().Get(t).PubSub.Publish(c.subject().Get(t).MakeContext(), v.Get(t)))
 			pubsubtest.Waiter.Wait()
 		}
 	})

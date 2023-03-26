@@ -19,9 +19,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type FileSystem struct {
-	MakeSubject func(testing.TB) filesystem.FileSystem
-}
+type FileSystem func(testing.TB) filesystem.FileSystem
 
 func (c FileSystem) String() string {
 	return reflects.SymbolicName(c)
@@ -50,10 +48,8 @@ func (c FileSystem) Spec(s *testcase.Spec) {
 
 func (c FileSystem) fileSystem() testcase.Var[filesystem.FileSystem] {
 	return testcase.Var[filesystem.FileSystem]{
-		ID: "frameless.Local",
-		Init: func(t *testcase.T) filesystem.FileSystem {
-			return c.MakeSubject(t)
-		},
+		ID:   "frameless.Local",
+		Init: func(t *testcase.T) filesystem.FileSystem { return c(t) },
 	}
 }
 

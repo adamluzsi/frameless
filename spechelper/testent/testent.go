@@ -23,6 +23,10 @@ func MakeFoo(tb testing.TB) Foo {
 	return te
 }
 
+func MakeFooFunc(tb testing.TB) func() Foo {
+	return func() Foo { return MakeFoo(tb) }
+}
+
 type FooDTO struct {
 	ID  string `ext:"ID" json:"id"`
 	Foo string `json:"foo"`
@@ -44,6 +48,12 @@ func MakeContext(tb testing.TB) context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	return ctx
+}
+
+func MakeContextFunc(tb testing.TB) func() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	tb.Cleanup(cancel)
+	return func() context.Context { return ctx }
 }
 
 type FooQueueID string

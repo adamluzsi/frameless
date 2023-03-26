@@ -71,9 +71,9 @@ func TestRepositoryWithCUDEvents(t *testing.T) {
 			MakeEntity:  spechelper.MakeTestEntity,
 			MakeContext: spechelper.MakeContext,
 		},
-		frmetacontracts.MetaAccessor[spechelper.TestEntity, string, string]{
-			MakeSubject: func(tb testing.TB) frmetacontracts.MetaAccessorSubject[spechelper.TestEntity, string, string] {
-				return frmetacontracts.MetaAccessorSubject[spechelper.TestEntity, string, string]{
+		frmetacontracts.MetaAccessorX[spechelper.TestEntity, string, string]{
+			MakeSubject: func(tb testing.TB) frmetacontracts.MetaAccessorXSubject[spechelper.TestEntity, string, string] {
+				return frmetacontracts.MetaAccessorXSubject[spechelper.TestEntity, string, string]{
 					MetaAccessor: subject,
 					Resource:     subject,
 					Publisher:    subject,

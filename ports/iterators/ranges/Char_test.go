@@ -82,14 +82,12 @@ func TestChar(t *testing.T) {
 }
 
 func TestChar_implementsIterator(t *testing.T) {
-	iteratorcontracts.Iterator[rune]{
-		MakeSubject: func(tb testing.TB) iterators.Iterator[rune] {
-			t := testcase.ToT(&tb)
-			minChars := []rune{'A', 'B', 'C'}
-			min := t.Random.SliceElement(minChars).(rune)
-			maxChars := []rune{'E', 'F', 'G'}
-			max := t.Random.SliceElement(maxChars).(rune)
-			return ranges.Char(min, max)
-		},
-	}.Test(t)
+	iteratorcontracts.Iterator[rune](func(tb testing.TB) iterators.Iterator[rune] {
+		t := testcase.ToT(&tb)
+		minChars := []rune{'A', 'B', 'C'}
+		min := t.Random.SliceElement(minChars).(rune)
+		maxChars := []rune{'E', 'F', 'G'}
+		max := t.Random.SliceElement(maxChars).(rune)
+		return ranges.Char(min, max)
+	}).Test(t)
 }

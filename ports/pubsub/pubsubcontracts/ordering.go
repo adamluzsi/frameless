@@ -3,7 +3,6 @@ package pubsubcontracts
 import (
 	"context"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/testcase/let"
 	"testing"
 
 	"github.com/adamluzsi/testcase"
@@ -17,18 +16,25 @@ import (
 // Therefore, the first element to be entered in this approach, gets out First.
 // In computing, FIFO approach is used as an operating system algorithm, which gives every process CPU time in the order they arrive.
 // The data structure that implements FIFO is Queue.
-type FIFO[Data any] struct {
-	MakeSubject func(testing.TB) PubSub[Data]
-	MakeContext func(testing.TB) context.Context
-	MakeData    func(testing.TB) Data
+type FIFO[Data any] func(testing.TB) FIFOSubject[Data]
+
+type FIFOSubject[Data any] struct {
+	PubSub      PubSub[Data]
+	MakeContext func() context.Context
+	MakeData    func() Data
 }
 
 func (c FIFO[Data]) Spec(s *testcase.Spec) {
-	b := base[Data]{
-		MakeSubject: c.MakeSubject,
-		MakeContext: c.MakeContext,
-		MakeData:    c.MakeData,
-	}
+	subject := testcase.Let(s, func(t *testcase.T) FIFOSubject[Data] { return c(t) })
+
+	b := base[Data](func(tb testing.TB) baseSubject[Data] {
+		sub := c(tb)
+		return baseSubject[Data]{
+			PubSub:      sub.PubSub,
+			MakeContext: sub.MakeContext,
+			MakeData:    sub.MakeData,
+		}
+	})
 	b.Spec(s)
 
 	s.Context("ordering is FIFO", func(s *testcase.Spec) {
@@ -37,9 +43,15 @@ func (c FIFO[Data]) Spec(s *testcase.Spec) {
 		subscription := b.GivenWeHaveSubscription(s)
 
 		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := let.With[Data](s, c.MakeData)
-			val2 := let.With[Data](s, c.MakeData)
-			val3 := let.With[Data](s, c.MakeData)
+			val1 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
+			val2 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
+			val3 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
 			b.WhenWePublish(s, val1, val2, val3)
 
 			s.Then("messages are received in their publishing order", func(t *testcase.T) {
@@ -62,33 +74,46 @@ func (c FIFO[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
 // Therefore, the first element to be entered in this approach, gets out Last.
 // In computing, LIFO approach is used as a queuing theory that refers to the way items are stored in types of data structures.
 // The data structure that implements LIFO is Stack.
-type LIFO[Data any] struct {
-	MakeSubject func(testing.TB) PubSub[Data]
-	MakeContext func(testing.TB) context.Context
-	MakeData    func(testing.TB) Data
+type LIFO[Data any] func(testing.TB) LIFOSubject[Data]
+
+type LIFOSubject[Data any] struct {
+	PubSub      PubSub[Data]
+	MakeContext func() context.Context
+	MakeData    func() Data
 }
 
 func (c LIFO[Data]) Spec(s *testcase.Spec) {
-	b := base[Data]{
-		MakeSubject: c.MakeSubject,
-		MakeContext: c.MakeContext,
-		MakeData:    c.MakeData,
-	}
+	subject := testcase.Let(s, func(t *testcase.T) LIFOSubject[Data] { return c(t) })
+
+	b := base[Data](func(tb testing.TB) baseSubject[Data] {
+		sub := subject.Get(testcase.ToT(&tb))
+		return baseSubject[Data]{
+			PubSub:      sub.PubSub,
+			MakeContext: sub.MakeContext,
+			MakeData:    sub.MakeData,
+		}
+	})
 	b.Spec(s)
 
 	s.Context("ordering is LIFO", func(s *testcase.Spec) {
 		b.TryCleanup(s)
 
-		val1 := let.With[Data](s, c.MakeData)
-		val2 := let.With[Data](s, c.MakeData)
-		val3 := let.With[Data](s, c.MakeData)
+		val1 := testcase.Let(s, func(t *testcase.T) Data {
+			return subject.Get(t).MakeData()
+		})
+		val2 := testcase.Let(s, func(t *testcase.T) Data {
+			return subject.Get(t).MakeData()
+		})
+		val3 := testcase.Let(s, func(t *testcase.T) Data {
+			return subject.Get(t).MakeData()
+		})
 
 		s.Then("messages are received in their publishing order", func(t *testcase.T) {
-			ps := c.MakeSubject(t)
-			sub := ps.Subscribe(c.MakeContext(t))
+			ps := subject.Get(t).PubSub
+			sub := ps.Subscribe(subject.Get(t).MakeContext())
 			defer sub.Close()
 
-			t.Must.NoError(ps.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
+			t.Must.NoError(ps.Publish(subject.Get(t).MakeContext(), val1.Get(t), val2.Get(t), val3.Get(t)))
 			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}
 
 			var got []Data

@@ -19,27 +19,19 @@ func TestContracts(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resource.Contract[Entity, string, string]{
-		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
-			eventLog := memory.NewEventLog()
-			repository := memory.NewEventLogRepository[Entity, string](eventLog)
-			return resource.ContractSubject[Entity, string]{
-				Resource:      repository,
-				MetaAccessor:  eventLog,
-				CommitManager: eventLog,
-			}
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-		MakeEntity: func(tb testing.TB) Entity {
-			t := tb.(*testcase.T)
-			return Entity{Data: t.Random.String()}
-		},
-		MakeV: func(tb testing.TB) string {
-			return tb.(*testcase.T).Random.String()
-		},
-	})
+	testcase.RunSuite(t, resource.Contract[Entity, string](func(tb testing.TB) resource.ContractSubject[Entity, string] {
+		eventLog := memory.NewEventLog()
+		repository := memory.NewEventLogRepository[Entity, string](eventLog)
+		return resource.ContractSubject[Entity, string]{
+			Resource:      repository,
+			MetaAccessor:  eventLog,
+			CommitManager: eventLog,
+			MakeContext:   context.Background,
+			MakeEntity: func() Entity {
+				return Entity{Data: testcase.ToT(&tb).Random.String()}
+			},
+		}
+	}))
 }
 
 func TestContracts_testcaseTNestingSupport(t *testing.T) {
@@ -60,35 +52,25 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 		return t
 	}
 
-	resource.Contract[Entity, string, string]{
-		MakeSubject: func(tb testing.TB) resource.ContractSubject[Entity, string] {
-			t := mustBeTCT(tb)
-			t.Must.Equal(42, vGet(t))
-			t.Must.Equal(42, varWithNoInit.Get(t))
-			el := memory.NewEventLog()
-			stg := memory.NewEventLogRepository[Entity, string](el)
-			return resource.ContractSubject[Entity, string]{
-				MetaAccessor:  el,
-				CommitManager: el,
-				Resource:      stg,
-			}
-		},
-		MakeEntity: func(tb testing.TB) Entity {
-			t := mustBeTCT(tb)
-			t.Must.Equal(42, vGet(t))
-			t.Must.Equal(42, varWithNoInit.Get(t))
-			return Entity{
-				X: t.Random.String(),
-				Y: t.Random.String(),
-				Z: t.Random.String(),
-			}
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			_ = mustBeTCT(tb)
-			return context.Background()
-		},
-		MakeV: func(tb testing.TB) string {
-			return mustBeTCT(tb).Random.String()
-		},
-	}.Spec(s)
+	resource.Contract[Entity, string](func(tb testing.TB) resource.ContractSubject[Entity, string] {
+		t := mustBeTCT(tb)
+		t.Must.Equal(42, vGet(t))
+		t.Must.Equal(42, varWithNoInit.Get(t))
+		el := memory.NewEventLog()
+		stg := memory.NewEventLogRepository[Entity, string](el)
+		return resource.ContractSubject[Entity, string]{
+			MetaAccessor:  el,
+			CommitManager: el,
+			Resource:      stg,
+
+			MakeContext: context.Background,
+			MakeEntity: func() Entity {
+				return Entity{
+					X: t.Random.String(),
+					Y: t.Random.String(),
+					Z: t.Random.String(),
+				}
+			},
+		}
+	}).Spec(s)
 }

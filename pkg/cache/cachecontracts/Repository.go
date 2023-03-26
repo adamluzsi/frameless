@@ -3,7 +3,6 @@ package cachecontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/testcase/let"
 	"github.com/adamluzsi/testcase/random"
 	"sync"
 	"testing"
@@ -21,23 +20,28 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
-type Repository[Entity, ID any] struct {
-	MakeSubject func(testing.TB) cache.Repository[Entity, ID]
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
+type Repository[Entity, ID any] func(testing.TB) RepositorySubject[Entity, ID]
+
+type RepositorySubject[Entity, ID any] struct {
+	Repository  cache.Repository[Entity, ID]
+	MakeContext func() context.Context
+	MakeEntity  func() Entity
+	// ChangeEntity is an optional configuration field
+	// to express what Entity fields are allowed to be changed by the user of the Updater.
+	// For example, if the changed  Entity field is ignored by the Update method,
+	// you can match this by not changing the Entity field as part of the ChangeEntity function.
+	ChangeEntity func(*Entity)
 }
 
-func (c Repository[Entity, ID]) repository() testcase.Var[cache.Repository[Entity, ID]] {
-	return testcase.Var[cache.Repository[Entity, ID]]{
-		ID: "cache.Repository",
-		Init: func(t *testcase.T) cache.Repository[Entity, ID] {
-			return c.MakeSubject(t)
-		},
+func (c Repository[Entity, ID]) subject() testcase.Var[RepositorySubject[Entity, ID]] {
+	return testcase.Var[RepositorySubject[Entity, ID]]{
+		ID:   "cache.Repository",
+		Init: func(t *testcase.T) RepositorySubject[Entity, ID] { return c(t) },
 	}
 }
 
 func (c Repository[Entity, ID]) repositoryGet(t *testcase.T) cache.Repository[Entity, ID] {
-	return c.repository().Get(t)
+	return c.subject().Get(t).Repository
 }
 
 func (c Repository[Entity, ID]) Test(t *testing.T) {
@@ -55,8 +59,8 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
 			var (
-				ctx        = c.MakeContext(t)
-				repository = c.repository().Get(t)
+				ctx        = c.subject().Get(t).MakeContext()
+				repository = c.subject().Get(t).Repository
 			)
 			DeleteAll[cache.Hit[ID], cache.HitID](t, repository.Hits(), ctx)
 			DeleteAll[Entity, ID](t, repository.Entities(), ctx)
@@ -64,51 +68,50 @@ func (c Repository[Entity, ID]) Spec(s *testcase.Spec) {
 	})
 
 	testcase.RunSuite(s,
-		EntityRepository[Entity, ID]{
-			MakeSubject: func(tb testing.TB) (cache.EntityRepository[Entity, ID], comproto.OnePhaseCommitProtocol) {
-				subject := c.MakeSubject(tb)
-				return subject.Entities(), subject
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeEntity,
-		},
-		HitRepository[ID]{
-			MakeSubject: func(tb testing.TB) HitRepositorySubject[ID] {
-				subject := c.MakeSubject(tb)
-				return HitRepositorySubject[ID]{
-					Resource:      subject.Hits(),
-					CommitManager: subject,
-				}
-			},
-			MakeContext: c.MakeContext,
-			MakeHit: func(tb testing.TB) cache.Hit[ID] {
-				t := tb.(*testcase.T)
-				ctx := c.MakeContext(tb)
-				repository := c.repository().Get(t).Entities()
-				return cache.Hit[ID]{
-					QueryID: t.Random.UUID(),
-					EntityIDs: random.Slice[ID](t.Random.IntBetween(3, 7), func() ID {
-						ent := c.MakeEntity(t)
-						Create[Entity, ID](t, repository, ctx, &ent)
-						id, _ := extid.Lookup[ID](ent)
-						return id
-					}),
-					Timestamp: time.Now().UTC(),
-				}
-			},
-		},
+		EntityRepository[Entity, ID](func(tb testing.TB) EntityRepositorySubject[Entity, ID] {
+			sub := c(tb)
+			return EntityRepositorySubject[Entity, ID]{
+				EntityRepository: sub.Repository.Entities(),
+				CommitManager:    sub.Repository,
+				MakeContext:      sub.MakeContext,
+				MakeEntity:       sub.MakeEntity,
+				ChangeEntity:     sub.ChangeEntity,
+			}
+		}),
+		HitRepository[ID](func(tb testing.TB) HitRepositorySubject[ID] {
+			sub := c(tb)
+			return HitRepositorySubject[ID]{
+				Resource:      sub.Repository.Hits(),
+				CommitManager: sub.Repository,
+				MakeContext:   sub.MakeContext,
+				MakeHit: func() cache.Hit[ID] {
+					t := tb.(*testcase.T)
+					ctx := sub.MakeContext()
+					repository := sub.Repository.Entities()
+					return cache.Hit[ID]{
+						QueryID: t.Random.UUID(),
+						EntityIDs: random.Slice[ID](t.Random.IntBetween(3, 7), func() ID {
+							ent := c.subject().Get(t).MakeEntity()
+							Create[Entity, ID](t, repository, ctx, &ent)
+							id, _ := extid.Lookup[ID](ent)
+							return id
+						}),
+						Timestamp: time.Now().UTC().Round(time.Millisecond),
+					}
+				},
+			}
+
+		}),
 	)
 }
 
-type HitRepository[EntID any] struct {
-	MakeSubject func(tb testing.TB) HitRepositorySubject[EntID]
-	MakeContext func(tb testing.TB) context.Context
-	MakeHit     func(tb testing.TB) cache.Hit[EntID]
-}
+type HitRepository[EntID any] func(tb testing.TB) HitRepositorySubject[EntID]
 
 type HitRepositorySubject[EntID any] struct {
 	Resource      cache.HitRepository[EntID]
 	CommitManager comproto.OnePhaseCommitProtocol
+	MakeContext   func() context.Context
+	MakeHit       func() cache.Hit[EntID]
 }
 
 func (c HitRepository[EntID]) Test(t *testing.T) {
@@ -121,55 +124,72 @@ func (c HitRepository[EntID]) Benchmark(b *testing.B) {
 
 func (c HitRepository[EntID]) Spec(s *testcase.Spec) {
 	testcase.RunSuite(s,
-		crudcontracts.Creator[cache.Hit[EntID], cache.HitID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[cache.Hit[EntID], cache.HitID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeHit,
-
-			SupportIDReuse:  true,
-			SupportRecreate: true,
-		},
-		crudcontracts.Finder[cache.Hit[EntID], cache.HitID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID] {
-				return c.MakeSubject(tb).Resource.(crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID])
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeHit,
-		},
-		crudcontracts.Updater[cache.Hit[EntID], cache.HitID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[cache.Hit[EntID], cache.HitID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeHit,
-		},
-		crudcontracts.Deleter[cache.Hit[EntID], cache.HitID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[cache.Hit[EntID], cache.HitID] {
-				return c.MakeSubject(tb).Resource
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeHit,
-		},
-		crudcontracts.OnePhaseCommitProtocol[cache.Hit[EntID], cache.HitID]{
-			MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[EntID], cache.HitID] {
-				repository := c.MakeSubject(tb)
-				return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[EntID], cache.HitID]{
-					Resource:      repository.Resource,
-					CommitManager: repository.CommitManager,
-				}
-			},
-			MakeContext: c.MakeContext,
-			MakeEntity:  c.MakeHit,
-		},
+		crudcontracts.Creator[cache.Hit[EntID], cache.HitID](func(tb testing.TB) crudcontracts.CreatorSubject[cache.Hit[EntID], cache.HitID] {
+			sub := c(tb)
+			return crudcontracts.CreatorSubject[cache.Hit[EntID], cache.HitID]{
+				Resource:        sub.Resource,
+				MakeContext:     sub.MakeContext,
+				MakeEntity:      sub.MakeHit,
+				SupportIDReuse:  true,
+				SupportRecreate: true,
+			}
+		}),
+		crudcontracts.Finder[cache.Hit[EntID], cache.HitID](func(tb testing.TB) crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID] {
+			sub := c(tb)
+			return crudcontracts.FinderSubject[cache.Hit[EntID], cache.HitID]{
+				Resource:    sub.Resource,
+				MakeContext: sub.MakeContext,
+				MakeEntity:  sub.MakeHit,
+			}
+		}),
+		crudcontracts.Updater[cache.Hit[EntID], cache.HitID](func(tb testing.TB) crudcontracts.UpdaterSubject[cache.Hit[EntID], cache.HitID] {
+			sub := c(tb)
+			return crudcontracts.UpdaterSubject[cache.Hit[EntID], cache.HitID]{
+				Resource:     sub.Resource,
+				MakeContext:  sub.MakeContext,
+				MakeEntity:   sub.MakeHit,
+				ChangeEntity: nil, // we suppose to be able to change every field of the cache.Hit entity
+			}
+		}),
+		crudcontracts.Deleter[cache.Hit[EntID], cache.HitID](func(tb testing.TB) crudcontracts.DeleterSubject[cache.Hit[EntID], cache.HitID] {
+			sub := c(tb)
+			return crudcontracts.DeleterSubject[cache.Hit[EntID], cache.HitID]{
+				Resource:    sub.Resource,
+				MakeContext: sub.MakeContext,
+				MakeEntity:  sub.MakeHit,
+			}
+		}),
+		crudcontracts.OnePhaseCommitProtocol[cache.Hit[EntID], cache.HitID](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[EntID], cache.HitID] {
+			sub := c(tb)
+			return crudcontracts.OnePhaseCommitProtocolSubject[cache.Hit[EntID], cache.HitID]{
+				Resource:      sub.Resource,
+				CommitManager: sub.CommitManager,
+				MakeContext:   sub.MakeContext,
+				MakeEntity:    sub.MakeHit,
+			}
+		}),
 	)
 }
 
-type EntityRepository[Entity, ID any] struct {
-	MakeSubject func(testing.TB) (cache.EntityRepository[Entity, ID], comproto.OnePhaseCommitProtocol)
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
+type EntityRepository[Entity, ID any] func(testing.TB) EntityRepositorySubject[Entity, ID]
+
+type EntityRepositorySubject[Entity, ID any] struct {
+	EntityRepository cache.EntityRepository[Entity, ID]
+	CommitManager    comproto.OnePhaseCommitProtocol
+	MakeContext      func() context.Context
+	MakeEntity       func() Entity
+	// ChangeEntity is an optional configuration field
+	// to express what Entity fields are allowed to be changed by the user of the Updater.
+	// For example, if the changed  Entity field is ignored by the Update method,
+	// you can match this by not changing the Entity field as part of the ChangeEntity function.
+	ChangeEntity func(*Entity)
+}
+
+func (c EntityRepository[Entity, ID]) subject() testcase.Var[EntityRepositorySubject[Entity, ID]] {
+	return testcase.Var[EntityRepositorySubject[Entity, ID]]{
+		ID:   "EntityRepositorySubject[Entity, ID]",
+		Init: func(t *testcase.T) EntityRepositorySubject[Entity, ID] { return c(t) },
+	}
 }
 
 func (c EntityRepository[Entity, ID]) Test(t *testing.T) {
@@ -182,60 +202,58 @@ func (c EntityRepository[Entity, ID]) Benchmark(b *testing.B) {
 
 func (c EntityRepository[Entity, ID]) Spec(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		ds, cpm := c.MakeSubject(t)
-		c.dataRepository().Set(t, ds)
-		c.cpm().Set(t, cpm)
+		c.dataRepository().Set(t, c.subject().Get(t).EntityRepository)
+		c.cpm().Set(t, c.subject().Get(t).CommitManager)
 
-		spechelper.TryCleanup(t, c.MakeContext(t), c.dataRepository().Get(t))
+		spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.dataRepository().Get(t))
 	})
 
 	s.Describe(`cache.EntityRepository`, func(s *testcase.Spec) {
-		newRepository := func(tb testing.TB) cache.EntityRepository[Entity, ID] {
-			ds, _ := c.MakeSubject(tb)
-			return ds
-		}
 		testcase.RunSuite(s,
-			crudcontracts.Creator[Entity, ID]{
-				MakeSubject: func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
-					return newRepository(tb)
-				},
-				MakeEntity:  c.MakeEntity,
-				MakeContext: c.MakeContext,
-
-				SupportIDReuse: true,
-			},
-			crudcontracts.Finder[Entity, ID]{
-				MakeSubject: func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
-					return newRepository(tb).(crudcontracts.FinderSubject[Entity, ID])
-				},
-				MakeEntity:  c.MakeEntity,
-				MakeContext: c.MakeContext,
-			},
-			crudcontracts.Updater[Entity, ID]{
-				MakeSubject: func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
-					return newRepository(tb)
-				},
-				MakeEntity:  c.MakeEntity,
-				MakeContext: c.MakeContext,
-			},
-			crudcontracts.Deleter[Entity, ID]{
-				MakeSubject: func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
-					return newRepository(tb)
-				},
-				MakeEntity:  c.MakeEntity,
-				MakeContext: c.MakeContext,
-			},
-			crudcontracts.OnePhaseCommitProtocol[Entity, ID]{
-				MakeSubject: func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
-					ds, cpm := c.MakeSubject(tb)
-					return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
-						Resource:      ds,
-						CommitManager: cpm,
-					}
-				},
-				MakeEntity:  c.MakeEntity,
-				MakeContext: c.MakeContext,
-			},
+			crudcontracts.Creator[Entity, ID](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
+				sub := c(tb)
+				return crudcontracts.CreatorSubject[Entity, ID]{
+					Resource:        sub.EntityRepository,
+					MakeContext:     sub.MakeContext,
+					MakeEntity:      sub.MakeEntity,
+					SupportIDReuse:  true,
+					SupportRecreate: true,
+				}
+			}),
+			crudcontracts.Finder[Entity, ID](func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
+				sub := c(tb)
+				return crudcontracts.FinderSubject[Entity, ID]{
+					Resource:    sub.EntityRepository,
+					MakeContext: sub.MakeContext,
+					MakeEntity:  sub.MakeEntity,
+				}
+			}),
+			crudcontracts.Updater[Entity, ID](func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
+				sub := c(tb)
+				return crudcontracts.UpdaterSubject[Entity, ID]{
+					Resource:     sub.EntityRepository,
+					MakeContext:  sub.MakeContext,
+					MakeEntity:   sub.MakeEntity,
+					ChangeEntity: sub.ChangeEntity,
+				}
+			}),
+			crudcontracts.Deleter[Entity, ID](func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
+				sub := c(tb)
+				return crudcontracts.DeleterSubject[Entity, ID]{
+					Resource:    sub.EntityRepository,
+					MakeContext: sub.MakeContext,
+					MakeEntity:  sub.MakeEntity,
+				}
+			}),
+			crudcontracts.OnePhaseCommitProtocol[Entity, ID](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
+				sub := c(tb)
+				return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
+					Resource:      sub.EntityRepository,
+					CommitManager: sub.CommitManager,
+					MakeContext:   sub.MakeContext,
+					MakeEntity:    sub.MakeEntity,
+				}
+			}),
 		)
 
 		s.Describe(`.FindByIDs`, c.describeCacheDataFindByIDs)
@@ -253,7 +271,9 @@ func (c EntityRepository[Entity, ID]) cpm() testcase.Var[comproto.OnePhaseCommit
 
 func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) {
 	var (
-		ctx      = let.With[context.Context](s, c.MakeContext)
+		ctx = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
+			return c.subject().Get(t).MakeContext()
+		})
 		entities = testcase.Var[[]*Entity]{ID: `entities`}
 		act      = func(t *testcase.T) error {
 			return c.dataRepository().Get(t).Upsert(ctx.Get(t), entities.Get(t)...)
@@ -262,7 +282,7 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 
 	var (
 		newEntWithTeardown = func(t *testcase.T) *Entity {
-			ent := c.MakeEntity(t)
+			ent := c.subject().Get(t).MakeEntity()
 			ptr := &ent
 			t.Cleanup(func() {
 				ctx := ctx.Get(t)
@@ -369,7 +389,7 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 			s.Before(func(t *testcase.T) {
 				t.Log(`and entity 1 has updated content`)
 				id := c.getID(t, ent1.Get(t))
-				ent := c.MakeEntity(t)
+				ent := c.subject().Get(t).MakeEntity()
 				n := &ent
 				t.Must.Nil(extid.Set(n, id))
 				ent1.Set(t, n)
@@ -405,7 +425,9 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 
 func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
 	var (
-		ctx     = let.With[context.Context](s, c.MakeContext)
+		ctx = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
+			return c.subject().Get(t).MakeContext()
+		})
 		ids     = testcase.Var[[]ID]{ID: `entities ids`}
 		subject = func(t *testcase.T) iterators.Iterator[Entity] {
 			return c.dataRepository().Get(t).FindByIDs(ctx.Get(t), ids.Get(t)...)
@@ -414,7 +436,7 @@ func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spe
 
 	var (
 		newEntityInit = func(t *testcase.T) *Entity {
-			ent := c.MakeEntity(t)
+			ent := c.subject().Get(t).MakeEntity()
 			ptr := &ent
 			Create[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ptr)
 			return ptr
@@ -474,7 +496,7 @@ func (c EntityRepository[Entity, ID]) ensureExtID(t *testcase.T, ptr *Entity) {
 	if _, ok := extid.Lookup[ID](ptr); ok {
 		return
 	}
-	ctx := c.MakeContext(t)
+	ctx := c.subject().Get(t).MakeContext()
 	Create[Entity, ID](t, c.dataRepository().Get(t), ctx, ptr)
 	Delete[Entity, ID](t, c.dataRepository().Get(t), ctx, ptr)
 }

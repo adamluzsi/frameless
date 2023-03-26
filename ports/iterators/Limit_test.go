@@ -95,13 +95,11 @@ func TestLimit(t *testing.T) {
 }
 
 func TestLimit_implementsIterator(t *testing.T) {
-	iteratorcontracts.Iterator[int]{
-		MakeSubject: func(tb testing.TB) iterators.Iterator[int] {
-			t := testcase.ToT(&tb)
-			return iterators.Limit(
-				ranges.Int(1, 99),
-				t.Random.IntB(1, 12),
-			)
-		},
-	}.Test(t)
+	iteratorcontracts.Iterator[int](func(tb testing.TB) iterators.Iterator[int] {
+		t := testcase.ToT(&tb)
+		return iterators.Limit(
+			ranges.Int(1, 99),
+			t.Random.IntB(1, 12),
+		)
+	}).Test(t)
 }

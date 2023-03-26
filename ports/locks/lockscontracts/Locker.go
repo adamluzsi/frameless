@@ -10,7 +10,6 @@ import (
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/let"
 )
 
 var Waiter = assert.Waiter{
@@ -18,24 +17,28 @@ var Waiter = assert.Waiter{
 	Timeout:      5 * time.Second,
 }
 
-type Locker struct {
-	MakeSubject func(testing.TB) locks.Locker
-	MakeContext func(testing.TB) context.Context
+type Locker func(testing.TB) LockerSubject
+
+type LockerSubject struct {
+	Locker      locks.Locker
+	MakeContext func() context.Context
 }
 
 func (c Locker) Spec(s *testcase.Spec) {
 	const withinTimeout = time.Second
 
-	subject := let.With[locks.Locker](s, c.MakeSubject)
+	subject := testcase.Let(s, func(t *testcase.T) LockerSubject { return c(t) })
 
 	s.Describe(".Lock", func(s *testcase.Spec) {
 		var (
-			Context = let.With[context.Context](s, c.MakeContext)
+			Context = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
+				return subject.Get(t).MakeContext()
+			})
 		)
 		act := func(t *testcase.T) (context.Context, error) {
-			ctx, err := subject.Get(t).Lock(Context.Get(t))
+			ctx, err := subject.Get(t).Locker.Lock(Context.Get(t))
 			if err == nil {
-				t.Defer(subject.Get(t).Unlock, ctx)
+				t.Defer(subject.Get(t).Locker.Unlock, ctx)
 			}
 			return ctx, err
 		}
@@ -45,7 +48,7 @@ func (c Locker) Spec(s *testcase.Spec) {
 			t.Must.NoError(err)
 			t.Must.NotNil(ctx)
 			t.Must.NoError(ctx.Err())
-			t.Must.NoError(subject.Get(t).Unlock(ctx))
+			t.Must.NoError(subject.Get(t).Locker.Unlock(ctx))
 		})
 
 		s.Then("calling lock will prevent other lock acquisitions", func(t *testcase.T) {
@@ -54,18 +57,18 @@ func (c Locker) Spec(s *testcase.Spec) {
 
 			var isLocked int32
 			go func() {
-				ctx, err := subject.Get(t).Lock(context.Background())
+				ctx, err := subject.Get(t).Locker.Lock(context.Background())
 				t.Must.NoError(err)
 				t.Must.NotNil(ctx)
 				t.Must.NoError(ctx.Err())
-				t.Must.NoError(subject.Get(t).Unlock(ctx))
+				t.Must.NoError(subject.Get(t).Locker.Unlock(ctx))
 				atomic.AddInt32(&isLocked, 1)
 			}()
 
 			t.Random.Repeat(3, 7, Waiter.Wait)
 			t.Must.Equal(int32(0), atomic.LoadInt32(&isLocked))
 
-			t.Must.NoError(subject.Get(t).Unlock(ctx))
+			t.Must.NoError(subject.Get(t).Locker.Unlock(ctx))
 			t.Eventually(func(it assert.It) {
 				// after unlock, the other Lock call unblocks
 				it.Must.Equal(int32(1), atomic.LoadInt32(&isLocked))
@@ -75,8 +78,8 @@ func (c Locker) Spec(s *testcase.Spec) {
 		s.Then("calling unlock not with the locked context will yield an error", func(t *testcase.T) {
 			lctx, err := act(t)
 			t.Must.NoError(err)
-			t.Must.ErrorIs(locks.ErrNoLock, subject.Get(t).Unlock(c.MakeContext(t)))
-			t.Must.NoError(subject.Get(t).Unlock(lctx))
+			t.Must.ErrorIs(locks.ErrNoLock, subject.Get(t).Locker.Unlock(subject.Get(t).MakeContext()))
+			t.Must.NoError(subject.Get(t).Locker.Unlock(lctx))
 		})
 
 		s.When("context is already done", func(s *testcase.Spec) {
@@ -96,9 +99,9 @@ func (c Locker) Spec(s *testcase.Spec) {
 		s.When("the current context already a lock context", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
 				ctx := Context.Super(t)
-				lockCtx, err := subject.Get(t).Lock(ctx)
+				lockCtx, err := subject.Get(t).Locker.Lock(ctx)
 				t.Must.NoError(err)
-				t.Defer(subject.Get(t).Unlock, lockCtx)
+				t.Defer(subject.Get(t).Locker.Unlock, lockCtx)
 				return lockCtx
 			})
 
@@ -107,7 +110,7 @@ func (c Locker) Spec(s *testcase.Spec) {
 					ctx, err := act(t)
 					t.Must.NoError(err)
 					t.Must.NotNil(ctx)
-					t.Must.NoError(subject.Get(t).Unlock(ctx))
+					t.Must.NoError(subject.Get(t).Locker.Unlock(ctx))
 				})
 			})
 		})
@@ -118,15 +121,15 @@ func (c Locker) Spec(s *testcase.Spec) {
 			Context = testcase.Let[context.Context](s, nil)
 		)
 		act := func(t *testcase.T) error {
-			return subject.Get(t).Unlock(Context.Get(t))
+			return subject.Get(t).Locker.Unlock(Context.Get(t))
 		}
 
 		s.When("context is a lock context, made by a .Lock call", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
-				ctx := c.MakeContext(t)
-				ctx, err := subject.Get(t).Lock(ctx)
+				ctx := subject.Get(t).MakeContext()
+				ctx, err := subject.Get(t).Locker.Lock(ctx)
 				t.Must.NoError(err)
-				t.Defer(subject.Get(t).Unlock, ctx)
+				t.Defer(subject.Get(t).Locker.Unlock, ctx)
 				return ctx
 			})
 
@@ -147,10 +150,10 @@ func (c Locker) Spec(s *testcase.Spec) {
 
 			s.And("context is cancelled during locking", func(s *testcase.Spec) {
 				Context.Let(s, func(t *testcase.T) context.Context {
-					ctx, cancel := context.WithCancel(c.MakeContext(t))
-					ctx, err := subject.Get(t).Lock(ctx)
+					ctx, cancel := context.WithCancel(subject.Get(t).MakeContext())
+					ctx, err := subject.Get(t).Locker.Lock(ctx)
 					t.Must.NoError(err)
-					t.Defer(subject.Get(t).Unlock, ctx)
+					t.Defer(subject.Get(t).Locker.Unlock, ctx)
 					cancel()
 					return ctx
 				})
@@ -163,7 +166,7 @@ func (c Locker) Spec(s *testcase.Spec) {
 
 		s.When("context is not issued by a .Lock call", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
-				return c.MakeContext(t)
+				return subject.Get(t).MakeContext()
 			})
 
 			s.Then("it raise ErrNoLock error", func(t *testcase.T) {

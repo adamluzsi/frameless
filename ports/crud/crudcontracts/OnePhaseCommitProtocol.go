@@ -13,31 +13,24 @@ import (
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/ports/pubsub"
-	pubsubcontracts "github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 	"github.com/adamluzsi/frameless/spechelper"
 
 	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
 )
 
-type OnePhaseCommitProtocol[Entity, ID any] struct {
-	MakeSubject func(testing.TB) OnePhaseCommitProtocolSubject[Entity, ID]
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
-}
+type OnePhaseCommitProtocol[Entity, ID any] func(testing.TB) OnePhaseCommitProtocolSubject[Entity, ID]
 
 type OnePhaseCommitProtocolSubject[Entity, ID any] struct {
 	Resource      spechelper.CRD[Entity, ID]
 	CommitManager comproto.OnePhaseCommitProtocol
+	MakeContext   func() context.Context
+	MakeEntity    func() Entity
 }
 
 func (c OnePhaseCommitProtocol[Entity, ID]) subject() testcase.Var[OnePhaseCommitProtocolSubject[Entity, ID]] {
 	return testcase.Var[OnePhaseCommitProtocolSubject[Entity, ID]]{
-		ID: "OnePhaseCommitProtocolSubject",
-		Init: func(t *testcase.T) OnePhaseCommitProtocolSubject[Entity, ID] {
-			return c.MakeSubject(t)
-		},
+		ID:   "OnePhaseCommitProtocolSubject",
+		Init: func(t *testcase.T) OnePhaseCommitProtocolSubject[Entity, ID] { return c(t) },
 	}
 }
 
@@ -77,15 +70,15 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 	// clean ahead before testing suite
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
-		once.Do(func() { spechelper.TryCleanup(t, c.MakeContext(t), c.resource().Get(t)) })
+		once.Do(func() { spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.resource().Get(t)) })
 	})
 
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 
 		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			tx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
+			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
 			t.Must.Nil(err)
-			ptr := pointer.Of(c.MakeEntity(t))
+			ptr := pointer.Of(c.subject().Get(t).MakeEntity())
 			Create[Entity, ID](t, c.resource().Get(t), tx, ptr)
 			id := HasID[Entity, ID](t, pointer.Deref(ptr))
 
@@ -94,7 +87,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Log(`using the tx context after commit should yield error`)
 			_, _, err = c.resource().Get(t).FindByID(tx, id)
 			t.Must.NotNil(err)
-			t.Must.NotNil(c.resource().Get(t).Create(tx, pointer.Of(c.MakeEntity(t))))
+			t.Must.NotNil(c.resource().Get(t).Create(tx, pointer.Of(c.subject().Get(t).MakeEntity())))
 
 			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity]); ok {
 				t.Must.NotNil(allFinder.FindAll(tx).Err())
@@ -115,10 +108,10 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Test(`BeginTx+RollbackTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			ctx := c.MakeContext(t)
+			ctx := c.subject().Get(t).MakeContext()
 			ctx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
-			ptr := pointer.Of(c.MakeEntity(t))
+			ptr := pointer.Of(c.subject().Get(t).MakeEntity())
 			t.Must.NoError(c.resource().Get(t).Create(ctx, ptr))
 			id, _ := extid.Lookup[ID](ptr)
 			t.Must.NoError(c.manager().Get(t).RollbackTx(ctx))
@@ -130,7 +123,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 				t.Must.NotNil(allFinder.FindAll(ctx).Err())
 			}
 
-			t.Must.NotNil(c.resource().Get(t).Create(ctx, pointer.Of(c.MakeEntity(t))))
+			t.Must.NotNil(c.resource().Get(t).Create(ctx, pointer.Of(c.subject().Get(t).MakeEntity())))
 
 			if updater, ok := c.resource().Get(t).(crud.Updater[Entity]); ok {
 				t.Must.NotNil(updater.Update(ctx, ptr),
@@ -146,41 +139,41 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
+			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
 			t.Must.Nil(err)
 
-			entity := pointer.Of(c.MakeEntity(t))
+			entity := pointer.Of(c.subject().Get(t).MakeEntity())
 			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
 
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)             // can be found in tx Context
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id) // is absent from the global Context
+			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)                             // can be found in tx Context
+			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id) // is absent from the global Context
 
 			t.Must.Nil(c.manager().Get(t).CommitTx(tx)) // after the commit
 
-			actually := IsFindable[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			actually := IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 			t.Must.Equal(entity, actually)
 		})
 
 		s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
+			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
 			t.Must.Nil(err)
-			entity := pointer.Of(c.MakeEntity(t))
+			entity := pointer.Of(c.subject().Get(t).MakeEntity())
 			//t.Must.Nil( Spec.resource().Get(t).Create(tx, entity))
 			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
 
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
 			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 
 			t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
 
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 		})
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
-			ctx := c.MakeContext(t)
-			entity := pointer.Of(c.MakeEntity(t))
+			ctx := c.subject().Get(t).MakeContext()
+			entity := pointer.Of(c.subject().Get(t).MakeEntity())
 
 			Create[Entity, ID](t, c.resource().Get(t), ctx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
@@ -194,15 +187,15 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			IsAbsent[Entity, ID](t, c.resource().Get(t), tx, id)
 
 			// in global Context it is findable
-			IsFindable[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 
 			t.Must.Nil(c.manager().Get(t).CommitTx(tx))
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 		})
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
-			ctx := c.MakeContext(t)
-			entity := pointer.Of(c.MakeEntity(t))
+			ctx := c.subject().Get(t).MakeContext()
+			entity := pointer.Of(c.subject().Get(t).MakeEntity())
 			Create[Entity, ID](t, c.resource().Get(t), ctx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
 
@@ -211,13 +204,13 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)
 			t.Must.Nil(c.resource().Get(t).DeleteByID(tx, id))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), tx, id)
-			IsFindable[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 			t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
-			IsFindable[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), id)
+			IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
-			ctx := c.MakeContext(t)
+			ctx := c.subject().Get(t).MakeContext()
 			ctx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
 			t.Must.Nil(c.manager().Get(t).CommitTx(ctx))
@@ -225,7 +218,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 		})
 
 		s.Test(`RollbackTx multiple times will yield error`, func(t *testcase.T) {
-			ctx := c.MakeContext(t)
+			ctx := c.subject().Get(t).MakeContext()
 			ctx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
 			t.Must.Nil(c.manager().Get(t).RollbackTx(ctx))
@@ -244,15 +237,15 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			t.Defer(DeleteAll[Entity, ID], t, c.resource().Get(t), c.MakeContext(t))
+			t.Defer(DeleteAll[Entity, ID], t, c.resource().Get(t), c.subject().Get(t).MakeContext())
 
-			var globalContext = c.MakeContext(t)
+			var globalContext = c.subject().Get(t).MakeContext()
 
 			tx1, err := c.manager().Get(t).BeginTx(globalContext)
 			t.Must.Nil(err)
 			t.Log(`given tx1 is began`)
 
-			e1 := pointer.Of(c.MakeEntity(t))
+			e1 := pointer.Of(c.subject().Get(t).MakeEntity())
 			t.Must.Nil(c.resource().Get(t).Create(tx1, e1))
 			IsFindable[Entity, ID](t, c.resource().Get(t), tx1, HasID[Entity, ID](t, pointer.Deref(e1)))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
@@ -262,7 +255,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Must.Nil(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
-			e2 := pointer.Of(c.MakeEntity(t))
+			e2 := pointer.Of(c.subject().Get(t).MakeEntity())
 			t.Must.Nil(c.resource().Get(t).Create(tx2InTx1, e2))
 			IsFindable[Entity, ID](t, c.resource().Get(t), tx2InTx1, HasID[Entity, ID](t, pointer.Deref(e2)))    // tx2 can see e2
 			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2))) // global don't see e2
@@ -279,16 +272,14 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			IsFindable[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
 			IsFindable[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2)))
 		})
-
-		s.Describe(`Publisher`, c.specPublisher)
-
+		
 		s.Describe(`.Purger`, c.specPurger)
 	})
 }
 
 func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
-	purger := func(t *testcase.T) PurgerSubject[Entity, ID] {
-		p, ok := c.resource().Get(t).(PurgerSubject[Entity, ID])
+	purger := func(t *testcase.T) purgerResource[Entity, ID] {
+		p, ok := c.resource().Get(t).(purgerResource[Entity, ID])
 		if !ok {
 			t.Skipf(`%T doesn't supply contract.PurgerSubject`, c.resource().Get(t))
 		}
@@ -298,7 +289,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) { purger(t) }) // guard clause
 
 	s.Test(`entity created prior to transaction won't be affected by a purge after a rollback`, func(t *testcase.T) {
-		ptr := pointer.Of(c.MakeEntity(t))
+		ptr := pointer.Of(c.subject().Get(t).MakeEntity())
 		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
 
 		tx, err := c.manager().Get(t).BeginTx(spechelper.ContextVar.Get(t))
@@ -313,7 +304,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 	})
 
 	s.Test(`entity created prior to transaction will be removed by a purge after the commit`, func(t *testcase.T) {
-		ptr := pointer.Of(c.MakeEntity(t))
+		ptr := pointer.Of(c.subject().Get(t).MakeEntity())
 		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
 
 		tx, err := c.manager().Get(t).BeginTx(spechelper.ContextVar.Get(t))
@@ -325,311 +316,5 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 
 		t.Must.Nil(c.manager().Get(t).CommitTx(tx))
 		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
-	})
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) specPublisher(s *testcase.Spec) {
-	s.Context(`Creator`, c.specCreatorPublisher)
-	s.Context(`Updater`, c.specUpdaterPublisher)
-	s.Context(`Deleter`, c.specDeleterPublisher)
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) specCreatorPublisher(s *testcase.Spec) {
-	publisher := func(t *testcase.T) pubsubcontracts.CreatorPublisherSubject[Entity, ID] {
-		p, ok := c.resource().Get(t).(pubsubcontracts.CreatorPublisherSubject[Entity, ID])
-		if !ok {
-			t.Skipf(`%T doesn't supply frameless Publisher and Creator`, c.resource().Get(t))
-		}
-		return p
-	}
-
-	s.Describe(`.Subscribe/Create`, func(s *testcase.Spec) {
-		subscriber := spechelper.LetSubscriber[Entity, ID](s, func(event interface{}) bool {
-			_, ok := event.(pubsub.CreateEvent[Entity])
-			return ok
-		})
-		spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
-			t.Defer(c.manager().Get(t).RollbackTx, ctxInTx)
-			return ctxInTx
-		})
-		events := testcase.Let(s, func(t *testcase.T) []*Entity {
-			return spechelper.GenEntities[Entity](t, c.MakeEntity)
-		})
-		subject := func(t *testcase.T) (pubsub.Subscription, error) {
-			return publisher(t).SubscribeToCreatorEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
-		}
-		onSuccess := func(t *testcase.T) pubsub.Subscription {
-			sub, err := subject(t)
-			t.Must.Nil(err)
-			return sub
-		}
-		subscription := spechelper.LetSubscription[Entity, ID](s)
-
-		s.Before(func(t *testcase.T) {
-			t.Log(`given a subscription is made`)
-			sub := onSuccess(t)
-			t.Must.NotNil(sub)
-			subscription.Set(t, sub)
-			t.Defer(sub.Close)
-
-			t.Log(`and then events created in the repository`)
-			for _, entity := range events.Get(t) {
-				Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity)
-			}
-		})
-
-		s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-			Waiter.Wait()
-			t.Must.Empty(subscriber.Get(t).Events())
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-		})
-
-		s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-
-			var es []pubsub.CreateEvent[Entity]
-			for _, ent := range events.Get(t) {
-				es = append(es, pubsub.CreateEvent[Entity]{Entity: *ent})
-			}
-			Eventually.Assert(t, func(it assert.It) {
-				it.Must.ContainExactly(es, subscriber.Get(t).CreateEvents())
-			})
-		})
-
-		s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).RollbackTx(spechelper.ContextVar.Get(t)))
-			Waiter.Wait()
-			t.Must.Empty(subscriber.Get(t).Events())
-		})
-	})
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) specUpdaterPublisher(s *testcase.Spec) {
-	updater := func(t *testcase.T) UpdaterSubject[Entity, ID] {
-		u, ok := c.resource().Get(t).(UpdaterSubject[Entity, ID])
-		if !ok {
-			t.Skipf(`%T doesn't supply resources.Updater`, c.resource().Get(t))
-		}
-		return u
-	}
-
-	updaterPublisher := func(t *testcase.T) pubsubcontracts.UpdaterPublisherSubject[Entity, ID] {
-		u, ok := c.resource().Get(t).(pubsubcontracts.UpdaterPublisherSubject[Entity, ID])
-		if !ok {
-			t.Skipf(`%T doesn't supply frameless Updater+Publisher`, c.resource().Get(t))
-		}
-		return u
-	}
-
-	s.Describe(`.Subscribe/Update`, func(s *testcase.Spec) {
-		subscriber := spechelper.LetSubscriber[Entity, ID](s, func(event interface{}) bool {
-			_, ok := event.(pubsub.UpdateEvent[Entity])
-			return ok
-		})
-		spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
-			t.Defer(c.manager().Get(t).RollbackTx, ctxInTx)
-			return ctxInTx
-		})
-		events := testcase.Let(s, func(t *testcase.T) []*Entity {
-			return spechelper.GenEntities[Entity](t, c.MakeEntity)
-		})
-		subject := func(t *testcase.T) (pubsub.Subscription, error) {
-			return updaterPublisher(t).SubscribeToUpdaterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
-		}
-		onSuccess := func(t *testcase.T) pubsub.Subscription {
-			sub, err := subject(t)
-			t.Must.Nil(err)
-			return sub
-		}
-		subscription := spechelper.LetSubscription[Entity, ID](s)
-
-		s.Before(func(t *testcase.T) {
-			t.Log(`given a subscription is made`)
-			sub := onSuccess(t)
-			t.Must.NotNil(sub)
-			subscription.Set(t, sub)
-			t.Defer(sub.Close)
-
-			t.Log(`and then events created in the repository outside of the current transaction`)
-			for _, ptr := range events.Get(t) {
-				Create[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), ptr)
-			}
-
-			t.Log(`then events being updated`)
-			for _, ptr := range events.Get(t) {
-				Update[Entity, ID](t, updater(t), spechelper.ContextVar.Get(t), ptr)
-			}
-		})
-
-		s.Then(`before a commit, events will be absent`, func(t *testcase.T) {
-			Waiter.Wait()
-			t.Must.Empty(subscriber.Get(t).Events())
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-		})
-
-		s.Then(`after a commit, events will be present`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-
-			var es []pubsub.UpdateEvent[Entity]
-			for _, ent := range events.Get(t) {
-				es = append(es, pubsub.UpdateEvent[Entity]{Entity: *ent})
-			}
-			Eventually.Assert(t, func(tb assert.It) {
-				tb.Must.ContainExactly(es, subscriber.Get(t).UpdateEvents())
-			})
-		})
-
-		s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).RollbackTx(spechelper.ContextVar.Get(t)))
-			Waiter.Wait()
-			t.Must.Empty(subscriber.Get(t).Events())
-		})
-	})
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) specDeleterPublisher(s *testcase.Spec) {
-	publisher := func(t *testcase.T) pubsubcontracts.DeleterPublisherSubject[Entity, ID] {
-		u, ok := c.resource().Get(t).(pubsubcontracts.DeleterPublisherSubject[Entity, ID])
-		if !ok {
-			t.Skipf(`%T doesn't supply frameless Deleter+Publisher`, c.resource().Get(t))
-		}
-		return u
-	}
-
-	s.Describe(`#SubscribeToDeleteByID`, func(s *testcase.Spec) {
-		subscriber := spechelper.LetSubscriber[Entity, ID](s, func(event interface{}) bool {
-			_, ok := event.(pubsub.DeleteByIDEvent[ID])
-			return ok
-		})
-		spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
-			t.Defer(c.manager().Get(t).RollbackTx, ctxInTx)
-			return ctxInTx
-		})
-		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			return pointer.Of(c.MakeEntity(t))
-		})
-		subject := func(t *testcase.T) (pubsub.Subscription, error) {
-			return publisher(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
-		}
-		onSuccess := func(t *testcase.T) pubsub.Subscription {
-			sub, err := subject(t)
-			t.Must.Nil(err)
-			return sub
-		}
-
-		hasDeleteEntity := pubsubcontracts.DeleterPublisher[Entity, ID]{}.HasDeleteEntity
-		subscription := spechelper.LetSubscription[Entity, ID](s)
-
-		s.Before(func(t *testcase.T) {
-			t.Log(`given a subscription is made`)
-			sub := onSuccess(t)
-			t.Must.NotNil(sub)
-			subscription.Set(t, sub)
-			t.Defer(sub.Close)
-
-			t.Log(`given entity already created during the transaction`)
-			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity.Get(t))
-
-			t.Log(`and then the entity is also deleted during the transaction`)
-			Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity.Get(t))
-		})
-
-		s.Then(`before a commit, delete events will be absent`, func(t *testcase.T) {
-			Waiter.Wait()
-			t.Must.Empty(subscriber.Get(t).Events())
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-		})
-
-		s.Then(`after a commit, delete events will arrive to the subscriber`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-			Eventually.Assert(t, func(tb assert.It) {
-				tb.Must.False(subscriber.Get(t).EventsLen() < 1)
-			})
-
-			hasDeleteEntity(t, subscriber.Get(t).Events, pubsub.DeleteByIDEvent[ID]{ID: HasID[Entity, ID](t, pointer.Deref(entity.Get(t)))})
-		})
-
-		s.Then(`after a rollback, there won't be any delete events sent to the subscriber`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).RollbackTx(spechelper.ContextVar.Get(t)))
-			t.Must.Empty(subscriber.Get(t).Events())
-		})
-	})
-
-	s.Describe(`#SubscribeToDeleteAll`, func(s *testcase.Spec) {
-		subscriber := spechelper.LetSubscriber[Entity, ID](s, func(event interface{}) bool {
-			_, ok := event.(pubsub.DeleteAllEvent)
-			return ok
-		})
-		spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-			t.Log(`given we are in transaction`)
-			ctxInTx, err := c.manager().Get(t).BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
-			t.Defer(c.manager().Get(t).RollbackTx, ctxInTx)
-			return ctxInTx
-		})
-		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			return pointer.Of(c.MakeEntity(t))
-		})
-		subject := func(t *testcase.T) (pubsub.Subscription, error) {
-			return publisher(t).SubscribeToDeleterEvents(spechelper.ContextVar.Get(t), subscriber.Get(t))
-		}
-		subscription := spechelper.LetSubscription[Entity, ID](s)
-
-		s.Before(func(t *testcase.T) {
-			t.Log(`given a subscription is made`)
-			sub, err := subject(t)
-			t.Must.Nil(err)
-			t.Must.NotNil(sub)
-			subscription.Set(t, sub)
-			t.Defer(sub.Close)
-
-			_ = entity
-			t.Log(`given entity already created`)
-			// TODO: why this makes a DeleteAll event somehow?
-			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), entity.Get(t))
-
-			allDeleter, ok := c.resource().Get(t).(crud.AllDeleter)
-			if !ok {
-				t.Skipf("crud.AllDeleter is not supported by %T", c.resource().Get(t))
-			}
-
-			t.Log(`and then the entity is also deleted`)
-			t.Must.NoError(allDeleter.DeleteAll(spechelper.ContextVar.Get(t)))
-			Eventually.Assert(t, func(it assert.It) {
-				IsAbsent[Entity, ID](it, c.resource().Get(t), c.MakeContext(t), HasID[Entity, ID](it, pointer.Deref(entity.Get(t))))
-			})
-		})
-
-		s.Then(`before a commit, deleteAll events will be absent`, func(t *testcase.T) {
-			t.Must.Empty(subscriber.Get(t).Events())
-		})
-
-		s.Then(`after a commit, delete all event will arrive to the subscriber`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).CommitTx(spechelper.ContextVar.Get(t)))
-			Eventually.Assert(t, func(tb assert.It) {
-				tb.Must.True(subscriber.Get(t).EventsLen() == 1, `one event was expected, but didn't arrived`)
-				tb.Must.Contain(subscriber.Get(t).Events(), pubsub.DeleteAllEvent{})
-			})
-		})
-
-		s.Then(`after a rollback, there won't be any delete events sent to the subscriber`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).RollbackTx(spechelper.ContextVar.Get(t)))
-			t.Must.Empty(subscriber.Get(t).Events())
-		})
-
-		s.Then(`after a rollback, events will be absent`, func(t *testcase.T) {
-			t.Must.Nil(c.manager().Get(t).RollbackTx(spechelper.ContextVar.Get(t)))
-			Waiter.Wait()
-			t.Must.Empty(subscriber.Get(t).Events())
-		})
 	})
 }

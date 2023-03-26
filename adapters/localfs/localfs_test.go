@@ -60,13 +60,11 @@ func ExampleFileSystem() {
 }
 
 func TestLocal_contractsFileSystem(t *testing.T) {
-	filesystemcontracts.FileSystem{
-		MakeSubject: func(tb testing.TB) filesystem.FileSystem {
-			return localfs.FileSystem{
-				RootPath: t.TempDir(),
-			}
-		},
-	}.Test(t)
+	filesystemcontracts.FileSystem(func(tb testing.TB) filesystem.FileSystem {
+		return localfs.FileSystem{
+			RootPath: t.TempDir(),
+		}
+	}).Test(t)
 }
 
 func TestFileSystem_smoke(t *testing.T) {

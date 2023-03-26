@@ -7,24 +7,30 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/let"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,
 // and not to all registered subscribers.
 // If a message is ack-ed, the message will be permanently removed from the Queue.
-type Queue[Data any] struct {
-	MakeSubject func(testing.TB) PubSub[Data]
-	MakeContext func(testing.TB) context.Context
-	MakeData    func(testing.TB) Data
+type Queue[Data any] func(testing.TB) QueueSubject[Data]
+
+type QueueSubject[Data any] struct {
+	PubSub      PubSub[Data]
+	MakeContext func() context.Context
+	MakeData    func() Data
 }
 
 func (c Queue[Data]) Spec(s *testcase.Spec) {
-	b := base[Data]{
-		MakeSubject: c.MakeSubject,
-		MakeContext: c.MakeContext,
-		MakeData:    c.MakeData,
-	}
+	subject := testcase.Let(s, func(t *testcase.T) QueueSubject[Data] { return c(t) })
+
+	b := base[Data](func(tb testing.TB) baseSubject[Data] {
+		sub := subject.Get(testcase.ToT(&tb))
+		return baseSubject[Data]{
+			PubSub:      sub.PubSub,
+			MakeContext: sub.MakeContext,
+			MakeData:    sub.MakeData,
+		}
+	})
 
 	b.Spec(s)
 
@@ -35,8 +41,12 @@ func (c Queue[Data]) Spec(s *testcase.Spec) {
 			sub := b.GivenWeHaveSubscription(s)
 
 			s.And("messages are published", func(s *testcase.Spec) {
-				val1 := let.With[Data](s, c.MakeData)
-				val2 := let.With[Data](s, c.MakeData)
+				val1 := testcase.Let(s, func(t *testcase.T) Data {
+					return subject.Get(t).MakeData()
+				})
+				val2 := testcase.Let(s, func(t *testcase.T) Data {
+					return subject.Get(t).MakeData()
+				})
 				b.WhenWePublish(s, val1, val2)
 
 				s.Then("subscription receives the messages", func(t *testcase.T) {
@@ -55,7 +65,9 @@ func (c Queue[Data]) Spec(s *testcase.Spec) {
 			s.And("messages are published", func(s *testcase.Spec) {
 				var values []testcase.Var[Data]
 				for i := 0; i < 42; i++ {
-					values = append(values, let.With[Data](s, c.MakeData))
+					values = append(values, testcase.Let(s, func(t *testcase.T) Data {
+						return subject.Get(t).MakeData()
+					}))
 				}
 
 				b.WhenWePublish(s, values...)

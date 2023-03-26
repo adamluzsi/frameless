@@ -7,15 +7,12 @@ import (
 	"github.com/adamluzsi/testcase"
 )
 
-type Iterator[V any] struct {
-	// MakeSubject returns a non-empty iterator that returns V value on each iteration.
-	MakeSubject func(tb testing.TB) iterators.Iterator[V]
-}
+type Iterator[V any] func(tb testing.TB) iterators.Iterator[V]
 
 func (c Iterator[V]) Spec(s *testcase.Spec) {
 	s.Describe("it behaves like an iterator", func(s *testcase.Spec) {
 		subject := testcase.Let(s, func(t *testcase.T) iterators.Iterator[V] {
-			return c.MakeSubject(t)
+			return c(t)
 		})
 
 		s.Then("values can be collected from the iterator", func(t *testcase.T) {

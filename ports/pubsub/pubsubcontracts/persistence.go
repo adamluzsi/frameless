@@ -7,23 +7,30 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/let"
 )
 
 // Buffered defines a publisher behaviour where if the subscription is canceled,
 // the publisher messages can be still consumed after resubscribing.
-type Buffered[Data any] struct {
-	MakeSubject func(testing.TB) PubSub[Data]
-	MakeContext func(testing.TB) context.Context
-	MakeData    func(testing.TB) Data
+type Buffered[Data any] func(testing.TB) BufferedSubject[Data]
+
+type BufferedSubject[Data any] struct {
+	PubSub      PubSub[Data]
+	MakeContext func() context.Context
+	MakeData    func() Data
 }
 
 func (c Buffered[Data]) Spec(s *testcase.Spec) {
-	b := base[Data]{
-		MakeSubject: c.MakeSubject,
-		MakeContext: c.MakeContext,
-		MakeData:    c.MakeData,
-	}
+	subject := testcase.Let(s, func(t *testcase.T) BufferedSubject[Data] { return c(t) })
+
+	b := base[Data](func(tb testing.TB) baseSubject[Data] {
+		sub := subject.Get(testcase.ToT(&tb))
+		return baseSubject[Data]{
+			PubSub:      sub.PubSub,
+			MakeContext: sub.MakeContext,
+			MakeData:    sub.MakeData,
+		}
+	})
+
 	b.Spec(s)
 
 	s.Context("buffered", func(s *testcase.Spec) {
@@ -31,8 +38,12 @@ func (c Buffered[Data]) Spec(s *testcase.Spec) {
 		b.GivenWeHadSubscriptionBefore(s)
 
 		s.And("messages are published", func(s *testcase.Spec) {
-			val1 := let.With[Data](s, c.MakeData)
-			val2 := let.With[Data](s, c.MakeData)
+			val1 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
+			val2 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
 			b.WhenWePublish(s, val1, val2)
 
 			s.And("after resubscribing to the publisher", func(s *testcase.Spec) {
@@ -56,18 +67,25 @@ func (c Buffered[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
 // Volatile defines a publisher behaviour where if the subscription is canceled, published messages won't be delivered.
 // In certain scenarios, you may want to send a volatile message with no assurances over a publisher,
 // when timely delivery is more important than losing messages.
-type Volatile[Data any] struct {
-	MakeSubject func(testing.TB) PubSub[Data]
-	MakeContext func(testing.TB) context.Context
-	MakeData    func(testing.TB) Data
+type Volatile[Data any] func(testing.TB) VolatileSubject[Data]
+
+type VolatileSubject[Data any] struct {
+	PubSub      PubSub[Data]
+	MakeContext func() context.Context
+	MakeData    func() Data
 }
 
 func (c Volatile[Data]) Spec(s *testcase.Spec) {
-	b := base[Data]{
-		MakeSubject: c.MakeSubject,
-		MakeContext: c.MakeContext,
-		MakeData:    c.MakeData,
-	}
+	subject := testcase.Let(s, func(t *testcase.T) VolatileSubject[Data] { return c(t) })
+
+	b := base[Data](func(tb testing.TB) baseSubject[Data] {
+		sub := subject.Get(testcase.ToT(&tb))
+		return baseSubject[Data]{
+			PubSub:      sub.PubSub,
+			MakeContext: sub.MakeContext,
+			MakeData:    sub.MakeData,
+		}
+	})
 	b.Spec(s)
 
 	s.Context("volatile", func(s *testcase.Spec) {
@@ -75,8 +93,12 @@ func (c Volatile[Data]) Spec(s *testcase.Spec) {
 		b.GivenWeHadSubscriptionBefore(s)
 
 		s.When("messages are published", func(s *testcase.Spec) {
-			val1 := let.With[Data](s, c.MakeData)
-			val2 := let.With[Data](s, c.MakeData)
+			val1 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
+			val2 := testcase.Let(s, func(t *testcase.T) Data {
+				return subject.Get(t).MakeData()
+			})
 			b.WhenWePublish(s, val1, val2)
 
 			s.And("after resubscribing to the publisher", func(s *testcase.Spec) {

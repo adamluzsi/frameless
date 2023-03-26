@@ -72,12 +72,10 @@ func TestInt(t *testing.T) {
 }
 
 func TestInt_implementsIterator(t *testing.T) {
-	iteratorcontracts.Iterator[int]{
-		MakeSubject: func(tb testing.TB) iterators.Iterator[int] {
-			t := testcase.ToT(&tb)
-			min := t.Random.IntB(3, 7)
-			max := t.Random.IntB(8, 13)
-			return ranges.Int(min, max)
-		},
-	}.Test(t)
+	iteratorcontracts.Iterator[int](func(tb testing.TB) iterators.Iterator[int] {
+		t := testcase.ToT(&tb)
+		min := t.Random.IntB(3, 7)
+		max := t.Random.IntB(8, 13)
+		return ranges.Int(min, max)
+	}).Test(t)
 }

@@ -1,6 +1,7 @@
 package memory_test
 
 import (
+	"context"
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
@@ -17,46 +18,59 @@ var _ interface {
 
 func TestQueue(t *testing.T) {
 	testcase.RunSuite(t,
-		pubsubcontracts.FIFO[TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[TestEntity] {
-				q := &memory.Queue[TestEntity]{Memory: memory.NewMemory()}
-				return pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q}
-			},
-			MakeContext: makeContext,
-			MakeData:    makeTestEntity,
-		},
-		pubsubcontracts.LIFO[TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[TestEntity] {
-				q := &memory.Queue[TestEntity]{Memory: memory.NewMemory(), LIFO: true}
-				return pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q}
-			},
-			MakeContext: makeContext,
-			MakeData:    makeTestEntity,
-		},
-		pubsubcontracts.Buffered[TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[TestEntity] {
-				q := &memory.Queue[TestEntity]{Memory: memory.NewMemory()}
-				return pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q}
-			},
-			MakeContext: makeContext,
-			MakeData:    makeTestEntity,
-		},
-		pubsubcontracts.Volatile[TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[TestEntity] {
-				q := &memory.Queue[TestEntity]{Memory: memory.NewMemory(), Volatile: true}
-				return pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q}
-			},
-			MakeContext: makeContext,
-			MakeData:    makeTestEntity,
-		},
-		pubsubcontracts.Blocking[TestEntity]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.PubSub[TestEntity] {
-				q := &memory.Queue[TestEntity]{Memory: memory.NewMemory(), Blocking: true}
-				return pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q}
-			},
-			MakeContext: makeContext,
-			MakeData:    makeTestEntity,
-		},
+		pubsubcontracts.FIFO[TestEntity](func(tb testing.TB) pubsubcontracts.FIFOSubject[TestEntity] {
+			q := &memory.Queue[TestEntity]{
+				Memory: memory.NewMemory(),
+			}
+			return pubsubcontracts.FIFOSubject[TestEntity]{
+				PubSub:      pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
+				MakeContext: context.Background,
+				MakeData:    makeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.LIFO[TestEntity](func(tb testing.TB) pubsubcontracts.LIFOSubject[TestEntity] {
+			q := &memory.Queue[TestEntity]{
+				Memory: memory.NewMemory(),
+				LIFO:   true,
+			}
+			return pubsubcontracts.LIFOSubject[TestEntity]{
+				PubSub:      pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
+				MakeContext: context.Background,
+				MakeData:    makeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Buffered[TestEntity](func(tb testing.TB) pubsubcontracts.BufferedSubject[TestEntity] {
+			q := &memory.Queue[TestEntity]{
+				Memory: memory.NewMemory(),
+			}
+			return pubsubcontracts.BufferedSubject[TestEntity]{
+				PubSub:      pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
+				MakeContext: context.Background,
+				MakeData:    makeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Volatile[TestEntity](func(tb testing.TB) pubsubcontracts.VolatileSubject[TestEntity] {
+			q := &memory.Queue[TestEntity]{
+				Memory:   memory.NewMemory(),
+				Volatile: true,
+			}
+			return pubsubcontracts.VolatileSubject[TestEntity]{
+				PubSub:      pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
+				MakeContext: context.Background,
+				MakeData:    makeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Blocking[TestEntity](func(tb testing.TB) pubsubcontracts.BlockingSubject[TestEntity] {
+			q := &memory.Queue[TestEntity]{
+				Memory:   memory.NewMemory(),
+				Blocking: true,
+			}
+			return pubsubcontracts.BlockingSubject[TestEntity]{
+				PubSub:      pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
+				MakeContext: context.Background,
+				MakeData:    makeTestEntityFunc(tb),
+			}
+		}),
 	)
 }
 
@@ -64,20 +78,18 @@ var _ pubsub.Publisher[Foo] = &memory.FanOutExchange[Foo]{}
 
 func TestFanOutExchange(t *testing.T) {
 	testcase.RunSuite(t,
-		pubsubcontracts.FanOut[Foo]{
-			MakeSubject: func(tb testing.TB) pubsubcontracts.FanOutSubject[Foo] {
-				mm := memory.NewMemory()
-				exchange := &memory.FanOutExchange[Foo]{Memory: mm}
-				return pubsubcontracts.FanOutSubject[Foo]{
-					Exchange: exchange,
-					MakeQueue: func() pubsub.Subscriber[Foo] {
-						return exchange.MakeQueue()
-					},
-				}
-			},
-			MakeContext: MakeContext,
-			MakeData:    MakeFoo,
-		},
+		pubsubcontracts.FanOut[Foo](func(tb testing.TB) pubsubcontracts.FanOutSubject[Foo] {
+			mm := memory.NewMemory()
+			exchange := &memory.FanOutExchange[Foo]{Memory: mm}
+			return pubsubcontracts.FanOutSubject[Foo]{
+				Exchange: exchange,
+				MakeQueue: func() pubsub.Subscriber[Foo] {
+					return exchange.MakeQueue()
+				},
+				MakeContext: context.Background,
+				MakeData:    MakeFooFunc(tb),
+			}
+		}),
 		//pubsubcontracts.OnePhaseCommitProtocol
 	)
 }

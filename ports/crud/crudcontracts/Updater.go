@@ -16,44 +16,41 @@ import (
 )
 
 // Updater will request an update for a wrapped entity object in the Resource
-type Updater[Entity, ID any] struct {
-	MakeSubject func(testing.TB) UpdaterSubject[Entity, ID]
-	MakeContext func(testing.TB) context.Context
-	MakeEntity  func(testing.TB) Entity
+type Updater[Entity, ID any] func(testing.TB) UpdaterSubject[Entity, ID]
 
+type UpdaterSubject[Entity, ID any] struct {
+	Resource interface {
+		spechelper.CRD[Entity, ID]
+		crud.Updater[Entity]
+	}
+	MakeContext func() context.Context
+	MakeEntity  func() Entity
 	// ChangeEntity is an optional configuration field
 	// to express what Entity fields are allowed to be changed by the user of the Updater.
 	// For example, if the changed  Entity field is ignored by the Update method,
 	// you can match this by not changing the Entity field as part of the ChangeEntity function.
-	ChangeEntity func(testing.TB, *Entity)
+	ChangeEntity func(*Entity)
 }
 
-type UpdaterSubject[Entity, ID any] interface {
-	spechelper.CRD[Entity, ID]
-	crud.Updater[Entity]
-}
-
-func (c Updater[Entity, ID]) resource() testcase.Var[UpdaterSubject[Entity, ID]] {
+func (c Updater[Entity, ID]) subject() testcase.Var[UpdaterSubject[Entity, ID]] {
 	return testcase.Var[UpdaterSubject[Entity, ID]]{
-		ID: "resource",
-		Init: func(t *testcase.T) UpdaterSubject[Entity, ID] {
-			return c.MakeSubject(t)
-		},
+		ID:   "resource",
+		Init: func(t *testcase.T) UpdaterSubject[Entity, ID] { return c(t) },
 	}
 }
 
 func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
-	c.resource().Bind(s)
+	c.subject().Bind(s)
 
 	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(t), c.resource().Get(t))
+		spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.subject().Get(t))
 	})
 
 	var (
 		requestContext    = testcase.Var[context.Context]{ID: `request-Context`}
 		entityWithChanges = testcase.Var[*Entity]{ID: `entity-with-changes`}
 		subject           = func(t *testcase.T) error {
-			return c.resource().Get(t).Update(
+			return c.subject().Get(t).Resource.Update(
 				requestContext.Get(t),
 				entityWithChanges.Get(t),
 			)
@@ -61,7 +58,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 	)
 
 	spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-		return c.MakeContext(t)
+		return c.subject().Get(t).MakeContext()
 	})
 
 	requestContext.Let(s, func(t *testcase.T) context.Context {
@@ -70,8 +67,8 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`an entity already stored`, func(s *testcase.Spec) {
 		entity := testcase.Let(s, func(t *testcase.T) *Entity {
-			ent := pointer.Of(c.MakeEntity(t))
-			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ent)
+			ent := pointer.Of(c.subject().Get(t).MakeEntity())
+			Create[Entity, ID](t, c.subject().Get(t).Resource, spechelper.ContextVar.Get(t), ent)
 			return ent
 		}).EagerLoading(s)
 
@@ -80,10 +77,10 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 				id, ok := extid.Lookup[ID](entity.Get(t))
 				t.Must.True(ok)
 				var ent = entity.Get(t)
-				if c.ChangeEntity != nil {
-					c.ChangeEntity(t, ent)
+				if chEnt := c.subject().Get(t).ChangeEntity; chEnt != nil {
+					chEnt(ent)
 				} else {
-					ent = pointer.Of(c.MakeEntity(t))
+					ent = pointer.Of(c.subject().Get(t).MakeEntity())
 				}
 				assert.Must(t).Nil(extid.Set(ent, id))
 				return ent
@@ -92,7 +89,7 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 				assert.Must(t).Nil(subject(t))
 
-				HasEntity[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), entityWithChanges.Get(t))
+				HasEntity[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), entityWithChanges.Get(t))
 			})
 
 			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -111,9 +108,9 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
 		entityWithChanges.Let(s, func(t *testcase.T) *Entity {
-			newEntity := pointer.Of(c.MakeEntity(t))
-			Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), newEntity)
-			Delete[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), newEntity)
+			newEntity := pointer.Of(c.subject().Get(t).MakeEntity())
+			Create[Entity, ID](t, c.subject().Get(t).Resource, spechelper.ContextVar.Get(t), newEntity)
+			Delete[Entity, ID](t, c.subject().Get(t).Resource, spechelper.ContextVar.Get(t), newEntity)
 			return newEntity
 		})
 
@@ -131,12 +128,12 @@ func (c Updater[Entity, ID]) Benchmark(b *testing.B) {
 	s := testcase.NewSpec(b)
 
 	ent := testcase.Let(s, func(t *testcase.T) *Entity {
-		ptr := pointer.Of(c.MakeEntity(t))
-		Create[Entity, ID](t, c.resource().Get(t), c.MakeContext(t), ptr)
+		ptr := pointer.Of(c.subject().Get(t).MakeEntity())
+		Create[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), ptr)
 		return ptr
 	})
 
 	s.Test(``, func(t *testcase.T) {
-		assert.Must(b).Nil(c.resource().Get(t).Update(c.MakeContext(t), ent.Get(t)))
+		assert.Must(b).Nil(c.subject().Get(t).Resource.Update(c.subject().Get(t).MakeContext(), ent.Get(t)))
 	})
 }

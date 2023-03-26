@@ -59,11 +59,9 @@ func ExampleFileSystem() {
 }
 
 func TestFileSystem_contractsFileSystem(t *testing.T) {
-	filesystemcontracts.FileSystem{
-		MakeSubject: func(tb testing.TB) filesystem.FileSystem {
-			return &memory.FileSystem{}
-		},
-	}.Test(t)
+	filesystemcontracts.FileSystem(func(tb testing.TB) filesystem.FileSystem {
+		return &memory.FileSystem{}
+	}).Test(t)
 }
 
 func TestFileSystem_smoke(t *testing.T) {

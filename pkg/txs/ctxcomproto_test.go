@@ -15,18 +15,16 @@ func Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.HasSideEffect()
 
-	comprotocontracts.OnePhaseCommitProtocol{
-		MakeSubject: func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
-			return CPProxy{
+	comprotocontracts.OnePhaseCommitProtocol(func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
+		return comprotocontracts.OnePhaseCommitProtocolSubject{
+			CommitManager: CPProxy{
 				BeginTxFn:    txs.Begin,
 				CommitTxFn:   txs.Commit,
 				RollbackTxFn: txs.Rollback,
-			}
-		},
-		MakeContext: func(tb testing.TB) context.Context {
-			return context.Background()
-		},
-	}.Spec(s)
+			},
+			MakeContext: context.Background,
+		}
+	}).Spec(s)
 
 	s.Test("on commit, no rollback is executed", func(t *testcase.T) {
 		ctx := context.Background()
