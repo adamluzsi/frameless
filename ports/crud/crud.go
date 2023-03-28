@@ -9,11 +9,15 @@ import (
 )
 
 type Creator[Entity any] interface {
-	// Create takes a ptr to a entity<V> and store it into the resource.
-	// It also updates the entity<V> ext:"ID" field with the associated uniq resource id.
-	// The reason behind this links the id and not returning the id is that,
-	// in most case the Create error value is the only thing that is checked for errors,
-	// and introducing an extra value also introduce boiler plates in the handling.
+	// Create is a function that takes a pointer to an entity and stores it in an external resource.
+	// And external resource could be a backing service like PostgreSQL.
+	// The use of a pointer type allows the function to update the entity's ID value,
+	// which is significant in both the external resource and the domain layer.
+	// The ID is essential because entities in the backing service are referenced using their IDs,
+	// which is why the ID value is included as part of the entity structure fieldset.
+	//
+	// The pointer is also employed for other fields managed by the external resource, such as UpdatedAt, CreatedAt,
+	// and any other fields present in the domain entity but controlled by the external resource.
 	Create(ctx context.Context, ptr *Entity) error
 }
 
@@ -23,30 +27,27 @@ type Finder[Entity, ID any] interface {
 }
 
 type ByIDFinder[Entity, ID any] interface {
-	// FindByID will link an entity that is found in the resource to the received ptr,
-	// and report back if it succeeded finding the entity in the resource.
-	// It also reports if there was an unexpected exception during the execution.
-	// It was an intentional decision to not use error to represent "not found" case,
-	// but tell explicitly this information in the form of return bool value.
+	// FindByID is a function that tries to find an Entity using its ID.
+	// It will inform you if it successfully located the entity or if there was an unexpected issue during the process.
+	// Instead of using an error to represent a "not found" situation,
+	// a return boolean value is used to provide this information explicitly.
 	//
 	//
 	// Why the return signature includes a found bool value?
 	//
-	// It serves two crucial goals.
-	// First, it forces the user through the go-vet tool that the unused variable check
-	// will fail when the found bool variable is not checked before the entity is used.
-	// It also improves readability and expresses the function's cyclomatic complexity.
-	//   -> total: 2^(n+1+1)
+	// This approach serves two key purposes.
+	// First, it ensures that the go-vet tool checks if the 'found' boolean variable is reviewed before using the entity.
+	// Second, it enhances readability and demonstrates the function's cyclomatic complexity.
+	//   total: 2^(n+1+1)
 	//     -> found/bool 2^(n+1)  | An entity might be found or not.
 	//     -> error 2^(n+1)       | An error might occur or not.
 	//
-	// Last but not least, it eliminates the possibility that you return an initialized pointer type
-	// that has no value and eventually causes a runtime error
-	// if you provide that valid but nil pointer to an interface variable type.
-	//   -> (MyInterface)((*Entity)(nil)) != nil
+	// Additionally, this method prevents returning an initialized pointer type with no value,
+	// which could lead to a runtime error if a valid but nil pointer is given to an interface variable type.
+	//   (MyInterface)((*Entity)(nil)) != nil
 	//
-	// You may find a similar approach in the standard library as `sql` null value types
-	// and the environment lookup in the os package.
+	// Similar approaches can be found in the standard library,
+	// such as SQL null value types and environment lookup in the os package.
 	FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error)
 }
 
@@ -56,8 +57,8 @@ type AllFinder[Entity any] interface {
 }
 
 type Updater[Entity any] interface {
-	// Update will takes a ptr that points to an entity
-	// and update the corresponding stored entity with the received entity field values
+	// Update will take a pointer to an entity and update the stored entity data by the values in received entity.
+	// The Entity must have a valid ID field, which referencing an existing entity in the external resource.
 	Update(ctx context.Context, ptr *Entity) error
 }
 
