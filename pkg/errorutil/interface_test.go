@@ -1,13 +1,21 @@
 package errorutil
 
-import (
-	"github.com/adamluzsi/frameless/pkg/internal"
+var (
+	_ ErrorAs     = multiError{}
+	_ ErrorIs     = multiError{}
+	_ ErrorUnwrap = &tagError{}
+	_ ErrorUnwrap = withContext{}
+	_ ErrorUnwrap = withDetail{}
 )
 
-var (
-	_ internal.ErrorAs     = multiError{}
-	_ internal.ErrorIs     = multiError{}
-	_ internal.ErrorUnwrap = &tagError{}
-	_ internal.ErrorUnwrap = withContext{}
-	_ internal.ErrorUnwrap = withDetail{}
-)
+type ErrorUnwrap interface {
+	Unwrap() error
+}
+
+type ErrorAs interface {
+	As(target any) bool
+}
+
+type ErrorIs interface {
+	Is(target error) bool
+}
