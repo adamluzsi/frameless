@@ -61,10 +61,12 @@ type QueryKey struct {
 	// ARGS contain parameters to the query that can affect the query result.
 	// Supplying the ARGS ensures that a query call with different arguments cached individually.
 	ARGS map[string]any
+
+	Version int
 }
 
 func (qk QueryKey) Encode() HitID {
-	var out string = qk.ID
+	var out = fmt.Sprintf("%d:%s", qk.Version, qk.ID)
 	if len(qk.ARGS) == 0 {
 		return out
 	}

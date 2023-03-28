@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -28,6 +29,8 @@ type Cache[Entity, ID any] struct {
 	Source Source[Entity, ID]
 	// Repository is the resource that keeps the cached data.
 	Repository Repository[Entity, ID]
+	// LogError is an OPTIONAL field, that you can supply if you want to inject your own logger.
+	LogError func(ctx context.Context, msg string, err error)
 }
 
 // Source is the minimum expected interface that is expected from a Source resources that needs caching.
@@ -80,15 +83,20 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 		return iterators.Error[Entity](ctx.Err())
 	}
 
-	qid := fmt.Sprintf(`0:%T/%s`, *new(Entity), queryKey) // add version epoch
-	hit, found, err := m.Repository.Hits().FindByID(ctx, qid)
+	hit, found, err := m.Repository.Hits().FindByID(ctx, queryKey)
 	if err != nil {
-		return iterators.Error[Entity](err)
+		m.logError(ctx, fmt.Sprintf("error during retrieving hits for %s", queryKey), err)
+		return query()
 	}
 	if found {
 		// TODO: make sure that in case entity ids point to empty cache data
 		//       we invalidate the hit and try again
-		return m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
+		iter := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
+		if err := iter.Err(); err != nil {
+			m.logError(ctx, "cache Repository.Entities().FindByIDs had an error", err)
+			return query()
+		}
+		return iter
 	}
 
 	// this naive MVP approach might take a big burden on the memory.
@@ -111,15 +119,17 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 	}
 
 	if err := m.Repository.Entities().Upsert(ctx, vs...); err != nil {
-		return iterators.Error[Entity](err)
+		m.logError(ctx, "cache Repository.Entities().Upsert had an error", err)
+		return iterators.Slice[Entity](res)
 	}
 
 	if err := m.Repository.Hits().Create(ctx, &Hit[ID]{
-		QueryID:   qid,
+		QueryID:   queryKey,
 		EntityIDs: ids,
 		Timestamp: clock.TimeNow().UTC(),
 	}); err != nil {
-		return iterators.Error[Entity](err)
+		m.logError(ctx, "cache Repository.Hits().Create had an error", err)
+		return iterators.Slice[Entity](res)
 	}
 
 	return iterators.Slice[Entity](res)
@@ -161,14 +171,18 @@ func (m *Cache[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if err := source.Create(ctx, ptr); err != nil {
 		return err
 	}
-	return m.Repository.Entities().Create(ctx, ptr)
+	if err := m.Repository.Entities().Create(ctx, ptr); err != nil {
+		m.logError(ctx, "cache Repository.Entities().Create had an error", err)
+	}
+	return nil
 }
 
 func (m *Cache[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
 	// fast path
 	ent, found, err := m.Repository.Entities().FindByID(ctx, id)
 	if err != nil {
-		return ent, false, err
+		m.logError(ctx, "cache Repository.Entities().FindByID had an error", err)
+		return m.Source.FindByID(ctx, id)
 	}
 	if found {
 		return ent, true, nil
@@ -201,7 +215,13 @@ func (m *Cache[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	if err := source.Update(ctx, ptr); err != nil {
 		return err
 	}
-	return m.Repository.Entities().Upsert(ctx, ptr)
+	if err := m.Repository.Entities().Update(ctx, ptr); err != nil {
+		m.logError(ctx, "cache Repository.Entities().Update had an error", err)
+		if id, ok := extid.Lookup[ID](*ptr); ok {
+			return m.InvalidateByID(ctx, id)
+		}
+	}
+	return nil
 }
 
 func (m *Cache[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
@@ -224,4 +244,19 @@ func (m *Cache[Entity, ID]) DeleteAll(ctx context.Context) error {
 		return err
 	}
 	return m.DropCachedValues(ctx)
+}
+
+func (m *Cache[Entity, ID]) logError(ctx context.Context, msg string, err error) {
+	m.getLogError()(ctx, msg, err)
+}
+
+func (m *Cache[Entity, ID]) getLogError() func(context.Context, string, error) {
+	if m.LogError != nil {
+		return m.LogError
+	}
+	return m.defaultLogError
+}
+
+func (m *Cache[Entity, ID]) defaultLogError(ctx context.Context, msg string, err error) {
+	logger.Error(ctx, msg, logger.Details{}.Err(err))
 }
