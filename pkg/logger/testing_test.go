@@ -20,6 +20,7 @@ func ExampleStub() {
 func TestStub(t *testing.T) {
 	var og logger.Logger // enforce variable type to guarantee pass by value copy
 	og = logger.Default  // pass by value copy
+	ogOut := logger.Default.Out
 	t.Run("", func(t *testing.T) {
 		buf := logger.Stub(t)
 		l2 := logger.Default
@@ -38,5 +39,5 @@ func TestStub(t *testing.T) {
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, logger.Default.MessageKey, msg))
 	})
 	assert.Equal(t, og, logger.Default, "logger has been restored")
-	assert.Nil(t, og.Out)
+	assert.Equal(t, ogOut, og.Out)
 }

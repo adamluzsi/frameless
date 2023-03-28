@@ -2,7 +2,15 @@ package logger
 
 import (
 	"bytes"
+	"github.com/adamluzsi/frameless/pkg/internal/testcheck"
+	"io"
 )
+
+func init() {
+	if testcheck.IsDuringTestRun() {
+		Default.Out = io.Discard
+	}
+}
 
 type testingTB interface {
 	Helper()
