@@ -507,22 +507,42 @@ func Test_Main_smoke(t *testing.T) {
 }
 
 func ExampleWithShutdown() {
-	srv := http.Server{
-		Addr: "localhost:8080",
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusTeapot)
-		}),
-	}
-
-	httpServerTask := tasker.WithShutdown(srv.ListenAndServe, srv.Shutdown)
-	_ = httpServerTask
+	task := tasker.WithShutdown(
+		func(ctx context.Context) error {
+			// start working
+			<-ctx.Done()
+			return nil
+		},
+		func(ctx context.Context) error {
+			// graceful stop for work
+			<-ctx.Done()
+			return nil
+		},
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	// listen to a cancellation signal and then call the cancel func
 	// or use ShutdownManager.
 	_ = cancel
 
-	if err := httpServerTask(ctx); err != nil {
+	if err := task(ctx); err != nil {
+		log.Println("ERROR", err.Error())
+	}
+}
+
+func ExampleWithShutdown_httpServer() {
+	srv := http.Server{
+		Addr: "localhost:8080",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}),
+	}
+	httpServerTask := tasker.WithShutdown(
+		tasker.IgnoreError(srv.ListenAndServe, http.ErrServerClosed),
+		srv.Shutdown,
+	)
+
+	if err := tasker.WithSignalNotify(httpServerTask)(context.Background()); err != nil {
 		log.Println("ERROR", err.Error())
 	}
 }
