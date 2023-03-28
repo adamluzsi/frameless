@@ -29,12 +29,17 @@ func TestInterval_smoke(t *testing.T) {
 
 func TestMonthly_smoke(t *testing.T) {
 	var (
+		//now  = time.Date(2000, 1, 1, 12, 00, 0, 0, time.UTC).UTC()
 		now  = time.Now().UTC()
 		rnd  = random.New(random.CryptoSeed{})
 		day  = rnd.IntB(1, 25)
 		hour = rnd.IntB(0, 23)
 		min  = rnd.IntB(0, 59)
 	)
+
+	willOccureNextAt := time.Date(now.Year(), now.Month(), day, hour, min, 0, 0, time.UTC).
+		AddDate(0, 1, 0)
+
 	timecop.Travel(t, now, timecop.Freeze())
 	interval := schedule.Monthly{
 		Day:      day,
@@ -43,18 +48,16 @@ func TestMonthly_smoke(t *testing.T) {
 		Location: time.UTC,
 	}
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(0, -1, 0)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt),
 		"when the next occurrence in that moment")
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(0, -2, 0)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(0, -2, -1)),
 		"when we skipped the past month's occurrence")
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(-1, 0, 0)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(-1, 0, 0)),
 		"when we skipped all the occurrence in the past year")
 
-	expUntilNext := time.Date(now.Year(), now.Month(), day, hour, min, 0, 0, time.UTC).
-		AddDate(0, 1, 0).
-		Sub(now)
+	expUntilNext := willOccureNextAt.Sub(now)
 
 	assert.Equal(t, expUntilNext, interval.UntilNext(now),
 		"when the next interval is in the future",
@@ -68,6 +71,10 @@ func TestDaily_smoke(t *testing.T) {
 		hour = rnd.IntB(0, 23)
 		min  = rnd.IntB(0, 59)
 	)
+
+	willOccureNextAt := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, time.UTC).
+		AddDate(0, 0, 1)
+
 	timecop.Travel(t, now, timecop.Freeze())
 	interval := schedule.Daily{
 		Hour:     hour,
@@ -75,21 +82,19 @@ func TestDaily_smoke(t *testing.T) {
 		Location: time.UTC,
 	}
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(0, 0, -1)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt),
 		"when the next occurrence in that moment")
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(0, 0, -2)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(0, 0, -2)),
 		"when we skipped the past day's occurrence")
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(0, -1, 0)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(0, -1, 0)),
 		"when we skipped all the occurrence in the past month")
 
-	assert.Equal(t, 0, interval.UntilNext(now.AddDate(-1, 0, 0)),
+	assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(-1, 0, 0)),
 		"when we skipped all the occurrence in the past year")
 
-	expUntilNext := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, time.UTC).
-		AddDate(0, 0, 1).
-		Sub(now)
+	expUntilNext := willOccureNextAt.Sub(now)
 
 	assert.Equal(t, expUntilNext, interval.UntilNext(now),
 		"when the next interval is in the future",

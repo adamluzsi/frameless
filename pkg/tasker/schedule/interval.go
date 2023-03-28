@@ -32,7 +32,7 @@ func (i Monthly) UntilNext(lastRanAt time.Time) time.Duration {
 		i.Hour, i.Minute, 0, 0, loc).
 		AddDate(0, 1, 0)
 
-	return occurrenceAt.Sub(now)
+	return occurrenceAt.Sub(lastRanAt)
 }
 
 type Daily struct {
@@ -59,7 +59,7 @@ func (i Daily) UntilNext(lastRanAt time.Time) time.Duration {
 		i.Hour, i.Minute, 0, 0, loc).
 		AddDate(0, 0, 1)
 
-	return occurrenceAt.Sub(now)
+	return occurrenceAt.Sub(lastRanAt)
 }
 
 func getLocation(loc *time.Location) *time.Location {
