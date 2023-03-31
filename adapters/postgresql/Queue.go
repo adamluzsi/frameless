@@ -249,6 +249,7 @@ fetch:
 
 	ent, err := qs.Queue.Mapping.ToEnt(dto)
 	if err != nil {
+		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
 		qs.err = err
 		return false
 	}
