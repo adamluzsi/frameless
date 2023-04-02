@@ -19,19 +19,22 @@ import (
 
 func Test_smoke(t *testing.T) {
 	ctx := context.Background()
+	buf := logger.Stub(t)
+	logger.Default.KeyFormatter = stringcase.ToPascal
 
 	// you can add details to context, thus every logging call using this context
-	ctx = logger.ContextWith(ctx, logger.Details{
+	ctx = logger.ContextWith(ctx, logger.Fields{
 		"foo": "bar",
 		"baz": "qux",
 	})
 
 	// You can use your own Logger instance or the logger.Default logger instance if you plan to log to the STDOUT.
-	logger.Info(ctx, "foo", logger.Details{
+	logger.Info(ctx, "foo", logger.Fields{
 		"userID":    42,
 		"accountID": 24,
 	})
 
+	t.Log(buf.String())
 }
 
 func TestLogger_smoke(t *testing.T) {
@@ -68,7 +71,7 @@ func TestLogger_smoke(t *testing.T) {
 		var got int
 		for dec.More() {
 			got++
-			msg := logger.Details{}
+			msg := logger.Fields{}
 			assert.NoError(t, dec.Decode(&msg))
 			assert.NotEmpty(t, msg)
 		}
@@ -122,10 +125,10 @@ func TestLogger_smoke(t *testing.T) {
 		l := logger.Logger{Out: buf}
 
 		ctx := context.Background()
-		ctx = logger.ContextWith(ctx, logger.Details{"foo": "bar"})
-		ctx = logger.ContextWith(ctx, logger.Details{"bar": 42})
+		ctx = logger.ContextWith(ctx, logger.Fields{"foo": "bar"})
+		ctx = logger.ContextWith(ctx, logger.Fields{"bar": 42})
 
-		l.Info(ctx, "a", logger.Details{"info": "level"})
+		l.Info(ctx, "a", logger.Fields{"info": "level"})
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
 		assert.Contain(t, buf.String(), `"info":"level"`)
 		assert.Contain(t, buf.String(), `"foo":"bar"`)
@@ -134,18 +137,18 @@ func TestLogger_smoke(t *testing.T) {
 		assert.Contain(t, buf.String(), `"level":"info"`)
 
 		t.Log("on all levels")
-		l.Debug(ctx, "b", logger.Details{"debug": "level"})
+		l.Debug(ctx, "b", logger.Fields{"debug": "level"})
 		assert.Contain(t, buf.String(), `"message":"b"`)
 		assert.Contain(t, buf.String(), `"debug":"level"`)
-		l.Warn(ctx, "c", logger.Details{"warn": "level"})
+		l.Warn(ctx, "c", logger.Fields{"warn": "level"})
 		assert.Contain(t, buf.String(), `"message":"c"`)
 		assert.Contain(t, buf.String(), `"level":"warn"`)
 		assert.Contain(t, buf.String(), `"warn":"level"`)
-		l.Error(ctx, "d", logger.Details{"error": "level"})
+		l.Error(ctx, "d", logger.Fields{"error": "level"})
 		assert.Contain(t, buf.String(), `"message":"d"`)
 		assert.Contain(t, buf.String(), `"level":"error"`)
 		assert.Contain(t, buf.String(), `"error":"level"`)
-		l.Fatal(ctx, "e", logger.Details{"fatal": "level"})
+		l.Fatal(ctx, "e", logger.Fields{"fatal": "level"})
 		assert.Contain(t, buf.String(), `"message":"e"`)
 		assert.Contain(t, buf.String(), `"level":"fatal"`)
 		assert.Contain(t, buf.String(), `"fatal":"level"`)

@@ -6,24 +6,56 @@ With logger, you can use context to add logging details to your call stack.
 ## How to use
 
 ```go
-ctx := context.Background()
+package main
 
-// You can add details to the context; thus, every logging call using this context will inherit the details.
-ctx = logger.ContextWith(ctx, logger.Field("qux", "vvv"), logger.Details{
-    "foo": "bar",
-    "baz": "qux",
-})
+import (
+	"context"
 
-// You can use your own Logger instance or the logger.Default logger instance if you plan to log to the STDOUT. 
-logger.Info(ctx, "foo", logger.Details{
-    "userID":    42,
-    "accountID": 24,
-})
+	"github.com/adamluzsi/frameless/pkg/logger"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// You can add details to the context; thus, every logging call using this context will inherit the details.
+	ctx = logger.ContextWith(ctx, logger.Fields{
+		"foo": "bar",
+		"baz": "qux",
+	})
+
+	// You can use your own Logger instance or the logger.Default logger instance if you plan to log to the STDOUT. 
+	logger.Info(ctx, "foo", logger.Fields{
+		"userID":    42,
+		"accountID": 24,
+	})
+}
+
 ```
 
-> example output:
+> example output when snake case key format is defined (default):
 ```json
-{"accountID":24,"baz":"qux","foo":"bar","level":"info","message":"foo","timestamp":"2023-02-24T02:11:33+01:00","userID":42}
+{
+  "account_id": 24,
+  "baz": "qux",
+  "foo": "bar",
+  "level": "info",
+  "message": "foo",
+  "timestamp": "2023-04-02T16:00:00+02:00",
+  "user_id": 42
+}
+```
+
+> example output when camel key format is defined:
+```json
+{
+  "accountID": 24,
+  "baz": "qux",
+  "foo": "bar",
+  "level": "info",
+  "message": "foo",
+  "timestamp": "2023-04-02T16:00:00+02:00",
+  "userID": 42
+}
 ```
 
 ## How to configure:
@@ -31,10 +63,14 @@ logger.Info(ctx, "foo", logger.Details{
 `logger.Logger` can be configured through its struct fields; please see the documentation for more details.
 To configure the default logger, simply configure it from your main.
 
-
 ```go
+package main
+
+import "github.com/adamluzsi/frameless/pkg/logger"
+
 func main() {
     logger.Default.MessageKey = "msg"
+    logger.Default.TimestampKey = "ts"
 }
 ```
 
@@ -50,9 +86,17 @@ making it easier to manage and troubleshoot any issues that may arise.
 The default key format is snake_case, but you can change it easily by supplying a formetter in the KeyFormatter Logger field.
 
 ```go
+package main
+
+import (
+	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/stringcase"
+)
+
 func main() {
 	logger.Default.KeyFormatter = stringcase.ToKebab
 }
+
 ```
 
 ## Security concerns
@@ -80,10 +124,10 @@ type MyEntity struct {
 	SensitiveData    string
 }
 
-var _ = logger.RegisterFieldType(func(ent MyEntity) []logger.LoggingDetail {
-	return []logger.LoggingDetail{
-		logger.Field("id", ent.ID),
-		logger.Field("data", ent.NonSensitiveData),
+var _ = logger.RegisterFieldType(func(ent MyEntity) logger.LoggingDetail {
+	return logger.Fields{
+		"id":   ent.ID,
+		"data": ent.NonSensitiveData,
 	}
 })
 

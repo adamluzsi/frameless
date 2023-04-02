@@ -36,7 +36,7 @@ func ErrField(err error) LoggingDetail {
 	if err == nil {
 		return nullLoggingDetail{}
 	}
-	details := Details{
+	details := Fields{
 		"message": err.Error(),
 	}
 	if usrErr := (errorutil.UserError{}); errors.As(err, &usrErr) {

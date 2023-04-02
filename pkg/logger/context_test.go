@@ -13,7 +13,7 @@ import (
 func ExampleContextWith() {
 	ctx := context.Background()
 
-	ctx = logger.ContextWith(ctx, logger.Details{
+	ctx = logger.ContextWith(ctx, logger.Fields{
 		"foo": "bar",
 		"baz": "qux",
 	})
@@ -33,9 +33,9 @@ func TestContextWith(t *testing.T) {
 	t.Run("logging details can be added to the context", func(t *testing.T) {
 		buf := logger.Stub(t)
 		ctx := context.Background()
-		ctx = logger.ContextWith(ctx, logger.Details{"foo": "bar"})
-		ctx = logger.ContextWith(ctx, logger.Details{"bar": 42})
-		ctx = logger.ContextWith(ctx, logger.Details{"numbers": []int{1, 2, 3}, "hello": "world"})
+		ctx = logger.ContextWith(ctx, logger.Fields{"foo": "bar"})
+		ctx = logger.ContextWith(ctx, logger.Fields{"bar": 42})
+		ctx = logger.ContextWith(ctx, logger.Fields{"numbers": []int{1, 2, 3}, "hello": "world"})
 
 		logger.Info(ctx, "msg")
 		assert.Contain(t, buf.String(), `"level":"info"`)
@@ -48,8 +48,8 @@ func TestContextWith(t *testing.T) {
 	t.Run("contexts are isolated and not leaking out between each other", func(t *testing.T) {
 		buf := logger.Stub(t)
 		ctx0 := context.Background()
-		ctx1 := logger.ContextWith(ctx0, logger.Details{"foo": "bar"})
-		ctx2 := logger.ContextWith(ctx1, logger.Details{"bar": 42})
+		ctx1 := logger.ContextWith(ctx0, logger.Fields{"foo": "bar"})
+		ctx2 := logger.ContextWith(ctx1, logger.Fields{"bar": 42})
 
 		logger.Info(ctx1, "42")
 		assert.Contain(t, buf.String(), `"message":"42"`)

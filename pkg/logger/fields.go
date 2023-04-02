@@ -15,6 +15,33 @@ func (l Logger) Field(key string, value any) LoggingDetail {
 	return logEntry{l.getKeyFormatter()(key): v}
 }
 
+type Fields map[string]any
+
+func (d Fields) addTo(e logEntry) {
+	for k, v := range d {
+
+		Field(k, v).addTo(e)
+	}
+}
+
+// Details
+//
+// DEPRECATED: use logging.Fields instead
+type Details = Fields
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+var register = map[reflect.Type]func(any) LoggingDetail{}
+
+func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
+	register[reflect.TypeOf(*new(T))] = func(v any) LoggingDetail { return mapping(v.(T)) }
+	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type LoggingDetail interface{ addTo(logEntry) }
+
 func (l Logger) toFieldValue(val any) any {
 	rv := reflects.BaseValueOf(val)
 	if mapping, ok := register[rv.Type()]; ok {
@@ -28,7 +55,7 @@ func (l Logger) toFieldValue(val any) any {
 		}
 		return vs
 
-	case Details:
+	case Fields:
 		le := logEntry{}
 		val.addTo(le)
 		return l.toFieldValue(le)
@@ -66,28 +93,6 @@ func (l Logger) toFieldValue(val any) any {
 	}
 }
 
-type Details map[string]any
-
-func (d Details) addTo(e logEntry) {
-	for k, v := range d {
-
-		Field(k, v).addTo(e)
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-var register = map[reflect.Type]func(any) []LoggingDetail{}
-
-func RegisterFieldType[T any](mapping func(T) []LoggingDetail) any {
-	register[reflect.TypeOf(*new(T))] = func(v any) []LoggingDetail { return mapping(v.(T)) }
-	return nil
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-type LoggingDetail interface{ addTo(logEntry) }
-
 type logEntry map[string]any
 
 func (ld logEntry) addTo(entry logEntry) { entry.Merge(ld) }
@@ -99,28 +104,6 @@ func (ld logEntry) Merge(oth logEntry) logEntry {
 	return ld
 }
 
-type field struct {
-	Key   string
-	Value any
-}
-
-func (f field) addTo(le logEntry) {
-	switch val := f.Value.(type) {
-	case []LoggingDetail:
-		e := logEntry{}
-		for _, v := range val {
-			v.addTo(e)
-		}
-		le[f.Key] = e
-	case Details:
-
-	case logEntry:
-
-	default:
-		le[f.Key] = f.Value
-	}
-}
-
 type nullLoggingDetail struct{}
 
-func (nullLoggingDetail) addTo(e logEntry) {}
+func (nullLoggingDetail) addTo(logEntry) {}
