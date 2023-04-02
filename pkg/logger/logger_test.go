@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/random"
@@ -20,7 +21,7 @@ func Test_smoke(t *testing.T) {
 	ctx := context.Background()
 
 	// you can add details to context, thus every logging call using this context
-	ctx = logger.ContextWithDetails(ctx, logger.Details{
+	ctx = logger.ContextWith(ctx, logger.Details{
 		"foo": "bar",
 		"baz": "qux",
 	})
@@ -121,8 +122,8 @@ func TestLogger_smoke(t *testing.T) {
 		l := logger.Logger{Out: buf}
 
 		ctx := context.Background()
-		ctx = logger.ContextWithDetails(ctx, logger.Details{"foo": "bar"})
-		ctx = logger.ContextWithDetails(ctx, logger.Details{"bar": 42})
+		ctx = logger.ContextWith(ctx, logger.Details{"foo": "bar"})
+		ctx = logger.ContextWith(ctx, logger.Details{"bar": 42})
 
 		l.Info(ctx, "a", logger.Details{"info": "level"})
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
@@ -182,5 +183,59 @@ func TestLogger_smoke(t *testing.T) {
 		bs, err := io.ReadAll(tmpFile)
 		assert.NoError(t, err)
 		assert.Contain(t, string(bs), `"message":"msg"`)
+	})
+
+	t.Run("logging key string format is consistent based based on the supplied KeyFormatter", func(t *testing.T) {
+		var (
+			ctx       = context.Background()
+			buf       = &bytes.Buffer{}
+			formatter = rnd.SliceElement([]func(string) string{
+				stringcase.ToPascal,
+				stringcase.ToCamel,
+				stringcase.ToKebab,
+				stringcase.ToSnake,
+				stringcase.ToScreamingSnake,
+			}).(func(string) string)
+			l = logger.Logger{
+				Out:          buf,
+				KeyFormatter: formatter,
+			}
+		)
+
+		var (
+			exampleKey1 = "Hello_World-HTTP"
+			exampleKey2 = "HTTPFoo"
+		)
+
+		var (
+			expectedKey1 = formatter(exampleKey1)
+			expectedKey2 = formatter(exampleKey2)
+		)
+
+		l.Info(ctx, "msg", l.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
+		assert.Contain(t, buf.String(), expectedKey1)
+		assert.Contain(t, buf.String(), expectedKey2)
+	})
+
+	t.Run("logging key string format is consistent even in absence of KeyFormatter, with snake_case format", func(t *testing.T) {
+		var (
+			ctx = context.Background()
+			buf = &bytes.Buffer{}
+			l   = logger.Logger{Out: buf}
+		)
+
+		var (
+			exampleKey1 = "Hello_World-HTTP"
+			exampleKey2 = "HTTPFoo"
+		)
+		var (
+			expectedKey1 = stringcase.ToSnake(exampleKey1)
+			expectedKey2 = stringcase.ToSnake(exampleKey2)
+		)
+
+		l.Info(ctx, "msg", l.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
+
+		assert.Contain(t, buf.String(), expectedKey1)
+		assert.Contain(t, buf.String(), expectedKey2)
 	})
 }

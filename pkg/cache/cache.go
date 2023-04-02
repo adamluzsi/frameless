@@ -258,5 +258,5 @@ func (m *Cache[Entity, ID]) getLogError() func(context.Context, string, error) {
 }
 
 func (m *Cache[Entity, ID]) defaultLogError(ctx context.Context, msg string, err error) {
-	logger.Error(ctx, msg, logger.Details{}.Err(err))
+	logger.Error(ctx, msg, logger.ErrField(err))
 }

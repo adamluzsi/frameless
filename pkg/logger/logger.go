@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"os"
@@ -24,6 +25,8 @@ type Logger struct {
 	// MarshalFunc is used to serialise the logging message event.
 	// When nil it defaults to JSON format.
 	MarshalFunc func(any) ([]byte, error)
+
+	KeyFormatter func(string) string
 }
 
 const (
@@ -32,27 +35,34 @@ const (
 	timestampKey      = "timestamp"
 )
 
-func (l Logger) Debug(ctx context.Context, msg string, ds ...Details) {
+func (l Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelDebug, msg, ds)
 }
 
-func (l Logger) Info(ctx context.Context, msg string, ds ...Details) {
+func (l Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelInfo, msg, ds)
 }
 
-func (l Logger) Warn(ctx context.Context, msg string, ds ...Details) {
+func (l Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelWarn, msg, ds)
 }
 
-func (l Logger) Error(ctx context.Context, msg string, ds ...Details) {
+func (l Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelError, msg, ds)
 }
 
-func (l Logger) Fatal(ctx context.Context, msg string, ds ...Details) {
+func (l Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelFatal, msg, ds)
 }
 
-func (l Logger) log(ctx context.Context, level loggingLevel, msg string, ds []Details) {
+func (l Logger) getKeyFormatter() func(string) string {
+	if l.KeyFormatter != nil {
+		return l.KeyFormatter
+	}
+	return stringcase.ToSnake
+}
+
+func (l Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
 	entry := l.toLogEntry(ctx, level, msg, ds)
 	bs, err := l.marshalFunc()(entry)
 	if err != nil {
@@ -102,11 +112,11 @@ func (l Logger) coalesceKey(key, defaultKey string) string {
 	return defaultKey
 }
 
-func (l Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, ds []Details) Details {
-	d := make(Details)
-	d.Merge(getDetailsFromContext(ctx))
-	for _, oth := range ds {
-		d.Merge(oth)
+func (l Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
+	d := make(logEntry)
+	d.Merge(getLoggingDetailsFromContext(ctx))
+	for _, ld := range lds {
+		ld.addTo(d)
 	}
 	d[l.coalesceKey(l.LevelKey, levelDefaultKey)] = level
 	d[l.coalesceKey(l.MessageKey, messageDefaultKey)] = msg

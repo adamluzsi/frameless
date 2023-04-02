@@ -32,6 +32,14 @@ func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	assert.Must(t).Equal("ok", id)
 }
 
+func TestLookup_withAnyType_IDReturned(t *testing.T) {
+	t.Parallel()
+
+	id, ok := extid.Lookup[any](testhelper.IDByIDField{ID: "ok"})
+	assert.Must(t).True(ok)
+	assert.Must(t).Equal(any("ok"), id)
+}
+
 func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
