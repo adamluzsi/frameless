@@ -7,7 +7,7 @@ import (
 	"github.com/adamluzsi/frameless/pkg/reflects"
 )
 
-func (l Logger) Field(key string, value any) LoggingDetail {
+func (l *Logger) Field(key string, value any) LoggingDetail {
 	v := l.toFieldValue(value)
 	if _, ok := v.(nullLoggingDetail); ok {
 		return nullLoggingDetail{}
@@ -17,9 +17,8 @@ func (l Logger) Field(key string, value any) LoggingDetail {
 
 type Fields map[string]any
 
-func (d Fields) addTo(e logEntry) {
-	for k, v := range d {
-
+func (fields Fields) addTo(e logEntry) {
+	for k, v := range fields {
 		Field(k, v).addTo(e)
 	}
 }
@@ -42,7 +41,7 @@ func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
 
 type LoggingDetail interface{ addTo(logEntry) }
 
-func (l Logger) toFieldValue(val any) any {
+func (l *Logger) toFieldValue(val any) any {
 	rv := reflects.BaseValueOf(val)
 	if mapping, ok := register[rv.Type()]; ok {
 		return l.toFieldValue(mapping(val))

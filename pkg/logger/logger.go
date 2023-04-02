@@ -10,6 +10,7 @@ import (
 	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -25,8 +26,10 @@ type Logger struct {
 	// MarshalFunc is used to serialise the logging message event.
 	// When nil it defaults to JSON format.
 	MarshalFunc func(any) ([]byte, error)
-
+	// KeyFormatter will be used to format the logging field keys
 	KeyFormatter func(string) string
+
+	m sync.Mutex
 }
 
 const (
@@ -35,34 +38,37 @@ const (
 	timestampKey      = "timestamp"
 )
 
-func (l Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
+func (l *Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelDebug, msg, ds)
 }
 
-func (l Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
+func (l *Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelInfo, msg, ds)
 }
 
-func (l Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
+func (l *Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelWarn, msg, ds)
 }
 
-func (l Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
+func (l *Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelError, msg, ds)
 }
 
-func (l Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
+func (l *Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
 	l.log(ctx, levelFatal, msg, ds)
 }
 
-func (l Logger) getKeyFormatter() func(string) string {
+func (l *Logger) getKeyFormatter() func(string) string {
 	if l.KeyFormatter != nil {
 		return l.KeyFormatter
 	}
 	return stringcase.ToSnake
 }
 
-func (l Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
+func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
+	l.m.Lock()
+	defer l.m.Unlock()
+
 	entry := l.toLogEntry(ctx, level, msg, ds)
 	bs, err := l.marshalFunc()(entry)
 	if err != nil {
@@ -91,28 +97,28 @@ const (
 	levelFatal loggingLevel = "fatal"
 )
 
-func (l Logger) writer() io.Writer {
+func (l *Logger) writer() io.Writer {
 	if l.Out != nil {
 		return l.Out
 	}
 	return os.Stdout
 }
 
-func (l Logger) marshalFunc() func(any) ([]byte, error) {
+func (l *Logger) marshalFunc() func(any) ([]byte, error) {
 	if l.MarshalFunc != nil {
 		return l.MarshalFunc
 	}
 	return json.Marshal
 }
 
-func (l Logger) coalesceKey(key, defaultKey string) string {
+func (l *Logger) coalesceKey(key, defaultKey string) string {
 	if key != "" {
 		return key
 	}
 	return defaultKey
 }
 
-func (l Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
+func (l *Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
 	d := make(logEntry)
 	d.Merge(getLoggingDetailsFromContext(ctx))
 	for _, ld := range lds {
@@ -124,7 +130,7 @@ func (l Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, 
 	return d
 }
 
-func (l Logger) separator() string {
+func (l *Logger) separator() string {
 	if l.Separator != "" {
 		return l.Separator
 	}

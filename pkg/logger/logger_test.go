@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/random"
@@ -178,7 +179,8 @@ func TestLogger_smoke(t *testing.T) {
 		assert.NoError(t, err)
 		os.Stdout = tmpFile
 
-		logger.Logger{}.Info(context.Background(), "msg")
+		l := logger.Logger{}
+		l.Info(context.Background(), "msg")
 
 		_, err = tmpFile.Seek(0, io.SeekStart)
 		assert.NoError(t, err)
@@ -209,15 +211,24 @@ func TestLogger_smoke(t *testing.T) {
 			exampleKey1 = "Hello_World-HTTP"
 			exampleKey2 = "HTTPFoo"
 		)
+		l.LevelKey = "lvl-key"
+		l.MessageKey = "message_key"
+		l.TimestampKey = "tsKey"
 
 		var (
 			expectedKey1 = formatter(exampleKey1)
 			expectedKey2 = formatter(exampleKey2)
+			expectedKey3 = formatter(l.MessageKey)
+			expectedKey4 = formatter(l.TimestampKey)
+			expectedKey5 = formatter(l.LevelKey)
 		)
 
 		l.Info(ctx, "msg", l.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
 		assert.Contain(t, buf.String(), expectedKey1)
 		assert.Contain(t, buf.String(), expectedKey2)
+		assert.Contain(t, buf.String(), expectedKey3)
+		assert.Contain(t, buf.String(), expectedKey4)
+		assert.Contain(t, buf.String(), expectedKey5)
 	})
 
 	t.Run("logging key string format is consistent even in absence of KeyFormatter, with snake_case format", func(t *testing.T) {
@@ -241,4 +252,30 @@ func TestLogger_smoke(t *testing.T) {
 		assert.Contain(t, buf.String(), expectedKey1)
 		assert.Contain(t, buf.String(), expectedKey2)
 	})
+}
+
+func TestLogger_concurrentUse(t *testing.T) {
+	var (
+		ctx = context.Background()
+		buf = logger.Stub(t)
+	)
+
+	write := func() {
+		logger.Info(ctx, "msg")
+	}
+
+	var writes = random.Slice(10000, func() func() { return write })
+
+	testcase.Race(write, write, writes...)
+
+	type LogEntry struct {
+		Level   string `json:"level"`
+		Message string `json:"message"`
+	}
+
+	dec := json.NewDecoder(buf)
+	for dec.More() {
+		var le LogEntry
+		assert.NoError(t, dec.Decode(&le))
+	}
 }
