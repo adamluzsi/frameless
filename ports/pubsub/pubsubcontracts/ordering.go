@@ -9,6 +9,74 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 )
 
+// Ordering is a contract that describes how the ordering should happen with a given
+type Ordering[Data any] func(testing.TB) OrderingSubject[Data]
+
+type OrderingSubject[Data any] struct {
+	PubSub PubSub[Data]
+	// Sort function arranges a list of data
+	// in the order that it's expected to be received from the PubSub
+	// when the data is published into the PubSub.
+	Sort func([]Data)
+
+	MakeContext func() context.Context
+	MakeData    func() Data
+}
+
+func (c Ordering[Data]) Spec(s *testcase.Spec) {
+	subject := testcase.Let(s, func(t *testcase.T) OrderingSubject[Data] { return c(t) })
+
+	b := base[Data](func(tb testing.TB) baseSubject[Data] {
+		sub := c(tb)
+		return baseSubject[Data]{
+			PubSub:      sub.PubSub,
+			MakeContext: sub.MakeContext,
+			MakeData:    sub.MakeData,
+		}
+	})
+	b.Spec(s)
+
+	s.Context("ordering", func(s *testcase.Spec) {
+		b.TryCleanup(s)
+
+		s.Test("", func(t *testcase.T) {
+			var (
+				ctx  = subject.Get(t).MakeContext()
+				val1 = subject.Get(t).MakeData()
+				val2 = subject.Get(t).MakeData()
+				val3 = subject.Get(t).MakeData()
+			)
+
+			ps := subject.Get(t).PubSub
+			sub := ps.Subscribe(ctx)
+			defer sub.Close()
+
+			t.Must.NoError(ps.Publish(ctx, val1, val2, val3))
+			pubsubtest.Waiter.Wait()
+
+			expected := []Data{val1, val2, val3}
+			subject.Get(t).Sort(expected)
+
+			var got []Data
+			for i, m := 0, len(expected); i < m; i++ {
+				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
+					t.Must.True(sub.Next())
+				})
+
+				msg := sub.Value()
+				got = append(got, msg.Data())
+				t.Must.NoError(msg.ACK())
+			}
+
+			t.Must.Equal(expected, got)
+		})
+	})
+}
+
+func (c Ordering[Data]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
+
+func (c Ordering[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }
+
 // FIFO
 //
 // It stands for First-In-First-Out approach.

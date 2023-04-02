@@ -23,6 +23,10 @@ type Queue[Data any] struct {
 	Volatile bool
 	// blocking will cause the Queue to wait until the published messages are ACK -ed.
 	Blocking bool
+
+	// SortLessFunc will define how to sort data, when we look for what message to handle next.
+	// if not supplied FIFO is the default ordering.
+	SortLessFunc func(i Data, j Data) bool
 }
 
 const typeNameQueue = "Queue"
@@ -85,9 +89,9 @@ func (ps *Queue[Data]) Purge(ctx context.Context) error {
 	return nil
 }
 
-type pubsubRecord[Entity any] struct {
+type pubsubRecord[Data any] struct {
 	key       string
-	value     Entity
+	value     Data
 	createdAt time.Time
 	taken     int32
 }
@@ -164,13 +168,8 @@ fetch:
 	if 0 == len(recs) {
 		goto fetch
 	}
-	sort.Slice(recs, func(i, j int) bool {
-		less := recs[i].createdAt.Before(recs[j].createdAt)
-		if pss.q.LIFO {
-			return !less
-		}
-		return less
-	})
+
+	pss.sort(recs)
 
 	var record *pubsubRecord[Data]
 	for _, rec := range recs {
@@ -185,6 +184,19 @@ fetch:
 
 	pss.value = record
 	return true
+}
+
+func (pss *pubsubSubscription[Data]) sort(recs []*pubsubRecord[Data]) {
+	sort.Slice(recs, func(i, j int) bool {
+		if pss.q.SortLessFunc != nil {
+			return pss.q.SortLessFunc(recs[i].value, recs[j].value)
+		}
+		less := recs[i].createdAt.Before(recs[j].createdAt)
+		if pss.q.LIFO {
+			return !less
+		}
+		return less
+	})
 }
 
 func (pss *pubsubSubscription[Data]) Value() pubsub.Message[Data] {

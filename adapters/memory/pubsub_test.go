@@ -6,6 +6,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
 	"github.com/adamluzsi/testcase"
+	"sort"
 	"testing"
 
 	. "github.com/adamluzsi/frameless/spechelper/testent"
@@ -69,6 +70,29 @@ func TestQueue(t *testing.T) {
 				PubSub:      pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
 				MakeContext: context.Background,
 				MakeData:    makeTestEntityFunc(tb),
+			}
+		}),
+		pubsubcontracts.Ordering[TestEntity](func(tb testing.TB) pubsubcontracts.OrderingSubject[TestEntity] {
+			t := testcase.ToT(&tb)
+			q := &memory.Queue[TestEntity]{
+				Memory: memory.NewMemory(),
+				SortLessFunc: func(i TestEntity, j TestEntity) bool {
+					return i.Data < j.Data
+				},
+			}
+			return pubsubcontracts.OrderingSubject[TestEntity]{
+				PubSub: pubsubcontracts.PubSub[TestEntity]{Publisher: q, Subscriber: q},
+				Sort: func(entities []TestEntity) {
+					sort.Slice(entities, func(i, j int) bool {
+						return entities[i].Data < entities[j].Data
+					})
+				},
+				MakeContext: context.Background,
+				MakeData: func() TestEntity {
+					v := makeTestEntity(tb)
+					v.Data = t.Random.UUID()
+					return v
+				},
 			}
 		}),
 	)
