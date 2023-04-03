@@ -26,7 +26,7 @@ func TestStub(t *testing.T) {
 		l2 := logger.Default
 		assert.NotEqual(t, og, l2)
 		logger.Default.Info(context.Background(), "hello")
-		assert.Contain(t, buf.String(), `"message":"hello"`)
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"hello"`, defaultKeyFormatter("message")))
 	})
 	t.Run("mutating", func(t *testing.T) {
 		rnd := random.New(random.CryptoSeed{})
@@ -36,7 +36,7 @@ func TestStub(t *testing.T) {
 		logger.Default.MessageKey = rnd.UUID()
 		msg := rnd.UUID()
 		logger.Default.Info(context.Background(), msg)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, logger.Default.MessageKey, msg))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, defaultKeyFormatter(logger.Default.MessageKey), msg))
 	})
 	assert.Equal(t, og, logger.Default, "logger has been restored")
 	assert.Equal(t, ogOut, og.Out)

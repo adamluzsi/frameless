@@ -114,9 +114,12 @@ func Test_pkgFuncSmoke(t *testing.T) {
 		logger.Default.LevelKey = rnd.UUID()
 
 		logger.Info(ctx, "foo")
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, logger.Default.TimestampKey, now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, logger.Default.MessageKey, "foo"))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, logger.Default.LevelKey, "info"))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+			defaultKeyFormatter(logger.Default.TimestampKey), now.Format(time.RFC3339)))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+			defaultKeyFormatter(logger.Default.MessageKey), "foo"))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+			defaultKeyFormatter(logger.Default.LevelKey), "info"))
 	})
 }
 

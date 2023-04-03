@@ -165,9 +165,10 @@ func TestLogger_smoke(t *testing.T) {
 		l.LevelKey = rnd.UUID()
 
 		l.Info(ctx, "foo")
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, l.TimestampKey, now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, l.MessageKey, "foo"))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, l.LevelKey, "info"))
+		fm := defaultKeyFormatter
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.TimestampKey), now.Format(time.RFC3339)))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.MessageKey), "foo"))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.LevelKey), "info"))
 	})
 
 	t.Run("by default, it will print into the stdout", func(t *testing.T) {

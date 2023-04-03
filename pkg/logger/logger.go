@@ -66,21 +66,20 @@ func (l *Logger) getKeyFormatter() func(string) string {
 }
 
 func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
-	l.m.Lock()
-	defer l.m.Unlock()
-
 	entry := l.toLogEntry(ctx, level, msg, ds)
 	bs, err := l.marshalFunc()(entry)
+	l.m.Lock()
+	defer l.m.Unlock()
 	if err != nil {
 		fmt.Println("ERROR", "framless/pkg/logger", "Logger.MarshalFunc", err.Error())
 		return
 	}
 	if _, err := l.writer().Write(bs); err != nil {
-		fmt.Println("ERROR", "framless/pkg/logger", "Logger.Out", err.Error())
+		_, _ = fmt.Fprintln(os.Stderr, "ERROR", "framless/pkg/logger", "Logger.Out", err.Error())
 		return
 	}
 	if _, err := l.writer().Write([]byte(l.separator())); err != nil {
-		fmt.Println("ERROR", "framless/pkg/logger", "Logger.Out", err.Error())
+		_, _ = fmt.Fprintln(os.Stderr, "framless/pkg/logger", "Logger.Out", err.Error())
 		return
 	}
 }
@@ -111,7 +110,8 @@ func (l *Logger) marshalFunc() func(any) ([]byte, error) {
 	return json.Marshal
 }
 
-func (l *Logger) coalesceKey(key, defaultKey string) string {
+func (l *Logger) coalesceKey(key, defaultKey string) (rKey string) {
+	defer func() { rKey = l.getKeyFormatter()(rKey) }()
 	if key != "" {
 		return key
 	}
@@ -120,7 +120,7 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 
 func (l *Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
 	d := make(logEntry)
-	d.Merge(getLoggingDetailsFromContext(ctx))
+	d = d.Merge(getLoggingDetailsFromContext(ctx))
 	for _, ld := range lds {
 		ld.addTo(d)
 	}

@@ -14,6 +14,8 @@ import (
 	"github.com/adamluzsi/testcase/random"
 )
 
+var defaultKeyFormatter = stringcase.ToSnake
+
 func ExampleField() {
 	logger.Error(context.Background(), "msg",
 		logger.Field("key1", "value"),
@@ -57,7 +59,7 @@ func TestField(t *testing.T) {
 
 	keyIsLogged := func(t *testcase.T) {
 		t.Helper()
-		t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`%q:`, stringcase.ToSnake(key.Get(t))))
+		t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 	}
 
 	s.When("value is int", func(s *testcase.Spec) {
@@ -115,7 +117,7 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", stringcase.ToSnake(key.Get(t))))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
@@ -132,7 +134,7 @@ func TestField(t *testing.T) {
 		s.Then("field is ignored, but a warning is made", func(t *testcase.T) {
 			afterLogging(t)
 
-			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, stringcase.ToSnake(key.Get(t))))
+			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			t.Must.Contain(buf.Get(t).String(), "security concerns")
 			t.Must.Contain(buf.Get(t).String(), "logger.RegisterFieldType")
 		})
@@ -150,7 +152,7 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", stringcase.ToSnake(key.Get(t))))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
 			// snake is the default key formatting
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
@@ -185,7 +187,7 @@ func TestFields(t *testing.T) {
 
 	keyIsLogged := func(t *testcase.T) {
 		t.Helper()
-		t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`%q:`, stringcase.ToSnake(key.Get(t))))
+		t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 	}
 
 	s.When("value is int", func(s *testcase.Spec) {
@@ -243,7 +245,7 @@ func TestFields(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", stringcase.ToSnake(key.Get(t))))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
@@ -260,7 +262,7 @@ func TestFields(t *testing.T) {
 		s.Then("field is ignored, but a warning is made", func(t *testcase.T) {
 			afterLogging(t)
 
-			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, stringcase.ToSnake(key.Get(t))))
+			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			t.Must.Contain(buf.Get(t).String(), "security concerns")
 			t.Must.Contain(buf.Get(t).String(), "logger.RegisterFieldType")
 		})
@@ -278,7 +280,7 @@ func TestFields(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", stringcase.ToSnake(key.Get(t))))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
 			// snake is the default key formatting
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
