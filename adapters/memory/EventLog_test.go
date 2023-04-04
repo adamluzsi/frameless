@@ -2,9 +2,9 @@ package memory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/internal/doubles"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/meta"
 	"github.com/adamluzsi/frameless/ports/pubsub"

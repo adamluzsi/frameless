@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/internal/doubles"
 	"github.com/adamluzsi/frameless/spechelper/testent"
 	"sync"
 	"testing"
@@ -9,7 +10,6 @@ import (
 
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
-	"github.com/adamluzsi/frameless/pkg/doubles"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
 	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
