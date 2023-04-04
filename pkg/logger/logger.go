@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/internal/zeroutil"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase/clock"
 	"io"
@@ -110,12 +111,8 @@ func (l *Logger) marshalFunc() func(any) ([]byte, error) {
 	return json.Marshal
 }
 
-func (l *Logger) coalesceKey(key, defaultKey string) (rKey string) {
-	defer func() { rKey = l.getKeyFormatter()(rKey) }()
-	if key != "" {
-		return key
-	}
-	return defaultKey
+func (l *Logger) coalesceKey(key, defaultKey string) string {
+	return l.getKeyFormatter()(zeroutil.Coalesce(key, defaultKey))
 }
 
 func (l *Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
