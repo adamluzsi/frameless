@@ -2,7 +2,10 @@ package schedule_test
 
 import (
 	"context"
+	"database/sql"
 	"github.com/adamluzsi/frameless/adapters/memory"
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/frameless/ports/locks"
@@ -11,22 +14,28 @@ import (
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/let"
 	"log"
+	"os"
 	"testing"
 	"time"
 )
 
 func ExampleScheduler_WithSchedule() {
-	m := schedule.Scheduler{
-		LockerFactory: memory.NewLockerFactory[string](),
-		Repository:    memory.NewRepository[schedule.State, string](memory.NewMemory()),
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		logger.Fatal(nil, "error during postgres db opening", logger.ErrField(err))
+		os.Exit(1)
 	}
 
-	job := m.WithSchedule("db maintenance", schedule.Interval(time.Hour*24*7), func(ctx context.Context) error {
-		// this job is scheduled at every seven days
+	scheduler := schedule.Scheduler{
+		LockerFactory: &postgresql.LockerFactory[string]{DB: db},
+		Repository:    &postgresql.TaskerScheduleStateRepository{DB: db},
+	}
+
+	task := scheduler.WithSchedule("db maintenance", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
 		return nil
 	})
 
-	if err := job(context.Background()); err != nil {
+	if err := task(context.Background()); err != nil {
 		log.Println("ERROR", err.Error())
 	}
 }

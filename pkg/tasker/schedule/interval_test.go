@@ -59,6 +59,9 @@ func TestMonthly_smoke(t *testing.T) {
 
 	expUntilNext := willOccureNextAt.Sub(now)
 
+	assert.Equal(t, expUntilNext, interval.UntilNext(time.Time{}),
+		"when lastRunAt is zero, then we receive the time it takes until the next occasion")
+
 	assert.Equal(t, expUntilNext, interval.UntilNext(now),
 		"when the next interval is in the future",
 		"then remaining time until the next occurrence is returned")
@@ -95,6 +98,9 @@ func TestDaily_smoke(t *testing.T) {
 		"when we skipped all the occurrence in the past year")
 
 	expUntilNext := willOccureNextAt.Sub(now)
+	
+	assert.Equal(t, expUntilNext, interval.UntilNext(time.Time{}),
+		"when lastRunAt is zero, then we receive the time it takes until the next occasion")
 
 	assert.Equal(t, expUntilNext, interval.UntilNext(now),
 		"when the next interval is in the future",

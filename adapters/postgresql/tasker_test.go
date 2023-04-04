@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestJobsScheduleStateRepository(t *testing.T) {
+func TestTaskerScheduleStateRepository(t *testing.T) {
 	db := OpenDB(t)
 	schedulecontracts.StateRepository(func(tb testing.TB) schedulecontracts.StateRepositorySubject {
 		repo := &postgresql.TaskerScheduleStateRepository{DB: db}

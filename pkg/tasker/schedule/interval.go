@@ -19,6 +19,9 @@ type Monthly struct {
 func (i Monthly) UntilNext(lastRanAt time.Time) time.Duration {
 	loc := getLocation(i.Location)
 	now := clock.TimeNow().In(loc)
+	if lastRanAt.IsZero() {
+		lastRanAt = now
+	}
 	lastRanAt = lastRanAt.In(loc)
 
 	if lastRanAt.Year() < now.Year() {
@@ -43,6 +46,9 @@ type Daily struct {
 func (i Daily) UntilNext(lastRanAt time.Time) time.Duration {
 	loc := getLocation(i.Location)
 	now := clock.TimeNow().In(loc)
+	if lastRanAt.IsZero() {
+		lastRanAt = now
+	}
 	lastRanAt = lastRanAt.In(loc)
 
 	if lastRanAt.Year() < now.Year() {

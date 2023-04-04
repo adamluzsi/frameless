@@ -123,27 +123,52 @@ func MyJob(signal context.Context) error {
 }
 ```
 
-## Scheduled Jobs with Scheduler.WithSchedule
+## Cron-like scheduled Tasks with Scheduler.WithSchedule
 
 If you need cron-like background tasks with the guarantee that your background tasks are serialised
 across your application instances, and only one scheduled task can run at a time,
 then you may use tasker.Scheduler, which solves that for you.
 
 ```go
-m := schedule.Scheduler{
-    LockerFactory: postgresql.NewLockerFactory[string](db),
-    Repository:    postgresql.NewRepository[tasker.ScheduleState, string]{/* ... */},
+package main
+
+import (
+	"context"
+	"os"
+	"database/sql"
+
+	"github.com/adamluzsi/frameless/adapters/postgresql"
+	"github.com/adamluzsi/frameless/pkg/contexts"
+	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/tasker"
+	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
+)
+
+func main() {
+	ctx := context.Background()
+
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	if err != nil {
+		logger.Error(ctx, "error during postgres db opening", logger.ErrField(err))
+		os.Exit(1)
+	}
+
+	scheduler := schedule.Scheduler{
+		LockerFactory: &postgresql.LockerFactory[string]{DB: db},
+		Repository:    &postgresql.TaskerScheduleStateRepository{DB: db},
+	}
+
+	task1 := scheduler.WithSchedule("my scheduled task", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
+		// this task will only run in one instance every month, on the first day.
+		return nil
+	})
+
+	if err := tasker.Main(ctx, task1); err != nil {
+		logger.Error(ctx, "error during the application run", logger.ErrField(err))
+		os.Exit(1)
+	}
 }
 
-task := m.WithSchedule("db maintenance", schedule.Interval(time.Hour*24*7), func(ctx context.Context) error {
-    // this task is scheduled to run once at every seven days
-    return nil
-})
-
-task := m.WithSchedule("db maintenance", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
-    // this task is scheduled to run once at every seven days
-    return nil
-})
 ```
 
 ## Using components as Job with Graceful shutdown support
