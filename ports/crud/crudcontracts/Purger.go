@@ -15,13 +15,15 @@ import (
 type Purger[Entity, ID any] func(testing.TB) PurgerSubject[Entity, ID]
 
 type PurgerSubject[Entity, ID any] struct {
-	Resource    purgerResource[Entity, ID]
+	Resource    purgerSubjectResource[Entity, ID]
 	MakeEntity  func() Entity
 	MakeContext func() context.Context
 }
 
-type purgerResource[Entity, ID any] interface {
-	spechelper.CRD[Entity, ID]
+type purgerSubjectResource[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.ByIDFinder[Entity, ID]
+	crud.ByIDDeleter[ID]
 	crud.Purger
 }
 

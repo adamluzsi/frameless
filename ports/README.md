@@ -1,5 +1,7 @@
 # frameless/ports
 
+- [CRUD](./crud/README.md)
+
 Frameless simplifies your software development process by promoting conventions over configurations,
 llowing you to concentrate on crucial aspects instead of repeatedly starting from scratch.
 

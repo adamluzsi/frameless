@@ -74,7 +74,7 @@ func (c ByIDFinder[Entity, ID]) subject() testcase.Var[ByIDFinderSubject[Entity,
 }
 
 func (c ByIDFinder[Entity, ID]) Name() string {
-	return "Finder.FindByID"
+	return "ByIDFinder"
 }
 
 func (c ByIDFinder[Entity, ID]) Spec(s *testcase.Spec) {
@@ -199,16 +199,20 @@ func (c ByIDFinder[Entity, ID]) Benchmark(b *testing.B) {
 type AllFinder[Entity, ID any] func(testing.TB) AllFinderSubject[Entity, ID]
 
 type AllFinderSubject[Entity, ID any] struct {
-	Resource interface {
-		spechelper.CRD[Entity, ID]
-		crud.AllFinder[Entity]
-	}
+	Resource    allFinderSubjectResource[Entity, ID]
 	MakeContext func() context.Context
 	MakeEntity  func() Entity
 }
 
+type allFinderSubjectResource[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.ByIDFinder[Entity, ID]
+	crud.ByIDDeleter[ID]
+	crud.AllFinder[Entity]
+}
+
 func (c AllFinder[Entity, ID]) Name() string {
-	return "crud.AllFinder"
+	return "AllFinder"
 }
 
 func (c AllFinder[Entity, ID]) Spec(s *testcase.Spec) {

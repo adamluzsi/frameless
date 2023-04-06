@@ -27,6 +27,10 @@ type CreatorSubject[Entity, ID any] struct {
 	SupportRecreate bool
 }
 
+func (c Creator[Entity, ID]) Name() string {
+	return "Creator"
+}
+
 func (c Creator[Entity, ID]) subject() testcase.Var[CreatorSubject[Entity, ID]] {
 	return testcase.Var[CreatorSubject[Entity, ID]]{
 		ID: "CreatorSubject[Entity, ID]",

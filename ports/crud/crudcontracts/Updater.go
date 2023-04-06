@@ -19,10 +19,7 @@ import (
 type Updater[Entity, ID any] func(testing.TB) UpdaterSubject[Entity, ID]
 
 type UpdaterSubject[Entity, ID any] struct {
-	Resource interface {
-		spechelper.CRD[Entity, ID]
-		crud.Updater[Entity]
-	}
+	Resource    updaterSubjectResource[Entity, ID]
 	MakeContext func() context.Context
 	MakeEntity  func() Entity
 	// ChangeEntity is an optional configuration field
@@ -31,6 +28,15 @@ type UpdaterSubject[Entity, ID any] struct {
 	// you can match this by not changing the Entity field as part of the ChangeEntity function.
 	ChangeEntity func(*Entity)
 }
+
+type updaterSubjectResource[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.ByIDFinder[Entity, ID]
+	crud.ByIDDeleter[ID]
+	crud.Updater[Entity]
+}
+
+func (c Updater[Entity, ID]) Name() string { return "Updater" }
 
 func (c Updater[Entity, ID]) subject() testcase.Var[UpdaterSubject[Entity, ID]] {
 	return testcase.Var[UpdaterSubject[Entity, ID]]{

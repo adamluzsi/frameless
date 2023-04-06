@@ -25,6 +25,8 @@ type DeleterSubject[Entity, ID any] struct {
 	MakeEntity  func() Entity
 }
 
+func (c Deleter[Entity, ID]) Name() string { return "Deleter" }
+
 func (c Deleter[Entity, ID]) resource() testcase.Var[DeleterSubject[Entity, ID]] {
 	return testcase.Var[DeleterSubject[Entity, ID]]{
 		ID:   "DeleterSubject[Entity, ID]",
@@ -66,6 +68,8 @@ type ByIDDeleterSubject[Entity, ID any] struct {
 	MakeContext func() context.Context
 	MakeEntity  func() Entity
 }
+
+func (c ByIDDeleter[Entity, ID]) Name() string { return "ByIDDeleter" }
 
 func (c ByIDDeleter[Entity, ID]) subject() testcase.Var[ByIDDeleterSubject[Entity, ID]] {
 	return testcase.Var[ByIDDeleterSubject[Entity, ID]]{
@@ -185,13 +189,19 @@ func (c ByIDDeleter[Entity, ID]) benchmarkDeleteByID(b *testing.B) {
 type AllDeleter[Entity, ID any] func(testing.TB) AllDeleterSubject[Entity, ID]
 
 type AllDeleterSubject[Entity, ID any] struct {
-	Resource interface {
-		spechelper.CRD[Entity, ID]
-		crud.AllDeleter
-	}
+	Resource    allDeleterSubjectResource[Entity, ID]
 	MakeContext func() context.Context
 	MakeEntity  func() Entity
 }
+
+type allDeleterSubjectResource[Entity, ID any] interface {
+	crud.Creator[Entity]
+	crud.ByIDFinder[Entity, ID]
+	crud.ByIDDeleter[ID]
+	crud.AllDeleter
+}
+
+func (c AllDeleter[Entity, ID]) Name() string { return "AllDeleter" }
 
 func (c AllDeleter[Entity, ID]) subject() testcase.Var[AllDeleterSubject[Entity, ID]] {
 	return testcase.Var[AllDeleterSubject[Entity, ID]]{

@@ -53,7 +53,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) resource() testcase.Var[spechelper.C
 }
 
 func (c OnePhaseCommitProtocol[Entity, ID]) Name() string {
-	return "crud OnePhaseCommitProtocol"
+	return "OnePhaseCommitProtocol"
 }
 
 func (c OnePhaseCommitProtocol[Entity, ID]) Test(t *testing.T) {
@@ -272,14 +272,14 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			IsFindable[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
 			IsFindable[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2)))
 		})
-		
+
 		s.Describe(`.Purger`, c.specPurger)
 	})
 }
 
 func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
-	purger := func(t *testcase.T) purgerResource[Entity, ID] {
-		p, ok := c.resource().Get(t).(purgerResource[Entity, ID])
+	purger := func(t *testcase.T) purgerSubjectResource[Entity, ID] {
+		p, ok := c.resource().Get(t).(purgerSubjectResource[Entity, ID])
 		if !ok {
 			t.Skipf(`%T doesn't supply contract.PurgerSubject`, c.resource().Get(t))
 		}
