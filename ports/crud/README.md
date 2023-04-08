@@ -50,7 +50,7 @@ func TestMyAdapter(t *testing.T) {
 }
 ```
 
-## Notable benefits
+## Notable benefits of using the `crud` port
 
 ### Consistency
 
@@ -85,59 +85,31 @@ By employing these interfaces, you can more easily interact with external RESTfu
 expose your entities on your HTTP API, and improve your application's performance. 
 The provided Go code demonstrates a set of CRUD interfaces that can be implemented to achieve these benefits.
 
-### RESTful resources 
+### Repository Pattern
 
-The RESTful API design is based on CRUD (Create, Read, Update, Delete) interactions 
-because they represent the fundamental operations required to manage resources in a system. 
-REST (Representational State Transfer) is an architectural style for designing networked applications
-that emphasizes the use of standardized methods to interact with resources, making it a natural fit for CRUD operations. 
-By basing RESTful APIs on CRUD, developers can create consistent, easily understood interfaces for managing resources,
-leading to more maintainable and scalable applications.
+The Repository pattern is a design pattern used in software development 
+to abstract the way data is stored, fetched, and manipulated. 
+It acts as a middle layer between the data source (such as a database or an API) 
+and the business logic of the application. By decoupling the data access logic from the rest of the application,
+the Repository pattern promotes separation of concerns, maintainability, and testability.
 
-Here's a brief summary of how CRUD operations relate to RESTful API methods:
+In the Repository pattern, a repository is responsible for performing CRUD (Create, Read, Update, Delete) operations
+on a specific entity or a group of related entities. 
+It provides a consistent interface to interact with the underlying data source, 
+allowing developers to focus on the business logic rather than the specifics of data access. 
+This also makes it easier to switch to a different data source 
+or introduce new data sources without having to modify the application's core logic.
 
-CREATE (CRUD) <-> POST (REST): In CRUD, the CREATE operation is used to add a new resource to the system.
-In REST, the POST method is used to create a new resource,
-typically by sending the resource data to the server in the request body. 
-The server processes the data and creates a new resource, returning its identifier (e.g., URL) in the response.
-
-Example: POST /resources 
-READ (CRUD) <-> GET (REST): The READ operation in CRUD corresponds to retrieving a resource 
-or a collection of resources from the system. In REST, the GET method is used to request resource data,
-either for a single resource (by ID) or a collection of resources.
-
-Examples:
-
-GET /resources (List all resources)
-GET /resources/:id (Show a specific resource by ID)
-UPDATE (CRUD) <-> PUT or PATCH (REST): In CRUD, 
-the UPDATE operation is used to modify an existing resource in the system. 
-In REST, the PUT method is used to update an entire resource by replacing its current representation with a new one, 
-while the PATCH method is used to partially update a resource, modifying only specific fields.
-
-Examples:
-
-PUT /resources/:id (Update a resource entirely)
-PATCH /resources/:id (Partially update a resource)
-DELETE (CRUD) <-> DELETE (REST): The DELETE operation in CRUD corresponds to removing a resource from the system. 
-In REST, the DELETE method is used to request the deletion of a resource, typically identified by its URL or ID.
-
-Example: DELETE /resources/:id
-
-In summary, RESTful API design is based on CRUD interactions because they represent the essential operations needed
-to manage resources. By aligning REST methods with CRUD operations, developers can create consistent, 
-intuitive interfaces that are easy to understand and maintain.
-
-#### External RESTful API Resource
+### Working with External System's RESTful API as Resource
 
 Imagine you want to integrate an external system, like a third-party API, into your application.
-By using CRUD interfaces, you can define a repository that communicates with the external API 
-and maps the external resources to your internal data models. 
+By using CRUD interfaces, you can define a repository that communicates with the external API
+and maps the external resources to your internal data models.
 The CRUD operations can then be used to interact with the external system in a standardized way.
 
-#### Exposing Entities on HTTP API
+### Exposing Entities on HTTP API
 
-Suppose you want to expose your application's entities on an HTTP API. 
-Using CRUD interfaces, you can create a generic RESTful handler that uses your repository as a data source. 
+Suppose you want to expose your application's entities on an HTTP API.
+Using CRUD interfaces, you can create a generic RESTful handler that uses your repository as a data source.
 This handler can then be used to handle requests and perform the necessary CRUD operations on your entities,
 making it easy to implement the HTTP API without having to write custom code for each operation.
