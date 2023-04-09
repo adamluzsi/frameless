@@ -3,6 +3,7 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"sync"
 	"testing"
 
@@ -73,8 +74,16 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 		once.Do(func() { spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.resource().Get(t)) })
 	})
 
-	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
+	s.Context("implements basic commit protocol contract",
+		comprotocontracts.OnePhaseCommitProtocol(func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
+			sub := c(tb)
+			return comprotocontracts.OnePhaseCommitProtocolSubject{
+				CommitManager: sub.CommitManager,
+				MakeContext:   sub.MakeContext,
+			}
+		}).Spec)
 
+	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
 		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
 			t.Must.Nil(err)
