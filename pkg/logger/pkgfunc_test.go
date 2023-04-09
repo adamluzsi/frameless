@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
@@ -128,33 +127,4 @@ func ExampleErrField() {
 	err := errors.New("boom")
 
 	logger.Error(ctx, "task failed successfully", logger.ErrField(err))
-}
-
-func TestErrField(t *testing.T) {
-	rnd := random.New(random.CryptoSeed{})
-	t.Run("plain error", func(t *testing.T) {
-		buf := logger.Stub(t)
-		expErr := rnd.Error()
-		logger.Info(nil, "boom", logger.ErrField(expErr))
-		assert.Contain(t, buf.String(), `"error":{`)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
-	})
-	t.Run("nil error", func(t *testing.T) {
-		buf := logger.Stub(t)
-		logger.Info(nil, "boom", logger.ErrField(nil))
-		assert.NotContain(t, buf.String(), `"error"`)
-	})
-	t.Run("when err is a user error", func(t *testing.T) {
-		buf := logger.Stub(t)
-		const message = "The answer"
-		const code = "42"
-		var expErr error
-		expErr = errorutil.UserError{ID: code, Message: message}
-		expErr = fmt.Errorf("err: %w", expErr)
-		d := logger.ErrField(expErr)
-		logger.Info(nil, "boom", d)
-		assert.Contain(t, buf.String(), `"error":{`)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
-	})
 }

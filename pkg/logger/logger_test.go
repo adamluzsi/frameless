@@ -224,7 +224,7 @@ func TestLogger_smoke(t *testing.T) {
 			expectedKey5 = formatter(l.LevelKey)
 		)
 
-		l.Info(ctx, "msg", l.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
+		l.Info(ctx, "msg", logger.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
 		assert.Contain(t, buf.String(), expectedKey1)
 		assert.Contain(t, buf.String(), expectedKey2)
 		assert.Contain(t, buf.String(), expectedKey3)
@@ -248,7 +248,7 @@ func TestLogger_smoke(t *testing.T) {
 			expectedKey2 = stringcase.ToSnake(exampleKey2)
 		)
 
-		l.Info(ctx, "msg", l.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
+		l.Info(ctx, "msg", logger.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
 
 		assert.Contain(t, buf.String(), expectedKey1)
 		assert.Contain(t, buf.String(), expectedKey2)

@@ -7,8 +7,8 @@ import (
 type ctxKeyDetails struct{}
 
 type ctxValue struct {
-	Super    *ctxValue
-	LogEntry logEntry
+	Super   *ctxValue
+	Details []LoggingDetail
 }
 
 func ContextWith(ctx context.Context, lds ...LoggingDetail) context.Context {
@@ -19,29 +19,33 @@ func ContextWith(ctx context.Context, lds ...LoggingDetail) context.Context {
 	if prev, ok := lookupValue(ctx); ok {
 		v.Super = prev
 	}
-	v.LogEntry = make(logEntry)
-	for _, ld := range lds {
-		ld.addTo(v.LogEntry)
-	}
+	v.Details = lds
 	return context.WithValue(ctx, ctxKeyDetails{}, &v)
 }
 
 // getLoggingDetailsFromContext returns the details attached to the context
-func getLoggingDetailsFromContext(ctx context.Context) logEntry {
-	d := make(logEntry)
+func getLoggingDetailsFromContext(ctx context.Context, l *Logger) logEntry {
 	if ctx == nil {
-		return d
+		return logEntry{}
 	}
+	var details []LoggingDetail
 	if v, ok := lookupValue(ctx); ok {
 		for {
-			d.Merge(v.LogEntry)
+			details = append(append([]LoggingDetail{}, v.Details...), details...) // unshift
 			if v.Super == nil {
 				break
 			}
 			v = v.Super
 		}
 	}
-	return d
+	le := make(logEntry)
+	if ctx == nil {
+		return le
+	}
+	for _, d := range details {
+		d.addTo(l, le)
+	}
+	return le
 }
 
 func lookupValue(ctx context.Context) (*ctxValue, bool) {

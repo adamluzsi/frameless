@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"
 	"strconv"
 	"testing"
@@ -284,5 +286,34 @@ func TestFields(t *testing.T) {
 			// snake is the default key formatting
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
+	})
+}
+
+func TestErrField(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	t.Run("plain error", func(t *testing.T) {
+		buf := logger.Stub(t)
+		expErr := rnd.Error()
+		logger.Info(nil, "boom", logger.ErrField(expErr))
+		assert.Contain(t, buf.String(), `"error":{`)
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
+	})
+	t.Run("nil error", func(t *testing.T) {
+		buf := logger.Stub(t)
+		logger.Info(nil, "boom", logger.ErrField(nil))
+		assert.NotContain(t, buf.String(), `"error"`)
+	})
+	t.Run("when err is a user error", func(t *testing.T) {
+		buf := logger.Stub(t)
+		const message = "The answer"
+		const code = "42"
+		var expErr error
+		expErr = errorutil.UserError{ID: code, Message: message}
+		expErr = fmt.Errorf("err: %w", expErr)
+		d := logger.ErrField(expErr)
+		logger.Info(nil, "boom", d)
+		assert.Contain(t, buf.String(), `"error":{`)
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
 	})
 }

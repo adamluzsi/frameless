@@ -116,15 +116,15 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 }
 
 func (l *Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
-	d := make(logEntry)
-	d = d.Merge(getLoggingDetailsFromContext(ctx))
+	le := make(logEntry)
+	le = le.Merge(getLoggingDetailsFromContext(ctx, l))
 	for _, ld := range lds {
-		ld.addTo(d)
+		ld.addTo(l, le)
 	}
-	d[l.coalesceKey(l.LevelKey, levelDefaultKey)] = level
-	d[l.coalesceKey(l.MessageKey, messageDefaultKey)] = msg
-	d[l.coalesceKey(l.TimestampKey, timestampKey)] = clock.TimeNow().Format(time.RFC3339)
-	return d
+	le[l.coalesceKey(l.LevelKey, levelDefaultKey)] = level
+	le[l.coalesceKey(l.MessageKey, messageDefaultKey)] = msg
+	le[l.coalesceKey(l.TimestampKey, timestampKey)] = clock.TimeNow().Format(time.RFC3339)
+	return le
 }
 
 func (l *Logger) separator() string {

@@ -1,25 +1,36 @@
 package logger
 
 import (
+	"errors"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"reflect"
 
 	"github.com/adamluzsi/frameless/pkg/reflects"
 )
 
-func (l *Logger) Field(key string, value any) LoggingDetail {
-	v := l.toFieldValue(value)
-	if _, ok := v.(nullLoggingDetail); ok {
-		return nullLoggingDetail{}
+func Field(key string, value any) LoggingDetail {
+	return field{Key: key, Value: value}
+}
+
+type field struct {
+	Key   string
+	Value any
+}
+
+func (f field) addTo(l *Logger, e logEntry) {
+	val := l.toFieldValue(f.Value)
+	if _, ok := val.(nullLoggingDetail); ok {
+		return
 	}
-	return logEntry{l.getKeyFormatter()(key): v}
+	e[l.getKeyFormatter()(f.Key)] = val
 }
 
 type Fields map[string]any
 
-func (fields Fields) addTo(e logEntry) {
+func (fields Fields) addTo(l *Logger, e logEntry) {
 	for k, v := range fields {
-		Field(k, v).addTo(e)
+		Field(k, v).addTo(l, e)
 	}
 }
 
@@ -27,6 +38,21 @@ func (fields Fields) addTo(e logEntry) {
 //
 // DEPRECATED: use logging.Fields instead
 type Details = Fields
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func ErrField(err error) LoggingDetail {
+	if err == nil {
+		return nullLoggingDetail{}
+	}
+	details := Fields{
+		"message": err.Error(),
+	}
+	if usrErr := (errorutil.UserError{}); errors.As(err, &usrErr) {
+		details["code"] = usrErr.ID.String()
+	}
+	return Field("error", details)
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -39,7 +65,7 @@ func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type LoggingDetail interface{ addTo(logEntry) }
+type LoggingDetail interface{ addTo(*Logger, logEntry) }
 
 func (l *Logger) toFieldValue(val any) any {
 	rv := reflects.BaseValueOf(val)
@@ -56,13 +82,13 @@ func (l *Logger) toFieldValue(val any) any {
 
 	case Fields:
 		le := logEntry{}
-		val.addTo(le)
+		val.addTo(l, le)
 		return l.toFieldValue(le)
 
 	case []LoggingDetail:
 		le := logEntry{}
 		for _, v := range val {
-			v.addTo(le)
+			v.addTo(l, le)
 		}
 		return l.toFieldValue(le)
 
@@ -94,7 +120,7 @@ func (l *Logger) toFieldValue(val any) any {
 
 type logEntry map[string]any
 
-func (ld logEntry) addTo(entry logEntry) { entry.Merge(ld) }
+func (ld logEntry) addTo(l *Logger, entry logEntry) { entry.Merge(ld) }
 
 func (ld logEntry) Merge(oth logEntry) logEntry {
 	for k, v := range oth {
@@ -105,4 +131,4 @@ func (ld logEntry) Merge(oth logEntry) logEntry {
 
 type nullLoggingDetail struct{}
 
-func (nullLoggingDetail) addTo(logEntry) {}
+func (nullLoggingDetail) addTo(*Logger, logEntry) {}
