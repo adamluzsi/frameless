@@ -1,6 +1,9 @@
 package pointer_test
 
 import (
+	"context"
+	"runtime"
+	"sync/atomic"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/pointer"
@@ -110,25 +113,30 @@ func TestInit(t *testing.T) {
 }
 
 func TestInit_race(t *testing.T) {
-	rnd := random.New(random.CryptoSeed{})
-	var str *string
+	var str1, str2 *string
 
-	blk := func() {
-		_ = pointer.Init(&str, func() string { return "42" })
+	rw := func() { _ = pointer.Init(&str1, func() string { return "42" }) }
+
+	_ = pointer.Init(&str2, func() string { return "42" })
+	r := func() { _ = pointer.Init(&str2, func() string { return "42" }) }
+
+	w := func() {
+		var str3 *string
+		_ = pointer.Init(&str3, func() string { return "42" })
 	}
-	more := random.Slice[func()](rnd.IntB(128, 1024), func() func() { return blk })
-	testcase.Race(blk, blk, more...)
+
+	var more []func()
+	more = append(more, random.Slice[func()](100, func() func() { return rw })...)
+	more = append(more, random.Slice[func()](100, func() func() { return r })...)
+	more = append(more, random.Slice[func()](100, func() func() { return w })...)
+
+	testcase.Race(r, w, more...)
 }
 
 func BenchmarkInit(b *testing.B) {
 	initFunc := func() string { return "42" }
-	b.Run("when init required", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			var str *string
-			_ = pointer.Init(&str, initFunc)
-		}
-	})
-	b.Run("when init is not required", func(b *testing.B) {
+
+	b.Run("[R] when init is not required", func(b *testing.B) {
 		var str *string
 		pointer.Init(&str, initFunc)
 		b.ResetTimer()
@@ -136,4 +144,68 @@ func BenchmarkInit(b *testing.B) {
 			_ = pointer.Init(&str, initFunc)
 		}
 	})
+
+	b.Run("[R] while having concurrent access", func(b *testing.B) {
+		makeConcurrentAccesses(b)
+		var str *string
+		_ = pointer.Init(&str, initFunc)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = pointer.Init(&str, initFunc)
+		}
+	})
+
+	b.Run("[W] when init required", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			var str *string
+			_ = pointer.Init(&str, initFunc)
+		}
+	})
+
+	b.Run("[W] while having concurrent access", func(b *testing.B) {
+		makeConcurrentAccesses(b)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var str *string
+			_ = pointer.Init(&str, initFunc)
+		}
+	})
+
+	b.Run("[RW]", func(b *testing.B) {
+		var str *string
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			if i%2 == 0 {
+				str = nil
+			}
+			_ = pointer.Init(&str, initFunc)
+		}
+	})
+}
+
+func makeConcurrentAccesses(tb testing.TB) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tb.Cleanup(cancel)
+	var ready int32
+	go func() {
+		blk := func() {
+			var str *string
+			_ = pointer.Init(&str, func() string { return "42" })
+		}
+		more := random.Slice[func()](runtime.NumCPU()*2, func() func() { return blk })
+		atomic.AddInt32(&ready, 1)
+		func() {
+			for {
+				if ctx.Err() != nil {
+					break
+				}
+				testcase.Race(blk, blk, more...)
+			}
+		}()
+	}()
+	for {
+		if atomic.LoadInt32(&ready) != 0 {
+			break
+		}
+	}
 }
