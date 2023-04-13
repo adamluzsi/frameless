@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/buffers"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
+	"github.com/adamluzsi/testcase/pp"
 	"github.com/adamluzsi/testcase/random"
 	"io"
 	"os"
@@ -256,27 +258,47 @@ func TestLogger_smoke(t *testing.T) {
 }
 
 func TestLogger_concurrentUse(t *testing.T) {
-	var (
-		ctx = context.Background()
-		buf = logger.Stub(t)
-	)
-
-	write := func() {
-		logger.Info(ctx, "msg")
-	}
-
-	var writes = random.Slice(10000, func() func() { return write })
-
-	testcase.Race(write, write, writes...)
-
 	type LogEntry struct {
 		Level   string `json:"level"`
 		Message string `json:"message"`
 	}
+	t.Run("default", func(t *testing.T) {
+		var (
+			ctx = context.Background()
+			buf = &TeeBuffer{}
+			l   = logger.Logger{Out: buf}
+		)
 
-	dec := json.NewDecoder(buf)
-	for dec.More() {
-		var le LogEntry
-		assert.NoError(t, dec.Decode(&le))
-	}
+		write := func() { l.Info(ctx, "msg") }
+		var writes = random.Slice(10000, func() func() { return write })
+
+		testcase.Race(write, write, writes...)
+
+		defer func() {
+			if t.Failed() {
+				t.Log("contains null char:", strings.Contains(buf.B.String(), "\\x00"))
+			}
+		}()
+
+		dec := json.NewDecoder(buf)
+		for dec.More() {
+			var le LogEntry
+			assert.NoError(t, dec.Decode(&le), pp.Format(buf.B.String()))
+		}
+	})
+
+}
+
+type TeeBuffer struct {
+	A, B buffers.Buffer
+}
+
+func (buf *TeeBuffer) Write(p []byte) (n int, err error) {
+	n, err = buf.A.Write(p)
+	_, _ = buf.B.Write(p)
+	return
+}
+
+func (buf *TeeBuffer) Read(p []byte) (n int, err error) {
+	return buf.A.Read(p)
 }

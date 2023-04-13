@@ -5,8 +5,8 @@ package logger
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/adamluzsi/frameless/pkg/internal/zeroutil"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase/clock"
 	"io"
@@ -30,7 +30,12 @@ type Logger struct {
 	// KeyFormatter will be used to format the logging field keys
 	KeyFormatter func(string) string
 
-	m sync.Mutex
+	outLock sync.Mutex
+
+	strategy struct {
+		mutex    sync.RWMutex
+		strategy *strategy
+	}
 }
 
 const (
@@ -67,22 +72,24 @@ func (l *Logger) getKeyFormatter() func(string) string {
 }
 
 func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
-	entry := l.toLogEntry(ctx, level, msg, ds)
-	bs, err := l.marshalFunc()(entry)
-	l.m.Lock()
-	defer l.m.Unlock()
+	l.getStrategy().Log(logEvent{
+		Context: ctx,
+		Level:   level,
+		Message: msg,
+		Details: ds,
+	})
+}
+
+func (l *Logger) logTo(out io.Writer, event logEvent) error {
+	var (
+		entry   = l.toLogEntry(event.Context, event.Level, event.Message, event.Details)
+		bs, err = l.marshalFunc()(entry)
+	)
 	if err != nil {
-		fmt.Println("ERROR", "framless/pkg/logger", "Logger.MarshalFunc", err.Error())
-		return
+		return err
 	}
-	if _, err := l.writer().Write(bs); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "ERROR", "framless/pkg/logger", "Logger.Out", err.Error())
-		return
-	}
-	if _, err := l.writer().Write([]byte(l.separator())); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "framless/pkg/logger", "Logger.Out", err.Error())
-		return
-	}
+	_, err = out.Write(append(bs, []byte(l.separator())...))
+	return err
 }
 
 type loggingLevel string
@@ -97,11 +104,26 @@ const (
 	levelFatal loggingLevel = "fatal"
 )
 
+type writer struct {
+	Writer io.Writer
+	Locker sync.Locker
+}
+
+func (w *writer) Write(p []byte) (n int, err error) {
+	w.Locker.Lock()
+	defer w.Locker.Unlock()
+	return w.Writer.Write(p)
+}
+
 func (l *Logger) writer() io.Writer {
+	var out io.Writer = os.Stdout
 	if l.Out != nil {
-		return l.Out
+		out = l.Out
 	}
-	return os.Stdout
+	return &writer{
+		Writer: out,
+		Locker: &l.outLock,
+	}
 }
 
 func (l *Logger) marshalFunc() func(any) ([]byte, error) {
@@ -139,4 +161,18 @@ func (l *Logger) separator() string {
 	default:
 		return "\n"
 	}
+}
+
+func (l *Logger) setStrategy(s strategy) {
+	l.strategy.mutex.Lock()
+	defer l.strategy.mutex.Unlock()
+	l.strategy.strategy = &s
+}
+
+func (l *Logger) getStrategy() strategy {
+	l.strategy.mutex.RLock()
+	defer l.strategy.mutex.RUnlock()
+	return pointer.Init[strategy](&l.strategy.strategy, func() strategy {
+		return &syncLogger{Logger: l}
+	})
 }

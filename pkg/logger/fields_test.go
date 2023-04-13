@@ -3,6 +3,7 @@ package logger_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
@@ -287,6 +288,13 @@ func TestFields(t *testing.T) {
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
 	})
+}
+
+func ExampleErrField() {
+	ctx := context.Background()
+	err := errors.New("boom")
+
+	logger.Error(ctx, "task failed successfully", logger.ErrField(err))
 }
 
 func TestErrField(t *testing.T) {

@@ -25,3 +25,5 @@ func Error(ctx context.Context, msg string, ds ...LoggingDetail) {
 func Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
 	Default.Fatal(ctx, msg, ds...)
 }
+
+func AsyncLogging(ctx context.Context) { Default.AsyncLogging(ctx) }

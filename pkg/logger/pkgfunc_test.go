@@ -3,12 +3,14 @@ package logger_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/random"
+	"os"
 	"testing"
 	"time"
 )
@@ -122,9 +124,44 @@ func Test_pkgFuncSmoke(t *testing.T) {
 	})
 }
 
-func ExampleErrField() {
+func ExampleAsyncLogging() {
 	ctx := context.Background()
-	err := errors.New("boom")
+	go logger.AsyncLogging(ctx) // not handling graceful shutdown with context cancellation
+	logger.Info(ctx, "this log message is written out asynchronously")
+}
 
-	logger.Error(ctx, "task failed successfully", logger.ErrField(err))
+func ExampleAsyncLogging_withTasker() {
+	ctx := context.Background()
+
+	myTask := func(ctx context.Context) error {
+		logger.Info(ctx, "this log message is written out asynchronously")
+		return nil
+	}
+
+	err := tasker.Main(ctx,
+		tasker.ToTask(myTask),
+		tasker.ToTask(logger.AsyncLogging),
+	)
+
+	if err != nil {
+		logger.Fatal(ctx, "application crashed", logger.ErrField(err))
+		os.Exit(1)
+	}
+}
+
+func TestAsyncLogging(t *testing.T) {
+	out := logger.Stub(t)
+	logger.Default.MessageKey = "msg"
+	logger.Default.KeyFormatter = stringcase.ToPascal
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go logger.AsyncLogging(ctx)
+
+	logger.Info(ctx, "gsm", logger.Field("fieldKey", "value"))
+
+	assert.EventuallyWithin(3*time.Second).Assert(t, func(it assert.It) {
+		it.Must.Contain(out.String(), `"Msg":"gsm"`)
+		it.Must.Contain(out.String(), `"FieldKey":"value"`)
+	})
 }

@@ -132,3 +132,40 @@ var _ = logger.RegisterFieldType(func(ent MyEntity) logger.LoggingDetail {
 })
 
 ```
+
+## Logging performance optimisation by using an async logging strategy
+
+If your application requires high performance and uses a lot of concurrent actions,
+using an async logging strategy can provide the best of both worlds.
+This means the application can have great performance that is not hindered by logging calls,
+while also being able to observe and monitor its behavior effectively.
+
+| ----------------- | sync logging | async logging |
+|-------------------|--------------|---------------|
+| no concurrency    | 5607 ns/op   | 700.7 ns/op   |
+| heavy concurrency | 54930 ns/op  | 1121 ns/op    |
+> tested on MacBook Pro with M1 when writing into a file
+> 
+> $ go test -bench BenchmarkLogger_AsyncLogging -run - 
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/adamluzsi/frameless/pkg/logger"
+	"github.com/adamluzsi/frameless/pkg/tasker"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// if a few lost log lines is not an issue, 
+	// then you can just send it to a goroutine.
+	go logger.AsyncLogging(ctx)
+	
+	// else use tasker to handle graceful shutdown properly log all pending logging event
+	tasker.Main(ctx, tasker.ToTask(logger.AsyncLogging))
+}
+```
