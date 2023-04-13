@@ -73,16 +73,17 @@ func (l *Logger) getKeyFormatter() func(string) string {
 
 func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
 	l.getStrategy().Log(logEvent{
-		Context: ctx,
-		Level:   level,
-		Message: msg,
-		Details: ds,
+		Context:   ctx,
+		Level:     level,
+		Message:   msg,
+		Details:   ds,
+		Timestamp: clock.TimeNow(),
 	})
 }
 
 func (l *Logger) logTo(out io.Writer, event logEvent) error {
 	var (
-		entry   = l.toLogEntry(event.Context, event.Level, event.Message, event.Details)
+		entry   = l.toLogEntry(event)
 		bs, err = l.marshalFunc()(entry)
 	)
 	if err != nil {
@@ -137,15 +138,15 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 	return l.getKeyFormatter()(zeroutil.Coalesce(key, defaultKey))
 }
 
-func (l *Logger) toLogEntry(ctx context.Context, level loggingLevel, msg string, lds []LoggingDetail) logEntry {
+func (l *Logger) toLogEntry(event logEvent) logEntry {
 	le := make(logEntry)
-	le = le.Merge(getLoggingDetailsFromContext(ctx, l))
-	for _, ld := range lds {
+	le = le.Merge(getLoggingDetailsFromContext(event.Context, l))
+	for _, ld := range event.Details {
 		ld.addTo(l, le)
 	}
-	le[l.coalesceKey(l.LevelKey, levelDefaultKey)] = level
-	le[l.coalesceKey(l.MessageKey, messageDefaultKey)] = msg
-	le[l.coalesceKey(l.TimestampKey, timestampKey)] = clock.TimeNow().Format(time.RFC3339)
+	le[l.coalesceKey(l.LevelKey, levelDefaultKey)] = event.Level
+	le[l.coalesceKey(l.MessageKey, messageDefaultKey)] = event.Message
+	le[l.coalesceKey(l.TimestampKey, timestampKey)] = event.Timestamp.Format(time.RFC3339)
 	return le
 }
 

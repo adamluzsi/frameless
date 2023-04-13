@@ -14,10 +14,11 @@ type strategy interface {
 }
 
 type logEvent struct {
-	Context context.Context
-	Level   loggingLevel
-	Message string
-	Details []LoggingDetail
+	Context   context.Context
+	Level     loggingLevel
+	Message   string
+	Timestamp time.Time
+	Details   []LoggingDetail
 }
 
 type syncLogger struct{ Logger *Logger }
