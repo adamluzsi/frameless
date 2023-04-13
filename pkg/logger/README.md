@@ -33,6 +33,7 @@ func main() {
 ```
 
 > example output when snake case key format is defined (default):
+
 ```json
 {
   "account_id": 24,
@@ -46,6 +47,7 @@ func main() {
 ```
 
 > example output when camel key format is defined:
+
 ```json
 {
   "accountID": 24,
@@ -69,21 +71,22 @@ package main
 import "github.com/adamluzsi/frameless/pkg/logger"
 
 func main() {
-    logger.Default.MessageKey = "msg"
-    logger.Default.TimestampKey = "ts"
+	logger.Default.MessageKey = "msg"
+	logger.Default.TimestampKey = "ts"
 }
 ```
 
-## Key string case style consistency in your logs 
+## Key string case style consistency in your logs
 
 Using the logger package can help you maintain historical consistency in your logging key style
 and avoid mixed string case styles.
 This is particularly useful since many log collecting systems rely on an append-only strategy,
-and any inconsistency could potentially cause issues with your alerting scripts that rely on certain keys. 
-So, by using the logger package, you can ensure that your logging is clean and consistent, 
+and any inconsistency could potentially cause issues with your alerting scripts that rely on certain keys.
+So, by using the logger package, you can ensure that your logging is clean and consistent,
 making it easier to manage and troubleshoot any issues that may arise.
 
-The default key format is snake_case, but you can change it easily by supplying a formetter in the KeyFormatter Logger field.
+The default key format is snake_case, but you can change it easily by supplying a formetter in the KeyFormatter Logger
+field.
 
 ```go
 package main
@@ -101,7 +104,7 @@ func main() {
 
 ## Security concerns
 
-It is crucial to make conscious decisions about what we log from a security standpoint 
+It is crucial to make conscious decisions about what we log from a security standpoint
 because logging too much information can potentially expose sensitive data about users.
 On the other hand, by logging what is necessary and relevant for operations,
 we can avoid security and compliance issues.
@@ -109,7 +112,7 @@ Following this practice can reduce the attack surface of our system and limit th
 Additionally, logging too much information can make detecting and responding to security incidents more difficult,
 as the noise of unnecessary data can obscure the signal of actual threats.
 
-The logger package has a safety mechanism to prevent exposure of sensitive data; 
+The logger package has a safety mechanism to prevent exposure of sensitive data;
 it requires you to register any DTO or Entity struct type with the logging package
 before you can use it as a logging field.
 
@@ -140,13 +143,13 @@ using an async logging strategy can provide the best of both worlds.
 This means the application can have great performance that is not hindered by logging calls,
 while also being able to observe and monitor its behavior effectively.
 
-| ----------------- | sync logging | async logging |
-|-------------------|--------------|---------------|
-| no concurrency    | 5607 ns/op   | 700.7 ns/op   |
-| heavy concurrency | 54930 ns/op  | 1121 ns/op    |
+| ----------------- | no concurrency | heavy concurrency |
+|-------------------|----------------|-------------------|
+| sync logging      | 5607 ns/op     | 54930 ns/op       |
+| async logging     | 700.7 ns/op    | 1121 ns/op        |
 > tested on MacBook Pro with M1 when writing into a file
-> 
-> $ go test -bench BenchmarkLogger_AsyncLogging -run - 
+>
+> $ go test -bench BenchmarkLogger_AsyncLogging -run -
 
 ```go
 package main
@@ -164,7 +167,7 @@ func main() {
 	// if a few lost log lines is not an issue, 
 	// then you can just send it to a goroutine.
 	go logger.AsyncLogging(ctx)
-	
+
 	// else use tasker to handle graceful shutdown properly log all pending logging event
 	tasker.Main(ctx, tasker.ToTask(logger.AsyncLogging))
 }
