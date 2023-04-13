@@ -15,3 +15,11 @@ func Recover(errp *error) {
 		}
 	}
 }
+
+func OnRecover(fn func(r any)) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	fn(r)
+}
