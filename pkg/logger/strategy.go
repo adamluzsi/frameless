@@ -141,7 +141,7 @@ func (s *asyncLogger) OutputWriter(ctx context.Context) {
 }
 
 func (s *asyncLogger) getBatchedEvents() chan []logEvent {
-	return pointer.Init(&s.batchedEvents, func() chan []logEvent {
+	return *pointer.Init(&s.batchedEvents, func() chan []logEvent {
 		return make(chan []logEvent)
 	})
 }

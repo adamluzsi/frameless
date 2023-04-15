@@ -173,7 +173,7 @@ func (l *Logger) setStrategy(s strategy) {
 func (l *Logger) getStrategy() strategy {
 	l.strategy.mutex.RLock()
 	defer l.strategy.mutex.RUnlock()
-	return pointer.Init[strategy](&l.strategy.strategy, func() strategy {
+	return *pointer.Init(&l.strategy.strategy, func() strategy {
 		return &syncLogger{Logger: l}
 	})
 }

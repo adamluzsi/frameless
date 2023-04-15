@@ -22,24 +22,30 @@ func Deref[T any](v *T) T {
 // Init will initialise a variable **T by first checking its value,
 // and if it's not set, it assigns a default value to it.
 // Init is safe to use concurrently, it has no race condition.
-func Init[T any, DefaultValue func() T | *T](v **T, init DefaultValue) T {
+func Init[T any, IV initialiser[T]](v **T, init IV) *T {
 	if v == nil {
 		panic(fmt.Sprintf("nil pointer exception with pointers.Init for %T", *new(T)))
 	}
 	if val, ok := initFastPath(v); ok {
-		return *val
+		return val
 	}
 	defer initsync(v)()
 	if *v != nil {
-		return **v
+		return *v
 	}
 	switch dv := any(init).(type) {
 	case func() T:
 		*v = Of(dv())
+	case func() *T:
+		*v = dv()
 	case *T:
 		*v = Of(*dv)
 	}
-	return **v
+	return *v
+}
+
+type initialiser[T any] interface {
+	func() T | func() *T | *T
 }
 
 func initFastPath[T any](v **T) (*T, bool) {

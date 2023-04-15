@@ -27,8 +27,8 @@ func ExampleOf() {
 func TestOf(tt *testing.T) {
 	t := testcase.ToT(tt)
 	var value = t.Random.String()
-	vptr := pointer.Of(value)
-	t.Must.Equal(&value, vptr)
+	vPtr := pointer.Of(value)
+	t.Must.Equal(&value, vPtr)
 }
 
 func ExampleDeref() {
@@ -66,18 +66,25 @@ func ExampleInit() {
 
 func TestInit(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
-	t.Run("on nil value, value is constructed from a func", func(t *testing.T) {
+	t.Run("on nil value, value is constructed from a func() T", func(t *testing.T) {
 		var str *string
 		exp := rnd.String()
 		got := pointer.Init(&str, func() string { return exp })
-		assert.Equal[string](t, exp, got)
+		assert.Equal[string](t, exp, *got)
+		assert.Equal[string](t, exp, *str)
+	})
+	t.Run("on nil value, value is constructed from a func() *T", func(t *testing.T) {
+		var str *string
+		exp := rnd.String()
+		got := pointer.Init(&str, func() *string { return &exp })
+		assert.Equal[string](t, exp, *got)
 		assert.Equal[string](t, exp, *str)
 	})
 	t.Run("on nil value, fallback default value is set as the value", func(t *testing.T) {
 		var str *string
 		exp := rnd.String()
 		got := pointer.Init(&str, &exp)
-		assert.Equal[string](t, exp, got)
+		assert.Equal[string](t, exp, *got)
 		assert.NotNil(t, str)
 		assert.Equal[string](t, exp, *str)
 
@@ -92,7 +99,7 @@ func TestInit(t *testing.T) {
 		var str *string
 		str = &expected
 		got := pointer.Init(&str, func() string { return "42" })
-		assert.Equal[string](t, expected, got)
+		assert.Equal[string](t, expected, *got)
 		assert.NotNil(t, str)
 		assert.Equal[string](t, expected, *str)
 	})
@@ -100,11 +107,11 @@ func TestInit(t *testing.T) {
 		expected := rnd.String()
 		var str1, str2 *string
 		got := pointer.Init(&str1, func() string {
-			return pointer.Init(&str2, func() string {
+			return *pointer.Init(&str2, func() string {
 				return expected
 			})
 		})
-		assert.Equal[string](t, expected, got)
+		assert.Equal[string](t, expected, *got)
 		assert.NotNil(t, str1)
 		assert.Equal[string](t, expected, *str1)
 		assert.NotNil(t, str2)
