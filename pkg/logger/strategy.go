@@ -5,7 +5,8 @@ import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/runtimes"
-	"github.com/adamluzsi/frameless/pkg/tasker"
+	"runtime"
+	"sync"
 	"time"
 )
 
@@ -24,7 +25,7 @@ type logEvent struct {
 type syncLogger struct{ Logger *Logger }
 
 func (s *syncLogger) Log(event logEvent) {
-	s.Logger.logTo(s.Logger.writer(), event)
+	_ = s.Logger.logTo(s.Logger.writer(), event)
 }
 
 // AsyncLogging will change the logging strategy from sync to async.
@@ -32,16 +33,35 @@ func (s *syncLogger) Log(event logEvent) {
 // The AsyncLogging function call is where the async processing will happen,
 // You should either run it in a separate goroutine, or use it with the tasker package.
 // After the AsyncLogging returned, the logger returns to log synchronously.
-func (l *Logger) AsyncLogging(ctx context.Context) {
+func (l *Logger) AsyncLogging() func() {
+	var st = &asyncLogger{Logger: l, Stream: make(chan logEvent, 128)}
+
+	var LogEventConsumerWG sync.WaitGroup
+	for i := 0; i < runtime.NumCPU(); i++ {
+		LogEventConsumerWG.Add(1)
+		go func() {
+			defer LogEventConsumerWG.Done()
+			st.LogEventConsumer()
+		}()
+	}
+
+	var OutputWriterWG sync.WaitGroup
+	OutputWriterWG.Add(1)
+	go func() {
+		defer OutputWriterWG.Done()
+		st.OutputWriter()
+	}()
+
 	prevStrategy := l.getStrategy()
-	defer func() { l.setStrategy(prevStrategy) }()
-	s := &asyncLogger{Logger: l, Stream: make(chan logEvent, 128)}
-	l.setStrategy(s)
-	_ = tasker.Concurrence(
-		s.LogEventBatcher,
-		s.OutputWriter,
-		s.OutputWriter,
-	).Run(ctx)
+	l.setStrategy(st)
+
+	return func() {
+		l.setStrategy(prevStrategy)
+		close(st.Stream)
+		LogEventConsumerWG.Wait()
+		close(st.getBatchedEvents())
+		OutputWriterWG.Wait()
+	}
 }
 
 type asyncLogger struct {
@@ -58,13 +78,7 @@ func (s *asyncLogger) Log(event logEvent) {
 	s.Stream <- event
 }
 
-func (s *asyncLogger) LogEventBatcher(ctx context.Context) {
-	defer close(s.getBatchedEvents())
-	go func() {
-		<-ctx.Done()
-		close(s.Stream)
-	}()
-
+func (s *asyncLogger) LogEventConsumer() {
 	const (
 		batchSize    = 512
 		batchTimeout = time.Second
@@ -73,31 +87,30 @@ func (s *asyncLogger) LogEventBatcher(ctx context.Context) {
 		batch []logEvent
 		timer = time.NewTimer(batchTimeout)
 	)
-
 	defer timer.Stop()
-
-	var done bool
-	for !done {
+	flush := func() {
+		if 0 < len(batch) {
+			s.getBatchedEvents() <- batch
+			batch = nil
+		}
+	}
+wrk:
+	for {
 		timer.Reset(batchTimeout)
-		var flush bool
-
 		select {
 		case event, ok := <-s.Stream:
 			if !ok {
-				done = true
-				flush = true
-				break
+				flush()
+				break wrk
 			}
+
 			batch = append(batch, event)
-			flush = batchSize <= len(batch)
+			if batchSize <= len(batch) {
+				flush()
+			}
 
 		case <-timer.C:
-			flush = true
-		}
-
-		if flush {
-			s.getBatchedEvents() <- batch
-			batch = nil
+			flush()
 		}
 	}
 }
@@ -105,37 +118,38 @@ func (s *asyncLogger) LogEventBatcher(ctx context.Context) {
 // OutputWriter will accept batched logging events and write it into the logging output
 // Having two output writer helps to have at least one receiver for the batched events
 // but at the cost of random disorder between logging entries.
-func (s *asyncLogger) OutputWriter(ctx context.Context) {
+func (s *asyncLogger) OutputWriter() {
 	const (
-		bufSize      = 4096
+		bufSize      = 256 * 1024 // 256Kb
 		flushTimeout = time.Second
 	)
 	var (
-		buf   bytes.Buffer
-		timer = time.NewTimer(flushTimeout)
+		buf    bytes.Buffer
+		output = s.Logger.writer()
+		flush  = func() { _, _ = buf.WriteTo(output) }
+		timer  = time.NewTimer(flushTimeout)
 	)
 	defer timer.Stop()
-
-	var done bool
-	for !done {
+wrk:
+	for {
 		timer.Reset(flushTimeout)
-		var flush bool
 		select {
 		case be, ok := <-s.getBatchedEvents():
 			if !ok {
-				done = true
-				flush = true
-				break
+				flush()
+				break wrk
 			}
 			for _, event := range be {
 				_ = s.Logger.logTo(&buf, event)
 			}
-			flush = bufSize <= buf.Len()
+			if bufSize <= buf.Len() {
+				flush()
+			}
+
 		case <-timer.C:
-			flush = 0 < buf.Len()
-		}
-		if flush {
-			_, _ = buf.WriteTo(s.Logger.writer())
+			if 0 < buf.Len() {
+				flush()
+			}
 		}
 	}
 }

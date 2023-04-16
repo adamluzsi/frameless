@@ -22,20 +22,18 @@ var asyncLoggingEventually = assert.EventuallyWithin(3 * time.Second)
 func ExampleLogger_AsyncLogging() {
 	ctx := context.Background()
 	l := logger.Logger{}
-	go l.AsyncLogging(ctx) // not handling graceful shutdown with context cancellation
+	defer l.AsyncLogging()()
 	l.Info(ctx, "this log message is written out asynchronously")
 }
 
 func TestLogger_AsyncLogging(t *testing.T) {
 	out := &bytes.Buffer{}
 	l := logger.Logger{Out: out}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go l.AsyncLogging(ctx)
+	defer l.AsyncLogging()()
 
 	l.MessageKey = "msg"
 	l.KeyFormatter = stringcase.ToPascal
-	l.Info(ctx, "gsm", logger.Field("fieldKey", "value"))
+	l.Info(nil, "gsm", logger.Field("fieldKey", "value"))
 
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
 		it.Must.Contain(out.String(), `"Msg":"gsm"`)
@@ -43,37 +41,16 @@ func TestLogger_AsyncLogging(t *testing.T) {
 	})
 }
 
-func TestLogger_AsyncLogging_cancelledContextStopsTheAsyncHandler(t *testing.T) {
-	out := &bytes.Buffer{}
-	l := logger.Logger{Out: out}
-
-	var done int32
-	assert.NotWithin(t, time.Second, func(ctx context.Context) {
-		l.AsyncLogging(ctx)
-		atomic.AddInt32(&done, 1)
-	})
-	assert.EventuallyWithin(5*time.Second).Assert(t, func(it assert.It) {
-		it.Must.True(atomic.LoadInt32(&done) != 0)
-	})
-
-	t.Log("afterwards it is finshed")
-	l.Info(nil, "foo")
-	assert.Contain(t, out.String(), "foo")
-}
-
 func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 	out := &bytes.Buffer{}
 	l := logger.Logger{Out: out}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go l.AsyncLogging(ctx)
+	defer l.AsyncLogging()()
 
 	const sampling = 10
 	for i := 0; i < sampling; i++ {
 		l.Info(nil, strconv.Itoa(i))
 	}
-	cancel()
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
 		for i := 0; i < sampling; i++ {
 			assert.Contain(it, out.String(), fmt.Sprintf(`"message":"%d"`, i))
@@ -90,6 +67,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 
 	b.Run("sync", func(b *testing.B) {
 		l := &logger.Logger{Out: out}
+		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			l.Info(nil, "msg")
@@ -98,12 +76,11 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 
 	b.Run("async", func(b *testing.B) {
 		l := &logger.Logger{Out: out}
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		go l.AsyncLogging(ctx)
+		defer l.AsyncLogging()()
 		assert.Waiter{WaitDuration: time.Millisecond}.Wait()
-		b.ResetTimer()
 
+		defer b.StopTimer()
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			l.Info(nil, "msg")
 		}
@@ -112,6 +89,8 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 	b.Run("sync with heavy concurrency", func(b *testing.B) {
 		l := &logger.Logger{Out: out}
 		makeConcurrentAccesses(b, l)
+
+		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			l.Info(nil, "msg")
@@ -120,13 +99,12 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 
 	b.Run("async with heavy concurrency", func(b *testing.B) {
 		l := &logger.Logger{Out: out}
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		go l.AsyncLogging(ctx)
+		defer l.AsyncLogging()()
 		assert.Waiter{WaitDuration: time.Millisecond}.Wait()
 		makeConcurrentAccesses(b, l)
-		b.ResetTimer()
 
+		defer b.StopTimer()
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			l.Info(nil, "msg")
 		}

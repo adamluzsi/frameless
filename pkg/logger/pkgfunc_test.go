@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
-	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/random"
-	"os"
 	"testing"
 	"time"
 )
@@ -126,27 +124,8 @@ func Test_pkgFuncSmoke(t *testing.T) {
 
 func ExampleAsyncLogging() {
 	ctx := context.Background()
-	go logger.AsyncLogging(ctx) // not handling graceful shutdown with context cancellation
+	defer logger.AsyncLogging()()
 	logger.Info(ctx, "this log message is written out asynchronously")
-}
-
-func ExampleAsyncLogging_withTasker() {
-	ctx := context.Background()
-
-	myTask := func(ctx context.Context) error {
-		logger.Info(ctx, "this log message is written out asynchronously")
-		return nil
-	}
-
-	err := tasker.Main(ctx,
-		tasker.ToTask(myTask),
-		tasker.ToTask(logger.AsyncLogging),
-	)
-
-	if err != nil {
-		logger.Fatal(ctx, "application crashed", logger.ErrField(err))
-		os.Exit(1)
-	}
 }
 
 func TestAsyncLogging(t *testing.T) {
@@ -156,7 +135,7 @@ func TestAsyncLogging(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go logger.AsyncLogging(ctx)
+	defer logger.AsyncLogging()()
 
 	logger.Info(ctx, "gsm", logger.Field("fieldKey", "value"))
 
