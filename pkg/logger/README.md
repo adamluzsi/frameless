@@ -136,6 +136,23 @@ var _ = logger.RegisterFieldType(func(ent MyEntity) logger.LoggingDetail {
 
 ```
 
+## ENV based Configuration
+
+You can set the default's loggers level with the following env values:
+
+- LOG_LEVEL
+- LOGGER_LEVEL
+- LOGGING_LEVEL
+
+| logging level | env value | env short format value |
+|---------------|-----------|------------------------|
+| Debug Level   | 	debug    | d                      | 
+| Info Level    | 	info     | i                      | 
+| Warn Level    | 	warn     | w                      | 
+| Error Level   | 	error    | e                      | 
+| Fatal Level   | 	fatal    | f                      | 
+| Fatal Level   | 	critical | c                      | 
+
 ## Logging performance optimisation by using an async logging strategy
 
 If your application requires high performance and uses a lot of concurrent actions,
@@ -147,6 +164,7 @@ while also being able to observe and monitor its behavior effectively.
 |-------------------|----------------|-------------------|
 | sync logging      | 5607 ns/op     | 54930 ns/op       |
 | async logging     | 700.7 ns/op    | 1121 ns/op        |
+
 > tested on MacBook Pro with M1 when writing into a file
 >
 > $ go test -bench BenchmarkLogger_AsyncLogging -run -

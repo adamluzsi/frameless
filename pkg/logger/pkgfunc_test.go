@@ -74,6 +74,7 @@ func Test_pkgFuncSmoke(t *testing.T) {
 
 	t.Run("message, timestamp, level and all details are logged, including from context", func(t *testing.T) {
 		buf := logger.Stub(t)
+		logger.Default.Level = logger.LevelDebug
 		ctx := context.Background()
 		ctx = logger.ContextWith(ctx, logger.Fields{"foo": "bar"})
 		ctx = logger.ContextWith(ctx, logger.Fields{"bar": 42})

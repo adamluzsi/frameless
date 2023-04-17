@@ -47,7 +47,7 @@ func TestLogger_smoke(t *testing.T) {
 
 	t.Run("log methods accept nil context", func(t *testing.T) {
 		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf}
+		l := logger.Logger{Out: buf, Level: logger.LevelDebug}
 		l.Debug(nil, "Debug")
 		l.Info(nil, "Info")
 		l.Warn(nil, "Warn")
@@ -125,7 +125,7 @@ func TestLogger_smoke(t *testing.T) {
 
 	t.Run("message, timestamp, level and all details are logged, including from context", func(t *testing.T) {
 		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf}
+		l := logger.Logger{Out: buf, Level: logger.LevelDebug}
 
 		ctx := context.Background()
 		ctx = logger.ContextWith(ctx, logger.Fields{"foo": "bar"})

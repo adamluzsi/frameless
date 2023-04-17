@@ -5,18 +5,23 @@ package logger
 import (
 	"context"
 	"encoding/json"
-	"github.com/adamluzsi/frameless/pkg/internal/zeroutil"
-	"github.com/adamluzsi/frameless/pkg/pointer"
-	"github.com/adamluzsi/frameless/pkg/stringcase"
-	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/adamluzsi/frameless/pkg/internal/zeroutil"
+	"github.com/adamluzsi/frameless/pkg/pointer"
+	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"github.com/adamluzsi/testcase/clock"
 )
 
 type Logger struct {
 	Out io.Writer
+
+	// Level is the logging level.
+	// The default Level is LevelInfo
+	Level loggingLevel
 
 	Separator string
 
@@ -45,23 +50,23 @@ const (
 )
 
 func (l *Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.log(ctx, levelDebug, msg, ds)
+	l.log(ctx, LevelDebug, msg, ds)
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.log(ctx, levelInfo, msg, ds)
+	l.log(ctx, LevelInfo, msg, ds)
 }
 
 func (l *Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.log(ctx, levelWarn, msg, ds)
+	l.log(ctx, LevelWarn, msg, ds)
 }
 
 func (l *Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.log(ctx, levelError, msg, ds)
+	l.log(ctx, LevelError, msg, ds)
 }
 
 func (l *Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.log(ctx, levelFatal, msg, ds)
+	l.log(ctx, LevelFatal, msg, ds)
 }
 
 func (l *Logger) getKeyFormatter() func(string) string {
@@ -72,6 +77,9 @@ func (l *Logger) getKeyFormatter() func(string) string {
 }
 
 func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
+	if !isLevelEnabled(l.getLevel(), level) {
+		return
+	}
 	l.getStrategy().Log(logEvent{
 		Context:   ctx,
 		Level:     level,
@@ -92,18 +100,6 @@ func (l *Logger) logTo(out io.Writer, event logEvent) error {
 	_, err = out.Write(append(bs, []byte(l.separator())...))
 	return err
 }
-
-type loggingLevel string
-
-func (ll loggingLevel) String() string { return string(ll) }
-
-const (
-	levelDebug loggingLevel = "debug"
-	levelInfo  loggingLevel = "info"
-	levelWarn  loggingLevel = "warn"
-	levelError loggingLevel = "error"
-	levelFatal loggingLevel = "fatal"
-)
 
 type writer struct {
 	Writer io.Writer
@@ -175,5 +171,14 @@ func (l *Logger) getStrategy() strategy {
 	defer l.strategy.mutex.RUnlock()
 	return *pointer.Init(&l.strategy.strategy, func() strategy {
 		return &syncLogger{Logger: l}
+	})
+}
+
+func (l *Logger) getLevel() loggingLevel {
+	if l.Level != "" {
+		return l.Level
+	}
+	return *pointer.Init[loggingLevel](pointer.Of(&l.Level), func() loggingLevel {
+		return defaultLevel
 	})
 }
