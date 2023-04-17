@@ -3,8 +3,8 @@ package logger
 import (
 	"bytes"
 	"context"
-	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/runtimes"
+	"github.com/adamluzsi/frameless/pkg/zeroutil"
 	"runtime"
 	"sync"
 	"time"
@@ -68,7 +68,7 @@ type asyncLogger struct {
 	Logger *Logger
 	Stream chan logEvent
 
-	batchedEvents *chan []logEvent
+	batchedEvents chan []logEvent
 }
 
 func (s *asyncLogger) Log(event logEvent) {
@@ -155,7 +155,7 @@ wrk:
 }
 
 func (s *asyncLogger) getBatchedEvents() chan []logEvent {
-	return *pointer.Init(&s.batchedEvents, func() chan []logEvent {
+	return zeroutil.Init(&s.batchedEvents, func() chan []logEvent {
 		return make(chan []logEvent)
 	})
 }

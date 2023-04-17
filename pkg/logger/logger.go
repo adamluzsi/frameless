@@ -10,9 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/internal/zeroutil"
-	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"github.com/adamluzsi/frameless/pkg/zeroutil"
 	"github.com/adamluzsi/testcase/clock"
 )
 
@@ -20,7 +19,7 @@ type Logger struct {
 	Out io.Writer
 
 	// Level is the logging level.
-	// The default Level is LevelInfo
+	// The default Level is LevelInfo.
 	Level loggingLevel
 
 	Separator string
@@ -39,7 +38,7 @@ type Logger struct {
 
 	strategy struct {
 		mutex    sync.RWMutex
-		strategy *strategy
+		strategy strategy
 	}
 }
 
@@ -163,13 +162,13 @@ func (l *Logger) separator() string {
 func (l *Logger) setStrategy(s strategy) {
 	l.strategy.mutex.Lock()
 	defer l.strategy.mutex.Unlock()
-	l.strategy.strategy = &s
+	l.strategy.strategy = s
 }
 
 func (l *Logger) getStrategy() strategy {
 	l.strategy.mutex.RLock()
 	defer l.strategy.mutex.RUnlock()
-	return *pointer.Init(&l.strategy.strategy, func() strategy {
+	return zeroutil.Init(&l.strategy.strategy, func() strategy {
 		return &syncLogger{Logger: l}
 	})
 }
@@ -178,7 +177,7 @@ func (l *Logger) getLevel() loggingLevel {
 	if l.Level != "" {
 		return l.Level
 	}
-	return *pointer.Init[loggingLevel](pointer.Of(&l.Level), func() loggingLevel {
+	return zeroutil.Init[loggingLevel](&l.Level, func() loggingLevel {
 		return defaultLevel
 	})
 }
