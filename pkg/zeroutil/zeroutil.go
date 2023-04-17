@@ -1,3 +1,4 @@
+// Package zeroutil helps with zero value related use-cases such as initialisation.
 package zeroutil
 
 import (
