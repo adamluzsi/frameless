@@ -72,7 +72,6 @@ func HasEntity[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID
 
 func Create[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
-
 	assert.Must(tb).Nil(subject.Create(ctx, ptr))
 	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
 	tb.Cleanup(func() {
@@ -83,7 +82,6 @@ func Create[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx conte
 		_ = subject.DeleteByID(ctx, id)
 	})
 	IsFindable[Entity, ID](tb, subject, ctx, id)
-	tb.Logf("given entity is created: %#v", ptr)
 }
 
 type updater[Entity, ID any] interface {
@@ -103,7 +101,6 @@ func Update[Entity, ID any](tb testing.TB, subject updater[Entity, ID], ctx cont
 		entity := IsFindable[Entity, ID](it, subject, ctx, id)
 		it.Must.Equal(ptr, entity)
 	})
-	tb.Logf(`entity is updated: %#v`, ptr)
 }
 
 func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
@@ -112,7 +109,6 @@ func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx conte
 	IsFindable[Entity, ID](tb, subject, ctx, id)
 	assert.Must(tb).Nil(subject.DeleteByID(ctx, id))
 	IsAbsent[Entity, ID](tb, subject, ctx, id)
-	tb.Logf("entity is deleted: %#v", ptr)
 }
 
 type deleteAllDeleter[Entity, ID any] interface {
