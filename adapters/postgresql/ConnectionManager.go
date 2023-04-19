@@ -47,7 +47,7 @@ func (c *connectionManager) Close() error {
 // Connection returns the current context's sql connection.
 // This can be a *sql.DB or if we within a transaction, then a *sql.Tx.
 func (c *connectionManager) Connection(ctx context.Context) (Connection, error) {
-	if tx, ok := c.lookupTx(ctx); ok {
+	if tx, ok := c.lookupSqlTx(ctx); ok {
 		return tx, nil
 	}
 
@@ -59,31 +59,34 @@ func (c *connectionManager) Connection(ctx context.Context) (Connection, error) 
 	return client, nil
 }
 
-type (
-	ctxDefaultPoolTxKey   struct{}
-	ctxDefaultPoolTxValue struct {
-		depth int
-		*sql.Tx
-	}
-)
+type ctxCMTxKey struct{}
+
+type cmTx struct {
+	parent *cmTx
+	sqlTx  *sql.Tx
+	done   bool
+}
 
 func (c *connectionManager) BeginTx(ctx context.Context) (context.Context, error) {
-	if tx, ok := c.lookupTx(ctx); ok && tx.Tx != nil {
-		tx.depth++
-		return ctx, nil
+	tx := &cmTx{}
+
+	if ptx, ok := c.lookupTx(ctx); ok {
+		tx.parent = ptx
 	}
 
-	conn, err := c.getConnection(ctx)
-	if err != nil {
-		return nil, err
+	if tx.parent == nil {
+		conn, err := c.getConnection(ctx)
+		if err != nil {
+			return nil, err
+		}
+		sqlTx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		tx.sqlTx = sqlTx
 	}
 
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return context.WithValue(ctx, ctxDefaultPoolTxKey{}, &ctxDefaultPoolTxValue{Tx: tx}), nil
+	return context.WithValue(ctx, ctxCMTxKey{}, tx), nil
 }
 
 func (c *connectionManager) CommitTx(ctx context.Context) error {
@@ -91,27 +94,51 @@ func (c *connectionManager) CommitTx(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf(`no postgresql transaction found in the current context`)
 	}
-
-	if tx.depth > 0 {
-		tx.depth--
+	if tx.done {
+		return sql.ErrTxDone
+	}
+	tx.done = true
+	if tx.sqlTx == nil {
 		return nil
 	}
-
-	return tx.Commit()
+	return tx.sqlTx.Commit()
 }
 
 func (c *connectionManager) RollbackTx(ctx context.Context) error {
 	tx, ok := c.lookupTx(ctx)
 	if !ok {
-		return fmt.Errorf(`no postgres comproto in the given context`)
+		return fmt.Errorf(`no postgresql transaction found in the current context`)
 	}
-
-	return tx.Rollback()
+	if tx.done {
+		return sql.ErrTxDone
+	}
+	for {
+		tx.done = true
+		if tx.sqlTx != nil {
+			return tx.sqlTx.Rollback()
+		}
+		if tx.parent != nil {
+			tx = tx.parent
+		}
+	}
 }
 
-func (c *connectionManager) lookupTx(ctx context.Context) (*ctxDefaultPoolTxValue, bool) {
-	tx, ok := ctx.Value(ctxDefaultPoolTxKey{}).(*ctxDefaultPoolTxValue)
+func (c *connectionManager) lookupTx(ctx context.Context) (*cmTx, bool) {
+	tx, ok := ctx.Value(ctxCMTxKey{}).(*cmTx)
 	return tx, ok
+}
+
+func (c *connectionManager) lookupSqlTx(ctx context.Context) (*sql.Tx, bool) {
+	tx, ok := c.lookupTx(ctx)
+	if !ok {
+		return nil, false
+	}
+	for {
+		if tx.sqlTx != nil {
+			return tx.sqlTx, true
+		}
+		tx = tx.parent
+	}
 }
 
 func (c *connectionManager) getConnection(ctx context.Context) (_ *sql.DB, rErr error) {
