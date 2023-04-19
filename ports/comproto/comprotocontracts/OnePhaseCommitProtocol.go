@@ -2,6 +2,7 @@ package comprotocontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/reflects"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
@@ -17,7 +18,7 @@ type OnePhaseCommitProtocolSubject struct {
 
 func (c OnePhaseCommitProtocol) subject() testcase.Var[OnePhaseCommitProtocolSubject] {
 	return testcase.Var[OnePhaseCommitProtocolSubject]{
-		ID:   "OnePhaseCommitProtocolSubject",
+		ID:   reflects.SymbolicName(OnePhaseCommitProtocolSubject{}),
 		Init: func(t *testcase.T) OnePhaseCommitProtocolSubject { return c(t) },
 	}
 }
