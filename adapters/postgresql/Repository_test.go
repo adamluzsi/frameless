@@ -92,7 +92,7 @@ func TestRepository(t *testing.T) {
 }
 
 func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
-	cm := NewConnectionManager(t)
+	cm := GetConnectionManager(t)
 	spechelper.MigrateTestEntity(t, cm)
 
 	mapper := spechelper.TestEntityMapping()
@@ -115,7 +115,7 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 }
 
 func TestRepository_implementsCacheEntityRepository(t *testing.T) {
-	cm := NewConnectionManager(t)
+	cm := GetConnectionManager(t)
 	spechelper.MigrateTestEntity(t, cm)
 
 	cachecontracts.EntityRepository[spechelper.TestEntity, string](func(tb testing.TB) cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string] {
@@ -134,7 +134,7 @@ func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 }
 
 func TestRepository_canImplementCacheHitRepository(t *testing.T) {
-	cm := NewConnectionManager(t)
+	cm := GetConnectionManager(t)
 
 	func(tb testing.TB, cm postgresql.ConnectionManager) {
 		const testCacheHitMigrateUP = `CREATE TABLE "test_cache_hits" ( id TEXT PRIMARY KEY, ids TEXT[], ts TIMESTAMP WITH TIME ZONE );`

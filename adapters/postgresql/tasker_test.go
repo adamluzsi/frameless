@@ -11,7 +11,7 @@ import (
 )
 
 func TestTaskerScheduleStateRepository(t *testing.T) {
-	db := OpenDB(t)
+	db := GetDB(t)
 	schedulecontracts.StateRepository(func(tb testing.TB) schedulecontracts.StateRepositorySubject {
 		repo := &postgresql.TaskerScheduleStateRepository{DB: db}
 		assert.NoError(tb, repo.Migrate(context.Background()))

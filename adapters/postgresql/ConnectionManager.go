@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/runtimes"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side-effect loading
@@ -99,7 +100,11 @@ func (c *connectionManager) CommitTx(ctx context.Context) error {
 	}
 	tx.done = true
 	if tx.sqlTx == nil {
-		return nil
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		_ = tx.sqlTx.Rollback()
+		return err
 	}
 	return tx.sqlTx.Commit()
 }
@@ -115,7 +120,7 @@ func (c *connectionManager) RollbackTx(ctx context.Context) error {
 	for {
 		tx.done = true
 		if tx.sqlTx != nil {
-			return tx.sqlTx.Rollback()
+			return errorutil.Merge(tx.sqlTx.Rollback(), ctx.Err())
 		}
 		if tx.parent != nil {
 			tx = tx.parent

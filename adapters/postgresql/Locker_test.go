@@ -83,7 +83,7 @@ func ExampleLockerFactory() {
 var _ migration.Migratable = postgresql.LockerFactory[int]{}
 
 func TestNewLockerFactory(t *testing.T) {
-	db := OpenDB(t)
+	db := GetDB(t)
 
 	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
 		lockerFactory := postgresql.LockerFactory[string]{DB: db}

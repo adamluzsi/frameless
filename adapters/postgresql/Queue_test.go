@@ -21,7 +21,7 @@ var _ migration.Migratable = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{}
 
 func TestQueue(t *testing.T) {
 	const queueName = "test_entity"
-	cm := NewConnectionManager(t)
+	cm := GetConnectionManager(t)
 
 	assert.NoError(t,
 		postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{Name: queueName, ConnectionManager: cm}.
@@ -122,7 +122,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 	now := time.Now().UTC()
 	timecop.Travel(t, now)
 
-	cm := NewConnectionManager(t)
+	cm := GetConnectionManager(t)
 	q := postgresql.Queue[testent.Foo, testent.FooDTO]{
 		Name:                queueName,
 		ConnectionManager:   cm,
@@ -159,7 +159,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 
 func TestQueue_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
-	cm := NewConnectionManager(t)
+	cm := GetConnectionManager(t)
 	t.Run("single", func(t *testing.T) {
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
 			Name:              "42",
@@ -183,7 +183,7 @@ func TestQueue_smoke(t *testing.T) {
 		})
 	})
 	t.Run("multi", func(t *testing.T) {
-		cm := NewConnectionManager(t)
+		cm := GetConnectionManager(t)
 
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
 			Name:              "42",
@@ -240,7 +240,7 @@ func BenchmarkQueue(b *testing.B) {
 	var (
 		ctx = sh.MakeContext(b)
 		rnd = random.New(random.CryptoSeed{})
-		cm  = NewConnectionManager(b)
+		cm  = GetConnectionManager(b)
 		q   = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
 			Name:              queueName,
 			ConnectionManager: cm,
