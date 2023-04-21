@@ -2,10 +2,12 @@ package zeroutil_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/testcase/let"
 	"runtime"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/zeroutil"
@@ -158,6 +160,24 @@ func TestInit(t *testing.T) {
 	})
 }
 
+func TestInit_concurrent(t *testing.T) {
+	var rnd = random.New(random.CryptoSeed{})
+	var vs = make([]int, runtime.NumCPU())
+	var dos []func()
+	for i := 0; i < runtime.NumCPU(); i++ {
+		i := i // dedicate a variable for the closures
+		dos = append(dos, func() {
+			zeroutil.Init(&vs[i], func() int {
+				time.Sleep(time.Second)
+				return rnd.Int()
+			})
+		})
+	}
+	assert.Within(t, time.Second+500*time.Millisecond, func(ctx context.Context) {
+		assert.NoError(t, tasker.Concurrence(dos...).Run(ctx))
+	})
+}
+
 func TestInit_race(t *testing.T) {
 	var str1, str2 string
 
@@ -175,7 +195,6 @@ func TestInit_race(t *testing.T) {
 	more = append(more, random.Slice[func()](100, func() func() { return rw })...)
 	more = append(more, random.Slice[func()](100, func() func() { return r })...)
 	more = append(more, random.Slice[func()](100, func() func() { return w })...)
-
 	testcase.Race(r, w, more...)
 }
 
