@@ -126,6 +126,8 @@ func TestRetryRoundTripper(t *testing.T) {
 						http.StatusServiceUnavailable,
 						http.StatusGatewayTimeout,
 						http.StatusInsufficientStorage,
+						http.StatusTooManyRequests,
+						http.StatusRequestTimeout,
 					}).(int)
 					w.WriteHeader(code)
 					done = true

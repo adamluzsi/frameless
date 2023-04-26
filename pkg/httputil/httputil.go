@@ -31,11 +31,16 @@ type RetryRoundTripper struct {
 var temporaryErrorResponseCodes = map[int]struct{}{
 	http.StatusInternalServerError: {},
 	http.StatusBadGateway:          {},
-	http.StatusServiceUnavailable:  {},
 	http.StatusGatewayTimeout:      {},
+	http.StatusServiceUnavailable:  {},
 	http.StatusInsufficientStorage: {},
+	http.StatusTooManyRequests:     {},
+	http.StatusRequestTimeout:      {},
 }
 
+// RoundTrip
+//
+// TODO: optional waiting based on the Retry-After header
 func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Response, err error) {
 	bs, err := rt.readBody(request)
 	if err != nil {
@@ -43,6 +48,7 @@ func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Respons
 	}
 
 	rs := rt.getRetryStrategy()
+
 	for i := 0; rs.ShouldTry(request.Context(), i); i++ {
 		// reset body to original state before making the request
 		request.Body = io.NopCloser(bytes.NewReader(bs))
