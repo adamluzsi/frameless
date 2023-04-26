@@ -3,6 +3,7 @@ package txs_test
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/logger"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/errorutil"
@@ -233,18 +234,44 @@ func Test(t *testing.T) {
 	})
 }
 
+func MyActionWhichMutateTheSystemState(ctx context.Context) error {
+	return nil
+}
+
+func RollbackForMyActionWhichMutatedTheSystemState(ctx context.Context) error {
+	return nil
+}
+
+func MyUseCase(ctx context.Context) (returnErr error) {
+	ctx, err := txs.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer txs.Finish(&returnErr, ctx)
+
+	if err := MyActionWhichMutateTheSystemState(ctx); err != nil {
+		return err
+	}
+
+	txs.OnRollback(ctx, func(ctx context.Context) error {
+		return RollbackForMyActionWhichMutatedTheSystemState(ctx)
+	})
+
+	return nil
+}
+
 func Example_pkgLevelTxFunctions() {
 	ctx := context.Background()
+	ctx, err := txs.Begin(ctx)
+	if err != nil {
+		logger.Error(ctx, "error with my tx", logger.ErrField(err))
+	}
 
-	_ = func(ctx context.Context) (rerr error) {
-		tx, _ := txs.Begin(ctx)
-		defer txs.Finish(&rerr, tx)
-
-		txs.OnRollback(tx, func() {
-			// something to do
-		})
-		return nil
-	}(ctx)
+	if err := MyUseCase(ctx); err != nil {
+		txs.Rollback(ctx)
+		return
+	}
+	txs.Commit(ctx)
 }
 
 func Test_smoke(tt *testing.T) {
