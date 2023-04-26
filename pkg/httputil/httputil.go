@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/retry"
 	"io"
 	"net"
 	"net/http"
@@ -18,10 +19,13 @@ func (fn RoundTripperFunc) RoundTrip(request *http.Request) (*http.Response, err
 type RetryRoundTripper struct {
 	// Transport specifies the mechanism by which individual
 	// HTTP requests are made.
-	// If nil, DefaultTransport is used.
+	//
+	// Default: http.DefaultTransport
 	Transport http.RoundTripper
-
-	// Strategy
+	// RetryStrategy will be used to evaluate if a new retry attempt should be done.
+	//
+	// Default: retry.ExponentialBackoff
+	RetryStrategy retry.Strategy
 }
 
 var temporaryErrorResponseCodes = map[int]struct{}{
@@ -38,15 +42,12 @@ func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Respons
 		return nil, err
 	}
 
-	const max = 10
-	for i, m := 0, max-1; i < m; i++ {
+	rs := rt.getRetryStrategy()
+	for i := 0; rs.ShouldTry(request.Context(), i); i++ {
 		// reset body to original state before making the request
 		request.Body = io.NopCloser(bytes.NewReader(bs))
 
 		resp, err = rt.transport().RoundTrip(request)
-		if i == max {
-			return resp, err
-		}
 
 		if err != nil {
 			if rt.isRetriableError(err) {
@@ -93,4 +94,11 @@ func (rt RetryRoundTripper) isRetriableError(err error) bool {
 	}
 
 	return temporary || timeout
+}
+
+func (rt RetryRoundTripper) getRetryStrategy() retry.Strategy {
+	if rt.RetryStrategy != nil {
+		return rt.RetryStrategy
+	}
+	return &retry.ExponentialBackoff{}
 }

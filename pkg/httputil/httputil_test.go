@@ -28,6 +28,10 @@ func TestRoundTripperFunc(t *testing.T) {
 func TestRetryRoundTripper(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	s.Before(func(t *testcase.T) {
+		timecop.SetSpeed(t, 1024000)
+	})
+
 	var (
 		requestBody  = let.String(s)
 		responseBody = let.String(s)
