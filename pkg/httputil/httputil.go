@@ -3,6 +3,7 @@ package httputil
 import (
 	"bytes"
 	"errors"
+	"github.com/adamluzsi/frameless/pkg/buffers"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
 	"github.com/adamluzsi/frameless/pkg/retry"
 	"io"
@@ -42,16 +43,18 @@ var temporaryErrorResponseCodes = map[int]struct{}{
 //
 // TODO: optional waiting based on the Retry-After header
 func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Response, err error) {
-	bs, err := rt.readBody(request)
+	rs := rt.getRetryStrategy()
+	body, err := rt.readBody(request)
 	if err != nil {
 		return nil, err
 	}
-
-	rs := rt.getRetryStrategy()
+	request.Body = io.NopCloser(body)
 
 	for i := 0; rs.ShouldTry(request.Context(), i); i++ {
 		// reset body to original state before making the request
-		request.Body = io.NopCloser(bytes.NewReader(bs))
+		if _, err := body.Seek(io.SeekStart, 0); err != nil {
+			return nil, err
+		}
 
 		resp, err = rt.transport().RoundTrip(request)
 
@@ -78,28 +81,23 @@ func (rt RetryRoundTripper) transport() http.RoundTripper {
 	return rt.Transport
 }
 
-func (rt RetryRoundTripper) readBody(req *http.Request) ([]byte, error) {
+func (rt RetryRoundTripper) readBody(req *http.Request) (io.ReadSeeker, error) {
 	reqBody := req.Body
 	if reqBody == nil {
 		reqBody = io.NopCloser(bytes.NewReader([]byte{}))
 	}
 	bs, err := io.ReadAll(reqBody)
 	err = errorutil.Merge(err, reqBody.Close())
-	return bs, err
+	if err != nil {
+		return nil, err
+	}
+	return buffers.New(bs), err
 }
 
 func (rt RetryRoundTripper) isRetriableError(err error) bool {
-	if errors.Is(err, http.ErrHandlerTimeout) || errors.Is(err, net.ErrClosed) {
-		return true
-	}
-	var timeout bool
-	var temporary bool
-
-	if v, ok := err.(interface{ Timeout() bool }); ok {
-		timeout = v.Timeout()
-	}
-
-	return temporary || timeout
+	return errors.Is(err, http.ErrHandlerTimeout) ||
+		errors.Is(err, net.ErrClosed) ||
+		isTimeout(err)
 }
 
 func (rt RetryRoundTripper) getRetryStrategy() retry.Strategy {
@@ -107,4 +105,15 @@ func (rt RetryRoundTripper) getRetryStrategy() retry.Strategy {
 		return rt.RetryStrategy
 	}
 	return &retry.ExponentialBackoff{}
+}
+
+func isTimeout(err error) bool {
+	type errorWithTimeoutInfo interface {
+		error
+		Timeout() bool
+	}
+	if v, ok := err.(errorWithTimeoutInfo); ok && v.Timeout() {
+		return true
+	}
+	return false
 }

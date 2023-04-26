@@ -24,8 +24,10 @@ The RetryRoundTripper considers the following errors as retriable:
 - and timeout errors
 
 The RetryRoundTripper considers HTTP responses with the following status codes as temporary errors:
-- http.StatusInternalServerError
-- http.StatusBadGateway
-- http.StatusServiceUnavailable
-- http.StatusGatewayTimeout
-- http.StatusInsufficientStorage
+- Internal server error 
+- Bad gateway          
+- Gateway timeout      
+- Service unavailable  
+- Insufficient storage 
+- Too many requests     
+- Request timeout      
