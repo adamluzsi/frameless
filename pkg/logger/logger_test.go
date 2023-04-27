@@ -255,6 +255,46 @@ func TestLogger_smoke(t *testing.T) {
 		assert.Contain(t, buf.String(), expectedKey1)
 		assert.Contain(t, buf.String(), expectedKey2)
 	})
+
+	t.Run("logging can be hijacked to support piping logging requests into other logging libraries", func(t *testing.T) {
+		type LogEntry struct {
+			Level   logger.Level
+			Message string
+			Fields  logger.Fields
+		}
+		var (
+			ctx  = context.Background()
+			logs = make([]LogEntry, 0)
+			buf  = &bytes.Buffer{}
+			l    = logger.Logger{
+				Out: buf,
+				Hijack: func(level logger.Level, msg string, fields logger.Fields) {
+					logs = append(logs, LogEntry{Level: level, Message: msg, Fields: fields})
+				},
+				Level: logger.LevelFatal,
+			}
+		)
+
+		ctx = logger.ContextWith(ctx,
+			logger.Field("foo", "1"),
+			logger.Field("bar", 2),
+			logger.Field("baz", true))
+
+		l.Info(ctx, "the info message", logger.Fields{"qux": "xuq"})
+		l.Debug(ctx, "the debug message", logger.Fields{"qux": "xuq"})
+
+		assert.Equal(t, 0, buf.Len())
+		assert.Equal(t, 2, len(logs))
+
+		assert.OneOf(t, logs, func(it assert.It, got LogEntry) {
+			it.Must.Equal("the info message", got.Message)
+			it.Must.Equal(logger.LevelInfo, got.Level)
+			assert.Equal[any](it, "xuq", got.Fields["qux"])
+			assert.Equal[any](it, "1", got.Fields["foo"])
+			assert.Equal[any](it, 2, got.Fields["bar"])
+			assert.Equal[any](it, true, got.Fields["baz"])
+		})
+	})
 }
 
 func TestLogger_concurrentUse(t *testing.T) {

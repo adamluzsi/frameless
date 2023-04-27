@@ -162,7 +162,7 @@ while also being able to observe and monitor its behavior effectively.
 
 | ----------------- | no concurrency | heavy concurrency |
 |-------------------|----------------|-------------------|
-| sync logging      | 5607 ns/op     | 54930 ns/op       |
+| sync logging      | 5550 ns/op     | 54930 ns/op       |
 | async logging     | 700.7 ns/op    | 1121 ns/op        |
 
 > tested on MacBook Pro with M1 when writing into a file

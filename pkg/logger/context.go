@@ -24,9 +24,9 @@ func ContextWith(ctx context.Context, lds ...LoggingDetail) context.Context {
 }
 
 // getLoggingDetailsFromContext returns the details attached to the context
-func getLoggingDetailsFromContext(ctx context.Context, l *Logger) logEntry {
+func getLoggingDetailsFromContext(ctx context.Context, l *Logger) []LoggingDetail {
 	if ctx == nil {
-		return logEntry{}
+		return nil
 	}
 	var details []LoggingDetail
 	if v, ok := lookupValue(ctx); ok {
@@ -38,14 +38,7 @@ func getLoggingDetailsFromContext(ctx context.Context, l *Logger) logEntry {
 			v = v.Super
 		}
 	}
-	le := make(logEntry)
-	if ctx == nil {
-		return le
-	}
-	for _, d := range details {
-		d.addTo(l, le)
-	}
-	return le
+	return details
 }
 
 func lookupValue(ctx context.Context) (*ctxValue, bool) {

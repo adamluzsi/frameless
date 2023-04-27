@@ -4,9 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"reflect"
-
 	"github.com/adamluzsi/frameless/pkg/reflects"
+	"reflect"
 )
 
 func Field(key string, value any) LoggingDetail {
@@ -68,9 +67,13 @@ func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
 type LoggingDetail interface{ addTo(*Logger, logEntry) }
 
 func (l *Logger) toFieldValue(val any) any {
-	rv := reflects.BaseValueOf(val)
+	rv := reflect.ValueOf(val)
 	if mapping, ok := register[rv.Type()]; ok {
 		return l.toFieldValue(mapping(val))
+	}
+	rv = reflects.BaseValue(rv)
+	if mapping, ok := register[rv.Type()]; ok {
+		return l.toFieldValue(mapping(rv.Interface()))
 	}
 	switch val := rv.Interface().(type) {
 	case logEntry:

@@ -15,7 +15,7 @@ func TestInitLoggingLevel(t *testing.T) {
 
 	rnd := random.New(random.CryptoSeed{})
 
-	var envToLevel = map[string]loggingLevel{
+	var envToLevel = map[string]Level{
 		"debug":    LevelDebug,
 		"info":     LevelInfo,
 		"warn":     LevelWarn,
@@ -39,7 +39,7 @@ func TestInitLoggingLevel(t *testing.T) {
 
 			t.Run(fmt.Sprintf("when the env key %q is set to a valid logging level value: %q", envKey, envValue), func(t *testing.T) {
 				t.Setenv(envKey, envValue)
-				gotLevel, ok := lookupLoggingLevelFromENV()
+				gotLevel, ok := lookupLevelFromENV()
 				assert.True(t, ok)
 				assert.Equal(t, level, gotLevel)
 			})
@@ -47,7 +47,7 @@ func TestInitLoggingLevel(t *testing.T) {
 
 		t.Run(fmt.Sprintf("when %s is set to an invalid logging level value", envKey), func(t *testing.T) {
 			t.Setenv(envKey, rnd.StringNC(rnd.IntB(2, 8), random.CharsetAlpha()+random.CharsetDigit()))
-			_, ok := lookupLoggingLevelFromENV()
+			_, ok := lookupLevelFromENV()
 			assert.False(t, ok)
 		})
 	}

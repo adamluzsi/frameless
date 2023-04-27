@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -108,6 +109,58 @@ func TestField(t *testing.T) {
 
 		myStruct := testcase.Let(s, func(t *testcase.T) MyStruct {
 			return MyStruct{
+				Foo: t.Random.UUID(),
+				Bar: t.Random.UUID(),
+				Baz: t.Random.UUID(),
+			}
+		})
+
+		value.Let(s, func(t *testcase.T) any { return myStruct.Get(t) })
+
+		s.Then("then the registered field mapping is used", func(t *testcase.T) {
+			afterLogging(t)
+			keyIsLogged(t)
+
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+		})
+
+		s.And("the field value passed as a pointer", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				return pointer.Of(myStruct.Get(t))
+			})
+
+			s.Then("then the registered field mapping is used", func(t *testcase.T) {
+				afterLogging(t)
+				keyIsLogged(t)
+
+				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			})
+		})
+	})
+
+	s.When("value type is registered for logging as a pointer type", func(s *testcase.Spec) {
+		type MyStruct struct {
+			Foo string
+			Bar string
+			Baz string
+		}
+
+		logger.RegisterFieldType(func(ms *MyStruct) logger.LoggingDetail {
+			return logger.Fields{
+				"foo": ms.Foo,
+				"bar": ms.Bar,
+				"baz": ms.Baz,
+			}
+		})
+
+		myStruct := testcase.Let(s, func(t *testcase.T) *MyStruct {
+			return &MyStruct{
 				Foo: t.Random.UUID(),
 				Bar: t.Random.UUID(),
 				Baz: t.Random.UUID(),

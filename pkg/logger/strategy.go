@@ -16,7 +16,7 @@ type strategy interface {
 
 type logEvent struct {
 	Context   context.Context
-	Level     loggingLevel
+	Level     Level
 	Message   string
 	Timestamp time.Time
 	Details   []LoggingDetail

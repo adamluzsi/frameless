@@ -20,7 +20,7 @@ type Logger struct {
 
 	// Level is the logging level.
 	// The default Level is LevelInfo.
-	Level loggingLevel
+	Level Level
 
 	Separator string
 
@@ -33,6 +33,12 @@ type Logger struct {
 	MarshalFunc func(any) ([]byte, error)
 	// KeyFormatter will be used to format the logging field keys
 	KeyFormatter func(string) string
+
+	// Hijack will hijack the logging and instead of letting it logged out to the Out,
+	// the logging will be done with the Hijack function.
+	// This is useful if you want to use your own choice of logging,
+	// but also packages that use this logging package.
+	Hijack func(level Level, msg string, fields Fields)
 
 	outLock sync.Mutex
 
@@ -75,7 +81,10 @@ func (l *Logger) getKeyFormatter() func(string) string {
 	return stringcase.ToSnake
 }
 
-func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []LoggingDetail) {
+func (l *Logger) log(ctx context.Context, level Level, msg string, ds []LoggingDetail) {
+	if l.isHijacked(ctx, level, msg, ds) {
+		return
+	}
 	if !isLevelEnabled(l.getLevel(), level) {
 		return
 	}
@@ -86,6 +95,21 @@ func (l *Logger) log(ctx context.Context, level loggingLevel, msg string, ds []L
 		Details:   ds,
 		Timestamp: clock.TimeNow(),
 	})
+}
+
+func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []LoggingDetail) bool {
+	if l.Hijack == nil {
+		return false
+	}
+	var le = make(logEntry)
+	for _, d := range getLoggingDetailsFromContext(ctx, l) {
+		d.addTo(l, le)
+	}
+	for _, d := range ds {
+		d.addTo(l, le)
+	}
+	l.Hijack(level, msg, Fields(le))
+	return true
 }
 
 func (l *Logger) logTo(out io.Writer, event logEvent) error {
@@ -135,7 +159,9 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 
 func (l *Logger) toLogEntry(event logEvent) logEntry {
 	le := make(logEntry)
-	le = le.Merge(getLoggingDetailsFromContext(event.Context, l))
+	for _, d := range getLoggingDetailsFromContext(event.Context, l) {
+		d.addTo(l, le)
+	}
 	for _, ld := range event.Details {
 		ld.addTo(l, le)
 	}
@@ -173,11 +199,11 @@ func (l *Logger) getStrategy() strategy {
 	})
 }
 
-func (l *Logger) getLevel() loggingLevel {
+func (l *Logger) getLevel() Level {
 	if l.Level != "" {
 		return l.Level
 	}
-	return zeroutil.Init[loggingLevel](&l.Level, func() loggingLevel {
+	return zeroutil.Init[Level](&l.Level, func() Level {
 		return defaultLevel
 	})
 }
