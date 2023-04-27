@@ -5,11 +5,12 @@ import (
 )
 
 func BaseValueOf(i interface{}) reflect.Value {
-	v := reflect.ValueOf(i)
+	return BaseValue(reflect.ValueOf(i))
+}
 
+func BaseValue(v reflect.Value) reflect.Value {
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
-
 	return v
 }
