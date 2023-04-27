@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
@@ -25,10 +24,11 @@ func ExampleScheduler_WithSchedule() {
 		logger.Fatal(nil, "error during postgres db opening", logger.ErrField(err))
 		os.Exit(1)
 	}
+	_ = db
 
 	scheduler := schedule.Scheduler{
-		LockerFactory: &postgresql.LockerFactory[string]{DB: db},
-		Repository:    &postgresql.TaskerScheduleStateRepository{DB: db},
+		LockerFactory: nil, // &postgresql.LockerFactory[string]{DB: db},
+		Repository:    nil, // &postgresql.TaskerScheduleStateRepository{DB: db},
 	}
 
 	task := scheduler.WithSchedule("db maintenance", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
