@@ -29,8 +29,6 @@ type Cache[Entity, ID any] struct {
 	Source Source[Entity, ID]
 	// Repository is the resource that keeps the cached data.
 	Repository Repository[Entity, ID]
-	// LogError is an OPTIONAL field, that you can supply if you want to inject your own logger.
-	LogError func(ctx context.Context, msg string, err error)
 }
 
 // Source is the minimum expected interface that is expected from a Source resources that needs caching.
@@ -85,7 +83,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 
 	hit, found, err := m.Repository.Hits().FindByID(ctx, queryKey)
 	if err != nil {
-		m.logError(ctx, fmt.Sprintf("error during retrieving hits for %s", queryKey), err)
+		logger.Warn(ctx, fmt.Sprintf("error during retrieving hits for %s", queryKey), logger.ErrField(err))
 		return query()
 	}
 	if found {
@@ -93,7 +91,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 		//       we invalidate the hit and try again
 		iter := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
 		if err := iter.Err(); err != nil {
-			m.logError(ctx, "cache Repository.Entities().FindByIDs had an error", err)
+			logger.Warn(ctx, "cache Repository.Entities().FindByIDs had an error", logger.ErrField(err))
 			return query()
 		}
 		return iter
@@ -119,7 +117,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 	}
 
 	if err := m.Repository.Entities().Upsert(ctx, vs...); err != nil {
-		m.logError(ctx, "cache Repository.Entities().Upsert had an error", err)
+		logger.Warn(ctx, "cache Repository.Entities().Upsert had an error", logger.ErrField(err))
 		return iterators.Slice[Entity](res)
 	}
 
@@ -128,7 +126,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 		EntityIDs: ids,
 		Timestamp: clock.TimeNow().UTC(),
 	}); err != nil {
-		m.logError(ctx, "cache Repository.Hits().Create had an error", err)
+		logger.Warn(ctx, "cache Repository.Hits().Create had an error", logger.ErrField(err))
 		return iterators.Slice[Entity](res)
 	}
 
@@ -172,7 +170,7 @@ func (m *Cache[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 	if err := m.Repository.Entities().Create(ctx, ptr); err != nil {
-		m.logError(ctx, "cache Repository.Entities().Create had an error", err)
+		logger.Warn(ctx, "cache Repository.Entities().Create had an error", logger.ErrField(err))
 	}
 	return nil
 }
@@ -181,7 +179,7 @@ func (m *Cache[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, 
 	// fast path
 	ent, found, err := m.Repository.Entities().FindByID(ctx, id)
 	if err != nil {
-		m.logError(ctx, "cache Repository.Entities().FindByID had an error", err)
+		logger.Warn(ctx, "cache Repository.Entities().FindByID had an error", logger.ErrField(err))
 		return m.Source.FindByID(ctx, id)
 	}
 	if found {
@@ -216,7 +214,7 @@ func (m *Cache[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 	if err := m.Repository.Entities().Update(ctx, ptr); err != nil {
-		m.logError(ctx, "cache Repository.Entities().Update had an error", err)
+		logger.Warn(ctx, "cache Repository.Entities().Update had an error", logger.ErrField(err))
 		if id, ok := extid.Lookup[ID](*ptr); ok {
 			return m.InvalidateByID(ctx, id)
 		}
@@ -244,19 +242,4 @@ func (m *Cache[Entity, ID]) DeleteAll(ctx context.Context) error {
 		return err
 	}
 	return m.DropCachedValues(ctx)
-}
-
-func (m *Cache[Entity, ID]) logError(ctx context.Context, msg string, err error) {
-	m.getLogError()(ctx, msg, err)
-}
-
-func (m *Cache[Entity, ID]) getLogError() func(context.Context, string, error) {
-	if m.LogError != nil {
-		return m.LogError
-	}
-	return m.defaultLogError
-}
-
-func (m *Cache[Entity, ID]) defaultLogError(ctx context.Context, msg string, err error) {
-	logger.Error(ctx, msg, logger.ErrField(err))
 }
