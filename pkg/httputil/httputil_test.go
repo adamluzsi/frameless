@@ -2,18 +2,23 @@ package httputil_test
 
 import (
 	"github.com/adamluzsi/frameless/pkg/httputil"
+	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/httpspec"
 	"github.com/adamluzsi/testcase/let"
+	"github.com/adamluzsi/testcase/random"
 	"io"
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestRoundTripperFunc(t *testing.T) {
@@ -266,3 +271,112 @@ type NetTimeoutError struct{}
 
 func (NetTimeoutError) Error() string { return "net: timeout error" }
 func (NetTimeoutError) Timeout() bool { return true }
+
+func TestAccessLog_smoke(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+
+	var responseCode = rnd.SliceElement([]int{
+		http.StatusTeapot,
+		http.StatusOK,
+		http.StatusCreated,
+		http.StatusAccepted,
+		http.StatusInternalServerError,
+	}).(int)
+
+	var (
+		requestMethod = rnd.SliceElement([]string{http.MethodGet, http.MethodDelete, http.MethodPost}).(string)
+		requestBody   = rnd.String()
+		responseBody  = rnd.String()
+		gotRemoteAddress string
+		logs []logger.Fields
+	)
+	
+	logger.Stub(t)
+
+	logger.Default.Hijack = func(level logger.Level, msg string, fields logger.Fields) {
+		logs = append(logs, fields)
+	}
+	
+	now := time.Now()
+	
+	timecop.Travel(t, now, timecop.Freeze())
+
+	handler := &httputil.AccessLog{
+		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// this operation takes 1.542s 
+			timecop.Travel(t, time.Second + 542*time.Millisecond, timecop.Freeze())
+			
+			gotRemoteAddress = r.RemoteAddr
+
+			should := assert.Should(t)
+			defer r.Body.Close()
+			bs, err := io.ReadAll(r.Body)
+			should.NoError(err)
+			if err == nil {
+				should.Contain(string(bs), requestBody)
+			}
+			should.Equal(requestMethod, r.Method)
+			w.WriteHeader(responseCode)
+			w.Write([]byte(responseBody))
+		}),
+		AdditionalLoggingDetail: func(w http.ResponseWriter, r *http.Request) logger.LoggingDetail {
+			return logger.Field("foo", "baz")
+		},
+	}
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	request, err := http.NewRequest(requestMethod, server.URL, strings.NewReader(requestBody))
+	assert.NoError(t, err)
+
+	response, err := server.Client().Do(request)
+	assert.NoError(t, err)
+
+	defer response.Body.Close()
+	gotResponseBody, err := io.ReadAll(response.Body)
+	assert.NoError(t, err)
+	assert.Contain(t, string(gotResponseBody), responseBody)
+	assert.Equal(t, responseCode, response.StatusCode)
+	assert.True(t, len(logs) == 1)
+	u, _ := url.Parse(server.URL)
+	assert.Equal(t, logs[0], logger.Fields{
+		"duration":             "1.542s",
+		"host":                 u.Host,
+		"method":               requestMethod,
+		"path":                 "/",
+		"query":                "",
+		"remote_address":       gotRemoteAddress,
+		"status":               responseCode,
+		"request_body_length":  len(requestBody),
+		"response_body_length": len(responseBody),
+		"foo":                  "baz",
+	})
+
+	handler.AdditionalLoggingDetail = nil
+	logs = nil
+
+	request, err = http.NewRequest(requestMethod, server.URL, strings.NewReader(requestBody))
+	assert.NoError(t, err)
+
+	response, err = server.Client().Do(request)
+	assert.NoError(t, err)
+
+	defer response.Body.Close()
+	gotResponseBody, err = io.ReadAll(response.Body)
+	assert.NoError(t, err)
+	assert.Contain(t, string(gotResponseBody), responseBody)
+	assert.Equal(t, responseCode, response.StatusCode)
+	assert.True(t, len(logs) == 1)
+	assert.Equal(t, logs[0], logger.Fields{
+		"duration":             "1.542s",
+		"host":                 u.Host,
+		"method":               requestMethod,
+		"path":                 "/",
+		"query":                "",
+		"request_body_length":  len(requestBody),
+		"response_body_length": len(responseBody),
+		"remote_address":       gotRemoteAddress,
+		"status":               responseCode,
+	})
+}

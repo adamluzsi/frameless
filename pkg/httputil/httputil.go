@@ -3,12 +3,16 @@ package httputil
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"github.com/adamluzsi/frameless/pkg/buffers"
 	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/retry"
+	"github.com/adamluzsi/testcase/clock"
 	"io"
 	"net"
 	"net/http"
+	"time"
 )
 
 type RoundTripperFunc func(request *http.Request) (*http.Response, error)
@@ -116,4 +120,84 @@ func isTimeout(err error) bool {
 		return true
 	}
 	return false
+}
+
+type AccessLog struct {
+	Next http.Handler
+
+	AdditionalLoggingDetail func(w http.ResponseWriter, r *http.Request) logger.LoggingDetail
+}
+
+func (mw AccessLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	body := &bodyAccessLog{Body: r.Body}
+	r.Body = body
+	rwAL := &responseWriterAccessLog{ResponseWriter: w}
+	defer mw.doLog(rwAL, r, clock.TimeNow(), body)
+	mw.Next.ServeHTTP(rwAL, r)
+}
+
+func (mw AccessLog) doLog(w *responseWriterAccessLog, r *http.Request, startTime time.Time, body *bodyAccessLog) {
+	endTime := clock.TimeNow()
+	fields := logger.Fields{
+		"method":               r.Method,
+		"path":                 r.URL.Path,
+		"query":                r.URL.RawQuery,
+		"duration":             mw.fmtDuration(endTime.Sub(startTime))+"s",
+		"remote_address":          r.RemoteAddr,
+		"host":                 r.Host,
+		"status":               w.GetStatusCode(),
+		"request_body_length":  body.Length,
+		"response_body_length": w.BodyLength,
+	}
+	var lds = []logger.LoggingDetail{fields}
+	if mw.AdditionalLoggingDetail != nil {
+		if ld := mw.AdditionalLoggingDetail(w, r); ld != nil {
+			lds = append(lds, ld)
+		}
+	}
+	logger.Info(r.Context(), "http-access-log", lds...)
+}
+
+func (mw AccessLog) fmtDuration(duration time.Duration) string {
+	durationFloat := float64(duration) / float64(time.Second)
+	return fmt.Sprintf("%.3f", durationFloat)
+}
+
+type bodyAccessLog struct {
+	Body   io.ReadCloser
+	Length int
+}
+
+func (r *bodyAccessLog) Read(p []byte) (n int, err error) {
+	n, err = r.Body.Read(p)
+	r.Length += n
+	return n, err
+}
+
+func (r *bodyAccessLog) Close() error {
+	return r.Body.Close()
+}
+
+type responseWriterAccessLog struct {
+	http.ResponseWriter
+	code       int
+	BodyLength int
+}
+
+func (rw *responseWriterAccessLog) GetStatusCode() int {
+	if rw.code == 0 {
+		return http.StatusOK
+	}
+	return rw.code
+}
+
+func (rw *responseWriterAccessLog) WriteHeader(statusCode int) {
+	rw.code = statusCode
+	rw.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (rw *responseWriterAccessLog) Write(p []byte) (int, error) {
+	n, err := rw.ResponseWriter.Write(p)
+	rw.BodyLength += n
+	return n, err
 }
