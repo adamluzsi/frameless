@@ -275,39 +275,37 @@ func (NetTimeoutError) Timeout() bool { return true }
 func TestAccessLog_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 
-	var responseCode = rnd.SliceElement([]int{
-		http.StatusTeapot,
-		http.StatusOK,
-		http.StatusCreated,
-		http.StatusAccepted,
-		http.StatusInternalServerError,
-	}).(int)
-
 	var (
-		requestMethod = rnd.SliceElement([]string{http.MethodGet, http.MethodDelete, http.MethodPost}).(string)
-		requestBody   = rnd.String()
-		responseBody  = rnd.String()
+		responseCode = rnd.SliceElement([]int{
+			http.StatusTeapot,
+			http.StatusOK,
+			http.StatusCreated,
+			http.StatusAccepted,
+			http.StatusInternalServerError,
+		}).(int)
+		requestQuery     = url.Values{"foo": {rnd.StringNC(3, random.CharsetDigit())}}
+		requestMethod    = rnd.SliceElement([]string{http.MethodGet, http.MethodDelete, http.MethodPost}).(string)
+		requestBody      = rnd.String()
+		responseBody     = rnd.String()
 		gotRemoteAddress string
-		logs []logger.Fields
+		logs             []logger.Fields
 	)
-	
+
 	logger.Stub(t)
 
 	logger.Default.Hijack = func(level logger.Level, msg string, fields logger.Fields) {
 		logs = append(logs, fields)
 	}
-	
+
 	now := time.Now()
-	
+
 	timecop.Travel(t, now, timecop.Freeze())
 
 	handler := &httputil.AccessLog{
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// this operation takes 1.542s 
-			timecop.Travel(t, time.Second + 542*time.Millisecond, timecop.Freeze())
-			
+			// this operation takes 1.542s
+			timecop.Travel(t, time.Second+542*time.Millisecond, timecop.Freeze())
 			gotRemoteAddress = r.RemoteAddr
-
 			should := assert.Should(t)
 			defer r.Body.Close()
 			bs, err := io.ReadAll(r.Body)
@@ -316,6 +314,7 @@ func TestAccessLog_smoke(t *testing.T) {
 				should.Contain(string(bs), requestBody)
 			}
 			should.Equal(requestMethod, r.Method)
+			should.Equal(requestQuery.Encode(), r.URL.Query().Encode())
 			w.WriteHeader(responseCode)
 			w.Write([]byte(responseBody))
 		}),
@@ -327,7 +326,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
-	request, err := http.NewRequest(requestMethod, server.URL, strings.NewReader(requestBody))
+	request, err := http.NewRequest(requestMethod, server.URL+"?"+requestQuery.Encode(), strings.NewReader(requestBody))
 	assert.NoError(t, err)
 
 	response, err := server.Client().Do(request)
@@ -340,23 +339,23 @@ func TestAccessLog_smoke(t *testing.T) {
 	assert.Equal(t, responseCode, response.StatusCode)
 	assert.True(t, len(logs) == 1)
 	u, _ := url.Parse(server.URL)
-	assert.Equal(t, logs[0], logger.Fields{
+	assert.Equal(t, logger.Fields{
 		"duration":             "1.542s",
 		"host":                 u.Host,
 		"method":               requestMethod,
 		"path":                 "/",
-		"query":                "",
+		"query":                requestQuery.Encode(),
 		"remote_address":       gotRemoteAddress,
 		"status":               responseCode,
 		"request_body_length":  len(requestBody),
 		"response_body_length": len(responseBody),
 		"foo":                  "baz",
-	})
+	}, logs[0])
 
 	handler.AdditionalLoggingDetail = nil
 	logs = nil
 
-	request, err = http.NewRequest(requestMethod, server.URL, strings.NewReader(requestBody))
+	request, err = http.NewRequest(requestMethod, server.URL+"?"+requestQuery.Encode(), strings.NewReader(requestBody))
 	assert.NoError(t, err)
 
 	response, err = server.Client().Do(request)
@@ -373,7 +372,7 @@ func TestAccessLog_smoke(t *testing.T) {
 		"host":                 u.Host,
 		"method":               requestMethod,
 		"path":                 "/",
-		"query":                "",
+		"query":                requestQuery.Encode(),
 		"request_body_length":  len(requestBody),
 		"response_body_length": len(responseBody),
 		"remote_address":       gotRemoteAddress,

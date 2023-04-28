@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"reflect"
 	"time"
 )
 
@@ -129,25 +130,25 @@ type AccessLog struct {
 }
 
 func (mw AccessLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	body := &bodyAccessLog{Body: r.Body}
+	body := &requestBodyAccessLog{Body: r.Body}
 	r.Body = body
-	rwAL := &responseWriterAccessLog{ResponseWriter: w}
-	defer mw.doLog(rwAL, r, clock.TimeNow(), body)
-	mw.Next.ServeHTTP(rwAL, r)
+	defer mw.doLog(w, r, clock.TimeNow(), body)
+	mw.Next.ServeHTTP(w, r)
 }
 
-func (mw AccessLog) doLog(w *responseWriterAccessLog, r *http.Request, startTime time.Time, body *bodyAccessLog) {
+func (mw AccessLog) doLog(w http.ResponseWriter, r *http.Request, startTime time.Time, body *requestBodyAccessLog) {
 	endTime := clock.TimeNow()
+	info := getResponseInfo(w)
 	fields := logger.Fields{
 		"method":               r.Method,
 		"path":                 r.URL.Path,
 		"query":                r.URL.RawQuery,
-		"duration":             mw.fmtDuration(endTime.Sub(startTime))+"s",
-		"remote_address":          r.RemoteAddr,
+		"duration":             mw.fmtDuration(endTime.Sub(startTime)) + "s",
+		"remote_address":       r.RemoteAddr,
 		"host":                 r.Host,
-		"status":               w.GetStatusCode(),
+		"status":               info.StatusCode,
 		"request_body_length":  body.Length,
-		"response_body_length": w.BodyLength,
+		"response_body_length": int(info.Written),
 	}
 	var lds = []logger.LoggingDetail{fields}
 	if mw.AdditionalLoggingDetail != nil {
@@ -163,41 +164,63 @@ func (mw AccessLog) fmtDuration(duration time.Duration) string {
 	return fmt.Sprintf("%.3f", durationFloat)
 }
 
-type bodyAccessLog struct {
+type requestBodyAccessLog struct {
 	Body   io.ReadCloser
 	Length int
 }
 
-func (r *bodyAccessLog) Read(p []byte) (n int, err error) {
+func (r *requestBodyAccessLog) Read(p []byte) (n int, err error) {
 	n, err = r.Body.Read(p)
 	r.Length += n
 	return n, err
 }
 
-func (r *bodyAccessLog) Close() error {
+func (r *requestBodyAccessLog) Close() error {
 	return r.Body.Close()
 }
 
-type responseWriterAccessLog struct {
-	http.ResponseWriter
-	code       int
-	BodyLength int
+type responseInfo struct {
+	StatusCode int
+	Written    int64
 }
 
-func (rw *responseWriterAccessLog) GetStatusCode() int {
-	if rw.code == 0 {
-		return http.StatusOK
+// getResponseInfo uses reflection to get the status code from the response writer
+// because otherwise it would be a huge pain to maintain passthrough support for:
+// - http.Pusher
+// - http.Flusher
+// - http.Hijacker
+// - http.CloseNotifier
+// - etc
+//
+// This implementation specifically aims to extract data from http.response
+func getResponseInfo(rw http.ResponseWriter) responseInfo {
+	var info responseInfo
+	visitForStatusCode(&info, reflect.ValueOf(rw), map[reflect.Value]struct{}{})
+	return info
+}
+
+func visitForStatusCode(info *responseInfo, rv reflect.Value, recursionGuard map[reflect.Value]struct{}) {
+	if _, ok := recursionGuard[rv]; ok {
+		return
 	}
-	return rw.code
-}
+	recursionGuard[rv] = struct{}{}
+	defer func() { delete(recursionGuard, rv) }()
 
-func (rw *responseWriterAccessLog) WriteHeader(statusCode int) {
-	rw.code = statusCode
-	rw.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (rw *responseWriterAccessLog) Write(p []byte) (int, error) {
-	n, err := rw.ResponseWriter.Write(p)
-	rw.BodyLength += n
-	return n, err
+	switch rv.Kind() {
+	case reflect.Struct:
+		for i, numField := 0, rv.NumField(); i < numField; i++ {
+			field := rv.Field(i)
+			switch {
+			case rv.Type().Field(i).Name == "status" && field.Kind() == reflect.Int:
+				info.StatusCode = int(field.Int())
+			case rv.Type().Field(i).Name == "written" && field.Kind() == reflect.Int64:
+				info.Written = field.Int()
+			default:
+				visitForStatusCode(info, field, recursionGuard)
+			}
+		}
+	case reflect.Ptr:
+		visitForStatusCode(info, rv.Elem(), recursionGuard)
+	default:
+	}
 }
