@@ -3,13 +3,13 @@ package txs
 import (
 	"fmt"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
 const (
-	ErrTxDone errorutil.Error = "transaction is already finished"
-	ErrNoCtx  errorutil.Error = "context.Context not given"
-	ErrNoTx   errorutil.Error = "no transaction present in the current context"
+	ErrTxDone errorkit.Error = "transaction is already finished"
+	ErrNoCtx  errorkit.Error = "context.Context not given"
+	ErrNoTx   errorkit.Error = "no transaction present in the current context"
 )
 
 type TxRollbackError struct {

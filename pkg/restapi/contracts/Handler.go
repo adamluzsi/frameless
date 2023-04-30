@@ -72,7 +72,7 @@ func (c Server[DTO, ID]) specClientServer(s *testcase.Spec) {
 
 // specStateless
 //
-// Roy fielding got inspiration from HTTP, so it reflects in this constraint.
+// Roy fielding got inspiration from HTTP, so it reflectkit in this constraint.
 // Make all client-server interactions stateless.
 // The server will not store anything about the latest HTTP request the client made.
 // It will treat every request as new. No session, no history.

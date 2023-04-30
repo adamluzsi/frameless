@@ -45,7 +45,7 @@ type DTO struct {
 	//
 	// Example: "Incorrect username or password."
 	Title string
-	// Status The status reflects the HTTP status code and is a convenient way to make problem details self-contained.
+	// Status The status reflectkit the HTTP status code and is a convenient way to make problem details self-contained.
 	// That way, error replies can interpret outside the context of the HTTP interaction.
 	// Status is an optional field.
 	//

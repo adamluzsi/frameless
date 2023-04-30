@@ -2,13 +2,13 @@ package extid
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"reflect"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 )
 
-const errSetWithNonPtr errorutil.Error = "ptr should given as *Entity, else pass by value prevents the ID field remotely"
+const errSetWithNonPtr errorkit.Error = "ptr should given as *Entity, else pass by value prevents the ID field remotely"
 
 func Set[ID any](ptr any, id ID) error {
 	var (
@@ -37,7 +37,7 @@ func Set[ID any](ptr any, id ID) error {
 }
 
 func Lookup[ID any](ent any) (id ID, ok bool) {
-	if tr, ok := register[reflects.BaseValueOf(ent).Type()]; ok {
+	if tr, ok := register[reflectkit.BaseValueOf(ent).Type()]; ok {
 		return tr.Get(ent).(ID), true
 	}
 
@@ -68,7 +68,7 @@ func isEmpty(i interface{}) (ok bool) {
 }
 
 func lookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
-	val := reflects.BaseValueOf(ent)
+	val := reflectkit.BaseValueOf(ent)
 
 	sf, byTag, ok := lookupByTag(val)
 	if ok {

@@ -3,8 +3,8 @@ package logger
 import (
 	"bytes"
 	"context"
-	"github.com/adamluzsi/frameless/pkg/runtimes"
-	"github.com/adamluzsi/frameless/pkg/zeroutil"
+	"github.com/adamluzsi/frameless/pkg/runtimekit"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"runtime"
 	"sync"
 	"time"
@@ -72,7 +72,7 @@ type asyncLogger struct {
 }
 
 func (s *asyncLogger) Log(event logEvent) {
-	defer runtimes.OnRecover(func(any) {
+	defer runtimekit.OnRecover(func(any) {
 		s.Logger.logTo(s.Logger.writer(), event)
 	})
 	s.Stream <- event
@@ -155,7 +155,7 @@ wrk:
 }
 
 func (s *asyncLogger) getBatchedEvents() chan []logEvent {
-	return zeroutil.Init(&s.batchedEvents, func() chan []logEvent {
+	return zerokit.Init(&s.batchedEvents, func() chan []logEvent {
 		return make(chan []logEvent)
 	})
 }

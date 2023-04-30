@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/pathkit"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 )
 
@@ -15,7 +15,7 @@ import (
 //	registered as "/something" for exact match
 //	registered as "/something/" for prefix match
 func Mount(multiplexer multiplexer, pattern string, handler http.Handler) {
-	pattern = pathutil.Clean(pattern)
+	pattern = pathkit.Clean(pattern)
 	handler = http.StripPrefix(pattern, handler)
 	handler = MountPoint(pattern, handler)
 	multiplexer.Handle(pattern, handler)
@@ -36,5 +36,5 @@ func MountPoint(mountPoint Path, next http.Handler) http.Handler {
 }
 
 func withMountPoint(rc *internal.Routing, mountPoint Path) {
-	rc.Path = pathutil.Canonical(strings.TrimPrefix(rc.Path, pathutil.Canonical(string(mountPoint))))
+	rc.Path = pathkit.Canonical(strings.TrimPrefix(rc.Path, pathkit.Canonical(string(mountPoint))))
 }

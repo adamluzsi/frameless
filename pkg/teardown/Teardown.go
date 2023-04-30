@@ -3,7 +3,7 @@ package teardown
 import (
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
 type Teardown struct {
@@ -43,7 +43,7 @@ func (td *Teardown) Finish() error {
 	for !td.isEmpty() { // handle Deferred functions deferred during the execution of a deferred function
 		errors = append(errors, td.run()...)
 	}
-	return errorutil.Merge(errors...)
+	return errorkit.Merge(errors...)
 }
 
 func (td *Teardown) isEmpty() bool {

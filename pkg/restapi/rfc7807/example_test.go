@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 )
 
@@ -14,7 +14,7 @@ type CompanyErrorStructure struct {
 	Message string `json:"message"`
 }
 
-const ErrSomeRandom errorutil.Error = "random error value"
+const ErrSomeRandom errorkit.Error = "random error value"
 
 func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO) {
 	switch {

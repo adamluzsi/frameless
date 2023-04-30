@@ -1,3 +1,5 @@
+// Package lazyload
+// DEPRECATED: use zerokit instead
 package lazyload
 
 import (

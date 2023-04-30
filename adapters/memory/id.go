@@ -7,13 +7,13 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
 func errNotFound(T, id any) error {
-	return errorutil.With(crud.ErrNotFound).Detailf(`%T entity not found by id: %v`, T, id)
+	return errorkit.With(crud.ErrNotFound).Detailf(`%T entity not found by id: %v`, T, id)
 }
 
 func MakeID[ID any](context.Context) (ID, error) {
@@ -25,14 +25,14 @@ func MakeID[ID any](context.Context) (ID, error) {
 
 	switch reflect.TypeOf(*new(ID)).Kind() {
 	case reflect.String:
-		id, ok := reflects.Cast[ID](genStringUID())
+		id, ok := reflectkit.Cast[ID](genStringUID())
 		if !ok {
 			return returnError()
 		}
 		return id, nil
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		id, ok := reflects.Cast[ID](genIntUID())
+		id, ok := reflectkit.Cast[ID](genIntUID())
 		if !ok {
 			return returnError()
 		}

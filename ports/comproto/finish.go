@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
 func FinishTx(errp *error, commit, rollback func() error) {
@@ -12,7 +12,7 @@ func FinishTx(errp *error, commit, rollback func() error) {
 		panic(fmt.Errorf(`error pointer cannot be nil for Finish Tx methods`))
 	}
 	if *errp != nil {
-		*errp = errorutil.Merge(*errp, rollback())
+		*errp = errorkit.Merge(*errp, rollback())
 		return
 	}
 	*errp = commit()

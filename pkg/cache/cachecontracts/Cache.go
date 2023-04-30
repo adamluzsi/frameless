@@ -12,7 +12,7 @@ import (
 	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
 
 	"github.com/adamluzsi/frameless/pkg/cache"
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
@@ -164,7 +164,7 @@ func (c Cache[Entity, ID]) Spec(s *testcase.Spec) {
 }
 
 func (c Cache[Entity, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(s *testcase.Spec) {
-	s.Context(reflects.SymbolicName(*new(Entity)), func(s *testcase.Spec) {
+	s.Context(reflectkit.SymbolicName(*new(Entity)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) interface{} {
 			ptr := pointer.Of(c.subject().Get(t).MakeEntity())
 			t.Must.NoError(c.source().Get(t).Create(c.subject().Get(t).MakeContext(), ptr))
@@ -293,7 +293,7 @@ func (stub *SpySource[Entity, ID]) FindByID(ctx context.Context, id ID) (_ent En
 }
 
 func (c Cache[Entity, ID]) describeResultCaching(s *testcase.Spec) {
-	s.Context(reflects.SymbolicName(*new(Entity)), func(s *testcase.Spec) {
+	s.Context(reflectkit.SymbolicName(*new(Entity)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) *Entity {
 			ctx := c.subject().Get(t).MakeContext()
 			ptr := pointer.Of(c.subject().Get(t).MakeEntity())

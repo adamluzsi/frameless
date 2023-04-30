@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
-var ErrInvalid = errorutil.UserError{
+var ErrInvalid = errorkit.UserError{
 	ID:      "enum-invalid-value",
 	Message: "The value does not match the enumerator specification",
 }

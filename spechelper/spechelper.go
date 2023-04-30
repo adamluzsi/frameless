@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 
@@ -30,7 +30,7 @@ type CRUD[Entity, ID any] interface {
 	crud.Updater[Entity]
 }
 
-const ErrIDRequired errorutil.Error = `
+const ErrIDRequired errorkit.Error = `
 Can't find the ID in the current structure
 if there is no ID in the subject structure
 custom test needed that explicitly defines how ID is stored and retried from an entity

@@ -3,7 +3,7 @@ package crudcontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"sync"
 	"testing"
@@ -31,7 +31,7 @@ type OnePhaseCommitProtocolSubject[Entity, ID any] struct {
 
 func (c OnePhaseCommitProtocol[Entity, ID]) subject() testcase.Var[OnePhaseCommitProtocolSubject[Entity, ID]] {
 	return testcase.Var[OnePhaseCommitProtocolSubject[Entity, ID]]{
-		ID:   reflects.SymbolicName(OnePhaseCommitProtocolSubject[Entity, ID]{}),
+		ID:   reflectkit.SymbolicName(OnePhaseCommitProtocolSubject[Entity, ID]{}),
 		Init: func(t *testcase.T) OnePhaseCommitProtocolSubject[Entity, ID] { return c(t) },
 	}
 }

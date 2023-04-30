@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/pathkit"
 )
 
 type routingCtxKey struct{}
@@ -19,7 +19,7 @@ func WithRoutingCountex(request *http.Request) (*http.Request, *Routing) {
 	if ok {
 		return request, rc
 	}
-	nro := Routing{Path: pathutil.Canonical(request.URL.Path)}
+	nro := Routing{Path: pathkit.Canonical(request.URL.Path)}
 	return request.WithContext(context.WithValue(ctx, routingCtxKey{}, &nro)), &nro
 }
 

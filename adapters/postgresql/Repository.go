@@ -8,7 +8,7 @@ import (
 	"github.com/lib/pq"
 	"strings"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 
 	"github.com/adamluzsi/frameless/ports/comproto"
@@ -58,7 +58,7 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 			return err
 		}
 		if found {
-			return errorutil.With(crud.ErrAlreadyExists).
+			return errorkit.With(crud.ErrAlreadyExists).
 				Detailf(`%T already exists with id: %v`, *new(Entity), id).
 				Context(ctx).
 				Unwrap()
@@ -252,7 +252,7 @@ func (iter *iterFindByIDs[Entity, ID]) getFoundIDs() map[string]struct{} {
 }
 
 func (iter *iterFindByIDs[Entity, ID]) Err() error {
-	return errorutil.Merge(iter.Iterator.Err(), iter.missingIDsErr())
+	return errorkit.Merge(iter.Iterator.Err(), iter.missingIDsErr())
 }
 
 func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
@@ -302,7 +302,7 @@ func (r Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rE
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r.ConnectionManager, ctx)
-	return errorutil.Merge(r.upsertWithID(ctx, ptrWithID...), r.upsertWithoutID(ctx, ptrWithoutID...))
+	return errorkit.Merge(r.upsertWithID(ctx, ptrWithID...), r.upsertWithoutID(ctx, ptrWithoutID...))
 }
 
 func (r Repository[Entity, ID]) upsertWithoutID(ctx context.Context, ptrs ...*Entity) error {

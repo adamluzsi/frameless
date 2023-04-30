@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/adamluzsi/frameless/internal/consttypes"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
 type Handler struct {
@@ -59,10 +59,10 @@ func (h Handler) ToDTO(ctx context.Context, err error) DTO {
 		Detail     []string
 		StatusCode int
 	)
-	if errCtx, ok := errorutil.LookupContext(err); ok {
+	if errCtx, ok := errorkit.LookupContext(err); ok {
 		ctx = errCtx
 	}
-	if usrErr, ok := errorutil.LookupUserError(err); ok {
+	if usrErr, ok := errorkit.LookupUserError(err); ok {
 		ID = string(usrErr.ID)
 		Title = h.toTitleCase(usrErr.ID)
 		StatusCode = http.StatusBadRequest
@@ -72,7 +72,7 @@ func (h Handler) ToDTO(ctx context.Context, err error) DTO {
 		Title = http.StatusText(http.StatusInternalServerError)
 		StatusCode = http.StatusInternalServerError
 	}
-	if detail, ok := errorutil.LookupDetail(err); ok {
+	if detail, ok := errorkit.LookupDetail(err); ok {
 		Detail = append(Detail, detail)
 	}
 	dto := DTO{

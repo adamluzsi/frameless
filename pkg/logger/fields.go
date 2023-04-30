@@ -3,8 +3,8 @@ package logger
 import (
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"reflect"
 )
 
@@ -47,7 +47,7 @@ func ErrField(err error) LoggingDetail {
 	details := Fields{
 		"message": err.Error(),
 	}
-	if usrErr := (errorutil.UserError{}); errors.As(err, &usrErr) {
+	if usrErr := (errorkit.UserError{}); errors.As(err, &usrErr) {
 		details["code"] = usrErr.ID.String()
 	}
 	return Field("error", details)
@@ -71,7 +71,7 @@ func (l *Logger) toFieldValue(val any) any {
 	if mapping, ok := register[rv.Type()]; ok {
 		return l.toFieldValue(mapping(val))
 	}
-	rv = reflects.BaseValue(rv)
+	rv = reflectkit.BaseValue(rv)
 	if mapping, ok := register[rv.Type()]; ok {
 		return l.toFieldValue(mapping(rv.Interface()))
 	}

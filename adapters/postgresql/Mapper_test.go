@@ -9,7 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/random"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/testcase/assert"
 )
@@ -28,7 +28,7 @@ func TestMapper_Map(t *testing.T) {
 	t.Run(`happy-path`, func(t *testing.T) {
 		expectedInt := rnd.Int()
 		scanner := FakeSQLRowScanner{ScanFunc: func(i ...interface{}) error {
-			return reflects.Link(expectedInt, i[0])
+			return reflectkit.Link(expectedInt, i[0])
 		}}
 
 		x, err := m.Map(scanner)

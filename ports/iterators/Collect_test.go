@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase"
@@ -47,7 +47,7 @@ func TestCollect(t *testing.T) {
 	})
 
 	s.Describe(`iterator returns error during`, func(s *testcase.Spec) {
-		const expectedErr errorutil.Error = "boom"
+		const expectedErr errorkit.Error = "boom"
 
 		s.Context(`Close`, func(s *testcase.Spec) {
 			iterator.Let(s, func(t *testcase.T) iterators.Iterator[int] {

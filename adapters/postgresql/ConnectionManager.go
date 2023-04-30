@@ -6,8 +6,8 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/runtimes"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/runtimekit"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	_ "github.com/lib/pq" // side-effect loading
 	"io"
@@ -120,7 +120,7 @@ func (c *connectionManager) RollbackTx(ctx context.Context) error {
 	for {
 		tx.done = true
 		if tx.sqlTx != nil {
-			return errorutil.Merge(tx.sqlTx.Rollback(), ctx.Err())
+			return errorkit.Merge(tx.sqlTx.Rollback(), ctx.Err())
 		}
 		if tx.parent != nil {
 			tx = tx.parent
@@ -147,7 +147,7 @@ func (c *connectionManager) lookupSqlTx(ctx context.Context) (*sql.Tx, bool) {
 }
 
 func (c *connectionManager) getConnection(ctx context.Context) (_ *sql.DB, rErr error) {
-	defer runtimes.Recover(&rErr)
+	defer runtimekit.Recover(&rErr)
 	var retryCount = 42
 
 ping:

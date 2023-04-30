@@ -3,7 +3,7 @@ package txs
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/teardown"
 )
 
@@ -41,12 +41,12 @@ func (tx *transaction) Rollback() (rErr error) {
 	if tx.done {
 		return ErrTxDone
 	}
-	defer func() { rErr = errorutil.Merge(rErr, tx.finish()) }()
+	defer func() { rErr = errorkit.Merge(rErr, tx.finish()) }()
 	defer func() {
 		if tx.parent == nil {
 			return
 		}
-		rErr = errorutil.Merge(rErr, tx.parent.Rollback())
+		rErr = errorkit.Merge(rErr, tx.parent.Rollback())
 	}()
 	return tx.rollbacks.Finish()
 }

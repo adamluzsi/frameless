@@ -4,7 +4,7 @@ package cache
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud"
@@ -66,7 +66,7 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 }
 
 func (m *Cache[Entity, ID]) DropCachedValues(ctx context.Context) error {
-	return errorutil.Merge(
+	return errorkit.Merge(
 		m.Repository.Hits().DeleteAll(ctx),
 		m.Repository.Entities().DeleteAll(ctx))
 }

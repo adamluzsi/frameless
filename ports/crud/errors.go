@@ -1,8 +1,8 @@
 package crud
 
-import "github.com/adamluzsi/frameless/pkg/errorutil"
+import "github.com/adamluzsi/frameless/pkg/errorkit"
 
 const (
-	ErrAlreadyExists errorutil.Error = "err-already-exists"
-	ErrNotFound      errorutil.Error = "err-not-found"
+	ErrAlreadyExists errorkit.Error = "err-already-exists"
+	ErrNotFound      errorkit.Error = "err-not-found"
 )

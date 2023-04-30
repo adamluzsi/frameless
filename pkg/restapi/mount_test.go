@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/pathkit"
 	"github.com/adamluzsi/frameless/pkg/restapi"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"github.com/adamluzsi/frameless/ports/crud/crudtest"
@@ -83,7 +83,7 @@ func TestMount(t *testing.T) {
 
 		s.Then("the handler is properly propagated", func(t *testcase.T) {
 			act(t)
-			resp := makeRequest(t, pathutil.Join(pattern.Get(t), strconv.Itoa(ent.Get(t).ID), "test", "foo"))
+			resp := makeRequest(t, pathkit.Join(pattern.Get(t), strconv.Itoa(ent.Get(t).ID), "test", "foo"))
 			t.Must.Equal(http.StatusTeapot, resp.StatusCode)
 			t.Must.NotNil(lastReq.Get(t))
 

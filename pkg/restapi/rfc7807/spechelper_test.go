@@ -1,10 +1,10 @@
 package rfc7807_test
 
-import "github.com/adamluzsi/frameless/pkg/errorutil"
+import "github.com/adamluzsi/frameless/pkg/errorkit"
 
-const ErrExample errorutil.Error = "example error"
+const ErrExample errorkit.Error = "example error"
 
-var ErrUsrMistake = errorutil.UserError{
+var ErrUsrMistake = errorkit.UserError{
 	ID:      "foo-bar-baz",
 	Message: "It's a Layer 8 Issue",
 }

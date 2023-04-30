@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/filesystem"
 
 	"github.com/adamluzsi/testcase"
@@ -22,7 +22,7 @@ import (
 type FileSystem func(testing.TB) filesystem.FileSystem
 
 func (c FileSystem) String() string {
-	return reflects.SymbolicName(c)
+	return reflectkit.SymbolicName(c)
 }
 
 func (c FileSystem) Test(t *testing.T) {

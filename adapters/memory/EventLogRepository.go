@@ -6,10 +6,10 @@ import (
 	"github.com/adamluzsi/frameless/internal/doubles"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
@@ -69,7 +69,7 @@ func (s *EventLogRepository[Entity, ID]) GetNamespace() string {
 		if 0 < len(s.Namespace) {
 			return
 		}
-		s.Namespace = reflects.FullyQualifiedName(*new(Entity))
+		s.Namespace = reflectkit.FullyQualifiedName(*new(Entity))
 	})
 	return s.Namespace
 }
@@ -98,7 +98,7 @@ func (s *EventLogRepository[Entity, ID]) Create(ctx context.Context, ptr *Entity
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return errorutil.With(crud.ErrAlreadyExists).
+		return errorkit.With(crud.ErrAlreadyExists).
 			Detailf(`%T already exists with id: %v`, *new(Entity), id).
 			Context(ctx).
 			Unwrap()
@@ -152,7 +152,7 @@ func (s *EventLogRepository[Entity, ID]) Update(ctx context.Context, ptr *Entity
 		return err
 	}
 	if !found {
-		return errorutil.With(crud.ErrNotFound).
+		return errorkit.With(crud.ErrNotFound).
 			Detailf(`%T entity not found by id: %v`, ptr, id)
 	}
 
@@ -170,7 +170,7 @@ func (s *EventLogRepository[Entity, ID]) DeleteByID(ctx context.Context, id ID) 
 		return err
 	}
 	if !found {
-		return errorutil.With(crud.ErrNotFound).
+		return errorkit.With(crud.ErrNotFound).
 			Detailf(`%T entity not found by id: %v`, *new(Entity), id)
 	}
 

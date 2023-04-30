@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
@@ -369,7 +369,7 @@ func TestErrField(t *testing.T) {
 		const message = "The answer"
 		const code = "42"
 		var expErr error
-		expErr = errorutil.UserError{ID: code, Message: message}
+		expErr = errorkit.UserError{ID: code, Message: message}
 		expErr = fmt.Errorf("err: %w", expErr)
 		d := logger.ErrField(expErr)
 		logger.Info(nil, "boom", d)

@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
@@ -50,7 +50,7 @@ func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error 
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return errorutil.With(crud.ErrAlreadyExists).
+		return errorkit.With(crud.ErrAlreadyExists).
 			Detailf(`%T already exists with id: %v`, *new(Entity), id).
 			Context(ctx).
 			Unwrap()
@@ -180,7 +180,7 @@ func (s *Repository[Entity, ID]) IDToMemoryKey(id any) string {
 }
 
 func (s *Repository[Entity, ID]) getV(ptr interface{}) interface{} {
-	return reflects.BaseValueOf(ptr).Interface()
+	return reflectkit.BaseValueOf(ptr).Interface()
 }
 
 func (s *Repository[Entity, ID]) isDoneTx(ctx context.Context) error {
@@ -252,7 +252,7 @@ func (m *Memory) LookupMeta(ctx context.Context, key string, ptr interface{}) (_
 	if !ok {
 		return false, nil
 	}
-	return true, reflects.Link(v, ptr)
+	return true, reflectkit.Link(v, ptr)
 }
 
 type memoryActions interface {
@@ -263,7 +263,7 @@ type memoryActions interface {
 }
 
 func base(ent any) interface{} {
-	return reflects.BaseValueOf(ent).Interface()
+	return reflectkit.BaseValueOf(ent).Interface()
 }
 
 func (m *Memory) Get(ctx context.Context, namespace string, key string) (interface{}, bool) {

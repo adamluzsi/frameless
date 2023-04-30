@@ -1,8 +1,7 @@
 # frameless
 
-[GoDoc](https://pkg.go.dev/github.com/adamluzsi/frameless)
-
-[:role-interface:]: https://martinfowler.com/bliki/RoleInterface.html#:~:text=A%20role%20interface%20is%20defined,of%20these%20patterns%20of%20interaction
+- [GoDoc](https://pkg.go.dev/github.com/adamluzsi/frameless)
+- [Architecture decision records](docs/ADR)
 
 Discover `frameless`, the 🇨🇭Swiss Army Knife of Hexagonal Architecture conventions!
 
@@ -23,8 +22,6 @@ instead, it resembles how mono repositories assist code owners in managing their
 `frameless` is made up of three high-level components.
 
 ## [ports](ports/README.md)
-
-
 
 `ports` are plain interfaces to make expressing a domain [role interface][:role-interface:] straightforward.
 Using ports doesn't have any vendor locking effect. 
@@ -62,3 +59,5 @@ which enables you to do a classicist Test-Driven Development (TDD) testing strat
 
 When you import `frameless`, adapters are not automatically imported into your project; you must import them
 explicitly. This approach helps maintain a lean and tidy dependency graph while working with `frameless`.
+
+[:role-interface:]: https://martinfowler.com/bliki/RoleInterface.html#:~:text=A%20role%20interface%20is%20defined,of%20these%20patterns%20of%20interaction

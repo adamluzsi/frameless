@@ -2,7 +2,7 @@ package schedule
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/locks"
@@ -23,7 +23,7 @@ func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job task
 		if err != nil {
 			return 0, err
 		}
-		defer func() { rErr = errorutil.Merge(rErr, locker.Unlock(ctx)) }()
+		defer func() { rErr = errorkit.Merge(rErr, locker.Unlock(ctx)) }()
 
 		state, found, err := s.Repository.FindByID(ctx, jobid)
 		if err != nil {

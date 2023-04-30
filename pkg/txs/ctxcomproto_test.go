@@ -6,7 +6,7 @@ import (
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/txs"
 	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
 	"github.com/adamluzsi/testcase"
@@ -190,7 +190,7 @@ func Test(t *testing.T) {
 		tx2, err := txs.Begin(tx1)
 		t.Must.NoError(err)
 		t.Must.NoError(txs.Rollback(tx2))
-		var expectedErr error = errorutil.Error(t.Random.Error().Error())
+		var expectedErr error = errorkit.Error(t.Random.Error().Error())
 		actualErr := expectedErr
 		txs.Finish(&actualErr, tx1)
 		t.Must.Equal(expectedErr, actualErr)
@@ -198,7 +198,7 @@ func Test(t *testing.T) {
 
 	s.Test("rollbacking back on multiple tx level yield no rollback error on Finish", func(t *testcase.T) {
 		assertNoFinishErrOnRollback := func(ctx context.Context) {
-			var expectedErr error = errorutil.Error(t.Random.Error().Error())
+			var expectedErr error = errorkit.Error(t.Random.Error().Error())
 			actualErr := expectedErr
 			txs.Finish(&actualErr, ctx)
 			t.Must.Equal(expectedErr, actualErr,
@@ -215,7 +215,7 @@ func Test(t *testing.T) {
 	s.Test("on rollback error, original value can be unwrapped", func(t *testcase.T) {
 		tx1, err := txs.Begin(context.Background())
 		t.Must.NoError(err)
-		expectedErr := errorutil.Error(t.Random.Error().Error())
+		expectedErr := errorkit.Error(t.Random.Error().Error())
 		t.Must.NoError(txs.OnRollback(tx1, func(ctx context.Context) error { return expectedErr }))
 		var actualErr error = expectedErr
 		txs.Finish(&actualErr, tx1)

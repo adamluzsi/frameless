@@ -6,14 +6,14 @@ package cache
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"strings"
 	"time"
 )
 
-const ErrNotImplementedBySource errorutil.Error = "the method is not implemented by the cache source"
+const ErrNotImplementedBySource errorkit.Error = "the method is not implemented by the cache source"
 
 type EntityRepository[Entity, ID any] interface {
 	crud.Creator[Entity]

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/pathkit"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 )
 
@@ -64,7 +64,7 @@ func (router *Router) ServeHTTP(responseWriter http.ResponseWriter, request *htt
 		route   = router.route
 		handler = route.Handler
 	)
-	for _, part := range pathutil.Split(rc.Path) {
+	for _, part := range pathkit.Split(rc.Path) {
 		var ok bool
 		route, ok = route.Lookup(part)
 		if !ok {
@@ -77,7 +77,7 @@ func (router *Router) ServeHTTP(responseWriter http.ResponseWriter, request *htt
 		defaultErrorHandler.HandleError(responseWriter, request, ErrPathNotFound)
 		return
 	}
-	withMountPoint(rc, pathutil.Join(mount...))
+	withMountPoint(rc, pathkit.Join(mount...))
 	handler.ServeHTTP(responseWriter, request)
 }
 
@@ -91,7 +91,7 @@ func (router *Router) Mount(path Path, handler http.Handler) {
 
 	var ro *route
 	ro = router.route
-	for _, part := range pathutil.Split(path) {
+	for _, part := range pathkit.Split(path) {
 		ro = ro.Ensure(part)
 	}
 

@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	rfc78072 "github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
@@ -104,7 +104,7 @@ func TestHandler(t *testing.T) {
 					})
 				)
 				err.Let(s, func(t *testcase.T) error {
-					return errorutil.With(err.Super(t)).Context(ctx.Get(t))
+					return errorkit.With(err.Super(t)).Context(ctx.Get(t))
 				})
 
 				s.Then("then the mapping will receive this error context", func(t *testcase.T) {
@@ -132,8 +132,8 @@ func TestHandler(t *testing.T) {
 		})
 
 		s.When("error is a user error", func(s *testcase.Spec) {
-			usrErr := testcase.Let(s, func(t *testcase.T) errorutil.UserError {
-				return errorutil.UserError{
+			usrErr := testcase.Let(s, func(t *testcase.T) errorkit.UserError {
+				return errorkit.UserError{
 					ID:      "usr-err",
 					Message: "the user error message",
 				}
@@ -165,7 +165,7 @@ func TestHandler(t *testing.T) {
 				detail := let.String(s)
 
 				err.Let(s, func(t *testcase.T) error {
-					return errorutil.With(err.Super(t)).Detail(detail.Get(t))
+					return errorkit.With(err.Super(t)).Detail(detail.Get(t))
 				})
 
 				s.Then("user error message is part of the reply detail", func(t *testcase.T) {
@@ -184,7 +184,7 @@ func TestHandler(t *testing.T) {
 			detail := let.String(s)
 
 			err.Let(s, func(t *testcase.T) error {
-				return errorutil.With(err.Super(t)).Detail(detail.Get(t))
+				return errorkit.With(err.Super(t)).Detail(detail.Get(t))
 			})
 
 			s.Then("detail is returned", func(t *testcase.T) {
@@ -272,7 +272,7 @@ func TestHandler(t *testing.T) {
 					})
 				)
 				err.Let(s, func(t *testcase.T) error {
-					return errorutil.With(err.Super(t)).Context(ctx.Get(t))
+					return errorkit.With(err.Super(t)).Context(ctx.Get(t))
 				})
 
 				s.Then("then the mapping will receive this error context", func(t *testcase.T) {
@@ -283,8 +283,8 @@ func TestHandler(t *testing.T) {
 		})
 
 		s.When("error is a user error", func(s *testcase.Spec) {
-			usrErr := testcase.Let(s, func(t *testcase.T) errorutil.UserError {
-				return errorutil.UserError{
+			usrErr := testcase.Let(s, func(t *testcase.T) errorkit.UserError {
+				return errorkit.UserError{
 					ID:      "usr-err",
 					Message: "the user error message",
 				}
@@ -316,7 +316,7 @@ func TestHandler(t *testing.T) {
 				detail := let.String(s)
 
 				err.Let(s, func(t *testcase.T) error {
-					return errorutil.With(err.Super(t)).Detail(detail.Get(t))
+					return errorkit.With(err.Super(t)).Detail(detail.Get(t))
 				})
 
 				s.Then("user error message is part of the reply detail", func(t *testcase.T) {
@@ -335,7 +335,7 @@ func TestHandler(t *testing.T) {
 			detail := let.String(s)
 
 			err.Let(s, func(t *testcase.T) error {
-				return errorutil.With(err.Super(t)).Detail(detail.Get(t))
+				return errorkit.With(err.Super(t)).Detail(detail.Get(t))
 			})
 
 			s.Then("detail is returned", func(t *testcase.T) {

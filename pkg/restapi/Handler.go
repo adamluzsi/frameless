@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/pathkit"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"github.com/adamluzsi/frameless/ports/crud"
 )
@@ -92,7 +92,7 @@ func (h Handler[Entity, ID, DTO]) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		return
 
 	default: // dynamic path
-		resourceID, rest := pathutil.Unshift(rc.Path)
+		resourceID, rest := pathkit.Unshift(rc.Path)
 		withMountPoint(rc, Path(resourceID))
 
 		id, err := h.Mapping.ParseID(resourceID)

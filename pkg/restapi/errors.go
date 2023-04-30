@@ -5,46 +5,46 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
 )
 
-var ErrEntityNotFound = errorutil.UserError{
+var ErrEntityNotFound = errorkit.UserError{
 	ID:      "entity-not-found",
 	Message: "The requested entity is not found in this resource.",
 }
 
-var ErrPathNotFound = errorutil.UserError{
+var ErrPathNotFound = errorkit.UserError{
 	ID:      "path-not-found",
 	Message: "The requested path is not found.",
 }
 
-var ErrEntityAlreadyExist = errorutil.UserError{
+var ErrEntityAlreadyExist = errorkit.UserError{
 	ID:      "entity-already-exists",
 	Message: "The entity could not be created as it already exists.",
 }
 
-var ErrMethodNotAllowed = errorutil.UserError{
+var ErrMethodNotAllowed = errorkit.UserError{
 	ID:      "restapi-method-not-allowed",
 	Message: "The requested RESTful method is not supported.",
 }
 
-var ErrMalformedID = errorutil.UserError{
+var ErrMalformedID = errorkit.UserError{
 	ID:      "malformed-id-in-path",
 	Message: "The received entity id in the path is malformed.",
 }
 
-var ErrInvalidRequestBody = errorutil.UserError{
+var ErrInvalidRequestBody = errorkit.UserError{
 	ID:      "invalid-create-request-body",
 	Message: "The request body is invalid.",
 }
 
-var ErrInternalServerError = errorutil.UserError{
+var ErrInternalServerError = errorkit.UserError{
 	ID:      "internal-server-error",
 	Message: "An unexpected internal server error occurred.",
 }
 
-var ErrRequestEntityTooLarge = errorutil.UserError{
+var ErrRequestEntityTooLarge = errorkit.UserError{
 	ID:      "request-entity-too-large",
 	Message: "The request body was larger than the size limit allowed for the server.",
 }

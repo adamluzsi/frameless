@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/adamluzsi/frameless/pkg/stringcase"
-	"github.com/adamluzsi/frameless/pkg/zeroutil"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"github.com/adamluzsi/testcase/clock"
 )
 
@@ -154,7 +154,7 @@ func (l *Logger) marshalFunc() func(any) ([]byte, error) {
 }
 
 func (l *Logger) coalesceKey(key, defaultKey string) string {
-	return l.getKeyFormatter()(zeroutil.Coalesce(key, defaultKey))
+	return l.getKeyFormatter()(zerokit.Coalesce(key, defaultKey))
 }
 
 func (l *Logger) toLogEntry(event logEvent) logEntry {
@@ -194,7 +194,7 @@ func (l *Logger) setStrategy(s strategy) {
 func (l *Logger) getStrategy() strategy {
 	l.strategy.mutex.RLock()
 	defer l.strategy.mutex.RUnlock()
-	return zeroutil.Init(&l.strategy.strategy, func() strategy {
+	return zerokit.Init(&l.strategy.strategy, func() strategy {
 		return &syncLogger{Logger: l}
 	})
 }
@@ -203,7 +203,7 @@ func (l *Logger) getLevel() Level {
 	if l.Level != "" {
 		return l.Level
 	}
-	return zeroutil.Init[Level](&l.Level, func() Level {
+	return zerokit.Init[Level](&l.Level, func() Level {
 		return defaultLevel
 	})
 }

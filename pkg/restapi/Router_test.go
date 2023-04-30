@@ -8,7 +8,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/pathutil"
+	"github.com/adamluzsi/frameless/pkg/pathkit"
 	"github.com/adamluzsi/frameless/pkg/restapi"
 	"github.com/adamluzsi/frameless/pkg/restapi/internal"
 	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
@@ -66,7 +66,7 @@ func TestRouter(t *testing.T) {
 			s.When("the request path doesn't match the registered path", func(s *testcase.Spec) {
 				const pathPrefix = "/foo/bar/baz"
 				path.Let(s, func(t *testcase.T) string {
-					return pathutil.Join(pathPrefix, registeredPath.Get(t))
+					return pathkit.Join(pathPrefix, registeredPath.Get(t))
 				})
 
 				s.Then("it return path not found", func(t *testcase.T) {

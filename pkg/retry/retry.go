@@ -2,7 +2,7 @@ package retry
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/zeroutil"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"github.com/adamluzsi/testcase/clock"
 	"math"
 	"math/rand"
@@ -50,13 +50,13 @@ func (rs ExponentialBackoff) backoffDurationFor(failureCount int) time.Duration 
 }
 
 func (rs ExponentialBackoff) getBackoffDuration() time.Duration {
-	return zeroutil.Init(&rs.BackoffDuration, func() time.Duration {
+	return zerokit.Init(&rs.BackoffDuration, func() time.Duration {
 		return 500 * time.Millisecond
 	})
 }
 
 func (rs ExponentialBackoff) getMaxRetries() int {
-	return zeroutil.Init(&rs.MaxRetries, func() int {
+	return zerokit.Init(&rs.MaxRetries, func() int {
 		return 5
 	})
 }
@@ -95,13 +95,13 @@ func (rs Jitter) waitTime() time.Duration {
 }
 
 func (rs Jitter) getMaxWaitDuration() time.Duration {
-	return zeroutil.Init(&rs.MaxWaitDuration, func() time.Duration {
+	return zerokit.Init(&rs.MaxWaitDuration, func() time.Duration {
 		return 5 * time.Second
 	})
 }
 
 func (rs Jitter) getMaxRetries() int {
-	return zeroutil.Init(&rs.MaxRetries, func() int {
+	return zerokit.Init(&rs.MaxRetries, func() int {
 		return 5
 	})
 }

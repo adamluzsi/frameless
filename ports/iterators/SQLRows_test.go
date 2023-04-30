@@ -8,7 +8,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase"
@@ -174,7 +174,7 @@ func (s *SQLRowsStub) Scan(dest ...interface{}) error {
 		return fmt.Errorf("scan argument count mismatch")
 	}
 	for i, dst := range dest {
-		if err := reflects.Link(args[i], dst); err != nil {
+		if err := reflectkit.Link(args[i], dst); err != nil {
 			return err
 		}
 	}

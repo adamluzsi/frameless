@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
 type Subscription interface {
@@ -16,7 +16,7 @@ type (
 
 	CreatorSubscriber[Entity any] interface {
 		HandleCreateEvent(ctx context.Context, event CreateEvent[Entity]) error
-		errorutil.ErrorHandler
+		errorkit.ErrorHandler
 	}
 
 	CreatorPublisher[Entity any] interface {
@@ -29,7 +29,7 @@ type (
 
 	UpdaterSubscriber[Entity any] interface {
 		HandleUpdateEvent(ctx context.Context, event UpdateEvent[Entity]) error
-		errorutil.ErrorHandler
+		errorkit.ErrorHandler
 	}
 
 	UpdaterPublisher[Entity any] interface {
@@ -44,7 +44,7 @@ type (
 	DeleterSubscriber[ID any] interface {
 		HandleDeleteByIDEvent(ctx context.Context, event DeleteByIDEvent[ID]) error
 		HandleDeleteAllEvent(ctx context.Context, event DeleteAllEvent) error
-		errorutil.ErrorHandler
+		errorkit.ErrorHandler
 	}
 
 	DeleterPublisher[ID any] interface {

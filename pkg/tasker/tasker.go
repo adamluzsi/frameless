@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/contexts"
-	"github.com/adamluzsi/frameless/pkg/errorutil"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/tasker/internal"
 	"github.com/adamluzsi/testcase/clock"
 	"os"
@@ -126,7 +126,7 @@ func (c concurrence) Run(ctx context.Context) error {
 	wwg.Wait()
 	close(errCh)
 	cwg.Wait()
-	return errorutil.Merge(errs...)
+	return errorkit.Merge(errs...)
 }
 
 // WithShutdown will combine the start and stop/shutdown function into a single Task function.

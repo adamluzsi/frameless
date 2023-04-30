@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorutil"
-	"github.com/adamluzsi/frameless/pkg/reflects"
+	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 )
 
@@ -74,7 +74,7 @@ func (el *EventLog) LookupMeta(ctx context.Context, key string, ptr interface{})
 	if !ok {
 		return false, nil
 	}
-	return true, reflects.Link(v, ptr)
+	return true, reflectkit.Link(v, ptr)
 }
 
 type Event = interface{}
@@ -205,8 +205,8 @@ func (el *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 }
 
 const (
-	errTxDone errorutil.Error = `transaction has already been commit or rolled back`
-	errNoTx   errorutil.Error = `no transaction found in the given context`
+	errTxDone errorkit.Error = `transaction has already been commit or rolled back`
+	errNoTx   errorkit.Error = `no transaction found in the given context`
 )
 
 func (el *EventLog) CommitTx(ctx context.Context) error {
