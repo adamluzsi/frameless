@@ -15,7 +15,7 @@ allowing you to concentrate on crucial aspects instead of repeatedly starting fr
 Like the iconic Swiss Army Knife, `frameless` is a versatile and indispensable tool ready to tackle any challenge,
 enabling you to adapt and thrive in the ever-changing software development landscape.
 
-`frameless` adopt a monolithic package design reminiscent of the Linux kernel structure.
+[`frameless` adopt a monolithic module design reminiscent of the Linux kernel.](docs/ADR/monolithic-project-structure.md)
 However, this design choice is not related to monolithic software architecture;
 instead, it resembles how mono repositories assist code owners in managing their systems.
 
@@ -25,7 +25,8 @@ instead, it resembles how mono repositories assist code owners in managing their
 
 `ports` are plain interfaces to make expressing a domain [role interface][:role-interface:] straightforward.
 Using ports doesn't have any vendor locking effect. 
-You can use almost every port by just copy their functions into your [role interface][:role-interface:] in your domain layer. 
+You can use almost every port by just copy their functions 
+into your [role interface][:role-interface:] in your domain layer. 
 
 Each port interface has its importable contract(s) that help you ensure
 that the behaviour is consistent across the implementations.
@@ -33,7 +34,7 @@ that the behaviour is consistent across the implementations.
 Some port package contain a small amount of optional helper functions to help streamlining their use.
 
 There is also testing packages to make it easy to write behaviour-driven tests against your implementations
-  when you need to specify additional expectations towards them from your domain layer.
+when you need to specify additional expectations towards them from your domain layer.
 
 Using `frameless/ports` safe from vendor locking as they just a collection of finely refined inter
 
@@ -61,3 +62,4 @@ When you import `frameless`, adapters are not automatically imported into your p
 explicitly. This approach helps maintain a lean and tidy dependency graph while working with `frameless`.
 
 [:role-interface:]: https://martinfowler.com/bliki/RoleInterface.html#:~:text=A%20role%20interface%20is%20defined,of%20these%20patterns%20of%20interaction
+[:mono-module-struct-adr:]: docs/ADR/monolithic-project-structure.md
