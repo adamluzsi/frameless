@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"github.com/adamluzsi/frameless/pkg/runtimekit"
+	"github.com/adamluzsi/frameless/pkg/units"
 	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"runtime"
 	"sync"
@@ -120,7 +121,7 @@ wrk:
 // but at the cost of random disorder between logging entries.
 func (s *asyncLogger) OutputWriter() {
 	const (
-		bufSize      = 256 * 1024 // 256Kb
+		bufSize      = 256 * units.Kibibyte
 		flushTimeout = time.Second
 	)
 	var (
