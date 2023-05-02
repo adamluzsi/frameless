@@ -102,6 +102,8 @@ func (b *Buffer) Bytes() []byte {
 	return b.buffer.Bytes()
 }
 
+///////////////////////////////////////////////////////// sync /////////////////////////////////////////////////////////
+
 type SyncWriter struct {
 	// Writer is the protected io.Writer
 	Writer io.Writer
@@ -112,14 +114,55 @@ type SyncWriter struct {
 }
 
 func (w *SyncWriter) Write(p []byte) (n int, err error) {
-	locker := w.getLocker()
+	locker := getLocker(&w.Locker)
 	locker.Lock()
 	defer locker.Unlock()
 	return w.Writer.Write(p)
 }
 
-func (w *SyncWriter) getLocker() sync.Locker {
-	return zerokit.Init(&w.Locker, func() sync.Locker {
+type SyncReader struct {
+	// Reader is the protected io.Reader
+	Reader io.Reader
+	// Locker is an optional sync.Locker value if you need to share locking between different multiple SyncReader.
+	//
+	// Default: sync.Mutex
+	Locker sync.Locker
+}
+
+func (r *SyncReader) Read(p []byte) (n int, err error) {
+	locker := getLocker(&r.Locker)
+	locker.Lock()
+	defer locker.Unlock()
+	return r.Reader.Read(p)
+}
+
+type SyncReadWriter struct {
+	// ReadWriter is the protected io.ReadWriter
+	ReadWriter io.ReadWriter
+	// Locker is an optional sync.Locker value if you need to share locking between different multiple SyncReader.
+	//
+	// Default: sync.Mutex
+	Locker sync.Locker
+}
+
+func (rw *SyncReadWriter) Write(p []byte) (n int, err error) {
+	locker := getLocker(&rw.Locker)
+	locker.Lock()
+	defer locker.Unlock()
+	return rw.ReadWriter.Write(p)
+}
+
+func (rw *SyncReadWriter) Read(p []byte) (n int, err error) {
+	locker := getLocker(&rw.Locker)
+	locker.Lock()
+	defer locker.Unlock()
+	return rw.ReadWriter.Read(p)
+}
+
+func getLocker(ptr *sync.Locker) sync.Locker {
+	return zerokit.Init(ptr, func() sync.Locker {
 		return &sync.Mutex{}
 	})
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

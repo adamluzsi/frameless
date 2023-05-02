@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/iokit"
@@ -232,6 +233,27 @@ func TestBuffer(t *testing.T) {
 	})
 }
 
+func TestBuffer_ioReadWriter(t *testing.T) {
+	var (
+		msg = []byte("Hello, world!\n")
+		buf = &iokit.Buffer{}
+	)
+
+	n, err := buf.Write(append([]byte{}, msg...))
+	assert.NoError(t, err)
+	assert.Equal(t, n, len(msg))
+	assert.Equal(t, msg, buf.Bytes())
+	
+	_, err = buf.Seek(0, io.SeekStart)
+	assert.NoError(t, err)
+
+	bs := make([]byte, len(buf.Bytes()))
+	n, err = buf.Read(bs)
+	assert.NoError(t, err)
+	assert.Equal(t, n, len(bs))
+	assert.Equal(t, msg, bs)
+}
+
 func TestBuffer_smoke(tt *testing.T) {
 	t := testcase.NewT(tt, nil)
 
@@ -334,4 +356,62 @@ func BenchmarkSyncWriter_Write(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		sw.Write(bs)
 	}
+}
+
+func TestSyncReader_smoke(t *testing.T) {
+	const msg = "Hello, world!\n"
+	var (
+		buf = &bytes.Buffer{}
+		m   = &sync.Mutex{}
+		w   = iokit.SyncWriter{Writer: buf, Locker: m}
+		r   = iokit.SyncReader{Reader: buf, Locker: m}
+	)
+	do := func() {
+		bs := []byte(msg)
+		_, _ = w.Write(bs)
+		bs = make([]byte, len(bs))
+		n, err := r.Read(bs)
+		assert.Should(t).NoError(err)
+		assert.Should(t).Equal(n, len(bs))
+		assert.Should(t).Equal(msg, string(bs))
+	}
+	testcase.Race(do, do, do)
+}
+
+func TestSyncReaderWriter_smoke(t *testing.T) {
+	const msg = "Hello, world!\n"
+	var (
+		buf    = &bytes.Buffer{}
+		rw     = iokit.SyncReadWriter{ReadWriter: buf}
+		msgLen = len([]byte(msg))
+	)
+
+	bs := []byte(msg)
+	n, err := rw.Write(bs)
+	assert.NoError(t, err)
+	assert.Equal(t, n, len(bs))
+	assert.Equal(t, msg, buf.String())
+
+	bs = make([]byte, len(buf.Bytes()))
+	n, err = rw.Read(bs)
+	assert.NoError(t, err)
+	assert.Equal(t, n, len(bs))
+	assert.Equal(t, msg, string(bs))
+
+	write := func() {
+		bs := []byte(msg)
+		n, err := rw.Write(bs)
+		assert.Should(t).NoError(err)
+		assert.Should(t).Equal(n, len(bs))
+	}
+	read := func() {
+		_, err := rw.Read(make([]byte, msgLen))
+		assert.Should(t).AnyOf(func(a *assert.AnyOf) {
+			a.Test(func(t assert.It) { t.Must.ErrorIs(io.EOF, err) })
+			a.Test(func(t assert.It) { t.Must.NoError(err) })
+		})
+	}
+	testcase.Race(
+		write, write, write,
+		read, read, read)
 }
