@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/buffers"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/iokit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/retry"
 	"github.com/adamluzsi/testcase/clock"
@@ -96,7 +96,7 @@ func (rt RetryRoundTripper) readBody(req *http.Request) (io.ReadSeeker, error) {
 	if err != nil {
 		return nil, err
 	}
-	return buffers.New(bs), err
+	return iokit.NewBuffer(bs), err
 }
 
 func (rt RetryRoundTripper) isRetriableError(err error) bool {

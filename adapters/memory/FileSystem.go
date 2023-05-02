@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/buffers"
+	"github.com/adamluzsi/frameless/pkg/iokit"
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
@@ -115,7 +115,7 @@ func (mfs *FileSystem) OpenFile(name string, flag int, perm fs.FileMode) (filesy
 	return &FileSystemFile{
 		entry:      f,
 		openFlag:   flag,
-		buffer:     buffers.New(f.data),
+		buffer:     iokit.NewBuffer(f.data),
 		dirEntries: iterators.Slice(mfs.getDirEntriesFn(path)),
 	}, nil
 }
@@ -205,7 +205,7 @@ func (entry *fileSystemEntry) fileInfo() filesystem.FileInfo {
 type FileSystemFile struct {
 	entry    *fileSystemEntry
 	openFlag int
-	buffer   *buffers.Buffer
+	buffer   *iokit.Buffer
 	mutex    sync.Mutex
 
 	dirEntries iterators.Iterator[fs.DirEntry]

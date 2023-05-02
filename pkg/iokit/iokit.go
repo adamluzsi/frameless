@@ -1,16 +1,18 @@
-package buffers
+package iokit
 
 import (
 	"bytes"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"io"
 	"io/fs"
+	"sync"
 
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
 
-const ErrSeekNegativePosition errorkit.Error = "buffers: negative position"
+const ErrSeekNegativePosition errorkit.Error = "iokit: negative position"
 
-func New[T []byte | string](data T) *Buffer {
+func NewBuffer[T []byte | string](data T) *Buffer {
 	return &Buffer{buffer: *bytes.NewBuffer([]byte(data)), position: 0}
 }
 
@@ -98,4 +100,26 @@ func (b *Buffer) String() string {
 
 func (b *Buffer) Bytes() []byte {
 	return b.buffer.Bytes()
+}
+
+type SyncWriter struct {
+	// Writer is the protected io.Writer
+	Writer io.Writer
+	// Locker is an optional sync.Locker value if you need to share locking between different multiple SyncWriter.
+	//
+	// Default: sync.Mutex
+	Locker sync.Locker
+}
+
+func (w *SyncWriter) Write(p []byte) (n int, err error) {
+	locker := w.getLocker()
+	locker.Lock()
+	defer locker.Unlock()
+	return w.Writer.Write(p)
+}
+
+func (w *SyncWriter) getLocker() sync.Locker {
+	return zerokit.Init(&w.Locker, func() sync.Locker {
+		return &sync.Mutex{}
+	})
 }

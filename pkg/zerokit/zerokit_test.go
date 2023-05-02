@@ -2,18 +2,17 @@ package zerokit_test
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/pkg/pointer"
 	"github.com/adamluzsi/frameless/pkg/tasker"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
+	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"
+	"github.com/adamluzsi/testcase/random"
 	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/adamluzsi/frameless/pkg/pointer"
-	"github.com/adamluzsi/frameless/pkg/zerokit"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
 )
 
 func ExampleCoalesce() {
@@ -210,7 +209,17 @@ func BenchmarkInit(b *testing.B) {
 		}
 	})
 
-	b.Run("[R] while having concurrent access", func(b *testing.B) {
+	b.Run("[R] while having concurrent read access", func(b *testing.B) {
+		makeConcurrentReadsAccesses(b)
+		var str string
+		_ = zerokit.Init(&str, initFunc)
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = zerokit.Init(&str, initFunc)
+		}
+	})
+
+	b.Run("[R] while having concurrent write access", func(b *testing.B) {
 		makeConcurrentAccesses(b)
 		var str string
 		_ = zerokit.Init(&str, initFunc)
@@ -248,6 +257,31 @@ func BenchmarkInit(b *testing.B) {
 	})
 }
 
+func makeConcurrentReadsAccesses(tb testing.TB) {
+	ctx, cancel := context.WithCancel(context.Background())
+	tb.Cleanup(cancel)
+	var (
+		ready int32
+		str   *string
+		blk   = func() { _ = zerokit.Init(&str, func() *string { return pointer.Of("42") }) }
+	)
+	blk()
+	go func() {
+		more := random.Slice[func()](runtime.NumCPU()*2, func() func() { return blk })
+		atomic.AddInt32(&ready, 1)
+		for {
+			if ctx.Err() != nil {
+				break
+			}
+			testcase.Race(blk, blk, more...)
+		}
+	}()
+	for {
+		if atomic.LoadInt32(&ready) != 0 {
+			break
+		}
+	}
+}
 func makeConcurrentAccesses(tb testing.TB) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)

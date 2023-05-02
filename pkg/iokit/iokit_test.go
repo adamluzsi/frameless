@@ -1,14 +1,17 @@
-package buffers_test
+package iokit_test
 
 import (
+	"bytes"
 	"errors"
+	"github.com/adamluzsi/testcase/assert"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/buffers"
+	"github.com/adamluzsi/frameless/pkg/iokit"
 	"github.com/adamluzsi/frameless/ports/filesystem"
 
 	"github.com/adamluzsi/testcase"
@@ -21,7 +24,7 @@ type RWSC interface {
 	io.Closer
 }
 
-var _ RWSC = &buffers.Buffer{}
+var _ RWSC = &iokit.Buffer{}
 
 func TestBuffer(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -30,8 +33,8 @@ func TestBuffer(t *testing.T) {
 		data = testcase.Var[[]byte]{ID: "seek offset", Init: func(t *testcase.T) []byte {
 			return []byte(t.Random.String())
 		}}
-		buffer = testcase.Var[*buffers.Buffer]{ID: "*buffers.Buffer", Init: func(t *testcase.T) *buffers.Buffer {
-			return buffers.New(data.Get(t))
+		buffer = testcase.Var[*iokit.Buffer]{ID: "*iokit.Buffer", Init: func(t *testcase.T) *iokit.Buffer {
+			return iokit.NewBuffer(data.Get(t))
 		}}
 		rwsc = testcase.Var[RWSC]{ID: "reference reader/writer/seeker/closer", Init: func(t *testcase.T) RWSC {
 			name := t.Random.StringNWithCharset(5, "qwerty")
@@ -135,7 +138,7 @@ func TestBuffer(t *testing.T) {
 				var pathError *fs.PathError
 				t.Must.True(errors.As(err, &pathError))
 				_, err = buffer.Get(t).Seek(offset.Get(t), whench.Get(t))
-				t.Must.ErrorIs(buffers.ErrSeekNegativePosition, err)
+				t.Must.ErrorIs(iokit.ErrSeekNegativePosition, err)
 			})
 		})
 	})
@@ -236,7 +239,7 @@ func TestBuffer_smoke(tt *testing.T) {
 		data   = []byte(t.Random.String())
 		offset = int64(t.Random.IntN(1 + len(data)))
 		whench = t.Random.ElementFromSlice([]int{io.SeekStart, io.SeekCurrent, io.SeekEnd}).(int)
-		buffer = buffers.New(data)
+		buffer = iokit.NewBuffer(data)
 		tmpDir = t.TempDir()
 		file   = func(t *testcase.T) filesystem.File {
 			name := t.Random.StringNWithCharset(5, "qwerty")
@@ -287,14 +290,14 @@ func TestNew_smoke(tt *testing.T) {
 	t := testcase.NewT(tt, nil)
 	dataSTR := t.Random.String()
 	dataBS := []byte(t.Random.String())
-	t.Must.Equal(buffers.New(dataSTR).String(), dataSTR)
-	t.Must.Equal(buffers.New(dataBS).Bytes(), dataBS)
+	t.Must.Equal(iokit.NewBuffer(dataSTR).String(), dataSTR)
+	t.Must.Equal(iokit.NewBuffer(dataBS).Bytes(), dataBS)
 }
 
 func TestBuffer_Read_ioReadAll(t *testing.T) {
 	t.Run("on empty buffer", func(tt *testing.T) {
 		t := testcase.NewT(tt, nil)
-		b := &buffers.Buffer{}
+		b := &iokit.Buffer{}
 		bs, err := io.ReadAll(b)
 		t.Must.Nil(err)
 		t.Must.Empty(bs)
@@ -302,9 +305,33 @@ func TestBuffer_Read_ioReadAll(t *testing.T) {
 	t.Run("on populated buffer", func(tt *testing.T) {
 		t := testcase.NewT(tt, nil)
 		d := t.Random.String()
-		b := buffers.New(d)
+		b := iokit.NewBuffer(d)
 		bs, err := io.ReadAll(b)
 		t.Must.Nil(err)
 		t.Must.Equal(d, string(bs))
 	})
+}
+
+func TestSyncWriter_smoke(t *testing.T) {
+	const msg = "Hello, world!\n"
+	buf := &iokit.Buffer{}
+	sw := iokit.SyncWriter{Writer: buf}
+	do := func() {
+		bs := []byte(msg)
+		n, err := sw.Write(bs)
+		assert.Should(t).NoError(err)
+		assert.Should(t).Equal(n, len(bs))
+	}
+	testcase.Race(do, do, do)
+	assert.Equal(t, strings.Repeat(msg, 3), buf.String())
+}
+
+func BenchmarkSyncWriter_Write(b *testing.B) {
+	const msg = "Hello, world!\n"
+	bs := []byte(msg)
+	sw := iokit.SyncWriter{Writer: &bytes.Buffer{}}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		sw.Write(bs)
+	}
 }

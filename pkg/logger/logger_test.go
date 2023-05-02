@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/buffers"
+	"github.com/adamluzsi/frameless/pkg/iokit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
@@ -330,7 +330,7 @@ func TestLogger_concurrentUse(t *testing.T) {
 }
 
 type TeeBuffer struct {
-	A, B buffers.Buffer
+	A, B iokit.Buffer
 }
 
 func (buf *TeeBuffer) Write(p []byte) (n int, err error) {
