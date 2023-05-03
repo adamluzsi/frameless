@@ -42,7 +42,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 		cacheRepository = testcase.Let(s, func(t *testcase.T) *FaultyCacheRepository[testent.Foo, testent.FooID] {
 			return NewFaultyCacheRepository[testent.Foo, testent.FooID](0.3)
 		})
-		cache = testcase.Let(s, func(t *testcase.T) *cache.Cache[testent.Foo, testent.FooID] {
+		subject = testcase.Let(s, func(t *testcase.T) *cache.Cache[testent.Foo, testent.FooID] {
 			return cache.New[testent.Foo, testent.FooID](source.Get(t), cacheRepository.Get(t))
 		})
 	)
@@ -55,29 +55,29 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	}).EagerLoading(s)
 
 	s.Test("FindByID works even with a faulty repo", func(t *testcase.T) {
-		value, found, err := cache.Get(t).FindByID(context.Background(), foo.Get(t).ID)
+		value, found, err := subject.Get(t).FindByID(context.Background(), foo.Get(t).ID)
 		t.Must.NoError(err)
 		t.Must.True(found)
 		t.Must.Equal(foo.Get(t), value)
 	})
 
 	s.Test("FindAll works even with a faulty repo", func(t *testcase.T) {
-		vs, err := iterators.Collect(cache.Get(t).FindAll(context.Background()))
+		vs, err := iterators.Collect(subject.Get(t).FindAll(context.Background()))
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
 
 	s.Test("Create works even with a faulty repo", func(t *testcase.T) {
 		foo2 := testent.MakeFoo(t)
-		t.Must.NoError(cache.Get(t).Create(context.Background(), &foo2))
+		t.Must.NoError(subject.Get(t).Create(context.Background(), &foo2))
 
-		vs, err := iterators.Collect(cache.Get(t).FindAll(context.Background()))
+		vs, err := iterators.Collect(subject.Get(t).FindAll(context.Background()))
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t), foo2}, vs)
 	})
 
 	s.Test("CachedQueryOne works even with a faulty repo", func(t *testcase.T) {
-		value, found, err := cache.Get(t).CachedQueryOne(context.Background(), "query one test", func() (ent testent.Foo, found bool, err error) {
+		value, found, err := subject.Get(t).CachedQueryOne(context.Background(), "query one test", func() (ent testent.Foo, found bool, err error) {
 			return source.Get(t).FindByID(context.Background(), foo.Get(t).ID)
 		})
 		t.Must.NoError(err)
@@ -86,7 +86,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	})
 
 	s.Test("CachedQueryMany works even with a faulty repo", func(t *testcase.T) {
-		all := cache.Get(t).CachedQueryMany(context.Background(), "query many test", func() iterators.Iterator[testent.Foo] {
+		all := subject.Get(t).CachedQueryMany(context.Background(), "query many test", func() iterators.Iterator[testent.Foo] {
 			return source.Get(t).FindAll(context.Background())
 		})
 		vs, err := iterators.Collect(all)
@@ -97,13 +97,13 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	s.Test("InvalidateByID will fail on an error", func(t *testcase.T) {
 		cacheRepository.Get(t).FailurePercentage = 1
 
-		t.Must.Error(cache.Get(t).InvalidateByID(context.Background(), foo.Get(t).ID))
+		t.Must.Error(subject.Get(t).InvalidateByID(context.Background(), foo.Get(t).ID))
 	})
 
 	s.Test("DropCachedValues will fail on an error", func(t *testcase.T) {
 		cacheRepository.Get(t).FailurePercentage = 1
 
-		t.Must.Error(cache.Get(t).DropCachedValues(context.Background()))
+		t.Must.Error(subject.Get(t).DropCachedValues(context.Background()))
 	})
 
 	// TODO: Update, Delete
