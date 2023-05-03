@@ -37,22 +37,24 @@ func Init[T any, IV initialiser[T]](v *T, init IV) T {
 	if v != nil && any(*v) != any(zero) {
 		return *v
 	}
-	switch dv := any(init).(type) {
-	case func() T:
-		*v = dv()
-	case func() *T:
-		if nv := dv(); nv != nil {
-			*v = *nv
-		}
-
-	case *T:
-		*v = *dv
-	}
+	*v = initialise[T, IV](init)
 	return *v
 }
 
 type initialiser[T any] interface {
 	func() T | *T
+}
+
+func initialise[T any, IV initialiser[T]](init IV) T {
+	switch dv := any(init).(type) {
+	case func() T:
+		return dv()
+	case *T:
+		return *dv
+	default:
+		var zero T
+		return zero
+	}
 }
 
 var initlcks = initLocks{Locks: map[uintptr]*initLock{}}
