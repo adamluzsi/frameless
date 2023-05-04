@@ -22,9 +22,12 @@ func Coalesce[T any](vs ...T) T {
 // Init will initialise a zero value through its pointer (*T),
 // If it's not set, it assigns a value to it based on the supplied initialiser.
 // Init is safe to use concurrently, it has no race condition.
-func Init[T any, IV initialiser[T]](v *T, init IV) T {
+func Init[T any, I initialiser[T]](v *T, init I) T {
 	if v == nil {
 		panic(fmt.Sprintf("nil pointer exception with pointers.Init for %T", *new(T)))
+	}
+	if val, ok := initAtomic[T, I](v, init); ok {
+		return val
 	}
 	var (
 		zero T
@@ -37,7 +40,7 @@ func Init[T any, IV initialiser[T]](v *T, init IV) T {
 	if v != nil && any(*v) != any(zero) {
 		return *v
 	}
-	*v = initialise[T, IV](init)
+	*v = initialise[T, I](init)
 	return *v
 }
 
@@ -55,6 +58,26 @@ func initialise[T any, IV initialiser[T]](init IV) T {
 		var zero T
 		return zero
 	}
+}
+
+func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
+	switch v := any(ptr).(type) {
+	case *int32:
+		var zero int32
+		if atomic.CompareAndSwapInt32(v, zero, zero) {
+			val := initialise[T, I](init)
+			ok := atomic.CompareAndSwapInt32(v, zero, any(val).(int32))
+			return val, ok
+		}
+	case *int64:
+		var zero int64
+		if atomic.CompareAndSwapInt64(v, zero, zero) {
+			val := initialise[T, I](init)
+			ok := atomic.CompareAndSwapInt64(v, zero, any(val).(int64))
+			return val, ok
+		}
+	}
+	return
 }
 
 var initlcks = initLocks{Locks: map[uintptr]*initLock{}}
