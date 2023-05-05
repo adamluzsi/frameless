@@ -468,11 +468,15 @@ func Test_Main(t *testing.T) {
 
 			s.Then("it will not block but signal shutdown and return all doesn't affect the other tasker", func(t *testcase.T) {
 				var done int64
+				var wg sync.WaitGroup
+				wg.Add(1)
 				go func() {
+					defer wg.Done()
 					_ = act(t)
 					atomic.AddInt64(&done, 1)
 				}()
-				assert.Waiter{WaitDuration: time.Millisecond}.Wait()
+				wg.Wait()
+				
 				t.Must.Equal(int64(1), atomic.LoadInt64(&done))
 				t.Must.True(isDone.Get(t))
 			})
