@@ -3,6 +3,7 @@ package zerokit_test
 import (
 	"context"
 	"github.com/adamluzsi/frameless/pkg/pointer"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"github.com/adamluzsi/testcase"
@@ -89,11 +90,11 @@ func ExampleInit() {
 func TestInit(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	t.Run("on nil value, value is constructed from a func() T", func(t *testing.T) {
-		var str *string
+		var str string
 		exp := rnd.String()
-		got := zerokit.Init(&str, func() *string { return &exp })
-		assert.Equal[string](t, exp, *got)
-		assert.Equal[string](t, exp, *str)
+		got := zerokit.Init(&str, func() string { return exp })
+		assert.Equal[string](t, exp, got)
+		assert.Equal[string](t, exp, str)
 	})
 	t.Run("on nil value, fallback default value is set as the value", func(t *testing.T) {
 		var str *string
@@ -240,133 +241,109 @@ func TestInit_race(t *testing.T) {
 			return 42
 		})
 	})
-	
+
 	var int2 int64
 	more = append(more, func() {
 		zerokit.Init(&int2, func() int64 {
 			return 42
 		})
 	})
-	
+
 	testcase.Race(r, w, more...)
 }
 
 func BenchmarkInit(b *testing.B) {
 	type Example struct{ V int }
-	var (
-		initExample = func() Example { return Example{V: 42} }
-		initInt64   = func() int64 { return 42 }
-	)
 
-	b.Run("[R] when init is not required", func(b *testing.B) {
-		var e Example
-		zerokit.Init(&e, initExample)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = zerokit.Init(&e, initExample)
-		}
+	benchInit[Example](b, func() Example {
+		return Example{V: 42}
 	})
 
-	b.Run("[R]<int64> when init is not required", func(b *testing.B) {
-		var e int64
-		zerokit.Init(&e, initInt64)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = zerokit.Init(&e, initInt64)
-		}
+	benchInit[int32](b, func() int32 {
+		return 42
 	})
 
-	b.Run("[R] when init is not required", func(b *testing.B) {
-		var e Example
-		zerokit.Init(&e, initExample)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = zerokit.Init(&e, initExample)
-		}
-	})
-
-	b.Run("[R] while having concurrent read access", func(b *testing.B) {
-		makeConcurrentReadsAccesses(b)
-		var e Example
-		_ = zerokit.Init(&e, initExample)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = zerokit.Init(&e, initExample)
-		}
-	})
-
-	b.Run("[R] while having concurrent write access", func(b *testing.B) {
-		makeConcurrentAccesses(b)
-		var e Example
-		_ = zerokit.Init(&e, initExample)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_ = zerokit.Init(&e, initExample)
-		}
-	})
-
-	b.Run("[W] when init required", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			var e Example
-			_ = zerokit.Init(&e, initExample)
-		}
-	})
-	
-	b.Run("[W]<int64> when init required", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			var e int64
-			_ = zerokit.Init(&e, initInt64)
-		}
-	})
-
-	b.Run("[W] while having concurrent access", func(b *testing.B) {
-		makeConcurrentAccesses(b)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			var e Example
-			_ = zerokit.Init(&e, initExample)
-		}
-	})
-
-	b.Run("[W]<int64> while having concurrent access", func(b *testing.B) {
-		makeConcurrentAccesses(b)
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			var e int64
-			_ = zerokit.Init(&e, initInt64)
-		}
-	})
-
-	b.Run("[RW]", func(b *testing.B) {
-		var e Example
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			if i%2 == 0 {
-				e = Example{} // zero it out
-			}
-			_ = zerokit.Init(&e, initExample)
-		}
-	})
-
-	b.Run("[RW]<int64>", func(b *testing.B) {
-		var e int64
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			if i%2 == 0 {
-				e = 0 // zero it out
-			}
-			_ = zerokit.Init(&e, initInt64)
-		}
+	benchInit[int64](b, func() int64 {
+		return 42
 	})
 }
 
-func makeConcurrentReadsAccesses(tb testing.TB) {
+func benchInit[T any](b *testing.B, init func() T) {
+	b.Run(reflectkit.SymbolicName(*new(T)), func(b *testing.B) {
+		b.Run("R when init is not required", func(b *testing.B) {
+			var v T
+			zerokit.Init(&v, init)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = zerokit.Init(&v, init)
+			}
+		})
+
+		b.Run("R when init is not required", func(b *testing.B) {
+			var v T
+			zerokit.Init(&v, init)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = zerokit.Init(&v, init)
+			}
+		})
+
+		b.Run("R while having concurrent read access", func(b *testing.B) {
+			makeConcurrentReadsAccesses[T](b, init)
+			var v T
+			_ = zerokit.Init(&v, init)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = zerokit.Init(&v, init)
+			}
+		})
+
+		b.Run("R while having concurrent write access", func(b *testing.B) {
+			makeConcurrentAccesses[T](b, init)
+			var v T
+			_ = zerokit.Init(&v, init)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				_ = zerokit.Init(&v, init)
+			}
+		})
+
+		b.Run("W when init required", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				var v T
+				_ = zerokit.Init(&v, init)
+			}
+		})
+
+		b.Run("W while having concurrent access", func(b *testing.B) {
+			makeConcurrentAccesses[T](b, init)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				var v T
+				_ = zerokit.Init(&v, init)
+			}
+		})
+
+		b.Run("RW", func(b *testing.B) {
+			var v T
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if i%2 == 0 {
+					v = *new(T) // zero it out
+				}
+				_ = zerokit.Init(&v, init)
+			}
+		})
+	})
+}
+
+func makeConcurrentReadsAccesses[T any](tb testing.TB, init func() T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	var (
 		ready int32
-		str   *string
-		blk   = func() { _ = zerokit.Init(&str, func() *string { return pointer.Of("42") }) }
+		v     T
+		blk   = func() { _ = zerokit.Init(&v, init) }
 	)
 	blk()
 	go func() {
@@ -385,14 +362,15 @@ func makeConcurrentReadsAccesses(tb testing.TB) {
 		}
 	}
 }
-func makeConcurrentAccesses(tb testing.TB) {
+
+func makeConcurrentAccesses[T any](tb testing.TB, init func() T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	var ready int32
 	go func() {
 		blk := func() {
-			var str *string
-			_ = zerokit.Init(&str, func() *string { return pointer.Of("42") })
+			var v T
+			_ = zerokit.Init(&v, init)
 		}
 		more := random.Slice[func()](runtime.NumCPU()*2, func() func() { return blk })
 		atomic.AddInt32(&ready, 1)
