@@ -1,6 +1,7 @@
 # framless/pkg
 
 - [`logger` for structured logging](logger/README.md)
+- [`env` for structured configuration loading](env/README.md)
 - [`tasker` for managing background tasks](tasker/README.md)
 - [`cache` for wrapping repositories (DB, HTTP clients, etc.) with caching to increase reliability and/or speed in the domain layer](cache/README.md)
 - [`restapi` for building restful HTTP APIs and/or exposing repositories as rest resources.](restapi/README.md)
