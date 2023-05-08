@@ -3,9 +3,11 @@ package env_test
 import (
 	"encoding/json"
 	"github.com/adamluzsi/frameless/pkg/enum"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless/pkg/env"
 	"github.com/adamluzsi/frameless/pkg/reflectkit"
@@ -13,6 +15,8 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 )
+
+var rnd = random.New(random.CryptoSeed{})
 
 const (
 	envKey    = "THE_ENV_KEY"
@@ -56,58 +60,43 @@ func TestLoad(t *testing.T) {
 		})
 	})
 
-	loadStructFieldTypeTestCase[int](t, 42, "42")
+	loadStructFieldTypeTestCase[int](t, 42, "42", "forty-two")
 	type intType int
-	loadStructFieldTypeTestCase[intType](t, 42, "42")
+	loadStructFieldTypeTestCase[intType](t, 42, "42", "forty-two")
 
-	loadStructFieldTypeTestCase[int8](t, 42, "42")
+	loadStructFieldTypeTestCase[int8](t, 42, "42", "forty-two")
 	type int8Type int8
-	loadStructFieldTypeTestCase[int8Type](t, 42, "42")
+	loadStructFieldTypeTestCase[int8Type](t, 42, "42", "forty-two")
 
-	loadStructFieldTypeTestCase[int16](t, 42, "42")
+	loadStructFieldTypeTestCase[int16](t, 42, "42", "forty-two")
 	type int16Type int16
-	loadStructFieldTypeTestCase[int16Type](t, 42, "42")
+	loadStructFieldTypeTestCase[int16Type](t, 42, "42", "forty-two")
 
-	loadStructFieldTypeTestCase[int32](t, 42, "42")
+	loadStructFieldTypeTestCase[int32](t, 42, "42", "forty-two")
 	type int32Type int32
-	loadStructFieldTypeTestCase[int32Type](t, 42, "42")
+	loadStructFieldTypeTestCase[int32Type](t, 42, "42", "forty-two")
 
-	loadStructFieldTypeTestCase[int64](t, 42, "42")
+	loadStructFieldTypeTestCase[int64](t, 42, "42", "forty-two")
 	type int64Type int64
-	loadStructFieldTypeTestCase[int64Type](t, 42, "42")
+	loadStructFieldTypeTestCase[int64Type](t, 42, "42", "forty-two")
 
-	loadStructFieldTypeTestCase[float32](t, 42.42, "42.42")
+	loadStructFieldTypeTestCase[float32](t, 42.42, "42.42", "forty-two")
 	type float32Type float32
-	loadStructFieldTypeTestCase[float32Type](t, 42.42, "42.42")
+	loadStructFieldTypeTestCase[float32Type](t, 42.42, "42.42", "forty-two")
 
-	loadStructFieldTypeTestCase[float64](t, 42.42, "42.42")
+	loadStructFieldTypeTestCase[float64](t, 42.42, "42.42", "forty-two")
 	type float64Type float64
-	loadStructFieldTypeTestCase[float64Type](t, 42.42, "42.42")
+	loadStructFieldTypeTestCase[float64Type](t, 42.42, "42.42", "forty-two")
 
-	loadStructFieldTypeTestCase[bool](t, true, "true")
+	loadStructFieldTypeTestCase[bool](t, true, "true", "sure")
 	type boolType bool
-	loadStructFieldTypeTestCase[boolType](t, true, "t")
+	loadStructFieldTypeTestCase[boolType](t, true, "t", "sure")
 
-	t.Run("time struct field", func(t *testing.T) {
-		type Example struct {
-			V string `env:"THE_ENV_KEY" time-layout:""`
-		}
-		t.Run("os env has the value", func(t *testing.T) {
-			testcase.SetEnv(t, envKey, "42")
-			var c Example
-			assert.NoError(t, env.Load(&c))
-			assert.NotEmpty(t, c)
-			assert.Equal(t, "42", c.V)
-		})
-		t.Run("os env doesn't have the value", func(t *testing.T) {
-			testcase.UnsetEnv(t, envKey)
-			var c Example
-			assert.NoError(t, env.Load(&c))
-			assert.Empty(t, c)
-		})
-	})
+	t.Run("url package integration", testLoadUrlPackageIntegration)
 
-	t.Run("struct field without tag will be visited", func(t *testing.T) {
+	t.Run("time package integration", testLoadTimePackageIntegration)
+
+	t.Run("a struct field without tag will be visited", func(t *testing.T) {
 		type Example struct {
 			V struct {
 				F string `env:"THE_ENV_KEY"`
@@ -120,6 +109,42 @@ func TestLoad(t *testing.T) {
 			assert.NotEmpty(t, c)
 			assert.Equal(t, "42", c.V.F)
 		})
+		t.Run("os env doesn't have the value", func(t *testing.T) {
+			testcase.UnsetEnv(t, envKey)
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Empty(t, c)
+		})
+	})
+
+	t.Run("unexported fields are ignored in a struct field", func(t *testing.T) {
+		type MyStruct struct {
+			unexported *int
+			Exported   string
+		}
+		type Example struct {
+			V MyStruct
+		}
+		var c Example
+		assert.NoError(t, env.Load(&c))
+		assert.Empty(t, c)
+	})
+
+	t.Run("map struct field", func(t *testing.T) {
+		type Example struct {
+			V map[string]int `env:"THE_ENV_KEY"`
+		}
+		t.Run("os env has the value", func(t *testing.T) {
+			ref := map[string]int{"the answer is": 42}
+			bs, err := json.Marshal(ref)
+			assert.NoError(t, err)
+			testcase.SetEnv(t, envKey, string(bs))
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.NotEmpty(t, c)
+			assert.Equal(t, ref, c.V)
+		})
+
 		t.Run("os env doesn't have the value", func(t *testing.T) {
 			testcase.UnsetEnv(t, envKey)
 			var c Example
@@ -337,12 +362,60 @@ func TestLoad(t *testing.T) {
 	})
 }
 
+func testLoadUrlPackageIntegration(t *testing.T) {
+	const (
+		invalidRequestURI = "/path/with?invalid=query&characters\\foo\n"
+		invalidURI        = "http://example.com" + invalidRequestURI
+	)
+	t.Run("request uri", func(t *testing.T) {
+		val := "/the/path"
+		requestURI, err := url.ParseRequestURI(val)
+		assert.NoError(t, err)
+		loadStructFieldTypeTestCase[url.URL](t, *requestURI, val, invalidURI)
+		loadStructFieldTypeTestCase[*url.URL](t, requestURI, val, invalidURI)
+	})
+	t.Run("url", func(t *testing.T) {
+		val := "https://github.com/adamluzsi/frameless"
+		u, err := url.ParseRequestURI(val)
+		assert.NoError(t, err)
+		loadStructFieldTypeTestCase[url.URL](t, *u, val, invalidURI)
+		loadStructFieldTypeTestCase[*url.URL](t, u, val, invalidURI)
+	})
+}
+
+func testLoadTimePackageIntegration(t *testing.T) {
+	loadStructFieldTypeTestCase[time.Duration](t, time.Minute+5*time.Second, "1m5s", "five minutes")
+
+	t.Run("time.Time struct field", func(t *testing.T) {
+		const TimeLayout = "2006-01-02T15"
+		type Example struct {
+			V time.Time `env:"THE_ENV_KEY" env-time-layout:"2006-01-02T15"`
+		}
+
+		t.Run("os env has the value", func(t *testing.T) {
+			refTime, err := time.Parse(TimeLayout, rnd.Time().Format(TimeLayout))
+			assert.NoError(t, err)
+			testcase.SetEnv(t, envKey, refTime.Format(TimeLayout))
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Equal(t, refTime, c.V)
+		})
+
+		t.Run("os env doesn't have the value", func(t *testing.T) {
+			testcase.UnsetEnv(t, envKey)
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Empty(t, c)
+		})
+	})
+}
+
 type ExampleConfig[T any] struct {
 	V T `env:"THE_ENV_KEY"`
 	O T `env:"OTH_ENV_KEY" separator:"|"`
 }
 
-func loadStructFieldTypeTestCase[T any](t *testing.T, expVal T, envVal string) {
+func loadStructFieldTypeTestCase[T any](t *testing.T, expVal T, envVal, envInvVal string) {
 	t.Run(reflectkit.SymbolicName(expVal)+" struct field", func(t *testing.T) {
 		t.Run("os env has valid value", func(t *testing.T) {
 			testcase.SetEnv(t, envKey, envVal)
@@ -352,7 +425,7 @@ func loadStructFieldTypeTestCase[T any](t *testing.T, expVal T, envVal string) {
 			assert.Equal(t, expVal, c.V)
 		})
 		t.Run("os env has the value, but the value is incorrect", func(t *testing.T) {
-			testcase.SetEnv(t, envKey, "forty-two")
+			testcase.SetEnv(t, envKey, envInvVal)
 			var c ExampleConfig[T]
 			assert.Error(t, env.Load(&c))
 			assert.Empty(t, c)
@@ -364,8 +437,29 @@ func loadStructFieldTypeTestCase[T any](t *testing.T, expVal T, envVal string) {
 			assert.Empty(t, c)
 		})
 	})
+	t.Run("*"+reflectkit.SymbolicName(expVal)+" struct field", func(t *testing.T) {
+		t.Run("os env has valid value", func(t *testing.T) {
+			testcase.SetEnv(t, envKey, envVal)
+			var c ExampleConfig[*T]
+			assert.NoError(t, env.Load(&c))
+			assert.NotEmpty(t, c)
+			assert.NotNil(t, c.V)
+			assert.Equal(t, expVal, *c.V)
+		})
+		t.Run("os env doesn't have the value", func(t *testing.T) {
+			testcase.UnsetEnv(t, envKey)
+			var c ExampleConfig[*T]
+			assert.NoError(t, env.Load(&c))
+			assert.Empty(t, c)
+			assert.Nil(t, c.V)
+		})
+		t.Run("os env has the value, but the value is incorrect", func(t *testing.T) {
+			testcase.SetEnv(t, envKey, envInvVal)
+			var c ExampleConfig[*T]
+			assert.Error(t, env.Load(&c))
+		})
+	})
 	t.Run("[]"+reflectkit.SymbolicName(expVal)+" struct field", func(t *testing.T) {
-		rnd := random.New(random.CryptoSeed{})
 		t.Run("os env has valid list value as json", func(t *testing.T) {
 			var vs []T
 			rnd.Repeat(3, 7, func() {
@@ -410,7 +504,7 @@ func loadStructFieldTypeTestCase[T any](t *testing.T, expVal T, envVal string) {
 			assert.Equal(t, vs, c.O)
 		})
 		t.Run("os env has the value, but the value is incorrect", func(t *testing.T) {
-			testcase.SetEnv(t, envKey, "forty-two")
+			testcase.SetEnv(t, envKey, envInvVal)
 			var c ExampleConfig[T]
 			assert.Error(t, env.Load(&c))
 			assert.Empty(t, c)
@@ -483,4 +577,13 @@ func TestLookup_smoke(t *testing.T) {
 
 	_, _, err = env.Lookup[string]("UNK", env.Required())
 	assert.Error(t, err)
+
+	refTime := rnd.Time()
+	layout := time.RFC3339
+	testcase.SetEnv(t, "QUUX", refTime.Format(layout))
+
+	timeval, ok, err := env.Lookup[time.Time]("QUUX", env.TimeLayout(layout))
+	assert.NoError(t, err)
+	assert.True(t, ok)
+	assert.True(t, timeval.Equal(refTime))
 }

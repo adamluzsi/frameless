@@ -32,6 +32,9 @@ func BaseValueOf(i interface{}) reflect.Value {
 }
 
 func BaseValue(v reflect.Value) reflect.Value {
+	if !v.IsValid() {
+		return v 
+	}
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem()
 	}

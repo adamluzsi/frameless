@@ -64,3 +64,15 @@ func ExampleLookup() {
 	val, ok, err := env.Lookup[string]("FOO", env.DefaultValue("foo"))
 	_, _, _ = val, ok, err
 }
+
+func ExampleLoad_withDefaultValue() {
+	type ExampleAppConfig struct {
+		Foo string `env:"FOO" default:"foo"`
+	}
+}
+
+func ExampleLoad_withTimeLayout() {
+	type ExampleAppConfig struct {
+		Foo time.Time `env:"FOO" layout:"2006-01-02"`
+	}
+}

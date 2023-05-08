@@ -69,6 +69,9 @@ func TestBaseValue(t *testing.T) {
 	assert.Must(t).Equal(expectedValueType, subject(plainStruct).Type())
 	assert.Must(t).Equal(expectedValueType, subject(ptrToStruct).Type())
 	assert.Must(t).Equal(expectedValueType, subject(ptrToPtr).Type())
+
+	invalid := reflect.Value{}
+	assert.Equal(t, invalid, reflectkit.BaseValue(invalid))
 }
 
 func MustCast[T any](tb testing.TB, exp T, val any) {
@@ -83,13 +86,13 @@ func TestCast(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal[int64](t, 42, got)
 	})
-	
+
 	t.Run("when it is not convertable", func(t *testing.T) {
 		got, ok := reflectkit.Cast[int64]("42")
 		assert.False(t, ok)
 		assert.Equal[int64](t, 0, got)
 	})
-	
+
 	t.Run("smoke", func(t *testing.T) {
 		MustCast[int](t, int(42), int(42))
 		MustCast[int8](t, int8(42), int(42))
@@ -100,7 +103,7 @@ func TestCast(t *testing.T) {
 		MustCast[int64](t, int64(42), int16(42))
 		got, ok := reflectkit.Cast[int](string("42"))
 		assert.False(t, ok, "cast was expected to fail")
-		assert.Empty(t, got)	
+		assert.Empty(t, got)
 	})
 }
 

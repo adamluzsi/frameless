@@ -9,6 +9,8 @@ This package facilitates loading environment variables into Go structures.
 - Support for default values using `default` or `env-default` tags.
 - configurable list separator using `separator` or `env-separator` tags.
 - Support for required fields using `required`/`require` or `env-required`/`env-require` tags.
+- Support for configuring what layout we need to use to parse a time from the environment value
+  with `env-time-layout`/`layout`
 - Custom parsers for specific types can be registered using the RegisterParser function.
 - Built-in support for loading string, int, float, boolean and time.Duration types.
 - Nested structs are also visited and loaded with environment variables.
@@ -33,12 +35,18 @@ func main() {
 ```go
 package main
 
+import "net/url"
+
 type ExampleAppConfig struct {
-	Foo  string        `env:"FOO"`
-	Bar  time.Duration `env:"BAR" default:"1h5m"`
-	Baz  int           `env:"BAZ" enum:"1;2;3;""`
-	Qux  float64       `env:"QUX" required:"true"`
-	Quux MyCustomInt   `env:"QUUX"`
+	Foo     string        `env:"FOO"`
+	Bar     time.Duration `env:"BAR" default:"1h5m"`
+	Baz     int           `env:"BAZ" enum:"1;2;3;""`
+	Qux     float64       `env:"QUX" required:"true"`
+	Quux    MyCustomInt   `env:"QUUX"`
+	Quuz    time.Time     `env:"QUUZ" layout:"2006-01-02"`
+	Corge   *string       `env:"CORGE" required:"false"`
+	BaseURL *url.URL      `env:"BASE_URL"`
+	Port    int           `env:"PORT" default:"8080"`
 }
 
 func main() {
@@ -73,8 +81,3 @@ var _ = env.RegisterParser(func(envValue string) (MyCustomInt, error) {
 	return 0, err
 })
 ```
-
-## TODO
-
-- [ ] time.Time parsing support with configurable layout
-- [ ] url.URL parsing support
