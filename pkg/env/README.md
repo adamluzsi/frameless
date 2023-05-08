@@ -1,6 +1,13 @@
 # Package `env`
 
-This package facilitates loading environment variables into Go structures.
+Working with OS environment variables is beneficial because they provide a simple,
+uniform, and platform-agnostic way to manage application configurations.
+By storing configuration settings in the environment, developers can separate code from configuration,
+promoting codebase portability and reducing the risk of sensitive data leakage.
+
+The `env` package adheres to the principles of the 12-factor app principle's configuration section
+and helps making configurations more accessible in your application
+and providing a structured way to load these configuration values into your application.
 
 ## Key Features
 
@@ -14,7 +21,7 @@ This package facilitates loading environment variables into Go structures.
 - Custom parsers for specific types can be registered using the RegisterParser function.
 - Built-in support for loading string, int, float, boolean and time.Duration types.
 - Nested structs are also visited and loaded with environment variables.
-- integrates with `enum` package
+- integrates with `frameless/pkg/enum` package
 
 ## Examples
 
