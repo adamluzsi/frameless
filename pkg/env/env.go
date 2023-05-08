@@ -1,6 +1,7 @@
 package env
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/enum"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -69,6 +71,7 @@ func loadVisitStruct(rStruct reflect.Value) error {
 var (
 	tagsForDefaultValue = []string{"env-default", "default"}
 	tagsForRequired     = []string{"env-required", "env-require", "required", "require"}
+	tagsForSeparator    = []string{"env-separator", "separator"}
 )
 
 func getLookupEnvOptions(tag reflect.StructTag) (lookupEnvOptions, error) {
@@ -76,7 +79,7 @@ func getLookupEnvOptions(tag reflect.StructTag) (lookupEnvOptions, error) {
 	for _, key := range tagsForDefaultValue {
 		value, ok := tag.Lookup(key)
 		if ok {
-			opts.DefaultEnvValue = &value
+			opts.DefaultValue = &value
 			break
 		}
 	}
@@ -92,19 +95,27 @@ func getLookupEnvOptions(tag reflect.StructTag) (lookupEnvOptions, error) {
 		opts.IsRequired = isRequired
 		break
 	}
+	for _, key := range tagsForSeparator {
+		value, ok := tag.Lookup(key)
+		if ok {
+			opts.Separator = &value
+			break
+		}
+	}
 	return opts, nil
 }
 
 type lookupEnvOptions struct {
-	DefaultEnvValue *string
-	IsRequired      bool
+	DefaultValue *string
+	Separator    *string
+	IsRequired   bool
 }
 
 func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Value, bool, error) {
 	val, ok := os.LookupEnv(key)
-	if !ok && opts.DefaultEnvValue != nil {
+	if !ok && opts.DefaultValue != nil {
 		ok = true
-		val = *opts.DefaultEnvValue
+		val = *opts.DefaultValue
 	}
 	if !ok {
 		var err error
@@ -113,20 +124,29 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 		}
 		return reflect.Value{}, false, err
 	}
-	rv, err := parseEnvValue(typ, val)
+	rv, err := parseEnvValue(typ, val, parseEnvValueOptions{
+		Separator: opts.Separator,
+	})
 	if err != nil {
 		return reflect.Value{}, false, err
 	}
 	return rv, true, nil
 }
 
-func parseEnvValue(typ reflect.Type, val string) (reflect.Value, error) {
+type parseEnvValueOptions struct {
+	Separator *string
+}
+
+func parseEnvValue(typ reflect.Type, val string, opts parseEnvValueOptions) (reflect.Value, error) {
 	if parser, ok := registry[typ]; ok {
 		out, err := parser(val)
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(out), nil
+	}
+	if opts.Separator != nil && typ.Kind() != reflect.Slice {
+		return reflect.Value{}, fmt.Errorf("separator tag is supplied for non list type: %s", typ.Name())
 	}
 	switch typ.Kind() {
 	case reflect.String:
@@ -153,9 +173,38 @@ func parseEnvValue(typ reflect.Type, val string) (reflect.Value, error) {
 		}
 		return reflect.ValueOf(bl).Convert(typ), nil
 
+	case reflect.Slice:
+		rv := reflect.MakeSlice(typ, 0, 0)
+		if data := []byte(val); json.Valid(data) {
+			return parseJSONEnvValue(typ, rv, data)
+		}
+		var separator = ","
+		if opts.Separator != nil {
+			separator = *opts.Separator
+		}
+		opts := opts
+		opts.Separator = nil
+		for _, elem := range strings.Split(val, separator) {
+			re, err := parseEnvValue(typ.Elem(), elem, opts)
+			if err != nil {
+				return reflect.Value{}, err
+			}
+			rv = reflect.Append(rv, re)
+		}
+		return rv, nil
+
 	default:
 		return reflect.Value{}, fmt.Errorf("unknown type: %s", typ.String())
 	}
+}
+
+func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect.Value, error) {
+	ptr := reflect.New(typ)
+	ptr.Elem().Set(rv)
+	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
+		return reflect.Value{}, err
+	}
+	return ptr.Elem(), nil
 }
 
 func errParsingEnvValue(structField reflect.StructField, err error) error {
@@ -178,3 +227,41 @@ func RegisterParser[T any](parser func(envValue string) (T, error)) struct{} {
 var _ = RegisterParser(func(envValue string) (time.Duration, error) {
 	return time.ParseDuration(envValue)
 })
+
+func Lookup[T any](key string, opts ...LookupOption) (T, bool, error) {
+	typ := reflect.TypeOf(*new(T))
+	var conf lookupEnvOptions
+	for _, opt := range opts {
+		opt.configure(&conf)
+	}
+	val, ok, err := lookupEnv(typ, key, conf)
+	if err != nil || !ok {
+		return *new(T), ok, err
+	}
+	return val.Interface().(T), true, nil
+}
+
+type LookupOption interface{ configure(*lookupEnvOptions) }
+
+type funcLookupOption func(*lookupEnvOptions)
+
+func (fn funcLookupOption) configure(options *lookupEnvOptions) { fn(options) }
+
+func ListSeparator[SEP rune | string](sep SEP) LookupOption {
+	return funcLookupOption(func(options *lookupEnvOptions) {
+		s := string(sep)
+		options.Separator = &s
+	})
+}
+
+func DefaultValue(val string) LookupOption {
+	return funcLookupOption(func(options *lookupEnvOptions) {
+		options.DefaultValue = &val
+	})
+}
+
+func Required() LookupOption {
+	return funcLookupOption(func(options *lookupEnvOptions) {
+		options.IsRequired = true
+	})
+}

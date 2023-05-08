@@ -59,3 +59,8 @@ func ExampleRegisterParser() {
 	var c ExampleAppConfig
 	_ = env.Load(&c) // handle error
 }
+
+func ExampleLookup() {
+	val, ok, err := env.Lookup[string]("FOO", env.DefaultValue("foo"))
+	_, _, _ = val, ok, err
+}

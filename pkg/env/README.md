@@ -4,8 +4,10 @@ This package facilitates loading environment variables into Go structures.
 
 ## Key Features
 
-- Load environment variables into struct fields based on the env tag.
+- Load environment variables into configuration structure based on its env tags.
+- typesafe environment variable Lookup
 - Support for default values using `default` or `env-default` tags.
+- configurable list separator using `separator` or `env-separator` tags.
 - Support for required fields using `required`/`require` or `env-required`/`env-require` tags.
 - Custom parsers for specific types can be registered using the RegisterParser function.
 - Built-in support for loading string, int, float, boolean and time.Duration types.
@@ -13,6 +15,18 @@ This package facilitates loading environment variables into Go structures.
 - integrates with `enum` package
 
 ## Examples
+
+`Lookup[T any]`: typesafe environment variable Lookup.
+
+```go
+package main
+
+func main() {
+	val, ok, err := env.Lookup[string]("FOO", env.DefaultValue("foo"))
+	_, _, _ = val, ok, err
+}
+
+```
 
 `Load[T any](ptr *T) error`: Loads environment variables into the struct fields based on the field tags.
 
@@ -59,3 +73,8 @@ var _ = env.RegisterParser(func(envValue string) (MyCustomInt, error) {
 	return 0, err
 })
 ```
+
+## TODO
+
+- [ ] time.Time parsing support with configurable layout
+- [ ] url.URL parsing support
