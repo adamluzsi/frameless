@@ -46,31 +46,32 @@ type Logger struct {
 		mutex    sync.RWMutex
 		strategy strategy
 	}
+
+	testingTB testingTB
 }
 
-const (
-	levelDefaultKey   = "level"
-	messageDefaultKey = "message"
-	timestampKey      = "timestamp"
-)
-
 func (l *Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
+	l.tb().Helper()
 	l.log(ctx, LevelDebug, msg, ds)
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
+	l.tb().Helper()
 	l.log(ctx, LevelInfo, msg, ds)
 }
 
 func (l *Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
+	l.tb().Helper()
 	l.log(ctx, LevelWarn, msg, ds)
 }
 
 func (l *Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
+	l.tb().Helper()
 	l.log(ctx, LevelError, msg, ds)
 }
 
 func (l *Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
+	l.tb().Helper()
 	l.log(ctx, LevelFatal, msg, ds)
 }
 
@@ -82,6 +83,7 @@ func (l *Logger) getKeyFormatter() func(string) string {
 }
 
 func (l *Logger) log(ctx context.Context, level Level, msg string, ds []LoggingDetail) {
+	l.tb().Helper()
 	if l.isHijacked(ctx, level, msg, ds) {
 		return
 	}
@@ -98,6 +100,7 @@ func (l *Logger) log(ctx context.Context, level Level, msg string, ds []LoggingD
 }
 
 func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []LoggingDetail) bool {
+	l.tb().Helper()
 	if l.Hijack == nil {
 		return false
 	}
@@ -165,10 +168,21 @@ func (l *Logger) toLogEntry(event logEvent) logEntry {
 	for _, ld := range event.Details {
 		ld.addTo(l, le)
 	}
-	le[l.coalesceKey(l.LevelKey, levelDefaultKey)] = event.Level
-	le[l.coalesceKey(l.MessageKey, messageDefaultKey)] = event.Message
+	le[l.getLevelKey()] = event.Level
+	le[l.getMessageKey()] = event.Message
+	const timestampKey = "timestamp"
 	le[l.coalesceKey(l.TimestampKey, timestampKey)] = event.Timestamp.Format(time.RFC3339)
 	return le
+}
+
+func (l *Logger) getMessageKey() string {
+	const messageDefaultKey = "message"
+	return l.coalesceKey(l.MessageKey, messageDefaultKey)
+}
+
+func (l *Logger) getLevelKey() string {
+	const levelDefaultKey = "level"
+	return l.coalesceKey(l.LevelKey, levelDefaultKey)
 }
 
 func (l *Logger) separator() string {
@@ -206,4 +220,13 @@ func (l *Logger) getLevel() Level {
 	return zerokit.Init[Level](&l.Level, func() Level {
 		return defaultLevel
 	})
+}
+
+var fallbackTestingTB = (*nullTestingTB)(nil)
+
+func (l *Logger) tb() testingTB {
+	if l.testingTB != nil {
+		return l.testingTB
+	}
+	return fallbackTestingTB
 }

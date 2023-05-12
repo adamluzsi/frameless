@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/iokit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,8 +29,15 @@ func ExampleLogger_AsyncLogging() {
 }
 
 func TestLogger_AsyncLogging(t *testing.T) {
-	out := &bytes.Buffer{}
-	l := logger.Logger{Out: out}
+	var (
+		out = &bytes.Buffer{}
+		m   sync.Mutex
+	)
+	l := logger.Logger{Out: &iokit.SyncWriter{
+		Writer: out,
+		Locker: &m,
+	}}
+
 	defer l.AsyncLogging()()
 
 	l.MessageKey = "msg"
@@ -36,14 +45,24 @@ func TestLogger_AsyncLogging(t *testing.T) {
 	l.Info(nil, "gsm", logger.Field("fieldKey", "value"))
 
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
-		it.Must.Contain(out.String(), `"Msg":"gsm"`)
-		it.Must.Contain(out.String(), `"FieldKey":"value"`)
+		m.Lock()
+		logs := out.String()
+		m.Unlock()
+		
+		it.Must.Contain(logs, `"Msg":"gsm"`)
+		it.Must.Contain(logs, `"FieldKey":"value"`)
 	})
 }
 
 func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
-	out := &bytes.Buffer{}
-	l := logger.Logger{Out: out}
+	var (
+		out = &bytes.Buffer{}
+		m   sync.Mutex
+	)
+	l := logger.Logger{Out: &iokit.SyncWriter{
+		Writer: out,
+		Locker: &m,
+	}}
 
 	defer l.AsyncLogging()()
 
@@ -52,8 +71,12 @@ func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 		l.Info(nil, strconv.Itoa(i))
 	}
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
+		m.Lock()
+		logs := out.String()
+		m.Unlock()
+		
 		for i := 0; i < sampling; i++ {
-			assert.Contain(it, out.String(), fmt.Sprintf(`"message":"%d"`, i))
+			assert.Contain(it, logs, fmt.Sprintf(`"message":"%d"`, i))
 		}
 	})
 }

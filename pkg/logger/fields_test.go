@@ -1,7 +1,6 @@
 package logger_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -45,7 +44,7 @@ func ExampleRegisterFieldType() {
 func TestField(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	buf := testcase.Let(s, func(t *testcase.T) *bytes.Buffer { return logger.Stub(t) }).
+	buf := testcase.Let(s, func(t *testcase.T) logger.StubOutput { return logger.Stub(t) }).
 		EagerLoading(s)
 
 	var (
@@ -225,7 +224,7 @@ func ExampleFields() {
 func TestFields(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	buf := testcase.Let(s, func(t *testcase.T) *bytes.Buffer { return logger.Stub(t) }).
+	buf := testcase.Let(s, func(t *testcase.T) logger.StubOutput { return logger.Stub(t) }).
 		EagerLoading(s)
 
 	var (
