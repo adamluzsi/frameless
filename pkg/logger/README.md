@@ -173,20 +173,62 @@ while also being able to observe and monitor its behavior effectively.
 package main
 
 import (
-	"context"
-
 	"github.com/adamluzsi/frameless/pkg/logger"
-	"github.com/adamluzsi/frameless/pkg/tasker"
 )
 
 func main() {
-	ctx := context.Background()
+	defer logger.AsyncLogging()() // from here on, logging will be async
 
-	// if a few lost log lines is not an issue, 
-	// then you can just send it to a goroutine.
-	go logger.AsyncLogging(ctx)
-
-	// else use tasker to handle graceful shutdown properly log all pending logging event
-	tasker.Main(ctx, tasker.ToTask(logger.AsyncLogging))
+	logger.Info(nil, "this is logged asynchronously")
 }
+```
+
+## Helping the TDD Flow during Testing
+
+using the `logger.LogWithTB` helper method will turn your logs into structured testing log events
+making it easier to investigate unexpected behaviours using the DEBUG logs.
+
+
+> myfile.go
+
+```go
+package mypkg
+
+import (
+	"github.com/adamluzsi/frameless/pkg/logger"
+)
+
+func MyFunc() {
+	logger.Debug(nil, "the logging message", logger.Field("bar", 24))
+}
+```
+
+> myfile_test.go
+
+```go
+package mypkg_test
+
+import (
+	"testing"
+
+	"mypkg"
+
+	"github.com/adamluzsi/frameless/pkg/logger"
+)
+
+func TestMyFunc(t *testing.T) {
+	logger.LogWithTB(t) // logs are redirected to use *testing.T.Log  
+
+	mypkg.MyFunc()
+}
+
+```
+
+will produce the following output:
+
+```text
+=== RUN   TestLogWithTB_spike
+	myfile.go:11: the logging message | level:debug bar:24
+	--- PASS: TestLogWithTB_spike (0.00s)
+	PASS
 ```

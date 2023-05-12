@@ -63,13 +63,13 @@ func TestLogWithTB(t *testing.T) {
 
 	ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
 	logger.Debug(ctx, "msg-1", logger.Field("bar", 24))
-	logger.Info(ctx, "msg-2", logger.Field("baz", 48))
+	logger.Info(ctx, "msg-2", logger.Field("baz", []int{1,2,3}))
 
 	assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
 		it.Must.ContainExactly([]any{`msg-1`, "|", "lvl:debug", "foo:42", "bar:24"}, got)
 	})
 	assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-		it.Must.ContainExactly([]any{`msg-2`, "|", "lvl:info", "foo:42", "baz:48"}, got)
+		it.Must.ContainExactly([]any{`msg-2`, "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
 	})
 }
 

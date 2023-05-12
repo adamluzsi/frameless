@@ -49,7 +49,7 @@ func LogWithTB(tb testingTB) {
 		var args []any
 		args = append(args, msg, "|", fmt.Sprintf("%s:%s", Default.getLevelKey(), level.String()))
 		for k, v := range fields {
-			args = append(args, fmt.Sprintf("%s:%v", k, v))
+			args = append(args, fmt.Sprintf("%s:%#v", k, v))
 		}
 		tb.Log(args...)
 	}
