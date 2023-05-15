@@ -1,6 +1,7 @@
 package logger_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/logger"
@@ -54,29 +55,58 @@ func ExampleLogWithTB() {
 }
 
 func TestLogWithTB(t *testing.T) {
-	logger.Stub(t)
-	logger.Default.MessageKey = "msg"
-	logger.Default.LevelKey = "lvl"
+	t.Run("package level", func(t *testing.T) {
+		logger.Stub(t)
+		logger.Default.MessageKey = "msg"
+		logger.Default.LevelKey = "lvl"
 
-	var dtb TestingTBDouble
-	logger.LogWithTB(&dtb)
+		var dtb TestingTBDouble
+		logger.LogWithTB(&dtb)
 
-	ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
-	logger.Debug(ctx, "msg-1", logger.Field("bar", 24))
-	logger.Info(ctx, "msg-2", logger.Field("baz", []int{1,2,3}))
+		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
+		logger.Debug(ctx, "msg-1", logger.Field("bar", 24))
+		logger.Info(ctx, "msg-2", logger.Field("baz", []int{1, 2, 3}))
 
-	assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-		it.Must.ContainExactly([]any{`msg-1`, "|", "lvl:debug", "foo:42", "bar:24"}, got)
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			it.Must.ContainExactly([]any{`msg-1`, "|", "lvl:debug", "foo:42", "bar:24"}, got)
+		})
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			it.Must.ContainExactly([]any{`msg-2`, "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
+		})
 	})
-	assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-		it.Must.ContainExactly([]any{`msg-2`, "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
+	t.Run("individual log level", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		l := logger.Logger{Out: buf}
+		l.MessageKey = "msg"
+		l.LevelKey = "lvl"
+
+		var dtb TestingTBDouble
+		logger.LogWithTB(&dtb)
+
+		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
+		
+		l.Debug(ctx, "msg-1", logger.Field("bar", 24))
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			it.Must.ContainExactly([]any{"msg-1", "|", "lvl:debug", "foo:42", "bar:24"}, got)
+		})
+
+		l.Info(ctx, "msg-2", logger.Field("baz", []int{1, 2, 3}))
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			it.Must.ContainExactly([]any{"msg-2", "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
+		})
+
+		assert.Empty(t, buf.Len())
 	})
 }
 
 func TestLogWithTB_spike(t *testing.T) {
 	logger.Debug(nil, "ignored")
 	logger.LogWithTB(t)
-	logger.Debug(nil, "the logging message", logger.Field("bar", 24))
+	logger.Debug(nil, "msg", logger.Field("bar", 24))
+	logger.Info(nil, "msg", logger.Field("bar", 24))
+	logger.Warn(nil, "msg", logger.Field("bar", 24))
+	logger.Error(nil, "msg", logger.Field("bar", 24))
+	logger.Fatal(nil, "msg", logger.Field("bar", 24))
 }
 
 type TestingTBDouble struct {

@@ -46,32 +46,30 @@ type Logger struct {
 		mutex    sync.RWMutex
 		strategy strategy
 	}
-
-	testingTB testingTB
 }
 
 func (l *Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.tb().Helper()
+	tb().Helper()
 	l.log(ctx, LevelDebug, msg, ds)
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.tb().Helper()
+	tb().Helper()
 	l.log(ctx, LevelInfo, msg, ds)
 }
 
 func (l *Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.tb().Helper()
+	tb().Helper()
 	l.log(ctx, LevelWarn, msg, ds)
 }
 
 func (l *Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.tb().Helper()
+	tb().Helper()
 	l.log(ctx, LevelError, msg, ds)
 }
 
 func (l *Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
-	l.tb().Helper()
+	tb().Helper()
 	l.log(ctx, LevelFatal, msg, ds)
 }
 
@@ -83,7 +81,7 @@ func (l *Logger) getKeyFormatter() func(string) string {
 }
 
 func (l *Logger) log(ctx context.Context, level Level, msg string, ds []LoggingDetail) {
-	l.tb().Helper()
+	tb().Helper()
 	if l.isHijacked(ctx, level, msg, ds) {
 		return
 	}
@@ -99,9 +97,17 @@ func (l *Logger) log(ctx context.Context, level Level, msg string, ds []LoggingD
 	})
 }
 
+var overrideHijack func(l *Logger, level Level, msg string, fields Fields)
+
+func withHijackOverride(fn func(l *Logger, level Level, msg string, fields Fields)) func() {
+	previousHijack := overrideHijack
+	overrideHijack = fn
+	return func() {overrideHijack = previousHijack }
+}
+
 func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []LoggingDetail) bool {
-	l.tb().Helper()
-	if l.Hijack == nil {
+	tb().Helper()
+	if l.Hijack == nil && overrideHijack == nil {
 		return false
 	}
 	var le = make(logEntry)
@@ -110,6 +116,10 @@ func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []L
 	}
 	for _, d := range ds {
 		d.addTo(l, le)
+	}
+	if overrideHijack != nil {
+		overrideHijack(l, level, msg, Fields(le))
+		return true
 	}
 	l.Hijack(level, msg, Fields(le))
 	return true
@@ -220,13 +230,4 @@ func (l *Logger) getLevel() Level {
 	return zerokit.Init[Level](&l.Level, func() Level {
 		return defaultLevel
 	})
-}
-
-var fallbackTestingTB = (*nullTestingTB)(nil)
-
-func (l *Logger) tb() testingTB {
-	if l.testingTB != nil {
-		return l.testingTB
-	}
-	return fallbackTestingTB
 }

@@ -41,18 +41,33 @@ func Stub(tb testingTB) StubOutput {
 // LogWithTB meant to help debugging your application during your TDD flow.
 func LogWithTB(tb testingTB) {
 	tb.Helper()
-	Stub(tb)
-	Default.Level = LevelDebug
-	Default.testingTB = tb
-	Default.Hijack = func(level Level, msg string, fields Fields) {
+	tb.Cleanup(withTestingTBOverride(tb))
+	tb.Cleanup(withHijackOverride(func(l *Logger, level Level, msg string, fields Fields) {
 		tb.Helper()
 		var args []any
-		args = append(args, msg, "|", fmt.Sprintf("%s:%s", Default.getLevelKey(), level.String()))
+		args = append(args, msg, "|", fmt.Sprintf("%s:%s", l.getLevelKey(), level.String()))
 		for k, v := range fields {
 			args = append(args, fmt.Sprintf("%s:%#v", k, v))
 		}
 		tb.Log(args...)
+	}))
+}
+
+var overrideTestingTB testingTB
+
+func withTestingTBOverride(tb testingTB) func() {
+	previous := overrideTestingTB
+	overrideTestingTB = tb
+	return func() { overrideTestingTB = previous }
+}
+
+var fallbackTestingTB = (*nullTestingTB)(nil)
+
+func tb() testingTB {
+	if overrideTestingTB != nil {
+		return overrideTestingTB
 	}
+	return fallbackTestingTB
 }
 
 type nullTestingTB struct{}
