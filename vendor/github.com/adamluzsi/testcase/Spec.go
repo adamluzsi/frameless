@@ -15,6 +15,7 @@ import (
 
 // NewSpec create new Spec struct that is ready for usage.
 func NewSpec(tb testing.TB, opts ...SpecOption) *Spec {
+	tb, opts = checkSuite(tb, opts)
 	tb.Helper()
 	var s *Spec
 	switch tb := tb.(type) {
@@ -25,7 +26,6 @@ func NewSpec(tb testing.TB, opts ...SpecOption) *Spec {
 		s.seed = seedForSpec(tb)
 		s.orderer = newOrderer(tb, s.seed)
 		s.sync = true
-		//tb.Cleanup(s.Finish)
 	}
 	applyGlobal(s)
 	return s
@@ -35,6 +35,7 @@ func newSpec(tb testing.TB, opts ...SpecOption) *Spec {
 	tb.Helper()
 	s := &Spec{
 		testingTB: tb,
+		opts:      opts,
 		vars:      newVariables(),
 		immutable: false,
 	}
@@ -72,6 +73,8 @@ func (spec *Spec) newSubSpec(desc string, opts ...SpecOption) *Spec {
 type Spec struct {
 	testingTB testing.TB
 
+	opts []SpecOption
+
 	parent   *Spec
 	children []*Spec
 
@@ -79,6 +82,8 @@ type Spec struct {
 		Around    []hook
 		BeforeAll []hookOnce
 	}
+
+	defs []func(*Spec)
 
 	immutable     bool
 	vars          *variables
@@ -91,11 +96,15 @@ type Spec struct {
 	description   string
 	tags          []string
 	tests         []func()
-	finished      bool
-	orderer       orderer
-	seed          int64
-	isTest        bool
-	sync          bool
+
+	finished bool
+	orderer  orderer
+	seed     int64
+	isTest   bool
+	sync     bool
+
+	isSuite   bool
+	suiteName string
 }
 
 type (
@@ -118,6 +127,12 @@ type (
 // To verify easily your state-machine, you can count the `if`s in your implementation,
 // and check that each `if` has 2 `When` block to represent the two possible path.
 func (spec *Spec) Context(desc string, testContextBlock sBlock, opts ...SpecOption) {
+	spec.defs = append(spec.defs, func(oth *Spec) {
+		oth.Context(desc, testContextBlock, opts...)
+	})
+	if spec.getIsSuite() {
+		return
+	}
 	spec.testingTB.Helper()
 	sub := spec.newSubSpec(desc, opts...)
 	if spec.sync {
@@ -169,6 +184,12 @@ func (spec *Spec) Context(desc string, testContextBlock sBlock, opts ...SpecOpti
 // It should not contain anything that modify the test subject input.
 // It should focus only on asserting the result of the subject.
 func (spec *Spec) Test(desc string, test tBlock, opts ...SpecOption) {
+	spec.defs = append(spec.defs, func(oth *Spec) {
+		oth.Test(desc, test, opts...)
+	})
+	if spec.getIsSuite() {
+		return
+	}
 	spec.testingTB.Helper()
 	s := spec.newSubSpec(desc, opts...)
 	s.isTest = true
@@ -571,6 +592,7 @@ func (spec *Spec) getTagSet() map[string]struct{} {
 
 func (spec *Spec) addTest(blk func()) {
 	spec.testingTB.Helper()
+
 	if p, ok := spec.lookupParent(); ok && p.sync {
 		blk()
 	} else {
@@ -591,3 +613,43 @@ func escapeName(s string) string {
 	}
 	return s
 }
+
+func (spec *Spec) Spec(oth *Spec) {
+	if !spec.isSuite {
+		panic("Spec method is only allowed when testcase.Spec made with AsSuite option")
+	}
+	oth.testingTB.Helper()
+	isSuite := oth.isSuite
+	for _, opt := range spec.opts {
+		opt.setup(oth)
+	}
+	oth.isSuite = isSuite
+	for _, def := range spec.defs {
+		def(oth)
+	}
+}
+
+func (spec *Spec) getIsSuite() bool {
+	for _, s := range spec.specsFromCurrent() {
+		if s.isSuite {
+			return true
+		}
+	}
+	return false
+}
+
+func checkSuite(tb testing.TB, opts []SpecOption) (testing.TB, []SpecOption) {
+	if tb == nil {
+		return internal.SuiteNullTB{}, append(opts, AsSuite())
+	}
+	return tb, opts
+}
+
+func (spec *Spec) AsSuite() SpecSuite { return SpecSuite{S: spec} }
+
+type SpecSuite struct{ S *Spec }
+
+func (suite SpecSuite) Name() string           { return suite.S.suiteName }
+func (suite SpecSuite) Test(t *testing.T)      { suite.S.Spec(NewSpec(t)) }
+func (suite SpecSuite) Benchmark(b *testing.B) { suite.S.Spec(NewSpec(b)) }
+func (suite SpecSuite) Spec(s *Spec)           { suite.S.Spec(s) }
