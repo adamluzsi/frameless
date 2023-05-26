@@ -21,7 +21,7 @@ type EntityRepository[Entity, ID any] interface {
 	crud.Finder[Entity, ID]
 	crud.Deleter[ID]
 	FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity]
-	Upsert(ctx context.Context, ptrs ...*Entity) error
+	Upsert(ctx context.Context, ptrs ...*Entity) error // TODO: replace Upsert with crud.Saver
 }
 
 // HitRepository is the query hit result repository.

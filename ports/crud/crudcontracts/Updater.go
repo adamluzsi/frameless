@@ -27,6 +27,8 @@ type UpdaterSubject[Entity, ID any] struct {
 	// For example, if the changed  Entity field is ignored by the Update method,
 	// you can match this by not changing the Entity field as part of the ChangeEntity function.
 	ChangeEntity func(*Entity)
+
+	forSaverSuite bool
 }
 
 type updaterSubjectResource[Entity, ID any] interface {
@@ -52,8 +54,14 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 		spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.subject().Get(t))
 	})
 
+	spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
+		return c.subject().Get(t).MakeContext()
+	})
+
 	var (
-		requestContext    = testcase.Var[context.Context]{ID: `request-Context`}
+		requestContext = testcase.Let(s, func(t *testcase.T) context.Context {
+			return spechelper.ContextVar.Get(t)
+		})
 		entityWithChanges = testcase.Var[*Entity]{ID: `entity-with-changes`}
 		subject           = func(t *testcase.T) error {
 			return c.subject().Get(t).Resource.Update(
@@ -62,14 +70,6 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 			)
 		}
 	)
-
-	spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
-		return c.subject().Get(t).MakeContext()
-	})
-
-	requestContext.Let(s, func(t *testcase.T) context.Context {
-		return spechelper.ContextVar.Get(t)
-	})
 
 	s.When(`an entity already stored`, func(s *testcase.Spec) {
 		entity := testcase.Let(s, func(t *testcase.T) *Entity {
@@ -113,6 +113,11 @@ func (c Updater[Entity, ID]) Spec(s *testcase.Spec) {
 	})
 
 	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			if c.subject().Get(t).forSaverSuite {
+				t.Skip()
+			}
+		})
 		entityWithChanges.Let(s, func(t *testcase.T) *Entity {
 			newEntity := pointer.Of(c.subject().Get(t).MakeEntity())
 			Create[Entity, ID](t, c.subject().Get(t).Resource, spechelper.ContextVar.Get(t), newEntity)

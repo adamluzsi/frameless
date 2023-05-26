@@ -88,3 +88,11 @@ type Purger interface {
 	// It is meant to be used in testing during clean-ahead arrangements.
 	Purge(context.Context) error
 }
+
+type Saver[Entity any] interface {
+	// Save combines the behaviour of Creator and Updater in a single functionality.
+	// If the entity is absent in the resource, the entity is created based on the Creator's behaviour.
+	// If the entity is present in the resource, the entity is updated based on the Updater's behaviour.
+	// Save requires the entity to have a valid non-empty ID value.
+	Save(ctx context.Context, ptr *Entity) error
+}

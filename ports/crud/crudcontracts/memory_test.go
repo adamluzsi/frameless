@@ -2,11 +2,13 @@ package crudcontracts_test
 
 import (
 	"context"
-	"testing"
-
+	"fmt"
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/testcase"
+	"math/rand"
+	"testing"
+	"time"
 )
 
 func Test_memoryRepository(t *testing.T) {
@@ -63,6 +65,16 @@ func Test_memoryRepository(t *testing.T) {
 				Resource:    newSubject(),
 				MakeContext: makeContext,
 				MakeEntity:  makeEntity(tb),
+			}
+		}),
+		crudcontracts.Saver[Entity, ID](func(tb testing.TB) crudcontracts.SaverSubject[Entity, ID] {
+			return crudcontracts.SaverSubject[Entity, ID]{
+				Resource:    newSubject(),
+				MakeContext: makeContext,
+				MakeEntity:  makeEntity(tb),
+				MakeID: func() ID {
+					return fmt.Sprintf("%d-%d", rand.Int(), time.Now().UnixNano())
+				},
 			}
 		}),
 		crudcontracts.OnePhaseCommitProtocol[Entity, ID](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {

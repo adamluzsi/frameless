@@ -25,6 +25,8 @@ type CreatorSubject[Entity, ID any] struct {
 	// SupportRecreate is an optional configuration value that tells the contract
 	// that deleting an Entity then recreating it with the same values is supported by the Creator.
 	SupportRecreate bool
+
+	forSaverSuite bool
 }
 
 func (c Creator[Entity, ID]) Name() string {
@@ -106,6 +108,9 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.When(`entity was already saved once`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
+			if c.subject().Get(t).forSaverSuite {
+				t.Skip()
+			}
 			t.Must.Nil(act(t))
 			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})

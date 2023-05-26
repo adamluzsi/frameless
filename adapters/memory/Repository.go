@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"github.com/adamluzsi/frameless/ports/comproto"
 	"reflect"
 	"sync"
 
@@ -59,6 +60,28 @@ func (s *Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) error 
 	s.Memory.Set(ctx, getNamespaceFor[Entity](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id), *ptr)
 
 	return nil
+}
+
+func (s *Repository[Entity, ID]) Save(ctx context.Context, ptr *Entity) (rErr error) {
+	ctx, err := s.Memory.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, s.Memory, ctx)
+
+	id, ok := extid.Lookup[ID](*ptr)
+	if !ok {
+		return fmt.Errorf(`missing ext:"ID"`)
+	}
+
+	_, found, err := s.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if found {
+		return s.Update(ctx, ptr)
+	}
+	return s.Create(ctx, ptr)
 }
 
 func (s *Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (_ent Entity, _found bool, _err error) {
