@@ -31,7 +31,7 @@ func Saver[Entity, ID any](mk func(testing.TB) SaverSubject[Entity, ID]) suites.
 
 			SupportIDReuse:  true,
 			SupportRecreate: true,
-			forSaverSuite: true,
+			forSaverSuite:   true,
 		}
 	}).Spec(s)
 
@@ -54,6 +54,16 @@ func Saver[Entity, ID any](mk func(testing.TB) SaverSubject[Entity, ID]) suites.
 			forSaverSuite: true,
 		}
 	}).Spec(s)
+
+	s.Test("when ID is missing then error is returned", func(t *testcase.T) {
+		var (
+			subject = mk(t)
+			ent     = subject.MakeEntity()
+			id      ID
+		)
+		t.Must.NoError(extid.Set[ID](&ent, id))
+		t.Must.Error(subject.Resource.Save(subject.MakeContext(), &ent))
+	})
 
 	return s.AsSuite()
 }
