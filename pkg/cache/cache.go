@@ -4,6 +4,7 @@ package cache
 import (
 	"context"
 	"fmt"
+	
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/ports/comproto"
@@ -29,6 +30,17 @@ type Cache[Entity any, ID comparable] struct {
 	Source Source[Entity, ID]
 	// Repository is the resource that keeps the cached data.
 	Repository Repository[Entity, ID]
+
+	CachedQueryInvalidators []CachedQueryInvalidator[Entity, ID]
+}
+
+type CachedQueryInvalidator[Entity, ID any] struct {
+	// CheckEntity checks an entity which is being invalidated, and using its properties,
+	// you can construct the entity values
+	CheckEntity func(ent Entity) []HitID
+	// CheckHit meant to check a Hit to decide if it needs to be invalidated.
+	// If CheckHit returns with true, then the hit will be invalidated.
+	CheckHit func(hit Hit[ID]) bool
 }
 
 // Source is the minimum expected interface that is expected from a Source resources that needs caching.
@@ -38,9 +50,9 @@ type Source[Entity, ID any] interface {
 }
 
 type Repository[Entity, ID any] interface {
+	comproto.OnePhaseCommitProtocol
 	Entities() EntityRepository[Entity, ID]
 	Hits() HitRepository[ID]
-	comproto.OnePhaseCommitProtocol
 }
 
 // InvalidateByID will as the name suggest, invalidate an entity from the cache.
@@ -55,6 +67,34 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
 
+	ent, found, err := m.Repository.Entities().FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if found {
+		if err := m.Repository.Entities().DeleteByID(ctx, id); err != nil {
+			return err
+		}
+	}
+	if !found {
+		ent, found, err = m.Source.FindByID(ctx, id)
+		if err != nil {
+			return err
+		}
+	}
+	if found {
+		for _, inv := range m.CachedQueryInvalidators {
+			if inv.CheckEntity == nil {
+				continue
+			}
+			for _, hit := range inv.CheckEntity(ent) {
+				if err := m.InvalidateCachedQuery(ctx, hit); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
 	if err := m.InvalidateCachedQuery(ctx, m.queryKeyFindByID(id)); err != nil {
 		return err
 	}
@@ -65,25 +105,22 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 				return true
 			}
 		}
+		for _, inv := range m.CachedQueryInvalidators {
+			if inv.CheckHit == nil {
+				continue
+			}
+			if inv.CheckHit(h) {
+				return true
+			}
+		}
 		return false
 	})
 
 	// invalidate related hits
-	if err := iterators.ForEach(HitsThatReferenceOurEntity, func(h Hit[ID]) error {
-		return m.InvalidateCachedQuery(ctx, h.QueryID)
-	}); err != nil {
-		return err
-	}
+	return iterators.ForEach(HitsThatReferenceOurEntity, func(h Hit[ID]) error {
 
-	// invalidate entity in the cache
-	_, found, err := m.Repository.Entities().FindByID(ctx, id)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return nil
-	}
-	return m.Repository.Entities().DeleteByID(ctx, id)
+		return m.InvalidateCachedQuery(ctx, h.QueryID)
+	})
 }
 
 func (m *Cache[Entity, ID]) DropCachedValues(ctx context.Context) error {
