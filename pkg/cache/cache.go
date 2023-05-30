@@ -13,7 +13,7 @@ import (
 	"github.com/adamluzsi/testcase/clock"
 )
 
-func New[Entity, ID any](
+func New[Entity any, ID comparable](
 	source Source[Entity, ID],
 	cacheRepo Repository[Entity, ID],
 ) *Cache[Entity, ID] {
@@ -24,7 +24,7 @@ func New[Entity, ID any](
 }
 
 // Cache supplies Read/Write-Through caching to CRUD resources.
-type Cache[Entity, ID any] struct {
+type Cache[Entity any, ID comparable] struct {
 	// Source is the location of the original data
 	Source Source[Entity, ID]
 	// Repository is the resource that keeps the cached data.
@@ -43,12 +43,39 @@ type Repository[Entity, ID any] interface {
 	comproto.OnePhaseCommitProtocol
 }
 
+// InvalidateByID will as the name suggest, invalidate an entity from the cache.
+//
+// If you have CachedQueryMany and CachedQueryOne usage, then you must use InvalidateCachedQuery instead of this.
+// This is requires because if absence of an entity is cached in the HitRepository,
+// then it is impossible to determine how to invalidate those queries using an Entity ID.
 func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error) {
 	ctx, err := m.Repository.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
+
+	if err := m.InvalidateCachedQuery(ctx, m.queryKeyFindByID(id)); err != nil {
+		return err
+	}
+
+	HitsThatReferenceOurEntity := iterators.Filter[Hit[ID]](m.Repository.Hits().FindAll(ctx), func(h Hit[ID]) bool {
+		for _, gotID := range h.EntityIDs {
+			if gotID == id {
+				return true
+			}
+		}
+		return false
+	})
+
+	// invalidate related hits
+	if err := iterators.ForEach(HitsThatReferenceOurEntity, func(h Hit[ID]) error {
+		return m.InvalidateCachedQuery(ctx, h.QueryID)
+	}); err != nil {
+		return err
+	}
+
+	// invalidate entity in the cache
 	_, found, err := m.Repository.Entities().FindByID(ctx, id)
 	if err != nil {
 		return err
@@ -56,12 +83,6 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 	if !found {
 		return nil
 	}
-
-	// brute force cache hit invalidation, could be easily fine-tuned later
-	if err := m.Repository.Hits().DeleteAll(ctx); err != nil {
-		return err
-	}
-
 	return m.Repository.Entities().DeleteByID(ctx, id)
 }
 
@@ -69,6 +90,35 @@ func (m *Cache[Entity, ID]) DropCachedValues(ctx context.Context) error {
 	return errorkit.Merge(
 		m.Repository.Hits().DeleteAll(ctx),
 		m.Repository.Entities().DeleteAll(ctx))
+}
+
+func (m *Cache[Entity, ID]) InvalidateCachedQuery(ctx context.Context, queryKey HitID) (rErr error) {
+	ctx, err := m.Repository.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
+
+	hit, found, err := m.Repository.Hits().FindByID(ctx, queryKey)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
+	}
+
+	// it is important to first delete the hit record to avoid a loop effect with other invalidation calls.
+	if err := m.Repository.Hits().DeleteByID(ctx, queryKey); err != nil {
+		return err
+	}
+
+	for _, entID := range hit.EntityIDs {
+		if err := m.InvalidateByID(ctx, entID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (m *Cache[Entity, ID]) CachedQueryMany(
@@ -186,13 +236,16 @@ func (m *Cache[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, 
 		return ent, true, nil
 	}
 	// slow path
-	key := QueryKey{
-		ID:   "FindByID",
-		ARGS: map[string]any{"ID": id},
-	}
-	return m.CachedQueryOne(ctx, key.Encode(), func() (ent Entity, found bool, err error) {
+	return m.CachedQueryOne(ctx, m.queryKeyFindByID(id), func() (ent Entity, found bool, err error) {
 		return m.Source.FindByID(ctx, id)
 	})
+}
+
+func (m *Cache[Entity, ID]) queryKeyFindByID(id ID) HitID {
+	return QueryKey{
+		ID:   "FindByID",
+		ARGS: map[string]any{"ID": id},
+	}.Encode()
 }
 
 func (m *Cache[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {

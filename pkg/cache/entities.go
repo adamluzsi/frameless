@@ -42,8 +42,9 @@ type (
 )
 
 type Interface[Entity, ID any] interface {
-	CachedQueryOne(ctx context.Context, queryKey string, query QueryOneFunc[Entity]) (_ent Entity, _found bool, _err error)
-	CachedQueryMany(ctx context.Context, queryKey string, query QueryManyFunc[Entity]) iterators.Iterator[Entity]
+	CachedQueryOne(ctx context.Context, queryKey HitID, query QueryOneFunc[Entity]) (_ent Entity, _found bool, _err error)
+	CachedQueryMany(ctx context.Context, queryKey HitID, query QueryManyFunc[Entity]) iterators.Iterator[Entity]
+	InvalidateCachedQuery(ctx context.Context, queryKey HitID) error
 	InvalidateByID(ctx context.Context, id ID) (rErr error)
 	DropCachedValues(ctx context.Context) error
 }

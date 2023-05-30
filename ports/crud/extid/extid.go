@@ -50,7 +50,7 @@ func Lookup[ID any](ent any) (id ID, ok bool) {
 	if !ok {
 		return id, false
 	}
-	if isEmpty(id) { // TODO: this doesn't feels right as ok should mean the ID is found, not that id is empty
+	if isEmpty(id) { // TODO: this doesn't feel right as ok should mean the ID is found, not that id is empty
 		return id, false
 	}
 	return id, ok
