@@ -176,6 +176,10 @@ func (c Cache[Entity, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(
 			return ptr
 		})
 
+		s.Before(func(t *testcase.T) {
+			t.Must.NoError(c.subject().Get(t).Cache.DropCachedValues(c.subject().Get(t).MakeContext()))
+		})
+
 		s.Test(`an update to the repository should refresh the by id look`, func(t *testcase.T) {
 			ctx := c.subject().Get(t).MakeContext()
 			v := value.Get(t)
@@ -515,10 +519,18 @@ func (c Cache[Entity, ID]) specInvalidateCachedQuery(s *testcase.Spec) {
 			t.Must.Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(c.subject().Get(t).Source.DeleteByID(c.subject().Get(t).MakeContext(), id))
-			// cache has still the invalid state
+			// we have hits
+			n, err := iterators.Count(c.subject().Get(t).Repository.Hits().FindAll(c.subject().Get(t).MakeContext()))
+			t.Must.NoError(err)
+			t.Must.NotEqual(0, n)
+			// we have cached entities
+			n, err = iterators.Count(c.subject().Get(t).Repository.Entities().FindAll(c.subject().Get(t).MakeContext()))
+			t.Must.NoError(err)
+			t.Must.NotEqual(0, n)
+			// cache still able to retrieve the invalid state
 			ent, found, err = queryOne(t)
 			t.Must.NoError(err)
-			t.Must.True(found)
+			t.Must.True(found, "it was not expected that the cached data got invalidated")
 			t.Must.Equal(ent, *entPtr.Get(t))
 		})
 
@@ -685,6 +697,13 @@ func (c Cache[Entity, ID]) specInvalidateByID(s *testcase.Spec) {
 		return c.subject().Get(t).Cache.
 			CachedQueryMany(c.subject().Get(t).MakeContext(), queryKey.Get(t), queryManyFunc.Get(t))
 	}
+
+	s.Before(func(t *testcase.T) {
+		t.Cleanup(func() {
+			t.Must.NoError(c.subject().Get(t).Cache.
+				InvalidateCachedQuery(c.subject().Get(t).MakeContext(), queryKey.Get(t)))
+		})
+	})
 
 	s.When("entity id has a cached data with CachedQueryOne", func(s *testcase.Spec) {
 		entPtr := testcase.Let(s, func(t *testcase.T) *Entity {

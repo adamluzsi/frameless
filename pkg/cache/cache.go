@@ -117,10 +117,23 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 
 	// Invalidate related cached query hits, but not their related entities.
 	// This is especially important to avoid a cascading effect that can wipe out the whole cache.
-	return iterators.ForEach(HitsThatReferenceOurEntity, func(h Hit[ID]) error {
-		_, _, err := m.invalidateCachedQueryWithoutCascadeEffect(ctx, h.QueryID)
+	hitIDs, err := iterators.Reduce(HitsThatReferenceOurEntity, []HitID{},
+		func(ids []HitID, h Hit[ID]) []HitID {
+			ids = append(ids, h.QueryID)
+			return ids
+		})
+
+	if err != nil {
 		return err
-	})
+	}
+
+	for _, hitID := range hitIDs {
+		if _, _, err := m.invalidateCachedQueryWithoutCascadeEffect(ctx, hitID); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (m *Cache[Entity, ID]) DropCachedValues(ctx context.Context) error {
