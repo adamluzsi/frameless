@@ -241,6 +241,7 @@ func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterat
 
 type iterFindByIDs[Entity, ID any] struct {
 	iterators.Iterator[Entity]
+	done        bool
 	expectedIDs []ID
 	foundIDs    lazyload.Var[map[string]struct{}]
 }
@@ -256,6 +257,10 @@ func (iter *iterFindByIDs[Entity, ID]) Err() error {
 }
 
 func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
+	if !iter.done {
+		return nil
+	}
+
 	if len(iter.getFoundIDs()) == len(iter.expectedIDs) {
 		return nil
 	}
@@ -275,6 +280,9 @@ func (iter *iterFindByIDs[Entity, ID]) Next() bool {
 	if gotNext {
 		id, _ := extid.Lookup[ID](iter.Iterator.Value())
 		iter.getFoundIDs()[iter.idFoundKey(id)] = struct{}{}
+	}
+	if !gotNext {
+		iter.done = true
 	}
 	return gotNext
 }
