@@ -4,7 +4,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/ports/comproto"
@@ -116,10 +115,11 @@ func (m *Cache[Entity, ID]) InvalidateByID(ctx context.Context, id ID) (rErr err
 		return false
 	})
 
-	// invalidate related hits
+	// Invalidate related cached query hits, but not their related entities.
+	// This is especially important to avoid a cascading effect that can wipe out the whole cache.
 	return iterators.ForEach(HitsThatReferenceOurEntity, func(h Hit[ID]) error {
-
-		return m.InvalidateCachedQuery(ctx, h.QueryID)
+		_, _, err := m.invalidateCachedQueryWithoutCascadeEffect(ctx, h.QueryID)
+		return err
 	})
 }
 
@@ -136,17 +136,13 @@ func (m *Cache[Entity, ID]) InvalidateCachedQuery(ctx context.Context, queryKey 
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
 
-	hit, found, err := m.Repository.Hits().FindByID(ctx, queryKey)
+	// it is important to first delete the hit record to avoid a loop effect with other invalidation calls.
+	hit, found, err := m.invalidateCachedQueryWithoutCascadeEffect(ctx, queryKey)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return nil
-	}
-
-	// it is important to first delete the hit record to avoid a loop effect with other invalidation calls.
-	if err := m.Repository.Hits().DeleteByID(ctx, queryKey); err != nil {
-		return err
 	}
 
 	for _, entID := range hit.EntityIDs {
@@ -156,6 +152,14 @@ func (m *Cache[Entity, ID]) InvalidateCachedQuery(ctx context.Context, queryKey 
 	}
 
 	return nil
+}
+
+func (m *Cache[Entity, ID]) invalidateCachedQueryWithoutCascadeEffect(ctx context.Context, queryKey HitID) (Hit[ID], bool, error) {
+	hit, found, err := m.Repository.Hits().FindByID(ctx, queryKey)
+	if err != nil || !found {
+		return hit, false, err
+	}
+	return hit, found, m.Repository.Hits().DeleteByID(ctx, queryKey)
 }
 
 func (m *Cache[Entity, ID]) CachedQueryMany(
@@ -200,6 +204,7 @@ func (m *Cache[Entity, ID]) CachedQueryMany(
 
 	var vs []*Entity
 	for _, ent := range res {
+		ent := ent // pass by value copy
 		vs = append(vs, &ent)
 	}
 

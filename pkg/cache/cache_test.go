@@ -11,6 +11,7 @@ import (
 	"github.com/adamluzsi/frameless/spechelper/testent"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/pp"
 	"github.com/adamluzsi/testcase/random"
 	"strings"
 	"testing"
@@ -122,6 +123,46 @@ func TestCache_InvalidateByID_smoke(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(hits))
 	assert.Equal(t, "notAffectedQueryKey", hits[0].QueryID)
+}
+
+func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
+	var (
+		ctx  = context.Background()
+		foo1 = testent.MakeFoo(t)
+		foo2 = testent.MakeFoo(t)
+		foo3 = testent.MakeFoo(t)
+	)
+
+	var (
+		memmem     = memory.NewMemory()
+		source     = memory.NewRepository[testent.Foo, testent.FooID](memmem)
+		repository = memory.NewCacheRepository[testent.Foo, testent.FooID](memmem)
+		cachei     = cache.New[testent.Foo, testent.FooID](source, repository)
+	)
+
+	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo1)
+	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo2)
+	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo3)
+
+	_, _, err := cachei.FindByID(ctx, foo1.ID)
+	assert.NoError(t, err)
+
+	vs, err := iterators.Collect(cachei.FindAll(ctx))
+	assert.NoError(t, err)
+	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
+
+	vs, err = iterators.Collect(cachei.FindAll(ctx))
+	assert.NoError(t, err)
+	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
+
+	hvs, err := iterators.Collect(cachei.Repository.Hits().FindAll(ctx))
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(hvs))
+
+	vs, err = iterators.Collect(cachei.Repository.Entities().FindAll(ctx))
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(vs), pp.Format(vs))
+	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
 }
 
 func TestCache_withFaultyCacheRepository(t *testing.T) {

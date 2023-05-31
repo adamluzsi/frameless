@@ -157,6 +157,7 @@ func (c Cache[Entity, ID]) Spec(s *testcase.Spec) {
 
 	s.Describe(".InvalidateCachedQuery", c.specInvalidateCachedQuery)
 	s.Describe(".InvalidateByID", c.specInvalidateByID)
+	s.Describe(".CachedQueryMany", c.specCachedQueryMany)
 
 	s.Context(``, func(s *testcase.Spec) {
 		c.describeResultCaching(s)
@@ -393,6 +394,73 @@ func (c Cache[Entity, ID]) describeResultCaching(s *testcase.Spec) {
 					assert.Must(t).True(found)
 					assert.Must(t).Equal(*val, nv)
 					assert.Must(t).Equal(numberOfFindByIDCallAfterEntityIsFound, spy.Get(t).count.FindByID)
+				})
+			})
+		})
+	})
+}
+
+func (c Cache[Entity, ID]) specCachedQueryMany(s *testcase.Spec) {
+	var (
+		Context = testcase.Let(s, func(t *testcase.T) context.Context {
+			return c.subject().Get(t).MakeContext()
+		})
+		queryKey = testcase.Let(s, func(t *testcase.T) cache.HitID {
+			return t.Random.UUID()
+		})
+		query = testcase.Let[cache.QueryManyFunc[Entity]](s, nil)
+	)
+	act := func(t *testcase.T) iterators.Iterator[Entity] {
+		return c.subject().Get(t).Cache.CachedQueryMany(Context.Get(t), queryKey.Get(t), query.Get(t))
+	}
+
+	s.When("query returns values", func(s *testcase.Spec) {
+		var (
+			ent1 = testcase.Let(s, func(t *testcase.T) *Entity {
+				v := c.subject().Get(t).MakeEntity()
+				crudtest.Create[Entity, ID](t, c.subject().Get(t).Source, c.subject().Get(t).MakeContext(), &v)
+				return &v
+			})
+			ent2 = testcase.Let(s, func(t *testcase.T) *Entity {
+				v := c.subject().Get(t).MakeEntity()
+				crudtest.Create[Entity, ID](t, c.subject().Get(t).Source, c.subject().Get(t).MakeContext(), &v)
+				return &v
+			})
+		)
+
+		query.Let(s, func(t *testcase.T) cache.QueryManyFunc[Entity] {
+			return func() iterators.Iterator[Entity] {
+				return iterators.Slice[Entity]([]Entity{*ent1.Get(t), *ent2.Get(t)})
+			}
+		})
+
+		s.Then("it will return all the entities", func(t *testcase.T) {
+			vs, err := iterators.Collect(act(t))
+			t.Must.NoError(err)
+			t.Must.ContainExactly([]Entity{*ent1.Get(t), *ent2.Get(t)}, vs)
+		})
+
+		s.Then("it will cache all returned entities", func(t *testcase.T) {
+			vs, err := iterators.Collect(act(t))
+			t.Must.NoError(err)
+
+			cached, err := iterators.Collect(c.subject().Get(t).Repository.Entities().FindAll(c.subject().Get(t).MakeContext()))
+			t.Must.NoError(err)
+			t.Must.Contain(cached, vs)
+		})
+
+		s.Then("it will create a hit record", func(t *testcase.T) {
+			_, err := iterators.Collect(act(t))
+			t.Must.NoError(err)
+
+			hits, err := iterators.Collect(c.subject().Get(t).Repository.Hits().FindAll(c.subject().Get(t).MakeContext()))
+			t.Must.NoError(err)
+
+			assert.OneOf(t, hits, func(it assert.It, got cache.Hit[ID]) {
+				it.Must.Equal(got.QueryID, queryKey.Get(t))
+				it.Must.ContainExactly(got.EntityIDs, []ID{
+					crudtest.HasID[Entity, ID](t, *ent1.Get(t)),
+					crudtest.HasID[Entity, ID](t, *ent2.Get(t)),
 				})
 			})
 		})
