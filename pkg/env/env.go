@@ -6,7 +6,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/enum"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/testcase/pp"
 	"net/url"
 	"os"
 	"reflect"
@@ -336,7 +335,6 @@ var _ = RegisterParser(func(envValue string) (time.Duration, error) {
 var _ = RegisterParser[time.Time](nil)
 
 var _ = RegisterParser[url.URL](func(envValue string) (url.URL, error) {
-	pp.PP(envValue)
 	u, err := url.Parse(envValue)
 	if err == nil {
 		return *u, nil
