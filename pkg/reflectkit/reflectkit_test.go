@@ -682,3 +682,26 @@ func TestName(t *testing.T) {
 	})
 
 }
+
+func TestSetValue(t *testing.T) {
+	t.Run("Set a value that can be set", func(t *testing.T) {
+		var str string
+		rv := reflect.ValueOf(&str)
+		reflectkit.SetValue(rv.Elem(), reflect.ValueOf("42"))
+		assert.Equal(t, "42", str)
+	})
+	t.Run("Set an unexported field's value", func(t *testing.T) {
+		type V struct{ unexported string }
+		var v V
+		rv := reflect.ValueOf(&v)
+		reflectkit.SetValue(rv.Elem().FieldByName("unexported"), reflect.ValueOf("42"))
+		assert.Equal(t, "42", v.unexported)
+	})
+	t.Run("Set an unexported field's with any type value", func(t *testing.T) {
+		type V struct{ unexported any }
+		var v V
+		rv := reflect.ValueOf(&v)
+		reflectkit.SetValue(rv.Elem().FieldByName("unexported"), reflect.ValueOf("42"))
+		assert.Equal[any](t, "42", v.unexported)
+	})
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"unsafe"
 )
 
 func Cast[T any](v any) (T, bool) {
@@ -33,7 +34,7 @@ func BaseValueOf(i interface{}) reflect.Value {
 
 func BaseValue(v reflect.Value) reflect.Value {
 	if !v.IsValid() {
-		return v 
+		return v
 	}
 	for v.Type().Kind() == reflect.Ptr {
 		v = v.Elem()
@@ -102,4 +103,14 @@ func Link(src, ptr interface{}) (err error) {
 	vPtr.Elem().Set(reflect.ValueOf(src))
 
 	return nil
+}
+
+// SetValue will force set 
+func SetValue(variable, value reflect.Value) {
+	if variable.CanSet() {
+		variable.Set(value)
+		return
+	}
+	reflect.NewAt(variable.Type(), unsafe.Pointer(variable.UnsafeAddr())).
+		Elem().Set(value)
 }
