@@ -195,7 +195,7 @@ func (c Cache[Entity, ID]) describeCacheInvalidationByEventsThatMutatesAnEntity(
 			crudtest.Update[Entity, ID](t, c.cache().Get(t), ctx, vUpdated)
 			waiter.Wait()
 
-			ptr := crudtest.IsFindable[Entity, ID](t, c.cache().Get(t), ctx, entID) // should trigger caching
+			ptr := crudtest.IsPresent[Entity, ID](t, c.cache().Get(t), ctx, entID) // should trigger caching
 			t.Must.Equal(vUpdated, ptr)
 		})
 
@@ -324,7 +324,7 @@ func (c Cache[Entity, ID]) describeResultCaching(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				id, found := extid.Lookup[ID](value.Get(t))
 				assert.Must(t).True(found)
-				v := crudtest.IsFindable[Entity, ID](t, c.source().Get(t), c.subject().Get(t).MakeContext(), id)
+				v := crudtest.IsPresent[Entity, ID](t, c.source().Get(t), c.subject().Get(t).MakeContext(), id)
 				assert.Must(t).Equal(value.Get(t), v)
 			})
 
@@ -389,7 +389,7 @@ func (c Cache[Entity, ID]) describeResultCaching(s *testcase.Spec) {
 					assert.Must(t).True(found)
 
 					// trigger caching
-					assert.Must(t).Equal(val, crudtest.IsFindable[Entity, ID](t, c.cache().Get(t), c.subject().Get(t).MakeContext(), id))
+					assert.Must(t).Equal(val, crudtest.IsPresent[Entity, ID](t, c.cache().Get(t), c.subject().Get(t).MakeContext(), id))
 					numberOfFindByIDCallAfterEntityIsFound := spy.Get(t).count.FindByID
 					waiter.Wait()
 

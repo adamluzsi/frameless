@@ -137,7 +137,7 @@ package myadapter
 func (r *commentRepository) FindByID(ctx context.Context, id CommentID) (Comment, bool, error) {
 	var comment Comment
 	err := r.db.QueryRowContext(ctx, "SELECT * FROM comments WHERE id = $1", id).Scan(&comment.ID, &comment.Title, &comment.Content, &comment.ReviewState)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		// Inverted behaviour: ErrNoRows is translated to "not found",
 		// which is not an error an actual error in the adapter layer, but instead,
 		// it is up for interpretation in the domain layer

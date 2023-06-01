@@ -146,7 +146,7 @@ func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				t.Must.Nil(subject(t))
 				othID, _ := extid.Lookup[ID](othEntity.Get(t))
-				IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), othID)
+				IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), othID)
 			})
 		})
 
@@ -246,7 +246,7 @@ func (c AllDeleter[Entity, ID]) specDeleteAll(s *testcase.Spec) {
 		ent := c.subject().Get(t).MakeEntity()
 		Create[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), &ent)
 		entID := HasID[Entity, ID](t, ent)
-		IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), entID)
+		IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), entID)
 		t.Must.Nil(act(t))
 		IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), entID)
 	})

@@ -156,12 +156,12 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
 
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)                             // can be found in tx Context
+			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)                              // can be found in tx Context
 			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id) // is absent from the global Context
 
 			t.Must.Nil(c.manager().Get(t).CommitTx(tx)) // after the commit
 
-			actually := IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			actually := IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 			t.Must.Equal(entity, actually)
 		})
 
@@ -173,7 +173,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
 
 			id := HasID[Entity, ID](t, pointer.Deref(entity))
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)
+			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)
 			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 
 			t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
@@ -192,12 +192,12 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			tx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
 
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)
+			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)
 			t.Must.Nil(c.resource().Get(t).DeleteByID(tx, id))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), tx, id)
 
 			// in global Context it is findable
-			IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 
 			t.Must.Nil(c.manager().Get(t).CommitTx(tx))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
@@ -211,12 +211,12 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 			tx, err := c.manager().Get(t).BeginTx(ctx)
 			t.Must.Nil(err)
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx, id)
+			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)
 			t.Must.Nil(c.resource().Get(t).DeleteByID(tx, id))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), tx, id)
-			IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 			t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
-			IsFindable[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
@@ -257,7 +257,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 			e1 := pointer.Of(c.subject().Get(t).MakeEntity())
 			t.Must.Nil(c.resource().Get(t).Create(tx1, e1))
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx1, HasID[Entity, ID](t, pointer.Deref(e1)))
+			IsPresent[Entity, ID](t, c.resource().Get(t), tx1, HasID[Entity, ID](t, pointer.Deref(e1)))
 			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
 			t.Logf("and e1 is created in tx1: %#v", e1)
 
@@ -267,7 +267,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 			e2 := pointer.Of(c.subject().Get(t).MakeEntity())
 			t.Must.Nil(c.resource().Get(t).Create(tx2InTx1, e2))
-			IsFindable[Entity, ID](t, c.resource().Get(t), tx2InTx1, HasID[Entity, ID](t, pointer.Deref(e2)))    // tx2 can see e2
+			IsPresent[Entity, ID](t, c.resource().Get(t), tx2InTx1, HasID[Entity, ID](t, pointer.Deref(e2)))     // tx2 can see e2
 			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2))) // global don't see e2
 			t.Logf(`and e2 is created in tx2 %#v`, e2)
 
@@ -279,8 +279,8 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Must.Nil(c.manager().Get(t).CommitTx(tx1), `"outer" comproto should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			IsFindable[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
-			IsFindable[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2)))
+			IsPresent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
+			IsPresent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2)))
 		})
 
 		s.Describe(`.Purger`, c.specPurger)
@@ -307,10 +307,10 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 
 		t.Must.Nil(purger(t).Purge(tx))
 		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
-		IsFindable[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		IsPresent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
 
 		t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
-		IsFindable[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		IsPresent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
 	})
 
 	s.Test(`entity created prior to transaction will be removed by a purge after the commit`, func(t *testcase.T) {
@@ -322,7 +322,7 @@ func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
 
 		t.Must.Nil(purger(t).Purge(tx))
 		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
-		IsFindable[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		IsPresent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
 
 		t.Must.Nil(c.manager().Get(t).CommitTx(tx))
 		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))

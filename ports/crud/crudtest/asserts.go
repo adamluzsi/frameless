@@ -36,7 +36,15 @@ func HasID[Entity, ID any](tb testing.TB, ent Entity) (id ID) {
 	return
 }
 
+// IsFindable
+//
+// DEPRECATED: use the new name: IsPresent
 func IsFindable[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID], ctx context.Context, id ID) *Entity {
+	tb.Helper()
+	return IsPresent[Entity, ID](tb, subject, ctx, id)
+}
+
+func IsPresent[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID], ctx context.Context, id ID) *Entity {
 	tb.Helper()
 	var ent Entity
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(Entity), id)
@@ -66,7 +74,7 @@ func HasEntity[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID
 		// IsFindable yields the currently found value
 		// that might be not yet the value we expect to see
 		// so the .Assert block ensure multiple tries
-		it.Must.Equal(ptr, IsFindable(it, subject, ctx, id))
+		it.Must.Equal(ptr, IsPresent(it, subject, ctx, id))
 	})
 }
 
@@ -81,7 +89,7 @@ func Create[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx conte
 		}
 		_ = subject.DeleteByID(ctx, id)
 	})
-	IsFindable[Entity, ID](tb, subject, ctx, id)
+	IsPresent[Entity, ID](tb, subject, ctx, id)
 }
 
 type updater[Entity, ID any] interface {
@@ -95,10 +103,10 @@ func Update[Entity, ID any](tb testing.TB, subject updater[Entity, ID], ctx cont
 	id, _ := extid.Lookup[ID](ptr)
 	// IsFindable ensures that by the time Update is executed,
 	// the entity is present in the resource.
-	IsFindable[Entity, ID](tb, subject, ctx, id)
+	IsPresent[Entity, ID](tb, subject, ctx, id)
 	assert.Must(tb).Nil(subject.Update(ctx, ptr))
 	Eventually.Assert(tb, func(it assert.It) {
-		entity := IsFindable[Entity, ID](it, subject, ctx, id)
+		entity := IsPresent[Entity, ID](it, subject, ctx, id)
 		it.Must.Equal(ptr, entity)
 	})
 }
@@ -106,7 +114,7 @@ func Update[Entity, ID any](tb testing.TB, subject updater[Entity, ID], ctx cont
 func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
 	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
-	IsFindable[Entity, ID](tb, subject, ctx, id)
+	IsPresent[Entity, ID](tb, subject, ctx, id)
 	assert.Must(tb).Nil(subject.DeleteByID(ctx, id))
 	IsAbsent[Entity, ID](tb, subject, ctx, id)
 }

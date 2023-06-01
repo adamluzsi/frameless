@@ -586,7 +586,7 @@ func TestEventLogRepository_Create_withAsyncSubscriptions(t *testing.T) {
 
 	ent := TestEntity{Data: random.New(random.CryptoSeed{}).StringN(4)}
 	assert.Must(t).Nil(repository.Create(ctx, &ent))
-	IsFindable[TestEntity, string](t, repository, ctx, ent.ID)
+	IsPresent[TestEntity, string](t, repository, ctx, ent.ID)
 }
 
 func TestEventLogRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *testing.T) {

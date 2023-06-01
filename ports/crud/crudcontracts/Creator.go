@@ -89,7 +89,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		if err == nil {
 			id, _ := extid.Lookup[ID](ptr.Get(t))
 			t.Defer(c.subject().Get(t).Resource.DeleteByID, ctx, id)
-			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, ctx, id)
+			IsPresent[Entity, ID](t, c.subject().Get(t).Resource, ctx, id)
 		}
 		return err
 	}
@@ -102,7 +102,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			t.Must.Equal(ptr.Get(t), IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t)))
+			t.Must.Equal(ptr.Get(t), IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t)))
 		})
 	})
 
@@ -112,7 +112,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 				t.Skip()
 			}
 			t.Must.Nil(act(t))
-			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})
 
 		s.Then(`it will return an error informing that the entity record already exists`, func(t *testcase.T) {
@@ -129,7 +129,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.Before(func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 			t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(c.subject().Get(t).MakeContext(), getID(t)))
 			IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})
@@ -140,7 +140,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 
 		s.Then(`persisted object can be found`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})
 	})
 
@@ -154,7 +154,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			ogEnt := *ptr.Get(t) // a deep copy might be better
 			t.Must.Nil(act(t))
-			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 			t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(c.subject().Get(t).MakeContext(), getID(t)))
 			IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 			ptr.Set(t, &ogEnt)
@@ -167,7 +167,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		s.Then(`persisted object can be found`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
 
-			IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t))
 		})
 	})
 
@@ -193,7 +193,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 		t.Must.True(ok, "ID is not defined in the entity struct src definition")
 		t.Must.NotEmpty(id, "it's expected that repository set the external ID in the entity")
 
-		t.Must.Equal(e, *IsFindable[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), id))
+		t.Must.Equal(e, *IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), id))
 		t.Must.Nil(c.subject().Get(t).Resource.DeleteByID(c.subject().Get(t).MakeContext(), id))
 	})
 }
