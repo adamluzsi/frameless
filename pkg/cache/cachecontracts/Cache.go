@@ -76,6 +76,8 @@ func (c Cache[Entity, ID]) subject() testcase.Var[CacheSubject[Entity, ID]] {
 }
 
 func (c Cache[Entity, ID]) Spec(s *testcase.Spec) {
+	//c.subject().EagerLoading(s)
+	
 	testcase.RunSuite(s,
 		crudcontracts.Creator[Entity, ID](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
 			ch := c(tb)

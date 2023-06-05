@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/pointer"
@@ -199,6 +200,49 @@ func (c QueryMany[Entity, ID]) Spec(s *testcase.Spec) {
 					it.Must.NoError(err)
 					t.Must.Contain(ents, includedEntity.Get(t))
 					t.Must.Contain(ents, additionalEntities.Get(t))
+				})
+			})
+
+			s.Then("query execution can interlace between the same queries", func(t *testcase.T) { // multithreaded apps
+				t.Eventually(func(it assert.It) {
+					i1 := act(t)
+					it.Cleanup(func() { _ = i1.Close() })
+					it.Must.True(i1.Next())
+					it.Must.NoError(i1.Err())
+					vsv1 := i1.Value()
+
+					i2 := act(t)
+					it.Cleanup(func() { _ = i2.Close() })
+
+					vs2, err := iterators.Collect(i2)
+					it.Must.NoError(err)
+					it.Must.Contain(vs2, includedEntity.Get(t))
+					it.Must.Contain(vs2, additionalEntities.Get(t))
+
+					vs1, err := iterators.Collect(i1)
+					it.Must.NoError(err)
+					vs1 = append(vs1, vsv1)
+					it.Must.Contain(vs1, includedEntity.Get(t))
+					it.Must.Contain(vs1, additionalEntities.Get(t))
+				})
+			})
+
+			s.Then("query execution can interlace with FindByID", func(t *testcase.T) { // multithreaded apps
+				t.Eventually(func(it assert.It) {
+					iter := act(t)
+					defer func() { it.Must.NoError(iter.Close()) }()
+					for iter.Next() {
+						value := iter.Value()
+
+						id, ok := extid.Lookup[ID](value)
+						it.Must.True(ok)
+
+						ent, found, err := subject.Get(t).Resource.FindByID(subject.Get(t).MakeContext(), id)
+						it.Must.NoError(err)
+						it.Must.True(found)
+						it.Must.Equal(value, ent)
+					}
+					it.Must.NoError(iter.Err())
 				})
 			})
 		})

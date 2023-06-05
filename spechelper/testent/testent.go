@@ -44,16 +44,12 @@ func (n FooJSONMapping) ToEnt(dto FooDTO) (Foo, error) {
 	return Foo{ID: FooID(dto.ID), Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
 }
 
-func MakeContext(tb testing.TB) context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	tb.Cleanup(cancel)
-	return ctx
-}
-
 func MakeContextFunc(tb testing.TB) func() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	tb.Cleanup(cancel)
-	return func() context.Context { return ctx }
+	return func() context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		tb.Cleanup(cancel)
+		return ctx
+	}
 }
 
 type FooQueueID string
