@@ -45,7 +45,7 @@ func TestContextWith(t *testing.T) {
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
 	})
 
-	t.Run("contexts are isolated and not leaking out between each other", func(t *testing.T) {
+	t.Run("contextkit are isolated and not leaking out between each other", func(t *testing.T) {
 		buf := logger.Stub(t)
 		ctx0 := context.Background()
 		ctx1 := logger.ContextWith(ctx0, logger.Fields{"foo": "bar"})

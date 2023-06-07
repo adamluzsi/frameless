@@ -3,7 +3,7 @@ package txs
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/contexts"
+	"github.com/adamluzsi/frameless/pkg/contextkit"
 )
 
 type contextKey struct{}
@@ -16,7 +16,7 @@ func Begin(ctx context.Context) (context.Context, error) {
 	subctx, cancel := context.WithCancel(ctx)
 	return context.WithValue(subctx, contextKey{}, &transaction{
 		parent:  parent,
-		context: contexts.Detach(ctx),
+		context: contextkit.Detach(ctx),
 		cancel:  cancel,
 	}), nil
 }

@@ -1,15 +1,15 @@
-package contexts_test
+package contextkit_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/contexts"
+	"github.com/adamluzsi/frameless/pkg/contextkit"
 	"github.com/adamluzsi/testcase"
 )
 
-var _ context.Context = contexts.Detach(context.Background())
+var _ context.Context = contextkit.Detach(context.Background())
 
 func TestDetached(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -20,7 +20,7 @@ func TestDetached(t *testing.T) {
 		})
 	)
 	subject := testcase.Let(s, func(t *testcase.T) context.Context {
-		return contexts.Detach(parent.Get(t))
+		return contextkit.Detach(parent.Get(t))
 	})
 
 	s.Describe(".Deadline", func(s *testcase.Spec) {

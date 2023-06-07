@@ -138,7 +138,7 @@ import (
 	"database/sql"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/contexts"
+	"github.com/adamluzsi/frameless/pkg/contextkit"
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"

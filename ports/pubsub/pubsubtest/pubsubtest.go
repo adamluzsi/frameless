@@ -2,12 +2,15 @@ package pubsubtest
 
 import (
 	"context"
+	"fmt"
 	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/pubsub"
-	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/frameless/ports/iterators"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/adamluzsi/frameless/ports/pubsub"
+	"github.com/adamluzsi/testcase/assert"
 )
 
 var Waiter = assert.Waiter{
@@ -20,12 +23,16 @@ var Eventually = assert.Eventually{
 }
 
 type AsyncResults[Data any] struct {
-	tb     testing.TB
-	values []Data
-	mutex  sync.Mutex
-	finish func()
-
+	tb             testing.TB
+	values         []Data
+	mutex          sync.Mutex
+	finish         func()
 	lastReceivedAt time.Time
+	subscription   pubsub.Subscription
+}
+
+func (r *AsyncResults[Data]) Subscription() pubsub.Subscription {
+	return r.subscription
 }
 
 func (r *AsyncResults[Data]) Add(d Data) {
@@ -64,7 +71,7 @@ func (r *AsyncResults[Data]) Finish() {
 func Subscribe[Data any](tb testing.TB, sub pubsub.Subscriber[Data], ctx context.Context) *AsyncResults[Data] {
 	var r AsyncResults[Data]
 	c := consumer[Data]{Subscriber: sub, OnData: r.Add}
-	c.Start(tb, ctx)
+	r.subscription = c.Start(tb, ctx)
 	tb.Cleanup(c.Stop)
 	r.finish = c.Stop
 	return &r
@@ -76,17 +83,19 @@ type consumer[Data any] struct {
 	cancel     func()
 }
 
-func (sih *consumer[Data]) Start(tb testing.TB, ctx context.Context) {
+func (sih *consumer[Data]) Start(tb testing.TB, ctx context.Context) pubsub.Subscription {
 	assert.Nil(tb, sih.cancel)
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go sih.wrk(tb, ctx, &wg)
+	sub := sih.Subscriber.Subscribe(ctx)
+	go sih.wrk(tb, ctx, &wg, sub)
 	sih.cancel = func() {
 		cancel()
 		wg.Wait()
 		sih.cancel = nil
 	}
+	return sub
 }
 
 func (sih *consumer[Data]) Stop() {
@@ -95,21 +104,27 @@ func (sih *consumer[Data]) Stop() {
 	}
 }
 
-func (sih *consumer[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup) {
+func (sih *consumer[Data]) wrk(
+	tb testing.TB,
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	iter iterators.Iterator[pubsub.Message[Data]],
+) {
 	defer wg.Done()
-	iter := sih.Subscriber.Subscribe(ctx)
+	it := assert.MakeIt(tb)
 	for iter.Next() {
-		assert.Should(tb).NoError(func(msg pubsub.Message[Data]) (rErr error) {
+		v := iter.Value()
+		it.Should.NoError(func(msg pubsub.Message[Data]) (rErr error) {
 			defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 			if sih.OnData != nil {
 				sih.OnData(msg.Data())
 			}
 			return nil
-		}(iter.Value()))
+		}(v))
 	}
-	assert.Should(tb).AnyOf(func(a *assert.AnyOf) {
+	it.Should.AnyOf(func(a *assert.AnyOf) {
 		// TODO: survey which behaviour is more natural
 		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
 		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })
-	})
+	}, fmt.Sprintf("error: %#v", iter.Err()))
 }

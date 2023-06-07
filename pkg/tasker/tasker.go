@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/contexts"
+	"github.com/adamluzsi/frameless/pkg/contextkit"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/tasker/internal"
 	"github.com/adamluzsi/testcase/clock"
@@ -150,7 +150,7 @@ func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task 
 			}
 			break
 		}
-		ctx, cancel := context.WithTimeout(contexts.Detach(signal), internal.GracefulShutdownTimeout)
+		ctx, cancel := context.WithTimeout(contextkit.Detach(signal), internal.GracefulShutdownTimeout)
 		defer cancel()
 		return stopTask(ctx)
 	}
