@@ -2,27 +2,28 @@ package postgresql
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/contextkit"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/testcase/clock"
 	"github.com/adamluzsi/testcase/random"
-	"github.com/lib/pq"
+	"sync/atomic"
 	"time"
 )
 
 type Queue[Entity, JSONDTO any] struct {
-	Name              string
-	ConnectionManager ConnectionManager
-	Mapping           QueueMapping[Entity, JSONDTO]
+	Name    string
+	CM      ConnectionManager
+	Mapping QueueMapping[Entity, JSONDTO]
 
 	// EmptyQueueBreakTime is the time.Duration that the queue waits when the queue is empty for the given queue Name.
 	EmptyQueueBreakTime time.Duration
 	// Blocking flag will cause the Queue.Publish method to wait until the message is processed.
 	Blocking bool
+
 	// LIFO flag will set the queue to use a Last in First out ordering
 	LIFO bool
 }
@@ -33,7 +34,7 @@ type QueueMapping[ENT, DTO any] interface {
 }
 
 func (q Queue[Entity, JSONDTO]) Purge(ctx context.Context) error {
-	connection, err := q.ConnectionManager.Connection(ctx)
+	connection, err := q.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -76,7 +77,7 @@ func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error
 		args = append(args, id, q.Name, data, clock.TimeNow().UTC())
 	}
 
-	connection, err := q.ConnectionManager.Connection(ctx)
+	connection, err := q.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -84,16 +85,16 @@ func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error
 	_, err = connection.ExecContext(ctx, query, args...)
 
 	if q.Blocking {
-		for { // TODO: replace with volatile queue notify mechanism
+		for { 
 			checkQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id = ANY($1)", queueTableName)
 			var count int
-			if err := connection.QueryRowContext(ctx, checkQuery, pq.Array(ids)).Scan(&count); err != nil {
+			if err := connection.QueryRowContext(ctx, checkQuery, &ids).Scan(&count); err != nil {
 				return err
 			}
 			if count == 0 {
 				break
 			}
-			clock.Sleep(500 * time.Millisecond)
+			clock.Sleep(time.Second / 3) // TODO: replace with volatile queue notify mechanism
 		}
 	}
 
@@ -119,12 +120,8 @@ var queueMigratorConfig = MigratorConfig{
 }
 
 func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
-	cm, ok := q.ConnectionManager.(*connectionManager)
-	if !ok {
-		return fmt.Errorf("migration with connection manager is not supported")
-	}
 	return Migrator{
-		DB:     cm.DB,
+		CM:     q.CM,
 		Config: queueMigratorConfig,
 	}.Up(ctx)
 }
@@ -140,9 +137,14 @@ type queueSubscription[Entity, JSONDTO any] struct {
 	CTX   context.Context
 	Queue Queue[Entity, JSONDTO]
 
+	idle   int32
 	closed bool
 	err    error
 	value  *queueMessage[Entity, JSONDTO]
+}
+
+func (qs *queueSubscription[Entity, JSONDTO]) IsIdle() bool {
+	return atomic.LoadInt32(&qs.idle) == 0
 }
 
 func (qs *queueSubscription[Entity, JSONDTO]) Close() error {
@@ -172,6 +174,7 @@ DELETE FROM ` + queueTableName + `
 
 func (qs *queueSubscription[Entity, JSONDTO]) Next() bool {
 fetch:
+
 	if err := qs.CTX.Err(); err != nil {
 		return false
 	}
@@ -184,12 +187,14 @@ fetch:
 		return false
 	}
 
+	atomic.StoreInt32(&qs.idle, 1)
+
 	if qs.value != nil {
 		_ = qs.value.NACK()
 		qs.value = nil
 	}
 
-	tx, err := qs.Queue.ConnectionManager.BeginTx(qs.CTX)
+	tx, err := qs.Queue.CM.BeginTx(qs.CTX)
 	if err != nil {
 		if errors.Is(err, qs.CTX.Err()) {
 			return false
@@ -198,9 +203,9 @@ fetch:
 		return false
 	}
 
-	connection, err := qs.Queue.ConnectionManager.Connection(tx)
+	connection, err := qs.Queue.CM.Connection(tx)
 	if err != nil {
-		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
+		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
 		if errors.Is(err, qs.CTX.Err()) {
 			return false
 		}
@@ -213,28 +218,24 @@ fetch:
 		ordering = "DESC"
 	}
 
-	row := connection.QueryRowContext(tx, fmt.Sprintf(queryQueuePopMessage, ordering), qs.Queue.Name)
-	if err := row.Err(); err != nil {
-		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
-		if errors.Is(err, qs.CTX.Err()) {
-			return false
-		}
-		qs.err = err
-		return false
-	}
-
 	var (
+		row  = connection.QueryRowContext(tx, fmt.Sprintf(queryQueuePopMessage, ordering), qs.Queue.Name)
 		id   string
 		data []byte
 	)
 	if err := row.Scan(&id, &data); err != nil {
-		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
+		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
 		if errors.Is(err, qs.CTX.Err()) {
 			return false
 		}
-		if errors.Is(err, sql.ErrNoRows) {
-			clock.Sleep(qs.getEmptyQueueBreakTime())
-			goto fetch
+		if errors.Is(err, errNoRows) {
+			atomic.StoreInt32(&qs.idle, 0)
+			select {
+			case <-qs.CTX.Done():
+				return false
+			case <-clock.After(qs.getEmptyQueueBreakTime()):
+				goto fetch
+			}
 		}
 		qs.err = err
 		return false
@@ -242,14 +243,14 @@ fetch:
 
 	var dto JSONDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
-		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
+		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
 		qs.err = err
 		return false
 	}
 
 	ent, err := qs.Queue.Mapping.ToEnt(dto)
 	if err != nil {
-		_ = qs.Queue.ConnectionManager.RollbackTx(tx)
+		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
 		qs.err = err
 		return false
 	}
@@ -281,11 +282,17 @@ type queueMessage[Entity, JSONDTO any] struct {
 }
 
 func (qm queueMessage[Entity, JSONDTO]) ACK() error {
-	return qm.q.ConnectionManager.CommitTx(qm.tx)
+	// when context cancellation happens,
+	// the already received message should be still ACK able
+	// Thus detaching from cancellation is acceptable
+	return qm.q.CM.CommitTx(contextkit.Detach(qm.tx))
 }
 
 func (qm queueMessage[Entity, JSONDTO]) NACK() error {
-	return qm.q.ConnectionManager.RollbackTx(qm.tx)
+	// when context cancellation happens,
+	// the already received message should be still ACK able
+	// Thus detaching from cancellation is acceptable
+	return qm.q.CM.RollbackTx(contextkit.Detach(qm.tx))
 }
 
 func (qm queueMessage[Entity, JSONDTO]) Data() Entity {

@@ -2,7 +2,6 @@ package postgresql_test
 
 import (
 	"context"
-	"database/sql"
 	"testing"
 
 	"github.com/adamluzsi/testcase/assert"
@@ -10,28 +9,18 @@ import (
 
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
 	"github.com/adamluzsi/frameless/pkg/cache"
 	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper/testent"
-
-	"github.com/lib/pq"
 )
 
 func TestRepository_cache(t *testing.T) {
-	db, err := sql.Open("postgres", spechelper.DatabaseURL(t))
-	assert.NoError(t, err)
-	t.Cleanup(func() { db.Close() })
-
-	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
-	assert.NoError(t, err)
-
+	cm := GetConnectionManager(t)
 	src := memory.NewRepository[testent.Foo, testent.FooID](memory.NewMemory())
+	chcRepo := FooCacheRepository{ConnectionManager: cm}
 
 	MigrateFooCache(t, cm)
-
-	chcRepo := FooCacheRepository{ConnectionManager: cm}
 
 	chc := &cache.Cache[testent.Foo, testent.FooID]{
 		Source:                  src,
@@ -61,20 +50,20 @@ func MigrateFooCache(tb testing.TB, cm postgresql.ConnectionManager) {
 	ctx := context.Background()
 	c, err := cm.Connection(ctx)
 	assert.Nil(tb, err)
-	_, err = c.ExecContext(ctx, FooMigrateDOWN)
+	_, err = c.ExecContext(ctx, FooCacheMigrateDOWN)
 	assert.Nil(tb, err)
-	_, err = c.ExecContext(ctx, FooMigrateUP)
+	_, err = c.ExecContext(ctx, FooCacheMigrateUP)
 	assert.Nil(tb, err)
 
 	tb.Cleanup(func() {
 		client, err := cm.Connection(ctx)
 		assert.Nil(tb, err)
-		_, err = client.ExecContext(ctx, FooMigrateDOWN)
+		_, err = client.ExecContext(ctx, FooCacheMigrateDOWN)
 		assert.Nil(tb, err)
 	})
 }
 
-const FooMigrateUP = `
+const FooCacheMigrateUP = `
 CREATE TABLE IF NOT EXISTS "cache_foos" (
     id	TEXT	NOT	NULL	PRIMARY KEY,
 	foo	TEXT	NOT	NULL,
@@ -89,7 +78,7 @@ CREATE TABLE IF NOT EXISTS "cache_foo_hits" (
 )
 `
 
-const FooMigrateDOWN = `
+const FooCacheMigrateDOWN = `
 DROP TABLE IF EXISTS "cache_foos";
 DROP TABLE IF EXISTS "cache_foo_hits";
 `
@@ -118,7 +107,7 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 				return testent.FooID(random.New(random.CryptoSeed{}).UUID()), nil
 			},
 		},
-		ConnectionManager: cr.ConnectionManager,
+		CM: cr.ConnectionManager,
 	}
 }
 
@@ -130,14 +119,14 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 			Columns: []string{"id", "ids", "ts"},
 			ToArgsFn: func(ptr *cache.Hit[testent.FooID]) ([]interface{}, error) {
 				ptr.Timestamp = ptr.Timestamp.UTC()
-				return []any{ptr.QueryID, pq.Array(ptr.EntityIDs), ptr.Timestamp}, nil
+				return []any{ptr.QueryID, &ptr.EntityIDs, ptr.Timestamp}, nil
 			},
 			MapFn: func(scanner iterators.SQLRowScanner) (cache.Hit[testent.FooID], error) {
 				var (
 					ent cache.Hit[testent.FooID]
 					ids []string
 				)
-				err := scanner.Scan(&ent.QueryID, pq.Array(&ids), &ent.Timestamp)
+				err := scanner.Scan(&ent.QueryID, &ids, &ent.Timestamp)
 				for _, id := range ids {
 					ent.EntityIDs = append(ent.EntityIDs, testent.FooID(id))
 				}
@@ -146,6 +135,6 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 			},
 			NewIDFn: func(ctx context.Context) (_ cache.HitID, _ error) { return },
 		},
-		ConnectionManager: cr.ConnectionManager,
+		CM: cr.ConnectionManager,
 	}
 }

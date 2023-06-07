@@ -3,40 +3,24 @@ package postgresql_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
-
-	"github.com/adamluzsi/frameless/ports/comproto"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/testcase/random"
+	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/random"
 )
-
-var (
-	_ postgresql.Connection = &sql.DB{}
-	_ postgresql.Connection = &sql.Tx{}
-)
-
-func _() {
-	var cm postgresql.ConnectionManager
-	var _ interface {
-		io.Closer
-		Connection(ctx context.Context) (postgresql.Connection, error)
-		comproto.OnePhaseCommitProtocol
-	} = cm
-}
 
 func TestConnectionManager_Connection(t *testing.T) {
 	ctx := context.Background()
-	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 
 	connectionWithoutTx, err := p.Connection(ctx)
@@ -61,7 +45,7 @@ func TestConnectionManager_Connection(t *testing.T) {
 
 func TestNewConnectionManagerWithDSN(t *testing.T) {
 	ctx := context.Background()
-	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 
 	connectionWithoutTx, err := p.Connection(ctx)
@@ -85,7 +69,7 @@ func TestNewConnectionManagerWithDSN(t *testing.T) {
 }
 
 func TestNewConnectionManagerWithDB(t *testing.T) {
-	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 
 	ctx := context.Background()
@@ -110,7 +94,7 @@ func TestNewConnectionManagerWithDB(t *testing.T) {
 }
 
 func TestNewConnectionManager(t *testing.T) {
-	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	cm, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 	background := context.Background()
 	c, err := cm.Connection(background)
@@ -121,7 +105,7 @@ func TestNewConnectionManager(t *testing.T) {
 }
 
 func TestConnectionManager_Close(t *testing.T) {
-	cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	cm, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 	background := context.Background()
 	c, err := cm.Connection(background)
@@ -134,7 +118,7 @@ func TestConnectionManager_Close(t *testing.T) {
 func TestConnectionManager_PoolContract(t *testing.T) {
 	testcase.RunSuite(t, ConnectionManagerContract{
 		MakeSubject: func(tb testing.TB) postgresql.ConnectionManager {
-			cm, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(tb))
+			cm, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(tb))
 			assert.NoError(tb, err)
 			return cm
 		},
@@ -168,21 +152,25 @@ func TestConnectionManager_OnePhaseCommitProtocolContract(t *testing.T) {
 		s := NewTestEntityRepository(tb)
 		return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
 			Resource:      s,
-			CommitManager: s.ConnectionManager,
+			CommitManager: s.CM,
 			MakeContext:   context.Background,
 			MakeEntity:    spechelper.MakeTestEntityFunc(tb),
 		}
 	}))
 }
 
-func TestConnectionManager_Connection_recoverPanic(t *testing.T) {
-	cm := postgresql.NewConnectionManagerWithDB(nil)
-	_, err := cm.Connection(context.Background())
-	assert.Error(t, err)
+func Test_createSQLRowWithErr(t *testing.T) {
+	err := errors.New("boom")
+	var r sql.Row
+	srrv := reflect.ValueOf(&r)
+	reflectkit.SetValue(srrv.Elem().FieldByName("err"), reflect.ValueOf(err))
+	v := srrv.Interface().(*sql.Row)
+	assert.ErrorIs(t, err, v.Scan())
+	assert.ErrorIs(t, err, v.Err())
 }
 
 func TestConnectionManager_GetConnection_threadSafe(t *testing.T) {
-	p, err := postgresql.NewConnectionManagerWithDSN(spechelper.DatabaseURL(t))
+	p, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 	ctx := context.Background()
 	blk := func() {

@@ -18,7 +18,7 @@ type Mapper[Entity, ID any] struct {
 	// MapFn will map an sql.Row into an Entity.
 	MapFn iterators.SQLRowMapperFunc[Entity]
 	// NewIDFn will return a new ID
-	NewIDFn func(ctx context.Context) (ID, error)
+	NewIDFn  func(ctx context.Context) (ID, error)
 }
 
 func (m Mapper[Entity, ID]) TableRef() string {

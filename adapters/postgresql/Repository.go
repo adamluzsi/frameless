@@ -2,18 +2,15 @@ package postgresql
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/lazyload"
-	"github.com/lib/pq"
 	"strings"
 
+	"github.com/adamluzsi/frameless/pkg/lazyload"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/ports/crud"
-
 	"github.com/adamluzsi/frameless/ports/comproto"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
-
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
 
@@ -22,8 +19,8 @@ import (
 //
 // SRP: DBA
 type Repository[Entity, ID any] struct {
-	Mapping           Mapping[Entity, ID]
-	ConnectionManager ConnectionManager
+	Mapping Mapping[Entity, ID]
+	CM      ConnectionManager
 }
 
 func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
@@ -36,7 +33,7 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -69,6 +66,7 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 	if err != nil {
 		return err
 	}
+	
 	if _, err := c.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
@@ -77,17 +75,18 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 }
 
 func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return *new(Entity), false, err
 	}
-
+	
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
 
 	v, err := r.Mapping.Map(c.QueryRowContext(ctx, query, id))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, errNoRows) {
 		return *new(Entity), false, nil
 	}
+
 	if err != nil {
 		return *new(Entity), false, err
 	}
@@ -102,7 +101,7 @@ func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -128,7 +127,7 @@ func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -138,12 +137,7 @@ func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr err
 		return err
 	}
 
-	count, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if count == 0 {
+	if count := result.RowsAffected(); count == 0 {
 		return crud.ErrNotFound
 	}
 
@@ -183,7 +177,7 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -191,11 +185,7 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 	if res, err := c.ExecContext(ctx, query, args...); err != nil {
 		return err
 	} else {
-		affected, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected == 0 {
+		if affected := res.RowsAffected(); affected == 0 {
 			return crud.ErrNotFound
 		}
 	}
@@ -206,7 +196,7 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 func (r Repository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, r.queryColumnList(), r.Mapping.TableRef())
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
@@ -223,12 +213,12 @@ func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterat
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s = ANY($1)`,
 		r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
-
-	rows, err := c.QueryContext(ctx, query, pq.Array(ids))
+	
+	rows, err := c.QueryContext(ctx, query, ids)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
@@ -305,11 +295,11 @@ func (r Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rE
 		}
 	}
 
-	ctx, err := r.ConnectionManager.BeginTx(ctx)
+	ctx, err := r.CM.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer comproto.FinishOnePhaseCommit(&rErr, r.ConnectionManager, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, r.CM, ctx)
 	return errorkit.Merge(r.upsertWithID(ctx, ptrWithID...), r.upsertWithoutID(ctx, ptrWithoutID...))
 }
 
@@ -362,7 +352,7 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 		query += fmt.Sprintf("\t\t%s = EXCLUDED.%s%s\n", col, col, sep)
 	}
 
-	c, err := r.ConnectionManager.Connection(ctx)
+	c, err := r.CM.Connection(ctx)
 	if err != nil {
 		return err
 	}
@@ -375,15 +365,15 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 }
 
 func (r Repository[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
-	return r.ConnectionManager.BeginTx(ctx)
+	return r.CM.BeginTx(ctx)
 }
 
 func (r Repository[Entity, ID]) CommitTx(ctx context.Context) error {
-	return r.ConnectionManager.CommitTx(ctx)
+	return r.CM.CommitTx(ctx)
 }
 
 func (r Repository[Entity, ID]) RollbackTx(ctx context.Context) error {
-	return r.ConnectionManager.RollbackTx(ctx)
+	return r.CM.RollbackTx(ctx)
 }
 
 func (r Repository[Entity, ID]) queryColumnPlaceHolders(nextPlaceholder func() string) string {

@@ -14,7 +14,7 @@ import (
 // ensuring that only one of them can hold the lock concurrently.
 type Locker struct {
 	Name string
-	DB   *sql.DB
+	CM   ConnectionManager
 }
 
 const queryLock = `INSERT INTO frameless_locker_locks (name) VALUES ($1);`
@@ -28,19 +28,24 @@ func (l Locker) Lock(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 
-	tx, err := l.DB.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	ctx, err := l.CM.BeginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = tx.ExecContext(ctx, queryLock, l.Name)
+	connection, err := l.CM.Connection(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = connection.ExecContext(ctx, queryLock, l.Name)
 	if err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	return context.WithValue(ctx, lockerCtxKey{}, &lockerCtxValue{
-		tx:     tx,
+		ctx:    ctx,
 		cancel: cancel,
 	}), nil
 }
@@ -56,7 +61,8 @@ func (l Locker) Unlock(ctx context.Context) error {
 	if lck.done {
 		return nil
 	}
-	if err := lck.tx.Rollback(); err != nil {
+
+	if err := l.CM.RollbackTx(lck.ctx); err != nil {
 		if driver.ErrBadConn == err && ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -74,6 +80,7 @@ type (
 		tx     *sql.Tx
 		done   bool
 		cancel func()
+		ctx    context.Context
 	}
 )
 
@@ -91,7 +98,7 @@ var lockerMigrationConfig = MigratorConfig{
 }
 
 func (l Locker) Migrate(ctx context.Context) error {
-	return Migrator{DB: l.DB, Config: lockerMigrationConfig}.Up(ctx)
+	return Migrator{CM: l.CM, Config: lockerMigrationConfig}.Up(ctx)
 }
 
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
@@ -99,15 +106,12 @@ func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
 	return v, ok
 }
 
-type LockerFactory[Key comparable] struct{ DB *sql.DB }
+type LockerFactory[Key comparable] struct{ CM ConnectionManager }
 
 func (lf LockerFactory[Key]) Migrate(ctx context.Context) error {
-	return Locker{DB: lf.DB}.Migrate(ctx)
+	return Locker{CM: lf.CM}.Migrate(ctx)
 }
 
 func (lf LockerFactory[Key]) LockerFor(key Key) locks.Locker {
-	return Locker{
-		Name: fmt.Sprintf("%T:%v", key, key),
-		DB:   lf.DB,
-	}
+	return Locker{Name: fmt.Sprintf("%T:%v", key, key), CM: lf.CM}
 }

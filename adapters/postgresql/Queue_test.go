@@ -13,6 +13,7 @@ import (
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/pp"
 	"github.com/adamluzsi/testcase/random"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -24,7 +25,7 @@ func TestQueue(t *testing.T) {
 	cm := GetConnectionManager(t)
 
 	assert.NoError(t,
-		postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{Name: queueName, ConnectionManager: cm}.
+		postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{Name: queueName, CM: cm}.
 			Migrate(sh.MakeContext(t)))
 
 	mapping := sh.TestEntityJSONMapping{}
@@ -32,9 +33,9 @@ func TestQueue(t *testing.T) {
 	testcase.RunSuite(t,
 		pubsubcontracts.FIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.FIFOSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:              queueName,
-				ConnectionManager: cm,
-				Mapping:           mapping,
+				Name:    queueName,
+				CM:      cm,
+				Mapping: mapping,
 			}
 			return pubsubcontracts.FIFOSubject[sh.TestEntity]{
 				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
@@ -47,9 +48,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.LIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.LIFOSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:              queueName,
-				ConnectionManager: cm,
-				Mapping:           mapping,
+				Name:    queueName,
+				CM:      cm,
+				Mapping: mapping,
 
 				LIFO: true,
 			}
@@ -64,9 +65,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.Buffered[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BufferedSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:              queueName,
-				ConnectionManager: cm,
-				Mapping:           mapping,
+				Name:    queueName,
+				CM:      cm,
+				Mapping: mapping,
 			}
 			return pubsubcontracts.BufferedSubject[sh.TestEntity]{
 				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
@@ -79,10 +80,10 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.Blocking[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BlockingSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:              queueName,
-				ConnectionManager: cm,
-				Mapping:           mapping,
-
+				Name:    queueName,
+				CM:      cm,
+				Mapping: mapping,
+		
 				Blocking: true,
 			}
 			return pubsubcontracts.BlockingSubject[sh.TestEntity]{
@@ -96,9 +97,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.Queue[sh.TestEntity](func(tb testing.TB) pubsubcontracts.QueueSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:              queueName,
-				ConnectionManager: cm,
-				Mapping:           mapping,
+				Name:    queueName,
+				CM:      cm,
+				Mapping: mapping,
 			}
 			return pubsubcontracts.QueueSubject[sh.TestEntity]{
 				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
@@ -122,39 +123,60 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 	now := time.Now().UTC()
 	timecop.Travel(t, now)
 
-	cm := GetConnectionManager(t)
 	q := postgresql.Queue[testent.Foo, testent.FooDTO]{
 		Name:                queueName,
-		ConnectionManager:   cm,
+		CM:                  GetConnectionManager(t),
 		Mapping:             testent.FooJSONMapping{},
 		EmptyQueueBreakTime: time.Hour,
 	}
 	assert.NoError(t, q.Migrate(sh.MakeContext(t)))
-	defer q.Publish(ctx)
 
 	res := pubsubtest.Subscribe[testent.Foo](t, q, ctx)
-	time.Sleep(500 * time.Millisecond) // wait for the subscription to get ready and start .Next
 
-	foo1 := testent.MakeFoo(t)
-	assert.NoError(t, q.Publish(ctx, foo1))
+	t.Log("we wait until the subscription is idle")
+	idler, ok := res.Subscription().(interface{ IsIdle() bool })
+	assert.True(t, ok)
+	assert.EventuallyWithin(5*time.Second).Assert(t, func(it assert.It) {
+		it.Should.True(idler.IsIdle())
+	})
 
-	waitUntilNotZero := func(ctx context.Context) {
-	wait:
+	waitTime := 256 * time.Millisecond
+	time.Sleep(waitTime)
+	
+	foo := testent.MakeFoo(t)
+	assert.NoError(t, q.Publish(ctx, foo))
+
+	assert.NotWithin(t, waitTime, func(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
-				break wait
+				return
 			default:
-				if !res.ReceivedAt().IsZero() {
-					break wait
+				for _, got := range res.Values() {
+					if reflect.DeepEqual(foo, got) {
+						return
+					}
 				}
 			}
 		}
-	}
-
-	assert.NotWithin(t, 256*time.Millisecond, waitUntilNotZero)
+	})
+	
 	timecop.Travel(t, time.Hour+time.Second)
-	assert.Within(t, time.Second, waitUntilNotZero)
+
+	assert.Within(t, waitTime, func(ctx context.Context) {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				for _, got := range res.Values() {
+					if reflect.DeepEqual(foo, got) {
+						return
+					}
+				}
+			}
+		}
+	})
 }
 
 func TestQueue_smoke(t *testing.T) {
@@ -162,9 +184,9 @@ func TestQueue_smoke(t *testing.T) {
 	cm := GetConnectionManager(t)
 	t.Run("single", func(t *testing.T) {
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
-			Name:              "42",
-			ConnectionManager: cm,
-			Mapping:           testent.FooJSONMapping{},
+			Name:    "42",
+			CM:      cm,
+			Mapping: testent.FooJSONMapping{},
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -186,15 +208,15 @@ func TestQueue_smoke(t *testing.T) {
 		cm := GetConnectionManager(t)
 
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
-			Name:              "42",
-			ConnectionManager: cm,
-			Mapping:           testent.FooJSONMapping{},
+			Name:    "42",
+			CM:      cm,
+			Mapping: testent.FooJSONMapping{},
 		}
 
 		q2 := postgresql.Queue[testent.Foo, testent.FooDTO]{
-			Name:              "24",
-			ConnectionManager: cm,
-			Mapping:           testent.FooJSONMapping{},
+			Name:    "24",
+			CM:      cm,
+			Mapping: testent.FooJSONMapping{},
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -242,9 +264,9 @@ func BenchmarkQueue(b *testing.B) {
 		rnd = random.New(random.CryptoSeed{})
 		cm  = GetConnectionManager(b)
 		q   = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-			Name:              queueName,
-			ConnectionManager: cm,
-			Mapping:           sh.TestEntityJSONMapping{},
+			Name:    queueName,
+			CM:      cm,
+			Mapping: sh.TestEntityJSONMapping{},
 		}
 	)
 

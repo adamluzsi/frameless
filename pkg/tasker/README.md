@@ -147,7 +147,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	db, err := sql.Open("driverName", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		logger.Error(ctx, "error during postgres db opening", logger.ErrField(err))
 		os.Exit(1)

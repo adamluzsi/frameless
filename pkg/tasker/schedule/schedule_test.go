@@ -19,7 +19,7 @@ import (
 )
 
 func ExampleScheduler_WithSchedule() {
-	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
+	db, err := sql.Open("driverName", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		logger.Fatal(nil, "error during postgres db opening", logger.ErrField(err))
 		os.Exit(1)

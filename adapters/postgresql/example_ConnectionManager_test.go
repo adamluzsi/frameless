@@ -7,7 +7,7 @@ import (
 )
 
 func ExampleConnectionManager() {
-	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
 	if err != nil {
 		panic(err)
 	}
@@ -28,7 +28,7 @@ func ExampleConnectionManager() {
 }
 
 func ExampleConnectionManager_BeginTx() {
-	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
 	if err != nil {
 		panic(err)
 	}
@@ -58,7 +58,7 @@ func ExampleConnectionManager_BeginTx() {
 }
 
 func ExampleConnectionManager_CommitTx() {
-	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
 	if err != nil {
 		panic(err)
 	}
@@ -88,7 +88,7 @@ func ExampleConnectionManager_CommitTx() {
 }
 
 func ExampleConnectionManager_RollbackTx() {
-	connectionManager, err := postgresql.NewConnectionManagerWithDSN(`dsn`)
+	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
 	if err != nil {
 		panic(err)
 	}
