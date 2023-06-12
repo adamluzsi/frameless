@@ -5,9 +5,33 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/migration"
 )
 
-type TaskerScheduleStateRepository struct{ CM ConnectionManager }
+type TaskerScheduleRepository struct{ CM ConnectionManager }
+
+func (r TaskerScheduleRepository) Migrate(ctx context.Context) error {
+	if m, ok := r.States().(migration.Migratable); ok {
+		if err := m.Migrate(ctx); err != nil {
+			return err
+		}
+	}
+	if m, ok := r.Locks().(migration.Migratable); ok {
+		if err := m.Migrate(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r TaskerScheduleRepository) Locks() locks.Factory[schedule.StateID] {
+	return LockerFactory[schedule.StateID]{CM: r.CM}
+}
+
+func (r TaskerScheduleRepository) States() schedule.StateRepository {
+	return TaskerScheduleStateRepository{CM: r.CM}
+}
 
 var migratorConfigTaskerScheduleStateRepository = MigratorConfig{
 	Namespace: "frameless_tasker_schedule_states",
@@ -19,17 +43,19 @@ var migratorConfigTaskerScheduleStateRepository = MigratorConfig{
 	},
 }
 
-func (r *TaskerScheduleStateRepository) repository() Repository[schedule.State, string] {
-	return Repository[schedule.State, string]{
+type TaskerScheduleStateRepository struct{ CM ConnectionManager }
+
+func (r TaskerScheduleStateRepository) repository() Repository[schedule.State, schedule.StateID] {
+	return Repository[schedule.State, schedule.StateID]{
 		Mapping: taskerScheduleStateRepositoryMapping,
 		CM:      r.CM,
 	}
 }
 
-var taskerScheduleStateRepositoryMapping = Mapper[schedule.State, string]{
+var taskerScheduleStateRepositoryMapping = Mapper[schedule.State, schedule.StateID]{
 	Table: "frameless_tasker_schedule_states",
 	ID:    "id",
-	NewIDFn: func(context.Context) (string, error) {
+	NewIDFn: func(context.Context) (schedule.StateID, error) {
 		return "", fmt.Errorf(".ID is required to be supplied externally")
 	},
 	Columns: []string{"id", "timestamp"},
@@ -47,25 +73,25 @@ var taskerScheduleStateRepositoryMapping = Mapper[schedule.State, string]{
 	},
 }
 
-func (r *TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
+func (r TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
 	return Migrator{
 		CM:     r.CM,
 		Config: migratorConfigTaskerScheduleStateRepository,
 	}.Up(ctx)
 }
 
-func (r *TaskerScheduleStateRepository) Create(ctx context.Context, ptr *schedule.State) error {
+func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *schedule.State) error {
 	return r.repository().Create(ctx, ptr)
 }
 
-func (r *TaskerScheduleStateRepository) Update(ctx context.Context, ptr *schedule.State) error {
+func (r TaskerScheduleStateRepository) Update(ctx context.Context, ptr *schedule.State) error {
 	return r.repository().Update(ctx, ptr)
 }
 
-func (r *TaskerScheduleStateRepository) DeleteByID(ctx context.Context, id string) error {
+func (r TaskerScheduleStateRepository) DeleteByID(ctx context.Context, id schedule.StateID) error {
 	return r.repository().DeleteByID(ctx, id)
 }
 
-func (r *TaskerScheduleStateRepository) FindByID(ctx context.Context, id string) (ent schedule.State, found bool, err error) {
+func (r TaskerScheduleStateRepository) FindByID(ctx context.Context, id schedule.StateID) (ent schedule.State, found bool, err error) {
 	return r.repository().FindByID(ctx, id)
 }
