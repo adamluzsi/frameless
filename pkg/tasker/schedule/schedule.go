@@ -10,13 +10,22 @@ import (
 	"time"
 )
 
-type Scheduler struct {
-	LockerFactory locks.Factory[ /*name*/ string]
-	Repository    StateRepository
+type Scheduler struct{ Repository Repository }
+
+type Repository interface {
+	Locks() locks.Factory[StateID]
+	States() StateRepository
 }
 
-func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job tasker.Task) tasker.Task {
-	locker := s.LockerFactory.LockerFor(jobid)
+type StateRepository interface {
+	crud.Creator[State]
+	crud.Updater[State]
+	crud.ByIDDeleter[StateID]
+	crud.ByIDFinder[State, StateID]
+}
+
+func (s Scheduler) WithSchedule(id StateID, interval tasker.Interval, job tasker.Task) tasker.Task {
+	locker := s.Repository.Locks().LockerFor(id)
 
 	next := func(ctx context.Context) (_ time.Duration, rErr error) {
 		ctx, err := locker.Lock(ctx)
@@ -25,16 +34,16 @@ func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job task
 		}
 		defer func() { rErr = errorkit.Merge(rErr, locker.Unlock(ctx)) }()
 
-		state, found, err := s.Repository.FindByID(ctx, jobid)
+		state, found, err := s.Repository.States().FindByID(ctx, id)
 		if err != nil {
 			return 0, err
 		}
 		if !found {
 			state = State{
-				ID:        jobid,
+				ID:        id,
 				Timestamp: time.Time{}.UTC(),
 			}
-			if err := s.Repository.Create(ctx, &state); err != nil {
+			if err := s.Repository.States().Create(ctx, &state); err != nil {
 				return 0, err
 			}
 		}
@@ -47,7 +56,7 @@ func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job task
 		}
 
 		state.Timestamp = clock.TimeNow().UTC()
-		return interval.UntilNext(state.Timestamp), s.Repository.Update(ctx, &state)
+		return interval.UntilNext(state.Timestamp), s.Repository.States().Update(ctx, &state)
 	}
 
 	return func(ctx context.Context) error {
@@ -68,13 +77,8 @@ func (s Scheduler) WithSchedule(jobid string, interval tasker.Interval, job task
 }
 
 type State struct {
-	ID        string `ext:"id"`
+	ID        StateID `ext:"id"`
 	Timestamp time.Time
 }
 
-type StateRepository interface {
-	crud.Creator[State]
-	crud.Updater[State]
-	crud.ByIDDeleter[string]
-	crud.ByIDFinder[State, string]
-}
+type StateID string

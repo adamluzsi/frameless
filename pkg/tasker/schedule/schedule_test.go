@@ -2,33 +2,21 @@ package schedule_test
 
 import (
 	"context"
-	"database/sql"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/frameless/ports/locks"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/let"
 	"log"
-	"os"
 	"testing"
 	"time"
 )
 
 func ExampleScheduler_WithSchedule() {
-	db, err := sql.Open("driverName", os.Getenv("DATABASE_URL"))
-	if err != nil {
-		logger.Fatal(nil, "error during postgres db opening", logger.ErrField(err))
-		os.Exit(1)
-	}
-	_ = db
-
 	scheduler := schedule.Scheduler{
-		LockerFactory: nil, // &postgresql.LockerFactory[string]{DB: db},
-		Repository:    nil, // &postgresql.TaskerScheduleStateRepository{DB: db},
+		Repository: nil, // &postgresql.TaskerScheduleRepository{CM: cm},
 	}
 
 	task := scheduler.WithSchedule("db maintenance", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
@@ -47,24 +35,19 @@ func TestScheduler(t *testing.T) {
 	s.HasSideEffect()
 
 	var (
-		lockerFactory = testcase.Let(s, func(t *testcase.T) locks.Factory[string] {
-			return memory.NewLockerFactory[string]()
-		})
-		repository = testcase.Let(s, func(t *testcase.T) schedule.StateRepository {
-			m := memory.NewMemory()
-			return memory.NewRepository[schedule.State, string](m)
+		repository = testcase.Let(s, func(t *testcase.T) schedule.Repository {
+			return &memory.TaskerScheduleRepository{}
 		})
 	)
 	subject := testcase.Let(s, func(t *testcase.T) schedule.Scheduler {
 		return schedule.Scheduler{
-			LockerFactory: lockerFactory.Get(t),
-			Repository:    repository.Get(t),
+			Repository: repository.Get(t),
 		}
 	})
 
 	s.Describe(".WithSchedule", func(s *testcase.Spec) {
 		var (
-			jobID    = let.String(s)
+			jobID    = let.As[schedule.StateID](let.String(s))
 			interval = let.As[time.Duration](let.IntB(s, int(time.Hour), 24*int(time.Hour)))
 
 			ran = testcase.LetValue[int](s, 0)

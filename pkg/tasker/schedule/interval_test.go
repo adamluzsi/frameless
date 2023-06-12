@@ -27,6 +27,13 @@ func TestInterval_smoke(t *testing.T) {
 		"then time elapsed since the last occurrence is returned")
 }
 
+func TestEvery_smoke(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	dur := time.Duration(rnd.IntB(int(time.Second), int(time.Hour)))
+	interval := schedule.Every(dur)
+	assert.Equal[schedule.Interval](t, schedule.Interval(dur), interval)
+}
+
 func TestMonthly_smoke(t *testing.T) {
 	var (
 		//now  = time.Date(2000, 1, 1, 12, 00, 0, 0, time.UTC).UTC()
@@ -98,7 +105,7 @@ func TestDaily_smoke(t *testing.T) {
 		"when we skipped all the occurrence in the past year")
 
 	expUntilNext := willOccureNextAt.Sub(now)
-	
+
 	assert.Equal(t, expUntilNext, interval.UntilNext(time.Time{}),
 		"when lastRunAt is zero, then we receive the time it takes until the next occasion")
 

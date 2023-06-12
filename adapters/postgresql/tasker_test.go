@@ -12,10 +12,10 @@ import (
 
 func TestTaskerScheduleStateRepository(t *testing.T) {
 	cm := GetConnectionManager(t)
-	schedulecontracts.StateRepository(func(tb testing.TB) schedulecontracts.StateRepositorySubject {
+	schedulecontracts.stateRepository(func(tb testing.TB) schedulecontracts.stateRepositorySubject {
 		repo := &postgresql.TaskerScheduleStateRepository{CM: cm}
 		assert.NoError(tb, repo.Migrate(context.Background()))
-		return schedulecontracts.StateRepositorySubject{
+		return schedulecontracts.stateRepositorySubject{
 			StateRepository: repo,
 			MakeContext:     context.Background,
 			MakeScheduleState: func() schedule.State {
