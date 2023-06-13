@@ -17,14 +17,14 @@ import (
 func main() {
 	ctx := context.Background()
 
-	cm, err := postgresql.NewConnectionManagerWithDSN(os.Getenv("DATABASE_URL"))
+	cm, err := postgresql.NewConnectionWithDSN(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		logger.Error(ctx, err.Error())
 	}
 
 	q := postgresql.Queue[MyDomainEventEntity, MyDomainEventEntityPGQueueJSONDTO]{
 		Name:              "my_domain_event",
-		ConnectionManager: cm,
+		Connection: cm,
 		Mapping:           MappingForMyDomainEventEntity{},
 	}
 

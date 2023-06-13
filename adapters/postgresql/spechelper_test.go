@@ -5,6 +5,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/spechelper/testent"
 	"github.com/adamluzsi/testcase/random"
+	"sync"
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
@@ -14,40 +15,40 @@ import (
 )
 
 func NewTestEntityRepository(tb testing.TB) *postgresql.Repository[spechelper.TestEntity, string] {
-	cm := GetConnectionManager(tb)
+	cm := GetConnection(tb)
 	spechelper.MigrateTestEntity(tb, cm)
 	return &postgresql.Repository[spechelper.TestEntity, string]{
-		Mapping: spechelper.TestEntityMapping(),
-		CM:      cm,
+		Mapping:    spechelper.TestEntityMapping(),
+		Connection: cm,
 	}
 }
 
-var CM postgresql.ConnectionManager
+var (
+	Connection postgresql.Connection
+	mutexConnection sync.Mutex
+)
 
-func GetConnectionManager(tb testing.TB) postgresql.ConnectionManager {
-	if CM != nil {
-		return CM
+func GetConnection(tb testing.TB) postgresql.Connection {
+	mutexConnection.Lock()
+	defer mutexConnection.Unlock()
+	if Connection != nil {
+		return Connection
 	}
-	cm, err := postgresql.NewConnectionManager(spechelper.DatabaseDSN(tb))
+	cm, err := postgresql.Connect(spechelper.DatabaseDSN(tb))
 	assert.NoError(tb, err)
 	assert.NotNil(tb, cm)
-	CM = cm
+	Connection = cm
 	return cm
 }
 
-func MigrateFoo(tb testing.TB, cm postgresql.ConnectionManager) {
+func MigrateFoo(tb testing.TB, c postgresql.Connection) {
 	ctx := context.Background()
-	c, err := cm.Connection(ctx)
-	assert.Nil(tb, err)
-	_, err = c.ExecContext(ctx, FooMigrateDOWN)
+	_, err := c.ExecContext(ctx, FooMigrateDOWN)
 	assert.Nil(tb, err)
 	_, err = c.ExecContext(ctx, FooMigrateUP)
 	assert.Nil(tb, err)
-
 	tb.Cleanup(func() {
-		client, err := cm.Connection(ctx)
-		assert.Nil(tb, err)
-		_, err = client.ExecContext(ctx, FooMigrateDOWN)
+		_, err := c.ExecContext(ctx, FooMigrateDOWN)
 		assert.Nil(tb, err)
 	})
 }

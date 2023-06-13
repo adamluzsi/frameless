@@ -2,4 +2,4 @@ module github.com/adamluzsi/frameless
 
 go 1.18
 
-require github.com/adamluzsi/testcase v0.137.0
+require github.com/adamluzsi/testcase v0.139.1

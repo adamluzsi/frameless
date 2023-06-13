@@ -19,12 +19,6 @@ type TestEntity struct {
 	Baz string
 }
 
-func MakeTestEntity(tb testing.TB) TestEntity {
-	te := tb.(*testcase.T).Random.Make(TestEntity{}).(TestEntity)
-	te.ID = ""
-	return te
-}
-
 func MakeTestEntityFunc(tb testing.TB) func() TestEntity {
 	return func() TestEntity {
 		te := tb.(*testcase.T).Random.Make(TestEntity{}).(TestEntity)
@@ -72,19 +66,15 @@ func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
 	}
 }
 
-func MigrateTestEntity(tb testing.TB, cm postgresql.ConnectionManager) {
+func MigrateTestEntity(tb testing.TB, cm postgresql.Connection) {
 	ctx := context.Background()
-	c, err := cm.Connection(ctx)
+	_, err := cm.ExecContext(ctx, testMigrateDOWN)
 	assert.Nil(tb, err)
-	_, err = c.ExecContext(ctx, testMigrateDOWN)
-	assert.Nil(tb, err)
-	_, err = c.ExecContext(ctx, testMigrateUP)
+	_, err = cm.ExecContext(ctx, testMigrateUP)
 	assert.Nil(tb, err)
 
 	tb.Cleanup(func() {
-		client, err := cm.Connection(ctx)
-		assert.Nil(tb, err)
-		_, err = client.ExecContext(ctx, testMigrateDOWN)
+		_, err := cm.ExecContext(ctx, testMigrateDOWN)
 		assert.Nil(tb, err)
 	})
 }

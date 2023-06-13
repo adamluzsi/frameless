@@ -15,18 +15,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"reflect"
+	"sync"
 )
 
-type ConnectionManager interface {
+// Connection represent an open connection.
+// Connection will respect the transaction state in the received context.Context.
+type Connection interface {
 	io.Closer
 	comproto.OnePhaseCommitProtocol
-	// Connection returns the current context's connection.
-	// This can be a *sql.DB or if we are within a transaction, then an *sql.Tx
-	Connection(ctx context.Context) (Connection, error)
-	Connection
-}
-
-type Connection interface {
 	ExecContext(ctx context.Context, query string, args ...interface{}) (Result, error)
 	QueryContext(ctx context.Context, query string, args ...interface{}) (Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...interface{}) Row
@@ -61,25 +57,18 @@ type Row interface {
 	Scan(dest ...any) error
 }
 
-func NewConnectionManager(dsn string) (ConnectionManager, error) {
-	conn, err := pgxpool.New(context.Background(), dsn)
+func Connect(dsn string) (Connection, error) {
+	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
 		return nil, err
 	}
-	return &connectionManager{C: conn}, nil
+	return &connectionManager{Pool: pool}, nil
 }
 
-// NewConnectionManagerWithDSN
-//
-// DEPRECATED: use NewConnectionManager instead
-func NewConnectionManagerWithDSN(dsn string) (ConnectionManager, error) {
-	return NewConnectionManager(dsn)
-}
-
-type connectionManager struct{ C *pgxpool.Pool }
+type connectionManager struct{ Pool *pgxpool.Pool }
 
 func (c *connectionManager) ExecContext(ctx context.Context, query string, args ...interface{}) (Result, error) {
-	connection, err := c.Connection(ctx)
+	connection, err := c.connection(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +76,7 @@ func (c *connectionManager) ExecContext(ctx context.Context, query string, args 
 }
 
 func (c *connectionManager) QueryContext(ctx context.Context, query string, args ...interface{}) (Rows, error) {
-	connection, err := c.Connection(ctx)
+	connection, err := c.connection(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +84,7 @@ func (c *connectionManager) QueryContext(ctx context.Context, query string, args
 }
 
 func (c *connectionManager) QueryRowContext(ctx context.Context, query string, args ...interface{}) Row {
-	connection, err := c.Connection(ctx)
+	connection, err := c.connection(ctx)
 	if err != nil {
 		var r sql.Row
 		srrv := reflect.ValueOf(&r)
@@ -106,30 +95,36 @@ func (c *connectionManager) QueryRowContext(ctx context.Context, query string, a
 }
 
 func (c *connectionManager) Close() error {
-	c.C.Close()
+	c.Pool.Close()
 	return nil
+}
+
+type conn interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (Result, error)
+	QueryContext(ctx context.Context, query string, args ...interface{}) (Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) Row
 }
 
 // Connection returns the current context's sql connection.
 // This can be a *sql.DB or if we within a transaction, then a *sql.Tx.
-func (c *connectionManager) Connection(ctx context.Context) (Connection, error) {
+func (c *connectionManager) connection(ctx context.Context) (conn, error) {
 	if tx, ok := c.lookupSqlTx(ctx); ok {
 		return tx, nil
 	}
 
-	client, err := c.getConnection(ctx)
+	pool, err := c.getPgxPool(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return pgxConnAdapter{C: client}, nil
+	return pgxConnAdapter{C: pool}, nil
 }
 
 type ctxCMTxKey struct{}
 
 type cmTx struct {
 	parent *cmTx
-	pgxConnAdapter
+	*pgxConnAdapter
 	tx   pgx.Tx
 	done bool
 }
@@ -142,7 +137,7 @@ func (c *connectionManager) BeginTx(ctx context.Context) (context.Context, error
 	}
 
 	if tx.parent == nil {
-		conn, err := c.getConnection(ctx)
+		conn, err := c.getPgxPool(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -151,7 +146,7 @@ func (c *connectionManager) BeginTx(ctx context.Context) (context.Context, error
 			return nil, err
 		}
 		tx.tx = transaction
-		tx.pgxConnAdapter = pgxConnAdapter{C: transaction}
+		tx.pgxConnAdapter = &pgxConnAdapter{C: transaction}
 	}
 
 	return context.WithValue(ctx, ctxCMTxKey{}, tx), nil
@@ -213,12 +208,21 @@ func (c *connectionManager) lookupSqlTx(ctx context.Context) (*cmTx, bool) {
 	}
 }
 
-func (c *connectionManager) getConnection(ctx context.Context) (_ *pgxpool.Pool, rErr error) {
+// mutexPing used to guard the Ping pgxpool.Pool Ping call from concurrent access.
+// For some reason it yields a race condition.
+var mutexPing sync.Mutex
+
+func (c *connectionManager) getPgxPool(ctx context.Context) (_ *pgxpool.Pool, rErr error) {
 	defer runtimekit.Recover(&rErr)
 	var retryCount = 42
 
 ping:
-	err := c.C.Ping(ctx)
+
+	err := func() error {
+		mutexPing.Lock()
+		defer mutexPing.Unlock()
+		return c.Pool.Ping(ctx)
+	}()
 
 	if errors.Is(err, driver.ErrBadConn) && 0 < retryCount {
 		// it could be a temporary error, recovery is still possible
@@ -230,7 +234,7 @@ ping:
 		return nil, err
 	}
 
-	return c.C, nil
+	return c.Pool, nil
 }
 
 type pgxConnAdapter struct{ C pgxConn }

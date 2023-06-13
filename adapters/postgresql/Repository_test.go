@@ -21,12 +21,12 @@ import (
 func TestRepository(t *testing.T) {
 	mapping := spechelper.TestEntityMapping()
 
-	cm, err := postgresql.NewConnectionManager(spechelper.DatabaseURL(t))
+	cm, err := postgresql.Connect(spechelper.DatabaseURL(t))
 	assert.NoError(t, err)
 
 	subject := &postgresql.Repository[spechelper.TestEntity, string]{
-		CM:      cm,
-		Mapping: mapping,
+		Connection: cm,
+		Mapping:    mapping,
 	}
 
 	spechelper.MigrateTestEntity(t, cm)
@@ -66,7 +66,7 @@ func TestRepository(t *testing.T) {
 		crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
 			return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
 				Resource:      subject,
-				CommitManager: subject.CM,
+				CommitManager: subject.Connection,
 				MakeContext:   context.Background,
 				MakeEntity:    spechelper.MakeTestEntityFunc(tb),
 			}
@@ -75,15 +75,15 @@ func TestRepository(t *testing.T) {
 }
 
 func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
-	cm := GetConnectionManager(t)
+	cm := GetConnection(t)
 	spechelper.MigrateTestEntity(t, cm)
 
 	mapper := spechelper.TestEntityMapping()
 	mapper.Table = `public.` + mapper.Table
 
 	subject := postgresql.Repository[spechelper.TestEntity, string]{
-		Mapping: mapper,
-		CM:      cm,
+		Mapping:    mapper,
+		Connection: cm,
 	}
 
 	testcase.RunSuite(t, crudcontracts.Creator[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] {
@@ -98,13 +98,13 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 }
 
 func TestRepository_implementsCacheEntityRepository(t *testing.T) {
-	cm := GetConnectionManager(t)
+	cm := GetConnection(t)
 	spechelper.MigrateTestEntity(t, cm)
 
 	cachecontracts.EntityRepository[spechelper.TestEntity, string](func(tb testing.TB) cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string] {
 		repo := postgresql.Repository[spechelper.TestEntity, string]{
-			Mapping: spechelper.TestEntityMapping(),
-			CM:      cm,
+			Mapping:    spechelper.TestEntityMapping(),
+			Connection: cm,
 		}
 		return cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string]{
 			EntityRepository: repo,
@@ -117,27 +117,23 @@ func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 }
 
 func TestRepository_canImplementCacheHitRepository(t *testing.T) {
-	cm := GetConnectionManager(t)
+	c := GetConnection(t)
 
-	func(tb testing.TB, cm postgresql.ConnectionManager) {
+	func(tb testing.TB, cm postgresql.Connection) {
 		const testCacheHitMigrateUP = `CREATE TABLE "test_cache_hits" ( id TEXT PRIMARY KEY, ids TEXT[], ts TIMESTAMP WITH TIME ZONE );`
 		const testCacheHitMigrateDOWN = `DROP TABLE IF EXISTS "test_cache_hits";`
 
 		ctx := context.Background()
-		c, err := cm.Connection(ctx)
-		assert.Nil(tb, err)
-		_, err = c.ExecContext(ctx, testCacheHitMigrateDOWN)
+		_, err := c.ExecContext(ctx, testCacheHitMigrateDOWN)
 		assert.Nil(tb, err)
 		_, err = c.ExecContext(ctx, testCacheHitMigrateUP)
 		assert.Nil(tb, err)
 
 		tb.Cleanup(func() {
-			client, err := cm.Connection(ctx)
-			assert.Nil(tb, err)
-			_, err = client.ExecContext(ctx, testCacheHitMigrateDOWN)
+			_, err := c.ExecContext(ctx, testCacheHitMigrateDOWN)
 			assert.Nil(tb, err)
 		})
-	}(t, cm)
+	}(t, c)
 
 	hitRepo := postgresql.Repository[cache.Hit[string], cache.HitID]{
 		Mapping: postgresql.Mapper[cache.Hit[string], cache.HitID]{
@@ -156,13 +152,13 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 				return hit, nil
 			},
 		},
-		CM: cm,
+		Connection: c,
 	}
 
 	cachecontracts.HitRepository[string](func(tb testing.TB) cachecontracts.HitRepositorySubject[string] {
 		return cachecontracts.HitRepositorySubject[string]{
 			Resource:      hitRepo,
-			CommitManager: cm,
+			CommitManager: c,
 			MakeContext:   context.Background,
 			MakeHit: func() cache.Hit[string] {
 				t := tb.(*testcase.T)
@@ -180,10 +176,10 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 
 func TestRepository_comprotoOnePhaseCommitProtocol(t *testing.T) {
 	repo := &postgresql.Repository[testent.Foo, testent.FooID]{
-		CM:      GetConnectionManager(t),
-		Mapping: FooMapping,
+		Connection: GetConnection(t),
+		Mapping:    FooMapping,
 	}
-	MigrateFoo(t, repo.CM)
+	MigrateFoo(t, repo.Connection)
 
 	ctx := context.Background()
 	tx, err := repo.BeginTx(ctx)
@@ -238,7 +234,7 @@ func Test_pgxTx(t *testing.T) {
 }
 
 func Test_pgxQuery(t *testing.T) {
-	MigrateFoo(t, GetConnectionManager(t))
+	MigrateFoo(t, GetConnection(t))
 
 	var (
 		ctx = context.Background()

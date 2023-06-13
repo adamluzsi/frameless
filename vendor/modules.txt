@@ -1,7 +1,8 @@
-# github.com/adamluzsi/testcase v0.137.0
+# github.com/adamluzsi/testcase v0.139.1
 ## explicit; go 1.18
 github.com/adamluzsi/testcase
 github.com/adamluzsi/testcase/assert
+github.com/adamluzsi/testcase/assert/internal
 github.com/adamluzsi/testcase/clock
 github.com/adamluzsi/testcase/clock/internal
 github.com/adamluzsi/testcase/clock/timecop

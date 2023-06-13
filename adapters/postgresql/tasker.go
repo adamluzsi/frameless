@@ -9,7 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/ports/migration"
 )
 
-type TaskerScheduleRepository struct{ CM ConnectionManager }
+type TaskerScheduleRepository struct{ Connection Connection }
 
 func (r TaskerScheduleRepository) Migrate(ctx context.Context) error {
 	if m, ok := r.States().(migration.Migratable); ok {
@@ -26,11 +26,11 @@ func (r TaskerScheduleRepository) Migrate(ctx context.Context) error {
 }
 
 func (r TaskerScheduleRepository) Locks() locks.Factory[schedule.StateID] {
-	return LockerFactory[schedule.StateID]{CM: r.CM}
+	return LockerFactory[schedule.StateID]{Connection: r.Connection}
 }
 
 func (r TaskerScheduleRepository) States() schedule.StateRepository {
-	return TaskerScheduleStateRepository{CM: r.CM}
+	return TaskerScheduleStateRepository{Connection: r.Connection}
 }
 
 var migratorConfigTaskerScheduleStateRepository = MigratorConfig{
@@ -43,12 +43,12 @@ var migratorConfigTaskerScheduleStateRepository = MigratorConfig{
 	},
 }
 
-type TaskerScheduleStateRepository struct{ CM ConnectionManager }
+type TaskerScheduleStateRepository struct{ Connection Connection }
 
 func (r TaskerScheduleStateRepository) repository() Repository[schedule.State, schedule.StateID] {
 	return Repository[schedule.State, schedule.StateID]{
-		Mapping: taskerScheduleStateRepositoryMapping,
-		CM:      r.CM,
+		Mapping:    taskerScheduleStateRepositoryMapping,
+		Connection: r.Connection,
 	}
 }
 
@@ -75,8 +75,8 @@ var taskerScheduleStateRepositoryMapping = Mapper[schedule.State, schedule.State
 
 func (r TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
 	return Migrator{
-		CM:     r.CM,
-		Config: migratorConfigTaskerScheduleStateRepository,
+		Connection: r.Connection,
+		Config:     migratorConfigTaskerScheduleStateRepository,
 	}.Up(ctx)
 }
 

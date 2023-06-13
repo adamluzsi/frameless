@@ -6,43 +6,29 @@ import (
 	"github.com/adamluzsi/frameless/adapters/postgresql"
 )
 
-func ExampleConnectionManager() {
-	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
+func ExampleConnect() {
+	c, err := postgresql.Connect(`dsn`)
 	if err != nil {
 		panic(err)
 	}
-
-	defer connectionManager.Close()
-
-	ctx := context.Background()
-
-	c, err := connectionManager.Connection(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = c.ExecContext(ctx, `SELECT VERSION()`)
+	defer c.Close()
+	
+	_, err = c.ExecContext(context.Background(), `SELECT VERSION()`)
 	if err != nil {
 		panic(err)
 	}
 }
 
-func ExampleConnectionManager_BeginTx() {
-	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
+func ExampleConnection_BeginTx() {
+	c, err := postgresql.Connect(`dsn`)
 	if err != nil {
 		panic(err)
 	}
-
-	defer connectionManager.Close()
+	defer c.Close()
 
 	ctx := context.Background()
 
-	tx, err := connectionManager.BeginTx(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	c, err := connectionManager.Connection(tx)
+	tx, err := c.BeginTx(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -52,67 +38,56 @@ func ExampleConnectionManager_BeginTx() {
 		panic(err)
 	}
 
-	if err := connectionManager.CommitTx(tx); err != nil {
+	if err := c.CommitTx(tx); err != nil {
 		panic(err)
 	}
 }
 
-func ExampleConnectionManager_CommitTx() {
-	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
+func ExampleConnection_CommitTx() {
+	c, err := postgresql.Connect(`dsn`)
 	if err != nil {
 		panic(err)
 	}
-
-	defer connectionManager.Close()
+	defer c.Close()
 
 	ctx := context.Background()
 
-	tx, err := connectionManager.BeginTx(ctx)
+	tx, err := c.BeginTx(ctx)
 	if err != nil {
 		panic(err)
 	}
-
-	c, err := connectionManager.Connection(tx)
-	if err != nil {
-		panic(err)
-	}
-
+	
 	_, err = c.ExecContext(tx, `SELECT VERSION()`)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := connectionManager.CommitTx(tx); err != nil {
+	if err := c.CommitTx(tx); err != nil {
 		panic(err)
 	}
 }
 
-func ExampleConnectionManager_RollbackTx() {
-	connectionManager, err := postgresql.NewConnectionManager(`dsn`)
+func ExampleConnection_RollbackTx() {
+	c, err := postgresql.Connect(`dsn`)
 	if err != nil {
 		panic(err)
 	}
 
-	defer connectionManager.Close()
+	defer c.Close()
 
 	ctx := context.Background()
 
-	tx, err := connectionManager.BeginTx(ctx)
+	tx, err := c.BeginTx(ctx)
 	if err != nil {
 		panic(err)
 	}
-
-	c, err := connectionManager.Connection(tx)
-	if err != nil {
-		panic(err)
-	}
-
+	
 	_, err = c.ExecContext(tx, `DROP TABLE xy`)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := connectionManager.RollbackTx(tx); err != nil {
+	if err := c.RollbackTx(tx); err != nil {
 		panic(err)
 	}
 }

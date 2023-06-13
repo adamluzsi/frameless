@@ -9,8 +9,8 @@ import (
 )
 
 type Migrator struct {
-	CM     ConnectionManager
-	Config MigratorConfig
+	Connection Connection
+	Config     MigratorConfig
 }
 
 type MigratorConfig struct {
@@ -19,8 +19,8 @@ type MigratorConfig struct {
 }
 
 type MigratorStep interface {
-	MigrateUp(ConnectionManager, context.Context) error
-	MigrateDown(ConnectionManager, context.Context) error
+	MigrateUp(Connection, context.Context) error
+	MigrateDown(Connection, context.Context) error
 }
 
 func (m Migrator) Up(ctx context.Context) (rErr error) {
@@ -32,17 +32,17 @@ func (m Migrator) Up(ctx context.Context) (rErr error) {
 		return err
 	}
 
-	schemaCTX, err := m.CM.BeginTx(ctx) // &sql.TxOptions{Isolation: sql.LevelSerializable}
+	schemaCTX, err := m.Connection.BeginTx(ctx) // &sql.TxOptions{Isolation: sql.LevelSerializable}
 	if err != nil {
 		return err
 	}
-	defer comproto.FinishOnePhaseCommit(&rErr, m.CM, schemaCTX)
+	defer comproto.FinishOnePhaseCommit(&rErr, m.Connection, schemaCTX)
 
-	stepCTX, err := m.CM.BeginTx(ctx)
+	stepCTX, err := m.Connection.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer comproto.FinishOnePhaseCommit(&rErr, m.CM, stepCTX)
+	defer comproto.FinishOnePhaseCommit(&rErr, m.Connection, stepCTX)
 
 	for version, step := range m.Config.Steps {
 		if err := m.upNamespace(schemaCTX, stepCTX, m.Config.Namespace, version, step); err != nil {
@@ -67,12 +67,12 @@ VALUES ($1, $2, $3)
 
 func (m Migrator) upNamespace(schemaTx, stepTx context.Context, namespace string, version int, step MigratorStep) error {
 	var dirty sql.NullBool
-	err := m.CM.QueryRowContext(schemaTx, queryMigratorGetStepState, namespace, version).Scan(&dirty)
+	err := m.Connection.QueryRowContext(schemaTx, queryMigratorGetStepState, namespace, version).Scan(&dirty)
 	if errors.Is(err, errNoRows) {
-		if err := step.MigrateUp(m.CM, stepTx); err != nil {
+		if err := step.MigrateUp(m.Connection, stepTx); err != nil {
 			return err
 		}
-		_, err := m.CM.ExecContext(schemaTx, queryMigratorCreateStepState, namespace, version, false)
+		_, err := m.Connection.ExecContext(schemaTx, queryMigratorCreateStepState, namespace, version, false)
 		return err
 	}
 	if err != nil {
@@ -96,19 +96,19 @@ CREATE TABLE IF NOT EXISTS frameless_schema_migrations (
 `
 
 func (m Migrator) ensureMigrationTable(ctx context.Context) error {
-	_, err := m.CM.ExecContext(ctx, queryEnsureSchemaMigrationsTable)
+	_, err := m.Connection.ExecContext(ctx, queryEnsureSchemaMigrationsTable)
 	return err
 }
 
 type MigrationStep struct {
-	Up      func(cm ConnectionManager, ctx context.Context) error
+	Up      func(cm Connection, ctx context.Context) error
 	UpQuery string
 
-	Down      func(cm ConnectionManager, ctx context.Context) error
+	Down      func(cm Connection, ctx context.Context) error
 	DownQuery string
 }
 
-func (m MigrationStep) MigrateUp(cm ConnectionManager, ctx context.Context) error {
+func (m MigrationStep) MigrateUp(cm Connection, ctx context.Context) error {
 	if m.Up != nil {
 		return m.Up(cm, ctx)
 	}
@@ -119,7 +119,7 @@ func (m MigrationStep) MigrateUp(cm ConnectionManager, ctx context.Context) erro
 	return nil
 }
 
-func (m MigrationStep) MigrateDown(cm ConnectionManager, ctx context.Context) error {
+func (m MigrationStep) MigrateDown(cm Connection, ctx context.Context) error {
 	if m.Down != nil {
 		return m.Down(cm, ctx)
 	}

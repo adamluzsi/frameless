@@ -109,7 +109,7 @@ func (a Asserter) Nil(v any, msg ...any) {
 
 func (a Asserter) NotNil(v any, msg ...any) {
 	a.TB.Helper()
-	if !a.try(func(a Asserter) { a.Nil(v) }) {
+	if !reflects.IsNil(v) {
 		return
 	}
 	a.fn(fmterror.Message{
@@ -152,9 +152,12 @@ func (a Asserter) NotPanic(blk func(), msg ...any) {
 }
 
 // Equal allows you to match if two entity is equal.
-// if entities are implementing IsEqual function, then it will be used to check equality between each other.
-//   - IsEqual(oth T) bool
-//   - IsEqual(oth T) (bool, error)
+//
+// if entities are implementing IsEqual/Equal function, then it will be used to check equality between each other.
+//   - value.IsEqual(oth T) bool
+//   - value.IsEqual(oth T) (bool, error)
+//   - value.Equal(oth T) bool
+//   - value.Equal(oth T) (bool, error)
 func (a Asserter) Equal(expected, actually any, msg ...any) {
 	a.TB.Helper()
 	const method = "Equal"
@@ -242,50 +245,7 @@ func (a Asserter) checkTypeEquality(method string, expected any, actually any, m
 }
 
 func (a Asserter) eq(exp, act any) bool {
-	a.TB.Helper()
-	if isEqual, ok := a.tryIsEqual(exp, act); ok {
-		return isEqual
-	}
-
-	return reflect.DeepEqual(exp, act)
-}
-
-func (a Asserter) tryIsEqual(exp, act any) (isEqual bool, ok bool) {
-	a.TB.Helper()
-	defer func() { recover() }()
-	expRV := reflect.ValueOf(exp)
-	actRV := reflect.ValueOf(act)
-
-	if expRV.Type() != actRV.Type() {
-		return false, false
-	}
-
-	method := expRV.MethodByName("IsEqual")
-	methodType := method.Type()
-
-	if methodType.NumIn() != 1 {
-		return false, false
-	}
-	if numOut := methodType.NumOut(); !(numOut == 1 || numOut == 2) {
-		return false, false
-	}
-	if methodType.In(0) != actRV.Type() {
-		return false, false
-	}
-
-	res := method.Call([]reflect.Value{actRV})
-
-	switch {
-	case methodType.NumOut() == 1: // IsEqual(T) (bool)
-		return res[0].Bool(), true
-
-	case methodType.NumOut() == 2: // IsEqual(T) (bool, error)
-		Must(a.TB).Nil(res[1].Interface())
-		return res[0].Bool(), true
-
-	default:
-		return false, false
-	}
+	return eq(a.TB, exp, act)
 }
 
 func (a Asserter) Contain(haystack, needle any, msg ...any) {
@@ -717,12 +677,12 @@ func (a Asserter) containExactlySlice(exp reflect.Value, act reflect.Value, msg 
 			Message: msg,
 			Values: []fmterror.Value{
 				{
-					Label: "actual:",
-					Value: act.Interface(),
+					Label: "expected:",
+					Value: exp.Len(),
 				},
 				{
-					Label: "value",
-					Value: exp.Interface(),
+					Label: "actual:",
+					Value: act.Len(),
 				},
 			},
 		})

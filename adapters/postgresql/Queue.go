@@ -15,9 +15,9 @@ import (
 )
 
 type Queue[Entity, JSONDTO any] struct {
-	Name    string
-	CM      ConnectionManager
-	Mapping QueueMapping[Entity, JSONDTO]
+	Name       string
+	Connection Connection
+	Mapping    QueueMapping[Entity, JSONDTO]
 
 	// EmptyQueueBreakTime is the time.Duration that the queue waits when the queue is empty for the given queue Name.
 	EmptyQueueBreakTime time.Duration
@@ -34,11 +34,7 @@ type QueueMapping[ENT, DTO any] interface {
 }
 
 func (q Queue[Entity, JSONDTO]) Purge(ctx context.Context) error {
-	connection, err := q.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
-	_, err = connection.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", queueTableName))
+	_, err := q.Connection.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s", queueTableName))
 	return err
 }
 
@@ -77,18 +73,13 @@ func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error
 		args = append(args, id, q.Name, data, clock.TimeNow().UTC())
 	}
 
-	connection, err := q.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = connection.ExecContext(ctx, query, args...)
+	_, err := q.Connection.ExecContext(ctx, query, args...)
 
 	if q.Blocking {
-		for { 
+		for {
 			checkQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE id = ANY($1)", queueTableName)
 			var count int
-			if err := connection.QueryRowContext(ctx, checkQuery, &ids).Scan(&count); err != nil {
+			if err := q.Connection.QueryRowContext(ctx, checkQuery, &ids).Scan(&count); err != nil {
 				return err
 			}
 			if count == 0 {
@@ -121,8 +112,8 @@ var queueMigratorConfig = MigratorConfig{
 
 func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
 	return Migrator{
-		CM:     q.CM,
-		Config: queueMigratorConfig,
+		Connection: q.Connection,
+		Config:     queueMigratorConfig,
 	}.Up(ctx)
 }
 
@@ -194,18 +185,8 @@ fetch:
 		qs.value = nil
 	}
 
-	tx, err := qs.Queue.CM.BeginTx(qs.CTX)
+	tx, err := qs.Queue.Connection.BeginTx(qs.CTX)
 	if err != nil {
-		if errors.Is(err, qs.CTX.Err()) {
-			return false
-		}
-		qs.err = err
-		return false
-	}
-
-	connection, err := qs.Queue.CM.Connection(tx)
-	if err != nil {
-		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
 		if errors.Is(err, qs.CTX.Err()) {
 			return false
 		}
@@ -219,12 +200,12 @@ fetch:
 	}
 
 	var (
-		row  = connection.QueryRowContext(tx, fmt.Sprintf(queryQueuePopMessage, ordering), qs.Queue.Name)
+		row  = qs.Queue.Connection.QueryRowContext(tx, fmt.Sprintf(queryQueuePopMessage, ordering), qs.Queue.Name)
 		id   string
 		data []byte
 	)
 	if err := row.Scan(&id, &data); err != nil {
-		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
+		_ = qs.Queue.Connection.RollbackTx(contextkit.Detach(tx))
 		if errors.Is(err, qs.CTX.Err()) {
 			return false
 		}
@@ -243,14 +224,14 @@ fetch:
 
 	var dto JSONDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
-		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
+		_ = qs.Queue.Connection.RollbackTx(contextkit.Detach(tx))
 		qs.err = err
 		return false
 	}
 
 	ent, err := qs.Queue.Mapping.ToEnt(dto)
 	if err != nil {
-		_ = qs.Queue.CM.RollbackTx(contextkit.Detach(tx))
+		_ = qs.Queue.Connection.RollbackTx(contextkit.Detach(tx))
 		qs.err = err
 		return false
 	}
@@ -285,14 +266,14 @@ func (qm queueMessage[Entity, JSONDTO]) ACK() error {
 	// when context cancellation happens,
 	// the already received message should be still ACK able
 	// Thus detaching from cancellation is acceptable
-	return qm.q.CM.CommitTx(contextkit.Detach(qm.tx))
+	return qm.q.Connection.CommitTx(contextkit.Detach(qm.tx))
 }
 
 func (qm queueMessage[Entity, JSONDTO]) NACK() error {
 	// when context cancellation happens,
 	// the already received message should be still ACK able
 	// Thus detaching from cancellation is acceptable
-	return qm.q.CM.RollbackTx(contextkit.Detach(qm.tx))
+	return qm.q.Connection.RollbackTx(contextkit.Detach(qm.tx))
 }
 
 func (qm queueMessage[Entity, JSONDTO]) Data() Entity {

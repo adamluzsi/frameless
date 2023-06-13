@@ -22,10 +22,10 @@ var _ migration.Migratable = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{}
 
 func TestQueue(t *testing.T) {
 	const queueName = "test_entity"
-	cm := GetConnectionManager(t)
+	c := GetConnection(t)
 
 	assert.NoError(t,
-		postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{Name: queueName, CM: cm}.
+		postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{Name: queueName, Connection: c}.
 			Migrate(sh.MakeContext(t)))
 
 	mapping := sh.TestEntityJSONMapping{}
@@ -33,9 +33,9 @@ func TestQueue(t *testing.T) {
 	testcase.RunSuite(t,
 		pubsubcontracts.FIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.FIFOSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:    queueName,
-				CM:      cm,
-				Mapping: mapping,
+				Name:       queueName,
+				Connection: c,
+				Mapping:    mapping,
 			}
 			return pubsubcontracts.FIFOSubject[sh.TestEntity]{
 				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
@@ -48,9 +48,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.LIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.LIFOSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:    queueName,
-				CM:      cm,
-				Mapping: mapping,
+				Name:       queueName,
+				Connection: c,
+				Mapping:    mapping,
 
 				LIFO: true,
 			}
@@ -65,9 +65,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.Buffered[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BufferedSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:    queueName,
-				CM:      cm,
-				Mapping: mapping,
+				Name:       queueName,
+				Connection: c,
+				Mapping:    mapping,
 			}
 			return pubsubcontracts.BufferedSubject[sh.TestEntity]{
 				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
@@ -80,9 +80,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.Blocking[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BlockingSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:    queueName,
-				CM:      cm,
-				Mapping: mapping,
+				Name:       queueName,
+				Connection: c,
+				Mapping:    mapping,
 		
 				Blocking: true,
 			}
@@ -97,9 +97,9 @@ func TestQueue(t *testing.T) {
 		}),
 		pubsubcontracts.Queue[sh.TestEntity](func(tb testing.TB) pubsubcontracts.QueueSubject[sh.TestEntity] {
 			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-				Name:    queueName,
-				CM:      cm,
-				Mapping: mapping,
+				Name:       queueName,
+				Connection: c,
+				Mapping:    mapping,
 			}
 			return pubsubcontracts.QueueSubject[sh.TestEntity]{
 				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
@@ -125,7 +125,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 
 	q := postgresql.Queue[testent.Foo, testent.FooDTO]{
 		Name:                queueName,
-		CM:                  GetConnectionManager(t),
+		Connection:          GetConnection(t),
 		Mapping:             testent.FooJSONMapping{},
 		EmptyQueueBreakTime: time.Hour,
 	}
@@ -181,12 +181,12 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 
 func TestQueue_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
-	cm := GetConnectionManager(t)
+	cm := GetConnection(t)
 	t.Run("single", func(t *testing.T) {
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
-			Name:    "42",
-			CM:      cm,
-			Mapping: testent.FooJSONMapping{},
+			Name:       "42",
+			Connection: cm,
+			Mapping:    testent.FooJSONMapping{},
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -205,18 +205,18 @@ func TestQueue_smoke(t *testing.T) {
 		})
 	})
 	t.Run("multi", func(t *testing.T) {
-		cm := GetConnectionManager(t)
+		cm := GetConnection(t)
 
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
-			Name:    "42",
-			CM:      cm,
-			Mapping: testent.FooJSONMapping{},
+			Name:       "42",
+			Connection: cm,
+			Mapping:    testent.FooJSONMapping{},
 		}
 
 		q2 := postgresql.Queue[testent.Foo, testent.FooDTO]{
-			Name:    "24",
-			CM:      cm,
-			Mapping: testent.FooJSONMapping{},
+			Name:       "24",
+			Connection: cm,
+			Mapping:    testent.FooJSONMapping{},
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -262,11 +262,11 @@ func BenchmarkQueue(b *testing.B) {
 	var (
 		ctx = sh.MakeContext(b)
 		rnd = random.New(random.CryptoSeed{})
-		cm  = GetConnectionManager(b)
+		cm  = GetConnection(b)
 		q   = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
-			Name:    queueName,
-			CM:      cm,
-			Mapping: sh.TestEntityJSONMapping{},
+			Name:       queueName,
+			Connection: cm,
+			Mapping:    sh.TestEntityJSONMapping{},
 		}
 	)
 

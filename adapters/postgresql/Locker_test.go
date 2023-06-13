@@ -16,14 +16,14 @@ import (
 )
 
 func ExampleLocker() {
-	cm, err := postgresql.NewConnectionManager(os.Getenv("DATABASE_URL"))
+	cm, err := postgresql.Connect(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		panic(err)
 	}
 
 	l := postgresql.Locker{
-		Name: "my-lock",
-		CM:   cm,
+		Name:       "my-lock",
+		Connection: cm,
 	}
 
 	ctx, err := l.Lock(context.Background())
@@ -39,13 +39,13 @@ func ExampleLocker() {
 var _ migration.Migratable = postgresql.Locker{}
 
 func TestLocker(t *testing.T) {
-	cm := GetConnectionManager(t)
+	cm := GetConnection(t)
 
 	lockscontracts.Locker(func(tb testing.TB) lockscontracts.LockerSubject {
 		t := testcase.ToT(&tb)
 		l := postgresql.Locker{
-			Name: t.Random.StringNC(5, random.CharsetAlpha()),
-			CM:   cm,
+			Name:       t.Random.StringNC(5, random.CharsetAlpha()),
+			Connection: cm,
 		}
 		assert.NoError(tb, l.Migrate(context.Background()))
 		return lockscontracts.LockerSubject{
@@ -56,12 +56,12 @@ func TestLocker(t *testing.T) {
 }
 
 func ExampleLockerFactory() {
-	cm, err := postgresql.NewConnectionManager(os.Getenv("DATABASE_URL"))
+	cm, err := postgresql.Connect(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	lockerFactory := postgresql.LockerFactory[string]{CM: cm}
+	lockerFactory := postgresql.LockerFactory[string]{Connection: cm}
 	if err := lockerFactory.Migrate(context.Background()); err != nil {
 		log.Fatal(err)
 	}
@@ -81,10 +81,10 @@ func ExampleLockerFactory() {
 var _ migration.Migratable = postgresql.LockerFactory[int]{}
 
 func TestNewLockerFactory(t *testing.T) {
-	cm := GetConnectionManager(t)
+	cm := GetConnection(t)
 
 	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
-		lockerFactory := postgresql.LockerFactory[string]{CM: cm}
+		lockerFactory := postgresql.LockerFactory[string]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
 		return lockscontracts.FactorySubject[string]{
 			Factory:     lockerFactory,
@@ -94,7 +94,7 @@ func TestNewLockerFactory(t *testing.T) {
 	}).Test(t)
 
 	lockscontracts.Factory[int](func(tb testing.TB) lockscontracts.FactorySubject[int] {
-		lockerFactory := postgresql.LockerFactory[int]{CM: cm}
+		lockerFactory := postgresql.LockerFactory[int]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
 		return lockscontracts.FactorySubject[int]{
 			Factory:     lockerFactory,

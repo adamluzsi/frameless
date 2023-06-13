@@ -13,8 +13,8 @@ import (
 // Locker is safe to call from different application instances,
 // ensuring that only one of them can hold the lock concurrently.
 type Locker struct {
-	Name string
-	CM   ConnectionManager
+	Name       string
+	Connection Connection
 }
 
 const queryLock = `INSERT INTO frameless_locker_locks (name) VALUES ($1);`
@@ -28,17 +28,12 @@ func (l Locker) Lock(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}
 
-	ctx, err := l.CM.BeginTx(ctx)
+	ctx, err := l.Connection.BeginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	connection, err := l.CM.Connection(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = connection.ExecContext(ctx, queryLock, l.Name)
+	_, err = l.Connection.ExecContext(ctx, queryLock, l.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +57,7 @@ func (l Locker) Unlock(ctx context.Context) error {
 		return nil
 	}
 
-	if err := l.CM.RollbackTx(lck.ctx); err != nil {
+	if err := l.Connection.RollbackTx(lck.ctx); err != nil {
 		if driver.ErrBadConn == err && ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -98,7 +93,7 @@ var lockerMigrationConfig = MigratorConfig{
 }
 
 func (l Locker) Migrate(ctx context.Context) error {
-	return Migrator{CM: l.CM, Config: lockerMigrationConfig}.Up(ctx)
+	return Migrator{Connection: l.Connection, Config: lockerMigrationConfig}.Up(ctx)
 }
 
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
@@ -106,12 +101,12 @@ func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {
 	return v, ok
 }
 
-type LockerFactory[Key comparable] struct{ CM ConnectionManager }
+type LockerFactory[Key comparable] struct{ Connection Connection }
 
 func (lf LockerFactory[Key]) Migrate(ctx context.Context) error {
-	return Locker{CM: lf.CM}.Migrate(ctx)
+	return Locker{Connection: lf.Connection}.Migrate(ctx)
 }
 
 func (lf LockerFactory[Key]) LockerFor(key Key) locks.Locker {
-	return Locker{Name: fmt.Sprintf("%T:%v", key, key), CM: lf.CM}
+	return Locker{Name: fmt.Sprintf("%T:%v", key, key), Connection: lf.Connection}
 }

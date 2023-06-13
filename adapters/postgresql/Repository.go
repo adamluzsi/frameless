@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/adamluzsi/frameless/pkg/lazyload"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"github.com/adamluzsi/frameless/pkg/lazyload"
 	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/crud"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
 )
@@ -19,8 +19,8 @@ import (
 //
 // SRP: DBA
 type Repository[Entity, ID any] struct {
-	Mapping Mapping[Entity, ID]
-	CM      ConnectionManager
+	Mapping    Mapping[Entity, ID]
+	Connection Connection
 }
 
 func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
@@ -32,11 +32,6 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
-
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
 
 	if id, ok := extid.Lookup[ID](ptr); !ok {
 		// TODO: add serialize TX level here
@@ -66,8 +61,8 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 	if err != nil {
 		return err
 	}
-	
-	if _, err := c.ExecContext(ctx, query, args...); err != nil {
+
+	if _, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
 
@@ -75,14 +70,10 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 }
 
 func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return *new(Entity), false, err
-	}
-	
+
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
 
-	v, err := r.Mapping.Map(c.QueryRowContext(ctx, query, id))
+	v, err := r.Mapping.Map(r.Connection.QueryRowContext(ctx, query, id))
 	if errors.Is(err, errNoRows) {
 		return *new(Entity), false, nil
 	}
@@ -101,17 +92,12 @@ func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
-
 	var (
 		tableName = r.Mapping.TableRef()
 		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
 
-	if _, err := c.ExecContext(ctx, query); err != nil {
+	if _, err := r.Connection.ExecContext(ctx, query); err != nil {
 		return err
 	}
 
@@ -127,12 +113,7 @@ func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
-
-	result, err := c.ExecContext(ctx, query, id)
+	result, err := r.Connection.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
@@ -177,12 +158,7 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
-
-	if res, err := c.ExecContext(ctx, query, args...); err != nil {
+	if res, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
 		return err
 	} else {
 		if affected := res.RowsAffected(); affected == 0 {
@@ -196,12 +172,7 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 func (r Repository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
 	query := fmt.Sprintf(`SELECT %s FROM %s`, r.queryColumnList(), r.Mapping.TableRef())
 
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return iterators.Error[Entity](err)
-	}
-
-	rows, err := c.QueryContext(ctx, query)
+	rows, err := r.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
@@ -213,12 +184,7 @@ func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterat
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s = ANY($1)`,
 		r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
 
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return iterators.Error[Entity](err)
-	}
-	
-	rows, err := c.QueryContext(ctx, query, ids)
+	rows, err := r.Connection.QueryContext(ctx, query, ids)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
@@ -295,11 +261,11 @@ func (r Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rE
 		}
 	}
 
-	ctx, err := r.CM.BeginTx(ctx)
+	ctx, err := r.Connection.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer comproto.FinishOnePhaseCommit(&rErr, r.CM, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, r.Connection, ctx)
 	return errorkit.Merge(r.upsertWithID(ctx, ptrWithID...), r.upsertWithoutID(ctx, ptrWithoutID...))
 }
 
@@ -352,12 +318,7 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 		query += fmt.Sprintf("\t\t%s = EXCLUDED.%s%s\n", col, col, sep)
 	}
 
-	c, err := r.CM.Connection(ctx)
-	if err != nil {
-		return err
-	}
-
-	if _, err := c.ExecContext(ctx, query, args...); err != nil {
+	if _, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
 		return err
 	}
 
@@ -365,15 +326,15 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 }
 
 func (r Repository[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
-	return r.CM.BeginTx(ctx)
+	return r.Connection.BeginTx(ctx)
 }
 
 func (r Repository[Entity, ID]) CommitTx(ctx context.Context) error {
-	return r.CM.CommitTx(ctx)
+	return r.Connection.CommitTx(ctx)
 }
 
 func (r Repository[Entity, ID]) RollbackTx(ctx context.Context) error {
-	return r.CM.RollbackTx(ctx)
+	return r.Connection.RollbackTx(ctx)
 }
 
 func (r Repository[Entity, ID]) queryColumnPlaceHolders(nextPlaceholder func() string) string {

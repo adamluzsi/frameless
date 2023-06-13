@@ -16,9 +16,9 @@ import (
 )
 
 func TestRepository_cache(t *testing.T) {
-	cm := GetConnectionManager(t)
+	cm := GetConnection(t)
 	src := memory.NewRepository[testent.Foo, testent.FooID](memory.NewMemory())
-	chcRepo := FooCacheRepository{ConnectionManager: cm}
+	chcRepo := FooCacheRepository{Connection: cm}
 
 	MigrateFooCache(t, cm)
 
@@ -46,19 +46,15 @@ func TestRepository_cache(t *testing.T) {
 	}).Test(t)
 }
 
-func MigrateFooCache(tb testing.TB, cm postgresql.ConnectionManager) {
+func MigrateFooCache(tb testing.TB, c postgresql.Connection) {
 	ctx := context.Background()
-	c, err := cm.Connection(ctx)
-	assert.Nil(tb, err)
-	_, err = c.ExecContext(ctx, FooCacheMigrateDOWN)
+	_, err := c.ExecContext(ctx, FooCacheMigrateDOWN)
 	assert.Nil(tb, err)
 	_, err = c.ExecContext(ctx, FooCacheMigrateUP)
 	assert.Nil(tb, err)
 
 	tb.Cleanup(func() {
-		client, err := cm.Connection(ctx)
-		assert.Nil(tb, err)
-		_, err = client.ExecContext(ctx, FooCacheMigrateDOWN)
+		_, err := c.ExecContext(ctx, FooCacheMigrateDOWN)
 		assert.Nil(tb, err)
 	})
 }
@@ -84,7 +80,7 @@ DROP TABLE IF EXISTS "cache_foo_hits";
 `
 
 type FooCacheRepository struct {
-	postgresql.ConnectionManager
+	postgresql.Connection
 	EntityRepository cache.EntityRepository[testent.Foo, testent.FooID]
 	HitRepository    cache.HitRepository[testent.FooID]
 }
@@ -107,7 +103,7 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 				return testent.FooID(random.New(random.CryptoSeed{}).UUID()), nil
 			},
 		},
-		CM: cr.ConnectionManager,
+		Connection: cr.Connection,
 	}
 }
 
@@ -135,6 +131,6 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 			},
 			NewIDFn: func(ctx context.Context) (_ cache.HitID, _ error) { return },
 		},
-		CM: cr.ConnectionManager,
+		Connection: cr.Connection,
 	}
 }

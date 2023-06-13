@@ -174,7 +174,7 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 	for iter.Next() {
 		sih.mutex.Lock()
 		msg := iter.Value()
-		assert.Should(tb).NotNil(msg)
+		assert.Should(tb).True(msg != nil, "msg should not be nil")
 		if msg == nil {
 			break
 		}
