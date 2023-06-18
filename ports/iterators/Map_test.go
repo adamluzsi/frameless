@@ -3,6 +3,7 @@ package iterators_test
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -10,6 +11,12 @@ import (
 
 	"github.com/adamluzsi/testcase"
 )
+
+func ExampleMap() {
+	rawNumbers := iterators.Slice([]string{"1", "2", "42"})
+	numbers := iterators.Map[int](rawNumbers, strconv.Atoi)
+	_ = numbers
+}
 
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)

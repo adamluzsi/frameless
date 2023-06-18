@@ -1,12 +1,27 @@
 package iterators_test
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 )
+
+func ExampleReduce() {
+	raw := iterators.Slice([]string{"1", "2", "42"})
+	
+	_, _ = iterators.Reduce[[]int](raw, nil, func(vs []int, raw string) ([]int, error) {
+
+		v, err := strconv.Atoi(raw)
+		if err != nil {
+			return nil, err
+		}
+		return append(vs, v), nil
+
+	})
+}
 
 func TestReduce(t *testing.T) {
 	s := testcase.NewSpec(t)
