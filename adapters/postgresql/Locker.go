@@ -47,11 +47,11 @@ func (l Locker) Lock(ctx context.Context) (context.Context, error) {
 
 func (l Locker) Unlock(ctx context.Context) error {
 	if ctx == nil {
-		return locks.ErrNoLock
+		return guard.ErrNoLock
 	}
 	lck, ok := l.lookup(ctx)
 	if !ok {
-		return locks.ErrNoLock
+		return guard.ErrNoLock
 	}
 	if lck.done {
 		return nil
@@ -79,18 +79,26 @@ type (
 	}
 )
 
+
+
+var lockerMigrationConfig = MigratorConfig{
+	Namespace: "frameless_locker_locks",
+	Steps: []MigratorStep{
+		MigrationStep{UpQuery: queryCreateLockerTable},
+		MigrationStep{UpQuery: queryRenameLockerTable},
+	},
+}
+
 const queryCreateLockerTable = `
 CREATE TABLE IF NOT EXISTS frameless_locker_locks (
     name TEXT PRIMARY KEY
 );
 `
 
-var lockerMigrationConfig = MigratorConfig{
-	Namespace: "frameless_locker_locks",
-	Steps: []MigratorStep{
-		MigrationStep{UpQuery: queryCreateLockerTable},
-	},
-}
+const queryRenameLockerTable = `
+ALTER TABLE "frameless_locker_locks" RENAME TO "frameless_guard_locks";
+CREATE VIEW "frameless_locker_locks" AS SELECT * FROM "frameless_guard_locks";
+`
 
 func (l Locker) Migrate(ctx context.Context) error {
 	return Migrator{Connection: l.Connection, Config: lockerMigrationConfig}.Up(ctx)

@@ -87,7 +87,7 @@ func TestNewLockerFactory(t *testing.T) {
 		lockerFactory := postgresql.LockerFactory[string]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
 		return guardcontracts.LockerFactorySubject[string]{
-			Factory:     lockerFactory,
+			LockerFactory:     lockerFactory,
 			MakeContext: context.Background,
 			MakeKey:     testcase.ToT(&tb).Random.String,
 		}
@@ -97,7 +97,7 @@ func TestNewLockerFactory(t *testing.T) {
 		lockerFactory := postgresql.LockerFactory[int]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
 		return guardcontracts.LockerFactorySubject[int]{
-			Factory:     lockerFactory,
+			LockerFactory:     lockerFactory,
 			MakeContext: context.Background,
 			MakeKey:     testcase.ToT(&tb).Random.Int,
 		}
