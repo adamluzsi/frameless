@@ -72,7 +72,7 @@ func (ps *Queue[Data]) Publish(ctx context.Context, vs ...Data) (rErr error) {
 	return nil
 }
 
-func (ps *Queue[Data]) Subscribe(ctx context.Context) iterators.Iterator[pubsub.Message[Data]] {
+func (ps *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 	return &pubsubSubscription[Data]{
 		ctx:       ctx,
 		q:         ps,

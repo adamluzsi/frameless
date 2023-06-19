@@ -10,7 +10,11 @@ type Publisher[Data any] interface {
 }
 
 type Subscriber[Data any] interface {
-	Subscribe(context.Context) iterators.Iterator[Message[Data]]
+	Subscribe(context.Context) Subscription[Data]
+}
+
+type Subscription[Data any] interface {
+	iterators.Iterator[Message[Data]]
 }
 
 type Message[Data any] interface {

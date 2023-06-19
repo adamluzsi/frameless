@@ -2,30 +2,24 @@ package memory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/internal/doubles"
-	"github.com/adamluzsi/frameless/spechelper/testent"
-	"sync"
 	"testing"
-	"time"
-
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
-
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud"
-	crudcontracts "github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	frmetacontracts "github.com/adamluzsi/frameless/ports/meta/metacontracts"
-	"github.com/adamluzsi/frameless/ports/pubsub"
-	contracts2 "github.com/adamluzsi/frameless/spechelper/resource"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
 	"github.com/adamluzsi/frameless/pkg/cache"
+	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
+	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/crud"
+	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"github.com/adamluzsi/frameless/ports/crud/crudtest"
+	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"github.com/adamluzsi/frameless/ports/iterators"
+	"github.com/adamluzsi/frameless/ports/meta/metacontracts"
+	"github.com/adamluzsi/frameless/spechelper/resource"
+	"github.com/adamluzsi/frameless/spechelper/testent"
+
+	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
-
-	cachecontracts "github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
-	"github.com/adamluzsi/testcase"
 )
 
 var _ interface {
@@ -33,19 +27,16 @@ var _ interface {
 	crud.Finder[TestEntity, string]
 	crud.Updater[TestEntity]
 	crud.Deleter[string]
-	pubsub.CreatorPublisher[TestEntity]
-	pubsub.UpdaterPublisher[TestEntity]
-	pubsub.DeleterPublisher[string]
 	comproto.OnePhaseCommitProtocol
 } = &memory.EventLogRepository[TestEntity, string]{}
 
 var _ cache.EntityRepository[TestEntity, string] = &memory.EventLogRepository[TestEntity, string]{}
 
 func TestEventLogRepository(t *testing.T) {
-	testcase.RunSuite(t, contracts2.Contract[TestEntity, string](func(tb testing.TB) contracts2.ContractSubject[TestEntity, string] {
+	testcase.RunSuite(t, resource.Contract[TestEntity, string](func(tb testing.TB) resource.ContractSubject[TestEntity, string] {
 		m := memory.NewEventLog()
 		s := memory.NewEventLogRepository[TestEntity, string](m)
-		return contracts2.ContractSubject[TestEntity, string]{
+		return resource.ContractSubject[TestEntity, string]{
 			Resource:      s,
 			MetaAccessor:  m,
 			CommitManager: m,
@@ -157,8 +148,8 @@ func getRepositorySpecsForT[Entity, ID any](
 				CommitManager:    subject.EventLog,
 			}
 		}),
-		frmetacontracts.MetaAccessor[int](func(tb testing.TB) frmetacontracts.MetaAccessorSubject[int] {
-			return frmetacontracts.MetaAccessorSubject[int]{
+		metacontracts.MetaAccessor[int](func(tb testing.TB) metacontracts.MetaAccessorSubject[int] {
+			return metacontracts.MetaAccessorSubject[int]{
 				MetaAccessor: subject.EventLog,
 				MakeContext:  context.Background,
 				MakeV:        testcase.ToT(&tb).Random.Int,
@@ -280,167 +271,6 @@ func TestEventLogRepository_Options_CompressEventLog(t *testing.T) {
 			` If the repository has values, it means something is not cleaning up properly in the specs.`)
 }
 
-func TestEventLogRepository_Options_AsyncSubscriptionHandling(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	hangingSubscriber := testcase.Let(s, func(t *testcase.T) *HangingSubscriber {
-		return NewHangingSubscriber()
-	})
-
-	var subscriber = func(t *testcase.T) *HangingSubscriber { return hangingSubscriber.Get(t) }
-
-	var newRepository = func(t *testcase.T) *memory.EventLogRepository[TestEntity, string] {
-		s := memory.NewEventLogRepository[TestEntity, string](memory.NewEventLog())
-		ctx := context.Background()
-		subscription, err := s.SubscribeToCreate(ctx, subscriber(t))
-		assert.Must(t).Nil(err)
-		t.Defer(subscription.Close)
-		subscription, err = s.SubscribeToUpdate(ctx, subscriber(t))
-		assert.Must(t).Nil(err)
-		t.Defer(subscription.Close)
-		subscription, err = s.SubscribeToDeleteAll(ctx, subscriber(t))
-		assert.Must(t).Nil(err)
-		t.Defer(subscription.Close)
-		subscription, err = s.SubscribeToDeleteByID(ctx, subscriber(t))
-		assert.Must(t).Nil(err)
-		t.Defer(subscription.Close)
-		return s
-	}
-
-	disableAsyncSubscriptionHandling := testcase.Var[bool]{ID: "DisableAsyncSubscriptionHandling"}
-
-	var subject = func(t *testcase.T) *memory.EventLogRepository[TestEntity, string] {
-		s := newRepository(t)
-		s.EventLog.Options.DisableAsyncSubscriptionHandling = disableAsyncSubscriptionHandling.Get(t)
-		return s
-	}
-
-	s.Before(func(t *testcase.T) {
-		if testing.Short() {
-			t.Skip()
-		}
-	})
-
-	const hangingDuration = 500 * time.Millisecond
-
-	thenCreateUpdateDeleteWill := func(s *testcase.Spec, willHang bool) {
-		var desc string
-		if willHang {
-			desc = `event is blocking until subscriber finishes handling the event`
-		} else {
-			desc = `event should not hang while the subscriber is busy`
-		}
-		desc = ` ` + desc
-
-		var assertion = func(t testing.TB, expected, actual time.Duration) {
-			if willHang {
-				assert.Must(t).True(int64(expected) <= int64(actual))
-			} else {
-				assert.Must(t).True(int64(expected) > int64(actual))
-			}
-		}
-
-		s.Then(`Create`+desc, func(t *testcase.T) {
-			m := subject(t)
-			sub := subscriber(t)
-
-			initialTime := time.Now()
-			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(m.Create(context.Background(), &TestEntity{Data: `42`}))
-			finishTime := time.Now()
-
-			assertion(t, hangingDuration, finishTime.Sub(initialTime))
-		})
-
-		s.Then(`Update`+desc, func(t *testcase.T) {
-			m := subject(t)
-			sub := subscriber(t)
-
-			ent := TestEntity{Data: `42`}
-			assert.Must(t).Nil(m.Create(context.Background(), &ent))
-			ent.Data = `foo`
-
-			initialTime := time.Now()
-			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(m.Update(context.Background(), &ent))
-			finishTime := time.Now()
-
-			assertion(t, hangingDuration, finishTime.Sub(initialTime))
-		})
-
-		s.Then(`DeleteByID`+desc, func(t *testcase.T) {
-			m := subject(t)
-			sub := subscriber(t)
-
-			ent := TestEntity{Data: `42`}
-			assert.Must(t).Nil(m.Create(context.Background(), &ent))
-
-			initialTime := time.Now()
-			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(m.DeleteByID(context.Background(), ent.ID))
-			finishTime := time.Now()
-
-			assertion(t, hangingDuration, finishTime.Sub(initialTime))
-		})
-
-		s.Then(`DeleteAll`+desc, func(t *testcase.T) {
-			m := subject(t)
-			sub := subscriber(t)
-
-			initialTime := time.Now()
-			sub.HangFor(hangingDuration)
-			assert.Must(t).Nil(m.DeleteAll(context.Background()))
-			finishTime := time.Now()
-
-			assertion(t, hangingDuration, finishTime.Sub(initialTime))
-		})
-
-		s.Test(`E2E`, func(t *testcase.T) {
-			testcase.RunSuite(t, getRepositorySpecs[TestEntity, string](subject(t), makeTestEntity)...)
-		})
-	}
-
-	s.When(`is enabled`, func(s *testcase.Spec) {
-		disableAsyncSubscriptionHandling.LetValue(s, false)
-
-		thenCreateUpdateDeleteWill(s, false)
-	}, testcase.SkipBenchmark())
-
-	s.When(`is disabled`, func(s *testcase.Spec) {
-		disableAsyncSubscriptionHandling.LetValue(s, true)
-
-		thenCreateUpdateDeleteWill(s, true)
-	})
-}
-
-func NewHangingSubscriber() *HangingSubscriber {
-	return &HangingSubscriber{}
-}
-
-type HangingSubscriber struct {
-	m sync.RWMutex
-}
-
-func (h *HangingSubscriber) HangFor(d time.Duration) {
-	h.m.Lock()
-	go func() {
-		defer h.m.Unlock()
-		<-time.After(d)
-	}()
-}
-
-func (h *HangingSubscriber) Handle(ctx context.Context, ent interface{}) error {
-	h.m.RLock()
-	defer h.m.RUnlock()
-	return nil
-}
-
-func (h *HangingSubscriber) HandleError(ctx context.Context, err error) error {
-	h.m.RLock()
-	defer h.m.RUnlock()
-	return nil
-}
-
 func TestEventLogRepository_NewIDFunc(t *testing.T) {
 	t.Run(`when NewID is absent`, func(t *testing.T) {
 		repository := memory.NewEventLogRepository[TestEntity, string](memory.NewEventLog())
@@ -512,7 +342,7 @@ func TestEventLogRepository_LookupTx(t *testing.T) {
 	t.Run(`when during comproto`, func(t *testing.T) {
 		ctx, err := s.BeginTx(context.Background())
 		assert.Must(t).Nil(err)
-		defer s.RollbackTx(ctx)
+		defer func() { _ = s.RollbackTx(ctx) }()
 
 		e := TestEntity{Data: `42`}
 		assert.Must(t).Nil(s.Create(ctx, &e))
@@ -574,21 +404,6 @@ func TestEventLogRepository_implementsCacheEntityRepository(t *testing.T) {
 	}))
 }
 
-func TestEventLogRepository_Create_withAsyncSubscriptions(t *testing.T) {
-	eventLog := memory.NewEventLog()
-	eventLog.Options.DisableAsyncSubscriptionHandling = false
-	repository := memory.NewEventLogRepository[TestEntity, string](eventLog)
-	ctx := context.Background()
-
-	sub, err := repository.SubscribeToCreate(ctx, doubles.StubSubscriber[TestEntity, string]{})
-	assert.Must(t).Nil(err)
-	t.Cleanup(func() { assert.Must(t).Nil(sub.Close()) })
-
-	ent := TestEntity{Data: random.New(random.CryptoSeed{}).StringN(4)}
-	assert.Must(t).Nil(repository.Create(ctx, &ent))
-	IsPresent[TestEntity, string](t, repository, ctx, ent.ID)
-}
-
 func TestEventLogRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *testing.T) {
 	ctx := context.Background()
 	eventLog := memory.NewEventLog()
@@ -596,8 +411,8 @@ func TestEventLogRepository_multipleRepositoryForSameEntityUnderDifferentNamespa
 	s2 := memory.NewEventLogRepositoryWithNamespace[TestEntity, string](eventLog, "TestEntity#B")
 	ent := random.New(random.CryptoSeed{}).Make(TestEntity{}).(TestEntity)
 	ent.ID = ""
-	Create[TestEntity, string](t, s1, ctx, &ent)
-	IsAbsent[TestEntity, string](t, s2, ctx, HasID[TestEntity, string](t, ent))
+	crudtest.Create[TestEntity, string](t, s1, ctx, &ent)
+	crudtest.IsAbsent[TestEntity, string](t, s2, ctx, crudtest.HasID[TestEntity, string](t, ent))
 }
 
 func TestEventLogRepository_contracts(t *testing.T) {
@@ -614,10 +429,10 @@ func TestEventLogRepository_contracts(t *testing.T) {
 			Z: t.Random.String(),
 		}
 	}
-	contracts2.Contract[Entity, string](func(tb testing.TB) contracts2.ContractSubject[Entity, string] {
+	resource.Contract[Entity, string](func(tb testing.TB) resource.ContractSubject[Entity, string] {
 		el := memory.NewEventLog()
 		stg := memory.NewEventLogRepository[Entity, string](el)
-		return contracts2.ContractSubject[Entity, string]{
+		return resource.ContractSubject[Entity, string]{
 			Resource:      stg,
 			MetaAccessor:  el,
 			CommitManager: el,

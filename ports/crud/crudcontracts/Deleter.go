@@ -93,12 +93,12 @@ func (c ByIDDeleter[Entity, ID]) Spec(s *testcase.Spec) {
 
 func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 	var (
-		ctxVar = spechelper.ContextVar.Let(s, func(t *testcase.T) context.Context {
+		Context = testcase.Let(s, func(t *testcase.T) context.Context {
 			return c.subject().Get(t).MakeContext()
 		})
 		id      = testcase.Var[ID]{ID: `id`}
 		subject = func(t *testcase.T) error {
-			return c.subject().Get(t).Resource.DeleteByID(ctxVar.Get(t).(context.Context), id.Get(t))
+			return c.subject().Get(t).Resource.DeleteByID(Context.Get(t).(context.Context), id.Get(t))
 		}
 	)
 
@@ -125,7 +125,7 @@ func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-			ctxVar.Let(s, func(t *testcase.T) context.Context {
+			Context.Let(s, func(t *testcase.T) context.Context {
 				ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext())
 				cancel()
 				return ctx
@@ -153,7 +153,7 @@ func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				t.Must.Nil(subject(t))
-				IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, ctxVar.Get(t).(context.Context), id.Get(t))
+				IsAbsent[Entity, ID](t, c.subject().Get(t).Resource, Context.Get(t).(context.Context), id.Get(t))
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {

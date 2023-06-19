@@ -28,10 +28,10 @@ type AsyncResults[Data any] struct {
 	mutex          sync.Mutex
 	finish         func()
 	lastReceivedAt time.Time
-	subscription   pubsub.Subscription
+	subscription   pubsub.Subscription[Data]
 }
 
-func (r *AsyncResults[Data]) Subscription() pubsub.Subscription {
+func (r *AsyncResults[Data]) Subscription() pubsub.Subscription[Data] {
 	return r.subscription
 }
 
@@ -83,7 +83,7 @@ type consumer[Data any] struct {
 	cancel     func()
 }
 
-func (sih *consumer[Data]) Start(tb testing.TB, ctx context.Context) pubsub.Subscription {
+func (sih *consumer[Data]) Start(tb testing.TB, ctx context.Context) pubsub.Subscription[Data] {
 	assert.Nil(tb, sih.cancel)
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup

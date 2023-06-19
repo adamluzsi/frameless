@@ -3,7 +3,6 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/internal/doubles"
 	"sync"
 
 	"github.com/adamluzsi/frameless/pkg/errorkit"
@@ -12,7 +11,6 @@ import (
 	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/crud/extid"
 	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/ports/pubsub"
 )
 
 func NewEventLogRepository[Entity, ID any](m *EventLog) *EventLogRepository[Entity, ID] {
@@ -368,119 +366,6 @@ func (s *EventLogRepository[Entity, ID]) Compress() {
 		}
 		return out
 	})
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToCreatorEvents(ctx context.Context, subscriber pubsub.CreatorSubscriber[Entity]) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
-		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
-			if !ok {
-				return nil
-			}
-			if v.Namespace != s.GetNamespace() {
-				return nil
-			}
-
-			switch v.Name {
-			case CreateEvent:
-				return subscriber.HandleCreateEvent(ctx, pubsub.CreateEvent[Entity]{Entity: v.Value})
-			default:
-				return nil
-			}
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.HandleError(ctx, err)
-		},
-	})
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToUpdaterEvents(ctx context.Context, subscriber pubsub.UpdaterSubscriber[Entity]) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
-		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
-			if !ok {
-				return nil
-			}
-			if v.Namespace != s.GetNamespace() {
-				return nil
-			}
-
-			switch v.Name {
-			case UpdateEvent:
-				return subscriber.HandleUpdateEvent(ctx, pubsub.UpdateEvent[Entity]{Entity: v.Value})
-			default:
-				return nil
-			}
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.HandleError(ctx, err)
-		},
-	})
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToDeleterEvents(ctx context.Context, subscriber pubsub.DeleterSubscriber[ID]) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
-		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
-			if !ok {
-				return nil
-			}
-			if v.Namespace != s.GetNamespace() {
-				return nil
-			}
-
-			switch v.Name {
-			case DeleteByIDEvent:
-				id, _ := extid.Lookup[ID](v.Value)
-				return subscriber.HandleDeleteByIDEvent(ctx, pubsub.DeleteByIDEvent[ID]{ID: id})
-			case DeleteAllEvent:
-				return subscriber.HandleDeleteAllEvent(ctx, pubsub.DeleteAllEvent{})
-			default:
-				return nil
-			}
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.HandleError(ctx, err)
-		},
-	})
-}
-
-func (s *EventLogRepository[Entity, ID]) subscribe(ctx context.Context, subscriber EventLogSubscriber, name string) (pubsub.Subscription, error) {
-	return s.EventLog.Subscribe(ctx, doubles.StubSubscriber[Entity, ID]{
-		HandleFunc: func(ctx context.Context, event Event) error {
-			v, ok := event.(EventLogRepositoryEvent[Entity, ID])
-			if !ok {
-				return nil
-			}
-			if v.Namespace != s.GetNamespace() {
-				return nil
-			}
-			if v.Name != name {
-				return nil
-			}
-
-			return subscriber.Handle(ctx, v.Value)
-		},
-		ErrorFunc: func(ctx context.Context, err error) error {
-			return subscriber.HandleError(ctx, err)
-		},
-	})
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToCreate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
-	return s.subscribe(ctx, subscriber, CreateEvent)
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToUpdate(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
-	return s.subscribe(ctx, subscriber, UpdateEvent)
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToDeleteByID(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
-	return s.subscribe(ctx, subscriber, DeleteByIDEvent)
-}
-
-func (s *EventLogRepository[Entity, ID]) SubscribeToDeleteAll(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
-	return s.subscribe(ctx, subscriber, DeleteAllEvent)
 }
 
 type EventLogRepositoryView[Entity, ID any] map[ /* Namespace */ string] /* entity<T> */ Entity

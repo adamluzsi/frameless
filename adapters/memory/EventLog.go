@@ -7,7 +7,6 @@ import (
 
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/frameless/ports/pubsub"
 )
 
 func NewEventLog() *EventLog {
@@ -23,9 +22,6 @@ type EventLog struct {
 
 	events []Event
 	eMutex sync.RWMutex
-
-	subscriptions map[ /* subID */ string]*Subscription
-	sMutex        sync.Mutex
 
 	// namespace allow multiple memory memory to manage transactions on the same context
 	namespace     string
@@ -116,7 +112,6 @@ func (el *EventLog) Append(ctx context.Context, event Event) error {
 	el.eMutex.Lock()
 	el.events = append(el.events, event)
 	el.eMutex.Unlock()
-	el.notifySubscriptions(ctx, event)
 	return nil
 }
 
@@ -290,169 +285,6 @@ func (el *EventLog) Compress() {
 	})
 }
 
-func (el *EventLog) notifySubscriptions(ctx context.Context, event Event) {
-	el.sMutex.Lock()
-	var subs []*Subscription
-	for _, sub := range el.subscriptions {
-		subs = append(subs, sub)
-	}
-	el.sMutex.Unlock()
-	for _, sub := range subs {
-		sub.publish(ctx, event)
-	}
-}
-
-func (el *EventLog) newSubscription(ctx context.Context, subscriber EventLogSubscriber) *Subscription {
-	var sub Subscription
-
-	sub.id = genStringUID() // replace with actual unique id maybe?
-	sub.eventLog = el
-	sub.subscriber = subscriber
-	sub.queue = make(chan subscriptionEvent)
-	sub.context, sub.cancel = context.WithCancel(ctx)
-
-	sub.wrkWG.Add(1)
-	go sub.worker()
-	return &sub
-}
-
-type Subscription struct {
-	id         string
-	eventLog   *EventLog
-	subscriber EventLogSubscriber /*[Event]*/
-
-	context context.Context
-	cancel  func()
-	// protect against async usage of the eventLog such as
-	// 		memory.SubscribeToCreate(ctx, subscriber)
-	// 		go memory.Create(ctx, &entity)
-	//
-	shutdownMutex sync.RWMutex
-	wrkWG         sync.WaitGroup
-	queueWG       sync.WaitGroup
-	queue         chan subscriptionEvent
-}
-
-type subscriptionEvent struct {
-	ctx   context.Context
-	event Event
-}
-
-func (s *Subscription) publish(ctx context.Context, event Event) {
-	s.shutdownMutex.RLock()
-	defer s.shutdownMutex.RUnlock()
-
-	select {
-	case <-s.context.Done():
-		return
-	default:
-	}
-
-	if s.eventLog.Options.DisableAsyncSubscriptionHandling {
-		s.handle(subscriptionEvent{
-			ctx:   ctx,
-			event: event,
-		})
-		return
-	}
-
-	s.queueWG.Add(1)
-	go func() {
-		defer s.queueWG.Done()
-		s.queue <- subscriptionEvent{
-			ctx:   ctx,
-			event: event,
-		}
-	}()
-}
-
-// worker ensures that only one handle will fired to a subscriber#Handle func.
-func (s *Subscription) worker() {
-	defer s.wrkWG.Done()
-
-	for event := range s.queue {
-		s.handle(event)
-	}
-}
-
-func (s *Subscription) handle(se subscriptionEvent) {
-	ctx := s.context
-	mm, ok := s.eventLog.lookupMetaMap(se.ctx)
-	if ok {
-		ctx = context.WithValue(ctx, s.eventLog.ctxKeyMeta(), mm)
-	}
-	if err := s.subscriber.Handle(ctx, se.event); err != nil {
-		fmt.Println(`ERROR`, err.Error())
-	}
-}
-
-func (s *Subscription) Close() (rErr error) {
-	s.shutdownMutex.Lock()
-	defer s.shutdownMutex.Unlock()
-	defer func() {
-		if r := recover(); r != nil {
-			rErr = fmt.Errorf(`%v`, r)
-		}
-	}()
-
-	// GC the closed subscription from the active subscriptions
-	s.eventLog.delSubscription(s)
-
-	s.cancel()       // prevent publish
-	s.queueWG.Wait() // wait for pending publishes
-	close(s.queue)   // signal worker that no more publish is expected
-	s.wrkWG.Wait()   // wait for worker to finish
-	return nil
-}
-
-// closing the Subscription will not remove it from the active subscriptions (for now).
-// TODO: remove closed subscriptions from the active subscriptions
-func (s *Subscription) isClosed() bool {
-	select {
-	case <-s.context.Done():
-		return true
-	default:
-		return false
-	}
-}
-
-func (el *EventLog) getSubscriptionsUnsafe() map[string]*Subscription {
-	if el.subscriptions == nil {
-		el.subscriptions = make(map[string]*Subscription)
-	}
-	return el.subscriptions
-}
-
-func (el *EventLog) addSubscription(subscription *Subscription) {
-	el.sMutex.Lock()
-	defer el.sMutex.Unlock()
-	if el.subscriptions == nil {
-		el.subscriptions = make(map[string]*Subscription)
-	}
-	el.subscriptions[subscription.id] = subscription
-}
-
-func (el *EventLog) delSubscription(sub *Subscription) {
-	el.sMutex.Lock()
-	defer el.sMutex.Unlock()
-	if el.subscriptions == nil {
-		return
-	}
-	delete(el.subscriptions, sub.id)
-}
-
-func (el *EventLog) Subscribe(ctx context.Context, subscriber EventLogSubscriber) (pubsub.Subscription, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	sub := el.newSubscription(ctx, subscriber)
-	el.addSubscription(sub)
-	return sub, nil
-}
-
 type EventLogTx struct {
 	mutex  sync.RWMutex
 	events []Event
@@ -508,9 +340,5 @@ type EventLogSubscriber /* [Event] */ interface {
 	// Context may or may not have meta information about the received event.
 	// To ensure expectations, define a resource specification <contract> about what must be included in the context.
 	Handle(ctx context.Context, event /* [Event] */ interface{}) error
-	// Error allow the subscription implementation to be notified about unexpected situations
-	// that needs to be handled by the subscriber.
-	// For e.g. the connection is lost and the subscriber might have cached values
-	// that must be invalidated on the next successful Handle call
 	HandleError(ctx context.Context, err error) error
 }
