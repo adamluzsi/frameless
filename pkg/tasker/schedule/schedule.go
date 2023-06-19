@@ -5,7 +5,7 @@ import (
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/tasker"
 	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/guard"
 	"github.com/adamluzsi/testcase/clock"
 	"time"
 )
@@ -13,7 +13,7 @@ import (
 type Scheduler struct{ Repository Repository }
 
 type Repository interface {
-	Locks() locks.Factory[StateID]
+	Locks() guard.LockerFactory[StateID]
 	States() StateRepository
 }
 

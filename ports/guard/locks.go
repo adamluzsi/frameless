@@ -1,4 +1,4 @@
-package locks
+package guard
 
 import (
 	"context"
@@ -21,7 +21,7 @@ type Locker interface {
 
 const ErrNoLock consttypes.Error = "ErrNoLock"
 
-type Factory[Key comparable] interface {
+type LockerFactory[Key comparable] interface {
 	LockerFor(Key) Locker
 }
 

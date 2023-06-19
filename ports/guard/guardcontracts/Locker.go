@@ -1,12 +1,14 @@
-package lockscontracts
+package guardcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/frameless/internal/suites"
+	"github.com/adamluzsi/testcase/let"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/guard"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
@@ -17,17 +19,12 @@ var Waiter = assert.Waiter{
 	Timeout:      5 * time.Second,
 }
 
-type Locker func(testing.TB) LockerSubject
+func Locker(mk func(testing.TB) LockerSubject) suites.Suite {
+	s := testcase.NewSpec(nil, testcase.AsSuite("Locker"))
 
-type LockerSubject struct {
-	Locker      locks.Locker
-	MakeContext func() context.Context
-}
-
-func (c Locker) Spec(s *testcase.Spec) {
 	const withinTimeout = time.Second
 
-	subject := testcase.Let(s, func(t *testcase.T) LockerSubject { return c(t) })
+	subject := let.With[LockerSubject](s, mk)
 
 	s.Describe(".Lock", func(s *testcase.Spec) {
 		var (
@@ -76,10 +73,10 @@ func (c Locker) Spec(s *testcase.Spec) {
 		})
 
 		s.Then("calling unlock not with the locked context will yield an error", func(t *testcase.T) {
-			lctx, err := act(t)
+			lockContext, err := act(t)
 			t.Must.NoError(err)
-			t.Must.ErrorIs(locks.ErrNoLock, subject.Get(t).Locker.Unlock(subject.Get(t).MakeContext()))
-			t.Must.NoError(subject.Get(t).Locker.Unlock(lctx))
+			t.Must.ErrorIs(guard.ErrNoLock, subject.Get(t).Locker.Unlock(subject.Get(t).MakeContext()))
+			t.Must.NoError(subject.Get(t).Locker.Unlock(lockContext))
 		})
 
 		s.When("context is already done", func(s *testcase.Spec) {
@@ -170,16 +167,15 @@ func (c Locker) Spec(s *testcase.Spec) {
 			})
 
 			s.Then("it raise ErrNoLock error", func(t *testcase.T) {
-				t.Must.ErrorIs(locks.ErrNoLock, act(t))
+				t.Must.ErrorIs(guard.ErrNoLock, act(t))
 			})
 		})
 	})
+
+	return s.AsSuite()
 }
 
-func (c Locker) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
-}
-
-func (c Locker) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
+type LockerSubject struct {
+	Locker      guard.Locker
+	MakeContext func() context.Context
 }

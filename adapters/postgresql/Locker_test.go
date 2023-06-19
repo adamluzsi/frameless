@@ -11,7 +11,7 @@ import (
 	"github.com/adamluzsi/testcase/random"
 
 	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/ports/locks/lockscontracts"
+	"github.com/adamluzsi/frameless/ports/guard/guardcontracts"
 	"github.com/adamluzsi/frameless/ports/migration"
 )
 
@@ -41,14 +41,14 @@ var _ migration.Migratable = postgresql.Locker{}
 func TestLocker(t *testing.T) {
 	cm := GetConnection(t)
 
-	lockscontracts.Locker(func(tb testing.TB) lockscontracts.LockerSubject {
+	guardcontracts.Locker(func(tb testing.TB) guardcontracts.LockerSubject {
 		t := testcase.ToT(&tb)
 		l := postgresql.Locker{
 			Name:       t.Random.StringNC(5, random.CharsetAlpha()),
 			Connection: cm,
 		}
 		assert.NoError(tb, l.Migrate(context.Background()))
-		return lockscontracts.LockerSubject{
+		return guardcontracts.LockerSubject{
 			Locker:      l,
 			MakeContext: context.Background,
 		}
@@ -83,20 +83,20 @@ var _ migration.Migratable = postgresql.LockerFactory[int]{}
 func TestNewLockerFactory(t *testing.T) {
 	cm := GetConnection(t)
 
-	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
+	guardcontracts.LockerFactory[string](func(tb testing.TB) guardcontracts.LockerFactorySubject[string] {
 		lockerFactory := postgresql.LockerFactory[string]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
-		return lockscontracts.FactorySubject[string]{
+		return guardcontracts.LockerFactorySubject[string]{
 			Factory:     lockerFactory,
 			MakeContext: context.Background,
 			MakeKey:     testcase.ToT(&tb).Random.String,
 		}
 	}).Test(t)
 
-	lockscontracts.Factory[int](func(tb testing.TB) lockscontracts.FactorySubject[int] {
+	guardcontracts.LockerFactory[int](func(tb testing.TB) guardcontracts.LockerFactorySubject[int] {
 		lockerFactory := postgresql.LockerFactory[int]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
-		return lockscontracts.FactorySubject[int]{
+		return guardcontracts.LockerFactorySubject[int]{
 			Factory:     lockerFactory,
 			MakeContext: context.Background,
 			MakeKey:     testcase.ToT(&tb).Random.Int,

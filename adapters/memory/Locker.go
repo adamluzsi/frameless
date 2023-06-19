@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/guard"
 )
 
 func NewLocker() *Locker { return &Locker{} }
 
-// Locker is a memory-based shared mutex implementation.
+// Locker is a memory-based implementation of guard.Locker.
 // Locker is not safe to call from different application instances.
 // Locker is meant to be used in a single application instance.
 type Locker struct {
@@ -49,11 +49,11 @@ tryLock:
 
 func (l *Locker) Unlock(ctx context.Context) error {
 	if ctx == nil {
-		return locks.ErrNoLock
+		return guard.ErrNoLock
 	}
 	lockState, ok := l.lookup(ctx)
 	if !ok {
-		return locks.ErrNoLock
+		return guard.ErrNoLock
 	}
 	if lockState.done {
 		return nil
@@ -81,7 +81,7 @@ type LockerFactory[Key comparable] struct {
 	mutex sync.Mutex
 }
 
-func (lf *LockerFactory[Key]) LockerFor(key Key) locks.Locker {
+func (lf *LockerFactory[Key]) LockerFor(key Key) guard.Locker {
 	lf.mutex.Lock()
 	defer lf.mutex.Unlock()
 	if lf.locks == nil {

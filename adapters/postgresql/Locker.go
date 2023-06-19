@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/guard"
 )
 
 // Locker is a PG-based shared mutex implementation.
@@ -107,6 +107,6 @@ func (lf LockerFactory[Key]) Migrate(ctx context.Context) error {
 	return Locker{Connection: lf.Connection}.Migrate(ctx)
 }
 
-func (lf LockerFactory[Key]) LockerFor(key Key) locks.Locker {
+func (lf LockerFactory[Key]) LockerFor(key Key) guard.Locker {
 	return Locker{Name: fmt.Sprintf("%T:%v", key, key), Connection: lf.Connection}
 }

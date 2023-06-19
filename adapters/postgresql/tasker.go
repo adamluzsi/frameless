@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/guard"
 	"github.com/adamluzsi/frameless/ports/migration"
 )
 
@@ -25,7 +25,7 @@ func (r TaskerScheduleRepository) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (r TaskerScheduleRepository) Locks() locks.Factory[schedule.StateID] {
+func (r TaskerScheduleRepository) Locks() guard.LockerFactory[schedule.StateID] {
 	return LockerFactory[schedule.StateID]{Connection: r.Connection}
 }
 

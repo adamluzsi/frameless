@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/locks/lockscontracts"
+	"github.com/adamluzsi/frameless/ports/guard/guardcontracts"
 )
 
 func ExampleLocker() {
@@ -23,8 +23,8 @@ func ExampleLocker() {
 }
 
 func TestLocker(t *testing.T) {
-	lockscontracts.Locker(func(tb testing.TB) lockscontracts.LockerSubject {
-		return lockscontracts.LockerSubject{
+	guardcontracts.Locker(func(tb testing.TB) guardcontracts.LockerSubject {
+		return guardcontracts.LockerSubject{
 			Locker:      memory.NewLocker(),
 			MakeContext: context.Background,
 		}
@@ -32,9 +32,9 @@ func TestLocker(t *testing.T) {
 }
 
 func TestLockerFactory(t *testing.T) {
-	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
-		return lockscontracts.FactorySubject[string]{
-			Factory:     memory.NewLockerFactory[string](),
+	guardcontracts.LockerFactory[string](func(tb testing.TB) guardcontracts.LockerFactorySubject[string] {
+		return guardcontracts.LockerFactorySubject[string]{
+			LockerFactory:     memory.NewLockerFactory[string](),
 			MakeContext: context.Background,
 			MakeKey:     tb.(*testcase.T).Random.String,
 		}

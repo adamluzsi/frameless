@@ -5,7 +5,7 @@ import (
 	"github.com/adamluzsi/frameless/internal/suites"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/frameless/ports/locks/lockscontracts"
+	"github.com/adamluzsi/frameless/ports/guard/guardcontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 	"testing"
@@ -14,11 +14,11 @@ import (
 func Repository(mk func(testing.TB) RepositorySubject) suites.Suite {
 	s := testcase.NewSpec(nil, testcase.AsSuite("schedule.Repository"))
 
-	s.Context(".Locks", lockscontracts.Factory[schedule.StateID](func(tb testing.TB) lockscontracts.FactorySubject[schedule.StateID] {
+	s.Context(".Locks", guardcontracts.LockerFactory[schedule.StateID](func(tb testing.TB) guardcontracts.LockerFactorySubject[schedule.StateID] {
 		t := testcase.ToT(&tb)
 		subject := mk(tb)
-		return lockscontracts.FactorySubject[schedule.StateID]{
-			Factory:     subject.Repository.Locks(),
+		return guardcontracts.LockerFactorySubject[schedule.StateID]{
+			LockerFactory:     subject.Repository.Locks(),
 			MakeContext: subject.MakeContext,
 			MakeKey: func() schedule.StateID {
 				return schedule.StateID(t.Random.String())

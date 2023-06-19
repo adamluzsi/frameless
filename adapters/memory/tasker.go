@@ -3,7 +3,7 @@ package memory
 import (
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/frameless/pkg/zerokit"
-	"github.com/adamluzsi/frameless/ports/locks"
+	"github.com/adamluzsi/frameless/ports/guard"
 )
 
 type TaskerScheduleRepository struct {
@@ -11,7 +11,7 @@ type TaskerScheduleRepository struct {
 	states *Repository[schedule.State, schedule.StateID]
 }
 
-func (r *TaskerScheduleRepository) Locks() locks.Factory[schedule.StateID] {
+func (r *TaskerScheduleRepository) Locks() guard.LockerFactory[schedule.StateID] {
 	return zerokit.Init(&r.locks, func() *LockerFactory[schedule.StateID] {
 		return NewLockerFactory[schedule.StateID]()
 	})

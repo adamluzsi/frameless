@@ -1,19 +1,19 @@
-package lockscontracts_test
+package guardcontracts_test
 
 import (
 	"context"
 	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/locks/lockscontracts"
+	"github.com/adamluzsi/frameless/ports/guard/guardcontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"testing"
 )
 
 func TestLocker_memory(t *testing.T) {
-	lockscontracts.Locker(func(tb testing.TB) lockscontracts.LockerSubject {
+	guardcontracts.Locker(func(tb testing.TB) guardcontracts.LockerSubject {
 		_, ok := tb.(*testcase.T)
 		assert.True(tb, ok)
-		return lockscontracts.LockerSubject{
+		return guardcontracts.LockerSubject{
 			Locker:      memory.NewLocker(),
 			MakeContext: context.Background,
 		}
@@ -21,9 +21,9 @@ func TestLocker_memory(t *testing.T) {
 }
 
 func TestLockerFactory_memory(t *testing.T) {
-	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
-		return lockscontracts.FactorySubject[string]{
-			Factory:     memory.NewLockerFactory[string](),
+	guardcontracts.LockerFactory[string](func(tb testing.TB) guardcontracts.LockerFactorySubject[string] {
+		return guardcontracts.LockerFactorySubject[string]{
+			LockerFactory:     memory.NewLockerFactory[string](),
 			MakeContext: context.Background,
 			MakeKey:     tb.(*testcase.T).Random.String,
 		}
@@ -31,9 +31,9 @@ func TestLockerFactory_memory(t *testing.T) {
 }
 
 func TestLockerFactory_memory_factoryFunc(t *testing.T) {
-	lockscontracts.Factory[string](func(tb testing.TB) lockscontracts.FactorySubject[string] {
-		return lockscontracts.FactorySubject[string]{
-			Factory:     memory.NewLockerFactory[string](),
+	guardcontracts.LockerFactory[string](func(tb testing.TB) guardcontracts.LockerFactorySubject[string] {
+		return guardcontracts.LockerFactorySubject[string]{
+			LockerFactory:     memory.NewLockerFactory[string](),
 			MakeContext: context.Background,
 			MakeKey: func() string {
 				return tb.(*testcase.T).Random.String()
