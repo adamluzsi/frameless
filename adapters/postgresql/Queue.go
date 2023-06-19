@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/contextkit"
-	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/pubsub"
 	"github.com/adamluzsi/testcase/clock"
 	"github.com/adamluzsi/testcase/random"
@@ -117,7 +116,7 @@ func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
 	}.Up(ctx)
 }
 
-func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) iterators.Iterator[pubsub.Message[Entity]] {
+func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) pubsub.Subscription[Entity] {
 	return &queueSubscription[Entity, JSONDTO]{
 		Queue: q,
 		CTX:   ctx,
