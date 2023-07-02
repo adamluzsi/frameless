@@ -5,24 +5,18 @@ import (
 	wf "github.com/adamluzsi/frameless/pkg/workflow"
 )
 
-
 var SampleProcessDefinition = wf.ProcessDefinition{
-	ID: "test-this-out",
 	Task: wf.Sequence{
-		wf.UseParticipant{ID: "step-1", ParticipantID: wf.ParticipantID("42")},
+		wf.UseParticipant{ParticipantID: wf.ParticipantID("42")},
 		wf.If{
-			Cond: func(ctx context.Context) (bool, error) {
-				return vars.Foo == "42", nil
-			},
+			Cond: wf.CondTemplate(`.x != 42`),
 			Then: nil,
-			Else: nil,
 		},
 		wf.While{
 			Cond: func(ctx context.Context) (bool, error) {
-				return vars.Foo == "42", nil
+				return true, nil
 			},
-			Then: nil,
-			Else: nil,
+			Block: wf.UseParticipant{ParticipantID: "X"},
 		},
 	},
 }
