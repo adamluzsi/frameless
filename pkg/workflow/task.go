@@ -8,6 +8,8 @@ type Task interface {
 	Visit(visitor func(Task))
 }
 
+type TaskID string
+
 //func Visit[VS Variables](p ProcessDefinition[VS], visitor func()) {
 //	visitor()
 //
@@ -18,6 +20,7 @@ type Task interface {
 
 
 type Sequence []Task
+//func Sequence() Task { return nil }
 
 func (s Sequence) Visit(fn func(Task)) {
 	fn(s)

@@ -1,11 +1,6 @@
 package workflow
 
-import (
-	"bytes"
-	"context"
-	"fmt"
-	"text/template"
-)
+import "github.com/adamluzsi/frameless/pkg/errorkit"
 
 type If struct {
 	Cond Condition
@@ -23,30 +18,16 @@ func (ifcond If) Visit(fn func(Task)) {
 	}
 }
 
-type Condition interface {
-	Evaluate(context.Context, *Variables) (bool, error)
+type While struct {
+	Cond  Condition
+	Block Task
 }
 
-// CondTemplate is a condition template which result must be a boolean value.
-type CondTemplate string
-
-const condTemplBase = `{{ if %s }}true{{else}}false{{end}}`
-
-func (condTmpl CondTemplate) Evaluate(ctx context.Context, variables *Variables) (bool, error) {
-	txtTmpl, err := template.New("").Parse(fmt.Sprintf(condTemplBase, condTmpl))
-	if err != nil {
-		return false, err
-	}
-	var buf bytes.Buffer
-	if err := txtTmpl.Execute(&buf, variables); err != nil {
-		return false, err
-	}
-	switch buf.String() {
-	case "true":
-		return true, nil
-	case "false":
-		return false, nil
-	default:
-		return false, fmt.Errorf("unrecognised template output: %s", buf.String())
+func (l While) Visit(visitor func(Task)) {
+	visitor(l)
+	if l.Block != nil {
+		l.Block.Visit(visitor)
 	}
 }
+
+const Break errorkit.Error = "workflow: While -> Break"
