@@ -5,14 +5,11 @@ import (
 	"github.com/adamluzsi/frameless/ports/crud"
 )
 
-
-
-
 // Variables are the data elements that are used and manipulated during the execution of a workflow.
 // They can represent inputs and outputs of tasks, intermediate results,
 // or any other data that needs to be tracked throughout the workflow.
 //
-// The reason why the Variables type is not a generic type is because  
+// The reason why the Variables type is not a generic type is because
 type Variables map[string]any
 
 // Event is the occurrence that can trigger changes in the workflow.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -158,15 +159,15 @@ func (a Asserter) NotPanic(blk func(), msg ...any) {
 //   - value.IsEqual(oth T) (bool, error)
 //   - value.Equal(oth T) bool
 //   - value.Equal(oth T) (bool, error)
-func (a Asserter) Equal(expected, actually any, msg ...any) {
+func (a Asserter) Equal(v, oth any, msg ...any) {
 	a.TB.Helper()
 	const method = "Equal"
 
-	if a.checkTypeEquality(method, expected, actually, msg) {
+	if a.checkTypeEquality(method, v, oth, msg) {
 		return
 	}
 
-	if a.eq(expected, actually) {
+	if a.eq(v, oth) {
 		return
 	}
 
@@ -174,7 +175,7 @@ func (a Asserter) Equal(expected, actually any, msg ...any) {
 		Method:  method,
 		Message: msg,
 	}.String())
-	a.TB.Logf("\n\n%s", DiffFunc(expected, actually))
+	a.TB.Logf("\n\n%s", DiffFunc(v, oth))
 	a.Fail()
 }
 
@@ -207,16 +208,16 @@ func (a Asserter) NotEqual(v, oth any, msg ...any) {
 	}.String())
 }
 
-func (a Asserter) checkTypeEquality(method string, expected any, actually any, msg []any) (failed bool) {
+func (a Asserter) checkTypeEquality(method string, v any, oth any, msg []any) (failed bool) {
 	a.TB.Helper()
 	var (
-		expectedType = reflect.TypeOf(expected)
-		actualType   = reflect.TypeOf(actually)
+		vType   = reflect.TypeOf(v)
+		othType = reflect.TypeOf(oth)
 	)
-	if expectedType == nil || actualType == nil {
+	if vType == nil || othType == nil {
 		return false
 	}
-	if expectedType == actualType {
+	if vType == othType {
 		return false
 	}
 	toRawString := func(rt reflect.Type) fmterror.Raw {
@@ -231,12 +232,12 @@ func (a Asserter) checkTypeEquality(method string, expected any, actually any, m
 		Message: msg,
 		Values: []fmterror.Value{
 			{
-				Label: "expected type",
-				Value: toRawString(expectedType),
+				Label: "type",
+				Value: toRawString(vType),
 			},
 			{
-				Label: "actual type",
-				Value: toRawString(actualType),
+				Label: "other value's type",
+				Value: toRawString(othType),
 			},
 		},
 	}.String())
@@ -506,6 +507,61 @@ searching:
 	}
 }
 
+// Match will match an expression against a given value.
+// Match will fail for both receiving an invalid expression
+// or having the value not matched by the expression.
+// If the expression is invalid, test will fail early, regardless if Should or Must was used.
+func (a Asserter) Match(v, expr string, msg ...any) {
+	a.TB.Helper()
+	if a.toRegexp(expr).MatchString(v) {
+		return
+	}
+	a.fn(fmterror.Message{
+		Method:  "Match",
+		Cause:   "failed to match the expected expression",
+		Message: msg,
+		Values: []fmterror.Value{
+			{Label: "value", Value: v},
+			{Label: "expression", Value: expr},
+		},
+	})
+}
+
+// NotMatch will check if an expression is not matching a given value.
+// NotMatch will fail the test early for receiving an invalid expression.
+func (a Asserter) NotMatch(v, expr string, msg ...any) {
+	a.TB.Helper()
+	if !a.toRegexp(expr).MatchString(v) {
+		return
+	}
+	a.fn(fmterror.Message{
+		Method:  "NotMatch",
+		Cause:   "value is matching the expression",
+		Message: msg,
+		Values: []fmterror.Value{
+			{Label: "value", Value: v},
+			{Label: "expression", Value: expr},
+		},
+	})
+}
+
+func (a Asserter) toRegexp(expr string) *regexp.Regexp {
+	a.TB.Helper()
+	rgx, err := regexp.Compile(expr)
+	if err != nil {
+		a.TB.Log(fmterror.Message{
+			Method: "NotMatch",
+			Cause:  "invalid expression given",
+			Values: []fmterror.Value{
+				{Label: "expression", Value: expr},
+				{Label: "regexp compile error", Value: err},
+			},
+		})
+		a.TB.FailNow()
+	}
+	return rgx
+}
+
 func (a Asserter) mapContainsSubMap(src reflect.Value, has reflect.Value, msg []any) {
 	a.TB.Helper()
 	for _, key := range has.MapKeys() {
@@ -593,57 +649,64 @@ func (a Asserter) NotContain(haystack, v any, msg ...any) {
 	})
 }
 
-func (a Asserter) ContainExactly(expected, actual any, msg ...any) {
+func (a Asserter) ContainExactly(v, oth any /* slice | map */, msg ...any) {
 	a.TB.Helper()
 
-	exp := reflect.ValueOf(expected)
-	act := reflect.ValueOf(actual)
+	rv := reflect.ValueOf(v)
+	roth := reflect.ValueOf(oth)
 
-	if !exp.IsValid() {
+	if !rv.IsValid() {
 		panic(fmterror.Message{
 			Method: "ContainExactly",
 			Cause:  "invalid expected value",
 			Values: []fmterror.Value{
 				{
 					Label: "value",
-					Value: expected,
+					Value: v,
 				},
 			},
 		}.String())
 	}
-	if !act.IsValid() {
+	if !roth.IsValid() {
 		panic(fmterror.Message{
 			Method: "ContainExactly",
 			Cause:  `invalid actual value`,
 			Values: []fmterror.Value{
 				{
 					Label: "value",
-					Value: actual,
+					Value: oth,
 				},
 			},
 		}.String())
 	}
 
 	switch {
-	case exp.Kind() == reflect.Slice && exp.Type() == act.Type():
-		a.containExactlySlice(exp, act, msg)
+	case rv.Kind() == reflect.Slice && rv.Type() == roth.Type():
+		a.containExactlySlice(rv, roth, msg)
 
-	case exp.Kind() == reflect.Map && exp.Type() == act.Type():
-		a.containExactlyMap(exp, act, msg)
+	case rv.Kind() == reflect.Map && rv.Type() == roth.Type():
+		a.containExactlyMap(rv, roth, msg)
 
 	default:
-		// TODO: maybe use Equal as default approach?
 		panic(fmterror.Message{
 			Method: "ContainExactly",
-			Cause:  "Unimplemented scenario or type mismatch.",
+			Cause:  "invalid type, slice or map was expected",
 			Values: []fmterror.Value{
 				{
-					Label: "expected-type",
-					Value: fmt.Sprintf("%T", expected),
+					Label: "type of the value",
+					Value: fmterror.Raw(fmt.Sprintf("%T", v)),
 				},
 				{
-					Label: "actual-type",
-					Value: fmt.Sprintf("%T", actual),
+					Label: "kind of the value",
+					Value: fmterror.Raw(rv.Kind().String()),
+				},
+				{
+					Label: "type of the other value",
+					Value: fmterror.Raw(fmt.Sprintf("%T", oth)),
+				},
+				{
+					Label: "kind of the other value",
+					Value: fmterror.Raw(roth.Kind().String()),
 				},
 			},
 		}.String())
@@ -772,7 +835,7 @@ func (a Asserter) Empty(v any, msg ...any) {
 // NotEmpty gets whether the specified value is considered empty.
 func (a Asserter) NotEmpty(v any, msg ...any) {
 	a.TB.Helper()
-	if !a.try(func(a Asserter) { a.Empty(v) }) {
+	if !a.isEmpty(v) {
 		return
 	}
 	a.fn(fmterror.Message{
@@ -788,35 +851,39 @@ func (a Asserter) NotEmpty(v any, msg ...any) {
 // ErrorIs allow you to assert an error value by an expectation.
 // ErrorIs allow asserting an error regardless if it's wrapped or not.
 // Suppose the implementation of the test subject later changes by wrap errors to add more context to the return error.
-func (a Asserter) ErrorIs(expected, actual error, msg ...any) {
+func (a Asserter) ErrorIs(err, oth error, msg ...any) {
 	a.TB.Helper()
-
-	if errors.Is(actual, expected) {
+	if a.errorIs(err, oth) || a.errorIs(oth, err) {
 		return
 	}
-	if a.eq(expected, actual) {
-		return
-	}
-	if ErrorEqAs := func(expected, actual error) bool {
-		if actual == nil || expected == nil {
-			return false
-		}
-		nErr := reflect.New(reflect.TypeOf(expected))
-		return errors.As(actual, nErr.Interface()) &&
-			a.eq(expected, nErr.Elem().Interface())
-	}; ErrorEqAs(expected, actual) {
-		return
-	}
-
 	a.fn(fmterror.Message{
 		Method:  "ErrorIs",
-		Cause:   "The actual error is not what was expected.",
+		Cause:   "error value is not what was expected",
 		Message: msg,
 		Values: []fmterror.Value{
-			{Label: "expected", Value: expected},
-			{Label: "actual", Value: actual},
+			{Label: "err", Value: err},
+			{Label: "oth", Value: oth},
 		},
 	})
+}
+
+func (a Asserter) errorIs(err, oth error) bool {
+	a.TB.Helper()
+	if err == nil && oth == nil {
+		return true
+	}
+	if errors.Is(err, oth) {
+		return true
+	}
+	if a.eq(oth, err) {
+		return true
+	}
+	if oth != nil {
+		if ptr := reflect.New(reflect.TypeOf(oth)); errors.As(err, ptr.Interface()) {
+			return a.eq(oth, ptr.Elem().Interface())
+		}
+	}
+	return false
 }
 
 func (a Asserter) Error(err error, msg ...any) {
@@ -850,7 +917,7 @@ func (a Asserter) NoError(err error, msg ...any) {
 	})
 }
 
-func (a Asserter) Read(expected any, r io.Reader, msg ...any) {
+func (a Asserter) Read(v any /* string | []byte */, r io.Reader, msg ...any) {
 	const FnMethod = "Read"
 	a.TB.Helper()
 	if r == nil {
@@ -861,7 +928,7 @@ func (a Asserter) Read(expected any, r io.Reader, msg ...any) {
 		})
 		return
 	}
-	actual, err := io.ReadAll(r)
+	content, err := io.ReadAll(r)
 	if err != nil {
 		a.fn(fmterror.Message{
 			Method:  FnMethod,
@@ -874,19 +941,19 @@ func (a Asserter) Read(expected any, r io.Reader, msg ...any) {
 		})
 		return
 	}
-	var exp, act any
-	switch v := expected.(type) {
+	var val, got any
+	switch v := v.(type) {
 	case string:
-		exp = v
-		act = string(actual)
+		val = v
+		got = string(content)
 	case []byte:
-		exp = v
-		act = actual
+		val = v
+		got = content
 	default:
 		a.TB.Fatalf("only string and []byte is supported, not %T", v)
 		return
 	}
-	if a.eq(exp, act) {
+	if a.eq(val, got) {
 		return
 	}
 	a.fn(fmterror.Message{
@@ -894,8 +961,8 @@ func (a Asserter) Read(expected any, r io.Reader, msg ...any) {
 		Cause:   "Read output is not as expected.",
 		Message: msg,
 		Values: []fmterror.Value{
-			{Label: "expected", Value: exp},
-			{Label: "actual", Value: act},
+			{Label: "expected value", Value: val},
+			{Label: "io.Reader content", Value: got},
 		},
 	})
 }
