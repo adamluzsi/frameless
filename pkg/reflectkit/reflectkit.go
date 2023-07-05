@@ -18,7 +18,7 @@ func Cast[T any](v any) (T, bool) {
 	return val.Convert(typ).Interface().(T), true
 }
 
-func BaseTypeOf(i interface{}) reflect.Type {
+func BaseTypeOf(i any) reflect.Type {
 	t := reflect.TypeOf(i)
 
 	for t.Kind() == reflect.Ptr {
@@ -28,7 +28,7 @@ func BaseTypeOf(i interface{}) reflect.Type {
 	return t
 }
 
-func BaseValueOf(i interface{}) reflect.Value {
+func BaseValueOf(i any) reflect.Value {
 	return BaseValue(reflect.ValueOf(i))
 }
 
@@ -42,11 +42,11 @@ func BaseValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-func SymbolicName(e interface{}) string {
+func SymbolicName(e any) string {
 	return BaseTypeOf(e).String()
 }
 
-func FullyQualifiedName(e interface{}) string {
+func FullyQualifiedName(e any) string {
 	t := BaseTypeOf(e)
 
 	if t.PkgPath() == "" {
@@ -87,7 +87,7 @@ func IsValueNil(val reflect.Value) bool {
 }
 
 // Link will make destination interface be linked with the src value.
-func Link(src, ptr interface{}) (err error) {
+func Link(src, ptr any) (err error) {
 	vPtr := reflect.ValueOf(ptr)
 
 	if vPtr.Kind() != reflect.Ptr {
@@ -105,7 +105,7 @@ func Link(src, ptr interface{}) (err error) {
 	return nil
 }
 
-// SetValue will force set 
+// SetValue will force set
 func SetValue(variable, value reflect.Value) {
 	if variable.CanSet() {
 		variable.Set(value)
