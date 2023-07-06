@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"reflect"
 )
 
@@ -13,7 +14,6 @@ type Condition interface {
 
 type Expression interface {
 	GetValue(*Variables) any
-	//Visit(func(Expression))
 }
 
 type Comparison struct {
@@ -23,29 +23,77 @@ type Comparison struct {
 
 func (c Comparison) Check(ctx context.Context, vs *Variables) (bool, error) {
 	lv, rv := c.Left.GetValue(vs), c.Right.GetValue(vs)
+	if cmp, ok := c.tryNumberCmp(lv, rv); ok {
+		return cmp, nil
+	}
+	return c.defaultCmp(lv, rv)
+}
+
+func (c Comparison) defaultCmp(lv any, rv any) (bool, error) {
 	switch c.Operation {
 	case "==":
 		return reflect.DeepEqual(lv, rv), nil
 	case "!=":
 		return !reflect.DeepEqual(lv, rv), nil
 	default:
-		return false, fmt.Errorf("unknown operator: %s", c.Operation)
+		return false, fmt.Errorf("%s operator is not supported for %T", c.Operation, lv)
 	}
 }
 
-func (c Comparison) lessThan(v, oth any) (bool, error ) {
+var (
+	intType   = reflect.TypeOf((*int64)(nil)).Elem()
+	floatType = reflect.TypeOf((*float64)(nil)).Elem()
+)
+
+func (c Comparison) tryNumberCmp(left, right any) (bool, bool) {
+	x := reflectkit.BaseValueOf(left)
+	y := reflectkit.BaseValueOf(right)
+
+	if x.CanConvert(floatType) && y.CanConvert(floatType) &&
+		(x.CanFloat() || y.CanFloat()) {
+
+		return cmp[float64](c.Operation,
+			x.Convert(floatType).Float(),
+			y.Convert(floatType).Float())
+	}
+
+	if x.CanConvert(intType) && y.CanConvert(intType) &&
+		(x.CanInt() || y.CanInt()) {
+
+		return cmp[int64](c.Operation,
+			x.Convert(intType).Int(),
+			y.Convert(intType).Int())
+	}
 	
-	
-	return false, nil 
+	return false, false
+}
+
+func cmp[T int64 | float64](op string, x, y T) (bool, bool) {
+	switch op {
+	case "==":
+		return x == y, true
+	case "!=":
+		return x != y, true
+	case "<":
+		return x < y, true
+	case ">":
+		return x > y, true
+	case "<=":
+		return x <= y, true
+	case ">=":
+		return x >= y, true
+	default:
+		return false, false
+	}
 }
 
 type ConstValue struct{ Value any }
 
 func (cv ConstValue) GetValue(*Variables) any { return cv.Value }
 
-type ComparisonRefValue struct{ Key string }
+type RefValue struct{ Key string }
 
-func (v ComparisonRefValue) GetValue(vs *Variables) any { return (*vs)[v.Key] }
+func (v RefValue) GetValue(vs *Variables) any { return (*vs)[v.Key] }
 
 type If struct {
 	Cond Condition

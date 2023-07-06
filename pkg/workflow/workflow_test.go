@@ -11,10 +11,18 @@ var SampleProcessDefinition = wf.ProcessDefinition{
 			Cond: wf.Template(`.x != 42`),
 			Then: nil,
 		},
+		wf.If{
+			Cond: wf.Comparison{
+				Left:      wf.ConstValue{Value: 42},
+				Right:     wf.RefValue{Key: "x"},
+				Operation: "!=",
+			},
+			Then: nil,
+			Else: nil,
+		},
 		wf.While{
-			Cond: wf.Template(`.x != 42`),
+			Cond:  wf.Template(`.x != 42`),
 			Block: wf.UseParticipant{ParticipantID: "X"},
 		},
 	},
 }
-
