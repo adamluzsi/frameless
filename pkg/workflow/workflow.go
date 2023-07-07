@@ -2,7 +2,7 @@ package workflow
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
 )
 
 // Variables are the data elements that are used and manipulated during the execution of a workflow.
@@ -10,30 +10,14 @@ import (
 // or any other data that needs to be tracked throughout the workflow.
 //
 // The reason why the Variables type is not a generic type is because
-type Variables map[string]any
+type Variables map[VariableKey]any
+type VariableKey string
 
 // Event is the occurrence that can trigger changes in the workflow.
 // For example, the completion of a task could be an event that triggers the start of the next task.
 type Event any
 
 type ConditionCheck[VS Variables] func(ctx context.Context, vs VS) (bool, error)
-
-// Instance is each run of a workflow according to a particular process definition.
-// The workflow engine needs to manage multiple instances, each with its own state and variables.
-type Instance[VS Variables] struct {
-	ID                  InstanceID `ext:"id"`
-	ProcessDefinitionID ProcessDefinitionID
-	ParticipantID       *ParticipantID
-	VS                  Variables
-}
-type InstanceID string
-
-type InstanceRepository[VS Variables] interface {
-	crud.Creator[Instance[VS]]
-	crud.Finder[Instance[VS], InstanceID]
-	crud.Updater[Instance[VS]]
-	crud.Deleter[InstanceID]
-}
 
 // Engine is the software that interprets the process definition and controls the execution of the workflow.
 // It manages the state of the workflow, the assignment of tasks to participants, and the evaluation of conditions.
@@ -42,10 +26,36 @@ type InstanceRepository[VS Variables] interface {
 // It allows for starting new workflow instances, querying the state of existing instances,
 // and performing other operations.
 type Engine struct {
+	Repository Repository
+
+	pRegister pRegister
 }
 
-func RegisterParticipant[VS Variables](engine *Engine, id ParticipantID, participant Participant[VS]) {
+type pRegister map[ParticipantID]regParticipant
 
+type Repository interface {
+	ProcessDefinitions() ProcessDefinitionRepository
+	Instances() InstanceRepository
+}
+
+func (engine *Engine) getPRegister() pRegister {
+	return zerokit.Init(&engine.pRegister, func() pRegister {
+		return make(pRegister)
+	})
+}
+
+func (engine *Engine) Exec(ctx context.Context, pdef ProcessDefinition) (InstanceID, error) {
+
+	return "", nil
+}
+
+func (engine *Engine) RegisterParticipant(id ParticipantID, fn Participant) error {
+	regParticipant, err := makeRegParticipant(fn)
+	if err != nil {
+		return err
+	}
+	engine.getPRegister()[id] = regParticipant
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -59,7 +69,9 @@ func (fn TaskFunc[VS]) Do(ctx context.Context, vs VS) error {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type UseParticipant struct {
-	ParticipantID ParticipantID
+	ID   ParticipantID
+	Args []Value
+	Out  []VariableKey
 }
 
 func (task UseParticipant) Visit(visitor func(Task)) { visitor(task) }

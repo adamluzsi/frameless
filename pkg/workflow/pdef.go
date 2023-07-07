@@ -1,5 +1,7 @@
 package workflow
 
+import "github.com/adamluzsi/frameless/ports/crud"
+
 // ProcessDefinition is the blueprint of your workflow.
 // It defines the sequence of tasks that need to be executed,
 // the conditions under which they should be executed, and the order in which they should occur.
@@ -11,3 +13,25 @@ type ProcessDefinition struct {
 
 type ProcessDefinitionID string
 
+type ProcessDefinitionRepository interface {
+	crud.Creator[ProcessDefinition]
+	crud.Finder[ProcessDefinition, ProcessDefinitionID]
+	crud.Deleter[ProcessDefinitionID]
+}
+
+// Instance is each run of a workflow according to a particular process definition.
+// The workflow engine needs to manage multiple instances, each with its own state and variables.
+type Instance struct {
+	ID                  InstanceID `ext:"id"`
+	ProcessDefinitionID ProcessDefinitionID
+	Variables           Variables
+}
+
+type InstanceID string
+
+type InstanceRepository interface {
+	crud.Creator[Instance]
+	crud.Finder[Instance, InstanceID]
+	crud.Updater[Instance]
+	crud.Deleter[InstanceID]
+}

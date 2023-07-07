@@ -13,7 +13,7 @@ type Condition interface {
 }
 
 type Expression interface {
-	GetValue(*Variables) any
+	Value 
 }
 
 type Comparison struct {
@@ -86,14 +86,6 @@ func cmp[T int64 | float64](op string, x, y T) (bool, bool) {
 		return false, false
 	}
 }
-
-type ConstValue struct{ Value any }
-
-func (cv ConstValue) GetValue(*Variables) any { return cv.Value }
-
-type RefValue struct{ Key string }
-
-func (v RefValue) GetValue(vs *Variables) any { return (*vs)[v.Key] }
 
 type If struct {
 	Cond Condition
