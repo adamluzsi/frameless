@@ -158,6 +158,14 @@ func TestInit(t *testing.T) {
 		assert.NotNil(t, str2)
 		assert.Equal[string](t, expected, str2)
 	})
+	t.Run("when not comparable values are being compared", func(t *testing.T) {
+		var v map[string]struct{}
+		got := zerokit.Init(&v, func() map[string]struct{} {
+			return map[string]struct{}{"42": {}}
+		})
+		assert.Equal(t, map[string]struct{}{"42": {}}, v)
+		assert.Equal(t, map[string]struct{}{"42": {}}, got)
+	})
 }
 
 func TestInit_atomic(t *testing.T) {
@@ -265,6 +273,11 @@ func BenchmarkInit(b *testing.B) {
 
 	benchInit[int64](b, func() int64 {
 		return 42
+	})
+
+	type uncomparable map[string]struct{}
+	benchInit[uncomparable](b, func() uncomparable {
+		return make(uncomparable)
 	})
 }
 

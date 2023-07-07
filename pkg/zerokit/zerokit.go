@@ -4,18 +4,18 @@ package zerokit
 import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/internal/pointersync"
+	"reflect"
 	"sync/atomic"
 )
 
 // Coalesce will return the first non-zero value from the provided values.
 func Coalesce[T any](vs ...T) T {
-	zeroValue := any(*new(T))
 	for _, v := range vs {
-		if any(v) != zeroValue {
+		if !isZero(v) {
 			return v
 		}
 	}
-	return zeroValue.(T)
+	return *new(T)
 }
 
 // Init will initialise a zero value through its pointer (*T),
@@ -31,12 +31,9 @@ func Init[T any, I initialiser[T]](ptr *T, init I) T {
 	if val, ok := initFastPath[T](ptr); ok {
 		return val
 	}
-	var (
-		zero T
-		key  = pointersync.Key(ptr)
-	)
+	var key = pointersync.Key(ptr)
 	defer initLocks.Sync(key)()
-	if ptr != nil && any(*ptr) != any(zero) {
+	if ptr != nil && !isZero(*ptr) {
 		return *ptr
 	}
 	*ptr = initialise[T, I](init)
@@ -63,9 +60,8 @@ func initialise[T any, IV initialiser[T]](init IV) T {
 
 func initFastPath[T any](ptr *T) (_ T, ok bool) {
 	defer initLocks.ReadSync(pointersync.Key(ptr))()
-	var zero T
 	v := *ptr
-	return v, any(v) != any(zero)
+	return v, !isZero[T](v)
 }
 
 func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
@@ -86,4 +82,15 @@ func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
 		return any(atomic.LoadInt64(tsPtr)).(T), ok
 	}
 	return
+}
+
+func isZero[T any](v T) (ok bool) {
+	var zero T
+	defer func() {
+		if r := recover(); r == nil {
+			return
+		}
+		ok = reflect.DeepEqual(v, zero)
+	}()
+	return any(v) == any(zero)
 }
