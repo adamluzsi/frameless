@@ -22,7 +22,7 @@ const (
 )
 
 // FormatByteSize will format byte size interpreted as the unit of digital information.
-// Historically, the byte was the number of bits used to encode a single character of text in a computer
+// Historically, the byte was the number of bits used to wfencode a single character of text in a computer
 // and for this reason it is the smallest addressable unit of memory in many computer architectures
 //
 // | Value | IEC          | Memory       |

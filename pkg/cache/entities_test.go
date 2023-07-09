@@ -18,10 +18,10 @@ func TestQueryKey_Encode(t *testing.T) {
 		}
 		assert.Equal(t, qk1.Encode(), qk2.Encode())
 	})
-	t.Run("when no ARGS is supplied, it is left out from the encode", func(t *testing.T) {
+	t.Run("when no ARGS is supplied, it is left out from the wfencode", func(t *testing.T) {
 		assert.Equal(t, "0:name", cache.QueryKey{ID: "name"}.Encode())
 	})
-	t.Run("when ARGS is supplied, it is part of the encode", func(t *testing.T) {
+	t.Run("when ARGS is supplied, it is part of the wfencode", func(t *testing.T) {
 		queryKey := cache.QueryKey{ID: "name", ARGS: map[string]any{"foo": "bar"}}
 		assert.Equal(t, "0:name:[foo:bar]", queryKey.Encode())
 	})

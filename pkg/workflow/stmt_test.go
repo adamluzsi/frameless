@@ -13,7 +13,7 @@ func TestComparison(t *testing.T) {
 		Operation   string
 		IsOK        bool
 		HasError    error
-		Vars        *workflow.Variables
+		Vars        *workflow.Vars
 	}
 	cases := map[string]TC{
 		// string 

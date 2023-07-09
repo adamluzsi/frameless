@@ -1,9 +1,12 @@
 package workflow
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"strings"
 	"text/template"
 )
 
@@ -12,15 +15,14 @@ type Template string
 
 func (tmpl Template) Visit(visitor func(Task)) { visitor(tmpl) }
 
-const fmtFormatTemplate = `{{ if %s }}true{{else}}false{{end}}`
-
-func (tmpl Template) Check(ctx context.Context, variables *Variables) (bool, error) {
-	txtTmpl, err := template.New("").Parse(fmt.Sprintf(fmtFormatTemplate, tmpl))
+func (tmpl Template) Check(ctx context.Context, vars *Vars) (bool, error) {
+	const fmtFormatTemplate = `{{ if %s }}true{{else}}false{{end}}`
+	txtTmpl, err := tmpl.parse(fmt.Sprintf(fmtFormatTemplate, tmpl), vars)
 	if err != nil {
 		return false, err
 	}
 	var buf bytes.Buffer
-	if err := txtTmpl.Execute(&buf, variables); err != nil {
+	if err := txtTmpl.Execute(&buf, vars); err != nil {
 		return false, err
 	}
 	switch buf.String() {
@@ -30,5 +32,37 @@ func (tmpl Template) Check(ctx context.Context, variables *Variables) (bool, err
 		return false, nil
 	default:
 		return false, fmt.Errorf("unrecognised template output: %s", buf.String())
+	}
+}
+
+func (tmpl Template) Exec(ctx context.Context, vars *Vars) error {
+	var base string
+	s := bufio.NewScanner(strings.NewReader(string(tmpl)))
+	s.Split(bufio.ScanLines)
+	for s.Scan() {
+		base += "{{" + s.Text() + "}}\n"
+	}
+	txtTmpl, err := tmpl.parse(base, vars)
+	if err != nil {
+		return err
+	}
+	return txtTmpl.Execute(io.Discard, vars)
+}
+
+func (tmpl Template) parse(text string, vars *Vars) (*template.Template, error) {
+	txtTmpl := template.New("")
+	txtTmpl = txtTmpl.Funcs(tmpl.functions(vars))
+	return txtTmpl.Parse(text)
+}
+
+func (tmpl Template) functions(vars *Vars) template.FuncMap {
+	return template.FuncMap{
+		"var": func(key VarKey, value ...any) any {
+			key = VarKey(strings.TrimPrefix(string(key), "."))
+			if 0 < len(value) {
+				(*vars)[key] = value[0]
+			}
+			return (*vars)[key]
+		},
 	}
 }

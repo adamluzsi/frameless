@@ -5,6 +5,17 @@ type Goto struct {
 	LabelID LabelID
 }
 
-type Label struct {ID LabelID }
+func (g Goto) Visit(visitor func(Task)) { visitor(g) }
 
 type LabelID string
+type Label struct {
+	ID   LabelID
+	Task Task
+}
+
+func (l Label) Visit(visitor func(Task)) {
+	visitor(l)
+	if l.Task != nil {
+		l.Task.Visit(visitor)
+	}
+}

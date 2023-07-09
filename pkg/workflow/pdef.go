@@ -27,7 +27,7 @@ type ProcessDefinitionRepository interface {
 type Instance struct {
 	ID                  InstanceID `ext:"id"`
 	ProcessDefinitionID ProcessDefinitionID
-	Variables           Variables
+	Variables           Vars
 }
 
 type InstanceID string

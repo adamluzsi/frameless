@@ -52,7 +52,7 @@ func Test_smoke(t *testing.T) {
 					wf.ConstValue{Value: 42},
 					wf.ConstValue{Value: "forty-two"},
 				},
-				Out: []wf.VariableKey{
+				Out: []wf.VarKey{
 					"foo-res",
 				},
 			},

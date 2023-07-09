@@ -9,7 +9,7 @@ import (
 )
 
 type Condition interface {
-	Check(context.Context, *Variables) (bool, error)
+	Check(context.Context, *Vars) (bool, error)
 }
 
 type Expression interface {
@@ -21,7 +21,7 @@ type Comparison struct {
 	Operation   string `enum:"== != "`
 }
 
-func (c Comparison) Check(ctx context.Context, vs *Variables) (bool, error) {
+func (c Comparison) Check(ctx context.Context, vs *Vars) (bool, error) {
 	lv, rv := c.Left.GetValue(vs), c.Right.GetValue(vs)
 	if cmp, ok := c.tryNumberCmp(lv, rv); ok {
 		return cmp, nil
