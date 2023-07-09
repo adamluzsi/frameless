@@ -7,11 +7,14 @@ import "github.com/adamluzsi/frameless/ports/crud"
 // the conditions under which they should be executed, and the order in which they should occur.
 // This is typically represented in a graphical form using a flowchart or a similar diagram.
 type ProcessDefinition struct {
-	ID   ProcessDefinitionID `ext:"id"`
-	Task Task
+	ID         ProcessDefinitionID `ext:"id"`
+	Task       Task
+	EntryPoint EntryPoint
 }
 
 type ProcessDefinitionID string
+
+type EntryPoint interface{}
 
 type ProcessDefinitionRepository interface {
 	crud.Creator[ProcessDefinition]

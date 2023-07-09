@@ -28,19 +28,19 @@ type ConditionCheck[VS Variables] func(ctx context.Context, vs VS) (bool, error)
 type Engine struct {
 	Repository Repository
 
-	pRegister pRegister
+	_participantRegister participantRegister
 }
-
-type pRegister map[ParticipantID]regParticipant
 
 type Repository interface {
 	ProcessDefinitions() ProcessDefinitionRepository
 	Instances() InstanceRepository
 }
 
-func (engine *Engine) getPRegister() pRegister {
-	return zerokit.Init(&engine.pRegister, func() pRegister {
-		return make(pRegister)
+type participantRegister map[ParticipantID]regParticipant
+
+func (engine *Engine) participantRegister() participantRegister {
+	return zerokit.Init(&engine._participantRegister, func() participantRegister {
+		return make(participantRegister)
 	})
 }
 
@@ -54,7 +54,7 @@ func (engine *Engine) RegisterParticipant(id ParticipantID, fn Participant) erro
 	if err != nil {
 		return err
 	}
-	engine.getPRegister()[id] = regParticipant
+	engine.participantRegister()[id] = regParticipant
 	return nil
 }
 
