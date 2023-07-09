@@ -21,11 +21,16 @@ func Encoding(marshal MarshalFunc, unmarshal UnmarshalFunc) suites.Suite {
 				Then: wf.Template(`.Foo`),
 				Else: wf.Template(`.Bar`),
 			},
-			"Sequence": wf.Sequence{
+			"Sequence": wf.MakeSequence(
 				wf.Template(`.Foo`),
 				wf.Template(`.Bar`),
 				wf.Template(`.Baz`),
-			},
+			),
+			"Concurrence": wf.MakeConcurrence(
+				wf.Template(`.Foo`),
+				wf.Template(`.Bar`),
+				wf.Template(`.Baz`),
+			),
 			"UseParticipant": wf.UseParticipant{
 				ID:   "the-id-of-the-participant",
 				Args: []wf.Value{wf.ConstValue{Value: "42"}, wf.RefValue{Key: "x"}},

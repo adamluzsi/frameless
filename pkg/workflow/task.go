@@ -1,11 +1,17 @@
 package workflow
 
+import "context"
 
 // Task is the individual unit of work that need to be performed in a workflow.
 // Each task has a defined start and end point,
 // and may have preconditions that need to be met before it can be executed.
 type Task interface {
-	Visit(visitor func(Task))
+	VisitTask(visitor func(Task))
+}
+
+type TaskProto interface {
+	VisitTask(visitor func(Task))
+	Exec(context.Context, *Vars) error
 }
 
 type TaskID string
@@ -18,19 +24,24 @@ type TaskID string
 //	//}
 //}
 
+func MakeSequence(tasks ...Task) Sequence {
+	return Sequence{Tasks: tasks}
+}
 
-type Sequence []Task
-//func Sequence() Task { return nil }
+type Sequence struct {
+	ID    TaskID
+	Tasks []Task
+}
 
-func (s Sequence) Visit(fn func(Task)) {
+func (s Sequence) VisitTask(fn func(Task)) {
 	fn(s)
-	for _, t := range s {
-		t.Visit(fn)
+	for _, t := range s.Tasks {
+		t.VisitTask(fn)
 	}
 }
 
 func (s Sequence) Do(fn func(Task) error) error {
-	for _, task := range s {
+	for _, task := range s.Tasks {
 		if err := fn(task); err != nil {
 			return err
 		}
@@ -38,4 +49,12 @@ func (s Sequence) Do(fn func(Task) error) error {
 	return nil
 }
 
-func Concurrence() Task { return nil }
+func MakeConcurrence(tasks ...Task) Concurrence {
+	return Concurrence{Tasks: tasks}
+}
+
+type Concurrence struct {
+	Tasks []Task
+}
+
+func (s Concurrence) VisitTask(fn func(Task)) {}

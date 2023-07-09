@@ -74,4 +74,4 @@ type UseParticipant struct {
 	Out  []VarKey
 }
 
-func (task UseParticipant) Visit(visitor func(Task)) { visitor(task) }
+func (task UseParticipant) VisitTask(visitor func(Task)) { visitor(task) }

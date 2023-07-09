@@ -10,8 +10,8 @@ import (
 )
 
 var SampleProcessDefinition = wf.ProcessDefinition{
-	Task: wf.Sequence{
-		wf.UseParticipant{ID: wf.ParticipantID("42")},
+	Task: wf.MakeSequence(
+		wf.UseParticipant{ID: "42"},
 		wf.If{
 			Cond: wf.Template(`.x != 42`),
 			Then: nil,
@@ -29,7 +29,7 @@ var SampleProcessDefinition = wf.ProcessDefinition{
 			Cond:  wf.Template(`.x != 42`),
 			Block: wf.UseParticipant{ID: "X"},
 		},
-	},
+	),
 }
 
 func Test_smoke(t *testing.T) {
@@ -45,7 +45,7 @@ func Test_smoke(t *testing.T) {
 	assert.NoError(t, engine.RegisterParticipant("leak", func(v string) { out = v }))
 
 	iid, err := engine.Exec(context.Background(), wf.ProcessDefinition{
-		Task: wf.Sequence{
+		Task: wf.MakeSequence(
 			wf.UseParticipant{
 				ID: fooParticipant,
 				Args: []wf.Value{
@@ -69,7 +69,7 @@ func Test_smoke(t *testing.T) {
 					},
 				},
 			},
-		},
+		),
 	})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, iid)

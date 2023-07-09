@@ -13,7 +13,7 @@ import (
 // Template is a text/template that can be used either as Condition, or as Task
 type Template string
 
-func (tmpl Template) Visit(visitor func(Task)) { visitor(tmpl) }
+func (tmpl Template) VisitTask(visitor func(Task)) { visitor(tmpl) }
 
 func (tmpl Template) Check(ctx context.Context, vars *Vars) (bool, error) {
 	const fmtFormatTemplate = `{{ if %s }}true{{else}}false{{end}}`

@@ -93,13 +93,13 @@ type If struct {
 	Else Task
 }
 
-func (ifcond If) Visit(fn func(Task)) {
+func (ifcond If) VisitTask(fn func(Task)) {
 	fn(ifcond)
 	if ifcond.Then != nil {
-		ifcond.Then.Visit(fn)
+		ifcond.Then.VisitTask(fn)
 	}
 	if ifcond.Else != nil {
-		ifcond.Else.Visit(fn)
+		ifcond.Else.VisitTask(fn)
 	}
 }
 
@@ -110,10 +110,10 @@ type While struct {
 	Block Task
 }
 
-func (l While) Visit(visitor func(Task)) {
+func (l While) VisitTask(visitor func(Task)) {
 	visitor(l)
 	if l.Block != nil {
-		l.Block.Visit(visitor)
+		l.Block.VisitTask(visitor)
 	}
 }
 
