@@ -1,4 +1,4 @@
-package wfencodecontracts
+package workflowcontracts
 
 import (
 	"github.com/adamluzsi/frameless/internal/suites"
@@ -21,7 +21,7 @@ func Encoding(marshal MarshalFunc, unmarshal UnmarshalFunc) suites.Suite {
 				Then: wf.Template(`.Foo`),
 				Else: wf.Template(`.Bar`),
 			},
-			"Sequence": wf.MakeSequence(
+			"Sequence": wf.Seq(
 				wf.Template(`.Foo`),
 				wf.Template(`.Bar`),
 				wf.Template(`.Baz`),

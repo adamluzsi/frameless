@@ -10,7 +10,7 @@ import (
 )
 
 var SampleProcessDefinition = wf.ProcessDefinition{
-	Task: wf.MakeSequence(
+	Task: wf.Seq(
 		wf.UseParticipant{ID: "42"},
 		wf.If{
 			Cond: wf.Template(`.x != 42`),
@@ -45,7 +45,7 @@ func Test_smoke(t *testing.T) {
 	assert.NoError(t, engine.RegisterParticipant("leak", func(v string) { out = v }))
 
 	iid, err := engine.Exec(context.Background(), wf.ProcessDefinition{
-		Task: wf.MakeSequence(
+		Task: wf.Seq(
 			wf.UseParticipant{
 				ID: fooParticipant,
 				Args: []wf.Value{

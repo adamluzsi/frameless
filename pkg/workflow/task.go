@@ -24,7 +24,8 @@ type TaskID string
 //	//}
 //}
 
-func MakeSequence(tasks ...Task) Sequence {
+// Seq will make a Sequence with the received tasks.
+func Seq(tasks ...Task) Sequence {
 	return Sequence{Tasks: tasks}
 }
 
