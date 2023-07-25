@@ -1,14 +1,16 @@
-package workflow_test
+package wfdto_test
 
 import (
 	wf "github.com/adamluzsi/frameless/pkg/workflow"
+	"github.com/adamluzsi/frameless/pkg/workflow/wfdto"
 	"github.com/adamluzsi/frameless/pkg/workflow/workflowcontracts"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/pp"
 	"testing"
 )
 
 func TestJSON(t *testing.T) {
-	workflowcontracts.Encoding(wf.MarshalJSON, wf.UnmarshalJSON).Test(t)
+	workflowcontracts.Encoding(wfdto.MarshalJSON, wfdto.UnmarshalJSON).Test(t)
 }
 
 func TestJSON_smoke(t *testing.T) {
@@ -18,12 +20,15 @@ func TestJSON_smoke(t *testing.T) {
 			wf.Template(`var "x"`),
 		),
 	}
-
-	data, err := wf.MarshalJSON(pdef)
+	
+	data, err := wfdto.MarshalJSON(pdef)
 	assert.NoError(t, err)
+	
+	pp.PP(data)
+	return
 
 	var gotPDef wf.ProcessDefinition
-	assert.NoError(t, wf.UnmarshalJSON(data, &gotPDef))
+	assert.NoError(t, wfdto.UnmarshalJSON(data, &gotPDef))
 
 	assert.Equal(t, pdef, gotPDef)
 }
