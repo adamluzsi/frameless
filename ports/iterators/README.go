@@ -3,30 +3,14 @@ Package iterators provide iterator implementations.
 
 # Summary
 
-An iterator goal is to decouple the facts about the origin of the data,
-to the consumer who use the data.
-Most common scenario is to hide the fact if data is from a Certain DB, STDIN or from somewhere else.
-This helps to design data consumers that doesn't rely on the data source concrete implementation,
-while still able to do composition and different kind of actions on the received data stream.
-An Interface represent multiple data that can be 0 and infinite.
-As a general rule of thumb, if the consumer is not the final destination of the data stream,
-the consumer should use the pipeline pattern, in order to avoid bottleneck with local resources.
-
-frameless.Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
-Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
-frameless.Iterator design inspirited by https://golang.org/pkg/encoding/json/#Decoder
-
-# Why an Object with empty interface instead of type safe channels to represent streams
-
-There are multiple approach to the same problem, and I only prefer this approach,
-because the error handling is easier trough this.
-In channel based pipeline pattern, you have to make sure
-that the information about the error is passed trough either trough some kind of separate error channel,
-or trough the message object it self that being passed around.
-If the pipeline can be composited during a certain use case,
-you can pass around a context.Context object to represent this.
-In the case of Interface pattern, this failure communicated during the individual iteration,
-which leaves it up to you to propagate the error forward, or handle at the place.
+An Iterator's goal is to decouple the origin of the data from the consumer who uses that data.
+Most commonly, iterators hide whether the data comes from a specific database, standard input, or elsewhere. 
+This approach helps to design data consumers that are not dependent on the concrete implementation of the data source, 
+while still allowing for the composition and various actions on the received data stream.
+An Iterator represents an iterable list of element, 
+which length is not known until it is fully iterated, thus can range from zero to infinity.
+As a rule of thumb, if the consumer is not the final destination of the data stream,
+it should use the pipeline pattern to avoid bottlenecks with local resources such as memory.
 
 # Resources
 
