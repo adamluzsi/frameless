@@ -30,7 +30,7 @@ func UnmarshalJSON(data []byte, v any) error {
 	return nil
 }
 
-type DataTransferObject map[string]any
+
 
 type DataTransferObjectMapping[Ent any] struct {
 	ToEnt func(dto DataTransferObject) (Ent, error)
