@@ -2,17 +2,31 @@ package dtom
 
 import (
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/zerokit"
 	"reflect"
 )
 
 type DataTransferObject map[string]any
 
-type Registry struct {
-	mapping map[reflect.Type]mapper
+type Registry struct{ _mapping map[reflect.Type]mapper }
+
+func (r *Registry) mapping() map[reflect.Type]mapper {
+	return zerokit.Init(&r._mapping, func() map[reflect.Type]mapper {
+		return map[reflect.Type]mapper{}
+	})
+}
+
+func (r Registry) ToEntity(dto DataTransferObject) (any, error) {
+	return nil, nil
+}
+
+func (r Registry) ToDataTransferObject(ent any) (DataTransferObject, error) {
+	return nil, nil
 }
 
 func Register[Entity any](r *Registry, m Mapping[Entity]) struct{} {
-
+	r.mapping()
+	
 	return struct{}{}
 }
 
