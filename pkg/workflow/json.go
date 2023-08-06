@@ -1,7 +1,5 @@
 package workflow
 
-import "reflect"
-
 type types interface {
 	ProcessDefinition |
 
@@ -30,11 +28,3 @@ func UnmarshalJSON(data []byte, v any) error {
 	return nil
 }
 
-
-
-type DataTransferObjectMapping[Ent any] struct {
-	ToEnt func(dto DataTransferObject) (Ent, error)
-	ToDTO func(ent Ent) (DataTransferObject, error)
-}
-
-var registryDataTransferObject = map[reflect.Type]DataTransferObjectMapping[]
