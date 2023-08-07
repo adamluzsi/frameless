@@ -1,7 +1,10 @@
 package dtom_test
 
 import (
+	"encoding/json"
 	"github.com/adamluzsi/frameless/pkg/dtom"
+	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/pp"
 	"github.com/adamluzsi/testcase/random"
 	"testing"
 )
@@ -27,6 +30,62 @@ type Qux struct {
 
 func (q Qux) Qux() {}
 
+var r = &dtom.Registry{}
+
+var _ = dtom.RegisterStruct[Foo](r, "foo",
+	func(str dtom.Struct) (Foo, error) {
+		return Foo{
+			Bar: dtom.Must(dtom.MapValue[Bar](r, str.Object("bar"))),
+			Quxers: dtom.MapList(str.List("quxers"), func(v dtom.Struct) Quxer {
+				return dtom.Must(dtom.MapValue[Quxer](r, v))
+			}),
+		}, nil
+	},
+	func(ent Foo) (dtom.Struct, error) {
+		return dtom.Struct{
+			"bar":    dtom.Must(dtom.MapDTO(r, ent.Bar)),
+			"quxers": dtom.Must(dtom.MapDTO(r, ent.Quxers)),
+		}, nil
+	},
+)
+
+var _ = dtom.RegisterStruct[Bar](r, "baz",
+	func(dto dtom.Struct) (Bar, error) {
+		return Bar{
+			Baz: dtom.Must(dtom.MapValue[Baz](r, dto.Object("baz"))),
+		}, nil
+	},
+	func(ent Bar) (dtom.Struct, error) {
+		return dtom.Struct{
+			"baz": dtom.Must(dtom.MapDTO(r, ent.Baz)),
+		}, nil
+	},
+)
+
+var _ = dtom.RegisterStruct[Baz](r, "bar",
+	func(dto dtom.Struct) (Baz, error) {
+		return Baz{V: dtom.Must(dtom.MapValue[int](r, dto["v"]))}, nil
+	},
+	func(ent Baz) (dtom.Struct, error) {
+		return dtom.Struct{"v": dtom.Must(dtom.MapDTO(r, ent.V))}, nil
+	},
+)
+
+var _ = dtom.RegisterStruct[Qux](r, "qux",
+	func(str dtom.Struct) (Qux, error) {
+		return Qux{
+			V: dtom.Must(dtom.MapValue[string](r, str["v"])),
+		}, nil
+	},
+	func(ent Qux) (dtom.Struct, error) {
+		return dtom.Struct{
+			"v": dtom.Must(dtom.MapDTO(r, ent.V)),
+		}, nil
+	},
+)
+
+var _ = dtom.RegisterInterface[Quxer](r, Qux{})
+
 func TestRegistry_smoke(t *testing.T) {
 	var rnd = random.New(random.CryptoSeed{})
 
@@ -39,57 +98,18 @@ func TestRegistry_smoke(t *testing.T) {
 		Quxers: []Quxer{Qux{V: rnd.String()}},
 	}
 
-	r := &dtom.Registry{}
+	ogDTO, err := dtom.MapDTO(r, ent)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, ogDTO)
 
-	dtom.RegisterStruct(r, dtom.StructMapping[Foo]{
-		Check: func(str dtom.Struct) bool {
-			return str["type"] == "foo"
-		},
-		ToEnt: func(str dtom.Struct) (Foo, error) {
-			return Foo{
-				Bar: dtom.MapVal[Bar](r, str.Object("bar")),
-				Quxers: dtom.MapList(str.List("quxers"), func(v dtom.Struct) Quxer {
-					return dtom.MapVal[Quxer](r, v)
-				}),
-			}, nil
-		},
-		ToDTO: func(ent Foo) (dtom.Struct, error) {
-			return dtom.Struct{
-				"bar":    dtom.MapDTO(r, ent.Bar),
-				"quxers": dtom.MapDTO(r, ent.Quxers),
-			}, nil
-		},
-	})
+	data, err := json.Marshal(ogDTO)
+	assert.NoError(t, err)
 
-	dtom.RegisterStruct(r, dtom.StructMapping[Bar]{
-		Check: func(str dtom.Struct) bool {
-			return str["type"] == "bar"
-		},
-		ToEnt: func(dto dtom.Struct) (Bar, error) {
-			return Bar{
-				Baz: dtom.MapVal[Baz](r, dto.Object("baz")),
-			}, nil
-		},
-		ToDTO: func(ent Bar) (dtom.Struct, error) {
-			return dtom.Struct{
-				"baz": dtom.MapDTO(r, ent.Baz),
-			}, nil
-		},
-	})
+	pp.PP(data)
+	var resDTO dtom.Struct
+	assert.NoError(t, json.Unmarshal(data, &resDTO))
 
-	dtom.RegisterStruct(r, dtom.StructMapping[Qux]{
-		Check: func(str dtom.Struct) bool {
-			return str["type"] == "qux"
-		},
-		ToEnt: func(str dtom.Struct) (Qux, error) {
-			return Qux{
-				V: dtom.MapVal[string](r, str["v"]),
-			}, nil
-		},
-		ToDTO: func(ent Qux) (dtom.Struct, error) {
-			return dtom.Struct{
-				"v": dtom.MapDTO(r, ent.V),
-			}, nil
-		},
-	})
+	val := dtom.Must(dtom.MapValue[Foo](r, resDTO))
+
+	pp.PP(val)
 }

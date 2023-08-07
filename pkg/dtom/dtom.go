@@ -1,8 +1,10 @@
 package dtom
 
 import (
+	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"reflect"
 )
 
@@ -16,58 +18,164 @@ func MapList[X, Y any](vs []X, mapFn func(v X) Y) []Y {
 	return out
 }
 
-func MapVal[T any](r *Registry, dto any) T {
+func MapValue[T any](r *Registry, dto any) (T, error) {
 	switch dto := dto.(type) {
 	case Struct:
-		v, err := r.ToEntity(dto)
+		var val T
+		var mapper structMapper
+		for _, m := range r.structs {
+			if m.CheckDataTransferObject(dto) {
+				mapper = m
+				break
+			}
+		}
+		if mapper == nil {
+			return val, wrapErr(fmt.Errorf("unexpected data transfer object"))
+		}
+		v, err := mapper.ToEntity(dto)
 		if err != nil {
-			panic(fmt.Errorf("%w: %s", Err, err.Error()))
+			return val, wrapErr(err)
 		}
-		ent, ok := v.(T)
+		val, ok := v.(T)
 		if !ok {
-			panic(fmt.Errorf("%w: %s, %T", Err, "invalid type received", ent))
+			return val, wrapErr(fmt.Errorf("%s, %T", "invalid type received", val))
 		}
-		return ent
+		return val, nil
+
 	default:
-		panic(fmt.Errorf("%w: %s, %T", Err, "unrecognised DTO value", dto))
+		var typ = reflect.TypeOf((*T)(nil)).Elem()
+
+		if !isPrimitiveKind(typ) {
+			return *new(T), wrapErr(fmt.Errorf("%s, expected %T but got %T",
+				"unrecognised DTO value", *new(T), dto))
+		}
+
+		val, ok := reflectkit.Cast[T](dto)
+		if !ok {
+			return *new(T), wrapErr(fmt.Errorf(
+				"failed to cast value from %T to %s", dto, typ.String()))
+		}
+
+		return val, nil
 	}
 }
 
-func MapDTO[T any](r *Registry, ent T) any {
-	dto, ok, err := r.ToDataTransferObject(ent)
+func MapDTO(r *Registry, ent any) (any, error) {
+	dto, ok, err := r.toDataTransferObject(ent)
 	if err != nil {
-		panic(fmt.Errorf("%w: %s", Err, err.Error()))
+		return nil, wrapErr(err)
 	}
 	if ok {
-		return dto
+		return dto, nil
 	}
 	refVal := reflect.ValueOf(ent)
 	switch refVal.Kind() {
 	case reflect.Slice:
 		var out []any
 		for i, l := 0, refVal.Len(); i < l; i++ {
-			out = append(out, MapDTO[any](r, refVal.Index(i)))
+			elem, err := MapDTO(r, refVal.Index(i).Interface())
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, elem)
 		}
-		return out
+		return out, nil
+
+	//Array, Chan, Func, Interface, Map,
+	//Pointer, Slice,
+	//, Struct, UnsafePointer,
+
 	default:
-		panic(fmt.Errorf("%w: DTO mapping not found", Err))
+		if isPrimitiveKind(refVal.Type()) {
+			return ent, nil
+		}
+		return nil, wrapErr(fmt.Errorf("DTO mapping not found for %T", ent))
 	}
 }
 
-type Registry struct{ structs []mapper }
+func isPrimitiveKind(typ reflect.Type) bool {
+	switch typ.Kind() {
+	case reflect.String, reflect.Bool, reflect.Uintptr,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.Complex64, reflect.Complex128:
+		return true
+	default:
+		return false
+	}
+}
 
-type mapper interface {
-	ToEntity(dto any) (ent any, err error)
-	ToDataTransferObject(ent any) (dto any, err error)
+type Registry struct {
+	structs    []structMapper
+	interfaces []interfaceMapping
+}
+
+type structMapper interface {
+	ToEntity(dto Struct) (ent any, err error)
+	ToDataTransferObject(ent any) (dto Struct, err error)
 
 	CheckEntity(ent any) bool
-	CheckDataTransferObject(dto any) bool
+	CheckDataTransferObject(dto Struct) bool
+}
+
+func (r *Registry) ToValue(dto Struct) (any, error) {
+	for _, m := range r.structs {
+		if m.CheckDataTransferObject(dto) {
+			return m.ToEntity(dto)
+		}
+	}
+	return nil, fmt.Errorf("unexpected data transfer object")
+}
+
+func (r *Registry) toDataTransferObject(ent any) (any, bool, error) {
+	for _, m := range r.structs {
+		if m.CheckEntity(ent) {
+			dto, err := m.ToDataTransferObject(ent)
+			return dto, true, err
+		}
+	}
+	return nil, false, nil
+}
+
+/* INTERFACE */
+
+func RegisterInterface[INTERFACE any](r *Registry, implementations ...INTERFACE) struct{} {
+	iface := reflect.TypeOf((*INTERFACE)(nil)).Elem()
+	if iface.Kind() != reflect.Interface {
+		panic(fmt.Sprintf("INTERFACE type argument must be an interface type (%s)", iface.String()))
+	}
+	var impls []reflect.Type
+	for _, implv := range implementations {
+		implr := reflect.TypeOf(implv)
+		if !implr.Implements(iface) {
+			panic(fmt.Sprintf("%s should implement %s", implr.String(), iface.String()))
+		}
+		impls = append(impls, implr)
+	}
+	r.interfaces = append(r.interfaces, interfaceMapping{
+		Interface:       iface,
+		Implementations: impls,
+	})
+	return struct{}{}
+}
+
+type interfaceMapping struct {
+	Interface       reflect.Type
+	Implementations []reflect.Type
 }
 
 /* STRUCT */
 
-func RegisterStruct[Entity any](r *Registry, m StructMapping[Entity]) struct{} {
-	r.structs = append(r.structs, m)
+func RegisterStruct[Entity any](r *Registry, dtoTypeID string,
+	ToEnt func(str Struct) (Entity, error),
+	ToDTO func(ent Entity) (Struct, error),
+) struct{} {
+	r.structs = append(r.structs, StructMapping[Entity]{
+		TypeID: dtoTypeID,
+		ToEnt:  ToEnt,
+		ToDTO:  ToDTO,
+	})
 	return struct{}{}
 }
 
@@ -115,35 +223,15 @@ func (dto Struct) Lookup(key string) (any, bool) {
 	return v, ok
 }
 
-func (r *Registry) ToEntity(dto Struct) (any, error) {
-	for _, m := range r.structs {
-		if m.CheckDataTransferObject(dto) {
-			return m.ToEntity(dto)
-		}
-	}
-	return nil, fmt.Errorf("unexpected data transfer object")
-}
-
-func (r *Registry) ToDataTransferObject(ent any) (Struct, bool, error) {
-	for _, m := range r.structs {
-		if m.CheckEntity(ent) {
-			dto, err := m.ToDataTransferObject(ent)
-			return dto, true, err
-		}
-	}
-	return nil, false, nil
-}
-
 type StructMapping[Entity any] struct {
-	Check func(str Struct) bool
-	ToEnt func(str Struct) (Entity, error)
-	ToDTO func(ent Entity) (Struct, error)
+	TypeID string
+	ToEnt  func(str Struct) (Entity, error)
+	ToDTO  func(ent Entity) (Struct, error)
 }
 
 func (m StructMapping[Entity]) ToEntity(dto Struct) (_ any, rErr error) {
 	defer mappingRecover(&rErr)
-	ent, err := m.ToEnt(dto)
-	return ent, err
+	return m.ToEnt(dto)
 }
 
 func (m StructMapping[Entity]) ToDataTransferObject(iEnt any) (_ Struct, rErr error) {
@@ -152,7 +240,15 @@ func (m StructMapping[Entity]) ToDataTransferObject(iEnt any) (_ Struct, rErr er
 	if !ok {
 		return nil, fmt.Errorf("expected %T but got %T", *new(Entity), iEnt)
 	}
-	return m.ToDTO(ent)
+	dto, err := m.ToDTO(ent)
+	if err != nil {
+		return nil, err
+	}
+	if dto == nil {
+		return nil, nil
+	}
+	dto[structTypeFieldKey] = m.TypeID
+	return dto, nil
 }
 
 func (m StructMapping[Entity]) CheckEntity(ent any) bool {
@@ -160,13 +256,31 @@ func (m StructMapping[Entity]) CheckEntity(ent any) bool {
 	return ok
 }
 
-func (m StructMapping[Entity]) CheckDataTransferObject(dto Struct) bool {
-	return m.Check(dto)
+const structTypeFieldKey = "__type"
+
+func (m StructMapping[Entity]) CheckDataTransferObject(str Struct) bool {
+	return str[structTypeFieldKey] == m.TypeID
 }
+
+/* DSL-ERROR */
 
 const Err errorkit.Error = "DATA_TRANSFER_OBJECT_MAPPING_ERROR"
 
-func ErrKeyNotFound(key string) error { return fmt.Errorf("%w: %s key not found", Err, key) }
+func Must[T any](v T, err error) T {
+	if err != nil {
+		panic(wrapErr(err))
+	}
+	return v
+}
+
+func wrapErr(err error) error {
+	if !errors.Is(err, Err) {
+		err = errorkit.Merge(Err, err)
+	}
+	return err
+}
+
+func ErrKeyNotFound(key string) error { return wrapErr(fmt.Errorf("%s key not found", key)) }
 
 func mappingRecover(returnErr *error) {
 	r := recover()
