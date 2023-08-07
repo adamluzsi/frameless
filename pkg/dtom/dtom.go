@@ -30,7 +30,7 @@ func MapValue[T any](r *Registry, dto any) (T, error) {
 			}
 		}
 		if mapper == nil {
-			return val, wrapErr(fmt.Errorf("unexpected data transfer object"))
+			return val, errf("unexpected data transfer object")
 		}
 		v, err := mapper.ToValueType(dto)
 		if err != nil {
@@ -38,7 +38,7 @@ func MapValue[T any](r *Registry, dto any) (T, error) {
 		}
 		val, ok := v.(T)
 		if !ok {
-			return val, wrapErr(fmt.Errorf("%s, %T", "invalid type received", val))
+			return val, errf("%s, %T", "invalid type received", val)
 		}
 		return val, nil
 
@@ -46,14 +46,12 @@ func MapValue[T any](r *Registry, dto any) (T, error) {
 		var typ = reflect.TypeOf((*T)(nil)).Elem()
 
 		if !isPrimitiveKind(typ) {
-			return *new(T), wrapErr(fmt.Errorf("%s, expected %T but got %T",
-				"unrecognised DTO value", *new(T), dto))
+			return *new(T), errf("%s, expected %T but got %T", "unrecognised DTO value", *new(T), dto)
 		}
 
 		val, ok := reflectkit.Cast[T](dto)
 		if !ok {
-			return *new(T), wrapErr(fmt.Errorf(
-				"failed to cast value from %T to %s", dto, typ.String()))
+			return *new(T), errf("failed to cast value from %T to %s", dto, typ.String())
 		}
 
 		return val, nil
@@ -63,7 +61,7 @@ func MapValue[T any](r *Registry, dto any) (T, error) {
 func MapDTO[DTO, V any](r *Registry, val V) (DTO, error) {
 	dto, ok, err := r.toDataTransferObject(val)
 	if err != nil {
-		return nil, wrapErr(err)
+		return *new(DTO), wrapErr(err)
 	}
 	if ok {
 		return dto, nil
@@ -71,25 +69,29 @@ func MapDTO[DTO, V any](r *Registry, val V) (DTO, error) {
 	refVal := reflect.ValueOf(val)
 	switch refVal.Kind() {
 	case reflect.Slice:
-		var out []any
+		var out DTO
 		for i, l := 0, refVal.Len(); i < l; i++ {
 			elem, err := MapDTO(r, refVal.Index(i).Interface())
 			if err != nil {
-				return nil, err
+				return *new(DTO), err
 			}
 			out = append(out, elem)
 		}
 		return out, nil
 
-	//Array, Chan, Func, Interface, Map,
-	//Pointer, Slice,
-	//, Struct, UnsafePointer,
+		Array, Chan, Func, Interface, Map,
+		Pointer, Slice,
+		, Struct, UnsafePointer,
+
 
 	default:
 		if isPrimitiveKind(refVal.Type()) {
-			return val, nil
+			dto, ok := reflectkit.Cast[DTO](val)
+			if !ok {
+				return *new(DTO), errf("unable to cast %T to %T", val, dto)
+			}
 		}
-		return nil, wrapErr(fmt.Errorf("DTO mapping not found for %T", val))
+		return *new(DTO), errf("DTO mapping not found for %T", val)
 	}
 }
 
@@ -241,18 +243,9 @@ func (m StructMapping[Value, DTO]) ToDataTransferObject(ival any) (_ any, rErr e
 	defer mappingRecover(&rErr)
 	val, ok := ival.(Value)
 	if !ok {
-		return nil, fmt.Errorf("expected %T but got %T", *new(Value), ival)
+		return nil, errf("expected %T but got %T", *new(Value), ival)
 	}
-	dto, err := m.ToDTO(val)
-	if err != nil {
-		return nil, err
-	}
-	if dto == nil {
-		return nil, nil
-	}
-	
-	dto[structTypeFieldKey] = m.TypeID
-	return dto, nil
+	return m.ToDTO(val)
 }
 
 func (m StructMapping[Value, DTO]) CheckEntity(ent any) bool {
@@ -277,6 +270,10 @@ func Must[T any](v T, err error) T {
 	return v
 }
 
+func errf(format string, args ...any) error {
+	return wrapErr(fmt.Errorf(format, args...))
+}
+
 func wrapErr(err error) error {
 	if !errors.Is(err, Err) {
 		err = errorkit.Merge(Err, err)
@@ -284,7 +281,7 @@ func wrapErr(err error) error {
 	return err
 }
 
-func ErrKeyNotFound(key string) error { return wrapErr(fmt.Errorf("%s key not found", key)) }
+func ErrKeyNotFound(key string) error { return errf("%s key not found", key)) }
 
 func mappingRecover(returnErr *error) {
 	r := recover()
@@ -296,8 +293,4 @@ func mappingRecover(returnErr *error) {
 	} else {
 		*returnErr = fmt.Errorf("%v", r)
 	}
-}
-
-type envelop struct {
-	Type string `json:"__type"`
 }

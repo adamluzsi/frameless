@@ -14,11 +14,8 @@ func TestRegistry_smoke(t *testing.T) {
 
 	ent := Foo{
 		Bar: Bar{
-			Baz: Baz{
-				V: rnd.Int(),
-			},
+			V: rnd.Int(),
 		},
-		Quxers: []Quxer{Qux{V: rnd.String()}},
 	}
 
 	ogDTO, err := dtom.MapDTO(r, ent)
@@ -37,103 +34,64 @@ func TestRegistry_smoke(t *testing.T) {
 	pp.PP(val)
 }
 
-var _ = dtom.RegisterStructX[A, ADTO](r, "a",
-	func(v A) ADTO {
-		return ADTO{B: dtom.Must(dtom.MapDTO[BDTO](r, v.B))}
-	},
-	func(dto ADTO) A {
-		return A{B: dtom.Must(dtom.MapValue[B](r, dto.B))}
-	},
-)
-
 type Foo struct {
 	Bar Bar
-}
-
-type Bar struct {
 	Baz Baz
 }
 
-type Baz struct {
-	V int
-}
+type Bar struct{ V int }
 
-type Quxer interface{ Qux() }
+type Bazer interface{ Baz() }
 
-type Qux struct {
-	V string
-}
+type Baz struct{ V string }
 
-func (q Qux) Qux() {}
+func (Baz) Baz() {}
 
 type FooDTO struct {
 	Bar BarDTO `json:"bar"`
-}
-
-type BarDTO struct {
 	Baz BazDTO `json:"baz"`
 }
 
-type BazDTO struct {
+type BarDTO struct {
 	V int `json:"v"`
 }
 
-type QuxDTO struct {
+type BazDTO struct {
 	V string `json:"v"`
 }
 
 var r = &dtom.Registry{}
 
 var _ = dtom.RegisterStruct[Foo, FooDTO](r, "foo",
-	func(str dtom.Struct) (Foo, error) {
+	func(dto FooDTO) (Foo, error) {
 		return Foo{
-			Bar: dtom.Must(dtom.MapValue[Bar](r, str.Object("bar"))),
-			Quxers: dtom.MapList(str.List("quxers"), func(v dtom.Struct) Quxer {
-				return dtom.Must(dtom.MapValue[Quxer](r, v))
-			}),
+			Bar: dtom.Must(dtom.MapValue[Bar](r, dto.Bar)),
+			Baz: dtom.Must(dtom.MapValue[Baz](r, dto.Baz)),
 		}, nil
 	},
-	func(ent Foo) (dtom.Struct, error) {
-		return dtom.Struct{
-			"bar":    dtom.Must(dtom.MapDTO(r, ent.Bar)),
-			"quxers": dtom.Must(dtom.MapDTO(r, ent.Quxers)),
+	func(v Foo) (FooDTO, error) {
+		return FooDTO{
+			Bar: dtom.Must(dtom.MapDTO[BarDTO](r, v.Bar)),
 		}, nil
 	},
 )
 
-var _ = dtom.RegisterStruct[Bar](r, "baz",
-	func(dto dtom.Struct) (Bar, error) {
-		return Bar{
-			Baz: dtom.Must(dtom.MapValue[Baz](r, dto.Object("baz"))),
-		}, nil
+var _ = dtom.RegisterStruct[Bar, BarDTO](r, "baz",
+	func(dto BarDTO) (Bar, error) {
+		return Bar{V: dto.V}, nil
 	},
-	func(ent Bar) (dtom.Struct, error) {
-		return dtom.Struct{
-			"baz": dtom.Must(dtom.MapDTO(r, ent.Baz)),
-		}, nil
+	func(v Bar) (BarDTO, error) {
+		return BarDTO{V: v.V}, nil
 	},
 )
 
-var _ = dtom.RegisterStruct[Baz](r, "bar",
-	func(dto dtom.Struct) (Baz, error) {
-		return Baz{V: dtom.Must(dtom.MapValue[int](r, dto["v"]))}, nil
+var _ = dtom.RegisterStruct[Baz, BazDTO](r, "bar",
+	func(dto BazDTO) (Baz, error) {
+		return Baz{V: dto.V}, nil
 	},
-	func(ent Baz) (dtom.Struct, error) {
-		return dtom.Struct{"v": dtom.Must(dtom.MapDTO(r, ent.V))}, nil
-	},
-)
-
-var _ = dtom.RegisterStruct[Qux](r, "qux",
-	func(str dtom.Struct) (Qux, error) {
-		return Qux{
-			V: dtom.Must(dtom.MapValue[string](r, str["v"])),
-		}, nil
-	},
-	func(ent Qux) (dtom.Struct, error) {
-		return dtom.Struct{
-			"v": dtom.Must(dtom.MapDTO(r, ent.V)),
-		}, nil
+	func(v Baz) (BazDTO, error) {
+		return BazDTO{V: v.V}, nil
 	},
 )
 
-var _ = dtom.RegisterInterface[Quxer](r, Qux{})
+var _ = dtom.RegisterInterface[Bazer](r, Baz{})
