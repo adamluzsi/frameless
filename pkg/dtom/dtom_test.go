@@ -9,9 +9,45 @@ import (
 	"testing"
 )
 
+func TestRegistry_smoke(t *testing.T) {
+	var rnd = random.New(random.CryptoSeed{})
+
+	ent := Foo{
+		Bar: Bar{
+			Baz: Baz{
+				V: rnd.Int(),
+			},
+		},
+		Quxers: []Quxer{Qux{V: rnd.String()}},
+	}
+
+	ogDTO, err := dtom.MapDTO(r, ent)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, ogDTO)
+
+	data, err := json.Marshal(ogDTO)
+	assert.NoError(t, err)
+
+	pp.PP(data)
+	var resDTO dtom.Struct
+	assert.NoError(t, json.Unmarshal(data, &resDTO))
+
+	val := dtom.Must(dtom.MapValue[Foo](r, resDTO))
+
+	pp.PP(val)
+}
+
+var _ = dtom.RegisterStructX[A, ADTO](r, "a",
+	func(v A) ADTO {
+		return ADTO{B: dtom.Must(dtom.MapDTO[BDTO](r, v.B))}
+	},
+	func(dto ADTO) A {
+		return A{B: dtom.Must(dtom.MapValue[B](r, dto.B))}
+	},
+)
+
 type Foo struct {
-	Bar    Bar
-	Quxers []Quxer
+	Bar Bar
 }
 
 type Bar struct {
@@ -30,9 +66,25 @@ type Qux struct {
 
 func (q Qux) Qux() {}
 
+type FooDTO struct {
+	Bar BarDTO `json:"bar"`
+}
+
+type BarDTO struct {
+	Baz BazDTO `json:"baz"`
+}
+
+type BazDTO struct {
+	V int `json:"v"`
+}
+
+type QuxDTO struct {
+	V string `json:"v"`
+}
+
 var r = &dtom.Registry{}
 
-var _ = dtom.RegisterStruct[Foo](r, "foo",
+var _ = dtom.RegisterStruct[Foo, FooDTO](r, "foo",
 	func(str dtom.Struct) (Foo, error) {
 		return Foo{
 			Bar: dtom.Must(dtom.MapValue[Bar](r, str.Object("bar"))),
@@ -85,31 +137,3 @@ var _ = dtom.RegisterStruct[Qux](r, "qux",
 )
 
 var _ = dtom.RegisterInterface[Quxer](r, Qux{})
-
-func TestRegistry_smoke(t *testing.T) {
-	var rnd = random.New(random.CryptoSeed{})
-
-	ent := Foo{
-		Bar: Bar{
-			Baz: Baz{
-				V: rnd.Int(),
-			},
-		},
-		Quxers: []Quxer{Qux{V: rnd.String()}},
-	}
-
-	ogDTO, err := dtom.MapDTO(r, ent)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, ogDTO)
-
-	data, err := json.Marshal(ogDTO)
-	assert.NoError(t, err)
-
-	pp.PP(data)
-	var resDTO dtom.Struct
-	assert.NoError(t, json.Unmarshal(data, &resDTO))
-
-	val := dtom.Must(dtom.MapValue[Foo](r, resDTO))
-
-	pp.PP(val)
-}

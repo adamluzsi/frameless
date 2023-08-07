@@ -32,7 +32,7 @@ func MapValue[T any](r *Registry, dto any) (T, error) {
 		if mapper == nil {
 			return val, wrapErr(fmt.Errorf("unexpected data transfer object"))
 		}
-		v, err := mapper.ToEntity(dto)
+		v, err := mapper.ToValueType(dto)
 		if err != nil {
 			return val, wrapErr(err)
 		}
@@ -60,15 +60,15 @@ func MapValue[T any](r *Registry, dto any) (T, error) {
 	}
 }
 
-func MapDTO(r *Registry, ent any) (any, error) {
-	dto, ok, err := r.toDataTransferObject(ent)
+func MapDTO[DTO, V any](r *Registry, val V) (DTO, error) {
+	dto, ok, err := r.toDataTransferObject(val)
 	if err != nil {
 		return nil, wrapErr(err)
 	}
 	if ok {
 		return dto, nil
 	}
-	refVal := reflect.ValueOf(ent)
+	refVal := reflect.ValueOf(val)
 	switch refVal.Kind() {
 	case reflect.Slice:
 		var out []any
@@ -87,9 +87,9 @@ func MapDTO(r *Registry, ent any) (any, error) {
 
 	default:
 		if isPrimitiveKind(refVal.Type()) {
-			return ent, nil
+			return val, nil
 		}
-		return nil, wrapErr(fmt.Errorf("DTO mapping not found for %T", ent))
+		return nil, wrapErr(fmt.Errorf("DTO mapping not found for %T", val))
 	}
 }
 
@@ -112,17 +112,16 @@ type Registry struct {
 }
 
 type structMapper interface {
-	ToEntity(dto Struct) (ent any, err error)
-	ToDataTransferObject(ent any) (dto Struct, err error)
-
 	CheckEntity(ent any) bool
-	CheckDataTransferObject(dto Struct) bool
+	ToValueType(dto any) (ent any, err error)
+	CheckDataTransferObject(dto any) bool
+	ToDataTransferObject(ent any) (dto any, err error)
 }
 
 func (r *Registry) ToValue(dto Struct) (any, error) {
 	for _, m := range r.structs {
 		if m.CheckDataTransferObject(dto) {
-			return m.ToEntity(dto)
+			return m.ToValueType(dto)
 		}
 	}
 	return nil, fmt.Errorf("unexpected data transfer object")
@@ -167,13 +166,13 @@ type interfaceMapping struct {
 
 /* STRUCT */
 
-func RegisterStruct[Entity any](r *Registry, dtoTypeID string,
-	ToEnt func(str Struct) (Entity, error),
-	ToDTO func(ent Entity) (Struct, error),
+func RegisterStruct[Value, DTO any](r *Registry, dtoTypeID string,
+	ToVal func(DTO) (Value, error),
+	ToDTO func(Value) (DTO, error),
 ) struct{} {
-	r.structs = append(r.structs, StructMapping[Entity]{
+	r.structs = append(r.structs, StructMapping[Value, DTO]{
 		TypeID: dtoTypeID,
-		ToEnt:  ToEnt,
+		ToEnt:  ToVal,
 		ToDTO:  ToDTO,
 	})
 	return struct{}{}
@@ -223,42 +222,47 @@ func (dto Struct) Lookup(key string) (any, bool) {
 	return v, ok
 }
 
-type StructMapping[Entity any] struct {
+type StructMapping[Value, DTO any] struct {
 	TypeID string
-	ToEnt  func(str Struct) (Entity, error)
-	ToDTO  func(ent Entity) (Struct, error)
+	ToEnt  func(str DTO) (Value, error)
+	ToDTO  func(ent Value) (DTO, error)
 }
 
-func (m StructMapping[Entity]) ToEntity(dto Struct) (_ any, rErr error) {
+func (m StructMapping[Value, DTO]) ToValueType(idto any) (_ any, rErr error) {
 	defer mappingRecover(&rErr)
+	dto, ok := idto.(DTO)
+	if !ok {
+		return nil, fmt.Errorf("invalid type, expected %T but got %T", *new(DTO), idto)
+	}
 	return m.ToEnt(dto)
 }
 
-func (m StructMapping[Entity]) ToDataTransferObject(iEnt any) (_ Struct, rErr error) {
+func (m StructMapping[Value, DTO]) ToDataTransferObject(ival any) (_ any, rErr error) {
 	defer mappingRecover(&rErr)
-	ent, ok := iEnt.(Entity)
+	val, ok := ival.(Value)
 	if !ok {
-		return nil, fmt.Errorf("expected %T but got %T", *new(Entity), iEnt)
+		return nil, fmt.Errorf("expected %T but got %T", *new(Value), ival)
 	}
-	dto, err := m.ToDTO(ent)
+	dto, err := m.ToDTO(val)
 	if err != nil {
 		return nil, err
 	}
 	if dto == nil {
 		return nil, nil
 	}
+	
 	dto[structTypeFieldKey] = m.TypeID
 	return dto, nil
 }
 
-func (m StructMapping[Entity]) CheckEntity(ent any) bool {
-	_, ok := ent.(Entity)
+func (m StructMapping[Value, DTO]) CheckEntity(ent any) bool {
+	_, ok := ent.(Value)
 	return ok
 }
 
 const structTypeFieldKey = "__type"
 
-func (m StructMapping[Entity]) CheckDataTransferObject(str Struct) bool {
+func (m StructMapping[Value, DTO]) CheckDataTransferObject(str Struct) bool {
 	return str[structTypeFieldKey] == m.TypeID
 }
 
@@ -292,4 +296,8 @@ func mappingRecover(returnErr *error) {
 	} else {
 		*returnErr = fmt.Errorf("%v", r)
 	}
+}
+
+type envelop struct {
+	Type string `json:"__type"`
 }
