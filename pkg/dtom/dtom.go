@@ -10,12 +10,16 @@ import (
 
 /* MAPPING */
 
-func MapList[X, Y any](vs []X, mapFn func(v X) Y) []Y {
-	var out []Y
-	for _, v := range vs {
-		out = append(out, mapFn(v))
+func ListOf[Y, X any](r *Registry, mapping func(*Registry, X) (Y, error), vs []X) ([]Y, error) {
+	var res []Y
+	for _, in := range vs {
+		out, err := mapping(r, in)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, out)
 	}
-	return out
+	return res, nil
 }
 
 func MapValue[T any](r *Registry, dto any) (T, error) {
@@ -79,10 +83,9 @@ func MapDTO[DTO, V any](r *Registry, val V) (DTO, error) {
 		}
 		return out, nil
 
-		Array, Chan, Func, Interface, Map,
-		Pointer, Slice,
-		, Struct, UnsafePointer,
-
+		//Array, Chan, Func, Interface, Map,
+		//Pointer, Slice,
+		//, Struct, UnsafePointer,
 
 	default:
 		if isPrimitiveKind(refVal.Type()) {
@@ -169,12 +172,15 @@ type interfaceMapping struct {
 /* STRUCT */
 
 func RegisterStruct[Value, DTO any](r *Registry, dtoTypeID string,
-	ToVal func(DTO) (Value, error),
 	ToDTO func(Value) (DTO, error),
+	ToVal func(DTO) (Value, error),
 ) struct{} {
+	if reflect.TypeOf((*Value)(nil)).Elem().Kind() != reflect.Struct {
+		panic(fmt.Sprintf("%T must be a struct kind", *new(Value)))
+	}
 	r.structs = append(r.structs, StructMapping[Value, DTO]{
 		TypeID: dtoTypeID,
-		ToEnt:  ToVal,
+		ToVal:  ToVal,
 		ToDTO:  ToDTO,
 	})
 	return struct{}{}
@@ -226,7 +232,7 @@ func (dto Struct) Lookup(key string) (any, bool) {
 
 type StructMapping[Value, DTO any] struct {
 	TypeID string
-	ToEnt  func(str DTO) (Value, error)
+	ToVal  func(str DTO) (Value, error)
 	ToDTO  func(ent Value) (DTO, error)
 }
 
@@ -236,7 +242,7 @@ func (m StructMapping[Value, DTO]) ToValueType(idto any) (_ any, rErr error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid type, expected %T but got %T", *new(DTO), idto)
 	}
-	return m.ToEnt(dto)
+	return m.ToVal(dto)
 }
 
 func (m StructMapping[Value, DTO]) ToDataTransferObject(ival any) (_ any, rErr error) {
@@ -253,10 +259,8 @@ func (m StructMapping[Value, DTO]) CheckEntity(ent any) bool {
 	return ok
 }
 
-const structTypeFieldKey = "__type"
-
-func (m StructMapping[Value, DTO]) CheckDataTransferObject(str Struct) bool {
-	return str[structTypeFieldKey] == m.TypeID
+func (m StructMapping[Value, DTO]) CheckDataTransferObject(dto any) bool {
+	return false
 }
 
 /* DSL-ERROR */
@@ -281,7 +285,7 @@ func wrapErr(err error) error {
 	return err
 }
 
-func ErrKeyNotFound(key string) error { return errf("%s key not found", key)) }
+func ErrKeyNotFound(key string) error { return errf("%s key not found", key) }
 
 func mappingRecover(returnErr *error) {
 	r := recover()
@@ -293,4 +297,23 @@ func mappingRecover(returnErr *error) {
 	} else {
 		*returnErr = fmt.Errorf("%v", r)
 	}
+}
+
+/* INTERFACE */
+
+const structTypeFieldKey = "__type"
+
+type Interface[INTERFACE any] struct {
+	Type  string
+	Value INTERFACE
+}
+
+func (i Interface[INTERFACE]) MarshalJSON() ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (i Interface[INTERFACE]) UnmarshalJSON(bytes []byte) error {
+	//TODO implement me
+	panic("implement me")
 }
