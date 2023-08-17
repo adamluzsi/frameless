@@ -81,8 +81,8 @@ type (
 
 
 
-var lockerMigrationConfig = MigratorConfig{
-	Namespace: "frameless_locker_locks",
+var lockerMigrationConfig = MigratorGroup{
+	ID: "frameless_locker_locks",
 	Steps: []MigratorStep{
 		MigrationStep{UpQuery: queryCreateLockerTable},
 		MigrationStep{UpQuery: queryRenameLockerTable},
@@ -101,7 +101,7 @@ CREATE VIEW "frameless_locker_locks" AS SELECT * FROM "frameless_guard_locks";
 `
 
 func (l Locker) Migrate(ctx context.Context) error {
-	return Migrator{Connection: l.Connection, Config: lockerMigrationConfig}.Up(ctx)
+	return Migrator{Connection: l.Connection, Group: lockerMigrationConfig}.Migrate(ctx)
 }
 
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {

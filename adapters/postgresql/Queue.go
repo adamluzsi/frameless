@@ -102,8 +102,8 @@ CREATE TABLE IF NOT EXISTS ` + queueTableName + ` (
 )
 ;`
 
-var queueMigratorConfig = MigratorConfig{
-	Namespace: queueTableName,
+var queueMigratorConfig = MigratorGroup{
+	ID: queueTableName,
 	Steps: []MigratorStep{
 		MigrationStep{UpQuery: queryCreateQueueTable},
 	},
@@ -112,8 +112,8 @@ var queueMigratorConfig = MigratorConfig{
 func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
 	return Migrator{
 		Connection: q.Connection,
-		Config:     queueMigratorConfig,
-	}.Up(ctx)
+		Group:      queueMigratorConfig,
+	}.Migrate(ctx)
 }
 
 func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) pubsub.Subscription[Entity] {

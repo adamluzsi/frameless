@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/guard"
+	"github.com/adamluzsi/frameless/ports/iterators"
 	"github.com/adamluzsi/frameless/ports/migration"
 )
 
@@ -33,8 +33,8 @@ func (r TaskerScheduleRepository) States() schedule.StateRepository {
 	return TaskerScheduleStateRepository{Connection: r.Connection}
 }
 
-var migratorConfigTaskerScheduleStateRepository = MigratorConfig{
-	Namespace: "frameless_tasker_schedule_states",
+var migratorConfigTaskerScheduleStateRepository = MigratorGroup{
+	ID: "frameless_tasker_schedule_states",
 	Steps: []MigratorStep{
 		MigrationStep{
 			UpQuery:   "CREATE TABLE IF NOT EXISTS frameless_tasker_schedule_states ( id TEXT PRIMARY KEY, timestamp TIMESTAMP WITH TIME ZONE NOT NULL );",
@@ -76,8 +76,8 @@ var taskerScheduleStateRepositoryMapping = Mapper[schedule.State, schedule.State
 func (r TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
 	return Migrator{
 		Connection: r.Connection,
-		Config:     migratorConfigTaskerScheduleStateRepository,
-	}.Up(ctx)
+		Group:      migratorConfigTaskerScheduleStateRepository,
+	}.Migrate(ctx)
 }
 
 func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *schedule.State) error {

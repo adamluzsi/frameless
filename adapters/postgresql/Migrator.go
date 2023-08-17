@@ -6,25 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/ports/comproto"
+	"github.com/adamluzsi/frameless/ports/migration"
 )
 
 type Migrator struct {
 	Connection Connection
-	Config     MigratorConfig
+	Group      MigratorGroup
 }
 
-type MigratorConfig struct {
-	Namespace string
-	Steps     []MigratorStep
-}
+var _ migration.Migratable = Migrator{}
 
-type MigratorStep interface {
-	MigrateUp(Connection, context.Context) error
-	MigrateDown(Connection, context.Context) error
-}
+type (
+	MigratorGroup = migration.Group[Connection]
+	MigratorStep  = migration.Step[Connection]
+)
 
-func (m Migrator) Up(ctx context.Context) (rErr error) {
-	if m.Config.Namespace == "" {
+func (m Migrator) Migrate(ctx context.Context) (rErr error) {
+	if m.Group.ID == "" {
 		return fmt.Errorf("missing namespace")
 	}
 
@@ -44,8 +42,8 @@ func (m Migrator) Up(ctx context.Context) (rErr error) {
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Connection, stepCTX)
 
-	for version, step := range m.Config.Steps {
-		if err := m.upNamespace(schemaCTX, stepCTX, m.Config.Namespace, version, step); err != nil {
+	for version, step := range m.Group.Steps {
+		if err := m.upNamespace(schemaCTX, stepCTX, m.Group.ID, version, step); err != nil {
 			return err
 		}
 	}
