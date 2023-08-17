@@ -9,6 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/clock"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"github.com/adamluzsi/testcase/let"
 	"github.com/adamluzsi/testcase/random"
@@ -476,7 +477,7 @@ func Test_Main(t *testing.T) {
 					atomic.AddInt64(&done, 1)
 				}()
 				wg.Wait()
-				
+
 				t.Must.Equal(int64(1), atomic.LoadInt64(&done))
 				t.Must.True(isDone.Get(t))
 			})
@@ -1035,5 +1036,75 @@ func TestWithSignalNotify(t *testing.T) {
 				t.Must.ErrorIs(expectedErr.Get(t), act(t))
 			})
 		})
+	})
+}
+
+func ExampleHTTPServerTask() {
+	srv := &http.Server{
+		Addr:    "localhost:58080",
+		Handler: http.NewServeMux(),
+	}
+
+	tasker.HTTPServerTask(srv).
+		Run(context.Background())
+}
+
+func TestHTTPServerTask_smoke(t *testing.T) {
+	var inFlight int64
+	h := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		atomic.AddInt64(&inFlight, 1)
+		defer atomic.AddInt64(&inFlight, -1)
+
+		writer.WriteHeader(http.StatusTeapot)
+		if v := request.URL.Query().Get("wait"); v != "" {
+			<-clock.After(time.Minute)
+		}
+		_, _ = writer.Write([]byte("Hello, world!"))
+	})
+	srv := &http.Server{
+		Addr:    "localhost:58080",
+		Handler: h,
+	}
+	const srvURL = "http://localhost:58080/"
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() { assert.NoError(t, tasker.HTTPServerTask(srv).Run(ctx)) }()
+
+	eventually := assert.EventuallyWithin(5 * time.Second)
+
+	eventually.Assert(t, func(it assert.It) {
+		resp, err := http.Get(srvURL)
+		assert.NoError(it, err)
+		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
+	})
+
+	var done int32
+
+	go func() {
+		resp, err := http.Get(srvURL + "?wait=true")
+		assert.NoError(t, err)
+		assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		atomic.AddInt32(&done, 1)
+	}()
+
+	eventually.Assert(t, func(it assert.It) { // wait until the long request is made
+		assert.NotEqual(it, 0, atomic.LoadInt64(&inFlight))
+	})
+
+	cancel()
+
+	// after cancellation, server still in running and handling last open connections
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, 0, atomic.LoadInt32(&done))
+		time.Sleep(time.Millisecond)
+	}
+
+	// then we travel forward in time, so the long request finish up its business
+	timecop.Travel(t, time.Minute)
+
+	eventually.Assert(t, func(it assert.It) {
+		_, err := http.Get(srvURL)
+		assert.Error(it, err)
 	})
 }

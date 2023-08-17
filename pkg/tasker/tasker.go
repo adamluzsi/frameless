@@ -9,6 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 	"github.com/adamluzsi/frameless/pkg/tasker/internal"
 	"github.com/adamluzsi/testcase/clock"
+	"net/http"
 	"os"
 	"sync"
 	"syscall"
@@ -267,4 +268,13 @@ func WithSignalNotify[TFN genericTask](tfn TFN, shutdownSignals ...os.Signal) Ta
 // If any of the Task encounters a failure, the other tasker will receive a cancellation signal.
 func Main(ctx context.Context, tasks ...Task) error {
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
+}
+
+// HTTPServerTask is designed to encapsulate your `http.Server`,
+// enabling graceful shutdown with the server and presenting it as a Task.
+func HTTPServerTask(srv *http.Server) Task {
+	return WithShutdown(
+		IgnoreError(srv.ListenAndServe, http.ErrServerClosed),
+		srv.Shutdown,
+	)
 }
