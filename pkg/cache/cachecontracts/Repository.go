@@ -488,7 +488,9 @@ func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spe
 
 func (c EntityRepository[Entity, ID]) getID(tb testing.TB, ent interface{}) ID {
 	id, ok := extid.Lookup[ID](ent)
-	assert.Must(tb).True(ok, `id was expected to be present for the entity`+fmt.Sprintf(` (%#v)`, ent))
+	assert.Must(tb).True(ok,
+		`id was expected to be present for the entity`,
+		assert.Message(fmt.Sprintf(` (%#v)`, ent)))
 	return id
 }
 

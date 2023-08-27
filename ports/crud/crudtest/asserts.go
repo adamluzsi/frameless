@@ -51,7 +51,7 @@ func IsPresent[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID
 	Eventually.Assert(tb, func(it assert.It) {
 		e, found, err := subject.FindByID(ctx, id)
 		it.Must.Nil(err)
-		it.Must.True(found, errMessage)
+		it.Must.True(found, assert.Message(errMessage))
 		ent = e
 	})
 	return &ent
@@ -63,7 +63,7 @@ func IsAbsent[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID]
 	Eventually.Assert(tb, func(it assert.It) {
 		_, found, err := subject.FindByID(ctx, id)
 		it.Must.Nil(err)
-		it.Must.False(found, errMessage)
+		it.Must.False(found, assert.Message(errMessage))
 	})
 }
 

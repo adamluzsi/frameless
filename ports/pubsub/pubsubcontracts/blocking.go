@@ -70,11 +70,11 @@ func (c Blocking[Data]) Spec(s *testcase.Spec) {
 
 			t.Must.True(receivedAt.Before(publishedAt),
 				"it was expected that the message was received before the publish was done.",
-				fmt.Sprintf("received at - published at: %s", receivedAt.Sub(publishedAt)))
+				assert.Message(fmt.Sprintf("received at - published at: %s", receivedAt.Sub(publishedAt))))
 
 			t.Must.True(ackedAt.Before(publishedAt),
 				"it was expected that acknowledging time is before the publishing time.",
-				fmt.Sprintf("acknowledged at - published at: %s", ackedAt.Sub(publishedAt)))
+				assert.Message(fmt.Sprintf("acknowledged at - published at: %s", ackedAt.Sub(publishedAt))))
 		})
 
 		s.Test("on context cancellation, message publishing is revoked", func(t *testcase.T) {

@@ -161,7 +161,7 @@ func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
 
 	vs, err = iterators.Collect(cachei.Repository.Entities().FindAll(ctx))
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(vs), pp.Format(vs))
+	assert.Equal(t, 3, len(vs), assert.Message(pp.Format(vs)))
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
 }
 

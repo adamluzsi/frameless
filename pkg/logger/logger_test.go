@@ -323,7 +323,7 @@ func TestLogger_concurrentUse(t *testing.T) {
 		dec := json.NewDecoder(buf)
 		for dec.More() {
 			var le LogEntry
-			assert.NoError(t, dec.Decode(&le), pp.Format(buf.B.String()))
+			assert.NoError(t, dec.Decode(&le), assert.Message(pp.Format(buf.B.String())))
 		}
 	})
 

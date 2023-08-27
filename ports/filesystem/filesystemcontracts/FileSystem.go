@@ -365,9 +365,10 @@ func (c FileSystem) specMkdir(s *testcase.Spec) {
 			})
 
 			assertFileInfo := func(t *testcase.T, info fs.FileInfo) {
+				t.Helper()
 				t.Must.True(info.IsDir())
 				t.Must.Equal((c.perm().Get(t) | fs.ModeDir).String(), info.Mode().String())
-				t.Must.True(cTime.Get(t).Before(info.ModTime()) || cTime.Get(t).Equal(info.ModTime()))
+				c.assertFileTime(t, cTime.Get(t), info.ModTime())
 			}
 
 			s.Then("FileSystem.Stat returns the directory details", func(t *testcase.T) {
@@ -423,6 +424,15 @@ func (c FileSystem) specMkdir(s *testcase.Spec) {
 			t.Must.Equal("mkdir", perr.Op)
 		})
 	})
+}
+
+func (c FileSystem) assertFileTime(t *testcase.T, cTime, modTime time.Time) {
+	// In certain file systems, the modification timestamp might have lower precision
+	// than our creation timestamp, offering only second-level accuracy.
+	const rounding = time.Second
+	cTime = cTime.UTC().Round(rounding)
+	modTime = modTime.UTC().Round(rounding)
+	t.Must.True(cTime.Before(modTime) || cTime.Equal(modTime))
 }
 
 func (c FileSystem) specRemove(s *testcase.Spec) {
@@ -581,7 +591,7 @@ func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 			t.Must.NotNil(err)
 
 			perr := c.isPathError(t, err)
-			t.Must.Equal("fdopendir", perr.Op)
+			t.Must.Contain([]string{"fdopendir", "readdirent"}, perr.Op)
 			t.Must.Contain(perr.Path, c.name().Get(t))
 			t.Must.ErrorIs(syscall.ENOTDIR, perr.Err)
 		})
@@ -673,7 +683,7 @@ func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 						t.Must.Nil(err)
 						_ = info.Sys()
 						t.Must.False(info.IsDir())
-						t.Must.True(cTime.Get(t).Before(info.ModTime()) || cTime.Get(t).Equal(info.ModTime()))
+						c.assertFileTime(t, cTime.Get(t), info.ModTime())
 						t.Must.Equal(info.Mode().Type(), ent.Type())
 						t.Must.False(ent.Type()&fs.ModeDir != 0, "no ModeDir flag is expected")
 					}

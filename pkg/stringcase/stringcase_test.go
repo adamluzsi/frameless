@@ -3,6 +3,8 @@ package stringcase_test
 import (
 	"github.com/adamluzsi/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
+	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/pp"
 	"github.com/adamluzsi/testcase/random"
 	"strings"
 	"testing"
@@ -27,7 +29,7 @@ func TestToSnake(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "héllo_wörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "the_hello_world"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToSnake(tc.In), "original:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.ToSnake(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -64,7 +66,7 @@ func TestIsSnake(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsSnake(tc.In), "input:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.IsSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -86,7 +88,7 @@ func TestIsScreamingSnake(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsScreamingSnake(tc.In), "input:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.IsScreamingSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -109,7 +111,7 @@ func TestToScreamingSnake(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "HÉLLO_WÖRLD"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "THE_HELLO_WORLD"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToScreamingSnake(tc.In), "original:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.ToScreamingSnake(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -129,7 +131,7 @@ func TestIsPascal(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsPascal(tc.In), "input:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.IsPascal(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -152,7 +154,7 @@ func TestToPascal(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "HélloWörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "TheHelloWorld"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToPascal(tc.In), "original:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.ToPascal(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -173,7 +175,7 @@ func TestIsCamel(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsCamel(tc.In), "input:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.IsCamel(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -197,7 +199,7 @@ func TestToCamel(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "hélloWörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "theHelloWorld"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToCamel(tc.In), "original:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.ToCamel(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -234,7 +236,7 @@ func TestIsKebab(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsSnake(tc.In), "input:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.IsSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -257,6 +259,6 @@ func TestToKebab(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "héllo-wörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "the-hello-world"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToKebab(tc.In), "original:", tc.In)
+		t.Must.Equal(tc.Out, stringcase.ToKebab(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }

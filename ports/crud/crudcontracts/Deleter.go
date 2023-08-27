@@ -2,6 +2,8 @@ package crudcontracts
 
 import (
 	"context"
+	"github.com/adamluzsi/testcase/assert"
+	"github.com/adamluzsi/testcase/pp"
 	"testing"
 
 	"github.com/adamluzsi/frameless/pkg/pointer"
@@ -115,7 +117,7 @@ func (c ByIDDeleter[Entity, ID]) specDeleteByID(s *testcase.Spec) {
 			ent := entity.Get(t)
 			Create[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), ent)
 			id, ok := extid.Lookup[ID](ent)
-			t.Must.True(ok, spechelper.ErrIDRequired.Error())
+			t.Must.True(ok, assert.Message(pp.Format(spechelper.ErrIDRequired.Error())))
 			return id
 		}).EagerLoading(s)
 

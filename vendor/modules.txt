@@ -1,4 +1,4 @@
-# github.com/adamluzsi/testcase v0.139.1
+# github.com/adamluzsi/testcase v0.142.0
 ## explicit; go 1.18
 github.com/adamluzsi/testcase
 github.com/adamluzsi/testcase/assert

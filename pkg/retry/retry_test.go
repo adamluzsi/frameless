@@ -144,9 +144,9 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 			assert.EventuallyWithin(10).Assert(t, func(it assert.It) {
 				duration := measure(func() { act(t) })
 				it.Must.True(duration <= tc.WaitTime+buffer,
-					"expected duration", tc.WaitTime.String(),
-					"got duration:", duration.String(),
-					"buffer", buffer.String())
+					"expected duration", assert.Message(tc.WaitTime.String()),
+					"got duration:", assert.Message(duration.String()),
+					"buffer", assert.Message(buffer.String()))
 			})
 		})
 	})
@@ -174,7 +174,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 				duration = measure(func() {
 					act(t)
 				})
-			}, "expected duration:", expected.String())
+			}, "expected duration:", assert.Message(expected.String()))
 			t.Must.True(duration <= expected+buffer)
 		})
 	})

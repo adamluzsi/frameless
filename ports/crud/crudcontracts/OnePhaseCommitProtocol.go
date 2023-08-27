@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
+	"github.com/adamluzsi/testcase/assert"
 	"sync"
 	"testing"
 
@@ -105,8 +106,8 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 			if updater, ok := c.resource().Get(t).(crud.Updater[Entity]); ok {
 				t.Must.NotNil(updater.Update(tx, ptr),
-					fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
-						c.resource().Get(t)))
+					assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
+						c.resource().Get(t))))
 			}
 
 			t.Must.NotNil(c.resource().Get(t).DeleteByID(tx, id))
@@ -137,8 +138,8 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 
 			if updater, ok := c.resource().Get(t).(crud.Updater[Entity]); ok {
 				t.Must.NotNil(updater.Update(ctx, ptr),
-					fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
-						c.resource().Get(t)))
+					assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
+						c.resource().Get(t))))
 			}
 
 			t.Must.NotNil(c.resource().Get(t).DeleteByID(ctx, id))

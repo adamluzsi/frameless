@@ -2,6 +2,7 @@ package iterators_test
 
 import (
 	"errors"
+	"github.com/adamluzsi/testcase/pp"
 	"testing"
 
 	"github.com/adamluzsi/frameless/ports/iterators"
@@ -20,13 +21,13 @@ func TestMock_Err(t *testing.T) {
 	m := iterators.Stub[any](iterators.Error[any](originalError))
 
 	// default is the wrapped iterator
-	assert.Must(t).NotNil(originalError, m.Err())
+	assert.Must(t).NotNil(originalError, assert.Message(pp.Format(m.Err())))
 
 	m.StubErr = func() error { return expectedError }
-	assert.Must(t).NotNil(expectedError, m.Err())
+	assert.Must(t).NotNil(expectedError, assert.Message(pp.Format(m.Err())))
 
 	m.ResetErr()
-	assert.Must(t).NotNil(originalError, m.Err())
+	assert.Must(t).NotNil(originalError, assert.Message(pp.Format(m.Err())))
 
 }
 
@@ -41,7 +42,7 @@ func TestMock_Close(t *testing.T) {
 	assert.Must(t).Nil(m.Close())
 
 	m.StubClose = func() error { return expectedError }
-	assert.Must(t).NotNil(expectedError, m.Close())
+	assert.Must(t).NotNil(expectedError, assert.Message(pp.Format(m.Close())))
 
 	m.ResetClose()
 	assert.Must(t).Nil(m.Close())

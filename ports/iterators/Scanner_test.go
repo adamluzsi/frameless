@@ -3,6 +3,7 @@ package iterators_test
 import (
 	"bufio"
 	"fmt"
+	"github.com/adamluzsi/testcase/pp"
 	"io"
 	"strings"
 	"testing"
@@ -95,7 +96,7 @@ func TestScanner_NilReaderGiven_ErrorReturned(t *testing.T) {
 	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 
 	assert.Must(t).False(i.Next())
-	assert.Must(t).NotNil(io.ErrUnexpectedEOF, i.Err())
+	assert.Must(t).NotNil(io.ErrUnexpectedEOF, assert.Message(pp.Format(i.Err())))
 }
 
 func TestScanner_Split(t *testing.T) {

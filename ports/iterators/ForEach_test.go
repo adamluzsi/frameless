@@ -41,7 +41,7 @@ func TestForEach(t *testing.T) {
 				iterated := iteratedOnes.Get(t)
 				for _, n := range elements.Get(t) {
 					_, ok := iterated[n]
-					assert.Must(t).True(ok, fmt.Sprintf(`expected that %d will be iterated by the function`, n))
+					assert.Must(t).True(ok, assert.Message(fmt.Sprintf(`expected that %d will be iterated by the function`, n)))
 				}
 			})
 

@@ -90,7 +90,7 @@ func (c FanOut[Data]) Spec(s *testcase.Spec) {
 			for i, res := range results {
 				res.Eventually(t, func(tb testing.TB, got []Data) {
 					assert.Must(tb).ContainExactly(expected, got,
-						fmt.Sprintf("expected that the %d. subscription also received all events", i+1))
+						assert.Message(fmt.Sprintf("expected that the %d. subscription also received all events", i+1)))
 				})
 			}
 		})

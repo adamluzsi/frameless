@@ -126,5 +126,5 @@ func (sih *consumer[Data]) wrk(
 		// TODO: survey which behaviour is more natural
 		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
 		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })
-	}, fmt.Sprintf("error: %#v", iter.Err()))
+	}, assert.Message(fmt.Sprintf("error: %#v", iter.Err())))
 }

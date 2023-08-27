@@ -48,7 +48,7 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 
 	mustBeTCT := func(tb testing.TB) *testcase.T {
 		t, ok := tb.(*testcase.T)
-		assert.Must(tb).True(ok, fmt.Sprintf("expected that %T is *testcase.T", tb))
+		assert.Must(tb).True(ok, assert.Message(fmt.Sprintf("expected that %T is *testcase.T", tb)))
 		return t
 	}
 
