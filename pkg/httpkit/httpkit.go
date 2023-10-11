@@ -9,6 +9,7 @@ import (
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/frameless/pkg/retry"
 	"github.com/adamluzsi/testcase/clock"
+	"github.com/adamluzsi/testcase/pp"
 	"io"
 	"net"
 	"net/http"
@@ -74,7 +75,11 @@ func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Respons
 			continue
 		}
 
+		pp.PP(err)
 		return resp, nil
+	}
+	if err := request.Context().Err(); err != nil {
+		return nil, err
 	}
 	return
 }
