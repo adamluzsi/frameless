@@ -2,9 +2,11 @@ package enum
 
 import (
 	"fmt"
+	"github.com/adamluzsi/frameless/pkg/reflectkit"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/adamluzsi/frameless/pkg/errorkit"
 )
@@ -33,6 +35,12 @@ func ValidateStruct(v any) error {
 
 			if !match(value, enumerators) {
 				return ErrInvalid.With().Detailf("%v does not match enumerator specification: %s", v, tag)
+			}
+		}
+
+		if value.CanInterface() {
+			if err := validate(value.Interface()); err != nil {
+				return err
 			}
 		}
 	}
@@ -163,4 +171,51 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 		out = append(out, value)
 	}
 	return out, nil
+}
+
+var (
+	registry = make(map[reflect.Type][]any)
+	regLock  sync.RWMutex
+)
+
+func Register[T any](enums ...T) (unregister func()) {
+	regLock.Lock()
+	defer regLock.Unlock()
+
+	var choices []any
+	for _, e := range enums {
+		choices = append(choices, e)
+	}
+
+	key := reflect.TypeOf((*T)(nil)).Elem()
+	registry[key] = choices
+
+	return func() {
+		regLock.Lock()
+		defer regLock.Unlock()
+		delete(registry, key)
+	}
+}
+
+// validate
+// TODO: make it recursive and then export it
+func validate(v any) error {
+	regLock.RLock()
+	defer regLock.RUnlock()
+	key := reflect.TypeOf(v)
+	enums, ok := registry[key]
+	if !ok {
+		return nil
+	}
+	var match bool
+	for _, enum := range enums {
+		if reflectkit.Equal(v, enum) {
+			match = true
+			break
+		}
+	}
+	if !match {
+		return ErrInvalid
+	}
+	return nil
 }

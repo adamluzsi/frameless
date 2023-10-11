@@ -302,3 +302,27 @@ func TestValidateStruct_smoke(t *testing.T) {
 		assert.NoError(t, enum.ValidateStruct(StringExample{V: "C"}))
 	})
 }
+
+func TestRegister(t *testing.T) {
+	type X string
+	const (
+		C1 X = "C1"
+		C2 X = "C1"
+		C3 X = "C1"
+	)
+
+	unregister := enum.Register[X](C1, C2, C3)
+	defer unregister()
+
+	t.Run("exported field", func(t *testing.T) {
+		type T struct{ V X }
+
+		assert.NoError(t, enum.ValidateStruct(T{V: C1}))
+		assert.NoError(t, enum.ValidateStruct(T{V: C2}))
+		assert.NoError(t, enum.ValidateStruct(T{V: C3}))
+		assert.ErrorIs(t, enum.ErrInvalid, enum.ValidateStruct(T{V: "C4"}))
+
+		unregister()
+		assert.NoError(t, enum.ValidateStruct(T{V: "C4"}))
+	})
+}
