@@ -1,7 +1,9 @@
 package logger_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/adamluzsi/frameless/pkg/errorkit"
@@ -12,6 +14,7 @@ import (
 	"github.com/adamluzsi/testcase/let"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/adamluzsi/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase/random"
@@ -376,4 +379,57 @@ func TestErrField(t *testing.T) {
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
 	})
+}
+
+type Foo struct {
+	Bar Bar
+}
+
+var _ = logger.RegisterFieldType[Foo](func(foo Foo) logger.LoggingDetail {
+	return logger.Field("bar", foo.Bar)
+})
+
+type Bar struct {
+	V string
+}
+
+var _ = logger.RegisterFieldType[Bar](func(bar Bar) logger.LoggingDetail {
+	return logger.Field("v", bar.V)
+})
+
+func TestField_nested(t *testing.T) {
+	buf := logger.Stub(t)
+	rnd := random.New(random.CryptoSeed{})
+	val := rnd.String()
+	foo := Foo{Bar: Bar{V: val}}
+	logger.Info(nil, "message", logger.Field("foo", foo))
+
+	type Out struct {
+		Foo struct {
+			Bar struct {
+				V string `json:"v"`
+			} `json:"bar"`
+		} `json:"foo"`
+		Level     string    `json:"level"`
+		Message   string    `json:"message"`
+		Timestamp time.Time `json:"timestamp"`
+	}
+
+	var out Out
+	assert.NoError(t, json.NewDecoder(bytes.NewReader(buf.Bytes())).Decode(&out)) // decode the first line
+	assert.Equal(t, val, out.Foo.Bar.V)
+}
+
+func TestField_canNotOverrideBaseFields(t *testing.T) {
+	buf := logger.Stub(t)
+	rnd := random.New(random.CryptoSeed{})
+	val := rnd.String()
+	msg := rnd.String()
+	logger.Info(nil, msg, logger.Field("message", val))
+	type Out struct {
+		Message string `json:"message"`
+	}
+	var out Out
+	assert.NoError(t, json.NewDecoder(bytes.NewReader(buf.Bytes())).Decode(&out)) // decode the first line
+	assert.Equal(t, msg, out.Message)
 }

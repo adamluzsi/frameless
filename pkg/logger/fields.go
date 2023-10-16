@@ -83,6 +83,11 @@ func (l *Logger) toFieldValue(val any) any {
 		}
 		return vs
 
+	case field:
+		le := logEntry{}
+		val.addTo(l, le)
+		return l.toFieldValue(le)
+
 	case Fields:
 		le := logEntry{}
 		val.addTo(l, le)
@@ -98,6 +103,8 @@ func (l *Logger) toFieldValue(val any) any {
 	default:
 		switch rv.Kind() {
 		case reflect.Struct:
+
+
 			const unregisteredStructWarning = "Due to security concerns, you must first use logger.RegisterFieldType before a struct can be logged"
 			Warn(nil, fmt.Sprintf("%s (type: %T)", unregisteredStructWarning, rv.Interface()))
 			return nullLoggingDetail{}
