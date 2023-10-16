@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/guard"
+	"go.llib.dev/frameless/ports/guard"
 )
 
 // Locker is a PG-based shared mutex implementation.

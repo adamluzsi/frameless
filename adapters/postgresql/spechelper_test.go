@@ -2,15 +2,15 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/spechelper/testent"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/spechelper/testent"
 	"github.com/adamluzsi/testcase/random"
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
+	"go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/adapters/postgresql"
 	"github.com/adamluzsi/testcase/assert"
 )
 

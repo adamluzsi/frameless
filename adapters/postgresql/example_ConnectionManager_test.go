@@ -3,7 +3,7 @@ package postgresql_test
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/adapters/postgresql"
 )
 
 func ExampleConnect() {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 func ExampleMapper() {

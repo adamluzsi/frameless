@@ -7,12 +7,12 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/cache"
-	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/spechelper/testent"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/pkg/cache"
+	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/spechelper/testent"
 )
 
 func TestRepository_cache(t *testing.T) {

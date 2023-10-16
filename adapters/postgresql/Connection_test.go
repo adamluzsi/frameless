@@ -8,10 +8,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

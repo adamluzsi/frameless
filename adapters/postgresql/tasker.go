@@ -3,10 +3,10 @@ package postgresql
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/frameless/ports/guard"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/ports/migration"
+	"go.llib.dev/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/ports/guard"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/migration"
 )
 
 type TaskerScheduleRepository struct{ Connection Connection }

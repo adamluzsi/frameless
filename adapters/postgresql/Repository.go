@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/lazyload"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/lazyload"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 // Repository is a frameless external resource supplier to store a certain entity type.

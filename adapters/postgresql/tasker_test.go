@@ -2,10 +2,10 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/tasker"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule/schedulecontracts"
+	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/pkg/tasker/schedule/schedulecontracts"
 	"github.com/adamluzsi/testcase/assert"
 	"os"
 	"testing"

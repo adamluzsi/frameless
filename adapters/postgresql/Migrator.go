@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/migration"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/migration"
 )
 
 type Migrator struct {

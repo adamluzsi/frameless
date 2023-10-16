@@ -2,12 +2,12 @@ package postgresql_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/postgresql"
-	sh "github.com/adamluzsi/frameless/adapters/postgresql/internal/spechelper"
-	"github.com/adamluzsi/frameless/ports/migration"
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/frameless/spechelper/testent"
+	"go.llib.dev/frameless/adapters/postgresql"
+	sh "go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
+	"go.llib.dev/frameless/ports/migration"
+	"go.llib.dev/frameless/ports/pubsub/pubsubcontracts"
+	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
+	"go.llib.dev/frameless/spechelper/testent"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
