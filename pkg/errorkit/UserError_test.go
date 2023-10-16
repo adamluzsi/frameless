@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func TestUserError(t *testing.T) {

@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase/let"
 
 	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 type QueryOne[Entity, ID any] func(testing.TB) QueryOneSubject[Entity, ID]

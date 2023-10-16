@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/ports/pubsub"
-	"github.com/adamluzsi/testcase/clock"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/random"
 	"sync/atomic"
 	"time"
 )

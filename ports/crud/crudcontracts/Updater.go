@@ -10,9 +10,9 @@ import (
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 // Updater will request an update for a wrapped entity object in the Resource

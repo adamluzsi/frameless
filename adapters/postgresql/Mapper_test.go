@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapters/postgresql"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestMapper_Map(t *testing.T) {

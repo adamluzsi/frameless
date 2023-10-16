@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExamplePipe() {

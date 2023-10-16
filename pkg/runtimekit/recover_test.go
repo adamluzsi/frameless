@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/runtimekit"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestRecover(t *testing.T) {
@@ -181,7 +181,7 @@ func BenchmarkOnRecover(b *testing.B) {
 			}()
 		}
 	})
-	
+
 	b.Run("panic + OnRecover", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			func() {

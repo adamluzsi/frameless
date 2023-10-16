@@ -2,6 +2,8 @@ package postgresql_test
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.llib.dev/frameless/adapters/postgresql"
 	"go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
 	"go.llib.dev/frameless/pkg/cache"
@@ -10,11 +12,9 @@ import (
 	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"testing"
 )
 

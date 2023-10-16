@@ -10,8 +10,8 @@ import (
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/meta"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/random"
 )
 
 var (

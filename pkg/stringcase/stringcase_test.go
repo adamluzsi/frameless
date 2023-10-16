@@ -2,10 +2,10 @@ package stringcase_test
 
 import (
 	"go.llib.dev/frameless/pkg/stringcase"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/pp"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
+	"go.llib.dev/testcase/random"
 	"strings"
 	"testing"
 )

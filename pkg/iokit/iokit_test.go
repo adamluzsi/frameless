@@ -3,7 +3,7 @@ package iokit_test
 import (
 	"bytes"
 	"errors"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"io"
 	"io/fs"
 	"os"
@@ -15,7 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/ports/filesystem"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type RWSC interface {
@@ -243,7 +243,7 @@ func TestBuffer_ioReadWriter(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, n, len(msg))
 	assert.Equal(t, msg, buf.Bytes())
-	
+
 	_, err = buf.Seek(0, io.SeekStart)
 	assert.NoError(t, err)
 

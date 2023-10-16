@@ -10,7 +10,7 @@ import (
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 )
 
 func New[Entity any, ID comparable](

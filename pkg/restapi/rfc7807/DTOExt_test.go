@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestDTOExt_MarshalJSON(t *testing.T) {

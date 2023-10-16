@@ -7,9 +7,9 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/stringcase"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"os"
 	"runtime"
 	"strconv"
@@ -48,7 +48,7 @@ func TestLogger_AsyncLogging(t *testing.T) {
 		m.Lock()
 		logs := out.String()
 		m.Unlock()
-		
+
 		it.Must.Contain(logs, `"Msg":"gsm"`)
 		it.Must.Contain(logs, `"FieldKey":"value"`)
 	})
@@ -74,7 +74,7 @@ func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 		m.Lock()
 		logs := out.String()
 		m.Unlock()
-		
+
 		for i := 0; i < sampling; i++ {
 			assert.Contain(it, logs, fmt.Sprintf(`"message":"%d"`, i))
 		}

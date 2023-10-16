@@ -12,9 +12,9 @@ import (
 
 	"go.llib.dev/frameless/spechelper/resource"
 
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func TestEventuallyConsistentResource(t *testing.T) {

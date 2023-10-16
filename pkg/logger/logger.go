@@ -12,7 +12,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/stringcase"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 )
 
 type Logger struct {
@@ -102,7 +102,7 @@ var overrideHijack func(l *Logger, level Level, msg string, fields Fields)
 func withHijackOverride(fn func(l *Logger, level Level, msg string, fields Fields)) func() {
 	previousHijack := overrideHijack
 	overrideHijack = fn
-	return func() {overrideHijack = previousHijack }
+	return func() { overrideHijack = previousHijack }
 }
 
 func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []LoggingDetail) bool {

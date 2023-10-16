@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/teardown"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"strings"
 	"testing"
 )
@@ -84,7 +84,7 @@ func TestLogWithTB(t *testing.T) {
 		logger.LogWithTB(&dtb)
 
 		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
-		
+
 		l.Debug(ctx, "msg-1", logger.Field("bar", 24))
 		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
 			it.Must.ContainExactly([]any{"msg-1", "|", "lvl:debug", "foo:42", "bar:24"}, got)

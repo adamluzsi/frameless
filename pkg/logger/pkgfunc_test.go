@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/stringcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/clock/timecop"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/random"
 	"testing"
 	"time"
 )

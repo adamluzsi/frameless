@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/frameless/ports/iterators"
 	sh "go.llib.dev/frameless/spechelper"
 
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 var Waiter = assert.Waiter{

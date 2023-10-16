@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,

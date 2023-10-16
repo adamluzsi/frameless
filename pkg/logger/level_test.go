@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/logger"
@@ -15,7 +15,7 @@ func TestLogger_level(t *testing.T) {
 		tb.Helper()
 		assert.Contain(tb, buf.String(), fmt.Sprintf(`"level":"%s"`, level))
 	}
-	
+
 	assertDoesNotHave := func(tb testing.TB, buf *bytes.Buffer, level string) {
 		tb.Helper()
 		assert.NotContain(tb, buf.String(), fmt.Sprintf(`"level":"%s"`, level))

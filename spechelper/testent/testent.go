@@ -3,7 +3,7 @@ package testent
 import (
 	"context"
 	"go.llib.dev/frameless/ports/pubsub"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 	"testing"
 )
 

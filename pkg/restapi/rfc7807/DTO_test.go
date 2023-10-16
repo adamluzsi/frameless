@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/restapi/rfc7807"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestDTO_MarshalJSON(t *testing.T) {

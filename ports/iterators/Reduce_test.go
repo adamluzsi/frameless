@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/random"
 )
 
 func ExampleReduce() {
 	raw := iterators.Slice([]string{"1", "2", "42"})
-	
+
 	_, _ = iterators.Reduce[[]int](raw, nil, func(vs []int, raw string) ([]int, error) {
 
 		v, err := strconv.Atoi(raw)

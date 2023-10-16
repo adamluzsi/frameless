@@ -6,8 +6,8 @@ import (
 
 	"go.llib.dev/frameless/ports/crud/extid"
 
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func TestID_E2E(t *testing.T) {

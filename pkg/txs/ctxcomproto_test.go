@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/txs"
 	comprotocontracts "go.llib.dev/frameless/ports/comproto/comprotocontracts"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func Test(t *testing.T) {

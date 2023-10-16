@@ -8,12 +8,12 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/ports/crud"
 	. "go.llib.dev/frameless/ports/crud/crudtest"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase/let"
 
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 type Finder[Entity, ID any] func(testing.TB) FinderSubject[Entity, ID]

@@ -8,7 +8,7 @@ import (
 
 	"go.llib.dev/frameless/spechelper/resource"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func TestContract(t *testing.T) {

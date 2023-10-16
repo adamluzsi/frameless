@@ -2,13 +2,13 @@ package metacontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase/let"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
 
 	"go.llib.dev/frameless/ports/meta"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 // MetaAccessor

@@ -9,10 +9,10 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	rfc78072 "go.llib.dev/frameless/pkg/restapi/rfc7807"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/httpspec"
-	"github.com/adamluzsi/testcase/let"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/httpspec"
+	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func TestHandler(t *testing.T) {

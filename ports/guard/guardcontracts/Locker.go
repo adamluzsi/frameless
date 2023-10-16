@@ -3,15 +3,15 @@ package guardcontracts
 import (
 	"context"
 	"go.llib.dev/frameless/internal/suites"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase/let"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/ports/guard"
 
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 var Waiter = assert.Waiter{

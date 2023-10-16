@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type Server[DTO, ID any] func(testing.TB) ServerSubject

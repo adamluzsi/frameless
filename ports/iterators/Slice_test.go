@@ -5,7 +5,7 @@ import (
 
 	"go.llib.dev/frameless/ports/iterators"
 
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 var _ iterators.Iterator[string] = iterators.Slice([]string{"A", "B", "C"})

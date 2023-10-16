@@ -6,8 +6,8 @@ import (
 	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/guard/guardcontracts"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/random"
 	"testing"
 )
 
@@ -18,8 +18,8 @@ func Repository(mk func(testing.TB) RepositorySubject) suites.Suite {
 		t := testcase.ToT(&tb)
 		subject := mk(tb)
 		return guardcontracts.LockerFactorySubject[schedule.StateID]{
-			LockerFactory:     subject.Repository.Locks(),
-			MakeContext: subject.MakeContext,
+			LockerFactory: subject.Repository.Locks(),
+			MakeContext:   subject.MakeContext,
 			MakeKey: func() schedule.StateID {
 				return schedule.StateID(t.Random.String())
 			},

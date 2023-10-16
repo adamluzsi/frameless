@@ -3,7 +3,7 @@ package cachecontracts
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/random"
 	"sync"
 	"testing"
 	"time"
@@ -16,8 +16,8 @@ import (
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 type Repository[Entity, ID any] func(testing.TB) RepositorySubject[Entity, ID]

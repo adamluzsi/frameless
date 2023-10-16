@@ -13,7 +13,7 @@ import (
 	filesystemcontracts "go.llib.dev/frameless/ports/filesystem/filesystemcontracts"
 
 	"go.llib.dev/frameless/adapters/localfs"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExampleFileSystem() {

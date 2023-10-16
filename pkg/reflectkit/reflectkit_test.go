@@ -3,8 +3,8 @@ package reflectkit_test
 import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 	"reflect"
 	"testing"
 )

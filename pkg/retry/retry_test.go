@@ -3,10 +3,10 @@ package retry_test
 import (
 	"context"
 	"go.llib.dev/frameless/pkg/retry"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/clock/timecop"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/let"
 	"testing"
 	"time"
 )

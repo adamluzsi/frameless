@@ -6,7 +6,7 @@ import (
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/guard"
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 	"time"
 )
 

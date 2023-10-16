@@ -6,7 +6,7 @@ import (
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/frameless/pkg/tasker/schedule/schedulecontracts"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"os"
 	"testing"
 	"time"

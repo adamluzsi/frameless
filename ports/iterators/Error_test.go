@@ -2,12 +2,12 @@ package iterators_test
 
 import (
 	"errors"
-	"github.com/adamluzsi/testcase/pp"
+	"go.llib.dev/testcase/pp"
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
 
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 var _ iterators.Iterator[any] = iterators.Error[any](errors.New("boom"))

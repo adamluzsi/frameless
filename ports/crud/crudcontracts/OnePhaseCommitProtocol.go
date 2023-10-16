@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"sync"
 	"testing"
 
@@ -18,7 +18,7 @@ import (
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/spechelper"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type OnePhaseCommitProtocol[Entity, ID any] func(testing.TB) OnePhaseCommitProtocolSubject[Entity, ID]

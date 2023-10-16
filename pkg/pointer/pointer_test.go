@@ -4,9 +4,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 type ExampleStruct struct {

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestBitwise(t *testing.T) {

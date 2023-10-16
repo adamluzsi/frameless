@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type Iterator[V any] func(tb testing.TB) iterators.Iterator[V]

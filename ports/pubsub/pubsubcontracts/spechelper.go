@@ -10,8 +10,8 @@ import (
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 type PubSub[Data any] struct {

@@ -12,9 +12,9 @@ import (
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/restapi/rfc7807"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/httpspec"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/httpspec"
+	"go.llib.dev/testcase/random"
 )
 
 func TestRouter(t *testing.T) {

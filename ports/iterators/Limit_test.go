@@ -6,8 +6,8 @@ import (
 	"go.llib.dev/frameless/ports/iterators"
 	iteratorcontracts "go.llib.dev/frameless/ports/iterators/iteratorcontracts"
 	"go.llib.dev/frameless/ports/iterators/ranges"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestLimit_smoke(t *testing.T) {

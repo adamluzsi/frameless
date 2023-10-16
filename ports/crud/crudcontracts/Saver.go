@@ -7,8 +7,8 @@ import (
 
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func Saver[Entity, ID any](mk func(testing.TB) SaverSubject[Entity, ID]) suites.Suite {

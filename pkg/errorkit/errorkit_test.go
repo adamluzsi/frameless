@@ -3,8 +3,8 @@ package errorkit_test
 import (
 	"database/sql"
 	"go.llib.dev/frameless/pkg/errorkit"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"testing"
 )
 
@@ -62,7 +62,7 @@ func TestFinish(t *testing.T) {
 
 		assert.ErrorIs(t, exp, got)
 	})
-	
+
 	t.Run("func return value returned", func(t *testing.T) {
 		exp := rnd.Error()
 		got := func() (rErr error) {
@@ -75,7 +75,7 @@ func TestFinish(t *testing.T) {
 
 		assert.ErrorIs(t, exp, got)
 	})
-	
+
 	t.Run("nothing fails, no error returned", func(t *testing.T) {
 		got := func() (rErr error) {
 			defer errorkit.Finish(&rErr, func() error { return nil })

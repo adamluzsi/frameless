@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestFirst_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {

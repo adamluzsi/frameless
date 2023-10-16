@@ -2,8 +2,8 @@ package crudcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/pp"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type Deleter[Entity, ID any] func(testing.TB) DeleterSubject[Entity, ID]

@@ -7,8 +7,8 @@ import (
 
 	"go.llib.dev/frameless/ports/iterators"
 
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 var _ iterators.Iterator[any] = iterators.SingleValue[any]("")

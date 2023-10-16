@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/contextkit"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 var _ context.Context = contextkit.Detach(context.Background())

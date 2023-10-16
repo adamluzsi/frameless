@@ -7,9 +7,9 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/ports/crud"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func MakeContext(tb testing.TB) context.Context {

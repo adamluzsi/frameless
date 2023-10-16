@@ -1,7 +1,7 @@
 package suites
 
 import (
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 	"testing"
 )
 

@@ -4,14 +4,14 @@ import (
 	"context"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/random"
 	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
 
 	"go.llib.dev/frameless/adapters/postgresql"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func NewTestEntityRepository(tb testing.TB) *postgresql.Repository[spechelper.TestEntity, string] {
@@ -24,7 +24,7 @@ func NewTestEntityRepository(tb testing.TB) *postgresql.Repository[spechelper.Te
 }
 
 var (
-	Connection postgresql.Connection
+	Connection      postgresql.Connection
 	mutexConnection sync.Mutex
 )
 

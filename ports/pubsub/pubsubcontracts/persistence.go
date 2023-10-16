@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 // Buffered defines a publisher behaviour where if the subscription is canceled,

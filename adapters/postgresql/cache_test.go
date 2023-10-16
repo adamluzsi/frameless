@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/adapters/postgresql"

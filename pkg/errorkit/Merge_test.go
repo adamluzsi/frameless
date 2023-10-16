@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase/let"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type (

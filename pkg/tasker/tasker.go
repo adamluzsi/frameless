@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/tasker/internal"
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 	"net/http"
 	"os"
 	"sync"

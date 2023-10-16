@@ -4,8 +4,8 @@ import (
 	"context"
 	"go.llib.dev/frameless/internal/suites"
 	"go.llib.dev/frameless/ports/guard"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/let"
 	"testing"
 	"time"
 )
@@ -20,7 +20,7 @@ func LockerFactory[Key comparable](mk func(tb testing.TB) LockerFactorySubject[K
 	s := testcase.NewSpec(nil, testcase.AsSuite("Factory"))
 
 	subject := let.With[LockerFactorySubject[Key]](s, mk)
-	
+
 	s.Context("returned value behaves like a locks.Locker", Locker(func(tb testing.TB) LockerSubject {
 		sub := mk(tb)
 		return LockerSubject{

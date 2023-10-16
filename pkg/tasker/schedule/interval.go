@@ -1,13 +1,13 @@
 package schedule
 
 import (
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 	"time"
 )
 
 type Interval time.Duration
 
-// Every is a syntax sugar to make the reading the usage of time.Duration based Interval more fluent. 
+// Every is a syntax sugar to make the reading the usage of time.Duration based Interval more fluent.
 func Every(d time.Duration) Interval { return Interval(d) }
 
 func (i Interval) UntilNext(lastRanAt time.Time) time.Duration {

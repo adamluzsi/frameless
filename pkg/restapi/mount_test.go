@@ -13,8 +13,8 @@ import (
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/ports/crud/crudtest"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/random"
 )
 
 func TestMount(t *testing.T) {

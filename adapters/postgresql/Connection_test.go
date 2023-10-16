@@ -13,9 +13,9 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func TestConnect_smoke(t *testing.T) {

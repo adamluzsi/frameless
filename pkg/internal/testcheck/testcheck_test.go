@@ -2,7 +2,7 @@ package testcheck
 
 import (
 	"flag"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"os"
 	"testing"
 )
@@ -30,7 +30,7 @@ func TestIsDuringTestRun(t *testing.T) {
 	t.Run("when process name looks like go run result", func(t *testing.T) {
 		os.Args = []string{"/var/folders/r5/v6jngprn0dj08gz2x4cddnd80000gp/T/go-build4240518966/b001/exe/main"}
 		flagLookup = func(name string) *flag.Flag { return nil }
-		
+
 		assert.False(t, IsDuringTestRun())
 	})
 

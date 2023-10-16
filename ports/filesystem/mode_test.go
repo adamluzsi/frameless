@@ -5,7 +5,7 @@ import (
 	"io/fs"
 	"testing"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func TestCanXDoY(t *testing.T) {

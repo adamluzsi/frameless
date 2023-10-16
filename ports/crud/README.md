@@ -18,7 +18,7 @@ import (
 	"context"
 	"testing"
 	
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 )

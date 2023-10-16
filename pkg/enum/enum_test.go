@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/enum"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExampleValidateStruct_string() {

@@ -3,14 +3,14 @@ package iterators_test
 import (
 	"bufio"
 	"fmt"
-	"github.com/adamluzsi/testcase/pp"
+	"go.llib.dev/testcase/pp"
 	"io"
 	"strings"
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
 
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExampleScanner() {

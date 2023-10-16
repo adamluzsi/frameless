@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase/let"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,8 +18,8 @@ import (
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"go.llib.dev/frameless/ports/crud"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/random"
 )
 
 func TestHandler(t *testing.T) {

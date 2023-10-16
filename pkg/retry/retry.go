@@ -3,7 +3,7 @@ package retry
 import (
 	"context"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 	"math"
 	"math/rand"
 	"time"

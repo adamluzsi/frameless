@@ -2,7 +2,7 @@ package extid
 
 import (
 	"go.llib.dev/frameless/ports/crud/extid/internal/testhelper"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"reflect"
 	"testing"
 )

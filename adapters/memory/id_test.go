@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapters/memory"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestMakeID(t *testing.T) {

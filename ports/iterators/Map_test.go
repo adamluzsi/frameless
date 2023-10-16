@@ -9,7 +9,7 @@ import (
 
 	"go.llib.dev/frameless/ports/iterators"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func ExampleMap() {

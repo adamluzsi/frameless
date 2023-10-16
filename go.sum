@@ -1,2 +1,2 @@
-github.com/adamluzsi/testcase v0.142.1 h1:spKWjiZJPH9iwGSM5Lpux10GzdoJh7JoaewewviMnh0=
-github.com/adamluzsi/testcase v0.142.1/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
+go.llib.dev/testcase v0.143.0 h1:B2wbIrhPwevmHpMzBXPQCVpk6Cc4bUEZxpvZXnbhsxs=
+go.llib.dev/testcase v0.143.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=

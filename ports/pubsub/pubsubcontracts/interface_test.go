@@ -2,7 +2,7 @@ package pubsubcontracts_test
 
 import (
 	"go.llib.dev/frameless/ports/pubsub/pubsubcontracts"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 var (

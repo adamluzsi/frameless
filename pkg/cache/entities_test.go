@@ -2,7 +2,7 @@ package cache_test
 
 import (
 	"go.llib.dev/frameless/pkg/cache"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"strconv"
 	"testing"
 )

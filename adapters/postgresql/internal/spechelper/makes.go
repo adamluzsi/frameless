@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func MakeContext(testing.TB) context.Context { return context.Background() }

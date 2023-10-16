@@ -2,7 +2,7 @@ package postgresql
 
 import (
 	"context"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"testing"
 )
 

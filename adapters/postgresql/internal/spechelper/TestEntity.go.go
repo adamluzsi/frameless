@@ -7,9 +7,9 @@ import (
 
 	"go.llib.dev/frameless/adapters/postgresql"
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 type TestEntity struct {

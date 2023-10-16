@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pathkit"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func TestUnshift(t *testing.T) {

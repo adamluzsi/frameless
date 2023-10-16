@@ -2,7 +2,7 @@ package reflectkit_test
 
 import (
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/random"
 	"testing"
 )
 

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/let"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/let"
 )
 
 func TestTag(t *testing.T) {

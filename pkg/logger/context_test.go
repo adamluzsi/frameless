@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"go.llib.dev/frameless/pkg/logger"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/clock/timecop"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
 	"testing"
 	"time"
 )

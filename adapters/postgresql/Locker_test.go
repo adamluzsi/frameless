@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/adapters/postgresql"
 	"go.llib.dev/frameless/ports/guard/guardcontracts"
@@ -87,9 +87,9 @@ func TestNewLockerFactory(t *testing.T) {
 		lockerFactory := postgresql.LockerFactory[string]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
 		return guardcontracts.LockerFactorySubject[string]{
-			LockerFactory:     lockerFactory,
-			MakeContext: context.Background,
-			MakeKey:     testcase.ToT(&tb).Random.String,
+			LockerFactory: lockerFactory,
+			MakeContext:   context.Background,
+			MakeKey:       testcase.ToT(&tb).Random.String,
 		}
 	}).Test(t)
 
@@ -97,9 +97,9 @@ func TestNewLockerFactory(t *testing.T) {
 		lockerFactory := postgresql.LockerFactory[int]{Connection: cm}
 		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
 		return guardcontracts.LockerFactorySubject[int]{
-			LockerFactory:     lockerFactory,
-			MakeContext: context.Background,
-			MakeKey:     testcase.ToT(&tb).Random.Int,
+			LockerFactory: lockerFactory,
+			MakeContext:   context.Background,
+			MakeKey:       testcase.ToT(&tb).Random.Int,
 		}
 	}).Test(t)
 }

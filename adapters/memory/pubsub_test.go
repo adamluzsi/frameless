@@ -5,7 +5,7 @@ import (
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/frameless/ports/pubsub/pubsubcontracts"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 	"sort"
 	"testing"
 

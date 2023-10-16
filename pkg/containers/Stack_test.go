@@ -5,8 +5,8 @@ import (
 
 	"go.llib.dev/frameless/pkg/containers"
 
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func TestStack(t *testing.T) {

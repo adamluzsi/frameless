@@ -2,9 +2,9 @@ package schedule_test
 
 import (
 	"go.llib.dev/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/clock/timecop"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/random"
 	"testing"
 	"time"
 )

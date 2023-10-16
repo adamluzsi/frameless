@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/retry"
-	"github.com/adamluzsi/testcase/clock"
+	"go.llib.dev/testcase/clock"
 	"io"
 	"net"
 	"net/http"

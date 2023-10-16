@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/lazyload"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 type MyStruct struct {

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func TestFunc(t *testing.T) {

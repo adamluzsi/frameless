@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/adamluzsi/testcase/random"
+import "go.llib.dev/testcase/random"
 
 func toSlice[Entity any, key comparable](m map[key]Entity) []Entity {
 	list := make([]Entity, 0, len(m))

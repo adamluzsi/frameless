@@ -1,13 +1,13 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase/random"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/ports/iterators"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 const defaultBatchSize = 64

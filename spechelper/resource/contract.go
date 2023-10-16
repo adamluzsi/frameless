@@ -12,7 +12,7 @@ import (
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/meta"
 	"go.llib.dev/frameless/ports/meta/metacontracts"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type Contract[Entity, ID any] func(testing.TB) ContractSubject[Entity, ID]

@@ -8,9 +8,9 @@ import (
 	"go.llib.dev/frameless/spechelper/resource"
 
 	"go.llib.dev/frameless/adapters/memory"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func TestContracts(t *testing.T) {

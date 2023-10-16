@@ -3,7 +3,7 @@ package units_test
 import (
 	"bytes"
 	"go.llib.dev/frameless/pkg/units"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"io"
 	"testing"
 )

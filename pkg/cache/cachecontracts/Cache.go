@@ -16,8 +16,8 @@ import (
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
 	sh "go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 var (
@@ -77,7 +77,7 @@ func (c Cache[Entity, ID]) subject() testcase.Var[CacheSubject[Entity, ID]] {
 
 func (c Cache[Entity, ID]) Spec(s *testcase.Spec) {
 	//c.subject().EagerLoading(s)
-	
+
 	testcase.RunSuite(s,
 		crudcontracts.Creator[Entity, ID](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
 			ch := c(tb)

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/ports/comproto"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type OnePhaseCommitProtocol func(testing.TB) OnePhaseCommitProtocolSubject

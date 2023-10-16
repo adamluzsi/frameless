@@ -3,7 +3,7 @@ package localfs_test
 import (
 	"fmt"
 	"go.llib.dev/frameless/ports/filesystem"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 	"io"
 	"io/fs"
 	"os"
@@ -14,7 +14,7 @@ import (
 	filesystemcontracts "go.llib.dev/frameless/ports/filesystem/filesystemcontracts"
 
 	"go.llib.dev/frameless/adapters/localfs"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 func ExampleFileSystem() {

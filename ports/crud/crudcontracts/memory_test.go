@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 	"math/rand"
 	"testing"
 	"time"

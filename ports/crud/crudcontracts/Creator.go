@@ -9,7 +9,7 @@ import (
 
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type Creator[Entity, ID any] func(tb testing.TB) CreatorSubject[Entity, ID]

@@ -8,11 +8,11 @@ import (
 	"go.llib.dev/frameless/ports/pubsub/pubsubcontracts"
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 	"go.llib.dev/frameless/spechelper/testent"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/assert"
-	"github.com/adamluzsi/testcase/clock/timecop"
-	"github.com/adamluzsi/testcase/pp"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/pp"
+	"go.llib.dev/testcase/random"
 	"reflect"
 	"testing"
 	"time"
@@ -83,7 +83,7 @@ func TestQueue(t *testing.T) {
 				Name:       queueName,
 				Connection: c,
 				Mapping:    mapping,
-		
+
 				Blocking: true,
 			}
 			return pubsubcontracts.BlockingSubject[sh.TestEntity]{
@@ -142,7 +142,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 
 	waitTime := 256 * time.Millisecond
 	time.Sleep(waitTime)
-	
+
 	foo := testent.MakeFoo(t)
 	assert.NoError(t, q.Publish(ctx, foo))
 
@@ -160,7 +160,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 			}
 		}
 	})
-	
+
 	timecop.Travel(t, time.Hour+time.Second)
 
 	assert.Within(t, waitTime, func(ctx context.Context) {

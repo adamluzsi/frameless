@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"github.com/adamluzsi/testcase"
-	"github.com/adamluzsi/testcase/let"
-	"github.com/adamluzsi/testcase/random"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func TestWith_smoke(tt *testing.T) {

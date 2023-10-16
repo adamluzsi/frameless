@@ -11,7 +11,7 @@ import (
 	"go.llib.dev/frameless/ports/filesystem"
 
 	ffs "go.llib.dev/frameless/adapters/localfs"
-	"github.com/adamluzsi/testcase/assert"
+	"go.llib.dev/testcase/assert"
 )
 
 func makeFS(tb testing.TB) filesystem.FileSystem {

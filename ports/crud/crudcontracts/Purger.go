@@ -9,7 +9,7 @@ import (
 
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/spechelper"
-	"github.com/adamluzsi/testcase"
+	"go.llib.dev/testcase"
 )
 
 type Purger[Entity, ID any] func(testing.TB) PurgerSubject[Entity, ID]
