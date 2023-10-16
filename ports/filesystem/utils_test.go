@@ -1,16 +1,16 @@
 package filesystem_test
 
 import (
-	"github.com/adamluzsi/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/memory"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/filesystem"
+	"go.llib.dev/frameless/ports/filesystem"
 
-	ffs "github.com/adamluzsi/frameless/adapters/localfs"
+	ffs "go.llib.dev/frameless/adapters/localfs"
 	"github.com/adamluzsi/testcase/assert"
 )
 

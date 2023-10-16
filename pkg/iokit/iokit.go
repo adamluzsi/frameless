@@ -2,12 +2,12 @@ package iokit
 
 import (
 	"bytes"
-	"github.com/adamluzsi/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"io"
 	"io/fs"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 const ErrSeekNegativePosition errorkit.Error = "iokit: negative position"

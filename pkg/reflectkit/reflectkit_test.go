@@ -1,8 +1,8 @@
 package reflectkit_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"reflect"
@@ -119,7 +119,7 @@ func TestFullyQualifiedName(t *testing.T) {
 
 			o := crudcontracts.Creator[int, string](nil)
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/ports/crud/crudcontracts".Creator[int,string]`, subject(o))
+			assert.Must(t).Equal(`"go.llib.dev/frameless/ports/crud/crudcontracts".Creator[int,string]`, subject(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {
@@ -127,19 +127,19 @@ func TestFullyQualifiedName(t *testing.T) {
 
 			var i InterfaceObject = &StructObject{}
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/pkg/reflectkit_test".StructObject`, subject(i))
+			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(i))
 		})
 
 		spec.Run("when given object is a struct", func(t *testing.T) {
 			t.Parallel()
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/pkg/reflectkit_test".StructObject`, subject(StructObject{}))
+			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(StructObject{}))
 		})
 
 		spec.Run("when given object is a pointer of a struct", func(t *testing.T) {
 			t.Parallel()
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/pkg/reflectkit_test".StructObject`, subject(&StructObject{}))
+			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&StructObject{}))
 		})
 
 		spec.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestFullyQualifiedName(t *testing.T) {
 
 			o := &StructObject{}
 
-			assert.Must(t).Equal(`"github.com/adamluzsi/frameless/pkg/reflectkit_test".StructObject`, subject(&o))
+			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&o))
 		})
 
 	})

@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/stringcase"
-	"github.com/adamluzsi/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"github.com/adamluzsi/testcase/clock"
 )
 

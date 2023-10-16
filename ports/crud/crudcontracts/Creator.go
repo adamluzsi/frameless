@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/crud"
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
+	"go.llib.dev/frameless/ports/crud"
+	. "go.llib.dev/frameless/ports/crud/crudtest"
 
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/spechelper"
+	"go.llib.dev/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 )
 

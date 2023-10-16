@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/ports/crud"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"

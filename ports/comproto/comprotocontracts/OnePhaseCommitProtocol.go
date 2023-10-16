@@ -2,10 +2,10 @@ package comprotocontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/comproto"
 	"github.com/adamluzsi/testcase"
 )
 

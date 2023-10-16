@@ -1,7 +1,7 @@
 package filesystem_test
 
 import (
-	ffs "github.com/adamluzsi/frameless/ports/filesystem"
+	ffs "go.llib.dev/frameless/ports/filesystem"
 	"os"
 	"strconv"
 	"testing"

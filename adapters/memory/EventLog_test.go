@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/meta"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/meta"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"

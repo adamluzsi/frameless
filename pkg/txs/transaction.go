@@ -3,8 +3,8 @@ package txs
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/teardown"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/teardown"
 )
 
 type transaction struct {

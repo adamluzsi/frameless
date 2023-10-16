@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/iterators"
 
 	"github.com/adamluzsi/testcase/assert"
 )

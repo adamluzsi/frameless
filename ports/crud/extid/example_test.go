@@ -3,7 +3,7 @@ package extid_test
 import (
 	"fmt"
 
-	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/crud/extid"
 )
 
 type Entity struct {

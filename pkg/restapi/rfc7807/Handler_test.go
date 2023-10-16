@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	rfc78072 "github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
+	"go.llib.dev/frameless/pkg/errorkit"
+	rfc78072 "go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/httpspec"
 	"github.com/adamluzsi/testcase/let"

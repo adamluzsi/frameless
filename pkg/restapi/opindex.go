@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 type IndexOperation[Entity, ID, DTO any] struct {

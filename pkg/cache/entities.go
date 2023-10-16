@@ -6,9 +6,9 @@ package cache
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/iterators"
 	"strings"
 	"time"
 )

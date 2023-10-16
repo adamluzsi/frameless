@@ -2,8 +2,8 @@ package memory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule/schedulecontracts"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/pkg/tasker/schedule/schedulecontracts"
 	"testing"
 )
 

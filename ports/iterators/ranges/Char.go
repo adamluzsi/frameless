@@ -1,6 +1,6 @@
 package ranges
 
-import "github.com/adamluzsi/frameless/ports/iterators"
+import "go.llib.dev/frameless/ports/iterators"
 
 func Char(begin, end rune) iterators.Iterator[rune] {
 	return &charRange{Begin: begin, End: end}

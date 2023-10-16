@@ -3,7 +3,7 @@ package mydomain
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 type (

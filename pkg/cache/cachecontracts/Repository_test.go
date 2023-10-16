@@ -1,8 +1,8 @@
 package cachecontracts_test
 
 import (
-	frmlscontracts "github.com/adamluzsi/frameless/internal/suites"
-	cachecontracts "github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
+	frmlscontracts "go.llib.dev/frameless/internal/suites"
+	cachecontracts "go.llib.dev/frameless/pkg/cache/cachecontracts"
 )
 
 type ExampleEnt struct{ ID ExampleID }

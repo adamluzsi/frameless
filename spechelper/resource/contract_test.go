@@ -1,12 +1,12 @@
 package resource_test
 
 import (
-	"github.com/adamluzsi/frameless/spechelper/testent"
+	"go.llib.dev/frameless/spechelper/testent"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/memory"
 
-	"github.com/adamluzsi/frameless/spechelper/resource"
+	"go.llib.dev/frameless/spechelper/resource"
 
 	"github.com/adamluzsi/testcase"
 )

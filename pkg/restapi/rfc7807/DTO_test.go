@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
+	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"github.com/adamluzsi/testcase/assert"
 )
 

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 func errNotFound(T, id any) error {

@@ -2,15 +2,15 @@ package env_test
 
 import (
 	"encoding/json"
-	"github.com/adamluzsi/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/enum"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/env"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/env"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
@@ -375,7 +375,7 @@ func testLoadUrlPackageIntegration(t *testing.T) {
 		loadStructFieldTypeTestCase[*url.URL](t, requestURI, val, invalidURI)
 	})
 	t.Run("url", func(t *testing.T) {
-		val := "https://github.com/adamluzsi/frameless"
+		val := "https://go.llib.dev/frameless"
 		u, err := url.ParseRequestURI(val)
 		assert.NoError(t, err)
 		loadStructFieldTypeTestCase[url.URL](t, *u, val, invalidURI)

@@ -3,8 +3,8 @@ package logger
 import (
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 )
 

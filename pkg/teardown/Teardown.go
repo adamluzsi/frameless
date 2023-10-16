@@ -3,7 +3,7 @@ package teardown
 import (
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 type Teardown struct {

@@ -1,8 +1,8 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/ports/iterators/ranges"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/iterators/ranges"
 	"github.com/adamluzsi/testcase/assert"
 	"testing"
 )

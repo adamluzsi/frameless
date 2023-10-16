@@ -2,16 +2,16 @@ package resource
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/cache"
-	"github.com/adamluzsi/frameless/pkg/cache/cachecontracts"
-	"github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
+	"go.llib.dev/frameless/pkg/cache"
+	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/frameless/ports/meta"
-	"github.com/adamluzsi/frameless/ports/meta/metacontracts"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/ports/meta"
+	"go.llib.dev/frameless/ports/meta/metacontracts"
 	"github.com/adamluzsi/testcase"
 )
 

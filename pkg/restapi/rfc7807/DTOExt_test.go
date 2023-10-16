@@ -2,7 +2,7 @@ package rfc7807_test
 
 import (
 	"encoding/json"
-	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
+	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"net/http"
 	"testing"
 

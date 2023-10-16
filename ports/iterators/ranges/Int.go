@@ -1,6 +1,6 @@
 package ranges
 
-import "github.com/adamluzsi/frameless/ports/iterators"
+import "go.llib.dev/frameless/ports/iterators"
 
 func Int(begin, end int) iterators.Iterator[int] {
 	return &intRange{Begin: begin, End: end}

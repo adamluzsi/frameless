@@ -2,7 +2,7 @@ package reflectkit_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"math/rand"
 )
 

@@ -2,7 +2,7 @@ package localfs_test
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/filesystem"
+	"go.llib.dev/frameless/ports/filesystem"
 	"github.com/adamluzsi/testcase/assert"
 	"io"
 	"io/fs"
@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"testing"
 
-	filesystemcontracts "github.com/adamluzsi/frameless/ports/filesystem/filesystemcontracts"
+	filesystemcontracts "go.llib.dev/frameless/ports/filesystem/filesystemcontracts"
 
-	"github.com/adamluzsi/frameless/adapters/localfs"
+	"go.llib.dev/frameless/adapters/localfs"
 	"github.com/adamluzsi/testcase"
 )
 

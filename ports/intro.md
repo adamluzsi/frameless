@@ -37,7 +37,7 @@ package mydomain
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 type (
@@ -235,7 +235,7 @@ package yourdomaincontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 )
 
 type FooRepository struct {

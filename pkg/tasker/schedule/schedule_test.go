@@ -2,9 +2,9 @@ package schedule_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/tasker"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"

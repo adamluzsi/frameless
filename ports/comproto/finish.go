@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 func FinishTx(errp *error, commit, rollback func() error) {

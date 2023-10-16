@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/adamluzsi/frameless/ports/filesystem"
+	"go.llib.dev/frameless/ports/filesystem"
 )
 
 // FileSystem provides local file system access through the filesystem.FileSystem interface.

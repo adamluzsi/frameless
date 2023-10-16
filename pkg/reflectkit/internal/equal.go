@@ -1,7 +1,7 @@
 package internal
 
 import (
-	"github.com/adamluzsi/frameless/pkg/teardown"
+	"go.llib.dev/frameless/pkg/teardown"
 	"reflect"
 )
 

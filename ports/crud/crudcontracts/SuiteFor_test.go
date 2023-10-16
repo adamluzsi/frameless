@@ -2,9 +2,9 @@ package crudcontracts_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/frameless/spechelper/testent"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/spechelper/testent"
 	"testing"
 )
 

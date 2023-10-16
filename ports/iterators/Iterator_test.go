@@ -1,7 +1,7 @@
 package iterators_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 func ExampleIterator() {

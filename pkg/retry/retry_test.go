@@ -2,7 +2,7 @@ package retry_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/retry"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"

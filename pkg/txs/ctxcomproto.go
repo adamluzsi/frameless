@@ -3,7 +3,7 @@ package txs
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/contextkit"
 )
 
 type contextKey struct{}

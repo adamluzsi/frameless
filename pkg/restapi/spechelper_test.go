@@ -3,7 +3,7 @@ package restapi_test
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/restapi/restmapping"
+	"go.llib.dev/frameless/pkg/restapi/restmapping"
 )
 
 type (

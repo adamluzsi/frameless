@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/pathkit"
 )
 
 type routingCtxKey struct{}

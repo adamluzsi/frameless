@@ -3,14 +3,14 @@ package crudcontracts_test
 import (
 	"context"
 	"errors"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/crud/extid"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/memory"
 
-	"github.com/adamluzsi/frameless/spechelper/resource"
+	"go.llib.dev/frameless/spechelper/resource"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

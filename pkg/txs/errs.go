@@ -3,7 +3,7 @@ package txs
 import (
 	"fmt"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 const (

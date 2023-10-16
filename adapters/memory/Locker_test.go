@@ -5,8 +5,8 @@ import (
 	"github.com/adamluzsi/testcase"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/guard/guardcontracts"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/ports/guard/guardcontracts"
 )
 
 func ExampleLocker() {

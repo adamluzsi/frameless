@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/adamluzsi/frameless/pkg/pathkit"
-	"github.com/adamluzsi/frameless/pkg/restapi/internal"
+	"go.llib.dev/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/restapi/internal"
 )
 
 // Mount will help to register a handler on a request multiplexer in both as the concrete path to the handler and as a prefix match.

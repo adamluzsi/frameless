@@ -3,7 +3,7 @@ package logger_test
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"
 	"testing"

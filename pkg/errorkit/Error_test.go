@@ -1,7 +1,7 @@
 package errorkit_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 func ExampleError_Error() {

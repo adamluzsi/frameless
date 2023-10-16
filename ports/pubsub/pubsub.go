@@ -2,7 +2,7 @@ package pubsub
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 type Publisher[Data any] interface {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
+	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

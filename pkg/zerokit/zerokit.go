@@ -3,7 +3,7 @@ package zerokit
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/internal/pointersync"
+	"go.llib.dev/frameless/pkg/internal/pointersync"
 	"reflect"
 	"sync/atomic"
 )

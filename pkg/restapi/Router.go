@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/pathkit"
-	"github.com/adamluzsi/frameless/pkg/restapi/internal"
+	"go.llib.dev/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/restapi/internal"
 )
 
 func NewRouter(configure ...func(*Router)) *Router {

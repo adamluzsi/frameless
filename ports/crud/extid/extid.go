@@ -2,10 +2,10 @@ package extid
 
 import (
 	"errors"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"reflect"
 
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
 const errSetWithNonPtr errorkit.Error = "ptr should given as *Entity, else pass by value prevents the ID field remotely"

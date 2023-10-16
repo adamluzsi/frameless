@@ -20,7 +20,7 @@ import (
 	
 	"github.com/adamluzsi/testcase/assert"
 
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 )
 
 func TestMyAdapter(t *testing.T) {

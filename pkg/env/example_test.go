@@ -1,8 +1,8 @@
 package env_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/env"
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/env"
+	"go.llib.dev/frameless/pkg/logger"
 	"os"
 	"strconv"
 	"time"

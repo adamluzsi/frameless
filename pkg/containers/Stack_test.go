@@ -3,7 +3,7 @@ package containers_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/containers"
+	"go.llib.dev/frameless/pkg/containers"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"

@@ -1,6 +1,6 @@
 # frameless
 
-- [GoDoc](https://pkg.go.dev/github.com/adamluzsi/frameless)
+- [GoDoc](https://pkg.go.dev/go.llib.dev/frameless)
 - [Architecture decision records](docs/ADR)
 
 Discover `frameless`, the 🇨🇭Swiss Army Knife of Hexagonal Architecture conventions!

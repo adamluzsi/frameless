@@ -3,7 +3,7 @@ package enum_test
 import (
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/enum"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

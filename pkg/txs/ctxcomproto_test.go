@@ -3,12 +3,12 @@ package txs_test
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/txs"
-	comprotocontracts "github.com/adamluzsi/frameless/ports/comproto/comprotocontracts"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/txs"
+	comprotocontracts "go.llib.dev/frameless/ports/comproto/comprotocontracts"
 	"github.com/adamluzsi/testcase"
 )
 

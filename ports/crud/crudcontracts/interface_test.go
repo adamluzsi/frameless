@@ -1,7 +1,7 @@
 package crudcontracts
 
 import (
-	"github.com/adamluzsi/frameless/internal/suites"
+	"go.llib.dev/frameless/internal/suites"
 )
 
 type (

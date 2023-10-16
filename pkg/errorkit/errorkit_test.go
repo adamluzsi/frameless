@@ -2,7 +2,7 @@ package errorkit_test
 
 import (
 	"database/sql"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"
 	"testing"

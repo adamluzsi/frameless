@@ -1,6 +1,6 @@
 package rfc7807_test
 
-import "github.com/adamluzsi/frameless/pkg/errorkit"
+import "go.llib.dev/frameless/pkg/errorkit"
 
 const ErrExample errorkit.Error = "example error"
 

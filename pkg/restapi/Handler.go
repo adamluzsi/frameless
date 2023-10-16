@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/pathkit"
-	"github.com/adamluzsi/frameless/pkg/restapi/internal"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/restapi/internal"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 // Handler is a HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.

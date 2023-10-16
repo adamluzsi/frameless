@@ -1,6 +1,6 @@
 package crud
 
-import "github.com/adamluzsi/frameless/pkg/errorkit"
+import "go.llib.dev/frameless/pkg/errorkit"
 
 const (
 	ErrAlreadyExists errorkit.Error = "err-already-exists"

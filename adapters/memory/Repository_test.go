@@ -2,14 +2,14 @@ package memory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/spechelper/resource"
+	"go.llib.dev/frameless/spechelper/resource"
 	"testing"
 
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
+	. "go.llib.dev/frameless/ports/crud/crudtest"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/meta"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/meta"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 )

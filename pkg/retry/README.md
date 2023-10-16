@@ -16,7 +16,7 @@ package mypkg
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/retry"
 )
 
 func (ms MyStruct) MyFunc(ctx context.Context) error {

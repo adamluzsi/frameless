@@ -2,15 +2,15 @@ package crudcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/crud/extid"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/pointer"
 	"github.com/adamluzsi/testcase/let"
 
-	"github.com/adamluzsi/frameless/ports/crud/crudtest"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/spechelper"
+	"go.llib.dev/frameless/ports/crud/crudtest"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

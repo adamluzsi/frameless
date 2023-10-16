@@ -6,7 +6,7 @@ The zeroutil package helps with zero value related use-cases such as initialisat
 package mypkg
 
 import (
-	"github.com/adamluzsi/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 type MyType struct {

@@ -1,10 +1,10 @@
-module github.com/adamluzsi/frameless/examples
+module go.llib.dev/frameless/examples
 
 go 1.20
 
 require (
-	github.com/adamluzsi/frameless v0.141.2
-	github.com/adamluzsi/frameless/adapters/postgresql v0.0.0-20230426232851-0554b6e822b7
+	go.llib.dev/frameless v0.141.2
+	go.llib.dev/frameless/adapters/postgresql v0.0.0-20230426232851-0554b6e822b7
 )
 
 require (

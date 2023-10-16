@@ -1,10 +1,10 @@
 package filesystem_test
 
 import (
-	"github.com/adamluzsi/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/memory"
 	"io/fs"
 
-	"github.com/adamluzsi/frameless/ports/filesystem"
+	"go.llib.dev/frameless/ports/filesystem"
 )
 
 func ExampleOpen() {

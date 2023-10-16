@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/let"
 	"github.com/adamluzsi/testcase/random"

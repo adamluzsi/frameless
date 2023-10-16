@@ -1,8 +1,8 @@
 package httpkit_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/httpkit"
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/clock/timecop"

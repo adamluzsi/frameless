@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 type ShowOperation[Entity, ID, DTO any] struct {

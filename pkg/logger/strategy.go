@@ -3,9 +3,9 @@ package logger
 import (
 	"bytes"
 	"context"
-	"github.com/adamluzsi/frameless/pkg/runtimekit"
-	"github.com/adamluzsi/frameless/pkg/units"
-	"github.com/adamluzsi/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/pkg/runtimekit"
+	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"runtime"
 	"sync"
 	"time"

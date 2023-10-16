@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/pathkit"
-	"github.com/adamluzsi/frameless/pkg/restapi"
-	"github.com/adamluzsi/frameless/pkg/restapi/internal"
-	"github.com/adamluzsi/frameless/ports/crud/crudtest"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/restapi"
+	"go.llib.dev/frameless/pkg/restapi/internal"
+	"go.llib.dev/frameless/ports/crud/crudtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 )

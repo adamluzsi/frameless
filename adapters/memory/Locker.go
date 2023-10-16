@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/adamluzsi/frameless/ports/guard"
+	"go.llib.dev/frameless/ports/guard"
 )
 
 func NewLocker() *Locker { return &Locker{} }

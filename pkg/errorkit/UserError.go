@@ -3,7 +3,7 @@ package errorkit
 import (
 	"errors"
 
-	"github.com/adamluzsi/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/consttypes"
 )
 
 func LookupUserError(err error) (UserError, bool) {

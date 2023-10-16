@@ -2,11 +2,11 @@ package crudcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/internal/suites"
+	"go.llib.dev/frameless/internal/suites"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/extid"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

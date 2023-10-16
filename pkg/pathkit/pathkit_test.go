@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/pathkit"
 	"github.com/adamluzsi/testcase/assert"
 
 	"github.com/adamluzsi/testcase"

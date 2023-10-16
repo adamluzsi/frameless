@@ -5,9 +5,9 @@ import (
 	"github.com/adamluzsi/testcase/let"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/pointer"
 
-	"github.com/adamluzsi/frameless/ports/meta"
+	"go.llib.dev/frameless/ports/meta"
 	"github.com/adamluzsi/testcase"
 )
 

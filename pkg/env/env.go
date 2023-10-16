@@ -3,9 +3,9 @@ package env
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/enum"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"net/url"
 	"os"
 	"reflect"

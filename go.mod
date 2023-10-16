@@ -1,5 +1,5 @@
-module github.com/adamluzsi/frameless
+module go.llib.dev/frameless
 
-go 1.18
+go 1.20
 
 require github.com/adamluzsi/testcase v0.142.1

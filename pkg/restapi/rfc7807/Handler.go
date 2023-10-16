@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/adamluzsi/frameless/internal/consttypes"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/internal/consttypes"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 type Handler struct {

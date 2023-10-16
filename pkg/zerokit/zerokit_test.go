@@ -2,10 +2,10 @@ package zerokit_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/pointer"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/frameless/pkg/tasker"
-	"github.com/adamluzsi/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"

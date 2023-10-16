@@ -2,14 +2,14 @@ package memory_test
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/ports/pubsub"
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubcontracts"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/ports/pubsub"
+	"go.llib.dev/frameless/ports/pubsub/pubsubcontracts"
 	"github.com/adamluzsi/testcase"
 	"sort"
 	"testing"
 
-	. "github.com/adamluzsi/frameless/spechelper/testent"
+	. "go.llib.dev/frameless/spechelper/testent"
 )
 
 var _ interface {

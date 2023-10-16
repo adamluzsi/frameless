@@ -2,7 +2,7 @@ package guard
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/consttypes"
 )
 
 type Locker interface {

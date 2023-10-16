@@ -2,10 +2,10 @@ package schedule
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/tasker"
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/guard"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/guard"
 	"github.com/adamluzsi/testcase/clock"
 	"time"
 )

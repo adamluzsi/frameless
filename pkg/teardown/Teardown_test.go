@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/teardown"
+	"go.llib.dev/frameless/pkg/teardown"
 	"github.com/adamluzsi/testcase/sandbox"
 
 	"github.com/adamluzsi/testcase"

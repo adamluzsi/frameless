@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/iokit"
-	"github.com/adamluzsi/frameless/ports/filesystem"
+	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/ports/filesystem"
 
 	"github.com/adamluzsi/testcase"
 )

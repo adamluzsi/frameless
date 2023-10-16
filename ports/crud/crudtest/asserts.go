@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/pointer"
 
-	"github.com/adamluzsi/frameless/ports/crud"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	sh "github.com/adamluzsi/frameless/spechelper"
+	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/iterators"
+	sh "go.llib.dev/frameless/spechelper"
 
 	"github.com/adamluzsi/testcase/assert"
 )

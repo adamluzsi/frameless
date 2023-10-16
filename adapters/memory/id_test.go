@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapters/memory"
 	"github.com/adamluzsi/testcase/assert"
 )
 

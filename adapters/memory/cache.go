@@ -3,7 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/cache"
+	"go.llib.dev/frameless/pkg/cache"
 )
 
 func NewCacheRepository[Entity, ID any](m *Memory) *CacheRepository[Entity, ID] {

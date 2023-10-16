@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/ports/crud"
 
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 func NewEventLogRepository[Entity, ID any](m *EventLog) *EventLogRepository[Entity, ID] {

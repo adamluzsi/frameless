@@ -1,7 +1,7 @@
 package memory
 
 import (
-	"github.com/adamluzsi/frameless/ports/filesystem"
+	"go.llib.dev/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/iokit"
-	"github.com/adamluzsi/frameless/ports/iterators"
+	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 type FileSystem struct {

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/iterators"
-	iteratorcontracts "github.com/adamluzsi/frameless/ports/iterators/iteratorcontracts"
-	"github.com/adamluzsi/frameless/ports/iterators/ranges"
+	"go.llib.dev/frameless/ports/iterators"
+	iteratorcontracts "go.llib.dev/frameless/ports/iterators/iteratorcontracts"
+	"go.llib.dev/frameless/ports/iterators/ranges"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

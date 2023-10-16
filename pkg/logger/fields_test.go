@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/pointer"
-	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"
@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 	"github.com/adamluzsi/testcase/random"
 )
 

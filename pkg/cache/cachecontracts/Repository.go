@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/adamluzsi/frameless/ports/crud/crudtest"
+	. "go.llib.dev/frameless/ports/crud/crudtest"
 
-	"github.com/adamluzsi/frameless/pkg/cache"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/frameless/ports/crud/extid"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/spechelper"
+	"go.llib.dev/frameless/pkg/cache"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/spechelper"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

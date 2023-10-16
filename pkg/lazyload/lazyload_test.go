@@ -1,7 +1,7 @@
 package lazyload_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/lazyload"
+	"go.llib.dev/frameless/pkg/lazyload"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/let"

@@ -2,7 +2,7 @@ package pubsubcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
+	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 	"testing"
 
 	"github.com/adamluzsi/testcase"

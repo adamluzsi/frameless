@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/runtimekit"
+	"go.llib.dev/frameless/pkg/runtimekit"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

@@ -1,7 +1,7 @@
 package reflectkit
 
 import (
-	"github.com/adamluzsi/frameless/pkg/reflectkit/internal"
+	"go.llib.dev/frameless/pkg/reflectkit/internal"
 	"math/big"
 	"net"
 	"reflect"

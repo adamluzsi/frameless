@@ -7,7 +7,7 @@ import (
 	"github.com/adamluzsi/testcase/assert"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 )
 
 func TestLogger_level(t *testing.T) {

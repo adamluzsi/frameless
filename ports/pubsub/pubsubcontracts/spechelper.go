@@ -2,14 +2,14 @@ package pubsubcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/spechelper"
+	"go.llib.dev/frameless/spechelper"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/ports/pubsub"
-	"github.com/adamluzsi/frameless/ports/pubsub/pubsubtest"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/pubsub"
+	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 )

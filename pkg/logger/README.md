@@ -11,7 +11,7 @@ package main
 import (
 	"context"
 
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 )
 
 func main() {
@@ -68,7 +68,7 @@ To configure the default logger, simply configure it from your main.
 ```go
 package main
 
-import "github.com/adamluzsi/frameless/pkg/logger"
+import "go.llib.dev/frameless/pkg/logger"
 
 func main() {
 	logger.Default.MessageKey = "msg"
@@ -92,8 +92,8 @@ field.
 package main
 
 import (
-	"github.com/adamluzsi/frameless/pkg/logger"
-	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/stringcase"
 )
 
 func main() {
@@ -119,7 +119,7 @@ before you can use it as a logging field.
 ```go
 package mydomain
 
-import "github.com/adamluzsi/frameless/pkg/logger"
+import "go.llib.dev/frameless/pkg/logger"
 
 type MyEntity struct {
 	ID               string
@@ -173,7 +173,7 @@ while also being able to observe and monitor its behavior effectively.
 package main
 
 import (
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 )
 
 func main() {
@@ -195,7 +195,7 @@ making it easier to investigate unexpected behaviours using the DEBUG logs.
 package mypkg
 
 import (
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 )
 
 func MyFunc() {
@@ -213,7 +213,7 @@ import (
 
 	"mypkg"
 
-	"github.com/adamluzsi/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logger"
 )
 
 func TestMyFunc(t *testing.T) {

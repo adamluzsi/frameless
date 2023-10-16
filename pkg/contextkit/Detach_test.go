@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/contextkit"
 	"github.com/adamluzsi/testcase"
 )
 

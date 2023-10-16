@@ -2,10 +2,10 @@ package schedulecontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/internal/suites"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/frameless/ports/crud/crudcontracts"
-	"github.com/adamluzsi/frameless/ports/guard/guardcontracts"
+	"go.llib.dev/frameless/internal/suites"
+	"go.llib.dev/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/ports/guard/guardcontracts"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/random"
 	"testing"

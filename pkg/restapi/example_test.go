@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/adapters/memory"
-	"github.com/adamluzsi/frameless/pkg/restapi"
+	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/pkg/restapi"
 )
 
 func ExampleRoutes() {

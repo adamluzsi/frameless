@@ -2,13 +2,13 @@ package guardcontracts
 
 import (
 	"context"
-	"github.com/adamluzsi/frameless/internal/suites"
+	"go.llib.dev/frameless/internal/suites"
 	"github.com/adamluzsi/testcase/let"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/adamluzsi/frameless/ports/guard"
+	"go.llib.dev/frameless/ports/guard"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

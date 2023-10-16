@@ -1,7 +1,7 @@
 package stringcase_test
 
 import (
-	"github.com/adamluzsi/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringcase"
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/pp"

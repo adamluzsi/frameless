@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 type DeleteOperation[Entity, ID, DTO any] struct {

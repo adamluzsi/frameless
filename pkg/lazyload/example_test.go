@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/adamluzsi/frameless/pkg/lazyload"
+	"go.llib.dev/frameless/pkg/lazyload"
 	"github.com/adamluzsi/testcase/assert"
 )
 

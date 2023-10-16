@@ -137,11 +137,11 @@ import (
 	"os"
 	"database/sql"
 
-	"github.com/adamluzsi/frameless/adapters/postgresql"
-	"github.com/adamluzsi/frameless/pkg/contextkit"
-	"github.com/adamluzsi/frameless/pkg/logger"
-	"github.com/adamluzsi/frameless/pkg/tasker"
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/pkg/tasker/schedule"
 )
 
 func main() {

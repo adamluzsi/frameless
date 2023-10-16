@@ -1,9 +1,9 @@
 package memory
 
 import (
-	"github.com/adamluzsi/frameless/pkg/tasker/schedule"
-	"github.com/adamluzsi/frameless/pkg/zerokit"
-	"github.com/adamluzsi/frameless/ports/guard"
+	"go.llib.dev/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/ports/guard"
 )
 
 type TaskerScheduleRepository struct {

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/crud/extid"
 )
 
 type SetIDByExtIDTag[Entity, ID any] struct{}

@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud"
 )
 
 type UpdateOperation[Entity, ID, DTO any] struct {

@@ -1,10 +1,10 @@
 package extid_test
 
 import (
-	"github.com/adamluzsi/frameless/ports/crud/extid/internal/testhelper"
+	"go.llib.dev/frameless/ports/crud/extid/internal/testhelper"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/ports/crud/extid"
 
 	"github.com/adamluzsi/testcase/assert"
 	"github.com/adamluzsi/testcase/random"

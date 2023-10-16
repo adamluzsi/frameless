@@ -3,9 +3,9 @@ package memory
 import (
 	"context"
 	"fmt"
-	"github.com/adamluzsi/frameless/ports/comproto"
-	"github.com/adamluzsi/frameless/ports/iterators"
-	"github.com/adamluzsi/frameless/ports/pubsub"
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/pubsub"
 	"github.com/adamluzsi/testcase/clock"
 	"github.com/adamluzsi/testcase/random"
 	"sort"

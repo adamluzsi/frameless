@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
-	"github.com/adamluzsi/frameless/pkg/restapi/rfc7807"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 )
 
 type CompanyErrorStructure struct {

@@ -3,7 +3,7 @@ package logger
 import (
 	"bytes"
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/internal/testcheck"
+	"go.llib.dev/frameless/pkg/internal/testcheck"
 	"io"
 	"sync"
 )

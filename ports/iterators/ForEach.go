@@ -1,7 +1,7 @@
 package iterators
 
 import (
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 const Break errorkit.Error = `iterators:break`

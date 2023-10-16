@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/adamluzsi/frameless/internal/doubles"
+	"go.llib.dev/frameless/internal/doubles"
 	"testing"
 
-	"github.com/adamluzsi/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/comproto"
 
 	"github.com/adamluzsi/testcase"
 	"github.com/adamluzsi/testcase/assert"

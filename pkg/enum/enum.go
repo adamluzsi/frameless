@@ -2,13 +2,13 @@ package enum
 
 import (
 	"fmt"
-	"github.com/adamluzsi/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/adamluzsi/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 var ErrInvalid = errorkit.UserError{
