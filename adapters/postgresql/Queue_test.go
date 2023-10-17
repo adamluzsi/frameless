@@ -136,7 +136,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 	t.Log("we wait until the subscription is idle")
 	idler, ok := res.Subscription().(interface{ IsIdle() bool })
 	assert.True(t, ok)
-	assert.EventuallyWithin(5*time.Second).Assert(t, func(it assert.It) {
+	assert.Eventually(t, 5*time.Second, func(it assert.It) {
 		it.Should.True(idler.IsIdle())
 	})
 
