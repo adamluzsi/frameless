@@ -140,7 +140,7 @@ func TestAsyncLogging(t *testing.T) {
 
 	logger.Info(ctx, "gsm", logger.Field("fieldKey", "value"))
 
-	assert.EventuallyWithin(3*time.Second).Assert(t, func(it assert.It) {
+	assert.Eventually(t, 3*time.Second, func(it assert.It) {
 		it.Must.Contain(out.String(), `"Msg":"gsm"`)
 		it.Must.Contain(out.String(), `"FieldKey":"value"`)
 	})

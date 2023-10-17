@@ -21,8 +21,8 @@ var Waiter = assert.Waiter{
 	Timeout:      5 * time.Second,
 }
 
-var Eventually = assert.Eventually{
-	RetryStrategy: &Waiter,
+var Eventually = assert.Retry{
+	Strategy: &Waiter,
 }
 
 func HasID[Entity, ID any](tb testing.TB, ent Entity) (id ID) {

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-var asyncLoggingEventually = assert.EventuallyWithin(3 * time.Second)
+var asyncLoggingEventually = assert.MakeRetry(3 * time.Second)
 
 func ExampleLogger_AsyncLogging() {
 	ctx := context.Background()

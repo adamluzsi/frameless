@@ -141,7 +141,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		testcase.TableTest(s, FaultUseCases, func(t *testcase.T, tc FaultAttemptCase) {
 			failureCount.Set(t, tc.FailureCount)
 			var buffer = time.Duration(float64(tc.WaitTime) * 0.30)
-			assert.EventuallyWithin(10).Assert(t, func(it assert.It) {
+			assert.Eventually(t, 10, func(it assert.It) {
 				duration := measure(func() { act(t) })
 				it.Must.True(duration <= tc.WaitTime+buffer,
 					"expected duration", assert.Message(tc.WaitTime.String()),
@@ -288,7 +288,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 		s.Test("we wait a bit, but less than the maximum wait time", func(t *testcase.T) {
 			failureCount.Set(t, 1)
 			var buffer = time.Duration(float64(subject.Get(t).MaxWaitDuration) * 0.30)
-			assert.EventuallyWithin(10).Assert(t, func(it assert.It) {
+			assert.Eventually(t, 10, func(it assert.It) {
 				duration := measure(func() { act(t) })
 				it.Must.True(duration <= subject.Get(t).MaxWaitDuration+buffer)
 			})

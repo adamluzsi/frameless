@@ -247,7 +247,7 @@ func TestConcurrence_Run(t *testing.T) {
 		assert.Within(t, time.Second, func(ctx context.Context) {
 			assert.NoError(t, s.Run(ctx))
 
-			assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
+			assert.Eventually(t, time.Second, func(it assert.It) {
 				it.Must.Equal(int32(111), atomic.LoadInt32(&out))
 			})
 		})
@@ -278,7 +278,7 @@ func TestConcurrence_Run(t *testing.T) {
 		)
 
 		go func() { assert.NoError(t, s.Run(ctx)) }()
-		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
+		assert.Eventually(t, time.Second, func(it assert.It) {
 			it.Must.Equal(int32(111), atomic.LoadInt32(&out))
 		})
 	})
@@ -604,14 +604,14 @@ func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 		assert.NotWithin(t, blockCheckWaitTime, func(context.Context) { // expected to block
 			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
 		})
-		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
+		assert.Eventually(t, time.Second, func(it assert.It) {
 			it.Must.True(atomic.LoadInt32(&startBegin) == 1)
 			it.Must.True(atomic.LoadInt32(&startFinished) == 0)
 		})
 
 		cancel() // cancel task
 
-		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
+		assert.Eventually(t, time.Second, func(it assert.It) {
 			it.Must.True(atomic.LoadInt32(&startFinished) == 1)
 			it.Must.True(atomic.LoadInt32(&stopBegin) == 1)
 			it.Must.True(atomic.LoadInt32(&stopFinished) == 1)
@@ -640,14 +640,14 @@ func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
 		})
 
-		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
+		assert.Eventually(t, time.Second, func(it assert.It) {
 			it.Must.True(atomic.LoadInt32(&startOK) == 1)
 			it.Must.True(atomic.LoadInt32(&stopOK) == 0)
 		})
 
 		cancel() // cancel task
 
-		assert.EventuallyWithin(time.Second).Assert(t, func(it assert.It) {
+		assert.Eventually(t, time.Second, func(it assert.It) {
 			it.Must.True(atomic.LoadInt32(&stopOK) == 1)
 		})
 	})
@@ -1071,7 +1071,7 @@ func TestHTTPServerTask_smoke(t *testing.T) {
 
 	go func() { assert.NoError(t, tasker.HTTPServerTask(srv).Run(ctx)) }()
 
-	eventually := assert.EventuallyWithin(5 * time.Second)
+	eventually := assert.MakeRetry(5 * time.Second)
 
 	eventually.Assert(t, func(it assert.It) {
 		resp, err := http.Get(srvURL)

@@ -15,8 +15,8 @@ var (
 		WaitDuration: time.Millisecond,
 		Timeout:      3 * time.Second,
 	}
-	eventually = assert.Eventually{
-		RetryStrategy: waiter,
+	eventually = assert.Retry{
+		Strategy: waiter,
 	}
 )
 

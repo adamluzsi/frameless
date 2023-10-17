@@ -25,7 +25,7 @@ var (
 		WaitDuration: time.Millisecond,
 		Timeout:      time.Second,
 	}
-	eventually = assert.Eventually{RetryStrategy: &waiter}
+	eventually = assert.Retry{Strategy: &waiter}
 )
 
 type Cache[Entity any, ID comparable] func(testing.TB) CacheSubject[Entity, ID]

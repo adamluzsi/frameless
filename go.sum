@@ -1,2 +1,4 @@
 go.llib.dev/testcase v0.143.0 h1:B2wbIrhPwevmHpMzBXPQCVpk6Cc4bUEZxpvZXnbhsxs=
 go.llib.dev/testcase v0.143.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/testcase v0.144.0 h1:TPymgbj/nYHWKN19XTqa3XuqDCU4wGuIbBe7KsNVgJg=
+go.llib.dev/testcase v0.144.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=

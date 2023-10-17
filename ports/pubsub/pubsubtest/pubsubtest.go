@@ -18,8 +18,8 @@ var Waiter = assert.Waiter{
 	Timeout:      5 * time.Second,
 }
 
-var Eventually = assert.Eventually{
-	RetryStrategy: &Waiter,
+var Eventually = assert.Retry{
+	Strategy: &Waiter,
 }
 
 type AsyncResults[Data any] struct {
