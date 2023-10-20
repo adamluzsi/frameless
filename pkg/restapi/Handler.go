@@ -31,6 +31,17 @@ type Handler[Entity, ID, DTO any] struct {
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	BodyReadLimit int64
 	Operations[Entity, ID, DTO]
+
+	// NoCreate will instruct the handler to not expose the `POST /` endpoint
+	NoCreate bool
+	// NoIndex will instruct the handler to not expose the `Get /` endpoint
+	NoIndex bool
+	// NoShow will instruct the handler to not expose the `Get /:id` endpoint
+	NoShow bool
+	// NoUpdate will instruct the handler to not expose the `PUT /:id` endpoint
+	NoUpdate bool
+	// NoDelete will instruct the handler to not expose the `DELETE /:id` endpoint
+	NoDelete bool
 }
 
 // Operations is an optional config where you can customise individual restful operations.
@@ -83,8 +94,16 @@ func (h Handler[Entity, ID, DTO]) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	case `/`, ``:
 		switch r.Method {
 		case http.MethodGet:
+			if h.NoIndex {
+				h.errMethodNotAllowed(w, r)
+				return
+			}
 			h.index(w, r)
 		case http.MethodPost:
+			if h.NoCreate {
+				h.errMethodNotAllowed(w, r)
+				return
+			}
 			h.create(w, r)
 		default:
 			h.errMethodNotAllowed(w, r)
@@ -109,10 +128,22 @@ func (h Handler[Entity, ID, DTO]) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		}
 		switch r.Method {
 		case http.MethodGet:
+			if h.NoShow {
+				h.errMethodNotAllowed(w, r)
+				return
+			}
 			h.show(w, r, id)
 		case http.MethodPut, http.MethodPatch:
+			if h.NoUpdate {
+				h.errMethodNotAllowed(w, r)
+				return
+			}
 			h.update(w, r, id)
 		case http.MethodDelete:
+			if h.NoDelete {
+				h.errMethodNotAllowed(w, r)
+				return
+			}
 			h.delete(w, r, id)
 		}
 	}

@@ -152,6 +152,16 @@ func TestHandler(t *testing.T) {
 			})
 		}
 
+		ThenNotAllowed := func(s *testcase.Spec) {
+			s.Then("it will respond with 405, page not found", func(t *testcase.T) {
+				rr := act(t)
+				t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+				errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+				t.Must.NotEmpty(errDTO)
+				t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+			})
+		}
+
 		s.Describe(`#index`, func(s *testcase.Spec) {
 			method.LetValue(s, http.MethodGet)
 			path.LetValue(s, `/`)
@@ -279,6 +289,16 @@ func TestHandler(t *testing.T) {
 			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
 				r.Operations.Index.BeforeHook = bh
 			})
+
+			s.When("NoIndex flag is set", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					rapi := subject.Super(t)
+					rapi.NoIndex = true
+					return rapi
+				})
+
+				ThenNotAllowed(s)
+			})
 		})
 
 		s.Describe(`#create`, func(s *testcase.Spec) {
@@ -400,6 +420,16 @@ func TestHandler(t *testing.T) {
 			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
 				r.Operations.Create.BeforeHook = bh
 			})
+
+			s.When("No Create flag is set", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					rapi := subject.Super(t)
+					rapi.NoCreate = true
+					return rapi
+				})
+
+				ThenNotAllowed(s)
+			})
 		})
 
 		WhenIDInThePathIsMalformed := func(s *testcase.Spec) {
@@ -461,6 +491,16 @@ func TestHandler(t *testing.T) {
 					bh(w, r)
 				}
 			})
+
+			s.When("NoShow flag is set", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					rapi := subject.Super(t)
+					rapi.NoShow = true
+					return rapi
+				})
+
+				ThenNotAllowed(s)
+			})
 		})
 
 		s.Describe(`#update`, func(s *testcase.Spec) {
@@ -520,14 +560,7 @@ func TestHandler(t *testing.T) {
 					return struct{ crud.ByIDFinder[Foo, int] }{ByIDFinder: mdb.Get(t)}
 				})
 
-				s.Then("it will respond with 404, page not found", func(t *testcase.T) {
-					rr := act(t)
-					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
-
-					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
-				})
+				ThenNotAllowed(s)
 			})
 
 			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
@@ -537,6 +570,16 @@ func TestHandler(t *testing.T) {
 					t.Must.Equal(dto.Get(t).ID, id)
 					bh(w, r)
 				}
+			})
+
+			s.When("NoUpdate flag is set", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					rapi := subject.Super(t)
+					rapi.NoUpdate = true
+					return rapi
+				})
+
+				ThenNotAllowed(s)
 			})
 		})
 
@@ -581,14 +624,7 @@ func TestHandler(t *testing.T) {
 					return struct{ crud.ByIDFinder[Foo, int] }{ByIDFinder: mdb.Get(t)}
 				})
 
-				s.Then("it will respond with 404, page not found", func(t *testcase.T) {
-					rr := act(t)
-					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
-
-					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
-				})
+				ThenNotAllowed(s)
 			})
 
 			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, int, FooDTO], bh restapi.BeforeHook) {
@@ -598,6 +634,16 @@ func TestHandler(t *testing.T) {
 					t.Must.Equal(dto.Get(t).ID, id)
 					bh(w, r)
 				}
+			})
+
+			s.When("NoDelete flag is set", func(s *testcase.Spec) {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, int, FooDTO] {
+					rapi := subject.Super(t)
+					rapi.NoDelete = true
+					return rapi
+				})
+
+				ThenNotAllowed(s)
 			})
 		})
 
