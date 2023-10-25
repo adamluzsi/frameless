@@ -122,7 +122,7 @@ func (sih *consumer[Data]) wrk(
 			return nil
 		}(v))
 	}
-	it.Should.AnyOf(func(a *assert.AnyOf) {
+	it.Should.AnyOf(func(a *assert.A) {
 		// TODO: survey which behaviour is more natural
 		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
 		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })

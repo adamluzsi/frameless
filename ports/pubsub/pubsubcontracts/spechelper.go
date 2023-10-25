@@ -186,7 +186,7 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 		assert.Should(tb).NoError(msg.ACK())
 		sih.mutex.Unlock()
 	}
-	assert.Should(tb).AnyOf(func(a *assert.AnyOf) {
+	assert.Should(tb).AnyOf(func(a *assert.A) {
 		// TODO: survey which behaviour is more natural
 		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
 		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })

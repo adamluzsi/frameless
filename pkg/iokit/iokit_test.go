@@ -406,7 +406,7 @@ func TestSyncReaderWriter_smoke(t *testing.T) {
 	}
 	read := func() {
 		_, err := rw.Read(make([]byte, msgLen))
-		assert.Should(t).AnyOf(func(a *assert.AnyOf) {
+		assert.Should(t).AnyOf(func(a *assert.A) {
 			a.Test(func(t assert.It) { t.Must.ErrorIs(io.EOF, err) })
 			a.Test(func(t assert.It) { t.Must.NoError(err) })
 		})
