@@ -16,7 +16,7 @@ import (
 type Queue[Entity, JSONDTO any] struct {
 	Name       string
 	Connection Connection
-	Mapping    QueueMapping[Entity, JSONDTO]
+	Mapping    QueueMapper[Entity, JSONDTO]
 
 	// EmptyQueueBreakTime is the time.Duration that the queue waits when the queue is empty for the given queue Name.
 	EmptyQueueBreakTime time.Duration
@@ -27,7 +27,7 @@ type Queue[Entity, JSONDTO any] struct {
 	LIFO bool
 }
 
-type QueueMapping[ENT, DTO any] interface {
+type QueueMapper[ENT, DTO any] interface {
 	ToDTO(ent ENT) (DTO, error)
 	ToEnt(dto DTO) (ENT, error)
 }

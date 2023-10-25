@@ -15,7 +15,7 @@ func ExampleMapper() {
 		Col2 string
 		Col3 bool
 	}
-	_ = postgresql.Mapper[ExampleEntity, int64]{
+	_ = postgresql.Mapping[ExampleEntity, int64]{
 		Table:   `"public"."entities"`,
 		ID:      "entity_id",
 		Columns: []string{"entity_id", "col1", "col2", "col3"},

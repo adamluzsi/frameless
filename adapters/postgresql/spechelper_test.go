@@ -66,7 +66,7 @@ const FooMigrateDOWN = `
 DROP TABLE IF EXISTS "foos";
 `
 
-var FooMapping = postgresql.Mapper[testent.Foo, testent.FooID]{
+var FooMapping = postgresql.Mapping[testent.Foo, testent.FooID]{
 	Table:   "foos",
 	ID:      "id",
 	Columns: []string{"id", "foo", "bar", "baz"},

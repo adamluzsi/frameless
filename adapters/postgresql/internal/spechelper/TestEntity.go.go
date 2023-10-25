@@ -44,9 +44,9 @@ func (n TestEntityJSONMapping) ToEnt(dto TestEntityDTO) (TestEntity, error) {
 	return TestEntity{ID: dto.ID, Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
 }
 
-func TestEntityMapping() postgresql.Mapper[TestEntity, string] {
+func TestEntityMapping() postgresql.Mapping[TestEntity, string] {
 	var counter int
-	return postgresql.Mapper[TestEntity, string]{
+	return postgresql.Mapping[TestEntity, string]{
 		Table: "test_entities",
 		ID:    "id",
 		NewIDFn: func(ctx context.Context) (string, error) {

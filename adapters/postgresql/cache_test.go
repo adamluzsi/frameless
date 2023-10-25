@@ -87,7 +87,7 @@ type FooCacheRepository struct {
 
 func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, testent.FooID] {
 	return postgresql.Repository[testent.Foo, testent.FooID]{
-		Mapping: postgresql.Mapper[testent.Foo, testent.FooID]{
+		Mapping: postgresql.Mapping[testent.Foo, testent.FooID]{
 			Table:   "cache_foos",
 			ID:      "id",
 			Columns: []string{"id", "foo", "bar", "baz"},
@@ -109,7 +109,7 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 
 func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 	return postgresql.Repository[cache.Hit[testent.FooID], cache.HitID]{
-		Mapping: postgresql.Mapper[cache.Hit[testent.FooID], cache.HitID]{
+		Mapping: postgresql.Mapping[cache.Hit[testent.FooID], cache.HitID]{
 			Table:   "cache_foo_hits",
 			ID:      "id",
 			Columns: []string{"id", "ids", "ts"},

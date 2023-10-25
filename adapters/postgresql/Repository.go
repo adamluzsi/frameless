@@ -19,8 +19,29 @@ import (
 //
 // SRP: DBA
 type Repository[Entity, ID any] struct {
-	Mapping    Mapping[Entity, ID]
+	Mapping    RepositoryMapper[Entity, ID]
 	Connection Connection
+}
+
+type RepositoryMapper[Entity, ID any] interface {
+	// TableRef is the entity's postgresql table name.
+	//   eg.:
+	//     - "public"."table_name"
+	//     - "table_name"
+	//     - table_name
+	//
+	TableRef() string
+	// IDRef is the entity's id column name, which can be used to access an individual record for update purpose.
+	IDRef() string
+	// NewID creates a stateless entity id that can be used by CREATE operation.
+	// Serial and similar id solutions not supported without serialize transactions.
+	NewID(context.Context) (ID, error)
+	// ColumnRefs are the table's column names.
+	// The order of the column names related to Row mapping and query argument passing.
+	ColumnRefs() []string
+	// ToArgs convert an entity ptr to a list of query argument that can be used for CREATE or UPDATE purpose.
+	ToArgs(ptr *Entity) ([]interface{}, error)
+	iterators.SQLRowMapper[Entity]
 }
 
 func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
@@ -356,4 +377,44 @@ func (r Repository[Entity, ID]) queryColumnList() string {
 		dst = append(dst, fmt.Sprintf(`%s`, name))
 	}
 	return strings.Join(dst, `, `)
+}
+
+// Mapping is a RepositoryMapper implementation if you don't want to create your own.
+type Mapping[Entity, ID any] struct {
+	// Table is the entity's table name
+	Table string
+	// ID is the entity's id column name
+	ID string
+	// Columns hold the entity's table column names.
+	Columns []string
+	// ToArgsFn will map an Entity into query arguments, that follows the order of Columns.
+	ToArgsFn func(ptr *Entity) ([]interface{}, error)
+	// MapFn will map an sql.Row into an Entity.
+	MapFn iterators.SQLRowMapperFunc[Entity]
+	// NewIDFn will return a new ID
+	NewIDFn func(ctx context.Context) (ID, error)
+}
+
+func (m Mapping[Entity, ID]) TableRef() string {
+	return m.Table
+}
+
+func (m Mapping[Entity, ID]) IDRef() string {
+	return m.ID
+}
+
+func (m Mapping[Entity, ID]) ColumnRefs() []string {
+	return m.Columns
+}
+
+func (m Mapping[Entity, ID]) NewID(ctx context.Context) (ID, error) {
+	return m.NewIDFn(ctx)
+}
+
+func (m Mapping[Entity, ID]) ToArgs(ptr *Entity) ([]interface{}, error) {
+	return m.ToArgsFn(ptr)
+}
+
+func (m Mapping[Entity, ID]) Map(s iterators.SQLRowScanner) (Entity, error) {
+	return m.MapFn(s)
 }

@@ -15,7 +15,7 @@ func ExampleRepository() {
 		Value string
 	}
 
-	mapping := postgresql.Mapper[Entity, int]{
+	mapping := postgresql.Mapping[Entity, int]{
 		Table:   "entities",
 		ID:      "id",
 		Columns: []string{`id`, `value`},

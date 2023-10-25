@@ -52,7 +52,7 @@ func (r TaskerScheduleStateRepository) repository() Repository[schedule.State, s
 	}
 }
 
-var taskerScheduleStateRepositoryMapping = Mapper[schedule.State, schedule.StateID]{
+var taskerScheduleStateRepositoryMapping = Mapping[schedule.State, schedule.StateID]{
 	Table: "frameless_tasker_schedule_states",
 	ID:    "id",
 	NewIDFn: func(context.Context) (schedule.StateID, error) {
