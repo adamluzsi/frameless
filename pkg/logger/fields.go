@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 )
 
@@ -55,10 +54,19 @@ func ErrField(err error) LoggingDetail {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-var register = map[reflect.Type]func(any) LoggingDetail{}
+var (
+	typRegister = map[reflect.Type]func(any) LoggingDetail{}
+	intRegister = map[reflect.Type]func(any) LoggingDetail{}
+)
 
 func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
-	register[reflect.TypeOf(*new(T))] = func(v any) LoggingDetail { return mapping(v.(T)) }
+	typ := reflect.TypeOf((*T)(nil)).Elem()
+	var register map[reflect.Type]func(any) LoggingDetail
+	register = typRegister
+	if typ.Kind() == reflect.Interface {
+		register = intRegister
+	}
+	register[typ] = func(v any) LoggingDetail { return mapping(v.(T)) }
 	return nil
 }
 
@@ -66,14 +74,20 @@ func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
 
 type LoggingDetail interface{ addTo(*Logger, logEntry) }
 
+func (l *Logger) tryInterface(val any) (any, bool) {
+	rv := reflect.ValueOf(val)
+	for intType, mapping := range intRegister {
+		if rv.Type().Implements(intType) {
+			return l.toFieldValue(mapping(rv.Interface())), true
+		}
+	}
+	return nil, false
+}
+
 func (l *Logger) toFieldValue(val any) any {
 	rv := reflect.ValueOf(val)
-	if mapping, ok := register[rv.Type()]; ok {
+	if mapping, ok := typRegister[rv.Type()]; ok {
 		return l.toFieldValue(mapping(val))
-	}
-	rv = reflectkit.BaseValue(rv)
-	if mapping, ok := register[rv.Type()]; ok {
-		return l.toFieldValue(mapping(rv.Interface()))
 	}
 	switch val := rv.Interface().(type) {
 	case logEntry:
@@ -101,10 +115,18 @@ func (l *Logger) toFieldValue(val any) any {
 		return l.toFieldValue(le)
 
 	default:
+		if ld, ok := l.tryInterface(val); ok {
+			return ld
+		}
+
 		switch rv.Kind() {
+		case reflect.Pointer:
+			if rv.IsNil() {
+				return l.toFieldValue(nil)
+			}
+			return l.toFieldValue(rv.Elem().Interface())
+
 		case reflect.Struct:
-
-
 			const unregisteredStructWarning = "Due to security concerns, you must first use logger.RegisterFieldType before a struct can be logged"
 			Warn(nil, fmt.Sprintf("%s (type: %T)", unregisteredStructWarning, rv.Interface()))
 			return nullLoggingDetail{}

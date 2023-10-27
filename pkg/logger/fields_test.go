@@ -215,6 +215,26 @@ func TestField(t *testing.T) {
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
 	})
+
+	s.When("value is implementing an interface type which is registered for logging", func(s *testcase.Spec) {
+		logger.RegisterFieldType(func(mi MyInterface) logger.LoggingDetail {
+			return logger.Field("IDDQD", mi.GetIDDQD())
+		})
+
+		myData := testcase.Let(s, func(t *testcase.T) MyData {
+			return MyData{ID: t.Random.UUID()}
+		})
+
+		value.Let(s, func(t *testcase.T) any { return myData.Get(t) })
+
+		s.Then("then the registered field mapping is used", func(t *testcase.T) {
+			afterLogging(t)
+			keyIsLogged(t)
+
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:%q", defaultKeyFormatter("IDDQD"), myData.Get(t).ID))
+		})
+	})
 }
 
 func ExampleFields() {
@@ -433,3 +453,9 @@ func TestField_canNotOverrideBaseFields(t *testing.T) {
 	assert.NoError(t, json.NewDecoder(bytes.NewReader(buf.Bytes())).Decode(&out)) // decode the first line
 	assert.Equal(t, msg, out.Message)
 }
+
+type MyInterface interface{ GetIDDQD() string }
+
+type MyData struct{ ID string }
+
+func (d MyData) GetIDDQD() string { return d.ID }
