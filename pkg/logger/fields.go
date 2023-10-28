@@ -85,6 +85,9 @@ func (l *Logger) tryInterface(val any) (any, bool) {
 }
 
 func (l *Logger) toFieldValue(val any) any {
+	if val == nil {
+		return nil
+	}
 	rv := reflect.ValueOf(val)
 	if mapping, ok := typRegister[rv.Type()]; ok {
 		return l.toFieldValue(mapping(val))
@@ -119,21 +122,21 @@ func (l *Logger) toFieldValue(val any) any {
 			return ld
 		}
 
+		const unregisteredTypeWarningFormat = "Due to security concerns, use logger.RegisterFieldType for type %s before it can be logged"
 		switch rv.Kind() {
 		case reflect.Pointer:
 			if rv.IsNil() {
-				return l.toFieldValue(nil)
+				return nil
 			}
 			return l.toFieldValue(rv.Elem().Interface())
 
 		case reflect.Struct:
-			const unregisteredStructWarning = "Due to security concerns, you must first use logger.RegisterFieldType before a struct can be logged"
-			Warn(nil, fmt.Sprintf("%s (type: %T)", unregisteredStructWarning, rv.Interface()))
+			Warn(nil, fmt.Sprintf(unregisteredTypeWarningFormat, rv.Type().String()))
 			return nullLoggingDetail{}
 
 		case reflect.Map:
 			if rv.Type().Key().Kind() != reflect.String {
-				Warn(nil, fmt.Sprintf("unsupported map type: %T", rv.Interface()))
+				Warn(nil, fmt.Sprintf(unregisteredTypeWarningFormat, rv.Type().String()))
 				return nullLoggingDetail{}
 			}
 

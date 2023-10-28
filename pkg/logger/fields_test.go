@@ -235,6 +235,44 @@ func TestField(t *testing.T) {
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:%q", defaultKeyFormatter("IDDQD"), myData.Get(t).ID))
 		})
 	})
+
+	s.When("value is pointer type", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return pointer.Of(t.Random.StringNWithCharset(5, random.CharsetAlpha()))
+		})
+
+		s.Then("field is logged", func(t *testcase.T) {
+			afterLogging(t)
+			keyIsLogged(t)
+
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", *value.Get(t).(*string)))
+		})
+
+		s.And("it is a constructed nil pointer", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				var ptr *string
+				return ptr
+			})
+
+			s.Then("field is logged as nil/null", func(t *testcase.T) {
+				afterLogging(t)
+				keyIsLogged(t)
+
+				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
+			})
+		})
+	})
+
+	s.When("value is nil", func(s *testcase.Spec) {
+		value.LetValue(s, nil)
+
+		s.Then("field is logged as nil/null", func(t *testcase.T) {
+			afterLogging(t)
+			keyIsLogged(t)
+
+			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
+		})
+	})
 }
 
 func ExampleFields() {
