@@ -97,6 +97,42 @@ func TestLogWithTB(t *testing.T) {
 
 		assert.Empty(t, buf.Len())
 	})
+
+	t.Run("with optional HijackFunc", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		l := logger.Logger{Out: buf}
+
+		var dtb TestingTBDouble
+
+		type Entry struct {
+			Level   logger.Level
+			Message string
+			Fields  logger.Fields
+		}
+		var entries []Entry
+
+		logger.LogWithTB(&dtb, func(level logger.Level, msg string, fields logger.Fields) {
+			entries = append(entries, Entry{
+				Level:   level,
+				Message: msg,
+				Fields:  fields,
+			})
+		})
+
+		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
+
+		l.Debug(ctx, "msg-1", logger.Field("bar", 24))
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			it.Must.ContainExactly([]any{"msg-1", "|", "lvl:debug", "foo:42", "bar:24"}, got)
+		})
+
+		l.Info(ctx, "msg-2", logger.Field("baz", []int{1, 2, 3}))
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			it.Must.ContainExactly([]any{"msg-2", "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
+		})
+
+		assert.Empty(t, buf.Len())
+	})
 }
 
 func TestLogWithTB_spike(t *testing.T) {

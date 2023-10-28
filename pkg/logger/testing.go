@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"go.llib.dev/frameless/pkg/internal/testcheck"
+	"go.llib.dev/testcase/pp"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -39,17 +41,26 @@ func Stub(tb testingTB) StubOutput {
 
 // LogWithTB pipes all application log generated during the test execution through the testing.TB's Log method.
 // LogWithTB meant to help debugging your application during your TDD flow.
-func LogWithTB(tb testingTB) {
+func LogWithTB(tb testingTB, optionalHijack ...HijackFunc) {
 	tb.Helper()
 	tb.Cleanup(withTestingTBOverride(tb))
+
+	var hijack HijackFunc = func(lvl Level, msg string, fields Fields) {
+		var parts []string
+		parts = append(parts, fmt.Sprintf("[%s] %s", l.getLevel(), msg))
+		for k, v := range fields {
+			parts = append(parts, fmt.Sprintf("\t%q = %s", k, pp.Format(v)))
+		}
+		tb.Log("\n" + strings.Join(parts, "\n"))
+	}
+
+	if 0 < len(optionalHijack) {
+		hijack = optionalHijack[0]
+	}
+
 	tb.Cleanup(withHijackOverride(func(l *Logger, level Level, msg string, fields Fields) {
 		tb.Helper()
-		var args []any
-		args = append(args, msg, "|", fmt.Sprintf("%s:%s", l.getLevelKey(), level.String()))
-		for k, v := range fields {
-			args = append(args, fmt.Sprintf("%s:%#v", k, v))
-		}
-		tb.Log(args...)
+		hijack(level, msg, fields)
 	}))
 }
 

@@ -38,7 +38,7 @@ type Logger struct {
 	// the logging will be done with the Hijack function.
 	// This is useful if you want to use your own choice of logging,
 	// but also packages that use this logging package.
-	Hijack func(level Level, msg string, fields Fields)
+	Hijack HijackFunc
 
 	outLock sync.Mutex
 
@@ -47,6 +47,8 @@ type Logger struct {
 		strategy strategy
 	}
 }
+
+type HijackFunc func(level Level, msg string, fields Fields)
 
 func (l *Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
 	tb().Helper()
