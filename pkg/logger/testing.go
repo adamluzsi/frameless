@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"go.llib.dev/frameless/pkg/internal/testcheck"
+	"go.llib.dev/testcase/pp"
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -39,18 +41,34 @@ func Stub(tb testingTB) StubOutput {
 
 // LogWithTB pipes all application log generated during the test execution through the testing.TB's Log method.
 // LogWithTB meant to help debugging your application during your TDD flow.
-func LogWithTB(tb testingTB) {
+// If the optionalHijack argument is not supplied, a default test HijackFunc will be used
+func LogWithTB(tb testingTB, optionalHijack ...HijackFunc) {
 	tb.Helper()
 	tb.Cleanup(withTestingTBOverride(tb))
+	if len(optionalHijack) == 0 {
+		optionalHijack = append(optionalHijack, defaultTestHijackFunc(tb))
+	}
 	tb.Cleanup(withHijackOverride(func(l *Logger, level Level, msg string, fields Fields) {
 		tb.Helper()
-		var args []any
-		args = append(args, msg, "|", fmt.Sprintf("%s:%s", l.getLevelKey(), level.String()))
-		for k, v := range fields {
-			args = append(args, fmt.Sprintf("%s:%#v", k, v))
+		for _, hijack := range optionalHijack {
+			hijack(level, msg, fields)
 		}
-		tb.Log(args...)
 	}))
+}
+
+func defaultTestHijackFunc(tb testingTB) func(lvl Level, msg string, fields Fields) {
+	return func(lvl Level, msg string, fields Fields) {
+		var parts []string
+		parts = append(parts, fmt.Sprintf("[%s] %s", lvl.String(), msg))
+
+		if 0 < len(fields) {
+
+		}
+		for k, v := range fields {
+			parts = append(parts, fmt.Sprintf("%s = %s", k, pp.Format(v)))
+		}
+		tb.Log(strings.Join(parts, "\n"))
+	}
 }
 
 var overrideTestingTB testingTB

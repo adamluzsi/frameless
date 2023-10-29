@@ -7,6 +7,7 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/teardown"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 	"strings"
 	"testing"
@@ -66,12 +67,17 @@ func TestLogWithTB(t *testing.T) {
 		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
 		logger.Debug(ctx, "msg-1", logger.Field("bar", 24))
 		logger.Info(ctx, "msg-2", logger.Field("baz", []int{1, 2, 3}))
-
 		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-			it.Must.ContainExactly([]any{`msg-1`, "|", "lvl:debug", "foo:42", "bar:24"}, got)
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[debug] msg-1")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, `bar = 24`)
 		})
 		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-			it.Must.ContainExactly([]any{`msg-2`, "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[info] msg-2")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
 		})
 	})
 	t.Run("individual log level", func(t *testing.T) {
@@ -84,18 +90,59 @@ func TestLogWithTB(t *testing.T) {
 		logger.LogWithTB(&dtb)
 
 		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
-
 		l.Debug(ctx, "msg-1", logger.Field("bar", 24))
-		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-			it.Must.ContainExactly([]any{"msg-1", "|", "lvl:debug", "foo:42", "bar:24"}, got)
-		})
-
 		l.Info(ctx, "msg-2", logger.Field("baz", []int{1, 2, 3}))
+
 		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
-			it.Must.ContainExactly([]any{"msg-2", "|", "lvl:info", "foo:42", "baz:[]int{1, 2, 3}"}, got)
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[debug] msg-1")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, `bar = 24`)
+		})
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[info] msg-2")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
 		})
 
 		assert.Empty(t, buf.Len())
+	})
+
+	t.Run("with optional HijackFunc", func(t *testing.T) {
+		logger.Stub(t)
+		logger.Default.MessageKey = "msg"
+		logger.Default.LevelKey = "lvl"
+
+		type Entry struct {
+			Level   logger.Level
+			Message string
+			Fields  logger.Fields
+		}
+		var entries []Entry
+
+		var dtb TestingTBDouble
+		logger.LogWithTB(&dtb, func(level logger.Level, msg string, fields logger.Fields) {
+			entries = append(entries, Entry{
+				Level:   level,
+				Message: msg,
+				Fields:  fields,
+			})
+		})
+
+		ctx := logger.ContextWith(context.Background(), logger.Field("foo", 42))
+		logger.Debug(ctx, "msg-1", logger.Field("bar", 24))
+		logger.Info(ctx, "msg-2", logger.Field("baz", []int{1, 2, 3}))
+
+		assert.Empty(t, dtb.Logs)
+		assert.Equal(t, len(entries), 2)
+		assert.OneOf(t, entries, func(it assert.It, got Entry) {
+			it.Must.Equal(got.Level, logger.LevelDebug)
+			it.Must.Equal(got.Message, "msg-1")
+			it.Must.NotEmpty(got.Fields)
+			it.Must.Equal(got.Fields["foo"], 42)
+			it.Must.Equal(got.Fields["bar"], 24)
+		})
 	})
 }
 
@@ -107,6 +154,10 @@ func TestLogWithTB_spike(t *testing.T) {
 	logger.Warn(nil, "msg", logger.Field("bar", 24))
 	logger.Error(nil, "msg", logger.Field("bar", 24))
 	logger.Fatal(nil, "msg", logger.Field("bar", 24))
+	logger.Info(nil, "fields", logger.Fields{
+		"[]int":          []int{1, 2, 3},
+		"map[string]int": map[string]int{"The answer is": 42},
+	})
 }
 
 type TestingTBDouble struct {
