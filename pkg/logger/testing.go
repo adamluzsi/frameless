@@ -57,7 +57,9 @@ func LogWithTB(tb testingTB, optionalHijack ...HijackFunc) {
 }
 
 func defaultTestHijackFunc(tb testingTB) func(lvl Level, msg string, fields Fields) {
+	tb.Helper()
 	return func(lvl Level, msg string, fields Fields) {
+		tb.Helper()
 		var parts []string
 		parts = append(parts, fmt.Sprintf("[%s] %s", lvl.String(), msg))
 
