@@ -1,8 +1,6 @@
 package errorkit
 
 var (
-	_ ErrorAs     = multiError{}
-	_ ErrorIs     = multiError{}
 	_ ErrorUnwrap = &tagError{}
 	_ ErrorUnwrap = withContext{}
 	_ ErrorUnwrap = withDetail{}
