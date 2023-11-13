@@ -326,3 +326,28 @@ func TestRegister(t *testing.T) {
 		assert.NoError(t, enum.ValidateStruct(T{V: "C4"}))
 	})
 }
+
+func TestValues(t *testing.T) {
+	t.Run("no enum value member is registered", func(t *testing.T) {
+		type T struct{}
+		assert.Empty(t, enum.Values[T]())
+	})
+	t.Run("type with registered enum value members", func(t *testing.T) {
+		type T string
+		const (
+			V1 T = "C1"
+			V2 T = "C1"
+			V3 T = "C1"
+		)
+
+		unregister := enum.Register[T](V1, V2, V3)
+		defer unregister()
+
+		t.Log("after register, enum member values are available")
+		assert.ContainExactly(t, []T{V1, V2, V3}, enum.Values[T]())
+
+		t.Log("after unregister, enum member values are no longer available")
+		unregister()
+		assert.Empty(t, enum.Values[T]())
+	})
+}

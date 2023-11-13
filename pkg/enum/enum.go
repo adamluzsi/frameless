@@ -187,7 +187,7 @@ func Register[T any](enums ...T) (unregister func()) {
 		choices = append(choices, e)
 	}
 
-	key := reflect.TypeOf((*T)(nil)).Elem()
+	key := regKey[T]()
 	registry[key] = choices
 
 	return func() {
@@ -195,6 +195,22 @@ func Register[T any](enums ...T) (unregister func()) {
 		defer regLock.Unlock()
 		delete(registry, key)
 	}
+}
+
+func Values[T any]() []T {
+	regLock.Lock()
+	defer regLock.Unlock()
+	var out []T
+	if vs, ok := registry[regKey[T]()]; ok {
+		for _, v := range vs {
+			out = append(out, v.(T))
+		}
+	}
+	return out
+}
+
+func regKey[T any]() reflect.Type {
+	return reflect.TypeOf((*T)(nil)).Elem()
 }
 
 // validate
