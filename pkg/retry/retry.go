@@ -50,24 +50,22 @@ func (rs ExponentialBackoff) backoffDurationFor(failureCount int) time.Duration 
 }
 
 func (rs ExponentialBackoff) getBackoffDuration() time.Duration {
-	return zerokit.Init(&rs.BackoffDuration, func() time.Duration {
-		return 500 * time.Millisecond
-	})
+	const fallback = 500 * time.Millisecond
+	return zerokit.Coalesce(rs.BackoffDuration, fallback)
 }
 
 func (rs ExponentialBackoff) getMaxRetries() int {
-	return zerokit.Init(&rs.MaxRetries, func() int {
-		return 5
-	})
+	const defaultMaxRetries = 5
+	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
 }
 
 // Jitter is a random variation added to the backoff time. This helps to distribute the retry attempts evenly over time, reducing the risk of overwhelming the system and avoiding synchronization between multiple clients that might be retrying simultaneously.
 type Jitter struct {
-	// MaxRetries is the amount of retry which is allowed before giving up the application.
+	// MaxRetries is the amount of retry that is allowed before giving up the application.
 	//
 	// Default: 5
 	MaxRetries int
-	// MaxWaitDuration is the time duration which will be used to calculate the exponential backoff wait time.
+	// MaxWaitDuration is the time duration that will be used to calculate the exponential backoff wait time.
 	//
 	// Default: 5 * time.Second
 	MaxWaitDuration time.Duration
@@ -95,13 +93,11 @@ func (rs Jitter) waitTime() time.Duration {
 }
 
 func (rs Jitter) getMaxWaitDuration() time.Duration {
-	return zerokit.Init(&rs.MaxWaitDuration, func() time.Duration {
-		return 5 * time.Second
-	})
+	const fallback = 5 * time.Second
+	return zerokit.Coalesce(rs.MaxWaitDuration, fallback)
 }
 
 func (rs Jitter) getMaxRetries() int {
-	return zerokit.Init(&rs.MaxRetries, func() int {
-		return 5
-	})
+	const defaultMaxRetries = 5
+	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
 }
