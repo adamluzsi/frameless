@@ -11,9 +11,47 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 )
 
-var ErrInvalid = errorkit.UserError{
-	ID:      "enum-invalid-value",
-	Message: "The value does not match the enumerator specification",
+const ErrInvalid errorkit.Error = "The value does not match the enumerator specification"
+
+var (
+	registry = make(map[reflect.Type][]any)
+	regLock  sync.RWMutex
+)
+
+func Register[T any](enums ...T) (unregister func()) {
+	regLock.Lock()
+	defer regLock.Unlock()
+
+	var choices []any
+	for _, e := range enums {
+		choices = append(choices, e)
+	}
+
+	key := gettyp[T]()
+	registry[key] = choices
+
+	return func() {
+		regLock.Lock()
+		defer regLock.Unlock()
+		delete(registry, key)
+	}
+}
+
+func Values[T any]() []T {
+	regLock.Lock()
+	defer regLock.Unlock()
+	var out []T
+	if vs, ok := registry[gettyp[T]()]; ok {
+		for _, v := range vs {
+			out = append(out, v.(T))
+		}
+	}
+	return out
+}
+
+// Validate will check if the given value is a registered enum member.
+func Validate[T any](v T) error {
+	return validate(gettyp[T](), reflect.ValueOf(v))
 }
 
 func ValidateStruct(v any) error {
@@ -33,13 +71,14 @@ func ValidateStruct(v any) error {
 				return err
 			}
 
-			if !match(value, enumerators) {
-				return ErrInvalid.With().Detailf("%v does not match enumerator specification: %s", v, tag)
+			if !matchStructField(enumerators, value) {
+				return errorkit.With(ErrInvalid).
+					Detailf("%v does not match enumerator specification: %s", v, tag)
 			}
 		}
 
 		if value.CanInterface() {
-			if err := validate(value.Interface()); err != nil {
+			if err := validate(field.Type, value); err != nil {
 				return err
 			}
 		}
@@ -47,26 +86,24 @@ func ValidateStruct(v any) error {
 	return nil
 }
 
-func match(rv reflect.Value, enumerators []reflect.Value) bool {
+func matchStructField(enumerators []reflect.Value, rv reflect.Value) bool {
 	if len(enumerators) == 0 {
 		return true
 	}
 	switch rv.Type().Kind() {
 	case reflect.Slice:
 		for i, length := 0, rv.Len(); i < length; i++ {
-			if !match(rv.Index(i), enumerators) {
+			if !matchStructField(enumerators, rv.Index(i)) {
 				return false
 			}
 		}
 		return true
 	default:
-		v := rv.Interface()
-		for _, enumerator := range enumerators {
-			if enumerator.Interface() == v {
-				return true
-			}
+		var enums []any
+		for _, e := range enumerators {
+			enums = append(enums, e.Interface())
 		}
-		return false
+		return validateEnumerators(enums, rv.Interface()) == nil
 	}
 }
 
@@ -173,65 +210,39 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 	return out, nil
 }
 
-var (
-	registry = make(map[reflect.Type][]any)
-	regLock  sync.RWMutex
-)
-
-func Register[T any](enums ...T) (unregister func()) {
-	regLock.Lock()
-	defer regLock.Unlock()
-
-	var choices []any
-	for _, e := range enums {
-		choices = append(choices, e)
-	}
-
-	key := regKey[T]()
-	registry[key] = choices
-
-	return func() {
-		regLock.Lock()
-		defer regLock.Unlock()
-		delete(registry, key)
-	}
-}
-
-func Values[T any]() []T {
-	regLock.Lock()
-	defer regLock.Unlock()
-	var out []T
-	if vs, ok := registry[regKey[T]()]; ok {
-		for _, v := range vs {
-			out = append(out, v.(T))
-		}
-	}
-	return out
-}
-
-func regKey[T any]() reflect.Type {
+func gettyp[T any]() reflect.Type {
 	return reflect.TypeOf((*T)(nil)).Elem()
 }
 
 // validate
-// TODO: make it recursive and then export it
-func validate(v any) error {
+func validate(typ reflect.Type, v reflect.Value) error {
 	regLock.RLock()
 	defer regLock.RUnlock()
-	key := reflect.TypeOf(v)
-	enums, ok := registry[key]
+
+	if typ.Kind() == reflect.Pointer {
+		if reflectkit.IsValueNil(v) {
+			return nil
+		}
+		if !v.CanConvert(typ) {
+			panic(fmt.Sprintf("%#v is not compatible with %s type",
+				v.Interface(), typ.String()))
+		}
+		return validate(typ.Elem(), v.Elem())
+	}
+
+	enums, ok := registry[typ]
 	if !ok {
 		return nil
 	}
-	var match bool
+
+	return validateEnumerators(enums, v.Interface())
+}
+
+func validateEnumerators(enums []any, v any) error {
 	for _, enum := range enums {
 		if reflectkit.Equal(v, enum) {
-			match = true
-			break
+			return nil
 		}
 	}
-	if !match {
-		return ErrInvalid
-	}
-	return nil
+	return ErrInvalid
 }

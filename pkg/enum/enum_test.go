@@ -1,6 +1,7 @@
 package enum_test
 
 import (
+	"go.llib.dev/frameless/pkg/pointer"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/enum"
@@ -307,8 +308,8 @@ func TestRegister(t *testing.T) {
 	type X string
 	const (
 		C1 X = "C1"
-		C2 X = "C1"
-		C3 X = "C1"
+		C2 X = "C2"
+		C3 X = "C3"
 	)
 
 	unregister := enum.Register[X](C1, C2, C3)
@@ -336,8 +337,8 @@ func TestValues(t *testing.T) {
 		type T string
 		const (
 			V1 T = "C1"
-			V2 T = "C1"
-			V3 T = "C1"
+			V2 T = "C2"
+			V3 T = "C3"
 		)
 
 		unregister := enum.Register[T](V1, V2, V3)
@@ -349,5 +350,67 @@ func TestValues(t *testing.T) {
 		t.Log("after unregister, enum member values are no longer available")
 		unregister()
 		assert.Empty(t, enum.Values[T]())
+	})
+}
+
+func ExampleValidate() {
+	type T string
+	const (
+		V1 T = "C1"
+		V2 T = "C2"
+		V3 T = "C3"
+	)
+	enum.Register[T](V1, V2, V3)
+
+	_ = enum.Validate(V1)         // nil
+	_ = enum.Validate(V2)         // nil
+	_ = enum.Validate(V3)         // nil
+	_ = enum.Validate[T](T("C4")) // enum.Err
+}
+
+func TestValidate(t *testing.T) {
+	type T string
+	const (
+		V1 T = "C1"
+		V2 T = "C2"
+		V3 T = "C3"
+	)
+	defer enum.Register[T](V1, V2, V3)()
+
+	t.Run("when value is an enumerator", func(t *testing.T) {
+		assert.NoError(t, enum.Validate(V1))
+		assert.NoError(t, enum.Validate(V2))
+		assert.NoError(t, enum.Validate(V3))
+	})
+
+	t.Run("when value is not a valid enumerator", func(t *testing.T) {
+		assert.Error(t, enum.Validate[T](T("C42")))
+	})
+
+	t.Run("when value is a valid enum wrapped in an interface", func(t *testing.T) {
+		var v any = V2
+		assert.NoError(t, enum.Validate(v))
+	})
+
+	t.Run("when value is nil", func(t *testing.T) {
+		assert.NoError(t, enum.Validate[any](nil))
+	})
+
+	t.Run("when value is a pointer to an enum member then no error is expected", func(t *testing.T) {
+		assert.NoError(t, enum.Validate[*T](pointer.Of(V1)))
+	})
+
+	t.Run("when pointer of interface type is passed, with a valid enum member value", func(t *testing.T) {
+		assert.NoError(t, enum.Validate[*any](pointer.Of[any](V1)))
+	})
+
+	t.Run("when value is a pointer to not an enum member", func(t *testing.T) {
+		var v *T
+		v = pointer.Of[T]("C42")
+		assert.Error(t, enum.Validate[*T](v))
+	})
+
+	t.Run("when value is a nil pointer of an enum type then no error is expected", func(t *testing.T) {
+		assert.NoError(t, enum.Validate[*T](nil))
 	})
 }
