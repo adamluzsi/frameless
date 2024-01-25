@@ -244,5 +244,5 @@ func validateEnumerators(enums []any, v any) error {
 			return nil
 		}
 	}
-	return ErrInvalid
+	return fmt.Errorf("%w\nvalue: %#v\nenumerators: %v", ErrInvalid, v, enums)
 }
