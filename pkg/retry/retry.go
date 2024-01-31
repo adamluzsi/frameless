@@ -9,10 +9,16 @@ import (
 	"time"
 )
 
-type Strategy interface {
+type Strategy[U StrategyUnit] interface {
 	// ShouldTry will tell if retry should be attempted after a given number of failed attempts.
-	ShouldTry(ctx context.Context, failureCount int) bool
+	ShouldTry(ctx context.Context, u U) bool
 }
+
+type (
+	StrategyUnit interface{ FailureCount | StartedAt }
+	FailureCount = int
+	StartedAt    = time.Time
+)
 
 // ExponentialBackoff will answer if retry can be made.
 // It waits as well the amount of time based on the failure count.
@@ -25,27 +31,27 @@ type ExponentialBackoff struct {
 	MaxRetries int
 	// BackoffDuration is the time duration which will be used to calculate the exponential backoff wait time.
 	//
-	// Default: 1/2 time.Second
+	// Default: 1/2 Second
 	BackoffDuration time.Duration
 }
 
-func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount int) bool {
-	if rs.getMaxRetries() <= failureCount {
+func (rs ExponentialBackoff) ShouldTry(ctx context.Context, count FailureCount) bool {
+	if rs.getMaxRetries() <= count {
 		return false
 	}
-	if ctx.Err() == nil && failureCount == 0 {
+	if ctx.Err() == nil && count == 0 {
 		return true
 	}
 	select {
 	case <-ctx.Done():
 		return false
-	case <-clock.After(rs.backoffDurationFor(failureCount)):
+	case <-clock.After(rs.backoffDurationFor(count)):
 		return true
 	}
 }
 
-func (rs ExponentialBackoff) backoffDurationFor(failureCount int) time.Duration {
-	backoffMultiplier := math.Pow(2, float64(failureCount-1))
+func (rs ExponentialBackoff) backoffDurationFor(count FailureCount) time.Duration {
+	backoffMultiplier := math.Pow(2, float64(count-1))
 	return time.Duration(backoffMultiplier) * rs.getBackoffDuration()
 }
 
@@ -65,17 +71,17 @@ type Jitter struct {
 	//
 	// Default: 5
 	MaxRetries int
-	// MaxWaitDuration is the time duration that will be used to calculate the exponential backoff wait time.
+	// MaxWaitDuration is the duration the Jitter will maximum wait between two retries.
 	//
-	// Default: 5 * time.Second
+	// Default: 5 Second
 	MaxWaitDuration time.Duration
 }
 
-func (rs Jitter) ShouldTry(ctx context.Context, failureCount int) bool {
-	if rs.getMaxRetries() <= failureCount {
+func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
+	if rs.getMaxRetries() <= count {
 		return false
 	}
-	if ctx.Err() == nil && failureCount == 0 {
+	if ctx.Err() == nil && count == 0 {
 		return true
 	}
 	select {
@@ -100,4 +106,23 @@ func (rs Jitter) getMaxWaitDuration() time.Duration {
 func (rs Jitter) getMaxRetries() int {
 	const defaultMaxRetries = 5
 	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
+}
+
+type Waiter struct {
+	// Timeout refers to the maximum duration we can wait
+	// before a retry attempt is deemed unreasonable.
+	//
+	// Default: 30 seconds
+	Timeout time.Duration
+}
+
+func (rs Waiter) ShouldTry(ctx context.Context, startedAt StartedAt) bool {
+	now := clock.TimeNow()
+	deadline := startedAt.Add(rs.timeout())
+	return now.Before(deadline) && ctx.Err() == nil
+}
+
+func (rs Waiter) timeout() time.Duration {
+	const defaultTimeout = 30 * time.Second
+	return zerokit.Coalesce(rs.Timeout, defaultTimeout)
 }

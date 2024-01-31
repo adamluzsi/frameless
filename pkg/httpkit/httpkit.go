@@ -31,7 +31,7 @@ type RetryRoundTripper struct {
 	// RetryStrategy will be used to evaluate if a new retry attempt should be done.
 	//
 	// Default: retry.ExponentialBackoff
-	RetryStrategy retry.Strategy
+	RetryStrategy retry.Strategy[retry.FailureCount]
 }
 
 var temporaryErrorResponseCodes = map[int]struct{}{
@@ -108,7 +108,7 @@ func (rt RetryRoundTripper) isRetriableError(err error) bool {
 		isTimeout(err)
 }
 
-func (rt RetryRoundTripper) getRetryStrategy() retry.Strategy {
+func (rt RetryRoundTripper) getRetryStrategy() retry.Strategy[retry.FailureCount] {
 	if rt.RetryStrategy != nil {
 		return rt.RetryStrategy
 	}

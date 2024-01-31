@@ -5,13 +5,14 @@ import (
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
 	"testing"
 	"time"
 )
 
-var _ retry.Strategy = &retry.ExponentialBackoff{}
+var _ retry.Strategy[int] = &retry.ExponentialBackoff{}
 
 func ExampleExponentialBackoff() {
 	ctx := context.Background()
@@ -180,7 +181,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	})
 }
 
-var _ retry.Strategy = &retry.Jitter{}
+var _ retry.Strategy[int] = &retry.Jitter{}
 
 func ExampleJitter() {
 	ctx := context.Background()
@@ -319,6 +320,85 @@ func TestJitter_ShouldTry(t *testing.T) {
 			})
 
 			t.Must.True(duration <= (subject.Get(t).MaxWaitDuration/multiplier)+buffer)
+		})
+	})
+}
+
+func ExampleWaiter_ShouldTry() {
+	var (
+		ctx = context.Background()
+		rs  = retry.Waiter{Timeout: time.Minute}
+		now = time.Now()
+	)
+
+	for rs.ShouldTry(ctx, now) {
+		// do an action
+		// return on success
+	}
+	// return failure
+}
+
+func TestWaiter_ShouldTry(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		timeout = testcase.Let[time.Duration](s, func(t *testcase.T) time.Duration {
+			return time.Hour
+		})
+	)
+	subject := testcase.Let(s, func(t *testcase.T) retry.Waiter {
+		return retry.Waiter{Timeout: timeout.Get(t)}
+	})
+
+	var (
+		Context   = let.Context(s)
+		startedAt = testcase.Let[retry.StartedAt](s, func(t *testcase.T) retry.StartedAt {
+			return clock.TimeNow()
+		}).EagerLoading(s)
+	)
+	act := func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(Context.Get(t), startedAt.Get(t))
+	}
+
+	s.Then("we can attempt to retry", func(t *testcase.T) {
+		t.Must.True(act(t))
+	})
+
+	s.When("context is cancelled", func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx, cancel := context.WithCancel(Context.Super(t))
+			cancel()
+			return ctx
+		})
+
+		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
+			t.Must.False(act(t))
+		})
+	})
+
+	s.When("the last failure occured within the deadline", func(s *testcase.Spec) {
+		startedAt.Let(s, func(t *testcase.T) retry.StartedAt {
+			return time.Now()
+		})
+		timeout.Let(s, func(t *testcase.T) time.Duration {
+			return time.Hour
+		})
+
+		s.Then("it will instantly return", func(t *testcase.T) {
+			t.Must.Within(time.Second, func(ctx context.Context) {
+				Context.Set(t, ctx)
+				act(t)
+			})
+		})
+	})
+
+	s.When("we are over the deadline", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			timecop.Travel(t, time.Hour+time.Second)
+		})
+
+		s.Then("we are told to not avoid a new retry attempt", func(t *testcase.T) {
+			t.Must.False(act(t))
 		})
 	})
 }
