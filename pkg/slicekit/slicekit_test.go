@@ -1,8 +1,8 @@
-package transform_test
+package slicekit_test
 
 import (
 	"fmt"
-	tf "go.llib.dev/frameless/pkg/transform"
+	tsk "go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/assert"
 	"strconv"
 	"strings"
@@ -11,11 +11,11 @@ import (
 
 func ExampleMust() {
 	var x = []int{1, 2, 3}
-	x = tf.Must(tf.Map[int](x, func(v int) int {
+	x = tsk.Must(tsk.Map[int](x, func(v int) int {
 		return v * 2
 	}))
 
-	v := tf.Must(tf.Reduce[int](x, 42, func(output int, current int) int {
+	v := tsk.Must(tsk.Reduce[int](x, 42, func(output int, current int) int {
 		return output + current
 	}))
 
@@ -25,13 +25,13 @@ func ExampleMust() {
 func TestMust(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got := tf.Must(tf.Map[int](x, strconv.Atoi))
+		got := tsk.Must(tsk.Map[int](x, strconv.Atoi))
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
 		pv := assert.Panic(t, func() {
-			tf.Must(tf.Map[int](x, strconv.Atoi))
+			tsk.Must(tsk.Map[int](x, strconv.Atoi))
 		})
 		err, ok := pv.(error)
 		assert.True(t, ok)
@@ -41,10 +41,10 @@ func TestMust(t *testing.T) {
 
 func ExampleMap() {
 	var x = []string{"a", "b", "c"}
-	_ = tf.Must(tf.Map[string](x, strings.ToUpper)) // []string{"A", "B", "C"}
+	_ = tsk.Must(tsk.Map[string](x, strings.ToUpper)) // []string{"A", "B", "C"}
 
 	var ns = []string{"1", "2", "3"}
-	_, err := tf.Map[int](ns, strconv.Atoi) // []int{1, 2, 3}
+	_, err := tsk.Map[int](ns, strconv.Atoi) // []int{1, 2, 3}
 	if err != nil {
 		panic(err)
 	}
@@ -53,26 +53,26 @@ func ExampleMap() {
 func TestMap(t *testing.T) {
 	t.Run("happy - no error", func(t *testing.T) {
 		var x = []string{"a", "b", "c"}
-		got, err := tf.Map[string](x, strings.ToUpper)
+		got, err := tsk.Map[string](x, strings.ToUpper)
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"A", "B", "C"}, got)
 	})
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got, err := tf.Map[int](x, strconv.Atoi)
+		got, err := tsk.Map[int](x, strconv.Atoi)
 		assert.NoError(t, err)
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
-		_, err := tf.Map[int](x, strconv.Atoi)
+		_, err := tsk.Map[int](x, strconv.Atoi)
 		assert.Error(t, err)
 	})
 }
 
 func ExampleReduce() {
 	var x = []string{"a", "b", "c"}
-	got, err := tf.Reduce[string](x, "|", func(o string, i string) string {
+	got, err := tsk.Reduce[string](x, "|", func(o string, i string) string {
 		return o + i
 	})
 	if err != nil {
@@ -84,7 +84,7 @@ func ExampleReduce() {
 func TestReduce(t *testing.T) {
 	t.Run("happy - no error", func(t *testing.T) {
 		var x = []string{"a", "b", "c"}
-		got, err := tf.Reduce[string](x, "|", func(o string, i string) string {
+		got, err := tsk.Reduce[string](x, "|", func(o string, i string) string {
 			return o + i
 		})
 		assert.NoError(t, err)
@@ -92,7 +92,7 @@ func TestReduce(t *testing.T) {
 	})
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got, err := tf.Reduce[int](x, 42, func(o int, i string) (int, error) {
+		got, err := tsk.Reduce[int](x, 42, func(o int, i string) (int, error) {
 			n, err := strconv.Atoi(i)
 			if err != nil {
 				return o, err
@@ -104,7 +104,7 @@ func TestReduce(t *testing.T) {
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
-		_, err := tf.Reduce[int](x, 0, func(o int, i string) (int, error) {
+		_, err := tsk.Reduce[int](x, 0, func(o int, i string) (int, error) {
 			n, err := strconv.Atoi(i)
 			if err != nil {
 				return o, err

@@ -30,3 +30,38 @@ func (s *Stack[T]) Last() (T, bool) {
 	}
 	return (*s)[(len(*s) - 1)], true
 }
+
+func MakeSet[T comparable](s []T) Set[T] {
+	var set Set[T]
+	for _, v := range s {
+		set.Add(v)
+	}
+	return set
+}
+
+type Set[T comparable] struct {
+	vs map[T]struct{}
+}
+
+func (s *Set[T]) Add(v T) {
+	if s.vs == nil {
+		s.vs = make(map[T]struct{})
+	}
+	s.vs[v] = struct{}{}
+}
+
+func (s Set[T]) Has(v T) bool {
+	if s.vs == nil {
+		return false
+	}
+	_, ok := s[v]
+	return ok
+}
+
+func (s Set[T]) ToSlice() []T {
+	var out []T
+	for v := range s.vs {
+		out = append(out, v)
+	}
+	return out
+}

@@ -1,4 +1,4 @@
-package transform
+package slicekit
 
 import "fmt"
 
@@ -9,24 +9,26 @@ func Must[T any](v T, err error) T {
 	return v
 }
 
+// Map will do a mapping from an input type into an output type.
 func Map[O, I any, FN mapFunc[O, I]](s []I, fn FN) ([]O, error) {
+	if s == nil {
+		return nil, nil
+	}
 	var (
-		out    []O
+		out    = make([]O, len(s))
 		mapper = toMapFunc[O, I](fn)
 	)
-	if s != nil {
-		out = make([]O, 0, len(s))
-	}
-	for _, i := range s {
-		o, err := mapper(i)
+	for index, v := range s {
+		o, err := mapper(v)
 		if err != nil {
 			return out, err
 		}
-		out = append(out, o)
+		out[index] = o
 	}
 	return out, nil
 }
 
+// Reduce iterates over a slice, combining elements using the reducer function.
 func Reduce[O, I any, FN reduceFunc[O, I]](s []I, initial O, fn FN) (O, error) {
 	var (
 		result  = initial
@@ -41,6 +43,8 @@ func Reduce[O, I any, FN reduceFunc[O, I]](s []I, initial O, fn FN) (O, error) {
 	}
 	return result, nil
 }
+
+// --------------------------------------------------------------------------------- //
 
 type reduceFunc[O, I any] interface {
 	func(O, I) O | func(O, I) (O, error)
