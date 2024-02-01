@@ -31,7 +31,7 @@ func (s *Stack[T]) Last() (T, bool) {
 	return (*s)[(len(*s) - 1)], true
 }
 
-func MakeSet[T comparable](s []T) Set[T] {
+func MakeSet[T comparable](s ...T) Set[T] {
 	var set Set[T]
 	for _, v := range s {
 		set.Add(v)
@@ -54,7 +54,7 @@ func (s Set[T]) Has(v T) bool {
 	if s.vs == nil {
 		return false
 	}
-	_, ok := s[v]
+	_, ok := s.vs[v]
 	return ok
 }
 

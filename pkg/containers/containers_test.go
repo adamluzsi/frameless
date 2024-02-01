@@ -51,3 +51,51 @@ func TestStack(t *testing.T) {
 		assert.True(t, stack.IsEmpty())
 	})
 }
+
+func TestSet(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	t.Run("Add and Has", func(t *testing.T) {
+		var (
+			set      containers.Set[int]
+			value    = rnd.Int()
+			othValue = random.Unique(rnd.Int, value)
+		)
+
+		// Initially, the set should not contain the random value
+		assert.False(t, set.Has(value))
+
+		// After adding the value, Has should return true
+		set.Add(value)
+		assert.True(t, set.Has(value))
+		assert.False(t, set.Has(othValue))
+	})
+
+	t.Run("MakeSet from slice", func(t *testing.T) {
+		values := []int{rnd.Int(), rnd.Int()}
+		set := containers.MakeSet(values...)
+
+		for _, v := range values {
+			assert.True(t, set.Has(v), "Set should contain the value added from the slice")
+		}
+	})
+
+	t.Run("ToSlice uniqueness", func(t *testing.T) {
+		values := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
+		set := containers.MakeSet(values...)
+		slice := set.ToSlice()
+
+		// Create a temporary map to check for duplicates in the slice
+		tempMap := make(map[int]struct{})
+		for _, item := range slice {
+			if _, exists := tempMap[item]; exists {
+				t.Errorf("Duplicate found in the slice returned by ToSlice, which should not happen")
+			}
+			tempMap[item] = struct{}{}
+		}
+		// Ensure all original unique values are present
+		for _, v := range values {
+			_, ok := tempMap[v]
+			assert.True(t, ok, "All unique values from the initial slice should be present in the slice returned by ToSlice")
+		}
+	})
+}
