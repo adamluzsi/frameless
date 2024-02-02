@@ -6,3 +6,5 @@ go.llib.dev/testcase v0.145.0 h1:7kELQfaY5ScL4BWYW/SeSpKE+d+JZ0CUl4yLfQyD6RU=
 go.llib.dev/testcase v0.145.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 go.llib.dev/testcase v0.145.1 h1:ctmrzIYRYP3n8uFDjE7jy2OfDjV+aDPD07UBnTMRvwg=
 go.llib.dev/testcase v0.145.1/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/testcase v0.146.0 h1:QdjUpHxSVarrzCwuJMlQt+tfPuDkPM45E2WVQbLNy7E=
+go.llib.dev/testcase v0.146.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=

@@ -260,7 +260,7 @@ func TestBuffer_smoke(tt *testing.T) {
 	var (
 		data   = []byte(t.Random.String())
 		offset = int64(t.Random.IntN(1 + len(data)))
-		whench = t.Random.ElementFromSlice([]int{io.SeekStart, io.SeekCurrent, io.SeekEnd}).(int)
+		whench = t.Random.SliceElement([]int{io.SeekStart, io.SeekCurrent, io.SeekEnd}).(int)
 		buffer = iokit.NewBuffer(data)
 		tmpDir = t.TempDir()
 		file   = func(t *testcase.T) filesystem.File {
