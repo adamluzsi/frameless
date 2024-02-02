@@ -1,22 +1,20 @@
 package slicekit
 
-import "fmt"
-
 func Must[T any](v T, err error) T {
 	if err != nil {
-		panic(fmt.Errorf("transform.Must: %w", err))
+		panic(err)
 	}
 	return v
 }
 
 // Map will do a mapping from an input type into an output type.
-func Map[O, I any, FN mapFunc[O, I]](s []I, fn FN) ([]O, error) {
+func Map[O, I any, FN mapperFunc[O, I]](s []I, fn FN) ([]O, error) {
 	if s == nil {
 		return nil, nil
 	}
 	var (
 		out    = make([]O, len(s))
-		mapper = toMapFunc[O, I](fn)
+		mapper = toMapperFunc[O, I](fn)
 	)
 	for index, v := range s {
 		o, err := mapper(v)
@@ -29,10 +27,10 @@ func Map[O, I any, FN mapFunc[O, I]](s []I, fn FN) ([]O, error) {
 }
 
 // Reduce iterates over a slice, combining elements using the reducer function.
-func Reduce[O, I any, FN reduceFunc[O, I]](s []I, initial O, fn FN) (O, error) {
+func Reduce[O, I any, FN reducerFunc[O, I]](s []I, initial O, fn FN) (O, error) {
 	var (
 		result  = initial
-		reducer = toReduceFunc[O, I](fn)
+		reducer = toReducerFunc[O, I](fn)
 	)
 	for _, i := range s {
 		o, err := reducer(result, i)
@@ -46,11 +44,11 @@ func Reduce[O, I any, FN reduceFunc[O, I]](s []I, initial O, fn FN) (O, error) {
 
 // --------------------------------------------------------------------------------- //
 
-type reduceFunc[O, I any] interface {
+type reducerFunc[O, I any] interface {
 	func(O, I) O | func(O, I) (O, error)
 }
 
-func toReduceFunc[O, I any, FN reduceFunc[O, I]](m FN) func(O, I) (O, error) {
+func toReducerFunc[O, I any, FN reducerFunc[O, I]](m FN) func(O, I) (O, error) {
 	switch fn := any(m).(type) {
 	case func(O, I) O:
 		return func(o O, i I) (O, error) {
@@ -63,11 +61,11 @@ func toReduceFunc[O, I any, FN reduceFunc[O, I]](m FN) func(O, I) (O, error) {
 	}
 }
 
-type mapFunc[O, I any] interface {
+type mapperFunc[O, I any] interface {
 	func(I) O | func(I) (O, error)
 }
 
-func toMapFunc[O, I any, MF mapFunc[O, I]](m MF) func(I) (O, error) {
+func toMapperFunc[O, I any, MF mapperFunc[O, I]](m MF) func(I) (O, error) {
 	switch fn := any(m).(type) {
 	case func(I) O:
 		return func(i I) (O, error) {
