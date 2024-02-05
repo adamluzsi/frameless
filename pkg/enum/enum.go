@@ -27,7 +27,7 @@ func Register[T any](enums ...T) (unregister func()) {
 		choices = append(choices, e)
 	}
 
-	key := gettyp[T]()
+	key := reflectkit.TypeOf[T]()
 	registry[key] = choices
 
 	return func() {
@@ -41,7 +41,7 @@ func Values[T any]() []T {
 	regLock.Lock()
 	defer regLock.Unlock()
 	var out []T
-	if vs, ok := registry[gettyp[T]()]; ok {
+	if vs, ok := registry[reflectkit.TypeOf[T]()]; ok {
 		for _, v := range vs {
 			out = append(out, v.(T))
 		}
@@ -51,7 +51,7 @@ func Values[T any]() []T {
 
 // Validate will check if the given value is a registered enum member.
 func Validate[T any](v T) error {
-	return validate(gettyp[T](), reflect.ValueOf(v))
+	return validate(reflectkit.TypeOf[T](), reflect.ValueOf(v))
 }
 
 func ValidateStruct(v any) error {
@@ -208,10 +208,6 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 		out = append(out, value)
 	}
 	return out, nil
-}
-
-func gettyp[T any]() reflect.Type {
-	return reflect.TypeOf((*T)(nil)).Elem()
 }
 
 // validate

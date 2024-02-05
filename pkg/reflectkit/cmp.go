@@ -16,7 +16,7 @@ func Equal(x, y any) bool {
 }
 
 func RegisterEqual[T any](fn func(x, y T) bool) struct{} {
-	internal.RegisterIsEqual(reflect.TypeOf((*T)(nil)).Elem(), func(x, y reflect.Value) bool {
+	internal.RegisterIsEqual(TypeOf[T](), func(x, y reflect.Value) bool {
 		return fn(x.Interface().(T), y.Interface().(T))
 	})
 	return struct{}{}

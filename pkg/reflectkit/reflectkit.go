@@ -114,3 +114,10 @@ func SetValue(variable, value reflect.Value) {
 	reflect.NewAt(variable.Type(), unsafe.Pointer(variable.UnsafeAddr())).
 		Elem().Set(value)
 }
+
+func TypeOf[T any](i ...T) reflect.Type {
+	for _, v := range i {
+		return reflect.TypeOf(v)
+	}
+	return reflect.TypeOf((*T)(nil)).Elem()
+}

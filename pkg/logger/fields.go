@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 )
 
@@ -60,7 +61,7 @@ var (
 )
 
 func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
-	typ := reflect.TypeOf((*T)(nil)).Elem()
+	typ := reflectkit.TypeOf[T]()
 	var register map[reflect.Type]func(any) LoggingDetail
 	register = typRegister
 	if typ.Kind() == reflect.Interface {

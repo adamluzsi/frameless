@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+func TestTypeOf(t *testing.T) {
+	t.Run("type by value", func(t *testing.T) {
+		var str string
+		assert.Equal(t, reflect.String, reflectkit.TypeOf(str).Kind())
+	})
+	t.Run("type by type argument", func(t *testing.T) {
+		assert.Equal(t, reflect.Int32, reflectkit.TypeOf[int32]().Kind())
+	})
+}
+
 func TestBaseTypeOf(t *testing.T) {
 	subject := func(obj interface{}) reflect.Type {
 		return reflectkit.BaseTypeOf(obj)
