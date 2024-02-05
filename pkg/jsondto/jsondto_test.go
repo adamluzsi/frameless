@@ -12,6 +12,57 @@ import (
 
 var rnd = random.New(random.CryptoSeed{})
 
+func ExampleTyped() {
+
+}
+
+func TestTyped_json(t *testing.T) {
+	t.Run("concrete type", func(t *testing.T) {
+		var exp jsondto.Typed[string]
+		exp.V = rnd.String()
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Typed[string]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
+		var exp jsondto.Typed[Greeter]
+		exp.V = TypeA{V: rnd.String()}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Typed[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
+		var exp jsondto.Typed[Greeter]
+		exp.V = &TypeC{V: rnd.Float32()}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Typed[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with nil values", func(t *testing.T) {
+		var exp jsondto.Typed[Greeter]
+		exp.V = nil
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Typed[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+}
+
 func ExampleArray() {
 	var greeters = jsondto.Array[Greeter]{
 		TypeA{V: "42"},
