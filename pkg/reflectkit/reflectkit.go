@@ -18,6 +18,25 @@ func Cast[T any](v any) (T, bool) {
 	return val.Convert(typ).Interface().(T), true
 }
 
+func BaseType(typ reflect.Type) (_ reflect.Type, depth int) {
+	if typ == nil {
+		return typ, depth
+	}
+	for ; typ.Kind() == reflect.Ptr; depth++ {
+		typ = typ.Elem()
+	}
+	return typ, depth
+}
+
+func PointerOf(value reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return value
+	}
+	ptr := reflect.New(value.Type())
+	ptr.Elem().Set(value)
+	return ptr
+}
+
 func BaseTypeOf(i any) reflect.Type {
 	t := reflect.TypeOf(i)
 

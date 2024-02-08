@@ -1,10 +1,12 @@
 package reflectkit_test
 
 import (
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"reflect"
 	"testing"
 )
@@ -713,5 +715,43 @@ func TestSetValue(t *testing.T) {
 		rv := reflect.ValueOf(&v)
 		reflectkit.SetValue(rv.Elem().FieldByName("unexported"), reflect.ValueOf("42"))
 		assert.Equal[any](t, "42", v.unexported)
+	})
+}
+
+func TestBaseType(t *testing.T) {
+	t.Run("nil type", func(t *testing.T) {
+		typ, depth := reflectkit.BaseType(nil)
+		assert.Nil(t, typ)
+		assert.Equal(t, depth, 0)
+	})
+	t.Run("base type", func(t *testing.T) {
+		typ, depth := reflectkit.BaseType(reflect.TypeOf(""))
+		assert.Equal(t, typ, reflect.TypeOf(""))
+		assert.Equal(t, depth, 0)
+	})
+	t.Run("pointer to a type", func(t *testing.T) {
+		typ, depth := reflectkit.BaseType(reflect.TypeOf(pointer.Of[string]("")))
+		assert.Equal(t, typ, reflect.TypeOf(""))
+		assert.Equal(t, depth, 1)
+	})
+	t.Run("pointer to struct", func(t *testing.T) {
+		type X struct{}
+		typ, depth := reflectkit.BaseType(reflect.TypeOf(pointer.Of(pointer.Of(X{}))))
+		assert.Equal(t, reflectkit.TypeOf[X](), typ)
+		assert.Equal(t, depth, 2)
+	})
+}
+
+func TestPointerOf(t *testing.T) {
+	var rnd = random.New(random.CryptoSeed{})
+	t.Run("invalid value", func(t *testing.T) {
+		ptr := reflectkit.PointerOf(reflect.ValueOf(nil))
+		assert.Equal(t, ptr, reflect.ValueOf(nil))
+	})
+	t.Run("valid value", func(t *testing.T) {
+		v := reflect.ValueOf(rnd.String())
+		ptr := reflectkit.PointerOf(v)
+		assert.Equal(t, reflect.Pointer, ptr.Kind())
+		assert.Equal(t, v, ptr.Elem())
 	})
 }
