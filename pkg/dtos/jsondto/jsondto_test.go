@@ -3,7 +3,7 @@ package jsondto_test
 import (
 	"encoding/json"
 	"fmt"
-	"go.llib.dev/frameless/pkg/jsondto"
+	"go.llib.dev/frameless/pkg/dtos/jsondto"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -13,7 +13,23 @@ import (
 var rnd = random.New(random.CryptoSeed{})
 
 func ExampleTyped() {
+	var exp = jsondto.Typed[Greeter]{
+		V: &TypeC{V: 42.24},
+	}
 
+	data, err := json.Marshal(exp)
+	if err != nil {
+		panic(err)
+	}
+	// {"__type":"type_c","v":42.24}
+
+	var got jsondto.Typed[Greeter]
+	if err := json.Unmarshal(data, &got); err != nil {
+		panic(err)
+	}
+
+	// got == exp
+	// got.V -> *TypeC{V: 42.24}
 }
 
 func TestTyped_json(t *testing.T) {
@@ -82,7 +98,71 @@ func ExampleArray() {
 	// "result" will contain the same as the "greeters".
 }
 
-func TestList_json(t *testing.T) {
+func TestInterface_json(t *testing.T) {
+	t.Run("non interface type raise error on marshalling/unmarshaling", func(t *testing.T) {
+		var x jsondto.Interface[string]
+		_, err := json.Marshal(x)
+		assert.ErrorIs(t, err, jsondto.ErrNotInterfaceType)
+		assert.ErrorIs(t, json.Unmarshal([]byte(`"foo"`), &x), jsondto.ErrNotInterfaceType)
+	})
+	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
+		var exp jsondto.Interface[Greeter]
+		exp.I = TypeA{V: rnd.String()}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Interface[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("inteface type that is implemented by any primitive type", func(t *testing.T) {
+		var exp jsondto.Interface[any]
+		exp.I = rnd.Int()
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Interface[any]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with base-type based implementation", func(t *testing.T) {
+		var exp jsondto.Interface[Greeter]
+		exp.I = TypeD(rnd.String())
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Interface[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
+		var exp jsondto.Interface[Greeter]
+		exp.I = &TypeC{V: rnd.Float32()}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Interface[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+	t.Run("interface T type with nil values", func(t *testing.T) {
+		var exp jsondto.Interface[Greeter]
+		exp.I = nil
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+
+		var got jsondto.Interface[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
+		assert.Equal(t, exp, got)
+	})
+}
+
+func TestArray_json(t *testing.T) {
 	t.Run("concrete type", func(t *testing.T) {
 		var exp jsondto.Array[string]
 		exp = random.Slice[string](rnd.IntB(3, 7), rnd.String)
@@ -204,6 +284,7 @@ var ( // register types
 	_ = jsondto.Register[TypeA]("type_a")
 	_ = jsondto.Register[TypeB]("type_b")
 	_ = jsondto.Register[TypeC]("type_c")
+	_ = jsondto.Register[TypeD]("type_d")
 )
 
 type TypeA struct{ V string }
@@ -217,3 +298,7 @@ func (TypeB) Hello() {}
 type TypeC struct{ V float32 }
 
 func (*TypeC) Hello() {}
+
+type TypeD string
+
+func (str TypeD) Hello() {}
