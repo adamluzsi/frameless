@@ -338,7 +338,7 @@ func isNull(data []byte) bool {
 
 const ErrNotInterfaceType errorkit.Error = "jsondto.ErrNotInterfaceType"
 
-type Interface[I any] struct{ I I }
+type Interface[I any] struct{ V I }
 
 func (i Interface[I]) MarshalJSON() ([]byte, error) {
 	if !isInterfaceType[I]() {
@@ -346,7 +346,7 @@ func (i Interface[I]) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(typed{
 		Type:  reflectkit.TypeOf[I](),
-		Value: i.I,
+		Value: i.V,
 		Force: true,
 	})
 }
@@ -367,26 +367,6 @@ func (i *Interface[I]) UnmarshalJSON(data []byte) error {
 	if !ok && !isInterfaceType[I]() {
 		return fmt.Errorf("nil value unmarshaled for %T type", reflectkit.TypeOf[I]())
 	}
-	*i = Interface[I]{I: value}
+	*i = Interface[I]{V: value}
 	return nil
 }
-
-var (
-	_ = Register[int]("int")
-	_ = Register[int8]("int8")
-	_ = Register[int16]("int16")
-	_ = Register[int32]("int32")
-	_ = Register[int64]("int64")
-	_ = Register[uint]("uint")
-	_ = Register[uint8]("uint8")
-	_ = Register[uint16]("uint16")
-	_ = Register[uint32]("uint32")
-	_ = Register[uint64]("uint64")
-	_ = Register[uintptr]("uintptr")
-	_ = Register[float32]("float32")
-	_ = Register[float64]("float64")
-	_ = Register[complex64]("complex64")
-	_ = Register[complex128]("complex128")
-	_ = Register[bool]("bool") // TODO: support "boolean" alias
-	_ = Register[string]("string")
-)

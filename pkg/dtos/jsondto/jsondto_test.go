@@ -107,7 +107,7 @@ func TestInterface_json(t *testing.T) {
 	})
 	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
 		var exp jsondto.Interface[Greeter]
-		exp.I = TypeA{V: rnd.String()}
+		exp.V = TypeA{V: rnd.String()}
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
@@ -118,7 +118,7 @@ func TestInterface_json(t *testing.T) {
 	})
 	t.Run("inteface type that is implemented by any primitive type", func(t *testing.T) {
 		var exp jsondto.Interface[any]
-		exp.I = rnd.Int()
+		exp.V = rnd.Int()
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
@@ -129,7 +129,7 @@ func TestInterface_json(t *testing.T) {
 	})
 	t.Run("interface T type with base-type based implementation", func(t *testing.T) {
 		var exp jsondto.Interface[Greeter]
-		exp.I = TypeD(rnd.String())
+		exp.V = TypeD(rnd.String())
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
@@ -140,7 +140,7 @@ func TestInterface_json(t *testing.T) {
 	})
 	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
 		var exp jsondto.Interface[Greeter]
-		exp.I = &TypeC{V: rnd.Float32()}
+		exp.V = &TypeC{V: rnd.Float32()}
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
@@ -151,7 +151,7 @@ func TestInterface_json(t *testing.T) {
 	})
 	t.Run("interface T type with nil values", func(t *testing.T) {
 		var exp jsondto.Interface[Greeter]
-		exp.I = nil
+		exp.V = nil
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
@@ -253,7 +253,7 @@ func TestRegister_doubleRegisterPanics(t *testing.T) {
 	assert.NotNil(t, panicResults)
 	out, ok := panicResults.(string)
 	assert.True(t, ok, "panic value suppose to be a string")
-	assert.Contain(t, out, "Unable to register xx")
+	assert.Contain(t, out, `Unable to register "xx"`)
 	assert.Contain(t, out, fmt.Sprintf("%T", X{}))
 }
 
@@ -275,6 +275,27 @@ func TestRegister_race(t *testing.T) {
 		assert.NoError(t, err)
 		var got jsondto.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
+	})
+}
+
+func TestRegister_supportAliases(t *testing.T) {
+	t.Run("integer", func(t *testing.T) {
+		var (
+			val  jsondto.Interface[any]
+			data = []byte(`{"__type":"integer","__value":42}`)
+		)
+		assert.NoError(t, json.Unmarshal(data, &val))
+		assert.NotNil(t, val.V)
+		assert.Equal[int](t, val.V.(int), 42)
+	})
+	t.Run("boolean", func(t *testing.T) {
+		var (
+			val  jsondto.Interface[any]
+			data = []byte(`{"__type":"boolean","__value":true}`)
+		)
+		assert.NoError(t, json.Unmarshal(data, &val))
+		assert.NotNil(t, val.V)
+		assert.Equal[bool](t, val.V.(bool), true)
 	})
 }
 
