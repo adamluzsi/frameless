@@ -12,73 +12,6 @@ import (
 
 var rnd = random.New(random.CryptoSeed{})
 
-func ExampleTyped() {
-	var exp = jsondto.Typed[Greeter]{
-		V: &TypeC{V: 42.24},
-	}
-
-	data, err := json.Marshal(exp)
-	if err != nil {
-		panic(err)
-	}
-	// {"__type":"type_c","v":42.24}
-
-	var got jsondto.Typed[Greeter]
-	if err := json.Unmarshal(data, &got); err != nil {
-		panic(err)
-	}
-
-	// got == exp
-	// got.V -> *TypeC{V: 42.24}
-}
-
-func TestTyped_json(t *testing.T) {
-	t.Run("concrete type", func(t *testing.T) {
-		var exp jsondto.Typed[string]
-		exp.V = rnd.String()
-
-		data, err := json.Marshal(exp)
-		assert.NoError(t, err)
-
-		var got jsondto.Typed[string]
-		assert.NoError(t, json.Unmarshal(data, &got))
-		assert.Equal(t, exp, got)
-	})
-	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
-		var exp jsondto.Typed[Greeter]
-		exp.V = TypeA{V: rnd.String()}
-
-		data, err := json.Marshal(exp)
-		assert.NoError(t, err)
-
-		var got jsondto.Typed[Greeter]
-		assert.NoError(t, json.Unmarshal(data, &got))
-		assert.Equal(t, exp, got)
-	})
-	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
-		var exp jsondto.Typed[Greeter]
-		exp.V = &TypeC{V: rnd.Float32()}
-
-		data, err := json.Marshal(exp)
-		assert.NoError(t, err)
-
-		var got jsondto.Typed[Greeter]
-		assert.NoError(t, json.Unmarshal(data, &got))
-		assert.Equal(t, exp, got)
-	})
-	t.Run("interface T type with nil values", func(t *testing.T) {
-		var exp jsondto.Typed[Greeter]
-		exp.V = nil
-
-		data, err := json.Marshal(exp)
-		assert.NoError(t, err)
-
-		var got jsondto.Typed[Greeter]
-		assert.NoError(t, json.Unmarshal(data, &got))
-		assert.Equal(t, exp, got)
-	})
-}
-
 func ExampleArray() {
 	var greeters = jsondto.Array[Greeter]{
 		TypeA{V: "42"},
@@ -98,7 +31,27 @@ func ExampleArray() {
 	// "result" will contain the same as the "greeters".
 }
 
-func TestInterface_json(t *testing.T) {
+func ExampleInterface() {
+	var exp = jsondto.Interface[Greeter]{
+		V: &TypeC{V: 42.24},
+	}
+
+	data, err := json.Marshal(exp)
+	if err != nil {
+		panic(err)
+	}
+	// {"__type":"type_c","v":42.24}
+
+	var got jsondto.Interface[Greeter]
+	if err := json.Unmarshal(data, &got); err != nil {
+		panic(err)
+	}
+
+	// got == exp
+	// got.V -> *TypeC{V: 42.24}
+}
+
+func TestInterface(t *testing.T) {
 	t.Run("non interface type raise error on marshalling/unmarshaling", func(t *testing.T) {
 		var x jsondto.Interface[string]
 		_, err := json.Marshal(x)

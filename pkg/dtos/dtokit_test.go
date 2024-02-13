@@ -1,6 +1,7 @@
 package dtos_test
 
 import (
+	"encoding/json"
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -94,6 +95,53 @@ func TestMap(t *testing.T) {
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, *dto)
 	})
+}
+
+func ExampleRegister() {
+	// JSONMapping will contain mapping from entities to JSON DTO structures.
+	var JSONMapping dtos.M
+	// registering Ent <---> EntDTO mapping
+	_ = dtos.Register[Ent, EntDTO](&JSONMapping, EntMapping{})
+	// registering NestedEnt <---> NestedEntDTO mapping, which includes the mapping of the nested entities
+	_ = dtos.Register[NestedEnt, NestedEntDTO](&JSONMapping, NestedEntMapping{})
+
+	var v = NestedEnt{
+		ID: "42",
+		Ent: Ent{
+			V: 42,
+		},
+	}
+
+	dto, err := dtos.Map[NestedEntDTO](&JSONMapping, v)
+	if err != nil { // handle err
+		return
+	}
+
+	_ = dto // data mapped into a DTO and now ready for marshalling
+	/*
+		NestedEntDTO{
+			ID: "42",
+			Ent: EntDTO{
+				V: "42",
+			},
+		}
+	*/
+
+	data, err := json.Marshal(dto)
+	if err != nil { // handle error
+		return
+	}
+
+	_ = data
+	/*
+		{
+			"id": "42",
+			"ent": {
+				"v": "42"
+			}
+		}
+	*/
+
 }
 
 type Ent struct {

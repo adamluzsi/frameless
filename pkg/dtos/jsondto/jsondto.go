@@ -10,31 +10,6 @@ import (
 	"reflect"
 )
 
-type Typed[T any] struct {
-	// V is the T type value which will be enriched with __type property.
-	V T
-}
-
-func (v Typed[T]) MarshalJSON() ([]byte, error) {
-	return json.Marshal(typed{Type: reflectkit.TypeOf[T](), Value: v.V})
-}
-
-func (v *Typed[T]) UnmarshalJSON(data []byte) error {
-	var t = typed{
-		Type:  reflectkit.TypeOf[T](),
-		Value: nil,
-	}
-	if err := json.Unmarshal(data, &t); err != nil {
-		return err
-	}
-	value, ok := t.Value.(T)
-	if !ok && !isInterfaceType[T]() {
-		return fmt.Errorf("nil value unmarshaled for %T type", reflectkit.TypeOf[T]())
-	}
-	*v = Typed[T]{V: value}
-	return nil
-}
-
 type typed struct {
 	Type  reflect.Type
 	Value any
@@ -212,7 +187,7 @@ func (ary Array[T]) MarshalJSON() ([]byte, error) {
 
 	var vs = make([]json.RawMessage, len(ary))
 	for i, v := range ary {
-		data, err := json.Marshal(Typed[T]{V: v})
+		data, err := json.Marshal(typed{Type: reflectkit.TypeOf[T](), Value: v})
 		if err != nil {
 			return nil, err
 		}
@@ -239,11 +214,15 @@ func (ary *Array[T]) UnmarshalJSON(data []byte) error {
 
 	var vs = make(Array[T], len(raws))
 	for i, data := range raws {
-		var tv Typed[T]
+		var tv = typed{Type: reflectkit.TypeOf[T]()}
 		if err := json.Unmarshal(data, &tv); err != nil {
 			return err
 		}
-		vs[i] = tv.V
+		v, err := typeAssert[T](tv.Value)
+		if err != nil {
+			return err
+		}
+		vs[i] = v
 	}
 
 	*ary = vs
@@ -363,10 +342,19 @@ func (i *Interface[I]) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &t); err != nil {
 		return err
 	}
-	value, ok := t.Value.(I)
-	if !ok && !isInterfaceType[I]() {
-		return fmt.Errorf("nil value unmarshaled for %T type", reflectkit.TypeOf[I]())
+	value, err := typeAssert[I](t.Value)
+	if err != nil {
+		return fmt.Errorf("unexpected value unmarshaled (%w): %#v", err, t.Value)
 	}
 	*i = Interface[I]{V: value}
 	return nil
+}
+
+func typeAssert[T any](v any) (T, error) {
+	value, ok := v.(T)
+	if !ok && !isInterfaceType[T]() {
+		return *new(T), fmt.Errorf("type assertion failed, expected %s got %T",
+			reflectkit.TypeOf[T]().String(), v)
+	}
+	return value, nil
 }

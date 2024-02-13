@@ -13,3 +13,11 @@ It does not replace these functions but offers tools to simplify their usage.
 - **Compatibility with Standard Library**:
   Designed to complement the Go standard library's JSON handling capabilities,
   making it easier to use with existing codebase and DTOs.
+
+### jsondto.Interface[I]
+
+jsondto.Array allow you to marshal an interface type, and then unmarshal them back with ease.
+
+### jsondto.Array[T]
+
+jsondto.Array allow you to marshal any types, and then unmarshal them back.
