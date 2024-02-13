@@ -31,12 +31,18 @@ func (cm IDInContext[CtxKey, EntityIDType]) ContextLookupID(ctx context.Context)
 	return v, ok
 }
 
-type StringID struct{}
+type StringID[ID ~string] struct{}
 
-func (m StringID) EncodeID(id string) (string, error) { return id, nil }
-func (m StringID) ParseID(id string) (string, error)  { return id, nil }
+func (m StringID[ID]) EncodeID(id ID) (string, error) { return string(id), nil }
+func (m StringID[ID]) ParseID(id string) (ID, error)  { return ID(id), nil }
 
-type IntID struct{}
+type IntID[ID ~int] struct{}
 
-func (m IntID) EncodeID(id int) (string, error) { return strconv.Itoa(id), nil }
-func (m IntID) ParseID(id string) (int, error)  { return strconv.Atoi(id) }
+func (m IntID[ID]) EncodeID(id ID) (string, error) {
+	return strconv.Itoa(int(id)), nil
+}
+
+func (m IntID[ID]) ParseID(id string) (ID, error) {
+	n, err := strconv.Atoi(id)
+	return ID(n), err
+}
