@@ -3,13 +3,12 @@ package txs_test
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/pkg/logger"
-	"testing"
-
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/txs"
-	comprotocontracts "go.llib.dev/frameless/ports/comproto/comprotocontracts"
+	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
 	"go.llib.dev/testcase"
+	"testing"
 )
 
 func Test(t *testing.T) {
