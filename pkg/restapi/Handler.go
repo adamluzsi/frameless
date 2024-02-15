@@ -77,7 +77,7 @@ type Mapping[Entity, ID, DTO any] interface {
 	LookupID(Entity) (ID, bool)
 	SetID(*Entity, ID)
 
-	EncodeID(ID) (string, error)
+	FormatID(ID) (string, error)
 	ParseID(string) (ID, error)
 
 	ContextWithID(context.Context, ID) context.Context

@@ -2,8 +2,8 @@ package restapi_test
 
 import (
 	"context"
-
-	"go.llib.dev/frameless/pkg/restapi/restmapping"
+	"go.llib.dev/frameless/pkg/restapi"
+	"strconv"
 )
 
 type (
@@ -20,9 +20,9 @@ type FooDTO struct {
 }
 
 type FooMapping struct {
-	restmapping.IntID
-	restmapping.IDInContext[FooMapping, int]
-	restmapping.SetIDByExtIDTag[Foo, int]
+	restapi.IntID[int]
+	restapi.IDInContext[FooMapping, int]
+	restapi.SetIDByExtIDTag[Foo, int]
 }
 
 func (f FooMapping) MapEntity(ctx context.Context, dto FooDTO) (Foo, error) {
@@ -44,9 +44,9 @@ type BarDTO struct {
 }
 
 type BarMapping struct {
-	restmapping.StringID
-	restmapping.SetIDByExtIDTag[Bar, string]
-	restmapping.IDInContext[BarMapping, string]
+	restapi.StringID[string]
+	restapi.SetIDByExtIDTag[Bar, string]
+	restapi.IDInContext[BarMapping, string]
 }
 
 func (f BarMapping) MapEntity(ctx context.Context, dto BarDTO) (Bar, error) {
@@ -55,4 +55,41 @@ func (f BarMapping) MapEntity(ctx context.Context, dto BarDTO) (Bar, error) {
 
 func (f BarMapping) MapDTO(ctx context.Context, entity Bar) (BarDTO, error) {
 	return BarDTO{ID: entity.ID, Bar: entity.Bar}, nil
+}
+
+type BazID int
+
+type Baz struct {
+	ID  BazID
+	Baz int
+}
+
+type BazDTO struct {
+	ID  BazID `json:"id"`
+	Baz int   `json:"baz"`
+}
+
+func MakeBazMapping() BazMapping {
+	return BazMapping{
+		IDConverter: restapi.IDConverter[int]{
+			Format: func(id int) (string, error) {
+				return strconv.Itoa(id), nil
+			},
+			Parse: strconv.Atoi,
+		},
+	}
+}
+
+type BazMapping struct {
+	restapi.IDConverter[int]
+	restapi.SetIDByExtIDTag[Baz, string]
+	restapi.IDInContext[BazMapping, string]
+}
+
+func (f BazMapping) MapEntity(ctx context.Context, dto BazDTO) (Baz, error) {
+	return Baz{ID: dto.ID, Baz: dto.Baz}, nil
+}
+
+func (f BazMapping) MapDTO(ctx context.Context, entity Baz) (BazDTO, error) {
+	return BazDTO{ID: entity.ID, Baz: entity.Baz}, nil
 }
