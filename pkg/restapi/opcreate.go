@@ -3,6 +3,7 @@ package restapi
 import (
 	"encoding/json"
 	"errors"
+	"go.llib.dev/frameless/pkg/units"
 	"io"
 	"net/http"
 
@@ -89,7 +90,9 @@ func (h Handler[Entity, ID, DTO]) create(w http.ResponseWriter, r *http.Request)
 	h.writeJSON(w, r, http.StatusCreated, dto)
 }
 
-var DefaultBodyReadLimit int64 = 256 * 1024 * 1024
+// DefaultBodyReadLimit is the maximum number of bytes that a restapi.Handler will read from the requester,
+// if the Handler.BodyReadLimit is not provided.
+var DefaultBodyReadLimit int64 = 16 * units.Megabyte
 
 func (h Handler[Entity, ID, DTO]) getBodyReadLimit() int64 {
 	if h.BodyReadLimit != 0 {

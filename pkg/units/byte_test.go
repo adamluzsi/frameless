@@ -98,3 +98,7 @@ func TestFormatByteSize(t *testing.T) {
 		})
 	}
 }
+
+func Test_megabyte(t *testing.T) {
+	assert.Equal(t, 16*1024*1024, 16*units.Megabyte)
+}

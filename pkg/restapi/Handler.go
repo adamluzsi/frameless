@@ -29,6 +29,8 @@ type Handler[Entity, ID, DTO any] struct {
 	//  > .../:id/sub-routes
 	Router *Router
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
+	//
+	// The default value is DefaultBodyReadLimit, which is preset to 16MB.
 	BodyReadLimit int64
 	Operations[Entity, ID, DTO]
 
