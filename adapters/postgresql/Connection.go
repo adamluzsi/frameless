@@ -6,13 +6,12 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/runtimekit"
-	"go.llib.dev/frameless/ports/comproto"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/ports/comproto"
 	"io"
 	"reflect"
 	"sync"
@@ -213,7 +212,7 @@ func (c *connectionManager) lookupSqlTx(ctx context.Context) (*cmTx, bool) {
 var mutexPing sync.Mutex
 
 func (c *connectionManager) getPgxPool(ctx context.Context) (_ *pgxpool.Pool, rErr error) {
-	defer runtimekit.Recover(&rErr)
+	defer errorkit.Recover(&rErr)
 	var retryCount = 42
 
 ping:

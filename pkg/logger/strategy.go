@@ -3,7 +3,6 @@ package logger
 import (
 	"bytes"
 	"context"
-	"go.llib.dev/frameless/pkg/runtimekit"
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"runtime"
@@ -73,9 +72,13 @@ type asyncLogger struct {
 }
 
 func (s *asyncLogger) Log(event logEvent) {
-	defer runtimekit.OnRecover(func(any) {
-		s.Logger.logTo(s.Logger.writer(), event)
-	})
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		_ = s.Logger.logTo(s.Logger.writer(), event)
+	}()
 	s.Stream <- event
 }
 
