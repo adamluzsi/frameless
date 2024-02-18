@@ -2,7 +2,7 @@ package slicekit_test
 
 import (
 	"fmt"
-	tsk "go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/assert"
 	"strconv"
 	"strings"
@@ -11,11 +11,11 @@ import (
 
 func ExampleMust() {
 	var x = []int{1, 2, 3}
-	x = tsk.Must(tsk.Map[int](x, func(v int) int {
+	x = slicekit.Must(slicekit.Map[int](x, func(v int) int {
 		return v * 2
 	}))
 
-	v := tsk.Must(tsk.Reduce[int](x, 42, func(output int, current int) int {
+	v := slicekit.Must(slicekit.Reduce[int](x, 42, func(output int, current int) int {
 		return output + current
 	}))
 
@@ -25,13 +25,13 @@ func ExampleMust() {
 func TestMust(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got := tsk.Must(tsk.Map[int](x, strconv.Atoi))
+		got := slicekit.Must(slicekit.Map[int](x, strconv.Atoi))
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
 		pv := assert.Panic(t, func() {
-			tsk.Must(tsk.Map[int](x, strconv.Atoi))
+			slicekit.Must(slicekit.Map[int](x, strconv.Atoi))
 		})
 		err, ok := pv.(error)
 		assert.True(t, ok)
@@ -41,10 +41,10 @@ func TestMust(t *testing.T) {
 
 func ExampleMap() {
 	var x = []string{"a", "b", "c"}
-	_ = tsk.Must(tsk.Map[string](x, strings.ToUpper)) // []string{"A", "B", "C"}
+	_ = slicekit.Must(slicekit.Map[string](x, strings.ToUpper)) // []string{"A", "B", "C"}
 
 	var ns = []string{"1", "2", "3"}
-	_, err := tsk.Map[int](ns, strconv.Atoi) // []int{1, 2, 3}
+	_, err := slicekit.Map[int](ns, strconv.Atoi) // []int{1, 2, 3}
 	if err != nil {
 		panic(err)
 	}
@@ -53,26 +53,26 @@ func ExampleMap() {
 func TestMap(t *testing.T) {
 	t.Run("happy - no error", func(t *testing.T) {
 		var x = []string{"a", "b", "c"}
-		got, err := tsk.Map[string](x, strings.ToUpper)
+		got, err := slicekit.Map[string](x, strings.ToUpper)
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"A", "B", "C"}, got)
 	})
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got, err := tsk.Map[int](x, strconv.Atoi)
+		got, err := slicekit.Map[int](x, strconv.Atoi)
 		assert.NoError(t, err)
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
-		_, err := tsk.Map[int](x, strconv.Atoi)
+		_, err := slicekit.Map[int](x, strconv.Atoi)
 		assert.Error(t, err)
 	})
 }
 
 func ExampleReduce() {
 	var x = []string{"a", "b", "c"}
-	got, err := tsk.Reduce[string](x, "|", func(o string, i string) string {
+	got, err := slicekit.Reduce[string](x, "|", func(o string, i string) string {
 		return o + i
 	})
 	if err != nil {
@@ -84,7 +84,7 @@ func ExampleReduce() {
 func TestReduce(t *testing.T) {
 	t.Run("happy - no error", func(t *testing.T) {
 		var x = []string{"a", "b", "c"}
-		got, err := tsk.Reduce[string](x, "|", func(o string, i string) string {
+		got, err := slicekit.Reduce[string](x, "|", func(o string, i string) string {
 			return o + i
 		})
 		assert.NoError(t, err)
@@ -92,7 +92,7 @@ func TestReduce(t *testing.T) {
 	})
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got, err := tsk.Reduce[int](x, 42, func(o int, i string) (int, error) {
+		got, err := slicekit.Reduce[int](x, 42, func(o int, i string) (int, error) {
 			n, err := strconv.Atoi(i)
 			if err != nil {
 				return o, err
@@ -104,7 +104,7 @@ func TestReduce(t *testing.T) {
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
-		_, err := tsk.Reduce[int](x, 0, func(o int, i string) (int, error) {
+		_, err := slicekit.Reduce[int](x, 0, func(o int, i string) (int, error) {
 			n, err := strconv.Atoi(i)
 			if err != nil {
 				return o, err
@@ -113,4 +113,42 @@ func TestReduce(t *testing.T) {
 		})
 		assert.Error(t, err)
 	})
+}
+
+func ExampleLookup() {
+	vs := []int{2, 4, 8, 16}
+	slicekit.Lookup(vs, 0)      // -> return 2, true
+	slicekit.Lookup(vs, 0-1)    // lookup previous -> return 0, false
+	slicekit.Lookup(vs, 0+1)    // lookup next -> return 4, true
+	slicekit.Lookup(vs, 0+1000) // lookup 1000th element -> return 0, false
+}
+
+func TestLookup_smoke(t *testing.T) {
+	vs := []int{2, 4, 8, 16}
+
+	v, ok := slicekit.Lookup(vs, 0)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, v, 2)
+
+	v, ok = slicekit.Lookup(vs, 0-1)
+	assert.Equal(t, ok, false)
+	assert.Equal(t, v, 0)
+
+	v, ok = slicekit.Lookup(vs, 0+1)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, v, 4)
+
+	v, ok = slicekit.Lookup(vs, 0+1000)
+	assert.Equal(t, ok, false)
+	assert.Equal(t, v, 0)
+
+	v, ok = slicekit.Lookup(vs, 0+1000)
+	assert.Equal(t, ok, false)
+	assert.Equal(t, v, 0)
+
+	for i, exp := range vs {
+		got, ok := slicekit.Lookup(vs, i)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, exp, got)
+	}
 }

@@ -42,6 +42,13 @@ func Reduce[O, I any, FN reducerFunc[O, I]](s []I, initial O, fn FN) (O, error) 
 	return result, nil
 }
 
+func Lookup[T any](vs []T, index int) (T, bool) {
+	if index < 0 || len(vs)-1 < index {
+		return *new(T), false
+	}
+	return vs[index], true
+}
+
 // --------------------------------------------------------------------------------- //
 
 type reducerFunc[O, I any] interface {
