@@ -98,7 +98,7 @@ func IsPortFree(network Network, port int) (ok bool, returnErr error) {
 // GetFreePort opens a TCP listener on a randomly selected available port.
 // It returns the listener and the selected port number.
 func GetFreePort() (int, error) {
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", "0.0.0.0:0")
 	if err != nil {
 		return 0, err
 	}
