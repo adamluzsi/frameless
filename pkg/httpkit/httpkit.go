@@ -7,6 +7,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase/clock"
 	"io"
@@ -226,4 +227,22 @@ func visitForStatusCode(info *responseInfo, rv reflect.Value, recursionGuard map
 		visitForStatusCode(info, rv.Elem(), recursionGuard)
 	default:
 	}
+}
+
+// Mount will help to register a handler on a request multiplexer in both as the concrete path to the handler and as a prefix match.
+// example:
+//
+//	if pattern -> "/something"
+//	registered as "/something" for exact match
+//	registered as "/something/" for prefix match
+func Mount(mux multiplexer, pattern string, handler http.Handler) {
+	pattern = pathkit.Clean(pattern)
+	handler = http.StripPrefix(pattern, handler)
+	mux.Handle(pattern, handler)
+	mux.Handle(pattern+`/`, handler)
+}
+
+// multiplexer represents a http request multiplexer.
+type multiplexer interface {
+	Handle(pattern string, handler http.Handler)
 }

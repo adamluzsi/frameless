@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 )
@@ -16,10 +17,8 @@ import (
 //	registered as "/something/" for prefix match
 func Mount(multiplexer multiplexer, pattern string, handler http.Handler) {
 	pattern = pathkit.Clean(pattern)
-	handler = http.StripPrefix(pattern, handler)
 	handler = MountPoint(pattern, handler)
-	multiplexer.Handle(pattern, handler)
-	multiplexer.Handle(pattern+`/`, handler)
+	httpkit.Mount(multiplexer, pattern, handler)
 }
 
 // multiplexer represents a http request multiplexer.

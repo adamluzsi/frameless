@@ -1,14 +1,6 @@
 package httpkit_test
 
 import (
-	"go.llib.dev/frameless/pkg/httpkit"
-	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/clock/timecop"
-	"go.llib.dev/testcase/httpspec"
-	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/random"
 	"io"
 	"math"
 	"net"
@@ -19,6 +11,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/httpspec"
+	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func TestRoundTripperFunc(t *testing.T) {
@@ -377,5 +378,109 @@ func TestAccessLog_smoke(t *testing.T) {
 		"response_body_length": len(responseBody),
 		"remote_address":       gotRemoteAddress,
 		"status":               responseCode,
+	})
+}
+
+func ExampleMount(t *testing.T) {
+	var (
+		apiV0 http.Handler
+		webUI http.Handler
+		mux   = http.NewServeMux()
+	)
+	httpkit.Mount(mux, "/api/v0", apiV0)
+	httpkit.Mount(mux, "/ui", webUI)
+}
+
+func TestMount(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		serveMux = testcase.Let(s, func(t *testcase.T) *http.ServeMux { return http.NewServeMux() })
+		pattern  = testcase.LetValue[string](s, "/path")
+		lastReq  = testcase.LetValue[*http.Request](s, nil)
+		handler  = testcase.Let[http.Handler](s, func(t *testcase.T) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				lastReq.Set(t, r)
+				w.WriteHeader(http.StatusTeapot)
+			})
+		})
+	)
+	act := func(t *testcase.T) {
+		httpkit.Mount(
+			serveMux.Get(t),
+			pattern.Get(t),
+			handler.Get(t),
+		)
+	}
+
+	makeRequest := func(t *testcase.T, path string) *http.Response {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, path, nil)
+		serveMux.Get(t).ServeHTTP(w, r)
+		return w.Result()
+	}
+
+	s.When("mount pattern is not in a clean format", func(s *testcase.Spec) {
+		pattern.LetValue(s, "//a/b/c/..")
+
+		s.Then("mounted to the correct path", func(t *testcase.T) {
+			act(t)
+
+			response := makeRequest(t, "/a/b")
+			t.Must.Equal(http.StatusTeapot, response.StatusCode)
+		})
+	})
+
+	s.When(`pattern lack trailing slash`, func(s *testcase.Spec) {
+		pattern.LetValue(s, `/path0`)
+
+		s.Then(`it will be still available to call even for the under paths`, func(t *testcase.T) {
+			act(t)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, `/path0/123`, nil)
+			serveMux.Get(t).ServeHTTP(w, r)
+
+			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+		})
+	})
+
+	s.When(`pattern lack leading slash`, func(s *testcase.Spec) {
+		pattern.LetValue(s, `path1/`)
+
+		s.Then(`it will be still available to call even for the under paths`, func(t *testcase.T) {
+			act(t)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, `/path1/123`, nil)
+			serveMux.Get(t).ServeHTTP(w, r)
+			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+		})
+	})
+
+	s.When(`pattern lack leading and trailing slash`, func(s *testcase.Spec) {
+		pattern.LetValue(s, `path2`)
+
+		s.Then(`it will be still available to call even for the under paths`, func(t *testcase.T) {
+			act(t)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, `/path2/123`, nil)
+			serveMux.Get(t).ServeHTTP(w, r)
+			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+		})
+	})
+
+	s.When(`pattern includes nested path`, func(s *testcase.Spec) {
+		pattern.LetValue(s, `/test/this/out/`)
+
+		s.Then(`it will be still available to call even for the under paths`, func(t *testcase.T) {
+			act(t)
+
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, `/test/this/out/123`, nil)
+			serveMux.Get(t).ServeHTTP(w, r)
+			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+		})
 	})
 }
