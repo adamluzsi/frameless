@@ -105,37 +105,56 @@ func (m *M) lookupByType(from, to reflect.Type) (*mRec, bool) {
 const ErrNoMapping errorkit.Error = "[dtos] missing mapping"
 
 func Map[To, From any](m *M, from From) (_ To, returnErr error) {
-	var (
-		fromType = reflectkit.TypeOf[From]()
-		toType   = reflectkit.TypeOf[To]()
-	)
-	torv, err := m.Map(fromType, toType, from)
+	torv, err := m.Map(P[From, To]{}, from)
 	if err != nil {
 		return *new(To), err
 	}
-	return torv.Interface().(To), nil
+	return torv.(To), nil
 }
 
-func (m *M) Map(fromType, toType reflect.Type, from any) (_ reflect.Value, returnErr error) {
+// P is a Mapping pair
+type P[A, B any] struct{}
+
+func (p P[A, B]) MapA(m *M, v B) (A, error) { return Map[A, B](m, v) }
+func (p P[A, B]) MapB(m *M, v A) (B, error) { return Map[B, A](m, v) }
+
+func (p P[A, B]) NewA() *A { return new(A) }
+func (p P[A, B]) NewB() *B { return new(B) }
+
+// FromType specify that P[A] is the from type.
+func (p P[A, B]) FromType() reflect.Type { return reflectkit.TypeOf[A]() }
+
+// ToType specify that P[B] is the from type.
+func (p P[A, B]) ToType() reflect.Type { return reflectkit.TypeOf[B]() }
+
+type MP interface {
+	FromType() reflect.Type
+	ToType() reflect.Type
+}
+
+func (m *M) Map(mp MP, from any) (_ any, returnErr error) {
+	if mp.FromType() == mp.ToType() { // passthrough mode
+		return from, nil
+	}
 	if m == nil {
-		return reflect.Value{}, fmt.Errorf("[dtos] M is not supplied")
+		return nil, fmt.Errorf("[dtos] M is not supplied")
 	}
 	defer recoverMustMap(&returnErr)
-	var toBaseType, depth = reflectkit.BaseType(toType)
-	r, ok := m.lookupByType(fromType, toBaseType)
+	var toBaseType, depth = reflectkit.BaseType(mp.ToType())
+	r, ok := m.lookupByType(mp.FromType(), toBaseType)
 	if !ok {
-		return reflect.Value{}, fmt.Errorf("%w from %s to %s", ErrNoMapping,
-			fromType.String(), toType.String())
+		return nil, fmt.Errorf("%w from %s to %s", ErrNoMapping,
+			mp.FromType().String(), mp.ToType().String())
 	}
 	to, err := r.Map(reflectkit.BaseValue(reflect.ValueOf(from)).Interface())
 	if err != nil {
-		return reflect.Value{}, err
+		return nil, err
 	}
 	v := reflect.ValueOf(to)
 	for i := 0; i < depth; i++ {
 		v = reflectkit.PointerOf(v)
 	}
-	return v, nil
+	return v.Interface(), nil
 }
 
 type ErrMustMap struct{ Err error }

@@ -11,7 +11,16 @@ import (
 
 var rnd = random.New(random.CryptoSeed{})
 
+var _ dtos.MP = dtos.P[Ent, EntDTO]{}
+
 func TestM(t *testing.T) {
+	t.Run("mapping T to itself T, passthrough mode without registration", func(t *testing.T) {
+		m := &dtos.M{}
+		expEnt := Ent{V: rnd.Int()}
+		gotEnt, err := dtos.Map[Ent](m, expEnt)
+		assert.NoError(t, err)
+		assert.Equal(t, expEnt, gotEnt)
+	})
 	t.Run("flat structures", func(t *testing.T) {
 		m := &dtos.M{}
 		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
@@ -80,8 +89,8 @@ func TestMap(t *testing.T) {
 
 		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
 
-		_, err = dtos.Map[Ent, Ent](m, ent)
-		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+		_, err = dtos.Map[EntDTO](m, ent)
+		assert.NoError(t, err)
 	})
 	t.Run("ptr", func(t *testing.T) {
 		m := &dtos.M{}
