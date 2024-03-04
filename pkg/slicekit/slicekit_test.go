@@ -152,3 +152,17 @@ func TestLookup_smoke(t *testing.T) {
 		assert.Equal(t, exp, got)
 	}
 }
+
+func TestMerge(t *testing.T) {
+	var (
+		a   = []string{"a", "b", "c"}
+		b   = []string{"1", "2", "3"}
+		c   = []string{"1", "B", "3"}
+		out = slicekit.Merge(a, b, c)
+	)
+	assert.Equal(t, out, []string{
+		"a", "b", "c",
+		"1", "2", "3",
+		"1", "B", "3",
+	})
+}

@@ -50,6 +50,14 @@ func Reduce[
 	return result, nil
 }
 
+func Keys[K comparable, V any](m map[K]V) []K {
+	var ks []K
+	for k, _ := range m {
+		ks = append(ks, k)
+	}
+	return ks
+}
+
 // --------------------------------------------------------------------------------- //
 
 type reducerFunc[O any, K comparable, V any] interface {
@@ -85,4 +93,16 @@ func toMapperFunc[OK comparable, OV any, IK comparable, IV any, MF mapperFunc[OK
 	default:
 		panic("unexpected")
 	}
+}
+
+// Merge will merge all passed map[K]V into a single map[K]V.
+// Merging is intentionally order dependent by how the map argument values are passed to Merge.
+func Merge[K comparable, V any](maps ...map[K]V) map[K]V {
+	var out = make(map[K]V)
+	for _, kvs := range maps {
+		for k, v := range kvs {
+			out[k] = v
+		}
+	}
+	return out
 }

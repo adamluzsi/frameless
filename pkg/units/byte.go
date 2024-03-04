@@ -5,8 +5,14 @@ import (
 	"strings"
 )
 
+type ByteSize = int64
+
+type byteSize interface {
+	int | int8 | int16 | int32 | int64
+}
+
 const (
-	Byte  = 1 << (10 * iota) // ignore first value by assigning to blank identifier
+	Byte = 1 << (10 * iota) // ignore first value by assigning to blank identifier
 	Kibibyte
 	Mebibyte
 	Gibibyte
@@ -36,8 +42,9 @@ const (
 // | 10246 | EiB exbibyte |	–            |
 // | 10247 | ZiB zebibyte |	–            |
 // | 10248 | YiB yobibyte |	–            |
-func FormatByteSize(size int) string {
+func FormatByteSize[ByteSize byteSize](n ByteSize) string {
 	var (
+		size   = int(n)
 		value  float64
 		unit   string
 		prefix = ""

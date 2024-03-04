@@ -138,3 +138,36 @@ func TestReduce(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func ExampleKeys() {
+	_ = mapkit.Keys(map[string]string{"a": "1", "b": "2", "c": "3"})
+	// -> []string{"a", "b", "c"}
+}
+
+func TestKeys(t *testing.T) {
+	assert.ContainExactly(t, []string{"a", "b", "c"}, mapkit.Keys(map[string]string{"a": "1", "b": "2", "c": "3"}))
+	assert.ContainExactly(t, []int{42, 32, 88}, mapkit.Keys(map[int]string{42: "A", 32: "B", 88: "C"}))
+}
+
+func ExampleMerge() {
+	var (
+		a   = map[string]int{"a": 1, "b": 2, "c": 3}
+		b   = map[string]int{"A": 11, "B": 22, "C": 33}
+		c   = map[string]int{"a": 42}
+		got = mapkit.Merge(a, b, c)
+	)
+	_ = got // {"a": 42, "b": 2, "c": 3, "A": 11, "B": 22, "C": 33}
+}
+
+func TestMerge(t *testing.T) {
+	var (
+		a   = map[string]int{"a": 1, "b": 2, "c": 3}
+		b   = map[string]int{"A": 11, "B": 22, "C": 33}
+		c   = map[string]int{"a": 42}
+		got = mapkit.Merge(a, b, c)
+	)
+	assert.Equal(t, a, map[string]int{"a": 1, "b": 2, "c": 3}, "input map was not expected to change")
+	assert.Equal(t, b, map[string]int{"A": 11, "B": 22, "C": 33}, "input map was not expected to change")
+	assert.Equal(t, c, map[string]int{"a": 42}, "input map was not expected to change")
+	assert.Equal(t, got, map[string]int{"a": 42, "b": 2, "c": 3, "A": 11, "B": 22, "C": 33})
+}

@@ -49,6 +49,15 @@ func Lookup[T any](vs []T, index int) (T, bool) {
 	return vs[index], true
 }
 
+// Merge will merge every []T slice into a single one.
+func Merge[T any](slices ...[]T) []T {
+	var out []T
+	for _, slice := range slices {
+		out = append(out, slice...)
+	}
+	return out
+}
+
 // --------------------------------------------------------------------------------- //
 
 type reducerFunc[O, I any] interface {
