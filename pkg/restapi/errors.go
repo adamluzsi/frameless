@@ -35,7 +35,7 @@ var ErrMalformedID = errorkit.UserError{
 }
 
 var ErrInvalidRequestBody = errorkit.UserError{
-	ID:      "invalid-create-request-body",
+	ID:      "invalid-request-body",
 	Message: "The request body is invalid.",
 }
 

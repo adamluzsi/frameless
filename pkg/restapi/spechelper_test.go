@@ -2,7 +2,11 @@ package restapi_test
 
 import (
 	"context"
+	"encoding/json"
+	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/restapi"
+	"go.llib.dev/testcase"
+	"net/http/httptest"
 	"strconv"
 )
 
@@ -11,7 +15,7 @@ type (
 		ID  FooID
 		Foo int
 	}
-	FooID = int
+	FooID int
 )
 
 type FooDTO struct {
@@ -19,18 +23,30 @@ type FooDTO struct {
 	Foo int `json:"foo"`
 }
 
+var JSONMapping = dtos.M{}
+
+var _ = dtos.Register[Foo, FooDTO](&JSONMapping, FooMapping{})
+
 type FooMapping struct {
-	restapi.IntID[int]
-	restapi.IDInContext[FooMapping, int]
-	restapi.SetIDByExtIDTag[Foo, int]
+	restapi.IntID[FooID]
+	restapi.IDInContext[FooMapping, FooID]
+	restapi.SetIDByExtIDTag[Foo, FooID]
+}
+
+func (f FooMapping) ToEnt(m *dtos.M, dto FooDTO) (Foo, error) {
+	return Foo{ID: FooID(dto.ID), Foo: dto.Foo}, nil
+}
+
+func (f FooMapping) ToDTO(m *dtos.M, ent Foo) (FooDTO, error) {
+	return FooDTO{ID: int(ent.ID), Foo: ent.Foo}, nil
 }
 
 func (f FooMapping) MapEntity(ctx context.Context, dto FooDTO) (Foo, error) {
-	return Foo{ID: dto.ID, Foo: dto.Foo}, nil
+	return Foo{ID: FooID(dto.ID), Foo: dto.Foo}, nil
 }
 
 func (f FooMapping) MapDTO(ctx context.Context, entity Foo) (FooDTO, error) {
-	return FooDTO{ID: entity.ID, Foo: entity.Foo}, nil
+	return FooDTO{ID: int(entity.ID), Foo: entity.Foo}, nil
 }
 
 type Bar struct {
@@ -92,4 +108,12 @@ func (f BazMapping) MapEntity(ctx context.Context, dto BazDTO) (Baz, error) {
 
 func (f BazMapping) MapDTO(ctx context.Context, entity Baz) (BazDTO, error) {
 	return BazDTO{ID: entity.ID, Baz: entity.Baz}, nil
+}
+
+func respondsWithJSON[DTO any](t *testcase.T, recorder *httptest.ResponseRecorder) DTO {
+	var dto DTO
+	t.Log("body:", recorder.Body.String())
+	t.Must.NotEmpty(recorder.Body.Bytes())
+	t.Must.NoError(json.Unmarshal(recorder.Body.Bytes(), &dto))
+	return dto
 }

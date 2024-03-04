@@ -10,12 +10,12 @@ import (
 
 func ExampleRoutes() {
 	m := memory.NewMemory()
-	fooRepository := memory.NewRepository[Foo, int](m)
+	fooRepository := memory.NewRepository[Foo, FooID](m)
 	barRepository := memory.NewRepository[Bar, string](m)
 
 	r := restapi.NewRouter(func(router *restapi.Router) {
 		router.MountRoutes(restapi.Routes{
-			"/v1/api/foos": restapi.Handler[Foo, int, FooDTO]{
+			"/v1/api/foos": restapi.Handler[Foo, FooID, FooDTO]{
 				Resource: fooRepository,
 				Mapping:  FooMapping{},
 				Router: restapi.NewRouter(func(router *restapi.Router) {
@@ -50,9 +50,9 @@ func ExampleRoutes() {
 
 func ExampleHandler() {
 	m := memory.NewMemory()
-	fooRepository := memory.NewRepository[Foo, int](m)
+	fooRepository := memory.NewRepository[Foo, FooID](m)
 
-	h := restapi.Handler[Foo, int, FooDTO]{
+	h := restapi.Handler[Foo, FooID, FooDTO]{
 		Resource: fooRepository,
 		Mapping:  FooMapping{},
 	}

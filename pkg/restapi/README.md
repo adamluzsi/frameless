@@ -1,5 +1,11 @@
 # package `restapi`
 
+**TODO**:
+- [ ] think through the mount path thing. It is not intuitive, and can be easily overlooked when someone tries to put a router under a mux.
+- [ ] the Resource CRUD coupling with the handler feels out of place.
+    - provide a factory function instead that can turn a CRUD resource into
+- [ ] use Accept Content Type 
+
 REST API stands for Representational State Transfer
 and is an architectural pattern for creating web services.
 
@@ -86,21 +92,6 @@ Cache-Control: max-age=3600
 ```
 
 Cacheable responses (whether to a GET or a POST request) should also include a validator — either an ETag or a Last-Modified header.
-
-### ETag Header
-
-An ETag value is an opaque string token that a server associates with a resource to identify the state of the resource over its lifetime uniquely.
-If the resource at a given URL changes, the server must generate a new Etag value.
-A comparison of them can determine whether two representations of a resource are the same.
-
-While requesting a resource, the client sends the ETag in the `If-None-Match` header field to the server.
-The server matches the Etag of the requested resource and the value sent in the If-None-Match header.
-If both values match, the server sends back a 304 Not Modified status without a body,
-which tells the client that the cached response version is still good to use (fresh).
-
-```
-ETag: "abcd1234567n34jv"
-```
 
 ### Last-Modified Header
 

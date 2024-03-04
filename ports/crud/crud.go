@@ -53,6 +53,7 @@ type ByIDFinder[Entity, ID any] interface {
 
 type AllFinder[Entity any] interface {
 	// FindAll will return all entity that has <V> type
+	// TODO: consider using error as 2nd argument, to make it similar to sql package
 	FindAll(context.Context) iterators.Iterator[Entity]
 }
 

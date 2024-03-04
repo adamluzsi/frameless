@@ -83,7 +83,7 @@ func TestMount(t *testing.T) {
 
 		s.Then("the handler is properly propagated", func(t *testcase.T) {
 			act(t)
-			resp := makeRequest(t, pathkit.Join(pattern.Get(t), strconv.Itoa(ent.Get(t).ID), "test", "foo"))
+			resp := makeRequest(t, pathkit.Join(pattern.Get(t), strconv.Itoa(int(ent.Get(t).ID)), "test", "foo"))
 			t.Must.Equal(http.StatusTeapot, resp.StatusCode)
 			t.Must.NotNil(lastReq.Get(t))
 
