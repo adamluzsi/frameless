@@ -5,6 +5,23 @@ import (
 	"time"
 )
 
+type ValueInContext[Key ~struct{}, Value any] struct{}
+
+func (h ValueInContext[Key, Value]) Lookup(ctx context.Context) (Value, bool) {
+	if ctx == nil {
+		return *new(Value), false
+	}
+	v, ok := ctx.Value(Key{}).(Value)
+	return v, ok
+}
+
+func (h ValueInContext[Key, Value]) ContextWith(ctx context.Context, v Value) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, Key{}, v)
+}
+
 func Detach(parent context.Context) context.Context {
 	return detached{
 		Parent: parent,

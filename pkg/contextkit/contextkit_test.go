@@ -2,6 +2,8 @@ package contextkit_test
 
 import (
 	"context"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"testing"
 	"time"
 
@@ -120,5 +122,62 @@ func TestDetached(t *testing.T) {
 				t.Must.NoError(act(t))
 			})
 		})
+	})
+}
+
+func ExampleValueInContext() {
+	type MyContextKey struct{}
+	type MyValueType string
+
+	vic := contextkit.ValueInContext[MyContextKey, MyValueType]{}
+
+	var ctx = context.Background() // empty context
+
+	v, ok := vic.Lookup(ctx)
+	_, _ = v, ok // "", false
+
+	ctx = vic.ContextWith(ctx, "Hello, world!") // context with value
+
+	v, ok = vic.Lookup(ctx)
+	_, _ = v, ok // "Hello, world!", true
+}
+
+func TestValueInContext(t *testing.T) {
+	type Key struct{}
+	rnd := random.New(random.CryptoSeed{})
+	t.Run("nil context", func(t *testing.T) {
+		var ctx context.Context = nil
+		vic := contextkit.ValueInContext[Key, string]{}
+		v, ok := vic.Lookup(ctx)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	t.Run("no value in context", func(t *testing.T) {
+		var ctx context.Context = context.Background()
+		vic := contextkit.ValueInContext[Key, string]{}
+		v, ok := vic.Lookup(ctx)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	t.Run("value stored in context previously", func(t *testing.T) {
+		var ctx = context.Background()
+		vic := contextkit.ValueInContext[Key, string]{}
+		exp := rnd.String()
+		ctx = vic.ContextWith(ctx, exp)
+		got, ok := vic.Lookup(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, exp, got)
+	})
+
+	t.Run("valid nil value in the context", func(t *testing.T) {
+		var ctx = context.Background()
+		vic := contextkit.ValueInContext[Key, *string]{}
+		var exp *string
+		ctx = vic.ContextWith(ctx, exp)
+		got, ok := vic.Lookup(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, exp, got)
 	})
 }
