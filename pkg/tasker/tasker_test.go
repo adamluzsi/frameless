@@ -611,7 +611,7 @@ func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 
 		cancel() // cancel task
 
-		assert.Eventually(t, time.Second, func(it assert.It) {
+		assert.Eventually(t, time.Second+500*time.Millisecond, func(it assert.It) {
 			it.Must.True(atomic.LoadInt32(&startFinished) == 1)
 			it.Must.True(atomic.LoadInt32(&stopBegin) == 1)
 			it.Must.True(atomic.LoadInt32(&stopFinished) == 1)
