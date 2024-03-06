@@ -27,32 +27,56 @@ type (
 type ExponentialBackoff struct {
 	// MaxRetries is the amount of retry which is allowed before giving up the application.
 	//
-	// Default: 5
+	// Default: 5 or if Timeout is set, then until Timeout is reached.
 	MaxRetries int
 	// BackoffDuration is the time duration which will be used to calculate the exponential backoff wait time.
 	//
 	// Default: 1/2 Second
 	BackoffDuration time.Duration
+	// Timeout is the time within the Strategy is attempting further retries.
+	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
+	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
+	//
+	// Default: ignored
+	Timeout time.Duration
 }
 
-func (rs ExponentialBackoff) ShouldTry(ctx context.Context, count FailureCount) bool {
-	if rs.getMaxRetries() <= count {
+func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
+	if rs.isDeadlineReached(ctx, failureCount) {
 		return false
 	}
-	if ctx.Err() == nil && count == 0 {
-		return true
+	waitTime, ok := rs.waitTime(ctx, failureCount)
+	if !ok {
+		return false
 	}
 	select {
 	case <-ctx.Done():
 		return false
-	case <-clock.After(rs.backoffDurationFor(count)):
+	case <-clock.After(waitTime):
 		return true
 	}
 }
 
-func (rs ExponentialBackoff) backoffDurationFor(count FailureCount) time.Duration {
+func (rs ExponentialBackoff) waitTime(ctx context.Context, count FailureCount) (duration time.Duration, ok bool) {
+	var (
+		maxRetries      = rs.getMaxRetries()
+		backoffDuration = rs.getBackoffDuration()
+	)
+	if maxRetries <= count && rs.Timeout == 0 {
+		return 0, false
+	}
+	if ctx.Err() == nil && count == 0 {
+		return 0, true
+	}
+	if ctx.Err() != nil {
+		return 0, false
+	}
+	return rs.backoffDurationFor(backoffDuration, count), true
+}
+
+func (rs ExponentialBackoff) backoffDurationFor(backoffDurationBase time.Duration, count FailureCount) time.Duration {
 	backoffMultiplier := math.Pow(2, float64(count-1))
-	return time.Duration(backoffMultiplier) * rs.getBackoffDuration()
+	return time.Duration(backoffMultiplier) * backoffDurationBase
 }
 
 func (rs ExponentialBackoff) getBackoffDuration() time.Duration {
@@ -63,6 +87,21 @@ func (rs ExponentialBackoff) getBackoffDuration() time.Duration {
 func (rs ExponentialBackoff) getMaxRetries() int {
 	const defaultMaxRetries = 5
 	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
+}
+
+func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount FailureCount) bool {
+	if rs.Timeout == 0 {
+		return false
+	}
+	var totalWaitedTime time.Duration
+	for i := 0; i <= failureCount; i++ { // exclude current failure count
+		waitTime, ok := rs.waitTime(ctx, i)
+		if !ok {
+			return false
+		}
+		totalWaitedTime += waitTime
+	}
+	return rs.Timeout <= totalWaitedTime
 }
 
 // Jitter is a random variation added to the backoff time. This helps to distribute the retry attempts evenly over time, reducing the risk of overwhelming the system and avoiding synchronization between multiple clients that might be retrying simultaneously.

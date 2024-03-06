@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
+	"math"
 	"testing"
 	"time"
 )
@@ -28,8 +29,19 @@ func ExampleExponentialBackoff() {
 func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	const defaultMaxRetries = 5
+
+	var (
+		maxRetries      = testcase.LetValue[int](s, 0)
+		backoffDuration = testcase.LetValue(s, time.Nanosecond)
+		timeout         = testcase.LetValue[time.Duration](s, 0)
+	)
 	subject := testcase.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
-		return &retry.ExponentialBackoff{BackoffDuration: time.Nanosecond}
+		return &retry.ExponentialBackoff{
+			MaxRetries:      maxRetries.Get(t),
+			BackoffDuration: backoffDuration.Get(t),
+			Timeout:         timeout.Get(t),
+		}
 	})
 
 	var (
@@ -39,6 +51,8 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	act := func(t *testcase.T) bool {
 		return subject.Get(t).ShouldTry(Context.Get(t), failureCount.Get(t))
 	}
+
+	s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
 		t.Must.True(act(t))
@@ -177,6 +191,57 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 				})
 			}, "expected duration:", assert.Message(expected.String()))
 			t.Must.True(duration <= expected+buffer)
+		})
+	})
+
+	s.Describe(".Timeout", func(s *testcase.Spec) {
+		timeout.Let(s, func(t *testcase.T) time.Duration {
+			return time.Duration(t.Random.IntBetween(int(time.Minute), int(time.Hour)))
+		})
+
+		s.When(".MaxRetries is absent, but .Timeout is supplied", func(s *testcase.Spec) {
+			maxRetries.LetValue(s, 0) // zero value
+			backoffDuration.LetValue(s, time.Millisecond)
+
+			s.Then("retry will be attempted until timeout is reached", func(t *testcase.T) {
+				var total int
+				for i := 0; subject.Get(t).ShouldTry(Context.Get(t), i); i++ {
+					total++
+				}
+
+				assert.True(t, defaultMaxRetries < total,
+					"expected that the total retry attempt is greater than the fallback default max retries count",
+					assert.MessageF("measured retry attempt count: %d", total))
+			})
+		})
+
+		s.When("we are within the defined timeout duration", func(s *testcase.Spec) {
+			failureCount.LetValue(s, 1)
+
+			backoffDuration.Let(s, func(t *testcase.T) time.Duration {
+				return timeout.Get(t) / 4
+			})
+
+			s.Then("we are allowed to proceed with the retry", func(t *testcase.T) {
+				t.Must.True(act(t))
+			})
+		})
+
+		s.When("we ran out of time compared to the timeout duration", func(s *testcase.Spec) {
+			failureCount.Let(s, func(t *testcase.T) int {
+				t.Log("given we failed once already")
+				t.Log("then we susected that we have waited already one backoff duration worth of time")
+				return 1
+			})
+
+			backoffDuration.Let(s, func(t *testcase.T) time.Duration {
+				t.Log("given backoff duration took exactly as long as what timeout")
+				return timeout.Get(t)
+			})
+
+			s.Then("we expect that we are over the timeout duration, and we are asked to not attempt further retries", func(t *testcase.T) {
+				t.Must.False(act(t))
+			})
 		})
 	})
 }
