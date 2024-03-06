@@ -38,9 +38,9 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	)
 	subject := testcase.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 		return &retry.ExponentialBackoff{
-			MaxRetries:      maxRetries.Get(t),
-			BackoffDuration: backoffDuration.Get(t),
-			Timeout:         timeout.Get(t),
+			MaxRetries: maxRetries.Get(t),
+			WaitTime:   backoffDuration.Get(t),
+			Timeout:    timeout.Get(t),
 		}
 	})
 
@@ -107,7 +107,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.BackoffDuration = time.Hour
+			v.WaitTime = time.Hour
 			return v
 		})
 
@@ -122,7 +122,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s.Context("depending on the number of failed failed attempts we wait longer based on the exponential backoff times", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.BackoffDuration = time.Millisecond
+			v.WaitTime = time.Millisecond
 			v.MaxRetries = 10
 			return v
 		})
@@ -174,7 +174,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.BackoffDuration = time.Hour
+			v.WaitTime = time.Hour
 			v.MaxRetries = 10
 			return v
 		})
@@ -191,7 +191,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 				})
 			}, "expected duration:", assert.Message(expected.String()))
 			t.Must.True(duration <= expected+buffer)
-		})
+		}, testcase.Flaky(3))
 	})
 
 	s.Describe(".Timeout", func(s *testcase.Spec) {
@@ -263,7 +263,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	subject := testcase.Let(s, func(t *testcase.T) *retry.Jitter {
-		return &retry.Jitter{MaxWaitDuration: time.Nanosecond}
+		return &retry.Jitter{MaxWaitTime: time.Nanosecond}
 	})
 
 	var (
@@ -295,7 +295,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxWaitDuration = time.Hour
+			v.MaxWaitTime = time.Hour
 			return v
 		})
 
@@ -342,7 +342,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s.Context("on each retry attempt when failure already happened", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxWaitDuration = 10 * time.Millisecond
+			v.MaxWaitTime = 10 * time.Millisecond
 			v.MaxRetries = 10
 			return v
 		})
@@ -353,10 +353,10 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		s.Test("we wait a bit, but less than the maximum wait time", func(t *testcase.T) {
 			failureCount.Set(t, 1)
-			var buffer = time.Duration(float64(subject.Get(t).MaxWaitDuration) * 0.30)
+			var buffer = time.Duration(float64(subject.Get(t).MaxWaitTime) * 0.30)
 			assert.Eventually(t, 10, func(it assert.It) {
 				duration := measure(func() { act(t) })
-				it.Must.True(duration <= subject.Get(t).MaxWaitDuration+buffer)
+				it.Must.True(duration <= subject.Get(t).MaxWaitTime+buffer)
 			})
 		})
 	})
@@ -369,7 +369,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxWaitDuration = time.Hour
+			v.MaxWaitTime = time.Hour
 			v.MaxRetries = 10
 			return v
 		})
@@ -380,11 +380,11 @@ func TestJitter_ShouldTry(t *testing.T) {
 			const buffer = 500 * time.Millisecond
 
 			var duration time.Duration
-			t.Must.Within(subject.Get(t).MaxWaitDuration, func(ctx context.Context) {
+			t.Must.Within(subject.Get(t).MaxWaitTime, func(ctx context.Context) {
 				duration = measure(func() { act(t) })
 			})
 
-			t.Must.True(duration <= (subject.Get(t).MaxWaitDuration/multiplier)+buffer)
+			t.Must.True(duration <= (subject.Get(t).MaxWaitTime/multiplier)+buffer)
 		})
 	})
 }

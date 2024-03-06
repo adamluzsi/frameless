@@ -25,20 +25,21 @@ type (
 // The waiting time before returning is doubled for each failed attempts
 // This ensures that the system gets progressively more time to recover from any issues.
 type ExponentialBackoff struct {
-	// MaxRetries is the amount of retry which is allowed before giving up the application.
-	//
-	// Default: 5 or if Timeout is set, then until Timeout is reached.
-	MaxRetries int
-	// BackoffDuration is the time duration which will be used to calculate the exponential backoff wait time.
+	// WaitTime is the time duration used to calculate exponential backoff wait times.
+	// Initially, it serves as the starting wait duration, and then it evolves.
 	//
 	// Default: 1/2 Second
-	BackoffDuration time.Duration
+	WaitTime time.Duration
 	// Timeout is the time within the Strategy is attempting further retries.
 	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
 	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
 	//
 	// Default: ignored
 	Timeout time.Duration
+	// MaxRetries is the amount of retry which is allowed before giving up the application.
+	//
+	// Default: 5 if Timeout is not set.
+	MaxRetries int
 }
 
 func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
@@ -59,8 +60,8 @@ func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount Failure
 
 func (rs ExponentialBackoff) waitTime(ctx context.Context, count FailureCount) (duration time.Duration, ok bool) {
 	var (
-		maxRetries      = rs.getMaxRetries()
-		backoffDuration = rs.getBackoffDuration()
+		maxRetries = rs.getMaxRetries()
+		waitTime   = rs.getWaitTime()
 	)
 	if maxRetries <= count && rs.Timeout == 0 {
 		return 0, false
@@ -71,17 +72,17 @@ func (rs ExponentialBackoff) waitTime(ctx context.Context, count FailureCount) (
 	if ctx.Err() != nil {
 		return 0, false
 	}
-	return rs.backoffDurationFor(backoffDuration, count), true
+	return rs.calcWaitTime(waitTime, count), true
 }
 
-func (rs ExponentialBackoff) backoffDurationFor(backoffDurationBase time.Duration, count FailureCount) time.Duration {
-	backoffMultiplier := math.Pow(2, float64(count-1))
-	return time.Duration(backoffMultiplier) * backoffDurationBase
+func (rs ExponentialBackoff) calcWaitTime(waitTime time.Duration, count FailureCount) time.Duration {
+	backoffMultiplier := math.Pow(2, float64(count))
+	return time.Duration(backoffMultiplier) * waitTime
 }
 
-func (rs ExponentialBackoff) getBackoffDuration() time.Duration {
+func (rs ExponentialBackoff) getWaitTime() time.Duration {
 	const fallback = 500 * time.Millisecond
-	return zerokit.Coalesce(rs.BackoffDuration, fallback)
+	return zerokit.Coalesce(rs.WaitTime, fallback)
 }
 
 func (rs ExponentialBackoff) getMaxRetries() int {
@@ -110,17 +111,20 @@ type Jitter struct {
 	//
 	// Default: 5
 	MaxRetries int
-	// MaxWaitDuration is the duration the Jitter will maximum wait between two retries.
+	// MaxWaitTime is the duration the Jitter will maximum wait between two retries.
 	//
 	// Default: 5 Second
-	MaxWaitDuration time.Duration
+	MaxWaitTime time.Duration
 }
 
 func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
 	if rs.getMaxRetries() <= count {
 		return false
 	}
-	if ctx.Err() == nil && count == 0 {
+	if ctx.Err() != nil {
+		return false
+	}
+	if count == 0 {
 		return true
 	}
 	select {
@@ -134,12 +138,12 @@ func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
 var jitterRandom = rand.New(rand.NewSource(time.Now().Unix()))
 
 func (rs Jitter) waitTime() time.Duration {
-	return time.Duration(jitterRandom.Intn(int(rs.getMaxWaitDuration()) + 1))
+	return time.Duration(jitterRandom.Intn(int(rs.getMaxWaitTime()) + 1))
 }
 
-func (rs Jitter) getMaxWaitDuration() time.Duration {
+func (rs Jitter) getMaxWaitTime() time.Duration {
 	const fallback = 5 * time.Second
-	return zerokit.Coalesce(rs.MaxWaitDuration, fallback)
+	return zerokit.Coalesce(rs.MaxWaitTime, fallback)
 }
 
 func (rs Jitter) getMaxRetries() int {
