@@ -316,4 +316,29 @@ func TestJoin(t *testing.T) {
 	assert.Equal(t, "/test", pathkit.Join("", "test"))
 	assert.Equal(t, "/test", pathkit.Join("", "test", ""))
 	assert.Equal(t, "/foo/bar/baz", pathkit.Join("foo", "/bar/", "/baz"))
+	assert.Equal(t, "https://go.llib.dev/foo/bar/baz/qux",
+		pathkit.Join("https://go.llib.dev", "/foo", "bar/", "baz", "/qux/"))
+
+	// Test empty inputs
+	assert.Equal(t, "/", pathkit.Join())
+	assert.Equal(t, "/", pathkit.Join("", ""))
+
+	// Test relative paths
+	assert.Equal(t, "/foo/bar", pathkit.Join("foo", "bar"))
+	assert.Equal(t, "/foo/bar", pathkit.Join("foo", "", "bar"))
+	assert.Equal(t, "/foo/bar", pathkit.Join("foo", "/", "bar"))
+
+	// Test double slashes
+	// Double slashes (//) in a path are often used to indicate a relative URL path. When a browser or HTTP client encounters // at the beginning of a path, it removes the leading slashes and treats the remaining path as relative to the current URL's path.
+	// For example, if the current URL is https://example.com/some/path,
+	// and you have a link or reference to //foo/bar,
+	// the resulting URL would be https://example.com/some/foo/bar.
+	assert.Equal(t, "//foo/bar", pathkit.Join("//", "foo", "bar"))
+	assert.Equal(t, "//foo/bar", pathkit.Join("//foo", "bar"))
+	assert.Equal(t, "/foo/bar", pathkit.Join("foo", "/", "/", "//bar"))
+
+	// Test leading slashes
+	assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "bar"))
+	assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "", "bar"))
+	assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "/", "bar"))
 }

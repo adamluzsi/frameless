@@ -7,7 +7,9 @@
 package pathkit
 
 import (
+	"net/url"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -68,6 +70,38 @@ func Split(p string) []string {
 	return parts
 }
 
-func Join(parts ...string) string {
-	return Clean(strings.Join(parts, separatorChar))
+// Join function makes it easy to combine different parts of a path,
+// making sure slashes are handled correctly.
+// If you provide a URL as the first thing in the Join function,
+// it becomes the starting point for creating the final URL.
+//
+// Double slashes prefixes are preserved as part of the joining.
+// Instances of double slashes (//) in a path commonly denote a relative URL path.
+// When a browser or HTTP client encounters // at the path's start,
+// it omits the leading slashes, interpreting the remaining path as relative to the current URL's path.
+// For instance, if the present URL is https://example.com/some/path,
+// and you reference //foo/bar, the resulting URL becomes https://example.com/some/foo/bar.
+func Join(ps ...string) string {
+	u := &url.URL{}
+	if len(ps) == 0 {
+		return separatorChar
+	}
+	var relativePath bool
+	if strings.HasPrefix(ps[0], "//") {
+		relativePath = true
+	}
+	if uri := ps[0]; isSchema.MatchString(uri) {
+		if nu, err := url.Parse(uri); err == nil {
+			u = nu
+			ps = ps[1:]
+		}
+	}
+	u = u.JoinPath(ps...)
+	u.Path = Clean(u.Path)
+	if relativePath {
+		u.Path = separatorChar + u.Path
+	}
+	return u.String()
 }
+
+var isSchema = regexp.MustCompile(`^[^:]+:`)
