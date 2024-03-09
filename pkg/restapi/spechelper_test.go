@@ -23,9 +23,7 @@ type FooDTO struct {
 	Foo int `json:"foo"`
 }
 
-var JSONMapping = dtos.M{}
-
-var _ = dtos.Register[Foo, FooDTO](&JSONMapping, FooMapping{})
+var _ = dtos.Register[Foo, FooDTO](FooMapping{}.ToDTO, FooMapping{}.ToEnt)
 
 type FooMapping struct {
 	restapi.IntID[FooID]
@@ -33,11 +31,11 @@ type FooMapping struct {
 	restapi.SetIDByExtIDTag[Foo, FooID]
 }
 
-func (f FooMapping) ToEnt(m *dtos.M, dto FooDTO) (Foo, error) {
+func (f FooMapping) ToEnt(ctx context.Context, dto FooDTO) (Foo, error) {
 	return Foo{ID: FooID(dto.ID), Foo: dto.Foo}, nil
 }
 
-func (f FooMapping) ToDTO(m *dtos.M, ent Foo) (FooDTO, error) {
+func (f FooMapping) ToDTO(ctx context.Context, ent Foo) (FooDTO, error) {
 	return FooDTO{ID: int(ent.ID), Foo: ent.Foo}, nil
 }
 

@@ -1,6 +1,7 @@
 package dtos_test
 
 import (
+	"context"
 	"encoding/json"
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/testcase/assert"
@@ -14,92 +15,91 @@ var rnd = random.New(random.CryptoSeed{})
 var _ dtos.MP = dtos.P[Ent, EntDTO]{}
 
 func TestM(t *testing.T) {
+	ctx := context.Background()
 	t.Run("mapping T to itself T, passthrough mode without registration", func(t *testing.T) {
-		m := &dtos.M{}
 		expEnt := Ent{V: rnd.Int()}
-		gotEnt, err := dtos.Map[Ent](m, expEnt)
+		gotEnt, err := dtos.Map[Ent](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, gotEnt)
 	})
 	t.Run("flat structures", func(t *testing.T) {
-		m := &dtos.M{}
-		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
+		m := EntMapping{}
+		defer dtos.Register[Ent, EntDTO](m.ToDTO, m.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[EntDTO](m, expEnt)
+		dto, err := dtos.Map[EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[Ent](m, dto)
+		ent, err := dtos.Map[Ent](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
 	t.Run("nested structures", func(t *testing.T) {
-		m := &dtos.M{}
-		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
-		defer dtos.Register[NestedEnt, NestedEntDTO](m, NestedEntMapping{})()
+		em := EntMapping{}
+		nem := NestedEntMapping{}
+		defer dtos.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
+		defer dtos.Register[NestedEnt, NestedEntDTO](nem.ToDTO, nem.ToEnt)()
 
 		expEnt := NestedEnt{ID: rnd.String(), Ent: Ent{V: rnd.Int()}}
 		expDTO := NestedEntDTO{ID: expEnt.ID, Ent: EntDTO{V: strconv.Itoa(expEnt.Ent.V)}}
 
-		dto, err := dtos.Map[NestedEntDTO](m, expEnt)
+		dto, err := dtos.Map[NestedEntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[NestedEnt](m, dto)
+		ent, err := dtos.Map[NestedEnt](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
 }
 
 func TestMap(t *testing.T) {
+	ctx := context.Background()
 	t.Run("nil M given", func(t *testing.T) {
 		_, err := dtos.Map[EntDTO, Ent](nil, Ent{V: rnd.Int()})
 		assert.Error(t, err)
 	})
 	t.Run("happy", func(t *testing.T) {
-		m := &dtos.M{}
-		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
-
+		em := EntMapping{}
+		defer dtos.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[EntDTO](m, expEnt)
+		dto, err := dtos.Map[EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[Ent](m, dto)
+		ent, err := dtos.Map[Ent](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var (
-			m   = &dtos.M{}
 			ent = Ent{V: rnd.Int()}
 			dto = EntDTO{V: strconv.Itoa(ent.V)}
 		)
 
-		_, err := dtos.Map[EntDTO](m, ent)
+		_, err := dtos.Map[EntDTO](ctx, ent)
 		assert.ErrorIs(t, err, dtos.ErrNoMapping)
 
-		_, err = dtos.Map[Ent](m, dto)
+		_, err = dtos.Map[Ent](ctx, dto)
 		assert.ErrorIs(t, err, dtos.ErrNoMapping)
 
-		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
+		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
-		_, err = dtos.Map[EntDTO](m, ent)
+		_, err = dtos.Map[EntDTO](ctx, ent)
 		assert.NoError(t, err)
 	})
 	t.Run("ptr", func(t *testing.T) {
-		m := &dtos.M{}
-		defer dtos.Register[Ent, EntDTO](m, EntMapping{})()
+		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[*EntDTO](m, expEnt)
+		dto, err := dtos.Map[*EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, *dto)
@@ -108,11 +108,16 @@ func TestMap(t *testing.T) {
 
 func ExampleRegister() {
 	// JSONMapping will contain mapping from entities to JSON DTO structures.
-	var JSONMapping dtos.M
 	// registering Ent <---> EntDTO mapping
-	_ = dtos.Register[Ent, EntDTO](&JSONMapping, EntMapping{})
+	_ = dtos.Register[Ent, EntDTO](
+		EntMapping{}.ToDTO,
+		EntMapping{}.ToEnt,
+	)
 	// registering NestedEnt <---> NestedEntDTO mapping, which includes the mapping of the nested entities
-	_ = dtos.Register[NestedEnt, NestedEntDTO](&JSONMapping, NestedEntMapping{})
+	_ = dtos.Register[NestedEnt, NestedEntDTO](
+		NestedEntMapping{}.ToDTO,
+		NestedEntMapping{}.ToEnt,
+	)
 
 	var v = NestedEnt{
 		ID: "42",
@@ -121,7 +126,8 @@ func ExampleRegister() {
 		},
 	}
 
-	dto, err := dtos.Map[NestedEntDTO](&JSONMapping, v)
+	ctx := context.Background()
+	dto, err := dtos.Map[NestedEntDTO](ctx, v)
 	if err != nil { // handle err
 		return
 	}
@@ -163,11 +169,11 @@ type EntDTO struct {
 
 type EntMapping struct{}
 
-func (EntMapping) ToDTO(_ *dtos.M, ent Ent) (EntDTO, error) {
+func (EntMapping) ToDTO(ctx context.Context, ent Ent) (EntDTO, error) {
 	return EntDTO{V: strconv.Itoa(ent.V)}, nil
 }
 
-func (EntMapping) ToEnt(m *dtos.M, dto EntDTO) (Ent, error) {
+func (EntMapping) ToEnt(ctx context.Context, dto EntDTO) (Ent, error) {
 	v, err := strconv.Atoi(dto.V)
 	if err != nil {
 		return Ent{}, err
@@ -187,16 +193,16 @@ type NestedEntDTO struct {
 
 type NestedEntMapping struct{}
 
-func (NestedEntMapping) ToEnt(m *dtos.M, dto NestedEntDTO) (NestedEnt, error) {
+func (NestedEntMapping) ToEnt(ctx context.Context, dto NestedEntDTO) (NestedEnt, error) {
 	return NestedEnt{
 		ID:  dto.ID,
-		Ent: dtos.MustMap[Ent](m, dto.Ent),
+		Ent: dtos.MustMap[Ent](ctx, dto.Ent),
 	}, nil
 }
 
-func (NestedEntMapping) ToDTO(m *dtos.M, ent NestedEnt) (NestedEntDTO, error) {
+func (NestedEntMapping) ToDTO(ctx context.Context, ent NestedEnt) (NestedEntDTO, error) {
 	return NestedEntDTO{
 		ID:  ent.ID,
-		Ent: dtos.MustMap[EntDTO](m, ent.Ent),
+		Ent: dtos.MustMap[EntDTO](ctx, ent.Ent),
 	}, nil
 }

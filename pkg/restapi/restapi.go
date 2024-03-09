@@ -114,28 +114,24 @@ func (ms Mapping[Entity]) mappingFor(mimeType MIMEType) dtoMapping[Entity] {
 // passthroughMappingMode enables a passthrough mapping mode where entity is used as the DTO itself.
 // Since we can't rule out that they don't use restapi.Resource with a DTO type in the first place.
 func (ms Mapping[Entity]) passthroughMappingMode() DTOMapping[Entity, Entity] {
-	return DTOMapping[Entity, Entity]{M: &dtos.M{}}
+	return DTOMapping[Entity, Entity]{}
 }
 
 type dtoMapping[Entity any] interface {
 	dto()
 
 	newDTO() (dtoPtr any)
-	dtoToEnt(dtoPtr any) (Entity, error)
-	entToDTO(ent Entity) (DTO any, _ error)
+	dtoToEnt(ctx context.Context, dtoPtr any) (Entity, error)
+	entToDTO(ctx context.Context, ent Entity) (DTO any, _ error)
 }
 
-type DTOMapping[Entity, DTO any] struct {
-	// M is the type mapping register.
-	// It contains the knowledge how to map an Entity into a Data Transfer Object
-	M *dtos.M
-}
+type DTOMapping[Entity, DTO any] struct{}
 
 func (dto DTOMapping[Entity, DTO]) dto() {}
 
 func (dto DTOMapping[Entity, DTO]) newDTO() any { return new(DTO) }
 
-func (dto DTOMapping[Entity, DTO]) dtoToEnt(dtoPtr any) (Entity, error) {
+func (dto DTOMapping[Entity, DTO]) dtoToEnt(ctx context.Context, dtoPtr any) (Entity, error) {
 	if dtoPtr == nil {
 		return *new(Entity), fmt.Errorf("nil dto ptr")
 	}
@@ -146,11 +142,11 @@ func (dto DTOMapping[Entity, DTO]) dtoToEnt(dtoPtr any) (Entity, error) {
 	if ptr == nil {
 		return *new(Entity), fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
 	}
-	return dtos.Map[Entity](dto.M, *ptr)
+	return dtos.Map[Entity](ctx, *ptr)
 }
 
-func (dto DTOMapping[Entity, DTO]) entToDTO(ent Entity) (any, error) {
-	return dtos.Map[DTO](dto.M, ent)
+func (dto DTOMapping[Entity, DTO]) entToDTO(ctx context.Context, ent Entity) (any, error) {
+	return dtos.Map[DTO](ctx, ent)
 }
 
 func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -331,7 +327,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ent, err := reqMapping.dtoToEnt(dtoPtr)
+	ent, err := reqMapping.dtoToEnt(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -352,7 +348,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 		resMapping          = res.Mapping.mappingFor(resMIMEType)
 	)
 
-	dto, err := resMapping.entToDTO(ent)
+	dto, err := resMapping.entToDTO(ctx, ent)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -399,7 +395,7 @@ func (res Resource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id 
 
 	w.Header().Set(headerKeyContentType, resMIMEType.String())
 
-	dto, err := mapping.entToDTO(entity)
+	dto, err := mapping.entToDTO(ctx, entity)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -457,7 +453,7 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 		}
 	}
 
-	entity, err := reqMapping.dtoToEnt(dtoPtr)
+	entity, err := reqMapping.dtoToEnt(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -605,7 +601,6 @@ func (s JSONSerializer) NewListEncoder(w io.Writer) ListEncoder {
 
 type jsonListEncoder struct {
 	W io.Writer
-	M *dtos.M
 
 	bracketOpen bool
 	index       int

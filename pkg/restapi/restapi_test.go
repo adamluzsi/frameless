@@ -56,7 +56,7 @@ func ExampleResource() {
 		Destroy: fooRepository.DeleteByID,
 
 		Mapping: restapi.Mapping[Foo]{
-			restapi.JSON: restapi.DTOMapping[Foo, FooDTO]{M: &JSONMapping},
+			restapi.JSON: restapi.DTOMapping[Foo, FooDTO]{},
 		},
 	}
 

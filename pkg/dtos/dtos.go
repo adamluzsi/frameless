@@ -1,6 +1,7 @@
 package dtos
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -9,13 +10,15 @@ import (
 	"sync"
 )
 
-type M struct {
+var m _M
+
+type _M struct {
 	mutex  sync.RWMutex
 	_init  sync.Once
 	byType map[MK]*mRec
 }
 
-func (m *M) FromMappings(v any) []MK {
+func (m *_M) FromMappings(v any) []MK {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	var (
@@ -36,63 +39,63 @@ type MK struct {
 }
 
 type mRec struct {
-	EntType reflect.Type
-	DTOType reflect.Type
-	ToDTO   func(ent any) (dto any, err error)
-	ToEnt   func(dto any) (ent any, err error)
+	TypeA  reflect.Type
+	TypeB  reflect.Type
+	MapToB func(ctx context.Context, a any) (b any, err error)
+	MapToA func(ctx context.Context, b any) (a any, err error)
 }
 
-func (rec mRec) Map(v any) (any, error) {
+func (rec mRec) Map(ctx context.Context, v any) (any, error) {
 	switch reflect.TypeOf(v) {
-	case rec.EntType:
-		return rec.ToDTO(v)
-	case rec.DTOType:
-		return rec.ToEnt(v)
+	case rec.TypeA:
+		return rec.MapToB(ctx, v)
+	case rec.TypeB:
+		return rec.MapToA(ctx, v)
 	default:
 		return nil, fmt.Errorf("type not recognised: %T", v)
 	}
 }
 
-type Mapping[Ent, DTO any] interface {
-	ToEnt(*M, DTO) (Ent, error)
-	ToDTO(*M, Ent) (DTO, error)
-}
+type MapFunc[From, To any] func(context.Context, From) (To, error)
 
-func Register[Ent, DTO any](m *M, mapping Mapping[Ent, DTO]) func() {
+func Register[From, To any](mapA MapFunc[From, To], mapB MapFunc[To, From]) func() {
+	if mapA == nil || mapB == nil {
+		panic("missing MapFunc")
+	}
 	mr := mRec{
-		EntType: reflectkit.TypeOf[Ent](),
-		DTOType: reflectkit.TypeOf[DTO](),
-		ToDTO: func(ent any) (dto any, err error) {
-			return mapping.ToDTO(m, ent.(Ent))
+		TypeA: reflectkit.TypeOf[From](),
+		TypeB: reflectkit.TypeOf[To](),
+		MapToB: func(ctx context.Context, from any) (to any, err error) {
+			return mapA(ctx, from.(From))
 		},
-		ToEnt: func(dto any) (ent any, err error) {
-			return mapping.ToEnt(m, dto.(DTO))
+		MapToA: func(ctx context.Context, to any) (from any, err error) {
+			return mapB(ctx, to.(To))
 		},
 	}
 	m.register(mr)
 	return func() { m.unregister(mr) }
 }
 
-func (m *M) init() {
+func (m *_M) init() {
 	m._init.Do(func() { m.byType = make(map[MK]*mRec) })
 }
 
-func (m *M) register(r mRec) {
+func (m *_M) register(r mRec) {
 	m.init()
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	m.byType[MK{From: r.EntType, To: r.DTOType}] = &r
-	m.byType[MK{From: r.DTOType, To: r.EntType}] = &r
+	m.byType[MK{From: r.TypeA, To: r.TypeB}] = &r
+	m.byType[MK{From: r.TypeB, To: r.TypeA}] = &r
 }
 
-func (m *M) unregister(r mRec) {
+func (m *_M) unregister(r mRec) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	delete(m.byType, MK{From: r.EntType, To: r.DTOType})
-	delete(m.byType, MK{From: r.DTOType, To: r.EntType})
+	delete(m.byType, MK{From: r.TypeA, To: r.TypeB})
+	delete(m.byType, MK{From: r.TypeB, To: r.TypeA})
 }
 
-func (m *M) lookupByType(from, to reflect.Type) (*mRec, bool) {
+func (m *_M) lookupByType(from, to reflect.Type) (*mRec, bool) {
 	m.mutex.RLock()
 	defer m.mutex.RUnlock()
 	if m.byType == nil {
@@ -104,8 +107,8 @@ func (m *M) lookupByType(from, to reflect.Type) (*mRec, bool) {
 
 const ErrNoMapping errorkit.Error = "[dtos] missing mapping"
 
-func Map[To, From any](m *M, from From) (_ To, returnErr error) {
-	torv, err := m.Map(P[From, To]{}, from)
+func Map[To, From any](ctx context.Context, from From) (_ To, returnErr error) {
+	torv, err := m.Map(ctx, P[From, To]{}, from)
 	if err != nil {
 		return *new(To), err
 	}
@@ -115,8 +118,8 @@ func Map[To, From any](m *M, from From) (_ To, returnErr error) {
 // P is a Mapping pair
 type P[A, B any] struct{}
 
-func (p P[A, B]) MapA(m *M, v B) (A, error) { return Map[A, B](m, v) }
-func (p P[A, B]) MapB(m *M, v A) (B, error) { return Map[B, A](m, v) }
+func (p P[A, B]) MapA(ctx context.Context, v B) (A, error) { return Map[A, B](ctx, v) }
+func (p P[A, B]) MapB(ctx context.Context, v A) (B, error) { return Map[B, A](ctx, v) }
 
 func (p P[A, B]) NewA() *A { return new(A) }
 func (p P[A, B]) NewB() *B { return new(B) }
@@ -132,7 +135,7 @@ type MP interface {
 	ToType() reflect.Type
 }
 
-func (m *M) Map(mp MP, from any) (_ any, returnErr error) {
+func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) {
 	if mp.FromType() == mp.ToType() { // passthrough mode
 		return from, nil
 	}
@@ -146,7 +149,7 @@ func (m *M) Map(mp MP, from any) (_ any, returnErr error) {
 		return nil, fmt.Errorf("%w from %s to %s", ErrNoMapping,
 			mp.FromType().String(), mp.ToType().String())
 	}
-	to, err := r.Map(reflectkit.BaseValue(reflect.ValueOf(from)).Interface())
+	to, err := r.Map(ctx, reflectkit.BaseValue(reflect.ValueOf(from)).Interface())
 	if err != nil {
 		return nil, err
 	}
@@ -166,8 +169,8 @@ func (err ErrMustMap) Error() string {
 	return "ErrMustMap"
 }
 
-func MustMap[To, From any](m *M, from From) To {
-	to, err := Map[To, From](m, from)
+func MustMap[To, From any](ctx context.Context, from From) To {
+	to, err := Map[To, From](ctx, from)
 	if err != nil {
 		panic(ErrMustMap{Err: err})
 	}
