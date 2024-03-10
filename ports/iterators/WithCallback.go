@@ -1,25 +1,63 @@
 package iterators
 
-import (
-	"io"
-)
+import "go.llib.dev/frameless/pkg/errorkit"
 
-func WithCallback[T any](i Iterator[T], c Callback) Iterator[T] {
-	return &CallbackIterator[T]{Iterator: i, Callback: c}
+func OnClose(fn func() error) CallbackOption {
+	return callbackFunc(func(c *callbackConfig) {
+		c.OnClose = append(c.OnClose, fn)
+	})
 }
 
-type Callback struct {
-	OnClose func(io.Closer) error
-}
-
-type CallbackIterator[T any] struct {
-	Iterator[T]
-	Callback
-}
-
-func (i *CallbackIterator[T]) Close() error {
-	if i.Callback.OnClose != nil {
-		return i.Callback.OnClose(i.Iterator)
+func WithCallback[T any](i Iterator[T], cs ...CallbackOption) Iterator[T] {
+	if len(cs) == 0 {
+		return i
 	}
-	return i.Iterator.Close()
+	return &callbackIterator[T]{Iterator: i, CallbackConfig: toCallback(cs)}
 }
+
+// Callback
+//
+// DEPRECATED: use OnClose
+type Callback struct {
+	OnClose func() error
+}
+
+func (c Callback) configure(conf *callbackConfig) {
+	if c.OnClose != nil {
+		conf.OnClose = append(conf.OnClose, c.OnClose)
+	}
+}
+
+type callbackIterator[T any] struct {
+	Iterator[T]
+	CallbackConfig callbackConfig
+}
+
+func (i *callbackIterator[T]) Close() error {
+	var errs []error
+	errs = []error{i.Iterator.Close()}
+	for _, onClose := range i.CallbackConfig.OnClose {
+		errs = append(errs, onClose())
+	}
+	return errorkit.Merge(errs...)
+}
+
+func toCallback(cs []CallbackOption) callbackConfig {
+	var c callbackConfig
+	for _, opt := range cs {
+		opt.configure(&c)
+	}
+	return c
+}
+
+type callbackConfig struct {
+	OnClose []func() error
+}
+
+type CallbackOption interface {
+	configure(c *callbackConfig)
+}
+
+type callbackFunc func(c *callbackConfig)
+
+func (fn callbackFunc) configure(c *callbackConfig) { fn(c) }

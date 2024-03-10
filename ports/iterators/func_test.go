@@ -11,9 +11,12 @@ func TestFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	type FN func() (value string, more bool, err error)
-	var fn = testcase.Let[FN](s, nil)
+	var (
+		fn  = testcase.Let[FN](s, nil)
+		cbs = testcase.LetValue[[]iterators.CallbackOption](s, nil)
+	)
 	act := testcase.Let(s, func(t *testcase.T) iterators.Iterator[string] {
-		return iterators.Func[string](fn.Get(t))
+		return iterators.Func[string](fn.Get(t), cbs.Get(t)...)
 	})
 
 	s.When("func yields values", func(s *testcase.Spec) {
@@ -50,9 +53,11 @@ func TestFunc(t *testing.T) {
 			return t.Random.Error()
 		})
 
+		count := testcase.LetValue(s, 0)
 		fn.Let(s, func(t *testcase.T) FN {
 			return func() (string, bool, error) {
-				return "", t.Random.Bool(), expectedErr.Get(t)
+				count.Set(t, count.Get(t)+1)
+				return t.Random.String(), t.Random.Bool(), expectedErr.Get(t)
 			}
 		})
 
@@ -60,6 +65,45 @@ func TestFunc(t *testing.T) {
 			iter := act.Get(t)
 			t.Must.False(iter.Next())
 			t.Must.ErrorIs(expectedErr.Get(t), iter.Err())
+		})
+
+		s.Then("on repeated calls, function is called no more", func(t *testcase.T) {
+			iter := act.Get(t)
+			t.Must.False(iter.Next())
+			t.Must.ErrorIs(expectedErr.Get(t), iter.Err())
+
+			iter = act.Get(t)
+			t.Must.False(iter.Next())
+			t.Must.ErrorIs(expectedErr.Get(t), iter.Err())
+
+			t.Must.Equal(1, count.Get(t))
+		})
+	})
+
+	s.When("callback is provided", func(s *testcase.Spec) {
+		fn.Let(s, func(t *testcase.T) FN {
+			return func() (string, bool, error) {
+				return "", false, nil
+			}
+		})
+
+		closed := testcase.LetValue(s, false)
+		cbs.Let(s, func(t *testcase.T) []iterators.CallbackOption {
+			return []iterators.CallbackOption{
+				iterators.Callback{
+					OnClose: func() error {
+						closed.Set(t, true)
+						return nil
+					},
+				},
+			}
+		})
+
+		s.Test("then value collected without an issue", func(t *testcase.T) {
+			vs, err := iterators.Collect[string](act.Get(t))
+			t.Must.Nil(err)
+			t.Must.Empty(vs)
+			t.Must.True(closed.Get(t))
 		})
 	})
 }

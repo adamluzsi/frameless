@@ -2,7 +2,7 @@ package iterators_test
 
 import (
 	"errors"
-	"io"
+	"go.llib.dev/testcase/random"
 	"testing"
 
 	"go.llib.dev/frameless/ports/iterators"
@@ -26,10 +26,21 @@ func TestWithCallback(t *testing.T) {
 			assert.Must(t).Equal(3, len(actually))
 			assert.Must(t).ContainExactly(expected, actually)
 		})
+
+		s.Then(`if actually no option is given, it returns the original iterator`, func(t *testcase.T) {
+			expected := []int{1, 2, 3}
+			input := iterators.Slice(expected)
+			i := iterators.WithCallback[int](input)
+			assert.Equal(t, input, i)
+			actually, err := iterators.Collect(i)
+			assert.Must(t).Nil(err)
+			assert.Must(t).Equal(3, len(actually))
+			assert.Must(t).ContainExactly(expected, actually)
+		})
 	})
 
 	s.When(`OnClose callback is given`, func(s *testcase.Spec) {
-		s.Then(`the callback receive the Close func call`, func(t *testcase.T) {
+		s.Then(`the callback is called after the iterator.eClose`, func(t *testcase.T) {
 			var closeHook []string
 
 			m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
@@ -38,73 +49,51 @@ func TestWithCallback(t *testing.T) {
 				return nil
 			}
 
+			callbackErr := random.New(random.CryptoSeed{}).Error()
+
 			i := iterators.WithCallback[int](m, iterators.Callback{
-				OnClose: func(closer io.Closer) error {
-					closeHook = append(closeHook, `before`)
-					err := closer.Close()
+				OnClose: func() error {
 					closeHook = append(closeHook, `after`)
-					return err
+					return callbackErr
 				},
 			})
 
-			assert.Must(t).Nil(i.Close())
-			assert.Must(t).Equal(3, len(closeHook))
-			assert.Must(t).Equal(`before`, closeHook[0])
-			assert.Must(t).Equal(`during`, closeHook[1])
-			assert.Must(t).Equal(`after`, closeHook[2])
+			assert.Must(t).ErrorIs(callbackErr, i.Close())
+			assert.Must(t).Equal(2, len(closeHook))
+			assert.Must(t).Equal(`during`, closeHook[0])
+			assert.Must(t).Equal(`after`, closeHook[1])
 		})
 
 		s.And(`error happen during closing in hook`, func(s *testcase.Spec) {
-			s.And(`and the callback decide to forward the error`, func(s *testcase.Spec) {
+			s.And(`and the callback has no issue`, func(s *testcase.Spec) {
 				s.Then(`error received`, func(t *testcase.T) {
 					expectedErr := errors.New(`boom`)
 
 					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
 					m.StubClose = func() error { return expectedErr }
 					i := iterators.WithCallback[int](m, iterators.Callback{
-						OnClose: func(closer io.Closer) error {
-							return closer.Close()
+						OnClose: func() error {
+							return nil
 						}})
 
 					assert.Must(t).Equal(expectedErr, i.Close())
 				})
 			})
-
-			s.And(`the callback decide to hide the error`, func(s *testcase.Spec) {
-				s.Then(`error held back`, func(t *testcase.T) {
-					expectedErr := errors.New(`boom`)
-
-					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
-					m.StubClose = func() error { return expectedErr }
-					i := iterators.WithCallback[int](m, iterators.Callback{
-						OnClose: func(closer io.Closer) error {
-							_ = closer.Close()
-							return nil
-						}})
-
-					assert.Must(t).Nil(i.Close())
-				})
-			})
-		})
-
-		s.And(`callback prevent call from being called`, func(s *testcase.Spec) {
-			s.Then(`close will never happen`, func(t *testcase.T) {
-				var closed bool
-				m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
-				m.StubClose = func() error {
-					closed = true
-					return nil
-				}
-
-				i := iterators.WithCallback[int](m, iterators.Callback{
-					OnClose: func(closer io.Closer) error {
-						return nil // ignore closer explicitly
-					},
-				})
-
-				assert.Must(t).Nil(i.Close())
-				assert.Must(t).False(closed)
-			})
 		})
 	})
+}
+
+func TestCallbackOnClose(t *testing.T) {
+	var closed bool
+	expErr := random.New(random.CryptoSeed{}).Error()
+	iter := iterators.Slice([]int{1, 2, 3})
+	iter = iterators.WithCallback(iter, iterators.OnClose(func() error {
+		closed = true
+		return expErr
+	}))
+
+	vs, err := iterators.Collect(iter)
+	assert.ErrorIs(t, err, expErr)
+	assert.Equal(t, []int{1, 2, 3}, vs)
+	assert.True(t, closed)
 }

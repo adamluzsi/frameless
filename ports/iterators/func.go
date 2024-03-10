@@ -1,11 +1,18 @@
 package iterators
 
-func Func[T any](next func() (v T, more bool, err error)) Iterator[T] {
-	return &funcIter[T]{NextFn: next}
+// Func enables you to create an iterator with a lambda expression.
+// Func is very useful when you have to deal with non type safe iterators
+// that you would like to map into a type safe variant.
+// In case you need to close the currently mapped resource, use the OnClose callback option.
+func Func[T any](next func() (v T, ok bool, err error), callbackOptions ...CallbackOption) Iterator[T] {
+	var iter Iterator[T]
+	iter = &funcIter[T]{NextFn: next}
+	iter = WithCallback(iter, callbackOptions...)
+	return iter
 }
 
 type funcIter[T any] struct {
-	NextFn func() (v T, more bool, err error)
+	NextFn func() (v T, ok bool, err error)
 
 	value T
 	err   error
@@ -20,13 +27,19 @@ func (i *funcIter[T]) Err() error {
 }
 
 func (i *funcIter[T]) Next() bool {
-	value, more, err := i.NextFn()
+	if i.err != nil {
+		return false
+	}
+	value, ok, err := i.NextFn()
 	if err != nil {
 		i.err = err
 		return false
 	}
+	if !ok {
+		return false
+	}
 	i.value = value
-	return more
+	return true
 }
 
 func (i *funcIter[T]) Value() T {
