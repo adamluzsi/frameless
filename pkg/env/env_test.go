@@ -2,6 +2,7 @@ package env_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"go.llib.dev/frameless/pkg/enum"
 	"net/url"
 	"reflect"
@@ -597,10 +598,10 @@ func ExampleSet() {
 	)
 
 	es := &env.Set{}
-	env.SetLookup(es, "A", &A)
-	env.SetLookup(es, "B", &B)
-	env.SetLookup(es, "C", &C, env.DefaultValue("c-default-value"))
-	env.SetLookup(es, "D", &D, env.ListSeparator(","))
+	env.SetLookup(es, &A, "A")
+	env.SetLookup(es, &B, "B")
+	env.SetLookup(es, &C, "C", env.DefaultValue("c-default-value"))
+	env.SetLookup(es, &D, "D", env.ListSeparator(","))
 	if err := es.Parse(); err != nil {
 		panic(err)
 	}
@@ -620,10 +621,10 @@ func TestSet(t *testing.T) {
 		testcase.SetEnv(t, "D", "foo,bar,baz")
 
 		es := &env.Set{}
-		env.SetLookup(es, "A", &A)
-		env.SetLookup(es, "B", &B)
-		env.SetLookup(es, "C", &C, env.DefaultValue("c-default-value"))
-		env.SetLookup(es, "D", &D, env.ListSeparator(","))
+		env.SetLookup(es, &A, "A")
+		env.SetLookup(es, &B, "B")
+		env.SetLookup(es, &C, "C", env.DefaultValue("c-default-value"))
+		env.SetLookup(es, &D, "D", env.ListSeparator(","))
 		assert.NoError(t, es.Parse())
 
 		assert.Equal(t, A, true)
@@ -651,10 +652,10 @@ func TestSet(t *testing.T) {
 		)()
 
 		es := &env.Set{}
-		env.SetLookup(es, "A", &A)
-		env.SetLookup(es, "B", &B)
-		env.SetLookup(es, "C", &C, env.DefaultValue("c-default-value"))
-		env.SetLookup(es, "D", &D, env.ListSeparator(","))
+		env.SetLookup(es, &A, "A")
+		env.SetLookup(es, &B, "B")
+		env.SetLookup(es, &C, "C", env.DefaultValue("c-default-value"))
+		env.SetLookup(es, &D, "D", env.ListSeparator(","))
 		assert.Error(t, es.Parse())
 	})
 
@@ -673,8 +674,23 @@ func TestSet(t *testing.T) {
 		)()
 
 		es := &env.Set{}
-		env.SetLookup(es, "A", &A)
-		env.SetLookup(es, "B", &B)
+		env.SetLookup(es, &A, "A")
+		env.SetLookup(es, &B, "B")
 		assert.Error(t, es.Parse())
+	})
+
+	t.Run("nil pointer is given for env.Set", func(t *testing.T) {
+		val := assert.Panic(t, func() {
+			var str string
+			env.SetLookup(nil, &str, "KEY")
+		})
+		assert.NotContain(t, fmt.Sprintf("%v", val), "nil pointer dereference")
+	})
+
+	t.Run("nil value pointer is given", func(t *testing.T) {
+		val := assert.Panic(t, func() {
+			env.SetLookup[string](&env.Set{}, nil, "KEY")
+		})
+		assert.NotContain(t, fmt.Sprintf("%v", val), "nil pointer dereference")
 	})
 }

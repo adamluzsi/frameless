@@ -358,7 +358,14 @@ type Set struct {
 // When 'Set.Parse' is invoked, all the registered lookups will be executed.
 // Unlike the 'Lookup' function, 'SetLookup' doesn't permit missing environment variables without a fallback value
 // and will raise it as an issue.
-func SetLookup[T any](set *Set, key string, ptr *T, opts ...LookupOption) {
+func SetLookup[T any](set *Set, ptr *T, key string, opts ...LookupOption) {
+	if set == nil {
+		panic("SetLookup requires a non nil Set pointer")
+	}
+	if ptr == nil {
+		panic(fmt.Sprintf("SetLookup requires a non nil %T pointer",
+			reflectkit.TypeOf[T]().String()))
+	}
 	var lookup = func() error {
 		value, ok, err := Lookup[T](key, opts...)
 		if err != nil {
