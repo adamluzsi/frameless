@@ -17,7 +17,7 @@ import (
 const ErrLoadInvalidData errorkit.Error = "ErrLoadInvalidData"
 
 func Lookup[T any](key string, opts ...LookupOption) (T, bool, error) {
-	typ := reflect.TypeOf(*new(T))
+	typ := reflectkit.TypeOf[T]()
 	var conf lookupEnvOptions
 	for _, opt := range opts {
 		opt.configure(&conf)
@@ -179,7 +179,7 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 	if !ok {
 		var err error
 		if opts.IsRequired {
-			err = fmt.Errorf("missing environment variable: %s", key)
+			err = errMissingEnvironmentVariable(key)
 		}
 		return reflect.Value{}, false, err
 	}
@@ -191,6 +191,10 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 		return reflect.Value{}, false, err
 	}
 	return rv, true, nil
+}
+
+func errMissingEnvironmentVariable(key string) error {
+	return fmt.Errorf("missing environment variable: %s", key)
 }
 
 type parseEnvValueOptions struct {
@@ -345,3 +349,34 @@ var _ = RegisterParser[url.URL](func(envValue string) (url.URL, error) {
 	}
 	return url.URL{}, fmt.Errorf("invalid url: %s", envValue)
 })
+
+type Set struct {
+	lookups []func() error
+}
+
+// SetLookup function registers a Lookup within a specified Set.
+// When 'Set.Parse' is invoked, all the registered lookups will be executed.
+// Unlike the 'Lookup' function, 'SetLookup' doesn't permit missing environment variables without a fallback value
+// and will raise it as an issue.
+func SetLookup[T any](set *Set, key string, ptr *T, opts ...LookupOption) {
+	var lookup = func() error {
+		value, ok, err := Lookup[T](key, opts...)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errMissingEnvironmentVariable(key)
+		}
+		*ptr = value
+		return nil
+	}
+	set.lookups = append(set.lookups, lookup)
+}
+
+func (es Set) Parse() error {
+	var errs []error
+	for _, lookup := range es.lookups {
+		errs = append(errs, lookup())
+	}
+	return errorkit.Merge(errs...)
+}

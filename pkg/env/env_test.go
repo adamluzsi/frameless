@@ -587,3 +587,94 @@ func TestLookup_smoke(t *testing.T) {
 	assert.True(t, ok)
 	assert.True(t, timeval.Equal(refTime))
 }
+
+func ExampleSet() {
+	var (
+		A bool
+		B int
+		C string
+		D []string
+	)
+
+	es := &env.Set{}
+	env.SetLookup(es, "A", &A)
+	env.SetLookup(es, "B", &B)
+	env.SetLookup(es, "C", &C, env.DefaultValue("c-default-value"))
+	env.SetLookup(es, "D", &D, env.ListSeparator(","))
+	if err := es.Parse(); err != nil {
+		panic(err)
+	}
+}
+
+func TestSet(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		var (
+			A bool
+			B int
+			C string
+			D []string
+		)
+
+		testcase.SetEnv(t, "A", "true")
+		testcase.SetEnv(t, "B", "42")
+		testcase.SetEnv(t, "D", "foo,bar,baz")
+
+		es := &env.Set{}
+		env.SetLookup(es, "A", &A)
+		env.SetLookup(es, "B", &B)
+		env.SetLookup(es, "C", &C, env.DefaultValue("c-default-value"))
+		env.SetLookup(es, "D", &D, env.ListSeparator(","))
+		assert.NoError(t, es.Parse())
+
+		assert.Equal(t, A, true)
+		assert.Equal(t, B, 42)
+		assert.Equal(t, C, "c-default-value")
+		assert.Equal(t, D, []string{"foo", "bar", "baz"})
+	})
+
+	t.Run("at least one missing env value", func(t *testing.T) {
+		var (
+			A bool
+			B int
+			C string
+			D []string
+		)
+
+		testcase.SetEnv(t, "A", "true")
+		testcase.SetEnv(t, "B", "42")
+		testcase.SetEnv(t, "D", "foo,bar,baz")
+
+		random.Pick[func()](rnd,
+			func() { testcase.UnsetEnv(t, "A") },
+			func() { testcase.UnsetEnv(t, "B") },
+			func() { testcase.UnsetEnv(t, "D") },
+		)()
+
+		es := &env.Set{}
+		env.SetLookup(es, "A", &A)
+		env.SetLookup(es, "B", &B)
+		env.SetLookup(es, "C", &C, env.DefaultValue("c-default-value"))
+		env.SetLookup(es, "D", &D, env.ListSeparator(","))
+		assert.Error(t, es.Parse())
+	})
+
+	t.Run("at least one env value has an error", func(t *testing.T) {
+		var (
+			A bool
+			B int
+		)
+
+		testcase.SetEnv(t, "A", "true")
+		testcase.SetEnv(t, "B", "42")
+
+		random.Pick[func()](rnd,
+			func() { testcase.SetEnv(t, "A", "that's true") },
+			func() { testcase.SetEnv(t, "B", "fourty-two") },
+		)()
+
+		es := &env.Set{}
+		env.SetLookup(es, "A", &A)
+		env.SetLookup(es, "B", &B)
+		assert.Error(t, es.Parse())
+	})
+}
