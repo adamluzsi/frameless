@@ -329,6 +329,22 @@ func TestLogger_concurrentUse(t *testing.T) {
 
 }
 
+func TestLogger_Clone(t *testing.T) {
+	var (
+		buf = &bytes.Buffer{}
+		lgr = logger.Logger{Out: buf}
+		cln = lgr.Clone()
+	)
+	assert.Equal(t, &lgr, &cln)
+	ogLevel := lgr.Level
+	cln.Level = logger.LevelDebug
+	assert.Equal(t, ogLevel, lgr.Level)
+	assert.Equal(t, logger.LevelDebug, cln.Level)
+	assert.NotEqual(t, &lgr, &cln)
+	cln.Debug(nil, "msg")
+	assert.Contain(t, buf.String(), "msg")
+}
+
 type TeeBuffer struct {
 	A, B iokit.Buffer
 }

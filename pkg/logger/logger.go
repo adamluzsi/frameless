@@ -42,10 +42,12 @@ type Logger struct {
 
 	outLock sync.Mutex
 
-	strategy struct {
-		mutex    sync.RWMutex
-		strategy strategy
-	}
+	strategy _LoggerStrategy
+}
+
+type _LoggerStrategy struct {
+	mutex    sync.RWMutex
+	strategy strategy
 }
 
 type HijackFunc func(level Level, msg string, fields Fields)
@@ -232,4 +234,21 @@ func (l *Logger) getLevel() Level {
 	return zerokit.Init[Level](&l.Level, func() Level {
 		return defaultLevel
 	})
+}
+
+func (l Logger) Clone() Logger {
+	return Logger{
+		Out:          l.Out,
+		Level:        l.Level,
+		Separator:    l.Separator,
+		MessageKey:   l.MessageKey,
+		LevelKey:     l.LevelKey,
+		TimestampKey: l.TimestampKey,
+		MarshalFunc:  l.MarshalFunc,
+		KeyFormatter: l.KeyFormatter,
+		Hijack:       l.Hijack,
+		strategy: _LoggerStrategy{
+			strategy: l.strategy.strategy,
+		},
+	}
 }

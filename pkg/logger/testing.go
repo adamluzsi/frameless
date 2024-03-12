@@ -32,7 +32,8 @@ type StubOutput interface {
 // Stub will restore the logger.Default after the test.
 func Stub(tb testingTB) StubOutput {
 	var og Logger
-	og = Default // pass by value copy
+	og = Default // ignore GoVetCopyLock
+	Default = Default.Clone()
 	tb.Cleanup(func() { Default = og })
 	buf := &stubOutput{}
 	Default.Out = buf
