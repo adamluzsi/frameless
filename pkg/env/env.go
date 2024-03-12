@@ -168,6 +168,7 @@ type lookupEnvOptions struct {
 	Separator    *string
 	IsRequired   bool
 	TimeLayout   *string
+	Parser       func(string) (any, error)
 }
 
 func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Value, bool, error) {
@@ -186,6 +187,7 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 	rv, err := parseEnvValue(typ, val, parseEnvValueOptions{
 		Separator:  opts.Separator,
 		TimeLayout: opts.TimeLayout,
+		Parser:     opts.Parser,
 	})
 	if err != nil {
 		return reflect.Value{}, false, err
@@ -200,6 +202,7 @@ func errMissingEnvironmentVariable(key string) error {
 type parseEnvValueOptions struct {
 	Separator  *string
 	TimeLayout *string
+	Parser     func(string) (any, error)
 }
 
 var timeType = reflect.TypeOf(time.Time{})
@@ -212,6 +215,18 @@ Please use the "layout" or "env-time-layout" tag to supply it in a struct field
 or use the TimeLayout Lookup option.`
 
 func parseEnvValue(typ reflect.Type, val string, opts parseEnvValueOptions) (reflect.Value, error) {
+	if opts.Parser != nil {
+		out, err := opts.Parser(val)
+		if err != nil {
+			return reflect.Value{}, fmt.Errorf("ParseWith func error: %w", err)
+		}
+		rval := reflect.ValueOf(out)
+		if gotTyp := rval.Type(); gotTyp != typ {
+			return reflect.Value{}, fmt.Errorf("ParseWith result has incorrect type, expected %s but got %s: %#v",
+				typ.String(), gotTyp.String(), out)
+		}
+		return rval, nil
+	}
 	if parser, ok := registry[typ]; ok && parser != nil {
 		out, err := parser(val)
 		if err != nil {
@@ -315,7 +330,9 @@ func errParsingEnvValue(structField reflect.StructField, err error) error {
 
 var registry = map[reflect.Type]func(string) (any, error){}
 
-func RegisterParser[T any](parser func(envValue string) (T, error)) struct{} {
+type ParserFunc[T any] func(envValue string) (T, error)
+
+func RegisterParser[T any](parser ParserFunc[T]) struct{} {
 	var fn func(raw string) (any, error)
 	if parser != nil {
 		fn = func(raw string) (any, error) {
@@ -328,6 +345,14 @@ func RegisterParser[T any](parser func(envValue string) (T, error)) struct{} {
 	}
 	registry[reflect.TypeOf(*new(T))] = fn
 	return struct{}{}
+}
+
+func ParseWith[T any](parser ParserFunc[T]) LookupOption {
+	return funcLookupOption(func(options *lookupEnvOptions) {
+		options.Parser = func(ev string) (any, error) {
+			return parser(ev)
+		}
+	})
 }
 
 var _ = RegisterParser(func(envValue string) (time.Duration, error) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/testcase/pp"
 	"net/url"
 	"reflect"
 	"strings"
@@ -692,5 +693,61 @@ func TestSet(t *testing.T) {
 			env.SetLookup[string](&env.Set{}, nil, "KEY")
 		})
 		assert.NotContain(t, fmt.Sprintf("%v", val), "nil pointer dereference")
+	})
+}
+
+func ExampleParseWith() {
+	// export FOO=foo:baz
+	type Conf struct {
+		Foo string
+		Bar string
+	}
+	parserFunc := func(v string) (Conf, error) {
+		parts := strings.SplitN(v, ":", 1)
+		if len(parts) != 2 {
+			return Conf{}, fmt.Errorf("invalid format")
+		}
+		return Conf{
+			Foo: parts[0],
+			Bar: parts[1],
+		}, nil
+	}
+	conf, ok, err := env.Lookup[Conf]("FOO", env.ParseWith(parserFunc))
+	_, _, _ = conf, ok, err
+}
+
+func TestParseWith(t *testing.T) {
+	type Conf struct {
+		Foo string
+		Bar string
+	}
+	t.Run("happy", func(t *testing.T) {
+		testcase.SetEnv(t, "FOO", "foo:bar")
+
+		conf, ok, err := env.Lookup[Conf]("FOO", env.ParseWith(func(v string) (Conf, error) {
+			var c Conf
+			parts := strings.SplitN(v, ":", 2)
+			if len(parts) != 2 {
+				pp.PP(parts, v)
+				return c, fmt.Errorf("invalid format")
+			}
+			c.Foo = parts[0]
+			c.Bar = parts[1]
+			return c, nil
+		}))
+
+		assert.Equal(t, conf, Conf{Foo: "foo", Bar: "bar"})
+		assert.Equal(t, ok, true)
+		assert.NoError(t, err)
+	})
+	t.Run("rainy", func(t *testing.T) {
+		testcase.SetEnv(t, "FOO", "whatever")
+		expErr := rnd.Error()
+		conf, ok, err := env.Lookup[Conf]("FOO", env.ParseWith(func(v string) (Conf, error) {
+			return Conf{}, expErr
+		}))
+		assert.Empty(t, conf)
+		assert.False(t, ok)
+		assert.ErrorIs(t, err, expErr)
 	})
 }
