@@ -9,6 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -28,7 +29,7 @@ func ExampleField() {
 		logger.Field("key2", "value"))
 }
 
-func ExampleRegisterFieldType() {
+func ExampleRegisterFieldType_asLoggingDetails() {
 	type MyEntity struct {
 		ID               string
 		NonSensitiveData string
@@ -79,6 +80,20 @@ func TestField(t *testing.T) {
 
 			t.Must.Contain(buf.Get(t).String(), strconv.Itoa(value.Get(t).(int)))
 		})
+
+		s.And("is a sub type", func(s *testcase.Spec) {
+			type IntType int
+			value.Let(s, func(t *testcase.T) any {
+				return IntType(t.Random.Int())
+			})
+
+			s.Then("it automatically take it as a string", func(t *testcase.T) {
+				afterLogging(t)
+				keyIsLogged(t)
+
+				t.Must.Contain(buf.Get(t).String(), strconv.Itoa(int(value.Get(t).(IntType))))
+			})
+		})
 	})
 
 	s.When("value is string", func(s *testcase.Spec) {
@@ -91,6 +106,20 @@ func TestField(t *testing.T) {
 			keyIsLogged(t)
 
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", value.Get(t).(string)))
+		})
+
+		s.And("is a sub type", func(s *testcase.Spec) {
+			type StringType string
+			value.Let(s, func(t *testcase.T) any {
+				return StringType(t.Random.String())
+			})
+
+			s.Then("it automatically take it as a string", func(t *testcase.T) {
+				afterLogging(t)
+				keyIsLogged(t)
+
+				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", string(value.Get(t).(StringType))))
+			})
 		})
 	})
 
@@ -272,6 +301,38 @@ func TestField(t *testing.T) {
 
 			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
 		})
+	})
+}
+
+func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
+	t.Run("for concrete type", func(t *testing.T) {
+		type X struct{ V int }
+		buf := logger.Stub(t)
+		unregister := logger.RegisterFieldType[X](func(x X) logger.LoggingDetail {
+			return logger.Fields{"v": x.V}
+		})
+
+		logger.Info(nil, "msg", logger.Field("x", X{V: 123456789}))
+		assert.Contain(t, buf.String(), "123456789")
+
+		unregister()
+		logger.Info(nil, "msg", logger.Field("x", X{V: 987654321}))
+		assert.NotContain(t, buf.String(), "987654321")
+		assert.Contain(t, buf.String(), "security")
+	})
+	t.Run("for interface", func(t *testing.T) {
+		buf := logger.Stub(t)
+		unregister := logger.RegisterFieldType[testent.Fooer](func(fooer testent.Fooer) logger.LoggingDetail {
+			return logger.Fields{"foo": fooer.GetFoo()}
+		})
+
+		logger.Info(nil, "msg", logger.Field("x", testent.Foo{Foo: "123456789"}))
+		assert.Contain(t, buf.String(), "123456789")
+
+		unregister()
+		logger.Info(nil, "msg", logger.Field("x", testent.Foo{Foo: "987654321"}))
+		assert.NotContain(t, buf.String(), "987654321")
+		assert.Contain(t, buf.String(), "security")
 	})
 }
 

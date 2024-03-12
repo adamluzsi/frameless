@@ -56,19 +56,19 @@ func ErrField(err error) LoggingDetail {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 var (
-	typRegister = map[reflect.Type]func(any) LoggingDetail{}
-	intRegister = map[reflect.Type]func(any) LoggingDetail{}
+	typeRegister      = map[reflect.Type]func(any) LoggingDetail{}
+	interfaceRegister = map[reflect.Type]func(any) LoggingDetail{}
 )
 
-func RegisterFieldType[T any](mapping func(T) LoggingDetail) any {
+func RegisterFieldType[T any](mapping func(T) LoggingDetail) func() {
 	typ := reflectkit.TypeOf[T]()
 	var register map[reflect.Type]func(any) LoggingDetail
-	register = typRegister
+	register = typeRegister
 	if typ.Kind() == reflect.Interface {
-		register = intRegister
+		register = interfaceRegister
 	}
 	register[typ] = func(v any) LoggingDetail { return mapping(v.(T)) }
-	return nil
+	return func() { delete(register, typ) }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,7 +77,7 @@ type LoggingDetail interface{ addTo(*Logger, logEntry) }
 
 func (l *Logger) tryInterface(val any) (any, bool) {
 	rv := reflect.ValueOf(val)
-	for intType, mapping := range intRegister {
+	for intType, mapping := range interfaceRegister {
 		if rv.Type().Implements(intType) {
 			return l.toFieldValue(mapping(rv.Interface())), true
 		}
@@ -90,7 +90,7 @@ func (l *Logger) toFieldValue(val any) any {
 		return nil
 	}
 	rv := reflect.ValueOf(val)
-	if mapping, ok := typRegister[rv.Type()]; ok {
+	if mapping, ok := typeRegister[rv.Type()]; ok {
 		return l.toFieldValue(mapping(val))
 	}
 	switch val := rv.Interface().(type) {

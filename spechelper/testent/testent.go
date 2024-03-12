@@ -7,15 +7,18 @@ import (
 	"testing"
 )
 
-type (
-	Foo struct {
-		ID  FooID `ext:"ID"`
-		Foo string
-		Bar string
-		Baz string
-	}
-	FooID string
-)
+type Foo struct {
+	ID  FooID `ext:"ID"`
+	Foo string
+	Bar string
+	Baz string
+}
+
+type FooID string
+
+func (f Foo) GetFoo() string {
+	return f.Foo
+}
 
 func MakeFoo(tb testing.TB) Foo {
 	te := testcase.ToT(&tb).Random.Make(Foo{}).(Foo)
@@ -62,3 +65,7 @@ type FooQueue struct {
 
 func (fq FooQueue) SetPublisher(p pubsub.Publisher[Foo])   { fq.Publisher = p }
 func (fq FooQueue) SetSubscriber(s pubsub.Subscriber[Foo]) { fq.Subscriber = s }
+
+type Fooer interface {
+	GetFoo() string
+}
