@@ -9,16 +9,15 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/tasker/internal"
 	"go.llib.dev/testcase/clock"
-	"net/http"
 	"os"
 	"sync"
 	"syscall"
 	"time"
 )
 
-// Task is the basic unit of tasker package, that represents an executable work.
+// Task is the basic unit of tasker package, which represents an executable work.
 //
-// Task at its core, is nothing more than a synchronous function.
+// Task at its core is nothing more than a synchronous function.
 // Working with synchronous functions removes the complexity of thinking about how to run your application.
 // Your components become more stateless and focus on the domain rather than the lifecycle management.
 // This less stateful approach can help to make testing your Task also easier.
@@ -68,7 +67,7 @@ func Sequence[TFN genericTask](tfns ...TFN) Task {
 	return sequence(toTasks[TFN](tfns)).Run
 }
 
-// Sequence is construct that allows you to execute a list of Task sequentially.
+// Sequence is a construct that allows you to execute a list of Task sequentially.
 // If any of the Task fails with an error, it breaks the sequential execution and the error is returned.
 type sequence []Task
 
@@ -81,7 +80,7 @@ func (s sequence) Run(ctx context.Context) error {
 	return nil
 }
 
-// Concurrence is construct that allows you to execute a list of Task concurrently.
+// Concurrence is a construct that allows you to execute a list of Task concurrently.
 // If any of the Task fails with an error, all Task will receive cancellation signal.
 func Concurrence[TFN genericTask](tfns ...TFN) Task {
 	return concurrence(toTasks[TFN](tfns)).Run
@@ -268,13 +267,4 @@ func WithSignalNotify[TFN genericTask](tfn TFN, shutdownSignals ...os.Signal) Ta
 // If any of the Task encounters a failure, the other tasker will receive a cancellation signal.
 func Main(ctx context.Context, tasks ...Task) error {
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
-}
-
-// HTTPServerTask is designed to encapsulate your `http.Server`,
-// enabling graceful shutdown with the server and presenting it as a Task.
-func HTTPServerTask(srv *http.Server) Task {
-	return WithShutdown(
-		IgnoreError(srv.ListenAndServe, http.ErrServerClosed),
-		srv.Shutdown,
-	)
 }
