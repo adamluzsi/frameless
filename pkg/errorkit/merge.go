@@ -1,33 +1,14 @@
-// Package merge offers simple tools to combine types like slices, maps, or errors.
-package merge
+package errorkit
 
 import (
 	"errors"
 	"strings"
 )
 
-func Slice[T any](vss ...[]T) []T {
-	var out []T
-	for _, vs := range vss {
-		out = append(out, vs...)
-	}
-	return out
-}
-
-func Map[K comparable, V any](vss ...map[K]V) map[K]V {
-	var out = make(map[K]V)
-	for _, vs := range vss {
-		for k, v := range vs {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-// Error will combine all given non nil error values into a single error value.
+// Merge will combine all given non nil error values into a single error value.
 // If no valid error is given, nil is returned.
-// If only a single non-nil error value is given, the error value is returned.
-func Error(errs ...error) error {
+// If only a single non nil error value is given, the error value is returned.
+func Merge(errs ...error) error {
 	var cleanErrs []error
 	for _, err := range errs {
 		if err == nil {

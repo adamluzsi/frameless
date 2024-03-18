@@ -154,15 +154,28 @@ func TestLookup_smoke(t *testing.T) {
 }
 
 func TestMerge(t *testing.T) {
-	var (
-		a   = []string{"a", "b", "c"}
-		b   = []string{"1", "2", "3"}
-		c   = []string{"1", "B", "3"}
-		out = slicekit.Merge(a, b, c)
-	)
-	assert.Equal(t, out, []string{
-		"a", "b", "c",
-		"1", "2", "3",
-		"1", "B", "3",
+	t.Run("all slice merged into one", func(t *testing.T) {
+		var (
+			a   = []string{"a", "b", "c"}
+			b   = []string{"1", "2", "3"}
+			c   = []string{"1", "B", "3"}
+			out = slicekit.Merge(a, b, c)
+		)
+		assert.Equal(t, out, []string{
+			"a", "b", "c",
+			"1", "2", "3",
+			"1", "B", "3",
+		})
+	})
+	t.Run("input slices are not affected by the merging process", func(t *testing.T) {
+		var (
+			a = []string{"a", "b", "c"}
+			b = []string{"1", "2", "3"}
+			c = []string{"1", "B", "3"}
+			_ = slicekit.Merge(a, b, c)
+		)
+		assert.Equal(t, a, []string{"a", "b", "c"})
+		assert.Equal(t, b, []string{"1", "2", "3"})
+		assert.Equal(t, c, []string{"1", "B", "3"})
 	})
 }

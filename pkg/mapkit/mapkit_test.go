@@ -151,23 +151,47 @@ func TestKeys(t *testing.T) {
 
 func ExampleMerge() {
 	var (
-		a   = map[string]int{"a": 1, "b": 2, "c": 3}
-		b   = map[string]int{"A": 11, "B": 22, "C": 33}
-		c   = map[string]int{"a": 42}
-		got = mapkit.Merge(a, b, c)
+		a = map[string]int{"a": 1, "b": 2, "c": 3}
+		b = map[string]int{"g": 7, "h": 8, "i": 9}
+		c = map[string]int{"d": 4, "e": 5, "f": 6}
+		d = map[string]int{"a": 42}
 	)
-	_ = got // {"a": 42, "b": 2, "c": 3, "A": 11, "B": 22, "C": 33}
+	got := mapkit.Merge(a, b, c, d)
+	_ = got
+	//
+	//	map[string]int{
+	//		"a": 42, "b": 2, "c": 3,
+	//		"g": 7, "h": 8, "i": 9,
+	//		"d": 4, "e": 5, "f": 6,
+	//	}
 }
 
 func TestMerge(t *testing.T) {
-	var (
-		a   = map[string]int{"a": 1, "b": 2, "c": 3}
-		b   = map[string]int{"A": 11, "B": 22, "C": 33}
-		c   = map[string]int{"a": 42}
-		got = mapkit.Merge(a, b, c)
-	)
-	assert.Equal(t, a, map[string]int{"a": 1, "b": 2, "c": 3}, "input map was not expected to change")
-	assert.Equal(t, b, map[string]int{"A": 11, "B": 22, "C": 33}, "input map was not expected to change")
-	assert.Equal(t, c, map[string]int{"a": 42}, "input map was not expected to change")
-	assert.Equal(t, got, map[string]int{"a": 42, "b": 2, "c": 3, "A": 11, "B": 22, "C": 33})
+	t.Run("input maps are not affected", func(t *testing.T) {
+		var (
+			a   = map[string]int{"a": 1, "b": 2, "c": 3}
+			b   = map[string]int{"A": 11, "B": 22, "C": 33}
+			c   = map[string]int{"a": 42}
+			got = mapkit.Merge(a, b, c)
+		)
+		assert.Equal(t, a, map[string]int{"a": 1, "b": 2, "c": 3}, "input map was not expected to change")
+		assert.Equal(t, b, map[string]int{"A": 11, "B": 22, "C": 33}, "input map was not expected to change")
+		assert.Equal(t, c, map[string]int{"a": 42}, "input map was not expected to change")
+		assert.Equal(t, got, map[string]int{"a": 42, "b": 2, "c": 3, "A": 11, "B": 22, "C": 33})
+	})
+	t.Run("output has every element merged in, and priorotised by arg order, where last is the most important", func(t *testing.T) {
+		var (
+			a = map[string]int{"a": 1, "b": 2, "c": 3}
+			b = map[string]int{"g": 7, "h": 8, "i": 9}
+			c = map[string]int{"d": 4, "e": 5, "f": 6}
+			d = map[string]int{"a": 42}
+		)
+		got := mapkit.Merge(a, b, c, d)
+		assert.Equal(t, got, map[string]int{
+			"b": 2, "c": 3,
+			"g": 7, "h": 8, "i": 9,
+			"d": 4, "e": 5, "f": 6,
+			"a": 42,
+		})
+	})
 }
