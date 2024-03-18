@@ -100,7 +100,7 @@ func (c Creator[Entity, ID]) Spec(s *testcase.Spec) {
 			t.Must.NotEmpty(getID(t))
 		})
 
-		s.Then(`entity could be retrieved by ID`, func(t *testcase.T) {
+		s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
 			t.Must.Equal(ptr.Get(t), IsPresent[Entity, ID](t, c.subject().Get(t).Resource, c.subject().Get(t).MakeContext(), getID(t)))
 		})

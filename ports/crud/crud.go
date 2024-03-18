@@ -97,3 +97,5 @@ type Saver[Entity any] interface {
 	// Save requires the entity to have a valid non-empty ID value.
 	Save(ctx context.Context, ptr *Entity) error
 }
+
+type LookupIDFunc[Entity, ID any] func(Entity) (ID, bool)

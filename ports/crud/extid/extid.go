@@ -36,7 +36,7 @@ func Set[ID any](ptr any, id ID) error {
 	return nil
 }
 
-func Lookup[ID any](ent any) (id ID, ok bool) {
+func Lookup[ID, Ent any](ent Ent) (id ID, ok bool) {
 	if tr, ok := register[reflectkit.BaseValueOf(ent).Type()]; ok {
 		return tr.Get(ent).(ID), true
 	}
