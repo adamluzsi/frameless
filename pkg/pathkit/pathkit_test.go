@@ -342,3 +342,29 @@ func TestJoin(t *testing.T) {
 	assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "", "bar"))
 	assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "/", "bar"))
 }
+
+func TestSplitBase(t *testing.T) {
+	t.Run("returns empty base URL and input as path when schema is not present", func(t *testing.T) {
+		baseURL, path := pathkit.SplitBase("/path/to/file")
+		assert.Equal(t, "", baseURL)
+		assert.Equal(t, "/path/to/file", path)
+	})
+
+	t.Run("returns correct base URL and path when schema is present", func(t *testing.T) {
+		baseURL, path := pathkit.SplitBase("http://example.com/path/to/file")
+		assert.Equal(t, "http://example.com", baseURL)
+		assert.Equal(t, "/path/to/file", path)
+	})
+
+	t.Run("returns correct base URL and the path along with params", func(t *testing.T) {
+		baseURL, path := pathkit.SplitBase("http://example.com/path;param1=value1;param2=value2?queryParam=value#fragment")
+		assert.Equal(t, "http://example.com", baseURL)
+		assert.Equal(t, "/path;param1=value1;param2=value2?queryParam=value#fragment", path)
+	})
+
+	t.Run("considers everything as path when url parsing fails", func(t *testing.T) {
+		baseURL, path := pathkit.SplitBase("%")
+		assert.Equal(t, "", baseURL)
+		assert.Equal(t, "%", path)
+	})
+}

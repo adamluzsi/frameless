@@ -105,3 +105,30 @@ func Join(ps ...string) string {
 }
 
 var isSchema = regexp.MustCompile(`^[^:]+:`)
+
+// SplitBase will split a given uri into a base url and a request path.
+func SplitBase(uri string) (_baseURL string, _path string) {
+	if !isSchema.MatchString(uri) {
+		return "", uri
+	}
+	u, err := url.Parse(uri)
+	if err != nil {
+		return "", uri
+	}
+	uPath := &url.URL{
+		Opaque:      u.Opaque,
+		Path:        u.Path,
+		RawPath:     u.RawPath,
+		ForceQuery:  u.ForceQuery,
+		RawQuery:    u.RawQuery,
+		Fragment:    u.Fragment,
+		RawFragment: u.RawFragment,
+	}
+	uBase := &url.URL{
+		Scheme:   u.Scheme,
+		User:     u.User,
+		Host:     u.Host,
+		OmitHost: u.OmitHost,
+	}
+	return uBase.String(), uPath.String()
+}
