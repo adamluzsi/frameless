@@ -58,20 +58,20 @@ func TestMount(t *testing.T) {
 	})
 
 	s.When("handler is a restapi.Handler", func(s *testcase.Spec) {
-		repo := testcase.Let(s, func(t *testcase.T) *memory.Repository[Foo, FooID] {
-			return memory.NewRepository[Foo, FooID](memory.NewMemory())
+		repo := testcase.Let(s, func(t *testcase.T) *memory.Repository[X, XID] {
+			return memory.NewRepository[X, XID](memory.NewMemory())
 		})
 
-		ent := testcase.Let(s, func(t *testcase.T) Foo {
-			v := Foo{Foo: t.Random.Int()}
-			crudtest.Create[Foo, FooID](t, repo.Get(t), context.Background(), &v)
+		ent := testcase.Let(s, func(t *testcase.T) X {
+			v := X{N: t.Random.Int()}
+			crudtest.Create[X, XID](t, repo.Get(t), context.Background(), &v)
 			return v
 		}).EagerLoading(s)
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
-			return restapi.Handler[Foo, FooID, FooDTO]{
+			return restapi.Handler[X, XID, XDTO]{
 				Resource: repo.Get(t),
-				Mapping:  FooMapping{},
+				Mapping:  XMapping{},
 				Router: restapi.NewRouter(func(r *restapi.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastReq.Set(t, r)

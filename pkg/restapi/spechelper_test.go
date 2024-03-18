@@ -11,64 +11,64 @@ import (
 )
 
 type (
-	Foo struct {
-		ID  FooID
-		Foo int
+	X struct {
+		ID XID
+		N  int
 	}
-	FooID int
+	XID int
 )
 
-type FooDTO struct {
-	ID  int `json:"id"`
-	Foo int `json:"foo"`
+type XDTO struct {
+	ID int `json:"id"`
+	X  int `json:"xnum"`
 }
 
-var _ = dtos.Register[Foo, FooDTO](FooMapping{}.ToDTO, FooMapping{}.ToEnt)
+var _ = dtos.Register[X, XDTO](XMapping{}.ToDTO, XMapping{}.ToEnt)
 
-type FooMapping struct {
-	restapi.IntID[FooID]
-	restapi.IDInContext[FooMapping, FooID]
-	restapi.SetIDByExtIDTag[Foo, FooID]
+type XMapping struct {
+	restapi.IntID[XID]
+	restapi.IDInContext[XMapping, XID]
+	restapi.SetIDByExtIDTag[X, XID]
 }
 
-func (f FooMapping) ToEnt(ctx context.Context, dto FooDTO) (Foo, error) {
-	return Foo{ID: FooID(dto.ID), Foo: dto.Foo}, nil
+func (f XMapping) ToEnt(ctx context.Context, dto XDTO) (X, error) {
+	return X{ID: XID(dto.ID), N: dto.X}, nil
 }
 
-func (f FooMapping) ToDTO(ctx context.Context, ent Foo) (FooDTO, error) {
-	return FooDTO{ID: int(ent.ID), Foo: ent.Foo}, nil
+func (f XMapping) ToDTO(ctx context.Context, ent X) (XDTO, error) {
+	return XDTO{ID: int(ent.ID), X: ent.N}, nil
 }
 
-func (f FooMapping) MapEntity(ctx context.Context, dto FooDTO) (Foo, error) {
-	return Foo{ID: FooID(dto.ID), Foo: dto.Foo}, nil
+func (f XMapping) MapEntity(ctx context.Context, dto XDTO) (X, error) {
+	return X{ID: XID(dto.ID), N: dto.X}, nil
 }
 
-func (f FooMapping) MapDTO(ctx context.Context, entity Foo) (FooDTO, error) {
-	return FooDTO{ID: int(entity.ID), Foo: entity.Foo}, nil
+func (f XMapping) MapDTO(ctx context.Context, entity X) (XDTO, error) {
+	return XDTO{ID: int(entity.ID), X: entity.N}, nil
 }
 
-type Bar struct {
-	ID  string
-	Bar int
+type Y struct {
+	ID string
+	C  int
 }
 
-type BarDTO struct {
-	ID  string `json:"id"`
-	Bar int    `json:"bar"`
+type YDTO struct {
+	ID string `json:"id"`
+	C  int    `json:"count"`
 }
 
-type BarMapping struct {
+type YMapping struct {
 	restapi.StringID[string]
-	restapi.SetIDByExtIDTag[Bar, string]
-	restapi.IDInContext[BarMapping, string]
+	restapi.SetIDByExtIDTag[Y, string]
+	restapi.IDInContext[YMapping, string]
 }
 
-func (f BarMapping) MapEntity(ctx context.Context, dto BarDTO) (Bar, error) {
-	return Bar{ID: dto.ID, Bar: dto.Bar}, nil
+func (f YMapping) MapEntity(ctx context.Context, dto YDTO) (Y, error) {
+	return Y{ID: dto.ID, C: dto.C}, nil
 }
 
-func (f BarMapping) MapDTO(ctx context.Context, entity Bar) (BarDTO, error) {
-	return BarDTO{ID: entity.ID, Bar: entity.Bar}, nil
+func (f YMapping) MapDTO(ctx context.Context, entity Y) (YDTO, error) {
+	return YDTO{ID: entity.ID, C: entity.C}, nil
 }
 
 type BazID int

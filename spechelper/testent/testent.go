@@ -2,6 +2,7 @@ package testent
 
 import (
 	"context"
+	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase"
 	"testing"
@@ -14,7 +15,13 @@ type Foo struct {
 	Baz string
 }
 
+func (foo Foo) LookupID() (FooID, bool) {
+	return foo.ID, foo.ID != ""
+}
+
 type FooID string
+
+func (id FooID) String() string { return string(id) }
 
 func (f Foo) GetFoo() string {
 	return f.Foo
@@ -30,21 +37,37 @@ func MakeFooFunc(tb testing.TB) func() Foo {
 	return func() Foo { return MakeFoo(tb) }
 }
 
+var _ = dtos.Register[Foo, FooDTO](func(ctx context.Context, foo Foo) (FooDTO, error) {
+	return FooDTO{
+		ID:   string(foo.ID),
+		FooV: foo.Foo,
+		BarV: foo.Bar,
+		BazV: foo.Baz,
+	}, nil
+}, func(ctx context.Context, dto FooDTO) (Foo, error) {
+	return Foo{
+		ID:  FooID(dto.ID),
+		Foo: dto.FooV,
+		Bar: dto.BarV,
+		Baz: dto.BazV,
+	}, nil
+})
+
 type FooDTO struct {
-	ID  string `ext:"ID" json:"id"`
-	Foo string `json:"foo"`
-	Bar string `json:"bar"`
-	Baz string `json:"baz"`
+	ID   string `ext:"ID" json:"id"`
+	FooV string `json:"foov"`
+	BarV string `json:"barv"`
+	BazV string `json:"bazv"`
 }
 
 type FooJSONMapping struct{}
 
 func (n FooJSONMapping) ToDTO(ent Foo) (FooDTO, error) {
-	return FooDTO{ID: string(ent.ID), Foo: ent.Foo, Bar: ent.Bar, Baz: ent.Baz}, nil
+	return FooDTO{ID: string(ent.ID), FooV: ent.Foo, BarV: ent.Bar, BazV: ent.Baz}, nil
 }
 
 func (n FooJSONMapping) ToEnt(dto FooDTO) (Foo, error) {
-	return Foo{ID: FooID(dto.ID), Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
+	return Foo{ID: FooID(dto.ID), Foo: dto.FooV, Bar: dto.BarV, Baz: dto.BazV}, nil
 }
 
 func MakeContextFunc(tb testing.TB) func() context.Context {
@@ -69,3 +92,34 @@ func (fq FooQueue) SetSubscriber(s pubsub.Subscriber[Foo]) { fq.Subscriber = s }
 type Fooer interface {
 	GetFoo() string
 }
+
+type Bar struct {
+	ID BarID `ext:"id"`
+
+	N int
+	C string
+}
+
+type BarID string
+
+func (id BarID) String() string { return string(id) }
+
+type BarJSONDTO struct {
+	ID string `json:"id"`
+	N  int    `json:"number"`
+	C  string `json:"char"`
+}
+
+var _ = dtos.Register[Bar, BarJSONDTO](func(ctx context.Context, bar Bar) (BarJSONDTO, error) {
+	return BarJSONDTO{
+		ID: string(bar.ID),
+		N:  bar.N,
+		C:  bar.C,
+	}, nil
+}, func(ctx context.Context, jsondto BarJSONDTO) (Bar, error) {
+	return Bar{
+		ID: BarID(jsondto.ID),
+		N:  jsondto.N,
+		C:  jsondto.C,
+	}, nil
+})

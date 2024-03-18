@@ -2,7 +2,6 @@ package restapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"go.llib.dev/frameless/pkg/dtos"
@@ -13,14 +12,13 @@ import (
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/testcase/pp"
 	"io"
 	"net/http"
 	"net/url"
-	"reflect"
-	"strconv"
 	"strings"
-	"sync"
 )
 
 // Resource is a HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
@@ -43,13 +41,17 @@ type Resource[Entity, ID any] struct {
 	// 		 Delete /:id
 	Destroy func(ctx context.Context, id ID) error
 
+	// DestroyAll will delete all entity.
+	// 		 Delete /
+	DestroyAll func(ctx context.Context, query url.Values) error
+
 	// Serialization is responsible to serialise a DTO into or out from the right serialisation format.
 	// Most format is supported out of the box, but in case you want to configure your own,
 	// you can do so using this config.
-	Serialization Serialization[Entity, ID]
+	Serialization ResourceSerialization[Entity, ID]
 
-	// Mapping
-	Mapping Mapping[Entity]
+	// Mapping is responsible to map a given entity to a given DTO
+	Mapping ResourceMapping[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
 	ErrorHandler ErrorHandler
@@ -78,60 +80,49 @@ type Resource[Entity, ID any] struct {
 	BodyReadLimitByteSize int
 }
 
-type IDContextKey[Entity, ID any] struct{}
-
-func (ick IDContextKey[Entity, ID]) ContextWithID(ctx context.Context, id ID) context.Context {
-	return context.WithValue(ctx, ick, id)
-}
-
-func (ick IDContextKey[Entity, ID]) LookupID(ctx context.Context) (ID, bool) {
-	if ctx == nil {
-		return *new(ID), false
-	}
-	id, ok := ctx.Value(ick).(ID)
-	return id, ok
-}
-
 type idConverter[ID any] interface {
 	FormatID(ID) (string, error)
 	ParseID(string) (ID, error)
 }
 
-// Mapping is responsible for map
-type Mapping[Entity any] map[MIMEType]dtoMapping[Entity]
+// ResourceMapping is responsible for map
+type ResourceMapping[Entity any] struct {
+	// Mapping is the primary entity to DTO mapping configuration.
+	Mapping Mapping[Entity]
+	// ForMIME defines a per MIMEType restapi.Mapping, that takes priority over Mapping
+	ForMIME map[MIMEType]Mapping[Entity]
+}
 
-func (ms Mapping[Entity]) mappingFor(mimeType MIMEType) dtoMapping[Entity] {
-	if ms == nil {
-		return ms.passthroughMappingMode()
+func (ms ResourceMapping[Entity]) get(mimeType MIMEType) Mapping[Entity] {
+	mimeType = mimeType.Base() // TODO: TEST ME
+	if ms.ForMIME != nil {
+		if mapping, ok := ms.ForMIME[mimeType]; ok {
+			return mapping
+		}
 	}
-	mapping, ok := ms[mimeType]
-	if !ok {
-		return ms.passthroughMappingMode()
+	if ms.Mapping != nil {
+		return ms.Mapping
 	}
-	return mapping
+	return passthroughMappingMode[Entity]()
 }
 
 // passthroughMappingMode enables a passthrough mapping mode where entity is used as the DTO itself.
 // Since we can't rule out that they don't use restapi.Resource with a DTO type in the first place.
-func (ms Mapping[Entity]) passthroughMappingMode() DTOMapping[Entity, Entity] {
+func passthroughMappingMode[Entity any]() DTOMapping[Entity, Entity] {
 	return DTOMapping[Entity, Entity]{}
 }
 
-type dtoMapping[Entity any] interface {
-	dto()
-
+type Mapping[Entity any] interface {
 	newDTO() (dtoPtr any)
-	dtoToEnt(ctx context.Context, dtoPtr any) (Entity, error)
-	entToDTO(ctx context.Context, ent Entity) (DTO any, _ error)
+	toEnt(ctx context.Context, dtoPtr any) (Entity, error)
+	toDTO(ctx context.Context, ent Entity) (DTO any, _ error)
 }
 
 type DTOMapping[Entity, DTO any] struct{}
 
-func (dto DTOMapping[Entity, DTO]) dto() {}
-
 func (dto DTOMapping[Entity, DTO]) newDTO() any { return new(DTO) }
 
-func (dto DTOMapping[Entity, DTO]) dtoToEnt(ctx context.Context, dtoPtr any) (Entity, error) {
+func (dto DTOMapping[Entity, DTO]) toEnt(ctx context.Context, dtoPtr any) (Entity, error) {
 	if dtoPtr == nil {
 		return *new(Entity), fmt.Errorf("nil dto ptr")
 	}
@@ -145,11 +136,12 @@ func (dto DTOMapping[Entity, DTO]) dtoToEnt(ctx context.Context, dtoPtr any) (En
 	return dtos.Map[Entity](ctx, *ptr)
 }
 
-func (dto DTOMapping[Entity, DTO]) entToDTO(ctx context.Context, ent Entity) (any, error) {
+func (dto DTOMapping[Entity, DTO]) toDTO(ctx context.Context, ent Entity) (any, error) {
 	return dtos.Map[DTO](ctx, ent)
 }
 
 func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r = res.setupRequest(r)
 	defer res.handlePanic(w, r)
 	r, rc := internal.WithRoutingCountex(r)
 	switch rc.Path {
@@ -159,6 +151,8 @@ func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 			res.index(w, r)
 		case http.MethodPost:
 			res.create(w, r)
+		case http.MethodDelete:
+			res.destroyAll(w, r)
 		default:
 			res.errMethodNotAllowed(w, r)
 		}
@@ -174,7 +168,9 @@ func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 			return
 		}
 
-		r = r.WithContext(context.WithValue(r.Context(), res.getIDContextKey(), id))
+		if res.IDContextKey != nil {
+			r = r.WithContext(context.WithValue(r.Context(), res.IDContextKey, id))
+		}
 
 		if rest != "/" {
 			if res.EntityRoutes == nil {
@@ -195,6 +191,11 @@ func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+}
+
+func (res Resource[Entity, ID]) setupRequest(r *http.Request) *http.Request {
+	r = r.WithContext(context.WithValue(r.Context(), ctxKeyHTTPRequest{}, r))
+	return r
 }
 
 func (res Resource[Entity, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
@@ -233,11 +234,11 @@ func (res Resource[Entity, ID]) errEntityNotFound(w http.ResponseWriter, r *http
 
 // DefaultBodyReadLimit is the maximum number of bytes that a restapi.Handler will read from the requester,
 // if the Handler.BodyReadLimit is not provided.
-var DefaultBodyReadLimit int64 = 16 * units.Megabyte
+var DefaultBodyReadLimit int = 16 * units.Megabyte
 
-func (res Resource[Entity, ID]) getBodyReadLimit() int64 {
+func (res Resource[Entity, ID]) getBodyReadLimit() int {
 	if res.BodyReadLimitByteSize != 0 {
-		return int64(res.BodyReadLimitByteSize)
+		return res.BodyReadLimitByteSize
 	}
 	return DefaultBodyReadLimit
 }
@@ -268,6 +269,7 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r) // TODO:TEST_ME
+	resMapping := res.Mapping.get(resMIMEType)
 
 	w.Header().Set(headerKeyContentType, resMIMEType.String())
 	listEncoder := resSer.NewListEncoder(w)
@@ -281,10 +283,17 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	var n int
-	for index.Next() {
-		n++
-		if err := listEncoder.Encode(index.Value()); err != nil {
-			logger.Warn(ctx, "error during index element value encoding", logger.ErrField(err))
+	for ; index.Next(); n++ {
+		ent := index.Value()
+
+		dto, err := resMapping.toDTO(ctx, ent)
+		if err != nil {
+			logger.Warn(ctx, "error during index element DTO Mapping", logger.ErrField(err))
+			break
+		}
+
+		if err := listEncoder.Encode(dto); err != nil {
+			logger.Warn(ctx, "error during DTO value encoding", logger.ErrField(err))
 			break
 		}
 	}
@@ -317,7 +326,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx                 = r.Context()
 		reqSer, reqMIMEType = res.Serialization.requestBodySerializer(r)
-		reqMapping          = res.Mapping.mappingFor(reqMIMEType)
+		reqMapping          = res.Mapping.get(reqMIMEType)
 	)
 
 	dtoPtr := reqMapping.newDTO()
@@ -327,7 +336,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ent, err := reqMapping.dtoToEnt(ctx, dtoPtr)
+	ent, err := reqMapping.toEnt(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -345,10 +354,10 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		resSer, resMIMEType = res.Serialization.responseBodySerializer(r)
-		resMapping          = res.Mapping.mappingFor(resMIMEType)
+		resMapping          = res.Mapping.get(resMIMEType)
 	)
 
-	dto, err := resMapping.entToDTO(ctx, ent)
+	dto, err := resMapping.toDTO(ctx, ent)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -391,11 +400,11 @@ func (res Resource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r)
-	mapping := res.Mapping.mappingFor(resMIMEType)
+	mapping := res.Mapping.get(resMIMEType)
 
 	w.Header().Set(headerKeyContentType, resMIMEType.String())
 
-	dto, err := mapping.entToDTO(ctx, entity)
+	dto, err := mapping.toDTO(ctx, entity)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -423,11 +432,12 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 	var (
 		ctx                 = r.Context()
 		reqSer, reqMIMEType = res.Serialization.requestBodySerializer(r)
-		reqMapping          = res.Mapping.mappingFor(reqMIMEType)
+		reqMapping          = res.Mapping.get(reqMIMEType)
 	)
 
 	data, err := res.readAllBody(r)
 	if err != nil {
+		pp.PP()
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -435,6 +445,7 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 	dtoPtr := reqMapping.newDTO()
 
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
+		pp.PP()
 		res.getErrorHandler().HandleError(w, r,
 			ErrInvalidRequestBody.With().Detail(err.Error()))
 		return
@@ -453,7 +464,7 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 		}
 	}
 
-	entity, err := reqMapping.dtoToEnt(ctx, dtoPtr)
+	entity, err := reqMapping.toEnt(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -504,35 +515,86 @@ func (res Resource[Entity, ID]) destroy(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (res Resource[Entity, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
+	if res.DestroyAll == nil {
+		res.errMethodNotAllowed(w, r)
+		return
+	}
+
+	if err := res.DestroyAll(r.Context(), r.URL.Query()); err != nil {
+		res.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (res Resource[Entity, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
-	if r.Body == nil { // TODO:TEST_ME
+	return bodyReadAll(r.Body, res.getBodyReadLimit())
+}
+
+type ctxKeyHTTPRequest struct{}
+
+func (res Resource[Entity, ID]) HTTPRequest(ctx context.Context) (*http.Request, bool) {
+	req, ok := ctx.Value(ctxKeyHTTPRequest{}).(*http.Request)
+	return req, ok
+}
+
+func (res Resource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) Resource[Entity, ID] {
+	// TODO: add support to exclude certain operations from being mapped
+
+	if repo, ok := repo.(crud.Creator[Entity]); ok && res.Create == nil {
+		res.Create = repo.Create
+	}
+	if repo, ok := repo.(crud.AllFinder[Entity]); ok && res.Index == nil {
+		res.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[Entity], error) {
+			return repo.FindAll(ctx), nil // TODO: handle query
+		}
+	}
+	if repo, ok := repo.(crud.ByIDFinder[Entity, ID]); ok && res.Show == nil {
+		res.Show = repo.FindByID
+	}
+	if repo, ok := repo.(crud.Updater[Entity]); ok && res.Update == nil {
+		res.Update = func(ctx context.Context, id ID, ptr *Entity) error {
+			if repo, ok := repo.(crud.ByIDFinder[Entity, ID]); ok {
+				_, found, err := repo.FindByID(ctx, id)
+				if err != nil {
+					return err
+				}
+				if !found {
+					return ErrEntityNotFound
+				}
+			}
+			if err := extid.Set[ID](ptr, id); err != nil {
+				return err
+			}
+			return repo.Update(ctx, ptr)
+		}
+	}
+	if repo, ok := repo.(crud.AllDeleter); ok && res.DestroyAll == nil {
+		res.DestroyAll = func(ctx context.Context, query url.Values) error {
+			return repo.DeleteAll(ctx) // TODO: handle query
+		}
+	}
+	if repo, ok := repo.(crud.ByIDDeleter[ID]); ok && res.Destroy == nil {
+		res.Destroy = repo.DeleteByID
+	}
+	return res
+}
+
+func bodyReadAll(body io.ReadCloser, bodyReadLimit int) (_ []byte, returnErr error) {
+	if body == nil { // TODO:TEST_ME
 		return []byte{}, nil
 	}
-	defer errorkit.Finish(&returnErr, r.Body.Close) // TODO:TEST_ME
-	bodyReadLimit := res.getBodyReadLimit()
-	data, err := io.ReadAll(io.LimitReader(r.Body, bodyReadLimit))
+	defer errorkit.Finish(&returnErr, body.Close) // TODO:TEST_ME
+	data, err := io.ReadAll(io.LimitReader(body, int64(bodyReadLimit)))
 	if err != nil {
 		return nil, err
 	}
-	if _, err := r.Body.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+	if _, err := body.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
 		return nil, ErrRequestEntityTooLarge
 	}
 	return data, nil
-}
-
-func (res Resource[Entity, ID]) getIDContextKey() any {
-	if res.IDContextKey != nil {
-		return res.IDContextKey
-	}
-	return IDContextKey[Entity, ID]{}
-}
-
-func (res Resource[Entity, ID]) ContextLookupID(ctx context.Context) (ID, bool) {
-	if ctx == nil {
-		return *new(ID), false
-	}
-	id, ok := ctx.Value(res.getIDContextKey()).(ID)
-	return id, ok
 }
 
 // MIMEType or Multipurpose Internet Mail Extensions is an internet standard
@@ -579,378 +641,16 @@ func (ct MIMEType) WithCharset(charset string) MIMEType {
 	return MIMEType(fmt.Sprintf("%s; %s=%s", ct, attrKey, charset))
 }
 
+func (ct MIMEType) Base() MIMEType {
+	for _, pt := range strings.Split(string(ct), ";") {
+		return MIMEType(pt)
+	}
+	return ct
+}
+
 func (ct MIMEType) String() string { return string(ct) }
-
-// SERIALIZERS
-
-type JSONSerializer struct{}
-
-func (s JSONSerializer) MIMEType() MIMEType { return JSON }
-
-func (s JSONSerializer) Marshal(v any) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func (s JSONSerializer) Unmarshal(data []byte, dtoPtr any) error {
-	return json.Unmarshal(data, &dtoPtr)
-}
-
-func (s JSONSerializer) NewListEncoder(w io.Writer) ListEncoder {
-	return &jsonListEncoder{W: w}
-}
-
-type jsonListEncoder struct {
-	W io.Writer
-
-	bracketOpen bool
-	index       int
-	err         error
-	done        bool
-}
-
-func (le *jsonListEncoder) Encode(dto any) error {
-	if le.err != nil {
-		return le.err
-	}
-
-	if !le.bracketOpen {
-		if err := le.beginList(); err != nil {
-			return err
-		}
-	}
-
-	data, err := json.Marshal(dto)
-	if err != nil {
-		return err
-	}
-
-	if 0 < le.index {
-		if _, err := le.W.Write([]byte(`,`)); err != nil {
-			le.err = err
-			return err
-		}
-	}
-
-	if _, err := le.W.Write(data); err != nil {
-		le.err = err
-		return err
-	}
-
-	le.index++
-	return nil
-}
-
-func (le *jsonListEncoder) Close() error {
-	if le.done {
-		return le.err
-	}
-	le.done = true
-	if !le.bracketOpen {
-		if err := le.beginList(); err != nil {
-			return err
-		}
-	}
-	if le.bracketOpen {
-		if err := le.endList(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (le *jsonListEncoder) endList() error {
-	if _, err := le.W.Write([]byte(`]`)); err != nil {
-		le.err = err
-		return err
-	}
-	le.bracketOpen = false
-	return nil
-}
-
-func (le *jsonListEncoder) beginList() error {
-	if _, err := le.W.Write([]byte(`[`)); err != nil {
-		le.err = err
-		return err
-	}
-	le.bracketOpen = true
-	return nil
-}
-
-type JSONStreamSerializer struct{}
-
-func (s JSONStreamSerializer) Marshal(v any) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func (s JSONStreamSerializer) Unmarshal(data []byte, ptr any) error {
-	return json.Unmarshal(data, ptr)
-}
-
-func (s JSONStreamSerializer) NewListEncoder(w io.Writer) ListEncoder {
-	return closerEncoder{Encoder: json.NewEncoder(w)}
-}
-
-type closerEncoder struct {
-	Encoder interface {
-		Encode(v any) error
-	}
-}
-
-func (e closerEncoder) Encode(v any) error {
-	return e.Encoder.Encode(v)
-}
-
-func (closerEncoder) Close() error { return nil }
-
-type GenericListEncoder[T any] struct {
-	W       io.Writer
-	Marshal func(v []T) ([]byte, error)
-
-	vs     []T
-	closed bool
-}
-
-func (enc *GenericListEncoder[T]) Encode(v T) error {
-	if enc.closed {
-		return fmt.Errorf("list encoder is already closed")
-	}
-	enc.vs = append(enc.vs, v)
-	return nil
-}
-
-func (enc *GenericListEncoder[T]) Close() error {
-	if enc.closed {
-		return nil
-	}
-	data, err := enc.Marshal(enc.vs)
-	if err != nil {
-		return err
-	}
-	if _, err := enc.W.Write(data); err != nil {
-		return err
-	}
-	enc.closed = true
-	return nil
-}
 
 const (
 	headerKeyContentType = "Content-Type"
 	headerKeyAccept      = "Accept"
 )
-
-func NewRouter(configure ...func(*Router)) *Router {
-	router := &Router{}
-	for _, c := range configure {
-		c(router)
-	}
-	return router
-}
-
-func RouterFrom[V Routes](v V) *Router {
-	switch v := any(v).(type) {
-	case Routes:
-		r := NewRouter()
-		r.MountRoutes(v)
-		return r
-
-	default:
-		panic("not implemented")
-	}
-}
-
-type Router struct {
-	route *route
-	mutex sync.RWMutex
-}
-
-type route struct {
-	Handler http.Handler
-	Routes  map[string]*route
-}
-
-func (r *route) GetRoutes() map[string]*route {
-	if r.Routes == nil {
-		r.Routes = make(map[string]*route)
-	}
-	return r.Routes
-}
-
-func (r *route) Ensure(part string) *route {
-	if _, ok := r.GetRoutes()[part]; !ok {
-		r.Routes[part] = &route{}
-	}
-	return r.Routes[part]
-}
-
-func (r *route) Lookup(part string) (*route, bool) {
-	if r == nil {
-		return nil, false
-	}
-	if r.Routes == nil {
-		return nil, false
-	}
-	sr, ok := r.Routes[part]
-	return sr, ok
-}
-
-func (router *Router) ServeHTTP(responseWriter http.ResponseWriter, request *http.Request) {
-	router.mutex.RLock()
-	defer router.mutex.RUnlock()
-	if router.route == nil {
-		defaultErrorHandler.HandleError(responseWriter, request, ErrPathNotFound)
-		return
-	}
-	request, rc := internal.WithRoutingCountex(request)
-	var (
-		mount   []string
-		route   = router.route
-		handler = route.Handler
-	)
-	for _, part := range pathkit.Split(rc.Path) {
-		var ok bool
-		route, ok = route.Lookup(part)
-		if !ok {
-			break
-		}
-		mount = append(mount, part)
-		handler = route.Handler
-	}
-	if handler == nil {
-		defaultErrorHandler.HandleError(responseWriter, request, ErrPathNotFound)
-		return
-	}
-	withMountPoint(rc, pathkit.Join(mount...))
-	handler.ServeHTTP(responseWriter, request)
-}
-
-func (router *Router) Mount(path Path, handler http.Handler) {
-	router.mutex.Lock()
-	defer router.mutex.Unlock()
-
-	if router.route == nil {
-		router.route = &route{}
-	}
-
-	var ro *route
-	ro = router.route
-	for _, part := range pathkit.Split(path) {
-		ro = ro.Ensure(part)
-	}
-
-	ro.Handler = handler
-}
-
-type (
-	Path   = string
-	Routes map[Path]http.Handler
-)
-
-func (router *Router) MountRoutes(routes Routes) {
-	for path, handler := range routes {
-		router.Mount(path, handler)
-	}
-}
-
-/////////////////////////////////////////////////////// MAPPING ///////////////////////////////////////////////////////
-
-// IDInContext is a OldMapping tool that you can embed in your OldMapping implementation,
-// and it will implement the context handling related methods.
-type IDInContext[CtxKey, EntityIDType any] struct{}
-
-func (cm IDInContext[CtxKey, EntityIDType]) ContextWithID(ctx context.Context, id EntityIDType) context.Context {
-	return context.WithValue(ctx, *new(CtxKey), id)
-}
-
-func (cm IDInContext[CtxKey, EntityIDType]) ContextLookupID(ctx context.Context) (EntityIDType, bool) {
-	v, ok := ctx.Value(*new(CtxKey)).(EntityIDType)
-	return v, ok
-}
-
-// StringID is a OldMapping tool that you can embed in your OldMapping implementation,
-// and it will implement the ID encoding that will be used in the URL.
-type StringID[ID ~string] struct{}
-
-func (m StringID[ID]) FormatID(id ID) (string, error) { return string(id), nil }
-func (m StringID[ID]) ParseID(id string) (ID, error)  { return ID(id), nil }
-
-// IntID is a OldMapping tool that you can embed in your OldMapping implementation,
-// and it will implement the ID encoding that will be used in the URL.
-type IntID[ID ~int] struct{}
-
-func (m IntID[ID]) FormatID(id ID) (string, error) {
-	return strconv.Itoa(int(id)), nil
-}
-
-func (m IntID[ID]) ParseID(id string) (ID, error) {
-	n, err := strconv.Atoi(id)
-	return ID(n), err
-}
-
-// IDConverter is a OldMapping tool that you can embed in your OldMapping implementation,
-// and it will implement the ID encoding that will be used in the URL.
-type IDConverter[ID any] struct {
-	Format func(ID) (string, error)
-	Parse  func(string) (ID, error)
-}
-
-func (m IDConverter[ID]) FormatID(id ID) (string, error) {
-	return m.getFormatter()(id)
-}
-
-var (
-	stringType = reflectkit.TypeOf[string]()
-	intType    = reflectkit.TypeOf[int]()
-)
-
-func (m IDConverter[ID]) getFormatter() func(ID) (string, error) {
-	if m.Format != nil {
-		return m.Format
-	}
-	rtype := reflectkit.TypeOf[ID]()
-	switch rtype.Kind() {
-	case reflect.String:
-		return func(id ID) (_ string, returnErr error) {
-			defer errorkit.Recover(&returnErr)
-			return reflect.ValueOf(id).Convert(stringType).String(), nil
-		}
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return func(id ID) (string, error) {
-			return strconv.Itoa(int(reflect.ValueOf(id).Convert(intType).Int())), nil
-		}
-	default:
-		return func(id ID) (string, error) {
-			return "", fmt.Errorf("not implemented")
-		}
-	}
-}
-
-func (m IDConverter[ID]) ParseID(data string) (ID, error) {
-	return m.getParser()(data)
-}
-
-func (m IDConverter[ID]) getParser() func(string) (ID, error) {
-	if m.Parse != nil {
-		return m.Parse
-	}
-	rtype := reflectkit.TypeOf[ID]()
-	switch rtype.Kind() {
-	case reflect.String:
-		return func(s string) (_ ID, returnErr error) {
-			defer errorkit.Recover(&returnErr)
-			return reflect.ValueOf(s).Convert(rtype).Interface().(ID), nil
-		}
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return func(s string) (_ ID, returnErr error) {
-			defer errorkit.Recover(&returnErr)
-			n, err := strconv.Atoi(s)
-			if err != nil {
-				return *new(ID), err
-			}
-			return reflect.ValueOf(n).Convert(rtype).Interface().(ID), nil
-		}
-	default:
-		return func(s string) (ID, error) {
-			return *new(ID), fmt.Errorf("not implemented")
-		}
-	}
-}

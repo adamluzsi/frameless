@@ -27,18 +27,18 @@ func TestHandler(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		mdb = testcase.Let(s, func(t *testcase.T) *memory.Repository[Foo, FooID] {
+		mdb = testcase.Let(s, func(t *testcase.T) *memory.Repository[X, XID] {
 			m := memory.NewMemory()
-			return memory.NewRepository[Foo, FooID](m)
+			return memory.NewRepository[X, XID](m)
 		})
-		resource = testcase.Let(s, func(t *testcase.T) crud.ByIDFinder[Foo, FooID] {
+		resource = testcase.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
 			return mdb.Get(t)
 		})
-		mapping                = testcase.LetValue[restapi.OldMapping[Foo, FooID, FooDTO]](s, FooMapping{})
+		mapping                = testcase.LetValue[restapi.OldMapping[X, XID, XDTO]](s, XMapping{})
 		lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
-		return restapi.Handler[Foo, FooID, FooDTO]{
+	subject := testcase.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
+		return restapi.Handler[X, XID, XDTO]{
 			Resource: resource.Get(t),
 			Mapping:  mapping.Get(t),
 			Router: restapi.NewRouter(func(router *restapi.Router) {
@@ -53,14 +53,14 @@ func TestHandler(t *testing.T) {
 		}
 	})
 
-	GivenWeHaveStoredFooDTO := func(s *testcase.Spec) testcase.Var[FooDTO] {
-		return testcase.Let(s, func(t *testcase.T) FooDTO {
+	GivenWeHaveStoredXDTO := func(s *testcase.Spec) testcase.Var[XDTO] {
+		return testcase.Let(s, func(t *testcase.T) XDTO {
 			// create ent and persist
-			ent := Foo{Foo: t.Random.Int()}
+			ent := X{N: t.Random.Int()}
 			t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
 			t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
 			// map ent to DTO
-			dto, err := FooMapping{}.MapDTO(context.Background(), ent)
+			dto, err := XMapping{}.MapDTO(context.Background(), ent)
 			t.Must.NoError(err)
 			return dto
 		}).EagerLoading(s)
@@ -80,13 +80,13 @@ func TestHandler(t *testing.T) {
 			return w
 		}
 
-		type WithHookFunc func(*testcase.T, *restapi.Handler[Foo, FooID, FooDTO], restapi.BeforeHook)
+		type WithHookFunc func(*testcase.T, *restapi.Handler[X, XID, XDTO], restapi.BeforeHook)
 
 		itSupportsBeforeHook := func(s *testcase.Spec, withHook WithHookFunc) {
 			s.When("BeforeHook is provided", func(s *testcase.Spec) {
 				mw := testcase.Let[restapi.BeforeHook](s, nil)
 
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					h := subject.Super(t)
 					withHook(t, &h, mw.Get(t))
 					return h
@@ -170,35 +170,35 @@ func TestHandler(t *testing.T) {
 			s.Then(`it will return an empty result`, func(t *testcase.T) {
 				rr := act(t)
 				t.Must.NotEmpty(rr.Body.String())
-				t.Must.Empty(respondsWithJSON[[]FooDTO](t, rr))
+				t.Must.Empty(respondsWithJSON[[]XDTO](t, rr))
 			})
 
 			s.When("we have entity in the repository", func(s *testcase.Spec) {
-				dto := GivenWeHaveStoredFooDTO(s)
+				dto := GivenWeHaveStoredXDTO(s)
 
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					t.Must.Contain(respondsWithJSON[[]FooDTO](t, rr), dto.Get(t))
+					t.Must.Contain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
 				})
 			})
 
 			s.When("we have multiple entities in the repository", func(s *testcase.Spec) {
-				dto1 := GivenWeHaveStoredFooDTO(s)
-				dto2 := GivenWeHaveStoredFooDTO(s)
-				dto3 := GivenWeHaveStoredFooDTO(s)
+				dto1 := GivenWeHaveStoredXDTO(s)
+				dto2 := GivenWeHaveStoredXDTO(s)
+				dto3 := GivenWeHaveStoredXDTO(s)
 
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					t.Must.ContainExactly([]FooDTO{dto1.Get(t), dto2.Get(t), dto3.Get(t)},
-						respondsWithJSON[[]FooDTO](t, rr))
+					t.Must.ContainExactly([]XDTO{dto1.Get(t), dto2.Get(t), dto3.Get(t)},
+						respondsWithJSON[[]XDTO](t, rr))
 				})
 			})
 
 			s.When("FindAll is not supported by the Repository", func(s *testcase.Spec) {
-				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[Foo, FooID] {
-					return struct{ crud.ByIDFinder[Foo, FooID] }{ByIDFinder: mdb.Get(t)}
+				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
+					return struct{ crud.ByIDFinder[X, XID] }{ByIDFinder: mdb.Get(t)}
 				})
 
 				s.Then("it will respond with StatusMethodNotAllowed, page not found", func(t *testcase.T) {
@@ -212,25 +212,25 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.When("index override is provided", func(s *testcase.Spec) {
-				override := testcase.Let[func(r *http.Request) iterators.Iterator[Foo]](s, nil)
+				override := testcase.Let[func(r *http.Request) iterators.Iterator[X]](s, nil)
 
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					h := subject.Super(t)
 					h.Operations.Index.Override = override.Get(t)
 					return h
 				})
 
 				s.And("it returns values without an issue", func(s *testcase.Spec) {
-					foo := testcase.Let(s, func(t *testcase.T) Foo {
-						return Foo{
-							ID:  FooID(t.Random.Int()),
-							Foo: t.Random.Int(),
+					foo := testcase.Let(s, func(t *testcase.T) X {
+						return X{
+							ID: XID(t.Random.Int()),
+							N:  t.Random.Int(),
 						}
 					})
 
 					receivedRequest := testcase.LetValue[*http.Request](s, nil)
-					override.Let(s, func(t *testcase.T) func(r *http.Request) iterators.Iterator[Foo] {
-						return func(r *http.Request) iterators.Iterator[Foo] {
+					override.Let(s, func(t *testcase.T) func(r *http.Request) iterators.Iterator[X] {
+						return func(r *http.Request) iterators.Iterator[X] {
 							receivedRequest.Set(t, r)
 							return iterators.SingleValue(foo.Get(t))
 						}
@@ -250,21 +250,21 @@ func TestHandler(t *testing.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusOK, rr.Code)
 						t.Must.ContainExactly(
-							[]FooDTO{{ID: int(foo.Get(t).ID), Foo: foo.Get(t).Foo}},
-							respondsWithJSON[[]FooDTO](t, rr))
+							[]XDTO{{ID: int(foo.Get(t).ID), X: foo.Get(t).N}},
+							respondsWithJSON[[]XDTO](t, rr))
 					})
 				})
 
 				s.And("the returned result has an issue", func(s *testcase.Spec) {
 					expectedErr := let.Error(s)
 
-					override.Let(s, func(t *testcase.T) func(r *http.Request) iterators.Iterator[Foo] {
-						return func(r *http.Request) iterators.Iterator[Foo] {
-							return iterators.Error[Foo](expectedErr.Get(t))
+					override.Let(s, func(t *testcase.T) func(r *http.Request) iterators.Iterator[X] {
+						return func(r *http.Request) iterators.Iterator[X] {
+							return iterators.Error[X](expectedErr.Get(t))
 						}
 					})
 
-					subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+					subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 						h := subject.Super(t)
 						h.ErrorHandler = rfc7807.Handler{
 							Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
@@ -287,12 +287,12 @@ func TestHandler(t *testing.T) {
 				})
 			})
 
-			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, FooID, FooDTO], bh restapi.BeforeHook) {
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[X, XID, XDTO], bh restapi.BeforeHook) {
 				r.Operations.Index.BeforeHook = bh
 			})
 
 			s.When("NoIndex flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					rapi := subject.Super(t)
 					rapi.NoIndex = true
 					return rapi
@@ -306,8 +306,8 @@ func TestHandler(t *testing.T) {
 			var (
 				_   = method.LetValue(s, http.MethodPost)
 				_   = path.LetValue(s, `/`)
-				dto = testcase.Let(s, func(t *testcase.T) FooDTO {
-					return FooDTO{Foo: t.Random.Int()}
+				dto = testcase.Let(s, func(t *testcase.T) XDTO {
+					return XDTO{X: t.Random.Int()}
 				})
 				_ = body.Let(s, func(t *testcase.T) []byte {
 					bs, err := json.Marshal(dto.Get(t))
@@ -320,14 +320,14 @@ func TestHandler(t *testing.T) {
 				rr := act(t)
 				t.Must.Equal(http.StatusCreated, rr.Code)
 				t.Must.NotEmpty(rr.Body.String())
-				gotDTO := respondsWithJSON[FooDTO](t, rr)
-				t.Must.Equal(dto.Get(t).Foo, gotDTO.Foo)
+				gotDTO := respondsWithJSON[XDTO](t, rr)
+				t.Must.Equal(dto.Get(t).X, gotDTO.X)
 				t.Must.NotEmpty(gotDTO.ID)
 
-				ent, found, err := mdb.Get(t).FindByID(context.Background(), FooID(gotDTO.ID))
+				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotDTO.ID))
 				t.Must.NoError(err)
 				t.Must.True(found)
-				t.Must.Equal(ent.Foo, gotDTO.Foo)
+				t.Must.Equal(ent.N, gotDTO.X)
 			})
 
 			s.When("the method is not supported", func(s *testcase.Spec) {
@@ -346,13 +346,13 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.When("ID is supplied and the repository allow pre populated ID fields", func(s *testcase.Spec) {
-				mdb.Let(s, func(t *testcase.T) *memory.Repository[Foo, FooID] {
+				mdb.Let(s, func(t *testcase.T) *memory.Repository[X, XID] {
 					m := mdb.Super(t)
 					// configure if needed the *memory.Repository to accept supplied ID value
 					return m
 				})
 
-				dto.Let(s, func(t *testcase.T) FooDTO {
+				dto.Let(s, func(t *testcase.T) XDTO {
 					d := dto.Super(t)
 					d.ID = int(time.Now().Unix())
 					return d
@@ -361,14 +361,14 @@ func TestHandler(t *testing.T) {
 				s.Then(`it will create a new entity in the repository with the given entity`, func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					gotDTO := respondsWithJSON[FooDTO](t, rr)
+					gotDTO := respondsWithJSON[XDTO](t, rr)
 					t.Must.Equal(dto.Get(t), gotDTO)
 					t.Must.NotEmpty(gotDTO.ID)
 
-					ent, found, err := mdb.Get(t).FindByID(context.Background(), FooID(gotDTO.ID))
+					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotDTO.ID))
 					t.Must.NoError(err)
 					t.Must.True(found)
-					t.Must.Equal(ent.Foo, gotDTO.Foo)
+					t.Must.Equal(ent.N, gotDTO.X)
 				})
 
 				s.And("the entity was already created", func(s *testcase.Spec) {
@@ -386,8 +386,8 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.When("Create is not supported by the Repository", func(s *testcase.Spec) {
-				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[Foo, FooID] {
-					return struct{ crud.ByIDFinder[Foo, FooID] }{ByIDFinder: mdb.Get(t)}
+				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
+					return struct{ crud.ByIDFinder[X, XID] }{ByIDFinder: mdb.Get(t)}
 				})
 
 				s.Then("it will respond with StatusMethodNotAllowed, page not found", func(t *testcase.T) {
@@ -401,7 +401,7 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.When("the request body is larger than the configured limit", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					h := subject.Super(t)
 					h.BodyReadLimit = 3
 					return h
@@ -418,12 +418,12 @@ func TestHandler(t *testing.T) {
 				})
 			})
 
-			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, FooID, FooDTO], bh restapi.BeforeHook) {
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[X, XID, XDTO], bh restapi.BeforeHook) {
 				r.Operations.Create.BeforeHook = bh
 			})
 
 			s.When("No Create flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					rapi := subject.Super(t)
 					rapi.NoCreate = true
 					return rapi
@@ -453,7 +453,7 @@ func TestHandler(t *testing.T) {
 
 		s.Describe(`#show`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				dto = GivenWeHaveStoredXDTO(s)
 				_   = method.LetValue(s, http.MethodGet)
 				_   = path.Let(s, func(t *testcase.T) string {
 					return fmt.Sprintf("/%d", dto.Get(t).ID)
@@ -463,7 +463,7 @@ func TestHandler(t *testing.T) {
 			s.Then(`it will show the requested entity`, func(t *testcase.T) {
 				rr := act(t)
 				t.Must.NotEmpty(rr.Body.String())
-				gotDTO := respondsWithJSON[FooDTO](t, rr)
+				gotDTO := respondsWithJSON[XDTO](t, rr)
 				t.Must.Equal(dto.Get(t), gotDTO)
 			})
 
@@ -484,17 +484,17 @@ func TestHandler(t *testing.T) {
 				})
 			})
 
-			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, FooID, FooDTO], bh restapi.BeforeHook) {
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[X, XID, XDTO], bh restapi.BeforeHook) {
 				r.Operations.Show.BeforeHook = func(w http.ResponseWriter, r *http.Request) {
 					id, ok := mapping.Get(t).ContextLookupID(r.Context())
 					t.Must.True(ok, "expected to find the ID in the context")
-					t.Must.Equal(FooID(dto.Get(t).ID), id)
+					t.Must.Equal(XID(dto.Get(t).ID), id)
 					bh(w, r)
 				}
 			})
 
 			s.When("NoShow flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					rapi := subject.Super(t)
 					rapi.NoShow = true
 					return rapi
@@ -506,7 +506,7 @@ func TestHandler(t *testing.T) {
 
 		s.Describe(`#update`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				dto = GivenWeHaveStoredXDTO(s)
 				_   = method.Let(s, func(t *testcase.T) string {
 					return t.Random.SliceElement([]string{
 						http.MethodPut,
@@ -517,9 +517,9 @@ func TestHandler(t *testing.T) {
 					return fmt.Sprintf("/%d", dto.Get(t).ID)
 				})
 
-				updatedDTO = testcase.Let(s, func(t *testcase.T) FooDTO {
+				updatedDTO = testcase.Let(s, func(t *testcase.T) XDTO {
 					v := dto.Get(t)
-					v.Foo = t.Random.Int()
+					v.X = t.Random.Int()
 					return v
 				})
 				_ = body.Let(s, func(t *testcase.T) []byte {
@@ -533,17 +533,17 @@ func TestHandler(t *testing.T) {
 				rr := act(t)
 				t.Must.Empty(rr.Body.String())
 				t.Must.Equal(http.StatusNoContent, rr.Code)
-				ent, found, err := mdb.Get(t).FindByID(context.Background(), FooID(dto.Get(t).ID))
+				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
 				t.Must.NoError(err)
 				t.Must.True(found)
-				t.Must.Equal(ent.Foo, updatedDTO.Get(t).Foo)
+				t.Must.Equal(ent.N, updatedDTO.Get(t).X)
 			})
 
 			WhenIDInThePathIsMalformed(s)
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), FooID(dto.Get(t).ID)))
+					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), XID(dto.Get(t).ID)))
 				})
 
 				s.Then("it will respond with 404, entity not found", func(t *testcase.T) {
@@ -557,24 +557,24 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.When("Update is not supported by the Repository", func(s *testcase.Spec) {
-				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[Foo, FooID] {
-					return struct{ crud.ByIDFinder[Foo, FooID] }{ByIDFinder: mdb.Get(t)}
+				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
+					return struct{ crud.ByIDFinder[X, XID] }{ByIDFinder: mdb.Get(t)}
 				})
 
 				ThenNotAllowed(s)
 			})
 
-			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, FooID, FooDTO], bh restapi.BeforeHook) {
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[X, XID, XDTO], bh restapi.BeforeHook) {
 				r.Operations.Update.BeforeHook = func(w http.ResponseWriter, r *http.Request) {
 					id, ok := mapping.Get(t).ContextLookupID(r.Context())
 					t.Must.True(ok, "expected to find the ID in the context")
-					t.Must.Equal(FooID(dto.Get(t).ID), id)
+					t.Must.Equal(XID(dto.Get(t).ID), id)
 					bh(w, r)
 				}
 			})
 
 			s.When("NoUpdate flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					rapi := subject.Super(t)
 					rapi.NoUpdate = true
 					return rapi
@@ -586,7 +586,7 @@ func TestHandler(t *testing.T) {
 
 		s.Describe(`#delete`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				dto = GivenWeHaveStoredXDTO(s)
 				_   = method.LetValue(s, http.MethodDelete)
 				_   = path.Let(s, func(t *testcase.T) string {
 					return fmt.Sprintf("/%d", dto.Get(t).ID)
@@ -598,7 +598,7 @@ func TestHandler(t *testing.T) {
 				t.Must.Empty(rr.Body.String())
 				t.Must.Equal(http.StatusNoContent, rr.Code)
 
-				_, found, err := mdb.Get(t).FindByID(context.Background(), FooID(dto.Get(t).ID))
+				_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
 				t.Must.NoError(err)
 				t.Must.False(found, "expected that the entity is deleted")
 			})
@@ -607,7 +607,7 @@ func TestHandler(t *testing.T) {
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), FooID(dto.Get(t).ID)))
+					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), XID(dto.Get(t).ID)))
 				})
 
 				s.Then("it will respond with 404, entity not found", func(t *testcase.T) {
@@ -621,24 +621,24 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.When("Delete is not supported by the Repository", func(s *testcase.Spec) {
-				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[Foo, FooID] {
-					return struct{ crud.ByIDFinder[Foo, FooID] }{ByIDFinder: mdb.Get(t)}
+				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
+					return struct{ crud.ByIDFinder[X, XID] }{ByIDFinder: mdb.Get(t)}
 				})
 
 				ThenNotAllowed(s)
 			})
 
-			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[Foo, FooID, FooDTO], bh restapi.BeforeHook) {
+			itSupportsBeforeHook(s, func(t *testcase.T, r *restapi.Handler[X, XID, XDTO], bh restapi.BeforeHook) {
 				r.Operations.Delete.BeforeHook = func(w http.ResponseWriter, r *http.Request) {
 					id, ok := mapping.Get(t).ContextLookupID(r.Context())
 					t.Must.True(ok, "expected to find the ID in the context")
-					t.Must.Equal(FooID(dto.Get(t).ID), id)
+					t.Must.Equal(XID(dto.Get(t).ID), id)
 					bh(w, r)
 				}
 			})
 
 			s.When("NoDelete flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					rapi := subject.Super(t)
 					rapi.NoDelete = true
 					return rapi
@@ -669,7 +669,7 @@ func TestHandler(t *testing.T) {
 			})
 
 			s.And(".Routes is nil", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Handler[Foo, FooID, FooDTO] {
+				subject.Let(s, func(t *testcase.T) restapi.Handler[X, XID, XDTO] {
 					v := subject.Super(t)
 					v.Router = nil
 					return v

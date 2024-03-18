@@ -36,7 +36,7 @@ type Handler[Entity, ID, DTO any] struct {
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	//
 	// The default value is DefaultBodyReadLimit, which is preset to 16MB.
-	BodyReadLimit int64
+	BodyReadLimit int
 
 	Operations[Entity, ID, DTO]
 
@@ -50,12 +50,6 @@ type Handler[Entity, ID, DTO any] struct {
 	NoUpdate bool
 	// NoDelete will instruct the handler to not expose the `DELETE /:id` endpoint
 	NoDelete bool
-}
-
-func OperationsFromCRUD[Entity, ID, DTO any, Resource crud.ByIDFinder[Entity, ID]](resource Resource) Operations[Entity, ID, DTO] {
-	var ops Operations[Entity, ID, DTO]
-
-	return ops
 }
 
 // Operations is an optional config where you can customise individual restful operations.
@@ -276,7 +270,7 @@ func (h Handler[Entity, ID, DTO]) create(w http.ResponseWriter, r *http.Request)
 	defer r.Body.Close()
 
 	bodyReadLimit := h.getBodyReadLimit()
-	bytes, err := io.ReadAll(io.LimitReader(r.Body, bodyReadLimit))
+	bytes, err := io.ReadAll(io.LimitReader(r.Body, int64(bodyReadLimit)))
 	if err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
 		return
@@ -339,7 +333,7 @@ func (h Handler[Entity, ID, DTO]) create(w http.ResponseWriter, r *http.Request)
 	h.writeJSON(w, r, http.StatusCreated, dto)
 }
 
-func (h Handler[Entity, ID, DTO]) getBodyReadLimit() int64 {
+func (h Handler[Entity, ID, DTO]) getBodyReadLimit() int {
 	if h.BodyReadLimit != 0 {
 		return h.BodyReadLimit
 	}
@@ -428,14 +422,18 @@ func (h Handler[Entity, ID, DTO]) writeIterJSON(w http.ResponseWriter, r *http.R
 	defer func() { _ = iter.Close() }()
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	ctx := context.Background()
 
 	if _, err := w.Write([]byte("[")); err != nil {
 		return
 	}
 	if iter.Next() {
 		v := iter.Value()
-
-		bytes, err := json.Marshal(&v)
+		dto, err := h.Mapping.MapDTO(ctx, v)
+		if err != nil {
+			return
+		}
+		bytes, err := json.Marshal(&dto)
 		if err != nil {
 			return
 		}
@@ -444,9 +442,11 @@ func (h Handler[Entity, ID, DTO]) writeIterJSON(w http.ResponseWriter, r *http.R
 		}
 	}
 	for iter.Next() {
-		v := iter.Value()
-
-		bytes, err := json.Marshal(&v)
+		dto, err := h.Mapping.MapDTO(ctx, iter.Value())
+		if err != nil {
+			return
+		}
+		bytes, err := json.Marshal(&dto)
 		if err != nil {
 			h.errInternalServerError(w, r, err)
 		}
@@ -532,7 +532,7 @@ func (h Handler[Entity, ID, DTO]) update(w http.ResponseWriter, r *http.Request,
 	defer r.Body.Close()
 
 	bodyReadLimit := h.getBodyReadLimit()
-	bytes, err := io.ReadAll(io.LimitReader(r.Body, bodyReadLimit))
+	bytes, err := io.ReadAll(io.LimitReader(r.Body, int64(bodyReadLimit)))
 	if err != nil {
 		defaultErrorHandler.HandleError(w, r,
 			ErrRequestEntityTooLarge.With().
