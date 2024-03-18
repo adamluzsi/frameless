@@ -153,6 +153,16 @@ func TestLookup_smoke(t *testing.T) {
 	}
 }
 
+func ExampleMerge() {
+	var (
+		a   = []string{"a", "b", "c"}
+		b   = []string{"1", "2", "3"}
+		c   = []string{"1", "B", "3"}
+		out = slicekit.Merge(a, b, c)
+	)
+	_ = out // []string{"a", "b", "c", "1", "2", "3", "1", "B", "3"}
+}
+
 func TestMerge(t *testing.T) {
 	t.Run("all slice merged into one", func(t *testing.T) {
 		var (
@@ -177,5 +187,34 @@ func TestMerge(t *testing.T) {
 		assert.Equal(t, a, []string{"a", "b", "c"})
 		assert.Equal(t, b, []string{"1", "2", "3"})
 		assert.Equal(t, c, []string{"1", "B", "3"})
+	})
+}
+
+func ExampleClone() {
+	var (
+		src = []string{"a", "b", "c"}
+		dst = slicekit.Clone(src)
+	)
+	_, _ = src, dst
+}
+
+func TestClone(t *testing.T) {
+	t.Run("clone will creates an identical copy of the source slice", func(t *testing.T) {
+		var (
+			src = []string{"a", "b", "c"}
+			dst = slicekit.Clone(src)
+		)
+		assert.Equal(t, src, []string{"a", "b", "c"})
+		assert.Equal(t, dst, []string{"a", "b", "c"})
+	})
+	t.Run("original slice is not modified when its clone is altered", func(t *testing.T) {
+		var (
+			src = []string{"a", "b", "c"}
+			dst = slicekit.Clone(src)
+		)
+		dst[1] = "42"
+		dst = append(dst, "foo")
+		assert.Equal(t, src, []string{"a", "b", "c"})
+		assert.Equal(t, dst, []string{"a", "42", "c", "foo"})
 	})
 }

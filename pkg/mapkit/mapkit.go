@@ -106,3 +106,12 @@ func Merge[K comparable, V any](maps ...map[K]V) map[K]V {
 	}
 	return out
 }
+
+// Clone creates a clone from a passed source map.
+func Clone[K comparable, V any](m map[K]V) map[K]V {
+	var out = make(map[K]V)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}

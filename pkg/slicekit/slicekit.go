@@ -93,3 +93,10 @@ func toMapperFunc[O, I any, MF mapperFunc[O, I]](m MF) func(I) (O, error) {
 		panic("unexpected")
 	}
 }
+
+// Clone creates a clone from passed src slice.
+func Clone[T any](src []T) []T {
+	var dst = make([]T, len(src))
+	copy(dst, src)
+	return dst
+}

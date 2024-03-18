@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/testcase/assert"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -193,5 +194,41 @@ func TestMerge(t *testing.T) {
 			"d": 4, "e": 5, "f": 6,
 			"a": 42,
 		})
+	})
+}
+
+func ExampleClone() {
+	var (
+		src = map[string]int{"a": 1, "b": 2, "c": 3}
+		dst = mapkit.Clone(src)
+	)
+	_ = dst // dst == map[string]int{"a": 1, "b": 2, "c": 3}
+}
+
+func TestClone(t *testing.T) {
+	t.Run("clones a value", func(t *testing.T) {
+		var (
+			src = map[string]int{"a": 1, "b": 2, "c": 3}
+			dst = mapkit.Clone(src)
+		)
+		assert.Equal(t, src, dst)
+	})
+	t.Run("altering the cloned map doesn't affect the source map", func(t *testing.T) {
+		var (
+			src = map[string]int{"a": 1, "b": 2, "c": 3}
+			dst = mapkit.Clone(src)
+		)
+		dst["n"] = 42
+		assert.Equal(t, src, map[string]int{"a": 1, "b": 2, "c": 3})
+		assert.Equal(t, dst, map[string]int{"a": 1, "b": 2, "c": 3, "n": 42})
+	})
+	t.Run("map suptype can be cloned, even though while losing the concrete subtype", func(t *testing.T) {
+		type MyMap map[string]int
+		var (
+			src = MyMap{"a": 1, "b": 2, "c": 3}
+			dst = mapkit.Clone(src)
+		)
+		assert.Equal[MyMap](t, src, dst)
+		assert.Equal(t, reflect.TypeOf(src), reflect.TypeOf(dst))
 	})
 }
