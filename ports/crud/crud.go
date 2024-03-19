@@ -98,13 +98,14 @@ type Saver[Entity any] interface {
 	Save(ctx context.Context, ptr *Entity) error
 }
 
-type LookupIDFuncSignature[Entity, ID any] func(Entity) (id ID, ok bool)
+// TODO: how to support multiple queries with this approach?
+//       maybe a function signature instead of a interface?
 
-type FindOne[Query queryOne[Entity], Entity any] interface {
+type QueryOne[Query queryOne[Entity], Entity any] interface {
 	Query() Query
 }
 
-type FindMany[Query queryMany[Entity], Entity any] interface {
+type QueryMany[Query queryMany[Entity], Entity any] interface {
 	Query() Query
 }
 
@@ -116,3 +117,5 @@ type (
 		Fetch(ctx context.Context) iterators.Iterator[Entity]
 	}
 )
+
+type LookupIDFuncSignature[Entity, ID any] func(Entity) (id ID, ok bool)
