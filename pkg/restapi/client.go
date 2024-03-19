@@ -26,7 +26,7 @@ type Client[Entity, ID any] struct {
 	Mapping     Mapping[Entity]
 	Serializer  Serializer
 	IDConverter idConverter[ID]
-	LookupID    crud.LookupIDFunc[Entity, ID]
+	LookupID    crud.LookupIDFuncSignature[Entity, ID]
 }
 
 func (r Client[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {

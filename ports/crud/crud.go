@@ -98,7 +98,7 @@ type Saver[Entity any] interface {
 	Save(ctx context.Context, ptr *Entity) error
 }
 
-type LookupIDFunc[Entity, ID any] func(Entity) (ID, bool)
+type LookupIDFuncSignature[Entity, ID any] func(Entity) (id ID, ok bool)
 
 type FindOne[Query queryOne[Entity], Entity any] interface {
 	Query() Query

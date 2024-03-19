@@ -6,4 +6,4 @@ import (
 	"go.llib.dev/frameless/spechelper/testent"
 )
 
-var _ crud.LookupIDFunc[testent.Foo, testent.FooID] = extid.Lookup[testent.FooID, testent.Foo]
+var _ crud.LookupIDFuncSignature[testent.Foo, testent.FooID] = extid.Lookup[testent.FooID, testent.Foo]
