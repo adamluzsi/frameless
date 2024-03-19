@@ -232,3 +232,45 @@ func TestClone(t *testing.T) {
 		assert.Equal(t, reflect.TypeOf(src), reflect.TypeOf(dst))
 	})
 }
+
+func ExampleFilter() {
+	var (
+		src      = map[int]string{1: "a", 2: "b", 3: "c"}
+		dst, err = mapkit.Filter[int, string](src, func(k int, v string) bool {
+			return k != 2
+		})
+	)
+	_, _ = dst, err // map[int]string{1: "a", 3: "c"}, nil
+}
+
+func TestFilter(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		var (
+			src      = map[int]string{1: "a", 2: "b", 3: "c"}
+			dst, err = mapkit.Filter[int, string](src, func(k int, v string) bool {
+				return k != 2
+			})
+		)
+		assert.NoError(t, err)
+		assert.Equal(t, src, map[int]string{1: "a", 2: "b", 3: "c"})
+		assert.Equal(t, dst, map[int]string{1: "a", 3: "c"})
+	})
+	t.Run("happy (no-error)", func(t *testing.T) {
+		var (
+			src = map[int]string{1: "a", 2: "b", 3: "c"}
+			dst = mapkit.Must(mapkit.Filter[int, string](src, func(k int, v string) bool {
+				return k != 2
+			}))
+		)
+		assert.Equal(t, src, map[int]string{1: "a", 2: "b", 3: "c"})
+		assert.Equal(t, dst, map[int]string{1: "a", 3: "c"})
+	})
+	t.Run("error is propagated back", func(t *testing.T) {
+		expErr := fmt.Errorf("boom")
+		got, err := mapkit.Filter[int, string](map[int]string{1: "a"}, func(k int, v string) (bool, error) {
+			return false, expErr
+		})
+		assert.ErrorIs(t, err, expErr)
+		assert.Empty(t, got)
+	})
+}

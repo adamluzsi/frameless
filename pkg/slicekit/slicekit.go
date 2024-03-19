@@ -58,6 +58,33 @@ func Merge[T any](slices ...[]T) []T {
 	return out
 }
 
+// Clone creates a clone from passed src slice.
+func Clone[T any](src []T) []T {
+	var dst = make([]T, len(src))
+	copy(dst, src)
+	return dst
+}
+
+func Filter[T any, FN filterFunc[T]](src []T, fn FN) ([]T, error) {
+	if src == nil {
+		return nil, nil
+	}
+	var (
+		out    = make([]T, 0, len(src))
+		filter = toFilterFunc[T](fn)
+	)
+	for _, val := range src {
+		ok, err := filter(val)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, val)
+		}
+	}
+	return out, nil
+}
+
 // --------------------------------------------------------------------------------- //
 
 type reducerFunc[O, I any] interface {
@@ -94,9 +121,19 @@ func toMapperFunc[O, I any, MF mapperFunc[O, I]](m MF) func(I) (O, error) {
 	}
 }
 
-// Clone creates a clone from passed src slice.
-func Clone[T any](src []T) []T {
-	var dst = make([]T, len(src))
-	copy(dst, src)
-	return dst
+type filterFunc[T any] interface {
+	func(T) bool | func(T) (bool, error)
+}
+
+func toFilterFunc[T any, MF filterFunc[T]](m MF) func(T) (bool, error) {
+	switch fn := any(m).(type) {
+	case func(T) bool:
+		return func(t T) (bool, error) {
+			return fn(t), nil
+		}
+	case func(T) (bool, error):
+		return fn
+	default:
+		panic("unexpected")
+	}
 }

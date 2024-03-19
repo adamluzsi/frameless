@@ -218,3 +218,45 @@ func TestClone(t *testing.T) {
 		assert.Equal(t, dst, []string{"a", "42", "c", "foo"})
 	})
 }
+
+func ExampleFilter() {
+	var (
+		src      = []string{"a", "b", "c"}
+		dst, err = slicekit.Filter[string](src, func(s string) (bool, error) {
+			return s != "c", nil
+		})
+	)
+	_, _ = dst, err // []string{"a", "b"}, nil
+}
+
+func TestFilter(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		var (
+			src      = []string{"a", "b", "c"}
+			dst, err = slicekit.Filter[string](src, func(s string) (bool, error) {
+				return s != "c", nil
+			})
+		)
+		assert.NoError(t, err)
+		assert.Equal(t, src, []string{"a", "b", "c"})
+		assert.Equal(t, dst, []string{"a", "b"})
+	})
+	t.Run("happy (no-error)", func(t *testing.T) {
+		var (
+			src = []string{"a", "b", "c"}
+			dst = slicekit.Must(slicekit.Filter[string](src, func(s string) bool {
+				return s != "b"
+			}))
+		)
+		assert.Equal(t, src, []string{"a", "b", "c"})
+		assert.Equal(t, dst, []string{"a", "c"})
+	})
+	t.Run("error is propagated back", func(t *testing.T) {
+		expErr := fmt.Errorf("boom")
+		got, err := slicekit.Filter[string]([]string{"a", "b", "c"}, func(s string) (bool, error) {
+			return false, expErr
+		})
+		assert.ErrorIs(t, err, expErr)
+		assert.Empty(t, got)
+	})
+}
