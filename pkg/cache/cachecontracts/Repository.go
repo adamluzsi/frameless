@@ -254,9 +254,16 @@ func (c EntityRepository[Entity, ID]) Spec(s *testcase.Spec) {
 					MakeEntity:    sub.MakeEntity,
 				}
 			}),
+			crudcontracts.ByIDsFinder[Entity, ID](func(tb testing.TB) crudcontracts.ByIDsFinderSubject[Entity, ID] {
+				sub := c(tb)
+				return crudcontracts.ByIDsFinderSubject[Entity, ID]{
+					Resource:    sub.EntityRepository,
+					MakeContext: sub.MakeContext,
+					MakeEntity:  sub.MakeEntity,
+				}
+			}),
 		)
-
-		s.Describe(`.FindByIDs`, c.describeCacheDataFindByIDs)
+		
 		s.Describe(`.Upsert`, c.describeCacheDataUpsert)
 	})
 }
@@ -419,69 +426,6 @@ func (c EntityRepository[Entity, ID]) describeCacheDataUpsert(s *testcase.Spec) 
 				t.Must.Nil(err)
 				t.Must.Equal(len(entities.Get(t)), count)
 			})
-		})
-	})
-}
-
-func (c EntityRepository[Entity, ID]) describeCacheDataFindByIDs(s *testcase.Spec) {
-	var (
-		ctx = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
-			return c.subject().Get(t).MakeContext()
-		})
-		ids     = testcase.Var[[]ID]{ID: `entities ids`}
-		subject = func(t *testcase.T) iterators.Iterator[Entity] {
-			return c.dataRepository().Get(t).FindByIDs(ctx.Get(t), ids.Get(t)...)
-		}
-	)
-
-	var (
-		newEntityInit = func(t *testcase.T) *Entity {
-			ent := c.subject().Get(t).MakeEntity()
-			ptr := &ent
-			Create[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ptr)
-			return ptr
-		}
-		ent1 = testcase.Let(s, newEntityInit)
-		ent2 = testcase.Let(s, newEntityInit)
-	)
-
-	s.When(`id list is empty`, func(s *testcase.Spec) {
-		ids.Let(s, func(t *testcase.T) []ID {
-			return []ID{}
-		})
-
-		s.Then(`result is an empty list`, func(t *testcase.T) {
-			count, err := iterators.Count(subject(t))
-			t.Must.Nil(err)
-			t.Must.Equal(0, count)
-		})
-	})
-
-	s.When(`id list contains ids stored in the repository`, func(s *testcase.Spec) {
-		ids.Let(s, func(t *testcase.T) []ID {
-			return []ID{c.getID(t, ent1.Get(t)), c.getID(t, ent2.Get(t))}
-		})
-
-		s.Then(`it will return all entities`, func(t *testcase.T) {
-			expected := append([]Entity{}, *ent1.Get(t), *ent2.Get(t))
-			actual, err := iterators.Collect(subject(t))
-			t.Must.Nil(err)
-			t.Must.ContainExactly(expected, actual)
-		})
-	})
-
-	s.When(`id list contains at least one id that doesn't have stored entity`, func(s *testcase.Spec) {
-		ids.Let(s, func(t *testcase.T) []ID {
-			return []ID{c.getID(t, ent1.Get(t)), c.getID(t, ent2.Get(t))}
-		})
-
-		s.Before(func(t *testcase.T) {
-			Delete[Entity, ID](t, c.dataRepository().Get(t), ctx.Get(t), ent1.Get(t))
-		})
-
-		s.Then(`it will eventually yield error`, func(t *testcase.T) {
-			_, err := iterators.Collect(subject(t))
-			t.Must.NotNil(err)
 		})
 	})
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Suite represent a resource specification also known as "contract".
+// Suite represents a resource specification also known as "contract".
 //
 // The main goal of a resource Spec is to introduce dependency injection pattern
 // at logical level between consumers and suppliers.

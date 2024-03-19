@@ -256,3 +256,82 @@ func (c AllFinder[Entity, ID]) findAllN(t *testcase.T, subject func(t *testcase.
 	})
 	return entities
 }
+
+type ByIDsFinderSubject[Entity, ID any] struct {
+	Resource interface {
+		spechelper.CRD[Entity, ID]
+		crud.ByIDsFinder[Entity, ID]
+		//crud.AllFinder[Entity]
+	}
+	MakeContext func() context.Context
+	MakeEntity  func() Entity
+}
+
+func ByIDsFinder[Entity, ID any](arrangement func(testing.TB) ByIDsFinderSubject[Entity, ID]) Contract {
+	s := testcase.NewSpec(nil, testcase.AsSuite("ByIDsFinder"))
+
+	subject := let.With[ByIDsFinderSubject[Entity, ID]](s, arrangement)
+
+	var (
+		ctx = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
+			return subject.Get(t).MakeContext()
+		})
+		ids = testcase.Var[[]ID]{ID: `entities ids`}
+	)
+	var act = func(t *testcase.T) iterators.Iterator[Entity] {
+		return subject.Get(t).Resource.FindByIDs(ctx.Get(t), ids.Get(t)...)
+	}
+
+	var (
+		newEntityInit = func(t *testcase.T) *Entity {
+			ent := subject.Get(t).MakeEntity()
+			ptr := &ent
+			Create[Entity, ID](t, subject.Get(t).Resource, subject.Get(t).MakeContext(), ptr)
+			return ptr
+		}
+		ent1 = testcase.Let(s, newEntityInit)
+		ent2 = testcase.Let(s, newEntityInit)
+	)
+
+	s.When(`id list is empty`, func(s *testcase.Spec) {
+		ids.Let(s, func(t *testcase.T) []ID {
+			return []ID{}
+		})
+
+		s.Then(`result is an empty list`, func(t *testcase.T) {
+			count, err := iterators.Count(act(t))
+			t.Must.Nil(err)
+			t.Must.Equal(0, count)
+		})
+	})
+
+	s.When(`id list contains ids stored in the repository`, func(s *testcase.Spec) {
+		ids.Let(s, func(t *testcase.T) []ID {
+			return []ID{getID[Entity, ID](t, *ent1.Get(t)), getID[Entity, ID](t, *ent2.Get(t))}
+		})
+
+		s.Then(`it will return all entities`, func(t *testcase.T) {
+			expected := append([]Entity{}, *ent1.Get(t), *ent2.Get(t))
+			actual, err := iterators.Collect(act(t))
+			t.Must.Nil(err)
+			t.Must.ContainExactly(expected, actual)
+		})
+	})
+
+	s.When(`id list contains at least one id that doesn't have stored entity`, func(s *testcase.Spec) {
+		ids.Let(s, func(t *testcase.T) []ID {
+			return []ID{getID[Entity, ID](t, *ent1.Get(t)), getID[Entity, ID](t, *ent2.Get(t))}
+		})
+
+		s.Before(func(t *testcase.T) {
+			Delete[Entity, ID](t, subject.Get(t).Resource, ctx.Get(t), ent1.Get(t))
+		})
+
+		s.Then(`it will eventually yield error`, func(t *testcase.T) {
+			_, err := iterators.Collect(act(t))
+			t.Must.NotNil(err)
+		})
+	})
+
+	return s.AsSuite()
+}

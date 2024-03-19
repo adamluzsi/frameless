@@ -54,7 +54,7 @@ func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	var ptr1 *testhelper.IDByIDField
 	var ptr2 **testhelper.IDByIDField
 
-	ptr1 = &testhelper.IDByIDField{"ok"}
+	ptr1 = &testhelper.IDByIDField{ID: "ok"}
 	ptr2 = &ptr1
 
 	id, ok := extid.Lookup[string](ptr2)

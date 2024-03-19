@@ -17,4 +17,5 @@ var _ = []suites.Suite{
 	Saver[EntType, IDType](nil),
 	Deleter[EntType, IDType](nil),
 	OnePhaseCommitProtocol[EntType, IDType](nil),
+	ByIDsFinder[EntType, IDType](nil),
 }

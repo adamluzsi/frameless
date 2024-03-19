@@ -86,5 +86,12 @@ func Test_memoryRepository(t *testing.T) {
 				MakeEntity:    makeEntity(tb),
 			}
 		}),
+		crudcontracts.ByIDsFinder[Entity, ID](func(tb testing.TB) crudcontracts.ByIDsFinderSubject[Entity, ID] {
+			return crudcontracts.ByIDsFinderSubject[Entity, ID]{
+				Resource:    newSubject(),
+				MakeContext: makeContext,
+				MakeEntity:  makeEntity(tb),
+			}
+		}),
 	)
 }

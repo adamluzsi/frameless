@@ -51,6 +51,12 @@ type ByIDFinder[Entity, ID any] interface {
 	FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error)
 }
 
+type ByIDsFinder[Entity, ID any] interface {
+	// FindByIDs finds entities with the given IDs in the repository.
+	// If any of the ID points to a non-existent Entity, the returned iterator will eventually yield an error.
+	FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity]
+}
+
 type AllFinder[Entity any] interface {
 	// FindAll will return all entity that has <V> type
 	// TODO: consider using error as 2nd argument, to make it similar to sql package

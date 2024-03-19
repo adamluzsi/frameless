@@ -20,7 +20,7 @@ type EntityRepository[Entity, ID any] interface {
 	crud.Updater[Entity]
 	crud.Finder[Entity, ID]
 	crud.Deleter[ID]
-	FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity]
+	crud.ByIDsFinder[Entity, ID]
 	Upsert(ctx context.Context, ptrs ...*Entity) error // TODO: replace Upsert with crud.Saver
 }
 
