@@ -99,3 +99,20 @@ type Saver[Entity any] interface {
 }
 
 type LookupIDFunc[Entity, ID any] func(Entity) (ID, bool)
+
+type FindOne[Query queryOne[Entity], Entity any] interface {
+	Query() Query
+}
+
+type FindMany[Query queryMany[Entity], Entity any] interface {
+	Query() Query
+}
+
+type (
+	queryOne[Entity any] interface {
+		FetchOne(ctx context.Context) (Entity, bool, error)
+	}
+	queryMany[Entity any] interface {
+		Fetch(ctx context.Context) iterators.Iterator[Entity]
+	}
+)
