@@ -98,4 +98,20 @@ type Saver[Entity any] interface {
 	Save(ctx context.Context, ptr *Entity) error
 }
 
-type LookupIDFunc[Entity, ID any] func(Entity) (ID, bool)
+type FindOne[Query QueryOne[Entity], Entity any] interface {
+	Query() Query
+}
+
+type QueryOne[Entity any] interface {
+	Find(ctx context.Context) (Entity, bool, error)
+}
+
+type FindMany[Query QueryMany[Entity], Entity any] interface {
+	Query() Query
+}
+
+type QueryMany[Entity any] interface {
+	Fetch(ctx context.Context) (iterators.Iterator[Entity], error)
+}
+
+type LookupIDFunc[Entity, ID any] func(Entity) (id ID, ok bool)

@@ -9,10 +9,10 @@ import (
 )
 
 type Foo struct {
-	ID  FooID `ext:"ID"`
-	Foo string
-	Bar string
-	Baz string
+	ID  FooID  `ext:"ID"`
+	Foo string `query:"foo"`
+	Bar string `query:"bar"`
+	Baz string `query:"baz"`
 }
 
 func (foo Foo) LookupID() (FooID, bool) {
