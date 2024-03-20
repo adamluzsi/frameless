@@ -3,6 +3,7 @@ package errorkit_test
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -11,6 +12,8 @@ import (
 	"sync"
 	"testing"
 )
+
+var rnd = random.New(random.CryptoSeed{})
 
 func ExampleFinish_sqlRows() {
 	var db *sql.DB
@@ -186,3 +189,40 @@ type (
 
 func (err ErrType1) Error() string { return "ErrType1" }
 func (err ErrType2) Error() string { return "ErrType2" }
+
+type MyError struct {
+	Msg string
+}
+
+func (err MyError) Error() string {
+	return err.Msg
+}
+
+func ExampleAs() {
+	var err error // some error to be checked
+
+	if err, ok := errorkit.As[MyError](err); ok {
+		fmt.Println(err.Msg)
+	}
+}
+
+func TestAs(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		expErr := MyError{Msg: rnd.Error().Error()}
+		var err error = fmt.Errorf("wrapped: %w", expErr)
+		gotErr, ok := errorkit.As[MyError](err)
+		assert.True(t, ok)
+		assert.Equal(t, gotErr, expErr)
+	})
+	t.Run("rainy", func(t *testing.T) {
+		var err error = fmt.Errorf("wrapped: %w", rnd.Error())
+		gotErr, ok := errorkit.As[MyError](err)
+		assert.False(t, ok)
+		assert.Empty(t, gotErr)
+	})
+	t.Run("nil", func(t *testing.T) {
+		gotErr, ok := errorkit.As[MyError](nil)
+		assert.False(t, ok)
+		assert.Empty(t, gotErr)
+	})
+}

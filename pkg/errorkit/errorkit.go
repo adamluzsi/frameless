@@ -1,6 +1,7 @@
 package errorkit
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -25,4 +26,12 @@ func Recover(returnErr *error) {
 	default:
 		*returnErr = fmt.Errorf("%v", r)
 	}
+}
+
+// As function serves as a shorthand to enable one-liner error handling with errors.As.
+// It's meant to be used within an if statement, much like Lookup functions such as os.LookupEnv.
+func As[T error](err error) (T, bool) {
+	var v T
+	ok := errors.As(err, &v)
+	return v, ok
 }
