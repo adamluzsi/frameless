@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go.llib.dev/frameless/pkg/dtos"
-	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -74,10 +74,10 @@ type Resource[Entity, ID any] struct {
 	// For example, "/users/42/jobs" will end up as "/jobs".
 	EntityRoutes http.Handler
 
-	// BodyReadLimitByteSize is the max bytes that the handler is willing to read from the request body.
+	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	//
 	// The default value is DefaultBodyReadLimit, which is preset to 16MB.
-	BodyReadLimitByteSize int
+	BodyReadLimit units.ByteSize
 }
 
 type idConverter[ID any] interface {
@@ -237,8 +237,8 @@ func (res Resource[Entity, ID]) errEntityNotFound(w http.ResponseWriter, r *http
 var DefaultBodyReadLimit int = 16 * units.Megabyte
 
 func (res Resource[Entity, ID]) getBodyReadLimit() int {
-	if res.BodyReadLimitByteSize != 0 {
-		return res.BodyReadLimitByteSize
+	if res.BodyReadLimit != 0 {
+		return res.BodyReadLimit
 	}
 	return DefaultBodyReadLimit
 }
@@ -582,19 +582,12 @@ func (res Resource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) Resou
 	return res
 }
 
-func bodyReadAll(body io.ReadCloser, bodyReadLimit int) (_ []byte, returnErr error) {
-	if body == nil { // TODO:TEST_ME
-		return []byte{}, nil
-	}
-	defer errorkit.Finish(&returnErr, body.Close) // TODO:TEST_ME
-	data, err := io.ReadAll(io.LimitReader(body, int64(bodyReadLimit)))
-	if err != nil {
-		return nil, err
-	}
-	if _, err := body.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
+func bodyReadAll(body io.ReadCloser, bodyReadLimit units.ByteSize) (_ []byte, returnErr error) {
+	data, err := iokit.ReadAllWithLimit(body, bodyReadLimit)
+	if errors.Is(err, iokit.ErrReadLimitReached) {
 		return nil, ErrRequestEntityTooLarge
 	}
-	return data, nil
+	return data, err
 }
 
 // MIMEType or Multipurpose Internet Mail Extensions is an internet standard

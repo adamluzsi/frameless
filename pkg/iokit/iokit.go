@@ -2,6 +2,7 @@ package iokit
 
 import (
 	"bytes"
+	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"io"
 	"io/fs"
@@ -166,3 +167,50 @@ func getLocker(ptr *sync.Locker) sync.Locker {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const ErrReadLimitReached errorkit.Error = "request-entity-too-large"
+
+func ReadAllWithLimit(body io.Reader, readLimit units.ByteSize) (_ []byte, returnErr error) {
+	if body == nil { // TODO:TEST_ME
+		return []byte{}, nil
+	}
+	if closer, ok := body.(io.ReadCloser); ok { // TODO:TEST_ME
+		defer errorkit.Finish(&returnErr, closer.Close)
+	}
+	data, err := io.ReadAll(io.LimitReader(body, int64(readLimit)))
+	if err != nil {
+		return nil, err
+	}
+	if n, err := body.Read(make([]byte, 1)); err == nil && 0 < n {
+		return nil, ErrReadLimitReached
+	}
+	return data, nil
+}
+
+type StubReader struct {
+	Data []byte
+
+	ReadErr  error
+	CloseErr error
+
+	IsClosed bool
+
+	index int
+}
+
+func (r *StubReader) Read(p []byte) (int, error) {
+	if r.ReadErr != nil {
+		return 0, r.ReadErr
+	}
+	if len(r.Data) <= r.index {
+		return 0, io.EOF
+	}
+	n := copy(p, r.Data[r.index:])
+	r.index += n
+	return n, nil
+}
+
+func (r *StubReader) Close() error {
+	r.IsClosed = true
+	return r.CloseErr
+}

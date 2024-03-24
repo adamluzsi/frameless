@@ -377,7 +377,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			s.When("the request body is larger than the configured limit", func(s *testcase.Spec) {
 				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
 					h := subject.Super(t)
-					h.BodyReadLimitByteSize = 3
+					h.BodyReadLimit = 3
 					return h
 				})
 

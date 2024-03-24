@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-type ByteSize = int64
+type ByteSize = int
 
 type byteSize interface {
 	int | int8 | int16 | int32 | int64

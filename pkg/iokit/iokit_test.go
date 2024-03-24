@@ -3,7 +3,11 @@ package iokit_test
 import (
 	"bytes"
 	"errors"
+	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/ports/filesystem"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 	"io"
 	"io/fs"
 	"os"
@@ -12,11 +16,10 @@ import (
 	"sync"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/ports/filesystem"
-
 	"go.llib.dev/testcase"
 )
+
+var rnd = random.New(random.CryptoSeed{})
 
 type RWSC interface {
 	io.Reader
@@ -414,4 +417,134 @@ func TestSyncReaderWriter_smoke(t *testing.T) {
 	testcase.Race(
 		write, write, write,
 		read, read, read)
+}
+
+func TestReadAllWithLimit(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		body := strings.NewReader("foo")
+		data, err := iokit.ReadAllWithLimit(body, 5*units.Byte)
+		assert.NoError(t, err)
+		assert.Equal(t, "foo", string(data))
+	})
+	t.Run("limit reached", func(t *testing.T) {
+		body := strings.NewReader("foo")
+		data, err := iokit.ReadAllWithLimit(body, 2*units.Byte)
+		assert.ErrorIs(t, err, iokit.ErrReadLimitReached)
+		assert.Empty(t, data)
+	})
+	t.Run("nil body considered as empty body", func(t *testing.T) {
+		data, err := iokit.ReadAllWithLimit(nil, 2*units.Byte)
+		assert.NoError(t, err)
+		assert.Empty(t, data)
+	})
+	t.Run("error with reader", func(t *testing.T) {
+		expErr := rnd.Error()
+		body := &iokit.StubReader{
+			Data:    []byte("foo"),
+			ReadErr: expErr,
+		}
+		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
+		assert.ErrorIs(t, err, expErr)
+		assert.Empty(t, data)
+	})
+	t.Run("Closer type is closed", func(t *testing.T) {
+		body := &iokit.StubReader{Data: []byte("foo")}
+		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
+		assert.NoError(t, err)
+		assert.Equal(t, body.Data, data)
+		assert.True(t, body.IsClosed)
+	})
+	t.Run("Closing error is propagated", func(t *testing.T) {
+		expErr := rnd.Error()
+		body := &iokit.StubReader{
+			Data:     []byte("foo"),
+			CloseErr: expErr,
+		}
+		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
+		assert.ErrorIs(t, err, expErr)
+		assert.Equal(t, data, body.Data)
+	})
+}
+
+func TestStubReader_Read(t *testing.T) {
+	t.Run("behaves like bytes.Reader", func(t *testing.T) {
+		data := []byte(rnd.String())
+
+		stubReader := &iokit.StubReader{Data: data}
+		referenceReader := bytes.NewReader(data)
+
+		t.Log("on reading the content")
+		buf1 := make([]byte, len(data)+1)
+		buf2 := make([]byte, len(data)+1)
+		expectedN, expectedErr := referenceReader.Read(buf1)
+		gotN, gotErr := stubReader.Read(buf2)
+		assert.Equal(t, expectedErr, gotErr)
+		assert.Equal(t, expectedN, gotN)
+		assert.Equal(t, buf1, buf2)
+
+		t.Log("on reading an already exhausted reader")
+		buf1 = make([]byte, len(data)+1)
+		buf2 = make([]byte, len(data)+1)
+		expectedN, expectedErr = referenceReader.Read(buf1)
+		gotN, gotErr = stubReader.Read(buf2)
+		assert.Equal(t, expectedErr, gotErr)
+		assert.Equal(t, expectedN, gotN)
+		assert.Equal(t, buf1, buf2)
+	})
+
+	t.Run("reads data exact size", func(t *testing.T) {
+		data := []byte(rnd.String())
+		reader := &iokit.StubReader{Data: data}
+		buf := make([]byte, len(data))
+		n, err := reader.Read(buf)
+		assert.NoError(t, err)
+		assert.Equal(t, len(data), n)
+		assert.Equal(t, buf, data)
+	})
+
+	t.Run("allows the injection of a Read error", func(t *testing.T) {
+		readErr := rnd.Error()
+		reader := &iokit.StubReader{ReadErr: readErr}
+
+		buf := make([]byte, 1)
+		_, err := reader.Read(buf)
+		assert.ErrorIs(t, err, readErr)
+	})
+
+	t.Run("returns EOF on read past end of data", func(t *testing.T) {
+		var total int
+		reader := &iokit.StubReader{Data: []byte(rnd.String())}
+
+		buf := make([]byte, len(reader.Data)*2)
+		n, err := reader.Read(buf)
+		assert.NoError(t, err)
+		total += n
+
+		buf = make([]byte, len(reader.Data)*2)
+		n, err = reader.Read(buf)
+		assert.ErrorIs(t, err, io.EOF)
+		total += n
+
+		assert.Equal(t, len(reader.Data), total)
+	})
+
+	t.Run("closes without an error", func(t *testing.T) {
+		reader := &iokit.StubReader{CloseErr: nil}
+		assert.NoError(t, reader.Close())
+		assert.True(t, reader.IsClosed)
+	})
+
+	t.Run("safe to close multiple times", func(t *testing.T) {
+		reader := &iokit.StubReader{CloseErr: nil}
+		rnd.Repeat(2, 5, func() {
+			assert.NoError(t, reader.Close())
+		})
+	})
+
+	t.Run("allows the injection of a Close error", func(t *testing.T) {
+		expErr := errors.New("test error")
+		reader := &iokit.StubReader{CloseErr: expErr}
+		err := reader.Close()
+		assert.ErrorIs(t, expErr, err)
+	})
 }
