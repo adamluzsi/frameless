@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"go.llib.dev/frameless/pkg/devops/health"
+	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/testcase"
@@ -383,7 +384,7 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 	s.Then("we get back a health response report", func(t *testcase.T) {
 		resp := act(t)
 		t.Must.Equal(http.StatusOK, resp.Code)
-		var dto health.HealthStateJSONDTO
+		var dto health.ReportJSONDTO
 		t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
 		t.Must.Equal(dto.Status, health.Up.String())
 		t.Must.Equal(dto.Message, health.StateMessage(health.Up))
@@ -408,13 +409,13 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 		s.Then("the dependency health state is returned back", func(t *testcase.T) {
 			resp := act(t)
 			t.Must.Equal(http.StatusOK, resp.Code)
-			var dto health.HealthStateJSONDTO
+			var dto health.ReportJSONDTO
 			t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
 			t.Must.Equal(dto.Status, health.Up.String())
 			t.Must.Equal(dto.Message, health.StateMessage(health.Up))
 			t.Must.Empty(dto.Issues)
 			t.Must.NotEmpty(dto.Dependencies)
-			assert.OneOf(t, dto.Dependencies, func(it assert.It, got health.HealthStateJSONDTO) {
+			assert.OneOf(t, dto.Dependencies, func(it assert.It, got health.ReportJSONDTO) {
 				it.Must.Equal(got.Status, depState.Get(t).Status.String())
 				it.Must.Equal(got.Name, depState.Get(t).Name)
 				it.Must.Equal(got.Message, depState.Get(t).Message)
@@ -433,13 +434,13 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 			s.Then("the dependency's health issue is reflected on the response", func(t *testcase.T) {
 				resp := act(t)
 				t.Must.Equal(http.StatusServiceUnavailable, resp.Code)
-				var dto health.HealthStateJSONDTO
+				var dto health.ReportJSONDTO
 				t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
 				t.Must.Equal(dto.Status, health.PartialOutage.String())
 				t.Must.Equal(dto.Message, health.StateMessage(health.PartialOutage))
 				t.Must.Empty(dto.Issues)
 				t.Must.NotEmpty(dto.Dependencies)
-				assert.OneOf(t, dto.Dependencies, func(it assert.It, got health.HealthStateJSONDTO) {
+				assert.OneOf(t, dto.Dependencies, func(it assert.It, got health.ReportJSONDTO) {
 					it.Must.Equal(got.Status, depState.Get(t).Status.String())
 					it.Must.Equal(got.Name, depState.Get(t).Name)
 					it.Must.Equal(got.Message, depState.Get(t).Message)
@@ -463,7 +464,7 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 		s.Then("the metric result is returned back", func(t *testcase.T) {
 			resp := act(t)
 			t.Must.Equal(http.StatusOK, resp.Code)
-			var dto health.HealthStateJSONDTO
+			var dto health.ReportJSONDTO
 			t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
 			t.Must.NotEmpty(dto.Metrics)
 			t.Must.Equal(dto.Metrics["x-metric"], float64(metricVal.Get(t)))
@@ -779,4 +780,65 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 	// TODO:
 	//  - authentication
+}
+
+func TestExampleResponse(t *testing.T) {
+
+	const metricKeyForHTTPRetryPerSec = "http-retry-average-per-second"
+	var appMetrics sync.Map
+	appMetrics.Store(metricKeyForHTTPRetryPerSec, 42)
+
+	m := health.Monitor{
+		// our service related checks
+		Checks: []health.CheckFunc{
+			func(ctx context.Context) error {
+				value, ok := appMetrics.Load(metricKeyForHTTPRetryPerSec)
+				if !ok {
+					return nil
+				}
+				averagePerSec, ok := value.(int)
+				if !ok {
+					return nil
+				}
+				if 42 < averagePerSec {
+					return health.Issue{
+						Causes: health.Degraded,
+						Code:   "too-many-http-request-retries",
+						Message: "There could be an underlying networking issue, " +
+							"that needs to be looked into, the system is working, " +
+							"but the retry attemt average shouldn't be so high",
+					}
+				}
+				return nil
+			},
+		},
+		// our service's dependencies like DB or downstream services
+		Dependencies: health.MonitorDependencies{
+			func(ctx context.Context) health.Report {
+				return health.Report{
+					Issues: []health.Issue{
+						{
+							Causes:  health.Degraded,
+							Code:    "xy-db-disconnected",
+							Message: "failed to ping the database through the connection",
+						},
+					},
+				}
+			},
+		},
+		Metrics: health.MonitorMetrics{
+			"metric-name": func(ctx context.Context) (any, error) {
+				return 42, nil
+			},
+		},
+	}
+
+	ctx := context.Background()
+	r := m.HealthCheck(ctx)
+	dto, err := dtos.Map[health.ReportJSONDTO](ctx, r)
+	assert.NoError(t, err)
+
+	data, err := json.MarshalIndent(dto, "", "  ")
+	assert.NoError(t, err)
+	fmt.Println(string(data))
 }

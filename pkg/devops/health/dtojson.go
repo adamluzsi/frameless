@@ -10,40 +10,40 @@ import (
 	"time"
 )
 
-type HealthStateJSONDTO struct {
-	Status       string               `json:"status"`
-	Name         string               `json:"name,omitempty"`
-	Message      string               `json:"message,omitempty"`
-	Issues       []HealthIssueJSONDTO `json:"issues,omitempty"`
-	Dependencies []HealthStateJSONDTO `json:"dependencies,omitempty"`
-	Timestamp    string               `json:"timestamp,omitempty"`
-	Metrics      map[string]any       `json:"metrics,omitempty"`
+type ReportJSONDTO struct {
+	Status       string          `json:"status"`
+	Name         string          `json:"name,omitempty"`
+	Message      string          `json:"message,omitempty"`
+	Issues       []IssueJSONDTO  `json:"issues,omitempty"`
+	Dependencies []ReportJSONDTO `json:"dependencies,omitempty"`
+	Timestamp    string          `json:"timestamp,omitempty"`
+	Metrics      map[string]any  `json:"metrics,omitempty"`
 }
 
-var _ = dtos.Register[Report, HealthStateJSONDTO](
-	func(ctx context.Context, ent Report) (HealthStateJSONDTO, error) {
+var _ = dtos.Register[Report, ReportJSONDTO](
+	func(ctx context.Context, ent Report) (ReportJSONDTO, error) {
 		var metrics map[string]any
 		metrics = ent.Metrics
 		if len(metrics) == 0 { // TODO: cover this to prove that metrics are not in the json when they don't have values
 			metrics = nil
 		}
-		return HealthStateJSONDTO{
+		return ReportJSONDTO{
 			Status:  dtos.MustMap[string](ctx, ent.Status),
 			Name:    ent.Name,
 			Message: ent.Message,
-			Issues: slicekit.Must(slicekit.Map[HealthIssueJSONDTO](ent.Issues,
-				func(v Issue) HealthIssueJSONDTO {
-					return dtos.MustMap[HealthIssueJSONDTO](ctx, v)
+			Issues: slicekit.Must(slicekit.Map[IssueJSONDTO](ent.Issues,
+				func(v Issue) IssueJSONDTO {
+					return dtos.MustMap[IssueJSONDTO](ctx, v)
 				})),
-			Dependencies: slicekit.Must(slicekit.Map[HealthStateJSONDTO](ent.Dependencies,
-				func(v Report) HealthStateJSONDTO {
-					return dtos.MustMap[HealthStateJSONDTO](ctx, v)
+			Dependencies: slicekit.Must(slicekit.Map[ReportJSONDTO](ent.Dependencies,
+				func(v Report) ReportJSONDTO {
+					return dtos.MustMap[ReportJSONDTO](ctx, v)
 				})),
 			Timestamp: ent.Timestamp.Format(time.RFC3339),
 			Metrics:   metrics,
 		}, nil
 	},
-	func(ctx context.Context, dto HealthStateJSONDTO) (Report, error) {
+	func(ctx context.Context, dto ReportJSONDTO) (Report, error) {
 		timestamp := clock.TimeNow()
 		if dto.Timestamp != "" {
 			date, err := time.Parse(time.RFC3339, dto.Timestamp)
@@ -57,11 +57,11 @@ var _ = dtos.Register[Report, HealthStateJSONDTO](
 			Name:    dto.Name,
 			Message: dto.Message,
 			Issues: slicekit.Must(slicekit.Map[Issue](dto.Issues,
-				func(v HealthIssueJSONDTO) Issue {
+				func(v IssueJSONDTO) Issue {
 					return dtos.MustMap[Issue](ctx, v)
 				})),
 			Dependencies: slicekit.Must(slicekit.Map[Report](dto.Dependencies,
-				func(v HealthStateJSONDTO) Report {
+				func(v ReportJSONDTO) Report {
 					return dtos.MustMap[Report](ctx, v)
 				})),
 			Timestamp: timestamp,
@@ -70,19 +70,19 @@ var _ = dtos.Register[Report, HealthStateJSONDTO](
 		return hs, hs.Validate()
 	})
 
-type HealthIssueJSONDTO struct {
+type IssueJSONDTO struct {
 	Code    string `json:"code,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
-var _ = dtos.Register[Issue, HealthIssueJSONDTO](
-	func(ctx context.Context, ent Issue) (HealthIssueJSONDTO, error) {
-		return HealthIssueJSONDTO{
+var _ = dtos.Register[Issue, IssueJSONDTO](
+	func(ctx context.Context, ent Issue) (IssueJSONDTO, error) {
+		return IssueJSONDTO{
 			Code:    ent.Code.String(),
 			Message: ent.Message,
 		}, nil
 	},
-	func(ctx context.Context, dto HealthIssueJSONDTO) (Issue, error) {
+	func(ctx context.Context, dto IssueJSONDTO) (Issue, error) {
 		return Issue{
 			Code:    consttypes.String(dto.Code),
 			Message: dto.Message,

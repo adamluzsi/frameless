@@ -112,7 +112,7 @@ func (m *Monitor) HTTPHandler() http.Handler {
 
 		report := m.HealthCheck(ctx)
 
-		dto, err := dtos.Map[HealthStateJSONDTO](ctx, report)
+		dto, err := dtos.Map[ReportJSONDTO](ctx, report)
 		if err != nil {
 			logger.Error(ctx, "error mapping devops.HealthState to HealthState json DTO", logger.ErrField(err))
 			return
@@ -224,9 +224,16 @@ const (
 	// Down means that service is not running or unresponsive.
 	Down Status = "DOWN"
 	// PartialOutage means that service is running, but one or more dependencies are experiencing issues.
-	// This status indicates a partial outage or degraded performance.
+	// PartialOutage also indicates that there has been a limited disruption or degradation in the service.
+	// It typically affects only a subset of services or users, rather than the entire system.
+	// Examples of partial outages include slower response times, intermittent errors,
+	// or reduced functionality for specific features.
 	PartialOutage Status = "PARTIAL_OUTAGE"
 	// Degraded means that service is running but with reduced capabilities or performance.
+	// When a system is in a Degraded state, it means that overall performance or functionality has deteriorated.
+	// Unlike a PartialOutage, a Degraded state may impact a broader scope of services or users.
+	// It could result in slower overall system performance, increased error rates, or reduced capacity.
+	// Monitoring tools often detect this state based on predefined thresholds or deviations from expected behaviour.
 	Degraded Status = "DEGRADED"
 	// Maintenance means that service is currently undergoing maintenance or updates and might not function correctly.
 	Maintenance Status = "MAINTENANCE"
@@ -254,11 +261,11 @@ const (
 
 var healthStatusSeverity = map[Status]int{
 	Up:            minHealthStatusSeverity,
-	Down:          maxHealthStatusSeverity,
+	Maintenance:   1,
 	PartialOutage: 5,
 	Degraded:      8,
-	Maintenance:   2,
 	Unknown:       9,
+	Down:          maxHealthStatusSeverity,
 }
 
 func (hss Status) IsLessSevere(oth Status) bool {
@@ -376,11 +383,11 @@ func HTTPHealthCheck(healthCheckEndpointURL string, config *HTTPHealthCheckConfi
 }
 
 func defaultHealthResponseUnmarshal(ctx context.Context, data []byte, ptr *Report) error {
-	var dto HealthStateJSONDTO
+	var dto ReportJSONDTO
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	ent, err := dtos.Map[Report, HealthStateJSONDTO](ctx, dto)
+	ent, err := dtos.Map[Report, ReportJSONDTO](ctx, dto)
 	if err != nil {
 		return err
 	}

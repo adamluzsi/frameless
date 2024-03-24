@@ -89,6 +89,9 @@ func healthCheckMonitor(appMetrics *sync.Map, db *sql.DB) health.Monitor {
 
 				return hs
 			},
+			
+			// registering a downstream serice as our dependency by using their /health endpoint 
+			health.HTTPHealthCheck("https://downstreamservice.mydomain.ext/health", nil),
 		},
 	}
 }
