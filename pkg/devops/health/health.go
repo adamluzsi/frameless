@@ -21,39 +21,39 @@ type Monitor struct {
 	// ServiceName will be used to set the Report.Name field.
 	ServiceName string
 	// Checks contain the health checks about our own service.
-	// CheckFunc should return with nil in case the check passed.
-	// CheckFunc should return back with an Issue or a generic error, in case the check failed.
+	// Check should return with nil in case the check passed.
+	// Check should return back with an Issue or a generic error, in case the check failed.
 	// Returned generic errors are considered as an Issue with Down Status.
-	Checks []CheckFunc
+	Checks []Check
 	// Dependencies represent our service's dependencies and their health state (Report).
-	// DependencyCheckFunc should come back always with a valid Report.
-	Dependencies MonitorDependencies
+	// DependencyCheck should come back always with a valid Report.
+	Dependencies []DependencyCheck
 	// Metrics represents our service's monitoring metrics.
-	Metrics MonitorMetrics
+	Metrics map[string]Metric
 }
 
 type (
-	MonitorMetrics      map[string]MetricFunc
-	MonitorDependencies []DependencyCheckFunc
-	MonitorChecks       []CheckFunc
+	MonitorMetrics      map[string]Metric
+	MonitorDependencies []DependencyCheck
+	MonitorChecks       []Check
 )
 
 type (
-	// CheckFunc represents a health check.
-	// CheckFunc supposed to yield back nil if the check passes.
-	// CheckFunc should yield back an error in case the check detected a problem.
-	// For problems, CheckFunc may return back an Issue to describe in detail the problem.
+	// Check represents a health check.
+	// Check supposed to yield back nil if the check passes.
+	// Check should yield back an error in case the check detected a problem.
+	// For problems, Check may return back an Issue to describe in detail the problem.
 	// Most Errors will be considered as
-	CheckFunc func(ctx context.Context) error
-	// DependencyCheckFunc serves as a health check for a specific dependency.
+	Check func(ctx context.Context) error
+	// DependencyCheck serves as a health check for a specific dependency.
 	// If an error occurs during the check,
 	// it should be represented as an Issue in the returned Report.Issues list.
 	//
 	// For example, if a remote service is unreachable on the network,
 	// it should be represented as an issue in the Report.Issues that the service is unreachable,
 	// and the Issue.Causes should tell that this makes the given dependency health Status considered as Down.
-	DependencyCheckFunc func(ctx context.Context) Report
-	// MetricFunc represents a metric reporting function. The result will be added to the Report.Metrics.
+	DependencyCheck func(ctx context.Context) Report
+	// Metric represents a metric reporting function. The result will be added to the Report.Metrics.
 	// A Metric results encompass analytical purpose, a status indicators for the service
 	// for the given time when the service were called.
 	// If numerical values are included, they should fluctuate over time, reflecting the current state.
@@ -63,14 +63,13 @@ type (
 	//
 	// A challenging metric value would be a counter that counts the total handled requests number
 	// from a given application's instance lifetime.
-	MetricFunc func(ctx context.Context) (any, error)
+	Metric func(ctx context.Context) (any, error)
 )
 
 func (m *Monitor) HealthCheck(ctx context.Context) Report {
 	var report = Report{
-		Name:      m.ServiceName,
-		Timestamp: clock.TimeNow().UTC(),
-		Metrics:   make(map[string]any),
+		Name:    m.ServiceName,
+		Metrics: make(map[string]any),
 	}
 	m.collectIssues(ctx, &report)
 	m.collectDependencies(ctx, &report)
@@ -153,23 +152,32 @@ func (m *Monitor) collectMetrics(ctx context.Context, r *Report) {
 	}
 }
 
+// TOFO: add more explanation to the fields
+
 type Report struct {
-	// Status is the current health status of a given service.
-	// Default: Up
-	Status Status
 	// Name field typically contains a descriptive name for the service or application.
 	Name string
+	// Status is the current health status of a given service.
+	//
+	// By default, an empty Status interpreted as Up Status.
+	// If an Issue in Issues causes Status change, then it will be reflected in the Report.Status as well.
+	// If a dependency has a non Up Status, then the current Status considered as PartialOutage.
+	Status Status
 	// Message field provides an explanation of the current state or specific issues (if any) affecting the service.
+	// Message is optional, and when it's empty, the default is inferred from the Report.Status value.
 	Message string
 	// Issues is the list of issue that the health check functions were able to detect.
+	// If an Issue in Report.Issues contain a Issue.Causes, then the Report.Status will be affected.
 	Issues []Issue
 	// Dependencies are the service dependencies, which are required for the service to function correctly.
+	// If a Report has a problemating Status in Report.Dependencies, it will affect the Report.Status.
 	Dependencies []Report
 	// Timestamp represents the time at the health check report was created
+	// Default is the current time in UTC.
 	Timestamp time.Time
 	// Metrics encompass analytical data and status indicators
 	// for the service for the given time when the service were called.
-	// For more about what values it should contain, read the documentation of MetricFunc.
+	// For more about what values it should contain, read the documentation of Metric.
 	Metrics map[string]any
 }
 
@@ -192,13 +200,16 @@ func (hs *Report) Correlate() {
 			hs.Status = issue.Causes
 		}
 	}
-	for _, dep := range hs.Dependencies {
+	for i, _ := range hs.Dependencies {
+		hs.Dependencies[i].Correlate()
+		dep := hs.Dependencies[i]
 		if hs.Status == Up && dep.Status != Up {
 			hs.Status = PartialOutage
 			break
 		}
 	}
 	hs.Message = zerokit.Coalesce(hs.Message, StateMessage(hs.Status))
+	hs.Timestamp = zerokit.Coalesce(hs.Timestamp, clock.TimeNow().UTC())
 }
 
 // Issue represents an issue detected in during a health check.

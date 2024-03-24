@@ -17,6 +17,7 @@ import (
 	"go.llib.dev/testcase/random"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ var rnd = random.New(random.CryptoSeed{})
 
 func ExampleMonitor_HTTPHandler() {
 	var m = health.Monitor{
-		Checks: []health.CheckFunc{
+		Checks: []health.Check{
 			func(ctx context.Context) error {
 				return nil // all good
 			},
@@ -43,7 +44,7 @@ func ExampleMonitor_check() {
 	appMetrics := sync.Map{}
 
 	var hm = health.Monitor{
-		Checks: []health.CheckFunc{
+		Checks: []health.Check{
 			func(ctx context.Context) error {
 				value, ok := appMetrics.Load(metricKeyForHTTPRetryPerSec)
 				if !ok {
@@ -248,6 +249,72 @@ func TestMonitor_HealthCheck(t *testing.T) {
 				assert.Equal(it, got.Status, status)
 				assert.Equal(it, got.Message, health.StateMessage(got.Status))
 			})
+		}
+	})
+
+	t.Run("dependency health state message is kept when populated", func(t *testing.T) {
+		monitor := health.Monitor{}
+
+		monitor.Dependencies = append(monitor.Dependencies, func(ctx context.Context) health.Report {
+			return health.Report{
+				Name: "downstream-service-42",
+				Dependencies: []health.Report{
+					{Name: "downstream-service-128"},
+				},
+			}
+		})
+
+		ctx := context.Background()
+
+		report := monitor.HealthCheck(ctx)
+
+		assert.NotEmpty(t, report.Dependencies)
+		assert.OneOf(t, report.Dependencies, func(t assert.It, dep health.Report) {
+			assert.OneOf(t, dep.Dependencies, func(t assert.It, depdep health.Report) {
+				assert.Equal(t, depdep.Status, health.Up)
+				assert.NotEmpty(t, depdep.Message)
+			})
+		})
+	})
+
+	t.Run("the dependency's dependencies report is correlated", func(t *testing.T) {
+		hc := health.Monitor{}
+
+		var status health.Status
+		hc.Dependencies = append(hc.Dependencies, func(ctx context.Context) health.Report {
+			return health.Report{Status: status, Message: "foo"}
+		})
+
+		ctx := context.Background()
+		for _, hsv := range enum.Values[health.Status]() {
+			status = hsv
+			healthState := hc.HealthCheck(ctx)
+			assert.OneOf(t, healthState.Dependencies, func(it assert.It, got health.Report) {
+				assert.Equal(it, got.Status, status)
+				assert.Equal(it, got.Message, "foo")
+			})
+		}
+	})
+
+	t.Run("dependency timestamp message is populated when it is empty", func(t *testing.T) {
+		hc := health.Monitor{
+			Dependencies: health.MonitorDependencies{
+				func(ctx context.Context) health.Report {
+					return health.Report{
+						Name: "the-name",
+					}
+				},
+			},
+		}
+
+		report := hc.HealthCheck(context.Background())
+		assert.NotEmpty(t, report.Timestamp)
+		assert.NotEmpty(t, report.Dependencies)
+		for _, dep := range report.Dependencies {
+			assert.NotEmpty(t, dep.Timestamp)
+			assert.NotEmpty(t, dep.Name)
+			assert.NotEmpty(t, dep.Status)
+			assert.NotEmpty(t, dep.Message)
 		}
 	})
 
@@ -487,7 +554,7 @@ func TestIssue(t *testing.T) {
 
 func ExampleHTTPHealthCheck() {
 	var m = health.Monitor{
-		Dependencies: []health.DependencyCheckFunc{
+		Dependencies: []health.DependencyCheck{
 			health.HTTPHealthCheck("https://www.example.com/health", nil),
 		},
 	}
@@ -783,6 +850,9 @@ func TestHTTPHealthCheck(t *testing.T) {
 }
 
 func TestExampleResponse(t *testing.T) {
+	if _, ok := os.LookupEnv("example"); !ok {
+		t.Skip()
+	}
 
 	const metricKeyForHTTPRetryPerSec = "http-retry-average-per-second"
 	var appMetrics sync.Map
@@ -790,7 +860,7 @@ func TestExampleResponse(t *testing.T) {
 
 	m := health.Monitor{
 		// our service related checks
-		Checks: []health.CheckFunc{
+		Checks: []health.Check{
 			func(ctx context.Context) error {
 				value, ok := appMetrics.Load(metricKeyForHTTPRetryPerSec)
 				if !ok {
@@ -816,11 +886,20 @@ func TestExampleResponse(t *testing.T) {
 		Dependencies: health.MonitorDependencies{
 			func(ctx context.Context) health.Report {
 				return health.Report{
+					Name: "downstream-service-name",
 					Issues: []health.Issue{
 						{
-							Causes:  health.Degraded,
 							Code:    "xy-db-disconnected",
 							Message: "failed to ping the database through the connection",
+						},
+					},
+					Metrics: map[string]any{
+						"http-request-throughput": 42,
+					},
+					Dependencies: []health.Report{
+						{
+							Name:   "xy-db",
+							Status: health.Down,
 						},
 					},
 				}
@@ -841,4 +920,5 @@ func TestExampleResponse(t *testing.T) {
 	data, err := json.MarshalIndent(dto, "", "  ")
 	assert.NoError(t, err)
 	fmt.Println(string(data))
+
 }
