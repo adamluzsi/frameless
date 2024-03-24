@@ -2,35 +2,49 @@ package cache
 
 import (
 	"go.llib.dev/testcase/clock"
+	"sync"
 	"time"
 )
 
-type MemTTL[T any] struct {
-	cachedValue T
-	updatedAt   time.Time
+type Value[T any] struct {
+	TTL time.Duration
+
+	v T
+	m sync.RWMutex
+	t time.Time
 }
 
-func (mem *MemTTL[T]) DoErr(ttl time.Duration, fn func() (T, error)) (T, error) {
+func (cm *Value[T]) Invalidate() {
+	*cm = Value[T]{TTL: cm.TTL}
+}
+
+func (cm *Value[T]) DoErr(fn func() (T, error)) (T, error) {
 	var (
 		now         = clock.TimeNow()
-		lastWriteAt = mem.updatedAt
+		lastWriteAt = cm.t
+		ttl         = cm.TTL
+		refresh     bool
 	)
-	if lastWriteAt.IsZero() { // trigger cachging
-		lastWriteAt = now.Add(-1 * (ttl + time.Nanosecond))
+	if ttl != 0 {
+		deadline := lastWriteAt.Add(ttl)
+		refresh = now.After(deadline) && now.Equal(deadline)
 	}
-	if deadline := lastWriteAt.Add(ttl); now.After(deadline) && now.Equal(deadline) {
+	if lastWriteAt.IsZero() {
+		refresh = true
+	}
+	if refresh {
 		v, err := fn()
 		if err != nil {
 			return v, err
 		}
-		mem.updatedAt = now
-		mem.cachedValue = v
+		cm.t = now
+		cm.v = v
 	}
-	return mem.cachedValue, nil
+	return cm.v, nil
 }
 
-func (mem *MemTTL[T]) Do(ttl time.Duration, fn func() T) T {
-	v, _ := mem.DoErr(ttl, func() (T, error) {
+func (cm *Value[T]) Do(fn func() T) T {
+	v, _ := cm.DoErr(func() (T, error) {
 		return fn(), nil
 	})
 	return v
