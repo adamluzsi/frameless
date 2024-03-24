@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var rnd = random.New(random.CryptoSeed{})
+
 func ExampleCoalesce() {
 	_ = zerokit.Coalesce("", "", "42") // -> "42"
 }
@@ -72,6 +74,23 @@ func TestCoalesce(t *testing.T) {
 			t.Must.Equal(expected.Get(t), act(t))
 		})
 	})
+}
+
+type StubIsZero struct {
+	ZeroItIs bool
+	V        int
+}
+
+func (s StubIsZero) IsZero() bool {
+	return s.ZeroItIs
+}
+
+func TestCoalesce_supportIsZero(t *testing.T) {
+	exp := StubIsZero{ZeroItIs: false, V: 42}
+	in := StubIsZero{ZeroItIs: true, V: 24}
+	assert.True(t, in.IsZero())
+	got := zerokit.Coalesce(in, exp)
+	assert.Equal(t, exp, got)
 }
 
 func ExampleInit() {

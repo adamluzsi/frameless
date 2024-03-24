@@ -84,7 +84,14 @@ func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
 	return
 }
 
+type selfCheckingValue interface {
+	IsZero() bool
+}
+
 func isZero[T any](v T) (ok bool) {
+	if iv, ok := any(v).(selfCheckingValue); ok {
+		return iv.IsZero()
+	}
 	var zero T
 	defer func() {
 		if r := recover(); r == nil {
