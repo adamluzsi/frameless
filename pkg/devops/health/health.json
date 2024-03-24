@@ -1,0 +1,22 @@
+{
+  "name": "fox1",
+  "status": "ok",
+  "issues": [
+    {
+      "code": "boom",
+      "message": "foo bar baz"
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "database",
+      "status": "ok",
+      "dependencies": [
+        {
+          "name": "filesystem",
+          "status": "ok"
+        }
+      ]
+    }
+  ]
+}
