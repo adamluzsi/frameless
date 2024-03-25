@@ -22,6 +22,8 @@ import (
 	"time"
 )
 
+var rnd = random.New(random.CryptoSeed{})
+
 const blockCheckWaitTime = 42 * time.Millisecond
 
 func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
@@ -340,6 +342,28 @@ func TestConcurrence_Run(t *testing.T) {
 			assert.NoError(t, s.Run(ctx))
 		})
 	})
+}
+
+func ExampleMain_withRunnable() {
+	var (
+		ctx  = context.Background()
+		task tasker.Runnable
+	)
+	if err := tasker.Main(ctx, &task); err != nil {
+		logger.Fatal(ctx, "error in main", logger.ErrField(err))
+		os.Exit(1)
+	}
+}
+
+func ExampleMain_withTask() {
+	var (
+		ctx  = context.Background()
+		task tasker.Task
+	)
+	if err := tasker.Main(ctx, task); err != nil {
+		logger.Fatal(ctx, "error in main", logger.ErrField(err))
+		os.Exit(1)
+	}
 }
 
 func Test_Main(t *testing.T) {
@@ -1035,5 +1059,71 @@ func TestWithSignalNotify(t *testing.T) {
 				t.Must.ErrorIs(expectedErr.Get(t), act(t))
 			})
 		})
+	})
+}
+
+func ExampleBackground() {
+	var ctx context.Context
+	var (
+		task1 tasker.Task
+		task2 tasker.Task
+	)
+	join := tasker.Background(ctx,
+		task1,
+		task2,
+	)
+	if err := join(); err != nil {
+		logger.Error(ctx, "error in background task", logger.ErrField(err))
+	}
+}
+
+func TestBackground(t *testing.T) {
+	makeContext := func(tb testing.TB) context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		tb.Cleanup(cancel)
+		return ctx
+	}
+	t.Run("happy", func(t *testing.T) {
+		var (
+			ok  atomic.Bool
+			rdy atomic.Bool
+		)
+		rdy.Store(false)
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			tasker.Background(makeContext(t), func() {
+				for !rdy.Load() {
+					time.Sleep(time.Microsecond)
+				}
+				ok.Store(true)
+			})
+		}, "it was expected that background task will immediately returns back")
+		rdy.Store(true) // ok ,we have returned, time to break INF loop
+		assert.Eventually(t, time.Second, func(it assert.It) {
+			it.Must.True(ok.Load())
+		})
+	})
+	t.Run("join can be done multiple times", func(t *testing.T) {
+		join := tasker.Background(makeContext(t), func() {})
+		rnd.Repeat(2, 5, func() {
+			assert.NoError(t, join())
+		})
+	})
+	t.Run("on error, join yields the same result consistently", func(t *testing.T) {
+		var (
+			expErr1 = rnd.Error()
+			expErr2 = rnd.Error()
+			expErr3 = rnd.Error()
+		)
+		join := tasker.Background(makeContext(t),
+			func() error { return expErr1 },
+			func() error { return expErr2 },
+			func() error { return expErr3 },
+		)
+		got1 := join()
+		got2 := join()
+		assert.Equal(t, got1, got2)
+		assert.ErrorIs(t, expErr1, join())
+		assert.ErrorIs(t, expErr2, join())
+		assert.ErrorIs(t, expErr3, join())
 	})
 }

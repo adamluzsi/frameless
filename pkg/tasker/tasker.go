@@ -265,6 +265,22 @@ func WithSignalNotify[TFN genericTask](tfn TFN, shutdownSignals ...os.Signal) Ta
 // Main helps to manage concurrent background Tasks in your main.
 // Each Task will run in its own goroutine.
 // If any of the Task encounters a failure, the other tasker will receive a cancellation signal.
-func Main(ctx context.Context, tasks ...Task) error {
+func Main[TFN genericTask](ctx context.Context, tasks ...TFN) error {
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
+}
+
+func Background[TFN genericTask](ctx context.Context, tasks ...TFN) func() error {
+	ctx, cancel := context.WithCancel(ctx)
+	output := make(chan error)
+	go func() { output <- Concurrence(tasks...).Run(ctx) }()
+	var out error
+	return func() error {
+		cancel()
+		res, ok := <-output
+		if ok {
+			close(output)
+			out = res
+		}
+		return out
+	}
 }
