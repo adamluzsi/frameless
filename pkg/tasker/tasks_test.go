@@ -108,6 +108,82 @@ func TestHTTPServerPortFromENV(t *testing.T) {
 	})
 }
 
+func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
+	testcase.SetEnv(t, "PORT", "58080")
+	const srvURL = "http://127.0.0.1:58080/"
+
+	srv := &http.Server{
+		Addr: "127.0.0.1:8080",
+		Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	ctx := context.Background()
+
+	join := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
+	defer func() { assert.NoError(t, join()) }()
+
+	eventually := assert.MakeRetry(5 * time.Second)
+
+	eventually.Assert(t, func(it assert.It) {
+		resp, err := http.Get(srvURL)
+		assert.NoError(it, err)
+		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
+	})
+}
+
+func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
+	testcase.SetEnv(t, "PORT", "58080")
+	const srvURL = "http://127.0.0.1:58080/"
+
+	srv := &http.Server{
+		Addr: ":8080",
+		Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	ctx := context.Background()
+
+	join := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
+	defer func() { assert.NoError(t, join()) }()
+
+	eventually := assert.MakeRetry(5 * time.Second)
+
+	eventually.Assert(t, func(it assert.It) {
+		resp, err := http.Get(srvURL)
+		assert.NoError(it, err)
+		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
+	})
+}
+
+func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
+	testcase.UnsetEnv(t, "PORT2")
+	testcase.SetEnv(t, "PORT", "58080")
+	const srvURL = "http://127.0.0.1:58080/"
+
+	srv := &http.Server{
+		Addr: ":8080",
+		Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.WriteHeader(http.StatusTeapot)
+		}),
+	}
+
+	ctx := context.Background()
+
+	join := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV("PORT2", "PORT")))
+	defer func() { assert.NoError(t, join()) }()
+
+	eventually := assert.MakeRetry(5 * time.Second)
+
+	eventually.Assert(t, func(it assert.It) {
+		resp, err := http.Get(srvURL)
+		assert.NoError(it, err)
+		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
+	})
+}
+
 func TestHTTPServerTask_withContextValuesPassedDownToRequests(t *testing.T) {
 	const srvURL = "http://localhost:58080/"
 	type ctxKey struct{}
