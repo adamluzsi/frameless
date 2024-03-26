@@ -14,7 +14,6 @@ import (
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
-	"go.llib.dev/testcase/pp"
 	"io"
 	"net/http"
 	"net/url"
@@ -437,7 +436,6 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 
 	data, err := res.readAllBody(r)
 	if err != nil {
-		pp.PP()
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -445,7 +443,6 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 	dtoPtr := reqMapping.newDTO()
 
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
-		pp.PP()
 		res.getErrorHandler().HandleError(w, r,
 			ErrInvalidRequestBody.With().Detail(err.Error()))
 		return

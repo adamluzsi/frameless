@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.llib.dev/frameless/pkg/enum"
-	"go.llib.dev/testcase/pp"
 	"net/url"
 	"reflect"
 	"strings"
@@ -728,7 +727,6 @@ func TestParseWith(t *testing.T) {
 			var c Conf
 			parts := strings.SplitN(v, ":", 2)
 			if len(parts) != 2 {
-				pp.PP(parts, v)
 				return c, fmt.Errorf("invalid format")
 			}
 			c.Foo = parts[0]

@@ -18,21 +18,6 @@ type _M struct {
 	byType map[MK]*mRec
 }
 
-func (m *_M) FromMappings(v any) []MK {
-	m.mutex.RLock()
-	defer m.mutex.RUnlock()
-	var (
-		fromType = reflectkit.BaseTypeOf(v)
-		keys     []MK
-	)
-	for mk, _ := range m.byType {
-		if mk.From == fromType {
-			keys = append(keys, mk)
-		}
-	}
-	return keys
-}
-
 type MK struct {
 	From reflect.Type
 	To   reflect.Type

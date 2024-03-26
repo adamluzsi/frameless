@@ -118,7 +118,10 @@ func TestField(t *testing.T) {
 				afterLogging(t)
 				keyIsLogged(t)
 
-				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", string(value.Get(t).(StringType))))
+				data, err := json.Marshal(value.Get(t).(StringType))
+				assert.NoError(t, err)
+
+				t.Must.Contain(buf.Get(t).String(), string(data))
 			})
 		})
 	})
