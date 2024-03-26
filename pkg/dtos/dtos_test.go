@@ -56,6 +56,19 @@ func TestM(t *testing.T) {
 	})
 }
 
+func ExampleRegister_partialDTOMappingSupport() {
+	// When we only need an Entity to EntityPartialDTO mapping.
+	dtos.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
+
+	var (
+		ctx = context.Background()
+		v   = Ent{V: 42, N: 12}
+	)
+
+	partialDTO, err := dtos.Map[EntPartialDTO](ctx, v)
+	_, _ = partialDTO, err
+}
+
 func TestMap(t *testing.T) {
 	ctx := context.Background()
 	t.Run("nil M given", func(t *testing.T) {
@@ -103,6 +116,21 @@ func TestMap(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, *dto)
+	})
+	t.Run("when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
+		defer dtos.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
+
+		var (
+			ctx = context.Background()
+			v   = Ent{V: rnd.Int(), N: rnd.Int()}
+		)
+
+		partialDTO, err := dtos.Map[EntPartialDTO, Ent](ctx, v)
+		assert.NoError(t, err)
+		assert.Equal(t, partialDTO, EntPartialDTO{N: v.N})
+
+		_, err = dtos.Map[Ent](ctx, partialDTO)
+		assert.ErrorIs(t, err, dtos.ErrNoMapping)
 	})
 }
 
@@ -161,16 +189,26 @@ func ExampleRegister() {
 
 type Ent struct {
 	V int
+	N int
 }
 
 type EntDTO struct {
 	V string `json:"v"`
+	N int    `json:"n"`
+}
+
+type EntPartialDTO struct {
+	N int `json:"n"`
+}
+
+func EntToEntPartialDTO(ctx context.Context, ent Ent) (EntPartialDTO, error) {
+	return EntPartialDTO{N: ent.N}, nil
 }
 
 type EntMapping struct{}
 
 func (EntMapping) ToDTO(ctx context.Context, ent Ent) (EntDTO, error) {
-	return EntDTO{V: strconv.Itoa(ent.V)}, nil
+	return EntDTO{V: strconv.Itoa(ent.V), N: ent.N}, nil
 }
 
 func (EntMapping) ToEnt(ctx context.Context, dto EntDTO) (Ent, error) {
@@ -178,7 +216,7 @@ func (EntMapping) ToEnt(ctx context.Context, dto EntDTO) (Ent, error) {
 	if err != nil {
 		return Ent{}, err
 	}
-	return Ent{V: v}, nil
+	return Ent{V: v, N: dto.N}, nil
 }
 
 type NestedEnt struct {
