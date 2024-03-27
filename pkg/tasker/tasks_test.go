@@ -23,6 +23,14 @@ func ExampleHTTPServerTask() {
 		Run(context.Background())
 }
 
+func ExampleHTTPServerTask_withMain() {
+	srv := &http.Server{Handler: http.NewServeMux()}
+
+	tasker.Main(context.Background(),
+		tasker.HTTPServerTask(srv,
+			tasker.HTTPServerPortFromENV("PORT", "LOYALIFY_WEB_PORT")))
+}
+
 func TestHTTPServerTask_gracefulShutdown(t *testing.T) {
 	var inFlight int64
 	h := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
