@@ -4,14 +4,39 @@ package zerokit
 import (
 	"fmt"
 	"go.llib.dev/frameless/pkg/internal/pointersync"
-	"reflect"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"sync/atomic"
+)
+
+// IsZero will report whether the value is zero or not.
+func IsZero[T any](v T) (ok bool) {
+	var zero T
+	defer func() {
+		if recover() == nil {
+			return
+		}
+		switch v := any(v).(type) {
+		case isZero:
+			ok = v.IsZero()
+		case isEqualable[T]:
+			ok = v.Equal(zero)
+		default:
+			ok = reflectkit.Equal(v, zero)
+		}
+	}()
+	return any(v) == any(zero)
+}
+
+type (
+	isZero              interface{ IsZero() bool }
+	isEqualable[T any]  interface{ Equal(T) bool }
+	isComparable[T any] interface{ Cmp(T) int }
 )
 
 // Coalesce will return the first non-zero value from the provided values.
 func Coalesce[T any](vs ...T) T {
 	for _, v := range vs {
-		if !isZero(v) {
+		if !IsZero(v) {
 			return v
 		}
 	}
@@ -33,7 +58,7 @@ func Init[T any, I initialiser[T]](ptr *T, init I) T {
 	}
 	var key = pointersync.Key(ptr)
 	defer initLocks.Sync(key)()
-	if ptr != nil && !isZero(*ptr) {
+	if ptr != nil && !IsZero(*ptr) {
 		return *ptr
 	}
 	*ptr = initialise[T, I](init)
@@ -61,7 +86,7 @@ func initialise[T any, IV initialiser[T]](init IV) T {
 func initFastPath[T any](ptr *T) (_ T, ok bool) {
 	defer initLocks.ReadSync(pointersync.Key(ptr))()
 	v := *ptr
-	return v, !isZero[T](v)
+	return v, !IsZero[T](v)
 }
 
 func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
@@ -82,22 +107,4 @@ func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
 		return any(atomic.LoadInt64(tsPtr)).(T), ok
 	}
 	return
-}
-
-type selfCheckingValue interface {
-	IsZero() bool
-}
-
-func isZero[T any](v T) (ok bool) {
-	if iv, ok := any(v).(selfCheckingValue); ok {
-		return iv.IsZero()
-	}
-	var zero T
-	defer func() {
-		if r := recover(); r == nil {
-			return
-		}
-		ok = reflect.DeepEqual(v, zero)
-	}()
-	return any(v) == any(zero)
 }

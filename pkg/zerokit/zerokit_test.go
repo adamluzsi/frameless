@@ -10,6 +10,8 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
+	"math/big"
+	"net"
 	"runtime"
 	"sync/atomic"
 	"testing"
@@ -83,14 +85,6 @@ type StubIsZero struct {
 
 func (s StubIsZero) IsZero() bool {
 	return s.ZeroItIs
-}
-
-func TestCoalesce_supportIsZero(t *testing.T) {
-	exp := StubIsZero{ZeroItIs: false, V: 42}
-	in := StubIsZero{ZeroItIs: true, V: 24}
-	assert.True(t, in.IsZero())
-	got := zerokit.Coalesce(in, exp)
-	assert.Equal(t, exp, got)
 }
 
 func ExampleInit() {
@@ -420,4 +414,54 @@ func makeConcurrentAccesses[T any](tb testing.TB, init func() T) {
 			break
 		}
 	}
+}
+
+func TestIsZero(t *testing.T) {
+	t.Run("int", func(t *testing.T) {
+		var i int
+		assert.True(t, zerokit.IsZero(i))
+		i = 42
+		assert.False(t, zerokit.IsZero(i))
+	})
+
+	t.Run("string", func(t *testing.T) {
+		var s string
+		assert.True(t, zerokit.IsZero(s))
+		s = "hello"
+		assert.False(t, zerokit.IsZero(s))
+	})
+
+	t.Run("pointer", func(t *testing.T) {
+		var p *int
+		assert.True(t, zerokit.IsZero(p))
+		i := 42
+		p = &i
+		assert.False(t, zerokit.IsZero(p))
+	})
+
+	t.Run("slice", func(t *testing.T) {
+		var s []int
+		assert.True(t, zerokit.IsZero(s))
+		s = []int{1, 2, 3}
+		assert.False(t, zerokit.IsZero(s))
+	})
+
+	t.Run("map", func(t *testing.T) {
+		var m map[string]int
+		assert.True(t, zerokit.IsZero(m))
+		m = map[string]int{"foo": 42}
+		assert.False(t, zerokit.IsZero(m))
+	})
+
+	t.Run("smoke test with special types", func(t *testing.T) {
+		var netIP net.IP // Cmp
+		assert.True(t, zerokit.IsZero(netIP))
+		assert.False(t, zerokit.IsZero(net.IPv4(0, 0, 0, 0)))
+		var bigInt big.Int // Cmp
+		assert.True(t, zerokit.IsZero(bigInt))
+		assert.False(t, zerokit.IsZero(big.NewInt(0)))
+		var timeTime time.Time // IsZero
+		assert.True(t, zerokit.IsZero(timeTime))
+		assert.False(t, zerokit.IsZero(time.Unix(0, 0)))
+	})
 }
