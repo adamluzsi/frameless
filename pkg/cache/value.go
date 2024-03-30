@@ -18,7 +18,7 @@ func (cm *Value[T]) Invalidate() {
 	*cm = Value[T]{TTL: cm.TTL}
 }
 
-func (cm *Value[T]) DoErr(fn func() (T, error)) (T, error) {
+func (cm *Value[T]) Do(fn func() (T, error)) (T, error) {
 	var (
 		now         = clock.TimeNow()
 		lastWriteAt = cm.t
@@ -41,11 +41,4 @@ func (cm *Value[T]) DoErr(fn func() (T, error)) (T, error) {
 		cm.v = v
 	}
 	return cm.v, nil
-}
-
-func (cm *Value[T]) Do(fn func() T) T {
-	v, _ := cm.DoErr(func() (T, error) {
-		return fn(), nil
-	})
-	return v
 }

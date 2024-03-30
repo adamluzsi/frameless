@@ -41,28 +41,17 @@ func TestMemTTL(t *testing.T) {
 		assert.Equal(t, val2, seq())
 		assert.Equal(t, val3, seq())
 	}
-	t.Run(".Do", func(t *testing.T) {
-		timecop.Travel(t, now, timecop.Freeze())
-		var (
-			seq       = NewSequence()
-			cachedVal = cache.Value[string]{}
-			act       = func() string {
-				return cachedVal.Do(seq)
-			}
-		)
-		assert.Equal(t, act(), val1, "initial call will trigger mem caching")
-		assert.Equal(t, act(), val1, "following requests will use the cached value")
-		assert.Equal(t, act(), val1, "following requests will use the cached value")
-		timecop.Travel(t, time.Hour*24, timecop.Freeze())
-		assert.Equal(t, act(), val1, "regardless of the time, the value remains the same")
-	})
 	t.Run(".Do + Invalidate", func(t *testing.T) {
 		timecop.Travel(t, now, timecop.Freeze())
 		var (
 			sequence  = NewSequence()
 			cachedVal = cache.Value[string]{}
 			act       = func() string {
-				return cachedVal.Do(sequence)
+				v, err := cachedVal.Do(func() (string, error) {
+					return sequence(), nil
+				})
+				assert.NoError(t, err)
+				return v
 			}
 		)
 		assert.Equal(t, act(), val1, "initial call will trigger mem caching")
@@ -71,13 +60,13 @@ func TestMemTTL(t *testing.T) {
 		cachedVal.Invalidate()
 		assert.Equal(t, act(), val2, "after invalidation, the new value is taken")
 	})
-	t.Run(".DoErr", func(t *testing.T) {
+	t.Run(".Do", func(t *testing.T) {
 		timecop.Travel(t, now, timecop.Freeze())
 		var (
 			seq   = NewSequence()
 			store = cache.Value[string]{}
 			act   = func() string {
-				v, err := store.DoErr(func() (string, error) {
+				v, err := store.Do(func() (string, error) {
 					return seq(), nil
 				})
 				assert.NoError(t, err)
@@ -90,7 +79,7 @@ func TestMemTTL(t *testing.T) {
 		timecop.Travel(t, time.Hour*24, timecop.Freeze())
 		assert.Equal(t, act(), val1, "regardless of the time, the value remains the same")
 	})
-	t.Run(".DoErr on error, value is not cached", func(t *testing.T) {
+	t.Run(".Do on error, value is not cached", func(t *testing.T) {
 		timecop.Travel(t, now, timecop.Freeze())
 		var (
 			seq       = NewSequence()
@@ -98,7 +87,7 @@ func TestMemTTL(t *testing.T) {
 			expErr    = rnd.Error()
 			doError   = true
 			act       = func() (string, error) {
-				return cachedVal.DoErr(func() (string, error) {
+				return cachedVal.Do(func() (string, error) {
 					if doError {
 						return "", expErr
 					}
@@ -131,27 +120,7 @@ func TestMemTTL(t *testing.T) {
 			ttl       = time.Hour
 			cachedVal = cache.Value[string]{TTL: ttl}
 			act       = func() string {
-				return cachedVal.Do(seq)
-			}
-		)
-		assert.Equal(t, act(), val1, "initial call will trigger mem caching")
-		assert.Equal(t, act(), val1, "following requests will use the cached value")
-		assert.Equal(t, act(), val1, "following requests will use the cached value")
-		timecop.Travel(t, ttl, timecop.Freeze())
-		assert.Equal(t, act(), val2, "cache should be invalidated due to TTL")
-		timecop.Travel(t, ttl+time.Second, timecop.Freeze())
-		assert.Equal(t, act(), val3, "cache should be invalidated again because the time due to TTL")
-		timecop.Travel(t, ttl-time.Second, timecop.Freeze())
-		assert.Equal(t, act(), val3, "we are at the end of the TTL, so the cached value is still returned")
-	})
-	t.Run(".DoErr with TTL", func(t *testing.T) {
-		timecop.Travel(t, now, timecop.Freeze())
-		var (
-			seq       = NewSequence()
-			ttl       = time.Hour
-			cachedVal = cache.Value[string]{TTL: ttl}
-			act       = func() string {
-				v, err := cachedVal.DoErr(func() (string, error) {
+				v, err := cachedVal.Do(func() (string, error) {
 					return seq(), nil
 				})
 				assert.NoError(t, err)
