@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/iterators"
-	"go.llib.dev/frameless/spechelper/testent"
+	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -672,26 +673,26 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 	mem := memory.NewMemory()
 
 	var createC, indexC, showC, updateC, destroyC, destroyAllC bool
-	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := restapi.Resource[testent.Foo, testent.FooID]{
-		Create: func(ctx context.Context, ptr *testent.Foo) error {
+	fooRepo := memory.NewRepository[Foo, FooID](mem)
+	fooAPI := restapi.Resource[Foo, FooID]{
+		Create: func(ctx context.Context, ptr *Foo) error {
 			createC = true
-			ptr.ID = testent.FooID(rnd.StringNC(5, random.CharsetAlpha()))
+			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
 			return nil
 		},
-		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[testent.Foo], error) {
+		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[Foo], error) {
 			indexC = true
-			return iterators.Empty[testent.Foo](), nil
+			return iterators.Empty[Foo](), nil
 		},
-		Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
+		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			showC = true
-			return testent.Foo{ID: id}, true, nil
+			return Foo{ID: id}, true, nil
 		},
-		Update: func(ctx context.Context, id testent.FooID, ptr *testent.Foo) error {
+		Update: func(ctx context.Context, id FooID, ptr *Foo) error {
 			updateC = true
 			return nil
 		},
-		Destroy: func(ctx context.Context, id testent.FooID) error {
+		Destroy: func(ctx context.Context, id FooID) error {
 			destroyC = true
 			return nil
 		},
@@ -737,4 +738,65 @@ func TestRouterFrom(t *testing.T) {
 	rr2 := httptest.NewRecorder()
 	r.ServeHTTP(rr2, req2)
 	assert.Equal(t, rr2.Code, 101)
+}
+
+func TestDTOMapping_manual(t *testing.T) {
+	fooRepository := memory.NewRepository[Foo, FooID](memory.NewMemory())
+
+	// FooCustomDTO is not a proper DTO.
+	// The only reason we use this to ensure that the custom mapping is used,
+	// instead of the default dtos mapping.
+	type FooCustomDTO struct{ Foo }
+
+	resource := restapi.Resource[Foo, FooID]{
+		Mapping: restapi.ResourceMapping[Foo]{
+			Mapping: restapi.DTOMapping[Foo, FooCustomDTO]{
+				ToEnt: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
+					return dto.Foo, nil
+				},
+				ToDTO: func(ctx context.Context, ent Foo) (FooCustomDTO, error) {
+					return FooCustomDTO{Foo: ent}, nil
+				},
+			},
+		},
+	}.WithCRUD(fooRepository)
+
+	example := FooCustomDTO{
+		Foo: Foo{
+			Foo: "foo",
+			Bar: "bar",
+			Baz: "baz",
+		},
+	}
+
+	var id FooID
+	{
+		t.Log("given we create an entity with our custom DTO")
+		data, err := json.Marshal(example)
+		assert.NoError(t, err)
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
+		r.Header.Set("Content-Type", restapi.JSON.String())
+		resource.ServeHTTP(w, r)
+		assert.Equal(t, w.Code, http.StatusCreated)
+
+		var response FooCustomDTO
+		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		id = response.Foo.ID
+		assert.NotEmpty(t, id)
+	}
+	{
+		t.Log("then we are able to retrieve this entity through the custom DTO")
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodGet, pathkit.Join("/", id.String()), nil)
+		r.Header.Set("Accept", restapi.JSON.String())
+		resource.ServeHTTP(w, r)
+		assert.Equal(t, w.Code, http.StatusOK)
+
+		var response FooCustomDTO
+		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		expected := example
+		expected.ID = id
+		assert.Equal(t, response, expected)
+	}
 }

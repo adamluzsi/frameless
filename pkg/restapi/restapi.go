@@ -111,13 +111,31 @@ func passthroughMappingMode[Entity any]() DTOMapping[Entity, Entity] {
 	return DTOMapping[Entity, Entity]{}
 }
 
+// Mapping is a generic interface used for representing a DTO-Entity mapping relationship.
+// Its primary function is to allow Resource to list various mappings,
+// each with its own DTO type, for different MIMEType values.
+// This means we can use different DTO types within the same restful Resource handler based on different content types,
+// making it more flexible and adaptable to support different Serialization formats.
+//
+// It is implemented by DTOMapping.
 type Mapping[Entity any] interface {
 	newDTO() (dtoPtr any)
 	toEnt(ctx context.Context, dtoPtr any) (Entity, error)
 	toDTO(ctx context.Context, ent Entity) (DTO any, _ error)
 }
 
-type DTOMapping[Entity, DTO any] struct{}
+// DTOMapping is a type safe implementation for the generic Mapping interface.
+// When using the frameless/pkg/dtos package, all you need to provide is the type arguments; nothing else is required.
+type DTOMapping[Entity, DTO any] struct {
+	// ToEnt is an optional function to describe how to map a DTO into an Entity.
+	//
+	// default: dtos.Map[Entity, DTO](...)
+	ToEnt func(ctx context.Context, dto DTO) (Entity, error)
+	// ToDTO is an optional function to describe how to map an Entity into a DTO.
+	//
+	// default: dtos.Map[DTO, Entity](...)
+	ToDTO func(ctx context.Context, ent Entity) (DTO, error)
+}
 
 func (dto DTOMapping[Entity, DTO]) newDTO() any { return new(DTO) }
 
@@ -132,10 +150,16 @@ func (dto DTOMapping[Entity, DTO]) toEnt(ctx context.Context, dtoPtr any) (Entit
 	if ptr == nil {
 		return *new(Entity), fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
 	}
+	if dto.ToEnt != nil { // TODO: testme
+		return dto.ToEnt(ctx, *ptr)
+	}
 	return dtos.Map[Entity](ctx, *ptr)
 }
 
 func (dto DTOMapping[Entity, DTO]) toDTO(ctx context.Context, ent Entity) (any, error) {
+	if dto.ToDTO != nil { // TODO: testme
+		return dto.ToDTO(ctx, ent)
+	}
 	return dtos.Map[DTO](ctx, ent)
 }
 
@@ -610,11 +634,12 @@ func bodyReadAll(body io.ReadCloser, bodyReadLimit units.ByteSize) (_ []byte, re
 type MIMEType string
 
 const (
-	PlainText   MIMEType = "text/plain"
-	JSON        MIMEType = "application/json"
-	XML         MIMEType = "application/xml"
-	HTML        MIMEType = "text/html"
-	OctetStream MIMEType = "application/octet-stream"
+	PlainText      MIMEType = "text/plain"
+	JSON           MIMEType = "application/json"
+	XML            MIMEType = "application/xml"
+	HTML           MIMEType = "text/html"
+	OctetStream    MIMEType = "application/octet-stream"
+	FormUrlencoded MIMEType = "application/x-www-form-urlencoded"
 )
 
 func (ct MIMEType) WithCharset(charset string) MIMEType {
