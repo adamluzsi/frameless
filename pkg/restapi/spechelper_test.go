@@ -28,7 +28,6 @@ var _ = dtos.Register[X, XDTO](XMapping{}.ToDTO, XMapping{}.ToEnt)
 type XMapping struct {
 	restapi.IntID[XID]
 	restapi.IDInContext[XMapping, XID]
-	restapi.SetIDByExtIDTag[X, XID]
 }
 
 func (f XMapping) ToEnt(ctx context.Context, dto XDTO) (X, error) {
@@ -59,7 +58,6 @@ type YDTO struct {
 
 type YMapping struct {
 	restapi.StringID[string]
-	restapi.SetIDByExtIDTag[Y, string]
 	restapi.IDInContext[YMapping, string]
 }
 
@@ -96,7 +94,6 @@ func MakeBazMapping() BazMapping {
 
 type BazMapping struct {
 	restapi.IDConverter[int]
-	restapi.SetIDByExtIDTag[Baz, string]
 	restapi.IDInContext[BazMapping, string]
 }
 

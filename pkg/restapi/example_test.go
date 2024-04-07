@@ -15,17 +15,15 @@ func ExampleRoutes() {
 
 	r := restapi.NewRouter(func(router *restapi.Router) {
 		router.MountRoutes(restapi.Routes{
-			"/v1/api/foos": restapi.Handler[X, XID, XDTO]{
-				Resource: fooRepository,
-				Mapping:  XMapping{},
-				Router: restapi.NewRouter(func(router *restapi.Router) {
+			"/v1/api/foos": restapi.Resource[X, XID]{
+				Mapping: restapi.ResourceMapping[X]{
+					Mapping: restapi.DTOMapping[X, XDTO]{},
+				},
+				EntityRoutes: restapi.NewRouter(func(router *restapi.Router) {
 					router.MountRoutes(restapi.Routes{
-						"/bars": restapi.Handler[Y, string, YDTO]{
-							Resource: barRepository,
-							Mapping:  YMapping{},
-						}})
+						"/bars": restapi.Resource[Y, string]{}.WithCRUD(barRepository)})
 				}),
-			},
+			}.WithCRUD(fooRepository),
 		})
 	})
 
@@ -44,20 +42,6 @@ func ExampleRoutes() {
 	// Bar Delete - DELETE    /v1/api/foos/:foo_id/bars/:bar_id
 	//
 	if err := http.ListenAndServe(":8080", r); err != nil {
-		log.Fatalln(err.Error())
-	}
-}
-
-func ExampleHandler() {
-	m := memory.NewMemory()
-	fooRepository := memory.NewRepository[X, XID](m)
-
-	h := restapi.Handler[X, XID, XDTO]{
-		Resource: fooRepository,
-		Mapping:  XMapping{},
-	}
-
-	if err := http.ListenAndServe(":8080", h); err != nil {
 		log.Fatalln(err.Error())
 	}
 }

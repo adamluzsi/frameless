@@ -677,3 +677,7 @@ const (
 	headerKeyContentType = "Content-Type"
 	headerKeyAccept      = "Accept"
 )
+
+type ErrorHandler interface {
+	HandleError(w http.ResponseWriter, r *http.Request, err error)
+}

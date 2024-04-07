@@ -69,16 +69,17 @@ func TestMount(t *testing.T) {
 		}).EagerLoading(s)
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
-			return restapi.Handler[X, XID, XDTO]{
-				Resource: repo.Get(t),
-				Mapping:  XMapping{},
-				Router: restapi.NewRouter(func(r *restapi.Router) {
+			return restapi.Resource[X, XID]{
+				Mapping: restapi.ResourceMapping[X]{
+					Mapping: restapi.DTOMapping[X, XDTO]{},
+				},
+				EntityRoutes: restapi.NewRouter(func(r *restapi.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastReq.Set(t, r)
 						w.WriteHeader(http.StatusTeapot)
 					}))
 				}),
-			}
+			}.WithCRUD(repo.Get(t))
 		})
 
 		s.Then("the handler is properly propagated", func(t *testcase.T) {
