@@ -268,7 +268,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 				})
 			})
 
-			s.When("NoIndex flag is set", func(s *testcase.Spec) {
+			s.When("Index is not set", func(s *testcase.Spec) {
 				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Index = nil
@@ -276,6 +276,30 @@ func TestResource_ServeHTTP(t *testing.T) {
 				})
 
 				ThenNotAllowed(s)
+			})
+
+			s.When("non empty iterator returned it is ensured to be closed", func(s *testcase.Spec) {
+				isClosed := testcase.LetValue[bool](s, false)
+
+				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+					sub := subject.Super(t)
+					sub.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
+						i := iterators.Slice([]X{{ID: 1, N: 1}, {ID: 2, N: 2}})
+						stub := iterators.Stub(i)
+						stub.StubClose = func() error {
+							isClosed.Set(t, true)
+							return i.Close()
+						}
+						return stub, nil
+					}
+					return sub
+				})
+
+				s.Test("iterator is closed on finish", func(t *testcase.T) {
+					rr := act(t)
+					rr.Result()
+					assert.True(t, isClosed.Get(t))
+				})
 			})
 		})
 

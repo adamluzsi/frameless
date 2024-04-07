@@ -469,7 +469,7 @@ func Test_Main(t *testing.T) {
 				}
 			})
 
-			s.Then("it will block and doesn't affect the other tasker", func(t *testcase.T) {
+			s.Then("it will block and doesn't affect the other tasks", func(t *testcase.T) {
 				var done int64
 				go func() {
 					_ = act(t)
@@ -506,6 +506,39 @@ func Test_Main(t *testing.T) {
 			})
 		})
 	})
+}
+
+func Test_Main_contextCancelDoesNotBubbleUp(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	var (
+		wg         sync.WaitGroup
+		mainErrOut = make(chan error)
+		ready      int32
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		mainErrOut <- tasker.Main(ctx, func(ctx context.Context) error {
+			atomic.AddInt32(&ready, 1)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("cancelled: %w", ctx.Err())
+			}
+		})
+	}()
+
+	assert.Eventually(t, time.Second, func(it assert.It) {
+		it.Must.Equal(atomic.LoadInt32(&ready), int32(1))
+	})
+
+	cancel()
+
+	gotErr, ok := <-mainErrOut
+	assert.True(t, ok)
+	assert.NoError(t, gotErr)
+
+	wg.Wait()
 }
 
 func Test_Main_smoke(t *testing.T) {
