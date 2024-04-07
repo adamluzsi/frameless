@@ -315,18 +315,6 @@ func TestLoad(t *testing.T) {
 				assert.Equal(t, []string{"A", "B", "C", "D"}, c.V)
 			})
 		})
-
-		t.Run("when `separator` tag is defined for a non-slice type", func(t *testing.T) {
-			type Example struct {
-				V string `env:"V_KEY" separator:";"`
-			}
-
-			t.Run("then it yields an error", func(t *testing.T) {
-				testcase.SetEnv(t, "V_KEY", "A;B;C;D")
-				var c Example
-				assert.Error(t, env.Load(&c))
-			})
-		})
 	})
 
 	t.Run("integrates with enum package", func(t *testing.T) {
@@ -412,7 +400,7 @@ func testLoadTimePackageIntegration(t *testing.T) {
 }
 
 type ExampleConfig[T any] struct {
-	V T `env:"THE_ENV_KEY"`
+	V T `env:"THE_ENV_KEY" seperator:","`
 	O T `env:"OTH_ENV_KEY" separator:"|"`
 }
 

@@ -4,7 +4,6 @@ import (
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/logger"
 	"os"
-	"strconv"
 	"time"
 )
 
@@ -32,32 +31,6 @@ func ExampleLoad_enum() {
 		logger.Fatal(nil, "failed to load application config", logger.ErrField(err))
 		os.Exit(1)
 	}
-}
-
-func ExampleRegisterParser() {
-	type MyCustomInt int
-
-	var _ = env.RegisterParser(func(envValue string) (MyCustomInt, error) {
-		// try parse hex
-		v, err := strconv.ParseInt(envValue, 16, 64)
-		if err == nil {
-			return MyCustomInt(v), nil
-		}
-
-		// then let's try parse it as base 10 int
-		v, err = strconv.ParseInt(envValue, 10, 64)
-		if err == nil {
-			return MyCustomInt(v), nil
-		}
-		return 0, err
-	})
-
-	type ExampleAppConfig struct {
-		Foo MyCustomInt `env:"FOO" required:"true"`
-	}
-
-	var c ExampleAppConfig
-	_ = env.Load(&c) // handle error
 }
 
 func ExampleLookup() {

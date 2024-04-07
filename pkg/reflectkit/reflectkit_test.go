@@ -272,11 +272,11 @@ func SpecForPrimitiveNames(spec *testing.T, subject func(entity interface{}) str
 
 }
 
-func TestIsValueEmpty(t *testing.T) {
+func TestIsEmpty(t *testing.T) {
 	s := testcase.NewSpec(t)
 	val := testcase.Var[any]{ID: `input value`}
 	subject := func(t *testcase.T) bool {
-		return reflectkit.IsValueEmpty(reflect.ValueOf(val.Get(t)))
+		return reflectkit.IsEmpty(reflect.ValueOf(val.Get(t)))
 	}
 
 	s.When(`value is an nil pointer`, func(s *testcase.Spec) {

@@ -75,10 +75,10 @@ func FullyQualifiedName(e any) string {
 	return fmt.Sprintf("%q.%s", t.PkgPath(), t.Name())
 }
 
-func IsValueEmpty(val reflect.Value) bool {
+func IsEmpty(val reflect.Value) bool {
 	switch val.Kind() {
 	case reflect.Interface:
-		return IsValueEmpty(val.Elem())
+		return IsEmpty(val.Elem())
 	case reflect.Slice, reflect.Map:
 		if val.IsNil() {
 			return true
@@ -88,7 +88,7 @@ func IsValueEmpty(val reflect.Value) bool {
 		if val.IsNil() {
 			return true
 		}
-		return IsValueEmpty(val.Elem())
+		return IsEmpty(val.Elem())
 	case reflect.Chan, reflect.Func:
 		return val.IsNil()
 	default:

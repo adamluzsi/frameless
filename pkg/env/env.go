@@ -3,15 +3,15 @@ package env
 import (
 	"encoding/json"
 	"fmt"
+	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"net/url"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"os"
 	"reflect"
 	"strconv"
-	"strings"
-	"time"
 )
 
 const ErrLoadInvalidData errorkit.Error = "ErrLoadInvalidData"
@@ -86,8 +86,8 @@ func loadVisitStruct(rStruct reflect.Value) error {
 
 		field := rStruct.Field(i)
 
-		// We don't want to visit struct types which has their own registered parser.
-		if _, ok := registry[field.Type()]; field.Kind() == reflect.Struct && !ok {
+		// We don't want to visit struct types which have their own registered parser.
+		if field.Kind() == reflect.Struct && !convkit.IsRegistered(field.Interface()) {
 			if err := loadVisitStruct(field); err != nil {
 				return err
 			}
@@ -184,11 +184,23 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 		}
 		return reflect.Value{}, false, err
 	}
-	rv, err := parseEnvValue(typ, val, parseEnvValueOptions{
-		Separator:  opts.Separator,
-		TimeLayout: opts.TimeLayout,
-		Parser:     opts.Parser,
-	})
+	parseOpts := convkit.Options{
+		Separator:  zerokit.Coalesce(pointer.Deref(opts.Separator), ","),
+		TimeLayout: pointer.Deref(opts.TimeLayout),
+	}
+	if json.Valid([]byte(val)) { // then prefer JSON format instead
+		parseOpts.Separator = ""
+	}
+	if opts.Parser != nil {
+		parseOpts.ParseFunc = func(data []byte, ptr any) error {
+			v, err := opts.Parser(string(data))
+			if err != nil {
+				return err
+			}
+			return reflectkit.Link(v, ptr)
+		}
+	}
+	rv, err := convkit.ParseReflect(typ, val, parseOpts)
 	if err != nil {
 		return reflect.Value{}, false, err
 	}
@@ -199,153 +211,11 @@ func errMissingEnvironmentVariable(key string) error {
 	return fmt.Errorf("missing environment variable: %s", key)
 }
 
-type parseEnvValueOptions struct {
-	Separator  *string
-	TimeLayout *string
-	Parser     func(string) (any, error)
-}
-
-var timeType = reflect.TypeOf(time.Time{})
-
-// TODO: should we use it as default as it is the most common, or keep forcing the user to supply the time format?
-const iso8601TimeLayout = "2006-01-02T15:04:05Z0700"
-
-const missingTimeLayoutErrMsg = `Missing time layout!
-Please use the "layout" or "env-time-layout" tag to supply it in a struct field
-or use the TimeLayout Lookup option.`
-
-func parseEnvValue(typ reflect.Type, val string, opts parseEnvValueOptions) (reflect.Value, error) {
-	if opts.Parser != nil {
-		out, err := opts.Parser(val)
-		if err != nil {
-			return reflect.Value{}, fmt.Errorf("ParseWith func error: %w", err)
-		}
-		rval := reflect.ValueOf(out)
-		if gotTyp := rval.Type(); gotTyp != typ {
-			return reflect.Value{}, fmt.Errorf("ParseWith result has incorrect type, expected %s but got %s: %#v",
-				typ.String(), gotTyp.String(), out)
-		}
-		return rval, nil
-	}
-	if parser, ok := registry[typ]; ok && parser != nil {
-		out, err := parser(val)
-		if err != nil {
-			return reflect.Value{}, err
-		}
-		return reflect.ValueOf(out), nil
-	}
-	if opts.Separator != nil && typ.Kind() != reflect.Slice {
-		return reflect.Value{}, fmt.Errorf("separator tag is supplied for non list type: %s", typ.Name())
-	}
-	if typ == timeType {
-		if opts.TimeLayout == nil {
-			return reflect.Value{}, fmt.Errorf(missingTimeLayoutErrMsg)
-		}
-		date, err := time.Parse(*opts.TimeLayout, val)
-		if err != nil {
-			return reflect.Value{}, err
-		}
-		return reflect.ValueOf(date), nil
-	}
-	switch typ.Kind() {
-	case reflect.String:
-		return reflect.ValueOf(val).Convert(typ), nil
-
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		num, err := strconv.ParseInt(val, 10, 64)
-		if err != nil {
-			return reflect.Value{}, err
-		}
-		return reflect.ValueOf(num).Convert(typ), nil
-
-	case reflect.Float32, reflect.Float64:
-		num, err := strconv.ParseFloat(val, 64)
-		if err != nil {
-			return reflect.Value{}, err
-		}
-		return reflect.ValueOf(num).Convert(typ), nil
-
-	case reflect.Bool:
-		bl, err := strconv.ParseBool(val)
-		if err != nil {
-			return reflect.Value{}, err
-		}
-		return reflect.ValueOf(bl).Convert(typ), nil
-
-	case reflect.Slice:
-		rv := reflect.MakeSlice(typ, 0, 0)
-		if data := []byte(val); json.Valid(data) {
-			return parseJSONEnvValue(typ, rv, data)
-		}
-		var separator = ","
-		if opts.Separator != nil {
-			separator = *opts.Separator
-		}
-		opts := opts
-		opts.Separator = nil
-		for _, elem := range strings.Split(val, separator) {
-			re, err := parseEnvValue(typ.Elem(), elem, opts)
-			if err != nil {
-				return reflect.Value{}, err
-			}
-			rv = reflect.Append(rv, re)
-		}
-		return rv, nil
-
-	case reflect.Map:
-		ptr := reflect.New(typ)
-		m := reflect.MakeMap(typ)
-		ptr.Elem().Set(m)
-		if err := json.Unmarshal([]byte(val), ptr.Interface()); err != nil {
-			return reflect.Value{}, err
-		}
-		return ptr.Elem(), nil
-
-	case reflect.Ptr:
-		rv, err := parseEnvValue(typ.Elem(), val, opts)
-		if err != nil {
-			return reflect.Value{}, err
-		}
-		ptr := reflect.New(typ.Elem())
-		ptr.Elem().Set(rv)
-		return ptr, nil
-
-	default:
-		return reflect.Value{}, fmt.Errorf("unknown type: %s", typ.String())
-	}
-}
-
-func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect.Value, error) {
-	ptr := reflect.New(typ)
-	ptr.Elem().Set(rv)
-	if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-		return reflect.Value{}, err
-	}
-	return ptr.Elem(), nil
-}
-
 func errParsingEnvValue(structField reflect.StructField, err error) error {
 	return fmt.Errorf("error parsing the value for %s: %w", structField.Name, err)
 }
 
-var registry = map[reflect.Type]func(string) (any, error){}
-
 type ParserFunc[T any] func(envValue string) (T, error)
-
-func RegisterParser[T any](parser ParserFunc[T]) struct{} {
-	var fn func(raw string) (any, error)
-	if parser != nil {
-		fn = func(raw string) (any, error) {
-			val, err := parser(raw)
-			if err != nil {
-				return nil, err
-			}
-			return val, nil
-		}
-	}
-	registry[reflect.TypeOf(*new(T))] = fn
-	return struct{}{}
-}
 
 func ParseWith[T any](parser ParserFunc[T]) LookupOption {
 	return funcLookupOption(func(options *lookupEnvOptions) {
@@ -354,26 +224,6 @@ func ParseWith[T any](parser ParserFunc[T]) LookupOption {
 		}
 	})
 }
-
-var _ = RegisterParser(func(envValue string) (time.Duration, error) {
-	return time.ParseDuration(envValue)
-})
-
-// should never be called as it is not possible to parse time from this scope,
-// because we don't have access to the layout defined in the tag
-var _ = RegisterParser[time.Time](nil)
-
-var _ = RegisterParser[url.URL](func(envValue string) (url.URL, error) {
-	u, err := url.Parse(envValue)
-	if err == nil {
-		return *u, nil
-	}
-	u, err = url.ParseRequestURI(envValue)
-	if err == nil {
-		return *u, nil
-	}
-	return url.URL{}, fmt.Errorf("invalid url: %s", envValue)
-})
 
 type Set struct {
 	lookups []func() error
