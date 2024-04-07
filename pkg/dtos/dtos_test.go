@@ -69,6 +69,47 @@ func ExampleRegister_partialDTOMappingSupport() {
 	_, _ = partialDTO, err
 }
 
+func ExampleMap() {
+	var _ = dtos.Register[Ent, EntDTO]( // only once at the global level
+		EntMapping{}.ToDTO,
+		EntMapping{}.ToEnt,
+	)
+	var (
+		ctx = context.Background()
+		ent = Ent{V: 42, N: 12}
+	)
+
+	dto, err := dtos.Map[EntDTO](ctx, ent)
+	if err != nil {
+		panic(err)
+	}
+
+	gotEnt, err := dtos.Map[Ent](ctx, dto)
+	if err != nil {
+		panic(err)
+	}
+
+	_ = gotEnt == ent // true
+}
+
+func ExampleMap_sliceSyntaxSugar() {
+	var _ = dtos.Register[Ent, EntDTO]( // only once at the global level
+		EntMapping{}.ToDTO,
+		EntMapping{}.ToEnt,
+	)
+	var (
+		ctx  = context.Background()
+		ents = []Ent{{V: 42, N: 12}}
+	)
+
+	// all individual value will be mapped
+	res, err := dtos.Map[[]EntDTO](ctx, ents)
+	if err != nil {
+		panic(err)
+	}
+	_ = res // []EntDTO{V: "42", N: 12}
+}
+
 func TestMap(t *testing.T) {
 	ctx := context.Background()
 	t.Run("nil M given", func(t *testing.T) {
@@ -131,6 +172,43 @@ func TestMap(t *testing.T) {
 
 		_, err = dtos.Map[Ent](ctx, partialDTO)
 		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+	})
+	t.Run("[]T", func(t *testing.T) {
+		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+
+		ents := []Ent{
+			{V: rnd.Int()},
+			{V: rnd.Int()},
+		}
+		expDS := []EntDTO{
+			{V: strconv.Itoa(ents[0].V)},
+			{V: strconv.Itoa(ents[1].V)},
+		}
+
+		ds, err := dtos.Map[[]EntDTO](ctx, ents)
+		assert.NoError(t, err)
+		assert.NotNil(t, ds)
+		assert.Equal(t, expDS, ds)
+	})
+	t.Run("no []T syntax sugar, when explicit slice type is registered", func(t *testing.T) {
+		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+
+		expectedMappedDTOs := []EntDTO{
+			{V: strconv.Itoa(rnd.Int())},
+		}
+		defer dtos.Register[[]Ent, []EntDTO](func(ctx context.Context, ents []Ent) ([]EntDTO, error) {
+			return expectedMappedDTOs, nil
+		}, nil)()
+
+		ents := []Ent{
+			{V: rnd.Int()},
+			{V: rnd.Int()},
+		}
+
+		ds, err := dtos.Map[[]EntDTO](ctx, ents)
+		assert.NoError(t, err)
+		assert.NotNil(t, ds)
+		assert.Equal(t, expectedMappedDTOs, ds)
 	})
 }
 

@@ -61,6 +61,9 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 	defer recoverMustMap(&returnErr)
 	var toBaseType, depth = reflectkit.BaseType(mp.ToType())
 	r, ok := m.lookupByType(mp.FromType(), toBaseType)
+	if v, err, isSliceCase := m.checkForSliceSyntaxSugarMapping(ctx, mp, from); !ok && isSliceCase {
+		return v, err
+	}
 	if !ok {
 		return nil, fmt.Errorf("%w from %s to %s", ErrNoMapping,
 			mp.FromType().String(), mp.ToType().String())
@@ -74,6 +77,32 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 		v = reflectkit.PointerOf(v)
 	}
 	return v.Interface(), nil
+}
+
+func (m *_M) checkForSliceSyntaxSugarMapping(ctx context.Context, mp MP, from any) (_ any, _ error, isSliceCase bool) {
+	if !(mp.FromType().Kind() == reflect.Slice && mp.ToType().Kind() == reflect.Slice) {
+		return nil, nil, false
+	}
+	isSliceCase = true
+	input := reflectkit.BaseValueOf(from)
+	if !input.CanConvert(mp.FromType()) {
+		return nil, fmt.Errorf(`type mismatch, expected %s, but got %s for "From" mapping input`,
+			mp.FromType().String(), input.Type().String()), isSliceCase
+	}
+	input = input.Convert(mp.FromType())
+	pair := _MP{
+		From: mp.FromType().Elem(),
+		To:   mp.ToType().Elem(),
+	}
+	list := reflect.MakeSlice(mp.ToType(), 0, 0)
+	for i, l := 0, input.Len(); i < l; i++ {
+		elem, err := m.Map(ctx, pair, input.Index(i).Interface())
+		if err != nil {
+			return nil, err, isSliceCase
+		}
+		list = reflect.Append(list, reflect.ValueOf(elem))
+	}
+	return list.Interface(), nil, isSliceCase
 }
 
 const ErrNoMapping errorkit.Error = "[dtos] missing mapping"
@@ -153,6 +182,11 @@ func (m *_M) lookupByType(from, to reflect.Type) (*mRec, bool) {
 	return rec, ok
 }
 
+type MP interface {
+	FromType() reflect.Type
+	ToType() reflect.Type
+}
+
 // P is a Mapping pair
 type P[A, B any] struct{}
 
@@ -162,16 +196,16 @@ func (p P[A, B]) MapB(ctx context.Context, v A) (B, error) { return Map[B, A](ct
 func (p P[A, B]) NewA() *A { return new(A) }
 func (p P[A, B]) NewB() *B { return new(B) }
 
-// FromType specify that P[A] is the from type.
+// FromType specify that P[A] is the form type.
 func (p P[A, B]) FromType() reflect.Type { return reflectkit.TypeOf[A]() }
 
-// ToType specify that P[B] is the from type.
+// ToType specify that P[B] is the form type.
 func (p P[A, B]) ToType() reflect.Type { return reflectkit.TypeOf[B]() }
 
-type MP interface {
-	FromType() reflect.Type
-	ToType() reflect.Type
-}
+type _MP struct{ From, To reflect.Type }
+
+func (p _MP) FromType() reflect.Type { return p.From }
+func (p _MP) ToType() reflect.Type   { return p.To }
 
 type ErrMustMap struct{ Err error }
 
