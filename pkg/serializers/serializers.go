@@ -13,11 +13,11 @@ type ListSerializer interface {
 }
 
 type ListEncoderMaker interface {
-	NewListEncoder(w io.Writer) ListEncoder
+	MakeListEncoder(w io.Writer) ListEncoder
 }
 
 type ListDecoderMaker interface {
-	NewListDecoder(w io.Reader) ListDecoder
+	MakeListDecoder(w io.Reader) ListDecoder
 }
 
 type ListEncoder interface {

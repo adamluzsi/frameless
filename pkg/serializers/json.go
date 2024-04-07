@@ -18,11 +18,11 @@ func (s JSON) Unmarshal(data []byte, dtoPtr any) error {
 	return json.Unmarshal(data, &dtoPtr)
 }
 
-func (s JSON) NewListEncoder(w io.Writer) ListEncoder {
+func (s JSON) MakeListEncoder(w io.Writer) ListEncoder {
 	return &jsonListEncoder{W: w}
 }
 
-func (s JSON) NewListDecoder(r io.Reader) ListDecoder {
+func (s JSON) MakeListDecoder(r io.Reader) ListDecoder {
 	return &jsonListDecoder{Reader: r}
 }
 
@@ -219,7 +219,7 @@ func (s JSONStream) Unmarshal(data []byte, ptr any) error {
 	return json.Unmarshal(data, ptr)
 }
 
-func (s JSONStream) NewListEncoder(w io.Writer) ListEncoder {
+func (s JSONStream) MakeListEncoder(w io.Writer) ListEncoder {
 	return jsonEncoder{Encoder: json.NewEncoder(w)}
 }
 

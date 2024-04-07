@@ -44,7 +44,7 @@ func TestJSON_list(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	enc := ser.NewListEncoder(&buf)
+	enc := ser.MakeListEncoder(&buf)
 	assert.NoError(t, enc.Encode(exp1))
 	assert.NoError(t, enc.Encode(exp2))
 	assert.NoError(t, enc.Encode(exp3))
@@ -54,7 +54,7 @@ func TestJSON_list(t *testing.T) {
 		"expected that the final output after close is a valid json")
 
 	stub := iokit.StubReader{Data: buf.Bytes()}
-	dec := ser.NewListDecoder(&stub)
+	dec := ser.MakeListDecoder(&stub)
 
 	var got1, got2, got3 Foo
 	assert.True(t, dec.Next())
@@ -102,7 +102,7 @@ func TestJSONStream_list(t *testing.T) {
 
 	var buf bytes.Buffer
 
-	enc := ser.NewListEncoder(&buf)
+	enc := ser.MakeListEncoder(&buf)
 	assert.NoError(t, enc.Encode(exp1))
 	assert.NoError(t, enc.Encode(exp2))
 	assert.NoError(t, enc.Encode(exp3))
@@ -157,7 +157,7 @@ func TestJSONSerializer_NewListDecoder(t *testing.T) {
 		data, err := json.Marshal(foos)
 		assert.NoError(t, err)
 
-		dec := serializers.JSON{}.NewListDecoder(io.NopCloser(bytes.NewReader(data)))
+		dec := serializers.JSON{}.MakeListDecoder(io.NopCloser(bytes.NewReader(data)))
 
 		var (
 			gotFoos    []Foo
@@ -194,7 +194,7 @@ func TestJSONSerializer_NewListEncoder(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		enc := serializers.JSON{}.NewListEncoder(&buf)
+		enc := serializers.JSON{}.MakeListEncoder(&buf)
 		for _, foo := range foos {
 			assert.NoError(t, enc.Encode(foo))
 		}

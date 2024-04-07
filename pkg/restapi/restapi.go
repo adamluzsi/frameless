@@ -303,7 +303,7 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set(headerKeyContentType, resMIMEType.String())
-	listEncoder := serMaker.NewListEncoder(w)
+	listEncoder := serMaker.MakeListEncoder(w)
 
 	defer func() {
 		if err := listEncoder.Close(); err != nil {

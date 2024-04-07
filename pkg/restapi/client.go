@@ -133,7 +133,7 @@ func (r Client[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Enti
 		return iterators.Error[Entity](fmt.Errorf("no serializer found for the received mime type"))
 	}
 
-	dec := dm.NewListDecoder(resp.Body)
+	dec := dm.MakeListDecoder(resp.Body)
 
 	return iterators.Func[Entity](func() (v Entity, ok bool, err error) {
 		if !dec.Next() {
