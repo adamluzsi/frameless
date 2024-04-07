@@ -1,15 +1,10 @@
 package restapi_test
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"go.llib.dev/frameless/pkg/restapi"
-	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"io"
 	"testing"
 )
 
@@ -215,72 +210,4 @@ func TestIDConverter(t *testing.T) {
 			t.Must.Equal(got, id)
 		})
 	}, testcase.Group("defaults"))
-}
-
-func TestJSONSerializer_NewListDecoder(t *testing.T) {
-	t.Run("E2E", func(t *testing.T) {
-		foos := []testent.Foo{
-			{
-				ID:  "id1",
-				Foo: "foo1",
-				Bar: "bar1",
-				Baz: "baz1",
-			},
-			{
-				ID:  "id2",
-				Foo: "foo2",
-				Bar: "bar2",
-				Baz: "baz2",
-			},
-		}
-		data, err := json.Marshal(foos)
-		assert.NoError(t, err)
-
-		dec := restapi.JSONSerializer{}.NewListDecoder(io.NopCloser(bytes.NewReader(data)))
-
-		var (
-			gotFoos    []testent.Foo
-			iterations int
-		)
-		for dec.Next() {
-			iterations++
-			var got testent.Foo
-			assert.NoError(t, dec.Decode(&got))
-			gotFoos = append(gotFoos, got)
-		}
-		assert.NoError(t, dec.Err())
-		assert.NoError(t, dec.Close())
-		assert.Equal(t, foos, gotFoos)
-		assert.Equal(t, 2, iterations)
-	})
-}
-
-func TestJSONSerializer_NewListEncoder(t *testing.T) {
-	t.Run("E2E", func(t *testing.T) {
-		foos := []testent.Foo{
-			{
-				ID:  "id1",
-				Foo: "foo1",
-				Bar: "bar1",
-				Baz: "baz1",
-			},
-			{
-				ID:  "id2",
-				Foo: "foo2",
-				Bar: "bar2",
-				Baz: "baz2",
-			},
-		}
-
-		var buf bytes.Buffer
-		enc := restapi.JSONSerializer{}.NewListEncoder(&buf)
-		for _, foo := range foos {
-			assert.NoError(t, enc.Encode(foo))
-		}
-
-		assert.NoError(t, enc.Close())
-		var gotFoos []testent.Foo
-		assert.NoError(t, json.Unmarshal(buf.Bytes(), &gotFoos))
-		assert.Equal(t, foos, gotFoos)
-	})
 }

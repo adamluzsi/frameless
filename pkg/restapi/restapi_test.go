@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/restapi/rfc7807"
+	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
@@ -88,7 +90,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			IDContextKey: FooIDContextKey{},
 			Serialization: restapi.ResourceSerialization[X, XID]{
 				Serializers: map[restapi.MIMEType]restapi.Serializer{
-					restapi.JSON: restapi.JSONSerializer{},
+					restapi.JSON: serializers.JSON{},
 				},
 				IDConverter: restapi.IDConverter[XID]{},
 			},
@@ -666,6 +668,50 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
+	ctx := context.Background()
+
+	var got Foo
+	res := restapi.Resource[Foo, FooID]{
+		Create: func(ctx context.Context, ptr *Foo) error {
+			ptr.ID = "ok"
+			got = *ptr
+			return nil
+		},
+		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+			if got.ID != id {
+				return ent, false, nil
+			}
+			return got, true, nil
+		},
+	}
+
+	client := restapi.Client[Foo, FooID]{
+		HTTPClient: &http.Client{
+			Transport: httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+				rr := httptest.NewRecorder()
+				res.ServeHTTP(rr, request)
+				return rr.Result(), nil
+			}),
+		},
+		MIMEType: restapi.FormUrlencoded,
+	}
+
+	exp := Foo{
+		Foo: "foo",
+		Bar: "bar",
+		Baz: "baz",
+	}
+	assert.NoError(t, client.Create(ctx, &exp))
+	assert.NotEmpty(t, exp.ID)
+	assert.Equal(t, exp, got)
+
+	got2, found, err := client.FindByID(ctx, exp.ID)
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, exp, got2)
 }
 
 func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {

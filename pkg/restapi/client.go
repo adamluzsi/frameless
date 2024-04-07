@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
@@ -24,9 +25,14 @@ type Client[Entity, ID any] struct {
 	HTTPClient  *http.Client
 	MIMEType    MIMEType
 	Mapping     Mapping[Entity]
-	Serializer  Serializer
+	Serializer  ClientSerializer
 	IDConverter idConverter[ID]
 	LookupID    crud.LookupIDFunc[Entity, ID]
+}
+
+type ClientSerializer interface {
+	serializers.Serializer
+	serializers.ListDecoderMaker
 }
 
 func (r Client[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
@@ -41,7 +47,7 @@ func (r Client[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	}
 
 	mimeType := r.getMIMEType()
-	ser := r.getSerializer()
+	ser := r.getSerializer(mimeType)
 	mapping := r.getMapping()
 
 	dto, err := mapping.toDTO(ctx, *ptr)
@@ -101,7 +107,6 @@ func (r Client[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Enti
 		return iterators.Error[Entity](err)
 	}
 
-	ser := r.getSerializer()
 	//mapping := r.getMapping()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pathkit.Join(baseURL, "/"), nil)
 	if err != nil {
@@ -117,7 +122,18 @@ func (r Client[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Enti
 	}
 
 	mapping := r.getMapping()
-	dec := ser.NewListDecoder(resp.Body)
+
+	mimeType, ser, ok := r.contentTypeBasedSerializer(resp)
+	if !ok {
+		return iterators.Error[Entity](fmt.Errorf("no serializer configured for response content type: %s", mimeType.String()))
+	}
+
+	dm, ok := ser.(serializers.ListDecoderMaker)
+	if !ok {
+		return iterators.Error[Entity](fmt.Errorf("no serializer found for the received mime type"))
+	}
+
+	dec := dm.NewListDecoder(resp.Body)
 
 	return iterators.Func[Entity](func() (v Entity, ok bool, err error) {
 		if !dec.Next() {
@@ -138,6 +154,15 @@ func (r Client[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Enti
 	}, iterators.OnClose(dec.Close))
 }
 
+func (r Client[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (MIMEType, Serializer, bool) {
+	mt := MIMEType(resp.Header.Get("Content-Type"))
+	ser, ok := r.lookupSerializer(mt)
+	if !ok && r.Serializer != nil {
+		ser, ok = r.Serializer, true
+	}
+	return mt, ser, ok
+}
+
 func (r Client[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
 	ct := resp.Header.Get(headerKeyContentType)
 	if ct != "" {
@@ -147,7 +172,6 @@ func (r Client[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
 }
 
 func (r Client[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error) {
-	ser := r.getSerializer()
 	mapping := r.getMapping()
 
 	pathParamID, err := r.getIDConverter().FormatID(id)
@@ -187,6 +211,11 @@ func (r Client[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, fo
 	}
 
 	dtoPtr := mapping.newDTO()
+	mimeType, ser, ok := r.contentTypeBasedSerializer(resp)
+	if !ok {
+		return ent, false, fmt.Errorf("no serializer configured for response content type: %s", mimeType.String())
+	}
+
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
 		return ent, false, err
 	}
@@ -215,7 +244,7 @@ func (r Client[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		lookupID = extid.Lookup[ID, Entity]
 	}
 
-	ser := r.getSerializer()
+	ser := r.getSerializer(r.getMIMEType())
 	mapping := r.getMapping()
 
 	id, ok := lookupID(*ptr)
@@ -353,11 +382,24 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r Client[Entity, ID]) getSerializer() Serializer {
+func (r Client[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
 	if r.Serializer != nil {
 		return r.Serializer
 	}
+	if ser, done := r.lookupSerializer(mimeType); done {
+		return ser
+	}
 	return DefaultSerializer.Serializer
+}
+
+func (r Client[Entity, ID]) lookupSerializer(mimeType MIMEType) (Serializer, bool) {
+	mimeType = mimeType.Base()
+	for mt, ser := range DefaultSerializers {
+		if mt.Base() == mimeType {
+			return ser, true
+		}
+	}
+	return nil, false
 }
 
 var DefaultResourceClientHTTPClient http.Client = http.Client{

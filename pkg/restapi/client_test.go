@@ -5,6 +5,7 @@ import (
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/restapi"
+	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -21,7 +22,7 @@ func ExampleClient() {
 			BaseURL:     "https://mydomain.dev/api/v1/foos",
 			MIMEType:    restapi.JSON,
 			Mapping:     restapi.DTOMapping[testent.Foo, testent.FooDTO]{},
-			Serializer:  restapi.JSONSerializer{},
+			Serializer:  serializers.JSON{},
 			IDConverter: restapi.IDConverter[testent.FooID]{},
 			LookupID:    testent.Foo.LookupID,
 		}

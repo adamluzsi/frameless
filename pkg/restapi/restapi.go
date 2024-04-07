@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
+	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
@@ -294,8 +295,15 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r) // TODO:TEST_ME
 	resMapping := res.Mapping.get(resMIMEType)
 
+	serMaker, ok := resSer.(serializers.ListEncoderMaker)
+	if !ok {
+		const code = http.StatusNotAcceptable
+		http.Error(w, http.StatusText(code), code)
+		return
+	}
+
 	w.Header().Set(headerKeyContentType, resMIMEType.String())
-	listEncoder := resSer.NewListEncoder(w)
+	listEncoder := serMaker.NewListEncoder(w)
 
 	defer func() {
 		if err := listEncoder.Close(); err != nil {
