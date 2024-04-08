@@ -3,6 +3,7 @@ package iterators_test
 import (
 	"context"
 	"errors"
+	"go.llib.dev/testcase"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -199,6 +200,22 @@ func TestPipeOut_Err_e2e(t *testing.T) {
 		assert.NotEmpty(t, r.Value())
 		assert.False(t, r.Next())
 		assert.Equal(t, expErr, r.Err())
+	})
+}
+
+func TestPipe_race(t *testing.T) {
+	w, r := iterators.Pipe[Entity]()
+
+	testcase.Race(func() {
+		w.Value(Entity{Text: rnd.String()})
+		w.Error(rnd.Error())
+		_ = w.Close()
+	}, func() {
+		assert.NoError(t, r.Err())
+		for r.Next() {
+			assert.NotEmpty(t, r.Value())
+		}
+		assert.Error(t, r.Err())
 	})
 }
 

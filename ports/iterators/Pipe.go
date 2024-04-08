@@ -1,10 +1,5 @@
 package iterators
 
-import (
-	"sync"
-	"sync/atomic"
-)
-
 // Pipe return a receiver and a sender.
 // This can be used with resources that
 func Pipe[T any]() (*PipeIn[T], *PipeOut[T]) {
@@ -30,19 +25,14 @@ type pipeChan[T any] struct {
 // PipeOut implements iterator interface while it's still being able to receive values, used for streaming
 type PipeOut[T any] struct {
 	pipeChan[T]
-	value T
-
-	m sync.Mutex
-
-	closed     int32
-	nextCalled int32
-	lastErr    error
+	value    T
+	iterated bool
+	lastErr  error
 }
 
 // Close sends a signal back that no more value should be sent because receiver stops listening
 func (out *PipeOut[T]) Close() error {
 	defer func() { recover() }()
-	atomic.CompareAndSwapInt32(&out.closed, 0, 1)
 	close(out.outIsDone)
 	return nil
 }
@@ -50,7 +40,7 @@ func (out *PipeOut[T]) Close() error {
 // Next set the current entity for the next value
 // returns false if no next value
 func (out *PipeOut[T]) Next() bool {
-	atomic.CompareAndSwapInt32(&out.nextCalled, 0, 1)
+	out.iterated = true
 	v, ok := <-out.pipeChan.values
 	if !ok {
 		return false
@@ -62,43 +52,31 @@ func (out *PipeOut[T]) Next() bool {
 // Err returns an error object that the pipe sender wants to present for the pipe receiver
 func (out *PipeOut[T]) Err() error {
 	{ // before iteration
-		if atomic.LoadInt32(&out.nextCalled) == 0 {
+		if !out.iterated {
 			select {
 			case _, ok := <-out.outIsDone:
 				if !ok { // nothing to do, the out is already closed
-					return out.getErr()
+					return out.lastErr
 				}
 			case err, ok := <-out.errors:
 				if ok {
-					out.setErr(err)
+					out.lastErr = err
 				}
 			default:
 			}
-			return out.getErr()
+			return out.lastErr
 		}
 	}
 	{ // after iteration
 		select {
 		case err, ok := <-out.errors:
 			if ok {
-				out.setErr(err)
+				out.lastErr = err
 			}
 		case <-out.outIsDone:
 		}
-		return out.getErr()
+		return out.lastErr
 	}
-}
-
-func (out *PipeOut[T]) getErr() error {
-	out.m.Lock()
-	defer out.m.Unlock()
-	return out.lastErr
-}
-
-func (out *PipeOut[T]) setErr(err error) {
-	out.m.Lock()
-	defer out.m.Unlock()
-	out.lastErr = err
 }
 
 // Value will link the current buffered value to the pointer value that is given as "e"
