@@ -1,7 +1,10 @@
 package iteratorcontracts
 
 import (
+	"context"
+	"go.llib.dev/testcase/assert"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/testcase"
@@ -27,6 +30,22 @@ func (c Iterator[V]) Spec(s *testcase.Spec) {
 				t.Must.NoError(sub.Close())
 				t.Must.NoError(sub.Err())
 			}
+		})
+
+		s.Test("Iterator.Err() method is non-blocking similarly to context.Context.Err()", func(t *testcase.T) {
+			const timeout = 250 * time.Millisecond
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NoError(t, subject.Get(t).Err())
+			})
+
+			_, err := iterators.Collect(subject.Get(t))
+			assert.NoError(t, err)
+
+			assert.NoError(t, subject.Get(t).Close())
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NoError(t, subject.Get(t).Err())
+			})
 		})
 
 		s.When("iterator is closed", func(s *testcase.Spec) {

@@ -1,9 +1,13 @@
 package iterators_test
 
 import (
+	"context"
 	"errors"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/testcase/assert"
@@ -175,4 +179,69 @@ func TestPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothi
 	assert.Must(t).Equal(nil, r.Err())
 	assert.Must(t).Nil(r.Close())
 	assert.Must(t).Equal(nil, r.Err())
+}
+
+func TestPipeOut_Err_e2e(t *testing.T) {
+	t.Parallel()
+
+	expErr := rnd.Error()
+	w, r := iterators.Pipe[Entity]()
+
+	go func() {
+		defer w.Close()
+		w.Value(Entity{Text: rnd.String()})
+		w.Error(expErr)
+	}()
+
+	assert.Within(t, time.Second, func(ctx context.Context) {
+		assert.NoError(t, r.Err())
+		assert.True(t, r.Next())
+		assert.NotEmpty(t, r.Value())
+		assert.False(t, r.Next())
+		assert.Equal(t, expErr, r.Err())
+	})
+}
+
+func TestPipeOut_Err_whenCheckingErrBeforeConsumingValuesMakesItNonBlocking(t *testing.T) {
+	t.Parallel()
+	const timeout = 250 * time.Millisecond
+
+	w, r := iterators.Pipe[Entity]()
+
+	t.Log("before consuming the input pipe, the .Err() is non-blocking")
+	assert.Within(t, timeout, func(ctx context.Context) {
+		assert.NoError(t, r.Err())
+	})
+
+	var (
+		inCanFinish int32
+		inIsDone    int32
+	)
+	go func() {
+		defer atomic.AddInt32(&inIsDone, 1)
+		defer w.Close()
+		w.Value(Entity{Text: rnd.String()})
+		for atomic.LoadInt32(&inCanFinish) == 0 {
+			runtime.Gosched()
+		}
+	}()
+
+	assert.True(t, r.Next())
+	assert.NotEmpty(t, r.Value())
+
+	t.Log("after consuming the pipe, the .Err() becomes blocking to ensure that last error response is received properly")
+	assert.NotWithin(t, timeout, func(ctx context.Context) {
+		assert.Nil(t, r.Err())
+	})
+
+	atomic.AddInt32(&inCanFinish, 1)
+
+	assert.Eventually(t, time.Second, func(it assert.It) {
+		assert.Equal(it, atomic.LoadInt32(&inIsDone), 1)
+	})
+
+	t.Log("after the IN pipe is done, the Err becomes non-blocking again")
+	assert.Within(t, timeout, func(ctx context.Context) {
+		assert.NoError(t, r.Err())
+	})
 }

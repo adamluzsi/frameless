@@ -17,6 +17,8 @@ type ExampleStruct struct {
 	Name string
 }
 
+var rnd = random.New(random.CryptoSeed{})
+
 var RandomName = fmt.Sprintf("%d", rand.Int())
 
 func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
