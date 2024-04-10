@@ -70,10 +70,8 @@ func TestMount(t *testing.T) {
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
 			return restapi.Resource[X, XID]{
-				Mapping: restapi.ResourceMapping[X]{
-					Mapping: restapi.DTOMapping[X, XDTO]{},
-				},
-				EntityRoutes: restapi.NewRouter(func(r *restapi.Router) {
+				Mapping: restapi.DTOMapping[X, XDTO]{},
+				SubRoutes: restapi.NewRouter(func(r *restapi.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastReq.Set(t, r)
 						w.WriteHeader(http.StatusTeapot)

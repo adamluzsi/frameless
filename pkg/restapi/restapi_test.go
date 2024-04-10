@@ -57,11 +57,10 @@ func ExampleResource() {
 		},
 		Destroy: fooRepository.DeleteByID,
 
-		Mapping: restapi.ResourceMapping[X]{
-			ForMIME: map[restapi.MIMEType]restapi.Mapping[X]{
-				restapi.JSON: restapi.DTOMapping[X, XDTO]{},
-			},
-			Mapping: restapi.DTOMapping[X, XDTO]{},
+		Mapping: restapi.DTOMapping[X, XDTO]{},
+
+		MappingForMIME: map[restapi.MIMEType]restapi.Mapping[X]{
+			restapi.JSON: restapi.DTOMapping[X, XDTO]{},
 		},
 	}
 
@@ -83,7 +82,6 @@ func TestResource_ServeHTTP(t *testing.T) {
 		resource = testcase.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
 			return mdb.Get(t)
 		})
-		lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
 	)
 	subject := testcase.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
 		return restapi.Resource[X, XID]{
@@ -94,14 +92,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 				},
 				IDConverter: restapi.IDConverter[XID]{},
 			},
-			Mapping: restapi.ResourceMapping[X]{
-				Mapping: restapi.DTOMapping[X, XDTO]{},
-			},
-			EntityRoutes: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				// Handle all routes with a simple HandlerFunc
-				lastSubResourceRequest.Set(t, r)
-				http.Error(w, "", http.StatusTeapot)
-			}),
+			Mapping: restapi.DTOMapping[X, XDTO]{},
 		}.WithCRUD(resource.Get(t))
 	})
 
@@ -654,7 +645,19 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 		})
 
-		s.When("pathkit that leads to sub resource endpoints called", func(s *testcase.Spec) {
+		s.Describe(".ResourceRoutes", func(s *testcase.Spec) {
+			var lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
+
+			subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				sub := subject.Super(t)
+				sub.SubRoutes = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					// Handle all routes with a simple HandlerFunc
+					lastSubResourceRequest.Set(t, r)
+					w.WriteHeader(http.StatusTeapot)
+				})
+				return sub
+			})
+
 			path.Let(s, func(t *testcase.T) string {
 				return "/42/bars"
 			})
@@ -677,7 +680,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			s.And(".EntityRoutes is nil", func(s *testcase.Spec) {
 				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
 					v := subject.Super(t)
-					v.EntityRoutes = nil
+					v.SubRoutes = nil
 					return v
 				})
 
@@ -691,6 +694,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 				})
 			})
 		})
+
 	})
 }
 
@@ -814,19 +818,17 @@ func TestDTOMapping_manual(t *testing.T) {
 	fooRepository := memory.NewRepository[Foo, FooID](memory.NewMemory())
 
 	// FooCustomDTO is not a proper DTO.
-	// The only reason we use this to ensure that the custom mapping is used,
+	// The only reason we use this is to ensure that the custom mapping is used
 	// instead of the default dtos mapping.
 	type FooCustomDTO struct{ Foo }
 
 	resource := restapi.Resource[Foo, FooID]{
-		Mapping: restapi.ResourceMapping[Foo]{
-			Mapping: restapi.DTOMapping[Foo, FooCustomDTO]{
-				ToEnt: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
-					return dto.Foo, nil
-				},
-				ToDTO: func(ctx context.Context, ent Foo) (FooCustomDTO, error) {
-					return FooCustomDTO{Foo: ent}, nil
-				},
+		Mapping: restapi.DTOMapping[Foo, FooCustomDTO]{
+			ToEnt: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
+				return dto.Foo, nil
+			},
+			ToDTO: func(ctx context.Context, ent Foo) (FooCustomDTO, error) {
+				return FooCustomDTO{Foo: ent}, nil
 			},
 		},
 	}.WithCRUD(fooRepository)

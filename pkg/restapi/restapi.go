@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-// Resource is a HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
+// Resource is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
 // Depending on what CRUD operation is supported by the Handler.Resource, the Handler supports the following actions:
 type Resource[Entity, ID any] struct {
 	// Create will create a new entity in the restful resource.
@@ -40,18 +40,22 @@ type Resource[Entity, ID any] struct {
 	// Destroy will delete an entity, identified by its id.
 	// 		 Delete /:id
 	Destroy func(ctx context.Context, id ID) error
-
 	// DestroyAll will delete all entity.
 	// 		 Delete /
 	DestroyAll func(ctx context.Context, query url.Values) error
 
-	// Serialization is responsible to serialise a DTO into or out from the right serialisation format.
-	// Most format is supported out of the box, but in case you want to configure your own,
-	// you can do so using this config.
+	// Serialization is responsible to serialize and unserialize DTOs.
+	// JSON, line separated JSON stream and FormUrlencoded formats are supported out of the box.
+	//
+	// Serialization is an optional field.
+	// Unless you have specific needs in serialization, don't configure it.
 	Serialization ResourceSerialization[Entity, ID]
 
-	// Mapping is responsible to map a given entity to a given DTO
-	Mapping ResourceMapping[Entity]
+	// Mapping is the primary Entity to DTO mapping configuration.
+	Mapping Mapping[Entity]
+
+	// MappingForMIME defines a per MIMEType restapi.Mapping, that takes priority over Mapping
+	MappingForMIME map[MIMEType]Mapping[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
 	ErrorHandler ErrorHandler
@@ -61,18 +65,20 @@ type Resource[Entity, ID any] struct {
 	// Default: IDContextKey[Entity, ID]{}
 	IDContextKey any
 
-	// EntityRoutes is an http.Handler that will receive entity related requests.
+	// SubRoutes is an http.Handler that will receive resource-specific requests.
+	// SubRoutes is optional.
+	//
 	// The http.Request.Context will contain the parsed ID from the request path,
 	// and can be accessed with the IDContextKey.
 	//
 	// Example paths
-	// 		/plural-resource-identifier-name/:id/entity-routes
+	// 		/plural-resource-identifier-name/:id/sub-routes
 	// 		/users/42/status
 	// 		/users/42/jobs/13
 	//
 	// Request paths will be stripped from their prefix.
 	// For example, "/users/42/jobs" will end up as "/jobs".
-	EntityRoutes http.Handler
+	SubRoutes http.Handler
 
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	//
@@ -87,21 +93,17 @@ type idConverter[ID any] interface {
 
 // ResourceMapping is responsible for map
 type ResourceMapping[Entity any] struct {
-	// Mapping is the primary entity to DTO mapping configuration.
-	Mapping Mapping[Entity]
-	// ForMIME defines a per MIMEType restapi.Mapping, that takes priority over Mapping
-	ForMIME map[MIMEType]Mapping[Entity]
 }
 
-func (ms ResourceMapping[Entity]) get(mimeType MIMEType) Mapping[Entity] {
+func (res Resource[Entity, ID]) getMapping(mimeType MIMEType) Mapping[Entity] {
 	mimeType = mimeType.Base() // TODO: TEST ME
-	if ms.ForMIME != nil {
-		if mapping, ok := ms.ForMIME[mimeType]; ok {
+	if res.MappingForMIME != nil {
+		if mapping, ok := res.MappingForMIME[mimeType]; ok {
 			return mapping
 		}
 	}
-	if ms.Mapping != nil {
-		return ms.Mapping
+	if res.Mapping != nil {
+		return res.Mapping
 	}
 	return passthroughMappingMode[Entity]()
 }
@@ -197,12 +199,12 @@ func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 		}
 
 		if rest != "/" {
-			if res.EntityRoutes == nil {
+			if res.SubRoutes == nil {
 				res.getErrorHandler().HandleError(w, r, ErrPathNotFound)
 				return
 			}
 
-			res.EntityRoutes.ServeHTTP(w, r)
+			res.SubRoutes.ServeHTTP(w, r)
 			return
 		}
 		switch r.Method {
@@ -293,7 +295,7 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r) // TODO:TEST_ME
-	resMapping := res.Mapping.get(resMIMEType)
+	resMapping := res.getMapping(resMIMEType)
 
 	serMaker, ok := resSer.(serializers.ListEncoderMaker)
 	if !ok {
@@ -357,7 +359,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 	var (
 		ctx                 = r.Context()
 		reqSer, reqMIMEType = res.Serialization.requestBodySerializer(r)
-		reqMapping          = res.Mapping.get(reqMIMEType)
+		reqMapping          = res.getMapping(reqMIMEType)
 	)
 
 	dtoPtr := reqMapping.newDTO()
@@ -385,7 +387,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		resSer, resMIMEType = res.Serialization.responseBodySerializer(r)
-		resMapping          = res.Mapping.get(resMIMEType)
+		resMapping          = res.getMapping(resMIMEType)
 	)
 
 	dto, err := resMapping.toDTO(ctx, ent)
@@ -431,7 +433,7 @@ func (res Resource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id 
 	}
 
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r)
-	mapping := res.Mapping.get(resMIMEType)
+	mapping := res.getMapping(resMIMEType)
 
 	w.Header().Set(headerKeyContentType, resMIMEType.String())
 
@@ -463,7 +465,7 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 	var (
 		ctx                 = r.Context()
 		reqSer, reqMIMEType = res.Serialization.requestBodySerializer(r)
-		reqMapping          = res.Mapping.get(reqMIMEType)
+		reqMapping          = res.getMapping(reqMIMEType)
 	)
 
 	data, err := res.readAllBody(r)

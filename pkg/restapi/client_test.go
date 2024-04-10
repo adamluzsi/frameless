@@ -122,7 +122,7 @@ func TestClient_subresource(t *testing.T) {
 
 	barAPI := restapi.Resource[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
 	fooAPI := restapi.Resource[testent.Foo, testent.FooID]{
-		EntityRoutes: restapi.RouterFrom(restapi.Routes{
+		SubRoutes: restapi.RouterFrom(restapi.Routes{
 			"/bars": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				barAPI.ServeHTTP(w, r)
 			}),
