@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
@@ -26,6 +27,8 @@ func ExampleRouter() {
 	var router restapi.Router
 
 	router.Namespace("/path", func(r *restapi.Router) {
+		r.Use(SampleMiddleware)
+
 		r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusTeapot)
 		}))
@@ -59,6 +62,13 @@ func ExampleRouter() {
 	router.Handle("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// /foo endpoint for all methods
 	}))
+}
+
+func SampleMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(context.WithValue(r.Context(), "example", "example"))
+		next.ServeHTTP(w, r)
+	})
 }
 
 func TestRouter(t *testing.T) {
@@ -697,4 +707,110 @@ func TestRouter_httpVerbs(t *testing.T) {
 			assert.Equal(t, rr.Code, http.StatusNotFound)
 		}
 	})
+}
+
+func TestRouter_Use(t *testing.T) {
+	var r restapi.Router
+
+	r.Use(mwWithContextValue("foo", "foo"))
+
+	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		assert.Equal[any](t, "foo", r.Context().Value("foo"))
+	}))
+
+	{
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+	}
+}
+
+func TestRouter_Use_nesting(t *testing.T) {
+	var r restapi.Router
+	var top, nested bool
+
+	r.Use(mwWithContextValue("foo", "foo"))
+
+	r.Namespace("/ns", func(r *restapi.Router) {
+		r.Use(mwWithContextValue("bar", "bar"))
+
+		r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+			nested = true
+			assert.Equal[any](t, "foo", r.Context().Value("foo"))
+			assert.Equal[any](t, "bar", r.Context().Value("bar"))
+		}))
+	})
+
+	r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		assert.Equal[any](t, "foo", r.Context().Value("foo"))
+		assert.Nil(t, r.Context().Value("bar"))
+		top = true
+	}))
+
+	{
+		t.Log("top level endpoints only have the middlewares from the top")
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+		assert.True(t, top)
+	}
+	{
+		t.Log("nested endpoints only have the middlewares from their scope")
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/ns", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+		assert.True(t, nested)
+	}
+}
+
+func TestRouter_Use_mux(t *testing.T) {
+	var r restapi.Router
+	r.Use(mwWithContextValue("key", "val"))
+
+	r.Handle("/path/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal[any](t, r.Context().Value("key"), "val")
+		w.WriteHeader(http.StatusTeapot)
+	}))
+
+	{
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/path/goes/here", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+	}
+}
+
+func TestRouter_Use_404(t *testing.T) {
+	var r restapi.Router
+	var ok bool
+
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ok = true
+			next.ServeHTTP(w, r)
+		})
+	})
+
+	{
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/path/not/found", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusNotFound)
+		assert.True(t, ok)
+	}
+}
+
+func mwWithContextValue(key, value any) httpkit.MiddlewareFactoryFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r = r.WithContext(context.WithValue(r.Context(), key, value))
+			next.ServeHTTP(w, r)
+		})
+	}
 }

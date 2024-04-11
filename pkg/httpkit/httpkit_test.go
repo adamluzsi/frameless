@@ -1,6 +1,7 @@
 package httpkit_test
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -385,7 +386,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	})
 }
 
-func ExampleMount(t *testing.T) {
+func ExampleMount() {
 	var (
 		apiV0 http.Handler
 		webUI http.Handler
@@ -487,4 +488,67 @@ func TestMount(t *testing.T) {
 			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
+}
+
+func TestWithMiddleware_order(t *testing.T) {
+	var elements []string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte(fmt.Sprintf("%#v", elements)))
+	})
+
+	combined := httpkit.WithMiddleware(handler,
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				elements = append(elements, "foo")
+				next.ServeHTTP(w, r)
+			})
+		},
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				elements = append(elements, "bar")
+				next.ServeHTTP(w, r)
+			})
+		},
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				elements = append(elements, "baz")
+				next.ServeHTTP(w, r)
+			})
+		},
+	)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	combined.ServeHTTP(rr, req)
+	assert.Equal(t,
+		fmt.Sprintf("%#v", []string{"foo", "bar", "baz"}),
+		rr.Body.String())
+}
+
+func TestWithMiddleware_nilIsIgnored(t *testing.T) {
+	t.Log("order of the passed in middleware are representing how it will be called")
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+
+	combined := httpkit.WithMiddleware(handler,
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				next.ServeHTTP(w, r)
+			})
+		},
+		nil, // intentionally nil
+		func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				next.ServeHTTP(w, r)
+			})
+		},
+	)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	combined.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusTeapot, rr.Code)
 }

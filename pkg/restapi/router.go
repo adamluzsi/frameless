@@ -1,8 +1,10 @@
 package restapi
 
 import (
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/spechelper/testent"
 	"net/http"
 )
@@ -35,8 +37,9 @@ type Router struct {
 }
 
 type _Node struct {
-	methodsH map[string] /* method */ http.Handler
-	defaultH http.Handler
+	middlewares []httpkit.MiddlewareFactoryFunc
+	methodsH    map[string] /* method */ http.Handler
+	defaultH    http.Handler
 
 	nodes _Nodes
 	mux   *http.ServeMux
@@ -79,6 +82,9 @@ func (r *_Node) Merge(oth *_Node) {
 			r.mux.Handle("/", oth.mux)
 		}
 	}
+	if 0 < len(oth.middlewares) {
+		r.middlewares = append(r.middlewares, oth.middlewares...)
+	}
 }
 
 func (r *_Node) init() {
@@ -101,11 +107,15 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		node     = router.rootNode
 		mux      = node.mux
 		muxRoute = *route
+		mws      = slicekit.Clone(router.rootNode.middlewares)
 	)
 	for _, part := range pathkit.Split(route.PathLeft) {
 		snode, ok := node.LookupNode(part)
 		if !ok {
 			break
+		}
+		if 0 < len(snode.middlewares) {
+			mws = append(mws, snode.middlewares...)
 		}
 		if snode.mux != nil {
 			// mux route should not include the final path part
@@ -117,20 +127,26 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		node = snode
 	}
 	route.Travel(pathkit.Join(path...))
+	handler := router.toHTTPHandler(r, node, mux, muxRoute)
+	handler = httpkit.WithMiddleware(handler, mws...)
+	handler.ServeHTTP(w, r)
+}
+
+func (router *Router) toHTTPHandler(r *http.Request, node *_Node, mux *http.ServeMux, muxRoute internal.Routing) http.Handler {
 	endpoint, ok := node.LookupHandler(r.Method)
 	if ok {
-		endpoint.ServeHTTP(w, r)
-		return
+		return endpoint
 	}
 	if mux != nil {
 		var handler http.Handler = mux
 		if cur := muxRoute.Current; cur != "/" {
 			handler = http.StripPrefix(cur, node.mux)
 		}
-		handler.ServeHTTP(w, r)
-		return
+		return handler
 	}
-	defaultErrorHandler.HandleError(w, r, ErrPathNotFound)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defaultErrorHandler.HandleError(w, r, ErrPathNotFound)
+	})
 }
 
 // Mount
@@ -249,4 +265,9 @@ func (router *Router) Trace(path string, handler http.Handler) {
 
 func (router *Router) Resource(identifier string, r Resource[testent.Foo, testent.FooID]) {
 	Mount(router, pathkit.Canonical(identifier), r)
+}
+
+func (router *Router) Use(mws ...httpkit.MiddlewareFactoryFunc) {
+	router.init()
+	router.rootNode.middlewares = append(router.rootNode.middlewares, mws...)
 }

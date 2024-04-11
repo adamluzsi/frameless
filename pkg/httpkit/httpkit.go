@@ -246,3 +246,20 @@ func Mount(mux Multiplexer, pattern string, handler http.Handler) {
 type Multiplexer interface {
 	Handle(pattern string, handler http.Handler)
 }
+
+// MiddlewareFactoryFunc is a constructor function that is meant to wrap an http.Handler with given middleware.
+// Its http.Handler argument represents the next middleware http.Handler in the pipeline.
+type MiddlewareFactoryFunc func(next http.Handler) http.Handler
+
+// WithMiddleware will combine an http.Handler with a stack of middleware functions.
+// The order in which you pass the MiddlewareFactoryFunc -s is the same
+// as the order, they will be called during the http.Handler.ServeHTTP method call.
+func WithMiddleware(handler http.Handler, ffns ...MiddlewareFactoryFunc) http.Handler {
+	for i := len(ffns) - 1; 0 <= i; i-- {
+		if ffns[i] == nil {
+			continue
+		}
+		handler = ffns[i](handler)
+	}
+	return handler
+}
