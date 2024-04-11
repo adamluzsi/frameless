@@ -91,10 +91,6 @@ type idConverter[ID any] interface {
 	ParseID(string) (ID, error)
 }
 
-// ResourceMapping is responsible for map
-type ResourceMapping[Entity any] struct {
-}
-
 func (res Resource[Entity, ID]) getMapping(mimeType MIMEType) Mapping[Entity] {
 	mimeType = mimeType.Base() // TODO: TEST ME
 	if res.MappingForMIME != nil {
@@ -169,8 +165,8 @@ func (dto DTOMapping[Entity, DTO]) toDTO(ctx context.Context, ent Entity) (any, 
 func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = res.setupRequest(r)
 	defer res.handlePanic(w, r)
-	r, rc := internal.WithRoutingCountex(r)
-	switch rc.Path {
+	r, rc := internal.WithRoutingContext(r)
+	switch rc.PathLeft {
 	case `/`, ``:
 		switch r.Method {
 		case http.MethodGet:
@@ -185,8 +181,8 @@ func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 
 	default: // dynamic path
-		resourceID, rest := pathkit.Unshift(rc.Path)
-		withMountPoint(rc, Path(resourceID))
+		resourceID, rest := pathkit.Unshift(rc.PathLeft)
+		rc.Travel(resourceID)
 
 		id, err := res.Serialization.getIDConverter().ParseID(resourceID)
 		if err != nil {

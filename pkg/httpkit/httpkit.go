@@ -235,14 +235,14 @@ func visitForStatusCode(info *responseInfo, rv reflect.Value, recursionGuard map
 //	if pattern -> "/something"
 //	registered as "/something" for exact match
 //	registered as "/something/" for prefix match
-func Mount(mux multiplexer, pattern string, handler http.Handler) {
+func Mount(mux Multiplexer, pattern string, handler http.Handler) {
 	pattern = pathkit.Clean(pattern)
 	handler = http.StripPrefix(pattern, handler)
 	mux.Handle(pattern, handler)
 	mux.Handle(pattern+`/`, handler)
 }
 
-// multiplexer represents a http request multiplexer.
-type multiplexer interface {
+// Multiplexer represents a http request Multiplexer.
+type Multiplexer interface {
 	Handle(pattern string, handler http.Handler)
 }

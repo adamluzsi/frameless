@@ -22,6 +22,10 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+func Test_interfaceMultiplexer(t *testing.T) {
+	var _ httpkit.Multiplexer = http.NewServeMux()
+}
+
 func TestRoundTripperFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 	httpspec.ItBehavesLikeRoundTripperMiddleware(s, func(t *testcase.T, next http.RoundTripper) http.RoundTripper {

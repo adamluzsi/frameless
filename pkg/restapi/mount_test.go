@@ -54,7 +54,7 @@ func TestMount(t *testing.T) {
 		t.Must.NotNil(lastReq.Get(t))
 		routing, ok := internal.LookupRouting(lastReq.Get(t).Context())
 		t.Must.True(ok)
-		t.Must.Equal("/sub", routing.Path)
+		t.Must.Equal("/sub", routing.PathLeft)
 	})
 
 	s.When("handler is a restapi.Handler", func(s *testcase.Spec) {
@@ -88,7 +88,7 @@ func TestMount(t *testing.T) {
 
 			routing, ok := internal.LookupRouting(lastReq.Get(t).Context())
 			t.Must.True(ok)
-			t.Must.Equal("/foo", routing.Path)
+			t.Must.Equal("/foo", routing.PathLeft)
 		})
 	})
 
@@ -162,11 +162,11 @@ func TestMountPoint(tt *testing.T) {
 	t := testcase.NewT(tt, s)
 
 	charset := random.CharsetDigit()
-	mountPoint := restapi.Path(fmt.Sprintf("/%s/%s/%s",
+	mountPoint := fmt.Sprintf("/%s/%s/%s",
 		t.Random.StringNC(3, charset),
 		t.Random.StringNC(3, charset),
 		t.Random.StringNC(3, charset),
-	))
+	)
 	var gotReq *http.Request
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotReq = r
@@ -183,5 +183,5 @@ func TestMountPoint(tt *testing.T) {
 	t.Must.NotNil(gotReq)
 	rc, ok := internal.LookupRouting(gotReq.Context())
 	t.Must.True(ok)
-	t.Must.Equal(remainingPath, rc.Path)
+	t.Must.Equal(remainingPath, rc.PathLeft)
 }

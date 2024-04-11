@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -674,7 +675,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 				routing, ok := internal.LookupRouting(req.Context())
 				t.Must.True(ok)
-				t.Must.Equal("/bars", routing.Path)
+				t.Must.Equal("/bars", routing.PathLeft)
 			})
 
 			s.And(".EntityRoutes is nil", func(s *testcase.Spec) {
@@ -793,27 +794,6 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 	assert.True(t, destroyC)
 }
 
-func TestRouterFrom(t *testing.T) {
-	r := restapi.RouterFrom(restapi.Routes{
-		"/": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(100)
-		}),
-		"/path": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(101)
-		}),
-	})
-
-	req1 := httptest.NewRequest(http.MethodGet, "/", nil)
-	rr1 := httptest.NewRecorder()
-	r.ServeHTTP(rr1, req1)
-	assert.Equal(t, rr1.Code, 100)
-
-	req2 := httptest.NewRequest(http.MethodGet, "/path", nil)
-	rr2 := httptest.NewRecorder()
-	r.ServeHTTP(rr2, req2)
-	assert.Equal(t, rr2.Code, 101)
-}
-
 func TestDTOMapping_manual(t *testing.T) {
 	fooRepository := memory.NewRepository[Foo, FooID](memory.NewMemory())
 
@@ -870,5 +850,52 @@ func TestDTOMapping_manual(t *testing.T) {
 		expected := example
 		expected.ID = id
 		assert.Equal(t, response, expected)
+	}
+}
+
+func TestRouter_Resource(t *testing.T) {
+	var r restapi.Router
+
+	ctx := context.Background()
+
+	foo := Foo{
+		ID:  "42",
+		Foo: "foo",
+		Bar: "bar",
+		Baz: "baz",
+	}
+
+	r.Resource("foo", restapi.Resource[Foo, FooID]{
+		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[Foo], error) {
+			return iterators.SingleValue(foo), nil
+		},
+		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+			return foo, true, nil
+		},
+		Mapping: restapi.DTOMapping[Foo, FooDTO]{},
+	})
+
+	{
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+		req.Header.Set("Content-Type", restapi.JSON.String())
+		r.ServeHTTP(rr, req)
+
+		var index []FooDTO
+		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &index))
+		assert.NotEmpty(t, index)
+		assert.True(t, len(index) == 1)
+	}
+
+	{
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/foo/42", nil)
+		req.Header.Set("Content-Type", restapi.JSON.String())
+		r.ServeHTTP(rr, req)
+
+		var show FooDTO
+		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &show))
+		assert.NotEmpty(t, show)
+		assert.Equal(t, dtos.MustMap[FooDTO](ctx, foo), show)
 	}
 }
