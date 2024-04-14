@@ -19,17 +19,25 @@ func Register[From, To any](mapTo mapFunc[From, To], mapFrom mapFunc[To, From]) 
 		TypeA: reflectkit.TypeOf[From](),
 		TypeB: reflectkit.TypeOf[To](),
 	}
-	if mapTo == nil {
-		panic(fmt.Errorf("dtos.Register: %s to %s mapping is required",
-			reflectkit.TypeOf[From]().String(), reflectkit.TypeOf[To]().String()))
+	var hasMapping bool
+	if mapTo != nil { // support partial mapping
+		hasMapping = true
+		mr.MapAToB = func(ctx context.Context, from any) (to any, err error) {
+			return mapTo(ctx, from.(From))
+		}
 	}
-	mr.MapAToB = func(ctx context.Context, from any) (to any, err error) {
-		return mapTo(ctx, from.(From))
-	}
-	if mapFrom != nil { // non partial DTO mapping
+	if mapFrom != nil { // support partial mapping
+		hasMapping = true
 		mr.MapBToA = func(ctx context.Context, to any) (from any, err error) {
 			return mapFrom(ctx, to.(To))
 		}
+	}
+	if !hasMapping {
+		var (
+			fromTypeName = reflectkit.TypeOf[From]().String()
+			toTypeName   = reflectkit.TypeOf[To]().String()
+		)
+		panic(fmt.Errorf("dtos.Register: at partial mapping between %s and %s is required", fromTypeName, toTypeName))
 	}
 	m.register(mr)
 	return func() { m.unregister(mr) }

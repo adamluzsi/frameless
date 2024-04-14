@@ -158,7 +158,7 @@ func TestMap(t *testing.T) {
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, *dto)
 	})
-	t.Run("when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
+	t.Run("(To->From is missing) when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
 		defer dtos.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
 
 		var (
@@ -172,6 +172,25 @@ func TestMap(t *testing.T) {
 
 		_, err = dtos.Map[Ent](ctx, partialDTO)
 		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+	})
+	t.Run("(From->To is missing) when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
+		defer dtos.Register[EntPartialDTO, Ent](nil, EntToEntPartialDTO)()
+
+		var (
+			ctx = context.Background()
+			v   = Ent{V: rnd.Int(), N: rnd.Int()}
+		)
+
+		partialDTO, err := dtos.Map[EntPartialDTO, Ent](ctx, v)
+		assert.NoError(t, err)
+		assert.Equal(t, partialDTO, EntPartialDTO{N: v.N})
+
+		_, err = dtos.Map[Ent](ctx, partialDTO)
+		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+	})
+	t.Run("when no mapping is supplied to Register, it will panics about this", func(t *testing.T) {
+		got := assert.Panic(t, func() { defer dtos.Register[Ent, EntDTO](nil, nil)() })
+		assert.NotNil(t, got)
 	})
 	t.Run("[]T", func(t *testing.T) {
 		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
