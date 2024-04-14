@@ -68,7 +68,15 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 	}
 	defer recoverMustMap(&returnErr)
 	var toBaseType, depth = reflectkit.BaseType(mp.ToType())
+	var fromValue = reflect.ValueOf(from)
 	r, ok := m.lookupByType(mp.FromType(), toBaseType)
+	if !ok {
+		fromType, _ := reflectkit.BaseType(mp.FromType())
+		r, ok = m.lookupByType(fromType, toBaseType)
+		if ok { // if base FromType is recognised, then BaseValue of fromValue is needed for correct mapping
+			fromValue = reflectkit.BaseValue(fromValue)
+		}
+	}
 	if v, err, isSliceCase := m.checkForSliceSyntaxSugarMapping(ctx, mp, from); !ok && isSliceCase {
 		return v, err
 	}
@@ -76,7 +84,7 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 		return nil, fmt.Errorf("%w from %s to %s", ErrNoMapping,
 			mp.FromType().String(), mp.ToType().String())
 	}
-	to, err := r.Map(ctx, reflectkit.BaseValue(reflect.ValueOf(from)).Interface())
+	to, err := r.Map(ctx, fromValue.Interface())
 	if err != nil {
 		return nil, err
 	}

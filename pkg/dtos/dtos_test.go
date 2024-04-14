@@ -147,7 +147,7 @@ func TestMap(t *testing.T) {
 		_, err = dtos.Map[EntDTO](ctx, ent)
 		assert.NoError(t, err)
 	})
-	t.Run("ptr", func(t *testing.T) {
+	t.Run("value to pointer", func(t *testing.T) {
 		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
@@ -157,6 +157,17 @@ func TestMap(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, *dto)
+	})
+	t.Run("pointer to value", func(t *testing.T) {
+		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+
+		expEnt := Ent{V: rnd.Int()}
+		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
+
+		dto, err := dtos.Map[EntDTO](ctx, &expEnt)
+		assert.NoError(t, err)
+		assert.NotNil(t, dto)
+		assert.Equal(t, expDTO, dto)
 	})
 	t.Run("(To->From is missing) when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
 		defer dtos.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
