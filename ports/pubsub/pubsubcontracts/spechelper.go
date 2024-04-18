@@ -213,7 +213,7 @@ func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 
 func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
 	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext())
-	testcase.Append(t, c.cancelFnsVar(), cancel)
+	testcase.Append[func()](t, c.cancelFnsVar(), cancel)
 	t.Defer(cancel)
 	return c.subject().Get(t).PubSub.Subscribe(ctx)
 }

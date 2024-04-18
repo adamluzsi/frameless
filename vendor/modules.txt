@@ -1,4 +1,4 @@
-# go.llib.dev/testcase v0.147.2
+# go.llib.dev/testcase v0.148.1
 ## explicit; go 1.18
 go.llib.dev/testcase
 go.llib.dev/testcase/assert
