@@ -15,19 +15,6 @@ func WithCallback[T any](i Iterator[T], cs ...CallbackOption) Iterator[T] {
 	return &callbackIterator[T]{Iterator: i, CallbackConfig: toCallback(cs)}
 }
 
-// Callback
-//
-// DEPRECATED: use OnClose
-type Callback struct {
-	OnClose func() error
-}
-
-func (c Callback) configure(conf *callbackConfig) {
-	if c.OnClose != nil {
-		conf.OnClose = append(conf.OnClose, c.OnClose)
-	}
-}
-
 type callbackIterator[T any] struct {
 	Iterator[T]
 	CallbackConfig callbackConfig

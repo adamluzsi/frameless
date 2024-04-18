@@ -90,12 +90,10 @@ func TestFunc(t *testing.T) {
 		closed := testcase.LetValue(s, false)
 		cbs.Let(s, func(t *testcase.T) []iterators.CallbackOption {
 			return []iterators.CallbackOption{
-				iterators.Callback{
-					OnClose: func() error {
-						closed.Set(t, true)
-						return nil
-					},
-				},
+				iterators.OnClose(func() error {
+					closed.Set(t, true)
+					return nil
+				}),
 			}
 		})
 

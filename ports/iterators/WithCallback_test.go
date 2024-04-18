@@ -19,7 +19,7 @@ func TestWithCallback(t *testing.T) {
 		s.Then(`it will execute iterator calls like it is not even there`, func(t *testcase.T) {
 			expected := []int{1, 2, 3}
 			input := iterators.Slice(expected)
-			i := iterators.WithCallback[int](input, iterators.Callback{})
+			i := iterators.WithCallback[int](input)
 
 			actually, err := iterators.Collect(i)
 			assert.Must(t).Nil(err)
@@ -51,12 +51,12 @@ func TestWithCallback(t *testing.T) {
 
 			callbackErr := random.New(random.CryptoSeed{}).Error()
 
-			i := iterators.WithCallback[int](m, iterators.Callback{
-				OnClose: func() error {
+			i := iterators.WithCallback[int](m,
+				iterators.OnClose(func() error {
 					closeHook = append(closeHook, `after`)
 					return callbackErr
-				},
-			})
+				}),
+			)
 
 			assert.Must(t).ErrorIs(callbackErr, i.Close())
 			assert.Must(t).Equal(2, len(closeHook))
@@ -71,10 +71,10 @@ func TestWithCallback(t *testing.T) {
 
 					m := iterators.Stub[int](iterators.Slice[int]([]int{1, 2, 3}))
 					m.StubClose = func() error { return expectedErr }
-					i := iterators.WithCallback[int](m, iterators.Callback{
-						OnClose: func() error {
+					i := iterators.WithCallback[int](m,
+						iterators.OnClose(func() error {
 							return nil
-						}})
+						}))
 
 					assert.Must(t).Equal(expectedErr, i.Close())
 				})
