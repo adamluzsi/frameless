@@ -9,8 +9,8 @@ import (
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 )
@@ -122,15 +122,13 @@ func TestClient_subresource(t *testing.T) {
 
 	barAPI := restapi.Resource[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
 	fooAPI := restapi.Resource[testent.Foo, testent.FooID]{
-		SubRoutes: restapi.RouterFrom(restapi.Routes{
-			"/bars": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				barAPI.ServeHTTP(w, r)
-			}),
+		SubRoutes: restapi.NewRouter(func(router *restapi.Router) {
+			router.Resource("/bars", barAPI)
 		}),
 	}.WithCRUD(fooRepo)
 
-	api := restapi.RouterFrom(restapi.Routes{
-		"/foos": fooAPI,
+	api := restapi.NewRouter(func(router *restapi.Router) {
+		router.Resource("/foos", fooAPI)
 	})
 
 	srv := httptest.NewServer(api)
@@ -155,7 +153,7 @@ func TestClient_subresource(t *testing.T) {
 		return restapi.WithPathParam(context.Background(), "foo_id", foo.ID.String())
 	}
 
-	crudcontracts.Creator[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.CreatorSubject[testent.Bar, testent.BarID] {
+	t.Run("Create", crudcontracts.Creator[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.CreatorSubject[testent.Bar, testent.BarID] {
 		return crudcontracts.CreatorSubject[testent.Bar, testent.BarID]{
 			Resource:        barClient,
 			MakeContext:     makeContext,
@@ -163,29 +161,69 @@ func TestClient_subresource(t *testing.T) {
 			SupportIDReuse:  true,
 			SupportRecreate: true,
 		}
-	}).Test(t)
+	}).Test)
 
-	crudcontracts.Finder[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.FinderSubject[testent.Bar, testent.BarID] {
+	t.Run("Finder", crudcontracts.Finder[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.FinderSubject[testent.Bar, testent.BarID] {
 		return crudcontracts.FinderSubject[testent.Bar, testent.BarID]{
 			Resource:    barClient,
 			MakeContext: makeContext,
 			MakeEntity:  makeBar,
 		}
-	}).Test(t)
+	}).Test)
 
-	crudcontracts.Updater[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.UpdaterSubject[testent.Bar, testent.BarID] {
+	t.Run("Updater", crudcontracts.Updater[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.UpdaterSubject[testent.Bar, testent.BarID] {
 		return crudcontracts.UpdaterSubject[testent.Bar, testent.BarID]{
 			Resource:    barClient,
 			MakeContext: makeContext,
 			MakeEntity:  makeBar,
 		}
-	}).Test(t)
+	}).Test)
 
-	crudcontracts.Deleter[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.DeleterSubject[testent.Bar, testent.BarID] {
+	t.Run("Deleter", crudcontracts.Deleter[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.DeleterSubject[testent.Bar, testent.BarID] {
 		return crudcontracts.DeleterSubject[testent.Bar, testent.BarID]{
 			Resource:    barClient,
 			MakeContext: makeContext,
 			MakeEntity:  makeBar,
 		}
-	}).Test(t)
+	}).Test)
+}
+
+func TestWithPathParam(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		ctx := context.Background()
+		ctx1 := restapi.WithPathParam(ctx, "foo", "A")
+		ctx2 := restapi.WithPathParam(ctx1, "bar", "B")
+		ctx3 := restapi.WithPathParam(ctx2, "foo", "C")
+
+		assert.Equal(t, restapi.PathParams(ctx), map[string]string{})
+		assert.Equal(t, restapi.PathParams(ctx1), map[string]string{
+			"foo": "A",
+		})
+		assert.Equal(t, restapi.PathParams(ctx2), map[string]string{
+			"foo": "A",
+			"bar": "B",
+		})
+		assert.Equal(t, restapi.PathParams(ctx3), map[string]string{
+			"foo": "C",
+			"bar": "B",
+		})
+	})
+	t.Run("variable can be set in the context", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = restapi.WithPathParam(ctx, "foo", "A")
+		assert.Equal(t, restapi.PathParams(ctx), map[string]string{"foo": "A"})
+	})
+	t.Run("variable can be overwritten with WithPathParam", func(t *testing.T) {
+		ctx := context.Background()
+		ctx = restapi.WithPathParam(ctx, "foo", "A")
+		ctx = restapi.WithPathParam(ctx, "foo", "C")
+		assert.Equal(t, restapi.PathParams(ctx), map[string]string{"foo": "C"})
+	})
+	t.Run("variable overwriting is not mutating the original context", func(t *testing.T) {
+		ctx := context.Background()
+		ctx1 := restapi.WithPathParam(ctx, "foo", "A")
+		ctx2 := restapi.WithPathParam(ctx1, "foo", "C")
+		assert.Equal(t, restapi.PathParams(ctx1), map[string]string{"foo": "A"})
+		assert.Equal(t, restapi.PathParams(ctx2), map[string]string{"foo": "C"})
+	})
 }

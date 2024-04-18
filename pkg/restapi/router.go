@@ -1,11 +1,11 @@
 package restapi
 
 import (
+	"context"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/spechelper/testent"
 	"net/http"
 )
 
@@ -17,23 +17,8 @@ func NewRouter(configure ...func(*Router)) *Router {
 	return router
 }
 
-// RouterFrom
-//
-// DEPRECATED
-func RouterFrom[V Routes](v V) *Router {
-	switch v := any(v).(type) {
-	case Routes:
-		r := NewRouter()
-		r.MountRoutes(v)
-		return r
-
-	default:
-		panic("not implemented")
-	}
-}
-
 type Router struct {
-	rootNode *_Node
+	root *_Node
 }
 
 type _Node struct {
@@ -41,21 +26,54 @@ type _Node struct {
 	methodsH    map[string] /* method */ http.Handler
 	defaultH    http.Handler
 
-	nodes _Nodes
-	mux   *http.ServeMux
+	fixNodes _FixNodes
+	dynNodes _DynNode
+
+	mux *http.ServeMux
 }
 
-type _Nodes map[string] /* path */ *_Node
+type _FixNodes map[string] /* path */ *_Node
 
-func (r *_Node) LookupNode(path string) (*_Node, bool) {
+type _DynNode struct {
+	node     *_Node
+	varnames []string
+}
+
+func (dn *_DynNode) NodeFor(pathParamName string) *_Node {
+	if dn.node == nil {
+		dn.node = &_Node{}
+		dn.node.init()
+	}
+	if slicekit.Contains(dn.varnames, pathParamName) {
+		return dn.node
+	}
+	dn.varnames = append(dn.varnames, pathParamName)
+	return dn.node
+}
+
+func (dn *_DynNode) LookupNode(ctx context.Context, pathpart string) (context.Context, *_Node, bool) {
+	if len(dn.varnames) == 0 || dn.node == nil {
+		return nil, nil, false
+	}
+	for _, varname := range dn.varnames {
+		ctx = WithPathParam(ctx, varname, pathpart)
+	}
+	return ctx, dn.node, true
+}
+
+func (r *_Node) LookupNode(ctx context.Context, pathpart string) (context.Context, *_Node, bool) {
 	if r == nil {
-		return nil, false
+		return nil, nil, false
 	}
-	if r.nodes == nil {
-		return nil, false
+	if r.fixNodes != nil {
+		if sr, ok := r.fixNodes[pathpart]; ok {
+			return ctx, sr, true
+		}
 	}
-	sr, ok := r.nodes[path]
-	return sr, ok
+	if ctx, sr, ok := r.dynNodes.LookupNode(ctx, pathpart); ok {
+		return ctx, sr, true
+	}
+	return nil, nil, false
 }
 
 func (r *_Node) LookupHandler(method string) (http.Handler, bool) {
@@ -68,12 +86,15 @@ func (r *_Node) LookupHandler(method string) (http.Handler, bool) {
 }
 
 func (r *_Node) Merge(oth *_Node) {
+	if oth == nil {
+		return
+	}
 	r.init()
 	for k, v := range oth.methodsH {
 		r.methodsH[k] = v
 	}
-	for k, v := range oth.nodes {
-		r.nodes[k] = v
+	for k, v := range oth.fixNodes {
+		r.fixNodes[k] = v
 	}
 	if oth.mux != nil {
 		if r.mux == nil {
@@ -85,47 +106,56 @@ func (r *_Node) Merge(oth *_Node) {
 	if 0 < len(oth.middlewares) {
 		r.middlewares = append(r.middlewares, oth.middlewares...)
 	}
+	if oth.dynNodes.node != nil {
+		for _, vn := range oth.dynNodes.varnames {
+			r.dynNodes.NodeFor(vn)
+		}
+		r.dynNodes.node.Merge(oth.dynNodes.node)
+	}
 }
 
 func (r *_Node) init() {
 	if r.methodsH == nil {
 		r.methodsH = make(map[string]http.Handler)
 	}
-	if r.nodes == nil {
-		r.nodes = make(_Nodes)
+	if r.fixNodes == nil {
+		r.fixNodes = make(_FixNodes)
 	}
 }
 
 func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if router.rootNode == nil {
+	if router.root == nil {
 		defaultErrorHandler.HandleError(w, r, ErrPathNotFound)
 		return
 	}
 	r, route := internal.WithRoutingContext(r)
 	var (
+		ctx      = r.Context()
 		path     []string
-		node     = router.rootNode
+		node     = router.root
 		mux      = node.mux
 		muxRoute = *route
-		mws      = slicekit.Clone(router.rootNode.middlewares)
+		mws      = slicekit.Clone(router.root.middlewares)
 	)
-	for _, part := range pathkit.Split(route.PathLeft) {
-		snode, ok := node.LookupNode(part)
+	for _, pathpart := range pathkit.Split(route.PathLeft) {
+		sctx, snode, ok := node.LookupNode(ctx, pathpart)
 		if !ok {
 			break
 		}
 		if 0 < len(snode.middlewares) {
 			mws = append(mws, snode.middlewares...)
 		}
-		if snode.mux != nil {
+		path = append(path, pathpart)
+		node = snode
+		ctx = sctx
+		if snode.mux != nil { // mux fallback handler
 			// mux route should not include the final path part
 			// since the mux contain that information if that should be handled or not
 			muxRoute = route.Peek(pathkit.Join(path...))
 			mux = snode.mux
 		}
-		path = append(path, part)
-		node = snode
 	}
+	r = r.WithContext(ctx)
 	route.Travel(pathkit.Join(path...))
 	handler := router.toHTTPHandler(r, node, mux, muxRoute)
 	handler = httpkit.WithMiddleware(handler, mws...)
@@ -149,33 +179,41 @@ func (router *Router) toHTTPHandler(r *http.Request, node *_Node, mux *http.Serv
 	})
 }
 
-// Mount
+// Mount will mount a handler to the router.
+// Mounting a handler will make the path observed as its root point to the handler.
+// TODO: make this true :D
 func (router *Router) Mount(path string, handler http.Handler) {
 	ro := router.mkpath(path)
 	switch h := handler.(type) {
 	case *Router:
-		ro.Merge(h.rootNode)
+		ro.Merge(h.root)
 	default:
 		ro.defaultH = h
 	}
 }
 
 func (router *Router) Namespace(path string, blk func(r *Router)) {
-	if pathkit.Canonical(path) == "/" { // TODO: testme
-		blk(router)
-		return
-	}
-	router.Mount(path, NewRouter(blk))
+	ro := router.mkpath(path)
+	blk(&Router{root: ro})
+	//if pathkit.Canonical(path) == "/" { // TODO: testme
+	//	blk(router)
+	//	return
+	//}
+	//router.Mount(path, NewRouter(blk))
 }
 
 // Handle registers the handler for the given pattern.
 // If a handler already exists for pattern, Handle panics.
 func (router *Router) Handle(pattern string, handler http.Handler) {
-	ro := router.mkpath(pattern)
+	router.init()
 	switch h := handler.(type) {
 	case *Router:
-		ro.Merge(h.rootNode)
+		ro := router.mkpath(pattern)
+		ro.Merge(h.root)
 	default:
+		// alternatively, you can traverse the path,
+		// and memorise what path must be stripped from the handler
+		ro := router.root
 		if ro.mux == nil {
 			ro.mux = http.NewServeMux()
 		}
@@ -184,90 +222,91 @@ func (router *Router) Handle(pattern string, handler http.Handler) {
 }
 
 func (router *Router) init() {
-	if router.rootNode == nil {
-		router.rootNode = &_Node{}
-		router.rootNode.init()
+	if router.root == nil {
+		router.root = &_Node{}
 	}
+	router.root.init()
 }
 
 func (router *Router) mkpath(path string) *_Node {
 	router.init()
 	var ro *_Node
-	ro = router.rootNode
+	ro = router.root
 	for _, part := range pathkit.Split(path) {
-		if ro.nodes == nil {
-			ro.nodes = make(_Nodes)
+		ro.init()
+		if ro.fixNodes == nil {
+			ro.fixNodes = make(_FixNodes)
 		}
-		if _, ok := ro.nodes[part]; !ok {
-			ro.nodes[part] = &_Node{}
+		if vn, ok := isPathParamPlaceholder(part); ok {
+			ro = ro.dynNodes.NodeFor(vn)
+			continue
 		}
-		ro = ro.nodes[part]
+		if _, ok := ro.fixNodes[part]; !ok {
+			ro.fixNodes[part] = &_Node{}
+		}
+		ro = ro.fixNodes[part]
 	}
 	return ro
 }
 
-// Routes
-//
-// DEPRECATED: this early implementation will be removed in the near future. Use Router directly instead.
-type Routes map[string]http.Handler
-
-// MountRoutes
-//
-// DEPRECATED
-func (router *Router) MountRoutes(routes Routes) {
-	for path, handler := range routes {
-		router.Mount(path, handler)
-	}
-}
-
-func (router *Router) verb(method, path string, handler http.Handler) {
+func (router *Router) On(method, path string, handler http.Handler) {
 	router.Namespace(path, func(r *Router) {
 		r.init()
-		r.rootNode.methodsH[method] = handler
+		r.root.methodsH[method] = handler
 	})
 }
 
 func (router *Router) Get(path string, handler http.Handler) {
-	router.verb(http.MethodGet, path, handler)
+	router.On(http.MethodGet, path, handler)
 }
 
 func (router *Router) Post(path string, handler http.Handler) {
-	router.verb(http.MethodPost, path, handler)
+	router.On(http.MethodPost, path, handler)
 }
 
 func (router *Router) Delete(path string, handler http.Handler) {
-	router.verb(http.MethodDelete, path, handler)
+	router.On(http.MethodDelete, path, handler)
 }
 
 func (router *Router) Put(path string, handler http.Handler) {
-	router.verb(http.MethodPut, path, handler)
+	router.On(http.MethodPut, path, handler)
 }
 
 func (router *Router) Patch(path string, handler http.Handler) {
-	router.verb(http.MethodPatch, path, handler)
+	router.On(http.MethodPatch, path, handler)
 }
 
 func (router *Router) Head(path string, handler http.Handler) {
-	router.verb(http.MethodHead, path, handler)
+	router.On(http.MethodHead, path, handler)
 }
 
 func (router *Router) Connect(path string, handler http.Handler) {
-	router.verb(http.MethodConnect, path, handler)
+	router.On(http.MethodConnect, path, handler)
 }
 
 func (router *Router) Options(path string, handler http.Handler) {
-	router.verb(http.MethodOptions, path, handler)
+	router.On(http.MethodOptions, path, handler)
 }
 
 func (router *Router) Trace(path string, handler http.Handler) {
-	router.verb(http.MethodTrace, path, handler)
+	router.On(http.MethodTrace, path, handler)
 }
 
-func (router *Router) Resource(identifier string, r Resource[testent.Foo, testent.FooID]) {
-	Mount(router, pathkit.Canonical(identifier), r)
+// Resource will register a restful resource path using the Resource handler.
+//
+// Paths for Router.Resource("/users", restapi.Resource[User, UserID]):
+//
+//	GET 	/users
+//	POST 	/users
+//	GET 	/users/:id
+//	PUT 	/users/:id
+//	DELETE	/users/:id
+func (router *Router) Resource(identifier string, resource resource) {
+	router.Mount(pathkit.Canonical(identifier), resource)
 }
 
+// Use will instruct the router to use a given MiddlewareFactoryFunc to
 func (router *Router) Use(mws ...httpkit.MiddlewareFactoryFunc) {
 	router.init()
-	router.rootNode.middlewares = append(router.rootNode.middlewares, mws...)
+	router.root.middlewares = append(router.root.middlewares, mws...)
 }

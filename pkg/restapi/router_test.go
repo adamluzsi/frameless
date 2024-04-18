@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
@@ -18,10 +19,51 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 )
 
 var rnd = random.New(random.CryptoSeed{})
+
+func Example() {
+
+	var r restapi.Router
+
+	r.Namespace("/path", func(r *restapi.Router) {
+		r.Use(SampleMiddleware)
+
+		r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		}))
+
+		r.Post("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		}))
+	})
+
+	type FooIDContextKey struct{}
+	// Register a restful resource
+	// 		GET 	/foos
+	// 		POST 	/foos
+	// 		GET 	/foos/:id
+	// 		PUT 	/foos/:id
+	// 		DELETE	/foos/:id
+	//
+	r.Resource("/foos", restapi.Resource[Foo, FooID]{
+		// Mapping between Foo and FooDTO.
+		// FooDTO in this case used to communicate with the API callers.
+		Mapping:      restapi.DTOMapping[Foo, FooDTO]{},
+		IDContextKey: FooIDContextKey{},
+		SubRoutes: restapi.NewRouter(func(subRoutes *restapi.Router) {
+			subRoutes.Get("/activate", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fooID := r.Context().Value(FooIDContextKey{}).(FooID)
+				// activate foo by foo_id
+				logger.Debug(r.Context(), "activating foo", logger.Field("foo_id", fooID))
+			}))
+		}),
+	}.WithCRUD(&FooRepository{}))
+
+}
 
 func ExampleRouter() {
 	var router restapi.Router
@@ -116,29 +158,13 @@ func TestRouter(t *testing.T) {
 			t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 		})
 
-		ThenRouteTheRequests := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
-			s.When("the request path doesn't match the registered path", func(s *testcase.Spec) {
-				const pathPrefix = "/foo/bar/baz"
-				path.Let(s, func(t *testcase.T) string {
-					return pathkit.Join(pathPrefix, registeredPath.Get(t))
-				})
-
-				s.Then("it return path not found", func(t *testcase.T) {
-					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
-
-					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
-				})
-			})
-
+		ThenHandlerIsReachable := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
 			s.When("the request path is the registered path", func(s *testcase.Spec) {
 				path.Let(s, func(t *testcase.T) string {
 					return registeredPath.Get(t)
 				})
 
-				s.Then("it proxy the call to the registeredHandler", func(t *testcase.T) {
+				s.Then("it proxy the call to the registered handler", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusTeapot, rr.Code)
 					t.Must.NotNil(lastRequest.Get(t))
@@ -161,7 +187,7 @@ func TestRouter(t *testing.T) {
 					return string(registeredPath.Get(t)) + pathRest
 				})
 
-				s.Then("it proxy the call to the registeredHandler", func(t *testcase.T) {
+				s.Then("it proxy the call to the registered http.Handler", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.Equal(http.StatusTeapot, rr.Code)
 					t.Must.NotNil(lastRequest.Get(t))
@@ -179,18 +205,36 @@ func TestRouter(t *testing.T) {
 			})
 		}
 
-		s.When("Routes are registered with .RegisterRoutes", func(s *testcase.Spec) {
+		ThenItRoutesTheRequestToTheHandler := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
+			ThenHandlerIsReachable(s, registeredPath)
+
+			s.When("the request path doesn't match the registered path", func(s *testcase.Spec) {
+				const pathPrefix = "/foo/bar/baz"
+				path.Let(s, func(t *testcase.T) string {
+					return pathkit.Join(pathPrefix, registeredPath.Get(t))
+				})
+
+				s.Then("it return path not found", func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Equal(http.StatusNotFound, rr.Code)
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					t.Must.NotEmpty(errDTO)
+					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+				})
+			})
+		}
+
+		s.When("routes are registered", func(s *testcase.Spec) {
 			registeredPath := testcase.Let(s, func(t *testcase.T) string {
 				path := t.Random.StringNC(5, random.CharsetAlpha())
 				return fmt.Sprintf("/%s", url.PathEscape(path))
 			})
 			s.Before(func(t *testcase.T) {
-				subject.Get(t).MountRoutes(restapi.Routes{
-					registeredPath.Get(t): handler.Get(t),
-				})
+				subject.Get(t).On(method.Get(t), registeredPath.Get(t), handler.Get(t))
 			})
 
-			ThenRouteTheRequests(s, registeredPath)
+			ThenItRoutesTheRequestToTheHandler(s, registeredPath)
 		})
 
 		s.When("path is registered", func(s *testcase.Spec) {
@@ -202,7 +246,53 @@ func TestRouter(t *testing.T) {
 				subject.Get(t).Mount(registeredPath.Get(t), handler.Get(t))
 			})
 
-			ThenRouteTheRequests(s, registeredPath)
+			ThenHandlerIsReachable(s, registeredPath)
+
+			s.And("registered path is a path variable section", func(s *testcase.Spec) {
+				registeredPath.LetValue(s, "/:pathvar")
+				path.Let(s, func(t *testcase.T) string {
+					return registeredPath.Get(t)
+				})
+
+				ThenHandlerIsReachable(s, registeredPath)
+
+				s.Then("the path variable is available", func(t *testcase.T) {
+					rr := act(t)
+					assert.Equal(t, rr.Code, http.StatusTeapot)
+
+					pparams := restapi.PathParams(lastRequest.Get(t).Context())
+					assert.NotEmpty(t, pparams)
+					assert.Equal(t,
+						strings.TrimPrefix(registeredPath.Get(t), "/"),
+						pparams["pathvar"])
+				})
+
+				s.And("if a non-dynamic path is also registered", func(s *testcase.Spec) {
+					fixPathHandlerResponseCode := testcase.Let(s, func(t *testcase.T) int {
+						return random.Pick(t.Random,
+							http.StatusInternalServerError,
+							http.StatusUnauthorized,
+							http.StatusNotAcceptable,
+						)
+					})
+					const endpointPath = "/fixpath"
+					s.Before(func(t *testcase.T) {
+						subject.Get(t).Mount(endpointPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							w.WriteHeader(fixPathHandlerResponseCode.Get(t))
+						}))
+					})
+
+					ThenHandlerIsReachable(s, registeredPath)
+
+					s.Then("the non-dynamic path can be accessed, and not interpreted as a path parameter", func(t *testcase.T) {
+						w := httptest.NewRecorder()
+						r := httptest.NewRequest(method.Get(t), endpointPath, nil)
+						r.Header.Set("Content-Type", "application/json")
+						subject.Get(t).ServeHTTP(w, r)
+						assert.Equal(t, fixPathHandlerResponseCode.Get(t), w.Code)
+					})
+				})
+			})
 		})
 	})
 }
@@ -210,11 +300,9 @@ func TestRouter(t *testing.T) {
 func TestRouter_race(t *testing.T) {
 	router := restapi.Router{}
 
-	router.MountRoutes(restapi.Routes{
-		"/foo": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
-		"/bar": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
-		"/baz": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}),
-	})
+	router.Handle("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	router.Handle("/bar", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	router.Handle("/baz", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
 	router.Mount("/qux", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 
@@ -232,20 +320,7 @@ func TestRouter_race(t *testing.T) {
 	)
 }
 
-func ExampleRouterFrom() {
-	r := restapi.RouterFrom(restapi.Routes{
-		"/": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(100)
-		}),
-		"/path": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(101)
-		}),
-	})
-
-	_ = http.ListenAndServe("0.0.0.0:8080", r)
-}
-
-func ExampleRouter_On() {
+func ExampleRouter_Namespace() {
 	var router restapi.Router
 	router.Namespace("/top", func(r *restapi.Router) {
 		r.Get("/sub", /* /top/sub */
@@ -348,7 +423,7 @@ func TestRouter_Handle(t *testing.T) {
 						_, _ = w.Write([]byte("sub-catch-all"))
 					}))
 
-				r.Handle("/endpoint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.On(http.MethodGet, "/endpoint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					_, _ = w.Write([]byte("endpoint"))
 				}))
 			})
@@ -378,9 +453,20 @@ func TestRouter_Handle(t *testing.T) {
 			assert.Equal(t, rr.Body.String(), "top-catch-all")
 		})
 	})
+	t.Run("Handle call with non root path", func(t *testing.T) {
+		var r restapi.Router
+		r.Handle("/foo/bar/baz/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusTeapot)
+		}))
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/foo/bar/baz/qux", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+	})
 }
 
-func TestRouter_On(t *testing.T) {
+func TestRouter_Namespace(t *testing.T) {
 	var router restapi.Router
 	router.Namespace("/top", func(r *restapi.Router) {
 		r.Handle("/sub", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -425,14 +511,14 @@ func TestRouter_On(t *testing.T) {
 	})
 }
 
-func TestRouterFrom(t *testing.T) {
-	r := restapi.RouterFrom(restapi.Routes{
-		"/": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestNewRouter(t *testing.T) {
+	r := restapi.NewRouter(func(router *restapi.Router) {
+		router.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(100)
-		}),
-		"/path": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		}))
+		router.Get("/path", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(101)
-		}),
+		}))
 	})
 
 	req1 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -813,4 +899,58 @@ func mwWithContextValue(key, value any) httpkit.MiddlewareFactoryFunc {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func TestRouter_withPathParams(t *testing.T) {
+	var hfn = func(ppkey, ppval string, code int) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			val := restapi.PathParams(r.Context())[ppkey]
+			assert.NotEmpty(t, val)
+			assert.Equal(t, ppval, val)
+			w.WriteHeader(code)
+		}
+	}
+
+	t.Run("top-level", func(t *testing.T) {
+		var r restapi.Router
+		r.Get("/:id", hfn("id", "foo", 100))
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, 100)
+	})
+	t.Run("top-level, but on different method", func(t *testing.T) {
+		var r restapi.Router
+		r.Get("/:id", hfn("id", "foo", 100))
+		r.Post("/:nid", hfn("nid", "bar", 200))
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/bar", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, 200)
+	})
+	t.Run("nested path with dynamic part", func(t *testing.T) {
+		var r restapi.Router
+		r.Namespace("/:test", func(r *restapi.Router) {
+			r.Get("/", hfn("test", "baz", 300))
+		})
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/baz", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, 300)
+	})
+	t.Run("nested path with dynamic part that overlaps with dynamic endpoint", func(t *testing.T) {
+		var r restapi.Router
+		r.Get("/:id", hfn("id", "foo", 100))
+		r.Namespace("/:test", func(r *restapi.Router) {
+			r.Get("/", hfn("test", "baz", 400))
+		})
+
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/baz", nil)
+		r.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, 400)
+	})
 }

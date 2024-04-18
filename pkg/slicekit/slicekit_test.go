@@ -260,3 +260,20 @@ func TestFilter(t *testing.T) {
 		assert.Empty(t, got)
 	})
 }
+
+func ExampleContains() {
+	_ = slicekit.Contains([]string{"foo", "bar", "baz"}, "bar") // true
+	_ = slicekit.Contains([]int{7, 42, 128}, 128)               // true
+	_ = slicekit.Contains([]int{7, 42, 128}, 32)                // false
+}
+
+func TestContains(t *testing.T) {
+	t.Run("contains", func(t *testing.T) {
+		assert.True(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "bar"))
+		assert.True(t, slicekit.Contains([]int{7, 42, 128}, 128))
+	})
+	t.Run("does not contain", func(t *testing.T) {
+		assert.False(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "qux"))
+		assert.False(t, slicekit.Contains([]int{7, 42, 128}, 32))
+	})
+}

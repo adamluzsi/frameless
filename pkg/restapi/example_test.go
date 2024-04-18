@@ -14,15 +14,13 @@ func ExampleRoutes() {
 	barRepository := memory.NewRepository[Y, string](m)
 
 	r := restapi.NewRouter(func(router *restapi.Router) {
-		router.MountRoutes(restapi.Routes{
-			"/v1/api/foos": restapi.Resource[X, XID]{
-				Mapping: restapi.DTOMapping[X, XDTO]{},
-				SubRoutes: restapi.NewRouter(func(router *restapi.Router) {
-					router.MountRoutes(restapi.Routes{
-						"/bars": restapi.Resource[Y, string]{}.WithCRUD(barRepository)})
-				}),
-			}.WithCRUD(fooRepository),
-		})
+		router.Resource("/v1/api/foos", restapi.Resource[X, XID]{
+			Mapping: restapi.DTOMapping[X, XDTO]{},
+			SubRoutes: restapi.NewRouter(func(router *restapi.Router) {
+				router.Resource("/bars", restapi.Resource[Y, string]{}.
+					WithCRUD(barRepository))
+			}),
+		}.WithCRUD(fooRepository))
 	})
 
 	// Generated endpoints:

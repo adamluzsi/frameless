@@ -85,6 +85,16 @@ func Filter[T any, FN filterFunc[T]](src []T, fn FN) ([]T, error) {
 	return out, nil
 }
 
+// Contains reports if a slice contains a given value.
+func Contains[T comparable](s []T, v T) bool {
+	for _, got := range s {
+		if got == v {
+			return true
+		}
+	}
+	return false
+}
+
 // --------------------------------------------------------------------------------- //
 
 type reducerFunc[O, I any] interface {

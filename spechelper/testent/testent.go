@@ -3,6 +3,7 @@ package testent
 import (
 	"context"
 	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase"
 	"testing"
@@ -123,3 +124,30 @@ var _ = dtos.Register[Bar, BarJSONDTO](func(ctx context.Context, bar Bar) (BarJS
 		C:  jsondto.C,
 	}, nil
 })
+
+type FooRepository struct{}
+
+func (r *FooRepository) FindAll(ctx context.Context) iterators.Iterator[Foo] {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *FooRepository) Create(ctx context.Context, ptr *Foo) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *FooRepository) FindByID(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *FooRepository) DeleteByID(ctx context.Context, id FooID) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *FooRepository) Update(ctx context.Context, ptr *Foo) error {
+	//TODO implement me
+	panic("implement me")
+}

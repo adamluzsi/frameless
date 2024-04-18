@@ -2,10 +2,10 @@ package restapi
 
 import (
 	"context"
+	"regexp"
 	"slices"
+	"strings"
 )
-
-type pathParams map[string]string
 
 type pathParam struct {
 	prev  *pathParam
@@ -13,14 +13,14 @@ type pathParam struct {
 	Value string
 }
 
-func (p pathParam) ToPathParams() pathParams {
+func (p pathParam) ToPathParams() map[string]string {
 	var pps []pathParam
 	pps = append(pps, p)
 	for cp := p; cp.prev != nil; cp = *cp.prev {
 		pps = append(pps, *cp.prev)
 	}
 	slices.Reverse(pps)
-	var pp = make(pathParams)
+	var pp = make(map[string]string)
 	for _, p := range pps {
 		pp[p.Key] = p.Value
 	}
@@ -40,9 +40,9 @@ func WithPathParam(ctx context.Context, key, val string) context.Context {
 	return context.WithValue(ctx, ctxKeyPathParam{}, pp)
 }
 
-func getPathParams(ctx context.Context) pathParams {
+func PathParams(ctx context.Context) map[string]string {
 	var (
-		pp        = make(pathParams)
+		pp        = make(map[string]string)
 		pps       []pathParam
 		param, ok = lookupPathParam(ctx)
 	)
@@ -66,4 +66,14 @@ func lookupPathParam(ctx context.Context) (pathParam, bool) {
 	}
 	pp, ok := ctx.Value(ctxKeyPathParam{}).(pathParam)
 	return pp, ok
+}
+
+var pathParamPlaceholderRGX = regexp.MustCompile(`^:.+$`)
+
+func isPathParamPlaceholder(pathpart string) (varName string, ok bool) {
+	ok = pathParamPlaceholderRGX.MatchString(pathpart)
+	if ok {
+		varName = strings.TrimPrefix(pathpart, ":")
+	}
+	return varName, ok
 }

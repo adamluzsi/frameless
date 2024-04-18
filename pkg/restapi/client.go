@@ -439,7 +439,7 @@ var pathResourceIdentifierRGX = regexp.MustCompile(`^:[\w[:punct:]]+$`)
 
 func pathsubst(ctx context.Context, uri string) (string, error) {
 	var (
-		params        = getPathParams(ctx)
+		params        = PathParams(ctx)
 		baseURL, path = pathkit.SplitBase(uri)
 		pathParts     = []string{baseURL}
 	)

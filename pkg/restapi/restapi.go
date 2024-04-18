@@ -86,6 +86,15 @@ type Resource[Entity, ID any] struct {
 	BodyReadLimit units.ByteSize
 }
 
+type resource interface {
+	resource()
+	http.Handler
+}
+
+func (res Resource[Entity, ID]) resource() {}
+
+var _ resource = Resource[any, any]{}
+
 type idConverter[ID any] interface {
 	FormatID(ID) (string, error)
 	ParseID(string) (ID, error)
