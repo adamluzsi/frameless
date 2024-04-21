@@ -3,9 +3,12 @@ package zerokit
 
 import (
 	"fmt"
+	"reflect"
+	"sync"
+	"sync/atomic"
+
 	"go.llib.dev/frameless/pkg/internal/pointersync"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"sync/atomic"
 )
 
 // IsZero will report whether the value is zero or not.
@@ -15,23 +18,10 @@ func IsZero[T any](v T) (ok bool) {
 		if recover() == nil {
 			return
 		}
-		switch v := any(v).(type) {
-		case isZero:
-			ok = v.IsZero()
-		case isEqualable[T]:
-			ok = v.Equal(zero)
-		default:
-			ok = reflectkit.Equal(v, zero)
-		}
+		ok = reflectkit.Equal(v, zero)
 	}()
 	return any(v) == any(zero)
 }
-
-type (
-	isZero              interface{ IsZero() bool }
-	isEqualable[T any]  interface{ Equal(T) bool }
-	isComparable[T any] interface{ Cmp(T) int }
-)
 
 // Coalesce will return the first non-zero value from the provided values.
 func Coalesce[T any](vs ...T) T {
@@ -41,6 +31,32 @@ func Coalesce[T any](vs ...T) T {
 		}
 	}
 	return *new(T)
+}
+
+// V is a type that can initialise itself upon access (V.Get).
+// Map, Slice, Chan types are made, while primitive types returned as zero value.
+// Pointer types are made with an initialised value.
+//
+// V is not thread safe, it just makes initialisation at type level in struct fields more convenient.
+// The average cost for using V is low, see the benchmark for more
+type V[T any] struct {
+	value T
+	init  sync.Once
+}
+
+func (i *V[T]) Set(v T) {
+	i.init.Do(func() {})
+	i.value = v
+}
+
+func (i *V[T]) Get() T {
+	i.init.Do(func() { i.value = mk(reflectkit.TypeOf[T]()).(T) })
+	return i.value
+}
+
+func (i *V[T]) Ptr() *T {
+	i.Get()
+	return &i.value
 }
 
 // Init will initialise a zero value through its pointer (*T),
@@ -107,4 +123,32 @@ func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
 		return any(atomic.LoadInt64(tsPtr)).(T), ok
 	}
 	return
+}
+
+type canInit interface {
+	Init()
+}
+
+var canInitType = reflectkit.TypeOf[canInit]()
+
+func mk(typ reflect.Type) any {
+	if reflect.PointerTo(typ).Implements(canInitType) {
+		ptr := reflect.New(typ)
+		ptr.MethodByName("Init").Call([]reflect.Value{})
+		return ptr.Elem().Interface()
+	}
+	switch typ.Kind() {
+	case reflect.Slice:
+		return reflect.MakeSlice(typ, 0, 0).Interface()
+	case reflect.Map:
+		return reflect.MakeMap(typ).Interface()
+	case reflect.Chan:
+		return reflect.MakeChan(typ, 0).Interface()
+	case reflect.Pointer:
+		ptr := reflect.New(typ.Elem())
+		ptr.Elem().Set(reflect.ValueOf(mk(typ.Elem())))
+		return ptr.Interface()
+	default:
+		return reflect.New(typ).Elem().Interface()
+	}
 }

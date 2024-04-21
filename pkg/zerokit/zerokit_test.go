@@ -465,3 +465,105 @@ func TestIsZero(t *testing.T) {
 		assert.False(t, zerokit.IsZero(time.Unix(0, 0)))
 	})
 }
+
+func BenchmarkInit_vsV(b *testing.B) {
+	b.Run("zerokit.V[int]", func(b *testing.B) {
+		v := zerokit.V[int]{}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			v.Get()
+		}
+	})
+	b.Run("zerokit.Init[int]", func(b *testing.B) {
+		var val int
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			zerokit.Init(&val, func() int {
+				return 0
+			})
+		}
+	})
+	b.Run("zerokit.V[[]string]", func(b *testing.B) {
+		v := zerokit.V[[]string]{}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			v.Get()
+		}
+	})
+	b.Run("zerokit.Init[[]string]]", func(b *testing.B) {
+		var val []string
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			zerokit.Init(&val, func() []string {
+				return []string{}
+			})
+		}
+	})
+}
+
+func ExampleV() {
+	type MyStructType struct {
+		fields    zerokit.V[*[]string]
+		foundKeys zerokit.V[map[string]struct{}]
+	}
+
+	var mst MyStructType
+	mst.foundKeys.Get()
+}
+
+func TestV(t *testing.T) {
+	t.Run("value type", func(t *testing.T) {
+		v1 := zerokit.V[int]{}
+		assert.Equal(t, 0, v1.Get())
+
+		v2 := zerokit.V[string]{}
+		assert.Equal(t, "", v2.Get())
+
+		v3 := zerokit.V[bool]{}
+		assert.Equal(t, false, v3.Get())
+	})
+	t.Run("slice type", func(t *testing.T) {
+		v1 := zerokit.V[[]int]{}
+		assert.Equal(t, 0, len(v1.Get()))
+		assert.NotNil(t, v1.Get())
+		v1.Set(append(v1.Get(), 42))
+		assert.Equal(t, []int{42}, v1.Get())
+
+		v2 := zerokit.V[[]string]{}
+		assert.Equal(t, 0, len(v2.Get()))
+		assert.NotNil(t, v2.Get())
+		v2.Set(append(v2.Get(), "foo"))
+		assert.Equal(t, []string{"foo"}, v2.Get())
+	})
+	t.Run("map type", func(t *testing.T) {
+		v1 := zerokit.V[map[string]int]{}
+		assert.Equal(t, 0, len(v1.Get()))
+		assert.NotNil(t, v1.Get())
+		v1.Get()["foo"] = 42
+		assert.Equal(t, map[string]int{"foo": 42}, v1.Get())
+	})
+	t.Run("type with init", func(t *testing.T) {
+		v := zerokit.V[TypeWithInit]{}
+		assert.Equal(t, 42, v.Get().X)
+	})
+	t.Run("pointer type", func(t *testing.T) {
+		v := zerokit.V[*int]{}
+		assert.Equal(t, pointer.Of(0), v.Get())
+		*v.Get() = 42
+		assert.Equal(t, pointer.Of(42), v.Get())
+	})
+	t.Run(".Ptr()", func(t *testing.T) {
+		v := zerokit.V[string]{}
+		const val = "foo/bar/baz"
+		*v.Ptr() = val
+		assert.Equal(t, val, v.Get())
+	})
+}
+
+type TypeWithInit struct {
+	X int
+}
+
+func (v *TypeWithInit) Init() {
+	v.X = 42
+}
