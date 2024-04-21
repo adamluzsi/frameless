@@ -2,8 +2,11 @@ package postgresql_test
 
 import (
 	"context"
+	"reflect"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/adapters/postgresql"
-	sh "go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
 	"go.llib.dev/frameless/ports/migration"
 	"go.llib.dev/frameless/ports/pubsub/pubsubcontracts"
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
@@ -13,101 +16,98 @@ import (
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
-	"reflect"
-	"testing"
-	"time"
 )
 
-var _ migration.Migratable = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{}
+var _ migration.Migratable = postgresql.Queue[Entity, EntityDTO]{}
 
 func TestQueue(t *testing.T) {
 	const queueName = "test_entity"
 	c := GetConnection(t)
 
 	assert.NoError(t,
-		postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{Name: queueName, Connection: c}.
-			Migrate(sh.MakeContext(t)))
+		postgresql.Queue[Entity, EntityDTO]{Name: queueName, Connection: c}.
+			Migrate(MakeContext(t)))
 
-	mapping := sh.TestEntityJSONMapping{}
+	mapping := EntityJSONMapping{}
 
 	testcase.RunSuite(t,
-		pubsubcontracts.FIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.FIFOSubject[sh.TestEntity] {
-			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+		pubsubcontracts.FIFO[Entity](func(tb testing.TB) pubsubcontracts.FIFOSubject[Entity] {
+			q := postgresql.Queue[Entity, EntityDTO]{
 				Name:       queueName,
 				Connection: c,
 				Mapping:    mapping,
 			}
-			return pubsubcontracts.FIFOSubject[sh.TestEntity]{
-				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
+			return pubsubcontracts.FIFOSubject[Entity]{
+				PubSub: pubsubcontracts.PubSub[Entity]{
 					Publisher:  q,
 					Subscriber: q,
 				},
 				MakeContext: context.Background,
-				MakeData:    sh.MakeTestEntityFunc(tb),
+				MakeData:    MakeEntityFunc(tb),
 			}
 		}),
-		pubsubcontracts.LIFO[sh.TestEntity](func(tb testing.TB) pubsubcontracts.LIFOSubject[sh.TestEntity] {
-			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+		pubsubcontracts.LIFO[Entity](func(tb testing.TB) pubsubcontracts.LIFOSubject[Entity] {
+			q := postgresql.Queue[Entity, EntityDTO]{
 				Name:       queueName,
 				Connection: c,
 				Mapping:    mapping,
 
 				LIFO: true,
 			}
-			return pubsubcontracts.LIFOSubject[sh.TestEntity]{
-				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
+			return pubsubcontracts.LIFOSubject[Entity]{
+				PubSub: pubsubcontracts.PubSub[Entity]{
 					Publisher:  q,
 					Subscriber: q,
 				},
 				MakeContext: context.Background,
-				MakeData:    sh.MakeTestEntityFunc(tb),
+				MakeData:    MakeEntityFunc(tb),
 			}
 		}),
-		pubsubcontracts.Buffered[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BufferedSubject[sh.TestEntity] {
-			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+		pubsubcontracts.Buffered[Entity](func(tb testing.TB) pubsubcontracts.BufferedSubject[Entity] {
+			q := postgresql.Queue[Entity, EntityDTO]{
 				Name:       queueName,
 				Connection: c,
 				Mapping:    mapping,
 			}
-			return pubsubcontracts.BufferedSubject[sh.TestEntity]{
-				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
+			return pubsubcontracts.BufferedSubject[Entity]{
+				PubSub: pubsubcontracts.PubSub[Entity]{
 					Publisher:  q,
 					Subscriber: q,
 				},
 				MakeContext: context.Background,
-				MakeData:    sh.MakeTestEntityFunc(tb),
+				MakeData:    MakeEntityFunc(tb),
 			}
 		}),
-		pubsubcontracts.Blocking[sh.TestEntity](func(tb testing.TB) pubsubcontracts.BlockingSubject[sh.TestEntity] {
-			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+		pubsubcontracts.Blocking[Entity](func(tb testing.TB) pubsubcontracts.BlockingSubject[Entity] {
+			q := postgresql.Queue[Entity, EntityDTO]{
 				Name:       queueName,
 				Connection: c,
 				Mapping:    mapping,
 
 				Blocking: true,
 			}
-			return pubsubcontracts.BlockingSubject[sh.TestEntity]{
-				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
+			return pubsubcontracts.BlockingSubject[Entity]{
+				PubSub: pubsubcontracts.PubSub[Entity]{
 					Publisher:  q,
 					Subscriber: q,
 				},
 				MakeContext: context.Background,
-				MakeData:    sh.MakeTestEntityFunc(tb),
+				MakeData:    MakeEntityFunc(tb),
 			}
 		}),
-		pubsubcontracts.Queue[sh.TestEntity](func(tb testing.TB) pubsubcontracts.QueueSubject[sh.TestEntity] {
-			q := postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+		pubsubcontracts.Queue[Entity](func(tb testing.TB) pubsubcontracts.QueueSubject[Entity] {
+			q := postgresql.Queue[Entity, EntityDTO]{
 				Name:       queueName,
 				Connection: c,
 				Mapping:    mapping,
 			}
-			return pubsubcontracts.QueueSubject[sh.TestEntity]{
-				PubSub: pubsubcontracts.PubSub[sh.TestEntity]{
+			return pubsubcontracts.QueueSubject[Entity]{
+				PubSub: pubsubcontracts.PubSub[Entity]{
 					Publisher:  q,
 					Subscriber: q,
 				},
 				MakeContext: context.Background,
-				MakeData:    sh.MakeTestEntityFunc(tb),
+				MakeData:    MakeEntityFunc(tb),
 			}
 		}),
 	)
@@ -129,7 +129,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 		Mapping:             testent.FooJSONMapping{},
 		EmptyQueueBreakTime: time.Hour,
 	}
-	assert.NoError(t, q.Migrate(sh.MakeContext(t)))
+	assert.NoError(t, q.Migrate(MakeContext(t)))
 
 	res := pubsubtest.Subscribe[testent.Foo](t, q, ctx)
 
@@ -260,20 +260,20 @@ func TestQueue_smoke(t *testing.T) {
 func BenchmarkQueue(b *testing.B) {
 	const queueName = "test_entity"
 	var (
-		ctx = sh.MakeContext(b)
+		ctx = MakeContext(b)
 		rnd = random.New(random.CryptoSeed{})
 		cm  = GetConnection(b)
-		q   = postgresql.Queue[sh.TestEntity, sh.TestEntityDTO]{
+		q   = postgresql.Queue[Entity, EntityDTO]{
 			Name:       queueName,
 			Connection: cm,
-			Mapping:    sh.TestEntityJSONMapping{},
+			Mapping:    EntityJSONMapping{},
 		}
 	)
 
 	b.Run("single publish", func(b *testing.B) {
 		assert.NoError(b, q.Purge(ctx))
-		msgs := random.Slice(b.N, func() sh.TestEntity {
-			return sh.TestEntity{
+		msgs := random.Slice(b.N, func() Entity {
+			return Entity{
 				ID:  rnd.UUID(),
 				Foo: rnd.UUID(),
 				Bar: rnd.UUID(),
@@ -288,8 +288,8 @@ func BenchmarkQueue(b *testing.B) {
 
 	b.Run("single element fetch", func(b *testing.B) {
 		assert.NoError(b, q.Purge(ctx))
-		assert.NoError(b, q.Publish(ctx, random.Slice(b.N, func() sh.TestEntity {
-			return sh.TestEntity{
+		assert.NoError(b, q.Publish(ctx, random.Slice(b.N, func() Entity {
+			return Entity{
 				ID:  rnd.UUID(),
 				Foo: rnd.UUID(),
 				Bar: rnd.UUID(),
@@ -309,8 +309,8 @@ func BenchmarkQueue(b *testing.B) {
 
 	b.Run("batch publish 100", func(b *testing.B) {
 		assert.NoError(b, q.Purge(ctx))
-		msgs := random.Slice(100, func() sh.TestEntity {
-			return sh.TestEntity{
+		msgs := random.Slice(100, func() Entity {
+			return Entity{
 				ID:  rnd.UUID(),
 				Foo: rnd.UUID(),
 				Bar: rnd.UUID(),

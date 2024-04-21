@@ -9,10 +9,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapters/postgresql"
-	"go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
-
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -20,7 +18,7 @@ import (
 
 func TestConnect_smoke(t *testing.T) {
 	ctx := context.Background()
-	c, err := postgresql.Connect(spechelper.DatabaseURL(t))
+	c, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
 	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
 	assert.NoError(t, c.QueryRowContext(ctx, "SELECT").Scan())
@@ -33,7 +31,7 @@ func TestConnect_smoke(t *testing.T) {
 }
 
 func TestConnect_smoke2(t *testing.T) {
-	cm, err := postgresql.Connect(spechelper.DatabaseURL(t))
+	cm, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
 	background := context.Background()
 	_, err = cm.ExecContext(background, `SELECT TRUE`)
@@ -42,7 +40,7 @@ func TestConnect_smoke2(t *testing.T) {
 }
 
 func TestConnection_Close(t *testing.T) {
-	cm, err := postgresql.Connect(spechelper.DatabaseURL(t))
+	cm, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
 	background := context.Background()
 	_, err = cm.ExecContext(background, `SELECT TRUE`)
@@ -53,7 +51,7 @@ func TestConnection_Close(t *testing.T) {
 func TestConnection_PoolContract(t *testing.T) {
 	testcase.RunSuite(t, ConnectionContract{
 		MakeSubject: func(tb testing.TB) postgresql.Connection {
-			cm, err := postgresql.Connect(spechelper.DatabaseURL(tb))
+			cm, err := postgresql.Connect(DatabaseURL(tb))
 			assert.NoError(tb, err)
 			return cm
 		},
@@ -83,13 +81,13 @@ func TestConnection_PoolContract(t *testing.T) {
 }
 
 func TestConnection_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
-		s := NewTestEntityRepository(tb)
-		return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
+	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[Entity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, string] {
+		s := NewEntityRepository(tb)
+		return crudcontracts.OnePhaseCommitProtocolSubject[Entity, string]{
 			Resource:      s,
 			CommitManager: s.Connection,
 			MakeContext:   context.Background,
-			MakeEntity:    spechelper.MakeTestEntityFunc(tb),
+			MakeEntity:    MakeEntityFunc(tb),
 		}
 	}))
 }
@@ -105,7 +103,7 @@ func Test_createSQLRowWithErr(t *testing.T) {
 }
 
 func TestConnection_GetConnection_threadSafe(t *testing.T) {
-	c, err := postgresql.Connect(spechelper.DatabaseURL(t))
+	c, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
 	ctx := context.Background()
 	blk := func() {

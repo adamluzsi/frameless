@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/lazyload"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
@@ -220,13 +220,7 @@ type iterFindByIDs[Entity, ID any] struct {
 	iterators.Iterator[Entity]
 	done        bool
 	expectedIDs []ID
-	foundIDs    lazyload.Var[map[string]struct{}]
-}
-
-func (iter *iterFindByIDs[Entity, ID]) getFoundIDs() map[string]struct{} {
-	return iter.foundIDs.Get(func() map[string]struct{} {
-		return make(map[string]struct{})
-	})
+	foundIDs    zerokit.V[map[string]struct{}]
 }
 
 func (iter *iterFindByIDs[Entity, ID]) Err() error {
@@ -238,13 +232,13 @@ func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
 		return nil
 	}
 
-	if len(iter.getFoundIDs()) == len(iter.expectedIDs) {
+	if len(iter.foundIDs.Get()) == len(iter.expectedIDs) {
 		return nil
 	}
 
 	var missing []ID
 	for _, id := range iter.expectedIDs {
-		if _, ok := iter.getFoundIDs()[iter.idFoundKey(id)]; !ok {
+		if _, ok := iter.foundIDs.Get()[iter.idFoundKey(id)]; !ok {
 			missing = append(missing, id)
 		}
 	}
@@ -256,7 +250,7 @@ func (iter *iterFindByIDs[Entity, ID]) Next() bool {
 	gotNext := iter.Iterator.Next()
 	if gotNext {
 		id, _ := extid.Lookup[ID](iter.Iterator.Value())
-		iter.getFoundIDs()[iter.idFoundKey(id)] = struct{}{}
+		iter.foundIDs.Get()[iter.idFoundKey(id)] = struct{}{}
 	}
 	if !gotNext {
 		iter.done = true
@@ -371,11 +365,7 @@ func (r Repository[Entity, ID]) queryColumnList() string {
 		src = r.Mapping.ColumnRefs()
 		dst = make([]string, 0, len(src))
 	)
-	for _, name := range src {
-		// TODO: replace with the commented out version
-		// dst = append(dst, fmt.Sprintf(`%q`, name))
-		dst = append(dst, fmt.Sprintf(`%s`, name))
-	}
+	dst = append(dst, src...)
 	return strings.Join(dst, `, `)
 }
 

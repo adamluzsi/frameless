@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"testing"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.llib.dev/frameless/adapters/postgresql"
-	"go.llib.dev/frameless/adapters/postgresql/internal/spechelper"
+
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -18,60 +20,59 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"testing"
 )
 
 func TestRepository(t *testing.T) {
-	mapping := spechelper.TestEntityMapping()
+	mapping := EntityMapping()
 
-	cm, err := postgresql.Connect(spechelper.DatabaseURL(t))
+	cm, err := postgresql.Connect(DatabaseURL(t))
 	assert.NoError(t, err)
 
-	subject := &postgresql.Repository[spechelper.TestEntity, string]{
+	subject := &postgresql.Repository[Entity, string]{
 		Connection: cm,
 		Mapping:    mapping,
 	}
 
-	spechelper.MigrateTestEntity(t, cm)
+	MigrateEntity(t, cm)
 
 	testcase.RunSuite(t,
-		crudcontracts.Creator[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] {
-			return crudcontracts.CreatorSubject[spechelper.TestEntity, string]{
+		crudcontracts.Creator[Entity, string](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, string] {
+			return crudcontracts.CreatorSubject[Entity, string]{
 				Resource:        subject,
 				MakeContext:     context.Background,
-				MakeEntity:      spechelper.MakeTestEntityFunc(tb),
+				MakeEntity:      MakeEntityFunc(tb),
 				SupportIDReuse:  true,
 				SupportRecreate: true,
 			}
 		}),
-		crudcontracts.Finder[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.FinderSubject[spechelper.TestEntity, string] {
-			return crudcontracts.FinderSubject[spechelper.TestEntity, string]{
+		crudcontracts.Finder[Entity, string](func(tb testing.TB) crudcontracts.FinderSubject[Entity, string] {
+			return crudcontracts.FinderSubject[Entity, string]{
 				Resource:    subject,
 				MakeContext: context.Background,
-				MakeEntity:  spechelper.MakeTestEntityFunc(tb),
+				MakeEntity:  MakeEntityFunc(tb),
 			}
 		}),
-		crudcontracts.Updater[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.UpdaterSubject[spechelper.TestEntity, string] {
-			return crudcontracts.UpdaterSubject[spechelper.TestEntity, string]{
+		crudcontracts.Updater[Entity, string](func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, string] {
+			return crudcontracts.UpdaterSubject[Entity, string]{
 				Resource:     subject,
 				MakeContext:  context.Background,
-				MakeEntity:   spechelper.MakeTestEntityFunc(tb),
+				MakeEntity:   MakeEntityFunc(tb),
 				ChangeEntity: nil, // test entity can be freely changed
 			}
 		}),
-		crudcontracts.Deleter[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.DeleterSubject[spechelper.TestEntity, string] {
-			return crudcontracts.DeleterSubject[spechelper.TestEntity, string]{
+		crudcontracts.Deleter[Entity, string](func(tb testing.TB) crudcontracts.DeleterSubject[Entity, string] {
+			return crudcontracts.DeleterSubject[Entity, string]{
 				Resource:    subject,
 				MakeContext: context.Background,
-				MakeEntity:  spechelper.MakeTestEntityFunc(tb),
+				MakeEntity:  MakeEntityFunc(tb),
 			}
 		}),
-		crudcontracts.OnePhaseCommitProtocol[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string] {
-			return crudcontracts.OnePhaseCommitProtocolSubject[spechelper.TestEntity, string]{
+		crudcontracts.OnePhaseCommitProtocol[Entity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, string] {
+			return crudcontracts.OnePhaseCommitProtocolSubject[Entity, string]{
 				Resource:      subject,
 				CommitManager: subject.Connection,
 				MakeContext:   context.Background,
-				MakeEntity:    spechelper.MakeTestEntityFunc(tb),
+				MakeEntity:    MakeEntityFunc(tb),
 			}
 		}),
 	)
@@ -79,21 +80,21 @@ func TestRepository(t *testing.T) {
 
 func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 	cm := GetConnection(t)
-	spechelper.MigrateTestEntity(t, cm)
+	MigrateEntity(t, cm)
 
-	mapper := spechelper.TestEntityMapping()
+	mapper := EntityMapping()
 	mapper.Table = `public.` + mapper.Table
 
-	subject := postgresql.Repository[spechelper.TestEntity, string]{
+	subject := postgresql.Repository[Entity, string]{
 		Mapping:    mapper,
 		Connection: cm,
 	}
 
-	testcase.RunSuite(t, crudcontracts.Creator[spechelper.TestEntity, string](func(tb testing.TB) crudcontracts.CreatorSubject[spechelper.TestEntity, string] {
-		return crudcontracts.CreatorSubject[spechelper.TestEntity, string]{
+	testcase.RunSuite(t, crudcontracts.Creator[Entity, string](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, string] {
+		return crudcontracts.CreatorSubject[Entity, string]{
 			Resource:        subject,
 			MakeContext:     context.Background,
-			MakeEntity:      spechelper.MakeTestEntityFunc(tb),
+			MakeEntity:      MakeEntityFunc(tb),
 			SupportIDReuse:  true,
 			SupportRecreate: true,
 		}
@@ -102,18 +103,18 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 
 func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 	cm := GetConnection(t)
-	spechelper.MigrateTestEntity(t, cm)
+	MigrateEntity(t, cm)
 
-	cachecontracts.EntityRepository[spechelper.TestEntity, string](func(tb testing.TB) cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string] {
-		repo := postgresql.Repository[spechelper.TestEntity, string]{
-			Mapping:    spechelper.TestEntityMapping(),
+	cachecontracts.EntityRepository[Entity, string](func(tb testing.TB) cachecontracts.EntityRepositorySubject[Entity, string] {
+		repo := postgresql.Repository[Entity, string]{
+			Mapping:    EntityMapping(),
 			Connection: cm,
 		}
-		return cachecontracts.EntityRepositorySubject[spechelper.TestEntity, string]{
+		return cachecontracts.EntityRepositorySubject[Entity, string]{
 			EntityRepository: repo,
 			CommitManager:    cm,
 			MakeContext:      context.Background,
-			MakeEntity:       spechelper.MakeTestEntityFunc(tb),
+			MakeEntity:       MakeEntityFunc(tb),
 			ChangeEntity:     nil,
 		}
 	}).Test(t)
@@ -202,7 +203,7 @@ func Test_pgxTx(t *testing.T) {
 		count int
 	)
 
-	c, err := pgxpool.New(ctx, spechelper.DatabaseDSN(t))
+	c, err := pgxpool.New(ctx, DatabaseDSN(t))
 	assert.NoError(t, err)
 	defer c.Close()
 
@@ -244,7 +245,7 @@ func Test_pgxQuery(t *testing.T) {
 		rnd = random.New(random.CryptoSeed{})
 	)
 
-	conn, err := pgxpool.New(ctx, spechelper.DatabaseDSN(t))
+	conn, err := pgxpool.New(ctx, DatabaseDSN(t))
 	assert.NoError(t, err)
 	defer conn.Close()
 
