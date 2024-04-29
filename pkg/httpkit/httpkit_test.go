@@ -15,6 +15,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -34,6 +35,25 @@ func TestRoundTripperFunc(t *testing.T) {
 			return next.RoundTrip(r)
 		})
 	})
+}
+
+func ExampleRetryRoundTripper() {
+	httpClient := http.Client{
+		Transport: httpkit.RetryRoundTripper{
+			RetryStrategy: retry.ExponentialBackoff{ // optional
+				Timeout: 5 * time.Minute,
+			},
+
+			Transport: http.DefaultTransport, // optional
+
+			OnStatus: map[int]bool{ // optional
+				http.StatusTeapot:          true,
+				http.StatusTooManyRequests: false,
+			},
+		},
+	}
+
+	httpClient.Get("https://go.llib.dev")
 }
 
 func TestRetryRoundTripper(t *testing.T) {
@@ -72,11 +92,14 @@ func TestRetryRoundTripper(t *testing.T) {
 
 	var (
 		transport = testcase.LetValue[http.RoundTripper](s, nil)
-		client    = testcase.Let(s, func(t *testcase.T) *http.Client {
-			c := server.Get(t).Client()
-			c.Transport = httpkit.RetryRoundTripper{
+		retryRT   = testcase.Let(s, func(t *testcase.T) httpkit.RetryRoundTripper {
+			return httpkit.RetryRoundTripper{
 				Transport: transport.Get(t),
 			}
+		})
+		client = testcase.Let(s, func(t *testcase.T) *http.Client {
+			c := server.Get(t).Client()
+			c.Transport = retryRT.Get(t)
 			return c
 		})
 		req = testcase.Let(s, func(t *testcase.T) *http.Request {
@@ -270,6 +293,44 @@ func TestRetryRoundTripper(t *testing.T) {
 			t.Must.Equal(responseCode.Get(t), response.StatusCode)
 			t.Must.Equal(1, count.Get(t))
 		})
+
+	})
+
+	s.When("status code is configured to behave differently than how it is defined in the defaults", func(s *testcase.Spec) {
+		responseCode.Let(s, func(t *testcase.T) int {
+			return t.Random.SliceElement([]int{
+				http.StatusUnauthorized,
+				http.StatusTeapot,
+			}).(int)
+		})
+
+		retryRT.Let(s, func(t *testcase.T) httpkit.RetryRoundTripper {
+			rrt := retryRT.Super(t)
+			rrt.OnStatus = map[int]bool{responseCode.Get(t): true}
+			return rrt
+		})
+
+		s.And("the server is replying back with that status code", func(s *testcase.Spec) {
+			count := testcase.LetValue(s, 0)
+			handler.Let(s, func(t *testcase.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					count.Set(t, count.Get(t)+1)
+					if 2 < count.Get(t) {
+						w.WriteHeader(http.StatusOK)
+						return
+					}
+					w.WriteHeader(responseCode.Get(t))
+				}
+			})
+
+			s.Then("eventually the request succeeds", func(t *testcase.T) {
+				response, err := act(t)
+				t.Must.NoError(err)
+				t.Must.Equal(http.StatusOK, response.StatusCode)
+				t.Must.NotEqual(1, count.Get(t))
+			})
+		})
+
 	})
 }
 

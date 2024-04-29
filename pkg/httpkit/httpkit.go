@@ -4,17 +4,18 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"reflect"
+	"time"
+
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase/clock"
-	"io"
-	"net"
-	"net/http"
-	"reflect"
-	"time"
 )
 
 type RoundTripperFunc func(request *http.Request) (*http.Response, error)
@@ -33,6 +34,9 @@ type RetryRoundTripper struct {
 	//
 	// Default: retry.ExponentialBackoff
 	RetryStrategy retry.Strategy[retry.FailureCount]
+	// OnStatus is an [OPTIONAL] configuration field that could contain whether a certain http status code should be retried or not.
+	// The RetryRoundTripper has a default behaviour about which status code can be retried, and this option can override that.
+	OnStatus map[int]bool
 }
 
 var temporaryErrorResponseCodes = map[int]struct{}{
@@ -58,7 +62,7 @@ func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Respons
 
 	for i := 0; rs.ShouldTry(request.Context(), i); i++ {
 		// reset body to original state before making the request
-		if _, err := body.Seek(io.SeekStart, 0); err != nil {
+		if _, err := body.Seek(0, io.SeekStart); err != nil {
 			return nil, err
 		}
 
@@ -71,7 +75,7 @@ func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Respons
 			return resp, err
 		}
 
-		if _, ok := temporaryErrorResponseCodes[resp.StatusCode]; ok {
+		if rt.isRetriableStatus(resp.StatusCode) {
 			continue
 		}
 
@@ -81,6 +85,16 @@ func (rt RetryRoundTripper) RoundTrip(request *http.Request) (resp *http.Respons
 		return nil, err
 	}
 	return
+}
+
+func (rt RetryRoundTripper) isRetriableStatus(code int) bool {
+	if rt.OnStatus != nil {
+		if should, ok := rt.OnStatus[code]; ok {
+			return should
+		}
+	}
+	_, ok := temporaryErrorResponseCodes[code]
+	return ok
 }
 
 func (rt RetryRoundTripper) transport() http.RoundTripper {
