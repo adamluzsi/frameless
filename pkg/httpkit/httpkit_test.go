@@ -613,3 +613,122 @@ func TestWithMiddleware_nilIsIgnored(t *testing.T) {
 	combined.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusTeapot, rr.Code)
 }
+
+func ExampleWithRoundTripper() {
+
+	transport := httpkit.WithRoundTripper(nil, func(next http.RoundTripper) http.RoundTripper {
+		return httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			request.Header.Set("Authorization", "<type> <credentials>")
+
+			return next.RoundTrip(request)
+		})
+	})
+
+	_ = &http.Client{
+		Transport: transport,
+	}
+
+}
+
+func TestWithRoundTripper(t *testing.T) {
+	t.Run("order", func(t *testing.T) {
+		var elements []string
+		transport := httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			const code = http.StatusTeapot
+			assert.NotEmpty(t, elements)
+			return &http.Response{
+				Status:     http.StatusText(code),
+				StatusCode: code,
+				Proto:      "HTTP/1.0",
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			}, nil
+		})
+
+		combined := httpkit.WithRoundTripper(transport,
+			func(next http.RoundTripper) http.RoundTripper {
+				return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+					elements = append(elements, "foo")
+					return next.RoundTrip(r)
+				})
+			},
+			func(next http.RoundTripper) http.RoundTripper {
+				return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+					elements = append(elements, "bar")
+					return next.RoundTrip(r)
+				})
+			},
+			func(next http.RoundTripper) http.RoundTripper {
+				return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+					elements = append(elements, "baz")
+					return next.RoundTrip(r)
+				})
+			},
+		)
+
+		req := httptest.NewRequest(http.MethodGet, "https://go.llib.dev", nil)
+		resp, err := combined.RoundTrip(req)
+		assert.NoError(t, err)
+		assert.Equal(t, resp.StatusCode, http.StatusTeapot)
+		assert.Equal(t, elements, []string{"foo", "bar", "baz"})
+	})
+
+	t.Run("request mutation in the pipeline is possible", func(t *testing.T) {
+		const HeaderKey = "X-TEST"
+		transport := httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			const code = http.StatusTeapot
+			assert.NotEmpty(t, request.Header.Get(HeaderKey), "OK")
+			return &http.Response{
+				Status:     http.StatusText(code),
+				StatusCode: code,
+				Proto:      "HTTP/1.0",
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			}, nil
+		})
+
+		combined := httpkit.WithRoundTripper(transport,
+			func(next http.RoundTripper) http.RoundTripper {
+				return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+					r.Header.Set(HeaderKey, "OK")
+					return next.RoundTrip(r)
+				})
+			},
+		)
+
+		req := httptest.NewRequest(http.MethodGet, "https://go.llib.dev", nil)
+		resp, err := combined.RoundTrip(req)
+		assert.NoError(t, err)
+		assert.Equal(t, resp.StatusCode, http.StatusTeapot)
+	})
+
+	t.Run("on nil transport, default transport is used", func(t *testing.T) {
+		og := http.DefaultTransport
+		defer func() { http.DefaultTransport = og }()
+
+		http.DefaultTransport = httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
+			const code = http.StatusTeapot
+			return &http.Response{
+				Status:     http.StatusText(code),
+				StatusCode: code,
+				Proto:      "HTTP/1.0",
+				ProtoMajor: 1,
+				ProtoMinor: 0,
+			}, nil
+		})
+
+		combined := httpkit.WithRoundTripper(nil,
+			func(next http.RoundTripper) http.RoundTripper {
+				assert.NotNil(t, next)
+				return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
+					return next.RoundTrip(r)
+				})
+			},
+		)
+
+		req := httptest.NewRequest(http.MethodGet, "https://go.llib.dev", nil)
+		resp, err := combined.RoundTrip(req)
+		assert.NoError(t, err)
+		assert.Equal(t, resp.StatusCode, http.StatusTeapot)
+	})
+}

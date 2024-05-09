@@ -265,9 +265,9 @@ type Multiplexer interface {
 // Its http.Handler argument represents the next middleware http.Handler in the pipeline.
 type MiddlewareFactoryFunc func(next http.Handler) http.Handler
 
-// WithMiddleware will combine an http.Handler with a stack of middleware functions.
-// The order in which you pass the MiddlewareFactoryFunc -s is the same
-// as the order, they will be called during the http.Handler.ServeHTTP method call.
+// WithMiddleware will combine an http.Handler with a stack of middleware factory functions.
+// The order in which you pass the MiddlewareFactoryFunc -s is the same as the order,
+// they will be called during the http.Handler.ServeHTTP method call.
 func WithMiddleware(handler http.Handler, ffns ...MiddlewareFactoryFunc) http.Handler {
 	for i := len(ffns) - 1; 0 <= i; i-- {
 		if ffns[i] == nil {
@@ -276,4 +276,23 @@ func WithMiddleware(handler http.Handler, ffns ...MiddlewareFactoryFunc) http.Ha
 		handler = ffns[i](handler)
 	}
 	return handler
+}
+
+// RoundTripperFactoryFunc is a constructor function that is meant to wrap an http.RoundTripper with given middleware.
+// Its http.RoundTripper argument represents the next middleware http.RoundTripper in the pipeline.
+type RoundTripperFactoryFunc func(next http.RoundTripper) http.RoundTripper
+
+// WithRoundTripper will combine an http.RoundTripper with a stack of middleware factory functions.
+// The execution order is in which you pass the factory funcs.
+func WithRoundTripper(transport http.RoundTripper, rts ...RoundTripperFactoryFunc) http.RoundTripper {
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	for i := len(rts) - 1; 0 <= i; i-- {
+		if rts[i] == nil {
+			continue
+		}
+		transport = rts[i](transport)
+	}
+	return transport
 }
