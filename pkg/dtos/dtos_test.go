@@ -3,11 +3,12 @@ package dtos_test
 import (
 	"context"
 	"encoding/json"
+	"strconv"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"strconv"
-	"testing"
 )
 
 var rnd = random.New(random.CryptoSeed{})
@@ -51,6 +52,28 @@ func TestM(t *testing.T) {
 		assert.Equal(t, expDTO, dto)
 
 		ent, err := dtos.Map[NestedEnt](ctx, dto)
+		assert.NoError(t, err)
+		assert.Equal(t, expEnt, ent)
+	})
+	t.Run("override can be done with reregistering", func(t *testing.T) {
+		em := EntMapping{}
+
+		// initial setup
+		defer dtos.Register[Ent, EntDTO](
+			func(ctx context.Context, e Ent) (EntDTO, error) { return EntDTO{}, nil },
+			func(ctx context.Context, ed EntDTO) (Ent, error) { return Ent{}, nil })()
+
+		// override
+		defer dtos.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
+
+		expEnt := Ent{V: rnd.Int()}
+		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
+
+		dto, err := dtos.Map[EntDTO](ctx, expEnt)
+		assert.NoError(t, err)
+		assert.Equal(t, expDTO, dto)
+
+		ent, err := dtos.Map[Ent](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
