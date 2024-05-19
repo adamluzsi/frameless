@@ -2,10 +2,12 @@ package contextkit_test
 
 import (
 	"context"
-	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/random"
+	"runtime"
 	"testing"
 	"time"
+
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/testcase"
@@ -111,7 +113,6 @@ func TestDetached(t *testing.T) {
 
 		s.When("parent context has an error due to deadline exceed", func(s *testcase.Spec) {
 			parent.Let(s, func(t *testcase.T) context.Context {
-				ctx := parent.Super(t)
 				ctx, cancel := context.WithDeadline(parent.Super(t), time.Now())
 				cancel()
 				t.Must.ErrorIs(context.DeadlineExceeded, ctx.Err())
@@ -125,11 +126,11 @@ func TestDetached(t *testing.T) {
 	})
 }
 
-func ExampleValueInContext() {
+func ExampleValueHandler() {
 	type MyContextKey struct{}
 	type MyValueType string
 
-	vic := contextkit.ValueInContext[MyContextKey, MyValueType]{}
+	vic := contextkit.ValueHandler[MyContextKey, MyValueType]{}
 
 	var ctx = context.Background() // empty context
 
@@ -142,12 +143,12 @@ func ExampleValueInContext() {
 	_, _ = v, ok // "Hello, world!", true
 }
 
-func TestValueInContext(t *testing.T) {
+func TestValueHandler(t *testing.T) {
 	type Key struct{}
 	rnd := random.New(random.CryptoSeed{})
 	t.Run("nil context", func(t *testing.T) {
 		var ctx context.Context = nil
-		vic := contextkit.ValueInContext[Key, string]{}
+		vic := contextkit.ValueHandler[Key, string]{}
 		v, ok := vic.Lookup(ctx)
 		assert.False(t, ok)
 		assert.Empty(t, v)
@@ -155,7 +156,7 @@ func TestValueInContext(t *testing.T) {
 
 	t.Run("no value in context", func(t *testing.T) {
 		var ctx context.Context = context.Background()
-		vic := contextkit.ValueInContext[Key, string]{}
+		vic := contextkit.ValueHandler[Key, string]{}
 		v, ok := vic.Lookup(ctx)
 		assert.False(t, ok)
 		assert.Empty(t, v)
@@ -163,7 +164,7 @@ func TestValueInContext(t *testing.T) {
 
 	t.Run("value stored in context previously", func(t *testing.T) {
 		var ctx = context.Background()
-		vic := contextkit.ValueInContext[Key, string]{}
+		vic := contextkit.ValueHandler[Key, string]{}
 		exp := rnd.String()
 		ctx = vic.ContextWith(ctx, exp)
 		got, ok := vic.Lookup(ctx)
@@ -173,11 +174,263 @@ func TestValueInContext(t *testing.T) {
 
 	t.Run("valid nil value in the context", func(t *testing.T) {
 		var ctx = context.Background()
-		vic := contextkit.ValueInContext[Key, *string]{}
+		vic := contextkit.ValueHandler[Key, *string]{}
 		var exp *string
 		ctx = vic.ContextWith(ctx, exp)
 		got, ok := vic.Lookup(ctx)
 		assert.True(t, ok)
 		assert.Equal(t, exp, got)
+	})
+}
+
+func ExampleMerge() {
+	type key string
+
+	var (
+		ctx1          = context.WithValue(context.Background(), key("foo"), 42)
+		ctx2          = context.WithValue(context.Background(), key("bar"), 128)
+		ctx3, cancel3 = context.WithTimeout(context.Background(), time.Hour)
+	)
+	defer cancel3()
+
+	ctx, cancel := contextkit.Merge(ctx1, ctx2, ctx3)
+	defer cancel()
+	_ = ctx.Value(key("foo")) // 42
+	_ = ctx.Value(key("bar")) // 128
+	_, _ = ctx.Deadline()     // Deadline = deadline time value; OK=true
+}
+
+func TestMerge(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		type key string
+
+		var (
+			ctx1          = context.WithValue(context.Background(), key("foo"), 42)
+			ctx2          = context.WithValue(context.Background(), key("bar"), 128)
+			ctx3, cancel3 = context.WithTimeout(context.Background(), time.Hour)
+		)
+		defer cancel3()
+
+		ctx, cancel := contextkit.Merge(ctx1, ctx2, ctx3)
+		defer cancel()
+
+		assert.Equal[any](t, ctx.Value(key("foo")), 42)
+		assert.Equal[any](t, ctx.Value(key("bar")), 128)
+		dl, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.NotEmpty(t, dl)
+	})
+
+	type Key string
+	t.Run("two context - values merged", func(t *testing.T) {
+		ctx, cancel := contextkit.Merge(
+			context.WithValue(context.Background(), Key("foo"), 1),
+			context.WithValue(context.Background(), Key("bar"), 2),
+		)
+		defer cancel()
+		assert.Equal[any](t, ctx.Value(Key("foo")), 1)
+		assert.Equal[any](t, ctx.Value(Key("bar")), 2)
+		assert.Nil(t, ctx.Err())
+		_, ok := ctx.Deadline()
+		assert.False(t, ok)
+		assert.Within(t, time.Second, func(actx context.Context) {
+			select {
+			case <-actx.Done():
+			case <-ctx.Done():
+			default: // OK
+			}
+		})
+	})
+
+	t.Run("order defines priority - value retrieval - last takes priority", func(t *testing.T) {
+		ctx, cancel := contextkit.Merge(
+			context.WithValue(context.Background(), Key("foo"), 42),
+			context.WithValue(context.Background(), Key("foo"), 24),
+		)
+		defer cancel()
+		assert.Equal[any](t, ctx.Value(Key("foo")), 24)
+	})
+
+	t.Run("2. is cancelled", func(t *testing.T) {
+		ctx, cancel := contextkit.Merge(
+			context.Background(),
+			func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			}(),
+		)
+		defer cancel()
+		assert.Within(t, time.Second, func(actx context.Context) {
+			select {
+			case <-actx.Done():
+			case <-ctx.Done():
+				// OK
+			}
+		})
+		assert.Error(t, ctx.Err())
+	})
+
+	t.Run("1. is cancelled", func(t *testing.T) {
+		ctx, cancel := contextkit.Merge(
+			func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			}(),
+			context.Background(),
+		)
+		defer cancel()
+		assert.Within(t, time.Second, func(actx context.Context) {
+			select {
+			case <-actx.Done():
+			case <-ctx.Done():
+				// OK
+			}
+		})
+		assert.Error(t, ctx.Err())
+	})
+
+	t.Run("1. deadline", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour)
+		ctx, cancel := contextkit.Merge(
+			func() context.Context {
+				ctx, cancel := context.WithDeadline(context.Background(), exp)
+				t.Cleanup(cancel)
+				return ctx
+			}(),
+			context.Background(),
+		)
+		defer cancel()
+
+		dl, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.NotEmpty(t, dl)
+		assert.Equal(t, exp, dl)
+	})
+
+	t.Run("2. deadline", func(t *testing.T) {
+		exp := time.Now().Add(time.Hour)
+		ctx, cancel := contextkit.Merge(
+			context.Background(),
+			func() context.Context {
+				ctx, cancel := context.WithDeadline(context.Background(), exp)
+				t.Cleanup(cancel)
+				return ctx
+			}(),
+		)
+		defer cancel()
+		dl, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.NotEmpty(t, dl)
+		assert.Equal(t, exp, dl)
+	})
+
+	t.Run("2+", func(t *testing.T) {
+		expDL := time.Now().Add(time.Hour)
+
+		ctx, cancel := contextkit.Merge(
+			context.Background(),
+			context.WithValue(context.Background(), Key("foo"), 42),
+			func() context.Context {
+				ctx, cancel := context.WithDeadline(context.Background(), expDL)
+				t.Cleanup(cancel)
+				return ctx
+			}(),
+		)
+
+		defer cancel()
+		assert.Equal[any](t, ctx.Value(Key("foo")), 42)
+		dl, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.NotEmpty(t, dl)
+		assert.Equal(t, expDL, dl)
+	})
+
+	t.Run("no context provided", func(t *testing.T) {
+		ctx, cancel := contextkit.Merge()
+		assert.NotNil(t, cancel)
+		cancel()
+		assert.NotNil(t, ctx)
+		assert.NoError(t, ctx.Err())
+		_, ok := ctx.Deadline()
+		assert.False(t, ok)
+		assert.Within(t, time.Second, func(actx context.Context) {
+			select {
+			case <-actx.Done():
+			case <-ctx.Done():
+			default: // OK
+			}
+		})
+		assert.NotPanic(t, func() {
+			cancel()
+		})
+	})
+
+	t.Run("cancel will clean up the hanging Merge goroutine", func(t *testing.T) {
+		assert.Eventually(t, 5, func(t assert.It) {
+			var initialNumGoroutine int = runtime.NumGoroutine()
+			for i := 0; i < 1024; i++ {
+				ngrc := runtime.NumGoroutine()
+				if ngrc == initialNumGoroutine {
+					break
+				}
+				initialNumGoroutine = ngrc
+			}
+
+			ctx, cancel := contextkit.Merge(context.Background(), context.Background(), context.Background())
+			assert.NotNil(t, ctx)
+			defer cancel()
+
+			var afterMergeNumGoroutine int = runtime.NumGoroutine()
+			for i := 0; i < 1024; i++ {
+				ngrc := runtime.NumGoroutine()
+				if ngrc == afterMergeNumGoroutine {
+					break
+				}
+				afterMergeNumGoroutine = ngrc
+			}
+
+			cancel()
+
+			// assert Eventually don't use go routines, should be safe to use
+			assert.Eventually(t, time.Millisecond, func(it assert.It) {
+				currentNumGoroutine := runtime.NumGoroutine()
+				assert.True(it,
+					afterMergeNumGoroutine < currentNumGoroutine ||
+						initialNumGoroutine < afterMergeNumGoroutine)
+			})
+		})
+	})
+
+	t.Run("single context", func(t *testing.T) {
+		pctx, pcancel := context.WithCancel(context.Background())
+		defer pcancel()
+
+		ctx, cancel := contextkit.Merge(pctx)
+		assert.NotNil(t, cancel)
+		defer cancel()
+		assert.NotNil(t, ctx)
+
+		assert.Nil(t, ctx.Err())
+
+		pcancel()
+
+		assert.ErrorIs(t, ctx.Err(), pctx.Err())
+	})
+
+	t.Run("race", func(t *testing.T) {
+		ctx, cancel := contextkit.Merge(context.Background(), context.Background(), context.Background())
+		defer cancel()
+
+		testcase.Race(func() {
+			<-ctx.Done()
+		}, func() {
+			<-ctx.Done()
+		}, func() {
+			ctx.Err()
+		}, func() {
+			cancel()
+		})
 	})
 }
