@@ -2,15 +2,16 @@ package tasker_test
 
 import (
 	"context"
+	"net/http"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
-	"net/http"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 func ExampleHTTPServerTask() {
@@ -246,13 +247,18 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func() { assert.NoError(t, tasker.HTTPServerTask(srv).Run(ctx)) }()
+	bgcancel := tasker.Background(ctx, tasker.HTTPServerTask(srv))
+	defer func() { assert.NoError(t, bgcancel()) }()
 
-	go func() {
-		resp, err := http.Get("http://localhost:58080/")
-		assert.Should(t).NoError(err)
-		assert.Should(t).Equal(http.StatusTeapot, resp.StatusCode)
-	}()
+	defer tasker.Background(ctx, func(ctx context.Context) {
+		httpClient := &http.Client{Timeout: time.Second}
+		assert.Eventually(t, 10*time.Second, func(t assert.It) {
+			resp, err := httpClient.Get("http://localhost:58080/")
+			assert.NoError(t, err)
+			assert.NotNil(t, resp)
+			assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+		})
+	})()
 
 	assert.Eventually(t, time.Second, func(it assert.It) {
 		assert.Equal(it, atomic.LoadInt32(&ready), 1)
