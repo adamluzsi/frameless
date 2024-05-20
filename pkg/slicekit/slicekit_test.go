@@ -2,11 +2,12 @@ package slicekit_test
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/testcase/assert"
 	"strconv"
 	"strings"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExampleMust() {
@@ -275,5 +276,71 @@ func TestContains(t *testing.T) {
 	t.Run("does not contain", func(t *testing.T) {
 		assert.False(t, slicekit.Contains([]string{"foo", "bar", "baz"}, "qux"))
 		assert.False(t, slicekit.Contains([]int{7, 42, 128}, 32))
+	})
+}
+
+func ExampleBatch() {
+	vs := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+
+	batches := slicekit.Batch(vs, 5)
+	_ = batches
+	// 0 -> []int{1, 2, 3, 4, 5}
+	// 1 -> []int{6, 7, 8, 9, 10}
+	// 2 -> []int{11, 12, 13, 14, 15}
+}
+
+func TestBatch(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		vs := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+		batches := slicekit.Batch(vs, 5)
+		assert.NotEmpty(t, batches)
+		assert.True(t, len(batches) == 4)
+		assert.Equal(t, []int{1, 2, 3, 4, 5}, batches[0])
+		assert.Equal(t, []int{6, 7, 8, 9, 10}, batches[1])
+		assert.Equal(t, []int{11, 12, 13, 14, 15}, batches[2])
+		assert.Equal(t, []int{16}, batches[3])
+	})
+
+	t.Run("exact batch size", func(t *testing.T) {
+		vs := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+		batches := slicekit.Batch(vs, 5)
+		assert.NotEmpty(t, batches)
+		assert.True(t, len(batches) == 2)
+		assert.Equal(t, []int{1, 2, 3, 4, 5}, batches[0])
+		assert.Equal(t, []int{6, 7, 8, 9, 10}, batches[1])
+	})
+
+	t.Run("non-exact batch size", func(t *testing.T) {
+		vs := []int{1, 2, 3, 4, 5, 6, 7}
+		batches := slicekit.Batch(vs, 3)
+		assert.NotEmpty(t, batches)
+		assert.True(t, len(batches) == 3)
+		assert.Equal(t, []int{1, 2, 3}, batches[0])
+		assert.Equal(t, []int{4, 5, 6}, batches[1])
+		assert.Equal(t, []int{7}, batches[2])
+	})
+
+	t.Run("empty slice", func(t *testing.T) {
+		vs := []int{}
+		batches := slicekit.Batch(vs, 3)
+		assert.Empty(t, batches)
+	})
+
+	t.Run("batch size larger than slice", func(t *testing.T) {
+		vs := []int{1, 2, 3}
+		batches := slicekit.Batch(vs, 5)
+		assert.NotEmpty(t, batches)
+		assert.True(t, len(batches) == 1)
+		assert.Equal(t, []int{1, 2, 3}, batches[0])
+	})
+
+	t.Run("non-exact batch size", func(t *testing.T) {
+		vs := []int{1, 2, 3, 4, 5, 6, 7, 8, 9}
+		batches := slicekit.Batch(vs, 4)
+		assert.NotEmpty(t, batches)
+		assert.True(t, len(batches) == 3)
+		assert.Equal(t, []int{1, 2, 3, 4}, batches[0])
+		assert.Equal(t, []int{5, 6, 7, 8}, batches[1])
+		assert.Equal(t, []int{9}, batches[2])
 	})
 }

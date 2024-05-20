@@ -95,6 +95,18 @@ func Contains[T comparable](s []T, v T) bool {
 	return false
 }
 
+func Batch[T any](vs []T, size int) [][]T {
+	var out [][]T
+	for i := 0; i < len(vs); i += size {
+		end := i + size
+		if !(end < len(vs)) {
+			end = len(vs)
+		}
+		out = append(out, vs[i:end])
+	}
+	return out
+}
+
 // --------------------------------------------------------------------------------- //
 
 type reducerFunc[O, I any] interface {
