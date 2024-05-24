@@ -85,22 +85,27 @@ type Spec struct {
 
 	defs []func(*Spec)
 
-	immutable     bool
-	vars          *variables
-	parallel      bool
-	sequential    bool
+	immutable   bool
+	vars        *variables
+	parallel    bool
+	sequential  bool
+	flaky       *assert.Retry
+	eventually  *assert.Retry
+	group       *struct{ name string }
+	description string
+	tags        []string
+	tests       []func()
+
+	hasRan      bool
+	isTest      bool
+	isBenchmark bool
+
+	skipTest      bool
 	skipBenchmark bool
-	flaky         *assert.Retry
-	eventually    *assert.Retry
-	group         *struct{ name string }
-	description   string
-	tags          []string
-	tests         []func()
 
 	finished bool
 	orderer  orderer
 	seed     int64
-	isTest   bool
 	sync     bool
 
 	isSuite   bool
@@ -192,8 +197,27 @@ func (spec *Spec) Test(desc string, test tBlock, opts ...SpecOption) {
 	}
 	spec.testingTB.Helper()
 	s := spec.newSubSpec(desc, opts...)
-	s.isTest = true
+	s.isTest = !s.isBenchmark
+	s.hasRan = true
 	s.run(test)
+}
+
+const panicMessageForRunningBenchmarkAfterTest = `when .Benchmark is defined, they either must be specified before any .Test call in the top level, or should be done under a context `
+
+// Benchmark creates a becnhmark in the given Spec context.
+//
+// Creating a Benchmark will signal the Spec that test and benchmark happens seperately, and a test should not double as a benchmark.
+func (spec *Spec) Benchmark(desc string, test tBlock, opts ...SpecOption) {
+	if spec.isTestRunner() {
+		return
+	}
+	if spec.sync && spec.hasTestRan() {
+		panic(panicMessageForRunningBenchmarkAfterTest)
+	}
+	spec.skipTest = true // flag test for skipping
+	opts = append([]SpecOption{}, opts...)
+	opts = append(opts, benchmark())
+	spec.Test(desc, test, opts...)
 }
 
 const warnEventOnImmutableFormat = `you can't use .%s after you already used when/and/then`
@@ -258,6 +282,11 @@ func (spec *Spec) Tag(tags ...string) {
 
 func (spec *Spec) isAllowedToRun() bool {
 	spec.testingTB.Helper()
+
+	if spec.isTest && !spec.isTestAllowedToRun() {
+		return false
+	}
+
 	currentTagSet := spec.getTagSet()
 	settings := getCachedTagSettings()
 
@@ -277,7 +306,18 @@ func (spec *Spec) isAllowedToRun() bool {
 			allowed = true
 		}
 	}
+	// TODO: Exclude
 	return allowed
+}
+
+func (spec *Spec) isTestAllowedToRun() bool {
+	spec.testingTB.Helper()
+	for _, context := range spec.specsFromParent() {
+		if context.skipTest {
+			return false
+		}
+	}
+	return true
 }
 
 func (spec *Spec) isBenchAllowedToRun() bool {
@@ -357,6 +397,9 @@ func (spec *Spec) run(blk func(*T)) {
 	name := spec.name()
 	switch tb := spec.testingTB.(type) {
 	case tRunner:
+		if spec.isBenchmark {
+			return
+		}
 		spec.addTest(func() {
 			if h, ok := tb.(helper); ok {
 				h.Helper()
@@ -397,6 +440,17 @@ func (spec *Spec) run(blk func(*T)) {
 	}
 }
 
+func (spec *Spec) isTestRunner() bool {
+	switch spec.testingTB.(type) {
+	case bRunner:
+		return false
+	case tRunner, TBRunner:
+		return true
+	default:
+		return true
+	}
+}
+
 func (spec *Spec) getTestSeed(tb testing.TB) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(tb.Name()))
@@ -407,6 +461,7 @@ func (spec *Spec) getTestSeed(tb testing.TB) int64 {
 func (spec *Spec) runTB(tb testing.TB, blk func(*T)) {
 	spec.testingTB.Helper()
 	tb.Helper()
+	spec.hasRan = true
 	if tb, ok := tb.(interface{ Parallel() }); ok && spec.isParallel() {
 		tb.Parallel()
 	}
@@ -568,7 +623,7 @@ func (spec *Spec) specsFromCurrent() []*Spec {
 func (spec *Spec) lookupParent() (*Spec, bool) {
 	spec.testingTB.Helper()
 	for _, s := range spec.specsFromCurrent() {
-		if s.isTest { // skip test
+		if s.hasRan { // skip test
 			continue
 		}
 		if s == spec { // skip self
@@ -614,9 +669,13 @@ func escapeName(s string) string {
 	return s
 }
 
+const panicMessageSpecSpec = `The "testcase.Spec#Spec" method is designed to attach a "testcase.Spec" used as a suite to a subcontext of another "testcase.Spec". 
+To achieve this, the current "testcase.Spec" needs to be created as a suite by providing "nil" for the "testing.TB" argument in "testcase.NewSpec".
+Once the "Spec" is converted into a suite, you can use "testcase.Spec#Spec" as the function block for another "testcase.Spec" "#Context" call.`
+
 func (spec *Spec) Spec(oth *Spec) {
 	if !spec.isSuite {
-		panic("Spec method is only allowed when testcase.Spec made with AsSuite option")
+		panic(panicMessageSpecSpec)
 	}
 	oth.testingTB.Helper()
 	isSuite := oth.isSuite
@@ -634,22 +693,50 @@ func (spec *Spec) getIsSuite() bool {
 		if s.isSuite {
 			return true
 		}
+		if s.testingTB == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (spec *Spec) hasTestRan() bool {
+	if spec.isTest && spec.hasRan {
+		return true
+	}
+	for _, child := range spec.children {
+		if child.isTest && child.hasRan {
+			return true
+		}
 	}
 	return false
 }
 
 func checkSuite(tb testing.TB, opts []SpecOption) (testing.TB, []SpecOption) {
 	if tb == nil {
-		return internal.SuiteNullTB{}, append(opts, AsSuite())
+		return internal.SuiteNullTB{}, append(opts, specOptionFunc(func(s *Spec) {
+			s.isSuite = true
+		}))
 	}
 	return tb, opts
 }
 
-func (spec *Spec) AsSuite() SpecSuite { return SpecSuite{S: spec} }
+func (spec *Spec) AsSuite(name ...string) SpecSuite {
+	return SpecSuite{N: strings.Join(name, " "), S: spec}
+}
 
-type SpecSuite struct{ S *Spec }
+type SpecSuite struct {
+	N string
+	S *Spec
+}
 
-func (suite SpecSuite) Name() string           { return suite.S.suiteName }
-func (suite SpecSuite) Test(t *testing.T)      { suite.S.Spec(NewSpec(t)) }
-func (suite SpecSuite) Benchmark(b *testing.B) { suite.S.Spec(NewSpec(b)) }
+func (suite SpecSuite) Name() string           { return suite.N }
+func (suite SpecSuite) Test(t *testing.T)      { suite.run(t) }
+func (suite SpecSuite) Benchmark(b *testing.B) { suite.run(b) }
 func (suite SpecSuite) Spec(s *Spec)           { suite.S.Spec(s) }
+
+func (suite SpecSuite) run(tb testing.TB) {
+	s := NewSpec(tb)
+	defer s.Finish()
+	s.Context(suite.N, suite.Spec, Group(suite.N))
+}
