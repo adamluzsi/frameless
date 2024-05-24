@@ -11,15 +11,21 @@ import (
 var _ option.Option[any] = option.Func[any](nil)
 
 type SampleConfig struct {
-	Foo string
-	Bar int
-	Baz float64
+	Foo  string
+	Bar  int
+	Baz  float64
+	Func func() string
 }
 
 func (c *SampleConfig) Init() {
 	c.Foo = "foo"
 	c.Bar = 42
 	c.Baz = 42.24
+	c.Func = func() string { return "value" }
+}
+
+func (c SampleConfig) Configure(t *SampleConfig) {
+	option.Configure(c, t)
 }
 
 func FooTo(v string) option.Option[SampleConfig] {
@@ -55,7 +61,13 @@ func TestUse(t *testing.T) {
 		var exp SampleConfig
 		exp.Init()
 		got := option.Use[SampleConfig]([]option.Option[SampleConfig](nil))
-		assert.Equal(t, exp, got)
+		assert.Equal(t, exp.Foo, got.Foo)
+		assert.Equal(t, exp.Bar, got.Bar)
+		assert.Equal(t, exp.Baz, got.Baz)
+		assert.NotEmpty(t, exp.Func)
+		assert.NotEmpty(t, got.Func)
+		assert.Equal(t, exp.Func(), got.Func())
+
 	})
 	t.Run("options used", func(t *testing.T) {
 		opts := []option.Option[SampleConfig]{FooTo("OOF")}
@@ -131,4 +143,42 @@ func TestConfigure(t *testing.T) {
 		assert.NotContain(t, v, "reflect:")
 	})
 
+	t.Run("using Configure as part of the config type's receiver works as expected", func(t *testing.T) {
+		sc := option.Use[SampleConfig]([]option.Option[SampleConfig]{SampleConfig{
+			Func: nil,
+			Foo:  "foo-42",
+		}})
+
+		assert.NotEmpty(t, sc.Func)
+		assert.Equal(t, sc.Foo, "foo-42")
+		assert.Equal(t, sc.Bar, 42)
+	})
+
+	t.Run("nested configurations are respected", func(t *testing.T) {
+		nc := option.Use[NestedConfig]([]option.Option[NestedConfig]{NestedConfig{
+			SampleConfig: SampleConfig{
+				Foo: "val",
+			},
+		}})
+
+		assert.NotEmpty(t, nc)
+		assert.NotEmpty(t, nc.SampleConfig)
+		assert.NotEmpty(t, nc.SampleConfig.Func)
+		assert.Equal(t, nc.SampleConfig.Foo, "val")
+		assert.Equal(t, nc.SampleConfig.Bar, 42)
+	})
+}
+
+type NestedConfig struct {
+	SampleConfig
+	Val string
+}
+
+func (c *NestedConfig) Init() {
+	c.Val = "the answer"
+	c.SampleConfig.Init()
+}
+
+func (c NestedConfig) Configure(t *NestedConfig) {
+	option.Configure(c, t)
 }
