@@ -1,14 +1,14 @@
 package reflectkit_test
 
 import (
+	"reflect"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"reflect"
-	"testing"
 )
 
 func TestTypeOf(t *testing.T) {
@@ -119,6 +119,8 @@ func TestCast(t *testing.T) {
 	})
 }
 
+type SampleType struct{}
+
 func TestFullyQualifiedName(t *testing.T) {
 	t.Run("FullyQualifiedName", func(spec *testing.T) {
 
@@ -129,9 +131,9 @@ func TestFullyQualifiedName(t *testing.T) {
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
 
-			o := crudcontracts.Creator[int, string](nil)
+			o := SampleType{}
 
-			assert.Must(t).Equal(`"go.llib.dev/frameless/ports/crud/crudcontracts".Creator[int,string]`, subject(o))
+			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".SampleType`, subject(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {
@@ -421,6 +423,177 @@ func TestIsEmpty(t *testing.T) {
 	})
 }
 
+func TestIsZero(t *testing.T) {
+	s := testcase.NewSpec(t)
+	val := testcase.Var[any]{ID: `input value`}
+	subject := func(t *testcase.T) bool {
+		return reflectkit.IsZero(reflect.ValueOf(val.Get(t)))
+	}
+
+	s.When(`value is an nil pointer`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var ptr *string
+			return ptr
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an pointer to an zero value`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			v := ""
+			return &v
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an pointer to non zero value`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			v := "Hello, world!"
+			return &v
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an uninitialized slice`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var slice []string
+			return slice
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an zero slice`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var v []string
+			return v
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an empty slice`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			return []string{}
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an populated slice`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			return []string{"foo", "bar", "baz"}
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an uninitialized map`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var m map[string]struct{}
+			return m
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an zero map`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var v map[string]struct{}
+			return v
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an empty map`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			return map[string]struct{}{}
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an populated map`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			return map[string]struct{}{
+				"foo": {},
+				"bar": {},
+				"baz": {},
+			}
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an uninitialized chan`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var m chan struct{}
+			return m
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an initialized chan`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			return make(chan struct{})
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+
+	s.When(`value is an uninitialized func`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			var fn func()
+			return fn
+		})
+
+		s.Then(`it will be reported as zero`, func(t *testcase.T) {
+			assert.Must(t).True(subject(t))
+		})
+	})
+
+	s.When(`value is an initialized func`, func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) interface{} {
+			return func() {}
+		})
+
+		s.Then(`it will be reported as non-zero`, func(t *testcase.T) {
+			assert.Must(t).False(subject(t))
+		})
+	})
+}
+
 func TestIsValueNil(t *testing.T) {
 	s := testcase.NewSpec(t)
 	val := testcase.Let[any](s, nil)
@@ -659,8 +832,9 @@ func TestName(t *testing.T) {
 
 		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
 			t.Parallel()
-			o := crudcontracts.Creator[int, string](nil)
-			assert.Must(t).Equal(`crudcontracts.Creator[int,string]`, reflectkit.SymbolicName(o))
+
+			o := SampleType{}
+			assert.Must(t).Equal(`reflectkit_test.SampleType`, reflectkit.SymbolicName(o))
 		})
 
 		spec.Run("when given object is an interface", func(t *testing.T) {

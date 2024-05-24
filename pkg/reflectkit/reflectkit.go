@@ -96,6 +96,15 @@ func IsEmpty(val reflect.Value) bool {
 	}
 }
 
+func IsZero(val reflect.Value) bool {
+	switch val.Kind() {
+	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func:
+		return val.IsNil()
+	default:
+		return !val.IsValid() || val.IsZero()
+	}
+}
+
 func IsValueNil(val reflect.Value) bool {
 	switch val.Kind() {
 	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func:
