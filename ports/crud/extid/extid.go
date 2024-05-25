@@ -2,8 +2,9 @@ package extid
 
 import (
 	"errors"
-	"go.llib.dev/frameless/pkg/errorkit"
 	"reflect"
+
+	"go.llib.dev/frameless/pkg/errorkit"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 )

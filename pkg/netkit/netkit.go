@@ -3,11 +3,12 @@ package netkit
 import (
 	"errors"
 	"fmt"
-	"go.llib.dev/frameless/pkg/enum"
 	"io"
 	"net"
 	"strconv"
 	"strings"
+
+	"go.llib.dev/frameless/pkg/enum"
 )
 
 type Network string

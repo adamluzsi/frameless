@@ -3,11 +3,6 @@ package iokit_test
 import (
 	"bytes"
 	"errors"
-	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/pkg/units"
-	"go.llib.dev/frameless/ports/filesystem"
-	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/random"
 	"io"
 	"io/fs"
 	"os"
@@ -15,6 +10,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/ports/filesystem"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/testcase"
 )

@@ -1,10 +1,11 @@
 package pointersync
 
 import (
-	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 	"runtime"
 	"testing"
+
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestLocks_noGarbage(t *testing.T) {

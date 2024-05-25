@@ -1,239 +1,193 @@
 package crudcontracts
 
 import (
-	"context"
 	"fmt"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
-	"go.llib.dev/testcase/assert"
 	"sync"
-	"testing"
+
+	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
+	"go.llib.dev/frameless/ports/contract"
+	"go.llib.dev/frameless/ports/option"
+	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/pkg/pointer"
 
-	. "go.llib.dev/frameless/ports/crud/crudtest"
-
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/crud"
+	crudtest "go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/spechelper"
 
 	"go.llib.dev/testcase"
 )
 
-type OnePhaseCommitProtocol[Entity, ID any] func(testing.TB) OnePhaseCommitProtocolSubject[Entity, ID]
-
-type OnePhaseCommitProtocolSubject[Entity, ID any] struct {
-	Resource      spechelper.CRD[Entity, ID]
-	CommitManager comproto.OnePhaseCommitProtocol
-	MakeContext   func() context.Context
-	MakeEntity    func() Entity
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) subject() testcase.Var[OnePhaseCommitProtocolSubject[Entity, ID]] {
-	return testcase.Var[OnePhaseCommitProtocolSubject[Entity, ID]]{
-		ID:   reflectkit.SymbolicName(OnePhaseCommitProtocolSubject[Entity, ID]{}),
-		Init: func(t *testcase.T) OnePhaseCommitProtocolSubject[Entity, ID] { return c(t) },
-	}
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) manager() testcase.Var[comproto.OnePhaseCommitProtocol] {
-	return testcase.Var[comproto.OnePhaseCommitProtocol]{
-		ID: "commit protocol manager",
-		Init: func(t *testcase.T) comproto.OnePhaseCommitProtocol {
-			return c.subject().Get(t).CommitManager
-		},
-	}
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) resource() testcase.Var[spechelper.CRD[Entity, ID]] {
-	return testcase.Var[spechelper.CRD[Entity, ID]]{
-		ID: "managed resource",
-		Init: func(t *testcase.T) spechelper.CRD[Entity, ID] {
-			return c.subject().Get(t).Resource
-		},
-	}
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) Name() string {
-	return "OnePhaseCommitProtocol"
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
-}
-
-func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
+func OnePhaseCommitProtocol[Entity, ID any](subject crd[Entity, ID], manager comproto.OnePhaseCommitProtocol, opts ...Option[Entity, ID]) contract.Contract {
+	c := option.Use[Config[Entity, ID]](opts)
+	s := testcase.NewSpec(nil)
 	s.HasSideEffect()
 
 	// clean ahead before testing suite
 	once := &sync.Once{}
 	s.Before(func(t *testcase.T) {
-		once.Do(func() { spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.resource().Get(t)) })
+		once.Do(func() { spechelper.TryCleanup(t, c.MakeContext(), subject) })
 	})
 
 	s.Context("implements basic commit protocol contract",
-		comprotocontracts.OnePhaseCommitProtocol(func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
-			sub := c(tb)
-			return comprotocontracts.OnePhaseCommitProtocolSubject{
-				CommitManager: sub.CommitManager,
-				MakeContext:   sub.MakeContext,
-			}
+		comprotocontracts.OnePhaseCommitProtocol(manager, &comprotocontracts.Config{
+			MakeContext: c.MakeContext,
 		}).Spec)
 
 	s.Describe(`OnePhaseCommitProtocol`, func(s *testcase.Spec) {
-		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
-			t.Must.Nil(err)
-			ptr := pointer.Of(c.subject().Get(t).MakeEntity())
-			Create[Entity, ID](t, c.resource().Get(t), tx, ptr)
-			id := HasID[Entity, ID](t, pointer.Deref(ptr))
 
-			t.Must.Nil(c.manager().Get(t).CommitTx(tx))
+		s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
+			tx, err := manager.BeginTx(c.MakeContext())
+			t.Must.Nil(err)
+			ptr := pointer.Of(c.MakeEntity(t))
+			crudtest.Create[Entity, ID](t, subject, tx, ptr)
+			id := crudtest.HasID[Entity, ID](t, pointer.Deref(ptr))
+
+			t.Must.Nil(manager.CommitTx(tx))
+			t.Defer(subject.DeleteByID, c.MakeContext(), id) // cleanup
 
 			t.Log(`using the tx context after commit should yield error`)
-			_, _, err = c.resource().Get(t).FindByID(tx, id)
+			_, _, err = subject.FindByID(tx, id)
 			t.Must.NotNil(err)
-			t.Must.NotNil(c.resource().Get(t).Create(tx, pointer.Of(c.subject().Get(t).MakeEntity())))
+			t.Must.NotNil(subject.Create(tx, pointer.Of(c.MakeEntity(t))))
 
-			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity]); ok {
+			if allFinder, ok := subject.(crud.AllFinder[Entity]); ok {
 				t.Must.NotNil(allFinder.FindAll(tx).Err())
 			}
 
-			if updater, ok := c.resource().Get(t).(crud.Updater[Entity]); ok {
+			if updater, ok := subject.(crud.Updater[Entity]); ok {
 				t.Must.NotNil(updater.Update(tx, ptr),
 					assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
-						c.resource().Get(t))))
+						subject)))
 			}
 
-			t.Must.NotNil(c.resource().Get(t).DeleteByID(tx, id))
-			if allDeleter, ok := c.resource().Get(t).(crud.AllDeleter); ok {
+			t.Must.NotNil(subject.DeleteByID(tx, id))
+			if allDeleter, ok := subject.(crud.AllDeleter); ok {
 				t.Must.NotNil(allDeleter.DeleteAll(tx))
 			}
 
-			Waiter.Wait()
+			crudtest.Waiter.Wait()
 		})
 
 		s.Test(`BeginTx+RollbackTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
-			ctx := c.subject().Get(t).MakeContext()
-			ctx, err := c.manager().Get(t).BeginTx(ctx)
+			ctx := c.MakeContext()
+			ctx, err := manager.BeginTx(ctx)
 			t.Must.Nil(err)
-			ptr := pointer.Of(c.subject().Get(t).MakeEntity())
-			t.Must.NoError(c.resource().Get(t).Create(ctx, ptr))
+			ptr := pointer.Of(c.MakeEntity(t))
+			t.Must.NoError(subject.Create(ctx, ptr))
 			id, _ := extid.Lookup[ID](ptr)
-			t.Must.NoError(c.manager().Get(t).RollbackTx(ctx))
+			t.Must.NoError(manager.RollbackTx(ctx))
 
-			_, _, err = c.resource().Get(t).FindByID(ctx, id)
+			_, _, err = subject.FindByID(ctx, id)
 			t.Must.NotNil(err)
 
-			if allFinder, ok := c.resource().Get(t).(crud.AllFinder[Entity]); ok {
+			if allFinder, ok := subject.(crud.AllFinder[Entity]); ok {
 				t.Must.NotNil(allFinder.FindAll(ctx).Err())
 			}
 
-			t.Must.NotNil(c.resource().Get(t).Create(ctx, pointer.Of(c.subject().Get(t).MakeEntity())))
+			t.Must.NotNil(subject.Create(ctx, pointer.Of(c.MakeEntity(t))))
 
-			if updater, ok := c.resource().Get(t).(crud.Updater[Entity]); ok {
+			if updater, ok := subject.(crud.Updater[Entity]); ok {
 				t.Must.NotNil(updater.Update(ctx, ptr),
 					assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
-						c.resource().Get(t))))
+						subject)))
 			}
 
-			t.Must.NotNil(c.resource().Get(t).DeleteByID(ctx, id))
+			t.Must.NotNil(subject.DeleteByID(ctx, id))
 
-			if allDeleter, ok := c.resource().Get(t).(crud.AllDeleter); ok {
+			if allDeleter, ok := subject.(crud.AllDeleter); ok {
 				t.Must.NotNil(allDeleter.DeleteAll(ctx))
 			}
 		})
 
 		s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := manager.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
 
-			entity := pointer.Of(c.subject().Get(t).MakeEntity())
-			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
-			id := HasID[Entity, ID](t, pointer.Deref(entity))
+			entity := pointer.Of(c.MakeEntity(t))
+			crudtest.Create[Entity, ID](t, subject, tx, entity)
+			id := crudtest.HasID[Entity, ID](t, pointer.Deref(entity))
+			t.Defer(subject.DeleteByID, c.MakeContext(), id) // cleanup
 
-			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)                              // can be found in tx Context
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id) // is absent from the global Context
+			crudtest.IsPresent[Entity, ID](t, subject, tx, id)             // can be found in tx Context
+			crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), id) // is absent from the global Context
 
-			t.Must.Nil(c.manager().Get(t).CommitTx(tx)) // after the commit
+			t.Must.Nil(manager.CommitTx(tx)) // after the commit
 
-			actually := IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			actually := crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), id)
 			t.Must.Equal(entity, actually)
 		})
 
 		s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
-			tx, err := c.manager().Get(t).BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := manager.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			entity := pointer.Of(c.subject().Get(t).MakeEntity())
-			//t.Must.Nil( Spec.resource().Get(t).Create(tx, entity))
-			Create[Entity, ID](t, c.resource().Get(t), tx, entity)
+			entity := pointer.Of(c.MakeEntity(t))
+			//t.Must.Nil( Spesubject.Create(tx, entity))
+			crudtest.Create[Entity, ID](t, subject, tx, entity)
 
-			id := HasID[Entity, ID](t, pointer.Deref(entity))
-			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			id := crudtest.HasID[Entity, ID](t, pointer.Deref(entity))
+			crudtest.IsPresent[Entity, ID](t, subject, tx, id)
+			crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), id)
 
-			t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
+			t.Must.Nil(manager.RollbackTx(tx))
 
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), id)
 		})
 
 		s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
-			ctx := c.subject().Get(t).MakeContext()
-			entity := pointer.Of(c.subject().Get(t).MakeEntity())
+			ctx := c.MakeContext()
+			entity := pointer.Of(c.MakeEntity(t))
 
-			Create[Entity, ID](t, c.resource().Get(t), ctx, entity)
-			id := HasID[Entity, ID](t, pointer.Deref(entity))
-			t.Defer(c.resource().Get(t).DeleteByID, ctx, id)
+			crudtest.Create[Entity, ID](t, subject, ctx, entity)
+			id := crudtest.HasID[Entity, ID](t, pointer.Deref(entity))
+			t.Defer(subject.DeleteByID, ctx, id)
 
-			tx, err := c.manager().Get(t).BeginTx(ctx)
+			tx, err := manager.BeginTx(ctx)
 			t.Must.Nil(err)
 
-			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)
-			t.Must.Nil(c.resource().Get(t).DeleteByID(tx, id))
-			IsAbsent[Entity, ID](t, c.resource().Get(t), tx, id)
+			crudtest.IsPresent[Entity, ID](t, subject, tx, id)
+			t.Must.Nil(subject.DeleteByID(tx, id))
+			crudtest.IsAbsent[Entity, ID](t, subject, tx, id)
 
 			// in global Context it is findable
-			IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), id)
 
-			t.Must.Nil(c.manager().Get(t).CommitTx(tx))
-			IsAbsent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			t.Must.Nil(manager.CommitTx(tx))
+			crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), id)
 		})
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
-			ctx := c.subject().Get(t).MakeContext()
-			entity := pointer.Of(c.subject().Get(t).MakeEntity())
-			Create[Entity, ID](t, c.resource().Get(t), ctx, entity)
-			id := HasID[Entity, ID](t, pointer.Deref(entity))
+			ctx := c.MakeContext()
+			entity := pointer.Of(c.MakeEntity(t))
+			crudtest.Create[Entity, ID](t, subject, ctx, entity)
+			id := crudtest.HasID[Entity, ID](t, pointer.Deref(entity))
 
-			tx, err := c.manager().Get(t).BeginTx(ctx)
+			tx, err := manager.BeginTx(ctx)
 			t.Must.Nil(err)
-			IsPresent[Entity, ID](t, c.resource().Get(t), tx, id)
-			t.Must.Nil(c.resource().Get(t).DeleteByID(tx, id))
-			IsAbsent[Entity, ID](t, c.resource().Get(t), tx, id)
-			IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
-			t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
-			IsPresent[Entity, ID](t, c.resource().Get(t), c.subject().Get(t).MakeContext(), id)
+			crudtest.IsPresent[Entity, ID](t, subject, tx, id)
+			t.Must.Nil(subject.DeleteByID(tx, id))
+			crudtest.IsAbsent[Entity, ID](t, subject, tx, id)
+			crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), id)
+			t.Must.Nil(manager.RollbackTx(tx))
+			crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), id)
 		})
 
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
-			ctx := c.subject().Get(t).MakeContext()
-			ctx, err := c.manager().Get(t).BeginTx(ctx)
+			ctx := c.MakeContext()
+			ctx, err := manager.BeginTx(ctx)
 			t.Must.Nil(err)
-			t.Must.Nil(c.manager().Get(t).CommitTx(ctx))
-			t.Must.NotNil(c.manager().Get(t).CommitTx(ctx))
+			t.Must.Nil(manager.CommitTx(ctx))
+			t.Must.NotNil(manager.CommitTx(ctx))
 		})
 
 		s.Test(`RollbackTx multiple times will yield error`, func(t *testcase.T) {
-			ctx := c.subject().Get(t).MakeContext()
-			ctx, err := c.manager().Get(t).BeginTx(ctx)
+			ctx := c.MakeContext()
+			ctx, err := manager.BeginTx(ctx)
 			t.Must.Nil(err)
-			t.Must.Nil(c.manager().Get(t).RollbackTx(ctx))
-			t.Must.NotNil(c.manager().Get(t).RollbackTx(ctx))
+			t.Must.Nil(manager.RollbackTx(ctx))
+			t.Must.NotNil(manager.RollbackTx(ctx))
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure emulate multi level transaction`, func(t *testcase.T) {
@@ -248,84 +202,87 @@ func (c OnePhaseCommitProtocol[Entity, ID]) Spec(s *testcase.Spec) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			t.Defer(DeleteAll[Entity, ID], t, c.resource().Get(t), c.subject().Get(t).MakeContext())
+			t.Defer(crudtest.DeleteAll[Entity, ID], t, subject, c.MakeContext())
 
-			var globalContext = c.subject().Get(t).MakeContext()
+			var globalContext = c.MakeContext()
 
-			tx1, err := c.manager().Get(t).BeginTx(globalContext)
+			tx1, err := manager.BeginTx(globalContext)
 			t.Must.Nil(err)
 			t.Log(`given tx1 is began`)
 
-			e1 := pointer.Of(c.subject().Get(t).MakeEntity())
-			t.Must.Nil(c.resource().Get(t).Create(tx1, e1))
-			IsPresent[Entity, ID](t, c.resource().Get(t), tx1, HasID[Entity, ID](t, pointer.Deref(e1)))
-			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
+			e1 := pointer.Of(c.MakeEntity(t))
+			t.Must.Nil(subject.Create(tx1, e1))
+			crudtest.IsPresent[Entity, ID](t, subject, tx1, crudtest.HasID[Entity, ID](t, pointer.Deref(e1)))
+			crudtest.IsAbsent[Entity, ID](t, subject, globalContext, crudtest.HasID[Entity, ID](t, pointer.Deref(e1)))
 			t.Logf("and e1 is created in tx1: %#v", e1)
 
-			tx2InTx1, err := c.manager().Get(t).BeginTx(tx1)
+			tx2InTx1, err := manager.BeginTx(tx1)
 			t.Must.Nil(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
-			e2 := pointer.Of(c.subject().Get(t).MakeEntity())
-			t.Must.Nil(c.resource().Get(t).Create(tx2InTx1, e2))
-			IsPresent[Entity, ID](t, c.resource().Get(t), tx2InTx1, HasID[Entity, ID](t, pointer.Deref(e2)))     // tx2 can see e2
-			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2))) // global don't see e2
+			e2 := pointer.Of(c.MakeEntity(t))
+			t.Must.Nil(subject.Create(tx2InTx1, e2))
+			crudtest.IsPresent[Entity, ID](t, subject, tx2InTx1, crudtest.HasID[Entity, ID](t, pointer.Deref(e2)))     // tx2 can see e2
+			crudtest.IsAbsent[Entity, ID](t, subject, globalContext, crudtest.HasID[Entity, ID](t, pointer.Deref(e2))) // global don't see e2
 			t.Logf(`and e2 is created in tx2 %#v`, e2)
 
 			t.Log(`before commit, entities should be absent from the resource`)
-			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
-			IsAbsent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2)))
+			crudtest.IsAbsent[Entity, ID](t, subject, globalContext, crudtest.HasID[Entity, ID](t, pointer.Deref(e1)))
+			crudtest.IsAbsent[Entity, ID](t, subject, globalContext, crudtest.HasID[Entity, ID](t, pointer.Deref(e2)))
 
-			t.Must.Nil(c.manager().Get(t).CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
-			t.Must.Nil(c.manager().Get(t).CommitTx(tx1), `"outer" comproto should be considered done`)
+			t.Must.Nil(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
+			t.Must.Nil(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			IsPresent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e1)))
-			IsPresent[Entity, ID](t, c.resource().Get(t), globalContext, HasID[Entity, ID](t, pointer.Deref(e2)))
+			crudtest.IsPresent[Entity, ID](t, subject, globalContext, crudtest.HasID[Entity, ID](t, pointer.Deref(e1)))
+			crudtest.IsPresent[Entity, ID](t, subject, globalContext, crudtest.HasID[Entity, ID](t, pointer.Deref(e2)))
 		})
 
-		s.Describe(`.Purger`, c.specPurger)
+		if subject, ok := any(subject).(subjectSpecOPCPPurger[Entity, ID]); ok {
+			s.Describe(`.Purger`, func(s *testcase.Spec) {
+				specOPCPPurger[Entity, ID](s, subject, manager, opts...)
+			})
+		}
 	})
+
+	return s.AsSuite("OnePhaseCommitProtocol")
 }
 
-func (c OnePhaseCommitProtocol[Entity, ID]) specPurger(s *testcase.Spec) {
-	purger := func(t *testcase.T) purgerSubjectResource[Entity, ID] {
-		p, ok := c.resource().Get(t).(purgerSubjectResource[Entity, ID])
-		if !ok {
-			t.Skipf(`%T doesn't supply contract.PurgerSubject`, c.resource().Get(t))
-		}
-		return p
-	}
+type subjectSpecOPCPPurger[Entity, ID any] interface {
+	crd[Entity, ID]
+	purgerSubjectResource[Entity, ID]
+}
 
-	s.Before(func(t *testcase.T) { purger(t) }) // guard clause
+func specOPCPPurger[Entity, ID any](s *testcase.Spec, subject subjectSpecOPCPPurger[Entity, ID], manager comproto.OnePhaseCommitProtocol, opts ...Option[Entity, ID]) {
+	c := option.Use[Config[Entity, ID]](opts)
 
 	s.Test(`entity created prior to transaction won't be affected by a purge after a rollback`, func(t *testcase.T) {
-		ptr := pointer.Of(c.subject().Get(t).MakeEntity())
-		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
+		ptr := pointer.Of(c.MakeEntity(t))
+		crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ptr)
 
-		tx, err := c.manager().Get(t).BeginTx(spechelper.ContextVar.Get(t))
+		tx, err := manager.BeginTx(c.MakeContext())
 		t.Must.Nil(err)
 
-		t.Must.Nil(purger(t).Purge(tx))
-		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
-		IsPresent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		t.Must.Nil(subject.Purge(tx))
+		crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), crudtest.HasID[Entity, ID](t, pointer.Deref(ptr)))
+		crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), crudtest.HasID[Entity, ID](t, pointer.Deref(ptr)))
 
-		t.Must.Nil(c.manager().Get(t).RollbackTx(tx))
-		IsPresent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		t.Must.Nil(manager.RollbackTx(tx))
+		crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), crudtest.HasID[Entity, ID](t, pointer.Deref(ptr)))
 	})
 
 	s.Test(`entity created prior to transaction will be removed by a purge after the commit`, func(t *testcase.T) {
-		ptr := pointer.Of(c.subject().Get(t).MakeEntity())
-		Create[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), ptr)
+		ptr := pointer.Of(c.MakeEntity(t))
+		crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ptr)
 
-		tx, err := c.manager().Get(t).BeginTx(spechelper.ContextVar.Get(t))
+		tx, err := manager.BeginTx(c.MakeContext())
 		t.Must.Nil(err)
 
-		t.Must.Nil(purger(t).Purge(tx))
-		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
-		IsPresent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		t.Must.Nil(subject.Purge(tx))
+		crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), crudtest.HasID[Entity, ID](t, pointer.Deref(ptr)))
+		crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), crudtest.HasID[Entity, ID](t, pointer.Deref(ptr)))
 
-		t.Must.Nil(c.manager().Get(t).CommitTx(tx))
-		IsAbsent[Entity, ID](t, c.resource().Get(t), spechelper.ContextVar.Get(t), HasID[Entity, ID](t, pointer.Deref(ptr)))
+		t.Must.Nil(manager.CommitTx(tx))
+		crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), crudtest.HasID[Entity, ID](t, pointer.Deref(ptr)))
 	})
 }

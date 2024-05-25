@@ -3,14 +3,15 @@ package memory
 import (
 	"context"
 	"fmt"
+	"sort"
+	"sync/atomic"
+	"time"
+
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/random"
-	"sort"
-	"sync/atomic"
-	"time"
 )
 
 type Queue[Data any] struct {

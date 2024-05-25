@@ -3,13 +3,14 @@ package serializers_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/serializers"
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"io"
-	"testing"
 )
 
 var rnd = random.New(random.CryptoSeed{})

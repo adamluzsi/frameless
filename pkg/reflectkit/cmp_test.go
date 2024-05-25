@@ -1,9 +1,10 @@
 package reflectkit_test
 
 import (
+	"testing"
+
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/testcase/random"
-	"testing"
 )
 
 func ExampleEqual() {

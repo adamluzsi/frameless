@@ -1,4 +1,4 @@
-package memory_test
+package pubsubcontracts_test
 
 import (
 	"sort"
@@ -11,11 +11,6 @@ import (
 
 	. "go.llib.dev/frameless/spechelper/testent"
 )
-
-var _ interface {
-	pubsub.Publisher[Foo]
-	pubsub.Subscriber[Foo]
-} = &memory.Queue[Foo]{}
 
 func TestFIFO(t *testing.T) {
 	pubsubConfig := pubsubcontracts.Config[TestEntity]{
@@ -157,4 +152,22 @@ func TestFanOutExchange(t *testing.T) {
 	)
 }
 
-var _ pubsub.Publisher[Foo] = &memory.FanOutExchange[Foo]{}
+// Entity is an example entity that can be used for testing
+type TestEntity struct {
+	ID   string `ext:"id"`
+	Data string
+	List []string
+}
+
+func makeTestEntity(tb testing.TB) TestEntity {
+	t := tb.(*testcase.T)
+	var list []string
+	n := t.Random.IntBetween(1, 3)
+	for i := 0; i < n; i++ {
+		list = append(list, t.Random.String())
+	}
+	return TestEntity{
+		Data: t.Random.String(),
+		List: list,
+	}
+}

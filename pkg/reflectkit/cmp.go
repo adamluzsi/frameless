@@ -1,11 +1,12 @@
 package reflectkit
 
 import (
-	"go.llib.dev/frameless/pkg/reflectkit/internal"
 	"math/big"
 	"net"
 	"reflect"
 	"time"
+
+	"go.llib.dev/frameless/pkg/reflectkit/internal"
 )
 
 // Equal will compare two value deeply.

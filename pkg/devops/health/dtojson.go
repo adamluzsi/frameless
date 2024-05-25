@@ -3,11 +3,12 @@ package health
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"go.llib.dev/frameless/internal/consttypes"
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/clock"
-	"time"
 )
 
 type ReportJSONDTO struct {

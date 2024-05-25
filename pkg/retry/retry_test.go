@@ -2,15 +2,16 @@ package retry_test
 
 import (
 	"context"
+	"math"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
-	"math"
-	"testing"
-	"time"
 )
 
 var _ retry.Strategy[int] = &retry.ExponentialBackoff{}

@@ -2,19 +2,17 @@ package spechelper
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/testcase"
 )
-
-func MakeContext(tb testing.TB) context.Context {
-	return context.Background()
-}
 
 // CRD is the minimum requirements to write easily behavioral specification for a resource.
 type CRD[Entity, ID any] interface {
@@ -47,49 +45,16 @@ func TryCleanup(tb testing.TB, ctx context.Context, resource any) bool {
 	return false
 }
 
-type eventSubscriber[Entity, ID any] struct {
-	TB         testing.TB
-	ReturnErr  error
-	ContextErr error
-	Filter     func(event interface{}) bool
-
-	events []interface{}
-	errors []error
-	mutex  sync.Mutex
-}
-
-func (s *eventSubscriber[Entity, ID]) Events() []interface{} {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.events
-}
-
-func filterEventSubscriberEvents[Entity, ID, T any](s *eventSubscriber[Entity, ID]) []T {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	var out []T
-	for _, e := range s.events {
-		v, ok := e.(T)
-		if !ok {
-			continue
-		}
-		out = append(out, v)
+func MakeValue[T any](tb testing.TB) T {
+	var rnd = random.New(random.CryptoSeed{})
+	if t, ok := tb.(*testcase.T); ok {
+		rnd = t.Random
 	}
-	return out
+	return rnd.Make(reflectkit.TypeOf[T]()).(T)
 }
 
-func (s *eventSubscriber[Entity, ID]) verifyContext(ctx context.Context) {
-	if s.ContextErr == nil {
-		return
-	}
-	assert.Must(s.TB).NotNil(ctx)
-	assert.Must(s.TB).Equal(s.ContextErr, ctx.Err())
-}
-
-var ContextVar = testcase.Var[context.Context]{
-	ID: "context.Context",
-	Init: func(t *testcase.T) context.Context {
-		return context.Background()
-	},
+func MakeEntity[Entity, ID any](tb testing.TB) Entity {
+	v := MakeValue[Entity](tb)
+	assert.NoError(tb, extid.Set[ID](&v, *new(ID)))
+	return v
 }

@@ -1,8 +1,9 @@
 package internal
 
 import (
-	"go.llib.dev/frameless/pkg/teardown"
 	"reflect"
+
+	"go.llib.dev/frameless/pkg/teardown"
 )
 
 func Equal(v1, v2 any) bool {
@@ -188,7 +189,7 @@ func tryEqualityMethods(v1, v2 reflect.Value) (isEqual, ok bool) {
 		return eq, ok
 	}
 	if eq, ok := tryComparableEqual(v1, v2); ok {
-		return eq,  ok
+		return eq, ok
 	}
 	return false, false
 }

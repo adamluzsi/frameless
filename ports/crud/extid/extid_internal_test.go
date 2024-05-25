@@ -1,10 +1,11 @@
 package extid
 
 import (
-	"go.llib.dev/frameless/ports/crud/extid/internal/testhelper"
-	"go.llib.dev/testcase/assert"
 	"reflect"
 	"testing"
+
+	"go.llib.dev/frameless/ports/crud/extid/internal/testhelper"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestLookupStructField(t *testing.T) {

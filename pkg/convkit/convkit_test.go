@@ -3,15 +3,16 @@ package convkit_test
 import (
 	"encoding/json"
 	"fmt"
-	"go.llib.dev/frameless/pkg/convkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/random"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/pkg/convkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 var rnd = random.New(random.CryptoSeed{})

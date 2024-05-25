@@ -3,14 +3,15 @@ package restapi
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/mapkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/serializers"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/serializers"
 )
 
 type ResourceSerialization[Entity, ID any] struct {

@@ -3,10 +3,11 @@ package iterators_test
 import (
 	"bufio"
 	"fmt"
-	"go.llib.dev/testcase/pp"
 	"io"
 	"strings"
 	"testing"
+
+	"go.llib.dev/testcase/pp"
 
 	"go.llib.dev/frameless/ports/iterators"
 

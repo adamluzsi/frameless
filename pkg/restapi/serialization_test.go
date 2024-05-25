@@ -2,10 +2,11 @@ package restapi_test
 
 import (
 	"fmt"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/let"
-	"testing"
 )
 
 func TestIDConverter(t *testing.T) {

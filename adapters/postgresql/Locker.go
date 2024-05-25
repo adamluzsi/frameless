@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+
 	"go.llib.dev/frameless/ports/guard"
 )
 
@@ -78,8 +79,6 @@ type (
 		ctx    context.Context
 	}
 )
-
-
 
 var lockerMigrationConfig = MigratorGroup{
 	ID: "frameless_locker_locks",

@@ -4,6 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -16,11 +22,6 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/httpspec"
 	"go.llib.dev/testcase/random"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"strings"
-	"testing"
 )
 
 var rnd = random.New(random.CryptoSeed{})

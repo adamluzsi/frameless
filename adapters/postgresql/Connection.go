@@ -6,15 +6,16 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
+	"reflect"
+	"sync"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/ports/comproto"
-	"io"
-	"reflect"
-	"sync"
 )
 
 // Connection represent an open connection.

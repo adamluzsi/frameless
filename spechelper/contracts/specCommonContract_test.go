@@ -1,10 +1,10 @@
 package contracts_test
 
 import (
-	"context"
 	"fmt"
 	"testing"
 
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/spechelper/resource"
 
 	"go.llib.dev/frameless/adapters/memory"
@@ -19,18 +19,12 @@ func TestContracts(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resource.Contract[Entity, string](func(tb testing.TB) resource.ContractSubject[Entity, string] {
-		eventLog := memory.NewEventLog()
-		repository := memory.NewEventLogRepository[Entity, string](eventLog)
-		return resource.ContractSubject[Entity, string]{
-			Resource:      repository,
-			MetaAccessor:  eventLog,
-			CommitManager: eventLog,
-			MakeContext:   context.Background,
-			MakeEntity: func() Entity {
-				return Entity{Data: testcase.ToT(&tb).Random.String()}
-			},
-		}
+	eventLog := memory.NewEventLog()
+	repository := memory.NewEventLogRepository[Entity, string](eventLog)
+
+	testcase.RunSuite(t, resource.Contract[Entity, string](repository, resource.Config[Entity, string]{
+		MetaAccessor:  eventLog,
+		CommitManager: eventLog,
 	}))
 }
 
@@ -52,25 +46,27 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 		return t
 	}
 
-	resource.Contract[Entity, string](func(tb testing.TB) resource.ContractSubject[Entity, string] {
-		t := mustBeTCT(tb)
-		t.Must.Equal(42, vGet(t))
-		t.Must.Equal(42, varWithNoInit.Get(t))
-		el := memory.NewEventLog()
-		stg := memory.NewEventLogRepository[Entity, string](el)
-		return resource.ContractSubject[Entity, string]{
-			MetaAccessor:  el,
-			CommitManager: el,
-			Resource:      stg,
+	el := memory.NewEventLog()
+	stg := memory.NewEventLogRepository[Entity, string](el)
 
-			MakeContext: context.Background,
-			MakeEntity: func() Entity {
-				return Entity{
-					X: t.Random.String(),
-					Y: t.Random.String(),
-					Z: t.Random.String(),
-				}
+	resource.Contract[Entity, string](stg, resource.Config[Entity, string]{
+		CRUD: crudcontracts.Config[Entity, string]{
+			MakeEntity: func(tb testing.TB) Entity {
+				t := mustBeTCT(tb)
+				t.Must.Equal(42, vGet(t))
+				t.Must.Equal(42, varWithNoInit.Get(t))
+				ent := t.Random.Make(Entity{}).(Entity)
+				ent.ID = ""
+				return ent
 			},
-		}
+			ChangeEntity: func(tb testing.TB, e *Entity) {
+				t := mustBeTCT(tb)
+				t.Must.Equal(42, vGet(t))
+				t.Must.Equal(42, varWithNoInit.Get(t))
+				ogID := e.ID
+				*e = t.Random.Make(Entity{}).(Entity)
+				e.ID = ogID
+			},
+		},
 	}).Spec(s)
 }

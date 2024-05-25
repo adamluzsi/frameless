@@ -4,6 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
+	"time"
+
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -13,11 +19,6 @@ import (
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
-	"net/http"
-	"net/url"
-	"regexp"
-	"strings"
-	"time"
 )
 
 type Client[Entity, ID any] struct {

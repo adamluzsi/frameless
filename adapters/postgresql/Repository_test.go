@@ -35,16 +35,15 @@ func TestRepository(t *testing.T) {
 
 	MigrateEntity(t, cm)
 
+	config := crudcontracts.Config[Entity]{
+		MakeContext:     context.Background,
+		MakeEntity:      MakeEntityFunc(t),
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+	}
+
 	testcase.RunSuite(t,
-		crudcontracts.Creator[Entity, string](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, string] {
-			return crudcontracts.CreatorSubject[Entity, string]{
-				Resource:        subject,
-				MakeContext:     context.Background,
-				MakeEntity:      MakeEntityFunc(tb),
-				SupportIDReuse:  true,
-				SupportRecreate: true,
-			}
-		}),
+		crudcontracts.Creator[Entity, string](subject, config),
 		crudcontracts.Finder[Entity, string](func(tb testing.TB) crudcontracts.FinderSubject[Entity, string] {
 			return crudcontracts.FinderSubject[Entity, string]{
 				Resource:    subject,

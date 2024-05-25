@@ -2,9 +2,11 @@ package memory_test
 
 import (
 	"context"
-	"go.llib.dev/frameless/spechelper/resource"
 	"testing"
 
+	"go.llib.dev/frameless/spechelper/resource"
+
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	. "go.llib.dev/frameless/ports/crud/crudtest"
 
 	"go.llib.dev/frameless/adapters/memory"
@@ -20,16 +22,14 @@ var (
 )
 
 func TestRepository(t *testing.T) {
-	testcase.RunSuite(t, resource.Contract[TestEntity, string](func(tb testing.TB) resource.ContractSubject[TestEntity, string] {
-		m := memory.NewMemory()
-		s := memory.NewRepository[TestEntity, string](m)
-		return resource.ContractSubject[TestEntity, string]{
-			Resource:      s,
-			MetaAccessor:  m,
-			CommitManager: m,
-			MakeContext:   func() context.Context { return makeContext(tb) },
-			MakeEntity:    func() TestEntity { return makeTestEntity(tb) },
-		}
+	m := memory.NewMemory()
+	repo := memory.NewRepository[TestEntity, string](m)
+	testcase.RunSuite(t, resource.Contract[TestEntity, string](repo, resource.Config[TestEntity, string]{
+		MetaAccessor:  m,
+		CommitManager: m,
+		CRUD: crudcontracts.Config[TestEntity, string]{
+			MakeEntity: makeTestEntity,
+		},
 	}))
 }
 

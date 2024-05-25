@@ -2,9 +2,10 @@ package testcheck
 
 import (
 	"flag"
-	"go.llib.dev/testcase/assert"
 	"os"
 	"testing"
+
+	"go.llib.dev/testcase/assert"
 )
 
 func TestIsDuringTestRun(t *testing.T) {

@@ -3,15 +3,16 @@ package convkit
 import (
 	"encoding/json"
 	"fmt"
-	"go.llib.dev/frameless/pkg/pointer"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/zerokit"
 	"net/url"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"go.llib.dev/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {

@@ -2,8 +2,9 @@ package iterators_test
 
 import (
 	"errors"
-	"go.llib.dev/testcase/pp"
 	"testing"
+
+	"go.llib.dev/testcase/pp"
 
 	"go.llib.dev/frameless/ports/iterators"
 

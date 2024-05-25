@@ -2,11 +2,12 @@ package testent
 
 import (
 	"context"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase"
-	"testing"
 )
 
 type Foo struct {

@@ -2,13 +2,14 @@ package serializers
 
 import (
 	"fmt"
+	"net/url"
+	"reflect"
+	"strings"
+
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/stringcase"
-	"net/url"
-	"reflect"
-	"strings"
 )
 
 type FormURLEncoder struct{}

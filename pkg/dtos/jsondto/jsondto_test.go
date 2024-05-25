@@ -3,11 +3,12 @@ package jsondto_test
 import (
 	"encoding/json"
 	"fmt"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/dtos/jsondto"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"testing"
 )
 
 var rnd = random.New(random.CryptoSeed{})

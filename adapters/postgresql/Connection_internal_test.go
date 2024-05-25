@@ -2,8 +2,9 @@ package postgresql
 
 import (
 	"context"
-	"go.llib.dev/testcase/assert"
 	"testing"
+
+	"go.llib.dev/testcase/assert"
 )
 
 func TestConnection_Connection_noPanic(t *testing.T) {

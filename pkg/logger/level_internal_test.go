@@ -2,10 +2,11 @@ package logger
 
 import (
 	"fmt"
+	"testing"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"testing"
 )
 
 func TestInitLoggingLevel(t *testing.T) {

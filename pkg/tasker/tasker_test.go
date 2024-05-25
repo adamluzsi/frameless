@@ -3,6 +3,15 @@ package tasker_test
 import (
 	"context"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/internal"
@@ -12,14 +21,6 @@ import (
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
-	"log"
-	"net/http"
-	"os"
-	"sync"
-	"sync/atomic"
-	"syscall"
-	"testing"
-	"time"
 )
 
 var rnd = random.New(random.CryptoSeed{})

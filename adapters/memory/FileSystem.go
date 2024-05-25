@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"go.llib.dev/frameless/ports/filesystem"
 	"io"
 	"io/fs"
 	"os"
@@ -9,6 +8,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"go.llib.dev/frameless/ports/filesystem"
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/ports/iterators"

@@ -2,57 +2,36 @@ package metacontracts
 
 import (
 	"context"
-	"go.llib.dev/testcase/let"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
+	"go.llib.dev/frameless/spechelper"
 
+	"go.llib.dev/frameless/ports/contract"
 	"go.llib.dev/frameless/ports/meta"
+	"go.llib.dev/frameless/ports/option"
 	"go.llib.dev/testcase"
 )
 
 // MetaAccessor
 // V is the value T type that can be set and looked up with frameless.MetaAccessor.
-type MetaAccessor[V any] func(testing.TB) MetaAccessorSubject[V]
-
-type MetaAccessorSubject[V any] struct {
-	MetaAccessor meta.MetaAccessor
-	MakeContext  func() context.Context
-	MakeV        func() V
-}
-
-func (c MetaAccessor[V]) metaAccessorSubject() testcase.Var[meta.MetaAccessor] {
-	return testcase.Var[meta.MetaAccessor]{ID: `MetaAccessorBasicSubject`}
-}
-
-func (c MetaAccessor[V]) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
-}
-
-func (c MetaAccessor[V]) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
-}
-
-func (c MetaAccessor[V]) Spec(s *testcase.Spec) {
-	subject := let.With[MetaAccessorSubject[V]](s, (func(testing.TB) MetaAccessorSubject[V])(c))
-
-	c.metaAccessorSubject().Let(s, func(t *testcase.T) meta.MetaAccessor {
-		return subject.Get(t).MetaAccessor
-	})
+func MetaAccessor[V any](subject meta.MetaAccessor, opts ...Option[V]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.Use[Config[V]](opts)
 
 	// SetMeta(ctx context.Context, key string, value interface{}) (context.Context, error)
 	// LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error)
 	s.Describe(`.SetMeta+.LookupMeta`, func(s *testcase.Spec) {
 		var (
-			ctx   = testcase.Let(s, func(t *testcase.T) context.Context { return subject.Get(t).MakeContext() })
+			ctx   = testcase.Let(s, func(t *testcase.T) context.Context { return c.MakeContext() })
 			key   = testcase.Let(s, func(t *testcase.T) string { return t.Random.String() })
-			value = testcase.Let(s, func(t *testcase.T) V { return subject.Get(t).MakeV() })
+			value = testcase.Let(s, func(t *testcase.T) V { return c.MakeV(t) })
 		)
 		setMeta := func(t *testcase.T) (context.Context, error) {
-			return c.metaAccessorSubject().Get(t).SetMeta(ctx.Get(t), key.Get(t), value.Get(t))
+			return subject.SetMeta(ctx.Get(t), key.Get(t), value.Get(t))
 		}
 		lookupMeta := func(t *testcase.T, ptr interface{} /*[V]*/) (bool, error) {
-			return c.metaAccessorSubject().Get(t).LookupMeta(ctx.Get(t), key.Get(t), ptr)
+			return subject.LookupMeta(ctx.Get(t), key.Get(t), ptr)
 		}
 
 		s.Test(`on an empty context the lookup will yield no result without an issue`, func(t *testcase.T) {
@@ -77,4 +56,24 @@ func (c MetaAccessor[V]) Spec(s *testcase.Spec) {
 			})
 		})
 	})
+
+	return s.AsSuite("MetaAccessor")
+}
+
+type Option[V any] interface {
+	option.Option[Config[V]]
+}
+
+type Config[V any] struct {
+	MakeV       func(tb testing.TB) V
+	MakeContext func() context.Context
+}
+
+func (c *Config[V]) Init() {
+	c.MakeV = spechelper.MakeValue[V]
+	c.MakeContext = context.Background
+}
+
+func (c Config[V]) Configure(t *Config[V]) {
+	option.Configure(c, t)
 }

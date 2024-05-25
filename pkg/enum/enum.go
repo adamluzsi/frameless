@@ -2,11 +2,12 @@ package enum
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+
+	"go.llib.dev/frameless/pkg/reflectkit"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )

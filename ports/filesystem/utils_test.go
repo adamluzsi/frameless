@@ -1,12 +1,13 @@
 package filesystem_test
 
 import (
-	"go.llib.dev/frameless/adapters/memory"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"go.llib.dev/frameless/adapters/memory"
 
 	"go.llib.dev/frameless/ports/filesystem"
 

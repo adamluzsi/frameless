@@ -44,6 +44,6 @@ func makeTestEntity(tb testing.TB) TestEntity {
 	}
 }
 
-func makeContext(tb testing.TB) context.Context {
+func makeContext() context.Context {
 	return context.Background()
 }

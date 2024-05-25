@@ -1,10 +1,11 @@
 package iterators_test
 
 import (
+	"testing"
+
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/iterators/ranges"
 	"go.llib.dev/testcase/assert"
-	"testing"
 )
 
 func TestMust(t *testing.T) {

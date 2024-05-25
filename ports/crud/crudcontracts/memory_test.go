@@ -1,97 +1,66 @@
 package crudcontracts_test
 
 import (
-	"context"
-	"fmt"
+	"testing"
+
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
+	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
-	"math/rand"
-	"testing"
-	"time"
+	"go.llib.dev/testcase/assert"
 )
 
 func Test_memoryRepository(t *testing.T) {
+	type ID string
 	type Entity struct {
-		ID   string `ext:"ID"`
+		ID   ID `ext:"ID"`
 		Data string
 	}
 
 	s := testcase.NewSpec(t)
 
-	type ID = string
+	m := memory.NewMemory()
+	subject := memory.NewRepository[Entity, ID](m)
 
-	var (
-		newSubject = func() *memory.Repository[Entity, ID] {
-			m := memory.NewMemory()
-			return memory.NewRepository[Entity, ID](m)
-		}
-		makeContext = func() context.Context {
-			return context.Background()
-		}
-		makeEntity = func(tb testing.TB) func() Entity {
-			return func() Entity {
-				return Entity{Data: tb.(*testcase.T).Random.String()}
-			}
-		}
-	)
+	config := crudcontracts.Config[Entity, ID]{
+		MakeEntity: func(tb testing.TB) Entity {
+			return Entity{Data: testcase.ToT(&tb).Random.String()}
+		},
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+	}
 
 	testcase.RunSuite(s,
-		crudcontracts.Creator[Entity, ID](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
-			return crudcontracts.CreatorSubject[Entity, ID]{
-				Resource:        newSubject(),
-				MakeContext:     makeContext,
-				MakeEntity:      makeEntity(tb),
-				SupportIDReuse:  true,
-				SupportRecreate: true,
-			}
-		}),
-		crudcontracts.Finder[Entity, ID](func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
-			return crudcontracts.FinderSubject[Entity, ID]{
-				Resource:    newSubject(),
-				MakeContext: makeContext,
-				MakeEntity:  makeEntity(tb),
-			}
-		}),
-		crudcontracts.Deleter[Entity, ID](func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
-			return crudcontracts.DeleterSubject[Entity, ID]{
-				Resource:    newSubject(),
-				MakeContext: makeContext,
-				MakeEntity:  makeEntity(tb),
-			}
-		}),
-		crudcontracts.Updater[Entity, ID](func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
-			return crudcontracts.UpdaterSubject[Entity, ID]{
-				Resource:    newSubject(),
-				MakeContext: makeContext,
-				MakeEntity:  makeEntity(tb),
-			}
-		}),
-		crudcontracts.Saver[Entity, ID](func(tb testing.TB) crudcontracts.SaverSubject[Entity, ID] {
-			return crudcontracts.SaverSubject[Entity, ID]{
-				Resource:    newSubject(),
-				MakeContext: makeContext,
-				MakeEntity:  makeEntity(tb),
-				MakeID: func() ID {
-					return fmt.Sprintf("%d-%d", rand.Int(), time.Now().UnixNano())
-				},
-			}
-		}),
-		crudcontracts.OnePhaseCommitProtocol[Entity, ID](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
-			sub := newSubject()
-			return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
-				Resource:      sub,
-				CommitManager: sub.Memory,
-				MakeContext:   makeContext,
-				MakeEntity:    makeEntity(tb),
-			}
-		}),
-		crudcontracts.ByIDsFinder[Entity, ID](func(tb testing.TB) crudcontracts.ByIDsFinderSubject[Entity, ID] {
-			return crudcontracts.ByIDsFinderSubject[Entity, ID]{
-				Resource:    newSubject(),
-				MakeContext: makeContext,
-				MakeEntity:  makeEntity(tb),
-			}
-		}),
+		crudcontracts.Creator[Entity, ID](subject, config),
+		crudcontracts.Finder[Entity, ID](subject, config),
+		crudcontracts.Deleter[Entity, ID](subject, config),
+		crudcontracts.Updater[Entity, ID](subject, config),
+		crudcontracts.OnePhaseCommitProtocol[Entity, ID](subject, m, config),
+		crudcontracts.ByIDsFinder[Entity, ID](subject, config),
 	)
+}
+
+func Test_cleanup(t *testing.T) {
+	m := memory.NewEventLog()
+	subject := memory.NewEventLogRepository[testent.Foo, testent.FooID](m)
+	subject.Options.CompressEventLog = true
+
+	crudConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+	}
+
+	testcase.RunSuite(t,
+		// crudcontracts.Creator[testent.Foo, testent.FooID](subject, crudConfig),
+		// crudcontracts.Finder[testent.Foo, testent.FooID](subject, crudConfig),
+		// crudcontracts.Updater[testent.Foo, testent.FooID](subject, crudConfig),
+		// crudcontracts.Deleter[testent.Foo, testent.FooID](subject, crudConfig),
+		crudcontracts.OnePhaseCommitProtocol[testent.Foo, testent.FooID](subject, subject.EventLog, crudConfig),
+	)
+
+	m.Compress()
+
+	assert.Must(t).Empty(m.Events(),
+		`after all the specs, the memory repository was expected to be empty.`+
+			` If the repository has values, it means something is not cleaning up properly in the specs.`)
 }

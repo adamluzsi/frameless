@@ -3,9 +3,10 @@ package memory
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/ports/comproto"
 	"reflect"
 	"sync"
+
+	"go.llib.dev/frameless/ports/comproto"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/ports/crud"

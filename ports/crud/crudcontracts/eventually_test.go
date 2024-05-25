@@ -3,7 +3,6 @@ package crudcontracts_test
 import (
 	"context"
 	"errors"
-	"go.llib.dev/frameless/ports/crud/extid"
 	"sync"
 	"testing"
 	"time"
@@ -23,28 +22,16 @@ func TestEventuallyConsistentResource(t *testing.T) {
 		Data string
 	}
 
-	testcase.RunSuite(t, resource.Contract[Entity, string](ContractSubjectFnEventuallyConsistentResource[Entity, string]))
-}
-
-func ContractSubjectFnEventuallyConsistentResource[Entity, ID any](tb testing.TB) resource.ContractSubject[Entity, ID] {
 	eventLog := memory.NewEventLog()
-	repo := &EventuallyConsistentResource[Entity, ID]{EventLogRepository: memory.NewEventLogRepository[Entity, ID](eventLog)}
+	repo := &EventuallyConsistentResource[Entity, string]{EventLogRepository: memory.NewEventLogRepository[Entity, string](eventLog)}
 	repo.jobs.queue = make(chan func(), 100)
 	repo.Spawn()
-	tb.Cleanup(func() { assert.Must(tb).Nil(repo.Close()) })
-	return resource.ContractSubject[Entity, ID]{
-		Resource:      repo,
+	t.Cleanup(func() { assert.Must(t).Nil(repo.Close()) })
+
+	testcase.RunSuite(t, resource.Contract[Entity, string](repo, resource.Config[Entity, string]{
 		MetaAccessor:  eventLog,
 		CommitManager: repo,
-		MakeContext: func() context.Context {
-			return context.Background()
-		},
-		MakeEntity: func() Entity {
-			v := tb.(*testcase.T).Random.Make(*new(Entity)).(Entity)
-			assert.NoError(tb, extid.Set[ID](&v, *new(ID)))
-			return v
-		},
-	}
+	}))
 }
 
 type EventuallyConsistentResource[Entity, ID any] struct {

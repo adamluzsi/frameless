@@ -2,11 +2,12 @@ package iokit
 
 import (
 	"bytes"
-	"go.llib.dev/frameless/pkg/units"
-	"go.llib.dev/frameless/pkg/zerokit"
 	"io"
 	"io/fs"
 	"sync"
+
+	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/pkg/zerokit"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )

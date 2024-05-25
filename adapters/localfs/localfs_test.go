@@ -2,14 +2,15 @@ package localfs_test
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/ports/filesystem"
-	"go.llib.dev/testcase/assert"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"go.llib.dev/frameless/ports/filesystem"
+	"go.llib.dev/testcase/assert"
 
 	filesystemcontracts "go.llib.dev/frameless/ports/filesystem/filesystemcontracts"
 
@@ -60,11 +61,7 @@ func ExampleFileSystem() {
 }
 
 func TestLocal_contractsFileSystem(t *testing.T) {
-	filesystemcontracts.FileSystem(func(tb testing.TB) filesystem.FileSystem {
-		return localfs.FileSystem{
-			RootPath: t.TempDir(),
-		}
-	}).Test(t)
+	filesystemcontracts.FileSystem(localfs.FileSystem{RootPath: t.TempDir()}).Test(t)
 }
 
 func TestFileSystem_smoke(t *testing.T) {

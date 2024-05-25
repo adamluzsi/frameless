@@ -22,8 +22,18 @@ type (
 	ctxValueLock struct {
 		done   bool
 		cancel func()
+		unlock func()
+
+		onUnlock sync.Once
 	}
 )
+
+func (l *ctxValueLock) Unlock() {
+	l.onUnlock.Do(func() {
+		l.done = true
+		l.cancel()
+	})
+}
 
 func (l *Locker) Lock(ctx context.Context) (context.Context, error) {
 	if ctx == nil {
@@ -43,7 +53,14 @@ tryLock:
 			}
 		}
 	}
+
+	var onUnlock sync.Once
+	var unlock = func() {
+		onUnlock.Do(func() { l.mutex.Unlock() })
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
+	context.AfterFunc(ctx, unlock)
 	return context.WithValue(ctx, ctxKeyLock{}, &ctxValueLock{cancel: cancel}), nil
 }
 
@@ -61,9 +78,7 @@ func (l *Locker) Unlock(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	lockState.done = true
-	lockState.cancel()
-	l.mutex.Unlock()
+	lockState.Unlock()
 	return nil
 }
 

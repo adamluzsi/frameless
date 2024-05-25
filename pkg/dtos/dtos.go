@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 	"sync"
+
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
 // Register function facilitates the registration of a mapping between two types.

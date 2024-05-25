@@ -2,8 +2,9 @@ package iterators_test
 
 import (
 	"errors"
-	"go.llib.dev/testcase/random"
 	"testing"
+
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/ports/iterators"
 

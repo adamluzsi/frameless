@@ -12,48 +12,44 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/ports/contract"
 	"go.llib.dev/frameless/ports/filesystem"
+	"go.llib.dev/frameless/ports/option"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
 
-type FileSystem func(testing.TB) filesystem.FileSystem
+func FileSystem(subject filesystem.FileSystem, opts ...Option) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.Use[Config](opts)
 
-func (c FileSystem) String() string {
-	return reflectkit.SymbolicName(c)
-}
-
-func (c FileSystem) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
-}
-
-func (c FileSystem) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
-}
-
-func (c FileSystem) Spec(s *testcase.Spec) {
-	s.Describe("#FileSystem", func(s *testcase.Spec) {
-		s.Describe(".OpenFile", c.specOpenFile)
-		s.Describe(".MkDir", c.specMkdir)
-		s.Describe(".Remove", c.specRemove)
-		s.Describe(".Stat", c.specStat)
-	})
-	s.Describe("#File", func(s *testcase.Spec) {
-		s.Describe(".ReadDir", c.specFile_ReadDir)
-		s.Describe(".Seek", c.specFile_Seek)
-	})
-}
-
-func (c FileSystem) fileSystem() testcase.Var[filesystem.FileSystem] {
-	return testcase.Var[filesystem.FileSystem]{
-		ID:   "frameless.Local",
-		Init: func(t *testcase.T) filesystem.FileSystem { return c(t) },
+	spec := specFileSystem{
+		FileSystem: subject,
+		Config:     c,
 	}
+
+	s.Describe("#FileSystem", func(s *testcase.Spec) {
+		s.Describe(".OpenFile", spec.specOpenFile)
+		s.Describe(".MkDir", spec.specMkdir)
+		s.Describe(".Remove", spec.specRemove)
+		s.Describe(".Stat", spec.specStat)
+	})
+
+	s.Describe("#File", func(s *testcase.Spec) {
+		s.Describe(".ReadDir", spec.specFile_ReadDir)
+		s.Describe(".Seek", spec.specFile_Seek)
+	})
+
+	return s.AsSuite("FileSystem")
 }
 
-func (c FileSystem) perm() testcase.Var[fs.FileMode] {
+type specFileSystem struct {
+	FileSystem filesystem.FileSystem
+	Config     Config
+}
+
+func (c specFileSystem) perm() testcase.Var[fs.FileMode] {
 	return testcase.Var[fs.FileMode]{
 		ID: "fs perm",
 		Init: func(t *testcase.T) fs.FileMode {
@@ -71,7 +67,7 @@ func (c FileSystem) perm() testcase.Var[fs.FileMode] {
 	}
 }
 
-func (c FileSystem) name() testcase.Var[string] {
+func (c specFileSystem) name() testcase.Var[string] {
 	return testcase.Var[string]{
 		ID: "file name",
 		Init: func(t *testcase.T) string {
@@ -80,10 +76,10 @@ func (c FileSystem) name() testcase.Var[string] {
 	}
 }
 
-func (c FileSystem) specOpenFile(s *testcase.Spec) {
+func (c specFileSystem) specOpenFile(s *testcase.Spec) {
 	var flag = testcase.Var[int]{ID: "file open flag"}
 	subject := func(t *testcase.T) (filesystem.File, error) {
-		file, err := c.fileSystem().Get(t).OpenFile(c.name().Get(t), flag.Get(t), c.perm().Get(t))
+		file, err := c.FileSystem.OpenFile(c.name().Get(t), flag.Get(t), c.perm().Get(t))
 		if err == nil {
 			t.Defer(file.Close)
 		}
@@ -95,7 +91,7 @@ func (c FileSystem) specOpenFile(s *testcase.Spec) {
 			flag.LetValue(s, os.O_RDONLY)
 
 			s.Before(func(t *testcase.T) {
-				_ = c.fileSystem().Get(t).Remove(c.name().Get(t))
+				_ = c.FileSystem.Remove(c.name().Get(t))
 			})
 
 			c.andForAbsentFileOpening(s, subject, flag)
@@ -108,6 +104,9 @@ func (c FileSystem) specOpenFile(s *testcase.Spec) {
 
 			s.And("flag also has O_CREATE", func(s *testcase.Spec) {
 				flag.LetValue(s, os.O_RDONLY|os.O_CREATE)
+				s.Before(func(t *testcase.T) {
+					t.Defer(c.FileSystem.Remove, c.name().Get(t))
+				})
 
 				s.Then("it creates an empty file", func(t *testcase.T) {
 					file, err := subject(t)
@@ -195,7 +194,7 @@ func (c FileSystem) specOpenFile(s *testcase.Spec) {
 	})
 }
 
-func (c FileSystem) andForTheExistingFileOpening(s *testcase.Spec, subject func(t *testcase.T) (filesystem.File, error),
+func (c specFileSystem) andForTheExistingFileOpening(s *testcase.Spec, subject func(t *testcase.T) (filesystem.File, error),
 	name testcase.Var[string],
 	flag testcase.Var[int],
 	content testcase.Var[string]) {
@@ -228,7 +227,7 @@ func (c FileSystem) andForTheExistingFileOpening(s *testcase.Spec, subject func(
 	})
 }
 
-func (c FileSystem) andForAbsentFileOpening(s *testcase.Spec, subject func(t *testcase.T) (filesystem.File, error), flag testcase.Var[int]) {
+func (c specFileSystem) andForAbsentFileOpening(s *testcase.Spec, subject func(t *testcase.T) (filesystem.File, error), flag testcase.Var[int]) {
 	thenFileCanBeCreated := func(s *testcase.Spec) {
 		s.Then("file opening succeeds with file is just created", func(t *testcase.T) {
 			_, err := subject(t)
@@ -249,6 +248,8 @@ func (c FileSystem) andForAbsentFileOpening(s *testcase.Spec, subject func(t *te
 	s.And("O_CREATE flag is also given", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			flag.Set(t, flag.Get(t)|os.O_CREATE)
+			// clean up newly created files
+			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
 		thenFileCanBeCreated(s)
@@ -263,7 +264,7 @@ func (c FileSystem) andForAbsentFileOpening(s *testcase.Spec, subject func(t *te
 	})
 }
 
-func (c FileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testcase.T) (filesystem.File, error),
+func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testcase.T) (filesystem.File, error),
 	flag testcase.Var[int],
 	initialContent testcase.Var[string],
 ) {
@@ -338,18 +339,18 @@ func (c FileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testcase.
 	})
 }
 
-func (c FileSystem) specMkdir(s *testcase.Spec) {
+func (c specFileSystem) specMkdir(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
-		err := c.fileSystem().Get(t).Mkdir(c.name().Get(t), c.perm().Get(t))
+		err := c.FileSystem.Mkdir(c.name().Get(t), c.perm().Get(t))
 		if err == nil {
-			t.Defer(c.fileSystem().Get(t).Remove, c.name().Get(t))
+			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		}
 		return err
 	}
 
 	s.When("when name points to a non-existing file path", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			_, err := c.fileSystem().Get(t).Stat(c.name().Get(t))
+			_, err := c.FileSystem.Stat(c.name().Get(t))
 			t.Must.True(os.IsNotExist(err))
 		})
 
@@ -372,13 +373,13 @@ func (c FileSystem) specMkdir(s *testcase.Spec) {
 			}
 
 			s.Then("FileSystem.Stat returns the directory details", func(t *testcase.T) {
-				info, err := c.fileSystem().Get(t).Stat(c.name().Get(t))
+				info, err := c.FileSystem.Stat(c.name().Get(t))
 				t.Must.Nil(err)
 				assertFileInfo(t, info)
 			})
 
 			s.Then("FileSystem.OpenFile returns the directory details", func(t *testcase.T) {
-				file, err := c.fileSystem().Get(t).OpenFile(c.name().Get(t), os.O_RDONLY, 0)
+				file, err := c.FileSystem.OpenFile(c.name().Get(t), os.O_RDONLY, 0)
 				t.Must.Nil(err)
 				t.Defer(file.Close)
 
@@ -411,8 +412,8 @@ func (c FileSystem) specMkdir(s *testcase.Spec) {
 
 	s.When("when name points to an existing directory", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(c.fileSystem().Get(t).Mkdir(c.name().Get(t), 0700))
-			t.Defer(c.fileSystem().Get(t).Remove, c.name().Get(t))
+			t.Must.Nil(c.FileSystem.Mkdir(c.name().Get(t), 0700))
+			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
 		s.Then("directory making fails", func(t *testcase.T) {
@@ -426,7 +427,7 @@ func (c FileSystem) specMkdir(s *testcase.Spec) {
 	})
 }
 
-func (c FileSystem) assertFileTime(t *testcase.T, cTime, modTime time.Time) {
+func (c specFileSystem) assertFileTime(t *testcase.T, cTime, modTime time.Time) {
 	// In certain file systems, the modification timestamp might have lower precision
 	// than our creation timestamp, offering only second-level accuracy.
 	const rounding = time.Second
@@ -435,14 +436,14 @@ func (c FileSystem) assertFileTime(t *testcase.T, cTime, modTime time.Time) {
 	t.Must.True(cTime.Before(modTime) || cTime.Equal(modTime))
 }
 
-func (c FileSystem) specRemove(s *testcase.Spec) {
+func (c specFileSystem) specRemove(s *testcase.Spec) {
 	subject := func(t *testcase.T) error {
-		return c.fileSystem().Get(t).Remove(c.name().Get(t))
+		return c.FileSystem.Remove(c.name().Get(t))
 	}
 
 	s.When("name points to nothing", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			_, err := c.fileSystem().Get(t).Stat(c.name().Get(t))
+			_, err := c.FileSystem.Stat(c.name().Get(t))
 			t.Must.True(os.IsNotExist(err))
 		})
 
@@ -464,20 +465,20 @@ func (c FileSystem) specRemove(s *testcase.Spec) {
 
 		s.Then("it will remove the file", func(t *testcase.T) {
 			t.Must.Nil(subject(t))
-			_, err := c.fileSystem().Get(t).Stat(c.name().Get(t))
+			_, err := c.FileSystem.Stat(c.name().Get(t))
 			os.IsNotExist(err)
 		})
 	})
 
 	s.When("name points to a directory", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(c.fileSystem().Get(t).Mkdir(c.name().Get(t), 0700))
-			t.Defer(c.fileSystem().Get(t).Remove, c.name().Get(t))
+			t.Must.Nil(c.FileSystem.Mkdir(c.name().Get(t), 0700))
+			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
 		s.Then("it will remove the directory", func(t *testcase.T) {
 			t.Must.Nil(subject(t))
-			_, err := c.fileSystem().Get(t).Stat(c.name().Get(t))
+			_, err := c.FileSystem.Stat(c.name().Get(t))
 			os.IsNotExist(err)
 		})
 
@@ -500,14 +501,14 @@ func (c FileSystem) specRemove(s *testcase.Spec) {
 	})
 }
 
-func (c FileSystem) specStat(s *testcase.Spec) {
+func (c specFileSystem) specStat(s *testcase.Spec) {
 	subject := func(t *testcase.T) (fs.FileInfo, error) {
-		return c.fileSystem().Get(t).Stat(c.name().Get(t))
+		return c.FileSystem.Stat(c.name().Get(t))
 	}
 
 	s.When("name points to nothing", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			_ = c.fileSystem().Get(t).Remove(c.name().Get(t))
+			_ = c.FileSystem.Remove(c.name().Get(t))
 		})
 
 		s.Then("it yields error", func(t *testcase.T) {
@@ -538,8 +539,8 @@ func (c FileSystem) specStat(s *testcase.Spec) {
 	s.When("name points to a directory", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			c.perm().Set(t, c.perm().Get(t)|fs.ModeDir)
-			t.Must.Nil(c.fileSystem().Get(t).Mkdir(c.name().Get(t), c.perm().Get(t)))
-			t.Defer(c.fileSystem().Get(t).Remove, c.name().Get(t))
+			t.Must.Nil(c.FileSystem.Mkdir(c.name().Get(t), c.perm().Get(t)))
+			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
 		s.Then("it will return directory stat", func(t *testcase.T) {
@@ -562,11 +563,11 @@ func (c FileSystem) specStat(s *testcase.Spec) {
 	})
 }
 
-func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
+func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 	var (
 		n    = testcase.Let[int](s, nil)
 		file = testcase.Let(s, func(t *testcase.T) filesystem.File {
-			file, err := c.fileSystem().Get(t).OpenFile(c.name().Get(t), os.O_RDONLY, 0)
+			file, err := c.FileSystem.OpenFile(c.name().Get(t), os.O_RDONLY, 0)
 			if err != nil {
 				t.Log(err.Error())
 			}
@@ -746,14 +747,14 @@ func (c FileSystem) specFile_ReadDir(s *testcase.Spec) {
 	})
 }
 
-func (c FileSystem) specFile_Seek(s *testcase.Spec) {
+func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 	var (
 		data = testcase.Let(s, func(t *testcase.T) []byte {
 			return []byte(t.Random.String())
 		})
 		file = testcase.Let(s, func(t *testcase.T) filesystem.File {
 			c.saveFile(t, c.name().Get(t), data.Get(t))
-			file, err := c.fileSystem().Get(t).OpenFile(c.name().Get(t), os.O_RDWR, 0)
+			file, err := c.FileSystem.OpenFile(c.name().Get(t), os.O_RDWR, 0)
 			t.Must.Nil(err)
 			return file
 		})
@@ -876,58 +877,54 @@ func (c FileSystem) specFile_Seek(s *testcase.Spec) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (c FileSystem) touchDir(t *testcase.T, name string, perm fs.FileMode) {
+func (c specFileSystem) touchDir(t *testcase.T, name string, perm fs.FileMode) {
 	t.Helper()
-	t.Must.Nil(c.fileSystem().Get(t).Mkdir(name, perm|fs.ModeDir))
-	t.Defer(c.fileSystem().Get(t).Remove, name)
+	t.Must.Nil(c.FileSystem.Mkdir(name, perm|fs.ModeDir))
+	t.Defer(c.FileSystem.Remove, name)
 }
 
-func (c FileSystem) touchFile(t *testcase.T, name string, perm fs.FileMode) {
+func (c specFileSystem) touchFile(t *testcase.T, name string, perm fs.FileMode) {
 	t.Helper()
-	file, err := c.fileSystem().Get(t).OpenFile(name, os.O_RDONLY|os.O_CREATE|os.O_EXCL, perm)
+	file, err := c.FileSystem.OpenFile(name, os.O_RDONLY|os.O_CREATE|os.O_EXCL, perm)
 	t.Must.Nil(err)
 	t.Must.Nil(file.Close())
-	t.Defer(c.fileSystem().Get(t).Remove, name)
+	t.Defer(c.FileSystem.Remove, name)
 }
 
-func (c FileSystem) saveFile(t *testcase.T, name string, data []byte) {
-	file, err := c.fileSystem().Get(t).OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
+func (c specFileSystem) saveFile(t *testcase.T, name string, data []byte) {
+	file, err := c.FileSystem.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
 	t.Must.Nil(err)
 	defer func() { t.Should.Nil(file.Close()) }()
-	t.Defer(c.fileSystem().Get(t).Remove, name)
+	t.Defer(c.FileSystem.Remove, name)
 	c.writeToFile(t, file, data)
 }
 
-func (c FileSystem) overwrite(dst []byte, src []byte) []byte {
+func (c specFileSystem) overwrite(dst []byte, src []byte) []byte {
 	l := len(dst)
 	if l < len(src) {
 		l = len(src)
 	}
 	out := make([]byte, l)
-	for i, b := range dst {
-		out[i] = b
-	}
-	for i, b := range src {
-		out[i] = b
-	}
+	copy(out, dst)
+	copy(out, src)
 	return out
 }
 
-func (c FileSystem) writeToFile(t *testcase.T, file filesystem.File, data []byte) {
+func (c specFileSystem) writeToFile(t *testcase.T, file filesystem.File, data []byte) {
 	t.Helper()
 	n, err := file.Write(data)
 	t.Must.Nil(err)
 	t.Must.Equal(len(data), n)
 }
 
-func (c FileSystem) isPathError(t *testcase.T, err error) *fs.PathError {
+func (c specFileSystem) isPathError(t *testcase.T, err error) *fs.PathError {
 	t.Helper()
 	var pathError *fs.PathError
 	t.Must.True(errors.As(err, &pathError), "*fs.PathError was expected")
 	return pathError
 }
 
-func (c FileSystem) assertErrorIsNotExist(t *testcase.T, err error, name string) {
+func (c specFileSystem) assertErrorIsNotExist(t *testcase.T, err error, name string) {
 	t.Helper()
 	pathError := c.isPathError(t, err)
 	t.Must.Contain(pathError.Path, name)
@@ -935,7 +932,7 @@ func (c FileSystem) assertErrorIsNotExist(t *testcase.T, err error, name string)
 	t.Must.True(os.IsNotExist(pathError))
 }
 
-func (c FileSystem) assertReadError(t *testcase.T, err error, name string) {
+func (c specFileSystem) assertReadError(t *testcase.T, err error, name string) {
 	t.Helper()
 	pathError := c.isPathError(t, err)
 	t.Must.Contain(pathError.Path, name)
@@ -943,7 +940,7 @@ func (c FileSystem) assertReadError(t *testcase.T, err error, name string) {
 	t.Must.NotNil(pathError.Err)
 }
 
-func (c FileSystem) assertWriteError(t *testcase.T, err error, name string) {
+func (c specFileSystem) assertWriteError(t *testcase.T, err error, name string) {
 	t.Helper()
 	pathError := c.isPathError(t, err)
 	t.Must.Contain(pathError.Path, name)
@@ -951,7 +948,7 @@ func (c FileSystem) assertWriteError(t *testcase.T, err error, name string) {
 	t.Must.NotNil(pathError.Err)
 }
 
-func (c FileSystem) assertReaderEquals(tb testing.TB, expected []byte, actual io.ReadCloser) {
+func (c specFileSystem) assertReaderEquals(tb testing.TB, expected []byte, actual io.ReadCloser) {
 	tb.Helper()
 	defer actual.Close()
 	bytes, err := io.ReadAll(actual)
@@ -959,10 +956,10 @@ func (c FileSystem) assertReaderEquals(tb testing.TB, expected []byte, actual io
 	assert.Must(tb).Equal(string(expected), string(bytes))
 }
 
-func (c FileSystem) assertFileContent(t *testcase.T, name string, expected []byte) {
+func (c specFileSystem) assertFileContent(t *testcase.T, name string, expected []byte) {
 	t.Helper()
 	t.Eventually(func(it assert.It) {
-		file, err := c.fileSystem().Get(t).OpenFile(name, os.O_RDONLY, 0)
+		file, err := c.FileSystem.OpenFile(name, os.O_RDONLY, 0)
 		it.Must.Nil(err)
 		defer file.Close()
 		info, err := file.Stat()
@@ -971,3 +968,9 @@ func (c FileSystem) assertFileContent(t *testcase.T, name string, expected []byt
 		c.assertReaderEquals(it, expected, file)
 	})
 }
+
+type Option interface {
+	option.Option[Config]
+}
+
+type Config struct{}

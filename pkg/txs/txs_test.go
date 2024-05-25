@@ -3,27 +3,23 @@ package txs_test
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/txs"
 	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
 	"go.llib.dev/testcase"
-	"testing"
 )
 
 func Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.HasSideEffect()
 
-	comprotocontracts.OnePhaseCommitProtocol(func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
-		return comprotocontracts.OnePhaseCommitProtocolSubject{
-			CommitManager: CPProxy{
-				BeginTxFn:    txs.Begin,
-				CommitTxFn:   txs.Commit,
-				RollbackTxFn: txs.Rollback,
-			},
-			MakeContext: context.Background,
-		}
+	comprotocontracts.OnePhaseCommitProtocol(CPProxy{
+		BeginTxFn:    txs.Begin,
+		CommitTxFn:   txs.Commit,
+		RollbackTxFn: txs.Rollback,
 	}).Spec(s)
 
 	s.Test("on commit, no rollback is executed", func(t *testcase.T) {

@@ -12,7 +12,7 @@ func ExampleConnect() {
 		panic(err)
 	}
 	defer c.Close()
-	
+
 	_, err = c.ExecContext(context.Background(), `SELECT VERSION()`)
 	if err != nil {
 		panic(err)
@@ -56,7 +56,7 @@ func ExampleConnection_CommitTx() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	_, err = c.ExecContext(tx, `SELECT VERSION()`)
 	if err != nil {
 		panic(err)
@@ -81,7 +81,7 @@ func ExampleConnection_RollbackTx() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	_, err = c.ExecContext(tx, `DROP TABLE xy`)
 	if err != nil {
 		panic(err)

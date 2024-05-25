@@ -2,10 +2,11 @@ package iterators_test
 
 import (
 	"context"
-	"go.llib.dev/frameless/ports/iterators"
-	"go.llib.dev/testcase/assert"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExampleHead() {

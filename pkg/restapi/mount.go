@@ -1,10 +1,11 @@
 package restapi
 
 import (
+	"net/http"
+
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
-	"net/http"
 )
 
 // Mount will help to register a handler on a request multiplexer in both as the concrete path to the handler and as a prefix match.

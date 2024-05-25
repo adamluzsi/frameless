@@ -3,13 +3,14 @@ package netkit_test
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/pkg/netkit"
-	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 	"net"
 	"net/http"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/pkg/netkit"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestIsPortFree_tcp(t *testing.T) {

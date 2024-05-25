@@ -1,8 +1,9 @@
 package extid_test
 
 import (
-	"go.llib.dev/frameless/ports/crud/extid/internal/testhelper"
 	"testing"
+
+	"go.llib.dev/frameless/ports/crud/extid/internal/testhelper"
 
 	"go.llib.dev/frameless/ports/crud/extid"
 

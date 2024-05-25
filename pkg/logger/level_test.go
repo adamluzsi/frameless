@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go.llib.dev/testcase/assert"
 	"testing"
+
+	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/pkg/logger"
 )

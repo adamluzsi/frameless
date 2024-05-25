@@ -3,12 +3,13 @@ package iterators_test
 import (
 	"context"
 	"errors"
-	"go.llib.dev/testcase"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.llib.dev/testcase"
 
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/testcase/assert"

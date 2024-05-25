@@ -2,9 +2,10 @@ package jsondto
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"reflect"
 	"sync"
+
+	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
 var (

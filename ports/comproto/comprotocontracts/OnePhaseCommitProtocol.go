@@ -2,81 +2,58 @@ package comprotocontracts
 
 import (
 	"context"
-	"go.llib.dev/frameless/pkg/reflectkit"
-	"testing"
 
 	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/contract"
+	"go.llib.dev/frameless/ports/option"
 	"go.llib.dev/testcase"
 )
 
-type OnePhaseCommitProtocol func(testing.TB) OnePhaseCommitProtocolSubject
+func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Option) contract.Contract {
+	c := option.Use[Config](opts)
+	s := testcase.NewSpec(nil)
 
-type OnePhaseCommitProtocolSubject struct {
-	CommitManager comproto.OnePhaseCommitProtocol
-	MakeContext   func() context.Context
-}
-
-func (c OnePhaseCommitProtocol) subject() testcase.Var[OnePhaseCommitProtocolSubject] {
-	return testcase.Var[OnePhaseCommitProtocolSubject]{
-		ID:   reflectkit.SymbolicName(OnePhaseCommitProtocolSubject{}),
-		Init: func(t *testcase.T) OnePhaseCommitProtocolSubject { return c(t) },
-	}
-}
-
-func (c OnePhaseCommitProtocol) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
-}
-
-func (c OnePhaseCommitProtocol) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
-}
-
-func (c OnePhaseCommitProtocol) Name() string {
-	return "comproto#psh.DatabaseURL(tb)OnePhaseCommitProtocolSubject"
-}
-
-func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 	s.Context("supplies OnePhaseCommitProtocol", func(s *testcase.Spec) {
 		s.HasSideEffect()
 
 		s.Test(`BeginTx + CommitTx, no error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			t.Must.Nil(c.subject().Get(t).CommitManager.CommitTx(tx))
+			t.Must.Nil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + multiple CommitTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			t.Must.Nil(c.subject().Get(t).CommitManager.CommitTx(tx))
-			t.Must.NotNil(c.subject().Get(t).CommitManager.CommitTx(tx))
+			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx, no error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			t.Must.Nil(c.subject().Get(t).CommitManager.RollbackTx(tx))
+			t.Must.Nil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + multiple RollbackTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			t.Must.Nil(c.subject().Get(t).CommitManager.RollbackTx(tx))
-			t.Must.NotNil(c.subject().Get(t).CommitManager.RollbackTx(tx))
+			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.NotNil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx + CommitTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			t.Must.Nil(c.subject().Get(t).CommitManager.RollbackTx(tx))
-			t.Must.NotNil(c.subject().Get(t).CommitManager.CommitTx(tx))
+			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + CommitTx + RollbackTx, yields error`, func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(c.subject().Get(t).MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
-			t.Must.Nil(c.subject().Get(t).CommitManager.CommitTx(tx))
-			t.Must.NotNil(c.subject().Get(t).CommitManager.RollbackTx(tx))
+			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.NotNil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure an emulated multi level transaction`, func(t *testcase.T) {
@@ -91,50 +68,52 @@ func (c OnePhaseCommitProtocol) Spec(s *testcase.Spec) {
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			var globalContext = c.subject().Get(t).MakeContext()
+			var globalContext = c.MakeContext()
 
-			tx1, err := c.subject().Get(t).CommitManager.BeginTx(globalContext)
+			tx1, err := subject.BeginTx(globalContext)
 			t.Must.Nil(err)
 			t.Log(`given tx1 is began`)
 
-			tx2InTx1, err := c.subject().Get(t).CommitManager.BeginTx(tx1)
+			tx2InTx1, err := subject.BeginTx(tx1)
 			t.Must.Nil(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
-			t.Must.Nil(c.subject().Get(t).CommitManager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
-			t.Must.NotNil(c.subject().Get(t).CommitManager.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
+			t.Must.Nil(subject.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
+			t.Must.NotNil(subject.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
 
-			t.Must.Nil(c.subject().Get(t).CommitManager.CommitTx(tx1), `"outer" comproto should be considered done`)
-			t.Must.NotNil(c.subject().Get(t).CommitManager.CommitTx(tx1), `"outer" comproto should be already done`)
+			t.Must.Nil(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
+			t.Must.NotNil(subject.CommitTx(tx1), `"outer" comproto should be already done`)
 		})
 	})
 
 	s.When("context has an error", func(s *testcase.Spec) {
 		cancel := testcase.Let[func()](s, nil)
 		ctx := testcase.Let(s, func(t *testcase.T) context.Context {
-			c, cfn := context.WithCancel(c.subject().Get(t).MakeContext())
+			c, cfn := context.WithCancel(c.MakeContext())
 			cancel.Set(t, cfn)
 			return c
 		}).EagerLoading(s)
 
 		s.Test("BeginTx returns the error", func(t *testcase.T) {
 			cancel.Get(t)()
-			_, err := c.subject().Get(t).CommitManager.BeginTx(ctx.Get(t))
+			_, err := subject.BeginTx(ctx.Get(t))
 			t.Must.ErrorIs(ctx.Get(t).Err(), err)
 		})
 
 		s.Test("CommitTx returns error on context.Context.Error", func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(ctx.Get(t))
+			tx, err := subject.BeginTx(ctx.Get(t))
 			t.Must.NoError(err)
 			cancel.Get(t)()
-			t.Must.ErrorIs(ctx.Get(t).Err(), c.subject().Get(t).CommitManager.CommitTx(tx))
+			t.Must.ErrorIs(ctx.Get(t).Err(), subject.CommitTx(tx))
 		})
 
 		s.Test("RollbackTx returns error on context.Context.Error", func(t *testcase.T) {
-			tx, err := c.subject().Get(t).CommitManager.BeginTx(ctx.Get(t))
+			tx, err := subject.BeginTx(ctx.Get(t))
 			t.Must.NoError(err)
 			cancel.Get(t)()
-			t.Must.ErrorIs(ctx.Get(t).Err(), c.subject().Get(t).CommitManager.CommitTx(tx))
+			t.Must.ErrorIs(ctx.Get(t).Err(), subject.CommitTx(tx))
 		})
 	})
+
+	return s.AsSuite("OnePhaseCommitProtocol")
 }

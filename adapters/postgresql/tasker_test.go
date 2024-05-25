@@ -2,14 +2,15 @@ package postgresql_test
 
 import (
 	"context"
+	"os"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/adapters/postgresql"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/frameless/pkg/tasker/schedule/schedulecontracts"
 	"go.llib.dev/testcase/assert"
-	"os"
-	"testing"
-	"time"
 )
 
 func TestTaskerScheduleRepository(t *testing.T) {

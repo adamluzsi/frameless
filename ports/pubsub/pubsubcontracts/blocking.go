@@ -3,34 +3,28 @@ package pubsubcontracts
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
-	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/ports/contract"
+	"go.llib.dev/frameless/ports/option"
+	"go.llib.dev/frameless/ports/pubsub"
+	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
-type Blocking[Data any] func(testing.TB) BlockingSubject[Data]
-
-type BlockingSubject[Data any] struct {
-	PubSub PubSub[Data]
-
-	MakeContext func() context.Context
-	MakeData    func() Data
-
-	RollbackOnPublishCancellation bool
-}
-
-func (c Blocking[Data]) Spec(s *testcase.Spec) {
-	subject := testcase.Let(s, func(t *testcase.T) BlockingSubject[Data] { return c(t) })
+func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscriber[Data], opts ...Option[Data]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.Use[Config[Data]](opts)
 
 	b := base[Data](func(tb testing.TB) baseSubject[Data] {
-		sub := subject.Get(testcase.ToT(&tb))
 		return baseSubject[Data]{
-			PubSub:      sub.PubSub,
-			MakeContext: sub.MakeContext,
-			MakeData:    sub.MakeData,
+			Publisher:   publisher,
+			Subscriber:  subscriber,
+			MakeContext: c.MakeContext,
+			MakeData:    c.MakeData,
 		}
 	})
 	b.Spec(s)
@@ -45,7 +39,7 @@ func (c Blocking[Data]) Spec(s *testcase.Spec) {
 
 			var publishedAtUNIXMilli int64
 			go func() {
-				t.Must.NoError(b.subject().Get(t).PubSub.Publish(subject.Get(t).MakeContext(), subject.Get(t).MakeData()))
+				t.Must.NoError(publisher.Publish(c.MakeContext(), c.MakeData(t)))
 				publishedAt := time.Now().UTC()
 				atomic.AddInt64(&publishedAtUNIXMilli, publishedAt.UnixMilli())
 			}()
@@ -77,30 +71,28 @@ func (c Blocking[Data]) Spec(s *testcase.Spec) {
 				assert.Message(fmt.Sprintf("acknowledged at - published at: %s", ackedAt.Sub(publishedAt))))
 		})
 
-		s.Test("on context cancellation, message publishing is revoked", func(t *testcase.T) {
-			if !subject.Get(t).RollbackOnPublishCancellation {
-				t.Skip()
-			}
+		if c.SupportPublishContextCancellation {
+			s.Test("on context cancellation, message publishing is revoked", func(t *testcase.T) {
+				sub.Get(t).Stop() // stop processing from avoiding flaky test runs
 
-			sub.Get(t).Stop() // stop processing from avoiding flaky test runs
+				ctx, cancel := context.WithCancel(c.MakeContext())
+				go func() {
+					// we intentionally wait a bit before cancelling out
+					t.Random.Repeat(10, 100, pubsubtest.Waiter.Wait)
+					cancel()
+				}()
 
-			ctx, cancel := context.WithCancel(subject.Get(t).MakeContext())
-			go func() {
-				t.Random.Repeat(10, 100, pubsubtest.Waiter.Wait)
-				cancel()
-			}()
+				t.Must.ErrorIs(publisher.Publish(ctx, c.MakeData(t)), context.Canceled)
+				t.Must.ErrorIs(ctx.Err(), context.Canceled)
 
-			t.Must.ErrorIs(ctx.Err(), b.subject().Get(t).PubSub.Publish(ctx, subject.Get(t).MakeData()))
+				sub.Get(t).Start(t, c.MakeContext())
 
-			sub.Get(t).Start(t, subject.Get(t).MakeContext())
+				pubsubtest.Waiter.Wait()
 
-			pubsubtest.Waiter.Wait()
-
-			t.Must.True(sub.Get(t).AckedAt().IsZero())
-		})
+				t.Must.True(sub.Get(t).AckedAt().IsZero())
+			})
+		}
 	})
+
+	return s.AsSuite("Blocking")
 }
-
-func (c Blocking[Data]) Test(t *testing.T) { c.Spec(testcase.NewSpec(t)) }
-
-func (c Blocking[Data]) Benchmark(b *testing.B) { c.Spec(testcase.NewSpec(b)) }

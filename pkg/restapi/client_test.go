@@ -2,6 +2,9 @@ package restapi_test
 
 import (
 	"context"
+	"net/http/httptest"
+	"testing"
+
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/restapi"
@@ -11,8 +14,6 @@ import (
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"net/http/httptest"
-	"testing"
 )
 
 func ExampleClient() {
@@ -57,7 +58,6 @@ func ExampleClient() {
 }
 
 func TestClient_crud(t *testing.T) {
-	rnd := random.New(random.CryptoSeed{})
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	fooAPI := restapi.Resource[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
@@ -69,45 +69,16 @@ func TestClient_crud(t *testing.T) {
 		BaseURL:    srv.URL,
 	}
 
-	makeFoo := func() testent.Foo {
-		foo := rnd.Make(testent.Foo{}).(testent.Foo)
-		foo.ID = ""
-		return foo
+	crudcontractsConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
+		MakeEntity:      testent.MakeFoo,
+		SupportIDReuse:  true,
+		SupportRecreate: true,
 	}
 
-	crudcontracts.Creator[testent.Foo, testent.FooID](func(tb testing.TB) crudcontracts.CreatorSubject[testent.Foo, testent.FooID] {
-		return crudcontracts.CreatorSubject[testent.Foo, testent.FooID]{
-			Resource:        fooClient,
-			MakeContext:     context.Background,
-			MakeEntity:      makeFoo,
-			SupportIDReuse:  true,
-			SupportRecreate: true,
-		}
-	}).Test(t)
-
-	crudcontracts.Finder[testent.Foo, testent.FooID](func(tb testing.TB) crudcontracts.FinderSubject[testent.Foo, testent.FooID] {
-		return crudcontracts.FinderSubject[testent.Foo, testent.FooID]{
-			Resource:    fooClient,
-			MakeContext: context.Background,
-			MakeEntity:  makeFoo,
-		}
-	}).Test(t)
-
-	crudcontracts.Updater[testent.Foo, testent.FooID](func(tb testing.TB) crudcontracts.UpdaterSubject[testent.Foo, testent.FooID] {
-		return crudcontracts.UpdaterSubject[testent.Foo, testent.FooID]{
-			Resource:    fooClient,
-			MakeContext: context.Background,
-			MakeEntity:  makeFoo,
-		}
-	}).Test(t)
-
-	crudcontracts.Deleter[testent.Foo, testent.FooID](func(tb testing.TB) crudcontracts.DeleterSubject[testent.Foo, testent.FooID] {
-		return crudcontracts.DeleterSubject[testent.Foo, testent.FooID]{
-			Resource:    fooClient,
-			MakeContext: context.Background,
-			MakeEntity:  makeFoo,
-		}
-	}).Test(t)
+	crudcontracts.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontracts.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontracts.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontracts.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
 }
 
 func TestClient_subresource(t *testing.T) {
@@ -143,49 +114,18 @@ func TestClient_subresource(t *testing.T) {
 		BaseURL:    srv.URL + "/foos/:foo_id/bars",
 	}
 
-	makeBar := func() testent.Bar {
-		v := rnd.Make(testent.Bar{}).(testent.Bar)
-		v.ID = ""
-		return v
+	crudcontractsConfig := crudcontracts.Config[testent.Bar, testent.BarID]{
+		MakeContext: func() context.Context {
+			return restapi.WithPathParam(context.Background(), "foo_id", foo.ID.String())
+		},
+		SupportIDReuse:  true,
+		SupportRecreate: true,
 	}
 
-	makeContext := func() context.Context {
-		return restapi.WithPathParam(context.Background(), "foo_id", foo.ID.String())
-	}
-
-	t.Run("Create", crudcontracts.Creator[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.CreatorSubject[testent.Bar, testent.BarID] {
-		return crudcontracts.CreatorSubject[testent.Bar, testent.BarID]{
-			Resource:        barClient,
-			MakeContext:     makeContext,
-			MakeEntity:      makeBar,
-			SupportIDReuse:  true,
-			SupportRecreate: true,
-		}
-	}).Test)
-
-	t.Run("Finder", crudcontracts.Finder[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.FinderSubject[testent.Bar, testent.BarID] {
-		return crudcontracts.FinderSubject[testent.Bar, testent.BarID]{
-			Resource:    barClient,
-			MakeContext: makeContext,
-			MakeEntity:  makeBar,
-		}
-	}).Test)
-
-	t.Run("Updater", crudcontracts.Updater[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.UpdaterSubject[testent.Bar, testent.BarID] {
-		return crudcontracts.UpdaterSubject[testent.Bar, testent.BarID]{
-			Resource:    barClient,
-			MakeContext: makeContext,
-			MakeEntity:  makeBar,
-		}
-	}).Test)
-
-	t.Run("Deleter", crudcontracts.Deleter[testent.Bar, testent.BarID](func(tb testing.TB) crudcontracts.DeleterSubject[testent.Bar, testent.BarID] {
-		return crudcontracts.DeleterSubject[testent.Bar, testent.BarID]{
-			Resource:    barClient,
-			MakeContext: makeContext,
-			MakeEntity:  makeBar,
-		}
-	}).Test)
+	t.Run("Creator", crudcontracts.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Finder", crudcontracts.Finder[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Updater", crudcontracts.Updater[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Deleter", crudcontracts.Deleter[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
 }
 
 func TestWithPathParam(t *testing.T) {

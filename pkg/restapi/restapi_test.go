@@ -5,6 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/httpkit"
@@ -21,13 +29,6 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"strconv"
-	"strings"
-	"testing"
-	"time"
 )
 
 func ExampleResource() {

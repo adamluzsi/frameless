@@ -3,11 +3,12 @@ package restapi_test
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
+	"strconv"
+
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/testcase"
-	"net/http/httptest"
-	"strconv"
 )
 
 type (

@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"go.llib.dev/frameless/internal/doubles"
 	"testing"
+
+	"go.llib.dev/frameless/internal/doubles"
 
 	"go.llib.dev/frameless/ports/comproto"
 

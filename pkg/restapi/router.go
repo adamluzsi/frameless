@@ -2,11 +2,12 @@ package restapi
 
 import (
 	"context"
+	"net/http"
+
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"net/http"
 )
 
 func NewRouter(configure ...func(*Router)) *Router {

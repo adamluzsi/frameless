@@ -3,11 +3,12 @@ package logger_test
 import (
 	"context"
 	"fmt"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
-	"testing"
-	"time"
 )
 
 func ExampleContextWith() {

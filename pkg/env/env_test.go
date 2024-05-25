@@ -3,12 +3,13 @@ package env_test
 import (
 	"encoding/json"
 	"fmt"
-	"go.llib.dev/frameless/pkg/enum"
 	"net/url"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/pkg/enum"
 
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/reflectkit"

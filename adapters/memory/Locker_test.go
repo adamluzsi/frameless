@@ -2,8 +2,9 @@ package memory_test
 
 import (
 	"context"
-	"go.llib.dev/testcase"
 	"testing"
+
+	"go.llib.dev/testcase"
 
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/ports/guard/guardcontracts"
@@ -23,22 +24,11 @@ func ExampleLocker() {
 }
 
 func TestLocker(t *testing.T) {
-	guardcontracts.Locker(func(tb testing.TB) guardcontracts.LockerSubject {
-		return guardcontracts.LockerSubject{
-			Locker:      memory.NewLocker(),
-			MakeContext: context.Background,
-		}
-	}).Test(t)
+	guardcontracts.Locker(memory.NewLocker()).Test(t)
 }
 
 func TestLockerFactory(t *testing.T) {
-	guardcontracts.LockerFactory[string](func(tb testing.TB) guardcontracts.LockerFactorySubject[string] {
-		return guardcontracts.LockerFactorySubject[string]{
-			LockerFactory: memory.NewLockerFactory[string](),
-			MakeContext:   context.Background,
-			MakeKey:       tb.(*testcase.T).Random.String,
-		}
-	}).Test(t)
+	guardcontracts.LockerFactory[string](memory.NewLockerFactory[string]()).Test(t)
 }
 
 func TestNewLockerFactory_race(tt *testing.T) {

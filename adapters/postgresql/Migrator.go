@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/migration"
 )

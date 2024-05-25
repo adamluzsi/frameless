@@ -2,9 +2,10 @@ package rfc7807_test
 
 import (
 	"encoding/json"
-	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"net/http"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 
 	"go.llib.dev/testcase/assert"
 )

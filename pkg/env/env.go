@@ -3,15 +3,16 @@ package env
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"os"
-	"reflect"
-	"strconv"
 )
 
 const ErrLoadInvalidData errorkit.Error = "ErrLoadInvalidData"

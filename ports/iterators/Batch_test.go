@@ -1,9 +1,10 @@
 package iterators_test
 
 import (
-	"go.llib.dev/testcase/random"
 	"testing"
 	"time"
+
+	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/ports/iterators"
 

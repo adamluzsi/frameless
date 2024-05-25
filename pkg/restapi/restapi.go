@@ -4,6 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
@@ -15,10 +20,6 @@ import (
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
-	"io"
-	"net/http"
-	"net/url"
-	"strings"
 )
 
 // Resource is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.

@@ -6,6 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/stringcase"
@@ -13,9 +17,6 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"strconv"
-	"testing"
-	"time"
 
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/testcase/random"

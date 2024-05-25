@@ -2,6 +2,13 @@ package zerokit_test
 
 import (
 	"context"
+	"math/big"
+	"net"
+	"runtime"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/tasker"
@@ -10,12 +17,6 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
-	"math/big"
-	"net"
-	"runtime"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 var rnd = random.New(random.CryptoSeed{})

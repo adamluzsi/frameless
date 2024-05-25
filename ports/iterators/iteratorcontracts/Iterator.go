@@ -2,9 +2,10 @@ package iteratorcontracts
 
 import (
 	"context"
-	"go.llib.dev/testcase/assert"
 	"testing"
 	"time"
+
+	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/testcase"

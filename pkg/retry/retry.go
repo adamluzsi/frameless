@@ -2,11 +2,12 @@ package retry
 
 import (
 	"context"
-	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/testcase/clock"
 	"math"
 	"math/rand"
 	"time"
+
+	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/testcase/clock"
 )
 
 type Strategy[U StrategyUnit] interface {

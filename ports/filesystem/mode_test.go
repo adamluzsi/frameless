@@ -1,9 +1,10 @@
 package filesystem_test
 
 import (
-	"go.llib.dev/frameless/ports/filesystem"
 	"io/fs"
 	"testing"
+
+	"go.llib.dev/frameless/ports/filesystem"
 
 	"go.llib.dev/testcase"
 )

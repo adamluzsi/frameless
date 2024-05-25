@@ -2,14 +2,15 @@ package pubsubcontracts
 
 import (
 	"context"
-	"go.llib.dev/frameless/spechelper"
 	"sync"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/ports/option"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
+	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
@@ -22,9 +23,10 @@ type PubSub[Data any] struct {
 type base[Data any] func(testing.TB) baseSubject[Data]
 
 type baseSubject[Data any] struct {
-	PubSub      PubSub[Data]
+	Publisher   pubsub.Publisher[Data]
+	Subscriber  pubsub.Subscriber[Data]
 	MakeContext func() context.Context
-	MakeData    func() Data
+	MakeData    func(testing.TB) Data
 }
 
 func (c base[Data]) subject() testcase.Var[baseSubject[Data]] {
@@ -52,13 +54,13 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 				data = testcase.Let[[]Data](s, func(t *testcase.T) []Data {
 					var vs []Data
 					for i, l := 0, t.Random.IntB(3, 7); i < l; i++ {
-						vs = append(vs, c.subject().Get(t).MakeData())
+						vs = append(vs, c.subject().Get(t).MakeData(t))
 					}
 					return vs
 				})
 			)
 			act := func(t *testcase.T) error {
-				return c.subject().Get(t).PubSub.Publish(ctx.Get(t), data.Get(t)...)
+				return c.subject().Get(t).Publisher.Publish(ctx.Get(t), data.Get(t)...)
 			}
 
 			s.Then("it publish without an error", func(t *testcase.T) {
@@ -89,7 +91,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 
 		s.When("an event is published", func(s *testcase.Spec) {
 			val := testcase.Let(s, func(t *testcase.T) Data {
-				return c.subject().Get(t).MakeData()
+				return c.subject().Get(t).MakeData(t)
 			})
 
 			c.WhenWePublish(s, val)
@@ -115,7 +117,7 @@ func (c base[Data]) cancelFnsVar() testcase.Var[[]func()] {
 }
 
 func (c base[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
-	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t).PubSub}
+	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t).Subscriber}
 }
 
 type subscriptionIteratorHelper[Data any] struct {
@@ -215,13 +217,13 @@ func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Me
 	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext())
 	testcase.Append[func()](t, c.cancelFnsVar(), cancel)
 	t.Defer(cancel)
-	return c.subject().Get(t).PubSub.Subscribe(ctx)
+	return c.subject().Get(t).Subscriber.Subscribe(ctx)
 }
 
 func (c base[Data]) TryCleanup(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		if !spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.subject().Get(t).PubSub.Subscriber) {
-			c.drainQueue(t, c.subject().Get(t).PubSub)
+		if !spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.subject().Get(t).Subscriber) {
+			c.drainQueue(t, c.subject().Get(t).Subscriber)
 		}
 		pubsubtest.Waiter.Wait()
 	})
@@ -246,7 +248,7 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	s.Before(func(t *testcase.T) {
 		for _, v := range vars {
 			// we publish one by one intentionally to make the tests more deterministic.
-			t.Must.NoError(c.subject().Get(t).PubSub.Publish(c.subject().Get(t).MakeContext(), v.Get(t)))
+			t.Must.NoError(c.subject().Get(t).Publisher.Publish(c.subject().Get(t).MakeContext(), v.Get(t)))
 			pubsubtest.Waiter.Wait()
 		}
 	})
@@ -284,4 +286,24 @@ func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcas
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.ContainExactly(expected, actual)
 	})
+}
+
+type Option[Data any] interface {
+	option.Option[Config[Data]]
+}
+
+type Config[Data any] struct {
+	MakeContext func() context.Context
+	MakeData    func(testing.TB) Data
+
+	SupportPublishContextCancellation bool
+}
+
+func (c *Config[Data]) Init() {
+	c.MakeContext = context.Background
+	c.MakeData = spechelper.MakeValue[Data]
+}
+
+func (c Config[Data]) Configure(t *Config[Data]) {
+	option.Configure(c, t)
 }

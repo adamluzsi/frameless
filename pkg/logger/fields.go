@@ -3,9 +3,10 @@ package logger
 import (
 	"errors"
 	"fmt"
+	"reflect"
+
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"reflect"
 )
 
 func Field(key string, value any) LoggingDetail {

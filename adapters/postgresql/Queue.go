@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
+	"time"
+
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/random"
-	"sync/atomic"
-	"time"
 )
 
 type Queue[Entity, JSONDTO any] struct {

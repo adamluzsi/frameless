@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"time"
+
 	"go.llib.dev/frameless/internal/consttypes"
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/enum"
@@ -13,8 +16,6 @@ import (
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
-	"net/http"
-	"time"
 )
 
 type Monitor struct {

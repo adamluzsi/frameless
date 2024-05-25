@@ -1,8 +1,9 @@
 package enum_test
 
 import (
-	"go.llib.dev/frameless/pkg/pointer"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/pointer"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/testcase"

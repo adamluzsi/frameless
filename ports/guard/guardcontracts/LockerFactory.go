@@ -2,38 +2,29 @@ package guardcontracts
 
 import (
 	"context"
-	"go.llib.dev/frameless/internal/suites"
-	"go.llib.dev/frameless/ports/guard"
-	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/let"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/ports/contract"
+	"go.llib.dev/frameless/ports/guard"
+	"go.llib.dev/frameless/ports/option"
+	"go.llib.dev/frameless/spechelper"
+	"go.llib.dev/testcase"
 )
 
-type LockerFactorySubject[Key comparable] struct {
-	LockerFactory guard.LockerFactory[Key]
-	MakeContext   func() context.Context
-	MakeKey       func() Key
-}
+func LockerFactory[Key comparable](subject guard.LockerFactory[Key], opts ...LockerFactoryOption[Key]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.Use[LockerFactoryConfig[Key]](opts)
 
-func LockerFactory[Key comparable](mk func(tb testing.TB) LockerFactorySubject[Key]) suites.Suite {
-	s := testcase.NewSpec(nil, testcase.AsSuite("Factory"))
-
-	subject := let.With[LockerFactorySubject[Key]](s, mk)
-
-	s.Context("returned value behaves like a locks.Locker", Locker(func(tb testing.TB) LockerSubject {
-		sub := mk(tb)
-		return LockerSubject{
-			Locker:      sub.LockerFactory.LockerFor(sub.MakeKey()),
-			MakeContext: sub.MakeContext,
-		}
-	}).Spec)
+	s.Test("returned value behaves like a locks.Locker", func(t *testcase.T) {
+		testcase.RunSuite(t, Locker(subject.LockerFor(c.MakeKey(t))))
+	})
 
 	s.Test("result Lockers with different name don't interfere with each other", func(t *testcase.T) {
 		var (
-			ctx = subject.Get(t).MakeContext()
-			l1  = subject.Get(t).LockerFactory.LockerFor(subject.Get(t).MakeKey())
-			l2  = subject.Get(t).LockerFactory.LockerFor(subject.Get(t).MakeKey())
+			ctx = c.MakeContext()
+			l1  = subject.LockerFor(c.MakeKey(t))
+			l2  = subject.LockerFor(c.MakeKey(t))
 		)
 		t.Must.Within(3*time.Second, func(context.Context) {
 			lockCtx1, err := l1.Lock(ctx)
@@ -45,5 +36,23 @@ func LockerFactory[Key comparable](mk func(tb testing.TB) LockerFactorySubject[K
 		})
 	})
 
-	return s.AsSuite()
+	return s.AsSuite("Factory")
+}
+
+type LockerFactoryOption[Key comparable] interface {
+	option.Option[LockerFactoryConfig[Key]]
+}
+
+type LockerFactoryConfig[Key comparable] struct {
+	MakeContext func() context.Context
+	MakeKey     func(testing.TB) Key
+}
+
+func (c *LockerFactoryConfig[Key]) Init() {
+	c.MakeContext = context.Background
+	c.MakeKey = spechelper.MakeValue[Key]
+}
+
+func (c LockerFactoryConfig[Key]) Configure(t *LockerFactoryConfig[Key]) {
+	option.Configure(c, t)
 }

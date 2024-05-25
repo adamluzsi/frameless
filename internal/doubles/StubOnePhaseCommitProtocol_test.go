@@ -3,8 +3,9 @@ package doubles_test
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/internal/doubles"
 	"testing"
+
+	"go.llib.dev/frameless/internal/doubles"
 
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/testcase/assert"

@@ -59,7 +59,7 @@ var levelPriorityMapping = map[Level]int{
 	LevelWarn:  2,
 	LevelError: 3,
 	LevelFatal: 4,
-	
+
 	*new(Level): 1, // zero Level value is considered as LevelInfo
 }
 

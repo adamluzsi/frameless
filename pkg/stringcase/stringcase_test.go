@@ -1,13 +1,14 @@
 package stringcase_test
 
 import (
+	"strings"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/stringcase"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
-	"strings"
-	"testing"
 )
 
 func TestToSnake(t *testing.T) {

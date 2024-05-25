@@ -3,11 +3,12 @@ package logger
 import (
 	"bytes"
 	"fmt"
-	"go.llib.dev/frameless/pkg/internal/testcheck"
-	"go.llib.dev/testcase/pp"
 	"io"
 	"strings"
 	"sync"
+
+	"go.llib.dev/frameless/pkg/internal/testcheck"
+	"go.llib.dev/testcase/pp"
 )
 
 func init() {

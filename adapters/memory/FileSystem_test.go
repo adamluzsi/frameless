@@ -2,12 +2,13 @@ package memory_test
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/adapters/memory"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"go.llib.dev/frameless/adapters/memory"
 
 	"go.llib.dev/frameless/ports/filesystem"
 	filesystemcontracts "go.llib.dev/frameless/ports/filesystem/filesystemcontracts"
@@ -59,9 +60,7 @@ func ExampleFileSystem() {
 }
 
 func TestFileSystem_contractsFileSystem(t *testing.T) {
-	filesystemcontracts.FileSystem(func(tb testing.TB) filesystem.FileSystem {
-		return &memory.FileSystem{}
-	}).Test(t)
+	filesystemcontracts.FileSystem(&memory.FileSystem{}).Test(t)
 }
 
 func TestFileSystem_smoke(t *testing.T) {

@@ -1,12 +1,13 @@
 package schedule_test
 
 import (
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/random"
-	"testing"
-	"time"
 )
 
 func TestInterval_smoke(t *testing.T) {

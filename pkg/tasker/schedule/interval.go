@@ -1,8 +1,9 @@
 package schedule
 
 import (
-	"go.llib.dev/testcase/clock"
 	"time"
+
+	"go.llib.dev/testcase/clock"
 )
 
 type Interval time.Duration

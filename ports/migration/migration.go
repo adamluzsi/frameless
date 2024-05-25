@@ -37,4 +37,3 @@ type Step[R any] interface {
 	// It is assumed that MigrateUp was successfully executed before calling this method.
 	MigrateDown(R, context.Context) error
 }
-

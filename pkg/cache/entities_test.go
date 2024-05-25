@@ -1,10 +1,11 @@
 package cache_test
 
 import (
-	"go.llib.dev/frameless/pkg/cache"
-	"go.llib.dev/testcase/assert"
 	"strconv"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/cache"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestQueryKey_Encode(t *testing.T) {

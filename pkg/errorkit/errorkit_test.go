@@ -4,13 +4,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"runtime"
+	"sync"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
-	"runtime"
-	"sync"
-	"testing"
 )
 
 var rnd = random.New(random.CryptoSeed{})

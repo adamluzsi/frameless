@@ -2,8 +2,9 @@ package reflectkit_test
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"math/rand"
+
+	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
 func ExampleFullyQualifiedName() {

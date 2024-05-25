@@ -1,10 +1,11 @@
 package env_test
 
 import (
-	"go.llib.dev/frameless/pkg/env"
-	"go.llib.dev/frameless/pkg/logger"
 	"os"
 	"time"
+
+	"go.llib.dev/frameless/pkg/env"
+	"go.llib.dev/frameless/pkg/logger"
 )
 
 func ExampleLoad() {

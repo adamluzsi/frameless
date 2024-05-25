@@ -2,10 +2,14 @@ package cache_test
 
 import (
 	"context"
+	"strings"
+	"testing"
+
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
 	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -13,26 +17,28 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
-	"strings"
-	"testing"
 )
 
 var _ cache.Interface[testent.Foo, testent.FooID] = &cache.Cache[testent.Foo, testent.FooID]{}
 
 func TestCache(t *testing.T) {
-	cachecontracts.Cache[testent.Foo, testent.FooID](func(tb testing.TB) cachecontracts.CacheSubject[testent.Foo, testent.FooID] {
-		m := memory.NewMemory()
-		source := memory.NewRepository[testent.Foo, testent.FooID](m)
-		cacheRepository := memory.NewCacheRepository[testent.Foo, testent.FooID](m)
-		return cachecontracts.CacheSubject[testent.Foo, testent.FooID]{
-			Cache:        cache.New[testent.Foo, testent.FooID](source, cacheRepository),
-			Source:       source,
-			Repository:   cacheRepository,
-			MakeContext:  testent.MakeContextFunc(tb),
-			MakeEntity:   testent.MakeFooFunc(tb),
-			ChangeEntity: nil,
-		}
-	}).Test(t)
+	m := memory.NewMemory()
+	source := memory.NewRepository[testent.Foo, testent.FooID](m)
+	cacheRepository := memory.NewCacheRepository[testent.Foo, testent.FooID](m)
+
+	cachecontracts.Cache[testent.Foo, testent.FooID](
+		cache.New[testent.Foo, testent.FooID](source, cacheRepository),
+		source,
+		cacheRepository,
+		cachecontracts.Config[testent.Foo, testent.FooID]{
+			MakeCache: func(src cache.Source[testent.Foo, testent.FooID], repo cache.Repository[testent.Foo, testent.FooID]) cachecontracts.CacheSubject[testent.Foo, testent.FooID] {
+				return cache.New[testent.Foo, testent.FooID](src, repo)
+			},
+			CRUD: crudcontracts.Config[testent.Foo, testent.FooID]{
+				MakeEntity: testent.MakeFoo,
+			},
+		},
+	)
 }
 
 func TestCache_InvalidateByID_smoke(t *testing.T) {

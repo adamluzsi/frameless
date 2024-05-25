@@ -2,10 +2,11 @@ package errorkit_test
 
 import (
 	"errors"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/let"
-	"testing"
 )
 
 func ExampleError() {

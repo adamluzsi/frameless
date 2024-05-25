@@ -2,6 +2,10 @@ package schedule_test
 
 import (
 	"context"
+	"log"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/schedule"
@@ -9,9 +13,6 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
-	"log"
-	"testing"
-	"time"
 )
 
 func ExampleScheduler_WithSchedule() {

@@ -2,12 +2,13 @@ package mapkit_test
 
 import (
 	"fmt"
-	"go.llib.dev/frameless/pkg/mapkit"
-	"go.llib.dev/testcase/assert"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/testcase/assert"
 )
 
 func ExampleMust() {

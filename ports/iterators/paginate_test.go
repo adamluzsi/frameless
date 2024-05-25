@@ -3,17 +3,18 @@ package iterators_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/url"
+	"strconv"
+	"testing"
+	"time"
+
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/ports/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"net/http"
-	"net/url"
-	"strconv"
-	"testing"
-	"time"
 )
 
 func ExamplePaginate() {

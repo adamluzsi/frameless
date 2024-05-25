@@ -3,11 +3,12 @@ package logger
 import (
 	"bytes"
 	"context"
-	"go.llib.dev/frameless/pkg/units"
-	"go.llib.dev/frameless/pkg/zerokit"
 	"runtime"
 	"sync"
 	"time"
+
+	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 type strategy interface {

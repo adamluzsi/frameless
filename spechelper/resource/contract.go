@@ -1,133 +1,84 @@
 package resource
 
 import (
-	"context"
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
-	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
-	"testing"
-
 	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
+	"go.llib.dev/frameless/ports/contract"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/meta"
 	"go.llib.dev/frameless/ports/meta/metacontracts"
+	"go.llib.dev/frameless/ports/option"
 	"go.llib.dev/testcase"
 )
 
-type Contract[Entity, ID any] func(testing.TB) ContractSubject[Entity, ID]
+type ContractSubject[Entity any, ID comparable] interface {
+	crud.Creator[Entity]
+	crud.Finder[Entity, ID]
+	crud.Updater[Entity]
+	crud.Deleter[ID]
+}
 
-type ContractSubject[Entity, ID any] struct {
-	Resource interface {
-		crud.Creator[Entity]
-		crud.Finder[Entity, ID]
-		crud.Updater[Entity]
-		crud.Deleter[ID]
-	}
+type Option[Entity any, ID comparable] interface {
+	option.Option[Config[Entity, ID]]
+}
+
+type Config[Entity any, ID comparable] struct {
+	CRUD          crudcontracts.Config[Entity, ID]
 	MetaAccessor  meta.MetaAccessor
 	CommitManager comproto.OnePhaseCommitProtocol
-
-	MakeContext func() context.Context
-	MakeEntity  func() Entity
 }
 
-func (c Contract[Entity, ID]) Test(t *testing.T) {
-	c.Spec(testcase.NewSpec(t))
+func (c *Config[Entity, ID]) Init() {
+	c.CRUD.Init()
 }
 
-func (c Contract[Entity, ID]) Benchmark(b *testing.B) {
-	c.Spec(testcase.NewSpec(b))
+func (c Config[Entity, ID]) Configure(t *Config[Entity, ID]) {
+	option.Configure(c, t)
 }
 
-func (c Contract[Entity, ID]) Spec(s *testcase.Spec) {
+func Contract[Entity any, ID comparable](subject ContractSubject[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.Use[Config[Entity, ID]](opts)
+	c.CRUD.SupportIDReuse = true
+	c.CRUD.SupportRecreate = true
+
+	if cm, ok := subject.(comproto.OnePhaseCommitProtocol); ok && c.CommitManager == nil {
+		c.CommitManager = cm
+	}
+
 	testcase.RunSuite(s,
-		crudcontracts.Creator[Entity, ID](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, ID] {
-			sub := c(tb)
-			return crudcontracts.CreatorSubject[Entity, ID]{
-				Resource:        sub.Resource,
-				MakeContext:     sub.MakeContext,
-				MakeEntity:      sub.MakeEntity,
-				SupportIDReuse:  true,
-				SupportRecreate: true,
-			}
-		}),
-		crudcontracts.Finder[Entity, ID](func(tb testing.TB) crudcontracts.FinderSubject[Entity, ID] {
-			sub := c(tb)
-			return crudcontracts.FinderSubject[Entity, ID]{
-				Resource:    sub.Resource,
-				MakeContext: sub.MakeContext,
-				MakeEntity:  sub.MakeEntity,
-			}
-		}),
-		crudcontracts.Deleter[Entity, ID](func(tb testing.TB) crudcontracts.DeleterSubject[Entity, ID] {
-			sub := c(tb)
-			return crudcontracts.DeleterSubject[Entity, ID]{
-				Resource:    sub.Resource,
-				MakeContext: sub.MakeContext,
-				MakeEntity:  sub.MakeEntity,
-			}
-		}),
-		crudcontracts.Updater[Entity, ID](func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, ID] {
-			sub := c(tb)
-			return crudcontracts.UpdaterSubject[Entity, ID]{
-				Resource:    sub.Resource,
-				MakeContext: sub.MakeContext,
-				MakeEntity:  sub.MakeEntity,
-			}
-		}),
-		metacontracts.MetaAccessor[bool](func(tb testing.TB) metacontracts.MetaAccessorSubject[bool] {
-			sub := c(tb)
-			return metacontracts.MetaAccessorSubject[bool]{
-				MetaAccessor: sub.MetaAccessor,
-				MakeContext:  sub.MakeContext,
-				MakeV:        testcase.ToT(&tb).Random.Bool,
-			}
-		}),
-		metacontracts.MetaAccessor[string](func(tb testing.TB) metacontracts.MetaAccessorSubject[string] {
-			sub := c(tb)
-			return metacontracts.MetaAccessorSubject[string]{
-				MetaAccessor: sub.MetaAccessor,
-				MakeContext:  sub.MakeContext,
-				MakeV:        testcase.ToT(&tb).Random.String,
-			}
-		}),
-		metacontracts.MetaAccessor[int](func(tb testing.TB) metacontracts.MetaAccessorSubject[int] {
-			sub := c(tb)
-			return metacontracts.MetaAccessorSubject[int]{
-				MetaAccessor: sub.MetaAccessor,
-				MakeContext:  sub.MakeContext,
-				MakeV:        testcase.ToT(&tb).Random.Int,
-			}
-		}),
-		crudcontracts.OnePhaseCommitProtocol[Entity, ID](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID] {
-			sub := c(tb)
-			return crudcontracts.OnePhaseCommitProtocolSubject[Entity, ID]{
-				Resource:      sub.Resource,
-				CommitManager: sub.CommitManager,
-				MakeContext:   sub.MakeContext,
-				MakeEntity:    sub.MakeEntity,
-			}
-		}),
-		comprotocontracts.OnePhaseCommitProtocol(func(tb testing.TB) comprotocontracts.OnePhaseCommitProtocolSubject {
-			sub := c(tb)
-			return comprotocontracts.OnePhaseCommitProtocolSubject{
-				CommitManager: sub.CommitManager,
-				MakeContext:   sub.MakeContext,
-			}
-		}),
-		cachecontracts.EntityRepository[Entity, ID](func(tb testing.TB) cachecontracts.EntityRepositorySubject[Entity, ID] {
-			sub := c(tb)
-			res, ok := sub.Resource.(cache.EntityRepository[Entity, ID])
-			if !ok {
-				tb.Skip()
-			}
-			return cachecontracts.EntityRepositorySubject[Entity, ID]{
-				EntityRepository: res,
-				CommitManager:    sub.CommitManager,
-				MakeContext:      sub.MakeContext,
-				MakeEntity:       sub.MakeEntity,
-				ChangeEntity:     nil,
-			}
-		}),
+		crudcontracts.Creator[Entity, ID](subject, c.CRUD),
+		crudcontracts.Finder[Entity, ID](subject, c.CRUD),
+		crudcontracts.Deleter[Entity, ID](subject, c.CRUD),
+		crudcontracts.Updater[Entity, ID](subject, c.CRUD),
 	)
+
+	if c.CommitManager != nil {
+		testcase.RunSuite(s,
+			crudcontracts.OnePhaseCommitProtocol[Entity, ID](subject, c.CommitManager, c.CRUD),
+			comprotocontracts.OnePhaseCommitProtocol(c.CommitManager, &comprotocontracts.Config{
+				MakeContext: c.CRUD.MakeContext,
+			}),
+		)
+	}
+
+	if entrep, ok := subject.(cache.EntityRepository[Entity, ID]); ok && c.CommitManager != nil {
+		testcase.RunSuite(s,
+			cachecontracts.EntityRepository[Entity, ID](entrep, c.CommitManager,
+				cachecontracts.Config[Entity, ID]{CRUD: c.CRUD}),
+		)
+	}
+
+	if c.MetaAccessor != nil {
+		testcase.RunSuite(s,
+			metacontracts.MetaAccessor[bool](c.MetaAccessor),
+			metacontracts.MetaAccessor[string](c.MetaAccessor),
+			metacontracts.MetaAccessor[int](c.MetaAccessor),
+		)
+	}
+
+	return s.AsSuite("Contract")
 }

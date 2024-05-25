@@ -3,11 +3,12 @@ package pubsubtest
 import (
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/ports/comproto"
-	"go.llib.dev/frameless/ports/iterators"
 	"sync"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/ports/iterators"
 
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase/assert"

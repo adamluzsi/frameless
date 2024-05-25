@@ -2,10 +2,11 @@ package units_test
 
 import (
 	"bytes"
-	"go.llib.dev/frameless/pkg/units"
-	"go.llib.dev/testcase/assert"
 	"io"
 	"testing"
+
+	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/testcase/assert"
 )
 
 func Example_byteSize() {

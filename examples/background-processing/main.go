@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
+
 	"go.llib.dev/frameless/adapters/postgresql"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"
@@ -10,8 +13,6 @@ import (
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
-	"net/http"
-	"os"
 )
 
 func main() {
@@ -23,9 +24,9 @@ func main() {
 	}
 
 	q := postgresql.Queue[MyDomainEventEntity, MyDomainEventEntityPGQueueJSONDTO]{
-		Name:              "my_domain_event",
+		Name:       "my_domain_event",
 		Connection: cm,
-		Mapping:           MappingForMyDomainEventEntity{},
+		Mapping:    MappingForMyDomainEventEntity{},
 	}
 
 	myHTTPRequestHandler := MyHTTPRequestHandler{

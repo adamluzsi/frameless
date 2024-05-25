@@ -4,12 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/frameless/pkg/stringcase"
-	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/random"
 	"os"
 	"runtime"
 	"strconv"
@@ -17,6 +11,13 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 var asyncLoggingEventually = assert.MakeRetry(3 * time.Second)

@@ -1,10 +1,11 @@
 package serializers_test
 
 import (
-	"go.llib.dev/frameless/pkg/serializers"
-	"go.llib.dev/testcase/assert"
 	"testing"
 	"time"
+
+	"go.llib.dev/frameless/pkg/serializers"
+	"go.llib.dev/testcase/assert"
 )
 
 func TestFormURLEncoder_struct(t *testing.T) {

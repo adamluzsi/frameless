@@ -1,8 +1,9 @@
 package iterators
 
 import (
-	"go.llib.dev/frameless/pkg/errorkit"
 	"sync"
+
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 // Head takes the first n element, similarly how the coreutils "head" app works.

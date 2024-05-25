@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"context"
+
 	"go.llib.dev/frameless/ports/iterators"
 )
 
