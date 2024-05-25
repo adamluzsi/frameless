@@ -15,14 +15,9 @@ import (
 
 func TestTaskerScheduleRepository(t *testing.T) {
 	cm := GetConnection(t)
-	schedulecontracts.Repository(func(tb testing.TB) schedulecontracts.RepositorySubject {
-		repo := &postgresql.TaskerScheduleRepository{Connection: cm}
-		assert.NoError(tb, repo.Migrate(context.Background()))
-		return schedulecontracts.RepositorySubject{
-			Repository:  repo,
-			MakeContext: context.Background,
-		}
-	}).Test(t)
+	repo := &postgresql.TaskerScheduleRepository{Connection: cm}
+	assert.NoError(t, repo.Migrate(context.Background()))
+	schedulecontracts.Repository(repo).Test(t)
 }
 
 func ExampleTaskerScheduleRepository() {

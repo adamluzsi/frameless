@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 
@@ -41,18 +40,13 @@ var _ migration.Migratable = postgresql.Locker{}
 func TestLocker(t *testing.T) {
 	cm := GetConnection(t)
 
-	guardcontracts.Locker(func(tb testing.TB) guardcontracts.LockerSubject {
-		t := testcase.ToT(&tb)
-		l := postgresql.Locker{
-			Name:       t.Random.StringNC(5, random.CharsetAlpha()),
-			Connection: cm,
-		}
-		assert.NoError(tb, l.Migrate(context.Background()))
-		return guardcontracts.LockerSubject{
-			Locker:      l,
-			MakeContext: context.Background,
-		}
-	}).Test(t)
+	l := postgresql.Locker{
+		Name:       rnd.StringNC(5, random.CharsetAlpha()),
+		Connection: cm,
+	}
+	assert.NoError(t, l.Migrate(context.Background()))
+
+	guardcontracts.Locker(l).Test(t)
 }
 
 func ExampleLockerFactory() {
@@ -81,25 +75,14 @@ func ExampleLockerFactory() {
 var _ migration.Migratable = postgresql.LockerFactory[int]{}
 
 func TestNewLockerFactory(t *testing.T) {
+	ctx := context.Background()
 	cm := GetConnection(t)
 
-	guardcontracts.LockerFactory[string](func(tb testing.TB) guardcontracts.LockerFactorySubject[string] {
-		lockerFactory := postgresql.LockerFactory[string]{Connection: cm}
-		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
-		return guardcontracts.LockerFactorySubject[string]{
-			LockerFactory: lockerFactory,
-			MakeContext:   context.Background,
-			MakeKey:       testcase.ToT(&tb).Random.String,
-		}
-	}).Test(t)
+	lockerFactoryStrKey := postgresql.LockerFactory[string]{Connection: cm}
+	assert.NoError(t, lockerFactoryStrKey.Migrate(ctx))
+	guardcontracts.LockerFactory[string](lockerFactoryStrKey).Test(t)
 
-	guardcontracts.LockerFactory[int](func(tb testing.TB) guardcontracts.LockerFactorySubject[int] {
-		lockerFactory := postgresql.LockerFactory[int]{Connection: cm}
-		assert.NoError(tb, lockerFactory.Migrate(context.Background()))
-		return guardcontracts.LockerFactorySubject[int]{
-			LockerFactory: lockerFactory,
-			MakeContext:   context.Background,
-			MakeKey:       testcase.ToT(&tb).Random.Int,
-		}
-	}).Test(t)
+	lockerFactoryIntKey := postgresql.LockerFactory[int]{Connection: cm}
+	assert.NoError(t, lockerFactoryIntKey.Migrate(ctx))
+	guardcontracts.LockerFactory[int](lockerFactoryIntKey).Test(t)
 }

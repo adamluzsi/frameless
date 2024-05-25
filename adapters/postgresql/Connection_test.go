@@ -81,15 +81,8 @@ func TestConnection_PoolContract(t *testing.T) {
 }
 
 func TestConnection_OnePhaseCommitProtocolContract(t *testing.T) {
-	testcase.RunSuite(t, crudcontracts.OnePhaseCommitProtocol[Entity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, string] {
-		s := NewEntityRepository(tb)
-		return crudcontracts.OnePhaseCommitProtocolSubject[Entity, string]{
-			Resource:      s,
-			CommitManager: s.Connection,
-			MakeContext:   context.Background,
-			MakeEntity:    MakeEntityFunc(tb),
-		}
-	}))
+	repo := NewEntityRepository(t)
+	crudcontracts.OnePhaseCommitProtocol[Entity, string](repo, repo.Connection).Test(t)
 }
 
 func Test_createSQLRowWithErr(t *testing.T) {

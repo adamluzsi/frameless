@@ -2,9 +2,9 @@ package postgresql
 
 import (
 	"context"
-	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"sync"
 
 	"go.llib.dev/frameless/ports/guard"
 )
@@ -40,10 +40,16 @@ func (l Locker) Lock(ctx context.Context) (context.Context, error) {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	return context.WithValue(ctx, lockerCtxKey{}, &lockerCtxValue{
-		ctx:    ctx,
-		cancel: cancel,
-	}), nil
+
+	lck := &lockerCtxValue{
+		ctx:        ctx,
+		cancel:     cancel,
+		Connection: l.Connection,
+	}
+	context.AfterFunc(ctx, func() {
+		_ = lck.Unclock(ctx)
+	})
+	return context.WithValue(ctx, lockerCtxKey{}, lck), nil
 }
 
 func (l Locker) Unlock(ctx context.Context) error {
@@ -54,31 +60,35 @@ func (l Locker) Unlock(ctx context.Context) error {
 	if !ok {
 		return guard.ErrNoLock
 	}
-	if lck.done {
-		return nil
-	}
-
-	if err := l.Connection.RollbackTx(lck.ctx); err != nil {
-		if driver.ErrBadConn == err && ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return err
-	}
-	lck.done = true
-	err := ctx.Err()
-	lck.cancel()
-	return err
+	return lck.Unclock(ctx)
 }
 
 type (
 	lockerCtxKey   struct{}
 	lockerCtxValue struct {
-		tx     *sql.Tx
-		done   bool
-		cancel func()
-		ctx    context.Context
+		onUnlock   sync.Once
+		Connection Connection
+		done       bool
+		cancel     func()
+		ctx        context.Context
 	}
 )
+
+func (lck *lockerCtxValue) Unclock(ctx context.Context) (rerr error) {
+	lck.onUnlock.Do(func() {
+		if err := lck.Connection.RollbackTx(lck.ctx); err != nil {
+			if driver.ErrBadConn == err && ctx.Err() != nil {
+				rerr = ctx.Err()
+				return
+			}
+			rerr = err
+			return
+		}
+		rerr = ctx.Err()
+		lck.cancel()
+	})
+	return rerr
+}
 
 var lockerMigrationConfig = MigratorGroup{
 	ID: "frameless_locker_locks",

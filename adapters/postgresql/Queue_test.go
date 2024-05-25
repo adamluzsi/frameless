@@ -30,86 +30,34 @@ func TestQueue(t *testing.T) {
 
 	mapping := EntityJSONMapping{}
 
+	basicQueue := postgresql.Queue[Entity, EntityDTO]{
+		Name:       queueName,
+		Connection: c,
+		Mapping:    mapping,
+	}
+
+	lifoQueue := postgresql.Queue[Entity, EntityDTO]{
+		Name:       queueName,
+		Connection: c,
+		Mapping:    mapping,
+
+		LIFO: true,
+	}
+
+	blockingQueue := postgresql.Queue[Entity, EntityDTO]{
+		Name:       queueName,
+		Connection: c,
+		Mapping:    mapping,
+
+		Blocking: true,
+	}
+
 	testcase.RunSuite(t,
-		pubsubcontracts.FIFO[Entity](func(tb testing.TB) pubsubcontracts.FIFOSubject[Entity] {
-			q := postgresql.Queue[Entity, EntityDTO]{
-				Name:       queueName,
-				Connection: c,
-				Mapping:    mapping,
-			}
-			return pubsubcontracts.FIFOSubject[Entity]{
-				PubSub: pubsubcontracts.PubSub[Entity]{
-					Publisher:  q,
-					Subscriber: q,
-				},
-				MakeContext: context.Background,
-				MakeData:    MakeEntityFunc(tb),
-			}
-		}),
-		pubsubcontracts.LIFO[Entity](func(tb testing.TB) pubsubcontracts.LIFOSubject[Entity] {
-			q := postgresql.Queue[Entity, EntityDTO]{
-				Name:       queueName,
-				Connection: c,
-				Mapping:    mapping,
-
-				LIFO: true,
-			}
-			return pubsubcontracts.LIFOSubject[Entity]{
-				PubSub: pubsubcontracts.PubSub[Entity]{
-					Publisher:  q,
-					Subscriber: q,
-				},
-				MakeContext: context.Background,
-				MakeData:    MakeEntityFunc(tb),
-			}
-		}),
-		pubsubcontracts.Buffered[Entity](func(tb testing.TB) pubsubcontracts.BufferedSubject[Entity] {
-			q := postgresql.Queue[Entity, EntityDTO]{
-				Name:       queueName,
-				Connection: c,
-				Mapping:    mapping,
-			}
-			return pubsubcontracts.BufferedSubject[Entity]{
-				PubSub: pubsubcontracts.PubSub[Entity]{
-					Publisher:  q,
-					Subscriber: q,
-				},
-				MakeContext: context.Background,
-				MakeData:    MakeEntityFunc(tb),
-			}
-		}),
-		pubsubcontracts.Blocking[Entity](func(tb testing.TB) pubsubcontracts.BlockingSubject[Entity] {
-			q := postgresql.Queue[Entity, EntityDTO]{
-				Name:       queueName,
-				Connection: c,
-				Mapping:    mapping,
-
-				Blocking: true,
-			}
-			return pubsubcontracts.BlockingSubject[Entity]{
-				PubSub: pubsubcontracts.PubSub[Entity]{
-					Publisher:  q,
-					Subscriber: q,
-				},
-				MakeContext: context.Background,
-				MakeData:    MakeEntityFunc(tb),
-			}
-		}),
-		pubsubcontracts.Queue[Entity](func(tb testing.TB) pubsubcontracts.QueueSubject[Entity] {
-			q := postgresql.Queue[Entity, EntityDTO]{
-				Name:       queueName,
-				Connection: c,
-				Mapping:    mapping,
-			}
-			return pubsubcontracts.QueueSubject[Entity]{
-				PubSub: pubsubcontracts.PubSub[Entity]{
-					Publisher:  q,
-					Subscriber: q,
-				},
-				MakeContext: context.Background,
-				MakeData:    MakeEntityFunc(tb),
-			}
-		}),
+		pubsubcontracts.FIFO[Entity](basicQueue, basicQueue),
+		pubsubcontracts.LIFO[Entity](lifoQueue, lifoQueue),
+		pubsubcontracts.Buffered[Entity](basicQueue, basicQueue),
+		pubsubcontracts.Blocking[Entity](blockingQueue, blockingQueue),
+		pubsubcontracts.Queue[Entity](basicQueue, basicQueue),
 	)
 }
 

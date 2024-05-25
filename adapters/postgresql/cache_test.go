@@ -28,22 +28,7 @@ func TestRepository_cache(t *testing.T) {
 		CachedQueryInvalidators: nil,
 	}
 
-	rnd := random.New(random.CryptoSeed{})
-
-	cachecontracts.Cache[testent.Foo, testent.FooID](func(tb testing.TB) cachecontracts.CacheSubject[testent.Foo, testent.FooID] {
-		return cachecontracts.CacheSubject[testent.Foo, testent.FooID]{
-			Cache:       chc,
-			Source:      src,
-			Repository:  chcRepo,
-			MakeContext: context.Background,
-			MakeEntity: func() testent.Foo {
-				v := rnd.Make(testent.Foo{}).(testent.Foo)
-				v.ID = ""
-				return v
-			},
-			ChangeEntity: nil,
-		}
-	}).Test(t)
+	cachecontracts.Cache[testent.Foo, testent.FooID](chc, src, chcRepo).Test(t)
 }
 
 func MigrateFooCache(tb testing.TB, c postgresql.Connection) {

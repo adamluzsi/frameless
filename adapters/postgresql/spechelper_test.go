@@ -16,6 +16,8 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
+var rnd = random.New(random.CryptoSeed{})
+
 func NewEntityRepository(tb testing.TB) *postgresql.Repository[Entity, string] {
 	cm := GetConnection(tb)
 	MigrateEntity(tb, cm)

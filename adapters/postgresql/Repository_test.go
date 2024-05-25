@@ -35,45 +35,20 @@ func TestRepository(t *testing.T) {
 
 	MigrateEntity(t, cm)
 
-	config := crudcontracts.Config[Entity]{
+	config := crudcontracts.Config[Entity, string]{
 		MakeContext:     context.Background,
-		MakeEntity:      MakeEntityFunc(t),
 		SupportIDReuse:  true,
 		SupportRecreate: true,
+
+		ChangeEntity: nil, // test entity can be freely changed
 	}
 
 	testcase.RunSuite(t,
 		crudcontracts.Creator[Entity, string](subject, config),
-		crudcontracts.Finder[Entity, string](func(tb testing.TB) crudcontracts.FinderSubject[Entity, string] {
-			return crudcontracts.FinderSubject[Entity, string]{
-				Resource:    subject,
-				MakeContext: context.Background,
-				MakeEntity:  MakeEntityFunc(tb),
-			}
-		}),
-		crudcontracts.Updater[Entity, string](func(tb testing.TB) crudcontracts.UpdaterSubject[Entity, string] {
-			return crudcontracts.UpdaterSubject[Entity, string]{
-				Resource:     subject,
-				MakeContext:  context.Background,
-				MakeEntity:   MakeEntityFunc(tb),
-				ChangeEntity: nil, // test entity can be freely changed
-			}
-		}),
-		crudcontracts.Deleter[Entity, string](func(tb testing.TB) crudcontracts.DeleterSubject[Entity, string] {
-			return crudcontracts.DeleterSubject[Entity, string]{
-				Resource:    subject,
-				MakeContext: context.Background,
-				MakeEntity:  MakeEntityFunc(tb),
-			}
-		}),
-		crudcontracts.OnePhaseCommitProtocol[Entity, string](func(tb testing.TB) crudcontracts.OnePhaseCommitProtocolSubject[Entity, string] {
-			return crudcontracts.OnePhaseCommitProtocolSubject[Entity, string]{
-				Resource:      subject,
-				CommitManager: subject.Connection,
-				MakeContext:   context.Background,
-				MakeEntity:    MakeEntityFunc(tb),
-			}
-		}),
+		crudcontracts.Finder[Entity, string](subject, config),
+		crudcontracts.Updater[Entity, string](subject, config),
+		crudcontracts.Deleter[Entity, string](subject, config),
+		crudcontracts.OnePhaseCommitProtocol[Entity, string](subject, subject.Connection),
 	)
 }
 
@@ -89,34 +64,22 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 		Connection: cm,
 	}
 
-	testcase.RunSuite(t, crudcontracts.Creator[Entity, string](func(tb testing.TB) crudcontracts.CreatorSubject[Entity, string] {
-		return crudcontracts.CreatorSubject[Entity, string]{
-			Resource:        subject,
-			MakeContext:     context.Background,
-			MakeEntity:      MakeEntityFunc(tb),
-			SupportIDReuse:  true,
-			SupportRecreate: true,
-		}
-	}))
+	crudcontracts.Creator[Entity, string](subject, crudcontracts.Config[Entity, string]{
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+	}).Test(t)
 }
 
 func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 	cm := GetConnection(t)
 	MigrateEntity(t, cm)
 
-	cachecontracts.EntityRepository[Entity, string](func(tb testing.TB) cachecontracts.EntityRepositorySubject[Entity, string] {
-		repo := postgresql.Repository[Entity, string]{
-			Mapping:    EntityMapping(),
-			Connection: cm,
-		}
-		return cachecontracts.EntityRepositorySubject[Entity, string]{
-			EntityRepository: repo,
-			CommitManager:    cm,
-			MakeContext:      context.Background,
-			MakeEntity:       MakeEntityFunc(tb),
-			ChangeEntity:     nil,
-		}
-	}).Test(t)
+	repo := postgresql.Repository[Entity, string]{
+		Mapping:    EntityMapping(),
+		Connection: cm,
+	}
+
+	cachecontracts.EntityRepository[Entity, string](repo, cm).Test(t)
 }
 
 func TestRepository_canImplementCacheHitRepository(t *testing.T) {
@@ -158,22 +121,17 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		Connection: c,
 	}
 
-	cachecontracts.HitRepository[string](func(tb testing.TB) cachecontracts.HitRepositorySubject[string] {
-		return cachecontracts.HitRepositorySubject[string]{
-			Resource:      hitRepo,
-			CommitManager: c,
-			MakeContext:   context.Background,
-			MakeHit: func() cache.Hit[string] {
-				t := tb.(*testcase.T)
-				return cache.Hit[string]{
-					QueryID: t.Random.UUID(),
-					EntityIDs: random.Slice(t.Random.IntBetween(0, 7), func() string {
-						return t.Random.UUID()
-					}),
-					Timestamp: t.Random.Time().UTC(),
-				}
-			},
-		}
+	cachecontracts.HitRepository[string](hitRepo, c, crudcontracts.Config[cache.Hit[string], string]{
+		MakeEntity: func(tb testing.TB) cache.Hit[string] {
+			t := tb.(*testcase.T)
+			return cache.Hit[string]{
+				QueryID: t.Random.UUID(),
+				EntityIDs: random.Slice(t.Random.IntBetween(0, 7), func() string {
+					return t.Random.UUID()
+				}),
+				Timestamp: t.Random.Time().UTC(),
+			}
+		},
 	}).Test(t)
 }
 
