@@ -41,13 +41,13 @@ func ExampleMonitor_HTTPHandler() {
 }
 
 func ExampleMonitor_check() {
-	const metricKeyForHTTPRetryPerSec = "http-retry-average-per-second"
-	appMetrics := sync.Map{}
+	const detailKeyForHTTPRetryPerSec = "http-retry-average-per-second"
+	appDetails := sync.Map{}
 
 	var hm = health.Monitor{
 		Checks: []health.Check{
 			func(ctx context.Context) error {
-				value, ok := appMetrics.Load(metricKeyForHTTPRetryPerSec)
+				value, ok := appDetails.Load(detailKeyForHTTPRetryPerSec)
 				if !ok {
 					return nil
 				}
@@ -109,7 +109,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		state := hc.HealthCheck(context.Background())
 		assert.Equal(t, health.Up, state.Status)
 		assert.Equal(t, hc.ServiceName, state.Name)
-		assert.NotNil(t, state.Metrics)
+		assert.NotNil(t, state.Details)
 	})
 
 	t.Run("all-checks-pass", func(t *testing.T) {
@@ -299,7 +299,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 
 	t.Run("dependency timestamp message is populated when it is empty", func(t *testing.T) {
 		hc := health.Monitor{
-			Dependencies: health.MonitorDependencies{
+			Dependencies: []health.DependencyCheck{
 				func(ctx context.Context) health.Report {
 					return health.Report{
 						Name: "the-name",
@@ -345,7 +345,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 
 	t.Run("metrics are set during the health check evaluation process", func(t *testing.T) {
 		m := health.Monitor{
-			Metrics: health.MonitorMetrics{
+			Details: map[string]health.DetailCheck{
 				"x-metric": func(ctx context.Context) (val any, err error) {
 					return 42, nil
 				},
@@ -355,13 +355,13 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		report := m.HealthCheck(context.Background())
 		assert.Equal(t, health.Up, report.Status)
 		assert.Empty(t, report.Issues)
-		assert.NotEmpty(t, report.Metrics)
-		assert.Equal[any](t, report.Metrics["x-metric"], 42)
+		assert.NotEmpty(t, report.Details)
+		assert.Equal[any](t, report.Details["x-metric"], 42)
 	})
 
 	t.Run("an error during a metric evaluation is reported as a non fatal issue", func(t *testing.T) {
 		m := health.Monitor{
-			Metrics: health.MonitorMetrics{
+			Details: map[string]health.DetailCheck{
 				"x-metric": func(ctx context.Context) (val any, err error) {
 					return 42, fmt.Errorf("boom")
 				},
@@ -392,12 +392,12 @@ func TestMonitor_HealthCheck(t *testing.T) {
 func TestMonitor_race(t *testing.T) {
 	m := &health.Monitor{
 		ServiceName: "name",
-		Checks: health.MonitorChecks{
+		Checks: []health.Check{
 			func(ctx context.Context) error {
 				return nil
 			},
 		},
-		Dependencies: health.MonitorDependencies{
+		Dependencies: []health.DependencyCheck{
 			func(ctx context.Context) health.Report {
 				return health.Report{
 					Status: health.Up,
@@ -405,8 +405,8 @@ func TestMonitor_race(t *testing.T) {
 				}
 			},
 		},
-		Metrics: health.MonitorMetrics{
-			"metric-name": func(ctx context.Context) (any, error) {
+		Details: map[string]health.DetailCheck{
+			"detail-name": func(ctx context.Context) (any, error) {
 				return 42, nil
 			},
 		},
@@ -518,24 +518,24 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 		})
 	})
 
-	s.When("metric is registered", func(s *testcase.Spec) {
-		metricVal := let.IntB(s, 0, 100)
+	s.When("detail is registered", func(s *testcase.Spec) {
+		detailVal := let.IntB(s, 0, 100)
 
 		s.Before(func(t *testcase.T) {
-			subject.Get(t).Metrics = health.MonitorMetrics{
-				"x-metric": func(ctx context.Context) (any, error) {
-					return metricVal.Get(t), nil
+			subject.Get(t).Details = map[string]health.DetailCheck{
+				"x-detail": func(ctx context.Context) (any, error) {
+					return detailVal.Get(t), nil
 				},
 			}
 		})
 
-		s.Then("the metric result is returned back", func(t *testcase.T) {
+		s.Then("the detail result is returned back", func(t *testcase.T) {
 			resp := act(t)
 			t.Must.Equal(http.StatusOK, resp.Code)
 			var dto health.ReportJSONDTO
 			t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
-			t.Must.NotEmpty(dto.Metrics)
-			t.Must.Equal(dto.Metrics["x-metric"], float64(metricVal.Get(t)))
+			t.Must.NotEmpty(dto.Details)
+			t.Must.Equal(dto.Details["x-detail"], float64(detailVal.Get(t)))
 		})
 	})
 
@@ -855,15 +855,15 @@ func TestExampleResponse(t *testing.T) {
 		t.Skip()
 	}
 
-	const metricKeyForHTTPRetryPerSec = "http-retry-average-per-second"
-	var appMetrics sync.Map
-	appMetrics.Store(metricKeyForHTTPRetryPerSec, 42)
+	const detailKeyForHTTPRetryPerSec = "http-retry-average-per-second"
+	var appDetails sync.Map
+	appDetails.Store(detailKeyForHTTPRetryPerSec, 42)
 
 	m := health.Monitor{
 		// our service related checks
 		Checks: []health.Check{
 			func(ctx context.Context) error {
-				value, ok := appMetrics.Load(metricKeyForHTTPRetryPerSec)
+				value, ok := appDetails.Load(detailKeyForHTTPRetryPerSec)
 				if !ok {
 					return nil
 				}
@@ -884,7 +884,7 @@ func TestExampleResponse(t *testing.T) {
 			},
 		},
 		// our service's dependencies like DB or downstream services
-		Dependencies: health.MonitorDependencies{
+		Dependencies: []health.DependencyCheck{
 			func(ctx context.Context) health.Report {
 				return health.Report{
 					Name: "downstream-service-name",
@@ -894,7 +894,7 @@ func TestExampleResponse(t *testing.T) {
 							Message: "failed to ping the database through the connection",
 						},
 					},
-					Metrics: map[string]any{
+					Details: map[string]any{
 						"http-request-throughput": 42,
 					},
 					Dependencies: []health.Report{
@@ -906,8 +906,8 @@ func TestExampleResponse(t *testing.T) {
 				}
 			},
 		},
-		Metrics: health.MonitorMetrics{
-			"metric-name": func(ctx context.Context) (any, error) {
+		Details: map[string]health.DetailCheck{
+			"detail-name": func(ctx context.Context) (any, error) {
 				return 42, nil
 			},
 		},

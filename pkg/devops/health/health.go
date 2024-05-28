@@ -29,15 +29,9 @@ type Monitor struct {
 	// Dependencies represent our service's dependencies and their health state (Report).
 	// DependencyCheck should come back always with a valid Report.
 	Dependencies []DependencyCheck
-	// Metrics represents our service's monitoring metrics.
-	Metrics map[string]Metric
+	// Details represents our service's monitoring metrics.
+	Details map[string]DetailCheck
 }
-
-type (
-	MonitorMetrics      map[string]Metric
-	MonitorDependencies []DependencyCheck
-	MonitorChecks       []Check
-)
 
 type (
 	// Check represents a health check.
@@ -54,8 +48,8 @@ type (
 	// it should be represented as an issue in the Report.Issues that the service is unreachable,
 	// and the Issue.Causes should tell that this makes the given dependency health Status considered as Down.
 	DependencyCheck func(ctx context.Context) Report
-	// Metric represents a metric reporting function. The result will be added to the Report.Metrics.
-	// A Metric results encompass analytical purpose, a status indicators for the service
+	// DetailCheck represents a metric reporting function. The result will be added to the Report.Metrics.
+	// A DetailCheck results encompass analytical purpose, a status indicators for the service
 	// for the given time when the service were called.
 	// If numerical values are included, they should fluctuate over time, reflecting the current state.
 	//
@@ -64,17 +58,17 @@ type (
 	//
 	// A challenging metric value would be a counter that counts the total handled requests number
 	// from a given application's instance lifetime.
-	Metric func(ctx context.Context) (any, error)
+	DetailCheck func(ctx context.Context) (any, error)
 )
 
 func (m *Monitor) HealthCheck(ctx context.Context) Report {
 	var report = Report{
 		Name:    m.ServiceName,
-		Metrics: make(map[string]any),
+		Details: make(map[string]any),
 	}
 	m.collectIssues(ctx, &report)
 	m.collectDependencies(ctx, &report)
-	m.collectMetrics(ctx, &report)
+	m.collectDetails(ctx, &report)
 	report.Correlate()
 	return report
 }
@@ -139,9 +133,9 @@ func (m *Monitor) HTTPHandler() http.Handler {
 	})
 }
 
-func (m *Monitor) collectMetrics(ctx context.Context, r *Report) {
-	for name, metric := range m.Metrics {
-		val, err := metric(ctx)
+func (m *Monitor) collectDetails(ctx context.Context, r *Report) {
+	for name, check := range m.Details {
+		val, err := check(ctx)
 		if err != nil {
 			r.Issues = append(r.Issues, Issue{
 				Code:    "metric-error",
@@ -149,7 +143,7 @@ func (m *Monitor) collectMetrics(ctx context.Context, r *Report) {
 			})
 			continue
 		}
-		r.Metrics[name] = val
+		r.Details[name] = val
 	}
 }
 
@@ -176,10 +170,10 @@ type Report struct {
 	// Timestamp represents the time at the health check report was created
 	// Default is the current time in UTC.
 	Timestamp time.Time
-	// Metrics encompass analytical data and status indicators
+	// Details encompass analytical data and status indicators
 	// for the service for the given time when the service were called.
 	// For more about what values it should contain, read the documentation of Metric.
-	Metrics map[string]any
+	Details map[string]any
 }
 
 func (r *Report) Validate() error {

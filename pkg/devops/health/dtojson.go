@@ -18,15 +18,15 @@ type ReportJSONDTO struct {
 	Issues       []IssueJSONDTO  `json:"issues,omitempty"`
 	Dependencies []ReportJSONDTO `json:"dependencies,omitempty"`
 	Timestamp    string          `json:"timestamp,omitempty"`
-	Metrics      map[string]any  `json:"metrics,omitempty"`
+	Details      map[string]any  `json:"details,omitempty"`
 }
 
 var _ = dtos.Register[Report, ReportJSONDTO](
 	func(ctx context.Context, ent Report) (ReportJSONDTO, error) {
-		var metrics map[string]any
-		metrics = ent.Metrics
-		if len(metrics) == 0 { // TODO: cover this to prove that metrics are not in the json when they don't have values
-			metrics = nil
+		var details map[string]any
+		details = ent.Details
+		if len(details) == 0 { // TODO: cover this to prove that metrics are not in the json when they don't have values
+			details = nil
 		}
 		return ReportJSONDTO{
 			Status:  dtos.MustMap[string](ctx, ent.Status),
@@ -41,7 +41,7 @@ var _ = dtos.Register[Report, ReportJSONDTO](
 					return dtos.MustMap[ReportJSONDTO](ctx, v)
 				})),
 			Timestamp: ent.Timestamp.Format(time.RFC3339),
-			Metrics:   metrics,
+			Details:   details,
 		}, nil
 	},
 	func(ctx context.Context, dto ReportJSONDTO) (Report, error) {
@@ -66,7 +66,7 @@ var _ = dtos.Register[Report, ReportJSONDTO](
 					return dtos.MustMap[Report](ctx, v)
 				})),
 			Timestamp: timestamp,
-			Metrics:   dto.Metrics,
+			Details:   dto.Details,
 		}
 		return hs, hs.Validate()
 	})
