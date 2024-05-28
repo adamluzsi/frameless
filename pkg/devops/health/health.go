@@ -182,35 +182,40 @@ type Report struct {
 	Metrics map[string]any
 }
 
-func (hs *Report) Validate() error {
-	return hs.Status.Validate()
+func (r *Report) Validate() error {
+	return r.Status.Validate()
 }
 
-func (hs *Report) Correlate() {
-	if hs.Status.IsZero() {
-		hs.Status = Up
+func (r *Report) Correlate() {
+	if r.Status.IsZero() {
+		r.Status = Up
 	}
-	for _, issue := range hs.Issues {
+	for _, issue := range r.Issues {
 		if issue.Causes.IsZero() {
 			continue
 		}
 		if issue.Causes.Validate() != nil {
 			continue
 		}
-		if hs.Status.IsLessSevere(issue.Causes) {
-			hs.Status = issue.Causes
+		if r.Status.IsLessSevere(issue.Causes) {
+			r.Status = issue.Causes
 		}
 	}
-	for i, _ := range hs.Dependencies {
-		hs.Dependencies[i].Correlate()
-		dep := hs.Dependencies[i]
-		if hs.Status == Up && dep.Status != Up {
-			hs.Status = PartialOutage
+	for i, _ := range r.Dependencies {
+		r.Dependencies[i].Correlate()
+		dep := r.Dependencies[i]
+		if r.Status == Up && dep.Status != Up {
+			r.Status = PartialOutage
 			break
 		}
 	}
-	hs.Message = zerokit.Coalesce(hs.Message, StateMessage(hs.Status))
-	hs.Timestamp = zerokit.Coalesce(hs.Timestamp, clock.TimeNow().UTC())
+	r.Message = zerokit.Coalesce(r.Message, StateMessage(r.Status))
+	r.Timestamp = zerokit.Coalesce(r.Timestamp, clock.TimeNow().UTC())
+}
+
+func (r Report) WithIssue(issue Issue) Report {
+	r.Issues = append(append([]Issue{}, r.Issues...), issue)
+	return r
 }
 
 // Issue represents an issue detected in during a health check.

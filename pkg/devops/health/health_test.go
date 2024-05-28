@@ -923,3 +923,20 @@ func TestExampleResponse(t *testing.T) {
 	fmt.Println(string(data))
 
 }
+
+func TestReport_WithIssue(t *testing.T) {
+	var r health.Report
+
+	expIssue := health.Issue{
+		Code:    "the-answer-is",
+		Message: "to all questions",
+		Causes:  health.Degraded,
+	}
+
+	gotReport := r.WithIssue(expIssue)
+
+	assert.NotEqual(t, r, gotReport)
+	assert.Empty(t, r.Issues)
+	assert.NotEmpty(t, gotReport.Issues)
+	assert.Contain(t, gotReport.Issues, expIssue)
+}
