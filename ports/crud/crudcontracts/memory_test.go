@@ -8,7 +8,6 @@ import (
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/pp"
 )
 
 func Test_memoryRepository(t *testing.T) {
@@ -51,15 +50,24 @@ func Test_cleanup(t *testing.T) {
 		SupportRecreate: true,
 	}
 
-	testcase.RunSuite(t,
-		// crudcontracts.Creator[testent.Foo, testent.FooID](subject, crudConfig),
-		// crudcontracts.Finder[testent.Foo, testent.FooID](subject, crudConfig),
-		// crudcontracts.Updater[testent.Foo, testent.FooID](subject, crudConfig),
-		// crudcontracts.Deleter[testent.Foo, testent.FooID](subject, crudConfig),
+	s := testcase.NewSpec(t)
+
+	s.After(func(t *testcase.T) {
+		// TODO: compress doesn't handle well if there is a case where previously a delete was made in a transaction for an entity, and then i was committed.
+		// For some reason, it doesn't clean up the logs
+		subject.Compress()
+	})
+
+	testcase.RunSuite(s,
+		crudcontracts.Creator[testent.Foo, testent.FooID](subject, crudConfig),
+		crudcontracts.Finder[testent.Foo, testent.FooID](subject, crudConfig),
+		crudcontracts.Updater[testent.Foo, testent.FooID](subject, crudConfig),
+		crudcontracts.Deleter[testent.Foo, testent.FooID](subject, crudConfig),
 		crudcontracts.OnePhaseCommitProtocol[testent.Foo, testent.FooID](subject, subject.EventLog, crudConfig),
 	)
 
-	pp.PP(m)
+	s.Finish()
+
 	m.Compress()
 
 	assert.Must(t).Empty(m.Events(),

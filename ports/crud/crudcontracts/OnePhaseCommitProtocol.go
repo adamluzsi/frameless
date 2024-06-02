@@ -2,17 +2,17 @@ package crudcontracts
 
 import (
 	"fmt"
-	"sync"
+	"testing"
 
 	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
 	"go.llib.dev/frameless/ports/contract"
+	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/option"
 	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/pkg/pointer"
 
 	"go.llib.dev/frameless/ports/comproto"
-	"go.llib.dev/frameless/ports/crud"
 	crudtest "go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/spechelper"
@@ -25,10 +25,8 @@ func OnePhaseCommitProtocol[Entity, ID any](subject crd[Entity, ID], manager com
 	s := testcase.NewSpec(nil)
 	s.HasSideEffect()
 
-	// clean ahead before testing suite
-	once := &sync.Once{}
-	s.Before(func(t *testcase.T) {
-		once.Do(func() { spechelper.TryCleanup(t, c.MakeContext(), subject) })
+	s.BeforeAll(func(tb testing.TB) {
+		spechelper.TryCleanup(tb, c.MakeContext(), subject)
 	})
 
 	s.Context("implements basic commit protocol contract",

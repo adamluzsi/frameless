@@ -93,12 +93,10 @@ type EventLogEvent struct {
 func (et EventLogEvent) GetTrace() []Stack      { return et.Trace }
 func (et EventLogEvent) SetTrace(trace []Stack) { et.Trace = trace }
 
-const (
-	txEventLogEventType = "Tx"
-)
+const txEventLogEventType = "Tx"
 
 func (et EventLogEvent) String() string {
-	return fmt.Sprintf(`%s`, et.Name)
+	return fmt.Sprintf(`%s:%s`, et.Type, et.Name)
 }
 
 func (el *EventLog) Append(ctx context.Context, event Event) error {
