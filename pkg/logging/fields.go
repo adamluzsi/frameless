@@ -60,6 +60,8 @@ var (
 	interfaceRegister = map[reflect.Type]func(any) Detail{}
 )
 
+// RegisterFieldType allows you to register T type and have it automatically conerted into a Detail value
+// when it is passed as a Field value for logging.
 func RegisterFieldType[T any](mapping func(T) Detail) func() {
 	typ := reflectkit.TypeOf[T]()
 	var register map[reflect.Type]func(any) Detail

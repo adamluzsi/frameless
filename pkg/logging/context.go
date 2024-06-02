@@ -24,7 +24,7 @@ func ContextWith(ctx context.Context, lds ...Detail) context.Context {
 }
 
 // getLoggingDetailsFromContext returns the details attached to the context
-func getLoggingDetailsFromContext(ctx context.Context, l *Logger) []Detail {
+func getLoggingDetailsFromContext(ctx context.Context) []Detail {
 	if ctx == nil {
 		return nil
 	}

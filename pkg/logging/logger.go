@@ -115,7 +115,7 @@ func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []D
 		return false
 	}
 	var le = make(logEntry)
-	for _, d := range getLoggingDetailsFromContext(ctx, l) {
+	for _, d := range getLoggingDetailsFromContext(ctx) {
 		d.addTo(l, le)
 	}
 	for _, d := range ds {
@@ -172,7 +172,7 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 
 func (l *Logger) toLogEntry(event logEvent) logEntry {
 	le := make(logEntry)
-	for _, d := range getLoggingDetailsFromContext(event.Context, l) {
+	for _, d := range getLoggingDetailsFromContext(event.Context) {
 		d.addTo(l, le)
 	}
 	for _, ld := range event.Details {
@@ -180,9 +180,13 @@ func (l *Logger) toLogEntry(event logEvent) logEntry {
 	}
 	le[l.getLevelKey()] = event.Level
 	le[l.getMessageKey()] = event.Message
-	const timestampKey = "timestamp"
-	le[l.coalesceKey(l.TimestampKey, timestampKey)] = event.Timestamp.Format(time.RFC3339)
+	le[l.getTimestampKey()] = event.Timestamp.Format(time.RFC3339)
 	return le
+}
+
+func (l *Logger) getTimestampKey() string {
+	const timestampKey = "timestamp"
+	return l.coalesceKey(l.TimestampKey, timestampKey)
 }
 
 func (l *Logger) getMessageKey() string {
