@@ -72,7 +72,7 @@ func ExampleResource() {
 
 func TestResource_ServeHTTP(t *testing.T) {
 	s := testcase.NewSpec(t)
-	s.Before(func(t *testcase.T) { logger.LogWithTB(t) })
+	s.Before(func(t *testcase.T) { logger.Testing(t) })
 
 	type FooIDContextKey struct{}
 

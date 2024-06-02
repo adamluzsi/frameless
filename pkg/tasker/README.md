@@ -149,7 +149,7 @@ func main() {
 
 	db, err := sql.Open("driverName", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		logger.Error(ctx, "error during postgres db opening", logger.ErrField(err))
+		logger.Error(ctx, "error during postgres db opening", logging.ErrField(err))
 		os.Exit(1)
 	}
 
@@ -164,7 +164,7 @@ func main() {
 	})
 
 	if err := tasker.Main(ctx, task1); err != nil {
-		logger.Error(ctx, "error during the application run", logger.ErrField(err))
+		logger.Error(ctx, "error during the application run", logging.ErrField(err))
 		os.Exit(1)
 	}
 }

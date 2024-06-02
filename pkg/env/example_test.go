@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 )
 
 func ExampleLoad() {
@@ -17,7 +18,7 @@ func ExampleLoad() {
 
 	var c ExampleAppConfig
 	if err := env.Load(&c); err != nil {
-		logger.Fatal(nil, "failed to load application config", logger.ErrField(err))
+		logger.Fatal(nil, "failed to load application config", logging.ErrField(err))
 		os.Exit(1)
 	}
 }
@@ -29,7 +30,7 @@ func ExampleLoad_enum() {
 
 	var c ExampleAppConfig
 	if err := env.Load(&c); err != nil {
-		logger.Fatal(nil, "failed to load application config", logger.ErrField(err))
+		logger.Fatal(nil, "failed to load application config", logging.ErrField(err))
 		os.Exit(1)
 	}
 }

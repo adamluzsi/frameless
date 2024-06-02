@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/dtos"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/restapi/internal"
@@ -292,7 +293,7 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if err := index.Close(); err != nil {
 			logger.Warn(ctx, "error during closing the index result resource",
-				logger.ErrField(err))
+				logging.ErrField(err))
 		}
 	}()
 	if err := index.Err(); err != nil {
@@ -316,7 +317,7 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if err := listEncoder.Close(); err != nil {
 			logger.Warn(ctx, "finishing the index list encoding encountered an error",
-				logger.ErrField(err))
+				logging.ErrField(err))
 			return
 		}
 	}()
@@ -327,20 +328,20 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 		dto, err := resMapping.toDTO(ctx, ent)
 		if err != nil {
-			logger.Warn(ctx, "error during index element DTO Mapping", logger.ErrField(err))
+			logger.Warn(ctx, "error during index element DTO Mapping", logging.ErrField(err))
 			break
 		}
 
 		if err := listEncoder.Encode(dto); err != nil {
-			logger.Warn(ctx, "error during DTO value encoding", logger.ErrField(err))
+			logger.Warn(ctx, "error during DTO value encoding", logging.ErrField(err))
 			break
 		}
 	}
 
 	if err := index.Err(); err != nil {
 		logger.Error(ctx, "error during iterating index result",
-			logger.Field("entity_type", reflectkit.TypeOf[Entity]().String()),
-			logger.ErrField(err))
+			logging.Field("entity_type", reflectkit.TypeOf[Entity]().String()),
+			logging.ErrField(err))
 
 		if n == 0 { // TODO:TEST_ME
 			res.getErrorHandler().HandleError(w, r, ErrInternalServerError)
@@ -370,7 +371,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	dtoPtr := reqMapping.newDTO()
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
-		logger.Debug(ctx, "invalid request body", logger.ErrField(err))
+		logger.Debug(ctx, "invalid request body", logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
 		return
 	}
@@ -386,7 +387,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 			res.getErrorHandler().HandleError(w, r, ErrEntityAlreadyExist.With().Wrap(err))
 			return
 		}
-		logger.Error(ctx, "error during restapi.Resource#Create operation", logger.ErrField(err))
+		logger.Error(ctx, "error during restapi.Resource#Create operation", logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -405,8 +406,8 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 	data, err = resSer.Marshal(dto) // TODO:TEST_ME
 	if err != nil {
 		logger.Error(ctx, "error during Marshaling entity operation",
-			logger.Field("type", reflectkit.TypeOf[Entity]().String()),
-			logger.ErrField(err))
+			logging.Field("type", reflectkit.TypeOf[Entity]().String()),
+			logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -416,7 +417,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := w.Write(data); err != nil {
 		logger.Debug(ctx, "error during writing response to the caller",
-			logger.ErrField(err))
+			logging.ErrField(err))
 	}
 }
 
@@ -457,7 +458,7 @@ func (res Resource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id 
 
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(data); err != nil {
-		logger.Debug(ctx, "error while writing back the response", logger.ErrField(err))
+		logger.Debug(ctx, "error while writing back the response", logging.ErrField(err))
 		return
 	}
 }

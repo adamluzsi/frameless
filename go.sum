@@ -1,14 +1,2 @@
-go.llib.dev/testcase v0.147.2 h1:mlnmm+ZGD3R741T/o70oSHnYwOSN9bCLOTJKZP/ksPg=
-go.llib.dev/testcase v0.147.2/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
-go.llib.dev/testcase v0.148.1 h1:zZmMiAjkqK7SDFHaBnKcaQUysGg6xUVSPWyWFcA/Z9g=
-go.llib.dev/testcase v0.148.1/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
-go.llib.dev/testcase v0.149.0 h1:OZAPisb0VbqAFCrzL0QH/WYRJ6pmIbfv0bX9yHr23xk=
-go.llib.dev/testcase v0.149.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
-go.llib.dev/testcase v0.150.0 h1:c/JUhYjhyJKPU7cG8e3pagl19Rg8Om7xIvxi4mcvZ2Q=
-go.llib.dev/testcase v0.150.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
-go.llib.dev/testcase v0.151.0 h1:YLpVyNSC+xVGTl8kgu5mgkMXnGyOdGPL9QU7GSK4kaQ=
-go.llib.dev/testcase v0.151.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
-golang.org/x/mod v0.17.0 h1:zY54UmvipHiNd+pm+m0x9KhZ9hl1/7QNMyxXbc6ICqA=
-golang.org/x/mod v0.17.0/go.mod h1:hTbmBsO62+eylJbnUtE2MGJUyE7QWk4xUqPFrRgJ+7c=
-golang.org/x/tools v0.21.0 h1:qc0xYgIbsSDt9EyWz05J5wfa7LOVW0YTLOXrqdLAWIw=
-golang.org/x/tools v0.21.0/go.mod h1:aiJjzUbINMkxbQROHiO6hDPo2LHcIPhhQsa9DLh0yGk=
+go.llib.dev/testcase v0.153.2 h1:p/Lvq8fa2EBORUg2mWh8E2FslZPHHT3nrZskfZJVHzA=
+go.llib.dev/testcase v0.153.2/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=

@@ -15,6 +15,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -355,14 +356,14 @@ func TestAccessLog_smoke(t *testing.T) {
 		requestBody      = rnd.String()
 		responseBody     = rnd.String()
 		gotRemoteAddress string
-		logs             []logger.Fields
+		logs             []logging.Fields
 	)
 
-	logger.Stub(t)
-
-	logger.Default.Hijack = func(level logger.Level, msg string, fields logger.Fields) {
-		logs = append(logs, fields)
-	}
+	logger.Stub(t, func(l *logging.Logger) {
+		l.Hijack = func(level logging.Level, msg string, fields logging.Fields) {
+			logs = append(logs, fields)
+		}
+	})
 
 	now := time.Now()
 
@@ -385,8 +386,8 @@ func TestAccessLog_smoke(t *testing.T) {
 			w.WriteHeader(responseCode)
 			w.Write([]byte(responseBody))
 		}),
-		AdditionalLoggingDetail: func(w http.ResponseWriter, r *http.Request) logger.LoggingDetail {
-			return logger.Field("foo", "baz")
+		AdditionalLoggingDetail: func(w http.ResponseWriter, r *http.Request) logging.Detail {
+			return logging.Field("foo", "baz")
 		},
 	}
 
@@ -406,7 +407,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	assert.Equal(t, responseCode, response.StatusCode)
 	assert.True(t, len(logs) == 1)
 	u, _ := url.Parse(server.URL)
-	assert.Equal(t, logger.Fields{
+	assert.Equal(t, logging.Fields{
 		"duration":             "1.542s",
 		"host":                 u.Host,
 		"method":               requestMethod,
@@ -434,7 +435,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	assert.Contain(t, string(gotResponseBody), responseBody)
 	assert.Equal(t, responseCode, response.StatusCode)
 	assert.True(t, len(logs) == 1)
-	assert.Equal(t, logs[0], logger.Fields{
+	assert.Equal(t, logs[0], logging.Fields{
 		"duration":             "1.542s",
 		"host":                 u.Host,
 		"method":               requestMethod,

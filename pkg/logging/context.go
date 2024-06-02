@@ -1,4 +1,4 @@
-package logger
+package logging
 
 import (
 	"context"
@@ -8,10 +8,10 @@ type ctxKeyDetails struct{}
 
 type ctxValue struct {
 	Super   *ctxValue
-	Details []LoggingDetail
+	Details []Detail
 }
 
-func ContextWith(ctx context.Context, lds ...LoggingDetail) context.Context {
+func ContextWith(ctx context.Context, lds ...Detail) context.Context {
 	if len(lds) == 0 {
 		return ctx
 	}
@@ -24,14 +24,14 @@ func ContextWith(ctx context.Context, lds ...LoggingDetail) context.Context {
 }
 
 // getLoggingDetailsFromContext returns the details attached to the context
-func getLoggingDetailsFromContext(ctx context.Context, l *Logger) []LoggingDetail {
+func getLoggingDetailsFromContext(ctx context.Context, l *Logger) []Detail {
 	if ctx == nil {
 		return nil
 	}
-	var details []LoggingDetail
+	var details []Detail
 	if v, ok := lookupValue(ctx); ok {
 		for {
-			details = append(append([]LoggingDetail{}, v.Details...), details...) // unshift
+			details = append(append([]Detail{}, v.Details...), details...) // unshift
 			if v.Super == nil {
 				break
 			}

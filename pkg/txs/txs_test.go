@@ -7,6 +7,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/txs"
 	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
 	"go.llib.dev/testcase"
@@ -259,7 +260,7 @@ func Example_pkgLevelTxFunctions() {
 	ctx := context.Background()
 	ctx, err := txs.Begin(ctx)
 	if err != nil {
-		logger.Error(ctx, "error with my tx", logger.ErrField(err))
+		logger.Error(ctx, "error with my tx", logging.ErrField(err))
 	}
 
 	if err := MyUseCase(ctx); err != nil {

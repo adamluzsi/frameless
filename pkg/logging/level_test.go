@@ -1,4 +1,4 @@
-package logger_test
+package logging_test
 
 import (
 	"bytes"
@@ -8,7 +8,7 @@ import (
 
 	"go.llib.dev/testcase/assert"
 
-	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 )
 
 func TestLogger_level(t *testing.T) {
@@ -26,7 +26,7 @@ func TestLogger_level(t *testing.T) {
 		var (
 			ctx = context.Background()
 			buf = &bytes.Buffer{}
-			lgr = logger.Logger{Out: buf}
+			lgr = logging.Logger{Out: buf}
 		)
 		lgr.Debug(ctx, "")
 		lgr.Info(ctx, "")
@@ -45,9 +45,9 @@ func TestLogger_level(t *testing.T) {
 		var (
 			ctx = context.Background()
 			buf = &bytes.Buffer{}
-			lgr = logger.Logger{Out: buf}
+			lgr = logging.Logger{Out: buf}
 		)
-		lgr.Level = logger.LevelDebug
+		lgr.Level = logging.LevelDebug
 		lgr.Debug(ctx, "")
 		lgr.Info(ctx, "")
 		lgr.Warn(ctx, "")
@@ -65,9 +65,9 @@ func TestLogger_level(t *testing.T) {
 		var (
 			ctx = context.Background()
 			buf = &bytes.Buffer{}
-			lgr = logger.Logger{Out: buf}
+			lgr = logging.Logger{Out: buf}
 		)
-		lgr.Level = logger.LevelInfo
+		lgr.Level = logging.LevelInfo
 		lgr.Debug(ctx, "")
 		lgr.Info(ctx, "")
 		lgr.Warn(ctx, "")
@@ -85,9 +85,9 @@ func TestLogger_level(t *testing.T) {
 		var (
 			ctx = context.Background()
 			buf = &bytes.Buffer{}
-			lgr = logger.Logger{Out: buf}
+			lgr = logging.Logger{Out: buf}
 		)
-		lgr.Level = logger.LevelWarn
+		lgr.Level = logging.LevelWarn
 		lgr.Debug(ctx, "")
 		lgr.Info(ctx, "")
 		lgr.Warn(ctx, "")
@@ -105,9 +105,9 @@ func TestLogger_level(t *testing.T) {
 		var (
 			ctx = context.Background()
 			buf = &bytes.Buffer{}
-			lgr = logger.Logger{Out: buf}
+			lgr = logging.Logger{Out: buf}
 		)
-		lgr.Level = logger.LevelError
+		lgr.Level = logging.LevelError
 		lgr.Debug(ctx, "")
 		lgr.Info(ctx, "")
 		lgr.Warn(ctx, "")
@@ -125,9 +125,9 @@ func TestLogger_level(t *testing.T) {
 		var (
 			ctx = context.Background()
 			buf = &bytes.Buffer{}
-			lgr = logger.Logger{Out: buf}
+			lgr = logging.Logger{Out: buf}
 		)
-		lgr.Level = logger.LevelFatal
+		lgr.Level = logging.LevelFatal
 		lgr.Debug(ctx, "")
 		lgr.Info(ctx, "")
 		lgr.Warn(ctx, "")

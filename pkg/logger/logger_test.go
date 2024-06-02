@@ -1,73 +1,69 @@
 package logger_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/stringcase"
-	"go.llib.dev/testcase"
+	"go.llib.dev/frameless/pkg/teardown"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
-func Test_smoke(t *testing.T) {
+var defaultKeyFormatter = stringcase.ToSnake
+
+func ExampleDebug() {
 	ctx := context.Background()
-	buf := logger.Stub(t)
-	logger.Default.KeyFormatter = stringcase.ToPascal
+	logger.Debug(ctx, "foo")
+}
 
-	// you can add details to context, thus every logging call using this context
-	ctx = logger.ContextWith(ctx, logger.Fields{
-		"foo": "bar",
-		"baz": "qux",
-	})
+func ExampleInfo() {
+	ctx := context.Background()
+	logger.Info(ctx, "foo")
+}
 
-	// You can use your own Logger instance or the logger.Default logger instance if you plan to log to the STDOUT.
-	logger.Info(ctx, "foo", logger.Fields{
+func ExampleWarn() {
+	ctx := context.Background()
+	logger.Warn(ctx, "foo")
+}
+
+func ExampleError() {
+	ctx := context.Background()
+	logger.Error(ctx, "foo")
+}
+
+func ExampleFatal() {
+	ctx := context.Background()
+	logger.Fatal(ctx, "foo")
+}
+
+func Example_withDetails() {
+	ctx := context.Background()
+	logger.Info(ctx, "foo", logging.Fields{
 		"userID":    42,
 		"accountID": 24,
 	})
-
-	t.Log(buf.String())
 }
 
-func TestLogger_smoke(t *testing.T) {
+func Test_pkgFuncSmoke(t *testing.T) {
 	now := time.Now()
 	timecop.Travel(t, now, timecop.Freeze())
 	rnd := random.New(random.CryptoSeed{})
 
-	t.Run("log methods accept nil context", func(t *testing.T) {
-		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf, Level: logger.LevelDebug}
-		l.Debug(nil, "Debug")
-		l.Info(nil, "Info")
-		l.Warn(nil, "Warn")
-		l.Error(nil, "Error")
-		l.Fatal(nil, "Fatal")
-		assert.Contain(t, buf.String(), "Debug")
-		assert.Contain(t, buf.String(), "Info")
-		assert.Contain(t, buf.String(), "Warn")
-		assert.Contain(t, buf.String(), "Error")
-		assert.Contain(t, buf.String(), "Fatal")
-	})
-
 	t.Run("output is a valid JSON by default", func(t *testing.T) {
 		ctx := context.Background()
-		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf}
+		buf := logger.Stub(t)
 
 		expected := rnd.Repeat(3, 7, func() {
-			l.Info(ctx, rnd.String())
+			logger.Info(ctx, rnd.String())
 		})
 
 		dec := json.NewDecoder(buf)
@@ -75,64 +71,24 @@ func TestLogger_smoke(t *testing.T) {
 		var got int
 		for dec.More() {
 			got++
-			msg := logger.Fields{}
+			msg := logging.Fields{}
 			assert.NoError(t, dec.Decode(&msg))
 			assert.NotEmpty(t, msg)
 		}
 
 		assert.Equal(t, expected, got)
-
-		t.Run("but marshaling can be configured through the MarshalFunc", func(t *testing.T) {
-			ctx := context.Background()
-			buf := &bytes.Buffer{}
-			l := logger.Logger{Out: buf, MarshalFunc: func(a any) ([]byte, error) {
-				assert.NotEmpty(t, a)
-				assert.Contain(t, fmt.Sprintf("%#v", a), "msg")
-				return []byte("Hello, world!"), nil
-			}}
-			l.Info(ctx, "msg")
-			assert.Contain(t, buf.String(), "Hello, world!")
-		})
-	})
-
-	t.Run("log entries split by lines", func(t *testing.T) {
-		ctx := context.Background()
-		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf}
-		expected := rnd.Repeat(3, 7, func() {
-			l.Info(ctx, rnd.String())
-		})
-		gotEntries := strings.Split(buf.String(), "\n")
-		if li := len(gotEntries) - 1; gotEntries[li] == "" {
-			// remove the last empty line
-			gotEntries = gotEntries[:li]
-		}
-		assert.Equal(t, expected, len(gotEntries))
-
-		t.Run("but if the separator is configured", func(t *testing.T) {
-			buf := &bytes.Buffer{}
-			l := logger.Logger{Out: buf, Separator: "|"}
-			expected := rnd.Repeat(3, 7, func() {
-				l.Info(ctx, rnd.UUID())
-			})
-			gotEntries := strings.Split(buf.String(), "|")
-			if li := len(gotEntries) - 1; gotEntries[li] == "" {
-				// remove the last empty line
-				gotEntries = gotEntries[:li]
-			}
-			assert.Equal(t, expected, len(gotEntries))
-		})
 	})
 
 	t.Run("message, timestamp, level and all details are logged, including from context", func(t *testing.T) {
-		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf, Level: logger.LevelDebug}
+		buf := logger.Stub(t, func(l *logging.Logger) {
+			l.Level = logging.LevelDebug
+		})
 
 		ctx := context.Background()
-		ctx = logger.ContextWith(ctx, logger.Fields{"foo": "bar"})
-		ctx = logger.ContextWith(ctx, logger.Fields{"bar": 42})
+		ctx = logging.ContextWith(ctx, logging.Fields{"foo": "bar"})
+		ctx = logging.ContextWith(ctx, logging.Fields{"bar": 42})
 
-		l.Info(ctx, "a", logger.Fields{"info": "level"})
+		logger.Info(ctx, "a", logging.Fields{"info": "level"})
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
 		assert.Contain(t, buf.String(), `"info":"level"`)
 		assert.Contain(t, buf.String(), `"foo":"bar"`)
@@ -140,222 +96,244 @@ func TestLogger_smoke(t *testing.T) {
 		assert.Contain(t, buf.String(), `"bar":42`)
 		assert.Contain(t, buf.String(), `"level":"info"`)
 
-		t.Log("on all levels")
-		l.Debug(ctx, "b", logger.Fields{"debug": "level"})
-		assert.Contain(t, buf.String(), `"message":"b"`)
-		assert.Contain(t, buf.String(), `"debug":"level"`)
-		l.Warn(ctx, "c", logger.Fields{"warn": "level"})
-		assert.Contain(t, buf.String(), `"message":"c"`)
-		assert.Contain(t, buf.String(), `"level":"warn"`)
-		assert.Contain(t, buf.String(), `"warn":"level"`)
-		l.Error(ctx, "d", logger.Fields{"error": "level"})
-		assert.Contain(t, buf.String(), `"message":"d"`)
-		assert.Contain(t, buf.String(), `"level":"error"`)
-		assert.Contain(t, buf.String(), `"error":"level"`)
-		l.Fatal(ctx, "e", logger.Fields{"fatal": "level"})
-		assert.Contain(t, buf.String(), `"message":"e"`)
-		assert.Contain(t, buf.String(), `"level":"fatal"`)
-		assert.Contain(t, buf.String(), `"fatal":"level"`)
+		t.Run("on all levels", func(t *testing.T) {
+			logger.Debug(ctx, "b", logging.Fields{"debug": "level"})
+			assert.Contain(t, buf.String(), `"message":"b"`)
+			assert.Contain(t, buf.String(), `"debug":"level"`)
+			logger.Warn(ctx, "c", logging.Fields{"warn": "level"})
+			assert.Contain(t, buf.String(), `"message":"c"`)
+			assert.Contain(t, buf.String(), `"level":"warn"`)
+			assert.Contain(t, buf.String(), `"warn":"level"`)
+			logger.Error(ctx, "d", logging.Fields{"error": "level"})
+			assert.Contain(t, buf.String(), `"message":"d"`)
+			assert.Contain(t, buf.String(), `"level":"error"`)
+			assert.Contain(t, buf.String(), `"error":"level"`)
+			logger.Fatal(ctx, "e", logging.Fields{"fatal": "level"})
+			assert.Contain(t, buf.String(), `"message":"e"`)
+			assert.Contain(t, buf.String(), `"level":"fatal"`)
+			assert.Contain(t, buf.String(), `"fatal":"level"`)
+		})
 	})
 
 	t.Run("keys can be configured", func(t *testing.T) {
 		ctx := context.Background()
-		buf := &bytes.Buffer{}
-		l := logger.Logger{Out: buf}
 
-		l.MessageKey = rnd.UUID()
-		l.TimestampKey = rnd.UUID()
-		l.LevelKey = rnd.UUID()
+		var (
+			messageKey   = rnd.UUID()
+			timestampKey = rnd.UUID()
+			levelKey     = rnd.UUID()
+		)
+		buf := logger.Stub(t, func(l *logging.Logger) {
+			l.MessageKey = messageKey
+			l.TimestampKey = timestampKey
+			l.LevelKey = levelKey
+		})
 
-		l.Info(ctx, "foo")
-		fm := defaultKeyFormatter
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.TimestampKey), now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.MessageKey), "foo"))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.LevelKey), "info"))
+		logger.Info(ctx, "foo")
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+			defaultKeyFormatter(timestampKey), now.Format(time.RFC3339)))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+			defaultKeyFormatter(messageKey), "foo"))
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+			defaultKeyFormatter(levelKey), "info"))
+	})
+}
+
+func ExampleAsyncLogging() {
+	ctx := context.Background()
+	defer logger.AsyncLogging()()
+	logger.Info(ctx, "this log message is written out asynchronously")
+}
+
+func TestAsyncLogging(t *testing.T) {
+	out := logger.Stub(t, func(l *logging.Logger) {
+		l.MessageKey = "msg"
+		l.KeyFormatter = stringcase.ToPascal
 	})
 
-	t.Run("by default, it will print into the stdout", func(t *testing.T) {
-		ogSTDOUT := os.Stdout
-		defer func() { os.Stdout = ogSTDOUT }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	defer logger.AsyncLogging()()
 
-		tmpDir := t.TempDir()
-		tmpFile, err := os.CreateTemp(tmpDir, "out")
-		assert.NoError(t, err)
-		os.Stdout = tmpFile
+	logger.Info(ctx, "gsm", logging.Field("fieldKey", "value"))
 
-		l := logger.Logger{}
-		l.Info(context.Background(), "msg")
-
-		_, err = tmpFile.Seek(0, io.SeekStart)
-		assert.NoError(t, err)
-
-		bs, err := io.ReadAll(tmpFile)
-		assert.NoError(t, err)
-		assert.Contain(t, string(bs), `"message":"msg"`)
+	assert.Eventually(t, 3*time.Second, func(it assert.It) {
+		it.Must.Contain(out.String(), `"Msg":"gsm"`)
+		it.Must.Contain(out.String(), `"FieldKey":"value"`)
 	})
+}
 
-	t.Run("logging key string format is consistent based based on the supplied KeyFormatter", func(t *testing.T) {
-		var (
-			ctx       = context.Background()
-			buf       = &bytes.Buffer{}
-			formatter = rnd.SliceElement([]func(string) string{
-				stringcase.ToPascal,
-				stringcase.ToCamel,
-				stringcase.ToKebab,
-				stringcase.ToSnake,
-				stringcase.ToScreamingSnake,
-			}).(func(string) string)
-			l = logger.Logger{
-				Out:          buf,
-				KeyFormatter: formatter,
-			}
-		)
+func ExampleStub() {
+	var tb testing.TB
+	buf := logger.Stub(tb) // stub will clean up after itself when the test is finished
+	logger.Info(context.Background(), "foo")
+	strings.Contains(buf.String(), "foo") // true
+}
 
-		var (
-			exampleKey1 = "Hello_World-HTTP"
-			exampleKey2 = "HTTPFoo"
-		)
-		l.LevelKey = "lvl-key"
-		l.MessageKey = "message_key"
-		l.TimestampKey = "tsKey"
-
-		var (
-			expectedKey1 = formatter(exampleKey1)
-			expectedKey2 = formatter(exampleKey2)
-			expectedKey3 = formatter(l.MessageKey)
-			expectedKey4 = formatter(l.TimestampKey)
-			expectedKey5 = formatter(l.LevelKey)
-		)
-
-		l.Info(ctx, "msg", logger.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
-		assert.Contain(t, buf.String(), expectedKey1)
-		assert.Contain(t, buf.String(), expectedKey2)
-		assert.Contain(t, buf.String(), expectedKey3)
-		assert.Contain(t, buf.String(), expectedKey4)
-		assert.Contain(t, buf.String(), expectedKey5)
+func TestStub(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		buf := logger.Stub(t)
+		logger.Info(context.Background(), "hello")
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"hello"`, defaultKeyFormatter("message")))
 	})
-
-	t.Run("logging key string format is consistent even in absence of KeyFormatter, with snake_case format", func(t *testing.T) {
-		var (
-			ctx = context.Background()
-			buf = &bytes.Buffer{}
-			l   = logger.Logger{Out: buf}
-		)
-
-		var (
-			exampleKey1 = "Hello_World-HTTP"
-			exampleKey2 = "HTTPFoo"
-		)
-		var (
-			expectedKey1 = stringcase.ToSnake(exampleKey1)
-			expectedKey2 = stringcase.ToSnake(exampleKey2)
-		)
-
-		l.Info(ctx, "msg", logger.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
-
-		assert.Contain(t, buf.String(), expectedKey1)
-		assert.Contain(t, buf.String(), expectedKey2)
+	t.Run("mutating", func(t *testing.T) {
+		rnd := random.New(random.CryptoSeed{})
+		buf := logger.Stub(t, func(l *logging.Logger) {
+			l.MessageKey = "foo"
+		})
+		msg := rnd.UUID()
+		logger.Info(context.Background(), msg)
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, "foo", msg))
 	})
-
-	t.Run("logging can be hijacked to support piping logging requests into other logging libraries", func(t *testing.T) {
-		type LogEntry struct {
-			Level   logger.Level
+	t.Run("with optional HijackFunc", func(t *testing.T) {
+		type Entry struct {
+			Level   logging.Level
 			Message string
-			Fields  logger.Fields
+			Fields  logging.Fields
 		}
-		var (
-			ctx  = context.Background()
-			logs = make([]LogEntry, 0)
-			buf  = &bytes.Buffer{}
-			l    = logger.Logger{
-				Out: buf,
-				Hijack: func(level logger.Level, msg string, fields logger.Fields) {
-					logs = append(logs, LogEntry{Level: level, Message: msg, Fields: fields})
-				},
-				Level: logger.LevelFatal,
+		var entries []Entry
+
+		logger.Stub(t, func(l *logging.Logger) {
+			l.MessageKey = "msg"
+			l.LevelKey = "lvl"
+			l.Level = logging.LevelDebug
+
+			l.Hijack = func(level logging.Level, msg string, fields logging.Fields) {
+				entries = append(entries, Entry{
+					Level:   level,
+					Message: msg,
+					Fields:  fields,
+				})
 			}
-		)
+		})
 
-		ctx = logger.ContextWith(ctx,
-			logger.Field("foo", "1"),
-			logger.Field("bar", 2),
-			logger.Field("baz", true))
+		ctx := logging.ContextWith(context.Background(), logging.Field("foo", 42))
+		logger.Debug(ctx, "msg-1", logging.Field("bar", 24))
+		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
 
-		l.Info(ctx, "the info message", logger.Fields{"qux": "xuq"})
-		l.Debug(ctx, "the debug message", logger.Fields{"qux": "xuq"})
-
-		assert.Equal(t, 0, buf.Len())
-		assert.Equal(t, 2, len(logs))
-
-		assert.OneOf(t, logs, func(it assert.It, got LogEntry) {
-			it.Must.Equal("the info message", got.Message)
-			it.Must.Equal(logger.LevelInfo, got.Level)
-			assert.Equal[any](it, "xuq", got.Fields["qux"])
-			assert.Equal[any](it, "1", got.Fields["foo"])
-			assert.Equal[any](it, 2, got.Fields["bar"])
-			assert.Equal[any](it, true, got.Fields["baz"])
+		assert.Equal(t, len(entries), 2)
+		assert.OneOf(t, entries, func(it assert.It, got Entry) {
+			it.Must.Equal(got.Level, logging.LevelDebug)
+			it.Must.Equal(got.Message, "msg-1")
+			it.Must.NotEmpty(got.Fields)
+			it.Must.Equal(got.Fields["foo"], 42)
+			it.Must.Equal(got.Fields["bar"], 24)
 		})
 	})
 }
 
-func TestLogger_concurrentUse(t *testing.T) {
-	type LogEntry struct {
-		Level   string `json:"level"`
-		Message string `json:"message"`
-	}
-	t.Run("default", func(t *testing.T) {
-		var (
-			ctx = context.Background()
-			buf = &TeeBuffer{}
-			l   = logger.Logger{Out: buf}
-		)
+func ExampleTesting() {
+	var tb testing.TB
 
-		write := func() { l.Info(ctx, "msg") }
-		var writes = random.Slice(10000, func() func() { return write })
+	logger.Testing(tb)
 
-		testcase.Race(write, write, writes...)
+	// somewhere in your application
+	logger.Debug(context.Background(), "the logging message", logging.Field("bar", 24))
 
-		defer func() {
-			if t.Failed() {
-				t.Log("contains null char:", strings.Contains(buf.B.String(), "\\x00"))
-			}
-		}()
+}
 
-		dec := json.NewDecoder(buf)
-		for dec.More() {
-			var le LogEntry
-			assert.NoError(t, dec.Decode(&le), assert.Message(pp.Format(buf.B.String())))
-		}
+func TestTesting(t *testing.T) {
+	t.Run("package level", func(t *testing.T) {
+		logger.Stub(t)
+		logger.Configure(func(l *logging.Logger) {
+			l.MessageKey = "msg"
+			l.LevelKey = "lvl"
+		})
+
+		var dtb TestingTBDouble
+		logger.Testing(&dtb)
+
+		ctx := logging.ContextWith(context.Background(), logging.Field("foo", 42))
+		logger.Debug(ctx, "msg-1", logging.Field("bar", 24))
+		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[debug] msg-1")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, `bar = 24`)
+		})
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[info] msg-2")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
+		})
 	})
+	t.Run("individual log level", func(t *testing.T) {
+		out := logger.Stub(t)
 
+		var dtb TestingTBDouble
+		logger.Testing(&dtb)
+
+		ctx := logging.ContextWith(context.Background(), logging.Field("foo", 42))
+		logger.Debug(ctx, "msg-1", logging.Field("bar", 24))
+		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
+
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[debug] msg-1")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, `bar = 24`)
+		})
+		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+			entry := fmt.Sprint(got...)
+			it.Must.Contain(entry, "[info] msg-2")
+			it.Must.Contain(entry, `foo = 42`)
+			it.Must.Contain(entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
+		})
+
+		assert.Empty(t, out.Bytes())
+	})
 }
 
-func TestLogger_Clone(t *testing.T) {
-	var (
-		buf = &bytes.Buffer{}
-		lgr = logger.Logger{Out: buf}
-		cln = lgr.Clone()
-	)
-	assert.Equal(t, &lgr, &cln)
-	ogLevel := lgr.Level
-	cln.Level = logger.LevelDebug
-	assert.Equal(t, ogLevel, lgr.Level)
-	assert.Equal(t, logger.LevelDebug, cln.Level)
-	assert.NotEqual(t, &lgr, &cln)
-	cln.Debug(nil, "msg")
-	assert.Contain(t, buf.String(), "msg")
+func TestTesting_spike(t *testing.T) {
+	ctx := context.Background()
+
+	// this is ignored due to logging is disabled by default during the tests, to avoid polluting the test outputs
+	logger.Debug(ctx, "ignored")
+
+	logger.Testing(t)
+	logger.Debug(ctx, "msg", logging.Field("bar", 24))
+	logger.Info(ctx, "msg", logging.Field("bar", 24))
+	logger.Warn(ctx, "msg", logging.Field("bar", 24))
+	logger.Error(ctx, "msg", logging.Field("bar", 24))
+	logger.Fatal(ctx, "msg", logging.Field("bar", 24))
+	logger.Info(ctx, "fields", logging.Fields{
+		"[]int":          []int{1, 2, 3},
+		"map[string]int": map[string]int{"The answer is": 42},
+	})
 }
 
-type TeeBuffer struct {
-	A, B iokit.Buffer
+type TestingTBDouble struct {
+	teardown.Teardown
+	Logs [][]any
 }
 
-func (buf *TeeBuffer) Write(p []byte) (n int, err error) {
-	n, err = buf.A.Write(p)
-	_, _ = buf.B.Write(p)
-	return
+func (tb *TestingTBDouble) Helper() {}
+
+func (tb *TestingTBDouble) Cleanup(f func()) {
+	tb.Teardown.Defer(func() error {
+		f()
+		return nil
+	})
 }
 
-func (buf *TeeBuffer) Read(p []byte) (n int, err error) {
-	return buf.A.Read(p)
+func (tb *TestingTBDouble) Log(args ...any) {
+	tb.Logs = append(tb.Logs, args)
+}
+
+func TestHijack(t *testing.T) {
+	out := logger.Stub(t)
+	var lastMessage string
+	logger.Hijack(func(level logging.Level, msg string, fields logging.Fields) {
+		assert.NotEmpty(t, level.String())
+		assert.NotEmpty(t, msg)
+		assert.NotEmpty(t, fields)
+		assert.Equal(t, fields, logging.Fields{"key": "value"})
+		lastMessage = msg
+	})
+	assert.Empty(t, lastMessage)
+	logger.Info(context.Background(), "ok", logging.Field("key", "value"))
+	assert.Equal(t, lastMessage, "ok")
+	assert.Empty(t, out.String())
 }

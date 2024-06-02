@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/internal"
 	"go.llib.dev/frameless/pkg/tasker/schedule"
@@ -351,7 +352,7 @@ func ExampleMain_withRunnable() {
 		task tasker.Runnable
 	)
 	if err := tasker.Main(ctx, &task); err != nil {
-		logger.Fatal(ctx, "error in main", logger.ErrField(err))
+		logger.Fatal(ctx, "error in main", logging.ErrField(err))
 		os.Exit(1)
 	}
 }
@@ -362,7 +363,7 @@ func ExampleMain_withTask() {
 		task tasker.Task
 	)
 	if err := tasker.Main(ctx, task); err != nil {
-		logger.Fatal(ctx, "error in main", logger.ErrField(err))
+		logger.Fatal(ctx, "error in main", logging.ErrField(err))
 		os.Exit(1)
 	}
 }
@@ -1107,7 +1108,7 @@ func ExampleBackground() {
 		task2,
 	)
 	if err := join(); err != nil {
-		logger.Error(ctx, "error in background task", logger.ErrField(err))
+		logger.Error(ctx, "error in background task", logging.ErrField(err))
 	}
 }
 

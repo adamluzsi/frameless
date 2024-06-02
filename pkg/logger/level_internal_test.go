@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -16,20 +17,20 @@ func TestInitLoggingLevel(t *testing.T) {
 
 	rnd := random.New(random.CryptoSeed{})
 
-	var envToLevel = map[string]Level{
-		"debug":    LevelDebug,
-		"info":     LevelInfo,
-		"warn":     LevelWarn,
-		"error":    LevelError,
-		"fatal":    LevelFatal,
-		"critical": LevelFatal,
+	var envToLevel = map[string]logging.Level{
+		"debug":    logging.LevelDebug,
+		"info":     logging.LevelInfo,
+		"warn":     logging.LevelWarn,
+		"error":    logging.LevelError,
+		"fatal":    logging.LevelFatal,
+		"critical": logging.LevelFatal,
 
-		"d": LevelDebug,
-		"i": LevelInfo,
-		"w": LevelWarn,
-		"e": LevelError,
-		"f": LevelFatal,
-		"c": LevelFatal,
+		"d": logging.LevelDebug,
+		"i": logging.LevelInfo,
+		"w": logging.LevelWarn,
+		"e": logging.LevelError,
+		"f": logging.LevelFatal,
+		"c": logging.LevelFatal,
 	}
 
 	for _, envKey := range []string{"LOG_LEVEL", "LOGGER_LEVEL", "LOGGING_LEVEL"} {

@@ -12,6 +12,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/frameless/pkg/restapi/internal"
@@ -59,7 +60,7 @@ func Example() {
 			subRoutes.Get("/activate", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				fooID := r.Context().Value(FooIDContextKey{}).(FooID)
 				// activate foo by foo_id
-				logger.Debug(r.Context(), "activating foo", logger.Field("foo_id", fooID))
+				logger.Debug(r.Context(), "activating foo", logging.Field("foo_id", fooID))
 			}))
 		}),
 	}.WithCRUD(&FooRepository{}))

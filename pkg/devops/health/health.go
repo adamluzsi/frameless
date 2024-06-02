@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
@@ -108,7 +109,7 @@ func (m *Monitor) HTTPHandler() http.Handler {
 
 		dto, err := dtos.Map[ReportJSONDTO](ctx, report)
 		if err != nil {
-			logger.Error(ctx, "error mapping devops.HealthState to HealthState json DTO", logger.ErrField(err))
+			logger.Error(ctx, "error mapping devops.HealthState to HealthState json DTO", logging.ErrField(err))
 			return
 		}
 
@@ -126,7 +127,7 @@ func (m *Monitor) HTTPHandler() http.Handler {
 		// To improve the health check endpoint readability with human consumption, two space indentations are used.
 		data, err := json.MarshalIndent(dto, "", "  ")
 		if err != nil {
-			logger.Error(ctx, "error while marshaling health check DTO", logger.ErrField(err))
+			logger.Error(ctx, "error while marshaling health check DTO", logging.ErrField(err))
 			return
 		}
 		_, _ = w.Write(data)

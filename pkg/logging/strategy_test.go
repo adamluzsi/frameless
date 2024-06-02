@@ -1,4 +1,4 @@
-package logger_test
+package logging_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/stringcase"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -24,7 +24,7 @@ var asyncLoggingEventually = assert.MakeRetry(3 * time.Second)
 
 func ExampleLogger_AsyncLogging() {
 	ctx := context.Background()
-	l := logger.Logger{}
+	l := logging.Logger{}
 	defer l.AsyncLogging()()
 	l.Info(ctx, "this log message is written out asynchronously")
 }
@@ -34,7 +34,7 @@ func TestLogger_AsyncLogging(t *testing.T) {
 		out = &bytes.Buffer{}
 		m   sync.Mutex
 	)
-	l := logger.Logger{Out: &iokit.SyncWriter{
+	l := logging.Logger{Out: &iokit.SyncWriter{
 		Writer: out,
 		Locker: &m,
 	}}
@@ -43,7 +43,7 @@ func TestLogger_AsyncLogging(t *testing.T) {
 
 	l.MessageKey = "msg"
 	l.KeyFormatter = stringcase.ToPascal
-	l.Info(nil, "gsm", logger.Field("fieldKey", "value"))
+	l.Info(nil, "gsm", logging.Field("fieldKey", "value"))
 
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
 		m.Lock()
@@ -60,7 +60,7 @@ func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 		out = &bytes.Buffer{}
 		m   sync.Mutex
 	)
-	l := logger.Logger{Out: &iokit.SyncWriter{
+	l := logging.Logger{Out: &iokit.SyncWriter{
 		Writer: out,
 		Locker: &m,
 	}}
@@ -90,7 +90,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 	}
 
 	b.Run("sync", func(b *testing.B) {
-		l := &logger.Logger{Out: out}
+		l := &logging.Logger{Out: out}
 		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -99,7 +99,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 	})
 
 	b.Run("async", func(b *testing.B) {
-		l := &logger.Logger{Out: out}
+		l := &logging.Logger{Out: out}
 		defer l.AsyncLogging()()
 		assert.Waiter{WaitDuration: time.Millisecond}.Wait()
 
@@ -111,7 +111,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 	})
 
 	b.Run("sync with heavy concurrency", func(b *testing.B) {
-		l := &logger.Logger{Out: out}
+		l := &logging.Logger{Out: out}
 		makeConcurrentAccesses(b, l)
 
 		defer b.StopTimer()
@@ -122,7 +122,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 	})
 
 	b.Run("async with heavy concurrency", func(b *testing.B) {
-		l := &logger.Logger{Out: out}
+		l := &logging.Logger{Out: out}
 		defer l.AsyncLogging()()
 		assert.Waiter{WaitDuration: time.Millisecond}.Wait()
 		makeConcurrentAccesses(b, l)
@@ -135,7 +135,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 	})
 }
 
-func makeConcurrentAccesses(tb testing.TB, l *logger.Logger) {
+func makeConcurrentAccesses(tb testing.TB, l *logging.Logger) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	var ready int32

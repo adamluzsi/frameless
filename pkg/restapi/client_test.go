@@ -82,8 +82,7 @@ func TestClient_crud(t *testing.T) {
 }
 
 func TestClient_subresource(t *testing.T) {
-	logger.LogWithTB(t)
-	logger.Default.Level = logger.LevelDebug
+	logger.Testing(t)
 
 	rnd := random.New(random.CryptoSeed{})
 	mem := memory.NewMemory()

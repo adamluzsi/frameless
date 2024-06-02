@@ -1,4 +1,4 @@
-package logger
+package logging
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ type logEvent struct {
 	Level     Level
 	Message   string
 	Timestamp time.Time
-	Details   []LoggingDetail
+	Details   []Detail
 }
 
 type syncLogger struct{ Logger *Logger }

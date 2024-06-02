@@ -1,9 +1,7 @@
-# package `logger`
+# package `logging`
 
-Package `logger` represents logging as a global resource, as most application log is meant to happen to the same place.
-The `logger` package makes it convinent to write your application that does application logging, that doesn't get into your way in your tests.
-With `logger`, you can use context to add logging details to your call stack.
-`logger` is based on `pkg/logging` but it can be configured to use any third party logging library thourgh providing a Hijack function.
+Package logging provides tooling for structured logging.
+With logging, you can use context to add logging details to your call stack.
 
 ## How to use
 
@@ -13,7 +11,6 @@ package main
 import (
 	"context"
 
-	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 )
 
@@ -26,8 +23,10 @@ func main() {
 		"baz": "qux",
 	})
 
+	var l logging.Logger // uses the defaults
+
 	// You can use your own Logger instance or the logger.Default logger instance if you plan to log to the STDOUT. 
-	logger.Info(ctx, "foo", logging.Fields{
+	l.Info(ctx, "foo", logging.Fields{
 		"userID":    42,
 		"accountID": 24,
 	})
@@ -71,11 +70,12 @@ To configure the default logger, simply configure it from your main.
 ```go
 package main
 
-import "go.llib.dev/frameless/pkg/logger"
+import "go.llib.dev/frameless/pkg/logging"
 
 func main() {
-	logger.Default.MessageKey = "msg"
-	logger.Default.TimestampKey = "ts"
+	var l logging.Logger
+	l.MessageKey = "msg"
+	l.TimestampKey = "ts"
 }
 ```
 
@@ -95,12 +95,13 @@ field.
 package main
 
 import (
-	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/stringcase"
 )
 
 func main() {
-	logger.Default.KeyFormatter = stringcase.ToKebab
+	var l logging.Logger
+	l.KeyFormatter = stringcase.ToKebab
 }
 
 ```
@@ -180,58 +181,9 @@ import (
 )
 
 func main() {
-	defer logger.AsyncLogging()() // from here on, logging will be async
-
-	logger.Info(nil, "this is logged asynchronously")
+	var l logging.Logger
+	defer l.AsyncLogging()() // from here on, logging will be async
+	l.Info(nil, "this is logged asynchronously")
 }
 ```
 
-## Helping the TDD Flow during Testing
-
-using the `logger.LogWithTB` helper method will turn your logs into structured testing log events
-making it easier to investigate unexpected behaviours using the DEBUG logs.
-
-
-> myfile.go
-
-```go
-package mypkg
-
-import (
-	"go.llib.dev/frameless/pkg/logger"
-)
-
-func MyFunc() {
-	logger.Debug(nil, "the logging message", logging.Field("bar", 24))
-}
-```
-
-> myfile_test.go
-
-```go
-package mypkg_test
-
-import (
-	"testing"
-
-	"mypkg"
-
-	"go.llib.dev/frameless/pkg/logger"
-)
-
-func TestMyFunc(t *testing.T) {
-	logger.LogWithTB(t) // logs are redirected to use *testing.T.Log  
-
-	mypkg.MyFunc()
-}
-
-```
-
-will produce the following output:
-
-```text
-=== RUN   TestLogWithTB_spike
-	myfile.go:11: the logging message | level:debug bar:24
-	--- PASS: TestLogWithTB_spike (0.00s)
-	PASS
-```

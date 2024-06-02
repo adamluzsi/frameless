@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 )
 
 func Test_memoryRepository(t *testing.T) {
@@ -58,6 +59,7 @@ func Test_cleanup(t *testing.T) {
 		crudcontracts.OnePhaseCommitProtocol[testent.Foo, testent.FooID](subject, subject.EventLog, crudConfig),
 	)
 
+	pp.PP(m)
 	m.Compress()
 
 	assert.Must(t).Empty(m.Events(),

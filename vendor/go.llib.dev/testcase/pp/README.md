@@ -37,8 +37,7 @@ func main() {
 		B: 42,
 	})
 	buf.Write(bs)
-
-	pp.PP(buf)
+	fmt.Println(buf.String())
 }
 ```
 

@@ -1,254 +1,160 @@
-// Package logger provides tooling for structured logging.
-// With logger, you can use context to add logging details to your call stack.
 package logger
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"io"
 	"os"
-	"sync"
-	"time"
+	"strings"
 
-	"go.llib.dev/frameless/pkg/stringcase"
-	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/testcase/clock"
+	"go.llib.dev/frameless/pkg/internal/testcheck"
+	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/testcase/pp"
 )
 
-type Logger struct {
-	Out io.Writer
-
-	// Level is the logging level.
-	// The default Level is LevelInfo.
-	Level Level
-
-	Separator string
-
-	MessageKey   string
-	LevelKey     string
-	TimestampKey string
-
-	// MarshalFunc is used to serialise the logging message event.
-	// When nil it defaults to JSON format.
-	MarshalFunc func(any) ([]byte, error)
-	// KeyFormatter will be used to format the logging field keys
-	KeyFormatter func(string) string
-
-	// Hijack will hijack the logging and instead of letting it logged out to the Out,
-	// the logging will be done with the Hijack function.
-	// This is useful if you want to use your own choice of logging,
-	// but also packages that use this logging package.
-	Hijack HijackFunc
-
-	outLock sync.Mutex
-
-	strategy _LoggerStrategy
+func Debug(ctx context.Context, msg string, ds ...logging.Detail) {
+	tb(logger.TestingTB).Helper()
+	logger.Debug(ctx, msg, ds...)
 }
 
-type _LoggerStrategy struct {
-	mutex    sync.RWMutex
-	strategy strategy
+func Info(ctx context.Context, msg string, ds ...logging.Detail) {
+	tb(logger.TestingTB).Helper()
+	logger.Info(ctx, msg, ds...)
 }
 
-type HijackFunc func(level Level, msg string, fields Fields)
-
-func (l *Logger) Debug(ctx context.Context, msg string, ds ...LoggingDetail) {
-	tb().Helper()
-	l.log(ctx, LevelDebug, msg, ds)
+func Warn(ctx context.Context, msg string, ds ...logging.Detail) {
+	tb(logger.TestingTB).Helper()
+	logger.Warn(ctx, msg, ds...)
 }
 
-func (l *Logger) Info(ctx context.Context, msg string, ds ...LoggingDetail) {
-	tb().Helper()
-	l.log(ctx, LevelInfo, msg, ds)
+func Error(ctx context.Context, msg string, ds ...logging.Detail) {
+	tb(logger.TestingTB).Helper()
+	logger.Error(ctx, msg, ds...)
 }
 
-func (l *Logger) Warn(ctx context.Context, msg string, ds ...LoggingDetail) {
-	tb().Helper()
-	l.log(ctx, LevelWarn, msg, ds)
+func Fatal(ctx context.Context, msg string, ds ...logging.Detail) {
+	tb(logger.TestingTB).Helper()
+	logger.Fatal(ctx, msg, ds...)
 }
 
-func (l *Logger) Error(ctx context.Context, msg string, ds ...LoggingDetail) {
-	tb().Helper()
-	l.log(ctx, LevelError, msg, ds)
+func AsyncLogging() func() { return logger.AsyncLogging() }
+
+func Hijack(fn logging.HijackFunc) {
+	Configure(func(l *logging.Logger) { l.Hijack = fn })
 }
 
-func (l *Logger) Fatal(ctx context.Context, msg string, ds ...LoggingDetail) {
-	tb().Helper()
-	l.log(ctx, LevelFatal, msg, ds)
+type ConfigurationFunc func(*logging.Logger)
+
+func Configure(blk ConfigurationFunc) struct{} {
+	blk(logger)
+	return struct{}{}
 }
 
-func (l *Logger) getKeyFormatter() func(string) string {
-	if l.KeyFormatter != nil {
-		return l.KeyFormatter
+// Stub the logger.Default and return the buffer where the logging output will be recorded.
+// Stub will restore the logger.Default after the test.
+// optionally, the stub logger can be further configured by passing a configuration function block
+func Stub(tb testingTB, optionalConfiguration ...ConfigurationFunc) logging.StubOutput {
+	tb.Helper()
+
+	original := logger
+	tb.Cleanup(func() { logger = original })
+
+	l, out := logging.Stub(tb)
+	logger = logger.Clone()
+	logger.Out = l.Out
+	logger.Level = logging.LevelDebug
+	logger.TestingTB = tb
+
+	for _, configure := range optionalConfiguration {
+		configure(logger)
 	}
-	return stringcase.ToSnake
+
+	return out
 }
 
-func (l *Logger) log(ctx context.Context, level Level, msg string, ds []LoggingDetail) {
-	tb().Helper()
-	if l.isHijacked(ctx, level, msg, ds) {
-		return
-	}
-	if !isLevelEnabled(l.getLevel(), level) {
-		return
-	}
-	l.getStrategy().Log(logEvent{
-		Context:   ctx,
-		Level:     level,
-		Message:   msg,
-		Details:   ds,
-		Timestamp: clock.TimeNow(),
+// Testing pipes all application log generated during the test execution through the testing.TB's Log method.
+// Testing meant to help debugging your application during your TDD flow.
+func Testing(tb testingTB) {
+	tb.Helper()
+	Stub(tb, func(l *logging.Logger) {
+		tb.Helper()
+		l.Hijack = testingTBLogger(tb)
 	})
 }
 
-var overrideHijack func(l *Logger, level Level, msg string, fields Fields)
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func withHijackOverride(fn func(l *Logger, level Level, msg string, fields Fields)) func() {
-	previousHijack := overrideHijack
-	overrideHijack = fn
-	return func() { overrideHijack = previousHijack }
+var logger *logging.Logger = &logging.Logger{}
+
+var defaultLevel logging.Level = logging.LevelInfo
+
+func init() {
+	if testcheck.IsDuringTestRun() {
+		logger.Out = io.Discard
+	}
+	if level, ok := lookupLevelFromENV(); ok {
+		defaultLevel = level
+	}
+	logger.Level = defaultLevel
 }
 
-func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []LoggingDetail) bool {
-	tb().Helper()
-	if l.Hijack == nil && overrideHijack == nil {
-		return false
+func lookupLevelFromENV() (logging.Level, bool) {
+	for _, envKey := range []string{"LOG_LEVEL", "LOGGER_LEVEL", "LOGGING_LEVEL"} {
+		if raw, ok := os.LookupEnv(envKey); ok {
+			if level, ok := envToLevel[strings.ToLower(raw)]; ok {
+				return level, ok
+			}
+		}
 	}
-	var le = make(logEntry)
-	for _, d := range getLoggingDetailsFromContext(ctx, l) {
-		d.addTo(l, le)
-	}
-	for _, d := range ds {
-		d.addTo(l, le)
-	}
-	if overrideHijack != nil {
-		overrideHijack(l, level, msg, Fields(le))
-		return true
-	}
-	l.Hijack(level, msg, Fields(le))
-	return true
+	return "", false
 }
 
-func (l *Logger) logTo(out io.Writer, event logEvent) error {
-	var (
-		entry   = l.toLogEntry(event)
-		bs, err = l.marshalFunc()(entry)
-	)
-	if err != nil {
-		return err
-	}
-	_, err = out.Write(append(bs, []byte(l.separator())...))
-	return err
+var envToLevel = map[string]logging.Level{
+	"debug":    logging.LevelDebug,
+	"info":     logging.LevelInfo,
+	"warn":     logging.LevelWarn,
+	"error":    logging.LevelError,
+	"fatal":    logging.LevelFatal,
+	"critical": logging.LevelFatal,
+
+	"d": logging.LevelDebug,
+	"i": logging.LevelInfo,
+	"w": logging.LevelWarn,
+	"e": logging.LevelError,
+	"f": logging.LevelFatal,
+	"c": logging.LevelFatal,
 }
 
-type writer struct {
-	Writer io.Writer
-	Locker sync.Locker
+type testingTB interface {
+	Helper()
+	Cleanup(func())
+	Log(args ...any)
 }
 
-func (w *writer) Write(p []byte) (n int, err error) {
-	w.Locker.Lock()
-	defer w.Locker.Unlock()
-	return w.Writer.Write(p)
-}
-
-func (l *Logger) writer() io.Writer {
-	var out io.Writer = os.Stdout
-	if l.Out != nil {
-		out = l.Out
-	}
-	return &writer{
-		Writer: out,
-		Locker: &l.outLock,
-	}
-}
-
-func (l *Logger) marshalFunc() func(any) ([]byte, error) {
-	if l.MarshalFunc != nil {
-		return l.MarshalFunc
-	}
-	return json.Marshal
-}
-
-func (l *Logger) coalesceKey(key, defaultKey string) string {
-	return l.getKeyFormatter()(zerokit.Coalesce(key, defaultKey))
-}
-
-func (l *Logger) toLogEntry(event logEvent) logEntry {
-	le := make(logEntry)
-	for _, d := range getLoggingDetailsFromContext(event.Context, l) {
-		d.addTo(l, le)
-	}
-	for _, ld := range event.Details {
-		ld.addTo(l, le)
-	}
-	le[l.getLevelKey()] = event.Level
-	le[l.getMessageKey()] = event.Message
-	const timestampKey = "timestamp"
-	le[l.coalesceKey(l.TimestampKey, timestampKey)] = event.Timestamp.Format(time.RFC3339)
-	return le
-}
-
-func (l *Logger) getMessageKey() string {
-	const messageDefaultKey = "message"
-	return l.coalesceKey(l.MessageKey, messageDefaultKey)
-}
-
-func (l *Logger) getLevelKey() string {
-	const levelDefaultKey = "level"
-	return l.coalesceKey(l.LevelKey, levelDefaultKey)
-}
-
-func (l *Logger) separator() string {
-	if l.Separator != "" {
-		return l.Separator
-	}
-	switch os.PathSeparator {
-	case '/':
-		return "\n"
-	case '\\':
-		return "\r\n"
-	default:
-		return "\n"
+func testingTBLogger(tb testingTB) func(lvl logging.Level, msg string, fields logging.Fields) {
+	tb.Helper()
+	return func(lvl logging.Level, msg string, fields logging.Fields) {
+		tb.Helper()
+		var parts []string
+		parts = append(parts, fmt.Sprintf("[%s] %s", lvl.String(), msg))
+		for k, v := range fields {
+			parts = append(parts, fmt.Sprintf("%s = %s", k, pp.Format(v)))
+		}
+		tb.Log(strings.Join(parts, "\n"))
 	}
 }
 
-func (l *Logger) setStrategy(s strategy) {
-	l.strategy.mutex.Lock()
-	defer l.strategy.mutex.Unlock()
-	l.strategy.strategy = s
-}
-
-func (l *Logger) getStrategy() strategy {
-	l.strategy.mutex.RLock()
-	defer l.strategy.mutex.RUnlock()
-	return zerokit.Init(&l.strategy.strategy, func() strategy {
-		return &syncLogger{Logger: l}
-	})
-}
-
-func (l *Logger) getLevel() Level {
-	if l.Level != "" {
-		return l.Level
+func tb(tb testingTB) testingTB {
+	if tb != nil {
+		return tb
 	}
-	return zerokit.Init[Level](&l.Level, func() Level {
-		return defaultLevel
-	})
+	return fallbackTestingTB
 }
 
-func (l Logger) Clone() Logger {
-	return Logger{
-		Out:          l.Out,
-		Level:        l.Level,
-		Separator:    l.Separator,
-		MessageKey:   l.MessageKey,
-		LevelKey:     l.LevelKey,
-		TimestampKey: l.TimestampKey,
-		MarshalFunc:  l.MarshalFunc,
-		KeyFormatter: l.KeyFormatter,
-		Hijack:       l.Hijack,
-		strategy: _LoggerStrategy{
-			strategy: l.strategy.strategy,
-		},
-	}
-}
+var fallbackTestingTB = (*nullTestingTB)(nil)
+
+type nullTestingTB struct{}
+
+func (*nullTestingTB) Helper()        {}
+func (*nullTestingTB) Cleanup(func()) {}
+func (*nullTestingTB) Log(...any)     {}

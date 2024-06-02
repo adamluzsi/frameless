@@ -59,7 +59,7 @@ type ExampleAppConfig struct {
 func main() {
 	var c ExampleAppConfig
 	if err := env.Load(&c); err != nil {
-		logger.Fatal(nil, "failed to load application config", logger.ErrField(err))
+		logger.Fatal(nil, "failed to load application config", logging.ErrField(err))
 		os.Exit(1)
 	}
 }

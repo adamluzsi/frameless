@@ -1,4 +1,4 @@
-package logger
+package logging
 
 import (
 	"errors"
@@ -9,7 +9,9 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
-func Field(key string, value any) LoggingDetail {
+// Field creates a single key value pair based logging detail.
+// It will enrich the log entry with a value in the key you gave.
+func Field(key string, value any) Detail {
 	return field{Key: key, Value: value}
 }
 
@@ -26,6 +28,8 @@ func (f field) addTo(l *Logger, e logEntry) {
 	e[l.getKeyFormatter()(f.Key)] = val
 }
 
+// Fields is a collection of field that you can add to your loggig record.
+// It will enrich the log entry with a value in the key you gave.
 type Fields map[string]any
 
 func (fields Fields) addTo(l *Logger, e logEntry) {
@@ -34,14 +38,9 @@ func (fields Fields) addTo(l *Logger, e logEntry) {
 	}
 }
 
-// Details
-//
-// DEPRECATED: use logging.Fields instead
-type Details = Fields
-
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func ErrField(err error) LoggingDetail {
+func ErrField(err error) Detail {
 	if err == nil {
 		return nullLoggingDetail{}
 	}
@@ -57,24 +56,25 @@ func ErrField(err error) LoggingDetail {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 var (
-	typeRegister      = map[reflect.Type]func(any) LoggingDetail{}
-	interfaceRegister = map[reflect.Type]func(any) LoggingDetail{}
+	typeRegister      = map[reflect.Type]func(any) Detail{}
+	interfaceRegister = map[reflect.Type]func(any) Detail{}
 )
 
-func RegisterFieldType[T any](mapping func(T) LoggingDetail) func() {
+func RegisterFieldType[T any](mapping func(T) Detail) func() {
 	typ := reflectkit.TypeOf[T]()
-	var register map[reflect.Type]func(any) LoggingDetail
+	var register map[reflect.Type]func(any) Detail
 	register = typeRegister
 	if typ.Kind() == reflect.Interface {
 		register = interfaceRegister
 	}
-	register[typ] = func(v any) LoggingDetail { return mapping(v.(T)) }
+	register[typ] = func(v any) Detail { return mapping(v.(T)) }
 	return func() { delete(register, typ) }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type LoggingDetail interface{ addTo(*Logger, logEntry) }
+// Detail is a logging detail that enrich the logging message with additional contextual detail.
+type Detail interface{ addTo(*Logger, logEntry) }
 
 func (l *Logger) tryInterface(val any) (any, bool) {
 	rv := reflect.ValueOf(val)
@@ -112,7 +112,7 @@ func (l *Logger) toFieldValue(val any) any {
 		val.addTo(l, le)
 		return l.toFieldValue(le)
 
-	case []LoggingDetail:
+	case []Detail:
 		le := logEntry{}
 		for _, v := range val {
 			v.addTo(l, le)
@@ -133,12 +133,12 @@ func (l *Logger) toFieldValue(val any) any {
 			return l.toFieldValue(rv.Elem().Interface())
 
 		case reflect.Struct:
-			Warn(nil, fmt.Sprintf(unregisteredTypeWarningFormat, rv.Type().String()))
+			l.Warn(nil, fmt.Sprintf(unregisteredTypeWarningFormat, rv.Type().String()))
 			return nullLoggingDetail{}
 
 		case reflect.Map:
 			if rv.Type().Key().Kind() != reflect.String {
-				Warn(nil, fmt.Sprintf(unregisteredTypeWarningFormat, rv.Type().String()))
+				l.Warn(nil, fmt.Sprintf(unregisteredTypeWarningFormat, rv.Type().String()))
 				return nullLoggingDetail{}
 			}
 

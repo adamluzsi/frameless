@@ -1,4 +1,4 @@
-package logger_test
+package logging_test
 
 import (
 	"bytes"
@@ -18,16 +18,18 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 
-	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/testcase/random"
 )
 
 var defaultKeyFormatter = stringcase.ToSnake
 
 func ExampleField() {
-	logger.Error(context.Background(), "msg",
-		logger.Field("key1", "value"),
-		logger.Field("key2", "value"))
+	var l logging.Logger
+
+	l.Error(context.Background(), "msg",
+		logging.Field("key1", "value"),
+		logging.Field("key2", "value"))
 }
 
 func ExampleRegisterFieldType_asLoggingDetails() {
@@ -38,8 +40,8 @@ func ExampleRegisterFieldType_asLoggingDetails() {
 	}
 
 	// at package level
-	var _ = logger.RegisterFieldType(func(ent MyEntity) logger.LoggingDetail {
-		return logger.Fields{
+	var _ = logging.RegisterFieldType(func(ent MyEntity) logging.Detail {
+		return logging.Fields{
 			"id":   ent.ID,
 			"data": ent.NonSensitiveData,
 		}
@@ -48,21 +50,21 @@ func ExampleRegisterFieldType_asLoggingDetails() {
 
 func TestField(t *testing.T) {
 	s := testcase.NewSpec(t)
-
-	buf := testcase.Let(s, func(t *testcase.T) logger.StubOutput { return logger.Stub(t) }).
-		EagerLoading(s)
+	logger, buf := testcase.Let2(s, func(t *testcase.T) (*logging.Logger, logging.StubOutput) {
+		return logging.Stub(t)
+	})
 
 	var (
 		key   = let.UUID(s)
 		value = testcase.Let[any](s, nil)
 	)
-	act := func(t *testcase.T) logger.LoggingDetail {
-		return logger.Field(key.Get(t), value.Get(t))
+	act := func(t *testcase.T) logging.Detail {
+		return logging.Field(key.Get(t), value.Get(t))
 	}
 
 	afterLogging := func(t *testcase.T) {
 		t.Helper()
-		logger.Info(nil, "", act(t))
+		logger.Get(t).Info(nil, "", act(t))
 	}
 
 	keyIsLogged := func(t *testcase.T) {
@@ -134,8 +136,8 @@ func TestField(t *testing.T) {
 			Baz string
 		}
 
-		logger.RegisterFieldType(func(ms MyStruct) logger.LoggingDetail {
-			return logger.Fields{
+		logging.RegisterFieldType(func(ms MyStruct) logging.Detail {
+			return logging.Fields{
 				"foo": ms.Foo,
 				"bar": ms.Bar,
 				"baz": ms.Baz,
@@ -186,8 +188,8 @@ func TestField(t *testing.T) {
 			Baz string
 		}
 
-		logger.RegisterFieldType(func(ms *MyStruct) logger.LoggingDetail {
-			return logger.Fields{
+		logging.RegisterFieldType(func(ms *MyStruct) logging.Detail {
+			return logging.Fields{
 				"foo": ms.Foo,
 				"bar": ms.Bar,
 				"baz": ms.Baz,
@@ -250,8 +252,8 @@ func TestField(t *testing.T) {
 	})
 
 	s.When("value is implementing an interface type which is registered for logging", func(s *testcase.Spec) {
-		logger.RegisterFieldType(func(mi MyInterface) logger.LoggingDetail {
-			return logger.Field("IDDQD", mi.GetIDDQD())
+		logging.RegisterFieldType(func(mi MyInterface) logging.Detail {
+			return logging.Field("IDDQD", mi.GetIDDQD())
 		})
 
 		myData := testcase.Let(s, func(t *testcase.T) MyData {
@@ -311,37 +313,38 @@ func TestField(t *testing.T) {
 func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 	t.Run("for concrete type", func(t *testing.T) {
 		type X struct{ V int }
-		buf := logger.Stub(t)
-		unregister := logger.RegisterFieldType[X](func(x X) logger.LoggingDetail {
-			return logger.Fields{"v": x.V}
+		l, buf := logging.Stub(t)
+		unregister := logging.RegisterFieldType[X](func(x X) logging.Detail {
+			return logging.Fields{"v": x.V}
 		})
 
-		logger.Info(nil, "msg", logger.Field("x", X{V: 123456789}))
+		l.Info(nil, "msg", logging.Field("x", X{V: 123456789}))
 		assert.Contain(t, buf.String(), "123456789")
 
 		unregister()
-		logger.Info(nil, "msg", logger.Field("x", X{V: 987654321}))
+		l.Info(nil, "msg", logging.Field("x", X{V: 987654321}))
 		assert.NotContain(t, buf.String(), "987654321")
 		assert.Contain(t, buf.String(), "security")
 	})
 	t.Run("for interface", func(t *testing.T) {
-		buf := logger.Stub(t)
-		unregister := logger.RegisterFieldType[testent.Fooer](func(fooer testent.Fooer) logger.LoggingDetail {
-			return logger.Fields{"foo": fooer.GetFoo()}
+		l, buf := logging.Stub(t)
+		unregister := logging.RegisterFieldType[testent.Fooer](func(fooer testent.Fooer) logging.Detail {
+			return logging.Fields{"foo": fooer.GetFoo()}
 		})
 
-		logger.Info(nil, "msg", logger.Field("x", testent.Foo{Foo: "123456789"}))
+		l.Info(nil, "msg", logging.Field("x", testent.Foo{Foo: "123456789"}))
 		assert.Contain(t, buf.String(), "123456789")
 
 		unregister()
-		logger.Info(nil, "msg", logger.Field("x", testent.Foo{Foo: "987654321"}))
+		l.Info(nil, "msg", logging.Field("x", testent.Foo{Foo: "987654321"}))
 		assert.NotContain(t, buf.String(), "987654321")
 		assert.Contain(t, buf.String(), "security")
 	})
 }
 
 func ExampleFields() {
-	logger.Error(context.Background(), "msg", logger.Fields{
+	var l logging.Logger
+	l.Error(context.Background(), "msg", logging.Fields{
 		"key1": "value",
 		"key2": "value",
 	})
@@ -350,20 +353,21 @@ func ExampleFields() {
 func TestFields(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	buf := testcase.Let(s, func(t *testcase.T) logger.StubOutput { return logger.Stub(t) }).
-		EagerLoading(s)
+	logger, buf := testcase.Let2(s, func(t *testcase.T) (*logging.Logger, logging.StubOutput) {
+		return logging.Stub(t)
+	})
 
 	var (
 		key   = let.UUID(s)
 		value = testcase.Let[any](s, nil)
 	)
-	act := func(t *testcase.T) logger.LoggingDetail {
-		return logger.Fields{key.Get(t): value.Get(t)}
+	act := func(t *testcase.T) logging.Detail {
+		return logging.Fields{key.Get(t): value.Get(t)}
 	}
 
 	afterLogging := func(t *testcase.T) {
 		t.Helper()
-		logger.Info(nil, "", act(t))
+		logger.Get(t).Info(nil, "", act(t))
 	}
 
 	keyIsLogged := func(t *testcase.T) {
@@ -404,8 +408,8 @@ func TestFields(t *testing.T) {
 			Baz string
 		}
 
-		logger.RegisterFieldType(func(ms MyStruct) logger.LoggingDetail {
-			return logger.Fields{
+		logging.RegisterFieldType(func(ms MyStruct) logging.Detail {
+			return logging.Fields{
 				"foo": ms.Foo,
 				"bar": ms.Bar,
 				"baz": ms.Baz,
@@ -471,33 +475,34 @@ func TestFields(t *testing.T) {
 func ExampleErrField() {
 	ctx := context.Background()
 	err := errors.New("boom")
+	var l logging.Logger
 
-	logger.Error(ctx, "task failed successfully", logger.ErrField(err))
+	l.Error(ctx, "task failed successfully", logging.ErrField(err))
 }
 
 func TestErrField(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	t.Run("plain error", func(t *testing.T) {
-		buf := logger.Stub(t)
+		l, buf := logging.Stub(t)
 		expErr := rnd.Error()
-		logger.Info(nil, "boom", logger.ErrField(expErr))
+		l.Info(nil, "boom", logging.ErrField(expErr))
 		assert.Contain(t, buf.String(), `"error":{`)
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
 	})
 	t.Run("nil error", func(t *testing.T) {
-		buf := logger.Stub(t)
-		logger.Info(nil, "boom", logger.ErrField(nil))
+		l, buf := logging.Stub(t)
+		l.Info(nil, "boom", logging.ErrField(nil))
 		assert.NotContain(t, buf.String(), `"error"`)
 	})
 	t.Run("when err is a user error", func(t *testing.T) {
-		buf := logger.Stub(t)
+		l, buf := logging.Stub(t)
 		const message = "The answer"
 		const code = "42"
 		var expErr error
 		expErr = errorkit.UserError{ID: code, Message: message}
 		expErr = fmt.Errorf("err: %w", expErr)
-		d := logger.ErrField(expErr)
-		logger.Info(nil, "boom", d)
+		d := logging.ErrField(expErr)
+		l.Info(nil, "boom", d)
 		assert.Contain(t, buf.String(), `"error":{`)
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
 		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
@@ -508,24 +513,24 @@ type Foo struct {
 	Bar Bar
 }
 
-var _ = logger.RegisterFieldType[Foo](func(foo Foo) logger.LoggingDetail {
-	return logger.Field("bar", foo.Bar)
+var _ = logging.RegisterFieldType[Foo](func(foo Foo) logging.Detail {
+	return logging.Field("bar", foo.Bar)
 })
 
 type Bar struct {
 	V string
 }
 
-var _ = logger.RegisterFieldType[Bar](func(bar Bar) logger.LoggingDetail {
-	return logger.Field("v", bar.V)
+var _ = logging.RegisterFieldType[Bar](func(bar Bar) logging.Detail {
+	return logging.Field("v", bar.V)
 })
 
 func TestField_nested(t *testing.T) {
-	buf := logger.Stub(t)
+	l, buf := logging.Stub(t)
 	rnd := random.New(random.CryptoSeed{})
 	val := rnd.String()
 	foo := Foo{Bar: Bar{V: val}}
-	logger.Info(nil, "message", logger.Field("foo", foo))
+	l.Info(nil, "message", logging.Field("foo", foo))
 
 	type Out struct {
 		Foo struct {
@@ -544,11 +549,11 @@ func TestField_nested(t *testing.T) {
 }
 
 func TestField_canNotOverrideBaseFields(t *testing.T) {
-	buf := logger.Stub(t)
+	l, buf := logging.Stub(t)
 	rnd := random.New(random.CryptoSeed{})
 	val := rnd.String()
 	msg := rnd.String()
-	logger.Info(nil, msg, logger.Field("message", val))
+	l.Info(context.Background(), msg, logging.Field("message", val))
 	type Out struct {
 		Message string `json:"message"`
 	}

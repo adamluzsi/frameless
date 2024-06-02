@@ -1,4 +1,4 @@
-package logger_test
+package logging_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 )
@@ -14,12 +14,13 @@ import (
 func ExampleContextWith() {
 	ctx := context.Background()
 
-	ctx = logger.ContextWith(ctx, logger.Fields{
+	ctx = logging.ContextWith(ctx, logging.Fields{
 		"foo": "bar",
 		"baz": "qux",
 	})
 
-	logger.Info(ctx, "message") // will have details from the context
+	l := &logging.Logger{}
+	l.Info(ctx, "message") // will have details from the context
 }
 
 func TestContextWith(t *testing.T) {
@@ -28,17 +29,17 @@ func TestContextWith(t *testing.T) {
 
 	t.Run("on nil details, original context is returned", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), "key", "value")
-		assert.Equal(t, ctx, logger.ContextWith(ctx))
+		assert.Equal(t, ctx, logging.ContextWith(ctx))
 	})
 
 	t.Run("logging details can be added to the context", func(t *testing.T) {
-		buf := logger.Stub(t)
+		l, buf := logging.Stub(t)
 		ctx := context.Background()
-		ctx = logger.ContextWith(ctx, logger.Fields{"foo": "bar"})
-		ctx = logger.ContextWith(ctx, logger.Fields{"bar": 42})
-		ctx = logger.ContextWith(ctx, logger.Fields{"numbers": []int{1, 2, 3}, "hello": "world"})
+		ctx = logging.ContextWith(ctx, logging.Fields{"foo": "bar"})
+		ctx = logging.ContextWith(ctx, logging.Fields{"bar": 42})
+		ctx = logging.ContextWith(ctx, logging.Fields{"numbers": []int{1, 2, 3}, "hello": "world"})
 
-		logger.Info(ctx, "msg")
+		l.Info(ctx, "msg")
 		assert.Contain(t, buf.String(), `"level":"info"`)
 		assert.Contain(t, buf.String(), `"foo":"bar"`)
 		assert.Contain(t, buf.String(), `"hello":"world"`)
@@ -47,17 +48,17 @@ func TestContextWith(t *testing.T) {
 	})
 
 	t.Run("contextkit are isolated and not leaking out between each other", func(t *testing.T) {
-		buf := logger.Stub(t)
+		l, buf := logging.Stub(t)
 		ctx0 := context.Background()
-		ctx1 := logger.ContextWith(ctx0, logger.Fields{"foo": "bar"})
-		ctx2 := logger.ContextWith(ctx1, logger.Fields{"bar": 42})
+		ctx1 := logging.ContextWith(ctx0, logging.Fields{"foo": "bar"})
+		ctx2 := logging.ContextWith(ctx1, logging.Fields{"bar": 42})
 
-		logger.Info(ctx1, "42")
+		l.Info(ctx1, "42")
 		assert.Contain(t, buf.String(), `"message":"42"`)
 		assert.Contain(t, buf.String(), `"foo":"bar"`)
 		assert.NotContain(t, buf.String(), `"bar":42`)
 
-		logger.Info(ctx2, "24")
+		l.Info(ctx2, "24")
 		assert.Contain(t, buf.String(), `"foo":"bar"`)
 		assert.Contain(t, buf.String(), `"bar":42`)
 	})

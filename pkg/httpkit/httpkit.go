@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/testcase/clock"
@@ -144,7 +145,7 @@ func isTimeout(err error) bool {
 type AccessLog struct {
 	Next http.Handler
 
-	AdditionalLoggingDetail func(w http.ResponseWriter, r *http.Request) logger.LoggingDetail
+	AdditionalLoggingDetail func(w http.ResponseWriter, r *http.Request) logging.Detail
 }
 
 func (mw AccessLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +158,7 @@ func (mw AccessLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (mw AccessLog) doLog(w http.ResponseWriter, r *http.Request, startTime time.Time, body *requestBodyAccessLog) {
 	endTime := clock.TimeNow()
 	info := getResponseInfo(w)
-	fields := logger.Fields{
+	fields := logging.Fields{
 		"method":               r.Method,
 		"path":                 r.URL.Path,
 		"query":                r.URL.RawQuery,
@@ -168,7 +169,7 @@ func (mw AccessLog) doLog(w http.ResponseWriter, r *http.Request, startTime time
 		"request_body_length":  body.Length,
 		"response_body_length": int(info.Written),
 	}
-	var lds = []logger.LoggingDetail{fields}
+	var lds = []logging.Detail{fields}
 	if mw.AdditionalLoggingDetail != nil {
 		if ld := mw.AdditionalLoggingDetail(w, r); ld != nil {
 			lds = append(lds, ld)
