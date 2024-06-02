@@ -34,16 +34,19 @@ func TestLogger_AsyncLogging(t *testing.T) {
 		out = &bytes.Buffer{}
 		m   sync.Mutex
 	)
-	l := logging.Logger{Out: &iokit.SyncWriter{
-		Writer: out,
-		Locker: &m,
-	}}
+	l := logging.Logger{
+		Out: &iokit.SyncWriter{
+			Writer: out,
+			Locker: &m,
+		},
+		FlushTimeout: time.Millisecond,
+	}
 
 	defer l.AsyncLogging()()
 
 	l.MessageKey = "msg"
 	l.KeyFormatter = stringcase.ToPascal
-	l.Info(nil, "gsm", logging.Field("fieldKey", "value"))
+	l.Info(context.Background(), "gsm", logging.Field("fieldKey", "value"))
 
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
 		m.Lock()
@@ -63,13 +66,13 @@ func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 	l := logging.Logger{Out: &iokit.SyncWriter{
 		Writer: out,
 		Locker: &m,
-	}}
+	}, FlushTimeout: time.Millisecond}
 
 	defer l.AsyncLogging()()
 
 	const sampling = 10
 	for i := 0; i < sampling; i++ {
-		l.Info(nil, strconv.Itoa(i))
+		l.Info(context.Background(), strconv.Itoa(i))
 	}
 	asyncLoggingEventually.Assert(t, func(it assert.It) {
 		m.Lock()
@@ -94,7 +97,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			l.Info(nil, "msg")
+			l.Info(context.Background(), "msg")
 		}
 	})
 
@@ -106,7 +109,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			l.Info(nil, "msg")
+			l.Info(context.Background(), "msg")
 		}
 	})
 
@@ -117,7 +120,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			l.Info(nil, "msg")
+			l.Info(context.Background(), "msg")
 		}
 	})
 
@@ -130,7 +133,7 @@ func BenchmarkLogger_AsyncLogging(b *testing.B) {
 		defer b.StopTimer()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			l.Info(nil, "msg")
+			l.Info(context.Background(), "msg")
 		}
 	})
 }
@@ -141,7 +144,7 @@ func makeConcurrentAccesses(tb testing.TB, l *logging.Logger) {
 	var ready int32
 	go func() {
 		blk := func() {
-			l.Info(nil, "msg")
+			l.Info(context.Background(), "msg")
 		}
 		more := random.Slice[func()](runtime.NumCPU()*10, func() func() { return blk })
 		atomic.AddInt32(&ready, 1)

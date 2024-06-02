@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -361,16 +362,26 @@ func (buf *TeeBuffer) Read(p []byte) (n int, err error) {
 }
 
 func TestLogger_AsyncLogging_smoke(t *testing.T) {
-	var l logging.Logger
-	var out bytes.Buffer
-	l.Out = &out
+	var (
+		l   logging.Logger
+		out = &bytes.Buffer{}
+		m   sync.Mutex
+	)
+	l.Out = &iokit.SyncWriter{
+		Writer: out,
+		Locker: &m,
+	}
 	l.MessageKey = "msg"
 	l.KeyFormatter = stringcase.ToPascal
+	l.FlushTimeout = time.Millisecond
 	defer l.AsyncLogging()()
 
 	l.Info(context.Background(), "gsm", logging.Field("fieldKey", "value"))
 
 	assert.Eventually(t, 3*time.Second, func(it assert.It) {
+		m.Lock()
+		defer m.Unlock()
+
 		it.Must.Contain(out.String(), `"Msg":"gsm"`)
 		it.Must.Contain(out.String(), `"FieldKey":"value"`)
 	})

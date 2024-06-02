@@ -46,6 +46,11 @@ type Logger struct {
 	strategy _LoggerStrategy
 
 	TestingTB testingTB
+
+	// FlushTimeout is a deadline time for async logging to tell how much time it should wait with batching.
+	//
+	// Default: 1s
+	FlushTimeout time.Duration
 }
 
 type _LoggerStrategy struct {
@@ -132,12 +137,12 @@ func (l *Logger) logTo(out io.Writer, event logEvent) error {
 	return err
 }
 
-type writer struct {
+type syncwriter struct {
 	Writer io.Writer
 	Locker sync.Locker
 }
 
-func (w *writer) Write(p []byte) (n int, err error) {
+func (w *syncwriter) Write(p []byte) (n int, err error) {
 	w.Locker.Lock()
 	defer w.Locker.Unlock()
 	return w.Writer.Write(p)
@@ -148,7 +153,7 @@ func (l *Logger) writer() io.Writer {
 	if l.Out != nil {
 		out = l.Out
 	}
-	return &writer{
+	return &syncwriter{
 		Writer: out,
 		Locker: &l.outLock,
 	}

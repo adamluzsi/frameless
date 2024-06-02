@@ -1,5 +1,13 @@
 package logging
 
+import "go.llib.dev/frameless/pkg/enum"
+
+type Level string
+
+func (l Level) String() string      { return string(l) }
+func (l Level) Less(oth Level) bool { return levelPriorityMapping[l] < levelPriorityMapping[oth] }
+func (l Level) Can(oth Level) bool  { return l == oth || l.Less(oth) }
+
 const (
 	LevelDebug Level = "debug"
 	LevelInfo  Level = "info"
@@ -8,9 +16,7 @@ const (
 	LevelFatal Level = "fatal"
 )
 
-type Level string
-
-func (ll Level) String() string { return string(ll) }
+var _ = enum.Register[Level](LevelDebug, LevelInfo, LevelWarn, LevelError, LevelFatal)
 
 var defaultLevel Level = LevelInfo
 
@@ -25,5 +31,5 @@ var levelPriorityMapping = map[Level]int{
 }
 
 func isLevelEnabled(target, level Level) bool {
-	return levelPriorityMapping[target] <= levelPriorityMapping[level]
+	return target.Can(level)
 }

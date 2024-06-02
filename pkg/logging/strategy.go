@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/units"
-	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 type strategy interface {
@@ -35,7 +34,11 @@ func (s *syncLogger) Log(event logEvent) {
 // You should either run it in a separate goroutine, or use it with the tasker package.
 // After the AsyncLogging returned, the logger returns to log synchronously.
 func (l *Logger) AsyncLogging() func() {
-	var st = &asyncLogger{Logger: l, Stream: make(chan logEvent, 128)}
+	var st = &asyncLogger{
+		Logger:  l,
+		Stream:  make(chan logEvent, 128),
+		batches: make(chan []logEvent),
+	}
 
 	var LogEventConsumerWG sync.WaitGroup
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -60,20 +63,19 @@ func (l *Logger) AsyncLogging() func() {
 		l.setStrategy(prevStrategy)
 		close(st.Stream)
 		LogEventConsumerWG.Wait()
-		close(st.getBatchedEvents())
+		close(st.batches)
 		OutputWriterWG.Wait()
 	}
 }
 
 type asyncLogger struct {
-	Logger *Logger
-	Stream chan logEvent
-
-	batchedEvents chan []logEvent
+	Logger  *Logger
+	Stream  chan logEvent
+	batches chan []logEvent
 }
 
 func (s *asyncLogger) Log(event logEvent) {
-	defer func() {
+	defer func() { // in case s.Stream is closed, we fall back to sync write
 		r := recover()
 		if r == nil {
 			return
@@ -95,7 +97,7 @@ func (s *asyncLogger) LogEventConsumer() {
 	defer timer.Stop()
 	flush := func() {
 		if 0 < len(batch) {
-			s.getBatchedEvents() <- batch
+			s.batches <- batch
 			batch = nil
 		}
 	}
@@ -124,10 +126,12 @@ wrk:
 // Having two output writer helps to have at least one receiver for the batched events
 // but at the cost of random disorder between logging entries.
 func (s *asyncLogger) OutputWriter() {
-	const (
-		bufSize      = 256 * units.Kibibyte
-		flushTimeout = time.Second
-	)
+	const bufSize = 256 * units.Kilobyte
+	var flushTimeout = s.Logger.FlushTimeout
+	if flushTimeout == 0 {
+		const defaultFlushTimeout = time.Second
+		flushTimeout = defaultFlushTimeout
+	}
 	var (
 		buf    bytes.Buffer
 		output = s.Logger.writer()
@@ -139,7 +143,7 @@ wrk:
 	for {
 		timer.Reset(flushTimeout)
 		select {
-		case be, ok := <-s.getBatchedEvents():
+		case be, ok := <-s.batches:
 			if !ok {
 				flush()
 				break wrk
@@ -157,10 +161,4 @@ wrk:
 			}
 		}
 	}
-}
-
-func (s *asyncLogger) getBatchedEvents() chan []logEvent {
-	return zerokit.Init(&s.batchedEvents, func() chan []logEvent {
-		return make(chan []logEvent)
-	})
 }

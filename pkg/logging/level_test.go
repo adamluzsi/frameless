@@ -141,3 +141,69 @@ func TestLogger_level(t *testing.T) {
 		assertHasLevel(t, buf, "fatal")
 	})
 }
+
+func TestLevel_Less(t *testing.T) {
+	// Debug
+	assert.False(t, logging.LevelDebug.Less(logging.LevelDebug))
+	assert.True(t, logging.LevelDebug.Less(logging.LevelInfo))
+	assert.True(t, logging.LevelDebug.Less(logging.LevelWarn))
+	assert.True(t, logging.LevelDebug.Less(logging.LevelError))
+	assert.True(t, logging.LevelDebug.Less(logging.LevelFatal))
+	// Info
+	assert.False(t, logging.LevelInfo.Less(logging.LevelDebug))
+	assert.False(t, logging.LevelInfo.Less(logging.LevelInfo))
+	assert.True(t, logging.LevelInfo.Less(logging.LevelWarn))
+	assert.True(t, logging.LevelInfo.Less(logging.LevelError))
+	assert.True(t, logging.LevelInfo.Less(logging.LevelFatal))
+	// Warn
+	assert.False(t, logging.LevelWarn.Less(logging.LevelDebug))
+	assert.False(t, logging.LevelWarn.Less(logging.LevelInfo))
+	assert.False(t, logging.LevelWarn.Less(logging.LevelWarn))
+	assert.True(t, logging.LevelWarn.Less(logging.LevelError))
+	assert.True(t, logging.LevelWarn.Less(logging.LevelFatal))
+	// Error
+	assert.False(t, logging.LevelError.Less(logging.LevelDebug))
+	assert.False(t, logging.LevelError.Less(logging.LevelInfo))
+	assert.False(t, logging.LevelError.Less(logging.LevelWarn))
+	assert.False(t, logging.LevelError.Less(logging.LevelError))
+	assert.True(t, logging.LevelError.Less(logging.LevelFatal))
+	// Fatal
+	assert.False(t, logging.LevelFatal.Less(logging.LevelDebug))
+	assert.False(t, logging.LevelFatal.Less(logging.LevelInfo))
+	assert.False(t, logging.LevelFatal.Less(logging.LevelWarn))
+	assert.False(t, logging.LevelFatal.Less(logging.LevelError))
+	assert.False(t, logging.LevelFatal.Less(logging.LevelFatal))
+}
+
+func TestLevel_Can(t *testing.T) {
+	// Debug
+	assert.True(t, logging.LevelDebug.Can(logging.LevelDebug))
+	assert.True(t, logging.LevelDebug.Can(logging.LevelInfo))
+	assert.True(t, logging.LevelDebug.Can(logging.LevelWarn))
+	assert.True(t, logging.LevelDebug.Can(logging.LevelError))
+	assert.True(t, logging.LevelDebug.Can(logging.LevelFatal))
+	// Info
+	assert.False(t, logging.LevelInfo.Can(logging.LevelDebug))
+	assert.True(t, logging.LevelInfo.Can(logging.LevelInfo))
+	assert.True(t, logging.LevelInfo.Can(logging.LevelWarn))
+	assert.True(t, logging.LevelInfo.Can(logging.LevelError))
+	assert.True(t, logging.LevelInfo.Can(logging.LevelFatal))
+	// Warn
+	assert.False(t, logging.LevelWarn.Can(logging.LevelDebug))
+	assert.False(t, logging.LevelWarn.Can(logging.LevelInfo))
+	assert.True(t, logging.LevelWarn.Can(logging.LevelWarn))
+	assert.True(t, logging.LevelWarn.Can(logging.LevelError))
+	assert.True(t, logging.LevelWarn.Can(logging.LevelFatal))
+	// Error
+	assert.False(t, logging.LevelError.Can(logging.LevelDebug))
+	assert.False(t, logging.LevelError.Can(logging.LevelInfo))
+	assert.False(t, logging.LevelError.Can(logging.LevelWarn))
+	assert.True(t, logging.LevelError.Can(logging.LevelError))
+	assert.True(t, logging.LevelError.Can(logging.LevelFatal))
+	// Fatal
+	assert.False(t, logging.LevelFatal.Can(logging.LevelDebug))
+	assert.False(t, logging.LevelFatal.Can(logging.LevelInfo))
+	assert.False(t, logging.LevelFatal.Can(logging.LevelWarn))
+	assert.False(t, logging.LevelFatal.Can(logging.LevelError))
+	assert.True(t, logging.LevelFatal.Can(logging.LevelFatal))
+}
