@@ -38,11 +38,3 @@ type ListDecoder interface {
 	// for all other cases where the underling io is handled on a higher level, it should simply return nil
 	io.Closer
 }
-
-func closeReader(r io.Reader) error {
-	closer, ok := r.(io.Closer)
-	if !ok {
-		return nil
-	}
-	return closer.Close()
-}

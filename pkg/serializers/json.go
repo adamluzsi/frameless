@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
+
+	"go.llib.dev/frameless/pkg/iokit"
 )
 
 type JSON struct{}
@@ -23,7 +26,7 @@ func (s JSON) MakeListEncoder(w io.Writer) ListEncoder {
 }
 
 func (s JSON) MakeListDecoder(r io.Reader) ListDecoder {
-	return &jsonListDecoder{Reader: r}
+	return &jsonListDecoder{R: iokit.NewKeepAliveReader(r, 5*time.Second)}
 }
 
 type jsonListEncoder struct {
@@ -104,17 +107,14 @@ func (c *jsonListEncoder) beginList() error {
 }
 
 type jsonListDecoder struct {
-	Reader io.Reader
+	R io.ReadCloser
 
-	br  *bufio.Reader
-	dec *json.Decoder
+	br *bufio.Reader
 
-	inList      bool
-	bracketOpen bool
-	index       int
-	err         error
-	done        bool
-	data        []byte
+	inList bool
+	err    error
+	done   bool
+	data   []byte
 }
 
 func (c *jsonListDecoder) Next() bool {
@@ -192,7 +192,7 @@ func (c *jsonListDecoder) readRune() (rune, error) {
 
 func (c *jsonListDecoder) reader() *bufio.Reader {
 	if c.br == nil {
-		c.br = bufio.NewReader(c.Reader)
+		c.br = bufio.NewReader(c.R)
 	}
 	return c.br
 }
@@ -206,7 +206,7 @@ func (c *jsonListDecoder) Decode(ptr any) error {
 }
 
 func (c *jsonListDecoder) Close() error {
-	return closeReader(c.Reader)
+	return c.R.Close()
 }
 
 type JSONStream struct{}
