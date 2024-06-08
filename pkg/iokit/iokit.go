@@ -2,12 +2,15 @@ package iokit
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/fs"
 	"sync"
+	"time"
 
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/testcase/clock"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )
@@ -189,17 +192,21 @@ func ReadAllWithLimit(body io.Reader, readLimit units.ByteSize) (_ []byte, retur
 }
 
 type StubReader struct {
-	Data []byte
-
+	Data     []byte
 	ReadErr  error
 	CloseErr error
 
-	IsClosed bool
-
-	index int
+	index  int
+	lock   sync.RWMutex
+	readAt time.Time
+	closed bool
 }
 
 func (r *StubReader) Read(p []byte) (int, error) {
+	r.lock.Lock()
+	r.readAt = clock.Now()
+	r.lock.Unlock()
+
 	if r.ReadErr != nil {
 		return 0, r.ReadErr
 	}
@@ -212,6 +219,152 @@ func (r *StubReader) Read(p []byte) (int, error) {
 }
 
 func (r *StubReader) Close() error {
-	r.IsClosed = true
+	r.lock.Lock()
+	r.closed = true
+	r.lock.Unlock()
 	return r.CloseErr
+}
+
+func (r *StubReader) LastReadAt() time.Time {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.readAt
+}
+
+func (r *StubReader) IsClosed() bool {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.closed
+}
+
+func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {
+	kar := &KeepAliveReader{Source: r, KeepAliveTime: d}
+	kar.Init()
+	return kar
+}
+
+// KeepAliveReader is a decorator designed to help prevent read timeouts.
+// When working with external readers in a streaming fashion, such as an `http.Request#Body`,
+// regular reads are crucial to avoid IO closures due to read timeouts.
+// For example, If processing a single stream element takes longer than the read timeout on the source server,
+// the server might close the input stream, causing issues in stream processing.
+// NewKeepAliveReader addresses this by regularly reading a byte from the stream when there are no Read calls
+// and buffering it for the next Read call.
+type KeepAliveReader struct {
+	Source        io.Reader // | io.ReadCloser
+	KeepAliveTime time.Duration
+
+	buffer []byte
+	eof    bool
+
+	readError  error
+	closeError error
+
+	onInit  sync.Once
+	onClose sync.Once
+	lock    sync.Mutex
+	done    chan struct{}
+	beats   chan struct{}
+}
+
+func (r *KeepAliveReader) Init() {
+	r.onInit.Do(func() {
+		r.done = make(chan struct{})
+		r.beats = make(chan struct{})
+		go r.keepAlive()
+	})
+}
+
+func (r *KeepAliveReader) Read(p []byte) (int, error) {
+	r.Init()
+	r.beat()
+
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	var n = len(p)
+
+	if len(r.buffer) < n { // if buffer doesn't have enough, attempt to load more
+		r.bufferAhead(n - len(r.buffer))
+	}
+
+	if len(r.buffer) == 0 && r.eof {
+		return 0, io.EOF
+	}
+
+	if len(r.buffer) < n { // handling EOF case
+		n = len(r.buffer)
+	}
+
+	copy(p, r.buffer[0:n])
+	r.buffer = r.buffer[n:]
+
+	return n, r.readError
+}
+
+func (r *KeepAliveReader) Close() error {
+	r.onClose.Do(func() {
+		r.Init()
+		close(r.done)
+		if c, ok := r.Source.(io.Closer); ok {
+			r.closeError = c.Close()
+		}
+	})
+	return r.closeError
+
+}
+
+func (r *KeepAliveReader) beat() {
+	defer recover()
+	select {
+	case r.beats <- struct{}{}:
+	default:
+	}
+}
+
+func (r *KeepAliveReader) timeout() time.Duration {
+	if r.KeepAliveTime != 0 {
+		return r.KeepAliveTime
+	}
+	const defaultTimeout = 10 * time.Second
+	return defaultTimeout
+}
+
+func (r *KeepAliveReader) keepAlive() {
+	ticker := clock.NewTicker(r.timeout())
+	for {
+		select {
+		case <-r.done:
+			return
+
+		case <-r.beats:
+			ticker.Reset(r.timeout())
+
+		case <-ticker.C:
+			r.lock.Lock()
+			r.bufferAhead(1)
+			stop := r.eof || r.readError != nil
+			r.lock.Unlock()
+			if stop { // garbage collect this goroutine when the source is no longer readable
+				return
+			}
+		}
+	}
+}
+
+func (r *KeepAliveReader) bufferAhead(byteLength int) {
+	if r.eof || r.readError != nil {
+		return
+	}
+	d := make([]byte, byteLength) // read a byte from the input stream
+	n, err := r.Source.Read(d)
+	if 0 < n {
+		r.buffer = append(r.buffer, d[0:n]...)
+	}
+	if errors.Is(err, io.EOF) {
+		r.eof = true
+	}
+	if err != nil {
+		r.readError = err
+	}
 }

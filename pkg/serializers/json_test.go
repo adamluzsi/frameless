@@ -67,7 +67,7 @@ func TestJSON_list(t *testing.T) {
 	assert.False(t, dec.Next())
 	assert.NoError(t, dec.Err())
 	assert.NoError(t, dec.Close())
-	assert.True(t, stub.IsClosed)
+	assert.True(t, stub.IsClosed())
 
 	assert.Equal(t, exp1, got1)
 	assert.Equal(t, exp2, got2)
@@ -132,7 +132,7 @@ func TestJSONStream_list(t *testing.T) {
 	assert.False(t, dec.Next())
 	assert.NoError(t, dec.Err())
 	assert.NoError(t, dec.Close())
-	assert.True(t, stub.IsClosed)
+	assert.True(t, stub.IsClosed())
 
 	assert.Equal(t, exp1, got1)
 	assert.Equal(t, exp2, got2)

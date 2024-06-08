@@ -10,11 +10,15 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/ports/filesystem"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/testcase"
@@ -453,7 +457,7 @@ func TestReadAllWithLimit(t *testing.T) {
 		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
 		assert.NoError(t, err)
 		assert.Equal(t, body.Data, data)
-		assert.True(t, body.IsClosed)
+		assert.True(t, body.IsClosed())
 	})
 	t.Run("Closing error is propagated", func(t *testing.T) {
 		expErr := rnd.Error()
@@ -467,7 +471,7 @@ func TestReadAllWithLimit(t *testing.T) {
 	})
 }
 
-func TestStubReader_Read(t *testing.T) {
+func TestStubReader(t *testing.T) {
 	t.Run("behaves like bytes.Reader", func(t *testing.T) {
 		data := []byte(rnd.String())
 
@@ -532,7 +536,7 @@ func TestStubReader_Read(t *testing.T) {
 	t.Run("closes without an error", func(t *testing.T) {
 		reader := &iokit.StubReader{CloseErr: nil}
 		assert.NoError(t, reader.Close())
-		assert.True(t, reader.IsClosed)
+		assert.True(t, reader.IsClosed())
 	})
 
 	t.Run("safe to close multiple times", func(t *testing.T) {
@@ -547,5 +551,170 @@ func TestStubReader_Read(t *testing.T) {
 		reader := &iokit.StubReader{CloseErr: expErr}
 		err := reader.Close()
 		assert.ErrorIs(t, expErr, err)
+	})
+
+	t.Run("we can determine when the reading will update the LastReadAt's result", func(t *testing.T) {
+		now := clock.Now()
+		timecop.Travel(t, now, timecop.Freeze())
+
+		data := []byte(rnd.StringN(5))
+		stub := &iokit.StubReader{Data: data}
+		assert.Empty(t, stub.LastReadAt())
+
+		n, err := stub.Read(make([]byte, 1))
+		assert.NoError(t, err)
+		assert.Equal(t, 1, n)
+		assert.Equal(t, stub.LastReadAt(), now)
+
+		now = now.Add(time.Hour)
+		timecop.Travel(t, now, timecop.Freeze())
+		assert.NotEqual(t, stub.LastReadAt(), now)
+
+		n, err = stub.Read(make([]byte, 1))
+		assert.NoError(t, err)
+		assert.Equal(t, 1, n)
+		assert.Equal(t, stub.LastReadAt(), now)
+	})
+
+	t.Run("LastReadAt is thread safe", func(t *testing.T) {
+		stub := &iokit.StubReader{Data: []byte(rnd.StringN(5))}
+
+		testcase.Race(func() {
+			stub.LastReadAt()
+		}, func() {
+			stub.LastReadAt()
+		}, func() {
+			_, _ = stub.Read(make([]byte, 1))
+		})
+	})
+
+	t.Run("IsClosed is thread safe", func(t *testing.T) {
+		stub := &iokit.StubReader{Data: []byte(rnd.StringN(5))}
+
+		testcase.Race(func() {
+			_ = stub.IsClosed()
+		}, func() {
+			_ = stub.Close()
+		})
+	})
+
+	t.Run("after closing the reader, LastReadAt still records reading attempts", func(t *testing.T) {
+		stub := &iokit.StubReader{Data: []byte(rnd.StringN(5))}
+		assert.NoError(t, stub.Close())
+		_, _ = stub.Read(make([]byte, 1))
+		assert.NotEmpty(t, stub.LastReadAt())
+	})
+}
+
+func ExampleKeepAliveReader() {
+	r := bytes.NewReader([]byte("reader"))
+
+	kar := iokit.NewKeepAliveReader(r, 20*time.Second)
+	defer kar.Close()
+	var _ io.ReadCloser = kar
+
+	_, _ = kar.Read(make([]byte, 10))
+}
+
+func TestKeepAliveReader(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		stub = testcase.Let(s, func(t *testcase.T) *iokit.StubReader {
+			return &iokit.StubReader{Data: []byte(t.Random.Error().Error())}
+		})
+		keepAliveTime = testcase.Let(s, func(t *testcase.T) time.Duration {
+			return time.Duration(t.Random.IntBetween(int(time.Hour), int(24*time.Hour)))
+		})
+		subject = testcase.Let(s, func(t *testcase.T) io.ReadCloser {
+			return iokit.NewKeepAliveReader(stub.Get(t), keepAliveTime.Get(t))
+		})
+	)
+
+	s.Test("reading from the subject yields back all results from source reader", func(t *testcase.T) {
+		got, err := io.ReadAll(subject.Get(t))
+		assert.NoError(t, err)
+		assert.Equal(t, got, stub.Get(t).Data)
+	})
+
+	s.When("reader is closed", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			assert.NoError(t, subject.Get(t).Close())
+		})
+
+		s.Then("source reader is closed as well", func(t *testcase.T) {
+			assert.True(t, stub.Get(t).IsClosed())
+		})
+
+		s.Then("triggering won't happen anymore", func(t *testcase.T) {
+			assert.Empty(t, stub.Get(t).LastReadAt(), "something is not ok, the last read at at this point should be still empty")
+
+			t.Random.Repeat(2, 5, func() {
+				timecop.Travel(t, keepAliveTime.Get(t))
+			})
+
+			assert.Empty(t, stub.Get(t).LastReadAt(), "due to close, last read at should be still empty due to having the keep alive closed")
+		})
+	})
+
+	s.When("there was no reading for the duration of keep alive time", func(s *testcase.Spec) {
+		subject.EagerLoading(s)
+
+		s.Before(func(t *testcase.T) {
+			timecop.Travel(t, keepAliveTime.Get(t))
+		})
+
+		s.Then("the reader is still readable", func(t *testcase.T) {
+			got, err := io.ReadAll(subject.Get(t))
+			assert.NoError(t, err)
+			assert.Equal(t, got, stub.Get(t).Data)
+		})
+
+		s.Then("the keep alive mechanism read from the the source reader to avoid read timeout", func(t *testcase.T) {
+			assert.Eventually(t, time.Second, func(it assert.It) {
+				assert.NotEmpty(it, stub.Get(t).LastReadAt)
+			})
+
+			t.Log("and even though the source reader is being read, the content can be still retrieved")
+			got, err := io.ReadAll(subject.Get(t))
+			assert.NoError(t, err)
+			assert.Equal(t, got, stub.Get(t).Data)
+		})
+	})
+
+	s.When("source reader has an error on reading", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+
+		stub.Let(s, func(t *testcase.T) *iokit.StubReader {
+			r := stub.Super(t)
+			r.ReadErr = expErr.Get(t)
+			return r
+		})
+
+		s.Then("read error is propagated back", func(t *testcase.T) {
+			_, err := io.ReadAll(subject.Get(t))
+			assert.ErrorIs(t, err, expErr.Get(t))
+		})
+	})
+
+	s.When("source reader has an error on closing", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+
+		stub.Let(s, func(t *testcase.T) *iokit.StubReader {
+			r := stub.Super(t)
+			r.CloseErr = expErr.Get(t)
+			return r
+		})
+
+		s.Then("read error is propagated back", func(t *testcase.T) {
+			err := subject.Get(t).Close()
+			assert.ErrorIs(t, err, expErr.Get(t))
+		})
+	})
+
+	s.Test("calling Close multiple times should not be an issue", func(t *testcase.T) {
+		t.Random.Repeat(2, 7, func() {
+			assert.NoError(t, subject.Get(t).Close())
+		})
 	})
 }
