@@ -22,7 +22,7 @@ func BaseType(typ reflect.Type) (_ reflect.Type, depth int) {
 	if typ == nil {
 		return typ, depth
 	}
-	for ; typ.Kind() == reflect.Ptr; depth++ {
+	for ; typ.Kind() == reflect.Pointer; depth++ {
 		typ = typ.Elem()
 	}
 	return typ, depth
@@ -40,7 +40,7 @@ func PointerOf(value reflect.Value) reflect.Value {
 func BaseTypeOf(i any) reflect.Type {
 	t := reflect.TypeOf(i)
 
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 
@@ -55,7 +55,7 @@ func BaseValue(v reflect.Value) reflect.Value {
 	if !v.IsValid() {
 		return v
 	}
-	for v.Type().Kind() == reflect.Ptr {
+	for v.Type().Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	return v
@@ -84,7 +84,7 @@ func IsEmpty(val reflect.Value) bool {
 			return true
 		}
 		return val.Len() == 0
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if val.IsNil() {
 			return true
 		}
@@ -98,7 +98,7 @@ func IsEmpty(val reflect.Value) bool {
 
 func IsZero(val reflect.Value) bool {
 	switch val.Kind() {
-	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func:
+	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func:
 		return val.IsNil()
 	default:
 		return !val.IsValid() || val.IsZero()
@@ -107,7 +107,7 @@ func IsZero(val reflect.Value) bool {
 
 func IsValueNil(val reflect.Value) bool {
 	switch val.Kind() {
-	case reflect.Slice, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func:
+	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func:
 		return val.IsNil()
 	default:
 		return false
@@ -118,7 +118,7 @@ func IsValueNil(val reflect.Value) bool {
 func Link(src, ptr any) (err error) {
 	vPtr := reflect.ValueOf(ptr)
 
-	if vPtr.Kind() != reflect.Ptr {
+	if vPtr.Kind() != reflect.Pointer {
 		return errors.New(`pointer type destination expected`)
 	}
 

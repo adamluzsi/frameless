@@ -238,7 +238,7 @@ func visitForStatusCode(info *responseInfo, rv reflect.Value, recursionGuard map
 				visitForStatusCode(info, field, recursionGuard)
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		visitForStatusCode(info, rv.Elem(), recursionGuard)
 	default:
 	}

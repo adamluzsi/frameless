@@ -8,7 +8,7 @@ import (
 
 func SymbolicName(T interface{}) string {
 	t := reflect.TypeOf(T)
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

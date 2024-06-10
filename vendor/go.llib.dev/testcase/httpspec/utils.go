@@ -43,7 +43,7 @@ func toURLValues(i interface{}) url.Values {
 			}
 		}
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		for k, vs := range toURLValues(rv.Elem().Interface()) {
 			for _, v := range vs {
 				data.Add(k, v)

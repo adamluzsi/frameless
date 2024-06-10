@@ -17,7 +17,7 @@ func Set[ID any](ptr any, id ID) error {
 		rt = r.Type()
 	)
 
-	if !(rt.Kind() == reflect.Ptr && rt.Elem().Kind() != reflect.Ptr) {
+	if !(rt.Kind() == reflect.Pointer && rt.Elem().Kind() != reflect.Pointer) {
 		return errSetWithNonPtr
 	}
 

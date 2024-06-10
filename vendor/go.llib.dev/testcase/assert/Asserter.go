@@ -803,7 +803,7 @@ func (a Asserter) isEmpty(v any) bool {
 	case reflect.Array:
 		zero := reflect.New(rv.Type()).Elem().Interface()
 		return a.eq(zero, v)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if rv.IsNil() {
 			return true
 		}

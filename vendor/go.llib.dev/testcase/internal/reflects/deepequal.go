@@ -1,8 +1,9 @@
 package reflects
 
 import (
-	"go.llib.dev/testcase/internal/teardown"
 	"reflect"
+
+	"go.llib.dev/testcase/internal/teardown"
 )
 
 func DeepEqual(v1, v2 any) (bool, error) {
@@ -201,7 +202,7 @@ func (i *refMem) tryVisit(v reflect.Value) (ok bool) {
 
 func (i *refMem) addr(v reflect.Value) (uintptr, bool) {
 	switch v.Kind() {
-	case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.UnsafePointer:
+	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.UnsafePointer:
 		return v.Pointer(), true
 	case reflect.Struct, reflect.Array:
 		if v.CanAddr() {

@@ -155,7 +155,7 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 		}
 		return ptr.Elem(), nil
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		rv, err := parse(typ.Elem(), val, opts)
 		if err != nil {
 			return reflect.Value{}, err
@@ -382,7 +382,7 @@ func format(val reflect.Value, opts Options) (string, error) {
 		data, err := json.Marshal(val)
 		return string(data), err
 
-	case reflect.Ptr:
+	case reflect.Pointer:
 		return format(val.Elem(), opts)
 
 	default:
