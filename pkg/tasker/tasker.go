@@ -84,6 +84,9 @@ func (s sequence) Run(ctx context.Context) error {
 // Concurrence is a construct that allows you to execute a list of Task concurrently.
 // If any of the Task fails with an error, all Task will receive cancellation signal.
 func Concurrence[TFN genericTask](tfns ...TFN) Task {
+	if len(tfns) == 1 {
+		return ToTask[TFN](tfns[0])
+	}
 	return concurrence(toTasks[TFN](tfns)).Run
 }
 
