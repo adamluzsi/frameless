@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/internal/consttypes"
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/clock"
 )
@@ -21,7 +21,7 @@ type ReportJSONDTO struct {
 	Details      map[string]any  `json:"details,omitempty"`
 }
 
-var _ = dtos.Register[Report, ReportJSONDTO](
+var _ = dtokit.Register[Report, ReportJSONDTO](
 	func(ctx context.Context, ent Report) (ReportJSONDTO, error) {
 		var details map[string]any
 		details = ent.Details
@@ -29,16 +29,16 @@ var _ = dtos.Register[Report, ReportJSONDTO](
 			details = nil
 		}
 		return ReportJSONDTO{
-			Status:  dtos.MustMap[string](ctx, ent.Status),
+			Status:  dtokit.MustMap[string](ctx, ent.Status),
 			Name:    ent.Name,
 			Message: ent.Message,
 			Issues: slicekit.Must(slicekit.Map[IssueJSONDTO](ent.Issues,
 				func(v Issue) IssueJSONDTO {
-					return dtos.MustMap[IssueJSONDTO](ctx, v)
+					return dtokit.MustMap[IssueJSONDTO](ctx, v)
 				})),
 			Dependencies: slicekit.Must(slicekit.Map[ReportJSONDTO](ent.Dependencies,
 				func(v Report) ReportJSONDTO {
-					return dtos.MustMap[ReportJSONDTO](ctx, v)
+					return dtokit.MustMap[ReportJSONDTO](ctx, v)
 				})),
 			Timestamp: ent.Timestamp.Format(time.RFC3339),
 			Details:   details,
@@ -54,16 +54,16 @@ var _ = dtos.Register[Report, ReportJSONDTO](
 			timestamp = date
 		}
 		hs := Report{
-			Status:  dtos.MustMap[Status, string](ctx, dto.Status),
+			Status:  dtokit.MustMap[Status, string](ctx, dto.Status),
 			Name:    dto.Name,
 			Message: dto.Message,
 			Issues: slicekit.Must(slicekit.Map[Issue](dto.Issues,
 				func(v IssueJSONDTO) Issue {
-					return dtos.MustMap[Issue](ctx, v)
+					return dtokit.MustMap[Issue](ctx, v)
 				})),
 			Dependencies: slicekit.Must(slicekit.Map[Report](dto.Dependencies,
 				func(v ReportJSONDTO) Report {
-					return dtos.MustMap[Report](ctx, v)
+					return dtokit.MustMap[Report](ctx, v)
 				})),
 			Timestamp: timestamp,
 			Details:   dto.Details,
@@ -76,7 +76,7 @@ type IssueJSONDTO struct {
 	Message string `json:"message,omitempty"`
 }
 
-var _ = dtos.Register[Issue, IssueJSONDTO](
+var _ = dtokit.Register[Issue, IssueJSONDTO](
 	func(ctx context.Context, ent Issue) (IssueJSONDTO, error) {
 		return IssueJSONDTO{
 			Code:    ent.Code.String(),
@@ -90,7 +90,7 @@ var _ = dtos.Register[Issue, IssueJSONDTO](
 		}, nil
 	})
 
-var _ = dtos.Register[Status, string](
+var _ = dtokit.Register[Status, string](
 	func(ctx context.Context, status Status) (string, error) {
 		return status.String(), nil
 	},

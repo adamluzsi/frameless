@@ -22,18 +22,18 @@ Getting Started
 To get started, import the package into your Go application:
 
 ```go
-import "go.llib.dev/frameless/pkg/dtos"
+import "go.llib.dev/frameless/pkg/dtokit"
 ```
 
 ### Registering Mapping
 
-The `dtos.Register` function is used to register the mappings between entities and their respective DTOs.
+The `dtokit.Register` function is used to register the mappings between entities and their respective dtokit.
 In this example, we're using a `JSONMapping` object to contain the mapping configurations:
 
 ```go
-var JSONMapping dtos.M
-var _ = dtos.Register[Ent, EntDTO](&JSONMapping, EntMapping{})
-var _ = dtos.Register[NestedEnt, NestedEntDTO](&JSONMapping, NestedEntMapping{})
+var JSONMapping dtokit.M
+var _ = dtokit.Register[Ent, EntDTO](&JSONMapping, EntMapping{})
+var _ = dtokit.Register[NestedEnt, NestedEntDTO](&JSONMapping, NestedEntMapping{})
 ```
 
 ### Defining Mappings
@@ -53,11 +53,11 @@ type EntDTO struct {
 
 type EntMapping struct{}
 
-func (EntMapping) ToDTO(_ *dtos.M, ent Ent) (EntDTO, error) {
+func (EntMapping) ToDTO(_ *dtokit.M, ent Ent) (EntDTO, error) {
 	return EntDTO{V: strconv.Itoa(ent.V)}, nil
 }
 
-func (EntMapping) ToEnt(m *dtos.M, dto EntDTO) (Ent, error) {
+func (EntMapping) ToEnt(m *dtokit.M, dto EntDTO) (Ent, error) {
 	v, err := strconv.Atoi(dto.V)
 	if err != nil {
 		return Ent{}, err
@@ -75,31 +75,31 @@ This makes it easy to maintain and update your mappings over time even if got a 
 Here is an example of how to register a JSON-specific mapping and a YAML-specific mapping:
 
 ```go
-var JSONMapping dtos.M
-_ = dtos.Register[Ent, EntJSONDTO](&JSONMapping, EntJSONMapping{})
+var JSONMapping dtokit.M
+_ = dtokit.Register[Ent, EntJSONDTO](&JSONMapping, EntJSONMapping{})
 
-var YAMLMapping dtos.M
-_ = dtos.Register[Ent, EntYAMLDTO](&YAMLMapping, EntYAMLMapping{})
+var YAMLMapping dtokit.M
+_ = dtokit.Register[Ent, EntYAMLDTO](&YAMLMapping, EntYAMLMapping{})
 ```
 
 You can utilise distinct mapping registers as various mapping versions, simplifying the versioning process for your endpoint.
 
 ### Using a Single Mapping Registry For Multiple Serialization Formats
 
-The package also allows you to use a single mapping registry (`dtos.M`) to manage all your DTO mappings.
+The package also allows you to use a single mapping registry (`dtokit.M`) to manage all your DTO mappings.
 This can be useful when you have moderate number of DTOs, and want to keep things simple.
 
 Here is an example:
 
 ```go
-var DTOMappings dtos.M
-var _ = dtos.Register[Ent, EntJSONDTO](&DTOMappings, EntJSONMapping{})
-var _ = dtos.Register[Ent, EntYAMLDTO](&DTOMappings, EntYAMLMapping{})
+var DTOMappings dtokit.M
+var _ = dtokit.Register[Ent, EntJSONDTO](&DTOMappings, EntJSONMapping{})
+var _ = dtokit.Register[Ent, EntYAMLDTO](&DTOMappings, EntYAMLMapping{})
 ```
 
 ### Mapping Entities to DTOs & Marshalling
 
-The `dtos.Map` function is used to convert an entity object into a target DTO object.
+The `dtokit.Map` function is used to convert an entity object into a target DTO object.
 
 Once the DTO has been created, it can be marshaled into a the target format.
 For Example in case of `json` you can use Go's built-in `json.Marshal` function:
@@ -115,7 +115,7 @@ func fn() {
 		},
 	}
 
-	dto, err := dtos.Map[NestedEntDTO](&JSONMapping, v)
+	dto, err := dtokit.Map[NestedEntDTO](&JSONMapping, v)
 	if err != nil { // handle err
 		return
 	}

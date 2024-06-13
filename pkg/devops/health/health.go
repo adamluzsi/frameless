@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/internal/consttypes"
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
@@ -107,7 +107,7 @@ func (m *Monitor) HTTPHandler() http.Handler {
 
 		report := m.HealthCheck(ctx)
 
-		dto, err := dtos.Map[ReportJSONDTO](ctx, report)
+		dto, err := dtokit.Map[ReportJSONDTO](ctx, report)
 		if err != nil {
 			logger.Error(ctx, "error mapping devops.HealthState to HealthState json DTO", logging.ErrField(err))
 			return
@@ -399,7 +399,7 @@ func defaultHealthResponseUnmarshal(ctx context.Context, data []byte, ptr *Repor
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	ent, err := dtos.Map[Report, ReportJSONDTO](ctx, dto)
+	ent, err := dtokit.Map[Report, ReportJSONDTO](ctx, dto)
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/restapi"
 	"go.llib.dev/testcase"
 )
@@ -24,7 +24,7 @@ type XDTO struct {
 	X  int `json:"xnum"`
 }
 
-var _ = dtos.Register[X, XDTO](XMapping{}.ToDTO, XMapping{}.ToEnt)
+var _ = dtokit.Register[X, XDTO](XMapping{}.ToDTO, XMapping{}.ToEnt)
 
 type XMapping struct {
 	restapi.IntID[XID]

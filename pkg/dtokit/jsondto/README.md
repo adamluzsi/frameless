@@ -12,7 +12,7 @@ It does not replace these functions but offers tools to simplify their usage.
   enabling easy conversion to and from JSON.
 - **Compatibility with Standard Library**:
   Designed to complement the Go standard library's JSON handling capabilities,
-  making it easier to use with existing codebase and DTOs.
+  making it easier to use with existing codebase and dtokit.
 
 ### jsondto.Interface[I]
 

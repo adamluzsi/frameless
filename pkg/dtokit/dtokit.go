@@ -1,4 +1,4 @@
-package dtos
+package dtokit
 
 import (
 	"context"
@@ -38,7 +38,7 @@ func Register[From, To any](mapTo mapFunc[From, To], mapFrom mapFunc[To, From]) 
 			fromTypeName = reflectkit.TypeOf[From]().String()
 			toTypeName   = reflectkit.TypeOf[To]().String()
 		)
-		panic(fmt.Errorf("dtos.Register: at partial mapping between %s and %s is required", fromTypeName, toTypeName))
+		panic(fmt.Errorf("dtokit.Register: at partial mapping between %s and %s is required", fromTypeName, toTypeName))
 	}
 	m.register(mr)
 	return func() { m.unregister(mr) }

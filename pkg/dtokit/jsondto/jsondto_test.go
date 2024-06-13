@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/dtos/jsondto"
+	"go.llib.dev/frameless/pkg/dtokit/jsondto"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"

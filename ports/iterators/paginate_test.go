@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/ports/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
@@ -37,7 +37,7 @@ func ExamplePaginate() {
 			return nil, false, err
 		}
 
-		vs, err := dtos.Map[[]Foo](ctx, values)
+		vs, err := dtokit.Map[[]Foo](ctx, values)
 		if err != nil {
 			return nil, false, err
 		}

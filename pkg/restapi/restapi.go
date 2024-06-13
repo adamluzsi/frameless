@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
@@ -46,7 +46,7 @@ type Resource[Entity, ID any] struct {
 	// 		 Delete /
 	DestroyAll func(ctx context.Context, query url.Values) error
 
-	// Serialization is responsible to serialize and unserialize DTOs.
+	// Serialization is responsible to serialize and unserialize dtokit.
 	// JSON, line separated JSON stream and FormUrlencoded formats are supported out of the box.
 	//
 	// Serialization is an optional field.
@@ -139,11 +139,11 @@ type Mapping[Entity any] interface {
 type DTOMapping[Entity, DTO any] struct {
 	// ToEnt is an optional function to describe how to map a DTO into an Entity.
 	//
-	// default: dtos.Map[Entity, DTO](...)
+	// default: dtokit.Map[Entity, DTO](...)
 	ToEnt func(ctx context.Context, dto DTO) (Entity, error)
 	// ToDTO is an optional function to describe how to map an Entity into a DTO.
 	//
-	// default: dtos.Map[DTO, Entity](...)
+	// default: dtokit.Map[DTO, Entity](...)
 	ToDTO func(ctx context.Context, ent Entity) (DTO, error)
 }
 
@@ -163,14 +163,14 @@ func (dto DTOMapping[Entity, DTO]) toEnt(ctx context.Context, dtoPtr any) (Entit
 	if dto.ToEnt != nil { // TODO: testme
 		return dto.ToEnt(ctx, *ptr)
 	}
-	return dtos.Map[Entity](ctx, *ptr)
+	return dtokit.Map[Entity](ctx, *ptr)
 }
 
 func (dto DTOMapping[Entity, DTO]) toDTO(ctx context.Context, ent Entity) (any, error) {
 	if dto.ToDTO != nil { // TODO: testme
 		return dto.ToDTO(ctx, ent)
 	}
-	return dtos.Map[DTO](ctx, ent)
+	return dtokit.Map[DTO](ctx, ent)
 }
 
 func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {

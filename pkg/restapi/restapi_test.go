@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/adapters/memory"
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -897,6 +897,6 @@ func TestRouter_Resource(t *testing.T) {
 		var show FooDTO
 		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &show))
 		assert.NotEmpty(t, show)
-		assert.Equal(t, dtos.MustMap[FooDTO](ctx, foo), show)
+		assert.Equal(t, dtokit.MustMap[FooDTO](ctx, foo), show)
 	}
 }

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/devops/health"
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/testcase"
@@ -915,7 +915,7 @@ func TestExampleResponse(t *testing.T) {
 
 	ctx := context.Background()
 	r := m.HealthCheck(ctx)
-	dto, err := dtos.Map[health.ReportJSONDTO](ctx, r)
+	dto, err := dtokit.Map[health.ReportJSONDTO](ctx, r)
 	assert.NoError(t, err)
 
 	data, err := json.MarshalIndent(dto, "", "  ")

@@ -1,4 +1,4 @@
-package dtos_test
+package dtokit_test
 
 import (
 	"context"
@@ -6,52 +6,52 @@ import (
 	"strconv"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
 var rnd = random.New(random.CryptoSeed{})
 
-var _ dtos.MP = dtos.P[Ent, EntDTO]{}
+var _ dtokit.MP = dtokit.P[Ent, EntDTO]{}
 
 func TestM(t *testing.T) {
 	ctx := context.Background()
 	t.Run("mapping T to itself T, passthrough mode without registration", func(t *testing.T) {
 		expEnt := Ent{V: rnd.Int()}
-		gotEnt, err := dtos.Map[Ent](ctx, expEnt)
+		gotEnt, err := dtokit.Map[Ent](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, gotEnt)
 	})
 	t.Run("flat structures", func(t *testing.T) {
 		m := EntMapping{}
-		defer dtos.Register[Ent, EntDTO](m.ToDTO, m.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](m.ToDTO, m.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[EntDTO](ctx, expEnt)
+		dto, err := dtokit.Map[EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[Ent](ctx, dto)
+		ent, err := dtokit.Map[Ent](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
 	t.Run("nested structures", func(t *testing.T) {
 		em := EntMapping{}
 		nem := NestedEntMapping{}
-		defer dtos.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
-		defer dtos.Register[NestedEnt, NestedEntDTO](nem.ToDTO, nem.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
+		defer dtokit.Register[NestedEnt, NestedEntDTO](nem.ToDTO, nem.ToEnt)()
 
 		expEnt := NestedEnt{ID: rnd.String(), Ent: Ent{V: rnd.Int()}}
 		expDTO := NestedEntDTO{ID: expEnt.ID, Ent: EntDTO{V: strconv.Itoa(expEnt.Ent.V)}}
 
-		dto, err := dtos.Map[NestedEntDTO](ctx, expEnt)
+		dto, err := dtokit.Map[NestedEntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[NestedEnt](ctx, dto)
+		ent, err := dtokit.Map[NestedEnt](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
@@ -59,21 +59,21 @@ func TestM(t *testing.T) {
 		em := EntMapping{}
 
 		// initial setup
-		defer dtos.Register[Ent, EntDTO](
+		defer dtokit.Register[Ent, EntDTO](
 			func(ctx context.Context, e Ent) (EntDTO, error) { return EntDTO{}, nil },
 			func(ctx context.Context, ed EntDTO) (Ent, error) { return Ent{}, nil })()
 
 		// override
-		defer dtos.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[EntDTO](ctx, expEnt)
+		dto, err := dtokit.Map[EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[Ent](ctx, dto)
+		ent, err := dtokit.Map[Ent](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
@@ -81,19 +81,19 @@ func TestM(t *testing.T) {
 
 func ExampleRegister_partialDTOMappingSupport() {
 	// When we only need an Entity to EntityPartialDTO mapping.
-	dtos.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
+	dtokit.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
 
 	var (
 		ctx = context.Background()
 		v   = Ent{V: 42, N: 12}
 	)
 
-	partialDTO, err := dtos.Map[EntPartialDTO](ctx, v)
+	partialDTO, err := dtokit.Map[EntPartialDTO](ctx, v)
 	_, _ = partialDTO, err
 }
 
 func ExampleMap() {
-	var _ = dtos.Register[Ent, EntDTO]( // only once at the global level
+	var _ = dtokit.Register[Ent, EntDTO]( // only once at the global level
 		EntMapping{}.ToDTO,
 		EntMapping{}.ToEnt,
 	)
@@ -102,12 +102,12 @@ func ExampleMap() {
 		ent = Ent{V: 42, N: 12}
 	)
 
-	dto, err := dtos.Map[EntDTO](ctx, ent)
+	dto, err := dtokit.Map[EntDTO](ctx, ent)
 	if err != nil {
 		panic(err)
 	}
 
-	gotEnt, err := dtos.Map[Ent](ctx, dto)
+	gotEnt, err := dtokit.Map[Ent](ctx, dto)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +116,7 @@ func ExampleMap() {
 }
 
 func ExampleMap_sliceSyntaxSugar() {
-	var _ = dtos.Register[Ent, EntDTO]( // only once at the global level
+	var _ = dtokit.Register[Ent, EntDTO]( // only once at the global level
 		EntMapping{}.ToDTO,
 		EntMapping{}.ToEnt,
 	)
@@ -126,7 +126,7 @@ func ExampleMap_sliceSyntaxSugar() {
 	)
 
 	// all individual value will be mapped
-	res, err := dtos.Map[[]EntDTO](ctx, ents)
+	res, err := dtokit.Map[[]EntDTO](ctx, ents)
 	if err != nil {
 		panic(err)
 	}
@@ -136,20 +136,20 @@ func ExampleMap_sliceSyntaxSugar() {
 func TestMap(t *testing.T) {
 	ctx := context.Background()
 	t.Run("nil M given", func(t *testing.T) {
-		_, err := dtos.Map[EntDTO, Ent](nil, Ent{V: rnd.Int()})
+		_, err := dtokit.Map[EntDTO, Ent](nil, Ent{V: rnd.Int()})
 		assert.Error(t, err)
 	})
 	t.Run("happy", func(t *testing.T) {
 		em := EntMapping{}
-		defer dtos.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](em.ToDTO, em.ToEnt)()
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[EntDTO](ctx, expEnt)
+		dto, err := dtokit.Map[EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.Equal(t, expDTO, dto)
 
-		ent, err := dtos.Map[Ent](ctx, dto)
+		ent, err := dtokit.Map[Ent](ctx, dto)
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, ent)
 	})
@@ -159,75 +159,75 @@ func TestMap(t *testing.T) {
 			dto = EntDTO{V: strconv.Itoa(ent.V)}
 		)
 
-		_, err := dtos.Map[EntDTO](ctx, ent)
-		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+		_, err := dtokit.Map[EntDTO](ctx, ent)
+		assert.ErrorIs(t, err, dtokit.ErrNoMapping)
 
-		_, err = dtos.Map[Ent](ctx, dto)
-		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+		_, err = dtokit.Map[Ent](ctx, dto)
+		assert.ErrorIs(t, err, dtokit.ErrNoMapping)
 
-		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
-		_, err = dtos.Map[EntDTO](ctx, ent)
+		_, err = dtokit.Map[EntDTO](ctx, ent)
 		assert.NoError(t, err)
 	})
 	t.Run("value to pointer", func(t *testing.T) {
-		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[*EntDTO](ctx, expEnt)
+		dto, err := dtokit.Map[*EntDTO](ctx, expEnt)
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, *dto)
 	})
 	t.Run("pointer to value", func(t *testing.T) {
-		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
 		expEnt := Ent{V: rnd.Int()}
 		expDTO := EntDTO{V: strconv.Itoa(expEnt.V)}
 
-		dto, err := dtos.Map[EntDTO](ctx, &expEnt)
+		dto, err := dtokit.Map[EntDTO](ctx, &expEnt)
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.Equal(t, expDTO, dto)
 	})
 	t.Run("(To->From is missing) when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
-		defer dtos.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
+		defer dtokit.Register[Ent, EntPartialDTO](EntToEntPartialDTO, nil)()
 
 		var (
 			ctx = context.Background()
 			v   = Ent{V: rnd.Int(), N: rnd.Int()}
 		)
 
-		partialDTO, err := dtos.Map[EntPartialDTO, Ent](ctx, v)
+		partialDTO, err := dtokit.Map[EntPartialDTO, Ent](ctx, v)
 		assert.NoError(t, err)
 		assert.Equal(t, partialDTO, EntPartialDTO{N: v.N})
 
-		_, err = dtos.Map[Ent](ctx, partialDTO)
-		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+		_, err = dtokit.Map[Ent](ctx, partialDTO)
+		assert.ErrorIs(t, err, dtokit.ErrNoMapping)
 	})
 	t.Run("(From->To is missing) when we only need to map from entity to a dto and not the other way around, second argument to Register is optional", func(t *testing.T) {
-		defer dtos.Register[EntPartialDTO, Ent](nil, EntToEntPartialDTO)()
+		defer dtokit.Register[EntPartialDTO, Ent](nil, EntToEntPartialDTO)()
 
 		var (
 			ctx = context.Background()
 			v   = Ent{V: rnd.Int(), N: rnd.Int()}
 		)
 
-		partialDTO, err := dtos.Map[EntPartialDTO, Ent](ctx, v)
+		partialDTO, err := dtokit.Map[EntPartialDTO, Ent](ctx, v)
 		assert.NoError(t, err)
 		assert.Equal(t, partialDTO, EntPartialDTO{N: v.N})
 
-		_, err = dtos.Map[Ent](ctx, partialDTO)
-		assert.ErrorIs(t, err, dtos.ErrNoMapping)
+		_, err = dtokit.Map[Ent](ctx, partialDTO)
+		assert.ErrorIs(t, err, dtokit.ErrNoMapping)
 	})
 	t.Run("when no mapping is supplied to Register, it will panics about this", func(t *testing.T) {
-		got := assert.Panic(t, func() { defer dtos.Register[Ent, EntDTO](nil, nil)() })
+		got := assert.Panic(t, func() { defer dtokit.Register[Ent, EntDTO](nil, nil)() })
 		assert.NotNil(t, got)
 	})
 	t.Run("[]T", func(t *testing.T) {
-		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
 		ents := []Ent{
 			{V: rnd.Int()},
@@ -238,18 +238,18 @@ func TestMap(t *testing.T) {
 			{V: strconv.Itoa(ents[1].V)},
 		}
 
-		ds, err := dtos.Map[[]EntDTO](ctx, ents)
+		ds, err := dtokit.Map[[]EntDTO](ctx, ents)
 		assert.NoError(t, err)
 		assert.NotNil(t, ds)
 		assert.Equal(t, expDS, ds)
 	})
 	t.Run("no []T syntax sugar, when explicit slice type is registered", func(t *testing.T) {
-		defer dtos.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
+		defer dtokit.Register[Ent, EntDTO](EntMapping{}.ToDTO, EntMapping{}.ToEnt)()
 
 		expectedMappedDTOs := []EntDTO{
 			{V: strconv.Itoa(rnd.Int())},
 		}
-		defer dtos.Register[[]Ent, []EntDTO](func(ctx context.Context, ents []Ent) ([]EntDTO, error) {
+		defer dtokit.Register[[]Ent, []EntDTO](func(ctx context.Context, ents []Ent) ([]EntDTO, error) {
 			return expectedMappedDTOs, nil
 		}, nil)()
 
@@ -258,7 +258,7 @@ func TestMap(t *testing.T) {
 			{V: rnd.Int()},
 		}
 
-		ds, err := dtos.Map[[]EntDTO](ctx, ents)
+		ds, err := dtokit.Map[[]EntDTO](ctx, ents)
 		assert.NoError(t, err)
 		assert.NotNil(t, ds)
 		assert.Equal(t, expectedMappedDTOs, ds)
@@ -268,12 +268,12 @@ func TestMap(t *testing.T) {
 func ExampleRegister() {
 	// JSONMapping will contain mapping from entities to JSON DTO structures.
 	// registering Ent <---> EntDTO mapping
-	_ = dtos.Register[Ent, EntDTO](
+	_ = dtokit.Register[Ent, EntDTO](
 		EntMapping{}.ToDTO,
 		EntMapping{}.ToEnt,
 	)
 	// registering NestedEnt <---> NestedEntDTO mapping, which includes the mapping of the nested entities
-	_ = dtos.Register[NestedEnt, NestedEntDTO](
+	_ = dtokit.Register[NestedEnt, NestedEntDTO](
 		NestedEntMapping{}.ToDTO,
 		NestedEntMapping{}.ToEnt,
 	)
@@ -286,7 +286,7 @@ func ExampleRegister() {
 	}
 
 	ctx := context.Background()
-	dto, err := dtos.Map[NestedEntDTO](ctx, v)
+	dto, err := dtokit.Map[NestedEntDTO](ctx, v)
 	if err != nil { // handle err
 		return
 	}
@@ -365,13 +365,13 @@ type NestedEntMapping struct{}
 func (NestedEntMapping) ToEnt(ctx context.Context, dto NestedEntDTO) (NestedEnt, error) {
 	return NestedEnt{
 		ID:  dto.ID,
-		Ent: dtos.MustMap[Ent](ctx, dto.Ent),
+		Ent: dtokit.MustMap[Ent](ctx, dto.Ent),
 	}, nil
 }
 
 func (NestedEntMapping) ToDTO(ctx context.Context, ent NestedEnt) (NestedEntDTO, error) {
 	return NestedEntDTO{
 		ID:  ent.ID,
-		Ent: dtos.MustMap[EntDTO](ctx, ent.Ent),
+		Ent: dtokit.MustMap[EntDTO](ctx, ent.Ent),
 	}, nil
 }

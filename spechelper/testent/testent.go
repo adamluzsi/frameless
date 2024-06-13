@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/dtos"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/testcase"
@@ -39,7 +39,7 @@ func MakeFooFunc(tb testing.TB) func() Foo {
 	return func() Foo { return MakeFoo(tb) }
 }
 
-var _ = dtos.Register[Foo, FooDTO](func(ctx context.Context, foo Foo) (FooDTO, error) {
+var _ = dtokit.Register[Foo, FooDTO](func(ctx context.Context, foo Foo) (FooDTO, error) {
 	return FooDTO{
 		ID:   string(foo.ID),
 		FooV: foo.Foo,
@@ -112,7 +112,7 @@ type BarJSONDTO struct {
 	C  string `json:"char"`
 }
 
-var _ = dtos.Register[Bar, BarJSONDTO](func(ctx context.Context, bar Bar) (BarJSONDTO, error) {
+var _ = dtokit.Register[Bar, BarJSONDTO](func(ctx context.Context, bar Bar) (BarJSONDTO, error) {
 	return BarJSONDTO{
 		ID: string(bar.ID),
 		N:  bar.N,
