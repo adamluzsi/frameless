@@ -80,7 +80,7 @@ func TestScheduler(t *testing.T) {
 
 			for i := 0; i < 7; i++ {
 				t.Must.Within(time.Second, func(ctx context.Context) {
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						it.Must.Equal(i+1, ran.Get(t))
 					})
 				})
@@ -91,7 +91,7 @@ func TestScheduler(t *testing.T) {
 
 		s.Then("the passed Job func will not run faster than the expected interval", func(t *testcase.T) {
 			go act(t)(Context.Get(t))
-			t.Eventually(func(it assert.It) {
+			t.Eventually(func(it *testcase.T) {
 				it.Must.Equal(1, ran.Get(t))
 			})
 			timecop.Travel(t, interval.Get(t)/2)
@@ -108,7 +108,7 @@ func TestScheduler(t *testing.T) {
 
 			for i := 0; i < 7; i++ {
 				t.Must.Within(time.Second, func(ctx context.Context) {
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						it.Must.Equal(i+1, ran.Get(t))
 					})
 				})

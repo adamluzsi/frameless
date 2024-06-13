@@ -48,7 +48,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 				receivedAt time.Time
 				ackedAt    time.Time
 			)
-			t.Eventually(func(it assert.It) {
+			t.Eventually(func(it *testcase.T) {
 				ackedAt = sub.Get(t).AckedAt()
 				it.Must.False(ackedAt.IsZero())
 				receivedAt = sub.Get(t).ReceivedAt()
@@ -56,7 +56,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 			})
 
 			var publishedAt time.Time
-			t.Eventually(func(t assert.It) {
+			t.Eventually(func(t *testcase.T) {
 				unixMilli := atomic.LoadInt64(&publishedAtUNIXMilli)
 				t.Must.NotEmpty(unixMilli)
 				publishedAt = time.UnixMilli(unixMilli).UTC()

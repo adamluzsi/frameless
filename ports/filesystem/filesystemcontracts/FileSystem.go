@@ -958,7 +958,7 @@ func (c specFileSystem) assertReaderEquals(tb testing.TB, expected []byte, actua
 
 func (c specFileSystem) assertFileContent(t *testcase.T, name string, expected []byte) {
 	t.Helper()
-	t.Eventually(func(it assert.It) {
+	t.Eventually(func(it *testcase.T) {
 		file, err := c.FileSystem.OpenFile(name, os.O_RDONLY, 0)
 		it.Must.Nil(err)
 		defer file.Close()

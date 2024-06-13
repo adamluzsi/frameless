@@ -63,7 +63,7 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 			t.Must.Equal(int32(0), atomic.LoadInt32(&isLocked))
 
 			t.Must.NoError(subject.Unlock(ctx))
-			t.Eventually(func(it assert.It) {
+			t.Eventually(func(it *testcase.T) {
 				// after unlock, the other Lock call unblocks
 				it.Must.Equal(int32(1), atomic.LoadInt32(&isLocked))
 			})

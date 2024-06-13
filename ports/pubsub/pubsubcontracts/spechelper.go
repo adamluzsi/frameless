@@ -97,7 +97,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 			c.WhenWePublish(s, val)
 
 			s.Then("event received through the subscription", func(t *testcase.T) {
-				t.Eventually(func(it assert.It) {
+				t.Eventually(func(it *testcase.T) {
 					it.Must.Contain(sub.Get(t).Values(), val.Get(t))
 				})
 			})
@@ -271,8 +271,8 @@ func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterat
 		t.Must.NoError(i.Err())
 		t.Must.NoError(i.Close())
 	}()
-	t.Eventually(func(t assert.It) {
-		blk(t, actual)
+	t.Eventually(func(t *testcase.T) {
+		blk(t.It, actual)
 	})
 }
 

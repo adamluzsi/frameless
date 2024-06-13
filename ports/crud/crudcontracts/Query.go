@@ -149,7 +149,7 @@ func QueryMany[Entity, ID any](
 		}).EagerLoading(s)
 
 		s.Then(`the query will return the entity`, func(t *testcase.T) {
-			t.Eventually(func(it assert.It) {
+			t.Eventually(func(it *testcase.T) {
 				ents, err := iterators.Collect(act(t))
 				it.Must.NoError(err)
 				it.Must.Contain(ents, includedEntity.Get(t))
@@ -167,7 +167,7 @@ func QueryMany[Entity, ID any](
 			}).EagerLoading(s)
 
 			s.Then(`both entity is returned`, func(t *testcase.T) {
-				t.Eventually(func(it assert.It) {
+				t.Eventually(func(it *testcase.T) {
 					ents, err := iterators.Collect(act(t))
 					it.Must.NoError(err)
 					t.Must.Contain(ents, includedEntity.Get(t))
@@ -176,7 +176,7 @@ func QueryMany[Entity, ID any](
 			})
 
 			s.Then("query execution can interlace between the same queries", func(t *testcase.T) { // multithreaded apps
-				t.Eventually(func(it assert.It) {
+				t.Eventually(func(it *testcase.T) {
 					i1 := act(t)
 					it.Cleanup(func() { _ = i1.Close() })
 					it.Must.True(i1.Next())
@@ -200,7 +200,7 @@ func QueryMany[Entity, ID any](
 			})
 
 			s.Then("query execution can interlace with FindByID", func(t *testcase.T) { // multithreaded apps
-				t.Eventually(func(it assert.It) {
+				t.Eventually(func(it *testcase.T) {
 					iter := act(t)
 					defer func() { it.Must.NoError(iter.Close()) }()
 					for iter.Next() {
@@ -228,7 +228,7 @@ func QueryMany[Entity, ID any](
 				}).EagerLoading(s)
 
 				s.Then(`only the matching entity is returned`, func(t *testcase.T) {
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						ents, err := iterators.Collect(act(t))
 						it.Must.NoError(err)
 						it.Must.Contain(ents, includedEntity.Get(t))

@@ -10,7 +10,6 @@ import (
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 
 	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 )
 
 // Ordering is a contract that describes how the ordering should happen with a given
@@ -114,7 +113,7 @@ func FIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 			b.WhenWePublish(s, val1, val2, val3)
 
 			s.Then("messages are received in their publishing order", func(t *testcase.T) {
-				t.Eventually(func(it assert.It) {
+				t.Eventually(func(it *testcase.T) {
 					it.Must.Equal([]Data{val1.Get(t), val2.Get(t), val3.Get(t)}, subscription.Get(t).Values())
 				})
 			})

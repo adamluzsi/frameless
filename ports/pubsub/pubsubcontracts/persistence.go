@@ -8,7 +8,6 @@ import (
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 )
 
 // Buffered defines a publisher behaviour where if the subscription is canceled,
@@ -46,7 +45,7 @@ func Buffered[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 
 				s.Then("messages are received", func(t *testcase.T) {
 					expected := []Data{val1.Get(t), val2.Get(t)}
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						it.Must.ContainExactly(expected, sub.Get(t).Values())
 					})
 				})
@@ -93,7 +92,7 @@ func Volatile[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 				s.Then("messages published previously won't arrive", func(t *testcase.T) {
 					pubsubtest.Waiter.Wait()
 
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						it.Must.Empty(sub.Get(t).Values())
 					})
 				})

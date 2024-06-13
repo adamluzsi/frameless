@@ -758,7 +758,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			t.Should.NoError(task(ctx))
 		})
 
-		t.Eventually(func(t assert.It) {
+		t.Eventually(func(t *testcase.T) {
 			t.Must.True(1 < atomic.LoadInt32(&count), "should run more than one times, because the repeat")
 		})
 	})
@@ -778,13 +778,13 @@ func TestWithRepeat_smoke(t *testing.T) {
 			t.Should.NoError(task(ctx))
 		})
 
-		t.Eventually(func(t assert.It) {
+		t.Eventually(func(t *testcase.T) {
 			t.Must.Equal(int32(1), atomic.LoadInt32(&count), "should run at least once before the first interval")
 		})
 
 		timecop.Travel(t, time.Hour+time.Minute)
 
-		t.Eventually(func(t assert.It) {
+		t.Eventually(func(t *testcase.T) {
 			t.Must.Equal(int32(2), atomic.LoadInt32(&count), "should run at twice because one interval passed")
 		})
 	})
@@ -803,7 +803,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			atomic.AddInt32(&done, 1)
 		})
 
-		t.Eventually(func(t assert.It) {
+		t.Eventually(func(t *testcase.T) {
 			const msg = "cancellation was expected to interrupt the wrapped task function"
 			t.Must.Equal(int32(1), atomic.LoadInt32(&done), msg)
 		})

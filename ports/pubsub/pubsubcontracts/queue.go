@@ -8,7 +8,6 @@ import (
 	"go.llib.dev/frameless/ports/pubsub"
 	"go.llib.dev/frameless/ports/pubsub/pubsubtest"
 	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,
@@ -45,7 +44,7 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 
 				s.Then("subscription receives the messages", func(t *testcase.T) {
 					expected := []Data{val1.Get(t), val2.Get(t)}
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						it.Must.ContainExactly(expected, sub.Get(t).Values())
 					})
 				})
@@ -75,7 +74,7 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 					}
 					pubsubtest.Waiter.Wait()
 
-					t.Eventually(func(it assert.It) {
+					t.Eventually(func(it *testcase.T) {
 						it.Must.NotEmpty(sub1.Get(t).Values())
 						it.Must.NotEmpty(sub2.Get(t).Values())
 
