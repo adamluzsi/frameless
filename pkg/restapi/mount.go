@@ -27,7 +27,3 @@ func MountPoint(mountPoint string, next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
-func withMountPoint(rc *internal.Routing, mountPoint string) {
-
-}
