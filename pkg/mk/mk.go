@@ -6,45 +6,37 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
+// New will make a new T and call Init function recursively on it if it is implemented.
 func New[T any]() *T {
 	ptr := new(T)
-	if d, ok := any(ptr).(defaults[T]); ok {
-		*ptr = d.Default()
+	if reflect.TypeOf((*T)(nil)).Elem().Kind() == reflect.Struct {
+		refPtr := reflect.ValueOf(ptr)
+		initStructField(refPtr)
 	}
 	if i, ok := any(ptr).(initializable); ok {
 		i.Init()
 	}
-	if rPTR := reflect.ValueOf(ptr); rPTR.Type().Elem().Kind() == reflect.Struct {
-		initStructField(rPTR)
-	}
 	return ptr
 }
 
-var initInterface = reflect.TypeOf((*initializable)(nil)).Elem()
-
+// ReflectNew will make a new T and call Init function recursively on it if it is implemented.
 func ReflectNew(typ reflect.Type) reflect.Value {
 	ptr := reflect.New(typ)
 
-	if m := ptr.MethodByName("Default"); m.IsValid() {
-		mType := m.Type()
-		inCount := mType.NumIn()
-		outCount := mType.NumOut()
-
-		if inCount == 0 && outCount == 1 && mType.Out(0) == typ {
-			ptr.Elem().Set(m.Call([]reflect.Value{})[0])
-		}
+	if typ.Kind() == reflect.Struct {
+		initStructField(ptr)
 	}
 
 	if ptr.Type().Implements(initInterface) {
 		ptr.MethodByName("Init").Call([]reflect.Value{})
 	}
 
-	if typ.Kind() == reflect.Struct {
-		initStructField(ptr)
-	}
-
 	return ptr
 }
+
+type initializable interface{ Init() }
+
+var initInterface = reflect.TypeOf((*initializable)(nil)).Elem()
 
 func initStructField(ptr reflect.Value) {
 	var NumField = ptr.Type().Elem().NumField()
@@ -55,12 +47,4 @@ func initStructField(ptr reflect.Value) {
 			field.Set(ReflectNew(field.Type()).Elem())
 		}
 	}
-}
-
-type initializable interface {
-	Init()
-}
-
-type defaults[T any] interface {
-	Default() T
 }
