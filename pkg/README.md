@@ -35,7 +35,8 @@ Tools,
 - `chankit`: add tooling to channels such as merging multiple channels into a single one
 - `containers`: generic container type structure implementation
 - `convkit`: enables you to parse strings with ease through a simplified API
-- `dtos`: a simplified DataTransferObject mapping API that makes working with DTOs easy in your external gateway layer
+- `dtokit`: a simplified DataTransferObject mapping API that makes working with DTOs easy in your external gateway layer
+  - `jsondto`: This package was primary made to enable the marshaling and unmarshaling of interface types.
 - `enum`: a simple enum implementation
 - `logging`: Logging implementation to enable structured logging (before slog) and async logging
 - `mk`: A package that helps making recursive initialization of Go structures easy. Works like `new` but with the added benefit of calling the `Init` function on it.

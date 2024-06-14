@@ -16,8 +16,21 @@ It does not replace these functions but offers tools to simplify their usage.
 
 ### jsondto.Interface[I]
 
-jsondto.Array allow you to marshal an interface type, and then unmarshal them back with ease.
+jsondto.Interface allow you to marshal an interface type, and then unmarshal them back with ease.
 
 ### jsondto.Array[T]
 
 jsondto.Array allow you to marshal any types, and then unmarshal them back.
+
+### jsondto.Register[T]
+
+Register allows you to register a type so that when it is used as an interface value type,
+it can be identified in a deterministic manner.
+
+```go
+type MyDTO struct {
+	V string `json:"v"`
+}
+
+var _ = jsondto.Register[MyDTO]("my_dto")
+```
