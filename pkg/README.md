@@ -1,59 +1,63 @@
-# framless/pkg
+# frameless/pkg
 
-There are two types of addon packages in `frameless`. 
-Utility or kit type of package, which meant to support the work of other packges, but itself doesn't create a new value for development.
-Tools, 
+- **`tasker`**: A task management tool enabling graceful shutdowns via context cancellations.
+  - Supports HTTP Server graceful shutdowns.
+  - Manages concurrent tasks and signalling.
+  - Minimalistic API for task creation.
+  - Task scheduling similar to cron.
 
-## Tools
+- **`txkit`**: Defines rollback steps where native commit protocols are lacking.
+  - Integrates rollbacks into all functions without separate cleanup functions.
+  - Assists in error handling for resources without transaction support.
 
-- `tasker`: very powerful task management tool tha enables you to implement easily graceful shutdown into you application all by simply listening to context cancellations.
-  - built-in support to use HTTP Server with graceful shutdown
-  - support for running tasks concurrently, and managing signaling between them if one part of the system goes down unexpectedly.
-  - minimalistic API for creating tasks in your system
-  - task scheduling support similar to cron
-- `txkit`: This package allows defining rollback steps in your implementation where you lack native commit protocol support
-  - makes rollback part of all function path without the need to develop and maintain a cleanup function for cases where something went wrong with your application's use-case.
-  - while it is not a replacement for OnePhaseCommitProtocol solutions, it can help during an error with cleaning up one or more resource that doesn't support transactions on its own.
-- `cache`: battle tested caching implementation that allows you to decorate your crud based role interfaces with passthrough caching.
-- `logger`: centralised version of the logging package
-  - flexible logging that uses the context to pass around logging context related details
-  - Can be easily configured to use any logger library.
-  - It promotes logging as a singleton application level entity, since majority of the time the application only meant to log to a single logging output
-- `devops`: tooling that meant to help improve your application's operationability. It is not a replacement for tools such as Prometheus, but more like an addition to it.
-  - `devops/health`: enables you to create a /health endpoint that can dramatically speed up the investigation process during an outage, by providing insights about what part of the system having an issue, similarly to an X-Ray.
-- `restapi`: restapi enables you to create restful APIs with ease in a standardised way
-- `retry`: retry package that enables you to implement retry mechanism in your tool with various retry strategy.
-- `serializers`: contains streaming implementation. 
-  - For e.g.: you can consumer or produce jsons streams (application/json) that contain a list, without the need to have every list element in the memory at once.
+- **`cache`**: A robust caching implementation for CRUD interfaces with passthrough caching.
 
-## Kits
+- **`logger`**: A centralised logging package.
+  - Flexible logging using context for details.
+  - Easily configured with any logger library.
+  - Promotes application-level singleton logging.
 
-- `iokit`: the missing functionality from `io` package, such as reading all with limit, or reading an io with a keep alive heart beat on it.
-- `errorkit`: very powerful error utility package
-- `env`: tooling to make working with Environment variables ease, including populating configuration structures
-- `contextkit`: makes working with context even easier
-- `chankit`: add tooling to channels such as merging multiple channels into a single one
-- `containers`: generic container type structure implementation
-- `convkit`: enables you to parse strings with ease through a simplified API
-- `dtokit`: a simplified DataTransferObject mapping API that makes working with DTOs easy in your external gateway layer
-  - `jsondto`: This package was primary made to enable the marshaling and unmarshaling of interface types.
-- `enum`: a simple enum implementation
-- `logging`: Logging implementation to enable structured logging (before slog) and async logging
-- `mk`: A package that helps making recursive initialization of Go structures easy. Works like `new` but with the added benefit of calling the `Init` function on it.
-- `pointer`: very small library to make working with pointers convinent, mostly to have one-liner syntax sugar for common boilerplates
-- `reflectkit`: extra tooling when you need to work with reflection
-- `units`: minimalist package that contains commonly used units such as `Megabyte` and such
-- `stringcase`: enables to you convert the "case" of string. For example to convert a hashmap key from snake_case to PascalCase
-- `teardown`: building brick to enable the creation of teardown functionality
-- `zerokit`: makes working with zero values convinent
+- **`devops`**: Improves application operability, complementing tools like Prometheus.
+  - **`devops/health`**: Creates a /health endpoint for outage investigations.
 
-### network
+- **`httpkit`**: Provides HTTP-related tools.
+  - Enables the creation of standardised RESTful APIs.
+  - RFC7807 error format support
 
-- `pathkit`: http request path building helper functions to make concating, joining or splitting http URLs or request paths convinent
-- `httpkit`: http related tooling
-- `netkit`: (small) helper function collection to make working with networking easier, such as finding an open port, or checking if a port is in use (linux/darwin)
+- **`retry`**: Implements various retry strategies in your tools.
 
-### transformation
+- **`serializers`**: Stream-based implementations.
+  - E.g., consumes or produces JSON streams without loading all elements into memory.
 
-- `mapkit`: tools to make working with maps easier
-- `slicekit`: tools to make working with slices easier
+- **`env`**: Simplifies working with environment variables and populating config structures.
+
+## Utility
+
+- **`iokit`**: Adds missing functionalities to `io`, like reading with limits and keep-alive heartbeats.
+- **`errorkit`**: A powerful error utility package.
+- **`contextkit`**: Makes context handling easier.
+- **`chankit`**: Adds tools for channel operations, like merging channels.
+- **`containers`**: Implements generic container structures.
+- **`convkit`**: Simplifies string parsing with an easy API.
+- **`dtokit`**: Simplifies Data Transfer Object mapping for external gateways.
+  - **`jsondto`**: Facilitates marshaling and unmarshaling of interface types.
+- **`enum`**: A simple enum implementation.
+- **`logging`**: Enables structured and asynchronous logging.
+- **`mk`**: Facilitates recursive initialization of Go structures with an `Init` function.
+- **`pointer`**: Makes pointer operations convenient with one-liner syntax.
+- **`reflectkit`**: Adds extra tools for reflection.
+- **`units`**: Contains commonly used units like `Megabyte`.
+- **`stringcase`**: Converts string cases, e.g., snake_case to PascalCase.
+- **`teardown`**: Facilitates teardown functionality.
+- **`zerokit`**: Simplifies working with zero values.
+
+## Network
+
+- **`pathkit`**: Assists with HTTP request path operations.
+
+- **`netkit`**: Contains networking helpers, like finding open ports or checking port usage (Linux/Darwin).
+
+## Transformation
+
+- **`mapkit`**: Tools for easier map operations.
+- **`slicekit`**: Tools for easier slice operations.
