@@ -11,7 +11,7 @@ Tools,
   - support for running tasks concurrently, and managing signaling between them if one part of the system goes down unexpectedly.
   - minimalistic API for creating tasks in your system
   - task scheduling support similar to cron
-- `txs`: which allow defining rollback steps in your functions, which makes implementing error handling in a stateful system much 
+- `txkit`: This package allows defining rollback steps in your implementation where you lack native commit protocol support
   - makes rollback part of all function path without the need to develop and maintain a cleanup function for cases where something went wrong with your application's use-case.
   - while it is not a replacement for OnePhaseCommitProtocol solutions, it can help during an error with cleaning up one or more resource that doesn't support transactions on its own.
 - `cache`: battle tested caching implementation that allows you to decorate your crud based role interfaces with passthrough caching.
