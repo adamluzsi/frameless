@@ -1,4 +1,4 @@
-package restapi_test
+package httpkit_test
 
 import (
 	"bytes"
@@ -11,12 +11,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/httpkit"
-	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/httpkit/internal"
+	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/restapi"
-	"go.llib.dev/frameless/pkg/restapi/internal"
-	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"go.llib.dev/frameless/ports/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
@@ -27,50 +24,10 @@ import (
 
 var rnd = random.New(random.CryptoSeed{})
 
-func Example() {
-
-	var r restapi.Router
-
-	r.Namespace("/path", func(r *restapi.Router) {
-		r.Use(SampleMiddleware)
-
-		r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		}))
-
-		r.Post("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		}))
-	})
-
-	type FooIDContextKey struct{}
-	// Register a restful resource
-	// 		GET 	/foos
-	// 		POST 	/foos
-	// 		GET 	/foos/:id
-	// 		PUT 	/foos/:id
-	// 		DELETE	/foos/:id
-	//
-	r.Resource("/foos", restapi.Resource[Foo, FooID]{
-		// Mapping between Foo and FooDTO.
-		// FooDTO in this case used to communicate with the API callers.
-		Mapping:      restapi.DTOMapping[Foo, FooDTO]{},
-		IDContextKey: FooIDContextKey{},
-		SubRoutes: restapi.NewRouter(func(subRoutes *restapi.Router) {
-			subRoutes.Get("/activate", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				fooID := r.Context().Value(FooIDContextKey{}).(FooID)
-				// activate foo by foo_id
-				logger.Debug(r.Context(), "activating foo", logging.Field("foo_id", fooID))
-			}))
-		}),
-	}.WithCRUD(&FooRepository{}))
-
-}
-
 func ExampleRouter() {
-	var router restapi.Router
+	var router httpkit.Router
 
-	router.Namespace("/path", func(r *restapi.Router) {
+	router.Namespace("/path", func(r *httpkit.Router) {
 		r.Use(SampleMiddleware)
 
 		r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,8 +42,8 @@ func ExampleRouter() {
 			// sub route catch-all handle
 		}))
 
-		r.Resource("foo", restapi.Resource[Foo, FooID]{
-			Mapping: restapi.DTOMapping[Foo, FooDTO]{},
+		r.Resource("foo", httpkit.RestResource[Foo, FooID]{
+			Mapping: httpkit.DTOMapping[Foo, FooDTO]{},
 			Index: func(ctx context.Context, query url.Values) (iterators.Iterator[Foo], error) {
 				foo := Foo{
 					ID:  "42",
@@ -127,12 +84,12 @@ func TestRouter(t *testing.T) {
 			})
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) *restapi.Router {
-		return &restapi.Router{}
+	subject := testcase.Let(s, func(t *testcase.T) *httpkit.Router {
+		return &httpkit.Router{}
 	})
 
 	httpspec.ItBehavesLikeHandlerMiddleware(s, func(t *testcase.T, next http.Handler) http.Handler {
-		r := &restapi.Router{}
+		r := &httpkit.Router{}
 		r.Mount("/", next)
 		return r
 	})
@@ -157,7 +114,7 @@ func TestRouter(t *testing.T) {
 
 			errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 			t.Must.NotEmpty(errDTO)
-			t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+			t.Must.Equal(httpkit.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 		})
 
 		ThenHandlerIsReachable := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
@@ -222,7 +179,7 @@ func TestRouter(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 		}
@@ -262,7 +219,7 @@ func TestRouter(t *testing.T) {
 					rr := act(t)
 					assert.Equal(t, rr.Code, http.StatusTeapot)
 
-					pparams := restapi.PathParams(lastRequest.Get(t).Context())
+					pparams := httpkit.PathParams(lastRequest.Get(t).Context())
 					assert.NotEmpty(t, pparams)
 					assert.Equal(t,
 						strings.TrimPrefix(registeredPath.Get(t), "/"),
@@ -300,7 +257,7 @@ func TestRouter(t *testing.T) {
 }
 
 func TestRouter_race(t *testing.T) {
-	router := restapi.Router{}
+	router := httpkit.Router{}
 
 	router.Handle("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	router.Handle("/bar", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
@@ -323,8 +280,8 @@ func TestRouter_race(t *testing.T) {
 }
 
 func ExampleRouter_Namespace() {
-	var router restapi.Router
-	router.Namespace("/top", func(r *restapi.Router) {
+	var router httpkit.Router
+	router.Namespace("/top", func(r *httpkit.Router) {
 		r.Get("/sub", /* /top/sub */
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -335,7 +292,7 @@ func ExampleRouter_Namespace() {
 
 func TestRouter_Handle(t *testing.T) {
 	t.Run("behaves like http.ServeMux", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Handle("/path", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("endpoint-path"))
 		}))
@@ -411,15 +368,15 @@ func TestRouter_Handle(t *testing.T) {
 		})
 	})
 	t.Run("mux that matched the most of the path is used in case of no direct endpoint", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 
 		router.Handle("/", // catch-all
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				_, _ = w.Write([]byte("top-catch-all"))
 			}))
 
-		router.Namespace("/top", func(r *restapi.Router) {
-			r.Namespace("/sub", func(r *restapi.Router) {
+		router.Namespace("/top", func(r *httpkit.Router) {
+			r.Namespace("/sub", func(r *httpkit.Router) {
 				r.Handle("/", // sub-catch-all
 					http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						_, _ = w.Write([]byte("sub-catch-all"))
@@ -456,7 +413,7 @@ func TestRouter_Handle(t *testing.T) {
 		})
 	})
 	t.Run("Handle call with non root path", func(t *testing.T) {
-		var r restapi.Router
+		var r httpkit.Router
 		r.Handle("/foo/bar/baz/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusTeapot)
 		}))
@@ -469,8 +426,8 @@ func TestRouter_Handle(t *testing.T) {
 }
 
 func TestRouter_Namespace(t *testing.T) {
-	var router restapi.Router
-	router.Namespace("/top", func(r *restapi.Router) {
+	var router httpkit.Router
+	router.Namespace("/top", func(r *httpkit.Router) {
 		r.Handle("/sub", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusTeapot)
 			_, _ = w.Write([]byte("handle"))
@@ -514,7 +471,7 @@ func TestRouter_Namespace(t *testing.T) {
 }
 
 func TestNewRouter(t *testing.T) {
-	r := restapi.NewRouter(func(router *restapi.Router) {
+	r := httpkit.NewRouter(func(router *httpkit.Router) {
 		router.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(100)
 		}))
@@ -535,56 +492,56 @@ func TestNewRouter(t *testing.T) {
 }
 
 func ExampleRouter_Get() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Get("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Post() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Post("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Put() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Put("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Patch() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Patch("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Connect() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Connect("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Delete() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Delete("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Head() {
-	var router restapi.Router
+	var router httpkit.Router
 	router.Head("/foo", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 	}))
 }
 
 func ExampleRouter_Handle() {
-	var router restapi.Router
+	var router httpkit.Router
 	var handler http.Handler
 
 	// single endpoint
@@ -596,7 +553,7 @@ func ExampleRouter_Handle() {
 
 func TestRouter_httpVerbs(t *testing.T) {
 	t.Run("Get", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Get("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -616,7 +573,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Post", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Post("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -636,7 +593,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Put", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Put("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -656,7 +613,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Patch", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Patch("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -676,7 +633,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Head", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Head("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -696,7 +653,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Delete", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Delete("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -716,7 +673,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Connect", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Connect("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -736,7 +693,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Options", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Options("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -756,7 +713,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("Trace", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Trace("/foo",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -776,7 +733,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 		}
 	})
 	t.Run("root path", func(t *testing.T) {
-		var router restapi.Router
+		var router httpkit.Router
 		router.Get("/",
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
@@ -798,7 +755,7 @@ func TestRouter_httpVerbs(t *testing.T) {
 }
 
 func TestRouter_Use(t *testing.T) {
-	var r restapi.Router
+	var r httpkit.Router
 
 	r.Use(mwWithContextValue("foo", "foo"))
 
@@ -816,12 +773,12 @@ func TestRouter_Use(t *testing.T) {
 }
 
 func TestRouter_Use_nesting(t *testing.T) {
-	var r restapi.Router
+	var r httpkit.Router
 	var top, nested bool
 
 	r.Use(mwWithContextValue("foo", "foo"))
 
-	r.Namespace("/ns", func(r *restapi.Router) {
+	r.Namespace("/ns", func(r *httpkit.Router) {
 		r.Use(mwWithContextValue("bar", "bar"))
 
 		r.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -858,7 +815,7 @@ func TestRouter_Use_nesting(t *testing.T) {
 }
 
 func TestRouter_Use_mux(t *testing.T) {
-	var r restapi.Router
+	var r httpkit.Router
 	r.Use(mwWithContextValue("key", "val"))
 
 	r.Handle("/path/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -875,7 +832,7 @@ func TestRouter_Use_mux(t *testing.T) {
 }
 
 func TestRouter_Use_404(t *testing.T) {
-	var r restapi.Router
+	var r httpkit.Router
 	var ok bool
 
 	r.Use(func(next http.Handler) http.Handler {
@@ -906,7 +863,7 @@ func mwWithContextValue(key, value any) httpkit.MiddlewareFactoryFunc {
 func TestRouter_withPathParams(t *testing.T) {
 	var hfn = func(ppkey, ppval string, code int) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			val := restapi.PathParams(r.Context())[ppkey]
+			val := httpkit.PathParams(r.Context())[ppkey]
 			assert.NotEmpty(t, val)
 			assert.Equal(t, ppval, val)
 			w.WriteHeader(code)
@@ -914,7 +871,7 @@ func TestRouter_withPathParams(t *testing.T) {
 	}
 
 	t.Run("top-level", func(t *testing.T) {
-		var r restapi.Router
+		var r httpkit.Router
 		r.Get("/:id", hfn("id", "foo", 100))
 
 		rr := httptest.NewRecorder()
@@ -923,7 +880,7 @@ func TestRouter_withPathParams(t *testing.T) {
 		assert.Equal(t, rr.Code, 100)
 	})
 	t.Run("top-level, but on different method", func(t *testing.T) {
-		var r restapi.Router
+		var r httpkit.Router
 		r.Get("/:id", hfn("id", "foo", 100))
 		r.Post("/:nid", hfn("nid", "bar", 200))
 
@@ -933,8 +890,8 @@ func TestRouter_withPathParams(t *testing.T) {
 		assert.Equal(t, rr.Code, 200)
 	})
 	t.Run("nested path with dynamic part", func(t *testing.T) {
-		var r restapi.Router
-		r.Namespace("/:test", func(r *restapi.Router) {
+		var r httpkit.Router
+		r.Namespace("/:test", func(r *httpkit.Router) {
 			r.Get("/", hfn("test", "baz", 300))
 		})
 
@@ -944,9 +901,9 @@ func TestRouter_withPathParams(t *testing.T) {
 		assert.Equal(t, rr.Code, 300)
 	})
 	t.Run("nested path with dynamic part that overlaps with dynamic endpoint", func(t *testing.T) {
-		var r restapi.Router
+		var r httpkit.Router
 		r.Get("/:id", hfn("id", "foo", 100))
-		r.Namespace("/:test", func(r *restapi.Router) {
+		r.Namespace("/:test", func(r *httpkit.Router) {
 			r.Get("/", hfn("test", "baz", 400))
 		})
 

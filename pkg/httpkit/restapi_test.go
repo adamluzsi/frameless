@@ -1,4 +1,4 @@
-package restapi_test
+package httpkit_test
 
 import (
 	"bytes"
@@ -16,11 +16,10 @@ import (
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/httpkit/internal"
+	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/restapi"
-	"go.llib.dev/frameless/pkg/restapi/internal"
-	"go.llib.dev/frameless/pkg/restapi/rfc7807"
 	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/iterators"
@@ -31,9 +30,9 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func ExampleResource() {
+func ExampleRestResource() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
-	fooRestfulResource := restapi.Resource[X, XID]{
+	fooRestfulResource := httpkit.RestResource[X, XID]{
 		Create: fooRepository.Create,
 		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
 			foos := fooRepository.FindAll(ctx)
@@ -59,15 +58,15 @@ func ExampleResource() {
 		},
 		Destroy: fooRepository.DeleteByID,
 
-		Mapping: restapi.DTOMapping[X, XDTO]{},
+		Mapping: httpkit.DTOMapping[X, XDTO]{},
 
-		MappingForMIME: map[restapi.MIMEType]restapi.Mapping[X]{
-			restapi.JSON: restapi.DTOMapping[X, XDTO]{},
+		MappingForMIME: map[httpkit.MIMEType]httpkit.Mapping[X]{
+			httpkit.JSON: httpkit.DTOMapping[X, XDTO]{},
 		},
 	}
 
 	mux := http.NewServeMux()
-	restapi.Mount(mux, "/foos", fooRestfulResource)
+	httpkit.Mount(mux, "/foos", fooRestfulResource)
 }
 
 func TestResource_ServeHTTP(t *testing.T) {
@@ -85,16 +84,16 @@ func TestResource_ServeHTTP(t *testing.T) {
 			return mdb.Get(t)
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
-		return restapi.Resource[X, XID]{
+	subject := testcase.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+		return httpkit.RestResource[X, XID]{
 			IDContextKey: FooIDContextKey{},
-			Serialization: restapi.ResourceSerialization[X, XID]{
-				Serializers: map[restapi.MIMEType]restapi.Serializer{
-					restapi.JSON: serializers.JSON{},
+			Serialization: httpkit.RestResourceSerialization[X, XID]{
+				Serializers: map[httpkit.MIMEType]httpkit.Serializer{
+					httpkit.JSON: serializers.JSON{},
 				},
-				IDConverter: restapi.IDConverter[XID]{},
+				IDConverter: httpkit.IDConverter[XID]{},
 			},
-			Mapping: restapi.DTOMapping[X, XDTO]{},
+			Mapping: httpkit.DTOMapping[X, XDTO]{},
 		}.WithCRUD(resource.Get(t))
 	})
 
@@ -131,7 +130,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 				t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 				errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 				t.Must.NotEmpty(errDTO)
-				t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+				t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 			})
 		}
 
@@ -179,14 +178,14 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 
 			s.When("index is provided", func(s *testcase.Spec) {
 				override := testcase.Let[func(query url.Values) iterators.Iterator[X]](s, nil)
 
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					h := subject.Super(t)
 					h.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
 						return override.Get(t)(query), nil
@@ -238,7 +237,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 						}
 					})
 
-					subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+					subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 						h := subject.Super(t)
 						h.ErrorHandler = rfc7807.Handler{
 							Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
@@ -262,7 +261,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("Index is not set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Index = nil
 					return rapi
@@ -274,7 +273,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			s.When("non empty iterator returned it is ensured to be closed", func(s *testcase.Spec) {
 				isClosed := testcase.LetValue[bool](s, false)
 
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					sub := subject.Super(t)
 					sub.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
 						i := iterators.Slice([]X{{ID: 1, N: 1}, {ID: 2, N: 2}})
@@ -335,7 +334,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -374,7 +373,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusConflict, rr.Code)
 						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-						t.Must.Equal(restapi.ErrEntityAlreadyExist.ID.String(), errDTO.Type.ID)
+						t.Must.Equal(httpkit.ErrEntityAlreadyExist.ID.String(), errDTO.Type.ID)
 					})
 				})
 			})
@@ -390,12 +389,12 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
 				})
 			})
 
 			s.When("the request body is larger than the configured limit", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					h := subject.Super(t)
 					h.BodyReadLimit = 3
 					return h
@@ -408,12 +407,12 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
 				})
 			})
 
 			s.When("No Create flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Create = nil
 					return rapi
@@ -436,7 +435,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrMalformedID.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMalformedID.ID.String(), errDTO.Type.ID)
 				})
 			})
 		}
@@ -470,12 +469,12 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 
 			s.When("NoShow flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Show = nil
 					return rapi
@@ -533,7 +532,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -546,7 +545,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("NoUpdate flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Update = nil
 					return rapi
@@ -588,7 +587,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -601,7 +600,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("Destroy handler is unset", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Destroy = nil
 					return rapi
@@ -637,7 +636,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("DestroyAll handler is unset", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					rapi := subject.Super(t)
 					rapi.DestroyAll = nil
 					return rapi
@@ -650,7 +649,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 		s.Describe(".ResourceRoutes", func(s *testcase.Spec) {
 			var lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
 
-			subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+			subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 				sub := subject.Super(t)
 				sub.SubRoutes = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// Handle all routes with a simple HandlerFunc
@@ -680,7 +679,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.And(".EntityRoutes is nil", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) restapi.Resource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					v := subject.Super(t)
 					v.SubRoutes = nil
 					return v
@@ -692,7 +691,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(restapi.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrPathNotFound.ID.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -704,7 +703,7 @@ func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 	ctx := context.Background()
 
 	var got Foo
-	res := restapi.Resource[Foo, FooID]{
+	res := httpkit.RestResource[Foo, FooID]{
 		Create: func(ctx context.Context, ptr *Foo) error {
 			ptr.ID = "ok"
 			got = *ptr
@@ -718,7 +717,7 @@ func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 		},
 	}
 
-	client := restapi.Client[Foo, FooID]{
+	client := httpkit.RestClient[Foo, FooID]{
 		HTTPClient: &http.Client{
 			Transport: httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
 				rr := httptest.NewRecorder()
@@ -726,7 +725,7 @@ func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 				return rr.Result(), nil
 			}),
 		},
-		MIMEType: restapi.FormUrlencoded,
+		MIMEType: httpkit.FormUrlencoded,
 	}
 
 	exp := Foo{
@@ -750,7 +749,7 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 
 	var createC, indexC, showC, updateC, destroyC, destroyAllC bool
 	fooRepo := memory.NewRepository[Foo, FooID](mem)
-	fooAPI := restapi.Resource[Foo, FooID]{
+	fooAPI := httpkit.RestResource[Foo, FooID]{
 		Create: func(ctx context.Context, ptr *Foo) error {
 			createC = true
 			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
@@ -803,8 +802,8 @@ func TestDTOMapping_manual(t *testing.T) {
 	// instead of the default dtos mapping.
 	type FooCustomDTO struct{ Foo }
 
-	resource := restapi.Resource[Foo, FooID]{
-		Mapping: restapi.DTOMapping[Foo, FooCustomDTO]{
+	resource := httpkit.RestResource[Foo, FooID]{
+		Mapping: httpkit.DTOMapping[Foo, FooCustomDTO]{
 			ToEnt: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
 				return dto.Foo, nil
 			},
@@ -829,7 +828,7 @@ func TestDTOMapping_manual(t *testing.T) {
 		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
-		r.Header.Set("Content-Type", restapi.JSON.String())
+		r.Header.Set("Content-Type", httpkit.JSON.String())
 		resource.ServeHTTP(w, r)
 		assert.Equal(t, w.Code, http.StatusCreated)
 
@@ -842,7 +841,7 @@ func TestDTOMapping_manual(t *testing.T) {
 		t.Log("then we are able to retrieve this entity through the custom DTO")
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, pathkit.Join("/", id.String()), nil)
-		r.Header.Set("Accept", restapi.JSON.String())
+		r.Header.Set("Accept", httpkit.JSON.String())
 		resource.ServeHTTP(w, r)
 		assert.Equal(t, w.Code, http.StatusOK)
 
@@ -855,7 +854,7 @@ func TestDTOMapping_manual(t *testing.T) {
 }
 
 func TestRouter_Resource(t *testing.T) {
-	var r restapi.Router
+	var r httpkit.Router
 
 	ctx := context.Background()
 
@@ -866,20 +865,20 @@ func TestRouter_Resource(t *testing.T) {
 		Baz: "baz",
 	}
 
-	r.Resource("foo", restapi.Resource[Foo, FooID]{
+	r.Resource("foo", httpkit.RestResource[Foo, FooID]{
 		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[Foo], error) {
 			return iterators.SingleValue(foo), nil
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			return foo, true, nil
 		},
-		Mapping: restapi.DTOMapping[Foo, FooDTO]{},
+		Mapping: httpkit.DTOMapping[Foo, FooDTO]{},
 	})
 
 	{
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-		req.Header.Set("Content-Type", restapi.JSON.String())
+		req.Header.Set("Content-Type", httpkit.JSON.String())
 		r.ServeHTTP(rr, req)
 
 		var index []FooDTO
@@ -891,7 +890,7 @@ func TestRouter_Resource(t *testing.T) {
 	{
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/foo/42", nil)
-		req.Header.Set("Content-Type", restapi.JSON.String())
+		req.Header.Set("Content-Type", httpkit.JSON.String())
 		r.ServeHTTP(rr, req)
 
 		var show FooDTO

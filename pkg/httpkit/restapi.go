@@ -1,4 +1,4 @@
-package restapi
+package httpkit
 
 import (
 	"context"
@@ -10,12 +10,12 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/ports/crud"
@@ -23,9 +23,9 @@ import (
 	"go.llib.dev/frameless/ports/iterators"
 )
 
-// Resource is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
-// Depending on what CRUD operation is supported by the Handler.Resource, the Handler supports the following actions:
-type Resource[Entity, ID any] struct {
+// RestResource is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
+// Depending on what CRUD operation is supported by the Handler.RestResource, the Handler supports the following actions:
+type RestResource[Entity, ID any] struct {
 	// Create will create a new entity in the restful resource.
 	// 		POST /
 	Create func(ctx context.Context, ptr *Entity) error
@@ -51,12 +51,12 @@ type Resource[Entity, ID any] struct {
 	//
 	// Serialization is an optional field.
 	// Unless you have specific needs in serialization, don't configure it.
-	Serialization ResourceSerialization[Entity, ID]
+	Serialization RestResourceSerialization[Entity, ID]
 
 	// Mapping is the primary Entity to DTO mapping configuration.
 	Mapping Mapping[Entity]
 
-	// MappingForMIME defines a per MIMEType restapi.Mapping, that takes priority over Mapping
+	// MappingForMIME defines a per MIMEType Mapping, that takes priority over Mapping
 	MappingForMIME map[MIMEType]Mapping[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
@@ -93,16 +93,16 @@ type resource interface {
 	http.Handler
 }
 
-func (res Resource[Entity, ID]) resource() {}
+func (res RestResource[Entity, ID]) resource() {}
 
-var _ resource = Resource[any, any]{}
+var _ resource = RestResource[any, any]{}
 
 type idConverter[ID any] interface {
 	FormatID(ID) (string, error)
 	ParseID(string) (ID, error)
 }
 
-func (res Resource[Entity, ID]) getMapping(mimeType MIMEType) Mapping[Entity] {
+func (res RestResource[Entity, ID]) getMapping(mimeType MIMEType) Mapping[Entity] {
 	mimeType = mimeType.Base() // TODO: TEST ME
 	if res.MappingForMIME != nil {
 		if mapping, ok := res.MappingForMIME[mimeType]; ok {
@@ -173,7 +173,7 @@ func (dto DTOMapping[Entity, DTO]) toDTO(ctx context.Context, ent Entity) (any, 
 	return dtokit.Map[DTO](ctx, ent)
 }
 
-func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = res.setupRequest(r)
 	defer res.handlePanic(w, r)
 	r, rc := internal.WithRoutingContext(r)
@@ -226,12 +226,12 @@ func (res Resource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 }
 
-func (res Resource[Entity, ID]) setupRequest(r *http.Request) *http.Request {
+func (res RestResource[Entity, ID]) setupRequest(r *http.Request) *http.Request {
 	r = r.WithContext(context.WithValue(r.Context(), ctxKeyHTTPRequest{}, r))
 	return r
 }
 
-func (res Resource[Entity, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
 	v := recover()
 	if v == nil {
 		return
@@ -243,25 +243,25 @@ func (res Resource[Entity, ID]) handlePanic(w http.ResponseWriter, r *http.Reque
 	res.errInternalServerError(w, r, fmt.Errorf("recover: %v", v))
 }
 
-func (res Resource[Entity, ID]) getErrorHandler() ErrorHandler {
+func (res RestResource[Entity, ID]) getErrorHandler() ErrorHandler {
 	if res.ErrorHandler != nil {
 		return res.ErrorHandler
 	}
 	return defaultErrorHandler
 }
 
-func (res Resource[Entity, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+func (res RestResource[Entity, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
 		fmt.Println("ERROR", err.Error())
 	}
 	res.getErrorHandler().HandleError(w, r, ErrInternalServerError)
 }
 
-func (res Resource[Entity, ID]) errMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) errMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	res.getErrorHandler().HandleError(w, r, ErrMethodNotAllowed)
 }
 
-func (res Resource[Entity, ID]) errEntityNotFound(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) errEntityNotFound(w http.ResponseWriter, r *http.Request) {
 	res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 }
 
@@ -269,14 +269,14 @@ func (res Resource[Entity, ID]) errEntityNotFound(w http.ResponseWriter, r *http
 // if the Handler.BodyReadLimit is not provided.
 var DefaultBodyReadLimit int = 16 * units.Megabyte
 
-func (res Resource[Entity, ID]) getBodyReadLimit() int {
+func (res RestResource[Entity, ID]) getBodyReadLimit() int {
 	if res.BodyReadLimit != 0 {
 		return res.BodyReadLimit
 	}
 	return DefaultBodyReadLimit
 }
 
-func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	if res.Index == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -351,7 +351,7 @@ func (res Resource[Entity, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 	if res.Create == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -421,7 +421,7 @@ func (res Resource[Entity, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (res Resource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id ID) {
+func (res RestResource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id ID) {
 	if res.Show == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -463,7 +463,7 @@ func (res Resource[Entity, ID]) show(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
-func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, id ID) {
+func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, id ID) {
 	if res.Update == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -520,7 +520,7 @@ func (res Resource[Entity, ID]) update(w http.ResponseWriter, r *http.Request, i
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res Resource[Entity, ID]) destroy(w http.ResponseWriter, r *http.Request, id ID) {
+func (res RestResource[Entity, ID]) destroy(w http.ResponseWriter, r *http.Request, id ID) {
 	if res.Destroy == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -553,7 +553,7 @@ func (res Resource[Entity, ID]) destroy(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res Resource[Entity, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
+func (res RestResource[Entity, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
 	if res.DestroyAll == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -567,18 +567,18 @@ func (res Resource[Entity, ID]) destroyAll(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res Resource[Entity, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
+func (res RestResource[Entity, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
 	return bodyReadAll(r.Body, res.getBodyReadLimit())
 }
 
 type ctxKeyHTTPRequest struct{}
 
-func (res Resource[Entity, ID]) HTTPRequest(ctx context.Context) (*http.Request, bool) {
+func (res RestResource[Entity, ID]) HTTPRequest(ctx context.Context) (*http.Request, bool) {
 	req, ok := ctx.Value(ctxKeyHTTPRequest{}).(*http.Request)
 	return req, ok
 }
 
-func (res Resource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) Resource[Entity, ID] {
+func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) RestResource[Entity, ID] {
 	// TODO: add support to exclude certain operations from being mapped
 
 	if repo, ok := repo.(crud.Creator[Entity]); ok && res.Create == nil {
@@ -686,7 +686,3 @@ const (
 	headerKeyContentType = "Content-Type"
 	headerKeyAccept      = "Accept"
 )
-
-type ErrorHandler interface {
-	HandleError(w http.ResponseWriter, r *http.Request, err error)
-}

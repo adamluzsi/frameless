@@ -1,4 +1,4 @@
-package restapi_test
+package httpkit_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"go.llib.dev/frameless/pkg/dtokit"
-	"go.llib.dev/frameless/pkg/restapi"
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/testcase"
 )
 
@@ -27,8 +27,8 @@ type XDTO struct {
 var _ = dtokit.Register[X, XDTO](XMapping{}.ToDTO, XMapping{}.ToEnt)
 
 type XMapping struct {
-	restapi.IntID[XID]
-	restapi.IDInContext[XMapping, XID]
+	httpkit.IntID[XID]
+	httpkit.IDInContext[XMapping, XID]
 }
 
 func (f XMapping) ToEnt(ctx context.Context, dto XDTO) (X, error) {
@@ -58,8 +58,8 @@ type YDTO struct {
 }
 
 type YMapping struct {
-	restapi.StringID[string]
-	restapi.IDInContext[YMapping, string]
+	httpkit.StringID[string]
+	httpkit.IDInContext[YMapping, string]
 }
 
 func (f YMapping) MapEntity(ctx context.Context, dto YDTO) (Y, error) {
@@ -84,7 +84,7 @@ type BazDTO struct {
 
 func MakeBazMapping() BazMapping {
 	return BazMapping{
-		IDConverter: restapi.IDConverter[int]{
+		IDConverter: httpkit.IDConverter[int]{
 			Format: func(id int) (string, error) {
 				return strconv.Itoa(id), nil
 			},
@@ -94,8 +94,8 @@ func MakeBazMapping() BazMapping {
 }
 
 type BazMapping struct {
-	restapi.IDConverter[int]
-	restapi.IDInContext[BazMapping, string]
+	httpkit.IDConverter[int]
+	httpkit.IDInContext[BazMapping, string]
 }
 
 func (f BazMapping) MapEntity(ctx context.Context, dto BazDTO) (Baz, error) {

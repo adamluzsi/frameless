@@ -1,4 +1,4 @@
-package restapi
+package httpkit
 
 import (
 	"context"

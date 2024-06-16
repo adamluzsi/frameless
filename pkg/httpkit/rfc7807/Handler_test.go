@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	rfc78072 "go.llib.dev/frameless/pkg/restapi/rfc7807"
+	rfc78072 "go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/httpspec"
 	"go.llib.dev/testcase/let"

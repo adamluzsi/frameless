@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
@@ -252,9 +253,18 @@ func visitForStatusCode(info *responseInfo, rv reflect.Value, recursionGuard map
 //	registered as "/something/" for prefix match
 func Mount(mux Multiplexer, pattern string, handler http.Handler) {
 	pattern = pathkit.Clean(pattern)
+	handler = MountPoint(pattern, handler)
 	handler = http.StripPrefix(pattern, handler)
 	mux.Handle(pattern, handler)
 	mux.Handle(pattern+`/`, handler)
+}
+
+func MountPoint(mountPoint string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r, rc := internal.WithRoutingContext(r)
+		rc.Travel(mountPoint)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Multiplexer represents a http request Multiplexer.
@@ -296,4 +306,8 @@ func WithRoundTripper(transport http.RoundTripper, rts ...RoundTripperFactoryFun
 		transport = rts[i](transport)
 	}
 	return transport
+}
+
+type ErrorHandler interface {
+	HandleError(w http.ResponseWriter, r *http.Request, err error)
 }

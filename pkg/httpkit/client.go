@@ -1,4 +1,4 @@
-package restapi
+package httpkit
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/retry"
@@ -21,22 +20,22 @@ import (
 	"go.llib.dev/frameless/ports/iterators"
 )
 
-type Client[Entity, ID any] struct {
+type RestClient[Entity, ID any] struct {
 	BaseURL     string
 	HTTPClient  *http.Client
 	MIMEType    MIMEType
 	Mapping     Mapping[Entity]
-	Serializer  ClientSerializer
+	Serializer  RestClientSerializer
 	IDConverter idConverter[ID]
 	LookupID    crud.LookupIDFunc[Entity, ID]
 }
 
-type ClientSerializer interface {
+type RestClientSerializer interface {
 	serializers.Serializer
 	serializers.ListDecoderMaker
 }
 
-func (r Client[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
+func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	if ptr == nil {
 		return fmt.Errorf("nil pointer (%s) received",
 			reflectkit.TypeOf[Entity]().String())
@@ -102,7 +101,7 @@ func (r Client[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	return nil
 }
 
-func (r Client[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
 		return iterators.Error[Entity](err)
@@ -155,7 +154,7 @@ func (r Client[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Enti
 	}, iterators.OnClose(dec.Close))
 }
 
-func (r Client[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (MIMEType, Serializer, bool) {
+func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (MIMEType, Serializer, bool) {
 	mt := MIMEType(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
 	if !ok && r.Serializer != nil {
@@ -164,7 +163,7 @@ func (r Client[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (MIM
 	return mt, ser, ok
 }
 
-func (r Client[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
+func (r RestClient[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
 	ct := resp.Header.Get(headerKeyContentType)
 	if ct != "" {
 		return MIMEType(ct).Base()
@@ -172,7 +171,7 @@ func (r Client[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
 	return r.MIMEType
 }
 
-func (r Client[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error) {
+func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error) {
 	mapping := r.getMapping()
 
 	pathParamID, err := r.getIDConverter().FormatID(id)
@@ -229,7 +228,7 @@ func (r Client[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, fo
 	return got, true, nil
 }
 
-func (r Client[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
+func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	if ptr == nil {
 		return fmt.Errorf("nil pointer (%s) received",
 			reflectkit.TypeOf[Entity]().String())
@@ -307,7 +306,7 @@ func (r Client[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	return nil
 }
 
-func (r Client[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (r RestClient[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
 		return err
@@ -344,7 +343,7 @@ func (r Client[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	return nil
 }
 
-func (r Client[Entity, ID]) DeleteAll(ctx context.Context) error {
+func (r RestClient[Entity, ID]) DeleteAll(ctx context.Context) error {
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
 		return err
@@ -372,7 +371,7 @@ func (r Client[Entity, ID]) DeleteAll(ctx context.Context) error {
 	return nil
 }
 
-func (r Client[Entity, ID]) getIDConverter() idConverter[ID] {
+func (r RestClient[Entity, ID]) getIDConverter() idConverter[ID] {
 	if r.IDConverter != nil {
 		return r.IDConverter
 	}
@@ -383,7 +382,7 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r Client[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
+func (r RestClient[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
 	if r.Serializer != nil {
 		return r.Serializer
 	}
@@ -393,7 +392,7 @@ func (r Client[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
 	return DefaultSerializer.Serializer
 }
 
-func (r Client[Entity, ID]) lookupSerializer(mimeType MIMEType) (Serializer, bool) {
+func (r RestClient[Entity, ID]) lookupSerializer(mimeType MIMEType) (Serializer, bool) {
 	mimeType = mimeType.Base()
 	for mt, ser := range DefaultSerializers {
 		if mt.Base() == mimeType {
@@ -404,7 +403,7 @@ func (r Client[Entity, ID]) lookupSerializer(mimeType MIMEType) (Serializer, boo
 }
 
 var DefaultResourceClientHTTPClient http.Client = http.Client{
-	Transport: httpkit.RetryRoundTripper{
+	Transport: RetryRoundTripper{
 		RetryStrategy: retry.ExponentialBackoff{
 			WaitTime: time.Second,
 			Timeout:  time.Minute,
@@ -413,18 +412,18 @@ var DefaultResourceClientHTTPClient http.Client = http.Client{
 	Timeout: 25 * time.Second,
 }
 
-func (r Client[Entity, ID]) httpClient() *http.Client {
+func (r RestClient[Entity, ID]) httpClient() *http.Client {
 	return zerokit.Coalesce(r.HTTPClient, &DefaultResourceClientHTTPClient)
 }
 
-func (r Client[Entity, ID]) getMapping() Mapping[Entity] {
+func (r RestClient[Entity, ID]) getMapping() Mapping[Entity] {
 	if r.Mapping == nil {
 		return passthroughMappingMode[Entity]()
 	}
 	return r.Mapping
 }
 
-func (r Client[Entity, ID]) getMIMEType() MIMEType {
+func (r RestClient[Entity, ID]) getMIMEType() MIMEType {
 	var zero MIMEType
 	if r.MIMEType != zero {
 		return r.MIMEType
@@ -432,7 +431,7 @@ func (r Client[Entity, ID]) getMIMEType() MIMEType {
 	return DefaultSerializer.MIMEType
 }
 
-func (r Client[Entity, ID]) getBaseURL(ctx context.Context) (string, error) {
+func (r RestClient[Entity, ID]) getBaseURL(ctx context.Context) (string, error) {
 	return pathsubst(ctx, r.BaseURL)
 }
 

@@ -1,4 +1,4 @@
-package restapi
+package httpkit
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/serializers"
 )
 
-type ResourceSerialization[Entity, ID any] struct {
+type RestResourceSerialization[Entity, ID any] struct {
 	Serializers map[MIMEType]Serializer
 	IDConverter idConverter[ID]
 }
@@ -45,18 +45,18 @@ type SerializerDefault struct {
 	MIMEType MIMEType
 }
 
-func (m *ResourceSerialization[Entity, ID]) getSerializer(mimeType MIMEType) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) getSerializer(mimeType MIMEType) (Serializer, MIMEType) {
 	if ser, ok := m.lookupType(mimeType); ok {
 		return ser, mimeType
 	}
 	return m.defaultSerializer()
 }
 
-func (m *ResourceSerialization[Entity, ID]) requestBodySerializer(r *http.Request) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) requestBodySerializer(r *http.Request) (Serializer, MIMEType) {
 	return m.contentTypeSerializer(r)
 }
 
-func (m *ResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Request) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Request) (Serializer, MIMEType) {
 	if mime, ok := m.getRequestBodyMimeType(r); ok { // TODO: TEST ME
 		if serializer, ok := m.lookupType(mime); ok {
 			return serializer, mime
@@ -65,11 +65,11 @@ func (m *ResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Reques
 	return m.defaultSerializer() // TODO: TEST ME
 }
 
-func (m *ResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, MIMEType) {
 	return DefaultSerializer.Serializer, DefaultSerializer.MIMEType
 }
 
-func (m *ResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, MIMEType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return m.contentTypeSerializer(r)
@@ -85,7 +85,7 @@ func (m *ResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Reque
 	return m.contentTypeSerializer(r)
 }
 
-func (m *ResourceSerialization[Entity, ID]) getRequestBodyMimeType(r *http.Request) (MIMEType, bool) {
+func (m *RestResourceSerialization[Entity, ID]) getRequestBodyMimeType(r *http.Request) (MIMEType, bool) {
 	return getMIMETypeFrom(r.Header.Get(headerKeyContentType))
 }
 
@@ -101,7 +101,7 @@ func getMIMETypeFrom(headerValue string) (MIMEType, bool) {
 	return mime, true
 }
 
-func (m *ResourceSerialization[Entity, ID]) lookupType(mimeType MIMEType) (Serializer, bool) {
+func (m *RestResourceSerialization[Entity, ID]) lookupType(mimeType MIMEType) (Serializer, bool) {
 	mimeType = mimeType.Base() // TODO: TEST ME
 	if m.Serializers != nil {
 		if ser, ok := m.Serializers[mimeType]; ok {
@@ -116,7 +116,7 @@ func (m *ResourceSerialization[Entity, ID]) lookupType(mimeType MIMEType) (Seria
 	return nil, false
 }
 
-func (m *ResourceSerialization[Entity, ID]) getIDConverter() idConverter[ID] {
+func (m *RestResourceSerialization[Entity, ID]) getIDConverter() idConverter[ID] {
 	if m.IDConverter != nil {
 		return m.IDConverter
 	}

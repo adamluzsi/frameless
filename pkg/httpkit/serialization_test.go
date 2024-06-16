@@ -1,10 +1,10 @@
-package restapi_test
+package httpkit_test
 
 import (
 	"fmt"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/restapi"
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/let"
 )
@@ -12,8 +12,8 @@ import (
 func TestIDConverter(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	subject := testcase.Let(s, func(t *testcase.T) restapi.IDConverter[string] {
-		return restapi.IDConverter[string]{}
+	subject := testcase.Let(s, func(t *testcase.T) httpkit.IDConverter[string] {
+		return httpkit.IDConverter[string]{}
 	})
 
 	s.Describe(".FormatID", func(s *testcase.Spec) {
@@ -25,7 +25,7 @@ func TestIDConverter(t *testing.T) {
 		}
 
 		s.When("Format func is provided", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) restapi.IDConverter[string] {
+			subject.Let(s, func(t *testcase.T) httpkit.IDConverter[string] {
 				idc := subject.Super(t)
 				idc.Format = func(s string) (string, error) {
 					return "format-ok", fmt.Errorf("boom")
@@ -41,7 +41,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.When("Format func is absent", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) restapi.IDConverter[string] {
+			subject.Let(s, func(t *testcase.T) httpkit.IDConverter[string] {
 				idc := subject.Super(t)
 				idc.Format = nil
 				return idc
@@ -64,7 +64,7 @@ func TestIDConverter(t *testing.T) {
 		}
 
 		s.When("Parse func is provided", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) restapi.IDConverter[string] {
+			subject.Let(s, func(t *testcase.T) httpkit.IDConverter[string] {
 				idc := subject.Super(t)
 				idc.Parse = func(s string) (string, error) {
 					return "parse-ok", fmt.Errorf("boom")
@@ -80,7 +80,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.When("Parse func is absent", func(s *testcase.Spec) {
-			subject.Let(s, func(t *testcase.T) restapi.IDConverter[string] {
+			subject.Let(s, func(t *testcase.T) httpkit.IDConverter[string] {
 				idc := subject.Super(t)
 				idc.Parse = nil
 				return idc
@@ -100,7 +100,7 @@ func TestIDConverter(t *testing.T) {
 		type StringID string
 
 		s.Test("int", func(t *testcase.T) {
-			idc := restapi.IDConverter[int]{}
+			idc := httpkit.IDConverter[int]{}
 			id := int(42)
 			encoded := "42"
 
@@ -114,7 +114,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("int based", func(t *testcase.T) {
-			idc := restapi.IDConverter[IntID]{}
+			idc := httpkit.IDConverter[IntID]{}
 			id := IntID(42)
 			encoded := "42"
 
@@ -128,7 +128,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("int8", func(t *testcase.T) {
-			idc := restapi.IDConverter[int8]{}
+			idc := httpkit.IDConverter[int8]{}
 			id := int8(42)
 			encoded := "42"
 
@@ -142,7 +142,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("int16", func(t *testcase.T) {
-			idc := restapi.IDConverter[int16]{}
+			idc := httpkit.IDConverter[int16]{}
 			id := int16(42)
 			encoded := "42"
 
@@ -156,7 +156,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("int32", func(t *testcase.T) {
-			idc := restapi.IDConverter[int32]{}
+			idc := httpkit.IDConverter[int32]{}
 			id := int32(42)
 			encoded := "42"
 
@@ -170,7 +170,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("int64", func(t *testcase.T) {
-			idc := restapi.IDConverter[int64]{}
+			idc := httpkit.IDConverter[int64]{}
 			id := int64(42)
 			encoded := "42"
 
@@ -184,7 +184,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("string", func(t *testcase.T) {
-			idc := restapi.IDConverter[string]{}
+			idc := httpkit.IDConverter[string]{}
 			id := answer
 			encoded := answer
 
@@ -198,7 +198,7 @@ func TestIDConverter(t *testing.T) {
 		})
 
 		s.Test("string based", func(t *testcase.T) {
-			idc := restapi.IDConverter[StringID]{}
+			idc := httpkit.IDConverter[StringID]{}
 			id := StringID(answer)
 			encoded := answer
 

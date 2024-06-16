@@ -1,12 +1,11 @@
-package restapi
+package httpkit
 
 import (
 	"context"
 	"net/http"
 
-	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/restapi/internal"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
@@ -23,7 +22,7 @@ type Router struct {
 }
 
 type _Node struct {
-	middlewares []httpkit.MiddlewareFactoryFunc
+	middlewares []MiddlewareFactoryFunc
 	methodsH    map[string] /* method */ http.Handler
 	defaultH    http.Handler
 
@@ -159,7 +158,7 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 	route.Travel(pathkit.Join(path...))
 	handler := router.toHTTPHandler(r, node, mux, muxRoute)
-	handler = httpkit.WithMiddleware(handler, mws...)
+	handler = WithMiddleware(handler, mws...)
 	handler.ServeHTTP(w, r)
 }
 
@@ -194,13 +193,7 @@ func (router *Router) Mount(path string, handler http.Handler) {
 }
 
 func (router *Router) Namespace(path string, blk func(r *Router)) {
-	ro := router.mkpath(path)
-	blk(&Router{root: ro})
-	//if pathkit.Canonical(path) == "/" { // TODO: testme
-	//	blk(router)
-	//	return
-	//}
-	//router.Mount(path, NewRouter(blk))
+	blk(&Router{root: router.mkpath(path)})
 }
 
 // Handle registers the handler for the given pattern.
@@ -307,7 +300,7 @@ func (router *Router) Resource(identifier string, resource resource) {
 }
 
 // Use will instruct the router to use a given MiddlewareFactoryFunc to
-func (router *Router) Use(mws ...httpkit.MiddlewareFactoryFunc) {
+func (router *Router) Use(mws ...MiddlewareFactoryFunc) {
 	router.init()
 	router.root.middlewares = append(router.root.middlewares, mws...)
 }
