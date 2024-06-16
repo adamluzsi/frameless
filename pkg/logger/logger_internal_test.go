@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -28,7 +29,9 @@ func TestStub_internal(t *testing.T) {
 			l.MessageKey = "foo"
 		})
 		Info(context.Background(), msg)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, "foo", msg))
+		expFoo, err := json.Marshal(msg)
+		assert.NoError(t, err)
+		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":%s`, "foo", string(expFoo)))
 	})
 	assert.Equal(t, og, logger, "logger has been restored")
 	assert.Equal(t, hash, fmt.Sprintf("%#v", logger))
