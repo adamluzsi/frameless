@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/mimekit"
 	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/crud/crudtest"
@@ -20,7 +21,7 @@ func ExampleClient() {
 		ctx     = context.Background()
 		fooRepo = httpkit.RestClient[testent.Foo, testent.FooID]{
 			BaseURL:     "https://mydomain.dev/api/v1/foos",
-			MIMEType:    httpkit.JSON,
+			MIMEType:    mimekit.JSON,
 			Mapping:     httpkit.DTOMapping[testent.Foo, testent.FooDTO]{},
 			Serializer:  serializers.JSON{},
 			IDConverter: httpkit.IDConverter[testent.FooID]{},

@@ -10,12 +10,13 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/mimekit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/serializers"
 )
 
 type RestResourceSerialization[Entity, ID any] struct {
-	Serializers map[MIMEType]Serializer
+	Serializers map[mimekit.MIMEType]Serializer
 	IDConverter idConverter[ID]
 }
 
@@ -23,18 +24,18 @@ type Serializer interface {
 	serializers.Serializer
 }
 
-var DefaultSerializers = map[MIMEType]Serializer{
-	JSON.Base():                serializers.JSON{},
-	"application/problem+json": serializers.JSON{},
-	"application/x-ndjson":     serializers.JSONStream{},
-	"application/stream+json":  serializers.JSONStream{},
-	"application/json-stream":  serializers.JSONStream{},
-	FormUrlencoded.Base():      serializers.FormURLEncoder{},
+var DefaultSerializers = map[mimekit.MIMEType]Serializer{
+	mimekit.JSON.Base():           serializers.JSON{},
+	"application/problem+json":    serializers.JSON{},
+	"application/x-ndjson":        serializers.JSONStream{},
+	"application/stream+json":     serializers.JSONStream{},
+	"application/json-stream":     serializers.JSONStream{},
+	mimekit.FormUrlencoded.Base(): serializers.FormURLEncoder{},
 }
 
 var DefaultSerializer = SerializerDefault{
 	Serializer: serializers.JSON{},
-	MIMEType:   JSON,
+	MIMEType:   mimekit.JSON,
 }
 
 type SerializerDefault struct {
@@ -42,21 +43,21 @@ type SerializerDefault struct {
 		serializers.Serializer
 		serializers.ListDecoderMaker
 	}
-	MIMEType MIMEType
+	MIMEType mimekit.MIMEType
 }
 
-func (m *RestResourceSerialization[Entity, ID]) getSerializer(mimeType MIMEType) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) getSerializer(mimeType mimekit.MIMEType) (Serializer, mimekit.MIMEType) {
 	if ser, ok := m.lookupType(mimeType); ok {
 		return ser, mimeType
 	}
 	return m.defaultSerializer()
 }
 
-func (m *RestResourceSerialization[Entity, ID]) requestBodySerializer(r *http.Request) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) requestBodySerializer(r *http.Request) (Serializer, mimekit.MIMEType) {
 	return m.contentTypeSerializer(r)
 }
 
-func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Request) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Request) (Serializer, mimekit.MIMEType) {
 	if mime, ok := m.getRequestBodyMimeType(r); ok { // TODO: TEST ME
 		if serializer, ok := m.lookupType(mime); ok {
 			return serializer, mime
@@ -65,18 +66,18 @@ func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Re
 	return m.defaultSerializer() // TODO: TEST ME
 }
 
-func (m *RestResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, mimekit.MIMEType) {
 	return DefaultSerializer.Serializer, DefaultSerializer.MIMEType
 }
 
-func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, MIMEType) {
+func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, mimekit.MIMEType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return m.contentTypeSerializer(r)
 	}
 	var sers = mapkit.Merge(DefaultSerializers, m.Serializers)
 	for _, mimeType := range strings.Fields(accept) {
-		mimeType := MIMEType(mimeType)
+		mimeType := mimekit.MIMEType(mimeType)
 		ser, ok := sers[mimeType]
 		if ok {
 			return ser, mimeType
@@ -85,23 +86,23 @@ func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.R
 	return m.contentTypeSerializer(r)
 }
 
-func (m *RestResourceSerialization[Entity, ID]) getRequestBodyMimeType(r *http.Request) (MIMEType, bool) {
+func (m *RestResourceSerialization[Entity, ID]) getRequestBodyMimeType(r *http.Request) (mimekit.MIMEType, bool) {
 	return getMIMETypeFrom(r.Header.Get(headerKeyContentType))
 }
 
-func getMIMETypeFrom(headerValue string) (MIMEType, bool) {
+func getMIMETypeFrom(headerValue string) (mimekit.MIMEType, bool) {
 	if headerValue == "" {
-		return *new(MIMEType), false
+		return *new(mimekit.MIMEType), false
 	}
 	const parameterSeparatorSymbol = ";"
 	if strings.Contains(headerValue, parameterSeparatorSymbol) {
 		headerValue = strings.TrimSpace(strings.Split(headerValue, ";")[0])
 	}
-	mime := MIMEType(strings.Split(headerValue, ";")[0])
+	mime := mimekit.MIMEType(strings.Split(headerValue, ";")[0])
 	return mime, true
 }
 
-func (m *RestResourceSerialization[Entity, ID]) lookupType(mimeType MIMEType) (Serializer, bool) {
+func (m *RestResourceSerialization[Entity, ID]) lookupType(mimeType mimekit.MIMEType) (Serializer, bool) {
 	mimeType = mimeType.Base() // TODO: TEST ME
 	if m.Serializers != nil {
 		if ser, ok := m.Serializers[mimeType]; ok {

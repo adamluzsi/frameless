@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.llib.dev/frameless/pkg/mimekit"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/retry"
@@ -23,7 +24,7 @@ import (
 type RestClient[Entity, ID any] struct {
 	BaseURL     string
 	HTTPClient  *http.Client
-	MIMEType    MIMEType
+	MIMEType    mimekit.MIMEType
 	Mapping     Mapping[Entity]
 	Serializer  RestClientSerializer
 	IDConverter idConverter[ID]
@@ -154,8 +155,8 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 	}, iterators.OnClose(dec.Close))
 }
 
-func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (MIMEType, Serializer, bool) {
-	mt := MIMEType(resp.Header.Get("Content-Type"))
+func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (mimekit.MIMEType, Serializer, bool) {
+	mt := mimekit.MIMEType(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
 	if !ok && r.Serializer != nil {
 		ser, ok = r.Serializer, true
@@ -163,10 +164,10 @@ func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) 
 	return mt, ser, ok
 }
 
-func (r RestClient[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
+func (r RestClient[Entity, ID]) getResponseMimeType(resp *http.Response) mimekit.MIMEType {
 	ct := resp.Header.Get(headerKeyContentType)
 	if ct != "" {
-		return MIMEType(ct).Base()
+		return mimekit.MIMEType(ct).Base()
 	}
 	return r.MIMEType
 }
@@ -382,7 +383,7 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RestClient[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
+func (r RestClient[Entity, ID]) getSerializer(mimeType mimekit.MIMEType) Serializer {
 	if r.Serializer != nil {
 		return r.Serializer
 	}
@@ -392,7 +393,7 @@ func (r RestClient[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
 	return DefaultSerializer.Serializer
 }
 
-func (r RestClient[Entity, ID]) lookupSerializer(mimeType MIMEType) (Serializer, bool) {
+func (r RestClient[Entity, ID]) lookupSerializer(mimeType mimekit.MIMEType) (Serializer, bool) {
 	mimeType = mimeType.Base()
 	for mt, ser := range DefaultSerializers {
 		if mt.Base() == mimeType {
@@ -423,8 +424,8 @@ func (r RestClient[Entity, ID]) getMapping() Mapping[Entity] {
 	return r.Mapping
 }
 
-func (r RestClient[Entity, ID]) getMIMEType() MIMEType {
-	var zero MIMEType
+func (r RestClient[Entity, ID]) getMIMEType() mimekit.MIMEType {
+	var zero mimekit.MIMEType
 	if r.MIMEType != zero {
 		return r.MIMEType
 	}
