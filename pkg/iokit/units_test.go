@@ -1,17 +1,17 @@
-package units_test
+package iokit_test
 
 import (
 	"bytes"
 	"io"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/testcase/assert"
 )
 
 func Example_byteSize() {
 
-	var bs = make([]byte, units.Megabyte)
+	var bs = make([]byte, iokit.Megabyte)
 	buf := &bytes.Buffer{}
 
 	n, err := buf.Write(bs)
@@ -19,11 +19,11 @@ func Example_byteSize() {
 		panic(err.Error())
 	}
 
-	if n < units.Kilobyte {
+	if n < iokit.Kilobyte {
 		//
 	}
 
-	io.LimitReader(buf, 128*units.Kibibyte)
+	io.LimitReader(buf, 128*iokit.Kibibyte)
 }
 
 func TestFormatByteSize(t *testing.T) {
@@ -34,57 +34,57 @@ func TestFormatByteSize(t *testing.T) {
 	}{
 		{
 			name:   "Byte",
-			input:  units.Byte,
+			input:  iokit.Byte,
 			expect: "1B",
 		},
 		{
 			name:   "Kibibyte",
-			input:  units.Kibibyte,
+			input:  iokit.Kibibyte,
 			expect: "1KiB",
 		},
 		{
 			name:   "Kibibyte+Byte",
-			input:  units.Kibibyte + 512*units.Byte,
+			input:  iokit.Kibibyte + 512*iokit.Byte,
 			expect: "1.5KiB",
 		},
 		{
 			name:   "Kibibyte+Bytes",
-			input:  units.Kibibyte + 512*units.Byte + 8*units.Byte,
+			input:  iokit.Kibibyte + 512*iokit.Byte + 8*iokit.Byte,
 			expect: "1.51KiB",
 		},
 		{
 			name:   "Mebibyte",
-			input:  units.Mebibyte,
+			input:  iokit.Mebibyte,
 			expect: "1MiB",
 		},
 		{
 			name:   "Gibibyte",
-			input:  units.Gibibyte,
+			input:  iokit.Gibibyte,
 			expect: "1GiB",
 		},
 		{
 			name:   "Tebibyte",
-			input:  units.Tebibyte,
+			input:  iokit.Tebibyte,
 			expect: "1TiB",
 		},
 		{
 			name:   "negative Tebibyte",
-			input:  -1 * units.Tebibyte,
+			input:  -1 * iokit.Tebibyte,
 			expect: "-1TiB",
 		},
 		{
 			name:   "Pebibyte",
-			input:  units.Pebibyte,
+			input:  iokit.Pebibyte,
 			expect: "1PiB",
 		},
 		{
 			name:   "Rounded value",
-			input:  units.Kibibyte * 3,
+			input:  iokit.Kibibyte * 3,
 			expect: "3KiB",
 		},
 		{
 			name:   "Fractional value",
-			input:  units.Kibibyte*3 + units.Byte,
+			input:  iokit.Kibibyte*3 + iokit.Byte,
 			expect: "3KiB",
 		},
 		{
@@ -95,11 +95,11 @@ func TestFormatByteSize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expect, units.FormatByteSize(tt.input))
+			assert.Equal(t, tt.expect, iokit.FormatByteSize(tt.input))
 		})
 	}
 }
 
 func Test_megabyte(t *testing.T) {
-	assert.Equal(t, 16*1024*1024, 16*units.Megabyte)
+	assert.Equal(t, 16*1024*1024, 16*iokit.Megabyte)
 }

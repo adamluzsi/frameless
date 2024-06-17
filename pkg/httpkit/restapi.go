@@ -17,7 +17,6 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/serializers"
-	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
@@ -85,7 +84,7 @@ type RestResource[Entity, ID any] struct {
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	//
 	// The default value is DefaultBodyReadLimit, which is preset to 16MB.
-	BodyReadLimit units.ByteSize
+	BodyReadLimit iokit.ByteSize
 }
 
 type resource interface {
@@ -267,7 +266,7 @@ func (res RestResource[Entity, ID]) errEntityNotFound(w http.ResponseWriter, r *
 
 // DefaultBodyReadLimit is the maximum number of bytes that a restapi.Handler will read from the requester,
 // if the Handler.BodyReadLimit is not provided.
-var DefaultBodyReadLimit int = 16 * units.Megabyte
+var DefaultBodyReadLimit int = 16 * iokit.Megabyte
 
 func (res RestResource[Entity, ID]) getBodyReadLimit() int {
 	if res.BodyReadLimit != 0 {
@@ -620,7 +619,7 @@ func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) R
 	return res
 }
 
-func bodyReadAll(body io.ReadCloser, bodyReadLimit units.ByteSize) (_ []byte, returnErr error) {
+func bodyReadAll(body io.ReadCloser, bodyReadLimit iokit.ByteSize) (_ []byte, returnErr error) {
 	data, err := iokit.ReadAllWithLimit(body, bodyReadLimit)
 	if errors.Is(err, iokit.ErrReadLimitReached) {
 		return nil, ErrRequestEntityTooLarge

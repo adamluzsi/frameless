@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"go.llib.dev/frameless/pkg/units"
+	"go.llib.dev/frameless/pkg/iokit"
 )
 
 type strategy interface {
@@ -126,7 +126,7 @@ wrk:
 // Having two output writer helps to have at least one receiver for the batched events
 // but at the cost of random disorder between logging entries.
 func (s *asyncLogger) OutputWriter() {
-	const bufSize = 256 * units.Kilobyte
+	const bufSize = 256 * iokit.Kilobyte
 	var flushTimeout = s.Logger.FlushTimeout
 	if flushTimeout == 0 {
 		const defaultFlushTimeout = time.Second

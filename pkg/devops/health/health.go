@@ -14,7 +14,6 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 )
@@ -339,7 +338,7 @@ var _ = func() struct{} {
 type HTTPHealthCheckConfig struct {
 	Name          string
 	HTTPClient    *http.Client
-	BodyReadLimit units.ByteSize
+	BodyReadLimit iokit.ByteSize
 	Unmarshal     func(ctx context.Context, data []byte, ptr *Report) error
 }
 
@@ -348,7 +347,7 @@ func HTTPHealthCheck(healthCheckEndpointURL string, config *HTTPHealthCheckConfi
 	client := zerokit.Coalesce(c.HTTPClient, http.DefaultClient)
 	unmarshal := zerokit.Coalesce(c.Unmarshal, defaultHealthResponseUnmarshal)
 	defaultName := zerokit.Coalesce(c.Name, healthCheckEndpointURL)
-	readLimit := zerokit.Coalesce(c.BodyReadLimit, 25*units.Megabyte)
+	readLimit := zerokit.Coalesce(c.BodyReadLimit, 25*iokit.Megabyte)
 	return func(ctx context.Context) (s Report) {
 		s = Report{Name: defaultName}
 		defer s.Correlate()
@@ -371,7 +370,7 @@ func HTTPHealthCheck(healthCheckEndpointURL string, config *HTTPHealthCheckConfi
 			s.Issues = append(s.Issues, Issue{
 				Code: "too-large-health-response-received",
 				Message: fmt.Sprintf("The received response is larger than the configured %s",
-					units.FormatByteSize(readLimit)),
+					iokit.FormatByteSize(readLimit)),
 				Causes: Down,
 			})
 			return s
