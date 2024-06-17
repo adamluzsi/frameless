@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 
@@ -174,7 +173,7 @@ func getLocker(ptr *sync.Locker) sync.Locker {
 
 const ErrReadLimitReached errorkit.Error = "request-entity-too-large"
 
-func ReadAllWithLimit(body io.Reader, readLimit units.ByteSize) (_ []byte, returnErr error) {
+func ReadAllWithLimit(body io.Reader, readLimit ByteSize) (_ []byte, returnErr error) {
 	if body == nil { // TODO:TEST_ME
 		return []byte{}, nil
 	}

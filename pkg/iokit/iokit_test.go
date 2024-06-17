@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/pkg/units"
 	"go.llib.dev/frameless/ports/filesystem"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
@@ -427,18 +426,18 @@ func TestSyncReaderWriter_smoke(t *testing.T) {
 func TestReadAllWithLimit(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		body := strings.NewReader("foo")
-		data, err := iokit.ReadAllWithLimit(body, 5*units.Byte)
+		data, err := iokit.ReadAllWithLimit(body, 5*iokit.Byte)
 		assert.NoError(t, err)
 		assert.Equal(t, "foo", string(data))
 	})
 	t.Run("limit reached", func(t *testing.T) {
 		body := strings.NewReader("foo")
-		data, err := iokit.ReadAllWithLimit(body, 2*units.Byte)
+		data, err := iokit.ReadAllWithLimit(body, 2*iokit.Byte)
 		assert.ErrorIs(t, err, iokit.ErrReadLimitReached)
 		assert.Empty(t, data)
 	})
 	t.Run("nil body considered as empty body", func(t *testing.T) {
-		data, err := iokit.ReadAllWithLimit(nil, 2*units.Byte)
+		data, err := iokit.ReadAllWithLimit(nil, 2*iokit.Byte)
 		assert.NoError(t, err)
 		assert.Empty(t, data)
 	})
@@ -448,13 +447,13 @@ func TestReadAllWithLimit(t *testing.T) {
 			Data:    []byte("foo"),
 			ReadErr: expErr,
 		}
-		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
+		data, err := iokit.ReadAllWithLimit(body, 50*iokit.Megabyte)
 		assert.ErrorIs(t, err, expErr)
 		assert.Empty(t, data)
 	})
 	t.Run("Closer type is closed", func(t *testing.T) {
 		body := &iokit.StubReader{Data: []byte("foo")}
-		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
+		data, err := iokit.ReadAllWithLimit(body, 50*iokit.Megabyte)
 		assert.NoError(t, err)
 		assert.Equal(t, body.Data, data)
 		assert.True(t, body.IsClosed())
@@ -465,7 +464,7 @@ func TestReadAllWithLimit(t *testing.T) {
 			Data:     []byte("foo"),
 			CloseErr: expErr,
 		}
-		data, err := iokit.ReadAllWithLimit(body, 50*units.Megabyte)
+		data, err := iokit.ReadAllWithLimit(body, 50*iokit.Megabyte)
 		assert.ErrorIs(t, err, expErr)
 		assert.Equal(t, data, body.Data)
 	})
