@@ -160,13 +160,13 @@ func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task 
 	}
 }
 
-type Interval interface {
+type interval interface {
 	UntilNext(lastRanAt time.Time) time.Duration
 }
 
 // WithRepeat will keep repeating a given Task until shutdown is signaled.
 // It is most suitable for Task(s) meant to be short-lived and executed continuously until the shutdown signal.
-func WithRepeat[TFN genericTask](interval Interval, tfn TFN) Task {
+func WithRepeat[TFN genericTask](interval interval, tfn TFN) Task {
 	return func(ctx context.Context) error {
 		var task = ToTask(tfn)
 		if err := task(ctx); err != nil {

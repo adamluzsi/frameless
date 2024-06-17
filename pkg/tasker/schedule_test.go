@@ -1,4 +1,4 @@
-package schedule_test
+package tasker_test
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"go.llib.dev/frameless/adapters/memory"
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -16,11 +15,11 @@ import (
 )
 
 func ExampleScheduler_WithSchedule() {
-	scheduler := schedule.Scheduler{
+	scheduler := tasker.Scheduler{
 		Repository: nil, // &postgresql.TaskerScheduleRepository{CM: cm},
 	}
 
-	task := scheduler.WithSchedule("db maintenance", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
+	task := tasker.WithSchedule(scheduler, "db maintenance", tasker.Monthly{Day: 1}, func(ctx context.Context) error {
 		return nil
 	})
 
@@ -36,19 +35,19 @@ func TestScheduler(t *testing.T) {
 	s.HasSideEffect()
 
 	var (
-		repository = testcase.Let(s, func(t *testcase.T) schedule.Repository {
+		repository = testcase.Let(s, func(t *testcase.T) tasker.Repository {
 			return &memory.TaskerScheduleRepository{}
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) schedule.Scheduler {
-		return schedule.Scheduler{
+	subject := testcase.Let(s, func(t *testcase.T) tasker.Scheduler {
+		return tasker.Scheduler{
 			Repository: repository.Get(t),
 		}
 	})
 
 	s.Describe(".WithSchedule", func(s *testcase.Spec) {
 		var (
-			jobID    = let.As[schedule.StateID](let.String(s))
+			jobID    = let.As[tasker.StateID](let.String(s))
 			interval = let.As[time.Duration](let.IntB(s, int(time.Hour), 24*int(time.Hour)))
 
 			ran = testcase.LetValue[int](s, 0)
@@ -60,7 +59,10 @@ func TestScheduler(t *testing.T) {
 			})
 		)
 		act := func(t *testcase.T) tasker.Task {
-			return subject.Get(t).WithSchedule(jobID.Get(t), schedule.Interval(interval.Get(t)), job.Get(t))
+			if t.Random.Bool() { // alias
+				return tasker.WithSchedule(subject.Get(t), jobID.Get(t), tasker.Interval(interval.Get(t)), job.Get(t))
+			}
+			return subject.Get(t).WithSchedule(jobID.Get(t), tasker.Interval(interval.Get(t)), job.Get(t))
 		}
 
 		var Context = let.Context(s)

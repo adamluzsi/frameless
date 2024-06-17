@@ -20,7 +20,7 @@ If your Job is a short-lived interaction, which is meant to be executed continuo
 then you can use the `tasker.WithRepeat` to implement a continuous execution that stops on a shutdown signal.
 
 ```go
-task := tasker.WithRepeat(schedule.Interval(time.Second), func(ctx context.Context) error {
+task := tasker.WithRepeat(tasker.Interval(time.Second), func(ctx context.Context) error {
 	// I'm a short-lived task, and I prefer to be constantly executed,
 	// Repeat will keep repeating to me every second until the shutdown is signalled.
 	return nil
@@ -40,18 +40,18 @@ In the `schedule` package, you can choose from various options on how would you 
 
 - Schedule by time duration interval
 ```go
-schedule.Interval(time.Second) // schedule every second
+tasker.Interval(time.Second) // schedule every second
 ```
 
 - Schedule on a Daily basis
 ```go
-schedule.Daily{Hour:12} // schedule every day at 12 o'clock
+tasker.Daily{Hour:12} // schedule every day at 12 o'clock
 ```
 
 - Schedule on a Monthly basis
 ```go
 // schedule every month at 12 o'clock on the third day
-schedule.Monthly{Day: 3, Hour:12} 
+tasker.Monthly{Day: 3, Hour:12} 
 ```
 
 ### Execution Order
@@ -153,12 +153,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	scheduler := schedule.Scheduler{
+	scheduler := tasker.Scheduler{
 		LockerFactory: &postgresql.LockerFactory[string]{DB: db},
 		Repository:    &postgresql.TaskerScheduleStateRepository{DB: db},
 	}
 
-	task1 := scheduler.WithSchedule("my scheduled task", schedule.Monthly{Day: 1}, func(ctx context.Context) error {
+	task1 := scheduler.WithSchedule("my scheduled task", tasker.Monthly{Day: 1}, func(ctx context.Context) error {
 		// this task will only run in one instance every month, on the first day.
 		return nil
 	})

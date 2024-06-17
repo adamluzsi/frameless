@@ -4,11 +4,11 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapters/memory"
-	"go.llib.dev/frameless/pkg/tasker/schedule/schedulecontracts"
+	"go.llib.dev/frameless/pkg/tasker/taskercontracts"
 )
 
 func TestTaskerScheduleRepository(t *testing.T) {
 	repo := &memory.TaskerScheduleRepository{}
 
-	schedulecontracts.Repository(repo).Test(t)
+	taskercontracts.Repository(repo).Test(t)
 }

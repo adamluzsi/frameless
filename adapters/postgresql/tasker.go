@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.llib.dev/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/ports/guard"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/migration"
@@ -26,11 +26,11 @@ func (r TaskerScheduleRepository) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (r TaskerScheduleRepository) Locks() guard.LockerFactory[schedule.StateID] {
-	return LockerFactory[schedule.StateID]{Connection: r.Connection}
+func (r TaskerScheduleRepository) Locks() guard.LockerFactory[tasker.StateID] {
+	return LockerFactory[tasker.StateID]{Connection: r.Connection}
 }
 
-func (r TaskerScheduleRepository) States() schedule.StateRepository {
+func (r TaskerScheduleRepository) States() tasker.StateRepository {
 	return TaskerScheduleStateRepository{Connection: r.Connection}
 }
 
@@ -46,28 +46,28 @@ var migratorConfigTaskerScheduleStateRepository = MigratorGroup{
 
 type TaskerScheduleStateRepository struct{ Connection Connection }
 
-func (r TaskerScheduleStateRepository) repository() Repository[schedule.State, schedule.StateID] {
-	return Repository[schedule.State, schedule.StateID]{
+func (r TaskerScheduleStateRepository) repository() Repository[tasker.State, tasker.StateID] {
+	return Repository[tasker.State, tasker.StateID]{
 		Mapping:    taskerScheduleStateRepositoryMapping,
 		Connection: r.Connection,
 	}
 }
 
-var taskerScheduleStateRepositoryMapping = Mapping[schedule.State, schedule.StateID]{
+var taskerScheduleStateRepositoryMapping = Mapping[tasker.State, tasker.StateID]{
 	Table: "frameless_tasker_schedule_states",
 	ID:    "id",
-	NewIDFn: func(context.Context) (schedule.StateID, error) {
+	NewIDFn: func(context.Context) (tasker.StateID, error) {
 		return "", fmt.Errorf(".ID is required to be supplied externally")
 	},
 	Columns: []string{"id", "timestamp"},
-	ToArgsFn: func(ptr *schedule.State) ([]any, error) {
+	ToArgsFn: func(ptr *tasker.State) ([]any, error) {
 		return []any{
 			ptr.ID,
 			ptr.Timestamp,
 		}, nil
 	},
-	MapFn: func(scanner iterators.SQLRowScanner) (schedule.State, error) {
-		var state schedule.State
+	MapFn: func(scanner iterators.SQLRowScanner) (tasker.State, error) {
+		var state tasker.State
 		err := scanner.Scan(&state.ID, &state.Timestamp)
 		state.Timestamp = state.Timestamp.UTC()
 		return state, err
@@ -81,18 +81,18 @@ func (r TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
 	}.Migrate(ctx)
 }
 
-func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *schedule.State) error {
+func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *tasker.State) error {
 	return r.repository().Create(ctx, ptr)
 }
 
-func (r TaskerScheduleStateRepository) Update(ctx context.Context, ptr *schedule.State) error {
+func (r TaskerScheduleStateRepository) Update(ctx context.Context, ptr *tasker.State) error {
 	return r.repository().Update(ctx, ptr)
 }
 
-func (r TaskerScheduleStateRepository) DeleteByID(ctx context.Context, id schedule.StateID) error {
+func (r TaskerScheduleStateRepository) DeleteByID(ctx context.Context, id tasker.StateID) error {
 	return r.repository().DeleteByID(ctx, id)
 }
 
-func (r TaskerScheduleStateRepository) FindByID(ctx context.Context, id schedule.StateID) (ent schedule.State, found bool, err error) {
+func (r TaskerScheduleStateRepository) FindByID(ctx context.Context, id tasker.StateID) (ent tasker.State, found bool, err error) {
 	return r.repository().FindByID(ctx, id)
 }

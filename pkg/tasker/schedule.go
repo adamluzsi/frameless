@@ -1,11 +1,10 @@
-package schedule
+package tasker
 
 import (
 	"context"
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/guard"
 	"go.llib.dev/testcase/clock"
@@ -25,7 +24,11 @@ type StateRepository interface {
 	crud.ByIDFinder[State, StateID]
 }
 
-func (s Scheduler) WithSchedule(id StateID, interval tasker.Interval, job tasker.Task) tasker.Task {
+func WithSchedule[TFN genericTask](s Scheduler, id StateID, interval interval, tsk TFN) Task {
+	return s.WithSchedule(id, interval, ToTask[TFN](tsk))
+}
+
+func (s Scheduler) WithSchedule(id StateID, interval interval, job Task) Task {
 	locker := s.Repository.Locks().LockerFor(id)
 
 	next := func(ctx context.Context) (_ time.Duration, rErr error) {

@@ -16,7 +16,6 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/internal"
-	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -25,8 +24,6 @@ import (
 )
 
 var rnd = random.New(random.CryptoSeed{})
-
-const blockCheckWaitTime = 42 * time.Millisecond
 
 func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
 	var (
@@ -611,7 +608,7 @@ func ExampleWithShutdown_httpServer() {
 }
 
 func ExampleWithRepeat() {
-	task := tasker.WithRepeat(schedule.Interval(time.Second), func(ctx context.Context) error {
+	task := tasker.WithRepeat(tasker.Interval(time.Second), func(ctx context.Context) error {
 		// I'm a short-lived task, and prefer to be constantly executed,
 		// Repeat will keep repeating me every second until shutdown is signaled.
 		return nil
@@ -752,7 +749,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		task = tasker.WithRepeat(schedule.Interval(0), task)
+		task = tasker.WithRepeat(tasker.Interval(0), task)
 
 		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
 			t.Should.NoError(task(ctx))
@@ -770,7 +767,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		task = tasker.WithRepeat(schedule.Interval(time.Hour), task)
+		task = tasker.WithRepeat(tasker.Interval(time.Hour), task)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -795,7 +792,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		task = tasker.WithRepeat(schedule.Interval(0), task)
+		task = tasker.WithRepeat(tasker.Interval(0), task)
 
 		var done int32
 		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
@@ -818,7 +815,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return expErr
 		}
 
-		task = tasker.WithRepeat(schedule.Interval(0), task)
+		task = tasker.WithRepeat(tasker.Interval(0), task)
 
 		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
 			t.Should.ErrorIs(expErr, task(ctx))
@@ -839,7 +836,7 @@ func TestWithRepeat_smoke(t *testing.T) {
 			return nil
 		}
 
-		task = tasker.WithRepeat(schedule.Interval(0), task)
+		task = tasker.WithRepeat(tasker.Interval(0), task)
 
 		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
 			t.Should.ErrorIs(expErr, task(ctx))

@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/adapters/postgresql"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/pkg/tasker/schedule"
 	"go.llib.dev/frameless/ports/comproto"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/ports/pubsub"
@@ -42,7 +41,7 @@ func main() {
 	webAppTask := tasker.WithShutdown(tasker.IgnoreError(server.ListenAndServe, http.ErrServerClosed), server.Shutdown)
 
 	// create my consumer task with error recovery + graceful shutdown
-	myDomainEventConsumer := tasker.WithRepeat(schedule.Interval(0),
+	myDomainEventConsumer := tasker.WithRepeat(tasker.Interval(0),
 		// on error will recover HandleEvents when something goes wrong other than context cancellation
 		tasker.OnError(MyDomainEventConsumer{Subscriber: q}.HandleEvents,
 			func(ctx context.Context, err error) error {

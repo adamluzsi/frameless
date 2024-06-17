@@ -1,10 +1,10 @@
-package schedule_test
+package tasker_test
 
 import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/tasker/schedule"
+	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/random"
@@ -14,7 +14,7 @@ func TestInterval_smoke(t *testing.T) {
 	now := time.Now()
 	timecop.Travel(t, now, timecop.Freeze())
 	duration := time.Duration(random.New(random.CryptoSeed{}).IntB(int(time.Second), int(time.Hour)))
-	interval := schedule.Interval(duration)
+	interval := tasker.Interval(duration)
 
 	assert.Equal(t, 0, interval.UntilNext(now.Add(-1*duration)),
 		"when the next interval compared to the previous time is right now")
@@ -31,8 +31,8 @@ func TestInterval_smoke(t *testing.T) {
 func TestEvery_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	dur := time.Duration(rnd.IntB(int(time.Second), int(time.Hour)))
-	interval := schedule.Every(dur)
-	assert.Equal[schedule.Interval](t, schedule.Interval(dur), interval)
+	interval := tasker.Every(dur)
+	assert.Equal[tasker.Interval](t, tasker.Interval(dur), interval)
 }
 
 func TestMonthly_smoke(t *testing.T) {
@@ -49,7 +49,7 @@ func TestMonthly_smoke(t *testing.T) {
 		AddDate(0, 1, 0)
 
 	timecop.Travel(t, now, timecop.Freeze())
-	interval := schedule.Monthly{
+	interval := tasker.Monthly{
 		Day:      day,
 		Hour:     hour,
 		Minute:   min,
@@ -87,7 +87,7 @@ func TestDaily_smoke(t *testing.T) {
 		AddDate(0, 0, 1)
 
 	timecop.Travel(t, now, timecop.Freeze())
-	interval := schedule.Daily{
+	interval := tasker.Daily{
 		Hour:     hour,
 		Minute:   min,
 		Location: time.UTC,
