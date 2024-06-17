@@ -56,7 +56,7 @@ type RestResource[Entity, ID any] struct {
 	Mapping Mapping[Entity]
 
 	// MappingForMIME defines a per MIMEType Mapping, that takes priority over Mapping
-	MappingForMIME map[mimekit.MIMEType]Mapping[Entity]
+	MappingForMIME map[string]Mapping[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
 	ErrorHandler ErrorHandler
@@ -101,8 +101,8 @@ type idConverter[ID any] interface {
 	ParseID(string) (ID, error)
 }
 
-func (res RestResource[Entity, ID]) getMapping(mimeType mimekit.MIMEType) Mapping[Entity] {
-	mimeType = mimeType.Base() // TODO: TEST ME
+func (res RestResource[Entity, ID]) getMapping(mimeType string) Mapping[Entity] {
+	mimeType = mimekit.MediaType(mimeType) // TODO: TEST ME
 	if res.MappingForMIME != nil {
 		if mapping, ok := res.MappingForMIME[mimeType]; ok {
 			return mapping
@@ -310,7 +310,7 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set(headerKeyContentType, resMIMEType.String())
+	w.Header().Set(headerKeyContentType, resMIMEType)
 	listEncoder := serMaker.MakeListEncoder(w)
 
 	defer func() {
@@ -411,7 +411,7 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set(headerKeyContentType, resMIMEType.String())
+	w.Header().Set(headerKeyContentType, resMIMEType)
 	w.WriteHeader(http.StatusCreated)
 
 	if _, err := w.Write(data); err != nil {
@@ -441,7 +441,7 @@ func (res RestResource[Entity, ID]) show(w http.ResponseWriter, r *http.Request,
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r)
 	mapping := res.getMapping(resMIMEType)
 
-	w.Header().Set(headerKeyContentType, resMIMEType.String())
+	w.Header().Set(headerKeyContentType, resMIMEType)
 
 	dto, err := mapping.toDTO(ctx, entity)
 	if err != nil {

@@ -61,7 +61,7 @@ func ExampleRestResource() {
 
 		Mapping: httpkit.DTOMapping[X, XDTO]{},
 
-		MappingForMIME: map[mimekit.MIMEType]httpkit.Mapping[X]{
+		MappingForMIME: map[string]httpkit.Mapping[X]{
 			mimekit.JSON: httpkit.DTOMapping[X, XDTO]{},
 		},
 	}
@@ -89,7 +89,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 		return httpkit.RestResource[X, XID]{
 			IDContextKey: FooIDContextKey{},
 			Serialization: httpkit.RestResourceSerialization[X, XID]{
-				Serializers: map[mimekit.MIMEType]httpkit.Serializer{
+				Serializers: map[string]httpkit.Serializer{
 					mimekit.JSON: serializers.JSON{},
 				},
 				IDConverter: httpkit.IDConverter[XID]{},
@@ -829,7 +829,7 @@ func TestDTOMapping_manual(t *testing.T) {
 		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
-		r.Header.Set("Content-Type", mimekit.JSON.String())
+		r.Header.Set("Content-Type", mimekit.JSON)
 		resource.ServeHTTP(w, r)
 		assert.Equal(t, w.Code, http.StatusCreated)
 
@@ -842,7 +842,7 @@ func TestDTOMapping_manual(t *testing.T) {
 		t.Log("then we are able to retrieve this entity through the custom DTO")
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, pathkit.Join("/", id.String()), nil)
-		r.Header.Set("Accept", mimekit.JSON.String())
+		r.Header.Set("Accept", mimekit.JSON)
 		resource.ServeHTTP(w, r)
 		assert.Equal(t, w.Code, http.StatusOK)
 
