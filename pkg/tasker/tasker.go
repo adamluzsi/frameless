@@ -184,6 +184,13 @@ func WithRepeat[TFN genericTask](interval Interval, tfn TFN) Task {
 	}
 }
 
+// WithSchedule will repeatedly execute a given task according to its schedule,
+// ensuring coordination across application instances.
+// It prevents different application nodes from running the same task concurrently through using the Scheduler.
+func WithSchedule[TFN genericTask](s Scheduler, id StateID, interval Interval, tsk TFN) Task {
+	return s.WithSchedule(id, interval, ToTask[TFN](tsk))
+}
+
 type genericErrorHandler interface {
 	func(context.Context, error) error | func(error) error
 }

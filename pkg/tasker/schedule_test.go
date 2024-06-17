@@ -19,6 +19,20 @@ func ExampleScheduler_WithSchedule() {
 		Repository: nil, // &postgresql.TaskerScheduleRepository{CM: cm},
 	}
 
+	task := scheduler.WithSchedule("db maintenance", tasker.Monthly{Day: 1}, func(ctx context.Context) error {
+		return nil
+	})
+
+	if err := task(context.Background()); err != nil {
+		log.Println("ERROR", err.Error())
+	}
+}
+
+func ExampleWithSchedule() {
+	scheduler := tasker.Scheduler{
+		Repository: nil, // &postgresql.TaskerScheduleRepository{CM: cm},
+	}
+
 	task := tasker.WithSchedule(scheduler, "db maintenance", tasker.Monthly{Day: 1}, func(ctx context.Context) error {
 		return nil
 	})

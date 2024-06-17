@@ -24,10 +24,6 @@ type StateRepository interface {
 	crud.ByIDFinder[State, StateID]
 }
 
-func WithSchedule[TFN genericTask](s Scheduler, id StateID, interval Interval, tsk TFN) Task {
-	return s.WithSchedule(id, interval, ToTask[TFN](tsk))
-}
-
 func (s Scheduler) WithSchedule(id StateID, interval Interval, job Task) Task {
 	locker := s.Repository.Locks().LockerFor(id)
 
