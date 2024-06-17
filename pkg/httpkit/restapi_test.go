@@ -17,6 +17,7 @@ import (
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -60,8 +61,8 @@ func ExampleRestResource() {
 
 		Mapping: httpkit.DTOMapping[X, XDTO]{},
 
-		MappingForMIME: map[httpkit.MIMEType]httpkit.Mapping[X]{
-			httpkit.JSON: httpkit.DTOMapping[X, XDTO]{},
+		MappingForMIME: map[string]httpkit.Mapping[X]{
+			mediatype.JSON: httpkit.DTOMapping[X, XDTO]{},
 		},
 	}
 
@@ -88,8 +89,8 @@ func TestResource_ServeHTTP(t *testing.T) {
 		return httpkit.RestResource[X, XID]{
 			IDContextKey: FooIDContextKey{},
 			Serialization: httpkit.RestResourceSerialization[X, XID]{
-				Serializers: map[httpkit.MIMEType]httpkit.Serializer{
-					httpkit.JSON: serializers.JSON{},
+				Serializers: map[string]httpkit.Serializer{
+					mediatype.JSON: serializers.JSON{},
 				},
 				IDConverter: httpkit.IDConverter[XID]{},
 			},
@@ -725,7 +726,7 @@ func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 				return rr.Result(), nil
 			}),
 		},
-		MIMEType: httpkit.FormUrlencoded,
+		MIMEType: mediatype.FormUrlencoded,
 	}
 
 	exp := Foo{
@@ -828,7 +829,7 @@ func TestDTOMapping_manual(t *testing.T) {
 		assert.NoError(t, err)
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
-		r.Header.Set("Content-Type", httpkit.JSON.String())
+		r.Header.Set("Content-Type", mediatype.JSON)
 		resource.ServeHTTP(w, r)
 		assert.Equal(t, w.Code, http.StatusCreated)
 
@@ -841,7 +842,7 @@ func TestDTOMapping_manual(t *testing.T) {
 		t.Log("then we are able to retrieve this entity through the custom DTO")
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest(http.MethodGet, pathkit.Join("/", id.String()), nil)
-		r.Header.Set("Accept", httpkit.JSON.String())
+		r.Header.Set("Accept", mediatype.JSON)
 		resource.ServeHTTP(w, r)
 		assert.Equal(t, w.Code, http.StatusOK)
 
@@ -878,7 +879,7 @@ func TestRouter_Resource(t *testing.T) {
 	{
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
-		req.Header.Set("Content-Type", httpkit.JSON.String())
+		req.Header.Set("Content-Type", mediatype.JSON)
 		r.ServeHTTP(rr, req)
 
 		var index []FooDTO
@@ -890,7 +891,7 @@ func TestRouter_Resource(t *testing.T) {
 	{
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/foo/42", nil)
-		req.Header.Set("Content-Type", httpkit.JSON.String())
+		req.Header.Set("Content-Type", mediatype.JSON)
 		r.ServeHTTP(rr, req)
 
 		var show FooDTO

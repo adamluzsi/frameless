@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
@@ -56,7 +55,7 @@ type RestResource[Entity, ID any] struct {
 	Mapping Mapping[Entity]
 
 	// MappingForMIME defines a per MIMEType Mapping, that takes priority over Mapping
-	MappingForMIME map[MIMEType]Mapping[Entity]
+	MappingForMIME map[string]Mapping[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
 	ErrorHandler ErrorHandler
@@ -101,8 +100,8 @@ type idConverter[ID any] interface {
 	ParseID(string) (ID, error)
 }
 
-func (res RestResource[Entity, ID]) getMapping(mimeType MIMEType) Mapping[Entity] {
-	mimeType = mimeType.Base() // TODO: TEST ME
+func (res RestResource[Entity, ID]) getMapping(mimeType string) Mapping[Entity] {
+	mimeType = getMediaType(mimeType) // TODO: TEST ME
 	if res.MappingForMIME != nil {
 		if mapping, ok := res.MappingForMIME[mimeType]; ok {
 			return mapping
@@ -310,7 +309,7 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set(headerKeyContentType, resMIMEType.String())
+	w.Header().Set(headerKeyContentType, resMIMEType)
 	listEncoder := serMaker.MakeListEncoder(w)
 
 	defer func() {
@@ -411,7 +410,7 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	w.Header().Set(headerKeyContentType, resMIMEType.String())
+	w.Header().Set(headerKeyContentType, resMIMEType)
 	w.WriteHeader(http.StatusCreated)
 
 	if _, err := w.Write(data); err != nil {
@@ -441,7 +440,7 @@ func (res RestResource[Entity, ID]) show(w http.ResponseWriter, r *http.Request,
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r)
 	mapping := res.getMapping(resMIMEType)
 
-	w.Header().Set(headerKeyContentType, resMIMEType.String())
+	w.Header().Set(headerKeyContentType, resMIMEType)
 
 	dto, err := mapping.toDTO(ctx, entity)
 	if err != nil {
@@ -626,60 +625,6 @@ func bodyReadAll(body io.ReadCloser, bodyReadLimit iokit.ByteSize) (_ []byte, re
 	}
 	return data, err
 }
-
-// MIMEType or Multipurpose Internet Mail Extensions is an internet standard
-// that extends the original email protocol to support non-textual content,
-// such as images, audio files, and binary data.
-//
-// It was first defined in RFC 1341 and later updated in RFC 2045.
-// MIMEType allows for the encoding different types of data using a standardised format
-// that can be transmitted over email or other internet protocols.
-// This makes it possible to send and receive messages with a variety of content,
-// such as text, images, audio, and video, in a consistent way across different mail clients and servers.
-//
-// The MIMEType type is an essential component of this system, as it specifies the format of the data being transmitted.
-// A MIMEType type consists of two parts: the type and the subtype, separated by a forward slash (`/`).
-// The type indicates the general category of the data, such as `text`, `image`, or `audio`.
-// The subtype provides more information about the specific format of the data,
-// such as `plain` for plain text or `jpeg` for JPEG images.
-// Today MIMEType is not only used for email but also for other internet protocols, such as HTTP,
-// where it is used to specify the format of data in web requests and responses.
-//
-// MIMEType type is commonly used in RESTful APIs as well.
-// In an HTTP request or response header, the Content-Type field specifies the MIMEType type of the entity body.
-type MIMEType string
-
-const (
-	PlainText      MIMEType = "text/plain"
-	JSON           MIMEType = "application/json"
-	XML            MIMEType = "application/xml"
-	HTML           MIMEType = "text/html"
-	OctetStream    MIMEType = "application/octet-stream"
-	FormUrlencoded MIMEType = "application/x-www-form-urlencoded"
-)
-
-func (ct MIMEType) WithCharset(charset string) MIMEType {
-	const attrKey = "charset"
-	if strings.Contains(string(ct), attrKey) {
-		var parts []string
-		for _, pt := range strings.Split(string(ct), ";") {
-			if !strings.Contains(pt, attrKey) {
-				parts = append(parts, pt)
-			}
-		}
-		ct = MIMEType(strings.Join(parts, ";"))
-	}
-	return MIMEType(fmt.Sprintf("%s; %s=%s", ct, attrKey, charset))
-}
-
-func (ct MIMEType) Base() MIMEType {
-	for _, pt := range strings.Split(string(ct), ";") {
-		return MIMEType(pt)
-	}
-	return ct
-}
-
-func (ct MIMEType) String() string { return string(ct) }
 
 const (
 	headerKeyContentType = "Content-Type"

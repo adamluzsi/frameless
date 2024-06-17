@@ -23,7 +23,7 @@ import (
 type RestClient[Entity, ID any] struct {
 	BaseURL     string
 	HTTPClient  *http.Client
-	MIMEType    MIMEType
+	MIMEType    string
 	Mapping     Mapping[Entity]
 	Serializer  RestClientSerializer
 	IDConverter idConverter[ID]
@@ -65,8 +65,8 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	req.Header.Set(headerKeyContentType, mimeType.String())
-	req.Header.Set(headerKeyAccept, mimeType.String())
+	req.Header.Set(headerKeyContentType, mimeType)
+	req.Header.Set(headerKeyAccept, mimeType)
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -113,8 +113,8 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 		return iterators.Error[Entity](err)
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMIMEType().String())
-	req.Header.Set(headerKeyAccept, r.getMIMEType().String())
+	req.Header.Set(headerKeyContentType, r.getMIMEType())
+	req.Header.Set(headerKeyAccept, r.getMIMEType())
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -125,7 +125,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 
 	mimeType, ser, ok := r.contentTypeBasedSerializer(resp)
 	if !ok {
-		return iterators.Error[Entity](fmt.Errorf("no serializer configured for response content type: %s", mimeType.String()))
+		return iterators.Error[Entity](fmt.Errorf("no serializer configured for response content type: %s", mimeType))
 	}
 
 	dm, ok := ser.(serializers.ListDecoderMaker)
@@ -154,8 +154,8 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 	}, iterators.OnClose(dec.Close))
 }
 
-func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (MIMEType, Serializer, bool) {
-	mt := MIMEType(resp.Header.Get("Content-Type"))
+func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
+	mt := string(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
 	if !ok && r.Serializer != nil {
 		ser, ok = r.Serializer, true
@@ -163,10 +163,10 @@ func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) 
 	return mt, ser, ok
 }
 
-func (r RestClient[Entity, ID]) getResponseMimeType(resp *http.Response) MIMEType {
+func (r RestClient[Entity, ID]) getResponseMimeType(resp *http.Response) string {
 	ct := resp.Header.Get(headerKeyContentType)
 	if ct != "" {
-		return MIMEType(ct).Base()
+		return getMediaType(ct)
 	}
 	return r.MIMEType
 }
@@ -189,8 +189,8 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 		return ent, false, err
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMIMEType().String())
-	req.Header.Set(headerKeyAccept, r.getMIMEType().String())
+	req.Header.Set(headerKeyContentType, r.getMIMEType())
+	req.Header.Set(headerKeyAccept, r.getMIMEType())
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -213,7 +213,7 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 	dtoPtr := mapping.newDTO()
 	mimeType, ser, ok := r.contentTypeBasedSerializer(resp)
 	if !ok {
-		return ent, false, fmt.Errorf("no serializer configured for response content type: %s", mimeType.String())
+		return ent, false, fmt.Errorf("no serializer configured for response content type: %s", mimeType)
 	}
 
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
@@ -273,8 +273,8 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMIMEType().String())
-	req.Header.Set(headerKeyAccept, r.getMIMEType().String())
+	req.Header.Set(headerKeyContentType, r.getMIMEType())
+	req.Header.Set(headerKeyAccept, r.getMIMEType())
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -382,7 +382,7 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RestClient[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
+func (r RestClient[Entity, ID]) getSerializer(mimeType string) Serializer {
 	if r.Serializer != nil {
 		return r.Serializer
 	}
@@ -392,10 +392,10 @@ func (r RestClient[Entity, ID]) getSerializer(mimeType MIMEType) Serializer {
 	return DefaultSerializer.Serializer
 }
 
-func (r RestClient[Entity, ID]) lookupSerializer(mimeType MIMEType) (Serializer, bool) {
-	mimeType = mimeType.Base()
+func (r RestClient[Entity, ID]) lookupSerializer(mimeType string) (Serializer, bool) {
+	mimeType = getMediaType(mimeType)
 	for mt, ser := range DefaultSerializers {
-		if mt.Base() == mimeType {
+		if getMediaType(mt) == mimeType {
 			return ser, true
 		}
 	}
@@ -423,8 +423,8 @@ func (r RestClient[Entity, ID]) getMapping() Mapping[Entity] {
 	return r.Mapping
 }
 
-func (r RestClient[Entity, ID]) getMIMEType() MIMEType {
-	var zero MIMEType
+func (r RestClient[Entity, ID]) getMIMEType() string {
+	var zero string
 	if r.MIMEType != zero {
 		return r.MIMEType
 	}
