@@ -14,7 +14,7 @@ func TestInterval_smoke(t *testing.T) {
 	now := time.Now()
 	timecop.Travel(t, now, timecop.Freeze())
 	duration := time.Duration(random.New(random.CryptoSeed{}).IntB(int(time.Second), int(time.Hour)))
-	interval := tasker.Interval(duration)
+	interval := tasker.Every(duration)
 
 	assert.Equal(t, 0, interval.UntilNext(now.Add(-1*duration)),
 		"when the next interval compared to the previous time is right now")
@@ -31,8 +31,12 @@ func TestInterval_smoke(t *testing.T) {
 func TestEvery_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	dur := time.Duration(rnd.IntB(int(time.Second), int(time.Hour)))
+	now := time.Now()
+	timecop.Travel(t, now, timecop.Freeze())
+
 	interval := tasker.Every(dur)
-	assert.Equal[tasker.Interval](t, tasker.Interval(dur), interval)
+	assert.Equal(t, interval.UntilNext(now), dur)
+	assert.Equal(t, interval.UntilNext(now.Add(-1*dur)), 0)
 }
 
 func TestMonthly_smoke(t *testing.T) {

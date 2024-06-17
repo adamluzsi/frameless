@@ -6,12 +6,17 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-type Interval time.Duration
+// Interval a scheduling interval component that can identify
+type Interval interface {
+	UntilNext(lastRanAt time.Time) time.Duration
+}
 
-// Every is a syntax sugar to make the reading the usage of time.Duration based Interval more fluent.
-func Every(d time.Duration) Interval { return Interval(d) }
+// Every returns an Interval which scheduling frequency is the received time duration.
+func Every(d time.Duration) Interval { return timeDuration(d) }
 
-func (i Interval) UntilNext(lastRanAt time.Time) time.Duration {
+type timeDuration time.Duration
+
+func (i timeDuration) UntilNext(lastRanAt time.Time) time.Duration {
 	return lastRanAt.Add(time.Duration(i)).Sub(clock.TimeNow())
 }
 

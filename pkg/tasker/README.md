@@ -20,7 +20,7 @@ If your Job is a short-lived interaction, which is meant to be executed continuo
 then you can use the `tasker.WithRepeat` to implement a continuous execution that stops on a shutdown signal.
 
 ```go
-task := tasker.WithRepeat(tasker.Interval(time.Second), func(ctx context.Context) error {
+task := tasker.WithRepeat(tasker.Every(time.Second), func(ctx context.Context) error {
 	// I'm a short-lived task, and I prefer to be constantly executed,
 	// Repeat will keep repeating to me every second until the shutdown is signalled.
 	return nil
@@ -40,7 +40,7 @@ In the `schedule` package, you can choose from various options on how would you 
 
 - Schedule by time duration interval
 ```go
-tasker.Interval(time.Second) // schedule every second
+tasker.Every(time.Second) // schedule every second
 ```
 
 - Schedule on a Daily basis

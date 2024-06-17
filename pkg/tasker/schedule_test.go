@@ -60,9 +60,9 @@ func TestScheduler(t *testing.T) {
 		)
 		act := func(t *testcase.T) tasker.Task {
 			if t.Random.Bool() { // alias
-				return tasker.WithSchedule(subject.Get(t), jobID.Get(t), tasker.Interval(interval.Get(t)), job.Get(t))
+				return tasker.WithSchedule(subject.Get(t), jobID.Get(t), tasker.Every(interval.Get(t)), job.Get(t))
 			}
-			return subject.Get(t).WithSchedule(jobID.Get(t), tasker.Interval(interval.Get(t)), job.Get(t))
+			return subject.Get(t).WithSchedule(jobID.Get(t), tasker.Every(interval.Get(t)), job.Get(t))
 		}
 
 		var Context = let.Context(s)
