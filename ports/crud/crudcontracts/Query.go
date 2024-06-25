@@ -28,7 +28,7 @@ import (
 // The func signature for Query is the generic representation of a query that meant to find one result.
 // It is really similar to resources.Finder#FindByID,
 // with the exception that the closure meant to know the query method name on the subject and the inputs it requires.
-type QueryOneFunc[Entity any] func(ctx context.Context, ent Entity) (_ Entity, found bool, _ error)
+type QueryOneFunc[Entity any] func(tb testing.TB, ctx context.Context, ent Entity) (_ Entity, found bool, _ error)
 
 func QueryOne[Entity, ID any](subject any, query QueryOneFunc[Entity], opts ...Option[Entity, ID]) contract.Contract {
 	c := option.Use[Config[Entity, ID]](opts)
@@ -43,7 +43,7 @@ func QueryOne[Entity, ID any](subject any, query QueryOneFunc[Entity], opts ...O
 		})
 	)
 	act := func(t *testcase.T) (Entity, bool, error) {
-		return query(context.WithValue(ctx.Get(t), TestingTBContextKey{}, t), *ptr.Get(t))
+		return query(t, ctx.Get(t), *ptr.Get(t))
 	}
 
 	s.Before(func(t *testcase.T) {
@@ -107,7 +107,7 @@ func QueryOne[Entity, ID any](subject any, query QueryOneFunc[Entity], opts ...O
 	return s.AsSuite("QueryOne")
 }
 
-type QueryManyFunc[Entity any] func(ctx context.Context) iterators.Iterator[Entity]
+type QueryManyFunc[Entity any] func(tb testing.TB, ctx context.Context) iterators.Iterator[Entity]
 
 func QueryMany[Entity, ID any](
 	subject any,
@@ -146,7 +146,7 @@ func QueryMany[Entity, ID any](
 	)
 	act := func(t *testcase.T) iterators.Iterator[Entity] {
 		assert.NotNil(t, query, "QueryMany subject has no MakeQuery value")
-		return query(context.WithValue(ctx.Get(t), TestingTBContextKey{}, t))
+		return query(t, ctx.Get(t))
 	}
 
 	s.When(`resource has entity that the query should return`, func(s *testcase.Spec) {

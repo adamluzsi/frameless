@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"testing"
 
 	"go.llib.dev/frameless/ports/contract"
 	crudtest "go.llib.dev/frameless/ports/crud/crudtest"
@@ -94,7 +95,7 @@ func ByIDFinder[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, 
 			})
 		})
 
-		QueryOne[Entity, ID](subject, func(ctx context.Context, ent Entity) (_ Entity, found bool, _ error) {
+		QueryOne[Entity, ID](subject, func(tb testing.TB, ctx context.Context, ent Entity) (_ Entity, found bool, _ error) {
 			id, ok := extid.Lookup[ID](ent)
 			if !ok { // if no id found create a dummy ID
 				// Since an id is always required to use FindByID,
@@ -117,7 +118,9 @@ func ByIDFinder[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, 
 func AllFinder[Entity, ID any](subject subjectAllFinder[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
 	c := option.Use[Config[Entity, ID]](opts)
 	return QueryMany[Entity, ID](subject,
-		subject.FindAll,
+		func(tb testing.TB, ctx context.Context) iterators.Iterator[Entity] {
+			return subject.FindAll(ctx)
+		},
 		c.MakeEntity,
 		nil, // intentionally empty as it is not applicable to create an entity that is not returned by AllFinder
 		c,

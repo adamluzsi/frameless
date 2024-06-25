@@ -141,17 +141,23 @@ func EntityRepository[Entity any, ID comparable](subject cachepkg.EntityReposito
 
 					ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 					t.Must.True(ok, `entity 1 should have id`)
-					actual1, found, err := subject.FindByID(ctx.Get(t), ent1ID)
-					t.Must.Nil(err)
-					t.Must.True(found, `entity 1 was expected to be stored`)
-					t.Must.Equal(*ent1.Get(t), actual1)
+
+					t.Eventually(func(t *testcase.T) {
+						actual1, found, err := subject.FindByID(ctx.Get(t), ent1ID)
+						t.Must.Nil(err)
+						t.Must.True(found, `entity 1 was expected to be stored`)
+						t.Must.Equal(*ent1.Get(t), actual1)
+					})
 
 					ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 					t.Must.True(ok, `entity 2 should have id`)
-					actual2, found, err := subject.FindByID(ctx.Get(t), ent2ID)
-					t.Must.Nil(err)
-					t.Must.True(found, `entity 2 was expected to be stored`)
-					t.Must.Equal(*ent2.Get(t), actual2)
+
+					t.Eventually(func(t *testcase.T) {
+						actual2, found, err := subject.FindByID(ctx.Get(t), ent2ID)
+						t.Must.Nil(err)
+						t.Must.True(found, `entity 2 was expected to be stored`)
+						t.Must.Equal(*ent2.Get(t), actual2)
+					})
 				})
 
 				s.And(`entities already have a repository string id`, func(s *testcase.Spec) {
@@ -166,16 +172,22 @@ func EntityRepository[Entity any, ID comparable](subject cachepkg.EntityReposito
 						ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 						t.Must.True(ok, `entity 1 should have id`)
 
-						actual1, found, err := subject.FindByID(ctx.Get(t), ent1ID)
-						t.Must.Nil(err)
-						t.Must.True(found, `entity 1 was expected to be stored`)
-						t.Must.Equal(*ent1.Get(t), actual1)
+						t.Eventually(func(t *testcase.T) {
+							actual1, found, err := subject.FindByID(ctx.Get(t), ent1ID)
+							t.Must.Nil(err)
+							t.Must.True(found, `entity 1 was expected to be stored`)
+							t.Must.Equal(*ent1.Get(t), actual1)
+						})
 
 						ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 						t.Must.True(ok, `entity 2 should have id`)
-						_, found, err = subject.FindByID(ctx.Get(t), ent2ID)
-						t.Must.Nil(err)
-						t.Must.True(found, `entity 2 was expected to be stored`)
+
+						t.Eventually(func(t *testcase.T) {
+							_, found, err := subject.FindByID(ctx.Get(t), ent2ID)
+							t.Must.Nil(err)
+							t.Must.True(found, `entity 2 was expected to be stored`)
+						})
+
 					})
 				})
 			})
@@ -204,21 +216,27 @@ func EntityRepository[Entity any, ID comparable](subject cachepkg.EntityReposito
 					ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 					t.Must.True(ok, `entity 1 should have id`)
 
-					_, found, err := subject.FindByID(ctx.Get(t), ent1ID)
-					t.Must.Nil(err)
-					t.Must.True(found, `entity 1 was expected to be stored`)
+					t.Eventually(func(t *testcase.T) {
+						_, found, err := subject.FindByID(ctx.Get(t), ent1ID)
+						t.Must.Nil(err)
+						t.Must.True(found, `entity 1 was expected to be stored`)
+					})
 
 					ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 					t.Must.True(ok, `entity 2 should have id`)
-					_, found, err = subject.FindByID(ctx.Get(t), ent2ID)
-					t.Must.Nil(err)
-					t.Must.True(found, `entity 2 was expected to be stored`)
+
+					t.Eventually(func(t *testcase.T) {
+						_, found, err := subject.FindByID(ctx.Get(t), ent2ID)
+						t.Must.Nil(err)
+						t.Must.True(found, `entity 2 was expected to be stored`)
+					})
 				})
 
 				s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
 					initialCount, err := iterators.Count(subject.FindAll(ctx.Get(t)))
 					t.Must.Nil(err)
 					t.Must.Nil(act(t))
+
 					count, err := iterators.Count(subject.FindAll(ctx.Get(t)))
 					t.Must.Nil(err)
 					t.Must.Equal(initialCount, count)
@@ -241,22 +259,28 @@ func EntityRepository[Entity any, ID comparable](subject cachepkg.EntityReposito
 						ent1ID, ok := extid.Lookup[ID](ent1.Get(t))
 						t.Must.True(ok, `entity 1 should have id`)
 
-						actual, found, err := subject.FindByID(ctx.Get(t), ent1ID)
-						t.Must.Nil(err)
-						t.Must.True(found, `entity 1 was expected to be stored`)
-						t.Must.Equal(ent1.Get(t), &actual)
+						t.Eventually(func(t *testcase.T) {
+							actual, found, err := subject.FindByID(ctx.Get(t), ent1ID)
+							t.Must.Nil(err)
+							t.Must.True(found, `entity 1 was expected to be stored`)
+							t.Must.Equal(ent1.Get(t), &actual)
+						})
 
 						ent2ID, ok := extid.Lookup[ID](ent2.Get(t))
 						t.Must.True(ok, `entity 2 should have id`)
-						_, found, err = subject.FindByID(ctx.Get(t), ent2ID)
-						t.Must.Nil(err)
-						t.Must.True(found, `entity 2 was expected to be stored`)
+
+						t.Eventually(func(t *testcase.T) {
+							_, found, err := subject.FindByID(ctx.Get(t), ent2ID)
+							t.Must.Nil(err)
+							t.Must.True(found, `entity 2 was expected to be stored`)
+						})
 					})
 
 					s.Then(`total count of the entities will not increase`, func(t *testcase.T) {
 						initialCount, err := iterators.Count(subject.FindAll(ctx.Get(t)))
 						t.Must.NoError(err)
 						t.Must.Nil(act(t))
+
 						count, err := iterators.Count(subject.FindAll(ctx.Get(t)))
 						t.Must.Nil(err)
 						t.Must.Equal(initialCount, count)
