@@ -27,6 +27,8 @@ var Eventually = assert.Retry{
 
 func HasID[Entity, ID any](tb testing.TB, ent Entity) (id ID) {
 	tb.Helper()
+	// TODO: remove this, makes no sense to wait for an async unsafe id value setting.
+	//       It feels like supporting bad implementation designs.
 	Eventually.Assert(tb, func(it assert.It) {
 		var ok bool
 		id, ok = extid.Lookup[ID](ent)
@@ -78,18 +80,22 @@ func HasEntity[Entity, ID any](tb testing.TB, subject crud.ByIDFinder[Entity, ID
 	})
 }
 
-func Create[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
+func Create[Entity, ID any](tb testing.TB, subject crud.Creator[Entity], ctx context.Context, ptr *Entity) {
 	tb.Helper()
 	assert.Must(tb).Nil(subject.Create(ctx, ptr))
 	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
 	tb.Cleanup(func() {
-		_, found, err := subject.FindByID(ctx, id)
-		if err != nil || !found {
+		del, ok := subject.(crud.ByIDDeleter[ID])
+		if !ok {
+			tb.Logf("skipping cleanup as %T doesn't implement crud.ByIDDeleter", subject)
+			tb.Logf("make sure to manually clean up %T#%v", *new(Entity), id)
 			return
 		}
-		_ = subject.DeleteByID(ctx, id)
+		_ = del.DeleteByID(ctx, id)
 	})
-	IsPresent[Entity, ID](tb, subject, ctx, id)
+	if finder, ok := subject.(crud.ByIDFinder[Entity, ID]); ok {
+		IsPresent[Entity, ID](tb, finder, ctx, id)
+	}
 }
 
 type updater[Entity, ID any] interface {

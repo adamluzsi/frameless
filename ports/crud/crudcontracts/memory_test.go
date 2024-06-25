@@ -7,10 +7,9 @@ import (
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/assert"
 )
 
-func Test_memoryRepository(t *testing.T) {
+func Test_memory(t *testing.T) {
 	type ID string
 	type Entity struct {
 		ID   ID `ext:"ID"`
@@ -30,14 +29,7 @@ func Test_memoryRepository(t *testing.T) {
 		SupportRecreate: true,
 	}
 
-	testcase.RunSuite(s,
-		crudcontracts.Creator[Entity, ID](subject, config),
-		crudcontracts.Finder[Entity, ID](subject, config),
-		crudcontracts.Deleter[Entity, ID](subject, config),
-		crudcontracts.Updater[Entity, ID](subject, config),
-		crudcontracts.OnePhaseCommitProtocol[Entity, ID](subject, m, config),
-		crudcontracts.ByIDsFinder[Entity, ID](subject, config),
-	)
+	testcase.RunSuite(s, contracts[Entity, ID](subject, m, config)...)
 }
 
 func Test_cleanup(t *testing.T) {
@@ -58,19 +50,5 @@ func Test_cleanup(t *testing.T) {
 		subject.Compress()
 	})
 
-	testcase.RunSuite(s,
-		crudcontracts.Creator[testent.Foo, testent.FooID](subject, crudConfig),
-		crudcontracts.Finder[testent.Foo, testent.FooID](subject, crudConfig),
-		crudcontracts.Updater[testent.Foo, testent.FooID](subject, crudConfig),
-		crudcontracts.Deleter[testent.Foo, testent.FooID](subject, crudConfig),
-		crudcontracts.OnePhaseCommitProtocol[testent.Foo, testent.FooID](subject, subject.EventLog, crudConfig),
-	)
-
-	s.Finish()
-
-	m.Compress()
-
-	assert.Must(t).Empty(m.Events(),
-		`after all the specs, the memory repository was expected to be empty.`+
-			` If the repository has values, it means something is not cleaning up properly in the specs.`)
+	testcase.RunSuite(s, contracts[testent.Foo, testent.FooID](subject, m, crudConfig)...)
 }

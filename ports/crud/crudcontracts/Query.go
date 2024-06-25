@@ -2,15 +2,16 @@ package crudcontracts
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/ports/contract"
+	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/option"
 
 	"go.llib.dev/frameless/pkg/pointer"
 
-	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
@@ -29,7 +30,7 @@ import (
 // with the exception that the closure meant to know the query method name on the subject and the inputs it requires.
 type QueryOneFunc[Entity any] func(ctx context.Context, ent Entity) (_ Entity, found bool, _ error)
 
-func QueryOne[Entity, ID any](subject crd[Entity, ID], query QueryOneFunc[Entity], opts ...Option[Entity, ID]) contract.Contract {
+func QueryOne[Entity, ID any](subject any, query QueryOneFunc[Entity], opts ...Option[Entity, ID]) contract.Contract {
 	c := option.Use[Config[Entity, ID]](opts)
 	s := testcase.NewSpec(nil)
 
@@ -50,8 +51,8 @@ func QueryOne[Entity, ID any](subject crd[Entity, ID], query QueryOneFunc[Entity
 	})
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ptr.Get(t))
+		ptr.Let(s, func(t *testcase.T) *Entity {
+			return pointer.Of(ensureExistingEntity(t, c, subject))
 		})
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
@@ -77,8 +78,7 @@ func QueryOne[Entity, ID any](subject crd[Entity, ID], query QueryOneFunc[Entity
 
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				ent := c.MakeEntity(t)
-				crudtest.Create[Entity, ID](t, subject, c.MakeContext(), &ent)
+				ensureExistingEntity(t, c, subject, *ptr.Get(t))
 			})
 
 			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
@@ -92,7 +92,9 @@ func QueryOne[Entity, ID any](subject crd[Entity, ID], query QueryOneFunc[Entity
 
 	s.When(`no entity is saved in the resource`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			spechelper.TryCleanup(t, c.MakeContext(), subject)
+			if !spechelper.TryCleanup(t, c.MakeContext(), subject) {
+				t.Skip("unable to clean resource")
+			}
 		})
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
@@ -108,24 +110,29 @@ func QueryOne[Entity, ID any](subject crd[Entity, ID], query QueryOneFunc[Entity
 type QueryManyFunc[Entity any] func(ctx context.Context) iterators.Iterator[Entity]
 
 func QueryMany[Entity, ID any](
-	subject crd[Entity, ID],
+	subject any,
 	// Query which is the subject of this contract,
 	query QueryManyFunc[Entity],
-	// MakeIncludedEntity return an entity that is matched by the QueryManyFunc
-	MakeIncludedEntity func(tb testing.TB) Entity,
+	// IncludedEntity return an entity that is matched by the QueryManyFunc.
+	// If subject doesn't support Creator, then it should be present in the subject resource.
+	IncludedEntity func(tb testing.TB) Entity,
 	// MakeExcludedEntity is an optional property,
 	// that could be used ensure the query returns only the expected values.
-	MakeExcludedEntity func(tb testing.TB) Entity,
+	// If subject doesn't support Creator, then it should be present in the subject resource.
+	ExcludedEntity func(tb testing.TB) Entity,
 	opts ...Option[Entity, ID],
 ) contract.Contract {
 
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config[Entity, ID]](opts)
 
+	var MakeIncludedEntity = func(tb testing.TB) Entity {
+		assert.NotNil(tb, IncludedEntity, "MakeIncludedEntity is mandatory for QueryMany")
+		return makeEntity[Entity, ID](tb, c, subject, IncludedEntity)
+	}
+
 	s.Before(func(t *testcase.T) {
-		assert.NotNil(t, subject, "QueryMany subject has no Resource value")
-		assert.NotNil(t, query, "QueryMany subject has no MakeQuery value")
-		assert.NotNil(t, MakeIncludedEntity, "MakeIncludedEntity is required for QueryMany")
+		assert.NotNil(t, subject, "subject value is mandatory for QueryMany")
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -138,14 +145,13 @@ func QueryMany[Entity, ID any](
 		})
 	)
 	act := func(t *testcase.T) iterators.Iterator[Entity] {
+		assert.NotNil(t, query, "QueryMany subject has no MakeQuery value")
 		return query(context.WithValue(ctx.Get(t), TestingTBContextKey{}, t))
 	}
 
 	s.When(`resource has entity that the query should return`, func(s *testcase.Spec) {
 		includedEntity := testcase.Let(s, func(t *testcase.T) Entity {
-			ent := MakeIncludedEntity(t)
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), &ent)
-			return ent
+			return MakeIncludedEntity(t)
 		}).EagerLoading(s)
 
 		s.Then(`the query will return the entity`, func(t *testcase.T) {
@@ -159,10 +165,18 @@ func QueryMany[Entity, ID any](
 		s.And(`another similar entities are saved in the resource`, func(s *testcase.Spec) {
 			additionalEntities := testcase.Let(s, func(t *testcase.T) (ents []Entity) {
 				t.Random.Repeat(1, 3, func() {
-					ent := MakeIncludedEntity(t)
-					crudtest.Create[Entity, ID](t, subject, c.MakeContext(), &ent)
-					ents = append(ents, ent)
+					ents = append(ents, MakeIncludedEntity(t))
 				})
+				for i, a := range ents {
+					for j, b := range ents {
+						if i == j {
+							continue
+						}
+						if !reflect.DeepEqual(a, b) {
+							t.Skip("skipping test as it requires that IncludeEntity produces unique entities (at least unique ID)")
+						}
+					}
+				}
 				return ents
 			}).EagerLoading(s)
 
@@ -199,32 +213,32 @@ func QueryMany[Entity, ID any](
 				})
 			})
 
-			s.Then("query execution can interlace with FindByID", func(t *testcase.T) { // multithreaded apps
-				t.Eventually(func(it *testcase.T) {
-					iter := act(t)
-					defer func() { it.Must.NoError(iter.Close()) }()
-					for iter.Next() {
-						value := iter.Value()
+			if subject, ok := subject.(crud.ByIDFinder[Entity, ID]); ok {
+				s.Then("query execution can interlace with FindByID", func(t *testcase.T) { // multithreaded apps
+					t.Eventually(func(it *testcase.T) {
+						iter := act(t)
+						defer func() { it.Must.NoError(iter.Close()) }()
+						for iter.Next() {
+							value := iter.Value()
 
-						id, ok := extid.Lookup[ID](value)
-						it.Must.True(ok)
+							id, ok := extid.Lookup[ID](value)
+							it.Must.True(ok)
 
-						ent, found, err := subject.FindByID(c.MakeContext(), id)
-						it.Must.NoError(err)
-						it.Must.True(found)
-						it.Must.Equal(value, ent)
-					}
-					it.Must.NoError(iter.Err())
+							ent, found, err := subject.FindByID(c.MakeContext(), id)
+							it.Must.NoError(err)
+							it.Must.True(found)
+							it.Must.Equal(value, ent)
+						}
+						it.Must.NoError(iter.Err())
+					})
 				})
-			})
+			}
 		})
 
-		if MakeExcludedEntity != nil {
+		if ExcludedEntity != nil {
 			s.And(`an entity that does not match our query requirements is saved in the resource`, func(s *testcase.Spec) {
 				othEnt := testcase.Let(s, func(t *testcase.T) Entity {
-					ent := MakeExcludedEntity(t)
-					crudtest.Create[Entity, ID](t, subject, c.MakeContext(), &ent)
-					return ent
+					return makeEntity[Entity, ID](t, c, subject, ExcludedEntity)
 				}).EagerLoading(s)
 
 				s.Then(`only the matching entity is returned`, func(t *testcase.T) {

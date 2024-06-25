@@ -117,9 +117,7 @@ func ByIDFinder[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, 
 func AllFinder[Entity, ID any](subject subjectAllFinder[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
 	c := option.Use[Config[Entity, ID]](opts)
 	return QueryMany[Entity, ID](subject,
-		func(ctx context.Context) iterators.Iterator[Entity] {
-			return subject.FindAll(ctx)
-		},
+		subject.FindAll,
 		c.MakeEntity,
 		nil, // intentionally empty as it is not applicable to create an entity that is not returned by AllFinder
 		c,

@@ -65,7 +65,7 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 		return from, nil
 	}
 	if m == nil {
-		return nil, fmt.Errorf("[dtos] M is not supplied")
+		return nil, fmt.Errorf("[dtokit] M is not supplied")
 	}
 	defer recoverMustMap(&returnErr)
 	var toBaseType, depth = reflectkit.BaseType(mp.ToType())
@@ -122,7 +122,7 @@ func (m *_M) checkForSliceSyntaxSugarMapping(ctx context.Context, mp MP, from an
 	return list.Interface(), nil, isSliceCase
 }
 
-const ErrNoMapping errorkit.Error = "[dtos] missing mapping"
+const ErrNoMapping errorkit.Error = "[dtokit] missing mapping"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
