@@ -1,9 +1,10 @@
 package random
 
 import (
+	"time"
+
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/internal/reflects"
-	"time"
 )
 
 // Unique function is a utility that helps with generating distinct values
@@ -19,8 +20,8 @@ func Unique[T any](blk func() T, excludeList ...T) T {
 	if len(excludeList) == 0 {
 		return blk()
 	}
-	deadline := clock.TimeNow().Add(5 * time.Second)
-	for clock.TimeNow().Before(deadline) {
+	deadline := clock.Now().Add(5 * time.Second)
+	for clock.Now().Before(deadline) {
 		var (
 			v  T    = blk()
 			ok bool = true

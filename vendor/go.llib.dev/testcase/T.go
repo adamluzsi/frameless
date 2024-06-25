@@ -2,7 +2,6 @@ package testcase
 
 import (
 	"math/rand"
-	"sync"
 	"testing"
 	"time"
 
@@ -35,9 +34,11 @@ func newT(tb testing.TB, spec *Spec) *T {
 		Random: random.New(rand.NewSource(spec.getTestSeed(tb))),
 		It:     assert.MakeIt(tb),
 
-		spec:     spec,
+		spec: spec,
+		tags: spec.getTagSet(),
+
 		vars:     newVariables(),
-		tags:     spec.getTagSet(),
+		done:     make(chan struct{}),
 		teardown: &teardown.Teardown{CallerOffset: 1},
 	}
 }
@@ -63,16 +64,14 @@ type T struct {
 	// but mark test failed on a failed assertion.
 	assert.It
 
-	spec     *Spec
+	spec *Spec
+	tags map[string]struct{}
+
 	vars     *variables
-	tags     map[string]struct{}
+	done     chan struct{}
 	teardown *teardown.Teardown
 
-	depsInit sync.Once
-	deps     map[string]struct{}
-
-	// TODO: protect it against concurrency
-	timerPaused bool
+	timerPaused bool // TODO: protect it against concurrency
 
 	cache struct {
 		contexts []*Spec
@@ -116,6 +115,9 @@ func (t *T) setUp() func() {
 	t.TB.Helper()
 	t.vars.reset()
 
+	done := make(chan struct{})
+	t.done = done
+
 	contexts := t.contexts()
 	for _, c := range contexts {
 		t.vars.merge(c.vars)
@@ -123,7 +125,7 @@ func (t *T) setUp() func() {
 
 	for _, c := range contexts {
 		for _, hook := range c.hooks.BeforeAll {
-			hook.Block()
+			hook.DoOnce(t)
 		}
 	}
 
@@ -133,7 +135,10 @@ func (t *T) setUp() func() {
 		}
 	}
 
-	return t.teardown.Finish
+	return func() {
+		t.teardown.Finish()
+		close(done)
+	}
 }
 
 func (t *T) HasTag(tag string) bool {
@@ -186,13 +191,21 @@ var DefaultEventually = assert.Retry{Strategy: assert.Waiter{Timeout: 3 * time.S
 // Calling multiple times the assertion function block content should be a safe and repeatable operation.
 // For more, read the documentation of Eventually and Eventually.Assert.
 // In case Spec doesn't have a configuration for how to retry Eventually, the DefaultEventually will be used.
-func (t *T) Eventually(blk func(t assert.It), retryOpts ...interface{}) {
+func (t *T) Eventually(blk func(t *T)) {
 	t.TB.Helper()
 	retry, ok := t.spec.lookupRetryEventually()
 	if !ok {
 		retry = DefaultEventually
 	}
-	retry.Assert(t, blk)
+	retry.Assert(t, func(it assert.It) {
+		// since we use pointers, copy should not cause issue here.
+		// our only goal here is to avoid that the original T's .It field changed instead of a copy T's
+		copyT := *t
+		nT := &copyT
+		nT.It = it
+		nT.TB = it
+		blk(nT)
+	})
 }
 
 type timerManager interface {
@@ -270,4 +283,11 @@ func (t *T) LogPretty(vs ...any) {
 		args = append(args, pp.Format(v))
 	}
 	t.Log(args...)
+}
+
+// Done function notifies the end of the test.
+// If a test involves goroutines, listening to the done channel from the test
+// can notify them about the test's end, preventing goroutine leaks.
+func (t *T) Done() <-chan struct{} {
+	return t.done
 }

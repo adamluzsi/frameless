@@ -132,7 +132,7 @@ func (f *Factory) getKinds() map[reflect.Kind]kindFunc {
 	f.kinds.init.Do(func() {
 		f.kinds.mapping = make(map[reflect.Kind]kindFunc)
 		f.kinds.mapping[reflect.Struct] = f.kindStruct
-		f.kinds.mapping[reflect.Pointer] = f.kindPtr
+		f.kinds.mapping[reflect.Ptr] = f.kindPtr
 		f.kinds.mapping[reflect.Map] = f.kindMap
 		f.kinds.mapping[reflect.Slice] = f.kindSlice
 		f.kinds.mapping[reflect.Array] = f.kindArray

@@ -1,4 +1,4 @@
-# go.llib.dev/testcase v0.151.0
+# go.llib.dev/testcase v0.155.1
 ## explicit; go 1.18
 go.llib.dev/testcase
 go.llib.dev/testcase/assert
@@ -10,6 +10,7 @@ go.llib.dev/testcase/internal
 go.llib.dev/testcase/internal/caller
 go.llib.dev/testcase/internal/doubles
 go.llib.dev/testcase/internal/env
+go.llib.dev/testcase/internal/environ
 go.llib.dev/testcase/internal/fmterror
 go.llib.dev/testcase/internal/reflects
 go.llib.dev/testcase/internal/teardown

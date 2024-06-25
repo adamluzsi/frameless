@@ -211,7 +211,7 @@ func (v *visitor) isEmpty(rv reflect.Value) bool {
 		zero := reflect.New(rv.Type()).Elem().Interface()
 		return reflect.DeepEqual(zero, rv)
 
-	case reflect.Pointer:
+	case reflect.Ptr:
 		if rv.IsNil() {
 			return true
 		}
