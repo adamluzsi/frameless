@@ -128,7 +128,7 @@ func QueryMany[Entity, ID any](
 
 	var MakeIncludedEntity = func(tb testing.TB) Entity {
 		assert.NotNil(tb, IncludedEntity, "MakeIncludedEntity is mandatory for QueryMany")
-		return makeEntity[Entity, ID](tb, c, subject, IncludedEntity)
+		return makeEntity[Entity, ID](tb, tb.FailNow, c, subject, IncludedEntity, "QueryMany IncludedEntity argument")
 	}
 
 	s.Before(func(t *testcase.T) {
@@ -238,7 +238,7 @@ func QueryMany[Entity, ID any](
 		if ExcludedEntity != nil {
 			s.And(`an entity that does not match our query requirements is saved in the resource`, func(s *testcase.Spec) {
 				othEnt := testcase.Let(s, func(t *testcase.T) Entity {
-					return makeEntity[Entity, ID](t, c, subject, ExcludedEntity)
+					return makeEntity[Entity, ID](t, t.FailNow, c, subject, ExcludedEntity, "QueryMany ExcludedEntity argument")
 				}).EagerLoading(s)
 
 				s.Then(`only the matching entity is returned`, func(t *testcase.T) {

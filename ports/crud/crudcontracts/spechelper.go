@@ -95,7 +95,7 @@ func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], subject
 	return *new(ENT)
 }
 
-func makeEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], subject any, mk func(testing.TB) ENT) ENT {
+func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], subject any, mk func(testing.TB) ENT, mkFuncName string) ENT {
 	tb.Helper()
 	assert.NotNil(tb, mk)
 	ent := mk(tb)
@@ -115,6 +115,6 @@ func makeEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], subject any, mk f
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")
 	tb.Log("either ensure that the entity making function persist the entity in the subject")
 	tb.Logf("or make sure that %T implements crud.Creator", subject)
-	tb.FailNow()
+	FailNow()
 	return *new(ENT)
 }
