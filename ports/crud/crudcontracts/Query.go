@@ -7,7 +7,6 @@ import (
 
 	"go.llib.dev/frameless/ports/contract"
 	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/option"
 
@@ -123,7 +122,7 @@ func QueryMany[Entity, ID any](
 	ExcludedEntity func(tb testing.TB) Entity,
 	opts ...Option[Entity, ID],
 ) contract.Contract {
-	s := testcase.NewSpec(nil, testcase.RetryStrategyForEventually(crudtest.Eventually.Strategy))
+	s := testcase.NewSpec(nil)
 	c := option.Use[Config[Entity, ID]](opts)
 
 	var MakeIncludedEntity = func(tb testing.TB) Entity {
