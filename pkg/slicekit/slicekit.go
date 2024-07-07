@@ -8,14 +8,18 @@ func Must[T any](v T, err error) T {
 }
 
 // Map will do a mapping from an input type into an output type.
-func Map[O, I any, FN mapperFunc[O, I]](s []I, fn FN) ([]O, error) {
+func Map[O, I any](s []I, mapper func(I) O) []O {
+	return Must(MapErr[O, I](s, func(i I) (O, error) {
+		return mapper(i), nil
+	}))
+}
+
+// MapErr will do a mapping from an input type into an output type.
+func MapErr[O, I any](s []I, mapper func(I) (O, error)) ([]O, error) {
 	if s == nil {
 		return nil, nil
 	}
-	var (
-		out    = make([]O, len(s))
-		mapper = toMapperFunc[O, I](fn)
-	)
+	var out = make([]O, len(s))
 	for index, v := range s {
 		o, err := mapper(v)
 		if err != nil {
@@ -27,11 +31,15 @@ func Map[O, I any, FN mapperFunc[O, I]](s []I, fn FN) ([]O, error) {
 }
 
 // Reduce iterates over a slice, combining elements using the reducer function.
-func Reduce[O, I any, FN reducerFunc[O, I]](s []I, initial O, fn FN) (O, error) {
-	var (
-		result  = initial
-		reducer = toReducerFunc[O, I](fn)
-	)
+func Reduce[O, I any](s []I, initial O, reducer func(O, I) O) O {
+	return Must(ReduceErr(s, initial, func(o O, i I) (O, error) {
+		return reducer(o, i), nil
+	}))
+}
+
+// ReduceErr iterates over a slice, combining elements using the reducer function.
+func ReduceErr[O, I any](s []I, initial O, reducer func(O, I) (O, error)) (O, error) {
+	var result = initial
 	for _, i := range s {
 		o, err := reducer(result, i)
 		if err != nil {
@@ -40,6 +48,29 @@ func Reduce[O, I any, FN reducerFunc[O, I]](s []I, initial O, fn FN) (O, error) 
 		result = o
 	}
 	return result, nil
+}
+
+func Filter[T any](src []T, filter func(v T) bool) []T {
+	return Must(FilterErr(src, func(v T) (bool, error) {
+		return filter(v), nil
+	}))
+}
+
+func FilterErr[T any](src []T, filter func(v T) (bool, error)) ([]T, error) {
+	if src == nil {
+		return nil, nil
+	}
+	var out = make([]T, 0, len(src))
+	for _, val := range src {
+		ok, err := filter(val)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, val)
+		}
+	}
+	return out, nil
 }
 
 func Lookup[T any](vs []T, index int) (T, bool) {
@@ -65,26 +96,6 @@ func Clone[T any](src []T) []T {
 	return dst
 }
 
-func Filter[T any, FN filterFunc[T]](src []T, fn FN) ([]T, error) {
-	if src == nil {
-		return nil, nil
-	}
-	var (
-		out    = make([]T, 0, len(src))
-		filter = toFilterFunc[T](fn)
-	)
-	for _, val := range src {
-		ok, err := filter(val)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, val)
-		}
-	}
-	return out, nil
-}
-
 // Contains reports if a slice contains a given value.
 func Contains[T comparable](s []T, v T) bool {
 	for _, got := range s {
@@ -105,57 +116,4 @@ func Batch[T any](vs []T, size int) [][]T {
 		out = append(out, vs[i:end])
 	}
 	return out
-}
-
-// --------------------------------------------------------------------------------- //
-
-type reducerFunc[O, I any] interface {
-	func(O, I) O | func(O, I) (O, error)
-}
-
-func toReducerFunc[O, I any, FN reducerFunc[O, I]](m FN) func(O, I) (O, error) {
-	switch fn := any(m).(type) {
-	case func(O, I) O:
-		return func(o O, i I) (O, error) {
-			return fn(o, i), nil
-		}
-	case func(O, I) (O, error):
-		return fn
-	default:
-		panic("unexpected")
-	}
-}
-
-type mapperFunc[O, I any] interface {
-	func(I) O | func(I) (O, error)
-}
-
-func toMapperFunc[O, I any, MF mapperFunc[O, I]](m MF) func(I) (O, error) {
-	switch fn := any(m).(type) {
-	case func(I) O:
-		return func(i I) (O, error) {
-			return fn(i), nil
-		}
-	case func(I) (O, error):
-		return fn
-	default:
-		panic("unexpected")
-	}
-}
-
-type filterFunc[T any] interface {
-	func(T) bool | func(T) (bool, error)
-}
-
-func toFilterFunc[T any, MF filterFunc[T]](m MF) func(T) (bool, error) {
-	switch fn := any(m).(type) {
-	case func(T) bool:
-		return func(t T) (bool, error) {
-			return fn(t), nil
-		}
-	case func(T) (bool, error):
-		return fn
-	default:
-		panic("unexpected")
-	}
 }

@@ -12,12 +12,12 @@ import (
 
 func ExampleMust() {
 	var x = []int{1, 2, 3}
-	x = slicekit.Must(slicekit.Map[int](x, func(v int) int {
-		return v * 2
+	x = slicekit.Must(slicekit.MapErr[int](x, func(v int) (int, error) {
+		return v * 2, nil
 	}))
 
-	v := slicekit.Must(slicekit.Reduce[int](x, 42, func(output int, current int) int {
-		return output + current
+	v := slicekit.Must(slicekit.ReduceErr[int](x, 42, func(output int, current int) (int, error) {
+		return output + current, nil
 	}))
 
 	fmt.Println("result:", v)
@@ -26,13 +26,13 @@ func ExampleMust() {
 func TestMust(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got := slicekit.Must(slicekit.Map[int](x, strconv.Atoi))
+		got := slicekit.Must(slicekit.MapErr[int](x, strconv.Atoi))
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
 		pv := assert.Panic(t, func() {
-			slicekit.Must(slicekit.Map[int](x, strconv.Atoi))
+			slicekit.Must(slicekit.MapErr[int](x, strconv.Atoi))
 		})
 		err, ok := pv.(error)
 		assert.True(t, ok)
@@ -42,10 +42,23 @@ func TestMust(t *testing.T) {
 
 func ExampleMap() {
 	var x = []string{"a", "b", "c"}
-	_ = slicekit.Must(slicekit.Map[string](x, strings.ToUpper)) // []string{"A", "B", "C"}
+	_ = slicekit.Map(x, strings.ToUpper) // []string{"A", "B", "C"}
 
 	var ns = []string{"1", "2", "3"}
-	_, err := slicekit.Map[int](ns, strconv.Atoi) // []int{1, 2, 3}
+	_, err := slicekit.MapErr[int](ns, strconv.Atoi) // []int{1, 2, 3}
+	if err != nil {
+		panic(err)
+	}
+}
+
+func ExampleMapErr() {
+	var x = []string{"a", "b", "c"}
+	_ = slicekit.Must(slicekit.MapErr[string](x, func(s string) (string, error) {
+		return strings.ToUpper(s), nil
+	})) // []string{"A", "B", "C"}
+
+	var ns = []string{"1", "2", "3"}
+	_, err := slicekit.MapErr[int](ns, strconv.Atoi) // []int{1, 2, 3}
 	if err != nil {
 		panic(err)
 	}
@@ -54,27 +67,42 @@ func ExampleMap() {
 func TestMap(t *testing.T) {
 	t.Run("happy - no error", func(t *testing.T) {
 		var x = []string{"a", "b", "c"}
-		got, err := slicekit.Map[string](x, strings.ToUpper)
-		assert.NoError(t, err)
+		got := slicekit.Map(x, strings.ToUpper)
 		assert.Equal(t, []string{"A", "B", "C"}, got)
 	})
 	t.Run("happy", func(t *testing.T) {
+		var x = []int{1, 2, 3}
+		got := slicekit.Map(x, strconv.Itoa)
+		assert.Equal(t, []string{"1", "2", "3"}, got)
+	})
+}
+
+func TestMapErr(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got, err := slicekit.Map[int](x, strconv.Atoi)
+		got, err := slicekit.MapErr[int](x, strconv.Atoi)
 		assert.NoError(t, err)
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
-		_, err := slicekit.Map[int](x, strconv.Atoi)
+		_, err := slicekit.MapErr[int](x, strconv.Atoi)
 		assert.Error(t, err)
 	})
 }
 
 func ExampleReduce() {
+	var x = []int{1, 2, 3}
+	got := slicekit.Reduce[string](x, "|", func(s string, i int) string {
+		return s + strconv.Itoa(i)
+	})
+	fmt.Println(got) // "|123"
+}
+
+func ExampleReduceErr() {
 	var x = []string{"a", "b", "c"}
-	got, err := slicekit.Reduce[string](x, "|", func(o string, i string) string {
-		return o + i
+	got, err := slicekit.ReduceErr[string](x, "|", func(o string, i string) (string, error) {
+		return o + i, nil
 	})
 	if err != nil {
 		panic(err)
@@ -83,17 +111,41 @@ func ExampleReduce() {
 }
 
 func TestReduce(t *testing.T) {
+	t.Run("zero elements", func(t *testing.T) {
+		var x = []string{}
+		got := slicekit.Reduce(x, "|", func(o string, i string) string {
+			return o + i
+		})
+		assert.Equal(t, "|", got)
+	})
+	t.Run("one element", func(t *testing.T) {
+		var x = []string{"a"}
+		got := slicekit.Reduce(x, "|", func(o string, i string) string {
+			return o + i
+		})
+		assert.Equal(t, "|a", got)
+	})
+	t.Run("many elements", func(t *testing.T) {
+		var x = []string{"a", "b", "c"}
+		got := slicekit.Reduce(x, "|", func(o string, i string) string {
+			return o + i
+		})
+		assert.Equal(t, "|abc", got)
+	})
+}
+
+func TestReduceErr(t *testing.T) {
 	t.Run("happy - no error", func(t *testing.T) {
 		var x = []string{"a", "b", "c"}
-		got, err := slicekit.Reduce[string](x, "|", func(o string, i string) string {
-			return o + i
+		got, err := slicekit.ReduceErr[string](x, "|", func(o string, i string) (string, error) {
+			return o + i, nil
 		})
 		assert.NoError(t, err)
 		assert.Equal(t, "|abc", got)
 	})
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got, err := slicekit.Reduce[int](x, 42, func(o int, i string) (int, error) {
+		got, err := slicekit.ReduceErr[int](x, 42, func(o int, i string) (int, error) {
 			n, err := strconv.Atoi(i)
 			if err != nil {
 				return o, err
@@ -105,7 +157,7 @@ func TestReduce(t *testing.T) {
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
-		_, err := slicekit.Reduce[int](x, 0, func(o int, i string) (int, error) {
+		_, err := slicekit.ReduceErr[int](x, 0, func(o int, i string) (int, error) {
 			n, err := strconv.Atoi(i)
 			if err != nil {
 				return o, err
@@ -222,19 +274,52 @@ func TestClone(t *testing.T) {
 
 func ExampleFilter() {
 	var (
+		src = []string{"a", "b", "c"}
+		dst = slicekit.Filter(src, func(s string) bool {
+			return s != "c"
+		})
+	)
+	_ = dst // []string{"a", "b"}, nil
+}
+
+func TestFilter(t *testing.T) {
+	t.Run("", func(t *testing.T) {
+		var (
+			src = []string{"a", "b", "c"}
+			dst = slicekit.Filter(src, func(s string) bool {
+				return s != "c"
+			})
+		)
+		assert.Equal(t, src, []string{"a", "b", "c"})
+		assert.Equal(t, dst, []string{"a", "b"})
+	})
+	t.Run("", func(t *testing.T) {
+		var (
+			src = []string{"a", "b", "c"}
+			dst = slicekit.Filter(src, func(s string) bool {
+				return s != "b"
+			})
+		)
+		assert.Equal(t, src, []string{"a", "b", "c"})
+		assert.Equal(t, dst, []string{"a", "c"})
+	})
+}
+
+func ExampleFilterErr() {
+	var (
 		src      = []string{"a", "b", "c"}
-		dst, err = slicekit.Filter[string](src, func(s string) (bool, error) {
+		dst, err = slicekit.FilterErr[string](src, func(s string) (bool, error) {
 			return s != "c", nil
 		})
 	)
 	_, _ = dst, err // []string{"a", "b"}, nil
 }
 
-func TestFilter(t *testing.T) {
+func TestFilterErr(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		var (
 			src      = []string{"a", "b", "c"}
-			dst, err = slicekit.Filter[string](src, func(s string) (bool, error) {
+			dst, err = slicekit.FilterErr[string](src, func(s string) (bool, error) {
 				return s != "c", nil
 			})
 		)
@@ -245,8 +330,8 @@ func TestFilter(t *testing.T) {
 	t.Run("happy (no-error)", func(t *testing.T) {
 		var (
 			src = []string{"a", "b", "c"}
-			dst = slicekit.Must(slicekit.Filter[string](src, func(s string) bool {
-				return s != "b"
+			dst = slicekit.Must(slicekit.FilterErr[string](src, func(s string) (bool, error) {
+				return s != "b", nil
 			}))
 		)
 		assert.Equal(t, src, []string{"a", "b", "c"})
@@ -254,7 +339,7 @@ func TestFilter(t *testing.T) {
 	})
 	t.Run("error is propagated back", func(t *testing.T) {
 		expErr := fmt.Errorf("boom")
-		got, err := slicekit.Filter[string]([]string{"a", "b", "c"}, func(s string) (bool, error) {
+		got, err := slicekit.FilterErr[string]([]string{"a", "b", "c"}, func(s string) (bool, error) {
 			return false, expErr
 		})
 		assert.ErrorIs(t, err, expErr)

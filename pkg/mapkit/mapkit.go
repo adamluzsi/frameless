@@ -7,20 +7,26 @@ func Must[T any](v T, err error) T {
 	return v
 }
 
-// Map will do a mapping from an input type into an output type.
 func Map[
-	K comparable, V any,
+	OK comparable, OV any,
 	IK comparable, IV any,
-	FN mapperFunc[K, V, IK, IV],
-](s map[IK]IV, fn FN) (map[K]V, error) {
-	if s == nil {
+](m map[IK]IV, mapper func(IK, IV) (OK, OV)) map[OK]OV {
+	return Must(MapErr[OK, OV](m, func(ik IK, iv IV) (OK, OV, error) {
+		ok, ov := mapper(ik, iv)
+		return ok, ov, nil
+	}))
+}
+
+// MapErr will do a mapping from an input type into an output type.
+func MapErr[
+	OK comparable, OV any,
+	IK comparable, IV any,
+](m map[IK]IV, mapper func(IK, IV) (OK, OV, error)) (map[OK]OV, error) {
+	if m == nil {
 		return nil, nil
 	}
-	var (
-		out    = make(map[K]V)
-		mapper = toMapperFunc[K, V, IK, IV](fn)
-	)
-	for ik, iv := range s {
+	var out = make(map[OK]OV)
+	for ik, iv := range m {
 		ok, ov, err := mapper(ik, iv)
 		if err != nil {
 			return out, err
@@ -30,35 +36,16 @@ func Map[
 	return out, nil
 }
 
-type mapperFunc[OK comparable, OV any, IK comparable, IV any] interface {
-	func(IK, IV) (OK, OV) | func(IK, IV) (OK, OV, error)
+func Reduce[O any, K comparable, V any](m map[K]V, initial O, reducer func(O, K, V) O) O {
+	return Must(ReduceErr(m, initial, func(o O, k K, v V) (O, error) {
+		return reducer(o, k, v), nil
+	}))
 }
 
-func toMapperFunc[OK comparable, OV any, IK comparable, IV any, MF mapperFunc[OK, OV, IK, IV]](m MF) func(IK, IV) (OK, OV, error) {
-	switch fn := any(m).(type) {
-	case func(IK, IV) (OK, OV):
-		return func(k IK, v IV) (OK, OV, error) {
-			ok, ov := fn(k, v)
-			return ok, ov, nil
-		}
-	case func(IK, IV) (OK, OV, error):
-		return fn
-	default:
-		panic("unexpected")
-	}
-}
-
-// Reduce goes through the map value, combining elements using the reducer function.
-func Reduce[
-	O any,
-	K comparable, V any,
-	FN reducerFunc[O, K, V],
-](s map[K]V, initial O, fn FN) (O, error) {
-	var (
-		result  = initial
-		reducer = toReducerFunc[O, K, V](fn)
-	)
-	for k, v := range s {
+// ReduceErr goes through the map value, combining elements using the reducer function.
+func ReduceErr[O any, K comparable, V any](m map[K]V, initial O, reducer func(O, K, V) (O, error)) (O, error) {
+	var result = initial
+	for k, v := range m {
 		o, err := reducer(result, k, v)
 		if err != nil {
 			return result, err
@@ -68,29 +55,26 @@ func Reduce[
 	return result, nil
 }
 
-type reducerFunc[O any, K comparable, V any] interface {
-	func(O, K, V) O | func(O, K, V) (O, error)
-}
-
-func toReducerFunc[O any, K comparable, V any, FN reducerFunc[O, K, V]](m FN) func(O, K, V) (O, error) {
-	switch fn := any(m).(type) {
-	case func(O, K, V) O:
-		return func(o O, k K, v V) (O, error) {
-			return fn(o, k, v), nil
-		}
-	case func(O, K, V) (O, error):
-		return fn
-	default:
-		panic("unexpected")
-	}
-}
-
-func Keys[K comparable, V any](m map[K]V) []K {
+func Keys[K comparable, V any](m map[K]V, sort ...func([]K)) []K {
 	var ks []K
-	for k, _ := range m {
+	for k := range m {
 		ks = append(ks, k)
 	}
+	for _, sort := range sort {
+		sort(ks)
+	}
 	return ks
+}
+
+func Values[K comparable, V any](m map[K]V, sort ...func([]V)) []V {
+	var vs []V
+	for _, v := range m {
+		vs = append(vs, v)
+	}
+	for _, sort := range sort {
+		sort(vs)
+	}
+	return vs
 }
 
 // Merge will merge all passed map[K]V into a single map[K]V.
@@ -114,11 +98,14 @@ func Clone[K comparable, V any](m map[K]V) map[K]V {
 	return out
 }
 
-func Filter[K comparable, V any, FN filterFunc[K, V]](m map[K]V, fn FN) (map[K]V, error) {
-	var (
-		out    = make(map[K]V)
-		filter = toFilterFunc[K, V](fn)
-	)
+func Filter[K comparable, V any](m map[K]V, filter func(k K, v V) bool) map[K]V {
+	return Must(FilterErr[K, V](m, func(k K, v V) (bool, error) {
+		return filter(k, v), nil
+	}))
+}
+
+func FilterErr[K comparable, V any](m map[K]V, filter func(k K, v V) (bool, error)) (map[K]V, error) {
+	var out = make(map[K]V)
 	for k, v := range m {
 		ok, err := filter(k, v)
 		if err != nil {
@@ -129,21 +116,4 @@ func Filter[K comparable, V any, FN filterFunc[K, V]](m map[K]V, fn FN) (map[K]V
 		}
 	}
 	return out, nil
-}
-
-type filterFunc[K comparable, V any] interface {
-	func(K, V) bool | func(K, V) (bool, error)
-}
-
-func toFilterFunc[K comparable, V any, FN filterFunc[K, V]](m FN) func(K, V) (bool, error) {
-	switch fn := any(m).(type) {
-	case func(K, V) bool:
-		return func(k K, v V) (bool, error) {
-			return fn(k, v), nil
-		}
-	case func(K, V) (bool, error):
-		return fn
-	default:
-		panic("unexpected")
-	}
 }

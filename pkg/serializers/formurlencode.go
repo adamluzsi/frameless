@@ -119,7 +119,7 @@ func (e FormURLEncoder) unmarshalMap(values url.Values, ptr reflect.Value) error
 	)
 	ptr.Elem().Set(reflect.MakeMap(ptr.Type().Elem())) // create a new map[K]V
 	for qKey, qVS := range values {
-		out, err := slicekit.Map[any](qVS, func(i string) (any, error) {
+		out, err := slicekit.MapErr[any](qVS, func(i string) (any, error) {
 			return convkit.DuckParse[string](i)
 		})
 		if err != nil {

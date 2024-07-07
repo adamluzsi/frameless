@@ -32,14 +32,14 @@ var _ = dtokit.Register[Report, ReportJSONDTO](
 			Status:  dtokit.MustMap[string](ctx, ent.Status),
 			Name:    ent.Name,
 			Message: ent.Message,
-			Issues: slicekit.Must(slicekit.Map[IssueJSONDTO](ent.Issues,
+			Issues: slicekit.Map[IssueJSONDTO](ent.Issues,
 				func(v Issue) IssueJSONDTO {
 					return dtokit.MustMap[IssueJSONDTO](ctx, v)
-				})),
-			Dependencies: slicekit.Must(slicekit.Map[ReportJSONDTO](ent.Dependencies,
+				}),
+			Dependencies: slicekit.Map(ent.Dependencies,
 				func(v Report) ReportJSONDTO {
 					return dtokit.MustMap[ReportJSONDTO](ctx, v)
-				})),
+				}),
 			Timestamp: ent.Timestamp.Format(time.RFC3339),
 			Details:   details,
 		}, nil
@@ -57,14 +57,14 @@ var _ = dtokit.Register[Report, ReportJSONDTO](
 			Status:  dtokit.MustMap[Status, string](ctx, dto.Status),
 			Name:    dto.Name,
 			Message: dto.Message,
-			Issues: slicekit.Must(slicekit.Map[Issue](dto.Issues,
+			Issues: slicekit.Map(dto.Issues,
 				func(v IssueJSONDTO) Issue {
 					return dtokit.MustMap[Issue](ctx, v)
-				})),
-			Dependencies: slicekit.Must(slicekit.Map[Report](dto.Dependencies,
+				}),
+			Dependencies: slicekit.Map(dto.Dependencies,
 				func(v ReportJSONDTO) Report {
 					return dtokit.MustMap[Report](ctx, v)
-				})),
+				}),
 			Timestamp: timestamp,
 			Details:   dto.Details,
 		}
