@@ -100,8 +100,13 @@ func makeEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], subject any, mk f
 	assert.NotNil(tb, mk)
 	ent := mk(tb)
 	assert.NotEmpty(tb, ent)
-	if _, ok := extid.Lookup[ID](ent); ok {
-		return ent
+	if id, ok := extid.Lookup[ID](ent); ok {
+		if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
+			_, found, err := finder.FindByID(c.MakeContext(), id)
+			if err == nil && found {
+				return ent
+			}
+		}
 	}
 	if creator, ok := subject.(crud.Creator[ENT]); ok {
 		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(), &ent)

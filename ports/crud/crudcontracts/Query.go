@@ -7,6 +7,7 @@ import (
 
 	"go.llib.dev/frameless/ports/contract"
 	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/option"
 
@@ -122,8 +123,7 @@ func QueryMany[Entity, ID any](
 	ExcludedEntity func(tb testing.TB) Entity,
 	opts ...Option[Entity, ID],
 ) contract.Contract {
-
-	s := testcase.NewSpec(nil)
+	s := testcase.NewSpec(nil, testcase.RetryStrategyForEventually(crudtest.Eventually.Strategy))
 	c := option.Use[Config[Entity, ID]](opts)
 
 	var MakeIncludedEntity = func(tb testing.TB) Entity {
@@ -222,11 +222,11 @@ func QueryMany[Entity, ID any](
 							value := iter.Value()
 
 							id, ok := extid.Lookup[ID](value)
-							it.Must.True(ok)
+							it.Must.True(ok, "expected that value has an external ID reference")
 
 							ent, found, err := subject.FindByID(c.MakeContext(), id)
 							it.Must.NoError(err)
-							it.Must.True(found)
+							it.Must.True(found, "expected that FindByID will able to retrieve a value for the given ID")
 							it.Must.Equal(value, ent)
 						}
 						it.Must.NoError(iter.Err())
