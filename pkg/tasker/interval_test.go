@@ -12,7 +12,7 @@ import (
 
 func TestInterval_smoke(t *testing.T) {
 	now := time.Now()
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 	duration := time.Duration(random.New(random.CryptoSeed{}).IntB(int(time.Second), int(time.Hour)))
 	interval := tasker.Every(duration)
 
@@ -32,7 +32,7 @@ func TestEvery_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	dur := time.Duration(rnd.IntB(int(time.Second), int(time.Hour)))
 	now := time.Now()
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 
 	interval := tasker.Every(dur)
 	assert.Equal(t, interval.UntilNext(now), dur)
@@ -52,7 +52,7 @@ func TestMonthly_smoke(t *testing.T) {
 	willOccureNextAt := time.Date(now.Year(), now.Month(), day, hour, min, 0, 0, time.UTC).
 		AddDate(0, 1, 0)
 
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 	interval := tasker.Monthly{
 		Day:      day,
 		Hour:     hour,
@@ -90,7 +90,7 @@ func TestDaily_smoke(t *testing.T) {
 	willOccureNextAt := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, time.UTC).
 		AddDate(0, 0, 1)
 
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 	interval := tasker.Daily{
 		Hour:     hour,
 		Minute:   min,

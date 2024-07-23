@@ -2,7 +2,6 @@ package crudcontracts
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/ports/contract"
@@ -16,6 +15,8 @@ import (
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
+	"go.llib.dev/testcase/sandbox"
 )
 
 // Query takes an entity value and returns with a closure that has the knowledge about how to query resource to find passed entity.
@@ -163,19 +164,13 @@ func QueryMany[Entity, ID any](
 
 		s.And(`another similar entities are saved in the resource`, func(s *testcase.Spec) {
 			additionalEntities := testcase.Let(s, func(t *testcase.T) (ents []Entity) {
-				t.Random.Repeat(1, 3, func() {
-					ents = append(ents, MakeIncludedEntity(t))
+				sandbox.Run(func() {
+					ents = random.Slice(t.Random.IntB(1, 3),
+						func() Entity { return MakeIncludedEntity(t) },
+						random.UniqueValues)
+				}).OnNotOK(func() {
+					t.Skip("skipping this test as it requires that MakeIncludedEntity creates unique entities")
 				})
-				for i, a := range ents {
-					for j, b := range ents {
-						if i == j {
-							continue
-						}
-						if !reflect.DeepEqual(a, b) {
-							t.Skip("skipping test as it requires that IncludeEntity produces unique entities (at least unique ID)")
-						}
-					}
-				}
 				return ents
 			}).EagerLoading(s)
 

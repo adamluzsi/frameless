@@ -383,7 +383,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 	t.Run("contains a timestamp", func(t *testing.T) {
 		m := health.Monitor{}
 		now := time.Now()
-		timecop.Travel(t, now, timecop.Freeze())
+		timecop.Travel(t, now, timecop.Freeze)
 		report := m.HealthCheck(context.Background())
 		assert.Equal(t, now.UTC(), report.Timestamp)
 	})
@@ -446,7 +446,7 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 		return time.Now().UTC()
 	})
 	s.Before(func(t *testcase.T) {
-		timecop.Travel(t, now.Get(t), timecop.Freeze())
+		timecop.Travel(t, now.Get(t), timecop.Freeze)
 	})
 
 	s.Then("we get back a health response report", func(t *testcase.T) {

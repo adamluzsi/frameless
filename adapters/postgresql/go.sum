@@ -57,6 +57,8 @@ go.llib.dev/testcase v0.154.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkIt
 go.llib.dev/testcase v0.155.0 h1:4xHHiqMARajvHji9n6S0hsvaPuycSpudgwPLMbBoXpE=
 go.llib.dev/testcase v0.155.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 go.llib.dev/testcase v0.156.4/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/testcase v0.158.0 h1:uIpGmgB9Nd3fQgZ6vjRh2+73aNDwiox5fSfByfUMeqE=
+go.llib.dev/testcase v0.158.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 golang.org/x/crypto v0.14.0 h1:wBqGXzWJW6m1XrIKlAH0Hs1JJ7+9KBwnIO8v66Q9cHc=
 golang.org/x/crypto v0.14.0/go.mod h1:MVFd36DqK4CsrnJYDkBA3VC4m2GkXAM0PvzMCn4JQf4=
 golang.org/x/crypto v0.18.0 h1:PGVlW0xEltQnzFZ55hkuX5+KLyrMYhHld1YHO4AKcdc=

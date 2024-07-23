@@ -373,12 +373,12 @@ func TestAccessLog_smoke(t *testing.T) {
 
 	now := time.Now()
 
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 
 	handler := &httpkit.AccessLog{
 		Next: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// this operation takes 1.542s
-			timecop.Travel(t, time.Second+542*time.Millisecond, timecop.Freeze())
+			timecop.Travel(t, time.Second+542*time.Millisecond, timecop.Freeze)
 			gotRemoteAddress = r.RemoteAddr
 			should := assert.Should(t)
 			defer r.Body.Close()

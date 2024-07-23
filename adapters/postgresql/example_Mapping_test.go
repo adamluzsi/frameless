@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/ports/iterators"
 )
 
-func ExampleMapper() {
+func ExampleMapping() {
 	type ExampleEntity struct {
 		ID   int64
 		Col1 int

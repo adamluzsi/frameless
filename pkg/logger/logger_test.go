@@ -55,7 +55,7 @@ func Example_withDetails() {
 
 func Test_pkgFuncSmoke(t *testing.T) {
 	now := time.Now()
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 	rnd := random.New(random.CryptoSeed{})
 
 	t.Run("output is a valid JSON by default", func(t *testing.T) {

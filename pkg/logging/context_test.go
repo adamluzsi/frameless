@@ -25,7 +25,7 @@ func ExampleContextWith() {
 
 func TestContextWith(t *testing.T) {
 	now := time.Now()
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 
 	t.Run("on nil details, original context is returned", func(t *testing.T) {
 		ctx := context.WithValue(context.Background(), "key", "value")

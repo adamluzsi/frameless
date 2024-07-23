@@ -44,7 +44,7 @@ func Test_smoke(t *testing.T) {
 
 func TestLogger_smoke(t *testing.T) {
 	now := time.Now()
-	timecop.Travel(t, now, timecop.Freeze())
+	timecop.Travel(t, now, timecop.Freeze)
 	rnd := random.New(random.CryptoSeed{})
 
 	t.Run("log methods accept nil context", func(t *testing.T) {

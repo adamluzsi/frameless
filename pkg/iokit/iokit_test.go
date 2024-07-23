@@ -554,7 +554,7 @@ func TestStubReader(t *testing.T) {
 
 	t.Run("we can determine when the reading will update the LastReadAt's result", func(t *testing.T) {
 		now := clock.Now()
-		timecop.Travel(t, now, timecop.Freeze())
+		timecop.Travel(t, now, timecop.Freeze)
 
 		data := []byte(rnd.StringN(5))
 		stub := &iokit.StubReader{Data: data}
@@ -566,7 +566,7 @@ func TestStubReader(t *testing.T) {
 		assert.Equal(t, stub.LastReadAt(), now)
 
 		now = now.Add(time.Hour)
-		timecop.Travel(t, now, timecop.Freeze())
+		timecop.Travel(t, now, timecop.Freeze)
 		assert.NotEqual(t, stub.LastReadAt(), now)
 
 		n, err = stub.Read(make([]byte, 1))
