@@ -21,7 +21,7 @@ func ExampleClient() {
 		ctx     = context.Background()
 		fooRepo = httpkit.RestClient[testent.Foo, testent.FooID]{
 			BaseURL:     "https://mydomain.dev/api/v1/foos",
-			MIMEType:    mediatype.JSON,
+			MediaType:   mediatype.JSON,
 			Mapping:     httpkit.DTOMapping[testent.Foo, testent.FooDTO]{},
 			Serializer:  serializers.JSON{},
 			IDConverter: httpkit.IDConverter[testent.FooID]{},

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/retry"
@@ -23,7 +25,7 @@ import (
 type RestClient[Entity, ID any] struct {
 	BaseURL     string
 	HTTPClient  *http.Client
-	MIMEType    string
+	MediaType   string
 	Mapping     Mapping[Entity]
 	Serializer  RestClientSerializer
 	IDConverter idConverter[ID]
@@ -46,7 +48,7 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	mimeType := r.getMIMEType()
+	mimeType := r.getMediaType()
 	ser := r.getSerializer(mimeType)
 	mapping := r.getMapping()
 
@@ -102,31 +104,44 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 }
 
 func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+	var details []logging.Detail
+	defer func() { logger.Debug(ctx, "find all entity with a rest client http request", details...) }()
+
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
 
+	reqURL := pathkit.Join(baseURL, "/")
+	details = append(details, logging.Field("url", reqURL))
+
 	//mapping := r.getMapping()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pathkit.Join(baseURL, "/"), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMIMEType())
-	req.Header.Set(headerKeyAccept, r.getMIMEType())
+	reqMediaType := r.getMediaType()
+	req.Header.Set(headerKeyContentType, reqMediaType)
+	req.Header.Set(headerKeyAccept, reqMediaType)
+	details = append(details, logging.Field("request content type", reqMediaType))
+	details = append(details, logging.Field("request accept media type", reqMediaType))
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
 
+	details = append(details, logging.Field("status code", resp.StatusCode))
+
 	mapping := r.getMapping()
 
-	mimeType, ser, ok := r.contentTypeBasedSerializer(resp)
+	respMediaType, ser, ok := r.contentTypeBasedSerializer(resp)
 	if !ok {
-		return iterators.Error[Entity](fmt.Errorf("no serializer configured for response content type: %s", mimeType))
+		return iterators.Error[Entity](fmt.Errorf("no serializer configured for response content type: %s", respMediaType))
 	}
+
+	details = append(details, logging.Field("response content type", respMediaType))
 
 	dm, ok := ser.(serializers.ListDecoderMaker)
 	if !ok {
@@ -163,15 +178,21 @@ func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) 
 	return mt, ser, ok
 }
 
-func (r RestClient[Entity, ID]) getResponseMimeType(resp *http.Response) string {
-	ct := resp.Header.Get(headerKeyContentType)
-	if ct != "" {
-		return getMediaType(ct)
-	}
-	return r.MIMEType
-}
-
 func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error) {
+	var details []logging.Detail
+	defer func() {
+		details = append(details, logger.Field("found", found))
+		if err != nil {
+			details = append(details, logger.ErrField(err))
+		}
+		logger.Debug(ctx, "find entity by id with a rest client http request", details...)
+	}()
+
+	details = append(details,
+		logging.Field("entity type", reflectkit.TypeOf[Entity]().String()),
+		logging.Field("id", id),
+	)
+
 	mapping := r.getMapping()
 
 	pathParamID, err := r.getIDConverter().FormatID(id)
@@ -184,23 +205,34 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 		return ent, false, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pathkit.Join(baseURL, pathParamID), nil)
+	requestURL := pathkit.Join(baseURL, pathParamID)
+
+	details = append(details, logging.Field("url", requestURL))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return ent, false, err
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMIMEType())
-	req.Header.Set(headerKeyAccept, r.getMIMEType())
+	requestMediaType := r.getMediaType()
+	req.Header.Set(headerKeyContentType, requestMediaType)
+	req.Header.Set(headerKeyAccept, requestMediaType)
+	details = append(details, logging.Field("request content type", requestMediaType))
+	details = append(details, logging.Field("request accept media type", requestMediaType))
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
 		return ent, false, err
 	}
 
+	details = append(details, logging.Field("status code", resp.StatusCode))
+
 	responseBody, err := bodyReadAll(resp.Body, DefaultBodyReadLimit)
 	if err != nil {
 		return ent, false, err
 	}
+
+	details = append(details, logging.Field("response body", string(responseBody)))
 
 	if resp.StatusCode == http.StatusNotFound {
 		return ent, false, nil
@@ -210,12 +242,14 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 		return ent, false, makeClientErrUnexpectedResponse(req, resp, responseBody)
 	}
 
-	dtoPtr := mapping.newDTO()
-	mimeType, ser, ok := r.contentTypeBasedSerializer(resp)
+	responseMediaType, ser, ok := r.contentTypeBasedSerializer(resp)
 	if !ok {
-		return ent, false, fmt.Errorf("no serializer configured for response content type: %s", mimeType)
+		return ent, false, fmt.Errorf("no serializer configured for response content type: %s", responseMediaType)
 	}
 
+	details = append(details, logging.Field("response content type", responseMediaType))
+
+	dtoPtr := mapping.newDTO()
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
 		return ent, false, err
 	}
@@ -244,7 +278,7 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		lookupID = extid.Lookup[ID, Entity]
 	}
 
-	ser := r.getSerializer(r.getMIMEType())
+	ser := r.getSerializer(r.getMediaType())
 	mapping := r.getMapping()
 
 	id, ok := lookupID(*ptr)
@@ -273,8 +307,8 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMIMEType())
-	req.Header.Set(headerKeyAccept, r.getMIMEType())
+	req.Header.Set(headerKeyContentType, r.getMediaType())
+	req.Header.Set(headerKeyAccept, r.getMediaType())
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -423,10 +457,10 @@ func (r RestClient[Entity, ID]) getMapping() Mapping[Entity] {
 	return r.Mapping
 }
 
-func (r RestClient[Entity, ID]) getMIMEType() string {
+func (r RestClient[Entity, ID]) getMediaType() string {
 	var zero string
-	if r.MIMEType != zero {
-		return r.MIMEType
+	if r.MediaType != zero {
+		return r.MediaType
 	}
 	return DefaultSerializer.MIMEType
 }
@@ -476,7 +510,7 @@ type ClientErrUnexpectedResponse struct {
 }
 
 func (err ClientErrUnexpectedResponse) Error() string {
-	msg := fmt.Sprintf("unexpected response received")
+	msg := "unexpected response received"
 	if err.StatusCode != 0 {
 		msg += fmt.Sprintf("\n%d %s", err.StatusCode, http.StatusText(err.StatusCode))
 	}

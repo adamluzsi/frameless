@@ -54,8 +54,8 @@ type RestResource[Entity, ID any] struct {
 	// Mapping is the primary Entity to DTO mapping configuration.
 	Mapping Mapping[Entity]
 
-	// MappingForMIME defines a per MIMEType Mapping, that takes priority over Mapping
-	MappingForMIME map[string]Mapping[Entity]
+	// MappingForMediaType defines a per MIMEType Mapping, that takes priority over Mapping
+	MappingForMediaType map[string]Mapping[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
 	ErrorHandler ErrorHandler
@@ -100,10 +100,10 @@ type idConverter[ID any] interface {
 	ParseID(string) (ID, error)
 }
 
-func (res RestResource[Entity, ID]) getMapping(mimeType string) Mapping[Entity] {
-	mimeType = getMediaType(mimeType) // TODO: TEST ME
-	if res.MappingForMIME != nil {
-		if mapping, ok := res.MappingForMIME[mimeType]; ok {
+func (res RestResource[Entity, ID]) getMapping(mediaType string) Mapping[Entity] {
+	mediaType = getMediaType(mediaType) // TODO: TEST ME
+	if res.MappingForMediaType != nil {
+		if mapping, ok := res.MappingForMediaType[mediaType]; ok {
 			return mapping
 		}
 	}

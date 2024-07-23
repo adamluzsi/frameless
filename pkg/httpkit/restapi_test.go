@@ -61,7 +61,7 @@ func ExampleRestResource() {
 
 		Mapping: httpkit.DTOMapping[X, XDTO]{},
 
-		MappingForMIME: map[string]httpkit.Mapping[X]{
+		MappingForMediaType: map[string]httpkit.Mapping[X]{
 			mediatype.JSON: httpkit.DTOMapping[X, XDTO]{},
 		},
 	}
@@ -726,7 +726,7 @@ func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 				return rr.Result(), nil
 			}),
 		},
-		MIMEType: mediatype.FormUrlencoded,
+		MediaType: mediatype.FormUrlencoded,
 	}
 
 	exp := Foo{
