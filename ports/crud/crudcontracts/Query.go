@@ -210,8 +210,9 @@ func QueryMany[Entity, ID any](
 			if subject, ok := subject.(crud.ByIDFinder[Entity, ID]); ok {
 				s.Then("query execution can interlace with FindByID", func(t *testcase.T) { // multithreaded apps
 					t.Eventually(func(it *testcase.T) {
-						iter := act(t)
+						iter := iterators.Head(act(t), t.Random.IntBetween(3, 5))
 						defer func() { it.Must.NoError(iter.Close()) }()
+
 						for iter.Next() {
 							value := iter.Value()
 
