@@ -375,3 +375,93 @@ func (NestedEntMapping) ToDTO(ctx context.Context, ent NestedEnt) (NestedEntDTO,
 		Ent: dtokit.MustMap[EntDTO](ctx, ent.Ent),
 	}, nil
 }
+
+func TestMapping(t *testing.T) {
+	type X struct{ V int }
+	type XDTO struct{ V string }
+
+	var ToEnt = func(ctx context.Context, dto XDTO) (X, error) {
+		v, err := strconv.Atoi(dto.V)
+		return X{V: v}, err
+	}
+	var ToDTO = func(ctx context.Context, ent X) (XDTO, error) {
+		return XDTO{V: strconv.Itoa(ent.V)}, nil
+	}
+
+	t.Run("smoke", func(t *testing.T) {
+		// create a Mapping that knows about Entity and DTO types,
+		// then pass it to the dependent code that only knows about the Entity type,
+		// but has to work with the DTO as part of the serialisation process
+		var (
+			m   dtokit.Mapper[X] = dtokit.Mapping[X, XDTO]{ToEnt: ToEnt, ToDTO: ToDTO}
+			ctx                  = context.Background()
+			ent X                = X{V: rnd.Int()}
+		)
+
+		t.Log("map concrete entity type to a dto value (any)")
+		dto, err := m.MapToDTO(ctx, ent)
+		assert.NoError(t, err)
+		assert.NotNil(t, dto)
+		assert.NotEmpty(t, dto)
+
+		t.Log("serialize the dto value")
+		data, err := json.Marshal(dto)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		t.Log("prepare to unserialize the value")
+		var ptrOfDTO any = m.NewDTO()
+		assert.NotNil(t, ptrOfDTO)
+		rptr, ok := ptrOfDTO.(*XDTO)
+		assert.True(t, ok)
+		assert.NotNil(t, rptr)
+		assert.Empty(t, *rptr)
+		assert.NoError(t, json.Unmarshal(data, ptrOfDTO))
+		assert.Equal[any](t, *rptr, dto)
+
+		t.Log("map the untyped *DTO value back into an entity")
+		gotEnt, err := m.MapToEnt(ctx, ptrOfDTO)
+		assert.NoError(t, err)
+		assert.Equal(t, gotEnt, ent)
+	})
+
+	t.Run("default use dtokit register", func(t *testing.T) {
+		// create a Mapping that knows about Entity and DTO types,
+		// then pass it to the dependent code that only knows about the Entity type,
+		// but has to work with the DTO as part of the serialisation process
+		var (
+			m   dtokit.Mapper[X] = dtokit.Mapping[X, XDTO]{}
+			ctx                  = context.Background()
+			ent X                = X{V: rnd.Int()}
+		)
+
+		t.Log("given the dtokit register has mapping between the entity and the dto")
+		defer dtokit.Register(ToDTO, ToEnt)()
+
+		t.Log("map concrete entity type to a dto value (any)")
+		dto, err := m.MapToDTO(ctx, ent)
+		assert.NoError(t, err)
+		assert.NotNil(t, dto)
+		assert.NotEmpty(t, dto)
+
+		t.Log("serialize the dto value")
+		data, err := json.Marshal(dto)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		t.Log("prepare to unserialize the value")
+		var ptrOfDTO any = m.NewDTO()
+		assert.NotNil(t, ptrOfDTO)
+		rptr, ok := ptrOfDTO.(*XDTO)
+		assert.True(t, ok)
+		assert.NotNil(t, rptr)
+		assert.Empty(t, *rptr)
+		assert.NoError(t, json.Unmarshal(data, ptrOfDTO))
+		assert.Equal[any](t, *rptr, dto)
+
+		t.Log("map the untyped *DTO value back into an entity")
+		gotEnt, err := m.MapToEnt(ctx, ptrOfDTO)
+		assert.NoError(t, err)
+		assert.Equal(t, gotEnt, ent)
+	})
+}

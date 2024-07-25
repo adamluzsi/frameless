@@ -59,10 +59,10 @@ func ExampleRestResource() {
 		},
 		Destroy: fooRepository.DeleteByID,
 
-		Mapping: httpkit.DTOMapping[X, XDTO]{},
+		Mapping: dtokit.Mapping[X, XDTO]{},
 
-		MappingForMediaType: map[string]httpkit.Mapping[X]{
-			mediatype.JSON: httpkit.DTOMapping[X, XDTO]{},
+		MappingForMediaType: map[string]dtokit.Mapper[X]{
+			mediatype.JSON: dtokit.Mapping[X, XDTO]{},
 		},
 	}
 
@@ -94,7 +94,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 				},
 				IDConverter: httpkit.IDConverter[XID]{},
 			},
-			Mapping: httpkit.DTOMapping[X, XDTO]{},
+			Mapping: dtokit.Mapping[X, XDTO]{},
 		}.WithCRUD(resource.Get(t))
 	})
 
@@ -804,7 +804,7 @@ func TestDTOMapping_manual(t *testing.T) {
 	type FooCustomDTO struct{ Foo }
 
 	resource := httpkit.RestResource[Foo, FooID]{
-		Mapping: httpkit.DTOMapping[Foo, FooCustomDTO]{
+		Mapping: dtokit.Mapping[Foo, FooCustomDTO]{
 			ToEnt: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
 				return dto.Foo, nil
 			},
@@ -873,7 +873,7 @@ func TestRouter_Resource(t *testing.T) {
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			return foo, true, nil
 		},
-		Mapping: httpkit.DTOMapping[Foo, FooDTO]{},
+		Mapping: dtokit.Mapping[Foo, FooDTO]{},
 	})
 
 	{

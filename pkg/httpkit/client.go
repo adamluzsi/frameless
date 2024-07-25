@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -23,13 +24,40 @@ import (
 )
 
 type RestClient[Entity, ID any] struct {
-	BaseURL     string
-	HTTPClient  *http.Client
-	MediaType   string
-	Mapping     Mapping[Entity]
-	Serializer  RestClientSerializer
+	// BaseURL [required] is the url base that the rest client will use to
+	BaseURL string
+	// HTTPClient [optional] will be used to make the http requests from the rest client.
+	//
+	// default: httpkit.DefaultRestClientHTTPClient
+	HTTPClient *http.Client
+	// MediaType [optional] is used in the related headers such as Content-Type and Accept.
+	//
+	// default: httpkit.DefaultSerializer.MIMEType
+	MediaType string
+	// Mapping [optional] is used if the Entity must be mapped into a DTO type prior to serialization.
+	//
+	// default: Entity type is used as the DTO type.
+	Mapping dtokit.Mapper[Entity]
+	// Serializer [optional] is used for the serialization process with DTO values.
+	//
+	// default: DefaultSerializers will be used to find a matching serializer for the given media type.
+	Serializer RestClientSerializer
+	// IDConverter [optional] is used to convert the ID value into a string format,
+	// that can be used to path encode for requests.
+	//
+	// default: httpkit.IDConverter[ID]
 	IDConverter idConverter[ID]
-	LookupID    crud.LookupIDFunc[Entity, ID]
+	// LookupID [optional] is used to lookup the ID value in an Entity value.
+	//
+	// default: extid.Lookup[ID, Entity]
+	LookupID crud.LookupIDFunc[Entity, ID]
+	// WithContext [optional] allows you to add data to the context for requests.
+	// If you need to select a RESTful subresource and return it as a RestClient,
+	// you can use this function to add the selected resource's path parameter
+	// to the context using httpkit.WithPathParam.
+	//
+	// default: ignored
+	WithContext func(context.Context) context.Context
 }
 
 type RestClientSerializer interface {
@@ -38,6 +66,8 @@ type RestClientSerializer interface {
 }
 
 func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
+	ctx = r.withContext(ctx)
+
 	if ptr == nil {
 		return fmt.Errorf("nil pointer (%s) received",
 			reflectkit.TypeOf[Entity]().String())
@@ -52,7 +82,7 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	ser := r.getSerializer(mimeType)
 	mapping := r.getMapping()
 
-	dto, err := mapping.toDTO(ctx, *ptr)
+	dto, err := mapping.MapToDTO(ctx, *ptr)
 	if err != nil {
 		return err
 	}
@@ -89,12 +119,12 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 		}
 	}
 
-	dtoPtr := mapping.newDTO()
+	dtoPtr := mapping.NewDTO()
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
 		return err
 	}
 
-	got, err := mapping.toEnt(ctx, dtoPtr)
+	got, err := mapping.MapToEnt(ctx, dtoPtr)
 	if err != nil {
 		return err
 	}
@@ -104,6 +134,8 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 }
 
 func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+	ctx = r.withContext(ctx)
+
 	var details []logging.Detail
 	defer func() { logger.Debug(ctx, "find all entity with a rest client http request", details...) }()
 
@@ -155,12 +187,12 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 			return v, false, dec.Err()
 		}
 
-		ptr := mapping.newDTO()
+		ptr := mapping.NewDTO()
 		if err := dec.Decode(ptr); err != nil {
 			return v, false, err
 		}
 
-		ent, err := mapping.toEnt(ctx, ptr)
+		ent, err := mapping.MapToEnt(ctx, ptr)
 		if err != nil {
 			return v, false, err
 		}
@@ -169,16 +201,9 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 	}, iterators.OnClose(dec.Close))
 }
 
-func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
-	mt := string(resp.Header.Get("Content-Type"))
-	ser, ok := r.lookupSerializer(mt)
-	if !ok && r.Serializer != nil {
-		ser, ok = r.Serializer, true
-	}
-	return mt, ser, ok
-}
-
 func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error) {
+	ctx = r.withContext(ctx)
+
 	var details []logging.Detail
 	defer func() {
 		details = append(details, logger.Field("found", found))
@@ -249,12 +274,12 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 
 	details = append(details, logging.Field("response content type", responseMediaType))
 
-	dtoPtr := mapping.newDTO()
+	dtoPtr := mapping.NewDTO()
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
 		return ent, false, err
 	}
 
-	got, err := mapping.toEnt(ctx, dtoPtr)
+	got, err := mapping.MapToEnt(ctx, dtoPtr)
 	if err != nil {
 		return ent, false, err
 	}
@@ -263,6 +288,8 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 }
 
 func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
+	ctx = r.withContext(ctx)
+
 	if ptr == nil {
 		return fmt.Errorf("nil pointer (%s) received",
 			reflectkit.TypeOf[Entity]().String())
@@ -292,7 +319,7 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	dto, err := mapping.toDTO(ctx, *ptr)
+	dto, err := mapping.MapToDTO(ctx, *ptr)
 	if err != nil {
 		return err
 	}
@@ -341,6 +368,8 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 }
 
 func (r RestClient[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
+	ctx = r.withContext(ctx)
+
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
 		return err
@@ -378,6 +407,8 @@ func (r RestClient[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 }
 
 func (r RestClient[Entity, ID]) DeleteAll(ctx context.Context) error {
+	ctx = r.withContext(ctx)
+
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
 		return err
@@ -436,7 +467,16 @@ func (r RestClient[Entity, ID]) lookupSerializer(mimeType string) (Serializer, b
 	return nil, false
 }
 
-var DefaultResourceClientHTTPClient http.Client = http.Client{
+func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
+	mt := string(resp.Header.Get("Content-Type"))
+	ser, ok := r.lookupSerializer(mt)
+	if !ok && r.Serializer != nil {
+		ser, ok = r.Serializer, true
+	}
+	return mt, ser, ok
+}
+
+var DefaultRestClientHTTPClient http.Client = http.Client{
 	Transport: RetryRoundTripper{
 		RetryStrategy: retry.ExponentialBackoff{
 			WaitTime: time.Second,
@@ -447,10 +487,10 @@ var DefaultResourceClientHTTPClient http.Client = http.Client{
 }
 
 func (r RestClient[Entity, ID]) httpClient() *http.Client {
-	return zerokit.Coalesce(r.HTTPClient, &DefaultResourceClientHTTPClient)
+	return zerokit.Coalesce(r.HTTPClient, &DefaultRestClientHTTPClient)
 }
 
-func (r RestClient[Entity, ID]) getMapping() Mapping[Entity] {
+func (r RestClient[Entity, ID]) getMapping() dtokit.Mapper[Entity] {
 	if r.Mapping == nil {
 		return passthroughMappingMode[Entity]()
 	}
@@ -462,11 +502,18 @@ func (r RestClient[Entity, ID]) getMediaType() string {
 	if r.MediaType != zero {
 		return r.MediaType
 	}
-	return DefaultSerializer.MIMEType
+	return DefaultSerializer.MediaType
 }
 
 func (r RestClient[Entity, ID]) getBaseURL(ctx context.Context) (string, error) {
 	return pathsubst(ctx, r.BaseURL)
+}
+
+func (r RestClient[Entity, ID]) withContext(ctx context.Context) context.Context {
+	if r.WithContext != nil {
+		return r.WithContext(ctx)
+	}
+	return ctx
 }
 
 var pathResourceIdentifierRGX = regexp.MustCompile(`^:[\w[:punct:]]+$`)

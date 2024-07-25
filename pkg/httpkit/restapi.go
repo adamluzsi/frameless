@@ -52,10 +52,10 @@ type RestResource[Entity, ID any] struct {
 	Serialization RestResourceSerialization[Entity, ID]
 
 	// Mapping is the primary Entity to DTO mapping configuration.
-	Mapping Mapping[Entity]
+	Mapping dtokit.Mapper[Entity]
 
 	// MappingForMediaType defines a per MIMEType Mapping, that takes priority over Mapping
-	MappingForMediaType map[string]Mapping[Entity]
+	MappingForMediaType map[string]dtokit.Mapper[Entity]
 
 	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
 	ErrorHandler ErrorHandler
@@ -100,7 +100,7 @@ type idConverter[ID any] interface {
 	ParseID(string) (ID, error)
 }
 
-func (res RestResource[Entity, ID]) getMapping(mediaType string) Mapping[Entity] {
+func (res RestResource[Entity, ID]) getMapping(mediaType string) dtokit.Mapper[Entity] {
 	mediaType = getMediaType(mediaType) // TODO: TEST ME
 	if res.MappingForMediaType != nil {
 		if mapping, ok := res.MappingForMediaType[mediaType]; ok {
@@ -115,60 +115,21 @@ func (res RestResource[Entity, ID]) getMapping(mediaType string) Mapping[Entity]
 
 // passthroughMappingMode enables a passthrough mapping mode where entity is used as the DTO itself.
 // Since we can't rule out that they don't use restapi.Resource with a DTO type in the first place.
-func passthroughMappingMode[Entity any]() DTOMapping[Entity, Entity] {
-	return DTOMapping[Entity, Entity]{}
+func passthroughMappingMode[Entity any]() dtokit.Mapping[Entity, Entity] {
+	return dtokit.Mapping[Entity, Entity]{}
 }
 
-// Mapping is a generic interface used for representing a DTO-Entity mapping relationship.
+// Mapper is a generic interface used for representing a DTO-Entity mapping relationship.
 // Its primary function is to allow Resource to list various mappings,
 // each with its own DTO type, for different MIMEType values.
 // This means we can use different DTO types within the same restful Resource handler based on different content types,
 // making it more flexible and adaptable to support different Serialization formats.
 //
 // It is implemented by DTOMapping.
-type Mapping[Entity any] interface {
+type Mapper[Entity any] interface {
 	newDTO() (dtoPtr any)
 	toEnt(ctx context.Context, dtoPtr any) (Entity, error)
 	toDTO(ctx context.Context, ent Entity) (DTO any, _ error)
-}
-
-// DTOMapping is a type safe implementation for the generic Mapping interface.
-// When using the frameless/pkg/dtos package, all you need to provide is the type arguments; nothing else is required.
-type DTOMapping[Entity, DTO any] struct {
-	// ToEnt is an optional function to describe how to map a DTO into an Entity.
-	//
-	// default: dtokit.Map[Entity, DTO](...)
-	ToEnt func(ctx context.Context, dto DTO) (Entity, error)
-	// ToDTO is an optional function to describe how to map an Entity into a DTO.
-	//
-	// default: dtokit.Map[DTO, Entity](...)
-	ToDTO func(ctx context.Context, ent Entity) (DTO, error)
-}
-
-func (dto DTOMapping[Entity, DTO]) newDTO() any { return new(DTO) }
-
-func (dto DTOMapping[Entity, DTO]) toEnt(ctx context.Context, dtoPtr any) (Entity, error) {
-	if dtoPtr == nil {
-		return *new(Entity), fmt.Errorf("nil dto ptr")
-	}
-	ptr, ok := dtoPtr.(*DTO)
-	if !ok {
-		return *new(Entity), fmt.Errorf("invalid %s type: %T", reflectkit.TypeOf[DTO]().String(), dtoPtr)
-	}
-	if ptr == nil {
-		return *new(Entity), fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
-	}
-	if dto.ToEnt != nil { // TODO: testme
-		return dto.ToEnt(ctx, *ptr)
-	}
-	return dtokit.Map[Entity](ctx, *ptr)
-}
-
-func (dto DTOMapping[Entity, DTO]) toDTO(ctx context.Context, ent Entity) (any, error) {
-	if dto.ToDTO != nil { // TODO: testme
-		return dto.ToDTO(ctx, ent)
-	}
-	return dtokit.Map[DTO](ctx, ent)
 }
 
 func (res RestResource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -324,7 +285,7 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 	for ; index.Next(); n++ {
 		ent := index.Value()
 
-		dto, err := resMapping.toDTO(ctx, ent)
+		dto, err := resMapping.MapToDTO(ctx, ent)
 		if err != nil {
 			logger.Warn(ctx, "error during index element DTO Mapping", logging.ErrField(err))
 			break
@@ -367,14 +328,14 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		reqMapping          = res.getMapping(reqMIMEType)
 	)
 
-	dtoPtr := reqMapping.newDTO()
+	dtoPtr := reqMapping.NewDTO()
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
 		logger.Debug(ctx, "invalid request body", logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
 		return
 	}
 
-	ent, err := reqMapping.toEnt(ctx, dtoPtr)
+	ent, err := reqMapping.MapToEnt(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -395,7 +356,7 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		resMapping          = res.getMapping(resMIMEType)
 	)
 
-	dto, err := resMapping.toDTO(ctx, ent)
+	dto, err := resMapping.MapToDTO(ctx, ent)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -442,7 +403,7 @@ func (res RestResource[Entity, ID]) show(w http.ResponseWriter, r *http.Request,
 
 	w.Header().Set(headerKeyContentType, resMIMEType)
 
-	dto, err := mapping.toDTO(ctx, entity)
+	dto, err := mapping.MapToDTO(ctx, entity)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -479,7 +440,7 @@ func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	dtoPtr := reqMapping.newDTO()
+	dtoPtr := reqMapping.NewDTO()
 
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
 		res.getErrorHandler().HandleError(w, r,
@@ -500,7 +461,7 @@ func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	entity, err := reqMapping.toEnt(ctx, dtoPtr)
+	entity, err := reqMapping.MapToEnt(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return

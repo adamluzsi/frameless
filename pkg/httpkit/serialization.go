@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/serializers"
@@ -34,7 +35,7 @@ var DefaultSerializers = map[string]Serializer{
 
 var DefaultSerializer = SerializerDefault{
 	Serializer: serializers.JSON{},
-	MIMEType:   "application/json",
+	MediaType:  mediatype.JSON,
 }
 
 type SerializerDefault struct {
@@ -42,7 +43,7 @@ type SerializerDefault struct {
 		serializers.Serializer
 		serializers.ListDecoderMaker
 	}
-	MIMEType string
+	MediaType string
 }
 
 func (m *RestResourceSerialization[Entity, ID]) getSerializer(mimeType string) (Serializer, string) {
@@ -66,7 +67,7 @@ func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Re
 }
 
 func (m *RestResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, string) {
-	return DefaultSerializer.Serializer, DefaultSerializer.MIMEType
+	return DefaultSerializer.Serializer, DefaultSerializer.MediaType
 }
 
 func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, string) {
