@@ -11,45 +11,6 @@ you can effortlessly incorporate the CRUD contract testing suite.
 This suite verifies that your implementation behaves consistently with other solutions, 
 meeting the expectations of the domain code.
 
-```go
-package adapter_test
-
-import (
-	"context"
-	"testing"
-	
-	"go.llib.dev/testcase/assert"
-
-	"go.llib.dev/frameless/ports/crud/crudcontracts"
-)
-
-func TestMyAdapter(t *testing.T) {
-	crudcontracts.SuiteFor[
-		mydomain.Foo, mydomain.FooID,
-		myadapter.FooRepository,
-	](func(tb testing.TB) crudcontracts.SuiteSubject[
-		mydomain.Foo, mydomain.FooID,
-		myadapter.FooRepository,
-	] {
-		c, err := myadapter.NewConnection(...)
-		assert.NoError(tb, err)
-		tb.Cleanup(func() { c.Close() })
-		r := myadapter.NewFooRepository(c)
-		return crudcontracts.SuiteSubject[
-			mydomain.Foo, mydomain.FooID,
-			myadapter.FooRepository,
-		]{
-			Resource:              r,
-			CommitManager:         c,
-			MakeContext:           context.Background,
-			MakeEntity:            func() mydomain.Foo { return /* make random Entity here without ID */ },
-			CreateSupportIDReuse:  true,
-			CreateSupportRecreate: true,
-		}
-	}).Test(t)
-}
-```
-
 ## Notable benefits of using the `crud` port
 
 ### Consistency
