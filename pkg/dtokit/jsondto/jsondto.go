@@ -9,6 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/ports/iterators"
 )
 
 type typed struct {
@@ -358,4 +359,19 @@ func typeAssert[T any](v any) (T, error) {
 			reflectkit.TypeOf[T]().String(), v)
 	}
 	return value, nil
+}
+
+type ArrayStream[T any] struct {
+	Iter iterators.Iterator[T]
+}
+
+func (a ArrayStream[T]) MarshalJSON() ([]byte, error) {
+	if a.Iter == nil {
+		return []byte("[]"), nil
+	}
+
+}
+
+func (a *ArrayStream[T]) UnmarshalJSON([]byte) error {
+	return fmt.Errorf("ArrayStream.UnmarshalJSON is not implemented")
 }

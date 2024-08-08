@@ -3,9 +3,11 @@ package jsondto_test
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/dtokit/jsondto"
+	"go.llib.dev/frameless/ports/iterators"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -277,3 +279,37 @@ func (*TypeC) Hello() {}
 type TypeD string
 
 func (str TypeD) Hello() {}
+
+func TestArrayStream(t *testing.T) {
+	type ItemDTO struct {
+		V string
+	}
+
+	type ResponseDTO struct {
+		Metadata string                       `json:"metadata"`
+		Items    jsondto.ArrayStream[ItemDTO] `json:"items"`
+	}
+
+	items := []ItemDTO{
+		{V: "1"},
+		{V: "2"},
+		{V: "c"},
+		{V: "d"},
+	}
+
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var items iterators.Iterator[ItemDTO]
+
+		var dto = ResponseDTO{
+			Metadata: "Hello, world!",
+			Items:    jsondto.ArrayStream[ItemDTO]{Iter: items},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(dto)
+	})
+
+	_ = h
+
+}
