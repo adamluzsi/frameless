@@ -15,7 +15,6 @@ import (
 	"go.llib.dev/testcase/let"
 
 	"go.llib.dev/frameless/ports/iterators"
-	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
@@ -137,13 +136,13 @@ func AllFinder[Entity, ID any](subject crud.AllFinder[Entity], opts ...Option[En
 	)
 }
 
-func ByIDsFinder[Entity, ID any](subject subjectByIDsFinder[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
-	conf := option.Use[Config[Entity, ID]](opts)
+func ByIDsFinder[Entity, ID any](subject crud.ByIDsFinder[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
+	c := option.Use[Config[Entity, ID]](opts)
 	s := testcase.NewSpec(nil)
 
 	var (
 		ctx = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
-			return conf.MakeContext()
+			return c.MakeContext()
 		})
 		ids = testcase.Var[[]ID]{ID: `entities ids`}
 	)
@@ -151,12 +150,14 @@ func ByIDsFinder[Entity, ID any](subject subjectByIDsFinder[Entity, ID], opts ..
 		return subject.FindByIDs(ctx.Get(t), ids.Get(t)...)
 	}
 
+	var mkEnt = func(t *testcase.T) Entity {
+		return makeEntity[Entity, ID](t, t.SkipNow, c, subject, zerokit.Coalesce(c.ExampleEntity, c.MakeEntity), "Config.ExampleEntity / Config.MakeEntity")
+	}
+
 	var (
 		newEntityInit = func(t *testcase.T) *Entity {
-			ent := conf.MakeEntity(t)
-			ptr := &ent
-			crudtest.Create[Entity, ID](t, subject, conf.MakeContext(), ptr)
-			return ptr
+			ent := mkEnt(t)
+			return &ent
 		}
 		ent1 = testcase.Let(s, newEntityInit)
 		ent2 = testcase.Let(s, newEntityInit)
@@ -187,26 +188,22 @@ func ByIDsFinder[Entity, ID any](subject subjectByIDsFinder[Entity, ID], opts ..
 		})
 	})
 
-	s.When(`id list contains at least one id that doesn't have stored entity`, func(s *testcase.Spec) {
-		ids.Let(s, func(t *testcase.T) []ID {
-			return []ID{getID[Entity, ID](t, *ent1.Get(t)), getID[Entity, ID](t, *ent2.Get(t))}
-		})
+	if deleter, ok := subject.(crudtest.CRD[Entity, ID]); ok {
+		s.When(`id list contains at least one id that doesn't have stored entity`, func(s *testcase.Spec) {
+			ids.Let(s, func(t *testcase.T) []ID {
+				return []ID{getID[Entity, ID](t, *ent1.Get(t)), getID[Entity, ID](t, *ent2.Get(t))}
+			})
 
-		s.Before(func(t *testcase.T) {
-			crudtest.Delete[Entity, ID](t, subject, ctx.Get(t), ent1.Get(t))
-		})
+			s.Before(func(t *testcase.T) {
+				crudtest.Delete[Entity, ID](t, deleter, ctx.Get(t), ent1.Get(t))
+			})
 
-		s.Then(`it will eventually yield error`, func(t *testcase.T) {
-			_, err := iterators.Collect(act(t))
-			t.Must.NotNil(err)
+			s.Then(`it will eventually yield error`, func(t *testcase.T) {
+				_, err := iterators.Collect(act(t))
+				t.Must.NotNil(err)
+			})
 		})
-	})
+	}
 
 	return s.AsSuite("ByIDsFinder")
-}
-
-type subjectByIDsFinder[Entity, ID any] interface {
-	spechelper.CRD[Entity, ID]
-	crud.ByIDsFinder[Entity, ID]
-	//crud.AllFinder[Entity]
 }

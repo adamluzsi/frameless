@@ -117,7 +117,11 @@ func Update[Entity, ID any](tb testing.TB, subject updater[Entity, ID], ctx cont
 	})
 }
 
-func Delete[Entity, ID any](tb testing.TB, subject sh.CRD[Entity, ID], ctx context.Context, ptr *Entity) {
+type CRD[Entity, ID any] interface {
+	sh.CRD[Entity, ID]
+}
+
+func Delete[Entity, ID any](tb testing.TB, subject CRD[Entity, ID], ctx context.Context, ptr *Entity) {
 	tb.Helper()
 	id := HasID[Entity, ID](tb, pointer.Deref(ptr))
 	IsPresent[Entity, ID](tb, subject, ctx, id)
