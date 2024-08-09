@@ -287,6 +287,28 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 	return got, true, nil
 }
 
+func (r RestClient[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
+	var index int
+	return iterators.Func[Entity](func() (v Entity, ok bool, err error) {
+		if err := ctx.Err(); err != nil {
+			return v, false, err
+		}
+		if !(index < len(ids)) {
+			return v, false, nil
+		}
+		defer func() { index++ }()
+		id := ids[index]
+		ent, found, err := r.FindByID(ctx, id)
+		if err != nil {
+			return ent, false, err
+		}
+		if !found {
+			return v, false, fmt.Errorf("%w: id=%v", crud.ErrNotFound, id)
+		}
+		return ent, true, nil
+	})
+}
+
 func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	ctx = r.withContext(ctx)
 
