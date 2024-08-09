@@ -1,4 +1,4 @@
-package jsondto
+package jsonkit
 
 import (
 	"bytes"
@@ -316,7 +316,7 @@ func isNull(data []byte) bool {
 	return bytes.Equal(data, null)
 }
 
-const ErrNotInterfaceType errorkit.Error = "jsondto.ErrNotInterfaceType"
+const ErrNotInterfaceType errorkit.Error = "jsonkit.ErrNotInterfaceType"
 
 type Interface[I any] struct{ V I }
 

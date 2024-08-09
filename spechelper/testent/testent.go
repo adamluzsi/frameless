@@ -118,11 +118,11 @@ var _ = dtokit.Register[Bar, BarJSONDTO](func(ctx context.Context, bar Bar) (Bar
 		N:  bar.N,
 		C:  bar.C,
 	}, nil
-}, func(ctx context.Context, jsondto BarJSONDTO) (Bar, error) {
+}, func(ctx context.Context, jsonkit BarJSONDTO) (Bar, error) {
 	return Bar{
-		ID: BarID(jsondto.ID),
-		N:  jsondto.N,
-		C:  jsondto.C,
+		ID: BarID(jsonkit.ID),
+		N:  jsonkit.N,
+		C:  jsonkit.C,
 	}, nil
 })
 

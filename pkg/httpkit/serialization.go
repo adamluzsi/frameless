@@ -10,9 +10,11 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/serializers"
+	"go.llib.dev/frameless/ports/codec"
 )
 
 type RestResourceSerialization[Entity, ID any] struct {
@@ -21,7 +23,7 @@ type RestResourceSerialization[Entity, ID any] struct {
 }
 
 type Serializer interface {
-	serializers.Serializer
+	codec.Codec
 }
 
 var DefaultSerializers = map[string]Serializer{
@@ -33,15 +35,15 @@ var DefaultSerializers = map[string]Serializer{
 	"application/x-www-form-urlencoded": serializers.FormURLEncoder{},
 }
 
-var DefaultSerializer = SerializerDefault{
-	Serializer: serializers.JSON{},
+var DefaultSerializer = CodecDefault{
+	Serializer: jsonkit.Codec{},
 	MediaType:  mediatype.JSON,
 }
 
-type SerializerDefault struct {
+type CodecDefault struct {
 	Serializer interface {
-		serializers.Serializer
-		serializers.ListDecoderMaker
+		codec.Codec
+		codec.ListDecoderMaker
 	}
 	MediaType string
 }

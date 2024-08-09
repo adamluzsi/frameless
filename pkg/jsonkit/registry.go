@@ -1,4 +1,4 @@
-package jsondto
+package jsonkit
 
 import (
 	"fmt"

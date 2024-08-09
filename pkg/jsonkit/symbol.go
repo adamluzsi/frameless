@@ -1,4 +1,4 @@
-package jsondto
+package jsonkit
 
 var ( // Symbols
 	null              = []byte("null")

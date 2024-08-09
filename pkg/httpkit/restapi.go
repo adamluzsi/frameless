@@ -15,7 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/serializers"
+	"go.llib.dev/frameless/ports/codec"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
@@ -263,7 +263,7 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 	resSer, resMIMEType := res.Serialization.responseBodySerializer(r) // TODO:TEST_ME
 	resMapping := res.getMapping(resMIMEType)
 
-	serMaker, ok := resSer.(serializers.ListEncoderMaker)
+	serMaker, ok := resSer.(codec.ListEncoderMaker)
 	if !ok {
 		const code = http.StatusNotAcceptable
 		http.Error(w, http.StatusText(code), code)

@@ -1,15 +1,10 @@
-package serializers
+package codec
 
 import "io"
 
-type Serializer interface {
+type Codec interface {
 	Marshal(v any) ([]byte, error)
 	Unmarshal(data []byte, ptr any) error
-}
-
-type ListSerializer interface {
-	ListEncoderMaker
-	ListDecoderMaker
 }
 
 type ListEncoderMaker interface {

@@ -1,6 +1,6 @@
-# jsondto
+# jsonkit
 
-The `jsondto` package enhances the convenience of working with JSON Data Transfer Objects (DTOs) in Go,
+The `jsonkit` package enhances the convenience of working with JSON Data Transfer Objects (DTOs) in Go,
 particularly focusing on the use of standard library's `json.Marshal` and `json.Unmarshal` functions.
 
 It does not replace these functions but offers tools to simplify their usage.
@@ -14,15 +14,15 @@ It does not replace these functions but offers tools to simplify their usage.
   Designed to complement the Go standard library's JSON handling capabilities,
   making it easier to use with existing codebase and dtokit.
 
-### jsondto.Interface[I]
+### jsonkit.Interface[I]
 
-jsondto.Interface allow you to marshal an interface type, and then unmarshal them back with ease.
+jsonkit.Interface allow you to marshal an interface type, and then unmarshal them back with ease.
 
-### jsondto.Array[T]
+### jsonkit.Array[T]
 
-jsondto.Array allow you to marshal any types, and then unmarshal them back.
+jsonkit.Array allow you to marshal any types, and then unmarshal them back.
 
-### jsondto.Register[T]
+### jsonkit.Register[T]
 
 Register allows you to register a type so that when it is used as an interface value type,
 it can be identified in a deterministic manner.
@@ -32,5 +32,5 @@ type MyDTO struct {
 	V string `json:"v"`
 }
 
-var _ = jsondto.Register[MyDTO]("my_dto")
+var _ = jsonkit.Register[MyDTO]("my_dto")
 ```

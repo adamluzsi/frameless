@@ -40,7 +40,7 @@
 - **`containers`**: Implements generic container structures.
 - **`convkit`**: Simplifies string parsing with an easy API.
 - **`dtokit`**: Simplifies Data Transfer Object mapping for external gateways.
-  - **`jsondto`**: Facilitates marshaling and unmarshaling of interface types.
+  - **`jsonkit`**: Facilitates marshaling and unmarshaling of interface types.
 - **`enum`**: A simple enum implementation.
 - **`logging`**: Enables structured and asynchronous logging.
 - **`mk`**: Facilitates recursive initialization of Go structures with an `Init` function.

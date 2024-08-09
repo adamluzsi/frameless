@@ -16,8 +16,8 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/retry"
-	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/ports/codec"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/crud/extid"
 	"go.llib.dev/frameless/ports/iterators"
@@ -61,8 +61,8 @@ type RestClient[Entity, ID any] struct {
 }
 
 type RestClientSerializer interface {
-	serializers.Serializer
-	serializers.ListDecoderMaker
+	codec.Codec
+	codec.ListDecoderMaker
 }
 
 func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
@@ -175,7 +175,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 
 	details = append(details, logging.Field("response content type", respMediaType))
 
-	dm, ok := ser.(serializers.ListDecoderMaker)
+	dm, ok := ser.(codec.ListDecoderMaker)
 	if !ok {
 		return iterators.Error[Entity](fmt.Errorf("no serializer found for the received mime type"))
 	}

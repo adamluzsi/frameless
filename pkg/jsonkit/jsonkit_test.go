@@ -1,11 +1,11 @@
-package jsondto_test
+package jsonkit_test
 
 import (
 	"encoding/json"
 	"fmt"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/dtokit/jsondto"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -14,7 +14,7 @@ import (
 var rnd = random.New(random.CryptoSeed{})
 
 func ExampleArray() {
-	var greeters = jsondto.Array[Greeter]{
+	var greeters = jsonkit.Array[Greeter]{
 		TypeA{V: "42"},
 		TypeB{V: 42},
 	}
@@ -24,7 +24,7 @@ func ExampleArray() {
 		panic(err)
 	}
 
-	var result jsondto.Array[Greeter]
+	var result jsonkit.Array[Greeter]
 	if err := json.Unmarshal(data, &result); err != nil {
 		panic(err)
 	}
@@ -33,7 +33,7 @@ func ExampleArray() {
 }
 
 func ExampleInterface() {
-	var exp = jsondto.Interface[Greeter]{
+	var exp = jsonkit.Interface[Greeter]{
 		V: &TypeC{V: 42.24},
 	}
 
@@ -43,7 +43,7 @@ func ExampleInterface() {
 	}
 	// {"__type":"type_c","v":42.24}
 
-	var got jsondto.Interface[Greeter]
+	var got jsonkit.Interface[Greeter]
 	if err := json.Unmarshal(data, &got); err != nil {
 		panic(err)
 	}
@@ -54,63 +54,63 @@ func ExampleInterface() {
 
 func TestInterface(t *testing.T) {
 	t.Run("non interface type raise error on marshalling/unmarshaling", func(t *testing.T) {
-		var x jsondto.Interface[string]
+		var x jsonkit.Interface[string]
 		_, err := json.Marshal(x)
-		assert.ErrorIs(t, err, jsondto.ErrNotInterfaceType)
-		assert.ErrorIs(t, json.Unmarshal([]byte(`"foo"`), &x), jsondto.ErrNotInterfaceType)
+		assert.ErrorIs(t, err, jsonkit.ErrNotInterfaceType)
+		assert.ErrorIs(t, json.Unmarshal([]byte(`"foo"`), &x), jsonkit.ErrNotInterfaceType)
 	})
 	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
-		var exp jsondto.Interface[Greeter]
+		var exp jsonkit.Interface[Greeter]
 		exp.V = TypeA{V: rnd.String()}
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Interface[Greeter]
+		var got jsonkit.Interface[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("inteface type that is implemented by any primitive type", func(t *testing.T) {
-		var exp jsondto.Interface[any]
+		var exp jsonkit.Interface[any]
 		exp.V = rnd.Int()
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Interface[any]
+		var got jsonkit.Interface[any]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with base-type based implementation", func(t *testing.T) {
-		var exp jsondto.Interface[Greeter]
+		var exp jsonkit.Interface[Greeter]
 		exp.V = TypeD(rnd.String())
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Interface[Greeter]
+		var got jsonkit.Interface[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
-		var exp jsondto.Interface[Greeter]
+		var exp jsonkit.Interface[Greeter]
 		exp.V = &TypeC{V: rnd.Float32()}
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Interface[Greeter]
+		var got jsonkit.Interface[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with nil values", func(t *testing.T) {
-		var exp jsondto.Interface[Greeter]
+		var exp jsonkit.Interface[Greeter]
 		exp.V = nil
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Interface[Greeter]
+		var got jsonkit.Interface[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
@@ -118,18 +118,18 @@ func TestInterface(t *testing.T) {
 
 func TestArray_json(t *testing.T) {
 	t.Run("concrete type", func(t *testing.T) {
-		var exp jsondto.Array[string]
+		var exp jsonkit.Array[string]
 		exp = random.Slice[string](rnd.IntB(3, 7), rnd.String)
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Array[string]
+		var got jsonkit.Array[string]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
-		var exp jsondto.Array[Greeter]
+		var exp jsonkit.Array[Greeter]
 		exp = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
 			if rnd.Bool() {
 				return TypeA{V: rnd.String()}
@@ -140,12 +140,12 @@ func TestArray_json(t *testing.T) {
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Array[Greeter]
+		var got jsonkit.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
-		var exp jsondto.Array[Greeter]
+		var exp jsonkit.Array[Greeter]
 		exp = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
 			return &TypeC{V: rnd.Float32()}
 		})
@@ -153,12 +153,12 @@ func TestArray_json(t *testing.T) {
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Array[Greeter]
+		var got jsonkit.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with nil values", func(t *testing.T) {
-		var exp jsondto.Array[Greeter]
+		var exp jsonkit.Array[Greeter]
 		exp = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
 			if rnd.Bool() {
 				return TypeA{V: rnd.String()}
@@ -170,13 +170,13 @@ func TestArray_json(t *testing.T) {
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Array[Greeter]
+		var got jsonkit.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with various implementations", func(t *testing.T) {
-		var exp jsondto.Array[Greeter]
-		exp = jsondto.Array[Greeter]{
+		var exp jsonkit.Array[Greeter]
+		exp = jsonkit.Array[Greeter]{
 			TypeA{V: rnd.String()},
 			TypeB{V: rnd.Int()},
 			&TypeC{V: rnd.Float32()},
@@ -185,7 +185,7 @@ func TestArray_json(t *testing.T) {
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		var got jsondto.Array[Greeter]
+		var got jsonkit.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
@@ -196,14 +196,14 @@ func ExampleRegister() {
 		V string `json:"v"`
 	}
 	var ( // register types
-		_ = jsondto.Register[MyDTO]("my_dto")
+		_ = jsonkit.Register[MyDTO]("my_dto")
 	)
 }
 
 func TestRegister_doubleRegisterPanics(t *testing.T) {
 	type X struct{}
-	defer jsondto.Register[X]("x")()
-	panicResults := assert.Panic(t, func() { jsondto.Register[X]("xx") })
+	defer jsonkit.Register[X]("x")()
+	panicResults := assert.Panic(t, func() { jsonkit.Register[X]("xx") })
 	assert.NotNil(t, panicResults)
 	out, ok := panicResults.(string)
 	assert.True(t, ok, "panic value suppose to be a string")
@@ -217,17 +217,17 @@ func TestRegister_race(t *testing.T) {
 		RaceType2 struct{}
 		RaceType3 struct{}
 	)
-	var ary = jsondto.Array[Greeter]{TypeA{}, TypeB{}, &TypeC{}}
+	var ary = jsonkit.Array[Greeter]{TypeA{}, TypeB{}, &TypeC{}}
 	testcase.Race(func() {
-		t.Cleanup(jsondto.Register[RaceType1]("race_type_1"))
+		t.Cleanup(jsonkit.Register[RaceType1]("race_type_1"))
 	}, func() {
-		t.Cleanup(jsondto.Register[RaceType2]("race_type_2"))
+		t.Cleanup(jsonkit.Register[RaceType2]("race_type_2"))
 	}, func() {
-		t.Cleanup(jsondto.Register[RaceType3]("race_type_3"))
+		t.Cleanup(jsonkit.Register[RaceType3]("race_type_3"))
 	}, func() {
 		data, err := json.Marshal(ary)
 		assert.NoError(t, err)
-		var got jsondto.Array[Greeter]
+		var got jsonkit.Array[Greeter]
 		assert.NoError(t, json.Unmarshal(data, &got))
 	})
 }
@@ -235,7 +235,7 @@ func TestRegister_race(t *testing.T) {
 func TestRegister_supportAliases(t *testing.T) {
 	t.Run("integer", func(t *testing.T) {
 		var (
-			val  jsondto.Interface[any]
+			val  jsonkit.Interface[any]
 			data = []byte(`{"__type":"integer","__value":42}`)
 		)
 		assert.NoError(t, json.Unmarshal(data, &val))
@@ -244,7 +244,7 @@ func TestRegister_supportAliases(t *testing.T) {
 	})
 	t.Run("boolean", func(t *testing.T) {
 		var (
-			val  jsondto.Interface[any]
+			val  jsonkit.Interface[any]
 			data = []byte(`{"__type":"boolean","__value":true}`)
 		)
 		assert.NoError(t, json.Unmarshal(data, &val))
@@ -256,10 +256,10 @@ func TestRegister_supportAliases(t *testing.T) {
 type Greeter interface{ Hello() }
 
 var ( // register types
-	_ = jsondto.Register[TypeA]("type_a")
-	_ = jsondto.Register[TypeB]("type_b")
-	_ = jsondto.Register[TypeC]("type_c")
-	_ = jsondto.Register[TypeD]("type_d")
+	_ = jsonkit.Register[TypeA]("type_a")
+	_ = jsonkit.Register[TypeB]("type_b")
+	_ = jsonkit.Register[TypeC]("type_c")
+	_ = jsonkit.Register[TypeD]("type_d")
 )
 
 type TypeA struct{ V string }
@@ -277,3 +277,41 @@ func (*TypeC) Hello() {}
 type TypeD string
 
 func (str TypeD) Hello() {}
+
+// func TestArrayStream(t *testing.T) {
+// 	type ItemDTO struct {
+// 		V string
+// 	}
+//
+// 	type ExampleDTO struct {
+// 		Metadata string                       `json:"metadata"`
+// 		Items    jsonkit.ArrayStream[ItemDTO] `json:"items"`
+// 	}
+//
+// 	items := []ItemDTO{
+// 		{V: "1"},
+// 		{V: "2"},
+// 		{V: "c"},
+// 		{V: "d"},
+// 	}
+//
+// 	var dto = ExampleDTO{
+// 		Metadata: "Hello, world!",
+// 		Items:    jsonkit.ArrayStream[ItemDTO]{Iter: iterators.Slice(items)},
+// 	}
+//
+// 	var buf bytes.Buffer
+// 	assert.NoError(t, json.NewEncoder(&buf).Encode(dto))
+//
+// 	type ExampleDTOGot struct {
+// 		Metadata string    `json:"metadata"`
+// 		Items    []ItemDTO `json:"items"`
+// 	}
+// 	var got ExampleDTOGot
+// 	assert.NoError(t, json.Unmarshal(buf.Bytes(), &got))
+//
+// 	assert.Equal(t, ExampleDTOGot{
+// 		Metadata: dto.Metadata,
+// 		Items:    items,
+// 	}, got)
+// }
