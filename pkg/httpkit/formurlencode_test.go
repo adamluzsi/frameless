@@ -9,7 +9,7 @@ import (
 )
 
 func TestFormURLEncoder_struct(t *testing.T) {
-	ser := httpkit.FormURLEncoder{}
+	ser := httpkit.FormURLEncodedCodec{}
 
 	type DTO struct {
 		Foo        string `form:"foo"`
@@ -44,7 +44,7 @@ func TestFormURLEncoder_struct(t *testing.T) {
 }
 
 func TestFormURLEncoder_mapStringAny(t *testing.T) {
-	ser := httpkit.FormURLEncoder{}
+	ser := httpkit.FormURLEncodedCodec{}
 
 	var exp = map[string]any{
 		"foo":  "foo",
@@ -68,7 +68,7 @@ func TestFormURLEncoder_mapStringAny(t *testing.T) {
 }
 
 func TestFormURLEncoder_mapCustomKeyAnyValue(t *testing.T) {
-	ser := httpkit.FormURLEncoder{}
+	ser := httpkit.FormURLEncodedCodec{}
 
 	var exp = map[time.Duration]any{
 		time.Second: "foo",

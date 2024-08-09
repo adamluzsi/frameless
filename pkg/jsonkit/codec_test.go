@@ -86,7 +86,7 @@ func TestJSONStream_serializer(t *testing.T) {
 		Baz: "baz",
 	}
 
-	ser := jsonkit.LinesSerializer{}
+	ser := jsonkit.LinesCodec{}
 	data, err := ser.Marshal(exp)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
@@ -103,7 +103,7 @@ func TestJSONStream_list(t *testing.T) {
 		exp3 = rnd.Make(Foo{}).(Foo)
 	)
 
-	ser := jsonkit.LinesSerializer{}
+	ser := jsonkit.LinesCodec{}
 
 	var buf bytes.Buffer
 

@@ -12,9 +12,9 @@ import (
 	"go.llib.dev/frameless/pkg/stringcase"
 )
 
-type FormURLEncoder struct{}
+type FormURLEncodedCodec struct{}
 
-func (e FormURLEncoder) Marshal(v any) ([]byte, error) {
+func (e FormURLEncodedCodec) Marshal(v any) ([]byte, error) {
 	if v == nil {
 		return []byte{}, nil
 	}
@@ -30,7 +30,7 @@ func (e FormURLEncoder) Marshal(v any) ([]byte, error) {
 	}
 }
 
-func (e FormURLEncoder) marshalStruct(input reflect.Value) ([]byte, error) {
+func (e FormURLEncodedCodec) marshalStruct(input reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for i, num := 0, input.NumField(); i < num; i++ {
 		var (
@@ -62,7 +62,7 @@ func (e FormURLEncoder) marshalStruct(input reflect.Value) ([]byte, error) {
 	return []byte(values.Encode()), nil
 }
 
-func (e FormURLEncoder) Unmarshal(data []byte, iptr any) error {
+func (e FormURLEncodedCodec) Unmarshal(data []byte, iptr any) error {
 	values, err := url.ParseQuery(string(data))
 	if err != nil {
 		return err
@@ -82,7 +82,7 @@ func (e FormURLEncoder) Unmarshal(data []byte, iptr any) error {
 	}
 }
 
-func (e FormURLEncoder) unmarshalStruct(values url.Values, ptr reflect.Value) error {
+func (e FormURLEncodedCodec) unmarshalStruct(values url.Values, ptr reflect.Value) error {
 	for i, num := 0, ptr.Type().Elem().NumField(); i < num; i++ {
 		var (
 			field = ptr.Elem().Field(i)
@@ -112,7 +112,7 @@ func (e FormURLEncoder) unmarshalStruct(values url.Values, ptr reflect.Value) er
 	return nil
 }
 
-func (e FormURLEncoder) unmarshalMap(values url.Values, ptr reflect.Value) error {
+func (e FormURLEncodedCodec) unmarshalMap(values url.Values, ptr reflect.Value) error {
 	var (
 		keyType   = ptr.Type().Elem().Key()
 		valueType = ptr.Type().Elem().Elem()
@@ -155,7 +155,7 @@ type formProperties struct {
 	OmitEmpty bool
 }
 
-func (e FormURLEncoder) getFormProperties(typ reflect.StructField) formProperties {
+func (e FormURLEncodedCodec) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
 	prop.Key = stringcase.ToSnake(typ.Name)
 	e.lookupTag(typ, "url", &prop)
@@ -163,7 +163,7 @@ func (e FormURLEncoder) getFormProperties(typ reflect.StructField) formPropertie
 	return prop
 }
 
-func (e FormURLEncoder) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
+func (e FormURLEncodedCodec) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
 	tag, ok := typ.Tag.Lookup(tagKey)
 	if !ok || len(tag) == 0 {
 		return
@@ -180,7 +180,7 @@ func (e FormURLEncoder) lookupTag(typ reflect.StructField, tagKey string, prop *
 	}
 }
 
-func (e FormURLEncoder) marshalMap(m reflect.Value) ([]byte, error) {
+func (e FormURLEncodedCodec) marshalMap(m reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for _, mKey := range m.MapKeys() {
 		mVal := m.MapIndex(mKey)

@@ -13,7 +13,6 @@ import (
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/codec"
 )
 
@@ -27,12 +26,12 @@ type Serializer interface {
 }
 
 var DefaultSerializers = map[string]Serializer{
-	"application/json":                  serializers.JSON{},
-	"application/problem+json":          serializers.JSON{},
-	"application/x-ndjson":              serializers.JSONStream{},
-	"application/stream+json":           serializers.JSONStream{},
-	"application/json-stream":           serializers.JSONStream{},
-	"application/x-www-form-urlencoded": serializers.FormURLEncoder{},
+	"application/json":                  jsonkit.Codec{},
+	"application/problem+json":          jsonkit.Codec{},
+	"application/x-ndjson":              jsonkit.LinesCodec{},
+	"application/stream+json":           jsonkit.LinesCodec{},
+	"application/json-stream":           jsonkit.LinesCodec{},
+	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
 }
 
 var DefaultSerializer = CodecDefault{

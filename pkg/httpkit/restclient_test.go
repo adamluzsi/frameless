@@ -9,9 +9,9 @@ import (
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/crud/crudcontracts"
 	"go.llib.dev/frameless/ports/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -25,7 +25,7 @@ func ExampleRestClient() {
 			BaseURL:     "https://mydomain.dev/api/v1/foos",
 			MediaType:   mediatype.JSON,
 			Mapping:     dtokit.Mapping[testent.Foo, testent.FooDTO]{},
-			Serializer:  serializers.JSON{},
+			Serializer:  jsonkit.Codec{},
 			IDConverter: httpkit.IDConverter[testent.FooID]{},
 			LookupID:    testent.Foo.LookupID,
 		}

@@ -210,17 +210,18 @@ func (c *jsonListDecoder) Close() error {
 	return c.R.Close()
 }
 
-type LinesSerializer struct{}
+// LinesCodec is a json codec that uses the application/jsonlines
+type LinesCodec struct{}
 
-func (s LinesSerializer) Marshal(v any) ([]byte, error) {
+func (s LinesCodec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (s LinesSerializer) Unmarshal(data []byte, ptr any) error {
+func (s LinesCodec) Unmarshal(data []byte, ptr any) error {
 	return json.Unmarshal(data, ptr)
 }
 
-func (s LinesSerializer) MakeListEncoder(w io.Writer) codec.ListEncoder {
+func (s LinesCodec) MakeListEncoder(w io.Writer) codec.ListEncoder {
 	return jsonEncoder{Encoder: json.NewEncoder(w)}
 }
 
@@ -234,7 +235,7 @@ func (e jsonEncoder) Encode(v any) error {
 
 func (jsonEncoder) Close() error { return nil }
 
-func (s LinesSerializer) NewListDecoder(w io.ReadCloser) codec.ListDecoder {
+func (s LinesCodec) NewListDecoder(w io.ReadCloser) codec.ListDecoder {
 	return &jsonDecoder{Decoder: json.NewDecoder(w), Closer: w}
 }
 

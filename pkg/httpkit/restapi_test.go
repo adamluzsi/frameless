@@ -19,9 +19,9 @@ import (
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/serializers"
 	"go.llib.dev/frameless/ports/crud"
 	"go.llib.dev/frameless/ports/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
@@ -90,7 +90,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			IDContextKey: FooIDContextKey{},
 			Serialization: httpkit.RestResourceSerialization[X, XID]{
 				Serializers: map[string]httpkit.Serializer{
-					mediatype.JSON: serializers.JSON{},
+					mediatype.JSON: jsonkit.Codec{},
 				},
 				IDConverter: httpkit.IDConverter[XID]{},
 			},
