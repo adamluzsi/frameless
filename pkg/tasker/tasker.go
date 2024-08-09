@@ -167,7 +167,7 @@ func WithRepeat[TFN genericTask](interval Interval, tfn TFN) Task {
 		if err := task(ctx); err != nil {
 			return err
 		}
-		var at = clock.TimeNow()
+		var at = clock.Now()
 	repeat:
 		for {
 			select {
@@ -177,7 +177,7 @@ func WithRepeat[TFN genericTask](interval Interval, tfn TFN) Task {
 				if err := task(ctx); err != nil {
 					return err
 				}
-				at = clock.TimeNow()
+				at = clock.Now()
 			}
 		}
 		return nil

@@ -70,7 +70,7 @@ func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error
 		}
 		id := rnd.UUID()
 		ids = append(ids, id)
-		args = append(args, id, q.Name, data, clock.TimeNow().UTC())
+		args = append(args, id, q.Name, data, clock.Now().UTC())
 	}
 
 	_, err := q.Connection.ExecContext(ctx, query, args...)

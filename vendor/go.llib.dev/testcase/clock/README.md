@@ -55,12 +55,12 @@ func Test(t *testing.T) {
 
    MyFunc := func() Entity {
       return Entity{
-         CreatedAt: clock.TimeNow(),
+         CreatedAt: clock.Now(),
       }
    }
 
    expected := Entity{
-      CreatedAt: clock.TimeNow(),
+      CreatedAt: clock.Now(),
    }
 
    timecop.Travel(t, expected.CreatedAt, timecop.Freeze)

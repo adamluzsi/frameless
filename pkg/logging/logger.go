@@ -105,7 +105,7 @@ func (l *Logger) log(ctx context.Context, level Level, msg string, ds []Detail) 
 		Level:     level,
 		Message:   msg,
 		Details:   ds,
-		Timestamp: clock.TimeNow(),
+		Timestamp: clock.Now(),
 	})
 }
 

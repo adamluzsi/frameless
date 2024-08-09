@@ -17,7 +17,7 @@ func Every(d time.Duration) Interval { return timeDuration(d) }
 type timeDuration time.Duration
 
 func (i timeDuration) UntilNext(lastRanAt time.Time) time.Duration {
-	return lastRanAt.Add(time.Duration(i)).Sub(clock.TimeNow())
+	return lastRanAt.Add(time.Duration(i)).Sub(clock.Now())
 }
 
 type Monthly struct {
@@ -27,7 +27,7 @@ type Monthly struct {
 
 func (i Monthly) UntilNext(lastRanAt time.Time) time.Duration {
 	loc := getLocation(i.Location)
-	now := clock.TimeNow().In(loc)
+	now := clock.Now().In(loc)
 	if lastRanAt.IsZero() {
 		lastRanAt = now
 	}
@@ -54,7 +54,7 @@ type Daily struct {
 
 func (i Daily) UntilNext(lastRanAt time.Time) time.Duration {
 	loc := getLocation(i.Location)
-	now := clock.TimeNow().In(loc)
+	now := clock.Now().In(loc)
 	if lastRanAt.IsZero() {
 		lastRanAt = now
 	}

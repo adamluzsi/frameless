@@ -152,12 +152,12 @@ type AccessLog struct {
 func (mw AccessLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body := &requestBodyAccessLog{Body: r.Body}
 	r.Body = body
-	defer mw.doLog(w, r, clock.TimeNow(), body)
+	defer mw.doLog(w, r, clock.Now(), body)
 	mw.Next.ServeHTTP(w, r)
 }
 
 func (mw AccessLog) doLog(w http.ResponseWriter, r *http.Request, startTime time.Time, body *requestBodyAccessLog) {
-	endTime := clock.TimeNow()
+	endTime := clock.Now()
 	info := getResponseInfo(w)
 	fields := logging.Fields{
 		"method":               r.Method,

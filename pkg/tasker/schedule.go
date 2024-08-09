@@ -55,7 +55,7 @@ func (s Scheduler) WithSchedule(id StateID, interval Interval, job Task) Task {
 			return 0, err
 		}
 
-		state.Timestamp = clock.TimeNow().UTC()
+		state.Timestamp = clock.Now().UTC()
 		return interval.UntilNext(state.Timestamp), s.Repository.States().Update(ctx, &state)
 	}
 

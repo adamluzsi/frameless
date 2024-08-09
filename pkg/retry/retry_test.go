@@ -419,7 +419,7 @@ func TestWaiter_ShouldTry(t *testing.T) {
 	var (
 		Context   = let.Context(s)
 		startedAt = testcase.Let[retry.StartedAt](s, func(t *testcase.T) retry.StartedAt {
-			return clock.TimeNow()
+			return clock.Now()
 		}).EagerLoading(s)
 	)
 	act := func(t *testcase.T) bool {

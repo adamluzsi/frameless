@@ -161,7 +161,7 @@ type Waiter struct {
 }
 
 func (rs Waiter) ShouldTry(ctx context.Context, startedAt StartedAt) bool {
-	now := clock.TimeNow()
+	now := clock.Now()
 	deadline := startedAt.Add(rs.timeout())
 	return now.Before(deadline) && ctx.Err() == nil
 }

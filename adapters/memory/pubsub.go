@@ -77,7 +77,7 @@ func (ps *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] 
 	return &pubsubSubscription[Data]{
 		ctx:       ctx,
 		q:         ps,
-		createdAt: clock.TimeNow(),
+		createdAt: clock.Now(),
 		closed:    false,
 	}
 }

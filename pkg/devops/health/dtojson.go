@@ -45,7 +45,7 @@ var _ = dtokit.Register[Report, ReportJSONDTO](
 		}, nil
 	},
 	func(ctx context.Context, dto ReportJSONDTO) (Report, error) {
-		timestamp := clock.TimeNow()
+		timestamp := clock.Now()
 		if dto.Timestamp != "" {
 			date, err := time.Parse(time.RFC3339, dto.Timestamp)
 			if err != nil {

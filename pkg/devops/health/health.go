@@ -204,7 +204,7 @@ func (r *Report) Correlate() {
 		}
 	}
 	r.Message = zerokit.Coalesce(r.Message, StateMessage(r.Status))
-	r.Timestamp = zerokit.Coalesce(r.Timestamp, clock.TimeNow().UTC())
+	r.Timestamp = zerokit.Coalesce(r.Timestamp, clock.Now().UTC())
 }
 
 func (r Report) WithIssue(issue Issue) Report {
