@@ -1,12 +1,17 @@
 package timecop
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
 	"go.llib.dev/testcase/clock/internal"
 )
 
+// Travel will initiate a time travel.
+// It accepts either a time duration as argument to set the travel's duration,
+// or a given target time if we need to travel to a specific point in time.
+// It accepts optional travel options such as timecop.Freeze and timecop.DeepFreeze.
 func Travel[D time.Duration | time.Time](tb testing.TB, d D, tos ...TravelOption) {
 	tb.Helper()
 	guardAgainstParallel(tb)
@@ -16,6 +21,10 @@ func Travel[D time.Duration | time.Time](tb testing.TB, d D, tos ...TravelOption
 		travelByDuration(tb, d, opt)
 	case time.Time:
 		travelByTime(tb, d, opt)
+	}
+	for i, n := 0, runtime.NumGoroutine(); i < n; i++ { // since goroutines don't have guarantee when they will be scheduled
+		runtime.Gosched()           // we explicitly mark that we are okay with other goroutines to be scheduled
+		time.Sleep(time.Nanosecond) // and we also okay to be low piority and blocked for the sake of other goroutines.
 	}
 }
 
@@ -48,16 +57,31 @@ func travelByTime(tb testing.TB, target time.Time, opt internal.Option) {
 	tb.Cleanup(internal.SetTime(target, opt))
 }
 
-// Freeze instruct travel to freeze the time.
-func Freeze() TravelOption {
-	return fnTravelOption(func(o *internal.Option) {
-		o.Freeze = true
-	})
+// Freeze is a Travel TravelOption, and it instruct travel to freeze the time wherever it lands after the travelling..
+const Freeze = freeze(0)
+
+type freeze int
+
+func (freeze) configure(o *internal.Option) {
+	o.Freeze = true
 }
 
-// Unfreeze instruct travel to unfreeze the time.
-func Unfreeze() TravelOption {
-	return fnTravelOption(func(o *internal.Option) {
-		o.Unfreeze = true
-	})
+// DeepFreeze is a Travel TravelOption, and it instruct travel to freeze the time wherever it lands after the travelling.
+// It is a stronger level of freezing, and will force tickers and timers to also halt immedietly.
+const DeepFreeze = deepFreeze(1)
+
+type deepFreeze int
+
+func (deepFreeze) configure(o *internal.Option) {
+	o.Freeze = true
+	o.Deep = true
+}
+
+// Unfreeze is a Travel TravelOption, and it instruct travel that after the time travelling, the flow of time should continue.
+const Unfreeze = unfreeze(0)
+
+type unfreeze int
+
+func (unfreeze) configure(o *internal.Option) {
+	o.Unfreeze = true
 }
