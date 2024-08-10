@@ -39,7 +39,7 @@ func (q Queue[Entity, JSONDTO]) Purge(ctx context.Context) error {
 }
 
 func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error {
-	if 0 == len(vs) {
+	if len(vs) == 0 {
 		return ctx.Err()
 	}
 	if q.Name == "" {

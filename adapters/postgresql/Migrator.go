@@ -68,7 +68,7 @@ func (m Migrator) upNamespace(schemaTx, stepTx context.Context, namespace string
 	var dirty sql.NullBool
 	err := m.Connection.QueryRowContext(schemaTx, queryMigratorGetStepState, namespace, version).Scan(&dirty)
 	if errors.Is(err, errNoRows) {
-		if err := step.MigrateUp(m.Connection, stepTx); err != nil {
+		if err := step.MigrateUp(stepTx, m.Connection); err != nil {
 			return err
 		}
 		_, err := m.Connection.ExecContext(schemaTx, queryMigratorCreateStepState, namespace, version, false)
@@ -100,16 +100,16 @@ func (m Migrator) ensureMigrationTable(ctx context.Context) error {
 }
 
 type MigrationStep struct {
-	Up      func(cm Connection, ctx context.Context) error
+	Up      func(ctx context.Context, cm Connection) error
 	UpQuery string
 
-	Down      func(cm Connection, ctx context.Context) error
+	Down      func(ctx context.Context, cm Connection) error
 	DownQuery string
 }
 
-func (m MigrationStep) MigrateUp(cm Connection, ctx context.Context) error {
+func (m MigrationStep) MigrateUp(ctx context.Context, cm Connection) error {
 	if m.Up != nil {
-		return m.Up(cm, ctx)
+		return m.Up(ctx, cm)
 	}
 	if m.UpQuery != "" {
 		_, err := cm.ExecContext(ctx, m.UpQuery)
@@ -118,9 +118,9 @@ func (m MigrationStep) MigrateUp(cm Connection, ctx context.Context) error {
 	return nil
 }
 
-func (m MigrationStep) MigrateDown(cm Connection, ctx context.Context) error {
+func (m MigrationStep) MigrateDown(ctx context.Context, cm Connection) error {
 	if m.Down != nil {
-		return m.Down(cm, ctx)
+		return m.Down(ctx, cm)
 	}
 	if m.DownQuery != "" {
 		_, err := cm.ExecContext(ctx, m.DownQuery)
