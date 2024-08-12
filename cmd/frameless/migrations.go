@@ -8,7 +8,7 @@ import (
 
 var migrationSteps = []codemigrate.MigrationStep{
 	codemigrate.MigrationStep{
-		Up: func(ctx context.Context, r *codemigrate.MigrationResource) error {
+		Up: func(ctx context.Context, r *codemigrate.Resource) error {
 			r.Grep("frameless/ports/")
 
 		},
