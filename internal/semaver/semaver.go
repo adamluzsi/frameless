@@ -2,13 +2,15 @@ package semaver
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
+	"strings"
+
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
-// Semantic Versioning //
-
-var rgxSemanticVersion = regexp.MustCompile(`^(v|V)?(\d+)(?:\.(\d+)(?:\.(\d+)(?:-(\d+(?:[-.]\w+)*)?)?(?:\+(\w+(?:[-.]\w+)*))?))$`)
+var rgxSemanticVersion = regexp.MustCompile(`^(v|V)?(\d+)(?:\.(\d+))?(?:\.(\d+)(?:-(\d+(?:[-.]\w+)*)?)?(?:\+(\w+(?:[-.]\w+)*))?)?$`)
 
 type Version struct {
 	Major int
@@ -40,11 +42,11 @@ func (v Version) Less(oth Version) bool {
 		return false
 	}
 
-	// If pre-release is present, it's considered less than a version without one
-	if v.Pre != "" && oth.Pre == "" {
+	switch cmpPreTag(v.Pre, oth.Pre) {
+	case -1:
 		return true
-	}
-	if v.Pre == "" && oth.Pre != "" {
+	// case 0: // if pre tags are equal we continue the comparison to
+	case 1:
 		return false
 	}
 
@@ -78,54 +80,102 @@ var preTags = []string{
 	"nightly",
 }
 
+func cmpPreTag(t1, t2 string) int {
+	t1 = strings.ToLower(t1)
+	t2 = strings.ToLower(t2)
+	p1 := preTagPriority(t1)
+	p2 := preTagPriority(t2)
+	if p1 < p2 {
+		return -1
+	}
+	if p2 < p1 {
+		return 1
+	}
+	if p1 == p2 {
+		if t1 == t2 {
+			return 0
+		}
+		if t1 < t2 {
+			return -1
+		}
+		if t2 < t1 {
+			return 1
+		}
+	}
+	panic("not implemented") // should not happen
+}
+
+func preTagPriority(tag string) int {
+	if tag == "" { // If pre-release is present, it's considered lower priority than a version without one
+		return -1
+	}
+	tag = strings.ToLower(tag)
+	for i, cmpTag := range preTags {
+		if strings.HasPrefix(tag, cmpTag) {
+			return i
+		}
+	}
+	return math.MaxInt
+}
+
 func MustParseVersion(v string) Version {
-	version, err := ParseVersion(v)
+	version, err := Parse(v)
 	if err != nil {
 		panic(err)
 	}
 	return version
 }
 
-func ParseVersion(str string) (Version, error) {
+const ErrParse errorkit.Error = "ErrParse"
+
+func Parse(str string) (_ Version, returnErr error) {
+	defer func() {
+		if returnErr != nil {
+			returnErr = errorkit.Merge(ErrParse, returnErr)
+		}
+	}()
+
 	match := rgxSemanticVersion.FindStringSubmatch(string(str))
 
 	if len(match) == 0 {
 		return Version{}, fmt.Errorf("unable to parse version out from %q", str)
 	}
 
-	var v Version
+	var parseVersionNum = func(raw string, name string) (int, error) {
+		if raw == "" {
+			return 0, nil
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse %s version: %q -> %w", name, raw, err)
+		}
+		return n, nil
+	}
+
+	var (
+		v   Version
+		err error
+	)
 
 	if 2 < len(match) {
-		raw := match[2]
-		major, err := strconv.Atoi(raw)
+		v.Major, err = parseVersionNum(match[2], "major")
 		if err != nil {
-			return Version{}, fmt.Errorf("failed to parse major version: %q -> %w", raw, err)
+			return v, err
 		}
-		v.Major = major
-	} else {
-		v.Major = 0
 	}
 
 	if 3 < len(match) {
-		raw := match[3]
-		minor, err := strconv.Atoi(raw)
+		v.Minor, err = parseVersionNum(match[3], "minor")
 		if err != nil {
-			return Version{}, fmt.Errorf("failed to parse minor version: %q -> %w", raw, err)
+			return v, err
 		}
-		v.Minor = minor
-	} else {
-		v.Minor = 0
 	}
 
 	if 4 < len(match) {
-		raw := match[4]
-		patch, err := strconv.Atoi(raw)
+		v.Patch, err = parseVersionNum(match[4], "patch")
 		if err != nil {
-			return Version{}, fmt.Errorf("failed to parse patch version: %q -> %w", raw, err)
+			return v, err
 		}
-		v.Patch = patch
-	} else {
-		v.Patch = 0
 	}
 
 	if 5 < len(match) {
