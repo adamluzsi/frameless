@@ -53,6 +53,15 @@ func TestParse(t *testing.T) {
 			Err: semaver.ErrParse,
 		},
 		"with pre tag": {
+			Tag: "4.5.6-alpha",
+			Exp: semaver.Version{
+				Major: 4,
+				Minor: 5,
+				Patch: 6,
+				Pre:   "alpha",
+			},
+		},
+		"with pre tag with further details": {
 			Tag: "4.5.6-alpha.1",
 			Exp: semaver.Version{
 				Major: 4,
