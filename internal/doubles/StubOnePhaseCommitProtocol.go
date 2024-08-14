@@ -3,7 +3,7 @@ package doubles
 import (
 	"context"
 
-	"go.llib.dev/frameless/ports/comproto"
+	"go.llib.dev/frameless/port/comproto"
 )
 
 type StubOnePhaseCommitProtocol struct {

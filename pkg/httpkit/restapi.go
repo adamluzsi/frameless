@@ -15,10 +15,10 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/ports/codec"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/crud/extid"
-	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/port/codec"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/frameless/port/iterators"
 )
 
 // RestResource is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.

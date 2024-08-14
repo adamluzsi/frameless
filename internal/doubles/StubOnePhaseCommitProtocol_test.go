@@ -7,7 +7,7 @@ import (
 
 	"go.llib.dev/frameless/internal/doubles"
 
-	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/testcase/assert"
 )
 

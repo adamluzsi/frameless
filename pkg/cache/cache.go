@@ -8,10 +8,10 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/ports/comproto"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/crud/extid"
-	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/port/comproto"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase/clock"
 )
 

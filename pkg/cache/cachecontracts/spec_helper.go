@@ -2,8 +2,8 @@ package cachecontracts
 
 import (
 	"go.llib.dev/frameless/pkg/cache"
-	"go.llib.dev/frameless/ports/crud/crudcontracts"
-	"go.llib.dev/frameless/ports/option"
+	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/option"
 )
 
 type Option[E any, ID comparable] interface {

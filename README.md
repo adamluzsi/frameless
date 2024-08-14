@@ -21,9 +21,9 @@ instead, it resembles how mono repositories assist code owners in managing their
 
 `frameless` is made up of three high-level components.
 
-## [ports](ports/README.md)
+## port
 
-`ports` are plain interfaces to make expressing a domain [role interface][:role-interface:] straightforward.
+`port` are plain interfaces to make expressing a domain [role interface][:role-interface:] straightforward.
 Using ports doesn't have any vendor locking effect. 
 You can use almost every port by just copy their functions 
 into your [role interface][:role-interface:] in your domain layer. 
@@ -36,11 +36,11 @@ Some port package contain a small amount of optional helper functions to help st
 There is also testing packages to make it easy to write behaviour-driven tests against your implementations
 when you need to specify additional expectations towards them from your domain layer.
 
-Using `frameless/ports` safe from vendor locking as they just a collection of finely refined inter
+Using `frameless/port` safe from vendor locking as they just a collection of finely refined inter
 
 ## [pkg](pkg/README.md)
 
-Various tooling built either upon using frameless/ports or supplies tools often required to develop web services.
+Various tooling built either upon using frameless/port or supplies tools often required to develop web services.
 
 - Some notable examples:
     - [`logger` for structured logging](pkg/logger/README.md)

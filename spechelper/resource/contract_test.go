@@ -3,7 +3,7 @@ package resource_test
 import (
 	"testing"
 
-	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapter/memory"
 
 	"go.llib.dev/frameless/spechelper/resource"
 

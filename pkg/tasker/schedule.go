@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/guard"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/testcase/clock"
 )
 

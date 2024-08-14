@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
@@ -23,7 +23,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/retry"
-	"go.llib.dev/frameless/ports/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"

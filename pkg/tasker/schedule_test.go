@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"

@@ -5,15 +5,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go.llib.dev/frameless/adapters/memory"
+	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/ports/crud/crudcontracts"
-	"go.llib.dev/frameless/ports/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase/random"
 )

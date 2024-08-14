@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"os"
 
-	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/ports/comproto"
-	"go.llib.dev/frameless/ports/iterators"
-	"go.llib.dev/frameless/ports/pubsub"
+	"go.llib.dev/frameless/port/comproto"
+	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/port/pubsub"
 )
 
 func main() {

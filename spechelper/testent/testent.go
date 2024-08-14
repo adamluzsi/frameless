@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/dtokit"
-	"go.llib.dev/frameless/ports/iterators"
-	"go.llib.dev/frameless/ports/pubsub"
+	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase"
 )
 

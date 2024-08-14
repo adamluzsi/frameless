@@ -15,7 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/port/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"

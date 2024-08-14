@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	go.llib.dev/frameless v0.141.2
-	go.llib.dev/frameless/adapters/postgresql v0.0.0-20230426232851-0554b6e822b7
+	go.llib.dev/frameless/adapter/postgresql v0.0.0-20230426232851-0554b6e822b7
 )
 
 require (

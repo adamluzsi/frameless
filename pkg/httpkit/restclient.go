@@ -17,10 +17,10 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/retry"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/frameless/ports/codec"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/crud/extid"
-	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/port/codec"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/frameless/port/iterators"
 )
 
 type RestClient[Entity, ID any] struct {

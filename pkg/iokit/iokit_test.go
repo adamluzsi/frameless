@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/ports/filesystem"
+	"go.llib.dev/frameless/port/filesystem"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"

@@ -137,7 +137,7 @@ import (
 	"os"
 	"database/sql"
 
-	"go.llib.dev/frameless/adapters/postgresql"
+	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"

@@ -3,14 +3,14 @@ package resource
 import (
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
-	"go.llib.dev/frameless/ports/comproto"
-	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
-	"go.llib.dev/frameless/ports/contract"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/crud/crudcontracts"
-	"go.llib.dev/frameless/ports/meta"
-	"go.llib.dev/frameless/ports/meta/metacontracts"
-	"go.llib.dev/frameless/ports/option"
+	"go.llib.dev/frameless/port/comproto"
+	"go.llib.dev/frameless/port/comproto/comprotocontracts"
+	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/meta"
+	"go.llib.dev/frameless/port/meta/metacontracts"
+	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 )
 

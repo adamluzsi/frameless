@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/iterators"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/iterators"
 )
 
 const ErrNotImplementedBySource errorkit.Error = "the method is not implemented by the cache source"

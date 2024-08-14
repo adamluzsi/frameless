@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/ports/codec"
+	"go.llib.dev/frameless/port/codec"
 )
 
 type RestResourceSerialization[Entity, ID any] struct {

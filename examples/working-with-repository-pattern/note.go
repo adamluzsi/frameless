@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.llib.dev/frameless/ports/crud"
+	"go.llib.dev/frameless/port/crud"
 )
 
 type (

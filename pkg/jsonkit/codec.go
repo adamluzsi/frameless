@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/ports/codec"
+	"go.llib.dev/frameless/port/codec"
 )
 
 type Codec struct{}

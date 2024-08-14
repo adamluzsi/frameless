@@ -1,7 +1,7 @@
 go.llib.dev/frameless v0.141.2 h1:MXl4wri9q/1CUVMEXWnV8l2dkJMg4btETQqNeUjlUJg=
 go.llib.dev/frameless v0.141.2/go.mod h1:WsXdk82e3G3IybD2a/dpFShhVbuO5W1chfBtgIM5fSU=
-go.llib.dev/frameless/adapters/postgresql v0.0.0-20230426232851-0554b6e822b7 h1:fRmzuR3z6eC6xCaP/LPlYOyBUmhAJGmv6/uaDprOcp0=
-go.llib.dev/frameless/adapters/postgresql v0.0.0-20230426232851-0554b6e822b7/go.mod h1:xpJfvgyr8YIQl6+RyV7z6pc7z/fn53yqfdhoc5Jo8Wk=
+go.llib.dev/frameless/adapter/postgresql v0.0.0-20230426232851-0554b6e822b7 h1:fRmzuR3z6eC6xCaP/LPlYOyBUmhAJGmv6/uaDprOcp0=
+go.llib.dev/frameless/adapter/postgresql v0.0.0-20230426232851-0554b6e822b7/go.mod h1:xpJfvgyr8YIQl6+RyV7z6pc7z/fn53yqfdhoc5Jo8Wk=
 go.llib.dev/testcase v0.132.1 h1:S+GdZWdIdrgD4fhL4ualH7ejlONvmQgoUVUt9kDoq6c=
 go.llib.dev/testcase v0.132.1/go.mod h1:fRO4abguH2jafdgZjlQOblC0zG2wl+JFs65vvBG/SsM=
 github.com/lib/pq v1.10.7 h1:p7ZhMD+KsSRozJr34udlUrhboJwWAgCg34+/ZZNvZZw=

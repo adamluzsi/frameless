@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/txkit"
-	"go.llib.dev/frameless/ports/comproto/comprotocontracts"
+	"go.llib.dev/frameless/port/comproto/comprotocontracts"
 	"go.llib.dev/testcase"
 )
 

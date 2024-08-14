@@ -6,8 +6,8 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/ports/crud"
-	"go.llib.dev/frameless/ports/crud/extid"
+	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 

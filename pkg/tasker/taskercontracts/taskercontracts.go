@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/ports/contract"
-	"go.llib.dev/frameless/ports/crud/crudcontracts"
-	"go.llib.dev/frameless/ports/guard/guardcontracts"
-	"go.llib.dev/frameless/ports/option"
+	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/guard/guardcontracts"
+	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/random"
 )
