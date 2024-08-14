@@ -237,7 +237,7 @@ func (r *StubReader) IsClosed() bool {
 }
 
 func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {
-	kar := &KeepAliveReader{Source: r, KeepAliveTime: d}
+	kar := &KeepAliveReader{Source: r, IdleTimeout: d}
 	kar.Init()
 	return kar
 }
@@ -250,8 +250,10 @@ func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {
 // NewKeepAliveReader addresses this by regularly reading a byte from the stream when there are no Read calls
 // and buffering it for the next Read call.
 type KeepAliveReader struct {
-	Source        io.Reader // | io.ReadCloser
-	KeepAliveTime time.Duration
+	Source io.Reader // | io.ReadCloser
+	// IdleTimeout specifies how long the KeepAliveReader will wait without any read operations
+	// before it reads from the Source to prevent an I/O timeout.
+	IdleTimeout time.Duration
 
 	buffer []byte
 	eof    bool
@@ -322,8 +324,8 @@ func (r *KeepAliveReader) beat() {
 }
 
 func (r *KeepAliveReader) timeout() time.Duration {
-	if r.KeepAliveTime != 0 {
-		return r.KeepAliveTime
+	if r.IdleTimeout != 0 {
+		return r.IdleTimeout
 	}
 	const defaultTimeout = 10 * time.Second
 	return defaultTimeout
