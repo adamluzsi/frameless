@@ -1,12 +1,9 @@
 package env_test
 
 import (
-	"os"
 	"time"
 
 	"go.llib.dev/frameless/pkg/env"
-	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/frameless/pkg/logging"
 )
 
 func ExampleLoad() {
@@ -18,8 +15,19 @@ func ExampleLoad() {
 
 	var c ExampleAppConfig
 	if err := env.Load(&c); err != nil {
-		logger.Fatal(nil, "failed to load application config", logging.ErrField(err))
-		os.Exit(1)
+		_ = err
+	}
+}
+
+func ExampleLoad_withEnvKeyBackwardCompatibility() {
+	type ExampleAppConfig struct {
+		// Foo supports both FOO env key and also OLDFOO env key
+		Foo string `env:"FOO,OLDFOO"`
+	}
+
+	var c ExampleAppConfig
+	if err := env.Load(&c); err != nil {
+		_ = err
 	}
 }
 
@@ -30,8 +38,7 @@ func ExampleLoad_enum() {
 
 	var c ExampleAppConfig
 	if err := env.Load(&c); err != nil {
-		logger.Fatal(nil, "failed to load application config", logging.ErrField(err))
-		os.Exit(1)
+		_ = err
 	}
 }
 

@@ -119,6 +119,40 @@ func TestLoad(t *testing.T) {
 		})
 	})
 
+	t.Run("a field with env tag that specifies multiple env key", func(t *testing.T) {
+		type Example struct {
+			F string `env:"THE_ENV_KEY_1, THE_ENV_KEY_2"`
+		}
+		t.Run("os env has the value", func(t *testing.T) {
+			testcase.SetEnv(t, "THE_ENV_KEY_1", "42")
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.NotEmpty(t, c)
+			assert.Equal(t, "42", c.F)
+		})
+		t.Run("os env has the value under the second key", func(t *testing.T) {
+			testcase.SetEnv(t, "THE_ENV_KEY_2", "24")
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.NotEmpty(t, c)
+			assert.Equal(t, "24", c.F)
+		})
+		t.Run("os env has the value under both keys then first is prioritised", func(t *testing.T) {
+			testcase.SetEnv(t, "THE_ENV_KEY_1", "42")
+			testcase.SetEnv(t, "THE_ENV_KEY_2", "24")
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.NotEmpty(t, c)
+			assert.Equal(t, "42", c.F)
+		})
+		t.Run("os env doesn't have the value", func(t *testing.T) {
+			testcase.UnsetEnv(t, envKey)
+			var c Example
+			assert.NoError(t, env.Load(&c))
+			assert.Empty(t, c)
+		})
+	})
+
 	t.Run("unexported fields are ignored in a struct field", func(t *testing.T) {
 		type MyStruct struct {
 			unexported *int

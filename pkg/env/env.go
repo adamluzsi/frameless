@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
@@ -95,7 +96,7 @@ func loadVisitStruct(rStruct reflect.Value) error {
 			continue
 		}
 
-		osEnvKey, ok := rStructField.Tag.Lookup(envTagKey)
+		osEnvKeys, ok := rStructField.Tag.Lookup(envTagKey)
 		if !ok {
 			continue
 		}
@@ -105,9 +106,16 @@ func loadVisitStruct(rStruct reflect.Value) error {
 			return err
 		}
 
-		val, ok, err := lookupEnv(field.Type(), osEnvKey, opts)
-		if err != nil {
-			return errParsingEnvValue(rStructField, err)
+		var val reflect.Value
+		for _, osEnvKey := range strings.Split(osEnvKeys, ",") {
+			var err error
+			val, ok, err = lookupEnv(field.Type(), strings.TrimSpace(osEnvKey), opts)
+			if err != nil {
+				return errParsingEnvValue(rStructField, err)
+			}
+			if ok {
+				break
+			}
 		}
 		if !ok {
 			continue
