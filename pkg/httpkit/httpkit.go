@@ -2,6 +2,7 @@ package httpkit
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -310,4 +311,10 @@ func WithRoundTripper(transport http.RoundTripper, rts ...RoundTripperFactoryFun
 
 type ErrorHandler interface {
 	HandleError(w http.ResponseWriter, r *http.Request, err error)
+}
+
+// LookupRequest will check if the context contains an http request.
+// LookupRequest is mostly meant to be used from functions like Index in RestResource.
+func LookupRequest(ctx context.Context) (*http.Request, bool) {
+	return internal.LookupRequest(ctx)
 }

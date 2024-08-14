@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
@@ -29,7 +28,7 @@ type RestResource[Entity, ID any] struct {
 	Create func(ctx context.Context, ptr *Entity) error
 	// Index will return the entities, optionally filtered with the query argument.
 	//		GET /
-	Index func(ctx context.Context, query url.Values) (iterators.Iterator[Entity], error)
+	Index func(ctx context.Context) iterators.Iterator[Entity]
 	// Show will return a single entity, looked up by its ID.
 	// 		GET /:id
 	Show func(ctx context.Context, id ID) (ent Entity, found bool, err error)
@@ -42,7 +41,7 @@ type RestResource[Entity, ID any] struct {
 	Destroy func(ctx context.Context, id ID) error
 	// DestroyAll will delete all entity.
 	// 		 Delete /
-	DestroyAll func(ctx context.Context, query url.Values) error
+	DestroyAll func(ctx context.Context) error
 
 	// Serialization is responsible to serialize and unserialize dtokit.
 	// JSON, line separated JSON stream and FormUrlencoded formats are supported out of the box.
@@ -133,7 +132,7 @@ type Mapper[Entity any] interface {
 }
 
 func (res RestResource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r = res.setupRequest(r)
+	r = r.WithContext(internal.WithRequest(r.Context(), r))
 	defer res.handlePanic(w, r)
 	r, rc := internal.WithRoutingContext(r)
 	switch rc.PathLeft {
@@ -183,11 +182,6 @@ func (res RestResource[Entity, ID]) ServeHTTP(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-}
-
-func (res RestResource[Entity, ID]) setupRequest(r *http.Request) *http.Request {
-	r = r.WithContext(context.WithValue(r.Context(), ctxKeyHTTPRequest{}, r))
-	return r
 }
 
 func (res RestResource[Entity, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
@@ -243,11 +237,7 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 
-	index, err := res.Index(ctx, r.URL.Query())
-	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
-		return
-	}
+	index := res.Index(ctx)
 
 	defer func() {
 		if err := index.Close(); err != nil {
@@ -518,7 +508,7 @@ func (res RestResource[Entity, ID]) destroyAll(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := res.DestroyAll(r.Context(), r.URL.Query()); err != nil {
+	if err := res.DestroyAll(r.Context()); err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -530,13 +520,6 @@ func (res RestResource[Entity, ID]) readAllBody(r *http.Request) (_ []byte, retu
 	return bodyReadAll(r.Body, res.getBodyReadLimit())
 }
 
-type ctxKeyHTTPRequest struct{}
-
-func (res RestResource[Entity, ID]) HTTPRequest(ctx context.Context) (*http.Request, bool) {
-	req, ok := ctx.Value(ctxKeyHTTPRequest{}).(*http.Request)
-	return req, ok
-}
-
 func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) RestResource[Entity, ID] {
 	// TODO: add support to exclude certain operations from being mapped
 
@@ -544,9 +527,7 @@ func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) R
 		res.Create = repo.Create
 	}
 	if repo, ok := repo.(crud.AllFinder[Entity]); ok && res.Index == nil {
-		res.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[Entity], error) {
-			return repo.FindAll(ctx), nil // TODO: handle query
-		}
+		res.Index = repo.FindAll // TODO: handle query
 	}
 	if repo, ok := repo.(crud.ByIDFinder[Entity, ID]); ok && res.Show == nil {
 		res.Show = repo.FindByID
@@ -569,9 +550,7 @@ func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) R
 		}
 	}
 	if repo, ok := repo.(crud.AllDeleter); ok && res.DestroyAll == nil {
-		res.DestroyAll = func(ctx context.Context, query url.Values) error {
-			return repo.DeleteAll(ctx) // TODO: handle query
-		}
+		res.DestroyAll = repo.DeleteAll // TODO: handle query
 	}
 	if repo, ok := repo.(crud.ByIDDeleter[ID]); ok && res.Destroy == nil {
 		res.Destroy = repo.DeleteByID

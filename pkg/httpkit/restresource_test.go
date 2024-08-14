@@ -31,24 +31,43 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+func _() {
+	var (
+		resource    httpkit.RestResource[X, XID]
+		creator     crud.Creator[X]
+		allFinder   crud.AllFinder[X]
+		byIDFinder  crud.ByIDFinder[X, XID]
+		byIDDeleter crud.ByIDDeleter[XID]
+		allDeleter  crud.AllDeleter
+	)
+	resource.Create = creator.Create
+	resource.Index = allFinder.FindAll
+	resource.Show = byIDFinder.FindByID
+	resource.Destroy = byIDDeleter.DeleteByID
+	resource.DestroyAll = allDeleter.DeleteAll
+}
+
 func ExampleRestResource() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
 	fooRestfulResource := httpkit.RestResource[X, XID]{
 		Create: fooRepository.Create,
-		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
+		Index: func(ctx context.Context) iterators.Iterator[X] {
 			foos := fooRepository.FindAll(ctx)
 
-			if bt := query.Get("bigger"); bt != "" {
-				bigger, err := strconv.Atoi(bt)
-				if err != nil {
-					return nil, err
+			if req, ok := httpkit.LookupRequest(ctx); ok {
+				if bt := req.URL.Query().Get("bigger"); bt != "" {
+					bigger, err := strconv.Atoi(bt)
+					if err != nil {
+						return iterators.Error[X](err)
+					}
+					foos = iterators.Filter(foos, func(foo X) bool {
+						return bigger < foo.N
+					})
 				}
-				foos = iterators.Filter(foos, func(foo X) bool {
-					return bigger < foo.N
-				})
+
 			}
 
-			return foos, nil
+			return foos
 		},
 
 		Show: fooRepository.FindByID,
@@ -184,12 +203,12 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("index is provided", func(s *testcase.Spec) {
-				override := testcase.Let[func(query url.Values) iterators.Iterator[X]](s, nil)
+				override := testcase.Let[func(ctx context.Context) iterators.Iterator[X]](s, nil)
 
 				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					h := subject.Super(t)
-					h.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
-						return override.Get(t)(query), nil
+					h.Index = func(ctx context.Context) iterators.Iterator[X] {
+						return override.Get(t)(ctx)
 					}
 					return h
 				})
@@ -203,9 +222,12 @@ func TestResource_ServeHTTP(t *testing.T) {
 					})
 
 					receivedQuery := testcase.LetValue[url.Values](s, nil)
-					override.Let(s, func(t *testcase.T) func(q url.Values) iterators.Iterator[X] {
-						return func(q url.Values) iterators.Iterator[X] {
-							receivedQuery.Set(t, q)
+					override.Let(s, func(t *testcase.T) func(ctx context.Context) iterators.Iterator[X] {
+						return func(ctx context.Context) iterators.Iterator[X] {
+							req, ok := httpkit.LookupRequest(ctx)
+							if ok {
+								receivedQuery.Set(t, req.URL.Query())
+							}
 							return iterators.SingleValue(x.Get(t))
 						}
 					})
@@ -232,8 +254,8 @@ func TestResource_ServeHTTP(t *testing.T) {
 				s.And("the returned result has an issue", func(s *testcase.Spec) {
 					expectedErr := let.Error(s)
 
-					override.Let(s, func(t *testcase.T) func(q url.Values) iterators.Iterator[X] {
-						return func(q url.Values) iterators.Iterator[X] {
+					override.Let(s, func(t *testcase.T) func(ctx context.Context) iterators.Iterator[X] {
+						return func(ctx context.Context) iterators.Iterator[X] {
 							return iterators.Error[X](expectedErr.Get(t))
 						}
 					})
@@ -276,14 +298,14 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					sub := subject.Super(t)
-					sub.Index = func(ctx context.Context, query url.Values) (iterators.Iterator[X], error) {
+					sub.Index = func(ctx context.Context) iterators.Iterator[X] {
 						i := iterators.Slice([]X{{ID: 1, N: 1}, {ID: 2, N: 2}})
 						stub := iterators.Stub(i)
 						stub.StubClose = func() error {
 							isClosed.Set(t, true)
 							return i.Close()
 						}
-						return stub, nil
+						return stub
 					}
 					return sub
 				})
@@ -756,9 +778,9 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
 			return nil
 		},
-		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[Foo], error) {
+		Index: func(ctx context.Context) iterators.Iterator[Foo] {
 			indexC = true
-			return iterators.Empty[Foo](), nil
+			return iterators.Empty[Foo]()
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			showC = true
@@ -772,7 +794,7 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 			destroyC = true
 			return nil
 		},
-		DestroyAll: func(ctx context.Context, query url.Values) error {
+		DestroyAll: func(ctx context.Context) error {
 			destroyAllC = true
 			return nil
 		},
@@ -867,8 +889,8 @@ func TestRouter_Resource(t *testing.T) {
 	}
 
 	r.Resource("foo", httpkit.RestResource[Foo, FooID]{
-		Index: func(ctx context.Context, query url.Values) (iterators.Iterator[Foo], error) {
-			return iterators.SingleValue(foo), nil
+		Index: func(ctx context.Context) iterators.Iterator[Foo] {
+			return iterators.SingleValue(foo)
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			return foo, true, nil

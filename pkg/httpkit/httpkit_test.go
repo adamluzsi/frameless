@@ -909,3 +909,25 @@ func TestWithRoundTripper(t *testing.T) {
 		assert.Equal(t, resp.StatusCode, http.StatusTeapot)
 	})
 }
+
+func TestRequest(t *testing.T) {
+	t.Run("when context is nil", func(t *testing.T) {
+		req, ok := httpkit.LookupRequest(nil)
+		assert.False(t, ok)
+		assert.Nil(t, req)
+	})
+
+	t.Run("when no reqquest in the context", func(t *testing.T) {
+		req, ok := httpkit.LookupRequest(context.Background())
+		assert.False(t, ok)
+		assert.Nil(t, req)
+	})
+
+	t.Run("when request is in the context", func(t *testing.T) {
+		exp := httptest.NewRequest(http.MethodGet, "/", nil)
+		ctx := internal.WithRequest(context.Background(), exp)
+		got, ok := httpkit.LookupRequest(ctx)
+		assert.True(t, ok)
+		assert.Equal(t, exp, got)
+	})
+}
