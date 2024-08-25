@@ -1,4 +1,4 @@
-package iterators_test
+package flsql_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"io"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/iterators"
 
@@ -30,7 +31,7 @@ func ExampleSQLRows() {
 		asdf string
 	}
 
-	iter := iterators.SQLRows[mytype](userIDs, iterators.SQLRowMapperFunc[mytype](func(scanner iterators.SQLRowScanner) (mytype, error) {
+	iter := flsql.MakeSQLRowsIterator[mytype](userIDs, flsql.SQLRowMapperFunc[mytype](func(scanner flsql.Scanner) (mytype, error) {
 		var value mytype
 		if err := scanner.Scan(&value.asdf); err != nil {
 			return mytype{}, err
@@ -61,12 +62,12 @@ func TestSQLRows(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	rows := testcase.Var[SQLRows]{ID: "iterators.SQLRows"}
-	mapper := testcase.Var[iterators.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
+	mapper := testcase.Var[flsql.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
 	subject := func(t *testcase.T) iterators.Iterator[testType] {
-		return iterators.SQLRows(rows.Get(t), mapper.Get(t))
+		return flsql.MakeSQLRowsIterator(rows.Get(t), mapper.Get(t))
 	}
-	mapper.Let(s, func(t *testcase.T) iterators.SQLRowMapper[testType] {
-		return iterators.SQLRowMapperFunc[testType](func(s iterators.SQLRowScanner) (testType, error) {
+	mapper.Let(s, func(t *testcase.T) flsql.SQLRowMapper[testType] {
+		return flsql.SQLRowMapperFunc[testType](func(s flsql.Scanner) (testType, error) {
 			var v testType
 			return v, s.Scan(&v.Text)
 		})

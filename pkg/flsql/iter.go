@@ -1,10 +1,13 @@
-package iterators
+package flsql
 
 import (
+	"database/sql"
 	"io"
+
+	"go.llib.dev/frameless/port/iterators"
 )
 
-func SQLRows[T any](rows sqlRows, mapper SQLRowMapper[T]) Iterator[T] {
+func MakeSQLRowsIterator[T any](rows sqlRows, mapper SQLRowMapper[T]) iterators.Iterator[T] {
 	return &sqlRowsIter[T]{Rows: rows, Mapper: mapper}
 }
 
@@ -20,11 +23,13 @@ type sqlRowsIter[T any] struct {
 	err   error
 }
 
+var _ sqlRows = (*sql.Rows)(nil)
+
 type sqlRows interface {
 	io.Closer
 	Next() bool
 	Err() error
-	Scan(dest ...interface{}) error
+	Scanner
 }
 
 func (i *sqlRowsIter[T]) Close() error {
@@ -60,14 +65,10 @@ func (i *sqlRowsIter[T]) Value() T {
 
 // sql rows iterator dependencies
 
-type SQLRowScanner interface {
-	Scan(...interface{}) error
-}
-
 type SQLRowMapper[T any] interface {
-	Map(s SQLRowScanner) (T, error)
+	Map(s Scanner) (T, error)
 }
 
-type SQLRowMapperFunc[T any] func(SQLRowScanner) (T, error)
+type SQLRowMapperFunc[T any] func(Scanner) (T, error)
 
-func (fn SQLRowMapperFunc[T]) Map(s SQLRowScanner) (T, error) { return fn(s) }
+func (fn SQLRowMapperFunc[T]) Map(s Scanner) (T, error) { return fn(s) }

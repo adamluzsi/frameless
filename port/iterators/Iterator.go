@@ -1,8 +1,6 @@
 package iterators
 
-import (
-	"io"
-)
+import "io"
 
 // Iterator define a separate object that encapsulates accessing and traversing an aggregate object.
 // Clients use an iterator to access and traverse an aggregate without knowing its representation (data structures).
