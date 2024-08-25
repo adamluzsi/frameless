@@ -117,3 +117,16 @@ func Batch[T any](vs []T, size int) [][]T {
 	}
 	return out
 }
+
+func Unique[T comparable](vs []T) []T {
+	var set = make(map[T]struct{}, len(vs))
+	var out []T
+	for _, v := range vs {
+		if _, ok := set[v]; ok {
+			continue
+		}
+		set[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}

@@ -429,3 +429,46 @@ func TestBatch(t *testing.T) {
 		assert.Equal(t, []int{9}, batches[2])
 	})
 }
+
+func ExampleUnique() {
+	slicekit.Unique([]int{1, 2, 2, 3, 3, 3})
+	// -> []int{1, 2, 3}
+}
+
+func TestUnique(t *testing.T) {
+	t.Run("empty slice", func(t *testing.T) {
+		assert.Empty(t, slicekit.Unique([]int{}))
+	})
+
+	t.Run("single element", func(t *testing.T) {
+		assert.Equal(t, slicekit.Unique([]int{1}), []int{1})
+	})
+
+	t.Run("no duplicates", func(t *testing.T) {
+		assert.Equal(t, slicekit.Unique([]int{1, 2, 3}), []int{1, 2, 3})
+	})
+
+	t.Run("duplicates", func(t *testing.T) {
+		assert.Equal(t, slicekit.Unique([]int{1, 2, 2, 3, 3, 3}), []int{1, 2, 3})
+	})
+
+	t.Run("string slice", func(t *testing.T) {
+		assert.Equal(t, slicekit.Unique([]string{"a", "b", "c"}), []string{"a", "b", "c"})
+	})
+
+	t.Run("order based on first occurence", func(t *testing.T) {
+		assert.Equal(t, slicekit.Unique([]int{3, 1, 2, 2, 3, 3, 3}), []int{3, 1, 2})
+	})
+
+	t.Run("struct slice", func(t *testing.T) {
+		type person struct{ name string }
+		p1 := person{name: "John"}
+		p2 := person{name: "Jane"}
+		assert.Equal(t, slicekit.Unique([]person{p1, p2, p1}), []person{p1, p2})
+	})
+
+	t.Run("nil input", func(t *testing.T) {
+		var nilSlice []int
+		assert.Empty(t, slicekit.Unique(nilSlice))
+	})
+}
