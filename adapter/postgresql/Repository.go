@@ -7,6 +7,9 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
@@ -19,34 +22,14 @@ import (
 //
 // SRP: DBA
 type Repository[Entity, ID any] struct {
-	Mapping    RepositoryMapper[Entity, ID]
 	Connection Connection
-}
-
-type RepositoryMapper[Entity, ID any] interface {
-	// TableRef is the entity's postgresql table name.
-	//   eg.:
-	//     - "public"."table_name"
-	//     - "table_name"
-	//     - table_name
-	//
-	TableRef() string
-	// IDRef is the entity's id column name, which can be used to access an individual record for update purpose.
-	IDRef() string
-	// NewID creates a stateless entity id that can be used by CREATE operation.
-	// Serial and similar id solutions not supported without serialize transactions.
-	NewID(context.Context) (ID, error)
-	// ColumnRefs are the table's column names.
-	// The order of the column names related to Row mapping and query argument passing.
-	ColumnRefs() []string
-	// ToArgs convert an entity ptr to a list of query argument that can be used for CREATE or UPDATE purpose.
-	ToArgs(ptr *Entity) ([]interface{}, error)
-	iterators.SQLRowMapper[Entity]
+	Mapping    flsql.Mapping[Entity, ID]
 }
 
 func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
-	query := fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableRef(), r.queryColumnList())
-	query += fmt.Sprintf("VALUES (%s)\n", r.queryColumnPlaceHolders(makePrepareStatementPlaceholderGenerator()))
+	if ptr == nil {
+		return fmt.Errorf("nil entity pointer given to Create")
+	}
 
 	ctx, err := r.BeginTx(ctx)
 	if err != nil {
@@ -54,18 +37,8 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	if id, ok := extid.Lookup[ID](ptr); !ok {
-		// TODO: add serialize TX level here
-
-		id, err := r.Mapping.NewID(ctx)
-		if err != nil {
-			return err
-		}
-
-		if err := extid.Set(ptr, id); err != nil {
-			return err
-		}
-	} else {
+	id, ok := r.Mapping.LookupID(*ptr)
+	if ok {
 		_, found, err := r.FindByID(ctx, id)
 		if err != nil {
 			return err
@@ -78,23 +51,78 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 		}
 	}
 
-	args, err := r.Mapping.ToArgs(ptr)
+	// TODO: add serialize TX level here
+	if err := r.Mapping.OnCreate(ctx, ptr); err != nil {
+		return err
+	}
+
+	args, err := r.Mapping.ToArgs(*ptr)
 	if err != nil {
 		return err
 	}
 
-	if _, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
+	var (
+		colums       []flsql.ColumnName
+		valuesClause []string
+		valuesArgs   []any
+		nextPH       = makePrepareStatementPlaceholderGenerator()
+	)
+	for col, arg := range args {
+		colums = append(colums, col)
+		valuesClause = append(valuesClause, nextPH())
+		valuesArgs = append(valuesArgs, arg)
+	}
+
+	query := fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableName, r.quotedColumnsClause(colums))
+	query += fmt.Sprintf("VALUES (%s)\n", strings.Join(valuesClause, ", "))
+
+	if _, err := r.Connection.ExecContext(ctx, query, valuesArgs...); err != nil {
 		return err
 	}
 
 	return nil
 }
 
+func (r Repository[Entity, ID]) idQuery(id ID, nextPlaceholder func() string) (whereClause []string, queryArgs []any, _ error) {
+	idArgs, err := r.Mapping.ToID(id)
+	if err != nil {
+		return nil, nil, err
+	}
+	for col, arg := range idArgs {
+		whereClause = append(whereClause, fmt.Sprintf("%q = %s", col, nextPlaceholder()))
+		queryArgs = append(queryArgs, arg)
+	}
+	return whereClause, queryArgs, nil
+}
+
 func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
+	idArgs, err := r.Mapping.ToID(id)
+	if err != nil {
+		return *new(Entity), false, fmt.Errorf("QueryID: %w", err)
+	}
 
-	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %q = $1`, r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
+	cols, scan := r.Mapping.ToQuery(ctx)
 
-	v, err := r.Mapping.Map(r.Connection.QueryRowContext(ctx, query, id))
+	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.Mapping.TableName)
+
+	nextPH := makePrepareStatementPlaceholderGenerator()
+
+	var (
+		whereClause []string
+		queryArgs   []any
+	)
+	for col, arg := range idArgs {
+		whereClause = append(whereClause, fmt.Sprintf("%s = %s", col, nextPH()))
+		queryArgs = append(queryArgs, arg)
+	}
+
+	query += " WHERE " + strings.Join(whereClause, ", ")
+
+	row := r.Connection.QueryRowContext(ctx, query, queryArgs...)
+
+	var v Entity
+	err = scan(&v, row.Scan)
+
 	if errors.Is(err, errNoRows) {
 		return *new(Entity), false, nil
 	}
@@ -114,7 +142,7 @@ func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
 	var (
-		tableName = r.Mapping.TableRef()
+		tableName = r.Mapping.TableName
 		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
 
@@ -126,52 +154,12 @@ func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
 }
 
 func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
-	var query = fmt.Sprintf(`DELETE FROM %s WHERE %q = $1`, r.Mapping.TableRef(), r.Mapping.IDRef())
-
-	ctx, err := r.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
-
-	result, err := r.Connection.ExecContext(ctx, query, id)
+	idWhereClause, idQueryArgs, err := r.idQuery(id, makePrepareStatementPlaceholderGenerator())
 	if err != nil {
 		return err
 	}
 
-	if count := result.RowsAffected(); count == 0 {
-		return crud.ErrNotFound
-	}
-
-	return nil
-}
-
-func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr error) {
-	args, err := r.Mapping.ToArgs(ptr)
-	if err != nil {
-		return err
-	}
-
-	var (
-		query           = fmt.Sprintf("UPDATE %s", r.Mapping.TableRef())
-		nextPlaceHolder = makePrepareStatementPlaceholderGenerator()
-		idPlaceHolder   = nextPlaceHolder()
-		querySetParts   []string
-	)
-	for _, name := range r.Mapping.ColumnRefs() {
-		querySetParts = append(querySetParts, fmt.Sprintf(`%q = %s`, name, nextPlaceHolder()))
-	}
-	if len(querySetParts) > 0 {
-		query += fmt.Sprintf("\nSET %s", strings.Join(querySetParts, `, `))
-	}
-	query += fmt.Sprintf("\nWHERE %q = %s", r.Mapping.IDRef(), idPlaceHolder)
-
-	id, ok := extid.Lookup[ID](ptr)
-	if !ok {
-		return fmt.Errorf(`missing entity id`)
-	}
-
-	args = append([]interface{}{id}, args...)
+	var query = fmt.Sprintf(`DELETE FROM %s WHERE %s`, r.Mapping.TableName, strings.Join(idWhereClause, ", "))
 
 	ctx, err = r.BeginTx(ctx)
 	if err != nil {
@@ -179,10 +167,74 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
-	if res, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
+	result, err := r.Connection.ExecContext(ctx, query, idQueryArgs...)
+	if err != nil {
+		return err
+	}
+
+	if count, err := result.RowsAffected(); err != nil {
+		return err
+	} else if count == 0 {
+		return crud.ErrNotFound
+	}
+
+	return nil
+}
+
+func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr error) {
+	if ptr == nil {
+		return fmt.Errorf("Update: nil entity pointer received")
+	}
+
+	var (
+		query           = fmt.Sprintf("UPDATE %s", r.Mapping.TableName)
+		nextPlaceholder = makePrepareStatementPlaceholderGenerator()
+
+		querySetClause   []string
+		queryWhereClause []string
+		queryArgs        []any
+	)
+
+	id, ok := r.Mapping.LookupID(*ptr)
+	if !ok {
+		return fmt.Errorf("missing entity id for Update")
+	}
+
+	idWhere, idArgs, err := r.idQuery(id, nextPlaceholder)
+	if err != nil {
+		return err
+	}
+	queryWhereClause = append(queryWhereClause, idWhere...)
+	queryArgs = append(queryArgs, idArgs...)
+
+	setArgs, err := r.Mapping.ToArgs(*ptr)
+	if err != nil {
+		return err
+	}
+
+	for col, arg := range setArgs {
+		querySetClause = append(querySetClause, fmt.Sprintf(`%q = %s`, col, nextPlaceholder()))
+		queryArgs = append(queryArgs, arg)
+	}
+
+	if len(querySetClause) > 0 {
+		query += fmt.Sprintf("\nSET %s", strings.Join(querySetClause, `, `))
+	}
+
+	query += fmt.Sprintf("\nWHERE %s", strings.Join(queryWhereClause, ", "))
+
+	ctx, err = r.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
+
+	if res, err := r.Connection.ExecContext(ctx, query, queryArgs...); err != nil {
 		return err
 	} else {
-		if affected := res.RowsAffected(); affected == 0 {
+		if affected, err := res.RowsAffected(); err != nil {
+			return err
+		} else if affected == 0 {
 			return crud.ErrNotFound
 		}
 	}
@@ -191,33 +243,53 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 }
 
 func (r Repository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
-	query := fmt.Sprintf(`SELECT %s FROM %s`, r.queryColumnList(), r.Mapping.TableRef())
+	cols, scan := r.Mapping.ToQuery(ctx)
+	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.Mapping.TableName)
 
 	rows, err := r.Connection.QueryContext(ctx, query)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
 
-	return iterators.SQLRows[Entity](rows, r.Mapping)
+	return flsql.MakeSQLRowsIterator[Entity](rows, scan)
 }
 
 func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
-	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s = ANY($1)`,
-		r.queryColumnList(), r.Mapping.TableRef(), r.Mapping.IDRef())
+	var (
+		whereClause []string
+		queryArgs   []any
+	)
 
-	rows, err := r.Connection.QueryContext(ctx, query, ids)
+	nextPlaceholder := makePrepareStatementPlaceholderGenerator()
+	for _, id := range ids {
+		idWhere, idArgs, err := r.idQuery(id, nextPlaceholder)
+		if err != nil {
+			return iterators.Error[Entity](err)
+		}
+		whereClause = append(whereClause, fmt.Sprintf("(%s)", strings.Join(idWhere, " AND ")))
+		queryArgs = append(queryArgs, idArgs...)
+	}
+
+	selectClause, scan := r.Mapping.ToQuery(ctx)
+
+	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s`,
+		r.quotedColumnsClause(selectClause), r.Mapping.TableName, strings.Join(whereClause, " OR "))
+
+	rows, err := r.Connection.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
 		return iterators.Error[Entity](err)
 	}
 
 	return &iterFindByIDs[Entity, ID]{
-		Iterator:    iterators.SQLRows[Entity](rows, r.Mapping),
+		Iterator:    flsql.MakeSQLRowsIterator[Entity](rows, scan),
+		mapping:     r.Mapping,
 		expectedIDs: ids,
 	}
 }
 
 type iterFindByIDs[Entity, ID any] struct {
 	iterators.Iterator[Entity]
+	mapping     flsql.Mapping[Entity, ID]
 	done        bool
 	expectedIDs []ID
 	foundIDs    zerokit.V[map[string]struct{}]
@@ -249,6 +321,7 @@ func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
 func (iter *iterFindByIDs[Entity, ID]) Next() bool {
 	gotNext := iter.Iterator.Next()
 	if gotNext {
+
 		id, _ := extid.Lookup[ID](iter.Iterator.Value())
 		iter.foundIDs.Get()[iter.idFoundKey(id)] = struct{}{}
 	}
@@ -297,41 +370,64 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 		return nil
 	}
 
-	var (
-		query  string
-		args   []any
-		nextPH = makePrepareStatementPlaceholderGenerator()
-	)
-	query += fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableRef(), r.queryColumnList())
-	query += "VALUES \n"
+	var args []any
 
-	for i, ptr := range ptrs {
-		separator := ","
-		if i == len(ptrs)-1 { // on last element
-			separator = ""
-		}
+	nextPH := makePrepareStatementPlaceholderGenerator()
 
-		query += fmt.Sprintf("\t(%s)%s\n", r.queryColumnPlaceHolders(nextPH), separator)
-
-		vs, err := r.Mapping.ToArgs(ptr)
+	var valuesElems []map[flsql.ColumnName]any
+	for _, ptr := range ptrs {
+		valueElem, err := r.Mapping.ToArgs(*ptr)
 		if err != nil {
 			return err
 		}
-		args = append(args, vs...)
+		valuesElems = append(valuesElems, valueElem)
 	}
 
-	query += fmt.Sprintf("ON CONFLICT (%s) DO\n", r.Mapping.IDRef())
-	query += "\tUPDATE SET\n"
+	var columns []flsql.ColumnName
+	for _, value := range valuesElems {
+		columns = slicekit.Unique(append(columns, mapkit.Keys(value)...))
+	}
 
-	columns := r.Mapping.ColumnRefs()
-	for i, col := range columns {
-		sep := ","
-		if i == len(columns)-1 { // on last element
-			sep = ""
+	var idColumns []flsql.ColumnName
+	var valuesClause []string
+	for _, ptr := range ptrs {
+
+		id, _ := r.Mapping.LookupID(*ptr)
+
+		idArgs, err := r.Mapping.ToID(id)
+		if err != nil {
+			return err
 		}
 
-		query += fmt.Sprintf("\t\t%s = EXCLUDED.%s%s\n", col, col, sep)
+		idColumns = slicekit.Unique(append(idColumns, mapkit.Keys(idArgs)...))
+
+		setClauseArgs, err := r.Mapping.ToArgs(*ptr)
+		if err != nil {
+			return err
+		}
+
+		var valueClause []string
+		for _, col := range columns {
+			valueClause = append(valueClause, nextPH())
+			// on no value, it will be NULL which is the expected behaviour
+			// so no need to do a `arg, ok := setClauseArgs[col]`
+			args = append(args, setClauseArgs[col])
+		}
+
+		valuesClause = append(valuesClause, fmt.Sprintf("(%s)", strings.Join(valueClause, ", ")))
 	}
+
+	var onConflictUpdateSetClause []string
+	for _, col := range columns {
+		onConflictUpdateSetClause = append(onConflictUpdateSetClause,
+			fmt.Sprintf("\t\t%s = EXCLUDED.%s", col, col))
+	}
+
+	var query string
+	query += fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableName, r.quotedColumnsClause(columns))
+	query += fmt.Sprintf("VALUES \n\t%s\n", strings.Join(valuesClause, ",\n\t"))
+	query += fmt.Sprintf("ON CONFLICT (%s) DO\n", flsql.JoinColumnName(idColumns, ", ", "%q"))
+	query += fmt.Sprintf("\tUPDATE SET\n%s\n", strings.Join(onConflictUpdateSetClause, ",\n"))
 
 	if _, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
 		return err
@@ -352,59 +448,6 @@ func (r Repository[Entity, ID]) RollbackTx(ctx context.Context) error {
 	return r.Connection.RollbackTx(ctx)
 }
 
-func (r Repository[Entity, ID]) queryColumnPlaceHolders(nextPlaceholder func() string) string {
-	var phs []string
-	for range r.Mapping.ColumnRefs() {
-		phs = append(phs, nextPlaceholder())
-	}
-	return strings.Join(phs, `, `)
-}
-
-func (r Repository[Entity, ID]) queryColumnList() string {
-	var (
-		src = r.Mapping.ColumnRefs()
-		dst = make([]string, 0, len(src))
-	)
-	dst = append(dst, src...)
-	return strings.Join(dst, `, `)
-}
-
-// Mapping is a RepositoryMapper implementation if you don't want to create your own.
-type Mapping[Entity, ID any] struct {
-	// Table is the entity's table name
-	Table string
-	// ID is the entity's id column name
-	ID string
-	// Columns hold the entity's table column names.
-	Columns []string
-	// ToArgsFn will map an Entity into query arguments, that follows the order of Columns.
-	ToArgsFn func(ptr *Entity) ([]interface{}, error)
-	// MapFn will map an sql.Row into an Entity.
-	MapFn iterators.SQLRowMapperFunc[Entity]
-	// NewIDFn will return a new ID
-	NewIDFn func(ctx context.Context) (ID, error)
-}
-
-func (m Mapping[Entity, ID]) TableRef() string {
-	return m.Table
-}
-
-func (m Mapping[Entity, ID]) IDRef() string {
-	return m.ID
-}
-
-func (m Mapping[Entity, ID]) ColumnRefs() []string {
-	return m.Columns
-}
-
-func (m Mapping[Entity, ID]) NewID(ctx context.Context) (ID, error) {
-	return m.NewIDFn(ctx)
-}
-
-func (m Mapping[Entity, ID]) ToArgs(ptr *Entity) ([]interface{}, error) {
-	return m.ToArgsFn(ptr)
-}
-
-func (m Mapping[Entity, ID]) Map(s iterators.SQLRowScanner) (Entity, error) {
-	return m.MapFn(s)
+func (r Repository[Entity, ID]) quotedColumnsClause(cols []flsql.ColumnName) string {
+	return flsql.JoinColumnName(cols, ", ", "%q")
 }

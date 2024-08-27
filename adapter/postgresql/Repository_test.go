@@ -2,20 +2,17 @@ package postgresql_test
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.llib.dev/frameless/adapter/postgresql"
+	"go.llib.dev/frameless/pkg/flsql"
 
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	crudcontracts "go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -57,7 +54,7 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 	MigrateEntity(t, cm)
 
 	mapper := EntityMapping()
-	mapper.Table = `public.` + mapper.Table
+	mapper.TableName = `public.` + mapper.TableName
 
 	subject := postgresql.Repository[Entity, string]{
 		Mapping:    mapper,
@@ -102,20 +99,29 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 	}(t, c)
 
 	hitRepo := postgresql.Repository[cache.Hit[string], cache.HitID]{
-		Mapping: postgresql.Mapping[cache.Hit[string], cache.HitID]{
-			Table:   "test_cache_hits",
-			ID:      "id",
-			Columns: []string{"id", "ids", "ts"},
-			ToArgsFn: func(ptr *cache.Hit[string]) ([]interface{}, error) {
-				return []any{ptr.QueryID, &ptr.EntityIDs, ptr.Timestamp}, nil
+		Mapping: flsql.Mapping[cache.Hit[string], cache.HitID]{
+			TableName: "test_cache_hits",
+
+			ToID: func(id string) (map[flsql.ColumnName]any, error) {
+				return map[flsql.ColumnName]any{"id": id}, nil
 			},
-			MapFn: func(scanner iterators.SQLRowScanner) (cache.Hit[string], error) {
-				var hit cache.Hit[string]
-				if err := scanner.Scan(&hit.QueryID, &hit.EntityIDs, &hit.Timestamp); err != nil {
-					return hit, err
+
+			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[cache.Hit[string]]) {
+				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[string], scan flsql.ScanFunc) error {
+					if err := scan(&v.QueryID, &v.EntityIDs, &v.Timestamp); err != nil {
+						return err
+					}
+					v.Timestamp = v.Timestamp.UTC()
+					return nil
 				}
-				hit.Timestamp = hit.Timestamp.UTC()
-				return hit, nil
+			},
+
+			ToArgs: func(h cache.Hit[string]) (map[flsql.ColumnName]any, error) {
+				return map[flsql.ColumnName]any{
+					"id":  h.QueryID,
+					"ids": h.EntityIDs,
+					"ts":  h.Timestamp,
+				}, nil
 			},
 		},
 		Connection: c,
@@ -234,105 +240,4 @@ func Test_pgxQuery(t *testing.T) {
 	rows.Close()
 	assert.NoError(t, rows.Err())
 	assert.Equal(t, 3, n)
-}
-
-var _ postgresql.RepositoryMapper[any, int] = postgresql.Mapping[any, int]{}
-
-func TestMapper_Map(t *testing.T) {
-	rnd := random.New(random.CryptoSeed{})
-	type X struct {
-		Foo int
-	}
-
-	m := postgresql.Mapping[X, int]{MapFn: func(s iterators.SQLRowScanner) (X, error) {
-		var x X
-		return x, s.Scan(&x.Foo)
-	}}
-
-	t.Run(`happy-path`, func(t *testing.T) {
-		expectedInt := rnd.Int()
-		scanner := FakeSQLRowScanner{ScanFunc: func(i ...interface{}) error {
-			return reflectkit.Link(expectedInt, i[0])
-		}}
-
-		x, err := m.Map(scanner)
-		assert.Nil(t, err)
-		assert.Equal(t, expectedInt, x.Foo)
-	})
-
-	t.Run(`rainy-path`, func(t *testing.T) {
-		var expectedErr = errors.New(`boom`)
-		scanner := FakeSQLRowScanner{ScanFunc: func(i ...interface{}) error {
-			return expectedErr
-		}}
-
-		_, err := m.Map(scanner)
-		assert.Equal(t, expectedErr, err)
-	})
-}
-
-type FakeSQLRowScanner struct {
-	ScanFunc func(...interface{}) error
-}
-
-func (scanner FakeSQLRowScanner) Scan(i ...interface{}) error {
-	return scanner.ScanFunc(i...)
-}
-
-func TestMapper_ToArgs(t *testing.T) {
-	rnd := random.New(random.CryptoSeed{})
-	type X struct {
-		Foo int64
-	}
-
-	t.Run(`happy-path`, func(t *testing.T) {
-		m := postgresql.Mapping[X, int64]{ToArgsFn: func(ptr *X) ([]interface{}, error) {
-			return []interface{}{sql.NullInt64{Int64: ptr.Foo, Valid: true}}, nil
-		}}
-
-		x := X{Foo: int64(rnd.Int())}
-
-		args, err := m.ToArgsFn(&x)
-		assert.Nil(t, err)
-
-		assert.Equal(t, []interface{}{sql.NullInt64{
-			Int64: x.Foo,
-			Valid: true,
-		}}, args)
-	})
-
-	t.Run(`rainy-path`, func(t *testing.T) {
-		expectedErr := errors.New(`boom`)
-		m := postgresql.Mapping[X, int64]{ToArgsFn: func(ptr *X) ([]interface{}, error) {
-			return nil, expectedErr
-		}}
-
-		_, err := m.ToArgsFn(&X{Foo: int64(rnd.Int())})
-		assert.Equal(t, expectedErr, err)
-	})
-}
-
-func TestMapper_NewID(t *testing.T) {
-	rnd := random.New(random.CryptoSeed{})
-	t.Run(`happy-path`, func(t *testing.T) {
-		expectedID := rnd.Int()
-		m := postgresql.Mapping[any, int]{NewIDFn: func(ctx context.Context) (int, error) {
-			return expectedID, nil
-		}}
-
-		actualID, err := m.NewID(context.Background())
-		assert.NoError(t, err)
-
-		assert.Equal(t, expectedID, actualID)
-	})
-
-	t.Run(`rainy-path`, func(t *testing.T) {
-		expectedErr := errors.New(`boom`)
-		m := postgresql.Mapping[any, any]{NewIDFn: func(ctx context.Context) (any, error) {
-			return nil, expectedErr
-		}}
-
-		_, err := m.NewID(context.Background())
-		assert.Equal(t, expectedErr, err)
-	})
 }

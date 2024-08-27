@@ -36,16 +36,6 @@ func TestConnect_smoke2(t *testing.T) {
 	background := context.Background()
 	_, err = cm.ExecContext(background, `SELECT TRUE`)
 	assert.NoError(t, err)
-	assert.NoError(t, cm.Close())
-}
-
-func TestConnection_Close(t *testing.T) {
-	cm, err := postgresql.Connect(DatabaseURL(t))
-	assert.NoError(t, err)
-	background := context.Background()
-	_, err = cm.ExecContext(background, `SELECT TRUE`)
-	assert.NoError(t, err)
-	assert.NoError(t, cm.Close())
 }
 
 func TestConnection_PoolContract(t *testing.T) {
@@ -124,7 +114,7 @@ type ConnectionContract struct {
 
 func (c ConnectionContract) cm() testcase.Var[postgresql.Connection] {
 	return testcase.Var[postgresql.Connection]{
-		ID: "postgresql.Connection",
+		ID: "Connection",
 		Init: func(t *testcase.T) postgresql.Connection {
 			return c.MakeSubject(t)
 		},

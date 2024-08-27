@@ -11,7 +11,8 @@ import (
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
-	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/spechelper/testent"
 )
 
@@ -72,20 +73,33 @@ type FooCacheRepository struct {
 
 func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, testent.FooID] {
 	return postgresql.Repository[testent.Foo, testent.FooID]{
-		Mapping: postgresql.Mapping[testent.Foo, testent.FooID]{
-			Table:   "cache_foos",
-			ID:      "id",
-			Columns: []string{"id", "foo", "bar", "baz"},
-			ToArgsFn: func(ptr *testent.Foo) ([]interface{}, error) {
-				return []any{ptr.ID, ptr.Foo, ptr.Bar, ptr.Baz}, nil
+		Mapping: flsql.Mapping[testent.Foo, testent.FooID]{
+			TableName: "cache_foos",
+
+			ToID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
+				return map[flsql.ColumnName]any{"id": id}, nil
 			},
-			MapFn: func(scanner iterators.SQLRowScanner) (testent.Foo, error) {
-				var foo testent.Foo
-				err := scanner.Scan(&foo.ID, &foo.Foo, &foo.Bar, &foo.Baz)
-				return foo, err
+
+			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[testent.Foo]) {
+				return []flsql.ColumnName{"id", "foo", "bar", "baz"}, func(foo *testent.Foo, scan flsql.ScanFunc) error {
+					return scan(&foo.ID, &foo.Foo, &foo.Bar, &foo.Baz)
+				}
 			},
-			NewIDFn: func(ctx context.Context) (testent.FooID, error) {
-				return testent.FooID(random.New(random.CryptoSeed{}).UUID()), nil
+
+			ToArgs: func(foo testent.Foo) (map[flsql.ColumnName]any, error) {
+				return map[flsql.ColumnName]any{
+					"id":  foo.ID,
+					"foo": foo.Foo,
+					"bar": foo.Bar,
+					"baz": foo.Baz,
+				}, nil
+			},
+
+			CreatePrepare: func(ctx context.Context, f *testent.Foo) error {
+				if zerokit.IsZero(f.ID) {
+					f.ID = testent.FooID(random.New(random.CryptoSeed{}).UUID())
+				}
+				return nil
 			},
 		},
 		Connection: cr.Connection,
@@ -94,27 +108,36 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 
 func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 	return postgresql.Repository[cache.Hit[testent.FooID], cache.HitID]{
-		Mapping: postgresql.Mapping[cache.Hit[testent.FooID], cache.HitID]{
-			Table:   "cache_foo_hits",
-			ID:      "id",
-			Columns: []string{"id", "ids", "ts"},
-			ToArgsFn: func(ptr *cache.Hit[testent.FooID]) ([]interface{}, error) {
-				ptr.Timestamp = ptr.Timestamp.UTC()
-				return []any{ptr.QueryID, &ptr.EntityIDs, ptr.Timestamp}, nil
+		Mapping: flsql.Mapping[cache.Hit[testent.FooID], cache.HitID]{
+			TableName: "cache_foo_hits",
+
+			ToID: func(id string) (map[flsql.ColumnName]any, error) {
+				return map[flsql.ColumnName]any{"id": id}, nil
 			},
-			MapFn: func(scanner iterators.SQLRowScanner) (cache.Hit[testent.FooID], error) {
-				var (
-					ent cache.Hit[testent.FooID]
-					ids []string
-				)
-				err := scanner.Scan(&ent.QueryID, &ids, &ent.Timestamp)
-				for _, id := range ids {
-					ent.EntityIDs = append(ent.EntityIDs, testent.FooID(id))
+
+			ToArgs: func(h cache.Hit[testent.FooID]) (map[flsql.ColumnName]any, error) {
+				return map[flsql.ColumnName]any{
+					"id":  h.QueryID,
+					"ids": &h.EntityIDs,
+					"ts":  h.Timestamp,
+				}, nil
+			},
+
+			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[cache.Hit[testent.FooID]]) {
+				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[testent.FooID], scan flsql.ScanFunc) error {
+					var ids []string
+					err := scan(&v.QueryID, &ids, &v.Timestamp)
+					for _, id := range ids {
+						v.EntityIDs = append(v.EntityIDs, testent.FooID(id))
+					}
+					v.Timestamp = v.Timestamp.UTC()
+					return err
 				}
-				ent.Timestamp = ent.Timestamp.UTC()
-				return ent, err
 			},
-			NewIDFn: func(ctx context.Context) (_ cache.HitID, _ error) { return },
+
+			GetID: func(h cache.Hit[testent.FooID]) string {
+				return h.QueryID
+			},
 		},
 		Connection: cr.Connection,
 	}

@@ -2,11 +2,10 @@ package postgresql_test
 
 import (
 	"context"
-	"math/rand"
 	"os"
 
 	"go.llib.dev/frameless/adapter/postgresql"
-	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/pkg/flsql"
 )
 
 func ExampleRepository() {
@@ -15,20 +14,29 @@ func ExampleRepository() {
 		Value string
 	}
 
-	mapping := postgresql.Mapping[Entity, int]{
-		Table:   "entities",
-		ID:      "id",
-		Columns: []string{`id`, `value`},
-		NewIDFn: func(ctx context.Context) (int, error) {
-			// only example, don't do this in production code.
-			return rand.Int(), nil
+	mapping := flsql.Mapping[Entity, int]{
+		TableName: "entities",
+
+		ToID: func(id int) (map[flsql.ColumnName]any, error) {
+			return map[flsql.ColumnName]any{"id": id}, nil
 		},
-		ToArgsFn: func(ent *Entity) ([]interface{}, error) {
-			return []interface{}{ent.ID, ent.Value}, nil
+
+		ToArgs: func(e Entity) (map[flsql.ColumnName]any, error) {
+			return map[flsql.ColumnName]any{
+				`id`:    e.ID,
+				`value`: e.Value,
+			}, nil
 		},
-		MapFn: func(s iterators.SQLRowScanner) (Entity, error) {
-			var ent Entity
-			return ent, s.Scan(&ent.ID, &ent.Value)
+
+		ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[Entity]) {
+			return []flsql.ColumnName{"id", "value"},
+				func(v *Entity, scan flsql.ScanFunc) error {
+					return scan(&v.ID, &v.Value)
+				}
+		},
+
+		GetID: func(e Entity) int {
+			return e.ID
 		},
 	}
 

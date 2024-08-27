@@ -7,12 +7,13 @@ import (
 	"sync"
 	"testing"
 
-	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/adapter/postgresql"
+	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/testcase/assert"
 )
 
@@ -35,7 +36,7 @@ var (
 func GetConnection(tb testing.TB) postgresql.Connection {
 	mutexConnection.Lock()
 	defer mutexConnection.Unlock()
-	if Connection != nil {
+	if !zerokit.IsZero(Connection) {
 		return Connection
 	}
 	cm, err := postgresql.Connect(DatabaseDSN(tb))
@@ -70,21 +71,37 @@ const FooMigrateDOWN = `
 DROP TABLE IF EXISTS "foos";
 `
 
-var FooMapping = postgresql.Mapping[testent.Foo, testent.FooID]{
-	Table:   "foos",
-	ID:      "id",
-	Columns: []string{"id", "foo", "bar", "baz"},
-	ToArgsFn: func(ptr *testent.Foo) ([]interface{}, error) {
-		return []any{ptr.ID, ptr.Foo, ptr.Bar, ptr.Baz}, nil
+var FooMapping = flsql.Mapping[testent.Foo, testent.FooID]{
+	TableName: "foos",
+
+	ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[testent.Foo]) {
+		return []flsql.ColumnName{"id", "foo", "bar", "baz"},
+			func(f *testent.Foo, sf flsql.ScanFunc) error {
+				return sf(&f.ID, &f.Foo, &f.Bar, &f.Baz)
+			}
 	},
-	MapFn: func(scanner iterators.SQLRowScanner) (testent.Foo, error) {
-		var foo testent.Foo
-		err := scanner.Scan(&foo.ID, &foo.Foo, &foo.Bar, &foo.Baz)
-		return foo, err
+
+	ToID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
+		return map[flsql.ColumnName]any{"id": id}, nil
 	},
-	NewIDFn: func(ctx context.Context) (testent.FooID, error) {
-		return testent.FooID(random.New(random.CryptoSeed{}).UUID()), nil
+
+	ToArgs: func(f testent.Foo) (map[flsql.ColumnName]any, error) {
+		return map[flsql.ColumnName]any{
+			"id":  f.ID,
+			"foo": f.Foo,
+			"bar": f.Bar,
+			"baz": f.Baz,
+		}, nil
 	},
+
+	CreatePrepare: func(ctx context.Context, f *testent.Foo) error {
+		if zerokit.IsZero(f.ID) {
+			f.ID = testent.FooID(random.New(random.CryptoSeed{}).UUID())
+		}
+		return nil
+	},
+
+	GetID: func(f testent.Foo) testent.FooID { return f.ID },
 }
 
 func MakeContext(testing.TB) context.Context { return context.Background() }
@@ -143,24 +160,47 @@ func (n EntityJSONMapping) ToEnt(dto EntityDTO) (Entity, error) {
 	return Entity{ID: dto.ID, Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
 }
 
-func EntityMapping() postgresql.Mapping[Entity, string] {
-	var counter int
-	return postgresql.Mapping[Entity, string]{
-		Table: "test_entities",
-		ID:    "id",
-		NewIDFn: func(ctx context.Context) (string, error) {
-			counter++
-			rnd := random.New(random.CryptoSeed{})
-			rndstr := rnd.StringNWithCharset(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-			return fmt.Sprintf("%d-%s", counter, rndstr), nil
+func EntityMapping() flsql.Mapping[Entity, string] {
+	var (
+		idc int = 1
+		m   sync.Mutex
+		rnd = random.New(random.CryptoSeed{})
+	)
+	var newID = func() string {
+		m.Lock()
+		defer m.Unlock()
+		idc++
+		rndstr := rnd.StringNWithCharset(8, "ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+		return fmt.Sprintf("%d-%s", idc, rndstr)
+	}
+	return flsql.Mapping[Entity, string]{
+		TableName: "test_entities",
+
+		ToID: func(id string) (map[flsql.ColumnName]any, error) {
+			return map[flsql.ColumnName]any{"id": id}, nil
 		},
-		Columns: []string{`id`, `foo`, `bar`, `baz`},
-		ToArgsFn: func(ent *Entity) ([]interface{}, error) {
-			return []interface{}{ent.ID, ent.Foo, ent.Bar, ent.Baz}, nil
+
+		ToArgs: func(e Entity) (map[flsql.ColumnName]any, error) {
+			return map[flsql.ColumnName]any{
+				`id`:  e.ID,
+				`foo`: e.Foo,
+				`bar`: e.Bar,
+				`baz`: e.Baz,
+			}, nil
 		},
-		MapFn: func(s iterators.SQLRowScanner) (Entity, error) {
-			var ent Entity
-			return ent, s.Scan(&ent.ID, &ent.Foo, &ent.Bar, &ent.Baz)
+
+		ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[Entity]) {
+			return []flsql.ColumnName{`id`, `foo`, `bar`, `baz`},
+				func(v *Entity, scan flsql.ScanFunc) error {
+					return scan(&v.ID, &v.Foo, &v.Bar, &v.Baz)
+				}
+		},
+
+		CreatePrepare: func(ctx context.Context, e *Entity) error {
+			if zerokit.IsZero(e.ID) {
+				e.ID = newID()
+			}
+			return nil
 		},
 	}
 }

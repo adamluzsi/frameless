@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/guard"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/migration"
 )
 
@@ -53,24 +53,40 @@ func (r TaskerScheduleStateRepository) repository() Repository[tasker.State, tas
 	}
 }
 
-var taskerScheduleStateRepositoryMapping = Mapping[tasker.State, tasker.StateID]{
-	Table: "frameless_tasker_schedule_states",
-	ID:    "id",
-	NewIDFn: func(context.Context) (tasker.StateID, error) {
-		return "", fmt.Errorf(".ID is required to be supplied externally")
+var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.StateID]{
+	TableName: "frameless_tasker_schedule_states",
+
+	ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[tasker.State]) {
+		return []flsql.ColumnName{"id", "timestamp"},
+			func(state *tasker.State, scan flsql.ScanFunc) error {
+				if err := scan(&state.ID, &state.Timestamp); err != nil {
+					return err
+				}
+				state.Timestamp = state.Timestamp.UTC()
+				return nil
+			}
 	},
-	Columns: []string{"id", "timestamp"},
-	ToArgsFn: func(ptr *tasker.State) ([]any, error) {
-		return []any{
-			ptr.ID,
-			ptr.Timestamp,
+
+	ToID: func(si tasker.StateID) (map[flsql.ColumnName]any, error) {
+		return map[flsql.ColumnName]any{"id": si}, nil
+	},
+
+	ToArgs: func(s tasker.State) (map[flsql.ColumnName]any, error) {
+		return map[flsql.ColumnName]any{
+			"id":        s.ID,
+			"timestamp": s.Timestamp,
 		}, nil
 	},
-	MapFn: func(scanner iterators.SQLRowScanner) (tasker.State, error) {
-		var state tasker.State
-		err := scanner.Scan(&state.ID, &state.Timestamp)
-		state.Timestamp = state.Timestamp.UTC()
-		return state, err
+
+	CreatePrepare: func(ctx context.Context, s *tasker.State) error {
+		if s.ID == "" {
+			return fmt.Errorf("tasker.State.ID is required to be supplied externally")
+		}
+		return nil
+	},
+
+	GetID: func(s tasker.State) tasker.StateID {
+		return s.ID
 	},
 }
 
