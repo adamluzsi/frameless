@@ -75,16 +75,13 @@ func JoinColumnName(cns []ColumnName, sep string, format string) string {
 	return strings.Join(slicekit.Map(cns, func(n ColumnName) string { return fmt.Sprintf(format, n) }), sep)
 }
 
-type (
-	ScanFunc func(dest ...any) error
-	Scanner  interface{ Scan(dest ...any) error }
-)
+type Scanner interface{ Scan(dest ...any) error }
 
-type MapScan[ENT any] func(v *ENT, scan ScanFunc) error
+type MapScan[ENT any] func(*ENT, Scanner) error
 
 func (ms MapScan[ENT]) Map(scanner Scanner) (ENT, error) {
 	var value ENT
-	err := ms(&value, scanner.Scan)
+	err := ms(&value, scanner)
 	return value, err
 }
 
@@ -96,10 +93,10 @@ type Mapping[ENT, ID any] struct {
 	// and the corresponding scan function that
 	// ctx enables you to accept custom query instructions through the context if you require that.
 	ToQuery func(ctx context.Context) ([]ColumnName, MapScan[ENT])
-	// ToID will convert an ID into query components—specifically,
+	// QueryID will convert an ID into query components—specifically,
 	// column names and their corresponding values—that represent the ID in an SQL WHERE statement.
 	// If ID is nil, then
-	ToID func(id ID) (map[ColumnName]any, error)
+	QueryID func(id ID) (map[ColumnName]any, error)
 	// ToArgs converts an entity pointer into a list of query arguments for CREATE or UPDATE operations.
 	// It must handle empty or zero values and still return a valid column statement.
 	ToArgs func(ENT) (map[ColumnName]any, error)
@@ -109,16 +106,28 @@ type Mapping[ENT, ID any] struct {
 	// To have this working, the user of Mapping needs to call Mapping.OnCreate method within in its crud.Create method implementation.
 	CreatePrepare func(context.Context, *ENT) error
 
-	// GetID [optional] is a function that allows the ID lookup from an entity.
+	// ID [optional] is a function that allows the ID lookup from an entity.
+	// The returned ID value will be used to Lookup the ID value, or to set a new ID value.
+	// Mapping will panic if ID func is provided, but returns a nil, as it is considered as implementation error.
 	//
-	// default: extid.Lookup
-	GetID func(ENT) ID
+	// Example implementation:
+	//
+	// 		flsql.Mapping[Foo, FooID]{..., ID: func(v Foo) *FooID { return &v.ID }}
+	//
+	// default: extid.Lookup, extid.Set, which will use either the `ext:"id"` tag, or the `ENT.ID()` & `ENT.SetID()` methods.
+	ID func(ENT) *ID
 }
 
 func (m Mapping[ENT, ID]) LookupID(ent ENT) (ID, bool) {
-	if m.GetID != nil {
-		var id ID = m.GetID(ent)
-		return id, !zerokit.IsZero[ID](id)
+	if m.ID != nil {
+		id := m.ID(ent)
+		if id == nil {
+			var msg string
+			msg = "implementation error: %T has `ID` func provided, but returned a nil pointer value."
+			msg += "\nExample implementation: m.ID = func(v Foo) *FooID { return &v.ID }"
+			panic(msg)
+		}
+		return *id, !zerokit.IsZero[ID](*id)
 	}
 	return extid.Lookup[ID](ent)
 }

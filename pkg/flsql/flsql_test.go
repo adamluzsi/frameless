@@ -34,7 +34,7 @@ func ExampleMapping() {
 	_ = flsql.Mapping[ExampleEntity, int64]{
 		TableName: `"public"."entities"`,
 
-		ToID: func(id int64) (map[flsql.ColumnName]any, error) {
+		QueryID: func(id int64) (map[flsql.ColumnName]any, error) {
 			return map[flsql.ColumnName]any{"entity_id": id}, nil
 		},
 
@@ -49,8 +49,8 @@ func ExampleMapping() {
 
 		ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[ExampleEntity]) {
 			return []flsql.ColumnName{"entity_id", "col1", "col2", "col3"},
-				func(ent *ExampleEntity, scan flsql.ScanFunc) error {
-					return scan(&ent.ID, &ent.Col1, &ent.Col2, &ent.Col3)
+				func(e *ExampleEntity, s flsql.Scanner) error {
+					return s.Scan(&e.ID, &e.Col1, &e.Col2, &e.Col3)
 				}
 		},
 	}
@@ -63,8 +63,8 @@ func TestMapper_ToQuery(t *testing.T) {
 	ctx := context.Background()
 
 	m := flsql.Mapping[X, int]{ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[X]) {
-		return []flsql.ColumnName{"foo"}, func(v *X, scan flsql.ScanFunc) error {
-			return scan(&v.Foo)
+		return []flsql.ColumnName{"foo"}, func(v *X, s flsql.Scanner) error {
+			return s.Scan(&v.Foo)
 		}
 	}}
 
