@@ -3,10 +3,13 @@ package flsql
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
 	"fmt"
 	"io"
 	"reflect"
 	"strings"
+	"time"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
@@ -170,4 +173,110 @@ type sqlQueryable interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// DTO (Data Transfer Object) is an object used to transfer data between the database and your application.
+// It acts as a bridge between the entity field types in your application and the table column types in your database,
+// to making it easier to map data between them.
+// This helps keep the data structure consistent when passing information between layers or systems.
+type DTO interface {
+	driver.Valuer
+	sql.Scanner
+}
+
+func JSON[T any](pointer *T) DTO {
+	return &dtoJSON[T]{Pointer: pointer}
+}
+
+type dtoJSON[T any] struct{ Pointer *T }
+
+func (m dtoJSON[T]) Value() (driver.Value, error) {
+	if m.Pointer == nil {
+		return nil, nil
+	}
+	return json.Marshal(*m.Pointer)
+}
+
+func (m *dtoJSON[T]) Scan(value any) error {
+	if value == nil {
+		return nil
+	}
+	var data json.RawMessage
+	switch value := value.(type) {
+	case []byte:
+		data = value
+	case json.RawMessage:
+		data = value
+	case string:
+		data = []byte(value)
+	default:
+		return fmt.Errorf("%T is not yet supported for %T", value, m)
+	}
+	return json.Unmarshal(data, &m.Pointer)
+}
+
+func Timestamp(pointer *time.Time, layout string, tz *time.Location) DTO {
+	return &dtoTimestamp{
+		Pointer:  pointer,
+		Layout:   layout,
+		Location: tz,
+	}
+}
+
+type dtoTimestamp struct {
+	Pointer  *time.Time
+	Layout   string
+	Location *time.Location
+}
+
+func (m *dtoTimestamp) Scan(value any) error {
+	if value == nil {
+		return nil
+	}
+	var raw string
+	switch value := value.(type) {
+	case []byte:
+		raw = string(value)
+	case string:
+		raw = value
+	default:
+		return fmt.Errorf("scanning %T type as Timestamp is not yet supported", value)
+	}
+	timestamp, err := m.parse(raw)
+	if err != nil {
+		return err
+	}
+	*m.Pointer = timestamp
+	return nil
+}
+
+func (m *dtoTimestamp) Value() (driver.Value, error) {
+	if m.Pointer == nil {
+		return nil, nil
+	}
+	t := *m.Pointer
+	if m.Location != nil {
+		t = t.In(m.Location)
+	}
+	if m.Layout == "" {
+		return nil, fmt.Errorf("time formatting error: the format layout is empty")
+	}
+	formatted := t.Format(m.Layout)
+	if formatted == m.Layout {
+		val, err := m.parse(formatted)
+		if err != nil {
+			return nil, err
+		}
+		if !t.Equal(val) {
+			return nil, fmt.Errorf("time formatting error: invalid layout: %s", m.Layout)
+		}
+	}
+	return formatted, nil
+}
+
+func (m *dtoTimestamp) parse(raw string) (time.Time, error) {
+	if m.Location != nil {
+		return time.ParseInLocation(m.Layout, raw, m.Location)
+	}
+	return time.Parse(m.Layout, raw)
 }
