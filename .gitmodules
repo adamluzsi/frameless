@@ -1,0 +1,5 @@
+[submodule "adapter/mysql"]
+	path = adapter/mysql
+	url = git@github.com:adamluzsi/frameless-adapter-mysql.git
+	branch = main
+
