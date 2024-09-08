@@ -168,3 +168,13 @@ func mergeDoneChannels(ctxs ...context.Context) (<-chan struct{}, func()) {
 		wg.Wait()
 	}
 }
+
+func WithoutValues(ctx context.Context) context.Context {
+	return ctxWithoutValues{Context: ctx}
+}
+
+type ctxWithoutValues struct{ context.Context }
+
+func (ctxWithoutValues) Value(any) any {
+	return nil
+}

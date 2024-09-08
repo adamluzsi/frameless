@@ -15,6 +15,8 @@ import (
 
 var _ context.Context = contextkit.Detach(context.Background())
 
+var rnd = random.New(random.CryptoSeed{})
+
 func TestDetached(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -431,6 +433,53 @@ func TestMerge(t *testing.T) {
 			ctx.Err()
 		}, func() {
 			cancel()
+		})
+	})
+}
+
+func TestWithoutValues(t *testing.T) {
+	type ctxKey struct{}
+
+	t.Run("when value present in the base context it is not found", func(t *testing.T) {
+		bctx := context.WithValue(context.Background(), ctxKey{}, "bar")
+		assert.NotNil(t, bctx.Value(ctxKey{}))
+		assert.Nil(t, contextkit.WithoutValues(bctx).Value(ctxKey{}))
+	})
+
+	t.Run("Error is propagated", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		assert.ErrorIs(t, ctx.Err(), contextkit.WithoutValues(ctx).Err())
+	})
+
+	t.Run("deadline is propagated", func(t *testing.T) {
+		dl := time.Now().Add(time.Hour)
+		ctx, cancel := context.WithDeadline(context.Background(), dl)
+		defer cancel()
+		got, ok := ctx.Deadline()
+		assert.True(t, ok)
+		assert.Equal(t, got, dl)
+	})
+
+	t.Run("done propagated", func(t *testing.T) {
+		bctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		subject := contextkit.WithoutValues(bctx)
+
+		assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+			select {
+			case <-ctx.Done():
+			case <-subject.Done(): // hangs since it is not done yet
+			}
+		})
+
+		cancel()
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			select {
+			case <-ctx.Done():
+			case <-subject.Done(): // instantly returns since it is cancelled
+			}
 		})
 	})
 }
