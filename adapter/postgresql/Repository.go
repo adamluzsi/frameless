@@ -84,7 +84,7 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 }
 
 func (r Repository[Entity, ID]) idQuery(id ID, nextPlaceholder func() string) (whereClause []string, queryArgs []any, _ error) {
-	idArgs, err := r.Mapping.ToID(id)
+	idArgs, err := r.Mapping.QueryID(id)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -96,7 +96,7 @@ func (r Repository[Entity, ID]) idQuery(id ID, nextPlaceholder func() string) (w
 }
 
 func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
-	idArgs, err := r.Mapping.ToID(id)
+	idArgs, err := r.Mapping.QueryID(id)
 	if err != nil {
 		return *new(Entity), false, fmt.Errorf("QueryID: %w", err)
 	}
@@ -121,7 +121,7 @@ func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bo
 	row := r.Connection.QueryRowContext(ctx, query, queryArgs...)
 
 	var v Entity
-	err = scan(&v, row.Scan)
+	err = scan(&v, row)
 
 	if errors.Is(err, errNoRows) {
 		return *new(Entity), false, nil
@@ -394,7 +394,7 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 
 		id, _ := r.Mapping.LookupID(*ptr)
 
-		idArgs, err := r.Mapping.ToID(id)
+		idArgs, err := r.Mapping.QueryID(id)
 		if err != nil {
 			return err
 		}

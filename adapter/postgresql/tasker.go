@@ -58,8 +58,8 @@ var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.St
 
 	ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[tasker.State]) {
 		return []flsql.ColumnName{"id", "timestamp"},
-			func(state *tasker.State, scan flsql.ScanFunc) error {
-				if err := scan(&state.ID, &state.Timestamp); err != nil {
+			func(state *tasker.State, s flsql.Scanner) error {
+				if err := s.Scan(&state.ID, &state.Timestamp); err != nil {
 					return err
 				}
 				state.Timestamp = state.Timestamp.UTC()
@@ -67,7 +67,7 @@ var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.St
 			}
 	},
 
-	ToID: func(si tasker.StateID) (map[flsql.ColumnName]any, error) {
+	QueryID: func(si tasker.StateID) (map[flsql.ColumnName]any, error) {
 		return map[flsql.ColumnName]any{"id": si}, nil
 	},
 
@@ -85,8 +85,8 @@ var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.St
 		return nil
 	},
 
-	GetID: func(s tasker.State) tasker.StateID {
-		return s.ID
+	ID: func(s tasker.State) *tasker.StateID {
+		return &s.ID
 	},
 }
 

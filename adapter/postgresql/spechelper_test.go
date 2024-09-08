@@ -76,12 +76,12 @@ var FooMapping = flsql.Mapping[testent.Foo, testent.FooID]{
 
 	ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[testent.Foo]) {
 		return []flsql.ColumnName{"id", "foo", "bar", "baz"},
-			func(f *testent.Foo, sf flsql.ScanFunc) error {
-				return sf(&f.ID, &f.Foo, &f.Bar, &f.Baz)
+			func(f *testent.Foo, sf flsql.Scanner) error {
+				return sf.Scan(&f.ID, &f.Foo, &f.Bar, &f.Baz)
 			}
 	},
 
-	ToID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
+	QueryID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
 		return map[flsql.ColumnName]any{"id": id}, nil
 	},
 
@@ -101,7 +101,7 @@ var FooMapping = flsql.Mapping[testent.Foo, testent.FooID]{
 		return nil
 	},
 
-	GetID: func(f testent.Foo) testent.FooID { return f.ID },
+	ID: func(f testent.Foo) *testent.FooID { return &f.ID },
 }
 
 func MakeContext(testing.TB) context.Context { return context.Background() }
@@ -176,7 +176,7 @@ func EntityMapping() flsql.Mapping[Entity, string] {
 	return flsql.Mapping[Entity, string]{
 		TableName: "test_entities",
 
-		ToID: func(id string) (map[flsql.ColumnName]any, error) {
+		QueryID: func(id string) (map[flsql.ColumnName]any, error) {
 			return map[flsql.ColumnName]any{"id": id}, nil
 		},
 
@@ -191,8 +191,8 @@ func EntityMapping() flsql.Mapping[Entity, string] {
 
 		ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[Entity]) {
 			return []flsql.ColumnName{`id`, `foo`, `bar`, `baz`},
-				func(v *Entity, scan flsql.ScanFunc) error {
-					return scan(&v.ID, &v.Foo, &v.Bar, &v.Baz)
+				func(v *Entity, s flsql.Scanner) error {
+					return s.Scan(&v.ID, &v.Foo, &v.Bar, &v.Baz)
 				}
 		},
 

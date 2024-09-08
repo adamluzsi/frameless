@@ -102,13 +102,13 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		Mapping: flsql.Mapping[cache.Hit[string], cache.HitID]{
 			TableName: "test_cache_hits",
 
-			ToID: func(id string) (map[flsql.ColumnName]any, error) {
+			QueryID: func(id string) (map[flsql.ColumnName]any, error) {
 				return map[flsql.ColumnName]any{"id": id}, nil
 			},
 
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[cache.Hit[string]]) {
-				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[string], scan flsql.ScanFunc) error {
-					if err := scan(&v.QueryID, &v.EntityIDs, &v.Timestamp); err != nil {
+				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[string], s flsql.Scanner) error {
+					if err := s.Scan(&v.QueryID, &v.EntityIDs, &v.Timestamp); err != nil {
 						return err
 					}
 					v.Timestamp = v.Timestamp.UTC()

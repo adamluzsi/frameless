@@ -17,7 +17,7 @@ func ExampleRepository() {
 	mapping := flsql.Mapping[Entity, int]{
 		TableName: "entities",
 
-		ToID: func(id int) (map[flsql.ColumnName]any, error) {
+		QueryID: func(id int) (map[flsql.ColumnName]any, error) {
 			return map[flsql.ColumnName]any{"id": id}, nil
 		},
 
@@ -30,13 +30,13 @@ func ExampleRepository() {
 
 		ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[Entity]) {
 			return []flsql.ColumnName{"id", "value"},
-				func(v *Entity, scan flsql.ScanFunc) error {
-					return scan(&v.ID, &v.Value)
+				func(v *Entity, s flsql.Scanner) error {
+					return s.Scan(&v.ID, &v.Value)
 				}
 		},
 
-		GetID: func(e Entity) int {
-			return e.ID
+		ID: func(e Entity) *int {
+			return &e.ID
 		},
 	}
 

@@ -76,13 +76,13 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 		Mapping: flsql.Mapping[testent.Foo, testent.FooID]{
 			TableName: "cache_foos",
 
-			ToID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
+			QueryID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
 				return map[flsql.ColumnName]any{"id": id}, nil
 			},
 
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[testent.Foo]) {
-				return []flsql.ColumnName{"id", "foo", "bar", "baz"}, func(foo *testent.Foo, scan flsql.ScanFunc) error {
-					return scan(&foo.ID, &foo.Foo, &foo.Bar, &foo.Baz)
+				return []flsql.ColumnName{"id", "foo", "bar", "baz"}, func(foo *testent.Foo, s flsql.Scanner) error {
+					return s.Scan(&foo.ID, &foo.Foo, &foo.Bar, &foo.Baz)
 				}
 			},
 
@@ -111,7 +111,7 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 		Mapping: flsql.Mapping[cache.Hit[testent.FooID], cache.HitID]{
 			TableName: "cache_foo_hits",
 
-			ToID: func(id string) (map[flsql.ColumnName]any, error) {
+			QueryID: func(id string) (map[flsql.ColumnName]any, error) {
 				return map[flsql.ColumnName]any{"id": id}, nil
 			},
 
@@ -124,9 +124,9 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 			},
 
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[cache.Hit[testent.FooID]]) {
-				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[testent.FooID], scan flsql.ScanFunc) error {
+				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[testent.FooID], s flsql.Scanner) error {
 					var ids []string
-					err := scan(&v.QueryID, &ids, &v.Timestamp)
+					err := s.Scan(&v.QueryID, &ids, &v.Timestamp)
 					for _, id := range ids {
 						v.EntityIDs = append(v.EntityIDs, testent.FooID(id))
 					}
@@ -135,8 +135,8 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 				}
 			},
 
-			GetID: func(h cache.Hit[testent.FooID]) string {
-				return h.QueryID
+			ID: func(h cache.Hit[testent.FooID]) *string {
+				return &h.QueryID
 			},
 		},
 		Connection: cr.Connection,
