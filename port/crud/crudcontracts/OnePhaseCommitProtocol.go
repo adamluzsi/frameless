@@ -122,7 +122,6 @@ func OnePhaseCommitProtocol[Entity, ID any](subject crd[Entity, ID], manager com
 			tx, err := manager.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
 			entity := pointer.Of(c.MakeEntity(t))
-			//t.Must.Nil( Spesubject.Create(tx, entity))
 			crudtest.Create[Entity, ID](t, subject, tx, entity)
 
 			id := crudtest.HasID[Entity, ID](t, pointer.Deref(entity))

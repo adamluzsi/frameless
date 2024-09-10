@@ -1,6 +1,9 @@
 package migration
 
-import "context"
+import (
+	"context"
+	"sort"
+)
 
 type Migratable interface {
 	Migrate(context.Context) error
@@ -36,4 +39,31 @@ type Step[R any] interface {
 	// MigrateDown reverses the changes made by the corresponding MigrateUp action.
 	// It is assumed that MigrateUp was successfully executed before calling this method.
 	MigrateDown(R, context.Context) error
+}
+
+// Version of the version identifier of a migration step.
+// UNIX timestamp, or an incrementaly increasing integer values are often used for this purpose.
+// The only constraint for a Version number that it must be sortable by string character comparison.
+type Version string
+
+// Steps is a group of Migration Steps
+type Steps[R any] map[Version]Step[R]
+
+type stage[R any] struct {
+	Version Version
+	Step    Step[R]
+}
+
+func (s Steps[R]) stages() []stage[R] {
+	var stages []stage[R]
+	for version, step := range s {
+		stages = append(stages, stage[R]{
+			Version: version,
+			Step:    step,
+		})
+	}
+	sort.Slice(stages, func(i, j int) bool {
+		return stages[i].Version < stages[j].Version
+	})
+	return stages
 }

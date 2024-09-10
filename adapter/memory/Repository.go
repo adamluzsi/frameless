@@ -203,10 +203,6 @@ func (s *Repository[Entity, ID]) IDToMemoryKey(id any) string {
 	return fmt.Sprintf(`%#v`, id)
 }
 
-func (s *Repository[Entity, ID]) getV(ptr interface{}) interface{} {
-	return reflectkit.BaseValueOf(ptr).Interface()
-}
-
 func (s *Repository[Entity, ID]) isDoneTx(ctx context.Context) error {
 	tx, ok := s.Memory.LookupTx(ctx)
 	if !ok {
@@ -216,6 +212,16 @@ func (s *Repository[Entity, ID]) isDoneTx(ctx context.Context) error {
 		return errTxDone
 	}
 	return nil
+}
+
+func (s *Repository[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+	return s.Memory.BeginTx(ctx)
+}
+func (s *Repository[Entity, ID]) CommitTx(ctx context.Context) error {
+	return s.Memory.CommitTx(ctx)
+}
+func (s *Repository[Entity, ID]) RollbackTx(ctx context.Context) error {
+	return s.Memory.RollbackTx(ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

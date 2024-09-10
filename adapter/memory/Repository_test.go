@@ -33,6 +33,18 @@ func TestRepository(t *testing.T) {
 	}))
 }
 
+func TestRepository_implementsOnePhaseCommitProtocol(t *testing.T) {
+	m := memory.NewMemory()
+	repo := memory.NewRepository[TestEntity, string](m)
+	testcase.RunSuite(t, resource.Contract[TestEntity, string](repo, resource.Config[TestEntity, string]{
+		MetaAccessor:  m,
+		CommitManager: repo,
+		CRUD: crudcontracts.Config[TestEntity, string]{
+			MakeEntity: makeTestEntity,
+		},
+	}))
+}
+
 func TestRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *testing.T) {
 	ctx := context.Background()
 	m := memory.NewMemory()
