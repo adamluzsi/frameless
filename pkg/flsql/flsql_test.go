@@ -34,12 +34,12 @@ func ExampleMapping() {
 	_ = flsql.Mapping[ExampleEntity, int64]{
 		TableName: `"public"."entities"`,
 
-		QueryID: func(id int64) (map[flsql.ColumnName]any, error) {
-			return map[flsql.ColumnName]any{"entity_id": id}, nil
+		QueryID: func(id int64) (flsql.QueryArgs, error) {
+			return flsql.QueryArgs{"entity_id": id}, nil
 		},
 
-		ToArgs: func(ee ExampleEntity) (map[flsql.ColumnName]any, error) {
-			return map[flsql.ColumnName]any{
+		ToArgs: func(ee ExampleEntity) (flsql.QueryArgs, error) {
+			return flsql.QueryArgs{
 				"entity_id": ee.ID,
 				"col1":      ee.Col1,
 				"col2":      ee.Col2,
@@ -213,5 +213,15 @@ func TestTimestamp(t *testing.T) {
 		err := dto.Scan(nil)
 		assert.NoError(t, err)
 		assert.True(t, timestamp.IsZero())
+	})
+
+	t.Run("scan time.Time value", func(t *testing.T) {
+		exp := rnd.Time().Local()
+		var got time.Time
+		dto := flsql.Timestamp(&got, layout, time.UTC)
+		err := dto.Scan(exp)
+		assert.NoError(t, err)
+		assert.Equal(t, exp.UTC(), got)
+		assert.Equal(t, got.Location(), time.UTC)
 	})
 }

@@ -77,7 +77,7 @@ func JoinColumnName(cns []ColumnName, sep string, format string) string {
 
 type Scanner interface{ Scan(dest ...any) error }
 
-type MapScan[ENT any] func(*ENT, Scanner) error
+type MapScan[ENT any] func(v *ENT, s Scanner) error
 
 func (ms MapScan[ENT]) Map(scanner Scanner) (ENT, error) {
 	var value ENT
@@ -96,10 +96,10 @@ type Mapping[ENT, ID any] struct {
 	// QueryID will convert an ID into query components—specifically,
 	// column names and their corresponding values—that represent the ID in an SQL WHERE statement.
 	// If ID is nil, then
-	QueryID func(id ID) (map[ColumnName]any, error)
+	QueryID func(id ID) (QueryArgs, error)
 	// ToArgs converts an entity pointer into a list of query arguments for CREATE or UPDATE operations.
 	// It must handle empty or zero values and still return a valid column statement.
-	ToArgs func(ENT) (map[ColumnName]any, error)
+	ToArgs func(ENT) (QueryArgs, error)
 	// CreatePrepare is an optional field that allows you to configure an entity prior to crud.Create call.
 	// This is a good place to add support in your Repository implementation for custom ID injection or special timestamp value arrangement.
 	//
@@ -117,6 +117,8 @@ type Mapping[ENT, ID any] struct {
 	// default: extid.Lookup, extid.Set, which will use either the `ext:"id"` tag, or the `ENT.ID()` & `ENT.SetID()` methods.
 	ID func(ENT) *ID
 }
+
+type QueryArgs map[ColumnName]any
 
 func (m Mapping[ENT, ID]) LookupID(ent ENT) (ID, bool) {
 	if m.ID != nil {
@@ -242,20 +244,27 @@ func (m *dtoTimestamp) Scan(value any) error {
 	if value == nil {
 		return nil
 	}
-	var raw string
 	switch value := value.(type) {
 	case []byte:
-		raw = string(value)
+		timestamp, err := m.parse(string(value))
+		if err != nil {
+			return err
+		}
+		*m.Pointer = timestamp
 	case string:
-		raw = value
+		timestamp, err := m.parse(value)
+		if err != nil {
+			return err
+		}
+		*m.Pointer = timestamp
+	case time.Time:
+		if m.Location != nil {
+			value = value.In(m.Location)
+		}
+		*m.Pointer = value
 	default:
 		return fmt.Errorf("scanning %T type as Timestamp is not yet supported", value)
 	}
-	timestamp, err := m.parse(raw)
-	if err != nil {
-		return err
-	}
-	*m.Pointer = timestamp
 	return nil
 }
 
@@ -288,4 +297,34 @@ func (m *dtoTimestamp) parse(raw string) (time.Time, error) {
 		return time.ParseInLocation(m.Layout, raw, m.Location)
 	}
 	return time.Parse(m.Layout, raw)
+}
+
+type MigrationStep[C Queryable] struct {
+	Up      func(C, context.Context) error
+	UpQuery string
+
+	Down      func(C, context.Context) error
+	DownQuery string
+}
+
+func (m MigrationStep[C]) MigrateUp(c C, ctx context.Context) error {
+	if m.Up != nil {
+		return m.Up(c, ctx)
+	}
+	if m.UpQuery != "" {
+		_, err := c.ExecContext(ctx, m.UpQuery)
+		return err
+	}
+	return nil
+}
+
+func (m MigrationStep[C]) MigrateDown(c C, ctx context.Context) error {
+	if m.Down != nil {
+		return m.Down(c, ctx)
+	}
+	if m.DownQuery != "" {
+		_, err := c.ExecContext(ctx, m.DownQuery)
+		return err
+	}
+	return nil
 }
