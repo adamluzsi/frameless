@@ -76,8 +76,8 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 		Mapping: flsql.Mapping[testent.Foo, testent.FooID]{
 			TableName: "cache_foos",
 
-			QueryID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
-				return map[flsql.ColumnName]any{"id": id}, nil
+			QueryID: func(id testent.FooID) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{"id": id}, nil
 			},
 
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[testent.Foo]) {
@@ -86,8 +86,8 @@ func (cr FooCacheRepository) Entities() cache.EntityRepository[testent.Foo, test
 				}
 			},
 
-			ToArgs: func(foo testent.Foo) (map[flsql.ColumnName]any, error) {
-				return map[flsql.ColumnName]any{
+			ToArgs: func(foo testent.Foo) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{
 					"id":  foo.ID,
 					"foo": foo.Foo,
 					"bar": foo.Bar,
@@ -111,12 +111,12 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 		Mapping: flsql.Mapping[cache.Hit[testent.FooID], cache.HitID]{
 			TableName: "cache_foo_hits",
 
-			QueryID: func(id string) (map[flsql.ColumnName]any, error) {
-				return map[flsql.ColumnName]any{"id": id}, nil
+			QueryID: func(id string) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{"id": id}, nil
 			},
 
-			ToArgs: func(h cache.Hit[testent.FooID]) (map[flsql.ColumnName]any, error) {
-				return map[flsql.ColumnName]any{
+			ToArgs: func(h cache.Hit[testent.FooID]) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{
 					"id":  h.QueryID,
 					"ids": &h.EntityIDs,
 					"ts":  h.Timestamp,
@@ -135,7 +135,7 @@ func (cr FooCacheRepository) Hits() cache.HitRepository[testent.FooID] {
 				}
 			},
 
-			ID: func(h cache.Hit[testent.FooID]) *string {
+			ID: func(h *cache.Hit[testent.FooID]) *string {
 				return &h.QueryID
 			},
 		},

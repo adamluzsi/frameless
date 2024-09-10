@@ -35,7 +35,7 @@ type RestResource[Entity, ID any] struct {
 	// Update will update/replace an entity with the new state.
 	// 		PUT   /:id - update/replace
 	// 		PATCH /:id - partial update (WIP)
-	Update func(ctx context.Context, id ID, ptr *Entity) error
+	Update func(ctx context.Context, ptr *Entity) error
 	// Destroy will delete an entity, identified by its id.
 	// 		 Delete /:id
 	Destroy func(ctx context.Context, id ID) error
@@ -63,6 +63,11 @@ type RestResource[Entity, ID any] struct {
 	//
 	// Default: IDContextKey[Entity, ID]{}
 	IDContextKey any
+
+	// IDMapping [optional] tells how to look up or set the Entity's ID.
+	//
+	// Default: extid.Lookup / extid.Set
+	IDMapping extid.MappingFunc[Entity, ID]
 
 	// SubRoutes is an http.Handler that will receive resource-specific requests.
 	// SubRoutes is optional.
@@ -457,7 +462,12 @@ func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := res.Update(ctx, id, &entity); err != nil {
+	if err := res.IDMapping.Set(&entity, id); err != nil {
+		res.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+
+	if err := res.Update(ctx, &entity); err != nil {
 		if errors.Is(err, crud.ErrNotFound) { // TODO:TEST_ME
 			res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 			return
@@ -521,8 +531,6 @@ func (res RestResource[Entity, ID]) readAllBody(r *http.Request) (_ []byte, retu
 }
 
 func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) RestResource[Entity, ID] {
-	// TODO: add support to exclude certain operations from being mapped
-
 	if repo, ok := repo.(crud.Creator[Entity]); ok && res.Create == nil {
 		res.Create = repo.Create
 	}
@@ -533,21 +541,7 @@ func (res RestResource[Entity, ID]) WithCRUD(repo crud.ByIDFinder[Entity, ID]) R
 		res.Show = repo.FindByID
 	}
 	if repo, ok := repo.(crud.Updater[Entity]); ok && res.Update == nil {
-		res.Update = func(ctx context.Context, id ID, ptr *Entity) error {
-			if repo, ok := repo.(crud.ByIDFinder[Entity, ID]); ok {
-				_, found, err := repo.FindByID(ctx, id)
-				if err != nil {
-					return err
-				}
-				if !found {
-					return ErrEntityNotFound
-				}
-			}
-			if err := extid.Set[ID](ptr, id); err != nil {
-				return err
-			}
-			return repo.Update(ctx, ptr)
-		}
+		res.Update = repo.Update
 	}
 	if repo, ok := repo.(crud.AllDeleter); ok && res.DestroyAll == nil {
 		res.DestroyAll = repo.DeleteAll // TODO: handle query

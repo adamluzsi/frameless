@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"sync"
 
+	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/port/guard"
+	"go.llib.dev/frameless/port/migration"
 )
 
 // Locker is a PG-based shared mutex implementation.
@@ -90,14 +92,6 @@ func (lck *lockerCtxValue) Unclock(ctx context.Context) (rerr error) {
 	return rerr
 }
 
-var lockerMigrationConfig = MigratorGroup{
-	ID: "frameless_locker_locks",
-	Steps: []MigratorStep{
-		MigrationStep{UpQuery: queryCreateLockerTable},
-		MigrationStep{UpQuery: queryRenameLockerTable},
-	},
-}
-
 const queryCreateLockerTable = `
 CREATE TABLE IF NOT EXISTS frameless_locker_locks (
     name TEXT PRIMARY KEY
@@ -110,7 +104,10 @@ CREATE VIEW "frameless_locker_locks" AS SELECT * FROM "frameless_guard_locks";
 `
 
 func (l Locker) Migrate(ctx context.Context) error {
-	return Migrator{Connection: l.Connection, Group: lockerMigrationConfig}.Migrate(ctx)
+	return makeMigrator(l.Connection, "frameless_locker_locks", migration.Steps[Connection]{
+		"1": flsql.MigrationStep[Connection]{UpQuery: queryCreateLockerTable},
+		"2": flsql.MigrationStep[Connection]{UpQuery: queryRenameLockerTable},
+	}).Migrate(ctx)
 }
 
 func (l Locker) lookup(ctx context.Context) (*lockerCtxValue, bool) {

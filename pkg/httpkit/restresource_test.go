@@ -51,31 +51,25 @@ func ExampleRestResource() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
 	fooRestfulResource := httpkit.RestResource[X, XID]{
 		Create: fooRepository.Create,
-		Index: func(ctx context.Context) iterators.Iterator[X] {
+		Index: func(ctx context.Context) iterators.Iterator[X] { // example with query based filtering
 			foos := fooRepository.FindAll(ctx)
+			req, _ := httpkit.LookupRequest(ctx)
 
-			if req, ok := httpkit.LookupRequest(ctx); ok {
-				if bt := req.URL.Query().Get("bigger"); bt != "" {
-					bigger, err := strconv.Atoi(bt)
-					if err != nil {
-						return iterators.Error[X](err)
-					}
-					foos = iterators.Filter(foos, func(foo X) bool {
-						return bigger < foo.N
-					})
+			if bt := req.URL.Query().Get("bigger"); bt != "" {
+				bigger, err := strconv.Atoi(bt)
+				if err != nil {
+					return iterators.Error[X](err)
 				}
-
+				foos = iterators.Filter(foos, func(foo X) bool {
+					return bigger < foo.N
+				})
 			}
 
 			return foos
 		},
 
-		Show: fooRepository.FindByID,
-
-		Update: func(ctx context.Context, id XID, ptr *X) error {
-			ptr.ID = id
-			return fooRepository.Update(ctx, ptr)
-		},
+		Show:    fooRepository.FindByID,
+		Update:  fooRepository.Update,
 		Destroy: fooRepository.DeleteByID,
 
 		Mapping: dtokit.Mapping[X, XDTO]{},
@@ -786,7 +780,7 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 			showC = true
 			return Foo{ID: id}, true, nil
 		},
-		Update: func(ctx context.Context, id FooID, ptr *Foo) error {
+		Update: func(ctx context.Context, ptr *Foo) error {
 			updateC = true
 			return nil
 		},

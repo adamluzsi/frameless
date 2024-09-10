@@ -34,16 +34,6 @@ func (r TaskerScheduleRepository) States() tasker.StateRepository {
 	return TaskerScheduleStateRepository{Connection: r.Connection}
 }
 
-var migratorConfigTaskerScheduleStateRepository = MigratorGroup{
-	ID: "frameless_tasker_schedule_states",
-	Steps: []MigratorStep{
-		MigrationStep{
-			UpQuery:   "CREATE TABLE IF NOT EXISTS frameless_tasker_schedule_states ( id TEXT PRIMARY KEY, timestamp TIMESTAMP WITH TIME ZONE NOT NULL );",
-			DownQuery: "DROP TABLE IF EXISTS frameless_tasker_schedule_states;",
-		},
-	},
-}
-
 type TaskerScheduleStateRepository struct{ Connection Connection }
 
 func (r TaskerScheduleStateRepository) repository() Repository[tasker.State, tasker.StateID] {
@@ -67,12 +57,12 @@ var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.St
 			}
 	},
 
-	QueryID: func(si tasker.StateID) (map[flsql.ColumnName]any, error) {
-		return map[flsql.ColumnName]any{"id": si}, nil
+	QueryID: func(si tasker.StateID) (flsql.QueryArgs, error) {
+		return flsql.QueryArgs{"id": si}, nil
 	},
 
-	ToArgs: func(s tasker.State) (map[flsql.ColumnName]any, error) {
-		return map[flsql.ColumnName]any{
+	ToArgs: func(s tasker.State) (flsql.QueryArgs, error) {
+		return flsql.QueryArgs{
 			"id":        s.ID,
 			"timestamp": s.Timestamp,
 		}, nil
@@ -85,16 +75,18 @@ var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.St
 		return nil
 	},
 
-	ID: func(s tasker.State) *tasker.StateID {
+	ID: func(s *tasker.State) *tasker.StateID {
 		return &s.ID
 	},
 }
 
 func (r TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
-	return Migrator{
-		Connection: r.Connection,
-		Group:      migratorConfigTaskerScheduleStateRepository,
-	}.Migrate(ctx)
+	return makeMigrator(r.Connection, "frameless_tasker_schedule_states", migration.Steps[Connection]{
+		"0": flsql.MigrationStep[Connection]{
+			UpQuery:   "CREATE TABLE IF NOT EXISTS frameless_tasker_schedule_states ( id TEXT PRIMARY KEY, timestamp TIMESTAMP WITH TIME ZONE NOT NULL );",
+			DownQuery: "DROP TABLE IF EXISTS frameless_tasker_schedule_states;",
+		},
+	}).Migrate(ctx)
 }
 
 func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *tasker.State) error {

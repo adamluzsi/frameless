@@ -81,12 +81,12 @@ var FooMapping = flsql.Mapping[testent.Foo, testent.FooID]{
 			}
 	},
 
-	QueryID: func(id testent.FooID) (map[flsql.ColumnName]any, error) {
-		return map[flsql.ColumnName]any{"id": id}, nil
+	QueryID: func(id testent.FooID) (flsql.QueryArgs, error) {
+		return flsql.QueryArgs{"id": id}, nil
 	},
 
-	ToArgs: func(f testent.Foo) (map[flsql.ColumnName]any, error) {
-		return map[flsql.ColumnName]any{
+	ToArgs: func(f testent.Foo) (flsql.QueryArgs, error) {
+		return flsql.QueryArgs{
 			"id":  f.ID,
 			"foo": f.Foo,
 			"bar": f.Bar,
@@ -101,7 +101,7 @@ var FooMapping = flsql.Mapping[testent.Foo, testent.FooID]{
 		return nil
 	},
 
-	ID: func(f testent.Foo) *testent.FooID { return &f.ID },
+	ID: func(f *testent.Foo) *testent.FooID { return &f.ID },
 }
 
 func MakeContext(testing.TB) context.Context { return context.Background() }
@@ -176,12 +176,12 @@ func EntityMapping() flsql.Mapping[Entity, string] {
 	return flsql.Mapping[Entity, string]{
 		TableName: "test_entities",
 
-		QueryID: func(id string) (map[flsql.ColumnName]any, error) {
-			return map[flsql.ColumnName]any{"id": id}, nil
+		QueryID: func(id string) (flsql.QueryArgs, error) {
+			return flsql.QueryArgs{"id": id}, nil
 		},
 
-		ToArgs: func(e Entity) (map[flsql.ColumnName]any, error) {
-			return map[flsql.ColumnName]any{
+		ToArgs: func(e Entity) (flsql.QueryArgs, error) {
+			return flsql.QueryArgs{
 				`id`:  e.ID,
 				`foo`: e.Foo,
 				`bar`: e.Bar,

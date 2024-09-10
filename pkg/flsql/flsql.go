@@ -13,7 +13,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud/extid"
 )
@@ -105,7 +104,6 @@ type Mapping[ENT, ID any] struct {
 	//
 	// To have this working, the user of Mapping needs to call Mapping.OnCreate method within in its crud.Create method implementation.
 	CreatePrepare func(context.Context, *ENT) error
-
 	// ID [optional] is a function that allows the ID lookup from an entity.
 	// The returned ID value will be used to Lookup the ID value, or to set a new ID value.
 	// Mapping will panic if ID func is provided, but returns a nil, as it is considered as implementation error.
@@ -115,24 +113,10 @@ type Mapping[ENT, ID any] struct {
 	// 		flsql.Mapping[Foo, FooID]{..., ID: func(v Foo) *FooID { return &v.ID }}
 	//
 	// default: extid.Lookup, extid.Set, which will use either the `ext:"id"` tag, or the `ENT.ID()` & `ENT.SetID()` methods.
-	ID func(ENT) *ID
+	ID extid.MappingFunc[ENT, ID]
 }
 
 type QueryArgs map[ColumnName]any
-
-func (m Mapping[ENT, ID]) LookupID(ent ENT) (ID, bool) {
-	if m.ID != nil {
-		id := m.ID(ent)
-		if id == nil {
-			var msg string
-			msg = "implementation error: %T has `ID` func provided, but returned a nil pointer value."
-			msg += "\nExample implementation: m.ID = func(v Foo) *FooID { return &v.ID }"
-			panic(msg)
-		}
-		return *id, !zerokit.IsZero[ID](*id)
-	}
-	return extid.Lookup[ID](ent)
-}
 
 func (m Mapping[ENT, ID]) OnCreate(ctx context.Context, ptr *ENT) error {
 	// TODO: add support for CreatedAt, UpdatedAt field updates

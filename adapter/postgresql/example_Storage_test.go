@@ -17,12 +17,12 @@ func ExampleRepository() {
 	mapping := flsql.Mapping[Entity, int]{
 		TableName: "entities",
 
-		QueryID: func(id int) (map[flsql.ColumnName]any, error) {
-			return map[flsql.ColumnName]any{"id": id}, nil
+		QueryID: func(id int) (flsql.QueryArgs, error) {
+			return flsql.QueryArgs{"id": id}, nil
 		},
 
-		ToArgs: func(e Entity) (map[flsql.ColumnName]any, error) {
-			return map[flsql.ColumnName]any{
+		ToArgs: func(e Entity) (flsql.QueryArgs, error) {
+			return flsql.QueryArgs{
 				`id`:    e.ID,
 				`value`: e.Value,
 			}, nil
@@ -35,7 +35,7 @@ func ExampleRepository() {
 				}
 		},
 
-		ID: func(e Entity) *int {
+		ID: func(e *Entity) *int {
 			return &e.ID
 		},
 	}

@@ -102,8 +102,8 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		Mapping: flsql.Mapping[cache.Hit[string], cache.HitID]{
 			TableName: "test_cache_hits",
 
-			QueryID: func(id string) (map[flsql.ColumnName]any, error) {
-				return map[flsql.ColumnName]any{"id": id}, nil
+			QueryID: func(id string) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{"id": id}, nil
 			},
 
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[cache.Hit[string]]) {
@@ -116,8 +116,8 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 				}
 			},
 
-			ToArgs: func(h cache.Hit[string]) (map[flsql.ColumnName]any, error) {
-				return map[flsql.ColumnName]any{
+			ToArgs: func(h cache.Hit[string]) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{
 					"id":  h.QueryID,
 					"ids": h.EntityIDs,
 					"ts":  h.Timestamp,

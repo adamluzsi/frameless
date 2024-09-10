@@ -2,85 +2,22 @@ package postgresql
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 
-	"go.llib.dev/frameless/port/comproto"
+	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/port/migration"
 )
 
-type Migrator struct {
-	Connection Connection
-	Group      MigratorGroup
-}
-
-var _ migration.Migratable = Migrator{}
-
-type (
-	MigratorGroup = migration.Group[Connection]
-	MigratorStep  = migration.Step[Connection]
-)
-
-func (m Migrator) Migrate(ctx context.Context) (rErr error) {
-	if m.Group.ID == "" {
-		return fmt.Errorf("missing namespace")
+func makeMigrator(conn Connection, namespace string, steps migration.Steps[Connection]) migration.Migrator[Connection] {
+	return migration.Migrator[Connection]{
+		Namespace:       namespace,
+		Resource:        conn,
+		StateRepository: NewMigrationStateRepository(conn),
+		EnsureStateRepository: func(ctx context.Context) error {
+			return EnsureStateRepository(ctx, conn)
+		},
+		Steps: steps,
 	}
-
-	if err := m.ensureMigrationTable(ctx); err != nil {
-		return err
-	}
-
-	schemaCTX, err := m.Connection.BeginTx(ctx) // &sql.TxOptions{Isolation: sql.LevelSerializable}
-	if err != nil {
-		return err
-	}
-	defer comproto.FinishOnePhaseCommit(&rErr, m.Connection, schemaCTX)
-
-	stepCTX, err := m.Connection.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer comproto.FinishOnePhaseCommit(&rErr, m.Connection, stepCTX)
-
-	for version, step := range m.Group.Steps {
-		if err := m.upNamespace(schemaCTX, stepCTX, m.Group.ID, version, step); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-const queryMigratorGetStepState = `
-SELECT dirty 
-FROM frameless_schema_migrations
-WHERE namespace = $1
-  AND version = $2
-`
-
-const queryMigratorCreateStepState = `
-INSERT INTO frameless_schema_migrations (namespace, version, dirty) 
-VALUES ($1, $2, $3)
-`
-
-func (m Migrator) upNamespace(schemaTx, stepTx context.Context, namespace string, version int, step MigratorStep) error {
-	var dirty sql.NullBool
-	err := m.Connection.QueryRowContext(schemaTx, queryMigratorGetStepState, namespace, version).Scan(&dirty)
-	if errors.Is(err, errNoRows) {
-		if err := step.MigrateUp(m.Connection, stepTx); err != nil {
-			return err
-		}
-		_, err := m.Connection.ExecContext(schemaTx, queryMigratorCreateStepState, namespace, version, false)
-		return err
-	}
-	if err != nil {
-		return err
-	}
-	if dirty.Valid && dirty.Bool {
-		return fmt.Errorf("namespace:%q / version:%d is in a dirty state", namespace, version)
-	}
-	return nil
 }
 
 const queryEnsureSchemaMigrationsTable = `
@@ -88,43 +25,54 @@ CREATE TABLE IF NOT EXISTS frameless_schema_migrations (
     id BIGSERIAL PRIMARY KEY,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
-    namespace TEXT NOT NULL,
-	version INT NOT NULL,
-	dirty BOOLEAN NOT NULL
+    namespace TEXT    NOT NULL,
+	version   TEXT    NOT NULL,
+	dirty     BOOLEAN NOT NULL
 );
 `
 
-func (m Migrator) ensureMigrationTable(ctx context.Context) error {
-	_, err := m.Connection.ExecContext(ctx, queryEnsureSchemaMigrationsTable)
+func EnsureStateRepository(ctx context.Context, conn Connection) error {
+	_, err := conn.ExecContext(ctx, queryEnsureSchemaMigrationsTable)
 	return err
 }
 
-type MigrationStep struct {
-	Up      func(cm Connection, ctx context.Context) error
-	UpQuery string
+func NewMigrationStateRepository(conn Connection) Repository[migration.State, migration.StateID] {
+	return Repository[migration.State, migration.StateID]{
+		Connection: conn,
+		Mapping: flsql.Mapping[migration.State, migration.StateID]{
+			TableName: "frameless_schema_migrations",
+			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[migration.State]) {
+				return []flsql.ColumnName{"namespace", "version", "dirty"},
+					func(v *migration.State, s flsql.Scanner) error {
+						return s.Scan(&v.ID.Namespace, &v.ID.Version, &v.Dirty)
+					}
+			},
+			QueryID: func(id migration.StateID) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{
+					"namespace": id.Namespace,
+					"version":   id.Version,
+				}, nil
+			},
 
-	Down      func(cm Connection, ctx context.Context) error
-	DownQuery string
-}
+			ToArgs: func(s migration.State) (flsql.QueryArgs, error) {
+				return flsql.QueryArgs{
+					"namespace": s.ID.Namespace,
+					"version":   s.ID.Version,
+					"dirty":     s.Dirty,
+				}, nil
+			},
 
-func (m MigrationStep) MigrateUp(cm Connection, ctx context.Context) error {
-	if m.Up != nil {
-		return m.Up(cm, ctx)
-	}
-	if m.UpQuery != "" {
-		_, err := cm.ExecContext(ctx, m.UpQuery)
-		return err
-	}
-	return nil
-}
+			CreatePrepare: func(ctx context.Context, s *migration.State) error {
+				if s.ID.Namespace == "" {
+					return fmt.Errorf("MigrationStateRepository requires a non-empty namespace for Create")
+				}
+				if s.ID.Version == "" {
+					return fmt.Errorf("MigrationStateRepository requires a non-empty version for Create")
+				}
+				return nil
+			},
 
-func (m MigrationStep) MigrateDown(cm Connection, ctx context.Context) error {
-	if m.Down != nil {
-		return m.Down(cm, ctx)
+			ID: func(s *migration.State) *migration.StateID { return &s.ID },
+		},
 	}
-	if m.DownQuery != "" {
-		_, err := cm.ExecContext(ctx, m.DownQuery)
-		return err
-	}
-	return nil
 }

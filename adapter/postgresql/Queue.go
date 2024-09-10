@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/random"
@@ -103,18 +105,10 @@ CREATE TABLE IF NOT EXISTS ` + queueTableName + ` (
 )
 ;`
 
-var queueMigratorConfig = MigratorGroup{
-	ID: queueTableName,
-	Steps: []MigratorStep{
-		MigrationStep{UpQuery: queryCreateQueueTable},
-	},
-}
-
 func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
-	return Migrator{
-		Connection: q.Connection,
-		Group:      queueMigratorConfig,
-	}.Migrate(ctx)
+	return makeMigrator(q.Connection, queueTableName, migration.Steps[Connection]{
+		"0": flsql.MigrationStep[Connection]{UpQuery: queryCreateQueueTable},
+	}).Migrate(ctx)
 }
 
 func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) pubsub.Subscription[Entity] {
