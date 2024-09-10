@@ -223,3 +223,62 @@ func TestRegisterType(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, ent.Identification, id)
 }
+
+func TestMappingFunc_Lookup(t *testing.T) {
+	type ID string
+	type ENT struct {
+		ID ID `ext:"id"`
+	}
+
+	t.Run("nil function", func(t *testing.T) {
+		id, found := extid.MappingFunc[ENT, ID](nil).Lookup(ENT{ID: "42"})
+		assert.True(t, found)
+		assert.Equal(t, id, "42")
+
+		id, found = extid.MappingFunc[ENT, ID](nil).Lookup(ENT{})
+		assert.False(t, found)
+		assert.Empty(t, id)
+	})
+
+	t.Run("function returns non-zero value", func(t *testing.T) {
+		fn := extid.MappingFunc[ENT, ID](func(v *ENT) *ID { return &v.ID })
+		id, found := fn.Lookup(ENT{ID: "24"})
+		assert.True(t, found)
+		assert.Equal(t, id, "24")
+
+		id, found = fn.Lookup(ENT{ID: ""})
+		assert.False(t, found)
+		assert.Empty(t, id)
+	})
+}
+
+func TestMappingFunc_Set(t *testing.T) {
+	type ID string
+	type ENT struct {
+		ID ID `ext:"id"`
+		DI ID
+	}
+
+	t.Run("nil function", func(t *testing.T) {
+		fn := extid.MappingFunc[ENT, ID](nil)
+		var ent ENT
+		assert.NoError(t, fn.Set(&ent, "42"))
+		assert.Equal(t, ent.ID, "42")
+	})
+
+	t.Run("function sets value", func(t *testing.T) {
+		fn := extid.MappingFunc[ENT, ID](func(p *ENT) *ID { return &p.DI })
+		var ent ENT
+		assert.NoError(t, fn.Set(&ent, "42"))
+		assert.Empty(t, ent.ID)
+		assert.Equal(t, ent.DI, "42")
+	})
+
+	t.Run("nil entity pointer", func(t *testing.T) {
+		assert.Error(t, extid.MappingFunc[ENT, ID](func(p *ENT) *ID { return &p.DI }).
+			Set(nil, "42"))
+
+		assert.Error(t, extid.MappingFunc[ENT, ID](nil).
+			Set(nil, "42"))
+	})
+}
