@@ -36,9 +36,9 @@ func TestBaseTypeOf(t *testing.T) {
 	ptrToStruct := &plainStruct
 	ptrToPtr := &ptrToStruct
 
-	assert.Must(t).Equal(expectedValueType, subject(plainStruct))
-	assert.Must(t).Equal(expectedValueType, subject(ptrToStruct))
-	assert.Must(t).Equal(expectedValueType, subject(ptrToPtr))
+	assert.Equal(t, expectedValueType, subject(plainStruct))
+	assert.Equal(t, expectedValueType, subject(ptrToStruct))
+	assert.Equal(t, expectedValueType, subject(ptrToPtr))
 }
 
 func TestBaseValueOf(t *testing.T) {
@@ -57,9 +57,9 @@ func TestBaseValueOf(t *testing.T) {
 	ptrToStruct := &plainStruct
 	ptrToPtr := &ptrToStruct
 
-	assert.Must(t).Equal(expectedValueType, subject(plainStruct).Type())
-	assert.Must(t).Equal(expectedValueType, subject(ptrToStruct).Type())
-	assert.Must(t).Equal(expectedValueType, subject(ptrToPtr).Type())
+	assert.Equal(t, expectedValueType, subject(plainStruct).Type())
+	assert.Equal(t, expectedValueType, subject(ptrToStruct).Type())
+	assert.Equal(t, expectedValueType, subject(ptrToPtr).Type())
 }
 
 func TestBaseValue(t *testing.T) {
@@ -78,9 +78,9 @@ func TestBaseValue(t *testing.T) {
 	ptrToStruct := &plainStruct
 	ptrToPtr := &ptrToStruct
 
-	assert.Must(t).Equal(expectedValueType, subject(plainStruct).Type())
-	assert.Must(t).Equal(expectedValueType, subject(ptrToStruct).Type())
-	assert.Must(t).Equal(expectedValueType, subject(ptrToPtr).Type())
+	assert.Equal(t, expectedValueType, subject(plainStruct).Type())
+	assert.Equal(t, expectedValueType, subject(ptrToStruct).Type())
+	assert.Equal(t, expectedValueType, subject(ptrToPtr).Type())
 
 	invalid := reflect.Value{}
 	assert.Equal(t, invalid, reflectkit.BaseValue(invalid))
@@ -122,156 +122,115 @@ func TestCast(t *testing.T) {
 type SampleType struct{}
 
 func TestFullyQualifiedName(t *testing.T) {
-	t.Run("FullyQualifiedName", func(spec *testing.T) {
+	subject := reflectkit.FullyQualifiedName
 
-		subject := reflectkit.FullyQualifiedName
+	SpecForPrimitiveNames(t, subject)
 
-		SpecForPrimitiveNames(t, subject)
+	t.Run("when given struct is from different package than the current one", func(t *testing.T) {
+		o := SampleType{}
 
-		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
-			t.Parallel()
-
-			o := SampleType{}
-
-			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".SampleType`, subject(o))
-		})
-
-		spec.Run("when given object is an interface", func(t *testing.T) {
-			t.Parallel()
-
-			var i InterfaceObject = &StructObject{}
-
-			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(i))
-		})
-
-		spec.Run("when given object is a struct", func(t *testing.T) {
-			t.Parallel()
-
-			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(StructObject{}))
-		})
-
-		spec.Run("when given object is a pointer of a struct", func(t *testing.T) {
-			t.Parallel()
-
-			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&StructObject{}))
-		})
-
-		spec.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
-			t.Parallel()
-
-			o := &StructObject{}
-
-			assert.Must(t).Equal(`"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&o))
-		})
-
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".SampleType`, subject(o))
 	})
 
+	t.Run("when given object is an interface", func(t *testing.T) {
+		var i InterfaceObject = &StructObject{}
+
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(i))
+	})
+
+	t.Run("when given object is a struct", func(t *testing.T) {
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(StructObject{}))
+	})
+
+	t.Run("when given object is a pointer of a struct", func(t *testing.T) {
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&StructObject{}))
+	})
+
+	t.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
+		o := &StructObject{}
+		assert.Equal(t, `**"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&o))
+	})
+
+	t.Run("when the given object is a reflect type", func(t *testing.T) {
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflectkit.TypeOf[StructObject]()))
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflectkit.TypeOf[*StructObject]()))
+		assert.Equal(t, `**"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflectkit.TypeOf[**StructObject]()))
+	})
+
+	t.Run("when the given object is a reflect value", func(t *testing.T) {
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflect.ValueOf(StructObject{})))
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflect.ValueOf(&StructObject{})))
+	})
 }
 
-func SpecForPrimitiveNames(spec *testing.T, subject func(entity interface{}) string) {
-
-	spec.Run("when given object is a bool", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("bool", subject(true))
+func SpecForPrimitiveNames(t *testing.T, subject func(entity interface{}) string) {
+	t.Run("when given object is a bool", func(t *testing.T) {
+		assert.Equal(t, "bool", subject(true))
 	})
 
-	spec.Run("when given object is a string", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("string", subject(`42`))
+	t.Run("when given object is a string", func(t *testing.T) {
+		assert.Equal(t, "string", subject(`42`))
 	})
 
-	spec.Run("when given object is a int", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("int", subject(int(42)))
+	t.Run("when given object is a int", func(t *testing.T) {
+		assert.Equal(t, "int", subject(int(42)))
 	})
 
-	spec.Run("when given object is a int8", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("int8", subject(int8(42)))
+	t.Run("when given object is a int8", func(t *testing.T) {
+		assert.Equal(t, "int8", subject(int8(42)))
 	})
 
-	spec.Run("when given object is a int16", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("int16", subject(int16(42)))
+	t.Run("when given object is a int16", func(t *testing.T) {
+		assert.Equal(t, "int16", subject(int16(42)))
 	})
 
-	spec.Run("when given object is a int32", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("int32", subject(int32(42)))
+	t.Run("when given object is a int32", func(t *testing.T) {
+		assert.Equal(t, "int32", subject(int32(42)))
 	})
 
-	spec.Run("when given object is a int64", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("int64", subject(int64(42)))
+	t.Run("when given object is a int64", func(t *testing.T) {
+		assert.Equal(t, "int64", subject(int64(42)))
 	})
 
-	spec.Run("when given object is a uintptr", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("uintptr", subject(uintptr(42)))
+	t.Run("when given object is a uintptr", func(t *testing.T) {
+		assert.Equal(t, "uintptr", subject(uintptr(42)))
 	})
 
-	spec.Run("when given object is a uint", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("uint", subject(uint(42)))
+	t.Run("when given object is a uint", func(t *testing.T) {
+		assert.Equal(t, "uint", subject(uint(42)))
 	})
 
-	spec.Run("when given object is a uint8", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("uint8", subject(uint8(42)))
+	t.Run("when given object is a uint8", func(t *testing.T) {
+		assert.Equal(t, "uint8", subject(uint8(42)))
 	})
 
-	spec.Run("when given object is a uint16", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("uint16", subject(uint16(42)))
+	t.Run("when given object is a uint16", func(t *testing.T) {
+		assert.Equal(t, "uint16", subject(uint16(42)))
 	})
 
-	spec.Run("when given object is a uint32", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("uint32", subject(uint32(42)))
+	t.Run("when given object is a uint32", func(t *testing.T) {
+		assert.Equal(t, "uint32", subject(uint32(42)))
 	})
 
-	spec.Run("when given object is a uint64", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("uint64", subject(uint64(42)))
+	t.Run("when given object is a uint64", func(t *testing.T) {
+		assert.Equal(t, "uint64", subject(uint64(42)))
 	})
 
-	spec.Run("when given object is a float32", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("float32", subject(float32(42)))
+	t.Run("when given object is a float32", func(t *testing.T) {
+		assert.Equal(t, "float32", subject(float32(42)))
 	})
 
-	spec.Run("when given object is a float64", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("float64", subject(float64(42)))
+	t.Run("when given object is a float64", func(t *testing.T) {
+		assert.Equal(t, "float64", subject(float64(42)))
 	})
 
-	spec.Run("when given object is a complex64", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("complex64", subject(complex64(42)))
+	t.Run("when given object is a complex64", func(t *testing.T) {
+		assert.Equal(t, "complex64", subject(complex64(42)))
 	})
 
-	spec.Run("when given object is a complex128", func(t *testing.T) {
-		t.Parallel()
-
-		assert.Must(t).Equal("complex128", subject(complex128(42)))
+	t.Run("when given object is a complex128", func(t *testing.T) {
+		assert.Equal(t, "complex128", subject(complex128(42)))
 	})
-
 }
 
 func TestIsEmpty(t *testing.T) {
@@ -764,7 +723,7 @@ func TestLink(t *testing.T) {
 
 			s.Then(`it will link the value`, func(t *testcase.T) {
 				assert.Must(t).Nil(subject(t))
-				assert.Must(t).Equal(src.Get(t), *ptr.Get(t).(*any))
+				assert.Equal(t, src.Get(t), *ptr.Get(t).(*any))
 			})
 		})
 	}
@@ -778,7 +737,7 @@ func TestLink(t *testing.T) {
 			s.Then(`ptr pointed value equal with source value`, func(t *testcase.T) {
 				assert.Must(t).Nil(subject(t))
 
-				assert.Must(t).Equal(src.Get(t), reflect.ValueOf(ptr.Get(t)).Elem().Interface())
+				assert.Equal(t, src.Get(t), reflect.ValueOf(ptr.Get(t)).Elem().Interface())
 			})
 		})
 	}
@@ -823,50 +782,46 @@ func TestLink(t *testing.T) {
 	})
 }
 
-func TestName(t *testing.T) {
-	t.Run("SymbolicName", func(spec *testing.T) {
+func TestSymbolicName(t *testing.T) {
+	subject := reflectkit.SymbolicName
 
-		subject := reflectkit.SymbolicName
+	SpecForPrimitiveNames(t, subject)
 
-		SpecForPrimitiveNames(t, subject)
-
-		spec.Run("when given struct is from different package than the current one", func(t *testing.T) {
-			t.Parallel()
-
-			o := SampleType{}
-			assert.Must(t).Equal(`reflectkit_test.SampleType`, reflectkit.SymbolicName(o))
-		})
-
-		spec.Run("when given object is an interface", func(t *testing.T) {
-			t.Parallel()
-
-			var i InterfaceObject = &StructObject{}
-
-			assert.Must(t).Equal(`reflectkit_test.StructObject`, subject(i))
-		})
-
-		spec.Run("when given object is a struct", func(t *testing.T) {
-			t.Parallel()
-
-			assert.Must(t).Equal(`reflectkit_test.StructObject`, subject(StructObject{}))
-		})
-
-		spec.Run("when given object is a pointer of a struct", func(t *testing.T) {
-			t.Parallel()
-
-			assert.Must(t).Equal(`reflectkit_test.StructObject`, subject(&StructObject{}))
-		})
-
-		spec.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
-			t.Parallel()
-
-			o := &StructObject{}
-
-			assert.Must(t).Equal(`reflectkit_test.StructObject`, subject(&o))
-		})
-
+	t.Run("when given struct is from different package than the current one", func(t *testing.T) {
+		o := SampleType{}
+		assert.Equal(t, `reflectkit_test.SampleType`, reflectkit.SymbolicName(o))
 	})
 
+	t.Run("when given object is an interface", func(t *testing.T) {
+		var i InterfaceObject = &StructObject{}
+
+		assert.Equal(t, `*reflectkit_test.StructObject`, subject(i))
+	})
+
+	t.Run("when given object is a struct", func(t *testing.T) {
+		assert.Equal(t, `reflectkit_test.StructObject`, subject(StructObject{}))
+	})
+
+	t.Run("when given object is a pointer of a struct", func(t *testing.T) {
+		assert.Equal(t, `*reflectkit_test.StructObject`, subject(&StructObject{}))
+	})
+
+	t.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
+		o := &StructObject{}
+
+		assert.Equal(t, `**reflectkit_test.StructObject`, subject(&o))
+	})
+
+	t.Run("when the given object is a reflect type", func(t *testing.T) {
+		assert.Equal(t, `reflectkit_test.StructObject`, subject(reflectkit.TypeOf[StructObject]()))
+		assert.Equal(t, `*reflectkit_test.StructObject`, subject(reflectkit.TypeOf[*StructObject]()))
+		assert.Equal(t, `**reflectkit_test.StructObject`, subject(reflectkit.TypeOf[**StructObject]()))
+	})
+
+	t.Run("when the given object is a reflect value", func(t *testing.T) {
+		assert.Equal(t, `reflectkit_test.StructObject`, subject(reflect.ValueOf(StructObject{})))
+		assert.Equal(t, `*reflectkit_test.StructObject`, subject(reflect.ValueOf(&StructObject{})))
+	})
 }
 
 func TestSetValue(t *testing.T) {

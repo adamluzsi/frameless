@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"unsafe"
 )
 
@@ -61,18 +62,31 @@ func BaseValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-func SymbolicName(e any) string {
-	return BaseTypeOf(e).String()
+func baseTypeOfAny(v any) (reflect.Type, int) {
+	var typ reflect.Type
+	switch v := v.(type) {
+	case reflect.Type:
+		typ = v
+	case reflect.Value:
+		typ = v.Type()
+	default:
+		typ = reflect.TypeOf(v)
+	}
+	return BaseType(typ)
 }
 
-func FullyQualifiedName(e any) string {
-	t := BaseTypeOf(e)
+func SymbolicName(v any) string {
+	typ, depth := baseTypeOfAny(v)
+	return strings.Repeat("*", depth) + typ.String()
+}
 
-	if t.PkgPath() == "" {
-		return fmt.Sprintf("%s", t.Name())
+func FullyQualifiedName(v any) string {
+	typ, depth := baseTypeOfAny(v)
+	var name = typ.Name()
+	if pkgPath := typ.PkgPath(); pkgPath != "" {
+		name = fmt.Sprintf("%q.%s", pkgPath, name)
 	}
-
-	return fmt.Sprintf("%q.%s", t.PkgPath(), t.Name())
+	return strings.Repeat("*", depth) + name
 }
 
 func IsEmpty(val reflect.Value) bool {
