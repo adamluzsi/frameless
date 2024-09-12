@@ -82,6 +82,14 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 		return v, err
 	}
 	if !ok {
+		fromBaseType, _ := reflectkit.BaseType(mp.FromType())
+		if fromBaseType.ConvertibleTo(toBaseType) {
+			v := reflectkit.BaseValueOf(from).Convert(toBaseType)
+			for i := 0; i < depth; i++ {
+				v = reflectkit.PointerOf(v)
+			}
+			return v.Interface(), nil
+		}
 		return nil, fmt.Errorf("%w from %s to %s", ErrNoMapping,
 			mp.FromType().String(), mp.ToType().String())
 	}
@@ -257,7 +265,7 @@ func recoverMustMap(returnErr *error) {
 // making it more flexible and adaptable to support different Serialization formats.
 //
 // Implemented by Mapping[Entity, DTO]
-type Mapper[Entity any] interface {
+type Mapper[ENT any] interface {
 	// NewDTO should return back a new(DTO) value.
 	// It is ideal to use with Unmarshal functions such as json.Unmarshal.
 	//
@@ -266,46 +274,48 @@ type Mapper[Entity any] interface {
 	// is often not aware what will be the DTO type,
 	// especially with reusable generic code,
 	// and most serializer implementation fine with accepting an "any" argument type.
-	NewDTO() (dtoPointer any)
-	// MapToEnt expected to map a *DTO value to an Entity value.
-	MapToEnt(ctx context.Context, dtoPointer any) (Entity, error)
-	// MapToDTO expected to map an Entity value to a DTO value.
-	MapToDTO(ctx context.Context, ent Entity) (DTO any, _ error)
+	NewDTO() (dtoPtr any)
+	// MapFromDTOPtr expected to map a *DTO value to an Entity value.
+	// We use a DTO pointer here, because the user of Mapper doesn't know the type as well,
+	// it just use the result of NewDTO as an argument to Unmarshal.
+	MapFromDTOPtr(ctx context.Context, dtoPtr any) (ENT, error)
+	// MapToDTO expected to map an ENT value to a DTO value.
+	MapToDTO(context.Context, ENT) (DTO any, _ error)
 }
 
-// Mapping is a type safe implementation for the generic Mapping interface.
-// When using the frameless/pkg/dtos package, all you need to provide is the type arguments; nothing else is required.
-type Mapping[Entity, DTO any] struct {
+// Mapping is a type safe implementation to represent a Mapping between an ENT and its DTO type.
+// Mapping[ENT, DTO] implements Mapper[ENT].
+type Mapping[ENT, DTO any] struct {
 	// ToEnt is an optional function to describe how to map a DTO into an Entity.
 	//
 	// default: dtokit.Map[Entity, DTO](...)
-	ToEnt func(ctx context.Context, dto DTO) (Entity, error)
+	ToEnt func(ctx context.Context, dto DTO) (ENT, error)
 	// ToDTO is an optional function to describe how to map an Entity into a DTO.
 	//
 	// default: dtokit.Map[DTO, Entity](...)
-	ToDTO func(ctx context.Context, ent Entity) (DTO, error)
+	ToDTO func(ctx context.Context, ent ENT) (DTO, error)
 }
 
-func (dto Mapping[Entity, DTO]) NewDTO() any { return new(DTO) }
+func (dto Mapping[ENT, DTO]) NewDTO() any { return new(DTO) }
 
-func (dto Mapping[Entity, DTO]) MapToEnt(ctx context.Context, dtoPtr any) (Entity, error) {
+func (dto Mapping[ENT, DTO]) MapFromDTOPtr(ctx context.Context, dtoPtr any) (ENT, error) {
 	if dtoPtr == nil {
-		return *new(Entity), fmt.Errorf("nil dto ptr")
+		return *new(ENT), fmt.Errorf("nil dto ptr")
 	}
 	ptr, ok := dtoPtr.(*DTO)
 	if !ok {
-		return *new(Entity), fmt.Errorf("invalid %s type: %T", reflectkit.TypeOf[DTO]().String(), dtoPtr)
+		return *new(ENT), fmt.Errorf("invalid %s type: %T", reflectkit.TypeOf[DTO]().String(), dtoPtr)
 	}
 	if ptr == nil {
-		return *new(Entity), fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
+		return *new(ENT), fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
 	}
 	if dto.ToEnt != nil { // TODO: testme
 		return dto.ToEnt(ctx, *ptr)
 	}
-	return Map[Entity](ctx, *ptr)
+	return Map[ENT](ctx, *ptr)
 }
 
-func (dto Mapping[Entity, DTO]) MapToDTO(ctx context.Context, ent Entity) (any, error) {
+func (dto Mapping[ENT, DTO]) MapToDTO(ctx context.Context, ent ENT) (any, error) {
 	if dto.ToDTO != nil { // TODO: testme
 		return dto.ToDTO(ctx, ent)
 	}

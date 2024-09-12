@@ -113,7 +113,7 @@ type Mapping[ENT, ID any] struct {
 	// 		flsql.Mapping[Foo, FooID]{..., ID: func(v Foo) *FooID { return &v.ID }}
 	//
 	// default: extid.Lookup, extid.Set, which will use either the `ext:"id"` tag, or the `ENT.ID()` & `ENT.SetID()` methods.
-	ID extid.MappingFunc[ENT, ID]
+	ID extid.Accessor[ENT, ID]
 }
 
 type QueryArgs map[ColumnName]any

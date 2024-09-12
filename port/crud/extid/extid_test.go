@@ -231,17 +231,17 @@ func TestMappingFunc_Lookup(t *testing.T) {
 	}
 
 	t.Run("nil function", func(t *testing.T) {
-		id, found := extid.MappingFunc[ENT, ID](nil).Lookup(ENT{ID: "42"})
+		id, found := extid.Accessor[ENT, ID](nil).Lookup(ENT{ID: "42"})
 		assert.True(t, found)
 		assert.Equal(t, id, "42")
 
-		id, found = extid.MappingFunc[ENT, ID](nil).Lookup(ENT{})
+		id, found = extid.Accessor[ENT, ID](nil).Lookup(ENT{})
 		assert.False(t, found)
 		assert.Empty(t, id)
 	})
 
 	t.Run("function returns non-zero value", func(t *testing.T) {
-		fn := extid.MappingFunc[ENT, ID](func(v *ENT) *ID { return &v.ID })
+		fn := extid.Accessor[ENT, ID](func(v *ENT) *ID { return &v.ID })
 		id, found := fn.Lookup(ENT{ID: "24"})
 		assert.True(t, found)
 		assert.Equal(t, id, "24")
@@ -260,14 +260,14 @@ func TestMappingFunc_Set(t *testing.T) {
 	}
 
 	t.Run("nil function", func(t *testing.T) {
-		fn := extid.MappingFunc[ENT, ID](nil)
+		fn := extid.Accessor[ENT, ID](nil)
 		var ent ENT
 		assert.NoError(t, fn.Set(&ent, "42"))
 		assert.Equal(t, ent.ID, "42")
 	})
 
 	t.Run("function sets value", func(t *testing.T) {
-		fn := extid.MappingFunc[ENT, ID](func(p *ENT) *ID { return &p.DI })
+		fn := extid.Accessor[ENT, ID](func(p *ENT) *ID { return &p.DI })
 		var ent ENT
 		assert.NoError(t, fn.Set(&ent, "42"))
 		assert.Empty(t, ent.ID)
@@ -275,10 +275,10 @@ func TestMappingFunc_Set(t *testing.T) {
 	})
 
 	t.Run("nil entity pointer", func(t *testing.T) {
-		assert.Error(t, extid.MappingFunc[ENT, ID](func(p *ENT) *ID { return &p.DI }).
+		assert.Error(t, extid.Accessor[ENT, ID](func(p *ENT) *ID { return &p.DI }).
 			Set(nil, "42"))
 
-		assert.Error(t, extid.MappingFunc[ENT, ID](nil).
+		assert.Error(t, extid.Accessor[ENT, ID](nil).
 			Set(nil, "42"))
 	})
 }

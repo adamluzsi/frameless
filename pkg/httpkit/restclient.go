@@ -124,7 +124,7 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	got, err := mapping.MapToEnt(ctx, dtoPtr)
+	got, err := mapping.MapFromDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 			return v, false, err
 		}
 
-		ent, err := mapping.MapToEnt(ctx, ptr)
+		ent, err := mapping.MapFromDTOPtr(ctx, ptr)
 		if err != nil {
 			return v, false, err
 		}
@@ -279,7 +279,7 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 		return ent, false, err
 	}
 
-	got, err := mapping.MapToEnt(ctx, dtoPtr)
+	got, err := mapping.MapFromDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		return ent, false, err
 	}

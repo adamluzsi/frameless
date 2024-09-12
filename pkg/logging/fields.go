@@ -28,6 +28,9 @@ func (f field) addTo(l *Logger, e logEntry) {
 	e[l.getKeyFormatter()(f.Key)] = val
 }
 
+// LazyDetail lets you add logging details that aren’t evaluated until the log is actually created.
+// This is useful when you want to add fields to a debug log that take effort to calculate,
+// but would be skipped in a production environment because of the logging level.
 type LazyDetail func() Detail
 
 func (df LazyDetail) addTo(l *Logger, e logEntry) {

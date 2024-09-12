@@ -64,10 +64,10 @@ type RestResource[Entity, ID any] struct {
 	// Default: IDContextKey[Entity, ID]{}
 	IDContextKey any
 
-	// IDMapping [optional] tells how to look up or set the Entity's ID.
+	// IDAccessor [optional] tells how to look up or set the Entity's ID.
 	//
 	// Default: extid.Lookup / extid.Set
-	IDMapping extid.MappingFunc[Entity, ID]
+	IDAccessor extid.Accessor[Entity, ID]
 
 	// SubRoutes is an http.Handler that will receive resource-specific requests.
 	// SubRoutes is optional.
@@ -330,7 +330,7 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	ent, err := reqMapping.MapToEnt(ctx, dtoPtr)
+	ent, err := reqMapping.MapFromDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -456,13 +456,13 @@ func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	entity, err := reqMapping.MapToEnt(ctx, dtoPtr)
+	entity, err := reqMapping.MapFromDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
-	if err := res.IDMapping.Set(&entity, id); err != nil {
+	if err := res.IDAccessor.Set(&entity, id); err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}

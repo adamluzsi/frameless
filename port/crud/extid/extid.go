@@ -138,18 +138,18 @@ type typeRegistration struct {
 	Set func(any, any)
 }
 
-// MappingFunc is a function that allows the id lookup on an entity type.
+// Accessor is a function that allows describing how to access an ID field in an ENT type.
 // The returned id pointer will be used to Lookup its value, or to set new value to this ID pointer.
 // Its functions will panic if func is provided, but it returns a nil pointer, as it is considered as implementation error.
 //
 // Example implementation:
 //
-//	extid.MappingFunc[Foo, FooID](func(v Foo) *FooID { return &v.ID })
+//	extid.Accessor[Foo, FooID](func(v Foo) *FooID { return &v.ID })
 //
 // default: extid.Lookup, extid.Set, which will use either the `ext:"id"` tag, or the `ENT.ID()` & `ENT.SetID()` methods.
-type MappingFunc[ENT, ID any] func(*ENT) *ID
+type Accessor[ENT, ID any] func(*ENT) *ID
 
-func (fn MappingFunc[ENT, ID]) Lookup(ent ENT) (ID, bool) {
+func (fn Accessor[ENT, ID]) Lookup(ent ENT) (ID, bool) {
 	if fn == nil {
 		return Lookup[ID](ent)
 	}
@@ -157,7 +157,7 @@ func (fn MappingFunc[ENT, ID]) Lookup(ent ENT) (ID, bool) {
 	return *id, !zerokit.IsZero[ID](*id)
 }
 
-func (fn MappingFunc[ENT, ID]) Set(ent *ENT, id ID) error {
+func (fn Accessor[ENT, ID]) Set(ent *ENT, id ID) error {
 	if fn == nil {
 		return Set(ent, id)
 	}
@@ -168,7 +168,7 @@ func (fn MappingFunc[ENT, ID]) Set(ent *ENT, id ID) error {
 	return nil
 }
 
-func (fn MappingFunc[ENT, ID]) ptr(ent *ENT) *ID {
+func (fn Accessor[ENT, ID]) ptr(ent *ENT) *ID {
 	if ent == nil {
 		panic(fmt.Sprintf("nil %T error (%T)", *new(ENT), fn))
 	}

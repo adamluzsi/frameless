@@ -7,6 +7,9 @@ import (
 	"io"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/logger"
+	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
 // ConnectionAdapter is generic implementation to handle query interactions which are aware of trasnactions within the context.
@@ -134,6 +137,24 @@ func (c ConnectionAdapter[DB, TX]) RollbackTx(ctx context.Context) error {
 	}
 }
 
+func (c ConnectionAdapter[DB, TX]) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
+	conn := c.connection(ctx)
+	c.debugLogExec(ctx, conn, "ExecContext", query, args)
+	return conn.ExecContext(ctx, query, args...)
+}
+
+func (c ConnectionAdapter[DB, TX]) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
+	conn := c.connection(ctx)
+	c.debugLogExec(ctx, conn, "QueryContext", query, args)
+	return conn.QueryContext(ctx, query, args...)
+}
+
+func (c ConnectionAdapter[DB, TX]) QueryRowContext(ctx context.Context, query string, args ...any) Row {
+	conn := c.connection(ctx)
+	c.debugLogExec(ctx, conn, "QueryRowContext", query, args)
+	return conn.QueryRowContext(ctx, query, args...)
+}
+
 func (c ConnectionAdapter[DB, TX]) txDoneErr() error {
 	if c.ErrTxDone != nil {
 		return c.ErrTxDone
@@ -146,6 +167,20 @@ type ctxKeyForContextTxHandler[T any] struct{}
 func (c ConnectionAdapter[DB, TX]) lookupTx(ctx context.Context) (*txInContext[TX], bool) {
 	tx, ok := ctx.Value(ctxKeyForContextTxHandler[TX]{}).(*txInContext[TX])
 	return tx, ok
+}
+
+func (c ConnectionAdapter[DB, TX]) debugLogExec(ctx context.Context, conn Queryable, name string, query string, args []any) {
+	logger.Debug(ctx, "QueryableAdapter.ExecContext", logging.LazyDetail(func() logging.Detail {
+		fs := logging.Fields{
+			"connection": reflectkit.SymbolicName(conn),
+			"query":      query,
+			"args":       args,
+		}
+		if _, ok := c.lookupTx(ctx); ok {
+			fs["in-transaction"] = ok
+		}
+		return fs
+	}))
 }
 
 func (c ConnectionAdapter[DB, TX]) lookupRootTx(ctx context.Context) (*txInContext[TX], bool) {
@@ -182,18 +217,6 @@ func (a QueryableAdapter[T]) QueryContext(ctx context.Context, query string, arg
 
 func (a QueryableAdapter[T]) QueryRowContext(ctx context.Context, query string, args ...any) Row {
 	return a.QueryRowFunc(ctx, query, args...)
-}
-
-func (c ConnectionAdapter[DB, TX]) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
-	return c.connection(ctx).ExecContext(ctx, query, args...)
-}
-
-func (c ConnectionAdapter[DB, TX]) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
-	return c.connection(ctx).QueryContext(ctx, query, args...)
-}
-
-func (c ConnectionAdapter[DB, TX]) QueryRowContext(ctx context.Context, query string, args ...any) Row {
-	return c.connection(ctx).QueryRowContext(ctx, query, args...)
 }
 
 // SQLConnectionAdapter is a built-in ConnectionAdapter usage for the stdlib sql.DB/sql.Tx.

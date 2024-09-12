@@ -14,6 +14,7 @@ import (
 	sh "go.llib.dev/frameless/spechelper"
 
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 )
 
 var Waiter = assert.Waiter{
@@ -32,7 +33,7 @@ func HasID[Entity, ID any](tb testing.TB, ent Entity) (id ID) {
 	Eventually.Assert(tb, func(it assert.It) {
 		var ok bool
 		id, ok = extid.Lookup[ID](ent)
-		it.Must.True(ok)
+		it.Must.True(ok, assert.MessageF("expected to find external ID in %s", pp.Format(ent)))
 		it.Must.NotEmpty(id)
 	})
 	return

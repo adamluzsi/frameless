@@ -23,6 +23,33 @@ func TestM(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, expEnt, gotEnt)
 	})
+	t.Run("mapping T and its subtype, passthrough mode for subtype without registration", func(t *testing.T) {
+		type SEnt Ent
+
+		t.Run("ENT to DTO", func(t *testing.T) {
+			expEnt := Ent{V: rnd.Int()}
+			gotEnt, err := dtokit.Map[SEnt](ctx, expEnt)
+			assert.NoError(t, err)
+			assert.Equal(t, gotEnt.N, expEnt.N)
+			assert.Equal(t, gotEnt.V, expEnt.V)
+		})
+
+		t.Run("*ENT to DTO", func(t *testing.T) {
+			expEnt := Ent{V: rnd.Int()}
+			gotEnt, err := dtokit.Map[SEnt](ctx, &expEnt)
+			assert.NoError(t, err)
+			assert.Equal(t, gotEnt.N, expEnt.N)
+			assert.Equal(t, gotEnt.V, expEnt.V)
+		})
+
+		t.Run("ENT to *DTO", func(t *testing.T) {
+			expEnt := Ent{V: rnd.Int()}
+			gotEnt, err := dtokit.Map[*SEnt](ctx, expEnt)
+			assert.NoError(t, err)
+			assert.Equal(t, gotEnt.N, expEnt.N)
+			assert.Equal(t, gotEnt.V, expEnt.V)
+		})
+	})
 	t.Run("flat structures", func(t *testing.T) {
 		m := EntMapping{}
 		defer dtokit.Register[Ent, EntDTO](m.ToDTO, m.ToEnt)()
@@ -420,7 +447,7 @@ func TestMapping(t *testing.T) {
 		assert.Equal[any](t, *rptr, dto)
 
 		t.Log("map the untyped *DTO value back into an entity")
-		gotEnt, err := m.MapToEnt(ctx, ptrOfDTO)
+		gotEnt, err := m.MapFromDTOPtr(ctx, ptrOfDTO)
 		assert.NoError(t, err)
 		assert.Equal(t, gotEnt, ent)
 	})
@@ -460,7 +487,7 @@ func TestMapping(t *testing.T) {
 		assert.Equal[any](t, *rptr, dto)
 
 		t.Log("map the untyped *DTO value back into an entity")
-		gotEnt, err := m.MapToEnt(ctx, ptrOfDTO)
+		gotEnt, err := m.MapFromDTOPtr(ctx, ptrOfDTO)
 		assert.NoError(t, err)
 		assert.Equal(t, gotEnt, ent)
 	})
