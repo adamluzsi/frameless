@@ -258,15 +258,12 @@ func recoverMustMap(returnErr *error) {
 	panic(err)
 }
 
-// Mapper is a generic interface used for representing a Entity-DTO mapping relationship.
-// Its primary function is to allow Resource to list various mappings,
-// each with its own DTO type, for different MIMEType values.
-// This means we can use different DTO types within the same restful Resource handler based on different content types,
-// making it more flexible and adaptable to support different Serialization formats.
+// Mapper is a generic interface used for representing a Entity-DTO mapping relationship where the user of the Mapper is not aware of the concrete type of the DTO.
+// This could be a case for when the user of the mapper simply uses the dto to pass to a marshaling/unmarshaling function.
 //
 // Implemented by Mapping[Entity, DTO]
 type Mapper[ENT any] interface {
-	// NewDTO should return back a new(DTO) value.
+	// NewiDTO should return back a new(DTO) value.
 	// It is ideal to use with Unmarshal functions such as json.Unmarshal.
 	//
 	// The main reason for hiding the information of DTO type,
@@ -274,31 +271,50 @@ type Mapper[ENT any] interface {
 	// is often not aware what will be the DTO type,
 	// especially with reusable generic code,
 	// and most serializer implementation fine with accepting an "any" argument type.
-	NewDTO() (dtoPtr any)
-	// MapFromDTOPtr expected to map a *DTO value to an Entity value.
+	NewiDTO() (dtoPtr any)
+	// MapFromiDTOPtr expected to map a *DTO value to an Entity value.
 	// We use a DTO pointer here, because the user of Mapper doesn't know the type as well,
-	// it just use the result of NewDTO as an argument to Unmarshal.
-	MapFromDTOPtr(ctx context.Context, dtoPtr any) (ENT, error)
-	// MapToDTO expected to map an ENT value to a DTO value.
-	MapToDTO(context.Context, ENT) (DTO any, _ error)
+	// it just use the result of NewiDTO as an argument to Unmarshal.
+	//
+	// 		dtoPtr := m.NewiDTO()
+	// 		_ = json.Unmarshal(data, dtoPtr)
+	// 		ent, err := m.MapFromiDTOPtr(ctx, dtoPtr)
+	//
+	MapFromiDTOPtr(ctx context.Context, dtoPtr any) (ENT, error)
+	// MapToiDTO expected to map an ENT value to a DTO value.
+	// The result of this often passed to a Marshal function.
+	//
+	// 		dto, _ := m.MapToiDTO(ctx, ent)
+	// 		data, _ := json.Marshal(dto)
+	//
+	MapToiDTO(context.Context, ENT) (DTO any, _ error)
+}
+
+// MapperTo[ENT, DTO] represents a mapping between ENT and DTO.
+// It is a generic way to express a mapping relationship when the user of the mapping is aware of the concrete DTO type.
+//
+// Implemented by Mapping[Entity, DTO]
+type MapperTo[ENT, DTO any] interface {
+	MapToDTO(context.Context, ENT) (DTO, error)
+	MapToENT(context.Context, DTO) (ENT, error)
 }
 
 // Mapping is a type safe implementation to represent a Mapping between an ENT and its DTO type.
 // Mapping[ENT, DTO] implements Mapper[ENT].
 type Mapping[ENT, DTO any] struct {
-	// ToEnt is an optional function to describe how to map a DTO into an Entity.
+	// ToENT is an optional function to describe how to map a DTO into an Entity.
 	//
 	// default: dtokit.Map[Entity, DTO](...)
-	ToEnt func(ctx context.Context, dto DTO) (ENT, error)
+	ToENT func(ctx context.Context, dto DTO) (ENT, error)
 	// ToDTO is an optional function to describe how to map an Entity into a DTO.
 	//
 	// default: dtokit.Map[DTO, Entity](...)
 	ToDTO func(ctx context.Context, ent ENT) (DTO, error)
 }
 
-func (dto Mapping[ENT, DTO]) NewDTO() any { return new(DTO) }
+func (m Mapping[ENT, DTO]) NewiDTO() any { return new(DTO) }
 
-func (dto Mapping[ENT, DTO]) MapFromDTOPtr(ctx context.Context, dtoPtr any) (ENT, error) {
+func (m Mapping[ENT, DTO]) MapFromiDTOPtr(ctx context.Context, dtoPtr any) (ENT, error) {
 	if dtoPtr == nil {
 		return *new(ENT), fmt.Errorf("nil dto ptr")
 	}
@@ -309,15 +325,29 @@ func (dto Mapping[ENT, DTO]) MapFromDTOPtr(ctx context.Context, dtoPtr any) (ENT
 	if ptr == nil {
 		return *new(ENT), fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
 	}
-	if dto.ToEnt != nil { // TODO: testme
-		return dto.ToEnt(ctx, *ptr)
+	if m.ToENT != nil { // TODO: testme
+		return m.ToENT(ctx, *ptr)
 	}
 	return Map[ENT](ctx, *ptr)
 }
 
-func (dto Mapping[ENT, DTO]) MapToDTO(ctx context.Context, ent ENT) (any, error) {
-	if dto.ToDTO != nil { // TODO: testme
-		return dto.ToDTO(ctx, ent)
+func (m Mapping[ENT, DTO]) MapToiDTO(ctx context.Context, ent ENT) (any, error) {
+	if m.ToDTO != nil { // TODO: testme
+		return m.ToDTO(ctx, ent)
 	}
 	return Map[DTO](ctx, ent)
+}
+
+func (m Mapping[ENT, DTO]) MapToDTO(ctx context.Context, ent ENT) (DTO, error) {
+	if m.ToDTO != nil {
+		return m.ToDTO(ctx, ent)
+	}
+	return Map[DTO, ENT](ctx, ent)
+}
+
+func (m Mapping[ENT, DTO]) MapToENT(ctx context.Context, dto DTO) (ENT, error) {
+	if m.ToENT != nil {
+		return m.ToENT(ctx, dto)
+	}
+	return Map[ENT, DTO](ctx, dto)
 }

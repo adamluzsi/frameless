@@ -280,7 +280,7 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 	for ; index.Next(); n++ {
 		ent := index.Value()
 
-		dto, err := resMapping.MapToDTO(ctx, ent)
+		dto, err := resMapping.MapToiDTO(ctx, ent)
 		if err != nil {
 			logger.Warn(ctx, "error during index element DTO Mapping", logging.ErrField(err))
 			break
@@ -323,14 +323,14 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		reqMapping          = res.getMapping(reqMIMEType)
 	)
 
-	dtoPtr := reqMapping.NewDTO()
+	dtoPtr := reqMapping.NewiDTO()
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
 		logger.Debug(ctx, "invalid request body", logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
 		return
 	}
 
-	ent, err := reqMapping.MapFromDTOPtr(ctx, dtoPtr)
+	ent, err := reqMapping.MapFromiDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -351,7 +351,7 @@ func (res RestResource[Entity, ID]) create(w http.ResponseWriter, r *http.Reques
 		resMapping          = res.getMapping(resMIMEType)
 	)
 
-	dto, err := resMapping.MapToDTO(ctx, ent)
+	dto, err := resMapping.MapToiDTO(ctx, ent)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -398,7 +398,7 @@ func (res RestResource[Entity, ID]) show(w http.ResponseWriter, r *http.Request,
 
 	w.Header().Set(headerKeyContentType, resMIMEType)
 
-	dto, err := mapping.MapToDTO(ctx, entity)
+	dto, err := mapping.MapToiDTO(ctx, entity)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return
@@ -435,7 +435,7 @@ func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	dtoPtr := reqMapping.NewDTO()
+	dtoPtr := reqMapping.NewiDTO()
 
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
 		res.getErrorHandler().HandleError(w, r,
@@ -456,7 +456,7 @@ func (res RestResource[Entity, ID]) update(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	entity, err := reqMapping.MapFromDTOPtr(ctx, dtoPtr)
+	entity, err := reqMapping.MapFromiDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		res.getErrorHandler().HandleError(w, r, err)
 		return

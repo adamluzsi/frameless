@@ -62,14 +62,24 @@ type FooDTO struct {
 	BazV string `json:"bazv"`
 }
 
-type FooJSONMapping struct{}
-
-func (n FooJSONMapping) ToDTO(ent Foo) (FooDTO, error) {
-	return FooDTO{ID: string(ent.ID), FooV: ent.Foo, BarV: ent.Bar, BazV: ent.Baz}, nil
-}
-
-func (n FooJSONMapping) ToEnt(dto FooDTO) (Foo, error) {
-	return Foo{ID: FooID(dto.ID), Foo: dto.FooV, Bar: dto.BarV, Baz: dto.BazV}, nil
+func FooJSONMapping() dtokit.Mapping[Foo, FooDTO] {
+	return dtokit.Mapping[Foo, FooDTO]{
+		ToENT: func(ctx context.Context, dto FooDTO) (Foo, error) {
+			return Foo{ID: FooID(dto.ID),
+				Foo: dto.FooV,
+				Bar: dto.BarV,
+				Baz: dto.BazV,
+			}, nil
+		},
+		ToDTO: func(ctx context.Context, ent Foo) (FooDTO, error) {
+			return FooDTO{
+				ID:   string(ent.ID),
+				FooV: ent.Foo,
+				BarV: ent.Bar,
+				BazV: ent.Baz,
+			}, nil
+		},
+	}
 }
 
 func MakeContextFunc(tb testing.TB) func() context.Context {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/frameless/port/pubsub"
@@ -19,7 +20,7 @@ import (
 type Queue[Entity, JSONDTO any] struct {
 	Name       string
 	Connection Connection
-	Mapping    QueueMapper[Entity, JSONDTO]
+	Mapping    dtokit.MapperTo[Entity, JSONDTO]
 
 	// EmptyQueueBreakTime is the time.Duration that the queue waits when the queue is empty for the given queue Name.
 	EmptyQueueBreakTime time.Duration
@@ -41,7 +42,7 @@ func (q Queue[Entity, JSONDTO]) Purge(ctx context.Context) error {
 }
 
 func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error {
-	if 0 == len(vs) {
+	if len(vs) == 0 {
 		return ctx.Err()
 	}
 	if q.Name == "" {
@@ -62,7 +63,7 @@ func (q Queue[Entity, JSONDTO]) Publish(ctx context.Context, vs ...Entity) error
 			query += ",\n"
 		}
 		query += fmt.Sprintf("(%s, %s, %s, %s)", phg(), phg(), phg(), phg())
-		dto, err := q.Mapping.ToDTO(v)
+		dto, err := q.Mapping.MapToDTO(ctx, v)
 		if err != nil {
 			return err
 		}
@@ -223,7 +224,7 @@ fetch:
 		return false
 	}
 
-	ent, err := qs.Queue.Mapping.ToEnt(dto)
+	ent, err := qs.Queue.Mapping.MapToENT(qs.CTX, dto)
 	if err != nil {
 		_ = qs.Queue.Connection.RollbackTx(contextkit.Detach(tx))
 		qs.err = err

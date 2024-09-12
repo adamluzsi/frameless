@@ -821,7 +821,7 @@ func TestDTOMapping_manual(t *testing.T) {
 
 	resource := httpkit.RestResource[Foo, FooID]{
 		Mapping: dtokit.Mapping[Foo, FooCustomDTO]{
-			ToEnt: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
+			ToENT: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
 				return dto.Foo, nil
 			},
 			ToDTO: func(ctx context.Context, ent Foo) (FooCustomDTO, error) {

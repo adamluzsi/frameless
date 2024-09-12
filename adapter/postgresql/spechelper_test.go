@@ -152,11 +152,11 @@ type EntityDTO struct {
 
 type EntityJSONMapping struct{}
 
-func (n EntityJSONMapping) ToDTO(ent Entity) (EntityDTO, error) {
+func (n EntityJSONMapping) MapToDTO(_ context.Context, ent Entity) (EntityDTO, error) {
 	return EntityDTO{ID: ent.ID, Foo: ent.Foo, Bar: ent.Bar, Baz: ent.Baz}, nil
 }
 
-func (n EntityJSONMapping) ToEnt(dto EntityDTO) (Entity, error) {
+func (n EntityJSONMapping) MapToENT(_ context.Context, dto EntityDTO) (Entity, error) {
 	return Entity{ID: dto.ID, Foo: dto.Foo, Bar: dto.Bar, Baz: dto.Baz}, nil
 }
 

@@ -74,7 +74,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 	q := postgresql.Queue[testent.Foo, testent.FooDTO]{
 		Name:                queueName,
 		Connection:          GetConnection(t),
-		Mapping:             testent.FooJSONMapping{},
+		Mapping:             testent.FooJSONMapping(),
 		EmptyQueueBreakTime: time.Hour,
 	}
 	assert.NoError(t, q.Migrate(MakeContext(t)))
@@ -134,7 +134,7 @@ func TestQueue_smoke(t *testing.T) {
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
 			Name:       "42",
 			Connection: cm,
-			Mapping:    testent.FooJSONMapping{},
+			Mapping:    testent.FooJSONMapping(),
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())
@@ -158,13 +158,13 @@ func TestQueue_smoke(t *testing.T) {
 		q1 := postgresql.Queue[testent.Foo, testent.FooDTO]{
 			Name:       "42",
 			Connection: cm,
-			Mapping:    testent.FooJSONMapping{},
+			Mapping:    testent.FooJSONMapping(),
 		}
 
 		q2 := postgresql.Queue[testent.Foo, testent.FooDTO]{
 			Name:       "24",
 			Connection: cm,
-			Mapping:    testent.FooJSONMapping{},
+			Mapping:    testent.FooJSONMapping(),
 		}
 
 		res1 := pubsubtest.Subscribe[testent.Foo](t, q1, context.Background())

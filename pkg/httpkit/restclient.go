@@ -82,7 +82,7 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	ser := r.getSerializer(mimeType)
 	mapping := r.getMapping()
 
-	dto, err := mapping.MapToDTO(ctx, *ptr)
+	dto, err := mapping.MapToiDTO(ctx, *ptr)
 	if err != nil {
 		return err
 	}
@@ -119,12 +119,12 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 		}
 	}
 
-	dtoPtr := mapping.NewDTO()
+	dtoPtr := mapping.NewiDTO()
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
 		return err
 	}
 
-	got, err := mapping.MapFromDTOPtr(ctx, dtoPtr)
+	got, err := mapping.MapFromiDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		return err
 	}
@@ -187,12 +187,12 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 			return v, false, dec.Err()
 		}
 
-		ptr := mapping.NewDTO()
+		ptr := mapping.NewiDTO()
 		if err := dec.Decode(ptr); err != nil {
 			return v, false, err
 		}
 
-		ent, err := mapping.MapFromDTOPtr(ctx, ptr)
+		ent, err := mapping.MapFromiDTOPtr(ctx, ptr)
 		if err != nil {
 			return v, false, err
 		}
@@ -274,12 +274,12 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 
 	details = append(details, logging.Field("response content type", responseMediaType))
 
-	dtoPtr := mapping.NewDTO()
+	dtoPtr := mapping.NewiDTO()
 	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
 		return ent, false, err
 	}
 
-	got, err := mapping.MapFromDTOPtr(ctx, dtoPtr)
+	got, err := mapping.MapFromiDTOPtr(ctx, dtoPtr)
 	if err != nil {
 		return ent, false, err
 	}
@@ -341,7 +341,7 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 		return err
 	}
 
-	dto, err := mapping.MapToDTO(ctx, *ptr)
+	dto, err := mapping.MapToiDTO(ctx, *ptr)
 	if err != nil {
 		return err
 	}
