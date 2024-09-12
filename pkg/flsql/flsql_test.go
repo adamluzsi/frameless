@@ -225,3 +225,13 @@ func TestTimestamp(t *testing.T) {
 		assert.Equal(t, got.Location(), time.UTC)
 	})
 }
+
+func ExampleJoinColumnName() {
+	_ = flsql.JoinColumnName([]flsql.ColumnName{"foo", "bar", "baz"}, "%q", ", ")
+	// `"foo", "bar", "baz"`
+}
+
+func TestJoinColumnName_smoke(t *testing.T) {
+	q := flsql.JoinColumnName([]flsql.ColumnName{"foo", "bar", "baz"}, "%q", " AND ")
+	assert.Equal(t, `"foo" AND "bar" AND "baz"`, q)
+}

@@ -169,9 +169,10 @@ func (c ConnectionAdapter[DB, TX]) lookupTx(ctx context.Context) (*txInContext[T
 	return tx, ok
 }
 
-func (c ConnectionAdapter[DB, TX]) debugLogExec(ctx context.Context, conn Queryable, name string, query string, args []any) {
-	logger.Debug(ctx, "QueryableAdapter.ExecContext", logging.LazyDetail(func() logging.Detail {
+func (c ConnectionAdapter[DB, TX]) debugLogExec(ctx context.Context, conn Queryable, method string, query string, args []any) {
+	logger.Debug(ctx, "QueryableAdapter", logging.LazyDetail(func() logging.Detail {
 		fs := logging.Fields{
+			"method":     method,
 			"connection": reflectkit.SymbolicName(conn),
 			"query":      query,
 			"args":       args,

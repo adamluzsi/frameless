@@ -434,7 +434,7 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 	var query string
 	query += fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableName, r.quotedColumnsClause(columns))
 	query += fmt.Sprintf("VALUES \n\t%s\n", strings.Join(valuesClause, ",\n\t"))
-	query += fmt.Sprintf("ON CONFLICT (%s) DO\n", flsql.JoinColumnName(idColumns, ", ", "%q"))
+	query += fmt.Sprintf("ON CONFLICT (%s) DO\n", flsql.JoinColumnName(idColumns, "%q", ", "))
 	query += fmt.Sprintf("\tUPDATE SET\n%s\n", strings.Join(onConflictUpdateSetClause, ",\n"))
 
 	if _, err := r.Connection.ExecContext(ctx, query, args...); err != nil {
@@ -457,5 +457,5 @@ func (r Repository[Entity, ID]) RollbackTx(ctx context.Context) error {
 }
 
 func (r Repository[Entity, ID]) quotedColumnsClause(cols []flsql.ColumnName) string {
-	return flsql.JoinColumnName(cols, ", ", "%q")
+	return flsql.JoinColumnName(cols, "%q", ", ")
 }

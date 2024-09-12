@@ -70,7 +70,7 @@ func MakeErrSQLRow(err error) sql.Row {
 
 type ColumnName string
 
-func JoinColumnName(cns []ColumnName, sep string, format string) string {
+func JoinColumnName(cns []ColumnName, format string, sep string) string {
 	return strings.Join(slicekit.Map(cns, func(n ColumnName) string { return fmt.Sprintf(format, n) }), sep)
 }
 

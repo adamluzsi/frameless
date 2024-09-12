@@ -33,8 +33,8 @@ func HasID[Entity, ID any](tb testing.TB, ent Entity) (id ID) {
 	Eventually.Assert(tb, func(it assert.It) {
 		var ok bool
 		id, ok = extid.Lookup[ID](ent)
-		it.Must.True(ok, assert.MessageF("expected to find external ID in %s", pp.Format(ent)))
-		it.Must.NotEmpty(id)
+		assert.True(it, ok, assert.MessageF("expected to find external ID in %s", pp.Format(ent)))
+		assert.NotEmpty(it, id)
 	})
 	return
 }
