@@ -310,6 +310,70 @@ func TestField(t *testing.T) {
 	})
 }
 
+func ExampleLazyDetail() {
+	var l logging.Logger
+
+	l.Debug(context.Background(), "msg", logging.LazyDetail(func() logging.Detail {
+		// only runs if the logging level is enabled and the logging details are collected
+		return logging.Field("key1", "value")
+	}))
+}
+
+func TestLazyDetail(t *testing.T) {
+	ctx := context.Background()
+	t.Run("happy-path", func(t *testing.T) {
+		l, buf := logging.Stub(t)
+		l.Level = logging.LevelInfo
+
+		var called bool
+		fn := logging.LazyDetail(func() logging.Detail {
+			called = true
+			return logging.Field("foo", "bar")
+		})
+
+		l.Debug(ctx, "", fn)
+		assert.False(t, called)
+
+		l.Info(ctx, "", fn)
+		assert.True(t, called)
+		assert.Contain(t, buf.String(), "foo")
+		assert.Contain(t, buf.String(), "bar")
+	})
+
+	t.Run("on nil detail result", func(t *testing.T) {
+		l, buf := logging.Stub(t)
+		l.Level = logging.LevelInfo
+
+		var called bool
+		fn := logging.LazyDetail(func() logging.Detail {
+			called = true
+			return nil
+		})
+
+		l.Debug(ctx, "", fn)
+		assert.False(t, called)
+
+		assert.NotPanic(t, func() {
+			l.Info(ctx, "msg", fn)
+		})
+		assert.True(t, called)
+		assert.Contain(t, buf.String(), "msg")
+	})
+
+	t.Run("on nil func", func(t *testing.T) {
+		l, buf := logging.Stub(t)
+		l.Level = logging.LevelInfo
+
+		fn := logging.LazyDetail(nil)
+
+		assert.NotPanic(t, func() {
+			l.Debug(ctx, "", fn)
+			l.Info(ctx, "msg", fn)
+		})
+		assert.Contain(t, buf.String(), "msg")
+	})
+}
+
 func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 	t.Run("for concrete type", func(t *testing.T) {
 		type X struct{ V int }

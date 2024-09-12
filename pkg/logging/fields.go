@@ -28,6 +28,19 @@ func (f field) addTo(l *Logger, e logEntry) {
 	e[l.getKeyFormatter()(f.Key)] = val
 }
 
+type LazyDetail func() Detail
+
+func (df LazyDetail) addTo(l *Logger, e logEntry) {
+	if df == nil {
+		return
+	}
+	d := df()
+	if d == nil {
+		return
+	}
+	d.addTo(l, e)
+}
+
 // Fields is a collection of field that you can add to your loggig record.
 // It will enrich the log entry with a value in the key you gave.
 type Fields map[string]any
