@@ -6,7 +6,6 @@ import (
 
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/testcase/pp"
 )
 
 type Migrator[R resourceConnection] struct {
@@ -124,8 +123,7 @@ func (m Migrator[R]) up(schemaTx, stepTx context.Context, version Version, step 
 	}
 	if !ok {
 		if err := step.MigrateUp(m.Resource, stepTx); err != nil {
-			pp.PP(err)
-			return err
+			return fmt.Errorf("error with MigrateUp %s/%s: %w", m.Namespace, version, err)
 		}
 		return m.StateRepository.Create(schemaTx, &State{ID: stateID, Dirty: false})
 	}

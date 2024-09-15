@@ -3,3 +3,7 @@
 	url = git@github.com:adamluzsi/frameless-adapter-mysql.git
 	branch = main
 
+[submodule "adapter/mariadb"]
+	path = adapter/mariadb
+	url = git@github.com:adamluzsi/frameless-adapter-mariadb.git
+	branch = main
