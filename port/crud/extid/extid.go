@@ -11,7 +11,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
-const errSetWithNonPtr errorkit.Error = "ptr should given as *Entity, else pass by value prevents the ID field remotely"
+const errSetWithNonPtr errorkit.Error = "ptr should given as *ENT, else pass by value prevents the ID field remotely"
 
 func Set[ID any](ptr any, id ID) error {
 	if ptr == nil {
@@ -79,7 +79,7 @@ func isEmpty(i interface{}) (ok bool) {
 }
 
 func lookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
-	val := reflectkit.BaseValueOf(ent)
+	val := reflectkit.BaseValueOf(ent) // optimise this to use reflect.Value argument
 
 	sf, byTag, ok := lookupByTag(val)
 	if ok {
@@ -109,23 +109,21 @@ func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
 			return structField, valueField, true
 		}
 	}
-
 	return reflect.StructField{}, reflect.Value{}, false
-
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
 
-func RegisterType[Entity, ID any](
-	Get func(Entity) ID,
-	Set func(*Entity, ID),
+func RegisterType[ENT, ID any](
+	Get func(ENT) ID,
+	Set func(*ENT, ID),
 ) any {
-	register[reflect.TypeOf(*new(Entity))] = typeRegistration{
+	register[reflect.TypeOf(*new(ENT))] = typeRegistration{
 		Get: func(ent any) any {
-			return Get(ent.(Entity))
+			return Get(ent.(ENT))
 		},
 		Set: func(ptr any, id any) {
-			Set(ptr.(*Entity), id.(ID))
+			Set(ptr.(*ENT), id.(ID))
 		},
 	}
 	return nil
@@ -184,3 +182,5 @@ func (fn Accessor[ENT, ID]) ptr(ent *ENT) *ID {
 	}
 	return id
 }
+
+type LookupIDFunc[ENT, ID any] func(ENT) (ID, bool)

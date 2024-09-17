@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/spechelper"
 )
@@ -33,6 +34,10 @@ type Config[ENT, ID any] struct {
 	//
 	// ExampleEntity enables testing a resource that doesn't implement the crud.Creator interface.
 	ExampleEntity func(testing.TB) ENT
+	// IDA [optional] is the ID Accessor.
+	// Configure this if you don't use the ext:"id" tag in your entity.
+	// TODO: add support for this accessor in crudtest
+	IDA extid.Accessor[ENT, ID]
 }
 
 func (c *Config[ENT, ID]) Init() {

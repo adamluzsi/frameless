@@ -86,6 +86,15 @@ func (e *EventuallyConsistentResource[Entity, ID]) Create(ctx context.Context, p
 	})
 }
 
+func (e *EventuallyConsistentResource[Entity, ID]) Save(ctx context.Context, ptr *Entity) error {
+	if err := e.errOnDoneTx(ctx); err != nil {
+		return err
+	}
+	return e.eventually(ctx, func(ctx context.Context) error {
+		return e.EventLogRepository.Save(ctx, ptr)
+	})
+}
+
 func (e *EventuallyConsistentResource[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	if err := e.errOnDoneTx(ctx); err != nil {
 		return err

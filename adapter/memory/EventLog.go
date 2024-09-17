@@ -183,9 +183,11 @@ func (el *EventLog) BeginTx(ctx context.Context) (context.Context, error) {
 	} else {
 		em = el
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	tx = &EventLogTx{
 		events: make([]Event, 0),
 		parent: em,
+		cancel: cancel,
 	}
 	if err := tx.Append(ctx, EventLogEvent{
 		Type:  txEventLogEventType,
@@ -223,6 +225,7 @@ func (el *EventLog) CommitTx(ctx context.Context) error {
 			return err
 		}
 	}
+	tx.cancel()
 	return nil
 }
 
@@ -242,6 +245,7 @@ func (el *EventLog) RollbackTx(ctx context.Context) error {
 		return err
 	}
 	tx.done.rollback = true
+	tx.cancel()
 	return nil
 }
 
@@ -287,11 +291,11 @@ type EventLogTx struct {
 	mutex  sync.RWMutex
 	events []Event
 	parent EventManager
+	cancel func()
 
 	done struct {
 		commit   bool
 		rollback bool
-		finished bool
 	}
 }
 

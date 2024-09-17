@@ -4,12 +4,16 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/port/crud/extid/internal/testhelper"
+	"go.llib.dev/frameless/port/migration"
+	"go.llib.dev/frameless/spechelper/testent"
 
 	"go.llib.dev/frameless/port/crud/extid"
 
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
+
+var _ extid.LookupIDFunc[testent.Foo, testent.FooID] = extid.Lookup[testent.FooID, testent.Foo]
 
 func TestID_E2E(t *testing.T) {
 	ptr := &testhelper.IDAsInterface{}
@@ -280,5 +284,44 @@ func TestMappingFunc_Set(t *testing.T) {
 
 		assert.Error(t, extid.Accessor[ENT, ID](nil).
 			Set(nil, "42"))
+	})
+}
+
+func TestSet_structIDType(t *testing.T) {
+	t.Run("non-zero", func(t *testing.T) {
+		var ent = migration.State{
+			ID: migration.StateID{
+				Namespace: "namespace-0",
+				Version:   "version-0",
+			},
+			Dirty: true,
+		}
+
+		assert.NoError(t, extid.Set(&ent, migration.StateID{
+			Namespace: "namespace-1",
+			Version:   "version-1",
+		}))
+
+		assert.Equal(t, ent, migration.State{
+			ID: migration.StateID{
+				Namespace: "namespace-1",
+				Version:   "version-1",
+			},
+			Dirty: true,
+		})
+	})
+
+	t.Run("zero", func(t *testing.T) {
+		var ent = migration.State{
+			ID: migration.StateID{
+				Namespace: "namespace-0",
+				Version:   "version-0",
+			},
+			Dirty: true,
+		}
+
+		var zeroID migration.StateID
+		assert.NoError(t, extid.Set(&ent, zeroID))
+		assert.Equal(t, ent, migration.State{ID: zeroID, Dirty: true})
 	})
 }

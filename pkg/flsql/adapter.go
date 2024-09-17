@@ -80,6 +80,7 @@ type txInContext[TX any] struct {
 	parent *txInContext[TX]
 	tx     *TX
 	done   bool
+	cancel func()
 }
 
 func (c ConnectionAdapter[DB, TX]) BeginTx(ctx context.Context) (context.Context, error) {
@@ -97,6 +98,9 @@ func (c ConnectionAdapter[DB, TX]) BeginTx(ctx context.Context) (context.Context
 		tx.tx = &transaction
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	tx.cancel = cancel
+
 	return context.WithValue(ctx, ctxKeyForContextTxHandler[TX]{}, tx), nil
 }
 
@@ -109,6 +113,7 @@ func (c ConnectionAdapter[DB, TX]) CommitTx(ctx context.Context) error {
 		return fmt.Errorf("CommitTx: %w", c.txDoneErr())
 	}
 	tx.done = true
+	defer tx.cancel()
 	if tx.tx == nil {
 		return ctx.Err()
 	}
@@ -128,6 +133,9 @@ func (c ConnectionAdapter[DB, TX]) RollbackTx(ctx context.Context) error {
 	}
 	for {
 		tx.done = true
+		// defer in loop is intentional here
+		// defer context cancellation after all the rollback call is executed
+		defer tx.cancel()
 		if tx.tx != nil {
 			return errorkit.Merge(c.Rollback(ctx, *tx.tx), ctx.Err())
 		}

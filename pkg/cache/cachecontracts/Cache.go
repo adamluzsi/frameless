@@ -29,82 +29,82 @@ var (
 	eventually = assert.Retry{Strategy: &waiter}
 )
 
-func Cache[Entity any, ID comparable](
-	cache CacheSubject[Entity, ID],
-	source cacheSource[Entity, ID],
-	repository cachepkg.Repository[Entity, ID],
-	opts ...Option[Entity, ID],
+func Cache[ENT any, ID comparable](
+	cache CacheSubject[ENT, ID],
+	source cacheSource[ENT, ID],
+	repository cachepkg.Repository[ENT, ID],
+	opts ...Option[ENT, ID],
 ) contract.Contract {
 	s := testcase.NewSpec(nil)
-	c := option.Use[Config[Entity, ID]](opts)
+	c := option.Use[Config[ENT, ID]](opts)
 
 	suites := []testcase.Suite{}
-	suites = append(suites, crudcontracts.ByIDDeleter[Entity, ID](cache, c.CRUD))
-	if _, ok := source.(crud.Creator[Entity]); ok {
-		suites = append(suites, crudcontracts.Creator[Entity, ID](cache, c.CRUD))
+	suites = append(suites, crudcontracts.ByIDDeleter[ENT, ID](cache, c.CRUD))
+	if _, ok := source.(crud.Creator[ENT]); ok {
+		suites = append(suites, crudcontracts.Creator[ENT, ID](cache, c.CRUD))
 	}
-	if _, ok := source.(crud.AllFinder[Entity]); ok {
-		suites = append(suites, crudcontracts.AllFinder[Entity, ID](cache, c.CRUD))
+	if _, ok := source.(crud.AllFinder[ENT]); ok {
+		suites = append(suites, crudcontracts.AllFinder[ENT, ID](cache, c.CRUD))
 	}
-	if _, ok := source.(crud.ByIDDeleter[Entity]); ok {
-		suites = append(suites, crudcontracts.ByIDDeleter[Entity, ID](cache, c.CRUD))
+	if _, ok := source.(crud.ByIDDeleter[ENT]); ok {
+		suites = append(suites, crudcontracts.ByIDDeleter[ENT, ID](cache, c.CRUD))
 	}
 	if _, ok := source.(crud.AllDeleter); ok {
-		suites = append(suites, crudcontracts.AllDeleter[Entity, ID](cache, c.CRUD))
+		suites = append(suites, crudcontracts.AllDeleter[ENT, ID](cache, c.CRUD))
 	}
 	if _, ok := source.(crud.AllDeleter); !ok {
-		suites = append(suites, crudcontracts.AllDeleter[Entity, ID](cache, c.CRUD))
+		suites = append(suites, crudcontracts.AllDeleter[ENT, ID](cache, c.CRUD))
 	}
-	if _, ok := source.(crud.Updater[Entity]); ok {
-		suites = append(suites, crudcontracts.Updater[Entity, ID](cache, c.CRUD))
+	if _, ok := source.(crud.Updater[ENT]); ok {
+		suites = append(suites, crudcontracts.Updater[ENT, ID](cache, c.CRUD))
 	}
 
-	suites = append(suites, Repository[Entity, ID](repository, c))
+	suites = append(suites, Repository[ENT, ID](repository, c))
 
 	// TODO: support OnePhaseCommitProtocol with cache.Cache
 
 	s.Describe(".InvalidateCachedQuery", func(s *testcase.Spec) {
-		specInvalidateCachedQuery[Entity, ID](s, cache, source, repository)
+		specInvalidateCachedQuery[ENT, ID](s, cache, source, repository)
 	})
 	s.Describe(".InvalidateByID", func(s *testcase.Spec) {
 		specInvalidateByID(s, cache, source, repository)
 	})
 	s.Describe(".CachedQueryMany", func(s *testcase.Spec) {
-		specCachedQueryMany[Entity, ID](s, cache, source, repository)
+		specCachedQueryMany[ENT, ID](s, cache, source, repository)
 	})
 
 	s.Context(`cache behaviour`, func(s *testcase.Spec) {
-		describeResultCaching[Entity, ID](s, cache, source, repository)
-		describeCacheInvalidationByEventsThatMutatesAnEntity[Entity, ID](s, cache, source, repository)
+		describeResultCaching[ENT, ID](s, cache, source, repository)
+		describeCacheInvalidationByEventsThatMutatesAnEntity[ENT, ID](s, cache, source, repository)
 	})
 
 	return s.AsSuite("Cache")
 }
 
-type CacheSubject[Entity, ID any] interface {
-	cachepkg.Interface[Entity, ID]
-	crud.Creator[Entity]
-	crud.ByIDFinder[Entity, ID]
-	crud.AllFinder[Entity]
-	crud.Updater[Entity]
+type CacheSubject[ENT, ID any] interface {
+	cachepkg.Interface[ENT, ID]
+	crud.Creator[ENT]
+	crud.ByIDFinder[ENT, ID]
+	crud.AllFinder[ENT]
+	crud.Updater[ENT]
 	crud.ByIDDeleter[ID]
 	crud.AllDeleter
 }
 
-type cacheSource[Entity, ID any] interface {
-	sh.CRUD[Entity, ID]
-	cachepkg.Source[Entity, ID]
+type cacheSource[ENT, ID any] interface {
+	sh.CRUD[ENT, ID]
+	cachepkg.Source[ENT, ID]
 }
 
-func describeCacheInvalidationByEventsThatMutatesAnEntity[Entity any, ID comparable](
+func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable](
 	s *testcase.Spec,
-	cache CacheSubject[Entity, ID],
-	source cacheSource[Entity, ID],
-	repository cachepkg.Repository[Entity, ID],
-	opts ...Option[Entity, ID],
+	cache CacheSubject[ENT, ID],
+	source cacheSource[ENT, ID],
+	repository cachepkg.Repository[ENT, ID], // TODO: remove this if this is not used, else check if something wrong with the setup
+	opts ...Option[ENT, ID],
 ) {
-	c := option.Use[Config[Entity, ID]](opts)
-	s.Context(reflectkit.SymbolicName(*new(Entity)), func(s *testcase.Spec) {
+	c := option.Use[Config[ENT, ID]](opts)
+	s.Context(reflectkit.SymbolicName(*new(ENT)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) interface{} {
 			ptr := pointer.Of(c.CRUD.MakeEntity(t))
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), ptr))
@@ -129,10 +129,10 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[Entity any, ID compara
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
 			t.Must.NoError(extid.Set(vUpdated, entID))
-			crudtest.Update[Entity, ID](t, cache, ctx, vUpdated)
+			crudtest.Update[ENT, ID](t, cache, ctx, vUpdated)
 			waiter.Wait()
 
-			ptr := crudtest.IsPresent[Entity, ID](t, cache, ctx, entID) // should trigger caching
+			ptr := crudtest.IsPresent[ENT, ID](t, cache, ctx, entID) // should trigger caching
 			t.Must.Equal(vUpdated, ptr)
 		})
 
@@ -148,14 +148,14 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[Entity any, ID compara
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
 			t.Must.NoError(extid.Set(vUpdated, entID))
-			crudtest.Update[Entity, ID](t, cache, ctx, vUpdated)
+			crudtest.Update[ENT, ID](t, cache, ctx, vUpdated)
 			waiter.Wait()
 
 			var (
-				gotEnt Entity
+				gotEnt ENT
 				found  bool
 			)
-			t.Must.NoError(iterators.ForEach(cache.FindAll(ctx), func(ent Entity) error {
+			t.Must.NoError(iterators.ForEach(cache.FindAll(ctx), func(ent ENT) error {
 				id, ok := extid.Lookup[ID](ent)
 				if !ok {
 					return fmt.Errorf("lookup can't find the ID")
@@ -184,7 +184,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[Entity any, ID compara
 			t.Must.NoError(cache.DeleteByID(c.CRUD.MakeContext(), id))
 
 			// assert
-			crudtest.IsAbsent[Entity, ID](t, cache, c.CRUD.MakeContext(), id)
+			crudtest.IsAbsent[ENT, ID](t, cache, c.CRUD.MakeContext(), id)
 		})
 
 		s.Test(`a delete all entity in the repository should invalidate the local cache unit entity state`, func(t *testcase.T) {
@@ -199,7 +199,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[Entity any, ID compara
 			t.Must.NoError(cache.DeleteAll(c.CRUD.MakeContext()))
 			waiter.Wait()
 
-			crudtest.IsAbsent[Entity, ID](t, cache, c.CRUD.MakeContext(), id) // should trigger caching for not found
+			crudtest.IsAbsent[ENT, ID](t, cache, c.CRUD.MakeContext(), id) // should trigger caching for not found
 		})
 	})
 }
@@ -401,8 +401,8 @@ func specCachedQueryMany[Entity any, ID comparable](s *testcase.Spec,
 			assert.OneOf(t, hits, func(it assert.It, got cachepkg.Hit[ID]) {
 				it.Must.Equal(got.QueryID, queryKey.Get(t))
 				it.Must.ContainExactly(got.EntityIDs, []ID{
-					crudtest.HasID[Entity, ID](t, *ent1.Get(t)),
-					crudtest.HasID[Entity, ID](t, *ent2.Get(t)),
+					crudtest.HasID[Entity, ID](t, ent1.Get(t)),
+					crudtest.HasID[Entity, ID](t, ent2.Get(t)),
 				})
 			})
 		})
@@ -447,7 +447,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 
 		queryOneFunc.Let(s, func(t *testcase.T) cachepkg.QueryOneFunc[Entity] {
 			return func() (Entity, bool, error) {
-				id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 				return source.FindByID(c.CRUD.MakeContext(), id)
 			}
 		})
@@ -455,7 +455,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		s.Before(func(t *testcase.T) {
 			// create ent in source
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := queryOne(t)
 			t.Must.NoError(err)
@@ -488,7 +488,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
 			t.Must.NoError(err)
@@ -525,7 +525,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
 			return func() iterators.Iterator[Entity] {
-				id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 				ent, found, err := source.FindByID(c.CRUD.MakeContext(), id)
 				if err != nil {
 					return iterators.Error[Entity](err)
@@ -540,7 +540,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		s.Before(func(t *testcase.T) {
 			// create ent in source
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			vs, err := iterators.Collect(queryMany(t))
 			t.Must.NoError(err)
@@ -562,7 +562,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
 			t.Must.NoError(err)
@@ -661,7 +661,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		id.Let(s, func(t *testcase.T) ID {
-			return crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			return crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 		})
 
 		queryOneFunc.Let(s, func(t *testcase.T) cachepkg.QueryOneFunc[Entity] {
@@ -673,7 +673,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Before(func(t *testcase.T) {
 			// create ent in source
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := queryOne(t)
 			t.Must.NoError(err)
@@ -698,7 +698,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
 			t.Must.NoError(err)
@@ -733,13 +733,13 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 			return pointer.Of(c.CRUD.MakeEntity(t))
 		})
 		id.Let(s, func(t *testcase.T) ID {
-			return crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			return crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 		})
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := cache.FindByID(c.CRUD.MakeContext(), id)
 			t.Must.NoError(err)
@@ -764,7 +764,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
 			t.Must.NoError(err)
@@ -786,12 +786,12 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		id.Let(s, func(t *testcase.T) ID {
-			return crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			return crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
 			return func() iterators.Iterator[Entity] {
-				id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 				ent, found, err := source.FindByID(c.CRUD.MakeContext(), id)
 				if err != nil {
 					return iterators.Error[Entity](err)
@@ -806,7 +806,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Before(func(t *testcase.T) {
 			// create ent in source
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			vs, err := iterators.Collect(queryMany(t))
 			t.Must.NoError(err)
@@ -828,7 +828,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
-			id := crudtest.HasID[Entity, ID](t, *entPtr.Get(t))
+			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
 			t.Must.NoError(err)
@@ -862,7 +862,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		id.Let(s, func(t *testcase.T) ID {
 			ent := c.CRUD.MakeEntity(t)
 			crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(), &ent)
-			v := crudtest.HasID[Entity, ID](t, ent)
+			v := crudtest.HasID[Entity, ID](t, &ent)
 			crudtest.Delete[Entity, ID](t, source, c.CRUD.MakeContext(), &ent)
 			return v
 		})

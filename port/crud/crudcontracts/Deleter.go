@@ -14,7 +14,6 @@ import (
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 )
@@ -31,8 +30,8 @@ func Deleter[Entity, ID any](subject deleterSubject[Entity, ID], opts ...Option[
 	return s.AsSuite("Deleter")
 }
 
-func ByIDDeleter[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
-	c := option.Use[Config[Entity, ID]](opts)
+func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, ID]) contract.Contract {
+	c := option.Use[Config[ENT, ID]](opts)
 	s := testcase.NewSpec(nil)
 
 	var (
@@ -47,22 +46,23 @@ func ByIDDeleter[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity,
 		spechelper.TryCleanup(t, c.MakeContext(), act)
 	})
 
-	entity := testcase.Let(s, func(t *testcase.T) *Entity {
+	ptr := testcase.Let(s, func(t *testcase.T) *ENT {
 		return pointer.Of(c.MakeEntity(t))
 	})
 
 	s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) ID {
-			ent := entity.Get(t)
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ent)
-			id, ok := extid.Lookup[ID](ent)
+			p := ptr.Get(t)
+			shouldCreate[ENT, ID](t, c, subject, c.MakeContext(), p)
+			id, ok := lookupID[ID](c, *p)
 			t.Must.True(ok, assert.Message(pp.Format(spechelper.ErrIDRequired.Error())))
 			return id
 		}).EagerLoading(s)
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(), id.Get(t))
+
+			shouldAbsent(t, c, subject, c.MakeContext(), id.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -78,23 +78,23 @@ func ByIDDeleter[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity,
 		})
 
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
-			othEntity := testcase.Let(s, func(t *testcase.T) *Entity {
+			othEntPtr := testcase.Let(s, func(t *testcase.T) *ENT {
 				ent := c.MakeEntity(t)
-				crudtest.Create[Entity, ID](t, subject, c.MakeContext(), &ent)
+				shouldCreate(t, c, subject, c.MakeContext(), &ent)
 				return &ent
 			}).EagerLoading(s)
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				t.Must.Nil(act(t))
-				othID, _ := extid.Lookup[ID](othEntity.Get(t))
-				crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(), othID)
+				othID, _ := lookupID[ID](c, *othEntPtr.Get(t))
+				shouldPresent(t, c, subject, c.MakeContext(), othID)
 			})
 		})
 
 		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				t.Must.Nil(act(t))
-				crudtest.IsAbsent[Entity, ID](t, subject, Context.Get(t), id.Get(t))
+				shouldAbsent(t, c, subject, Context.Get(t), id.Get(t))
 			})
 
 			s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
@@ -143,7 +143,7 @@ func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], o
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		ent := conf.MakeEntity(t)
 		crudtest.Create[Entity, ID](t, subject, conf.MakeContext(), &ent)
-		entID := crudtest.HasID[Entity, ID](t, ent)
+		entID := crudtest.HasID[Entity, ID](t, &ent)
 		crudtest.IsPresent[Entity, ID](t, subject, conf.MakeContext(), entID)
 		t.Must.Nil(act(t))
 		crudtest.IsAbsent[Entity, ID](t, subject, conf.MakeContext(), entID)

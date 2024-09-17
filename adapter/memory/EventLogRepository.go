@@ -44,6 +44,7 @@ type EventLogRepository[Entity, ID any] struct {
 // Name Types
 const (
 	CreateEvent     = `Create`
+	SaveEvent       = `Save`
 	UpdateEvent     = `Update`
 	DeleteAllEvent  = `DeleteAll`
 	DeleteByIDEvent = `DeleteByID`
@@ -220,7 +221,10 @@ func (s *EventLogRepository[Entity, ID]) FindByIDs(ctx context.Context, ids ...I
 	return o
 }
 
-func (s *EventLogRepository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rErr error) {
+func (s *EventLogRepository[Entity, ID]) Save(ctx context.Context, ptr *Entity) (rErr error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	tx, err := s.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -233,29 +237,21 @@ func (s *EventLogRepository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*En
 		rErr = s.CommitTx(tx)
 	}()
 
-	for _, ptr := range ptrs {
-		id, ok := extid.Lookup[ID](ptr)
-		if !ok {
-			if err := s.Create(tx, ptr); err != nil {
-				return err
-			}
-			continue
-		}
-
-		_, found, err := s.FindByID(tx, id)
-		if err != nil {
-			return err
-		}
-		if !found {
-			if err := s.Create(tx, ptr); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := s.Update(tx, ptr); err != nil {
-			return err
-		}
+	id, ok := extid.Lookup[ID](ptr)
+	if !ok {
+		return s.Create(tx, ptr)
 	}
+	_, found, err := s.FindByID(tx, id)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return s.Create(tx, ptr)
+	}
+	if err := s.Update(tx, ptr); err != nil {
+		return err
+	}
+
 	return nil
 }
 

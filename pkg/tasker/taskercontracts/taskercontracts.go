@@ -13,45 +13,45 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func Repository(subject tasker.Repository, opts ...Option) contract.Contract {
+func Repository(subject tasker.SchedulerRepository, opts ...Option) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 
-	s.Context(".Locks", guardcontracts.LockerFactory[tasker.StateID](subject.Locks(),
-		guardcontracts.LockerFactoryConfig[tasker.StateID]{MakeContext: c.MakeContext}).Spec)
+	s.Context(".Locks", guardcontracts.LockerFactory[tasker.ScheduleStateID](subject.Locks(),
+		guardcontracts.LockerFactoryConfig[tasker.ScheduleStateID]{MakeContext: c.MakeContext}).Spec)
 
 	s.Context(".States", stateRepository(subject.States(), opts...).Spec)
 
 	return s.AsSuite("tasker.Repository")
 }
 
-func stateRepository(subject tasker.StateRepository, opts ...Option) contract.Contract {
+func stateRepository(subject tasker.ScheduleStateRepository, opts ...Option) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 
-	crudConfig := crudcontracts.Config[tasker.State, tasker.StateID]{
+	crudConfig := crudcontracts.Config[tasker.ScheduleState, tasker.ScheduleStateID]{
 		SupportIDReuse:  false,
 		SupportRecreate: false,
 		MakeContext:     c.MakeContext,
-		ChangeEntity: func(tb testing.TB, ptr *tasker.State) {
+		ChangeEntity: func(tb testing.TB, ptr *tasker.ScheduleState) {
 			ptr.Timestamp = testcase.ToT(&tb).Random.Time()
 		},
 		MakeEntity: c.MakeScheduleState,
 	}
 
 	testcase.RunSuite(s,
-		crudcontracts.Creator[tasker.State, tasker.StateID](subject, crudConfig),
-		crudcontracts.Updater[tasker.State, tasker.StateID](subject, crudConfig),
-		crudcontracts.ByIDFinder[tasker.State, tasker.StateID](subject, crudConfig),
-		crudcontracts.ByIDDeleter[tasker.State, tasker.StateID](subject, crudConfig),
+		crudcontracts.Creator[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
+		crudcontracts.Updater[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
+		crudcontracts.ByIDFinder[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
+		crudcontracts.ByIDDeleter[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
 	)
-	return s.AsSuite("tasker.StateRepository")
+	return s.AsSuite("tasker.ScheduleStateRepository")
 }
 
 type stateRepositorySubject struct {
-	StateRepository   tasker.StateRepository
+	StateRepository   tasker.ScheduleStateRepository
 	MakeContext       func() context.Context
-	MakeScheduleState func() tasker.State
+	MakeScheduleState func() tasker.ScheduleState
 }
 
 type Option interface {
@@ -60,15 +60,15 @@ type Option interface {
 
 type Config struct {
 	MakeContext       func() context.Context
-	MakeScheduleState func(testing.TB) tasker.State
+	MakeScheduleState func(testing.TB) tasker.ScheduleState
 }
 
 func (c *Config) Init() {
 	c.MakeContext = context.Background
-	c.MakeScheduleState = func(tb testing.TB) tasker.State {
+	c.MakeScheduleState = func(tb testing.TB) tasker.ScheduleState {
 		t := testcase.ToT(&tb)
-		return tasker.State{
-			ID:        tasker.StateID(t.Random.String() + t.Random.StringNC(5, random.CharsetDigit())),
+		return tasker.ScheduleState{
+			ID:        tasker.ScheduleStateID(t.Random.String() + t.Random.StringNC(5, random.CharsetDigit())),
 			Timestamp: t.Random.Time(),
 		}
 	}

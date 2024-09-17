@@ -1,6 +1,8 @@
 package crudcontracts_test
 
 import (
+	"strconv"
+	"sync/atomic"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -33,6 +35,7 @@ var _ = []contract.Contract{
 func contracts[ENT, ID any](subject Subject[ENT, ID], cm comproto.OnePhaseCommitProtocol, opts ...crudcontracts.Option[ENT, ID]) []contract.Contract {
 	return []contract.Contract{
 		crudcontracts.Creator[ENT, ID](subject, opts...),
+		crudcontracts.Saver[ENT, ID](subject, opts...),
 		crudcontracts.Finder[ENT, ID](subject, opts...),
 		crudcontracts.Deleter[ENT, ID](subject, opts...),
 		crudcontracts.Updater[ENT, ID](subject, opts...),
@@ -43,6 +46,7 @@ func contracts[ENT, ID any](subject Subject[ENT, ID], cm comproto.OnePhaseCommit
 
 type Subject[ENT, ID any] interface {
 	crud.Creator[ENT]
+	crud.Saver[ENT]
 	crud.Updater[ENT]
 	crud.ByIDFinder[ENT, ID]
 	crud.ByIDsFinder[ENT, ID]
@@ -67,6 +71,35 @@ func Test_memory(t *testing.T) {
 	config := crudcontracts.Config[Entity, ID]{
 		MakeEntity: func(tb testing.TB) Entity {
 			return Entity{Data: testcase.ToT(&tb).Random.String()}
+		},
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+	}
+
+	testcase.RunSuite(s, contracts[Entity, ID](subject, m, config)...)
+}
+
+func Test_memory_prepopulatedID(t *testing.T) {
+	type ID string
+	type Entity struct {
+		ID   ID `ext:"ID"`
+		Data string
+	}
+
+	s := testcase.NewSpec(t)
+
+	m := memory.NewMemory()
+	subject := memory.NewRepository[Entity, ID](m)
+	subject.ExpectID = true
+
+	var index int64
+	config := crudcontracts.Config[Entity, ID]{
+		MakeEntity: func(tb testing.TB) Entity {
+			id := atomic.AddInt64(&index, 1)
+			return Entity{
+				ID:   ID(strconv.Itoa(int(id))),
+				Data: testcase.ToT(&tb).Random.String(),
+			}
 		},
 		SupportIDReuse:  true,
 		SupportRecreate: true,

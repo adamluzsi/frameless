@@ -1,16 +1,20 @@
 package crudcontracts
 
 import (
+	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"reflect"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
 	crudtest "go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 type Contract interface {
@@ -18,20 +22,20 @@ type Contract interface {
 	testcase.OpenSuite
 }
 
-func getID[Ent, ID any](tb testing.TB, ent Ent) ID {
-	id, ok := extid.Lookup[ID, Ent](ent)
+func getID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ent ENT) ID {
+	id, ok := c.IDA.Lookup(ent)
 	assert.Must(tb).True(ok,
 		`id was expected to be present for the entity`,
 		assert.Message(fmt.Sprintf(` (%#v)`, ent)))
 	return id
 }
 
-func createDummyID[Entity, ID any](t *testcase.T, subject crd[Entity, ID], config Config[Entity, ID]) ID {
+func createDummyID[ENT, ID any](t *testcase.T, subject crd[ENT, ID], config Config[ENT, ID]) ID {
 	ent := config.MakeEntity(t)
 	ctx := config.MakeContext()
-	crudtest.Create[Entity, ID](t, subject, ctx, &ent)
-	id := crudtest.HasID[Entity, ID](t, ent)
-	crudtest.Delete[Entity, ID](t, subject, ctx, &ent)
+	crudtest.Create[ENT, ID](t, subject, ctx, &ent)
+	id := crudtest.HasID[ENT, ID](t, &ent)
+	crudtest.Delete[ENT, ID](t, subject, ctx, &ent)
 	return id
 }
 
@@ -88,7 +92,7 @@ func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], subject
 		if !ok {
 			tb.Skip("config ExampleEntity is not returning back a unique value, thus this test can't continue")
 		}
-		crudtest.HasID[ENT, ID](tb, ent)
+		crudtest.HasID[ENT, ID](tb, &ent)
 		return ent
 	}
 	tb.Skip("test can't continue due to unable work with an entity present in the resource")
@@ -100,7 +104,7 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], s
 	assert.NotNil(tb, mk)
 	ent := mk(tb)
 	assert.NotEmpty(tb, ent)
-	if id, ok := extid.Lookup[ID](ent); ok {
+	if id, ok := lookupID[ID](c, ent); ok {
 		if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 			_, found, err := finder.FindByID(c.MakeContext(), id)
 			if err == nil && found {
@@ -115,6 +119,115 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], s
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")
 	tb.Log("either ensure that the entity making function persist the entity in the subject")
 	tb.Logf("or make sure that %T implements crud.Creator", subject)
+	tb.Logf("(%s)", mkFuncName)
 	FailNow()
 	return *new(ENT)
+}
+
+func lookupID[ID, ENT any](c Config[ENT, ID], ent ENT) (ID, bool) {
+	return c.IDA.Lookup(ent)
+}
+
+func setID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ptr *ENT, id ID) {
+	assert.NoError(tb, c.IDA.Set(ptr, id))
+}
+
+func tryDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
+	id, ok := c.IDA.Lookup(v)
+	if !ok {
+		return
+	}
+	deleter, ok := resource.(crud.ByIDDeleter[ID])
+	if !ok {
+		return
+	}
+	if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+		_, found, err := finder.FindByID(ctx, id)
+		assert.NoError(tb, err)
+		if !found {
+			return
+		}
+	}
+	err := deleter.DeleteByID(ctx, id)
+	if errors.Is(err, crud.ErrNotFound) {
+		return
+	}
+	assert.NoError(tb, err)
+}
+
+func changeENT[ENT, ID any](tb testing.TB, c Config[ENT, ID], ptr *ENT) {
+	assert.NotNil(tb, ptr)
+	if c.ChangeEntity != nil {
+		c.ChangeEntity(tb, ptr)
+		return
+	}
+	id, _ := lookupID[ID](c, *ptr)
+	*ptr = random.Unique(func() ENT { return c.MakeEntity(tb) }, *ptr)
+	setID(tb, c, ptr, id)
+}
+
+func shouldPresent[ENT, ID any](t *testcase.T, c Config[ENT, ID], resource any, ctx context.Context, id ID) *ENT {
+	t.Helper()
+	return crudtest.IsPresent(t, shouldByIDFinder[ENT, ID](t, resource), ctx, id)
+}
+
+func shouldAbsent[ENT, ID any](t *testcase.T, c Config[ENT, ID], resource any, ctx context.Context, id ID) {
+	t.Helper()
+	crudtest.IsAbsent(t, shouldByIDFinder[ENT, ID](t, resource), ctx, id)
+}
+
+func shouldByIDFinder[ENT, ID any](tb testing.TB, resource any) crud.ByIDFinder[ENT, ID] {
+	tb.Helper()
+	bif, ok := resource.(crud.ByIDFinder[ENT, ID])
+	if !ok {
+		tb.Skipf("test must be skipped, as assertion requires %s to be implemented by %T", reflectkit.TypeOf[crud.ByIDFinder[ENT, ID]]().String(), resource)
+	}
+	return bif
+}
+
+func shouldFindByID[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, id ID) (ENT, bool, error) {
+	tb.Helper()
+	return shouldByIDFinder[ENT, ID](tb, resource).FindByID(ctx, id)
+}
+
+func shouldCreate[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, ptr *ENT) {
+	tb.Helper()
+	if subject, ok := resource.(crud.Creator[ENT]); ok {
+		crudtest.Create[ENT, ID](tb, subject, ctx, ptr)
+		return
+	}
+	if subject, ok := resource.(crud.Saver[ENT]); ok {
+		crudtest.Save[ENT, ID](tb, subject, ctx, ptr)
+		return
+	}
+	tb.Skipf("unable to continue with this testing scenario, as %T doesn't implement neither crud.Creator or crud.Saver", resource)
+}
+
+func shouldDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
+	tb.Helper()
+	id, ok := c.IDA.Lookup(v)
+	if !ok {
+		return
+	}
+	deleter, ok := resource.(crud.ByIDDeleter[ID])
+	if !ok {
+		tb.Skipf("unable to execute testing scenario, %s is not implemented", reflectkit.TypeOf[crud.ByIDDeleter[ID]]().String())
+	}
+	if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+		_, found, err := finder.FindByID(ctx, id)
+		assert.NoError(tb, err)
+		if !found {
+			return
+		}
+	}
+	err := deleter.DeleteByID(ctx, id)
+	if errors.Is(err, crud.ErrNotFound) {
+		return
+	}
+	assert.NoError(tb, err)
+}
+
+func testingRunFlagProvided() bool {
+	runFlag := flag.Lookup("test.run")
+	return runFlag != nil && runFlag.Value.String() != ""
 }

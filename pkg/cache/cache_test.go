@@ -337,11 +337,11 @@ func (fer *faultyEntityRepo[Entity, ID]) FindByIDs(ctx context.Context, ids ...I
 	return fer.EntityRepository.FindByIDs(ctx, ids...)
 }
 
-func (fer *faultyEntityRepo[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) error {
+func (fer *faultyEntityRepo[Entity, ID]) Save(ctx context.Context, ptr *Entity) error {
 	if fer.fcr.shouldFail() {
 		return fer.fcr.Random.Error()
 	}
-	return fer.EntityRepository.Upsert(ctx, ptrs...)
+	return fer.EntityRepository.Save(ctx, ptr)
 }
 
 type faultyHitRepo[Entity, ID any] struct {
@@ -349,18 +349,11 @@ type faultyHitRepo[Entity, ID any] struct {
 	cache.HitRepository[ID]
 }
 
-func (fhr *faultyHitRepo[Entity, ID]) Create(ctx context.Context, ptr *cache.Hit[ID]) error {
+func (fhr *faultyHitRepo[Entity, ID]) Save(ctx context.Context, ptr *cache.Hit[ID]) error {
 	if fhr.fcr.shouldFail() {
 		return fhr.fcr.Random.Error()
 	}
-	return fhr.fcr.CacheRepo.Hits().Create(ctx, ptr)
-}
-
-func (fhr *faultyHitRepo[Entity, ID]) Update(ctx context.Context, ptr *cache.Hit[ID]) error {
-	if fhr.fcr.shouldFail() {
-		return fhr.fcr.Random.Error()
-	}
-	return fhr.fcr.CacheRepo.Hits().Update(ctx, ptr)
+	return fhr.fcr.CacheRepo.Hits().Save(ctx, ptr)
 }
 
 func (fhr *faultyHitRepo[Entity, ID]) FindByID(ctx context.Context, id cache.HitID) (ent cache.Hit[ID], found bool, err error) {

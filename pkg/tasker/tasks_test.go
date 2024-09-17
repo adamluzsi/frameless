@@ -276,6 +276,6 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 	close(finish)
 
 	assert.Eventually(t, time.Second, func(it assert.It) {
-		assert.NotEqual(t, atomic.LoadInt32(&done), 1)
+		assert.Equal(it, atomic.LoadInt32(&done), 1)
 	})
 }

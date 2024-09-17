@@ -14,34 +14,35 @@ import (
 	"go.llib.dev/testcase"
 )
 
-type ContractSubject[Entity any, ID comparable] interface {
-	crud.Creator[Entity]
-	crud.Finder[Entity, ID]
-	crud.Updater[Entity]
+type ContractSubject[ENT any, ID comparable] interface {
+	crud.Creator[ENT]
+	crud.Finder[ENT, ID]
+	crud.Updater[ENT]
 	crud.Deleter[ID]
+	crud.Saver[ENT]
 }
 
-type Option[Entity any, ID comparable] interface {
-	option.Option[Config[Entity, ID]]
+type Option[ENT any, ID comparable] interface {
+	option.Option[Config[ENT, ID]]
 }
 
-type Config[Entity any, ID comparable] struct {
-	CRUD          crudcontracts.Config[Entity, ID]
+type Config[ENT any, ID comparable] struct {
+	CRUD          crudcontracts.Config[ENT, ID]
 	MetaAccessor  meta.MetaAccessor
 	CommitManager comproto.OnePhaseCommitProtocol
 }
 
-func (c *Config[Entity, ID]) Init() {
+func (c *Config[ENT, ID]) Init() {
 	c.CRUD.Init()
 }
 
-func (c Config[Entity, ID]) Configure(t *Config[Entity, ID]) {
+func (c Config[ENT, ID]) Configure(t *Config[ENT, ID]) {
 	option.Configure(c, t)
 }
 
-func Contract[Entity any, ID comparable](subject ContractSubject[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
+func Contract[ENT any, ID comparable](subject ContractSubject[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	c := option.Use[Config[Entity, ID]](opts)
+	c := option.Use[Config[ENT, ID]](opts)
 	c.CRUD.SupportIDReuse = true
 	c.CRUD.SupportRecreate = true
 
@@ -50,25 +51,26 @@ func Contract[Entity any, ID comparable](subject ContractSubject[Entity, ID], op
 	}
 
 	testcase.RunSuite(s,
-		crudcontracts.Creator[Entity, ID](subject, c.CRUD),
-		crudcontracts.Finder[Entity, ID](subject, c.CRUD),
-		crudcontracts.Deleter[Entity, ID](subject, c.CRUD),
-		crudcontracts.Updater[Entity, ID](subject, c.CRUD),
+		crudcontracts.Creator[ENT, ID](subject, c.CRUD),
+		crudcontracts.Finder[ENT, ID](subject, c.CRUD),
+		crudcontracts.Deleter[ENT, ID](subject, c.CRUD),
+		crudcontracts.Updater[ENT, ID](subject, c.CRUD),
+		crudcontracts.Saver[ENT, ID](subject, c.CRUD),
 	)
 
 	if c.CommitManager != nil {
 		testcase.RunSuite(s,
-			crudcontracts.OnePhaseCommitProtocol[Entity, ID](subject, c.CommitManager, c.CRUD),
+			crudcontracts.OnePhaseCommitProtocol[ENT, ID](subject, c.CommitManager, c.CRUD),
 			comprotocontracts.OnePhaseCommitProtocol(c.CommitManager, &comprotocontracts.Config{
 				MakeContext: c.CRUD.MakeContext,
 			}),
 		)
 	}
 
-	if entrep, ok := subject.(cache.EntityRepository[Entity, ID]); ok && c.CommitManager != nil {
+	if entrep, ok := subject.(cache.EntityRepository[ENT, ID]); ok && c.CommitManager != nil {
 		testcase.RunSuite(s,
-			cachecontracts.EntityRepository[Entity, ID](entrep, c.CommitManager,
-				cachecontracts.Config[Entity, ID]{CRUD: c.CRUD}),
+			cachecontracts.EntityRepository[ENT, ID](entrep, c.CommitManager,
+				cachecontracts.Config[ENT, ID]{CRUD: c.CRUD}),
 		)
 	}
 

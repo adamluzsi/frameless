@@ -6,7 +6,6 @@ import (
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/pkg/pointer"
@@ -216,7 +215,7 @@ func QueryMany[Entity, ID any](
 						for iter.Next() {
 							value := iter.Value()
 
-							id, ok := extid.Lookup[ID](value)
+							id, ok := lookupID[ID](c, value)
 							it.Must.True(ok, "expected that value has an external ID reference")
 
 							ent, found, err := subject.FindByID(c.MakeContext(), id)

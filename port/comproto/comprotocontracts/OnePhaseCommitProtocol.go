@@ -7,6 +7,7 @@ import (
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Option) contract.Contract {
@@ -22,6 +23,13 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			t.Must.Nil(subject.CommitTx(tx))
 		})
 
+		s.Test(`CommitTx cancels the context`, func(t *testcase.T) {
+			tx, err := subject.BeginTx(c.MakeContext())
+			t.Must.Nil(err)
+			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.ErrorIs(tx.Err(), context.Canceled)
+		})
+
 		s.Test(`BeginTx + multiple CommitTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
@@ -33,6 +41,13 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			tx, err := subject.BeginTx(c.MakeContext())
 			t.Must.Nil(err)
 			t.Must.Nil(subject.RollbackTx(tx))
+		})
+
+		s.Test(`RollbackTx cancels the context`, func(t *testcase.T) {
+			tx, err := subject.BeginTx(c.MakeContext())
+			t.Must.Nil(err)
+			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple RollbackTx, yields error`, func(t *testcase.T) {
@@ -83,6 +98,38 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 
 			t.Must.Nil(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
 			t.Must.NotNil(subject.CommitTx(tx1), `"outer" comproto should be already done`)
+		})
+
+		s.Test("CommitTx and context cancellation behaviour with nested context", func(t *testcase.T) {
+			tx1, err := subject.BeginTx(c.MakeContext())
+			t.Must.Nil(err)
+
+			tx2, err := subject.BeginTx(tx1)
+			t.Must.Nil(err)
+
+			t.Must.NoError(subject.CommitTx(tx2)) // commit innert tx
+			assert.ErrorIs(t, context.Canceled, tx2.Err())
+			assert.NoError(t, tx1.Err())
+
+			t.Must.Nil(subject.CommitTx(tx1))
+			assert.ErrorIs(t, context.Canceled, tx1.Err())
+		})
+
+		s.Test("RollbackTx and context cancellation behaviour with nested context", func(t *testcase.T) {
+			tx1, err := subject.BeginTx(c.MakeContext())
+			t.Must.Nil(err)
+
+			tx2, err := subject.BeginTx(tx1)
+			t.Must.Nil(err)
+
+			t.Must.NoError(subject.RollbackTx(tx2)) // commit innert tx
+			assert.ErrorIs(t, context.Canceled, tx2.Err())
+			t.Log("note: We can't guarantee that rollback is not related to an error use-case")
+			t.Log("      or that the commit protocol support true nested transactions")
+			t.Log("      so we leave open for interpretation how the parent context cancellation should behave.")
+
+			_ = subject.RollbackTx(tx1)
+			assert.ErrorIs(t, context.Canceled, tx1.Err())
 		})
 	})
 

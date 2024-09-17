@@ -16,19 +16,18 @@ import (
 
 const ErrNotImplementedBySource errorkit.Error = "the method is not implemented by the cache source"
 
-type EntityRepository[Entity, ID any] interface {
-	crud.Creator[Entity]
-	crud.Updater[Entity]
-	crud.Finder[Entity, ID]
+type EntityRepository[ENT, ID any] interface {
+	crud.Creator[ENT]
+	crud.Updater[ENT]
+	crud.Finder[ENT, ID]
 	crud.Deleter[ID]
-	crud.ByIDsFinder[Entity, ID]
-	Upsert(ctx context.Context, ptrs ...*Entity) error // TODO: replace Upsert with crud.Saver
+	crud.ByIDsFinder[ENT, ID]
+	crud.Saver[ENT]
 }
 
 // HitRepository is the query hit result repository.
 type HitRepository[EntID any] interface {
-	crud.Creator[Hit[EntID]]
-	crud.Updater[Hit[EntID]]
+	crud.Saver[Hit[EntID]]
 	crud.Finder[Hit[EntID], HitID]
 	crud.Deleter[HitID]
 }

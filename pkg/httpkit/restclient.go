@@ -23,7 +23,7 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 )
 
-type RestClient[Entity, ID any] struct {
+type RestClient[ENT, ID any] struct {
 	// BaseURL [required] is the url base that the rest client will use to
 	BaseURL string
 	// HTTPClient [optional] will be used to make the http requests from the rest client.
@@ -34,10 +34,10 @@ type RestClient[Entity, ID any] struct {
 	//
 	// default: httpkit.DefaultSerializer.MIMEType
 	MediaType string
-	// Mapping [optional] is used if the Entity must be mapped into a DTO type prior to serialization.
+	// Mapping [optional] is used if the ENT must be mapped into a DTO type prior to serialization.
 	//
-	// default: Entity type is used as the DTO type.
-	Mapping dtokit.Mapper[Entity]
+	// default: ENT type is used as the DTO type.
+	Mapping dtokit.Mapper[ENT]
 	// Serializer [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultSerializers will be used to find a matching serializer for the given media type.
@@ -47,10 +47,10 @@ type RestClient[Entity, ID any] struct {
 	//
 	// default: httpkit.IDConverter[ID]
 	IDConverter idConverter[ID]
-	// LookupID [optional] is used to lookup the ID value in an Entity value.
+	// LookupID [optional] is used to lookup the ID value in an ENT value.
 	//
-	// default: extid.Lookup[ID, Entity]
-	LookupID crud.LookupIDFunc[Entity, ID]
+	// default: extid.Lookup[ID, ENT]
+	LookupID extid.LookupIDFunc[ENT, ID]
 	// WithContext [optional] allows you to add data to the context for requests.
 	// If you need to select a RESTful subresource and return it as a RestClient,
 	// you can use this function to add the selected resource's path parameter
@@ -65,12 +65,12 @@ type RestClientSerializer interface {
 	codec.ListDecoderMaker
 }
 
-func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
+func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 
 	if ptr == nil {
 		return fmt.Errorf("nil pointer (%s) received",
-			reflectkit.TypeOf[Entity]().String())
+			reflectkit.TypeOf[ENT]().String())
 	}
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -133,7 +133,7 @@ func (r RestClient[Entity, ID]) Create(ctx context.Context, ptr *Entity) error {
 	return nil
 }
 
-func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT] {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -141,7 +141,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
-		return iterators.Error[Entity](err)
+		return iterators.Error[ENT](err)
 	}
 
 	reqURL := pathkit.Join(baseURL, "/")
@@ -150,7 +150,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 	//mapping := r.getMapping()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return iterators.Error[Entity](err)
+		return iterators.Error[ENT](err)
 	}
 
 	reqMediaType := r.getMediaType()
@@ -161,7 +161,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
-		return iterators.Error[Entity](err)
+		return iterators.Error[ENT](err)
 	}
 
 	details = append(details, logging.Field("status code", resp.StatusCode))
@@ -170,19 +170,19 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 
 	respMediaType, ser, ok := r.contentTypeBasedSerializer(resp)
 	if !ok {
-		return iterators.Error[Entity](fmt.Errorf("no serializer configured for response content type: %s", respMediaType))
+		return iterators.Error[ENT](fmt.Errorf("no serializer configured for response content type: %s", respMediaType))
 	}
 
 	details = append(details, logging.Field("response content type", respMediaType))
 
 	dm, ok := ser.(codec.ListDecoderMaker)
 	if !ok {
-		return iterators.Error[Entity](fmt.Errorf("no serializer found for the received mime type"))
+		return iterators.Error[ENT](fmt.Errorf("no serializer found for the received mime type"))
 	}
 
 	dec := dm.MakeListDecoder(resp.Body)
 
-	return iterators.Func[Entity](func() (v Entity, ok bool, err error) {
+	return iterators.Func[ENT](func() (v ENT, ok bool, err error) {
 		if !dec.Next() {
 			return v, false, dec.Err()
 		}
@@ -201,7 +201,7 @@ func (r RestClient[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[
 	}, iterators.OnClose(dec.Close))
 }
 
-func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity, found bool, err error) {
+func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -214,7 +214,7 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 	}()
 
 	details = append(details,
-		logging.Field("entity type", reflectkit.TypeOf[Entity]().String()),
+		logging.Field("entity type", reflectkit.TypeOf[ENT]().String()),
 		logging.Field("id", id),
 	)
 
@@ -287,9 +287,9 @@ func (r RestClient[Entity, ID]) FindByID(ctx context.Context, id ID) (ent Entity
 	return got, true, nil
 }
 
-func (r RestClient[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
+func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[ENT] {
 	var index int
-	return iterators.Func[Entity](func() (v Entity, ok bool, err error) {
+	return iterators.Func[ENT](func() (v ENT, ok bool, err error) {
 		if err := ctx.Err(); err != nil {
 			return v, false, err
 		}
@@ -309,12 +309,12 @@ func (r RestClient[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterat
 	})
 }
 
-func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
+func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 
 	if ptr == nil {
 		return fmt.Errorf("nil pointer (%s) received",
-			reflectkit.TypeOf[Entity]().String())
+			reflectkit.TypeOf[ENT]().String())
 	}
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -324,7 +324,7 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 
 	var lookupID = r.LookupID
 	if lookupID == nil {
-		lookupID = extid.Lookup[ID, Entity]
+		lookupID = extid.Lookup[ID, ENT]
 	}
 
 	ser := r.getSerializer(r.getMediaType())
@@ -333,7 +333,7 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	id, ok := lookupID(*ptr)
 	if !ok {
 		return fmt.Errorf("unable to find the %s in %s, try configure ResourceClient.LookupID",
-			reflectkit.TypeOf[ID]().String(), reflectkit.TypeOf[Entity]().String())
+			reflectkit.TypeOf[ID]().String(), reflectkit.TypeOf[ENT]().String())
 	}
 
 	pathParamID, err := r.getIDConverter().FormatID(id)
@@ -389,7 +389,7 @@ func (r RestClient[Entity, ID]) Update(ctx context.Context, ptr *Entity) error {
 	return nil
 }
 
-func (r RestClient[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	ctx = r.withContext(ctx)
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -428,7 +428,7 @@ func (r RestClient[Entity, ID]) DeleteByID(ctx context.Context, id ID) error {
 	return nil
 }
 
-func (r RestClient[Entity, ID]) DeleteAll(ctx context.Context) error {
+func (r RestClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 	ctx = r.withContext(ctx)
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -458,7 +458,7 @@ func (r RestClient[Entity, ID]) DeleteAll(ctx context.Context) error {
 	return nil
 }
 
-func (r RestClient[Entity, ID]) getIDConverter() idConverter[ID] {
+func (r RestClient[ENT, ID]) getIDConverter() idConverter[ID] {
 	if r.IDConverter != nil {
 		return r.IDConverter
 	}
@@ -469,7 +469,7 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RestClient[Entity, ID]) getSerializer(mimeType string) Serializer {
+func (r RestClient[ENT, ID]) getSerializer(mimeType string) Serializer {
 	if r.Serializer != nil {
 		return r.Serializer
 	}
@@ -479,7 +479,7 @@ func (r RestClient[Entity, ID]) getSerializer(mimeType string) Serializer {
 	return DefaultSerializer.Serializer
 }
 
-func (r RestClient[Entity, ID]) lookupSerializer(mimeType string) (Serializer, bool) {
+func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (Serializer, bool) {
 	mimeType = getMediaType(mimeType)
 	for mt, ser := range DefaultSerializers {
 		if getMediaType(mt) == mimeType {
@@ -489,7 +489,7 @@ func (r RestClient[Entity, ID]) lookupSerializer(mimeType string) (Serializer, b
 	return nil, false
 }
 
-func (r RestClient[Entity, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
+func (r RestClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
 	mt := string(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
 	if !ok && r.Serializer != nil {
@@ -508,18 +508,18 @@ var DefaultRestClientHTTPClient http.Client = http.Client{
 	Timeout: 25 * time.Second,
 }
 
-func (r RestClient[Entity, ID]) httpClient() *http.Client {
+func (r RestClient[ENT, ID]) httpClient() *http.Client {
 	return zerokit.Coalesce(r.HTTPClient, &DefaultRestClientHTTPClient)
 }
 
-func (r RestClient[Entity, ID]) getMapping() dtokit.Mapper[Entity] {
+func (r RestClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
 	if r.Mapping == nil {
-		return passthroughMappingMode[Entity]()
+		return passthroughMappingMode[ENT]()
 	}
 	return r.Mapping
 }
 
-func (r RestClient[Entity, ID]) getMediaType() string {
+func (r RestClient[ENT, ID]) getMediaType() string {
 	var zero string
 	if r.MediaType != zero {
 		return r.MediaType
@@ -527,11 +527,11 @@ func (r RestClient[Entity, ID]) getMediaType() string {
 	return DefaultSerializer.MediaType
 }
 
-func (r RestClient[Entity, ID]) getBaseURL(ctx context.Context) (string, error) {
+func (r RestClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {
 	return pathsubst(ctx, r.BaseURL)
 }
 
-func (r RestClient[Entity, ID]) withContext(ctx context.Context) context.Context {
+func (r RestClient[ENT, ID]) withContext(ctx context.Context) context.Context {
 	if r.WithContext != nil {
 		return r.WithContext(ctx)
 	}

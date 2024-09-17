@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase/assert"
 
@@ -17,12 +16,12 @@ import (
 )
 
 // Updater will request an update for a wrapped entity object in the Resource
-func Updater[Entity, ID any](ssubject subjectUpdater[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
+func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
 	c := option.Use[Config[Entity, ID]](opts)
 	s := testcase.NewSpec(nil)
 
 	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(), ssubject)
+		spechelper.TryCleanup(t, c.MakeContext(), subject)
 	})
 
 	var (
@@ -31,40 +30,33 @@ func Updater[Entity, ID any](ssubject subjectUpdater[Entity, ID], opts ...Option
 		})
 		entityWithChanges = testcase.Var[*Entity]{ID: `entity-with-changes`}
 	)
-	subject := func(t *testcase.T) error {
-		return ssubject.Update(
+	act := func(t *testcase.T) error {
+		return subject.Update(
 			requestContext.Get(t),
 			entityWithChanges.Get(t),
 		)
 	}
 
-	updaterBenchmark[Entity, ID](s, ssubject, c)
+	updaterBenchmark[Entity, ID](s, subject, c)
 
 	s.When(`an entity already stored`, func(s *testcase.Spec) {
-		entity := testcase.Let(s, func(t *testcase.T) *Entity {
+		ptr := testcase.Let(s, func(t *testcase.T) *Entity {
 			ent := pointer.Of(c.MakeEntity(t))
-			crudtest.Create[Entity, ID](t, ssubject, c.MakeContext(), ent)
+			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ent)
 			return ent
 		}).EagerLoading(s)
 
 		s.And(`the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 			entityWithChanges.Let(s, func(t *testcase.T) *Entity {
-				id, ok := extid.Lookup[ID](entity.Get(t))
-				t.Must.True(ok)
-				var ent = entity.Get(t)
-				if chEnt := c.ChangeEntity; chEnt != nil {
-					chEnt(t, ent)
-				} else {
-					ent = pointer.Of(c.MakeEntity(t))
-				}
-				assert.Must(t).Nil(extid.Set(ent, id))
-				return ent
+				v := *ptr.Get(t)
+				changeENT[Entity, ID](t, c, &v)
+				return &v
 			})
 
 			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
-				assert.Must(t).Nil(subject(t))
+				assert.Must(t).Nil(act(t))
 
-				crudtest.HasEntity[Entity, ID](t, ssubject, c.MakeContext(), entityWithChanges.Get(t))
+				crudtest.HasEntity[Entity, ID](t, subject, c.MakeContext(), entityWithChanges.Get(t))
 			})
 
 			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -75,7 +67,7 @@ func Updater[Entity, ID any](ssubject subjectUpdater[Entity, ID], opts ...Option
 				})
 
 				s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-					assert.Must(t).ErrorIs(context.Canceled, subject(t))
+					assert.Must(t).ErrorIs(context.Canceled, act(t))
 				})
 			})
 		})
@@ -84,13 +76,13 @@ func Updater[Entity, ID any](ssubject subjectUpdater[Entity, ID], opts ...Option
 	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
 		entityWithChanges.Let(s, func(t *testcase.T) *Entity {
 			newEntity := pointer.Of(c.MakeEntity(t))
-			crudtest.Create[Entity, ID](t, ssubject, c.MakeContext(), newEntity)
-			crudtest.Delete[Entity, ID](t, ssubject, c.MakeContext(), newEntity)
+			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), newEntity)
+			crudtest.Delete[Entity, ID](t, subject, c.MakeContext(), newEntity)
 			return newEntity
 		})
 
 		s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
-			t.Must.ErrorIs(crud.ErrNotFound, subject(t))
+			t.Must.ErrorIs(crud.ErrNotFound, act(t))
 		})
 	})
 

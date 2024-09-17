@@ -23,7 +23,7 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 			return &v
 		})
 		getID = func(t *testcase.T) ID {
-			id, _ := extid.Lookup[ID](ptr.Get(t))
+			id, _ := lookupID[ID](c, *ptr.Get(t))
 			return id
 		}
 	)
@@ -31,7 +31,7 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 		ctx := ctxVar.Get(t)
 		err := subject.Create(ctx, ptr.Get(t))
 		if err == nil {
-			id, _ := extid.Lookup[ID](ptr.Get(t))
+			id, _ := lookupID[ID](c, *ptr.Get(t))
 			t.Defer(subject.DeleteByID, ctx, id)
 			IsPresent[Entity, ID](t, subject, ctx, id)
 		}

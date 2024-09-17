@@ -49,7 +49,7 @@ func TestScheduler(t *testing.T) {
 	s.HasSideEffect()
 
 	var (
-		repository = testcase.Let(s, func(t *testcase.T) tasker.Repository {
+		repository = testcase.Let(s, func(t *testcase.T) tasker.SchedulerRepository {
 			return &memory.TaskerScheduleRepository{}
 		})
 	)
@@ -61,7 +61,7 @@ func TestScheduler(t *testing.T) {
 
 	s.Describe(".WithSchedule", func(s *testcase.Spec) {
 		var (
-			jobID    = let.As[tasker.StateID](let.String(s))
+			jobID    = let.As[tasker.ScheduleStateID](let.String(s))
 			interval = let.As[time.Duration](let.IntB(s, int(time.Hour), 24*int(time.Hour)))
 
 			ran = testcase.LetValue[int](s, 0)

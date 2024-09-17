@@ -10,21 +10,21 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-type Scheduler struct{ Repository Repository }
+type Scheduler struct{ Repository SchedulerRepository }
 
-type Repository interface {
-	Locks() guard.LockerFactory[StateID]
-	States() StateRepository
+type SchedulerRepository interface {
+	Locks() guard.LockerFactory[ScheduleStateID]
+	States() ScheduleStateRepository
 }
 
-type StateRepository interface {
-	crud.Creator[State]
-	crud.Updater[State]
-	crud.ByIDDeleter[StateID]
-	crud.ByIDFinder[State, StateID]
+type ScheduleStateRepository interface {
+	crud.Creator[ScheduleState]
+	crud.Updater[ScheduleState]
+	crud.ByIDDeleter[ScheduleStateID]
+	crud.ByIDFinder[ScheduleState, ScheduleStateID]
 }
 
-func (s Scheduler) WithSchedule(id StateID, interval Interval, job Task) Task {
+func (s Scheduler) WithSchedule(id ScheduleStateID, interval Interval, job Task) Task {
 	locker := s.Repository.Locks().LockerFor(id)
 
 	next := func(ctx context.Context) (_ time.Duration, rErr error) {
@@ -39,7 +39,7 @@ func (s Scheduler) WithSchedule(id StateID, interval Interval, job Task) Task {
 			return 0, err
 		}
 		if !found {
-			state = State{
+			state = ScheduleState{
 				ID:        id,
 				Timestamp: time.Time{}.UTC(),
 			}
@@ -76,9 +76,9 @@ func (s Scheduler) WithSchedule(id StateID, interval Interval, job Task) Task {
 	}
 }
 
-type State struct {
-	ID        StateID `ext:"id"`
+type ScheduleState struct {
+	ID        ScheduleStateID `ext:"id"`
 	Timestamp time.Time
 }
 
-type StateID string
+type ScheduleStateID string

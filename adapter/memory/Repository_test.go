@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/meta"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
@@ -53,5 +54,17 @@ func TestRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *te
 	ent := random.New(random.CryptoSeed{}).Make(TestEntity{}).(TestEntity)
 	ent.ID = ""
 	Create[TestEntity, string](t, s1, ctx, &ent)
-	IsAbsent[TestEntity, string](t, s2, ctx, HasID[TestEntity, string](t, ent))
+	IsAbsent[TestEntity, string](t, s2, ctx, ent.ID)
+}
+
+func TestRepository_Create_expectID(t *testing.T) {
+	m := memory.NewMemory()
+	r := memory.NewRepository[TestEntity, string](m)
+	r.ExpectID = true
+
+	ctx := context.Background()
+	assert.Error(t, r.Create(ctx, &TestEntity{Data: "boom"}))
+	assert.NoError(t, r.Create(ctx, &TestEntity{ID: "1", Data: "boom"}))
+	assert.Error(t, r.Save(ctx, &TestEntity{Data: "boom"}))
+	assert.NoError(t, r.Save(ctx, &TestEntity{ID: "1", Data: "boom"}))
 }
