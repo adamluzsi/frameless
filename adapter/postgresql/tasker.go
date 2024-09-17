@@ -26,29 +26,29 @@ func (r TaskerScheduleRepository) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (r TaskerScheduleRepository) Locks() guard.LockerFactory[tasker.StateID] {
-	return LockerFactory[tasker.StateID]{Connection: r.Connection}
+func (r TaskerScheduleRepository) Locks() guard.LockerFactory[tasker.ScheduleStateID] {
+	return LockerFactory[tasker.ScheduleStateID]{Connection: r.Connection}
 }
 
-func (r TaskerScheduleRepository) States() tasker.StateRepository {
+func (r TaskerScheduleRepository) States() tasker.ScheduleStateRepository {
 	return TaskerScheduleStateRepository{Connection: r.Connection}
 }
 
 type TaskerScheduleStateRepository struct{ Connection Connection }
 
-func (r TaskerScheduleStateRepository) repository() Repository[tasker.State, tasker.StateID] {
-	return Repository[tasker.State, tasker.StateID]{
+func (r TaskerScheduleStateRepository) repository() Repository[tasker.ScheduleState, tasker.ScheduleStateID] {
+	return Repository[tasker.ScheduleState, tasker.ScheduleStateID]{
 		Mapping:    taskerScheduleStateRepositoryMapping,
 		Connection: r.Connection,
 	}
 }
 
-var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.StateID]{
+var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.ScheduleState, tasker.ScheduleStateID]{
 	TableName: "frameless_tasker_schedule_states",
 
-	ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[tasker.State]) {
+	ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[tasker.ScheduleState]) {
 		return []flsql.ColumnName{"id", "timestamp"},
-			func(state *tasker.State, s flsql.Scanner) error {
+			func(state *tasker.ScheduleState, s flsql.Scanner) error {
 				if err := s.Scan(&state.ID, &state.Timestamp); err != nil {
 					return err
 				}
@@ -57,25 +57,25 @@ var taskerScheduleStateRepositoryMapping = flsql.Mapping[tasker.State, tasker.St
 			}
 	},
 
-	QueryID: func(si tasker.StateID) (flsql.QueryArgs, error) {
+	QueryID: func(si tasker.ScheduleStateID) (flsql.QueryArgs, error) {
 		return flsql.QueryArgs{"id": si}, nil
 	},
 
-	ToArgs: func(s tasker.State) (flsql.QueryArgs, error) {
+	ToArgs: func(s tasker.ScheduleState) (flsql.QueryArgs, error) {
 		return flsql.QueryArgs{
 			"id":        s.ID,
 			"timestamp": s.Timestamp,
 		}, nil
 	},
 
-	CreatePrepare: func(ctx context.Context, s *tasker.State) error {
+	CreatePrepare: func(ctx context.Context, s *tasker.ScheduleState) error {
 		if s.ID == "" {
-			return fmt.Errorf("tasker.State.ID is required to be supplied externally")
+			return fmt.Errorf("tasker.ScheduleState.ID is required to be supplied externally")
 		}
 		return nil
 	},
 
-	ID: func(s *tasker.State) *tasker.StateID {
+	ID: func(s *tasker.ScheduleState) *tasker.ScheduleStateID {
 		return &s.ID
 	},
 }
@@ -89,18 +89,18 @@ func (r TaskerScheduleStateRepository) Migrate(ctx context.Context) error {
 	}).Migrate(ctx)
 }
 
-func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *tasker.State) error {
+func (r TaskerScheduleStateRepository) Create(ctx context.Context, ptr *tasker.ScheduleState) error {
 	return r.repository().Create(ctx, ptr)
 }
 
-func (r TaskerScheduleStateRepository) Update(ctx context.Context, ptr *tasker.State) error {
+func (r TaskerScheduleStateRepository) Update(ctx context.Context, ptr *tasker.ScheduleState) error {
 	return r.repository().Update(ctx, ptr)
 }
 
-func (r TaskerScheduleStateRepository) DeleteByID(ctx context.Context, id tasker.StateID) error {
+func (r TaskerScheduleStateRepository) DeleteByID(ctx context.Context, id tasker.ScheduleStateID) error {
 	return r.repository().DeleteByID(ctx, id)
 }
 
-func (r TaskerScheduleStateRepository) FindByID(ctx context.Context, id tasker.StateID) (ent tasker.State, found bool, err error) {
+func (r TaskerScheduleStateRepository) FindByID(ctx context.Context, id tasker.ScheduleStateID) (ent tasker.ScheduleState, found bool, err error) {
 	return r.repository().FindByID(ctx, id)
 }

@@ -5,20 +5,11 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapter/postgresql"
+	"go.llib.dev/frameless/adapter/postgresql/internal"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/port/migration/migrationcontracts"
+	"go.llib.dev/testcase/assert"
 )
-
-const queryStateRepoCreate = `
-CREATE TABLE IF NOT EXISTS frameless_schema_migrations_test (
-    id BIGSERIAL PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    namespace TEXT    NOT NULL,
-	version   TEXT    NOT NULL,
-	dirty     BOOLEAN NOT NULL
-);
-`
 
 func TestMigrationStateRepository(t *testing.T) {
 	logger.Testing(t)
@@ -26,7 +17,10 @@ func TestMigrationStateRepository(t *testing.T) {
 	repo := postgresql.NewMigrationStateRepository(conn)
 	repo.Mapping.TableName = "frameless_schema_migrations_test"
 	ctx := context.Background()
-	conn.ExecContext(ctx, queryStateRepoCreate)
+	queryStateRepoCreate, err := internal.QueryEnsureSchemaMigrationsTable(repo.Mapping.TableName)
+	assert.NoError(t, err)
+	_, err = conn.ExecContext(ctx, queryStateRepoCreate)
+	assert.NoError(t, err)
 	t.Cleanup(func() { conn.ExecContext(ctx, `DROP TABLE IF EXISTS frameless_schema_migrations_test`) })
 	migrationcontracts.StateRepository(repo).Test(t)
 }

@@ -46,6 +46,8 @@ go.llib.dev/frameless v0.232.0 h1:pGMbTF2w/vhNt9erdEjjUuc3w1b01TkE57nwNikR0H4=
 go.llib.dev/frameless v0.232.0/go.mod h1:43J2aaphdNRiAVZM+nZAMI7QcxkfnOmXy/m1jxbw9r0=
 go.llib.dev/frameless v0.233.0 h1:yHUx5HZiigI+KwdXOapoy96JVo6bZJC4tXbWW9vN88I=
 go.llib.dev/frameless v0.233.0/go.mod h1:43J2aaphdNRiAVZM+nZAMI7QcxkfnOmXy/m1jxbw9r0=
+go.llib.dev/frameless v0.242.0 h1:+rhY05gIPQ1Ls7IN35ED84yWBXQiyq8MU0xHV/hZYYU=
+go.llib.dev/frameless v0.242.0/go.mod h1:Ri9hRnnJJWjz/Nn54OWZrM/EzVhuKWOwUWJkfd/2ZpM=
 go.llib.dev/testcase v0.143.0 h1:B2wbIrhPwevmHpMzBXPQCVpk6Cc4bUEZxpvZXnbhsxs=
 go.llib.dev/testcase v0.143.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 go.llib.dev/testcase v0.144.0 h1:TPymgbj/nYHWKN19XTqa3XuqDCU4wGuIbBe7KsNVgJg=
@@ -64,6 +66,7 @@ go.llib.dev/testcase v0.156.4/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkIt
 go.llib.dev/testcase v0.158.0 h1:uIpGmgB9Nd3fQgZ6vjRh2+73aNDwiox5fSfByfUMeqE=
 go.llib.dev/testcase v0.158.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 go.llib.dev/testcase v0.160.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/testcase v0.161.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 golang.org/x/crypto v0.14.0 h1:wBqGXzWJW6m1XrIKlAH0Hs1JJ7+9KBwnIO8v66Q9cHc=
 golang.org/x/crypto v0.14.0/go.mod h1:MVFd36DqK4CsrnJYDkBA3VC4m2GkXAM0PvzMCn4JQf4=
 golang.org/x/crypto v0.18.0 h1:PGVlW0xEltQnzFZ55hkuX5+KLyrMYhHld1YHO4AKcdc=

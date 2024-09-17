@@ -23,12 +23,12 @@ import (
 // The Repository supplier itself is a stateless entity.
 //
 // SRP: DBA
-type Repository[Entity, ID any] struct {
+type Repository[ENT, ID any] struct {
 	Connection Connection
-	Mapping    flsql.Mapping[Entity, ID]
+	Mapping    flsql.Mapping[ENT, ID]
 }
 
-func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr error) {
+func (r Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) (rErr error) {
 	if ptr == nil {
 		return fmt.Errorf("nil entity pointer given to Create")
 	}
@@ -47,7 +47,7 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 		}
 		if found {
 			return errorkit.With(crud.ErrAlreadyExists).
-				Detailf(`%T already exists with id: %v`, *new(Entity), id).
+				Detailf(`%T already exists with id: %v`, *new(ENT), id).
 				Context(ctx).
 				Unwrap()
 		}
@@ -87,7 +87,7 @@ func (r Repository[Entity, ID]) Create(ctx context.Context, ptr *Entity) (rErr e
 	return nil
 }
 
-func (r Repository[Entity, ID]) idQuery(id ID, nextPlaceholder func() string) (whereClause []string, queryArgs []any, _ error) {
+func (r Repository[ENT, ID]) idQuery(id ID, nextPlaceholder func() string) (whereClause []string, queryArgs []any, _ error) {
 	idArgs, err := r.Mapping.QueryID(id)
 	if err != nil {
 		return nil, nil, err
@@ -99,10 +99,10 @@ func (r Repository[Entity, ID]) idQuery(id ID, nextPlaceholder func() string) (w
 	return whereClause, queryArgs, nil
 }
 
-func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bool, error) {
+func (r Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, error) {
 	idArgs, err := r.Mapping.QueryID(id)
 	if err != nil {
-		return *new(Entity), false, fmt.Errorf("QueryID: %w", err)
+		return *new(ENT), false, fmt.Errorf("QueryID: %w", err)
 	}
 
 	cols, scan := r.Mapping.ToQuery(ctx)
@@ -126,21 +126,21 @@ func (r Repository[Entity, ID]) FindByID(ctx context.Context, id ID) (Entity, bo
 
 	row := r.Connection.QueryRowContext(ctx, query, queryArgs...)
 
-	var v Entity
+	var v ENT
 	err = scan(&v, row)
 
 	if errors.Is(err, errNoRows) {
-		return *new(Entity), false, nil
+		return *new(ENT), false, nil
 	}
 
 	if err != nil {
-		return *new(Entity), false, err
+		return *new(ENT), false, err
 	}
 
 	return v, true, nil
 }
 
-func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
+func (r Repository[ENT, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	ctx, err := r.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -159,7 +159,7 @@ func (r Repository[Entity, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	return nil
 }
 
-func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
+func (r Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) (rErr error) {
 	idWhereClause, idQueryArgs, err := r.idQuery(id, makePrepareStatementPlaceholderGenerator())
 	if err != nil {
 		return err
@@ -189,7 +189,7 @@ func (r Repository[Entity, ID]) DeleteByID(ctx context.Context, id ID) (rErr err
 	return nil
 }
 
-func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr error) {
+func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) (rErr error) {
 	if ptr == nil {
 		return fmt.Errorf("Update: nil entity pointer received")
 	}
@@ -250,19 +250,19 @@ func (r Repository[Entity, ID]) Update(ctx context.Context, ptr *Entity) (rErr e
 	return nil
 }
 
-func (r Repository[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+func (r Repository[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT] {
 	cols, scan := r.Mapping.ToQuery(ctx)
 	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.Mapping.TableName)
 
 	rows, err := r.Connection.QueryContext(ctx, query)
 	if err != nil {
-		return iterators.Error[Entity](err)
+		return iterators.Error[ENT](err)
 	}
 
-	return flsql.MakeSQLRowsIterator[Entity](rows, scan)
+	return flsql.MakeSQLRowsIterator[ENT](rows, scan)
 }
 
-func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
+func (r Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[ENT] {
 	var (
 		whereClause []string
 		queryArgs   []any
@@ -272,7 +272,7 @@ func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterat
 	for _, id := range ids {
 		idWhere, idArgs, err := r.idQuery(id, nextPlaceholder)
 		if err != nil {
-			return iterators.Error[Entity](err)
+			return iterators.Error[ENT](err)
 		}
 		whereClause = append(whereClause, fmt.Sprintf("(%s)", strings.Join(idWhere, " AND ")))
 		queryArgs = append(queryArgs, idArgs...)
@@ -285,29 +285,29 @@ func (r Repository[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterat
 
 	rows, err := r.Connection.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
-		return iterators.Error[Entity](err)
+		return iterators.Error[ENT](err)
 	}
 
-	return &iterFindByIDs[Entity, ID]{
-		Iterator:    flsql.MakeSQLRowsIterator[Entity](rows, scan),
+	return &iterFindByIDs[ENT, ID]{
+		Iterator:    flsql.MakeSQLRowsIterator[ENT](rows, scan),
 		mapping:     r.Mapping,
 		expectedIDs: ids,
 	}
 }
 
-type iterFindByIDs[Entity, ID any] struct {
-	iterators.Iterator[Entity]
-	mapping     flsql.Mapping[Entity, ID]
+type iterFindByIDs[ENT, ID any] struct {
+	iterators.Iterator[ENT]
+	mapping     flsql.Mapping[ENT, ID]
 	done        bool
 	expectedIDs []ID
 	foundIDs    zerokit.V[map[string]struct{}]
 }
 
-func (iter *iterFindByIDs[Entity, ID]) Err() error {
+func (iter *iterFindByIDs[ENT, ID]) Err() error {
 	return errorkit.Merge(iter.Iterator.Err(), iter.missingIDsErr())
 }
 
-func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
+func (iter *iterFindByIDs[ENT, ID]) missingIDsErr() error {
 	if !iter.done {
 		return nil
 	}
@@ -326,7 +326,7 @@ func (iter *iterFindByIDs[Entity, ID]) missingIDsErr() error {
 	return fmt.Errorf("not all ID is retrieved by FindByIDs: %#v", missing)
 }
 
-func (iter *iterFindByIDs[Entity, ID]) Next() bool {
+func (iter *iterFindByIDs[ENT, ID]) Next() bool {
 	gotNext := iter.Iterator.Next()
 	if gotNext {
 
@@ -339,14 +339,17 @@ func (iter *iterFindByIDs[Entity, ID]) Next() bool {
 	return gotNext
 }
 
-func (iter *iterFindByIDs[Entity, ID]) idFoundKey(id ID) string {
+func (iter *iterFindByIDs[ENT, ID]) idFoundKey(id ID) string {
 	return fmt.Sprintf("%v", id)
 }
 
-func (r Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rErr error) {
+// Upsert
+//
+// DEPRECATED: use Repository.Save instead
+func (r Repository[ENT, ID]) Upsert(ctx context.Context, ptrs ...*ENT) (rErr error) {
 	var (
-		ptrWithID    []*Entity
-		ptrWithoutID []*Entity
+		ptrWithID    []*ENT
+		ptrWithoutID []*ENT
 	)
 	for _, ptr := range ptrs {
 		id, _ := extid.Lookup[ID](ptr)
@@ -365,7 +368,17 @@ func (r Repository[Entity, ID]) Upsert(ctx context.Context, ptrs ...*Entity) (rE
 	return errorkit.Merge(r.upsertWithID(ctx, ptrWithID...), r.upsertWithoutID(ctx, ptrWithoutID...))
 }
 
-func (r Repository[Entity, ID]) upsertWithoutID(ctx context.Context, ptrs ...*Entity) error {
+func (r Repository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr error) {
+	if ptr == nil {
+		return fmt.Errorf("nil %T received", ptr)
+	}
+	if _, ok := r.Mapping.ID.Lookup(*ptr); ok {
+		return r.upsertWithID(ctx, ptr)
+	}
+	return r.upsertWithoutID(ctx, ptr)
+}
+
+func (r Repository[ENT, ID]) upsertWithoutID(ctx context.Context, ptrs ...*ENT) error {
 	for _, ptr := range ptrs {
 		if err := r.Create(ctx, ptr); err != nil {
 			return err
@@ -373,7 +386,7 @@ func (r Repository[Entity, ID]) upsertWithoutID(ctx context.Context, ptrs ...*En
 	}
 	return nil
 }
-func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entity) error {
+func (r Repository[ENT, ID]) upsertWithID(ctx context.Context, ptrs ...*ENT) error {
 	if len(ptrs) == 0 {
 		return nil
 	}
@@ -444,18 +457,18 @@ func (r Repository[Entity, ID]) upsertWithID(ctx context.Context, ptrs ...*Entit
 	return nil
 }
 
-func (r Repository[Entity, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+func (r Repository[ENT, ID]) BeginTx(ctx context.Context) (context.Context, error) {
 	return r.Connection.BeginTx(ctx)
 }
 
-func (r Repository[Entity, ID]) CommitTx(ctx context.Context) error {
+func (r Repository[ENT, ID]) CommitTx(ctx context.Context) error {
 	return r.Connection.CommitTx(ctx)
 }
 
-func (r Repository[Entity, ID]) RollbackTx(ctx context.Context) error {
+func (r Repository[ENT, ID]) RollbackTx(ctx context.Context) error {
 	return r.Connection.RollbackTx(ctx)
 }
 
-func (r Repository[Entity, ID]) quotedColumnsClause(cols []flsql.ColumnName) string {
+func (r Repository[ENT, ID]) quotedColumnsClause(cols []flsql.ColumnName) string {
 	return flsql.JoinColumnName(cols, "%q", ", ")
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"go.llib.dev/frameless/adapter/postgresql/internal"
 	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/port/migration"
 )
@@ -20,19 +21,14 @@ func makeMigrator(conn Connection, namespace string, steps migration.Steps[Conne
 	}
 }
 
-const queryEnsureSchemaMigrationsTable = `
-CREATE TABLE IF NOT EXISTS frameless_schema_migrations (
-    id BIGSERIAL PRIMARY KEY,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    namespace TEXT    NOT NULL,
-	version   TEXT    NOT NULL,
-	dirty     BOOLEAN NOT NULL
-);
-`
+const schemaMigrationsTableName = "frameless_schema_migrations"
 
 func EnsureStateRepository(ctx context.Context, conn Connection) error {
-	_, err := conn.ExecContext(ctx, queryEnsureSchemaMigrationsTable)
+	query, err := internal.QueryEnsureSchemaMigrationsTable(schemaMigrationsTableName)
+	if err != nil {
+		return err
+	}
+	_, err = conn.ExecContext(ctx, query)
 	return err
 }
 
@@ -40,7 +36,7 @@ func NewMigrationStateRepository(conn Connection) Repository[migration.State, mi
 	return Repository[migration.State, migration.StateID]{
 		Connection: conn,
 		Mapping: flsql.Mapping[migration.State, migration.StateID]{
-			TableName: "frameless_schema_migrations",
+			TableName: schemaMigrationsTableName,
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[migration.State]) {
 				return []flsql.ColumnName{"namespace", "version", "dirty"},
 					func(v *migration.State, s flsql.Scanner) error {

@@ -86,7 +86,6 @@ func (lck *lockerCtxValue) Unclock(ctx context.Context) (rerr error) {
 			rerr = err
 			return
 		}
-		rerr = ctx.Err()
 		lck.cancel()
 	})
 	return rerr
