@@ -12,7 +12,6 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
@@ -250,19 +249,23 @@ func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) (rErr error) 
 	return nil
 }
 
-func (r Repository[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT] {
+func (r Repository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	cols, scan := r.Mapping.ToQuery(ctx)
 	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.Mapping.TableName)
 
 	rows, err := r.Connection.QueryContext(ctx, query)
 	if err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
 
-	return flsql.MakeSQLRowsIterator[ENT](rows, scan)
+	return flsql.MakeSQLRowsIterator[ENT](rows, scan), nil
 }
 
-func (r Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[ENT] {
+func (r Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+	if len(ids) == 0 {
+		return iterators.Empty[ENT](), nil
+	}
+
 	var (
 		whereClause []string
 		queryArgs   []any
@@ -272,7 +275,7 @@ func (r Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators
 	for _, id := range ids {
 		idWhere, idArgs, err := r.idQuery(id, nextPlaceholder)
 		if err != nil {
-			return iterators.Error[ENT](err)
+			return nil, err
 		}
 		whereClause = append(whereClause, fmt.Sprintf("(%s)", strings.Join(idWhere, " AND ")))
 		queryArgs = append(queryArgs, idArgs...)
@@ -283,64 +286,21 @@ func (r Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s`,
 		r.quotedColumnsClause(selectClause), r.Mapping.TableName, strings.Join(whereClause, " OR "))
 
+	var count int
+	coundQuery := fmt.Sprintf(`SELECT COUNT(*) FROM (%s) AS src`, query)
+	if err := r.Connection.QueryRowContext(ctx, coundQuery, queryArgs...).Scan(&count); err != nil {
+		return nil, err
+	}
+	if count != len(ids) {
+		return nil, crud.ErrNotFound
+	}
+
 	rows, err := r.Connection.QueryContext(ctx, query, queryArgs...)
 	if err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
 
-	return &iterFindByIDs[ENT, ID]{
-		Iterator:    flsql.MakeSQLRowsIterator[ENT](rows, scan),
-		mapping:     r.Mapping,
-		expectedIDs: ids,
-	}
-}
-
-type iterFindByIDs[ENT, ID any] struct {
-	iterators.Iterator[ENT]
-	mapping     flsql.Mapping[ENT, ID]
-	done        bool
-	expectedIDs []ID
-	foundIDs    zerokit.V[map[string]struct{}]
-}
-
-func (iter *iterFindByIDs[ENT, ID]) Err() error {
-	return errorkit.Merge(iter.Iterator.Err(), iter.missingIDsErr())
-}
-
-func (iter *iterFindByIDs[ENT, ID]) missingIDsErr() error {
-	if !iter.done {
-		return nil
-	}
-
-	if len(iter.foundIDs.Get()) == len(iter.expectedIDs) {
-		return nil
-	}
-
-	var missing []ID
-	for _, id := range iter.expectedIDs {
-		if _, ok := iter.foundIDs.Get()[iter.idFoundKey(id)]; !ok {
-			missing = append(missing, id)
-		}
-	}
-
-	return fmt.Errorf("not all ID is retrieved by FindByIDs: %#v", missing)
-}
-
-func (iter *iterFindByIDs[ENT, ID]) Next() bool {
-	gotNext := iter.Iterator.Next()
-	if gotNext {
-
-		id, _ := extid.Lookup[ID](iter.Iterator.Value())
-		iter.foundIDs.Get()[iter.idFoundKey(id)] = struct{}{}
-	}
-	if !gotNext {
-		iter.done = true
-	}
-	return gotNext
-}
-
-func (iter *iterFindByIDs[ENT, ID]) idFoundKey(id ID) string {
-	return fmt.Sprintf("%v", id)
+	return flsql.MakeSQLRowsIterator[ENT](rows, scan), nil
 }
 
 // Upsert

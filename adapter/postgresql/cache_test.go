@@ -12,11 +12,14 @@ import (
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
 	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/spechelper/testent"
 )
 
 func TestRepository_cache(t *testing.T) {
+	logger.Testing(t)
+
 	cm := GetConnection(t)
 	src := memory.NewRepository[testent.Foo, testent.FooID](memory.NewMemory())
 	chcRepo := FooCacheRepository{Connection: cm}
