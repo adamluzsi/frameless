@@ -51,21 +51,23 @@ func ExampleRestResource() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
 	fooRestfulResource := httpkit.RestResource[X, XID]{
 		Create: fooRepository.Create,
-		Index: func(ctx context.Context) iterators.Iterator[X] { // example with query based filtering
-			foos := fooRepository.FindAll(ctx)
+		Index: func(ctx context.Context) (iterators.Iterator[X], error) { // example with query based filtering
+			foos, err := fooRepository.FindAll(ctx)
+			if err != nil {
+				return foos, err
+			}
 			req, _ := httpkit.LookupRequest(ctx)
-
 			if bt := req.URL.Query().Get("bigger"); bt != "" {
 				bigger, err := strconv.Atoi(bt)
 				if err != nil {
-					return iterators.Error[X](err)
+					return nil, err
 				}
 				foos = iterators.Filter(foos, func(foo X) bool {
 					return bigger < foo.N
 				})
 			}
 
-			return foos
+			return foos, nil
 		},
 
 		Show:    fooRepository.FindByID,
@@ -197,11 +199,11 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("index is provided", func(s *testcase.Spec) {
-				override := testcase.Let[func(ctx context.Context) iterators.Iterator[X]](s, nil)
+				override := testcase.Let[func(ctx context.Context) (iterators.Iterator[X], error)](s, nil)
 
 				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					h := subject.Super(t)
-					h.Index = func(ctx context.Context) iterators.Iterator[X] {
+					h.Index = func(ctx context.Context) (iterators.Iterator[X], error) {
 						return override.Get(t)(ctx)
 					}
 					return h
@@ -216,13 +218,13 @@ func TestResource_ServeHTTP(t *testing.T) {
 					})
 
 					receivedQuery := testcase.LetValue[url.Values](s, nil)
-					override.Let(s, func(t *testcase.T) func(ctx context.Context) iterators.Iterator[X] {
-						return func(ctx context.Context) iterators.Iterator[X] {
+					override.Let(s, func(t *testcase.T) func(ctx context.Context) (iterators.Iterator[X], error) {
+						return func(ctx context.Context) (iterators.Iterator[X], error) {
 							req, ok := httpkit.LookupRequest(ctx)
 							if ok {
 								receivedQuery.Set(t, req.URL.Query())
 							}
-							return iterators.SingleValue(x.Get(t))
+							return iterators.SingleValue(x.Get(t)), nil
 						}
 					})
 
@@ -248,9 +250,9 @@ func TestResource_ServeHTTP(t *testing.T) {
 				s.And("the returned result has an issue", func(s *testcase.Spec) {
 					expectedErr := let.Error(s)
 
-					override.Let(s, func(t *testcase.T) func(ctx context.Context) iterators.Iterator[X] {
-						return func(ctx context.Context) iterators.Iterator[X] {
-							return iterators.Error[X](expectedErr.Get(t))
+					override.Let(s, func(t *testcase.T) func(ctx context.Context) (iterators.Iterator[X], error) {
+						return func(ctx context.Context) (iterators.Iterator[X], error) {
+							return iterators.Error[X](expectedErr.Get(t)), nil
 						}
 					})
 
@@ -292,14 +294,14 @@ func TestResource_ServeHTTP(t *testing.T) {
 
 				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
 					sub := subject.Super(t)
-					sub.Index = func(ctx context.Context) iterators.Iterator[X] {
+					sub.Index = func(ctx context.Context) (iterators.Iterator[X], error) {
 						i := iterators.Slice([]X{{ID: 1, N: 1}, {ID: 2, N: 2}})
 						stub := iterators.Stub(i)
 						stub.StubClose = func() error {
 							isClosed.Set(t, true)
 							return i.Close()
 						}
-						return stub
+						return stub, nil
 					}
 					return sub
 				})
@@ -772,9 +774,9 @@ func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
 			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
 			return nil
 		},
-		Index: func(ctx context.Context) iterators.Iterator[Foo] {
+		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
 			indexC = true
-			return iterators.Empty[Foo]()
+			return iterators.Empty[Foo](), nil
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			showC = true
@@ -883,8 +885,8 @@ func TestRouter_Resource(t *testing.T) {
 	}
 
 	r.Resource("foo", httpkit.RestResource[Foo, FooID]{
-		Index: func(ctx context.Context) iterators.Iterator[Foo] {
-			return iterators.SingleValue(foo)
+		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+			return iterators.SingleValue(foo), nil
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			return foo, true, nil

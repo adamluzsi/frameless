@@ -127,7 +127,7 @@ func ByIDFinder[Entity, ID any](subject crud.ByIDFinder[Entity, ID], opts ...Opt
 func AllFinder[Entity, ID any](subject crud.AllFinder[Entity], opts ...Option[Entity, ID]) contract.Contract {
 	c := option.Use[Config[Entity, ID]](opts)
 	return QueryMany[Entity, ID](subject,
-		func(tb testing.TB, ctx context.Context) iterators.Iterator[Entity] {
+		func(tb testing.TB, ctx context.Context) (iterators.Iterator[Entity], error) {
 			return subject.FindAll(ctx)
 		},
 		zerokit.Coalesce(c.ExampleEntity, c.MakeEntity),
@@ -146,7 +146,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 		ids = testcase.Var[[]ID]{ID: `entities ids`}
 	)
-	var act = func(t *testcase.T) iterators.Iterator[ENT] {
+	var act = func(t *testcase.T) (iterators.Iterator[ENT], error) {
 		return subject.FindByIDs(ctx.Get(t), ids.Get(t)...)
 	}
 
@@ -169,8 +169,10 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 
 		s.Then(`result is an empty list`, func(t *testcase.T) {
-			count, err := iterators.Count(act(t))
-			t.Must.Nil(err)
+			iter, err := act(t)
+			assert.NoError(t, err)
+			count, err := iterators.Count(iter)
+			assert.NoError(t, err)
 			t.Must.Equal(0, count)
 		})
 	})
@@ -182,7 +184,9 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
-			actual, err := iterators.Collect(act(t))
+			iter, err := act(t)
+			assert.NoError(t, err)
+			actual, err := iterators.Collect(iter)
 			t.Must.Nil(err)
 			t.Must.ContainExactly(expected, actual)
 		})
@@ -198,9 +202,25 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 				crudtest.Delete[ENT, ID](t, deleter, ctx.Get(t), ent1.Get(t))
 			})
 
-			s.Then(`it will eventually yield error`, func(t *testcase.T) {
-				_, err := iterators.Collect(act(t))
-				t.Must.NotNil(err)
+			s.Then(`it will yield error early on`, func(t *testcase.T) {
+				iter, err := act(t)
+				defer tryClose(iter)
+
+				t.Must.AnyOf(func(a *assert.A) {
+					a.Case(func(t assert.It) { assert.ErrorIs(t, err, crud.ErrNotFound) })
+
+					if c.LazyNotFoundError {
+						tc := t
+						a.Case(func(t assert.It) {
+							assert.NotNil(t, iter)
+							_, err := iterators.Collect(iter)
+							assert.ErrorIs(t, err, crud.ErrNotFound)
+							tc.Log("[WARN]", "returning an error about the missing entity as part of the iteration is suboptimal")
+							tc.Log("[WARN]", "because it becomes difficult to handle early on an invalid input argument scenario.")
+						})
+					}
+				})
+
 			})
 		})
 	}

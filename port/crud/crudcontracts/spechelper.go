@@ -5,12 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
 	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -230,4 +232,29 @@ func shouldDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, c
 func testingRunFlagProvided() bool {
 	runFlag := flag.Lookup("test.run")
 	return runFlag != nil && runFlag.Value.String() != ""
+}
+
+func tryClose(c io.Closer) {
+	if c == nil {
+		return
+	}
+	_ = c.Close()
+}
+
+func shouldIterEventuallyError[ENT any](tb testing.TB, fn crud.QueryManyClosure[ENT]) (rErr error) {
+	iter, err := fn()
+	assert.AnyOf(tb, func(a *assert.A) {
+		a.Case(func(t assert.It) {
+			t.Must.Error(err)
+			rErr = err
+		})
+		if iter != nil {
+			a.Case(func(t assert.It) {
+				_, err := iterators.Collect(iter)
+				t.Must.Error(err)
+				rErr = err
+			})
+		}
+	})
+	return
 }

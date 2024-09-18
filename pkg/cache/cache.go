@@ -105,7 +105,12 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 		return err
 	}
 
-	HitsThatReferenceOurEntity := iterators.Filter[Hit[ID]](m.Repository.Hits().FindAll(ctx), func(h Hit[ID]) bool {
+	hitsIter, err := m.Repository.Hits().FindAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	HitsThatReferenceOurEntity := iterators.Filter[Hit[ID]](hitsIter, func(h Hit[ID]) bool {
 		for _, gotID := range h.EntityIDs {
 			if gotID == id {
 				return true
@@ -186,10 +191,12 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 	ctx context.Context,
 	queryKey string,
 	query QueryManyFunc[ENT],
-) iterators.Iterator[ENT] {
+) (iterators.Iterator[ENT], error) {
 	// TODO: double check
-	if ctx != nil && ctx.Err() != nil {
-		return iterators.Error[ENT](ctx.Err())
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, ctx.Err()
+		}
 	}
 
 	hit, found, err := m.Repository.Hits().FindByID(ctx, queryKey)
@@ -199,26 +206,38 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 	}
 	if found {
 		if len(hit.EntityIDs) == 0 {
-			return iterators.Empty[ENT]()
+			return iterators.Empty[ENT](), nil
 		}
-		iter := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
+
+		iter, err := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
+		const msg = "cache Repository.Entities().FindByIDs had an error"
+		if err != nil {
+			logger.Warn(ctx, msg, logging.ErrField(err))
+			return query()
+		}
 		if err := iter.Err(); err != nil {
-			logger.Warn(ctx, "cache Repository.Entities().FindByIDs had an error", logging.ErrField(err))
 			if errors.Is(err, crud.ErrNotFound) {
 				_ = m.Repository.Hits().DeleteByID(ctx, hit.QueryID)
+			} else {
+				logger.Warn(ctx, msg, logging.ErrField(err))
 			}
 			return query()
 		}
-		return iter
+		return iter, nil
 	}
 
 	// this naive MVP approach might take a big burden on the memory.
 	// If this becomes the case, it should be possible to change this into a streaming approach
 	// where iterator being iterated element by element,
 	// and records being created during then in the Repository
-	res, err := iterators.Collect(query())
+	srcIter, err := query()
 	if err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
+	}
+
+	res, err := iterators.Collect(srcIter)
+	if err != nil {
+		return nil, err
 	}
 	var ids []ID
 	for _, v := range res {
@@ -235,7 +254,7 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 	for _, ptr := range vs {
 		if err := m.Repository.Entities().Save(ctx, ptr); err != nil {
 			logger.Warn(ctx, "cache Repository.Entities().Save had an error", logging.ErrField(err))
-			return iterators.Slice[ENT](res)
+			return iterators.Slice[ENT](res), nil
 		}
 	}
 
@@ -245,10 +264,10 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 		Timestamp: clock.Now().UTC(),
 	}); err != nil {
 		logger.Warn(ctx, "cache Repository.Hits().Save had an error", logging.ErrField(err))
-		return iterators.Slice[ENT](res)
+		return iterators.Slice[ENT](res), nil
 	}
 
-	return iterators.Slice[ENT](res)
+	return iterators.Slice[ENT](res), nil
 }
 
 func (m *Cache[ENT, ID]) CachedQueryOne(
@@ -256,16 +275,19 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 	queryKey string,
 	query QueryOneFunc[ENT],
 ) (_ent ENT, _found bool, _err error) {
-	iter := m.CachedQueryMany(ctx, queryKey, func() iterators.Iterator[ENT] {
+	iter, err := m.CachedQueryMany(ctx, queryKey, func() (iterators.Iterator[ENT], error) {
 		ent, found, err := query()
 		if err != nil {
-			return iterators.Error[ENT](err)
+			return nil, err
 		}
 		if !found {
-			return iterators.Empty[ENT]()
+			return iterators.Empty[ENT](), nil
 		}
-		return iterators.Slice[ENT]([]ENT{ent})
+		return iterators.Slice[ENT]([]ENT{ent}), nil
 	})
+	if err != nil {
+		return _ent, false, err
+	}
 	ent, found, err := iterators.First[ENT](iter)
 	if err != nil {
 		return ent, false, err
@@ -315,12 +337,12 @@ func (m *Cache[ENT, ID]) queryKeyFindByID(id ID) HitID {
 	}.Encode()
 }
 
-func (m *Cache[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT] {
+func (m *Cache[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	source, ok := m.Source.(crud.AllFinder[ENT])
 	if !ok {
-		return iterators.Errorf[ENT]("%s: %w", "FindAll", ErrNotImplementedBySource)
+		return nil, fmt.Errorf("%s: %w", "FindAll", ErrNotImplementedBySource)
 	}
-	return m.CachedQueryMany(ctx, QueryKey{ID: "FindAll"}.Encode(), func() iterators.Iterator[ENT] {
+	return m.CachedQueryMany(ctx, QueryKey{ID: "FindAll"}.Encode(), func() (iterators.Iterator[ENT], error) {
 		return source.FindAll(ctx)
 	})
 }

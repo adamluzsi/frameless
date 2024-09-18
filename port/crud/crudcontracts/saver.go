@@ -129,14 +129,21 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 					t.Skipf("unable to continue with the test, crud.AllFinder is not implemented in %T", subject)
 				}
 
-				initialCount, err := iterators.Count(allFinder.FindAll(ctx.Get(t)))
-				t.Must.Nil(err)
+				iter, err := allFinder.FindAll(ctx.Get(t))
+				assert.NoError(t, err)
+				initialCount, err := iterators.Count(iter)
+				assert.NoError(t, err)
 
-				t.Must.Nil(act(t))
+				assert.NoError(t, act(t))
 
-				count, err := iterators.Count(allFinder.FindAll(ctx.Get(t)))
-				t.Must.Nil(err)
-				t.Must.Equal(initialCount, count)
+				t.Eventually(func(t *testcase.T) {
+					iter, err = allFinder.FindAll(ctx.Get(t))
+					assert.NoError(t, err)
+
+					count, err := iterators.Count(iter)
+					assert.NoError(t, err)
+					assert.Equal(t, initialCount, count)
+				})
 			})
 		})
 

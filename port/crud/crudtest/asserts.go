@@ -124,7 +124,7 @@ func DeleteAll[ENT, ID any](tb testing.TB, subject deleteAllDeleter[ENT, ID], ct
 	assert.Must(tb).Nil(subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	Eventually.Assert(tb, func(it assert.It) {
-		count, err := iterators.Count(subject.FindAll(ctx))
+		count, err := iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
 		it.Must.Nil(err)
 		it.Should.True(count == 0, `no entity was expected to be found`)
 	})

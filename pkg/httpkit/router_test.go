@@ -45,14 +45,14 @@ func ExampleRouter() {
 
 		r.Resource("foo", httpkit.RestResource[Foo, FooID]{
 			Mapping: dtokit.Mapping[Foo, FooDTO]{},
-			Index: func(ctx context.Context) iterators.Iterator[Foo] {
+			Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
 				foo := Foo{
 					ID:  "42",
 					Foo: "foo",
 					Bar: "bar",
 					Baz: "baz",
 				}
-				return iterators.Slice([]Foo{foo})
+				return iterators.Slice([]Foo{foo}), nil
 			},
 		})
 	})

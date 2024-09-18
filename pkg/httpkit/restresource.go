@@ -28,7 +28,7 @@ type RestResource[Entity, ID any] struct {
 	Create func(ctx context.Context, ptr *Entity) error
 	// Index will return the entities, optionally filtered with the query argument.
 	//		GET /
-	Index func(ctx context.Context) iterators.Iterator[Entity]
+	Index func(ctx context.Context) (iterators.Iterator[Entity], error)
 	// Show will return a single entity, looked up by its ID.
 	// 		GET /:id
 	Show func(ctx context.Context, id ID) (ent Entity, found bool, err error)
@@ -242,7 +242,11 @@ func (res RestResource[Entity, ID]) index(w http.ResponseWriter, r *http.Request
 
 	ctx := r.Context()
 
-	index := res.Index(ctx)
+	index, err := res.Index(ctx)
+	if err != nil {
+		res.getErrorHandler().HandleError(w, r, err)
+		return
+	}
 
 	defer func() {
 		if err := index.Close(); err != nil {

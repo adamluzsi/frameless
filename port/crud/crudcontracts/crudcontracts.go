@@ -38,6 +38,11 @@ type Config[ENT, ID any] struct {
 	// Configure this if you don't use the ext:"id" tag in your entity.
 	// TODO: add support for this accessor in crudtest
 	IDA extid.Accessor[ENT, ID]
+
+	// LazyNotFoundError will allow QueryMany methods to return crud.ErrNotFound during the iteration,
+	// instead during the method call.
+	// For e.g.: crud.ByIDsFinder[ENT, ID]
+	LazyNotFoundError bool
 }
 
 func (c *Config[ENT, ID]) Init() {

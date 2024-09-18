@@ -54,13 +54,13 @@ type ByIDFinder[ENT, ID any] interface {
 type ByIDsFinder[ENT, ID any] interface {
 	// FindByIDs finds entities with the given IDs in the repository.
 	// If any of the ID points to a non-existent ENT, the returned iterator will eventually yield an error.
-	FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[ENT]
+	FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error)
 }
 
 type AllFinder[ENT any] interface {
 	// FindAll will return all entity that has <V> type
 	// TODO: consider using error as 2nd argument, to make it similar to sql package
-	FindAll(context.Context) iterators.Iterator[ENT]
+	FindAll(context.Context) (iterators.Iterator[ENT], error)
 }
 
 type Updater[ENT any] interface {
@@ -103,3 +103,63 @@ type Saver[ENT any] interface {
 	// Save requires the entity to have a valid non-empty ID value.
 	Save(ctx context.Context, ptr *ENT) error
 }
+
+// QueryOneMethodSignature defines the structure of a "query one" method signature.
+// It outlines how the method should retrieve a single entity and communicate the outcome.
+//
+// The method returns three values:
+// - The requested entity (_ENT)
+// - A boolean 'found' indicating if the entity was located
+// - An error if something went wrong during execution
+//
+// Instead of using an error to signal a "not found" case, this signature uses the boolean 'found'.
+// This clearly separates cases where the entity was not found from actual errors,
+// making it explicit that no error occurred, but simply no matching entity was located.
+//
+// Why return a boolean 'found' instead of using a nil pointer *ENT value?
+//
+// There are several reasons for this:
+// - The go-vet tool ensures that the 'found' variable is checked before using the entity.
+// - It improves readability and highlights the method's cyclomatic complexity by making the flow easier to understand.
+//
+// The method signature express the following cyclomatic complexity factors:
+// - found/bool: Entity found (true) or not (false)
+// - error: An error occurred (true) or did not (false)
+//
+// This approach also prevents returning an initialized pointer that may be nil,
+// which could lead to a runtime error when cast to an interface:
+//
+//	(MyInterface)((*ENT)(nil)) != nil
+//
+// Similar patterns exist in the standard library,
+// such as handling SQL null values and environment variable lookups in the os package.
+type QueryOneMethodSignature[ENT, ARGS any] func(context.Context, ARGS) (_ ENT, found bool, _ error)
+
+type QueryOneClosure[ENT any] func() (_ ENT, found bool, _ error)
+
+// QueryManyMethodSignature defines the structure of a "query many" method signature,
+// designed to handle queries that return an unknown number of entities.
+//
+// The method returns two values:
+// - An iterator of entities (iterators.Iterator[ENT]), allowing efficient retrieval of multiple results
+// - An error, which is only returned if there was a fundamental issue with the query itself
+//
+// The use of an iterator is key when the result set size is unknown or large.
+// It enables processing the results as they are fetched, without needing to load everything into memory at once.
+//
+// This pattern also improves resource management by fetching results incrementally,
+// making it suitable for working with large datasets or slow data sources.
+//
+// Why return an iterator?
+//
+//  1. It provides flexibility in handling a varying number of entities, allowing the caller
+//     to iterate over results efficiently, without requiring all data upfront.
+//  2. It separates concerns, using an error return to indicate issues with the query execution.
+//  3. It enables the support for supporting a streaming gateway to our application.
+//
+// Similar to standard library patterns like SQL row iterators,
+// this approach offers control over how the caller consumes the results,
+// ensuring both performance and clarity in handling multiple entities.
+type QueryManyMethodSignature[ENT, ARGS any] func(context.Context, ARGS) (iterators.Iterator[ENT], error)
+
+type QueryManyClosure[ENT any] func() (iterators.Iterator[ENT], error)

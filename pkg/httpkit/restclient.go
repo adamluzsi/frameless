@@ -58,6 +58,11 @@ type RestClient[ENT, ID any] struct {
 	//
 	// default: ignored
 	WithContext func(context.Context) context.Context
+	// PrefetchLimit is used when a methor requires fetching entities ahead.
+	// If set to -1, then prefetch is disabled.
+	//
+	// default: 20
+	PrefetchLimit int
 }
 
 type RestClientSerializer interface {
@@ -133,7 +138,7 @@ func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT] {
+func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -141,7 +146,7 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT
 
 	baseURL, err := r.getBaseURL(ctx)
 	if err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
 
 	reqURL := pathkit.Join(baseURL, "/")
@@ -150,7 +155,7 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT
 	//mapping := r.getMapping()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
 
 	reqMediaType := r.getMediaType()
@@ -161,7 +166,7 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
 
 	details = append(details, logging.Field("status code", resp.StatusCode))
@@ -170,14 +175,14 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT
 
 	respMediaType, ser, ok := r.contentTypeBasedSerializer(resp)
 	if !ok {
-		return iterators.Error[ENT](fmt.Errorf("no serializer configured for response content type: %s", respMediaType))
+		return nil, fmt.Errorf("no serializer configured for response content type: %s", respMediaType)
 	}
 
 	details = append(details, logging.Field("response content type", respMediaType))
 
 	dm, ok := ser.(codec.ListDecoderMaker)
 	if !ok {
-		return iterators.Error[ENT](fmt.Errorf("no serializer found for the received mime type"))
+		return nil, fmt.Errorf("no serializer found for the received mime type")
 	}
 
 	dec := dm.MakeListDecoder(resp.Body)
@@ -198,7 +203,7 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT
 		}
 
 		return ent, true, nil
-	}, iterators.OnClose(dec.Close))
+	}, iterators.OnClose(dec.Close)), nil
 }
 
 func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
@@ -287,9 +292,13 @@ func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 	return got, true, nil
 }
 
-func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[ENT] {
+func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	var index int
-	return iterators.Func[ENT](func() (v ENT, ok bool, err error) {
+	var iter = iterators.Func[ENT](func() (v ENT, ok bool, err error) {
 		if err := ctx.Err(); err != nil {
 			return v, false, err
 		}
@@ -307,6 +316,13 @@ func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators
 		}
 		return ent, true, nil
 	})
+
+	vs, err := iterators.Take(iter, r.getPrefetchLimit())
+	if err != nil {
+		return nil, err
+	}
+
+	return iterators.Merge(iterators.Slice(vs), iter), nil
 }
 
 func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
@@ -517,6 +533,16 @@ func (r RestClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
 		return passthroughMappingMode[ENT]()
 	}
 	return r.Mapping
+}
+
+func (r RestClient[ENT, ID]) getPrefetchLimit() int {
+	if 0 < r.PrefetchLimit {
+		return r.PrefetchLimit
+	}
+	if r.PrefetchLimit < 0 {
+		return 0
+	}
+	return 20 // default
 }
 
 func (r RestClient[ENT, ID]) getMediaType() string {

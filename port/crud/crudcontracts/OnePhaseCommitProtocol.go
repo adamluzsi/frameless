@@ -7,6 +7,7 @@ import (
 	"go.llib.dev/frameless/port/comproto/comprotocontracts"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase/assert"
 
@@ -104,7 +105,9 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NotNil(subject.Create(tx, pointer.Of(c.MakeEntity(t))))
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-			t.Must.NotNil(allFinder.FindAll(tx).Err())
+			shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+				return allFinder.FindAll(tx)
+			})
 		}
 
 		if updater, ok := subject.(crud.Updater[ENT]); ok {
@@ -134,7 +137,9 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NotNil(err)
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-			t.Must.NotNil(allFinder.FindAll(ctx).Err())
+			shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+				return allFinder.FindAll(ctx)
+			})
 		}
 
 		t.Must.NotNil(subject.Create(ctx, pointer.Of(c.MakeEntity(t))))
@@ -381,7 +386,9 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 				"expecte that .Save will respect that the tx in the context is already committed")
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-				t.Must.NotNil(allFinder.FindAll(tx).Err())
+				shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+					return allFinder.FindAll(tx)
+				})
 			}
 
 			if updater, ok := subject.(crud.Updater[ENT]); ok {
@@ -411,7 +418,9 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Must.NotNil(err)
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-				t.Must.NotNil(allFinder.FindAll(ctx).Err())
+				shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+					return allFinder.FindAll(ctx)
+				})
 			}
 
 			t.Must.NotNil(subject.Save(ctx, pointer.Of(c.MakeEntity(t))))

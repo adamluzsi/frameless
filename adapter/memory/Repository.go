@@ -113,14 +113,14 @@ func (s *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 	return ent.(ENT), true, nil
 }
 
-func (s *Repository[ENT, ID]) FindAll(ctx context.Context) iterators.Iterator[ENT] {
+func (s *Repository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	if err := ctx.Err(); err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
 	if err := s.isDoneTx(ctx); err != nil {
-		return iterators.Error[ENT](err)
+		return nil, err
 	}
-	return memoryAll[ENT](s.Memory, ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace))
+	return memoryAll[ENT](s.Memory, ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace)), nil
 }
 
 func (s *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
@@ -137,7 +137,10 @@ func (s *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 }
 
 func (s *Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
-	iter := s.FindAll(ctx)
+	iter, err := s.FindAll(ctx)
+	if err != nil {
+		return err
+	}
 	defer iter.Close()
 	for iter.Next() {
 		id, _ := s.IDA.Lookup(iter.Value())
@@ -164,7 +167,7 @@ func (s *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (s *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[ENT] {
+func (s *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
 	var m memoryActions = s.Memory
 	if tx, ok := s.Memory.LookupTx(ctx); ok {
 		m = tx
@@ -175,11 +178,11 @@ func (s *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterator
 		key := s.IDToMemoryKey(id)
 		v, ok := all[key]
 		if !ok {
-			return iterators.Error[ENT](errNotFound(*new(ENT), id))
+			return nil, errNotFound(*new(ENT), id)
 		}
 		vs[key] = v.(ENT)
 	}
-	return iterators.Slice[ENT](toSlice[ENT, string](vs))
+	return iterators.Slice[ENT](toSlice[ENT, string](vs)), nil
 }
 
 func (s *Repository[ENT, ID]) mkID(ctx context.Context) (ID, error) {

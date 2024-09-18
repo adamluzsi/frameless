@@ -123,8 +123,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			entID, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.FindByID(ctx, entID)       // should trigger caching
-			_, _ = iterators.Count(cache.FindAll(ctx)) // should trigger caching
+			_, _, _ = cache.FindByID(ctx, entID)                          // should trigger caching
+			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(ctx))) // should trigger caching
 
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
@@ -142,8 +142,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			entID, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.FindByID(ctx, entID)       // should trigger caching
-			_, _ = iterators.Count(cache.FindAll(ctx)) // should trigger caching
+			_, _, _ = cache.FindByID(ctx, entID)                          // should trigger caching
+			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(ctx))) // should trigger caching
 
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
@@ -155,7 +155,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 				gotEnt ENT
 				found  bool
 			)
-			t.Must.NoError(iterators.ForEach(cache.FindAll(ctx), func(ent ENT) error {
+			t.Must.NoError(iterators.ForEach(iterators.WithErr(cache.FindAll(ctx)), func(ent ENT) error {
 				id, ok := extid.Lookup[ID](ent)
 				if !ok {
 					return fmt.Errorf("lookup can't find the ID")
@@ -177,8 +177,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.FindByID(c.CRUD.MakeContext(), id)          // should trigger caching
-			_, _ = iterators.Count(cache.FindAll(c.CRUD.MakeContext())) // should trigger caching
+			_, _, _ = cache.FindByID(c.CRUD.MakeContext(), id)                             // should trigger caching
+			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(c.CRUD.MakeContext()))) // should trigger caching
 
 			// delete
 			t.Must.NoError(cache.DeleteByID(c.CRUD.MakeContext(), id))
@@ -192,8 +192,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.FindByID(c.CRUD.MakeContext(), id)          // should trigger caching
-			_, _ = iterators.Count(cache.FindAll(c.CRUD.MakeContext())) // should trigger caching
+			_, _, _ = cache.FindByID(c.CRUD.MakeContext(), id)                             // should trigger caching
+			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(c.CRUD.MakeContext()))) // should trigger caching
 
 			// delete
 			t.Must.NoError(cache.DeleteAll(c.CRUD.MakeContext()))
@@ -352,7 +352,7 @@ func specCachedQueryMany[Entity any, ID comparable](s *testcase.Spec,
 		})
 		query = testcase.Let[cachepkg.QueryManyFunc[Entity]](s, nil)
 	)
-	act := func(t *testcase.T) iterators.Iterator[Entity] {
+	act := func(t *testcase.T) (iterators.Iterator[Entity], error) {
 		return subject.CachedQueryMany(Context.Get(t), queryKey.Get(t), query.Get(t))
 	}
 
@@ -371,31 +371,37 @@ func specCachedQueryMany[Entity any, ID comparable](s *testcase.Spec,
 		)
 
 		query.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
-			return func() iterators.Iterator[Entity] {
-				return iterators.Slice[Entity]([]Entity{*ent1.Get(t), *ent2.Get(t)})
+			return func() (iterators.Iterator[Entity], error) {
+				return iterators.Slice[Entity]([]Entity{*ent1.Get(t), *ent2.Get(t)}), nil
 			}
 		})
 
 		s.Then("it will return all the entities", func(t *testcase.T) {
-			vs, err := iterators.Collect(act(t))
+			iter, err := act(t)
+			assert.NoError(t, err)
+			vs, err := iterators.Collect(iter)
 			t.Must.NoError(err)
 			t.Must.ContainExactly([]Entity{*ent1.Get(t), *ent2.Get(t)}, vs)
 		})
 
 		s.Then("it will cache all returned entities", func(t *testcase.T) {
-			vs, err := iterators.Collect(act(t))
+			iter, err := act(t)
+			assert.NoError(t, err)
+			vs, err := iterators.Collect(iter)
 			t.Must.NoError(err)
 
-			cached, err := iterators.Collect(repository.Entities().FindAll(c.CRUD.MakeContext()))
+			cached, err := iterators.Collect(iterators.WithErr(repository.Entities().FindAll(c.CRUD.MakeContext())))
 			t.Must.NoError(err)
 			t.Must.Contain(cached, vs)
 		})
 
 		s.Then("it will create a hit record", func(t *testcase.T) {
-			_, err := iterators.Collect(act(t))
+			iter, err := act(t)
+			assert.NoError(t, err)
+			_, err = iterators.Collect(iter)
 			t.Must.NoError(err)
 
-			hits, err := iterators.Collect(repository.Hits().FindAll(c.CRUD.MakeContext()))
+			hits, err := iterators.Collect(iterators.WithErr(repository.Hits().FindAll(c.CRUD.MakeContext())))
 			t.Must.NoError(err)
 
 			assert.OneOf(t, hits, func(it assert.It, got cachepkg.Hit[ID]) {
@@ -435,9 +441,8 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 	}
 
 	var queryManyFunc = testcase.Let[cachepkg.QueryManyFunc[Entity]](s, nil)
-	queryMany := func(t *testcase.T) iterators.Iterator[Entity] {
-		return cache.
-			CachedQueryMany(c.CRUD.MakeContext(), queryKey.Get(t), queryManyFunc.Get(t))
+	queryMany := func(t *testcase.T) (iterators.Iterator[Entity], error) {
+		return cache.CachedQueryMany(c.CRUD.MakeContext(), queryKey.Get(t), queryManyFunc.Get(t))
 	}
 
 	s.When("queryKey has a cached data with CachedQueryOne", func(s *testcase.Spec) {
@@ -464,11 +469,11 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
 			// we have hits
-			n, err := iterators.Count(repository.Hits().FindAll(c.CRUD.MakeContext()))
+			n, err := iterators.Count(iterators.WithErr(repository.Hits().FindAll(c.CRUD.MakeContext())))
 			t.Must.NoError(err)
 			t.Must.NotEqual(0, n)
 			// we have cached entities
-			n, err = iterators.Count(repository.Entities().FindAll(c.CRUD.MakeContext()))
+			n, err = iterators.Count(iterators.WithErr(repository.Entities().FindAll(c.CRUD.MakeContext())))
 			t.Must.NoError(err)
 			t.Must.NotEqual(0, n)
 			// cache still able to retrieve the invalid state
@@ -524,16 +529,16 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
-			return func() iterators.Iterator[Entity] {
+			return func() (iterators.Iterator[Entity], error) {
 				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 				ent, found, err := source.FindByID(c.CRUD.MakeContext(), id)
 				if err != nil {
-					return iterators.Error[Entity](err)
+					return nil, err
 				}
 				if !found {
-					return iterators.Empty[Entity]()
+					return iterators.Empty[Entity](), nil
 				}
-				return iterators.SingleValue(ent)
+				return iterators.SingleValue(ent), nil
 			}
 		})
 
@@ -542,13 +547,13 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
-			vs, err := iterators.Collect(queryMany(t))
+			vs, err := iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
 			// cache has still the invalid state
-			vs, err = iterators.Collect(queryMany(t))
+			vs, err = iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 		})
@@ -556,7 +561,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("cached data is invalidated", func(t *testcase.T) {
 			t.Must.NoError(act(t))
 
-			vs, err := iterators.Collect(queryMany(t))
+			vs, err := iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Empty(vs)
 		})
@@ -643,7 +648,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 	}
 
 	var queryManyFunc = testcase.Let[cachepkg.QueryManyFunc[Entity]](s, nil)
-	queryMany := func(t *testcase.T) iterators.Iterator[Entity] {
+	queryMany := func(t *testcase.T) (iterators.Iterator[Entity], error) {
 		return cache.
 			CachedQueryMany(c.CRUD.MakeContext(), queryKey.Get(t), queryManyFunc.Get(t))
 	}
@@ -790,16 +795,16 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
-			return func() iterators.Iterator[Entity] {
+			return func() (iterators.Iterator[Entity], error) {
 				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 				ent, found, err := source.FindByID(c.CRUD.MakeContext(), id)
 				if err != nil {
-					return iterators.Error[Entity](err)
+					return nil, err
 				}
 				if !found {
-					return iterators.Empty[Entity]()
+					return iterators.Empty[Entity](), nil
 				}
-				return iterators.SingleValue(ent)
+				return iterators.SingleValue(ent), nil
 			}
 		})
 
@@ -808,13 +813,13 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
-			vs, err := iterators.Collect(queryMany(t))
+			vs, err := iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
 			// cache has still the invalid state
-			vs, err = iterators.Collect(queryMany(t))
+			vs, err = iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 		})
@@ -822,7 +827,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("cached data is invalidated", func(t *testcase.T) {
 			t.Must.NoError(act(t))
 
-			vs, err := iterators.Collect(queryMany(t))
+			vs, err := iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Empty(vs)
 		})

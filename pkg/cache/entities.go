@@ -43,15 +43,15 @@ type (
 
 type Interface[Entity, ID any] interface {
 	CachedQueryOne(ctx context.Context, queryKey HitID, query QueryOneFunc[Entity]) (_ent Entity, _found bool, _err error)
-	CachedQueryMany(ctx context.Context, queryKey HitID, query QueryManyFunc[Entity]) iterators.Iterator[Entity]
+	CachedQueryMany(ctx context.Context, queryKey HitID, query QueryManyFunc[Entity]) (iterators.Iterator[Entity], error)
 	InvalidateCachedQuery(ctx context.Context, queryKey HitID) error
 	InvalidateByID(ctx context.Context, id ID) (rErr error)
 	DropCachedValues(ctx context.Context) error
 }
 
 type (
-	QueryOneFunc[Entity any]  func() (ent Entity, found bool, err error)
-	QueryManyFunc[Entity any] func() iterators.Iterator[Entity]
+	QueryOneFunc[ENT any]  crud.QueryOneClosure[ENT]
+	QueryManyFunc[ENT any] crud.QueryManyClosure[ENT]
 )
 
 // QueryKey is a helper function that allows you to create QueryManyFunc Keys

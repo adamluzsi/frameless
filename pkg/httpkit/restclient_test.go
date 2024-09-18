@@ -69,7 +69,7 @@ func ExampleRestClient_subresource() {
 	}
 
 	ctx := context.Background()
-	_ = barResourceClient.FindAll(ctx)
+	_, _ = barResourceClient.FindAll(ctx)
 	_, _, _ = barResourceClient.FindByID(ctx, "baridvalue")
 }
 

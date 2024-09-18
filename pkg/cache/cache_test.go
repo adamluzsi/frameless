@@ -94,20 +94,35 @@ func TestCache_InvalidateByID_smoke(t *testing.T) {
 	expectedCachedQueryCount++
 
 	t.Log("query many that doesn't have the value actively (excluded filter list)")
-	_, err = iterators.Collect(cachei.CachedQueryMany(ctx, "NOK-MANY-BAZ", func() iterators.Iterator[testent.Foo] {
-		return iterators.Filter[testent.Foo](source.FindAll(ctx), func(got testent.Foo) bool {
+
+	iter, err := cachei.CachedQueryMany(ctx, "NOK-MANY-BAZ", func() (iterators.Iterator[testent.Foo], error) {
+		src, err := source.FindAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return iterators.Filter[testent.Foo](src, func(got testent.Foo) bool {
 			return got.ID == foo2.ID
-		})
-	}))
+		}), nil
+	})
+	assert.NoError(t, err)
+
+	_, err = iterators.Collect(iter)
 	assert.NoError(t, err)
 	expectedCachedQueryCount++
 
 	t.Log("another query many that doesn't have the value actively (excluded filter list)")
-	_, err = iterators.Collect(cachei.CachedQueryMany(ctx, foo1.Baz, func() iterators.Iterator[testent.Foo] {
-		return iterators.Filter[testent.Foo](source.FindAll(ctx), func(got testent.Foo) bool {
+	qmIter, err := cachei.CachedQueryMany(ctx, foo1.Baz, func() (iterators.Iterator[testent.Foo], error) {
+		srcIter, err := source.FindAll(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return iterators.Filter[testent.Foo](srcIter, func(got testent.Foo) bool {
 			return got.Baz == foo2.Baz
-		})
-	}))
+		}), nil
+	})
+	assert.NoError(t, err)
+
+	_, err = iterators.Collect(qmIter)
 	assert.NoError(t, err)
 	expectedCachedQueryCount++
 
@@ -118,14 +133,14 @@ func TestCache_InvalidateByID_smoke(t *testing.T) {
 	assert.NoError(t, err)
 	expectedCachedQueryCount++
 
-	hitCount, err := iterators.Count(cachei.Repository.Hits().FindAll(ctx))
+	hitCount, err := iterators.Count(iterators.WithErr(cachei.Repository.Hits().FindAll(ctx)))
 	assert.NoError(t, err)
 	assert.Equal(t, expectedCachedQueryCount, hitCount)
 
 	assert.NoError(t, err)
 	assert.NoError(t, cachei.InvalidateByID(ctx, foo1.ID))
 
-	hits, err := iterators.Collect(cachei.Repository.Hits().FindAll(ctx))
+	hits, err := iterators.Collect(iterators.WithErr(cachei.Repository.Hits().FindAll(ctx)))
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(hits))
 	assert.Equal(t, "notAffectedQueryKey", hits[0].QueryID)
@@ -153,19 +168,19 @@ func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
 	_, _, err := cachei.FindByID(ctx, foo1.ID)
 	assert.NoError(t, err)
 
-	vs, err := iterators.Collect(cachei.FindAll(ctx))
+	vs, err := iterators.Collect(iterators.WithErr(cachei.FindAll(ctx)))
 	assert.NoError(t, err)
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
 
-	vs, err = iterators.Collect(cachei.FindAll(ctx))
+	vs, err = iterators.Collect(iterators.WithErr(cachei.FindAll(ctx)))
 	assert.NoError(t, err)
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
 
-	hvs, err := iterators.Collect(cachei.Repository.Hits().FindAll(ctx))
+	hvs, err := iterators.Collect(iterators.WithErr(cachei.Repository.Hits().FindAll(ctx)))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(hvs))
 
-	vs, err = iterators.Collect(cachei.Repository.Entities().FindAll(ctx))
+	vs, err = iterators.Collect(iterators.WithErr(cachei.Repository.Entities().FindAll(ctx)))
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(vs), assert.Message(pp.Format(vs)))
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
@@ -201,7 +216,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	})
 
 	s.Test("FindAll works even with a faulty repo", func(t *testcase.T) {
-		vs, err := iterators.Collect(subject.Get(t).FindAll(context.Background()))
+		vs, err := iterators.Collect(iterators.WithErr(subject.Get(t).FindAll(context.Background())))
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
@@ -210,7 +225,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 		foo2 := testent.MakeFoo(t)
 		t.Must.NoError(subject.Get(t).Create(context.Background(), &foo2))
 
-		vs, err := iterators.Collect(subject.Get(t).FindAll(context.Background()))
+		vs, err := iterators.Collect(iterators.WithErr(subject.Get(t).FindAll(context.Background())))
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t), foo2}, vs)
 	})
@@ -225,9 +240,10 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	})
 
 	s.Test("CachedQueryMany works even with a faulty repo", func(t *testcase.T) {
-		all := subject.Get(t).CachedQueryMany(context.Background(), "query many test", func() iterators.Iterator[testent.Foo] {
+		all, err := subject.Get(t).CachedQueryMany(context.Background(), "query many test", func() (iterators.Iterator[testent.Foo], error) {
 			return source.Get(t).FindAll(context.Background())
 		})
+		assert.NoError(t, err)
 		vs, err := iterators.Collect(all)
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
@@ -309,9 +325,9 @@ func (fer *faultyEntityRepo[Entity, ID]) Update(ctx context.Context, ptr *Entity
 	return fer.EntityRepository.Update(ctx, ptr)
 }
 
-func (fer *faultyEntityRepo[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[Entity] {
+func (fer *faultyEntityRepo[Entity, ID]) FindAll(ctx context.Context) (iterators.Iterator[Entity], error) {
 	if fer.fcr.shouldFail() {
-		return iterators.Error[Entity](fer.fcr.Random.Error())
+		return nil, fer.fcr.Random.Error()
 	}
 	return fer.EntityRepository.FindAll(ctx)
 }
@@ -330,9 +346,9 @@ func (fer *faultyEntityRepo[Entity, ID]) DeleteAll(ctx context.Context) error {
 	return fer.EntityRepository.DeleteAll(ctx)
 }
 
-func (fer *faultyEntityRepo[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) iterators.Iterator[Entity] {
+func (fer *faultyEntityRepo[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[Entity], error) {
 	if fer.fcr.shouldFail() {
-		return iterators.Error[Entity](fer.fcr.Random.Error())
+		return nil, fer.fcr.Random.Error()
 	}
 	return fer.EntityRepository.FindByIDs(ctx, ids...)
 }
@@ -363,9 +379,9 @@ func (fhr *faultyHitRepo[Entity, ID]) FindByID(ctx context.Context, id cache.Hit
 	return fhr.fcr.CacheRepo.Hits().FindByID(ctx, id)
 }
 
-func (fhr *faultyHitRepo[Entity, ID]) FindAll(ctx context.Context) iterators.Iterator[cache.Hit[ID]] {
+func (fhr *faultyHitRepo[Entity, ID]) FindAll(ctx context.Context) (iterators.Iterator[cache.Hit[ID]], error) {
 	if fhr.fcr.shouldFail() {
-		return iterators.Error[cache.Hit[ID]](fhr.fcr.Random.Error())
+		return nil, fhr.fcr.Random.Error()
 	}
 	return fhr.fcr.CacheRepo.Hits().FindAll(ctx)
 }
