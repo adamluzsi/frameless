@@ -185,6 +185,23 @@ func (s *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterato
 	return iterators.Slice[ENT](toSlice[ENT, string](vs)), nil
 }
 
+func (s *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) bool) (ENT, bool, error) {
+	iter, err := s.FindAll(ctx)
+	if err != nil {
+		return *new(ENT), false, err
+	}
+	iter = iterators.Filter(iter, filter)
+	return iterators.First(iter)
+}
+
+func (s *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iterators.Iterator[ENT], error) {
+	iter, err := s.FindAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return iterators.Filter(iter, filter), nil
+}
+
 func (s *Repository[ENT, ID]) mkID(ctx context.Context) (ID, error) {
 	if s.MakeID != nil {
 		return s.MakeID(ctx)

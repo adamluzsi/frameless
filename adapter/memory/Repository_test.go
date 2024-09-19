@@ -5,9 +5,12 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/spechelper/resource"
+	"go.llib.dev/frameless/spechelper/testent"
 
 	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	. "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/port/comproto"
@@ -67,4 +70,31 @@ func TestRepository_Create_expectID(t *testing.T) {
 	assert.NoError(t, r.Create(ctx, &TestEntity{ID: "1", Data: "boom"}))
 	assert.Error(t, r.Save(ctx, &TestEntity{Data: "boom"}))
 	assert.NoError(t, r.Save(ctx, &TestEntity{ID: "1", Data: "boom"}))
+}
+
+func TestRepository_query(t *testing.T) {
+	m := memory.NewMemory()
+	r := memory.NewRepository[testent.Foo, testent.FooID](m)
+
+	ctx := context.Background()
+	ent1 := testent.MakeFoo(t)
+	ent2 := testent.MakeFoo(t)
+	ent3 := testent.MakeFoo(t)
+
+	crudtest.Create[testent.Foo, testent.FooID](t, r, ctx, &ent1)
+	crudtest.Create[testent.Foo, testent.FooID](t, r, ctx, &ent2)
+	crudtest.Create[testent.Foo, testent.FooID](t, r, ctx, &ent3)
+
+	got1, found, err := r.QueryOne(ctx, func(v testent.Foo) bool { return ent1.ID == v.ID })
+	assert.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, ent1, got1)
+
+	iter, err := r.QueryMany(ctx, func(v testent.Foo) bool {
+		return v.ID == ent1.ID || v.ID == ent3.ID
+	})
+	assert.NoError(t, err)
+	vs, err := iterators.Collect(iter)
+	assert.NoError(t, err)
+	assert.ContainExactly(t, vs, []testent.Foo{ent1, ent3})
 }

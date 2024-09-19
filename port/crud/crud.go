@@ -135,8 +135,6 @@ type Saver[ENT any] interface {
 // such as handling SQL null values and environment variable lookups in the os package.
 type QueryOneMethodSignature[ENT, ARGS any] func(context.Context, ARGS) (_ ENT, found bool, _ error)
 
-type QueryOneClosure[ENT any] func() (_ ENT, found bool, _ error)
-
 // QueryManyMethodSignature defines the structure of a "query many" method signature,
 // designed to handle queries that return an unknown number of entities.
 //
@@ -161,5 +159,3 @@ type QueryOneClosure[ENT any] func() (_ ENT, found bool, _ error)
 // this approach offers control over how the caller consumes the results,
 // ensuring both performance and clarity in handling multiple entities.
 type QueryManyMethodSignature[ENT, ARGS any] func(context.Context, ARGS) (iterators.Iterator[ENT], error)
-
-type QueryManyClosure[ENT any] func() (iterators.Iterator[ENT], error)

@@ -50,8 +50,8 @@ type Interface[Entity, ID any] interface {
 }
 
 type (
-	QueryOneFunc[ENT any]  crud.QueryOneClosure[ENT]
-	QueryManyFunc[ENT any] crud.QueryManyClosure[ENT]
+	QueryOneFunc[ENT any]  func() (_ ENT, found bool, _ error)
+	QueryManyFunc[ENT any] func() (iterators.Iterator[ENT], error)
 )
 
 // QueryKey is a helper function that allows you to create QueryManyFunc Keys
