@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/flsql"
 )
 
-type Connection = flsql.ConnectionAdapter[*pgxpool.Pool, pgx.Tx]
+type Connection = flsql.ConnectionAdapter[pgxpool.Pool, pgx.Tx]
 
 func Connect(dsn string) (Connection, error) {
 	pool, err := pgxpool.New(context.Background(), dsn)
@@ -22,18 +22,24 @@ func Connect(dsn string) (Connection, error) {
 		DBAdapter: func(db *pgxpool.Pool) flsql.Queryable {
 			return pgxQueryableAdapter[*pgxpool.Pool]{Q: db}
 		},
-		TxAdapter: func(tx pgx.Tx) flsql.Queryable {
-			return pgxQueryableAdapter[pgx.Tx]{Q: tx}
+		TxAdapter: func(tx *pgx.Tx) flsql.Queryable {
+			return pgxQueryableAdapter[pgx.Tx]{Q: *tx}
 		},
 
-		BeginFunc: pool.Begin,
-
-		CommitFunc: func(ctx context.Context, tx pgx.Tx) error {
-			return tx.Commit(ctx)
+		Begin: func(ctx context.Context, db *pgxpool.Pool) (*pgx.Tx, error) {
+			tx, err := db.Begin(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return &tx, nil
 		},
 
-		Rollback: func(ctx context.Context, tx pgx.Tx) error {
-			return tx.Rollback(ctx)
+		Commit: func(ctx context.Context, tx *pgx.Tx) error {
+			return (*tx).Commit(ctx)
+		},
+
+		Rollback: func(ctx context.Context, tx *pgx.Tx) error {
+			return (*tx).Rollback(ctx)
 		},
 
 		OnClose: func() error {

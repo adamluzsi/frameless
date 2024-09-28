@@ -244,7 +244,8 @@ func BenchmarkQueue(b *testing.B) {
 				Baz: rnd.UUID(),
 			}
 		})...))
-		sub := q.Subscribe(ctx)
+		sub, err := q.Subscribe(ctx)
+		assert.NoError(b, err)
 		defer sub.Close()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {

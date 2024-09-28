@@ -112,11 +112,17 @@ func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
 	}).Migrate(ctx)
 }
 
-func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) pubsub.Subscription[Entity] {
+func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) (pubsub.Subscription[Entity], error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := q.Connection.DB.Ping(ctx); err != nil {
+		return nil, err
+	}
 	return &queueSubscription[Entity, JSONDTO]{
 		Queue: q,
 		CTX:   ctx,
-	}
+	}, nil
 }
 
 type queueSubscription[Entity, JSONDTO any] struct {

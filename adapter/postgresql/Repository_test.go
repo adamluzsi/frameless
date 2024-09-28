@@ -33,7 +33,9 @@ func TestRepository(t *testing.T) {
 	MigrateEntity(t, cm)
 
 	config := crudcontracts.Config[Entity, string]{
-		MakeContext:     context.Background,
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 
@@ -102,13 +104,13 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		Mapping: flsql.Mapping[cache.Hit[string], cache.HitID]{
 			TableName: "test_cache_hits",
 
-			QueryID: func(id string) (flsql.QueryArgs, error) {
+			QueryID: func(id cache.HitID) (flsql.QueryArgs, error) {
 				return flsql.QueryArgs{"id": id}, nil
 			},
 
 			ToQuery: func(ctx context.Context) ([]flsql.ColumnName, flsql.MapScan[cache.Hit[string]]) {
 				return []flsql.ColumnName{"id", "ids", "ts"}, func(v *cache.Hit[string], s flsql.Scanner) error {
-					if err := s.Scan(&v.QueryID, &v.EntityIDs, &v.Timestamp); err != nil {
+					if err := s.Scan(&v.ID, &v.EntityIDs, &v.Timestamp); err != nil {
 						return err
 					}
 					v.Timestamp = v.Timestamp.UTC()
@@ -118,7 +120,7 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 
 			ToArgs: func(h cache.Hit[string]) (flsql.QueryArgs, error) {
 				return flsql.QueryArgs{
-					"id":  h.QueryID,
+					"id":  h.ID,
 					"ids": h.EntityIDs,
 					"ts":  h.Timestamp,
 				}, nil
@@ -127,11 +129,11 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		Connection: c,
 	}
 
-	cachecontracts.HitRepository[string](hitRepo, c, crudcontracts.Config[cache.Hit[string], string]{
+	cachecontracts.HitRepository[string](hitRepo, c, crudcontracts.Config[cache.Hit[string], cache.HitID]{
 		MakeEntity: func(tb testing.TB) cache.Hit[string] {
 			t := tb.(*testcase.T)
 			return cache.Hit[string]{
-				QueryID: t.Random.UUID(),
+				ID: cache.HitID(t.Random.UUID()),
 				EntityIDs: random.Slice(t.Random.IntBetween(0, 7), func() string {
 					return t.Random.UUID()
 				}),
