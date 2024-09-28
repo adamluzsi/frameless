@@ -7,3 +7,9 @@
 	path = adapter/mariadb
 	url = git@github.com:adamluzsi/frameless-adapter-mariadb.git
 	branch = main
+
+[submodule "adapter/postgresql"]
+	path = adapter/postgresql
+	url = git@github.com:adamluzsi/frameless-adapter-postgresql.git
+	branch = main
+
