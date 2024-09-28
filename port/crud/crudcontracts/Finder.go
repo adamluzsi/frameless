@@ -201,7 +201,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 	})
 
-	if deleter, ok := subject.(crudtest.CRD[ENT, ID]); ok {
+	if deleter, ok := subject.(crud.ByIDDeleter[ID]); ok {
 		s.When(`id list contains at least one id that doesn't have stored entity`, func(s *testcase.Spec) {
 			ids.Let(s, func(t *testcase.T) []ID {
 				return []ID{getID[ENT, ID](t, c, *ent1.Get(t)), getID[ENT, ID](t, c, *ent2.Get(t))}

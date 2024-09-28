@@ -16,9 +16,13 @@ import (
 )
 
 // Updater will request an update for a wrapped entity object in the Resource
-func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
-	c := option.Use[Config[Entity, ID]](opts)
+func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) contract.Contract {
+	c := option.Use[Config[ENT, ID]](opts)
 	s := testcase.NewSpec(nil)
+
+	store, sOK := storer[ENT, ID](c, subject)
+	d, dOK := subject.(crud.ByIDDeleter[ID])
+	f, fOK := subject.(crud.ByIDFinder[ENT, ID])
 
 	s.Before(func(t *testcase.T) {
 		spechelper.TryCleanup(t, c.MakeContext(t), subject)
@@ -28,7 +32,7 @@ func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[
 		requestContext = testcase.Let(s, func(t *testcase.T) context.Context {
 			return c.MakeContext(t)
 		})
-		entityWithChanges = testcase.Var[*Entity]{ID: `entity-with-changes`}
+		entityWithChanges = testcase.Var[*ENT]{ID: `entity-with-changes`}
 	)
 	act := func(t *testcase.T) error {
 		return subject.Update(
@@ -37,69 +41,68 @@ func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[
 		)
 	}
 
-	updaterBenchmark[Entity, ID](s, subject, c)
+	updaterBenchmark[ENT, ID](s, subject, c)
 
-	s.When(`an entity already stored`, func(s *testcase.Spec) {
-		ptr := testcase.Let(s, func(t *testcase.T) *Entity {
-			ent := pointer.Of(c.MakeEntity(t))
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), ent)
-			return ent
-		}).EagerLoading(s)
+	if sOK {
+		s.When(`an entity already stored`, func(s *testcase.Spec) {
+			ptr := testcase.Let(s, func(t *testcase.T) *ENT {
+				ent := pointer.Of(c.MakeEntity(t))
+				store(t, ent)
+				return ent
+			}).EagerLoading(s)
 
-		s.And(`the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
-			entityWithChanges.Let(s, func(t *testcase.T) *Entity {
-				v := *ptr.Get(t)
-				changeENT[Entity, ID](t, c, &v)
-				return &v
-			})
-
-			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
-				assert.Must(t).Nil(act(t))
-
-				crudtest.HasEntity[Entity, ID](t, subject, c.MakeContext(t), entityWithChanges.Get(t))
-			})
-
-			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
-				requestContext.Let(s, func(t *testcase.T) context.Context {
-					ctx, cancel := context.WithCancel(c.MakeContext(t))
-					cancel()
-					return ctx
+			s.And(`the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
+				entityWithChanges.Let(s, func(t *testcase.T) *ENT {
+					v := *ptr.Get(t)
+					changeENT[ENT, ID](t, c, &v)
+					return &v
 				})
 
-				s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-					assert.Must(t).ErrorIs(context.Canceled, act(t))
+				if fOK {
+					s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
+						assert.Must(t).Nil(act(t))
+
+						crudtest.HasEntity[ENT, ID](t, f, c.MakeContext(t), entityWithChanges.Get(t))
+					})
+				}
+
+				s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
+					requestContext.Let(s, func(t *testcase.T) context.Context {
+						ctx, cancel := context.WithCancel(c.MakeContext(t))
+						cancel()
+						return ctx
+					})
+
+					s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
+						assert.Must(t).ErrorIs(context.Canceled, act(t))
+					})
 				})
 			})
 		})
-	})
+	}
 
-	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
-		entityWithChanges.Let(s, func(t *testcase.T) *Entity {
-			newEntity := pointer.Of(c.MakeEntity(t))
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), newEntity)
-			crudtest.Delete[Entity, ID](t, subject, c.MakeContext(t), newEntity)
-			return newEntity
-		})
+	if sOK && dOK {
+		s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
+			entityWithChanges.Let(s, func(t *testcase.T) *ENT {
+				newEntity := pointer.Of(c.MakeEntity(t))
+				store(t, newEntity)
+				crudtest.Delete[ENT, ID](t, d, c.MakeContext(t), newEntity)
+				return newEntity
+			})
 
-		s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
-			t.Must.ErrorIs(crud.ErrNotFound, act(t))
+			s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
+				t.Must.ErrorIs(crud.ErrNotFound, act(t))
+			})
 		})
-	})
+	}
 
 	return s.AsSuite("Updater")
 }
 
-type subjectUpdater[Entity, ID any] interface {
-	crud.Creator[Entity]
-	crud.ByIDFinder[Entity, ID]
-	crud.ByIDDeleter[ID]
-	crud.Updater[Entity]
-}
-
-func updaterBenchmark[Entity, ID any](s *testcase.Spec, subject subjectUpdater[Entity, ID], c Config[Entity, ID]) {
-	ent := testcase.Let(s, func(t *testcase.T) *Entity {
+func updaterBenchmark[ENT, ID any](s *testcase.Spec, subject crud.Updater[ENT], c Config[ENT, ID]) {
+	ent := testcase.Let(s, func(t *testcase.T) *ENT {
 		ptr := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), ptr)
+		shouldStore(t, c, subject, ptr)
 		return ptr
 	})
 

@@ -206,24 +206,26 @@ func shouldFindByID[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any,
 	return shouldByIDFinder[ENT, ID](tb, resource).FindByID(ctx, id)
 }
 
-func canStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any) bool {
-	if _, canCreate := resource.(crud.Creator[ENT]); canCreate {
-		return true
+func storer[ENT, ID any](c Config[ENT, ID], resource any) (func(tb testing.TB, ptr *ENT), bool) {
+	if subject, ok := resource.(crud.Saver[ENT]); ok {
+		return func(tb testing.TB, ptr *ENT) {
+			tb.Helper()
+			crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+		}, true
 	}
-	if _, canSave := resource.(crud.Saver[ENT]); canSave {
-		return true
+	if subject, ok := resource.(crud.Creator[ENT]); ok {
+		return func(tb testing.TB, ptr *ENT) {
+			tb.Helper()
+			crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+		}, false
 	}
-	return false
+	return nil, false
 }
 
 func shouldStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ptr *ENT) {
 	tb.Helper()
-	if subject, ok := resource.(crud.Saver[ENT]); ok {
-		crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
-		return
-	}
-	if subject, ok := resource.(crud.Creator[ENT]); ok {
-		crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+	if s, ok := storer[ENT, ID](c, resource); ok {
+		s(tb, ptr)
 		return
 	}
 	tb.Skipf("unable to continue with this testing scenario, as %T doesn't implement neither crud.Creator or crud.Saver", resource)

@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/iterators"
-	sh "go.llib.dev/frameless/spechelper"
 
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/pp"
@@ -102,16 +101,16 @@ func Update[ENT, ID any](tb testing.TB, subject updater[ENT, ID], ctx context.Co
 	})
 }
 
-type CRD[ENT, ID any] interface {
-	sh.CRD[ENT, ID]
-}
-
-func Delete[ENT, ID any](tb testing.TB, subject CRD[ENT, ID], ctx context.Context, ptr *ENT) {
+func Delete[ENT, ID any](tb testing.TB, subject crud.ByIDDeleter[ID], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	id := HasID[ENT, ID](tb, ptr)
-	IsPresent[ENT, ID](tb, subject, ctx, id)
+	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
+		IsPresent[ENT, ID](tb, finder, ctx, id)
+	}
 	assert.Must(tb).Nil(subject.DeleteByID(ctx, id))
-	IsAbsent[ENT, ID](tb, subject, ctx, id)
+	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
+		IsAbsent[ENT, ID](tb, finder, ctx, id)
+	}
 }
 
 type deleteAllDeleter[ENT, ID any] interface {
