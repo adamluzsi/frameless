@@ -282,3 +282,7 @@ func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iterators.Iter
 	})
 	return
 }
+
+func wait() {
+	crudtest.Waiter.Wait()
+}
