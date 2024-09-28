@@ -1,6 +1,7 @@
 package flsql
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -179,20 +180,24 @@ type DTO interface {
 	sql.Scanner
 }
 
-func JSON[T any](pointer *T) DTO {
-	return &dtoJSON[T]{Pointer: pointer}
+func JSON[T any](pointer *T) *DTOJSON[T] {
+	return &DTOJSON[T]{Pointer: pointer}
 }
 
-type dtoJSON[T any] struct{ Pointer *T }
+type DTOJSON[T any] struct {
+	Pointer *T
 
-func (m dtoJSON[T]) Value() (driver.Value, error) {
+	DisallowUnknownFields bool
+}
+
+func (m DTOJSON[T]) Value() (driver.Value, error) {
 	if m.Pointer == nil {
 		return nil, nil
 	}
-	return json.Marshal(*m.Pointer)
+	return m.MarshalJSON()
 }
 
-func (m *dtoJSON[T]) Scan(value any) error {
+func (m *DTOJSON[T]) Scan(value any) error {
 	if value == nil {
 		return nil
 	}
@@ -206,6 +211,19 @@ func (m *dtoJSON[T]) Scan(value any) error {
 		data = []byte(value)
 	default:
 		return fmt.Errorf("%T is not yet supported for %T", value, m)
+	}
+	return m.UnmarshalJSON(data)
+}
+
+func (m *DTOJSON[T]) MarshalJSON() ([]byte, error) {
+	return json.Marshal(*m.Pointer)
+}
+
+func (m *DTOJSON[T]) UnmarshalJSON(data []byte) error {
+	if m.DisallowUnknownFields {
+		dec := json.NewDecoder(bytes.NewReader(data))
+		dec.DisallowUnknownFields()
+		return dec.Decode(&m.Pointer)
 	}
 	return json.Unmarshal(data, &m.Pointer)
 }

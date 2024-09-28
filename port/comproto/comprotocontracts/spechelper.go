@@ -2,6 +2,7 @@ package comprotocontracts
 
 import (
 	"context"
+	"testing"
 
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/option"
@@ -12,11 +13,13 @@ type Option interface {
 }
 
 type Config struct {
-	MakeContext func() context.Context
+	MakeContext func(testing.TB) context.Context
 }
 
 func (c *Config) Init() {
-	c.MakeContext = context.Background
+	c.MakeContext = func(t testing.TB) context.Context {
+		return context.Background()
+	}
 }
 
 func (c *Config) Configure(oth *Config) {

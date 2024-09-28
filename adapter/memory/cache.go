@@ -23,7 +23,7 @@ func (cr *CacheRepository[Entity, ID]) Entities() cache.EntityRepository[Entity,
 }
 
 func (cr *CacheRepository[Entity, ID]) Hits() cache.HitRepository[ID] {
-	return &Repository[cache.Hit[ID], string]{
+	return &Repository[cache.Hit[ID], cache.HitID]{
 		Memory:    cr.Memory,
 		Namespace: fmt.Sprintf("cache.HitRepository[%T]", *new(ID)),
 	}

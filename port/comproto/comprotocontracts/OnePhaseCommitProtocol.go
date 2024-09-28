@@ -18,54 +18,54 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 		s.HasSideEffect()
 
 		s.Test(`BeginTx + CommitTx, no error`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.CommitTx(tx))
 		})
 
 		s.Test(`CommitTx cancels the context`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.CommitTx(tx))
 			t.Must.ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple CommitTx, yields error`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.CommitTx(tx))
 			t.Must.NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx, no error`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`RollbackTx cancels the context`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.RollbackTx(tx))
 			t.Must.ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple RollbackTx, yields error`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.RollbackTx(tx))
 			t.Must.NotNil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx + CommitTx, yields error`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.RollbackTx(tx))
 			t.Must.NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + CommitTx + RollbackTx, yields error`, func(t *testcase.T) {
-			tx, err := subject.BeginTx(c.MakeContext())
+			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 			t.Must.Nil(subject.CommitTx(tx))
 			t.Must.NotNil(subject.RollbackTx(tx))
@@ -83,7 +83,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 				`please provide further specification if your code depends on rollback in an nested transaction scenario`,
 			)
 
-			var globalContext = c.MakeContext()
+			var globalContext = c.MakeContext(t)
 
 			tx1, err := subject.BeginTx(globalContext)
 			t.Must.Nil(err)
@@ -101,7 +101,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 		})
 
 		s.Test("CommitTx and context cancellation behaviour with nested context", func(t *testcase.T) {
-			tx1, err := subject.BeginTx(c.MakeContext())
+			tx1, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 
 			tx2, err := subject.BeginTx(tx1)
@@ -116,7 +116,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 		})
 
 		s.Test("RollbackTx and context cancellation behaviour with nested context", func(t *testcase.T) {
-			tx1, err := subject.BeginTx(c.MakeContext())
+			tx1, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.Nil(err)
 
 			tx2, err := subject.BeginTx(tx1)
@@ -136,7 +136,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 	s.When("context has an error", func(s *testcase.Spec) {
 		cancel := testcase.Let[func()](s, nil)
 		ctx := testcase.Let(s, func(t *testcase.T) context.Context {
-			c, cfn := context.WithCancel(c.MakeContext())
+			c, cfn := context.WithCancel(c.MakeContext(t))
 			cancel.Set(t, cfn)
 			return c
 		}).EagerLoading(s)
@@ -158,7 +158,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			tx, err := subject.BeginTx(ctx.Get(t))
 			t.Must.NoError(err)
 			cancel.Get(t)()
-			t.Must.ErrorIs(ctx.Get(t).Err(), subject.CommitTx(tx))
+			t.Must.ErrorIs(ctx.Get(t).Err(), subject.RollbackTx(tx))
 		})
 	})
 

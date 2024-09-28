@@ -43,7 +43,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 	}
 
 	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(), act)
+		spechelper.TryCleanup(t, c.MakeContext(t), act)
 	})
 
 	ptr := testcase.Let(s, func(t *testcase.T) *ENT {
@@ -53,7 +53,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 	s.When(`entity was saved in the resource`, func(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) ID {
 			p := ptr.Get(t)
-			shouldCreate[ENT, ID](t, c, subject, c.MakeContext(), p)
+			shouldStore[ENT, ID](t, c, subject, p)
 			id, ok := lookupID[ID](c, *p)
 			t.Must.True(ok, assert.Message(pp.Format(spechelper.ErrIDRequired.Error())))
 			return id
@@ -62,12 +62,12 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
 
-			shouldAbsent(t, c, subject, c.MakeContext(), id.Get(t))
+			shouldAbsent(t, c, subject, c.MakeContext(t), id.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
-				ctx, cancel := context.WithCancel(c.MakeContext())
+				ctx, cancel := context.WithCancel(c.MakeContext(t))
 				cancel()
 				return ctx
 			})
@@ -80,14 +80,14 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 		s.And(`more similar entity is saved in the resource as well`, func(s *testcase.Spec) {
 			othEntPtr := testcase.Let(s, func(t *testcase.T) *ENT {
 				ent := c.MakeEntity(t)
-				shouldCreate(t, c, subject, c.MakeContext(), &ent)
+				shouldStore(t, c, subject, &ent)
 				return &ent
 			}).EagerLoading(s)
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
 				t.Must.Nil(act(t))
 				othID, _ := lookupID[ID](c, *othEntPtr.Get(t))
-				shouldPresent(t, c, subject, c.MakeContext(), othID)
+				shouldPresent(t, c, subject, c.MakeContext(t), othID)
 			})
 		})
 
@@ -118,19 +118,19 @@ func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], o
 	s := testcase.NewSpec(nil)
 
 	var (
-		ctx = testcase.Let(s, func(t *testcase.T) context.Context { return conf.MakeContext() })
+		ctx = testcase.Let(s, func(t *testcase.T) context.Context { return conf.MakeContext(t) })
 	)
 	act := func(t *testcase.T) error {
 		return subject.DeleteAll(ctx.Get(t))
 	}
 
 	s.Benchmark("", func(t *testcase.T) {
-		assert.NoError(t, subject.DeleteAll(conf.MakeContext()))
+		assert.NoError(t, subject.DeleteAll(conf.MakeContext(t)))
 	})
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 		ctx.Let(s, func(t *testcase.T) context.Context {
-			ctx, cancel := context.WithCancel(conf.MakeContext())
+			ctx, cancel := context.WithCancel(conf.MakeContext(t))
 			cancel()
 			return ctx
 		})
@@ -142,11 +142,11 @@ func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], o
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		ent := conf.MakeEntity(t)
-		crudtest.Create[Entity, ID](t, subject, conf.MakeContext(), &ent)
+		crudtest.Create[Entity, ID](t, subject, conf.MakeContext(t), &ent)
 		entID := crudtest.HasID[Entity, ID](t, &ent)
-		crudtest.IsPresent[Entity, ID](t, subject, conf.MakeContext(), entID)
+		crudtest.IsPresent[Entity, ID](t, subject, conf.MakeContext(t), entID)
 		t.Must.Nil(act(t))
-		crudtest.IsAbsent[Entity, ID](t, subject, conf.MakeContext(), entID)
+		crudtest.IsAbsent[Entity, ID](t, subject, conf.MakeContext(t), entID)
 	})
 
 	return s.AsSuite("AllDeleter")

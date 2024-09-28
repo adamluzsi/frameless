@@ -23,7 +23,7 @@ func MetaAccessor[V any](subject meta.MetaAccessor, opts ...Option[V]) contract.
 	// LookupMeta(ctx context.Context, key string, ptr interface{}) (_found bool, _err error)
 	s.Describe(`.SetMeta+.LookupMeta`, func(s *testcase.Spec) {
 		var (
-			ctx   = testcase.Let(s, func(t *testcase.T) context.Context { return c.MakeContext() })
+			ctx   = testcase.Let(s, func(t *testcase.T) context.Context { return c.MakeContext(t) })
 			key   = testcase.Let(s, func(t *testcase.T) string { return t.Random.String() })
 			value = testcase.Let(s, func(t *testcase.T) V { return c.MakeV(t) })
 		)
@@ -66,12 +66,14 @@ type Option[V any] interface {
 
 type Config[V any] struct {
 	MakeV       func(tb testing.TB) V
-	MakeContext func() context.Context
+	MakeContext func(tb testing.TB) context.Context
 }
 
 func (c *Config[V]) Init() {
 	c.MakeV = spechelper.MakeValue[V]
-	c.MakeContext = context.Background
+	c.MakeContext = func(tb testing.TB) context.Context {
+		return context.Background()
+	}
 }
 
 func (c Config[V]) Configure(t *Config[V]) {

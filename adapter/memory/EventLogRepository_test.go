@@ -95,7 +95,7 @@ func TestEventLogRepository_smoke(t *testing.T) {
 
 func getRepositorySpecsForT[Entity any, ID comparable](
 	subject *memory.EventLogRepository[Entity, ID],
-	MakeContext func() context.Context,
+	MakeContext func(testing.TB) context.Context,
 	MakeEntity func(testing.TB) Entity,
 ) []testcase.Suite {
 	crudConfig := crudcontracts.Config[Entity, ID]{
@@ -125,7 +125,7 @@ func getRepositorySpecs[Entity any, ID comparable](
 	subject *memory.EventLogRepository[Entity, ID],
 	MakeEntity func(testing.TB) Entity,
 ) []testcase.Suite {
-	makeContext := func() context.Context { return context.Background() }
+	makeContext := func(testing.TB) context.Context { return context.Background() }
 	return getRepositorySpecsForT[Entity, ID](subject, makeContext, MakeEntity)
 }
 

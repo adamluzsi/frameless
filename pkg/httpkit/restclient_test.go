@@ -131,7 +131,7 @@ func TestRestClient_subresource(t *testing.T) {
 	}
 
 	crudcontractsConfig := crudcontracts.Config[testent.Bar, testent.BarID]{
-		MakeContext: func() context.Context {
+		MakeContext: func(testing.TB) context.Context {
 			return httpkit.WithPathParam(context.Background(), "foo_id", foo.ID.String())
 		},
 		SupportIDReuse:  true,

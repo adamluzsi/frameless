@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/iterators"
@@ -32,19 +33,18 @@ type HitRepository[EntID any] interface {
 	crud.Deleter[HitID]
 }
 
-type (
-	Hit[ID any] struct {
-		QueryID   HitID `ext:"id"`
-		EntityIDs []ID
-		Timestamp time.Time
-	}
-	HitID = string
-)
+type Hit[ID any] struct {
+	ID        HitID `ext:"id"`
+	EntityIDs []ID
+	Timestamp time.Time
+}
 
-type Interface[Entity, ID any] interface {
-	CachedQueryOne(ctx context.Context, queryKey HitID, query QueryOneFunc[Entity]) (_ent Entity, _found bool, _err error)
-	CachedQueryMany(ctx context.Context, queryKey HitID, query QueryManyFunc[Entity]) (iterators.Iterator[Entity], error)
-	InvalidateCachedQuery(ctx context.Context, queryKey HitID) error
+type HitID string
+
+type Interface[ENT, ID any] interface {
+	CachedQueryOne(ctx context.Context, hid HitID, query QueryOneFunc[ENT]) (_ent ENT, _found bool, _err error)
+	CachedQueryMany(ctx context.Context, hid HitID, query QueryManyFunc[ENT]) (iterators.Iterator[ENT], error)
+	InvalidateCachedQuery(ctx context.Context, hid HitID) error
 	InvalidateByID(ctx context.Context, id ID) (rErr error)
 	DropCachedValues(ctx context.Context) error
 }
@@ -54,25 +54,36 @@ type (
 	QueryManyFunc[ENT any] func() (iterators.Iterator[ENT], error)
 )
 
-// QueryKey is a helper function that allows you to create QueryManyFunc Keys
-type QueryKey struct {
-	// ID is the unique identifier to know what query is being cached.
-	// A method name or any unique name could work.
-	ID string
+// Query is a helper that allows you to create a cache.HitID
+type Query struct {
+	// Name is the name of the repository's query operation.
+	// A method name or any unique deterministic name is sufficient.
+	Name constant.String
 	// ARGS contain parameters to the query that can affect the query result.
 	// Supplying the ARGS ensures that a query call with different arguments cached individually.
-	ARGS map[string]any
-
+	// Request lifetime related values are not expected to be part of ARGS.
+	// ARGS should contain values that are serializable.
+	ARGS QueryARGS
+	// Version can help supporting multiple version of the same cached operation,
+	// so if the application rolls out with a new version, that has different behaviour or fifferend signature
+	// these values can be distringuesed
 	Version int
 }
 
-func (qk QueryKey) Encode() HitID {
-	var out = fmt.Sprintf("%d:%s", qk.Version, qk.ID)
-	if len(qk.ARGS) == 0 {
-		return out
+// QueryARGS is the argument name of the
+type QueryARGS map[string]any
+
+// String will encode the QueryKey into a string format
+func (q Query) String() string {
+	var id = fmt.Sprintf("%d:%s", q.Version, q.Name)
+	if len(q.ARGS) == 0 {
+		return id
 	}
 	// fmt print formatting is sorting the map content before printing,
-	// which makes using the QueryKey.Encode deterministic.
-	out += ":" + strings.TrimPrefix(fmt.Sprintf("%v", qk.ARGS), "map")
-	return HitID(out)
+	// which makes HitID.String deterministic.
+	return id + ":" + strings.TrimPrefix(fmt.Sprintf("%v", q.ARGS), "map")
+}
+
+func (q Query) HitID() HitID {
+	return HitID(q.String())
 }

@@ -3,7 +3,7 @@ package guard
 import (
 	"context"
 
-	"go.llib.dev/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/constant"
 )
 
 type Locker interface {
@@ -20,7 +20,7 @@ type Locker interface {
 	Unlock(lockCtx context.Context) error
 }
 
-const ErrNoLock consttypes.Error = "ErrNoLock"
+const ErrNoLock constant.Error = "ErrNoLock"
 
 type LockerFactory[Key comparable] interface {
 	LockerFor(Key) Locker

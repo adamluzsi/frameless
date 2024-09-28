@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.llib.dev/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/clock"
@@ -85,7 +85,7 @@ var _ = dtokit.Register[Issue, IssueJSONDTO](
 	},
 	func(ctx context.Context, dto IssueJSONDTO) (Issue, error) {
 		return Issue{
-			Code:    consttypes.String(dto.Code),
+			Code:    constant.String(dto.Code),
 			Message: dto.Message,
 		}, nil
 	})

@@ -23,9 +23,7 @@ func TestFIFO(t *testing.T) {
 		},
 	}
 
-	q := &memory.Queue[TestEntity]{
-		Memory: memory.NewMemory(),
-	}
+	q := &memory.Queue[TestEntity]{}
 
 	pubsubcontracts.FIFO[TestEntity](q, q, pubsubConfig).Test(t)
 }
@@ -42,8 +40,6 @@ func TestLIFO(t *testing.T) {
 	}
 
 	q := &memory.Queue[TestEntity]{
-		Memory: memory.NewMemory(),
-
 		LIFO: true,
 	}
 
@@ -61,9 +57,7 @@ func TestBuffered(t *testing.T) {
 		},
 	}
 
-	q := &memory.Queue[TestEntity]{
-		Memory: memory.NewMemory(),
-	}
+	q := &memory.Queue[TestEntity]{}
 
 	pubsubcontracts.Buffered[TestEntity](q, q, pubsubConfig).Test(t)
 }
@@ -80,8 +74,6 @@ func TestVolatile(t *testing.T) {
 	}
 
 	q := &memory.Queue[TestEntity]{
-		Memory: memory.NewMemory(),
-
 		Volatile: true,
 	}
 
@@ -100,8 +92,6 @@ func TestBlocking(t *testing.T) {
 	}
 
 	q := &memory.Queue[TestEntity]{
-		Memory: memory.NewMemory(),
-
 		Blocking: true,
 	}
 
@@ -120,8 +110,6 @@ func TestOrdering(t *testing.T) {
 	}
 
 	q := &memory.Queue[TestEntity]{
-		Memory: memory.NewMemory(),
-
 		SortLessFunc: func(i TestEntity, j TestEntity) bool {
 			return i.Data < j.Data
 		},
@@ -139,8 +127,7 @@ func TestOrdering(t *testing.T) {
 var _ pubsub.Publisher[Foo] = &memory.FanOutExchange[Foo]{}
 
 func TestFanOutExchange(t *testing.T) {
-	mm := memory.NewMemory()
-	exchange := &memory.FanOutExchange[Foo]{Memory: mm}
+	exchange := &memory.FanOutExchange[Foo]{}
 
 	var MakeQueue = func(tb testing.TB) pubsub.Subscriber[Foo] {
 		return exchange.MakeQueue()

@@ -19,7 +19,9 @@ func StateRepository(subject migration.StateRepository) contract.Contract {
 	})
 
 	config := crudcontracts.Config[migration.State, migration.StateID]{
-		MakeContext:     context.Background,
+		MakeContext: func(t testing.TB) context.Context {
+			return context.Background()
+		},
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 		ChangeEntity:    nil, // test entity can be freely changed

@@ -19,18 +19,18 @@ func ExampleConnectionAdapter() {
 		panic(err)
 	}
 
-	_ = flsql.ConnectionAdapter[*sql.DB, *sql.Tx]{
+	_ = flsql.ConnectionAdapter[sql.DB, sql.Tx]{
 		DB: db,
 
 		DBAdapter: flsql.QueryableSQL[*sql.DB],
 		TxAdapter: flsql.QueryableSQL[*sql.Tx],
 
-		BeginFunc: func(ctx context.Context) (*sql.Tx, error) {
+		Begin: func(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
 			// TODO: integrate begin tx options
 			return db.BeginTx(ctx, nil)
 		},
 
-		CommitFunc: func(ctx context.Context, tx *sql.Tx) error {
+		Commit: func(ctx context.Context, tx *sql.Tx) error {
 			return tx.Commit()
 		},
 

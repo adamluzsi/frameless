@@ -39,7 +39,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 
 			var publishedAtUNIXMilli int64
 			go func() {
-				t.Must.NoError(publisher.Publish(c.MakeContext(), c.MakeData(t)))
+				t.Must.NoError(publisher.Publish(c.MakeContext(t), c.MakeData(t)))
 				publishedAt := time.Now().UTC()
 				atomic.AddInt64(&publishedAtUNIXMilli, publishedAt.UnixMilli())
 			}()
@@ -75,7 +75,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 			s.Test("on context cancellation, message publishing is revoked", func(t *testcase.T) {
 				sub.Get(t).Stop() // stop processing from avoiding flaky test runs
 
-				ctx, cancel := context.WithCancel(c.MakeContext())
+				ctx, cancel := context.WithCancel(c.MakeContext(t))
 				go func() {
 					// we intentionally wait a bit before cancelling out
 					t.Random.Repeat(10, 100, pubsubtest.Waiter.Wait)
@@ -85,7 +85,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 				t.Must.ErrorIs(publisher.Publish(ctx, c.MakeData(t)), context.Canceled)
 				t.Must.ErrorIs(ctx.Err(), context.Canceled)
 
-				sub.Get(t).Start(t, c.MakeContext())
+				sub.Get(t).Start(t, c.MakeContext(t))
 
 				pubsubtest.Waiter.Wait()
 

@@ -21,12 +21,12 @@ func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[
 	s := testcase.NewSpec(nil)
 
 	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.MakeContext(), subject)
+		spechelper.TryCleanup(t, c.MakeContext(t), subject)
 	})
 
 	var (
 		requestContext = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.MakeContext()
+			return c.MakeContext(t)
 		})
 		entityWithChanges = testcase.Var[*Entity]{ID: `entity-with-changes`}
 	)
@@ -42,7 +42,7 @@ func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[
 	s.When(`an entity already stored`, func(s *testcase.Spec) {
 		ptr := testcase.Let(s, func(t *testcase.T) *Entity {
 			ent := pointer.Of(c.MakeEntity(t))
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ent)
+			crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), ent)
 			return ent
 		}).EagerLoading(s)
 
@@ -56,12 +56,12 @@ func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[
 			s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 				assert.Must(t).Nil(act(t))
 
-				crudtest.HasEntity[Entity, ID](t, subject, c.MakeContext(), entityWithChanges.Get(t))
+				crudtest.HasEntity[Entity, ID](t, subject, c.MakeContext(t), entityWithChanges.Get(t))
 			})
 
 			s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
 				requestContext.Let(s, func(t *testcase.T) context.Context {
-					ctx, cancel := context.WithCancel(c.MakeContext())
+					ctx, cancel := context.WithCancel(c.MakeContext(t))
 					cancel()
 					return ctx
 				})
@@ -76,8 +76,8 @@ func Updater[Entity, ID any](subject subjectUpdater[Entity, ID], opts ...Option[
 	s.When(`the received entity has ext.ID that is unknown in the repository`, func(s *testcase.Spec) {
 		entityWithChanges.Let(s, func(t *testcase.T) *Entity {
 			newEntity := pointer.Of(c.MakeEntity(t))
-			crudtest.Create[Entity, ID](t, subject, c.MakeContext(), newEntity)
-			crudtest.Delete[Entity, ID](t, subject, c.MakeContext(), newEntity)
+			crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), newEntity)
+			crudtest.Delete[Entity, ID](t, subject, c.MakeContext(t), newEntity)
 			return newEntity
 		})
 
@@ -99,11 +99,11 @@ type subjectUpdater[Entity, ID any] interface {
 func updaterBenchmark[Entity, ID any](s *testcase.Spec, subject subjectUpdater[Entity, ID], c Config[Entity, ID]) {
 	ent := testcase.Let(s, func(t *testcase.T) *Entity {
 		ptr := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[Entity, ID](t, subject, c.MakeContext(), ptr)
+		crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), ptr)
 		return ptr
 	})
 
 	s.Benchmark("", func(t *testcase.T) {
-		t.Must.Nil(subject.Update(c.MakeContext(), ent.Get(t)))
+		t.Must.Nil(subject.Update(c.MakeContext(t), ent.Get(t)))
 	})
 }

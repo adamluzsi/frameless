@@ -3,6 +3,7 @@ package guardcontracts
 import (
 	"context"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"go.llib.dev/frameless/port/contract"
@@ -20,13 +21,13 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 	const withinTimeout = time.Second
 
 	s.After(func(t *testcase.T) {
-		_ = subject.Unlock(c.MakeContext())
+		_ = subject.Unlock(c.MakeContext(t))
 	})
 
 	s.Describe(".Lock", func(s *testcase.Spec) {
 		var (
 			Context = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
-				return c.MakeContext()
+				return c.MakeContext(t)
 			})
 		)
 		act := func(t *testcase.T) (context.Context, error) {
@@ -72,7 +73,7 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 		s.Then("calling unlock not with the locked context will yield an error", func(t *testcase.T) {
 			lockContext, err := act(t)
 			t.Must.NoError(err)
-			t.Must.ErrorIs(guard.ErrNoLock, subject.Unlock(c.MakeContext()))
+			t.Must.ErrorIs(guard.ErrNoLock, subject.Unlock(c.MakeContext(t)))
 			t.Must.NoError(subject.Unlock(lockContext))
 		})
 
@@ -120,7 +121,7 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 
 		s.When("context is a lock context, made by a .Lock call", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
-				ctx := c.MakeContext()
+				ctx := c.MakeContext(t)
 				assert.Within(t, 5*time.Second, func(context.Context) {
 					lctx, err := subject.Lock(ctx)
 					t.Must.NoError(err)
@@ -155,7 +156,7 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 
 			s.And("context is cancelled during locking", func(s *testcase.Spec) {
 				Context.Let(s, func(t *testcase.T) context.Context {
-					ctx, cancel := context.WithCancel(c.MakeContext())
+					ctx, cancel := context.WithCancel(c.MakeContext(t))
 					ctx, err := subject.Lock(ctx)
 					t.Must.NoError(err)
 					t.Defer(subject.Unlock, ctx)
@@ -174,7 +175,7 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 
 		s.When("context is not issued by a .Lock call", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
-				return c.MakeContext()
+				return c.MakeContext(t)
 			})
 
 			s.Then("it raise ErrNoLock error", func(t *testcase.T) {
@@ -191,12 +192,14 @@ type LockerOption interface {
 }
 
 type LockerConfig struct {
-	MakeContext func() context.Context
+	MakeContext func(testing.TB) context.Context
 	Waiter      assert.Waiter
 }
 
 func (c *LockerConfig) Init() {
-	c.MakeContext = context.Background
+	c.MakeContext = func(testing.TB) context.Context {
+		return context.Background()
+	}
 	c.Waiter = assert.Waiter{
 		WaitDuration: time.Millisecond,
 		Timeout:      5 * time.Second,

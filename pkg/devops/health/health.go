@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"go.llib.dev/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -216,7 +216,7 @@ func (r Report) WithIssue(issue Issue) Report {
 type Issue struct {
 	// Code is meant for programmatic processing of an issue detection.
 	// Should contain no whitespace and use dash-case/snakecase/const-case.
-	Code consttypes.String
+	Code constant.String
 	// Message can contain further details about the detected issue.
 	Message string
 	// Causes will indicate the status change this Issue will cause

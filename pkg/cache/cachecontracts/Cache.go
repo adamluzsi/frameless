@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"time"
 
+	"go.llib.dev/frameless/internal/constant"
 	cachepkg "go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -58,6 +59,9 @@ func Cache[ENT any, ID comparable](
 	if _, ok := source.(crud.Updater[ENT]); ok {
 		suites = append(suites, crudcontracts.Updater[ENT, ID](cache, c.CRUD))
 	}
+	if _, ok := source.(crud.Saver[ENT]); ok {
+		suites = append(suites, crudcontracts.Saver[ENT, ID](cache, c.CRUD))
+	}
 
 	suites = append(suites, Repository[ENT, ID](repository, c))
 
@@ -84,6 +88,7 @@ func Cache[ENT any, ID comparable](
 type CacheSubject[ENT, ID any] interface {
 	cachepkg.Interface[ENT, ID]
 	crud.Creator[ENT]
+	crud.Saver[ENT]
 	crud.ByIDFinder[ENT, ID]
 	crud.AllFinder[ENT]
 	crud.Updater[ENT]
@@ -107,18 +112,18 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 	s.Context(reflectkit.SymbolicName(*new(ENT)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) interface{} {
 			ptr := pointer.Of(c.CRUD.MakeEntity(t))
-			t.Must.NoError(source.Create(c.CRUD.MakeContext(), ptr))
+			t.Must.NoError(source.Create(c.CRUD.MakeContext(t), ptr))
 			id, _ := extid.Lookup[ID](ptr)
-			t.Defer(source.DeleteByID, c.CRUD.MakeContext(), id)
+			t.Defer(source.DeleteByID, c.CRUD.MakeContext(t), id)
 			return ptr
 		})
 
 		s.Before(func(t *testcase.T) {
-			t.Must.NoError(cache.DropCachedValues(c.CRUD.MakeContext()))
+			t.Must.NoError(cache.DropCachedValues(c.CRUD.MakeContext(t)))
 		})
 
 		s.Test(`an update to the repository should refresh the by id look`, func(t *testcase.T) {
-			ctx := c.CRUD.MakeContext()
+			ctx := c.CRUD.MakeContext(t)
 			v := value.Get(t)
 			entID, _ := extid.Lookup[ID](v)
 
@@ -137,7 +142,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 		})
 
 		s.Test(`an update to the repository should refresh the QueryMany cache hits`, func(t *testcase.T) {
-			ctx := c.CRUD.MakeContext()
+			ctx := c.CRUD.MakeContext(t)
 			v := value.Get(t)
 			entID, _ := extid.Lookup[ID](v)
 
@@ -177,14 +182,14 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.FindByID(c.CRUD.MakeContext(), id)                             // should trigger caching
-			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(c.CRUD.MakeContext()))) // should trigger caching
+			_, _, _ = cache.FindByID(c.CRUD.MakeContext(t), id)                             // should trigger caching
+			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(c.CRUD.MakeContext(t)))) // should trigger caching
 
 			// delete
-			t.Must.NoError(cache.DeleteByID(c.CRUD.MakeContext(), id))
+			t.Must.NoError(cache.DeleteByID(c.CRUD.MakeContext(t), id))
 
 			// assert
-			crudtest.IsAbsent[ENT, ID](t, cache, c.CRUD.MakeContext(), id)
+			crudtest.IsAbsent[ENT, ID](t, cache, c.CRUD.MakeContext(t), id)
 		})
 
 		s.Test(`a delete all entity in the repository should invalidate the local cache unit entity state`, func(t *testcase.T) {
@@ -192,14 +197,14 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.FindByID(c.CRUD.MakeContext(), id)                             // should trigger caching
-			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(c.CRUD.MakeContext()))) // should trigger caching
+			_, _, _ = cache.FindByID(c.CRUD.MakeContext(t), id)                             // should trigger caching
+			_, _ = iterators.Count(iterators.WithErr(cache.FindAll(c.CRUD.MakeContext(t)))) // should trigger caching
 
 			// delete
-			t.Must.NoError(cache.DeleteAll(c.CRUD.MakeContext()))
+			t.Must.NoError(cache.DeleteAll(c.CRUD.MakeContext(t)))
 			waiter.Wait()
 
-			crudtest.IsAbsent[ENT, ID](t, cache, c.CRUD.MakeContext(), id) // should trigger caching for not found
+			crudtest.IsAbsent[ENT, ID](t, cache, c.CRUD.MakeContext(t), id) // should trigger caching for not found
 		})
 	})
 }
@@ -225,7 +230,7 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 	c := option.Use[Config[Entity, ID]](opts)
 	s.Context(reflectkit.SymbolicName(*new(Entity)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) *Entity {
-			ctx := c.CRUD.MakeContext()
+			ctx := c.CRUD.MakeContext(t)
 			ptr := pointer.Of(c.CRUD.MakeEntity(t))
 			t.Must.NoError(source.Create(ctx, ptr))
 			id, _ := extid.Lookup[ID](ptr)
@@ -236,7 +241,7 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 		s.Then(`it will return the value`, func(t *testcase.T) {
 			id, found := extid.Lookup[ID](value.Get(t))
 			assert.Must(t).True(found)
-			v, found, err := cache.FindByID(c.CRUD.MakeContext(), id)
+			v, found, err := cache.FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			assert.Must(t).True(found)
 			assert.Must(t).Equal(*value.Get(t), v)
@@ -246,7 +251,7 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 			s.Before(func(t *testcase.T) {
 				id, found := extid.Lookup[ID](value.Get(t))
 				assert.Must(t).True(found)
-				v := crudtest.IsPresent[Entity, ID](t, source, c.CRUD.MakeContext(), id)
+				v := crudtest.IsPresent[Entity, ID](t, source, c.CRUD.MakeContext(t), id)
 				assert.Must(t).Equal(value.Get(t), v)
 			})
 
@@ -261,7 +266,7 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 
 				s.Before(func(t *testcase.T) {
 					ptr := valueWithNewContent.Get(t)
-					crudtest.Update[Entity, ID](t, cache, c.CRUD.MakeContext(), ptr)
+					crudtest.Update[Entity, ID](t, cache, c.CRUD.MakeContext(t), ptr)
 					waiter.Wait()
 				})
 
@@ -269,10 +274,10 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 					id, found := extid.Lookup[ID](value.Get(t))
 					assert.Must(t).True(found)
 					t.Must.NotEmpty(id)
-					crudtest.HasEntity[Entity, ID](t, cache, c.CRUD.MakeContext(), valueWithNewContent.Get(t))
+					crudtest.HasEntity[Entity, ID](t, cache, c.CRUD.MakeContext(t), valueWithNewContent.Get(t))
 
 					eventually.Assert(t, func(it assert.It) {
-						v, found, err := cache.FindByID(c.CRUD.MakeContext(), id)
+						v, found, err := cache.FindByID(c.CRUD.MakeContext(t), id)
 						it.Must.Nil(err)
 						it.Must.True(found)
 						it.Log(`actually`, v)
@@ -289,7 +294,7 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 				assert.Must(t).True(found)
 
 				for i := 0; i < 42; i++ {
-					v, found, err := cache.FindByID(c.CRUD.MakeContext(), id)
+					v, found, err := cache.FindByID(c.CRUD.MakeContext(t), id)
 					t.Must.NoError(err)
 					assert.Must(t).True(found)
 					assert.Must(t).Equal(*value, v)
@@ -321,11 +326,11 @@ func describeResultCaching[Entity any, ID comparable](s *testcase.Spec,
 					assert.Must(t).True(found)
 
 					// trigger caching
-					assert.Must(t).Equal(val, crudtest.IsPresent[Entity, ID](t, cache, c.CRUD.MakeContext(), id))
+					assert.Must(t).Equal(val, crudtest.IsPresent[Entity, ID](t, cache, c.CRUD.MakeContext(t), id))
 					numberOfFindByIDCallAfterEntityIsFound := spy.Get(t).count.FindByID
 					waiter.Wait()
 
-					nv, found, err := cache.FindByID(c.CRUD.MakeContext(), id) // should use cached val
+					nv, found, err := cache.FindByID(c.CRUD.MakeContext(t), id) // should use cached val
 					t.Must.NoError(err)
 					assert.Must(t).True(found)
 					assert.Must(t).Equal(*val, nv)
@@ -345,27 +350,27 @@ func specCachedQueryMany[Entity any, ID comparable](s *testcase.Spec,
 	c := option.Use[Config[Entity, ID]](opts)
 	var (
 		Context = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.CRUD.MakeContext()
+			return c.CRUD.MakeContext(t)
 		})
-		queryKey = testcase.Let(s, func(t *testcase.T) cachepkg.HitID {
-			return t.Random.UUID()
+		hitID = testcase.Let(s, func(t *testcase.T) cachepkg.HitID {
+			return cachepkg.Query{Name: constant.String(t.Random.UUID())}.HitID()
 		})
 		query = testcase.Let[cachepkg.QueryManyFunc[Entity]](s, nil)
 	)
 	act := func(t *testcase.T) (iterators.Iterator[Entity], error) {
-		return subject.CachedQueryMany(Context.Get(t), queryKey.Get(t), query.Get(t))
+		return subject.CachedQueryMany(Context.Get(t), hitID.Get(t), query.Get(t))
 	}
 
 	s.When("query returns values", func(s *testcase.Spec) {
 		var (
 			ent1 = testcase.Let(s, func(t *testcase.T) *Entity {
 				v := c.CRUD.MakeEntity(t)
-				crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(), &v)
+				crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(t), &v)
 				return &v
 			})
 			ent2 = testcase.Let(s, func(t *testcase.T) *Entity {
 				v := c.CRUD.MakeEntity(t)
-				crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(), &v)
+				crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(t), &v)
 				return &v
 			})
 		)
@@ -390,7 +395,7 @@ func specCachedQueryMany[Entity any, ID comparable](s *testcase.Spec,
 			vs, err := iterators.Collect(iter)
 			t.Must.NoError(err)
 
-			cached, err := iterators.Collect(iterators.WithErr(repository.Entities().FindAll(c.CRUD.MakeContext())))
+			cached, err := iterators.Collect(iterators.WithErr(repository.Entities().FindAll(c.CRUD.MakeContext(t))))
 			t.Must.NoError(err)
 			t.Must.Contain(cached, vs)
 		})
@@ -401,11 +406,11 @@ func specCachedQueryMany[Entity any, ID comparable](s *testcase.Spec,
 			_, err = iterators.Collect(iter)
 			t.Must.NoError(err)
 
-			hits, err := iterators.Collect(iterators.WithErr(repository.Hits().FindAll(c.CRUD.MakeContext())))
+			hits, err := iterators.Collect(iterators.WithErr(repository.Hits().FindAll(c.CRUD.MakeContext(t))))
 			t.Must.NoError(err)
 
 			assert.OneOf(t, hits, func(it assert.It, got cachepkg.Hit[ID]) {
-				it.Must.Equal(got.QueryID, queryKey.Get(t))
+				it.Must.Equal(got.ID, hitID.Get(t))
 				it.Must.ContainExactly(got.EntityIDs, []ID{
 					crudtest.HasID[Entity, ID](t, ent1.Get(t)),
 					crudtest.HasID[Entity, ID](t, ent2.Get(t)),
@@ -424,25 +429,25 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 	c := option.Use[Config[Entity, ID]](opts)
 	var (
 		Context = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.CRUD.MakeContext()
+			return c.CRUD.MakeContext(t)
 		})
-		queryKey = testcase.Let(s, func(t *testcase.T) cachepkg.HitID {
-			return t.Random.UUID()
+		hitID = testcase.Let(s, func(t *testcase.T) cachepkg.HitID {
+			return cachepkg.Query{Name: constant.String(t.Random.UUID())}.HitID()
 		})
 	)
 	act := func(t *testcase.T) error {
-		return cache.InvalidateCachedQuery(Context.Get(t), queryKey.Get(t))
+		return cache.InvalidateCachedQuery(Context.Get(t), hitID.Get(t))
 	}
 
 	var queryOneFunc = testcase.Let[cachepkg.QueryOneFunc[Entity]](s, nil)
 	queryOne := func(t *testcase.T) (Entity, bool, error) {
 		return cache.
-			CachedQueryOne(c.CRUD.MakeContext(), queryKey.Get(t), queryOneFunc.Get(t))
+			CachedQueryOne(c.CRUD.MakeContext(t), hitID.Get(t), queryOneFunc.Get(t))
 	}
 
 	var queryManyFunc = testcase.Let[cachepkg.QueryManyFunc[Entity]](s, nil)
 	queryMany := func(t *testcase.T) (iterators.Iterator[Entity], error) {
-		return cache.CachedQueryMany(c.CRUD.MakeContext(), queryKey.Get(t), queryManyFunc.Get(t))
+		return cache.CachedQueryMany(c.CRUD.MakeContext(t), hitID.Get(t), queryManyFunc.Get(t))
 	}
 
 	s.When("queryKey has a cached data with CachedQueryOne", func(s *testcase.Spec) {
@@ -453,13 +458,13 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		queryOneFunc.Let(s, func(t *testcase.T) cachepkg.QueryOneFunc[Entity] {
 			return func() (Entity, bool, error) {
 				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
-				return source.FindByID(c.CRUD.MakeContext(), id)
+				return source.FindByID(c.CRUD.MakeContext(t), id)
 			}
 		})
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
+			t.Must.NoError(source.Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := queryOne(t)
@@ -467,13 +472,13 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 			t.Must.True(found)
 			t.Must.Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
+			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(t), id))
 			// we have hits
-			n, err := iterators.Count(iterators.WithErr(repository.Hits().FindAll(c.CRUD.MakeContext())))
+			n, err := iterators.Count(iterators.WithErr(repository.Hits().FindAll(c.CRUD.MakeContext(t))))
 			t.Must.NoError(err)
 			t.Must.NotEqual(0, n)
 			// we have cached entities
-			n, err = iterators.Count(iterators.WithErr(repository.Entities().FindAll(c.CRUD.MakeContext())))
+			n, err = iterators.Count(iterators.WithErr(repository.Entities().FindAll(c.CRUD.MakeContext(t))))
 			t.Must.NoError(err)
 			t.Must.NotEqual(0, n)
 			// cache still able to retrieve the invalid state
@@ -495,28 +500,28 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
-			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
-			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
@@ -531,7 +536,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
 			return func() (iterators.Iterator[Entity], error) {
 				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
-				ent, found, err := source.FindByID(c.CRUD.MakeContext(), id)
+				ent, found, err := source.FindByID(c.CRUD.MakeContext(t), id)
 				if err != nil {
 					return nil, err
 				}
@@ -544,14 +549,14 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
+			t.Must.NoError(source.Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			vs, err := iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
+			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			vs, err = iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
@@ -569,28 +574,28 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
-			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
-			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
@@ -599,7 +604,7 @@ func specInvalidateCachedQuery[Entity any, ID comparable](s *testcase.Spec,
 
 	s.When("queryKey does not belong to any cached query hit", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			_, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			_, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 		})
@@ -631,7 +636,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 	c := option.Use[Config[Entity, ID]](opts)
 	var (
 		Context = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.CRUD.MakeContext()
+			return c.CRUD.MakeContext(t)
 		})
 		id = testcase.Let[ID](s, nil)
 	)
@@ -639,24 +644,26 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		return cache.InvalidateByID(Context.Get(t), id.Get(t))
 	}
 
-	queryKey := testcase.LetValue[cachepkg.HitID](s, "query-key")
+	hitID := testcase.Let(s, func(t *testcase.T) cachepkg.HitID {
+		return cachepkg.Query{Name: "operation-name"}.HitID()
+	})
 
 	var queryOneFunc = testcase.Let[cachepkg.QueryOneFunc[Entity]](s, nil)
 	queryOne := func(t *testcase.T) (Entity, bool, error) {
 		return cache.
-			CachedQueryOne(c.CRUD.MakeContext(), queryKey.Get(t), queryOneFunc.Get(t))
+			CachedQueryOne(c.CRUD.MakeContext(t), hitID.Get(t), queryOneFunc.Get(t))
 	}
 
 	var queryManyFunc = testcase.Let[cachepkg.QueryManyFunc[Entity]](s, nil)
 	queryMany := func(t *testcase.T) (iterators.Iterator[Entity], error) {
 		return cache.
-			CachedQueryMany(c.CRUD.MakeContext(), queryKey.Get(t), queryManyFunc.Get(t))
+			CachedQueryMany(c.CRUD.MakeContext(t), hitID.Get(t), queryManyFunc.Get(t))
 	}
 
 	s.Before(func(t *testcase.T) {
 		t.Cleanup(func() {
 			t.Must.NoError(cache.
-				InvalidateCachedQuery(c.CRUD.MakeContext(), queryKey.Get(t)))
+				InvalidateCachedQuery(c.CRUD.MakeContext(t), hitID.Get(t)))
 		})
 	})
 
@@ -671,13 +678,13 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 
 		queryOneFunc.Let(s, func(t *testcase.T) cachepkg.QueryOneFunc[Entity] {
 			return func() (Entity, bool, error) {
-				return source.FindByID(c.CRUD.MakeContext(), id.Get(t))
+				return source.FindByID(c.CRUD.MakeContext(t), id.Get(t))
 			}
 		})
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
+			t.Must.NoError(source.Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := queryOne(t)
@@ -685,7 +692,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 			t.Must.True(found)
 			t.Must.Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
+			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			ent, found, err = queryOne(t)
 			t.Must.NoError(err)
@@ -705,28 +712,28 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
-			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
-			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
@@ -743,17 +750,17 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
+			t.Must.NoError(source.Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
-			ent, found, err := cache.FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err := cache.FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
+			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
-			ent, found, err = cache.FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err = cache.FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.Equal(ent, *entPtr.Get(t))
@@ -762,7 +769,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("cached data is invalidated", func(t *testcase.T) {
 			t.Must.NoError(act(t))
 
-			ent, found, err := cache.FindByID(c.CRUD.MakeContext(), id.Get(t))
+			ent, found, err := cache.FindByID(c.CRUD.MakeContext(t), id.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
@@ -771,14 +778,14 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
-			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
@@ -797,7 +804,7 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[Entity] {
 			return func() (iterators.Iterator[Entity], error) {
 				id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
-				ent, found, err := source.FindByID(c.CRUD.MakeContext(), id)
+				ent, found, err := source.FindByID(c.CRUD.MakeContext(t), id)
 				if err != nil {
 					return nil, err
 				}
@@ -810,14 +817,14 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Create(c.CRUD.MakeContext(), entPtr.Get(t)))
+			t.Must.NoError(source.Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			vs, err := iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(), id))
+			t.Must.NoError(source.DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			vs, err = iterators.Collect(iterators.WithErr(queryMany(t)))
 			t.Must.NoError(err)
@@ -835,28 +842,28 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := crudtest.HasID[Entity, ID](t, entPtr.Get(t))
 
-			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(), id)
+			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
-			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.NotEmpty(ent)
 
 			t.Must.NoError(act(t))
 
-			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(), queryKey.Get(t))
+			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 			t.Must.Empty(ent)
@@ -866,14 +873,14 @@ func specInvalidateByID[Entity any, ID comparable](s *testcase.Spec,
 	s.When("entity id does not belong to any cached query hit", func(s *testcase.Spec) {
 		id.Let(s, func(t *testcase.T) ID {
 			ent := c.CRUD.MakeEntity(t)
-			crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(), &ent)
+			crudtest.Create[Entity, ID](t, source, c.CRUD.MakeContext(t), &ent)
 			v := crudtest.HasID[Entity, ID](t, &ent)
-			crudtest.Delete[Entity, ID](t, source, c.CRUD.MakeContext(), &ent)
+			crudtest.Delete[Entity, ID](t, source, c.CRUD.MakeContext(t), &ent)
 			return v
 		})
 
 		s.Before(func(t *testcase.T) {
-			_, found, err := source.FindByID(c.CRUD.MakeContext(), id.Get(t))
+			_, found, err := source.FindByID(c.CRUD.MakeContext(t), id.Get(t))
 			t.Must.NoError(err)
 			t.Must.False(found)
 		})

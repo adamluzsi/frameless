@@ -3,7 +3,7 @@ package errorkit
 import (
 	"errors"
 
-	"go.llib.dev/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/constant"
 )
 
 func LookupUserError(err error) (UserError, bool) {
@@ -18,13 +18,13 @@ type UserError struct {
 	// Traditionally this should be a string without any white space.
 	//
 	// Example: "foo-is-forbidden-with-active-baz"
-	ID consttypes.String
+	ID constant.String
 	// Message is the error message meant to be read by a developer working on the implementation of the caller.
 	// It is not expected to be seen by end users.
 	// It might be written in English for portability reasons.
 	//
 	// Example: "Authentication failed due to incorrect username or password."
-	Message consttypes.String
+	Message constant.String
 }
 
 func (err UserError) Error() string {

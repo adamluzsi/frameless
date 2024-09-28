@@ -22,7 +22,7 @@ func LockerFactory[Key comparable](subject guard.LockerFactory[Key], opts ...Loc
 
 	s.Test("result Lockers with different name don't interfere with each other", func(t *testcase.T) {
 		var (
-			ctx = c.MakeContext()
+			ctx = c.MakeContext(t)
 			l1  = subject.LockerFor(c.MakeKey(t))
 			l2  = subject.LockerFor(c.MakeKey(t))
 		)
@@ -44,12 +44,14 @@ type LockerFactoryOption[Key comparable] interface {
 }
 
 type LockerFactoryConfig[Key comparable] struct {
-	MakeContext func() context.Context
+	MakeContext func(testing.TB) context.Context
 	MakeKey     func(testing.TB) Key
 }
 
 func (c *LockerFactoryConfig[Key]) Init() {
-	c.MakeContext = context.Background
+	c.MakeContext = func(t testing.TB) context.Context {
+		return context.Background()
+	}
 	c.MakeKey = spechelper.MakeValue[Key]
 }
 

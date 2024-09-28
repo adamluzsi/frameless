@@ -15,7 +15,7 @@ type Option[ENT, ID any] interface {
 
 type Config[ENT, ID any] struct {
 	// MakeContext is responsible to return back a backgrond context for testing with the crud contract subject.
-	MakeContext func() context.Context
+	MakeContext func(testing.TB) context.Context
 	// MakeEntity is responsible to create a populated Entity.
 	MakeEntity func(testing.TB) ENT
 	// SupportIDReuse is an optional configuration value that tells the contract
@@ -46,7 +46,9 @@ type Config[ENT, ID any] struct {
 }
 
 func (c *Config[ENT, ID]) Init() {
-	c.MakeContext = context.Background
+	c.MakeContext = func(testing.TB) context.Context {
+		return context.Background()
+	}
 	c.MakeEntity = spechelper.MakeEntity[ENT, ID]
 }
 

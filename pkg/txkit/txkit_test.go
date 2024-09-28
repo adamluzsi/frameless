@@ -11,6 +11,8 @@ import (
 	"go.llib.dev/frameless/pkg/txkit"
 	"go.llib.dev/frameless/port/comproto/comprotocontracts"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func Test(t *testing.T) {
@@ -189,7 +191,7 @@ func Test(t *testing.T) {
 		var expectedErr error = errorkit.Error(t.Random.Error().Error())
 		actualErr := expectedErr
 		txkit.Finish(&actualErr, tx1)
-		t.Must.Equal(expectedErr, actualErr)
+		assert.Equal(t, expectedErr, actualErr)
 	})
 
 	s.Test("rollbacking back on multiple tx level yield no rollback error on Finish", func(t *testcase.T) {
@@ -223,10 +225,13 @@ func Test(t *testing.T) {
 
 		tx1, err := txkit.Begin(ctx)
 		t.Must.NoError(err)
-		t.Must.NoError(txkit.OnRollback(tx1, func(ctx context.Context) error { return ctx.Err() }))
+		t.Must.NoError(txkit.OnRollback(tx1, func(ctx context.Context) error {
+			assert.NoError(t, ctx.Err())
+			return nil
+		}))
 
-		cancel()                            // cancel the context
-		t.Must.NoError(txkit.Rollback(tx1)) // rollback the tx
+		cancel() // cancel the context
+		_ = txkit.Rollback(tx1)
 	})
 }
 
@@ -313,4 +318,89 @@ func (proxy CPProxy) CommitTx(ctx context.Context) error {
 
 func (proxy CPProxy) RollbackTx(ctx context.Context) error {
 	return proxy.RollbackTxFn(ctx)
+}
+
+func TestManager(t *testing.T) {
+	type DB struct {
+		N string
+		V string
+	}
+	type TX struct {
+		ID string
+		V  string
+	}
+	type Queryable struct {
+		V string
+		F any
+	}
+
+	rnd := random.New(random.CryptoSeed{})
+	db := &DB{
+		N: rnd.Domain(),
+		V: rnd.String(),
+	}
+
+	subject := txkit.Manager[DB, TX, Queryable]{
+		DB: db,
+		DBAdapter: func(db *DB) Queryable {
+			return Queryable{V: db.V, F: db}
+		},
+		TxAdapter: func(tx *TX) Queryable {
+			return Queryable{V: tx.V, F: tx}
+		},
+		Begin: func(ctx context.Context, db *DB) (*TX, error) {
+			return &TX{ID: rnd.UUID(), V: db.V}, nil
+		},
+		Commit: func(ctx context.Context, tx *TX) error {
+			assert.Equal(t, tx.V, db.V)
+			return nil
+		},
+		Rollback: func(ctx context.Context, tx *TX) error {
+			assert.Equal(t, tx.V, db.V)
+			return nil
+		},
+	}
+
+	t.Run("comprotocontracts.OnePhaseCommitProtocol",
+		comprotocontracts.OnePhaseCommitProtocol(subject).Test)
+
+	t.Run("smoke", func(t *testing.T) {
+		ctx := context.Background()
+		q := subject.Q(ctx)
+		assert.Equal(t, q.V, db.V)
+		assert.Equal[any](t, q.F, db)
+
+		tx, ok := subject.LookupTx(ctx)
+		var _ *TX = tx
+		assert.False(t, ok)
+		assert.Nil(t, tx)
+
+		ctx, err := subject.BeginTx(ctx)
+		assert.NoError(t, err)
+
+		tx, ok = subject.LookupTx(ctx)
+		assert.True(t, ok)
+		assert.NotNil(t, tx)
+		assert.Equal(t, tx.V, db.V)
+
+		q = subject.Q(ctx)
+		assert.Equal[any](t, q.F, tx)
+	})
+
+	t.Run("cancel will not cannel the context of the Rollback call", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		var subject txkit.Manager[DB, TX, Queryable] = subject // pass by value copy
+		ogRollback := subject.Rollback
+		subject.Rollback = func(ctx context.Context, tx *TX) error {
+			assert.NoError(t, ctx.Err())
+			return ogRollback(ctx, tx)
+		}
+
+		ctx, err := subject.BeginTx(ctx)
+		assert.NoError(t, err)
+
+		cancel()
+		assert.ErrorIs(t, ctx.Err(), subject.RollbackTx(ctx))
+	})
 }

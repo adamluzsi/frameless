@@ -31,7 +31,7 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 			t.Skip("crud.AllFinder is not supported")
 		}
 		t.Must.Nil(act(t))
-		CountIs(t, iterators.WithErr(allFinder.FindAll(c.MakeContext())), 0)
+		CountIs(t, iterators.WithErr(allFinder.FindAll(c.MakeContext(t))), 0)
 	})
 
 	s.When(`entities is created prior to Purge`, func(s *testcase.Spec) {

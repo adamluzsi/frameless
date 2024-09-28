@@ -235,3 +235,58 @@ func TestJoinColumnName_smoke(t *testing.T) {
 	q := flsql.JoinColumnName([]flsql.ColumnName{"foo", "bar", "baz"}, "%q", " AND ")
 	assert.Equal(t, `"foo" AND "bar" AND "baz"`, q)
 }
+
+func TestJSON_Strict(t *testing.T) {
+	type T struct {
+		Foo string `json:"foo"`
+	}
+
+	t.Run("valid", func(t *testing.T) {
+		var (
+			valid = `{"foo":"abc"}`
+			got   T
+			dto   = flsql.JSON(&got)
+		)
+		dto.DisallowUnknownFields = true
+		assert.NoError(t, dto.Scan(valid))
+		assert.Equal(t, T{Foo: "abc"}, got)
+	})
+
+	t.Run("invalid", func(t *testing.T) {
+		var (
+			inv = `{"foo":"abc","bar":"cba"}`
+			dto = flsql.JSON(&T{})
+		)
+		dto.DisallowUnknownFields = true
+		err := dto.Scan(inv)
+		assert.Error(t, err)
+		assert.Contain(t, err.Error(), "bar")
+	})
+}
+
+func TestJSON_jsonMarshaler(t *testing.T) {
+	type T struct {
+		Foo string `json:"foo"`
+	}
+
+	var v = T{Foo: "abc"}
+	dtoenc := flsql.JSON(&v)
+	var _ json.Marshaler = dtoenc
+	data, err := dtoenc.MarshalJSON()
+	assert.NoError(t, err)
+
+	var got T
+	dtodec := flsql.JSON(&got)
+	var _ json.Unmarshaler = dtodec
+	assert.NoError(t, dtodec.UnmarshalJSON(data))
+	assert.Equal(t, v, got)
+
+	t.Run("DisallowUnknownFields", func(t *testing.T) {
+		dtodec := flsql.JSON(&T{})
+		dtodec.DisallowUnknownFields = true
+
+		gotErr := dtodec.UnmarshalJSON([]byte(`{"fox":"cba"}`))
+		assert.Error(t, gotErr)
+		assert.Contain(t, gotErr.Error(), "fox")
+	})
+}

@@ -13,7 +13,6 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	crudtest "go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/iterators"
-	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -29,15 +28,6 @@ func getID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ent ENT) ID {
 	assert.Must(tb).True(ok,
 		`id was expected to be present for the entity`,
 		assert.Message(fmt.Sprintf(` (%#v)`, ent)))
-	return id
-}
-
-func createDummyID[ENT, ID any](t *testcase.T, subject crd[ENT, ID], config Config[ENT, ID]) ID {
-	ent := config.MakeEntity(t)
-	ctx := config.MakeContext()
-	crudtest.Create[ENT, ID](t, subject, ctx, &ent)
-	id := crudtest.HasID[ENT, ID](t, &ent)
-	crudtest.Delete[ENT, ID](t, subject, ctx, &ent)
 	return id
 }
 
@@ -74,53 +64,77 @@ func makeUnique[ENT any](tb testing.TB, mk func(tb testing.TB) ENT, oths ...ENT)
 	return ent, ok
 }
 
-func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], subject any, oths ...ENT) ENT {
+// ensureExistingEntity will return with an entity that exists in the resource.
+// Either with the mkFunc, or with c.MakeEntity or with c.ExampleEntity
+func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, mkFunc func() ENT, oths ...ENT) ENT {
 	tb.Helper()
-	if res, ok := subject.(spechelper.CRD[ENT, ID]); ok {
-		ent, ok := makeUnique(tb, func(tb testing.TB) ENT {
-			ent := c.MakeEntity(tb)
-			crudtest.Create[ENT, ID](tb, res, c.MakeContext(), &ent)
-			return ent
-		}, oths...)
-		if !ok {
-			tb.Skip("was unable to create a unique value with MakeEntity + resource.Create, test can't continue")
+
+	ent, ok := makeUnique(tb, func(tb testing.TB) ENT {
+		tb.Helper()
+
+		if mkFunc != nil {
+			return mkFunc()
 		}
-		return ent
-	}
-	if c.ExampleEntity != nil {
-		ent, ok := makeUnique(tb, func(tb testing.TB) ENT {
+
+		if c.ExampleEntity != nil {
 			return c.ExampleEntity(tb)
-		}, oths...)
-		if !ok {
-			tb.Skip("config ExampleEntity is not returning back a unique value, thus this test can't continue")
 		}
-		crudtest.HasID[ENT, ID](tb, &ent)
-		return ent
+
+		if c.MakeEntity != nil {
+			return c.MakeEntity(tb)
+		}
+
+		tb.Skipf("no make function to create a %s", reflectkit.TypeOf[ENT]().String())
+		return *new(ENT)
+	}, oths...)
+
+	if !ok {
+		tb.Skip("was unable to create a unique value with MakeEntity + resource.Create, test can't continue")
 	}
-	tb.Skip("test can't continue due to unable work with an entity present in the resource")
-	return *new(ENT)
+
+	ctx := c.MakeContext(tb)
+
+	if id, ok := c.IDA.Lookup(ent); ok {
+
+		if finder, canFindByID := resource.(crud.ByIDFinder[ENT, ID]); canFindByID {
+			_, found, err := finder.FindByID(ctx, id)
+			assert.NoError(tb, err)
+			if found {
+				return ent
+			}
+		}
+
+	}
+
+	shouldStore(tb, c, resource, &ent)
+
+	return ent
 }
 
-func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], subject any, mk func(testing.TB) ENT, mkFuncName string) ENT {
+func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], resource any, mk func() ENT, mkFuncName string) ENT {
 	tb.Helper()
 	assert.NotNil(tb, mk)
-	ent := mk(tb)
+	ent := mk()
 	assert.NotEmpty(tb, ent)
 	if id, ok := lookupID[ID](c, ent); ok {
-		if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
-			_, found, err := finder.FindByID(c.MakeContext(), id)
+		if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+			_, found, err := finder.FindByID(c.MakeContext(tb), id)
 			if err == nil && found {
 				return ent
 			}
 		}
 	}
-	if creator, ok := subject.(crud.Creator[ENT]); ok {
-		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(), &ent)
+	if creator, ok := resource.(crud.Creator[ENT]); ok {
+		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(tb), &ent)
+		return ent
+	}
+	if saver, ok := resource.(crud.Saver[ENT]); ok {
+		crudtest.Save[ENT, ID](tb, saver, c.MakeContext(tb), &ent)
 		return ent
 	}
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")
 	tb.Log("either ensure that the entity making function persist the entity in the subject")
-	tb.Logf("or make sure that %T implements crud.Creator", subject)
+	tb.Logf("or make sure that %T implements crud.Creator", resource)
 	tb.Logf("(%s)", mkFuncName)
 	FailNow()
 	return *new(ENT)
@@ -192,14 +206,24 @@ func shouldFindByID[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any,
 	return shouldByIDFinder[ENT, ID](tb, resource).FindByID(ctx, id)
 }
 
-func shouldCreate[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, ptr *ENT) {
+func canStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any) bool {
+	if _, canCreate := resource.(crud.Creator[ENT]); canCreate {
+		return true
+	}
+	if _, canSave := resource.(crud.Saver[ENT]); canSave {
+		return true
+	}
+	return false
+}
+
+func shouldStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ptr *ENT) {
 	tb.Helper()
-	if subject, ok := resource.(crud.Creator[ENT]); ok {
-		crudtest.Create[ENT, ID](tb, subject, ctx, ptr)
+	if subject, ok := resource.(crud.Saver[ENT]); ok {
+		crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
 		return
 	}
-	if subject, ok := resource.(crud.Saver[ENT]); ok {
-		crudtest.Save[ENT, ID](tb, subject, ctx, ptr)
+	if subject, ok := resource.(crud.Creator[ENT]); ok {
+		crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
 		return
 	}
 	tb.Skipf("unable to continue with this testing scenario, as %T doesn't implement neither crud.Creator or crud.Saver", resource)

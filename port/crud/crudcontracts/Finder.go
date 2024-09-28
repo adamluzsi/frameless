@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
-	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
 	crudtest "go.llib.dev/frameless/port/crud/crudtest"
@@ -19,24 +18,27 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
-type subjectFinder[Entity, ID any] interface {
-	crud.ByIDFinder[Entity, ID]
-	crud.AllFinder[Entity]
+type subjectFinder[ENT, ID any] interface {
+	crud.ByIDFinder[ENT, ID]
+	crud.AllFinder[ENT]
 }
 
-func Finder[Entity, ID any](subject subjectFinder[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
+func Finder[ENT, ID any](subject subjectFinder[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	s.Describe("ByIDFinder", ByIDFinder[Entity, ID](subject, opts...).Spec)
-	s.Describe("AllFinder", AllFinder[Entity, ID](subject, opts...).Spec)
+	s.Describe("ByIDFinder", ByIDFinder[ENT, ID](subject, opts...).Spec)
+	s.Describe("AllFinder", AllFinder[ENT, ID](subject, opts...).Spec)
 	return s.AsSuite("Finder")
 }
 
-func ByIDFinder[Entity, ID any](subject crud.ByIDFinder[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
-	c := option.Use[Config[Entity, ID]](opts)
+func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
+	c := option.Use[Config[ENT, ID]](opts)
 	s := testcase.NewSpec(nil)
 
-	var mkEnt = func(t *testcase.T) Entity {
-		return makeEntity(t, t.SkipNow, c, subject, zerokit.Coalesce(c.ExampleEntity, c.MakeEntity), "Config.ExampleEntity / Config.MakeEntity")
+	var mkEnt = func(t *testcase.T) ENT {
+		mk := func() ENT {
+			return zerokit.Coalesce(c.ExampleEntity, c.MakeEntity)(t)
+		}
+		return makeEntity(t, t.SkipNow, c, subject, mk, "Config.ExampleEntity / Config.MakeEntity")
 	}
 
 	s.Describe("FindByID", func(s *testcase.Spec) {
@@ -44,17 +46,17 @@ func ByIDFinder[Entity, ID any](subject crud.ByIDFinder[Entity, ID], opts ...Opt
 			ctx = let.With[context.Context](s, c.MakeContext)
 			id  = testcase.Let[ID](s, nil)
 		)
-		act := func(t *testcase.T) (Entity, bool, error) {
+		act := func(t *testcase.T) (ENT, bool, error) {
 			return subject.FindByID(ctx.Get(t), id.Get(t))
 		}
 
 		s.When("id points to an existing value", func(s *testcase.Spec) {
-			ent := testcase.Let(s, func(t *testcase.T) Entity {
+			ent := testcase.Let(s, func(t *testcase.T) ENT {
 				return mkEnt(t)
 			})
 
 			id.Let(s, func(t *testcase.T) ID {
-				return crudtest.HasID[Entity, ID](t, pointer.Of(ent.Get(t)))
+				return crudtest.HasID[ENT, ID](t, pointer.Of(ent.Get(t)))
 			})
 
 			s.Then("it will find and return the entity", func(t *testcase.T) {
@@ -72,9 +74,9 @@ func ByIDFinder[Entity, ID any](subject crud.ByIDFinder[Entity, ID], opts ...Opt
 				id.Let(s, func(t *testcase.T) ID {
 
 					var (
-						ctx = c.MakeContext()
+						ctx = c.MakeContext(t)
 						ent = mkEnt(t)
-						id  = crudtest.HasID[Entity, ID](t, &ent)
+						id  = crudtest.HasID[ENT, ID](t, &ent)
 					)
 					crudtest.Eventually.Assert(t, func(it assert.It) {
 						_, found, err := subject.FindByID(ctx, id)
@@ -100,20 +102,22 @@ func ByIDFinder[Entity, ID any](subject crud.ByIDFinder[Entity, ID], opts ...Opt
 			})
 		}
 
-		QueryOne[Entity, ID](subject, func(tb testing.TB, ctx context.Context, ent Entity) (_ Entity, found bool, _ error) {
-			id, ok := lookupID[ID](c, ent)
-			if !ok { // if no id found create a dummy ID
-				// Since an id is always required to use FindByID,
-				// we generate a dummy id if the received entity doesn't have one.
-				// This helps to avoid error cases where ID is not actually set.
-				// For those, we have further specifications later.
-				if subject, ok := subject.(crd[Entity, ID]); ok {
-					id = createDummyID[Entity, ID](ctx.Value(TestingTBContextKey{}).(*testcase.T), subject, c)
-				} else {
-					id = tb.(*testcase.T).Random.Make(reflectkit.TypeOf[ID]()).(ID)
-				}
+		QueryOne[ENT, ID](subject, func(tb testing.TB) QueryOneSubject[ENT] {
+			ent := ensureExistingEntity(tb, c, subject, nil)
+
+			return QueryOneSubject[ENT]{
+				Query: func(ctx context.Context) (_ ENT, found bool, _ error) {
+					id, ok := c.IDA.Lookup(ent)
+					assert.True(tb, ok, "expected that the prepared entity has an ID ready for the FindByID test")
+					return subject.FindByID(ctx, id)
+				},
+				ExpectedEntity: ent,
+				ExcludedEntity: func() ENT {
+					return ensureExistingEntity(tb, c, subject, func() ENT {
+						return c.MakeEntity(tb)
+					})
+				},
 			}
-			return subject.FindByID(ctx, id)
 		}, opts...)
 	})
 
@@ -124,16 +128,19 @@ func ByIDFinder[Entity, ID any](subject crud.ByIDFinder[Entity, ID], opts ...Opt
 // The "EntityTypeName" is an Empty struct for the specific entity (struct) type that should be returned.
 //
 // NewEntityForTest used only for testing and should not be provided outside of testing
-func AllFinder[Entity, ID any](subject crud.AllFinder[Entity], opts ...Option[Entity, ID]) contract.Contract {
-	c := option.Use[Config[Entity, ID]](opts)
-	return QueryMany[Entity, ID](subject,
-		func(tb testing.TB, ctx context.Context) (iterators.Iterator[Entity], error) {
-			return subject.FindAll(ctx)
-		},
-		zerokit.Coalesce(c.ExampleEntity, c.MakeEntity),
-		nil, // intentionally empty as it is not applicable to create an entity that is not returned by AllFinder
-		c,
-	)
+func AllFinder[ENT, ID any](subject crud.AllFinder[ENT], opts ...Option[ENT, ID]) contract.Contract {
+	c := option.Use[Config[ENT, ID]](opts)
+	return QueryMany[ENT, ID](subject, func(t testing.TB) QueryManySubject[ENT] {
+		return QueryManySubject[ENT]{
+			Query: subject.FindAll,
+			IncludedEntity: func() ENT {
+				return zerokit.Coalesce(c.ExampleEntity, c.MakeEntity)(t)
+			},
+			// ExcludedEntity is left empty on purpose
+			// since it's not relevant for creating an entity that AllFinder shouldn't return.
+			ExcludedEntity: nil,
+		}
+	}, opts...)
 }
 
 func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
@@ -142,7 +149,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 
 	var (
 		ctx = testcase.Let[context.Context](s, func(t *testcase.T) context.Context {
-			return c.MakeContext()
+			return c.MakeContext(t)
 		})
 		ids = testcase.Var[[]ID]{ID: `entities ids`}
 	)
@@ -151,7 +158,9 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 	}
 
 	var mkEnt = func(t *testcase.T) ENT {
-		return makeEntity[ENT, ID](t, t.SkipNow, c, subject, zerokit.Coalesce(c.ExampleEntity, c.MakeEntity), "Config.ExampleEntity / Config.MakeEntity")
+		return makeEntity[ENT, ID](t, t.SkipNow, c, subject, func() ENT {
+			return zerokit.Coalesce(c.ExampleEntity, c.MakeEntity)(t)
+		}, "Config.ExampleEntity / Config.MakeEntity")
 	}
 
 	var (

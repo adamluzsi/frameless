@@ -25,7 +25,7 @@ type base[Data any] func(testing.TB) baseSubject[Data]
 type baseSubject[Data any] struct {
 	Publisher   pubsub.Publisher[Data]
 	Subscriber  pubsub.Subscriber[Data]
-	MakeContext func() context.Context
+	MakeContext func(testing.TB) context.Context
 	MakeData    func(testing.TB) Data
 }
 
@@ -49,7 +49,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 		s.Describe(".Publish", func(s *testcase.Spec) {
 			var (
 				ctx = testcase.Let(s, func(t *testcase.T) context.Context {
-					return c.subject().Get(t).MakeContext()
+					return c.subject().Get(t).MakeContext(t)
 				})
 				data = testcase.Let[[]Data](s, func(t *testcase.T) []Data {
 					var vs []Data
@@ -107,20 +107,13 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 	})
 }
 
-func (c base[Data]) cancelFnsVar() testcase.Var[[]func()] {
-	return testcase.Var[[]func()]{
-		ID: "Subscription Context Cancel Fn",
-		Init: func(t *testcase.T) []func() {
-			return []func(){}
-		},
-	}
-}
-
 func (c base[Data]) newSubscriptionIteratorHelper(t *testcase.T) *subscriptionIteratorHelper[Data] {
-	return &subscriptionIteratorHelper[Data]{Subscriber: c.subject().Get(t).Subscriber}
+	return &subscriptionIteratorHelper[Data]{id: t.Random.UUID(), Subscriber: c.subject().Get(t).Subscriber}
 }
 
 type subscriptionIteratorHelper[Data any] struct {
+	id string
+
 	Subscriber       pubsub.Subscriber[Data]
 	HandlingDuration time.Duration
 
@@ -154,9 +147,17 @@ func (sih *subscriptionIteratorHelper[Data]) ReceivedAt() time.Time {
 func (sih *subscriptionIteratorHelper[Data]) Start(tb testing.TB, ctx context.Context) {
 	assert.Nil(tb, sih.cancel)
 	ctx, cancel := context.WithCancel(ctx)
+	sub, err := sih.Subscriber.Subscribe(ctx)
+	if err != nil {
+		cancel()
+		if ctx.Err() == nil {
+			assert.NoError(tb, err)
+		}
+		return
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go sih.wrk(tb, ctx, &wg)
+	go sih.wrk(tb, ctx, &wg, sub)
 	sih.cancel = func() {
 		cancel()
 		wg.Wait()
@@ -170,12 +171,11 @@ func (sih *subscriptionIteratorHelper[Data]) Stop() {
 	}
 }
 
-func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup) {
+func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup, sub pubsub.Subscription[Data]) {
 	defer wg.Done()
-	iter := sih.Subscriber.Subscribe(ctx)
-	for iter.Next() {
+	for sub.Next() {
 		sih.mutex.Lock()
-		msg := iter.Value()
+		msg := sub.Value()
 		assert.Should(tb).True(msg != nil, "msg should not be nil")
 		if msg == nil {
 			break
@@ -190,15 +190,15 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 	}
 	assert.Should(tb).AnyOf(func(a *assert.A) {
 		// TODO: survey which behaviour is more natural
-		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
-		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })
+		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), sub.Err()) })
+		a.Test(func(t assert.It) { t.Must.NoError(sub.Err()) })
 	})
 }
 
 func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
 	return testcase.Let(s, func(t *testcase.T) *subscriptionIteratorHelper[Data] {
 		sih := c.newSubscriptionIteratorHelper(t)
-		sih.Start(t, c.subject().Get(t).MakeContext())
+		sih.Start(t, c.subject().Get(t).MakeContext(t))
 		t.Cleanup(sih.Stop)
 		return sih
 	}).EagerLoading(s)
@@ -208,21 +208,22 @@ func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
 		t.Log("given the subscription was at least once made")
 		sih := c.newSubscriptionIteratorHelper(t)
-		sih.Start(t, c.subject().Get(t).MakeContext())
+		sih.Start(t, c.subject().Get(t).MakeContext(t))
 		sih.Stop()
 	})
 }
 
 func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
-	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext())
-	testcase.Append[func()](t, c.cancelFnsVar(), cancel)
+	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext(t))
 	t.Defer(cancel)
-	return c.subject().Get(t).Subscriber.Subscribe(ctx)
+	sub, err := c.subject().Get(t).Subscriber.Subscribe(ctx)
+	assert.NoError(t, err)
+	return sub
 }
 
 func (c base[Data]) TryCleanup(s *testcase.Spec) {
 	s.Before(func(t *testcase.T) {
-		if !spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(), c.subject().Get(t).Subscriber) {
+		if !spechelper.TryCleanup(t, c.subject().Get(t).MakeContext(t), c.subject().Get(t).Subscriber) {
 			c.drainQueue(t, c.subject().Get(t).Subscriber)
 		}
 		pubsubtest.Waiter.Wait()
@@ -232,7 +233,7 @@ func (c base[Data]) TryCleanup(s *testcase.Spec) {
 var DrainTimeout = 256 * time.Millisecond
 
 func (c base[Data]) drainQueue(t *testcase.T, sub pubsub.Subscriber[Data]) {
-	res := pubsubtest.Subscribe[Data](t, sub, c.subject().Get(t).MakeContext())
+	res := pubsubtest.Subscribe[Data](t, sub, c.subject().Get(t).MakeContext(t))
 	defer res.Finish()
 	refTime := time.Now().UTC()
 	pubsubtest.Waiter.While(func() bool {
@@ -248,7 +249,7 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	s.Before(func(t *testcase.T) {
 		for _, v := range vars {
 			// we publish one by one intentionally to make the tests more deterministic.
-			t.Must.NoError(c.subject().Get(t).Publisher.Publish(c.subject().Get(t).MakeContext(), v.Get(t)))
+			t.Must.NoError(c.subject().Get(t).Publisher.Publish(c.subject().Get(t).MakeContext(t), v.Get(t)))
 			pubsubtest.Waiter.Wait()
 		}
 	})
@@ -293,14 +294,16 @@ type Option[Data any] interface {
 }
 
 type Config[Data any] struct {
-	MakeContext func() context.Context
+	MakeContext func(testing.TB) context.Context
 	MakeData    func(testing.TB) Data
 
 	SupportPublishContextCancellation bool
 }
 
 func (c *Config[Data]) Init() {
-	c.MakeContext = context.Background
+	c.MakeContext = func(t testing.TB) context.Context {
+		return context.Background()
+	}
 	c.MakeData = spechelper.MakeValue[Data]
 }
 

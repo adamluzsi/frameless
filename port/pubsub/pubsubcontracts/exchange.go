@@ -48,12 +48,12 @@ func FanOut[Data any](
 		s.Test("with a single queue, a consumer will receives all the messages", func(t *testcase.T) {
 			q1 := MakeQueue(t)
 
-			t.Must.NoError(Exchange.Publish(c.MakeContext(),
+			t.Must.NoError(Exchange.Publish(c.MakeContext(t),
 				val1.Get(t), val2.Get(t), val3.Get(t),
 			))
 
 			expected := []Data{val1.Get(t), val2.Get(t), val3.Get(t)}
-			res1 := pubsubtest.Subscribe(t, q1, c.MakeContext())
+			res1 := pubsubtest.Subscribe(t, q1, c.MakeContext(t))
 
 			res1.Eventually(t, func(tb testing.TB, got []Data) {
 				assert.Must(tb).ContainExactly(expected, got)
@@ -65,11 +65,11 @@ func FanOut[Data any](
 
 			t.Random.Repeat(2, 7, func() {
 				results = append(results,
-					pubsubtest.Subscribe(t, MakeQueue(t), c.MakeContext()))
+					pubsubtest.Subscribe(t, MakeQueue(t), c.MakeContext(t)))
 			})
 
 			expected := []Data{val1.Get(t), val2.Get(t), val3.Get(t)}
-			t.Must.NoError(Exchange.Publish(c.MakeContext(), expected...))
+			t.Must.NoError(Exchange.Publish(c.MakeContext(t), expected...))
 
 			for i, res := range results {
 				res.Eventually(t, func(tb testing.TB, got []Data) {

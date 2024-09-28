@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/frameless/port/pubsub/pubsubtest"
+	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/testcase"
 )
@@ -41,13 +42,14 @@ func Ordering[Data any](
 
 		s.Test("", func(t *testcase.T) {
 			var (
-				ctx  = c.MakeContext()
+				ctx  = c.MakeContext(t)
 				val1 = c.MakeData(t)
 				val2 = c.MakeData(t)
 				val3 = c.MakeData(t)
 			)
 
-			sub := subscriber.Subscribe(ctx)
+			sub, err := subscriber.Subscribe(ctx)
+			assert.NoError(t, err)
 			defer sub.Close()
 
 			t.Must.NoError(publisher.Publish(ctx, val1, val2, val3))
@@ -157,10 +159,11 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 		})
 
 		s.Then("messages are received in their publishing order", func(t *testcase.T) {
-			sub := subscriber.Subscribe(c.MakeContext())
+			sub, err := subscriber.Subscribe(c.MakeContext(t))
+			assert.NoError(t, err)
 			defer sub.Close()
 
-			t.Must.NoError(publisher.Publish(c.MakeContext(), val1.Get(t), val2.Get(t), val3.Get(t)))
+			t.Must.NoError(publisher.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
 			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}
 
 			var got []Data

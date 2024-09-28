@@ -18,7 +18,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 	s.Describe(`.Save`, func(s *testcase.Spec) {
 		var (
 			ctx = testcase.Let(s, func(t *testcase.T) context.Context {
-				return c.MakeContext()
+				return c.MakeContext(t)
 			})
 			ptr = testcase.Let[*ENT](s, func(t *testcase.T) *ENT {
 				v := c.MakeEntity(t)
@@ -36,7 +36,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 				if !ok {
 					return
 				}
-				shouldAbsent[ENT, ID](t, c, subject, c.MakeContext(), id)
+				shouldAbsent[ENT, ID](t, c, subject, c.MakeContext(t), id)
 			})
 
 			s.Then(`it will be created`, func(t *testcase.T) {
@@ -59,7 +59,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 				if _, ok := lookupID[ID](c, *ptr.Get(t)); ok {
 					return // OK, ID found
 				}
-				ctx := c.MakeContext()
+				ctx := c.MakeContext(t)
 				assert.NoError(t, subject.Save(ctx, ptr.Get(t)))
 				shouldDelete(t, c, subject, ctx, *ptr.Get(t))
 			})
@@ -82,7 +82,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 		s.When(`entity is present already in the resource`, func(s *testcase.Spec) {
 			ptr.Let(s, func(t *testcase.T) *ENT {
 				v := ptr.Super(t)
-				assert.NoError(t, subject.Save(c.MakeContext(), v))
+				assert.NoError(t, subject.Save(c.MakeContext(t), v))
 				return v
 			}).EagerLoading(s)
 
@@ -104,7 +104,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 		s.When(`entity is a newer version compared to the stored one`, func(s *testcase.Spec) {
 			ptr.Let(s, func(t *testcase.T) *ENT {
 				v := ptr.Super(t)
-				assert.NoError(t, subject.Save(c.MakeContext(), v))
+				assert.NoError(t, subject.Save(c.MakeContext(t), v))
 				changeENT(t, c, v) // change entity to represent an update state
 				return v
 			}).EagerLoading(s)

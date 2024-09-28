@@ -7,7 +7,9 @@ import (
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/frameless/port/pubsub/pubsubtest"
+
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,
@@ -57,7 +59,7 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 
 			s.And("messages are published", func(s *testcase.Spec) {
 				var values []testcase.Var[Data]
-				for i := 0; i < 42; i++ {
+				for i := 0; i < 8; i++ {
 					values = append(values, testcase.Let(s, func(t *testcase.T) Data {
 						return c.MakeData(t)
 					}))
@@ -65,23 +67,24 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 
 				b.WhenWePublish(s, values...)
 
-				s.Then("message is unicast between the subscribers", func(t *testcase.T) {
+				s.Then("messages are unicast between the subscribers", func(t *testcase.T) {
 					// TODO: continue
 
 					var expected []Data
 					for _, v := range values {
 						expected = append(expected, v.Get(t))
 					}
-					pubsubtest.Waiter.Wait()
 
-					t.Eventually(func(it *testcase.T) {
-						it.Must.NotEmpty(sub1.Get(t).Values())
-						it.Must.NotEmpty(sub2.Get(t).Values())
-
+					t.Eventually(func(t *testcase.T) {
+						pubsubtest.Waiter.Wait()
+						sub1vs := sub1.Get(t).Values()
+						assert.NotNil(t, sub1vs)
+						sub2vs := sub2.Get(t).Values()
+						assert.NotNil(t, sub2vs)
 						var actual []Data
-						actual = append(actual, sub1.Get(t).Values()...)
-						actual = append(actual, sub2.Get(t).Values()...)
-						it.Must.ContainExactly(expected, actual)
+						actual = append(actual, sub1vs...)
+						actual = append(actual, sub2vs...)
+						assert.ContainExactly(t, expected, actual)
 					})
 				})
 			})

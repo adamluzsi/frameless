@@ -89,7 +89,8 @@ func (sih *consumer[Data]) Start(tb testing.TB, ctx context.Context) pubsub.Subs
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
-	sub := sih.Subscriber.Subscribe(ctx)
+	sub, err := sih.Subscriber.Subscribe(ctx)
+	assert.NoError(tb, err)
 	go sih.wrk(tb, ctx, &wg, sub)
 	sih.cancel = func() {
 		cancel()

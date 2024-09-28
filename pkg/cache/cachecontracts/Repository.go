@@ -8,12 +8,12 @@ import (
 	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/port/contract"
-	. "go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 
 	cachepkg "go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/testcase"
 )
@@ -27,11 +27,11 @@ func Repository[Entity any, ID comparable](subject cachepkg.Repository[Entity, I
 	s.Before(func(t *testcase.T) {
 		once.Do(func() {
 			var (
-				ctx        = c.CRUD.MakeContext()
+				ctx        = c.CRUD.MakeContext(t)
 				repository = subject
 			)
-			DeleteAll[cachepkg.Hit[ID], cachepkg.HitID](t, repository.Hits(), ctx)
-			DeleteAll[Entity, ID](t, repository.Entities(), ctx)
+			crudtest.DeleteAll[cachepkg.Hit[ID], cachepkg.HitID](t, repository.Hits(), ctx)
+			crudtest.DeleteAll[Entity, ID](t, repository.Entities(), ctx)
 		})
 	})
 
@@ -40,13 +40,13 @@ func Repository[Entity any, ID comparable](subject cachepkg.Repository[Entity, I
 		HitRepository[ID](subject.Hits(), subject, crudcontracts.Config[cachepkg.Hit[ID], cachepkg.HitID]{
 			MakeEntity: func(tb testing.TB) cachepkg.Hit[ID] {
 				t := tb.(*testcase.T)
-				ctx := c.CRUD.MakeContext()
+				ctx := c.CRUD.MakeContext(t)
 				repository := subject.Entities()
 				return cachepkg.Hit[ID]{
-					QueryID: t.Random.UUID(),
+					ID: cachepkg.HitID(t.Random.UUID()),
 					EntityIDs: random.Slice[ID](t.Random.IntBetween(3, 7), func() ID {
 						ent := c.CRUD.MakeEntity(t)
-						Create[Entity, ID](t, repository, ctx, &ent)
+						crudtest.Create[Entity, ID](t, repository, ctx, &ent)
 						id, _ := c.CRUD.IDA.Lookup(ent)
 						return id
 					}),
@@ -65,7 +65,6 @@ func HitRepository[EntID any](subject cachepkg.HitRepository[EntID], commitManag
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 	})
-
 	testcase.RunSuite(s,
 		crudcontracts.Saver[cachepkg.Hit[EntID], cachepkg.HitID](subject, opts...),
 		crudcontracts.Finder[cachepkg.Hit[EntID], cachepkg.HitID](subject, opts...),
@@ -80,7 +79,7 @@ func EntityRepository[ENT any, ID comparable](subject cachepkg.EntityRepository[
 	c := option.Use[Config[ENT, ID]](opts)
 
 	s.Before(func(t *testcase.T) {
-		spechelper.TryCleanup(t, c.CRUD.MakeContext(), subject)
+		spechelper.TryCleanup(t, c.CRUD.MakeContext(t), subject)
 	})
 
 	s.Describe(`cache.EntityRepository`, func(s *testcase.Spec) {

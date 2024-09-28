@@ -27,6 +27,10 @@ func (h ValueHandler[Key, Value]) ContextWith(ctx context.Context, v Value) cont
 }
 
 func Detach(parent context.Context) context.Context {
+	return WithoutCancel(parent)
+}
+
+func WithoutCancel(parent context.Context) context.Context {
 	return detached{
 		Parent: parent,
 		Cancel: context.Background(),

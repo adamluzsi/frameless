@@ -16,7 +16,7 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 
 	var (
 		ctxVar = testcase.Let(s, func(t *testcase.T) context.Context {
-			return c.MakeContext()
+			return c.MakeContext(t)
 		})
 		ptr = testcase.Let(s, func(t *testcase.T) *Entity {
 			v := c.MakeEntity(t)
@@ -46,7 +46,7 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 
 		s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			t.Must.Equal(ptr.Get(t), IsPresent[Entity, ID](t, subject, c.MakeContext(), getID(t)))
+			t.Must.Equal(ptr.Get(t), IsPresent[Entity, ID](t, subject, c.MakeContext(t), getID(t)))
 		})
 	})
 
@@ -59,9 +59,9 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 
 		s.Before(func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			IsPresent[Entity, ID](t, subject, c.MakeContext(), getID(t))
-			t.Must.Nil(subject.DeleteByID(c.MakeContext(), getID(t)))
-			IsAbsent[Entity, ID](t, subject, c.MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, subject, c.MakeContext(t), getID(t))
+			t.Must.Nil(subject.DeleteByID(c.MakeContext(t), getID(t)))
+			IsAbsent[Entity, ID](t, subject, c.MakeContext(t), getID(t))
 		})
 
 		s.Then(`it will accept it`, func(t *testcase.T) {
@@ -70,7 +70,7 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 
 		s.Then(`persisted object can be found`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
-			IsPresent[Entity, ID](t, subject, c.MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, subject, c.MakeContext(t), getID(t))
 		})
 	})
 
@@ -84,9 +84,9 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 		s.Before(func(t *testcase.T) {
 			ogEnt := *ptr.Get(t) // a deep copy might be better
 			t.Must.Nil(act(t))
-			IsPresent[Entity, ID](t, subject, c.MakeContext(), getID(t))
-			t.Must.Nil(subject.DeleteByID(c.MakeContext(), getID(t)))
-			IsAbsent[Entity, ID](t, subject, c.MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, subject, c.MakeContext(t), getID(t))
+			t.Must.Nil(subject.DeleteByID(c.MakeContext(t), getID(t)))
+			IsAbsent[Entity, ID](t, subject, c.MakeContext(t), getID(t))
 			ptr.Set(t, &ogEnt)
 		})
 
@@ -97,13 +97,13 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 		s.Then(`persisted object can be found`, func(t *testcase.T) {
 			t.Must.Nil(act(t))
 
-			IsPresent[Entity, ID](t, subject, c.MakeContext(), getID(t))
+			IsPresent[Entity, ID](t, subject, c.MakeContext(t), getID(t))
 		})
 	})
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 		ctxVar.Let(s, func(t *testcase.T) context.Context {
-			ctx, cancel := context.WithCancel(c.MakeContext())
+			ctx, cancel := context.WithCancel(c.MakeContext(t))
 			cancel()
 			return ctx
 		})
@@ -116,15 +116,15 @@ func Creator[Entity, ID any](subject crd[Entity, ID], opts ...Option[Entity, ID]
 	s.Test(`persist on #Create`, func(t *testcase.T) {
 		e := c.MakeEntity(t)
 
-		err := subject.Create(c.MakeContext(), &e)
+		err := subject.Create(c.MakeContext(t), &e)
 		t.Must.Nil(err)
 
 		id, ok := extid.Lookup[ID](&e)
 		t.Must.True(ok, "ID is not defined in the entity struct src definition")
 		t.Must.NotEmpty(id, "it's expected that repository set the external ID in the entity")
 
-		t.Must.Equal(e, *IsPresent[Entity, ID](t, subject, c.MakeContext(), id))
-		t.Must.Nil(subject.DeleteByID(c.MakeContext(), id))
+		t.Must.Equal(e, *IsPresent[Entity, ID](t, subject, c.MakeContext(t), id))
+		t.Must.Nil(subject.DeleteByID(c.MakeContext(t), id))
 	})
 
 	return s.AsSuite("Creator")

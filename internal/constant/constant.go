@@ -1,4 +1,4 @@
-package consttypes
+package constant
 
 type String string
 

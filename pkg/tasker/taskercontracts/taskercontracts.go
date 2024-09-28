@@ -59,12 +59,14 @@ type Option interface {
 }
 
 type Config struct {
-	MakeContext       func() context.Context
+	MakeContext       func(testing.TB) context.Context
 	MakeScheduleState func(testing.TB) tasker.ScheduleState
 }
 
 func (c *Config) Init() {
-	c.MakeContext = context.Background
+	c.MakeContext = func(t testing.TB) context.Context {
+		return context.Background()
+	}
 	c.MakeScheduleState = func(tb testing.TB) tasker.ScheduleState {
 		t := testcase.ToT(&tb)
 		return tasker.ScheduleState{

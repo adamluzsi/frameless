@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"go.llib.dev/frameless/internal/consttypes"
+	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/errorkit"
 )
 
@@ -40,7 +40,7 @@ func (h Handler) HandleError(w http.ResponseWriter, r *http.Request, err error) 
 	_, _ = w.Write(bytes)
 }
 
-func (h Handler) toTitleCase(id consttypes.String) string {
+func (h Handler) toTitleCase(id constant.String) string {
 	title := string(id)
 	title = strings.ReplaceAll(title, "-", " ")
 	title = strings.ReplaceAll(title, "_", " ")

@@ -397,6 +397,13 @@ func (m *Memory) del(namespace string, key string) bool {
 	return true
 }
 
+func (m *Memory) delNamespace(namespace string) {
+	m.m.Lock()
+	defer m.m.Unlock()
+	m.namespace(namespace)
+	delete(m.tables, namespace)
+}
+
 type MemoryNamespace map[string]interface{}
 
 func (m *Memory) namespace(name string) MemoryNamespace {
