@@ -107,21 +107,21 @@ func TestMapper_CreatePrepare(t *testing.T) {
 		expErr := rnd.Error()
 
 		m := flsql.Mapping[testent.Foo, testent.FooID]{
-			CreatePrepare: func(ctx context.Context, a *testent.Foo) error {
+			Prepare: func(ctx context.Context, a *testent.Foo) error {
 				a.ID = expID
 				return expErr
 			},
 		}
 
 		var ent testent.Foo
-		assert.ErrorIs(t, expErr, m.OnCreate(context.Background(), &ent))
+		assert.ErrorIs(t, expErr, m.OnPrepare(context.Background(), &ent))
 		assert.Equal(t, expID, ent.ID)
 	})
 
 	t.Run(`absent`, func(t *testing.T) {
 		m := flsql.Mapping[testent.Foo, testent.FooID]{}
 		var ent testent.Foo
-		assert.NoError(t, m.OnCreate(context.Background(), &ent))
+		assert.NoError(t, m.OnPrepare(context.Background(), &ent))
 	})
 }
 

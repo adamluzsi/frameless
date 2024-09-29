@@ -100,11 +100,11 @@ type Mapping[ENT, ID any] struct {
 	// ToArgs converts an entity pointer into a list of query arguments for CREATE or UPDATE operations.
 	// It must handle empty or zero values and still return a valid column statement.
 	ToArgs func(ENT) (QueryArgs, error)
-	// CreatePrepare is an optional field that allows you to configure an entity prior to crud.Create call.
+	// Prepare is an optional field that allows you to configure an entity prior to crud.Create call.
 	// This is a good place to add support in your Repository implementation for custom ID injection or special timestamp value arrangement.
 	//
-	// To have this working, the user of Mapping needs to call Mapping.OnCreate method within in its crud.Create method implementation.
-	CreatePrepare func(context.Context, *ENT) error
+	// To have this working, the user of Mapping needs to call Mapping.OnPrepare method within in its crud.Create method implementation.
+	Prepare func(context.Context, *ENT) error
 	// ID [optional] is a function that allows the ID lookup from an entity.
 	// The returned ID value will be used to Lookup the ID value, or to set a new ID value.
 	// Mapping will panic if ID func is provided, but returns a nil, as it is considered as implementation error.
@@ -119,10 +119,10 @@ type Mapping[ENT, ID any] struct {
 
 type QueryArgs map[ColumnName]any
 
-func (m Mapping[ENT, ID]) OnCreate(ctx context.Context, ptr *ENT) error {
+func (m Mapping[ENT, ID]) OnPrepare(ctx context.Context, ptr *ENT) error {
 	// TODO: add support for CreatedAt, UpdatedAt field updates
-	if m.CreatePrepare != nil {
-		if err := m.CreatePrepare(ctx, ptr); err != nil {
+	if m.Prepare != nil {
+		if err := m.Prepare(ctx, ptr); err != nil {
 			return err
 		}
 	}
