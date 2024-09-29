@@ -13,19 +13,26 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func Repository(subject tasker.SchedulerRepository, opts ...Option) contract.Contract {
+func SchedulerLocks(subject tasker.SchedulerLocks, opts ...Option) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 
-	s.Context(".Locks", guardcontracts.LockerFactory[tasker.ScheduleStateID](subject.Locks(),
-		guardcontracts.LockerFactoryConfig[tasker.ScheduleStateID]{MakeContext: c.MakeContext}).Spec)
+	lconf := guardcontracts.LockerFactoryConfig[tasker.ScheduleStateID]{
+		MakeContext: c.MakeContext,
+		MakeKey: func(tb testing.TB) tasker.ScheduleStateID {
+			tc := tb.(*testcase.T)
+			rndStr := tc.Random.String()
+			return tasker.ScheduleStateID(rndStr)
+			// should accept any kind of string as ScheduleStateID
+		},
+	}
+	guardcontracts.LockerFactory[tasker.ScheduleStateID](subject,
+		lconf).Spec(s)
 
-	s.Context(".States", stateRepository(subject.States(), opts...).Spec)
-
-	return s.AsSuite("tasker.Repository")
+	return s.AsSuite("tasker.SchedulerLocks")
 }
 
-func stateRepository(subject tasker.ScheduleStateRepository, opts ...Option) contract.Contract {
+func SchedulerStateRepository(subject tasker.SchedulerStateRepository, opts ...Option) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 
@@ -45,11 +52,11 @@ func stateRepository(subject tasker.ScheduleStateRepository, opts ...Option) con
 		crudcontracts.ByIDFinder[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
 		crudcontracts.ByIDDeleter[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
 	)
-	return s.AsSuite("tasker.ScheduleStateRepository")
+	return s.AsSuite("tasker.SchedulerStateRepository")
 }
 
 type stateRepositorySubject struct {
-	StateRepository   tasker.ScheduleStateRepository
+	StateRepository   tasker.SchedulerStateRepository
 	MakeContext       func() context.Context
 	MakeScheduleState func() tasker.ScheduleState
 }

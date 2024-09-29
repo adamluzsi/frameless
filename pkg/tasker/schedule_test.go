@@ -15,9 +15,7 @@ import (
 )
 
 func ExampleScheduler_WithSchedule() {
-	scheduler := tasker.Scheduler{
-		Repository: nil, // &postgresql.TaskerScheduleRepository{CM: cm},
-	}
+	scheduler := tasker.Scheduler{}
 
 	task := scheduler.WithSchedule("db maintenance", tasker.Monthly{Day: 1}, func(ctx context.Context) error {
 		return nil
@@ -29,9 +27,7 @@ func ExampleScheduler_WithSchedule() {
 }
 
 func ExampleWithSchedule() {
-	scheduler := tasker.Scheduler{
-		Repository: nil, // &postgresql.TaskerScheduleRepository{CM: cm},
-	}
+	scheduler := tasker.Scheduler{}
 
 	task := tasker.WithSchedule(scheduler, "db maintenance", tasker.Monthly{Day: 1}, func(ctx context.Context) error {
 		return nil
@@ -49,13 +45,17 @@ func TestScheduler(t *testing.T) {
 	s.HasSideEffect()
 
 	var (
-		repository = testcase.Let(s, func(t *testcase.T) tasker.SchedulerRepository {
-			return &memory.TaskerScheduleRepository{}
+		repository = testcase.Let(s, func(t *testcase.T) tasker.SchedulerStateRepository {
+			return memory.NewTaskerSchedulerStateRepository()
+		})
+		locks = testcase.Let(s, func(t *testcase.T) tasker.SchedulerLocks {
+			return memory.NewTaskerSchedulerLocks()
 		})
 	)
 	subject := testcase.Let(s, func(t *testcase.T) tasker.Scheduler {
 		return tasker.Scheduler{
-			Repository: repository.Get(t),
+			Locks:           locks.Get(t),
+			StateRepository: repository.Get(t),
 		}
 	})
 

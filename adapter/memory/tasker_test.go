@@ -7,8 +7,7 @@ import (
 	"go.llib.dev/frameless/pkg/tasker/taskercontracts"
 )
 
-func TestTaskerScheduleRepository(t *testing.T) {
-	repo := &memory.TaskerScheduleRepository{}
-
-	taskercontracts.Repository(repo).Test(t)
+func TestTasker(t *testing.T) {
+	taskercontracts.SchedulerStateRepository(memory.NewTaskerSchedulerStateRepository()).Test(t)
+	taskercontracts.SchedulerLocks(memory.NewTaskerSchedulerLocks()).Test(t)
 }

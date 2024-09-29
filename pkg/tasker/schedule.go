@@ -10,14 +10,16 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-type Scheduler struct{ Repository SchedulerRepository }
-
-type SchedulerRepository interface {
-	Locks() guard.LockerFactory[ScheduleStateID]
-	States() ScheduleStateRepository
+type Scheduler struct {
+	Locks           SchedulerLocks
+	StateRepository SchedulerStateRepository
 }
 
-type ScheduleStateRepository interface {
+type SchedulerLocks interface {
+	guard.LockerFactory[ScheduleStateID]
+}
+
+type SchedulerStateRepository interface {
 	crud.Creator[ScheduleState]
 	crud.Updater[ScheduleState]
 	crud.ByIDDeleter[ScheduleStateID]
@@ -25,7 +27,7 @@ type ScheduleStateRepository interface {
 }
 
 func (s Scheduler) WithSchedule(id ScheduleStateID, interval Interval, job Task) Task {
-	locker := s.Repository.Locks().LockerFor(id)
+	locker := s.Locks.LockerFor(id)
 
 	next := func(ctx context.Context) (_ time.Duration, rErr error) {
 		ctx, err := locker.Lock(ctx)
@@ -34,7 +36,7 @@ func (s Scheduler) WithSchedule(id ScheduleStateID, interval Interval, job Task)
 		}
 		defer func() { rErr = errorkit.Merge(rErr, locker.Unlock(ctx)) }()
 
-		state, found, err := s.Repository.States().FindByID(ctx, id)
+		state, found, err := s.StateRepository.FindByID(ctx, id)
 		if err != nil {
 			return 0, err
 		}
@@ -43,7 +45,7 @@ func (s Scheduler) WithSchedule(id ScheduleStateID, interval Interval, job Task)
 				ID:        id,
 				Timestamp: time.Time{}.UTC(),
 			}
-			if err := s.Repository.States().Create(ctx, &state); err != nil {
+			if err := s.StateRepository.Create(ctx, &state); err != nil {
 				return 0, err
 			}
 		}
@@ -56,7 +58,7 @@ func (s Scheduler) WithSchedule(id ScheduleStateID, interval Interval, job Task)
 		}
 
 		state.Timestamp = clock.Now().UTC()
-		return interval.UntilNext(state.Timestamp), s.Repository.States().Update(ctx, &state)
+		return interval.UntilNext(state.Timestamp), s.StateRepository.Update(ctx, &state)
 	}
 
 	return func(ctx context.Context) error {
