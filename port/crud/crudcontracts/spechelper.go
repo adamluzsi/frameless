@@ -207,17 +207,17 @@ func shouldFindByID[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any,
 }
 
 func storer[ENT, ID any](c Config[ENT, ID], resource any) (func(tb testing.TB, ptr *ENT), bool) {
-	if subject, ok := resource.(crud.Saver[ENT]); ok {
-		return func(tb testing.TB, ptr *ENT) {
-			tb.Helper()
-			crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
-		}, true
-	}
 	if subject, ok := resource.(crud.Creator[ENT]); ok {
 		return func(tb testing.TB, ptr *ENT) {
 			tb.Helper()
 			crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
 		}, false
+	}
+	if subject, ok := resource.(crud.Saver[ENT]); ok {
+		return func(tb testing.TB, ptr *ENT) {
+			tb.Helper()
+			crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+		}, true
 	}
 	return nil, false
 }

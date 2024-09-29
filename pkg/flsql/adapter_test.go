@@ -11,7 +11,7 @@ import (
 )
 
 var _ flsql.Connection = flsql.ConnectionAdapter[any, any]{}
-var _ flsql.Queryable = flsql.QueryableAdapter[any]{}
+var _ flsql.Queryable = flsql.QueryableAdapter{}
 
 func ExampleConnectionAdapter() {
 	db, err := sql.Open("dbname", os.Getenv("DATABASE_URL"))
@@ -57,7 +57,7 @@ func TestQueryableAdapter_ExecContext(t *testing.T) {
 	mockExecFunc := func(ctx context.Context, query string, args ...interface{}) (flsql.Result, error) {
 		return res, nil // mock result
 	}
-	adapter := flsql.QueryableAdapter[*mockResult]{
+	adapter := flsql.QueryableAdapter{
 		ExecFunc: mockExecFunc,
 	}
 
@@ -83,7 +83,7 @@ func TestQueryableAdapter_QueryContext(t *testing.T) {
 	mockQueryFunc := func(ctx context.Context, query string, args ...interface{}) (flsql.Rows, error) {
 		return expRows, expErr
 	}
-	adapter := flsql.QueryableAdapter[*mockRows]{
+	adapter := flsql.QueryableAdapter{
 		QueryFunc: mockQueryFunc,
 	}
 
@@ -133,7 +133,7 @@ func TestQueryableAdapter_QueryRowContext(t *testing.T) {
 		assert.Equal(t, expArgs, args)
 		return expRow // mock row
 	}
-	adapter := flsql.QueryableAdapter[*mockRow]{
+	adapter := flsql.QueryableAdapter{
 		QueryRowFunc: mockQueryRowFunc,
 	}
 

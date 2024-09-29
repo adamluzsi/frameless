@@ -150,8 +150,7 @@ func SplitArgs(cargs map[ColumnName]any) ([]ColumnName, []any) {
 // }
 
 func QueryableSQL[SQLQ sqlQueryable](q SQLQ) Queryable {
-	return QueryableAdapter[SQLQ]{
-		V: q,
+	return QueryableAdapter{
 		ExecFunc: func(ctx context.Context, query string, args ...any) (Result, error) {
 			r, err := q.ExecContext(ctx, query, args...)
 			return r, err

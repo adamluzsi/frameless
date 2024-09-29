@@ -123,23 +123,21 @@ func (c ConnectionAdapter[DB, TX]) debugLogExec(ctx context.Context, conn Querya
 	}))
 }
 
-type QueryableAdapter[T any] struct {
-	V T
-
+type QueryableAdapter struct {
 	ExecFunc     func(ctx context.Context, query string, args ...any) (Result, error)
 	QueryFunc    func(ctx context.Context, query string, args ...any) (Rows, error)
 	QueryRowFunc func(ctx context.Context, query string, args ...any) Row
 }
 
-func (a QueryableAdapter[T]) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
+func (a QueryableAdapter) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
 	return a.ExecFunc(ctx, query, args...)
 }
 
-func (a QueryableAdapter[T]) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
+func (a QueryableAdapter) QueryContext(ctx context.Context, query string, args ...any) (Rows, error) {
 	return a.QueryFunc(ctx, query, args...)
 }
 
-func (a QueryableAdapter[T]) QueryRowContext(ctx context.Context, query string, args ...any) Row {
+func (a QueryableAdapter) QueryRowContext(ctx context.Context, query string, args ...any) Row {
 	return a.QueryRowFunc(ctx, query, args...)
 }
 
