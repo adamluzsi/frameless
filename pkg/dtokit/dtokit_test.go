@@ -403,6 +403,25 @@ func (NestedEntMapping) ToDTO(ctx context.Context, ent NestedEnt) (NestedEntDTO,
 	}, nil
 }
 
+func ExampleMapping() {
+	type Foo struct{ V int }
+
+	type FooJSONDTO struct {
+		V string `json:"v"`
+	}
+
+	_ = dtokit.Mapping[Foo, FooJSONDTO]{
+		ToENT: func(ctx context.Context, dto FooJSONDTO) (Foo, error) {
+			v, err := strconv.Atoi(dto.V)
+			return Foo{V: v}, err
+		},
+
+		ToDTO: func(ctx context.Context, ent Foo) (FooJSONDTO, error) {
+			return FooJSONDTO{V: strconv.Itoa(ent.V)}, nil
+		},
+	}
+}
+
 func TestMapping(t *testing.T) {
 	type X struct{ V int }
 	type XDTO struct{ V string }

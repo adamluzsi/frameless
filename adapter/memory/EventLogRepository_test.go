@@ -58,39 +58,39 @@ func TestEventLogRepository_smoke(t *testing.T) {
 	assert.Nil(t, subject.Create(ctx, &TestEntity{Data: `B`}))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(2, count)
+	assert.Equal(t, 2, count)
 
 	assert.Nil(t, subject.DeleteAll(ctx))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(0, count)
+	assert.Equal(t, 0, count)
 
 	tx1CTX, err := subject.BeginTx(ctx)
 	assert.Nil(t, err)
 	assert.Nil(t, subject.Create(tx1CTX, &TestEntity{Data: `C`}))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(tx1CTX)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(1, count)
+	assert.Equal(t, 1, count)
 	assert.Nil(t, subject.RollbackTx(tx1CTX))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(0, count)
+	assert.Equal(t, 0, count)
 
 	tx2CTX, err := subject.BeginTx(ctx)
 	assert.Nil(t, err)
 	assert.Nil(t, subject.Create(tx2CTX, &TestEntity{Data: `D`}))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(tx2CTX)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(1, count)
+	assert.Equal(t, 1, count)
 	assert.Nil(t, subject.CommitTx(tx2CTX))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(1, count)
+	assert.Equal(t, 1, count)
 
 	assert.Nil(t, subject.DeleteAll(ctx))
 	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
-	assert.Must(t).Equal(0, count)
+	assert.Equal(t, 0, count)
 }
 
 func getRepositorySpecsForT[Entity any, ID comparable](
@@ -257,7 +257,7 @@ func TestEventLogRepository_NewIDFunc(t *testing.T) {
 
 		ptr := &TestEntity{Data: "42"}
 		assert.Nil(t, repository.Create(context.Background(), ptr))
-		assert.Must(t).Equal(expectedID, ptr.ID)
+		assert.Equal(t, expectedID, ptr.ID)
 	})
 }
 
@@ -283,19 +283,19 @@ func TestEventLogRepository_CompressEvents_smoke(t *testing.T) {
 	a.V = "24"
 	assert.Nil(t, aS.Update(ctx, a))
 	assert.Nil(t, aS.DeleteByID(ctx, a.ID))
-	assert.Must(t).Equal(len(el.Events()), 3)
+	assert.Equal(t, len(el.Events()), 3)
 
 	b := &B{V: "4242"}
 	assert.Nil(t, bS.Create(ctx, b))
-	assert.Must(t).Equal(len(el.Events()), 4)
+	assert.Equal(t, len(el.Events()), 4)
 	b.V = "2424"
 	assert.Nil(t, bS.Update(ctx, b))
-	assert.Must(t).Equal(len(el.Events()), 4)
+	assert.Equal(t, len(el.Events()), 4)
 	assert.Nil(t, bS.DeleteByID(ctx, b.ID))
-	assert.Must(t).Equal(len(el.Events()), 3)
+	assert.Equal(t, len(el.Events()), 3)
 
 	aS.Compress()
-	assert.Must(t).Equal(len(el.Events()), 0, `when events are compressed, the event log should be empty`)
+	assert.Equal(t, len(el.Events()), 0, `when events are compressed, the event log should be empty`)
 }
 
 func TestEventLogRepository_LookupTx(t *testing.T) {

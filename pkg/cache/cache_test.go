@@ -10,7 +10,6 @@ import (
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
 	"go.llib.dev/frameless/port/comproto"
-	"go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -26,22 +25,9 @@ var _ cache.Interface[testent.Foo, testent.FooID] = &cache.Cache[testent.Foo, te
 
 func TestCache(t *testing.T) {
 	m := memory.NewMemory()
-	source := memory.NewRepository[testent.Foo, testent.FooID](m)
 	cacheRepository := memory.NewCacheRepository[testent.Foo, testent.FooID](m)
 
-	cachecontracts.Cache[testent.Foo, testent.FooID](
-		cache.New[testent.Foo, testent.FooID](source, cacheRepository),
-		source,
-		cacheRepository,
-		cachecontracts.Config[testent.Foo, testent.FooID]{
-			MakeCache: func(src cache.Source[testent.Foo, testent.FooID], repo cache.Repository[testent.Foo, testent.FooID]) cachecontracts.CacheSubject[testent.Foo, testent.FooID] {
-				return cache.New[testent.Foo, testent.FooID](src, repo)
-			},
-			CRUD: crudcontracts.Config[testent.Foo, testent.FooID]{
-				MakeEntity: testent.MakeFoo,
-			},
-		},
-	)
+	cachecontracts.Cache[testent.Foo, testent.FooID](cacheRepository).Test(t)
 }
 
 func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 1024 -failfast -run TestCache_InvalidateByID_smoke
@@ -111,7 +97,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 	}
 	{
 		t.Log("given we have an invalidator that returns with all possible operation that has dynamic name content using the entity")
-		cachei.CachedQueryInvalidators = append(cachei.CachedQueryInvalidators, cache.CachedQueryInvalidator[testent.Foo, testent.FooID]{
+		cachei.Invalidators = append(cachei.Invalidators, cache.Invalidator[testent.Foo, testent.FooID]{
 			CheckEntity: func(ent testent.Foo) []cache.HitID {
 				return []cache.HitID{cache.Query{Name: constant.String(ent.Bar)}.HitID()}
 			},
@@ -136,7 +122,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 	}
 	{
 		t.Log("given we have an invalidator that looks for queries that had operation name starting with NOK-MANY-BAZ")
-		cachei.CachedQueryInvalidators = append(cachei.CachedQueryInvalidators, cache.CachedQueryInvalidator[testent.Foo, testent.FooID]{
+		cachei.Invalidators = append(cachei.Invalidators, cache.Invalidator[testent.Foo, testent.FooID]{
 			CheckHit: func(hit cache.Hit[testent.FooID]) bool {
 				return strings.Contains(string(hit.ID), "NOK-MANY-BAZ")
 			},

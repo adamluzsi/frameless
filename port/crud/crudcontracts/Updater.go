@@ -54,7 +54,7 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 			s.And(`the received entity in argument use the stored entity's ext.ID`, func(s *testcase.Spec) {
 				entityWithChanges.Let(s, func(t *testcase.T) *ENT {
 					v := *ptr.Get(t)
-					changeENT[ENT, ID](t, c, &v)
+					c.ModifyEntity(t, &v)
 					return &v
 				})
 

@@ -16,31 +16,31 @@ func TestLookupStructField(t *testing.T) {
 	)
 
 	field, value, ok = lookupStructField(testhelper.IDByIDField{ID: `42`})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(`ID`, field.Name)
-	assert.Must(t).Equal(`42`, value.Interface())
+	assert.True(t, ok)
+	assert.Equal(t, `ID`, field.Name)
+	assert.Equal(t, `42`, value.Interface())
 
 	field, value, ok = lookupStructField(testhelper.IDByUppercaseTag{DI: `42`})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(`DI`, field.Name)
-	assert.Must(t).Equal(`42`, value.Interface())
+	assert.True(t, ok)
+	assert.Equal(t, `DI`, field.Name)
+	assert.Equal(t, `42`, value.Interface())
 
 	field, value, ok = lookupStructField(testhelper.IDByLowercaseTag{DI: `42`})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(`DI`, field.Name)
-	assert.Must(t).Equal(`42`, value.Interface())
+	assert.True(t, ok)
+	assert.Equal(t, `DI`, field.Name)
+	assert.Equal(t, `42`, value.Interface())
 
 	field, value, ok = lookupStructField(testhelper.IDAsInterface{ID: 42})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(`ID`, field.Name)
-	assert.Must(t).Equal(42, value.Interface())
+	assert.True(t, ok)
+	assert.Equal(t, `ID`, field.Name)
+	assert.Equal(t, 42, value.Interface())
 
 	idValue := `42`
 	field, value, ok = lookupStructField(testhelper.IDAsPointer{ID: &idValue})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(`ID`, field.Name)
-	assert.Must(t).Equal(&idValue, value.Interface())
+	assert.True(t, ok)
+	assert.Equal(t, `ID`, field.Name)
+	assert.Equal(t, &idValue, value.Interface().(*string))
 
-	field, value, ok = lookupStructField(testhelper.UnidentifiableID{})
+	_, _, ok = lookupStructField(testhelper.UnidentifiableID{})
 	assert.Must(t).False(ok)
 }

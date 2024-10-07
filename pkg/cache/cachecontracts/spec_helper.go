@@ -3,7 +3,6 @@ package cachecontracts
 import (
 	"testing"
 
-	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/option"
@@ -15,7 +14,6 @@ type Option[ENT any, ID comparable] interface {
 }
 
 type Config[ENT any, ID comparable] struct {
-	MakeCache func(cache.Source[ENT, ID], cache.Repository[ENT, ID]) CacheSubject[ENT, ID]
 	// MakeID will help  create a valid ENT.ID.
 	// In the cache, we work with entities which suppose to be already stored somewhere else
 	// so the default use-case for testing the cache.EntityRepository is that entities already have a populated ID.

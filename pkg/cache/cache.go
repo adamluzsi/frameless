@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 
+	"go.llib.dev/frameless/pkg/cache/internal/memory"
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase/clock"
 )
@@ -38,11 +42,42 @@ type Cache[ENT any, ID comparable] struct {
 	//
 	// default: extid Lookup/Set
 	IDA extid.Accessor[ENT, ID]
+	// Invalidators [optional] is a list of invalidation rule which is being used whenever an entity is being invalidated.
+	// It is ideal to invalidate a query by reconstucting the cache.HitID using the contents of the ENT OR ID.
+	Invalidators []Invalidator[ENT, ID]
+	// RefreshBehind [optional] enables background refreshing of cache.
+	// When set to true, after the cache serves stale data, it triggers an
+	// asynchronous update from the data source to refresh the cache in the background.
+	// This ensures eventual consistency without blocking read operations.
+	//
+	// If you want to ensure that Refresh-Behind queries don't overlap between parallel cache instances,
+	// then make sure that Scheduler uses a distributed locking.
+	//
+	// default: false
+	RefreshBehind bool
+	// Locks is used to synch background task scheduling.
+	// RefreshBehind depends on Locks.
+	//
+	// default: application level Locks
+	Locks CacheLocks
+	// TimeToLive defines the lifespan of cached data.
+	// Cached entries older than this duration are considered stale and will be
+	// either refreshed or invalidated on the next access, depending on the cache policy.
+	// A zero value means no expiration (cache entries never expire by age).
+	// TimeToLive time.Duration
 
-	CachedQueryInvalidators []CachedQueryInvalidator[ENT, ID]
+	jobGroup tasker.JobGroup
 }
 
-type CachedQueryInvalidator[ENT, ID any] struct {
+type CacheLocks interface {
+	guard.NonBlockingLockerFactory[HitID]
+}
+
+var defaultLockerFactory = memory.NewLockerFactory[HitID]()
+
+// Invalidator is a list of invalidation rule which is being used whenever an entity is being invalidated.
+// It is ideal to invalidate a query by reconstucting the cache.HitID using the contents of the ENT OR ID.
+type Invalidator[ENT, ID any] struct {
 	// CheckEntity checks an entity which is being invalidated, and using its properties,
 	// you can construct the entity values
 	CheckEntity func(ent ENT) []HitID
@@ -91,7 +126,7 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 		}
 	}
 	if found {
-		for _, inv := range m.CachedQueryInvalidators {
+		for _, inv := range m.Invalidators {
 			if inv.CheckEntity == nil {
 				continue
 			}
@@ -118,7 +153,7 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 				return true
 			}
 		}
-		for _, inv := range m.CachedQueryInvalidators {
+		for _, inv := range m.Invalidators {
 			if inv.CheckHit == nil {
 				continue
 			}
@@ -189,11 +224,7 @@ func (m *Cache[ENT, ID]) invalidateCachedQueryWithoutCascadeEffect(ctx context.C
 	return hit, found, m.Repository.Hits().DeleteByID(ctx, hitID)
 }
 
-func (m *Cache[ENT, ID]) CachedQueryMany(
-	ctx context.Context,
-	hitID HitID,
-	query QueryManyFunc[ENT],
-) (iterators.Iterator[ENT], error) {
+func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (_ iterators.Iterator[ENT], rErr error) {
 	// TODO: double check
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
@@ -209,6 +240,17 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 	if found {
 		if len(hit.EntityIDs) == 0 {
 			return iterators.Empty[ENT](), nil
+		}
+
+		if m.RefreshBehind {
+			task := tasker.WithNoOverlap(m.locks().NonBlockingLockerFor(hitID), func(ctx context.Context) error {
+				_, err := m.cacheQuery(ctx, hitID, query)
+				if err != nil {
+					logger.Warn(ctx, err.Error())
+				}
+				return nil
+			})
+			m.jobGroup.Background(contextkit.WithoutCancel(ctx), task)
 		}
 
 		iter, err := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
@@ -228,36 +270,50 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 		return iter, nil
 	}
 
-	// this naive MVP approach might take a big burden on the memory.
-	// If this becomes the case, it should be possible to change this into a streaming approach
-	// where iterator being iterated element by element,
-	// and records being created during then in the Repository
+	ids, err := m.cacheQuery(ctx, hitID, query)
+	if err != nil {
+		logger.Warn(ctx, err.Error())
+		return query()
+	}
+
+	result, err := m.Repository.Entities().FindByIDs(ctx, ids...)
+	if err != nil {
+		return query()
+	}
+
+	return result, nil
+}
+
+func (m *Cache[ENT, ID]) cacheQuery(
+	ctx context.Context,
+	hitID HitID,
+	query func() (iterators.Iterator[ENT], error),
+) (_ []ID, rErr error) {
+	ctx, err := m.Repository.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transaction during CachedQueryMany")
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
+
 	srcIter, err := query()
 	if err != nil {
 		return nil, err
 	}
+	defer srcIter.Close() // ignore err
 
-	res, err := iterators.Collect(srcIter)
-	if err != nil {
-		return nil, err
-	}
-	var ids []ID
-	for _, v := range res {
+	var ids = []ID{} // intentionally an empty slice and not a nil slice
+
+	for srcIter.Next() {
+		v := srcIter.Value()
 		id, _ := m.IDA.Lookup(v)
 		ids = append(ids, id)
-	}
 
-	var vs []*ENT
-	for _, ent := range res {
-		ent := ent // pass by value copy
-		vs = append(vs, &ent)
-	}
-
-	for _, ptr := range vs {
-		if err := m.Repository.Entities().Save(ctx, ptr); err != nil {
-			logger.Warn(ctx, "cache Repository.Entities().Save had an error", logging.ErrField(err))
-			return iterators.Slice[ENT](res), nil
+		if err := m.Repository.Entities().Save(ctx, &v); err != nil {
+			return nil, fmt.Errorf("cache Repository.Entities().Save had an error")
 		}
+	}
+	if err := srcIter.Err(); err != nil {
+		return nil, err
 	}
 
 	if err := m.Repository.Hits().Save(ctx, &Hit[ID]{
@@ -265,11 +321,10 @@ func (m *Cache[ENT, ID]) CachedQueryMany(
 		EntityIDs: ids,
 		Timestamp: clock.Now().UTC(),
 	}); err != nil {
-		logger.Warn(ctx, "cache Repository.Hits().Save had an error", logging.ErrField(err))
-		return iterators.Slice[ENT](res), nil
+		return nil, fmt.Errorf("cache Repository.Hits().Save had an error")
 	}
 
-	return iterators.Slice[ENT](res), nil
+	return ids, nil
 }
 
 func (m *Cache[ENT, ID]) CachedQueryOne(
@@ -298,6 +353,12 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 		return ent, false, nil
 	}
 	return ent, true, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+func (m *Cache[ENT, ID]) IsIdle() bool {
+	return true
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -412,4 +473,11 @@ func (m *Cache[ENT, ID]) DeleteAll(ctx context.Context) error {
 		return err
 	}
 	return m.DropCachedValues(ctx)
+}
+
+func (m *Cache[ENT, ID]) locks() guard.NonBlockingLockerFactory[HitID] {
+	if m.Locks != nil {
+		return m.Locks
+	}
+	return defaultLockerFactory
 }

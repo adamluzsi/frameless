@@ -320,6 +320,10 @@ type pubsubMessage[Data any] struct {
 	nack func() error
 }
 
+func (pm *pubsubMessage[Data]) Context() context.Context {
+	return pm.ctx
+}
+
 func (pm *pubsubMessage[Data]) ACK() error {
 	if pm.msg == nil {
 		return fmt.Errorf(".Value accessed before iter.Next, nothing to ACK")

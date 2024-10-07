@@ -25,32 +25,38 @@ func NewRepositoryWithNamespace[ENT, ID any](m *Memory, ns string) *Repository[E
 }
 
 type Repository[ENT, ID any] struct {
-	Memory    *Memory
-	MakeID    func(context.Context) (ID, error)
+	// Memory [optional] is the backing store for this Repository.
+	//
+	// default: NewMemory()
+	Memory *Memory
+	// Namespace [optional]
 	Namespace string
-
+	// IDA [optional] is the ID Accessor that maps the ID to the ENT field.
 	IDA extid.Accessor[ENT, ID]
-
+	// MakeID [optional] is an optional field if you need a specific way of generating new IDs during creation.
+	MakeID func(context.Context) (ID, error)
 	// ExpectID [optional] is a test simulator flag that allows you to enforce the user of this Repository,
 	// to populate the ID field of ENT prior to calling Create or Save, else the operation will fail.
 	ExpectID bool
+
+	m sync.Mutex
 }
 
 const ErrMissingID errorkit.Error = "ErrMissingID"
 
 const typeNameRepository = "Repository"
 
-func (s *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
-	if _, ok := s.IDA.Lookup(*ptr); !ok {
-		if s.ExpectID {
+func (r *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
+	if _, ok := r.IDA.Lookup(*ptr); !ok {
+		if r.ExpectID {
 			return ErrMissingID
 		}
-		newID, err := s.mkID(ctx)
+		newID, err := r.mkID(ctx)
 		if err != nil {
 			return err
 		}
 
-		if err := s.IDA.Set(ptr, newID); err != nil {
+		if err := r.IDA.Set(ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -59,8 +65,8 @@ func (s *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	id, _ := s.IDA.Lookup(*ptr)
-	if _, found, err := s.FindByID(ctx, id); err != nil {
+	id, _ := r.IDA.Lookup(*ptr)
+	if _, found, err := r.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
 		return errorkit.With(crud.ErrAlreadyExists).
@@ -69,93 +75,93 @@ func (s *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 			Unwrap()
 	}
 
-	s.Memory.Set(ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id), *ptr)
+	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id), *ptr)
 	return nil
 }
 
-func (s *Repository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr error) {
-	ctx, err := s.Memory.BeginTx(ctx)
+func (r *Repository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr error) {
+	ctx, err := r.memory().BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	defer comproto.FinishOnePhaseCommit(&rErr, s.Memory, ctx)
+	defer comproto.FinishOnePhaseCommit(&rErr, r.memory(), ctx)
 
-	id, ok := s.IDA.Lookup(*ptr)
+	id, ok := r.IDA.Lookup(*ptr)
 	if !ok {
-		if s.ExpectID {
+		if r.ExpectID {
 			return ErrMissingID
 		}
-		return s.Create(ctx, ptr)
+		return r.Create(ctx, ptr)
 	}
 
-	_, found, err := s.FindByID(ctx, id)
+	_, found, err := r.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	if found {
-		return s.Update(ctx, ptr)
+		return r.Update(ctx, ptr)
 	}
-	return s.Create(ctx, ptr)
+	return r.Create(ctx, ptr)
 }
 
-func (s *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _found bool, _err error) {
+func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _found bool, _err error) {
 	if err := ctx.Err(); err != nil {
 		return _ent, false, err
 	}
-	if err := s.isDoneTx(ctx); err != nil {
+	if err := r.isDoneTx(ctx); err != nil {
 		return _ent, false, err
 	}
 
-	ent, ok := s.Memory.Get(ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id))
+	ent, ok := r.memory().Get(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id))
 	if !ok {
 		return _ent, false, nil
 	}
 	return ent.(ENT), true, nil
 }
 
-func (s *Repository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := s.isDoneTx(ctx); err != nil {
+	if err := r.isDoneTx(ctx); err != nil {
 		return nil, err
 	}
-	return memoryAll[ENT](s.Memory, ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace)), nil
+	return memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace)), nil
 }
 
-func (s *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := s.isDoneTx(ctx); err != nil {
+	if err := r.isDoneTx(ctx); err != nil {
 		return err
 	}
-	if s.Memory.Del(ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id)) {
+	if r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id)) {
 		return nil
 	}
 	return errNotFound(*new(ENT), id)
 }
 
-func (s *Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
-	iter, err := s.FindAll(ctx)
+func (r *Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
+	iter, err := r.FindAll(ctx)
 	if err != nil {
 		return err
 	}
 	defer iter.Close()
 	for iter.Next() {
-		id, _ := s.IDA.Lookup(iter.Value())
-		_ = s.Memory.Del(ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id))
+		id, _ := r.IDA.Lookup(iter.Value())
+		_ = r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id))
 	}
 	return iter.Err()
 }
 
-func (s *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
-	id, ok := s.IDA.Lookup(*ptr)
+func (r *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
+	id, ok := r.IDA.Lookup(*ptr)
 	if !ok {
 		return fmt.Errorf(`entity doesn't have id field`)
 	}
 
-	_, found, err := s.FindByID(ctx, id)
+	_, found, err := r.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -163,19 +169,19 @@ func (s *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return errNotFound(*new(ENT), id)
 	}
 
-	s.Memory.Set(ctx, getNamespaceFor[ENT](typeNameRepository, &s.Namespace), s.IDToMemoryKey(id), *ptr)
+	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id), *ptr)
 	return nil
 }
 
-func (s *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
-	var m memoryActions = s.Memory
-	if tx, ok := s.Memory.LookupTx(ctx); ok {
+func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+	var m memoryActions = r.memory()
+	if tx, ok := r.memory().LookupTx(ctx); ok {
 		m = tx
 	}
-	all := m.all(getNamespaceFor[ENT](typeNameRepository, &s.Namespace))
+	all := m.all(getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
 	var vs = make(map[string]ENT, len(ids))
 	for _, id := range ids {
-		key := s.IDToMemoryKey(id)
+		key := r.IDToMemoryKey(id)
 		v, ok := all[key]
 		if !ok {
 			return nil, errNotFound(*new(ENT), id)
@@ -185,8 +191,8 @@ func (s *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterato
 	return iterators.Slice[ENT](toSlice[ENT, string](vs)), nil
 }
 
-func (s *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) bool) (ENT, bool, error) {
-	iter, err := s.FindAll(ctx)
+func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) bool) (ENT, bool, error) {
+	iter, err := r.FindAll(ctx)
 	if err != nil {
 		return *new(ENT), false, err
 	}
@@ -194,27 +200,27 @@ func (s *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) b
 	return iterators.First(iter)
 }
 
-func (s *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iterators.Iterator[ENT], error) {
-	iter, err := s.FindAll(ctx)
+func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iterators.Iterator[ENT], error) {
+	iter, err := r.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return iterators.Filter(iter, filter), nil
 }
 
-func (s *Repository[ENT, ID]) mkID(ctx context.Context) (ID, error) {
-	if s.MakeID != nil {
-		return s.MakeID(ctx)
+func (r *Repository[ENT, ID]) mkID(ctx context.Context) (ID, error) {
+	if r.MakeID != nil {
+		return r.MakeID(ctx)
 	}
 	return MakeID[ID](ctx)
 }
 
-func (s *Repository[ENT, ID]) IDToMemoryKey(id any) string {
+func (r *Repository[ENT, ID]) IDToMemoryKey(id any) string {
 	return fmt.Sprintf(`%#v`, id)
 }
 
-func (s *Repository[ENT, ID]) isDoneTx(ctx context.Context) error {
-	tx, ok := s.Memory.LookupTx(ctx)
+func (r *Repository[ENT, ID]) isDoneTx(ctx context.Context) error {
+	tx, ok := r.memory().LookupTx(ctx)
 	if !ok {
 		return nil
 	}
@@ -224,14 +230,24 @@ func (s *Repository[ENT, ID]) isDoneTx(ctx context.Context) error {
 	return nil
 }
 
-func (s *Repository[ENT, ID]) BeginTx(ctx context.Context) (context.Context, error) {
-	return s.Memory.BeginTx(ctx)
+func (r *Repository[ENT, ID]) memory() *Memory {
+	r.m.Lock()
+	defer r.m.Unlock()
+	if r.Memory == nil {
+		r.Memory = NewMemory()
+	}
+	return r.Memory
 }
-func (s *Repository[ENT, ID]) CommitTx(ctx context.Context) error {
-	return s.Memory.CommitTx(ctx)
+
+func (r *Repository[ENT, ID]) BeginTx(ctx context.Context) (context.Context, error) {
+	return r.memory().BeginTx(ctx)
 }
-func (s *Repository[ENT, ID]) RollbackTx(ctx context.Context) error {
-	return s.Memory.RollbackTx(ctx)
+func (r *Repository[ENT, ID]) CommitTx(ctx context.Context) error {
+	return r.memory().CommitTx(ctx)
+}
+
+func (r *Repository[ENT, ID]) RollbackTx(ctx context.Context) error {
+	return r.memory().RollbackTx(ctx)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

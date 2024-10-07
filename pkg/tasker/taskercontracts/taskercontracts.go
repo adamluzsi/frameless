@@ -17,26 +17,28 @@ func SchedulerLocks(subject tasker.SchedulerLocks, opts ...Option) contract.Cont
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 
-	lconf := guardcontracts.LockerFactoryConfig[tasker.ScheduleStateID]{
-		MakeContext: c.MakeContext,
-		MakeKey: func(tb testing.TB) tasker.ScheduleStateID {
+	lconf := guardcontracts.LockerFactoryConfig[tasker.ScheduleID]{
+		LockerConfig: guardcontracts.LockerConfig{
+			MakeContext: c.MakeContext,
+		},
+		MakeKey: func(tb testing.TB) tasker.ScheduleID {
 			tc := tb.(*testcase.T)
 			rndStr := tc.Random.String()
-			return tasker.ScheduleStateID(rndStr)
+			return tasker.ScheduleID(rndStr)
 			// should accept any kind of string as ScheduleStateID
 		},
 	}
-	guardcontracts.LockerFactory[tasker.ScheduleStateID](subject,
-		lconf).Spec(s)
+
+	guardcontracts.LockerFactory[tasker.ScheduleID](subject, lconf).Spec(s)
 
 	return s.AsSuite("tasker.SchedulerLocks")
 }
 
-func SchedulerStateRepository(subject tasker.SchedulerStateRepository, opts ...Option) contract.Contract {
+func SchedulerStateRepository(subject tasker.ScheduleStateRepository, opts ...Option) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 
-	crudConfig := crudcontracts.Config[tasker.ScheduleState, tasker.ScheduleStateID]{
+	crudConfig := crudcontracts.Config[tasker.ScheduleState, tasker.ScheduleID]{
 		SupportIDReuse:  false,
 		SupportRecreate: false,
 		MakeContext:     c.MakeContext,
@@ -47,16 +49,16 @@ func SchedulerStateRepository(subject tasker.SchedulerStateRepository, opts ...O
 	}
 
 	testcase.RunSuite(s,
-		crudcontracts.Creator[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
-		crudcontracts.Updater[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
-		crudcontracts.ByIDFinder[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
-		crudcontracts.ByIDDeleter[tasker.ScheduleState, tasker.ScheduleStateID](subject, crudConfig),
+		crudcontracts.Creator[tasker.ScheduleState, tasker.ScheduleID](subject, crudConfig),
+		crudcontracts.Updater[tasker.ScheduleState, tasker.ScheduleID](subject, crudConfig),
+		crudcontracts.ByIDFinder[tasker.ScheduleState, tasker.ScheduleID](subject, crudConfig),
+		crudcontracts.ByIDDeleter[tasker.ScheduleState, tasker.ScheduleID](subject, crudConfig),
 	)
 	return s.AsSuite("tasker.SchedulerStateRepository")
 }
 
 type stateRepositorySubject struct {
-	StateRepository   tasker.SchedulerStateRepository
+	StateRepository   tasker.ScheduleStateRepository
 	MakeContext       func() context.Context
 	MakeScheduleState func() tasker.ScheduleState
 }
@@ -77,7 +79,7 @@ func (c *Config) Init() {
 	c.MakeScheduleState = func(tb testing.TB) tasker.ScheduleState {
 		t := testcase.ToT(&tb)
 		return tasker.ScheduleState{
-			ID:        tasker.ScheduleStateID(t.Random.String() + t.Random.StringNC(5, random.CharsetDigit())),
+			ID:        tasker.ScheduleID(t.Random.String() + t.Random.StringNC(5, random.CharsetDigit())),
 			Timestamp: t.Random.Time(),
 		}
 	}

@@ -25,32 +25,32 @@ func TestID_E2E(t *testing.T) {
 	assert.Must(t).Nil(extid.Set(ptr, idVal))
 
 	id, ok := extid.Lookup[any](ptr)
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(idVal, id)
+	assert.True(t, ok)
+	assert.Equal[any](t, idVal, id)
 }
 
 func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup[string](testhelper.IDByIDField{ID: "ok"})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("ok", id)
+	assert.True(t, ok)
+	assert.Equal(t, "ok", id)
 }
 
 func TestLookup_withAnyType_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup[any](testhelper.IDByIDField{ID: "ok"})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(any("ok"), id)
+	assert.True(t, ok)
+	assert.Equal(t, any("ok"), id)
 }
 
 func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup[string](&testhelper.IDByIDField{ID: "ok"})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("ok", id)
+	assert.True(t, ok)
+	assert.Equal(t, "ok", id)
 }
 
 func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
@@ -63,16 +63,16 @@ func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	ptr2 = &ptr1
 
 	id, ok := extid.Lookup[string](ptr2)
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("ok", id)
+	assert.True(t, ok)
+	assert.Equal(t, "ok", id)
 }
 
 func TestLookup_IDGivenByUppercaseTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup[string](testhelper.IDByUppercaseTag{DI: "KO"})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("KO", id)
+	assert.True(t, ok)
+	assert.Equal(t, "KO", id)
 }
 
 func TestLookup_IDGivenByLowercaseTag_IDReturned(t *testing.T) {
@@ -80,8 +80,8 @@ func TestLookup_IDGivenByLowercaseTag_IDReturned(t *testing.T) {
 
 	expected := random.New(random.CryptoSeed{}).String()
 	id, ok := extid.Lookup[string](testhelper.IDByLowercaseTag{DI: expected})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(expected, id)
+	assert.True(t, ok)
+	assert.Equal(t, expected, id)
 }
 
 func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
@@ -93,16 +93,16 @@ func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTa
 	}
 
 	id, ok := extid.Lookup[string](IDByTagNameNextToIDField{DI: "KO", ID: "OK"})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("KO", id)
+	assert.True(t, ok)
+	assert.Equal(t, "KO", id)
 }
 
 func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup[string](&testhelper.IDByUppercaseTag{DI: "KO"})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("KO", id)
+	assert.True(t, ok)
+	assert.Equal(t, "KO", id)
 }
 
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
@@ -117,8 +117,8 @@ func TestLookup_InterfaceTypeWithValue_IDReturned(t *testing.T) {
 	t.Parallel()
 
 	id, ok := extid.Lookup[any](&testhelper.IDAsInterface{ID: `foo`})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal("foo", id)
+	assert.True(t, ok)
+	assert.Equal(t, "foo", id)
 }
 
 func TestLookup_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
@@ -151,8 +151,8 @@ func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
 
 	idVal := `foo`
 	id, ok := extid.Lookup[*string](&testhelper.IDAsPointer{ID: &idVal})
-	assert.Must(t).True(ok)
-	assert.Must(t).Equal(&idVal, id)
+	assert.True(t, ok)
+	assert.Equal(t, &idVal, id)
 }
 
 func TestLookup_IDFieldWithZeroValueFound_NotOkReturned(t *testing.T) {
@@ -181,7 +181,7 @@ func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 
 	subject := &testhelper.IDByIDField{}
 	assert.Must(t).Nil(extid.Set(subject, "OK"))
-	assert.Must(t).Equal("OK", subject.ID)
+	assert.Equal(t, "OK", subject.ID)
 }
 
 func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
@@ -189,7 +189,7 @@ func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 
 	subject := &testhelper.IDByUppercaseTag{}
 	assert.Must(t).Nil(extid.Set(subject, "OK"))
-	assert.Must(t).Equal("OK", subject.DI)
+	assert.Equal(t, "OK", subject.DI)
 }
 
 func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
@@ -197,7 +197,7 @@ func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
 
 	var subject interface{} = &testhelper.IDByIDField{}
 	assert.Must(t).Nil(extid.Set(subject, "OK"))
-	assert.Must(t).Equal("OK", subject.(*testhelper.IDByIDField).ID)
+	assert.Equal(t, "OK", subject.(*testhelper.IDByIDField).ID)
 }
 
 //--------------------------------------------------------------------------------------------------------------------//

@@ -247,7 +247,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -258,7 +258,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -280,7 +280,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -290,7 +290,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -311,7 +311,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -321,7 +321,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -346,7 +346,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -367,7 +367,7 @@ func TestIsEmpty(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as empty`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -396,7 +396,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -429,7 +429,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -440,7 +440,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -471,7 +471,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -482,7 +482,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -517,7 +517,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -538,7 +538,7 @@ func TestIsZero(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as zero`, func(t *testcase.T) {
-			assert.Must(t).True(subject(t))
+			assert.True(t, subject(t))
 		})
 	})
 
@@ -567,7 +567,7 @@ func TestIsValueNil(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as nil`, func(t *testcase.T) {
-			assert.Must(t).True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -600,7 +600,7 @@ func TestIsValueNil(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as nil`, func(t *testcase.T) {
-			assert.Must(t).True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -631,7 +631,7 @@ func TestIsValueNil(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as nil`, func(t *testcase.T) {
-			assert.Must(t).True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -666,7 +666,7 @@ func TestIsValueNil(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as nil`, func(t *testcase.T) {
-			assert.Must(t).True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -687,7 +687,7 @@ func TestIsValueNil(t *testing.T) {
 		})
 
 		s.Then(`it will be reported as nil`, func(t *testcase.T) {
-			assert.Must(t).True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 

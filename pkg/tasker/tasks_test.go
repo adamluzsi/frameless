@@ -2,11 +2,14 @@ package tasker_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/netkit"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -118,8 +121,11 @@ func TestHTTPServerPortFromENV(t *testing.T) {
 }
 
 func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
-	testcase.SetEnv(t, "PORT", "58080")
-	const srvURL = "http://127.0.0.1:58080/"
+	port, err := netkit.GetFreePort()
+	assert.NoError(t, err)
+	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
+
+	var srvURL = fmt.Sprintf("http://127.0.0.1:%d/", port)
 
 	srv := &http.Server{
 		Addr: "127.0.0.1:8080",
@@ -130,8 +136,8 @@ func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
 
 	ctx := context.Background()
 
-	join := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
-	defer func() { assert.NoError(t, join()) }()
+	a := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
+	defer func() { assert.NoError(t, a.Stop()) }()
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
@@ -143,8 +149,10 @@ func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
 }
 
 func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
-	testcase.SetEnv(t, "PORT", "58080")
-	const srvURL = "http://127.0.0.1:58080/"
+	port, err := netkit.GetFreePort()
+	assert.NoError(t, err)
+	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
+	var srvURL = fmt.Sprintf("http://127.0.0.1:%d/", port)
 
 	srv := &http.Server{
 		Addr: ":8080",
@@ -155,8 +163,8 @@ func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
 
 	ctx := context.Background()
 
-	join := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
-	defer func() { assert.NoError(t, join()) }()
+	a := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
+	defer func() { assert.NoError(t, a.Stop()) }()
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
@@ -168,9 +176,11 @@ func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
 }
 
 func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
+	port, err := netkit.GetFreePort()
+	assert.NoError(t, err)
 	testcase.UnsetEnv(t, "PORT2")
-	testcase.SetEnv(t, "PORT", "58080")
-	const srvURL = "http://127.0.0.1:58080/"
+	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
+	var srvURL = fmt.Sprintf("http://127.0.0.1:%d/", port)
 
 	srv := &http.Server{
 		Addr: ":8080",
@@ -181,8 +191,8 @@ func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
 
 	ctx := context.Background()
 
-	join := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV("PORT2", "PORT")))
-	defer func() { assert.NoError(t, join()) }()
+	a := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV("PORT2", "PORT")))
+	defer func() { assert.NoError(t, a.Stop()) }()
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
@@ -194,11 +204,15 @@ func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
 }
 
 func TestHTTPServerTask_withContextValuesPassedDownToRequests(t *testing.T) {
-	const srvURL = "http://localhost:58080/"
+	port, err := netkit.GetFreePort()
+	assert.NoError(t, err)
+	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
+	var srvURL = fmt.Sprintf("http://127.0.0.1:%d/", port)
+
 	type ctxKey struct{}
 
 	srv := &http.Server{
-		Addr: "localhost:58080",
+		Addr: fmt.Sprintf("127.0.0.1:%d", port),
 		Handler: http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			val, ok := request.Context().Value(ctxKey{}).(string)
 			assert.True(t, ok)
@@ -247,8 +261,8 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	bgcancel := tasker.Background(ctx, tasker.HTTPServerTask(srv))
-	defer func() { assert.NoError(t, bgcancel()) }()
+	a := tasker.Background(ctx, tasker.HTTPServerTask(srv))
+	defer func() { assert.NoError(t, a.Stop()) }()
 
 	defer tasker.Background(ctx, func(ctx context.Context) {
 		httpClient := &http.Client{Timeout: time.Second}
@@ -258,7 +272,7 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 			assert.NotNil(t, resp)
 			assert.Equal(t, http.StatusTeapot, resp.StatusCode)
 		})
-	})()
+	}).Stop()
 
 	assert.Eventually(t, time.Second, func(it assert.It) {
 		assert.Equal(it, atomic.LoadInt32(&ready), 1)

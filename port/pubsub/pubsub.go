@@ -19,6 +19,7 @@ type Subscription[Data any] interface {
 }
 
 type Message[Data any] interface {
+	Context() context.Context
 	ACK() error
 	NACK() error
 	Data() Data
@@ -30,6 +31,7 @@ func ZeroMessage[Data any]() Message[Data] {
 
 type zeroMessage[Data any] struct{}
 
-func (zeroMessage[Data]) ACK() error  { return nil }
-func (zeroMessage[Data]) NACK() error { return nil }
-func (zeroMessage[Data]) Data() Data  { return *new(Data) }
+func (zeroMessage[Data]) Context() context.Context { return context.Background() }
+func (zeroMessage[Data]) ACK() error               { return nil }
+func (zeroMessage[Data]) NACK() error              { return nil }
+func (zeroMessage[Data]) Data() Data               { return *new(Data) }

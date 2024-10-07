@@ -171,8 +171,9 @@ func tryDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx 
 	assert.NoError(tb, err)
 }
 
-func changeENT[ENT, ID any](tb testing.TB, c Config[ENT, ID], ptr *ENT) {
-	assert.NotNil(tb, ptr)
+func (c Config[ENT, ID]) ModifyEntity(tb testing.TB, ptr *ENT) {
+	tb.Helper()
+	assert.NotNil(tb, ptr, "crudcontracts.Config#ModifyEntity called with nil pointer")
 	if c.ChangeEntity != nil {
 		c.ChangeEntity(tb, ptr)
 		return

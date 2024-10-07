@@ -120,7 +120,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { return expectedErr })
 
 		s.Then(`it will pass the received error through`, func(t *testcase.T) {
-			assert.Must(t).Equal(expectedErr, subject(t))
+			assert.Equal(t, expectedErr, subject(t))
 		})
 	})
 
@@ -129,7 +129,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(expectedErr) })
 
 		s.Then(`it will capture the error from panic and returns with it`, func(t *testcase.T) {
-			assert.Must(t).Equal(expectedErr, subject(t))
+			assert.Equal(t, expectedErr, subject(t))
 		})
 	})
 
@@ -138,7 +138,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(expectedErr) })
 
 		s.Then(`it will capture the error from panic and returns with it`, func(t *testcase.T) {
-			assert.Must(t).Equal(expectedErr, subject(t))
+			assert.Equal(t, expectedErr, subject(t))
 		})
 	})
 
@@ -147,7 +147,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, func() error { panic(msg) })
 
 		s.Then(`it will capture the panic value and create an error from it, where message is the panic object is formatted with fmt`, func(t *testcase.T) {
-			assert.Must(t).Equal(errors.New("boom"), subject(t))
+			assert.Equal(t, errors.New("boom"), subject(t))
 		})
 	})
 

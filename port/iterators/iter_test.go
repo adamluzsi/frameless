@@ -22,6 +22,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/iterators/iteratorcontracts"
 	"go.llib.dev/frameless/port/iterators/ranges"
@@ -66,59 +67,60 @@ func (b *BrokenReader) Read(p []byte) (n int, err error) { return 0, io.ErrUnexp
 
 type x struct{ data string }
 
-func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterators.Iterator[Entity]) (T, bool, error)) {
+func FirstAndLastSharedErrorTestCases[T any](t *testing.T, subject func(iterators.Iterator[T]) (T, bool, error)) {
 	t.Run("error test-cases", func(t *testing.T) {
 		expectedErr := errors.New(random.New(random.CryptoSeed{}).StringN(4))
 
 		t.Run("Closing", func(t *testing.T) {
 			t.Parallel()
 
-			expected := Entity{Text: "close"}
-			i := iterators.SingleValue[Entity](expected)
+			expected := rnd.Make(reflectkit.TypeOf[T]()).(T)
+			i := iterators.SingleValue[T](expected)
 
 			v, ok, err := subject(i)
 			assert.Must(t).Nil(err)
-			assert.Must(t).True(ok)
-			assert.Must(t).Equal(expected, v)
+			assert.True(t, ok)
+			assert.Equal(t, expected, v)
 		})
 
 		t.Run("Closing", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "close"}))
+			expected := rnd.Make(reflectkit.TypeOf[T]()).(T)
+			i := iterators.Stub[T](iterators.SingleValue[T](expected))
 
 			i.StubClose = func() error { return expectedErr }
 
 			_, _, err := subject(i)
-			assert.Must(t).Equal(expectedErr, err)
+			assert.Equal(t, expectedErr, err)
 		})
 
 		t.Run("Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "err"}))
+			i := iterators.Stub[T](iterators.SingleValue[T](rnd.Make(reflectkit.TypeOf[T]()).(T)))
 			i.StubErr = func() error { return expectedErr }
 
 			_, _, err := subject(i)
-			assert.Must(t).Equal(expectedErr, err)
+			assert.Equal(t, expectedErr, err)
 		})
 
 		t.Run("Err+Close Err", func(t *testing.T) {
 			t.Parallel()
 
-			i := iterators.Stub[Entity](iterators.SingleValue[Entity](Entity{Text: "err"}))
+			i := iterators.Stub[T](iterators.SingleValue[T](rnd.Make(reflectkit.TypeOf[T]()).(T)))
 			i.StubErr = func() error { return expectedErr }
 			i.StubClose = func() error { return errors.New("unexpected to see this err because it hides the decode err") }
 
 			_, _, err := subject(i)
-			assert.Must(t).Equal(expectedErr, err)
+			assert.Equal(t, expectedErr, err)
 		})
 
 		t.Run(`empty iterator with .Err()`, func(t *testing.T) {
-			i := iterators.Error[Entity](expectedErr)
+			i := iterators.Error[T](expectedErr)
 			_, found, err := subject(i)
-			assert.Must(t).Equal(false, found)
-			assert.Must(t).Equal(expectedErr, err)
+			assert.Equal(t, false, found)
+			assert.Equal(t, expectedErr, err)
 		})
 	})
 }
@@ -132,8 +134,8 @@ func TestLast_NextValueDecodable_TheLastNextValueDecoded(t *testing.T) {
 
 	actually, found, err := iterators.Last[int](i)
 	assert.Must(t).Nil(err)
-	assert.Must(t).True(found)
-	assert.Must(t).Equal(expected, actually)
+	assert.True(t, found)
+	assert.Equal(t, expected, actually)
 }
 
 func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
@@ -152,7 +154,7 @@ func TestLast_AfterLastValueDecoded_IteratorIsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assert.Must(t).True(closed)
+	assert.True(t, closed)
 }
 
 func TestLast_WhenErrorOccursDuring(t *testing.T) {
@@ -170,7 +172,7 @@ func TestLast_WhenNextSayThereIsNoValueToBeDecoded_ErrorReturnedAboutThis(t *tes
 func TestErrorf(t *testing.T) {
 	i := iterators.Errorf[any]("%s", "hello world!")
 	assert.Must(t).NotNil(i)
-	assert.Must(t).Equal("hello world!", i.Err().Error())
+	assert.Equal(t, "hello world!", i.Err().Error())
 }
 
 var _ iterators.Iterator[string] = iterators.Slice([]string{"A", "B", "C"})
@@ -180,14 +182,14 @@ func TestNewSlice_SliceGiven_SliceIterableAndValuesReturnedWithDecode(t *testing
 
 	i := iterators.Slice([]int{42, 4, 2})
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal(42, i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, 42, i.Value())
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal(4, i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, 4, i.Value())
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal(2, i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, 2, i.Value())
 
 	assert.Must(t).False(i.Next())
 	assert.Must(t).Nil(i.Err())
@@ -233,7 +235,7 @@ func TestForEach(t *testing.T) {
 				iterated := iteratedOnes.Get(t)
 				for _, n := range elements.Get(t) {
 					_, ok := iterated[n]
-					assert.Must(t).True(ok, assert.Message(fmt.Sprintf(`expected that %d will be iterated by the function`, n)))
+					assert.True(t, ok, assert.Message(fmt.Sprintf(`expected that %d will be iterated by the function`, n)))
 				}
 			})
 
@@ -328,7 +330,7 @@ func TestFilter(t *testing.T) {
 
 				numbers, err := iterators.Collect[int](i)
 				assert.Must(t).Nil(err)
-				assert.Must(t).Equal(originalInput, numbers)
+				assert.Equal(t, originalInput, numbers)
 			})
 
 			t.Run("when filter disallow part of the value stream", func(t *testing.T) {
@@ -337,7 +339,7 @@ func TestFilter(t *testing.T) {
 
 				numbers, err := iterators.Collect[int](i)
 				assert.Must(t).Nil(err)
-				assert.Must(t).Equal([]int{6, 7, 8, 9}, numbers)
+				assert.Equal(t, []int{6, 7, 8, 9}, numbers)
 			})
 
 			t.Run("but iterator encounter an exception", func(t *testing.T) {
@@ -354,7 +356,7 @@ func TestFilter(t *testing.T) {
 					t.Run("it is expect to report the error with the Err method", func(t *testing.T) {
 						i := iterators.Filter[int](iterator(), func(int) bool { return true })
 						assert.Must(t).NotNil(i)
-						assert.Must(t).Equal(i.Err(), fmt.Errorf("Boom!!"))
+						assert.Equal(t, i.Err(), fmt.Errorf("Boom!!"))
 					})
 				})
 
@@ -370,7 +372,7 @@ func TestFilter(t *testing.T) {
 						i := iterators.Filter(iterator(), func(int) bool { return true })
 						assert.Must(t).NotNil(i)
 						assert.Must(t).Nil(i.Err())
-						assert.Must(t).Equal(i.Close(), fmt.Errorf("Boom!!!"))
+						assert.Equal(t, i.Close(), fmt.Errorf("Boom!!!"))
 					})
 				})
 			})
@@ -925,8 +927,8 @@ func TestNewSingleElement_StructGiven_StructReceivedWithDecode(t *testing.T) {
 
 	actually, found, err := iterators.First[ExampleStruct](i)
 	assert.Must(t).Nil(err)
-	assert.Must(t).True(found)
-	assert.Must(t).Equal(expected, actually)
+	assert.True(t, found)
+	assert.Equal(t, expected, actually)
 }
 
 func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat(t *testing.T) {
@@ -937,7 +939,7 @@ func TestNewSingleElement_StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTr
 	i := iterators.SingleValue(&expected)
 	defer i.Close()
 
-	assert.Must(t).True(i.Next())
+	assert.True(t, i.Next())
 
 	checkAmount := random.New(random.CryptoSeed{}).IntBetween(1, 100)
 	for n := 0; n < checkAmount; n++ {
@@ -1112,7 +1114,7 @@ func TestEmpty(suite *testing.T) {
 	suite.Run("#Value", func(t *testing.T) {
 		t.Parallel()
 		subject := iterators.Empty[int]()
-		assert.Must(t).Equal(0, subject.Value())
+		assert.Equal(t, 0, subject.Value())
 	})
 }
 
@@ -1128,7 +1130,7 @@ func TestWithCallback(t *testing.T) {
 
 			actually, err := iterators.Collect(i)
 			assert.Must(t).Nil(err)
-			assert.Must(t).Equal(3, len(actually))
+			assert.Equal(t, 3, len(actually))
 			assert.Must(t).ContainExactly(expected, actually)
 		})
 
@@ -1139,7 +1141,7 @@ func TestWithCallback(t *testing.T) {
 			assert.Equal(t, input, i)
 			actually, err := iterators.Collect(i)
 			assert.Must(t).Nil(err)
-			assert.Must(t).Equal(3, len(actually))
+			assert.Equal(t, 3, len(actually))
 			assert.Must(t).ContainExactly(expected, actually)
 		})
 	})
@@ -1164,9 +1166,9 @@ func TestWithCallback(t *testing.T) {
 			)
 
 			assert.Must(t).ErrorIs(callbackErr, i.Close())
-			assert.Must(t).Equal(2, len(closeHook))
-			assert.Must(t).Equal(`during`, closeHook[0])
-			assert.Must(t).Equal(`after`, closeHook[1])
+			assert.Equal(t, 2, len(closeHook))
+			assert.Equal(t, `during`, closeHook[0])
+			assert.Equal(t, `after`, closeHook[1])
 		})
 
 		s.And(`error happen during closing in hook`, func(s *testcase.Spec) {
@@ -1181,7 +1183,7 @@ func TestWithCallback(t *testing.T) {
 							return nil
 						}))
 
-					assert.Must(t).Equal(expectedErr, i.Close())
+					assert.Equal(t, expectedErr, i.Close())
 				})
 			})
 		})
@@ -1288,7 +1290,7 @@ func TestCollect_emptySlice(t *testing.T) {
 	t.Logf(`%#v`, slice)
 	vs, err := iterators.Collect[int](iterators.Slice[int]([]int{42}))
 	assert.Must(t).Nil(err)
-	assert.Must(t).Equal([]int{42}, vs)
+	assert.Equal(t, []int{42}, vs)
 }
 
 func TestCount_andCountTotalIterations_IteratorGiven_AllTheRecordsCounted(t *testing.T) {
@@ -1297,7 +1299,7 @@ func TestCount_andCountTotalIterations_IteratorGiven_AllTheRecordsCounted(t *tes
 	i := iterators.Slice[int]([]int{1, 2, 3})
 	total, err := iterators.Count[int](i)
 	assert.Must(t).Nil(err)
-	assert.Must(t).Equal(3, total)
+	assert.Equal(t, 3, total)
 }
 
 func TestCount_errorOnCloseReturned(t *testing.T) {
@@ -1312,7 +1314,7 @@ func TestCount_errorOnCloseReturned(t *testing.T) {
 	}
 
 	_, err := iterators.Count[int](m)
-	assert.Must(t).Equal(expected, err)
+	assert.Equal(t, expected, err)
 }
 
 func ExampleMap() {
@@ -1430,8 +1432,8 @@ func TestFirst_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
 
 	actually, found, err := iterators.First[int](i)
 	assert.Must(t).Nil(err)
-	assert.Must(t).Equal(expected, actually)
-	assert.Must(t).True(found)
+	assert.Equal(t, expected, actually)
+	assert.True(t, found)
 }
 
 func TestFirst_AfterFirstValue_IteratorIsClosed(t *testing.T) {
@@ -1449,7 +1451,7 @@ func TestFirst_AfterFirstValue_IteratorIsClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Must(t).True(closed)
+	assert.True(t, closed)
 }
 
 func TestFirst_errors(t *testing.T) {
@@ -1483,14 +1485,14 @@ func TestPipe_SimpleFeedScenario(t *testing.T) {
 
 	go func() {
 		defer w.Close()
-		assert.Must(t).True(w.Value(expected))
+		assert.True(t, w.Value(expected))
 	}()
 
-	assert.Must(t).True(r.Next())             // first next should return the value mean to be sent
-	assert.Must(t).Equal(expected, r.Value()) // the exactly same value passed in
-	assert.Must(t).False(r.Next())            // no more values left, sender done with its work
-	assert.Must(t).Nil(r.Err())               // No error sent so there must be no err received
-	assert.Must(t).Nil(r.Close())             // Than I release this resource too
+	assert.True(t, r.Next())             // first next should return the value mean to be sent
+	assert.Equal(t, expected, r.Value()) // the exactly same value passed in
+	assert.Must(t).False(r.Next())       // no more values left, sender done with its work
+	assert.Must(t).Nil(r.Err())          // No error sent so there must be no err received
+	assert.Must(t).Nil(r.Close())        // Than I release this resource too
 }
 
 func TestPipe_FetchWithCollectAll(t *testing.T) {
@@ -1514,9 +1516,9 @@ func TestPipe_FetchWithCollectAll(t *testing.T) {
 	}()
 
 	actually, err := iterators.Collect[*Entity](r)
-	assert.Must(t).Nil(err)                  // When I collect everything with Collect All and close the resource
-	assert.Must(t).True(len(actually) > 0)   // the collection includes all the sent values
-	assert.Must(t).Equal(expected, actually) // which is exactly the same that mean to be sent.
+	assert.Must(t).Nil(err)             // When I collect everything with Collect All and close the resource
+	assert.True(t, len(actually) > 0)   // the collection includes all the sent values
+	assert.Equal(t, expected, actually) // which is exactly the same that mean to be sent.
 }
 
 func TestPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
@@ -1546,7 +1548,7 @@ func TestPipe_ReceiverCloseResourceEarly_FeederNoted(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		defer w.Close()
-		assert.Must(t).Equal(false, w.Value(&Entity{Text: "hitchhiker's guide to the galaxy"}))
+		assert.Equal(t, false, w.Value(&Entity{Text: "hitchhiker's guide to the galaxy"}))
 	}()
 
 	wg.Wait()
@@ -1561,17 +1563,17 @@ func TestPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *testi
 	expected := errors.New("boom")
 
 	go func() {
-		assert.Must(t).True(w.Value(value))
+		assert.True(t, w.Value(value))
 		w.Error(expected)
 		assert.Must(t).Nil(w.Close())
 	}()
 
-	assert.Must(t).True(r.Next())           // everything goes smoothly, I'm notified about next value
-	assert.Must(t).Equal(value, r.Value())  // I even able to decode it as well
-	assert.Must(t).False(r.Next())          // Than the sender is notify me that I will not receive any more value
-	assert.Must(t).Equal(expected, r.Err()) // Also tells me that something went wrong during the processing
-	assert.Must(t).Nil(r.Close())           // I release the resource because than and go on
-	assert.Must(t).Equal(expected, r.Err()) // The last error should be available later
+	assert.True(t, r.Next())           // everything goes smoothly, I'm notified about next value
+	assert.Equal(t, value, r.Value())  // I even able to decode it as well
+	assert.Must(t).False(r.Next())     // Than the sender is notify me that I will not receive any more value
+	assert.Equal(t, expected, r.Err()) // Also tells me that something went wrong during the processing
+	assert.Must(t).Nil(r.Close())      // I release the resource because than and go on
+	assert.Equal(t, expected, r.Err()) // The last error should be available later
 }
 
 func TestPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndReceiverNotifiedAfterTheError(t *testing.T) {
@@ -1594,7 +1596,7 @@ func TestPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndRece
 	wg.Add(1)
 
 	go func() {
-		assert.Must(t).True(w.Value(value))
+		assert.True(t, w.Value(value))
 		wg.Wait()
 		w.Error(expected)
 		assert.Must(t).Nil(w.Close())
@@ -1602,11 +1604,11 @@ func TestPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndRece
 
 	assert.Must(t).Nil(r.Err()) // no error so far
 	wg.Done()
-	assert.Must(t).True(r.Next())           // everything goes smoothly, I'm notified about next value
-	assert.Must(t).Equal(value, r.Value())  // I even able to decode it as well
-	assert.Must(t).Equal(expected, r.Err()) // Also tells me that something went wrong during/after the processing
-	assert.Must(t).Nil(r.Close())           // I release the resource because than and go on
-	assert.Must(t).Equal(expected, r.Err()) // The last error should be available later
+	assert.True(t, r.Next())           // everything goes smoothly, I'm notified about next value
+	assert.Equal(t, value, r.Value())  // I even able to decode it as well
+	assert.Equal(t, expected, r.Err()) // Also tells me that something went wrong during/after the processing
+	assert.Must(t).Nil(r.Close())      // I release the resource because than and go on
+	assert.Equal(t, expected, r.Err()) // The last error should be available later
 }
 
 func TestPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothing(t *testing.T) {
@@ -1620,16 +1622,16 @@ func TestPipe_SenderSendNilAsErrorAboutProcessingToReceiver_ReceiverReceiveNothi
 			w.Error(nil)
 		}
 
-		assert.Must(t).True(w.Value(value))
+		assert.True(t, w.Value(value))
 		assert.Must(t).Nil(w.Close())
 	}()
 
-	assert.Must(t).True(r.Next())
-	assert.Must(t).Equal(value, r.Value())
+	assert.True(t, r.Next())
+	assert.Equal(t, value, r.Value())
 	assert.Must(t).False(r.Next())
-	assert.Must(t).Equal(nil, r.Err())
+	assert.Equal(t, nil, r.Err())
 	assert.Must(t).Nil(r.Close())
-	assert.Must(t).Equal(nil, r.Err())
+	assert.Equal(t, nil, r.Err())
 }
 
 func TestPipeOut_Err_e2e(t *testing.T) {
@@ -2049,7 +2051,7 @@ func TestMock_Next(t *testing.T) {
 	assert.Must(t).False(m.Next())
 
 	m.StubNext = func() bool { return true }
-	assert.Must(t).True(m.Next())
+	assert.True(t, m.Next())
 
 	m.ResetNext()
 	assert.Must(t).False(m.Next())
@@ -2060,20 +2062,20 @@ func TestMock_Decode(t *testing.T) {
 
 	m := iterators.Stub[int](iterators.Slice[int]([]int{42, 43, 44}))
 
-	assert.Must(t).True(m.Next())
-	assert.Must(t).Equal(42, m.Value())
+	assert.True(t, m.Next())
+	assert.Equal(t, 42, m.Value())
 
-	assert.Must(t).True(m.Next())
-	assert.Must(t).Equal(43, m.Value())
+	assert.True(t, m.Next())
+	assert.Equal(t, 43, m.Value())
 
 	m.StubValue = func() int {
 		return 4242
 	}
-	assert.Must(t).Equal(4242, m.Value())
+	assert.Equal(t, 4242, m.Value())
 
 	m.ResetValue()
-	assert.Must(t).True(m.Next())
-	assert.Must(t).Equal(44, m.Value())
+	assert.True(t, m.Next())
+	assert.Equal(t, 44, m.Value())
 }
 
 func TestMust(t *testing.T) {
@@ -2111,8 +2113,8 @@ func TestScanner_SingleLineGiven_EachLineFetched(t *testing.T) {
 	readCloser := NewReadCloser(strings.NewReader("Hello, World!"))
 	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("Hello, World!", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "Hello, World!", i.Value())
 	assert.Must(t).False(i.Next())
 }
 
@@ -2122,12 +2124,12 @@ func TestScanner_nilCloserGiven_EachLineFetched(t *testing.T) {
 	readCloser := NewReadCloser(strings.NewReader("foo\nbar\nbaz"))
 	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), nil)
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("foo", i.Value())
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("bar", i.Value())
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("baz", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "foo", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "bar", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "baz", i.Value())
 	assert.Must(t).False(i.Next())
 	assert.Must(t).Nil(i.Close())
 }
@@ -2147,14 +2149,14 @@ func TestScanner_MultipleLineGiven_EachLineFetched(t *testing.T) {
 	readCloser := NewReadCloser(strings.NewReader("Hello, World!\nHow are you?\r\nThanks I'm fine!"))
 	i := iterators.BufioScanner[string](bufio.NewScanner(readCloser), readCloser)
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("Hello, World!", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "Hello, World!", i.Value())
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("How are you?", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "How are you?", i.Value())
 
-	assert.Must(t).True(i.Next())
-	assert.Must(t).Equal("Thanks I'm fine!", i.Value())
+	assert.True(t, i.Next())
+	assert.Equal(t, "Thanks I'm fine!", i.Value())
 
 	assert.Must(t).False(i.Next())
 }
@@ -2177,11 +2179,11 @@ func TestScanner_Split(t *testing.T) {
 
 	lines, err := iterators.Collect[string](i)
 	assert.Must(t).Nil(err)
-	assert.Must(t).Equal(4, len(lines))
-	assert.Must(t).Equal(`a`, lines[0])
-	assert.Must(t).Equal(`b`, lines[1])
-	assert.Must(t).Equal(`c`, lines[2])
-	assert.Must(t).Equal(`d`, lines[3])
+	assert.Equal(t, 4, len(lines))
+	assert.Equal(t, `a`, lines[0])
+	assert.Equal(t, `b`, lines[1])
+	assert.Equal(t, `c`, lines[2])
+	assert.Equal(t, `d`, lines[3])
 }
 
 func TestWithConcurrentAccess(t *testing.T) {
@@ -2201,7 +2203,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			<-flag
 			t.Log("a:start")
-			assert.Must(t).True(i.Next())
+			assert.True(t, i.Next())
 			time.Sleep(time.Millisecond)
 			a = i.Value()
 			t.Log("a:done")
@@ -2210,7 +2212,7 @@ func TestWithConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			<-flag
 			t.Log("b:start")
-			assert.Must(t).True(i.Next())
+			assert.True(t, i.Next())
 			time.Sleep(time.Millisecond)
 			b = i.Value()
 			t.Log("b:done")
@@ -2247,11 +2249,11 @@ func TestWithConcurrentAccess(t *testing.T) {
 
 		err := i.Close()
 		assert.Must(t).NotNil(err)
-		assert.Must(t).Equal(`ErrClose`, err.Error())
+		assert.Equal(t, `ErrClose`, err.Error())
 
 		err = i.Err()
 		assert.Must(t).NotNil(err)
-		assert.Must(t).Equal(`ErrErr`, err.Error())
+		assert.Equal(t, `ErrErr`, err.Error())
 	})
 }
 

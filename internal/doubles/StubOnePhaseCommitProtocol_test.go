@@ -30,9 +30,9 @@ func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
 
 	t.Run(`stub works when set`, func(t *testing.T) {
 		_, rerr := sopcp.BeginTx(ctx)
-		assert.Must(t).Equal(beginErr, rerr)
-		assert.Must(t).Equal(commitErr, sopcp.CommitTx(ctx))
-		assert.Must(t).Equal(rollbackErr, sopcp.RollbackTx(ctx))
+		assert.Equal(t, beginErr, rerr)
+		assert.Equal(t, commitErr, sopcp.CommitTx(ctx))
+		assert.Equal(t, rollbackErr, sopcp.RollbackTx(ctx))
 		sopcp.BeginTxFunc = nil
 		sopcp.CommitTxFunc = nil
 		sopcp.RollbackTxFunc = nil
@@ -46,10 +46,10 @@ func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
 		_, ok := m.Get(ctx, `ns`, `key`)
 		assert.Must(t).False(ok)
 		_, ok = m.Get(tx, `ns`, `key`)
-		assert.Must(t).True(ok)
+		assert.True(t, ok)
 		assert.Must(t).Nil(sopcp.CommitTx(tx))
 		_, ok = m.Get(ctx, `ns`, `key`)
-		assert.Must(t).True(ok)
+		assert.True(t, ok)
 	})
 
 	t.Run(`rollback with embedded`, func(t *testing.T) {
@@ -59,7 +59,7 @@ func TestStubOnePhaseCommitProtocol_smoke(t *testing.T) {
 		_, ok := m.Get(ctx, `ns`, `key`)
 		assert.Must(t).False(ok)
 		_, ok = m.Get(tx, `ns`, `key`)
-		assert.Must(t).True(ok)
+		assert.True(t, ok)
 		assert.Must(t).Nil(sopcp.RollbackTx(tx))
 		_, ok = m.Get(ctx, `ns`, `key`)
 		assert.Must(t).False(ok)

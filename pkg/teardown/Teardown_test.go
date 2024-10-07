@@ -197,3 +197,12 @@ func TestTeardown_Finish_idempotent(t *testing.T) {
 	assert.NoError(t, td.Finish())
 	assert.Equal(t, 1, count)
 }
+
+func TestTeardown_IsEmpty(t *testing.T) {
+	var td teardown.Teardown
+	td.Defer(func() error { return nil })
+	td.Defer(func() error { return nil })
+	assert.False(t, td.IsEmpty())
+	assert.NoError(t, td.Finish())
+	assert.True(t, td.IsEmpty())
+}

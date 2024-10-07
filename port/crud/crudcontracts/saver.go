@@ -103,10 +103,10 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 		s.When(`entity is a newer version compared to the stored one`, func(s *testcase.Spec) {
 			ptr.Let(s, func(t *testcase.T) *ENT {
-				v := ptr.Super(t)
-				assert.NoError(t, subject.Save(c.MakeContext(t), v))
-				changeENT(t, c, v) // change entity to represent an update state
-				return v
+				p := ptr.Super(t)
+				assert.NoError(t, subject.Save(c.MakeContext(t), p))
+				c.ModifyEntity(t, p) // change entity to represent an update state
+				return p
 			}).EagerLoading(s)
 
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {

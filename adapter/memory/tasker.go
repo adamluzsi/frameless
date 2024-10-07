@@ -1,32 +1,18 @@
 package memory
 
-import (
-	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/frameless/port/guard"
-)
+import "go.llib.dev/frameless/pkg/tasker"
 
-func NewTaskerSchedulerStateRepository() *Repository[tasker.ScheduleState, tasker.ScheduleStateID] {
-	return NewRepository[tasker.ScheduleState, tasker.ScheduleStateID](NewMemory())
+func Scheduler() tasker.Scheduler {
+	return tasker.Scheduler{
+		Locks:  NewTaskerSchedulerLocks(),
+		States: NewTaskerSchedulerStateRepository(),
+	}
 }
 
-func NewTaskerSchedulerLocks() *LockerFactory[tasker.ScheduleStateID] {
-	return NewLockerFactory[tasker.ScheduleStateID]()
+func NewTaskerSchedulerStateRepository() *Repository[tasker.ScheduleState, tasker.ScheduleID] {
+	return NewRepository[tasker.ScheduleState, tasker.ScheduleID](NewMemory())
 }
 
-type TaskerScheduleRepository struct {
-	locks  *LockerFactory[tasker.ScheduleStateID]
-	states *Repository[tasker.ScheduleState, tasker.ScheduleStateID]
-}
-
-func (r *TaskerScheduleRepository) Locks() guard.LockerFactory[tasker.ScheduleStateID] {
-	return zerokit.Init(&r.locks, func() *LockerFactory[tasker.ScheduleStateID] {
-		return NewLockerFactory[tasker.ScheduleStateID]()
-	})
-}
-
-func (r *TaskerScheduleRepository) States() tasker.SchedulerStateRepository {
-	return zerokit.Init(&r.states, func() *Repository[tasker.ScheduleState, tasker.ScheduleStateID] {
-		return NewRepository[tasker.ScheduleState, tasker.ScheduleStateID](NewMemory())
-	})
+func NewTaskerSchedulerLocks() *LockerFactory[tasker.ScheduleID] {
+	return NewLockerFactory[tasker.ScheduleID]()
 }

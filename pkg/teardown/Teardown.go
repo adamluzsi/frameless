@@ -7,7 +7,7 @@ import (
 )
 
 type Teardown struct {
-	mutex sync.Mutex
+	mutex sync.RWMutex
 	fns   []func() error
 }
 
@@ -40,13 +40,15 @@ func (td *Teardown) Defer(fn func() error) {
 
 func (td *Teardown) Finish() error {
 	var errors []error
-	for !td.isEmpty() { // handle Deferred functions deferred during the execution of a deferred function
+	for !td.IsEmpty() { // handle Deferred functions deferred during the execution of a deferred function
 		errors = append(errors, td.run()...)
 	}
 	return errorkit.Merge(errors...)
 }
 
-func (td *Teardown) isEmpty() bool {
+func (td *Teardown) IsEmpty() bool {
+	td.mutex.RLock()
+	defer td.mutex.RUnlock()
 	return len(td.fns) == 0
 }
 

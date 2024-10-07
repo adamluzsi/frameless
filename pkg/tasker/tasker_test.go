@@ -1100,11 +1100,11 @@ func ExampleBackground() {
 		task1 tasker.Task
 		task2 tasker.Task
 	)
-	join := tasker.Background(ctx,
+	jobGroup := tasker.Background(ctx,
 		task1,
 		task2,
 	)
-	if err := join(); err != nil {
+	if err := jobGroup.Join(); err != nil {
 		logger.Error(ctx, "error in background task", logging.ErrField(err))
 	}
 }
@@ -1135,9 +1135,9 @@ func TestBackground(t *testing.T) {
 		})
 	})
 	t.Run("join can be done multiple times", func(t *testing.T) {
-		join := tasker.Background(makeContext(t), func() {})
+		j := tasker.Background(makeContext(t), func() {})
 		rnd.Repeat(2, 5, func() {
-			assert.NoError(t, join())
+			assert.NoError(t, j.Join())
 		})
 	})
 	t.Run("on error, join yields the same result consistently", func(t *testing.T) {
@@ -1146,16 +1146,51 @@ func TestBackground(t *testing.T) {
 			expErr2 = rnd.Error()
 			expErr3 = rnd.Error()
 		)
-		join := tasker.Background(makeContext(t),
+		job := tasker.Background(makeContext(t),
 			func() error { return expErr1 },
 			func() error { return expErr2 },
 			func() error { return expErr3 },
 		)
-		got1 := join()
-		got2 := join()
-		assert.Equal(t, got1, got2)
-		assert.ErrorIs(t, expErr1, join())
-		assert.ErrorIs(t, expErr2, join())
-		assert.ErrorIs(t, expErr3, join())
+		got1 := job.Join()
+		assert.ErrorIs(t, expErr1, got1)
+		assert.ErrorIs(t, expErr2, got1)
+		assert.ErrorIs(t, expErr3, got1)
+		got2 := job.Join()
+		assert.ErrorIs(t, expErr1, got2)
+		assert.ErrorIs(t, expErr2, got2)
+		assert.ErrorIs(t, expErr3, got2)
 	})
+
+	t.Run("tasker.Background tasks are registered in the package level background tasks", func(t *testing.T) {
+		ctx := context.Background()
+		assert.False(t, tasker.BackgroundJobs().Alive())
+		job := tasker.Background(ctx, tasker.Task(func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}))
+		assert.True(t, job.Alive())
+		assert.True(t, tasker.BackgroundJobs().Alive())
+		tasker.BackgroundJobs().Stop()
+		assert.False(t, job.Alive())
+	})
+}
+
+func TestAsyncGroup(t *testing.T) {
+	var g tasker.JobGroup
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	testcase.Race(func() {
+		g.Background(ctx, func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		})
+	}, func() {
+		g.Background(ctx, func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		})
+	})
+
 }

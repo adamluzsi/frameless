@@ -104,7 +104,7 @@ func TestFinishTx(t *testing.T) {
 
 		s.Then(`it will commit and return the commit error value`, func(t *testcase.T) {
 			subject(t)
-			assert.Must(t).Equal(CommitErr, *errpGet(t))
+			assert.Equal(t, CommitErr, *errpGet(t))
 		})
 	})
 
@@ -117,8 +117,8 @@ func TestFinishTx(t *testing.T) {
 
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
-			assert.Must(t).True(rolledBack.Get(t).(bool))
-			assert.Must(t).Equal(expectedErr, *errpGet(t))
+			assert.True(t, rolledBack.Get(t).(bool))
+			assert.Equal(t, expectedErr, *errpGet(t))
 		})
 	})
 }
@@ -197,7 +197,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 
 		s.Then(`it will commit and return the commit error value`, func(t *testcase.T) {
 			subject(t)
-			assert.Must(t).Equal(CommitTxErr, *errpGet(t))
+			assert.Equal(t, CommitTxErr, *errpGet(t))
 		})
 	})
 
@@ -210,7 +210,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
-			assert.Must(t).True(rolledBackGet(t))
+			assert.True(t, rolledBackGet(t))
 			assert.Must(t).ErrorIs(expectedErr, *errpGet(t))
 		})
 	})

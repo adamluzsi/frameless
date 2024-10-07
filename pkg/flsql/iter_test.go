@@ -112,9 +112,9 @@ func TestSQLRows(t *testing.T) {
 
 				var value testType
 
-				assert.Must(t).True(iter.Next())
+				assert.True(t, iter.Next())
 				value = iter.Value()
-				assert.Must(t).Equal(testType{Text: `42`}, value)
+				assert.Equal(t, testType{Text: `42`}, value)
 				assert.Must(t).False(iter.Next())
 				assert.Must(t).Nil(iter.Err())
 				assert.Must(t).Nil(iter.Close())
