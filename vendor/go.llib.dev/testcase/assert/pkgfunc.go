@@ -105,11 +105,13 @@ func ReadAll(tb testing.TB, r io.Reader, msg ...Message) []byte {
 func Within(tb testing.TB, timeout time.Duration, blk func(context.Context), msg ...Message) {
 	tb.Helper()
 	Must(tb).Within(timeout, blk, msg...)
+	// Returning *Async here doesn’t make sense because if the assertion fails,
+	// FailNow will terminate the current goroutine regardless.
 }
 
-func NotWithin(tb testing.TB, timeout time.Duration, blk func(context.Context), msg ...Message) {
+func NotWithin(tb testing.TB, timeout time.Duration, blk func(context.Context), msg ...Message) *Async {
 	tb.Helper()
-	Must(tb).NotWithin(timeout, blk, msg...)
+	return Must(tb).NotWithin(timeout, blk, msg...)
 }
 
 func MatchRegexp[T ~string | []byte](tb testing.TB, v T, expr string, msg ...Message) {
@@ -125,22 +127,6 @@ func NotMatchRegexp[T ~string | []byte](tb testing.TB, v T, expr string, msg ...
 func Eventually[T time.Duration | int](tb testing.TB, durationOrCount T, blk func(t It)) {
 	tb.Helper()
 	Must(tb).Eventually(durationOrCount, blk)
-}
-
-// OneOf function checks a list of values and matches an expectation against each element of the list.
-// If any of the elements pass the assertion, then the assertion helper function does not fail the test.
-func OneOf[V any](tb testing.TB, vs []V, blk func(t It, got V), msg ...Message) {
-	tb.Helper()
-	Must(tb).AnyOf(func(a *A) {
-		a.name = "OneOf"
-		a.cause = "None of the element matched the expectations"
-		for _, v := range vs {
-			a.Case(func(it It) { blk(it, v) })
-			if a.OK() {
-				break
-			}
-		}
-	}, msg...)
 }
 
 // AnyOf is an assertion helper that deems the test successful
