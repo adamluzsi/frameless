@@ -59,7 +59,7 @@ type Cache[ENT any, ID comparable] struct {
 	// RefreshBehind depends on Locks.
 	//
 	// default: application level Locks
-	Locks CacheLocks
+	Locks Locks
 	// TimeToLive defines the lifespan of cached data.
 	// Cached entries older than this duration are considered stale and will be
 	// either refreshed or invalidated on the next access, depending on the cache policy.
@@ -69,7 +69,7 @@ type Cache[ENT any, ID comparable] struct {
 	jobGroup tasker.JobGroup
 }
 
-type CacheLocks interface {
+type Locks interface {
 	guard.NonBlockingLockerFactory[HitID]
 }
 
@@ -480,4 +480,8 @@ func (m *Cache[ENT, ID]) locks() guard.NonBlockingLockerFactory[HitID] {
 		return m.Locks
 	}
 	return defaultLockerFactory
+}
+
+func (m *Cache[ENT, ID]) Close() (rErr error) {
+	return m.jobGroup.Stop()
 }

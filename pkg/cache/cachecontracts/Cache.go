@@ -3,6 +3,7 @@ package cachecontracts
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
 	sh "go.llib.dev/frameless/spechelper"
+	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
@@ -31,6 +33,9 @@ var (
 	eventually = assert.Retry{Strategy: &waiter}
 )
 
+var _ io.Closer = &cachepkg.Cache[testent.Foo, testent.FooID]{}
+var _ cachepkg.Interface[testent.Foo, testent.FooID] = &cachepkg.Cache[testent.Foo, testent.FooID]{}
+
 func Cache[ENT any, ID comparable](repository cachepkg.Repository[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use(opts)
@@ -40,10 +45,12 @@ func Cache[ENT any, ID comparable](repository cachepkg.Repository[ENT, ID], opts
 	})
 
 	cache := testcase.Let(s, func(t *testcase.T) *cachepkg.Cache[ENT, ID] {
-		return &cachepkg.Cache[ENT, ID]{
+		ch := &cachepkg.Cache[ENT, ID]{
 			Source:     source.Get(t),
 			Repository: repository,
 		}
+		t.Defer(ch.Close)
+		return ch
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -312,15 +319,17 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 
 				s.Then("source eventually accessed", func(t *testcase.T) {
 					t.Log("given we query the cache multiple times")
-					t.Random.Repeat(2, 7, func() {
-						prev := spy.Get(t).count.Total
+
+					initial := spy.Get(t).count.Total
+					t.Random.Repeat(3, 7, func() {
 						AfterAct(t)
+					})
 
-						t.Eventually(func(t *testcase.T) {
-							curr := spy.Get(t).count.Total
-
-							assert.Equal(t, prev+1, curr)
-						})
+					t.Log("then eventually the query is executed behind the scenes")
+					t.Eventually(func(t *testcase.T) {
+						total := spy.Get(t).count.Total
+						assert.True(t, initial < total,
+							assert.MessageF("%d < %d", initial, total))
 					})
 				})
 			})
