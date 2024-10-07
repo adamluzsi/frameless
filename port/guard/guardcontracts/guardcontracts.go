@@ -282,7 +282,7 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 		return subject.Unlock(Context.Get(t))
 	}
 
-	s.When("context is a lock context, made by a .Lock call", func(s *testcase.Spec) {
+	s.When("context is a lock context, made by a lock call", func(s *testcase.Spec) {
 		Context.Let(s, func(t *testcase.T) context.Context {
 			ctx := c.MakeContext(t)
 			assert.Within(t, 5*time.Second, func(context.Context) {

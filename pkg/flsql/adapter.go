@@ -82,6 +82,10 @@ func (c ConnectionAdapter[DB, TX]) RollbackTx(ctx context.Context) error {
 	return c.txm().RollbackTx(ctx)
 }
 
+func (c ConnectionAdapter[DB, TX]) LookupTx(ctx context.Context) (*TX, bool) {
+	return c.txm().LookupTx(ctx)
+}
+
 func (c ConnectionAdapter[DB, TX]) ExecContext(ctx context.Context, query string, args ...any) (Result, error) {
 	conn := c.txm().Q(ctx)
 	c.debugLogExec(ctx, conn, "ExecContext", query, args)
@@ -116,7 +120,7 @@ func (c ConnectionAdapter[DB, TX]) debugLogExec(ctx context.Context, conn Querya
 			"args":       args,
 		}
 
-		if _, ok := c.txm().LookupTx(ctx); ok {
+		if _, ok := c.LookupTx(ctx); ok {
 			fs["in-transaction"] = ok
 		}
 		return fs

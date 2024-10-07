@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/port/comproto/comprotocontracts"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 var _ flsql.Connection = flsql.ConnectionAdapter[any, any]{}
@@ -156,4 +158,83 @@ func (m *mockRow) Scan(dest ...any) error {
 		return m.StubScan(dest...)
 	}
 	return nil
+}
+
+func TestConnectionAdapter_LookupTx(t *testing.T) {
+	type DB struct {
+		N string
+		V string
+	}
+	type TX struct {
+		ID string
+		V  string
+	}
+	type Queryable struct {
+		V string
+		F any
+	}
+
+	rnd := random.New(random.CryptoSeed{})
+	db := &DB{
+		N: rnd.Domain(),
+		V: rnd.String(),
+	}
+
+	subject := flsql.ConnectionAdapter[DB, TX]{
+		DB: db,
+		DBAdapter: func(db *DB) flsql.Queryable {
+			return flsql.QueryableAdapter{}
+		},
+		TxAdapter: func(tx *TX) flsql.Queryable {
+			return flsql.QueryableAdapter{}
+		},
+		Begin: func(ctx context.Context, db *DB) (*TX, error) {
+			return &TX{ID: rnd.UUID(), V: db.V}, nil
+		},
+		Commit: func(ctx context.Context, tx *TX) error {
+			assert.Equal(t, tx.V, db.V)
+			return nil
+		},
+		Rollback: func(ctx context.Context, tx *TX) error {
+			assert.Equal(t, tx.V, db.V)
+			return nil
+		},
+	}
+
+	t.Run("comprotocontracts.OnePhaseCommitProtocol",
+		comprotocontracts.OnePhaseCommitProtocol(subject).Test)
+
+	t.Run("smoke", func(t *testing.T) {
+		ctx := context.Background()
+
+		tx, ok := subject.LookupTx(ctx)
+		var _ *TX = tx
+		assert.False(t, ok)
+		assert.Nil(t, tx)
+
+		ctx, err := subject.BeginTx(ctx)
+		assert.NoError(t, err)
+
+		tx, ok = subject.LookupTx(ctx)
+		assert.True(t, ok)
+		assert.NotNil(t, tx)
+		assert.Equal(t, tx.V, db.V)
+	})
+
+	t.Run("cancel will not cannel the context of the Rollback call", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		var subject flsql.ConnectionAdapter[DB, TX] = subject // pass by value copy
+		ogRollback := subject.Rollback
+		subject.Rollback = func(ctx context.Context, tx *TX) error {
+			assert.NoError(t, ctx.Err())
+			return ogRollback(ctx, tx)
+		}
+
+		ctx, err := subject.BeginTx(ctx)
+		assert.NoError(t, err)
+
+		cancel()
+		assert.ErrorIs(t, ctx.Err(), subject.RollbackTx(ctx))
+	})
 }
