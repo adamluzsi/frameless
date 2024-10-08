@@ -8,10 +8,10 @@ import (
 )
 
 func TestTasker(t *testing.T) {
-	taskercontracts.SchedulerStateRepository(memory.NewTaskerSchedulerStateRepository()).Test(t)
+	taskercontracts.ScheduleStateRepository(memory.NewTaskerSchedulerStateRepository()).Test(t)
 	taskercontracts.SchedulerLocks(memory.NewTaskerSchedulerLocks()).Test(t)
 
 	scheduler := memory.Scheduler()
-	taskercontracts.SchedulerStateRepository(scheduler.States).Test(t)
+	taskercontracts.ScheduleStateRepository(scheduler.States).Test(t)
 	taskercontracts.SchedulerLocks(scheduler.Locks).Test(t)
 }

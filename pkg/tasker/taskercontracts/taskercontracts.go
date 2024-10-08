@@ -34,7 +34,7 @@ func SchedulerLocks(subject tasker.SchedulerLocks, opts ...Option) contract.Cont
 	return s.AsSuite("tasker.SchedulerLocks")
 }
 
-func SchedulerStateRepository(subject tasker.ScheduleStateRepository, opts ...Option) contract.Contract {
+func ScheduleStateRepository(subject tasker.ScheduleStateRepository, opts ...Option) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[Config](opts)
 

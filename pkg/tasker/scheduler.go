@@ -50,9 +50,12 @@ func (s Scheduler) WithSchedule(id ScheduleID, interval Interval, job Task) Task
 			return 0, err
 		}
 		if !found {
+			if err := job(ctx); err != nil {
+				return 0, err
+			}
 			state = ScheduleState{
 				ID:        id,
-				Timestamp: time.Time{}.UTC(),
+				Timestamp: clock.Now().UTC(),
 			}
 			if err := s.States.Create(ctx, &state); err != nil {
 				return 0, err
