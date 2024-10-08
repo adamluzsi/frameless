@@ -514,13 +514,65 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		})
 	})
 
-	s.Test("FindAll", func(t *testcase.T) {
+	s.Test("RefreshQueryOne", func(t *testcase.T) {
+		value := c.CRUD.MakeEntity(t)
+		id := c.MakeID(t)
+		assert.NoError(t, c.CRUD.IDA.Set(&value, id))
+		hitID := cachepkg.HitID(t.Random.String())
+
+		refresh := func(t *testcase.T) error {
+			return cache.Get(t).RefreshQueryOne(c.CRUD.MakeContext(t),
+				hitID,
+				func(ctx context.Context) (_ ENT, found bool, _ error) {
+					return value, true, nil
+				})
+		}
+
+		query := func(t *testcase.T) (ENT, bool) {
+			v, found, err := cache.Get(t).CachedQueryOne(c.CRUD.MakeContext(t),
+				hitID,
+				func(ctx context.Context) (_ ENT, found bool, _ error) {
+					return value, true, nil
+				})
+			assert.NoError(t, err)
+			return v, found
+		}
+
+		t.Log("a value is already cached")
+		got, found := query(t)
+		assert.True(t, found)
+		assert.Equal(t, got, value)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.True(t, cache.Get(t).Idle())
+		})
+
+		t.Log("this value is being modified in the source")
+		c.CRUD.ModifyEntity(t, &value)
+
+		t.Log("the cached data differes from what it is in the source")
+		got, found = query(t)
+		assert.True(t, found)
+		assert.NotEqual(t, got, value)
+
+		t.Log("then the data refreshes when refresh is called")
+		assert.NoError(t, refresh(t))
+
+		t.Log("eventually the new state of the value can be retrieved")
+		t.Eventually(func(t *testcase.T) {
+			got, found := query(t)
+			assert.True(t, found)
+			assert.Equal(t, got, value)
+		})
+	})
+
+	s.Test("Refresh + FindAll", func(t *testcase.T) {
 		if _, ok := source.Get(t).(crud.AllFinder[ENT]); !ok {
 			t.Skipf("%T doesn't implement crud.AllFinder", source.Get(t))
 		}
 
 		refreshFindAll := func(t *testcase.T) error {
-			return cache.Get(t).RefreshAll(Context.Get(t))
+			return cache.Get(t).Refresh(Context.Get(t))
 		}
 
 		ctx := c.CRUD.MakeContext(t)
@@ -603,55 +655,63 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		})
 	})
 
-	s.Test("RefreshQueryOne", func(t *testcase.T) {
-		value := c.CRUD.MakeEntity(t)
-		id := c.MakeID(t)
-		assert.NoError(t, c.CRUD.IDA.Set(&value, id))
-		hitID := cachepkg.HitID(t.Random.String())
-
-		refresh := func(t *testcase.T) error {
-			return cache.Get(t).RefreshQueryOne(c.CRUD.MakeContext(t),
-				hitID,
-				func(ctx context.Context) (_ ENT, found bool, _ error) {
-					return value, true, nil
-				})
-		}
-
-		query := func(t *testcase.T) (ENT, bool) {
-			v, found, err := cache.Get(t).CachedQueryOne(c.CRUD.MakeContext(t),
-				hitID,
-				func(ctx context.Context) (_ ENT, found bool, _ error) {
-					return value, true, nil
-				})
-			assert.NoError(t, err)
-			return v, found
-		}
-
-		t.Log("a value is already cached")
-		got, found := query(t)
-		assert.True(t, found)
-		assert.Equal(t, got, value)
-
-		t.Eventually(func(t *testcase.T) {
-			assert.True(t, cache.Get(t).Idle())
+	s.When("source doesn't support crudAllFinder", func(s *testcase.Spec) {
+		cache.Let(s, func(t *testcase.T) *cachepkg.Cache[ENT, ID] {
+			type CacheSourceWOAF struct {
+				crud.Creator[ENT]
+				crud.ByIDFinder[ENT, ID]
+				crud.Updater[ENT]
+				crud.ByIDDeleter[ID]
+			}
+			ch := cache.Super(t)
+			ch.Source = CacheSourceWOAF{
+				ByIDFinder:  source.Get(t),
+				ByIDDeleter: source.Get(t),
+				Creator:     source.Get(t),
+				Updater:     source.Get(t),
+			}
+			return ch
 		})
 
-		t.Log("this value is being modified in the source")
-		c.CRUD.ModifyEntity(t, &value)
+		s.Test("Refresh still refresh stored entities", func(t *testcase.T) {
+			refreshFindAll := func(t *testcase.T) error {
+				return cache.Get(t).Refresh(Context.Get(t))
+			}
 
-		t.Log("the cached data differes from what it is in the source")
-		got, found = query(t)
-		assert.True(t, found)
-		assert.NotEqual(t, got, value)
+			ctx := c.CRUD.MakeContext(t)
+			value := c.CRUD.MakeEntity(t)
+			t.Must.NoError(source.Get(t).Create(ctx, &value))
+			id, _ := extid.Lookup[ID](value)
+			t.Defer(source.Get(t).DeleteByID, ctx, id)
 
-		t.Log("then the data refreshes when refresh is called")
-		assert.NoError(t, refresh(t))
+			id, ok := c.CRUD.IDA.Lookup(value)
+			assert.True(t, ok)
 
-		t.Log("eventually the new state of the value can be retrieved")
-		t.Eventually(func(t *testcase.T) {
-			got, found := query(t)
+			t.Log("a value is already cached")
+			got, found, err := cache.Get(t).FindByID(ctx, id)
+			assert.NoError(t, err)
 			assert.True(t, found)
 			assert.Equal(t, got, value)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.True(t, cache.Get(t).Idle())
+			})
+
+			t.Log("this value is being modified in the source")
+			valueWithNewContent := value // pass by value copy
+			c.CRUD.ModifyEntity(t, &valueWithNewContent)
+			crudtest.Update[ENT, ID](t, source.Get(t), c.CRUD.MakeContext(t), &valueWithNewContent)
+			waiter.Wait()
+
+			t.Log("then the data refreshes when refresh many is called")
+			assert.NoError(t, refreshFindAll(t))
+
+			t.Eventually(func(t *testcase.T) {
+				got, found, err := cache.Get(t).FindByID(ctx, id)
+				assert.NoError(t, err)
+				assert.True(t, found)
+				assert.Equal(t, got, valueWithNewContent)
+			})
 		})
 	})
 }

@@ -205,15 +205,35 @@ func (m *Cache[ENT, ID]) RefreshByID(ctx context.Context, id ID) (rErr error) {
 	})
 }
 
-func (m *Cache[ENT, ID]) RefreshAll(ctx context.Context) (rErr error) {
-	// MVP implementation
-	source, err := getAs[crud.AllFinder[ENT]](m.Source)
+func (m *Cache[ENT, ID]) Refresh(ctx context.Context) (rErr error) {
+	if source, err := getAs[crud.AllFinder[ENT]](m.Source); err == nil {
+		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
+			return source.FindAll(ctx)
+		})
+	}
+
+	allEntitiesIter, err := m.Repository.Entities().FindAll(ctx)
 	if err != nil {
 		return err
 	}
-	return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
-		return source.FindAll(ctx)
+
+	// We gather errors from the refresh by id process,
+	// but we continue iterating through the entities till the end
+	// since others may still refresh successfully.
+	errorsIter := iterators.Map(allEntitiesIter, func(v ENT) (error, error) {
+		id, ok := m.IDA.Lookup(v)
+		if !ok {
+			return nil, nil // continue
+		}
+		return m.RefreshByID(ctx, id), nil
 	})
+
+	errs, err := iterators.Collect(errorsIter)
+	if err != nil {
+		return err
+	}
+
+	return errorkit.Merge(errs...)
 }
 
 func (m *Cache[ENT, ID]) RefreshQueryOne(ctx context.Context, hitID HitID, query QueryOneFunc[ENT]) (rErr error) {
