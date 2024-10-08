@@ -265,26 +265,23 @@ func WithSignalNotify[TFN genericTask](tfn TFN, shutdownSignals ...os.Signal) Ta
 	}
 }
 
+func waitTask(ctx context.Context) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
 // Main helps to manage concurrent background Tasks in your main.
 // Each Task will run in its own goroutine.
 // If any of the Task encounters a failure, the other tasker will receive a cancellation signal.
 func Main[TFN genericTask](ctx context.Context, tfns ...TFN) error {
-	tasks := toTasks(tfns)
-	if 0 < bg.Len() {
-		tasks = append(tasks, WithShutdown(
-			func(ctx context.Context) error {
-				<-ctx.Done() // wait till signal notify
-				return ctx.Err()
-			},
-			bg.Stop,
-		))
+	if bg.Len() == 0 && len(tfns) == 0 {
+		return nil
 	}
+	tasks := append(toTasks(tfns), WithShutdown(waitTask, bg.Stop))
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
 }
 
 var bg = JobGroup[FireAndForget]{}
-
-func BackgroundJobs() bgjob { return &bg }
 
 func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup[Manual] {
 	// We want to make sure the returned job group doesn’t clean up the job results.
@@ -423,24 +420,21 @@ func (j *Job) setErr(err error) {
 
 var _ bgjob = &JobGroup[Manual]{}
 
-/*
-2. **FireAndForget** and **WaitForResult**: This pair emphasizes the difference in how the JobGroup handles job results. FireAndForget implies that jobs are started without waiting for their outcome, while WaitForResult suggests that the caller needs to collect the results explicitly.
-3. **BackgroundMode** and **ForegroundMode**: These names highlight the mode of operation. BackgroundMode implies that jobs run in the background without blocking, while ForegroundMode suggests that the caller needs to wait for job completion.
-*/
-
-type FireAndForget struct{}
-type Manual struct{}
-
 // JobGroup is a job manager where you can start background tasks as jobs.
 //
 // It supports two mode:
 //
-//   - A: does things automatically, including collecting finished jobs and freeing their resources. Ideal for background job management, where the job results are not needed to be collected.
-//   - B: allows you to collect the results of the background jobs, and you need to call Join to free up their results. Ideal for jog groups where you need to collect their error results.
+//   - Manual: allows you to collect the results of the background jobs, and you need to call Join to free up their results. Ideal for jog groups where you need to collect their error results.
+//   - FireAndForget: does things automatically, including collecting finished jobs and freeing their resources. Ideal for background job management, where the job results are not needed to be collected.
 type JobGroup[M Manual | FireAndForget] struct {
 	m    sync.RWMutex
 	jobs map[int64]*Job
 }
+
+type (
+	FireAndForget struct{}
+	Manual        struct{}
+)
 
 func (jg *JobGroup[M]) gc() {
 	for id, job := range jg.jobs {

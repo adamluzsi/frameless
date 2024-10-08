@@ -1162,16 +1162,44 @@ func TestBackground(t *testing.T) {
 		assert.ErrorIs(t, expErr3, got2)
 	})
 
-	t.Run("tasker.Background tasks are registered in the package level background tasks", func(t *testing.T) {
+	t.Run("tasker.Background tasks are registered in tasker.Main", func(t *testing.T) {
 		ctx := context.Background()
-		assert.False(t, tasker.BackgroundJobs().Alive())
 		job := tasker.Background(ctx, tasker.Task(func(ctx context.Context) error {
 			<-ctx.Done()
 			return ctx.Err()
 		}))
-		assert.True(t, job.Alive())
-		assert.True(t, tasker.BackgroundJobs().Alive())
-		tasker.BackgroundJobs().Stop()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		assert.NoError(t, tasker.Main[tasker.Task](ctx))
+		assert.False(t, job.Alive())
+	})
+
+	t.Run("eventually created tasker.Background jobs also registered in tasker.Main", func(t *testing.T) {
+		ctx := context.Background()
+		var ready atomic.Bool
+		var main tasker.Job
+
+		main.Start(ctx, func(ctx context.Context) error {
+			tasker.Main[tasker.Task](ctx, func(ctx context.Context) error {
+				ready.Store(true)
+				<-ctx.Done()
+				return nil
+			})
+			return nil
+		})
+
+		assert.Eventually(t, time.Second, func(t assert.It) {
+			assert.True(t, ready.Load())
+		})
+
+		job := tasker.Background(ctx, tasker.Task(func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}))
+
+		main.Stop()
+
 		assert.False(t, job.Alive())
 	})
 }
