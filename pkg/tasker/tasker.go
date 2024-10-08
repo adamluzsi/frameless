@@ -8,7 +8,6 @@ import (
 	"math"
 	"os"
 	"sync"
-	"sync/atomic"
 	"syscall"
 
 	"go.llib.dev/frameless/pkg/contextkit"
@@ -283,17 +282,14 @@ func Main[TFN genericTask](ctx context.Context, tfns ...TFN) error {
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
 }
 
-var bg JobGroup
+var bg = JobGroup[GC]{}
 
-func BackgroundJobs() *JobGroup {
-	return &bg
-}
+func BackgroundJobs() bgjob { return &bg }
 
-func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup {
-	var g JobGroup
+func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup[NoGC] {
 	// We want to make sure the returned job group doesn’t clean up the job results.
 	// This way, when .Join() and .Stop() are called, they always return the same consistent result.
-	g.skipJobsCleanup = true
+	var g JobGroup[NoGC]
 	for _, task := range tasks {
 		// start background job
 		job := g.Background(ctx, ToTask(task))
@@ -303,13 +299,13 @@ func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup {
 	return &g
 }
 
-type asynchronous interface {
+type bgjob interface {
 	Alive() bool
 	Join() error
 	Stop() error
 }
 
-var _ asynchronous = &Job{}
+var _ bgjob = &Job{}
 
 // Job is a task that runs in the background. You can create one by using:
 //   - tasker.Background
@@ -319,111 +315,152 @@ var _ asynchronous = &Job{}
 // Each method allows you to run tasks in the background.
 type Job struct {
 	cancel func()
-	output chan error
+	done   chan struct{}
 	err    error
-	alive  int32
-
-	td teardown.Teardown
+	mutex  sync.RWMutex
+	tdown  teardown.Teardown
 }
 
 const ErrAlive errorkit.Error = "ErrAlive"
 
-func (a *Job) Defer(fn func() error) { a.td.Defer(fn) }
-
-func (a *Job) Start(ctx context.Context, tsk Task) error {
+func (j *Job) Start(ctx context.Context, tsk Task) error {
+	j.mutex.Lock()
+	defer j.mutex.Unlock()
 	if tsk == nil {
 		return nil
 	}
-	if !a.switchToAlive() {
+	if j.alive(j.done) {
 		return ErrAlive
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	a.cancel = cancel
-	a.output = make(chan error)
-	a.err = nil
+	j.cancel = cancel
+	j.done = make(chan struct{})
+	j.err = nil
 	go func() {
-		defer a.setAliveTo(false)
+		defer close(j.done) // signal completion
+		defer j.finish()
 		err := tsk.Run(ctx)
-		ferr := a.td.Finish()
-		a.output <- errorkit.Merge(err, ferr)
+		if err != nil {
+			j.setErr(err)
+		}
 	}()
 	return nil
 }
 
-func (a *Job) Stop() error {
-	if !a.Alive() {
-		return a.err
+func (j *Job) Stop() error {
+	if !j.Alive() {
+		return j.err
 	}
-	if a.cancel != nil {
-		a.cancel()
+	if j.cancel != nil {
+		j.cancel()
 	}
-	return a.Join()
+	return j.Join()
 }
 
-func (a *Job) Join() error {
-	if !a.Alive() {
-		return a.err
+func (j *Job) Join() error {
+	if !j.Alive() {
+		return j.getErr()
 	}
-	if err, ok := <-a.output; ok {
-		close(a.output)
-		a.err = err
-	}
-	if err := a.td.Finish(); err != nil {
-		a.err = errorkit.Merge(a.err, err)
-	}
-	return a.err
+	j.wait()
+	return j.getErr()
 }
 
-func (a *Job) Alive() bool {
-	switch state := atomic.LoadInt32(&a.alive); state {
-	case 1:
-		return true
-	case 0:
+func (j *Job) Alive() bool {
+	j.mutex.RLock()
+	defer j.mutex.RUnlock()
+	return j.alive(j.done)
+}
+
+func (j *Job) alive(done chan struct{}) bool {
+	if done == nil {
 		return false
+	}
+	select {
+	case _, ok := <-done:
+		if !ok {
+			return false
+		}
+		panic("implementation-error")
 	default:
-		panic(fmt.Errorf("invalid alive state: %d", state))
+		return true
 	}
 }
 
-func (a *Job) switchToAlive() bool {
-	return atomic.CompareAndSwapInt32(&a.alive, 0, 1)
+func (j *Job) getDone() chan struct{} {
+	j.mutex.RLock()
+	defer j.mutex.RUnlock()
+	return j.done
 }
 
-func (a *Job) setAliveTo(ok bool) {
-	var isAlive int32 = 0
-	if ok {
-		isAlive = 1
+func (j *Job) wait() {
+	done := j.getDone()
+	if done == nil {
+		return
 	}
-	atomic.SwapInt32(&a.alive, isAlive)
+	<-j.done
 }
 
-var _ asynchronous = &JobGroup{}
+func (j *Job) finish() {
+	err := j.tdown.Finish()
+	if err != nil {
+		j.setErr(err)
+	}
+}
 
-type JobGroup struct {
+func (j *Job) getErr() error {
+	j.mutex.RLock()
+	defer j.mutex.RUnlock()
+	return j.err
+}
+
+func (j *Job) setErr(err error) {
+	j.mutex.Lock()
+	defer j.mutex.Unlock()
+	j.err = err
+}
+
+var _ bgjob = &JobGroup[NoGC]{}
+
+// GC is a flag for JobGroup to tell if the JobGroup should be garbage collected.
+type GC struct{}
+
+// NoGC is a flag for JobGroup to tell that the JobGroup should not be garbage collected.
+type NoGC struct{}
+
+type JobGroup[GCS GC | NoGC] struct {
 	m    sync.RWMutex
-	i    int64
 	jobs map[int64]*Job
-
-	skipJobsCleanup bool
 }
 
-func (ag *JobGroup) Len() int {
-	ag.m.RLock()
-	defer ag.m.RUnlock()
-	return len(ag.jobs)
+func (jg *JobGroup[GCS]) gc() {
+	if !jg.isGarbageCollected() {
+		return
+	}
+	for id, job := range jg.jobs {
+		if !job.Alive() {
+			delete(jg.jobs, id)
+		}
+	}
 }
 
-func (ag *JobGroup) add(job *Job) {
-	ag.m.Lock()
-	defer ag.m.Unlock()
-	if ag.jobs == nil {
-		ag.jobs = make(map[int64]*Job)
+func (jg *JobGroup[GCS]) Len() int {
+	jg.m.RLock()
+	defer jg.m.RUnlock()
+	return len(jg.jobs)
+}
+
+func (jg *JobGroup[GCS]) add(job *Job) {
+	jg.m.Lock()
+	defer jg.m.Unlock()
+	jg.gc()
+	if jg.jobs == nil {
+		jg.jobs = make(map[int64]*Job)
 	}
 	var id int64
 	var idFound bool
 	for i := 0; i < math.MaxInt64; i++ {
 		nid := int64(i)
-		if _, ok := ag.jobs[nid]; !ok {
+		if _, ok := jg.jobs[nid]; !ok {
 			id = nid
 			idFound = true
 			break
@@ -432,42 +469,43 @@ func (ag *JobGroup) add(job *Job) {
 	if !idFound {
 		panic("unable to find a ")
 	}
-	ag.jobs[id] = job
-	if !ag.skipJobsCleanup {
-		job.Defer(func() error {
-			ag.m.Lock()
-			defer ag.m.Unlock()
-			delete(ag.jobs, id)
+	jg.jobs[id] = job
+	if jg.isGarbageCollected() {
+		job.tdown.Defer(func() error {
+			jg.m.Lock()
+			defer jg.m.Unlock()
+			delete(jg.jobs, id)
 			return nil
 		})
 	}
 }
 
-func (ag *JobGroup) Background(ctx context.Context, tsk Task) *Job {
-	var a Job
-	ag.add(&a)
-	err := a.Start(ctx, tsk)
-	if err != nil {
-		_ = ag.Stop()
-		panic(err) // since we crated an Async just now, it should have been impossible that it was alive
+func (jg *JobGroup[GCS]) Background(ctx context.Context, tsk Task) *Job {
+	var job Job
+	jg.add(&job)
+	if err := job.Start(ctx, tsk); err != nil {
+		// since we crated an Job just now,
+		// it should have been impossible that it is alive,
+		// and that's the only thing Start can return back.
+		panic(err)
 	}
-	return &a
+	return &job
 }
 
-func (ag *JobGroup) Join() error {
-	return ag.mapJob(func(a *Job) error {
-		return a.Join()
+func (jg *JobGroup[GCS]) Join() error {
+	return jg.mapJob(func(j *Job) error {
+		return j.Join()
 	})
 }
 
-func (ag *JobGroup) Stop() error {
-	return ag.mapJob(func(a *Job) error {
+func (jg *JobGroup[GCS]) Stop() error {
+	return jg.mapJob(func(a *Job) error {
 		return a.Stop()
 	})
 }
 
-func (ag *JobGroup) Alive() bool {
-	for _, job := range ag.getJob() {
+func (jg *JobGroup[GCS]) Alive() bool {
+	for _, job := range jg.getJob() {
 		if job.Alive() {
 			return true
 		}
@@ -475,12 +513,23 @@ func (ag *JobGroup) Alive() bool {
 	return false
 }
 
-func (ag *JobGroup) getJob() []*Job {
-	ag.m.RLock()
-	defer ag.m.RUnlock()
-	return mapkit.Values(ag.jobs)
+func (jg *JobGroup[GCS]) getJob() []*Job {
+	jg.m.RLock()
+	defer jg.m.RUnlock()
+	return mapkit.Values(jg.jobs)
 }
 
-func (ag *JobGroup) mapJob(blk func(a *Job) error) error {
-	return errorkit.Merge(slicekit.Map(ag.getJob(), blk)...)
+func (jg *JobGroup[GCS]) isGarbageCollected() bool {
+	switch any(*new(GCS)).(type) {
+	case GC:
+		return true
+	case NoGC:
+		return false
+	default:
+		panic("not implemented")
+	}
+}
+
+func (jg *JobGroup[GCS]) mapJob(blk func(a *Job) error) error {
+	return errorkit.Merge(slicekit.Map(jg.getJob(), blk)...)
 }

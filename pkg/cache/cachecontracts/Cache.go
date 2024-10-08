@@ -264,6 +264,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 	}
 
 	var AfterAct = func(t *testcase.T) []ENT {
+		t.Helper()
 		iter, err := act(t)
 		assert.NoError(t, err)
 		vs, err := iterators.Collect(iter)
@@ -286,12 +287,20 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 		assert.Equal(t, value.Get(t), v)
 	})
 
+	s.After(func(t *testcase.T) {
+		t.Eventually(func(t *testcase.T) {
+			// due to how asynchronous background jobs work, we need to wait till the cache is idle again,
+			// else we risk that a refresh behind query leaks across tests.
+			assert.True(t, cache.Get(t).Idle())
+		})
+	})
+
 	s.When("a value is already cached", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			AfterAct(t)
 
 			t.Eventually(func(t *testcase.T) { // wait until a potential
-				assert.True(t, cache.Get(t).IsIdle())
+				assert.True(t, cache.Get(t).Idle())
 			})
 		}) // trigger caching
 
@@ -332,22 +341,45 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 							assert.MessageF("%d < %d", initial, total))
 					})
 				})
+
+				s.And("interacting with the source suddenly slows down and would take longer than before the iniator request finish", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						spy.Get(t).sleepOn.FindAll = time.Second
+						assert.Equal(t, spy.Get(t).sleepOn.FindAll, time.Second)
+					})
+
+					s.Then("refresh behind should still succeed", func(t *testcase.T) {
+						t.Log("given we query the cache multiple times")
+
+						initial := spy.Get(t).count.Total
+
+						ctx, cancel := context.WithCancel(c.CRUD.MakeContext(t))
+						iter, err := cache.Get(t).FindAll(ctx)
+						assert.NoError(t, err)
+						assert.NoError(t, iterators.ForEach(iter, func(ENT) error { return nil }))
+						cancel() // request life ended, cancelling is done
+
+						t.Log("then eventually the query is executed behind the scenes")
+						t.Eventually(func(t *testcase.T) {
+							total := spy.Get(t).count.Total
+							assert.True(t, initial < total,
+								"expected that source was called behind the scene other than the initial caching act.",
+								"It is possible that the query running begind the scene as part of refresh-behind got cancelled")
+						})
+					})
+				})
 			})
 
 			s.When("RefreshBehind is set to false", func(s *testcase.Spec) {
 				RefreshBehind.LetValue(s, false)
 
 				s.Then(`querying it continously won't change the outcome of the currently cached value`, func(t *testcase.T) {
-					w := assert.NotWithin(t, time.Second, func(ctx context.Context) {
+					assert.NotWithin(t, time.Second, func(ctx context.Context) {
 						for ctx.Err() == nil {
-							stubTB := testcase.StubTB{}
-							assert.Should(&stubTB).Contain(AfterAct(t), *valueWithNewContent.Get(t))
-							if !stubTB.IsFailed {
-								break
-							}
+							assert.NotContain(t, AfterAct(t), *valueWithNewContent.Get(t))
+							// time.Sleep(10 * time.Millisecond)
 						}
-					})
-					w.Wait()
+					}).Wait()
 				})
 
 				s.Then("source accessed only once to do the caching", func(t *testcase.T) {
@@ -360,6 +392,41 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 			})
 		})
 	})
+
+	s.Context("smoke", func(s *testcase.Spec) {
+		RefreshBehind.LetValue(s, true)
+
+		s.Test("FindByID", func(t *testcase.T) {
+			ctx := c.CRUD.MakeContext(t)
+			id, ok := c.CRUD.IDA.Lookup(*value.Get(t))
+			assert.True(t, ok)
+
+			t.Log("a value is already cached")
+			got, found, err := cache.Get(t).FindByID(ctx, id)
+			assert.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, got, *value.Get(t))
+
+			t.Eventually(func(t *testcase.T) { // wait until a potential
+				assert.True(t, cache.Get(t).Idle())
+			})
+
+			t.Log("this value is being modified in the source")
+			valueWithNewContent := value.Get(t)
+			c.CRUD.ModifyEntity(t, valueWithNewContent)
+			crudtest.Update[ENT, ID](t, source.Get(t), c.CRUD.MakeContext(t), valueWithNewContent)
+			waiter.Wait()
+
+			t.Log("eventually the data refreshes")
+			t.Eventually(func(t *testcase.T) {
+				got, found, err := cache.Get(t).FindByID(ctx, id)
+				assert.NoError(t, err)
+				assert.True(t, found)
+				assert.Equal(t, got, *valueWithNewContent)
+			})
+		})
+	})
+
 }
 
 // func describeCacheTimeToLive[ENT any, ID comparable](s *testcase.Spec,
@@ -407,17 +474,23 @@ type spySource[ENT, ID any] struct {
 		FindAll  int
 		FindByID int
 	}
+	sleepOn struct {
+		FindAll  time.Duration
+		FindByID time.Duration
+	}
 }
 
 func (spy *spySource[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	spy.count.Total++
 	spy.count.FindAll++
+	time.Sleep(spy.sleepOn.FindAll)
 	return spy.cacheSource.(crud.AllFinder[ENT]).FindAll(ctx)
 }
 
 func (spy *spySource[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _found bool, _err error) {
 	spy.count.Total++
 	spy.count.FindByID++
+	time.Sleep(spy.sleepOn.FindByID)
 	return spy.cacheSource.FindByID(ctx, id)
 }
 
@@ -567,7 +640,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 		)
 
 		query.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
-			return func() (iterators.Iterator[ENT], error) {
+			return func(ctx context.Context) (iterators.Iterator[ENT], error) {
 				return iterators.Slice[ENT]([]ENT{*ent1.Get(t), *ent2.Get(t)}), nil
 			}
 		})
@@ -649,9 +722,9 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		queryOneFunc.Let(s, func(t *testcase.T) cachepkg.QueryOneFunc[ENT] {
-			return func() (ENT, bool, error) {
+			return func(ctx context.Context) (ENT, bool, error) {
 				id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
-				return source.Get(t).FindByID(c.CRUD.MakeContext(t), id)
+				return source.Get(t).FindByID(ctx, id)
 			}
 		})
 
@@ -727,9 +800,9 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
-			return func() (iterators.Iterator[ENT], error) {
+			return func(ctx context.Context) (iterators.Iterator[ENT], error) {
 				id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
-				ent, found, err := source.Get(t).FindByID(c.CRUD.MakeContext(t), id)
+				ent, found, err := source.Get(t).FindByID(ctx, id)
 				if err != nil {
 					return nil, err
 				}
@@ -870,8 +943,8 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		queryOneFunc.Let(s, func(t *testcase.T) cachepkg.QueryOneFunc[ENT] {
-			return func() (ENT, bool, error) {
-				return source.Get(t).FindByID(c.CRUD.MakeContext(t), id.Get(t))
+			return func(ctx context.Context) (ENT, bool, error) {
+				return source.Get(t).FindByID(ctx, id.Get(t))
 			}
 		})
 
@@ -995,9 +1068,9 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
-			return func() (iterators.Iterator[ENT], error) {
+			return func(ctx context.Context) (iterators.Iterator[ENT], error) {
 				id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
-				ent, found, err := source.Get(t).FindByID(c.CRUD.MakeContext(t), id)
+				ent, found, err := source.Get(t).FindByID(ctx, id)
 				if err != nil {
 					return nil, err
 				}

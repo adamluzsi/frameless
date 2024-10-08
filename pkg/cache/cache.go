@@ -66,7 +66,7 @@ type Cache[ENT any, ID comparable] struct {
 	// A zero value means no expiration (cache entries never expire by age).
 	// TimeToLive time.Duration
 
-	jobGroup tasker.JobGroup
+	jobs tasker.JobGroup[tasker.GC]
 }
 
 type Locks interface {
@@ -235,29 +235,20 @@ func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query
 	hit, found, err := m.Repository.Hits().FindByID(ctx, hitID)
 	if err != nil {
 		logger.Warn(ctx, fmt.Sprintf("error during retrieving hits for %s", hitID), logging.ErrField(err))
-		return query()
+		return query(ctx)
 	}
 	if found {
 		if len(hit.EntityIDs) == 0 {
 			return iterators.Empty[ENT](), nil
 		}
 
-		if m.RefreshBehind {
-			task := tasker.WithNoOverlap(m.locks().NonBlockingLockerFor(hitID), func(ctx context.Context) error {
-				_, err := m.cacheQuery(ctx, hitID, query)
-				if err != nil {
-					logger.Warn(ctx, err.Error())
-				}
-				return nil
-			})
-			m.jobGroup.Background(contextkit.WithoutCancel(ctx), task)
-		}
+		m.doRefreshBehind(ctx, hitID, query)
 
 		iter, err := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
 		const msg = "cache Repository.Entities().FindByIDs had an error"
 		if err != nil {
 			logger.Warn(ctx, msg, logging.ErrField(err))
-			return query()
+			return query(ctx)
 		}
 		if err := iter.Err(); err != nil {
 			if errors.Is(err, crud.ErrNotFound) {
@@ -265,7 +256,7 @@ func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query
 			} else {
 				logger.Warn(ctx, msg, logging.ErrField(err))
 			}
-			return query()
+			return query(ctx)
 		}
 		return iter, nil
 	}
@@ -273,21 +264,45 @@ func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query
 	ids, err := m.cacheQuery(ctx, hitID, query)
 	if err != nil {
 		logger.Warn(ctx, err.Error())
-		return query()
+		return query(ctx)
 	}
 
 	result, err := m.Repository.Entities().FindByIDs(ctx, ids...)
 	if err != nil {
-		return query()
+		return query(ctx)
 	}
 
 	return result, nil
 }
 
+func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) {
+	if !m.RefreshBehind {
+		return
+	}
+	// refresh behind potentially finish after the request context is already cancelled,
+	// we should not rely on the cancellation signal from the context.
+	ctx = contextkit.WithoutCancel(ctx)
+	// we want to avoid that the same query is continously executed parallel,
+	// since we expect that the result would be the same.
+	queryLock := m.locks().NonBlockingLockerFor(hitID)
+	// tasker.WithNoOverlap ensures using the query lock that it actualy won't overlap
+	task := tasker.WithNoOverlap(queryLock, func(ctx context.Context) error {
+		_, err := m.cacheQuery(ctx, hitID, query)
+		if err != nil {
+			logger.Warn(ctx, err.Error())
+		}
+		return nil
+	})
+	// we simply execute the job in the background
+	job := m.jobs.Background(ctx, task)
+	// and then garbage collect its contents
+	go job.Join()
+}
+
 func (m *Cache[ENT, ID]) cacheQuery(
 	ctx context.Context,
 	hitID HitID,
-	query func() (iterators.Iterator[ENT], error),
+	query QueryManyFunc[ENT],
 ) (_ []ID, rErr error) {
 	ctx, err := m.Repository.BeginTx(ctx)
 	if err != nil {
@@ -295,7 +310,7 @@ func (m *Cache[ENT, ID]) cacheQuery(
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
 
-	srcIter, err := query()
+	srcIter, err := query(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -316,6 +331,9 @@ func (m *Cache[ENT, ID]) cacheQuery(
 		return nil, err
 	}
 
+	if len(ids) == 0 {
+	}
+
 	if err := m.Repository.Hits().Save(ctx, &Hit[ID]{
 		ID:        hitID,
 		EntityIDs: ids,
@@ -332,16 +350,7 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 	hitID HitID,
 	query QueryOneFunc[ENT],
 ) (_ent ENT, _found bool, _err error) {
-	iter, err := m.CachedQueryMany(ctx, hitID, func() (iterators.Iterator[ENT], error) {
-		ent, found, err := query()
-		if err != nil {
-			return nil, err
-		}
-		if !found {
-			return iterators.Empty[ENT](), nil
-		}
-		return iterators.Slice[ENT]([]ENT{ent}), nil
-	})
+	iter, err := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
 	if err != nil {
 		return _ent, false, err
 	}
@@ -355,10 +364,23 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 	return ent, true, nil
 }
 
+func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFunc[ENT] {
+	return func(ctx context.Context) (iterators.Iterator[ENT], error) {
+		ent, found, err := q(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return iterators.Empty[ENT](), nil
+		}
+		return iterators.SingleValue(ent), nil
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func (m *Cache[ENT, ID]) IsIdle() bool {
-	return true
+func (m *Cache[ENT, ID]) Idle() bool {
+	return !m.jobs.Alive()
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -403,6 +425,10 @@ func (m *Cache[ENT, ID]) Save(ctx context.Context, ptr *ENT) error {
 }
 
 func (m *Cache[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, error) {
+	hitID := m.queryKeyFindByID(id)
+	query := func(ctx context.Context) (ent ENT, found bool, err error) {
+		return m.Source.FindByID(ctx, id)
+	}
 	// fast path
 	ent, found, err := m.Repository.Entities().FindByID(ctx, id)
 	if err != nil {
@@ -410,12 +436,11 @@ func (m *Cache[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, error)
 		return m.Source.FindByID(ctx, id)
 	}
 	if found {
+		m.doRefreshBehind(ctx, hitID, m.mapQueryOneToQueryMany(query))
 		return ent, true, nil
 	}
 	// slow path
-	return m.CachedQueryOne(ctx, m.queryKeyFindByID(id), func() (ent ENT, found bool, err error) {
-		return m.Source.FindByID(ctx, id)
-	})
+	return m.CachedQueryOne(ctx, hitID, query)
 }
 
 func (m *Cache[ENT, ID]) queryKeyFindByID(id ID) HitID {
@@ -431,7 +456,7 @@ func (m *Cache[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], 
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", "FindAll", ErrNotImplementedBySource)
 	}
-	return m.CachedQueryMany(ctx, Query{Name: "FindAll"}.HitID(), func() (iterators.Iterator[ENT], error) {
+	return m.CachedQueryMany(ctx, Query{Name: "FindAll"}.HitID(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
 		return source.FindAll(ctx)
 	})
 }
@@ -483,5 +508,5 @@ func (m *Cache[ENT, ID]) locks() guard.NonBlockingLockerFactory[HitID] {
 }
 
 func (m *Cache[ENT, ID]) Close() (rErr error) {
-	return m.jobGroup.Stop()
+	return m.jobs.Stop()
 }

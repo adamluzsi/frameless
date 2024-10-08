@@ -50,8 +50,8 @@ type Interface[ENT, ID any] interface {
 }
 
 type (
-	QueryOneFunc[ENT any]  func() (_ ENT, found bool, _ error)
-	QueryManyFunc[ENT any] func() (iterators.Iterator[ENT], error)
+	QueryOneFunc[ENT any]  func(ctx context.Context) (_ ENT, found bool, _ error)
+	QueryManyFunc[ENT any] func(ctx context.Context) (iterators.Iterator[ENT], error)
 )
 
 // Query is a helper that allows you to create a cache.HitID

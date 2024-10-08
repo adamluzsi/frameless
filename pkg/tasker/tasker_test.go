@@ -61,11 +61,13 @@ func TestToTask(t *testing.T) {
 	t.Run("on Task", func(t *testing.T) {
 		assert.NotNil(t, tasker.ToTask(func(ctx context.Context) error { return nil }))
 		expErr := rnd.Error()
+		type key struct{}
+		val := rnd.String()
 		assert.Equal(t, expErr, tasker.ToTask(func(ctx context.Context) error { return expErr })(context.Background()))
 		assert.NoError(t, tasker.ToTask(func(ctx context.Context) error {
-			assert.Equal(t, "v", ctx.Value("k").(string))
+			assert.Equal(t, val, ctx.Value(key{}).(string))
 			return nil
-		})(context.WithValue(context.Background(), "k", "v")))
+		})(context.WithValue(context.Background(), key{}, val)))
 	})
 
 	t.Run("on func() error", func(t *testing.T) {
@@ -125,9 +127,11 @@ func ExampleSequence() {
 var _ tasker.Runnable = tasker.Sequence[func()]()
 
 func TestSequence_Run(t *testing.T) {
+	type Key struct{ V string }
+
 	var (
 		rnd   = random.New(random.CryptoSeed{})
-		key   = rnd.String()
+		key   = Key{V: rnd.String()}
 		value = rnd.String()
 		ctx   = context.WithValue(context.Background(), key, value)
 	)
@@ -216,9 +220,11 @@ func ExampleConcurrence() {
 var _ tasker.Runnable = tasker.Concurrence[func()]()
 
 func TestConcurrence_Run(t *testing.T) {
+	type Key struct{ V string }
+
 	var (
 		rnd   = random.New(random.CryptoSeed{})
-		key   = rnd.String()
+		key   = Key{V: rnd.String()}
 		value = rnd.String()
 		ctx   = context.WithValue(context.Background(), key, value)
 	)
@@ -520,10 +526,8 @@ func Test_Main_contextCancelDoesNotBubbleUp(t *testing.T) {
 		defer wg.Done()
 		mainErrOut <- tasker.Main(ctx, func(ctx context.Context) error {
 			atomic.AddInt32(&ready, 1)
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("cancelled: %w", ctx.Err())
-			}
+			<-ctx.Done()
+			return fmt.Errorf("cancelled: %w", ctx.Err())
 		})
 	}()
 
@@ -541,8 +545,10 @@ func Test_Main_contextCancelDoesNotBubbleUp(t *testing.T) {
 }
 
 func Test_Main_smoke(t *testing.T) {
+	type Key struct{ V string }
 	rnd := random.New(random.CryptoSeed{})
-	key, value := rnd.String(), rnd.String()
+	key := Key{V: rnd.String()}
+	value := rnd.String()
 	expErr := rnd.Error()
 
 	baseCTX, cancel := context.WithCancel(context.WithValue(context.Background(), key, value))
@@ -1175,8 +1181,8 @@ func TestBackground(t *testing.T) {
 	})
 }
 
-func TestAsyncGroup(t *testing.T) {
-	var g tasker.JobGroup
+func TestJobGroup(t *testing.T) {
+	var g tasker.JobGroup[tasker.GC]
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1193,4 +1199,63 @@ func TestAsyncGroup(t *testing.T) {
 		})
 	})
 
+}
+
+func TestJob_Join_safe(t *testing.T) {
+	var job tasker.Job
+
+	var expErr = rnd.Error()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	assert.NoError(t, job.Start(ctx, func(ctx context.Context) error {
+		<-ctx.Done()
+		return expErr
+	}))
+
+	var ok int32
+
+	raceBlock := func() {
+		assert.Should(t).ErrorIs(job.Join(), expErr)
+		atomic.AddInt32(&ok, 1)
+	}
+
+	testcase.Race(raceBlock, raceBlock, raceBlock, cancel)
+
+	assert.Equal(t, 3, atomic.LoadInt32(&ok))
+}
+
+func TestJobGroup_gc(t *testing.T) {
+	var g = tasker.JobGroup[tasker.GC]{}
+
+	ctx := context.Background()
+
+	done := make(chan struct{})
+
+	n := rnd.Repeat(3, 7, func() {
+		g.Background(ctx, func(ctx context.Context) error {
+			<-done
+			return nil
+		})
+	})
+
+	var expErr = rnd.Error()
+
+	g.Background(ctx, func(ctx context.Context) error {
+		<-done
+		return expErr
+	})
+
+	assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Equal(t, n+1, g.Len())
+	})
+
+	close(done)
+
+	assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Equal(t, g.Len(), 0)
+	})
+
+	assert.NoError(t, g.Join(), "we don't expect an error back, since the garbage collector collect it")
 }

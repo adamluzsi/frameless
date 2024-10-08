@@ -84,7 +84,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 	{
 		t.Log(`when CachedQueryOne used with OP:"NOK-ONE-1" with result relating to foo1`)
 		qid := cache.Query{Name: "NOK-ONE-1"}
-		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func() (ent testent.Foo, found bool, err error) {
+		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func(ctx context.Context) (ent testent.Foo, found bool, err error) {
 			return cachei.Source.FindByID(ctx, foo1.ID)
 		})
 		assert.NoError(t, err)
@@ -107,7 +107,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		assert.NotEqual(t, foo1.Bar, foo2.Bar)
 		assert.NotEqual(t, foo1.Bar, foo3.Bar)
 		qid := cache.Query{Name: "FindByBarID", ARGS: map[string]any{"bar": foo1.Bar}}
-		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func() (ent testent.Foo, found bool, err error) {
+		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func(ctx context.Context) (ent testent.Foo, found bool, err error) {
 			return iterators.First(iterators.Filter(iterators.WithErr(cachei.FindAll(ctx)), func(f testent.Foo) bool {
 				return f.Bar == foo1.Bar
 			}))
@@ -129,7 +129,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		})
 		t.Log("when we have a custom query that has no arguments but only returns foo2")
 		qid := cache.Query{Name: "NOK-MANY-BAZ"}
-		iter, err := cachei.CachedQueryMany(ctx, qid.HitID(), func() (iterators.Iterator[testent.Foo], error) {
+		iter, err := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) (iterators.Iterator[testent.Foo], error) {
 			return iterators.Slice([]testent.Foo{foo2}), nil
 		})
 		assert.NoError(t, err)
@@ -146,7 +146,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 	{
 		t.Log("when we also have a cached query that will be unrelated to foo1, (only relates to foo3)")
 		qid := cache.Query{Name: "notAffectedQueryKey"}
-		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func() (ent testent.Foo, found bool, err error) {
+		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func(ctx context.Context) (ent testent.Foo, found bool, err error) {
 			return cachei.Source.FindByID(ctx, foo3.ID)
 		})
 		assert.NoError(t, err)
@@ -272,18 +272,20 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	})
 
 	s.Test("CachedQueryOne works even with a faulty repo", func(t *testcase.T) {
-		value, found, err := subject.Get(t).CachedQueryOne(context.Background(), cache.Query{Name: "query one test"}.HitID(), func() (ent testent.Foo, found bool, err error) {
-			return source.Get(t).FindByID(context.Background(), foo.Get(t).ID)
-		})
+		value, found, err := subject.Get(t).CachedQueryOne(context.Background(), cache.Query{Name: "query one test"}.HitID(),
+			func(ctx context.Context) (ent testent.Foo, found bool, err error) {
+				return source.Get(t).FindByID(context.Background(), foo.Get(t).ID)
+			})
 		t.Must.NoError(err)
 		t.Must.True(found)
 		t.Must.Equal(foo.Get(t), value)
 	})
 
 	s.Test("CachedQueryMany works even with a faulty repo", func(t *testcase.T) {
-		all, err := subject.Get(t).CachedQueryMany(context.Background(), cache.Query{Name: "query many test"}.HitID(), func() (iterators.Iterator[testent.Foo], error) {
-			return source.Get(t).FindAll(context.Background())
-		})
+		all, err := subject.Get(t).CachedQueryMany(context.Background(), cache.Query{Name: "query many test"}.HitID(),
+			func(ctx context.Context) (iterators.Iterator[testent.Foo], error) {
+				return source.Get(t).FindAll(context.Background())
+			})
 		assert.NoError(t, err)
 		vs, err := iterators.Collect(all)
 		t.Must.NoError(err)
