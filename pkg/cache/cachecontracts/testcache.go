@@ -81,6 +81,10 @@ func Cache[ENT any, ID comparable](repository cachepkg.Repository[ENT, ID], opts
 		describeCacheRefreshBehind[ENT, ID](s, cache, source, repository)
 	})
 
+	s.Context("refresh", func(s *testcase.Spec) {
+		describeCacheRefresh[ENT, ID](s, cache, source, repository)
+	})
+
 	// s.Context("TimeToLive option", func(s *testcase.Spec) {
 	// 	describeCacheTimeToLive[ENT, ID](s, cache, source, repository)
 	// })
@@ -427,6 +431,229 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 		})
 	})
 
+}
+
+func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
+	cache testcase.Var[*cachepkg.Cache[ENT, ID]],
+	source testcase.Var[cacheSource[ENT, ID]],
+	repository cachepkg.Repository[ENT, ID],
+	opts ...Option[ENT, ID],
+) {
+	c := option.Use(opts)
+
+	spy := testcase.Let(s, func(t *testcase.T) *spySource[ENT, ID] {
+		return &spySource[ENT, ID]{cacheSource: source.Get(t)}
+	})
+
+	cache.Let(s, func(t *testcase.T) *cachepkg.Cache[ENT, ID] {
+		return &cachepkg.Cache[ENT, ID]{
+			Source:     spy.Get(t),
+			Repository: repository,
+
+			RefreshBehind: false,
+		}
+	})
+
+	var Context = testcase.Let(s, func(t *testcase.T) context.Context {
+		return c.CRUD.MakeContext(t)
+	})
+
+	s.Test("RefreshQueryMany", func(t *testcase.T) {
+		hitID := cachepkg.HitID(t.Random.String())
+
+		var res []ENT
+		t.Random.Repeat(3, 7, func() {
+			v := c.CRUD.MakeEntity(t)
+			id := c.MakeID(t)
+			assert.NoError(t, c.CRUD.IDA.Set(&v, id))
+			res = append(res, v)
+		})
+
+		var query = func(t *testcase.T) []ENT {
+			iter, err := cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
+				hitID,
+				func(ctx context.Context) (iterators.Iterator[ENT], error) {
+					return iterators.Slice(res), nil
+				})
+			assert.NoError(t, err)
+			vs, err := iterators.Collect(iter)
+			assert.NoError(t, err)
+			return vs
+		}
+
+		var refreshQuery = func(t *testcase.T) error {
+			return cache.Get(t).RefreshQueryMany(c.CRUD.MakeContext(t),
+				hitID,
+				func(ctx context.Context) (iterators.Iterator[ENT], error) {
+					return iterators.Slice(res), nil
+				})
+		}
+
+		t.Log("a value is already cached")
+		assert.ContainExactly(t, query(t), res)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.True(t, cache.Get(t).Idle())
+		})
+
+		t.Log("this value is being modified in the source")
+		t.Random.Repeat(1, 3, func() {
+			v := c.CRUD.MakeEntity(t)
+			id := c.MakeID(t)
+			assert.NoError(t, c.CRUD.IDA.Set(&v, id))
+			res = append(res, v)
+		})
+
+		assert.NotContain(t, query(t), res)
+
+		t.Log("then the data refreshes when refresh many is called")
+		assert.NoError(t, refreshQuery(t))
+
+		t.Eventually(func(t *testcase.T) {
+			assert.ContainExactly(t, query(t), res)
+		})
+	})
+
+	s.Test("FindAll", func(t *testcase.T) {
+		if _, ok := source.Get(t).(crud.AllFinder[ENT]); !ok {
+			t.Skipf("%T doesn't implement crud.AllFinder", source.Get(t))
+		}
+
+		refreshFindAll := func(t *testcase.T) error {
+			return cache.Get(t).RefreshAll(Context.Get(t))
+		}
+
+		ctx := c.CRUD.MakeContext(t)
+		value := c.CRUD.MakeEntity(t)
+		t.Must.NoError(source.Get(t).Create(ctx, &value))
+		id, _ := extid.Lookup[ID](value)
+		t.Defer(source.Get(t).DeleteByID, ctx, id)
+
+		id, ok := c.CRUD.IDA.Lookup(value)
+		assert.True(t, ok)
+
+		t.Log("a value is already cached")
+		got, found, err := cache.Get(t).FindByID(ctx, id)
+		assert.NoError(t, err)
+		assert.True(t, found)
+		assert.Equal(t, got, value)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.True(t, cache.Get(t).Idle())
+		})
+
+		t.Log("this value is being modified in the source")
+		valueWithNewContent := value // pass by value copy
+		c.CRUD.ModifyEntity(t, &valueWithNewContent)
+		crudtest.Update[ENT, ID](t, source.Get(t), c.CRUD.MakeContext(t), &valueWithNewContent)
+		waiter.Wait()
+
+		t.Log("then the data refreshes when refresh many is called")
+		assert.NoError(t, refreshFindAll(t))
+
+		t.Eventually(func(t *testcase.T) {
+			got, found, err := cache.Get(t).FindByID(ctx, id)
+			assert.NoError(t, err)
+			assert.True(t, found)
+			assert.Equal(t, got, valueWithNewContent)
+		})
+	})
+
+	s.Test("RefreshByID + FindByID", func(t *testcase.T) {
+		ctx := c.CRUD.MakeContext(t)
+		value := c.CRUD.MakeEntity(t)
+		t.Must.NoError(source.Get(t).Create(ctx, &value))
+		id, _ := extid.Lookup[ID](value)
+		t.Defer(source.Get(t).DeleteByID, ctx, id)
+		id, ok := c.CRUD.IDA.Lookup(value)
+		assert.True(t, ok)
+
+		refresh := func(t *testcase.T) error {
+			return cache.Get(t).RefreshByID(c.CRUD.MakeContext(t), id)
+		}
+
+		query := func(t *testcase.T) (ENT, bool) {
+			v, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
+			assert.NoError(t, err)
+			return v, found
+		}
+
+		t.Log("a value is already cached")
+		got, found := query(t)
+		assert.True(t, found)
+		assert.Equal(t, got, value)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.True(t, cache.Get(t).Idle())
+		})
+
+		t.Log("this value is being modified in the source")
+		valueWithNewContent := value // pass by value copy
+		c.CRUD.ModifyEntity(t, &valueWithNewContent)
+		crudtest.Update[ENT, ID](t, source.Get(t), c.CRUD.MakeContext(t), &valueWithNewContent)
+		waiter.Wait()
+
+		t.Log("then the data refreshes when refresh many is called")
+		assert.NoError(t, refresh(t))
+
+		t.Eventually(func(t *testcase.T) {
+			got, found := query(t)
+			assert.True(t, found)
+			assert.Equal(t, got, valueWithNewContent)
+		})
+	})
+
+	s.Test("RefreshQueryOne", func(t *testcase.T) {
+		value := c.CRUD.MakeEntity(t)
+		id := c.MakeID(t)
+		assert.NoError(t, c.CRUD.IDA.Set(&value, id))
+		hitID := cachepkg.HitID(t.Random.String())
+
+		refresh := func(t *testcase.T) error {
+			return cache.Get(t).RefreshQueryOne(c.CRUD.MakeContext(t),
+				hitID,
+				func(ctx context.Context) (_ ENT, found bool, _ error) {
+					return value, true, nil
+				})
+		}
+
+		query := func(t *testcase.T) (ENT, bool) {
+			v, found, err := cache.Get(t).CachedQueryOne(c.CRUD.MakeContext(t),
+				hitID,
+				func(ctx context.Context) (_ ENT, found bool, _ error) {
+					return value, true, nil
+				})
+			assert.NoError(t, err)
+			return v, found
+		}
+
+		t.Log("a value is already cached")
+		got, found := query(t)
+		assert.True(t, found)
+		assert.Equal(t, got, value)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.True(t, cache.Get(t).Idle())
+		})
+
+		t.Log("this value is being modified in the source")
+		c.CRUD.ModifyEntity(t, &value)
+
+		t.Log("the cached data differes from what it is in the source")
+		got, found = query(t)
+		assert.True(t, found)
+		assert.NotEqual(t, got, value)
+
+		t.Log("then the data refreshes when refresh is called")
+		assert.NoError(t, refresh(t))
+
+		t.Log("eventually the new state of the value can be retrieved")
+		t.Eventually(func(t *testcase.T) {
+			got, found := query(t)
+			assert.True(t, found)
+			assert.Equal(t, got, value)
+		})
+	})
 }
 
 // func describeCacheTimeToLive[ENT any, ID comparable](s *testcase.Spec,

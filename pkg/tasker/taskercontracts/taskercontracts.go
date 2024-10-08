@@ -54,13 +54,8 @@ func ScheduleStateRepository(subject tasker.ScheduleStateRepository, opts ...Opt
 		crudcontracts.ByIDFinder[tasker.ScheduleState, tasker.ScheduleID](subject, crudConfig),
 		crudcontracts.ByIDDeleter[tasker.ScheduleState, tasker.ScheduleID](subject, crudConfig),
 	)
-	return s.AsSuite("tasker.SchedulerStateRepository")
-}
 
-type stateRepositorySubject struct {
-	StateRepository   tasker.ScheduleStateRepository
-	MakeContext       func() context.Context
-	MakeScheduleState func() tasker.ScheduleState
+	return s.AsSuite("tasker.SchedulerStateRepository")
 }
 
 type Option interface {

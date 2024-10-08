@@ -138,7 +138,7 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 		}
 	}
 
-	if err := m.InvalidateCachedQuery(ctx, m.queryKeyFindByID(id)); err != nil {
+	if err := m.InvalidateCachedQuery(ctx, m.HitIDFindByID(id)); err != nil {
 		return err
 	}
 
@@ -189,6 +189,41 @@ func (m *Cache[ENT, ID]) DropCachedValues(ctx context.Context) error {
 	return errorkit.Merge(
 		m.Repository.Hits().DeleteAll(ctx),
 		m.Repository.Entities().DeleteAll(ctx))
+}
+
+func getAs[T any](src any) (T, error) {
+	source, ok := src.(T)
+	if !ok {
+		return source, fmt.Errorf("%s: %w", reflectkit.TypeOf[T]().String(), ErrNotImplementedBySource)
+	}
+	return source, nil
+}
+
+func (m *Cache[ENT, ID]) RefreshByID(ctx context.Context, id ID) (rErr error) {
+	return m.RefreshQueryOne(ctx, m.HitIDFindByID(id), func(ctx context.Context) (_ ENT, found bool, _ error) {
+		return m.Source.FindByID(ctx, id)
+	})
+}
+
+func (m *Cache[ENT, ID]) RefreshAll(ctx context.Context) (rErr error) {
+	// MVP implementation
+	source, err := getAs[crud.AllFinder[ENT]](m.Source)
+	if err != nil {
+		return err
+	}
+	return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
+		return source.FindAll(ctx)
+	})
+}
+
+func (m *Cache[ENT, ID]) RefreshQueryOne(ctx context.Context, hitID HitID, query QueryOneFunc[ENT]) (rErr error) {
+	_, err := m.cacheQuery(ctx, hitID, m.mapQueryOneToQueryMany(query))
+	return err
+}
+
+func (m *Cache[ENT, ID]) RefreshQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (rErr error) {
+	_, err := m.cacheQuery(ctx, hitID, query)
+	return err
 }
 
 func (m *Cache[ENT, ID]) InvalidateCachedQuery(ctx context.Context, hitID HitID) (rErr error) {
@@ -299,24 +334,24 @@ func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query
 	go job.Join()
 }
 
+// cacheQuery intentionally avoids using transactions to prioritise caching as many entities as possible.
+// It works on a best-effort basis, focusing on maximising cache storage without enforcing strict transactional guarantees.
+//
+// If the Cache.Repository uses a “Repeatable Read” or higher isolation level,
+// using transactions during a cache refresh would block reads from the cache, which we want to avoid.
 func (m *Cache[ENT, ID]) cacheQuery(
 	ctx context.Context,
 	hitID HitID,
 	query QueryManyFunc[ENT],
 ) (_ []ID, rErr error) {
-	ctx, err := m.Repository.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create transaction during CachedQueryMany")
-	}
-	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
-
 	srcIter, err := query(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer srcIter.Close() // ignore err
 
-	var ids = []ID{} // intentionally an empty slice and not a nil slice
+	// intentionally an empty slice and not a nil slice to avoid it to be stored as null value in the Hits.
+	var ids = make([]ID, 0)
 
 	for srcIter.Next() {
 		v := srcIter.Value()
@@ -327,11 +362,9 @@ func (m *Cache[ENT, ID]) cacheQuery(
 			return nil, fmt.Errorf("cache Repository.Entities().Save had an error")
 		}
 	}
+
 	if err := srcIter.Err(); err != nil {
 		return nil, err
-	}
-
-	if len(ids) == 0 {
 	}
 
 	if err := m.Repository.Hits().Save(ctx, &Hit[ID]{
@@ -425,7 +458,7 @@ func (m *Cache[ENT, ID]) Save(ctx context.Context, ptr *ENT) error {
 }
 
 func (m *Cache[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, error) {
-	hitID := m.queryKeyFindByID(id)
+	hitID := m.HitIDFindByID(id)
 	query := func(ctx context.Context) (ent ENT, found bool, err error) {
 		return m.Source.FindByID(ctx, id)
 	}
@@ -443,7 +476,7 @@ func (m *Cache[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, error)
 	return m.CachedQueryOne(ctx, hitID, query)
 }
 
-func (m *Cache[ENT, ID]) queryKeyFindByID(id ID) HitID {
+func (m *Cache[ENT, ID]) HitIDFindByID(id ID) HitID {
 	return Query{
 		Name:    "FindByID",
 		ARGS:    map[string]any{"id": id},
@@ -451,12 +484,16 @@ func (m *Cache[ENT, ID]) queryKeyFindByID(id ID) HitID {
 	}.HitID()
 }
 
+func (m *Cache[ENT, ID]) HitIDFindAll() HitID {
+	return Query{Name: "FindAll"}.HitID()
+}
+
 func (m *Cache[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
-	source, ok := m.Source.(crud.AllFinder[ENT])
-	if !ok {
+	source, err := getAs[crud.AllFinder[ENT]](m.Source)
+	if err != nil {
 		return nil, fmt.Errorf("%s: %w", "FindAll", ErrNotImplementedBySource)
 	}
-	return m.CachedQueryMany(ctx, Query{Name: "FindAll"}.HitID(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
+	return m.CachedQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
 		return source.FindAll(ctx)
 	})
 }
