@@ -66,7 +66,7 @@ type Cache[ENT any, ID comparable] struct {
 	// A zero value means no expiration (cache entries never expire by age).
 	// TimeToLive time.Duration
 
-	jobs tasker.JobGroup[tasker.GC]
+	jobs tasker.JobGroup[tasker.FireAndForget]
 }
 
 type Locks interface {

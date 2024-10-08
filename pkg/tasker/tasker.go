@@ -282,14 +282,14 @@ func Main[TFN genericTask](ctx context.Context, tfns ...TFN) error {
 	return WithSignalNotify(Concurrence(tasks...))(ctx)
 }
 
-var bg = JobGroup[GC]{}
+var bg = JobGroup[FireAndForget]{}
 
 func BackgroundJobs() bgjob { return &bg }
 
-func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup[NoGC] {
+func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup[Manual] {
 	// We want to make sure the returned job group doesn’t clean up the job results.
 	// This way, when .Join() and .Stop() are called, they always return the same consistent result.
-	var g JobGroup[NoGC]
+	var g JobGroup[Manual]
 	for _, task := range tasks {
 		// start background job
 		job := g.Background(ctx, ToTask(task))
@@ -303,6 +303,7 @@ type bgjob interface {
 	Alive() bool
 	Join() error
 	Stop() error
+	Wait()
 }
 
 var _ bgjob = &Job{}
@@ -340,9 +341,13 @@ func (j *Job) Start(ctx context.Context, tsk Task) error {
 		defer close(j.done) // signal completion
 		defer j.finish()
 		err := tsk.Run(ctx)
-		if err != nil {
-			j.setErr(err)
+		if err == nil {
+			return
 		}
+		if errors.Is(err, ctx.Err()) {
+			return
+		}
+		j.setErr(err)
 	}()
 	return nil
 }
@@ -358,10 +363,7 @@ func (j *Job) Stop() error {
 }
 
 func (j *Job) Join() error {
-	if !j.Alive() {
-		return j.getErr()
-	}
-	j.wait()
+	j.Wait()
 	return j.getErr()
 }
 
@@ -392,7 +394,7 @@ func (j *Job) getDone() chan struct{} {
 	return j.done
 }
 
-func (j *Job) wait() {
+func (j *Job) Wait() {
 	done := j.getDone()
 	if done == nil {
 		return
@@ -419,23 +421,28 @@ func (j *Job) setErr(err error) {
 	j.err = err
 }
 
-var _ bgjob = &JobGroup[NoGC]{}
+var _ bgjob = &JobGroup[Manual]{}
 
-// GC is a flag for JobGroup to tell if the JobGroup should be garbage collected.
-type GC struct{}
+/*
+2. **FireAndForget** and **WaitForResult**: This pair emphasizes the difference in how the JobGroup handles job results. FireAndForget implies that jobs are started without waiting for their outcome, while WaitForResult suggests that the caller needs to collect the results explicitly.
+3. **BackgroundMode** and **ForegroundMode**: These names highlight the mode of operation. BackgroundMode implies that jobs run in the background without blocking, while ForegroundMode suggests that the caller needs to wait for job completion.
+*/
 
-// NoGC is a flag for JobGroup to tell that the JobGroup should not be garbage collected.
-type NoGC struct{}
+type FireAndForget struct{}
+type Manual struct{}
 
-type JobGroup[GCS GC | NoGC] struct {
+// JobGroup is a job manager where you can start background tasks as jobs.
+//
+// It supports two mode:
+//
+//   - A: does things automatically, including collecting finished jobs and freeing their resources. Ideal for background job management, where the job results are not needed to be collected.
+//   - B: allows you to collect the results of the background jobs, and you need to call Join to free up their results. Ideal for jog groups where you need to collect their error results.
+type JobGroup[M Manual | FireAndForget] struct {
 	m    sync.RWMutex
 	jobs map[int64]*Job
 }
 
-func (jg *JobGroup[GCS]) gc() {
-	if !jg.isGarbageCollected() {
-		return
-	}
+func (jg *JobGroup[M]) gc() {
 	for id, job := range jg.jobs {
 		if !job.Alive() {
 			delete(jg.jobs, id)
@@ -443,16 +450,18 @@ func (jg *JobGroup[GCS]) gc() {
 	}
 }
 
-func (jg *JobGroup[GCS]) Len() int {
+func (jg *JobGroup[M]) Len() int {
 	jg.m.RLock()
 	defer jg.m.RUnlock()
 	return len(jg.jobs)
 }
 
-func (jg *JobGroup[GCS]) add(job *Job) {
+func (jg *JobGroup[M]) add(job *Job) {
 	jg.m.Lock()
 	defer jg.m.Unlock()
-	jg.gc()
+	if jg.isFnF() {
+		jg.gc()
+	}
 	if jg.jobs == nil {
 		jg.jobs = make(map[int64]*Job)
 	}
@@ -470,7 +479,7 @@ func (jg *JobGroup[GCS]) add(job *Job) {
 		panic("unable to find a ")
 	}
 	jg.jobs[id] = job
-	if jg.isGarbageCollected() {
+	if jg.isFnF() {
 		job.tdown.Defer(func() error {
 			jg.m.Lock()
 			defer jg.m.Unlock()
@@ -480,7 +489,7 @@ func (jg *JobGroup[GCS]) add(job *Job) {
 	}
 }
 
-func (jg *JobGroup[GCS]) Background(ctx context.Context, tsk Task) *Job {
+func (jg *JobGroup[M]) Background(ctx context.Context, tsk Task) *Job {
 	var job Job
 	jg.add(&job)
 	if err := job.Start(ctx, tsk); err != nil {
@@ -492,19 +501,25 @@ func (jg *JobGroup[GCS]) Background(ctx context.Context, tsk Task) *Job {
 	return &job
 }
 
-func (jg *JobGroup[GCS]) Join() error {
+func (jg *JobGroup[M]) Wait() {
+	for _, job := range jg.getJob() {
+		job.Wait()
+	}
+}
+
+func (jg *JobGroup[M]) Join() error {
 	return jg.mapJob(func(j *Job) error {
 		return j.Join()
 	})
 }
 
-func (jg *JobGroup[GCS]) Stop() error {
+func (jg *JobGroup[M]) Stop() error {
 	return jg.mapJob(func(a *Job) error {
 		return a.Stop()
 	})
 }
 
-func (jg *JobGroup[GCS]) Alive() bool {
+func (jg *JobGroup[M]) Alive() bool {
 	for _, job := range jg.getJob() {
 		if job.Alive() {
 			return true
@@ -513,23 +528,25 @@ func (jg *JobGroup[GCS]) Alive() bool {
 	return false
 }
 
-func (jg *JobGroup[GCS]) getJob() []*Job {
+func (jg *JobGroup[M]) getJob() []*Job {
 	jg.m.RLock()
 	defer jg.m.RUnlock()
 	return mapkit.Values(jg.jobs)
 }
 
-func (jg *JobGroup[GCS]) isGarbageCollected() bool {
-	switch any(*new(GCS)).(type) {
-	case GC:
+func (jg *JobGroup[M]) isFnF() bool {
+	switch any(*new(M)).(type) {
+	case FireAndForget:
 		return true
-	case NoGC:
-		return false
 	default:
-		panic("not implemented")
+		return false
 	}
 }
 
-func (jg *JobGroup[GCS]) mapJob(blk func(a *Job) error) error {
-	return errorkit.Merge(slicekit.Map(jg.getJob(), blk)...)
+func (jg *JobGroup[M]) mapJob(blk func(a *Job) error) error {
+	errs := slicekit.Map(jg.getJob(), blk)
+	if jg.isFnF() {
+		return nil
+	}
+	return errorkit.Merge(errs...)
 }

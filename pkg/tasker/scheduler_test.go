@@ -69,13 +69,13 @@ func TestScheduler(t *testing.T) {
 		var Context = let.Context(s)
 
 		s.Then("the resulting job will be a blocking job", func(t *testcase.T) {
-			t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
+			assert.NotWithin(t, blockCheckWaitTime, func(ctx context.Context) {
 				gotErr := act(t)(ctx)
 				t.Must.AnyOf(func(a *assert.A) {
 					a.Test(func(t assert.It) { t.Must.NoError(gotErr) })
 					a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), gotErr) })
 				})
-			})
+			}).Wait()
 		})
 
 		s.Then("the passed Job func will be executed based on the interval time", func(t *testcase.T) {

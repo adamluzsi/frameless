@@ -26,16 +26,8 @@ import (
 var rnd = random.New(random.CryptoSeed{})
 
 func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
-	var (
-		notify = internal.SignalNotify
-		stop   = internal.SignalStop
-	)
-	t.Cleanup(func() {
-		internal.SignalNotify = notify
-		internal.SignalStop = stop
-	})
-	internal.SignalNotify = fn
-	internal.SignalStop = func(chan<- os.Signal) {}
+	t.Cleanup(internal.StubSignalNotify(fn))
+	t.Cleanup(internal.StubSignalStop(func(chan<- os.Signal) {}))
 }
 
 func StubShutdownTimeout(tb testing.TB, timeout time.Duration) {
@@ -630,10 +622,11 @@ func ExampleWithRepeat() {
 
 func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 	StubShutdownTimeout(t, time.Millisecond)
-	const (
-		expectedKey   = "key"
-		expectedValue = "value"
-	)
+
+	type Key struct{}
+	var expectedKey = Key{}
+	const expectedValue = "value"
+
 	t.Run("with context", func(t *testing.T) {
 		var (
 			startBegin, startFinished, stopBegin int32
@@ -915,14 +908,16 @@ func TestOnError(t *testing.T) {
 func TestIgnoreError_smoke(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	type Key struct{}
+
 	s.Test("will wrap the passed task function", func(t *testcase.T) {
 		var ran bool
 		task := tasker.IgnoreError(func(ctx context.Context) error {
 			ran = true
-			t.Must.Equal(any(42), ctx.Value("key"))
+			t.Must.Equal(any(42), ctx.Value(Key{}))
 			return nil
 		})
-		t.Must.NoError(task.Run(context.WithValue(context.Background(), "key", any(42))))
+		t.Must.NoError(task.Run(context.WithValue(context.Background(), Key{}, any(42))))
 		t.Must.True(ran)
 	})
 
@@ -1017,9 +1012,9 @@ func TestWithSignalNotify(t *testing.T) {
 		})
 
 		s.Then("it will use the signals to subscribe for notify", func(t *testcase.T) {
-			var run bool
+			var run atomic.Bool
 			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
-				run = true
+				run.Store(true)
 				t.Must.ContainExactly(signals.Get(t), sigs)
 			})
 
@@ -1027,7 +1022,7 @@ func TestWithSignalNotify(t *testing.T) {
 				t.Must.NoError(act(t))
 			})
 
-			t.Must.True(run)
+			t.Must.True(run.Load())
 		})
 	})
 
@@ -1182,7 +1177,7 @@ func TestBackground(t *testing.T) {
 }
 
 func TestJobGroup(t *testing.T) {
-	var g tasker.JobGroup[tasker.GC]
+	var g tasker.JobGroup[tasker.FireAndForget]
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1226,36 +1221,124 @@ func TestJob_Join_safe(t *testing.T) {
 	assert.Equal(t, 3, atomic.LoadInt32(&ok))
 }
 
-func TestJobGroup_gc(t *testing.T) {
-	var g = tasker.JobGroup[tasker.GC]{}
+func TestJobGroup_FireAndForget(t *testing.T) {
+	t.Run("finished jobs are garbage collected", func(t *testing.T) {
+		var g = tasker.JobGroup[tasker.FireAndForget]{}
 
-	ctx := context.Background()
+		ctx := context.Background()
 
-	done := make(chan struct{})
+		done := make(chan struct{})
 
-	n := rnd.Repeat(3, 7, func() {
-		g.Background(ctx, func(ctx context.Context) error {
+		n := rnd.Repeat(3, 7, func() {
+			g.Background(ctx, func(ctx context.Context) error {
+				<-done
+				return nil
+			})
+		})
+
+		assert.Eventually(t, time.Second, func(t assert.It) {
+			assert.Equal(t, n, g.Len())
+		})
+
+		close(done)
+
+		assert.Eventually(t, time.Second, func(t assert.It) {
+			assert.Equal(t, g.Len(), 0)
+		})
+
+		assert.Within(t, time.Second/4, func(ctx context.Context) {
+			g.Join()
+		})
+	})
+	t.Run("error is not returned back", func(t *testing.T) {
+		var g = tasker.JobGroup[tasker.FireAndForget]{}
+
+		ctx := context.Background()
+
+		done := make(chan struct{})
+
+		rnd.Repeat(3, 7, func() {
+			g.Background(ctx, func(ctx context.Context) error {
+				<-done
+				return rnd.Error()
+			})
+		})
+
+		close(done)
+
+		random.Pick(rnd,
+			func() { assert.NoError(t, g.Join()) }, // Join should wait for the jobs to finish
+			func() { g.Wait() },                    // Wait should work just as good as Join
+		)()
+
+		assert.Equal(t, 0, g.Len(), "after Join, it was expected that we waited for all the ")
+	})
+}
+
+func TestJob(t *testing.T) {
+	t.Run("nil task", func(t *testing.T) {
+		var j tasker.Job
+		err := j.Start(context.Background(), nil)
+		assert.NoError(t, err)
+	})
+
+	t.Run("already alive", func(t *testing.T) {
+		var j tasker.Job
+		done := make(chan struct{})
+		defer close(done)
+		err := j.Start(context.Background(), func(ctx context.Context) error {
 			<-done
 			return nil
 		})
+		assert.NoError(t, err) // Start returns before task starts
+
+		err = j.Start(context.Background(), func(ctx context.Context) error { return nil })
+		assert.ErrorIs(t, err, tasker.ErrAlive) // Second start returns ErrAlive
 	})
 
-	var expErr = rnd.Error()
-
-	g.Background(ctx, func(ctx context.Context) error {
-		<-done
-		return expErr
+	t.Run("successful start", func(t *testing.T) {
+		var j tasker.Job
+		task := func(ctx context.Context) error { return nil }
+		err := j.Start(context.Background(), task)
+		assert.NoError(t, err)
+		assert.NoError(t, j.Join())
 	})
 
-	assert.Eventually(t, time.Second, func(t assert.It) {
-		assert.Equal(t, n+1, g.Len())
+	t.Run("error during job execution", func(t *testing.T) {
+		var j tasker.Job
+		expErr := rnd.Error()
+		task := func(ctx context.Context) error { return expErr }
+		err := j.Start(context.Background(), task)
+		assert.NoError(t, err)
+		assert.ErrorIs(t, j.Join(), expErr)
 	})
 
-	close(done)
+	t.Run("Stop cancels the context of the running task", func(t *testing.T) {
+		var j tasker.Job
 
-	assert.Eventually(t, time.Second, func(t assert.It) {
-		assert.Equal(t, g.Len(), 0)
+		expErr := rnd.Error()
+
+		assert.NoError(t, j.Start(context.Background(), func(ctx context.Context) error {
+			<-ctx.Done()
+			return expErr
+		}))
+
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			assert.ErrorIs(t, expErr, j.Stop())
+		})
 	})
 
-	assert.NoError(t, g.Join(), "we don't expect an error back, since the garbage collector collect it")
+	t.Run("Stop/Join doesn't returns back context cancellation", func(t *testing.T) {
+		var j tasker.Job
+
+		assert.NoError(t, j.Start(context.Background(), func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}))
+
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			assert.NoError(t, j.Stop())
+			assert.NoError(t, j.Join())
+		})
+	})
 }
