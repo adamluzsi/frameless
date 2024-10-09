@@ -185,65 +185,15 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 	return nil
 }
 
-func (m *Cache[ENT, ID]) DropCachedValues(ctx context.Context) error {
+func (m *Cache[ENT, ID]) DropCachedValues(ctx context.Context) (rErr error) {
+	ctx, err := m.Repository.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
 	return errorkit.Merge(
 		m.Repository.Hits().DeleteAll(ctx),
 		m.Repository.Entities().DeleteAll(ctx))
-}
-
-func getAs[T any](src any) (T, error) {
-	source, ok := src.(T)
-	if !ok {
-		return source, fmt.Errorf("%s: %w", reflectkit.TypeOf[T]().String(), ErrNotImplementedBySource)
-	}
-	return source, nil
-}
-
-func (m *Cache[ENT, ID]) RefreshByID(ctx context.Context, id ID) (rErr error) {
-	return m.RefreshQueryOne(ctx, m.HitIDFindByID(id), func(ctx context.Context) (_ ENT, found bool, _ error) {
-		return m.Source.FindByID(ctx, id)
-	})
-}
-
-func (m *Cache[ENT, ID]) Refresh(ctx context.Context) (rErr error) {
-	if source, err := getAs[crud.AllFinder[ENT]](m.Source); err == nil {
-		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
-			return source.FindAll(ctx)
-		})
-	}
-
-	allEntitiesIter, err := m.Repository.Entities().FindAll(ctx)
-	if err != nil {
-		return err
-	}
-
-	// We gather errors from the refresh by id process,
-	// but we continue iterating through the entities till the end
-	// since others may still refresh successfully.
-	errorsIter := iterators.Map(allEntitiesIter, func(v ENT) (error, error) {
-		id, ok := m.IDA.Lookup(v)
-		if !ok {
-			return nil, nil // continue
-		}
-		return m.RefreshByID(ctx, id), nil
-	})
-
-	errs, err := iterators.Collect(errorsIter)
-	if err != nil {
-		return err
-	}
-
-	return errorkit.Merge(errs...)
-}
-
-func (m *Cache[ENT, ID]) RefreshQueryOne(ctx context.Context, hitID HitID, query QueryOneFunc[ENT]) (rErr error) {
-	_, err := m.cacheQuery(ctx, hitID, m.mapQueryOneToQueryMany(query))
-	return err
-}
-
-func (m *Cache[ENT, ID]) RefreshQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (rErr error) {
-	_, err := m.cacheQuery(ctx, hitID, query)
-	return err
 }
 
 func (m *Cache[ENT, ID]) InvalidateCachedQuery(ctx context.Context, hitID HitID) (rErr error) {
@@ -252,7 +202,6 @@ func (m *Cache[ENT, ID]) InvalidateCachedQuery(ctx context.Context, hitID HitID)
 		return err
 	}
 	defer comproto.FinishOnePhaseCommit(&rErr, m.Repository, ctx)
-
 	// it is important to first delete the hit record to avoid a loop effect with other invalidation calls.
 	hit, found, err := m.invalidateCachedQueryWithoutCascadeEffect(ctx, hitID)
 	if err != nil {
@@ -261,13 +210,11 @@ func (m *Cache[ENT, ID]) InvalidateCachedQuery(ctx context.Context, hitID HitID)
 	if !found {
 		return nil
 	}
-
 	for _, entID := range hit.EntityIDs {
 		if err := m.InvalidateByID(ctx, entID); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -328,6 +275,80 @@ func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query
 	}
 
 	return result, nil
+}
+
+func (m *Cache[ENT, ID]) CachedQueryOne(
+	ctx context.Context,
+	hitID HitID,
+	query QueryOneFunc[ENT],
+) (_ent ENT, _found bool, _err error) {
+	iter, err := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
+	if err != nil {
+		return _ent, false, err
+	}
+	ent, found, err := iterators.First[ENT](iter)
+	if err != nil {
+		return ent, false, err
+	}
+	if !found {
+		return ent, false, nil
+	}
+	return ent, true, nil
+}
+
+func getAs[T any](src any) (T, error) {
+	source, ok := src.(T)
+	if !ok {
+		return source, fmt.Errorf("%s: %w", reflectkit.TypeOf[T]().String(), ErrNotImplementedBySource)
+	}
+	return source, nil
+}
+
+func (m *Cache[ENT, ID]) RefreshByID(ctx context.Context, id ID) (rErr error) {
+	return m.RefreshQueryOne(ctx, m.HitIDFindByID(id), func(ctx context.Context) (_ ENT, found bool, _ error) {
+		return m.Source.FindByID(ctx, id)
+	})
+}
+
+func (m *Cache[ENT, ID]) Refresh(ctx context.Context) (rErr error) {
+	if source, err := getAs[crud.AllFinder[ENT]](m.Source); err == nil {
+		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
+			return source.FindAll(ctx)
+		})
+	}
+
+	allEntitiesIter, err := m.Repository.Entities().FindAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	// We gather errors from the refresh by id process,
+	// but we continue iterating through the entities till the end
+	// since others may still refresh successfully.
+	errorsIter := iterators.Map(allEntitiesIter, func(v ENT) (error, error) {
+		id, ok := m.IDA.Lookup(v)
+		if !ok {
+			return nil, nil // continue
+		}
+		return m.RefreshByID(ctx, id), nil
+	})
+
+	errs, err := iterators.Collect(errorsIter)
+	if err != nil {
+		return err
+	}
+
+	return errorkit.Merge(errs...)
+}
+
+func (m *Cache[ENT, ID]) RefreshQueryOne(ctx context.Context, hitID HitID, query QueryOneFunc[ENT]) (rErr error) {
+	_, err := m.cacheQuery(ctx, hitID, m.mapQueryOneToQueryMany(query))
+	return err
+}
+
+func (m *Cache[ENT, ID]) RefreshQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (rErr error) {
+	_, err := m.cacheQuery(ctx, hitID, query)
+	return err
 }
 
 func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) {
@@ -398,25 +419,6 @@ func (m *Cache[ENT, ID]) cacheQuery(
 	return ids, nil
 }
 
-func (m *Cache[ENT, ID]) CachedQueryOne(
-	ctx context.Context,
-	hitID HitID,
-	query QueryOneFunc[ENT],
-) (_ent ENT, _found bool, _err error) {
-	iter, err := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
-	if err != nil {
-		return _ent, false, err
-	}
-	ent, found, err := iterators.First[ENT](iter)
-	if err != nil {
-		return ent, false, err
-	}
-	if !found {
-		return ent, false, nil
-	}
-	return ent, true, nil
-}
-
 func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFunc[ENT] {
 	return func(ctx context.Context) (iterators.Iterator[ENT], error) {
 		ent, found, err := q(ctx)
@@ -460,21 +462,39 @@ func (m *Cache[ENT, ID]) Save(ctx context.Context, ptr *ENT) error {
 	if err := source.Save(ctx, ptr); err != nil {
 		return err
 	}
-	if err := m.Repository.Entities().Save(ctx, ptr); err != nil {
-		logger.Warn(ctx, "cache Repository.Entities().Save had an error", logging.ErrField(err))
-		if id, ok := m.IDA.Lookup(pointer.Deref(ptr)); ok {
-			if err := m.InvalidateByID(ctx, id); err != nil {
-				logger.Warn(ctx, "WARNING - "+
-					"potentially invalid cache state. "+
-					"After a failed Cache.Repository.Entities.Save, "+
-					"the attempt to invalidate the entity by its id failed as well",
-					logging.Field("type", reflectkit.TypeOf[ENT]().String()),
-					logging.Field("id", id),
-					logging.ErrField(err))
-			}
-		}
-	}
+	m.shouldUpdateRefreshByPtr(ctx, "Save", ptr)
 	return nil
+}
+
+func (m *Cache[ENT, ID]) shouldUpdateRefreshByPtr(ctx context.Context, op string, ptr *ENT) {
+	if err := ctx.Err(); err != nil {
+		return
+	}
+	err := m.Repository.Entities().Save(ctx, ptr)
+	if err == nil {
+		return
+	}
+	logger.Warn(ctx, "cache Repository.Entities().Save had an error", logging.ErrField(err))
+
+	id, ok := m.IDA.Lookup(pointer.Deref(ptr))
+	if !ok {
+		logger.Warn(ctx, "was unable to locate the ID of the entity that was updated recently in the cache source")
+		return
+	}
+	if err := m.RefreshByID(ctx, id); err == nil {
+		return
+	}
+	if err := m.InvalidateByID(ctx, id); err == nil {
+		return
+	}
+
+	logger.Error(ctx, "WARNING - "+
+		"potentially invalid cache state. "+
+		fmt.Sprintf("After a failed Cache.Repository.Entities.%s, ", op)+
+		"the attempt to invalidate the entity by its id failed as well",
+		logging.Field("type", reflectkit.TypeOf[ENT]().String()),
+		logging.Field("id", id),
+		logging.ErrField(err))
 }
 
 func (m *Cache[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, error) {
@@ -526,12 +546,7 @@ func (m *Cache[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	if err := source.Update(ctx, ptr); err != nil {
 		return err
 	}
-	if err := m.Repository.Entities().Update(ctx, ptr); err != nil {
-		logger.Warn(ctx, "cache Repository.Entities().Update had an error", logging.ErrField(err))
-		if id, ok := m.IDA.Lookup(*ptr); ok {
-			return m.InvalidateByID(ctx, id)
-		}
-	}
+	m.shouldUpdateRefreshByPtr(ctx, "Update", ptr)
 	return nil
 }
 
