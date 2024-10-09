@@ -477,3 +477,232 @@ func measure(blk func()) time.Duration {
 	endTime := time.Now()
 	return endTime.Sub(startTime)
 }
+
+var _ retry.Strategy[int] = &retry.FixedDelay{}
+
+func ExampleFixedDelay() {
+	ctx := context.Background()
+	rs := retry.FixedDelay{
+		WaitTime: 10 * time.Second,
+		Timeout:  5 * time.Minute,
+	}
+
+	for i := 0; rs.ShouldTry(ctx, i); i++ {
+		// do an action
+		// return/break on success
+	}
+	// return failure
+}
+
+func TestFixedDelay_ShouldTry(t *testing.T) {
+	s := testcase.NewSpec(t)
+	const buffer = 500 * time.Millisecond
+
+	var (
+		waitTime   = testcase.LetValue[time.Duration](s, time.Second)
+		maxRetries = testcase.LetValue[int](s, 5)
+		timeout    = testcase.LetValue[time.Duration](s, 0)
+	)
+	subject := testcase.Let(s, func(t *testcase.T) *retry.FixedDelay {
+		return &retry.FixedDelay{
+			WaitTime:   waitTime.Get(t),
+			MaxRetries: maxRetries.Get(t),
+			Timeout:    timeout.Get(t),
+		}
+	})
+
+	var (
+		Context      = let.Context(s)
+		failureCount = testcase.LetValue[int](s, 0)
+	)
+	act := func(t *testcase.T) bool {
+		return subject.Get(t).ShouldTry(Context.Get(t), failureCount.Get(t))
+	}
+
+	s.Then("we can attempt to retry", func(t *testcase.T) {
+		t.Must.True(act(t))
+	})
+
+	s.Then("the wait time is around to what is configured in .WaitTime", func(t *testcase.T) {
+		failureCount.Set(t, t.Random.IntBetween(1, subject.Get(t).MaxRetries-1))
+		waitTime := subject.Get(t).WaitTime
+
+		assert.Within(t, waitTime+buffer, func(ctx context.Context) {
+			act(t)
+		})
+
+		assert.NotWithin(t, waitTime-buffer, func(ctx context.Context) {
+			act(t)
+		}).Wait()
+	})
+
+	s.When("context is cancelled", func(s *testcase.Spec) {
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx, cancel := context.WithCancel(Context.Super(t))
+			cancel()
+			return ctx
+		})
+
+		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
+			t.Must.False(act(t))
+		})
+	})
+
+	s.When("we reached the allowed maximum number attempts", func(s *testcase.Spec) {
+		maxRetries.LetValue(s, 7)
+
+		failureCount.Let(s, func(t *testcase.T) int {
+			return subject.Get(t).MaxRetries
+		})
+
+		s.Then("we can't attempt to retry", func(t *testcase.T) {
+			t.Must.False(act(t))
+		})
+	})
+
+	s.When("we didn't reached the allowed maximum number attempts", func(s *testcase.Spec) {
+		maxRetries.LetValue(s, 5)
+
+		failureCount.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(0, subject.Get(t).MaxRetries-1)
+		})
+
+		s.Then("we can attempt to retry", func(t *testcase.T) {
+			t.Must.True(act(t))
+		})
+	})
+
+	s.When("the was no failed attempt before", func(s *testcase.Spec) {
+		failureCount.LetValue(s, 0)
+
+		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+			v := subject.Super(t)
+			v.WaitTime = time.Hour
+			return v
+		})
+
+		s.Then("it will instantly return", func(t *testcase.T) {
+			t.Must.Within(time.Second, func(ctx context.Context) {
+				Context.Set(t, ctx)
+				act(t)
+			})
+		})
+	})
+
+	s.When("we wait a constant amount of time between each retry attempt", func(s *testcase.Spec) {
+		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+			v := subject.Super(t)
+			v.WaitTime = 10 * time.Millisecond
+			return v
+		})
+
+		s.Test("we wait the same amount of time between each retry attempt", func(t *testcase.T) {
+			for i := 0; i < 5; i++ {
+				failureCount.Set(t, i)
+
+				assert.Eventually(t, 10, func(it assert.It) {
+					duration := measure(func() { act(t) })
+
+					it.Must.True(duration <= subject.Get(t).WaitTime+buffer)
+				})
+			}
+		})
+	})
+
+	s.Context("integration with testcase/clock package", func(s *testcase.Spec) {
+		const multiplier = 200000
+		s.Before(func(t *testcase.T) {
+			timecop.SetSpeed(t, multiplier)
+		})
+
+		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+			v := subject.Super(t)
+			v.WaitTime = time.Hour
+			return v
+		})
+
+		failureCount.LetValue(s, 5)
+
+		s.Then("it will finish quickly", func(t *testcase.T) {
+			const buffer = 500 * time.Millisecond
+
+			var duration time.Duration
+			t.Must.Within(subject.Get(t).WaitTime, func(ctx context.Context) {
+				duration = measure(func() { act(t) })
+			})
+
+			t.Must.True(duration <= (subject.Get(t).WaitTime/multiplier)+buffer)
+		})
+	})
+
+	s.When(".Timeout is supplied", func(s *testcase.Spec) {
+		timeout.Let(s, func(t *testcase.T) time.Duration {
+			return time.Duration(t.Random.IntBetween(int(waitTime.Get(t)*2), int(time.Hour)))
+		})
+
+		s.Before(func(t *testcase.T) {
+			timecop.SetSpeed(t, 100000)
+		})
+
+		s.And(".MaxRetries is absent", func(s *testcase.Spec) {
+			maxRetries.LetValue(s, 0)
+
+			s.And("the already waited time in total is less than the value of .Timeout", func(s *testcase.Spec) {
+				failureCount.Let(s, func(t *testcase.T) int {
+					max := int(timeout.Get(t) / waitTime.Get(t))
+					return t.Random.IntBetween(0, max-1)
+				})
+
+				s.Then("retry will be attempted until timeout is reached", func(t *testcase.T) {
+					assert.True(t, act(t))
+				})
+			})
+
+			s.And("the already waited time in total is more than the value of .Timeout", func(s *testcase.Spec) {
+				failureCount.Let(s, func(t *testcase.T) int {
+					max := int(timeout.Get(t) / waitTime.Get(t))
+					return t.Random.IntBetween(max+1, max*2)
+				})
+
+				s.Then("it is advised to abandone the retry attempt", func(t *testcase.T) {
+					assert.False(t, act(t))
+				})
+			})
+		})
+
+		s.Context("smoke", func(s *testcase.Spec) {
+
+			s.And("we are within the defined timeout duration", func(s *testcase.Spec) {
+				failureCount.LetValue(s, 1)
+
+				subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+					v := subject.Super(t)
+					v.WaitTime = timeout.Get(t) / 4
+					return v
+				})
+
+				s.Then("we are allowed to proceed with the retry", func(t *testcase.T) {
+					t.Must.True(act(t))
+				})
+			})
+
+			s.And("we ran out of time compared to the timeout duration", func(s *testcase.Spec) {
+				failureCount.LetValue(s, 2)
+
+				subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+					v := subject.Super(t)
+					v.WaitTime = timeout.Get(t)
+					return v
+				})
+
+				s.Then("we expect that we are over the timeout duration, and we are asked to not attempt further retries", func(t *testcase.T) {
+					t.Must.False(act(t))
+				})
+			})
+		})
+	})
+}
+
+func wbuffer(d time.Duration, m float64) time.Duration {
+	return time.Duration(float64(d) * m)
+}

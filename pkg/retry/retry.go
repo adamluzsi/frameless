@@ -170,3 +170,79 @@ func (rs Waiter) timeout() time.Duration {
 	const defaultTimeout = 30 * time.Second
 	return zerokit.Coalesce(rs.Timeout, defaultTimeout)
 }
+
+type FixedDelay struct {
+	// WaitTime is the time duration used to calculate exponential backoff wait times.
+	// Initially, it serves as the starting wait duration, and then it evolves.
+	//
+	// Default: 1/2 Second
+	WaitTime time.Duration
+	// Timeout is the time within the Strategy is attempting further retries.
+	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
+	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
+	//
+	// Default: ignored
+	Timeout time.Duration
+	// MaxRetries is the amount of retry which is allowed before giving up the application.
+	//
+	// Default: 5 if Timeout is not set.
+	MaxRetries int
+}
+
+func (rs FixedDelay) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
+	if rs.isDeadlineReached(ctx, failureCount) {
+		return false
+	}
+	waitTime, ok := rs.waitTime(ctx, failureCount)
+	if !ok {
+		return false
+	}
+	select {
+	case <-ctx.Done():
+		return false
+	case <-clock.After(waitTime):
+		return true
+	}
+}
+
+func (rs FixedDelay) waitTime(ctx context.Context, count FailureCount) (duration time.Duration, ok bool) {
+	var (
+		maxRetries = rs.getMaxRetries()
+		waitTime   = rs.getWaitTime()
+	)
+	if maxRetries <= count && rs.Timeout == 0 {
+		return 0, false
+	}
+	if ctx.Err() == nil && count == 0 {
+		return 0, true
+	}
+	if ctx.Err() != nil {
+		return 0, false
+	}
+	return waitTime, true
+}
+
+func (rs FixedDelay) getWaitTime() time.Duration {
+	const fallback = 500 * time.Millisecond
+	return zerokit.Coalesce(rs.WaitTime, fallback)
+}
+
+func (rs FixedDelay) getMaxRetries() int {
+	const defaultMaxRetries = 5
+	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
+}
+
+func (rs FixedDelay) isDeadlineReached(ctx context.Context, failureCount FailureCount) bool {
+	if rs.Timeout == 0 {
+		return false
+	}
+	var totalWaitedTime time.Duration
+	for i := 0; i <= failureCount; i++ { // exclude current failure count
+		waitTime, ok := rs.waitTime(ctx, i)
+		if !ok {
+			return false
+		}
+		totalWaitedTime += waitTime
+	}
+	return rs.Timeout <= totalWaitedTime
+}
