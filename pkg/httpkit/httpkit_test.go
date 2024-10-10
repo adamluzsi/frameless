@@ -700,8 +700,7 @@ func TestMount_spec(t *testing.T) {
 }
 
 func TestMountPoint(tt *testing.T) {
-	s := testcase.NewSpec(tt)
-	t := testcase.NewT(tt, s)
+	t := testcase.NewT(tt)
 
 	charset := random.CharsetDigit()
 	mountPoint := fmt.Sprintf("/%s/%s/%s",

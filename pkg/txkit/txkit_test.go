@@ -276,7 +276,7 @@ func Example_pkgLevelTxFunctions() {
 }
 
 func Test_smoke(tt *testing.T) {
-	t := testcase.NewT(tt, nil)
+	t := testcase.NewT(tt)
 
 	ctx := context.Background()
 	ns := make([]int, 0, 2)

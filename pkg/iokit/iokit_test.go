@@ -262,7 +262,7 @@ func TestBuffer_ioReadWriter(t *testing.T) {
 }
 
 func TestBuffer_smoke(tt *testing.T) {
-	t := testcase.NewT(tt, nil)
+	t := testcase.NewT(tt)
 
 	var (
 		data   = []byte(t.Random.String())
@@ -316,7 +316,7 @@ func TestBuffer_smoke(tt *testing.T) {
 }
 
 func TestNew_smoke(tt *testing.T) {
-	t := testcase.NewT(tt, nil)
+	t := testcase.NewT(tt)
 	dataSTR := t.Random.String()
 	dataBS := []byte(t.Random.String())
 	t.Must.Equal(iokit.NewBuffer(dataSTR).String(), dataSTR)
@@ -325,14 +325,14 @@ func TestNew_smoke(tt *testing.T) {
 
 func TestBuffer_Read_ioReadAll(t *testing.T) {
 	t.Run("on empty buffer", func(tt *testing.T) {
-		t := testcase.NewT(tt, nil)
+		t := testcase.NewT(tt)
 		b := &iokit.Buffer{}
 		bs, err := io.ReadAll(b)
 		t.Must.Nil(err)
 		t.Must.Empty(bs)
 	})
 	t.Run("on populated buffer", func(tt *testing.T) {
-		t := testcase.NewT(tt, nil)
+		t := testcase.NewT(tt)
 		d := t.Random.String()
 		b := iokit.NewBuffer(d)
 		bs, err := io.ReadAll(b)

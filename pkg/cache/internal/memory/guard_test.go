@@ -32,7 +32,7 @@ func TestLockerFactory(t *testing.T) {
 }
 
 func TestNewLockerFactory_race(tt *testing.T) {
-	t := testcase.NewT(tt, nil)
+	t := testcase.NewT(tt)
 	lf := memory.NewLockerFactory[string]()
 
 	const constKey = "const"

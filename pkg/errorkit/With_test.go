@@ -23,7 +23,7 @@ func TestWith_smoke(tt *testing.T) {
 			return context.WithValue(context.Background(), ctxKey.Get(t), ctxVal.Get(t))
 		})
 	)
-	t := testcase.NewT(tt, s)
+	t := testcase.NewTWithSpec(tt, s)
 
 	v := errorkit.With(err.Get(t)).
 		Context(ctx.Get(t)).
