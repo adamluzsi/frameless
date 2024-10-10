@@ -8,9 +8,10 @@ import (
 
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/pp"
 )
 
-type ThrottlingStrategy interface {
+type Strategy interface {
 	Throttle(context.Context) error
 }
 
@@ -22,25 +23,25 @@ type ThrottlingStrategy interface {
 type FixedWindow struct {
 	Rate Rate
 
-	events events
+	events eventHistory
 }
 
-func (fw *FixedWindow) Throttle(ctx context.Context) error {
+func (rl *FixedWindow) Throttle(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	if fw.Rate.IsZero() {
+	if rl.Rate.IsZero() {
 		return nil
 	}
 
-	stats := fw.events.Tick(fw.Rate)
-	isRateLimited := fw.Rate.N < stats.N
+	stats := rl.events.Tick(rl.Rate)
+	isRateLimited := rl.Rate.N < stats.N
 
 	// If the stats.N is greater than or equal to fw.Rate.N, it means the rate limit has been reached.
 	if isRateLimited {
 		// Calculate the time until the next window starts.
-		nextWindowEnd := stats.FirstAt.Add(fw.Rate.Per)
+		nextWindowEnd := stats.FirstAt.Add(rl.Rate.Per)
 		remainingTime := nextWindowEnd.Sub(stats.CurrentTime)
 
 		// Sleep until the next window starts.
@@ -59,7 +60,51 @@ func (fw *FixedWindow) Throttle(ctx context.Context) error {
 // Instead of resetting at the start of each window, it tracks requests within a moving time frame (e.g., 10 requests in the last 60 seconds).
 // This approach avoids bursty spikes and smooths out the request flow by dynamically counting requests within the current sliding window.
 // Once the limit is exceeded, further requests are throttled until enough time has passed for requests to "fall out" of the window.
-type SlidingWindow struct{}
+type SlidingWindow struct {
+	Rate         Rate
+	eventHistory eventHistory
+}
+
+func (rl *SlidingWindow) Throttle(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if rl.Rate.IsZero() {
+		return nil
+	}
+
+	st := rl.eventHistory.Tick(rl.Rate)
+	isRateLimited := rl.Rate.N < st.N
+
+	if isRateLimited {
+		nextWindowEnd := st.FirstAt.Add(rl.Rate.Per)
+		remainingTime := nextWindowEnd.Sub(st.CurrentTime)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-clock.After(remainingTime):
+		}
+	}
+
+	// Calculate the average MaxPace (request/duration) for this rate limit
+	MaxPace := rl.Rate.Pace()
+
+	pp.PP(rl.Rate, st)
+	pp.PP(MaxPace, st.AvgPace)
+
+	if MaxPace < st.AvgPace {
+		pp.PP("too fast pace")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-clock.After(st.AvgPace - MaxPace):
+		}
+	}
+
+	return nil
+}
 
 // type TokenBucket struct {
 // 	// Capacity defines the maximum number of tokens the bucket can hold. It acts as the upper limit on burstiness.
@@ -87,6 +132,18 @@ type Rate struct {
 	Per time.Duration
 }
 
+func (r Rate) Pace() time.Duration {
+	return calcAvgPace(r.Per, r.N)
+}
+
+func calcAvgPace(windowDuration time.Duration, n int) time.Duration {
+	if windowDuration == 0 {
+		windowDuration = 1
+	}
+	pp.PP(windowDuration, n)
+	return windowDuration / time.Duration(n)
+}
+
 func (r Rate) String() string {
 	return fmt.Sprintf("%d/%s", r.N, r.Per.String())
 }
@@ -99,7 +156,7 @@ type event struct {
 	Timestamp time.Time
 }
 
-type events struct {
+type eventHistory struct {
 	es []event
 	m  sync.RWMutex
 }
@@ -108,16 +165,16 @@ type stats struct {
 	WindowStart time.Time
 	CurrentTime time.Time
 	FirstAt     time.Time
-	N           int
+	AvgPace     time.Duration
+
+	N int
 }
 
 func (st stats) String() string {
-	const format = "15:04:05"
-	return fmt.Sprintf("%d/%s [window start: %s | now: %s]", st.N, st.CurrentTime.Sub(st.WindowStart).String(),
-		st.WindowStart.Format(format), st.CurrentTime.Format(format))
+	return fmt.Sprintf("%d/%s", st.N, st.CurrentTime.Sub(st.WindowStart).String())
 }
 
-func (es *events) Tick(r Rate) stats {
+func (es *eventHistory) Tick(r Rate) stats {
 	if r.IsZero() {
 		return stats{}
 	}
@@ -140,11 +197,14 @@ func (es *events) Tick(r Rate) stats {
 	// add current occasion
 	es.es = append(es.es, event{Timestamp: currentTime})
 
+	n := len(es.es)
+
 	st := stats{
 		WindowStart: windowStart,
 		CurrentTime: currentTime,
 		FirstAt:     firstAt,
-		N:           len(es.es),
+		AvgPace:     calcAvgPace(currentTime.Sub(firstAt), n),
+		N:           n,
 	}
 
 	return st
