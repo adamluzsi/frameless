@@ -6,9 +6,10 @@ import (
 	"reflect"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 
-	"go.llib.dev/frameless/pkg/internal/pointersync"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	synckit "go.llib.dev/frameless/pkg/synckit"
 )
 
 // IsZero will report whether the value is zero or not.
@@ -72,16 +73,22 @@ func Init[T any, I initialiser[T]](ptr *T, init I) T {
 	if val, ok := initFastPath[T](ptr); ok {
 		return val
 	}
-	var key = pointersync.Key(ptr)
-	defer initLocks.Sync(key)()
-	if ptr != nil && !IsZero(*ptr) {
+	var key = pointerKey(ptr)
+	l := initLocks.RWLocker(key)
+	l.Lock()
+	defer l.Unlock()
+	if !IsZero(*ptr) { // ptr is already nil checked
 		return *ptr
 	}
 	*ptr = initialise[T, I](init)
 	return *ptr
 }
 
-var initLocks = pointersync.NewLocks()
+func pointerKey[T any](ptr *T) uintptr {
+	return uintptr(unsafe.Pointer(ptr))
+}
+
+var initLocks = synckit.RWLockerFactory[uintptr]{ReadOptimised: true}
 
 type initialiser[T any] interface {
 	func() T | *T
@@ -100,7 +107,10 @@ func initialise[T any, IV initialiser[T]](init IV) T {
 }
 
 func initFastPath[T any](ptr *T) (_ T, ok bool) {
-	defer initLocks.ReadSync(pointersync.Key(ptr))()
+	key := pointerKey(ptr)
+	l := initLocks.RWLocker(key)
+	l.RLock()
+	defer l.RUnlock()
 	v := *ptr
 	return v, !IsZero[T](v)
 }

@@ -1204,7 +1204,7 @@ func TestBackground(t *testing.T) {
 	})
 }
 
-func TestJobGroup(t *testing.T) {
+func TestJobGroup_race(t *testing.T) {
 	var g tasker.JobGroup[tasker.FireAndForget]
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1217,6 +1217,11 @@ func TestJobGroup(t *testing.T) {
 		})
 	}, func() {
 		g.Background(ctx, func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		})
+	}, func() {
+		g.Go(func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		})
@@ -1249,7 +1254,7 @@ func TestJob_Join_safe(t *testing.T) {
 	assert.Equal(t, 3, atomic.LoadInt32(&ok))
 }
 
-func TestJobGroup_FireAndForget(t *testing.T) {
+func TestJobGroup_asFireAndForget(t *testing.T) {
 	t.Run("finished jobs are garbage collected", func(t *testing.T) {
 		var g = tasker.JobGroup[tasker.FireAndForget]{}
 
@@ -1301,6 +1306,99 @@ func TestJobGroup_FireAndForget(t *testing.T) {
 
 		assert.Equal(t, 0, g.Len(), "after Join, it was expected that we waited for all the ")
 	})
+}
+
+func TestJobGroup_asManual(t *testing.T) {
+	t.Run("finished jobs are NOT garbage collected", func(t *testing.T) {
+		var g = tasker.JobGroup[tasker.Manual]{}
+
+		ctx := context.Background()
+
+		done := make(chan struct{})
+
+		n := rnd.Repeat(3, 7, func() {
+			g.Background(ctx, func(ctx context.Context) error {
+				<-done
+				return nil
+			})
+		})
+
+		assert.Eventually(t, time.Second, func(t assert.It) {
+			assert.Equal(t, n, g.Len())
+		})
+
+		close(done)
+
+		assert.Equal(t, n, g.Len())
+
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			assert.NoError(t, g.Join())
+		})
+
+		assert.Equal(t, 0, g.Len())
+	})
+	t.Run("error is returned back", func(t *testing.T) {
+		var g = tasker.JobGroup[tasker.Manual]{}
+
+		ctx := context.Background()
+
+		done := make(chan struct{})
+
+		var errs []error
+		rnd.Repeat(3, 7, func() {
+			err := rnd.Error()
+			errs = append(errs, err)
+			g.Background(ctx, func(ctx context.Context) error {
+				<-done
+				return err
+			})
+		})
+
+		close(done)
+
+		gotErr := g.Join()
+		assert.Error(t, gotErr)
+		for _, err := range errs {
+			assert.ErrorIs(t, gotErr, err)
+		}
+
+		assert.Equal(t, 0, g.Len(), "after Join, it was expected that we waited for all the ")
+	})
+}
+
+func TestJobGroup_Go_wManual(t *testing.T) {
+	var g = tasker.JobGroup[tasker.Manual]{}
+
+	done := make(chan struct{})
+
+	n := rnd.Repeat(3, 7, func() {
+		g.Go(func(ctx context.Context) error {
+			<-done
+			return nil
+		})
+	})
+
+	assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Equal(t, n, g.Len())
+	})
+
+	close(done)
+
+	assert.Equal(t, n, g.Len())
+
+	assert.Within(t, time.Second, func(ctx context.Context) {
+		assert.NoError(t, g.Join())
+	})
+
+	assert.Equal(t, 0, g.Len())
+
+	expErr := rnd.Error()
+
+	g.Go(func(ctx context.Context) error {
+		return expErr
+	})
+
+	assert.ErrorIs(t, g.Join(), expErr)
 }
 
 func TestJob(t *testing.T) {

@@ -13,7 +13,6 @@ import (
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/mapkit"
-	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/tasker/internal"
 	"go.llib.dev/frameless/pkg/teardown"
 	"go.llib.dev/testcase/clock"
@@ -284,9 +283,10 @@ func Main[TFN genericTask](ctx context.Context, tfns ...TFN) error {
 var bg = JobGroup[FireAndForget]{}
 
 func Background[TFN genericTask](ctx context.Context, tasks ...TFN) *JobGroup[Manual] {
+	var g JobGroup[Manual]
 	// We want to make sure the returned job group doesn’t clean up the job results.
 	// This way, when .Join() and .Stop() are called, they always return the same consistent result.
-	var g JobGroup[Manual]
+	g.disableCleanup = true
 	for _, task := range tasks {
 		// start background job
 		job := g.Background(ctx, ToTask(task))
@@ -429,6 +429,8 @@ var _ bgjob = &JobGroup[Manual]{}
 type JobGroup[M Manual | FireAndForget] struct {
 	m    sync.RWMutex
 	jobs map[int64]*Job
+	// disableCleanup will disable the job cleanup during results collection.
+	disableCleanup bool
 }
 
 type (
@@ -483,6 +485,10 @@ func (jg *JobGroup[M]) add(job *Job) {
 	}
 }
 
+func (jg *JobGroup[M]) Go(tsk Task) *Job {
+	return jg.Background(context.Background(), tsk)
+}
+
 func (jg *JobGroup[M]) Background(ctx context.Context, tsk Task) *Job {
 	var job Job
 	jg.add(&job)
@@ -502,13 +508,13 @@ func (jg *JobGroup[M]) Wait() {
 }
 
 func (jg *JobGroup[M]) Join() error {
-	return jg.mapJob(func(j *Job) error {
+	return jg.collect(func(j *Job) error {
 		return j.Join()
 	})
 }
 
 func (jg *JobGroup[M]) Stop() error {
-	return jg.mapJob(func(a *Job) error {
+	return jg.collect(func(a *Job) error {
 		return a.Stop()
 	})
 }
@@ -522,10 +528,10 @@ func (jg *JobGroup[M]) Alive() bool {
 	return false
 }
 
-func (jg *JobGroup[M]) getJob() []*Job {
+func (jg *JobGroup[M]) getJob() map[int64]*Job {
 	jg.m.RLock()
 	defer jg.m.RUnlock()
-	return mapkit.Values(jg.jobs)
+	return mapkit.Clone(jg.jobs)
 }
 
 func (jg *JobGroup[M]) isFnF() bool {
@@ -537,10 +543,19 @@ func (jg *JobGroup[M]) isFnF() bool {
 	}
 }
 
-func (jg *JobGroup[M]) mapJob(blk func(a *Job) error) error {
-	errs := slicekit.Map(jg.getJob(), blk)
-	if jg.isFnF() {
-		return nil
+func (jg *JobGroup[M]) collect(blk func(j *Job) error) error {
+	isFnF := jg.isFnF()
+	var errs []error
+	for id, job := range jg.getJob() {
+		err := blk(job)
+		if !isFnF {
+			errs = append(errs, err)
+		}
+		if !jg.disableCleanup {
+			jg.m.Lock()
+			delete(jg.jobs, id)
+			jg.m.Unlock()
+		}
 	}
 	return errorkit.Merge(errs...)
 }
