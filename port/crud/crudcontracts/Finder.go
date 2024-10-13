@@ -102,7 +102,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 			})
 		}
 
-		QueryOne[ENT, ID](subject, func(tb testing.TB) QueryOneSubject[ENT] {
+		QueryOne[ENT, ID](subject, "#FindByID", func(tb testing.TB) QueryOneSubject[ENT] {
 			ent := ensureExistingEntity(tb, c, subject, nil)
 
 			return QueryOneSubject[ENT]{
@@ -130,7 +130,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 // NewEntityForTest used only for testing and should not be provided outside of testing
 func AllFinder[ENT, ID any](subject crud.AllFinder[ENT], opts ...Option[ENT, ID]) contract.Contract {
 	c := option.Use[Config[ENT, ID]](opts)
-	return QueryMany[ENT, ID](subject, func(t testing.TB) QueryManySubject[ENT] {
+	return QueryMany[ENT, ID](subject, "#FindAll", func(t testing.TB) QueryManySubject[ENT] {
 		return QueryManySubject[ENT]{
 			Query: subject.FindAll,
 			IncludedEntity: func() ENT {

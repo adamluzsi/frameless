@@ -28,8 +28,8 @@ var _ = []contract.Contract{
 	crudcontracts.OnePhaseCommitProtocol[EntType, IDType](nil, nil),
 	crudcontracts.ByIDsFinder[EntType, IDType](nil),
 	crudcontracts.AllFinder[EntType, IDType](nil),
-	crudcontracts.QueryOne[EntType, IDType](nil, nil),
-	crudcontracts.QueryMany[EntType, IDType](nil, nil, nil, nil),
+	crudcontracts.QueryOne[EntType, IDType](nil, "", nil),
+	crudcontracts.QueryMany[EntType, IDType](nil, "", nil),
 }
 
 func contracts[ENT, ID any](subject Subject[ENT, ID], cm comproto.OnePhaseCommitProtocol, opts ...crudcontracts.Option[ENT, ID]) []contract.Contract {

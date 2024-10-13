@@ -16,7 +16,7 @@ func TestQueryOne(t *testing.T) {
 	mem := memory.NewMemory()
 	repo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 
-	crudcontracts.QueryOne[testent.Foo, testent.FooID](repo,
+	crudcontracts.QueryOne[testent.Foo, testent.FooID](repo, "QueryOne",
 		func(tb testing.TB) crudcontracts.QueryOneSubject[testent.Foo] {
 			tc := tb.(*testcase.T)
 			var baz = tc.Random.String()
@@ -42,7 +42,7 @@ func TestQueryMany(t *testing.T) {
 	mem := memory.NewMemory()
 	repo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 
-	crudcontracts.QueryMany[testent.Foo, testent.FooID](repo,
+	crudcontracts.QueryMany[testent.Foo, testent.FooID](repo, "QueryMany",
 		func(tb testing.TB) crudcontracts.QueryManySubject[testent.Foo] {
 			tc := tb.(*testcase.T)
 			var foo = tc.Random.String()

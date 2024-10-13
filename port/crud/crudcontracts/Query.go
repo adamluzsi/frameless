@@ -39,6 +39,7 @@ type QueryOneSubject[ENT any] struct {
 
 func QueryOne[ENT, ID any](
 	resource any,
+	methodName string,
 	subject func(tb testing.TB) QueryOneSubject[ENT],
 	opts ...Option[ENT, ID],
 ) contract.Contract {
@@ -139,7 +140,7 @@ func QueryOne[ENT, ID any](
 		})
 	})
 
-	return s.AsSuite("QueryOne")
+	return s.AsSuite(methodName)
 }
 
 type QueryManySubject[ENT any] struct {
@@ -164,8 +165,8 @@ type QueryManySubject[ENT any] struct {
 }
 
 func QueryMany[ENT, ID any](
-	// resource is the resource which query is being tested.
 	resource any,
+	methodName string,
 	subject func(testing.TB) QueryManySubject[ENT],
 	opts ...Option[ENT, ID],
 ) contract.Contract {
@@ -328,5 +329,5 @@ func QueryMany[ENT, ID any](
 		})
 	})
 
-	return s.AsSuite("QueryMany")
+	return s.AsSuite(methodName)
 }
