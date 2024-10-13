@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
 
@@ -270,6 +272,9 @@ func TestClone(t *testing.T) {
 		assert.Equal(t, src, []string{"a", "b", "c"})
 		assert.Equal(t, dst, []string{"a", "42", "c", "foo"})
 	})
+	t.Run("nil slice clones into a nil slice", func(t *testing.T) {
+		assert.Equal(t, slicekit.Clone[int](nil), nil)
+	})
 }
 
 func ExampleFilter() {
@@ -470,5 +475,341 @@ func TestUnique(t *testing.T) {
 	t.Run("nil input", func(t *testing.T) {
 		var nilSlice []int
 		assert.Empty(t, slicekit.Unique(nilSlice))
+	})
+}
+
+func ExamplePop() {
+	var list = []int{1, 2, 3}
+
+	v, ok := slicekit.Pop(&list)
+	_ = ok   // true
+	_ = v    // 3
+	_ = list // []int{1, 2}
+}
+
+func ExamplePop_onEmpty() {
+	var list = []string{}
+
+	v, ok := slicekit.Pop(&list)
+	_ = ok   // false
+	_ = v    // ""
+	_ = list // []string{}
+}
+
+func ExamplePop_onNil() {
+	var list []byte
+
+	v, ok := slicekit.Pop(&list)
+	_ = ok   // false
+	_ = v    // 0
+	_ = list // ([]byte)(nil)
+}
+
+func TestPop(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("nil slice pointer", func(t *testcase.T) {
+		v, ok := slicekit.Pop[string](nil)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("nil slice", func(t *testcase.T) {
+		var list []string
+		v, ok := slicekit.Pop[string](&list)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("empty slice", func(t *testcase.T) {
+		v, ok := slicekit.Pop(&[]string{})
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("len 1", func(t *testcase.T) {
+		exp := t.Random.Int()
+		list := []int{exp}
+		got, ok := slicekit.Pop(&list)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Empty(t, list)
+	})
+
+	s.Test("len 1+", func(t *testcase.T) {
+		var (
+			list      []int
+			remaining []int
+		)
+		t.Random.Repeat(1, 7, func() {
+			v := t.Random.Int()
+			list = append(list, v)
+			remaining = append(remaining, v)
+		})
+		exp := t.Random.Int()
+		list = append(list, exp)
+		got, ok := slicekit.Pop(&list)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Equal(t, list, remaining)
+	})
+}
+
+func ExampleShift() {
+	var list = []int{1, 2, 3}
+
+	v, ok := slicekit.Shift(&list)
+	_ = ok   // true
+	_ = v    // 1
+	_ = list // []int{2, 3}
+}
+
+func ExampleShift_onEmpty() {
+	var list = []string{}
+
+	v, ok := slicekit.Shift(&list)
+	_ = ok   // false
+	_ = v    // ""
+	_ = list // []string{}
+}
+
+func ExampleShift_onNil() {
+	var list []byte
+
+	v, ok := slicekit.Shift(&list)
+	_ = ok   // false
+	_ = v    // 0
+	_ = list // ([]byte)(nil)
+}
+
+func TestShift(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("nil slice pointer", func(t *testcase.T) {
+		v, ok := slicekit.Shift[string](nil)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("nil slice", func(t *testcase.T) {
+		var list []string
+		v, ok := slicekit.Shift[string](&list)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("empty slice", func(t *testcase.T) {
+		v, ok := slicekit.Shift(&[]string{})
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("len 1", func(t *testcase.T) {
+		exp := t.Random.Int()
+		list := []int{exp}
+		got, ok := slicekit.Shift(&list)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Empty(t, list)
+	})
+
+	s.Test("len 1+", func(t *testcase.T) {
+		var (
+			list      []int
+			remaining []int
+		)
+		exp := t.Random.Int()
+		list = append(list, exp)
+		t.Random.Repeat(1, 7, func() {
+			v := t.Random.Int()
+			list = append(list, v)
+			remaining = append(remaining, v)
+		})
+		got, ok := slicekit.Shift(&list)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Equal(t, list, remaining)
+	})
+}
+
+func ExampleUnshift() {
+	var list []string
+	_ = list // ([]string)(nil)
+	slicekit.Unshift(&list, "foo")
+	_ = list // []string{"foo"}
+	slicekit.Unshift(&list, "bar")
+	_ = list // []string{"bar", "foo"}
+	slicekit.Unshift(&list, "baz", "qux")
+	_ = list // []string{"baz", "qux", "bar", "foo"}
+}
+
+func TestUnshift(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("nil slice pointer", func(t *testcase.T) {
+		assert.Panic(t, func() {
+			slicekit.Unshift[string](nil, "")
+		})
+	})
+
+	s.Test("nil slice", func(t *testcase.T) {
+		var list []string
+		exp := t.Random.String()
+		slicekit.Unshift[string](&list, exp)
+		assert.Equal(t, []string{exp}, list)
+	})
+
+	s.Test("empty slice", func(t *testcase.T) {
+		var list = []string{}
+		exp := t.Random.String()
+		slicekit.Unshift(&list, exp)
+		assert.Equal(t, []string{exp}, list)
+	})
+
+	s.Test("len 1 - unshift 1", func(t *testcase.T) {
+		og := t.Random.Int()
+		n := t.Random.Int()
+		list := []int{og}
+		slicekit.Unshift(&list, n)
+		assert.Equal(t, list, []int{n, og})
+	})
+
+	s.Test("len 1 - unshift 2", func(t *testcase.T) {
+		og := t.Random.Int()
+		n1 := t.Random.Int()
+		n2 := t.Random.Int()
+		list := []int{og}
+		exp := []int{n1, n2, og}
+		slicekit.Unshift(&list, n1, n2)
+		assert.Equal(t, list, exp)
+	})
+
+	s.Test("len 1+", func(t *testcase.T) {
+		var (
+			list []int
+			exp  []int
+		)
+		n := t.Random.Int()
+		exp = append(exp, n)
+		t.Random.Repeat(1, 7, func() {
+			v := t.Random.Int()
+			list = append(list, v)
+			exp = append(exp, v)
+		})
+		slicekit.Unshift(&list, n)
+		assert.Equal(t, list, exp)
+	})
+}
+
+func ExampleLast() {
+	var list = []int{1, 2, 3}
+	last, ok := slicekit.Last(list)
+	_ = ok   // true
+	_ = last // 3
+}
+
+func ExampleLast_onEmpty() {
+	var list = []string{}
+	last, ok := slicekit.Last(list)
+	_ = ok   // false
+	_ = last // ""
+}
+
+func ExampleLast_onNil() {
+	var list []byte
+	last, ok := slicekit.Last(list)
+	_ = ok   // false
+	_ = last // 0
+}
+
+func TestLast(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("nil slice", func(t *testcase.T) {
+		v, ok := slicekit.Last(([]string)(nil))
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("empty slice", func(t *testcase.T) {
+		v, ok := slicekit.Last([]string{})
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("len 1", func(t *testcase.T) {
+		exp := t.Random.Int()
+		list := []int{exp}
+		got, ok := slicekit.Last(list)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.NotEmpty(t, list)
+	})
+
+	s.Test("len 1+", func(t *testcase.T) {
+		var (
+			list []int
+			og   []int
+		)
+		t.Random.Repeat(1, 7, func() {
+			v := t.Random.Int()
+			list = append(list, v)
+			og = append(og, v)
+		})
+		exp := t.Random.Int()
+		list = append(list, exp)
+		og = append(og, exp)
+		got, ok := slicekit.Last(list)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Equal(t, list, og)
+	})
+}
+
+func ExampleReverse() {
+	var list = []int{1, 2, 3}
+	rev := slicekit.Reverse(list)
+
+	for rev.Next() {
+		_ = rev.Value() // 3 -> 2 -> 1
+	}
+}
+
+func TestReverseIterator(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		var in []int
+		t.Random.Repeat(3, 7, func() {
+			in = append(in, t.Random.IntBetween(1, 10))
+		})
+		og := slicekit.Clone(in)
+
+		var exp []int
+		for i := len(in) - 1; i >= 0; i-- {
+			exp = append(exp, in[i])
+		}
+
+		var got []int
+
+		iter := slicekit.Reverse(in)
+		for iter.Next() {
+			got = append(got, iter.Value())
+		}
+
+		assert.Equal(t, in, og, "it was not expected to alter the input slice")
+		assert.Equal(t, got, exp, "expected that the iteration order is reversed")
+	})
+
+	s.Test("nil slice", func(t *testcase.T) {
+		vs, err := iterators.Collect(slicekit.Reverse[int](nil))
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
+	})
+
+	s.Test("empty slice", func(t *testcase.T) {
+		vs, err := iterators.Collect(slicekit.Reverse([]int{}))
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
 	})
 }

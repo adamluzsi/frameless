@@ -46,6 +46,9 @@ type Iterator[V any] interface {
 	Value() V
 }
 
+// TODO: introduce Iterable that has no error or closing
+// type Iterable[V any] interface {}
+
 func Reduce[
 	R, T any,
 	FN func(R, T) R |

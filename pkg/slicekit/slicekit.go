@@ -1,5 +1,9 @@
 package slicekit
 
+import (
+	"go.llib.dev/frameless/port/iterators"
+)
+
 func Must[T any](v T, err error) T {
 	if err != nil {
 		panic(err)
@@ -91,6 +95,9 @@ func Merge[T any](slices ...[]T) []T {
 
 // Clone creates a clone from passed src slice.
 func Clone[T any](src []T) []T {
+	if src == nil {
+		return nil
+	}
 	var dst = make([]T, len(src))
 	copy(dst, src)
 	return dst
@@ -129,4 +136,66 @@ func Unique[T comparable](vs []T) []T {
 		out = append(out, v)
 	}
 	return out
+}
+
+func Pop[T any](vs *[]T) (T, bool) {
+	var v T
+	if vs == nil {
+		return v, false
+	}
+	if *vs == nil {
+		return v, false
+	}
+	if len(*vs) == 0 {
+		return v, false
+	}
+	i := len(*vs) - 1
+	v = (*vs)[i]
+	*vs = (*vs)[0:i]
+	return v, true
+}
+
+func Shift[T any](vs *[]T) (T, bool) {
+	var v T
+	if vs == nil {
+		return v, false
+	}
+	if *vs == nil {
+		return v, false
+	}
+	if len(*vs) == 0 {
+		return v, false
+	}
+	v = (*vs)[0]
+	*vs = (*vs)[1:]
+	return v, true
+}
+
+func Unshift[T any](vs *[]T, nvs ...T) {
+	if len(nvs) == 0 {
+		return
+	}
+	*vs = append(nvs, *vs...)
+}
+
+func Last[T any](vs []T) (T, bool) {
+	if len(vs) == 0 {
+		return *new(T), false
+	}
+	return vs[len(vs)-1], true
+}
+
+func Reverse[T any](vs []T) iterators.Iterator[T] {
+	if len(vs) == 0 {
+		return iterators.Empty[T]()
+	}
+	var index int = len(vs) - 1 // start from the end
+	return iterators.Func[T](func() (v T, ok bool, err error) {
+		if index < 0 {
+			return v, false, nil // done iterating
+		}
+		v = vs[index]
+		index--
+		return v, true, nil
+	})
 }
