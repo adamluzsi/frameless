@@ -3,7 +3,9 @@ package httpkit
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -63,6 +65,19 @@ type RestClient[ENT, ID any] struct {
 	//
 	// default: 20
 	PrefetchLimit int
+	// DisableStreaming switches off the streaming behaviour in results processing,
+	// meaning the entire response body of the RESTful API is loaded at once, rather than bit by bit.
+	// By enabling DisableStreaming, you load everything into memory upfront and can close the response connection faster.
+	//
+	// However, this increases memory usage and stops you from handling a very long JSON stream.
+	// In return, it could reduce the number of open connections, helping ease the server’s load.
+	//
+	// This is useful for situations:
+	//   - where slowwer servers might feel overwhelmed with holding connections concurrently open (lik ruby's unicorn server)
+	//   - when the server incorrect mistake the streaming based request processing as a slow-client attack.
+	//
+	// default: false
+	DisableStreaming bool
 }
 
 type RestClientSerializer interface {
@@ -179,6 +194,38 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[EN
 	}
 
 	details = append(details, logging.Field("response content type", respMediaType))
+
+	if r.DisableStreaming {
+		bodyData, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+
+		var payload []json.RawMessage
+		if err := ser.Unmarshal(bodyData, &payload); err != nil {
+			return nil, err
+		}
+
+		var i int
+		return iterators.Func[ENT](func() (v ENT, ok bool, err error) {
+			if !(i < len(payload)) {
+				return v, false, nil
+			}
+			defer func() { i++ }()
+
+			ptr := mapping.NewiDTO()
+			if err := ser.Unmarshal(payload[i], ptr); err != nil {
+				return v, ok, err
+			}
+
+			ent, err := mapping.MapFromiDTOPtr(ctx, ptr)
+			if err != nil {
+				return v, ok, err
+			}
+
+			return ent, true, nil
+		}), nil
+	}
 
 	dm, ok := ser.(codec.ListDecoderMaker)
 	if !ok {

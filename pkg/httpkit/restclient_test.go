@@ -98,6 +98,26 @@ func TestRestClient_crud(t *testing.T) {
 	crudcontracts.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
 }
 
+func TestRestClient_FindAll_withDisableStreaming(t *testing.T) {
+	mem := memory.NewMemory()
+	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
+	fooAPI := httpkit.RestResource[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	srv := httptest.NewServer(fooAPI)
+	t.Cleanup(srv.Close)
+
+	fooClient := httpkit.RestClient[testent.Foo, testent.FooID]{
+		HTTPClient:       srv.Client(),
+		BaseURL:          srv.URL,
+		DisableStreaming: true,
+	}
+
+	crudcontractsConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
+		MakeEntity: testent.MakeFoo,
+	}
+
+	crudcontracts.AllFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+}
+
 func TestRestClient_subresource(t *testing.T) {
 	logger.Testing(t)
 
