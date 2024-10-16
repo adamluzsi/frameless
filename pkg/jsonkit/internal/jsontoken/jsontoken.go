@@ -33,15 +33,7 @@ var (
 type Scanner struct {
 	I *bufio.Reader
 
-	buf  bytes.Buffer
-	last bytes.Buffer
-
-	path []Kind
-
-	prev struct {
-		kind  Kind
-		token []byte
-	}
+	OnArrayValue func(json.RawMessage) error
 }
 
 func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
@@ -224,9 +216,21 @@ scanValues:
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
+
 		// scan array value
-		err := s.scan(in, out)
+		var valBuf = &bytes.Buffer{}
+		err := s.scan(in, valBuf)
 		if err != nil {
+			return err
+		}
+
+		if s.OnArrayValue != nil {
+			if err := s.OnArrayValue(valBuf.Bytes()); err != nil {
+				return err
+			}
+		}
+
+		if _, err := valBuf.WriteTo(out); err != nil {
 			return err
 		}
 
