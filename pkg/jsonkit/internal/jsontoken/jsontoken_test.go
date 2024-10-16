@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -56,6 +57,7 @@ func TestScanner(t *testing.T) {
 	t.Run("number", func(t *testing.T) {
 		t.Run("integer", func(t *testing.T) {
 			exp := mustMarshal[string](rnd.IntBetween(1, 100))
+			t.Log("number", exp)
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
@@ -414,4 +416,29 @@ const ExampleComplexJSON = `{
 
 func Test_spike(t *testing.T) {
 
+}
+
+func TestCD_smoke(t *testing.T) {
+	t.Run("empty array", func(t *testing.T) {
+		in := toBufioReader(`[]`)
+		iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
+		raws, err := iterators.Collect[json.RawMessage](iter)
+		assert.NoError(t, err)
+		assert.Empty(t, raws)
+	})
+}
+
+func toBufioReader(v any) *bufio.Reader {
+	var r io.Reader
+	switch data := v.(type) {
+	case string:
+		r = strings.NewReader(data)
+	case []byte:
+		r = bytes.NewReader(data)
+	case *bufio.Reader:
+		return data
+	default:
+		panic(fmt.Errorf("not implemented input type: %T", v))
+	}
+	return bufio.NewReader(r)
 }
