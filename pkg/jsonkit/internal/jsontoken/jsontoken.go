@@ -21,14 +21,13 @@ var (
 	falseToken = []rune("false")
 	quoteToken = '"'
 
-	valueSepToken = ','
-
 	arrayOpenToken  = '['
 	arrayCloseToken = ']'
+	valueSepToken   = ','
 
 	objectOpenToken  = '{'
 	objectCloseToken = '}'
-	objectSepToken   = ':'
+	nameSepToken     = ':'
 )
 
 type Scanner struct {
@@ -120,15 +119,15 @@ func peekRune(in *bufio.Reader) (rune, int, error) {
 	return char, size, err
 }
 
-func moveRune(in *bufio.Reader, out *bytes.Buffer) (rune, error) {
-	char, _, err := in.ReadRune()
+func moveRune(in *bufio.Reader, out *bytes.Buffer) (rune, int, error) {
+	char, size, err := in.ReadRune()
 	if err != nil {
-		return char, err
+		return char, size, err
 	}
 	if _, err := out.WriteRune(char); err != nil {
-		return char, err
+		return 0, 0, err
 	}
-	return char, nil
+	return char, size, nil
 }
 
 func trimSpace(in *bufio.Reader, out *bytes.Buffer) error {
@@ -169,10 +168,10 @@ func (s *Scanner) scanToken(in *bufio.Reader, out *bytes.Buffer, token []rune) e
 	for i := 0; i < len(token); i++ {
 		char, _, err := in.ReadRune()
 		if err != nil {
-			return s.malformedF("error while parsing %q token -> %w", string(token), err)
+			return s.malformedF("error while parsing %q token: %w", string(token), err)
 		}
 		if char != token[i] {
-			return s.malformedF("error parsing %q token: %w", string(token), err)
+			return s.malformedF(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i])
 		}
 		if _, err := out.WriteRune(char); err != nil {
 			return err
@@ -182,6 +181,9 @@ func (s *Scanner) scanToken(in *bufio.Reader, out *bytes.Buffer, token []rune) e
 }
 
 func (s *Scanner) scanBoolean(in *bufio.Reader, out *bytes.Buffer) error {
+	if err := trimSpace(in, out); err != nil {
+		return err
+	}
 	char, _, err := peekRune(in)
 	if err != nil {
 		return err
@@ -190,22 +192,22 @@ func (s *Scanner) scanBoolean(in *bufio.Reader, out *bytes.Buffer) error {
 	case 't':
 		return s.scanToken(in, out, trueToken)
 	case 'f':
-		return s.scanToken(in, out, trueToken)
+		return s.scanToken(in, out, falseToken)
 	default:
 		return s.malformedF("unexpected boolean first character: %c", char)
 	}
 }
 
 func (s *Scanner) scanArray(in *bufio.Reader, out *bytes.Buffer) error {
-	char, _, err := in.ReadRune()
+	if err := trimSpace(in, out); err != nil {
+		return err
+	}
+	char, _, err := moveRune(in, out)
 	if err != nil {
 		return err
 	}
 	if char != arrayOpenToken {
 		return s.malformedF(`unexpected array open token, expected "[" but got %c`, char)
-	}
-	if _, err := out.WriteRune(char); err != nil {
-		return err
 	}
 
 	nextChar, _, err := peekRune(in)
@@ -219,73 +221,87 @@ func (s *Scanner) scanArray(in *bufio.Reader, out *bytes.Buffer) error {
 
 scanValues:
 	for {
+		if err := trimSpace(in, out); err != nil {
+			return err
+		}
 		// scan array value
 		err := s.scan(in, out)
 		if err != nil {
 			return err
 		}
-		char, _, err := in.ReadRune()
+
+		if err := trimSpace(in, out); err != nil {
+			return err
+		}
+
+		// scan sep/close
+		next, _, err := moveRune(in, out)
 		if err != nil {
 			return err
 		}
-		if _, err := out.WriteRune(char); err != nil {
-			return err
-		}
-		switch char {
+		switch next {
 		case valueSepToken: // has more
 			continue scanValues
 		case arrayCloseToken:
 			break scanValues
 		default:
-			return s.malformedF("unexpected array token: %c", char)
+			return s.malformedF("unexpected array token: %c", next)
 		}
 	}
 	return nil
 }
 
 func (s *Scanner) scanObject(in *bufio.Reader, out *bytes.Buffer) error {
-	char, _, err := in.ReadRune()
+	if err := trimSpace(in, out); err != nil {
+		return err
+	}
+
+	firstChar, _, err := moveRune(in, out)
 	if err != nil {
 		return err
 	}
-	if char != objectOpenToken { // '{'
-		return s.malformedF(`unexpected object open token, expected "{" but got %c`, char)
+	if firstChar != objectOpenToken { // '{'
+		return s.malformedF(`unexpected object open token, expected "{" but got %c`, firstChar)
 	}
-	if _, err := out.WriteRune(char); err != nil {
+
+	if err := trimSpace(in, out); err != nil {
 		return err
 	}
 
-scanPairs:
+	secondChar, _, err := peekRune(in)
+	if err != nil {
+		return err
+	}
+	if secondChar == objectCloseToken { // empty object
+		_, _, err := moveRune(in, out) // write '}'
+		return err
+	}
+
+scan:
 	for {
-		nextChar, _, err := peekRune(in)
-		if err != nil {
+		if err := trimSpace(in, out); err != nil {
 			return err
 		}
-		if nextChar == objectCloseToken { // empty object
-			char, _, err = in.ReadRune()
-			if err != nil {
-				return err
-			}
-			if _, err := out.WriteRune(char); err != nil {
-				return err
-			}
-			break scanPairs
-		}
-
-		// scan string (key)
+		// scan string key
 		err = s.scanString(in, out)
 		if err != nil {
+			return fmt.Errorf("(object key) %w", err)
+		}
+
+		if err := trimSpace(in, out); err != nil {
 			return err
 		}
 
-		char, _, err = in.ReadRune()
+		// read value sep
+		sep, _, err := moveRune(in, out)
 		if err != nil {
 			return err
 		}
-		if char != objectSepToken {
-			return s.malformedF(`unexpected object key-value separator, expected ":" but got %c`, char)
+		if sep != nameSepToken {
+			return s.malformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
 		}
-		if _, err := out.WriteRune(char); err != nil {
+
+		if err := trimSpace(in, out); err != nil {
 			return err
 		}
 
@@ -295,24 +311,24 @@ scanPairs:
 			return err
 		}
 
-		char, _, err = in.ReadRune()
-		if err != nil {
-			return err
-		}
-		if _, err := out.WriteRune(char); err != nil {
+		if err := trimSpace(in, out); err != nil {
 			return err
 		}
 
-		switch char {
-		case valueSepToken: // has more
-			continue scanPairs
+		next, _, err := moveRune(in, out)
+		if err != nil {
+			return err
+		}
+
+		switch next {
 		case objectCloseToken:
-			break scanPairs
+			return nil
+		case valueSepToken:
+			continue scan
 		default:
-			return s.malformedF("unexpected object token: %c", char)
+			return s.malformedF(`unexpected character in object, expected either "," or "}", but got "%c"`, next)
 		}
 	}
-	return nil
 }
 
 func (s *Scanner) scanString(in *bufio.Reader, out *bytes.Buffer) error {

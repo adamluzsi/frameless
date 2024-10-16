@@ -250,10 +250,10 @@ func TestScan_smoke(t *testing.T) {
 			input.LetValue(s, sample)
 
 			s.Before(func(t *testcase.T) {
-				t.Log("input:", input.Get(t))
+				t.OnFail(func() { t.Log("input:", input.Get(t)) })
 			})
 
-			s.Test("1:1", func(t *testcase.T) {
+			s.Test("exact", func(t *testcase.T) {
 				in := bufio.NewReader(strings.NewReader(input.Get(t)))
 
 				raw, err := jsontoken.Scan(in)
@@ -261,8 +261,9 @@ func TestScan_smoke(t *testing.T) {
 				assert.Equal(t, string(raw), input.Get(t))
 
 				gotExtra, err := io.ReadAll(in)
+				assert.NoError(t, err)
 
-				t.Log("extra:", string(gotExtra))
+				t.OnFail(func() { t.Log("extra:", string(gotExtra)) })
 
 				t.Must.AnyOf(func(a *assert.A) {
 					const msg = "expected that the input reader is already empty"
