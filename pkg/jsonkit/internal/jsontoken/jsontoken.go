@@ -215,7 +215,7 @@ func (s *Scanner) scanArray(in *bufio.Reader, out *bytes.Buffer) error {
 		return err
 	}
 	if nextChar == arrayCloseToken { // empty array
-		_, err := out.WriteRune(nextChar)
+		_, _, err := moveRune(in, out)
 		return err
 	}
 
@@ -454,6 +454,9 @@ var numberChars = map[rune]struct{}{
 	'9': {},
 	'.': {},
 	'-': {},
+	'+': {},
+	'e': {},
+	'E': {},
 }
 
 /* KIND */
