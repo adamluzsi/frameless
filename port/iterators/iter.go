@@ -930,13 +930,18 @@ func (fn callbackFunc) configure(c *callbackConfig) { fn(c) }
 // Pipe return a receiver and a sender.
 // This can be used with resources that
 func Pipe[T any]() (*PipeIn[T], *PipeOut[T]) {
-	pipeChan := makePipeChan[T]()
+	return PipeWithContext[T](context.Background())
+}
+
+func PipeWithContext[T any](ctx context.Context) (*PipeIn[T], *PipeOut[T]) {
+	pipeChan := makePipeChan[T](ctx)
 	return &PipeIn[T]{pipeChan: pipeChan},
 		&PipeOut[T]{pipeChan: pipeChan}
 }
 
-func makePipeChan[T any]() pipeChan[T] {
+func makePipeChan[T any](ctx context.Context) pipeChan[T] {
 	return pipeChan[T]{
+		context:   ctx,
 		values:    make(chan T),
 		errors:    make(chan error, 1),
 		outIsDone: make(chan struct{}, 1),
@@ -944,6 +949,7 @@ func makePipeChan[T any]() pipeChan[T] {
 }
 
 type pipeChan[T any] struct {
+	context   context.Context
 	values    chan T
 	errors    chan error
 	outIsDone chan struct{}
@@ -968,42 +974,57 @@ func (out *PipeOut[T]) Close() error {
 // returns false if no next value
 func (out *PipeOut[T]) Next() bool {
 	out.iterated = true
-	v, ok := <-out.pipeChan.values
-	if !ok {
+
+	if err := out.getErrNonBlocking(); err != nil {
 		return false
 	}
-	out.value = v
-	return true
+
+	select {
+	case <-out.context.Done():
+		return false
+	case v, ok := <-out.pipeChan.values:
+		if !ok {
+			return false
+		}
+		out.value = v
+		return true
+	}
 }
 
 // Err returns an error object that the pipe sender wants to present for the pipe receiver
 func (out *PipeOut[T]) Err() error {
-	{ // before iteration
-		if !out.iterated {
-			select {
-			case _, ok := <-out.outIsDone:
-				if !ok { // nothing to do, the out is already closed
-					return out.lastErr
-				}
-			case err, ok := <-out.errors:
-				if ok {
-					out.lastErr = err
-				}
-			default:
-			}
-			return out.lastErr
-		}
+	if out.iterated {
+		// so we wait for the iteration to finish
+		// to avoid race conditions with the error value communication.
+		return out.getErrBlocking()
 	}
-	{ // after iteration
-		select {
-		case err, ok := <-out.errors:
-			if ok {
-				out.lastErr = err
-			}
-		case <-out.outIsDone:
+	return out.getErrNonBlocking()
+}
+
+func (out *PipeOut[T]) getErrBlocking() error {
+	select {
+	case err, ok := <-out.errors:
+		if ok {
+			out.lastErr = err
 		}
-		return out.lastErr
+	case <-out.context.Done():
+		return out.context.Err()
+	case <-out.outIsDone:
 	}
+	return errorkit.Merge(out.lastErr, out.context.Err())
+}
+
+func (out *PipeOut[T]) getErrNonBlocking() error {
+	select {
+	case err, ok := <-out.errors:
+		if ok {
+			out.lastErr = err
+		}
+	case <-out.context.Done():
+	case <-out.outIsDone:
+	default:
+	}
+	return errorkit.Merge(out.lastErr, out.context.Err())
 }
 
 // Value will link the current buffered value to the pointer value that is given as "e"
@@ -1020,10 +1041,12 @@ type PipeIn[T any] struct {
 // It returns if sending was possible.
 func (in *PipeIn[T]) Value(v T) (ok bool) {
 	select {
-	case in.pipeChan.values <- v:
-		return true
+	case <-in.context.Done():
+		return false
 	case <-in.pipeChan.outIsDone:
 		return false
+	case in.pipeChan.values <- v:
+		return true
 	}
 }
 
@@ -1032,9 +1055,11 @@ func (in *PipeIn[T]) Error(err error) {
 	if err == nil {
 		return
 	}
-
 	defer func() { recover() }()
-	in.pipeChan.errors <- err
+	select {
+	case <-in.context.Done():
+	case in.pipeChan.errors <- err:
+	}
 }
 
 // Close will close the feed and err channels, which eventually notify the receiver that no more value expected

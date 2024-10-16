@@ -1576,6 +1576,90 @@ func TestPipe_SenderSendErrorAboutProcessingToReceiver_ReceiverNotified(t *testi
 	assert.Equal(t, expected, r.Err()) // The last error should be available later
 }
 
+func TestPipe_witchContexCancellation(t *testing.T) {
+	t.Run("pipe-in Value is cancelled", func(t *testing.T) {
+
+		ctx, cancel := context.WithCancel(context.Background())
+		w, r := iterators.PipeWithContext[Entity](ctx)
+		defer r.Close()
+		defer w.Close()
+
+		timeout := time.Second / 4
+
+		a := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			value := Entity{Text: "hitchhiker's guide to the galaxy"}
+			assert.False(t, w.Value(value))
+		}, "expected that writing is cancelled")
+
+		cancel()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			a.Wait()
+		})
+
+		assert.Within(t, timeout/10, func(ctx context.Context) {
+			assert.ErrorIs(t, r.Err(), context.Canceled)
+		})
+	})
+
+	t.Run("pipe-in Error is cancelled", func(t *testing.T) {
+
+		ctx, cancel := context.WithCancel(context.Background())
+		w, r := iterators.PipeWithContext[Entity](ctx)
+		defer r.Close()
+		defer w.Close()
+
+		timeout := time.Second / 4
+
+		err := rnd.Error()
+
+		a := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			rnd.Repeat(3, 5, func() {
+				w.Error(err)
+			})
+		})
+
+		cancel()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			a.Wait()
+		})
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			assert.Eventually(t, timeout, func(t assert.It) {
+				got := r.Err()
+				assert.ErrorIs(t, got, context.Canceled)
+				assert.ErrorIs(t, got, err)
+			})
+		})
+	})
+
+	t.Run("pipe-out is cancelled", func(t *testing.T) {
+
+		ctx, cancel := context.WithCancel(context.Background())
+		w, r := iterators.PipeWithContext[Entity](ctx)
+		defer r.Close()
+		defer w.Close()
+
+		timeout := time.Second / 4
+
+		a := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			assert.False(t, r.Next())
+		})
+
+		cancel()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			a.Wait()
+		})
+
+		assert.Within(t, timeout/10, func(ctx context.Context) {
+			assert.ErrorIs(t, r.Err(), context.Canceled)
+		})
+
+	})
+}
+
 func TestPipe_SenderSendErrorAboutProcessingToReceiver_ErrCheckPassBeforeAndReceiverNotifiedAfterTheError(t *testing.T) {
 	// if there will be a use-case where iterator Err being checked before iter.Next
 	// then this test will be resurrected and will be implemented.[int]
