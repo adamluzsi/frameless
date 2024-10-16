@@ -203,6 +203,8 @@ var samples = map[string]string{
 	"double marshaled json":                                   mustMarshal[string](mustMarshal[string]("Hello, world!")),
 	"escaped quote in a string":                               `{"foo":"\\"}`,
 	"escape after an escaped escape sequence":                 `"\\\";alert('223');//"`,
+	"object with whitespaces":                                 `{ "foo" : {` + "\n\t" + `"bar" : { "baz" : 42 } } }`,
+	"array with whitespaces":                                  `[ ` + "\n\t" + `"foo",` + "\n\t" + `42,` + "\n\t" + `true ]`,
 }
 
 func Test_samples(t *testing.T) {
@@ -418,13 +420,21 @@ func Test_spike(t *testing.T) {
 
 }
 
-func TestCD_smoke(t *testing.T) {
+func TestVisitor_smoke(t *testing.T) {
 	t.Run("empty array", func(t *testing.T) {
 		in := toBufioReader(`[]`)
 		iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
 		raws, err := iterators.Collect[json.RawMessage](iter)
 		assert.NoError(t, err)
 		assert.Empty(t, raws)
+	})
+	t.Run("populated array", func(t *testing.T) {
+		in := toBufioReader(`["The answer is", 42, true]`)
+		iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
+		raws, err := iterators.Collect[json.RawMessage](iter)
+		assert.NoError(t, err)
+		exp := []json.RawMessage{[]byte(`"The answer is"`), []byte("42"), []byte("true")}
+		assert.Equal(t, raws, exp)
 	})
 }
 

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/iterators"
 )
 
 const ErrMalformed errorkit.Error = "malformed json error"
@@ -31,7 +33,11 @@ var (
 	nameSepToken     = ':'
 )
 
-type Scanner struct{ On Do }
+type Scanner struct {
+	On Do
+
+	Dispose bool
+}
 
 type Do struct {
 	Path Path
@@ -128,6 +134,10 @@ func (s *Scanner) with(out *bytes.Buffer, path Path, blk func(out *bytes.Buffer)
 	}
 	if err := s.On.Do(path, raw.Bytes()); err != nil {
 		return err
+	}
+	if s.Dispose {
+		raw.Reset()
+		return returnErr
 	}
 	if _, err := raw.WriteTo(out); err != nil {
 		return err
@@ -456,15 +466,83 @@ func (s *Scanner) malformedErr(err error) error {
 }
 
 func CD(in Input, path Path) *Visitor {
-	return &Visitor{}
+	return &Visitor{
+		Input: in,
+		Path:  path,
+	}
 }
 
-type Visitor struct{}
+type Visitor struct {
+	Input Input
+	Path  Path
 
-func (v *Visitor) Close() error           { return nil }
-func (v *Visitor) Err() error             { return nil }
-func (v *Visitor) Next() bool             { return false }
-func (v *Visitor) Value() json.RawMessage { return nil }
+	init sync.Once
+
+	m   sync.RWMutex
+	out *iterators.PipeOut[json.RawMessage]
+
+	raw json.RawMessage
+	err error
+}
+
+func (v *Visitor) Next() bool {
+	if v.err != nil {
+		return false
+	}
+
+	v.init.Do(func() {
+		v.m.Lock()
+		defer v.m.Unlock()
+		in, out := iterators.Pipe[json.RawMessage]()
+		v.out = out
+		go func() {
+			defer in.Close()
+			const breakScanning errorkit.Error = "break"
+			sc := Scanner{
+				Dispose: true,
+				On: Do{
+					Path: v.Path,
+					Func: func(rm json.RawMessage) error {
+						if in.Value(rm) {
+							return nil
+						}
+						return breakScanning
+					},
+				},
+			}
+			_, err := sc.Scan(v.Input, nil)
+			if errors.Is(err, breakScanning) {
+				return
+			}
+			in.Error(err)
+		}()
+	})
+
+	v.m.RLock()
+	defer v.m.RUnlock()
+	if v.out.Next() {
+		v.raw = v.out.Value()
+		return true
+	}
+	return false
+}
+
+func (v *Visitor) Value() json.RawMessage { return v.raw }
+func (v *Visitor) Err() error             { return v.err }
+
+func (v *Visitor) Close() error {
+	v.m.Lock()
+	defer v.m.Unlock()
+	var outErr error
+	if v.out != nil {
+		outErr = v.out.Close()
+	}
+	var inputErr error
+	if c, ok := v.Input.(io.Closer); ok {
+		inputErr = c.Close()
+	}
+	return errorkit.Merge(outErr, inputErr)
+}
 
 var whitespaceChars = map[rune]struct{}{
 	' ':  {},
