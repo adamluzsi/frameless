@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/testcase/pp"
 )
 
 const ErrMalformed errorkit.Error = "malformed json error"
@@ -128,6 +129,7 @@ func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error 
 	if !pathMatches {
 		raw = discard
 	}
+	pp.PP(path, pathMatches)
 	returnErr := blk(raw)
 	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
 		return returnErr

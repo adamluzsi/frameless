@@ -436,6 +436,24 @@ func TestVisitor_smoke(t *testing.T) {
 		exp := []json.RawMessage{[]byte(`"The answer is"`), []byte("42"), []byte("true")}
 		assert.Equal(t, raws, exp)
 	})
+	t.Run("object", func(t *testing.T) {
+		t.Run("keys", func(t *testing.T) {
+			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
+			iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectKey})
+			raws, err := iterators.Collect[json.RawMessage](iter)
+			assert.NoError(t, err)
+			exp := []json.RawMessage{[]byte(`"foo"`), []byte(`"bar"`), []byte(`"baz"`)}
+			assert.Equal(t, raws, exp)
+		})
+		t.Run("values", func(t *testing.T) {
+			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
+			iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)}})
+			raws, err := iterators.Collect[json.RawMessage](iter)
+			assert.NoError(t, err)
+			exp := []json.RawMessage{[]byte(`1`)}
+			assert.Equal(t, raws, exp)
+		})
+	})
 }
 
 func toBufioReader(v any) *bufio.Reader {
