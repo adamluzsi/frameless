@@ -3,6 +3,7 @@ package jsontoken_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -203,7 +204,7 @@ var samples = map[string]string{
 	"double marshaled json":                                   mustMarshal[string](mustMarshal[string]("Hello, world!")),
 	"escaped quote in a string":                               `{"foo":"\\"}`,
 	"escape after an escaped escape sequence":                 `"\\\";alert('223');//"`,
-	"object with whitespaces":                                 `{ "foo" : {` + "\n\t" + `"bar" : { "baz" : 42 } } }`,
+	"object with whitespaces":                                 `{ "foo" : {` + "\n\t" + `"bar" : { "baz" : 42 } } , "qux": 24 }`,
 	"array with whitespaces":                                  `[ ` + "\n\t" + `"foo",` + "\n\t" + `42,` + "\n\t" + `true ]`,
 }
 
@@ -421,16 +422,17 @@ func Test_spike(t *testing.T) {
 }
 
 func TestVisitor_smoke(t *testing.T) {
+	ctx := context.Background()
 	t.Run("empty array", func(t *testing.T) {
 		in := toBufioReader(`[]`)
-		iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
+		iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
 		raws, err := iterators.Collect[json.RawMessage](iter)
 		assert.NoError(t, err)
 		assert.Empty(t, raws)
 	})
 	t.Run("populated array", func(t *testing.T) {
 		in := toBufioReader(`["The answer is", 42, true]`)
-		iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
+		iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
 		raws, err := iterators.Collect[json.RawMessage](iter)
 		assert.NoError(t, err)
 		exp := []json.RawMessage{[]byte(`"The answer is"`), []byte("42"), []byte("true")}
@@ -439,7 +441,7 @@ func TestVisitor_smoke(t *testing.T) {
 	t.Run("object", func(t *testing.T) {
 		t.Run("keys", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectKey})
+			iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectKey})
 			raws, err := iterators.Collect[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`"foo"`), []byte(`"bar"`), []byte(`"baz"`)}
@@ -447,7 +449,15 @@ func TestVisitor_smoke(t *testing.T) {
 		})
 		t.Run("values", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.CD(in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)}})
+			iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{}})
+			raws, err := iterators.Collect[json.RawMessage](iter)
+			assert.NoError(t, err)
+			exp := []json.RawMessage{[]byte(`1`), []byte(`2`), []byte(`3`)}
+			assert.Equal(t, raws, exp)
+		})
+		t.Run("value by key", func(t *testing.T) {
+			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
+			iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)}})
 			raws, err := iterators.Collect[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`)}

@@ -3,6 +3,7 @@ package jsontoken
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,12 +36,6 @@ var (
 )
 
 type Scanner struct {
-	On Do
-
-	Dispose bool
-}
-
-type Do struct {
 	Path Path
 	Func func(json.RawMessage) error
 }
@@ -125,17 +120,16 @@ func (s *Scanner) scan(in Input, out Output, path Path) error {
 
 func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error {
 	var raw Output = &bytes.Buffer{}
-	pathMatches := s.On.Path.Match(path)
+	pathMatches := s.Path.Match(path)
 	if !pathMatches {
 		raw = discard
 	}
-	pp.PP(path, pathMatches)
 	returnErr := blk(raw)
 	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
 		return returnErr
 	}
-	if pathMatches && s.On.Func != nil {
-		if err := s.On.Func(raw.Bytes()); err != nil {
+	if pathMatches && s.Func != nil {
+		if err := s.Func(raw.Bytes()); err != nil {
 			return err
 		}
 	}
@@ -347,49 +341,50 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 				return err
 			}
 
-			/* SCAN STRING KEY */
+			{ /* key-value pair */
 
-			var key bytes.Buffer
-			if err := s.scanString(in, &key, path.With(KindObjectKey)); err != nil {
-				return fmt.Errorf("(object key) %w", err)
-			}
+				/* SCAN STRING KEY */
+				var key bytes.Buffer
+				if err := s.scanString(in, &key, path.With(KindObjectKey)); err != nil {
+					return fmt.Errorf("(object key) %w", err)
+				}
+				pp.PP(s.Path, path)
+				// pp.PP(s.Path.Match(path))
+				// pp.PP(key.String())
 
-			if err := copyTo(&key, out); err != nil {
-				return err
-			}
+				if err := copyTo(&key, out); err != nil {
+					return err
+				}
 
-			if err := trimSpace(in, out); err != nil {
-				return err
-			}
+				if err := trimSpace(in, out); err != nil {
+					return err
+				}
 
-			/* SEPERATOR */
+				/* SEPERATOR */
+				sep, _, err := moveRune(in, out)
+				if err != nil {
+					return err
+				}
+				if sep != nameSepToken {
+					return s.malformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
+				}
+				if err := trimSpace(in, out); err != nil {
+					return err
+				}
 
-			sep, _, err := moveRune(in, out)
-			if err != nil {
-				return err
-			}
-			if sep != nameSepToken {
-				return s.malformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
-			}
-			if err := trimSpace(in, out); err != nil {
-				return err
-			}
-
-			/* SCAN OBJECT VALUE */
-
-			if err := s.scan(in, out, path.With(KindObjectValue{Key: key.Bytes()})); err != nil {
-				return err
-			}
-
-			if err := trimSpace(in, out); err != nil {
-				return err
+				/* SCAN OBJECT VALUE */
+				if err := s.scan(in, out, path.With(KindObjectValue{Key: key.Bytes()})); err != nil {
+					return err
+				}
+				if err := trimSpace(in, out); err != nil {
+					return err
+				}
 			}
 
 			next, _, err := moveRune(in, out)
 			if err != nil {
 				return err
 			}
-
 			switch next {
 			case objectCloseToken:
 				return nil
@@ -405,29 +400,33 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 func (s *Scanner) scanString(in Input, out Output, path Path) error {
 	path = path.With(KindString)
 	return s.with(out, path, func(out Output) error {
-		char, _, err := in.ReadRune()
+		if err := trimSpace(in, out); err != nil {
+			return err
+		}
+		var str bytes.Buffer
+		first, _, err := moveRune(in, &str)
 		if err != nil {
 			return err
 		}
-		if char != quoteToken {
-			return s.malformedF(`unexpected string starting token, expected quote but got "%c"`, char)
-		}
-		if _, err := out.WriteRune(char); err != nil {
-			return err
+		if first != quoteToken {
+			return s.malformedF(`unexpected string starting token, expected quote but got "%c"`, first)
 		}
 	scan:
 		for {
-			char, _, err := moveRune(in, out)
+			char, _, err := moveRune(in, &str)
 			if err != nil {
 				return err
 			}
 			if char == quoteToken {
 				// it is only enough to check if the string is fully found when we see a potential closing quote character.
 				// this way, we don't need to check the validity on each utf8 character.
-				if json.Valid(out.Bytes()) {
+				if json.Valid(str.Bytes()) {
 					break scan
 				}
 			}
+		}
+		if _, err := str.WriteTo(out); err != nil {
+			return err
 		}
 		return nil
 	})
@@ -465,16 +464,18 @@ func (s *Scanner) malformedErr(err error) error {
 	return s.malformedF("%w", err)
 }
 
-func CD(in Input, path Path) *Visitor {
+func CD(ctx context.Context, in Input, path Path) *Visitor {
 	return &Visitor{
-		Input: in,
-		Path:  path,
+		Context: ctx,
+		Input:   in,
+		Path:    path,
 	}
 }
 
 type Visitor struct {
-	Input Input
-	Path  Path
+	Context context.Context
+	Input   Input
+	Path    Path
 
 	init sync.Once
 
@@ -499,15 +500,12 @@ func (v *Visitor) Next() bool {
 			defer in.Close()
 			const breakScanning errorkit.Error = "break"
 			sc := Scanner{
-				Dispose: true,
-				On: Do{
-					Path: v.Path,
-					Func: func(rm json.RawMessage) error {
-						if in.Value(rm) {
-							return nil
-						}
-						return breakScanning
-					},
+				Path: v.Path,
+				Func: func(rm json.RawMessage) error {
+					if in.Value(rm) {
+						return nil
+					}
+					return breakScanning
 				},
 			}
 			_, err := sc.Scan(v.Input, nil)
@@ -517,6 +515,10 @@ func (v *Visitor) Next() bool {
 			in.Error(err)
 		}()
 	})
+
+	if v.Context.Err() != nil {
+		return false
+	}
 
 	v.m.RLock()
 	defer v.m.RUnlock()
@@ -573,6 +575,10 @@ var numberChars = map[rune]struct{}{
 
 type Path []Kind
 
+func (p Path) String() string {
+	return strings.Join(slicekit.Map(p, Kind.String), ".")
+}
+
 func (p Path) With(k Kind) Path {
 	return append(slicekit.Clone(p), k)
 }
@@ -585,7 +591,7 @@ func (p Path) Match(oth Path) bool {
 		return false
 	}
 	for i := 0; i < len(p); i++ {
-		if p[i] != oth[i] {
+		if !p[i].Equal(oth[i]) {
 			return false
 		}
 	}
@@ -637,6 +643,9 @@ func (k KindObjectValue) Equal(oth Kind) bool {
 	if !ok {
 		return false
 	}
+	if len(k.Key) == 0 {
+		return true
+	}
 	if len(k.Key) != len(other.Key) {
 		return false
 	}
@@ -649,7 +658,11 @@ func (k KindObjectValue) Equal(oth Kind) bool {
 }
 
 func (k KindObjectValue) String() string {
-	return fmt.Sprintf("object-value(key=%s)", k.Key)
+	var name = "object-value"
+	if len(k.Key) != 0 {
+		name = fmt.Sprintf("%s(key=%s)", name, string(k.Key))
+	}
+	return name
 }
 
 var _ = enum.Register[Kind](
