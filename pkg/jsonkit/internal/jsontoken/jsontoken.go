@@ -44,16 +44,6 @@ type Do struct {
 	Func func(json.RawMessage) error
 }
 
-func (do Do) Do(path Path, raw json.RawMessage) error {
-	if do.Func == nil {
-		return nil
-	}
-	if !do.Path.Match(path) {
-		return nil
-	}
-	return do.Func(raw)
-}
-
 func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
 	switch src := any(v).(type) {
 	case string:
@@ -72,8 +62,16 @@ type Input interface {
 	UnreadRune() error
 }
 
+type Output interface {
+	io.Writer
+	WriteTo(w io.Writer) (n int64, err error)
+	WriteRune(r rune) (n int, err error)
+	WriteByte(c byte) error
+	Bytes() []byte
+}
+
 func Scan(b *bufio.Reader) (json.RawMessage, error) {
-	var s = &Scanner{}
+	var s Scanner
 	return s.Scan(b, nil)
 }
 
@@ -95,49 +93,49 @@ func (s *Scanner) Scan(in Input, path Path) (json.RawMessage, error) {
 	return out.Bytes(), nil
 }
 
-func (s *Scanner) scan(in Input, out *bytes.Buffer, path Path) error {
-	return s.with(out, path, func(out *bytes.Buffer) error {
-		if in == nil {
-			return nil
-		}
-		if err := trimSpace(in, out); err != nil {
-			return err
-		}
-		char, _, err := peekRune(in)
-		if err != nil {
-			return err
-		}
-		switch kind := s.tokenStartKind(char); kind {
-		case KindNull:
-			return s.scanNull(in, out, path)
-		case KindBoolean:
-			return s.scanBoolean(in, out, path)
-		case KindString:
-			return s.scanString(in, out, path)
-		case KindNumber:
-			return s.scanNumber(in, out, path)
-		case KindArray:
-			return s.scanArray(in, out, path)
-		case KindObject:
-			return s.scanObject(in, out, path)
-		default:
-			return fmt.Errorf("not-implemented, unable how to handle %s kind", kind)
-		}
-	})
+func (s *Scanner) scan(in Input, out Output, path Path) error {
+	if in == nil {
+		return nil
+	}
+	if err := trimSpace(in, out); err != nil {
+		return err
+	}
+	char, _, err := peekRune(in)
+	if err != nil {
+		return err
+	}
+	switch kind := s.tokenStartKind(char); kind {
+	case KindNull:
+		return s.scanNull(in, out, path)
+	case KindBoolean:
+		return s.scanBoolean(in, out, path)
+	case KindString:
+		return s.scanString(in, out, path)
+	case KindNumber:
+		return s.scanNumber(in, out, path)
+	case KindArray:
+		return s.scanArray(in, out, path)
+	case KindObject:
+		return s.scanObject(in, out, path)
+	default:
+		return fmt.Errorf("not-implemented, unable how to handle %s kind", kind)
+	}
 }
 
-func (s *Scanner) with(out *bytes.Buffer, path Path, blk func(out *bytes.Buffer) error) error {
-	var raw bytes.Buffer
-	returnErr := blk(&raw)
+func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error {
+	var raw Output = &bytes.Buffer{}
+	pathMatches := s.On.Path.Match(path)
+	if !pathMatches {
+		raw = discard
+	}
+	returnErr := blk(raw)
 	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
 		return returnErr
 	}
-	if err := s.On.Do(path, raw.Bytes()); err != nil {
-		return err
-	}
-	if s.Dispose {
-		raw.Reset()
-		return returnErr
+	if pathMatches && s.On.Func != nil {
+		if err := s.On.Func(raw.Bytes()); err != nil {
+			return err
+		}
 	}
 	if _, err := raw.WriteTo(out); err != nil {
 		return err
@@ -156,7 +154,7 @@ func peekRune(in Input) (rune, int, error) {
 	return char, size, err
 }
 
-func moveRune(in Input, out *bytes.Buffer) (rune, int, error) {
+func moveRune(in Input, out Output) (rune, int, error) {
 	char, size, err := in.ReadRune()
 	if err != nil {
 		return char, size, err
@@ -168,7 +166,7 @@ func moveRune(in Input, out *bytes.Buffer) (rune, int, error) {
 }
 
 // copyTo will not exhaust the input buffer but retains its content.
-func copyTo(in, out *bytes.Buffer) error {
+func copyTo(in, out Output) error {
 	for _, c := range in.Bytes() {
 		if err := out.WriteByte(c); err != nil {
 			return err
@@ -177,7 +175,7 @@ func copyTo(in, out *bytes.Buffer) error {
 	return nil
 }
 
-func trimSpace(in Input, out *bytes.Buffer) error {
+func trimSpace(in Input, out Output) error {
 	for {
 		char, _, err := in.ReadRune()
 		if err != nil {
@@ -190,9 +188,9 @@ func trimSpace(in Input, out *bytes.Buffer) error {
 	}
 }
 
-func (s *Scanner) scanNumber(in Input, out *bytes.Buffer, path Path) error {
+func (s *Scanner) scanNumber(in Input, out Output, path Path) error {
 	path = path.With(KindNumber)
-	return s.with(out, path, func(out *bytes.Buffer) error {
+	return s.with(out, path, func(out Output) error {
 	scan:
 		for {
 			digit, _, err := in.ReadRune()
@@ -215,12 +213,12 @@ func (s *Scanner) scanNumber(in Input, out *bytes.Buffer, path Path) error {
 	})
 }
 
-func (s *Scanner) scanNull(in Input, out *bytes.Buffer, path Path) error {
+func (s *Scanner) scanNull(in Input, out Output, path Path) error {
 	return s.scanToken(in, out, path.With(KindNull), nullToken)
 }
 
-func (s *Scanner) scanToken(in Input, out *bytes.Buffer, path Path, token []rune) error {
-	return s.with(out, path, func(out *bytes.Buffer) error {
+func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error {
+	return s.with(out, path, func(out Output) error {
 		for i := 0; i < len(token); i++ {
 			char, _, err := in.ReadRune()
 			if err != nil {
@@ -237,7 +235,7 @@ func (s *Scanner) scanToken(in Input, out *bytes.Buffer, path Path, token []rune
 	})
 }
 
-func (s *Scanner) scanBoolean(in Input, out *bytes.Buffer, path Path) error {
+func (s *Scanner) scanBoolean(in Input, out Output, path Path) error {
 	path = path.With(KindBoolean)
 	if err := trimSpace(in, out); err != nil {
 		return err
@@ -256,9 +254,9 @@ func (s *Scanner) scanBoolean(in Input, out *bytes.Buffer, path Path) error {
 	}
 }
 
-func (s *Scanner) scanArray(in Input, out *bytes.Buffer, path Path) error {
+func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 	path = path.With(KindArray)
-	return s.with(out, path, func(out *bytes.Buffer) error {
+	return s.with(out, path, func(out Output) error {
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
@@ -312,9 +310,9 @@ func (s *Scanner) scanArray(in Input, out *bytes.Buffer, path Path) error {
 	})
 }
 
-func (s *Scanner) scanObject(in Input, out *bytes.Buffer, path Path) error {
+func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 	path = path.With(KindObject)
-	return s.with(out, path, func(out *bytes.Buffer) error {
+	return s.with(out, path, func(out Output) error {
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
@@ -362,7 +360,8 @@ func (s *Scanner) scanObject(in Input, out *bytes.Buffer, path Path) error {
 				return err
 			}
 
-			// read value sep
+			/* SEPERATOR */
+
 			sep, _, err := moveRune(in, out)
 			if err != nil {
 				return err
@@ -370,7 +369,6 @@ func (s *Scanner) scanObject(in Input, out *bytes.Buffer, path Path) error {
 			if sep != nameSepToken {
 				return s.malformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
 			}
-
 			if err := trimSpace(in, out); err != nil {
 				return err
 			}
@@ -402,9 +400,9 @@ func (s *Scanner) scanObject(in Input, out *bytes.Buffer, path Path) error {
 	})
 }
 
-func (s *Scanner) scanString(in Input, out *bytes.Buffer, path Path) error {
+func (s *Scanner) scanString(in Input, out Output, path Path) error {
 	path = path.With(KindString)
-	return s.with(out, path, func(out *bytes.Buffer) error {
+	return s.with(out, path, func(out Output) error {
 		char, _, err := in.ReadRune()
 		if err != nil {
 			return err
@@ -578,10 +576,10 @@ func (p Path) With(k Kind) Path {
 }
 
 func (p Path) Match(oth Path) bool {
-	if p == nil && oth == nil {
+	if len(p) == 0 {
 		return true
 	}
-	if len(p) != len(oth) {
+	if len(oth) < len(p) {
 		return false
 	}
 	for i := 0; i < len(p); i++ {
@@ -738,4 +736,28 @@ func (i *ArrayIterator) Next() bool {
 
 func (i *ArrayIterator) Value() json.RawMessage {
 	return i.raw
+}
+
+var discard = &nullOutput{}
+
+type nullOutput struct{}
+
+func (*nullOutput) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+
+func (*nullOutput) WriteTo(w io.Writer) (n int64, err error) {
+	return 0, nil
+}
+
+func (*nullOutput) WriteRune(r rune) (n int, err error) {
+	return len([]byte(string(r))), nil
+}
+
+func (*nullOutput) WriteByte(c byte) error {
+	return nil
+}
+
+func (*nullOutput) Bytes() []byte {
+	return []byte{}
 }
