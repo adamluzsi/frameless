@@ -10,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/jsonkit/internal/jsontoken"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
@@ -479,4 +481,109 @@ func toBufioReader(v any) *bufio.Reader {
 		panic(fmt.Errorf("not implemented input type: %T", v))
 	}
 	return bufio.NewReader(r)
+}
+
+func TestPath_Match(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		path = testcase.Let[jsontoken.Path](s, nil)
+		oth  = testcase.Let[jsontoken.Path](s, nil)
+	)
+	act := func(t *testcase.T) bool {
+		return path.Get(t).Match(oth.Get(t))
+	}
+
+	thenItShouldMatch := func(s *testcase.Spec) {
+		s.Then("it should match", func(t *testcase.T) {
+			assert.True(t, act(t))
+		})
+	}
+
+	thenItShouldNotMatch := func(s *testcase.Spec) {
+		s.Then("it should not match", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	}
+
+	randomKind := func(t *testcase.T) jsontoken.Kind {
+		return random.Pick(t.Random, enum.Values[jsontoken.Kind]()...)
+	}
+
+	s.When("path is empty", func(s *testcase.Spec) {
+		path.Let(s, func(t *testcase.T) jsontoken.Path {
+			if t.Random.Bool() {
+				return jsontoken.Path{}
+			}
+			return nil
+		})
+
+		s.And("the other path is also empty", func(s *testcase.Spec) {
+			oth.Let(s, func(t *testcase.T) jsontoken.Path {
+				if t.Random.Bool() {
+					return jsontoken.Path{}
+				}
+				return nil
+			})
+
+			thenItShouldMatch(s)
+		})
+
+		s.And("the other path can be whatever", func(s *testcase.Spec) {
+			oth.Let(s, func(t *testcase.T) jsontoken.Path {
+				return random.Pick(t.Random,
+					jsontoken.Path{},
+					jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue, jsontoken.KindString},
+					jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectKey, jsontoken.KindString},
+					jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{}, jsontoken.KindNumber},
+				)
+			})
+
+			thenItShouldMatch(s)
+		})
+	})
+
+	s.When("path is populated", func(s *testcase.Spec) {
+		path.Let(s, func(t *testcase.T) jsontoken.Path {
+			var p jsontoken.Path
+			t.Random.Repeat(1, 5, func() {
+				p = append(p, randomKind(t))
+			})
+			return p
+		})
+
+		s.And("the other path match 1:1 with the path", func(s *testcase.Spec) {
+			oth.Let(s, func(t *testcase.T) jsontoken.Path {
+				return path.Get(t)
+			})
+
+			thenItShouldMatch(s)
+		})
+
+		s.And("the other path is not matching", func(s *testcase.Spec) {
+			oth.Let(s, func(t *testcase.T) jsontoken.Path {
+				p := slicekit.Clone(path.Get(t))
+				t.Log("given the oth path's last value is different from the original")
+				// change the last value to something else
+				lastIndex := len(p) - 1
+				p[lastIndex] = random.Unique(func() jsontoken.Kind {
+					return randomKind(t)
+				}, p[lastIndex])
+				assert.NotEqual(t, p[lastIndex], path.Get(t)[lastIndex])
+				return p
+			})
+
+			thenItShouldNotMatch(s)
+		})
+
+		s.And("the other path contains it, and even extends it with furter elements", func(s *testcase.Spec) {
+			oth.Let(s, func(t *testcase.T) jsontoken.Path {
+				p := slicekit.Clone(path.Get(t))
+				p = append(p, randomKind(t))
+				return p
+			})
+
+			thenItShouldMatch(s)
+		})
+	})
 }
