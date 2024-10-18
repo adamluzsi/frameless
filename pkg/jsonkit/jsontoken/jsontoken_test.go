@@ -14,7 +14,6 @@ import (
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
-	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -297,32 +296,6 @@ func TestScan_smoke(t *testing.T) {
 	}
 }
 
-// TESTCASE_SEED=6732658887460415217 go test -failfast -run TestIterateArray
-func TestIterateArray(t *testing.T) {
-	tc := testcase.NewT(t)
-	var exp []testent.Foo
-
-	tc.Random.Repeat(3, 7, func() {
-		exp = append(exp, testent.MakeFoo(tc))
-	})
-
-	data, err := json.Marshal(exp)
-	assert.NoError(t, err)
-
-	iter := jsontoken.IterateArray(bytes.NewReader(data))
-	raws, err := iterators.Collect[json.RawMessage](iter)
-	assert.NoError(t, err)
-
-	assert.Equal(t, len(exp), len(raws))
-
-	for i, v := range exp {
-		t.Logf("%d/%d", i+1, len(exp))
-		bs, err := json.Marshal(v)
-		assert.NoError(t, err)
-		assert.Equal(t, bs, raws[i])
-	}
-}
-
 func FuzzScanner(f *testing.F) {
 	for _, sample := range samples {
 		f.Add(sample)
@@ -421,7 +394,16 @@ const ExampleComplexJSON = `{
   ]
 }`
 
-func BenchmarkScan(b *testing.B) {
+func Benchmark_arrayScan(b *testing.B) {
+	const n = 100
+	var exp []json.RawMessage
+	for i := 0; i < n; i++ {
+		exp = append(exp, json.RawMessage(ExampleComplexJSON))
+	}
+
+	input, err := json.Marshal(exp)
+	assert.NoError(b, err)
+
 	/*
 		$ go test -run x -bench .
 		BenchmarkScan/scan_with_json.Valid-16         	     330	   3381088 ns/op
@@ -446,24 +428,56 @@ func BenchmarkScan(b *testing.B) {
 
 	b.Run("scan with json.Valid", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			got, err := jsonValidScan([]byte(ExampleComplexJSON))
+			got, err := jsonValidScan(input)
 			assert.NoError(b, err)
-			assert.Equal(b, got, []byte(ExampleComplexJSON))
+			assert.Equal(b, got, input)
 		}
 	})
 
 	b.Run("jsontoken.Scan", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			b.StopTimer()
-			buf := bufio.NewReader(strings.NewReader(ExampleComplexJSON))
+			buf := bufio.NewReader(bytes.NewReader(input))
 			b.StartTimer()
 
 			got, err := jsontoken.Scan(buf)
 			assert.NoError(b, err)
-			assert.Equal(b, got, []byte(ExampleComplexJSON))
+			assert.Equal(b, got, input)
+
+			b.StopTimer()
+			assert.Equal(b, input, got)
+			b.StartTimer()
 		}
 	})
 
+	b.Run("json.Decoder", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			dec := json.NewDecoder(bytes.NewReader(input))
+			b.StartTimer()
+
+			// read open bracket
+			_, err := dec.Token()
+			assert.NoError(b, err)
+
+			var got []json.RawMessage
+			// while the array contains values
+			for dec.More() {
+				var m json.RawMessage
+				assert.NoError(b, dec.Decode(&m))
+				got = append(got, m)
+			}
+
+			// read closing bracket
+			_, err = dec.Token()
+			assert.NoError(b, err)
+
+			b.StopTimer()
+			assert.Equal(b, len(exp), len(got))
+			b.StartTimer()
+		}
+
+	})
 }
 
 func ExampleQuery() {
@@ -497,22 +511,32 @@ func ExampleQuery_withForEach() {
 	}
 }
 
-func TestQuery_smoke(t *testing.T) {
+func TestQuery(t *testing.T) {
 	ctx := context.Background()
-	t.Run("empty array", func(t *testing.T) {
-		in := toBufioReader(`[]`)
-		iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-		raws, err := iterators.Collect[json.RawMessage](iter)
-		assert.NoError(t, err)
-		assert.Empty(t, raws)
-	})
-	t.Run("populated array", func(t *testing.T) {
-		in := toBufioReader(`["The answer is", 42, true]`)
-		iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-		raws, err := iterators.Collect[json.RawMessage](iter)
-		assert.NoError(t, err)
-		exp := []json.RawMessage{[]byte(`"The answer is"`), []byte("42"), []byte("true")}
-		assert.Equal(t, raws, exp)
+	t.Run("array", func(t *testing.T) {
+		t.Run("empty", func(t *testing.T) {
+			in := toBufioReader(`[]`)
+			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
+			raws, err := iterators.Collect[json.RawMessage](iter)
+			assert.NoError(t, err)
+			assert.Empty(t, raws)
+		})
+		t.Run("populated", func(t *testing.T) {
+			in := toBufioReader(`["The answer is", 42, true]`)
+			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
+			raws, err := iterators.Collect[json.RawMessage](iter)
+			assert.NoError(t, err)
+			exp := []json.RawMessage{[]byte(`"The answer is"`), []byte("42"), []byte("true")}
+			assert.Equal(t, raws, exp)
+		})
+		t.Run("path-mismatch", func(t *testing.T) {
+			t.Log("when array kind is expected, but non array kind found")
+			in := toBufioReader(`{"foo":"bar"}`)
+			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
+			raws, err := iterators.Collect[json.RawMessage](iter)
+			assert.NoError(t, err)
+			assert.Empty(t, raws)
+		})
 	})
 	t.Run("object", func(t *testing.T) {
 		t.Run("keys", func(t *testing.T) {

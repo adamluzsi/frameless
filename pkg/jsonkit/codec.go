@@ -1,14 +1,13 @@
 package jsonkit
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/port/codec"
 )
 
@@ -110,12 +109,14 @@ func (c *jsonListEncoder) beginList() error {
 type jsonListDecoder struct {
 	R io.ReadCloser
 
-	br *bufio.Reader
+	dec *json.Decoder
 
 	inList bool
-	err    error
-	done   bool
-	data   []byte
+
+	err  error
+	done bool
+
+	data []byte
 }
 
 func (c *jsonListDecoder) Next() bool {
@@ -125,77 +126,55 @@ func (c *jsonListDecoder) Next() bool {
 	if c.err != nil {
 		return false
 	}
+	if c.dec == nil {
+		c.dec = json.NewDecoder(c.R)
+	}
 	if !c.inList {
-		char, err := c.readRune()
+		tkn, err := c.dec.Token()
 		if err != nil {
 			c.err = err
 			return false
 		}
-		if char != '[' {
-			c.err = fmt.Errorf("unexpected character, got %s, but expected %s", string(char), "[")
+		delim, ok := tkn.(json.Delim)
+		if !ok {
+			c.err = jsontoken.ErrMalformedF("unexpecte json token: %v", tkn)
+			return false
+		}
+		if delim != '[' {
+			c.err = jsontoken.ErrMalformedF(`unexpecte json token delimiter, expected "%c" but got "%s"`, '[', delim)
 			return false
 		}
 		c.inList = true
 	}
 
-	data, ok := c.prepareForNextListItem()
-	if !ok {
-		return false
-	}
-
-	for !json.Valid(data) {
-		char, err := c.readRune()
-		if errors.Is(err, io.EOF) {
-			break
-		}
+	if !c.dec.More() {
+		tkn, err := c.dec.Token()
 		if err != nil {
 			c.err = err
+		}
+
+		delim, ok := tkn.(json.Delim)
+		if !ok {
+			c.err = jsontoken.ErrMalformedF("unexpecte json token: %v", tkn)
 			return false
 		}
-		data = append(data, []byte(string(char))...)
-	}
+		if delim != ']' {
+			c.err = jsontoken.ErrMalformedF(`unexpecte json token delimiter, expected "%c" but got "%s"`, ']', delim)
+			return false
+		}
 
-	if !json.Valid(data) {
-		c.err = fmt.Errorf("invalid json received: %s", string(data))
+		c.done = true
 		return false
 	}
 
-	c.data = data
-	return true
-}
-
-func (c *jsonListDecoder) prepareForNextListItem() ([]byte, bool) {
-	var data []byte
-	char, err := c.readRune()
-	if errors.Is(err, io.EOF) {
-		return data, false
-	}
-	if err != nil {
+	var raw json.RawMessage
+	if err := c.dec.Decode(&raw); err != nil {
 		c.err = err
-		return data, false
+		return false
 	}
-	if c.inList {
-		if char == ']' { // we are done
-			c.done = true
-			return data, false
-		}
-		if char != ',' {
-			data = append(data, []byte(string(char))...)
-		}
-	}
-	return data, true
-}
 
-func (c *jsonListDecoder) readRune() (rune, error) {
-	rn, _, err := c.reader().ReadRune()
-	return rn, err
-}
-
-func (c *jsonListDecoder) reader() *bufio.Reader {
-	if c.br == nil {
-		c.br = bufio.NewReader(c.R)
-	}
-	return c.br
+	c.data = raw
+	return true
 }
 
 func (c *jsonListDecoder) Err() error {

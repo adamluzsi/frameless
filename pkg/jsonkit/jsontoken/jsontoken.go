@@ -76,10 +76,11 @@ type noDiscard interface {
 
 func Scan(in Input) (json.RawMessage, error) {
 	var s Scanner
-	return s.Scan(in, nil)
+	return s.Scan(in)
 }
 
-func (s *Scanner) Scan(in Input, path Path) (json.RawMessage, error) {
+func (s *Scanner) Scan(in Input) (json.RawMessage, error) {
+	var path Path
 	var out bytes.Buffer
 	err := s.scan(in, &out, path)
 	if err == io.EOF {
@@ -91,7 +92,7 @@ func (s *Scanner) Scan(in Input, path Path) (json.RawMessage, error) {
 	if err != nil {
 		return nil, s.malformedErr(err)
 	}
-	if !json.Valid(out.Bytes()) {
+	if s.Path.Match(path) && !json.Valid(out.Bytes()) {
 		return nil, ErrMalformed
 	}
 	return out.Bytes(), nil
@@ -228,10 +229,10 @@ func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error
 		for i := 0; i < len(token); i++ {
 			char, _, err := in.ReadRune()
 			if err != nil {
-				return s.malformedF("error while parsing %q token: %w", string(token), err)
+				return ErrMalformedF("error while parsing %q token: %w", string(token), err)
 			}
 			if char != token[i] {
-				return s.malformedF(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i])
+				return ErrMalformedF(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i])
 			}
 			if _, err := out.WriteRune(char); err != nil {
 				return err
@@ -256,7 +257,7 @@ func (s *Scanner) scanBoolean(in Input, out Output, path Path) error {
 	case 'f':
 		return s.scanToken(in, out, path, falseToken)
 	default:
-		return s.malformedF("unexpected boolean first character: %c", char)
+		return ErrMalformedF("unexpected boolean first character: %c", char)
 	}
 }
 
@@ -271,7 +272,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 			return err
 		}
 		if char != arrayOpenToken {
-			return s.malformedF(`unexpected array open token, expected "[" but got %c`, char)
+			return ErrMalformedF(`unexpected array open token, expected "[" but got %c`, char)
 		}
 
 		nextChar, _, err := peekRune(in)
@@ -309,7 +310,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 			case arrayCloseToken:
 				break scanValues
 			default:
-				return s.malformedF("unexpected array token: %c", next)
+				return ErrMalformedF("unexpected array token: %c", next)
 			}
 		}
 		return nil
@@ -329,7 +330,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 		}
 
 		if firstChar != objectOpenToken { // '{'
-			return s.malformedF(`unexpected object open token, expected "{" but got %c`, firstChar)
+			return ErrMalformedF(`unexpected object open token, expected "{" but got %c`, firstChar)
 		}
 
 		if err := trimSpace(in, out); err != nil {
@@ -376,7 +377,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 					return err
 				}
 				if sep != nameSepToken {
-					return s.malformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
+					return ErrMalformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
 				}
 				if err := trimSpace(in, out); err != nil {
 					return err
@@ -401,7 +402,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 			case valueSepToken:
 				continue scan
 			default:
-				return s.malformedF(`unexpected character in object, expected either "," or "}", but got "%c"`, next)
+				return ErrMalformedF(`unexpected character in object, expected either "," or "}", but got "%c"`, next)
 			}
 		}
 	})
@@ -419,7 +420,7 @@ func (s *Scanner) scanString(in Input, out Output, path Path) error {
 			return err
 		}
 		if first != quoteToken {
-			return s.malformedF(`unexpected string starting token, expected quote but got "%c"`, first)
+			return ErrMalformedF(`unexpected string starting token, expected quote but got "%c"`, first)
 		}
 	scan:
 		for {
@@ -464,14 +465,14 @@ func (s *Scanner) tokenStartKind(char rune) Kind {
 	return nilKind
 }
 
-func (s *Scanner) malformedF(format string, a ...any) error {
+func ErrMalformedF(format string, a ...any) error {
 	args := []any{ErrMalformed}
 	args = append(args, a...)
 	return fmt.Errorf("[%w] "+format, args...)
 }
 
 func (s *Scanner) malformedErr(err error) error {
-	return s.malformedF("%w", err)
+	return ErrMalformedF("%w", err)
 }
 
 // Query will turn the input reader into a json visitor that yields results when a path is matching.
@@ -484,37 +485,30 @@ func Query(ctx context.Context, r io.Reader, path ...Kind) iterators.Iterator[js
 	} else {
 		in = bufio.NewReader(r)
 	}
-	return &Visitor{
+	return &visitor{
 		Context: ctx,
 		Input:   in,
 		Path:    path,
 	}
 }
 
-type Visitor struct {
+type visitor struct {
 	Context context.Context
 	Input   Input
 	Path    Path
 
-	init sync.Once
+	oninit sync.Once
 
-	m   sync.RWMutex
 	out *iterators.PipeOut[json.RawMessage]
 
 	raw json.RawMessage
-	err error
 }
 
-func (v *Visitor) Next() bool {
-	if v.err != nil {
-		return false
-	}
-
-	v.init.Do(func() {
-		v.m.Lock()
-		defer v.m.Unlock()
+func (v *visitor) init() {
+	v.oninit.Do(func() {
 		in, out := iterators.PipeWithContext[json.RawMessage](v.Context)
 		v.out = out
+
 		go func() {
 			defer in.Close()
 			const breakScanning errorkit.Error = "break"
@@ -527,20 +521,17 @@ func (v *Visitor) Next() bool {
 					return breakScanning
 				},
 			}
-			_, err := sc.Scan(v.Input, nil)
+			_, err := sc.Scan(v.Input)
 			if errors.Is(err, breakScanning) {
 				return
 			}
 			in.Error(err)
 		}()
 	})
+}
 
-	if v.Context.Err() != nil {
-		return false
-	}
-
-	v.m.RLock()
-	defer v.m.RUnlock()
+func (v *visitor) Next() bool {
+	v.init()
 	if v.out.Next() {
 		v.raw = v.out.Value()
 		return true
@@ -548,12 +539,17 @@ func (v *Visitor) Next() bool {
 	return false
 }
 
-func (v *Visitor) Value() json.RawMessage { return v.raw }
-func (v *Visitor) Err() error             { return v.err }
+func (v *visitor) Value() json.RawMessage {
+	return v.raw
+}
 
-func (v *Visitor) Close() error {
-	v.m.Lock()
-	defer v.m.Unlock()
+func (v *visitor) Err() error {
+	v.init()
+	return v.out.Err()
+}
+
+func (v *visitor) Close() error {
+	v.init()
 	var outErr error
 	if v.out != nil {
 		outErr = v.out.Close()
@@ -602,6 +598,7 @@ func (p Path) With(k Kind) Path {
 	return append(slicekit.Clone(p), k)
 }
 
+// Match check if the other path matches the
 func (p Path) Match(oth Path) bool {
 	if len(p) == 0 {
 		return true
@@ -693,84 +690,6 @@ var _ = enum.Register[Kind](
 	KindBoolean,
 	KindNull,
 )
-
-func IterateArray(r io.Reader) *ArrayIterator {
-	return &ArrayIterator{I: r}
-}
-
-type ArrayIterator struct {
-	I io.Reader
-
-	buf *bufio.Reader
-	err error
-	raw json.RawMessage
-
-	in bool
-	dn bool
-}
-
-func (i *ArrayIterator) Close() error {
-	if c, ok := i.I.(io.Closer); ok {
-		return c.Close()
-	}
-	return nil
-}
-
-func (i *ArrayIterator) Err() error {
-	return i.err
-}
-
-func (i *ArrayIterator) Next() bool {
-	if i.err != nil {
-		return false
-	}
-	if i.dn {
-		return false
-	}
-	if i.buf == nil {
-		i.buf = bufio.NewReader(i.I)
-	}
-	if err := trimSpace(i.buf, &bytes.Buffer{}); err != nil {
-		i.err = err
-		return false
-	}
-	char, _, err := i.buf.ReadRune()
-	if err != nil {
-		i.err = err
-		return false
-	}
-	switch char {
-	case '[':
-		if i.in {
-			i.err = fmt.Errorf("%w: unexpected %c character expected [", ErrMalformed, char)
-			return false
-		}
-		i.in = true
-
-	case ',': // has more
-		break
-
-	case ']':
-		i.dn = true
-		return false
-
-	default:
-		i.err = fmt.Errorf(`%w: unexpected %c character expected one of: "[" / "]" / ","`, ErrMalformed, char)
-		return false
-	}
-
-	i.raw, err = Scan(i.buf)
-	if err != nil {
-		i.err = err
-		return false
-	}
-
-	return true
-}
-
-func (i *ArrayIterator) Value() json.RawMessage {
-	return i.raw
-}
 
 var discard = &nullOutput{}
 
