@@ -15,7 +15,6 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
-	"go.llib.dev/testcase/pp"
 )
 
 const ErrMalformed errorkit.Error = "malformed json error"
@@ -38,6 +37,8 @@ var (
 type Scanner struct {
 	Path Path
 	Func func(json.RawMessage) error
+
+	noDiscard bool
 }
 
 func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
@@ -121,7 +122,7 @@ func (s *Scanner) scan(in Input, out Output, path Path) error {
 func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error {
 	var raw Output = &bytes.Buffer{}
 	pathMatches := s.Path.Match(path)
-	if !pathMatches {
+	if !pathMatches && !s.noDiscard {
 		raw = discard
 	}
 	returnErr := blk(raw)
@@ -344,8 +345,14 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 			{ /* key-value pair */
 
 				/* SCAN STRING KEY */
+
+				// we need to make sure that the object key is retrieved
+				// and not discarded from the output writing.
+				s.noDiscard = true
 				var key bytes.Buffer
-				if err := s.scanString(in, &key, path.With(KindObjectKey)); err != nil {
+				err := s.scanString(in, &key, path.With(KindObjectKey))
+				s.noDiscard = false
+				if err != nil {
 					return fmt.Errorf("(object key) %w", err)
 				}
 
@@ -356,9 +363,6 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 				if err := trimSpace(in, out); err != nil {
 					return err
 				}
-
-				pp.PP(s.Path, path)
-				pp.PP(s.Path.Match(path))
 
 				/* SEPERATOR */
 				sep, _, err := moveRune(in, out)
@@ -588,7 +592,6 @@ func (p Path) Match(oth Path) bool {
 		return true
 	}
 	if len(oth) < len(p) {
-		pp.PP("len(oth) < len(p)", len(oth), len(p))
 		return false
 	}
 	for i := 0; i < len(p); i++ {
