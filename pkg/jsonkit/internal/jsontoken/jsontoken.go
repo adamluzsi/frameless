@@ -764,29 +764,17 @@ var discard = &nullOutput{}
 
 type nullOutput struct{}
 
-func (*nullOutput) Write(p []byte) (n int, err error) {
-	return len(p), nil
-}
-
-func (*nullOutput) WriteTo(w io.Writer) (n int64, err error) {
-	return 0, nil
-}
-
-func (*nullOutput) WriteRune(r rune) (n int, err error) {
-	return len([]byte(string(r))), nil
-}
-
-func (*nullOutput) WriteByte(c byte) error {
-	return nil
-}
-
-func (*nullOutput) Bytes() []byte {
-	return []byte{}
-}
+func (*nullOutput) Write(p []byte) (n int, err error)        { return len(p), nil }
+func (*nullOutput) WriteTo(w io.Writer) (n int64, err error) { return 0, nil }
+func (*nullOutput) WriteRune(r rune) (n int, err error)      { return len([]byte(string(r))), nil }
+func (*nullOutput) WriteByte(c byte) error                   { return nil }
+func (*nullOutput) Bytes() []byte                            { return []byte{} }
 
 var _ noDiscard = objectKeyBuffer{}
 
 type objectKeyBuffer struct {
 	bytes.Buffer
+	// Due to the requirements for matching the JSON object value path,
+	// we need to temporarily store the key value in memory to construct the JSON selector path.
 	noDiscard
 }
