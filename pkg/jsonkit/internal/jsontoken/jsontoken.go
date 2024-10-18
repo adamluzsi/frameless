@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/testcase/pp"
 )
 
 const ErrMalformed errorkit.Error = "malformed json error"
@@ -356,6 +357,9 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 					return err
 				}
 
+				pp.PP(s.Path, path)
+				pp.PP(s.Path.Match(path))
+
 				/* SEPERATOR */
 				sep, _, err := moveRune(in, out)
 				if err != nil {
@@ -490,7 +494,7 @@ func (v *Visitor) Next() bool {
 	v.init.Do(func() {
 		v.m.Lock()
 		defer v.m.Unlock()
-		in, out := iterators.Pipe[json.RawMessage]()
+		in, out := iterators.PipeWithContext[json.RawMessage](v.Context)
 		v.out = out
 		go func() {
 			defer in.Close()
@@ -584,6 +588,7 @@ func (p Path) Match(oth Path) bool {
 		return true
 	}
 	if len(oth) < len(p) {
+		pp.PP("len(oth) < len(p)", len(oth), len(p))
 		return false
 	}
 	for i := 0; i < len(p); i++ {
