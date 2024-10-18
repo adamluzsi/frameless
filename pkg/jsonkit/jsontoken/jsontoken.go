@@ -39,6 +39,7 @@ type Scanner struct {
 	Func func(json.RawMessage) error
 }
 
+// ScanFrom is a syntax sugar to use Scan with string and byte slices
 func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
 	switch src := any(v).(type) {
 	case string:
@@ -52,10 +53,14 @@ func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
 	}
 }
 
+var _ Input = (*bufio.Reader)(nil)
+
 type Input interface {
 	ReadRune() (r rune, size int, err error)
 	UnreadRune() error
 }
+
+var _ Output = (*bytes.Buffer)(nil)
 
 type Output interface {
 	io.Writer
@@ -69,9 +74,9 @@ type noDiscard interface {
 	NoDiscard()
 }
 
-func Scan(b *bufio.Reader) (json.RawMessage, error) {
+func Scan(in Input) (json.RawMessage, error) {
 	var s Scanner
-	return s.Scan(b, nil)
+	return s.Scan(in, nil)
 }
 
 func (s *Scanner) Scan(in Input, path Path) (json.RawMessage, error) {
@@ -469,7 +474,16 @@ func (s *Scanner) malformedErr(err error) error {
 	return s.malformedF("%w", err)
 }
 
-func CD(ctx context.Context, in Input, path Path) *Visitor {
+// Query will turn the input reader into a json visitor that yields results when a path is matching.
+// Think about it something similar as jq.
+// It will not keep the visited json i n memory, to avoid problems with infinite streams.
+func Query(ctx context.Context, r io.Reader, path ...Kind) iterators.Iterator[json.RawMessage] {
+	var in Input
+	if input, ok := r.(Input); ok {
+		in = input
+	} else {
+		in = bufio.NewReader(r)
+	}
 	return &Visitor{
 		Context: ctx,
 		Input:   in,

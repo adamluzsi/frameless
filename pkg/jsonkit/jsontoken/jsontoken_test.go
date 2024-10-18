@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/enum"
-	"go.llib.dev/frameless/pkg/jsonkit/internal/jsontoken"
+	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -19,6 +19,8 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
+
+var rnd = random.New(random.CryptoSeed{})
 
 func TestScanner(t *testing.T) {
 	t.Run("AddString", func(t *testing.T) {
@@ -464,18 +466,49 @@ func BenchmarkScan(b *testing.B) {
 
 }
 
-func TestVisitor_smoke(t *testing.T) {
+func ExampleQuery() {
+	var ctx context.Context
+	var body io.Reader
+
+	result := jsontoken.Query(ctx, body, jsontoken.KindArray, jsontoken.KindArrayValue)
+	defer result.Close()
+
+	for result.Next() {
+		rawJSON := result.Value()
+
+		fmt.Println(string(rawJSON))
+	}
+	if err := result.Err(); err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
+func ExampleQuery_withForEach() {
+	var ctx context.Context
+	var body io.Reader
+
+	err := iterators.ForEach(jsontoken.Query(ctx, body, jsontoken.KindArray, jsontoken.KindArrayValue),
+		func(raw json.RawMessage) error {
+			return nil
+		})
+
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+}
+
+func TestQuery_smoke(t *testing.T) {
 	ctx := context.Background()
 	t.Run("empty array", func(t *testing.T) {
 		in := toBufioReader(`[]`)
-		iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
+		iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
 		raws, err := iterators.Collect[json.RawMessage](iter)
 		assert.NoError(t, err)
 		assert.Empty(t, raws)
 	})
 	t.Run("populated array", func(t *testing.T) {
 		in := toBufioReader(`["The answer is", 42, true]`)
-		iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue})
+		iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
 		raws, err := iterators.Collect[json.RawMessage](iter)
 		assert.NoError(t, err)
 		exp := []json.RawMessage{[]byte(`"The answer is"`), []byte("42"), []byte("true")}
@@ -484,7 +517,7 @@ func TestVisitor_smoke(t *testing.T) {
 	t.Run("object", func(t *testing.T) {
 		t.Run("keys", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectKey})
+			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectKey)
 			raws, err := iterators.Collect[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`"foo"`), []byte(`"bar"`), []byte(`"baz"`)}
@@ -492,7 +525,7 @@ func TestVisitor_smoke(t *testing.T) {
 		})
 		t.Run("values", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{}})
+			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectValue{})
 			raws, err := iterators.Collect[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`), []byte(`2`), []byte(`3`)}
@@ -500,7 +533,7 @@ func TestVisitor_smoke(t *testing.T) {
 		})
 		t.Run("value by key", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.CD(ctx, in, jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)}})
+			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)})
 			raws, err := iterators.Collect[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`)}
