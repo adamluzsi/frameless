@@ -15,7 +15,6 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
-	"go.llib.dev/testcase/pp"
 )
 
 const ErrMalformed errorkit.Error = "malformed json error"
@@ -348,9 +347,6 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 				if err := s.scanString(in, &key, path.With(KindObjectKey)); err != nil {
 					return fmt.Errorf("(object key) %w", err)
 				}
-				pp.PP(s.Path, path)
-				// pp.PP(s.Path.Match(path))
-				// pp.PP(key.String())
 
 				if err := copyTo(&key, out); err != nil {
 					return err
