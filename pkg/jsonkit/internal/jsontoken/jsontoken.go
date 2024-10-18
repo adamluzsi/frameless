@@ -37,8 +37,6 @@ var (
 type Scanner struct {
 	Path Path
 	Func func(json.RawMessage) error
-
-	noDiscard bool
 }
 
 func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
