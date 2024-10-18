@@ -419,7 +419,48 @@ const ExampleComplexJSON = `{
   ]
 }`
 
-func Test_spike(t *testing.T) {
+func BenchmarkScan(b *testing.B) {
+	/*
+		$ go test -run x -bench .
+		BenchmarkScan/scan_with_json.Valid-16         	     330	   3381088 ns/op
+		BenchmarkScan/jsontoken.Scan-16               	   21250	     56265 ns/op
+		PASS
+		ok  	go.llib.dev/frameless/pkg/jsonkit/internal/jsontoken	4.666s
+	*/
+
+	var jsonValidScan = func(data []byte) ([]byte, error) {
+		var out []byte
+		for _, b := range data {
+			out = append(out, b)
+			if json.Valid(out) {
+				break
+			}
+		}
+		if !json.Valid(out) {
+			return nil, jsontoken.ErrMalformed
+		}
+		return out, nil
+	}
+
+	b.Run("scan with json.Valid", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			got, err := jsonValidScan([]byte(ExampleComplexJSON))
+			assert.NoError(b, err)
+			assert.Equal(b, got, []byte(ExampleComplexJSON))
+		}
+	})
+
+	b.Run("jsontoken.Scan", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			buf := bufio.NewReader(strings.NewReader(ExampleComplexJSON))
+			b.StartTimer()
+
+			got, err := jsontoken.Scan(buf)
+			assert.NoError(b, err)
+			assert.Equal(b, got, []byte(ExampleComplexJSON))
+		}
+	})
 
 }
 
