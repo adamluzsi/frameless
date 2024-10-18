@@ -788,6 +788,5 @@ var _ noDiscard = objectKeyBuffer{}
 
 type objectKeyBuffer struct {
 	bytes.Buffer
+	noDiscard
 }
-
-func (objectKeyBuffer) NoDiscard() {}
