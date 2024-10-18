@@ -67,6 +67,10 @@ type Output interface {
 	Bytes() []byte
 }
 
+type noDiscard interface {
+	NoDiscard()
+}
+
 func Scan(b *bufio.Reader) (json.RawMessage, error) {
 	var s Scanner
 	return s.Scan(b, nil)
@@ -122,8 +126,10 @@ func (s *Scanner) scan(in Input, out Output, path Path) error {
 func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error {
 	var raw Output = &bytes.Buffer{}
 	pathMatches := s.Path.Match(path)
-	if !pathMatches && !s.noDiscard {
-		raw = discard
+	if !pathMatches {
+		if _, ok := out.(interface{ NoDiscard() }); !ok {
+			raw = discard
+		}
 	}
 	returnErr := blk(raw)
 	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
@@ -348,11 +354,8 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 
 				// we need to make sure that the object key is retrieved
 				// and not discarded from the output writing.
-				s.noDiscard = true
-				var key bytes.Buffer
-				err := s.scanString(in, &key, path.With(KindObjectKey))
-				s.noDiscard = false
-				if err != nil {
+				var key objectKeyBuffer
+				if err := s.scanString(in, &key, path.With(KindObjectKey)); err != nil {
 					return fmt.Errorf("(object key) %w", err)
 				}
 
@@ -780,3 +783,11 @@ func (*nullOutput) WriteByte(c byte) error {
 func (*nullOutput) Bytes() []byte {
 	return []byte{}
 }
+
+var _ noDiscard = objectKeyBuffer{}
+
+type objectKeyBuffer struct {
+	bytes.Buffer
+}
+
+func (objectKeyBuffer) NoDiscard() {}
