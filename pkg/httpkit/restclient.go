@@ -532,19 +532,19 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RestClient[ENT, ID]) getSerializer(mimeType string) Serializer {
+func (r RestClient[ENT, ID]) getSerializer(mimeType string) codec.Codec {
 	if r.Serializer != nil {
 		return r.Serializer
 	}
 	if ser, done := r.lookupSerializer(mimeType); done {
 		return ser
 	}
-	return DefaultSerializer.Serializer
+	return DefaultSerializer.Codec
 }
 
-func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (Serializer, bool) {
+func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (codec.Codec, bool) {
 	mimeType = getMediaType(mimeType)
-	for mt, ser := range DefaultSerializers {
+	for mt, ser := range DefaultCodecs {
 		if getMediaType(mt) == mimeType {
 			return ser, true
 		}
@@ -552,7 +552,7 @@ func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (Serializer, bool
 	return nil, false
 }
 
-func (r RestClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
+func (r RestClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, codec.Codec, bool) {
 	mt := string(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
 	if !ok && r.Serializer != nil {

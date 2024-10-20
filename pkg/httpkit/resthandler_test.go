@@ -24,6 +24,7 @@ import (
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
@@ -105,11 +106,8 @@ func TestRestHandler_ServeHTTP(t *testing.T) {
 	subject := testcase.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 		return httpkit.RestHandler[X, XID]{
 			IDContextKey: FooIDContextKey{},
-			Serialization: httpkit.RestResourceSerialization[X, XID]{
-				Serializers: map[string]httpkit.Serializer{
-					mediatype.JSON: jsonkit.Codec{},
-				},
-				IDConverter: httpkit.IDConverter[XID]{},
+			MediaTypeCodecs: map[string]codec.Codec{
+				mediatype.JSON: jsonkit.Codec{},
 			},
 			Mapping: dtokit.Mapping[X, XDTO]{},
 		}.WithCRUD(resource.Get(t))

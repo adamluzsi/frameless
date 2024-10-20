@@ -1,10 +1,12 @@
 package mediatype
 
 const (
-	PlainText      = "text/plain; charset=utf-8"
-	JSON           = "application/json"
-	XML            = "application/xml"
-	HTML           = "text/html; charset=utf-8"
-	OctetStream    = "application/octet-stream"
-	FormUrlencoded = "application/x-www-form-urlencoded"
+	PlainText      MediaType = "text/plain; charset=utf-8"
+	JSON           MediaType = "application/json"
+	XML            MediaType = "application/xml"
+	HTML           MediaType = "text/html; charset=utf-8"
+	OctetStream    MediaType = "application/octet-stream"
+	FormUrlencoded MediaType = "application/x-www-form-urlencoded"
 )
+
+type MediaType = string

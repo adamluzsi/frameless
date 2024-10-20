@@ -11,21 +11,13 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/jsonkit"
-	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type RestResourceSerialization[Entity, ID any] struct {
-	Serializers map[string]Serializer
-	IDConverter idConverter[ID]
-}
+type MediaTypeCodecs map[mediatype.MediaType]codec.Codec
 
-type Serializer interface {
-	codec.Codec
-}
-
-var DefaultSerializers = map[string]Serializer{
+var DefaultCodecs = map[string]codec.Codec{
 	"application/json":                  jsonkit.Codec{},
 	"application/problem+json":          jsonkit.Codec{},
 	"application/x-ndjson":              jsonkit.LinesCodec{},
@@ -35,30 +27,30 @@ var DefaultSerializers = map[string]Serializer{
 }
 
 var DefaultSerializer = CodecDefault{
-	Serializer: jsonkit.Codec{},
-	MediaType:  mediatype.JSON,
+	Codec:     jsonkit.Codec{},
+	MediaType: mediatype.JSON,
 }
 
 type CodecDefault struct {
-	Serializer interface {
+	Codec interface {
 		codec.Codec
 		codec.ListDecoderMaker
 	}
 	MediaType string
 }
 
-func (m *RestResourceSerialization[Entity, ID]) getSerializer(mimeType string) (Serializer, string) {
+func (m MediaTypeCodecs) getSerializer(mimeType string) (codec.Codec, string) {
 	if ser, ok := m.lookupType(mimeType); ok {
 		return ser, mimeType
 	}
 	return m.defaultSerializer()
 }
 
-func (m *RestResourceSerialization[Entity, ID]) requestBodySerializer(r *http.Request) (Serializer, string) {
+func (m MediaTypeCodecs) requestBodySerializer(r *http.Request) (codec.Codec, string) {
 	return m.contentTypeSerializer(r)
 }
 
-func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Request) (Serializer, string) {
+func (m MediaTypeCodecs) contentTypeSerializer(r *http.Request) (codec.Codec, string) {
 	if mime, ok := m.getRequestBodyMimeType(r); ok { // TODO: TEST ME
 		if serializer, ok := m.lookupType(mime); ok {
 			return serializer, mime
@@ -67,27 +59,35 @@ func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Re
 	return m.defaultSerializer() // TODO: TEST ME
 }
 
-func (m *RestResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, string) {
-	return DefaultSerializer.Serializer, DefaultSerializer.MediaType
+func (m MediaTypeCodecs) defaultSerializer() (codec.Codec, string) {
+	return DefaultSerializer.Codec, DefaultSerializer.MediaType
 }
 
-func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, string) {
+func (m MediaTypeCodecs) responseBodySerializer(r *http.Request) (codec.Codec, string) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return m.contentTypeSerializer(r)
 	}
-	var sers = mapkit.Merge(DefaultSerializers, m.Serializers)
 	for _, mimeType := range strings.Fields(accept) {
 		mimeType := string(mimeType)
-		ser, ok := sers[mimeType]
-		if ok {
-			return ser, mimeType
+		if m != nil {
+			ser, ok := m[mimeType]
+			if ok {
+				return ser, mimeType
+			}
+		}
+		if DefaultCodecs != nil {
+			mimeType := string(mimeType)
+			ser, ok := DefaultCodecs[mimeType]
+			if ok {
+				return ser, mimeType
+			}
 		}
 	}
 	return m.contentTypeSerializer(r)
 }
 
-func (m *RestResourceSerialization[Entity, ID]) getRequestBodyMimeType(r *http.Request) (string, bool) {
+func (m MediaTypeCodecs) getRequestBodyMimeType(r *http.Request) (string, bool) {
 	return getMIMETypeFrom(r.Header.Get(headerKeyContentType))
 }
 
@@ -103,26 +103,19 @@ func getMIMETypeFrom(headerValue string) (string, bool) {
 	return mime, true
 }
 
-func (m *RestResourceSerialization[Entity, ID]) lookupType(mimeType string) (Serializer, bool) {
-	mimeType = getMediaType(mimeType) // TODO: TEST ME
-	if m.Serializers != nil {
-		if ser, ok := m.Serializers[mimeType]; ok {
+func (m MediaTypeCodecs) lookupType(mediaType string) (codec.Codec, bool) {
+	mediaType = getMediaType(mediaType) // TODO: TEST ME
+	if m != nil {
+		if ser, ok := m[mediaType]; ok {
 			return ser, true
 		}
 	}
-	if DefaultSerializers != nil {
-		if ser, ok := DefaultSerializers[mimeType]; ok {
+	if DefaultCodecs != nil {
+		if ser, ok := DefaultCodecs[mediaType]; ok {
 			return ser, true
 		}
 	}
 	return nil, false
-}
-
-func (m *RestResourceSerialization[Entity, ID]) getIDConverter() idConverter[ID] {
-	if m.IDConverter != nil {
-		return m.IDConverter
-	}
-	return IDConverter[ID]{}
 }
 
 /////////////////////////////////////////////////////// MAPPING ///////////////////////////////////////////////////////
