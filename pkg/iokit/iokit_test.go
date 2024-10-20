@@ -1,6 +1,7 @@
 package iokit_test
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"io"
@@ -716,4 +717,286 @@ func TestKeepAliveReader(t *testing.T) {
 			assert.NoError(t, subject.Get(t).Close())
 		})
 	})
+}
+
+func TestPeekRune(t *testing.T) {
+	t.Run("successful read", func(t *testing.T) {
+		r := &mockRuneReader{
+			readRune:    'a',
+			readSize:    1,
+			unreadError: nil,
+		}
+		char, size, err := iokit.PeekRune(r)
+		if char != 'a' || size != 1 || err != nil {
+			t.Errorf("expected ('a', 1, nil), got (%q, %d, %v)", string(char), size, err)
+		}
+	})
+
+	t.Run("read error", func(t *testing.T) {
+		r := &mockRuneReader{
+			readError: errors.New("read failed"),
+		}
+		char, size, err := iokit.PeekRune(r)
+		if char != 0 || size != 0 || err == nil {
+			t.Errorf("expected (0, 0, error), got (%q, %d, %v)", string(char), size, err)
+		}
+	})
+
+	t.Run("unread error", func(t *testing.T) {
+		r := &mockRuneReader{
+			readRune:    'a',
+			readSize:    1,
+			unreadError: errors.New("unread failed"),
+		}
+		char, size, err := iokit.PeekRune(r)
+		if char != 'a' || size != 1 || err == nil {
+			t.Errorf("expected ('a', 1, error), got (%q, %d, %v)", string(char), size, err)
+		}
+	})
+
+	t.Run("smoke", func(t *testing.T) {
+		t.Run("successful read", func(t *testing.T) {
+			input := "abc"
+			r := bytes.NewBufferString(input)
+			reader := bufio.NewReader(r)
+			char, size, err := iokit.PeekRune(reader)
+			if char != 'a' || size != 1 || err != nil {
+				t.Errorf("expected ('a', 1, nil), got (%q, %d, %v)", string(char), size, err)
+			}
+			// Check that the reader is still at the beginning
+			char, size, err = iokit.PeekRune(reader)
+			if char != 'a' || size != 1 || err != nil {
+				t.Errorf("expected ('a', 1, nil), got (%q, %d, %v)", string(char), size, err)
+			}
+
+			bs, err := io.ReadAll(reader)
+			assert.NoError(t, err)
+			assert.Equal(t, input, string(bs))
+		})
+
+		t.Run("read error", func(t *testing.T) {
+			r := bytes.NewBuffer([]byte{})
+			reader := bufio.NewReader(r)
+			char, size, err := iokit.PeekRune(reader)
+			if char != 0 || size != 0 || err == nil {
+				t.Errorf("expected (0, 0, error), got (%q, %d, %v)", string(char), size, err)
+			}
+			assert.ErrorIs(t, err, io.EOF)
+		})
+	})
+}
+
+type mockRuneReader struct {
+	readRune    rune
+	readSize    int
+	readError   error
+	unreadError error
+}
+
+func (m *mockRuneReader) ReadRune() (rune, int, error) {
+	return m.readRune, m.readSize, m.readError
+}
+
+func (m *mockRuneReader) UnreadRune() error {
+	return m.unreadError
+}
+
+func TestPeekByte(t *testing.T) {
+	t.Run("successful read", func(t *testing.T) {
+		r := &mockByteReader{
+			readByte:    0x12,
+			readError:   nil,
+			unreadError: nil,
+		}
+		b, err := iokit.PeekByte(r)
+		if b != 0x12 || err != nil {
+			t.Errorf("expected (0x12, nil), got (0x%x, %v)", b, err)
+		}
+	})
+
+	t.Run("read error", func(t *testing.T) {
+		r := &mockByteReader{
+			readError: errors.New("read failed"),
+		}
+		b, err := iokit.PeekByte(r)
+		if b != 0 || err == nil {
+			t.Errorf("expected (0, error), got (0x%x, %v)", b, err)
+		}
+	})
+
+	t.Run("unread error", func(t *testing.T) {
+		r := &mockByteReader{
+			readByte:    0x12,
+			unreadError: errors.New("unread failed"),
+		}
+		b, err := iokit.PeekByte(r)
+		if b != 0x12 || err == nil {
+			t.Errorf("expected (0x12, error), got (0x%x, %v)", b, err)
+		}
+	})
+
+	t.Run("smoke", func(t *testing.T) {
+		input := "abc"
+		r := bytes.NewBufferString(input)
+		reader := bufio.NewReader(r)
+		b, err := iokit.PeekByte(reader)
+		if b != 'a' || err != nil {
+			t.Errorf("expected ('a', nil), got (0x%x, %v)", b, err)
+		}
+		// Check that the reader is still at the beginning
+		b, err = iokit.PeekByte(reader)
+		if b != 'a' || err != nil {
+			t.Errorf("expected ('a', nil), got (0x%x, %v)", b, err)
+		}
+
+		bs, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+		assert.Equal(t, input, string(bs))
+	})
+}
+
+type mockByteReader struct {
+	readByte    byte
+	readError   error
+	unreadError error
+}
+
+func (m *mockByteReader) ReadByte() (byte, error) {
+	return m.readByte, m.readError
+}
+
+func (m *mockByteReader) UnreadByte() error {
+	return m.unreadError
+}
+
+func TestMoveByte(t *testing.T) {
+	t.Run("successful move", func(t *testing.T) {
+		bs := []byte("abc")
+		in := bytes.NewReader(bs)
+		out := &bytes.Buffer{}
+		b, err := iokit.MoveByte(in, out)
+		assert.NoError(t, err)
+		assert.Equal(t, bs[0], b)
+		assert.Equal(t, []byte("bc"), assert.ReadAll(t, in))
+	})
+
+	t.Run("read error", func(t *testing.T) {
+		in := &mockByteReader{
+			readError: errors.New("read failed"),
+		}
+		out := bytes.NewBuffer(nil)
+		b, err := iokit.MoveByte(in, out)
+		if b != 0 || err == nil {
+			t.Errorf("expected (0, error), got (0x%x, %v)", b, err)
+		}
+		if out.Len() != 0 {
+			t.Errorf("expected written byte to be empty, but was 0x%x", out.Bytes())
+		}
+	})
+
+	t.Run("write error", func(t *testing.T) {
+		in := &mockByteReader{
+			readByte:  0x12,
+			readError: nil,
+		}
+		out := &errorWriter{}
+		b, err := iokit.MoveByte(in, out)
+		if b != 0 || err == nil {
+			t.Errorf("expected (0, error), got (0x%x, %v)", b, err)
+		}
+	})
+
+	t.Run("smoke", func(t *testing.T) {
+		input := "abc"
+		in := bytes.NewBufferString(input)
+		out := &bytes.Buffer{}
+		b, err := iokit.MoveByte(in, out)
+		if b != 'a' || err != nil {
+			t.Errorf("expected ('a', nil), got (0x%x, %v)", b, err)
+		}
+		assert.Equal(t, "a", string(assert.ReadAll(t, out)))
+	})
+}
+
+type errorWriter struct{}
+
+func (e *errorWriter) WriteByte(c byte) error {
+	return errors.New("write failed")
+}
+
+func TestMoveRune(t *testing.T) {
+	t.Run("successful move", func(t *testing.T) {
+		r := &mockRuneReaderWriter{
+			readRune:   'a',
+			readSize:   1,
+			readError:  nil,
+			writeError: nil,
+		}
+		char, size, err := iokit.MoveRune(r, r)
+		if char != 'a' || size != 1 || err != nil {
+			t.Errorf("expected ('a', 1, nil), got (%q, %d, %v)", string(char), size, err)
+		}
+	})
+
+	t.Run("read error", func(t *testing.T) {
+		r := &mockRuneReaderWriter{
+			readError: errors.New("read failed"),
+		}
+		char, size, err := iokit.MoveRune(r, r)
+		if char != 0 || size != 0 || err == nil {
+			t.Errorf("expected (0, 0, error), got (%q, %d, %v)", string(char), size, err)
+		}
+	})
+
+	t.Run("write error", func(t *testing.T) {
+		r := &mockRuneReaderWriter{
+			readRune:   'a',
+			readSize:   1,
+			writeError: errors.New("write failed"),
+		}
+		out := &bytes.Buffer{}
+		char, size, err := iokit.MoveRune(r, out)
+		assert.NoError(t, err)
+		assert.Equal(t, size, 1)
+		assert.Equal(t, char, 'a')
+	})
+
+	t.Run("smoke", func(t *testing.T) {
+		input := "abc"
+		r := bytes.NewBufferString(input)
+		reader := bufio.NewReader(r)
+		writer := &bytes.Buffer{}
+
+		char, size, err := iokit.MoveRune(reader, writer)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, size)
+		assert.Equal(t, 'a', char)
+		assert.Equal(t, "a", string(assert.ReadAll(t, writer)))
+		assert.Equal(t, "bc", string(assert.ReadAll(t, reader)))
+	})
+}
+
+type mockRuneReaderWriter struct {
+	readRune    rune
+	readSize    int
+	readError   error
+	writeError  error
+	writtenData []rune
+}
+
+func (m *mockRuneReaderWriter) ReadRune() (rune, int, error) {
+	return m.readRune, m.readSize, m.readError
+}
+
+func (m *mockRuneReaderWriter) UnreadRune() error {
+	// Not used in MoveRune
+	return nil
+}
+
+func (m *mockRuneReaderWriter) WriteRune(r rune) (n int, err error) {
+	m.writtenData = append(m.writtenData, r)
+	if m.writeError != nil {
+		return 0, m.writeError
+	}
+	return 1, nil
 }

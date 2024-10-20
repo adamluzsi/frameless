@@ -369,3 +369,81 @@ func (r *KeepAliveReader) bufferAhead(byteLength int) {
 		r.readError = err
 	}
 }
+
+type RuneReader interface {
+	ReadRune() (r rune, size int, err error)
+}
+
+type RuneUnreader interface {
+	UnreadRune() error
+}
+
+type RuneWriter interface {
+	WriteRune(r rune) (n int, err error)
+}
+
+type runePeeker interface {
+	RuneReader
+	RuneUnreader
+}
+
+func PeekRune(in runePeeker) (rune, int, error) {
+	char, size, err := in.ReadRune()
+	if err != nil {
+		return char, size, err
+	}
+	if err := in.UnreadRune(); err != nil {
+		return char, size, err
+	}
+	return char, size, err
+}
+
+func MoveRune(in RuneReader, out RuneWriter) (rune, int, error) {
+	char, size, err := in.ReadRune()
+	if err != nil {
+		return char, size, err
+	}
+	if _, err := out.WriteRune(char); err != nil {
+		return 0, 0, err
+	}
+	return char, size, nil
+}
+
+type ByteReader interface {
+	ReadByte() (byte, error)
+}
+
+type ByteUnreader interface {
+	UnreadByte() error
+}
+
+type ByteWriter interface {
+	WriteByte(c byte) error
+}
+
+type bytePeeker interface {
+	ByteReader
+	ByteUnreader
+}
+
+func PeekByte(in bytePeeker) (byte, error) {
+	b, err := in.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	if err := in.UnreadByte(); err != nil {
+		return b, err
+	}
+	return b, nil
+}
+
+func MoveByte(in ByteReader, out ByteWriter) (byte, error) {
+	b, err := in.ReadByte()
+	if err != nil {
+		return b, err
+	}
+	if err := out.WriteByte(b); err != nil {
+		return 0, err
+	}
+	return b, nil
+}
