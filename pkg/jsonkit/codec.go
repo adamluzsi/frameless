@@ -1,14 +1,12 @@
 package jsonkit
 
 import (
-	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"time"
 
-	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/port/codec"
 )
 
@@ -27,7 +25,7 @@ func (s Codec) MakeListEncoder(w io.Writer) codec.ListEncoder {
 }
 
 func (s Codec) MakeListDecoder(r io.Reader) codec.ListDecoder {
-	return &jsonListDecoder{R: iokit.NewKeepAliveReader(r, 5*time.Second)}
+	return jsontoken.IterateArray(context.Background(), r)
 }
 
 type jsonListEncoder struct {
@@ -105,109 +103,6 @@ func (c *jsonListEncoder) beginList() error {
 	}
 	c.bracketOpen = true
 	return nil
-}
-
-type jsonListDecoder struct {
-	R io.ReadCloser
-
-	br *bufio.Reader
-
-	inList bool
-	err    error
-	done   bool
-	data   []byte
-}
-
-func (c *jsonListDecoder) Next() bool {
-	if c.done {
-		return false
-	}
-	if c.err != nil {
-		return false
-	}
-	if !c.inList {
-		char, err := c.readRune()
-		if err != nil {
-			c.err = err
-			return false
-		}
-		if char != '[' {
-			c.err = fmt.Errorf("unexpected character, got %s, but expected %s", string(char), "[")
-			return false
-		}
-		c.inList = true
-	}
-
-	data, ok := c.prepareForNextListItem()
-	if !ok {
-		return false
-	}
-
-	for !json.Valid(data) {
-		char, err := c.readRune()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			c.err = err
-			return false
-		}
-		data = append(data, []byte(string(char))...)
-	}
-
-	if !json.Valid(data) {
-		c.err = fmt.Errorf("invalid json received: %s", string(data))
-		return false
-	}
-
-	c.data = data
-	return true
-}
-
-func (c *jsonListDecoder) prepareForNextListItem() ([]byte, bool) {
-	var data []byte
-	char, err := c.readRune()
-	if errors.Is(err, io.EOF) {
-		return data, false
-	}
-	if err != nil {
-		c.err = err
-		return data, false
-	}
-	if c.inList {
-		if char == ']' { // we are done
-			c.done = true
-			return data, false
-		}
-		if char != ',' {
-			data = append(data, []byte(string(char))...)
-		}
-	}
-	return data, true
-}
-
-func (c *jsonListDecoder) readRune() (rune, error) {
-	rn, _, err := c.reader().ReadRune()
-	return rn, err
-}
-
-func (c *jsonListDecoder) reader() *bufio.Reader {
-	if c.br == nil {
-		c.br = bufio.NewReader(c.R)
-	}
-	return c.br
-}
-
-func (c *jsonListDecoder) Err() error {
-	return c.err
-}
-
-func (c *jsonListDecoder) Decode(ptr any) error {
-	return json.Unmarshal(c.data, ptr)
-}
-
-func (c *jsonListDecoder) Close() error {
-	return c.R.Close()
 }
 
 // LinesCodec is a json codec that uses the application/jsonlines

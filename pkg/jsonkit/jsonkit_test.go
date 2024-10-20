@@ -118,8 +118,7 @@ func TestInterface(t *testing.T) {
 
 func TestArray_json(t *testing.T) {
 	t.Run("concrete type", func(t *testing.T) {
-		var exp jsonkit.Array[string]
-		exp = random.Slice[string](rnd.IntB(3, 7), rnd.String)
+		var exp jsonkit.Array[string] = random.Slice[string](rnd.IntB(3, 7), rnd.String)
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
@@ -129,8 +128,7 @@ func TestArray_json(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with concrete type implementation", func(t *testing.T) {
-		var exp jsonkit.Array[Greeter]
-		exp = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
+		var exp jsonkit.Array[Greeter] = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
 			if rnd.Bool() {
 				return TypeA{V: rnd.String()}
 			}
@@ -145,8 +143,7 @@ func TestArray_json(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with ptr type implementation", func(t *testing.T) {
-		var exp jsonkit.Array[Greeter]
-		exp = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
+		var exp jsonkit.Array[Greeter] = random.Slice[Greeter](rnd.IntB(3, 7), func() Greeter {
 			return &TypeC{V: rnd.Float32()}
 		})
 
@@ -175,8 +172,7 @@ func TestArray_json(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 	t.Run("interface T type with various implementations", func(t *testing.T) {
-		var exp jsonkit.Array[Greeter]
-		exp = jsonkit.Array[Greeter]{
+		var exp jsonkit.Array[Greeter] = jsonkit.Array[Greeter]{
 			TypeA{V: rnd.String()},
 			TypeB{V: rnd.Int()},
 			&TypeC{V: rnd.Float32()},
