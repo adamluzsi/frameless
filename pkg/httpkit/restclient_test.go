@@ -22,12 +22,15 @@ func ExampleRestClient() {
 	var (
 		ctx     = context.Background()
 		fooRepo = httpkit.RestClient[testent.Foo, testent.FooID]{
-			BaseURL:     "https://mydomain.dev/api/v1/foos",
-			MediaType:   mediatype.JSON,
-			Mapping:     dtokit.Mapping[testent.Foo, testent.FooDTO]{},
-			Serializer:  jsonkit.Codec{},
-			IDConverter: httpkit.IDConverter[testent.FooID]{},
-			LookupID:    testent.Foo.LookupID,
+			BaseURL:   "https://mydomain.dev/api/v1/foos",
+			MediaType: mediatype.JSON,
+			Mapping:   dtokit.Mapping[testent.Foo, testent.FooDTO]{},
+			Codec:     jsonkit.Codec{},
+			// leave IDFormatter empty for using the default id formatter, or provide your own
+			IDFormatter: func(fi testent.FooID) (string, error) {
+				return httpkit.IDConverter[testent.FooID]{}.Format(fi)
+			},
+			LookupID: testent.Foo.LookupID,
 		}
 	)
 

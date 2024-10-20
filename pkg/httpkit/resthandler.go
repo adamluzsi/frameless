@@ -183,7 +183,7 @@ func (res RestHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 		resourceID, rest := pathkit.Unshift(rc.PathLeft)
 		rc.Travel(resourceID)
 
-		id, err := res.getIDParser()(resourceID)
+		id, err := res.getIDParser(resourceID)
 		if err != nil {
 			defaultErrorHandler.HandleError(w, r, ErrMalformedID.With().Detail(err.Error()))
 			return
@@ -603,9 +603,9 @@ const (
 	headerKeyAccept      = "Accept"
 )
 
-func (m RestHandler[ENT, ID]) getIDParser() func(string) (ID, error) {
+func (m RestHandler[ENT, ID]) getIDParser(rawID string) (ID, error) {
 	if m.IDParser != nil {
-		return m.IDParser
+		return m.IDParser(rawID)
 	}
-	return IDConverter[ID]{}.ParseID
+	return IDConverter[ID]{}.ParseID(rawID)
 }

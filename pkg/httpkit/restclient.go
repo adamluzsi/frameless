@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -35,20 +36,19 @@ type RestClient[ENT, ID any] struct {
 	// MediaType [optional] is used in the related headers such as Content-Type and Accept.
 	//
 	// default: httpkit.DefaultSerializer.MIMEType
-	MediaType string
+	MediaType mediatype.MediaType
 	// Mapping [optional] is used if the ENT must be mapped into a DTO type prior to serialization.
 	//
 	// default: ENT type is used as the DTO type.
 	Mapping dtokit.Mapper[ENT]
-	// Serializer [optional] is used for the serialization process with DTO values.
+	// Codec [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultSerializers will be used to find a matching serializer for the given media type.
-	Serializer RestClientSerializer
-	// IDConverter [optional] is used to convert the ID value into a string format,
-	// that can be used to path encode for requests.
+	Codec RestClientCodec
+	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
-	// default: httpkit.IDConverter[ID]
-	IDConverter idConverter[ID]
+	// default: httpkit.IDFormatter[ID].Format
+	IDFormatter func(ID) (string, error)
 	// LookupID [optional] is used to lookup the ID value in an ENT value.
 	//
 	// default: extid.Lookup[ID, ENT]
@@ -80,7 +80,7 @@ type RestClient[ENT, ID any] struct {
 	DisableStreaming bool
 }
 
-type RestClientSerializer interface {
+type RestClientCodec interface {
 	codec.Codec
 	codec.ListDecoderMaker
 }
@@ -272,7 +272,7 @@ func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 
 	mapping := r.getMapping()
 
-	pathParamID, err := r.getIDConverter().FormatID(id)
+	pathParamID, err := r.formatID(id)
 	if err != nil {
 		return ent, false, err
 	}
@@ -399,7 +399,7 @@ func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 			reflectkit.TypeOf[ID]().String(), reflectkit.TypeOf[ENT]().String())
 	}
 
-	pathParamID, err := r.getIDConverter().FormatID(id)
+	pathParamID, err := r.formatID(id)
 	if err != nil {
 		return err
 	}
@@ -460,7 +460,7 @@ func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 		return err
 	}
 
-	pathParamID, err := r.getIDConverter().FormatID(id)
+	pathParamID, err := r.formatID(id)
 	if err != nil {
 		return err
 	}
@@ -521,11 +521,11 @@ func (r RestClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) getIDConverter() idConverter[ID] {
-	if r.IDConverter != nil {
-		return r.IDConverter
+func (r RestClient[ENT, ID]) formatID(id ID) (string, error) {
+	if r.IDFormatter != nil {
+		return r.IDFormatter(id)
 	}
-	return IDConverter[ID]{}
+	return IDConverter[ID]{}.FormatID(id)
 }
 
 func statusOK(resp *http.Response) bool {
@@ -533,8 +533,8 @@ func statusOK(resp *http.Response) bool {
 }
 
 func (r RestClient[ENT, ID]) getSerializer(mimeType string) codec.Codec {
-	if r.Serializer != nil {
-		return r.Serializer
+	if r.Codec != nil {
+		return r.Codec
 	}
 	if ser, done := r.lookupSerializer(mimeType); done {
 		return ser
@@ -555,8 +555,8 @@ func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (codec.Codec, boo
 func (r RestClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, codec.Codec, bool) {
 	mt := string(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
-	if !ok && r.Serializer != nil {
-		ser, ok = r.Serializer, true
+	if !ok && r.Codec != nil {
+		ser, ok = r.Codec, true
 	}
 	return mt, ser, ok
 }
