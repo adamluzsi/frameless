@@ -43,7 +43,7 @@ func ExampleRouter() {
 			// sub route catch-all handle
 		}))
 
-		r.Resource("foo", httpkit.RestResource[Foo, FooID]{
+		r.Resource("foo", httpkit.RestHandler[Foo, FooID]{
 			Mapping: dtokit.Mapping[Foo, FooDTO]{},
 			Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
 				foo := Foo{

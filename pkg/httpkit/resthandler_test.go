@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -32,24 +34,24 @@ import (
 )
 
 func _() {
+	var h httpkit.RestHandler[X, XID]
 	var (
-		resource    httpkit.RestResource[X, XID]
 		creator     crud.Creator[X]
 		allFinder   crud.AllFinder[X]
 		byIDFinder  crud.ByIDFinder[X, XID]
 		byIDDeleter crud.ByIDDeleter[XID]
 		allDeleter  crud.AllDeleter
 	)
-	resource.Create = creator.Create
-	resource.Index = allFinder.FindAll
-	resource.Show = byIDFinder.FindByID
-	resource.Destroy = byIDDeleter.DeleteByID
-	resource.DestroyAll = allDeleter.DeleteAll
+	h.Create = creator.Create
+	h.Index = allFinder.FindAll
+	h.Show = byIDFinder.FindByID
+	h.Destroy = byIDDeleter.DeleteByID
+	h.DestroyAll = allDeleter.DeleteAll
 }
 
-func ExampleRestResource() {
+func ExampleRestHandler() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
-	fooRestfulResource := httpkit.RestResource[X, XID]{
+	fooRestfulResource := httpkit.RestHandler[X, XID]{
 		Create: fooRepository.Create,
 		Index: func(ctx context.Context) (iterators.Iterator[X], error) { // example with query based filtering
 			foos, err := fooRepository.FindAll(ctx)
@@ -85,7 +87,7 @@ func ExampleRestResource() {
 	httpkit.Mount(mux, "/foos", fooRestfulResource)
 }
 
-func TestResource_ServeHTTP(t *testing.T) {
+func TestRestHandler_ServeHTTP(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Before(func(t *testcase.T) { logger.Testing(t) })
 
@@ -100,8 +102,8 @@ func TestResource_ServeHTTP(t *testing.T) {
 			return mdb.Get(t)
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
-		return httpkit.RestResource[X, XID]{
+	subject := testcase.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
+		return httpkit.RestHandler[X, XID]{
 			IDContextKey: FooIDContextKey{},
 			Serialization: httpkit.RestResourceSerialization[X, XID]{
 				Serializers: map[string]httpkit.Serializer{
@@ -201,7 +203,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			s.When("index is provided", func(s *testcase.Spec) {
 				override := testcase.Let[func(ctx context.Context) (iterators.Iterator[X], error)](s, nil)
 
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					h := subject.Super(t)
 					h.Index = func(ctx context.Context) (iterators.Iterator[X], error) {
 						return override.Get(t)(ctx)
@@ -256,7 +258,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 						}
 					})
 
-					subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+					subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 						h := subject.Super(t)
 						h.ErrorHandler = rfc7807.Handler{
 							Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
@@ -280,7 +282,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("Index is not set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Index = nil
 					return rapi
@@ -292,7 +294,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			s.When("non empty iterator returned it is ensured to be closed", func(s *testcase.Spec) {
 				isClosed := testcase.LetValue[bool](s, false)
 
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					sub := subject.Super(t)
 					sub.Index = func(ctx context.Context) (iterators.Iterator[X], error) {
 						i := iterators.Slice([]X{{ID: 1, N: 1}, {ID: 2, N: 2}})
@@ -413,7 +415,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("the request body is larger than the configured limit", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					h := subject.Super(t)
 					h.BodyReadLimit = 3
 					return h
@@ -431,7 +433,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("No Create flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Create = nil
 					return rapi
@@ -493,7 +495,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("NoShow flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Show = nil
 					return rapi
@@ -564,7 +566,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("NoUpdate flag is set", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Update = nil
 					return rapi
@@ -619,7 +621,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("Destroy handler is unset", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					rapi := subject.Super(t)
 					rapi.Destroy = nil
 					return rapi
@@ -655,7 +657,7 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("DestroyAll handler is unset", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					rapi := subject.Super(t)
 					rapi.DestroyAll = nil
 					return rapi
@@ -668,9 +670,9 @@ func TestResource_ServeHTTP(t *testing.T) {
 		s.Describe(".ResourceRoutes", func(s *testcase.Spec) {
 			var lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
 
-			subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+			subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 				sub := subject.Super(t)
-				sub.SubRoutes = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sub.ResourceRoutes = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					// Handle all routes with a simple HandlerFunc
 					lastSubResourceRequest.Set(t, r)
 					w.WriteHeader(http.StatusTeapot)
@@ -698,9 +700,9 @@ func TestResource_ServeHTTP(t *testing.T) {
 			})
 
 			s.And(".EntityRoutes is nil", func(s *testcase.Spec) {
-				subject.Let(s, func(t *testcase.T) httpkit.RestResource[X, XID] {
+				subject.Let(s, func(t *testcase.T) httpkit.RestHandler[X, XID] {
 					v := subject.Super(t)
-					v.SubRoutes = nil
+					v.ResourceRoutes = nil
 					return v
 				})
 
@@ -718,11 +720,11 @@ func TestResource_ServeHTTP(t *testing.T) {
 	})
 }
 
-func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
+func TestRestHandler_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 	ctx := context.Background()
 
 	var got Foo
-	res := httpkit.RestResource[Foo, FooID]{
+	res := httpkit.RestHandler[Foo, FooID]{
 		Create: func(ctx context.Context, ptr *Foo) error {
 			ptr.ID = "ok"
 			got = *ptr
@@ -762,13 +764,13 @@ func TestResource_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 	assert.Equal(t, exp, got2)
 }
 
-func TestResource_WithCRUD_onNotEmptyOperations(t *testing.T) {
+func TestRestHandler_WithCRUD_onNotEmptyOperations(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	mem := memory.NewMemory()
 
 	var createC, indexC, showC, updateC, destroyC, destroyAllC bool
 	fooRepo := memory.NewRepository[Foo, FooID](mem)
-	fooAPI := httpkit.RestResource[Foo, FooID]{
+	fooAPI := httpkit.RestHandler[Foo, FooID]{
 		Create: func(ctx context.Context, ptr *Foo) error {
 			createC = true
 			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
@@ -821,7 +823,7 @@ func TestDTOMapping_manual(t *testing.T) {
 	// instead of the default dtos mapping.
 	type FooCustomDTO struct{ Foo }
 
-	resource := httpkit.RestResource[Foo, FooID]{
+	resource := httpkit.RestHandler[Foo, FooID]{
 		Mapping: dtokit.Mapping[Foo, FooCustomDTO]{
 			ToENT: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
 				return dto.Foo, nil
@@ -884,7 +886,7 @@ func TestRouter_Resource(t *testing.T) {
 		Baz: "baz",
 	}
 
-	r.Resource("foo", httpkit.RestResource[Foo, FooID]{
+	r.Resource("foo", httpkit.RestHandler[Foo, FooID]{
 		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
 			return iterators.SingleValue(foo), nil
 		},
@@ -917,4 +919,165 @@ func TestRouter_Resource(t *testing.T) {
 		assert.NotEmpty(t, show)
 		assert.Equal(t, dtokit.MustMap[FooDTO](ctx, foo), show)
 	}
+}
+
+func TestRestHandler_withContext(t *testing.T) {
+	type CollectionProbeKey struct{}
+	type ResourceProbeKey struct{}
+	val := rnd.Error().Error()
+
+	var (
+		lastID            FooID
+		ResourceRoutesRan bool
+	)
+
+	h := httpkit.RestHandler[Foo, FooID]{
+		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
+			assert.Nil(t, ctx.Value(ResourceProbeKey{}))
+			return iterators.Empty[Foo](), nil
+		},
+		Create: func(ctx context.Context, ptr *Foo) error {
+			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
+			assert.Nil(t, ctx.Value(ResourceProbeKey{}))
+			return nil
+		},
+		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
+			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
+			return Foo{}, false, nil
+		},
+		Update: func(ctx context.Context, ptr *Foo) error {
+			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
+			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
+			return nil
+		},
+		Destroy: func(ctx context.Context, id FooID) error {
+			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
+			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
+			return nil
+		},
+		DestroyAll: func(ctx context.Context) error {
+			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
+			assert.Nil(t, ctx.Value(ResourceProbeKey{}))
+			return nil
+		},
+		ResourceRoutes: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
+			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
+			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
+			ResourceRoutesRan = true
+		}),
+
+		CollectionContext: func(ctx context.Context) (context.Context, error) {
+			return context.WithValue(ctx, CollectionProbeKey{}, val), nil
+		},
+		ResourceContext: func(ctx context.Context, id FooID) (context.Context, error) {
+			lastID = id
+			return context.WithValue(ctx, ResourceProbeKey{}, val), nil
+		},
+	}
+
+	data, err := json.Marshal(MakeFoo(t))
+	assert.NoError(t, err)
+	var mkbody = func() io.Reader {
+		return bytes.NewReader(data)
+	}
+
+	// assertions are triggered in the controllers
+
+	{ // INDEX: GET /
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+	}
+	{ // CREATE: POST /
+		req := httptest.NewRequest(http.MethodPost, "/", mkbody())
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+	}
+	{ // DESTROY ALL: DELETE /
+		req := httptest.NewRequest(http.MethodDelete, "/", nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+	}
+	{ // SHOW: GET /{id}
+		req := httptest.NewRequest(http.MethodGet, pathkit.Join("/", "foo-id-1"), mkbody())
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		assert.Equal(t, lastID, "foo-id-1")
+	}
+	{ // UPDATE: PUT /{id}
+		req := httptest.NewRequest(http.MethodPut, pathkit.Join("/", "foo-id-2"), mkbody())
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		assert.Equal(t, lastID, "foo-id-2")
+	}
+	{ // DESTROY: DELETE /{id}
+		req := httptest.NewRequest(http.MethodDelete, pathkit.Join("/", "foo-id-3"), mkbody())
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		assert.Equal(t, lastID, "foo-id-3")
+	}
+	{ // Resrouce Route
+		req := httptest.NewRequest(http.MethodGet, pathkit.Join("/", "foo-id-4", "resource-path"), nil)
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		assert.Equal(t, lastID, "foo-id-4")
+		assert.True(t, ResourceRoutesRan)
+	}
+
+	t.Run("rainy", func(t *testing.T) {
+		expErr := rnd.Error()
+
+		h := httpkit.RestHandler[Foo, FooID]{
+			Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+				t.Error("Index was not expected to be called")
+				return iterators.Empty[Foo](), nil
+			},
+			Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+				t.Error("Show was not exepcted to be called")
+				return Foo{}, false, nil
+			},
+
+			ResourceRoutes: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Error("ResourceRoutes was not expecte to be called")
+			}),
+
+			ErrorHandler: rfc7807.Handler{
+				Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
+					if errors.Is(err, expErr) {
+						dto.Type.ID = "OK"
+						dto.Status = http.StatusTeapot
+					}
+				},
+			},
+
+			CollectionContext: func(ctx context.Context) (context.Context, error) {
+				return ctx, expErr
+			},
+			ResourceContext: func(ctx context.Context, id FooID) (context.Context, error) {
+				return ctx, expErr
+			},
+		}
+
+		{ // INDEX: GET /
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusTeapot, rr.Code)
+		}
+		{ // SHOW: GET /{id}
+			req := httptest.NewRequest(http.MethodGet, pathkit.Join("/", "id"), nil)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusTeapot, rr.Code)
+		}
+		{ // Resrouce Route
+			req := httptest.NewRequest(http.MethodGet, pathkit.Join("/", "id", "resource-path"), nil)
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, req)
+			assert.Equal(t, http.StatusTeapot, rr.Code)
+		}
+	})
 }

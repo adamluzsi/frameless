@@ -76,7 +76,7 @@ func ExampleRestClient_subresource() {
 func TestRestClient_crud(t *testing.T) {
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := httpkit.RestResource[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
 	srv := httptest.NewServer(fooAPI)
 	t.Cleanup(srv.Close)
 
@@ -101,7 +101,7 @@ func TestRestClient_crud(t *testing.T) {
 func TestRestClient_FindAll_withDisableStreaming(t *testing.T) {
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := httpkit.RestResource[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
 	srv := httptest.NewServer(fooAPI)
 	t.Cleanup(srv.Close)
 
@@ -127,9 +127,9 @@ func TestRestClient_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RestResource[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
-	fooAPI := httpkit.RestResource[testent.Foo, testent.FooID]{
-		SubRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
+	barAPI := httpkit.RestHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
+	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{
+		ResourceRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
 		}),
 	}.WithCRUD(fooRepo)
@@ -173,9 +173,9 @@ func TestRestClient_Resource_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RestResource[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
-	fooAPI := httpkit.RestResource[testent.Foo, testent.FooID]{
-		SubRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
+	barAPI := httpkit.RestHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
+	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{
+		ResourceRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
 		}),
 	}.WithCRUD(fooRepo)
