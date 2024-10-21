@@ -3,7 +3,6 @@ package httpkit
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -25,8 +25,8 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 )
 
-type RestClient[ENT, ID any] struct {
-	// BaseURL [required] is the url base that the rest client will use to
+type RESTClient[ENT, ID any] struct {
+	// BaseURL [required] is the url base that the rest client will use to access the remote resource.
 	BaseURL string
 	// HTTPClient [optional] will be used to make the http requests from the rest client.
 	//
@@ -34,25 +34,28 @@ type RestClient[ENT, ID any] struct {
 	HTTPClient *http.Client
 	// MediaType [optional] is used in the related headers such as Content-Type and Accept.
 	//
-	// default: httpkit.DefaultSerializer.MIMEType
-	MediaType string
+	// default: httpkit.DefaultCodec.MediaType
+	MediaType mediatype.MediaType
 	// Mapping [optional] is used if the ENT must be mapped into a DTO type prior to serialization.
 	//
 	// default: ENT type is used as the DTO type.
 	Mapping dtokit.Mapper[ENT]
-	// Serializer [optional] is used for the serialization process with DTO values.
+	// Codec [optional] is used for the serialization process with DTO values.
 	//
-	// default: DefaultSerializers will be used to find a matching serializer for the given media type.
-	Serializer RestClientSerializer
-	// IDConverter [optional] is used to convert the ID value into a string format,
-	// that can be used to path encode for requests.
+	// default: DefaultCodecs will be used to find a matching codec for the given media type.
+	Codec codec.Codec
+	// MediaTypeCodecs [optional] is a registry that helps choose the right codec for each media type.
 	//
-	// default: httpkit.IDConverter[ID]
-	IDConverter idConverter[ID]
-	// LookupID [optional] is used to lookup the ID value in an ENT value.
+	// default: DefaultCodecs
+	MediaTypeCodecs MediaTypeCodecs
+	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
+	//
+	// default: httpkit.IDFormatter[ID].Format
+	IDFormatter func(ID) (string, error)
+	// IDA [optional] is the ENT's ID accessor helper, to describe how to look up the ID field in a ENT.
 	//
 	// default: extid.Lookup[ID, ENT]
-	LookupID extid.LookupIDFunc[ENT, ID]
+	IDA extid.Accessor[ENT, ID]
 	// WithContext [optional] allows you to add data to the context for requests.
 	// If you need to select a RESTful subresource and return it as a RestClient,
 	// you can use this function to add the selected resource's path parameter
@@ -80,12 +83,12 @@ type RestClient[ENT, ID any] struct {
 	DisableStreaming bool
 }
 
-type RestClientSerializer interface {
+type RestClientCodec interface {
 	codec.Codec
 	codec.ListDecoderMaker
 }
 
-func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
+func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 
 	if ptr == nil {
@@ -99,15 +102,15 @@ func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	}
 
 	mimeType := r.getMediaType()
-	ser := r.getSerializer(mimeType)
+	cod := r.getCodec(mimeType)
 	mapping := r.getMapping()
 
-	dto, err := mapping.MapToiDTO(ctx, *ptr)
+	dto, err := mapping.MapToIDTO(ctx, *ptr)
 	if err != nil {
 		return err
 	}
 
-	data, err := ser.Marshal(dto)
+	data, err := cod.Marshal(dto)
 	if err != nil {
 		return err
 	}
@@ -139,12 +142,12 @@ func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		}
 	}
 
-	dtoPtr := mapping.NewiDTO()
-	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
+	dtoPtr := mapping.NewDTO()
+	if err := cod.Unmarshal(responseBody, dtoPtr); err != nil {
 		return err
 	}
 
-	got, err := mapping.MapFromiDTOPtr(ctx, dtoPtr)
+	got, err := mapping.MapFromDTO(ctx, dtoPtr)
 	if err != nil {
 		return err
 	}
@@ -153,7 +156,7 @@ func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -188,48 +191,32 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[EN
 
 	mapping := r.getMapping()
 
-	respMediaType, ser, ok := r.contentTypeBasedSerializer(resp)
+	cod, respMediaType, ok := r.contentTypeBasedCodec(resp)
 	if !ok {
-		return nil, fmt.Errorf("no serializer configured for response content type: %s", respMediaType)
+		return nil, fmt.Errorf("no codec configured for response content type: %s", respMediaType)
 	}
 
 	details = append(details, logging.Field("response content type", respMediaType))
 
-	if r.DisableStreaming {
-		bodyData, err := io.ReadAll(resp.Body)
+	dm, ok := cod.(codec.ListDecoderMaker)
+
+	if r.DisableStreaming || !ok {
+		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, err
 		}
 
-		var payload []json.RawMessage
-		if err := ser.Unmarshal(bodyData, &payload); err != nil {
+		ptr := mapping.NewDTOSlice()
+		if err := cod.Unmarshal(data, ptr); err != nil {
 			return nil, err
 		}
 
-		var i int
-		return iterators.Func[ENT](func() (v ENT, ok bool, err error) {
-			if !(i < len(payload)) {
-				return v, false, nil
-			}
-			defer func() { i++ }()
+		got, err := mapping.MapFromDTOSlice(ctx, ptr)
+		if err != nil {
+			return nil, fmt.Errorf("error while mapping from DTO: %w", err)
+		}
 
-			ptr := mapping.NewiDTO()
-			if err := ser.Unmarshal(payload[i], ptr); err != nil {
-				return v, ok, err
-			}
-
-			ent, err := mapping.MapFromiDTOPtr(ctx, ptr)
-			if err != nil {
-				return v, ok, err
-			}
-
-			return ent, true, nil
-		}), nil
-	}
-
-	dm, ok := ser.(codec.ListDecoderMaker)
-	if !ok {
-		return nil, fmt.Errorf("no serializer found for the received mime type")
+		return iterators.Slice(got), nil
 	}
 
 	dec := dm.MakeListDecoder(resp.Body)
@@ -239,12 +226,12 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[EN
 			return v, false, dec.Err()
 		}
 
-		ptr := mapping.NewiDTO()
+		ptr := mapping.NewDTO()
 		if err := dec.Decode(ptr); err != nil {
 			return v, false, err
 		}
 
-		ent, err := mapping.MapFromiDTOPtr(ctx, ptr)
+		ent, err := mapping.MapFromDTO(ctx, ptr)
 		if err != nil {
 			return v, false, err
 		}
@@ -253,7 +240,7 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[EN
 	}, iterators.OnClose(dec.Close)), nil
 }
 
-func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
+func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -272,7 +259,7 @@ func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 
 	mapping := r.getMapping()
 
-	pathParamID, err := r.getIDConverter().FormatID(id)
+	pathParamID, err := r.formatID(id)
 	if err != nil {
 		return ent, false, err
 	}
@@ -319,19 +306,19 @@ func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 		return ent, false, makeClientErrUnexpectedResponse(req, resp, responseBody)
 	}
 
-	responseMediaType, ser, ok := r.contentTypeBasedSerializer(resp)
+	cdk, responseMediaType, ok := r.contentTypeBasedCodec(resp)
 	if !ok {
-		return ent, false, fmt.Errorf("no serializer configured for response content type: %s", responseMediaType)
+		return ent, false, fmt.Errorf("no codec configured for response content type: %s", responseMediaType)
 	}
 
 	details = append(details, logging.Field("response content type", responseMediaType))
 
-	dtoPtr := mapping.NewiDTO()
-	if err := ser.Unmarshal(responseBody, dtoPtr); err != nil {
+	dtoPtr := mapping.NewDTO()
+	if err := cdk.Unmarshal(responseBody, dtoPtr); err != nil {
 		return ent, false, err
 	}
 
-	got, err := mapping.MapFromiDTOPtr(ctx, dtoPtr)
+	got, err := mapping.MapFromDTO(ctx, dtoPtr)
 	if err != nil {
 		return ent, false, err
 	}
@@ -339,7 +326,7 @@ func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 	return got, true, nil
 }
 
-func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -372,7 +359,7 @@ func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterator
 	return iterators.Merge(iterators.Slice(vs), iter), nil
 }
 
-func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
+func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 
 	if ptr == nil {
@@ -385,26 +372,23 @@ func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	var lookupID = r.LookupID
-	if lookupID == nil {
-		lookupID = extid.Lookup[ID, ENT]
-	}
+	var idAccessor = r.IDA
 
-	ser := r.getSerializer(r.getMediaType())
+	ser := r.getCodec(r.getMediaType())
 	mapping := r.getMapping()
 
-	id, ok := lookupID(*ptr)
+	id, ok := idAccessor.Lookup(*ptr)
 	if !ok {
-		return fmt.Errorf("unable to find the %s in %s, try configure ResourceClient.LookupID",
+		return fmt.Errorf("unable to find the %s in %s, try configure RESTClient.IDA",
 			reflectkit.TypeOf[ID]().String(), reflectkit.TypeOf[ENT]().String())
 	}
 
-	pathParamID, err := r.getIDConverter().FormatID(id)
+	pathParamID, err := r.formatID(id)
 	if err != nil {
 		return err
 	}
 
-	dto, err := mapping.MapToiDTO(ctx, *ptr)
+	dto, err := mapping.MapToIDTO(ctx, *ptr)
 	if err != nil {
 		return err
 	}
@@ -452,7 +436,7 @@ func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (r RESTClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	ctx = r.withContext(ctx)
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -460,7 +444,7 @@ func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 		return err
 	}
 
-	pathParamID, err := r.getIDConverter().FormatID(id)
+	pathParamID, err := r.formatID(id)
 	if err != nil {
 		return err
 	}
@@ -491,7 +475,7 @@ func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) DeleteAll(ctx context.Context) error {
+func (r RESTClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 	ctx = r.withContext(ctx)
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -521,44 +505,34 @@ func (r RestClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) getIDConverter() idConverter[ID] {
-	if r.IDConverter != nil {
-		return r.IDConverter
+func (r RESTClient[ENT, ID]) formatID(id ID) (string, error) {
+	if r.IDFormatter != nil {
+		return r.IDFormatter(id)
 	}
-	return IDConverter[ID]{}
+	return IDConverter[ID]{}.FormatID(id)
 }
 
 func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RestClient[ENT, ID]) getSerializer(mimeType string) Serializer {
-	if r.Serializer != nil {
-		return r.Serializer
+func (r RESTClient[ENT, ID]) getCodec(mimeType string) codec.Codec {
+	if c, ok := r.MediaTypeCodecs.Lookup(mimeType); ok {
+		return c
 	}
-	if ser, done := r.lookupSerializer(mimeType); done {
-		return ser
+	if r.Codec != nil {
+		return r.Codec
 	}
-	return DefaultSerializer.Serializer
+	return defaultCodec.Codec
 }
 
-func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (Serializer, bool) {
-	mimeType = getMediaType(mimeType)
-	for mt, ser := range DefaultSerializers {
-		if getMediaType(mt) == mimeType {
-			return ser, true
-		}
+func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Codec, mediatype.MediaType, bool) {
+	mt := string(resp.Header.Get(headerKeyContentType))
+	c, ok := r.MediaTypeCodecs.Lookup(mt)
+	if !ok && r.Codec != nil {
+		c, ok = r.Codec, true
 	}
-	return nil, false
-}
-
-func (r RestClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, Serializer, bool) {
-	mt := string(resp.Header.Get("Content-Type"))
-	ser, ok := r.lookupSerializer(mt)
-	if !ok && r.Serializer != nil {
-		ser, ok = r.Serializer, true
-	}
-	return mt, ser, ok
+	return c, mt, ok
 }
 
 var DefaultRestClientHTTPClient http.Client = http.Client{
@@ -571,18 +545,18 @@ var DefaultRestClientHTTPClient http.Client = http.Client{
 	Timeout: 25 * time.Second,
 }
 
-func (r RestClient[ENT, ID]) httpClient() *http.Client {
+func (r RESTClient[ENT, ID]) httpClient() *http.Client {
 	return zerokit.Coalesce(r.HTTPClient, &DefaultRestClientHTTPClient)
 }
 
-func (r RestClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
+func (r RESTClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
 	if r.Mapping == nil {
 		return passthroughMappingMode[ENT]()
 	}
 	return r.Mapping
 }
 
-func (r RestClient[ENT, ID]) getPrefetchLimit() int {
+func (r RESTClient[ENT, ID]) getPrefetchLimit() int {
 	if 0 < r.PrefetchLimit {
 		return r.PrefetchLimit
 	}
@@ -592,19 +566,19 @@ func (r RestClient[ENT, ID]) getPrefetchLimit() int {
 	return 20 // default
 }
 
-func (r RestClient[ENT, ID]) getMediaType() string {
+func (r RESTClient[ENT, ID]) getMediaType() string {
 	var zero string
 	if r.MediaType != zero {
 		return r.MediaType
 	}
-	return DefaultSerializer.MediaType
+	return defaultCodec.MediaType
 }
 
-func (r RestClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {
+func (r RESTClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {
 	return pathsubst(ctx, r.BaseURL)
 }
 
-func (r RestClient[ENT, ID]) withContext(ctx context.Context) context.Context {
+func (r RESTClient[ENT, ID]) withContext(ctx context.Context) context.Context {
 	if r.WithContext != nil {
 		return r.WithContext(ctx)
 	}

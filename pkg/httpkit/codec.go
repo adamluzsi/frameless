@@ -3,29 +3,22 @@ package httpkit
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strconv"
-	"strings"
 
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/jsonkit"
-	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type RestResourceSerialization[Entity, ID any] struct {
-	Serializers map[string]Serializer
-	IDConverter idConverter[ID]
-}
+type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
 
-type Serializer interface {
-	codec.Codec
-}
+type MediaTypeCodecs map[mediatype.MediaType]codec.Codec
 
-var DefaultSerializers = map[string]Serializer{
+var defaultCodecs = map[mediatype.MediaType]codec.Codec{
 	"application/json":                  jsonkit.Codec{},
 	"application/problem+json":          jsonkit.Codec{},
 	"application/x-ndjson":              jsonkit.LinesCodec{},
@@ -34,95 +27,20 @@ var DefaultSerializers = map[string]Serializer{
 	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
 }
 
-var DefaultSerializer = CodecDefault{
-	Serializer: jsonkit.Codec{},
-	MediaType:  mediatype.JSON,
-}
-
-type CodecDefault struct {
-	Serializer interface {
-		codec.Codec
-		codec.ListDecoderMaker
+func (m MediaTypeCodecs) Lookup(mediaType string) (codec.Codec, bool) {
+	mediaType, ok := lookupMediaType(mediaType) // TODO: TEST ME
+	if !ok {
+		return nil, false
 	}
-	MediaType string
-}
-
-func (m *RestResourceSerialization[Entity, ID]) getSerializer(mimeType string) (Serializer, string) {
-	if ser, ok := m.lookupType(mimeType); ok {
-		return ser, mimeType
-	}
-	return m.defaultSerializer()
-}
-
-func (m *RestResourceSerialization[Entity, ID]) requestBodySerializer(r *http.Request) (Serializer, string) {
-	return m.contentTypeSerializer(r)
-}
-
-func (m *RestResourceSerialization[Entity, ID]) contentTypeSerializer(r *http.Request) (Serializer, string) {
-	if mime, ok := m.getRequestBodyMimeType(r); ok { // TODO: TEST ME
-		if serializer, ok := m.lookupType(mime); ok {
-			return serializer, mime
+	if m != nil {
+		if c, ok := m[mediaType]; ok {
+			return c, true
 		}
 	}
-	return m.defaultSerializer() // TODO: TEST ME
-}
-
-func (m *RestResourceSerialization[Entity, ID]) defaultSerializer() (Serializer, string) {
-	return DefaultSerializer.Serializer, DefaultSerializer.MediaType
-}
-
-func (m *RestResourceSerialization[Entity, ID]) responseBodySerializer(r *http.Request) (Serializer, string) {
-	var accept = r.Header.Get(headerKeyAccept)
-	if accept == "" {
-		return m.contentTypeSerializer(r)
-	}
-	var sers = mapkit.Merge(DefaultSerializers, m.Serializers)
-	for _, mimeType := range strings.Fields(accept) {
-		mimeType := string(mimeType)
-		ser, ok := sers[mimeType]
-		if ok {
-			return ser, mimeType
-		}
-	}
-	return m.contentTypeSerializer(r)
-}
-
-func (m *RestResourceSerialization[Entity, ID]) getRequestBodyMimeType(r *http.Request) (string, bool) {
-	return getMIMETypeFrom(r.Header.Get(headerKeyContentType))
-}
-
-func getMIMETypeFrom(headerValue string) (string, bool) {
-	if headerValue == "" {
-		return *new(string), false
-	}
-	const parameterSeparatorSymbol = ";"
-	if strings.Contains(headerValue, parameterSeparatorSymbol) {
-		headerValue = strings.TrimSpace(strings.Split(headerValue, ";")[0])
-	}
-	mime := string(strings.Split(headerValue, ";")[0])
-	return mime, true
-}
-
-func (m *RestResourceSerialization[Entity, ID]) lookupType(mimeType string) (Serializer, bool) {
-	mimeType = getMediaType(mimeType) // TODO: TEST ME
-	if m.Serializers != nil {
-		if ser, ok := m.Serializers[mimeType]; ok {
-			return ser, true
-		}
-	}
-	if DefaultSerializers != nil {
-		if ser, ok := DefaultSerializers[mimeType]; ok {
-			return ser, true
-		}
+	if c, ok := defaultCodecs[mediaType]; ok {
+		return c, true
 	}
 	return nil, false
-}
-
-func (m *RestResourceSerialization[Entity, ID]) getIDConverter() idConverter[ID] {
-	if m.IDConverter != nil {
-		return m.IDConverter
-	}
-	return IDConverter[ID]{}
 }
 
 /////////////////////////////////////////////////////// MAPPING ///////////////////////////////////////////////////////
@@ -227,4 +145,14 @@ func (m IDConverter[ID]) getParser() func(string) (ID, error) {
 			return *new(ID), fmt.Errorf("not implemented")
 		}
 	}
+}
+
+var defaultCodec = codecDefault{
+	Codec:     jsonkit.Codec{},
+	MediaType: mediatype.JSON,
+}
+
+type codecDefault struct {
+	Codec     codec.Codec
+	MediaType mediatype.MediaType
 }

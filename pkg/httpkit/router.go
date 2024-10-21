@@ -288,15 +288,21 @@ func (router *Router) Trace(path string, handler http.Handler) {
 
 // Resource will register a restful resource path using the Resource handler.
 //
-// Paths for Router.Resource("/users", restapi.Resource[User, UserID]):
+// Paths for Router.Resource("/users", httpkit.RESTHandler[User, UserID]):
 //
-//	GET 	/users
-//	POST 	/users
-//	GET 	/users/:id
-//	PUT 	/users/:id
-//	DELETE	/users/:id
-func (router *Router) Resource(identifier string, resource resource) {
-	router.Mount(pathkit.Canonical(identifier), resource)
+//	INDEX	- GET 		/users
+//	CREATE	- POST 		/users
+//	SHOW 	- GET 		/users/:id
+//	UPDATE	- PUT 		/users/:id
+//	DESTROY	- DELETE	/users/:id
+func (router *Router) Resource(identifier string, h restHandler) {
+	router.Mount(pathkit.Canonical(identifier), h)
+}
+
+// restHandler is a generic interface for the typesafe RESTHandler[ENT, ID]
+type restHandler interface {
+	restHandler()
+	http.Handler
 }
 
 // Use will instruct the router to use a given MiddlewareFactoryFunc to

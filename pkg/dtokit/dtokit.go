@@ -9,6 +9,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 )
 
 // Register function facilitates the registration of a mapping between two types.
@@ -263,7 +264,7 @@ func recoverMustMap(returnErr *error) {
 //
 // Implemented by Mapping[Entity, DTO]
 type Mapper[ENT any] interface {
-	// NewiDTO should return back a new(DTO) value.
+	// NewDTO should return back a new(DTO) value.
 	// It is ideal to use with Unmarshal functions such as json.Unmarshal.
 	//
 	// The main reason for hiding the information of DTO type,
@@ -271,23 +272,37 @@ type Mapper[ENT any] interface {
 	// is often not aware what will be the DTO type,
 	// especially with reusable generic code,
 	// and most serializer implementation fine with accepting an "any" argument type.
-	NewiDTO() (dtoPtr any)
-	// MapFromiDTOPtr expected to map a *DTO value to an Entity value.
+	NewDTO() (ptrDTO any /* *DTO */)
+	// NewDTOSlice returns a new slice of DTO pointer.
+	// This method is intended to be used when the user of the Mapper needs to unmarshal a list of DTO values,
+	// such as when working with JSON arrays or other collections of data.
+	// The returned slice will have a length of 0.
+	NewDTOSlice() (ptrSliceOfDTO any /* *[]DTO */)
+	// MapFromDTO expected to map a *DTO value to an Entity value.
 	// We use a DTO pointer here, because the user of Mapper doesn't know the type as well,
-	// it just use the result of NewiDTO as an argument to Unmarshal.
+	// it just use the result of NewDTO as an argument to Unmarshal.
 	//
-	// 		dtoPtr := m.NewiDTO()
+	// 		dtoPtr := m.NewDTO()
 	// 		_ = json.Unmarshal(data, dtoPtr)
-	// 		ent, err := m.MapFromiDTOPtr(ctx, dtoPtr)
+	// 		ent, err := m.MapFromDTO(ctx, dtoPtr)
 	//
-	MapFromiDTOPtr(ctx context.Context, dtoPtr any) (ENT, error)
-	// MapToiDTO expected to map an ENT value to a DTO value.
+	MapFromDTO(ctx context.Context, ptrDTO any) (ENT, error)
+	// MapFromDTOSlice expected to map a *DTO value to an Entity value.
+	// We use a DTO pointer here, because the user of Mapper doesn't know the type as well,
+	// it just use the result of NewDTO as an argument to Unmarshal.
+	//
+	// 		dtoPtr := m.NewDTO()
+	// 		_ = json.Unmarshal(data, dtoPtr)
+	// 		ent, err := m.MapFromDTO(ctx, dtoPtr)
+	//
+	MapFromDTOSlice(ctx context.Context, ptrDTOSlice any) ([]ENT, error)
+	// MapToIDTO expected to map an ENT value to a DTO value.
 	// The result of this often passed to a Marshal function.
 	//
-	// 		dto, _ := m.MapToiDTO(ctx, ent)
+	// 		dto, _ := m.MapToIDTO(ctx, ent)
 	// 		data, _ := json.Marshal(dto)
 	//
-	MapToiDTO(context.Context, ENT) (DTO any, _ error)
+	MapToIDTO(context.Context, ENT) (DTO any /* DTO */, _ error)
 }
 
 // MapperTo[ENT, DTO] represents a mapping between ENT and DTO.
@@ -312,9 +327,11 @@ type Mapping[ENT, DTO any] struct {
 	ToDTO func(ctx context.Context, ent ENT) (DTO, error)
 }
 
-func (m Mapping[ENT, DTO]) NewiDTO() any { return new(DTO) }
+func (m Mapping[ENT, DTO]) NewDTO() any { return new(DTO) }
 
-func (m Mapping[ENT, DTO]) MapFromiDTOPtr(ctx context.Context, dtoPtr any) (ENT, error) {
+func (m Mapping[ENT, DTO]) NewDTOSlice() any { return new([]DTO) }
+
+func (m Mapping[ENT, DTO]) MapFromDTO(ctx context.Context, dtoPtr any) (ENT, error) {
 	if dtoPtr == nil {
 		return *new(ENT), fmt.Errorf("nil dto ptr")
 	}
@@ -331,11 +348,20 @@ func (m Mapping[ENT, DTO]) MapFromiDTOPtr(ctx context.Context, dtoPtr any) (ENT,
 	return Map[ENT](ctx, *ptr)
 }
 
-func (m Mapping[ENT, DTO]) MapToiDTO(ctx context.Context, ent ENT) (any, error) {
-	if m.ToDTO != nil { // TODO: testme
-		return m.ToDTO(ctx, ent)
+func (m Mapping[ENT, DTO]) MapFromDTOSlice(ctx context.Context, ptrDTOSlice any) ([]ENT, error) {
+	if ptrDTOSlice == nil {
+		return nil, fmt.Errorf("nil *%T is received", []DTO{})
 	}
-	return Map[DTO](ctx, ent)
+	ptr, ok := ptrDTOSlice.(*[]DTO)
+	if !ok {
+		return nil, fmt.Errorf("invalid type: expected *%T but got %T", []DTO{}, ptrDTOSlice)
+	}
+	if ptr == nil {
+		return nil, fmt.Errorf("nil %s pointer", reflectkit.TypeOf[DTO]().String())
+	}
+	return slicekit.MapErr(*ptr, func(dto DTO) (ENT, error) {
+		return m.MapFromDTO(ctx, &dto)
+	})
 }
 
 func (m Mapping[ENT, DTO]) MapToDTO(ctx context.Context, ent ENT) (DTO, error) {
@@ -343,6 +369,10 @@ func (m Mapping[ENT, DTO]) MapToDTO(ctx context.Context, ent ENT) (DTO, error) {
 		return m.ToDTO(ctx, ent)
 	}
 	return Map[DTO, ENT](ctx, ent)
+}
+
+func (m Mapping[ENT, DTO]) MapToIDTO(ctx context.Context, ent ENT) (any, error) {
+	return m.MapToDTO(ctx, ent)
 }
 
 func (m Mapping[ENT, DTO]) MapToENT(ctx context.Context, dto DTO) (ENT, error) {

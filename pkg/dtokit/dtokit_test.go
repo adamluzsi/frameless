@@ -445,7 +445,7 @@ func TestMapping(t *testing.T) {
 		)
 
 		t.Log("map concrete entity type to a dto value (any)")
-		dto, err := m.MapToiDTO(ctx, ent)
+		dto, err := m.MapToIDTO(ctx, ent)
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.NotEmpty(t, dto)
@@ -456,7 +456,7 @@ func TestMapping(t *testing.T) {
 		assert.NotEmpty(t, data)
 
 		t.Log("prepare to unserialize the value")
-		var ptrOfDTO any = m.NewiDTO()
+		var ptrOfDTO any = m.NewDTO()
 		assert.NotNil(t, ptrOfDTO)
 		rptr, ok := ptrOfDTO.(*XDTO)
 		assert.True(t, ok)
@@ -466,9 +466,47 @@ func TestMapping(t *testing.T) {
 		assert.Equal[any](t, *rptr, dto)
 
 		t.Log("map the untyped *DTO value back into an entity")
-		gotEnt, err := m.MapFromiDTOPtr(ctx, ptrOfDTO)
+		gotEnt, err := m.MapFromDTO(ctx, ptrOfDTO)
 		assert.NoError(t, err)
 		assert.Equal(t, gotEnt, ent)
+	})
+
+	t.Run("smoke slice", func(t *testing.T) {
+		// create a Mapping that knows about Entity and DTO types,
+		// then pass it to the dependent code that only knows about the Entity type,
+		// but has to work with the DTO as part of the serialisation process
+		var (
+			m   dtokit.Mapper[X] = dtokit.Mapping[X, XDTO]{ToENT: ToEnt, ToDTO: ToDTO}
+			ctx                  = context.Background()
+			ent X                = X{V: rnd.Int()}
+		)
+
+		t.Log("map concrete entity type to a dto value (any)")
+		dto, err := m.MapToIDTO(ctx, ent)
+		assert.NoError(t, err)
+		assert.NotNil(t, dto)
+		assert.NotEmpty(t, dto)
+
+		t.Log("serialize the dto value")
+		data, err := json.Marshal([]any{dto})
+		assert.NoError(t, err)
+		assert.NotEmpty(t, data)
+
+		t.Log("prepare to unserialize the value")
+		var ptr any = m.NewDTOSlice()
+		assert.NotNil(t, ptr)
+		rptr, ok := ptr.(*[]XDTO)
+		assert.True(t, ok)
+		assert.NotNil(t, rptr)
+		assert.Empty(t, *rptr)
+		assert.NoError(t, json.Unmarshal(data, ptr))
+		assert.Equal(t, 1, len(*rptr))
+		assert.Equal[any](t, (*rptr)[0], dto)
+
+		t.Log("map the untyped *DTO value back into an entity")
+		gotEnts, err := m.MapFromDTOSlice(ctx, ptr)
+		assert.NoError(t, err)
+		assert.Equal(t, gotEnts, []X{ent})
 	})
 
 	t.Run("default use dtokit register", func(t *testing.T) {
@@ -485,7 +523,7 @@ func TestMapping(t *testing.T) {
 		defer dtokit.Register(ToDTO, ToEnt)()
 
 		t.Log("map concrete entity type to a dto value (any)")
-		dto, err := m.MapToiDTO(ctx, ent)
+		dto, err := m.MapToIDTO(ctx, ent)
 		assert.NoError(t, err)
 		assert.NotNil(t, dto)
 		assert.NotEmpty(t, dto)
@@ -496,7 +534,7 @@ func TestMapping(t *testing.T) {
 		assert.NotEmpty(t, data)
 
 		t.Log("prepare to unserialize the value")
-		var ptrOfDTO any = m.NewiDTO()
+		var ptrOfDTO any = m.NewDTO()
 		assert.NotNil(t, ptrOfDTO)
 		rptr, ok := ptrOfDTO.(*XDTO)
 		assert.True(t, ok)
@@ -506,7 +544,7 @@ func TestMapping(t *testing.T) {
 		assert.Equal[any](t, *rptr, dto)
 
 		t.Log("map the untyped *DTO value back into an entity")
-		gotEnt, err := m.MapFromiDTOPtr(ctx, ptrOfDTO)
+		gotEnt, err := m.MapFromDTO(ctx, ptrOfDTO)
 		assert.NoError(t, err)
 		assert.Equal(t, gotEnt, ent)
 	})

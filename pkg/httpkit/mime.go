@@ -1,13 +1,21 @@
 package httpkit
 
-import "mime"
+import (
+	"mime"
 
-func getMediaType(mimeType string) string {
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+)
+
+func lookupMediaType(mimeType string) (mediatype.MediaType, bool) {
 	if mimeType == "" {
-		return mimeType
+		return mimeType, false
 	}
-	if mt, _, err := mime.ParseMediaType(mimeType); err == nil {
-		return mt
+	mt, _, err := mime.ParseMediaType(mimeType)
+	if err != nil || mt == "" {
+		if mimeType != "" {
+			return mimeType, true
+		}
+		return mt, false
 	}
-	return mimeType
+	return mt, true
 }
