@@ -61,10 +61,29 @@ type RESTHandler[ENT, ID any] struct {
 	// DestroyAll is a collection endpoint
 	// 		 Delete /
 	DestroyAll func(ctx context.Context) error
+	// ResourceRoutes field is an http.Handler that will receive resource-specific requests.
+	// ResourceRoutes field is optional.
+	// ResourceRoutes are resource endpoints.
+	//
+	// The http.Request.Context will contain the parsed ID from the request path,
+	// and can be accessed with the IDContextKey.
+	//
+	// Example paths
+	// 		/plural-resource-identifier-name/:id/sub-routes
+	// 		/users/42/status
+	// 		/users/42/jobs/13
+	//
+	// Request paths will be stripped from their prefix.
+	// For example, "/users/42/jobs" will end up as "/jobs".
+	ResourceRoutes http.Handler
 	// Mapping [optional] is the generic ENT to DTO mapping configuration.
 	//
 	// default: the ENT type itself is used as the DTO type.
 	Mapping dtokit.Mapper[ENT]
+	// MediaType [optional] is the default format the RESTHandler will use when the requester doesn’t specify the format they expect.
+	//
+	// default: DefaultCodec.MediaType
+	MediaType mediatype.MediaType
 	// MediaTypeMappings [optional] defines a per MediaType DTO Mapping,
 	// that takes priority over the Mapping.
 	//
@@ -82,27 +101,12 @@ type RESTHandler[ENT, ID any] struct {
 	IDContextKey any
 	// IDParser [optional] is the ID converter which is used to parse the ID value from the request path.
 	//
-	// default:
+	// default: IDConverter[ID]{}.ParseID(rawID)
 	IDParser func(string) (ID, error)
 	// IDAccessor [optional] tells how to look up or set the ENT's ID.
 	//
 	// Default: extid.Lookup / extid.Set
 	IDAccessor extid.Accessor[ENT, ID]
-	// ResourceRoutes field is an http.Handler that will receive resource-specific requests.
-	// ResourceRoutes field is optional.
-	// ResourceRoutes are resource endpoints.
-	//
-	// The http.Request.Context will contain the parsed ID from the request path,
-	// and can be accessed with the IDContextKey.
-	//
-	// Example paths
-	// 		/plural-resource-identifier-name/:id/sub-routes
-	// 		/users/42/status
-	// 		/users/42/jobs/13
-	//
-	// Request paths will be stripped from their prefix.
-	// For example, "/users/42/jobs" will end up as "/jobs".
-	ResourceRoutes http.Handler
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
 	//
 	// The default value is DefaultBodyReadLimit, which is preset to 16MB.
@@ -121,10 +125,6 @@ type RESTHandler[ENT, ID any] struct {
 	// 	- DESTORY
 	// 	- sub routes
 	ResourceContext func(context.Context, ID) (context.Context, error)
-	// MediaType [optional] is the default format the RESTHandler will use when the requester doesn’t specify the format they expect.
-	//
-	// default: DefaultCodec.MediaType
-	MediaType mediatype.MediaType
 }
 
 func (res RESTHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
