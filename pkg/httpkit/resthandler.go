@@ -80,7 +80,7 @@ type RESTHandler[ENT, ID any] struct {
 	//
 	// default: the ENT type itself is used as the DTO type.
 	Mapping dtokit.Mapper[ENT]
-	// MediaType [optional] is the default format the RESTHandler will use when the requester doesn’t specify the format they expect.
+	// MediaType [optional] configures what MediaType the handler should use, when the request doesn't defines it.
 	//
 	// default: DefaultCodec.MediaType
 	MediaType mediatype.MediaType
@@ -299,17 +299,17 @@ func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resSer, resMIMEType := res.MediaTypeCodecs.responseBodyCodec(r) // TODO:TEST_ME
-	resMapping := res.getMapping(resMIMEType)
+	resCodec, resMediaType := res.MediaTypeCodecs.responseBodyCodec(r, res.MediaType) // TODO:TEST_ME
+	resMapping := res.getMapping(resMediaType)
 
-	serMaker, ok := resSer.(codec.ListEncoderMaker)
+	serMaker, ok := resCodec.(codec.ListEncoderMaker)
 	if !ok {
 		const code = http.StatusNotAcceptable
 		http.Error(w, http.StatusText(code), code)
 		return
 	}
 
-	w.Header().Set(headerKeyContentType, resMIMEType)
+	w.Header().Set(headerKeyContentType, resMediaType)
 	listEncoder := serMaker.MakeListEncoder(w)
 
 	defer func() {
@@ -362,13 +362,13 @@ func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		ctx                 = r.Context()
-		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodyCodec(r)
-		reqMapping          = res.getMapping(reqMIMEType)
+		ctx                    = r.Context()
+		reqCodec, reqMediaType = res.MediaTypeCodecs.requestBodyCodec(r, res.MediaType)
+		reqMapping             = res.getMapping(reqMediaType)
 	)
 
 	dtoPtr := reqMapping.NewiDTO()
-	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
+	if err := reqCodec.Unmarshal(data, dtoPtr); err != nil {
 		logger.Debug(ctx, "invalid request body", logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
 		return
@@ -391,7 +391,7 @@ func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		resSer, resMIMEType = res.MediaTypeCodecs.responseBodyCodec(r)
+		resSer, resMIMEType = res.MediaTypeCodecs.responseBodyCodec(r, res.MediaType)
 		resMapping          = res.getMapping(resMIMEType)
 	)
 
@@ -437,7 +437,7 @@ func (res RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	resSer, resMIMEType := res.MediaTypeCodecs.responseBodyCodec(r)
+	resSer, resMIMEType := res.MediaTypeCodecs.responseBodyCodec(r, res.MediaType)
 	mapping := res.getMapping(resMIMEType)
 
 	w.Header().Set(headerKeyContentType, resMIMEType)
@@ -469,7 +469,7 @@ func (res RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, i
 
 	var (
 		ctx                 = r.Context()
-		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodyCodec(r)
+		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodyCodec(r, res.MediaType)
 		reqMapping          = res.getMapping(reqMIMEType)
 	)
 

@@ -43,41 +43,43 @@ type CodecDefault struct {
 	MediaType string
 }
 
-func (m MediaTypeCodecs) requestBodyCodec(r *http.Request) (codec.Codec, string) {
-	return m.contentTypeCodec(r)
+func (m MediaTypeCodecs) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+	return m.contentTypeCodec(r, fallbackMediaType)
 }
 
-func (m MediaTypeCodecs) contentTypeCodec(r *http.Request) (codec.Codec, string) {
+func (m MediaTypeCodecs) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
 	if mediaType, ok := m.getRequestBodyMediaType(r); ok { // TODO: TEST ME
 		if c, ok := m.lookup(mediaType); ok {
 			return c, mediaType
 		}
 	}
+	if c, ok := m.lookup(fallbackMediaType); ok {
+		return c, fallbackMediaType
+
+	}
 	return DefaultCodec.Codec, DefaultCodec.MediaType
 }
 
-func (m MediaTypeCodecs) responseBodyCodec(r *http.Request) (codec.Codec, string) {
+func (m MediaTypeCodecs) responseBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
-		return m.contentTypeCodec(r)
+		return m.contentTypeCodec(r, fallbackMediaType)
 	}
-	for _, mimeType := range strings.Fields(accept) {
-		mimeType := string(mimeType)
+	for _, mediaType := range strings.Fields(accept) {
 		if m != nil {
-			ser, ok := m[mimeType]
+			c, ok := m[mediaType]
 			if ok {
-				return ser, mimeType
+				return c, mediaType
 			}
 		}
 		if DefaultCodecs != nil {
-			mimeType := string(mimeType)
-			ser, ok := DefaultCodecs[mimeType]
+			c, ok := DefaultCodecs[mediaType]
 			if ok {
-				return ser, mimeType
+				return c, mediaType
 			}
 		}
 	}
-	return m.contentTypeCodec(r)
+	return m.contentTypeCodec(r, fallbackMediaType)
 }
 
 func (m MediaTypeCodecs) getRequestBodyMediaType(r *http.Request) (mediatype.MediaType, bool) {

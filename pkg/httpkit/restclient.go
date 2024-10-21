@@ -35,7 +35,7 @@ type RESTClient[ENT, ID any] struct {
 	HTTPClient *http.Client
 	// MediaType [optional] is used in the related headers such as Content-Type and Accept.
 	//
-	// default: httpkit.DefaultSerializer.MIMEType
+	// default: httpkit.DefaultCodec.MIMEType
 	MediaType mediatype.MediaType
 	// Mapping [optional] is used if the ENT must be mapped into a DTO type prior to serialization.
 	//
