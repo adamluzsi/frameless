@@ -26,21 +26,22 @@ type (
 // The waiting time before returning is doubled for each failed attempts
 // This ensures that the system gets progressively more time to recover from any issues.
 type ExponentialBackoff struct {
-	// WaitTime is the time duration used to calculate exponential backoff wait times.
-	// Initially, it serves as the starting wait duration, and then it evolves.
+	// Delay is the time duration being waited.
+	// Initially, it serves as the starting wait duration,
+	// and then it increases based on the exponential backoff formula calculation.
 	//
 	// Default: 1/2 Second
-	WaitTime time.Duration
+	Delay time.Duration
 	// Timeout is the time within the Strategy is attempting further retries.
 	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
 	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
 	//
 	// Default: ignored
 	Timeout time.Duration
-	// MaxRetries is the amount of retry which is allowed before giving up the application.
+	// Attempts is the amount of retry which is allowed before giving up the application.
 	//
 	// Default: 5 if Timeout is not set.
-	MaxRetries int
+	Attempts int
 }
 
 func (rs ExponentialBackoff) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
@@ -83,12 +84,12 @@ func (rs ExponentialBackoff) calcWaitTime(waitTime time.Duration, count FailureC
 
 func (rs ExponentialBackoff) getWaitTime() time.Duration {
 	const fallback = 500 * time.Millisecond
-	return zerokit.Coalesce(rs.WaitTime, fallback)
+	return zerokit.Coalesce(rs.Delay, fallback)
 }
 
 func (rs ExponentialBackoff) getMaxRetries() int {
 	const defaultMaxRetries = 5
-	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
+	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
 func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount FailureCount) bool {
@@ -108,14 +109,15 @@ func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount
 
 // Jitter is a random variation added to the backoff time. This helps to distribute the retry attempts evenly over time, reducing the risk of overwhelming the system and avoiding synchronization between multiple clients that might be retrying simultaneously.
 type Jitter struct {
-	// MaxRetries is the amount of retry that is allowed before giving up the application.
-	//
-	// Default: 5
-	MaxRetries int
-	// MaxWaitTime is the duration the Jitter will maximum wait between two retries.
+	// Delay is the maximum time duration that the Jitter is willing to wait between attempts.
+	// There is no guarantee that it will wait the full duration.
 	//
 	// Default: 5 Second
-	MaxWaitTime time.Duration
+	Delay time.Duration
+	// Attempts is the amount of retry that is allowed before giving up the application.
+	//
+	// Default: 5
+	Attempts int
 }
 
 func (rs Jitter) ShouldTry(ctx context.Context, count FailureCount) bool {
@@ -144,12 +146,12 @@ func (rs Jitter) waitTime() time.Duration {
 
 func (rs Jitter) getMaxWaitTime() time.Duration {
 	const fallback = 5 * time.Second
-	return zerokit.Coalesce(rs.MaxWaitTime, fallback)
+	return zerokit.Coalesce(rs.Delay, fallback)
 }
 
 func (rs Jitter) getMaxRetries() int {
 	const defaultMaxRetries = 5
-	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
+	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
 type Waiter struct {
@@ -172,21 +174,20 @@ func (rs Waiter) timeout() time.Duration {
 }
 
 type FixedDelay struct {
-	// WaitTime is the time duration used to calculate exponential backoff wait times.
-	// Initially, it serves as the starting wait duration, and then it evolves.
+	// Delay is the time duration waited between attempts.
 	//
 	// Default: 1/2 Second
-	WaitTime time.Duration
+	Delay time.Duration
 	// Timeout is the time within the Strategy is attempting further retries.
 	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
 	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
 	//
 	// Default: ignored
 	Timeout time.Duration
-	// MaxRetries is the amount of retry which is allowed before giving up the application.
+	// Attempts is the amount of retry attempt which is allowed before giving up the application.
 	//
 	// Default: 5 if Timeout is not set.
-	MaxRetries int
+	Attempts int
 }
 
 func (rs FixedDelay) ShouldTry(ctx context.Context, failureCount FailureCount) bool {
@@ -224,12 +225,12 @@ func (rs FixedDelay) waitTime(ctx context.Context, count FailureCount) (duration
 
 func (rs FixedDelay) getWaitTime() time.Duration {
 	const fallback = 500 * time.Millisecond
-	return zerokit.Coalesce(rs.WaitTime, fallback)
+	return zerokit.Coalesce(rs.Delay, fallback)
 }
 
 func (rs FixedDelay) getMaxRetries() int {
 	const defaultMaxRetries = 5
-	return zerokit.Coalesce(rs.MaxRetries, defaultMaxRetries)
+	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
 func (rs FixedDelay) isDeadlineReached(ctx context.Context, failureCount FailureCount) bool {

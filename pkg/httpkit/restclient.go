@@ -538,8 +538,8 @@ func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.C
 var DefaultRestClientHTTPClient http.Client = http.Client{
 	Transport: RetryRoundTripper{
 		RetryStrategy: retry.ExponentialBackoff{
-			WaitTime: time.Second,
-			Timeout:  time.Minute,
+			Delay:   time.Second,
+			Timeout: time.Minute,
 		},
 	},
 	Timeout: 25 * time.Second,

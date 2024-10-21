@@ -33,15 +33,15 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	const defaultMaxRetries = 5
 
 	var (
-		maxRetries      = testcase.LetValue[int](s, 0)
-		backoffDuration = testcase.LetValue(s, time.Nanosecond)
-		timeout         = testcase.LetValue[time.Duration](s, 0)
+		attempts = testcase.LetValue[int](s, 0)
+		delay    = testcase.LetValue(s, time.Nanosecond)
+		timeout  = testcase.LetValue[time.Duration](s, 0)
 	)
 	subject := testcase.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 		return &retry.ExponentialBackoff{
-			MaxRetries: maxRetries.Get(t),
-			WaitTime:   backoffDuration.Get(t),
-			Timeout:    timeout.Get(t),
+			Attempts: attempts.Get(t),
+			Delay:    delay.Get(t),
+			Timeout:  timeout.Get(t),
 		}
 	})
 
@@ -59,6 +59,21 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		t.Must.True(act(t))
 	})
 
+	s.When(".Attempts field is configured", func(s *testcase.Spec) {
+		attempts.Let(s, func(t *testcase.T) int {
+			return t.Random.IntB(3, 7)
+		})
+
+		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
+			var n int
+			for fc := 0; subject.Get(t).ShouldTry(Context.Get(t), fc); fc++ {
+				n++
+			}
+
+			assert.Equal(t, n, attempts.Get(t))
+		})
+	})
+
 	s.When("context is cancelled", func(s *testcase.Spec) {
 		Context.Let(s, func(t *testcase.T) context.Context {
 			ctx, cancel := context.WithCancel(Context.Super(t))
@@ -74,12 +89,12 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s.When("we reached the allowed maximum number attempts", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.MaxRetries = 7
+			v.Attempts = 7
 			return v
 		})
 
 		failureCount.Let(s, func(t *testcase.T) int {
-			return subject.Get(t).MaxRetries
+			return subject.Get(t).Attempts
 		})
 
 		s.Then("we can't attempt to retry", func(t *testcase.T) {
@@ -90,12 +105,12 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s.When("we didn't reached the allowed maximum number attempts", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.MaxRetries = 5
+			v.Attempts = 5
 			return v
 		})
 
 		failureCount.Let(s, func(t *testcase.T) int {
-			return t.Random.IntBetween(0, subject.Get(t).MaxRetries-1)
+			return t.Random.IntBetween(0, subject.Get(t).Attempts-1)
 		})
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
@@ -108,7 +123,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.WaitTime = time.Hour
+			v.Delay = time.Hour
 			return v
 		})
 
@@ -123,8 +138,8 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s.Context("depending on the number of failed failed attempts we wait longer based on the exponential backoff times", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.WaitTime = time.Millisecond
-			v.MaxRetries = 10
+			v.Delay = time.Millisecond
+			v.Attempts = 10
 			return v
 		})
 
@@ -175,8 +190,8 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
 			v := subject.Super(t)
-			v.WaitTime = time.Hour
-			v.MaxRetries = 10
+			v.Delay = time.Hour
+			v.Attempts = 10
 			return v
 		})
 
@@ -201,8 +216,8 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		})
 
 		s.When(".MaxRetries is absent, but .Timeout is supplied", func(s *testcase.Spec) {
-			maxRetries.LetValue(s, 0) // zero value
-			backoffDuration.LetValue(s, time.Millisecond)
+			attempts.LetValue(s, 0) // zero value
+			delay.LetValue(s, time.Millisecond)
 
 			s.Then("retry will be attempted until timeout is reached", func(t *testcase.T) {
 				var total int
@@ -219,7 +234,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		s.When("we are within the defined timeout duration", func(s *testcase.Spec) {
 			failureCount.LetValue(s, 1)
 
-			backoffDuration.Let(s, func(t *testcase.T) time.Duration {
+			delay.Let(s, func(t *testcase.T) time.Duration {
 				return timeout.Get(t) / 4
 			})
 
@@ -235,7 +250,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 				return 1
 			})
 
-			backoffDuration.Let(s, func(t *testcase.T) time.Duration {
+			delay.Let(s, func(t *testcase.T) time.Duration {
 				t.Log("given backoff duration took exactly as long as what timeout")
 				return timeout.Get(t)
 			})
@@ -264,7 +279,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	subject := testcase.Let(s, func(t *testcase.T) *retry.Jitter {
-		return &retry.Jitter{MaxWaitTime: time.Nanosecond}
+		return &retry.Jitter{Delay: time.Nanosecond}
 	})
 
 	var (
@@ -277,6 +292,27 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
 		t.Must.True(act(t))
+	})
+
+	s.When(".Attempts field is configured", func(s *testcase.Spec) {
+		attempts := testcase.Let(s, func(t *testcase.T) int {
+			return t.Random.IntB(3, 7)
+		})
+
+		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+			super := subject.Super(t)
+			super.Attempts = attempts.Get(t)
+			return super
+		})
+
+		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
+			var n int
+			for fc := 0; subject.Get(t).ShouldTry(Context.Get(t), fc); fc++ {
+				n++
+			}
+
+			assert.Equal(t, n, attempts.Get(t))
+		})
 	})
 
 	s.When("context is cancelled", func(s *testcase.Spec) {
@@ -296,7 +332,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxWaitTime = time.Hour
+			v.Delay = time.Hour
 			return v
 		})
 
@@ -311,12 +347,12 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s.When("we reached the allowed maximum number attempts", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxRetries = 7
+			v.Attempts = 7
 			return v
 		})
 
 		failureCount.Let(s, func(t *testcase.T) int {
-			return subject.Get(t).MaxRetries
+			return subject.Get(t).Attempts
 		})
 
 		s.Then("we can't attempt to retry", func(t *testcase.T) {
@@ -327,12 +363,12 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s.When("we didn't reached the allowed maximum number attempts", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxRetries = 5
+			v.Attempts = 5
 			return v
 		})
 
 		failureCount.Let(s, func(t *testcase.T) int {
-			return t.Random.IntBetween(0, subject.Get(t).MaxRetries-1)
+			return t.Random.IntBetween(0, subject.Get(t).Attempts-1)
 		})
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
@@ -343,8 +379,8 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s.Context("on each retry attempt when failure already happened", func(s *testcase.Spec) {
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxWaitTime = 10 * time.Millisecond
-			v.MaxRetries = 10
+			v.Delay = 10 * time.Millisecond
+			v.Attempts = 10
 			return v
 		})
 
@@ -354,10 +390,10 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		s.Test("we wait a bit, but less than the maximum wait time", func(t *testcase.T) {
 			failureCount.Set(t, 1)
-			var buffer = time.Duration(float64(subject.Get(t).MaxWaitTime) * 0.30)
+			var buffer = time.Duration(float64(subject.Get(t).Delay) * 0.30)
 			assert.Eventually(t, 10, func(it assert.It) {
 				duration := measure(func() { act(t) })
-				it.Must.True(duration <= subject.Get(t).MaxWaitTime+buffer)
+				it.Must.True(duration <= subject.Get(t).Delay+buffer)
 			})
 		})
 	})
@@ -370,8 +406,8 @@ func TestJitter_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.Jitter {
 			v := subject.Super(t)
-			v.MaxWaitTime = time.Hour
-			v.MaxRetries = 10
+			v.Delay = time.Hour
+			v.Attempts = 10
 			return v
 		})
 
@@ -381,11 +417,11 @@ func TestJitter_ShouldTry(t *testing.T) {
 			const buffer = 500 * time.Millisecond
 
 			var duration time.Duration
-			t.Must.Within(subject.Get(t).MaxWaitTime, func(ctx context.Context) {
+			t.Must.Within(subject.Get(t).Delay, func(ctx context.Context) {
 				duration = measure(func() { act(t) })
 			})
 
-			t.Must.True(duration <= (subject.Get(t).MaxWaitTime/multiplier)+buffer)
+			t.Must.True(duration <= (subject.Get(t).Delay/multiplier)+buffer)
 		})
 	})
 }
@@ -483,8 +519,8 @@ var _ retry.Strategy[int] = &retry.FixedDelay{}
 func ExampleFixedDelay() {
 	ctx := context.Background()
 	rs := retry.FixedDelay{
-		WaitTime: 10 * time.Second,
-		Timeout:  5 * time.Minute,
+		Delay:   10 * time.Second,
+		Timeout: 5 * time.Minute,
 	}
 
 	for i := 0; rs.ShouldTry(ctx, i); i++ {
@@ -499,15 +535,15 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	const buffer = 500 * time.Millisecond
 
 	var (
-		waitTime   = testcase.LetValue[time.Duration](s, time.Second)
-		maxRetries = testcase.LetValue[int](s, 5)
-		timeout    = testcase.LetValue[time.Duration](s, 0)
+		delay    = testcase.LetValue[time.Duration](s, time.Second/2)
+		attempts = testcase.LetValue[int](s, 5)
+		timeout  = testcase.LetValue[time.Duration](s, 0)
 	)
 	subject := testcase.Let(s, func(t *testcase.T) *retry.FixedDelay {
 		return &retry.FixedDelay{
-			WaitTime:   waitTime.Get(t),
-			MaxRetries: maxRetries.Get(t),
-			Timeout:    timeout.Get(t),
+			Delay:    delay.Get(t),
+			Attempts: attempts.Get(t),
+			Timeout:  timeout.Get(t),
 		}
 	})
 
@@ -524,8 +560,8 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 
 	s.Then("the wait time is around to what is configured in .WaitTime", func(t *testcase.T) {
-		failureCount.Set(t, t.Random.IntBetween(1, subject.Get(t).MaxRetries-1))
-		waitTime := subject.Get(t).WaitTime
+		failureCount.Set(t, t.Random.IntBetween(1, subject.Get(t).Attempts-1))
+		waitTime := subject.Get(t).Delay
 
 		assert.Within(t, waitTime+buffer, func(ctx context.Context) {
 			act(t)
@@ -534,6 +570,21 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		assert.NotWithin(t, waitTime-buffer, func(ctx context.Context) {
 			act(t)
 		}).Wait()
+	})
+
+	s.When(".Attempts field is configured", func(s *testcase.Spec) {
+		attempts.Let(s, func(t *testcase.T) int {
+			return t.Random.IntB(3, 7)
+		})
+
+		s.Then("we are allowed to make the configured number of attempts before we need to give up", func(t *testcase.T) {
+			var n int
+			for fc := 0; subject.Get(t).ShouldTry(Context.Get(t), fc); fc++ {
+				n++
+			}
+
+			assert.Equal(t, n, attempts.Get(t))
+		})
 	})
 
 	s.When("context is cancelled", func(s *testcase.Spec) {
@@ -549,10 +600,10 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we reached the allowed maximum number attempts", func(s *testcase.Spec) {
-		maxRetries.LetValue(s, 7)
+		attempts.LetValue(s, 7)
 
 		failureCount.Let(s, func(t *testcase.T) int {
-			return subject.Get(t).MaxRetries
+			return subject.Get(t).Attempts
 		})
 
 		s.Then("we can't attempt to retry", func(t *testcase.T) {
@@ -561,10 +612,10 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we didn't reached the allowed maximum number attempts", func(s *testcase.Spec) {
-		maxRetries.LetValue(s, 5)
+		attempts.LetValue(s, 5)
 
 		failureCount.Let(s, func(t *testcase.T) int {
-			return t.Random.IntBetween(0, subject.Get(t).MaxRetries-1)
+			return t.Random.IntBetween(0, subject.Get(t).Attempts-1)
 		})
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
@@ -577,7 +628,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
 			v := subject.Super(t)
-			v.WaitTime = time.Hour
+			v.Delay = time.Hour
 			return v
 		})
 
@@ -590,11 +641,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we wait a constant amount of time between each retry attempt", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
-			v := subject.Super(t)
-			v.WaitTime = 10 * time.Millisecond
-			return v
-		})
+		delay.LetValue(s, 10*time.Millisecond)
 
 		s.Test("we wait the same amount of time between each retry attempt", func(t *testcase.T) {
 			for i := 0; i < 5; i++ {
@@ -603,7 +650,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 				assert.Eventually(t, 10, func(it assert.It) {
 					duration := measure(func() { act(t) })
 
-					it.Must.True(duration <= subject.Get(t).WaitTime+buffer)
+					it.Must.True(duration <= subject.Get(t).Delay+buffer)
 				})
 			}
 		})
@@ -617,7 +664,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 
 		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
 			v := subject.Super(t)
-			v.WaitTime = time.Hour
+			v.Delay = time.Hour
 			return v
 		})
 
@@ -627,17 +674,17 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 			const buffer = 500 * time.Millisecond
 
 			var duration time.Duration
-			t.Must.Within(subject.Get(t).WaitTime, func(ctx context.Context) {
+			t.Must.Within(subject.Get(t).Delay, func(ctx context.Context) {
 				duration = measure(func() { act(t) })
 			})
 
-			t.Must.True(duration <= (subject.Get(t).WaitTime/multiplier)+buffer)
+			t.Must.True(duration <= (subject.Get(t).Delay/multiplier)+buffer)
 		})
 	})
 
 	s.When(".Timeout is supplied", func(s *testcase.Spec) {
 		timeout.Let(s, func(t *testcase.T) time.Duration {
-			return time.Duration(t.Random.IntBetween(int(waitTime.Get(t)*2), int(time.Hour)))
+			return time.Duration(t.Random.IntBetween(int(delay.Get(t)*2), int(time.Hour)))
 		})
 
 		s.Before(func(t *testcase.T) {
@@ -645,11 +692,11 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		})
 
 		s.And(".MaxRetries is absent", func(s *testcase.Spec) {
-			maxRetries.LetValue(s, 0)
+			attempts.LetValue(s, 0)
 
 			s.And("the already waited time in total is less than the value of .Timeout", func(s *testcase.Spec) {
 				failureCount.Let(s, func(t *testcase.T) int {
-					max := int(timeout.Get(t) / waitTime.Get(t))
+					max := int(timeout.Get(t) / delay.Get(t))
 					return t.Random.IntBetween(0, max-1)
 				})
 
@@ -660,7 +707,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 
 			s.And("the already waited time in total is more than the value of .Timeout", func(s *testcase.Spec) {
 				failureCount.Let(s, func(t *testcase.T) int {
-					max := int(timeout.Get(t) / waitTime.Get(t))
+					max := int(timeout.Get(t) / delay.Get(t))
 					return t.Random.IntBetween(max+1, max*2)
 				})
 
@@ -677,7 +724,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 
 				subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
 					v := subject.Super(t)
-					v.WaitTime = timeout.Get(t) / 4
+					v.Delay = timeout.Get(t) / 4
 					return v
 				})
 
@@ -691,7 +738,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 
 				subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
 					v := subject.Super(t)
-					v.WaitTime = timeout.Get(t)
+					v.Delay = timeout.Get(t)
 					return v
 				})
 
