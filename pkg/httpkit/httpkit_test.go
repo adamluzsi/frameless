@@ -611,7 +611,7 @@ func TestMount_spec(t *testing.T) {
 		}).EagerLoading(s)
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
-			return httpkit.RestHandler[X, XID]{
+			return httpkit.RESTHandler[X, XID]{
 				Mapping: dtokit.Mapping[X, XDTO]{},
 				ResourceRoutes: httpkit.NewRouter(func(r *httpkit.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

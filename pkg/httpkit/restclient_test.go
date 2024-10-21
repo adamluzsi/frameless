@@ -18,10 +18,10 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func ExampleRestClient() {
+func ExampleRESTClient() {
 	var (
 		ctx     = context.Background()
-		fooRepo = httpkit.RestClient[testent.Foo, testent.FooID]{
+		fooRepo = httpkit.RESTClient[testent.Foo, testent.FooID]{
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
 			Mapping:   dtokit.Mapping[testent.Foo, testent.FooDTO]{},
@@ -62,8 +62,8 @@ func ExampleRestClient() {
 	}
 }
 
-func ExampleRestClient_subresource() {
-	barResourceClient := httpkit.RestClient[testent.Bar, testent.BarID]{
+func ExampleRESTClient_subresource() {
+	barResourceClient := httpkit.RESTClient[testent.Bar, testent.BarID]{
 		BaseURL: "https://example.com/foos/:foo_id/bars",
 		WithContext: func(ctx context.Context) context.Context {
 			// here we define that this barResourceClient is the subresource of a Foo value (id=fooidvalue)
@@ -76,14 +76,14 @@ func ExampleRestClient_subresource() {
 	_, _, _ = barResourceClient.FindByID(ctx, "baridvalue")
 }
 
-func TestRestClient_crud(t *testing.T) {
+func TestRESTClient_crud(t *testing.T) {
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
 	srv := httptest.NewServer(fooAPI)
 	t.Cleanup(srv.Close)
 
-	fooClient := httpkit.RestClient[testent.Foo, testent.FooID]{
+	fooClient := httpkit.RESTClient[testent.Foo, testent.FooID]{
 		HTTPClient: srv.Client(),
 		BaseURL:    srv.URL,
 	}
@@ -101,14 +101,14 @@ func TestRestClient_crud(t *testing.T) {
 	crudcontracts.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
 }
 
-func TestRestClient_FindAll_withDisableStreaming(t *testing.T) {
+func TestRESTClient_FindAll_withDisableStreaming(t *testing.T) {
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
 	srv := httptest.NewServer(fooAPI)
 	t.Cleanup(srv.Close)
 
-	fooClient := httpkit.RestClient[testent.Foo, testent.FooID]{
+	fooClient := httpkit.RESTClient[testent.Foo, testent.FooID]{
 		HTTPClient:       srv.Client(),
 		BaseURL:          srv.URL,
 		DisableStreaming: true,
@@ -121,7 +121,7 @@ func TestRestClient_FindAll_withDisableStreaming(t *testing.T) {
 	crudcontracts.AllFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
 }
 
-func TestRestClient_subresource(t *testing.T) {
+func TestRESTClient_subresource(t *testing.T) {
 	logger.Testing(t)
 
 	rnd := random.New(random.CryptoSeed{})
@@ -130,8 +130,8 @@ func TestRestClient_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RestHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
-	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{
+	barAPI := httpkit.RESTHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
+	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{
 		ResourceRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
 		}),
@@ -148,7 +148,7 @@ func TestRestClient_subresource(t *testing.T) {
 	foo.ID = ""
 	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
 
-	barClient := httpkit.RestClient[testent.Bar, testent.BarID]{
+	barClient := httpkit.RESTClient[testent.Bar, testent.BarID]{
 		HTTPClient: srv.Client(),
 		BaseURL:    srv.URL + "/foos/:foo_id/bars",
 	}
@@ -167,7 +167,7 @@ func TestRestClient_subresource(t *testing.T) {
 	t.Run("Deleter", crudcontracts.Deleter[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
 }
 
-func TestRestClient_Resource_subresource(t *testing.T) {
+func TestRESTClient_Resource_subresource(t *testing.T) {
 	logger.Testing(t)
 
 	rnd := random.New(random.CryptoSeed{})
@@ -176,8 +176,8 @@ func TestRestClient_Resource_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RestHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
-	fooAPI := httpkit.RestHandler[testent.Foo, testent.FooID]{
+	barAPI := httpkit.RESTHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
+	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{
 		ResourceRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
 		}),
@@ -194,12 +194,12 @@ func TestRestClient_Resource_subresource(t *testing.T) {
 	foo.ID = ""
 	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
 
-	fooClient := httpkit.RestClient[testent.Foo, testent.FooID]{
+	fooClient := httpkit.RESTClient[testent.Foo, testent.FooID]{
 		HTTPClient: srv.Client(),
 		BaseURL:    srv.URL + "/foos",
 	}
 
-	barClient := httpkit.RestClient[testent.Bar, testent.BarID]{
+	barClient := httpkit.RESTClient[testent.Bar, testent.BarID]{
 		HTTPClient: fooClient.HTTPClient,
 		BaseURL:    pathkit.Join(fooClient.BaseURL, ":foo_id", "/bars"),
 

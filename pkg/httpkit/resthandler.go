@@ -21,9 +21,9 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 )
 
-// RestHandler is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
-// Depending on what CRUD operation is supported by the Handler.RestHandler, the Handler supports the following actions:
-type RestHandler[ENT, ID any] struct {
+// RESTHandler is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
+// Depending on what CRUD operation is supported by the Handler.RESTHandler, the Handler supports the following actions:
+type RESTHandler[ENT, ID any] struct {
 	// Create will create a new entity in the restful resource.
 	// Create is a collection endpoint.
 	// 		POST /
@@ -105,23 +105,13 @@ type RestHandler[ENT, ID any] struct {
 	// 	- DESTORY
 	// 	- sub routes
 	ResourceContext func(context.Context, ID) (context.Context, error)
+	// MediaType [optional] is the default format the RestHandler will use when the requester doesn’t specify the format they expect.
+	//
+	// default: DefaultCodec.MediaType
+	MediaType mediatype.MediaType
 }
 
-type resource interface {
-	resource()
-	http.Handler
-}
-
-func (res RestHandler[ENT, ID]) resource() {}
-
-var _ resource = RestHandler[any, any]{}
-
-type idConverter[ID any] interface {
-	FormatID(ID) (string, error)
-	ParseID(string) (ID, error)
-}
-
-func (res RestHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
+func (res RESTHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
 	mediaType = getMediaType(mediaType) // TODO: TEST ME
 	if res.MappingForMediaType != nil {
 		if mapping, ok := res.MappingForMediaType[mediaType]; ok {
@@ -135,7 +125,7 @@ func (res RestHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] 
 }
 
 // passthroughMappingMode enables a passthrough mapping mode where entity is used as the DTO itself.
-// Since we can't rule out that they don't use restapi.Resource with a DTO type in the first place.
+// Since we can't rule out that they don't use httpkit.Resource with a DTO type in the first place.
 func passthroughMappingMode[ENT any]() dtokit.Mapping[ENT, ENT] {
 	return dtokit.Mapping[ENT, ENT]{}
 }
@@ -153,7 +143,7 @@ type Mapper[ENT any] interface {
 	toDTO(ctx context.Context, ent ENT) (DTO any, _ error)
 }
 
-func (res RestHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(internal.WithRequest(r.Context(), r))
 	defer res.handlePanic(w, r)
 	r, rc := internal.WithRoutingContext(r)
@@ -223,7 +213,7 @@ func (res RestHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 }
 
-func (res RestHandler[ENT, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
 	v := recover()
 	if v == nil {
 		return
@@ -235,40 +225,40 @@ func (res RestHandler[ENT, ID]) handlePanic(w http.ResponseWriter, r *http.Reque
 	res.errInternalServerError(w, r, fmt.Errorf("recover: %v", v))
 }
 
-func (res RestHandler[ENT, ID]) getErrorHandler() ErrorHandler {
+func (res RESTHandler[ENT, ID]) getErrorHandler() ErrorHandler {
 	if res.ErrorHandler != nil {
 		return res.ErrorHandler
 	}
 	return defaultErrorHandler
 }
 
-func (res RestHandler[ENT, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+func (res RESTHandler[ENT, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
 		fmt.Println("ERROR", err.Error())
 	}
 	res.getErrorHandler().HandleError(w, r, ErrInternalServerError)
 }
 
-func (res RestHandler[ENT, ID]) errMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) errMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	res.getErrorHandler().HandleError(w, r, ErrMethodNotAllowed)
 }
 
-func (res RestHandler[ENT, ID]) errEntityNotFound(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) errEntityNotFound(w http.ResponseWriter, r *http.Request) {
 	res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 }
 
-// DefaultBodyReadLimit is the maximum number of bytes that a restapi.Handler will read from the requester,
+// DefaultBodyReadLimit is the maximum number of bytes that a httpkit.Handler will read from the requester,
 // if the Handler.BodyReadLimit is not provided.
 var DefaultBodyReadLimit int = 16 * iokit.Megabyte
 
-func (res RestHandler[ENT, ID]) getBodyReadLimit() int {
+func (res RESTHandler[ENT, ID]) getBodyReadLimit() int {
 	if res.BodyReadLimit != 0 {
 		return res.BodyReadLimit
 	}
 	return DefaultBodyReadLimit
 }
 
-func (res RestHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	if res.Index == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -343,7 +333,7 @@ func (res RestHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (res RestHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	if res.Create == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -379,7 +369,7 @@ func (res RestHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 			res.getErrorHandler().HandleError(w, r, ErrEntityAlreadyExist.With().Wrap(err))
 			return
 		}
-		logger.Error(ctx, "error during restapi.Resource#Create operation", logging.ErrField(err))
+		logger.Error(ctx, "error during httpkit.Resource#Create operation", logging.ErrField(err))
 		res.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -413,7 +403,7 @@ func (res RestHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (res RestHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id ID) {
+func (res RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id ID) {
 	if res.Show == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -455,7 +445,7 @@ func (res RestHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
-func (res RestHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id ID) {
+func (res RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id ID) {
 	if res.Update == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -517,7 +507,7 @@ func (res RestHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, i
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res RestHandler[ENT, ID]) destroy(w http.ResponseWriter, r *http.Request, id ID) {
+func (res RESTHandler[ENT, ID]) destroy(w http.ResponseWriter, r *http.Request, id ID) {
 	if res.Destroy == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -550,7 +540,7 @@ func (res RestHandler[ENT, ID]) destroy(w http.ResponseWriter, r *http.Request, 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res RestHandler[ENT, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
+func (res RESTHandler[ENT, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
 	if res.DestroyAll == nil {
 		res.errMethodNotAllowed(w, r)
 		return
@@ -564,11 +554,11 @@ func (res RestHandler[ENT, ID]) destroyAll(w http.ResponseWriter, r *http.Reques
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res RestHandler[ENT, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
+func (res RESTHandler[ENT, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
 	return bodyReadAll(r.Body, res.getBodyReadLimit())
 }
 
-func (res RestHandler[ENT, ID]) WithCRUD(repo crud.ByIDFinder[ENT, ID]) RestHandler[ENT, ID] {
+func (res RESTHandler[ENT, ID]) WithCRUD(repo crud.ByIDFinder[ENT, ID]) RESTHandler[ENT, ID] {
 	if repo, ok := repo.(crud.Creator[ENT]); ok && res.Create == nil {
 		res.Create = repo.Create
 	}
@@ -603,9 +593,13 @@ const (
 	headerKeyAccept      = "Accept"
 )
 
-func (m RestHandler[ENT, ID]) getIDParser(rawID string) (ID, error) {
+func (m RESTHandler[ENT, ID]) getIDParser(rawID string) (ID, error) {
 	if m.IDParser != nil {
 		return m.IDParser(rawID)
 	}
 	return IDConverter[ID]{}.ParseID(rawID)
 }
+
+func (res RESTHandler[ENT, ID]) restHandler() {}
+
+var _ restHandler = RESTHandler[any, any]{}

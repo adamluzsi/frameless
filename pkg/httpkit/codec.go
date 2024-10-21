@@ -26,7 +26,7 @@ var DefaultCodecs = map[string]codec.Codec{
 	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
 }
 
-var DefaultSerializer = CodecDefault{
+var DefaultCodec = CodecDefault{
 	Codec:     jsonkit.Codec{},
 	MediaType: mediatype.JSON,
 }
@@ -60,7 +60,7 @@ func (m MediaTypeCodecs) contentTypeSerializer(r *http.Request) (codec.Codec, st
 }
 
 func (m MediaTypeCodecs) defaultSerializer() (codec.Codec, string) {
-	return DefaultSerializer.Codec, DefaultSerializer.MediaType
+	return DefaultCodec.Codec, DefaultCodec.MediaType
 }
 
 func (m MediaTypeCodecs) responseBodySerializer(r *http.Request) (codec.Codec, string) {

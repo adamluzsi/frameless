@@ -26,7 +26,7 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 )
 
-type RestClient[ENT, ID any] struct {
+type RESTClient[ENT, ID any] struct {
 	// BaseURL [required] is the url base that the rest client will use to
 	BaseURL string
 	// HTTPClient [optional] will be used to make the http requests from the rest client.
@@ -85,7 +85,7 @@ type RestClientCodec interface {
 	codec.ListDecoderMaker
 }
 
-func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
+func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 
 	if ptr == nil {
@@ -153,7 +153,7 @@ func (r RestClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -253,7 +253,7 @@ func (r RestClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[EN
 	}, iterators.OnClose(dec.Close)), nil
 }
 
-func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
+func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -339,7 +339,7 @@ func (r RestClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 	return got, true, nil
 }
 
-func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -372,7 +372,7 @@ func (r RestClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterator
 	return iterators.Merge(iterators.Slice(vs), iter), nil
 }
 
-func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
+func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 
 	if ptr == nil {
@@ -452,7 +452,7 @@ func (r RestClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
+func (r RESTClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	ctx = r.withContext(ctx)
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -491,7 +491,7 @@ func (r RestClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) DeleteAll(ctx context.Context) error {
+func (r RESTClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 	ctx = r.withContext(ctx)
 
 	baseURL, err := r.getBaseURL(ctx)
@@ -521,7 +521,7 @@ func (r RestClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 	return nil
 }
 
-func (r RestClient[ENT, ID]) formatID(id ID) (string, error) {
+func (r RESTClient[ENT, ID]) formatID(id ID) (string, error) {
 	if r.IDFormatter != nil {
 		return r.IDFormatter(id)
 	}
@@ -532,17 +532,17 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RestClient[ENT, ID]) getSerializer(mimeType string) codec.Codec {
+func (r RESTClient[ENT, ID]) getSerializer(mimeType string) codec.Codec {
 	if r.Codec != nil {
 		return r.Codec
 	}
 	if ser, done := r.lookupSerializer(mimeType); done {
 		return ser
 	}
-	return DefaultSerializer.Codec
+	return DefaultCodec.Codec
 }
 
-func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (codec.Codec, bool) {
+func (r RESTClient[ENT, ID]) lookupSerializer(mimeType string) (codec.Codec, bool) {
 	mimeType = getMediaType(mimeType)
 	for mt, ser := range DefaultCodecs {
 		if getMediaType(mt) == mimeType {
@@ -552,7 +552,7 @@ func (r RestClient[ENT, ID]) lookupSerializer(mimeType string) (codec.Codec, boo
 	return nil, false
 }
 
-func (r RestClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, codec.Codec, bool) {
+func (r RESTClient[ENT, ID]) contentTypeBasedSerializer(resp *http.Response) (string, codec.Codec, bool) {
 	mt := string(resp.Header.Get("Content-Type"))
 	ser, ok := r.lookupSerializer(mt)
 	if !ok && r.Codec != nil {
@@ -571,18 +571,18 @@ var DefaultRestClientHTTPClient http.Client = http.Client{
 	Timeout: 25 * time.Second,
 }
 
-func (r RestClient[ENT, ID]) httpClient() *http.Client {
+func (r RESTClient[ENT, ID]) httpClient() *http.Client {
 	return zerokit.Coalesce(r.HTTPClient, &DefaultRestClientHTTPClient)
 }
 
-func (r RestClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
+func (r RESTClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
 	if r.Mapping == nil {
 		return passthroughMappingMode[ENT]()
 	}
 	return r.Mapping
 }
 
-func (r RestClient[ENT, ID]) getPrefetchLimit() int {
+func (r RESTClient[ENT, ID]) getPrefetchLimit() int {
 	if 0 < r.PrefetchLimit {
 		return r.PrefetchLimit
 	}
@@ -592,19 +592,19 @@ func (r RestClient[ENT, ID]) getPrefetchLimit() int {
 	return 20 // default
 }
 
-func (r RestClient[ENT, ID]) getMediaType() string {
+func (r RESTClient[ENT, ID]) getMediaType() string {
 	var zero string
 	if r.MediaType != zero {
 		return r.MediaType
 	}
-	return DefaultSerializer.MediaType
+	return DefaultCodec.MediaType
 }
 
-func (r RestClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {
+func (r RESTClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {
 	return pathsubst(ctx, r.BaseURL)
 }
 
-func (r RestClient[ENT, ID]) withContext(ctx context.Context) context.Context {
+func (r RESTClient[ENT, ID]) withContext(ctx context.Context) context.Context {
 	if r.WithContext != nil {
 		return r.WithContext(ctx)
 	}
