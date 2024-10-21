@@ -5,4 +5,5 @@ use (
 	./adapter/postgresql
 	./adapter/mysql
 	./adapter/mariadb
+	./examples/restful-api
 )
