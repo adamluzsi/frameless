@@ -56,8 +56,8 @@ const ErrUnauthorized errorkit.Error = "Unauthorized"
 
 //* USER API - BEGIN *//
 
-func MakeUsersAPI(c Config) httpkit.RestHandler[mydomain.User, mydomain.UserID] {
-	return httpkit.RestHandler[mydomain.User, mydomain.UserID]{
+func MakeUsersAPI(c Config) httpkit.RESTHandler[mydomain.User, mydomain.UserID] {
+	return httpkit.RESTHandler[mydomain.User, mydomain.UserID]{
 		Create: c.UserRepository.Create,
 		Index:  c.UserRepository.FindAll,
 		Show:   c.UserRepository.FindByID,
@@ -107,8 +107,8 @@ type UserJSONDTO struct {
 
 //* USER API - END *//
 
-func MakeNotesAPI(c Config) httpkit.RestHandler[mydomain.Note, mydomain.NoteID] {
-	return httpkit.RestHandler[mydomain.Note, mydomain.NoteID]{
+func MakeNotesAPI(c Config) httpkit.RESTHandler[mydomain.Note, mydomain.NoteID] {
+	return httpkit.RESTHandler[mydomain.Note, mydomain.NoteID]{
 		Create:     c.NoteRepository.Create,
 		Index:      c.NoteRepository.FindAll,
 		Show:       c.NoteRepository.FindByID,
@@ -140,7 +140,7 @@ var dtoNoteMapping = dtokit.Mapping[mydomain.Note, NoteJSONDTO]{
 		}
 		ent.UserID = userID
 
-		// alternatively, httpkit.RestHandler also store the id in the env
+		// alternatively, httpkit.RESTHandler also store the id in the env
 		ctx.Value(httpkit.IDInContext[])
 
 		

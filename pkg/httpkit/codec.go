@@ -3,11 +3,13 @@ package httpkit
 import (
 	"context"
 	"fmt"
+	"mime"
 	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
 
+	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/jsonkit"
@@ -16,6 +18,8 @@ import (
 )
 
 type MediaTypeCodecs map[mediatype.MediaType]codec.Codec
+
+type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
 
 var DefaultCodecs = map[string]codec.Codec{
 	"application/json":                  jsonkit.Codec{},
@@ -39,34 +43,23 @@ type CodecDefault struct {
 	MediaType string
 }
 
-func (m MediaTypeCodecs) getSerializer(mimeType string) (codec.Codec, string) {
-	if ser, ok := m.lookupType(mimeType); ok {
-		return ser, mimeType
-	}
-	return m.defaultSerializer()
+func (m MediaTypeCodecs) requestBodyCodec(r *http.Request) (codec.Codec, string) {
+	return m.contentTypeCodec(r)
 }
 
-func (m MediaTypeCodecs) requestBodySerializer(r *http.Request) (codec.Codec, string) {
-	return m.contentTypeSerializer(r)
-}
-
-func (m MediaTypeCodecs) contentTypeSerializer(r *http.Request) (codec.Codec, string) {
-	if mime, ok := m.getRequestBodyMimeType(r); ok { // TODO: TEST ME
-		if serializer, ok := m.lookupType(mime); ok {
-			return serializer, mime
+func (m MediaTypeCodecs) contentTypeCodec(r *http.Request) (codec.Codec, string) {
+	if mediaType, ok := m.getRequestBodyMediaType(r); ok { // TODO: TEST ME
+		if c, ok := m.lookup(mediaType); ok {
+			return c, mediaType
 		}
 	}
-	return m.defaultSerializer() // TODO: TEST ME
-}
-
-func (m MediaTypeCodecs) defaultSerializer() (codec.Codec, string) {
 	return DefaultCodec.Codec, DefaultCodec.MediaType
 }
 
-func (m MediaTypeCodecs) responseBodySerializer(r *http.Request) (codec.Codec, string) {
+func (m MediaTypeCodecs) responseBodyCodec(r *http.Request) (codec.Codec, string) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
-		return m.contentTypeSerializer(r)
+		return m.contentTypeCodec(r)
 	}
 	for _, mimeType := range strings.Fields(accept) {
 		mimeType := string(mimeType)
@@ -84,35 +77,31 @@ func (m MediaTypeCodecs) responseBodySerializer(r *http.Request) (codec.Codec, s
 			}
 		}
 	}
-	return m.contentTypeSerializer(r)
+	return m.contentTypeCodec(r)
 }
 
-func (m MediaTypeCodecs) getRequestBodyMimeType(r *http.Request) (string, bool) {
-	return getMIMETypeFrom(r.Header.Get(headerKeyContentType))
+func (m MediaTypeCodecs) getRequestBodyMediaType(r *http.Request) (mediatype.MediaType, bool) {
+	return getMediaTypeFrom(r.Header.Get(headerKeyContentType))
 }
 
-func getMIMETypeFrom(headerValue string) (string, bool) {
-	if headerValue == "" {
-		return *new(string), false
+func getMediaTypeFrom(headerValue string) (string, bool) {
+	mediaType, _, err := mime.ParseMediaType(headerValue)
+	if err != nil || mediaType == "" {
+		return "", false
 	}
-	const parameterSeparatorSymbol = ";"
-	if strings.Contains(headerValue, parameterSeparatorSymbol) {
-		headerValue = strings.TrimSpace(strings.Split(headerValue, ";")[0])
-	}
-	mime := string(strings.Split(headerValue, ";")[0])
-	return mime, true
+	return mediaType, true
 }
 
-func (m MediaTypeCodecs) lookupType(mediaType string) (codec.Codec, bool) {
+func (m MediaTypeCodecs) lookup(mediaType string) (codec.Codec, bool) {
 	mediaType = getMediaType(mediaType) // TODO: TEST ME
 	if m != nil {
-		if ser, ok := m[mediaType]; ok {
-			return ser, true
+		if c, ok := m[mediaType]; ok {
+			return c, true
 		}
 	}
 	if DefaultCodecs != nil {
-		if ser, ok := DefaultCodecs[mediaType]; ok {
-			return ser, true
+		if c, ok := DefaultCodecs[mediaType]; ok {
+			return c, true
 		}
 	}
 	return nil, false

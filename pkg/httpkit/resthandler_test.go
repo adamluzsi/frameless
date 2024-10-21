@@ -50,7 +50,7 @@ func _() {
 	h.DestroyAll = allDeleter.DeleteAll
 }
 
-func ExampleRestHandler() {
+func ExampleRESTHandler() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
 	fooRestfulResource := httpkit.RESTHandler[X, XID]{
 		Create: fooRepository.Create,
@@ -79,7 +79,7 @@ func ExampleRestHandler() {
 
 		Mapping: dtokit.Mapping[X, XDTO]{},
 
-		MappingForMediaType: map[string]dtokit.Mapper[X]{
+		MediaTypeMappings: map[string]dtokit.Mapper[X]{
 			mediatype.JSON: dtokit.Mapping[X, XDTO]{},
 		},
 	}

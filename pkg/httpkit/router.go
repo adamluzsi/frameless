@@ -288,7 +288,7 @@ func (router *Router) Trace(path string, handler http.Handler) {
 
 // Resource will register a restful resource path using the Resource handler.
 //
-// Paths for Router.Resource("/users", httpkit.RestHandler[User, UserID]):
+// Paths for Router.Resource("/users", httpkit.RESTHandler[User, UserID]):
 //
 //	INDEX	- GET 		/users
 //	CREATE	- POST 		/users
@@ -299,6 +299,7 @@ func (router *Router) Resource(identifier string, h restHandler) {
 	router.Mount(pathkit.Canonical(identifier), h)
 }
 
+// restHandler is a generic interface for the typesafe RESTHandler[ENT, ID]
 type restHandler interface {
 	restHandler()
 	http.Handler

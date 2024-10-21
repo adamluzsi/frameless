@@ -27,7 +27,7 @@ import (
 )
 
 type RESTClient[ENT, ID any] struct {
-	// BaseURL [required] is the url base that the rest client will use to
+	// BaseURL [required] is the url base that the rest client will use to access the remote resource.
 	BaseURL string
 	// HTTPClient [optional] will be used to make the http requests from the rest client.
 	//
@@ -43,16 +43,16 @@ type RESTClient[ENT, ID any] struct {
 	Mapping dtokit.Mapper[ENT]
 	// Codec [optional] is used for the serialization process with DTO values.
 	//
-	// default: DefaultSerializers will be used to find a matching serializer for the given media type.
+	// default: DefaultCodecs will be used to find a matching codec for the given media type.
 	Codec RestClientCodec
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
 	// default: httpkit.IDFormatter[ID].Format
 	IDFormatter func(ID) (string, error)
-	// LookupID [optional] is used to lookup the ID value in an ENT value.
+	// IDA [optional] is the ENT's ID accessor helper, to describe how to look up the ID field in a ENT.
 	//
 	// default: extid.Lookup[ID, ENT]
-	LookupID extid.LookupIDFunc[ENT, ID]
+	IDA extid.Accessor[ENT, ID]
 	// WithContext [optional] allows you to add data to the context for requests.
 	// If you need to select a RESTful subresource and return it as a RestClient,
 	// you can use this function to add the selected resource's path parameter
@@ -385,17 +385,14 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	var lookupID = r.LookupID
-	if lookupID == nil {
-		lookupID = extid.Lookup[ID, ENT]
-	}
+	var idAccessor = r.IDA
 
 	ser := r.getSerializer(r.getMediaType())
 	mapping := r.getMapping()
 
-	id, ok := lookupID(*ptr)
+	id, ok := idAccessor.Lookup(*ptr)
 	if !ok {
-		return fmt.Errorf("unable to find the %s in %s, try configure ResourceClient.LookupID",
+		return fmt.Errorf("unable to find the %s in %s, try configure RESTClient.IDA",
 			reflectkit.TypeOf[ID]().String(), reflectkit.TypeOf[ENT]().String())
 	}
 

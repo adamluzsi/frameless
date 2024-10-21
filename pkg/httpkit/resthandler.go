@@ -21,8 +21,20 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 )
 
-// RESTHandler is an HTTP Handler that allows you to expose a resource such as a repository as a Restful API resource.
-// Depending on what CRUD operation is supported by the Handler.RESTHandler, the Handler supports the following actions:
+// RESTHandler implements an http.Handler that adheres to the Representational State of Resource (REST) architectural style.
+//
+// What is REST?
+//
+// REST, short for Representational State Transfer,
+// is an architectural style for designing networked applications.
+// It was introduced by Roy Fielding in his 2000 PhD dissertation.
+//
+// The primary goals of a RESTful API are to:
+// * Provide a uniform interface for interacting with resources (CRUD over HTTP)
+// * Separate concerns between client and server
+// * Use standard HTTP methods (e.g., GET, POST, PUT, DELETE) to manipulate resources
+//
+// This RESTHandler provides a foundation for building RESTful APIs that meet these goals.
 type RESTHandler[ENT, ID any] struct {
 	// Create will create a new entity in the restful resource.
 	// Create is a collection endpoint.
@@ -49,16 +61,20 @@ type RESTHandler[ENT, ID any] struct {
 	// DestroyAll is a collection endpoint
 	// 		 Delete /
 	DestroyAll func(ctx context.Context) error
+	// Mapping [optional] is the generic ENT to DTO mapping configuration.
+	//
+	// default: the ENT type itself is used as the DTO type.
+	Mapping dtokit.Mapper[ENT]
+	// MediaTypeMappings [optional] defines a per MediaType DTO Mapping,
+	// that takes priority over the Mapping.
+	//
+	// default: Mapping is used.
+	MediaTypeMappings MediaTypeMappings[ENT]
 	// MediaTypeCodecs [optional] contains per media type related codec which is used to marshal and unmarshal data in the response and response body.
 	//
 	// default: will use httpkit.DefaultCodecs
 	MediaTypeCodecs MediaTypeCodecs
-
-	// Mapping is the primary ENT to DTO mapping configuration.
-	Mapping dtokit.Mapper[ENT]
-	// MappingForMediaType defines a per MIMEType Mapping, that takes priority over Mapping
-	MappingForMediaType map[mediatype.MediaType]dtokit.Mapper[ENT]
-	// ErrorHandler is used to handle errors from the request, by mapping the error value into an error DTOMapping.
+	// ErrorHandler [optional] is used to handle errors from the request, by mapping the error value into an error DTO Mapping.
 	ErrorHandler ErrorHandler
 	// IDContextKey is an optional field used to store the parsed ID from the URL in the context.
 	//
@@ -105,7 +121,7 @@ type RESTHandler[ENT, ID any] struct {
 	// 	- DESTORY
 	// 	- sub routes
 	ResourceContext func(context.Context, ID) (context.Context, error)
-	// MediaType [optional] is the default format the RestHandler will use when the requester doesn’t specify the format they expect.
+	// MediaType [optional] is the default format the RESTHandler will use when the requester doesn’t specify the format they expect.
 	//
 	// default: DefaultCodec.MediaType
 	MediaType mediatype.MediaType
@@ -113,8 +129,8 @@ type RESTHandler[ENT, ID any] struct {
 
 func (res RESTHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
 	mediaType = getMediaType(mediaType) // TODO: TEST ME
-	if res.MappingForMediaType != nil {
-		if mapping, ok := res.MappingForMediaType[mediaType]; ok {
+	if res.MediaTypeMappings != nil {
+		if mapping, ok := res.MediaTypeMappings[mediaType]; ok {
 			return mapping
 		}
 	}
@@ -283,7 +299,7 @@ func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resSer, resMIMEType := res.MediaTypeCodecs.responseBodySerializer(r) // TODO:TEST_ME
+	resSer, resMIMEType := res.MediaTypeCodecs.responseBodyCodec(r) // TODO:TEST_ME
 	resMapping := res.getMapping(resMIMEType)
 
 	serMaker, ok := resSer.(codec.ListEncoderMaker)
@@ -347,7 +363,7 @@ func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	var (
 		ctx                 = r.Context()
-		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodySerializer(r)
+		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodyCodec(r)
 		reqMapping          = res.getMapping(reqMIMEType)
 	)
 
@@ -375,7 +391,7 @@ func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		resSer, resMIMEType = res.MediaTypeCodecs.responseBodySerializer(r)
+		resSer, resMIMEType = res.MediaTypeCodecs.responseBodyCodec(r)
 		resMapping          = res.getMapping(resMIMEType)
 	)
 
@@ -421,7 +437,7 @@ func (res RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	resSer, resMIMEType := res.MediaTypeCodecs.responseBodySerializer(r)
+	resSer, resMIMEType := res.MediaTypeCodecs.responseBodyCodec(r)
 	mapping := res.getMapping(resMIMEType)
 
 	w.Header().Set(headerKeyContentType, resMIMEType)
@@ -453,7 +469,7 @@ func (res RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, i
 
 	var (
 		ctx                 = r.Context()
-		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodySerializer(r)
+		reqSer, reqMIMEType = res.MediaTypeCodecs.requestBodyCodec(r)
 		reqMapping          = res.getMapping(reqMIMEType)
 	)
 

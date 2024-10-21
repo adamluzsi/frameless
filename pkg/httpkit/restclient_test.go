@@ -30,7 +30,9 @@ func ExampleRESTClient() {
 			IDFormatter: func(fi testent.FooID) (string, error) {
 				return httpkit.IDConverter[testent.FooID]{}.Format(fi)
 			},
-			LookupID: testent.Foo.LookupID,
+			IDA: func(f *testent.Foo) *testent.FooID {
+				return &f.ID
+			},
 		}
 	)
 
