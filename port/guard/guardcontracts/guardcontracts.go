@@ -166,6 +166,8 @@ func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) co
 	s := testcase.NewSpec(nil)
 	c := option.Use[LockerConfig](opts)
 
+	const timeout = 5 * time.Second
+
 	// Reuse tests from Locker contract for Unlock method
 	s.Describe(".Unlock", Unlocker(subject, func(ctx context.Context) (context.Context, error) {
 		for {
@@ -187,10 +189,17 @@ func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) co
 		)
 
 		act := func(t *testcase.T) (context.Context, bool, error) {
-			ctx, acquired, err := subject.TryLock(Context.Get(t))
-			if acquired {
-				t.Defer(subject.Unlock, ctx)
-			}
+			var (
+				ctx      context.Context
+				acquired bool
+				err      error
+			)
+			assert.Within(t, timeout, func(context.Context) {
+				ctx, acquired, err = subject.TryLock(Context.Get(t))
+				if acquired {
+					t.Defer(subject.Unlock, ctx)
+				}
+			})
 			return ctx, acquired, err
 		}
 
@@ -275,6 +284,8 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 	s := testcase.NewSpec(nil)
 	c := option.Use(opts)
 
+	const timeout = 5 * time.Second
+
 	var (
 		Context = testcase.Let[context.Context](s, nil)
 	)
@@ -285,14 +296,12 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 	s.When("context is a lock context, made by a lock call", func(s *testcase.Spec) {
 		Context.Let(s, func(t *testcase.T) context.Context {
 			ctx := c.MakeContext(t)
-			assert.Within(t, 5*time.Second, func(context.Context) {
+			assert.Within(t, timeout, func(context.Context) {
 				lctx, err := lock(ctx)
 				t.Must.NoError(err)
+				t.Defer(subject.Unlock, lctx)
 				ctx = lctx
 			}, "unable to lock, could it be that due to implementation issue, the previous test the lock in a locked state?")
-			ctx, err := lock(ctx)
-			t.Must.NoError(err)
-			t.Defer(subject.Unlock, ctx)
 			return ctx
 		})
 
@@ -300,15 +309,19 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 			t.Must.NoError(act(t))
 		})
 
-		s.Then("unlock can be called multiple times to make it convinent to use", func(t *testcase.T) {
-			t.Random.Repeat(2, 8, func() {
-				t.Must.NoError(act(t))
+		s.Then("the already locked context should not hang locking it again", func(t *testcase.T) {
+			assert.Within(t, timeout, func(context.Context) {
+				ctx, err := lock(Context.Get(t))
+				t.Must.NoError(err)
+				t.Defer(subject.Unlock, ctx)
 			})
 		})
 
 		s.Then("unlocks multiple time without an issue", func(t *testcase.T) {
 			t.Random.Repeat(3, 7, func() {
-				t.Must.NoError(act(t))
+				assert.Within(t, timeout, func(context.Context) {
+					t.Must.NoError(act(t))
+				})
 			})
 		})
 
