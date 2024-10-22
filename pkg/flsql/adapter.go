@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -155,8 +156,8 @@ func SQLConnectionAdapter(db *sql.DB) ConnectionAdapter[sql.DB, sql.Tx] {
 		TxAdapter: QueryableSQL[*sql.Tx],
 
 		Begin: func(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
-			// TODO: integrate begin tx options
-			return db.BeginTx(ctx, nil)
+			opts, _ := ContextSQLTxOptions.Lookup(ctx)
+			return db.BeginTx(ctx, opts)
 		},
 
 		Commit: func(ctx context.Context, tx *sql.Tx) error {
@@ -168,3 +169,7 @@ func SQLConnectionAdapter(db *sql.DB) ConnectionAdapter[sql.DB, sql.Tx] {
 		},
 	}
 }
+
+var ContextSQLTxOptions contextkit.ValueHandler[ctxKeyTxOptions, *sql.TxOptions]
+
+type ctxKeyTxOptions struct{}
