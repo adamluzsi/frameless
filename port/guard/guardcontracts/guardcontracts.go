@@ -2,7 +2,6 @@ package guardcontracts
 
 import (
 	"context"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,11 +19,16 @@ import (
 // TODO:
 // - add coverage for context cancellation during lock hanging
 
+var Timeout = testcase.Var[time.Duration]{
+	ID: "assertion Timeout.Get(t)",
+	Init: func(t *testcase.T) time.Duration {
+		return time.Second
+	},
+}
+
 func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[LockerConfig](opts)
-
-	const withinTimeout = time.Second
 
 	s.After(func(t *testcase.T) {
 		_ = subject.Unlock(c.MakeContext(t))
@@ -53,45 +57,42 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 		})
 
 		s.Then("calling lock will prevent other lock acquisitions", func(t *testcase.T) {
-			ctx, err := act(t)
-			t.Must.NoError(err)
+			var lockContext context.Context
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
+				var err error
+				lockContext, err = act(t)
+				assert.NoError(t, err)
+			})
 
-			var isLocked int32
-			go func() {
+			w := assert.NotWithin(t, Timeout.Get(t), func(context.Context) {
 				ctx, err := subject.Lock(c.MakeContext(t))
 				t.Must.NoError(err)
 				t.Must.NotNil(ctx)
 				t.Must.NoError(ctx.Err())
 				t.Must.NoError(subject.Unlock(ctx))
-				atomic.AddInt32(&isLocked, 1)
-			}()
-
-			t.Random.Repeat(3, 7, c.Waiter.Wait)
-			t.Must.Equal(int32(0), atomic.LoadInt32(&isLocked))
-
-			t.Must.NoError(subject.Unlock(ctx))
-			t.Eventually(func(it *testcase.T) {
-				// after unlock, the other Lock call unblocks
-				it.Must.Equal(int32(1), atomic.LoadInt32(&isLocked))
 			})
+
+			t.Must.NoError(subject.Unlock(lockContext))
+
+			// after unlock, the other Lock call unblocks
+			assert.Within(t, Timeout.Get(t), func(context.Context) { w.Wait() })
 		})
 
 		s.Then("calling unlock not with the locked context will yield an error", func(t *testcase.T) {
-			lockContext, err := act(t)
-			t.Must.NoError(err)
 			t.Must.ErrorIs(guard.ErrNoLock, subject.Unlock(c.MakeContext(t)))
-			t.Must.NoError(subject.Unlock(lockContext))
 		})
 
 		s.When("the lock is already taken", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				lctx, err := act(t)
-				assert.NoError(t, err)
-				t.Defer(subject.Unlock, lctx)
+				assert.Within(t, Timeout.Get(t), func(context.Context) {
+					lctx, err := act(t)
+					assert.NoError(t, err)
+					t.Defer(subject.Unlock, lctx)
+				})
 			})
 
 			s.Then("the Locking will hangs", func(t *testcase.T) {
-				d := time.Duration(t.Random.IntBetween(int(250*time.Millisecond), int(time.Second)))
+				d := t.Random.DurationBetween(250*time.Millisecond, time.Second)
 
 				assert.NotWithin(t, d, func(ctx context.Context) {
 					ctx, cancel := contextkit.Merge(ctx, Context.Get(t))
@@ -110,22 +111,27 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 			})
 
 			s.Then("it will return back with the context error", func(t *testcase.T) {
-				_, err := act(t)
-				t.Must.ErrorIs(Context.Get(t).Err(), err)
+				assert.Within(t, Timeout.Get(t), func(ctx context.Context) {
+					_, err := act(t)
+					t.Must.ErrorIs(Context.Get(t).Err(), err)
+				})
 			})
 		})
 
 		s.When("the current context already a lock context", func(s *testcase.Spec) {
 			Context.Let(s, func(t *testcase.T) context.Context {
-				ctx := Context.Super(t)
-				lockCtx, err := subject.Lock(ctx)
-				t.Must.NoError(err)
-				t.Defer(subject.Unlock, lockCtx)
-				return lockCtx
+				var lockContext context.Context
+				assert.Within(t, Timeout.Get(t), func(ctx context.Context) {
+					lockCtx, err := subject.Lock(Context.Super(t))
+					t.Must.NoError(err)
+					t.Defer(subject.Unlock, lockCtx)
+					lockContext = lockCtx
+				})
+				return lockContext
 			})
 
 			s.Then("since we have it already the lock ownership, it returns without doing much", func(t *testcase.T) {
-				t.Must.Within(withinTimeout, func(context.Context) {
+				t.Must.Within(Timeout.Get(t), func(context.Context) {
 					ctx, err := act(t)
 					t.Must.NoError(err)
 					t.Must.NotNil(ctx)
@@ -135,12 +141,12 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 		})
 
 		s.When("context has a value", func(s *testcase.Spec) {
-			ctxKey := let.String(s)
+			type ctxKey struct{}
 			ctxVal := let.String(s)
 
 			Context.Let(s, func(t *testcase.T) context.Context {
 				c := Context.Super(t)
-				return context.WithValue(c, ctxKey.Get(t), ctxVal.Get(t))
+				return context.WithValue(c, ctxKey{}, ctxVal.Get(t))
 			})
 
 			s.Then("the lock context will contain the previously injected values", func(t *testcase.T) {
@@ -150,7 +156,7 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 				t.Must.NoError(ctx.Err())
 				defer subject.Unlock(ctx)
 
-				gotVal, ok := ctx.Value(ctxKey.Get(t)).(string)
+				gotVal, ok := ctx.Value(ctxKey{}).(string)
 				assert.True(t, ok, "expected that the stored value under the given key will be there")
 				assert.Equal(t, ctxVal.Get(t), gotVal)
 			})
@@ -165,8 +171,6 @@ func Locker(subject guard.Locker, opts ...LockerOption) contract.Contract {
 func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.Use[LockerConfig](opts)
-
-	const timeout = 5 * time.Second
 
 	// Reuse tests from Locker contract for Unlock method
 	s.Describe(".Unlock", Unlocker(subject, func(ctx context.Context) (context.Context, error) {
@@ -194,12 +198,12 @@ func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) co
 				acquired bool
 				err      error
 			)
-			assert.Within(t, timeout, func(context.Context) {
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
 				ctx, acquired, err = subject.TryLock(Context.Get(t))
 				if acquired {
 					t.Defer(subject.Unlock, ctx)
 				}
-			})
+			}, "TryLock was not suppose to hang in any possible scenario")
 			return ctx, acquired, err
 		}
 
@@ -254,12 +258,12 @@ func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) co
 		})
 
 		s.When("context has a value", func(s *testcase.Spec) {
-			ctxKey := let.String(s)
+			type ctxKey struct{}
 			ctxVal := let.String(s)
 
 			Context.Let(s, func(t *testcase.T) context.Context {
 				c := Context.Super(t)
-				return context.WithValue(c, ctxKey.Get(t), ctxVal.Get(t))
+				return context.WithValue(c, ctxKey{}, ctxVal.Get(t))
 			})
 
 			s.Then("the acquired lock context will contain the previously injected values", func(t *testcase.T) {
@@ -270,7 +274,7 @@ func NonBlockingLocker(subject guard.NonBlockingLocker, opts ...LockerOption) co
 				t.Must.NoError(ctx.Err())
 				defer subject.Unlock(ctx)
 
-				gotVal, ok := ctx.Value(ctxKey.Get(t)).(string)
+				gotVal, ok := ctx.Value(ctxKey{}).(string)
 				assert.True(t, ok, "expected that the stored value under the given key will be there")
 				assert.Equal(t, ctxVal.Get(t), gotVal)
 			})
@@ -284,8 +288,6 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 	s := testcase.NewSpec(nil)
 	c := option.Use(opts)
 
-	const timeout = 5 * time.Second
-
 	var (
 		Context = testcase.Let[context.Context](s, nil)
 	)
@@ -296,7 +298,7 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 	s.When("context is a lock context, made by a lock call", func(s *testcase.Spec) {
 		Context.Let(s, func(t *testcase.T) context.Context {
 			ctx := c.MakeContext(t)
-			assert.Within(t, timeout, func(context.Context) {
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
 				lctx, err := lock(ctx)
 				t.Must.NoError(err)
 				t.Defer(subject.Unlock, lctx)
@@ -310,7 +312,7 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 		})
 
 		s.Then("the already locked context should not hang locking it again", func(t *testcase.T) {
-			assert.Within(t, timeout, func(context.Context) {
+			assert.Within(t, Timeout.Get(t), func(context.Context) {
 				ctx, err := lock(Context.Get(t))
 				t.Must.NoError(err)
 				t.Defer(subject.Unlock, ctx)
@@ -319,7 +321,7 @@ func Unlocker(subject guard.Unlocker, lock func(context.Context) (context.Contex
 
 		s.Then("unlocks multiple time without an issue", func(t *testcase.T) {
 			t.Random.Repeat(3, 7, func() {
-				assert.Within(t, timeout, func(context.Context) {
+				assert.Within(t, Timeout.Get(t), func(context.Context) {
 					t.Must.NoError(act(t))
 				})
 			})

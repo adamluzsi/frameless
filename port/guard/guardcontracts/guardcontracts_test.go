@@ -8,14 +8,10 @@ import (
 )
 
 func Test_memory(t *testing.T) {
-	t.Run("Lock", func(t *testing.T) {
-		l := memory.NewLocker()
-		guardcontracts.Locker(l).Test(t)
-		guardcontracts.NonBlockingLocker(l).Test(t)
-	})
-	t.Run("LockerFactory", func(t *testing.T) {
-		f := memory.NewLockerFactory[string]()
-		guardcontracts.LockerFactory[string](f).Test(t)
-		guardcontracts.NonBlockingLockerFactory[string](f).Test(t)
-	})
+	l := memory.NewLocker()
+	f := memory.NewLockerFactory[string]()
+	t.Run("Locker", guardcontracts.Locker(l).Test)
+	t.Run("NonBlockingLocker", guardcontracts.NonBlockingLocker(l).Test)
+	t.Run("LockerFactory", guardcontracts.LockerFactory[string](f).Test)
+	t.Run("NonBlockingLockerFactory", guardcontracts.NonBlockingLockerFactory[string](f).Test)
 }
