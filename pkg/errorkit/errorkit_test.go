@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -225,5 +226,48 @@ func TestAs(t *testing.T) {
 		gotErr, ok := errorkit.As[MyError](nil)
 		assert.False(t, ok)
 		assert.Empty(t, gotErr)
+	})
+}
+
+func ExampleFinishOnError() {
+	// example function
+	var _ = func() (rerr error) {
+		defer errorkit.FinishOnError(&rerr, func() { /* do something when the */ })
+
+		return errorkit.Error("boom")
+	}
+}
+
+func TestFinishOnError(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		returnErr = testcase.Let[error](s, nil)
+		blockRan  = testcase.LetValue(s, false)
+	)
+	act := func(t *testcase.T) {
+		defer errorkit.FinishOnError(pointer.Of(returnErr.Get(t)), func() { blockRan.Set(t, true) })
+	}
+
+	s.When("return error is nil", func(s *testcase.Spec) {
+		returnErr.LetValue(s, nil)
+
+		s.Then("it will not execute the block", func(t *testcase.T) {
+			act(t)
+
+			assert.False(t, blockRan.Get(t))
+		})
+	})
+
+	s.When("return was a valid error value", func(s *testcase.Spec) {
+		returnErr.Let(s, func(t *testcase.T) error {
+			return t.Random.Error()
+		})
+
+		s.Then("it will execute the block", func(t *testcase.T) {
+			act(t)
+
+			assert.True(t, blockRan.Get(t))
+		})
 	})
 }

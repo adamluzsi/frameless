@@ -14,6 +14,19 @@ func Finish(returnErr *error, blk func() error) {
 	*returnErr = Merge(*returnErr, blk())
 }
 
+// FinishOnError is a helper function that can be used from a deferred context.
+// It runs the block conditionally, when the return error, which was assigned by the `return` keyword is not nil.
+//
+// Usage:
+//
+//	defer errorkit.FinishOnError(&returnError, func() { rollback(ctx) })
+func FinishOnError(returnErr *error, blk func()) {
+	if returnErr == nil || *returnErr == nil {
+		return
+	}
+	blk()
+}
+
 // Recover will attempt a recover, and if recovery yields a value, it sets it as an error.
 func Recover(returnErr *error) {
 	r := recover()
