@@ -163,3 +163,10 @@ func TypeOf[T any](i ...T) reflect.Type {
 	}
 	return reflect.TypeOf((*T)(nil)).Elem()
 }
+
+func ToValue(v any) reflect.Value {
+	if rv, ok := v.(reflect.Value); ok {
+		return rv
+	}
+	return reflect.ValueOf(v)
+}

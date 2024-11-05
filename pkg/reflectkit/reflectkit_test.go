@@ -884,3 +884,32 @@ func TestPointerOf(t *testing.T) {
 		assert.Equal(t, v, ptr.Elem())
 	})
 }
+
+func TestToValue(t *testing.T) {
+	t.Run("AlreadyReflectValue", func(t *testing.T) {
+		expectedRV := reflect.ValueOf(123)
+		result := reflectkit.ToValue(expectedRV)
+		assert.Equal(t, result, expectedRV)
+	})
+
+	t.Run("NonReflectValueType", func(t *testing.T) {
+		value := 456
+		expectedType := reflect.TypeOf(value)
+		result := reflectkit.ToValue(value)
+		assert.Equal(t, result.Type(), expectedType)
+	})
+
+	t.Run("NilValue", func(t *testing.T) {
+		result := reflectkit.ToValue(nil)
+		assert.False(t, result.IsValid())
+	})
+
+	t.Run("StructType", func(t *testing.T) {
+		type exampleStruct struct{ foo string }
+		value := exampleStruct{"bar"}
+		expectedType := reflect.TypeOf(value)
+		result := reflectkit.ToValue(value)
+		assert.Equal(t, result.Type(), expectedType)
+		assert.Equal(t, result.Interface().(exampleStruct), value)
+	})
+}

@@ -6,13 +6,8 @@ import (
 	"go.llib.dev/frameless/pkg/teardown"
 )
 
-func Equal(v1, v2 any) bool {
-	if v1 == nil || v2 == nil {
-		return v1 == v2
-	}
-	return reflectDeepEqual(
-		&refMem{visited: make(map[uintptr]struct{})},
-		reflect.ValueOf(v1), reflect.ValueOf(v2))
+func Equal(v1, v2 reflect.Value) bool {
+	return reflectDeepEqual(&refMem{visited: make(map[uintptr]struct{})}, v1, v2)
 }
 
 func RegisterIsEqual(typ reflect.Type, rfn func(v1, v2 reflect.Value) bool) {

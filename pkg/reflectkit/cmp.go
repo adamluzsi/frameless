@@ -13,7 +13,7 @@ import (
 // It looks for Equal method on the value as well.
 // You can define how a type's value should be compared by using RegisterEqual.
 func Equal(x, y any) bool {
-	return internal.Equal(x, y)
+	return internal.Equal(ToValue(x), ToValue(y))
 }
 
 func RegisterEqual[T any](fn func(x, y T) bool) struct{} {
