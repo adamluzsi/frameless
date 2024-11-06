@@ -3,6 +3,8 @@ package synckit
 import (
 	"sync"
 	"sync/atomic"
+
+	"go.llib.dev/frameless/pkg/mapkit"
 )
 
 type RWLocker interface {
@@ -178,4 +180,133 @@ func (a *rwlock) RUnlock() { a.uw(&a.runlock) }
 func (a *rwlock) RLocker() sync.Locker {
 	type Locker struct{ sync.Locker } // limit interface assertions
 	return Locker{Locker: &rwlock{sync: a.rsync}}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Map[K comparable, V any] struct {
+	mu sync.RWMutex
+	vs map[K]V
+}
+
+func (m *Map[K, V]) Set(key K, val V) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.set(key, val)
+}
+
+func (m *Map[K, V]) set(k K, v V) {
+	if m.vs == nil {
+		m.vs = map[K]V{}
+	}
+	m.vs[k] = v
+}
+
+func (m *Map[K, V]) Get(key K) V {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var zero V
+	if m.vs == nil {
+		return zero
+	}
+	return m.vs[key]
+}
+
+func (m *Map[K, V]) Lookup(key K) (V, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.lookup(key)
+}
+
+func (m *Map[K, V]) lookup(key K) (V, bool) {
+	var zero V
+	if m.vs == nil {
+		return zero, false
+	}
+	v, ok := m.vs[key]
+	return v, ok
+}
+
+func (m *Map[K, V]) Del(key K) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.vs == nil {
+		return
+	}
+	delete(m.vs, key)
+}
+
+func (m *Map[K, V]) GetOrInit(key K, init func() V) V {
+	{ // READ
+		m.mu.RLock()
+		if m.vs != nil {
+			if v, ok := m.vs[key]; ok {
+				m.mu.RUnlock()
+				return v
+			}
+		}
+		m.mu.RUnlock()
+	}
+	{ // WRITE
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.vs == nil {
+			m.vs = map[K]V{}
+		}
+		if v, ok := m.vs[key]; ok {
+			return v
+		}
+		if init == nil {
+			var zero V
+			return zero
+		}
+		v := init()
+		m.vs[key] = v
+		return v
+	}
+}
+
+func (m *Map[K, V]) Len() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.vs)
+}
+
+func (m *Map[K, V]) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.vs = make(map[K]V)
+}
+
+func (m *Map[K, V]) Keys() []K {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return mapkit.Keys(m.vs)
+}
+
+func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
+	m.mu.Lock()
+	v, ok := m.lookup(key)
+	if !ok {
+		m.mu.Unlock()
+		return nil, nil, false
+	}
+	release = func() {
+		m.set(key, v)
+		m.mu.Unlock()
+	}
+	return &v, release, true
+}
+
+func (m *Map[K, V]) BorrowWithInit(key K, init func() V) (ptr *V, release func()) {
+	m.mu.Lock()
+	v, ok := m.lookup(key)
+	if !ok && init != nil {
+		v = init()
+	}
+	release = func() {
+		m.set(key, v)
+		m.mu.Unlock()
+	}
+	return &v, release
 }
