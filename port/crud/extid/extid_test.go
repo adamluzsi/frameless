@@ -13,6 +13,8 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+var rnd = random.New(random.CryptoSeed{})
+
 var _ extid.LookupIDFunc[testent.Foo, testent.FooID] = extid.Lookup[testent.FooID, testent.Foo]
 
 func TestID_E2E(t *testing.T) {
@@ -323,5 +325,38 @@ func TestSet_structIDType(t *testing.T) {
 		var zeroID migration.StateID
 		assert.NoError(t, extid.Set(&ent, zeroID))
 		assert.Equal(t, ent, migration.State{ID: zeroID, Dirty: true})
+	})
+}
+
+func TestIDStructField(t *testing.T) {
+	t.Run("found by tag", func(t *testing.T) {
+		type testStruct struct {
+			IID int `ext:"id"`
+		}
+		ts := &testStruct{IID: rnd.Int()}
+		sf, val, ok := extid.ExtractIdentifierField(ts)
+		assert.True(t, ok)
+		assert.Equal(t, "IID", sf.Name)
+		assert.Equal(t, ts.IID, int(val.Int()))
+	})
+
+	t.Run("found by name", func(t *testing.T) {
+		type testStruct struct {
+			ID int
+		}
+		ts := &testStruct{ID: 2}
+		sf, val, ok := extid.ExtractIdentifierField(ts)
+		assert.True(t, ok)
+		assert.Equal(t, "ID", sf.Name)
+		assert.Equal(t, 2, val.Int())
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		type testStruct struct {
+			Other int
+		}
+		ts := &testStruct{Other: 3}
+		_, _, ok := extid.ExtractIdentifierField(ts)
+		assert.Must(t).False(ok)
 	})
 }

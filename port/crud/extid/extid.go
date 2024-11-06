@@ -37,7 +37,7 @@ func Set[ID any](ptr any, id ID) error {
 		return nil
 	}
 
-	_, val, ok := lookupStructField(ptr)
+	_, val, ok := ExtractIdentifierField(ptr)
 	if !ok {
 		return errors.New("could not locate ID field in the given structure")
 	}
@@ -52,34 +52,23 @@ func Lookup[ID, Ent any](ent Ent) (id ID, ok bool) {
 		return tr.Get(ent).(ID), true
 	}
 
-	_, val, ok := lookupStructField(ent)
+	_, val, ok := ExtractIdentifierField(ent)
 	if !ok {
 		return id, false
 	}
-
+	if reflectkit.IsEmpty(val) {
+		return id, false
+	}
 	id, ok = val.Interface().(ID)
 	if !ok {
-		return id, false
-	}
-	if isEmpty(id) { // TODO: this doesn't feel right as ok should mean the ID is found, not that id is empty
 		return id, false
 	}
 	return id, ok
 }
 
-func isEmpty(i interface{}) (ok bool) {
-	rv := reflect.ValueOf(i)
-	defer func() {
-		if v := recover(); v == nil {
-			return
-		}
-		ok = rv.IsZero()
-	}()
-	return rv.IsNil()
-}
-
-func lookupStructField(ent interface{}) (reflect.StructField, reflect.Value, bool) {
-	val := reflectkit.BaseValueOf(ent) // optimise this to use reflect.Value argument
+func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) {
+	val := reflectkit.ToValue(ent)
+	val = reflectkit.BaseValue(val)
 
 	sf, byTag, ok := lookupByTag(val)
 	if ok {

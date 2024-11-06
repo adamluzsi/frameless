@@ -15,32 +15,32 @@ func TestLookupStructField(t *testing.T) {
 		ok    bool
 	)
 
-	field, value, ok = lookupStructField(testhelper.IDByIDField{ID: `42`})
+	field, value, ok = ExtractIdentifierField(testhelper.IDByIDField{ID: `42`})
 	assert.True(t, ok)
 	assert.Equal(t, `ID`, field.Name)
 	assert.Equal(t, `42`, value.Interface())
 
-	field, value, ok = lookupStructField(testhelper.IDByUppercaseTag{DI: `42`})
+	field, value, ok = ExtractIdentifierField(testhelper.IDByUppercaseTag{DI: `42`})
 	assert.True(t, ok)
 	assert.Equal(t, `DI`, field.Name)
 	assert.Equal(t, `42`, value.Interface())
 
-	field, value, ok = lookupStructField(testhelper.IDByLowercaseTag{DI: `42`})
+	field, value, ok = ExtractIdentifierField(testhelper.IDByLowercaseTag{DI: `42`})
 	assert.True(t, ok)
 	assert.Equal(t, `DI`, field.Name)
 	assert.Equal(t, `42`, value.Interface())
 
-	field, value, ok = lookupStructField(testhelper.IDAsInterface{ID: 42})
+	field, value, ok = ExtractIdentifierField(testhelper.IDAsInterface{ID: 42})
 	assert.True(t, ok)
 	assert.Equal(t, `ID`, field.Name)
 	assert.Equal(t, 42, value.Interface())
 
 	idValue := `42`
-	field, value, ok = lookupStructField(testhelper.IDAsPointer{ID: &idValue})
+	field, value, ok = ExtractIdentifierField(testhelper.IDAsPointer{ID: &idValue})
 	assert.True(t, ok)
 	assert.Equal(t, `ID`, field.Name)
 	assert.Equal(t, &idValue, value.Interface().(*string))
 
-	_, _, ok = lookupStructField(testhelper.UnidentifiableID{})
+	_, _, ok = ExtractIdentifierField(testhelper.UnidentifiableID{})
 	assert.Must(t).False(ok)
 }
