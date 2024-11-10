@@ -13,7 +13,8 @@ type ValueHandler[Key ~struct{}, Value any] struct{}
 
 func (h ValueHandler[Key, Value]) Lookup(ctx context.Context) (Value, bool) {
 	if ctx == nil {
-		return *new(Value), false
+		var zero Value
+		return zero, false
 	}
 	v, ok := ctx.Value(Key{}).(Value)
 	return v, ok

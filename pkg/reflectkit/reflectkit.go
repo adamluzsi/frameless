@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"unsafe"
+
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 func Cast[T any](v any) (T, bool) {
@@ -32,6 +34,9 @@ func BaseType(typ reflect.Type) (_ reflect.Type, depth int) {
 func PointerOf(value reflect.Value) reflect.Value {
 	if !value.IsValid() {
 		return value
+	}
+	if value.CanAddr() {
+		return value.Addr()
 	}
 	ptr := reflect.New(value.Type())
 	ptr.Elem().Set(value)
@@ -170,3 +175,5 @@ func ToValue(v any) reflect.Value {
 	}
 	return reflect.ValueOf(v)
 }
+
+const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"

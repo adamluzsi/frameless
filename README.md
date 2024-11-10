@@ -38,20 +38,36 @@ when you need to specify additional expectations towards them from your domain l
 
 Using `frameless/port` safe from vendor locking as they just a collection of finely refined inter
 
+### CRUD / relationships
+
+[If you need to store entities in your system and want to learn more about representing relationships between them, check the documentation in the `port/crud/relationship` package.](port/crud/relationship/)
+
+In short, you can achieve this by referencing one entity from another.
+
+```go
+type User struct {
+    ID string
+}
+
+type Note struct {
+    ID     string
+    UserID string // UserID references User#ID., thus making Note belongs to User through UserID. <-> User#ID.
+}
+```
+
 ## [pkg](pkg/README.md)
 
 Various tooling built either upon using frameless/port or supplies tools often required to develop web services.
 
 - Some notable examples:
-    - [`logger` for structured logging](pkg/logger/README.md)
-    - [`tasker` for managing background tasks](pkg/tasker/README.md)
-    - [`cache` for wrapping repositories (DB, HTTP clients, etc.) with caching to increase reliability and/or speed in the domain layer](pkg/cache/README.md)
-    - [`restapi` for building restful HTTP APIs and/or exposing repositories as rest resources.](pkg/restapi/README.md)
-      - `restapi/rfc7807` for replying back errors on your API in a structure and extendable way. 
-    - `enum` for tag definition based enum value validation
-    - `lazyload` to utilise lazy loading techniques
-    - `errorutil` to help you work with errors, forward port some features, and make distinction between errors based on their SRP actor.
-    - `txs` which allow defining rollback steps in your functions, which makes implementing error handling in a stateful system much easier
+  - [`logger` for structured logging](pkg/logger/README.md)
+  - [`tasker` for managing background tasks](pkg/tasker/README.md)
+  - [`cache` for wrapping repositories (DB, HTTP clients, etc.) with caching to increase reliability and/or speed in the domain layer](pkg/cache/README.md)
+  - [`httpkit` for building restful HTTP APIs and/or exposing repositories as rest resources and many more.](pkg/httpkit/README.md)
+    - `httpkit/rfc7807` for replying back errors on your API in a structure and extendable way.
+  - `enum` for tag definition based enum value validation
+  - `errorkit` to help you work with errors, forward port some features, and make distinction between errors based on their SRP actor.
+  - `txkit` which allow defining rollback steps in your functions, which makes implementing error handling in a stateful system much easier
 
 ## [adapters](adapters/README.md)
 

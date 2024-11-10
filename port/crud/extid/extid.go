@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/zerokit"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -48,11 +50,12 @@ func Set[ID any](ptr any, id ID) error {
 }
 
 func Lookup[ID, Ent any](ent Ent) (id ID, ok bool) {
-	if tr, ok := register[reflectkit.BaseValueOf(ent).Type()]; ok {
-		return tr.Get(ent).(ID), true
+	val := reflectkit.BaseValueOf(ent)
+	if tr, ok := register[val.Type()]; ok {
+		id := tr.Get(val.Interface()).(ID)
+		return id, !zerokit.IsZero(id)
 	}
-
-	_, val, ok := ExtractIdentifierField(ent)
+	_, val, ok = ExtractIdentifierField(val)
 	if !ok {
 		return id, false
 	}
@@ -66,39 +69,46 @@ func Lookup[ID, Ent any](ent Ent) (id ID, ok bool) {
 	return id, ok
 }
 
+var cacheExtractIdentifierField synckit.Map[reflect.Type, func(reflect.Value) (reflect.StructField, reflect.Value, bool)]
+
 func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) {
 	val := reflectkit.ToValue(ent)
 	val = reflectkit.BaseValue(val)
-
-	sf, byTag, ok := lookupByTag(val)
-	if ok {
-		return sf, byTag, true
+	init := func() func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
+		return refMakeExtractFunc(val)
 	}
-
-	const upper = `ID`
-	if byName := val.FieldByName(upper); byName.Kind() != reflect.Invalid {
-		sf, _ := val.Type().FieldByName(upper)
-		return sf, byName, true
-	}
-
-	return reflect.StructField{}, reflect.Value{}, false
+	return cacheExtractIdentifierField.GetOrInit(val.Type(), init)(val)
 }
 
-func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
-	const (
-		lower = "id"
-		upper = "ID"
-	)
-	for i := 0; i < val.NumField(); i++ {
-		valueField := val.Field(i)
-		structField := val.Type().Field(i)
-		tag := structField.Tag
-
-		if tagValue := tag.Get("ext"); tagValue == upper || tagValue == lower {
-			return structField, valueField, true
+func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
+	{ // lookup by "ext":"id" tag
+		const extTagIDFlag = "id"
+		for i := 0; i < val.NumField(); i++ {
+			sf := val.Type().Field(i)
+			tagValue := sf.Tag.Get("ext")
+			if strings.EqualFold(tagValue, extTagIDFlag) {
+				index := i
+				return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+					return sf, v.Field(index), true
+				}
+			}
 		}
 	}
-	return reflect.StructField{}, reflect.Value{}, false
+	{ // lookup by ID field
+		const structIDFieldName = `ID`
+		byName := val.FieldByName(structIDFieldName)
+		if byName.Kind() != reflect.Invalid {
+			sf, ok := val.Type().FieldByName(structIDFieldName)
+			if ok && len(sf.Index) == 1 {
+				return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+					return sf, v.Field(sf.Index[0]), true
+				}
+			}
+		}
+	}
+	return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+		return reflect.StructField{}, reflect.Value{}, false
+	}
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
@@ -106,8 +116,9 @@ func lookupByTag(val reflect.Value) (reflect.StructField, reflect.Value, bool) {
 func RegisterType[ENT, ID any](
 	Get func(ENT) ID,
 	Set func(*ENT, ID),
-) any {
-	register[reflect.TypeOf(*new(ENT))] = typeRegistration{
+) func() {
+	key := reflectkit.TypeOf[ENT]()
+	register[key] = typeRegistration{
 		Get: func(ent any) any {
 			return Get(ent.(ENT))
 		},
@@ -115,7 +126,9 @@ func RegisterType[ENT, ID any](
 			Set(ptr.(*ENT), id.(ID))
 		},
 	}
-	return nil
+	return func() {
+		delete(register, key)
+	}
 }
 
 var register = map[reflect.Type]typeRegistration{}
@@ -155,6 +168,33 @@ func (fn Accessor[ENT, ID]) Set(ent *ENT, id ID) error {
 	return nil
 }
 
+func (fn Accessor[ENT, ID]) ReflectLookup(rENT reflect.Value) (rID reflect.Value, ok bool) {
+	if rENT.Type() != reflectkit.TypeOf[ENT]() {
+		return reflect.Value{}, false
+	}
+	if reflectkit.IsZero(rENT) {
+		return reflect.Value{}, false
+	}
+	id, ok := fn.Lookup(rENT.Interface().(ENT))
+	return reflect.ValueOf(id), ok
+}
+
+func (fn Accessor[ENT, ID]) ReflectSet(ptrENT reflect.Value, id reflect.Value) error {
+	var (
+		expPtrType = reflectkit.TypeOf[*ENT]()
+		expIDType  = reflectkit.TypeOf[ID]()
+	)
+	if ptrENT.Type() != expPtrType {
+		return fmt.Errorf("extid.Accessor#ReflectSet type mismatch for *ENT, expected %s but got %s",
+			expPtrType.String(), ptrENT.Type().String())
+	}
+	if id.Type() != expIDType {
+		return fmt.Errorf("extid.Accessor#ReflectSet type mismatch for ID, expected %s but got %s",
+			expIDType.String(), id.Type().String())
+	}
+	return fn.Set((*ENT)(ptrENT.UnsafePointer()), id.Interface().(ID))
+}
+
 func (fn Accessor[ENT, ID]) ptr(ent *ENT) *ID {
 	if ent == nil {
 		panic(fmt.Sprintf("nil %T error (%T)", *new(ENT), fn))
@@ -173,3 +213,42 @@ func (fn Accessor[ENT, ID]) ptr(ent *ENT) *ID {
 }
 
 type LookupIDFunc[ENT, ID any] func(ENT) (ID, bool)
+
+type ReflectAccessor func(ptrENT reflect.Value) (ptrID reflect.Value)
+
+func (fn ReflectAccessor) ReflectLookup(rENT reflect.Value) (rID reflect.Value, ok bool) {
+	defer func() { recover() }()
+	ptrID := fn(reflectkit.PointerOf(rENT))
+	fn.checkPtrID(ptrID)
+	id := ptrID.Elem()
+	return id, !reflectkit.IsEmpty(id)
+}
+
+func (fn ReflectAccessor) ReflectSet(ptrENT reflect.Value, id reflect.Value) (rErr error) {
+	defer errorkit.Recover(&rErr)
+	if ptrENT.Kind() != reflect.Pointer {
+		return fmt.Errorf("%w: pointer ENT type was expected", reflectkit.ErrTypeMismatch)
+	}
+	if ptrENT.IsNil() {
+		return fmt.Errorf("%w: nil ENT pointer is given", reflectkit.ErrTypeMismatch)
+	}
+	ptrID := fn(ptrENT)
+	fn.checkPtrID(ptrID)
+	if expIDType := ptrID.Type().Elem(); id.Type() != expIDType {
+		return fmt.Errorf("%w: ReflectAccessor#ReflectSet expected %s ID type, but got %s", reflectkit.ErrTypeMismatch,
+			expIDType.String(), id.Type().String())
+	}
+	ptrID.Elem().Set(id)
+	return nil
+}
+
+func (fn ReflectAccessor) checkPtrID(ptrID reflect.Value) {
+	// issues detected here are not errors that can be handled,
+	// but implementation issues, meaning the function itself is incorrectly written at code level.
+	if ptrID.Kind() != reflect.Pointer {
+		panic(fmt.Errorf("%w: incorrect extid.ReflectAccessor usage, returned non pointer ID value", reflectkit.ErrTypeMismatch))
+	}
+	if ptrID.IsNil() {
+		panic(fmt.Errorf("%w: incorrect extid.ReflectAccessor usage, function returned a nil ID pointer", reflectkit.ErrTypeMismatch))
+	}
+}

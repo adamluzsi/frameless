@@ -1,8 +1,10 @@
 package extid_test
 
 import (
+	"reflect"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud/extid/internal/testhelper"
 	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -16,6 +18,70 @@ import (
 var rnd = random.New(random.CryptoSeed{})
 
 var _ extid.LookupIDFunc[testent.Foo, testent.FooID] = extid.Lookup[testent.FooID, testent.Foo]
+
+func Benchmark(b *testing.B) {
+	type IDByField struct {
+		ID string
+	}
+	type IDByTag struct {
+		IDD string `ext:"id"`
+	}
+	b.Run("ExtractIdentifierField", func(b *testing.B) {
+		b.Run("id by ID field", func(b *testing.B) {
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				extid.ExtractIdentifierField(vs[i])
+			}
+		})
+		b.Run("id by tag", func(b *testing.B) {
+			extid.ExtractIdentifierField(IDByTag{})
+			vs := random.Slice(b.N, func() IDByTag {
+				return IDByTag{IDD: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				extid.ExtractIdentifierField(vs[i])
+			}
+		})
+	})
+	b.Run("Accessor", func(b *testing.B) {
+		b.Run("Lookup", func(b *testing.B) {
+			accessor := extid.Accessor[IDByField, string](func(v *IDByField) *string {
+				return &v.ID
+			})
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				accessor.Lookup(vs[i])
+			}
+		})
+		b.Run("Set", func(b *testing.B) {
+			accessor := extid.Accessor[IDByField, string](func(v *IDByField) *string {
+				return &v.ID
+			})
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := 0; i < b.N; i++ {
+				v := vs[i]
+				accessor.Set(&v, v.ID)
+			}
+		})
+	})
+}
 
 func TestID_E2E(t *testing.T) {
 	ptr := &testhelper.IDAsInterface{}
@@ -32,32 +98,45 @@ func TestID_E2E(t *testing.T) {
 }
 
 func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[string](testhelper.IDByIDField{ID: "ok"})
 	assert.True(t, ok)
 	assert.Equal(t, "ok", id)
 }
 
 func TestLookup_withAnyType_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[any](testhelper.IDByIDField{ID: "ok"})
 	assert.True(t, ok)
 	assert.Equal(t, any("ok"), id)
 }
 
 func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[string](&testhelper.IDByIDField{ID: "ok"})
 	assert.True(t, ok)
 	assert.Equal(t, "ok", id)
 }
 
-func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
-	t.Parallel()
+func TestLookup_withPointerValueTypeWhereValueTypeHasRegisteredGetter(t *testing.T) {
+	type T struct{ IDD string }
 
+	defer extid.RegisterType[T, string](
+		func(v T) string { return v.IDD },
+		func(p *T, id string) { p.IDD = id },
+	)()
+
+	t.Run("when id is there", func(t *testing.T) {
+		id, ok := extid.Lookup[string](T{IDD: "ok"})
+		assert.True(t, ok)
+		assert.Equal(t, "ok", id)
+	})
+
+	t.Run("when id is empty", func(t *testing.T) {
+		id, ok := extid.Lookup[string](T{IDD: ""})
+		assert.False(t, ok)
+		assert.Equal(t, "", id)
+	})
+}
+
+func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	var ptr1 *testhelper.IDByIDField
 	var ptr2 **testhelper.IDByIDField
 
@@ -70,16 +149,12 @@ func TestLookup_PointerOfPointerIDGivenByFieldName_IDReturned(t *testing.T) {
 }
 
 func TestLookup_IDGivenByUppercaseTag_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[string](testhelper.IDByUppercaseTag{DI: "KO"})
 	assert.True(t, ok)
 	assert.Equal(t, "KO", id)
 }
 
 func TestLookup_IDGivenByLowercaseTag_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	expected := random.New(random.CryptoSeed{}).String()
 	id, ok := extid.Lookup[string](testhelper.IDByLowercaseTag{DI: expected})
 	assert.True(t, ok)
@@ -87,8 +162,6 @@ func TestLookup_IDGivenByLowercaseTag_IDReturned(t *testing.T) {
 }
 
 func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTag(t *testing.T) {
-	t.Parallel()
-
 	type IDByTagNameNextToIDField struct {
 		ID string
 		DI string `ext:"ID"`
@@ -100,40 +173,30 @@ func TestLookup_IDGivenByTagButIDFieldAlsoPresentForOtherPurposes_IDReturnedByTa
 }
 
 func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[string](&testhelper.IDByUppercaseTag{DI: "KO"})
 	assert.True(t, ok)
 	assert.Equal(t, "KO", id)
 }
 
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[any](testhelper.UnidentifiableID{UserID: "ok"})
 	assert.Must(t).False(ok)
 	assert.Must(t).Nil(id)
 }
 
 func TestLookup_InterfaceTypeWithValue_IDReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[any](&testhelper.IDAsInterface{ID: `foo`})
 	assert.True(t, ok)
 	assert.Equal(t, "foo", id)
 }
 
 func TestLookup_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[any](&testhelper.IDAsInterface{})
 	assert.Must(t).False(ok)
 	assert.Must(t).Nil(id)
 }
 
 func TestLookup_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundReturned(t *testing.T) {
-	t.Parallel()
-
 	var idVal *string
 	id, ok := extid.Lookup[any](&testhelper.IDAsInterface{ID: idVal})
 	assert.Must(t).False(ok)
@@ -141,16 +204,12 @@ func TestLookup_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundRet
 }
 
 func TestLookup_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T) {
-	t.Parallel()
-
 	id, ok := extid.Lookup[*string](&testhelper.IDAsPointer{})
 	assert.Must(t).False(ok)
 	assert.Must(t).Nil(id)
 }
 
 func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
-	t.Parallel()
-
 	idVal := `foo`
 	id, ok := extid.Lookup[*string](&testhelper.IDAsPointer{ID: &idVal})
 	assert.True(t, ok)
@@ -158,8 +217,6 @@ func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
 }
 
 func TestLookup_IDFieldWithZeroValueFound_NotOkReturned(t *testing.T) {
-	t.Parallel()
-
 	_, ok := extid.Lookup[string](testhelper.IDByIDField{ID: ""})
 	assert.Must(t).False(ok, "zero value should be not OK")
 }
@@ -167,36 +224,26 @@ func TestLookup_IDFieldWithZeroValueFound_NotOkReturned(t *testing.T) {
 // ------------------------------------------------------------------------------------------------------------------ //
 
 func TestSet_NonPtrStructGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
-	t.Parallel()
-
 	assert.Must(t).Error(extid.Set(testhelper.IDByIDField{}, "Set doesn't work with pass by value"))
 }
 
 func TestSet_PtrStructGivenButIDIsCannotBeIdentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
-	t.Parallel()
-
 	assert.Must(t).NotNil(extid.Set(&testhelper.UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
 }
 
 func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
-	t.Parallel()
-
 	subject := &testhelper.IDByIDField{}
 	assert.Must(t).Nil(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.ID)
 }
 
 func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
-	t.Parallel()
-
 	subject := &testhelper.IDByUppercaseTag{}
 	assert.Must(t).Nil(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.DI)
 }
 
 func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
-	t.Parallel()
-
 	var subject interface{} = &testhelper.IDByIDField{}
 	assert.Must(t).Nil(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.(*testhelper.IDByIDField).ID)
@@ -221,13 +268,15 @@ func TestRegisterType(t *testing.T) {
 	var ent TypeWithCustomIDSet
 	id := random.New(random.CryptoSeed{}).String()
 	gotID, ok := extid.Lookup[string](ent)
-	assert.True(t, ok)
+	assert.False(t, ok)
 	assert.Empty(t, gotID)
+
 	assert.NoError(t, extid.Set(&ent, id))
 	assert.Equal(t, id, ent.Identification)
+
 	gotID, ok = extid.Lookup[string](ent)
 	assert.True(t, ok)
-	assert.Equal(t, ent.Identification, id)
+	assert.Equal(t, ent.Identification, gotID)
 }
 
 func TestMappingFunc_Lookup(t *testing.T) {
@@ -358,5 +407,181 @@ func TestIDStructField(t *testing.T) {
 		ts := &testStruct{Other: 3}
 		_, _, ok := extid.ExtractIdentifierField(ts)
 		assert.Must(t).False(ok)
+	})
+}
+
+func TestMappingFunc_ReflectLookup(t *testing.T) {
+	type ID string
+	type ENT struct {
+		ID ID `ext:"id"`
+	}
+
+	t.Run("nil function", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](nil)
+		ent := ENT{ID: ID(rnd.UUID())}
+		rEnt := reflect.ValueOf(ent)
+
+		rID, found := fn.ReflectLookup(rEnt)
+		assert.Must(t).True(found)
+		assert.Equal[any](t, rID.Interface(), ent.ID)
+
+		_, found = fn.ReflectLookup(reflect.ValueOf(ENT{}))
+		assert.False(t, found)
+	})
+
+	t.Run("function returns non-zero value", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](func(v *ENT) *ID { return &v.ID })
+		ent := ENT{ID: ID(rnd.UUID())}
+		rEnt := reflect.ValueOf(ent)
+
+		rID, found := fn.ReflectLookup(rEnt)
+		assert.Must(t).True(found)
+		assert.Equal[any](t, rID.Interface(), ent.ID)
+
+		_, found = fn.ReflectLookup(reflect.ValueOf(ENT{}))
+		assert.False(t, found)
+	})
+
+	t.Run("reflect value of wrong type", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](func(v *ENT) *ID { return &v.ID })
+		rEnt := reflect.ValueOf("")
+		_, found := fn.ReflectLookup(rEnt)
+		assert.Must(t).False(found)
+	})
+}
+
+func TestMappingFunc_ReflectSet(t *testing.T) {
+	type ID string
+	type ENT struct {
+		ID ID `ext:"id"`
+		DI ID
+	}
+
+	t.Run("nil function", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](nil)
+		var ent ENT
+
+		idVal := ID(rnd.UUID())
+		assert.NoError(t, fn.ReflectSet(reflect.ValueOf(&ent), reflect.ValueOf(idVal)))
+		assert.Equal(t, idVal, ent.ID)
+	})
+
+	t.Run("function sets value", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](func(p *ENT) *ID { return &p.DI })
+		var ent ENT
+
+		idVal := ID(rnd.UUID())
+		assert.NoError(t, fn.ReflectSet(reflect.ValueOf(&ent), reflect.ValueOf(idVal)))
+		assert.Empty(t, ent.ID)
+		assert.Equal(t, idVal, ent.DI)
+	})
+
+	t.Run("nil entity pointer", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](func(p *ENT) *ID { return &p.DI })
+
+		assert.Error(t, fn.ReflectSet(
+			reflect.ValueOf((*ENT)(nil)),
+			reflect.ValueOf(ID(rnd.UUID()))))
+	})
+
+	t.Run("reflect value of wrong type", func(t *testing.T) {
+		type OtherType struct {
+			DI ID `ext:"id"`
+		}
+		fn := extid.Accessor[ENT, ID](func(p *ENT) *ID { return &p.DI })
+		assert.Error(t, fn.ReflectSet(
+			reflect.ValueOf(&OtherType{}),
+			reflect.ValueOf(ID(rnd.UUID()))))
+	})
+
+	t.Run("id value of wrong type", func(t *testing.T) {
+		fn := extid.Accessor[ENT, ID](func(p *ENT) *ID { return &p.DI })
+
+		assert.Error(t, fn.ReflectSet(
+			reflect.ValueOf(&ENT{}),
+			reflect.ValueOf(int(42))))
+	})
+}
+
+func TestReflectAccessor_ReflectLookup(t *testing.T) {
+	type T struct{ DI string }
+
+	accessor := extid.ReflectAccessor(func(ptr reflect.Value) reflect.Value {
+		return ptr.Elem().FieldByName("DI").Addr()
+	})
+
+	t.Run("successful lookup with non-zero value", func(t *testing.T) {
+		ent := T{DI: "test-id"}
+		rEnt := reflect.ValueOf(ent)
+		id, ok := accessor.ReflectLookup(rEnt)
+		assert.Must(t).True(ok)
+		assert.Equal(t, "test-id", id.String())
+	})
+
+	t.Run("lookup on entity with zero-value ID", func(t *testing.T) {
+		ent := T{DI: ""}
+		rEnt := reflect.ValueOf(ent)
+		id, ok := accessor.ReflectLookup(rEnt)
+		assert.Must(t).False(ok)
+		assert.Empty(t, id.String())
+	})
+
+	t.Run("lookup with incompatible struct type", func(t *testing.T) {
+		type OtherEntity struct {
+			Name string
+		}
+		ent := OtherEntity{Name: "sample"}
+		rEnt := reflect.ValueOf(ent)
+		id, ok := accessor.ReflectLookup(rEnt)
+		assert.Must(t).False(ok)
+		assert.Equal(t, reflect.Value{}, id)
+	})
+}
+
+func TestReflectAccessor_ReflectSet(t *testing.T) {
+	type T struct{ DI string }
+
+	accessor := extid.ReflectAccessor(func(ptr reflect.Value) reflect.Value {
+		return ptr.Elem().FieldByName("DI").Addr()
+	})
+
+	t.Run("successful set with compatible type", func(t *testing.T) {
+		ent := &T{}
+		rEnt := reflect.ValueOf(ent)
+		newID := reflect.ValueOf("new-id")
+		err := accessor.ReflectSet(rEnt, newID)
+		assert.Must(t).Nil(err)
+		assert.Equal(t, "new-id", ent.DI)
+	})
+
+	t.Run("attempt set with nil entity pointer", func(t *testing.T) {
+		var ent *T
+		ptrEnt := reflect.ValueOf(ent)
+		newID := reflect.ValueOf("new-id")
+		gotErr := accessor.ReflectSet(ptrEnt, newID)
+		assert.ErrorIs(t, reflectkit.ErrTypeMismatch, gotErr)
+	})
+
+	t.Run("attempt set with incompatible ID type", func(t *testing.T) {
+		ent := &T{}
+		rEnt := reflect.ValueOf(ent)
+		newID := reflect.ValueOf(123) // Using int instead of string
+		err := accessor.ReflectSet(rEnt, newID)
+		assert.Error(t, err)
+		assert.ErrorIs(t, reflectkit.ErrTypeMismatch, err)
+	})
+}
+
+func TestReflectAccessor_TypeMismatchErrorHandling(t *testing.T) {
+	accessor := extid.ReflectAccessor(func(ptr reflect.Value) reflect.Value {
+		return ptr.Elem().FieldByName("DI").Addr()
+	})
+
+	t.Run("type mismatch on entity pointer type", func(t *testing.T) {
+		otherEnt := &struct{ Name string }{Name: "sample"}
+		rEnt := reflect.ValueOf(otherEnt)
+		newID := reflect.ValueOf("new-id")
+		err := accessor.ReflectSet(rEnt, newID)
+		assert.Error(t, err)
 	})
 }

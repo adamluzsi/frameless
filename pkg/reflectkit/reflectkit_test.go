@@ -11,6 +11,8 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+var rnd = random.New(random.CryptoSeed{})
+
 func TestTypeOf(t *testing.T) {
 	t.Run("type by value", func(t *testing.T) {
 		var str string
@@ -872,7 +874,6 @@ func TestBaseType(t *testing.T) {
 }
 
 func TestPointerOf(t *testing.T) {
-	var rnd = random.New(random.CryptoSeed{})
 	t.Run("invalid value", func(t *testing.T) {
 		ptr := reflectkit.PointerOf(reflect.ValueOf(nil))
 		assert.Equal(t, ptr, reflect.ValueOf(nil))
@@ -882,6 +883,18 @@ func TestPointerOf(t *testing.T) {
 		ptr := reflectkit.PointerOf(v)
 		assert.Equal(t, reflect.Pointer, ptr.Kind())
 		assert.Equal(t, v, ptr.Elem())
+	})
+	t.Run("addressable", func(t *testing.T) {
+		type T struct {
+			ID string
+		}
+		expFieldValue := rnd.UUID()
+		var v T
+		ptrVal := reflect.ValueOf(&v)
+		ptrID := reflectkit.PointerOf(ptrVal.Elem().FieldByName("ID"))
+		ptrID.Elem().Set(reflect.ValueOf(expFieldValue))
+		assert.Equal(t, expFieldValue, ptrVal.Elem().FieldByName("ID").Interface().(string))
+		assert.Equal(t, expFieldValue, v.ID)
 	})
 }
 
@@ -911,5 +924,12 @@ func TestToValue(t *testing.T) {
 		result := reflectkit.ToValue(value)
 		assert.Equal(t, result.Type(), expectedType)
 		assert.Equal(t, result.Interface().(exampleStruct), value)
+	})
+}
+
+func TestErrTypeMismatch(t *testing.T) {
+	assert.Error(t, reflectkit.ErrTypeMismatch)
+	assert.NotPanic(t, func() {
+		assert.NotEmpty(t, reflectkit.ErrTypeMismatch.Error())
 	})
 }

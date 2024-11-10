@@ -110,6 +110,8 @@ type Bar struct {
 
 	N int
 	C string
+
+	FooID FooID
 }
 
 type BarID string
