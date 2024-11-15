@@ -26,6 +26,8 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/relationship"
 	"go.llib.dev/frameless/port/iterators"
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
@@ -134,37 +136,49 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 		})
 	)
 	subject := testcase.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
-		return httpkit.RESTHandler[X, XID]{
-			IDContextKey: FooIDContextKey{},
-			MediaTypeCodecs: map[string]codec.Codec{
+		return httpkit.RESTHandlerFromCRUD[X, XID](resource.Get(t), func(h *httpkit.RESTHandler[X, XID]) {
+			h.IDContextKey = FooIDContextKey{}
+			h.MediaTypeCodecs = map[string]codec.Codec{
 				mediatype.JSON: jsonkit.Codec{},
-			},
-			Mapping: dtokit.Mapping[X, XDTO]{},
-		}.WithCRUD(resource.Get(t))
+			}
+			h.Mapping = dtokit.Mapping[X, XDTO]{}
+		})
 	})
 
-	GivenWeHaveStoredFooDTO := func(s *testcase.Spec) testcase.Var[XDTO] {
-		return testcase.Let(s, func(t *testcase.T) XDTO {
+	o := testcase.Let(s, func(t *testcase.T) *O {
+		return &O{ID: OID(t.Random.IntBetween(1, 99))}
+	})
+
+	GivenWeHaveStoredFooWithDTO := func(s *testcase.Spec) (testcase.Var[X], testcase.Var[XDTO]) {
+		return testcase.Let2(s, func(t *testcase.T) (X, XDTO) {
 			// create ent and persist
-			ent := X{N: t.Random.Int()}
+			ent := X{N: t.Random.Int(), OID: o.Get(t).ID}
 			t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
 			t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
 			// map ent to DTO
 			dto, err := XMapping{}.MapDTO(context.Background(), ent)
 			t.Must.NoError(err)
-			return dto
-		}).EagerLoading(s)
+			return ent, dto
+		})
 	}
 
-	s.Describe(".ServeHTTP", func(s *testcase.Spec) {
+	GivenWeHaveStoredFooDTO := func(s *testcase.Spec) testcase.Var[XDTO] {
+		_, dto := GivenWeHaveStoredFooWithDTO(s)
+		dto.EagerLoading(s)
+		return dto
+	}
+
+	s.Describe("#ServeHTTP", func(s *testcase.Spec) {
 		var (
-			method = testcase.LetValue(s, http.MethodGet)
-			path   = testcase.LetValue(s, "/")
-			body   = testcase.LetValue[[]byte](s, nil)
+			method  = testcase.LetValue(s, http.MethodGet)
+			path    = testcase.LetValue(s, "/")
+			body    = testcase.LetValue[[]byte](s, nil)
+			Context = let.Context(s)
 		)
 		act := func(t *testcase.T) *httptest.ResponseRecorder {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(method.Get(t), path.Get(t), bytes.NewReader(body.Get(t)))
+			r = r.WithContext(Context.Get(t))
 			r.Header.Set("Content-Type", "application/json")
 			subject.Get(t).ServeHTTP(w, r)
 			return w
@@ -197,6 +211,38 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
 					t.Must.Contain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+				})
+
+				s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						sub := subject.Super(t)
+						sub.Filters = append(sub.Filters, func(ctx context.Context, x X) bool {
+							return true
+						})
+						return sub
+					})
+
+					s.Then("it will return back the entity", func(t *testcase.T) {
+						rr := act(t)
+						t.Must.NotEmpty(rr.Body.String())
+						t.Must.Contain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+					})
+				})
+
+				s.When("if filters block it", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						sub := subject.Super(t)
+						sub.Filters = append(sub.Filters, func(ctx context.Context, x X) bool {
+							return false
+						})
+						return sub
+					})
+
+					s.Then("it will not return back the entity", func(t *testcase.T) {
+						rr := act(t)
+						t.Must.NotEmpty(rr.Body.String())
+						t.Must.NotContain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+					})
 				})
 			})
 
@@ -505,6 +551,36 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				t.Must.Equal(dto.Get(t), gotDTO)
 			})
 
+			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), o.Get(t))
+				})
+
+				s.Then(`it accept the request`, func(t *testcase.T) {
+					rr := act(t)
+					t.Must.NotEmpty(rr.Body.String())
+					gotDTO := respondsWithJSON[XDTO](t, rr)
+					t.Must.Equal(dto.Get(t), gotDTO)
+				})
+			})
+
+			s.When("if filters block it", func(s *testcase.Spec) {
+				othO := testcase.LetValue(s, O{ID: 123})
+
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), othO.Get(t))
+				})
+
+				s.Then("replies back with not found", func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Equal(http.StatusNotFound, rr.Code)
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					t.Must.NotEmpty(errDTO)
+					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+				})
+			})
+
 			WhenIDInThePathIsMalformed(s)
 
 			s.When("the requested entity is not found", func(s *testcase.Spec) {
@@ -568,6 +644,39 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				t.Must.Equal(ent.N, updatedDTO.Get(t).X)
 			})
 
+			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), o.Get(t))
+				})
+
+				s.Then(`it accept the request`, func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Empty(rr.Body.String())
+					t.Must.Equal(http.StatusNoContent, rr.Code)
+					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+					t.Must.NoError(err)
+					t.Must.True(found)
+					t.Must.Equal(ent.N, updatedDTO.Get(t).X)
+				})
+			})
+
+			s.When("if filters block it", func(s *testcase.Spec) {
+				othO := testcase.LetValue(s, O{ID: 123})
+
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), othO.Get(t))
+				})
+
+				s.Then("the it replies back with forbidden due to the filter", func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Equal(http.StatusNotFound, rr.Code)
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					t.Must.NotEmpty(errDTO)
+					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+				})
+			})
+
 			WhenIDInThePathIsMalformed(s)
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
@@ -623,6 +732,74 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				t.Must.False(found, "expected that the entity is deleted")
 			})
 
+			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), o.Get(t))
+				})
+
+				s.Then(`it accept the request`, func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Empty(rr.Body.String())
+					t.Must.Equal(http.StatusNoContent, rr.Code)
+
+					_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+					t.Must.NoError(err)
+					t.Must.False(found, "expected that the entity is deleted")
+				})
+			})
+
+			s.When("if filters block it", func(s *testcase.Spec) {
+				othO := testcase.LetValue(s, O{ID: 123})
+
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), othO.Get(t))
+				})
+
+				s.Then("the it replies back with forbidden due to the filter", func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Equal(http.StatusNotFound, rr.Code)
+
+					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
+					t.Must.NotEmpty(errDTO)
+					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+				})
+			})
+
+			s.When(".Show is not provided to verify the entity prior to deletion in a subresource context", func(s *testcase.Spec) {
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), o.Get(t))
+				})
+
+				subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+					sub := subject.Super(t)
+					sub.Show = nil
+					return sub
+				})
+
+				s.Then(`method not allowed returned`, func(t *testcase.T) {
+					rr := act(t)
+					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+				})
+
+				s.And("DeletionIsContextAware", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						sub := subject.Super(t)
+						sub.ScopeAware = true
+						return sub
+					})
+
+					s.Then(`it will delete the entity in the repository`, func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Empty(rr.Body.String())
+						t.Must.Equal(http.StatusNoContent, rr.Code)
+
+						_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+						t.Must.NoError(err)
+						t.Must.False(found, "expected that the entity is deleted")
+					})
+				})
+			})
+
 			WhenIDInThePathIsMalformed(s)
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
@@ -676,6 +853,76 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				t.Must.False(found, "expected that the entity is deleted")
 			})
 
+			s.When("the handler is a subresource", func(s *testcase.Spec) {
+				Context.Let(s, func(t *testcase.T) context.Context {
+					return internal.ContextRESTParentResourceValuePointer.ContextWith(Context.Super(t), o.Get(t))
+				})
+
+				s.And("Destroy and Index is not provided that would enable soft deleting", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						h := subject.Super(t)
+						h.Index = nil
+						h.Destroy = nil
+						return h
+					})
+
+					s.Then(`method not allowed returned`, func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+					})
+				})
+
+				s.And("Index+Destroy is provided to enable soft deleting the subresource scoped values", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						assert.NotNil(t, subject.Get(t).Index)
+						assert.NotNil(t, subject.Get(t).Destroy)
+					})
+
+					_, othDTO := testcase.Let2(s, func(t *testcase.T) (X, XDTO) {
+						// create ent and persist
+						ent := X{N: t.Random.Int(), OID: random.Unique(func() OID { return OID(t.Random.Int()) }, o.Get(t).ID)}
+						t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
+						t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
+						// map ent to DTO
+						dto, err := XMapping{}.MapDTO(context.Background(), ent)
+						t.Must.NoError(err)
+						return ent, dto
+					})
+
+					s.Then(`it will delete the entities related to the current REST Scope`, func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Empty(rr.Body.String())
+						t.Must.Equal(http.StatusNoContent, rr.Code)
+
+						_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+						t.Must.NoError(err)
+						t.Must.False(found, "expected that the entity is deleted")
+
+						_, found, err = mdb.Get(t).FindByID(context.Background(), XID(othDTO.Get(t).ID))
+						t.Must.NoError(err)
+						t.Must.True(found, "expected that the unrelated entity is not deleted")
+					})
+				})
+
+				s.And("DeletionIsContextAware", func(s *testcase.Spec) {
+					subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
+						sub := subject.Super(t)
+						sub.ScopeAware = true
+						return sub
+					})
+
+					s.Then(`it will delete the entity in the repository`, func(t *testcase.T) {
+						rr := act(t)
+						t.Must.Empty(rr.Body.String())
+						t.Must.Equal(http.StatusNoContent, rr.Code)
+
+						_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+						t.Must.NoError(err)
+						t.Must.False(found, "expected that the entity is deleted")
+					})
+				})
+			})
+
 			s.When("DeleteAll is not supported by the Repository", func(s *testcase.Spec) {
 				resource.Let(s, func(t *testcase.T) crud.ByIDFinder[X, XID] {
 					return struct{ crud.ByIDFinder[X, XID] }{ByIDFinder: mdb.Get(t)}
@@ -697,6 +944,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 		s.Describe(".ResourceRoutes", func(s *testcase.Spec) {
 			var lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
+			var foo, dto = GivenWeHaveStoredFooWithDTO(s)
 
 			subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
 				sub := subject.Super(t)
@@ -709,7 +957,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			})
 
 			path.Let(s, func(t *testcase.T) string {
-				return "/42/bars"
+				return pathkit.Join(strconv.Itoa(dto.Get(t).ID), "bars")
 			})
 
 			s.Then("the .Routes will be used to route the request", func(t *testcase.T) {
@@ -720,7 +968,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				id, ok := req.Context().Value(FooIDContextKey{}).(XID)
 				t.Must.True(ok)
-				assert.Equal(t, 42, id)
+				assert.Equal(t, foo.Get(t).ID, id)
 
 				routing, ok := internal.LookupRouting(req.Context())
 				t.Must.True(ok)
@@ -798,33 +1046,33 @@ func TestRESTHandler_WithCRUD_onNotEmptyOperations(t *testing.T) {
 
 	var createC, indexC, showC, updateC, destroyC, destroyAllC bool
 	fooRepo := memory.NewRepository[Foo, FooID](mem)
-	fooAPI := httpkit.RESTHandler[Foo, FooID]{
-		Create: func(ctx context.Context, ptr *Foo) error {
+	fooAPI := httpkit.RESTHandlerFromCRUD[Foo, FooID](fooRepo, func(h *httpkit.RESTHandler[Foo, FooID]) {
+		h.Create = func(ctx context.Context, ptr *Foo) error {
 			createC = true
 			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
 			return nil
-		},
-		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+		}
+		h.Index = func(ctx context.Context) (iterators.Iterator[Foo], error) {
 			indexC = true
 			return iterators.Empty[Foo](), nil
-		},
-		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+		}
+		h.Show = func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			showC = true
 			return Foo{ID: id}, true, nil
-		},
-		Update: func(ctx context.Context, ptr *Foo) error {
+		}
+		h.Update = func(ctx context.Context, ptr *Foo) error {
 			updateC = true
 			return nil
-		},
-		Destroy: func(ctx context.Context, id FooID) error {
+		}
+		h.Destroy = func(ctx context.Context, id FooID) error {
 			destroyC = true
 			return nil
-		},
-		DestroyAll: func(ctx context.Context) error {
+		}
+		h.DestroyAll = func(ctx context.Context) error {
 			destroyAllC = true
 			return nil
-		},
-	}.WithCRUD(fooRepo)
+		}
+	})
 
 	fooAPI.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}")))
 	fooAPI.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
@@ -851,16 +1099,16 @@ func TestDTOMapping_manual(t *testing.T) {
 	// instead of the default dtos mapping.
 	type FooCustomDTO struct{ Foo }
 
-	resource := httpkit.RESTHandler[Foo, FooID]{
-		Mapping: dtokit.Mapping[Foo, FooCustomDTO]{
+	resource := httpkit.RESTHandlerFromCRUD[Foo, FooID](fooRepository, func(h *httpkit.RESTHandler[Foo, FooID]) {
+		h.Mapping = dtokit.Mapping[Foo, FooCustomDTO]{
 			ToENT: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
 				return dto.Foo, nil
 			},
 			ToDTO: func(ctx context.Context, ent Foo) (FooCustomDTO, error) {
 				return FooCustomDTO{Foo: ent}, nil
 			},
-		},
-	}.WithCRUD(fooRepository)
+		}
+	})
 
 	example := FooCustomDTO{
 		Foo: Foo{
@@ -973,7 +1221,7 @@ func TestRESTHandler_withContext(t *testing.T) {
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
 			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
-			return Foo{}, false, nil
+			return Foo{ID: id}, true, nil
 		},
 		Update: func(ctx context.Context, ptr *Foo) error {
 			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
@@ -996,7 +1244,6 @@ func TestRESTHandler_withContext(t *testing.T) {
 			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
 			ResourceRoutesRan = true
 		}),
-
 		CollectionContext: func(ctx context.Context) (context.Context, error) {
 			return context.WithValue(ctx, CollectionProbeKey{}, val), nil
 		},
@@ -1004,6 +1251,7 @@ func TestRESTHandler_withContext(t *testing.T) {
 			lastID = id
 			return context.WithValue(ctx, ResourceProbeKey{}, val), nil
 		},
+		ScopeAware: true,
 	}
 
 	data, err := json.Marshal(MakeFoo(t))
@@ -1051,6 +1299,7 @@ func TestRESTHandler_withContext(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, pathkit.Join("/", "foo-id-4", "resource-path"), nil)
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusOK)
 		assert.Equal(t, lastID, "foo-id-4")
 		assert.True(t, ResourceRoutesRan)
 	}
@@ -1107,5 +1356,134 @@ func TestRESTHandler_withContext(t *testing.T) {
 			h.ServeHTTP(rr, req)
 			assert.Equal(t, http.StatusTeapot, rr.Code)
 		}
+	})
+}
+
+func TestRESTHandler_nestedOwnershipConstraint(t *testing.T) {
+	type User struct {
+		ID string
+	}
+	type Note struct {
+		ID     string
+		UserID string
+
+		Attachments []string
+	}
+	type Attachment struct {
+		ID string
+		BS []byte
+	}
+	var (
+		userRepo = &memory.Repository[User, string]{}
+		noteRepo = &memory.Repository[Note, string]{}
+		attaRepo = &memory.Repository[Attachment, string]{}
+	)
+	var (
+		attaResource = httpkit.RESTHandler[Attachment, string]{
+			Create: attaRepo.Create,
+			Index:  attaRepo.FindAll,
+			Show:   attaRepo.FindByID,
+		}
+		noteResource = httpkit.RESTHandler[Note, string]{
+			Index:  noteRepo.FindAll,
+			Show:   noteRepo.FindByID,
+			Update: noteRepo.Update,
+
+			ResourceRoutes: httpkit.NewRouter(func(r *httpkit.Router) {
+				r.Resource("attachments", attaResource)
+			}),
+		}
+		userResource = httpkit.RESTHandler[User, string]{
+			Index: userRepo.FindAll,
+			Show:  userRepo.FindByID,
+
+			ResourceRoutes: httpkit.NewRouter(func(r *httpkit.Router) {
+				r.Resource("notes", noteResource)
+			}),
+		}
+		router = httpkit.NewRouter(func(r *httpkit.Router) {
+			r.Resource("users", userResource)
+		})
+	)
+
+	var ctx = context.Background()
+
+	t.Log("given we have some users")
+	user1 := User{}
+	crudtest.Create[User, string](t, userRepo, ctx, &user1)
+	user2 := User{}
+	crudtest.Create[User, string](t, userRepo, ctx, &user2)
+
+	t.Log("each has its own note")
+	note1 := Note{UserID: user1.ID}
+	crudtest.Create[Note, string](t, noteRepo, ctx, &note1)
+	note2 := Note{UserID: user2.ID}
+	crudtest.Create[Note, string](t, noteRepo, ctx, &note2)
+
+	t.Log("and each note has its own attachment")
+	attachment1 := Attachment{BS: []byte(rnd.Domain())}
+	crudtest.Create[Attachment, string](t, attaRepo, ctx, &attachment1)
+	assert.NoError(t, relationship.Associate(&note1, &attachment1))
+	crudtest.Update[Note, string](t, noteRepo, ctx, &note1)
+
+	attachment2 := Attachment{BS: []byte(rnd.Domain())}
+	crudtest.Create[Attachment, string](t, attaRepo, ctx, &attachment2)
+	assert.NoError(t, relationship.Associate(&note2, &attachment2))
+	crudtest.Update[Note, string](t, noteRepo, ctx, &note2)
+
+	t.Run("when notes of a given user is requested, we only receive back its notes", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		path := pathkit.Join("users", user1.ID, "notes")
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		t.Log(path)
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var got []Note
+		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+		assert.Equal(t, len(got), 1)
+		assert.Equal(t, got[0], note1)
+	})
+
+	t.Run("when attachments requested of a given note, only the related attachment(s) returned", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		path := pathkit.Join("users", user1.ID, "notes")
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		t.Log(path)
+		router.ServeHTTP(rr, req)
+
+		assert.Equal(t, http.StatusOK, rr.Code)
+		var got []Note
+		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+		assert.Equal(t, len(got), 1)
+		assert.Equal(t, got[0], note1)
+	})
+
+	t.Run("on sub resource create parent reference many updated", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		path := pathkit.Join("users", user1.ID, "notes", note1.ID, "attachments")
+		ent := Attachment{BS: []byte(rnd.Domain())}
+		reqBody, err := json.Marshal(ent)
+		assert.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(reqBody))
+		t.Log(req.Method, req.URL.String())
+		router.ServeHTTP(rr, req)
+
+		t.Log("attachment created")
+		assert.Equal(t, http.StatusCreated, rr.Code)
+		var got Attachment
+		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &got))
+		assert.Equal(t, ent.BS, got.BS)
+		assert.NotEmpty(t, got.ID)
+		gotAttach, found, err := attaRepo.FindByID(ctx, got.ID)
+		assert.NoError(t, err)
+		assert.True(t, found)
+		assert.Equal(t, got, gotAttach)
+
+		t.Log("parent relationship is also updated")
+		gotNote, found, err := noteRepo.FindByID(ctx, note1.ID)
+		assert.NoError(t, err)
+		assert.True(t, found)
+		assert.Contain(t, gotNote.Attachments, gotAttach.ID)
 	})
 }

@@ -83,7 +83,7 @@ func ExampleRESTClient_subresource() {
 func TestRESTClient_crud(t *testing.T) {
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo)
 	srv := httptest.NewServer(fooAPI)
 	t.Cleanup(srv.Close)
 
@@ -108,7 +108,7 @@ func TestRESTClient_crud(t *testing.T) {
 func TestRESTClient_FindAll_withDisableStreaming(t *testing.T) {
 	mem := memory.NewMemory()
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
-	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{}.WithCRUD(fooRepo)
+	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo)
 	srv := httptest.NewServer(fooAPI)
 	t.Cleanup(srv.Close)
 
@@ -134,12 +134,15 @@ func TestRESTClient_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RESTHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
-	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{
-		ResourceRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
+	barAPI := httpkit.RESTHandlerFromCRUD[testent.Bar, testent.BarID](barRepo, func(h *httpkit.RESTHandler[testent.Bar, testent.BarID]) {
+		h.ScopeAware = true
+	})
+
+	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+		h.ResourceRoutes = httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
-		}),
-	}.WithCRUD(fooRepo)
+		})
+	})
 
 	api := httpkit.NewRouter(func(router *httpkit.Router) {
 		router.Resource("/foos", fooAPI)
@@ -163,6 +166,12 @@ func TestRESTClient_subresource(t *testing.T) {
 		},
 		SupportIDReuse:  true,
 		SupportRecreate: true,
+		MakeEntity: func(t testing.TB) testent.Bar {
+			v := rnd.Make(testent.Bar{}).(testent.Bar)
+			v.ID = ""
+			v.FooID = foo.ID
+			return v
+		},
 	}
 
 	t.Run("Creator", crudcontracts.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
@@ -180,12 +189,13 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RESTHandler[testent.Bar, testent.BarID]{}.WithCRUD(barRepo)
-	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{
-		ResourceRoutes: httpkit.NewRouter(func(router *httpkit.Router) {
+	barAPI := httpkit.RESTHandlerFromCRUD[testent.Bar, testent.BarID](barRepo)
+
+	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+		h.ResourceRoutes = httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
-		}),
-	}.WithCRUD(fooRepo)
+		})
+	})
 
 	api := httpkit.NewRouter(func(router *httpkit.Router) {
 		router.Resource("/foos", fooAPI)
@@ -237,12 +247,12 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 
-	fooAPI := httpkit.RESTHandler[testent.Foo, testent.FooID]{
-		MediaType: GobMediaType,
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{
+	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+		h.MediaType = GobMediaType
+		h.MediaTypeCodecs = httpkit.MediaTypeCodecs{
 			GobMediaType: GobCodec{},
-		},
-	}.WithCRUD(fooRepo)
+		}
+	})
 
 	api := httpkit.NewRouter(func(router *httpkit.Router) {
 		router.Resource("/foos", fooAPI)

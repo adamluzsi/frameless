@@ -616,6 +616,9 @@ func makeClientErrUnexpectedResponse(req *http.Request, resp *http.Response, bod
 		StatusCode: resp.StatusCode,
 		URL:        req.URL,
 		Body:       string(body),
+
+		RequestMethod: req.Method,
+		RequestURL:    req.URL,
 	}
 }
 
@@ -623,6 +626,9 @@ type ClientErrUnexpectedResponse struct {
 	StatusCode int
 	Body       string
 	URL        *url.URL
+
+	RequestMethod string
+	RequestURL    *url.URL
 }
 
 func (err ClientErrUnexpectedResponse) Error() string {

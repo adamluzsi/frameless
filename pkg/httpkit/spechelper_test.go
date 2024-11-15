@@ -12,16 +12,22 @@ import (
 )
 
 type (
-	X struct {
-		ID XID
-		N  int
+	O struct {
+		ID OID
+	}
+	OID int
+	X   struct {
+		ID  XID
+		N   int
+		OID OID
 	}
 	XID int
 )
 
 type XDTO struct {
-	ID int `json:"id"`
-	X  int `json:"xnum"`
+	ID  int `json:"id"`
+	X   int `json:"xnum"`
+	OID int `json:"oid"`
 }
 
 var _ = dtokit.Register[X, XDTO](XMapping{}.ToDTO, XMapping{}.ToEnt)
@@ -32,19 +38,19 @@ type XMapping struct {
 }
 
 func (f XMapping) ToEnt(ctx context.Context, dto XDTO) (X, error) {
-	return X{ID: XID(dto.ID), N: dto.X}, nil
+	return X{ID: XID(dto.ID), N: dto.X, OID: OID(dto.OID)}, nil
 }
 
 func (f XMapping) ToDTO(ctx context.Context, ent X) (XDTO, error) {
-	return XDTO{ID: int(ent.ID), X: ent.N}, nil
+	return XDTO{ID: int(ent.ID), X: ent.N, OID: int(ent.OID)}, nil
 }
 
 func (f XMapping) MapEntity(ctx context.Context, dto XDTO) (X, error) {
-	return X{ID: XID(dto.ID), N: dto.X}, nil
+	return X{ID: XID(dto.ID), N: dto.X, OID: OID(dto.OID)}, nil
 }
 
 func (f XMapping) MapDTO(ctx context.Context, entity X) (XDTO, error) {
-	return XDTO{ID: int(entity.ID), X: entity.N}, nil
+	return XDTO{ID: int(entity.ID), X: entity.N, OID: int(entity.OID)}, nil
 }
 
 type Y struct {
@@ -107,6 +113,7 @@ func (f BazMapping) MapDTO(ctx context.Context, entity Baz) (BazDTO, error) {
 }
 
 func respondsWithJSON[DTO any](t *testcase.T, recorder *httptest.ResponseRecorder) DTO {
+	t.Helper()
 	var dto DTO
 	t.Log("body:", recorder.Body.String())
 	t.Must.NotEmpty(recorder.Body.Bytes())

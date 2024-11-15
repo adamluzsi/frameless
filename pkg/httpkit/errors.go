@@ -24,8 +24,13 @@ var ErrEntityAlreadyExist = errorkit.UserError{
 	Message: "The entity could not be created as it already exists.",
 }
 
+var ErrForbidden = errorkit.UserError{
+	ID:      "forbidden",
+	Message: "Operation permanently forbidden. Repeating the request will yield the same result.",
+}
+
 var ErrMethodNotAllowed = errorkit.UserError{
-	ID:      "restapi-method-not-allowed",
+	ID:      "rest-method-not-allowed",
 	Message: "The requested RESTful method is not supported.",
 }
 
@@ -66,6 +71,10 @@ func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO) {
 	case errors.Is(err, ErrEntityNotFound),
 		errors.Is(err, ErrPathNotFound):
 		dto.Status = http.StatusNotFound
+	case errors.Is(err, ErrForbidden):
+		dto.Type.ID = ErrForbidden.ID.String()
+		dto.Status = http.StatusForbidden
+		dto.Detail = ErrForbidden.Message.String()
 	case errors.Is(err, ErrMalformedID),
 		errors.Is(err, ErrInvalidRequestBody):
 		dto.Status = http.StatusBadRequest

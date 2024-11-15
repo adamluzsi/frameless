@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"net/http"
+
+	"go.llib.dev/frameless/pkg/contextkit"
 )
 
 type ctxKeyRequest struct{}
@@ -26,3 +28,7 @@ func LookupRequest(ctx context.Context) (*http.Request, bool) {
 	}
 	return nil, false
 }
+
+var ContextRESTParentResourceValuePointer contextkit.ValueHandler[ctxKeyRESTResourceValue, any]
+
+type ctxKeyRESTResourceValue struct{}

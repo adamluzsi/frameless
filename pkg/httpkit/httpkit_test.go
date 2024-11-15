@@ -611,15 +611,15 @@ func TestMount_spec(t *testing.T) {
 		}).EagerLoading(s)
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
-			return httpkit.RESTHandler[X, XID]{
-				Mapping: dtokit.Mapping[X, XDTO]{},
-				ResourceRoutes: httpkit.NewRouter(func(r *httpkit.Router) {
+			return httpkit.RESTHandlerFromCRUD[X, XID](repo.Get(t), func(h *httpkit.RESTHandler[X, XID]) {
+				h.Mapping = dtokit.Mapping[X, XDTO]{}
+				h.ResourceRoutes = httpkit.NewRouter(func(r *httpkit.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastReq.Set(t, r)
 						w.WriteHeader(http.StatusTeapot)
 					}))
-				}),
-			}.WithCRUD(repo.Get(t))
+				})
+			})
 		})
 
 		s.Then("the handler is properly propagated", func(t *testcase.T) {

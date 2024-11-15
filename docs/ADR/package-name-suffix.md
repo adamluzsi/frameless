@@ -8,7 +8,7 @@ and the package name received name of the target topic plus a "util" suffix. For
 However, when using such suffixes, there is a risk of name collision with other packages, including those in the
 standard library.
 
-The frameless project has a package named "httputil", which overlap with the "httputil" package in the standard library.
+The frameless project has a package named "httpkit", which overlap with the "httpkit" package in the standard library.
 This could cause a developer to import the wrong package unintentionally, when they use code formatting tools.
 
 ## Decision
@@ -26,7 +26,7 @@ that a package contains a collection of related tools, utilities, or components.
 ## Consequences
 
 This decision will require us to rename some of our existing packages that currently use the "util" suffix.
-For example, we will need to rename "httputil" to "httpkit". 
+For example, we will need to rename "httpkit" to "httpkit". 
 This change will require updating imports in any code that uses these packages.
 
 While this change may cause some initial inconvenience,

@@ -17,14 +17,17 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
+	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/frameless/port/crud/relationship"
 	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/testcase/pp"
 )
 
 // RESTHandler implements an http.Handler that adheres to the Representational State of Resource (REST) architectural style.
 //
-// What is REST?
+// ## What is REST?
 //
 // REST, short for Representational State Transfer,
 // is an architectural style for designing networked applications.
@@ -35,7 +38,36 @@ import (
 // * Separate concerns between client and server
 // * Use standard HTTP methods (e.g., GET, POST, PUT, DELETE) to manipulate resources
 //
-// This RESTHandler provides a foundation for building RESTful APIs that meet these goals.
+// ## Automatic Resource Relationships
+//
+// One of the key features of our RESTHandler is its ability to automatically infer relationships between resources.
+// This means that when you define a nested URL structure, such as `/users/:user_id/notes/:note_id/attachments/:attachment_id`,
+// our handler will automatically associate the corresponding entities and persist their relationships.
+//
+// For example, if we have three entities: User, Note, and Attachment, where:
+//
+// * A Note belongs to a User (identified by `Note#UserID`)
+// * A Note has many Attachments (identified by `Note#Attachments`)
+//
+// When someone creates a new Note, our handler will automatically infer the UserID from the URL parameter `:user_id`.
+// Similarly, when accessing the path `/users/:user_id/notes`, our handler will return only the notes that are scoped to the specified user.
+//
+// ## Ownership Constraints
+//
+// But what happens if you want to restrict access to certain resources based on their relationships?
+// That's where ownership constraints come in. When you make a controller "not aware of the REST scope", our handler will apply an ownership constraint, which limits sub-resources to only those that are owned by the parent resource.
+//
+// To illustrate this, let's say we have the same entities as before: User, Note, and Attachment.
+// If someone tries to access `/users/:user_id/notes`, they will only see notes that belong to the specified user.
+// If they try to create a new note with an invalid or missing `:user_id` parameter, our handler will prevent the creation of the note.
+//
+// This feature helps ensure data consistency and security by enforcing relationships between resources.
+//
+// ## Conclusion
+//
+// Our RESTHandler provides a solid foundation for building RESTful APIs that meet the primary goals of REST.
+// With its automatic resource relationship inference and ownership constraint features,
+// you can focus on building robust and scalable applications with ease.
 type RESTHandler[ENT, ID any] struct {
 	// Create will create a new entity in the restful resource.
 	// Create is a collection endpoint.
@@ -126,17 +158,41 @@ type RESTHandler[ENT, ID any] struct {
 	// 	- DESTORY
 	// 	- sub routes
 	ResourceContext func(context.Context, ID) (context.Context, error)
+	// Filters [optional]
+	//
+	// Filters allow the definition of client side requested server side response filtering.
+	// Such as limiting the results of the Index endpoint by query parameters.
+	// This approach enables efficient retrieval of specific subsets of resources
+	// without requiring the client to fetch and process the entire collection.
+	Filters []func(context.Context, ENT) bool
+	// ScopeAware flags the RESTHandler that is is aware of the REST scope, such as being a nested resource.
+	//   > RESTHandler[Note, NoteID] that is a subresource of a RESTHandler[User, UserID]
+	//   > /users/:user_id/notes -> accessed notes should belong to a given :user_id only.
+	//
+	// If the current handler is not ScopeAware, then we assume so does its REST methods,
+	// and when the RESTHandler used as a subresource ("/users/:user_id/notes"),
+	// to avoid unwanted consequences, the DestroyAll operation will be either disabled or replaced with a sequenced of deletion using a scoped id list.
+	//
+	// Additionally, the Destroy operation is also disabled
+	// unless the Show command is used to retrieve the ENT for validation with Constraint.
+	ScopeAware bool
+	// DisableOwnershipConstraint will disable the ownership check when the RESTHandler is in a sub-resource scope.
+	DisableOwnershipConstraint bool
+	// CommitManager [WIP]
+	//
+	// CommitManager is meant to make the API interaction transactional.
+	CommitManager comproto.OnePhaseCommitProtocol
 }
 
-func (res RESTHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
+func (h RESTHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
 	mediaType, _ = lookupMediaType(mediaType) // TODO: TEST ME
-	if res.MediaTypeMappings != nil {
-		if mapping, ok := res.MediaTypeMappings[mediaType]; ok {
+	if h.MediaTypeMappings != nil {
+		if mapping, ok := h.MediaTypeMappings[mediaType]; ok {
 			return mapping
 		}
 	}
-	if res.Mapping != nil {
-		return res.Mapping
+	if h.Mapping != nil {
+		return h.Mapping
 	}
 	return passthroughMappingMode[ENT]()
 }
@@ -160,29 +216,40 @@ type Mapper[ENT any] interface {
 	toDTO(ctx context.Context, ent ENT) (DTO any, _ error)
 }
 
-func (res RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	r = r.WithContext(internal.WithRequest(r.Context(), r))
-	defer res.handlePanic(w, r)
+func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer h.handlePanic(w, r)
+	ctx := r.Context()
+	ctx = internal.WithRequest(ctx, r)
+	if h.CommitManager != nil {
+		var err error
+		ctx, err = h.CommitManager.BeginTx(ctx)
+		if err != nil {
+			h.getErrorHandler().HandleError(w, r, err)
+			return
+		}
+		defer h.CommitManager.CommitTx(ctx)
+	}
+	r = r.WithContext(ctx)
 	r, rc := internal.WithRoutingContext(r)
 	switch rc.PathLeft {
 	case `/`, ``:
-		if res.CollectionContext != nil {
-			cctx, err := res.CollectionContext(r.Context())
+		if h.CollectionContext != nil {
+			colCTX, err := h.CollectionContext(r.Context())
 			if err != nil {
-				res.getErrorHandler().HandleError(w, r, err)
+				h.getErrorHandler().HandleError(w, r, err)
 				return
 			}
-			r = r.WithContext(cctx)
+			r = r.WithContext(colCTX)
 		}
 		switch r.Method {
 		case http.MethodGet:
-			res.index(w, r)
+			h.index(w, r)
 		case http.MethodPost:
-			res.create(w, r)
+			h.create(w, r)
 		case http.MethodDelete:
-			res.destroyAll(w, r)
+			h.destroyAll(w, r)
 		default:
-			res.errMethodNotAllowed(w, r)
+			h.errMethodNotAllowed(w, r)
 		}
 		return
 
@@ -190,118 +257,127 @@ func (res RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request
 		resourceID, rest := pathkit.Unshift(rc.PathLeft)
 		rc.Travel(resourceID)
 
-		id, err := res.getIDParser(resourceID)
+		id, err := h.getIDParser(resourceID)
 		if err != nil {
 			defaultErrorHandler.HandleError(w, r, ErrMalformedID.With().Detail(err.Error()))
 			return
 		}
 
-		if res.IDContextKey != nil {
-			r = r.WithContext(context.WithValue(r.Context(), res.IDContextKey, id))
-		}
+		r = r.WithContext(h.contextWithID(r.Context(), id))
 
-		if res.ResourceContext != nil {
-			rctx, err := res.ResourceContext(r.Context(), id)
+		if h.ResourceContext != nil {
+			resCTX, err := h.ResourceContext(r.Context(), id)
 			if err != nil {
-				res.getErrorHandler().HandleError(w, r, err)
+				h.getErrorHandler().HandleError(w, r, err)
 				return
 			}
-			r = r.WithContext(rctx)
+			r = r.WithContext(resCTX)
 		}
 
 		if rest != "/" {
-			if res.ResourceRoutes == nil {
-				res.getErrorHandler().HandleError(w, r, ErrPathNotFound)
-				return
-			}
-			res.ResourceRoutes.ServeHTTP(w, r)
+			h.serveResourceRoute(w, r)
 			return
 		}
 
 		switch r.Method {
 		case http.MethodGet:
-			res.show(w, r, id)
+			h.show(w, r, id)
 		case http.MethodPut, http.MethodPatch:
-			res.update(w, r, id)
+			h.update(w, r, id)
 		case http.MethodDelete:
-			res.destroy(w, r, id)
+			h.destroy(w, r, id)
 		}
 	}
 
 }
 
-func (res RESTHandler[ENT, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
+func (h RESTHandler[ENT, ID]) contextWithID(ctx context.Context, id ID) context.Context {
+	// TODO: test that IDContextKey always there
+	ctx = context.WithValue(ctx, IDContextKey[ENT, ID]{}, id)
+	if h.IDContextKey != nil {
+		ctx = context.WithValue(ctx, h.IDContextKey, id)
+	}
+	return ctx
+}
+
+func (h RESTHandler[ENT, ID]) handlePanic(w http.ResponseWriter, r *http.Request) {
 	v := recover()
 	if v == nil {
 		return
 	}
 	if err, ok := v.(error); ok {
-		res.errInternalServerError(w, r, err)
+		h.errInternalServerError(w, r, err)
 		return
 	}
-	res.errInternalServerError(w, r, fmt.Errorf("recover: %v", v))
+	h.errInternalServerError(w, r, fmt.Errorf("recover: %v", v))
 }
 
-func (res RESTHandler[ENT, ID]) getErrorHandler() ErrorHandler {
-	if res.ErrorHandler != nil {
-		return res.ErrorHandler
+func (h RESTHandler[ENT, ID]) getErrorHandler() ErrorHandler {
+	if h.ErrorHandler != nil {
+		return h.ErrorHandler
 	}
 	return defaultErrorHandler
 }
 
-func (res RESTHandler[ENT, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+func (h RESTHandler[ENT, ID]) errInternalServerError(w http.ResponseWriter, r *http.Request, err error) {
 	if err != nil {
 		fmt.Println("ERROR", err.Error())
 	}
-	res.getErrorHandler().HandleError(w, r, ErrInternalServerError)
+	h.getErrorHandler().HandleError(w, r, ErrInternalServerError)
 }
 
-func (res RESTHandler[ENT, ID]) errMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
-	res.getErrorHandler().HandleError(w, r, ErrMethodNotAllowed)
+func (h RESTHandler[ENT, ID]) errMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	h.getErrorHandler().HandleError(w, r, ErrMethodNotAllowed)
 }
 
-func (res RESTHandler[ENT, ID]) errEntityNotFound(w http.ResponseWriter, r *http.Request) {
-	res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
+func (h RESTHandler[ENT, ID]) errEntityNotFound(w http.ResponseWriter, r *http.Request) {
+	h.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 }
 
 // DefaultBodyReadLimit is the maximum number of bytes that a httpkit.Handler will read from the requester,
 // if the Handler.BodyReadLimit is not provided.
 var DefaultBodyReadLimit int = 16 * iokit.Megabyte
 
-func (res RESTHandler[ENT, ID]) getBodyReadLimit() int {
-	if res.BodyReadLimit != 0 {
-		return res.BodyReadLimit
+func (h RESTHandler[ENT, ID]) getBodyReadLimit() int {
+	if h.BodyReadLimit != 0 {
+		return h.BodyReadLimit
 	}
 	return DefaultBodyReadLimit
 }
 
-func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
-	if res.Index == nil {
-		res.errMethodNotAllowed(w, r)
+func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
+	if h.Index == nil {
+		h.errMethodNotAllowed(w, r)
 		return
 	}
 
 	ctx := r.Context()
 
-	index, err := res.Index(ctx)
+	index, err := h.indexIter(ctx)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
-
 	defer func() {
 		if err := index.Close(); err != nil {
 			logger.Warn(ctx, "error during closing the index result resource",
 				logging.ErrField(err))
 		}
 	}()
-	if err := index.Err(); err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
-		return
+
+	if len(h.Filters) != 0 {
+		index = iterators.Filter(index, func(v ENT) bool {
+			for _, filter := range h.Filters {
+				if !filter(ctx, v) {
+					return false
+				}
+			}
+			return true
+		})
 	}
 
-	resCodec, resMediaType := res.responseBodyCodec(r, res.MediaType) // TODO:TEST_ME
-	resMapping := res.getMapping(resMediaType)
+	resCodec, resMediaType := h.responseBodyCodec(r, h.MediaType) // TODO:TEST_ME
+	resMapping := h.getMapping(resMediaType)
 
 	w.Header().Set(headerKeyContentType, resMediaType)
 
@@ -309,13 +385,13 @@ func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		vs, err := iterators.Collect(index)
 		if err != nil {
-			res.getErrorHandler().HandleError(w, r, err)
+			h.getErrorHandler().HandleError(w, r, err)
 			return
 		}
 
 		data, err := resCodec.Marshal(vs)
 		if err != nil {
-			res.getErrorHandler().HandleError(w, r, err)
+			h.getErrorHandler().HandleError(w, r, err)
 			return
 		}
 
@@ -324,6 +400,12 @@ func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 				logging.ErrField(err))
 		}
 
+		return
+	}
+
+	if err := index.Err(); err != nil {
+		logger.Debug(ctx, "index had an error", logging.ErrField(err))
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
@@ -357,64 +439,94 @@ func (res RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		logger.Error(ctx, "error during iterating index result",
 			logging.Field("entity_type", reflectkit.TypeOf[ENT]().String()),
 			logging.ErrField(err))
-
-		if n == 0 { // TODO:TEST_ME
-			res.getErrorHandler().HandleError(w, r, ErrInternalServerError)
-			return
-		}
-		return
 	}
 }
 
-func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
-	if res.Create == nil {
-		res.errMethodNotAllowed(w, r)
+func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iterators.Iterator[ENT], error) {
+	index, err := h.Index(ctx)
+	if err != nil {
+		return index, err
+	}
+	if _, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx); ok {
+		index = iterators.Filter(index, func(v ENT) bool {
+			return h.isOwnershipOK(ctx, v)
+		})
+	}
+	return index, nil
+}
+
+func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
+	if h.Create == nil {
+		h.errMethodNotAllowed(w, r)
 		return
 	}
 
-	data, err := res.readAllBody(r)
+	data, err := h.readAllBody(r)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
 	var (
 		ctx                    = r.Context()
-		reqCodec, reqMediaType = res.requestBodyCodec(r, res.MediaType)
-		reqMapping             = res.getMapping(reqMediaType)
+		reqCodec, reqMediaType = h.requestBodyCodec(r, h.MediaType)
+		reqMapping             = h.getMapping(reqMediaType)
 	)
 
 	dtoPtr := reqMapping.NewDTO()
 	if err := reqCodec.Unmarshal(data, dtoPtr); err != nil {
 		logger.Debug(ctx, "invalid request body", logging.ErrField(err))
-		res.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
+		h.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
 		return
 	}
 
 	ent, err := reqMapping.MapFromDTO(ctx, dtoPtr)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
-	if err := res.Create(ctx, &ent); err != nil {
+	parentPointer, hasParent := internal.ContextRESTParentResourceValuePointer.Lookup(ctx)
+	if hasParent && relationship.HasReference(ent, parentPointer) {
+		if err := relationship.Associate(parentPointer, &ent); err != nil {
+			h.getErrorHandler().HandleError(w, r, err)
+			return
+		}
+	}
+
+	if !h.ScopeAware { // TODO: testme
+		if hasParent && relationship.HasReference(ent, parentPointer) && !h.isOwnershipOK(ctx, ent) {
+			pp.PP("?", ent, parentPointer)
+			h.getErrorHandler().HandleError(w, r, ErrForbidden)
+			return
+		}
+	}
+
+	if err := h.Create(ctx, &ent); err != nil {
 		if errors.Is(err, crud.ErrAlreadyExists) { // TODO:TEST_ME
-			res.getErrorHandler().HandleError(w, r, ErrEntityAlreadyExist.With().Wrap(err))
+			h.getErrorHandler().HandleError(w, r, ErrEntityAlreadyExist.With().Wrap(err))
 			return
 		}
 		logger.Error(ctx, "error during httpkit.Resource#Create operation", logging.ErrField(err))
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
+	if hasParent && relationship.HasReference(parentPointer, ent) {
+		if err := relationship.Associate(parentPointer, &ent); err != nil {
+			h.getErrorHandler().HandleError(w, r, err)
+			return
+		}
+	}
+
 	var (
-		resSer, resMIMEType = res.responseBodyCodec(r, res.MediaType)
-		resMapping          = res.getMapping(resMIMEType)
+		resSer, resMIMEType = h.responseBodyCodec(r, h.MediaType)
+		resMapping          = h.getMapping(resMIMEType)
 	)
 
 	dto, err := resMapping.MapToIDTO(ctx, ent)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
@@ -423,7 +535,7 @@ func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 		logger.Error(ctx, "error during Marshaling entity operation",
 			logging.Field("type", reflectkit.TypeOf[ENT]().String()),
 			logging.ErrField(err))
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
@@ -436,38 +548,89 @@ func (res RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (res RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id ID) {
-	if res.Show == nil {
-		res.errMethodNotAllowed(w, r)
+func (h RESTHandler[ENT, ID]) serveResourceRoute(w http.ResponseWriter, r *http.Request) {
+	if h.ResourceRoutes == nil {
+		h.getErrorHandler().HandleError(w, r, ErrPathNotFound)
 		return
 	}
 
 	ctx := r.Context()
 
-	entity, found, err := res.Show(ctx, id)
-	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
-		return
-	}
-	if !found {
-		res.errEntityNotFound(w, r)
+	if h.Show == nil {
+		logger.Warn(ctx, "error, ResourceRoute requested on a RESTHandler that can't confirm the existence of the resource")
+		h.errMethodNotAllowed(w, r)
 		return
 	}
 
-	resSer, resMIMEType := res.responseBodyCodec(r, res.MediaType)
-	mapping := res.getMapping(resMIMEType)
+	id, _ := ctx.Value(h.idContextKey()).(ID)
+	entity, found, err := h.Show(ctx, id)
+	if err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+	if !found {
+		h.errEntityNotFound(w, r)
+		return
+	}
+
+	fingerprintBefore := fmt.Sprintf("%#v", entity)
+	r = r.WithContext(internal.ContextRESTParentResourceValuePointer.ContextWith(ctx, &entity))
+	h.ResourceRoutes.ServeHTTP(w, r)
+
+	fingerprintAfter := fmt.Sprintf("%#v", entity)
+
+	if fingerprintBefore != fingerprintAfter {
+		logFieldType := logging.Field("type", reflectkit.TypeOf[ENT]().String())
+		if h.Update != nil {
+			if err := h.Update(ctx, &entity); err != nil {
+				logger.Error(ctx, "failed to update REST parent",
+					logging.ErrField(err),
+					logFieldType)
+			}
+		} else {
+			const msg = "The subresource likely altered the parent entity due to relationship reference changes, but we can't persist it because the RESTHandler#Update action is missing."
+			logger.Debug(ctx, msg, logFieldType)
+		}
+	}
+}
+
+func (h RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id ID) {
+	if h.Show == nil {
+		h.errMethodNotAllowed(w, r)
+		return
+	}
+
+	ctx := r.Context()
+
+	entity, found, err := h.Show(ctx, id)
+	if err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+	if !found {
+		h.errEntityNotFound(w, r)
+		return
+	}
+
+	if !h.isOwnershipOK(ctx, entity) {
+		h.errEntityNotFound(w, r)
+		return
+	}
+
+	resSer, resMIMEType := h.responseBodyCodec(r, h.MediaType)
+	mapping := h.getMapping(resMIMEType)
 
 	w.Header().Set(headerKeyContentType, resMIMEType)
 
 	dto, err := mapping.MapToIDTO(ctx, entity)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
 	data, err := resSer.Marshal(dto)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
@@ -478,139 +641,223 @@ func (res RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id 
 	}
 }
 
-func (res RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id ID) {
-	if res.Update == nil {
-		res.errMethodNotAllowed(w, r)
+func (h RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id ID) {
+	if h.Update == nil {
+		h.errMethodNotAllowed(w, r)
 		return
 	}
 
 	var (
 		ctx                 = r.Context()
-		reqSer, reqMIMEType = res.requestBodyCodec(r, res.MediaType)
-		reqMapping          = res.getMapping(reqMIMEType)
+		reqSer, reqMIMEType = h.requestBodyCodec(r, h.MediaType)
+		reqMapping          = h.getMapping(reqMIMEType)
 	)
 
-	data, err := res.readAllBody(r)
+	data, err := h.readAllBody(r)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
 	dtoPtr := reqMapping.NewDTO()
 
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
-		res.getErrorHandler().HandleError(w, r,
+		h.getErrorHandler().HandleError(w, r,
 			ErrInvalidRequestBody.With().Detail(err.Error()))
 		return
 	}
 
-	if res.Show != nil { // TODO:TEST_ME
+	if h.Show != nil { // TODO:TEST_ME
 		ctx := r.Context()
-		_, found, err := res.Show(ctx, id)
+		v, found, err := h.Show(ctx, id)
 		if err != nil {
-			res.getErrorHandler().HandleError(w, r, err)
+			h.getErrorHandler().HandleError(w, r, err)
 			return
 		}
 		if !found {
-			res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
+			h.errEntityNotFound(w, r)
 			return
 		}
+		if !h.isOwnershipOK(ctx, v) {
+			h.errEntityNotFound(w, r)
+			return
+		}
+	} else if h.isSubResourceContext(ctx) {
+		h.errMethodNotAllowed(w, r)
+		return
 	}
 
 	entity, err := reqMapping.MapFromDTO(ctx, dtoPtr)
 	if err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
-	if err := res.IDAccessor.Set(&entity, id); err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+	if err := h.IDAccessor.Set(&entity, id); err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
-	if err := res.Update(ctx, &entity); err != nil {
+	if !h.isOwnershipOK(ctx, entity) {
+		h.errEntityNotFound(w, r)
+		return
+	}
+
+	if err := h.Update(ctx, &entity); err != nil {
 		if errors.Is(err, crud.ErrNotFound) { // TODO:TEST_ME
-			res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
+			h.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 			return
 		}
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res RESTHandler[ENT, ID]) destroy(w http.ResponseWriter, r *http.Request, id ID) {
-	if res.Destroy == nil {
-		res.errMethodNotAllowed(w, r)
+func (h RESTHandler[ENT, ID]) destroy(w http.ResponseWriter, r *http.Request, id ID) {
+	if h.Destroy == nil {
+		h.errMethodNotAllowed(w, r)
 		return
 	}
 
 	var ctx = r.Context()
 
-	if res.Show != nil { // TODO:TEST_ME
+	var filterChecked bool
+	if h.Show != nil { // TODO:TEST_ME
 		ctx := r.Context()
-		_, found, err := res.Show(ctx, id)
+		v, found, err := h.Show(ctx, id)
 		if err != nil {
-			res.getErrorHandler().HandleError(w, r, err)
+			h.getErrorHandler().HandleError(w, r, err)
 			return
 		}
 		if !found {
-			res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
+			h.errEntityNotFound(w, r)
 			return
 		}
+		if !h.isOwnershipOK(ctx, v) {
+			h.errEntityNotFound(w, r)
+			return
+		}
+		filterChecked = true
 	}
 
-	if err := res.Destroy(ctx, id); err != nil {
+	if !filterChecked && h.ScopeAware {
+		filterChecked = true
+	}
+
+	if !filterChecked && !h.DisableOwnershipConstraint {
+		h.errMethodNotAllowed(w, r)
+		return
+	}
+
+	if err := h.Destroy(ctx, id); err != nil {
 		if errors.Is(err, crud.ErrNotFound) {
-			res.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
+			h.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 			return
 		}
-		res.getErrorHandler().HandleError(w, r, err)
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (res RESTHandler[ENT, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
-	if res.DestroyAll == nil {
-		res.errMethodNotAllowed(w, r)
+func (h RESTHandler[ENT, ID]) destroyAll(w http.ResponseWriter, r *http.Request) {
+	if h.DestroyAll == nil {
+		h.errMethodNotAllowed(w, r)
 		return
 	}
 
-	if err := res.DestroyAll(r.Context()); err != nil {
-		res.getErrorHandler().HandleError(w, r, err)
+	ctx := r.Context()
+
+	if _, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx); ok && !h.ScopeAware {
+		ok, err := h.trySoftDeleteAll(ctx)
+		if err != nil {
+			h.getErrorHandler().HandleError(w, r, err)
+			return
+		}
+		if ok {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.errMethodNotAllowed(w, r)
+		return
+	}
+
+	if err := h.DestroyAll(ctx); err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, rerr error) {
+	if res.Destroy == nil || res.Index == nil {
+		return false, nil
+	}
+
+	if res.CommitManager != nil {
+		var err error
+		ctx, err = res.CommitManager.BeginTx(ctx)
+		if err != nil {
+			return true, err
+		}
+		defer comproto.FinishOnePhaseCommit(&rerr, res.CommitManager, ctx)
+	}
+
+	all, err := res.Index(ctx)
+	if err != nil {
+		return true, err
+	}
+
+	var ids []ID
+	err = iterators.ForEach(all, func(v ENT) error {
+		id, ok := res.IDAccessor.Lookup(all.Value())
+		if ok {
+			ids = append(ids, id)
+		}
+		return nil
+	})
+	if err != nil {
+		return true, err
+	}
+	for _, id := range ids {
+		if err := res.Destroy(ctx, id); err != nil {
+			return false, err
+		}
+	}
+
+	return true, nil
 }
 
 func (res RESTHandler[ENT, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
 	return bodyReadAll(r.Body, res.getBodyReadLimit())
 }
 
-func (res RESTHandler[ENT, ID]) WithCRUD(repo crud.ByIDFinder[ENT, ID]) RESTHandler[ENT, ID] {
-	if repo, ok := repo.(crud.Creator[ENT]); ok && res.Create == nil {
-		res.Create = repo.Create
+func RESTHandlerFromCRUD[ENT, ID any](repo crud.ByIDFinder[ENT, ID], conf ...func(h *RESTHandler[ENT, ID])) RESTHandler[ENT, ID] {
+	var h RESTHandler[ENT, ID]
+	h.Show = repo.FindByID
+	if repo, ok := repo.(crud.Creator[ENT]); ok && h.Create == nil {
+		h.Create = repo.Create
 	}
-	if repo, ok := repo.(crud.AllFinder[ENT]); ok && res.Index == nil {
-		res.Index = repo.FindAll // TODO: handle query
+	if repo, ok := repo.(crud.AllFinder[ENT]); ok && h.Index == nil {
+		h.Index = repo.FindAll // TODO: handle query
 	}
-	if repo, ok := repo.(crud.ByIDFinder[ENT, ID]); ok && res.Show == nil {
-		res.Show = repo.FindByID
+	if repo, ok := repo.(crud.Updater[ENT]); ok && h.Update == nil {
+		h.Update = repo.Update
 	}
-	if repo, ok := repo.(crud.Updater[ENT]); ok && res.Update == nil {
-		res.Update = repo.Update
+	if repo, ok := repo.(crud.AllDeleter); ok && h.DestroyAll == nil {
+		h.DestroyAll = repo.DeleteAll // TODO: handle query
 	}
-	if repo, ok := repo.(crud.AllDeleter); ok && res.DestroyAll == nil {
-		res.DestroyAll = repo.DeleteAll // TODO: handle query
+	if repo, ok := repo.(crud.ByIDDeleter[ID]); ok && h.Destroy == nil {
+		h.Destroy = repo.DeleteByID
 	}
-	if repo, ok := repo.(crud.ByIDDeleter[ID]); ok && res.Destroy == nil {
-		res.Destroy = repo.DeleteByID
+	for _, init := range conf {
+		init(&h)
 	}
-	return res
+	return h
 }
 
 func bodyReadAll(body io.ReadCloser, bodyReadLimit iokit.ByteSize) (_ []byte, returnErr error) {
@@ -626,60 +873,115 @@ const (
 	headerKeyAccept      = "Accept"
 )
 
-func (m RESTHandler[ENT, ID]) getIDParser(rawID string) (ID, error) {
-	if m.IDParser != nil {
-		return m.IDParser(rawID)
+func (h RESTHandler[ENT, ID]) getIDParser(rawID string) (ID, error) {
+	if h.IDParser != nil {
+		return h.IDParser(rawID)
 	}
 	return IDConverter[ID]{}.ParseID(rawID)
 }
 
-func (res RESTHandler[ENT, ID]) restHandler() {}
+func (h RESTHandler[ENT, ID]) restHandler() {}
 
 var _ restHandler = RESTHandler[any, any]{}
 
-func (m RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
-	return m.contentTypeCodec(r, fallbackMediaType)
+func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+	return h.contentTypeCodec(r, fallbackMediaType)
 }
 
-func (m RESTHandler[ENT, ID]) lookupByContentType(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType, bool) {
-	if mediaType, ok := m.getRequestBodyMediaType(r); ok { // TODO: TEST ME
-		if c, ok := m.MediaTypeCodecs.Lookup(mediaType); ok {
+func (h RESTHandler[ENT, ID]) lookupByContentType(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType, bool) {
+	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
+		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
 			return c, mediaType, true
 		}
 	}
-	if c, ok := m.MediaTypeCodecs.Lookup(fallbackMediaType); ok {
+	if c, ok := h.MediaTypeCodecs.Lookup(fallbackMediaType); ok {
 		return c, fallbackMediaType, true
 
 	}
 	return nil, "", false
 }
 
-func (m RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
-	if mediaType, ok := m.getRequestBodyMediaType(r); ok { // TODO: TEST ME
-		if c, ok := m.MediaTypeCodecs.Lookup(mediaType); ok {
+func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
+		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
 			return c, mediaType
 		}
 	}
-	if c, ok := m.MediaTypeCodecs.Lookup(fallbackMediaType); ok {
+	if c, ok := h.MediaTypeCodecs.Lookup(fallbackMediaType); ok {
 		return c, fallbackMediaType
 
 	}
 	return defaultCodec.Codec, defaultCodec.MediaType
 }
 
-func (m RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
-		return m.contentTypeCodec(r, fallbackMediaType)
+		return h.contentTypeCodec(r, fallbackMediaType)
 	}
 	for _, mediaType := range strings.Fields(accept) {
-		if c, ok := m.MediaTypeCodecs.Lookup(mediaType); ok {
+		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
 			return c, mediaType
 		}
 	}
-	return m.contentTypeCodec(r, fallbackMediaType)
+	return h.contentTypeCodec(r, fallbackMediaType)
 }
 
-func (m RESTHandler[ENT, ID]) getRequestBodyMediaType(r *http.Request) (mediatype.MediaType, bool) {
+func (h RESTHandler[ENT, ID]) getRequestBodyMediaType(r *http.Request) (mediatype.MediaType, bool) {
 	return lookupMediaType(r.Header.Get(headerKeyContentType))
 }
+
+func (h RESTHandler[ENT, ID]) idContextKey() any {
+	if h.IDContextKey != nil {
+		return h.IDContextKey
+	}
+	return IDContextKey[ENT, ID]{}
+}
+
+func (h RESTHandler[ENT, ID]) isSubResourceContext(ctx context.Context) bool {
+	_, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx)
+	return ok
+}
+
+func (h RESTHandler[ENT, ID]) isOwnershipOK(ctx context.Context, v ENT) bool {
+	if h.DisableOwnershipConstraint {
+		return true
+	}
+	return RESTOwnershipCheck(ctx, v)
+}
+
+// RESTOwnershipCheck
+//
+// RESTOwnershipCheck checks if an entity (e.g., a note, attachment) belongs to the current REST request scope by verifying its association with the specified parent resource. This function ensures data isolation, allowing only relevant entities to be accessed or modified.
+//
+// # Key Concept
+//
+// In nested REST resources, RESTOwnershipCheck enforces that an entity is linked to its parent resource in the current request, helping maintain secure and isolated data access.
+//
+// # How It Works
+//
+// - Identify Parent and Entity:
+//   - For a request path like /users/1/notes, 1 represents the parent resource (user), and notes are entities associated with that user.
+//
+// - Verify Association:
+//   - The function checks if the entity’s foreign key (e.g., UserID in a note) matches the parent resource ID in the request.
+//
+// - Return Outcome:
+//   - True if the entity is correctly associated (e.g., the note is owned by user 1).
+//   - False if it isn’t, blocking access to unrelated data.
+//
+// # Examples
+//
+// - Basic: For /users/1/notes, RESTOwnershipCheck ensures each note is owned by user 1.
+// - Nested: For /users/1/notes/2/attachments, it confirms that an attachment belongs to note 2 under user 1.
+//
+// This check maintains ownership boundaries and enhances security in nested REST resources.
+func RESTOwnershipCheck(ctx context.Context, entity any) bool {
+	parent, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx)
+	if !ok {
+		return true
+	}
+	return relationship.Related(parent, entity)
+}
+
+type IDContextKey[ENT, ID any] struct{}
