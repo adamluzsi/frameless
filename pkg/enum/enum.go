@@ -50,6 +50,18 @@ func Values[T any]() []T {
 	return out
 }
 
+func ReflectValues(typ reflect.Type) []reflect.Value {
+	regLock.Lock()
+	defer regLock.Unlock()
+	var out []reflect.Value
+	if vs, ok := registry[typ]; ok {
+		for _, v := range vs {
+			out = append(out, reflect.ValueOf(v))
+		}
+	}
+	return out
+}
+
 // Validate will check if the given value is a registered enum member.
 func Validate[T any](v T) error {
 	return validate(reflectkit.TypeOf[T](), reflect.ValueOf(v))

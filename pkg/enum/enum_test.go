@@ -1,9 +1,11 @@
 package enum_test
 
 import (
+	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
+	"go.llib.dev/frameless/pkg/reflectkit"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/testcase"
@@ -329,6 +331,18 @@ func TestRegister(t *testing.T) {
 	})
 }
 
+func ExampleValues() {
+	type T string
+	const (
+		V1 T = "C1"
+		V2 T = "C2"
+		V3 T = "C3"
+	)
+	enum.Register[T](V1, V2, V3)
+
+	enum.Values[T]() // []T{"C1", "C2", "C3"}
+}
+
 func TestValues(t *testing.T) {
 	t.Run("no enum value member is registered", func(t *testing.T) {
 		type T struct{}
@@ -351,6 +365,45 @@ func TestValues(t *testing.T) {
 		t.Log("after unregister, enum member values are no longer available")
 		unregister()
 		assert.Empty(t, enum.Values[T]())
+	})
+}
+
+func ExampleReflectValues() {
+	type T string
+	const (
+		V1 T = "C1"
+		V2 T = "C2"
+		V3 T = "C3"
+	)
+	enum.Register[T](V1, V2, V3)
+
+	enum.ReflectValues(reflect.TypeOf((*T)(nil)).Elem()) // []{"C1", "C2", "C3"}
+}
+
+func TestReflectValues(t *testing.T) {
+	t.Run("no enum value member is registered", func(t *testing.T) {
+		type T struct{}
+		assert.Empty(t, enum.ReflectValues(reflectkit.TypeOf[T]()))
+	})
+	t.Run("type with registered enum value members", func(t *testing.T) {
+		type T string
+		const (
+			V1 T = "C1"
+			V2 T = "C2"
+			V3 T = "C3"
+		)
+
+		unregister := enum.Register[T](V1, V2, V3)
+		defer unregister()
+
+		t.Log("after register, enum member values are available")
+		assert.ContainExactly(t,
+			[]reflect.Value{reflect.ValueOf(V1), reflect.ValueOf(V2), reflect.ValueOf(V3)},
+			enum.ReflectValues(reflectkit.TypeOf[T]()))
+
+		t.Log("after unregister, enum member values are no longer available")
+		unregister()
+		assert.Empty(t, enum.ReflectValues(reflectkit.TypeOf[T]()))
 	})
 }
 
