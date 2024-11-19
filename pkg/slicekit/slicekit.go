@@ -178,6 +178,26 @@ func Unshift[T any](vs *[]T, nvs ...T) {
 	*vs = append(nvs, *vs...)
 }
 
+func Insert[T any](vs *[]T, index int, nvs ...T) {
+	if len(nvs) == 0 {
+		return
+	}
+	if len(*vs) < index {
+		*vs = append(*vs, nvs...)
+		return
+	}
+	if index < 0 {
+		index = 0
+	} else if len(*vs) < index {
+		index = len(*vs)
+	}
+	var og = Clone(*vs)
+	*vs = make([]T, 0, len(og)+len(nvs))
+	*vs = append(*vs, og[:index]...)
+	*vs = append(*vs, nvs...)
+	*vs = append(*vs, og[index:]...)
+}
+
 func Last[T any](vs []T) (T, bool) {
 	if len(vs) == 0 {
 		return *new(T), false

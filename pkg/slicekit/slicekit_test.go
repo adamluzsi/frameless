@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func ExampleMust() {
@@ -811,5 +812,99 @@ func TestReverseIterator(t *testing.T) {
 		vs, err := iterators.Collect(slicekit.Reverse([]int{}))
 		assert.NoError(t, err)
 		assert.Empty(t, vs)
+	})
+}
+
+func TestInsert(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		og = testcase.Let(s, func(t *testcase.T) []string {
+			return []string{"foo", "bar", "baz"}
+		})
+		slice = testcase.Let(s, func(t *testcase.T) *[]string {
+			var s = slicekit.Clone(og.Get(t))
+			return &s
+		})
+		index  = testcase.Let[int](s, nil)
+		values = testcase.Let(s, func(t *testcase.T) []string {
+			return random.Slice(t.Random.IntBetween(3, 5), t.Random.String, random.UniqueValues)
+		})
+	)
+	act := func(t *testcase.T) {
+		slicekit.Insert(slice.Get(t), index.Get(t), values.Get(t)...)
+	}
+
+	s.When("input slice is empty/nil", func(s *testcase.Spec) {
+		slice.Let(s, func(t *testcase.T) *[]string {
+			var s []string
+			if t.Random.Bool() {
+				s = []string{}
+			}
+			return &s
+		})
+
+		index.LetValue(s, 0)
+
+		s.Then("it will add the values to it", func(t *testcase.T) {
+			act(t)
+
+			assert.Equal(t, *slice.Get(t), values.Get(t))
+		})
+	})
+
+	s.When("index is at zero", func(s *testcase.Spec) {
+		index.LetValue(s, 0)
+
+		s.Then("it will act as unshift", func(t *testcase.T) {
+			act(t)
+
+			var exp []string
+			exp = append(exp, values.Get(t)...)
+			exp = append(exp, og.Get(t)...)
+			assert.Equal(t, *slice.Get(t), exp)
+		})
+	})
+
+	s.When("index is pointing somewhere inside the slice", func(s *testcase.Spec) {
+		index.LetValue(s, 1)
+
+		s.Then("it insert the values to the posistion", func(t *testcase.T) {
+			act(t)
+
+			var exp []string
+			exp = append(exp, og.Get(t)[0])
+			exp = append(exp, values.Get(t)...)
+			exp = append(exp, og.Get(t)[1:]...)
+			assert.Equal(t, *slice.Get(t), exp)
+		})
+	})
+
+	s.When("index is a negative number", func(s *testcase.Spec) {
+		index.LetValue(s, -1)
+
+		s.Then("it will act as unshift", func(t *testcase.T) {
+			act(t)
+
+			var exp []string
+			exp = append(exp, values.Get(t)...)
+			exp = append(exp, og.Get(t)...)
+			assert.Equal(t, *slice.Get(t), exp)
+		})
+	})
+
+	s.When("index is bigger than the input slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return len(og.Get(t)) + t.Random.IntBetween(3, 7)
+		})
+
+		s.Then("it will append the values to the end", func(t *testcase.T) {
+			act(t)
+
+			var exp []string
+			exp = append(exp, og.Get(t)...)
+			exp = append(exp, values.Get(t)...)
+			assert.Equal(t, *slice.Get(t), exp)
+		})
 	})
 }
