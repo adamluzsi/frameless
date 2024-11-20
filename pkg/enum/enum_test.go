@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/testcase"
@@ -404,6 +405,37 @@ func TestReflectValues(t *testing.T) {
 		t.Log("after unregister, enum member values are no longer available")
 		unregister()
 		assert.Empty(t, enum.ReflectValues(reflectkit.TypeOf[T]()))
+	})
+	t.Run("StructField", func(t *testing.T) {
+		type T string
+		const (
+			V1 T = "C1"
+			V2 T = "C2"
+			V3 T = "C3"
+		)
+		unregister := enum.Register[T](V1, V2, V3)
+		defer unregister()
+
+		type MyStruct struct {
+			Foo T `enum:"v1,v2,v3,"`
+			Bar T
+		}
+
+		msrv := reflect.ValueOf(MyStruct{})
+
+		fooSF, ok := msrv.Type().FieldByName("Foo")
+		assert.True(t, ok)
+
+		assert.Equal(t,
+			slicekit.Map(enum.ReflectValues(fooSF), reflect.Value.String),
+			[]string{"v1", "v2", "v3"})
+
+		barSF, ok := msrv.Type().FieldByName("Bar")
+		assert.True(t, ok)
+
+		assert.Equal(t,
+			slicekit.Map(enum.ReflectValues(barSF), reflect.Value.String),
+			[]string{"C1", "C2", "C3"})
 	})
 }
 

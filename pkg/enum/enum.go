@@ -50,16 +50,31 @@ func Values[T any]() []T {
 	return out
 }
 
-func ReflectValues(typ reflect.Type) []reflect.Value {
-	regLock.Lock()
-	defer regLock.Unlock()
-	var out []reflect.Value
-	if vs, ok := registry[typ]; ok {
-		for _, v := range vs {
-			out = append(out, reflect.ValueOf(v))
+func ReflectValues(typ any) []reflect.Value {
+	switch typ := typ.(type) {
+	case reflect.Type:
+		regLock.Lock()
+		defer regLock.Unlock()
+		var out []reflect.Value
+		if vs, ok := registry[typ]; ok {
+			for _, v := range vs {
+				out = append(out, reflect.ValueOf(v))
+			}
 		}
+		return out
+
+	case reflect.StructField:
+		if tag, ok := typ.Tag.Lookup(structTagName); ok {
+			enumerators, err := parseTag(typ.Type, tag)
+			if err == nil {
+				return enumerators
+			}
+		}
+		return ReflectValues(typ.Type)
+
+	default:
+		panic(fmt.Sprintf("implementation error, incorrect value type for enum.ReflectValues: %T", typ))
 	}
-	return out
 }
 
 // Validate will check if the given value is a registered enum member.
