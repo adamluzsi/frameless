@@ -2,9 +2,11 @@ package zerokit_test
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"net"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -90,15 +92,16 @@ func (s StubIsZero) IsZero() bool {
 
 func ExampleInit() {
 	type MyType struct {
-		V *string
+		V string
 	}
 	var mt MyType
 
-	_ = zerokit.Init(&mt.V, func() *string {
-		return pointer.Of("default value from a lambda")
+	_ = zerokit.Init(&mt.V, func() string {
+		return "default value from a lambda"
 	})
 
-	_ = zerokit.Init(&mt.V, pointer.Of(pointer.Of("default value from a pointer")))
+	var defaultValue = "default value from a shared variable"
+	_ = zerokit.Init(&mt.V, &defaultValue)
 }
 
 func TestInit(t *testing.T) {
@@ -179,6 +182,128 @@ func TestInit(t *testing.T) {
 		})
 		assert.Equal(t, map[string]struct{}{"42": {}}, v)
 		assert.Equal(t, map[string]struct{}{"42": {}}, got)
+	})
+}
+
+func ExampleInitErr() {
+	var val string
+	got, err := zerokit.InitErr(&val, func() (string, error) {
+		return "foo", fmt.Errorf("some error might occur, it will be handled")
+	})
+	_, _ = got, err
+}
+
+func TestInitErr(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	t.Run("on nil value, value is constructed from a func() T", func(t *testing.T) {
+		var str string
+		exp := rnd.String()
+		got, err := zerokit.InitErr(&str, func() (string, error) { return exp, nil })
+		assert.NoError(t, err)
+		assert.Equal[string](t, exp, got)
+		assert.Equal[string](t, exp, str)
+	})
+	t.Run("on non nil value, actual value returned", func(t *testing.T) {
+		expected := rnd.String()
+		var str *string
+		str = &expected
+		got, err := zerokit.InitErr(&str, func() (*string, error) { return pointer.Of("42"), nil })
+		assert.NoError(t, err)
+		assert.Equal[string](t, expected, *got)
+		assert.NotNil(t, str)
+		assert.Equal[string](t, expected, *str)
+	})
+	t.Run("on zero value, value is constructed from a func() T", func(t *testing.T) {
+		var str string
+		exp := rnd.String()
+		got, err := zerokit.InitErr(&str, func() (string, error) { return exp, nil })
+		assert.NoError(t, err)
+		assert.Equal[string](t, exp, got)
+		assert.Equal[string](t, exp, str)
+	})
+	t.Run("on zero value, value is constructed from a func() *T", func(t *testing.T) {
+		var str string
+		exp := rnd.String()
+		got, err := zerokit.InitErr(&str, func() (string, error) { return exp, nil })
+		assert.NoError(t, err)
+		assert.Equal[string](t, exp, got)
+		assert.Equal[string](t, exp, str)
+	})
+	t.Run("on non zero value, actual value returned", func(t *testing.T) {
+		expected := rnd.String()
+		var str string
+		str = expected
+		got, err := zerokit.InitErr(&str, func() (string, error) { return "42", nil })
+		assert.NoError(t, err)
+		assert.Equal[string](t, expected, got)
+		assert.NotNil(t, str)
+		assert.Equal[string](t, expected, str)
+	})
+	t.Run("supports embedded initialisation", func(t *testing.T) {
+		expected := rnd.String()
+		var str1, str2 string
+		got, err := zerokit.InitErr(&str1, func() (string, error) {
+			return zerokit.InitErr(&str2, func() (string, error) {
+				return expected, nil
+			})
+		})
+		assert.NoError(t, err)
+		assert.Equal[string](t, expected, got)
+		assert.NotNil(t, str1)
+		assert.Equal[string](t, expected, str1)
+		assert.NotNil(t, str2)
+		assert.Equal[string](t, expected, str2)
+	})
+	t.Run("supports embedded initialisation with Init", func(t *testing.T) {
+		expected := rnd.String()
+		var str1, str2 string
+		got, err := zerokit.InitErr(&str1, func() (string, error) {
+			return zerokit.Init(&str2, func() string {
+				return expected
+			}), nil
+		})
+		assert.NoError(t, err)
+		assert.Equal[string](t, expected, got)
+		assert.NotNil(t, str1)
+		assert.Equal[string](t, expected, str1)
+		assert.NotNil(t, str2)
+		assert.Equal[string](t, expected, str2)
+	})
+	t.Run("when not comparable values are being compared", func(t *testing.T) {
+		var v map[string]struct{}
+		got, err := zerokit.InitErr(&v, func() (map[string]struct{}, error) {
+			return map[string]struct{}{"42": {}}, nil
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]struct{}{"42": {}}, v)
+		assert.Equal(t, map[string]struct{}{"42": {}}, got)
+	})
+	t.Run("when error occurs, it is propagaded back", func(t *testing.T) {
+		var v string
+		var expVal = rnd.String()
+		var expErr error = rnd.Error()
+		got, err := zerokit.InitErr(&v, func() (string, error) {
+			return expVal, expErr
+		})
+		assert.ErrorIs(t, err, expErr)
+		assert.Equal(t, got, expVal)
+	})
+	t.Run("when error occurs, then it is not persisted", func(t *testing.T) {
+		var v string
+		var expVal = rnd.String()
+		var expErr error = rnd.Error()
+		var once sync.Once
+		var init = func() (string, error) {
+			var err error
+			once.Do(func() { err = expErr })
+			return expVal, err
+		}
+		_, err := zerokit.InitErr(&v, init)
+		assert.ErrorIs(t, err, expErr)
+
+		got, err := zerokit.InitErr(&v, init)
+		assert.NoError(t, err)
+		assert.Equal(t, got, expVal)
 	})
 }
 

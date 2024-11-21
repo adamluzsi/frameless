@@ -63,25 +63,47 @@ func (i *V[T]) Ptr() *T {
 // Init will initialise a zero value through its pointer (*T),
 // If it's not set, it assigns a value to it based on the supplied initialiser.
 // Init is safe to use concurrently, it has no race condition.
-func Init[T any, I initialiser[T]](ptr *T, init I) T {
+func Init[T any, I *T | func() T](ptr *T, init I) T {
+	got, _ := initErr[T, I](ptr, init)
+	return got
+}
+
+// Init will initialise a zero value through its pointer (*T),
+// If it's not set, it assigns a value to it based on the supplied initialiser.
+// Init is safe to use concurrently, it has no race condition.
+func InitErr[T any, Init func() (T, error)](ptr *T, init Init) (T, error) {
+	return initErr(ptr, init)
+}
+
+func initErr[T any, Init initialiser[T]](ptr *T, init Init) (T, error) {
 	if ptr == nil {
-		panic(fmt.Sprintf("nil pointer exception with pointers.Init for %T", *new(T)))
+		panic(fmt.Sprintf("nil pointer exception with pointers.Init for %T", (*T)(nil)))
 	}
-	if val, ok := initAtomic[T, I](ptr, init); ok {
-		return val
+	if val, ok, err := initAtomic[T, Init](ptr, init); err != nil {
+		return val, err
+	} else if ok {
+		return val, nil
 	}
 	if val, ok := initFastPath[T](ptr); ok {
-		return val
+		return val, nil
 	}
 	var key = pointerKey(ptr)
 	l := initLocks.RWLocker(key)
 	l.Lock()
 	defer l.Unlock()
 	if !IsZero(*ptr) { // ptr is already nil checked
-		return *ptr
+		return *ptr, nil
 	}
-	*ptr = initialise[T, I](init)
-	return *ptr
+	if init == nil {
+		var zero T
+		return zero, nil
+	}
+	val, err := initialise[T, Init](init)
+	if err != nil {
+		return val, err
+	}
+	*ptr = val
+	return *ptr, nil
 }
 
 func pointerKey[T any](ptr *T) uintptr {
@@ -91,18 +113,24 @@ func pointerKey[T any](ptr *T) uintptr {
 var initLocks = synckit.RWLockerFactory[uintptr]{ReadOptimised: true}
 
 type initialiser[T any] interface {
-	func() T | *T
+	noErrInitialiser[T] | func() (T, error)
 }
 
-func initialise[T any, IV initialiser[T]](init IV) T {
+type noErrInitialiser[T any] interface {
+	*T | func() T
+}
+
+func initialise[T any, IV initialiser[T]](init IV) (T, error) {
 	switch dv := any(init).(type) {
 	case func() T:
+		return dv(), nil
+	case func() (T, error):
 		return dv()
 	case *T:
-		return *dv
+		return *dv, nil
 	default:
 		var zero T
-		return zero
+		return zero, nil
 	}
 }
 
@@ -115,22 +143,30 @@ func initFastPath[T any](ptr *T) (_ T, ok bool) {
 	return v, !IsZero[T](v)
 }
 
-func initAtomic[T any, I initialiser[T]](ptr *T, init I) (_ T, _ bool) {
+func initAtomic[T any, Init initialiser[T]](ptr *T, init Init) (_ T, _ bool, _ error) {
 	switch tsPtr := any(ptr).(type) {
 	case *int32:
 		var zero int32
 		if !atomic.CompareAndSwapInt32(tsPtr, zero, zero) {
-			return *ptr, true
+			return *ptr, true, nil
 		}
-		ok := atomic.CompareAndSwapInt32(tsPtr, zero, any(initialise[T, I](init)).(int32))
-		return any(atomic.LoadInt32(tsPtr)).(T), ok
+		v, err := initialise[T, Init](init)
+		if err != nil {
+			return v, false, err
+		}
+		ok := atomic.CompareAndSwapInt32(tsPtr, zero, any(v).(int32))
+		return any(atomic.LoadInt32(tsPtr)).(T), ok, nil
 	case *int64:
 		var zero int64
 		if !atomic.CompareAndSwapInt64(tsPtr, zero, zero) {
-			return *ptr, true
+			return *ptr, true, nil
 		}
-		ok := atomic.CompareAndSwapInt64(tsPtr, zero, any(initialise[T, I](init)).(int64))
-		return any(atomic.LoadInt64(tsPtr)).(T), ok
+		v, err := initialise[T, Init](init)
+		if err != nil {
+			return v, false, err
+		}
+		ok := atomic.CompareAndSwapInt64(tsPtr, zero, any(v).(int64))
+		return any(atomic.LoadInt64(tsPtr)).(T), ok, nil
 	}
 	return
 }
