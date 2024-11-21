@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase"
@@ -15,11 +16,11 @@ import (
 
 func ExampleMust() {
 	var x = []int{1, 2, 3}
-	x = slicekit.Must(slicekit.MapErr[int](x, func(v int) (int, error) {
+	x = must.Must(slicekit.MapErr[int](x, func(v int) (int, error) {
 		return v * 2, nil
 	}))
 
-	v := slicekit.Must(slicekit.ReduceErr[int](x, 42, func(output int, current int) (int, error) {
+	v := must.Must(slicekit.ReduceErr[int](x, 42, func(output int, current int) (int, error) {
 		return output + current, nil
 	}))
 
@@ -29,13 +30,13 @@ func ExampleMust() {
 func TestMust(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		var x = []string{"1", "2", "3"}
-		got := slicekit.Must(slicekit.MapErr[int](x, strconv.Atoi))
+		got := must.Must(slicekit.MapErr[int](x, strconv.Atoi))
 		assert.Equal(t, []int{1, 2, 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = []string{"1", "B", "3"}
 		pv := assert.Panic(t, func() {
-			slicekit.Must(slicekit.MapErr[int](x, strconv.Atoi))
+			must.Must(slicekit.MapErr[int](x, strconv.Atoi))
 		})
 		err, ok := pv.(error)
 		assert.True(t, ok)
@@ -56,7 +57,7 @@ func ExampleMap() {
 
 func ExampleMapErr() {
 	var x = []string{"a", "b", "c"}
-	_ = slicekit.Must(slicekit.MapErr[string](x, func(s string) (string, error) {
+	_ = must.Must(slicekit.MapErr[string](x, func(s string) (string, error) {
 		return strings.ToUpper(s), nil
 	})) // []string{"A", "B", "C"}
 
@@ -336,7 +337,7 @@ func TestFilterErr(t *testing.T) {
 	t.Run("happy (no-error)", func(t *testing.T) {
 		var (
 			src = []string{"a", "b", "c"}
-			dst = slicekit.Must(slicekit.FilterErr[string](src, func(s string) (bool, error) {
+			dst = must.Must(slicekit.FilterErr[string](src, func(s string) (bool, error) {
 				return s != "b", nil
 			}))
 		)

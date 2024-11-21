@@ -21,6 +21,12 @@ func Must[T any](v T, err error) T {
 	return v
 }
 
+func Must0(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
 func Must2[A, B any](a A, b B, err error) (A, B) {
 	if err != nil {
 		panic(err)

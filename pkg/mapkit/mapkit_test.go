@@ -10,16 +10,17 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/testcase/assert"
 )
 
 func ExampleMust() {
 	var x = map[string]int{"A": 1, "B": 2, "C": 3}
 
-	x = mapkit.Must(mapkit.MapErr[string, int](x,
+	x = must.Must(mapkit.MapErr[string, int](x,
 		func(k string, v int) (string, int, error) { return k, v * 2, nil }))
 
-	v := mapkit.Must(mapkit.ReduceErr[int](x, 42,
+	v := must.Must(mapkit.ReduceErr[int](x, 42,
 		func(output int, k string, v int) (int, error) { return output + v, nil }))
 
 	fmt.Println("result:", v)
@@ -32,13 +33,13 @@ func TestMust(t *testing.T) {
 	}
 	t.Run("happy", func(t *testing.T) {
 		var x = map[string]string{"a": "1", "b": "2", "c": "3"}
-		got := mapkit.Must(mapkit.MapErr[string, int](x, mapper))
+		got := must.Must(mapkit.MapErr[string, int](x, mapper))
 		assert.Equal(t, map[string]int{"a": 1, "b": 2, "c": 3}, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		var x = map[string]string{"a": "1", "b": "two", "c": "3"}
 		pv := assert.Panic(t, func() {
-			_ = mapkit.Must(mapkit.MapErr[string, int](x, mapper))
+			_ = must.Must(mapkit.MapErr[string, int](x, mapper))
 		})
 		err, ok := pv.(error)
 		assert.True(t, ok)
@@ -75,7 +76,7 @@ func TestMap(t *testing.T) {
 func ExampleMapErr() {
 	var x = map[string]string{"a": "x", "b": "y", "c": "z"}
 
-	x = mapkit.Must(mapkit.MapErr[string, string](x,
+	x = must.Must(mapkit.MapErr[string, string](x,
 		func(k string, v string) (string, string, error) { return k, strings.ToUpper(v), nil }))
 
 	fmt.Printf("%#v\n", x) // map[string]string{"a": "X", "b": "Y", "c": "Z"}
@@ -350,7 +351,7 @@ func TestFilterErr(t *testing.T) {
 	t.Run("happy (no-error)", func(t *testing.T) {
 		var (
 			src = map[int]string{1: "a", 2: "b", 3: "c"}
-			dst = mapkit.Must(mapkit.FilterErr[int, string](src, func(k int, v string) (bool, error) {
+			dst = must.Must(mapkit.FilterErr[int, string](src, func(k int, v string) (bool, error) {
 				return k != 2, nil
 			}))
 		)

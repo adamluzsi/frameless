@@ -1,19 +1,13 @@
 package slicekit
 
 import (
+	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/port/iterators"
 )
 
-func Must[T any](v T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return v
-}
-
 // Map will do a mapping from an input type into an output type.
 func Map[O, I any](s []I, mapper func(I) O) []O {
-	return Must(MapErr[O, I](s, func(i I) (O, error) {
+	return must.Must(MapErr[O, I](s, func(i I) (O, error) {
 		return mapper(i), nil
 	}))
 }
@@ -36,7 +30,7 @@ func MapErr[O, I any](s []I, mapper func(I) (O, error)) ([]O, error) {
 
 // Reduce iterates over a slice, combining elements using the reducer function.
 func Reduce[O, I any](s []I, initial O, reducer func(O, I) O) O {
-	return Must(ReduceErr(s, initial, func(o O, i I) (O, error) {
+	return must.Must(ReduceErr(s, initial, func(o O, i I) (O, error) {
 		return reducer(o, i), nil
 	}))
 }
@@ -55,7 +49,7 @@ func ReduceErr[O, I any](s []I, initial O, reducer func(O, I) (O, error)) (O, er
 }
 
 func Filter[T any](src []T, filter func(v T) bool) []T {
-	return Must(FilterErr(src, func(v T) (bool, error) {
+	return must.Must(FilterErr(src, func(v T) (bool, error) {
 		return filter(v), nil
 	}))
 }

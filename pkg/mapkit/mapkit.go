@@ -1,17 +1,12 @@
 package mapkit
 
-func Must[T any](v T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return v
-}
+import "go.llib.dev/frameless/pkg/must"
 
 func Map[
 	OK comparable, OV any,
 	IK comparable, IV any,
 ](m map[IK]IV, mapper func(IK, IV) (OK, OV)) map[OK]OV {
-	return Must(MapErr[OK, OV](m, func(ik IK, iv IV) (OK, OV, error) {
+	return must.Must(MapErr[OK, OV](m, func(ik IK, iv IV) (OK, OV, error) {
 		ok, ov := mapper(ik, iv)
 		return ok, ov, nil
 	}))
@@ -37,7 +32,7 @@ func MapErr[
 }
 
 func Reduce[O any, K comparable, V any](m map[K]V, initial O, reducer func(O, K, V) O) O {
-	return Must(ReduceErr(m, initial, func(o O, k K, v V) (O, error) {
+	return must.Must(ReduceErr(m, initial, func(o O, k K, v V) (O, error) {
 		return reducer(o, k, v), nil
 	}))
 }
@@ -99,7 +94,7 @@ func Clone[K comparable, V any](m map[K]V) map[K]V {
 }
 
 func Filter[K comparable, V any](m map[K]V, filter func(k K, v V) bool) map[K]V {
-	return Must(FilterErr[K, V](m, func(k K, v V) (bool, error) {
+	return must.Must(FilterErr[K, V](m, func(k K, v V) (bool, error) {
 		return filter(k, v), nil
 	}))
 }

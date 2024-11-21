@@ -1070,13 +1070,6 @@ func (in *PipeIn[T]) Close() error {
 	return nil
 }
 
-func Must[T any](v T, err error) T {
-	if err != nil {
-		panic(err)
-	}
-	return v
-}
-
 // WithConcurrentAccess allows you to convert any iterator into one that is safe to use from concurrent access.
 // The caveat with this is that this protection only allows 1 Decode call for each Next call.
 func WithConcurrentAccess[T any](i Iterator[T]) Iterator[T] {

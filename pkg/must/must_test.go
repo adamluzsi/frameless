@@ -67,6 +67,28 @@ func TestMust(t *testing.T) {
 	})
 }
 
+func ExampleMust0() {
+	fn := func() error { return nil }
+	must.Must0(fn())
+}
+
+func TestMust0(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		assert.NotPanic(t, func() {
+			must.Must0(func() error { return nil }())
+		})
+	})
+	t.Run("rainy", func(t *testing.T) {
+		var exp = rnd.Error()
+		out := assert.Panic(t, func() {
+			must.Must0(func() error { return exp }())
+		})
+		got, ok := out.(error)
+		assert.True(t, ok, "Expected to get back an error value as panic's value")
+		assert.ErrorIs(t, exp, got)
+	})
+}
+
 func ExampleMust2() {
 	fn := func() (string, int, error) { return "the answer is", 42, nil }
 	a, b := must.Must2(fn())
