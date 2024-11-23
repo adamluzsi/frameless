@@ -68,10 +68,14 @@ func Init[T any, I *T | func() T](ptr *T, init I) T {
 	return got
 }
 
-// Init will initialise a zero value through its pointer (*T),
-// If it's not set, it assigns a value to it based on the supplied initialiser.
-// Init is safe to use concurrently, it has no race condition.
-func InitErr[T any, Init func() (T, error)](ptr *T, init Init) (T, error) {
+// InitErr will initialise a zero value through its pointer (*T),
+// If it's not set, it assigns a value to it based on the supplied initialiser function.
+// InitErr is safe to use concurrently, it has no race condition.
+//
+// If the initialiser function encounters an InitErr failure,
+// it will leave the provided *T pointer unassigned,
+// allowing subsequent calls to attempt initialization again.
+func InitErr[T any](ptr *T, init func() (T, error)) (T, error) {
 	return initErr(ptr, init)
 }
 
@@ -144,6 +148,7 @@ func initFastPath[T any](ptr *T) (_ T, ok bool) {
 }
 
 func initAtomic[T any, Init initialiser[T]](ptr *T, init Init) (_ T, _ bool, _ error) {
+	// TODO: function initialisers are not protected during the function call, only the assignment itself.
 	switch tsPtr := any(ptr).(type) {
 	case *int32:
 		var zero int32
