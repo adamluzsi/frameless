@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
@@ -187,3 +188,7 @@ func (ld logEntry) Merge(oth logEntry) logEntry {
 type nullLoggingDetail struct{}
 
 func (nullLoggingDetail) addTo(*Logger, logEntry) {}
+
+func CallerFields() logging.Detail {
+	return logging.Fields{}
+}
