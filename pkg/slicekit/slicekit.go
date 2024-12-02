@@ -213,3 +213,12 @@ func Reverse[T any](vs []T) iterators.Iterator[T] {
 		return v, true, nil
 	})
 }
+
+func AnyOf[T any](vs []T, filter func(T) bool) bool {
+	for _, v := range vs {
+		if filter(v) {
+			return true
+		}
+	}
+	return false
+}

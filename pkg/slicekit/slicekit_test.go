@@ -909,3 +909,45 @@ func TestInsert(t *testing.T) {
 		})
 	})
 }
+
+func TestAnyOf(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		t.Run("matching element exists", func(t *testing.T) {
+			input := []int{1, 2, 3, 4, 5}
+			result := slicekit.AnyOf(input, func(v int) bool { return v%2 == 0 })
+			assert.True(t, result)
+		})
+
+		t.Run("multiple matching element exists", func(t *testing.T) {
+			input := []int{1, 2, 3, 4, 5}
+			result := slicekit.AnyOf(input, func(v int) bool { return true })
+			assert.True(t, result)
+		})
+
+		t.Run("no matching element", func(t *testing.T) {
+			input := []int{1, 3, 5, 7}
+			result := slicekit.AnyOf(input, func(v int) bool { return v%2 == 0 })
+			assert.False(t, result)
+		})
+
+		t.Run("empty slice", func(t *testing.T) {
+			input := []int{}
+			result := slicekit.AnyOf(input, func(v int) bool { return v%2 == 0 })
+			assert.False(t, result)
+		})
+	})
+
+	t.Run("edge cases", func(t *testing.T) {
+		t.Run("single element matching", func(t *testing.T) {
+			input := []int{2}
+			result := slicekit.AnyOf(input, func(v int) bool { return v%2 == 0 })
+			assert.True(t, result)
+		})
+
+		t.Run("single element non-matching", func(t *testing.T) {
+			input := []int{3}
+			result := slicekit.AnyOf(input, func(v int) bool { return v%2 == 0 })
+			assert.False(t, result)
+		})
+	})
+}
