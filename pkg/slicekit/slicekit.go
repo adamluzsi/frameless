@@ -199,7 +199,7 @@ func Last[T any](vs []T) (T, bool) {
 	return vs[len(vs)-1], true
 }
 
-func Reverse[T any](vs []T) iterators.Iterator[T] {
+func ReverseIterator[T any](vs []T) iterators.Iterator[T] {
 	if len(vs) == 0 {
 		return iterators.Empty[T]()
 	}

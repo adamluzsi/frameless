@@ -768,9 +768,9 @@ func TestLast(t *testing.T) {
 	})
 }
 
-func ExampleReverse() {
+func ExampleReverseIterator() {
 	var list = []int{1, 2, 3}
-	rev := slicekit.Reverse(list)
+	rev := slicekit.ReverseIterator(list)
 
 	for rev.Next() {
 		_ = rev.Value() // 3 -> 2 -> 1
@@ -794,7 +794,7 @@ func TestReverseIterator(t *testing.T) {
 
 		var got []int
 
-		iter := slicekit.Reverse(in)
+		iter := slicekit.ReverseIterator(in)
 		for iter.Next() {
 			got = append(got, iter.Value())
 		}
@@ -804,13 +804,13 @@ func TestReverseIterator(t *testing.T) {
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
-		vs, err := iterators.Collect(slicekit.Reverse[int](nil))
+		vs, err := iterators.Collect(slicekit.ReverseIterator[int](nil))
 		assert.NoError(t, err)
 		assert.Empty(t, vs)
 	})
 
 	s.Test("empty slice", func(t *testcase.T) {
-		vs, err := iterators.Collect(slicekit.Reverse([]int{}))
+		vs, err := iterators.Collect(slicekit.ReverseIterator([]int{}))
 		assert.NoError(t, err)
 		assert.Empty(t, vs)
 	})
