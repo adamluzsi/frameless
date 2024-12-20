@@ -480,6 +480,73 @@ func TestUnique(t *testing.T) {
 	})
 }
 
+func ExampleUniqueBy() {
+	type T struct {
+		ID  int
+		Val string
+	}
+	vs := []T{
+		{ID: 1, Val: "foo1"},
+		{ID: 2, Val: "bar1"},
+		{ID: 2, Val: "bar2"},
+		{ID: 3, Val: "baz1"},
+		{ID: 3, Val: "baz2"},
+		{ID: 3, Val: "baz3"},
+	}
+	slicekit.UniqueBy(vs, func(v T) int { return v.ID })
+	// []T{
+	//   {ID: 1, Val: "foo1"},
+	//   {ID: 2, Val: "bar1"},
+	//   {ID: 3, Val: "baz1"},
+	// }
+}
+
+func uniqueBySelf[T comparable](v T) T {
+	return v
+}
+
+func TestUniqueBy(t *testing.T) {
+	t.Run("empty slice", func(t *testing.T) {
+		assert.Empty(t, slicekit.UniqueBy([]int{}, uniqueBySelf[int]))
+	})
+
+	t.Run("single element", func(t *testing.T) {
+		assert.Equal(t, slicekit.UniqueBy([]int{1}, uniqueBySelf[int]), []int{1})
+	})
+
+	t.Run("no duplicates", func(t *testing.T) {
+		assert.Equal(t, slicekit.UniqueBy([]int{1, 2, 3}, uniqueBySelf[int]), []int{1, 2, 3})
+	})
+
+	t.Run("duplicates", func(t *testing.T) {
+		assert.Equal(t, slicekit.UniqueBy([]int{1, 2, 2, 3, 3, 3}, uniqueBySelf[int]), []int{1, 2, 3})
+	})
+
+	t.Run("string slice", func(t *testing.T) {
+		assert.Equal(t, slicekit.UniqueBy([]string{"a", "b", "c"}, uniqueBySelf[string]), []string{"a", "b", "c"})
+	})
+
+	t.Run("order based on first occurence", func(t *testing.T) {
+		assert.Equal(t, slicekit.UniqueBy([]int{3, 1, 2, 2, 3, 3, 3}, uniqueBySelf[int]), []int{3, 1, 2})
+	})
+
+	t.Run("struct slice", func(t *testing.T) {
+		type person struct {
+			ID   string
+			Name string
+		}
+		p1a := person{ID: "1", Name: "John Jane"}
+		p1b := person{ID: "1", Name: "Jane John"}
+		p2 := person{ID: "2", Name: "Mr Bob"}
+		assert.Equal(t, slicekit.UniqueBy([]person{p1a, p1b, p2}, func(p person) string { return p.ID }), []person{p1a, p2})
+	})
+
+	t.Run("nil input", func(t *testing.T) {
+		var nilSlice []int
+		assert.Empty(t, slicekit.UniqueBy(nilSlice, uniqueBySelf[int]))
+	})
+}
+
 func ExamplePop() {
 	var list = []int{1, 2, 3}
 
