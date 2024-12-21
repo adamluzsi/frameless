@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
@@ -1015,6 +1016,69 @@ func TestAnyOf(t *testing.T) {
 			input := []int{3}
 			result := slicekit.AnyOf(input, func(v int) bool { return v%2 == 0 })
 			assert.False(t, result)
+		})
+	})
+}
+
+func ExampleFind() {
+	type Person struct {
+		Name     string
+		Birthday time.Time
+	}
+
+	var ps []Person
+
+	person, ok := slicekit.Find(ps, func(p Person) bool {
+		return p.Birthday.After(time.Date(2000, 1, 1, 12, 00, 00, 00, time.UTC))
+	})
+
+	_, _ = person, ok
+}
+
+func TestFind(t *testing.T) {
+	t.Run("happy path", func(t *testing.T) {
+		t.Run("matching element exists", func(t *testing.T) {
+			input := []int{1, 2, 3, 4, 5}
+			val, ok := slicekit.Find(input, func(v int) bool { return v == 2 })
+			assert.True(t, ok)
+			assert.Equal(t, val, 2)
+		})
+
+		t.Run("multiple matching element exists, then first returned", func(t *testing.T) {
+			input := []int{1, 2, 3, 4, 5}
+			val, ok := slicekit.Find(input, func(v int) bool { return true })
+			assert.True(t, ok)
+			assert.Equal(t, val, 1)
+		})
+
+		t.Run("no matching element", func(t *testing.T) {
+			input := []int{1, 3, 5, 7}
+			val, ok := slicekit.Find(input, func(v int) bool { return v%2 == 0 })
+			assert.False(t, ok)
+			assert.Empty(t, val)
+		})
+
+		t.Run("empty slice", func(t *testing.T) {
+			input := []int{}
+			val, ok := slicekit.Find(input, func(v int) bool { return v%2 == 0 })
+			assert.False(t, ok)
+			assert.Empty(t, val)
+		})
+	})
+
+	t.Run("edge cases", func(t *testing.T) {
+		t.Run("single element matching", func(t *testing.T) {
+			input := []int{2}
+			val, ok := slicekit.Find(input, func(v int) bool { return v%2 == 0 })
+			assert.True(t, ok)
+			assert.Equal(t, val, 2)
+		})
+
+		t.Run("single element non-matching", func(t *testing.T) {
+			input := []int{3}
+			val, ok := slicekit.Find(input, func(v int) bool { return v%2 == 0 })
+			assert.False(t, ok)
+			assert.Empty(t, val)
 		})
 	})
 }

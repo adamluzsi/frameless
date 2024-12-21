@@ -220,10 +220,17 @@ func ReverseIterator[T any](vs []T) iterators.Iterator[T] {
 }
 
 func AnyOf[T any](vs []T, filter func(T) bool) bool {
+	_, ok := Find[T](vs, filter)
+	return ok
+}
+
+// Find will find the first matching element in a slice based on the "by" filter function.
+func Find[T any](vs []T, by func(T) bool) (T, bool) {
 	for _, v := range vs {
-		if filter(v) {
-			return true
+		if by(v) {
+			return v, true
 		}
 	}
-	return false
+	var zero T
+	return zero, false
 }
