@@ -13,6 +13,8 @@
 //	Must(regexp.Compile(`regexp`))
 package must
 
+import "go.llib.dev/frameless/pkg/errorkit"
+
 // Must is a syntax sugar to express things like must.Must(regexp.Compile(`regexp`))
 func Must[T any](v T, err error) T {
 	if err != nil {
@@ -51,6 +53,49 @@ func Must4[A, B, C, D any](a A, b B, c C, d D, err error) (A, B, C, D) {
 func Must5[A, B, C, D, E any](a A, b B, c C, d D, e E, err error) (A, B, C, D, E) {
 	if err != nil {
 		panic(err)
+	}
+	return a, b, c, d, e
+}
+
+const ErrNotOK errorkit.Error = "ErrNotOK"
+
+func OK[T any](v T, ok bool) T {
+	if !ok {
+		panic(ErrNotOK)
+	}
+	return v
+}
+
+func OK0(ok bool) {
+	if !ok {
+		panic(ErrNotOK)
+	}
+}
+
+func OK2[A, B any](a A, b B, ok bool) (A, B) {
+	if !ok {
+		panic(ErrNotOK)
+	}
+	return a, b
+}
+
+func OK3[A, B, C any](a A, b B, c C, ok bool) (A, B, C) {
+	if !ok {
+		panic(ErrNotOK)
+	}
+	return a, b, c
+}
+
+func OK4[A, B, C, D any](a A, b B, c C, d D, ok bool) (A, B, C, D) {
+	if !ok {
+		panic(ErrNotOK)
+	}
+	return a, b, c, d
+}
+
+func OK5[A, B, C, D, E any](a A, b B, c C, d D, e E, ok bool) (A, B, C, D, E) {
+	if !ok {
+		panic(ErrNotOK)
 	}
 	return a, b, c, d, e
 }
