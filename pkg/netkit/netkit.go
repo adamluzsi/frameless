@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 type Network string
@@ -29,6 +32,9 @@ var _ = enum.Register[Network]("",
 	TCP, TCP4, TCP6,
 	UDP, UDP4, UDP6,
 )
+
+var allAvailableInterfaces = net.ParseIP("0.0.0.0") // bind to all available interfaces
+var localhost = net.ParseIP("127.0.0.1")            // bind to all available interfaces
 
 // IsPortFree checks if a given TCP port is free to bind to. It takes into account specifics of
 //
@@ -61,35 +67,43 @@ func IsPortFree(network Network, port int) (ok bool, returnErr error) {
 			return []Network{n}
 		}
 	}
-	ip := net.ParseIP("0.0.0.0") // bind to all available interfaces
-	for _, n := range expandNetwork(network) {
-		var (
-			c   io.Closer
-			err error
-		)
-		switch {
-		case isUDP(n):
-			c, err = net.ListenUDP(string(n), &net.UDPAddr{
-				IP:   ip,
-				Port: port,
-			})
-		case isTCP(n):
-			c, err = net.ListenTCP(string(n), &net.TCPAddr{
-				IP:   ip,
-				Port: port,
-			})
-		default:
-			panic(fmt.Errorf("unknown network type: %#v", n))
-		}
-		if err == nil {
-			_ = c.Close()
-			continue
-		}
-		var opErr *net.OpError
-		if errors.As(err, &opErr) && opErr.Op == "listen" &&
-			strings.Contains(err.Error(), "address already in use") {
-			return false, nil
-		} else {
+
+	for _, ip := range []net.IP{allAvailableInterfaces, localhost} {
+		for _, n := range expandNetwork(network) {
+			var (
+				c   io.Closer
+				err error
+			)
+			switch {
+			case isUDP(n):
+				c, err = net.ListenUDP(string(n), &net.UDPAddr{
+					IP:   ip,
+					Port: port,
+				})
+			case isTCP(n):
+				c, err = net.ListenTCP(string(n), &net.TCPAddr{
+					IP:   ip,
+					Port: port,
+				})
+			default:
+				panic(fmt.Errorf("unknown network type: %#v", n))
+			}
+			if err == nil {
+				_ = c.Close()
+				continue
+			}
+
+			if opErr, ok := errorkit.As[*net.OpError](err); ok && opErr.Op == "listen" {
+				if scErr, ok := errorkit.As[*os.SyscallError](opErr.Err); ok {
+					if errors.Is(scErr.Err, syscall.EADDRINUSE) {
+						return false, nil
+					}
+					if errors.Is(scErr.Err, syscall.EADDRNOTAVAIL) {
+						continue
+					}
+				}
+			}
+
 			return false, err
 		}
 	}

@@ -2,6 +2,7 @@ package netkit_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,18 +14,21 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
+const localhost = "127.0.0.1"
+
+const allInterfaces = "0.0.0.0"
+
 func TestIsPortFree_tcp(t *testing.T) {
 	const port = 18881 // Choose a port that is likely to be free.
 
 	t.Run("when port is in use", func(t *testing.T) {
-		srv := http.Server{
-			Addr: fmt.Sprintf("0.0.0.0:%d", port),
+		srv := &http.Server{
+			Addr: fmt.Sprintf("%s:%d", localhost, port),
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
 			}),
 		}
-		go srv.ListenAndServe()
-		defer srv.Shutdown(context.Background())
+		run(t, srv)
 
 		assert.Eventually(t, 5*time.Second, func(it assert.It) {
 			c := http.Client{Timeout: time.Second}
@@ -33,17 +37,23 @@ func TestIsPortFree_tcp(t *testing.T) {
 			it.Must.Equal(resp.StatusCode, http.StatusTeapot)
 		})
 
-		isPortOpen, err := netkit.IsPortFree("tcp", port)
-		assert.NoError(t, err)
-		assert.False(t, isPortOpen)
+		t.Run("tcp", func(t *testing.T) {
+			isPortOpen, err := netkit.IsPortFree("tcp", port)
+			assert.NoError(t, err)
+			assert.False(t, isPortOpen)
+		})
 
-		isPortOpen, err = netkit.IsPortFree("", port)
-		assert.NoError(t, err)
-		assert.False(t, isPortOpen)
+		t.Run("udp", func(t *testing.T) {
+			isPortOpen, err := netkit.IsPortFree("udp", port)
+			assert.NoError(t, err)
+			assert.True(t, isPortOpen)
+		})
 
-		isPortOpen, err = netkit.IsPortFree("udp", port)
-		assert.NoError(t, err)
-		assert.True(t, isPortOpen)
+		t.Run("any", func(t *testing.T) {
+			isPortOpen, err := netkit.IsPortFree("", port)
+			assert.NoError(t, err)
+			assert.False(t, isPortOpen)
+		})
 	})
 
 	t.Run("when port is available", func(t *testing.T) {
@@ -58,7 +68,7 @@ func TestIsPortFree_udp(t *testing.T) {
 	const port = 18881 // Choose a port that is likely to be free.
 
 	t.Run("when port is in use", func(t *testing.T) {
-		ip := net.ParseIP("0.0.0.0")
+		ip := net.ParseIP(localhost)
 		c, err := net.ListenUDP("udp", &net.UDPAddr{
 			IP:   ip,
 			Port: port,
@@ -67,7 +77,7 @@ func TestIsPortFree_udp(t *testing.T) {
 		defer c.Close()
 
 		assert.Eventually(t, 5*time.Second, func(it assert.It) {
-			dial, err := net.Dial("udp", fmt.Sprintf("0.0.0.0:%d", port))
+			dial, err := net.Dial("udp", fmt.Sprintf("%s:%d", localhost, port))
 			it.Must.NoError(err)
 			it.Must.NoError(dial.Close())
 		})
@@ -102,14 +112,13 @@ func TestGetFreePort(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, isFree)
 
-		srv := http.Server{
-			Addr: fmt.Sprintf("0.0.0.0:%d", port),
+		srv := &http.Server{
+			Addr: fmt.Sprintf("%s:%d", localhost, port),
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusTeapot)
 			}),
 		}
-		go srv.ListenAndServe()
-		defer srv.Shutdown(context.Background())
+		run(t, srv)
 
 		assert.Eventually(t, 5*time.Second, func(it assert.It) {
 			c := http.Client{Timeout: time.Second}
@@ -155,5 +164,24 @@ func TestGetFreePort(t *testing.T) {
 			res[d] = struct{}{}
 			assert.NotEqual(t, 1, len(res))
 		})
+	})
+}
+
+func run(tb testing.TB, srv *http.Server) {
+	tb.Helper()
+	go func() {
+		tb.Helper()
+		tb.Logf("server address=%v", srv.Addr)
+		err := srv.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			return
+		}
+		assert.Should(tb).NoError(err)
+	}()
+	tb.Cleanup(func() {
+		tb.Helper()
+		ctx := context.Background()
+		err := srv.Shutdown(ctx)
+		assert.Should(tb).NoError(err)
 	})
 }
