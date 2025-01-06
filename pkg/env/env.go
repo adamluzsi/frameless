@@ -11,12 +11,17 @@ import (
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
-const ErrLoadInvalidData errorkit.Error = "ErrLoadInvalidData"
+const ErrLoadInvalidType errorkit.Error = "ErrLoadInvalidData"
+
+const ErrInvalidValue errorkit.Error = "ErrInvalidValue"
+
+const ErrMissingEnvironmentVariable errorkit.Error = "ErrMissingEnvironmentVariable"
 
 func Lookup[T any](key string, opts ...LookupOption) (T, bool, error) {
 	typ := reflectkit.TypeOf[T]()
@@ -64,16 +69,17 @@ func Required() LookupOption {
 
 func Load[T any](ptr *T) error {
 	if ptr == nil {
-		return fmt.Errorf("%w: nil value received", ErrLoadInvalidData)
+		return ErrLoadInvalidType.F("nil value received")
 	}
 
 	rv := reflect.ValueOf(ptr)
 	rv = reflectkit.BaseValue(rv)
+
 	if rv.Kind() != reflect.Struct {
-		return fmt.Errorf("%w: non-struct type received", ErrLoadInvalidData)
+		return ErrLoadInvalidType.F("non-struct type received")
 	}
 	if err := loadVisitStruct(rv); err != nil {
-		return err
+		return ErrInvalidValue.Wrap(err)
 	}
 
 	return nil
@@ -217,7 +223,7 @@ func lookupEnv(typ reflect.Type, key string, opts lookupEnvOptions) (reflect.Val
 }
 
 func errMissingEnvironmentVariable(key string) error {
-	return fmt.Errorf("missing environment variable: %s", key)
+	return ErrMissingEnvironmentVariable.F("%s", key)
 }
 
 func errParsingEnvValue(structField reflect.StructField, err error) error {
@@ -270,4 +276,21 @@ func (es Set) Parse() error {
 		errs = append(errs, lookup())
 	}
 	return errorkit.Merge(errs...)
+}
+
+// Init is a syntax sugar for Load[T](&v).
+// It can be easily used for global variable initialisation
+func Init[ConfigStruct any]() (c ConfigStruct, err error) {
+	err = Load[ConfigStruct](&c)
+	return c, err
+}
+
+// InitGlobal is designed to be used as part of your global variable initialisation.
+func InitGlobal[ConfigStruct any]() ConfigStruct {
+	c, err := Init[ConfigStruct]()
+	if err != nil {
+		fmt.Fprintf(osint.Stderr(), "%s\n", err.Error())
+		osint.Exit(1)
+	}
+	return c
 }

@@ -3,13 +3,17 @@ package env_test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/internal/osint"
 
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -164,6 +168,7 @@ func TestLoad(t *testing.T) {
 		var c Example
 		assert.NoError(t, env.Load(&c))
 		assert.Empty(t, c)
+		assert.Nil(t, c.V.unexported)
 	})
 
 	t.Run("map struct field", func(t *testing.T) {
@@ -770,5 +775,153 @@ func TestParseWith(t *testing.T) {
 		assert.Empty(t, conf)
 		assert.False(t, ok)
 		assert.ErrorIs(t, err, expErr)
+	})
+}
+
+func ExampleInit() {
+	type MyConfig struct {
+		MyRequirement bool `env:"ENV_KEY_1" required:"true"`
+	}
+
+	var conf, err = env.Init[MyConfig]()
+	_, _ = conf, err
+}
+
+func TestInit_smoke(t *testing.T) {
+	const envKey = "FL_PKG_ENV_INIT_VAL"
+
+	type Config[T any] struct {
+		V T `env:"FL_PKG_ENV_INIT_VAL"`
+	}
+
+	testcase.UnsetEnv(t, envKey)
+
+	t.Run("int", func(t *testing.T) {
+		exp := rnd.Int()
+		setEnv(t, envKey, exp)
+		v, err := env.Init[Config[int]]()
+		assert.NoError(t, err)
+		assert.Equal(t, v.V, exp)
+	})
+
+	t.Run("float", func(t *testing.T) {
+		exp := rnd.Float32()
+		setEnv(t, envKey, exp)
+		v, err := env.Init[Config[float32]]()
+		assert.NoError(t, err)
+		assert.Equal(t, v.V, exp)
+	})
+
+	t.Run("bool", func(t *testing.T) {
+		exp := rnd.Bool()
+		setEnv(t, envKey, exp)
+		v, err := env.Init[Config[bool]]()
+		assert.NoError(t, err)
+		assert.Equal(t, v.V, exp)
+	})
+
+	t.Run("string", func(t *testing.T) {
+		exp := rnd.String()
+		setEnv(t, envKey, exp)
+		v, err := env.Init[Config[string]]()
+		assert.NoError(t, err)
+		assert.Equal(t, v.V, exp)
+	})
+
+	t.Run("on error", func(t *testing.T) {
+		setEnv(t, envKey, "foo")
+		_, err := env.Init[Config[int]]()
+		assert.Error(t, err)
+	})
+}
+
+func setEnv[T any](tb testing.TB, envKey string, v T) {
+	tb.Helper()
+	got, err := convkit.Format(v)
+	assert.NoError(tb, err)
+	testcase.SetEnv(tb, envKey, got)
+}
+
+func ExampleInitGlobal() {
+	type MyConfig struct {
+		MyRequirement bool `env:"ENV_KEY_1" required:"true"`
+	}
+
+	var conf = env.InitGlobal[MyConfig]()
+	_ = conf
+}
+
+func TestInitGlobal(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const envKey = "FL_PKG_ENV_INIT_VAL"
+
+	type Config[T any] struct {
+		V T `env:"FL_PKG_ENV_INIT_VAL" required:"true"`
+	}
+
+	s.Before(func(t *testcase.T) {
+		t.UnsetEnv(envKey)
+	})
+
+	const exitCodeNotCalled = -1
+	var (
+		lastExitCode = testcase.LetValue[int](s, exitCodeNotCalled)
+		stderr       = testcase.Let(s, func(t *testcase.T) *os.File {
+			dir := t.TempDir()
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+			f, err := os.CreateTemp(dir, "stderr")
+			assert.NoError(t, err)
+			return f
+		})
+	)
+
+	s.Before(func(t *testcase.T) {
+		osint.StubExit(t, func(code int) {
+			lastExitCode.Set(t, code)
+		})
+		osint.StubStderr(t, stderr.Get(t))
+	})
+
+	var readSTDERR = func(t *testcase.T) []byte {
+		f := stderr.Get(t)
+		f.Seek(0, io.SeekStart)
+		out, err := io.ReadAll(f)
+		assert.NoError(t, err)
+		return out
+	}
+
+	s.Test("happy", func(t *testcase.T) {
+		exp := rnd.String()
+		setEnv(t, envKey, exp)
+
+		var got Config[string]
+		assert.NotPanic(t, func() { got = env.InitGlobal[Config[string]]() })
+		assert.Equal(t, got.V, exp)
+		assert.Equal(t, lastExitCode.Get(t), exitCodeNotCalled)
+		assert.Empty(t, readSTDERR(t))
+	})
+
+	s.Test("invalid value", func(t *testcase.T) {
+		setEnv(t, envKey, "foo")
+
+		assert.Panic(t, func() { env.InitGlobal[Config[int]]() })
+		assert.Equal(t, lastExitCode.Get(t), 1)
+
+		out := readSTDERR(t)
+		assert.NotEmpty(t, out)
+		assert.Contain(t, string(out), env.ErrInvalidValue.Error())
+	})
+
+	s.Test("missing key", func(t *testcase.T) {
+		t.UnsetEnv(envKey)
+
+		assert.Panic(t, func() { env.InitGlobal[Config[string]]() })
+		assert.Equal(t, lastExitCode.Get(t), 1)
+
+		out := readSTDERR(t)
+		assert.NotEmpty(t, out)
+		assert.Contain(t, string(out), envKey)
+		assert.Contain(t, string(out), env.ErrMissingEnvironmentVariable.Error())
 	})
 }
