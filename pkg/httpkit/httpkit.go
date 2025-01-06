@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -144,6 +143,11 @@ func isTimeout(err error) bool {
 	return false
 }
 
+// WithAccessLog is a MiddlewareFactoryFunc for adding AccessLog to a http.Handler middleware stack.
+func WithAccessLog(next http.Handler) http.Handler {
+	return AccessLog{Next: next}
+}
+
 type AccessLog struct {
 	Next http.Handler
 
@@ -160,11 +164,13 @@ func (mw AccessLog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (mw AccessLog) doLog(w http.ResponseWriter, r *http.Request, startTime time.Time, body *requestBodyAccessLog) {
 	endTime := clock.Now()
 	info := getResponseInfo(w)
+	dur := endTime.Sub(startTime)
 	fields := logging.Fields{
 		"method":               r.Method,
 		"path":                 r.URL.Path,
 		"query":                r.URL.RawQuery,
-		"duration":             mw.fmtDuration(endTime.Sub(startTime)) + "s",
+		"duration":             dur.String(),
+		"duration_ms":          dur.Milliseconds(),
 		"remote_address":       r.RemoteAddr,
 		"host":                 r.Host,
 		"status":               info.StatusCode,
@@ -178,11 +184,6 @@ func (mw AccessLog) doLog(w http.ResponseWriter, r *http.Request, startTime time
 		}
 	}
 	logger.Info(r.Context(), "http-access-log", lds...)
-}
-
-func (mw AccessLog) fmtDuration(duration time.Duration) string {
-	durationFloat := float64(duration) / float64(time.Second)
-	return fmt.Sprintf("%.3f", durationFloat)
 }
 
 type requestBodyAccessLog struct {

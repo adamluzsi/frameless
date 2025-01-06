@@ -414,18 +414,22 @@ func TestAccessLog_smoke(t *testing.T) {
 	assert.Equal(t, responseCode, response.StatusCode)
 	assert.True(t, len(logs) == 1)
 	u, _ := url.Parse(server.URL)
-	assert.Equal(t, logging.Fields{
-		"duration":             "1.542s",
-		"host":                 u.Host,
-		"method":               requestMethod,
-		"path":                 "/",
-		"query":                requestQuery.Encode(),
-		"remote_address":       gotRemoteAddress,
-		"status":               responseCode,
-		"request_body_length":  len(requestBody),
-		"response_body_length": len(responseBody),
-		"foo":                  "baz",
-	}, logs[0])
+
+	assert.OneOf(t, logs, func(t assert.It, fields logging.Fields) {
+		assert.Equal(t, fields, logging.Fields{
+			"duration":             "1.542s",
+			"duration_ms":          int64(1542),
+			"host":                 u.Host,
+			"method":               requestMethod,
+			"path":                 "/",
+			"query":                requestQuery.Encode(),
+			"remote_address":       gotRemoteAddress,
+			"status":               responseCode,
+			"request_body_length":  len(requestBody),
+			"response_body_length": len(responseBody),
+			"foo":                  "baz",
+		})
+	})
 
 	handler.AdditionalLoggingDetail = nil
 	logs = nil
@@ -444,6 +448,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	assert.True(t, len(logs) == 1)
 	assert.Equal(t, logs[0], logging.Fields{
 		"duration":             "1.542s",
+		"duration_ms":          int64(1542),
 		"host":                 u.Host,
 		"method":               requestMethod,
 		"path":                 "/",
@@ -929,4 +934,42 @@ func TestRequest(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, exp, got)
 	})
+}
+
+type StubHandler struct {
+	ID string
+
+	Serve func(w http.ResponseWriter, r *http.Request)
+}
+
+func (h StubHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.Serve != nil {
+		h.Serve(w, r)
+	}
+}
+
+var _ httpkit.MiddlewareFactoryFunc = httpkit.WithAccessLog
+
+func ExampleWithAccessLog() {
+	var h http.Handler = httpkit.NewRouter()
+
+	h = httpkit.WithMiddleware(h,
+		httpkit.WithAccessLog,
+		/* plus other middlewares */)
+
+	// or
+
+	h = httpkit.WithAccessLog(h)
+}
+
+func TestWithAccessLog(t *testing.T) {
+	var ff httpkit.MiddlewareFactoryFunc = httpkit.WithAccessLog
+
+	stub := StubHandler{ID: "42"}
+	var got http.Handler = ff(stub)
+
+	al, ok := got.(httpkit.AccessLog)
+	assert.True(t, ok)
+	assert.NotEmpty(t, al)
+	assert.Equal[http.Handler](t, al.Next, stub)
 }
