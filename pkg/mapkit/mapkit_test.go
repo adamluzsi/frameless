@@ -414,3 +414,26 @@ func TestValues(t *testing.T) {
 		assert.Empty(t, vs)
 	})
 }
+
+func TestToSlice(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		assert.Nil(t, mapkit.ToSlice[string, int](nil))
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		vs := mapkit.ToSlice(map[string]int{})
+		assert.NotNil(t, vs)
+		assert.Empty(t, vs)
+	})
+
+	t.Run("smoke", func(t *testing.T) {
+		input := map[string]int{"foo": 1, "bar": 2, "baz": 3}
+		output := mapkit.ToSlice(input)
+
+		assert.ContainExactly(t, output, []mapkit.Entry[string, int]{
+			{Key: "foo", Value: 1},
+			{Key: "bar", Value: 2},
+			{Key: "baz", Value: 3},
+		})
+	})
+}

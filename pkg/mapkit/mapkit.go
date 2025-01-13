@@ -1,6 +1,8 @@
 package mapkit
 
-import "go.llib.dev/frameless/pkg/must"
+import (
+	"go.llib.dev/frameless/pkg/must"
+)
 
 func Map[
 	OK comparable, OV any,
@@ -70,6 +72,30 @@ func Values[K comparable, V any](m map[K]V, sort ...func([]V)) []V {
 		sort(vs)
 	}
 	return vs
+}
+
+// Entry is element of a map.
+//
+// A map is an unordered group of entries,
+// where each entry consists of a key and a value.
+type Entry[K comparable, V any] struct {
+	Key   K
+	Value V
+}
+
+// ToSlice turns map into map entries.
+func ToSlice[K comparable, V any](m map[K]V) []Entry[K, V] {
+	if m == nil {
+		return nil
+	}
+	if len(m) == 0 {
+		return []Entry[K, V]{}
+	}
+	var entries []Entry[K, V]
+	for k, v := range m {
+		entries = append(entries, Entry[K, V]{Key: k, Value: v})
+	}
+	return entries
 }
 
 // Merge will merge all passed map[K]V into a single map[K]V.
