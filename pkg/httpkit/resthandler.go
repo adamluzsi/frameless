@@ -957,31 +957,31 @@ func (h RESTHandler[ENT, ID]) isOwnershipOK(ctx context.Context, v ENT) bool {
 	return RESTOwnershipCheck(ctx, v)
 }
 
-func (h RESTHandler[ENT, ID]) routes(root string) []_RouteEntry {
+func (h RESTHandler[ENT, ID]) RouteInfo() RouteInfo {
 	var (
-		routes       []_RouteEntry
-		resourcePath = pathkit.Join(root, "/:id")
+		routes       []PathInfo
+		resourcePath = "/:id"
 	)
 	if h.Create != nil {
-		routes = append(routes, _RouteEntry{Method: http.MethodPost, Path: root, Desc: "#Create"})
+		routes = append(routes, PathInfo{Method: http.MethodPost, Path: "/", Desc: "#Create"})
 	}
 	if h.Index != nil {
-		routes = append(routes, _RouteEntry{Method: http.MethodGet, Path: root, Desc: "#Index"})
+		routes = append(routes, PathInfo{Method: http.MethodGet, Path: "/", Desc: "#Index"})
 	}
 	if h.DestroyAll != nil {
-		routes = append(routes, _RouteEntry{Method: http.MethodDelete, Path: root, Desc: "#DestroyAll"})
+		routes = append(routes, PathInfo{Method: http.MethodDelete, Path: "/", Desc: "#DestroyAll"})
 	}
 	if h.Show != nil {
-		routes = append(routes, _RouteEntry{Method: http.MethodGet, Path: resourcePath, Desc: "#Show"})
+		routes = append(routes, PathInfo{Method: http.MethodGet, Path: resourcePath, Desc: "#Show"})
 	}
 	if h.Update != nil {
-		routes = append(routes, _RouteEntry{Method: http.MethodPut, Path: resourcePath, Desc: "#Update"})
+		routes = append(routes, PathInfo{Method: http.MethodPut, Path: resourcePath, Desc: "#Update"})
 	}
 	if h.Destroy != nil {
-		routes = append(routes, _RouteEntry{Method: http.MethodDelete, Path: resourcePath, Desc: "#Destroy"})
+		routes = append(routes, PathInfo{Method: http.MethodDelete, Path: resourcePath, Desc: "#Destroy"})
 	}
 	if h.ResourceRoutes != nil {
-		routes = append(routes, httpHandlerRoutes(resourcePath, h.ResourceRoutes)...)
+		routes = append(routes, GetRouteInfo(h.ResourceRoutes).WithMountPoint(resourcePath)...)
 	}
 	return routes
 }

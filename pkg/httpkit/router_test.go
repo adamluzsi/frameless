@@ -528,7 +528,7 @@ func TestRouter_Sub_withPathParam(tt *testing.T) {
 
 	var ro httpkit.Router
 
-	t.OnFail(func() { t.LogPretty(ro.Routes()) })
+	t.OnFail(func() { t.LogPretty(ro.RouteInfo()) })
 
 	sub := ro.Sub("/path/:param")
 	sub.Handle("/endpoint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -563,7 +563,7 @@ func TestRouter_Handle_withDynamicPathParam(tt *testing.T) {
 
 	var ro httpkit.Router
 
-	t.OnFail(func() { t.LogPretty(ro.Routes()) })
+	t.OnFail(func() { t.LogPretty(ro.RouteInfo()) })
 
 	sub := ro.Sub("/path/:param")
 	sub.Handle("/endpoint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1057,7 +1057,33 @@ func randomPathPart(tb testing.TB) string {
 
 var nullHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-func TestRouter_Routes(t *testing.T) {
+func ExampleGetRouteInfo_httpServeMux() {
+	mux := http.NewServeMux()
+	mux.Handle("/foo", nullHandler)
+	mux.Handle("/bar/", nullHandler)
+
+	_ = httpkit.GetRouteInfo(mux)
+	// ALL /foo
+	// ALL /bar/
+}
+
+func ExampleGetRouteInfo_httpkitRouter() {
+	var ro httpkit.Router
+	ro.Get("/test", nullHandler)
+
+	mux := http.NewServeMux()
+	mux.Handle("/foo", nullHandler)
+	mux.Handle("/bar/", nullHandler)
+
+	ro.Mount("/mux", mux)
+
+	_ = httpkit.GetRouteInfo(mux)
+	// GET /test
+	// ALL /foo
+	// ALL /bar/
+}
+
+func TestGetRouteInfo(t *testing.T) {
 	t.Run("smoke", func(t *testing.T) {
 
 		var ro httpkit.Router
@@ -1065,7 +1091,7 @@ func TestRouter_Routes(t *testing.T) {
 		var expectedRouteCount int
 		var assertCurRouteCount = func() {
 			t.Helper()
-			assert.Equal(t, len(ro.Routes()), expectedRouteCount)
+			assert.Equal(t, len(ro.RouteInfo()), expectedRouteCount)
 		}
 		var assertIncRouteCountBy = func(n int) {
 			t.Helper()
@@ -1150,9 +1176,9 @@ func TestRouter_Routes(t *testing.T) {
 		ro.Mount("/muxWithRouter", muxWithRouter)
 		assertIncRouteCountBy(1)
 
-		routes := ro.Routes()
+		routes := ro.RouteInfo()
 
-		assert.Equal(t, routes, []string{
+		assert.Equal(t, strings.Split(routes.String(), "\n"), []string{
 			"POST    /http-methods-are-ordered-by-crud",
 			"GET     /http-methods-are-ordered-by-crud",
 			"PUT     /http-methods-are-ordered-by-crud",
@@ -1194,7 +1220,7 @@ func TestRouter_Routes(t *testing.T) {
 			}),
 		})
 
-		assert.Equal(t, ro.Routes(), []string{
+		assert.Equal(t, strings.Split(ro.RouteInfo().String(), "\n"), []string{
 			"POST   /foos",
 			"GET    /foos",
 			"DELETE /foos",
@@ -1204,4 +1230,50 @@ func TestRouter_Routes(t *testing.T) {
 			"GET    /foos/:id/hello",
 		})
 	})
+
+	t.Run("Register", func(t *testing.T) {
+		exp := httpkit.RouteInfo{httpkit.PathInfo{Method: http.MethodGet, Path: "/the/path"}}
+
+		unreg := httpkit.RegisterRouteInformer(func(v StubHTTPHandler1) httpkit.RouteInfo {
+			return exp
+		})
+		defer unreg()
+
+		got := httpkit.GetRouteInfo(StubHTTPHandler1{})
+		assert.Equal(t, exp, got)
+
+		unreg()
+
+		got = httpkit.GetRouteInfo(StubHTTPHandler1{})
+		assert.Equal(t, got, httpkit.RouteInfo{httpkit.PathInfo{Method: "ALL", Path: "/"}})
+	})
+
+	t.Run("RouteInformer", func(t *testing.T) {
+		unreg := httpkit.RegisterRouteInformer(func(v StubHTTPHandler2) httpkit.RouteInfo {
+			return v.StubRouteInfo
+		})
+		defer unreg()
+
+		exp := httpkit.RouteInfo{httpkit.PathInfo{Method: http.MethodGet, Path: "/the/path"}}
+		got := httpkit.GetRouteInfo(StubHTTPHandler2{StubRouteInfo: exp})
+		assert.Equal(t, exp, got)
+	})
+}
+
+type StubHTTPHandler1 struct{}
+
+func (f StubHTTPHandler1) ServeHTTP(_ http.ResponseWriter, _ *http.Request) {
+	panic("not implemented") // TODO: Implement
+}
+
+type StubHTTPHandler2 struct {
+	StubRouteInfo httpkit.RouteInfo
+}
+
+func (f StubHTTPHandler2) RouteInfo() httpkit.RouteInfo {
+	return f.StubRouteInfo
+}
+
+func (f StubHTTPHandler2) ServeHTTP(_ http.ResponseWriter, _ *http.Request) {
+	panic("not implemented") // TODO: Implement
 }

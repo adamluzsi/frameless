@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/synckit"
 )
 
 func NewRouter(configure ...func(*Router)) *Router {
@@ -320,7 +321,6 @@ func (router *Router) Resource(identifier string, h restHandler) {
 type restHandler interface {
 	restHandler()
 	http.Handler
-	routes(root string) []_RouteEntry
 }
 
 // Use will instruct the router to use a given MiddlewareFactoryFunc to
@@ -329,45 +329,93 @@ func (router *Router) Use(mws ...MiddlewareFactoryFunc) {
 	router.root.middlewares = append(router.root.middlewares, mws...)
 }
 
-func (router *Router) Routes() []string {
-	routes := nodeRoutes("/", router.root)
-
-	var width int
-	for _, s := range routes {
-		if l := len(s.Method); l > width {
-			width = l
-		}
-	}
-
-	var rs []string
-	for _, r := range routes {
-		rs = append(rs, fmt.Sprintf("%-*s %s", width, r.Method, r.Path))
-	}
-
-	return rs
+func (router *Router) RouteInfo() RouteInfo {
+	return nodeRoutes(router.root)
 }
 
-type _RouteEntry struct {
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
+func GetRouteInfo(h http.Handler) RouteInfo {
+	if h == nil {
+		return nil
+	}
+	if docs, ok := h.(RouteInformer); ok {
+		return docs.RouteInfo()
+	}
+	var httpHandlerType = reflect.TypeOf(h)
+	if doc, ok := riReg.Lookup(httpHandlerType); ok {
+		return doc(h)
+	}
+	// by default a handler will receive all call
+	return []PathInfo{{Method: "ALL", Path: "/"}}
+}
+
+var riReg synckit.Map[reflect.Type, func(h http.Handler) RouteInfo]
+
+func RegisterRouteInformer[T http.Handler](fn func(v T) RouteInfo) func() {
+	var httpHandlerType = reflectkit.TypeOf[T]()
+	riReg.Set(httpHandlerType, func(h http.Handler) RouteInfo {
+		return fn(h.(T))
+	})
+	return func() { riReg.Del(httpHandlerType) }
+}
+
+type RouteInfo []PathInfo
+
+type PathInfo struct {
 	Method string `enum:"ALL,POST,GET,PUT,PATCH,DELETE,"`
 	Path   string
 	Desc   string
 }
 
-func nodeRoutes(root string, node *_Node) []_RouteEntry {
-	var rs []_RouteEntry
+func (ri RouteInfo) String() string {
+	var width int
+	for _, s := range ri {
+		if l := len(s.Method); l > width {
+			width = l
+		}
+	}
+	var rs []string
+	for _, r := range ri {
+		rs = append(rs, fmt.Sprintf("%-*s %s", width, r.Method, r.Path))
+	}
+	return strings.Join(rs, "\n")
+}
+
+func (ri RouteInfo) WithMountPoint(MountPoint string) RouteInfo {
+	return slicekit.Map(ri, func(pi PathInfo) PathInfo {
+		var lastChar rune
+		for _, char := range pi.Path {
+			lastChar = char
+		}
+		ogPathLen := len(pi.Path)
+		pi.Path = pathkit.Join(MountPoint, pi.Path)
+		if lastChar == '/' && 1 < ogPathLen {
+			pi.Path += "/"
+		}
+		return pi
+	})
+}
+
+type RouteInformer interface {
+	RouteInfo() RouteInfo
+}
+
+func nodeRoutes(node *_Node) RouteInfo {
+	var ri RouteInfo
 	if node == nil {
-		return rs
+		return ri
 	}
 	{ // root endpoints
-		var entries []_RouteEntry
+		var entries []PathInfo
 		for method := range node.methodsH {
-			entries = append(entries, _RouteEntry{Method: method, Path: root})
+			entries = append(entries, PathInfo{Method: method, Path: "/"})
 		}
 		sort.Slice(entries, func(i, j int) bool {
 			a, b := entries[i], entries[j]
 			return httpMethodPriority(a.Method) < httpMethodPriority(b.Method)
 		})
-		rs = append(rs, entries...)
+		ri = append(ri, entries...)
 	}
 	{ // fixed endpoints
 		subRoutes := mapkit.ToSlice(node.fixNodes)
@@ -375,61 +423,46 @@ func nodeRoutes(root string, node *_Node) []_RouteEntry {
 			a, b := subRoutes[i], subRoutes[j]
 			return a.Key < b.Key
 		})
-		var entries []_RouteEntry
+		var entries []PathInfo
 		for _, re := range subRoutes {
-			srs := nodeRoutes(pathkit.Join(root, re.Key), re.Value)
+			srs := nodeRoutes(re.Value).WithMountPoint(re.Key)
 			entries = append(entries, srs...)
 		}
-		rs = append(rs, entries...)
+		ri = append(ri, entries...)
 	}
 	{ // dynamic paths
 		var (
 			// :var1,:var2,:var3
 			dynvarpath = strings.Join(slicekit.Map(node.dynNodes.varnames,
 				func(vn string) string { return ":" + vn }), ",")
-			dynroutes = nodeRoutes(pathkit.Join(root, dynvarpath), node.dynNodes.node)
+			dynroutes = nodeRoutes(node.dynNodes.node).WithMountPoint(dynvarpath)
 		)
-		rs = append(rs, dynroutes...)
+		ri = append(ri, dynroutes...)
 	}
 	{ // default handler
 		if node.defaultH != nil {
-			rs = append(rs, httpHandlerRoutes(root, node.defaultH)...)
+			ri = append(ri, GetRouteInfo(node.defaultH)...)
 		}
 	}
 	{ // http.ServeMux
 		if node.mux != nil {
-			rs = append(rs, httpMuxRoutes(root, node.mux)...)
+			ri = append(ri, GetRouteInfo(node.mux)...)
 		}
 	}
-	return rs
+	return ri
 }
 
-func httpHandlerRoutes(root string, h http.Handler) []_RouteEntry {
-	if h == nil {
+var _ = RegisterRouteInformer[*http.ServeMux](httpServeMuxRouteInfo)
+
+func httpServeMuxRouteInfo(mux *http.ServeMux) RouteInfo {
+	if mux == nil {
 		return nil
 	}
-	switch h := h.(type) {
-	case *http.ServeMux:
-		return httpMuxRoutes(root, h)
-	case *Router:
-		return nodeRoutes(root, h.root)
-	case restHandler:
-		return h.routes(root)
-	default:
-		return []_RouteEntry{{Method: "ALL", Path: root}}
-	}
-}
 
-func httpMuxRoutes(root string, mux *http.ServeMux) []_RouteEntry {
-	var paths []_RouteEntry
-	if mux == nil {
-		return paths
-	}
 	// Using reflection to get the internal map
-
 	_, m, ok := reflectkit.LookupFieldByName(reflect.ValueOf(mux).Elem(), "m")
 	if !ok {
-		return paths
+		return nil
 	}
 
 	var lookupMuxEntryHandler = func(key reflect.Value) (http.Handler, bool) {
@@ -447,43 +480,31 @@ func httpMuxRoutes(root string, mux *http.ServeMux) []_RouteEntry {
 		return h, ok
 	}
 
-iter:
+	var pis []PathInfo
 	for _, key := range m.MapKeys() {
 		path, ok := key.Interface().(string)
 		if !ok {
 			continue
 		}
 
-		var fullPath = path
-		if root != "" && fullPath != "" && fullPath[0] != '/' {
-			fullPath = "/" + fullPath
-		}
-		if root != "" {
-			if fullPath != "" {
-				fullPath = root + fullPath
-			} else {
-				fullPath = root
-			}
+		if path != "" && path[0] != '/' {
+			path = "/" + path
 		}
 
 		if httpHandler, ok := lookupMuxEntryHandler(key); ok {
-			// TODO: add support for handler interface subtype check
-			switch h := httpHandler.(type) {
-			case *Router:
-				paths = append(paths, nodeRoutes(pathkit.Join(root, path), h.root)...)
-				continue iter
-			}
+			pis = append(pis, GetRouteInfo(httpHandler).WithMountPoint(path)...)
+			continue
 		}
 
-		paths = append(paths, _RouteEntry{Method: "ALL", Path: fullPath})
+		pis = append(pis, PathInfo{Method: "ALL", Path: path})
 	}
 
-	sort.Slice(paths, func(i, j int) bool {
-		a, b := paths[i], paths[j]
+	sort.Slice(pis, func(i, j int) bool {
+		a, b := pis[i], pis[j]
 		return a.Path < b.Path
 	})
 
-	return paths
+	return pis
 }
 
 func httpMethodPriority(method string) int {
