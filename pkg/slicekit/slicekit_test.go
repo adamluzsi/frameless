@@ -1082,3 +1082,49 @@ func TestFind(t *testing.T) {
 		})
 	})
 }
+
+func ExampleGroupBy() {
+	vs := []int{1, 2, 3, 4, 5}
+
+	groups := slicekit.GroupBy(vs, func(n int) string {
+		if n%2 == 0 {
+			return "even"
+		}
+		return "odd"
+	})
+
+	_ = groups
+}
+
+func TestGroupBy(t *testing.T) {
+	t.Run("nil slice", func(t *testing.T) {
+		assert.Nil(t, slicekit.GroupBy[int, int](nil, func(v int) int { return 0 }))
+	})
+
+	t.Run("empty slice", func(t *testing.T) {
+		vs := []int{}
+		g := slicekit.GroupBy(vs, func(int) int { return int(time.Now().UnixNano()) })
+		assert.Empty(t, g)
+	})
+
+	t.Run("nil group by func", func(t *testing.T) {
+		assert.Panic(t, func() {
+			_ = slicekit.GroupBy[int, int]([]int{1, 2, 3}, nil)
+		})
+	})
+
+	t.Run("E2E", func(t *testing.T) {
+		in := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+		exp := map[string][]int{
+			"odd":  {1, 3, 5, 7, 9},
+			"even": {0, 2, 4, 6, 8},
+		}
+		got := slicekit.GroupBy(in, func(n int) string {
+			if n%2 == 0 {
+				return "even"
+			}
+			return "odd"
+		})
+		assert.Equal(t, got, exp)
+	})
+}

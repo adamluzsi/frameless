@@ -234,3 +234,19 @@ func Find[T any](vs []T, by func(T) bool) (T, bool) {
 	var zero T
 	return zero, false
 }
+
+// GroupBy will group values in []T based on the group indetifier function.
+func GroupBy[T any, ID comparable](vs []T, by func(v T) ID) map[ID][]T {
+	if len(vs) == 0 {
+		return nil
+	}
+	if by == nil {
+		panic("Incorrect use of slicekit.GroupBy[T, ID], it must receive the `func(v T) ID` function!")
+	}
+	var groups = map[ID][]T{}
+	for _, v := range vs {
+		var id = by(v)
+		groups[id] = append(groups[id], v)
+	}
+	return groups
+}
