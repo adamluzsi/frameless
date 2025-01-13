@@ -18,13 +18,13 @@ const (
 	separatorChar = string(separatorRune)
 )
 
-func Unshift(path string) (_pathParameter string, _remainingPath string) {
-	parts := Split(path)
+func Unshift(rawPath string) (_pathParameter string, _remainingPath string) {
+	parts := Split(rawPath)
 	if len(parts) == 0 {
-		return "", path
+		return "", rawPath
 	}
 	param := parts[0]
-	leftover := path[(strings.Index(path, param) + len(param)):]
+	leftover := rawPath[(strings.Index(rawPath, param) + len(param)):]
 	if len(leftover) == 0 || leftover[0] != separatorRune {
 		leftover = separatorChar + leftover
 	}
@@ -59,8 +59,8 @@ func Clean(p string) string {
 	return path.Clean(p)
 }
 
-func Split(p string) []string {
-	path := Canonical(p)
+func Split(path string) []string {
+	path = Canonical(path)
 	path = strings.TrimPrefix(path, separatorChar)
 	path = strings.TrimSuffix(path, separatorChar)
 	parts := strings.Split(path, separatorChar)
@@ -97,11 +97,30 @@ func Join(ps ...string) string {
 		}
 	}
 	u = u.JoinPath(ps...)
-	u.Path = Clean(u.Path)
+	cleanJoin(u)
 	if relativePath {
 		u.Path = separatorChar + u.Path
+		u.RawPath = separatorChar + u.RawPath
 	}
 	return u.String()
+}
+
+func cleanJoin(u *url.URL) error {
+	raw := u.RawPath
+	if len(raw) == 0 {
+		raw = u.EscapedPath()
+	}
+	rpath := Clean(raw)
+	if rpath == raw {
+		return nil
+	}
+	uri, err := url.ParseRequestURI(rpath)
+	if err != nil {
+		return err
+	}
+	u.Path = uri.Path
+	u.RawPath = uri.RawPath
+	return nil
 }
 
 var isSchema = regexp.MustCompile(`^[^:]+:`)

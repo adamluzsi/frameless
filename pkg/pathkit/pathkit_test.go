@@ -3,6 +3,7 @@ package pathkit_test
 import (
 	"fmt"
 	"math/rand"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -346,6 +347,13 @@ func TestJoin(t *testing.T) {
 		assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "bar"))
 		assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "", "bar"))
 		assert.Equal(t, "/foo/bar", pathkit.Join("/foo", "/", "bar"))
+	})
+
+	t.Run("escaped path part provided", func(t *testing.T) {
+		part := "LsQJE %!=/"
+		epart := url.PathEscape(part)
+		got := pathkit.Join("/foo", epart, "/bar")
+		assert.Equal(t, fmt.Sprintf("/foo/%s/bar", epart), got)
 	})
 }
 
