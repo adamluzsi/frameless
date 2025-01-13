@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
+	"go.llib.dev/testcase/sandbox"
 )
 
 var rnd = random.New(random.CryptoSeed{})
@@ -172,6 +173,38 @@ func TestRecover(t *testing.T) {
 			wg.Wait()
 			assert.Must(t).False(finished)
 		})
+	})
+}
+
+func ExampleRecoverWith() {
+	defer errorkit.RecoverWith(func(r any) { /* do something with "r" */ })
+
+	/* do something that might panic */
+}
+
+func TestRecoverWith(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	act := func(t *testcase.T, blk func(r any), action func()) {
+		out := sandbox.Run(func() {
+			defer errorkit.RecoverWith(blk)
+			action()
+		})
+		assert.True(t, out.OK, "no panic is expected after RecoverWith")
+	}
+
+	s.Test("no panic", func(t *testcase.T) {
+		var got any
+		act(t, func(r any) { got = r }, func() { /* OK */ })
+		assert.Nil(t, got)
+	})
+
+	s.Test("panic", func(t *testcase.T) {
+		var got any
+		var exp = rnd.Error()
+		act(t, func(r any) { got = r }, func() { panic(exp) })
+		assert.NotNil(t, got)
+		assert.Equal[any](t, exp, got)
 	})
 }
 

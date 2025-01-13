@@ -41,6 +41,15 @@ func Recover(returnErr *error) {
 	}
 }
 
+// RecoverWith will attempt a recover, and if recovery yields a non nil value, it executs the passed function.
+func RecoverWith(blk func(r any)) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	blk(r)
+}
+
 // As function serves as a shorthand to enable one-liner error handling with errors.As.
 // It's meant to be used within an if statement, much like Lookup functions such as os.LookupEnv.
 func As[T error](err error) (T, bool) {
