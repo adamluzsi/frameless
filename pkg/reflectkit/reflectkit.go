@@ -61,7 +61,11 @@ func BaseValue(v reflect.Value) reflect.Value {
 	if !v.IsValid() {
 		return v
 	}
-	for v.Type().Kind() == reflect.Pointer {
+	var isBaseKind = func() bool {
+		kind := v.Kind()
+		return kind != reflect.Pointer && kind != reflect.Interface
+	}
+	for !isBaseKind() {
 		v = v.Elem()
 	}
 	return v
@@ -177,3 +181,22 @@ func ToValue(v any) reflect.Value {
 }
 
 const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
+
+func LookupFieldByName(structv reflect.Value, name string) (reflect.StructField, reflect.Value, bool) {
+	if structv.Kind() != reflect.Struct || !structv.IsValid() {
+		return reflect.StructField{}, reflect.Value{}, false
+	}
+
+	sf, ok := structv.Type().FieldByName(name)
+	if !ok {
+		return reflect.StructField{}, reflect.Value{}, false
+	}
+
+	field := structv.FieldByIndex(sf.Index)
+
+	if accessable, ok := toAccessible(field); ok {
+		return sf, accessable, true
+	}
+
+	return sf, field, false
+}

@@ -40,8 +40,10 @@ type UnidentifiableID struct {
 	UserID string
 }
 
-type InterfaceObject interface{}
+type InterfaceObject interface{ Method() }
 
-type StructObject struct{}
+type StructObject struct{ V string }
+
+func (StructObject) Method() {}
 
 var RandomName = fmt.Sprintf("%d", rand.Int())

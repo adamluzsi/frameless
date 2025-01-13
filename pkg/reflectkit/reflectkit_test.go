@@ -73,19 +73,38 @@ func TestBaseValue(t *testing.T) {
 		return subject(obj).Type().Name()
 	})
 
-	expectedValue := reflect.ValueOf(StructObject{})
-	expectedValueType := expectedValue.Type()
+	t.Run("invalid", func(t *testing.T) {
+		invalid := reflect.Value{}
+		assert.Equal(t, invalid, reflectkit.BaseValue(invalid))
+	})
 
-	plainStruct := StructObject{}
-	ptrToStruct := &plainStruct
-	ptrToPtr := &ptrToStruct
+	t.Run("pointer", func(t *testing.T) {
+		expectedValue := reflect.ValueOf(StructObject{})
+		expectedValueType := expectedValue.Type()
 
-	assert.Equal(t, expectedValueType, subject(plainStruct).Type())
-	assert.Equal(t, expectedValueType, subject(ptrToStruct).Type())
-	assert.Equal(t, expectedValueType, subject(ptrToPtr).Type())
+		plainStruct := StructObject{}
+		ptrToStruct := &plainStruct
+		ptrToPtr := &ptrToStruct
 
-	invalid := reflect.Value{}
-	assert.Equal(t, invalid, reflectkit.BaseValue(invalid))
+		assert.Equal(t, expectedValueType, subject(plainStruct).Type())
+		assert.Equal(t, expectedValueType, subject(ptrToStruct).Type())
+		assert.Equal(t, expectedValueType, subject(ptrToPtr).Type())
+	})
+
+	t.Run("interface", func(t *testing.T) {
+		// arrange
+		intf := reflect.New(reflectkit.TypeOf[InterfaceObject]()).Elem()
+		exp := reflect.ValueOf(StructObject{V: rnd.String()})
+		intf.Set(exp)
+		// act
+		got := reflectkit.BaseValue(intf)
+		// assert
+		assert.Equal(t, exp.Type().Kind(), got.Kind())
+		assert.Equal(t, exp.Type(), got.Type())
+		assert.Equal(t, exp.Interface(), got.Interface())
+		assert.Equal(t, exp.Type().String(), got.Type().String(), "hotfix")
+	})
+
 }
 
 func MustCast[T any](tb testing.TB, exp T, val any) {
@@ -932,4 +951,84 @@ func TestErrTypeMismatch(t *testing.T) {
 	assert.NotPanic(t, func() {
 		assert.NotEmpty(t, reflectkit.ErrTypeMismatch.Error())
 	})
+}
+
+type TestStruct2 struct {
+	PublicField  string
+	privateField string
+}
+
+func TestLookupFieldByName(t *testing.T) {
+	t.Run("when  struct is not a struct", func(t *testing.T) {
+		intV := reflect.ValueOf(123)
+		field, value, ok := reflectkit.LookupFieldByName(intV, "field")
+		if field.Name != "" || value.IsValid() || ok {
+			t.Errorf("expected field to be empty and value to be zero value when input is not a struct, but got %+v, %+v", field, value)
+		}
+	})
+
+	t.Run("when  struct is invalid", func(t *testing.T) {
+		intV := reflect.Value{}
+		field, value, ok := reflectkit.LookupFieldByName(intV, "field")
+		if field.Name != "" || value.IsValid() || ok {
+			t.Errorf("expected field to be empty and value to be zero value when input is invalid, but got %+v, %+v", field, value)
+		}
+	})
+
+	t.Run("when  struct has no such field", func(t *testing.T) {
+		structV := reflect.ValueOf(TestStruct2{})
+		field, value, ok := reflectkit.LookupFieldByName(structV, "nonExistent")
+		if field.Name != "" || value.IsValid() || ok {
+			t.Errorf("expected field to be empty and value to be zero value when struct has no such field, but got %+v, %+v", field, value)
+		}
+	})
+
+	t.Run("when  struct has a public field", func(t *testing.T) {
+		structV := reflect.ValueOf(TestStruct2{PublicField: "public"})
+		field, value, ok := reflectkit.LookupFieldByName(structV, "PublicField")
+		if !ok || field.Name != "PublicField" || !value.IsValid() || value.String() != "public" {
+			t.Errorf("expected to get public field and its value when struct has a public field, but got %+v, %+v", field, value)
+		}
+	})
+
+	t.Run("when  struct has an unexported field", func(t *testing.T) {
+		structV := reflect.ValueOf(TestStruct2{privateField: "private"})
+		field, value, ok := reflectkit.LookupFieldByName(structV, "privateField")
+		if !ok || field.Name != "privateField" || !value.IsValid() {
+			t.Errorf("expected to get unexported field and its zero value when struct has an unexported field, but got %+v, %+v", field, value)
+		}
+	})
+}
+
+func TestLookupFieldByNameWithNilStruct(t *testing.T) {
+	var nilV *struct{}
+	structV := reflect.ValueOf(nilV).Elem()
+	field, value, ok := reflectkit.LookupFieldByName(structV, "field")
+	if field.Name != "" || value.IsValid() || ok {
+		t.Errorf("expected field to be empty and value to be zero value when input is a nil struct, but got %+v, %+v", field, value)
+	}
+}
+
+func TestLookupFieldByNameWithNonStructValue(t *testing.T) {
+	structV := reflect.ValueOf(reflect.StructField{})
+	field, value, ok := reflectkit.LookupFieldByName(structV, "field")
+	if field.Name != "" || value.IsValid() || ok {
+		t.Errorf("expected field to be empty and value to be zero value when input is not a struct value, but got %+v, %+v", field, value)
+	}
+}
+
+func TestLookupFieldByNameWithNonStringName(t *testing.T) {
+	structV := reflect.ValueOf(TestStruct2{})
+	field, value, ok := reflectkit.LookupFieldByName(structV, "")
+	if field.Name != "" || value.IsValid() || ok {
+		t.Errorf("expected field to be empty and value to be zero value when input name is not a string, but got %+v, %+v", field, value)
+	}
+}
+
+func TestLookupFieldByNameWithUnreachableValue(t *testing.T) {
+	structV := reflect.ValueOf(TestStruct2{})
+	field, value, ok := reflectkit.LookupFieldByName(structV, "unreachable")
+	assert.False(t, ok)
+	assert.Empty(t, field.Name)
+	assert.False(t, value.IsValid())
 }
