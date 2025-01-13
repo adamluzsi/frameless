@@ -135,7 +135,7 @@ func TestRouter(t *testing.T) {
 					t.Must.NotNil(lastRequest.Get(t))
 					lastRequest.Get(t)
 
-					routing, ok := internal.LookupRouting(lastRequest.Get(t).Context())
+					routing, ok := internal.RoutingContext.Lookup(lastRequest.Get(t).Context())
 					t.Must.True(ok)
 					t.Must.Equal("/", routing.PathLeft)
 				})
@@ -158,7 +158,7 @@ func TestRouter(t *testing.T) {
 					t.Must.NotNil(lastRequest.Get(t))
 					lastRequest.Get(t)
 
-					routing, ok := internal.LookupRouting(lastRequest.Get(t).Context())
+					routing, ok := internal.RoutingContext.Lookup(lastRequest.Get(t).Context())
 					t.Must.True(ok)
 					t.Must.Equal(pathRest, routing.PathLeft)
 				})
@@ -426,6 +426,10 @@ func TestRouter_Handle(t *testing.T) {
 	})
 }
 
+// func TestRouter_Mount(t *testing.T) {
+// 	var router httpkit.Router
+// }
+
 func TestRouter_Namespace(t *testing.T) {
 	var router httpkit.Router
 	router.Namespace("/top", func(r *httpkit.Router) {
@@ -469,6 +473,115 @@ func TestRouter_Namespace(t *testing.T) {
 		router.ServeHTTP(rr, req)
 		assert.Equal(t, rr.Code, http.StatusNotFound)
 	})
+}
+
+func TestRouter_Sub(t *testing.T) {
+	var router httpkit.Router
+
+	sub := router.Sub("/tip/top")
+	sub.Handle("/sub", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("handle"))
+	}))
+
+	t.Run("on matching request for a specific path", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/tip/top/sub",
+			nil,
+		)
+
+		router.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+		assert.Equal(t, rr.Body.String(), "handle")
+	})
+
+	t.Run("on non matching request", func(t *testing.T) {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(
+			rnd.SliceElement([]string{
+				http.MethodGet,
+				http.MethodHead,
+				http.MethodPost,
+				http.MethodPut,
+				http.MethodPatch,
+				http.MethodDelete,
+				http.MethodConnect,
+				http.MethodOptions,
+				http.MethodTrace,
+			}).(string),
+			"/tip/top/oth",
+			nil,
+		)
+
+		router.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusNotFound)
+	})
+}
+
+func TestRouter_Sub_withPathParam(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	exp := randomPathPart(t)
+	t.OnFail(func() { t.Logf("expected path param: %s", exp) })
+
+	var ro httpkit.Router
+
+	t.OnFail(func() { t.LogPretty(ro.Routes()) })
+
+	sub := ro.Sub("/path/:param")
+	sub.Handle("/endpoint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		params := httpkit.PathParams(r.Context())
+		t.OnFail(func() { t.Log("expected path param:", exp) })
+		assert.Equal(t, params["param"], exp)
+
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("handle"))
+	}))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, pathkit.Join("/path", url.PathEscape(exp), "/endpoint"), nil)
+
+	t.OnFail(func() { t.Logf("%s %s", req.Method, req.URL.RequestURI()) })
+
+	ro.ServeHTTP(rr, req)
+	assert.Equal(t, rr.Code, http.StatusTeapot)
+	assert.Equal(t, rr.Body.String(), "handle")
+}
+
+func TestRouter_Handle_withDynamicPathParam(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	rndString := t.Random.StringNWithCharset(5, random.CharsetAlpha()+random.CharsetDigit())
+	exp := fmt.Sprintf("%s %s!=/", rndString, "%")
+
+	t.OnFail(func() {
+		t.Logf("expected path param: %s", exp)
+		t.Log("escaped path:", url.PathEscape(exp))
+	})
+
+	var ro httpkit.Router
+
+	t.OnFail(func() { t.LogPretty(ro.Routes()) })
+
+	sub := ro.Sub("/path/:param")
+	sub.Handle("/endpoint", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		params := httpkit.PathParams(r.Context())
+		t.OnFail(func() { t.Log("expected path param:", exp) })
+		assert.Equal(t, params["param"], exp)
+
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("handle"))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, pathkit.Join("/path", url.PathEscape(exp), "/endpoint"), nil)
+	rr := httptest.NewRecorder()
+	ro.ServeHTTP(rr, req)
+
+	resp := rr.Result()
+	assert.Equal(t, resp.StatusCode, http.StatusTeapot)
+	assert.Equal(t, string(assert.ReadAll(t, resp.Body)), "handle")
 }
 
 func TestNewRouter(t *testing.T) {
@@ -862,6 +975,8 @@ func mwWithContextValue(key, value any) httpkit.MiddlewareFactoryFunc {
 }
 
 func TestRouter_withPathParams(t *testing.T) {
+	s := testcase.NewSpec(t)
+
 	var hfn = func(ppkey, ppval string, code int) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			val := httpkit.PathParams(r.Context())[ppkey]
@@ -871,7 +986,7 @@ func TestRouter_withPathParams(t *testing.T) {
 		}
 	}
 
-	t.Run("top-level", func(t *testing.T) {
+	s.Test("top-level", func(t *testcase.T) {
 		var r httpkit.Router
 		r.Get("/:id", hfn("id", "foo", 100))
 
@@ -880,7 +995,8 @@ func TestRouter_withPathParams(t *testing.T) {
 		r.ServeHTTP(rr, req)
 		assert.Equal(t, rr.Code, 100)
 	})
-	t.Run("top-level, but on different method", func(t *testing.T) {
+
+	s.Test("top-level, but on different method", func(t *testcase.T) {
 		var r httpkit.Router
 		r.Get("/:id", hfn("id", "foo", 100))
 		r.Post("/:nid", hfn("nid", "bar", 200))
@@ -890,7 +1006,8 @@ func TestRouter_withPathParams(t *testing.T) {
 		r.ServeHTTP(rr, req)
 		assert.Equal(t, rr.Code, 200)
 	})
-	t.Run("nested path with dynamic part", func(t *testing.T) {
+
+	s.Test("nested path with dynamic part", func(t *testcase.T) {
 		var r httpkit.Router
 		r.Namespace("/:test", func(r *httpkit.Router) {
 			r.Get("/", hfn("test", "baz", 300))
@@ -901,7 +1018,8 @@ func TestRouter_withPathParams(t *testing.T) {
 		r.ServeHTTP(rr, req)
 		assert.Equal(t, rr.Code, 300)
 	})
-	t.Run("nested path with dynamic part that overlaps with dynamic endpoint", func(t *testing.T) {
+
+	s.Test("nested path with dynamic part that overlaps with dynamic endpoint", func(t *testcase.T) {
 		var r httpkit.Router
 		r.Get("/:id", hfn("id", "foo", 100))
 		r.Namespace("/:test", func(r *httpkit.Router) {
@@ -912,5 +1030,178 @@ func TestRouter_withPathParams(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/baz", nil)
 		r.ServeHTTP(rr, req)
 		assert.Equal(t, rr.Code, 400)
+	})
+
+	s.Test("query parameter might have escaped characters value", func(t *testcase.T) {
+		var ro httpkit.Router
+
+		exp := randomPathPart(t)
+
+		ro.Namespace("/path/:val", func(ro *httpkit.Router) {
+			ro.Get("/", hfn("val", exp, http.StatusTeapot))
+		})
+
+		target := pathkit.Join("/path/", url.PathEscape(exp))
+		t.Log(target, exp, url.PathEscape(exp))
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		rr := httptest.NewRecorder()
+		ro.ServeHTTP(rr, req)
+		assert.Equal(t, rr.Code, http.StatusTeapot)
+	})
+}
+
+func randomPathPart(tb testing.TB) string {
+	t := testcase.ToT(&tb)
+	return random.Unique(t.Random.String, ".")
+}
+
+var nullHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+
+func TestRouter_Routes(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+
+		var ro httpkit.Router
+
+		var expectedRouteCount int
+		var assertCurRouteCount = func() {
+			t.Helper()
+			assert.Equal(t, len(ro.Routes()), expectedRouteCount)
+		}
+		var assertIncRouteCountBy = func(n int) {
+			t.Helper()
+			expectedRouteCount += n
+			assertCurRouteCount()
+		}
+		var assertIncRouteCount = func() {
+			t.Helper()
+			expectedRouteCount++
+			assertCurRouteCount()
+		}
+
+		assertCurRouteCount()
+
+		ro.Get("/root1", nullHandler)
+		assertIncRouteCount()
+
+		ro.Delete("/root2", nullHandler)
+		assertIncRouteCount()
+
+		ro.Namespace("/nested/namespace", func(ro *httpkit.Router) {
+			ro.Get("/", nullHandler)
+			assertIncRouteCount()
+			ro.Get("/ep1", nullHandler)
+			assertIncRouteCount()
+			ro.Get("/ep2", nullHandler)
+			assertIncRouteCount()
+			ro.Handle("/baz/1", nullHandler)
+			assertIncRouteCount()
+			ro.Handle("/baz/2/", nullHandler)
+			assertIncRouteCount()
+		})
+
+		assertCurRouteCount()
+
+		ro.Namespace("/qux", func(ro *httpkit.Router) {
+			ro.Get("/ep1", nullHandler)
+			assertIncRouteCount()
+			ro.Get("/ep2", nullHandler)
+			assertIncRouteCount()
+		})
+
+		ro.Namespace("/http-methods-are-ordered-by-crud", func(ro *httpkit.Router) {
+			ro.Get("/", nullHandler)
+			assertIncRouteCount()
+			ro.Post("/", nullHandler)
+			assertIncRouteCount()
+			ro.Put("/", nullHandler)
+			assertIncRouteCount()
+			ro.Patch("/", nullHandler)
+			assertIncRouteCount()
+			ro.Delete("/", nullHandler)
+			assertIncRouteCount()
+			ro.Connect("/", nullHandler)
+			assertIncRouteCount()
+		})
+
+		sub := ro.Sub("/sub")
+		assertCurRouteCount()
+		sub.Get("/pe", nullHandler)
+		assertIncRouteCount()
+
+		ro.Namespace("/resource/:id", func(ro *httpkit.Router) {
+			ro.Get("/", nullHandler)
+			assertIncRouteCount()
+		})
+
+		ro.Mount("/mount-point-handler", nullHandler)
+		assertIncRouteCount()
+
+		mux := http.NewServeMux()
+		mux.Handle("/pattern1", nullHandler)
+		mux.Handle("/pattern2/", nullHandler)
+		ro.Mount("/mux", mux)
+		assertIncRouteCountBy(2)
+
+		muxWithRouter := http.NewServeMux()
+
+		var ro2 httpkit.Router
+		ro2.Get("/httpkitRouterUnderMuxHandle", nullHandler)
+		muxWithRouter.Handle("/path", &ro2)
+		ro.Mount("/muxWithRouter", muxWithRouter)
+		assertIncRouteCountBy(1)
+
+		routes := ro.Routes()
+
+		assert.Equal(t, routes, []string{
+			"POST    /http-methods-are-ordered-by-crud",
+			"GET     /http-methods-are-ordered-by-crud",
+			"PUT     /http-methods-are-ordered-by-crud",
+			"PATCH   /http-methods-are-ordered-by-crud",
+			"DELETE  /http-methods-are-ordered-by-crud",
+			"CONNECT /http-methods-are-ordered-by-crud",
+			"ALL     /mount-point-handler",
+			"ALL     /mux/pattern1",
+			"ALL     /mux/pattern2/",
+			"GET     /muxWithRouter/path/httpkitRouterUnderMuxHandle",
+			"GET     /nested/namespace",
+			"GET     /nested/namespace/ep1",
+			"GET     /nested/namespace/ep2",
+			"ALL     /nested/namespace/baz/1",
+			"ALL     /nested/namespace/baz/2/",
+			"GET     /qux/ep1",
+			"GET     /qux/ep2",
+			"GET     /resource/:id",
+			"GET     /root1",
+			"DELETE  /root2",
+			"GET     /sub/pe",
+		})
+
+	})
+
+	t.Run("RESTHandler", func(t *testing.T) {
+		var ro httpkit.Router
+
+		ro.Resource("foos", httpkit.RESTHandler[Foo, FooID]{
+			Create:     func(ctx context.Context, ptr *Foo) error { return nil },
+			Index:      func(ctx context.Context) (iterators.Iterator[Foo], error) { return nil, nil },
+			Show:       func(ctx context.Context, id FooID) (ent Foo, found bool, err error) { return },
+			Update:     func(ctx context.Context, ptr *Foo) error { return nil },
+			Destroy:    func(ctx context.Context, id FooID) error { return nil },
+			DestroyAll: func(ctx context.Context) error { return nil },
+
+			ResourceRoutes: httpkit.NewRouter(func(r *httpkit.Router) {
+				r.Get("/hello", nullHandler)
+			}),
+		})
+
+		assert.Equal(t, ro.Routes(), []string{
+			"POST   /foos",
+			"GET    /foos",
+			"DELETE /foos",
+			"GET    /foos/:id",
+			"PUT    /foos/:id",
+			"DELETE /foos/:id",
+			"GET    /foos/:id/hello",
+		})
 	})
 }

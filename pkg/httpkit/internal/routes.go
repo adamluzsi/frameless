@@ -1,49 +1,45 @@
 package internal
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 )
+
+var RoutingContext contextkit.ValueHandler[routingCtxKey, *Routing]
 
 type routingCtxKey struct{}
 
 type Routing struct {
-	PathLeft string
-	Current  string
+	RequestURI string
+	PathLeft   string
+	Current    string
 }
 
-func (routing Routing) Peek(path string) Routing {
-	path = pathkit.Canonical(path)
+func (routing Routing) Peek(p string) Routing {
+	p = pathkit.Canonical(p)
 	return Routing{
-		PathLeft: pathkit.Canonical(strings.TrimPrefix(routing.PathLeft, path)),
-		Current:  pathkit.Join(routing.Current, path),
+		PathLeft: pathkit.Canonical(strings.TrimPrefix(routing.PathLeft, p)),
+		Current:  pathkit.Join(routing.Current, p),
 	}
 }
 
-func (routing *Routing) Travel(path string) {
-	*routing = routing.Peek(path)
-}
+func (routing *Routing) Travel(p string) { *routing = routing.Peek(p) }
 
 func WithRoutingContext(request *http.Request) (*http.Request, *Routing) {
 	ctx := request.Context()
-	rc, ok := LookupRouting(ctx)
+	rc, ok := RoutingContext.Lookup(ctx)
 	if ok {
 		return request, rc
 	}
-	nro := Routing{
-		PathLeft: pathkit.Canonical(request.URL.Path),
-		Current:  "/",
-	}
-	return request.WithContext(context.WithValue(ctx, routingCtxKey{}, &nro)), &nro
-}
+	p := pathkit.Canonical(request.URL.EscapedPath())
 
-func LookupRouting(ctx context.Context) (*Routing, bool) {
-	if ctx == nil {
-		return nil, false
+	nro := Routing{
+		RequestURI: request.RequestURI,
+		PathLeft:   p,
+		Current:    "/",
 	}
-	r, ok := ctx.Value(routingCtxKey{}).(*Routing)
-	return r, ok
+	return request.WithContext(RoutingContext.ContextWith(ctx, &nro)), &nro
 }

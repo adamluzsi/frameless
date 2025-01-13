@@ -598,8 +598,10 @@ func TestMount_spec(t *testing.T) {
 
 		response := makeRequest(t, "/path/sub")
 		t.Must.Equal(http.StatusTeapot, response.StatusCode)
+
 		t.Must.NotNil(lastReq.Get(t))
-		routing, ok := internal.LookupRouting(lastReq.Get(t).Context())
+		routing, ok := internal.RoutingContext.Lookup(lastReq.Get(t).Context())
+		t.LogPretty(routing)
 		t.Must.True(ok)
 		t.Must.Equal("/sub", routing.PathLeft)
 	})
@@ -633,7 +635,7 @@ func TestMount_spec(t *testing.T) {
 			t.Must.Equal(http.StatusTeapot, resp.StatusCode)
 			t.Must.NotNil(lastReq.Get(t))
 
-			routing, ok := internal.LookupRouting(lastReq.Get(t).Context())
+			routing, ok := internal.RoutingContext.Lookup(lastReq.Get(t).Context())
 			t.Must.True(ok)
 			t.Must.Equal("/foo", routing.PathLeft)
 		})
@@ -727,7 +729,7 @@ func TestMountPoint(tt *testing.T) {
 	gotHandler.ServeHTTP(rr, req)
 	t.Must.Equal(http.StatusTeapot, rr.Code)
 	t.Must.NotNil(gotReq)
-	rc, ok := internal.LookupRouting(gotReq.Context())
+	rc, ok := internal.RoutingContext.Lookup(gotReq.Context())
 	t.Must.True(ok)
 	t.Must.Equal(remainingPath, rc.PathLeft)
 }

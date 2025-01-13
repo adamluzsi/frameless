@@ -970,7 +970,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				t.Must.True(ok)
 				assert.Equal(t, foo.Get(t).ID, id)
 
-				routing, ok := internal.LookupRouting(req.Context())
+				routing, ok := internal.RoutingContext.Lookup(req.Context())
 				t.Must.True(ok)
 				t.Must.Equal("/bars", routing.PathLeft)
 			})
@@ -1486,4 +1486,27 @@ func TestRESTHandler_nestedOwnershipConstraint(t *testing.T) {
 		assert.True(t, found)
 		assert.Contain(t, gotNote.Attachments, gotAttach.ID)
 	})
+}
+
+func TestRESTHandler_idWithEscapedChars(tt *testing.T) {
+	t := testcase.NewT(tt)
+	exp := randomPathPart(t)
+
+	type T struct{ ID string }
+
+	h := httpkit.RESTHandler[T, string]{
+		Show: func(ctx context.Context, id string) (ent T, found bool, err error) {
+			t.Should.Equal(exp, id)
+			return T{ID: id}, true, nil
+		},
+
+		IDParser: func(s string) (string, error) {
+			return s, nil
+		},
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, pathkit.Clean(url.PathEscape(exp)), nil)
+	h.ServeHTTP(rr, req)
+	assert.Equal(t, rr.Result().StatusCode, http.StatusOK)
 }

@@ -2,10 +2,18 @@ package httpkit
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"net/http"
+	"net/url"
+	"reflect"
+	"sort"
+	"strings"
 
 	"go.llib.dev/frameless/pkg/httpkit/internal"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/pathkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
@@ -51,26 +59,30 @@ func (dn *_DynNode) NodeFor(pathParamName string) *_Node {
 	return dn.node
 }
 
-func (dn *_DynNode) LookupNode(ctx context.Context, pathpart string) (context.Context, *_Node, bool) {
+func (dn *_DynNode) LookupNode(ctx context.Context, rawpathpart string) (context.Context, *_Node, bool) {
 	if len(dn.varnames) == 0 || dn.node == nil {
 		return nil, nil, false
 	}
 	for _, varname := range dn.varnames {
-		ctx = WithPathParam(ctx, varname, pathpart)
+		varval, err := url.PathUnescape(rawpathpart)
+		if err != nil {
+			varval = rawpathpart
+		}
+		ctx = WithPathParam(ctx, varname, varval)
 	}
 	return ctx, dn.node, true
 }
 
-func (r *_Node) LookupNode(ctx context.Context, pathpart string) (context.Context, *_Node, bool) {
+func (r *_Node) LookupNode(ctx context.Context, rawpathpart string) (context.Context, *_Node, bool) {
 	if r == nil {
 		return nil, nil, false
 	}
 	if r.fixNodes != nil {
-		if sr, ok := r.fixNodes[pathpart]; ok {
+		if sr, ok := r.fixNodes[rawpathpart]; ok {
 			return ctx, sr, true
 		}
 	}
-	if ctx, sr, ok := r.dynNodes.LookupNode(ctx, pathpart); ok {
+	if ctx, sr, ok := r.dynNodes.LookupNode(ctx, rawpathpart); ok {
 		return ctx, sr, true
 	}
 	return nil, nil, false
@@ -130,12 +142,12 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r, route := internal.WithRoutingContext(r)
 	var (
-		ctx      = r.Context()
-		path     []string
-		node     = router.root
-		mux      = node.mux
-		muxRoute = *route
-		mws      = slicekit.Clone(router.root.middlewares)
+		ctx       = r.Context()
+		node      = router.root
+		mux       = node.mux
+		muxRoute  = *route
+		mws       = slicekit.Clone(router.root.middlewares)
+		pathParts []string
 	)
 	for _, pathpart := range pathkit.Split(route.PathLeft) {
 		sctx, snode, ok := node.LookupNode(ctx, pathpart)
@@ -145,18 +157,18 @@ func (router *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if 0 < len(snode.middlewares) {
 			mws = append(mws, snode.middlewares...)
 		}
-		path = append(path, pathpart)
+		pathParts = append(pathParts, pathpart)
 		node = snode
 		ctx = sctx
 		if snode.mux != nil { // mux fallback handler
 			// mux route should not include the final path part
 			// since the mux contain that information if that should be handled or not
-			muxRoute = route.Peek(pathkit.Join(path...))
+			muxRoute = route.Peek(pathkit.Join(pathParts...))
 			mux = snode.mux
 		}
 	}
 	r = r.WithContext(ctx)
-	route.Travel(pathkit.Join(path...))
+	route.Travel(pathkit.Join(pathParts...))
 	handler := router.toHTTPHandler(r, node, mux, muxRoute)
 	handler = WithMiddleware(handler, mws...)
 	handler.ServeHTTP(w, r)
@@ -169,8 +181,9 @@ func (router *Router) toHTTPHandler(r *http.Request, node *_Node, mux *http.Serv
 	}
 	if mux != nil {
 		var handler http.Handler = mux
-		if cur := muxRoute.Current; cur != "/" {
-			handler = http.StripPrefix(cur, node.mux)
+		if muxRoute.Current != "/" {
+			handler = stripPrefix(muxRoute.Current, handler) // TODO: testme
+			// handler = http.StripPrefix(muxRoute.Current, handler) // TODO: testme
 		}
 		return handler
 	}
@@ -192,8 +205,12 @@ func (router *Router) Mount(path string, handler http.Handler) {
 	}
 }
 
-func (router *Router) Namespace(path string, blk func(r *Router)) {
-	blk(&Router{root: router.mkpath(path)})
+func (router *Router) Namespace(path string, blk func(ro *Router)) {
+	blk(router.Sub(path))
+}
+
+func (router *Router) Sub(path string) *Router {
+	return &Router{root: router.mkpath(path)}
 }
 
 // Handle registers the handler for the given pattern.
@@ -303,10 +320,190 @@ func (router *Router) Resource(identifier string, h restHandler) {
 type restHandler interface {
 	restHandler()
 	http.Handler
+	routes(root string) []_RouteEntry
 }
 
 // Use will instruct the router to use a given MiddlewareFactoryFunc to
 func (router *Router) Use(mws ...MiddlewareFactoryFunc) {
 	router.init()
 	router.root.middlewares = append(router.root.middlewares, mws...)
+}
+
+func (router *Router) Routes() []string {
+	routes := nodeRoutes("/", router.root)
+
+	var width int
+	for _, s := range routes {
+		if l := len(s.Method); l > width {
+			width = l
+		}
+	}
+
+	var rs []string
+	for _, r := range routes {
+		rs = append(rs, fmt.Sprintf("%-*s %s", width, r.Method, r.Path))
+	}
+
+	return rs
+}
+
+type _RouteEntry struct {
+	Method string `enum:"ALL,POST,GET,PUT,PATCH,DELETE,"`
+	Path   string
+	Desc   string
+}
+
+func nodeRoutes(root string, node *_Node) []_RouteEntry {
+	var rs []_RouteEntry
+	if node == nil {
+		return rs
+	}
+	{ // root endpoints
+		var entries []_RouteEntry
+		for method := range node.methodsH {
+			entries = append(entries, _RouteEntry{Method: method, Path: root})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			a, b := entries[i], entries[j]
+			return httpMethodPriority(a.Method) < httpMethodPriority(b.Method)
+		})
+		rs = append(rs, entries...)
+	}
+	{ // fixed endpoints
+		subRoutes := mapkit.ToSlice(node.fixNodes)
+		sort.Slice(subRoutes, func(i, j int) bool {
+			a, b := subRoutes[i], subRoutes[j]
+			return a.Key < b.Key
+		})
+		var entries []_RouteEntry
+		for _, re := range subRoutes {
+			srs := nodeRoutes(pathkit.Join(root, re.Key), re.Value)
+			entries = append(entries, srs...)
+		}
+		rs = append(rs, entries...)
+	}
+	{ // dynamic paths
+		var (
+			// :var1,:var2,:var3
+			dynvarpath = strings.Join(slicekit.Map(node.dynNodes.varnames,
+				func(vn string) string { return ":" + vn }), ",")
+			dynroutes = nodeRoutes(pathkit.Join(root, dynvarpath), node.dynNodes.node)
+		)
+		rs = append(rs, dynroutes...)
+	}
+	{ // default handler
+		if node.defaultH != nil {
+			rs = append(rs, httpHandlerRoutes(root, node.defaultH)...)
+		}
+	}
+	{ // http.ServeMux
+		if node.mux != nil {
+			rs = append(rs, httpMuxRoutes(root, node.mux)...)
+		}
+	}
+	return rs
+}
+
+func httpHandlerRoutes(root string, h http.Handler) []_RouteEntry {
+	if h == nil {
+		return nil
+	}
+	switch h := h.(type) {
+	case *http.ServeMux:
+		return httpMuxRoutes(root, h)
+	case *Router:
+		return nodeRoutes(root, h.root)
+	case restHandler:
+		return h.routes(root)
+	default:
+		return []_RouteEntry{{Method: "ALL", Path: root}}
+	}
+}
+
+func httpMuxRoutes(root string, mux *http.ServeMux) []_RouteEntry {
+	var paths []_RouteEntry
+	if mux == nil {
+		return paths
+	}
+	// Using reflection to get the internal map
+
+	_, m, ok := reflectkit.LookupFieldByName(reflect.ValueOf(mux).Elem(), "m")
+	if !ok {
+		return paths
+	}
+
+	var lookupMuxEntryHandler = func(key reflect.Value) (http.Handler, bool) {
+		val := m.MapIndex(key)
+		if !val.IsValid() {
+			return nil, false
+		}
+
+		_, rh, ok := reflectkit.LookupFieldByName(val, "h")
+		if !ok {
+			return nil, false
+		}
+
+		h, ok := rh.Interface().(http.Handler)
+		return h, ok
+	}
+
+iter:
+	for _, key := range m.MapKeys() {
+		path, ok := key.Interface().(string)
+		if !ok {
+			continue
+		}
+
+		var fullPath = path
+		if root != "" && fullPath != "" && fullPath[0] != '/' {
+			fullPath = "/" + fullPath
+		}
+		if root != "" {
+			if fullPath != "" {
+				fullPath = root + fullPath
+			} else {
+				fullPath = root
+			}
+		}
+
+		if httpHandler, ok := lookupMuxEntryHandler(key); ok {
+			// TODO: add support for handler interface subtype check
+			switch h := httpHandler.(type) {
+			case *Router:
+				paths = append(paths, nodeRoutes(pathkit.Join(root, path), h.root)...)
+				continue iter
+			}
+		}
+
+		paths = append(paths, _RouteEntry{Method: "ALL", Path: fullPath})
+	}
+
+	sort.Slice(paths, func(i, j int) bool {
+		a, b := paths[i], paths[j]
+		return a.Path < b.Path
+	})
+
+	return paths
+}
+
+func httpMethodPriority(method string) int {
+	for i, comp := range httpMethodOrdering {
+		if method == comp {
+			return i + 1
+		}
+	}
+	return math.MaxInt
+}
+
+var httpMethodOrdering = []string{
+	http.MethodPost,   // Create
+	http.MethodGet,    // Read
+	http.MethodPut,    // Update
+	http.MethodPatch,  //
+	http.MethodDelete, // destroy
+
+	http.MethodHead,
+	http.MethodConnect,
+	http.MethodOptions,
+	http.MethodTrace,
 }

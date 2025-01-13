@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"go.llib.dev/frameless/pkg/dtokit"
@@ -254,10 +255,16 @@ func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 
 	default: // dynamic path
-		resourceID, rest := pathkit.Unshift(rc.PathLeft)
-		rc.Travel(resourceID)
+		rawPathResourceID, rest := pathkit.Unshift(rc.PathLeft)
+		rc.Travel(rawPathResourceID)
 
-		id, err := h.getIDParser(resourceID)
+		rawResourceID, err := url.PathUnescape(rawPathResourceID)
+		if err != nil {
+			defaultErrorHandler.HandleError(w, r, ErrMalformedID.With().Detail(err.Error()))
+			return
+		}
+
+		id, err := h.getIDParser(rawResourceID)
 		if err != nil {
 			defaultErrorHandler.HandleError(w, r, ErrMalformedID.With().Detail(err.Error()))
 			return
@@ -948,6 +955,35 @@ func (h RESTHandler[ENT, ID]) isOwnershipOK(ctx context.Context, v ENT) bool {
 		return true
 	}
 	return RESTOwnershipCheck(ctx, v)
+}
+
+func (h RESTHandler[ENT, ID]) routes(root string) []_RouteEntry {
+	var (
+		routes       []_RouteEntry
+		resourcePath = pathkit.Join(root, "/:id")
+	)
+	if h.Create != nil {
+		routes = append(routes, _RouteEntry{Method: http.MethodPost, Path: root, Desc: "#Create"})
+	}
+	if h.Index != nil {
+		routes = append(routes, _RouteEntry{Method: http.MethodGet, Path: root, Desc: "#Index"})
+	}
+	if h.DestroyAll != nil {
+		routes = append(routes, _RouteEntry{Method: http.MethodDelete, Path: root, Desc: "#DestroyAll"})
+	}
+	if h.Show != nil {
+		routes = append(routes, _RouteEntry{Method: http.MethodGet, Path: resourcePath, Desc: "#Show"})
+	}
+	if h.Update != nil {
+		routes = append(routes, _RouteEntry{Method: http.MethodPut, Path: resourcePath, Desc: "#Update"})
+	}
+	if h.Destroy != nil {
+		routes = append(routes, _RouteEntry{Method: http.MethodDelete, Path: resourcePath, Desc: "#Destroy"})
+	}
+	if h.ResourceRoutes != nil {
+		routes = append(routes, httpHandlerRoutes(resourcePath, h.ResourceRoutes)...)
+	}
+	return routes
 }
 
 // RESTOwnershipCheck

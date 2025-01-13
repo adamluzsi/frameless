@@ -7,7 +7,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"reflect"
+	"strings"
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -318,4 +320,39 @@ type ErrorHandler interface {
 // LookupRequest is mostly meant to be used from functions like Index in RestResource.
 func LookupRequest(ctx context.Context) (*http.Request, bool) {
 	return internal.LookupRequest(ctx)
+}
+
+func stripPrefix(prefix string, h http.Handler) http.Handler {
+	if prefix == "" {
+		return h
+	}
+	if u, err := url.ParseRequestURI(prefix); err == nil {
+		prefix = u.RequestURI()
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		epath := r.URL.RequestURI()
+		if !strings.HasPrefix(epath, prefix) {
+			http.NotFound(w, r)
+			return
+		}
+
+		epath = pathkit.Canonical(strings.TrimPrefix(epath, prefix))
+
+		uri, err := url.ParseRequestURI(epath)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+
+		nURL := new(url.URL)
+		*nURL = *r.URL
+		nURL.Path = uri.Path
+		nURL.RawPath = uri.RawPath
+
+		nr := new(http.Request)
+		*nr = *r
+		nr.URL = nURL
+
+		h.ServeHTTP(w, nr)
+	})
 }
