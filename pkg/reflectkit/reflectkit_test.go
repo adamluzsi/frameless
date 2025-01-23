@@ -868,27 +868,41 @@ func TestSetValue(t *testing.T) {
 	})
 }
 
-func TestBaseType(t *testing.T) {
+func TestDerefType(t *testing.T) {
 	t.Run("nil type", func(t *testing.T) {
-		typ, depth := reflectkit.BaseType(nil)
+		typ, depth := reflectkit.DerefType(nil)
 		assert.Nil(t, typ)
 		assert.Equal(t, depth, 0)
 	})
 	t.Run("base type", func(t *testing.T) {
-		typ, depth := reflectkit.BaseType(reflect.TypeOf(""))
+		typ, depth := reflectkit.DerefType(reflect.TypeOf(""))
 		assert.Equal(t, typ, reflect.TypeOf(""))
 		assert.Equal(t, depth, 0)
 	})
 	t.Run("pointer to a type", func(t *testing.T) {
-		typ, depth := reflectkit.BaseType(reflect.TypeOf(pointer.Of[string]("")))
+		typ, depth := reflectkit.DerefType(reflect.TypeOf(pointer.Of[string]("")))
 		assert.Equal(t, typ, reflect.TypeOf(""))
 		assert.Equal(t, depth, 1)
 	})
 	t.Run("pointer to struct", func(t *testing.T) {
 		type X struct{}
-		typ, depth := reflectkit.BaseType(reflect.TypeOf(pointer.Of(pointer.Of(X{}))))
+		typ, depth := reflectkit.DerefType(reflect.TypeOf(pointer.Of(pointer.Of(X{}))))
 		assert.Equal(t, reflectkit.TypeOf[X](), typ)
 		assert.Equal(t, depth, 2)
+	})
+	t.Run("interface to struct", func(t *testing.T) {
+		type I interface{}
+		type X struct{}
+
+		intType := reflectkit.TypeOf[I]()
+		intVal := reflect.New(intType).Elem()
+		val := reflect.ValueOf(X{})
+		intVal.Set(val)
+
+		got, depth := reflectkit.DerefType(intVal.Type())
+
+		assert.Equal(t, reflectkit.TypeOf[I](), got)
+		assert.Equal(t, depth, 0)
 	})
 }
 

@@ -21,14 +21,14 @@ func Cast[T any](v any) (T, bool) {
 	return val.Convert(typ).Interface().(T), true
 }
 
-func BaseType(typ reflect.Type) (_ reflect.Type, depth int) {
-	if typ == nil {
-		return typ, depth
+func DerefType(T reflect.Type) (_ reflect.Type, depth int) {
+	if T == nil {
+		return T, depth
 	}
-	for ; typ.Kind() == reflect.Pointer; depth++ {
-		typ = typ.Elem()
+	for ; T.Kind() == reflect.Pointer; depth++ {
+		T = T.Elem()
 	}
-	return typ, depth
+	return T, depth
 }
 
 func PointerOf(value reflect.Value) reflect.Value {
@@ -57,15 +57,15 @@ func BaseValueOf(i any) reflect.Value {
 	return BaseValue(reflect.ValueOf(i))
 }
 
+func isBaseKind(kind reflect.Kind) bool {
+	return kind != reflect.Pointer && kind != reflect.Interface
+}
+
 func BaseValue(v reflect.Value) reflect.Value {
 	if !v.IsValid() {
 		return v
 	}
-	var isBaseKind = func() bool {
-		kind := v.Kind()
-		return kind != reflect.Pointer && kind != reflect.Interface
-	}
-	for !isBaseKind() {
+	for !isBaseKind(v.Kind()) {
 		v = v.Elem()
 	}
 	return v
@@ -81,7 +81,7 @@ func baseTypeOfAny(v any) (reflect.Type, int) {
 	default:
 		typ = reflect.TypeOf(v)
 	}
-	return BaseType(typ)
+	return DerefType(typ)
 }
 
 func SymbolicName(v any) string {

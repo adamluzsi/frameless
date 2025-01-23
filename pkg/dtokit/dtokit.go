@@ -69,11 +69,11 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 		return nil, fmt.Errorf("[dtokit] M is not supplied")
 	}
 	defer recoverMustMap(&returnErr)
-	var toBaseType, depth = reflectkit.BaseType(mp.ToType())
+	var toBaseType, depth = reflectkit.DerefType(mp.ToType())
 	var fromValue = reflect.ValueOf(from)
 	r, ok := m.lookupByType(mp.FromType(), toBaseType)
 	if !ok {
-		fromType, _ := reflectkit.BaseType(mp.FromType())
+		fromType, _ := reflectkit.DerefType(mp.FromType())
 		r, ok = m.lookupByType(fromType, toBaseType)
 		if ok { // if base FromType is recognised, then BaseValue of fromValue is needed for correct mapping
 			fromValue = reflectkit.BaseValue(fromValue)
@@ -83,7 +83,7 @@ func (m *_M) Map(ctx context.Context, mp MP, from any) (_ any, returnErr error) 
 		return v, err
 	}
 	if !ok {
-		fromBaseType, _ := reflectkit.BaseType(mp.FromType())
+		fromBaseType, _ := reflectkit.DerefType(mp.FromType())
 		if fromBaseType.ConvertibleTo(toBaseType) {
 			v := reflectkit.BaseValueOf(from).Convert(toBaseType)
 			for i := 0; i < depth; i++ {

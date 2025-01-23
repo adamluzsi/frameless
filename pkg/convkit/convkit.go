@@ -252,7 +252,7 @@ type formatFunc[T any] func(T) (string, error)
 
 func IsRegistered[T any](i ...T) bool {
 	typ := reflectkit.TypeOf[T](i...)
-	typ, _ = reflectkit.BaseType(typ)
+	typ, _ = reflectkit.DerefType(typ)
 	if typ == typeTime {
 		return true
 	}
