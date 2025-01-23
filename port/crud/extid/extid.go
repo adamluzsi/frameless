@@ -7,10 +7,9 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/zerokit"
-
-	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
 const errSetWithNonPtr errorkit.Error = "ptr should given as *ENT, else pass by value prevents the ID field remotely"
@@ -81,6 +80,13 @@ func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) 
 }
 
 func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
+	{
+		if val.Kind() != reflect.Struct {
+			return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+				return reflect.StructField{}, reflect.Value{}, false
+			}
+		}
+	}
 	{ // lookup by "ext":"id" tag
 		const extTagIDFlag = "id"
 		for i := 0; i < val.NumField(); i++ {
@@ -101,7 +107,29 @@ func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructFi
 			sf, ok := val.Type().FieldByName(structIDFieldName)
 			if ok && len(sf.Index) == 1 {
 				return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
-					return sf, v.Field(sf.Index[0]), true
+					return sf, v.FieldByIndex(sf.Index), true
+				}
+			}
+		}
+	}
+	{ // lookup ID in the first embeded field
+		var T = val.Type()
+		var fieldNumber = T.NumField()
+		for i := 0; i < fieldNumber; i++ {
+			var (
+				i  = i
+				sf = T.Field(i)
+			)
+
+			if !sf.Anonymous /* not embedded */ {
+				continue
+			}
+
+			field := val.FieldByIndex(sf.Index)
+			extractFunc := refMakeExtractFunc(field)
+			if _, _, ok := extractFunc(field); ok {
+				return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+					return ExtractIdentifierField(v.FieldByIndex(sf.Index))
 				}
 			}
 		}

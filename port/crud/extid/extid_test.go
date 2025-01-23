@@ -97,6 +97,28 @@ func TestID_E2E(t *testing.T) {
 	assert.Equal[any](t, idVal, id)
 }
 
+func TestLookup_withEmbededField(t *testing.T) {
+	type E struct {
+		ID string `ext:"id"`
+	}
+	type T struct{ E }
+
+	expID := rnd.String()
+	v := T{E: E{ID: expID}}
+
+	gotID, ok := extid.Lookup[string](v)
+	assert.True(t, ok)
+	assert.Equal(t, expID, gotID)
+}
+
+func TestExtractIdentifierField_nonStructValue(t *testing.T) {
+	_, _, ok := extid.ExtractIdentifierField("The answer is")
+	assert.False(t, ok)
+
+	_, _, ok = extid.ExtractIdentifierField(42)
+	assert.False(t, ok)
+}
+
 func TestLookup_IDGivenByFieldName_IDReturned(t *testing.T) {
 	id, ok := extid.Lookup[string](testhelper.IDByIDField{ID: "ok"})
 	assert.True(t, ok)
