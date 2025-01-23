@@ -1128,3 +1128,37 @@ func TestGroupBy(t *testing.T) {
 		assert.Equal(t, got, exp)
 	})
 }
+
+func TestSortBy(t *testing.T) {
+	A := []int{1, 3, 2}
+	slicekit.SortBy(A, func(a, b int) bool { return a < b })
+	assert.Equal(t, A, []int{1, 2, 3})
+
+	B := []string{"foo", "bar", "baz"}
+	slicekit.SortBy(B, func(a, b string) bool { return a < b })
+	assert.Equal(t, B, []string{"bar", "baz", "foo"})
+}
+
+func TestFirst(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		_, ok := slicekit.First[string](nil)
+		assert.False(t, ok)
+	})
+	t.Run("empty", func(t *testing.T) {
+		_, ok := slicekit.First([]string{})
+		assert.False(t, ok)
+	})
+	t.Run("non empty", func(tt *testing.T) {
+		t := testcase.NewT(tt)
+		exp := t.Random.String()
+
+		var in = []string{exp}
+		t.Random.Repeat(0, 3, func() {
+			in = append(in, t.Random.String())
+		})
+
+		got, ok := slicekit.First(in)
+		assert.True(t, ok)
+		assert.Equal(t, exp, got)
+	})
+}

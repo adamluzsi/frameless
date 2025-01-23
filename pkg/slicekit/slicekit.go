@@ -1,6 +1,8 @@
 package slicekit
 
 import (
+	"sort"
+
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/port/iterators"
 )
@@ -197,9 +199,18 @@ func Insert[T any](vs *[]T, index int, nvs ...T) {
 	*vs = append(*vs, og[index:]...)
 }
 
+func First[T any](vs []T) (T, bool) {
+	if len(vs) == 0 {
+		var zero T
+		return zero, false
+	}
+	return vs[0], true
+}
+
 func Last[T any](vs []T) (T, bool) {
 	if len(vs) == 0 {
-		return *new(T), false
+		var zero T
+		return zero, false
 	}
 	return vs[len(vs)-1], true
 }
@@ -249,4 +260,10 @@ func GroupBy[T any, ID comparable](vs []T, by func(v T) ID) map[ID][]T {
 		groups[id] = append(groups[id], v)
 	}
 	return groups
+}
+
+func SortBy[T any](vs []T, less func(a, b T) bool) {
+	sort.Slice(vs, func(i, j int) bool {
+		return less(vs[i], vs[j])
+	})
 }
