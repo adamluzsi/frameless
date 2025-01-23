@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"
@@ -26,8 +27,8 @@ import (
 var rnd = random.New(random.CryptoSeed{})
 
 func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
-	t.Cleanup(internal.StubSignalNotify(fn))
-	t.Cleanup(internal.StubSignalStop(func(chan<- os.Signal) {}))
+	t.Cleanup(signalint.StubNotify(fn))
+	t.Cleanup(signalint.StubStop(func(chan<- os.Signal) {}))
 }
 
 func StubShutdownTimeout(tb testing.TB, timeout time.Duration) {

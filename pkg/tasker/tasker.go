@@ -12,6 +12,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/tasker/internal"
 	"go.llib.dev/frameless/pkg/teardown"
@@ -246,8 +247,8 @@ func WithSignalNotify[TFN genericTask](tfn TFN, shutdownSignals ...os.Signal) Ta
 		ch := make(chan os.Signal)
 		defer close(ch)
 
-		internal.SignalNotify(ch, shutdownSignals...)
-		defer internal.SignalStop(ch)
+		signalint.Notify(ch, shutdownSignals...)
+		defer signalint.Stop(ch)
 
 		go func() {
 			for range ch {

@@ -1,4 +1,4 @@
-package internal
+package signalint
 
 import (
 	"os"
@@ -13,19 +13,19 @@ var (
 	signalStop   = signal.Stop
 )
 
-func SignalNotify(c chan<- os.Signal, sig ...os.Signal) {
+func Notify(c chan<- os.Signal, sig ...os.Signal) {
 	m.RLock()
 	defer m.RUnlock()
 	signalNotify(c, sig...)
 }
 
-func SignalStop(c chan<- os.Signal) {
+func Stop(c chan<- os.Signal) {
 	m.RLock()
 	defer m.RUnlock()
 	signalStop(c)
 }
 
-func StubSignalNotify(notify func(c chan<- os.Signal, sig ...os.Signal)) func() {
+func StubNotify(notify func(c chan<- os.Signal, sig ...os.Signal)) func() {
 	m.Lock()
 	defer m.Unlock()
 	og := signalNotify
@@ -37,7 +37,7 @@ func StubSignalNotify(notify func(c chan<- os.Signal, sig ...os.Signal)) func() 
 	}
 }
 
-func StubSignalStop(stop func(c chan<- os.Signal)) func() {
+func StubStop(stop func(c chan<- os.Signal)) func() {
 	m.Lock()
 	defer m.Unlock()
 	og := signalStop
