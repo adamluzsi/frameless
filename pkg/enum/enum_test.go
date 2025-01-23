@@ -500,3 +500,65 @@ func TestValidate(t *testing.T) {
 		assert.NoError(t, enum.Validate[*T](nil))
 	})
 }
+
+func TestReflectValuesOfStructField(t *testing.T) {
+	t.Run("no enum", func(t *testing.T) {
+		type X struct {
+			A int
+		}
+
+		T := reflectkit.TypeOf[X]()
+		field, ok := T.FieldByName("A")
+		assert.True(t, ok)
+
+		got, err := enum.ReflectValuesOfStructField(field)
+		assert.NoError(t, err)
+		assert.Equal(t, len(got), 0)
+	})
+	t.Run("enum in the field is invalid", func(t *testing.T) {
+		type X struct {
+			A int `enum:"invalid,"`
+		}
+
+		T := reflectkit.TypeOf[X]()
+		field, ok := T.FieldByName("A")
+		assert.True(t, ok)
+
+		_, err := enum.ReflectValuesOfStructField(field)
+		assert.Error(t, err)
+	})
+	t.Run("enum defined in the field tag", func(t *testing.T) {
+		type X struct {
+			A string `enum:"foo,bar,baz,"`
+		}
+
+		T := reflectkit.TypeOf[X]()
+		field, ok := T.FieldByName("A")
+		assert.True(t, ok)
+
+		got, err := enum.ReflectValuesOfStructField(field)
+		assert.NoError(t, err)
+		assert.Equal(t, len(got), 3)
+		assert.OneOf(t, got, func(t assert.It, v reflect.Value) {
+			assert.Equal(t, v.String(), "foo")
+		})
+	})
+	t.Run("enum registered to the field type", func(t *testing.T) {
+		type FieldType string
+		defer enum.Register[FieldType]("foo", "bar", "baz")()
+		type X struct {
+			A FieldType
+		}
+
+		T := reflectkit.TypeOf[X]()
+		field, ok := T.FieldByName("A")
+		assert.True(t, ok)
+
+		got, err := enum.ReflectValuesOfStructField(field)
+		assert.NoError(t, err)
+		assert.Equal(t, len(got), 3)
+		assert.OneOf(t, got, func(t assert.It, v reflect.Value) {
+			assert.Equal(t, v.String(), "foo")
+		})
+	})
+}

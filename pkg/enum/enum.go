@@ -77,6 +77,13 @@ func ReflectValues(typ any) []reflect.Value {
 	}
 }
 
+func ReflectValuesOfStructField(sf reflect.StructField) ([]reflect.Value, error) {
+	if tag, ok := sf.Tag.Lookup(structTagName); ok {
+		return parseTag(sf.Type, tag)
+	}
+	return ReflectValues(sf.Type), nil
+}
+
 // Validate will check if the given value is a registered enum member.
 func Validate[T any](v T) error {
 	return validate(reflectkit.TypeOf[T](), reflect.ValueOf(v))
