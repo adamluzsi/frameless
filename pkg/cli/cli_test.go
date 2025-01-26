@@ -171,6 +171,25 @@ func TestMux(t *testing.T) {
 			assert.Equal(t, cmd.Arg3, true)
 		})
 
+		s.Test("support for pointer types", func(t *testcase.T) {
+			// flags
+			request.Get(t).Args = append(request.Get(t).Args,
+				/* flags */ "-flag", "foo",
+				/* args */ "hello-world",
+			)
+
+			command.Set(t, &CommandWithPointerReceiver{Callback: func(h *CommandWithPointerReceiver, w cli.Response, r *cli.Request) {
+				assert.NotNil(t, h)
+				assert.NotEmpty(t, h.Flag)
+				assert.NotEmpty(t, h.Arg)
+				fmt.Fprint(w, "teapot")
+			}})
+
+			act(t)
+
+			assert.Contain(t, response.Get(t).Out.String(), "teapot")
+		})
+
 		s.And("the command have flags", func(s *testcase.Spec) {
 			var h = testcase.LetValue[*CommandWithFlag](s, nil)
 
@@ -825,7 +844,7 @@ func (fn Callback[T]) Call(v T, w cli.Response, r *cli.Request) {
 type CommandE2E struct {
 	Callback[CommandE2E]
 
-	Flag1 string `flag:"str"`
+	Flag1 string `flag:"str" desc:"flag1 desc"`
 	Flag2 string `flag:"strwd" default:"defval"`
 	Flag3 int    `flag:"int"`
 	Flag4 bool   `flag:"bool"`
@@ -838,6 +857,16 @@ type CommandE2E struct {
 }
 
 func (cmd CommandE2E) ServeCLI(w cli.Response, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithPointerReceiver struct {
+	Callback[*CommandWithPointerReceiver]
+	Flag string `flag:"flag"`
+	Arg  string `arg:"0"`
+}
+
+func (cmd *CommandWithPointerReceiver) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -915,4 +944,45 @@ type CommandWithArgWithEnum struct {
 
 func (cmd CommandWithArgWithEnum) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
+}
+
+func TestConfigureHandler(t *testing.T) {
+	req := &cli.Request{Args: []string{
+		/* flags */ "-str", "foo", "-int", "42", "-bool=true", "-sbool", "-fbool=0",
+		/* args */ "hello-world", "42", "True",
+	}}
+
+	h, err := cli.ConfigureHandler(CommandE2E{}, "", req)
+	assert.NoError(t, err)
+
+	cmd, ok := h.(CommandE2E)
+	assert.True(t, ok)
+	assert.NotEmpty(t, cmd)
+
+	assert.Equal(t, cmd.Flag1, "foo")
+	assert.Equal(t, cmd.Flag2, "defval")
+	assert.Equal(t, cmd.Flag3, 42)
+	assert.Equal(t, cmd.Flag4, true)
+	assert.Equal(t, cmd.Flag5, true)
+	assert.Equal(t, cmd.Flag6, false)
+
+	assert.Equal(t, cmd.Arg1, "hello-world")
+	assert.Equal(t, cmd.Arg2, 42)
+	assert.Equal(t, cmd.Arg3, true)
+}
+
+func TestUsage(t *testing.T) {
+	usage, err := cli.Usage(CommandE2E{}, "thepath")
+	assert.NoError(t, err)
+
+	assert.Contain(t, usage, "Usage: thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
+	assert.Contain(t, usage, "-str=[string]: flag1 desc")
+	assert.Contain(t, usage, "-strwd=[string] (Default: defval)")
+	assert.Contain(t, usage, "-int=[int]")
+	assert.Contain(t, usage, "-bool=[bool]")
+	assert.Contain(t, usage, "-sbool=[bool]")
+	assert.Contain(t, usage, "-fbool=[bool]")
+	assert.Contain(t, usage, "Arg1 [string]")
+	assert.Contain(t, usage, "Arg2 [int]")
+	assert.Contain(t, usage, "Arg3 [bool]")
 }

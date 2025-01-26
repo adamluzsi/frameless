@@ -87,7 +87,13 @@ type Mux struct {
 	path string
 }
 
-type IsMux interface{ Mux() }
+// Multiplexer is an interface that, when implemented by a command,
+// delegates the parsing of input arguments and options to the Handler in cli.Main.
+//
+// If you want to create your own Mux, simply implement this interface in your structure.
+type Multiplexer interface {
+	Handle(pattern string, h Handler)
+}
 
 type muxEntry struct {
 	Handler Handler
@@ -198,8 +204,6 @@ func (m *Mux) entryFor(path []string) *muxEntry {
 	return ent
 }
 
-func (m Mux) IsMux() {}
-
 func (m Mux) toPath(pattern string) []string {
 	return strings.Fields(pattern)
 }
@@ -236,32 +240,59 @@ func Main(ctx context.Context, h Handler) {
 		l.Out = os.Stderr
 	})
 
-	if _, ok := h.(IsMux); !ok {
-		sm, ok, err := structMetaFor(h)
+	if _, ok := h.(Multiplexer); !ok {
+		handler, err := ConfigureHandler(h, execName(), r)
 		if err != nil {
-			panic(err.Error())
-		}
-		if ok {
-			handler, err := configure(h, sm, r)
-			if err != nil {
-				helpUsageOf(w, handler, &sm, execName())
-				printErrLn(w)
-				printErrLn(w, err.Error())
-				osint.Exit(ExitCodeBadRequest)
+			usage, usageErr := Usage(h, execName())
+			if usageErr != nil {
+				panic(usageErr.Error())
 			}
-			h = handler
+			printErrLn(w, usage)
+			printErrLn(w)
+			printErrLn(w, err.Error())
+			osint.Exit(ExitCodeBadRequest)
 		}
+		h = handler
 	}
 
 	h.ServeCLI(w, r)
 	osint.Exit(w.Code)
 }
 
+func ConfigureHandler(h Handler, path string, r *Request) (Handler, error) {
+	sm, ok, err := structMetaFor(h)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return h, nil
+	}
+	handler, err := configure(h, sm, r)
+	if err != nil {
+		return nil, err
+	}
+	return handler, nil
+}
+
+// Usage will generate a help usage message for a given handler on a given command request pattern/path.
+func Usage(h Handler, pattern string) (string, error) {
+	var meta *structMeta
+	m, ok, err := structMetaFor(h)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		meta = &m
+	}
+	return helpCreateUsage(h, meta, pattern), nil
+}
+
 func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 	ptr := reflect.New(reflect.TypeOf(h))
-	val := reflect.ValueOf(h)
-	ptr.Elem().Set(val)
-	val = ptr.Elem()
+	handler := reflect.ValueOf(h)
+	ptr.Elem().Set(handler)
+	handler = ptr.Elem()
+	val := reflectkit.BaseValue(ptr)
 
 	var flagSetOutput bytes.Buffer
 	var flagSet = flag.NewFlagSet("", flag.ContinueOnError)
@@ -296,7 +327,7 @@ func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 		}
 	}
 
-	h = val.Interface().(Handler) // dependency inject
+	h = handler.Interface().(Handler) // dependency inject
 
 	return h, nil
 }
@@ -338,6 +369,10 @@ func (m Mux) helpUsage(w Response) {
 }
 
 func helpUsageOf(w Response, h Handler, meta *structMeta, path string) {
+	printErrLn(w, helpCreateUsage(h, meta, path))
+}
+
+func helpCreateUsage(h Handler, meta *structMeta, path string) string {
 	var lines []string
 
 	var usage string
@@ -404,7 +439,7 @@ func helpUsageOf(w Response, h Handler, meta *structMeta, path string) {
 		}
 	}
 
-	printErrLn(w, lines...)
+	return strings.Join(lines, lineSeparator)
 }
 
 func (m Mux) helpCommands(w Response) {
