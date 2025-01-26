@@ -328,10 +328,19 @@ func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 		}
 	}
 
+	var indexsToPop []int
 	for _, a := range meta.Args {
 		raw, ok := slicekit.Lookup(r.Args, a.Index)
 		if err := a.Setter(val, raw, ok); err != nil {
 			return h, err
+		}
+		indexsToPop = append(indexsToPop, a.Index)
+	}
+	if 0 < len(indexsToPop) {
+		sort.Sort(sort.Reverse(sort.IntSlice(indexsToPop)))
+
+		for _, index := range indexsToPop {
+			slicekit.PopAt(&r.Args, index)
 		}
 	}
 

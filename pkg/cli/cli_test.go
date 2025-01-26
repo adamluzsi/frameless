@@ -678,11 +678,14 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 		s.And("the flag value is provided as a "+name+" value", func(s *testcase.Spec) {
 			exp := testcase.Let(s, c.Expected)
 
-			c.Request.Let(s, func(t *testcase.T) *cli.Request {
+			raw := testcase.Let(s, func(t *testcase.T) string {
 				raw, err := convkit.Format(exp.Get(t))
 				assert.NoError(t, err)
+				return raw
+			})
 
-				var args = []string{c.Flag, raw}
+			c.Request.Let(s, func(t *testcase.T) *cli.Request {
+				var args = []string{c.Flag, raw.Get(t)}
 				t.OnFail(func() { t.Log("args:", args) })
 
 				r := c.Request.Super(t)
@@ -694,6 +697,13 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 				c.Act(t)
 
 				assert.Equal(t, c.Got(t), exp.Get(t))
+			})
+
+			s.Then("we expect that the request args no longer contain the raw flag input", func(t *testcase.T) {
+				c.Act(t)
+
+				assert.NotContain(t, c.Request.Get(t).Args, c.Flag)
+				assert.NotContain(t, c.Request.Get(t).Args, raw.Get(t))
 			})
 		})
 
@@ -764,6 +774,12 @@ func (c AndTheArgTypeIs[T]) Spec(s *testcase.Spec) {
 	s.And("the ARG value is provided as a "+name+" value", func(s *testcase.Spec) {
 		exp := testcase.Let(s, c.Expected)
 
+		raw := testcase.Let(s, func(t *testcase.T) string {
+			raw, err := convkit.Format(exp.Get(t))
+			assert.NoError(t, err)
+			return raw
+		})
+
 		c.Request.Let(s, func(t *testcase.T) *cli.Request {
 			raw, err := convkit.Format(exp.Get(t))
 			assert.NoError(t, err)
@@ -782,6 +798,12 @@ func (c AndTheArgTypeIs[T]) Spec(s *testcase.Spec) {
 
 			defer errorkit.RecoverWith(func(r any) { t.Fail() })
 			assert.Equal(t, c.Got(t), exp.Get(t))
+		})
+
+		s.Then("we expect that the request args no longer contain the raw flag input", func(t *testcase.T) {
+			c.Act(t)
+
+			assert.NotContain(t, c.Request.Get(t).Args, raw.Get(t))
 		})
 	})
 
