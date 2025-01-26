@@ -74,8 +74,10 @@ func FilterErr[T any](src []T, filter func(v T) (bool, error)) ([]T, error) {
 }
 
 func Lookup[T any](vs []T, index int) (T, bool) {
-	if index < 0 || len(vs)-1 < index {
-		return *new(T), false
+	index, ok := normaliseIndex(len(vs), index)
+	if !ok {
+		var zero T
+		return zero, false
 	}
 	return vs[index], true
 }
@@ -156,6 +158,31 @@ func Pop[T any](vs *[]T) (T, bool) {
 	return v, true
 }
 
+func PopAt[T any](vs *[]T, index int) (T, bool) {
+	if vs == nil {
+		var zero T
+		return zero, false
+	}
+
+	length := len(*vs)
+
+	if length == 0 {
+		var zero T
+		return zero, false
+	}
+
+	index, ok := normaliseIndex(length, index)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+
+	val := (*vs)[index]
+
+	*vs = append((*vs)[:index], (*vs)[index+1:]...)
+	return val, true
+}
+
 func Shift[T any](vs *[]T) (T, bool) {
 	var v T
 	if vs == nil {
@@ -187,8 +214,10 @@ func Insert[T any](vs *[]T, index int, nvs ...T) {
 		*vs = append(*vs, nvs...)
 		return
 	}
-	if index < 0 {
-		index = 0
+	index, ok := normaliseIndex(len(*vs), index)
+	if !ok {
+		*vs = append(*vs, nvs...)
+		return
 	} else if len(*vs) < index {
 		index = len(*vs)
 	}
@@ -266,4 +295,12 @@ func SortBy[T any](vs []T, less func(a, b T) bool) {
 	sort.Slice(vs, func(i, j int) bool {
 		return less(vs[i], vs[j])
 	})
+}
+
+func normaliseIndex(length, index int) (int, bool) {
+	if index < 0 {
+		n := length + index
+		return n, 0 <= n
+	}
+	return index, index < length
 }

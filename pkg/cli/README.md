@@ -1,10 +1,13 @@
 # CLI
 
-The `cli` package meant to give you tooling in building command line interface applications.
+The `cli` package is designed to help you build command-line interface applications easily.
 
-It also purposefully use an package convention that makes it familiar to the HTTP package's interface.
+It follows a familiar structure, similar to the `net/http` stdlib package, so developers can quickly adapt using their existing knowledge.
 
-Terminology similarities between HTTP and CLI:
+The `cli` package also aim to simplify testing of CLI commands,
+allowing you to test cleanly without needing to create stubs, mocks, or fake shared values in your application.
+
+**Terminology similarities between HTTP and CLI**:
 
 | HTTP                    | CLI                       | desc                                                                               |
 | ----------------------- | ------------------------- | ---------------------------------------------------------------------------------- |
@@ -67,9 +70,53 @@ flag: help requested
 exit status 2
 ```
 
+## Testing
+
+Testing with `frameless/pkg/cli` is designed to be simple.
+Just set up your command value based on your testing scenario and call ServeCLI on it.
+
+```go
+package main
+
+import (
+	"testing"
+
+	"go.llib.dev/frameless/pkg/cli"
+)
+
+func TestMyCommand(t *testing.T) {
+	cmd := MyCommand{ // setting up your flag/arg configuration
+		BoolFlag:   true,
+		StringFlag: "foo",
+		StringArg:  "bar",
+		IntArg:     42,
+	}
+
+	rr := &cli.ResponseRecorder{}
+	req := &cli.Request{}
+
+	cmd.ServeCLI(rr, req)
+}
+```
+
+## Dependency injection
+
+If your command/cli.Handler has its own dependencies,
+you can simply pass the preconfigured command structure as the handler,
+the dependencies won't be affected by argument parsing.
+
+```go
+func main() {
+	cli.Main(context.Background(), CommandWithDependency{
+		Dependency: "important dependency that I need as part of the ServeCLI call",
+	})
+}
+```
+
 ## Example
 
 ### direct
+
 
 ```go
 package main
@@ -99,9 +146,9 @@ func (cmd TestCommand) ServeCLI(w cli.Response, r *cli.Request) {
 }
 ```
 
-### multi command
+### multi command setup
 
-Using the `cli.Mux`, you can register commands and sub commands in your app.
+The `cli.Mux` allows you to dispatch the cli request between commands and sub-commands in your application.
 
 ```go
 package main
@@ -122,6 +169,7 @@ func main() {
 
 	sub := m.Sub("sub")
 	sub.Handle("bar", BarCommand{})
+	// works also with m.Handle("sub bar", BarCommand{})
 
 	cli.Main(context.Background(), m)
 }
@@ -171,6 +219,5 @@ type BazCommand struct {
 func (cmd BazCommand) ServeCLI(w cli.Response, r *cli.Request) {
 	fmt.Fprintln(w, "baz")
 }
-
 
 ```

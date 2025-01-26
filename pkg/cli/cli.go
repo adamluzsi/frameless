@@ -274,8 +274,16 @@ func ConfigureHandler(h Handler, path string, r *Request) (Handler, error) {
 	return handler, nil
 }
 
+type HelpUsage interface {
+	Usage(pattern string) (string, error)
+}
+
 // Usage will generate a help usage message for a given handler on a given command request pattern/path.
 func Usage(h Handler, pattern string) (string, error) {
+	if u, ok := h.(HelpUsage); ok {
+		return u.Usage(pattern)
+	}
+
 	var meta *structMeta
 	m, ok, err := structMetaFor(h)
 	if err != nil {

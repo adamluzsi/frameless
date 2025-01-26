@@ -972,17 +972,53 @@ func TestConfigureHandler(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
-	usage, err := cli.Usage(CommandE2E{}, "thepath")
-	assert.NoError(t, err)
+	t.Run("struct", func(t *testing.T) {
+		usage, err := cli.Usage(CommandE2E{}, "thepath")
+		assert.NoError(t, err)
 
-	assert.Contain(t, usage, "Usage: thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
-	assert.Contain(t, usage, "-str=[string]: flag1 desc")
-	assert.Contain(t, usage, "-strwd=[string] (Default: defval)")
-	assert.Contain(t, usage, "-int=[int]")
-	assert.Contain(t, usage, "-bool=[bool]")
-	assert.Contain(t, usage, "-sbool=[bool]")
-	assert.Contain(t, usage, "-fbool=[bool]")
-	assert.Contain(t, usage, "Arg1 [string]")
-	assert.Contain(t, usage, "Arg2 [int]")
-	assert.Contain(t, usage, "Arg3 [bool]")
+		assert.Contain(t, usage, "Usage: thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
+		assert.Contain(t, usage, "-str=[string]: flag1 desc")
+		assert.Contain(t, usage, "-strwd=[string] (Default: defval)")
+		assert.Contain(t, usage, "-int=[int]")
+		assert.Contain(t, usage, "-bool=[bool]")
+		assert.Contain(t, usage, "-sbool=[bool]")
+		assert.Contain(t, usage, "-fbool=[bool]")
+		assert.Contain(t, usage, "Arg1 [string]")
+		assert.Contain(t, usage, "Arg2 [int]")
+		assert.Contain(t, usage, "Arg3 [bool]")
+	})
+	t.Run("when cli.Handler#Usage(path) is supported", func(t *testing.T) {
+		usage, err := cli.Usage(CommandWithUsageSupport{}, "thepath")
+		assert.NoError(t, err)
+
+		assert.Contain(t, usage, "Custom Usage Message: thepath")
+	})
+}
+
+type CommandWithUsageSupport struct{}
+
+func (CommandWithUsageSupport) Usage(path string) (string, error) {
+	return fmt.Sprintf("Custom Usage Message: %s", path), nil
+}
+
+func (CommandWithUsageSupport) ServeCLI(w cli.Response, r *cli.Request) {}
+
+type CommandWithDependency struct {
+	Flag1 string `flag:"flag1" default:"val" desc:"this is flag A"`
+	Flag2 bool   `flag:"flag2" default:"true"`
+	Flag3 int    `flag:"othflag" required:"true" desc:"this is flag C, not B"`
+
+	Arg1 string `arg:"0" desc:"something something"`
+	Arg2 int    `arg:"1" default:"42" desc:"something something else"`
+
+	// Dependency is a dependency of the FooCommand, which is populated though traditional dependency injection.
+	Dependency any
+}
+
+func (CommandWithDependency) ServeCLI(w cli.Response, r *cli.Request) {}
+
+func Example_dependencyInjection() {
+	cli.Main(context.Background(), CommandWithDependency{
+		Dependency: "important dependency that I need as part of the ServeCLI call",
+	})
 }

@@ -188,9 +188,9 @@ func TestLookup_smoke(t *testing.T) {
 	assert.Equal(t, ok, true)
 	assert.Equal(t, v, 2)
 
-	v, ok = slicekit.Lookup(vs, 0-1)
-	assert.Equal(t, ok, false)
-	assert.Equal(t, v, 0)
+	v, ok = slicekit.Lookup(vs, -1)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, v, 16)
 
 	v, ok = slicekit.Lookup(vs, 0+1)
 	assert.Equal(t, ok, true)
@@ -209,6 +209,26 @@ func TestLookup_smoke(t *testing.T) {
 		assert.Equal(t, ok, true)
 		assert.Equal(t, exp, got)
 	}
+}
+
+func TestLookup_negativeIndex(t *testing.T) {
+	vs := []int{2, 4, 8, 16, 32}
+
+	v, ok := slicekit.Lookup(vs, -1)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, v, 32)
+
+	v, ok = slicekit.Lookup(vs, -2)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, v, 16)
+
+	v, ok = slicekit.Lookup(vs, -3)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, v, 8)
+
+	v, ok = slicekit.Lookup(vs, (len(vs)+1)*-1)
+	assert.Equal(t, ok, false)
+	assert.Empty(t, v)
 }
 
 func ExampleMerge() {
@@ -952,13 +972,16 @@ func TestInsert(t *testing.T) {
 	s.When("index is a negative number", func(s *testcase.Spec) {
 		index.LetValue(s, -1)
 
-		s.Then("it will act as unshift", func(t *testcase.T) {
+		s.Then("it will insert the values at the last index position, just before/in-place of the last element", func(t *testcase.T) {
 			act(t)
 
+			lastIndex := len(og.Get(t)) - 1
 			var exp []string
+			exp = append(exp, og.Get(t)[0:lastIndex]...)
 			exp = append(exp, values.Get(t)...)
-			exp = append(exp, og.Get(t)...)
-			assert.Equal(t, *slice.Get(t), exp)
+			exp = append(exp, og.Get(t)[lastIndex])
+
+			assert.Equal(t, exp, *slice.Get(t))
 		})
 	})
 
@@ -1160,5 +1183,89 @@ func TestFirst(t *testing.T) {
 		got, ok := slicekit.First(in)
 		assert.True(t, ok)
 		assert.Equal(t, exp, got)
+	})
+}
+
+func TestPopAt(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("nil slice pointer", func(t *testcase.T) {
+		v, ok := slicekit.PopAt[string](nil, 0)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("nil slice", func(t *testcase.T) {
+		var list []string
+		v, ok := slicekit.PopAt[string](&list, t.Random.IntBetween(0, 100))
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("empty slice", func(t *testcase.T) {
+		v, ok := slicekit.PopAt(&[]string{}, t.Random.IntBetween(0, 100))
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+
+	s.Test("len 1 with index 0", func(t *testcase.T) {
+		exp := t.Random.Int()
+		list := []int{exp}
+		got, ok := slicekit.PopAt(&list, 0)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Empty(t, list)
+	})
+
+	s.Test("non empty but negative index, then it will count backwards starting with -1 being the last", func(t *testcase.T) {
+		exp := t.Random.Int()
+		first := t.Random.Int()
+		list := []int{first, exp}
+		got, ok := slicekit.PopAt(&list, -1)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.NotEmpty(t, list)
+		assert.Equal(t, []int{first}, list)
+	})
+
+	s.Test("len 1 with out of index", func(t *testcase.T) {
+		exp := t.Random.Int()
+		list := []int{exp}
+		got, ok := slicekit.PopAt(&list, t.Random.IntBetween(1, 100))
+		assert.False(t, ok)
+		assert.Empty(t, got)
+		assert.Equal(t, list, []int{exp})
+	})
+
+	s.Test("len 1+ with last index", func(t *testcase.T) {
+		var (
+			list      []int
+			remaining []int
+		)
+		t.Random.Repeat(1, 7, func() {
+			v := t.Random.Int()
+			list = append(list, v)
+			remaining = append(remaining, v)
+		})
+		exp := t.Random.Int()
+		list = append(list, exp)
+		got, ok := slicekit.PopAt(&list, len(list)-1)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Equal(t, list, remaining)
+	})
+
+	s.Test("len 1+ with an index pointing to a middle", func(t *testcase.T) {
+		var (
+			exp   = t.Random.Int()
+			first = t.Random.Int()
+			last  = t.Random.Int()
+			list  = []int{first, exp, last}
+		)
+
+		got, ok := slicekit.PopAt(&list, 1)
+		assert.True(t, ok)
+		assert.Equal(t, got, exp)
+		assert.Equal(t, list, []int{first, last})
 	})
 }

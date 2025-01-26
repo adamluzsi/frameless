@@ -7,17 +7,15 @@ import (
 )
 
 func TestTestCommand(t *testing.T) {
-	t.Run("happy path", func(t *testing.T) {
-		cmd := TestCommand{
-			BoolFlag:   true,
-			StringFlag: "foo",
-			StringArg:  "bar",
-			IntArg:     42,
-		}
+	cmd := TestCommand{
+		BoolFlag:   true,
+		StringFlag: "foo",
+		StringArg:  "bar",
+		IntArg:     42,
+	}
 
-		rr := &cli.ResponseRecorder{}
-		req := &cli.Request{Args: []string{}}
+	rr := &cli.ResponseRecorder{}
+	req := &cli.Request{Args: []string{}}
 
-		cmd.ServeCLI(rr, req)
-	})
+	cmd.ServeCLI(rr, req)
 }
