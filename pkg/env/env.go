@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
@@ -71,9 +72,19 @@ func Load[T any](ptr *T) error {
 	if ptr == nil {
 		return ErrLoadInvalidType.F("nil value received")
 	}
+	return ReflectLoad(reflect.ValueOf(ptr))
+}
 
-	rv := reflect.ValueOf(ptr)
-	rv = reflectkit.BaseValue(rv)
+func ReflectLoad(ptr reflect.Value) error {
+	if ptr.Kind() != reflect.Pointer {
+		return ErrLoadInvalidType.F("non pointer type received")
+	}
+
+	if ptr.IsNil() {
+		return ErrLoadInvalidType.F("nil value received")
+	}
+
+	rv := reflectkit.BaseValue(ptr)
 
 	if rv.Kind() != reflect.Struct {
 		return ErrLoadInvalidType.F("non-struct type received")
@@ -85,50 +96,88 @@ func Load[T any](ptr *T) error {
 	return nil
 }
 
+func ReflectLoadField[I reflect.StructField | int](rStruct reflect.Value, i I) error {
+	var structField reflect.StructField
+
+	switch i := any(i).(type) {
+	case int:
+		structField = rStruct.Type().Field(i)
+	case reflect.StructField:
+		structField = i
+	}
+
+	if !rStruct.IsValid() {
+		return ErrInvalidValue
+	}
+	if rStruct.Kind() != reflect.Struct {
+		return ErrInvalidValue.F("struct type was expected")
+	}
+
+	field := rStruct.FieldByIndex(structField.Index)
+	if !field.IsValid() {
+		return ErrInvalidValue.F("struct field type not found: %s", structField.Name)
+	}
+	if !field.CanSet() {
+		return ErrInvalidValue.F("setable struct field was expected")
+	}
+
+	loadVisitStructField(structField, field)
+
+	return nil
+}
+
 func loadVisitStruct(rStruct reflect.Value) error {
 	for i, numField := 0, rStruct.NumField(); i < numField; i++ {
-		rStructField := rStruct.Type().Field(i)
-		if !rStructField.IsExported() {
-			continue
-		}
-
+		sf := rStruct.Type().Field(i)
 		field := rStruct.Field(i)
 
-		// We don't want to visit struct types which have their own registered parser.
-		if field.Kind() == reflect.Struct && !convkit.IsRegistered(field.Interface()) {
-			if err := loadVisitStruct(field); err != nil {
-				return err
-			}
-			continue
-		}
-
-		osEnvKeys, ok := rStructField.Tag.Lookup(envTagKey)
-		if !ok {
-			continue
-		}
-
-		opts, err := getLookupEnvOptions(rStructField.Tag)
-		if err != nil {
+		if err := loadVisitStructField(sf, field); err != nil {
 			return err
 		}
-
-		var val reflect.Value
-		for _, osEnvKey := range strings.Split(osEnvKeys, ",") {
-			var err error
-			val, ok, err = lookupEnv(field.Type(), strings.TrimSpace(osEnvKey), opts)
-			if err != nil {
-				return errParsingEnvValue(rStructField, err)
-			}
-			if ok {
-				break
-			}
-		}
-		if !ok {
-			continue
-		}
-		field.Set(val)
 	}
 	return enum.ValidateStruct(rStruct.Interface())
+}
+
+func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
+	if !sf.IsExported() {
+		return nil
+	}
+
+	// We don't want to visit struct types which have their own registered parser.
+	if field.Kind() == reflect.Struct && !convkit.IsRegistered(field.Interface()) {
+		return loadVisitStruct(field)
+	}
+
+	osEnvNames, ok := LookupFieldEnvNames(sf)
+	if !ok {
+		return nil
+	}
+
+	opts, err := getLookupEnvOptions(sf.Tag)
+	if err != nil {
+		return err
+	}
+
+	var val reflect.Value
+	for _, osEnvName := range osEnvNames {
+		var err error
+		val, ok, err = lookupEnv(field.Type(), osEnvName, opts)
+		if err != nil {
+			return errParsingEnvValue(sf, err)
+		}
+		if ok {
+			break
+		}
+	}
+	if !ok {
+		return nil
+	}
+	if !field.CanSet() {
+		return ErrInvalidValue.F("setable struct field was expected")
+	}
+
+	field.Set(val)
+	return nil
 }
 
 const envTagKey = "env"
@@ -293,4 +342,12 @@ func InitGlobal[ConfigStruct any]() ConfigStruct {
 		osint.Exit(1)
 	}
 	return c
+}
+
+func LookupFieldEnvNames(sf reflect.StructField) ([]string, bool) {
+	raw, ok := sf.Tag.Lookup(envTagKey)
+	if !ok {
+		return nil, false
+	}
+	return slicekit.Map(strings.Split(raw, ","), strings.TrimSpace), true
 }
