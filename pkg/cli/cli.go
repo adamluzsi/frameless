@@ -735,11 +735,14 @@ func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) 
 	name := strings.Join(sf.Names, "/")
 	defer errorkit.Recover(&rErr)
 	field := Struct.FieldByIndex(sf.StructField.Index)
-	if !value.IsSet && sf.HasDefault { // use default value
-		field.Set(sf.DefVal)
-		return nil
-	}
 	if !value.IsSet {
+		if !reflectkit.IsZero(field) {
+			return nil
+		}
+		if sf.HasDefault {
+			field.Set(sf.DefVal)
+			return nil
+		}
 		if sf.Required { // raise error for the missing but expected flag
 			return ErrFlagMissing.F("%s flag is required", name)
 		}
@@ -792,26 +795,6 @@ func (sf structFlag) mapToFlagSet(fs *flag.FlagSet, Struct reflect.Value) func()
 		fs.Var(&v, n, sf.Default)
 	}
 	return func() error { return sf.Setter(Struct, v) }
-	// switch sf.StructField.Type.Kind() {
-	// case reflect.Bool:
-	// 	var v bool
-	// 	for _, name := range sf.Names {
-	// 		fs.BoolVar(&v, name, sf.DefVal.Bool(), "")
-	// 	}
-	// 	return func() (rErr error) {
-	// 		var raw string = "false"
-	// 		if v {
-	// 			raw = "true"
-	// 		}
-	// 		return sf.Setter(Struct, raw)
-	// 	}
-	// default:
-	// 	var v string
-	// 	for _, name := range sf.Names {
-	// 		fs.StringVar(&v, name, sf.Default, "")
-	// 	}
-	// 	return func() error { return sf.Setter(Struct, v) }
-	// }
 }
 
 type flagValue struct {
@@ -846,16 +829,20 @@ type structArg struct {
 }
 
 func (sa structArg) Setter(Struct reflect.Value, raw string, ok bool) (rErr error) {
-	if !ok && sa.Required {
-		return ErrArgParseIssue.F("%s argument is not provided", sa.Name)
-	}
 	defer errorkit.Recover(&rErr)
 	field := Struct.FieldByIndex(sa.StructField.Index)
 	if !ok {
+		if !reflectkit.IsZero(field) {
+			return nil
+		}
 		if sa.HasDefault {
 			field.Set(sa.DefVal)
+			return nil
 		}
-		return nil
+		if sa.Required {
+			return ErrArgParseIssue.F("%s argument is not provided", sa.Name)
+		}
+		return nil // then allow zero state for arguments which are not supplied nor required.
 	}
 	rval, err := convkit.ParseReflect(field.Type(), raw)
 	if err != nil {

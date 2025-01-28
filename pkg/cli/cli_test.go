@@ -491,12 +491,12 @@ func TestMux(t *testing.T) {
 			})
 
 			s.Context("which is mandatory/required", func(s *testcase.Spec) {
-				h := testcase.Let[*CommandWithArgWithRequired](s, func(t *testcase.T) *CommandWithArgWithRequired {
-					return &CommandWithArgWithRequired{}
+				h := testcase.Let[*CommandWithArgWithRequired[string]](s, func(t *testcase.T) *CommandWithArgWithRequired[string] {
+					return &CommandWithArgWithRequired[string]{}
 				})
 
 				command.Let(s, func(t *testcase.T) cli.Handler {
-					return CommandWithArgWithRequired{Callback: func(v CommandWithArgWithRequired, w cli.Response, r *cli.Request) { h.Set(t, &v) }}
+					return CommandWithArgWithRequired[string]{Callback: func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) { h.Set(t, &v) }}
 				})
 
 				AndTheArgTypeIs[string]{
@@ -950,12 +950,12 @@ func (cmd CommandWithArgWithDefault) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
-type CommandWithArgWithRequired struct {
-	Callback[CommandWithArgWithRequired]
-	Arg string `arg:"0" required:"1"`
+type CommandWithArgWithRequired[T any] struct {
+	Callback[CommandWithArgWithRequired[T]]
+	Arg T `arg:"0" required:"1"`
 }
 
-func (cmd CommandWithArgWithRequired) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithArgWithRequired[T]) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1043,4 +1043,26 @@ func Example_dependencyInjection() {
 	cli.Main(context.Background(), CommandWithDependency{
 		Dependency: "important dependency that I need as part of the ServeCLI call",
 	})
+}
+
+func TestConfigureHandler_requiredFlag_injextedDefaultValue(t *testing.T) {
+	cmd := CommandWithFlagWithRequired[string]{Flag: "42"}
+	cmd.Callback = func(v CommandWithFlagWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
+
+	h, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+	assert.NoError(t, err, "expected no error, since default value is already provided")
+
+	cmd, ok := h.(CommandWithFlagWithRequired[string])
+	assert.True(t, ok)
+}
+
+func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
+	cmd := CommandWithArgWithRequired[string]{Arg: "42"}
+	cmd.Callback = func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
+
+	h, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+	assert.NoError(t, err, "expected no error, since default value is already provided")
+
+	cmd, ok := h.(CommandWithArgWithRequired[string])
+	assert.True(t, ok)
 }
