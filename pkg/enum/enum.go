@@ -251,7 +251,7 @@ func validate(typ reflect.Type, v reflect.Value) error {
 	defer regLock.RUnlock()
 
 	if typ.Kind() == reflect.Pointer {
-		if reflectkit.IsValueNil(v) {
+		if reflectkit.IsNil(v) {
 			return nil
 		}
 		if !v.CanConvert(typ) {

@@ -574,11 +574,11 @@ func TestIsZero(t *testing.T) {
 	})
 }
 
-func TestIsValueNil(t *testing.T) {
+func TestIsNil(t *testing.T) {
 	s := testcase.NewSpec(t)
 	val := testcase.Let[any](s, nil)
 	act := func(t *testcase.T) bool {
-		return reflectkit.IsValueNil(reflect.ValueOf(val.Get(t)))
+		return reflectkit.IsNil(reflect.ValueOf(val.Get(t)))
 	}
 
 	s.When(`value is an nil pointer`, func(s *testcase.Spec) {

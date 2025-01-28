@@ -128,7 +128,7 @@ func IsZero(val reflect.Value) bool {
 	}
 }
 
-func IsValueNil(val reflect.Value) bool {
+func IsNil(val reflect.Value) bool {
 	switch val.Kind() {
 	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func:
 		return val.IsNil()

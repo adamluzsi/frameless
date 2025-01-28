@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 )
 
 type FormURLEncodedCodec struct{}
@@ -157,7 +157,7 @@ type formProperties struct {
 
 func (e FormURLEncodedCodec) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
-	prop.Key = stringcase.ToSnake(typ.Name)
+	prop.Key = stringkit.ToSnake(typ.Name)
 	e.lookupTag(typ, "url", &prop)
 	e.lookupTag(typ, "form", &prop)
 	return prop

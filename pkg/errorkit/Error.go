@@ -20,25 +20,25 @@ func (err Error) Wrap(oth error) error {
 	if oth == nil {
 		return err
 	}
-	return errwrap{Owner: err, Wrapped: oth}
+	return wrapper{Owner: err, Wrapped: oth}
 }
 
 // F will format the error value
 func (err Error) F(format string, a ...any) error { return err.Wrap(fmt.Errorf(format, a...)) }
 
-type errwrap struct {
+type wrapper struct {
 	Owner   Error
 	Wrapped error // must be not nil
 }
 
-func (w errwrap) Error() string {
+func (w wrapper) Error() string {
 	return fmt.Sprintf("[%s] %s", w.Owner, w.Wrapped.Error())
 }
 
-func (w errwrap) As(target any) bool {
+func (w wrapper) As(target any) bool {
 	return errors.As(w.Owner, target) || errors.As(w.Wrapped, target)
 }
 
-func (w errwrap) Is(target error) bool {
+func (w wrapper) Is(target error) bool {
 	return errors.Is(w.Owner, target) || errors.Is(w.Wrapped, target)
 }

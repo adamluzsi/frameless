@@ -1,5 +1,5 @@
 // Package stringcase makes it simple to change the style of strings between formats like snake_case or PascalCase.
-package stringcase
+package stringkit
 
 import (
 	"strings"
