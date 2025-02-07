@@ -1,14 +1,16 @@
 # CRUD port
 
+- [Relationship modelling through External ID](./relationship/README.md)
+
 Using formalized CRUD (Create, Read, Update, Delete) interfaces in your software design has numerous benefits
 that can lead to more robust, maintainable, and scalable applications.
 It also reduce the learning curve for new team members.
 
 ## Easy Testing
 
-When you create an adapter for a specific role interface, 
-you can effortlessly incorporate the CRUD contract testing suite. 
-This suite verifies that your implementation behaves consistently with other solutions, 
+When you create an adapter for a specific role interface,
+you can effortlessly incorporate the CRUD contract testing suite.
+This suite verifies that your implementation behaves consistently with other solutions,
 meeting the expectations of the domain code.
 
 ## Notable benefits of using the `crud` port
@@ -26,7 +28,7 @@ allowing developers to focus on the business logic instead of the specifics of t
 This means that you can easily swap out the data source (e.g., from a local file to a remote database) 
 without having to change the application code.
 
-### Flexibility 
+### Flexibility
 
 By using CRUD interfaces, you can easily represent a RESTful API resource from an external system 
 or expose your own entities on your HTTP API.
