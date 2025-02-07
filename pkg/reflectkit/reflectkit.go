@@ -166,11 +166,18 @@ func SetValue(variable, value reflect.Value) {
 		Elem().Set(value)
 }
 
+var anyInterface = reflect.TypeOf((*any)(nil)).Elem()
+
 func TypeOf[T any](i ...T) reflect.Type {
-	for _, v := range i {
-		return reflect.TypeOf(v)
+	var typ = reflect.TypeOf((*T)(nil)).Elem()
+	if typ == anyInterface && 0 < len(i) {
+		for _, v := range i {
+			if typeOfV := reflect.TypeOf(v); typeOfV != nil {
+				return typeOfV
+			}
+		}
 	}
-	return reflect.TypeOf((*T)(nil)).Elem()
+	return typ
 }
 
 func ToValue(v any) reflect.Value {
@@ -182,21 +189,54 @@ func ToValue(v any) reflect.Value {
 
 const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
 
-func LookupFieldByName(structv reflect.Value, name string) (reflect.StructField, reflect.Value, bool) {
-	if structv.Kind() != reflect.Struct || !structv.IsValid() {
+func LookupField[FieldID StructFieldID](rStruct reflect.Value, i FieldID) (reflect.StructField, reflect.Value, bool) {
+	if rStruct.Kind() != reflect.Struct || !rStruct.IsValid() {
 		return reflect.StructField{}, reflect.Value{}, false
 	}
 
-	sf, ok := structv.Type().FieldByName(name)
-	if !ok {
-		return reflect.StructField{}, reflect.Value{}, false
+	var structField reflect.StructField
+	switch i := any(i).(type) {
+	case reflect.StructField:
+		structField = i
+
+	case int:
+		structField = rStruct.Type().Field(i)
+
+	case string:
+		sf, ok := rStruct.Type().FieldByName(i)
+		if !ok {
+			return reflect.StructField{}, reflect.Value{}, false
+		}
+		structField = sf
 	}
 
-	field := structv.FieldByIndex(sf.Index)
-
-	if accessable, ok := toAccessible(field); ok {
-		return sf, accessable, true
+	field := rStruct.FieldByIndex(structField.Index)
+	if !field.IsValid() {
+		return structField, field, false
 	}
 
-	return sf, field, false
+	if af, ok := toAccessible(field); ok {
+		field = af
+	}
+
+	return structField, field, field.IsValid()
+}
+
+type StructFieldID interface {
+	/* StructField */ reflect.StructField | /*index*/ int | /* name */ string
+}
+
+func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
+	if !rv.IsValid() {
+		return reflect.Value{}, false
+	}
+	if rv.CanSet() {
+		return rv, true
+	}
+	if rv.CanAddr() {
+		if uv := reflect.NewAt(rv.Type(), rv.Addr().UnsafePointer()).Elem(); uv.CanInterface() {
+			return uv, true
+		}
+	}
+	return reflect.Value{}, false
 }

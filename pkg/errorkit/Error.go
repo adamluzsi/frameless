@@ -27,7 +27,7 @@ func (err Error) Wrap(oth error) error {
 func (err Error) F(format string, a ...any) error { return err.Wrap(fmt.Errorf(format, a...)) }
 
 type wrapper struct {
-	Owner   Error
+	Owner   error
 	Wrapped error // must be not nil
 }
 

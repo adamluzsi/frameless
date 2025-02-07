@@ -1,4 +1,4 @@
-package containers
+package datastruct
 
 type Stack[T any] []T
 
