@@ -18,9 +18,10 @@ import (
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
-const ErrLoadInvalidType errorkit.Error = "ErrLoadInvalidData"
-
-const ErrInvalidValue errorkit.Error = "ErrInvalidValue"
+const (
+	ErrInvalidType  errorkit.Error = "ErrInvalidType"
+	ErrInvalidValue errorkit.Error = "ErrInvalidValue"
+)
 
 const ErrMissingEnvironmentVariable errorkit.Error = "ErrMissingEnvironmentVariable"
 
@@ -70,33 +71,47 @@ func Required() LookupOption {
 
 func Load[T any](ptr *T) error {
 	if ptr == nil {
-		return ErrLoadInvalidType.F("nil value received")
+		return ErrInvalidType.F("nil value received")
 	}
-	return ReflectLoad(reflect.ValueOf(ptr))
+	return reflectLoad(reflect.ValueOf(ptr))
 }
 
-func ReflectLoad(ptr reflect.Value) error {
-	if ptr.Kind() != reflect.Pointer {
-		return ErrLoadInvalidType.F("non pointer type received")
+func reflectLoad(ptr reflect.Value) error {
+	rStruct, err := reflectStructValueOfPointer(ptr)
+	if err != nil {
+		return err
 	}
-
-	if ptr.IsNil() {
-		return ErrLoadInvalidType.F("nil value received")
+	if err := ReflectTryLoad(ptr); err != nil {
+		return err
 	}
+	return enum.ValidateStruct(rStruct.Interface())
+}
 
-	rv := reflectkit.BaseValue(ptr)
-
-	if rv.Kind() != reflect.Struct {
-		return ErrLoadInvalidType.F("non-struct type received")
+func ReflectTryLoad(ptr reflect.Value) error {
+	val, err := reflectStructValueOfPointer(ptr)
+	if err != nil {
+		return err
 	}
-	if err := loadVisitStruct(rv); err != nil {
-		return ErrInvalidValue.Wrap(err)
+	if val.Kind() != reflect.Struct {
+		return ErrInvalidValue.F("non struct value type passed to TryLoad: %s", val.Type().String())
 	}
-
+	if err := vistiLoadStruct(val); err != nil {
+		return err
+	}
 	return nil
 }
 
-func ReflectLoadField[I reflect.StructField | int](rStruct reflect.Value, i I) error {
+func reflectStructValueOfPointer(ptr reflect.Value) (reflect.Value, error) {
+	if ptr.Kind() != reflect.Pointer {
+		return reflect.Value{}, ErrInvalidType.F("non pointer type received")
+	}
+	if ptr.IsNil() {
+		return reflect.Value{}, ErrInvalidType.F("nil pointer received")
+	}
+	return reflectkit.BaseValue(ptr), nil
+}
+
+func reflectLoadField[I reflect.StructField | int](rStruct reflect.Value, i I) error {
 	var structField reflect.StructField
 
 	switch i := any(i).(type) {
@@ -117,25 +132,17 @@ func ReflectLoadField[I reflect.StructField | int](rStruct reflect.Value, i I) e
 	if !field.IsValid() {
 		return ErrInvalidValue.F("struct field type not found: %s", structField.Name)
 	}
-	if !field.CanSet() {
-		return ErrInvalidValue.F("setable struct field was expected")
-	}
 
-	loadVisitStructField(structField, field)
-
-	return nil
+	return loadVisitStructField(structField, field)
 }
 
-func loadVisitStruct(rStruct reflect.Value) error {
+func vistiLoadStruct(rStruct reflect.Value) error {
 	for i, numField := 0, rStruct.NumField(); i < numField; i++ {
-		sf := rStruct.Type().Field(i)
-		field := rStruct.Field(i)
-
-		if err := loadVisitStructField(sf, field); err != nil {
+		if err := reflectLoadField(rStruct, i); err != nil {
 			return err
 		}
 	}
-	return enum.ValidateStruct(rStruct.Interface())
+	return nil
 }
 
 func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
@@ -145,7 +152,7 @@ func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
 
 	// We don't want to visit struct types which have their own registered parser.
 	if field.Kind() == reflect.Struct && !convkit.IsRegistered(field.Interface()) {
-		return loadVisitStruct(field)
+		return vistiLoadStruct(field)
 	}
 
 	osEnvNames, ok := LookupFieldEnvNames(sf)
@@ -177,7 +184,8 @@ func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
 	}
 
 	field.Set(val)
-	return nil
+
+	return enum.ValidateStructField(sf, field)
 }
 
 const envTagKey = "env"
@@ -276,7 +284,7 @@ func errMissingEnvironmentVariable(key string) error {
 }
 
 func errParsingEnvValue(structField reflect.StructField, err error) error {
-	return fmt.Errorf("error parsing the value for %s: %w", structField.Name, err)
+	return ErrInvalidValue.F("error parsing the value for %s: %w", structField.Name, err)
 }
 
 type ParserFunc[T any] func(envValue string) (T, error)

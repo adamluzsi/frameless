@@ -11,7 +11,10 @@ import (
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
+
+var rnd = random.New(random.CryptoSeed{})
 
 func ExampleValidateStruct_string() {
 	type ExampleStruct struct {
@@ -499,6 +502,11 @@ func TestValidate(t *testing.T) {
 	t.Run("when value is a nil pointer of an enum type then no error is expected", func(t *testing.T) {
 		assert.NoError(t, enum.Validate[*T](nil))
 	})
+
+	t.Run("when type argument is any but the value's type has registered enum", func(t *testing.T) {
+		assert.NoError(t, enum.Validate[any](V1))
+		assert.Error(t, enum.Validate[any](T("C42")))
+	})
 }
 
 func TestReflectValuesOfStructField(t *testing.T) {
@@ -559,6 +567,84 @@ func TestReflectValuesOfStructField(t *testing.T) {
 		assert.Equal(t, len(got), 3)
 		assert.OneOf(t, got, func(t assert.It, v reflect.Value) {
 			assert.Equal(t, v.String(), "foo")
+		})
+	})
+}
+
+func TestValidateStructField(t *testing.T) {
+	t.Run("no enum", func(t *testing.T) {
+		type X struct {
+			A int
+		}
+
+		val := reflect.ValueOf(X{A: rnd.Int()})
+
+		sf, field, ok := reflectkit.LookupField(val, "A")
+		assert.True(t, ok)
+
+		err := enum.ValidateStructField(sf, field)
+		assert.NoError(t, err)
+	})
+	t.Run("enum in the field is invalid", func(t *testing.T) {
+		type X struct {
+			A int `enum:"invalid,"`
+		}
+
+		val := reflect.ValueOf(X{})
+		sf, field, ok := reflectkit.LookupField(val, "A")
+		assert.True(t, ok)
+
+		err := enum.ValidateStructField(sf, field)
+		assert.Error(t, err)
+		assert.ErrorIs(t, enum.ImplementationError, err)
+	})
+	t.Run("enum defined in the field tag", func(t *testing.T) {
+		type X struct {
+			A string `enum:"foo,bar,baz,"`
+		}
+
+		t.Run("zero value", func(t *testing.T) {
+			val := reflect.ValueOf(X{})
+			sf, field, ok := reflectkit.LookupField(val, "A")
+			assert.True(t, ok)
+
+			err := enum.ValidateStructField(sf, field)
+			assert.Error(t, err)
+		})
+
+		t.Run("valid value", func(t *testing.T) {
+			val := reflect.ValueOf(X{A: random.Pick(rnd, "foo", "bar", "baz")})
+			sf, field, ok := reflectkit.LookupField(val, "A")
+			assert.True(t, ok)
+
+			err := enum.ValidateStructField(sf, field)
+			assert.NoError(t, err)
+		})
+	})
+	t.Run("enum registered to the field type", func(t *testing.T) {
+		type FieldType string
+		t.Cleanup(enum.Register[FieldType]("foo", "bar", "baz"))
+
+		type X struct {
+			A FieldType
+		}
+
+		t.Run("zero value", func(t *testing.T) {
+			val := reflect.ValueOf(X{})
+			sf, field, ok := reflectkit.LookupField(val, "A")
+			assert.True(t, ok)
+
+			err := enum.ValidateStructField(sf, field)
+			assert.Error(t, err)
+		})
+
+		t.Run("valid value", func(t *testing.T) {
+			val := reflect.ValueOf(X{A: random.Pick[FieldType](rnd, "foo", "bar", "baz")})
+			sf, field, ok := reflectkit.LookupField(val, "A")
+			assert.True(t, ok)
+
+			err := enum.ValidateStructField(sf, field)
+			assert.NoError(t, err)
 		})
 	})
 }

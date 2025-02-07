@@ -8,11 +8,14 @@ import (
 	"sync"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/synckit"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )
 
 const ErrInvalid errorkit.Error = "The value does not match the enumerator specification"
+
+const ImplementationError errorkit.Error = "ImplementationError"
 
 var (
 	registry = make(map[reflect.Type][]any)
@@ -86,7 +89,7 @@ func ReflectValuesOfStructField(sf reflect.StructField) ([]reflect.Value, error)
 
 // Validate will check if the given value is a registered enum member.
 func Validate[T any](v T) error {
-	return validate(reflectkit.TypeOf[T](), reflect.ValueOf(v))
+	return validate(reflectkit.TypeOf[T](v), reflect.ValueOf(v))
 }
 
 func ValidateStruct(v any) error {
@@ -100,25 +103,62 @@ func ValidateStruct(v any) error {
 		field := rt.Field(i)
 		value := rv.Field(i)
 
-		if tag, ok := field.Tag.Lookup(structTagName); ok {
-			enumerators, err := parseTag(field.Type, tag)
-			if err != nil {
-				return err
-			}
-
-			if !matchStructField(enumerators, value) {
-				return errorkit.With(ErrInvalid).
-					Detailf("%v does not match enumerator specification: %s", v, tag)
-			}
-		}
-
-		if value.CanInterface() {
-			if err := validate(field.Type, value); err != nil {
-				return err
-			}
+		if err := ValidateStructField(field, value); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func ValidateStructField(sf reflect.StructField, field reflect.Value) error {
+	{
+		enumerators, hasTag, err := valuesForTag(sf)
+		if err != nil {
+			return ImplementationError.Wrap(err)
+		}
+		if hasTag {
+			if !matchStructField(enumerators, field) {
+				return ErrInvalid.F(".%v=%v does not match enumerator specification", sf.Name, field.Interface())
+			}
+			return nil
+		}
+	}
+	if field.CanInterface() {
+		if err := validate(sf.Type, field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+var tagCache synckit.Map[tagIDStructField, []reflect.Value]
+
+type tagIDStructField struct {
+	Name    string
+	Type    string
+	Tag     reflect.StructTag
+	PkgPath string
+}
+
+func valuesForTag(sf reflect.StructField) (_ []reflect.Value, _ bool, rErr error) {
+	tag, ok := sf.Tag.Lookup(structTagName)
+	if !ok {
+		return nil, false, nil
+	}
+	defer errorkit.Recover(&rErr)
+	id := tagIDStructField{
+		Name:    sf.Name,
+		Type:    sf.Type.String(),
+		Tag:     sf.Tag,
+		PkgPath: sf.PkgPath,
+	}
+	return tagCache.GetOrInit(id, func() []reflect.Value {
+		enumerators, err := parseTag(sf.Type, tag)
+		if err != nil {
+			panic(err)
+		}
+		return enumerators
+	}), true, nil
 }
 
 func matchStructField(enumerators []reflect.Value, rv reflect.Value) bool {
