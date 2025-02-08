@@ -15,6 +15,7 @@ func main() {
 type TestCommand struct {
 	BoolFlag   bool   `flag:"bool" desc:"a bool flag"`
 	StringFlag string `flag:"str" default:"foo"`
+	IntFlag    int    `flag:"int" enum:"1,2,3,4,"`
 
 	StringArg string `arg:"0" required:"true"`
 	IntArg    int    `arg:"1" default:"42"`

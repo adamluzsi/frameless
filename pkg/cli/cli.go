@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -16,12 +17,14 @@ import (
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/validate"
 )
 
 const (
@@ -283,7 +286,6 @@ func Usage(h Handler, pattern string) (string, error) {
 	if u, ok := h.(HelpUsage); ok {
 		return u.Usage(pattern)
 	}
-
 	var meta *structMeta
 	m, ok, err := structMetaFor(h)
 	if err != nil {
@@ -308,6 +310,10 @@ func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 	flagSet.SetOutput(&flagSetOutput)
 
 	var callbacks []func() error
+
+	if err := env.ReflectTryLoad(val.Addr()); err != nil {
+		return nil, err
+	}
 
 	for _, f := range meta.Flags {
 		f := f // scope variable
@@ -435,6 +441,9 @@ func helpCreateUsage(h Handler, meta *structMeta, path string) string {
 					lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
 				}
 
+				if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.StructField); ok && 0 < len(osEnvVarNames) {
+					lines = append(lines, " or as env variables: "+strings.Join(osEnvVarNames, ", "))
+				}
 			}
 		}
 		if 0 < len(meta.Args) {
@@ -752,9 +761,13 @@ func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) 
 	if err != nil {
 		return ErrFlagParseIssue.F("%s (%s) encountered a parsing error with the value of: %q", name, field.Type().String(), value.Raw)
 	}
-	if err := checkEnum(sf.Enum, rval, name); err != nil {
-		return err
+
+	if err := validate.StructField(sf.StructField, rval); err != nil {
+		if errors.Is(err, enum.ErrInvalid) {
+			return ErrFlagInvalid.Wrap(enumError(name, sf.Enum, rval))
+		}
 	}
+
 	field.Set(rval)
 	return nil
 }
@@ -878,4 +891,23 @@ func checkEnum(enums []reflect.Value, val reflect.Value, name string) error {
 	acceptedValuesFormatted := strings.Join(slicekit.Map(acceptedValues, func(v string) string { return " - " + v }), lineSeparator)
 
 	return ErrFlagInvalid.F("%s got the value of %s which is not part of the acceptable values\n\naccepted values:\n%s", name, val.Interface(), acceptedValuesFormatted)
+}
+
+var EnumError = errorkit.UserError{
+	ID:      "enum-error",
+	Message: "invalid enumeration value",
+}
+
+func enumError(name string, enums []reflect.Value, val reflect.Value) error {
+	var acceptedValues []string
+	for _, val := range enums {
+		fval, err := convkit.Format[any](val.Interface())
+		if err != nil {
+			return err
+		}
+		acceptedValues = append(acceptedValues, fval)
+	}
+	acceptedValuesFormatted := strings.Join(slicekit.Map(acceptedValues, func(v string) string { return " - " + v }), lineSeparator)
+	const format = "%s got the value of %v which is not part of the acceptable values\n\naccepted values:\n%s"
+	return EnumError.Wrap((fmt.Errorf(format, name, val.Interface(), acceptedValuesFormatted)))
 }

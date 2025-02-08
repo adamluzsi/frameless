@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -868,7 +869,7 @@ type CommandE2E struct {
 
 	Flag1 string `flag:"str" desc:"flag1 desc"`
 	Flag2 string `flag:"strwd" default:"defval"`
-	Flag3 int    `flag:"int"`
+	Flag3 int    `flag:"int" env:"FLAG3"`
 	Flag4 bool   `flag:"bool"`
 	Flag5 bool   `flag:"sbool"`
 	Flag6 bool   `flag:"fbool"`
@@ -920,6 +921,15 @@ type CommandWithFlagWithRequired[T any] struct {
 }
 
 func (cmd CommandWithFlagWithRequired[T]) ServeCLI(w cli.Response, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithFlagWithEnv[T any] struct {
+	Callback[CommandWithFlagWithEnv[T]]
+	Flag T `flag:"flag" env:"FLAGNAME"`
+}
+
+func (cmd CommandWithFlagWithEnv[T]) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1008,6 +1018,7 @@ func TestUsage(t *testing.T) {
 		assert.Contain(t, usage, "Arg1 [string]")
 		assert.Contain(t, usage, "Arg2 [int]")
 		assert.Contain(t, usage, "Arg3 [bool]")
+		assert.Contain(t, usage, "FLAG3", "env flag is mentioned")
 	})
 	t.Run("when cli.Handler#Usage(path) is supported", func(t *testing.T) {
 		usage, err := cli.Usage(CommandWithUsageSupport{}, "thepath")
@@ -1065,4 +1076,68 @@ func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
 
 	cmd, ok := h.(CommandWithArgWithRequired[string])
 	assert.True(t, ok)
+}
+
+func TestConfigureHandler_envIntegration(t *testing.T) {
+	cmd := CommandWithFlagWithEnv[string]{}
+	const envName = "FLAGNAME"
+	t.Run("no env var", func(t *testing.T) {
+		testcase.UnsetEnv(t, envName)
+		h, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+		assert.NoError(t, err)
+
+		cmd, ok := h.(CommandWithFlagWithEnv[string])
+		assert.True(t, ok)
+
+		assert.Empty(t, cmd.Flag)
+	})
+
+	t.Run("with env var", func(t *testing.T) {
+		testcase.SetEnv(t, envName, "val")
+
+		h, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+		assert.NoError(t, err)
+
+		cmd, ok := h.(CommandWithFlagWithEnv[string])
+		assert.True(t, ok)
+
+		assert.Equal(t, cmd.Flag, "val")
+	})
+}
+
+func TestConfigureHandler_enumIntegration(t *testing.T) {
+	cmd := CommandWithFlagWithEnum{}
+
+	t.Run("no enum value", func(t *testing.T) {
+		h, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{}})
+		assert.NoError(t, err)
+
+		cmd, ok := h.(CommandWithFlagWithEnum)
+		assert.True(t, ok)
+
+		assert.Empty(t, cmd.Flag)
+	})
+
+	t.Run("with valid enum value", func(tt *testing.T) {
+		t := testcase.NewT(tt)
+		exp := random.Pick(t.Random, "foo", "bar", "baz")
+
+		h, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{"-flag", exp}})
+		assert.NoError(t, err)
+
+		cmd, ok := h.(CommandWithFlagWithEnum)
+		assert.True(t, ok)
+
+		assert.Equal(t, cmd.Flag, exp)
+	})
+
+	t.Run("with invalid enum value", func(t *testing.T) {
+		_, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{"-flag", "invalid"}})
+
+		assert.Error(t, err)
+
+		var got errorkit.UserError
+		assert.True(t, errors.As(err, &got))
+		assert.Equal(t, got.ID, "enum-error")
+	})
 }
