@@ -34,3 +34,7 @@ func (err UserError) Error() string {
 func (err UserError) With() WithBuilder {
 	return WithBuilder{Err: err}
 }
+
+func (err UserError) Wrap(oth error) error {
+	return wrapper{Owner: err, Wrapped: oth}
+}

@@ -357,7 +357,7 @@ func RegisterRouteInformer[T http.Handler](fn func(v T) RouteInfo) func() {
 	riReg.Set(httpHandlerType, func(h http.Handler) RouteInfo {
 		return fn(h.(T))
 	})
-	return func() { riReg.Del(httpHandlerType) }
+	return func() { riReg.Delete(httpHandlerType) }
 }
 
 type RouteInfo []PathInfo
@@ -460,7 +460,7 @@ func httpServeMuxRouteInfo(mux *http.ServeMux) RouteInfo {
 	}
 
 	// Using reflection to get the internal map
-	_, m, ok := reflectkit.LookupFieldByName(reflect.ValueOf(mux).Elem(), "m")
+	_, m, ok := reflectkit.LookupField(reflect.ValueOf(mux).Elem(), "m")
 	if !ok {
 		return nil
 	}
@@ -471,13 +471,16 @@ func httpServeMuxRouteInfo(mux *http.ServeMux) RouteInfo {
 			return nil, false
 		}
 
-		_, rh, ok := reflectkit.LookupFieldByName(val, "h")
+		_, rh, ok := reflectkit.LookupField(val, "h")
 		if !ok {
 			return nil, false
 		}
 
-		h, ok := rh.Interface().(http.Handler)
-		return h, ok
+		if rh.CanInterface() {
+			h, ok := rh.Interface().(http.Handler)
+			return h, ok
+		}
+		return nil, false
 	}
 
 	var pis []PathInfo

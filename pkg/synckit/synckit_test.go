@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -456,6 +457,8 @@ func ExampleMap() {
 
 }
 
+var _ datastruct.MapInterface[string, int] = &synckit.Map[string, int]{}
+
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -523,7 +526,7 @@ func TestMap(t *testing.T) {
 
 			s.And("the value then deleted", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					subject.Get(t).Del(key.Get(t))
+					subject.Get(t).Delete(key.Get(t))
 				})
 
 				s.Then("zero value returned if no value was set", func(t *testcase.T) {
@@ -608,7 +611,7 @@ func TestMap(t *testing.T) {
 
 			s.And("the value then deleted", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					subject.Get(t).Del(key.Get(t))
+					subject.Get(t).Delete(key.Get(t))
 				})
 
 				s.Then("returns false and zero value after delete", func(t *testcase.T) {
@@ -802,7 +805,7 @@ func TestMap(t *testing.T) {
 
 		s.When("the given key doesn't have a value", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				subject.Get(t).Del(key.Get(t))
+				subject.Get(t).Delete(key.Get(t))
 			})
 
 			s.Then("it reports nothing to be borrowed", func(t *testcase.T) {
@@ -871,7 +874,7 @@ func TestMap(t *testing.T) {
 
 		s.When("the given key doesn't have a value", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				subject.Get(t).Del(key.Get(t))
+				subject.Get(t).Delete(key.Get(t))
 			})
 
 			s.And("init is not supplied or supplied as nil", func(s *testcase.Spec) {
@@ -979,7 +982,7 @@ func TestMap(t *testing.T) {
 		testcase.Race(
 			func() { m.Get(key) },
 			func() { m.Set(key, val) },
-			func() { m.Del(key) },
+			func() { m.Delete(key) },
 			func() { m.Lookup(key) },
 			func() { m.GetOrInit(key, func() int { return val }) },
 			func() { m.Keys() },

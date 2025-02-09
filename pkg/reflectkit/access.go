@@ -2,7 +2,6 @@ package reflectkit
 
 import (
 	"reflect"
-	"unsafe"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )
@@ -11,16 +10,11 @@ func toAccessible(rv reflect.Value) (reflect.Value, bool) {
 	if isAccessible(rv) {
 		return rv, true
 	}
-	if rv.CanAddr() {
-		if uv := reflect.NewAt(rv.Type(), rv.Addr().UnsafePointer()).Elem(); uv.CanInterface() {
-			return uv, true
-		}
-		if uv := reflect.NewAt(rv.Type(), unsafe.Pointer(rv.UnsafeAddr())); uv.CanInterface() {
-			return uv, true
-		}
-	}
 	if !rv.IsValid() {
 		return reflect.Value{}, false
+	}
+	if sf, ok := ToSettable(rv); ok {
+		return sf, true
 	}
 	if rv.CanUint() {
 		return reflect.ValueOf(rv.Uint()).Convert(rv.Type()), true

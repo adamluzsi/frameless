@@ -1,9 +1,9 @@
-package containers_test
+package datastruct_test
 
 import (
 	"testing"
 
-	"go.llib.dev/frameless/pkg/containers"
+	"go.llib.dev/frameless/pkg/datastruct"
 
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -12,7 +12,7 @@ import (
 func TestStack(t *testing.T) {
 	t.Run("on nil stack", func(t *testing.T) {
 		expected := random.New(random.CryptoSeed{}).Int()
-		var stack containers.Stack[int]
+		var stack datastruct.Stack[int]
 		_, ok := stack.Last()
 		assert.False(t, ok)
 		assert.True(t, stack.IsEmpty())
@@ -32,7 +32,7 @@ func TestStack(t *testing.T) {
 	})
 	t.Run("on empty stack", func(t *testing.T) {
 		expected := random.New(random.CryptoSeed{}).Int()
-		stack := containers.Stack[int]{}
+		stack := datastruct.Stack[int]{}
 		_, ok := stack.Last()
 		assert.False(t, ok)
 		assert.True(t, stack.IsEmpty())
@@ -56,7 +56,7 @@ func TestSet(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	t.Run("Add and Has", func(t *testing.T) {
 		var (
-			set      containers.Set[int]
+			set      datastruct.Set[int]
 			value    = rnd.Int()
 			othValue = random.Unique(rnd.Int, value)
 		)
@@ -72,7 +72,7 @@ func TestSet(t *testing.T) {
 
 	t.Run("MakeSet from slice", func(t *testing.T) {
 		values := []int{rnd.Int(), rnd.Int()}
-		set := containers.MakeSet(values...)
+		set := datastruct.MakeSet(values...)
 
 		for _, v := range values {
 			assert.True(t, set.Has(v), "Set should contain the value added from the slice")
@@ -81,7 +81,7 @@ func TestSet(t *testing.T) {
 
 	t.Run("ToSlice uniqueness", func(t *testing.T) {
 		values := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
-		set := containers.MakeSet(values...)
+		set := datastruct.MakeSet(values...)
 		slice := set.ToSlice()
 
 		// Create a temporary map to check for duplicates in the slice

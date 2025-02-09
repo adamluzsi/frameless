@@ -53,7 +53,7 @@ func register(WhoType, ToWhoType reflect.Type, conf func(r *_Record)) func() {
 		if existed {
 			registry.Set(key, prev) // restore previous
 		} else {
-			registry.Del(key)
+			registry.Delete(key)
 		}
 	}
 }

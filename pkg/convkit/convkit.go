@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
@@ -205,7 +206,7 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 	return ptr.Elem(), nil
 }
 
-var registry = map[reflect.Type]registryRecord{}
+var registry = datastruct.Map[reflect.Type, registryRecord]{}
 
 type registryRecord interface {
 	Parse(data string, ptr any) error
@@ -256,7 +257,7 @@ func IsRegistered[T any](i ...T) bool {
 	if typ == typeTime {
 		return true
 	}
-	_, ok := registry[typ]
+	_, ok := registry.Lookup(typ)
 	return ok
 }
 
@@ -279,8 +280,7 @@ func Register[T any](
 			return string(out), err
 		}
 	}
-	registry[typ] = rec
-	return func() { delete(registry, typ) }
+	return datastruct.MapAdd[reflect.Type, registryRecord](registry, typ, rec)
 }
 
 func ParseWith[T any](parser parseFunc[T]) Option {

@@ -227,7 +227,7 @@ func (m *Map[K, V]) lookup(key K) (V, bool) {
 	return v, ok
 }
 
-func (m *Map[K, V]) Del(key K) {
+func (m *Map[K, V]) Delete(key K) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.vs == nil {
