@@ -96,12 +96,12 @@ package main
 
 import (
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 )
 
 func main() {
 	var l logging.Logger
-	l.KeyFormatter = stringcase.ToKebab
+	l.KeyFormatter = stringkit.ToKebab
 }
 
 ```

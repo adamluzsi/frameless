@@ -12,7 +12,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/pointer"
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -22,7 +22,7 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-var defaultKeyFormatter = stringcase.ToSnake
+var defaultKeyFormatter = stringkit.ToSnake
 
 func ExampleField() {
 	var l logging.Logger

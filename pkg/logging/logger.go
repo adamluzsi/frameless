@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 )
@@ -89,7 +89,7 @@ func (l *Logger) getKeyFormatter() func(string) string {
 	if l.KeyFormatter != nil {
 		return l.KeyFormatter
 	}
-	return stringcase.ToSnake
+	return stringkit.ToSnake
 }
 
 func (l *Logger) log(ctx context.Context, level Level, msg string, ds []Detail) {

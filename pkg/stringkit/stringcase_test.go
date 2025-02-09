@@ -1,10 +1,10 @@
-package stringcase_test
+package stringkit_test
 
 import (
 	"strings"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/pp"
@@ -30,7 +30,7 @@ func TestToSnake(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "héllo_wörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "the_hello_world"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToSnake(tc.In), "original:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.ToSnake(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -45,7 +45,7 @@ func BenchmarkToSnake(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		stringcase.ToSnake(fixtures[i])
+		stringkit.ToSnake(fixtures[i])
 	}
 }
 
@@ -67,7 +67,7 @@ func TestIsSnake(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.IsSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -89,7 +89,7 @@ func TestIsScreamingSnake(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsScreamingSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.IsScreamingSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -112,7 +112,7 @@ func TestToScreamingSnake(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "HÉLLO_WÖRLD"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "THE_HELLO_WORLD"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToScreamingSnake(tc.In), "original:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.ToScreamingSnake(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -132,7 +132,7 @@ func TestIsPascal(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsPascal(tc.In), "input:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.IsPascal(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -155,7 +155,7 @@ func TestToPascal(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "HélloWörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "TheHelloWorld"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToPascal(tc.In), "original:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.ToPascal(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -176,7 +176,7 @@ func TestIsCamel(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsCamel(tc.In), "input:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.IsCamel(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -200,7 +200,7 @@ func TestToCamel(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "hélloWörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "theHelloWorld"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToCamel(tc.In), "original:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.ToCamel(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -215,7 +215,7 @@ func BenchmarkToPascal(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		stringcase.ToPascal(fixtures[i])
+		stringkit.ToPascal(fixtures[i])
 	}
 }
 
@@ -237,7 +237,7 @@ func TestIsKebab(t *testing.T) {
 		"title kebab case":                            {In: "Hello-World", Out: false},
 		"mixed case with number prefix + pascal case": {In: "1HelloWorld", Out: false},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.IsSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.IsSnake(tc.In), "input:", assert.Message(pp.Format(tc.In)))
 	})
 }
 
@@ -260,6 +260,6 @@ func TestToKebab(t *testing.T) {
 		"handles utf-8 characters":        {In: "Héllo Wörld", Out: "héllo-wörld"},
 		"mixture of Title and lower case": {In: "the Hello World", Out: "the-hello-world"},
 	}, func(t *testcase.T, tc TC) {
-		t.Must.Equal(tc.Out, stringcase.ToKebab(tc.In), "original:", assert.Message(pp.Format(tc.In)))
+		t.Must.Equal(tc.Out, stringkit.ToKebab(tc.In), "original:", assert.Message(pp.Format(tc.In)))
 	})
 }

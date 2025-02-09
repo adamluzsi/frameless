@@ -14,7 +14,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -45,7 +45,7 @@ func TestLogger_AsyncLogging(t *testing.T) {
 	defer l.AsyncLogging()()
 
 	l.MessageKey = "msg"
-	l.KeyFormatter = stringcase.ToPascal
+	l.KeyFormatter = stringkit.ToPascal
 	l.Info(context.Background(), "gsm", logging.Field("fieldKey", "value"))
 
 	asyncLoggingEventually.Assert(t, func(it assert.It) {

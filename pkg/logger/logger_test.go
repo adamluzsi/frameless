@@ -10,7 +10,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/pkg/teardown"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -18,7 +18,7 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-var defaultKeyFormatter = stringcase.ToSnake
+var defaultKeyFormatter = stringkit.ToSnake
 
 func ExampleDebug() {
 	ctx := context.Background()
@@ -148,7 +148,7 @@ func ExampleAsyncLogging() {
 func TestAsyncLogging(t *testing.T) {
 	out := logger.Stub(t, func(l *logging.Logger) {
 		l.MessageKey = "msg"
-		l.KeyFormatter = stringcase.ToPascal
+		l.KeyFormatter = stringkit.ToPascal
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())

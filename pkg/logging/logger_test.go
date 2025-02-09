@@ -14,7 +14,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/stringcase"
+	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -25,7 +25,7 @@ import (
 func Test_smoke(t *testing.T) {
 	ctx := context.Background()
 	l, buf := logging.Stub(t)
-	l.KeyFormatter = stringcase.ToPascal
+	l.KeyFormatter = stringkit.ToPascal
 
 	// you can add details to context, thus every logging call using this context
 	ctx = logging.ContextWith(ctx, logging.Fields{
@@ -200,11 +200,11 @@ func TestLogger_smoke(t *testing.T) {
 			ctx       = context.Background()
 			buf       = &bytes.Buffer{}
 			formatter = rnd.SliceElement([]func(string) string{
-				stringcase.ToPascal,
-				stringcase.ToCamel,
-				stringcase.ToKebab,
-				stringcase.ToSnake,
-				stringcase.ToScreamingSnake,
+				stringkit.ToPascal,
+				stringkit.ToCamel,
+				stringkit.ToKebab,
+				stringkit.ToSnake,
+				stringkit.ToScreamingSnake,
 			}).(func(string) string)
 			l = logging.Logger{
 				Out:          buf,
@@ -248,8 +248,8 @@ func TestLogger_smoke(t *testing.T) {
 			exampleKey2 = "HTTPFoo"
 		)
 		var (
-			expectedKey1 = stringcase.ToSnake(exampleKey1)
-			expectedKey2 = stringcase.ToSnake(exampleKey2)
+			expectedKey1 = stringkit.ToSnake(exampleKey1)
+			expectedKey2 = stringkit.ToSnake(exampleKey2)
 		)
 
 		l.Info(ctx, "msg", logging.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
@@ -372,7 +372,7 @@ func TestLogger_AsyncLogging_smoke(t *testing.T) {
 		Locker: &m,
 	}
 	l.MessageKey = "msg"
-	l.KeyFormatter = stringcase.ToPascal
+	l.KeyFormatter = stringkit.ToPascal
 	l.FlushTimeout = time.Millisecond
 	defer l.AsyncLogging()()
 
