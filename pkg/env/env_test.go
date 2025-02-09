@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/internal/osint"
+	"go.llib.dev/frameless/pkg/must"
 
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -923,5 +924,71 @@ func TestInitGlobal(t *testing.T) {
 		assert.NotEmpty(t, out)
 		assert.Contain(t, string(out), envKey)
 		assert.Contain(t, string(out), env.ErrMissingEnvironmentVariable.Error())
+	})
+}
+
+func TestLookupFieldEnvNames(t *testing.T) {
+	type X struct {
+		A string `env:"X_A"`
+		B string `env:"X_B,XB"`
+		C string
+	}
+
+	T := reflect.TypeOf((*X)(nil)).Elem()
+
+	names, ok := env.LookupFieldEnvNames(must.OK(T.FieldByName("A")))
+	assert.True(t, ok)
+	assert.ContainExactly(t, names, []string{"X_A"})
+
+	names, ok = env.LookupFieldEnvNames(must.OK(T.FieldByName("B")))
+	assert.True(t, ok)
+	assert.ContainExactly(t, names, []string{"X_B", "XB"})
+
+	names, ok = env.LookupFieldEnvNames(must.OK(T.FieldByName("C")))
+	assert.False(t, ok)
+	assert.Empty(t, names)
+
+	names, ok = env.LookupFieldEnvNames(reflect.StructField{})
+	assert.False(t, ok)
+	assert.Empty(t, names)
+}
+
+func TestReflectLoad_smoke(t *testing.T) {
+	type Example struct {
+		V string `env:"THE_ENV_KEY"`
+	}
+	t.Run("os env has the value", func(t *testing.T) {
+		testcase.SetEnv(t, envKey, "42")
+		var c Example
+		assert.NoError(t, env.ReflectLoad(reflect.ValueOf(&c)))
+		assert.NotEmpty(t, c)
+		assert.Equal(t, "42", c.V)
+	})
+	t.Run("os env doesn't have the value", func(t *testing.T) {
+		testcase.UnsetEnv(t, envKey)
+		var c Example
+		assert.NoError(t, env.ReflectLoad(reflect.ValueOf(&c)))
+		assert.Empty(t, c)
+	})
+}
+
+func TestReflectLoadField_smoke(t *testing.T) {
+	type Example struct {
+		V string `env:"THE_ENV_KEY"`
+	}
+	t.Run("os env has the value", func(t *testing.T) {
+		testcase.SetEnv(t, envKey, "42")
+		var c Example
+		strucT := reflect.ValueOf(&c).Elem()
+		assert.NoError(t, env.ReflectLoadField(strucT, strucT.Type().Field(0)))
+		assert.NotEmpty(t, c)
+		assert.Equal(t, c.V, "42")
+	})
+	t.Run("os env doesn't have the value", func(t *testing.T) {
+		testcase.UnsetEnv(t, envKey)
+		var c Example
+		strucT := reflect.ValueOf(&c).Elem()
+		assert.NoError(t, env.ReflectLoadField(strucT, strucT.Type().Field(0)))
+		assert.Empty(t, c.V)
 	})
 }
