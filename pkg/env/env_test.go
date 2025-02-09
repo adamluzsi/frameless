@@ -953,42 +953,39 @@ func TestLookupFieldEnvNames(t *testing.T) {
 	assert.Empty(t, names)
 }
 
-func TestReflectLoad_smoke(t *testing.T) {
+func TestReflectTryLoadField_smoke(t *testing.T) {
 	type Example struct {
-		V string `env:"THE_ENV_KEY"`
+		A string `env:"THE_ENV_KEY" enum:"foo,bar,baz,"`
+		B int    `env:"OTH_ENV_KEY"`
 	}
 	t.Run("os env has the value", func(t *testing.T) {
-		testcase.SetEnv(t, envKey, "42")
+		testcase.SetEnv(t, envKey, "foo")
 		var c Example
-		assert.NoError(t, env.ReflectLoad(reflect.ValueOf(&c)))
+		assert.NoError(t, env.ReflectTryLoad(reflect.ValueOf(&c)))
 		assert.NotEmpty(t, c)
-		assert.Equal(t, "42", c.V)
+		assert.Equal(t, c.A, "foo")
 	})
-	t.Run("os env doesn't have the value", func(t *testing.T) {
+	t.Run("have fields which's env value is not loaded", func(t *testing.T) {
 		testcase.UnsetEnv(t, envKey)
 		var c Example
-		assert.NoError(t, env.ReflectLoad(reflect.ValueOf(&c)))
-		assert.Empty(t, c)
+		assert.NoError(t, env.ReflectTryLoad(reflect.ValueOf(&c)))
+		assert.Empty(t, c.A)
 	})
-}
-
-func TestReflectLoadField_smoke(t *testing.T) {
-	type Example struct {
-		V string `env:"THE_ENV_KEY"`
-	}
-	t.Run("os env has the value", func(t *testing.T) {
-		testcase.SetEnv(t, envKey, "42")
-		var c Example
-		strucT := reflect.ValueOf(&c).Elem()
-		assert.NoError(t, env.ReflectLoadField(strucT, strucT.Type().Field(0)))
-		assert.NotEmpty(t, c)
-		assert.Equal(t, c.V, "42")
-	})
-	t.Run("os env doesn't have the value", func(t *testing.T) {
-		testcase.UnsetEnv(t, envKey)
-		var c Example
-		strucT := reflect.ValueOf(&c).Elem()
-		assert.NoError(t, env.ReflectLoadField(strucT, strucT.Type().Field(0)))
-		assert.Empty(t, c.V)
+	t.Run("have a field which env value is incorrect", func(t *testing.T) {
+		t.Run("type", func(t *testing.T) {
+			testcase.SetEnv(t, othEnvKey, "foo")
+			var c Example
+			ptr := reflect.ValueOf(&c)
+			err := env.ReflectTryLoad(ptr)
+			assert.ErrorIs(t, env.ErrInvalidValue, err)
+			assert.Empty(t, c.B)
+		})
+		t.Run("enum", func(t *testing.T) {
+			testcase.SetEnv(t, envKey, "fo")
+			var c Example
+			ptr := reflect.ValueOf(&c)
+			err := env.ReflectTryLoad(ptr)
+			assert.ErrorIs(t, enum.ErrInvalid, err)
+		})
 	})
 }
