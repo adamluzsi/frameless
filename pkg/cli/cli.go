@@ -130,37 +130,49 @@ func (m *Mux) Sub(pattern string) *Mux {
 }
 
 func (m Mux) ServeCLI(w Response, r *Request) {
-	if m.m == nil {
-		return
-	}
 	if r == nil {
 		w.ExitCode(1)
 		return
 	}
 	if len(r.Args) == 0 {
 		w.ExitCode(2)
-		m.helpUsage(w)
-		m.helpLineBreak(w, 1)
-		m.helpCommands(w)
+		o := errOut(w)
+		m.helpUsage(o)
+		m.helpLineBreak(o, 1)
+		m.helpCommands(o)
 		return
 	}
 
 	name, ok := slicekit.Shift(&r.Args)
 	if !ok {
 		w.ExitCode(2)
-		m.helpUsage(w)
-		m.helpLineBreak(w, 1)
-		m.helpCommands(w)
+		o := errOut(w)
+		m.helpUsage(o)
+		m.helpLineBreak(o, 1)
+		m.helpCommands(o)
 		return
 	}
 
 	entry, ok := m.entries()[name]
 	if !ok {
-		w.ExitCode(2)
-		m.helpUsage(w)
-		m.helpLineBreak(w, 1)
-		printErrLn(w, "command is unknown: "+name, "")
-		m.helpCommands(w)
+		isHelp := isHelpFlag(name)
+		if !isHelp {
+			w.ExitCode(2)
+		}
+
+		var o io.Writer = w
+		if !isHelp {
+			o = errOut(w)
+		}
+
+		m.helpUsage(o)
+		m.helpLineBreak(o, 1)
+		m.helpCommands(o)
+
+		if !isHelp {
+			printfln(o, "command is unknown: "+name, "")
+		}
+
 		return
 	}
 
@@ -174,17 +186,35 @@ func (m Mux) ServeCLI(w Response, r *Request) {
 
 	if entry.Handler == nil {
 		w.ExitCode(2)
-		m.helpUsage(w)
-		m.helpLineBreak(w, 1)
-		m.helpCommands(w)
+		o := errOut(w)
+		m.helpUsage(o)
+		m.helpLineBreak(o, 1)
+		m.helpCommands(o)
 	}
 
 	if err := m.serveCLI(entry, w, r); err != nil {
-		w.ExitCode(ExitCodeBadRequest)
-		helpUsageOf(w, entry.Handler, entry.meta, m.getPath()+" "+name)
-		m.helpLineBreak(w, 1)
-		printErrLn(w, err.Error())
+		isHelp := errors.Is(err, flag.ErrHelp)
+
+		var o io.Writer = w
+		if !isHelp {
+			o = errOut(w)
+		}
+
+		helpUsageOf(o, entry.Handler, entry.meta, m.getPath()+" "+name)
+		m.helpLineBreak(o, 1)
+
+		if !isHelp {
+			w.ExitCode(ExitCodeBadRequest)
+			printfln(o, err.Error())
+		}
 	}
+}
+
+func isHelpFlag(v string) bool {
+	fs := flag.NewFlagSet("", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	err := fs.Parse([]string{v})
+	return errors.Is(err, flag.ErrHelp)
 }
 
 func (m *Mux) entryFor(path []string) *muxEntry {
@@ -250,9 +280,10 @@ func Main(ctx context.Context, h Handler) {
 			if usageErr != nil {
 				panic(usageErr.Error())
 			}
-			printErrLn(w, usage)
-			printErrLn(w)
-			printErrLn(w, err.Error())
+			o := errOut(w)
+			printfln(o, usage)
+			printfln(o)
+			printfln(o, err.Error())
 			osint.Exit(ExitCodeBadRequest)
 		}
 		h = handler
@@ -262,17 +293,17 @@ func Main(ctx context.Context, h Handler) {
 	osint.Exit(w.Code)
 }
 
-func ConfigureHandler(h Handler, path string, r *Request) (Handler, error) {
+func ConfigureHandler[H Handler](h H, path string, r *Request) (zero H, _ error) {
 	sm, ok, err := structMetaFor(h)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	if !ok {
 		return h, nil
 	}
-	handler, err := configure(h, sm, r)
+	handler, err := configure[H](h, sm, r)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	return handler, nil
 }
@@ -297,11 +328,15 @@ func Usage(h Handler, pattern string) (string, error) {
 	return helpCreateUsage(h, meta, pattern), nil
 }
 
-func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
+func configure[H Handler](h H, meta structMeta, r *Request) (H, error) {
 	ptr := reflect.New(reflect.TypeOf(h))
 	handler := reflect.ValueOf(h)
 	ptr.Elem().Set(handler)
 	handler = ptr.Elem()
+	if !handler.CanInterface() {
+		return h, nil
+	}
+
 	val := reflectkit.BaseValue(ptr)
 
 	var flagSetOutput bytes.Buffer
@@ -312,13 +347,12 @@ func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 	var callbacks []func() error
 
 	if err := env.ReflectTryLoad(val.Addr()); err != nil {
-		return nil, err
+		var zero H
+		return zero, err
 	}
 
 	for _, f := range meta.Flags {
-		f := f // scope variable
-		cb := f.mapToFlagSet(flagSet, val)
-		callbacks = append(callbacks, cb)
+		callbacks = append(callbacks, f.mapToFlagSet(flagSet, val))
 	}
 
 	err := flagSet.Parse(r.Args)
@@ -337,11 +371,13 @@ func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 	var indexsToPop []int
 	for _, a := range meta.Args {
 		raw, ok := slicekit.Lookup(r.Args, a.Index)
+
 		if err := a.Setter(val, raw, ok); err != nil {
 			return h, err
 		}
 		indexsToPop = append(indexsToPop, a.Index)
 	}
+
 	if 0 < len(indexsToPop) {
 		sort.Sort(sort.Reverse(sort.IntSlice(indexsToPop)))
 
@@ -350,9 +386,7 @@ func configure(h Handler, meta structMeta, r *Request) (Handler, error) {
 		}
 	}
 
-	h = handler.Interface().(Handler) // dependency inject
-
-	return h, nil
+	return handler.Interface().(H), nil
 }
 
 func (m *Mux) entries() map[string]*muxEntry {
@@ -379,20 +413,18 @@ func execName() string {
 	return ""
 }
 
-func (m Mux) helpLineBreak(w Response, n int) {
-	for i := 0; i < n; i++ {
-		errOut(w).Write([]byte(lineSeparator))
-	}
+func (m Mux) helpLineBreak(w io.Writer, n int) {
+	w.Write([]byte(strings.Repeat(lineSeparator, n)))
 }
 
-func (m Mux) helpUsage(w Response) {
+func (m Mux) helpUsage(w io.Writer) {
 	var msg []string
 	msg = append(msg, fmt.Sprintf("Usage: %s", m.getPath()))
-	printErrLn(w, msg...)
+	printfln(w, msg...)
 }
 
-func helpUsageOf(w Response, h Handler, meta *structMeta, path string) {
-	printErrLn(w, helpCreateUsage(h, meta, path))
+func helpUsageOf(w io.Writer, h Handler, meta *structMeta, path string) {
+	printfln(w, helpCreateUsage(h, meta, path))
 }
 
 func helpCreateUsage(h Handler, meta *structMeta, path string) string {
@@ -431,18 +463,19 @@ func helpCreateUsage(h Handler, meta *structMeta, path string) string {
 				if 0 < len(flag.Desc) {
 					line += ": " + flag.Desc
 				}
+
+				if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.StructField); ok && 0 < len(osEnvVarNames) {
+					line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
+				}
+
 				if 0 < len(flag.Default) {
-					line += fmt.Sprintf(" (Default: %s)", flag.Default)
+					line += fmt.Sprintf(" (default: %s)", flag.Default)
 				}
 
 				lines = append(lines, line)
 
 				for i := 1; i < len(flag.Names); i++ {
 					lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
-				}
-
-				if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.StructField); ok && 0 < len(osEnvVarNames) {
-					lines = append(lines, " or as env variables: "+strings.Join(osEnvVarNames, ", "))
 				}
 			}
 		}
@@ -468,7 +501,7 @@ func helpCreateUsage(h Handler, meta *structMeta, path string) string {
 	return strings.Join(lines, lineSeparator)
 }
 
-func (m Mux) helpCommands(w Response) {
+func (m Mux) helpCommands(w io.Writer) {
 	var msg []string
 
 	var cmds []string
@@ -489,7 +522,7 @@ func (m Mux) helpCommands(w Response) {
 		msg = append(msg, cmds...)
 	}
 
-	printErrLn(w, msg...)
+	printfln(w, msg...)
 }
 
 var lineSeparator = func() string {
@@ -501,8 +534,8 @@ var lineSeparator = func() string {
 	}
 }()
 
-func printErrLn(w Response, msg ...string) {
-	errOut(w).Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
+func printfln(w io.Writer, msg ...string) {
+	w.Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
 }
 
 func errOut(w Response) io.Writer {
@@ -555,6 +588,10 @@ func structMetaFor(h Handler) (structMeta, bool, error) {
 
 	for i := 0; i < fieldNum; i++ {
 		sf := T.Field(i)
+
+		if sf.Anonymous {
+			continue
+		}
 
 		sFlag, ok, err := scanForFlag(sf)
 		if err != nil {
@@ -744,6 +781,20 @@ func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) 
 	name := strings.Join(sf.Names, "/")
 	defer errorkit.Recover(&rErr)
 	field := Struct.FieldByIndex(sf.StructField.Index)
+
+	field, ok := reflectkit.ToSettable(field)
+	if !ok {
+		if sf.StructField.Anonymous {
+			return nil
+		}
+		const ErrNotSettableField errorkit.Error = "ErrNotSettableField"
+		return ErrNotSettableField.F("%s field is not settable in %s", sf.StructField.Name, Struct.Type().String())
+	}
+
+	if !value.IsSet && sf.HasDefault { // use default value
+		field.Set(sf.DefVal)
+		return nil
+	}
 	if !value.IsSet {
 		if !reflectkit.IsZero(field) {
 			return nil
