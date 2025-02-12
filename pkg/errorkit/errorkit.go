@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const ImplementationError Error = "ImplementationError"
+
 // Finish is a helper function that can be used from a deferred context.
 //
 // Usage:

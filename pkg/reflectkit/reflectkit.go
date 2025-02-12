@@ -8,7 +8,12 @@ import (
 	"unsafe"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/synckit"
 )
+
+const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
+
+const ErrInvalid errorkit.Error = "ErrInvalid"
 
 func Cast[T any](v any) (T, bool) {
 	var (
@@ -95,6 +100,9 @@ func FullyQualifiedName(v any) string {
 	if pkgPath := typ.PkgPath(); pkgPath != "" {
 		name = fmt.Sprintf("%q.%s", pkgPath, name)
 	}
+	if depth == 0 {
+		return name
+	}
 	return strings.Repeat("*", depth) + name
 }
 
@@ -170,7 +178,7 @@ var anyInterface = reflect.TypeOf((*any)(nil)).Elem()
 
 func TypeOf[T any](i ...T) reflect.Type {
 	var typ = reflect.TypeOf((*T)(nil)).Elem()
-	if typ == anyInterface && 0 < len(i) {
+	if 0 < len(i) && typ == anyInterface {
 		for _, v := range i {
 			if typeOfV := reflect.TypeOf(v); typeOfV != nil {
 				return typeOfV
@@ -187,27 +195,14 @@ func ToValue(v any) reflect.Value {
 	return reflect.ValueOf(v)
 }
 
-const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
-
-func LookupField[FieldID StructFieldID](rStruct reflect.Value, i FieldID) (reflect.StructField, reflect.Value, bool) {
+func LookupField[FieldID LookupFieldID](rStruct reflect.Value, i FieldID) (reflect.StructField, reflect.Value, bool) {
 	if rStruct.Kind() != reflect.Struct || !rStruct.IsValid() {
 		return reflect.StructField{}, reflect.Value{}, false
 	}
 
-	var structField reflect.StructField
-	switch i := any(i).(type) {
-	case reflect.StructField:
-		structField = i
-
-	case int:
-		structField = rStruct.Type().Field(i)
-
-	case string:
-		sf, ok := rStruct.Type().FieldByName(i)
-		if !ok {
-			return reflect.StructField{}, reflect.Value{}, false
-		}
-		structField = sf
+	structField, ok := toStructField[FieldID](rStruct.Type(), i)
+	if !ok {
+		return reflect.StructField{}, reflect.Value{}, false
 	}
 
 	field := rStruct.FieldByIndex(structField.Index)
@@ -222,7 +217,25 @@ func LookupField[FieldID StructFieldID](rStruct reflect.Value, i FieldID) (refle
 	return structField, field, field.IsValid()
 }
 
-type StructFieldID interface {
+func toStructField[FieldID LookupFieldID](rStructType reflect.Type, i FieldID) (reflect.StructField, bool) {
+	switch i := any(i).(type) {
+	case reflect.StructField:
+		return i, isStructFieldOK(i)
+	case int:
+		sf := rStructType.Field(i)
+		return sf, isStructFieldOK(sf)
+	case string:
+		return rStructType.FieldByName(i)
+	default:
+		panic("unknown reflectkit.LookupFieldID type")
+	}
+}
+
+func isStructFieldOK(sf reflect.StructField) bool {
+	return sf.Name != "" && 0 < len(sf.Index)
+}
+
+type LookupFieldID interface {
 	/* StructField */ reflect.StructField | /*index*/ int | /* name */ string
 }
 
@@ -239,4 +252,139 @@ func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
 		}
 	}
 	return reflect.Value{}, false
+}
+
+type StructFieldID struct {
+	Path string
+	Name string
+	Type string
+	Tag  string
+}
+
+func ToStructFieldID[FieldID LookupFieldID](rStructType reflect.Type, id FieldID) StructFieldID {
+	sf, ok := toStructField[FieldID](rStructType, id)
+	if !ok {
+		panic("implementation error, struct value and field id is not related")
+	}
+	var fieldType string
+	if sf.Type != nil {
+		fieldType = sf.Type.String()
+	}
+	return StructFieldID{
+		Path: FullyQualifiedName(rStructType),
+		Name: sf.Name,
+		Type: fieldType,
+		Tag:  string(sf.Tag),
+	}
+}
+
+type TagHandler[T any] struct {
+	Name  string
+	Parse func(sf reflect.StructField, tag string) (T, error)
+	Use   func(sf reflect.StructField, field reflect.Value, v T) error
+
+	cache synckit.Map[tagHandlerCacheKey, T]
+}
+
+func (h *TagHandler[T]) Apply(rStuct reflect.Value) error {
+	if !rStuct.IsValid() {
+		return errorkit.ImplementationError.F("valid struct value was expected")
+	}
+	if rStuct.Kind() != reflect.Struct {
+		return errorkit.ImplementationError.F("%s is not a struct type", rStuct.Type().String())
+	}
+	if h.Parse == nil {
+		return errorkit.ImplementationError.F("missing %T.Parse", h)
+	}
+	if h.Use == nil {
+		return errorkit.ImplementationError.F("missing %T.Use", h)
+	}
+
+	var (
+		rStuctType = rStuct.Type()
+		NumField   = rStuctType.NumField()
+	)
+	for i := 0; i < NumField; i++ {
+		sf := rStuctType.Field(i)
+
+		tag, ok := sf.Tag.Lookup(h.Name)
+		if !ok {
+			continue
+		}
+
+		v, err := h.parse(sf, tag)
+		if err != nil {
+			return fmt.Errorf("%T.Parse failed: %w", h, err)
+		}
+
+		if err := h.Use(sf, rStuct.Field(i), v); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *TagHandler[T]) ApplyToStructField(sf reflect.StructField, field reflect.Value) error {
+	if !h.isStructFieldOK(sf) {
+		return errorkit.ImplementationError.F("invalid struct field type description received")
+	}
+	if !field.IsValid() {
+		return errorkit.ImplementationError.F("invalid struct field value received")
+	}
+	if h.Parse == nil {
+		return errorkit.ImplementationError.F("missing %T.Parse", h)
+	}
+	if h.Use == nil {
+		return errorkit.ImplementationError.F("missing %T.Use", h)
+	}
+
+	tag, ok := sf.Tag.Lookup(h.Name)
+	if !ok {
+		return nil
+	}
+
+	v, err := h.parse(sf, tag)
+	if err != nil {
+		return fmt.Errorf("%T.Parse failed: %w", h, err)
+	}
+
+	if err := h.Use(sf, field, v); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (h *TagHandler[T]) parse(sf reflect.StructField, tag string) (T, error) {
+	var tagValueType = TypeOf[T]()
+	if IsMutableType(tagValueType) {
+		return h.Parse(sf, tag)
+	}
+	return h.cache.GetOrInitErr(h.cacheKey(sf, tagValueType), func() (T, error) {
+		// we only need to parse once the tag, not more
+		// since the tag itself is a constant value
+		// that only change when the source code is changed.
+		return h.Parse(sf, tag)
+	})
+}
+
+func (h *TagHandler[T]) cacheKey(sf reflect.StructField, tagValueType reflect.Type) tagHandlerCacheKey {
+	return tagHandlerCacheKey{
+		TagValueType:    FullyQualifiedName(tagValueType),
+		StructFieldName: sf.Name,
+		StructFieldType: FullyQualifiedName(sf.Type),
+		StructFieldTag:  sf.Tag,
+	}
+}
+
+type tagHandlerCacheKey struct {
+	TagValueType    string
+	StructFieldName string
+	StructFieldType string
+	StructFieldTag  reflect.StructTag
+}
+
+func (h *TagHandler[T]) isStructFieldOK(sf reflect.StructField) bool {
+	return sf.Type != nil && sf.Index != nil && sf.Name != ""
 }

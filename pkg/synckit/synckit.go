@@ -266,6 +266,39 @@ func (m *Map[K, V]) GetOrInit(key K, init func() V) V {
 	}
 }
 
+func (m *Map[K, V]) GetOrInitErr(key K, init func() (V, error)) (V, error) {
+	{ // READ
+		m.mu.RLock()
+		if m.vs != nil {
+			if v, ok := m.vs[key]; ok {
+				m.mu.RUnlock()
+				return v, nil
+			}
+		}
+		m.mu.RUnlock()
+	}
+	{ // WRITE
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.vs == nil {
+			m.vs = map[K]V{}
+		}
+		if v, ok := m.vs[key]; ok {
+			return v, nil
+		}
+		if init == nil {
+			var zero V
+			return zero, nil
+		}
+		v, err := init()
+		if err != nil { // no cache
+			return v, err
+		}
+		m.vs[key] = v
+		return v, nil
+	}
+}
+
 func (m *Map[K, V]) Len() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
