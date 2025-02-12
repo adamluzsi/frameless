@@ -28,7 +28,7 @@ func Example() {
 	sub := mux.Sub("sub")
 	sub.Handle("subcmd", SubCommand{})
 
-	cli.Main(context.Background(), mux)
+	cli.Main(context.Background(), &mux)
 }
 
 type FooCommandArgs struct {
@@ -688,7 +688,6 @@ func TestMux(t *testing.T) {
 			})
 
 			s.When("commands are registered", func(s *testcase.Spec) {
-				return
 				mux.Let(s, func(t *testcase.T) *cli.Mux {
 					m := mux.Super(t)
 					m.Handle("e2e", CommandE2E{})

@@ -17,7 +17,7 @@ func main() {
 	sub := m.Sub("sub")
 	sub.Handle("bar", BarCommand{})
 
-	cli.Main(context.Background(), m)
+	cli.Main(context.Background(), &m)
 }
 
 type TestCommand struct {

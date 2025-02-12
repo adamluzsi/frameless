@@ -129,7 +129,7 @@ func (m *Mux) Sub(pattern string) *Mux {
 	return e.Mux
 }
 
-func (m Mux) ServeCLI(w Response, r *Request) {
+func (m *Mux) ServeCLI(w Response, r *Request) {
 	if r == nil {
 		w.ExitCode(1)
 		return
@@ -270,21 +270,35 @@ func Main(ctx context.Context, h Handler) {
 	w := &stdResponse{}
 
 	logger.Configure(func(l *logging.Logger) {
-		l.Out = os.Stderr
+		if l.Out == nil {
+			l.Out = os.Stderr
+		}
 	})
 
 	if _, ok := h.(Multiplexer); !ok {
 		handler, err := ConfigureHandler(h, execName(), r)
 		if err != nil {
+			isHelp := errors.Is(err, flag.ErrHelp)
+
 			usage, usageErr := Usage(h, execName())
 			if usageErr != nil {
 				panic(usageErr.Error())
 			}
-			o := errOut(w)
+			var o io.Writer = w
+			if !isHelp {
+				o = errOut(w)
+			}
 			printfln(o, usage)
 			printfln(o)
-			printfln(o, err.Error())
-			osint.Exit(ExitCodeBadRequest)
+			if !isHelp {
+				printfln(o, err.Error())
+			}
+
+			var exitCode = ExitCodeBadRequest
+			if isHelp {
+				exitCode = ExitCodeOK
+			}
+			osint.Exit(exitCode)
 		}
 		h = handler
 	}
