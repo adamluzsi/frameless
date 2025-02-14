@@ -283,9 +283,9 @@ type TagHandler[T any] struct {
 	Parse func(sf reflect.StructField, tagValue string) (T, error)
 	Use   func(sf reflect.StructField, field reflect.Value, v T) error
 
-	// CacheMutable will force the TagHandler's parse cache, to cache mutable values as well.
+	// ForceCache will force the TagHandler's parse cache, to cache mutable values as well.
 	// This is ideal when you want to have a global
-	CacheMutable bool
+	ForceCache bool
 
 	cache synckit.Map[tagHandlerCacheKey, T]
 }
@@ -297,12 +297,6 @@ func (h *TagHandler[T]) Apply(rStuct reflect.Value) error {
 	if rStuct.Kind() != reflect.Struct {
 		return errorkit.ImplementationError.F("%s is not a struct type", rStuct.Type().String())
 	}
-	if h.Parse == nil {
-		return errorkit.ImplementationError.F("missing %T.Parse", h)
-	}
-	if h.Use == nil {
-		return errorkit.ImplementationError.F("missing %T.Use", h)
-	}
 
 	var (
 		rStuctType = rStuct.Type()
@@ -310,18 +304,9 @@ func (h *TagHandler[T]) Apply(rStuct reflect.Value) error {
 	)
 	for i := 0; i < NumField; i++ {
 		sf := rStuctType.Field(i)
+		field := rStuct.Field(i)
 
-		tag, ok := sf.Tag.Lookup(h.Name)
-		if !ok {
-			continue
-		}
-
-		v, err := h.parse(sf, tag)
-		if err != nil {
-			return fmt.Errorf("%T.Parse failed: %w", h, err)
-		}
-
-		if err := h.Use(sf, rStuct.Field(i), v); err != nil {
+		if err := h.ApplyToStructField(sf, field); err != nil {
 			return err
 		}
 	}
@@ -362,7 +347,7 @@ func (h *TagHandler[T]) ApplyToStructField(sf reflect.StructField, field reflect
 
 func (h *TagHandler[T]) parse(sf reflect.StructField, tagValue string) (T, error) {
 	var tagValueType = TypeOf[T]()
-	if IsMutableType(tagValueType) && !h.CacheMutable {
+	if !h.ForceCache && IsMutableType(tagValueType) {
 		return h.Parse(sf, tagValue)
 	}
 	key := tagHandlerCacheKey{

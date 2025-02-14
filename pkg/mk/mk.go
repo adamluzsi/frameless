@@ -83,9 +83,10 @@ var defaultTag = reflectkit.TagHandler[defaultValue]{
 
 		return
 	},
-	Use: func(sf reflect.StructField, field, v defaultValue) error {
+	Use: func(sf reflect.StructField, field reflect.Value, v defaultValue) error {
 		return nil
 	},
+	ForceCache: true,
 }
 
 const tagNameDefault = "default"

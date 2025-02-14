@@ -1413,7 +1413,7 @@ func TestTagHandler_Apply(t *testing.T) {
 				return nil
 			},
 
-			CacheMutable: true,
+			ForceCache: true,
 		}
 
 		n := rnd.Repeat(3, 7, func() {
@@ -1699,6 +1699,46 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
 
 		assert.Equal(t, parseCount, n, "because field should be parsed on each run to make it deterministic if Use mutates the value")
+		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("cache for mutable types when ForceCache enabled", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		type S struct{ V int }
+
+		handler := reflectkit.TagHandler[*S]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+				parseCount++
+				return &S{}, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v *S) error {
+				useCount++
+				return nil
+			},
+
+			ForceCache: true,
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.ApplyToStructField(sf, field))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 1)
 		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
 	})
 
