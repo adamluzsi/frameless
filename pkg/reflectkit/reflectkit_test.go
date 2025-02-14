@@ -1140,43 +1140,6 @@ func TestToSettable(t *testing.T) {
 	})
 }
 
-func TestToStructFieldID(t *testing.T) {
-	var getStructField = func(tb testing.TB, val any, name string) (reflect.Type, reflect.StructField) {
-		tb.Helper()
-		rv := reflectkit.ToValue(val)
-		sf, _, ok := reflectkit.LookupField(rv, name)
-		assert.True(t, ok)
-		return rv.Type(), sf
-	}
-
-	t.Run("with data struct owned by the module space", func(t *testing.T) {
-		got := reflectkit.ToStructFieldID(getStructField(t, testent.Foo{}, "ID"))
-
-		assert.Equal(t, got, reflectkit.StructFieldID{
-			Name: "ID",
-			Type: "testent.FooID",
-			Path: `"go.llib.dev/frameless/spechelper/testent".Foo`,
-			Tag:  `ext:"ID"`,
-		})
-	})
-
-	t.Run("with data struct outside of the module space", func(t *testing.T) {
-		got := reflectkit.ToStructFieldID(getStructField(t, testcase.T{}, "TB"))
-
-		assert.Equal(t, got, reflectkit.StructFieldID{
-			Name: "TB",
-			Type: "testing.TB",
-			Path: `"go.llib.dev/testcase".T`,
-		})
-	})
-
-	t.Run("unrelated/incorrect struct field's id requeste", func(t *testing.T) {
-		assert.Panic(t, func() {
-			reflectkit.ToStructFieldID(reflectkit.TypeOf[testent.Foo](), "FooBarBaz")
-		})
-	})
-}
-
 func TestTagHandler_smoke(t *testing.T) {
 	type T struct {
 		V string `default:"foo"`
@@ -1323,6 +1286,39 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		ts := TestStruct{}
 		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ts)), expErr)
+	})
+
+	t.Run("HandleUntagged", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct{ V string }
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				assert.Empty(t, tag)
+				return "foo", nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				assert.Equal(t, "foo", v)
+				return nil
+			},
+			HandleUntagged: true,
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(T{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 1)
+		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
 	})
 
 	t.Run("parse caching", func(t *testing.T) {

@@ -254,40 +254,15 @@ func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
 	return reflect.Value{}, false
 }
 
-type StructFieldID struct {
-	Path string
-	Name string
-	Type string
-	Tag  string
-}
-
-func ToStructFieldID[FieldID LookupFieldID](rStructType reflect.Type, id FieldID) StructFieldID {
-	sf, ok := toStructField[FieldID](rStructType, id)
-	if !ok {
-		panic("implementation error, struct value and field id is not related")
-	}
-	var fieldType string
-	if sf.Type != nil {
-		fieldType = sf.Type.String()
-	}
-	return StructFieldID{
-		Path: FullyQualifiedName(rStructType),
-		Name: sf.Name,
-		Type: fieldType,
-		Tag:  string(sf.Tag),
-	}
-}
-
 type TagHandler[T any] struct {
 	Name  string
 	Parse func(sf reflect.StructField, tagValue string) (T, error)
 	Use   func(sf reflect.StructField, field reflect.Value, v T) error
-
-	// ForceCache will force the TagHandler's parse cache, to cache mutable values as well.
-	// This is ideal when you want to have a global
-	ForceCache bool
-
 	cache synckit.Map[tagHandlerCacheKey, T]
+	// ForceCache will force the TagHandler to cache the parse results, regardless if the value is mutable or not.
+	ForceCache bool
+	// HandleUntagged will force the Handle functions to call Parse and Use even on fields where tag is empty.
+	HandleUntagged bool
 }
 
 func (h *TagHandler[T]) HandleStruct(rStuct reflect.Value) error {
@@ -331,7 +306,7 @@ func (h *TagHandler[T]) HandleStructField(sf reflect.StructField, field reflect.
 
 func (h *TagHandler[T]) handleStructField(sf reflect.StructField, field reflect.Value) error {
 	tag, ok := sf.Tag.Lookup(h.Name)
-	if !ok {
+	if !ok && !h.HandleUntagged {
 		return nil
 	}
 
