@@ -1325,7 +1325,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		assert.ErrorIs(t, handler.Apply(reflect.ValueOf(ts)), expErr)
 	})
 
-	t.Run("cache for immutable types", func(t *testing.T) {
+	t.Run("parse caching", func(t *testing.T) {
 		var (
 			parseCount int
 			useCount   int
@@ -1358,6 +1358,74 @@ func TestTagHandler_Apply(t *testing.T) {
 		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
 	})
 
+	t.Run("by default no caching for mutable tag value types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				return tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				return nil
+			},
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.Apply(reflect.ValueOf(T{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, n*2, "two, because each field's tag is parsed once")
+		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("forced caching for mutable tag value types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				return tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				return nil
+			},
+
+			CacheMutable: true,
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.Apply(reflect.ValueOf(T{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, n, "two, because each field's tag is parsed once")
+		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
+	})
+
 	t.Run("cache for mutable types", func(t *testing.T) {
 		var (
 			parseCount int
@@ -1366,7 +1434,7 @@ func TestTagHandler_Apply(t *testing.T) {
 
 		type TestStruct struct {
 			Field1 string `testtag:"value"`
-			Field2 string `testtag:"value"`
+			Field2 int    `testtag:"value"`
 		}
 
 		type S struct {
@@ -1651,5 +1719,92 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		}, func() {
 			handler.Apply(reflect.ValueOf(T{}))
 		})
+	})
+}
+
+func TestClone(t *testing.T) {
+	t.Run("Clone nil value", func(t *testing.T) {
+		var nilVal reflect.Value
+		cloned := reflectkit.Clone(nilVal)
+		assert.False(t, cloned.IsValid())
+	})
+
+	t.Run("Clone integer", func(t *testing.T) {
+		{
+			val := reflect.ValueOf(int(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int](t, 42, int(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int8(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int8](t, 42, int8(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int16(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int16](t, 42, int16(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int32(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int32](t, 42, int32(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int64(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int64](t, 42, int64(cloned.Int()))
+		}
+	})
+
+	t.Run("Clone struct", func(t *testing.T) {
+		type sample struct {
+			A int
+			B string
+		}
+		val := reflect.ValueOf(sample{A: 10, B: "test"})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		cloned.FieldByName("B").Set(reflect.ValueOf("foo"))
+		assert.Equal(t, val.FieldByName("B").String(), "test")
+	})
+
+	t.Run("Clone slice and mutate copy", func(t *testing.T) {
+		val := reflect.ValueOf([]int{1, 2, 3})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		cloned.Index(0).SetInt(99)
+		assert.Equal(t, 1, val.Index(0).Int())
+		assert.NotEqual(t, 99, val.Index(0).Int())
+	})
+
+	t.Run("Clone array and mutate copy", func(t *testing.T) {
+		val := reflect.ValueOf([3]int{1, 2, 3})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		assert.Equal(t, 1, val.Index(0).Int())
+		assert.NotEqual(t, 99, val.Index(0).Int())
+	})
+
+	t.Run("Clone map and mutate copy", func(t *testing.T) {
+		val := reflect.ValueOf(map[string]int{"a": 1, "b": 2})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		cloned.SetMapIndex(reflect.ValueOf("a"), reflect.ValueOf(99))
+		assert.NotEqual(t, 99, val.MapIndex(reflect.ValueOf("a")).Int())
+	})
+
+	t.Run("Clone struct with nested values", func(t *testing.T) {
+		type nested struct {
+			X int
+		}
+		type sample struct {
+			A nested
+			B string
+		}
+		val := reflect.ValueOf(sample{A: nested{X: 42}, B: "test"})
+		cloned := reflectkit.Clone(val)
+		cloned.FieldByName("A").FieldByName("X").SetInt(99)
+		assert.NotEqual(t, 99, val.FieldByName("A").FieldByName("X").Int())
 	})
 }

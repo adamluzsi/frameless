@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"go.llib.dev/frameless/pkg/convkit"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/synckit"
 )
@@ -59,6 +60,32 @@ func initStructField(ptr reflect.Value) {
 			}
 		}
 	}
+}
+
+type defaultValue struct {
+	IsMutable bool
+	Value     reflect.Value
+	Raw       string
+}
+
+var defaultTag = reflectkit.TagHandler[defaultValue]{
+	Name: "default",
+	Parse: func(sf reflect.StructField, tag string) (defaultValue, error) {
+		val, err := convkit.ParseReflect(sf.Type, tag)
+		if err != nil {
+			const format = "%s field's default value is not a valid %s type: %w"
+			return defaultValue{}, errorkit.ImplementationError.F(format, sf.Name, sf.Type, err)
+		}
+
+		var defVal defaultValue
+		defVal.Value = val
+		defVal.IsMutable = reflectkit.IsMutableType(sf.Type)
+
+		return
+	},
+	Use: func(sf reflect.StructField, field, v defaultValue) error {
+		return nil
+	},
 }
 
 const tagNameDefault = "default"

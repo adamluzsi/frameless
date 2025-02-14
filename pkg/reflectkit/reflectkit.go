@@ -280,8 +280,12 @@ func ToStructFieldID[FieldID LookupFieldID](rStructType reflect.Type, id FieldID
 
 type TagHandler[T any] struct {
 	Name  string
-	Parse func(sf reflect.StructField, tag string) (T, error)
+	Parse func(sf reflect.StructField, tagValue string) (T, error)
 	Use   func(sf reflect.StructField, field reflect.Value, v T) error
+
+	// CacheMutable will force the TagHandler's parse cache, to cache mutable values as well.
+	// This is ideal when you want to have a global
+	CacheMutable bool
 
 	cache synckit.Map[tagHandlerCacheKey, T]
 }
@@ -356,26 +360,23 @@ func (h *TagHandler[T]) ApplyToStructField(sf reflect.StructField, field reflect
 	return nil
 }
 
-func (h *TagHandler[T]) parse(sf reflect.StructField, tag string) (T, error) {
+func (h *TagHandler[T]) parse(sf reflect.StructField, tagValue string) (T, error) {
 	var tagValueType = TypeOf[T]()
-	if IsMutableType(tagValueType) {
-		return h.Parse(sf, tag)
+	if IsMutableType(tagValueType) && h.CacheMutable {
+		return h.Parse(sf, tagValue)
 	}
-	return h.cache.GetOrInitErr(h.cacheKey(sf, tagValueType), func() (T, error) {
-		// we only need to parse once the tag, not more
-		// since the tag itself is a constant value
-		// that only change when the source code is changed.
-		return h.Parse(sf, tag)
-	})
-}
-
-func (h *TagHandler[T]) cacheKey(sf reflect.StructField, tagValueType reflect.Type) tagHandlerCacheKey {
-	return tagHandlerCacheKey{
+	key := tagHandlerCacheKey{
 		TagValueType:    FullyQualifiedName(tagValueType),
 		StructFieldName: sf.Name,
 		StructFieldType: FullyQualifiedName(sf.Type),
 		StructFieldTag:  sf.Tag,
 	}
+	return h.cache.GetOrInitErr(key, func() (T, error) {
+		// we only need to parse once the tag, not more
+		// since the tag itself is a constant value
+		// that only change when the source code is changed.
+		return h.Parse(sf, tagValue)
+	})
 }
 
 type tagHandlerCacheKey struct {
@@ -387,4 +388,58 @@ type tagHandlerCacheKey struct {
 
 func (h *TagHandler[T]) isStructFieldOK(sf reflect.StructField) bool {
 	return sf.Type != nil && sf.Index != nil && sf.Name != ""
+}
+
+// Clone recursively creates a deep copy of a reflect.Value
+func Clone(value reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return reflect.Value{}
+	}
+	switch value.Kind() {
+	case reflect.Ptr:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		copy := reflect.New(value.Type().Elem())
+		copy.Elem().Set(Clone(value.Elem()))
+		return copy
+
+	case reflect.Struct:
+		copy := reflect.New(value.Type()).Elem()
+		num := value.NumField()
+		for i := 0; i < num; i++ {
+			dst := copy.Field(i)
+			var ok bool
+			dst, ok = ToSettable(dst)
+			if !ok {
+				continue
+			}
+			src := value.Field(i)
+			dst.Set(Clone(src))
+		}
+		return copy
+
+	case reflect.Slice:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		copy := reflect.MakeSlice(value.Type(), value.Len(), value.Cap())
+		for i := 0; i < value.Len(); i++ {
+			copy.Index(i).Set(Clone(value.Index(i)))
+		}
+		return copy
+
+	case reflect.Map:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		copy := reflect.MakeMapWithSize(value.Type(), value.Len())
+		for _, key := range value.MapKeys() {
+			copy.SetMapIndex(key, Clone(value.MapIndex(key)))
+		}
+		return copy
+
+	default:
+		return reflect.ValueOf(value.Interface())
+	}
 }
