@@ -290,7 +290,7 @@ type TagHandler[T any] struct {
 	cache synckit.Map[tagHandlerCacheKey, T]
 }
 
-func (h *TagHandler[T]) Apply(rStuct reflect.Value) error {
+func (h *TagHandler[T]) HandleStruct(rStuct reflect.Value) error {
 	if !rStuct.IsValid() {
 		return errorkit.ImplementationError.F("valid struct value was expected")
 	}
@@ -305,8 +305,7 @@ func (h *TagHandler[T]) Apply(rStuct reflect.Value) error {
 	for i := 0; i < NumField; i++ {
 		sf := rStuctType.Field(i)
 		field := rStuct.Field(i)
-
-		if err := h.ApplyToStructField(sf, field); err != nil {
+		if err := h.handleStructField(sf, field); err != nil {
 			return err
 		}
 	}
@@ -314,7 +313,7 @@ func (h *TagHandler[T]) Apply(rStuct reflect.Value) error {
 	return nil
 }
 
-func (h *TagHandler[T]) ApplyToStructField(sf reflect.StructField, field reflect.Value) error {
+func (h *TagHandler[T]) HandleStructField(sf reflect.StructField, field reflect.Value) error {
 	if !h.isStructFieldOK(sf) {
 		return errorkit.ImplementationError.F("invalid struct field type description received")
 	}
@@ -327,7 +326,10 @@ func (h *TagHandler[T]) ApplyToStructField(sf reflect.StructField, field reflect
 	if h.Use == nil {
 		return errorkit.ImplementationError.F("missing %T.Use", h)
 	}
+	return h.handleStructField(sf, field)
+}
 
+func (h *TagHandler[T]) handleStructField(sf reflect.StructField, field reflect.Value) error {
 	tag, ok := sf.Tag.Lookup(h.Name)
 	if !ok {
 		return nil

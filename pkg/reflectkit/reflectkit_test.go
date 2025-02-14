@@ -1196,15 +1196,15 @@ func TestTagHandler_smoke(t *testing.T) {
 	}
 
 	v1 := T{}
-	assert.NoError(t, DefaultTag.Apply(reflect.ValueOf(&v1).Elem()))
+	assert.NoError(t, DefaultTag.HandleStruct(reflect.ValueOf(&v1).Elem()))
 	assert.Equal(t, v1.V, "foo")
 
 	v2 := T{V: "bar"}
-	assert.NoError(t, DefaultTag.Apply(reflect.ValueOf(&v1).Elem()))
+	assert.NoError(t, DefaultTag.HandleStruct(reflect.ValueOf(&v1).Elem()))
 	assert.Equal(t, v2.V, "bar")
 }
 
-func TestTagHandler_Apply(t *testing.T) {
+func TestTagHandler_HandleStruct(t *testing.T) {
 	t.Run("non_struct_type", func(t *testing.T) {
 		type NotStruct int
 		var ns NotStruct = 42
@@ -1215,7 +1215,7 @@ func TestTagHandler_Apply(t *testing.T) {
 			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
 		}
 
-		assert.ErrorIs(t, handler.Apply(reflect.ValueOf(ns)), errorkit.ImplementationError)
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ns)), errorkit.ImplementationError)
 	})
 
 	t.Run("invalid_reflect_value", func(t *testing.T) {
@@ -1225,7 +1225,7 @@ func TestTagHandler_Apply(t *testing.T) {
 			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
 		}
 
-		assert.ErrorIs(t, handler.Apply(reflect.ValueOf(nil)), errorkit.ImplementationError)
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(nil)), errorkit.ImplementationError)
 	})
 
 	t.Run("presence_of_specified_tag", func(t *testing.T) {
@@ -1246,7 +1246,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		ts := TestStruct{}
-		assert.NoError(t, handler.Apply(reflect.ValueOf(ts)))
+		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(ts)))
 		assert.ContainExactly(t, vs, []string{"value1", "42"})
 	})
 
@@ -1270,7 +1270,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		ts := TestStruct{Field1: "test", Field2: 42}
-		assert.NoError(t, handler.Apply(reflect.ValueOf(ts)))
+		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(ts)))
 		assert.Equal(t, 0, n, "expected that neither Parse, nor Use is called")
 	})
 
@@ -1289,7 +1289,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		ts := TestStruct{}
-		assert.NoError(t, handler.Apply(reflect.ValueOf(&ts).Elem()))
+		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(&ts).Elem()))
 		assert.Equal(t, ts.StringField, "hello")
 	})
 
@@ -1306,7 +1306,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		ts := TestStruct{}
-		assert.ErrorIs(t, handler.Apply(reflect.ValueOf(ts)), expErr)
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ts)), expErr)
 	})
 
 	t.Run("use error propagated back", func(t *testing.T) {
@@ -1322,7 +1322,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		ts := TestStruct{}
-		assert.ErrorIs(t, handler.Apply(reflect.ValueOf(ts)), expErr)
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ts)), expErr)
 	})
 
 	t.Run("parse caching", func(t *testing.T) {
@@ -1349,7 +1349,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.Apply(reflect.ValueOf(TestStruct{})))
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(TestStruct{})))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1382,7 +1382,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.Apply(reflect.ValueOf(T{})))
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(T{})))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1417,7 +1417,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.Apply(reflect.ValueOf(T{})))
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(T{})))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1454,7 +1454,7 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.Apply(reflect.ValueOf(TestStruct{})))
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(TestStruct{})))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1476,14 +1476,14 @@ func TestTagHandler_Apply(t *testing.T) {
 		}
 
 		testcase.Race(func() {
-			handler.Apply(reflect.ValueOf(T{}))
+			handler.HandleStruct(reflect.ValueOf(T{}))
 		}, func() {
-			handler.Apply(reflect.ValueOf(T{}))
+			handler.HandleStruct(reflect.ValueOf(T{}))
 		})
 	})
 }
 
-func TestTagHandler_ApplyToStructField(t *testing.T) {
+func TestTagHandler_HandleStructField(t *testing.T) {
 	t.Run("invalid struct field", func(t *testing.T) {
 		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
 			Name:  "test",
@@ -1495,7 +1495,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 
 		_, field, ok := reflectkit.LookupField(reflect.ValueOf(T{}), "V")
 		assert.True(t, ok)
-		assert.ErrorIs(t, handler.ApplyToStructField(reflect.StructField{}, field), errorkit.ImplementationError)
+		assert.ErrorIs(t, handler.HandleStructField(reflect.StructField{}, field), errorkit.ImplementationError)
 	})
 
 	t.Run("invalid field value", func(t *testing.T) {
@@ -1509,7 +1509,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 
 		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(T{}), "V")
 		assert.True(t, ok)
-		assert.ErrorIs(t, handler.ApplyToStructField(sf, reflect.Value{}), errorkit.ImplementationError)
+		assert.ErrorIs(t, handler.HandleStructField(sf, reflect.Value{}), errorkit.ImplementationError)
 	})
 
 	t.Run("presence_of_specified_tag", func(t *testing.T) {
@@ -1532,12 +1532,12 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		v := T{}
 		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
 		assert.True(t, ok)
-		assert.NoError(t, handler.ApplyToStructField(sf, field))
+		assert.NoError(t, handler.HandleStructField(sf, field))
 		assert.ContainExactly(t, vs, []string{"value1"})
 
 		sf, field, ok = reflectkit.LookupField(reflect.ValueOf(v), "Field2")
 		assert.True(t, ok)
-		assert.NoError(t, handler.ApplyToStructField(sf, field))
+		assert.NoError(t, handler.HandleStructField(sf, field))
 
 		assert.ContainExactly(t, vs, []string{"value1", "42"})
 	})
@@ -1563,7 +1563,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		v := T{}
 		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
 		assert.True(t, ok)
-		assert.NoError(t, handler.ApplyToStructField(sf, field))
+		assert.NoError(t, handler.HandleStructField(sf, field))
 
 		assert.Equal(t, 0, n, "expected that neither Parse, nor Use is called")
 	})
@@ -1585,7 +1585,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		v := T{}
 		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(&v).Elem(), "StringField")
 		assert.True(t, ok)
-		assert.NoError(t, handler.ApplyToStructField(sf, field))
+		assert.NoError(t, handler.HandleStructField(sf, field))
 
 		assert.Equal(t, v.StringField, "hello")
 	})
@@ -1605,7 +1605,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		v := T{}
 		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "StringField")
 		assert.True(t, ok)
-		assert.ErrorIs(t, handler.ApplyToStructField(sf, field), expErr)
+		assert.ErrorIs(t, handler.HandleStructField(sf, field), expErr)
 	})
 
 	t.Run("use error propagated back", func(t *testing.T) {
@@ -1623,7 +1623,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		v := T{}
 		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "StringField")
 		assert.True(t, ok)
-		assert.ErrorIs(t, handler.ApplyToStructField(sf, field), expErr)
+		assert.ErrorIs(t, handler.HandleStructField(sf, field), expErr)
 	})
 
 	t.Run("cache for immutable types", func(t *testing.T) {
@@ -1653,7 +1653,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		assert.True(t, ok)
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.ApplyToStructField(sf, field))
+			assert.NoError(t, handler.HandleStructField(sf, field))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1693,7 +1693,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		assert.True(t, ok)
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.ApplyToStructField(sf, field))
+			assert.NoError(t, handler.HandleStructField(sf, field))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1733,7 +1733,7 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		assert.True(t, ok)
 
 		n := rnd.Repeat(3, 7, func() {
-			assert.NoError(t, handler.ApplyToStructField(sf, field))
+			assert.NoError(t, handler.HandleStructField(sf, field))
 		})
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
@@ -1755,9 +1755,9 @@ func TestTagHandler_ApplyToStructField(t *testing.T) {
 		}
 
 		testcase.Race(func() {
-			handler.Apply(reflect.ValueOf(T{}))
+			handler.HandleStruct(reflect.ValueOf(T{}))
 		}, func() {
-			handler.Apply(reflect.ValueOf(T{}))
+			handler.HandleStruct(reflect.ValueOf(T{}))
 		})
 	})
 }
