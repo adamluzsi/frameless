@@ -362,7 +362,7 @@ func (h *TagHandler[T]) ApplyToStructField(sf reflect.StructField, field reflect
 
 func (h *TagHandler[T]) parse(sf reflect.StructField, tagValue string) (T, error) {
 	var tagValueType = TypeOf[T]()
-	if IsMutableType(tagValueType) && h.CacheMutable {
+	if IsMutableType(tagValueType) && !h.CacheMutable {
 		return h.Parse(sf, tagValue)
 	}
 	key := tagHandlerCacheKey{

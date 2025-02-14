@@ -1369,13 +1369,13 @@ func TestTagHandler_Apply(t *testing.T) {
 			Field2 string `testtag:"value"`
 		}
 
-		handler := reflectkit.TagHandler[string]{
+		handler := reflectkit.TagHandler[*string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, tag string) (*string, error) {
 				parseCount++
-				return tag, nil
+				return &tag, nil
 			},
-			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+			Use: func(sf reflect.StructField, field reflect.Value, v *string) error {
 				useCount++
 				return nil
 			},
@@ -1422,7 +1422,7 @@ func TestTagHandler_Apply(t *testing.T) {
 
 		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
 
-		assert.Equal(t, parseCount, n, "two, because each field's tag is parsed once")
+		assert.Equal(t, parseCount, 2, "two, because each field's tag is parsed once")
 		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
 	})
 
