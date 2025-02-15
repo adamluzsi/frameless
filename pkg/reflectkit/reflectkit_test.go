@@ -1,8 +1,12 @@
 package reflectkit_test
 
 import (
+	"context"
+	"iter"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -1830,6 +1834,62 @@ func TestClone(t *testing.T) {
 		assert.NotEqual(t, 99, val.MapIndex(reflect.ValueOf("a")).Int())
 	})
 
+	t.Run("Clone chan and mutate copy", func(t *testing.T) {
+		og := reflect.ValueOf(make(chan int))
+		defer og.Close()
+		cloned := reflectkit.Clone(og)
+		assert.False(t, reflectkit.IsNil(cloned))
+		defer cloned.Close()
+
+		var ogRec, clRec bool
+		go func() {
+			_, ok := og.Recv()
+			clRec = ok
+		}()
+		go func() {
+			v, ok := cloned.Recv()
+			clRec = ok
+			assert.Equal(t, int(v.Int()), 42)
+		}()
+
+		assert.Within(t, time.Second, func(context.Context) {
+			cloned.Send(reflect.ValueOf(int(42)))
+		})
+
+		assert.Eventually(t, time.Second, func(t assert.It) {
+			assert.True(t, clRec)
+			assert.False(t, ogRec)
+		})
+	})
+
+	t.Run("Cloned chan has the same buffer size", func(t *testing.T) {
+		og := reflect.ValueOf(make(chan int, 1))
+		defer og.Close()
+		cloned := reflectkit.Clone(og)
+		assert.False(t, reflectkit.IsNil(cloned))
+		defer cloned.Close()
+
+		assert.Within(t, time.Second, func(context.Context) {
+			og.Send(reflect.ValueOf(int(42)))
+		})
+
+		assert.Within(t, time.Second, func(context.Context) {
+			cloned.Send(reflect.ValueOf(int(42)))
+		})
+
+		assert.Within(t, time.Second, func(context.Context) {
+			val, ok := og.Recv()
+			assert.True(t, ok)
+			assert.Equal(t, val.Int(), 42)
+		})
+
+		assert.Within(t, time.Second, func(context.Context) {
+			val, ok := cloned.Recv()
+			assert.True(t, ok)
+			assert.Equal(t, val.Int(), 42)
+		})
+	})
+
 	t.Run("Clone struct with nested values", func(t *testing.T) {
 		type nested struct {
 			X int
@@ -1842,5 +1902,38 @@ func TestClone(t *testing.T) {
 		cloned := reflectkit.Clone(val)
 		cloned.FieldByName("A").FieldByName("X").SetInt(99)
 		assert.NotEqual(t, 99, val.FieldByName("A").FieldByName("X").Int())
+	})
+}
+
+func TestStructFields(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		type T struct {
+			Foo string
+			Bar string
+			Baz string
+		}
+
+		i := reflectkit.StructFields(reflect.ValueOf(T{
+			Foo: "foo",
+			Bar: "bar",
+			Baz: "baz",
+		}))
+
+		next, stop := iter.Pull2(i)
+		defer stop()
+
+		var (
+			fields []string
+			n      int
+		)
+		for {
+			sf, val, ok := next()
+			if !ok {
+				break
+			}
+			n++
+			fields = append(fields, sf.Name)
+			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
+		}
 	})
 }

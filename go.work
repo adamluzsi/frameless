@@ -1,9 +1,11 @@
-go 1.21.5
+go 1.24
+
+toolchain go1.24.0
 
 use (
 	.
-	./adapter/postgresql
-	./adapter/mysql
 	./adapter/mariadb
+	./adapter/mysql
+	./adapter/postgresql
 	./examples/restful-api
 )

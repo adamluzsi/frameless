@@ -3,6 +3,7 @@ package reflectkit
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"reflect"
 	"strings"
 	"unsafe"
@@ -265,26 +266,18 @@ type TagHandler[T any] struct {
 	HandleUntagged bool
 }
 
-func (h *TagHandler[T]) HandleStruct(rStuct reflect.Value) error {
-	if !rStuct.IsValid() {
+func (h *TagHandler[T]) HandleStruct(rStruct reflect.Value) error {
+	if !rStruct.IsValid() {
 		return errorkit.ImplementationError.F("valid struct value was expected")
 	}
-	if rStuct.Kind() != reflect.Struct {
-		return errorkit.ImplementationError.F("%s is not a struct type", rStuct.Type().String())
+	if rStruct.Kind() != reflect.Struct {
+		return errorkit.ImplementationError.F("%s is not a struct type", rStruct.Type().String())
 	}
-
-	var (
-		rStuctType = rStuct.Type()
-		NumField   = rStuctType.NumField()
-	)
-	for i := 0; i < NumField; i++ {
-		sf := rStuctType.Field(i)
-		field := rStuct.Field(i)
-		if err := h.handleStructField(sf, field); err != nil {
+	for sf, val := range StructFields(rStruct) {
+		if err := h.handleStructField(sf, val); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
@@ -401,7 +394,30 @@ func Clone(value reflect.Value) reflect.Value {
 		}
 		return copy
 
+	case reflect.Chan:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		return reflect.MakeChan(value.Type(), value.Cap())
+
 	default:
 		return reflect.ValueOf(value.Interface())
 	}
+}
+
+func StructFields(rStruct reflect.Value) iter.Seq2[reflect.StructField, reflect.Value] {
+	if rStruct.Kind() != reflect.Struct {
+		panic(errorkit.ImplementationError.F("expected that %s is a struct type", rStruct.Type().String()))
+	}
+	return iter.Seq2[reflect.StructField, reflect.Value](func(yield func(reflect.StructField, reflect.Value) bool) {
+		var (
+			typ = rStruct.Type()
+			num = typ.NumField()
+		)
+		for i := 0; i < num; i++ {
+			if !yield(typ.Field(i), rStruct.Field(i)) {
+				break
+			}
+		}
+	})
 }

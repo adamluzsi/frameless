@@ -116,17 +116,24 @@ var enumTag = reflectkit.TagHandler[[]reflect.Value]{
 		return parseTag(sf.Type, tag)
 	},
 	Use: func(sf reflect.StructField, field reflect.Value, enumerators []reflect.Value) error {
-		if !field.CanInterface() {
+		if !field.CanInterface() { // ToAccess
 			return nil // TODO: maybe implementation error?
+		}
+		if enumerators == nil {
+			enumerators = ReflectValues(sf.Type)
+		}
+		if len(enumerators) == 0 {
+			return nil
 		}
 		for _, enum := range enumerators {
 			if reflectkit.Equal(field, enum) {
 				return nil
 			}
 		}
-		return ErrInvalid.F("%#v is not part of the enumerators: %v", field.Interface())
+		return ErrInvalid.F("%#v is not part of the enumerators for %s", field.Interface(), sf.Type.String())
 	},
-	ForceCache: true,
+	ForceCache:     true,
+	HandleUntagged: true,
 }
 
 func ValidateStructField(sf reflect.StructField, field reflect.Value) error {
