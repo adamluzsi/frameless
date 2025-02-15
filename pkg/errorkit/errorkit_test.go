@@ -18,6 +18,10 @@ import (
 
 var rnd = random.New(random.CryptoSeed{})
 
+type ErrT struct{ V any }
+
+func (err ErrT) Error() string { return fmt.Sprintf("%T:%v", err, err.V) }
+
 func ExampleFinish_sqlRows() {
 	var db *sql.DB
 

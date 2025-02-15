@@ -75,3 +75,17 @@ func TestError_F_smoke(t *testing.T) {
 		assert.Contain(t, got.Error(), ErrExample.Error())
 	})
 }
+
+func TestError_traced(t *testing.T) {
+	const ErrBase errorkit.Error = "base error"
+
+	var assertTraced = func(t *testing.T, err error) {
+		var traced errorkit.Traced
+		assert.True(t, errors.As(err, &traced))
+		assert.NotNil(t, traced.Err)
+		assert.NotEmpty(t, traced.Trace)
+	}
+
+	assertTraced(t, ErrBase.F("traced"))
+	assertTraced(t, ErrBase.Wrap(rnd.Error()))
+}

@@ -20,7 +20,7 @@ func (err Error) Wrap(oth error) error {
 	if oth == nil {
 		return err
 	}
-	return wrapper{Owner: err, Wrapped: oth}
+	return WithTrace(wrapper{Owner: err, Wrapped: oth})
 }
 
 // F will format the error value
