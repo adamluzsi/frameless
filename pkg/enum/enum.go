@@ -97,12 +97,8 @@ func ValidateStruct(v any) error {
 	if rv.Kind() != reflect.Struct {
 		return errorkit.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
-
-	rt := rv.Type()
-	for i, fnum := 0, rt.NumField(); i < fnum; i++ {
-		field := rt.Field(i)
-		value := rv.Field(i)
-
+	for field, value := range reflectkit.StructFields(rv) {
+		enumTag.HandleStructField(field, value)
 		if err := ValidateStructField(field, value); err != nil {
 			return err
 		}

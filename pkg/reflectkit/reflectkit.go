@@ -281,11 +281,11 @@ func (h *TagHandler[T]) HandleStruct(rStruct reflect.Value) error {
 	return nil
 }
 
-func (h *TagHandler[T]) HandleStructField(sf reflect.StructField, field reflect.Value) error {
-	if !h.isStructFieldOK(sf) {
+func (h *TagHandler[T]) HandleStructField(field reflect.StructField, value reflect.Value) error {
+	if !h.isStructFieldOK(field) {
 		return errorkit.ImplementationError.F("invalid struct field type description received")
 	}
-	if !field.IsValid() {
+	if !value.IsValid() {
 		return errorkit.ImplementationError.F("invalid struct field value received")
 	}
 	if h.Parse == nil {
@@ -294,21 +294,21 @@ func (h *TagHandler[T]) HandleStructField(sf reflect.StructField, field reflect.
 	if h.Use == nil {
 		return errorkit.ImplementationError.F("missing %T.Use", h)
 	}
-	return h.handleStructField(sf, field)
+	return h.handleStructField(field, value)
 }
 
-func (h *TagHandler[T]) handleStructField(sf reflect.StructField, field reflect.Value) error {
-	tag, ok := sf.Tag.Lookup(h.Name)
+func (h *TagHandler[T]) handleStructField(field reflect.StructField, value reflect.Value) error {
+	tag, ok := field.Tag.Lookup(h.Name)
 	if !ok && !h.HandleUntagged {
 		return nil
 	}
 
-	v, err := h.parse(sf, tag)
+	v, err := h.parse(field, tag)
 	if err != nil {
 		return fmt.Errorf("%T.Parse failed: %w", h, err)
 	}
 
-	if err := h.Use(sf, field, v); err != nil {
+	if err := h.Use(field, value, v); err != nil {
 		return err
 	}
 
