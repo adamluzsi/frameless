@@ -31,6 +31,12 @@ func TestNew(t *testing.T) {
 		assert.Equal(t, v.V1, "V1i")
 		assert.Equal(t, v.V2, "V2i")
 	})
+	t.Run("type with default tags", func(t *testing.T) {
+		v := mk.New[TypeWithDefaultTags]()
+		assert.Equal(t, v.Foo, "foo")
+		assert.Equal(t, v.Bar, 42)
+		assert.Equal(t, v.Baz, true)
+	})
 	t.Run("struct type with nested init", func(t *testing.T) {
 		v := mk.New[NestedType]()
 		assert.Equal(t, v.Nested.V1, "V1i")
@@ -107,4 +113,10 @@ type NestedType struct {
 
 func (nt *NestedType) Init() {
 	nt.V1 = "NT:" + nt.Nested.V1
+}
+
+type TypeWithDefaultTags struct {
+	Foo string `default:"foo"`
+	Bar int    `default:"42"`
+	Baz bool   `default:"true"`
 }
