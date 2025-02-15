@@ -1,17 +1,13 @@
-package runtimekit
+package irunt
 
 import (
 	"runtime"
 	"strings"
-
-	"go.llib.dev/frameless/port/option"
 )
 
-func Stack(opts ...StackOption) []StackFrame {
-	options := option.Use(opts)
-
+func Stack(opts StackOptions) []StackFrame {
 	programCounters := make([]uintptr, 1024)
-	n_callers := runtime.Callers(1+options.Skip, programCounters)
+	n_callers := runtime.Callers(1+opts.Skip, programCounters)
 	frames := runtime.CallersFrames(programCounters[:n_callers])
 
 	var vs []StackFrame
@@ -45,16 +41,10 @@ func Stack(opts ...StackOption) []StackFrame {
 	return vs
 }
 
-type StackOption interface {
-	option.Option[StackOptions]
-}
-
 type StackOptions struct {
-	Skip       int `default:"0"`
-	BufferSize int `default:"1024"`
+	Skip       int
+	BufferSize int
 }
-
-func (r StackOptions) Configure(t *StackOptions) { option.Configure(r, t) }
 
 type StackFrame struct {
 	Function string
