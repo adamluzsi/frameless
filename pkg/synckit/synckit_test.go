@@ -500,6 +500,72 @@ func TestMap(t *testing.T) {
 		})
 	})
 
+	s.Describe("#GetOrInitErr", func(s *testcase.Spec) {
+		var (
+			initCallCount  = testcase.LetValue(s, 0)
+			lastInitResult = testcase.LetValue(s, 0)
+		)
+		var (
+			key  = let.String(s)
+			init = testcase.Let[func() (int, error)](s, func(t *testcase.T) func() (int, error) {
+				return func() (int, error) {
+					initCallCount.Set(t, initCallCount.Get(t)+1)
+					lastInitResult.Set(t, t.Random.Int())
+					return lastInitResult.Get(t), nil
+				}
+			})
+		)
+		act := func(t *testcase.T) (int, error) {
+			return subject.Get(t).GetOrInitErr(key.Get(t), init.Get(t))
+		}
+
+		s.Then("init func's result used to resolve the result", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, got, lastInitResult.Get(t))
+		})
+
+		s.Then("init only used once on consecutive calls", func(t *testcase.T) {
+			var vs = map[int]struct{}{}
+			t.Random.Repeat(3, 7, func() {
+				v, err := act(t)
+				assert.NoError(t, err)
+				vs[v] = struct{}{}
+			})
+			assert.Equal(t, 1, len(vs))
+			assert.Equal(t, 1, initCallCount.Get(t))
+		})
+
+		s.When("error occurs during init", func(s *testcase.Spec) {
+			var expErr = let.Error(s)
+
+			init.Let(s, func(t *testcase.T) func() (int, error) {
+				var o sync.Once
+				return func() (int, error) {
+					initCallCount.Set(t, initCallCount.Get(t)+1)
+					lastInitResult.Set(t, t.Random.Int())
+					var err error
+					o.Do(func() { err = expErr.Get(t) })
+					return lastInitResult.Get(t), err
+				}
+			})
+
+			s.Then("the error is propagated back", func(t *testcase.T) {
+				_, err := act(t)
+				assert.ErrorIs(t, err, expErr.Get(t))
+			})
+
+			s.Then("error value is not cached and consecutive call will retry init", func(t *testcase.T) {
+				_, err := act(t)
+				assert.ErrorIs(t, err, expErr.Get(t))
+
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, got, lastInitResult.Get(t))
+			})
+		})
+	})
+
 	s.Describe("#Get", func(s *testcase.Spec) {
 		var (
 			key = let.String(s)
@@ -710,9 +776,10 @@ func TestMap(t *testing.T) {
 				var keys []string
 				for i := 0; i < n.Get(t); i++ {
 					key := random.Unique(t.Random.String, keys...)
-
+					keys = append(keys, key)
 					subject.Get(t).Set(key, t.Random.Int())
 				}
+				assert.Equal(t, n.Get(t), len(keys))
 			})
 
 			s.Then("the len represent the result", func(t *testcase.T) {

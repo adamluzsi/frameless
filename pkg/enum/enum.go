@@ -98,17 +98,38 @@ func ValidateStruct(v any) error {
 	if rv.Kind() != reflect.Struct {
 		return interr.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
-
-	rt := rv.Type()
-	for i, fnum := 0, rt.NumField(); i < fnum; i++ {
-		field := rt.Field(i)
-		value := rv.Field(i)
-
+	for field, value := range reflectkit.OverStructFields(rv) {
 		if err := ValidateStructField(field, value); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+var enumTag = reflectkit.TagHandler[[]reflect.Value]{
+	Name: "enum",
+	Parse: func(sf reflect.StructField, tag string) ([]reflect.Value, error) {
+		return parseTag(sf.Type, tag)
+	},
+	Use: func(sf reflect.StructField, field reflect.Value, enumerators []reflect.Value) error {
+		if !field.CanInterface() { // ToAccess
+			return nil // TODO: maybe implementation error?
+		}
+		if enumerators == nil {
+			enumerators = ReflectValues(sf.Type)
+		}
+		if len(enumerators) == 0 {
+			return nil
+		}
+		for _, enum := range enumerators {
+			if reflectkit.Equal(field, enum) {
+				return nil
+			}
+		}
+		return ErrInvalid.F("%#v is not part of the enumerators for %s", field.Interface(), sf.Type.String())
+	},
+	ForceCache:     true,
+	HandleUntagged: true,
 }
 
 func ValidateStructField(sf reflect.StructField, field reflect.Value) error {

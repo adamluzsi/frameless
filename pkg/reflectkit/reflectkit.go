@@ -3,12 +3,19 @@ package reflectkit
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"reflect"
 	"strings"
 	"unsafe"
 
+	"go.llib.dev/frameless/internal/interr"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/synckit"
 )
+
+const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
+
+const ErrInvalid errorkit.Error = "ErrInvalid"
 
 func Cast[T any](v any) (T, bool) {
 	var (
@@ -95,6 +102,9 @@ func FullyQualifiedName(v any) string {
 	if pkgPath := typ.PkgPath(); pkgPath != "" {
 		name = fmt.Sprintf("%q.%s", pkgPath, name)
 	}
+	if depth == 0 {
+		return name
+	}
 	return strings.Repeat("*", depth) + name
 }
 
@@ -170,7 +180,7 @@ var anyInterface = reflect.TypeOf((*any)(nil)).Elem()
 
 func TypeOf[T any](i ...T) reflect.Type {
 	var typ = reflect.TypeOf((*T)(nil)).Elem()
-	if typ == anyInterface && 0 < len(i) {
+	if 0 < len(i) && typ == anyInterface {
 		for _, v := range i {
 			if typeOfV := reflect.TypeOf(v); typeOfV != nil {
 				return typeOfV
@@ -187,27 +197,14 @@ func ToValue(v any) reflect.Value {
 	return reflect.ValueOf(v)
 }
 
-const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
-
-func LookupField[FieldID StructFieldID](rStruct reflect.Value, i FieldID) (reflect.StructField, reflect.Value, bool) {
+func LookupField[FieldID LookupFieldID](rStruct reflect.Value, i FieldID) (reflect.StructField, reflect.Value, bool) {
 	if rStruct.Kind() != reflect.Struct || !rStruct.IsValid() {
 		return reflect.StructField{}, reflect.Value{}, false
 	}
 
-	var structField reflect.StructField
-	switch i := any(i).(type) {
-	case reflect.StructField:
-		structField = i
-
-	case int:
-		structField = rStruct.Type().Field(i)
-
-	case string:
-		sf, ok := rStruct.Type().FieldByName(i)
-		if !ok {
-			return reflect.StructField{}, reflect.Value{}, false
-		}
-		structField = sf
+	structField, ok := toStructField[FieldID](rStruct.Type(), i)
+	if !ok {
+		return reflect.StructField{}, reflect.Value{}, false
 	}
 
 	field := rStruct.FieldByIndex(structField.Index)
@@ -222,7 +219,25 @@ func LookupField[FieldID StructFieldID](rStruct reflect.Value, i FieldID) (refle
 	return structField, field, field.IsValid()
 }
 
-type StructFieldID interface {
+func toStructField[FieldID LookupFieldID](rStructType reflect.Type, i FieldID) (reflect.StructField, bool) {
+	switch i := any(i).(type) {
+	case reflect.StructField:
+		return i, isStructFieldOK(i)
+	case int:
+		sf := rStructType.Field(i)
+		return sf, isStructFieldOK(sf)
+	case string:
+		return rStructType.FieldByName(i)
+	default:
+		panic("unknown reflectkit.LookupFieldID type")
+	}
+}
+
+func isStructFieldOK(sf reflect.StructField) bool {
+	return sf.Name != "" && 0 < len(sf.Index)
+}
+
+type LookupFieldID interface {
 	/* StructField */ reflect.StructField | /*index*/ int | /* name */ string
 }
 
@@ -239,4 +254,182 @@ func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
 		}
 	}
 	return reflect.Value{}, false
+}
+
+type TagHandler[T any] struct {
+	Name  string
+	Parse func(sf reflect.StructField, tagValue string) (T, error)
+	Use   func(sf reflect.StructField, field reflect.Value, v T) error
+	cache synckit.Map[tagHandlerCacheKey, T]
+	// ForceCache will force the TagHandler to cache the parse results, regardless if the value is mutable or not.
+	ForceCache bool
+	// HandleUntagged will force the Handle functions to call Parse and Use even on fields where tag is empty.
+	HandleUntagged bool
+}
+
+func (h *TagHandler[T]) HandleStruct(rStruct reflect.Value) error {
+	if !rStruct.IsValid() {
+		return interr.ImplementationError.F("valid struct value was expected")
+	}
+	if rStruct.Kind() != reflect.Struct {
+		return interr.ImplementationError.F("%s is not a struct type", rStruct.Type().String())
+	}
+	for sf, val := range OverStructFields(rStruct) {
+		if err := h.handleStructField(sf, val); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *TagHandler[T]) HandleStructField(field reflect.StructField, value reflect.Value) error {
+	if !h.isStructFieldOK(field) {
+		return interr.ImplementationError.F("invalid struct field type description received")
+	}
+	if !value.IsValid() {
+		return interr.ImplementationError.F("invalid struct field value received")
+	}
+	if h.Parse == nil {
+		return interr.ImplementationError.F("missing %T.Parse", h)
+	}
+	if h.Use == nil {
+		return interr.ImplementationError.F("missing %T.Use", h)
+	}
+	return h.handleStructField(field, value)
+}
+
+func (h *TagHandler[T]) handleStructField(field reflect.StructField, value reflect.Value) error {
+	v, ok, err := h.LookupTag(field)
+	if err != nil {
+		return err
+	}
+	if !ok && !h.HandleUntagged {
+		return nil
+	}
+	if err := h.Use(field, value, v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
+	tag, ok := field.Tag.Lookup(h.Name)
+	if !ok && !h.HandleUntagged {
+		var zero T
+		return zero, ok, nil
+	}
+	v, err := h.parse(field, tag)
+	if err != nil {
+		var zero T
+		return zero, ok, fmt.Errorf("%T.Parse failed: %w", h, err)
+	}
+	return v, true, nil
+}
+
+func (h *TagHandler[T]) parse(sf reflect.StructField, tagValue string) (T, error) {
+	var tagValueType = TypeOf[T]()
+	if !h.ForceCache && IsMutableType(tagValueType) {
+		return h.Parse(sf, tagValue)
+	}
+	key := tagHandlerCacheKey{
+		TagValueType:    FullyQualifiedName(tagValueType),
+		StructFieldName: sf.Name,
+		StructFieldType: FullyQualifiedName(sf.Type),
+		StructFieldTag:  sf.Tag,
+	}
+	return h.cache.GetOrInitErr(key, func() (T, error) {
+		// we only need to parse once the tag, not more
+		// since the tag itself is a constant value
+		// that only change when the source code is changed.
+		return h.Parse(sf, tagValue)
+	})
+}
+
+type tagHandlerCacheKey struct {
+	TagValueType    string
+	StructFieldName string
+	StructFieldType string
+	StructFieldTag  reflect.StructTag
+}
+
+func (h *TagHandler[T]) isStructFieldOK(sf reflect.StructField) bool {
+	return sf.Type != nil && sf.Index != nil && sf.Name != ""
+}
+
+// Clone recursively creates a deep copy of a reflect.Value
+func Clone(value reflect.Value) reflect.Value {
+	if !value.IsValid() {
+		return reflect.Value{}
+	}
+	switch value.Kind() {
+	case reflect.Ptr:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		copy := reflect.New(value.Type().Elem())
+		copy.Elem().Set(Clone(value.Elem()))
+		return copy
+
+	case reflect.Struct:
+		copy := reflect.New(value.Type()).Elem()
+		num := value.NumField()
+		for i := 0; i < num; i++ {
+			dst := copy.Field(i)
+			var ok bool
+			dst, ok = ToSettable(dst)
+			if !ok {
+				continue
+			}
+			src := value.Field(i)
+			dst.Set(Clone(src))
+		}
+		return copy
+
+	case reflect.Slice:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		copy := reflect.MakeSlice(value.Type(), value.Len(), value.Cap())
+		for i := 0; i < value.Len(); i++ {
+			copy.Index(i).Set(Clone(value.Index(i)))
+		}
+		return copy
+
+	case reflect.Map:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		copy := reflect.MakeMapWithSize(value.Type(), value.Len())
+		for _, key := range value.MapKeys() {
+			copy.SetMapIndex(key, Clone(value.MapIndex(key)))
+		}
+		return copy
+
+	case reflect.Chan:
+		if value.IsNil() {
+			return reflect.Zero(value.Type())
+		}
+		return reflect.MakeChan(value.Type(), value.Cap())
+
+	default:
+		return reflect.ValueOf(value.Interface())
+
+	}
+}
+
+func OverStructFields(rStruct reflect.Value) iter.Seq2[reflect.StructField, reflect.Value] {
+	if rStruct.Kind() != reflect.Struct {
+		panic(interr.ImplementationError.F("expected that %s is a struct type", rStruct.Type().String()))
+	}
+	return iter.Seq2[reflect.StructField, reflect.Value](func(yield func(reflect.StructField, reflect.Value) bool) {
+		var (
+			typ = rStruct.Type()
+			num = typ.NumField()
+		)
+		for i := 0; i < num; i++ {
+			if !yield(typ.Field(i), rStruct.Field(i)) {
+				break
+			}
+		}
+	})
 }

@@ -1,9 +1,15 @@
 package reflectkit_test
 
 import (
+	"context"
+	"iter"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
+	"go.llib.dev/frameless/internal/interr"
+	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/spechelper/testent"
@@ -1084,6 +1090,7 @@ func TestLookupFieldWithUnreachableValue(t *testing.T) {
 func ExampleToSettable() {
 	type T struct{ v int }
 	var v T
+	_ = v.v
 
 	ptr := reflect.ValueOf(&v)
 	rStruct := ptr.Elem()
@@ -1134,5 +1141,1051 @@ func TestToSettable(t *testing.T) {
 		got.Set(reflect.ValueOf(42))
 
 		assert.Equal(t, v.v, 42)
+	})
+}
+
+func TestTagHandler_smoke(t *testing.T) {
+	type T struct {
+		V string `default:"foo"`
+	}
+
+	var DefaultTag = reflectkit.TagHandler[reflect.Value]{
+		Name: "default",
+		Parse: func(sf reflect.StructField, tag string) (reflect.Value, error) {
+			return convkit.ParseReflect(sf.Type, tag)
+		},
+		Use: func(sf reflect.StructField, field, defaultValue reflect.Value) error {
+			if field.IsZero() {
+				field.Set(defaultValue) // defaultValue is the result of Parse
+			}
+			return nil
+		},
+	}
+
+	v1 := T{}
+	assert.NoError(t, DefaultTag.HandleStruct(reflect.ValueOf(&v1).Elem()))
+	assert.Equal(t, v1.V, "foo")
+
+	v2 := T{V: "bar"}
+	assert.NoError(t, DefaultTag.HandleStruct(reflect.ValueOf(&v1).Elem()))
+	assert.Equal(t, v2.V, "bar")
+}
+
+func TestTagHandler_HandleStruct(t *testing.T) {
+	t.Run("non_struct_type", func(t *testing.T) {
+		type NotStruct int
+		var ns NotStruct = 42
+
+		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
+			Name:  "test",
+			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
+		}
+
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ns)), interr.ImplementationError)
+	})
+
+	t.Run("invalid_reflect_value", func(t *testing.T) {
+		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
+			Name:  "test",
+			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
+		}
+
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(nil)), interr.ImplementationError)
+	})
+
+	t.Run("presence_of_specified_tag", func(t *testing.T) {
+		type TestStruct struct {
+			Field1 string `testtag:"value1"`
+			Field2 int    `testtag:"42"`
+		}
+
+		var vs []string
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				vs = append(vs, v)
+				return nil
+			},
+		}
+
+		ts := TestStruct{}
+		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(ts)))
+		assert.ContainExactly(t, vs, []string{"value1", "42"})
+	})
+
+	t.Run("absence_of_specified_tag", func(t *testing.T) {
+		type TestStruct struct {
+			Field1 string `othertag:"value"`
+			Field2 int
+		}
+
+		var n int
+		handler := reflectkit.TagHandler[any]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (any, error) {
+				n++
+				return nil, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v any) error {
+				n++
+				return nil
+			},
+		}
+
+		ts := TestStruct{Field1: "test", Field2: 42}
+		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(ts)))
+		assert.Equal(t, 0, n, "expected that neither Parse, nor Use is called")
+	})
+
+	t.Run("working with addressable field", func(t *testing.T) {
+		type TestStruct struct {
+			StringField string `testtag:"hello"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				field.SetString(v)
+				return nil
+			},
+		}
+
+		ts := TestStruct{}
+		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(&ts).Elem()))
+		assert.Equal(t, ts.StringField, "hello")
+	})
+
+	t.Run("parse error propagated back", func(t *testing.T) {
+		type TestStruct struct {
+			StringField string `testtag:"hello"`
+		}
+
+		var expErr = rnd.Error()
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, expErr },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		ts := TestStruct{}
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ts)), expErr)
+	})
+
+	t.Run("use error propagated back", func(t *testing.T) {
+		type TestStruct struct {
+			StringField string `testtag:"hello"`
+		}
+
+		var expErr = rnd.Error()
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return expErr },
+		}
+
+		ts := TestStruct{}
+		assert.ErrorIs(t, handler.HandleStruct(reflect.ValueOf(ts)), expErr)
+	})
+
+	t.Run("HandleUntagged", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct{ V string }
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				assert.Empty(t, tag)
+				return "foo", nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				assert.Equal(t, "foo", v)
+				return nil
+			},
+			HandleUntagged: true,
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(T{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 1)
+		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("parse caching", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type TestStruct struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				return tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				return nil
+			},
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(TestStruct{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 2, "two, because each field's tag is parsed once")
+		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("by default no caching for mutable tag value types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[*string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*string, error) {
+				parseCount++
+				return &tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v *string) error {
+				useCount++
+				return nil
+			},
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(T{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, n*2, "two, because each field's tag is parsed once")
+		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("forced caching for mutable tag value types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				return tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				return nil
+			},
+
+			ForceCache: true,
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(T{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 2, "two, because each field's tag is parsed once")
+		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("cache for mutable types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type TestStruct struct {
+			Field1 string `testtag:"value"`
+			Field2 int    `testtag:"value"`
+		}
+
+		type S struct {
+			V int
+		}
+
+		handler := reflectkit.TagHandler[*S]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+				parseCount++
+				return &S{}, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v *S) error {
+				useCount++
+				return nil
+			},
+		}
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStruct(reflect.ValueOf(TestStruct{})))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, n*2, "because each field's tag is parsed once")
+		assert.Equal(t, useCount, n*2, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("race", func(t *testing.T) {
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		testcase.Race(func() {
+			handler.HandleStruct(reflect.ValueOf(T{}))
+		}, func() {
+			handler.HandleStruct(reflect.ValueOf(T{}))
+		})
+	})
+}
+
+func TestTagHandler_HandleStructField(t *testing.T) {
+	t.Run("invalid struct field", func(t *testing.T) {
+		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
+			Name:  "test",
+			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
+		}
+
+		type T struct{ V int }
+
+		_, field, ok := reflectkit.LookupField(reflect.ValueOf(T{}), "V")
+		assert.True(t, ok)
+		assert.ErrorIs(t, handler.HandleStructField(reflect.StructField{}, field), interr.ImplementationError)
+	})
+
+	t.Run("invalid field value", func(t *testing.T) {
+		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
+			Name:  "test",
+			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
+		}
+
+		type T struct{ V int }
+
+		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(T{}), "V")
+		assert.True(t, ok)
+		assert.ErrorIs(t, handler.HandleStructField(sf, reflect.Value{}), interr.ImplementationError)
+	})
+
+	t.Run("presence_of_specified_tag", func(t *testing.T) {
+		type T struct {
+			Field1 string `testtag:"value1"`
+			Field2 int    `testtag:"42"`
+		}
+
+		var vs []string
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				vs = append(vs, v)
+				return nil
+			},
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
+		assert.True(t, ok)
+		assert.NoError(t, handler.HandleStructField(sf, field))
+		assert.ContainExactly(t, vs, []string{"value1"})
+
+		sf, field, ok = reflectkit.LookupField(reflect.ValueOf(v), "Field2")
+		assert.True(t, ok)
+		assert.NoError(t, handler.HandleStructField(sf, field))
+
+		assert.ContainExactly(t, vs, []string{"value1", "42"})
+	})
+
+	t.Run("absence_of_specified_tag", func(t *testing.T) {
+		type T struct {
+			Field1 string `othertag:"value"`
+		}
+
+		var n int
+		handler := reflectkit.TagHandler[any]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (any, error) {
+				n++
+				return nil, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v any) error {
+				n++
+				return nil
+			},
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
+		assert.True(t, ok)
+		assert.NoError(t, handler.HandleStructField(sf, field))
+
+		assert.Equal(t, 0, n, "expected that neither Parse, nor Use is called")
+	})
+
+	t.Run("working with addressable field", func(t *testing.T) {
+		type T struct {
+			StringField string `testtag:"hello"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				field.SetString(v)
+				return nil
+			},
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(&v).Elem(), "StringField")
+		assert.True(t, ok)
+		assert.NoError(t, handler.HandleStructField(sf, field))
+
+		assert.Equal(t, v.StringField, "hello")
+	})
+
+	t.Run("parse error propagated back", func(t *testing.T) {
+		type T struct {
+			StringField string `testtag:"hello"`
+		}
+
+		var expErr = rnd.Error()
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, expErr },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "StringField")
+		assert.True(t, ok)
+		assert.ErrorIs(t, handler.HandleStructField(sf, field), expErr)
+	})
+
+	t.Run("use error propagated back", func(t *testing.T) {
+		type T struct {
+			StringField string `testtag:"hello"`
+		}
+
+		var expErr = rnd.Error()
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return expErr },
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "StringField")
+		assert.True(t, ok)
+		assert.ErrorIs(t, handler.HandleStructField(sf, field), expErr)
+	})
+
+	t.Run("cache for immutable types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				return tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				useCount++
+				return nil
+			},
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStructField(sf, field))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 1, "tag should have been parsed only once")
+		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("cache for mutable types", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		type S struct {
+			V int
+		}
+
+		handler := reflectkit.TagHandler[*S]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+				parseCount++
+				return &S{}, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v *S) error {
+				useCount++
+				return nil
+			},
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStructField(sf, field))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, n, "because field should be parsed on each run to make it deterministic if Use mutates the value")
+		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("cache for mutable types when ForceCache enabled", func(t *testing.T) {
+		var (
+			parseCount int
+			useCount   int
+		)
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		type S struct{ V int }
+
+		handler := reflectkit.TagHandler[*S]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+				parseCount++
+				return &S{}, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v *S) error {
+				useCount++
+				return nil
+			},
+
+			ForceCache: true,
+		}
+
+		v := T{}
+		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			assert.NoError(t, handler.HandleStructField(sf, field))
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+
+		assert.Equal(t, parseCount, 1)
+		assert.Equal(t, useCount, n, "twice of the repeat count, because we have two field in the struct")
+	})
+
+	t.Run("race", func(t *testing.T) {
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		rStruct := reflect.ValueOf(T{})
+		field1, val1, ok := reflectkit.LookupField(rStruct, "Field1")
+		assert.True(t, ok)
+		field2, val2, ok := reflectkit.LookupField(rStruct, "Field2")
+		assert.True(t, ok)
+
+		testcase.Race(
+			func() { handler.HandleStructField(field1, val1) },
+			func() { handler.HandleStructField(field1, val1) },
+			func() { handler.HandleStructField(field2, val2) },
+			func() { handler.HandleStructField(field2, val2) },
+		)
+	})
+}
+
+func TestTagHandler_LookupTag(t *testing.T) {
+	t.Run("presence_of_specified_tag", func(t *testing.T) {
+		type T struct {
+			Field1 string `testtag:"value1"`
+			Field2 int    `testtag:"42"`
+		}
+
+		var vs []string
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				vs = append(vs, tag)
+				return tag, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		v := T{}
+		field, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
+		assert.True(t, ok)
+		tag, ok, err := handler.LookupTag(field)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, tag, "value1")
+
+		field, _, ok = reflectkit.LookupField(reflect.ValueOf(v), "Field2")
+		assert.True(t, ok)
+		tag, ok, err = handler.LookupTag(field)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, tag, "42")
+
+		assert.ContainExactly(t, []string{"value1", "42"}, vs)
+	})
+
+	t.Run("absence of specified tag", func(t *testing.T) {
+		type T struct {
+			Field1 string `othertag:"value"`
+		}
+
+		var n int
+		handler := reflectkit.TagHandler[any]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (any, error) {
+				n++
+				return nil, nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v any) error {
+				n++
+				return nil
+			},
+		}
+
+		v := T{}
+		field, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
+		assert.True(t, ok)
+		_, ok, err := handler.LookupTag(field)
+		assert.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("absence of specified tag but with untagged handling", func(t *testing.T) {
+		type T struct {
+			Field1 string `othertag:"value"`
+		}
+
+		var n int
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				n++
+				return "foo", nil
+			},
+			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
+				n++
+				return nil
+			},
+			HandleUntagged: true,
+		}
+
+		v := T{}
+		field, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
+		assert.True(t, ok)
+		tag, ok, err := handler.LookupTag(field)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, tag, "foo")
+	})
+
+	t.Run("parse error propagated back", func(t *testing.T) {
+		type T struct {
+			StringField string `testtag:"hello"`
+		}
+
+		var expErr = rnd.Error()
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, expErr },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		v := T{}
+		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "StringField")
+		assert.True(t, ok)
+		_, _, err := handler.LookupTag(sf)
+		assert.ErrorIs(t, err, expErr)
+	})
+
+	t.Run("cache for immutable types", func(t *testing.T) {
+		var parseCount int
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) {
+				parseCount++
+				return tag, nil
+			},
+		}
+
+		v := T{}
+		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			_, _, err := handler.LookupTag(sf)
+			assert.NoError(t, err)
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+		assert.Equal(t, parseCount, 1, "tag should have been parsed only once")
+	})
+
+	t.Run("cache for mutable types", func(t *testing.T) {
+		var parseCount int
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		type S struct {
+			V int
+		}
+
+		handler := reflectkit.TagHandler[*S]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+				parseCount++
+				return &S{}, nil
+			},
+		}
+
+		v := T{}
+		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			_, _, err := handler.LookupTag(sf)
+			assert.NoError(t, err)
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+		assert.Equal(t, parseCount, n, "because field should be parsed on each run to make it deterministic if Use mutates the value")
+	})
+
+	t.Run("cache for mutable types when ForceCache enabled", func(t *testing.T) {
+		var parseCount int
+
+		type T struct {
+			V string `testtag:"value"`
+		}
+
+		type S struct{ V int }
+
+		handler := reflectkit.TagHandler[*S]{
+			Name: "testtag",
+			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+				parseCount++
+				return &S{}, nil
+			},
+			ForceCache: true,
+		}
+
+		v := T{}
+		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "V")
+		assert.True(t, ok)
+
+		n := rnd.Repeat(3, 7, func() {
+			_, _, err := handler.LookupTag(sf)
+			assert.NoError(t, err)
+		})
+
+		testcase.OnFail(t, func() { t.Log("repeat count:", n) })
+		assert.Equal(t, parseCount, 1)
+	})
+
+	t.Run("race", func(t *testing.T) {
+		type T struct {
+			Field1 string `testtag:"value"`
+			Field2 string `testtag:"value"`
+		}
+
+		handler := reflectkit.TagHandler[string]{
+			Name:  "testtag",
+			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
+		}
+
+		rStruct := reflect.ValueOf(T{})
+		field1, _, ok := reflectkit.LookupField(rStruct, "Field1")
+		assert.True(t, ok)
+		field2, _, ok := reflectkit.LookupField(rStruct, "Field2")
+		assert.True(t, ok)
+
+		testcase.Race(
+			func() { handler.LookupTag(field1) },
+			func() { handler.LookupTag(field1) },
+			func() { handler.LookupTag(field2) },
+			func() { handler.LookupTag(field2) },
+		)
+	})
+}
+
+func TestClone(t *testing.T) {
+	t.Run("Clone nil value", func(t *testing.T) {
+		var nilVal reflect.Value
+		cloned := reflectkit.Clone(nilVal)
+		assert.False(t, cloned.IsValid())
+	})
+
+	t.Run("Clone integer", func(t *testing.T) {
+		{
+			val := reflect.ValueOf(int(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int](t, 42, int(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int8(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int8](t, 42, int8(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int16(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int16](t, 42, int16(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int32(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int32](t, 42, int32(cloned.Int()))
+		}
+		{
+			val := reflect.ValueOf(int64(42))
+			cloned := reflectkit.Clone(val)
+			assert.Equal[int64](t, 42, int64(cloned.Int()))
+		}
+	})
+
+	t.Run("Clone struct", func(t *testing.T) {
+		type sample struct {
+			A int
+			B string
+		}
+		val := reflect.ValueOf(sample{A: 10, B: "test"})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		cloned.FieldByName("B").Set(reflect.ValueOf("foo"))
+		assert.Equal(t, val.FieldByName("B").String(), "test")
+	})
+
+	t.Run("Clone slice and mutate copy", func(t *testing.T) {
+		val := reflect.ValueOf([]int{1, 2, 3})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		cloned.Index(0).SetInt(99)
+		assert.Equal(t, 1, val.Index(0).Int())
+		assert.NotEqual(t, 99, val.Index(0).Int())
+	})
+
+	t.Run("Clone array and mutate copy", func(t *testing.T) {
+		val := reflect.ValueOf([3]int{1, 2, 3})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		assert.Equal(t, 1, val.Index(0).Int())
+		assert.NotEqual(t, 99, val.Index(0).Int())
+	})
+
+	t.Run("Clone map and mutate copy", func(t *testing.T) {
+		val := reflect.ValueOf(map[string]int{"a": 1, "b": 2})
+		cloned := reflectkit.Clone(val)
+		assert.Equal(t, val.Interface(), cloned.Interface())
+		cloned.SetMapIndex(reflect.ValueOf("a"), reflect.ValueOf(99))
+		assert.NotEqual(t, 99, val.MapIndex(reflect.ValueOf("a")).Int())
+	})
+
+	t.Run("Clone chan and mutate copy", func(t *testing.T) {
+		og := reflect.ValueOf(make(chan int))
+		defer og.Close()
+		cloned := reflectkit.Clone(og)
+		assert.False(t, reflectkit.IsNil(cloned))
+		defer cloned.Close()
+
+		var ogRec, clRec bool
+		go func() {
+			_, ok := og.Recv()
+			clRec = ok
+		}()
+		go func() {
+			v, ok := cloned.Recv()
+			clRec = ok
+			assert.Equal(t, int(v.Int()), 42)
+		}()
+
+		assert.Within(t, time.Second, func(context.Context) {
+			cloned.Send(reflect.ValueOf(int(42)))
+		})
+
+		assert.Eventually(t, time.Second, func(t assert.It) {
+			assert.True(t, clRec)
+			assert.False(t, ogRec)
+		})
+	})
+
+	t.Run("Cloned chan has the same buffer size", func(t *testing.T) {
+		og := reflect.ValueOf(make(chan int, 1))
+		defer og.Close()
+		cloned := reflectkit.Clone(og)
+		assert.False(t, reflectkit.IsNil(cloned))
+		defer cloned.Close()
+
+		assert.Within(t, time.Second, func(context.Context) {
+			og.Send(reflect.ValueOf(int(42)))
+		})
+
+		assert.Within(t, time.Second, func(context.Context) {
+			cloned.Send(reflect.ValueOf(int(42)))
+		})
+
+		assert.Within(t, time.Second, func(context.Context) {
+			val, ok := og.Recv()
+			assert.True(t, ok)
+			assert.Equal(t, val.Int(), 42)
+		})
+
+		assert.Within(t, time.Second, func(context.Context) {
+			val, ok := cloned.Recv()
+			assert.True(t, ok)
+			assert.Equal(t, val.Int(), 42)
+		})
+	})
+
+	t.Run("Clone struct with nested values", func(t *testing.T) {
+		type nested struct {
+			X int
+		}
+		type sample struct {
+			A nested
+			B string
+		}
+		val := reflect.ValueOf(sample{A: nested{X: 42}, B: "test"})
+		cloned := reflectkit.Clone(val)
+		cloned.FieldByName("A").FieldByName("X").SetInt(99)
+		assert.NotEqual(t, 99, val.FieldByName("A").FieldByName("X").Int())
+	})
+}
+
+func TestOverStructFields(t *testing.T) {
+	type T struct {
+		Foo string
+		Bar string
+		Baz string
+	}
+
+	var example = T{
+		Foo: "foo",
+		Bar: "bar",
+		Baz: "baz",
+	}
+
+	t.Run("iter.Pull2", func(t *testing.T) {
+		i := reflectkit.OverStructFields(reflect.ValueOf(example))
+
+		next, stop := iter.Pull2(i)
+		defer stop()
+
+		var (
+			fields []string
+			n      int
+		)
+		for {
+			sf, val, ok := next()
+			if !ok {
+				break
+			}
+			n++
+			fields = append(fields, sf.Name)
+			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
+		}
+		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
+		assert.Equal(t, n, 3)
+	})
+
+	t.Run("range spike", func(t *testing.T) {
+		var (
+			fields []string
+			n      int
+		)
+		for sf, val := range reflectkit.OverStructFields(reflect.ValueOf(example)) {
+			n++
+			fields = append(fields, sf.Name)
+			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
+		}
+		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
+		assert.Equal(t, n, 3)
 	})
 }
