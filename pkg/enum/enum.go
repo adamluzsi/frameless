@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"go.llib.dev/frameless/internal/interr"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/synckit"
 
@@ -95,7 +96,7 @@ func Validate[T any](v T) error {
 func ValidateStruct(v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Struct {
-		return fmt.Errorf("only struct types are supported. (%T)", v)
+		return interr.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
 
 	rt := rv.Type()

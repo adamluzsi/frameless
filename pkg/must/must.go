@@ -13,8 +13,6 @@
 //	Must(regexp.Compile(`regexp`))
 package must
 
-import "go.llib.dev/frameless/pkg/errorkit"
-
 // Must is a syntax sugar to express things like must.Must(regexp.Compile(`regexp`))
 func Must[T any](v T, err error) T {
 	if err != nil {
@@ -57,7 +55,7 @@ func Must5[A, B, C, D, E any](a A, b B, c C, d D, e E, err error) (A, B, C, D, E
 	return a, b, c, d, e
 }
 
-const ErrNotOK errorkit.Error = "ErrNotOK"
+const ErrNotOK = "ErrNotOK"
 
 func OK[T any](v T, ok bool) T {
 	if !ok {

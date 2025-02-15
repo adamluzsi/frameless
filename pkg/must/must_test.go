@@ -261,12 +261,11 @@ func TestOK(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 	t.Run("rainy", func(t *testing.T) {
-		out := assert.Panic(t, func() {
+		got := assert.Panic(t, func() {
 			_ = must.OK(func() (int, bool) { return rnd.Int(), false }())
 		})
-		got, ok := out.(error)
-		assert.True(t, ok, "Expected to get back an error value as panic's value")
-		assert.ErrorIs(t, got, must.ErrNotOK)
+		assert.NotNil(t, got)
+		assert.Equal[any](t, got, must.ErrNotOK)
 	})
 }
 
@@ -282,12 +281,11 @@ func TestOK0(t *testing.T) {
 		})
 	})
 	t.Run("rainy", func(t *testing.T) {
-		out := assert.Panic(t, func() {
+		got := assert.Panic(t, func() {
 			must.OK0(func() bool { return false }())
 		})
-		got, ok := out.(error)
-		assert.True(t, ok, "Expected to get back an error value as panic's value")
-		assert.ErrorIs(t, got, must.ErrNotOK)
+		assert.NotNil(t, got)
+		assert.Equal[any](t, got, must.ErrNotOK)
 	})
 }
 
@@ -312,13 +310,11 @@ func TestOK2(t *testing.T) {
 		assert.Equal(t, expB, gotB)
 	})
 	t.Run("rainy", func(t *testing.T) {
-		var got error
-		out := assert.Panic(t, func() {
+		got := assert.Panic(t, func() {
 			_, _ = must.OK2(func() (string, int, bool) { return rnd.String(), rnd.Int(), false }())
 		})
-		got, ok := out.(error)
-		assert.True(t, ok, "Expected to get back an error value as panic's value")
-		assert.ErrorIs(t, got, must.ErrNotOK)
+		assert.NotNil(t, got)
+		assert.Equal[any](t, got, must.ErrNotOK)
 	})
 }
 
@@ -346,13 +342,11 @@ func TestOK3(t *testing.T) {
 		assert.Equal(t, expC, gotC)
 	})
 	t.Run("rainy", func(t *testing.T) {
-		var got error
-		out := assert.Panic(t, func() {
+		got := assert.Panic(t, func() {
 			_, _, _ = must.OK3(func() (string, int, float32, bool) { return rnd.String(), rnd.Int(), rnd.Float32(), false }())
 		})
-		got, ok := out.(error)
-		assert.True(t, ok, "Expected to get back an error value as panic's value")
-		assert.ErrorIs(t, got, must.ErrNotOK)
+		assert.NotNil(t, got)
+		assert.Equal[any](t, got, must.ErrNotOK)
 	})
 }
 
@@ -383,15 +377,13 @@ func TestOK4(t *testing.T) {
 		assert.Equal(t, expD, gotD)
 	})
 	t.Run("rainy", func(t *testing.T) {
-		var got error
-		out := assert.Panic(t, func() {
+		got := assert.Panic(t, func() {
 			_, _, _, _ = must.OK4(func() (string, int, float32, time.Time, bool) {
 				return rnd.String(), rnd.Int(), rnd.Float32(), rnd.Time(), false
 			}())
 		})
-		got, ok := out.(error)
-		assert.True(t, ok, "Expected to get back an error value as panic's value")
-		assert.ErrorIs(t, must.ErrNotOK, got)
+		assert.NotNil(t, got)
+		assert.Equal[any](t, got, must.ErrNotOK)
 	})
 }
 
@@ -427,14 +419,12 @@ func TestOK5(t *testing.T) {
 		assert.Equal(t, expE, gotE)
 	})
 	t.Run("rainy", func(t *testing.T) {
-		var got error
-		out := assert.Panic(t, func() {
+		got := assert.Panic(t, func() {
 			_, _, _, _, _ = must.OK5(func() (string, int, float32, time.Time, float64, bool) {
 				return rnd.String(), rnd.Int(), rnd.Float32(), rnd.Time(), rnd.Float64(), false
 			}())
 		})
-		got, ok := out.(error)
-		assert.True(t, ok, "Expected to get back an error value as panic's value")
-		assert.ErrorIs(t, must.ErrNotOK, got)
+		assert.NotNil(t, got)
+		assert.Equal[any](t, got, must.ErrNotOK)
 	})
 }
