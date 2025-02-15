@@ -98,7 +98,9 @@ func ValidateStruct(v any) error {
 		return errorkit.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
 	for field, value := range reflectkit.StructFields(rv) {
-		enumTag.HandleStructField(field, value)
+		if err := enumTag.HandleStructField(field, value); err != nil {
+			return err
+		}
 		if err := ValidateStructField(field, value); err != nil {
 			return err
 		}
@@ -174,6 +176,9 @@ func valuesForTag(sf reflect.StructField) (_ []reflect.Value, _ bool, rErr error
 		Tag:     sf.Tag,
 		PkgPath: sf.PkgPath,
 	}
+
+	enumTag.HandleUntagged
+
 	return tagCache.GetOrInit(id, func() []reflect.Value {
 		enumerators, err := parseTag(sf.Type, tag)
 		if err != nil {

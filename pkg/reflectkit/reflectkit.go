@@ -298,21 +298,31 @@ func (h *TagHandler[T]) HandleStructField(field reflect.StructField, value refle
 }
 
 func (h *TagHandler[T]) handleStructField(field reflect.StructField, value reflect.Value) error {
-	tag, ok := field.Tag.Lookup(h.Name)
+	v, ok, err := h.LookupTag(field)
+	if err != nil {
+		return err
+	}
 	if !ok && !h.HandleUntagged {
 		return nil
 	}
-
-	v, err := h.parse(field, tag)
-	if err != nil {
-		return fmt.Errorf("%T.Parse failed: %w", h, err)
-	}
-
 	if err := h.Use(field, value, v); err != nil {
 		return err
 	}
-
 	return nil
+}
+
+func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
+	tag, ok := field.Tag.Lookup(h.Name)
+	if !ok && !h.HandleUntagged {
+		var zero T
+		return zero, ok, nil
+	}
+	v, err := h.parse(field, tag)
+	if err != nil {
+		var zero T
+		return zero, ok, fmt.Errorf("%T.Parse failed: %w", h, err)
+	}
+	return v, true, nil
 }
 
 func (h *TagHandler[T]) parse(sf reflect.StructField, tagValue string) (T, error) {
@@ -402,6 +412,7 @@ func Clone(value reflect.Value) reflect.Value {
 
 	default:
 		return reflect.ValueOf(value.Interface())
+
 	}
 }
 
