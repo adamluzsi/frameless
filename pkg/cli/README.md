@@ -32,6 +32,8 @@ You can use specific tags to define how these fields should behave:
 
 - `flag`: Marks the field as a CLI option for your command.
 - `arg`: Indicates that the field is expected as a positional argument at a specific index.
+- `env`: The environment variable key that can be used as an alternative way to a flag configure the CLI command.
+  - `flag` and an `env` can coexist for a field, where `flag` will be prioritised over `env`.
 
 Additional Tags for Further Specification
 
@@ -40,11 +42,13 @@ You can combine these tags to refine your command:
 - `desc`: Provides a description of the given flag or argument.
 - `default`: Sets a default value if the user does not supply one.
 - `required`: Marks the field as mandatory, ensuring the user provides it.
+- `enum`: Set a list of enumerator value for the field, which will define what values the CLI accept for a given input.
+  - the `-help` documentation will list the acceptable values.
 
 ```go
 type TestCommand struct {
-	BoolFlag   bool   `flag:"bool" desc:"a bool flag"`
-	StringFlag string `flag:"str" default:"foo"`
+	BoolFlag   bool   `flag:"bool" env:"BOOLENVVAR" desc:"a bool flag"`
+	StringFlag string `flag:"str" env:"STR_ENVVAR" default:"foo"`
 
 	StringArg string `arg:"0" required:"true"`
 	IntArg    int    `arg:"1" default:"42"`
@@ -59,15 +63,12 @@ func (cmd TestCommand) ServeCLI(w cli.Response, r *cli.Request) {
 Usage: direct [OPTION]... [StringArg] [IntArg]
 
 Options:
-  -bool=[bool]: a bool flag
-  -str=[string] (Default: foo)
+  -bool=[bool]: a bool flag (env: BOOLENVVAR)
+  -str=[string] (env: STR_ENVVAR) (default: foo)
 
 Arguments:
   StringArg [string]
   IntArg [int] (Default: 42)
-
-flag: help requested
-exit status 2
 ```
 
 ## Testing
