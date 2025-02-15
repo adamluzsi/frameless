@@ -1,29 +1,20 @@
 package runtimekit
 
 import (
-	"fmt"
 	"runtime"
 	"strings"
 
-	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/option"
 )
 
-// Create a new error with given error or error message.
-// TracedErrors extends the error message by a human readable stack trace.
-func Stack(opts ...StackOption) string {
+func Stack(opts ...StackOption) []StackFrame {
 	options := option.Use(opts)
 
 	programCounters := make([]uintptr, 1024)
-
-	const skipNewTracedError = 1
-	const skipRuntimeCallers = 1
-	const skipFrames = skipNewTracedError + skipRuntimeCallers
-
-	n_callers := runtime.Callers(skipFrames, programCounters)
+	n_callers := runtime.Callers(1+options.Skip, programCounters)
 	frames := runtime.CallersFrames(programCounters[:n_callers])
 
-	var vs []TraceFrame
+	var vs []StackFrame
 	for more := true; more; {
 		var stackFrameInfo runtime.Frame
 		stackFrameInfo, more = frames.Next()
@@ -44,16 +35,14 @@ func Stack(opts ...StackOption) string {
 			break
 		}
 
-		vs = append(vs, TraceFrame{
+		vs = append(vs, StackFrame{
 			Function: stackFrameInfo.Function,
 			File:     stackFrameInfo.File,
 			Line:     stackFrameInfo.Line,
 		})
 	}
 
-	return slicekit.Reduce(vs, "", func(o string, f TraceFrame) string {
-		return fmt.Sprintf("%s%s\n", o, f.String())
-	})
+	return vs
 }
 
 type StackOption interface {
@@ -61,6 +50,14 @@ type StackOption interface {
 }
 
 type StackOptions struct {
-	Offset     int `default:"1"`
+	Skip       int `default:"0"`
 	BufferSize int `default:"1024"`
+}
+
+func (r StackOptions) Configure(t *StackOptions) { option.Configure(r, t) }
+
+type StackFrame struct {
+	Function string
+	File     string
+	Line     int
 }

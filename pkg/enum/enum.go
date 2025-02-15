@@ -95,7 +95,7 @@ func Validate[T any](v T) error {
 func ValidateStruct(v any) error {
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Struct {
-		return fmt.Errorf("only struct types are supported. (%T)", v)
+		return errorkit.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
 
 	rt := rv.Type()

@@ -1906,18 +1906,20 @@ func TestClone(t *testing.T) {
 }
 
 func TestStructFields(t *testing.T) {
-	t.Run("smoke", func(t *testing.T) {
-		type T struct {
-			Foo string
-			Bar string
-			Baz string
-		}
+	type T struct {
+		Foo string
+		Bar string
+		Baz string
+	}
 
-		i := reflectkit.StructFields(reflect.ValueOf(T{
-			Foo: "foo",
-			Bar: "bar",
-			Baz: "baz",
-		}))
+	var example = T{
+		Foo: "foo",
+		Bar: "bar",
+		Baz: "baz",
+	}
+
+	t.Run("iter.Pull2", func(t *testing.T) {
+		i := reflectkit.StructFields(reflect.ValueOf(example))
 
 		next, stop := iter.Pull2(i)
 		defer stop()
@@ -1935,5 +1937,23 @@ func TestStructFields(t *testing.T) {
 			fields = append(fields, sf.Name)
 			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
 		}
+		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
+		assert.Equal(t, n, 3)
+	})
+
+	t.Run("range spike", func(t *testing.T) {
+		i := reflectkit.StructFields(reflect.ValueOf(example))
+
+		var (
+			fields []string
+			n      int
+		)
+		for sf, val := range i {
+			n++
+			fields = append(fields, sf.Name)
+			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
+		}
+		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
+		assert.Equal(t, n, 3)
 	})
 }
