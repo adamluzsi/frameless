@@ -69,10 +69,7 @@ func (r *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	if _, found, err := r.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return errorkit.With(crud.ErrAlreadyExists).
-			Detailf(`%T already exists with id: %v`, *new(ENT), id).
-			Context(ctx).
-			Unwrap()
+		return errorkit.WithContext(crud.ErrAlreadyExists.F(`%T already exists with id: %v`, *new(ENT), id), ctx)
 	}
 
 	r.memory().Set(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id), *ptr)

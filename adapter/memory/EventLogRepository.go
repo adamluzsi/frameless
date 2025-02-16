@@ -97,10 +97,7 @@ func (s *EventLogRepository[ENT, ID]) Create(ctx context.Context, ptr *ENT) erro
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
-		return errorkit.With(crud.ErrAlreadyExists).
-			Detailf(`%T already exists with id: %v`, *new(ENT), id).
-			Context(ctx).
-			Unwrap()
+		return errorkit.WithContext(crud.ErrAlreadyExists.F(`%T already exists with id: %v`, *new(ENT), id), ctx)
 	}
 
 	return s.append(ctx, EventLogRepositoryEvent[ENT, ID]{
@@ -151,8 +148,7 @@ func (s *EventLogRepository[ENT, ID]) Update(ctx context.Context, ptr *ENT) erro
 		return err
 	}
 	if !found {
-		return errorkit.With(crud.ErrNotFound).
-			Detailf(`%T entity not found by id: %v`, ptr, id)
+		return crud.ErrNotFound.F(`%T entity not found by id: %v`, ptr, id)
 	}
 
 	return s.append(ctx, EventLogRepositoryEvent[ENT, ID]{
@@ -169,8 +165,7 @@ func (s *EventLogRepository[ENT, ID]) DeleteByID(ctx context.Context, id ID) err
 		return err
 	}
 	if !found {
-		return errorkit.With(crud.ErrNotFound).
-			Detailf(`%T entity not found by id: %v`, *new(ENT), id)
+		return crud.ErrNotFound.F(`%T entity not found by id: %v`, *new(ENT), id)
 	}
 
 	ptr := new(ENT)

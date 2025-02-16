@@ -104,7 +104,7 @@ func TestHandler(t *testing.T) {
 					})
 				)
 				err.Let(s, func(t *testcase.T) error {
-					return errorkit.With(err.Super(t)).Context(ctx.Get(t))
+					return errorkit.WithContext(err.Super(t), ctx.Get(t))
 				})
 
 				s.Then("then the mapping will receive this error context", func(t *testcase.T) {
@@ -153,49 +153,6 @@ func TestHandler(t *testing.T) {
 						t.Must.Equal(string(usrErr.Get(t).ID), dto.Type.ID)
 						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
-					}
-				})
-
-				s.Then("mapping will receive a DTO with some values already configured", func(t *testcase.T) {
-					act(t) // assert as part of mapping
-				})
-			})
-
-			s.And("error has detail", func(s *testcase.Spec) {
-				detail := let.String(s)
-
-				err.Let(s, func(t *testcase.T) error {
-					return errorkit.With(err.Super(t)).Detail(detail.Get(t))
-				})
-
-				s.Then("user error message is part of the reply detail", func(t *testcase.T) {
-					dto := respondedWith(t)
-					t.Must.Contain(dto.Detail, detail.Get(t))
-				})
-
-				s.Then("error detail is part of the reply detail", func(t *testcase.T) {
-					dto := respondedWith(t)
-					t.Must.Contain(dto.Detail, detail.Get(t))
-				})
-			})
-		})
-
-		s.When("error has detail", func(s *testcase.Spec) {
-			detail := let.String(s)
-
-			err.Let(s, func(t *testcase.T) error {
-				return errorkit.With(err.Super(t)).Detail(detail.Get(t))
-			})
-
-			s.Then("detail is returned", func(t *testcase.T) {
-				dto := respondedWith(t)
-				t.Must.Equal(detail.Get(t), dto.Detail)
-			})
-
-			s.And("mapping is provided", func(s *testcase.Spec) {
-				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
-					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-						t.Must.Contain(detail.Get(t), dto.Detail)
 					}
 				})
 
@@ -272,7 +229,7 @@ func TestHandler(t *testing.T) {
 					})
 				)
 				err.Let(s, func(t *testcase.T) error {
-					return errorkit.With(err.Super(t)).Context(ctx.Get(t))
+					return errorkit.WithContext(err.Super(t), ctx.Get(t))
 				})
 
 				s.Then("then the mapping will receive this error context", func(t *testcase.T) {
@@ -304,49 +261,6 @@ func TestHandler(t *testing.T) {
 						t.Must.Equal(string(usrErr.Get(t).ID), dto.Type.ID)
 						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
-					}
-				})
-
-				s.Then("mapping will receive a DTO with some values already configured", func(t *testcase.T) {
-					act(t) // assert as part of mapping
-				})
-			})
-
-			s.And("error has detail", func(s *testcase.Spec) {
-				detail := let.String(s)
-
-				err.Let(s, func(t *testcase.T) error {
-					return errorkit.With(err.Super(t)).Detail(detail.Get(t))
-				})
-
-				s.Then("user error message is part of the reply detail", func(t *testcase.T) {
-					dto := act(t)
-					t.Must.Contain(dto.Detail, detail.Get(t))
-				})
-
-				s.Then("error detail is part of the reply detail", func(t *testcase.T) {
-					dto := act(t)
-					t.Must.Contain(dto.Detail, detail.Get(t))
-				})
-			})
-		})
-
-		s.When("error has detail", func(s *testcase.Spec) {
-			detail := let.String(s)
-
-			err.Let(s, func(t *testcase.T) error {
-				return errorkit.With(err.Super(t)).Detail(detail.Get(t))
-			})
-
-			s.Then("detail is returned", func(t *testcase.T) {
-				dto := act(t)
-				t.Must.Equal(detail.Get(t), dto.Detail)
-			})
-
-			s.And("mapping is provided", func(s *testcase.Spec) {
-				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
-					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-						t.Must.Contain(detail.Get(t), dto.Detail)
 					}
 				})
 
