@@ -1,7 +1,6 @@
 package mk_test
 
 import (
-	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/mk"
@@ -51,12 +50,13 @@ func TestReflectNew(t *testing.T) {
 		assert.Equal(t, mk.ReflectNew(reflectkit.TypeOf[string]()).Interface().(*string), new(string))
 	})
 	t.Run("type with Init", func(t *testing.T) {
-		v := mk.ReflectNew(reflect.TypeOf((*TypeWithInit)(nil)).Elem()).Interface().(*TypeWithInit)
+		T := reflectkit.TypeOf[TypeWithInit]()
+		v := mk.ReflectNew(T).Interface().(*TypeWithInit)
 		assert.Equal(t, v.V1, "V1i")
 		assert.Equal(t, v.V2, "V2i")
 	})
 	t.Run("struct type with nested init", func(t *testing.T) {
-		v := mk.ReflectNew(reflect.TypeOf((*NestedType)(nil)).Elem()).Interface().(*NestedType)
+		v := mk.ReflectNew(reflectkit.TypeOf[NestedType]()).Interface().(*NestedType)
 		assert.Equal(t, v.Nested.V1, "V1i")
 		assert.Equal(t, v.Nested.V2, "V2i")
 		assert.Equal(t, v.V1, "NT:V1i")
