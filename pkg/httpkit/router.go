@@ -486,11 +486,12 @@ func httpServeMuxRouteInfoLatest(mux *http.ServeMux) RouteInfo {
 
 	var patterns []string
 
-	for k, v := range reflectkit.OverMap(segments) {
+	for _, v := range reflectkit.OverMap(segments) {
+
+		pp.PP(v)
 
 	}
 
-	reflectkit.OverStructFields()
 	return nil
 }
 func httpServeMuxRouteInfo_1_21(mux *http.ServeMux) RouteInfo {

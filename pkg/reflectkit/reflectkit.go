@@ -274,7 +274,7 @@ func (h *TagHandler[T]) HandleStruct(rStruct reflect.Value) error {
 	if rStruct.Kind() != reflect.Struct {
 		return interr.ImplementationError.F("%s is not a struct type", rStruct.Type().String())
 	}
-	for sf, val := range OverStructFields(rStruct) {
+	for sf, val := range OverStruct(rStruct) {
 		if err := h.handleStructField(sf, val); err != nil {
 			return err
 		}
@@ -417,7 +417,7 @@ func Clone(value reflect.Value) reflect.Value {
 	}
 }
 
-func OverStructFields(rStruct reflect.Value) iter.Seq2[reflect.StructField, reflect.Value] {
+func OverStruct(rStruct reflect.Value) iter.Seq2[reflect.StructField, reflect.Value] {
 	if rStruct.Kind() != reflect.Struct {
 		panic(interr.ImplementationError.F("expected %s to be a struct type", rStruct.Type().String()))
 	}
@@ -442,6 +442,20 @@ func OverMap(rMap reflect.Value) iter.Seq2[reflect.Value, reflect.Value] {
 		i := rMap.MapRange()
 		for i.Next() {
 			if !yield(i.Key(), i.Value()) {
+				break
+			}
+		}
+	})
+}
+
+func OverSlice(rSlice reflect.Value) iter.Seq2[int, reflect.Value] {
+	if rSlice.Kind() != reflect.Slice {
+		panic(interr.ImplementationError.F("expected %s to be a slice type", rSlice.Type().String()))
+	}
+	return iter.Seq2[int, reflect.Value](func(yield func(int, reflect.Value) bool) {
+		var length = rSlice.Len()
+		for i := 0; i < length; i++ {
+			if !yield(i, rSlice.Index(i)) {
 				break
 			}
 		}

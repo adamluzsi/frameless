@@ -60,7 +60,7 @@ func initStruct(rStruct reflect.Value) {
 	if err := defaultTag.HandleStruct(rStruct); err != nil {
 		panic(err)
 	}
-	for _, value := range reflectkit.OverStructFields(rStruct) {
+	for _, value := range reflectkit.OverStruct(rStruct) {
 		reflectInit(value.Addr())
 	}
 }
