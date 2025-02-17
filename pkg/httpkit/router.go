@@ -16,6 +16,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/testcase/pp"
 )
 
 func NewRouter(configure ...func(*Router)) *Router {
@@ -454,7 +455,45 @@ func nodeRoutes(node *_Node) RouteInfo {
 
 var _ = RegisterRouteInformer[*http.ServeMux](httpServeMuxRouteInfo)
 
+var versionServeMux_1_21 bool = func() bool {
+	val, ok := reflectkit.TypeOf[http.ServeMux]().FieldByName("m")
+	if !ok {
+		return false
+	}
+	if val.Type.Kind() != reflect.Map {
+		return false
+	}
+	return ok
+}()
+
 func httpServeMuxRouteInfo(mux *http.ServeMux) RouteInfo {
+	if versionServeMux_1_21 {
+		return httpServeMuxRouteInfo_1_21(mux)
+	}
+	return httpServeMuxRouteInfoLatest(mux)
+}
+
+func httpServeMuxRouteInfoLatest(mux *http.ServeMux) RouteInfo {
+	_, index, ok := reflectkit.LookupField(reflect.ValueOf(mux).Elem(), "index")
+	if !ok {
+		return nil
+	}
+
+	_, segments, ok := reflectkit.LookupField(index, "segments")
+	if !ok {
+		return nil
+	}
+
+	var patterns []string
+
+	for k, v := range reflectkit.OverMap(segments) {
+
+	}
+
+	reflectkit.OverStructFields()
+	return nil
+}
+func httpServeMuxRouteInfo_1_21(mux *http.ServeMux) RouteInfo {
 	if mux == nil {
 		return nil
 	}

@@ -2,6 +2,7 @@ package reflectkit_test
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"reflect"
 	"strings"
@@ -2187,5 +2188,61 @@ func TestOverStructFields(t *testing.T) {
 		}
 		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
 		assert.Equal(t, n, 3)
+	})
+
+	t.Run("not struct kind", func(t *testing.T) {
+		assert.Panic(t, func() {
+			reflectkit.OverMap(reflect.ValueOf("hello:world"))
+		})
+	})
+}
+
+func TestOverMap(t *testing.T) {
+	var example = map[string]string{
+		"Foo": "foo",
+		"Bar": "bar",
+		"Baz": "baz",
+	}
+
+	t.Run("iter.Pull2", func(t *testing.T) {
+		i := reflectkit.OverMap(reflect.ValueOf(example))
+
+		next, stop := iter.Pull2(i)
+		defer stop()
+
+		var (
+			elems []string
+			n     int
+		)
+		for {
+			key, val, ok := next()
+			if !ok {
+				break
+			}
+			n++
+			elems = append(elems, fmt.Sprintf("%s:%s", key.String(), val.String()))
+		}
+		assert.ContainExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
+		assert.Equal(t, n, 3)
+	})
+
+	t.Run("range spike", func(t *testing.T) {
+		var (
+			elems []string
+			n     int
+		)
+		for key, val := range reflectkit.OverMap(reflect.ValueOf(example)) {
+			n++
+			assert.Equal(t, val.String(), strings.ToLower(key.String()))
+			elems = append(elems, fmt.Sprintf("%s:%s", key.String(), val.String()))
+		}
+		assert.ContainExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
+		assert.Equal(t, n, 3)
+	})
+
+	t.Run("not map kind", func(t *testing.T) {
+		assert.Panic(t, func() {
+			reflectkit.OverMap(reflect.ValueOf("hello:world"))
+		})
 	})
 }

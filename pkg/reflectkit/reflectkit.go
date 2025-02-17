@@ -419,7 +419,7 @@ func Clone(value reflect.Value) reflect.Value {
 
 func OverStructFields(rStruct reflect.Value) iter.Seq2[reflect.StructField, reflect.Value] {
 	if rStruct.Kind() != reflect.Struct {
-		panic(interr.ImplementationError.F("expected that %s is a struct type", rStruct.Type().String()))
+		panic(interr.ImplementationError.F("expected %s to be a struct type", rStruct.Type().String()))
 	}
 	return iter.Seq2[reflect.StructField, reflect.Value](func(yield func(reflect.StructField, reflect.Value) bool) {
 		var (
@@ -428,6 +428,20 @@ func OverStructFields(rStruct reflect.Value) iter.Seq2[reflect.StructField, refl
 		)
 		for i := 0; i < num; i++ {
 			if !yield(typ.Field(i), rStruct.Field(i)) {
+				break
+			}
+		}
+	})
+}
+
+func OverMap(rMap reflect.Value) iter.Seq2[reflect.Value, reflect.Value] {
+	if rMap.Kind() != reflect.Map {
+		panic(interr.ImplementationError.F("expected %s to be a map type", rMap.Type().String()))
+	}
+	return iter.Seq2[reflect.Value, reflect.Value](func(yield func(reflect.Value, reflect.Value) bool) {
+		i := rMap.MapRange()
+		for i.Next() {
+			if !yield(i.Key(), i.Value()) {
 				break
 			}
 		}

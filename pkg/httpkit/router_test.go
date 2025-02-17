@@ -1092,18 +1092,7 @@ func TestGetRouteInfo(t *testing.T) {
 		var expectedRouteCount int
 		var assertCurRouteCount = func() {
 			t.Helper()
-			var done bool
-			testcase.OnFail(t, func() {
-				t.Helper()
-				if done {
-					return
-				}
-				for _, ri := range ro.RouteInfo() {
-					t.Log(pp.Format(ri))
-				}
-			})
 			assert.Equal(t, len(ro.RouteInfo()), expectedRouteCount)
-			done = true
 		}
 		var assertIncRouteCountBy = func(n int) {
 			t.Helper()
@@ -1131,7 +1120,9 @@ func TestGetRouteInfo(t *testing.T) {
 			assertIncRouteCount()
 			ro.Get("/ep2", nullHandler)
 			assertIncRouteCount()
+			pp.PP(ro.RouteInfo())
 			ro.Handle("/baz/1", nullHandler)
+			pp.PP(ro.RouteInfo())
 			assertIncRouteCount()
 			ro.Handle("/baz/2/", nullHandler)
 			assertIncRouteCount()
