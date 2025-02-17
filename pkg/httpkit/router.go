@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -484,13 +485,17 @@ func httpServeMuxRouteInfoLatest(mux *http.ServeMux) RouteInfo {
 		return nil
 	}
 
-	var patterns []string
+	var patternSet datastruct.Set[string]
 
-	for _, v := range reflectkit.OverMap(segments) {
-
-		pp.PP(v)
-
+	for _, vs := range reflectkit.OverMap(segments) {
+		for _, v := range reflectkit.OverSlice(vs) {
+			patternSet.Add(v.String())
+		}
 	}
+
+	patterns := patternSet.ToSlice()
+
+	pp.PP(patterns)
 
 	return nil
 }
