@@ -1,21 +1,21 @@
-package ratelimit_test
+package resilience_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/ratelimit"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
 )
 
-var rate = testcase.Var[ratelimit.Rate]{
+var rate = testcase.Var[resilience.Rate]{
 	ID: "rate",
-	Init: func(t *testcase.T) ratelimit.Rate {
-		return ratelimit.Rate{
+	Init: func(t *testcase.T) resilience.Rate {
+		return resilience.Rate{
 			N:   t.Random.IntBetween(5, 10),
 			Per: t.Random.DurationBetween(time.Minute, 5*time.Minute),
 		}
@@ -24,18 +24,25 @@ var rate = testcase.Var[ratelimit.Rate]{
 
 const timeout = time.Second / 2
 
-var _ ratelimit.Throttling = &ratelimit.SlidingWindow{}
+var _ resilience.RateLimitPolicy = &resilience.SlidingWindow{}
 
 func ExampleSlidingWindow() {
-	_ = ratelimit.SlidingWindow{Rate: ratelimit.Rate{N: 100, Per: time.Minute}}
+	var (
+		ctx = context.Background()
+		rl  = resilience.SlidingWindow{Rate: resilience.Rate{N: 100, Per: time.Minute}}
+	)
+	if err := rl.RateLimit(ctx); err != nil { // err could be like context cancellation
+		_ = err // return err
+	}
 }
+
 func TestSlidingWindow(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	rate.Bind(s)
 
-	subject := testcase.Let(s, func(t *testcase.T) *ratelimit.SlidingWindow {
-		return &ratelimit.SlidingWindow{
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.SlidingWindow {
+		return &resilience.SlidingWindow{
 			Rate: rate.Get(t),
 		}
 	})
@@ -43,7 +50,7 @@ func TestSlidingWindow(t *testing.T) {
 	var Context, ContextCancel = let.ContextWithCancel(s)
 
 	act := func(t *testcase.T) error {
-		return subject.Get(t).Throttle(Context.Get(t))
+		return subject.Get(t).RateLimit(Context.Get(t))
 	}
 
 	initialTime := testcase.Let(s, func(t *testcase.T) time.Time {
@@ -59,13 +66,13 @@ func TestSlidingWindow(t *testing.T) {
 			ContextCancel.Get(t)()
 		})
 
-		s.Then("throttling returns with context's error", func(t *testcase.T) {
+		s.Then("rate-limiting returns with context's error", func(t *testcase.T) {
 			assert.ErrorIs(t, Context.Get(t).Err(), act(t))
 		})
 	})
 
 	s.When(".Rate left as empty value", func(s *testcase.Spec) {
-		rate.LetValue(s, ratelimit.Rate{})
+		rate.LetValue(s, resilience.Rate{})
 
 		s.Then("calling won't hangs due to inferred default values", func(t *testcase.T) {
 			assert.Within(t, timeout, func(ctx context.Context) {
@@ -96,13 +103,13 @@ func TestSlidingWindow(t *testing.T) {
 		s.Then("rate limiting applies", func(t *testcase.T) {
 			w := assert.NotWithin(t, timeout, func(ctx context.Context) {
 				assert.NoError(t, act(t))
-			}, "expected rate limiting from throttling")
+			}, "expected rate limiting from rate-limiting")
 
 			timecop.Travel(t, rate.Get(t).Per)
 
 			assert.Within(t, timeout, func(ctx context.Context) {
 				w.Wait()
-			}, "expected that after the rate limit window went away, the throttling ended")
+			}, "expected that after the rate limit window went away, the rate-limiting ended")
 		})
 
 		s.And("we wait till the sliding window has capacity again", func(s *testcase.Spec) {
@@ -122,7 +129,7 @@ func TestSlidingWindow(t *testing.T) {
 				ContextCancel.Get(t)()
 			})
 
-			s.Then("throttling returns with context's error", func(t *testcase.T) {
+			s.Then("rate-limiting returns with context's error", func(t *testcase.T) {
 				assert.ErrorIs(t, Context.Get(t).Err(), act(t))
 			}, testcase.Flaky(3))
 		})

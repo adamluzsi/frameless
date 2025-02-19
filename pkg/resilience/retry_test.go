@@ -1,4 +1,4 @@
-package retry_test
+package resilience_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
@@ -14,11 +14,11 @@ import (
 	"go.llib.dev/testcase/let"
 )
 
-var _ retry.Strategy[int] = &retry.ExponentialBackoff{}
+var _ resilience.RetryPolicy[int] = &resilience.ExponentialBackoff{}
 
 func ExampleExponentialBackoff() {
 	ctx := context.Background()
-	rs := retry.ExponentialBackoff{}
+	rs := resilience.ExponentialBackoff{}
 
 	for i := 0; rs.ShouldTry(ctx, i); i++ {
 		// do an action
@@ -37,8 +37,8 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		delay    = testcase.LetValue(s, time.Nanosecond)
 		timeout  = testcase.LetValue[time.Duration](s, 0)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
-		return &retry.ExponentialBackoff{
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
+		return &resilience.ExponentialBackoff{
 			Attempts: attempts.Get(t),
 			Delay:    delay.Get(t),
 			Timeout:  timeout.Get(t),
@@ -87,7 +87,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we reached the allowed maximum number attempts", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
+		subject.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
 			v := subject.Super(t)
 			v.Attempts = 7
 			return v
@@ -103,7 +103,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we didn't reached the allowed maximum number attempts", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
+		subject.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
 			v := subject.Super(t)
 			v.Attempts = 5
 			return v
@@ -121,7 +121,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s.When("the was no failed attempt before", func(s *testcase.Spec) {
 		failureCount.LetValue(s, 0)
 
-		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
+		subject.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
 			v := subject.Super(t)
 			v.Delay = time.Hour
 			return v
@@ -136,7 +136,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	})
 
 	s.Context("depending on the number of failed failed attempts we wait longer based on the exponential backoff times", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
+		subject.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
 			v := subject.Super(t)
 			v.Delay = time.Millisecond
 			v.Attempts = 10
@@ -188,7 +188,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 			timecop.SetSpeed(t, multiplier)
 		})
 
-		subject.Let(s, func(t *testcase.T) *retry.ExponentialBackoff {
+		subject.Let(s, func(t *testcase.T) *resilience.ExponentialBackoff {
 			v := subject.Super(t)
 			v.Delay = time.Hour
 			v.Attempts = 10
@@ -262,11 +262,11 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	})
 }
 
-var _ retry.Strategy[int] = &retry.Jitter{}
+var _ resilience.RetryPolicy[int] = &resilience.Jitter{}
 
 func ExampleJitter() {
 	ctx := context.Background()
-	rs := retry.Jitter{}
+	rs := resilience.Jitter{}
 
 	for i := 0; rs.ShouldTry(ctx, i); i++ {
 		// do an action
@@ -278,8 +278,8 @@ func ExampleJitter() {
 func TestJitter_ShouldTry(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	subject := testcase.Let(s, func(t *testcase.T) *retry.Jitter {
-		return &retry.Jitter{Delay: time.Nanosecond}
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.Jitter {
+		return &resilience.Jitter{Delay: time.Nanosecond}
 	})
 
 	var (
@@ -299,7 +299,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 			return t.Random.IntB(3, 7)
 		})
 
-		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			super := subject.Super(t)
 			super.Attempts = attempts.Get(t)
 			return super
@@ -330,7 +330,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	s.When("the was no failed attempt before", func(s *testcase.Spec) {
 		failureCount.LetValue(s, 0)
 
-		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			v := subject.Super(t)
 			v.Delay = time.Hour
 			return v
@@ -345,7 +345,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we reached the allowed maximum number attempts", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			v := subject.Super(t)
 			v.Attempts = 7
 			return v
@@ -361,7 +361,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	})
 
 	s.When("we didn't reached the allowed maximum number attempts", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			v := subject.Super(t)
 			v.Attempts = 5
 			return v
@@ -377,7 +377,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	})
 
 	s.Context("on each retry attempt when failure already happened", func(s *testcase.Spec) {
-		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			v := subject.Super(t)
 			v.Delay = 10 * time.Millisecond
 			v.Attempts = 10
@@ -404,7 +404,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 			timecop.SetSpeed(t, multiplier)
 		})
 
-		subject.Let(s, func(t *testcase.T) *retry.Jitter {
+		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			v := subject.Super(t)
 			v.Delay = time.Hour
 			v.Attempts = 10
@@ -429,7 +429,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 func ExampleWaiter_ShouldTry() {
 	var (
 		ctx = context.Background()
-		rs  = retry.Waiter{Timeout: time.Minute}
+		rs  = resilience.Waiter{Timeout: time.Minute}
 		now = time.Now()
 	)
 
@@ -448,13 +448,13 @@ func TestWaiter_ShouldTry(t *testing.T) {
 			return time.Hour
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) retry.Waiter {
-		return retry.Waiter{Timeout: timeout.Get(t)}
+	subject := testcase.Let(s, func(t *testcase.T) resilience.Waiter {
+		return resilience.Waiter{Timeout: timeout.Get(t)}
 	})
 
 	var (
 		Context   = let.Context(s)
-		startedAt = testcase.Let[retry.StartedAt](s, func(t *testcase.T) retry.StartedAt {
+		startedAt = testcase.Let[resilience.StartedAt](s, func(t *testcase.T) resilience.StartedAt {
 			return clock.Now()
 		}).EagerLoading(s)
 	)
@@ -479,7 +479,7 @@ func TestWaiter_ShouldTry(t *testing.T) {
 	})
 
 	s.When("the last failure occured within the deadline", func(s *testcase.Spec) {
-		startedAt.Let(s, func(t *testcase.T) retry.StartedAt {
+		startedAt.Let(s, func(t *testcase.T) resilience.StartedAt {
 			return time.Now()
 		})
 		timeout.Let(s, func(t *testcase.T) time.Duration {
@@ -514,11 +514,11 @@ func measure(blk func()) time.Duration {
 	return endTime.Sub(startTime)
 }
 
-var _ retry.Strategy[int] = &retry.FixedDelay{}
+var _ resilience.RetryPolicy[int] = &resilience.FixedDelay{}
 
 func ExampleFixedDelay() {
 	ctx := context.Background()
-	rs := retry.FixedDelay{
+	rs := resilience.FixedDelay{
 		Delay:   10 * time.Second,
 		Timeout: 5 * time.Minute,
 	}
@@ -539,8 +539,8 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		attempts = testcase.LetValue[int](s, 5)
 		timeout  = testcase.LetValue[time.Duration](s, 0)
 	)
-	subject := testcase.Let(s, func(t *testcase.T) *retry.FixedDelay {
-		return &retry.FixedDelay{
+	subject := testcase.Let(s, func(t *testcase.T) *resilience.FixedDelay {
+		return &resilience.FixedDelay{
 			Delay:    delay.Get(t),
 			Attempts: attempts.Get(t),
 			Timeout:  timeout.Get(t),
@@ -626,7 +626,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	s.When("the was no failed attempt before", func(s *testcase.Spec) {
 		failureCount.LetValue(s, 0)
 
-		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+		subject.Let(s, func(t *testcase.T) *resilience.FixedDelay {
 			v := subject.Super(t)
 			v.Delay = time.Hour
 			return v
@@ -662,7 +662,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 			timecop.SetSpeed(t, multiplier)
 		})
 
-		subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+		subject.Let(s, func(t *testcase.T) *resilience.FixedDelay {
 			v := subject.Super(t)
 			v.Delay = time.Hour
 			return v
@@ -722,7 +722,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 			s.And("we are within the defined timeout duration", func(s *testcase.Spec) {
 				failureCount.LetValue(s, 1)
 
-				subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+				subject.Let(s, func(t *testcase.T) *resilience.FixedDelay {
 					v := subject.Super(t)
 					v.Delay = timeout.Get(t) / 4
 					return v
@@ -736,7 +736,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 			s.And("we ran out of time compared to the timeout duration", func(s *testcase.Spec) {
 				failureCount.LetValue(s, 2)
 
-				subject.Let(s, func(t *testcase.T) *retry.FixedDelay {
+				subject.Let(s, func(t *testcase.T) *resilience.FixedDelay {
 					v := subject.Super(t)
 					v.Delay = timeout.Get(t)
 					return v

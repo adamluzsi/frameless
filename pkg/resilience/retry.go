@@ -1,4 +1,4 @@
-package retry
+package resilience
 
 import (
 	"context"
@@ -10,17 +10,20 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-type Strategy[U StrategyUnit] interface {
+type RetryPolicy[U FailureCount | StartedAt] interface {
 	// ShouldTry will tell if retry should be attempted after a given number of failed attempts.
 	ShouldTry(ctx context.Context, u U) bool
 }
 
 type (
-	StrategyUnit interface{ FailureCount | StartedAt }
 	FailureCount = int
 	StartedAt    = time.Time
 )
 
+var _ RetryPolicy[FailureCount] = ExponentialBackoff{}
+
+// ExponentialBackoff is a RetryPolicy implementation.
+//
 // ExponentialBackoff will answer if retry can be made.
 // It waits as well the amount of time based on the failure count.
 // The waiting time before returning is doubled for each failed attempts
@@ -32,9 +35,9 @@ type ExponentialBackoff struct {
 	//
 	// Default: 1/2 Second
 	Delay time.Duration
-	// Timeout is the time within the Strategy is attempting further retries.
+	// Timeout is the time within the RetryPolicy is attempting further retries.
 	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
-	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
+	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until the calculated deadline is reached.
 	//
 	// Default: ignored
 	Timeout time.Duration
@@ -107,7 +110,14 @@ func (rs ExponentialBackoff) isDeadlineReached(ctx context.Context, failureCount
 	return rs.Timeout <= totalWaitedTime
 }
 
-// Jitter is a random variation added to the backoff time. This helps to distribute the retry attempts evenly over time, reducing the risk of overwhelming the system and avoiding synchronization between multiple clients that might be retrying simultaneously.
+var _ RetryPolicy[FailureCount] = Jitter{}
+
+// Jitter is a RetryPolicy implementation.
+//
+// Jitter is a random variation added to the backoff time.
+// This helps to distribute the retry attempts evenly over time,
+// reducing the risk of overwhelming the system and avoiding synchronization
+// between multiple clients that might be retrying simultaneously.
 type Jitter struct {
 	// Delay is the maximum time duration that the Jitter is willing to wait between attempts.
 	// There is no guarantee that it will wait the full duration.
@@ -154,6 +164,12 @@ func (rs Jitter) getMaxRetries() int {
 	return zerokit.Coalesce(rs.Attempts, defaultMaxRetries)
 }
 
+var _ RetryPolicy[StartedAt] = Waiter{}
+
+// Waiter is a RetryPolicy implementation.
+//
+// Waiter will check if a retry attempt should be made
+// compared to when an operation was initially started.
 type Waiter struct {
 	// Timeout refers to the maximum duration we can wait
 	// before a retry attempt is deemed unreasonable.
@@ -173,14 +189,20 @@ func (rs Waiter) timeout() time.Duration {
 	return zerokit.Coalesce(rs.Timeout, defaultTimeout)
 }
 
+var _ RetryPolicy[FailureCount] = FixedDelay{}
+
+// FixedDelay is a RetryPolicy implementation.
+//
+// FixedDelay will make retries with fixed delays between them.
+// It is a lineral waiting time based retry policy.
 type FixedDelay struct {
 	// Delay is the time duration waited between attempts.
 	//
 	// Default: 1/2 Second
 	Delay time.Duration
-	// Timeout is the time within the Strategy is attempting further retries.
+	// Timeout is the time within the RetryPolicy is attempting further retries.
 	// If the total waited time is greater than the Timeout, ExponentialBackoff will stop further attempts.
-	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until
+	// When Timeout is given, but MaxRetries is not, ExponentialBackoff will continue to retry until a calculated deadline is reached.
 	//
 	// Default: ignored
 	Timeout time.Duration

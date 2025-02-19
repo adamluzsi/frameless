@@ -17,7 +17,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
@@ -537,7 +537,7 @@ func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.C
 
 var DefaultRestClientHTTPClient http.Client = http.Client{
 	Transport: RetryRoundTripper{
-		RetryStrategy: retry.ExponentialBackoff{
+		RetryStrategy: resilience.ExponentialBackoff{
 			Delay:   time.Second,
 			Timeout: time.Minute,
 		},

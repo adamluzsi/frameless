@@ -1,4 +1,4 @@
-package ratelimit
+package resilience
 
 import (
 	"context"
@@ -10,9 +10,11 @@ import (
 	"go.llib.dev/testcase/clock"
 )
 
-type Throttling interface {
-	Throttle(context.Context) error
+type RateLimitPolicy interface {
+	RateLimit(context.Context) error
 }
+
+var _ RateLimitPolicy = &SlidingWindow{}
 
 type SlidingWindow struct {
 	Rate Rate
@@ -21,7 +23,7 @@ type SlidingWindow struct {
 	eh eventHistory
 }
 
-func (rl *SlidingWindow) Throttle(ctx context.Context) error {
+func (rl *SlidingWindow) RateLimit(ctx context.Context) error {
 check:
 	if err := ctx.Err(); err != nil {
 		return err

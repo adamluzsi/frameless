@@ -22,7 +22,7 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -48,7 +48,7 @@ func TestRoundTripperFunc(t *testing.T) {
 func ExampleRetryRoundTripper() {
 	httpClient := http.Client{
 		Transport: httpkit.RetryRoundTripper{
-			RetryStrategy: retry.ExponentialBackoff{ // optional
+			RetryStrategy: resilience.ExponentialBackoff{ // optional
 				Timeout: 5 * time.Minute,
 			},
 

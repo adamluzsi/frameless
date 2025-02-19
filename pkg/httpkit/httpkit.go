@@ -18,7 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/retry"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/testcase/clock"
 )
 
@@ -37,7 +37,7 @@ type RetryRoundTripper struct {
 	// RetryStrategy will be used to evaluate if a new retry attempt should be done.
 	//
 	// Default: retry.ExponentialBackoff
-	RetryStrategy retry.Strategy[retry.FailureCount]
+	RetryStrategy resilience.RetryPolicy[resilience.FailureCount]
 	// OnStatus is an [OPTIONAL] configuration field that could contain whether a certain http status code should be retried or not.
 	// The RetryRoundTripper has a default behaviour about which status code can be retried, and this option can override that.
 	OnStatus map[int]bool
@@ -127,11 +127,11 @@ func (rt RetryRoundTripper) isRetriableError(err error) bool {
 		isTimeout(err)
 }
 
-func (rt RetryRoundTripper) getRetryStrategy() retry.Strategy[retry.FailureCount] {
+func (rt RetryRoundTripper) getRetryStrategy() resilience.RetryPolicy[resilience.FailureCount] {
 	if rt.RetryStrategy != nil {
 		return rt.RetryStrategy
 	}
-	return &retry.ExponentialBackoff{}
+	return &resilience.ExponentialBackoff{}
 }
 
 func isTimeout(err error) bool {
