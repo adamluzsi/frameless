@@ -10,47 +10,47 @@ import (
 )
 
 var ErrEntityNotFound = errorkit.UserError{
-	ID:      "entity-not-found",
+	Code:    "entity-not-found",
 	Message: "The requested entity is not found in this resource.",
 }
 
 var ErrPathNotFound = errorkit.UserError{
-	ID:      "path-not-found",
+	Code:    "path-not-found",
 	Message: "The requested path is not found.",
 }
 
 var ErrEntityAlreadyExist = errorkit.UserError{
-	ID:      "entity-already-exists",
+	Code:    "entity-already-exists",
 	Message: "The entity could not be created as it already exists.",
 }
 
 var ErrForbidden = errorkit.UserError{
-	ID:      "forbidden",
+	Code:    "forbidden",
 	Message: "Operation permanently forbidden. Repeating the request will yield the same result.",
 }
 
 var ErrMethodNotAllowed = errorkit.UserError{
-	ID:      "rest-method-not-allowed",
+	Code:    "rest-method-not-allowed",
 	Message: "The requested RESTful method is not supported.",
 }
 
 var ErrMalformedID = errorkit.UserError{
-	ID:      "malformed-id-in-path",
+	Code:    "malformed-id-in-path",
 	Message: "The received entity id in the path is malformed.",
 }
 
 var ErrInvalidRequestBody = errorkit.UserError{
-	ID:      "invalid-request-body",
+	Code:    "invalid-request-body",
 	Message: "The request body is invalid.",
 }
 
 var ErrInternalServerError = errorkit.UserError{
-	ID:      "internal-server-error",
+	Code:    "internal-server-error",
 	Message: "An unexpected internal server error occurred.",
 }
 
 var ErrRequestEntityTooLarge = errorkit.UserError{
-	ID:      "request-entity-too-large",
+	Code:    "request-entity-too-large",
 	Message: "The request body was larger than the size limit allowed for the server.",
 }
 
@@ -72,7 +72,7 @@ func ErrorMapping(ctx context.Context, err error, dto *rfc7807.DTO) {
 		errors.Is(err, ErrPathNotFound):
 		dto.Status = http.StatusNotFound
 	case errors.Is(err, ErrForbidden):
-		dto.Type.ID = ErrForbidden.ID.String()
+		dto.Type.ID = ErrForbidden.Code.String()
 		dto.Status = http.StatusForbidden
 		dto.Detail = ErrForbidden.Message.String()
 	case errors.Is(err, ErrMalformedID),

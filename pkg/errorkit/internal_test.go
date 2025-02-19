@@ -46,7 +46,7 @@ func TestWrap(t *testing.T) {
 		})
 		usrErr = testcase.Let(s, func(t *testcase.T) UserError {
 			return UserError{
-				ID:      "42",
+				Code:    "42",
 				Message: "The answer to the ultimate question of life, the universe, and everything.",
 			}
 		})

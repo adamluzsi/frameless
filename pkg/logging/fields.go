@@ -64,7 +64,7 @@ func ErrField(err error) Detail {
 		"message": err.Error(),
 	}
 	if usrErr := (errorkit.UserError{}); errors.As(err, &usrErr) {
-		details["code"] = usrErr.ID.String()
+		details["code"] = usrErr.Code.String()
 	}
 	return Field("error", details)
 }

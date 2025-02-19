@@ -1199,7 +1199,7 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 
 		var got errorkit.UserError
 		assert.True(t, errors.As(err, &got))
-		assert.Equal(t, got.ID, "enum-error")
+		assert.Equal(t, got.Code, "enum-error")
 	})
 }
 

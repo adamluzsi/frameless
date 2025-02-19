@@ -445,7 +445,7 @@ func TestWithContext(t *testing.T) {
 	s.When("the input error has a typed error", func(s *testcase.Spec) {
 		expectedTypedError := testcase.Let(s, func(t *testcase.T) errorkit.UserError {
 			return errorkit.UserError{
-				ID:      "foo-bar-baz",
+				Code:    "foo-bar-baz",
 				Message: "The foo, bar and the baz",
 			}
 		})

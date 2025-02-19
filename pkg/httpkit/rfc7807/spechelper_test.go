@@ -5,7 +5,7 @@ import "go.llib.dev/frameless/pkg/errorkit"
 const ErrExample errorkit.Error = "example error"
 
 var ErrUsrMistake = errorkit.UserError{
-	ID:      "foo-bar-baz",
+	Code:    "foo-bar-baz",
 	Message: "It's a Layer 8 Issue",
 }
 

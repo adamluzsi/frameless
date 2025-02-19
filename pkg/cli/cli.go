@@ -959,7 +959,7 @@ func checkEnum(enums []reflect.Value, val reflect.Value, name string) error {
 }
 
 var EnumError = errorkit.UserError{
-	ID:      "enum-error",
+	Code:    "enum-error",
 	Message: "invalid enumeration value",
 }
 

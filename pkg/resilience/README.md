@@ -238,3 +238,5 @@ func (ms MyStruct) MyFunc(ctx context.Context) error {
 - **Resource Protection:** Prevent overloading of internal or external resources.
 - **Distributed Systems:** Avoid synchronized retries in distributed environments, reducing the likelihood of thundering herd issues.
 - **Predictable Workloads:** Maintain a consistent request rate for systems that require predictable load patterns.
+
+##

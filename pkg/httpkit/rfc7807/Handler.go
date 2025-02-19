@@ -63,8 +63,8 @@ func (h Handler) ToDTO(ctx context.Context, err error) DTO {
 		ctx = errCtx
 	}
 	if usrErr, ok := errorkit.LookupUserError(err); ok {
-		ID = string(usrErr.ID)
-		Title = h.toTitleCase(usrErr.ID)
+		ID = string(usrErr.Code)
+		Title = h.toTitleCase(usrErr.Code)
 		StatusCode = http.StatusBadRequest
 		Detail = append(Detail, string(usrErr.Message))
 	} else {

@@ -16,7 +16,7 @@ func ExampleUserError() {
 	bazEntityID := rand.Int()
 
 	usrerr := errorkit.UserError{
-		ID:      "foo-is-forbidden-with-active-baz",
+		Code:    "foo-is-forbidden-with-active-baz",
 		Message: "It is forbidden to execute Foo when you have an active Baz",
 	}
 
@@ -45,7 +45,7 @@ func ExampleUserError() {
 
 func ExampleLookupUserError() {
 	err := errorkit.UserError{
-		ID:      "constant-err-scenario-code",
+		Code:    "constant-err-scenario-code",
 		Message: "some message for the dev",
 	}
 	if userError, ok := errorkit.LookupUserError(err); ok {
@@ -58,7 +58,7 @@ func TestUserError(t *testing.T) {
 
 	s.Test("when user error has no documentation", func(t *testcase.T) {
 		usrErr := errorkit.UserError{
-			ID:      "foo-bar-baz",
+			Code:    "foo-bar-baz",
 			Message: "foo is not ",
 		}
 		err := fmt.Errorf("wrapped: %w", usrErr)
@@ -69,7 +69,7 @@ func TestUserError(t *testing.T) {
 		t.Must.ErrorIs(usrErr, err)
 		t.Must.Contain(err.Error(), "wrapped: ")
 		t.Must.Contain(err.Error(), usrErr.Message)
-		t.Must.Contain(err.Error(), usrErr.ID)
+		t.Must.Contain(err.Error(), usrErr.Code)
 
 		gotUsrErr := errorkit.UserError{}
 		t.Must.True(errors.As(err, &gotUsrErr))
@@ -89,7 +89,7 @@ func TestUserError(t *testing.T) {
 
 func TestUserError_F_smoke(t *testing.T) {
 	var ErrExample = errorkit.UserError{
-		ID:      "the-error-unique-id-or-code",
+		Code:    "the-error-unique-id-or-code",
 		Message: "the message",
 	}
 	t.Run("sprintf", func(t *testing.T) {

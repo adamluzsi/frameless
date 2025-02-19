@@ -134,7 +134,7 @@ func TestHandler(t *testing.T) {
 		s.When("error is a user error", func(s *testcase.Spec) {
 			usrErr := testcase.Let(s, func(t *testcase.T) errorkit.UserError {
 				return errorkit.UserError{
-					ID:      "usr-err",
+					Code:    "usr-err",
 					Message: "the user error message",
 				}
 			})
@@ -150,7 +150,7 @@ func TestHandler(t *testing.T) {
 			s.And("mapping is provided", func(s *testcase.Spec) {
 				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-						t.Must.Equal(string(usrErr.Get(t).ID), dto.Type.ID)
+						t.Must.Equal(string(usrErr.Get(t).Code), dto.Type.ID)
 						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
 					}
@@ -242,7 +242,7 @@ func TestHandler(t *testing.T) {
 		s.When("error is a user error", func(s *testcase.Spec) {
 			usrErr := testcase.Let(s, func(t *testcase.T) errorkit.UserError {
 				return errorkit.UserError{
-					ID:      "usr-err",
+					Code:    "usr-err",
 					Message: "the user error message",
 				}
 			})
@@ -258,7 +258,7 @@ func TestHandler(t *testing.T) {
 			s.And("mapping is provided", func(s *testcase.Spec) {
 				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-						t.Must.Equal(string(usrErr.Get(t).ID), dto.Type.ID)
+						t.Must.Equal(string(usrErr.Get(t).Code), dto.Type.ID)
 						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
 					}

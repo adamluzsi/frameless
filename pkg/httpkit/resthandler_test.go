@@ -190,7 +190,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
 				errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 				t.Must.NotEmpty(errDTO)
-				t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+				t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 			})
 		}
 
@@ -270,7 +270,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -429,7 +429,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -468,7 +468,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusConflict, rr.Code)
 						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-						t.Must.Equal(httpkit.ErrEntityAlreadyExist.ID.String(), errDTO.Type.ID)
+						t.Must.Equal(httpkit.ErrEntityAlreadyExist.Code.String(), errDTO.Type.ID)
 					})
 				})
 			})
@@ -484,7 +484,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMethodNotAllowed.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -502,7 +502,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrRequestEntityTooLarge.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrRequestEntityTooLarge.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -530,7 +530,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMalformedID.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrMalformedID.Code.String(), errDTO.Type.ID)
 				})
 			})
 		}
@@ -577,7 +577,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -594,7 +594,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -673,7 +673,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -690,7 +690,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -761,7 +761,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -813,7 +813,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -988,7 +988,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 		})

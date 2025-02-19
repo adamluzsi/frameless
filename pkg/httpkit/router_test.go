@@ -115,7 +115,7 @@ func TestRouter(t *testing.T) {
 
 			errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 			t.Must.NotEmpty(errDTO)
-			t.Must.Equal(httpkit.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+			t.Must.Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
 		})
 
 		ThenHandlerIsReachable := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
@@ -180,7 +180,7 @@ func TestRouter(t *testing.T) {
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
 					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrPathNotFound.ID.String(), errDTO.Type.ID)
+					t.Must.Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 		}

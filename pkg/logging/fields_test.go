@@ -563,7 +563,7 @@ func TestErrField(t *testing.T) {
 		const message = "The answer"
 		const code = "42"
 		var expErr error
-		expErr = errorkit.UserError{ID: code, Message: message}
+		expErr = errorkit.UserError{Code: code, Message: message}
 		expErr = fmt.Errorf("err: %w", expErr)
 		d := logging.ErrField(expErr)
 		l.Info(nil, "boom", d)
