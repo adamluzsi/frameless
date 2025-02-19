@@ -1,9 +1,41 @@
 package errorkit
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
+
+// Error is an implementation for the error interface that allow you to declare exported globals with the `consttypes` keyword.
+//
+//	TL;DR:
+//	  consttypes ErrSomething errorkit.Error = "something is an error"
+type Error string
+
+// Error implement the error interface
+func (err Error) Error() string { return string(err) }
+
+// Wrap will bundle together another error value with this Error,
+// and return an error value that contains both of them.
+func (err Error) Wrap(oth error) error {
+	if oth == nil {
+		return err
+	}
+	return WithTrace(wrapF("[%s] %s", err, oth))
+}
+
+// F will format the error value
+func (err Error) F(format string, a ...any) error { return err.Wrap(fmt.Errorf(format, a...)) }
+
+// ErrorHandler describes that an object able to handle error use-cases for its purpose.
+//
+// For e.g. if the component is a pubsub subscription event handler,
+// then implementing ErrorHandler means it suppose to handle unexpected use-cases such as connection interruption.
+type ErrorHandler interface {
+	// HandleError allow the interactor implementation to be notified about unexpected situations.
+	HandleError(ctx context.Context, err error) error
+}
 
 // Finish is a helper function that can be used from a deferred context.
 //
@@ -56,4 +88,137 @@ func As[T error](err error) (T, bool) {
 	var v T
 	ok := errors.As(err, &v)
 	return v, ok
+}
+
+func wrapF(format string, owner, wrapped error) error {
+	if owner == nil && wrapped == nil {
+		return nil
+	}
+	if owner == nil && wrapped != nil {
+		return wrapped
+	}
+	if owner != nil && wrapped == nil {
+		return owner
+	}
+	return wrapper{
+		Format:  format,
+		Owner:   owner,
+		Wrapped: wrapped,
+	}
+}
+
+type wrapper struct {
+	Owner   error
+	Wrapped error // must be not nil
+	Format  string
+}
+
+func (w wrapper) Error() string {
+	var format = w.Format
+	if len(format) == 0 {
+		const defaultFormat = "%s\n%s"
+		format = defaultFormat
+	}
+	var ownerErr string
+	if w.Owner != nil {
+		ownerErr = w.Owner.Error()
+	}
+	var wrapperErr string
+	if w.Wrapped != nil {
+		wrapperErr = w.Wrapped.Error()
+	}
+	return fmt.Sprintf(format, ownerErr, wrapperErr)
+}
+
+func (w wrapper) As(target any) bool {
+	return errors.As(w.Owner, target) || errors.As(w.Wrapped, target)
+}
+
+func (w wrapper) Is(target error) bool {
+	return errors.Is(w.Owner, target) || errors.Is(w.Wrapped, target)
+}
+
+// WithContext will combine an error with a context, so the current context can be used at the place of error handling.
+// This can be useful if tracing ID and other helpful values such as additional logging fields are kept in the context.
+func WithContext(err error, ctx context.Context) error {
+	if err == nil {
+		return nil
+	}
+	return withContextError{
+		Err: err,
+		Ctx: ctx,
+	}
+}
+
+func LookupContext(err error) (context.Context, bool) {
+	var detail withContextError
+	if errors.As(err, &detail) {
+		return detail.Ctx, true
+	}
+	return nil, false
+}
+
+type withContextError struct {
+	Err error
+	Ctx context.Context
+}
+
+func (err withContextError) Error() string {
+	if err.Err == nil {
+		return ""
+	}
+	return err.Err.Error()
+}
+
+func (err withContextError) Unwrap() error {
+	return err.Err
+}
+
+// Merge will combine all given non nil error values into a single error value.
+// If no valid error is given, nil is returned.
+// If only a single non nil error value is given, the error value is returned.
+func Merge(errs ...error) error {
+	var cleanErrs []error
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		cleanErrs = append(cleanErrs, err)
+	}
+	errs = cleanErrs
+	if len(errs) == 0 {
+		return nil
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	return multiError(errs)
+}
+
+type multiError []error
+
+func (errs multiError) Error() string {
+	var msgs []string
+	for _, err := range errs {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "\n")
+}
+
+func (errs multiError) As(target any) bool {
+	for _, err := range errs {
+		if errors.As(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func (errs multiError) Is(target error) bool {
+	for _, err := range errs {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
 }

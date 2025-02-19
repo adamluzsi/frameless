@@ -72,9 +72,6 @@ func (h Handler) ToDTO(ctx context.Context, err error) DTO {
 		Title = http.StatusText(http.StatusInternalServerError)
 		StatusCode = http.StatusInternalServerError
 	}
-	if detail, ok := errorkit.LookupDetail(err); ok {
-		Detail = append(Detail, detail)
-	}
 	dto := DTO{
 		Type: Type{
 			ID:      ID,

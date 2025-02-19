@@ -7,13 +7,12 @@ import (
 	"strconv"
 	"sync"
 
-	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
 )
 
 func errNotFound(T, id any) error {
-	return errorkit.With(crud.ErrNotFound).Detailf(`%T entity not found by id: %v`, T, id)
+	return crud.ErrNotFound.F(`%T entity not found by id: %v`, T, id)
 }
 
 func MakeID[ID any](context.Context) (ID, error) {

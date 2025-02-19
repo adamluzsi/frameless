@@ -11,9 +11,10 @@ import (
 // New will make a new T and call Init function recursively on it if it is implemented.
 func New[T any]() *T {
 	ptr := new(T)
-	if reflect.TypeOf((*T)(nil)).Elem().Kind() == reflect.Struct {
+	typ := reflectkit.TypeOf[T]()
+	if typ.Kind() == reflect.Struct {
 		refPtr := reflect.ValueOf(ptr)
-		initStruct(refPtr)
+		initStruct(refPtr.Elem()) // TODO: test .Elem() rrequired
 	}
 	if i, ok := any(ptr).(initializable); ok {
 		i.Init()
@@ -24,33 +25,44 @@ func New[T any]() *T {
 // ReflectNew will make a new T and call Init function recursively on it if it is implemented.
 func ReflectNew(typ reflect.Type) reflect.Value {
 	ptr := reflect.New(typ)
-
-	if typ.Kind() == reflect.Struct {
-		initStruct(ptr)
-	}
-
-	if ptr.Type().Implements(initInterface) {
-		ptr.MethodByName("Init").Call([]reflect.Value{})
-	}
-
+	reflectInit(ptr)
 	return ptr
+}
+
+func reflectInit(v reflect.Value) {
+	switch v.Type().Kind() {
+	case reflect.Struct:
+		initStruct(v)
+
+	case reflect.Pointer:
+		reflectInit(v.Elem())
+		callInit(v)
+
+	default:
+		callInit(v)
+
+	}
+}
+
+func callInit(val reflect.Value) bool {
+	if !val.Type().Implements(initInterface) {
+		return false
+	}
+	val.MethodByName("Init").Call([]reflect.Value{})
+	return true
 }
 
 type initializable interface{ Init() }
 
 var initInterface = reflect.TypeOf((*initializable)(nil)).Elem()
 
-func initStruct(structPtr reflect.Value) {
-	rStruct := reflectkit.BaseValue(structPtr)
+func initStruct(rStruct reflect.Value) {
 	if err := defaultTag.HandleStruct(rStruct); err != nil {
 		panic(err)
 	}
-}
-
-type defaultValue struct {
-	IsMutable bool
-	Value     reflect.Value
-	Raw       string
+	for _, value := range reflectkit.OverStruct(rStruct) {
+		reflectInit(value.Addr())
+	}
 }
 
 var defaultTag = reflectkit.TagHandler[func() (reflect.Value, error)]{

@@ -144,6 +144,9 @@ func TestQueue_implementsFanOutExchange(t *testing.T) {
 
 var _ pubsub.Publisher[Foo] = &memory.FanOutExchange[Foo]{}
 
+// TestQueue_combined
+//
+// @flaky
 func TestQueue_combined(t *testing.T) {
 	q := &memory.Queue[testent.Foo]{
 		LIFO:     false,

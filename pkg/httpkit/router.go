@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/pkg/reflectkit"
+	rf "go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
 )
@@ -335,6 +335,8 @@ func (router *Router) RouteInfo() RouteInfo {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
+const allPathInfoMethod = "ALL"
+
 func GetRouteInfo(h http.Handler) RouteInfo {
 	if h == nil {
 		return nil
@@ -347,13 +349,13 @@ func GetRouteInfo(h http.Handler) RouteInfo {
 		return doc(h)
 	}
 	// by default a handler will receive all call
-	return []PathInfo{{Method: "ALL", Path: "/"}}
+	return []PathInfo{{Method: allPathInfoMethod, Path: "/"}}
 }
 
 var riReg synckit.Map[reflect.Type, func(h http.Handler) RouteInfo]
 
 func RegisterRouteInformer[T http.Handler](fn func(v T) RouteInfo) func() {
-	var httpHandlerType = reflectkit.TypeOf[T]()
+	var httpHandlerType = rf.TypeOf[T]()
 	riReg.Set(httpHandlerType, func(h http.Handler) RouteInfo {
 		return fn(h.(T))
 	})
@@ -454,60 +456,86 @@ func nodeRoutes(node *_Node) RouteInfo {
 
 var _ = RegisterRouteInformer[*http.ServeMux](httpServeMuxRouteInfo)
 
+func httpServeMuxRoutingNodeRouteInfo(v reflect.Value) RouteInfo {
+	if rf.IsNil(v) {
+		return nil
+	}
+
+	v = rf.BaseValue(v) // accept both routingNode and *routingNode
+	var path string
+
+	var patternToString = func(pattern reflect.Value) string {
+		if rf.IsNil(pattern) {
+			return "/"
+		}
+		pattern = rf.BaseValue(pattern)
+		_, part, _ := rf.LookupField(pattern, "str")
+		return part.String()
+	}
+
+	if _, patternPtr, ok := rf.LookupField(v, "pattern"); ok && !rf.IsNil(patternPtr) {
+		path = patternToString(patternPtr)
+	}
+
+	var ri RouteInfo
+
+	if _, handler, ok := rf.LookupField(v, "handler"); ok && !rf.IsNil(handler) {
+		if handler.CanInterface() {
+			if h, ok := handler.Interface().(http.Handler); ok {
+				nri := GetRouteInfo(h).WithMountPoint(path)
+				ri = append(ri, nri...)
+			} else {
+				ri = append(ri, PathInfo{
+					Method: allPathInfoMethod,
+					Path:   path,
+				})
+			}
+		} else {
+			ri = append(ri, PathInfo{
+				Method: allPathInfoMethod,
+				Path:   path,
+			})
+		}
+	}
+
+	if _, children, ok := rf.LookupField(v, "children"); ok && !rf.IsNil(children) {
+		if _, s, ok := rf.LookupField(children, "s"); ok && !rf.IsNil(s) {
+			for _, entry := range rf.OverSlice(s) {
+				_, routingNodePtr, ok := rf.LookupField(entry, "value") /* *routingNode */
+				if !ok {
+					continue
+				}
+
+				ri = append(ri, httpServeMuxRoutingNodeRouteInfo(routingNodePtr)...)
+			}
+		}
+		if _, m, ok := rf.LookupField(children, "m"); ok && !rf.IsEmpty(m) { // map[string, *routingNode]
+			for _, routingNodePtr := range rf.OverMap(m) {
+				ri = append(ri, httpServeMuxRoutingNodeRouteInfo(routingNodePtr)...)
+			}
+		}
+	}
+
+	if _, multiChild, ok := rf.LookupField(v, "multiChild"); ok && !rf.IsNil(multiChild) {
+		ri = append(ri, httpServeMuxRoutingNodeRouteInfo(multiChild)...)
+	}
+
+	if _, emptyChild, ok := rf.LookupField(v, "emptyChild"); ok && !rf.IsNil(emptyChild) {
+		ri = append(ri, httpServeMuxRoutingNodeRouteInfo(emptyChild)...)
+	}
+
+	return ri
+
+}
 func httpServeMuxRouteInfo(mux *http.ServeMux) RouteInfo {
-	if mux == nil {
-		return nil
+	var rmux reflect.Value
+	rmux = reflect.ValueOf(mux)
+	rmux = rf.BaseValue(rmux)
+	var ri RouteInfo
+	if _, tree, ok := rf.LookupField(rmux, "tree"); ok {
+		ri = append(ri, httpServeMuxRoutingNodeRouteInfo(tree)...)
 	}
-
-	// Using reflection to get the internal map
-	_, m, ok := reflectkit.LookupField(reflect.ValueOf(mux).Elem(), "m")
-	if !ok {
-		return nil
-	}
-
-	var lookupMuxEntryHandler = func(key reflect.Value) (http.Handler, bool) {
-		val := m.MapIndex(key)
-		if !val.IsValid() {
-			return nil, false
-		}
-
-		_, rh, ok := reflectkit.LookupField(val, "h")
-		if !ok {
-			return nil, false
-		}
-
-		if rh.CanInterface() {
-			h, ok := rh.Interface().(http.Handler)
-			return h, ok
-		}
-		return nil, false
-	}
-
-	var pis []PathInfo
-	for _, key := range m.MapKeys() {
-		path, ok := key.Interface().(string)
-		if !ok {
-			continue
-		}
-
-		if path != "" && path[0] != '/' {
-			path = "/" + path
-		}
-
-		if httpHandler, ok := lookupMuxEntryHandler(key); ok {
-			pis = append(pis, GetRouteInfo(httpHandler).WithMountPoint(path)...)
-			continue
-		}
-
-		pis = append(pis, PathInfo{Method: "ALL", Path: path})
-	}
-
-	sort.Slice(pis, func(i, j int) bool {
-		a, b := pis[i], pis[j]
-		return a.Path < b.Path
-	})
-
-	return pis
+	return slicekit.Unique(ri)
 }
 
 func httpMethodPriority(method string) int {

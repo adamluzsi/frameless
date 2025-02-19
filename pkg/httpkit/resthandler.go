@@ -260,13 +260,13 @@ func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 		rawResourceID, err := url.PathUnescape(rawPathResourceID)
 		if err != nil {
-			defaultErrorHandler.HandleError(w, r, ErrMalformedID.With().Detail(err.Error()))
+			defaultErrorHandler.HandleError(w, r, ErrMalformedID.Wrap(err))
 			return
 		}
 
 		id, err := h.getIDParser(rawResourceID)
 		if err != nil {
-			defaultErrorHandler.HandleError(w, r, ErrMalformedID.With().Detail(err.Error()))
+			defaultErrorHandler.HandleError(w, r, ErrMalformedID.Wrap(err))
 			return
 		}
 
@@ -511,7 +511,7 @@ func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.Create(ctx, &ent); err != nil {
 		if errors.Is(err, crud.ErrAlreadyExists) { // TODO:TEST_ME
-			h.getErrorHandler().HandleError(w, r, ErrEntityAlreadyExist.With().Wrap(err))
+			h.getErrorHandler().HandleError(w, r, ErrEntityAlreadyExist.Wrap(err))
 			return
 		}
 		logger.Error(ctx, "error during httpkit.Resource#Create operation", logging.ErrField(err))
@@ -669,8 +669,7 @@ func (h RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id 
 	dtoPtr := reqMapping.NewDTO()
 
 	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
-		h.getErrorHandler().HandleError(w, r,
-			ErrInvalidRequestBody.With().Detail(err.Error()))
+		h.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody.Wrap(err))
 		return
 	}
 

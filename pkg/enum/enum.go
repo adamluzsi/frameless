@@ -98,7 +98,7 @@ func ValidateStruct(v any) error {
 	if rv.Kind() != reflect.Struct {
 		return interr.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
-	for field, value := range reflectkit.OverStructFields(rv) {
+	for field, value := range reflectkit.OverStruct(rv) {
 		if err := ValidateStructField(field, value); err != nil {
 			return err
 		}

@@ -1,15 +1,10 @@
 package errorkit
 
 import (
-	"errors"
+	"fmt"
 
 	"go.llib.dev/frameless/internal/constant"
 )
-
-func LookupUserError(err error) (UserError, bool) {
-	var ue UserError
-	return ue, errors.As(err, &ue)
-}
 
 type UserError struct {
 	// ID is a constant string value that expresses the user's error scenario.
@@ -31,10 +26,18 @@ func (err UserError) Error() string {
 	return "[" + string(err.ID) + "] " + string(err.Message)
 }
 
-func (err UserError) With() WithBuilder {
-	return WithBuilder{Err: err}
+func (err UserError) Wrap(oth error) error {
+	if oth == nil {
+		return err
+	}
+	return WithTrace(wrapF("[%s] %s", err, oth))
 }
 
-func (err UserError) Wrap(oth error) error {
-	return wrapper{Owner: err, Wrapped: oth}
+// F will format the error value
+func (err UserError) F(format string, a ...any) error {
+	return err.Wrap(fmt.Errorf(format, a...))
+}
+
+func LookupUserError(err error) (UserError, bool) {
+	return As[UserError](err)
 }
