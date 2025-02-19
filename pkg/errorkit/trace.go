@@ -3,9 +3,9 @@ package errorkit
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 )
 
 func WithTrace(err error) error {
@@ -71,40 +71,54 @@ func (err Traced) Unwrap() error {
 	return err.Err
 }
 
-var stackFunctionExceptions = map[string]struct{}{
-	"errorkit.": {},
-	"runtime.":  {},
-	"testing.":  {},
+var exceptionsIndex int64
+var exceptions = map[int64]func(runtime.Frame) bool{}
+
+func RegisterTraceException(isException func(runtime.Frame) bool) func() {
+	var index int64
+	for range 1024 {
+		index = atomic.AddInt64(&exceptionsIndex, 1)
+		if _, ok := exceptions[index]; !ok {
+			break
+		}
+	}
+	if _, ok := exceptions[index]; ok {
+		panic("errorkit trace expection list is probably full")
+	}
+	exceptions[index] = isException
+	return func() { delete(exceptions, index) }
 }
 
-var pkgPath string = reflect.TypeOf(Traced{}).PkgPath()
+var _ = RegisterTraceException(func(f runtime.Frame) bool {
+	return strings.Contains(f.Function, "errorkit.")
+})
+
+var _ = RegisterTraceException(func(f runtime.Frame) bool {
+	return strings.Contains(f.Function, "runtime.") ||
+		strings.Contains(f.Function, "testing.")
+})
 
 func getStack() []StackFrame {
-
 	programCounters := make([]uintptr, 1024)
 	n_callers := runtime.Callers(1, programCounters)
 	frames := runtime.CallersFrames(programCounters[:n_callers])
 	var vs []StackFrame
 
-scan:
+tracing:
 	for more := true; more; {
-		var stackFrameInfo runtime.Frame
-		stackFrameInfo, more = frames.Next()
+		var frame runtime.Frame
+		frame, more = frames.Next()
 
-		if strings.Contains(stackFrameInfo.File, pkgPath) {
-			continue
-		}
-
-		for exception := range stackFunctionExceptions {
-			if strings.Contains(stackFrameInfo.Function, exception) {
-				continue scan
+		for _, exception := range exceptions {
+			if exception(frame) {
+				continue tracing
 			}
 		}
 
 		vs = append(vs, StackFrame{
-			Function: stackFrameInfo.Function,
-			File:     stackFrameInfo.File,
-			Line:     stackFrameInfo.Line,
+			Function: frame.Function,
+			File:     frame.File,
+			Line:     frame.Line,
 		})
 	}
 

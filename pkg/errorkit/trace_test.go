@@ -3,6 +3,8 @@ package errorkit_test
 import (
 	"errors"
 	"fmt"
+	"runtime"
+	"strings"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -128,4 +130,24 @@ func TestWithTrace(t *testing.T) {
 				"since nothing is changed, the two error should have the same output")
 		})
 	})
+}
+
+func TestRegisterTraceException_smoke(t *testing.T) {
+	err := errorkit.WithTrace(errorkit.Error("boom"))
+	assert.Error(t, err)
+	assert.Contain(t, err.Error(), t.Name())
+
+	undo := errorkit.RegisterTraceException(func(f runtime.Frame) bool {
+		return strings.Contains(f.Function, t.Name())
+	})
+
+	err = errorkit.WithTrace(errorkit.Error("boom"))
+	assert.Error(t, err)
+	assert.NotContain(t, err.Error(), t.Name())
+
+	undo()
+
+	err = errorkit.WithTrace(errorkit.Error("boom"))
+	assert.Error(t, err)
+	assert.Contain(t, err.Error(), t.Name())
 }
