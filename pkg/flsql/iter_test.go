@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/flsql"
@@ -63,7 +64,7 @@ func TestSQLRows(t *testing.T) {
 
 	rows := testcase.Var[SQLRows]{ID: "iterators.SQLRows"}
 	mapper := testcase.Var[flsql.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
-	subject := func(t *testcase.T) iterators.Iterator[testType] {
+	subject := func(t *testcase.T) iter.Seq[testType] {
 		return flsql.MakeSQLRowsIterator(rows.Get(t), mapper.Get(t))
 	}
 	mapper.Let(s, func(t *testcase.T) flsql.SQLRowMapper[testType] {
@@ -157,7 +158,7 @@ func TestSQLRows(t *testing.T) {
 }
 
 type SQLRowsStub struct {
-	iterators.Iterator[[]any]
+	iter.Seq[[]any]
 	CloseErr error
 	ScanErr  error
 }

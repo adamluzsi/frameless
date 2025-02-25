@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -882,9 +882,8 @@ func TestReverseIterator(t *testing.T) {
 
 		var got []int
 
-		iter := slicekit.ReverseIterator(in)
-		for iter.Next() {
-			got = append(got, iter.Value())
+		for v := range slicekit.ReverseIterator(in) {
+			got = append(got, v)
 		}
 
 		assert.Equal(t, in, og, "it was not expected to alter the input slice")
@@ -892,14 +891,12 @@ func TestReverseIterator(t *testing.T) {
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
-		vs, err := iterators.Collect(slicekit.ReverseIterator[int](nil))
-		assert.NoError(t, err)
+		vs := iterkit.Collect(slicekit.ReverseIterator[int](nil))
 		assert.Empty(t, vs)
 	})
 
 	s.Test("empty slice", func(t *testcase.T) {
-		vs, err := iterators.Collect(slicekit.ReverseIterator([]int{}))
-		assert.NoError(t, err)
+		vs := iterkit.Collect(slicekit.ReverseIterator([]int{}))
 		assert.Empty(t, vs)
 	})
 }

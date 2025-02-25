@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"iter"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -45,7 +46,7 @@ func ExampleRouter() {
 
 		r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
 			Mapping: dtokit.Mapping[Foo, FooDTO]{},
-			Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+			Index: func(ctx context.Context) (iter.Seq[Foo], error) {
 				foo := Foo{
 					ID:  "42",
 					Foo: "foo",
@@ -1209,7 +1210,7 @@ func TestGetRouteInfo(t *testing.T) {
 
 		ro.Resource("foos", httpkit.RESTHandler[Foo, FooID]{
 			Create:     func(ctx context.Context, ptr *Foo) error { return nil },
-			Index:      func(ctx context.Context) (iterators.Iterator[Foo], error) { return nil, nil },
+			Index:      func(ctx context.Context) (iter.Seq[Foo], error) { return nil, nil },
 			Show:       func(ctx context.Context, id FooID) (ent Foo, found bool, err error) { return },
 			Update:     func(ctx context.Context, ptr *Foo) error { return nil },
 			Destroy:    func(ctx context.Context, id FooID) error { return nil },

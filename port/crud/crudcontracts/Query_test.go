@@ -2,6 +2,7 @@ package crudcontracts_test
 
 import (
 	"context"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -49,7 +50,7 @@ func TestQueryMany(t *testing.T) {
 			tb.Log("expected foo value:", foo)
 
 			return crudcontracts.QueryManySubject[testent.Foo]{
-				Query: func(ctx context.Context) (iterators.Iterator[testent.Foo], error) {
+				Query: func(ctx context.Context) (iter.Seq[testent.Foo], error) {
 					iter, err := repo.FindAll(ctx)
 					if err != nil {
 						return nil, err

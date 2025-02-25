@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -156,7 +157,7 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -326,7 +327,7 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 	return got, true, nil
 }
 
-func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq[ENT], func() error, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

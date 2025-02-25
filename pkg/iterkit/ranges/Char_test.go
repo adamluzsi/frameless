@@ -2,42 +2,33 @@ package ranges_test
 
 import (
 	"fmt"
+	"iter"
 	"testing"
 
-	"go.llib.dev/frameless/port/iterators"
-	iteratorcontracts "go.llib.dev/frameless/port/iterators/iteratorcontracts"
-	"go.llib.dev/frameless/port/iterators/ranges"
+	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
+	"go.llib.dev/frameless/pkg/iterkit/ranges"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
 
 func ExampleChar() {
-	iter := ranges.Char('A', 'Z')
-	defer iter.Close()
-
-	for iter.Next() {
+	for char := range ranges.Char('A', 'Z') {
 		// prints characters between A and Z
 		// A, B, C, D... Z
-		fmt.Println(string(iter.Value()))
-	}
-
-	if err := iter.Err(); err != nil {
-		panic(err.Error())
+		fmt.Println(string(char))
 	}
 }
 
 func TestChar_smoke(t *testing.T) {
 	it := assert.MakeIt(t)
-	vs, err := iterators.Collect(ranges.Char('A', 'C'))
-	it.Must.NoError(err)
+	vs := iterkit.Collect(ranges.Char('A', 'C'))
 	it.Must.Equal([]rune{'A', 'B', 'C'}, vs)
 
-	vs, err = iterators.Collect(ranges.Char('a', 'c'))
-	it.Must.NoError(err)
+	vs = iterkit.Collect(ranges.Char('a', 'c'))
 	it.Must.Equal([]rune{'a', 'b', 'c'}, vs)
 
-	vs, err = iterators.Collect(ranges.Char('1', '9'))
-	it.Must.NoError(err)
+	vs = iterkit.Collect(ranges.Char('1', '9'))
 	it.Must.Equal([]rune{'1', '2', '3', '4', '5', '6', '7', '8', '9'}, vs)
 }
 
@@ -54,12 +45,12 @@ func TestChar(t *testing.T) {
 			return t.Random.SliceElement(chars).(rune)
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) iterators.Iterator[rune] {
+	subject := testcase.Let(s, func(t *testcase.T) iter.Seq[rune] {
 		return ranges.Char(min.Get(t), max.Get(t))
 	})
 
 	s.Then("it returns an iterator that contains the defined character range from min to max", func(t *testcase.T) {
-		actual, err := iterators.Collect(subject.Get(t))
+		actual, err := iterkit.Collect(subject.Get(t))
 		t.Must.NoError(err)
 
 		var expected []rune
@@ -75,14 +66,14 @@ func TestChar(t *testing.T) {
 		min.Set(t, 'A')
 		max.Set(t, 'D')
 
-		vs, err := iterators.Collect(subject.Get(t))
+		vs := iterkit.Collect(subject.Get(t))
 		t.Must.NoError(err)
 		t.Must.Equal([]rune{'A', 'B', 'C', 'D'}, vs)
 	})
 }
 
 func TestChar_implementsIterator(t *testing.T) {
-	iteratorcontracts.Iterator[rune](func(tb testing.TB) iterators.Iterator[rune] {
+	iterkitcontract.Iterator[rune](func(tb testing.TB) iter.Seq[rune] {
 		t := testcase.ToT(&tb)
 		minChars := []rune{'A', 'B', 'C'}
 		min := t.Random.SliceElement(minChars).(rune)

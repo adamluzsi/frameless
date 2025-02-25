@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"reflect"
 	"time"
 
@@ -263,7 +264,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 			return c.CRUD.MakeContext(t)
 		})
 	)
-	act := func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	act := func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 		return cache.Get(t).FindAll(Context.Get(t))
 	}
 
@@ -472,7 +473,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		var query = func(t *testcase.T) []ENT {
 			iter, err := cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
 				hitID,
-				func(ctx context.Context) (iterators.Iterator[ENT], error) {
+				func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 					return iterators.Slice(res), nil
 				})
 			assert.NoError(t, err)
@@ -484,7 +485,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		var refreshQuery = func(t *testcase.T) error {
 			return cache.Get(t).RefreshQueryMany(c.CRUD.MakeContext(t),
 				hitID,
-				func(ctx context.Context) (iterators.Iterator[ENT], error) {
+				func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 					return iterators.Slice(res), nil
 				})
 		}
@@ -747,7 +748,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 // 		})
 // 		query = testcase.Let[cachepkg.QueryManyFunc[ENT]](s, nil)
 // 	)
-// 	act := func(t *testcase.T) (iterators.Iterator[ENT], error) {
+// 	act := func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 // 		return cache.Get(t).CachedQueryMany(Context.Get(t), hitID.Get(t), query.Get(t))
 // 	}
 //
@@ -767,7 +768,7 @@ type spySource[ENT, ID any] struct {
 	}
 }
 
-func (spy *spySource[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (spy *spySource[ENT, ID]) FindAll(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 	spy.count.Total++
 	spy.count.FindAll++
 	time.Sleep(spy.sleepOn.FindAll)
@@ -908,7 +909,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 		})
 		query = testcase.Let[cachepkg.QueryManyFunc[ENT]](s, nil)
 	)
-	act := func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	act := func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 		return cache.Get(t).CachedQueryMany(Context.Get(t), hitID.Get(t), query.Get(t))
 	}
 
@@ -927,7 +928,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 		)
 
 		query.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
-			return func(ctx context.Context) (iterators.Iterator[ENT], error) {
+			return func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 				return iterators.Slice[ENT]([]ENT{*ent1.Get(t), *ent2.Get(t)}), nil
 			}
 		})
@@ -999,7 +1000,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 	}
 
 	var queryManyFunc = testcase.Let[cachepkg.QueryManyFunc[ENT]](s, nil)
-	queryMany := func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	queryMany := func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 		return cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t), hitID.Get(t), queryManyFunc.Get(t))
 	}
 
@@ -1087,7 +1088,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
-			return func(ctx context.Context) (iterators.Iterator[ENT], error) {
+			return func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 				id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
 				ent, found, err := source.Get(t).FindByID(ctx, id)
 				if err != nil {
@@ -1208,7 +1209,7 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 	}
 
 	var queryManyFunc = testcase.Let[cachepkg.QueryManyFunc[ENT]](s, nil)
-	queryMany := func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	queryMany := func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 		return cache.Get(t).
 			CachedQueryMany(c.CRUD.MakeContext(t), hitID.Get(t), queryManyFunc.Get(t))
 	}
@@ -1355,7 +1356,7 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		queryManyFunc.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
-			return func(ctx context.Context) (iterators.Iterator[ENT], error) {
+			return func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 				id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
 				ent, found, err := source.Get(t).FindByID(ctx, id)
 				if err != nil {

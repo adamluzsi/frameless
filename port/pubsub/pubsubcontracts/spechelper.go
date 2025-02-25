@@ -2,11 +2,11 @@ package pubsubcontracts
 
 import (
 	"context"
+	"iter"
 	"sync"
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/frameless/port/pubsub/pubsubtest"
@@ -213,7 +213,7 @@ func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	})
 }
 
-func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
+func (c base[Data]) MakeSubscription(t *testcase.T) iter.Seq[pubsub.Message[Data]] {
 	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext(t))
 	t.Defer(cancel)
 	sub, err := c.subject().Get(t).Subscriber.Subscribe(ctx)
@@ -255,7 +255,7 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	})
 }
 
-func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], blk func(it assert.It, actual []Data)) {
+func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iter.Seq[pubsub.Message[Data]]], blk func(it assert.It, actual []Data)) {
 	var (
 		actual []Data
 		lock   sync.Mutex
@@ -277,13 +277,13 @@ func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterat
 	})
 }
 
-func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iter.Seq[pubsub.Message[Data]]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.Equal(expected, actual)
 	})
 }
 
-func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iter.Seq[pubsub.Message[Data]]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.ContainExactly(expected, actual)
 	})

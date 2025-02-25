@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 
 	"go.llib.dev/frameless/pkg/cache/internal/memory"
 	"go.llib.dev/frameless/pkg/contextkit"
@@ -226,7 +227,7 @@ func (m *Cache[ENT, ID]) invalidateCachedQueryWithoutCascadeEffect(ctx context.C
 	return hit, found, m.Repository.Hits().DeleteByID(ctx, hitID)
 }
 
-func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (_ iterators.Iterator[ENT], rErr error) {
+func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (_ iter.Seq[ENT], rErr error) {
 	// TODO: double check
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
@@ -312,7 +313,7 @@ func (m *Cache[ENT, ID]) RefreshByID(ctx context.Context, id ID) (rErr error) {
 
 func (m *Cache[ENT, ID]) Refresh(ctx context.Context) (rErr error) {
 	if source, err := getAs[crud.AllFinder[ENT]](m.Source); err == nil {
-		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
+		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 			return source.FindAll(ctx)
 		})
 	}
@@ -420,7 +421,7 @@ func (m *Cache[ENT, ID]) cacheQuery(
 }
 
 func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFunc[ENT] {
-	return func(ctx context.Context) (iterators.Iterator[ENT], error) {
+	return func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 		ent, found, err := q(ctx)
 		if err != nil {
 			return nil, err
@@ -528,12 +529,12 @@ func (m *Cache[ENT, ID]) HitIDFindAll() HitID {
 	return Query{Name: "FindAll"}.HitID()
 }
 
-func (m *Cache[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (m *Cache[ENT, ID]) FindAll(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 	source, err := getAs[crud.AllFinder[ENT]](m.Source)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", "FindAll", ErrNotImplementedBySource)
 	}
-	return m.CachedQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iterators.Iterator[ENT], error) {
+	return m.CachedQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 		return source.FindAll(ctx)
 	})
 }

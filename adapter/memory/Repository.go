@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"iter"
 	"reflect"
 	"sync"
 
@@ -116,7 +117,7 @@ func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 	return ent.(ENT), true, nil
 }
 
-func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -170,7 +171,7 @@ func (r *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq[ENT], func() error, error) {
 	var m memoryActions = r.memory()
 	if tx, ok := r.memory().LookupTx(ctx); ok {
 		m = tx
@@ -197,7 +198,7 @@ func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) b
 	return iterators.First(iter)
 }
 
-func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iterators.Iterator[ENT], error) {
+func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iter.Seq[ENT], func() error, error) {
 	iter, err := r.FindAll(ctx)
 	if err != nil {
 		return nil, err
@@ -326,7 +327,7 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 	return m.lookup(namespace, key)
 }
 
-func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iterators.Iterator[ENT] {
+func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iter.Seq[ENT] {
 	var T ENT
 	return iterators.Slice[ENT](m.All(T, ctx, namespace).([]ENT))
 }

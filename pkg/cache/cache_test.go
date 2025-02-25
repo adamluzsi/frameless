@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"context"
+	"iter"
 	"strings"
 	"testing"
 
@@ -129,7 +130,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		})
 		t.Log("when we have a custom query that has no arguments but only returns foo2")
 		qid := cache.Query{Name: "NOK-MANY-BAZ"}
-		iter, err := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) (iterators.Iterator[testent.Foo], error) {
+		iter, err := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) (iter.Seq[testent.Foo], error) {
 			return iterators.Slice([]testent.Foo{foo2}), nil
 		})
 		assert.NoError(t, err)
@@ -283,7 +284,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 
 	s.Test("CachedQueryMany works even with a faulty repo", func(t *testcase.T) {
 		all, err := subject.Get(t).CachedQueryMany(context.Background(), cache.Query{Name: "query many test"}.HitID(),
-			func(ctx context.Context) (iterators.Iterator[testent.Foo], error) {
+			func(ctx context.Context) (iter.Seq[testent.Foo], error) {
 				return source.Get(t).FindAll(context.Background())
 			})
 		assert.NoError(t, err)
@@ -368,7 +369,7 @@ func (fer *faultyEntityRepo[Entity, ID]) Update(ctx context.Context, ptr *Entity
 	return fer.EntityRepository.Update(ctx, ptr)
 }
 
-func (fer *faultyEntityRepo[Entity, ID]) FindAll(ctx context.Context) (iterators.Iterator[Entity], error) {
+func (fer *faultyEntityRepo[Entity, ID]) FindAll(ctx context.Context) (iter.Seq[Entity], error) {
 	if fer.fcr.shouldFail() {
 		return nil, fer.fcr.Random.Error()
 	}
@@ -389,7 +390,7 @@ func (fer *faultyEntityRepo[Entity, ID]) DeleteAll(ctx context.Context) error {
 	return fer.EntityRepository.DeleteAll(ctx)
 }
 
-func (fer *faultyEntityRepo[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[Entity], error) {
+func (fer *faultyEntityRepo[Entity, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq[Entity], error) {
 	if fer.fcr.shouldFail() {
 		return nil, fer.fcr.Random.Error()
 	}
@@ -422,7 +423,7 @@ func (fhr *faultyHitRepo[Entity, ID]) FindByID(ctx context.Context, id cache.Hit
 	return fhr.fcr.CacheRepo.Hits().FindByID(ctx, id)
 }
 
-func (fhr *faultyHitRepo[Entity, ID]) FindAll(ctx context.Context) (iterators.Iterator[cache.Hit[ID]], error) {
+func (fhr *faultyHitRepo[Entity, ID]) FindAll(ctx context.Context) (iter.Seq[cache.Hit[ID]], error) {
 	if fhr.fcr.shouldFail() {
 		return nil, fhr.fcr.Random.Error()
 	}

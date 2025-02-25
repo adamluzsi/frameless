@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"iter"
 	"reflect"
 	"testing"
 
@@ -268,7 +269,7 @@ func tryClose(c io.Closer) {
 	_ = c.Close()
 }
 
-func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iterators.Iterator[ENT], error)) (rErr error) {
+func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iter.Seq[ENT], func() error, error)) (rErr error) {
 	iter, err := fn()
 	assert.AnyOf(tb, func(a *assert.A) {
 		a.Case(func(t assert.It) {

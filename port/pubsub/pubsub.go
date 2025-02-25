@@ -2,8 +2,7 @@ package pubsub
 
 import (
 	"context"
-
-	"go.llib.dev/frameless/port/iterators"
+	"iter"
 )
 
 type Publisher[Data any] interface {
@@ -11,12 +10,10 @@ type Publisher[Data any] interface {
 }
 
 type Subscriber[Data any] interface {
-	Subscribe(context.Context) (Subscription[Data], error) // crud.QueryMany
+	Subscribe(context.Context) (Subscription[Data], func() error, error) // crud.QueryMany
 }
 
-type Subscription[Data any] interface {
-	iterators.Iterator[Message[Data]]
-}
+type Subscription[Data any] iter.Seq[Message[Data]]
 
 type Message[Data any] interface {
 	Context() context.Context

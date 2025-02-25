@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"strings"
 	"sync"
 
@@ -457,7 +458,7 @@ func (s *Scanner) malformedErr(err error) error {
 // Query will turn the input reader into a json visitor that yields results when a path is matching.
 // Think about it something similar as jq.
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
-func Query(ctx context.Context, r io.Reader, path ...Kind) iterators.Iterator[json.RawMessage] {
+func Query(ctx context.Context, r io.Reader, path ...Kind) iter.Seq[json.RawMessage] {
 	var in Input
 	if input, ok := r.(Input); ok {
 		in = input

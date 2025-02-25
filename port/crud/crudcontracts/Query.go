@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/port/contract"
@@ -154,7 +155,7 @@ type QueryManySubject[ENT any] struct {
 	// The func signature for Query is the generic representation of a query that meant to find one result.
 	// It is really similar to resources.Finder#FindByID,
 	// with the exception that the closure meant to know the query method name on the subject and the inputs it requires.
-	Query func(ctx context.Context) (iterators.Iterator[ENT], error)
+	Query func(ctx context.Context) (iter.Seq[ENT], func() error, error)
 	// IncludedEntity return an entity that is matched by the QueryManyFunc.
 	// If subject doesn't support Creator, then it should be present in the subject resource.
 	IncludedEntity func() ENT
@@ -195,7 +196,7 @@ func QueryMany[ENT, ID any](
 			return c.MakeContext(t)
 		})
 	)
-	act := func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	act := func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 		assert.NotNil(t, subject, "QueryMany subject has no MakeQuery value")
 		return sub.Get(t).Query(ctx.Get(t))
 	}
@@ -322,7 +323,7 @@ func QueryMany[ENT, ID any](
 		})
 
 		s.Then(`it expected to return with context error`, func(t *testcase.T) {
-			gotErr := shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+			gotErr := shouldIterEventuallyError(t, func() (iter.Seq[ENT], func() error, error) {
 				return act(t)
 			})
 			assert.ErrorIs(t, gotErr, ctx.Get(t).Err())

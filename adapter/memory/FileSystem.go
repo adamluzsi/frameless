@@ -3,6 +3,7 @@ package memory
 import (
 	"io"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"sync"
@@ -209,7 +210,7 @@ type FileSystemFile struct {
 	buffer   *iokit.Buffer
 	mutex    sync.Mutex
 
-	dirEntries iterators.Iterator[fs.DirEntry]
+	dirEntries iter.Seq[fs.DirEntry]
 }
 
 func (f *FileSystemFile) fileWriteLock() func() {

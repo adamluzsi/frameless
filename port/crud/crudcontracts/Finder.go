@@ -2,6 +2,7 @@ package crudcontracts
 
 import (
 	"context"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/pointer"
@@ -153,7 +154,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 		ids = testcase.Var[[]ID]{ID: `entities ids`}
 	)
-	var act = func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	var act = func(t *testcase.T) (iter.Seq[ENT], func() error, error) {
 		return subject.FindByIDs(ctx.Get(t), ids.Get(t)...)
 	}
 

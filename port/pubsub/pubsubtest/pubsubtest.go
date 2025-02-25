@@ -3,12 +3,12 @@ package pubsubtest
 import (
 	"context"
 	"fmt"
+	"iter"
 	"sync"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/port/comproto"
-	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase/assert"
@@ -110,7 +110,7 @@ func (sih *consumer[Data]) wrk(
 	tb testing.TB,
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	iter iterators.Iterator[pubsub.Message[Data]],
+	iter iter.Seq[pubsub.Message[Data]],
 ) {
 	defer wg.Done()
 	it := assert.MakeIt(tb)

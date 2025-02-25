@@ -3,6 +3,7 @@ package crudtest
 import (
 	"context"
 	"fmt"
+	"iter"
 	"testing"
 	"time"
 
@@ -129,7 +130,7 @@ func DeleteAll[ENT, ID any](tb testing.TB, subject deleteAllDeleter[ENT, ID], ct
 	})
 }
 
-func CountIs[T any](tb testing.TB, iter iterators.Iterator[T], expected int) {
+func CountIs[T any](tb testing.TB, iter iter.Seq[T], expected int) {
 	tb.Helper()
 	count, err := iterators.Count(iter)
 	assert.Must(tb).Nil(err)

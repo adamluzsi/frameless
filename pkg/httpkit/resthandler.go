@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/url"
 	"strings"
@@ -77,7 +78,7 @@ type RESTHandler[ENT, ID any] struct {
 	// Index will return the entities, optionally filtered with the query argument.
 	// Index is a collection endpoint.
 	//		GET /
-	Index func(ctx context.Context) (iterators.Iterator[ENT], error)
+	Index func(ctx context.Context) (iter.Seq[ENT], func() error, error)
 	// Show will return a single entity, looked up by its ID.
 	// Show is a resource endpoint.
 	// 		GET /:id
@@ -449,7 +450,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 	index, err := h.Index(ctx)
 	if err != nil {
 		return index, err

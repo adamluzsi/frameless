@@ -3,11 +3,10 @@ package flsql
 import (
 	"database/sql"
 	"io"
-
-	"go.llib.dev/frameless/port/iterators"
+	"iter"
 )
 
-func MakeSQLRowsIterator[T any](rows sqlRows, mapper SQLRowMapper[T]) iterators.Iterator[T] {
+func MakeSQLRowsIterator[T any](rows sqlRows, mapper SQLRowMapper[T]) iter.Seq[T] {
 	return &sqlRowsIter[T]{Rows: rows, Mapper: mapper}
 }
 
