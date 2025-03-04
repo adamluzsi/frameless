@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/url"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -22,7 +24,6 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/crud/relationship"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase/pp"
 )
 
@@ -77,7 +78,7 @@ type RESTHandler[ENT, ID any] struct {
 	// Index will return the entities, optionally filtered with the query argument.
 	// Index is a collection endpoint.
 	//		GET /
-	Index func(ctx context.Context) (iterators.Iterator[ENT], error)
+	Index func(ctx context.Context) (iter.Seq2[ENT, error], error)
 	// Show will return a single entity, looked up by its ID.
 	// Show is a resource endpoint.
 	// 		GET /:id
@@ -365,21 +366,17 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
-	defer func() {
-		if err := index.Close(); err != nil {
-			logger.Warn(ctx, "error during closing the index result resource",
-				logging.ErrField(err))
-		}
-	}()
 
 	if len(h.Filters) != 0 {
-		index = iterators.Filter(index, func(v ENT) bool {
-			for _, filter := range h.Filters {
-				if !filter(ctx, v) {
-					return false
+		index = iterkit.OnErrIterValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+			return iterkit.Filter(i, func(v ENT) bool {
+				for _, filter := range h.Filters {
+					if !filter(ctx, v) {
+						return false
+					}
 				}
-			}
-			return true
+				return true
+			})
 		})
 	}
 
@@ -390,7 +387,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	serMaker, ok := resCodec.(codec.ListEncoderMaker)
 	if !ok {
-		vs, err := iterators.Collect(index)
+		vs, err := iterkit.CollectErrIter(index)
 		if err != nil {
 			h.getErrorHandler().HandleError(w, r, err)
 			return
@@ -407,12 +404,6 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 				logging.ErrField(err))
 		}
 
-		return
-	}
-
-	if err := index.Err(); err != nil {
-		logger.Debug(ctx, "index had an error", logging.ErrField(err))
-		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
@@ -449,14 +440,16 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iter.Seq2[ENT, error], error) {
 	index, err := h.Index(ctx)
 	if err != nil {
 		return index, err
 	}
 	if _, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx); ok {
-		index = iterators.Filter(index, func(v ENT) bool {
-			return h.isOwnershipOK(ctx, v)
+		index = iterkit.OnErrIterValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+			return iterkit.Filter(i, func(v ENT) bool {
+				return h.isOwnershipOK(ctx, v)
+			})
 		})
 	}
 	return index, nil
@@ -819,16 +812,16 @@ func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, 
 	}
 
 	var ids []ID
-	err = iterators.ForEach(all, func(v ENT) error {
-		id, ok := res.IDAccessor.Lookup(all.Value())
+	for v, err := range all {
+		if err != nil {
+			return true, err
+		}
+		id, ok := res.IDAccessor.Lookup(v)
 		if ok {
 			ids = append(ids, id)
 		}
-		return nil
-	})
-	if err != nil {
-		return true, err
 	}
+
 	for _, id := range ids {
 		if err := res.Destroy(ctx, id); err != nil {
 			return false, err

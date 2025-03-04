@@ -3,14 +3,15 @@ package memory
 import (
 	"context"
 	"fmt"
+	"iter"
 	"sync"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/crud"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/frameless/port/iterators"
 )
 
 func NewEventLogRepository[ENT, ID any](m *EventLog) *EventLogRepository[ENT, ID] {
@@ -121,20 +122,19 @@ func (s *EventLogRepository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent
 	return ent, ok, nil
 }
 
-func (s *EventLogRepository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (s *EventLogRepository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := s.isDoneTx(ctx); err != nil {
 		return nil, err
 	}
-
 	res := make([]ENT, 0)
 	view := s.View(ctx)
 	for _, ent := range view {
 		res = append(res, ent)
 	}
-	return iterators.Slice(res), nil
+	return iterkit.ToErrIter(iterkit.Slice(res)), nil
 }
 
 func (s *EventLogRepository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
@@ -193,7 +193,7 @@ func (s *EventLogRepository[ENT, ID]) DeleteAll(ctx context.Context) error {
 	})
 }
 
-func (s *EventLogRepository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (s *EventLogRepository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error) {
 	var values []ENT
 	for _, id := range ids {
 		ent, found, err := s.FindByID(ctx, id)
@@ -205,7 +205,7 @@ func (s *EventLogRepository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) 
 		}
 		values = append(values, ent)
 	}
-	return iterators.Slice(values), nil
+	return iterkit.ToErrIter(iterkit.Slice(values)), nil
 }
 
 func (s *EventLogRepository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr error) {

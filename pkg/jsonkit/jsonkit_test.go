@@ -293,7 +293,7 @@ func (str TypeD) Hello() {}
 //
 // 	var dto = ExampleDTO{
 // 		Metadata: "Hello, world!",
-// 		Items:    jsonkit.ArrayStream[ItemDTO]{Iter: iterators.Slice(items)},
+// 		Items:    jsonkit.ArrayStream[ItemDTO]{Iter: iterkit.Slice(items)},
 // 	}
 //
 // 	var buf bytes.Buffer

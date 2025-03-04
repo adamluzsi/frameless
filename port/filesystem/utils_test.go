@@ -88,8 +88,8 @@ func TestWalkDir(t *testing.T) {
 
 	touchFile := func(tb testing.TB, name string) {
 		file, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filesystem.ModeUserRWX)
-		assert.Must(tb).Nil(err)
-		assert.Must(tb).Nil(file.Close())
+		assert.Nil(tb, err)
+		assert.Nil(tb, file.Close())
 	}
 
 	it.Must.Nil(fsys.Mkdir("a", filesystem.ModeUserRWX))

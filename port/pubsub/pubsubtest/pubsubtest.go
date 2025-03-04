@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/port/comproto"
-	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase/assert"
@@ -24,7 +23,6 @@ var Eventually = assert.Retry{
 }
 
 type AsyncResults[Data any] struct {
-	tb             testing.TB
 	values         []Data
 	mutex          sync.Mutex
 	finish         func()
@@ -110,12 +108,19 @@ func (sih *consumer[Data]) wrk(
 	tb testing.TB,
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	iter iterators.Iterator[pubsub.Message[Data]],
+	itr pubsub.Subscription[Data],
 ) {
 	defer wg.Done()
 	it := assert.MakeIt(tb)
-	for iter.Next() {
-		v := iter.Value()
+	for v, err := range itr {
+		if err != nil {
+			it.Should.AnyOf(func(a *assert.A) {
+				// TODO: survey which behaviour is more natural
+				a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), err) })
+				a.Test(func(t assert.It) { t.Must.NoError(err) })
+			}, assert.Message(fmt.Sprintf("error: %#v", err)))
+			continue
+		}
 		it.Should.NoError(func(msg pubsub.Message[Data]) (rErr error) {
 			defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 			if sih.OnData != nil {
@@ -124,9 +129,4 @@ func (sih *consumer[Data]) wrk(
 			return nil
 		}(v))
 	}
-	it.Should.AnyOf(func(a *assert.A) {
-		// TODO: survey which behaviour is more natural
-		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), iter.Err()) })
-		a.Test(func(t assert.It) { t.Must.NoError(iter.Err()) })
-	}, assert.Message(fmt.Sprintf("error: %#v", iter.Err())))
 }

@@ -7,12 +7,12 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/cache"
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/meta/metacontracts"
 	"go.llib.dev/frameless/spechelper/resource"
 
@@ -56,39 +56,39 @@ func TestEventLogRepository_smoke(t *testing.T) {
 
 	assert.Nil(t, subject.Create(ctx, &TestEntity{Data: `A`}))
 	assert.Nil(t, subject.Create(ctx, &TestEntity{Data: `B`}))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
 	assert.Equal(t, 2, count)
 
 	assert.Nil(t, subject.DeleteAll(ctx))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
 	assert.Equal(t, 0, count)
 
 	tx1CTX, err := subject.BeginTx(ctx)
 	assert.Nil(t, err)
 	assert.Nil(t, subject.Create(tx1CTX, &TestEntity{Data: `C`}))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(tx1CTX)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(tx1CTX)))
 	assert.Nil(t, err)
 	assert.Equal(t, 1, count)
 	assert.Nil(t, subject.RollbackTx(tx1CTX))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
 	assert.Equal(t, 0, count)
 
 	tx2CTX, err := subject.BeginTx(ctx)
 	assert.Nil(t, err)
 	assert.Nil(t, subject.Create(tx2CTX, &TestEntity{Data: `D`}))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(tx2CTX)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(tx2CTX)))
 	assert.Nil(t, err)
 	assert.Equal(t, 1, count)
 	assert.Nil(t, subject.CommitTx(tx2CTX))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
 	assert.Equal(t, 1, count)
 
 	assert.Nil(t, subject.DeleteAll(ctx))
-	count, err = iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
+	count, err = iterkit.Count(iterkit.WithErr(subject.FindAll(ctx)))
 	assert.Nil(t, err)
 	assert.Equal(t, 0, count)
 }

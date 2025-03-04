@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -22,7 +24,6 @@ import (
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/frameless/port/iterators"
 )
 
 type RESTClient[ENT, ID any] struct {
@@ -156,7 +157,7 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
 	ctx = r.withContext(ctx)
 
 	var details []logging.Detail
@@ -216,28 +217,39 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[EN
 			return nil, fmt.Errorf("error while mapping from DTO: %w", err)
 		}
 
-		return iterators.Slice(got), nil
+		return iterkit.ToErrIter(iterkit.Slice(got)), nil
 	}
 
 	dec := dm.MakeListDecoder(resp.Body)
 
-	return iterators.Func[ENT](func() (v ENT, ok bool, err error) {
-		if !dec.Next() {
-			return v, false, dec.Err()
+	return func(yield func(ENT, error) bool) {
+		for dec.Next() {
+			ptr := mapping.NewDTO()
+			if err := dec.Decode(ptr); err != nil {
+				var zero ENT
+				if !yield(zero, err) {
+					return
+				}
+				continue
+			}
+
+			ent, err := mapping.MapFromDTO(ctx, ptr)
+			if err != nil {
+				var zero ENT
+				if !yield(zero, err) {
+					return
+				}
+				continue
+			}
+
 		}
 
-		ptr := mapping.NewDTO()
-		if err := dec.Decode(ptr); err != nil {
-			return v, false, err
+		if err := dec.Err(); err != nil {
+			var zero ENT
+			yield(zero, err)
+			return
 		}
-
-		ent, err := mapping.MapFromDTO(ctx, ptr)
-		if err != nil {
-			return v, false, err
-		}
-
-		return ent, true, nil
-	}, iterators.OnClose(dec.Close)), nil
+	}, nil
 }
 
 func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
@@ -326,37 +338,48 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 	return got, true, nil
 }
 
-func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	var index int
-	var iter = iterators.Func[ENT](func() (v ENT, ok bool, err error) {
-		if err := ctx.Err(); err != nil {
-			return v, false, err
+	var itr iterkit.ErrIter[ENT] = func(yield func(ENT, error) bool) {
+		var zero ENT
+		for _, id := range ids {
+			if err := ctx.Err(); err != nil {
+				yield(zero, err)
+				return
+			}
+			ent, found, err := r.FindByID(ctx, id)
+			if err != nil {
+				yield(zero, err)
+				return
+			}
+			if !found {
+				yield(zero, fmt.Errorf("%w: id=%v", crud.ErrNotFound, id))
+				return
+			}
+			if !yield(ent, nil) {
+				return
+			}
 		}
-		if !(index < len(ids)) {
-			return v, false, nil
-		}
-		defer func() { index++ }()
-		id := ids[index]
-		ent, found, err := r.FindByID(ctx, id)
+	}
+
+	itr = iterkit.OnErrIterValue(itr, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+
+		vs, err := iterkit.Take(i, r.getPrefetchLimit())
 		if err != nil {
-			return ent, false, err
+			return nil, err
 		}
-		if !found {
-			return v, false, fmt.Errorf("%w: id=%v", crud.ErrNotFound, id)
-		}
-		return ent, true, nil
+		return iterkit.Merge(iterkit.Slice(vs), iter), nil
 	})
 
-	vs, err := iterators.Take(iter, r.getPrefetchLimit())
+	vs, err := iterkit.Take(itr, r.getPrefetchLimit())
 	if err != nil {
 		return nil, err
 	}
 
-	return iterators.Merge(iterators.Slice(vs), iter), nil
+	return iterkit.Merge(iterkit.Slice(vs), iter), nil
 }
 
 func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {

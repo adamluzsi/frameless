@@ -2,6 +2,7 @@ package pubsubcontracts
 
 import (
 	"context"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/port/contract"
@@ -50,13 +51,15 @@ func Ordering[Data any](
 
 			sub, err := subscriber.Subscribe(ctx)
 			assert.NoError(t, err)
-			defer sub.Close()
 
 			t.Must.NoError(publisher.Publish(ctx, val1, val2, val3))
 			pubsubtest.Waiter.Wait()
 
 			expected := []Data{val1, val2, val3}
 			Sort(expected)
+
+			next, stop := iter.Pull2(iter.Seq2[pubsub.Message[Data], error](sub))
+			defer stop()
 
 			var got []Data
 			for i, m := 0, len(expected); i < m; i++ {
@@ -161,7 +164,6 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 		s.Then("messages are received in their publishing order", func(t *testcase.T) {
 			sub, err := subscriber.Subscribe(c.MakeContext(t))
 			assert.NoError(t, err)
-			defer sub.Close()
 
 			t.Must.NoError(publisher.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
 			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}

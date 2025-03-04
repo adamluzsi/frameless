@@ -3,6 +3,7 @@ package memory
 import (
 	"io"
 	"io/fs"
+	"iter"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"go.llib.dev/frameless/port/filesystem"
 
 	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/pkg/iterkit"
 )
 
 type FileSystem struct {
@@ -117,7 +118,7 @@ func (mfs *FileSystem) OpenFile(name string, flag int, perm fs.FileMode) (filesy
 		entry:      f,
 		openFlag:   flag,
 		buffer:     iokit.NewBuffer(f.data),
-		dirEntries: iterators.Slice(mfs.getDirEntriesFn(path)),
+		dirEntries: iterkit.Slice(mfs.getDirEntriesFn(path)),
 	}, nil
 }
 
@@ -209,7 +210,7 @@ type FileSystemFile struct {
 	buffer   *iokit.Buffer
 	mutex    sync.Mutex
 
-	dirEntries iterators.Iterator[fs.DirEntry]
+	dirEntries iter.Seq[fs.DirEntry]
 }
 
 func (f *FileSystemFile) fileWriteLock() func() {
@@ -290,21 +291,26 @@ func (f *FileSystemFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	}
 	defer f.fileWriteLock()()
 	if n < 0 {
-		return iterators.Collect(f.dirEntries)
+		return iterkit.Collect(f.dirEntries), nil
 	}
 	if n == 0 {
 		return []fs.DirEntry{}, nil
 	}
+
+	next, stop := iter.Pull(f.dirEntries)
+	defer stop()
+
 	var des []fs.DirEntry
 	for i := 0; i < n; i++ {
-		if !f.dirEntries.Next() {
+		dirEntry, ok := next()
+		if !ok {
 			break
 		}
-		des = append(des, f.dirEntries.Value())
+		des = append(des, dirEntry)
 	}
-	if err := f.dirEntries.Err(); err != nil {
-		return nil, err
-	}
+	// if err := f.dirEntries.Err(); err != nil {
+	// 	return nil, err
+	// }
 	if len(des) == 0 {
 		return nil, io.EOF
 	}

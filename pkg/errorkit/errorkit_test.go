@@ -188,7 +188,7 @@ func TestFinish(t *testing.T) {
 
 	t.Run("nothing fails, no error returned", func(t *testing.T) {
 		got := func() (rErr error) {
-			defer errorkit.Finish(&rErr, func() error { return nil })
+			defer errorkit.Finish(&rErr, errorkit.NullErrFunc)
 
 			return nil
 		}()
@@ -210,7 +210,7 @@ func TestRecover(t *testing.T) {
 	}
 
 	s.When(`action ends without error`, func(s *testcase.Spec) {
-		actionLet(s, func() error { return nil })
+		actionLet(s, errorkit.NullErrFunc)
 
 		s.Then(`it will do nothing`, func(t *testcase.T) {
 			assert.Must(t).Nil(subject(t))
@@ -416,12 +416,17 @@ func ExampleWithContext() {
 func TestWithContext(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	type (
+		fooKey struct{}
+		oofKey struct{}
+	)
 	var (
 		err = let.Error(s)
 		ctx = let.Context(s).Let(s, func(t *testcase.T) context.Context {
-			return context.WithValue(context.WithValue(context.Background(),
-				"foo", "bar"),
-				"oof", "rab")
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, fooKey{}, "bar")
+			ctx = context.WithValue(ctx, oofKey{}, "rab")
+			return ctx
 		})
 	)
 	act := func(t *testcase.T) error {
@@ -435,7 +440,7 @@ func TestWithContext(t *testing.T) {
 		gotCtx, ok := errorkit.LookupContext(act(t))
 		t.Must.True(ok)
 		t.Must.Equal(ctx.Get(t), gotCtx)
-		t.Must.Equal("bar", gotCtx.Value("foo").(string))
+		t.Must.Equal("bar", gotCtx.Value(fooKey{}).(string))
 	})
 
 	s.Then(".Error() returns the underlying error's result", func(t *testcase.T) {
@@ -677,5 +682,131 @@ func TestMerge(t *testing.T) {
 				t.Must.False(errors.As(err, &ErrType2{}))
 			})
 		})
+	})
+}
+
+func TestMergeErrFunc(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var errFuncs = let.Var[[]errorkit.ErrFunc](s, nil)
+	act := func(t *testcase.T) errorkit.ErrFunc {
+		return errorkit.MergeErrFunc(errFuncs.Get(t)...)
+	}
+
+	s.When("no function is passed to it", func(s *testcase.Spec) {
+		errFuncs.LetValue(s, nil)
+
+		s.Then("a non-nil null object is returned", func(t *testcase.T) {
+			got := act(t)
+			assert.NotNil(t, got)
+			assert.NotPanic(t, func() {
+				assert.Nil(t, got())
+			})
+		})
+	})
+
+	s.When("single function is passed", func(s *testcase.Spec) {
+		err := let.Error(s)
+
+		fn := let.Var(s, func(t *testcase.T) errorkit.ErrFunc {
+			return func() error { return err.Get(t) }
+		})
+
+		errFuncs.Let(s, func(t *testcase.T) []errorkit.ErrFunc {
+			return []errorkit.ErrFunc{fn.Get(t)}
+		})
+
+		s.Then("the single function is returned as is", func(t *testcase.T) {
+			got := act(t)
+			assert.NotNil(t, got)
+			assert.Equal(t, &got, pointer.Of(fn.Get(t)))
+			assert.Equal(t, err.Get(t), got())
+		})
+	})
+
+	s.When("multiple ErrFunc passed to it", func(s *testcase.Spec) {
+		var (
+			fn1 = let.Var(s, func(t *testcase.T) func() error {
+				var err = t.Random.Error()
+				return func() error { return err }
+			})
+			fn2 = let.Var(s, func(t *testcase.T) func() error {
+				var err = t.Random.Error()
+				return func() error { return err }
+			})
+			fn3 = let.Var(s, func(t *testcase.T) func() error {
+				var err = t.Random.Error()
+				return func() error { return err }
+			})
+		)
+
+		errFuncs.Let(s, func(t *testcase.T) []errorkit.ErrFunc {
+			return []errorkit.ErrFunc{
+				fn1.Get(t),
+				fn2.Get(t),
+				fn3.Get(t),
+			}
+		})
+
+		s.Then("the error functions are merged along with the error value they would return", func(t *testcase.T) {
+			got := act(t)
+			assert.NotNil(t, got)
+
+			gotErr := got()
+
+			assert.ErrorIs(t, gotErr, fn1.Get(t)())
+			assert.ErrorIs(t, gotErr, fn2.Get(t)())
+			assert.ErrorIs(t, gotErr, fn3.Get(t)())
+		})
+
+		s.Then("the returned ErrFunc is idempotent with its merging process", func(t *testcase.T) {
+			got := act(t)
+			assert.NotNil(t, got)
+
+			t.Random.Repeat(3, 6, func() {
+				gotErr := got()
+				assert.ErrorIs(t, gotErr, fn1.Get(t)())
+				assert.ErrorIs(t, gotErr, fn2.Get(t)())
+				assert.ErrorIs(t, gotErr, fn3.Get(t)())
+			})
+		})
+
+		s.And("if all the functions are nil values", func(s *testcase.Spec) {
+			fn1.LetValue(s, nil)
+			fn2.LetValue(s, nil)
+			fn3.LetValue(s, nil)
+
+			s.Then("a non-nil null object is returned", func(t *testcase.T) {
+				got := act(t)
+				assert.NotNil(t, got)
+				assert.NotPanic(t, func() {
+					assert.Nil(t, got())
+				})
+			})
+		})
+
+		s.And("if one of the functions are a nil", func(s *testcase.Spec) {
+			fn2.LetValue(s, nil)
+
+			s.Then("we get back a merged ErrFunc from the rest of the non nil ErrFuncs", func(t *testcase.T) {
+				got := act(t)
+				assert.NotNil(t, got)
+
+				gotErr := got()
+				assert.ErrorIs(t, gotErr, fn1.Get(t)())
+				assert.ErrorIs(t, gotErr, fn3.Get(t)())
+			})
+		})
+	})
+
+	s.Test("support func() error type", func(t *testcase.T) {
+		expErr := t.Random.Error()
+
+		var errFuncs []func() error
+		errFuncs = append(errFuncs, func() error { return expErr })
+
+		got := errorkit.MergeErrFunc(errFuncs...)
+		assert.NotNil(t, got)
+		assert.ErrorIs(t, got(), expErr)
 	})
 }

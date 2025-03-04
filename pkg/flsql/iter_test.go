@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -61,9 +62,9 @@ func TestSQLRows(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 
-	rows := testcase.Var[SQLRows]{ID: "iterators.SQLRows"}
-	mapper := testcase.Var[flsql.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
-	subject := func(t *testcase.T) iterators.Iterator[testType] {
+	rows := testcase.Var[SQLRows]{ID: "iterkit.SQLRows"}
+	mapper := testcase.Var[flsql.SQLRowMapper[testType]]{ID: "iterkit.SQLRowMapper"}
+	subject := func(t *testcase.T) iter.Seq[testType] {
 		return flsql.MakeSQLRowsIterator(rows.Get(t), mapper.Get(t))
 	}
 	mapper.Let(s, func(t *testcase.T) flsql.SQLRowMapper[testType] {
@@ -77,7 +78,7 @@ func TestSQLRows(t *testing.T) {
 		s.Context(`has no values`, func(s *testcase.Spec) {
 			rows.Let(s, func(t *testcase.T) SQLRows {
 				return &SQLRowsStub{
-					Iterator: iterators.Empty[[]any](),
+					Iterator: iterkit.Empty[[]any](),
 				}
 			})
 
@@ -103,7 +104,7 @@ func TestSQLRows(t *testing.T) {
 		s.Context(`has value(s)`, func(s *testcase.Spec) {
 			rows.Let(s, func(t *testcase.T) SQLRows {
 				return &SQLRowsStub{
-					Iterator: iterators.Slice([][]any{[]any{`42`}}),
+					Iterator: iterkit.Slice([][]any{[]any{`42`}}),
 				}
 			})
 
@@ -124,7 +125,7 @@ func TestSQLRows(t *testing.T) {
 				expectedErr := errors.New(`boom`)
 				rows.Let(s, func(t *testcase.T) SQLRows {
 					return &SQLRowsStub{
-						Iterator: iterators.Slice[[]any]([][]any{{`42`}}),
+						Iterator: iterkit.Slice[[]any]([][]any{{`42`}}),
 						ScanErr:  expectedErr,
 					}
 				})
@@ -144,7 +145,7 @@ func TestSQLRows(t *testing.T) {
 		expectedErr := errors.New(`boom`)
 		rows.Let(s, func(t *testcase.T) SQLRows {
 			return &SQLRowsStub{
-				Iterator: iterators.Empty[[]any](),
+				Iterator: iterkit.Empty[[]any](),
 				CloseErr: expectedErr,
 			}
 		})
@@ -157,7 +158,7 @@ func TestSQLRows(t *testing.T) {
 }
 
 type SQLRowsStub struct {
-	iterators.Iterator[[]any]
+	iter.Seq[[]any]
 	CloseErr error
 	ScanErr  error
 }

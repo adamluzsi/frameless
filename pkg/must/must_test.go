@@ -9,6 +9,7 @@ import (
 	txtTemplate "text/template"
 	"time"
 
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -68,14 +69,14 @@ func TestMust(t *testing.T) {
 }
 
 func ExampleMust0() {
-	fn := func() error { return nil }
+	fn := errorkit.NullErrFunc
 	must.Must0(fn())
 }
 
 func TestMust0(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		assert.NotPanic(t, func() {
-			must.Must0(func() error { return nil }())
+			must.Must0(errorkit.NullErrFunc())
 		})
 	})
 	t.Run("rainy", func(t *testing.T) {

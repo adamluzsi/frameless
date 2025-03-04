@@ -4,7 +4,6 @@ import (
 	"sort"
 
 	"go.llib.dev/frameless/pkg/must"
-	"go.llib.dev/frameless/port/iterators"
 )
 
 // Map will do a mapping from an input type into an output type.
@@ -242,21 +241,6 @@ func Last[T any](vs []T) (T, bool) {
 		return zero, false
 	}
 	return vs[len(vs)-1], true
-}
-
-func ReverseIterator[T any](vs []T) iterators.Iterator[T] {
-	if len(vs) == 0 {
-		return iterators.Empty[T]()
-	}
-	var index int = len(vs) - 1 // start from the end
-	return iterators.Func[T](func() (v T, ok bool, err error) {
-		if index < 0 {
-			return v, false, nil // done iterating
-		}
-		v = vs[index]
-		index--
-		return v, true, nil
-	})
 }
 
 func AnyOf[T any](vs []T, filter func(T) bool) bool {

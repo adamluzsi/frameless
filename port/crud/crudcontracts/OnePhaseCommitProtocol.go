@@ -2,12 +2,12 @@ package crudcontracts
 
 import (
 	"fmt"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/port/comproto/comprotocontracts"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase/assert"
 
@@ -105,7 +105,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NotNil(subject.Create(tx, pointer.Of(c.MakeEntity(t))))
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-			shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+			shouldIterEventuallyError(t, func() (iter.Seq[ENT], func() error, error) {
 				return allFinder.FindAll(tx)
 			})
 		}
@@ -137,7 +137,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NotNil(err)
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-			shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+			shouldIterEventuallyError(t, func() (iter.Seq[ENT], func() error, error) {
 				return allFinder.FindAll(ctx)
 			})
 		}
@@ -386,7 +386,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 				"expecte that .Save will respect that the tx in the context is already committed")
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-				shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+				shouldIterEventuallyError(t, func() (iter.Seq[ENT], func() error, error) {
 					return allFinder.FindAll(tx)
 				})
 			}
@@ -418,7 +418,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Must.NotNil(err)
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-				shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+				shouldIterEventuallyError(t, func() (iter.Seq[ENT], func() error, error) {
 					return allFinder.FindAll(ctx)
 				})
 			}
