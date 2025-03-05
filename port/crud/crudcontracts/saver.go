@@ -5,6 +5,7 @@ import (
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -128,14 +129,14 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 					t.Skipf("unable to continue with the test, crud.AllFinder is not implemented in %T", subject)
 				}
 
-				vs, err := crud.CollectQueryMany(allFinder.FindAll(ctx.Get(t)))
+				vs, err := crudkit.CollectQueryMany(allFinder.FindAll(ctx.Get(t)))
 				assert.NoError(t, err)
 				initialCount := len(vs)
 
 				assert.NoError(t, act(t))
 
 				t.Eventually(func(t *testcase.T) {
-					vs, err := crud.CollectQueryMany(allFinder.FindAll(ctx.Get(t)))
+					vs, err := crudkit.CollectQueryMany(allFinder.FindAll(ctx.Get(t)))
 					assert.NoError(t, err)
 
 					var count = len(vs)

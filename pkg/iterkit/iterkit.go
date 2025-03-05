@@ -117,6 +117,28 @@ func Collect[T any](i iter.Seq[T]) []T {
 	return vs
 }
 
+func Collect2[K, V, KV any](i iter.Seq2[K, V], m func(K, V) KV) []KV {
+	if i == nil {
+		return nil
+	}
+	var es []KV
+	for k, v := range i {
+		es = append(es, m(k, v))
+	}
+	return es
+}
+
+type KV[K, V any] struct {
+	K K
+	V V
+}
+
+func CollectKV[K, V any](i iter.Seq2[K, V]) []KV[K, V] {
+	return Collect2(i, func(k K, v V) KV[K, V] {
+		return KV[K, V]{K: k, V: v}
+	})
+}
+
 func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
 	var vs = make([]T, 0)
 	for _, stop := range stops {

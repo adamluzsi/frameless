@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/spechelper"
@@ -208,7 +209,7 @@ func QueryMany[ENT, ID any](
 
 		s.Then(`the query will return the entity`, func(t *testcase.T) {
 			t.Eventually(func(it *testcase.T) {
-				ents, err := crud.CollectQueryMany(act(it))
+				ents, err := crudkit.CollectQueryMany(act(it))
 				assert.NoError(t, err)
 				assert.Contain(t, ents, includedEntity.Get(it))
 			})
@@ -228,7 +229,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then(`both entity is returned`, func(t *testcase.T) {
 				t.Eventually(func(t *testcase.T) {
-					ents, err := crud.CollectQueryMany(act(t))
+					ents, err := crudkit.CollectQueryMany(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, ents, includedEntity.Get(t))
 					assert.Contain(t, ents, additionalEntities.Get(t))
@@ -247,7 +248,7 @@ func QueryMany[ENT, ID any](
 					assert.True(t, ok)
 					assert.NoError(t, i1ErrFunc())
 
-					vs2, err := crud.CollectQueryMany(act(t))
+					vs2, err := crudkit.CollectQueryMany(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, vs2, includedEntity.Get(t))
 					assert.Contain(t, vs2, additionalEntities.Get(t))
@@ -297,7 +298,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then(`only the matching entity is returned`, func(t *testcase.T) {
 				t.Eventually(func(t *testcase.T) {
-					ents, err := crud.CollectQueryMany(act(t))
+					ents, err := crudkit.CollectQueryMany(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, ents, includedEntity.Get(t))
 					assert.NotContain(t, ents, othEnt.Get(t))

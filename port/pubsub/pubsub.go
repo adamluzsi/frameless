@@ -13,7 +13,7 @@ type Subscriber[Data any] interface {
 	Subscribe(context.Context) (Subscription[Data], error) // crud.QueryMany
 }
 
-type Subscription[Data any] iter.Seq2[Message[Data], error]
+type Subscription[Data any] = iter.Seq2[Message[Data], error]
 
 type Message[Data any] interface {
 	Context() context.Context

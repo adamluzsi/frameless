@@ -857,6 +857,13 @@ func TestEmpty2(t *testing.T) {
 	assert.Equal(t, 0, n)
 }
 
+func ExampleCollect() {
+	var itr iter.Seq[int]
+
+	ints := iterkit.Collect(itr)
+	_ = ints
+}
+
 func TestCollect(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.NoSideEffect()
@@ -875,7 +882,7 @@ func TestCollect(t *testing.T) {
 
 		s.Then(`no element appended to the slice`, func(t *testcase.T) {
 			vs := act(t)
-			t.Must.Empty(vs)
+			assert.Empty(t, vs)
 		})
 	})
 
@@ -884,7 +891,7 @@ func TestCollect(t *testing.T) {
 
 		s.Then(`no values returned`, func(t *testcase.T) {
 			vs := act(t)
-			t.Must.Empty(vs)
+			assert.Empty(t, vs)
 		})
 	})
 
@@ -896,6 +903,146 @@ func TestCollect(t *testing.T) {
 		s.Then(`it will collect the values`, func(t *testcase.T) {
 			vs := act(t)
 			t.Must.Equal([]int{1, 2, 3}, vs)
+		})
+	})
+}
+
+func ExampleCollectKV() {
+	var itr iter.Seq2[string, int]
+
+	ints := iterkit.CollectKV(itr)
+	_ = ints
+}
+
+func TestCollectKV(t *testing.T) {
+	s := testcase.NewSpec(t)
+	s.NoSideEffect()
+
+	var (
+		iterator = let.Var[iter.Seq2[string, int]](s, nil)
+	)
+	act := func(t *testcase.T) []iterkit.KV[string, int] {
+		return iterkit.CollectKV(iterator.Get(t))
+	}
+
+	s.When(`no elements in iterator`, func(s *testcase.Spec) {
+		iterator.Let(s, func(t *testcase.T) iter.Seq2[string, int] {
+			return iterkit.Empty2[string, int]()
+		})
+
+		s.Then(`no element appended to the slice`, func(t *testcase.T) {
+			vs := act(t)
+			assert.Empty(t, vs)
+		})
+	})
+
+	s.When(`iterator is nil`, func(s *testcase.Spec) {
+		iterator.LetValue(s, nil)
+
+		s.Then(`no values returned`, func(t *testcase.T) {
+			vs := act(t)
+			assert.Empty(t, vs)
+		})
+	})
+
+	s.When(`iterator has elements`, func(s *testcase.Spec) {
+		values := let.Var(s, func(t *testcase.T) []iterkit.KV[string, int] {
+			return random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, int] {
+				return iterkit.KV[string, int]{
+					K: t.Random.String(),
+					V: t.Random.Int(),
+				}
+			})
+		})
+		iterator.Let(s, func(t *testcase.T) iter.Seq2[string, int] {
+			return func(yield func(string, int) bool) {
+				for _, kv := range values.Get(t) {
+					if !yield(kv.K, kv.V) {
+						return
+					}
+				}
+			}
+		})
+
+		s.Then(`it will collect the values`, func(t *testcase.T) {
+			assert.Equal(t, values.Get(t), act(t))
+		})
+	})
+}
+
+func ExampleCollect2() {
+	var itr iter.Seq2[string, int]
+
+	type T struct {
+		S string
+		I int
+	}
+
+	ints := iterkit.Collect2(itr, func(s string, i int) T {
+		return T{S: s, I: i}
+	})
+	_ = ints
+}
+
+func TestCollect2(t *testing.T) {
+	s := testcase.NewSpec(t)
+	s.NoSideEffect()
+
+	type T struct {
+		S string
+		I int
+	}
+
+	var (
+		iterator = let.Var[iter.Seq2[string, int]](s, nil)
+	)
+	act := func(t *testcase.T) []T {
+		return iterkit.Collect2(iterator.Get(t), func(k string, v int) T {
+			return T{S: k, I: v}
+		})
+	}
+
+	s.When(`no elements in iterator`, func(s *testcase.Spec) {
+		iterator.Let(s, func(t *testcase.T) iter.Seq2[string, int] {
+			return iterkit.Empty2[string, int]()
+		})
+
+		s.Then(`no element appended to the slice`, func(t *testcase.T) {
+			vs := act(t)
+			assert.Empty(t, vs)
+		})
+	})
+
+	s.When(`iterator is nil`, func(s *testcase.Spec) {
+		iterator.LetValue(s, nil)
+
+		s.Then(`no values returned`, func(t *testcase.T) {
+			vs := act(t)
+			assert.Empty(t, vs)
+		})
+	})
+
+	s.When(`iterator has elements`, func(s *testcase.Spec) {
+		values := let.Var(s, func(t *testcase.T) []T {
+			return random.Slice(t.Random.IntBetween(3, 7), func() T {
+				return T{
+					S: t.Random.String(),
+					I: t.Random.Int(),
+				}
+			})
+		})
+		iterator.Let(s, func(t *testcase.T) iter.Seq2[string, int] {
+			return func(yield func(string, int) bool) {
+				for _, kv := range values.Get(t) {
+					if !yield(kv.S, kv.I) {
+						return
+					}
+				}
+			}
+		})
+
+		s.Then(`it will collect the values`, func(t *testcase.T) {
+			assert.Equal(t, values.Get(t), act(t))
 		})
 	})
 }
@@ -2416,23 +2563,10 @@ func TestOnce(tt *testing.T) {
 	})
 }
 
-type KV[K, V any] struct {
-	K K
-	V V
-}
-
-func CollectKV[K, V any](i iter.Seq2[K, V]) []KV[K, V] {
-	var es []KV[K, V]
-	for k, v := range i {
-		es = append(es, KV[K, V]{K: k, V: v})
-	}
-	return es
-}
-
 func TestOnce2(tt *testing.T) {
 	t := testcase.NewT(tt)
-	kvs := random.Slice(t.Random.IntBetween(3, 7), func() KV[string, int] {
-		return KV[string, int]{
+	kvs := random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, int] {
+		return iterkit.KV[string, int]{
 			K: t.Random.String(),
 			V: t.Random.Int(),
 		}
@@ -2447,13 +2581,13 @@ func TestOnce2(tt *testing.T) {
 
 	t.Log("given we have an iterator that can be iterated multiple times")
 	t.Random.Repeat(3, 7, func() {
-		assert.Equal(t, kvs, CollectKV(itr))
+		assert.Equal(t, kvs, iterkit.CollectKV(itr))
 	})
 
 	t.Log("but with iterkit.Once it will only iterate once")
 	itrOnce := iterkit.Once2(itr)
-	assert.Equal(t, kvs, CollectKV(itrOnce))
-	assert.Empty(t, CollectKV(itrOnce))
+	assert.Equal(t, kvs, iterkit.CollectKV(itrOnce))
+	assert.Empty(t, iterkit.CollectKV(itrOnce))
 
 	tt.Run("race", func(t *testing.T) {
 		sub := iterkit.Once2(itr)
@@ -2478,8 +2612,8 @@ func TestFromPull_smoke(tt *testing.T) {
 
 func TestFromPull2_smoke(tt *testing.T) {
 	t := testcase.NewT(tt)
-	kvs := random.Slice(t.Random.IntBetween(3, 7), func() KV[string, int] {
-		return KV[string, int]{
+	kvs := random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, int] {
+		return iterkit.KV[string, int]{
 			K: t.Random.String(),
 			V: t.Random.Int(),
 		}
@@ -2492,6 +2626,6 @@ func TestFromPull2_smoke(tt *testing.T) {
 		}
 	}
 	fromPullIter := iterkit.FromPull2(iter.Pull2(itr))
-	got := CollectKV(fromPullIter)
+	got := iterkit.CollectKV(fromPullIter)
 	assert.Equal(t, kvs, got)
 }

@@ -17,6 +17,7 @@ import (
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
@@ -177,8 +178,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			entID, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.Get(t).FindByID(ctx, entID)             // should trigger caching
-			_, _ = crud.CollectQueryMany(cache.Get(t).FindAll(ctx)) // should trigger caching
+			_, _, _ = cache.Get(t).FindByID(ctx, entID)                // should trigger caching
+			_, _ = crudkit.CollectQueryMany(cache.Get(t).FindAll(ctx)) // should trigger caching
 
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
@@ -212,8 +213,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)                // should trigger caching
-			_, _ = crud.CollectQueryMany(cache.Get(t).FindAll(c.CRUD.MakeContext(t))) // should trigger caching
+			_, _, _ = cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)                   // should trigger caching
+			_, _ = crudkit.CollectQueryMany(cache.Get(t).FindAll(c.CRUD.MakeContext(t))) // should trigger caching
 
 			// delete
 			t.Must.NoError(cache.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
@@ -227,8 +228,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			id, _ := extid.Lookup[ID](v)
 
 			// cache
-			_, _, _ = cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)                // should trigger caching
-			_, _ = crud.CollectQueryMany(cache.Get(t).FindAll(c.CRUD.MakeContext(t))) // should trigger caching
+			_, _, _ = cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)                   // should trigger caching
+			_, _ = crudkit.CollectQueryMany(cache.Get(t).FindAll(c.CRUD.MakeContext(t))) // should trigger caching
 
 			// delete
 			t.Must.NoError(cache.Get(t).DeleteAll(c.CRUD.MakeContext(t)))
@@ -477,7 +478,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		var query = func(t *testcase.T) []ENT {
-			vs, err := crud.CollectQueryMany(cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
+			vs, err := crudkit.CollectQueryMany(cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
 				hitID,
 				func(ctx context.Context) (iter.Seq[ENT], func() error, error) {
 					return iterkit.Slice(res), errorkit.NullErrFunc, nil
@@ -938,25 +939,25 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("it will return all the entities", func(t *testcase.T) {
-			vs, err := crud.CollectQueryMany(act(t))
+			vs, err := crudkit.CollectQueryMany(act(t))
 			t.Must.NoError(err)
 			t.Must.ContainExactly([]ENT{*ent1.Get(t), *ent2.Get(t)}, vs)
 		})
 
 		s.Then("it will cache all returned entities", func(t *testcase.T) {
-			vs, err := crud.CollectQueryMany(act(t))
+			vs, err := crudkit.CollectQueryMany(act(t))
 			t.Must.NoError(err)
 
-			cached, err := crud.CollectQueryMany(repository.Entities().FindAll(c.CRUD.MakeContext(t)))
+			cached, err := crudkit.CollectQueryMany(repository.Entities().FindAll(c.CRUD.MakeContext(t)))
 			t.Must.NoError(err)
 			t.Must.Contain(cached, vs)
 		})
 
 		s.Then("it will create a hit record", func(t *testcase.T) {
-			_, err := crud.CollectQueryMany(act(t))
+			_, err := crudkit.CollectQueryMany(act(t))
 			t.Must.NoError(err)
 
-			hits, err := crud.CollectQueryMany(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
+			hits, err := crudkit.CollectQueryMany(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
 			t.Must.NoError(err)
 
 			assert.OneOf(t, hits, func(it assert.It, got cachepkg.Hit[ID]) {
@@ -1026,11 +1027,11 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// we have hits
-			hvs, err := crud.CollectQueryMany(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
+			hvs, err := crudkit.CollectQueryMany(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
 			assert.NoError(t, err)
 			assert.Empty(t, hvs)
 			// we have cached entities
-			evs, err := crud.CollectQueryMany(repository.Entities().FindAll(c.CRUD.MakeContext(t)))
+			evs, err := crudkit.CollectQueryMany(repository.Entities().FindAll(c.CRUD.MakeContext(t)))
 			assert.NoError(t, err)
 			assert.Empty(t, evs)
 			// cache still able to retrieve the invalid state
@@ -1105,13 +1106,13 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
-			vs, err := crud.CollectQueryMany(queryMany(t))
+			vs, err := crudkit.CollectQueryMany(queryMany(t))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
-			vs, err = crud.CollectQueryMany(queryMany(t))
+			vs, err = crudkit.CollectQueryMany(queryMany(t))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 		})
@@ -1119,7 +1120,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 		s.Then("cached data is invalidated", func(t *testcase.T) {
 			t.Must.NoError(act(t))
 
-			vs, err := crud.CollectQueryMany(queryMany(t))
+			vs, err := crudkit.CollectQueryMany(queryMany(t))
 			t.Must.NoError(err)
 			t.Must.Empty(vs)
 		})
@@ -1373,13 +1374,13 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := crudtest.HasID[ENT, ID](t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
-			vs, err := crud.CollectQueryMany(queryMany(t))
+			vs, err := crudkit.CollectQueryMany(queryMany(t))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
-			vs, err = crud.CollectQueryMany(queryMany(t))
+			vs, err = crudkit.CollectQueryMany(queryMany(t))
 			t.Must.NoError(err)
 			t.Must.Contain(vs, *entPtr.Get(t))
 		})
@@ -1387,7 +1388,7 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 		s.Then("cached data is invalidated", func(t *testcase.T) {
 			t.Must.NoError(act(t))
 
-			vs, err := crud.CollectQueryMany(queryMany(t))
+			vs, err := crudkit.CollectQueryMany(queryMany(t))
 			t.Must.NoError(err)
 			t.Must.Empty(vs)
 		})

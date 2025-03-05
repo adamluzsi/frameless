@@ -63,13 +63,19 @@ func Ordering[Data any](
 
 			var got []Data
 			for i, m := 0, len(expected); i < m; i++ {
+				var (
+					msg pubsub.Message[Data]
+					err error
+					ok  bool
+				)
 				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
-					t.Must.True(sub.Next())
+					msg, err, ok = next()
+					t.Must.True(ok)
 				})
 
-				msg := sub.Value()
+				assert.NoError(t, err)
 				got = append(got, msg.Data())
-				t.Must.NoError(msg.ACK())
+				assert.NoError(t, msg.ACK())
 			}
 
 			t.Must.Equal(expected, got)
@@ -168,14 +174,24 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 			t.Must.NoError(publisher.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
 			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}
 
+			next, stop := iter.Pull2(iter.Seq2[pubsub.Message[Data], error](sub))
+			defer stop()
+
 			var got []Data
 			for i, m := 0, len(expected); i < m; i++ {
+				var (
+					msg pubsub.Message[Data]
+					err error
+					ok  bool
+				)
 				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
-					t.Must.True(sub.Next())
+					msg, err, ok = next()
+					t.Must.True(ok)
 				})
-				msg := sub.Value()
+
+				assert.NoError(t, err)
 				got = append(got, msg.Data())
-				t.Must.NoError(msg.ACK())
+				assert.NoError(t, msg.ACK())
 			}
 
 			t.Must.Equal(expected, got)

@@ -10,12 +10,11 @@ import (
 	"io"
 	"iter"
 	"strings"
-	"sync"
-	"sync/atomic"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
@@ -458,7 +457,7 @@ func (s *Scanner) malformedErr(err error) error {
 // Query will turn the input reader into a json visitor that yields results when a path is matching.
 // Think about it something similar as jq.
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
-func Query(ctx context.Context, r io.Reader, path ...Kind) (iter.Seq[json.RawMessage], func() error) {
+func Query(ctx context.Context, r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 	var in Input
 	if input, ok := r.(Input); ok {
 		in = input
@@ -468,60 +467,62 @@ func Query(ctx context.Context, r io.Reader, path ...Kind) (iter.Seq[json.RawMes
 	return visit(ctx, in, path)
 }
 
-func visit(ctx context.Context, input Input, path Path) (iter.Seq[json.RawMessage], func() error) {
-	var mutex sync.Mutex
-	var returnError error
-	var finished int32
-	return func(yield func(json.RawMessage) bool) {
-			if !atomic.CompareAndSwapInt32(&finished, 0, 1) {
+func visit(ctx context.Context, input Input, path Path) iterkit.ErrIter[json.RawMessage] {
+	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
+		var callerNoLongerListens bool
+		if closer, ok := input.(io.Closer); ok {
+			defer func() {
+				cErr := closer.Close()
+				if !callerNoLongerListens {
+					yield(nil, cErr)
+				}
+			}()
+		}
+		type M struct {
+			V json.RawMessage
+			E error
+		}
+		var (
+			feed = make(chan M)
+			done = make(chan struct{})
+		)
+		defer close(done)
+		go func() {
+			defer close(feed)
+			const breakScanning errorkit.Error = "break"
+
+			sc := Scanner{
+				Path: path,
+				Func: func(rm json.RawMessage) error {
+					select {
+					case feed <- M{V: rm}:
+						return nil
+					case <-done:
+						return breakScanning
+					case <-ctx.Done():
+						return ctx.Err()
+					}
+				},
+			}
+			_, err := sc.Scan(input)
+			if errors.Is(err, breakScanning) {
 				return
 			}
-			if closer, ok := input.(io.Closer); ok {
-				defer errorkit.Finish(&returnError, closer.Close)
+			if err == nil {
+				return
 			}
-			var (
-				feed = make(chan json.RawMessage)
-				done = make(chan struct{})
-			)
-			defer close(done)
-			go func() {
-				defer close(feed)
-				const breakScanning errorkit.Error = "break"
-
-				sc := Scanner{
-					Path: path,
-					Func: func(rm json.RawMessage) error {
-						select {
-						case feed <- rm:
-							return nil
-						case <-done:
-							return breakScanning
-						case <-ctx.Done():
-							return ctx.Err()
-						}
-					},
-				}
-				_, err := sc.Scan(input)
-				if errors.Is(err, breakScanning) {
-					return
-				}
-				if err == nil {
-					return
-				}
-				mutex.Lock()
-				defer mutex.Unlock()
-				returnError = err
-			}()
-			for raw := range feed {
-				if !yield(raw) {
-					return
-				}
+			select {
+			case feed <- M{E: err}:
+			case <-done:
+			case <-ctx.Done():
 			}
-		}, func() error {
-			mutex.Lock()
-			defer mutex.Unlock()
-			return returnError
+		}()
+		for m := range feed {
+			if !yield(m.V, m.E) {
+				return
+			}
 		}
+	})
 }
 
 var whitespaceChars = map[rune]struct{}{
