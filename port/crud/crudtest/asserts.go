@@ -141,13 +141,16 @@ func cleanupENT[ENT, ID any](tb testing.TB, subject any, ctx context.Context, pt
 	tb.Helper()
 	id := HasID[ENT, ID](tb, ptr)
 	tb.Cleanup(func() {
-		del, ok := subject.(crud.ByIDDeleter[ID])
-		if !ok {
-			tb.Logf("skipping cleanup as %T doesn't implement crud.ByIDDeleter", subject)
-			tb.Logf("make sure to manually clean up %T#%v", *new(ENT), id)
+		if del, ok := subject.(crud.ByIDDeleter[ID]); ok {
+			_ = del.DeleteByID(ctx, id)
 			return
 		}
-		_ = del.DeleteByID(ctx, id)
+		if del, ok := subject.(crud.AllDeleter); ok {
+			_ = del.DeleteAll(ctx)
+			return
+		}
+		tb.Logf("skipping cleanup as %T doesn't implement crud.ByIDDeleter", subject)
+		tb.Logf("make sure to manually clean up %T#%v", *new(ENT), id)
 	})
 	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 		IsPresent[ENT, ID](tb, finder, ctx, id)

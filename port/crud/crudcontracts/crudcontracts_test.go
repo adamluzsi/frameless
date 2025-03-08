@@ -160,6 +160,11 @@ func Test_noleftoverAfterTests(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 
+	s.Before(func(t *testcase.T) {
+		// TODO: something actually poops into the subject even before one of the test...
+		spechelper.TryCleanup(t, t.Context(), subject)
+	})
+
 	s.After(func(t *testcase.T) {
 		itr, err := subject.FindAll(t.Context())
 		assert.NoError(t, err)

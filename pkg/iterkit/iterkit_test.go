@@ -24,6 +24,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/tasker"
 	. "go.llib.dev/frameless/spechelper/testent"
 
 	"go.llib.dev/testcase"
@@ -1960,9 +1961,27 @@ func TestScanner_Split(t *testing.T) {
 	assert.Equal(t, `d`, lines[3])
 }
 
-func TestWithConcurrentAccess(t *testing.T) {
+func ExampleSync() {
 	src := iterkit.IntRange(0, 100)
-	itr, cancel := iterkit.WithConcurrentAccess(src)
+	itr, cancel := iterkit.Sync(src)
+	defer cancel()
+
+	var g tasker.JobGroup[tasker.FireAndForget]
+	for range 2 {
+		g.Go(func(ctx context.Context) error {
+			for v := range itr {
+				_ = v // use v
+			}
+			return nil
+		})
+	}
+
+	g.Join()
+}
+
+func TestSync(t *testing.T) {
+	src := iterkit.IntRange(0, 100)
+	itr, cancel := iterkit.Sync(src)
 	defer cancel()
 
 	var (
@@ -1983,6 +2002,60 @@ func TestWithConcurrentAccess(t *testing.T) {
 
 	exp := iterkit.Collect(iterkit.IntRange(0, 100))
 	assert.Must(t).ContainExactly(exp, got)
+}
+
+func ExampleSync2() {
+	src := iterkit.IntRange(0, 100)
+	itr, cancel := iterkit.Sync2(iterkit.ToErrIter(src))
+	defer cancel()
+
+	var g tasker.JobGroup[tasker.FireAndForget]
+	for range 2 {
+		g.Go(func(ctx context.Context) error {
+			for v, err := range itr {
+				_ = err // handle err
+				_ = v   // use v
+			}
+			return nil
+		})
+	}
+
+	g.Join()
+}
+
+func TestSync2(t *testing.T) {
+	var (
+		exp []iterkit.KV[string, int]
+		got []iterkit.KV[string, int]
+	)
+	exp = random.Slice(100, func() iterkit.KV[string, int] {
+		return iterkit.KV[string, int]{
+			K: rnd.String(),
+			V: rnd.Int(),
+		}
+	})
+
+	var src iter.Seq2[string, int] = func(yield func(string, int) bool) {
+		for _, kv := range exp {
+			if !yield(kv.K, kv.V) {
+				return
+			}
+		}
+	}
+
+	itr, cancel := iterkit.Sync2(src)
+	defer cancel()
+
+	var m sync.Mutex
+	var collect = func() {
+		kvs := iterkit.CollectKV(itr)
+		m.Lock()
+		defer m.Unlock()
+		got = append(got, kvs...)
+	}
+
+	testcase.Race(collect, collect, collect)
+	assert.ContainExactly(t, exp, got)
 }
 
 func TestMerge(t *testing.T) {

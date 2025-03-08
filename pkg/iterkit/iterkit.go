@@ -644,9 +644,8 @@ func ToChan[T any](itr iter.Seq[T]) (_ <-chan T, cancel func()) {
 	return ch, func() { _ = jg.Stop() }
 }
 
-// WithConcurrentAccess allows you to convert any iterator into one that is safe to use from concurrent access.
-// The caveat with this is that this protection only allows 1 Decode call for each Next call.
-func WithConcurrentAccess[T any](i iter.Seq[T]) (iter.Seq[T], func()) {
+// Sync ensures that an iterator can be safely used by multiple goroutines at the same time.
+func Sync[T any](i iter.Seq[T]) (iter.Seq[T], func()) {
 	// the reason we initiate pull prior to the range iteration
 	// is because we expect multiple range iterations to start simulteniously,
 	// and the result should be distributed between them.
@@ -657,13 +656,50 @@ func WithConcurrentAccess[T any](i iter.Seq[T]) (iter.Seq[T], func()) {
 		defer m.Unlock()
 		return next()
 	}
+	var finish = func() {
+		m.Lock()
+		defer m.Unlock()
+		stop()
+	}
 	return func(yield func(T) bool) {
 		for {
 			v, ok := fetch()
 			if !ok {
+				finish()
 				break
 			}
 			if !yield(v) {
+				return
+			}
+		}
+	}, stop
+}
+
+// Sync2 ensures that an iterator can be safely used by multiple goroutines at the same time.
+func Sync2[K, V any](i iter.Seq2[K, V]) (iter.Seq2[K, V], func()) {
+	// the reason we initiate pull prior to the range iteration
+	// is because we expect multiple range iterations to start simulteniously,
+	// and the result should be distributed between them.
+	next, stop := iter.Pull2(i)
+	var m sync.Mutex
+	var fetch = func() (K, V, bool) {
+		m.Lock()
+		defer m.Unlock()
+		return next()
+	}
+	var finish = func() {
+		m.Lock()
+		defer m.Unlock()
+		stop()
+	}
+	return func(yield func(K, V) bool) {
+		for {
+			k, v, ok := fetch()
+			if !ok {
+				finish()
+				break
+			}
+			if !yield(k, v) {
 				return
 			}
 		}

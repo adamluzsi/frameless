@@ -422,11 +422,6 @@ func (j *Job) setErr(err error) {
 var _ bgjob = &JobGroup[Manual]{}
 
 // JobGroup is a job manager where you can start background tasks as jobs.
-//
-// It supports two mode:
-//
-//   - Manual: allows you to collect the results of the background jobs, and you need to call Join to free up their results. Ideal for jog groups where you need to collect their error results.
-//   - FireAndForget: does things automatically, including collecting finished jobs and freeing their resources. Ideal for background job management, where the job results are not needed to be collected.
 type JobGroup[M Manual | FireAndForget] struct {
 	m    sync.RWMutex
 	jobs map[int64]*Job
@@ -435,8 +430,17 @@ type JobGroup[M Manual | FireAndForget] struct {
 }
 
 type (
+	// FireAndForget does things automatically,
+	// including collecting finished jobs
+	// and freeing their resources.
+	//
+	// Ideal for background job management,
+	// where the job results are not needed to be collected.
 	FireAndForget struct{}
-	Manual        struct{}
+	// Manual allows you to collect the results of the background jobs,
+	// and you need to call Join to free up their results.
+	// Ideal for jog groups where you need to collect their error results.
+	Manual struct{}
 )
 
 func (jg *JobGroup[M]) gc() {

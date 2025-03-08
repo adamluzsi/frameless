@@ -81,6 +81,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 			othEntPtr := testcase.Let(s, func(t *testcase.T) *ENT {
 				ent := c.MakeEntity(t)
 				shouldStore(t, c, subject, &ent)
+
 				return &ent
 			}).EagerLoading(s)
 
@@ -114,7 +115,7 @@ type allDeleterSubjectResource[Entity, ID any] interface {
 }
 
 func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
-	conf := option.Use[Config[Entity, ID]](opts)
+	conf := option.Use(opts)
 	s := testcase.NewSpec(nil)
 
 	var (

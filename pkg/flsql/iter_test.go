@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 func ExampleSQLRows() {
@@ -32,13 +33,13 @@ func ExampleSQLRows() {
 		asdf string
 	}
 
-	userIDIter := flsql.MakeRowsIterator(userIDs, flsql.RowMapperFunc[mytype](func(scanner flsql.Scanner) (mytype, error) {
+	userIDIter := flsql.MakeRowsIterator(userIDs, func(scanner flsql.Scanner) (mytype, error) {
 		var value mytype
 		if err := scanner.Scan(&value.asdf); err != nil {
 			return mytype{}, err
 		}
 		return value, nil
-	}))
+	})
 
 	for id, err := range userIDIter {
 		if err != nil {
@@ -63,10 +64,10 @@ func TestSQLRows(t *testing.T) {
 	var (
 		rows   = let.Var[flsql.Rows](s, nil)
 		mapper = let.Var(s, func(t *testcase.T) flsql.RowMapper[testType] {
-			return flsql.RowMapperFunc[testType](func(s flsql.Scanner) (testType, error) {
+			return func(s flsql.Scanner) (testType, error) {
 				var v testType
 				return v, s.Scan(&v.Text)
-			})
+			}
 		})
 	)
 	act := let.Act(func(t *testcase.T) iterkit.ErrIter[testType] {
@@ -195,4 +196,63 @@ func (s *SQLRowsStub) Scan(dest ...interface{}) error {
 		}
 	}
 	return nil
+}
+
+func TestQueryMany(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		expQuery := fmt.Sprintf("SELECT id FROM table as %s WHERE x = ? AND y = ?", t.Random.StringNC(2, random.CharsetAlpha()))
+		expArgs := []any{t.Random.Int(), t.Random.Int()}
+
+		var c flsql.Queryable = flsql.QueryableAdapter{
+			QueryFunc: func(ctx context.Context, query string, args ...any) (flsql.Rows, error) {
+				assert.Equal(t, query, expQuery)
+				assert.Equal(t, args, expArgs)
+				itr := iterkit.ToErrIter(iterkit.Slice([][]any{[]any{42}}))
+				return NewSQLRowsStubFromIter(t, itr), nil
+			},
+		}
+
+		type T struct {
+			ID int
+		}
+		var m flsql.RowMapper[T] = func(s flsql.Scanner) (T, error) {
+			var v T
+			err := s.Scan(&v.ID)
+			return v, err
+		}
+
+		res, err := flsql.QueryMany(c, t.Context(), m, expQuery, expArgs...)
+		assert.NoError(t, err)
+		vs, err := iterkit.CollectErrIter(res)
+		assert.NoError(t, err)
+		assert.ContainExactly(t, vs, []T{{ID: 42}})
+	})
+
+	s.Test("rainy", func(t *testcase.T) {
+		expErr := t.Random.Error()
+
+		var c flsql.Queryable = flsql.QueryableAdapter{
+			QueryFunc: func(ctx context.Context, query string, args ...any) (flsql.Rows, error) {
+				return &SQLRowsStub{}, expErr
+			},
+		}
+
+		type T struct {
+			ID int
+		}
+		var m flsql.RowMapper[T] = func(s flsql.Scanner) (T, error) {
+			var v T
+			err := s.Scan(&v.ID)
+			return v, err
+		}
+
+		query := fmt.Sprintf("SELECT id FROM table as %s WHERE x = ? AND y = ?", t.Random.StringNC(2, random.CharsetAlpha()))
+		args := []any{t.Random.Int(), t.Random.Int()}
+		res, err := flsql.QueryMany(c, t.Context(), m, query, args...)
+		assert.ErrorIs(t, err, expErr)
+		assert.Nil(t, res)
+	})
+
 }
