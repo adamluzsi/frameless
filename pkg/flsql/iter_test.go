@@ -3,17 +3,18 @@ package flsql_test
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/flsql"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 )
 
 func ExampleSQLRows() {
@@ -31,7 +32,7 @@ func ExampleSQLRows() {
 		asdf string
 	}
 
-	iter := flsql.MakeSQLRowsIterator[mytype](userIDs, flsql.SQLRowMapperFunc[mytype](func(scanner flsql.Scanner) (mytype, error) {
+	userIDIter := flsql.MakeRowsIterator(userIDs, flsql.RowMapperFunc[mytype](func(scanner flsql.Scanner) (mytype, error) {
 		var value mytype
 		if err := scanner.Scan(&value.asdf); err != nil {
 			return mytype{}, err
@@ -39,13 +40,11 @@ func ExampleSQLRows() {
 		return value, nil
 	}))
 
-	defer iter.Close()
-	for iter.Next() {
-		v := iter.Value()
-		_ = v
-	}
-	if err := iter.Err(); err != nil {
-		panic(err)
+	for id, err := range userIDIter {
+		if err != nil {
+			panic(err)
+		}
+		_ = id
 	}
 }
 
@@ -61,108 +60,125 @@ func TestSQLRows(t *testing.T) {
 
 	s := testcase.NewSpec(t)
 
-	rows := testcase.Var[SQLRows]{ID: "iterators.SQLRows"}
-	mapper := testcase.Var[flsql.SQLRowMapper[testType]]{ID: "iterators.SQLRowMapper"}
-	subject := func(t *testcase.T) iterators.Iterator[testType] {
-		return flsql.MakeSQLRowsIterator(rows.Get(t), mapper.Get(t))
-	}
-	mapper.Let(s, func(t *testcase.T) flsql.SQLRowMapper[testType] {
-		return flsql.SQLRowMapperFunc[testType](func(s flsql.Scanner) (testType, error) {
-			var v testType
-			return v, s.Scan(&v.Text)
+	var (
+		rows   = let.Var[flsql.Rows](s, nil)
+		mapper = let.Var(s, func(t *testcase.T) flsql.RowMapper[testType] {
+			return flsql.RowMapperFunc[testType](func(s flsql.Scanner) (testType, error) {
+				var v testType
+				return v, s.Scan(&v.Text)
+			})
+		})
+	)
+	act := let.Act(func(t *testcase.T) iterkit.ErrIter[testType] {
+		return flsql.MakeRowsIterator(rows.Get(t), mapper.Get(t))
+	})
+
+	s.Context(`has no values`, func(s *testcase.Spec) {
+		rows.Let(s, func(t *testcase.T) flsql.Rows {
+			return NewSQLRowsStubFromIter(t, iterkit.Empty2[[]any, error]())
+		})
+
+		s.Then("it will be an empty iterator", func(t *testcase.T) {
+			itr := act(t)
+			vs, err := iterkit.CollectErrIter(itr)
+			assert.NoError(t, err)
+			assert.Empty(t, vs)
 		})
 	})
 
-	s.When(`rows`, func(s *testcase.Spec) {
-		s.Context(`has no values`, func(s *testcase.Spec) {
-			rows.Let(s, func(t *testcase.T) SQLRows {
-				return &SQLRowsStub{
-					Iterator: iterators.Empty[[]any](),
-				}
+	s.Context(`has value(s)`, func(s *testcase.Spec) {
+		stub := let.Var(s, func(t *testcase.T) *SQLRowsStub {
+			return NewSQLRowsStubFromIter(t, iterkit.ToErrIter(iterkit.Slice([][]any{[]any{`42`}})))
+		})
+
+		rows.Let(s, func(t *testcase.T) flsql.Rows {
+			return stub.Get(t)
+		})
+
+		s.Then(`it will fetch the values`, func(t *testcase.T) {
+			itr := act(t)
+
+			vs, err := iterkit.CollectErrIter(itr)
+			assert.NoError(t, err)
+			assert.Equal(t, []testType{testType{Text: `42`}}, vs)
+		})
+
+		s.And(`error happen during scanning`, func(s *testcase.Spec) {
+			expectedErr := let.Error(s)
+
+			stub.Let(s, func(t *testcase.T) *SQLRowsStub {
+				stb := stub.Super(t)
+				stb.ScanErr = expectedErr.Get(t)
+				return stb
 			})
 
-			s.Then(`it will false to next`, func(t *testcase.T) {
-				iter := subject(t)
-				defer iter.Close()
-				assert.Must(t).False(iter.Next())
-			})
+			s.Then(`it will be propagated during decode`, func(t *testcase.T) {
+				_, err := iterkit.CollectErrIter(act(t))
 
-			s.Then(`it will result in no error`, func(t *testcase.T) {
-				iter := subject(t)
-				defer iter.Close()
-				assert.Must(t).False(iter.Next())
-				assert.Must(t).Nil(iter.Err())
-			})
-
-			s.Then(`it will be closeable`, func(t *testcase.T) {
-				iter := subject(t)
-				assert.Must(t).Nil(iter.Close())
+				assert.ErrorIs(t, err, expectedErr.Get(t))
 			})
 		})
 
-		s.Context(`has value(s)`, func(s *testcase.Spec) {
-			rows.Let(s, func(t *testcase.T) SQLRows {
-				return &SQLRowsStub{
-					Iterator: iterators.Slice([][]any{[]any{`42`}}),
-				}
-			})
-
-			s.Then(`it will decode values into the passed ptr`, func(t *testcase.T) {
-				iter := subject(t)
-
-				var value testType
-
-				assert.True(t, iter.Next())
-				value = iter.Value()
-				assert.Equal(t, testType{Text: `42`}, value)
-				assert.Must(t).False(iter.Next())
-				assert.Must(t).Nil(iter.Err())
-				assert.Must(t).Nil(iter.Close())
-			})
-
-			s.And(`error happen during scanning`, func(s *testcase.Spec) {
-				expectedErr := errors.New(`boom`)
-				rows.Let(s, func(t *testcase.T) SQLRows {
-					return &SQLRowsStub{
-						Iterator: iterators.Slice[[]any]([][]any{{`42`}}),
-						ScanErr:  expectedErr,
-					}
-				})
-
-				s.Then(`it will be propagated during decode`, func(t *testcase.T) {
-					iter := subject(t)
-					defer iter.Close()
-					t.Must.False(iter.Next())
-					t.Must.ErrorIs(expectedErr, iter.Err())
-				})
-			})
-
-		})
 	})
 
 	s.When(`close encounter error`, func(s *testcase.Spec) {
-		expectedErr := errors.New(`boom`)
-		rows.Let(s, func(t *testcase.T) SQLRows {
-			return &SQLRowsStub{
-				Iterator: iterators.Empty[[]any](),
-				CloseErr: expectedErr,
-			}
+		expectedErr := let.Error(s)
+
+		rows.Let(s, func(t *testcase.T) flsql.Rows {
+			stub := NewSQLRowsStubFromIter(t, iterkit.ToErrIter(iterkit.Empty[[]any]()))
+			stub.CloseErr = expectedErr.Get(t)
+			return stub
 		})
 
 		s.Then(`it will be propagated during iterator closing`, func(t *testcase.T) {
-			t.Must.ErrorIs(expectedErr, subject(t).Close())
+			_, err := iterkit.CollectErrIter(act(t))
+			assert.ErrorIs(t, err, expectedErr.Get(t))
 		})
 	})
 
 }
 
+func NewSQLRowsStubFromIter(tb testing.TB, i iter.Seq2[[]any, error]) *SQLRowsStub {
+	next, stop := iter.Pull2(i)
+	tb.Cleanup(stop)
+	return &SQLRowsStub{
+		NextFunc: next,
+		StopFunc: stop,
+	}
+}
+
 type SQLRowsStub struct {
-	iterators.Iterator[[]any]
+	NextFunc func() ([]any, error, bool)
+	StopFunc func()
 	CloseErr error
 	ScanErr  error
+
+	args []any
+	err  error
+}
+
+func (s *SQLRowsStub) Next() bool {
+	if s.NextFunc == nil {
+		return false
+	}
+	v, err, ok := s.NextFunc()
+	if err != nil {
+		s.err = err
+	}
+	if ok {
+		s.args = v
+	}
+	return ok
+}
+
+func (s *SQLRowsStub) Err() error {
+	return s.err
 }
 
 func (s *SQLRowsStub) Close() error {
+	if s.StopFunc != nil {
+		s.StopFunc()
+	}
 	return s.CloseErr
 }
 
@@ -170,12 +186,11 @@ func (s *SQLRowsStub) Scan(dest ...interface{}) error {
 	if s.ScanErr != nil {
 		return s.ScanErr
 	}
-	args := s.Iterator.Value()
-	if len(args) != len(dest) {
+	if len(s.args) != len(dest) {
 		return fmt.Errorf("scan argument count mismatch")
 	}
 	for i, dst := range dest {
-		if err := reflectkit.Link(args[i], dst); err != nil {
+		if err := reflectkit.Link(s.args[i], dst); err != nil {
 			return err
 		}
 	}

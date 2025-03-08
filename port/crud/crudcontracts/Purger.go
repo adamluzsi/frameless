@@ -5,9 +5,10 @@ import (
 
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/crud/crudkit"
 	. "go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 
 	"go.llib.dev/frameless/port/crud"
@@ -31,7 +32,10 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 			t.Skip("crud.AllFinder is not supported")
 		}
 		t.Must.Nil(act(t))
-		CountIs(t, iterators.WithErr(allFinder.FindAll(c.MakeContext(t))), 0)
+
+		vs, err := crudkit.CollectQueryMany(allFinder.FindAll(c.MakeContext(t)))
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
 	})
 
 	s.When(`entities is created prior to Purge`, func(s *testcase.Spec) {
@@ -49,7 +53,10 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 				t.Skip("crud.AllFinder is not supported")
 			}
 			t.Must.Nil(act(t))
-			CountIs(t, iterators.WithErr(allFinder.FindAll(ctx.Get(t))), 0)
+
+			vs, err := crudkit.CollectQueryMany(allFinder.FindAll(ctx.Get(t)))
+			assert.NoError(t, err)
+			assert.Empty(t, vs)
 		})
 	})
 

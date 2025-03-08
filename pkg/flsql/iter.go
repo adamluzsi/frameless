@@ -2,73 +2,46 @@ package flsql
 
 import (
 	"database/sql"
-	"io"
 
-	"go.llib.dev/frameless/port/iterators"
+	"go.llib.dev/frameless/pkg/iterkit"
 )
 
-func MakeSQLRowsIterator[T any](rows sqlRows, mapper SQLRowMapper[T]) iterators.Iterator[T] {
-	return &sqlRowsIter[T]{Rows: rows, Mapper: mapper}
-}
-
-// sqlRowsIter allow you to use the same iterator pattern with sql.Rows structure.
+// MakeRowsIterator allow you to use the same iterator pattern with sql.Rows structure.
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
 // it also makes testing easier with the same Interface interface.
-type sqlRowsIter[T any] struct {
-	Rows   sqlRows
-	Mapper SQLRowMapper[T]
-
-	value T
-	err   error
-}
-
-var _ sqlRows = (*sql.Rows)(nil)
-
-type sqlRows interface {
-	io.Closer
-	Next() bool
-	Err() error
-	Scanner
-}
-
-func (i *sqlRowsIter[T]) Close() error {
-	return i.Rows.Close()
-}
-
-func (i *sqlRowsIter[T]) Next() bool {
-	if i.err != nil {
-		return false
+func MakeRowsIterator[T any](rows Rows, mapper RowMapper[T]) iterkit.ErrIter[T] {
+	if rows == nil {
+		return iterkit.Empty2[T, error]()
 	}
-	if !i.Rows.Next() {
-		return false
-	}
-	v, err := i.Mapper.Map(i.Rows)
-	if err != nil {
-		i.err = err
-		return false
-	}
-	i.value = v
-	return true
+	return iterkit.Once2(func(yield func(T, error) bool) {
+		defer rows.Close()
+		for rows.Next() {
+			if !yield(mapper.Map(rows)) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			var zero T
+			if !yield(zero, err) {
+				return
+			}
+		}
+		if err := rows.Close(); err != nil {
+			var zero T
+			if !yield(zero, err) {
+				return
+			}
+		}
+	})
 }
 
-func (i *sqlRowsIter[T]) Err() error {
-	if i.err != nil {
-		return i.err
-	}
-	return i.Rows.Err()
-}
+var _ Rows = (*sql.Rows)(nil)
 
-func (i *sqlRowsIter[T]) Value() T {
-	return i.value
-}
-
-// sql rows iterator dependencies
-
-type SQLRowMapper[T any] interface {
+type RowMapper[T any] interface {
 	Map(s Scanner) (T, error)
 }
 
-type SQLRowMapperFunc[T any] func(Scanner) (T, error)
+type RowMapperFunc[T any] func(Scanner) (T, error)
 
-func (fn SQLRowMapperFunc[T]) Map(s Scanner) (T, error) { return fn(s) }
+func (fn RowMapperFunc[T]) Map(s Scanner) (T, error) { return fn(s) }

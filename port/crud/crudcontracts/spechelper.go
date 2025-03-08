@@ -5,14 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
+	"iter"
 	"reflect"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
 	crudtest "go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -261,23 +261,17 @@ func testingRunFlagProvided() bool {
 	return runFlag != nil && runFlag.Value.String() != ""
 }
 
-func tryClose(c io.Closer) {
-	if c == nil {
-		return
-	}
-	_ = c.Close()
-}
+func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iter.Seq2[ENT, error], error)) (rErr error) {
+	itr, err := fn()
 
-func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iterators.Iterator[ENT], error)) (rErr error) {
-	iter, err := fn()
 	assert.AnyOf(tb, func(a *assert.A) {
 		a.Case(func(t assert.It) {
 			t.Must.Error(err)
 			rErr = err
 		})
-		if iter != nil {
+		if itr != nil {
 			a.Case(func(t assert.It) {
-				_, err := iterators.Collect(iter)
+				_, err := iterkit.CollectErrIter(itr)
 				t.Must.Error(err)
 				rErr = err
 			})

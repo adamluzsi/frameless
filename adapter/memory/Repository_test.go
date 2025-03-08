@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/spechelper/resource"
 	"go.llib.dev/frameless/spechelper/testent"
 
 	"go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	. "go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/port/comproto"
@@ -94,7 +94,7 @@ func TestRepository_query(t *testing.T) {
 		return v.ID == ent1.ID || v.ID == ent3.ID
 	})
 	assert.NoError(t, err)
-	vs, err := iterators.Collect(iter)
+	vs, err := iterkit.CollectErrIter(iter)
 	assert.NoError(t, err)
 	assert.ContainExactly(t, vs, []testent.Foo{ent1, ent3})
 }

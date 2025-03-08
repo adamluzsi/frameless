@@ -2,12 +2,12 @@ package crudcontracts
 
 import (
 	"fmt"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/port/comproto/comprotocontracts"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase/assert"
 
@@ -21,7 +21,7 @@ import (
 )
 
 func OnePhaseCommitProtocol[ENT, ID any](subject any, manager comproto.OnePhaseCommitProtocol, opts ...Option[ENT, ID]) contract.Contract {
-	c := option.Use[Config[ENT, ID]](opts)
+	c := option.Use(opts)
 	s := testcase.NewSpec(nil)
 	s.HasSideEffect()
 
@@ -105,7 +105,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NotNil(subject.Create(tx, pointer.Of(c.MakeEntity(t))))
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-			shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+			shouldIterEventuallyError(t, func() (iter.Seq2[ENT, error], error) {
 				return allFinder.FindAll(tx)
 			})
 		}
@@ -137,7 +137,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NotNil(err)
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-			shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+			shouldIterEventuallyError(t, func() (iter.Seq2[ENT, error], error) {
 				return allFinder.FindAll(ctx)
 			})
 		}
@@ -386,7 +386,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 				"expecte that .Save will respect that the tx in the context is already committed")
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-				shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+				shouldIterEventuallyError(t, func() (iter.Seq2[ENT, error], error) {
 					return allFinder.FindAll(tx)
 				})
 			}
@@ -418,7 +418,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Must.NotNil(err)
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
-				shouldIterEventuallyError(t, func() (iterators.Iterator[ENT], error) {
+				shouldIterEventuallyError(t, func() (iter.Seq2[ENT, error], error) {
 					return allFinder.FindAll(ctx)
 				})
 			}
@@ -460,12 +460,14 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			ctx := c.MakeContext(t)
 			ent := c.MakeEntity(t)
 
+			_, _ = ctx, ent
 			crudtest.Save[ENT, ID](t, subject, ctx, &ent)
 			id := crudtest.HasID[ENT, ID](t, &ent)
 			t.Defer(subject.DeleteByID, ctx, id)
 
 			tx, err := manager.BeginTx(ctx)
 			t.Must.Nil(err)
+			_ = tx
 
 			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
 			t.Must.Nil(subject.DeleteByID(tx, id))

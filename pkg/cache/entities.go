@@ -6,13 +6,13 @@ package cache
 import (
 	"context"
 	"fmt"
+	"iter"
 	"strings"
 	"time"
 
 	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/iterators"
 )
 
 const ErrNotImplementedBySource errorkit.Error = "the method is not implemented by the cache source"
@@ -43,7 +43,7 @@ type HitID string
 
 type Interface[ENT, ID any] interface {
 	CachedQueryOne(ctx context.Context, hid HitID, query QueryOneFunc[ENT]) (_ent ENT, _found bool, _err error)
-	CachedQueryMany(ctx context.Context, hid HitID, query QueryManyFunc[ENT]) (iterators.Iterator[ENT], error)
+	CachedQueryMany(ctx context.Context, hid HitID, query QueryManyFunc[ENT]) (iter.Seq2[ENT, error], error)
 	InvalidateCachedQuery(ctx context.Context, hid HitID) error
 	InvalidateByID(ctx context.Context, id ID) (rErr error)
 	DropCachedValues(ctx context.Context) error
@@ -51,7 +51,7 @@ type Interface[ENT, ID any] interface {
 
 type (
 	QueryOneFunc[ENT any]  func(ctx context.Context) (_ ENT, found bool, _ error)
-	QueryManyFunc[ENT any] func(ctx context.Context) (iterators.Iterator[ENT], error)
+	QueryManyFunc[ENT any] func(ctx context.Context) (iter.Seq2[ENT, error], error)
 )
 
 // Query is a helper that allows you to create a cache.HitID

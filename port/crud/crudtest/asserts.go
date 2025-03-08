@@ -3,12 +3,13 @@ package crudtest
 import (
 	"context"
 	"fmt"
+	"iter"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/frameless/port/iterators"
 
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/pp"
@@ -94,7 +95,7 @@ func Update[ENT, ID any](tb testing.TB, subject updater[ENT, ID], ctx context.Co
 	// IsFindable ensures that by the time Update is executed,
 	// the entity is present in the resource.
 	IsPresent[ENT, ID](tb, subject, ctx, id)
-	assert.Must(tb).Nil(subject.Update(ctx, ptr))
+	assert.Nil(tb, subject.Update(ctx, ptr))
 	Eventually.Assert(tb, func(it assert.It) {
 		entity := IsPresent[ENT, ID](it, subject, ctx, id)
 		it.Must.Equal(ptr, entity)
@@ -107,7 +108,7 @@ func Delete[ENT, ID any](tb testing.TB, subject crud.ByIDDeleter[ID], ctx contex
 	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 		IsPresent[ENT, ID](tb, finder, ctx, id)
 	}
-	assert.Must(tb).Nil(subject.DeleteByID(ctx, id))
+	assert.Nil(tb, subject.DeleteByID(ctx, id))
 	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 		IsAbsent[ENT, ID](tb, finder, ctx, id)
 	}
@@ -120,20 +121,20 @@ type deleteAllDeleter[ENT, ID any] interface {
 
 func DeleteAll[ENT, ID any](tb testing.TB, subject deleteAllDeleter[ENT, ID], ctx context.Context) {
 	tb.Helper()
-	assert.Must(tb).Nil(subject.DeleteAll(ctx))
+	assert.Nil(tb, subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
-	Eventually.Assert(tb, func(it assert.It) {
-		count, err := iterators.Count(iterators.WithErr(subject.FindAll(ctx)))
-		it.Must.Nil(err)
-		it.Should.True(count == 0, `no entity was expected to be found`)
+	Eventually.Assert(tb, func(t assert.It) {
+		itr, err := subject.FindAll(ctx)
+		assert.NoError(t, err)
+		vs, err := iterkit.CollectErrIter(itr)
+		assert.NoError(t, err)
+		assert.Empty(t, vs, `no entity was expected to be found`)
 	})
 }
 
-func CountIs[T any](tb testing.TB, iter iterators.Iterator[T], expected int) {
+func CountIs[T any](tb testing.TB, iter iter.Seq[T], expected int) {
 	tb.Helper()
-	count, err := iterators.Count(iter)
-	assert.Must(tb).Nil(err)
-	assert.Must(tb).Equal(expected, count)
+	assert.Must(tb).Equal(expected, iterkit.Count(iter))
 }
 
 func cleanupENT[ENT, ID any](tb testing.TB, subject any, ctx context.Context, ptr *ENT) {

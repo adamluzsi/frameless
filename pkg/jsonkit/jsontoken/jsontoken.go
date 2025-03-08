@@ -8,14 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"strings"
-	"sync"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/iterators"
 )
 
 const ErrMalformed errorkit.Error = "malformed json error"
@@ -457,87 +457,72 @@ func (s *Scanner) malformedErr(err error) error {
 // Query will turn the input reader into a json visitor that yields results when a path is matching.
 // Think about it something similar as jq.
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
-func Query(ctx context.Context, r io.Reader, path ...Kind) iterators.Iterator[json.RawMessage] {
+func Query(ctx context.Context, r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 	var in Input
 	if input, ok := r.(Input); ok {
 		in = input
 	} else {
 		in = bufio.NewReader(r)
 	}
-	return &visitor{
-		Context: ctx,
-		Input:   in,
-		Path:    path,
-	}
+	return visit(ctx, in, path)
 }
 
-type visitor struct {
-	Context context.Context
-	Input   Input
-	Path    Path
-
-	oninit sync.Once
-
-	out *iterators.PipeOut[json.RawMessage]
-
-	raw json.RawMessage
-}
-
-func (v *visitor) init() {
-	v.oninit.Do(func() {
-		in, out := iterators.PipeWithContext[json.RawMessage](v.Context)
-		v.out = out
-
+func visit(ctx context.Context, input Input, path Path) iterkit.ErrIter[json.RawMessage] {
+	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
+		var callerNoLongerListens bool
+		if closer, ok := input.(io.Closer); ok {
+			defer func() {
+				cErr := closer.Close()
+				if !callerNoLongerListens {
+					yield(nil, cErr)
+				}
+			}()
+		}
+		type M struct {
+			V json.RawMessage
+			E error
+		}
+		var (
+			feed = make(chan M)
+			done = make(chan struct{})
+		)
+		defer close(done)
 		go func() {
-			defer in.Close()
+			defer close(feed)
 			const breakScanning errorkit.Error = "break"
+
 			sc := Scanner{
-				Path: v.Path,
+				Path: path,
 				Func: func(rm json.RawMessage) error {
-					if in.Value(rm) {
+					select {
+					case feed <- M{V: rm}:
 						return nil
+					case <-done:
+						return breakScanning
+					case <-ctx.Done():
+						return ctx.Err()
 					}
-					return breakScanning
 				},
 			}
-			_, err := sc.Scan(v.Input)
+			_, err := sc.Scan(input)
 			if errors.Is(err, breakScanning) {
 				return
 			}
-			in.Error(err)
+			if err == nil {
+				return
+			}
+			select {
+			case feed <- M{E: err}:
+			case <-done:
+			case <-ctx.Done():
+			}
 		}()
+		for m := range feed {
+			if !yield(m.V, m.E) {
+				return
+			}
+		}
 	})
-}
-
-func (v *visitor) Next() bool {
-	v.init()
-	if v.out.Next() {
-		v.raw = v.out.Value()
-		return true
-	}
-	return false
-}
-
-func (v *visitor) Value() json.RawMessage {
-	return v.raw
-}
-
-func (v *visitor) Err() error {
-	v.init()
-	return v.out.Err()
-}
-
-func (v *visitor) Close() error {
-	v.init()
-	var outErr error
-	if v.out != nil {
-		outErr = v.out.Close()
-	}
-	var inputErr error
-	if c, ok := v.Input.(io.Closer); ok {
-		inputErr = c.Close()
-	}
-	return errorkit.Merge(outErr, inputErr)
 }
 
 var whitespaceChars = map[rune]struct{}{
@@ -708,8 +693,26 @@ type objectKeyBuffer struct {
 	noDiscard
 }
 
-func IterateArray(ctx context.Context, r io.Reader) *ArrayIterator {
-	return &ArrayIterator{Context: ctx, Input: r}
+func IterateArray(ctx context.Context, r io.Reader) iter.Seq2[json.RawMessage, error] {
+	i := &ArrayIterator{Context: ctx, Input: r}
+	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
+		defer i.Close()
+		for i.Next() {
+			if !yield(i.Value(), nil) {
+				return
+			}
+		}
+		if err := i.Err(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+		if err := i.Close(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+	})
 }
 
 type ArrayIterator struct {

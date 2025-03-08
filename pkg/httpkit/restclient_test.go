@@ -93,9 +93,10 @@ func TestRESTClient_crud(t *testing.T) {
 	}
 
 	crudcontractsConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
-		MakeEntity:      testent.MakeFoo,
-		SupportIDReuse:  true,
-		SupportRecreate: true,
+		MakeEntity:        testent.MakeFoo,
+		SupportIDReuse:    true,
+		SupportRecreate:   true,
+		LazyNotFoundError: true,
 	}
 
 	crudcontracts.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)

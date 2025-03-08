@@ -2,11 +2,13 @@ package crudcontracts_test
 
 import (
 	"context"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
-	"go.llib.dev/frameless/port/iterators"
+
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/random"
@@ -49,13 +51,15 @@ func TestQueryMany(t *testing.T) {
 			tb.Log("expected foo value:", foo)
 
 			return crudcontracts.QueryManySubject[testent.Foo]{
-				Query: func(ctx context.Context) (iterators.Iterator[testent.Foo], error) {
-					iter, err := repo.FindAll(ctx)
+				Query: func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
+					itr, err := repo.FindAll(ctx)
 					if err != nil {
 						return nil, err
 					}
-					return iterators.Filter(iter, func(f testent.Foo) bool {
-						return f.Foo == foo
+					return iterkit.OnErrIterValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+						return iterkit.Filter(itr, func(f testent.Foo) bool {
+							return f.Foo == foo
+						})
 					}), nil
 				},
 				IncludedEntity: func() testent.Foo {

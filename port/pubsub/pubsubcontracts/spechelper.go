@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/frameless/port/pubsub/pubsubtest"
@@ -173,9 +172,16 @@ func (sih *subscriptionIteratorHelper[Data]) Stop() {
 
 func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup, sub pubsub.Subscription[Data]) {
 	defer wg.Done()
-	for sub.Next() {
+	for msg, err := range sub {
+		if err != nil {
+			assert.Should(tb).AnyOf(func(a *assert.A) {
+				// TODO: survey which behaviour is more natural
+				a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), err) })
+				a.Test(func(t assert.It) { t.Must.NoError(err) })
+			})
+			continue
+		}
 		sih.mutex.Lock()
-		msg := sub.Value()
 		assert.Should(tb).True(msg != nil, "msg should not be nil")
 		if msg == nil {
 			break
@@ -188,11 +194,6 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 		assert.Should(tb).NoError(msg.ACK())
 		sih.mutex.Unlock()
 	}
-	assert.Should(tb).AnyOf(func(a *assert.A) {
-		// TODO: survey which behaviour is more natural
-		a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), sub.Err()) })
-		a.Test(func(t assert.It) { t.Must.NoError(sub.Err()) })
-	})
 }
 
 func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {
@@ -213,7 +214,7 @@ func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 	})
 }
 
-func (c base[Data]) MakeSubscription(t *testcase.T) iterators.Iterator[pubsub.Message[Data]] {
+func (c base[Data]) MakeSubscription(t *testcase.T) pubsub.Subscription[Data] {
 	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext(t))
 	t.Defer(cancel)
 	sub, err := c.subject().Get(t).Subscriber.Subscribe(ctx)
@@ -255,35 +256,33 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	})
 }
 
-func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], blk func(it assert.It, actual []Data)) {
+func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], blk func(it assert.It, actual []Data)) {
 	var (
 		actual []Data
 		lock   sync.Mutex
 	)
 	go func() {
 		i := subscription.Get(t)
-		for i.Next() {
+		for m, err := range i {
+			t.Must.NoError(err)
 			lock.Lock()
-			m := i.Value()
 			actual = append(actual, m.Data())
 			t.Must.NoError(m.ACK())
 			lock.Unlock()
 		}
-		t.Must.NoError(i.Err())
-		t.Must.NoError(i.Close())
 	}()
 	t.Eventually(func(t *testcase.T) {
 		blk(t.It, actual)
 	})
 }
 
-func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.Equal(expected, actual)
 	})
 }
 
-func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[iterators.Iterator[pubsub.Message[Data]]], expected []Data) {
+func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
 		it.Must.ContainExactly(expected, actual)
 	})

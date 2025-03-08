@@ -2,6 +2,7 @@ package memory_test
 
 import (
 	"context"
+	"iter"
 	"sort"
 	"testing"
 	"time"
@@ -13,13 +14,12 @@ import (
 	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/spechelper/testent"
-	. "go.llib.dev/frameless/spechelper/testent"
 )
 
 var _ interface {
-	pubsub.Publisher[Foo]
-	pubsub.Subscriber[Foo]
-} = &memory.Queue[Foo]{}
+	pubsub.Publisher[testent.Foo]
+	pubsub.Subscriber[testent.Foo]
+} = &memory.Queue[testent.Foo]{}
 
 func TestQueue_implementsFIFO(t *testing.T) {
 	pubsubConfig := pubsubcontracts.Config[TestEntity]{
@@ -124,25 +124,25 @@ func TestQueue_implementsOrdering(t *testing.T) {
 		})
 	}
 
-	pubsubcontracts.Ordering[TestEntity](q, q, sorting, pubsubConfig).Test(t)
+	pubsubcontracts.Ordering(q, q, sorting, pubsubConfig).Test(t)
 }
 
-var _ pubsub.Publisher[Foo] = &memory.FanOutExchange[Foo]{}
+var _ pubsub.Publisher[testent.Foo] = &memory.FanOutExchange[testent.Foo]{}
 
 func TestQueue_implementsFanOutExchange(t *testing.T) {
-	exchange := &memory.FanOutExchange[Foo]{}
+	exchange := &memory.FanOutExchange[testent.Foo]{}
 
-	var MakeQueue = func(tb testing.TB) pubsub.Subscriber[Foo] {
+	var MakeQueue = func(tb testing.TB) pubsub.Subscriber[testent.Foo] {
 		return exchange.MakeQueue()
 	}
 
 	testcase.RunSuite(t,
-		pubsubcontracts.FanOut[Foo](exchange, MakeQueue),
+		pubsubcontracts.FanOut[testent.Foo](exchange, MakeQueue),
 		//pubsubcontracts.OnePhaseCommitProtocol
 	)
 }
 
-var _ pubsub.Publisher[Foo] = &memory.FanOutExchange[Foo]{}
+var _ pubsub.Publisher[testent.Foo] = &memory.FanOutExchange[testent.Foo]{}
 
 // TestQueue_combined
 //
@@ -183,38 +183,49 @@ func TestQueue_smoke(t *testing.T) {
 	sub1, err := q.Subscribe(ctx)
 	t.Log("sub created without an error")
 	assert.NoError(t, err)
-	t.Log("sub by default returns back a zero message when .Value() is accessed")
-	assert.NotNil(t, sub1.Value(), "zero message value is expected")
+
+	sub1Next, sub1Stop := iter.Pull2(sub1)
+	defer sub1Stop()
+
+	msg1, err, ok := sub1Next()
+	assert.NoError(t, err)
 	t.Log("fetching the first message in #1 sub")
-	assert.True(t, sub1.Next())
+	assert.True(t, ok)
 
 	t.Log("ent1 should have been received")
-	assert.Equal(t, ent1, sub1.Value().Data())
+	assert.Equal(t, ent1, msg1.Data())
 	t.Log("intentionally not ACKing the message, to prove subscriptions don't step on each other's foot")
 
 	t.Log("#2 subscribe to queue")
 	sub2, err := q.Subscribe(ctx)
 	assert.NoError(t, err)
+
+	sub2Next, sub2Stop := iter.Pull2(sub2)
+	defer sub2Stop()
+
 	t.Log("#2 sub next")
-	assert.True(t, sub2.Next())
+	msg2, err, ok := sub2Next()
+	assert.NoError(t, err)
+	assert.True(t, ok)
 	t.Log("ent2 should be received")
-	assert.Equal(t, ent2, sub2.Value().Data())
+	assert.Equal(t, ent2, msg2.Data())
 
 	t.Log("then sub1 ack the message")
-	assert.NoError(t, sub1.Value().ACK())
+	assert.NoError(t, msg1.ACK())
 
 	t.Log("then sub1 next will hang since no more message present in the queue")
 	w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
-		hasNext := sub1.Next()
+		msg1, err, hasNext := sub1Next()
+		assert.NoError(t, err)
 		t.Log("then eventually next will return back with a new value")
 		assert.True(t, hasNext)
 		t.Log("and this new value is the ent2 that was NACKed")
-		assert.Equal(t, ent2, sub1.Value().Data())
-		assert.NoError(t, sub1.Value().ACK())
+		assert.Equal(t, ent2, msg1.Data())
+		assert.NoError(t, msg1.ACK())
 	})
 
 	t.Log("when ent2 is NACKed")
-	assert.NoError(t, sub2.Value().NACK())
+	assert.NoError(t, msg2.NACK())
 
 	w.Wait() // wait till NotWithin assertion finish its thing
 }

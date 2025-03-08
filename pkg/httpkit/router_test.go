@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"iter"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,8 +15,9 @@ import (
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/port/iterators"
+
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -45,14 +47,14 @@ func ExampleRouter() {
 
 		r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
 			Mapping: dtokit.Mapping[Foo, FooDTO]{},
-			Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+			Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
 				foo := Foo{
 					ID:  "42",
 					Foo: "foo",
 					Bar: "bar",
 					Baz: "baz",
 				}
-				return iterators.Slice([]Foo{foo}), nil
+				return iterkit.ToErrIter(iterkit.Slice([]Foo{foo})), nil
 			},
 		})
 	})
@@ -68,7 +70,8 @@ func ExampleRouter() {
 
 func SampleMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r = r.WithContext(context.WithValue(r.Context(), "example", "example"))
+		type exampleContextKey struct{}
+		r = r.WithContext(context.WithValue(r.Context(), exampleContextKey{}, "example"))
 		next.ServeHTTP(w, r)
 	})
 }
@@ -268,7 +271,7 @@ func TestRouter_race(t *testing.T) {
 
 	var call = func(path string) {
 		rr := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/foo", nil)
+		req := httptest.NewRequest(http.MethodGet, path, nil)
 		router.ServeHTTP(rr, req)
 	}
 
@@ -1209,7 +1212,7 @@ func TestGetRouteInfo(t *testing.T) {
 
 		ro.Resource("foos", httpkit.RESTHandler[Foo, FooID]{
 			Create:     func(ctx context.Context, ptr *Foo) error { return nil },
-			Index:      func(ctx context.Context) (iterators.Iterator[Foo], error) { return nil, nil },
+			Index:      func(ctx context.Context) (iter.Seq2[Foo, error], error) { return nil, nil },
 			Show:       func(ctx context.Context, id FooID) (ent Foo, found bool, err error) { return },
 			Update:     func(ctx context.Context, ptr *Foo) error { return nil },
 			Destroy:    func(ctx context.Context, id FooID) error { return nil },

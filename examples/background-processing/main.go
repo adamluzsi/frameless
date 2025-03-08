@@ -7,10 +7,11 @@ import (
 	"os"
 
 	"go.llib.dev/frameless/adapter/postgresql"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/comproto"
-	"go.llib.dev/frameless/port/iterators"
+
 	"go.llib.dev/frameless/port/pubsub"
 )
 
@@ -70,7 +71,7 @@ type MyDomainEventConsumer struct {
 }
 
 func (c MyDomainEventConsumer) HandleEvents(ctx context.Context) error {
-	return iterators.ForEach(c.Subscriber.Subscribe(ctx), func(msg pubsub.Message[MyDomainEventEntity]) (rErr error) {
+	return iterkit.ForEach(c.Subscriber.Subscribe(ctx), func(msg pubsub.Message[MyDomainEventEntity]) (rErr error) {
 		defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 
 		logger.Info(ctx, fmt.Sprint(msg.Data()))

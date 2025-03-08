@@ -197,7 +197,26 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) (pubsub.Subscription[Data],
 		}
 		q.m.Unlock()
 	}
-	return sub, nil
+	return func(yield func(pubsub.Message[Data], error) bool) {
+		defer sub.Close()
+		for sub.Next() {
+			v := sub.Value()
+			if !yield(v, nil) {
+				return
+			}
+		}
+		var zero pubsub.Message[Data]
+		if err := sub.Err(); err != nil {
+			if !yield(zero, err) {
+				return
+			}
+		}
+		if err := sub.Close(); err != nil {
+			if !yield(zero, err) {
+				return
+			}
+		}
+	}, nil
 }
 
 // BeginTx creates a context with a transaction.

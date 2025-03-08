@@ -222,3 +222,31 @@ func (errs multiError) Is(target error) bool {
 	}
 	return false
 }
+
+// ErrFunc is a function that checks whether a stateful system currently has an error.
+// For example context.Context#Err is an ErrFunc.
+type ErrFunc = func() error
+
+func NullErrFunc() error { return nil }
+
+func MergeErrFunc(errFuncs ...ErrFunc) func() error {
+	var fns []ErrFunc
+	for _, fn := range errFuncs {
+		if fn == nil {
+			continue
+		}
+		fns = append(fns, ErrFunc(fn))
+	}
+	switch len(fns) {
+	case 0:
+		return NullErrFunc
+	case 1:
+		return ErrFunc(fns[0])
+	}
+	return func() (returnError error) {
+		for i := len(fns) - 1; 0 <= i; i-- {
+			defer Finish(&returnError, fns[i])
+		}
+		return nil
+	}
+}

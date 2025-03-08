@@ -25,7 +25,10 @@ func (s Codec) MakeListEncoder(w io.Writer) codec.ListEncoder {
 }
 
 func (s Codec) MakeListDecoder(r io.Reader) codec.ListDecoder {
-	return jsontoken.IterateArray(context.Background(), r)
+	return &jsontoken.ArrayIterator{
+		Context: context.Background(),
+		Input:   r,
+	}
 }
 
 type jsonListEncoder struct {

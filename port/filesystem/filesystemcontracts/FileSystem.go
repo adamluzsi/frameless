@@ -952,7 +952,7 @@ func (c specFileSystem) assertReaderEquals(tb testing.TB, expected []byte, actua
 	tb.Helper()
 	defer actual.Close()
 	bytes, err := io.ReadAll(actual)
-	assert.Must(tb).Nil(err)
+	assert.Nil(tb, err)
 	assert.Must(tb).Equal(string(expected), string(bytes))
 }
 

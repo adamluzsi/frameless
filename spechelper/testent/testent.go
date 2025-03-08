@@ -2,10 +2,10 @@ package testent
 
 import (
 	"context"
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/dtokit"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase"
 )
@@ -140,7 +140,7 @@ var _ = dtokit.Register[Bar, BarJSONDTO](func(ctx context.Context, bar Bar) (Bar
 
 type FooRepository struct{}
 
-func (r *FooRepository) FindAll(ctx context.Context) iterators.Iterator[Foo] {
+func (r *FooRepository) FindAll(ctx context.Context) iter.Seq[Foo] {
 	//TODO implement me
 	panic("implement me")
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
@@ -13,6 +14,7 @@ import (
 	"go.llib.dev/frameless/spechelper"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 type (
@@ -150,4 +152,27 @@ func Test_preAssignedID(t *testing.T) {
 	}
 
 	testcase.RunSuite(t, contracts[testent.Foo, testent.FooID](subject, m, crudConfig)...)
+}
+
+func Test_noleftoverAfterTests(t *testing.T) {
+	mem := &memory.Memory{}
+	subject := &memory.Repository[testent.Foo, testent.FooID]{Memory: mem}
+
+	s := testcase.NewSpec(t)
+
+	s.After(func(t *testcase.T) {
+		itr, err := subject.FindAll(t.Context())
+		assert.NoError(t, err)
+
+		vs, err := iterkit.CollectErrIter(itr)
+		assert.NoError(t, err)
+
+		t.OnFail(func() { t.LogPretty(vs) })
+
+		assert.Empty(t, vs,
+			`after all the specs, the memory repository was expected to be empty.`+
+				` If the repository has values, it means something is not cleaning up properly in the specs.`)
+	})
+
+	testcase.RunSuite(s, contracts(subject, mem)...)
 }

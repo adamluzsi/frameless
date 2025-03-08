@@ -3,17 +3,18 @@ package memory
 import (
 	"context"
 	"fmt"
+	"iter"
 	"reflect"
 	"sync"
 
 	"go.llib.dev/frameless/port/comproto"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/crud"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/frameless/port/iterators"
 )
 
 func NewRepository[ENT, ID any](m *Memory) *Repository[ENT, ID] {
@@ -116,14 +117,17 @@ func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 	return ent.(ENT), true, nil
 }
 
-func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iterators.Iterator[ENT], error) {
+func blankErrFunc() error { return nil }
+
+func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := r.isDoneTx(ctx); err != nil {
 		return nil, err
 	}
-	return memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace)), nil
+	all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
+	return iterkit.ToErrIter(all), nil
 }
 
 func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
@@ -140,16 +144,21 @@ func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 }
 
 func (r *Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
-	iter, err := r.FindAll(ctx)
+	itr, err := r.FindAll(ctx)
 	if err != nil {
 		return err
 	}
-	defer iter.Close()
-	for iter.Next() {
-		id, _ := r.IDA.Lookup(iter.Value())
+	for v, err := range itr {
+		if err != nil {
+			return err
+		}
+		id, ok := r.IDA.Lookup(v)
+		if !ok {
+			continue
+		}
 		_ = r.memory().Del(ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace), r.IDToMemoryKey(id))
 	}
-	return iter.Err()
+	return nil
 }
 
 func (r *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
@@ -170,7 +179,7 @@ func (r *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterators.Iterator[ENT], error) {
+func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error) {
 	var m memoryActions = r.memory()
 	if tx, ok := r.memory().LookupTx(ctx); ok {
 		m = tx
@@ -185,24 +194,34 @@ func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iterato
 		}
 		vs[key] = v.(ENT)
 	}
-	return iterators.Slice[ENT](toSlice[ENT, string](vs)), nil
+	return iterkit.ToErrIter(iterkit.Slice(toSlice[ENT, string](vs))), nil
 }
 
 func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) bool) (ENT, bool, error) {
-	iter, err := r.FindAll(ctx)
+	itr, err := r.FindAll(ctx)
 	if err != nil {
 		return *new(ENT), false, err
 	}
-	iter = iterators.Filter(iter, filter)
-	return iterators.First(iter)
+	var zero ENT
+	for v, err := range itr {
+		if err != nil {
+			return zero, false, err
+		}
+		if filter(v) {
+			return v, true, nil
+		}
+	}
+	return zero, false, nil
 }
 
-func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iterators.Iterator[ENT], error) {
-	iter, err := r.FindAll(ctx)
+func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iter.Seq2[ENT, error], error) {
+	itr, err := r.FindAll(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return iterators.Filter(iter, filter), nil
+	return iterkit.OnErrIterValue(itr, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+		return iterkit.Filter(i, filter)
+	}), nil
 }
 
 func (r *Repository[ENT, ID]) mkID(ctx context.Context) (ID, error) {
@@ -326,9 +345,9 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 	return m.lookup(namespace, key)
 }
 
-func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iterators.Iterator[ENT] {
+func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iter.Seq[ENT] {
 	var T ENT
-	return iterators.Slice[ENT](m.All(T, ctx, namespace).([]ENT))
+	return iterkit.Slice[ENT](m.All(T, ctx, namespace).([]ENT))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {

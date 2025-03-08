@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
@@ -28,7 +30,7 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/relationship"
-	"go.llib.dev/frameless/port/iterators"
+
 	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -70,7 +72,7 @@ func ExampleRESTHandler() {
 func ExampleRESTHandler_withIndexFilteringByQuery() {
 	fooRepository := memory.NewRepository[X, XID](memory.NewMemory())
 	fooRestfulResource := httpkit.RESTHandler[X, XID]{
-		Index: func(ctx context.Context) (iterators.Iterator[X], error) {
+		Index: func(ctx context.Context) (iter.Seq2[X, error], error) {
 			foos, err := fooRepository.FindAll(ctx)
 			if err != nil {
 				return foos, err
@@ -81,11 +83,12 @@ func ExampleRESTHandler_withIndexFilteringByQuery() {
 				if err != nil {
 					return nil, err
 				}
-				foos = iterators.Filter(foos, func(foo X) bool {
-					return bigger < foo.N
+				foos = iterkit.OnErrIterValue(foos, func(itr iter.Seq[X]) iter.Seq[X] {
+					return iterkit.Filter(itr, func(foo X) bool {
+						return bigger < foo.N
+					})
 				})
 			}
-
 			return foos, nil
 		},
 	}
@@ -275,11 +278,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			})
 
 			s.When("index is provided", func(s *testcase.Spec) {
-				override := testcase.Let[func(ctx context.Context) (iterators.Iterator[X], error)](s, nil)
+				override := testcase.Let[func(ctx context.Context) (iter.Seq2[X, error], error)](s, nil)
 
 				subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
 					h := subject.Super(t)
-					h.Index = func(ctx context.Context) (iterators.Iterator[X], error) {
+					h.Index = func(ctx context.Context) (iter.Seq2[X, error], error) {
 						return override.Get(t)(ctx)
 					}
 					return h
@@ -294,13 +297,13 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					})
 
 					receivedQuery := testcase.LetValue[url.Values](s, nil)
-					override.Let(s, func(t *testcase.T) func(ctx context.Context) (iterators.Iterator[X], error) {
-						return func(ctx context.Context) (iterators.Iterator[X], error) {
+					override.Let(s, func(t *testcase.T) func(ctx context.Context) (iter.Seq2[X, error], error) {
+						return func(ctx context.Context) (iter.Seq2[X, error], error) {
 							req, ok := httpkit.LookupRequest(ctx)
 							if ok {
 								receivedQuery.Set(t, req.URL.Query())
 							}
-							return iterators.SingleValue(x.Get(t)), nil
+							return iterkit.ToErrIter(iterkit.SingleValue(x.Get(t))), nil
 						}
 					})
 
@@ -326,9 +329,9 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				s.And("the returned result has an issue", func(s *testcase.Spec) {
 					expectedErr := let.Error(s)
 
-					override.Let(s, func(t *testcase.T) func(ctx context.Context) (iterators.Iterator[X], error) {
-						return func(ctx context.Context) (iterators.Iterator[X], error) {
-							return iterators.Error[X](expectedErr.Get(t)), nil
+					override.Let(s, func(t *testcase.T) func(ctx context.Context) (iter.Seq2[X, error], error) {
+						return func(ctx context.Context) (iter.Seq2[X, error], error) {
+							return iterkit.Error[X](expectedErr.Get(t)), nil
 						}
 					})
 
@@ -344,7 +347,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						return h
 					})
 
-					s.Then("then the error is propagated back", func(t *testcase.T) {
+					s.Then("the error is propagated back", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusTeapot, rr.Code)
 
@@ -363,30 +366,6 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				})
 
 				ThenNotAllowed(s)
-			})
-
-			s.When("non empty iterator returned it is ensured to be closed", func(s *testcase.Spec) {
-				isClosed := testcase.LetValue[bool](s, false)
-
-				subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
-					sub := subject.Super(t)
-					sub.Index = func(ctx context.Context) (iterators.Iterator[X], error) {
-						i := iterators.Slice([]X{{ID: 1, N: 1}, {ID: 2, N: 2}})
-						stub := iterators.Stub(i)
-						stub.StubClose = func() error {
-							isClosed.Set(t, true)
-							return i.Close()
-						}
-						return stub, nil
-					}
-					return sub
-				})
-
-				s.Test("iterator is closed on finish", func(t *testcase.T) {
-					rr := act(t)
-					rr.Result()
-					assert.True(t, isClosed.Get(t))
-				})
 			})
 		})
 
@@ -1052,9 +1031,9 @@ func TestRESTHandler_WithCRUD_onNotEmptyOperations(t *testing.T) {
 			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
 			return nil
 		}
-		h.Index = func(ctx context.Context) (iterators.Iterator[Foo], error) {
+		h.Index = func(ctx context.Context) (iter.Seq2[Foo, error], error) {
 			indexC = true
-			return iterators.Empty[Foo](), nil
+			return iterkit.Empty2[Foo, error](), nil
 		}
 		h.Show = func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			showC = true
@@ -1163,8 +1142,8 @@ func TestRouter_Resource(t *testing.T) {
 	}
 
 	r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
-		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
-			return iterators.SingleValue(foo), nil
+		Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
+			return iterkit.ToErrIter(iterkit.SingleValue(foo)), nil
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			return foo, true, nil
@@ -1208,10 +1187,10 @@ func TestRESTHandler_withContext(t *testing.T) {
 	)
 
 	h := httpkit.RESTHandler[Foo, FooID]{
-		Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+		Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
 			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
 			assert.Nil(t, ctx.Value(ResourceProbeKey{}))
-			return iterators.Empty[Foo](), nil
+			return iterkit.Empty2[Foo, error](), nil
 		},
 		Create: func(ctx context.Context, ptr *Foo) error {
 			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
@@ -1308,9 +1287,9 @@ func TestRESTHandler_withContext(t *testing.T) {
 		expErr := rnd.Error()
 
 		h := httpkit.RESTHandler[Foo, FooID]{
-			Index: func(ctx context.Context) (iterators.Iterator[Foo], error) {
+			Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
 				t.Error("Index was not expected to be called")
-				return iterators.Empty[Foo](), nil
+				return iterkit.Empty2[Foo, error](), nil
 			},
 			Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 				t.Error("Show was not exepcted to be called")

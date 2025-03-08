@@ -35,11 +35,11 @@ custom test needed that explicitly defines how ID is stored and retried from an 
 func TryCleanup(tb testing.TB, ctx context.Context, resource any) bool {
 	tb.Helper()
 	if purger, ok := resource.(crud.Purger); ok {
-		assert.Must(tb).Nil(purger.Purge(ctx))
+		assert.Nil(tb, purger.Purge(ctx))
 		return true
 	}
 	if deleter, ok := resource.(crud.AllDeleter); ok {
-		assert.Must(tb).Nil(deleter.DeleteAll(ctx))
+		assert.Nil(tb, deleter.DeleteAll(ctx))
 		return true
 	}
 	return false

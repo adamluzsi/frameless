@@ -9,7 +9,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -853,54 +852,6 @@ func TestLast(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, got, exp)
 		assert.Equal(t, list, og)
-	})
-}
-
-func ExampleReverseIterator() {
-	var list = []int{1, 2, 3}
-	rev := slicekit.ReverseIterator(list)
-
-	for rev.Next() {
-		_ = rev.Value() // 3 -> 2 -> 1
-	}
-}
-
-func TestReverseIterator(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	s.Test("smoke", func(t *testcase.T) {
-		var in []int
-		t.Random.Repeat(3, 7, func() {
-			in = append(in, t.Random.IntBetween(1, 10))
-		})
-		og := slicekit.Clone(in)
-
-		var exp []int
-		for i := len(in) - 1; i >= 0; i-- {
-			exp = append(exp, in[i])
-		}
-
-		var got []int
-
-		iter := slicekit.ReverseIterator(in)
-		for iter.Next() {
-			got = append(got, iter.Value())
-		}
-
-		assert.Equal(t, in, og, "it was not expected to alter the input slice")
-		assert.Equal(t, got, exp, "expected that the iteration order is reversed")
-	})
-
-	s.Test("nil slice", func(t *testcase.T) {
-		vs, err := iterators.Collect(slicekit.ReverseIterator[int](nil))
-		assert.NoError(t, err)
-		assert.Empty(t, vs)
-	})
-
-	s.Test("empty slice", func(t *testcase.T) {
-		vs, err := iterators.Collect(slicekit.ReverseIterator([]int{}))
-		assert.NoError(t, err)
-		assert.Empty(t, vs)
 	})
 }
 

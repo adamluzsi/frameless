@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
@@ -64,7 +65,7 @@ func TestToTask(t *testing.T) {
 	})
 
 	t.Run("on func() error", func(t *testing.T) {
-		assert.NotNil(t, tasker.ToTask(func() error { return nil }))
+		assert.NotNil(t, tasker.ToTask(errorkit.NullErrFunc))
 		expErr := rnd.Error()
 		assert.Equal(t, expErr, tasker.ToTask(func() error { return expErr })(context.Background()))
 	})
@@ -856,7 +857,7 @@ func TestOnError(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("on no error, error handler is not triggered", func(t *testcase.T) {
-		task := tasker.OnError(func() error { return nil }, func(err error) error { panic("boom") })
+		task := tasker.OnError(errorkit.NullErrFunc, func(err error) error { panic("boom") })
 		t.Must.NoError(task(context.Background()))
 	})
 
@@ -1226,6 +1227,23 @@ func TestJobGroup_race(t *testing.T) {
 			<-ctx.Done()
 			return nil
 		})
+	})
+}
+
+func TestJobGroup_wManual_cleanup(t *testing.T) {
+	t.Run("group level cleanup", func(t *testing.T) {
+		var g tasker.JobGroup[tasker.FireAndForget]
+
+		g.Go(func(ctx context.Context) error {
+			<-ctx.Done()
+			return ctx.Err()
+		})
+
+		assert.Equal(t, 1, g.Len())
+
+		g.Stop()
+
+		assert.Equal(t, 0, g.Len())
 	})
 
 }

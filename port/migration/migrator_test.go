@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/port/iterators"
+
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -115,8 +116,11 @@ func TestMigrator_Migrate(t *testing.T) {
 
 				t.Log("and state repository is used to store states")
 				assert.NotNil(t, stateRepository.Get(t).Repository)
-				n, err := iterators.Count(iterators.WithErr(stateRepository.Get(t).Repository.FindAll(context.Background())))
+
+				itr, err := stateRepository.Get(t).Repository.FindAll(context.Background())
 				assert.NoError(t, err)
+
+				n := iterkit.Count2(itr)
 				assert.Equal(t, n, len(steps.Get(t)))
 			})
 

@@ -2,8 +2,10 @@ package crudcontracts
 
 import (
 	"context"
+	"iter"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
@@ -13,7 +15,6 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/testcase/let"
 
-	"go.llib.dev/frameless/port/iterators"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
@@ -153,7 +154,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 		ids = testcase.Var[[]ID]{ID: `entities ids`}
 	)
-	var act = func(t *testcase.T) (iterators.Iterator[ENT], error) {
+	var act = func(t *testcase.T) (iter.Seq2[ENT, error], error) {
 		return subject.FindByIDs(ctx.Get(t), ids.Get(t)...)
 	}
 
@@ -178,11 +179,11 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 
 		s.Then(`result is an empty list`, func(t *testcase.T) {
-			iter, err := act(t)
+			itr, err := act(t)
 			assert.NoError(t, err)
-			count, err := iterators.Count(iter)
+			vs, err := iterkit.CollectErrIter(itr)
 			assert.NoError(t, err)
-			t.Must.Equal(0, count)
+			assert.Empty(t, vs)
 		})
 	})
 
@@ -193,10 +194,10 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
-			iter, err := act(t)
+			itr, err := act(t)
 			assert.NoError(t, err)
-			actual, err := iterators.Collect(iter)
-			t.Must.Nil(err)
+			actual, err := iterkit.CollectErrIter(itr)
+			assert.NoError(t, err)
 			t.Must.ContainExactly(expected, actual)
 		})
 	})
@@ -212,8 +213,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			})
 
 			s.Then(`it will yield error early on`, func(t *testcase.T) {
-				iter, err := act(t)
-				defer tryClose(iter)
+				itr, err := act(t)
 
 				t.Must.AnyOf(func(a *assert.A) {
 					a.Case(func(t assert.It) { assert.ErrorIs(t, err, crud.ErrNotFound) })
@@ -221,15 +221,14 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 					if c.LazyNotFoundError {
 						tc := t
 						a.Case(func(t assert.It) {
-							assert.NotNil(t, iter)
-							_, err := iterators.Collect(iter)
+							assert.NotNil(t, itr)
+							_, err := iterkit.CollectErrIter(itr)
 							assert.ErrorIs(t, err, crud.ErrNotFound)
 							tc.Log("[WARN]", "returning an error about the missing entity as part of the iteration is suboptimal")
 							tc.Log("[WARN]", "because it becomes difficult to handle early on an invalid input argument scenario.")
 						})
 					}
 				})
-
 			})
 		})
 	}

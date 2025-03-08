@@ -12,10 +12,11 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/iterators"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -496,29 +497,12 @@ func ExampleQuery() {
 	var body io.Reader
 
 	result := jsontoken.Query(ctx, body, jsontoken.KindArray, jsontoken.KindArrayValue)
-	defer result.Close()
-
-	for result.Next() {
-		rawJSON := result.Value()
-
+	for rawJSON, err := range result {
+		if err != nil {
+			fmt.Println(err.Error())
+			continue
+		}
 		fmt.Println(string(rawJSON))
-	}
-	if err := result.Err(); err != nil {
-		fmt.Println(err.Error())
-	}
-}
-
-func ExampleQuery_withForEach() {
-	var ctx context.Context
-	var body io.Reader
-
-	err := iterators.ForEach(jsontoken.Query(ctx, body, jsontoken.KindArray, jsontoken.KindArrayValue),
-		func(raw json.RawMessage) error {
-			return nil
-		})
-
-	if err != nil {
-		fmt.Println(err.Error())
 	}
 }
 
@@ -528,14 +512,14 @@ func TestQuery(t *testing.T) {
 		t.Run("empty", func(t *testing.T) {
 			in := toBufioReader(`[]`)
 			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-			raws, err := iterators.Collect[json.RawMessage](iter)
+			raws, err := iterkit.CollectErrIter[json.RawMessage](iter)
 			assert.NoError(t, err)
 			assert.Empty(t, raws)
 		})
 		t.Run("populated", func(t *testing.T) {
 			in := toBufioReader(`["The answer is", {"foo":"bar"}, true]`)
 			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-			raws, err := iterators.Collect[json.RawMessage](iter)
+			raws, err := iterkit.CollectErrIter[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`"The answer is"`), []byte(`{"foo":"bar"}`), []byte("true")}
 			assert.Equal(t, raws, exp)
@@ -544,7 +528,7 @@ func TestQuery(t *testing.T) {
 			t.Log("when array kind is expected, but non array kind found")
 			in := toBufioReader(`{"foo":"bar"}`)
 			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-			raws, err := iterators.Collect[json.RawMessage](iter)
+			raws, err := iterkit.CollectErrIter[json.RawMessage](iter)
 			assert.NoError(t, err)
 			assert.Empty(t, raws)
 		})
@@ -553,7 +537,7 @@ func TestQuery(t *testing.T) {
 		t.Run("keys", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
 			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectKey)
-			raws, err := iterators.Collect[json.RawMessage](iter)
+			raws, err := iterkit.CollectErrIter[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`"foo"`), []byte(`"bar"`), []byte(`"baz"`)}
 			assert.Equal(t, raws, exp)
@@ -561,7 +545,7 @@ func TestQuery(t *testing.T) {
 		t.Run("values", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
 			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectValue{})
-			raws, err := iterators.Collect[json.RawMessage](iter)
+			raws, err := iterkit.CollectErrIter[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`), []byte(`2`), []byte(`3`)}
 			assert.Equal(t, raws, exp)
@@ -569,7 +553,7 @@ func TestQuery(t *testing.T) {
 		t.Run("value by key", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
 			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)})
-			raws, err := iterators.Collect[json.RawMessage](iter)
+			raws, err := iterkit.CollectErrIter[json.RawMessage](iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`)}
 			assert.Equal(t, raws, exp)
@@ -591,7 +575,7 @@ func TestQuery(t *testing.T) {
 
 		t.Log("input:", string(data))
 
-		got, err := iterators.Collect(jsontoken.Query(ctx, bytes.NewReader(data), jsontoken.KindArray, jsontoken.KindArrayValue))
+		got, err := iterkit.CollectErrIter(jsontoken.Query(ctx, bytes.NewReader(data), jsontoken.KindArray, jsontoken.KindArrayValue))
 		assert.NoError(t, err)
 
 		assert.Equal(t, trim(exp), trim(got))
@@ -813,10 +797,10 @@ func TestArrayIterator(t *testing.T) {
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		got1, err := iterators.Collect[json.RawMessage](jsontoken.IterateArray(Context.Get(t), bytes.NewReader(data)))
+		got1, err := iterkit.CollectErrIter[json.RawMessage](jsontoken.IterateArray(Context.Get(t), bytes.NewReader(data)))
 		assert.NoError(t, err)
 
-		got2, err := iterators.Collect(jsontoken.Query(context.Background(), bytes.NewReader(data),
+		got2, err := iterkit.CollectErrIter(jsontoken.Query(context.Background(), bytes.NewReader(data),
 			jsontoken.KindArray, jsontoken.KindArrayValue))
 
 		assert.NoError(t, err)
