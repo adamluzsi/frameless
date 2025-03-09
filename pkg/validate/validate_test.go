@@ -1,6 +1,8 @@
 package validate_test
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -12,6 +14,52 @@ import (
 )
 
 var rnd = random.New(random.CryptoSeed{})
+
+type StringTypeThatImplementsValidator string
+
+func (v StringTypeThatImplementsValidator) Validate() error {
+	if len(v) == 0 {
+		return fmt.Errorf("empty value is not allowed")
+	}
+	return nil
+}
+
+func TestValue_useValidatorInterface(t *testing.T) {
+	t.Run("only validator", func(t *testing.T) {
+		var v StringTypeThatImplementsValidator = "42"
+		assert.NoError(t, validate.Value(v))
+	})
+	t.Run("combination", func(t *testing.T) {
+		t.Run("smoke", func(t *testing.T) {
+			v := StructTypeThatImplementsValidator{V: "foo"}
+			assert.NoError(t, validate.Value(v))
+		})
+
+		t.Run("other fails", func(t *testing.T) {
+			v := StructTypeThatImplementsValidator{
+				V: "qux", // invalid
+			}
+			assert.ErrorIs(t, validate.Value(v), enum.ErrInvalid)
+		})
+
+		t.Run("Validate fails", func(t *testing.T) {
+			expErr := rnd.Error()
+			v := StructTypeThatImplementsValidator{
+				V:             "foo",
+				ValidateError: expErr,
+			}
+			assert.ErrorIs(t, validate.Value(v), expErr)
+		})
+	})
+	t.Run("rainy", func(t *testing.T) {
+		var v StringTypeThatImplementsValidator
+		got := validate.Value(v)
+		assert.Error(t, got)
+		var verr validate.ValidationError
+		assert.True(t, errors.As(got, &verr))
+		assert.Error(t, verr.Cause)
+	})
+}
 
 func TestValue_enum(t *testing.T) {
 	type FieldType string
@@ -25,6 +73,10 @@ func TestValue_enum(t *testing.T) {
 		t.Run("zero value", func(t *testing.T) {
 			err := validate.Value(X{})
 			assert.Error(t, err)
+
+			var verr validate.ValidationError
+			assert.True(t, errors.As(err, &verr))
+			assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
 		})
 
 		t.Run("valid value", func(t *testing.T) {
@@ -42,6 +94,10 @@ func TestValue_enum(t *testing.T) {
 		t.Run("rainy", func(t *testing.T) {
 			err := validate.Value(FieldType("invalid"))
 			assert.Error(t, err)
+
+			var verr validate.ValidationError
+			assert.True(t, errors.As(err, &verr))
+			assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
 		})
 	})
 }
@@ -190,5 +246,68 @@ func TestStruct_enum(t *testing.T) {
 			err := validate.Struct(reflect.ValueOf(X{A: random.Pick(rnd, "foo", "bar", "baz")}))
 			assert.NoError(t, err)
 		})
+	})
+}
+
+type StructTypeThatImplementsValidator struct {
+	V string `enum:"foo,bar,baz,"`
+
+	ValidateError error
+}
+
+func (v StructTypeThatImplementsValidator) Validate() error {
+	return v.ValidateError
+}
+
+func TestStruct_useValidatorInterface(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		v := StructTypeThatImplementsValidator{V: "foo"}
+		assert.NoError(t, validate.Struct(v))
+	})
+
+	t.Run("other fails", func(t *testing.T) {
+		v := StructTypeThatImplementsValidator{
+			V: "qux", // invalid
+		}
+		assert.ErrorIs(t, validate.Struct(v), enum.ErrInvalid)
+	})
+
+	t.Run("Validate fails", func(t *testing.T) {
+		expErr := rnd.Error()
+		v := StructTypeThatImplementsValidator{
+			V:             "foo",
+			ValidateError: expErr,
+		}
+		assert.ErrorIs(t, validate.Struct(v), expErr)
+	})
+}
+
+func TestStructField_useValidatorInterface(t *testing.T) {
+	type T struct {
+		V StructTypeThatImplementsValidator
+	}
+
+	t.Run("happy", func(t *testing.T) {
+		rStruct := reflect.ValueOf(T{V: StructTypeThatImplementsValidator{V: "foo"}})
+
+		sf, field, ok := reflectkit.LookupField(rStruct, "V")
+		assert.True(t, ok)
+
+		assert.NoError(t, validate.StructField(sf, field))
+	})
+
+	t.Run("rainy", func(t *testing.T) {
+		expErr := rnd.Error()
+
+		rStruct := reflect.ValueOf(T{V: StructTypeThatImplementsValidator{
+			V:             "foo",
+			ValidateError: expErr,
+		}})
+
+		sf, field, ok := reflectkit.LookupField(rStruct, "V")
+		assert.True(t, ok)
+
+		err := validate.StructField(sf, field)
+		assert.ErrorIs(t, err, expErr)
 	})
 }
