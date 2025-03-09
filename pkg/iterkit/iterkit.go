@@ -32,6 +32,29 @@ import (
 	"go.llib.dev/frameless/pkg/tasker"
 )
 
+// SingleUseSeq is an iter.Seq[T] that can only iterated once.
+// After iteration, it is expected to yield no more values.
+//
+// Most iterators provide the ability to walk an entire sequence:
+// when called, the iterator does any setup necessary to start the sequence,
+// then calls yield on successive elements of the sequence, and then cleans up before returning.
+// Calling the iterator again walks the sequence again.
+//
+// SingleUseSeq iterators break that convention, providing the ability to walk a sequence only once.
+// These “single-use iterators” typically report values from a data stream that cannot be rewound to start over.
+// Calling the iterator again after stopping early may continue the stream,
+// but calling it again after the sequence is finished will yield no values at all.
+//
+// If an iterator Sequence is single use,
+// it should either has comments for functions or methods that it return single-use iterators
+// or it should use the SingleUseSeq to clearly express it with a return type.
+type SingleUseSeq[T any] = iter.Seq[T]
+
+// SingleUseSeq2 is an iter.Seq2[K, V] that can only iterated once.
+// After iteration, it is expected to yield no more values.
+// For more information on single use sequences, please read the documentation of SingleUseSeq.
+type SingleUseSeq2[K, V any] = iter.Seq2[K, V]
+
 // ErrFunc is the check function that can tell if currently an iterator that is related to the error function has an issue or not.
 type ErrFunc = errorkit.ErrFunc
 
@@ -59,7 +82,7 @@ func Slice[T any](slice []T) iter.Seq[T] {
 	return slices.Values(slice)
 }
 
-func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer, errFuncs ...ErrFunc) (iter.Seq[T], ErrFunc) {
+func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer, errFuncs ...ErrFunc) (SingleUseSeq[T], ErrFunc) {
 	return toIterSeqWithRelease(&bufioScannerIter[T]{
 		Scanner: s,
 		Closer:  closer,
@@ -172,7 +195,7 @@ func Paginate[T any](
 	ctx context.Context,
 	more func(ctx context.Context, offset int) (values []T, hasNext bool, _ error),
 	errFuncs ...ErrFunc,
-) (iter.Seq[T], ErrFunc) {
+) (SingleUseSeq[T], ErrFunc) {
 	return toIterSeqWithRelease(&paginator[T]{
 		Context: ctx,
 		More:    more,
@@ -258,29 +281,6 @@ func Error[T any](err error) ErrIter[T] {
 // ErrorF behaves exactly like fmt.ErrorF but returns the error wrapped as iterator
 func ErrorF[T any](format string, a ...any) ErrIter[T] {
 	return Error[T](fmt.Errorf(format, a...))
-}
-
-// errorIter iterator can be used for returning an error wrapped with iterator interface.
-// This can be used when external resource encounter unexpected non recoverable error during query execution.
-type errorIter[T any] struct {
-	err error
-}
-
-func (i *errorIter[T]) Close() error {
-	return nil
-}
-
-func (i *errorIter[T]) Next() bool {
-	return false
-}
-
-func (i *errorIter[T]) Err() error {
-	return i.err
-}
-
-func (i *errorIter[T]) Value() T {
-	var v T
-	return v
 }
 
 func Limit[V any](i iter.Seq[V], n int) iter.Seq[V] {
@@ -459,6 +459,27 @@ func Filter[T any](i iter.Seq[T], filter func(T) bool) iter.Seq[T] {
 	}
 }
 
+// First decode the first next value of the iterator and close the iterator
+func First[T any](i iter.Seq[T]) (T, bool) {
+	for v := range i {
+		return v, true
+	}
+	var zero T
+	return zero, false
+}
+
+// First2 decode the first next value of the iterator and close the iterator
+func First2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
+	for k, v := range i {
+		return k, v, true
+	}
+	var (
+		zeroK K
+		zeroV V
+	)
+	return zeroK, zeroV, false
+}
+
 func Last[T any](i iter.Seq[T]) (T, bool) {
 	var (
 		last T
@@ -469,6 +490,20 @@ func Last[T any](i iter.Seq[T]) (T, bool) {
 		ok = true
 	}
 	return last, ok
+}
+
+func Last2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
+	var (
+		lastK K
+		lastV V
+		ok    bool
+	)
+	for k, v := range i {
+		lastK = k
+		lastV = v
+		ok = true
+	}
+	return lastK, lastV, ok
 }
 
 // Head takes the first n element, similarly how the coreutils "head" app works.
@@ -515,27 +550,6 @@ func TakeAll[T any](next func() (T, bool)) []T {
 		vs = append(vs, v)
 	}
 	return vs
-}
-
-// First decode the first next value of the iterator and close the iterator
-func First[T any](i iter.Seq[T]) (T, bool) {
-	for v := range i {
-		return v, true
-	}
-	var zero T
-	return zero, false
-}
-
-// First2 decode the first next value of the iterator and close the iterator
-func First2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
-	for k, v := range i {
-		return k, v, true
-	}
-	var (
-		zeroK K
-		zeroV V
-	)
-	return zeroK, zeroV, false
 }
 
 // SingleValue creates an iterator that can return one single element and will ensure that Next can only be called once.
@@ -645,7 +659,7 @@ func ToChan[T any](itr iter.Seq[T]) (_ <-chan T, cancel func()) {
 }
 
 // Sync ensures that an iterator can be safely used by multiple goroutines at the same time.
-func Sync[T any](i iter.Seq[T]) (iter.Seq[T], func()) {
+func Sync[T any](i iter.Seq[T]) (SingleUseSeq[T], func()) {
 	// the reason we initiate pull prior to the range iteration
 	// is because we expect multiple range iterations to start simulteniously,
 	// and the result should be distributed between them.
@@ -676,7 +690,7 @@ func Sync[T any](i iter.Seq[T]) (iter.Seq[T], func()) {
 }
 
 // Sync2 ensures that an iterator can be safely used by multiple goroutines at the same time.
-func Sync2[K, V any](i iter.Seq2[K, V]) (iter.Seq2[K, V], func()) {
+func Sync2[K, V any](i iter.Seq2[K, V]) (SingleUseSeq2[K, V], func()) {
 	// the reason we initiate pull prior to the range iteration
 	// is because we expect multiple range iterations to start simulteniously,
 	// and the result should be distributed between them.
@@ -775,7 +789,7 @@ func Reverse[T any](i iter.Seq[T]) iter.Seq[T] {
 	}
 }
 
-func Once[T any](i iter.Seq[T]) iter.Seq[T] {
+func Once[T any](i iter.Seq[T]) SingleUseSeq[T] {
 	var done int32
 	return func(yield func(T) bool) {
 		if !atomic.CompareAndSwapInt32(&done, 0, 1) {
@@ -789,7 +803,7 @@ func Once[T any](i iter.Seq[T]) iter.Seq[T] {
 	}
 }
 
-func Once2[K, V any](i iter.Seq2[K, V]) iter.Seq2[K, V] {
+func Once2[K, V any](i iter.Seq2[K, V]) SingleUseSeq2[K, V] {
 	var done int32
 	return func(yield func(K, V) bool) {
 		if !atomic.CompareAndSwapInt32(&done, 0, 1) {

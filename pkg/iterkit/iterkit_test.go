@@ -63,6 +63,14 @@ type BrokenReader struct{}
 
 func (b *BrokenReader) Read(p []byte) (n int, err error) { return 0, io.ErrUnexpectedEOF }
 
+func ExampleLast() {
+	itr := iterkit.IntRange(0, 10)
+
+	n, ok := iterkit.Last(itr)
+	_ = ok // true
+	_ = n  // 10
+}
+
 func TestLast(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -76,6 +84,48 @@ func TestLast(t *testing.T) {
 
 	s.Test("empty", func(t *testcase.T) {
 		_, found := iterkit.Last(iterkit.Empty[Entity]())
+		assert.False(t, found)
+	})
+}
+
+func ExampleLast2() {
+	var itr iter.Seq2[int, string] = func(yield func(int, string) bool) {
+		for n := range iterkit.IntRange(0, 10) {
+			if !yield(n, strconv.Itoa(n)) {
+				return
+			}
+		}
+	}
+
+	num, str, ok := iterkit.Last2(itr)
+	_ = ok  // true
+	_ = num // 10
+	_ = str // "10"
+}
+
+func TestLast2(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		expN := t.Random.IntB(10, 100)
+		expS := strconv.Itoa(expN)
+
+		var itr iter.Seq2[int, string] = func(yield func(int, string) bool) {
+			for n := range iterkit.IntRange(0, expN) {
+				if !yield(n, strconv.Itoa(n)) {
+					return
+				}
+			}
+		}
+
+		num, str, ok := iterkit.Last2(itr)
+		assert.True(t, ok)
+		assert.Equal(t, num, expN)
+		assert.Equal(t, str, expS)
+	})
+
+	s.Test("empty", func(t *testcase.T) {
+		_, _, found := iterkit.Last2(iterkit.Empty2[int, string]())
 		assert.False(t, found)
 	})
 }
