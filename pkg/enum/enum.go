@@ -33,6 +33,10 @@ func Register[T any](enums ...T) (unregister func()) {
 	}
 
 	key := reflectkit.TypeOf[T]()
+	if reflectkit.IsBuiltInType(key) {
+		panic("Making an enum registration for a built-in type is almost always happens due to a typo, and forbidden.")
+	}
+
 	registry[key] = choices
 
 	return func() {

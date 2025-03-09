@@ -658,3 +658,39 @@ func TestValidateStruct_noEnum(t *testing.T) {
 
 	assert.NoError(t, enum.ValidateStruct(v))
 }
+
+func TestRegister_exceptions(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		assert.Panic(t, func() { enum.Register[string]("foo") })
+		assert.Panic(t, func() { enum.Register[uint](42) })
+		assert.Panic(t, func() { enum.Register[uint8](42) })
+		assert.Panic(t, func() { enum.Register[uint16](42) })
+		assert.Panic(t, func() { enum.Register[uint32](42) })
+		assert.Panic(t, func() { enum.Register[uint64](42) })
+		assert.Panic(t, func() { enum.Register[int](42) })
+		assert.Panic(t, func() { enum.Register[int8](42) })
+		assert.Panic(t, func() { enum.Register[int16](42) })
+		assert.Panic(t, func() { enum.Register[int32](42) })
+		assert.Panic(t, func() { enum.Register[int64](42) })
+		assert.Panic(t, func() { enum.Register[float32](42.0) })
+		assert.Panic(t, func() { enum.Register[float64](42.0) })
+		assert.Panic(t, func() { enum.Register[complex64](complex(1, 2)) })
+		assert.Panic(t, func() { enum.Register[complex128](complex(1, 2)) })
+		assert.Panic(t, func() { enum.Register[bool](true) })
+		assert.Panic(t, func() { enum.Register[rune]('a') }) // rune is an alias for int32
+		assert.Panic(t, func() { enum.Register[byte](255) }) // byte is an alias for uint8
+	})
+
+	t.Run("control", func(t *testing.T) {
+		type MyString string
+		assert.NotPanic(t, func() { enum.Register[MyString]("foo")() })
+		type MyInt int
+		assert.NotPanic(t, func() { enum.Register[MyInt](42)() })
+		type MyFloat32 float32
+		assert.NotPanic(t, func() { enum.Register[MyFloat32](42.42)() })
+		type MyFloat64 float64
+		assert.NotPanic(t, func() { enum.Register[MyFloat64](42.42)() })
+		type MyBool bool
+		assert.NotPanic(t, func() { enum.Register[MyBool](false)() })
+	})
+}

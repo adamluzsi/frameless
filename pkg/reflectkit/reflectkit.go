@@ -461,3 +461,7 @@ func OverSlice(rSlice reflect.Value) iter.Seq2[int, reflect.Value] {
 		}
 	})
 }
+
+func IsBuiltInType(typ reflect.Type) bool {
+	return typ.PkgPath() == ""
+}

@@ -2324,3 +2324,67 @@ func TestOverSlice(t *testing.T) {
 		})
 	})
 }
+
+func TestIsBuiltInType(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[string]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[uint]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[uint8]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[uint16]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[uint32]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[uint64]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[int]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[int8]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[int16]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[int32]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[int64]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[float32]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[float64]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[complex64]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[complex128]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[bool]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[rune]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[byte]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[[]int]()))
+		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[map[string]int]()))
+	})
+
+	t.Run("control", func(t *testing.T) {
+		type mystring string
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[mystring]()))
+		type myuint uint
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myuint]()))
+		type myuint8 uint8
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myuint8]()))
+		type myuint16 uint16
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myuint16]()))
+		type myuint32 uint32
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myuint32]()))
+		type myuint64 uint64
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myuint64]()))
+		type myint int
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myint]()))
+		type myint8 int8
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myint8]()))
+		type myint16 int16
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myint16]()))
+		type myint32 int32
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myint32]()))
+		type myint64 int64
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myint64]()))
+		type myfloat32 float32
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myfloat32]()))
+		type myfloat64 float64
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myfloat64]()))
+		type mycomplex64 complex64
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[mycomplex64]()))
+		type mycomplex128 complex128
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[mycomplex128]()))
+		type mybool bool
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[mybool]()))
+		type myrune rune
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[myrune]()))
+		type mybyte byte
+		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[mybyte]()))
+	})
+}
