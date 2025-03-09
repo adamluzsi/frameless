@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/convkit"
-	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
@@ -84,9 +84,12 @@ func reflectLoad(ptr reflect.Value) error {
 	if err := ReflectTryLoad(ptr); err != nil {
 		return err
 	}
-	return enum.ValidateStruct(rStruct.Interface())
+	return validate.Struct(rStruct.Interface())
 }
 
+// ReflectTryLoad attempts to load configuration struct, but does not produce an error if the overall config is not valid.
+// Instead, it raises a validation issue only when a given struct field's value is present in the environment variables
+// but does not meet the validation requirements for the specified field type/tag.
 func ReflectTryLoad(ptr reflect.Value) error {
 	val, err := reflectStructValueOfPointer(ptr)
 	if err != nil {
@@ -185,7 +188,7 @@ func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
 
 	field.Set(val)
 
-	return enum.ValidateStructField(sf, field)
+	return validate.StructField(sf, field)
 }
 
 const envTagKey = "env"

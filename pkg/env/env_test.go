@@ -13,8 +13,10 @@ import (
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/must"
+	"go.llib.dev/frameless/pkg/validate"
 
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -987,5 +989,114 @@ func TestReflectTryLoadField_smoke(t *testing.T) {
 			err := env.ReflectTryLoad(ptr)
 			assert.ErrorIs(t, enum.ErrInvalid, err)
 		})
+		t.Run("validate", func(t *testing.T) {
+			type C struct {
+				V StringTypeWithValidator `env:"VAL"`
+			}
+			const EnvVarName = "VAL"
+
+			t.Run("value is in the env variables and valid", func(t *testing.T) {
+				testcase.SetEnv(t, "VAL", "valid")
+
+				var c C
+				assert.NoError(t, env.ReflectTryLoad(reflect.ValueOf(&c)))
+				assert.Equal(t, "valid", c.V)
+			})
+
+			t.Run("value in zero state is invalid, but because it is absent from the env vars, it is ignored", func(t *testing.T) {
+				testcase.UnsetEnv(t, "VAL")
+
+				var c C
+				assert.NoError(t, env.ReflectTryLoad(reflect.ValueOf(&c)))
+			})
+
+			t.Run("value is in the env variables but invalid", func(t *testing.T) {
+				testcase.SetEnv(t, "VAL", "invalid")
+
+				var c C
+				assert.ErrorIs(t, env.ReflectTryLoad(reflect.ValueOf(&c)), ErrStringTypeWithValidatorInvalid)
+			})
+		})
+	})
+}
+
+func TestLoad_noEnum(t *testing.T) {
+	type T struct {
+		V string `env:"VAL"`
+	}
+
+	var v T
+
+	assert.NoError(t, env.Load(&v))
+}
+
+type ValidatorStub struct {
+	Error error
+}
+
+func (m ValidatorStub) Validate() error {
+	return m.Error
+}
+
+type StringTypeWithValidator string
+
+const ErrStringTypeWithValidatorZero errorkit.Error = "zero value is considered incorrect"
+const ErrStringTypeWithValidatorInvalid errorkit.Error = `"invalid" is considered as an invalid value`
+
+func (str StringTypeWithValidator) Validate() error {
+	if len(str) == 0 {
+		return ErrStringTypeWithValidatorZero
+	}
+	if str == "invalid" {
+		return ErrStringTypeWithValidatorInvalid
+	}
+	return nil
+}
+
+func Test_TypeWithValidator(t *testing.T) {
+	t.Log("tests are dependig on the logic written in the validation, so this test ensures that it is not accidentally changed")
+	var validValue StringTypeWithValidator = random.Unique(func() StringTypeWithValidator {
+		return StringTypeWithValidator(rnd.StringNC(rnd.IntBetween(3, 7), random.CharsetAlpha()))
+	}, "invalid", "")
+	assert.NoError(t, validate.Value(StringTypeWithValidator(validValue)))
+	assert.Error(t, validate.Value(StringTypeWithValidator("")))
+	assert.Error(t, validate.Value(StringTypeWithValidator("invalid")))
+}
+
+func TestLoad_typeWithValidator(t *testing.T) {
+	testcase.UnsetEnv(t, "V")
+
+	type TypeWithValidator struct {
+		V StringTypeWithValidator `env:"V"`
+	}
+
+	t.Run("when value is found and validator pass", func(t *testing.T) {
+		expV := rnd.StringNC(5, random.CharsetDigit())
+		testcase.SetEnv(t, "V", expV)
+
+		var c TypeWithValidator
+		assert.NoError(t, env.Load(&c), "expected no issue")
+
+		assert.Equal(t, expV, string(c.V))
+	})
+
+	t.Run("when value is set, but to an invalid value", func(t *testing.T) {
+		testcase.SetEnv(t, "V", "invalid") // set but invalid
+		var c TypeWithValidator
+		assert.Error(t, env.Load(&c))
+	})
+
+	t.Run("struct field has a validation issue from a validate error", func(t *testing.T) {
+		type C struct {
+			V ValidatorStub
+		}
+
+		var c C
+		assert.NoError(t, env.Load(&c))
+
+		expErr := rnd.Error()
+		c.V.Error = expErr
+
+		assert.ErrorIs(t, env.Load(&c), expErr)
 	})
 }

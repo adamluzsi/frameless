@@ -7,7 +7,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/testcase/pp"
 )
 
 ///////////////////////////////////////////////// ErrIter //////////////////////////////////////////////////
@@ -159,7 +158,6 @@ func OnErrIterValue[To any, From any](itr ErrIter[From], pipeline func(itr iter.
 				}
 				var zero To
 				if !yield(zero, err) {
-					pp.PP("yield err cancel detected")
 					break pushing
 				}
 			}

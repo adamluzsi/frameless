@@ -24,7 +24,6 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/crud/relationship"
-	"go.llib.dev/testcase/pp"
 )
 
 // RESTHandler implements an http.Handler that adheres to the Representational State of Resource (REST) architectural style.
@@ -509,7 +508,6 @@ func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 
 	if !h.ScopeAware { // TODO: testme
 		if hasParent && relationship.HasReference(ent, parentPointer) && !h.isOwnershipOK(ctx, ent) {
-			pp.PP("?", ent, parentPointer)
 			h.getErrorHandler().HandleError(w, r, ErrForbidden)
 			return
 		}

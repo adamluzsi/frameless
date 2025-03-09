@@ -648,3 +648,13 @@ func TestValidateStructField(t *testing.T) {
 		})
 	})
 }
+
+func TestValidateStruct_noEnum(t *testing.T) {
+	type T struct {
+		V string `env:"VAL"`
+	}
+
+	var v T
+
+	assert.NoError(t, enum.ValidateStruct(v))
+}
