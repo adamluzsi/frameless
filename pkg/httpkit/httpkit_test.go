@@ -74,7 +74,7 @@ func TestRetryRoundTripper(t *testing.T) {
 	var (
 		requestBody  = let.String(s)
 		responseBody = let.String(s)
-		responseCode = let.ElementFrom(s,
+		responseCode = let.OneOf(s,
 			http.StatusOK,
 			http.StatusCreated,
 			http.StatusAccepted,
@@ -162,7 +162,7 @@ func TestRetryRoundTripper(t *testing.T) {
 
 				var done bool
 				once.Do(func() {
-					code := t.Random.SliceElement([]int{
+					code := t.Random.Pick([]int{
 						http.StatusInternalServerError,
 						http.StatusBadGateway,
 						http.StatusServiceUnavailable,
@@ -191,7 +191,7 @@ func TestRetryRoundTripper(t *testing.T) {
 
 		s.And("if the recoverable just keep occuring too many times", func(s *testcase.Spec) {
 			responseCode.Let(s, func(t *testcase.T) int {
-				return t.Random.SliceElement([]int{
+				return t.Random.Pick([]int{
 					http.StatusInternalServerError,
 					http.StatusBadGateway,
 					http.StatusServiceUnavailable,
@@ -279,7 +279,7 @@ func TestRetryRoundTripper(t *testing.T) {
 
 	s.When("the server responds with an unrecoverable error", func(s *testcase.Spec) {
 		responseCode.Let(s, func(t *testcase.T) int {
-			return t.Random.SliceElement([]int{
+			return t.Random.Pick([]int{
 				// just a few example, not all of them
 				http.StatusBadRequest,
 				http.StatusNotImplemented,
@@ -306,7 +306,7 @@ func TestRetryRoundTripper(t *testing.T) {
 
 	s.When("status code is configured to behave differently than how it is defined in the defaults", func(s *testcase.Spec) {
 		responseCode.Let(s, func(t *testcase.T) int {
-			return t.Random.SliceElement([]int{
+			return t.Random.Pick([]int{
 				http.StatusUnauthorized,
 				http.StatusTeapot,
 			}).(int)

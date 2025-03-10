@@ -350,7 +350,7 @@ func TestMux(t *testing.T) {
 					})
 
 					s.And("the input value is within the enum set", func(s *testcase.Spec) {
-						exp := let.ElementFrom(s, "foo", "bar", "baz")
+						exp := let.OneOf(s, "foo", "bar", "baz")
 
 						request.Let(s, func(t *testcase.T) *cli.Request {
 							r := request.Super(t)
@@ -516,7 +516,7 @@ func TestMux(t *testing.T) {
 					})
 
 					s.And("the input value is within the enum set", func(s *testcase.Spec) {
-						exp := let.ElementFrom(s, "foo", "bar", "baz")
+						exp := let.OneOf(s, "foo", "bar", "baz")
 
 						request.Let(s, func(t *testcase.T) *cli.Request {
 							r := request.Super(t)

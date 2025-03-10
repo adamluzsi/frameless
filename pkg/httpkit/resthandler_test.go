@@ -592,7 +592,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			var (
 				dto = GivenWeHaveStoredFooDTO(s)
 				_   = method.Let(s, func(t *testcase.T) string {
-					return t.Random.SliceElement([]string{
+					return t.Random.Pick([]string{
 						http.MethodPut,
 						http.MethodPatch,
 					}).(string)

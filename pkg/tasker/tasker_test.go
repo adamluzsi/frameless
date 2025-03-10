@@ -448,7 +448,7 @@ func Test_Main(t *testing.T) {
 			s.Before(func(t *testcase.T) {
 				StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
 					t.Must.NotEmpty(sigs)
-					go func() { c <- t.Random.SliceElement(sigs).(os.Signal) }()
+					go func() { c <- t.Random.Pick(sigs).(os.Signal) }()
 				})
 			})
 
@@ -1053,7 +1053,7 @@ func TestWithSignalNotify(t *testing.T) {
 		s.Before(func(t *testcase.T) {
 			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
 				t.Must.NotEmpty(sigs)
-				go func() { c <- t.Random.SliceElement(sigs).(os.Signal) }()
+				go func() { c <- t.Random.Pick(sigs).(os.Signal) }()
 			})
 		})
 

@@ -2216,11 +2216,11 @@ func TestCharRange(t *testing.T) {
 	var (
 		min = testcase.Let(s, func(t *testcase.T) rune {
 			chars := []rune{'A', 'B', 'C'}
-			return t.Random.SliceElement(chars).(rune)
+			return t.Random.Pick(chars).(rune)
 		})
 		max = testcase.Let(s, func(t *testcase.T) rune {
 			chars := []rune{'E', 'F', 'G'}
-			return t.Random.SliceElement(chars).(rune)
+			return t.Random.Pick(chars).(rune)
 		})
 	)
 	subject := testcase.Let(s, func(t *testcase.T) iter.Seq[rune] {
@@ -2252,9 +2252,9 @@ func TestChar_implementsIterator(t *testing.T) {
 	iterkitcontract.Iterator[rune](func(tb testing.TB) iter.Seq[rune] {
 		t := testcase.ToT(&tb)
 		minChars := []rune{'A', 'B', 'C'}
-		min := t.Random.SliceElement(minChars).(rune)
+		min := t.Random.Pick(minChars).(rune)
 		maxChars := []rune{'E', 'F', 'G'}
-		max := t.Random.SliceElement(maxChars).(rune)
+		max := t.Random.Pick(maxChars).(rune)
 		return iterkit.CharRange(min, max)
 	}).Test(t)
 }
