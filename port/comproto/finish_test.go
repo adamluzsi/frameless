@@ -72,7 +72,7 @@ func TestFinishTx(t *testing.T) {
 			return func() error { return CommitErr }
 		})
 		commitFnGet = func(t *testcase.T) func() error { return commitFn.Get(t).(func() error) }
-		rolledBack  = s.LetValue(`rolled back`, false)
+		rolledBack  = testcase.LetValue(s, false)
 		rollbackFn  = testcase.Let(s, func(t *testcase.T) interface{} {
 			return func() error {
 				rolledBack.Set(t, true)
@@ -117,7 +117,7 @@ func TestFinishTx(t *testing.T) {
 
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
-			assert.True(t, rolledBack.Get(t).(bool))
+			assert.True(t, rolledBack.Get(t))
 			assert.Equal(t, expectedErr, *errpGet(t))
 		})
 	})
@@ -143,8 +143,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 	var (
 		CommitTxErr   = fmt.Errorf(`CommitTxErr`)
 		RollbackTxErr = fmt.Errorf(`RollbackTxErr`)
-		rolledBack    = s.LetValue(`rolled back`, false)
-		rolledBackGet = func(t *testcase.T) bool { return rolledBack.Get(t).(bool) }
+		rolledBack    = testcase.LetValue(s, false)
 	)
 	cpm := testcase.Let(s, func(t *testcase.T) interface{} {
 		return &doubles.StubOnePhaseCommitProtocol{
@@ -210,7 +209,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 
 		s.Then(`it will rollback and keep error value in ptr as is to not obscure root cause`, func(t *testcase.T) {
 			subject(t)
-			assert.True(t, rolledBackGet(t))
+			assert.True(t, rolledBack.Get(t))
 			assert.Must(t).ErrorIs(expectedErr, *errpGet(t))
 		})
 	})

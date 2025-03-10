@@ -250,9 +250,9 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 
 	var details []logging.Detail
 	defer func() {
-		details = append(details, logger.Field("found", found))
+		details = append(details, logging.Field("found", found))
 		if err != nil {
-			details = append(details, logger.ErrField(err))
+			details = append(details, logging.ErrField(err))
 		}
 		logger.Debug(ctx, "find entity by id with a rest client http request", details...)
 	}()

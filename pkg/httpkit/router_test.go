@@ -308,7 +308,7 @@ func TestRouter_Handle(t *testing.T) {
 		t.Run("on matching request for a specific path", func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(
-				rnd.SliceElement([]string{
+				rnd.Pick([]string{
 					http.MethodGet,
 					http.MethodHead,
 					http.MethodPost,
@@ -330,7 +330,7 @@ func TestRouter_Handle(t *testing.T) {
 		t.Run("on matching request for sub paths", func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(
-				rnd.SliceElement([]string{
+				rnd.Pick([]string{
 					http.MethodGet,
 					http.MethodHead,
 					http.MethodPost,
@@ -352,7 +352,7 @@ func TestRouter_Handle(t *testing.T) {
 		t.Run("on non matching request", func(t *testing.T) {
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest(
-				rnd.SliceElement([]string{
+				rnd.Pick([]string{
 					http.MethodGet,
 					http.MethodHead,
 					http.MethodPost,
@@ -458,7 +458,7 @@ func TestRouter_Namespace(t *testing.T) {
 	t.Run("on non matching request", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(
-			rnd.SliceElement([]string{
+			rnd.Pick([]string{
 				http.MethodGet,
 				http.MethodHead,
 				http.MethodPost,
@@ -503,7 +503,7 @@ func TestRouter_Sub(t *testing.T) {
 	t.Run("on non matching request", func(t *testing.T) {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(
-			rnd.SliceElement([]string{
+			rnd.Pick([]string{
 				http.MethodGet,
 				http.MethodHead,
 				http.MethodPost,

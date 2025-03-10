@@ -199,7 +199,7 @@ func TestLogger_smoke(t *testing.T) {
 		var (
 			ctx       = context.Background()
 			buf       = &bytes.Buffer{}
-			formatter = rnd.SliceElement([]func(string) string{
+			formatter = rnd.Pick([]func(string) string{
 				stringkit.ToPascal,
 				stringkit.ToCamel,
 				stringkit.ToKebab,

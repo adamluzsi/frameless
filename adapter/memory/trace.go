@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"go/build"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,7 +15,7 @@ type Traceable interface {
 
 func NewTrace(offset int) []Stack {
 	const maxTraceLength = 5
-	goRoot := runtime.GOROOT()
+	goRoot := build.Default.GOROOT
 
 	var trace []Stack
 	for i := 0; i < 128; i++ {

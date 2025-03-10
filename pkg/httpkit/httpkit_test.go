@@ -351,7 +351,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 
 	var (
-		responseCode = rnd.SliceElement([]int{
+		responseCode = rnd.Pick([]int{
 			http.StatusTeapot,
 			http.StatusOK,
 			http.StatusCreated,
@@ -359,7 +359,7 @@ func TestAccessLog_smoke(t *testing.T) {
 			http.StatusInternalServerError,
 		}).(int)
 		requestQuery     = url.Values{"foo": {rnd.StringNC(3, random.CharsetDigit())}}
-		requestMethod    = rnd.SliceElement([]string{http.MethodGet, http.MethodDelete, http.MethodPost}).(string)
+		requestMethod    = rnd.Pick([]string{http.MethodGet, http.MethodDelete, http.MethodPost}).(string)
 		requestBody      = rnd.String()
 		responseBody     = rnd.String()
 		gotRemoteAddress string
