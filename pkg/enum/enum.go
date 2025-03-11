@@ -6,9 +6,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 
 	"go.llib.dev/frameless/internal/interr"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/runtimekit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
 
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -73,6 +76,7 @@ func ReflectValues(typ any) []reflect.Value {
 
 	case reflect.StructField:
 		if tag, ok := typ.Tag.Lookup(structTagName); ok {
+			// TODO: use valuesForTag(), but only for non mutable enumerator values
 			enumerators, err := parseTag(typ.Type, tag)
 			if err == nil {
 				return enumerators
@@ -85,11 +89,11 @@ func ReflectValues(typ any) []reflect.Value {
 	}
 }
 
-func ReflectValuesOfStructField(sf reflect.StructField) ([]reflect.Value, error) {
-	if tag, ok := sf.Tag.Lookup(structTagName); ok {
-		return parseTag(sf.Type, tag)
+func ReflectValuesOfStructField(field reflect.StructField) ([]reflect.Value, error) {
+	if tag, ok := field.Tag.Lookup(structTagName); ok {
+		return parseTag(field.Type, tag)
 	}
-	return ReflectValues(sf.Type), nil
+	return ReflectValues(field.Type), nil
 }
 
 // Validate will check if the given value is a registered enum member.
@@ -108,32 +112,6 @@ func ValidateStruct(v any) error {
 		}
 	}
 	return nil
-}
-
-var enumTag = reflectkit.TagHandler[[]reflect.Value]{
-	Name: "enum",
-	Parse: func(sf reflect.StructField, tag string) ([]reflect.Value, error) {
-		return parseTag(sf.Type, tag)
-	},
-	Use: func(sf reflect.StructField, field reflect.Value, enumerators []reflect.Value) error {
-		if !field.CanInterface() { // ToAccess
-			return nil // TODO: maybe implementation error?
-		}
-		if enumerators == nil {
-			enumerators = ReflectValues(sf.Type)
-		}
-		if len(enumerators) == 0 {
-			return nil
-		}
-		for _, enum := range enumerators {
-			if reflectkit.Equal(field, enum) {
-				return nil
-			}
-		}
-		return ErrInvalid.F("%#v is not part of the enumerators for %s", field.Interface(), sf.Type.String())
-	},
-	ForceCache:     true,
-	HandleUntagged: true,
 }
 
 func ValidateStructField(sf reflect.StructField, field reflect.Value) error {
@@ -166,26 +144,45 @@ type tagIDStructField struct {
 	PkgPath string
 }
 
-func valuesForTag(sf reflect.StructField) (_ []reflect.Value, _ bool, rErr error) {
-	tag, ok := sf.Tag.Lookup(structTagName)
+func valuesForTag(field reflect.StructField) (_ []reflect.Value, _ bool, rErr error) {
+	tag, ok := field.Tag.Lookup(structTagName)
 	if !ok {
 		return nil, false, nil
 	}
 	defer errorkit.Recover(&rErr)
 	id := tagIDStructField{
-		Name:    sf.Name,
-		Type:    sf.Type.String(),
-		Tag:     sf.Tag,
-		PkgPath: sf.PkgPath,
+		Name:    field.Name,
+		Type:    field.Type.String(),
+		Tag:     field.Tag,
+		PkgPath: field.PkgPath,
 	}
 	return tagCache.GetOrInit(id, func() []reflect.Value {
-		enumerators, err := parseTag(sf.Type, tag)
+		enumerators, err := parseTag(field.Type, tag)
 		if err != nil {
 			panic(err)
 		}
 		return enumerators
 	}), true, nil
 }
+
+const structTagName = "enum"
+
+// var enumTag = reflectkit.TagHandler[[]reflect.Value]{
+// 	Name: "enum",
+// 	Parse: func(field reflect.StructField, tagValue string) ([]reflect.Value, error) {
+// 		return parseTag(field.Type, tagValue)
+// 	},
+// 	Use: func(field reflect.StructField, value reflect.Value, enumerators []reflect.Value) error {
+// 		if matchStructField(enumerators, value) {
+// 			return nil
+// 		}
+// 		var enumeratorValues []any = slicekit.Map(enumerators, reflect.Value.Interface)
+// 		const format = ".%v=%v does not match enumerator specification, accepted values: %#v"
+// 		return ErrInvalid.F(format, field.Name, value.Interface(), enumeratorValues)
+// 	},
+// 	ForceCache:        true,
+// 	PanicOnParseError: true,
+// }
 
 func matchStructField(enumerators []reflect.Value, rv reflect.Value) bool {
 	if len(enumerators) == 0 {
@@ -208,10 +205,18 @@ func matchStructField(enumerators []reflect.Value, rv reflect.Value) bool {
 	}
 }
 
-const structTagName = "enum"
+func isSpecialCharacter(char rune) bool {
+	if unicode.IsSymbol(char) || unicode.IsPunct(char) {
+		return true
+	}
+	if unicode.IsSpace(char) && char != ' ' {
+		return true
+	}
+	return false
+}
 
 func parseTag(rt reflect.Type, raw string) ([]reflect.Value, error) {
-	const osMaxBitSupport = 64
+	var osMaxBitSupport = runtimekit.ArchBitSize()
 
 	if len(raw) == 0 {
 		return nil, nil
@@ -223,9 +228,31 @@ func parseTag(rt reflect.Type, raw string) ([]reflect.Value, error) {
 	}
 
 	chars := []rune(raw)
-	sepCharPos := len(chars) - 1
-	separator := string(chars[sepCharPos:])
-	elements := strings.Split(string(chars[:sepCharPos]), separator)
+	seperatorIndex := len(chars) - 1
+	seperator := chars[seperatorIndex]
+
+	var elements []string
+	if isSpecialCharacter(seperator) {
+		elements = strings.Split(string(chars[:seperatorIndex]), string(seperator))
+	} else {
+		const commaSeperator = ","
+		const spaceSeperator = " "
+		switch {
+		case 0 < strings.Count(raw, commaSeperator):
+			elements = strings.Split(raw, commaSeperator)
+		case 0 < strings.Count(raw, spaceSeperator):
+			elements = strings.Split(raw, spaceSeperator)
+		default:
+			return nil, ImplementationError.F("unrecognised enum format for %q", raw)
+		}
+		// default seperators also apply space trimming for convinence
+		elements = slicekit.Map(elements, strings.TrimSpace)
+		elements = slicekit.Filter(elements, func(v string) bool { return 0 < len(v) })
+	}
+
+	if len(elements) == 0 {
+		return nil, nil
+	}
 
 	switch rt.Kind() {
 	case reflect.String:

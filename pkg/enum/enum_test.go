@@ -97,7 +97,7 @@ func TestValidateStruct_smoke(t *testing.T) {
 			V uint64 `enum:"42/24/"`
 		}
 		Float32Example struct {
-			V float32 `enum:"42.24 24.42 "`
+			V float32 `enum:"42.24 24.42"`
 		}
 		Float64Example struct {
 			V float64 `enum:"42.24;24.42;"`
@@ -112,13 +112,75 @@ func TestValidateStruct_smoke(t *testing.T) {
 		SliceExample struct {
 			V []string `enum:"A;B;C;"`
 		}
+		DefaultValueSeparatorDoesNotRequireLastComma struct {
+			V string `enum:"foo,bar,baz"`
+		}
+		DefaultCommaSeparatorTrimsSpaces struct {
+			V string `enum:"foo , bar , baz"`
+		}
+		DefaultSeperationWithSpaces struct {
+			V float32 `enum:"42.24  24.42"`
+		}
+		DefaultSeperationWithSpacesAndTrimmingRequired struct {
+			V string `enum:"foo  bar baz "`
+		}
+		ExplicitSpaceSeperation struct {
+			V string `enum:"foo bar baz "`
+		}
 	)
 
 	type Case struct {
 		V     any
 		IsErr bool
+		Test  func(t *testcase.T)
 	}
 	cases := map[string]Case{
+		"when the last character ends with a non-special character, and space is used to seperate the enum list": {
+			V:     DefaultSeperationWithSpaces{V: 24.42},
+			IsErr: false,
+		},
+
+		"when the last character ends with a non-special character, and space is used to seperate the enum list with extra spaces between and after": {
+			Test: func(t *testcase.T) {
+				field, _, ok := reflectkit.LookupField(reflect.ValueOf(DefaultSeperationWithSpacesAndTrimmingRequired{}), "V")
+				assert.True(t, ok, "incorrect test code!!!")
+
+				enums := slicekit.Map(enum.ReflectValues(field), reflect.Value.String)
+				t.LogPretty(enums)
+				assert.ContainExactly(t, enums, []string{"foo", "bar", "baz"})
+
+				assert.NoError(t, enum.Validate(DefaultSeperationWithSpacesAndTrimmingRequired{V: "foo"}))
+				assert.NoError(t, enum.Validate(DefaultSeperationWithSpacesAndTrimmingRequired{V: "bar"}))
+				assert.NoError(t, enum.Validate(DefaultSeperationWithSpacesAndTrimmingRequired{V: "baz"}))
+			},
+		},
+
+		"when the last character ends with a non-special character, and comma is used to seperate, then spaces are trimmed": {
+			Test: func(t *testcase.T) {
+				assert.NoError(t, enum.Validate(DefaultCommaSeparatorTrimsSpaces{V: "bar"}))
+
+				field, ok := reflectkit.TypeOf[DefaultCommaSeparatorTrimsSpaces]().FieldByName("V")
+				assert.True(t, ok, "test is inccorrect, please fix it")
+
+				enums, err := enum.ReflectValuesOfStructField(field)
+				assert.NoError(t, err)
+
+				strEnums := slicekit.Map(enums, reflect.Value.String)
+				assert.ContainExactly(t, []string{"foo", "bar", "baz"}, strEnums)
+			},
+		},
+
+		"when the last character ends with a non-special character, and space is used to seperate, then spaces are trimmed": {
+			Test: func(t *testcase.T) {
+				assert.NoError(t, enum.Validate(DefaultCommaSeparatorTrimsSpaces{V: "bar"}))
+			},
+		},
+
+		"when the last character explicitly is a space symbol": {
+			V:     ExplicitSpaceSeperation{V: "bar"},
+			IsErr: false,
+		},
+
 		"on non struct value type, validation fails": {
 			V:     "Hello, world!",
 			IsErr: true,
@@ -290,9 +352,18 @@ func TestValidateStruct_smoke(t *testing.T) {
 			V:     SliceExample{V: []string{"A", "foo"}},
 			IsErr: true,
 		},
+		"if comma used for enum value seperation, last comma can be ommited": {
+			V:     DefaultValueSeparatorDoesNotRequireLastComma{V: "bar"},
+			IsErr: false,
+		},
 	}
 
 	testcase.TableTest(t, cases, func(t *testcase.T, c Case) {
+		if c.Test != nil {
+			c.Test(t)
+			return
+		}
+
 		gotErr := enum.ValidateStruct(c.V)
 
 		if c.IsErr {
@@ -300,6 +371,7 @@ func TestValidateStruct_smoke(t *testing.T) {
 		} else {
 			t.Must.NoError(gotErr)
 		}
+
 	})
 
 	t.Run("test position", func(t *testing.T) {
