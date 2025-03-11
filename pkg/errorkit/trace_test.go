@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/runtimekit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
@@ -22,9 +23,9 @@ func ExampleWithTrace() {
 	// maybe we have some additional trace wrapping
 	err = fmt.Errorf("wrapping the erro: %w", err)
 
-	var traced errorkit.Traced
+	var traced errorkit.TracedError
 	_ = errors.As(err, &traced) // true
-	_ = traced.Trace            // stack trace
+	_ = traced.Stack            // stack trace
 }
 
 func TestWithTrace(t *testing.T) {
@@ -99,16 +100,16 @@ func TestWithTrace(t *testing.T) {
 			got := act(t)
 			assert.NotNil(t, got)
 
-			var traced errorkit.Traced
+			var traced errorkit.TracedError
 			assert.True(t, errors.As(got, &traced))
 			assert.NotNil(t, traced.Err)
-			assert.NotEmpty(t, traced.Trace)
+			assert.NotEmpty(t, traced.Stack)
 		})
 	})
 
 	s.When("input error alreay has a trace", func(s *testcase.Spec) {
-		tracedErr := testcase.Let(s, func(t *testcase.T) errorkit.Traced {
-			return errorkit.Traced{Err: t.Random.Error(), Trace: []errorkit.StackFrame{{Function: "foo"}}}
+		tracedErr := testcase.Let(s, func(t *testcase.T) errorkit.TracedError {
+			return errorkit.TracedError{Err: t.Random.Error(), Stack: []runtime.Frame{{Function: "foo"}}}
 		})
 
 		inputErr.Let(s, func(t *testcase.T) error {
@@ -122,7 +123,7 @@ func TestWithTrace(t *testing.T) {
 			got := act(t)
 			assert.NotNil(t, got)
 
-			var traced errorkit.Traced
+			var traced errorkit.TracedError
 			assert.True(t, errors.As(got, &traced))
 			assert.Equal(t, traced, tracedErr.Get(t))
 
@@ -137,7 +138,7 @@ func TestRegisterTraceException_smoke(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contain(t, err.Error(), t.Name())
 
-	undo := errorkit.RegisterTraceException(func(f runtime.Frame) bool {
+	undo := runtimekit.RegisterTraceException(func(f runtime.Frame) bool {
 		return strings.Contains(f.Function, t.Name())
 	})
 

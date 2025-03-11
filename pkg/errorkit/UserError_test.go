@@ -110,10 +110,10 @@ func TestUserError_traced(t *testing.T) {
 	const ErrBase errorkit.Error = "base error"
 
 	var assertTraced = func(t *testing.T, err error) {
-		var traced errorkit.Traced
+		var traced errorkit.TracedError
 		assert.True(t, errors.As(err, &traced))
 		assert.NotNil(t, traced.Err)
-		assert.NotEmpty(t, traced.Trace)
+		assert.NotEmpty(t, traced.Stack)
 	}
 
 	assertTraced(t, ErrBase.F("traced"))

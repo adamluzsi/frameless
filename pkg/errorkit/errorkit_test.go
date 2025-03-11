@@ -108,10 +108,10 @@ func TestError_traced(t *testing.T) {
 	const ErrBase errorkit.Error = "base error"
 
 	var assertTraced = func(t *testing.T, err error) {
-		var traced errorkit.Traced
+		var traced errorkit.TracedError
 		assert.True(t, errors.As(err, &traced))
 		assert.NotNil(t, traced.Err)
-		assert.NotEmpty(t, traced.Trace)
+		assert.NotEmpty(t, traced.Stack)
 	}
 
 	assertTraced(t, ErrBase.F("traced"))
@@ -808,5 +808,66 @@ func TestMergeErrFunc(t *testing.T) {
 		got := errorkit.MergeErrFunc(errFuncs...)
 		assert.NotNil(t, got)
 		assert.ErrorIs(t, got(), expErr)
+	})
+}
+
+func ExampleF() {
+	const ErrBoom errorkit.Error = "boom!"
+
+	err := errorkit.F("something went wrong: %w", ErrBoom)
+
+	if traced, ok := errorkit.As[errorkit.TracedError](err); ok {
+		fmt.Println(traced.Error())
+	}
+
+	fmt.Println(err.Error())
+}
+
+func TestF(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		format = testcase.LetValue(s, "foo bar baz : %s %d")
+		args   = testcase.Let(s, func(t *testcase.T) []any {
+			return []any{"foo", 42}
+		})
+	)
+	act := let.Act(func(t *testcase.T) error {
+		return errorkit.F(format.Get(t), args.Get(t)...)
+	})
+
+	s.Then("a non-nil, formatted error value is returned", func(t *testcase.T) {
+		err := act(t)
+
+		assert.Error(t, err)
+		message := fmt.Sprintf(format.Get(t), args.Get(t)...)
+		assert.Contain(t, err.Error(), message)
+	})
+
+	s.Then("the error has trace", func(t *testcase.T) {
+		err := act(t)
+
+		var trace errorkit.TracedError
+		assert.True(t, errors.As(err, &trace))
+		assert.NotEmpty(t, trace)
+		assert.Error(t, trace.Err)
+	})
+
+	s.When("format wraps another error", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+		format.LetValue(s, "error:%w")
+		args.Let(s, func(t *testcase.T) []any { return []any{expErr.Get(t)} })
+
+		s.Then("then the passed error's content is part of the result error's content", func(t *testcase.T) {
+			err := act(t)
+			assert.Error(t, err)
+			assert.Contain(t, err.Error(), fmt.Sprintf("error:%s", expErr.Get(t).Error()))
+		})
+
+		s.Then("the result error wraps the passed error", func(t *testcase.T) {
+			err := act(t)
+			assert.Error(t, err)
+			assert.ErrorIs(t, err, expErr.Get(t))
+		})
 	})
 }

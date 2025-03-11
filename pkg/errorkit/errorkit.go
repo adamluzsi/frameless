@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// F functions similarly to fmt.Errorf but includes tracing capabilities.
+// In the future, it may incorporate additional utilities from errorkit.
+func F(format string, a ...any) error {
+	return WithTrace(fmt.Errorf(format, a...))
+}
+
 // Error is an implementation for the error interface that allow you to declare exported globals with the `consttypes` keyword.
 //
 //	TL;DR:
