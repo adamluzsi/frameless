@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -1170,6 +1172,44 @@ func TestTagHandler_smoke(t *testing.T) {
 	v2 := T{V: "bar"}
 	assert.NoError(t, DefaultTag.HandleStruct(reflect.ValueOf(&v1).Elem()))
 	assert.Equal(t, v2.V, "bar")
+}
+
+func TestTagHandler_panicOnParseError(t *testing.T) {
+	var parseErr error
+	var useErr error
+
+	var tagH = reflectkit.TagHandler[any]{
+		Name: "mytag",
+		Parse: func(sf reflect.StructField, tagValue string) (any, error) {
+			return nil, parseErr
+		},
+		Use: func(sf reflect.StructField, field reflect.Value, v any) error {
+			return useErr
+		},
+
+		PanicOnParseError: true,
+	}
+
+	type T struct {
+		V string `mytag:"testing"`
+	}
+
+	rStruct := reflect.ValueOf(T{})
+	field, value, _ := reflectkit.LookupField(rStruct, "V")
+
+	useErr = rnd.Error()
+	assert.ErrorIs(t, tagH.HandleStruct(rStruct), useErr)
+	assert.ErrorIs(t, tagH.HandleStructField(field, value), useErr)
+
+	useErr = nil
+	assert.NoError(t, tagH.HandleStruct(rStruct))
+	assert.NoError(t, tagH.HandleStructField(field, value))
+
+	parseErr = rnd.Error()
+	got := assert.Panic(t, func() { tagH.HandleStruct(rStruct) })
+	assert.Equal[any](t, got, parseErr)
+	got = assert.Panic(t, func() { tagH.HandleStructField(field, value) })
+	assert.Equal[any](t, got, parseErr)
 }
 
 func TestTagHandler_HandleStruct(t *testing.T) {
@@ -2387,4 +2427,207 @@ func TestIsBuiltInType(t *testing.T) {
 		type mybyte byte
 		assert.False(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[mybyte]()))
 	})
+}
+
+func TestCompare(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		val = let.Var[reflect.Value](s, nil)
+		oth = let.Var[reflect.Value](s, nil)
+	)
+	act := let.Act2(func(t *testcase.T) (int, error) {
+		return reflectkit.Compare(val.Get(t), oth.Get(t))
+	})
+
+	s.Describe("int", SpecCompare[int](act, val, oth, LessNumber[int], MoreNumber[int]))
+	s.Describe("int8", SpecCompare[int8](act, val, oth, LessNumber[int8], MoreNumber[int8]))
+	s.Describe("int16", SpecCompare[int16](act, val, oth, LessNumber[int16], MoreNumber[int16]))
+	s.Describe("int32", SpecCompare[int32](act, val, oth, LessNumber[int32], MoreNumber[int32]))
+	s.Describe("int64", SpecCompare[int64](act, val, oth, LessNumber[int64], MoreNumber[int64]))
+
+	s.Describe("uint", SpecCompare[uint](act, val, oth, LessNumber[uint], MoreNumber[uint]))
+	s.Describe("uint8", SpecCompare[uint8](act, val, oth, LessNumber[uint8], MoreNumber[uint8]))
+	s.Describe("uint16", SpecCompare[uint16](act, val, oth, LessNumber[uint16], MoreNumber[uint16]))
+	s.Describe("uint32", SpecCompare[uint32](act, val, oth, LessNumber[uint32], MoreNumber[uint32]))
+	s.Describe("uint64", SpecCompare[uint64](act, val, oth, LessNumber[uint64], MoreNumber[uint64]))
+
+	s.Describe("float", func(s *testcase.Spec) {
+		fl32 := let.Var(s, func(t *testcase.T) float32 {
+			return t.Random.Float32()
+		})
+
+		fl64 := let.Var(s, func(t *testcase.T) float64 {
+			return t.Random.Float64()
+		})
+
+		s.Context("float32", SpecCompare[float32](act, val, oth,
+			func(t *testcase.T) float32 {
+				return fl32.Get(t) - 1.0
+			}, func(t *testcase.T) float32 {
+				return fl32.Get(t) + 1.0
+			}))
+
+		s.Context("float64", SpecCompare[float64](act, val, oth,
+			func(t *testcase.T) float64 {
+				return fl64.Get(t) - 1.0
+			}, func(t *testcase.T) float64 {
+				return fl64.Get(t) + 1.0
+			}))
+	})
+
+	s.Describe("time.Time", func(s *testcase.Spec) {
+		tme := let.Var(s, func(t *testcase.T) time.Time {
+			return t.Random.Time()
+		})
+
+		SpecCompare[time.Time](act, val, oth,
+			func(t *testcase.T) time.Time {
+				return tme.Get(t).Add(t.Random.DurationBetween(time.Second, time.Hour) * -1)
+			}, func(t *testcase.T) time.Time {
+				return tme.Get(t).Add(t.Random.DurationBetween(time.Second, time.Hour))
+			})(s)
+	})
+
+	s.Describe("string", func(s *testcase.Spec) {
+		length := let.IntB(s, 3, 7)
+
+		SpecCompare[string](act, val, oth,
+			func(t *testcase.T) string {
+				return t.Random.StringNWithCharset(length.Get(t), "abcdefghijklm")
+			},
+			func(t *testcase.T) string {
+				return t.Random.StringNWithCharset(length.Get(t), "nopqrstuvwxyz")
+			})(s)
+	})
+
+	s.When("values are not the same type", func(s *testcase.Spec) {
+		val.Let(s, func(t *testcase.T) reflect.Value {
+			return random.Pick(t.Random,
+				reflect.ValueOf(t.Random.Int()),
+				reflect.ValueOf(t.Random.Float32()),
+				reflect.ValueOf(t.Random.Float64()),
+			)
+		})
+
+		oth.Let(s, func(t *testcase.T) reflect.Value {
+			return random.Pick(t.Random,
+				reflect.ValueOf(t.Random.String()),
+				reflect.ValueOf(t.Random.Time()),
+			)
+		})
+
+		s.Then("it is expected to return a type mismatch error", func(t *testcase.T) {
+			_, err := act(t)
+
+			assert.ErrorIs(t, err, reflectkit.ErrTypeMismatch)
+		})
+	})
+
+	s.Describe("Comparable implementation", func(s *testcase.Spec) {
+		var _ reflectkit.Comparable[time.Time] = time.Time{}
+
+		tme := let.Var(s, func(t *testcase.T) time.Time {
+			return t.Random.Time()
+		})
+
+		SpecCompare[time.Time](act, val, oth,
+			func(t *testcase.T) time.Time {
+				return tme.Get(t).Add(t.Random.DurationBetween(time.Second, time.Hour) * -1)
+			}, func(t *testcase.T) time.Time {
+				return tme.Get(t).Add(t.Random.DurationBetween(time.Second, time.Hour))
+			})(s)
+	})
+
+	s.Describe("Cmp implementation", func(s *testcase.Spec) {
+		var _ reflectkit.CmpComparable[*big.Int] = (*big.Int)(nil)
+
+		ref := let.Var(s, func(t *testcase.T) int64 {
+			return int64(t.Random.Int())
+		})
+
+		SpecCompare[*big.Int](act, val, oth,
+			func(t *testcase.T) *big.Int {
+				bigInt := big.NewInt(ref.Get(t))
+				return bigInt.Sub(bigInt, big.NewInt(100))
+			}, func(t *testcase.T) *big.Int {
+				bigInt := big.NewInt(ref.Get(t))
+				return bigInt.Add(bigInt, big.NewInt(100))
+			})(s)
+	})
+
+	// s.When("value is uint", SpecCompare[uint](act, val, oth, func(t *testcase.T) uint {
+	// 	return uint(t.Random.IntBetween(0, 100))
+	// }, func(t *testcase.T) uint {
+	// 	return uint(t.Random.IntBetween(101, 200))
+	// }))
+}
+
+type number interface {
+	int | int8 | int16 | int32 | int64 |
+		uint | uint8 | uint16 | uint32 | uint64
+}
+
+func LessNumber[T number](t *testcase.T) T {
+	var min, max int8 // the smalest accepted number value type
+	min = 0
+	max = 4
+	return T(t.Random.IntBetween(int(min), int(max)))
+}
+
+func MoreNumber[T number](t *testcase.T) T {
+	var min, max int8 // the smalest accepted number value type
+	min = 5
+	max = 10
+	return T(t.Random.IntBetween(int(min), int(max)))
+}
+
+func SpecCompare[T any](act func(t *testcase.T) (int, error), val, oth testcase.Var[reflect.Value], less, more func(t *testcase.T) T) func(s *testcase.Spec) {
+	return func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			t.OnFail(func() {
+				t.LogPretty("val:", val.Get(t).Interface())
+				t.LogPretty("oth:", oth.Get(t).Interface())
+			})
+		})
+
+		var be = func(fn func(*testcase.T) T) func(*testcase.T) reflect.Value {
+			return func(t *testcase.T) reflect.Value {
+				return reflect.ValueOf(fn(t))
+			}
+		}
+
+		s.And("val is less than oth", func(s *testcase.Spec) {
+			val.Let(s, be(less))
+			oth.Let(s, be(more))
+
+			s.Then("vall is reported as less compared to oth", func(t *testcase.T) {
+				c, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, c, -1)
+			})
+		})
+
+		s.And("val is eq than oth", func(s *testcase.Spec) {
+			val.Let(s, be(less))
+			oth.Let(s, val.Get)
+
+			s.Then("vall is reported as eq compared to oth", func(t *testcase.T) {
+				c, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, c, 0)
+			})
+		})
+
+		s.And("val is more than oth", func(s *testcase.Spec) {
+			val.Let(s, be(more))
+			oth.Let(s, be(less))
+
+			s.Then("val is reported as more compared to oth", func(t *testcase.T) {
+				c, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, c, 1)
+			})
+		})
+	}
 }

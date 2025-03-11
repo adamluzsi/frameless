@@ -2,10 +2,10 @@ package validate
 
 import "go.llib.dev/frameless/pkg/errorkit"
 
-// ValidationError is a validation error, that represents an incorrect content.
-type ValidationError struct{ Cause error }
+// Error is a validation error, that represents an incorrect content.
+type Error struct{ Cause error }
 
-func (err ValidationError) Error() string {
+func (err Error) Error() string {
 	var msg = "[ValidationError]"
 	if err.Cause != nil {
 		msg += ": " + err.Cause.Error()
@@ -13,7 +13,7 @@ func (err ValidationError) Error() string {
 	return msg
 }
 
-func (err ValidationError) Unwrap() error {
+func (err Error) Unwrap() error {
 	return err.Cause
 }
 
