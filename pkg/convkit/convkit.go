@@ -74,6 +74,7 @@ var (
 	typeTime   = reflectkit.TypeOf[time.Time]()
 	typeString = reflectkit.TypeOf[string]()
 	typeInt    = reflectkit.TypeOf[int]()
+	typeUint64 = reflectkit.TypeOf[uint64]()
 )
 
 const missingTimeLayoutErrMsg = `missing TimeLayout ParseOption`
@@ -108,6 +109,13 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 	switch typ.Kind() {
 	case reflect.String:
 		return reflect.ValueOf(val).Convert(typ), nil
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		num, err := strconv.ParseUint(val, 10, 64)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		return reflect.ValueOf(num).Convert(typ), nil
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		num, err := strconv.ParseInt(val, 10, 64)
@@ -336,13 +344,16 @@ func format(val reflect.Value, opts Options) (string, error) {
 	}
 	if val.Type() == typeTime {
 		if opts.TimeLayout == "" {
-			return "", fmt.Errorf(missingTimeLayoutErrMsg)
+			return "", fmt.Errorf("%s", missingTimeLayoutErrMsg)
 		}
 		return val.Interface().(time.Time).Format(opts.TimeLayout), nil
 	}
 	switch val.Kind() {
 	case reflect.String:
 		return val.Convert(typeString).String(), nil
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(val.Convert(typeUint64).Interface().(uint64), 10), nil
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return strconv.Itoa(val.Convert(typeInt).Interface().(int)), nil

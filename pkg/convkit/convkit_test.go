@@ -54,6 +54,10 @@ func Test_smoke(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "forty-two", gotstrval)
 
+	gotstrval, err = convkit.Format[uint](42)
+	assert.NoError(t, err)
+	assert.Equal(t, "42", gotstrval)
+
 	_, err = convkit.Parse[int](foo)
 	assert.Error(t, err)
 
@@ -414,6 +418,11 @@ func TestParseReflect_smoke(t *testing.T) {
 		quux, convkit.Options{TimeLayout: layout})
 	assert.NoError(t, err)
 	assert.True(t, timeval.Interface().(time.Time).Equal(refTime))
+
+	uintval, err := convkit.ParseReflect(reflectkit.TypeOf[uint](), "42")
+	assert.NoError(t, err)
+	assert.Equal(t, reflect.Uint, uintval.Kind())
+	assert.Equal(t, 42, uintval.Uint())
 }
 
 func TestOptions_jsonAsPaseFunc(t *testing.T) {
