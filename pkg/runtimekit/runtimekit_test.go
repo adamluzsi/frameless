@@ -1,6 +1,7 @@
 package runtimekit_test
 
 import (
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -8,7 +9,9 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/runtimekit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 )
 
 func TestArchBitSize(t *testing.T) {
@@ -33,7 +36,7 @@ func TestRegisterTraceException(t *testing.T) {
 		assert.Contain(t, got.Function, t.Name())
 	})
 
-	undo := runtimekit.RegisterTraceException(func(f runtime.Frame) bool {
+	undo := runtimekit.RegisterFrameException(func(f runtime.Frame) bool {
 		return strings.Contains(f.Function, t.Name())
 	})
 
@@ -61,4 +64,19 @@ func TestStack(t *testing.T) {
 	assert.NoneOf(t, stack, func(t assert.It, frame runtime.Frame) {
 		assert.Contain(t, frame.File, "runtimekit.go")
 	}, "expected that runtimekit itself is not in the stack trace")
+
+	frameHelperFunc(func() {
+		stack = runtimekit.Stack()
+	})
+
+	pp.PP(runtime.FuncForPC(reflect.ValueOf(frameHelperFunc).Pointer()).Name())
+	pp.PP(slicekit.Map(stack, func(f runtime.Frame) string { return f.Function }))
+
+}
+
+func frameHelperFunc(blk func()) { blk() }
+
+func TestToFunc(t *testing.T) {
+
+	pp.PP(runtime.FuncForPC(reflect.ValueOf(frameHelperFunc).Pointer()).Name())
 }

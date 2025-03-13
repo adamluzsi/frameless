@@ -1,9 +1,11 @@
 package runtimekit
 
 import (
+	"fmt"
+	"iter"
+	"math"
+	"reflect"
 	"runtime"
-	"strings"
-	"sync/atomic"
 	"unsafe"
 )
 
@@ -31,49 +33,59 @@ func ArchBitSize() int {
 	return int(sizeOfPointer * 8)
 }
 
-var exceptionsIndex int64
-var exceptions = map[int64]func(runtime.Frame) bool{}
+func OverStack() iter.Seq[runtime.Frame] {
+	return func(yield func(runtime.Frame) bool) {
+		var (
+			programCounters []uintptr
+			size            int
+			nCallers        int
+		)
 
-func RegisterTraceException(isException func(runtime.Frame) bool) func() {
-	var index int64
-	for range 1024 {
-		index = atomic.AddInt64(&exceptionsIndex, 1)
-		if _, ok := exceptions[index]; !ok {
-			break
-		}
-	}
-	if _, ok := exceptions[index]; ok {
-		panic("errorkit trace expection list is probably full")
-	}
-	exceptions[index] = isException
-	return func() { delete(exceptions, index) }
-}
+		// Dynamically expand the buffer until it can hold all callers.
+		for i := 0; ; i++ {
+			size = int(math.Pow(2, float64(i)))
+			programCounters = make([]uintptr, size)
+			nCallers = runtime.Callers(1 /* skip this frame */, programCounters)
 
-var _ = RegisterTraceException(func(f runtime.Frame) bool {
-	return strings.Contains(f.Function, "runtimekit.") ||
-		strings.Contains(f.Function, "runtime.") ||
-		strings.Contains(f.Function, "testing.")
-})
-
-func Stack() []runtime.Frame {
-	programCounters := make([]uintptr, 1024)
-	n_callers := runtime.Callers(1, programCounters)
-	frames := runtime.CallersFrames(programCounters[:n_callers])
-	var vs []runtime.Frame
-
-tracing:
-	for more := true; more; {
-		var frame runtime.Frame
-		frame, more = frames.Next()
-
-		for _, exception := range exceptions {
-			if exception(frame) {
-				continue tracing
+			if nCallers < len(programCounters) {
+				break // The buffer is sufficiently large
 			}
 		}
 
-		vs = append(vs, frame)
-	}
+		framesIter := runtime.CallersFrames(programCounters[:nCallers])
 
-	return vs
+	tracing:
+		for {
+			frame, more := framesIter.Next()
+			if !more {
+				break tracing
+			}
+			if isException(frame) {
+				continue
+			}
+			if !yield(frame) {
+				break tracing
+			}
+		}
+	}
+}
+
+func Stack() []runtime.Frame {
+	var stack []runtime.Frame
+	for frame := range OverStack() {
+		stack = append(stack, frame)
+	}
+	return stack
+}
+
+func Func(fn any) *runtime.Func {
+	if fn == nil {
+		return nil
+	}
+	v := reflect.ValueOf(fn)
+	if v.Kind() != reflect.Func {
+		panic(fmt.Sprintf("non-function kind: %s", v.Kind()))
+	}
+	pc := uintptr(v.UnsafePointer())
+	return runtime.FuncForPC(pc)
 }
