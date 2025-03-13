@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/runtimekit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 )
@@ -25,6 +26,13 @@ var (
 	registry = make(map[reflect.Type][]any)
 	regLock  sync.RWMutex
 )
+
+func lookupEnumerators(typ reflect.Type) ([]any, bool) {
+	regLock.RLock()
+	defer regLock.RUnlock()
+	enumerators, ok := registry[typ]
+	return enumerators, ok
+}
 
 func Register[T any](enums ...T) (unregister func()) {
 	regLock.Lock()
@@ -50,24 +58,28 @@ func Register[T any](enums ...T) (unregister func()) {
 }
 
 func Values[T any]() []T {
-	regLock.Lock()
-	defer regLock.Unlock()
 	var out []T
-	if vs, ok := registry[reflectkit.TypeOf[T]()]; ok {
-		for _, v := range vs {
-			out = append(out, v.(T))
+	enumerators, ok := lookupEnumerators(reflectkit.TypeOf[T]())
+	if !ok {
+		return out
+	}
+	for _, v := range enumerators {
+		o, ok := v.(T)
+		if ok {
+			out = append(out, o)
 		}
 	}
 	return out
 }
 
-func ReflectValues(typ any) []reflect.Value {
-	switch typ := typ.(type) {
+// ReflectValues will return the enumerables for
+// - reflect.Type        -> the type specific values
+// - reflect.StructField -> the struct field type specific values
+func ReflectValues(reflectTypeOrStructType any) []reflect.Value {
+	switch T := reflectTypeOrStructType.(type) {
 	case reflect.Type:
-		regLock.Lock()
-		defer regLock.Unlock()
 		var out []reflect.Value
-		if vs, ok := registry[typ]; ok {
+		if vs, ok := lookupEnumerators(T); ok {
 			for _, v := range vs {
 				out = append(out, reflect.ValueOf(v))
 			}
@@ -75,34 +87,46 @@ func ReflectValues(typ any) []reflect.Value {
 		return out
 
 	case reflect.StructField:
-		if tag, ok := typ.Tag.Lookup(structTagName); ok {
-			// TODO: use valuesForTag(), but only for non mutable enumerator values
-			enumerators, err := parseTag(typ.Type, tag)
-			if err == nil {
-				return enumerators
+		if !reflectkit.IsMutableType(T.Type) {
+			vs, ok, err := valuesForTag(T)
+			if err == nil && ok {
+				// to avoid the external modification of the enum list
+				return slicekit.Clone(vs)
 			}
 		}
-		return ReflectValues(typ.Type)
+		if tag, ok := T.Tag.Lookup(enumTagName); ok {
+			if reflectkit.IsMutableType(T.Type) {
+				enumerators, err := parseTag(T.Type, tag)
+				if err == nil {
+					return enumerators
+				}
+			}
+
+		}
+		return ReflectValues(T.Type)
 
 	default:
-		panic(fmt.Sprintf("implementation error, incorrect value type for enum.ReflectValues: %T", typ))
+		const format = "implementation error, incorrect value type for enum.ReflectValues.\nprovide either a reflect.StructType or a reflect.Type.\nGot: %T"
+		panic(fmt.Sprintf(format, T))
 	}
 }
 
+// Deprecate: use ReflectValues instead
 func ReflectValuesOfStructField(field reflect.StructField) ([]reflect.Value, error) {
-	if tag, ok := field.Tag.Lookup(structTagName); ok {
+	if tag, ok := field.Tag.Lookup(enumTagName); ok {
 		return parseTag(field.Type, tag)
 	}
 	return ReflectValues(field.Type), nil
 }
 
 // Validate will check if the given value is a registered enum member.
+// It is not a recursive operation, only check the given value.
 func Validate[T any](v T) error {
-	return validate(reflectkit.TypeOf[T](v), reflect.ValueOf(v))
+	return ReflectValidate(reflect.ValueOf(v), ReflectType(reflectkit.TypeOf[T](v)))
 }
 
 func ValidateStruct(v any) error {
-	rv := reflect.ValueOf(v)
+	rv := reflectkit.ToValue(v)
 	if rv.Kind() != reflect.Struct {
 		return interr.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
@@ -114,21 +138,21 @@ func ValidateStruct(v any) error {
 	return nil
 }
 
-func ValidateStructField(sf reflect.StructField, field reflect.Value) error {
+func ValidateStructField(field reflect.StructField, value reflect.Value) error {
 	{
-		enumerators, hasTag, err := valuesForTag(sf)
+		enumerators, hasTag, err := valuesForTag(field)
 		if err != nil {
 			return ImplementationError.Wrap(err)
 		}
 		if hasTag {
-			if !matchStructField(enumerators, field) {
-				return ErrInvalid.F(".%v=%v does not match enumerator specification", sf.Name, field.Interface())
+			if !matchStructField(enumerators, value) {
+				return ErrInvalid.F(".%v=%v does not match enumerator specification", field.Name, value.Interface())
 			}
 			return nil
 		}
 	}
-	if field.CanInterface() {
-		if err := validate(sf.Type, field); err != nil {
+	if value.CanInterface() {
+		if err := ReflectValidate(value, ReflectType(field.Type)); err != nil {
 			return err
 		}
 	}
@@ -145,7 +169,7 @@ type tagIDStructField struct {
 }
 
 func valuesForTag(field reflect.StructField) (_ []reflect.Value, _ bool, rErr error) {
-	tag, ok := field.Tag.Lookup(structTagName)
+	tag, ok := field.Tag.Lookup(enumTagName)
 	if !ok {
 		return nil, false, nil
 	}
@@ -165,7 +189,7 @@ func valuesForTag(field reflect.StructField) (_ []reflect.Value, _ bool, rErr er
 	}), true, nil
 }
 
-const structTagName = "enum"
+const enumTagName = "enum"
 
 // var enumTag = reflectkit.TagHandler[[]reflect.Value]{
 // 	Name: "enum",
@@ -338,23 +362,34 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 	return out, nil
 }
 
-// validate
-func validate(typ reflect.Type, v reflect.Value) error {
-	regLock.RLock()
-	defer regLock.RUnlock()
+// ReflectValidate checks whether a given value exists within its predefined set of valid enum options.
+// If the given type has no enum constraint, error is never exepcted.
+func ReflectValidate(value any, opts ...Option) error {
+	c := option.Use(opts)
+	v := reflectkit.ToValue(value)
+	T := c.CorrelateType(v)
 
-	if typ.Kind() == reflect.Pointer {
+	if !v.IsValid() {
+		return nil
+	}
+
+	if reflectkit.IsNil(v) &&
+		reflectkit.IsNilable(T.Kind()) {
+		return nil
+	}
+
+	if T.Kind() == reflect.Pointer {
 		if reflectkit.IsNil(v) {
 			return nil
 		}
-		if !v.CanConvert(typ) {
+		if !v.CanConvert(T) {
 			panic(fmt.Sprintf("%#v is not compatible with %s type",
-				v.Interface(), typ.String()))
+				v.Interface(), T.String()))
 		}
-		return validate(typ.Elem(), v.Elem())
+		return ReflectValidate(v.Elem(), ReflectType(T.Elem()))
 	}
 
-	enums, ok := registry[typ]
+	enums, ok := lookupEnumerators(T)
 	if !ok {
 		return nil
 	}
@@ -369,4 +404,40 @@ func validateEnumerators(enums []any, v any) error {
 		}
 	}
 	return fmt.Errorf("%w\nvalue: %#v\nenumerators: %v", ErrInvalid, v, enums)
+}
+
+// Type allows you to inject the expected enum type for the enum validation.
+func Type[T any]() Option {
+	return option.Func[config](func(c *config) {
+		c.Type = reflectkit.TypeOf[T]()
+	})
+}
+
+// ReflectType allows you to inject the expected enum type as a reflect.Type
+func ReflectType(T reflect.Type) Option {
+	return option.Func[config](func(c *config) {
+		c.Type = T
+	})
+}
+
+type Option option.Option[config]
+
+type config struct {
+	Type reflect.Type
+}
+
+var anyType = reflectkit.TypeOf[any]()
+
+func (c *config) CorrelateType(value reflect.Value) reflect.Type {
+	var T = c.Type
+	if T == anyType { // we don't consider `any` as a valid enum type
+		T = nil
+	}
+	if T != nil {
+		return T
+	}
+	if value.IsValid() {
+		return value.Type()
+	}
+	return nil
 }
