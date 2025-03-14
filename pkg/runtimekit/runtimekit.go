@@ -6,6 +6,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"strings"
 	"unsafe"
 )
 
@@ -78,7 +79,12 @@ func Stack() []runtime.Frame {
 	return stack
 }
 
-func Func(fn any) *runtime.Func {
+// FuncOf returns the runtime function metadata for the given function.
+//
+// It takes any func type value as input and attempts to resolve it to a runtime.Func.
+// If the input is not a function, it panics.
+// If the input is nil, it returns nil.
+func FuncOf(fn any) *runtime.Func {
 	if fn == nil {
 		return nil
 	}
@@ -88,4 +94,71 @@ func Func(fn any) *runtime.Func {
 	}
 	pc := uintptr(v.UnsafePointer())
 	return runtime.FuncForPC(pc)
+}
+
+// FuncInfo is the information of a function type.
+//
+// IT's naming is based on the go language spec's terminology.
+// https://go.dev/ref/spec#Function_types
+type FuncInfo struct {
+	// ID is the function's identifier
+	ID string
+	// Receiver is the type's identifier in case of a method.
+	Receiver string
+	// Package is the name of the package where the function is declared.
+	Package string
+	// Import is the import path of the function's package.
+	// Import includes the package name as well
+	Import string
+	// IsMethodValue indicates if the function is a method value.
+	//
+	// In Go, methods are functions associated with a specific type and require
+	// a receiver (instance) to be called. When a method is assigned to a function
+	// variable (e.g., `m.MyMethod`), Go creates a *method value* — a closure function
+	// that "remembers" the receiver and can be invoked like a regular function.
+	//
+	// https://go.dev/ref/spec#Method_values
+	IsMethodValue bool
+}
+
+func FuncInfoOf(fn *runtime.Func) FuncInfo {
+	const ImportPathSeperator = "/"
+	var info FuncInfo
+	if fn == nil {
+		return info
+	}
+	var (
+		ids                  []string // [ package name ] | [ receiver type ] [ function name ]
+		funcName             = fn.Name()
+		indexOfLastSeperator = strings.LastIndex(funcName, ImportPathSeperator)
+	)
+	if 0 <= indexOfLastSeperator { // non top level package
+		identifiers := funcName[indexOfLastSeperator+1:]
+		ids = strings.Split(identifiers, ".")
+
+		info.Import = funcName[:indexOfLastSeperator+1] + ids[0]
+	} else { // top level stdlib
+		ids = strings.Split(funcName, ".")
+		info.Import = ids[0]
+	}
+	switch {
+	case len(ids) == 2:
+		info.Package = ids[0]
+		info.ID = ids[1]
+	case len(ids) == 3:
+		info.Package = ids[0]
+		info.ID = ids[2]
+		receiver := ids[1]
+		receiver = strings.TrimPrefix(receiver, "(")
+		receiver = strings.TrimSuffix(receiver, ")")
+		info.Receiver = receiver
+	}
+
+	const MethodValueSuffix = "-fm"
+	if strings.HasSuffix(info.ID, MethodValueSuffix) {
+		info.IsMethodValue = true
+		info.ID = strings.TrimSuffix(info.ID, MethodValueSuffix)
+	}
+
+	return info
 }
