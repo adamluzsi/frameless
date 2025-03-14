@@ -139,13 +139,25 @@ func IsZero(val reflect.Value) bool {
 	}
 }
 
+var nilables = map[reflect.Kind]struct{}{
+	reflect.Slice:     {},
+	reflect.Map:       {},
+	reflect.Pointer:   {},
+	reflect.Interface: {},
+	reflect.Chan:      {},
+	reflect.Func:      {},
+}
+
+func IsNilableKind(kind reflect.Kind) bool {
+	_, ok := nilables[kind]
+	return ok
+}
+
 func IsNil(val reflect.Value) bool {
-	switch val.Kind() {
-	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func:
-		return val.IsNil()
-	default:
+	if !IsNilableKind(val.Kind()) {
 		return false
 	}
+	return val.IsNil()
 }
 
 // Link will make destination interface be linked with the src value.

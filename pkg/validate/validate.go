@@ -12,19 +12,12 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/option"
+	"go.llib.dev/testcase/pp"
 )
 
 type Validator interface {
 	Validate() error
-	// Validate(context.Context) error
 }
-
-// Super will validate a value but ignores if the Validator interface is implemented.
-// func Super(v any) error {
-// 	return Value(v, option.Func[config](func(c *config) {
-// 		c.WithoutValidator = true
-// 	}))
-// }
 
 var interfaceValidator = reflectkit.TypeOf[Validator]()
 
@@ -60,12 +53,13 @@ func Struct(v any, opts ...Option) error {
 	}
 
 	var (
-		T   = rv.Type()
-		num = T.NumField()
+		T      = rv.Type()
+		num    = T.NumField()
+		fieldC = c
 	)
-
+	fieldC.SkipValidate = false
 	for i := 0; i < num; i++ {
-		if err := StructField(T.Field(i), rv.Field(i), c); err != nil {
+		if err := StructField(T.Field(i), rv.Field(i), fieldC); err != nil {
 			return err
 		}
 	}
@@ -83,6 +77,9 @@ func StructField(sf reflect.StructField, field reflect.Value, opts ...Option) er
 		return Error{Cause: err}
 	}
 
+	pp.PP(field.Interface(), field.Type().String())
+	// opts = append(opts, skipEnum)
+
 	if err := rangeTag.HandleStructField(sf, field); err != nil {
 		return Error{Cause: err}
 	}
@@ -91,23 +88,42 @@ func StructField(sf reflect.StructField, field reflect.Value, opts ...Option) er
 		return Error{Cause: err}
 	}
 
-	if err := tryValidatorValidate(field, option.Use(opts)); err != nil {
-		return err
-	}
-
-	return nil
+	return Value(field, opts...)
 }
 
 type Option option.Option[config]
 
 type config struct {
-	WithoutValidator bool
+	Path []string
+
+	SkipValidate bool
+	SkipEnum     bool
+}
+
+func (c config) Sub(path string) config {
+	return config{Path: append(slicekit.Clone(c.Path), path)}
 }
 
 func (c config) Configure(t *config) { *t = c }
 
+const SkipValidate copt = 1
+const skipEnum copt = 2
+
+type copt int
+
+func (n copt) Configure(c *config) {
+	switch n {
+	case 1:
+		c.SkipValidate = true
+	case 2:
+		c.SkipEnum = true
+	default:
+		panic("not-implemented")
+	}
+}
+
 func tryValidatorValidate(rv reflect.Value, c config) error {
-	if c.WithoutValidator {
+	if c.SkipValidate {
 		return nil
 	}
 	if !rv.Type().Implements(interfaceValidator) {

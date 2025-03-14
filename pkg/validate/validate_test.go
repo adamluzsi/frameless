@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/testcase"
@@ -17,18 +18,26 @@ import (
 
 var rnd = random.New(random.CryptoSeed{})
 
-type StringTypeThatImplementsValidator string
+type StringValidatorStub string
 
-func (v StringTypeThatImplementsValidator) Validate() error {
-	if len(v) == 0 {
-		return fmt.Errorf("empty value is not allowed")
+func (v StringValidatorStub) Validate() error {
+	if v == "invalid" {
+		return fmt.Errorf("'invalid' is an invalid value")
 	}
 	return nil
 }
 
+type StructValidatorStub struct {
+	ValidateError error
+}
+
+func (v StructValidatorStub) Validate() error {
+	return v.ValidateError
+}
+
 func TestValue_useValidatorInterface(t *testing.T) {
 	t.Run("only validator", func(t *testing.T) {
-		var v StringTypeThatImplementsValidator = "42"
+		var v StringValidatorStub = "42"
 		assert.NoError(t, validate.Value(v))
 	})
 	t.Run("combination", func(t *testing.T) {
@@ -54,7 +63,7 @@ func TestValue_useValidatorInterface(t *testing.T) {
 		})
 	})
 	t.Run("rainy", func(t *testing.T) {
-		var v StringTypeThatImplementsValidator
+		var v StringValidatorStub = "invalid"
 		got := validate.Value(v)
 		assert.Error(t, got)
 		var verr validate.Error
@@ -180,6 +189,41 @@ func TestStructField_enum(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	})
+
+	t.Run("struct field enum values are validated", func(t *testing.T) {
+		type E string
+		defer enum.Register[E]("foo", "bar", "baz")()
+
+		type T struct {
+			V E
+		}
+
+		okVal := random.Pick(rnd, enum.Values[E]()...)
+		assert.NoError(t, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: okVal}), "V"))))
+
+		err := validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "hello"}), "V")))
+		assert.ErrorIs(t, err, enum.ErrInvalid)
+		var verr validate.Error
+		assert.True(t, errors.As(err, &verr))
+		assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
+	})
+
+	t.Run("tag validation takes priority over actual enum value", func(t *testing.T) {
+		type E string
+		defer enum.Register[E]("foo", "bar", "baz")()
+
+		type T struct {
+			V E `enum:"hello world"`
+		}
+
+		assert.NoError(t, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "hello"}), "V"))))
+
+		err := validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "foo"}), "V")))
+		assert.ErrorIs(t, err, enum.ErrInvalid)
+		var verr validate.Error
+		assert.True(t, errors.As(err, &verr))
+		assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
+	})
 }
 
 func TestStruct_enum(t *testing.T) {
@@ -282,6 +326,19 @@ func TestStruct_useValidatorInterface(t *testing.T) {
 		}
 		assert.ErrorIs(t, validate.Struct(v), expErr)
 	})
+}
+
+func TestStructField_struct(t *testing.T) {
+	type T struct {
+		V StructValidatorStub
+	}
+
+	var v T
+	assert.NoError(t, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(v), "V"))))
+
+	expErr := rnd.Error()
+	v.V.ValidateError = expErr
+	assert.ErrorIs(t, expErr, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(v), "V"))))
 }
 
 func TestStructField_useValidatorInterface(t *testing.T) {
@@ -705,5 +762,40 @@ func Test_char(t *testing.T) {
 		}
 
 		assert.Panic(t, func() { validate.Value(NonSingleCharMax{}) })
+	})
+}
+
+type SkipValidateStruct struct {
+	ValidateErr error
+}
+
+func (v SkipValidateStruct) Validate() error {
+	return v.ValidateErr
+}
+
+func TestSkipValidate(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("skip validate will make the validation call to be skipped on the given value itself", func(t *testcase.T) {
+		val := SkipValidateStruct{ValidateErr: t.Random.Error()}
+		assert.NoError(t, validate.Value(val, validate.SkipValidate))
+		assert.NoError(t, validate.Struct(val, validate.SkipValidate))
+
+		type T struct{ V StructValidatorStub }
+		field, value := must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: StructValidatorStub{ValidateError: t.Random.Error()}}), "V"))
+		assert.NoError(t, validate.StructField(field, value, validate.SkipValidate))
+	})
+
+	s.Test("skip validate won't make the validation call to be skipped on fields of a struct value", func(t *testcase.T) {
+		type T struct{ V SkipValidateStruct }
+		expErr := t.Random.Error()
+
+		val := T{V: SkipValidateStruct{ValidateErr: expErr}}
+		assert.ErrorIs(t, expErr, validate.Value(val, validate.SkipValidate))
+		assert.ErrorIs(t, expErr, validate.Struct(val, validate.SkipValidate))
+
+		type TT struct{ V T }
+		field, value := must.OK2(reflectkit.LookupField(reflect.ValueOf(TT{V: val}), "V"))
+		assert.ErrorIs(t, expErr, validate.StructField(field, value, validate.SkipValidate))
 	})
 }

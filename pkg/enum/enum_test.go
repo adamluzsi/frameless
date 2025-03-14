@@ -581,6 +581,63 @@ func TestValidate(t *testing.T) {
 	})
 }
 
+func TestReflectValidate(t *testing.T) {
+	type T string
+	const (
+		V1 T = "C1"
+		V2 T = "C2"
+		V3 T = "C3"
+	)
+	defer enum.Register[T](V1, V2, V3)()
+
+	t.Run("when value is an enumerator", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(V1)))
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(V2)))
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(V3)))
+	})
+
+	t.Run("when value is not a valid enumerator", func(t *testing.T) {
+		assert.Error(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(T("C42"))))
+	})
+
+	t.Run("when value is a valid enum wrapped in an interface", func(t *testing.T) {
+		var v any = V2
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[any](), v))
+	})
+
+	t.Run("when value is nil", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[any](), nil))
+	})
+
+	t.Run("when value is a pointer to an enum member then no error is expected", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[*T](), pointer.Of(V1)))
+	})
+
+	t.Run("when type is nil, value's type is used", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(nil, V1))
+		assert.ErrorIs(t, enum.ReflectValidate(nil, T("C4")), enum.ErrInvalid)
+	})
+
+	t.Run("when pointer of interface type is passed, with a valid enum member value", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[*any](), pointer.Of[any](V1)))
+	})
+
+	t.Run("when value is a pointer to not an enum member", func(t *testing.T) {
+		var v *T
+		v = pointer.Of[T]("C42")
+		assert.Error(t, enum.ReflectValidate(reflectkit.TypeOf[*T](), v))
+	})
+
+	t.Run("when value is a nil pointer of an enum type then no error is expected", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[*T](), nil))
+	})
+
+	t.Run("when type argument is any but the value's type has registered enum", func(t *testing.T) {
+		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[any](), V1))
+		assert.Error(t, enum.ReflectValidate(reflectkit.TypeOf[any](), T("C42")))
+	})
+}
+
 func TestReflectValuesOfStructField(t *testing.T) {
 	t.Run("no enum", func(t *testing.T) {
 		type X struct {

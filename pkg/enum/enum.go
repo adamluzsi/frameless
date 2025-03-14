@@ -98,7 +98,7 @@ func ReflectValuesOfStructField(field reflect.StructField) ([]reflect.Value, err
 
 // Validate will check if the given value is a registered enum member.
 func Validate[T any](v T) error {
-	return validate(reflectkit.TypeOf[T](v), reflect.ValueOf(v))
+	return ReflectValidate(reflectkit.TypeOf[T](v), reflect.ValueOf(v))
 }
 
 func ValidateStruct(v any) error {
@@ -114,21 +114,21 @@ func ValidateStruct(v any) error {
 	return nil
 }
 
-func ValidateStructField(sf reflect.StructField, field reflect.Value) error {
+func ValidateStructField(field reflect.StructField, value reflect.Value) error {
 	{
-		enumerators, hasTag, err := valuesForTag(sf)
+		enumerators, hasTag, err := valuesForTag(field)
 		if err != nil {
 			return ImplementationError.Wrap(err)
 		}
 		if hasTag {
-			if !matchStructField(enumerators, field) {
-				return ErrInvalid.F(".%v=%v does not match enumerator specification", sf.Name, field.Interface())
+			if !matchStructField(enumerators, value) {
+				return ErrInvalid.F(".%v=%v does not match enumerator specification", field.Name, value.Interface())
 			}
 			return nil
 		}
 	}
-	if field.CanInterface() {
-		if err := validate(sf.Type, field); err != nil {
+	if value.CanInterface() {
+		if err := ReflectValidate(field.Type, value); err != nil {
 			return err
 		}
 	}
@@ -338,10 +338,19 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 	return out, nil
 }
 
-// validate
-func validate(typ reflect.Type, v reflect.Value) error {
+func ReflectValidate(typ reflect.Type, value any) error {
 	regLock.RLock()
 	defer regLock.RUnlock()
+
+	v := reflectkit.ToValue(value)
+
+	if reflectkit.IsNil(v) && typ != nil && reflectkit.IsNilableKind(typ.Kind()) {
+		return nil
+	}
+
+	if typ == nil {
+		typ = v.Type()
+	}
 
 	if typ.Kind() == reflect.Pointer {
 		if reflectkit.IsNil(v) {
@@ -351,7 +360,7 @@ func validate(typ reflect.Type, v reflect.Value) error {
 			panic(fmt.Sprintf("%#v is not compatible with %s type",
 				v.Interface(), typ.String()))
 		}
-		return validate(typ.Elem(), v.Elem())
+		return ReflectValidate(typ.Elem(), v.Elem())
 	}
 
 	enums, ok := registry[typ]
