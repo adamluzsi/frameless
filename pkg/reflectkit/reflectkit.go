@@ -100,6 +100,9 @@ func SymbolicName(v any) string {
 func FullyQualifiedName(v any) string {
 	typ, depth := baseType(v)
 	var name = typ.Name()
+	if len(name) == 0 {
+		name = typ.String()
+	}
 	if pkgPath := typ.PkgPath(); pkgPath != "" {
 		name = fmt.Sprintf("%q.%s", pkgPath, name)
 	}
@@ -139,13 +142,33 @@ func IsZero(val reflect.Value) bool {
 	}
 }
 
-func IsNil(val reflect.Value) bool {
-	switch val.Kind() {
-	case reflect.Slice, reflect.Map, reflect.Pointer, reflect.Interface, reflect.Chan, reflect.Func:
-		return val.IsNil()
+var nilables = map[reflect.Kind]struct{}{
+	reflect.Slice:     {},
+	reflect.Map:       {},
+	reflect.Pointer:   {},
+	reflect.Interface: {},
+	reflect.Chan:      {},
+	reflect.Func:      {},
+}
+
+func IsNilable[T reflect.Kind | reflect.Value](v T) bool {
+	switch v := any(v).(type) {
+	case reflect.Kind:
+		_, ok := nilables[v]
+		return ok
+	case reflect.Value:
+		_, ok := nilables[v.Kind()]
+		return ok
 	default:
+		panic("not-implemented")
+	}
+}
+
+func IsNil(val reflect.Value) bool {
+	if !IsNilable(val) {
 		return false
 	}
+	return val.IsNil()
 }
 
 // Link will make destination interface be linked with the src value.
@@ -189,6 +212,17 @@ func TypeOf[T any](i ...T) reflect.Type {
 		}
 	}
 	return typ
+}
+
+func ToType(T any) reflect.Type {
+	switch T := T.(type) {
+	case reflect.Type:
+		return T
+	case reflect.Value:
+		return T.Type()
+	default:
+		return reflect.TypeOf(T)
+	}
 }
 
 func ToValue(v any) reflect.Value {
@@ -259,6 +293,8 @@ func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
 
 type TagHandler[T any] struct {
 	Name string
+	// Alias is a list of optional tag alias that will be checked if Name is not avaialble.
+	Alias []string
 	// Parse meant to interpret the content of a raw tag and converts it into a tag value.
 	//
 	// Ideally, parsing occurs only once, provided the tag value remains immutable.
@@ -330,6 +366,14 @@ func (h *TagHandler[T]) handleStructField(field reflect.StructField, value refle
 
 func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
 	tag, ok := field.Tag.Lookup(h.Name)
+	if !ok && 0 < len(h.Alias) {
+		for _, alias := range h.Alias {
+			tag, ok = field.Tag.Lookup(alias)
+			if ok {
+				break
+			}
+		}
+	}
 	if !ok && !h.HandleUntagged {
 		var zero T
 		return zero, ok, nil

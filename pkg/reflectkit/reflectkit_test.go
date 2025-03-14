@@ -186,44 +186,51 @@ func TestCast(t *testing.T) {
 type SampleType struct{}
 
 func TestFullyQualifiedName(t *testing.T) {
-	subject := reflectkit.FullyQualifiedName
+	act := reflectkit.FullyQualifiedName
 
-	SpecForPrimitiveNames(t, subject)
+	SpecForPrimitiveNames(t, act)
 
 	t.Run("when given struct is from different package than the current one", func(t *testing.T) {
 		o := SampleType{}
 
-		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".SampleType`, subject(o))
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".SampleType`, act(o))
 	})
 
 	t.Run("when given object is an interface", func(t *testing.T) {
 		var i InterfaceObject = &StructObject{}
 
-		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(i))
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(i))
 	})
 
 	t.Run("when given object is a struct", func(t *testing.T) {
-		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(StructObject{}))
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(StructObject{}))
 	})
 
 	t.Run("when given object is a pointer of a struct", func(t *testing.T) {
-		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&StructObject{}))
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(&StructObject{}))
 	})
 
 	t.Run("when given object is a pointer of a pointer of a struct", func(t *testing.T) {
 		o := &StructObject{}
-		assert.Equal(t, `**"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(&o))
+		assert.Equal(t, `**"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(&o))
 	})
 
 	t.Run("when the given object is a reflect type", func(t *testing.T) {
-		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflectkit.TypeOf[StructObject]()))
-		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflectkit.TypeOf[*StructObject]()))
-		assert.Equal(t, `**"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflectkit.TypeOf[**StructObject]()))
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflectkit.TypeOf[StructObject]()))
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflectkit.TypeOf[*StructObject]()))
+		assert.Equal(t, `**"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflectkit.TypeOf[**StructObject]()))
 	})
 
 	t.Run("when the given object is a reflect value", func(t *testing.T) {
-		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflect.ValueOf(StructObject{})))
-		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, subject(reflect.ValueOf(&StructObject{})))
+		assert.Equal(t, `"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflect.ValueOf(StructObject{})))
+		assert.Equal(t, `*"go.llib.dev/frameless/pkg/reflectkit_test".StructObject`, act(reflect.ValueOf(&StructObject{})))
+	})
+
+	t.Run("non-defined types", func(t *testing.T) {
+		assert.Should(t).Equal(reflectkit.FullyQualifiedName(reflectkit.TypeOf[map[string]int]()), "map[string]int")
+		assert.Should(t).Equal(reflectkit.FullyQualifiedName(reflectkit.TypeOf[[]int]()), "[]int")
+		assert.Should(t).Equal(strings.ReplaceAll(reflectkit.FullyQualifiedName(reflectkit.TypeOf[struct{}]()), " ", ""), "struct{}")
+		assert.Should(t).Equal(reflectkit.FullyQualifiedName(reflectkit.TypeOf[int]()), "int")
 	})
 }
 
@@ -1810,6 +1817,41 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 	})
 }
 
+func TestTagHandler_alias(t *testing.T) {
+	type T struct {
+		V1 string `testtag:"x"`
+		V2 string `tt1:"y"`
+		V3 string `tt2:"z"`
+	}
+
+	var found []string
+	th := reflectkit.TagHandler[string]{
+		Name:  "testtag",
+		Alias: []string{"tt1", "tt2"},
+
+		Parse: func(field reflect.StructField, tagValue string) (string, error) {
+			return tagValue, nil
+		},
+
+		Use: func(field reflect.StructField, value reflect.Value, v string) error {
+			found = append(found, v)
+			return nil
+		},
+	}
+
+	var v T
+
+	rStruct := reflect.ValueOf(v)
+	assert.NoError(t, th.HandleStruct(rStruct))
+	assert.ContainExactly(t, []string{"x", "y", "z"}, found)
+	found = nil
+
+	field, value, ok := reflectkit.LookupField(rStruct, "V2")
+	assert.True(t, ok)
+	assert.NoError(t, th.HandleStructField(field, value))
+	assert.ContainExactly(t, []string{"y"}, found)
+}
+
 func TestTagHandler_LookupTag(t *testing.T) {
 	t.Run("presence_of_specified_tag", func(t *testing.T) {
 		type T struct {
@@ -2630,4 +2672,77 @@ func SpecCompare[T any](act func(t *testcase.T) (int, error), val, oth testcase.
 			})
 		})
 	}
+}
+
+func TestIsNilable(t *testing.T) {
+	t.Run("reflec.Kind", func(t *testing.T) {
+		assert.False(t, reflectkit.IsNilable(reflect.Invalid), "Invalid")
+		assert.False(t, reflectkit.IsNilable(reflect.Bool), "Bool")
+		assert.False(t, reflectkit.IsNilable(reflect.Int), "Int")
+		assert.False(t, reflectkit.IsNilable(reflect.Int8), "Int8")
+		assert.False(t, reflectkit.IsNilable(reflect.Int16), "Int16")
+		assert.False(t, reflectkit.IsNilable(reflect.Int32), "Int32")
+		assert.False(t, reflectkit.IsNilable(reflect.Int64), "Int64")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint), "Uint")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint8), "Uint8")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint16), "Uint16")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint32), "Uint32")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint64), "Uint64")
+		assert.False(t, reflectkit.IsNilable(reflect.Uintptr), "Uintptr")
+		assert.False(t, reflectkit.IsNilable(reflect.Float32), "Float32")
+		assert.False(t, reflectkit.IsNilable(reflect.Float64), "Float64")
+		assert.False(t, reflectkit.IsNilable(reflect.Complex64), "Complex64")
+		assert.False(t, reflectkit.IsNilable(reflect.Complex128), "Complex128")
+		assert.False(t, reflectkit.IsNilable(reflect.Array), "Array")
+		assert.True(t, reflectkit.IsNilable(reflect.Chan), "Chan")
+		assert.True(t, reflectkit.IsNilable(reflect.Func), "Func")
+		assert.True(t, reflectkit.IsNilable(reflect.Interface), "Interface")
+		assert.True(t, reflectkit.IsNilable(reflect.Map), "Map")
+		assert.True(t, reflectkit.IsNilable(reflect.Pointer), "Pointer")
+		assert.True(t, reflectkit.IsNilable(reflect.Slice), "Slice")
+		assert.False(t, reflectkit.IsNilable(reflect.String), "String")
+		assert.False(t, reflectkit.IsNilable(reflect.Struct), "Struct")
+		assert.False(t, reflectkit.IsNilable(reflect.UnsafePointer), "UnsafePointer")
+	})
+	t.Run("reflect.Value - smoke", func(t *testing.T) {
+		assert.True(t, reflectkit.IsNilable(reflect.ValueOf(map[string]struct{}{})))
+		assert.False(t, reflectkit.IsNilable(reflect.ValueOf("foo bar baz")))
+	})
+}
+
+func TestToType(t *testing.T) {
+	t.Run("Given a reflect.Type as input", func(t *testing.T) {
+		expected := reflect.TypeOf(0)
+		actual := reflectkit.ToType(expected)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When given a reflect.Value containing an integer", func(t *testing.T) {
+		value := reflect.ValueOf(42)
+		expected := value.Type()
+		actual := reflectkit.ToType(value)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("Given a string instance (default path)", func(t *testing.T) {
+		input := "hello"
+		expected := reflect.TypeOf(input)
+		actual := reflectkit.ToType(input)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When input is a nil pointer (default path)", func(t *testing.T) {
+		var ptr *int
+		expected := reflect.TypeOf(ptr)
+		actual := reflectkit.ToType(ptr)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("Invalid reflect.Value panics", func(t *testing.T) {
+		val := reflect.Value{} // invalid Value (zeroed)
+		out := assert.Panic(t, func() { reflectkit.ToType(val) })
+		err, ok := out.(error)
+		assert.True(t, ok, "error panic value was expected")
+		assert.Contain(t, err.Error(), "Value.Type")
+	})
 }
