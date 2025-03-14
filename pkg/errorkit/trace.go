@@ -66,6 +66,8 @@ func (err TracedError) Unwrap() error {
 	return err.Err
 }
 
-var _ = runtimekit.RegisterTraceException(func(f runtime.Frame) bool {
-	return strings.Contains(f.Function, "errorkit.")
+var _ = runtimekit.RegisterFrameException(func(f runtime.Frame) bool {
+	return strings.Contains(f.Function, "errorkit.") ||
+		strings.Contains(f.Function, "runtime.") ||
+		strings.Contains(f.Function, "testing.")
 })

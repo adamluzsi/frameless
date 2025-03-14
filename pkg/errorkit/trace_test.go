@@ -138,7 +138,7 @@ func TestRegisterTraceException_smoke(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contain(t, err.Error(), t.Name())
 
-	undo := runtimekit.RegisterTraceException(func(f runtime.Frame) bool {
+	undo := runtimekit.RegisterFrameException(func(f runtime.Frame) bool {
 		return strings.Contains(f.Function, t.Name())
 	})
 
