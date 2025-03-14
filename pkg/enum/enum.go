@@ -26,6 +26,13 @@ var (
 	regLock  sync.RWMutex
 )
 
+func lookupEnumerators(typ reflect.Type) ([]any, bool) {
+	regLock.RLock()
+	defer regLock.RUnlock()
+	enumerators, ok := registry[typ]
+	return enumerators, ok
+}
+
 func Register[T any](enums ...T) (unregister func()) {
 	regLock.Lock()
 	defer regLock.Unlock()
@@ -50,12 +57,15 @@ func Register[T any](enums ...T) (unregister func()) {
 }
 
 func Values[T any]() []T {
-	regLock.Lock()
-	defer regLock.Unlock()
 	var out []T
-	if vs, ok := registry[reflectkit.TypeOf[T]()]; ok {
-		for _, v := range vs {
-			out = append(out, v.(T))
+	enumerators, ok := lookupEnumerators(reflectkit.TypeOf[T]())
+	if !ok {
+		return out
+	}
+	for _, v := range enumerators {
+		o, ok := v.(T)
+		if ok {
+			out = append(out, o)
 		}
 	}
 	return out
@@ -64,10 +74,8 @@ func Values[T any]() []T {
 func ReflectValues(typ any) []reflect.Value {
 	switch typ := typ.(type) {
 	case reflect.Type:
-		regLock.Lock()
-		defer regLock.Unlock()
 		var out []reflect.Value
-		if vs, ok := registry[typ]; ok {
+		if vs, ok := lookupEnumerators(typ); ok {
 			for _, v := range vs {
 				out = append(out, reflect.ValueOf(v))
 			}
@@ -339,13 +347,15 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 }
 
 func ReflectValidate(typ reflect.Type, value any) error {
-	regLock.RLock()
-	defer regLock.RUnlock()
-
 	v := reflectkit.ToValue(value)
 
-	if reflectkit.IsNil(v) && typ != nil && reflectkit.IsNilableKind(typ.Kind()) {
-		return nil
+	if typ != nil && reflectkit.IsNilable(typ.Kind()) {
+		if !v.IsValid() {
+			return nil
+		}
+		if reflectkit.IsNil(v) {
+			return nil
+		}
 	}
 
 	if typ == nil {
@@ -363,7 +373,7 @@ func ReflectValidate(typ reflect.Type, value any) error {
 		return ReflectValidate(typ.Elem(), v.Elem())
 	}
 
-	enums, ok := registry[typ]
+	enums, ok := lookupEnumerators(typ)
 	if !ok {
 		return nil
 	}

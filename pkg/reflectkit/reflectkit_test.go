@@ -2631,3 +2631,39 @@ func SpecCompare[T any](act func(t *testcase.T) (int, error), val, oth testcase.
 		})
 	}
 }
+
+func TestIsNilable(t *testing.T) {
+	t.Run("reflec.Kind", func(t *testing.T) {
+		assert.False(t, reflectkit.IsNilable(reflect.Invalid), "Invalid")
+		assert.False(t, reflectkit.IsNilable(reflect.Bool), "Bool")
+		assert.False(t, reflectkit.IsNilable(reflect.Int), "Int")
+		assert.False(t, reflectkit.IsNilable(reflect.Int8), "Int8")
+		assert.False(t, reflectkit.IsNilable(reflect.Int16), "Int16")
+		assert.False(t, reflectkit.IsNilable(reflect.Int32), "Int32")
+		assert.False(t, reflectkit.IsNilable(reflect.Int64), "Int64")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint), "Uint")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint8), "Uint8")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint16), "Uint16")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint32), "Uint32")
+		assert.False(t, reflectkit.IsNilable(reflect.Uint64), "Uint64")
+		assert.False(t, reflectkit.IsNilable(reflect.Uintptr), "Uintptr")
+		assert.False(t, reflectkit.IsNilable(reflect.Float32), "Float32")
+		assert.False(t, reflectkit.IsNilable(reflect.Float64), "Float64")
+		assert.False(t, reflectkit.IsNilable(reflect.Complex64), "Complex64")
+		assert.False(t, reflectkit.IsNilable(reflect.Complex128), "Complex128")
+		assert.False(t, reflectkit.IsNilable(reflect.Array), "Array")
+		assert.True(t, reflectkit.IsNilable(reflect.Chan), "Chan")
+		assert.True(t, reflectkit.IsNilable(reflect.Func), "Func")
+		assert.True(t, reflectkit.IsNilable(reflect.Interface), "Interface")
+		assert.True(t, reflectkit.IsNilable(reflect.Map), "Map")
+		assert.True(t, reflectkit.IsNilable(reflect.Pointer), "Pointer")
+		assert.True(t, reflectkit.IsNilable(reflect.Slice), "Slice")
+		assert.False(t, reflectkit.IsNilable(reflect.String), "String")
+		assert.False(t, reflectkit.IsNilable(reflect.Struct), "Struct")
+		assert.False(t, reflectkit.IsNilable(reflect.UnsafePointer), "UnsafePointer")
+	})
+	t.Run("reflect.Value - smoke", func(t *testing.T) {
+		assert.True(t, reflectkit.IsNilable(reflect.ValueOf(map[string]struct{}{})))
+		assert.False(t, reflectkit.IsNilable(reflect.ValueOf("foo bar baz")))
+	})
+}

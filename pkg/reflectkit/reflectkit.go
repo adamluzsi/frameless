@@ -148,13 +148,21 @@ var nilables = map[reflect.Kind]struct{}{
 	reflect.Func:      {},
 }
 
-func IsNilableKind(kind reflect.Kind) bool {
-	_, ok := nilables[kind]
-	return ok
+func IsNilable[T reflect.Kind | reflect.Value](v T) bool {
+	switch v := any(v).(type) {
+	case reflect.Kind:
+		_, ok := nilables[v]
+		return ok
+	case reflect.Value:
+		_, ok := nilables[v.Kind()]
+		return ok
+	default:
+		panic("not-implemented")
+	}
 }
 
 func IsNil(val reflect.Value) bool {
-	if !IsNilableKind(val.Kind()) {
+	if !IsNilable(val) {
 		return false
 	}
 	return val.IsNil()

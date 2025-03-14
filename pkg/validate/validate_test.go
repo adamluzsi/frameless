@@ -773,17 +773,17 @@ func (v SkipValidateStruct) Validate() error {
 	return v.ValidateErr
 }
 
-func TestSkipValidate(t *testing.T) {
+func TestInsideValidateFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("skip validate will make the validation call to be skipped on the given value itself", func(t *testcase.T) {
 		val := SkipValidateStruct{ValidateErr: t.Random.Error()}
-		assert.NoError(t, validate.Value(val, validate.SkipValidate))
-		assert.NoError(t, validate.Struct(val, validate.SkipValidate))
+		assert.NoError(t, validate.Value(val, validate.InsideValidateFunc))
+		assert.NoError(t, validate.Struct(val, validate.InsideValidateFunc))
 
 		type T struct{ V StructValidatorStub }
 		field, value := must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: StructValidatorStub{ValidateError: t.Random.Error()}}), "V"))
-		assert.NoError(t, validate.StructField(field, value, validate.SkipValidate))
+		assert.NoError(t, validate.StructField(field, value, validate.InsideValidateFunc))
 	})
 
 	s.Test("skip validate won't make the validation call to be skipped on fields of a struct value", func(t *testcase.T) {
@@ -791,11 +791,27 @@ func TestSkipValidate(t *testing.T) {
 		expErr := t.Random.Error()
 
 		val := T{V: SkipValidateStruct{ValidateErr: expErr}}
-		assert.ErrorIs(t, expErr, validate.Value(val, validate.SkipValidate))
-		assert.ErrorIs(t, expErr, validate.Struct(val, validate.SkipValidate))
+		assert.ErrorIs(t, expErr, validate.Value(val, validate.InsideValidateFunc))
+		assert.ErrorIs(t, expErr, validate.Struct(val, validate.InsideValidateFunc))
 
 		type TT struct{ V T }
 		field, value := must.OK2(reflectkit.LookupField(reflect.ValueOf(TT{V: val}), "V"))
-		assert.ErrorIs(t, expErr, validate.StructField(field, value, validate.SkipValidate))
+		assert.ErrorIs(t, expErr, validate.StructField(field, value, validate.InsideValidateFunc))
 	})
+}
+
+type ExampleStructT1 struct {
+	EnumField string `enum:"foo bar baz"`
+	IntField  int    `range:"0..10"`
+}
+
+func (v ExampleStructT1) Validate() error {
+	validate.Struct(v, validate.InsideValidateFunc)
+	if v.EnumField == "foo" {
+
+	}
+	if v.IntField == 7 {
+		return fmt.Errorf("custom")
+	}
+	return nil
 }

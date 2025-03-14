@@ -9,7 +9,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/runtimekit"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -150,7 +149,6 @@ func TestFuncInfoOf(t *testing.T) {
 		assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
 		assert.Equal(t, fni.Package, "runtimekit_test")
 		assert.Equal(t, fni.Receiver, "*TYPE")
-		pp.PP(fn.Name())
 		assert.Equal(t, fni.ID, "ptrMethod")
 	})
 	t.Run("top level package without any importpath", func(t *testing.T) {

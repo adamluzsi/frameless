@@ -12,7 +12,6 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/option"
-	"go.llib.dev/testcase/pp"
 )
 
 type Validator interface {
@@ -33,33 +32,34 @@ func Value(v any, opts ...Option) error {
 		return err
 	}
 
-	if err := enum.Validate(v); err != nil {
-		return Error{Cause: err}
+	if !c.SkipEnum {
+		if err := enum.ReflectValidate(rv.Type(), rv); err != nil {
+			return Error{Cause: err}
+		}
 	}
 
 	return nil
 }
 
 func Struct(v any, opts ...Option) error {
-	rv := reflectkit.ToValue(v)
+	rStruct := reflectkit.ToValue(v)
 	c := option.Use(opts)
 
-	if rv.Kind() != reflect.Struct {
-		return ImplementationError.F("non struct type type: %s", rv.Type().String())
+	if rStruct.Kind() != reflect.Struct {
+		return ImplementationError.F("non struct type type: %s", rStruct.Type().String())
 	}
 
-	if err := tryValidatorValidate(rv, c); err != nil {
+	if err := tryValidatorValidate(rStruct, c); err != nil {
 		return err
 	}
 
 	var (
-		T      = rv.Type()
-		num    = T.NumField()
-		fieldC = c
+		T           = rStruct.Type()
+		NumField    = T.NumField()
+		fieldConfig = c.StructFieldScope(rStruct)
 	)
-	fieldC.SkipValidate = false
-	for i := 0; i < num; i++ {
-		if err := StructField(T.Field(i), rv.Field(i), fieldC); err != nil {
+	for i := 0; i < NumField; i++ {
+		if err := StructField(T.Field(i), rStruct.Field(i), fieldConfig); err != nil {
 			return err
 		}
 	}
@@ -67,28 +67,26 @@ func Struct(v any, opts ...Option) error {
 	return nil
 }
 
-func StructField(sf reflect.StructField, field reflect.Value, opts ...Option) error {
-	if sf.Type != field.Type() {
+func StructField(field reflect.StructField, value reflect.Value, opts ...Option) error {
+	if field.Type != value.Type() {
 		return ImplementationError.F("struct field doesn't belong to the provided field value (%s <=> %s)",
-			sf.Type.String(), field.Type().String())
+			field.Type.String(), value.Type().String())
 	}
 
-	if err := enum.ValidateStructField(sf, field); err != nil {
+	if err := enum.ValidateStructField(field, value); err != nil {
+		return Error{Cause: err}
+	}
+	opts = append(opts, skipEnum)
+
+	if err := rangeTag.HandleStructField(field, value); err != nil {
 		return Error{Cause: err}
 	}
 
-	pp.PP(field.Interface(), field.Type().String())
-	// opts = append(opts, skipEnum)
-
-	if err := rangeTag.HandleStructField(sf, field); err != nil {
+	if err := charTag.HandleStructField(field, value); err != nil {
 		return Error{Cause: err}
 	}
 
-	if err := charTag.HandleStructField(sf, field); err != nil {
-		return Error{Cause: err}
-	}
-
-	return Value(field, opts...)
+	return Value(value, opts...)
 }
 
 type Option option.Option[config]
@@ -100,13 +98,20 @@ type config struct {
 	SkipEnum     bool
 }
 
-func (c config) Sub(path string) config {
-	return config{Path: append(slicekit.Clone(c.Path), path)}
+func (c config) StructFieldScope(rStruct reflect.Value) config {
+	c.SkipValidate = false                                         // Skip validate only applies to the given value, not to its filds
+	c.SkipEnum = false                                             // SkipEnum not needed
+	c.Path = append(slicekit.Clone(c.Path), rStruct.Type().Name()) // add struct name to the validation path
+	return c
 }
 
 func (c config) Configure(t *config) { *t = c }
 
-const SkipValidate copt = 1
+// InsideValidateFunc option indicates that the function is being used inside a Validate() error method.
+//
+// When this option is set, the Validate function call is skipped to prevent an infinite loop caused by a circular Validate call.
+const InsideValidateFunc copt = 1
+
 const skipEnum copt = 2
 
 type copt int
