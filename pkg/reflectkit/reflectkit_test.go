@@ -2667,3 +2667,40 @@ func TestIsNilable(t *testing.T) {
 		assert.False(t, reflectkit.IsNilable(reflect.ValueOf("foo bar baz")))
 	})
 }
+
+func TestToType(t *testing.T) {
+	t.Run("Given a reflect.Type as input", func(t *testing.T) {
+		expected := reflect.TypeOf(0)
+		actual := reflectkit.ToType(expected)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When given a reflect.Value containing an integer", func(t *testing.T) {
+		value := reflect.ValueOf(42)
+		expected := value.Type()
+		actual := reflectkit.ToType(value)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("Given a string instance (default path)", func(t *testing.T) {
+		input := "hello"
+		expected := reflect.TypeOf(input)
+		actual := reflectkit.ToType(input)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("When input is a nil pointer (default path)", func(t *testing.T) {
+		var ptr *int
+		expected := reflect.TypeOf(ptr)
+		actual := reflectkit.ToType(ptr)
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("Invalid reflect.Value panics", func(t *testing.T) {
+		val := reflect.Value{} // invalid Value (zeroed)
+		out := assert.Panic(t, func() { reflectkit.ToType(val) })
+		err, ok := out.(error)
+		assert.True(t, ok, "error panic value was expected")
+		assert.Contain(t, err.Error(), "Value.Type")
+	})
+}

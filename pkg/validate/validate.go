@@ -20,7 +20,7 @@ type Validator interface {
 
 var interfaceValidator = reflectkit.TypeOf[Validator]()
 
-func Value(v any, opts ...Option) error {
+func Value[T any](v T, opts ...Option) error {
 	rv := reflectkit.ToValue(v)
 	c := option.Use(opts)
 
@@ -33,7 +33,7 @@ func Value(v any, opts ...Option) error {
 	}
 
 	if !c.SkipEnum {
-		if err := enum.ReflectValidate(rv.Type(), rv); err != nil {
+		if err := enum.ReflectValidate(rv, enum.Type[T]()); err != nil {
 			return Error{Cause: err}
 		}
 	}

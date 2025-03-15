@@ -1,12 +1,15 @@
 package enum_test
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/validate"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/testcase"
@@ -381,18 +384,6 @@ func TestValidateStruct_smoke(t *testing.T) {
 		assert.NoError(t, enum.ValidateStruct(StringExample{V: "B"}))
 		assert.NoError(t, enum.ValidateStruct(StringExample{V: "C"}))
 	})
-
-	t.Run("tag validation takes priority over actual enum value", func(t *testing.T) {
-		type E string
-		defer enum.Register[E]("foo", "bar", "baz")()
-
-		type T struct {
-			V E `enum:"hello world"`
-		}
-
-		assert.NoError(t, enum.Validate(T{V: "hello"}))
-		assert.ErrorIs(t, enum.Validate(T{V: "foo"}), enum.ErrInvalid)
-	})
 }
 
 func TestRegister(t *testing.T) {
@@ -605,50 +596,50 @@ func TestReflectValidate(t *testing.T) {
 	defer enum.Register[T](V1, V2, V3)()
 
 	s.Test("when value is an enumerator", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(V1)))
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(V2)))
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(V3)))
+		assert.NoError(t, enum.ReflectValidate(reflect.ValueOf(V1), enum.Type[T]()))
+		assert.NoError(t, enum.ReflectValidate(reflect.ValueOf(V2), enum.Type[T]()))
+		assert.NoError(t, enum.ReflectValidate(reflect.ValueOf(V3), enum.Type[T]()))
 	})
 
 	s.Test("when value is not a valid enumerator", func(t *testcase.T) {
-		assert.Error(t, enum.ReflectValidate(reflectkit.TypeOf[T](), reflect.ValueOf(T("C42"))))
+		assert.Error(t, enum.ReflectValidate(reflect.ValueOf(T("C42")), enum.Type[T]()))
 	})
 
 	s.Test("when value is a valid enum wrapped in an interface", func(t *testcase.T) {
 		var v any = V2
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[any](), v))
+		assert.NoError(t, enum.ReflectValidate(v, enum.Type[any]()))
 	})
 
 	s.Test("when value is nil", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[any](), nil))
+		assert.NoError(t, enum.ReflectValidate(nil, enum.Type[any]()))
 	})
 
 	s.Test("when value is a pointer to an enum member then no error is expected", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[*T](), pointer.Of(V1)))
+		assert.NoError(t, enum.ReflectValidate(pointer.Of(V1), enum.Type[*T]()))
 	})
 
 	s.Test("when type is nil, value's type is used", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(nil, V1))
-		assert.ErrorIs(t, enum.ReflectValidate(nil, T("C4")), enum.ErrInvalid)
+		assert.NoError(t, enum.ReflectValidate(V1))
+		assert.ErrorIs(t, enum.ReflectValidate(T("C4")), enum.ErrInvalid)
 	})
 
 	s.Test("when pointer of interface type is passed, with a valid enum member value", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[*any](), pointer.Of[any](V1)))
+		assert.NoError(t, enum.ReflectValidate(pointer.Of[any](V1), enum.Type[*any]()))
 	})
 
 	s.Test("when value is a pointer to not an enum member", func(t *testcase.T) {
 		var v *T
 		v = pointer.Of[T]("C42")
-		assert.Error(t, enum.ReflectValidate(reflectkit.TypeOf[*T](), v))
+		assert.Error(t, enum.ReflectValidate(v, enum.Type[*T]()))
 	})
 
 	s.Test("when value is a nil pointer of an enum type then no error is expected", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[*T](), nil))
+		assert.NoError(t, enum.ReflectValidate(nil, enum.Type[*T]()))
 	})
 
-	s.Test("when type argument is any but the value's type has registered enum", func(t *testcase.T) {
-		assert.NoError(t, enum.ReflectValidate(reflectkit.TypeOf[any](), V1))
-		assert.Error(t, enum.ReflectValidate(reflectkit.TypeOf[any](), T("C42")))
+	s.Test("when type argument is an 'any' interface but the value's type has registered enum", func(t *testcase.T) {
+		assert.NoError(t, enum.ReflectValidate(V1, enum.Type[any]()))
+		assert.Error(t, enum.ReflectValidate(T("C42"), enum.Type[any]()))
 	})
 }
 
@@ -836,4 +827,43 @@ func TestRegister_exceptions(t *testing.T) {
 		type MyBool bool
 		assert.NotPanic(t, func() { enum.Register[MyBool](false)() })
 	})
+}
+
+func TestStruct_worksWithReflectValue(t *testing.T) {
+	type T struct {
+		V string `enum:"foo bar baz"`
+	}
+	t.Run("happy", func(t *testing.T) {
+		var v = T{V: random.Pick(rnd, "foo", "bar", "baz")}
+		assert.NoError(t, enum.ValidateStruct(v))
+		assert.NoError(t, enum.ValidateStruct(reflect.ValueOf(v)))
+	})
+	t.Run("rainy", func(t *testing.T) {
+		var v = T{V: random.Pick(rnd, "qux", "quux", "corge", "grault", "garply")}
+		assert.ErrorIs(t, enum.ErrInvalid, enum.ValidateStruct(v))
+		assert.ErrorIs(t, enum.ErrInvalid, enum.ValidateStruct(reflect.ValueOf(v)))
+	})
+}
+
+func TestSTructField_tagTakesPriorityOverType(t *testing.T) {
+	t.Log("tag validation takes priority over the type's enums")
+
+	type E string
+	defer enum.Register[E]("foo", "bar", "baz")()
+
+	type T struct {
+		V E `enum:"hello world"`
+	}
+
+	var v T
+	v.V = "hello"
+
+	assert.NoError(t, enum.ValidateStruct(v))
+	assert.NoError(t, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "hello"}), "V"))))
+
+	err := validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "foo"}), "V")))
+	assert.ErrorIs(t, err, enum.ErrInvalid)
+	var verr validate.Error
+	assert.True(t, errors.As(err, &verr))
+	assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
 }

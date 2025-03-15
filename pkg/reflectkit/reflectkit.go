@@ -211,6 +211,17 @@ func TypeOf[T any](i ...T) reflect.Type {
 	return typ
 }
 
+func ToType(T any) reflect.Type {
+	switch T := T.(type) {
+	case reflect.Type:
+		return T
+	case reflect.Value:
+		return T.Type()
+	default:
+		return reflect.TypeOf(T)
+	}
+}
+
 func ToValue(v any) reflect.Value {
 	if rv, ok := v.(reflect.Value); ok {
 		return rv

@@ -207,23 +207,6 @@ func TestStructField_enum(t *testing.T) {
 		assert.True(t, errors.As(err, &verr))
 		assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
 	})
-
-	t.Run("tag validation takes priority over actual enum value", func(t *testing.T) {
-		type E string
-		defer enum.Register[E]("foo", "bar", "baz")()
-
-		type T struct {
-			V E `enum:"hello world"`
-		}
-
-		assert.NoError(t, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "hello"}), "V"))))
-
-		err := validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "foo"}), "V")))
-		assert.ErrorIs(t, err, enum.ErrInvalid)
-		var verr validate.Error
-		assert.True(t, errors.As(err, &verr))
-		assert.ErrorIs(t, verr.Cause, enum.ErrInvalid)
-	})
 }
 
 func TestStruct_enum(t *testing.T) {
@@ -339,6 +322,41 @@ func TestStructField_struct(t *testing.T) {
 	expErr := rnd.Error()
 	v.V.ValidateError = expErr
 	assert.ErrorIs(t, expErr, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(v), "V"))))
+}
+
+func TestSTructField_tagTakesPriorityOverType(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	t.Log("tag validation takes priority over actual enum value")
+	type E string
+	defer enum.Register[E]("foo", "bar", "baz")()
+
+	type T struct {
+		V E `enum:"hello world"`
+	}
+
+	s.Test("happy", func(t *testcase.T) {
+		var v = T{V: E(random.Pick(t.Random, "hello", "world"))}
+		assert.NoError(t, enum.ValidateStruct(v))
+		assert.NoError(t, validate.Value(v))
+		assert.NoError(t, validate.Struct(v))
+		assert.NoError(t, validate.StructField(toStructField(t, v, "V")))
+	})
+
+	s.Test("rainy", func(t *testcase.T) {
+		var v = T{V: E(random.Pick(t.Random, "qux", "quux", "corge", "grault", "garply"))}
+		assert.ErrorIs(t, enum.ErrInvalid, enum.ValidateStruct(v))
+		assert.ErrorIs(t, enum.ErrInvalid, validate.Value(v))
+		assert.ErrorIs(t, enum.ErrInvalid, validate.Struct(v))
+		assert.ErrorIs(t, enum.ErrInvalid, validate.StructField(toStructField(t, v, "V")))
+	})
+}
+
+func toStructField(tb testing.TB, Struct any, fieldName string) (reflect.StructField, reflect.Value) {
+	rStruct := reflectkit.ToValue(Struct)
+	field, value, ok := reflectkit.LookupField(rStruct, fieldName)
+	assert.True(tb, ok, assert.MessageF("expected that %s has a %s field", rStruct.Type().String(), fieldName))
+	return field, value
 }
 
 func TestStructField_useValidatorInterface(t *testing.T) {
