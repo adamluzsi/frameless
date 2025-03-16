@@ -3,6 +3,7 @@ package validate
 import (
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"go.llib.dev/frameless/pkg/convkit"
@@ -16,19 +17,11 @@ import (
 
 type Validator interface {
 	Validate() error
-	// Validate(context.Context) error
 }
-
-// Super will validate a value but ignores if the Validator interface is implemented.
-// func Super(v any) error {
-// 	return Value(v, option.Func[config](func(c *config) {
-// 		c.WithoutValidator = true
-// 	}))
-// }
 
 var interfaceValidator = reflectkit.TypeOf[Validator]()
 
-func Value(v any, opts ...Option) error {
+func Value[T any](v T, opts ...Option) error {
 	rv := reflectkit.ToValue(v)
 	c := option.Use(opts)
 
@@ -40,32 +33,34 @@ func Value(v any, opts ...Option) error {
 		return err
 	}
 
-	if err := enum.Validate(v); err != nil {
-		return Error{Cause: err}
+	if !c.SkipEnum {
+		if err := enum.ReflectValidate(rv, enum.Type[T]()); err != nil {
+			return Error{Cause: err}
+		}
 	}
 
 	return nil
 }
 
 func Struct(v any, opts ...Option) error {
-	rv := reflectkit.ToValue(v)
+	rStruct := reflectkit.ToValue(v)
 	c := option.Use(opts)
 
-	if rv.Kind() != reflect.Struct {
-		return ImplementationError.F("non struct type type: %s", rv.Type().String())
+	if rStruct.Kind() != reflect.Struct {
+		return ImplementationError.F("non struct type type: %s", rStruct.Type().String())
 	}
 
-	if err := tryValidatorValidate(rv, c); err != nil {
+	if err := tryValidatorValidate(rStruct, c); err != nil {
 		return err
 	}
 
 	var (
-		T   = rv.Type()
-		num = T.NumField()
+		T           = rStruct.Type()
+		NumField    = T.NumField()
+		fieldConfig = c.StructFieldScope(rStruct)
 	)
-
-	for i := 0; i < num; i++ {
-		if err := StructField(T.Field(i), rv.Field(i), c); err != nil {
+	for i := 0; i < NumField; i++ {
+		if err := StructField(T.Field(i), rStruct.Field(i), fieldConfig); err != nil {
 			return err
 		}
 	}
@@ -73,41 +68,80 @@ func Struct(v any, opts ...Option) error {
 	return nil
 }
 
-func StructField(sf reflect.StructField, field reflect.Value, opts ...Option) error {
-	if sf.Type != field.Type() {
+func StructField(field reflect.StructField, value reflect.Value, opts ...Option) error {
+	if field.Type != value.Type() {
 		return ImplementationError.F("struct field doesn't belong to the provided field value (%s <=> %s)",
-			sf.Type.String(), field.Type().String())
+			field.Type.String(), value.Type().String())
 	}
 
-	if err := enum.ValidateStructField(sf, field); err != nil {
+	if err := enum.ValidateStructField(field, value); err != nil {
+		return Error{Cause: err}
+	}
+	opts = append(opts, skipEnum)
+
+	if err := rangeTag.HandleStructField(field, value); err != nil {
 		return Error{Cause: err}
 	}
 
-	if err := rangeTag.HandleStructField(sf, field); err != nil {
+	if err := charTag.HandleStructField(field, value); err != nil {
 		return Error{Cause: err}
 	}
 
-	if err := charTag.HandleStructField(sf, field); err != nil {
+	if err := minTag.HandleStructField(field, value); err != nil {
 		return Error{Cause: err}
 	}
 
-	if err := tryValidatorValidate(field, option.Use(opts)); err != nil {
-		return err
+	if err := maxTag.HandleStructField(field, value); err != nil {
+		return Error{Cause: err}
 	}
 
-	return nil
+	if err := lengthTag.HandleStructField(field, value); err != nil {
+		return Error{Cause: err}
+	}
+
+	return Value(value, opts...)
 }
 
 type Option option.Option[config]
 
 type config struct {
-	WithoutValidator bool
+	Path []string
+
+	SkipValidate bool
+	SkipEnum     bool
+}
+
+func (c config) StructFieldScope(rStruct reflect.Value) config {
+	c.SkipValidate = false                                         // Skip validate only applies to the given value, not to its filds
+	c.SkipEnum = false                                             // SkipEnum not needed
+	c.Path = append(slicekit.Clone(c.Path), rStruct.Type().Name()) // add struct name to the validation path
+	return c
 }
 
 func (c config) Configure(t *config) { *t = c }
 
+// InsideValidateFunc option indicates that the function is being used inside a Validate() error method.
+//
+// When this option is set, the Validate function call is skipped to prevent an infinite loop caused by a circular Validate call.
+const InsideValidateFunc copt = 1
+
+const skipEnum copt = 2
+
+type copt int
+
+func (n copt) Configure(c *config) {
+	switch n {
+	case 1:
+		c.SkipValidate = true
+	case 2:
+		c.SkipEnum = true
+	default:
+		panic("not-implemented")
+	}
+}
+
 func tryValidatorValidate(rv reflect.Value, c config) error {
-	if c.WithoutValidator {
+	if c.SkipValidate {
 		return nil
 	}
 	if !rv.Type().Implements(interfaceValidator) {
@@ -121,7 +155,7 @@ func tryValidatorValidate(rv reflect.Value, c config) error {
 	return nil
 }
 
-type rangeTagChecks []func(field reflect.StructField, value reflect.Value) error
+type checkFunc func(value reflect.Value) error
 
 type rangeTagCheck struct {
 	Min *reflect.Value
@@ -159,28 +193,28 @@ func splitList(tagValue string) []string {
 	return slicekit.Map(strings.Split(tagValue, ","), strings.TrimSpace)
 }
 
-func parseMinMaxRanges(name string, typ reflect.Type, rawMinMaxRange, minMaxSepSym string) (rangeMinMax[reflect.Value], error) {
+func parseMinMaxRanges(T reflect.Type, rawMinMaxRange, minMaxSepSym string) (rangeMinMax[reflect.Value], error) {
 	var v rangeMinMax[reflect.Value]
 
 	rawMinMax := strings.Split(rawMinMaxRange, minMaxSepSym)
 	rawMinMax = slicekit.Map(rawMinMax, strings.TrimSpace)
 
 	if len(rawMinMax) != 2 {
-		return v, fmt.Errorf("invalid range value in the .%s field's tag. Expected format: “{min}%s{max}”, but got: %s", name, minMaxSepSym, rawMinMaxRange)
+		return v, fmt.Errorf("invalid range valuem expected format: “{min}%s{max}”, but got: %s", minMaxSepSym, rawMinMaxRange)
 	}
 
 	if rawMin := rawMinMax[0]; 0 < len(rawMin) {
-		min, err := convkit.ParseReflect(typ, rawMin)
+		min, err := convkit.ParseReflect(T, rawMin)
 		if err != nil {
-			return v, fmt.Errorf("the minimum range value for the %s type in the .%s field's tag is invalid: %s", typ.String(), name, rawMin)
+			return v, fmt.Errorf("the minimum range value for the %s type is invalid: %s", T.String(), rawMin)
 		}
 		v.Min = &min
 	}
 
 	if rawMax := rawMinMax[1]; 0 < len(rawMax) {
-		max, err := convkit.ParseReflect(typ, rawMax)
+		max, err := convkit.ParseReflect(T, rawMax)
 		if err != nil {
-			return v, fmt.Errorf("the maximum range value for the %s type in the .%s field's tag is invalid: %s", typ.String(), name, rawMax)
+			return v, fmt.Errorf("the maximum range value for the %s type is invalid: %s", T.String(), rawMax)
 		}
 		v.Max = &max
 	}
@@ -198,101 +232,168 @@ func parseMinMaxRanges(name string, typ reflect.Type, rawMinMaxRange, minMaxSepS
 const rangeSepSym = ".."
 const charSepSym = "-"
 
-var rangeTag = reflectkit.TagHandler[rangeTagChecks]{
-	Name: "range",
-	Parse: func(sf reflect.StructField, tagValue string) (rangeTagChecks, error) {
-		var checks rangeTagChecks
-		var charChecks charTagChecks
-
-		for _, rawRange := range splitList(tagValue) {
-			switch {
-			case isCharTagFormat(sf.Type, rawRange):
-				charRange, err := charTag.Parse(sf, rawRange)
-				if err != nil {
-					return checks, err
-				}
-				// in order to apply mixed char checks on a given value
-				// we must collect all char checks, and use them as a unit.
-				// for example to have `range:"a-c,e-g"` accept "abcefg"
-				charChecks = append(charChecks, charRange...)
-
-			default:
-				rangeMinMax, err := parseMinMaxRanges(sf.Name, sf.Type, rawRange, "..")
-				if err != nil {
-					return checks, err
-				}
-
-				checks = append(checks, func(field reflect.StructField, value reflect.Value) error {
-					return rangeTagCheck(rangeMinMax).Validate(value)
-				})
-			}
-		}
-
-		if 0 < len(charChecks) {
-			checks = append(checks, func(field reflect.StructField, value reflect.Value) error {
-				return charTag.Use(field, value, charChecks)
-			})
-		}
-
-		return checks, nil
-	},
-	Use: func(field reflect.StructField, value reflect.Value, checks rangeTagChecks) error {
+func anyOfCheckFunc(checks []checkFunc) checkFunc {
+	if len(checks) == 0 {
+		return func(value reflect.Value) error { return nil }
+	}
+	return func(value reflect.Value) error {
 		var errs []error
 		for _, check := range checks {
-			err := check(field, value)
+			err := check(value)
 			if err == nil { // if any check pass, we are good
 				return nil
 			}
 			errs = append(errs, err)
 		}
 		return errorkit.Merge(errs...)
-	},
+	}
+}
 
-	ForceCache: true,
+var rangeTag = reflectkit.TagHandler[checkFunc]{
+	Name: "range",
 
+	ForceCache:        true,
 	PanicOnParseError: true,
+
+	Parse: func(field reflect.StructField, tagValue string) (checkFunc, error) {
+		var checks []checkFunc
+		var charChecks charTagChecks
+
+		for _, raw := range splitList(tagValue) {
+			raw := raw // copy bass by value
+
+			if checkCharTagFormat(field.Type, raw) {
+				charRange, err := charTag.Parse(field, raw)
+				if err != nil {
+					return nil, err
+				}
+				// in order to apply mixed char checks on a given value
+				// we must collect all char checks, and use them as a unit.
+				// for example to have `range:"a-c,e-g"` accept "abcefg"
+				charChecks = append(charChecks, charRange...)
+				continue
+			}
+
+			check, ok, err := tryRangeFormat(field.Type, raw)
+			if err != nil {
+				return nil, fmt.Errorf(".%s has an invalid range value: %w", field.Name, err)
+			}
+			if ok {
+				checks = append(checks, check)
+				continue
+			}
+
+			check, ok, err = tryComparisonFormat(field.Type, raw)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				checks = append(checks, check)
+				continue
+			}
+
+			// unknown format
+			return nil, fmt.Errorf("unrecognised range format: %s", raw)
+		}
+
+		if 0 < len(charChecks) {
+			checks = append(checks, func(value reflect.Value) error {
+				return charTag.Use(field, value, charChecks)
+			})
+		}
+		return anyOfCheckFunc(checks), nil
+	},
+	Use: func(field reflect.StructField, value reflect.Value, check checkFunc) error {
+		return check(value)
+	},
+}
+
+func tryRangeFormat(T reflect.Type, raw string) (checkFunc, bool, error) {
+	sep, ok := checkRangeFormat(T, raw)
+	if !ok {
+		return nil, false, nil
+	}
+
+	rangeMinMax, err := parseMinMaxRanges(T, raw, sep)
+	if err != nil {
+		return nil, false, err
+	}
+
+	rtc := rangeTagCheck(rangeMinMax)
+	var check = func(value reflect.Value) error {
+		return rtc.Validate(value)
+	}
+
+	return check, true, nil
+}
+
+func checkRangeFormat(typ reflect.Type, raw string) (string, bool) {
+	if strings.Count(raw, rangeSepSym) == 1 {
+		return rangeSepSym, true
+	}
+	return "", false
 }
 
 type charTagChecks []rangeMinMax[rune]
 
 var stringType = reflectkit.TypeOf[string]()
 
-func isCharTagFormat(typ reflect.Type, tagValue string) bool {
-	return typ.ConvertibleTo(stringType) && strings.Count(tagValue, rangeSepSym) == 0 && strings.Count(tagValue, charSepSym) == 1
+func checkCharTagFormat(typ reflect.Type, raw string) bool {
+	return typ.ConvertibleTo(stringType) && strings.Count(raw, rangeSepSym) == 0 && strings.Count(raw, charSepSym) == 1
+}
+
+func isCharFormat(field reflect.StructField, raw string) (rangeMinMax[rune], bool, error) {
+	var check rangeMinMax[rune]
+
+	if !field.Type.ConvertibleTo(stringType) {
+		return check, false, nil
+	}
+
+	minMax, err := parseMinMaxRanges(stringType, raw, charSepSym)
+	if err != nil {
+		return check, false, fmt.Errorf(".%s field's char tag has an issue: %w", field.Name, err)
+	}
+
+	if minMax.Min != nil {
+		chars := []rune(minMax.Min.String())
+		if 1 < len(chars) {
+			return check, false, fmt.Errorf("the min part of a \"min-max\" char tag must be a single character: %s", string(chars))
+		}
+		check.Min = pointer.Of(chars[0])
+	}
+	if minMax.Max != nil {
+		chars := []rune(minMax.Max.String())
+		if 1 < len(chars) {
+			return check, false, fmt.Errorf("the max part of a \"min-max\" char tag must be a single character: %s", string(chars))
+		}
+		check.Max = pointer.Of(chars[0])
+	}
+
+	return check, true, nil
 }
 
 var charTag = reflectkit.TagHandler[charTagChecks]{
 	Name: "char",
-	Parse: func(sf reflect.StructField, tagValue string) (charTagChecks, error) {
+
+	ForceCache:        true,
+	PanicOnParseError: true,
+
+	Parse: func(field reflect.StructField, tagValue string) (charTagChecks, error) {
 		var checks = charTagChecks{}
 
-		if !sf.Type.ConvertibleTo(stringType) {
+		if !field.Type.ConvertibleTo(stringType) {
 			const format = "char range expression can only work with types which are converable to string, unlike %s field which is a %s type"
-			return checks, fmt.Errorf(format, sf.Name, sf.Type.String())
+			return checks, fmt.Errorf(format, field.Name, field.Type.String())
 		}
 
 		for _, rawMinMax := range splitList(tagValue) {
-			minMax, err := parseMinMaxRanges(sf.Name, stringType, rawMinMax, charSepSym)
+			check, ok, err := isCharFormat(field, rawMinMax)
 			if err != nil {
-				return checks, err
+				return nil, fmt.Errorf(".%s field's char tag has an issue: %w", field.Name, err)
 			}
-
-			var check rangeMinMax[rune]
-			if minMax.Min != nil {
-				chars := []rune(minMax.Min.String())
-				if 1 < len(chars) {
-					return checks, fmt.Errorf("the min part of a \"min-max\" char tag must be a single character: %s", string(chars))
-				}
-				check.Min = pointer.Of(chars[0])
+			if !ok {
+				return nil, fmt.Errorf(".%s field's char tag format is not recognised: %s", field.Name, rawMinMax)
 			}
-			if minMax.Max != nil {
-				chars := []rune(minMax.Max.String())
-				if 1 < len(chars) {
-					return checks, fmt.Errorf("the max part of a \"min-max\" char tag must be a single character: %s", string(chars))
-				}
-				check.Max = pointer.Of(chars[0])
-			}
-
 			checks = append(checks, check)
 		}
 
@@ -325,7 +426,271 @@ var charTag = reflectkit.TagHandler[charTagChecks]{
 
 		return nil
 	},
+}
+
+var minTag = reflectkit.TagHandler[reflect.Value]{
+	Name: "min",
 
 	ForceCache:        true,
 	PanicOnParseError: true,
+
+	Parse: func(field reflect.StructField, tagValue string) (reflect.Value, error) {
+		return convkit.ParseReflect(field.Type, tagValue)
+	},
+
+	Use: func(field reflect.StructField, val, min reflect.Value) error {
+		cmp, err := reflectkit.Compare(min, val)
+		if err != nil {
+			return err
+		}
+		if 0 < cmp {
+			return fmt.Errorf("expected that %v is minimum %v", val.Interface(), min.Interface())
+		}
+		return nil
+	},
+}
+
+var maxTag = reflectkit.TagHandler[reflect.Value]{
+	Name: "max",
+
+	ForceCache:        true,
+	PanicOnParseError: true,
+
+	Parse: func(field reflect.StructField, tagValue string) (reflect.Value, error) {
+		return convkit.ParseReflect(field.Type, tagValue)
+	},
+
+	Use: func(field reflect.StructField, val, max reflect.Value) error {
+		cmp, err := reflectkit.Compare(val, max)
+		if err != nil {
+			return err
+		}
+		if 0 < cmp {
+			return fmt.Errorf("expected that %v is maximum %v", val.Interface(), max.Interface())
+		}
+		return nil
+	},
+}
+
+func tryComparisonFormat(T reflect.Type, raw string) (checkFunc, bool, error) {
+	cmpOp, rawVal, ok, err := checkComparisonFormat(T, raw)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		return nil, false, nil
+	}
+
+	refVal, err := convkit.ParseReflect(T, rawVal)
+	if err != nil {
+		return nil, true, err
+	}
+
+	var check checkFunc = func(value reflect.Value) error {
+		cmp, err := reflectkit.Compare(value, refVal)
+		if err != nil {
+			return err
+		}
+		if checkComparison(cmpOp, cmp) {
+			return nil
+		}
+		return fmt.Errorf("comparison failed for %v, expected it to be %s", value.Interface(), raw)
+	}
+
+	return check, true, nil
+}
+
+type cmpOp string
+
+const (
+	less           cmpOp = "<"
+	lessOrEqual    cmpOp = "<="
+	equal          cmpOp = "="
+	greater        cmpOp = ">"
+	greaterOrEqual cmpOp = ">="
+	notEqual       cmpOp = "!="
+)
+
+var mapToLeftHandCmpOp = map[string]cmpOp{
+	"<":  less,
+	"<=": lessOrEqual,
+	"=":  equal,
+	"==": equal,
+	">":  greater,
+	">=": greaterOrEqual,
+	"!=": notEqual,
+}
+
+var mapToRightHandCmpOp = map[string]cmpOp{
+	"<":  greater,
+	"<=": greaterOrEqual,
+	"=":  equal,
+	"==": equal,
+	">":  less,
+	">=": lessOrEqual,
+	"!=": notEqual,
+}
+
+func checkComparison(is cmpOp, cmp int) bool {
+	switch is {
+	case less:
+		return cmp < 0
+	case lessOrEqual:
+		return cmp <= 0
+	case equal:
+		return cmp == 0
+	case greater:
+		return 0 < cmp
+	case greaterOrEqual:
+		return 0 <= cmp
+	case notEqual:
+		return cmp != 0
+	default:
+		return false
+	}
+}
+
+const comparisonOperatorRegexpGroup = `(>=|<=|!=|>|<|=)`
+
+var (
+	rgxHasComparisonOperatorPrefix = regexp.MustCompile(fmt.Sprintf(`^%s\s*`, comparisonOperatorRegexpGroup))
+	rgxHasComparisonOperatorSuffix = regexp.MustCompile(fmt.Sprintf(`\s*%s$`, comparisonOperatorRegexpGroup))
+	rgxIsComparisonFormat          = regexp.MustCompile(fmt.Sprintf(`^%s?\s*.*%s?$`, comparisonOperatorRegexpGroup, comparisonOperatorRegexpGroup))
+)
+
+func checkComparisonFormat(typ reflect.Type, raw string) (cmpOp, string, bool, error) {
+	if !rgxIsComparisonFormat.MatchString(raw) {
+		return "", "", false, nil
+	}
+
+	if !rgxHasComparisonOperatorPrefix.MatchString(raw) && !rgxHasComparisonOperatorSuffix.MatchString(raw) {
+		return "", "", false, nil
+	}
+
+	if rgxHasComparisonOperatorPrefix.MatchString(raw) &&
+		rgxHasComparisonOperatorSuffix.MatchString(raw) {
+		return "", "", false, fmt.Errorf("it is not supported to have comparison operator on both side of the value: %s", raw)
+	}
+
+	var op cmpOp
+	switch {
+	case rgxHasComparisonOperatorPrefix.MatchString(raw):
+		opParts := rgxHasComparisonOperatorPrefix.FindAllStringSubmatch(raw, 1)
+		if len(opParts) == 0 {
+			return op, "", false, fmt.Errorf("malformed operator: %s", raw)
+		}
+		if len(opParts[0]) == 0 {
+			return op, "", false, fmt.Errorf("malformed operator: %s", raw)
+		}
+
+		rawOp := opParts[0][1]
+
+		op, ok := mapToLeftHandCmpOp[rawOp]
+		if !ok {
+			return op, "", false, fmt.Errorf("malformed operator: %s", raw)
+		}
+
+		rawValue := strings.TrimPrefix(raw, rawOp)
+		return op, rawValue, true, nil
+
+	case rgxHasComparisonOperatorSuffix.MatchString(raw):
+		opParts := rgxHasComparisonOperatorSuffix.FindAllStringSubmatch(raw, 1)
+		if len(opParts) == 0 {
+			return op, "", false, fmt.Errorf("malformed operator: %s", raw)
+		}
+		if len(opParts[0]) == 0 {
+			return op, "", false, fmt.Errorf("malformed operator: %s", raw)
+		}
+
+		rawOp := opParts[0][1]
+
+		op, ok := mapToRightHandCmpOp[rawOp]
+		if !ok {
+			return op, "", false, fmt.Errorf("malformed operator: %s", raw)
+		}
+
+		rawValue := strings.TrimSuffix(raw, rawOp)
+		return op, rawValue, true, nil
+
+	default:
+		return "", "", false, fmt.Errorf(`invalid comparison style format, expected "{op}{value}" like ">=42" but got: %s`, raw)
+	}
+}
+
+var lengthTag = reflectkit.TagHandler[checkFunc]{
+	Name: "length",
+
+	Alias: []string{"len"},
+
+	ForceCache: true,
+
+	PanicOnParseError: true,
+
+	Parse: func(field reflect.StructField, tagValue string) (checkFunc, error) {
+		var checks []checkFunc
+		for _, raw := range splitList(tagValue) {
+			switch field.Type.Kind() {
+			case reflect.Slice, reflect.String, reflect.Map, reflect.Chan:
+				checkLen, ok, err := tryLengthTagLenFormat(raw)
+				if err != nil {
+					return nil, fmt.Errorf("%s field's %w", field.Name, err)
+				}
+				if ok {
+					checks = append(checks, checkLen)
+					continue
+				}
+				return nil, fmt.Errorf("unrecognised length tag format: %s (%s)", tagValue, raw)
+
+			default:
+				return nil, fmt.Errorf(`"length" tag doesn't support %s type (.%s)`, field.Type.String(), field.Name)
+			}
+		}
+		return anyOfCheckFunc(checks), nil
+	},
+
+	Use: func(field reflect.StructField, value reflect.Value, check checkFunc) error {
+		return check(value)
+	},
+}
+
+var intType = reflectkit.TypeOf[int]()
+
+var rgxIsDigit = regexp.MustCompile(`^\d+$`)
+
+func tryLengthTagLenFormat(raw string) (checkFunc, bool, error) {
+	if rgxIsDigit.MatchString(raw) {
+		length, err := convkit.ParseReflect(intType, raw)
+		if err != nil {
+			return nil, false, err
+		}
+		var fn checkFunc = func(value reflect.Value) error {
+			if value.Len() == int(length.Int()) {
+				return nil
+			}
+			return fmt.Errorf("expected length of %v, but got %v", length.Interface(), value.Interface())
+		}
+		return fn, true, nil
+	}
+
+	fn, ok, err := tryComparisonFormat(intType, raw)
+	if err != nil {
+		return nil, false, fmt.Errorf(`"length" tag has an invalid comparison format for slice: %w`, err)
+	}
+	if ok {
+		return func(value reflect.Value) error {
+			return fn(reflect.ValueOf(value.Len()))
+		}, true, nil
+	}
+
+	fn, ok, err = tryRangeFormat(intType, raw)
+	if err != nil {
+		return nil, false, fmt.Errorf(`"length" tag has an invalid range format for slice: %w`, err)
+	}
+	if ok {
+		return func(value reflect.Value) error {
+			return fn(reflect.ValueOf(value.Len()))
+		}, true, nil
+	}
+
+	return nil, false, nil
 }
