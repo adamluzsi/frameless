@@ -975,3 +975,64 @@ func TestWithAccessLog(t *testing.T) {
 	assert.NotEmpty(t, al)
 	assert.Equal[http.Handler](t, al.Next, stub)
 }
+
+func TestIsSuccess(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		code     = let.Var[int](s, nil)
+		response = let.Var(s, func(t *testcase.T) *http.Response {
+			rr := httptest.NewRecorder()
+			rr.WriteHeader(code.Get(t))
+			return rr.Result()
+		})
+	)
+
+	actWithCode := let.Act(func(t *testcase.T) bool {
+		return httpkit.IsSuccess(code.Get(t))
+	})
+	actWithResponse := let.Act(func(t *testcase.T) bool {
+		return httpkit.IsSuccess(response.Get(t))
+	})
+
+	s.When("status code is below 200", func(s *testcase.Spec) {
+		code.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(100, 199)
+		})
+
+		s.Then("it will report it as not successful status code", func(t *testcase.T) {
+			assert.False(t, actWithCode(t))
+			assert.False(t, actWithResponse(t))
+		})
+	})
+
+	s.When("status code within the success code range", func(s *testcase.Spec) {
+		code.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(200, 299)
+		})
+
+		s.Then("it will report it as a successful status code", func(t *testcase.T) {
+			assert.True(t, actWithCode(t))
+			assert.True(t, actWithResponse(t))
+		})
+	})
+
+	s.When("status code is over 300", func(s *testcase.Spec) {
+		code.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(300, 600)
+		})
+
+		s.Then("it will report it as not successful status code", func(t *testcase.T) {
+			assert.False(t, actWithCode(t))
+			assert.False(t, actWithResponse(t))
+		})
+	})
+
+	s.When("*http.Response is nil", func(s *testcase.Spec) {
+		response.LetValue(s, nil)
+
+		s.Then("it will report it as not successful", func(t *testcase.T) {
+			assert.False(t, actWithResponse(t))
+		})
+	})
+}
