@@ -142,8 +142,9 @@ type RESTHandler[ENT, ID any] struct {
 	// Default: extid.Lookup / extid.Set
 	IDAccessor extid.Accessor[ENT, ID]
 	// BodyReadLimit is the max bytes that the handler is willing to read from the request body.
+	// If BodyReadLimit set to -1, then body io reading is not limited.
 	//
-	// The default value is DefaultBodyReadLimit, which is preset to 16MB.
+	// default: DefaultBodyReadLimit, which is preset to 16MB.
 	BodyReadLimit iokit.ByteSize
 	// CollectionContext is called when a collection endpoint is called.
 	//
@@ -657,7 +658,6 @@ func (h RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id 
 		h.errMethodNotAllowed(w, r)
 		return
 	}
-
 	var (
 		ctx                 = r.Context()
 		reqSer, reqMIMEType = h.requestBodyCodec(r, h.MediaType)
@@ -842,8 +842,12 @@ func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, 
 	return true, nil
 }
 
-func (res RESTHandler[ENT, ID]) readAllBody(r *http.Request) (_ []byte, returnErr error) {
-	return bodyReadAll(r.Body, res.getBodyReadLimit())
+func (res RESTHandler[ENT, ID]) readAllBody(r *http.Request) ([]byte, error) {
+	data, err := bodyReadAll(r.Body, res.getBodyReadLimit())
+	if errors.Is(err, iokit.ErrReadLimitReached) {
+		return nil, ErrRequestEntityTooLarge
+	}
+	return data, err
 }
 
 func RESTHandlerFromCRUD[ENT, ID any](repo crud.ByIDFinder[ENT, ID], conf ...func(h *RESTHandler[ENT, ID])) RESTHandler[ENT, ID] {
@@ -871,11 +875,13 @@ func RESTHandlerFromCRUD[ENT, ID any](repo crud.ByIDFinder[ENT, ID], conf ...fun
 }
 
 func bodyReadAll(body io.ReadCloser, bodyReadLimit iokit.ByteSize) (_ []byte, returnErr error) {
-	data, err := iokit.ReadAllWithLimit(body, bodyReadLimit)
-	if errors.Is(err, iokit.ErrReadLimitReached) {
-		return nil, ErrRequestEntityTooLarge
+	if bodyReadLimit < 0 {
+		return io.ReadAll(body)
 	}
-	return data, err
+	if bodyReadLimit == 0 {
+		bodyReadLimit = DefaultBodyReadLimit
+	}
+	return iokit.ReadAllWithLimit(body, bodyReadLimit)
 }
 
 const (

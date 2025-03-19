@@ -54,6 +54,11 @@ var ErrRequestEntityTooLarge = errorkit.UserError{
 	Message: "The request body was larger than the size limit allowed for the server.",
 }
 
+var ErrResponseEntityTooLarge = errorkit.UserError{
+	Code:    "response-entity-too-large",
+	Message: "The response body was larger than the size limit allowed for the client.",
+}
+
 var defaultErrorHandler = rfc7807.Handler{
 	Mapping: ErrorMapping,
 }

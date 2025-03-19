@@ -3,6 +3,7 @@ package httpkit
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -14,6 +15,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
@@ -69,6 +71,11 @@ type RESTClient[ENT, ID any] struct {
 	//
 	// default: 20
 	PrefetchLimit int
+	// BodyReadLimit is the read limit in bytes of how much response body is accepted from the server.
+	// When set to -1, it accepts indifinitelly.
+	//
+	// default: DefaultBodyReadLimit
+	BodyReadLimit int
 	// DisableStreaming switches off the streaming behaviour in results processing,
 	// meaning the entire response body of the RESTful API is loaded at once, rather than bit by bit.
 	// By enabling DisableStreaming, you load everything into memory upfront and can close the response connection faster.
@@ -129,7 +136,7 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	responseBody, err := bodyReadAll(resp.Body, DefaultBodyReadLimit)
+	responseBody, err := r.bodyReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -296,7 +303,7 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 
 	details = append(details, logging.Field("status code", resp.StatusCode))
 
-	responseBody, err := bodyReadAll(resp.Body, DefaultBodyReadLimit)
+	responseBody, err := r.bodyReadAll(resp.Body)
 	if err != nil {
 		return ent, false, err
 	}
@@ -438,7 +445,7 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	responseBody, err := bodyReadAll(resp.Body, DefaultBodyReadLimit)
+	responseBody, err := r.bodyReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -486,7 +493,7 @@ func (r RESTClient[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 		return err
 	}
 
-	responseBody, err := bodyReadAll(resp.Body, DefaultBodyReadLimit)
+	responseBody, err := r.bodyReadAll(resp.Body)
 	if err != nil {
 		return err
 	}
@@ -520,7 +527,7 @@ func (r RESTClient[ENT, ID]) DeleteAll(ctx context.Context) error {
 		return err
 	}
 
-	responseBody, err := bodyReadAll(resp.Body, DefaultBodyReadLimit)
+	responseBody, err := bodyReadAll(resp.Body, r.BodyReadLimit)
 	if err != nil {
 		return err
 	}
@@ -610,6 +617,14 @@ func (r RESTClient[ENT, ID]) withContext(ctx context.Context) context.Context {
 		return r.WithContext(ctx)
 	}
 	return ctx
+}
+
+func (r RESTClient[ENT, ID]) bodyReadAll(body io.ReadCloser) ([]byte, error) {
+	data, err := bodyReadAll(body, r.BodyReadLimit)
+	if errors.Is(err, iokit.ErrReadLimitReached) {
+		return nil, ErrResponseEntityTooLarge
+	}
+	return data, nil
 }
 
 var pathResourceIdentifierRGX = regexp.MustCompile(`^:[\w[:punct:]]+$`)

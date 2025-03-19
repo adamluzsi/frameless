@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -15,8 +17,10 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
@@ -190,9 +194,9 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
 	barRepo := memory.NewRepository[testent.Bar, testent.BarID](mem)
 
-	barAPI := httpkit.RESTHandlerFromCRUD[testent.Bar, testent.BarID](barRepo)
+	barAPI := httpkit.RESTHandlerFromCRUD(barRepo)
 
-	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+	fooAPI := httpkit.RESTHandlerFromCRUD(fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
 		h.ResourceRoutes = httpkit.NewRouter(func(router *httpkit.Router) {
 			router.Resource("/bars", barAPI)
 		})
@@ -215,7 +219,7 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 	}
 
 	barClient := httpkit.RESTClient[testent.Bar, testent.BarID]{
-		HTTPClient: fooClient.HTTPClient,
+		HTTPClient: srv.Client(),
 		BaseURL:    pathkit.Join(fooClient.BaseURL, ":foo_id", "/bars"),
 
 		WithContext: func(ctx context.Context) context.Context {
@@ -226,6 +230,12 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 	crudcontractsConfig := crudcontracts.Config[testent.Bar, testent.BarID]{
 		SupportIDReuse:  true,
 		SupportRecreate: true,
+		MakeEntity: func(t testing.TB) testent.Bar {
+			v := rnd.Make(testent.Bar{}).(testent.Bar)
+			v.ID = ""
+			v.FooID = foo.ID
+			return v
+		},
 	}
 
 	t.Run("Creator", crudcontracts.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
@@ -306,4 +316,80 @@ func (c GobCodec) Unmarshal(data []byte, ptr any) (_ error) {
 		return err
 	}
 	return nil
+}
+
+func TestRESTClient_bodyReadLimit(t *testing.T) {
+	rnd := random.New(random.CryptoSeed{})
+	mem := memory.NewMemory()
+
+	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
+
+	foo := rnd.Make(testent.Foo{}).(testent.Foo)
+	foo.ID = ""
+	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
+	fooValPath := pathkit.Join("/", foo.ID.String())
+
+	fooAPI := httpkit.NewRouter()
+
+	// FindAll / FindByIDs
+	fooAPI.Get("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode([]testent.Foo{foo})
+	}))
+
+	// DeleteAll
+	fooAPI.Delete("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "OK"})
+	}))
+
+	// FindByID
+	fooAPI.Get(fooValPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(foo)
+	}))
+
+	// Update
+	fooAPI.Put(fooValPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+	}))
+
+	// DeleteByID
+	fooAPI.Delete(fooValPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "ok"})
+	}))
+
+	api := httpkit.NewRouter(func(router *httpkit.Router) {
+		router.Mount("/foos", fooAPI)
+	})
+
+	srv := httptest.NewServer(api)
+	t.Cleanup(srv.Close)
+
+	fooClient := httpkit.RESTClient[testent.Foo, testent.FooID]{
+		HTTPClient: srv.Client(),
+		BaseURL:    srv.URL + "/foos",
+
+		MediaType: GobMediaType,
+
+		MediaTypeCodecs: httpkit.MediaTypeCodecs{
+			GobMediaType: GobCodec{},
+		},
+
+		BodyReadLimit: 1,
+	}
+
+	var err error
+
+	err = fooClient.Create(t.Context(), &foo)
+	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
+
+	_, _, err = fooClient.FindByID(t.Context(), foo.ID)
+	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
+
+	_, err = crudkit.CollectQueryMany(fooClient.FindByIDs(t.Context(), foo.ID))
+	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
+
+	err = fooClient.Update(t.Context(), &foo)
+	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
+
+	err = fooClient.DeleteByID(t.Context(), foo.ID)
+	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
 }

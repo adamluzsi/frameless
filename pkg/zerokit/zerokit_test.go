@@ -81,6 +81,42 @@ func TestCoalesce(t *testing.T) {
 	})
 }
 
+func BenchmarkCoalesce(b *testing.B) {
+	b.Run("primitive", func(b *testing.B) {
+		b.Run("string", func(b *testing.B) {
+			const defaultValue = "foo bar baz"
+
+			for range b.N {
+				zerokit.Coalesce("", defaultValue)
+			}
+		})
+		b.Run("int", func(b *testing.B) {
+			const defaultValue = 42
+
+			for range b.N {
+				zerokit.Coalesce(0, defaultValue)
+			}
+		})
+		b.Run("float", func(b *testing.B) {
+			const defaultValue = 42.42
+
+			for range b.N {
+				zerokit.Coalesce(0.0, defaultValue)
+			}
+		})
+	})
+	b.Run("comparable", func(b *testing.B) {
+		b.Run("time.Time", func(b *testing.B) {
+			var defaultTime = time.Now()
+			b.ResetTimer()
+
+			for range b.N {
+				zerokit.Coalesce(time.Time{}, defaultTime)
+			}
+		})
+	})
+}
+
 type StubIsZero struct {
 	ZeroItIs bool
 	V        int
