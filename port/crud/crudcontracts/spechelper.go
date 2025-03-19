@@ -212,7 +212,7 @@ func storer[ENT, ID any](c Config[ENT, ID], resource any) (func(tb testing.TB, p
 		return func(tb testing.TB, ptr *ENT) {
 			tb.Helper()
 			crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
-		}, false
+		}, true
 	}
 	if subject, ok := resource.(crud.Saver[ENT]); ok {
 		return func(tb testing.TB, ptr *ENT) {

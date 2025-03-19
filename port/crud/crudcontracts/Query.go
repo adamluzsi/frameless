@@ -66,12 +66,11 @@ func QueryOne[ENT, ID any](
 
 	s.When(`entity was present in the resource`, func(s *testcase.Spec) {
 		ent := testcase.Let(s, func(t *testcase.T) ENT {
-			v := makeEntity(t, t.FailNow, c, resource, func() ENT {
+			v := makeEntity(t, t.SkipNow, c, resource, func() ENT {
 				ent := sub.Get(t).ExpectedEntity
 				assert.NotEmpty(t, ent)
 				return ent
 			}, "QueryOne.Subject.ExpectedEntity")
-			shouldStore(t, c, resource, &v)
 			return v
 		}).EagerLoading(s)
 

@@ -181,3 +181,61 @@ func Test_noleftoverAfterTests(t *testing.T) {
 
 	testcase.RunSuite(s, contracts(subject, mem)...)
 }
+
+func Test_NoSkippedTestBecauseShouldStore(t *testing.T) {
+	var check func(tb testing.TB, dtb *testcase.FakeTB)
+	check = func(tb testing.TB, dtb *testcase.FakeTB) {
+		msg := assert.Message(dtb.Logs.String())
+		assert.False(tb, dtb.IsSkipped, msg)
+		assert.False(tb, dtb.IsFailed, msg)
+		for _, dtb := range dtb.Tests {
+			check(tb, dtb)
+		}
+	}
+
+	t.Run("with Creator", func(t *testing.T) {
+		dtb := &testcase.FakeTB{}
+
+		s := testcase.NewSpec(dtb)
+		type Repo struct {
+			crud.Creator[testent.Foo]
+			crud.ByIDDeleter[testent.FooID]
+			crud.ByIDFinder[testent.Foo, testent.FooID]
+		}
+
+		mrepo := &memory.Repository[testent.Foo, testent.FooID]{}
+		var repo = Repo{
+			Creator:     mrepo,
+			ByIDDeleter: mrepo,
+			ByIDFinder:  mrepo,
+		}
+
+		s.Context("smoke", crudcontracts.ByIDDeleter[testent.Foo, testent.FooID](repo).Spec)
+		testcase.Sandbox(s.Finish)
+
+		check(t, dtb)
+	})
+
+	t.Run("with Saver", func(t *testing.T) {
+		dtb := &testcase.FakeTB{}
+
+		s := testcase.NewSpec(dtb)
+		type Repo struct {
+			crud.Saver[testent.Foo]
+			crud.ByIDDeleter[testent.FooID]
+			crud.ByIDFinder[testent.Foo, testent.FooID]
+		}
+
+		mrepo := &memory.Repository[testent.Foo, testent.FooID]{}
+		var repo = Repo{
+			Saver:       mrepo,
+			ByIDDeleter: mrepo,
+			ByIDFinder:  mrepo,
+		}
+
+		s.Context("smoke", crudcontracts.ByIDDeleter[testent.Foo, testent.FooID](repo).Spec)
+		testcase.Sandbox(s.Finish)
+
+		check(t, dtb)
+	})
+}
