@@ -5,6 +5,7 @@ import (
 	"iter"
 	"strings"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/internal/constant"
@@ -17,6 +18,9 @@ import (
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
+	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
@@ -448,4 +452,279 @@ func (fhr *faultyHitRepo[Entity, ID]) DeleteAll(ctx context.Context) error {
 		return fhr.fcr.Random.Error()
 	}
 	return fhr.fcr.CacheRepo.Hits().DeleteAll(ctx)
+}
+
+func ExampleRefreshCache_withValueSpecificExpirationLogic() {
+	type Token struct {
+		ExpireAt time.Time
+	}
+
+	type TokenIssuer interface {
+		CreateToken(context.Context) (Token, error)
+	}
+	var tokenIssuer TokenIssuer
+
+	m := cache.RefreshCache[Token]{
+		Refresh: func(ctx context.Context) (Token, error) {
+			return tokenIssuer.CreateToken(ctx)
+		},
+		// Values expire based on the custom logic of IsExpired
+		IsExpired: func(ctx context.Context, v Token) (bool, error) {
+			return clock.Now().After(v.ExpireAt), nil
+		},
+	}
+
+	tkn, err := m.Load(context.Background())
+	_, _ = tkn, err
+}
+
+func ExampleRefreshCache_withTimeToLive() {
+	type Token struct {
+		ExpireAt time.Time
+	}
+
+	type TokenIssuer interface {
+		CreateToken(context.Context) (Token, error)
+	}
+	var tokenIssuer TokenIssuer
+
+	m := cache.RefreshCache[Token]{
+		Refresh: func(ctx context.Context) (Token, error) {
+			return tokenIssuer.CreateToken(ctx)
+		},
+		TimeToLive: time.Hour, // values expire after an hour
+	}
+
+	tkn, err := m.Load(context.Background())
+	_, _ = tkn, err
+}
+
+func ExampleRefreshCache_withCombinedTTLStrategy() {
+	type Token struct {
+		ExpireAt time.Time
+	}
+
+	type TokenIssuer interface {
+		CreateToken(context.Context) (Token, error)
+	}
+	var tokenIssuer TokenIssuer
+
+	m := cache.RefreshCache[Token]{
+		Refresh: func(ctx context.Context) (Token, error) {
+			return tokenIssuer.CreateToken(ctx)
+		},
+		IsExpired: func(ctx context.Context, v Token) (bool, error) {
+			return clock.Now().After(v.ExpireAt), nil
+		},
+		TimeToLive: time.Hour,
+	}
+
+	tkn, err := m.Load(context.Background())
+	_, _ = tkn, err
+}
+
+func TestRefreshCache(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type T struct{ V string }
+
+	var (
+		refreshLastValue = let.Var[T](s, nil)
+		refreshError     = let.Var(s, func(t *testcase.T) error { return nil })
+		refreshCount     = let.Var(s, func(t *testcase.T) int { return 0 })
+	)
+
+	var (
+		Refresh = let.Var(s, func(t *testcase.T) func(context.Context) (T, error) {
+			return func(ctx context.Context) (T, error) {
+				refreshCount.Set(t, refreshCount.Get(t)+1)
+				v := T{V: t.Random.String()}
+				refreshLastValue.Set(t, v)
+				return v, refreshError.Get(t)
+			}
+		})
+		IsExpired = let.Var(s, func(t *testcase.T) func(ctx context.Context, v T) (bool, error) {
+			return nil
+		})
+		TimeToLive = let.Var(s, func(t *testcase.T) time.Duration {
+			return 0
+		})
+		subject = let.Var(s, func(t *testcase.T) *cache.RefreshCache[T] {
+			return &cache.RefreshCache[T]{
+				Refresh:    Refresh.Get(t),
+				IsExpired:  IsExpired.Get(t),
+				TimeToLive: TimeToLive.Get(t),
+			}
+		})
+	)
+
+	s.Describe("Load", func(s *testcase.Spec) {
+		var (
+			ctx = let.Context(s)
+		)
+		act := let.Act2(func(t *testcase.T) (T, error) {
+			return subject.Get(t).Load(ctx.Get(t))
+		})
+
+		s.Then("value is loaded", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, refreshLastValue.Get(t), got)
+		})
+
+		s.Then("refresh happens once", func(t *testcase.T) {
+			t.Random.Repeat(3, 7, func() {
+				_, err := act(t)
+				assert.NoError(t, err)
+			})
+
+			assert.Equal(t, refreshCount.Get(t), 1)
+		})
+
+		s.When("error occurs during refresh", func(s *testcase.Spec) {
+			refreshError.Let(s, let.Error(s).Get)
+
+			s.Then("error propagated back", func(t *testcase.T) {
+				_, err := act(t)
+				assert.ErrorIs(t, err, refreshError.Get(t))
+			})
+
+			s.And("after an initial error, the refresh yield value again", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					act(t)
+					refreshError.Set(t, nil)
+				})
+
+				s.Then("value is loaded", func(t *testcase.T) {
+					got, err := act(t)
+					assert.NoError(t, err)
+					assert.Equal(t, refreshLastValue.Get(t), got)
+				})
+			})
+		})
+
+		s.When("IsExpired supplied", func(s *testcase.Spec) {
+			expiredValue := let.Var(s, func(t *testcase.T) T {
+				return T{V: "initial expied value comparison value"}
+			})
+
+			IsExpired.Let(s, func(t *testcase.T) func(ctx context.Context, v T) (bool, error) {
+				return func(ctx context.Context, v T) (bool, error) {
+					assert.NotEmpty(t, v, "zero value was not expected, since refresh returns a non-zero value")
+					assert.Equal(t, refreshLastValue.Get(t), v, "it was expected that we got back the last value returned by refresh")
+					if v == expiredValue.Get(t) {
+						return true, nil
+					}
+					return false, nil
+				}
+			})
+
+			s.Then("IsExpired controls the refresh calls", func(t *testcase.T) {
+				t.Random.Repeat(3, 7, func() {
+					v, err := act(t)
+					assert.NoError(t, err)
+					assert.NotEmpty(t, v)
+				})
+				assert.Equal(t, 1, refreshCount.Get(t))
+
+				t.Log("given the current value is considered expired by the IsExpired func")
+				expiredValue.Set(t, refreshLastValue.Get(t))
+
+				t.Random.Repeat(3, 7, func() {
+					v, err := act(t)
+					assert.NoError(t, err)
+					assert.NotEmpty(t, v)
+				})
+				assert.Equal(t, 2, refreshCount.Get(t))
+			})
+
+			s.And("if it has an error", func(s *testcase.Spec) {
+				expErr := let.Error(s)
+
+				IsExpired.Let(s, func(t *testcase.T) func(ctx context.Context, v T) (bool, error) {
+					return func(ctx context.Context, v T) (bool, error) {
+						return false, expErr.Get(t)
+					}
+				})
+
+				s.Then("error is propagatd back", func(t *testcase.T) {
+					_, err := act(t)
+
+					assert.ErrorIs(t, err, expErr.Get(t))
+				})
+			})
+		})
+
+		s.When("TimeToLive supplied", func(s *testcase.Spec) {
+			TimeToLive.Let(s, func(t *testcase.T) time.Duration {
+				return t.Random.DurationBetween(time.Hour, 24*time.Hour)
+			})
+
+			s.Then("value is loaded", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+				assert.Equal(t, refreshLastValue.Get(t), got)
+			})
+
+			s.And("the cached value just expired (based on the TTL)", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					act(t)
+					timecop.Travel(t, TimeToLive.Get(t), timecop.DeepFreeze)
+				})
+
+				s.Then("refresh used", func(t *testcase.T) {
+					val, err := act(t)
+					assert.NoError(t, err)
+					assert.Equal(t, refreshLastValue.Get(t), val)
+					assert.Equal(t, 2, refreshCount.Get(t))
+				})
+
+				s.Context("or it already long expired", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						timecop.Travel(t, t.Random.DurationBetween(time.Hour, 48*time.Hour))
+					})
+
+					s.Then("refresh used", func(t *testcase.T) {
+						val, err := act(t)
+						assert.NoError(t, err)
+						assert.Equal(t, refreshLastValue.Get(t), val)
+						assert.Equal(t, 2, refreshCount.Get(t))
+					})
+				})
+			})
+
+			s.And("the cached value already long expired (based on the TTL)", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					act(t)
+					timecop.Travel(t, TimeToLive.Get(t))
+				})
+
+				s.Then("refresh used", func(t *testcase.T) {
+					val, err := act(t)
+					assert.NoError(t, err)
+					assert.Equal(t, refreshLastValue.Get(t), val)
+					assert.Equal(t, 2, refreshCount.Get(t))
+				})
+			})
+		})
+
+		s.When("refresh is not provided", func(s *testcase.Spec) {
+			Refresh.LetValue(s, nil)
+
+			s.Then("it will panic", func(t *testcase.T) {
+				assert.Panic(t, func() { act(t) })
+			})
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			ctx := context.Background()
+			load := subject.Get(t).Load
+
+			testcase.Race(func() {
+				load(ctx)
+			}, func() {
+				load(ctx)
+			})
+		})
+	})
 }

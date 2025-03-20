@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"sync"
+	"time"
 
 	"go.llib.dev/frameless/pkg/cache/internal/memory"
 	"go.llib.dev/frameless/pkg/contextkit"
@@ -57,10 +59,10 @@ type Cache[ENT any, ID comparable] struct {
 	//
 	// default: false
 	RefreshBehind bool
-	// Locks is used to synch background task scheduling.
+	// Locks is used to sync background task scheduling.
 	// RefreshBehind depends on Locks.
 	//
-	// default: application level Locks
+	// default: process level locking
 	Locks Locks
 	// TimeToLive defines the lifespan of cached data.
 	// Cached entries older than this duration are considered stale and will be
@@ -590,4 +592,114 @@ func (m *Cache[ENT, ID]) locks() guard.NonBlockingLockerFactory[HitID] {
 
 func (m *Cache[ENT, ID]) Close() (rErr error) {
 	return m.jobs.Stop()
+}
+
+// AutoRefreshCache is a generic cache that automatically refreshes its stored value when it becomes expired.
+//
+// It supports optional custom expiration logic via IsExpired and TTL-based expiration.
+// Only the Refresh function is mandatory;
+//
+// if either IsExpired or TimeToLive are provided, they define additional conditions for when to trigger a refresh.
+// If both IsExpired and TimeToLive are provided, the cache will expire the value when either condition is met.
+type RefreshCache[T any] struct {
+	// Refresh [REQUIRED] is a mandatory function that fetches a new value when the current cache entry is expired or missing.
+	//
+	// This must be provided; otherwise, calls to Load will panic.
+	Refresh func(ctx context.Context) (T, error)
+	// IsExpired [OPTIONAL] is custom expiration checker.
+	// If set, it determines whether the current cached value has expired.
+	//
+	// The function takes a context and the cached value T as inputs, returning true if expired or false otherwise.
+	// Errors returned by this function are propagated to callers of Load().
+	IsExpired func(ctx context.Context, v T) (bool, error)
+	// TimeToLive [OPTIONAL] is a duration specifying how long the cached value remains valid before automatic refresh occurs.
+	//
+	// A zero or negative value disables TTL-based expiration.
+	TimeToLive time.Duration
+
+	rwm sync.RWMutex
+	ptr *T
+	at  *time.Time
+}
+
+func (m *RefreshCache[T]) Load(ctx context.Context) (T, error) {
+start:
+	v, ok, err := m.lookup(ctx)
+	if err != nil {
+		return v, err
+	}
+	if !ok {
+		if err := m.refresh(ctx); err != nil {
+			return v, err
+		}
+		goto start
+	}
+	return v, nil
+}
+
+func (m *RefreshCache[T]) lookup(ctx context.Context) (T, bool, error) {
+	m.rwm.RLock()
+	defer m.rwm.RUnlock()
+	return m.unsafeLookup(ctx)
+}
+
+func (m *RefreshCache[T]) unsafeLookup(ctx context.Context) (T, bool, error) {
+	if m.ptr == nil {
+		var zero T
+		return zero, false, nil
+	}
+	if expired, err := m.isExpired(ctx); err != nil || expired {
+		var zero T
+		return zero, false, err
+	}
+	return *m.ptr, true, nil
+}
+
+func (m *RefreshCache[T]) isExpired(ctx context.Context) (bool, error) {
+	if m.ptr == nil {
+		return true, nil
+	}
+	if m.IsExpired != nil {
+		isExpired, err := m.IsExpired(ctx, *m.ptr)
+		if err != nil {
+			return false, err
+		}
+		if isExpired {
+			return true, nil
+		}
+	}
+	if 0 < m.TimeToLive {
+		if m.at == nil {
+			return true, nil
+		}
+		lived := clock.Now().Sub(*m.at)
+		left := m.TimeToLive - lived
+		if left <= 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *RefreshCache[T]) refresh(ctx context.Context) error {
+	m.rwm.Lock()
+	defer m.rwm.Unlock()
+	_, ok, err := m.unsafeLookup(ctx)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return nil
+	}
+	if m.Refresh == nil {
+		panic(fmt.Sprintf("%T.Refresh func is missing", m))
+	}
+	v, err := m.Refresh(ctx)
+	if err != nil {
+		return err
+	}
+	m.ptr = &v
+	now := clock.Now()
+	m.at = &now
+	return nil
 }
