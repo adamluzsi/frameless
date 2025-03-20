@@ -3,7 +3,11 @@ package internal
 import (
 	"reflect"
 	"unsafe"
+
+	"go.llib.dev/frameless/pkg/errorkit"
 )
+
+const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
 
 func Accessible(rv reflect.Value) reflect.Value {
 	if rv, ok := TryToMakeAccessible(rv); ok {

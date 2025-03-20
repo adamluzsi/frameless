@@ -245,6 +245,11 @@ func tryComparableEqual(v1, v2 reflect.Value) (bool, bool) {
 }
 
 func tryCmpEqual(v1 reflect.Value, v2 reflect.Value) (bool, bool) {
+	if cmpFunc, ok := ImplementsComparable(v1.Type()); ok {
+		if cmp, err := cmpFunc(v1, v2); err == nil {
+			return cmp == 0, true
+		}
+	}
 	method := v1.MethodByName("Cmp")
 	if method == (reflect.Value{}) {
 		return false, false

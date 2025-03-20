@@ -11,10 +11,11 @@ import (
 
 	"go.llib.dev/frameless/internal/interr"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/reflectkit/internal"
 	"go.llib.dev/frameless/pkg/synckit"
 )
 
-const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
+const ErrTypeMismatch = internal.ErrTypeMismatch
 
 const ErrInvalid errorkit.Error = "ErrInvalid"
 
@@ -562,58 +563,10 @@ type CmpComparable[T any] interface {
 	Cmp(T) int
 }
 
-var intType = TypeOf[int]()
-
-type compareFunc func(val, oth reflect.Value) (int, error)
-
-func implementsComparable(T reflect.Type) (compareFunc, bool) {
-	if T == nil {
-		return nil, false
-	}
-	m, ok := T.MethodByName("Compare")
-	if !ok {
-		m, ok = T.MethodByName("Cmp")
-		if !ok {
-			return nil, false
-		}
-	}
-	var mFuncType = m.Func.Type()
-	if mFuncType.NumIn() != 2 {
-		return nil, false
-	}
-	if valType := mFuncType.In(0); valType != T {
-		// expected that the receiver is a T type
-		return nil, false
-	}
-	if othType := mFuncType.In(1); othType != T {
-		// expected that the other value is a T type
-		// 	T#Compare(oth T) int
-		//
-		return nil, false
-	}
-	if mFuncType.NumOut() != 1 {
-		return nil, false
-	}
-	if outType := mFuncType.Out(0); outType != intType {
-		// expected that the first argument is the same type as the value itself.
-		// 	T#Compare(oth T) int
-		//
-		return nil, false
-	}
-	return func(a, b reflect.Value) (int, error) {
-		if err := validateComparedTypes(a, b); err != nil {
-			return 0, err
-		}
-		//
-		// T#Compare(oth T) int
-		return int(m.Func.Call([]reflect.Value{a, b})[0].Int()), nil
-	}, true
-}
-
 const ErrNotComparable errorkit.Error = "ErrNotComparable"
 
 func Compare(a, b reflect.Value) (int, error) {
-	if compare, ok := implementsComparable(a.Type()); ok {
+	if compare, ok := internal.ImplementsComparable(a.Type()); ok {
 		return compare(a, b)
 	}
 	for compareCanUnwrap(a, b) {

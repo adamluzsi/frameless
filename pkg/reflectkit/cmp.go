@@ -32,15 +32,15 @@ var _ = RegisterEqual[net.IP](func(ip1, ip2 net.IP) bool {
 })
 
 var _ = RegisterEqual[big.Int](func(v1, v2 big.Int) bool {
-	return v1.Cmp(&v2) == v2.Cmp(&v1)
+	return v1.Cmp(&v2) == 0
 })
 
 var _ = RegisterEqual[big.Rat](func(v1, v2 big.Rat) bool {
-	return v1.Cmp(&v2) == v2.Cmp(&v1)
+	return v1.Cmp(&v2) == 0
 })
 
 var _ = RegisterEqual[big.Float](func(v1, v2 big.Float) bool {
-	return v1.Cmp(&v2) == v2.Cmp(&v1)
+	return v1.Cmp(&v2) == 0
 })
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
