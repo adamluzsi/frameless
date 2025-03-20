@@ -14,14 +14,22 @@ import (
 
 // IsZero will report whether the value is zero or not.
 func IsZero[T any](v T) (ok bool) {
-	var zero T
+	var (
+		zero T
+		done bool
+	)
 	defer func() {
+		if done {
+			return
+		}
 		if recover() == nil {
 			return
 		}
 		ok = reflectkit.Equal(v, zero)
 	}()
-	return any(v) == any(zero)
+	ok = any(v) == any(zero)
+	done = true
+	return ok
 }
 
 // Coalesce will return the first non-zero value from the provided values.
@@ -202,4 +210,97 @@ func mk(typ reflect.Type) any {
 	default:
 		return reflect.New(typ).Elem().Interface()
 	}
+}
+
+func InitWith[T any, L *sync.RWMutex | *sync.Mutex | *sync.Once](ptr *T, l L, init func() T) T {
+	var (
+		v   T
+		err error
+	)
+	switch lock := any(l).(type) {
+	case *sync.Once:
+		return initWithOnce(ptr, lock, init)
+	case *sync.RWMutex:
+		v, err = InitErrWith(ptr, lock, func() (T, error) {
+			return init(), nil
+		})
+	case *sync.Mutex:
+		v, err = InitErrWith(ptr, lock, func() (T, error) {
+			return init(), nil
+		})
+	default:
+		panic("not-implemented")
+	}
+	if err != nil {
+		panic(err)
+	}
+	return v
+}
+
+func InitErrWith[T any, L *sync.RWMutex | *sync.Mutex](ptr *T, l L, init func() (T, error)) (T, error) {
+	switch l := any(l).(type) {
+	case *sync.RWMutex:
+		return initWithRWMutex(ptr, l, init)
+	case *sync.Mutex:
+		return initWithMutex(ptr, l, init)
+	default:
+		panic("not implemented")
+	}
+}
+
+func initWithRWMutex[T any](ptr *T, rwm *sync.RWMutex, init func() (T, error)) (T, error) {
+	if ptr == nil {
+		panic("[zerokit.InitWith]: nil value pointer received")
+	}
+	if rwm == nil {
+		panic("[zerokit.InitWith]: nil sync.RWMutex pointer received")
+	}
+	rwm.RLock()
+	if v := *ptr; !IsZero(v) {
+		rwm.RUnlock()
+		return v, nil
+	}
+	rwm.RUnlock()
+	rwm.Lock()
+	defer rwm.Unlock()
+	if v := *ptr; !IsZero(v) {
+		return v, nil
+	}
+	out, err := init()
+	if err != nil {
+		return out, err
+	}
+	*ptr = out
+	return out, nil
+}
+
+func initWithMutex[T any](ptr *T, m *sync.Mutex, init func() (T, error)) (T, error) {
+	if ptr == nil {
+		panic("[zerokit.InitWith]: nil value pointer received")
+	}
+	if m == nil {
+		panic("[zerokit.InitWith]: nil sync.Mutex pointer received")
+	}
+	m.Lock()
+	defer m.Unlock()
+	if v := *ptr; !IsZero(v) {
+		return v, nil
+	}
+	out, err := init()
+	if err != nil {
+		return out, err
+	}
+	*ptr = out
+	return out, nil
+}
+
+func initWithOnce[T any](ptr *T, o *sync.Once, init func() T) T {
+	if ptr == nil {
+		panic("[zerokit.InitWith]: nil value pointer received")
+	}
+	if o == nil {
+		panic("[zerokit.InitWith]: nil sync.Once pointer received")
+	}
+	o.Do(func() { *ptr = init() })
+	return *ptr
 }

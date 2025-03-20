@@ -437,101 +437,156 @@ func TestInit_race(t *testing.T) {
 
 func BenchmarkInit(b *testing.B) {
 	type Example struct{ V int }
-
-	benchInit[Example](b, func() Example {
+	var mkExample = func() Example {
 		return Example{V: 42}
+	}
+
+	b.Run("zerokit.Init", func(b *testing.B) {
+		benchInit[Example](b, func(p *Example) Example {
+			return zerokit.Init(p, mkExample)
+		})
+
+		benchInit[int32](b, func(p *int32) int32 {
+			return zerokit.Init(p, func() int32 {
+				return 42
+			})
+		})
+
+		benchInit[int64](b, func(p *int64) int64 {
+			return zerokit.Init(p, func() int64 {
+				return 42
+			})
+		})
+
+		type uncomparable map[string]struct{}
+		benchInit[uncomparable](b, func(p *uncomparable) uncomparable {
+			return zerokit.Init(p, func() uncomparable {
+				return make(uncomparable)
+			})
+		})
+
+		benchInit[uncomparable](b, func(p *uncomparable) uncomparable {
+			return zerokit.Init(p, func() uncomparable {
+				return make(uncomparable)
+			})
+		})
 	})
 
-	benchInit[int32](b, func() int32 {
-		return 42
+	b.Run("InitWith sync.RWMutex", func(b *testing.B) {
+		var m sync.RWMutex
+
+		benchInit[Example](b, func(p *Example) Example {
+			return zerokit.InitWith(p, &m, mkExample)
+		})
 	})
 
-	benchInit[int64](b, func() int64 {
-		return 42
+	b.Run("InitWith sync.Mutex", func(b *testing.B) {
+		var m sync.Mutex
+
+		benchInit[Example](b, func(p *Example) Example {
+			return zerokit.InitWith(p, &m, mkExample)
+		})
 	})
 
-	type uncomparable map[string]struct{}
-	benchInit[uncomparable](b, func() uncomparable {
-		return make(uncomparable)
+	b.Run("InitWith Once", func(b *testing.B) {
+		var o sync.Once
+		benchInit[Example](b, func(p *Example) Example {
+			return zerokit.InitWith(p, &o, mkExample)
+		}, func() {
+			o = sync.Once{}
+		})
 	})
 }
 
-func benchInit[T any](b *testing.B, init func() T) {
+func benchInit[T any](b *testing.B, init func(p *T) T, before ...func()) {
+	var runBefore = func() {
+		for _, fn := range before {
+			fn()
+		}
+	}
 	b.Run(reflectkit.SymbolicName(*new(T)), func(b *testing.B) {
 		b.Run("R when init is not required", func(b *testing.B) {
+			runBefore()
 			var v T
-			zerokit.Init(&v, init)
+			init(&v)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 
 		b.Run("R when init is not required", func(b *testing.B) {
+			runBefore()
 			var v T
-			zerokit.Init(&v, init)
+			init(&v)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 
 		b.Run("R while having concurrent read access", func(b *testing.B) {
+			runBefore()
 			makeConcurrentReadsAccesses[T](b, init)
 			var v T
-			_ = zerokit.Init(&v, init)
+			_ = init(&v)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 
 		b.Run("R while having concurrent write access", func(b *testing.B) {
+			runBefore()
 			makeConcurrentAccesses[T](b, init)
 			var v T
-			_ = zerokit.Init(&v, init)
+			_ = init(&v)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 
 		b.Run("W when init required", func(b *testing.B) {
+			runBefore()
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				var v T
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 
 		b.Run("W while having concurrent access", func(b *testing.B) {
+			runBefore()
 			makeConcurrentAccesses[T](b, init)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				var v T
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 
 		b.Run("RW", func(b *testing.B) {
+			runBefore()
 			var v T
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				if i%2 == 0 {
 					v = *new(T) // zero it out
 				}
-				_ = zerokit.Init(&v, init)
+				_ = init(&v)
 			}
 		})
 	})
 }
 
-func makeConcurrentReadsAccesses[T any](tb testing.TB, init func() T) {
+func makeConcurrentReadsAccesses[T any](tb testing.TB, init func(*T) T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	var (
 		ready int32
 		v     T
-		blk   = func() { _ = zerokit.Init(&v, init) }
+		blk   = func() { _ = init(&v) }
 	)
 	blk()
 	go func() {
@@ -551,14 +606,14 @@ func makeConcurrentReadsAccesses[T any](tb testing.TB, init func() T) {
 	}
 }
 
-func makeConcurrentAccesses[T any](tb testing.TB, init func() T) {
+func makeConcurrentAccesses[T any](tb testing.TB, init func(*T) T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tb.Cleanup(cancel)
 	var ready int32
 	go func() {
 		blk := func() {
 			var v T
-			_ = zerokit.Init(&v, init)
+			_ = init(&v)
 		}
 		more := random.Slice[func()](runtime.NumCPU()*2, func() func() { return blk })
 		atomic.AddInt32(&ready, 1)
@@ -728,4 +783,230 @@ type TypeWithInit struct {
 
 func (v *TypeWithInit) Init() {
 	v.X = 42
+}
+
+func TestInitWith(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Context("sync.RWMutex", func(s *testcase.Spec) {
+		s.Test("smoke", func(t *testcase.T) {
+			var rwm sync.RWMutex
+			exp := t.Random.Int()
+
+			var val int
+
+			got := zerokit.InitWith(&val, &rwm, func() int {
+				return exp
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+
+			t.Random.Repeat(3, 7, func() {
+				got = zerokit.InitWith(&val, &rwm, func() int { panic("boom") })
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			var rwm sync.RWMutex
+			exp := t.Random.Int()
+			mk := func() int { return exp }
+			var val int
+
+			testcase.Race(func() {
+				zerokit.InitWith(&val, &rwm, mk)
+			}, func() {
+				zerokit.InitWith(&val, &rwm, mk)
+			})
+		})
+	})
+
+	s.Context("sync.Mutex", func(s *testcase.Spec) {
+		s.Test("smoke", func(t *testcase.T) {
+			var m sync.Mutex
+			exp := t.Random.Int()
+
+			var val int
+
+			got := zerokit.InitWith(&val, &m, func() int {
+				return exp
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+
+			t.Random.Repeat(3, 7, func() {
+				got = zerokit.InitWith(&val, &m, func() int { panic("boom") })
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			var m sync.Mutex
+			exp := t.Random.Int()
+			mk := func() int { return exp }
+			var val int
+
+			testcase.Race(func() {
+				zerokit.InitWith(&val, &m, mk)
+			}, func() {
+				zerokit.InitWith(&val, &m, mk)
+			})
+		})
+	})
+
+	s.Context("sync.Once", func(s *testcase.Spec) {
+		s.Test("smoke", func(t *testcase.T) {
+			var o sync.Once
+
+			exp := t.Random.Int()
+			var val int
+
+			got := zerokit.InitWith(&val, &o, func() int {
+				return exp
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+
+			t.Random.Repeat(3, 7, func() {
+				got = zerokit.InitWith(&val, &o, func() int { panic("boom") })
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			var m sync.Mutex
+			exp := t.Random.Int()
+			mk := func() int { return exp }
+			var val int
+
+			testcase.Race(func() {
+				zerokit.InitWith(&val, &m, mk)
+			}, func() {
+				zerokit.InitWith(&val, &m, mk)
+			})
+		})
+	})
+}
+
+func TestInitErrWith(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Context("sync.RWMutex", func(s *testcase.Spec) {
+		s.Test("smoke", func(t *testcase.T) {
+			var rwm sync.RWMutex
+			exp := t.Random.Int()
+
+			var val int
+
+			got, err := zerokit.InitErrWith(&val, &rwm, func() (int, error) {
+				return exp, nil
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+
+			t.Random.Repeat(3, 7, func() {
+				got, err = zerokit.InitErrWith(&val, &rwm, func() (int, error) { panic("boom") })
+				assert.NoError(t, err)
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("err", func(t *testcase.T) {
+			var l sync.RWMutex
+			exp := t.Random.Int()
+			expErr := t.Random.Error()
+			var val int
+			got, err := zerokit.InitErrWith(&val, &l, func() (int, error) {
+				return exp, expErr
+			})
+			assert.ErrorIs(t, expErr, err)
+			got, err = zerokit.InitErrWith(&val, &l, func() (int, error) {
+				return exp, nil
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			var rwm sync.RWMutex
+			exp := t.Random.Int()
+			mk := func() (int, error) { return exp, nil }
+			var val int
+
+			testcase.Race(func() {
+				zerokit.InitErrWith(&val, &rwm, mk)
+			}, func() {
+				zerokit.InitErrWith(&val, &rwm, mk)
+			})
+		})
+	})
+
+	s.Context("sync.Mutex", func(s *testcase.Spec) {
+		s.Test("smoke", func(t *testcase.T) {
+			var m sync.Mutex
+			exp := t.Random.Int()
+
+			var val int
+
+			got, err := zerokit.InitErrWith(&val, &m, func() (int, error) {
+				return exp, nil
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+
+			t.Random.Repeat(3, 7, func() {
+				got, err = zerokit.InitErrWith(&val, &m, func() (int, error) { panic("boom") })
+				assert.NoError(t, err)
+			})
+
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("err", func(t *testcase.T) {
+			var l sync.Mutex
+			exp := t.Random.Int()
+			expErr := t.Random.Error()
+			var val int
+			got, err := zerokit.InitErrWith(&val, &l, func() (int, error) {
+				return exp, expErr
+			})
+			assert.ErrorIs(t, expErr, err)
+			got, err = zerokit.InitErrWith(&val, &l, func() (int, error) {
+				return exp, nil
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, exp, got)
+			assert.Equal(t, exp, val)
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			var m sync.Mutex
+			exp := t.Random.Int()
+			mk := func() (int, error) { return exp, nil }
+			var val int
+
+			testcase.Race(func() {
+				zerokit.InitErrWith(&val, &m, mk)
+			}, func() {
+				zerokit.InitErrWith(&val, &m, mk)
+			})
+		})
+	})
 }
