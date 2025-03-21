@@ -459,6 +459,18 @@ func Filter[T any](i iter.Seq[T], filter func(T) bool) iter.Seq[T] {
 	}
 }
 
+func Filter2[K, V any](i iter.Seq2[K, V], filter func(k K, v V) bool) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		for k, v := range i {
+			if filter(k, v) {
+				if !yield(k, v) {
+					break
+				}
+			}
+		}
+	}
+}
+
 // First decode the first next value of the iterator and close the iterator
 func First[T any](i iter.Seq[T]) (T, bool) {
 	for v := range i {

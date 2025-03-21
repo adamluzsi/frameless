@@ -292,6 +292,56 @@ func TestFilter(t *testing.T) {
 	})
 }
 
+func TestFilter2(t *testing.T) {
+	t.Run("given the iterator has set of elements", func(t *testing.T) {
+		originalInput := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+		var iterator iter.Seq2[int, int] = func(yield func(int, int) bool) {
+			for _, n := range originalInput {
+				if !yield(n, n*2) {
+					return
+				}
+			}
+		}
+
+		t.Run("all source iter elements passed to the filter and filter yields all accepted back", func(t *testing.T) {
+			var got []int
+
+			i := iterkit.Filter2(iterator, func(k int, v int) bool {
+				assert.Contain(t, originalInput, k)
+				got = append(got, k)
+				return true
+			})
+
+			assert.NotNil(t, i)
+			kvs := iterkit.CollectKV(i)
+			assert.ContainExactly(t, originalInput, got)
+			assert.Equal(t, len(kvs), len(originalInput))
+			for i, kv := range kvs {
+				assert.Equal(t, kv.K, originalInput[i])
+				assert.Equal(t, kv.K*2, kv.V)
+			}
+		})
+
+		t.Run("when filter disallow part of the value stream", func(t *testing.T) {
+			var exp []int = slicekit.Filter(originalInput, func(v int) bool {
+				return v%2 == 0
+			})
+
+			i := iterkit.Filter2(iterator, func(k int, v int) bool {
+				return k%2 == 0
+			})
+			assert.NotNil(t, i)
+
+			var got []int
+			for k, _ := range i {
+				got = append(got, k)
+			}
+
+			assert.ContainExactly(t, exp, got)
+		})
+	})
+}
+
 func BenchmarkFilter(b *testing.B) {
 	var logic = func(n int) bool {
 		return n > 500
