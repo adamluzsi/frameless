@@ -608,8 +608,13 @@ func TestRefreshCache(t *testing.T) {
 				return T{V: "initial expied value comparison value"}
 			})
 
+			IsExpiredCallCount := let.Var(s, func(t *testcase.T) int {
+				return 0
+			})
+
 			IsExpired.Let(s, func(t *testcase.T) func(ctx context.Context, v T) (bool, error) {
 				return func(ctx context.Context, v T) (bool, error) {
+					IsExpiredCallCount.Set(t, IsExpiredCallCount.Get(t)+1)
 					assert.NotEmpty(t, v, "zero value was not expected, since refresh returns a non-zero value")
 					assert.Equal(t, refreshLastValue.Get(t), v, "it was expected that we got back the last value returned by refresh")
 					if v == expiredValue.Get(t) {
@@ -651,6 +656,27 @@ func TestRefreshCache(t *testing.T) {
 					_, err := act(t)
 
 					assert.ErrorIs(t, err, expErr.Get(t))
+				})
+			})
+
+			s.And("TTL is also set", func(s *testcase.Spec) {
+				TimeToLive.Let(s, func(t *testcase.T) time.Duration {
+					return t.Random.DurationBetween(time.Hour, 24*time.Hour)
+				})
+
+				s.And("the cached data is already expired", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						act(t)
+						timecop.Travel(t, TimeToLive.Get(t)+time.Second, timecop.DeepFreeze)
+						IsExpiredCallCount.Set(t, 0)
+					})
+
+					s.Then("IsExpired is not even used for the intial cache invalidation, since TTL already marked the value expired and we consider IsExpired as a pricey operation", func(t *testcase.T) {
+						v, err := act(t)
+						assert.NoError(t, err)
+						assert.Equal(t, v, refreshLastValue.Get(t))
+						assert.Equal(t, 1, IsExpiredCallCount.Get(t))
+					})
 				})
 			})
 		})

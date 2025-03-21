@@ -659,15 +659,6 @@ func (m *RefreshCache[T]) isExpired(ctx context.Context) (bool, error) {
 	if m.ptr == nil {
 		return true, nil
 	}
-	if m.IsExpired != nil {
-		isExpired, err := m.IsExpired(ctx, *m.ptr)
-		if err != nil {
-			return false, err
-		}
-		if isExpired {
-			return true, nil
-		}
-	}
 	if 0 < m.TimeToLive {
 		if m.at == nil {
 			return true, nil
@@ -675,6 +666,15 @@ func (m *RefreshCache[T]) isExpired(ctx context.Context) (bool, error) {
 		lived := clock.Now().Sub(*m.at)
 		left := m.TimeToLive - lived
 		if left <= 0 {
+			return true, nil
+		}
+	}
+	if m.IsExpired != nil {
+		isExpired, err := m.IsExpired(ctx, *m.ptr)
+		if err != nil {
+			return false, err
+		}
+		if isExpired {
 			return true, nil
 		}
 	}
