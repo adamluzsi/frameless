@@ -121,15 +121,31 @@ type FuncInfo struct {
 	IsMethodValue bool
 }
 
-func FuncInfoOf(fn *runtime.Func) FuncInfo {
+func FuncInfoOf[FN *runtime.Func | string | runtime.Frame](fn FN) FuncInfo {
 	const ImportPathSeperator = "/"
 	var info FuncInfo
-	if fn == nil {
+	var funcName string
+
+	switch fn := any(fn).(type) {
+	case *runtime.Func:
+		if fn == nil {
+			return info
+		}
+		funcName = fn.Name()
+	case string:
+		funcName = fn
+	case runtime.Frame:
+		if fn.Func != nil {
+			return FuncInfoOf(fn.Func)
+		}
+		if 0 < len(fn.Function) {
+			return FuncInfoOf(fn.Function)
+		}
 		return info
 	}
+
 	var (
 		ids                  []string // [ package name ] | [ receiver type ] [ function name ]
-		funcName             = fn.Name()
 		indexOfLastSeperator = strings.LastIndex(funcName, ImportPathSeperator)
 	)
 	if 0 <= indexOfLastSeperator { // non top level package

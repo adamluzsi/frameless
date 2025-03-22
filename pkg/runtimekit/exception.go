@@ -26,7 +26,8 @@ func RegisterFrameException(isException func(f runtime.Frame) bool) func() {
 }
 
 var _ = RegisterFrameException(func(f runtime.Frame) bool {
-	return strings.Contains(f.Function, "runtimekit.")
+	return strings.Contains(f.Function, "runtimekit.") ||
+		strings.Contains(f.File, "runtimekit.go")
 })
 
 func isException(frame runtime.Frame) bool {

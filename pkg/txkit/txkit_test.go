@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"testing"
 
+	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/txkit"
 	"go.llib.dev/frameless/port/comproto/comprotocontracts"
+	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -402,5 +404,44 @@ func TestManager(t *testing.T) {
 
 		cancel()
 		assert.ErrorIs(t, ctx.Err(), subject.RollbackTx(ctx))
+	})
+}
+
+func TestWithOnePhaseCommitManager(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("without", func(t *testcase.T) {
+		r := &memory.Repository[testent.Foo, testent.FooID]{}
+		ctx := context.Background()
+
+		tx, err := txkit.Begin(ctx)
+		assert.NoError(t, err)
+
+		foo := testent.MakeFoo(t)
+		assert.NoError(t, r.Create(tx, &foo))
+
+		assert.NoError(t, txkit.Rollback(tx))
+
+		_, found, err := r.FindByID(ctx, foo.ID)
+		assert.NoError(t, err)
+		assert.True(t, found)
+	})
+
+	s.Test("with", func(t *testcase.T) {
+		r := &memory.Repository[testent.Foo, testent.FooID]{}
+		ctx := context.Background()
+		ctx = txkit.WithOnePhaseCommitManager(ctx, r)
+
+		tx, err := txkit.Begin(ctx)
+		assert.NoError(t, err)
+
+		foo := testent.MakeFoo(t)
+		assert.NoError(t, r.Create(tx, &foo))
+
+		assert.NoError(t, txkit.Rollback(tx))
+
+		_, found, err := r.FindByID(ctx, foo.ID)
+		assert.NoError(t, err)
+		assert.False(t, found)
 	})
 }

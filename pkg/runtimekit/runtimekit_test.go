@@ -79,6 +79,22 @@ func TestStack(t *testing.T) {
 // DO NOT change the name of this function!
 func stubFunc(blk func()) { blk() }
 
+func FrameOfStubFunc(tb testing.TB) runtime.Frame {
+	var (
+		frame runtime.Frame
+		ok    bool
+	)
+	stubFunc(func() {
+		for cframe := range runtimekit.OverStack() {
+			frame = cframe
+			ok = true
+			break
+		}
+	})
+	assert.True(tb, ok)
+	return frame
+}
+
 type TYPE struct{}
 
 func (TYPE) method() {}
@@ -115,48 +131,112 @@ func TestFuncOf(t *testing.T) {
 }
 
 func TestFuncInfoOf(t *testing.T) {
-	t.Run("func", func(t *testing.T) {
-		fn := runtimekit.FuncOf(stubFunc)
-		fni := runtimekit.FuncInfoOf(fn)
+	t.Run("runtime.Func", func(t *testing.T) {
+		t.Run("func", func(t *testing.T) {
+			fn := runtimekit.FuncOf(stubFunc)
+			fni := runtimekit.FuncInfoOf(fn)
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Empty(t, fni.Receiver)
+			assert.Equal(t, fni.ID, "stubFunc")
+		})
+		t.Run("method-func", func(t *testing.T) {
+			fn := runtimekit.FuncOf(TYPE.method)
+			fni := runtimekit.FuncInfoOf(fn)
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Equal(t, fni.Receiver, "TYPE")
+			assert.Equal(t, fni.ID, "method")
+			assert.False(t, fni.IsMethodValue)
+		})
+		t.Run("method-value", func(t *testing.T) {
+			var v TYPE
+			fn := runtimekit.FuncOf(v.method)
+			fni := runtimekit.FuncInfoOf(fn)
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Equal(t, fni.Receiver, "TYPE")
+			assert.Equal(t, fni.ID, "method")
+			assert.True(t, fni.IsMethodValue)
+		})
+		t.Run("prt-method", func(t *testing.T) {
+			var v TYPE
+			fn := runtimekit.FuncOf(v.ptrMethod)
+			fni := runtimekit.FuncInfoOf(fn)
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Equal(t, fni.Receiver, "*TYPE")
+			assert.Equal(t, fni.ID, "ptrMethod")
+		})
+		t.Run("top level package without any importpath", func(t *testing.T) {
+			fn := runtimekit.FuncOf(testing.TB.Name)
+			fni := runtimekit.FuncInfoOf(fn)
+			assert.Equal(t, fni.Package, "testing")
+			assert.Equal(t, fni.Import, "testing")
+			assert.Equal(t, fni.Receiver, "TB")
+			assert.Equal(t, fni.ID, "Name")
+		})
+	})
+	t.Run("frame.Function", func(t *testing.T) {
+		t.Run("func", func(t *testing.T) {
+			fn := runtimekit.FuncOf(stubFunc)
+			fni := runtimekit.FuncInfoOf(fn.Name())
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Empty(t, fni.Receiver)
+			assert.Equal(t, fni.ID, "stubFunc")
+		})
+		t.Run("method-func", func(t *testing.T) {
+			fn := runtimekit.FuncOf(TYPE.method)
+			fni := runtimekit.FuncInfoOf(fn.Name())
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Equal(t, fni.Receiver, "TYPE")
+			assert.Equal(t, fni.ID, "method")
+			assert.False(t, fni.IsMethodValue)
+		})
+		t.Run("method-value", func(t *testing.T) {
+			var v TYPE
+			fn := runtimekit.FuncOf(v.method)
+			fni := runtimekit.FuncInfoOf(fn.Name())
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Equal(t, fni.Receiver, "TYPE")
+			assert.Equal(t, fni.ID, "method")
+			assert.True(t, fni.IsMethodValue)
+		})
+		t.Run("prt-method", func(t *testing.T) {
+			var v TYPE
+			fn := runtimekit.FuncOf(v.ptrMethod)
+			fni := runtimekit.FuncInfoOf(fn.Name())
+			assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
+			assert.Equal(t, fni.Package, "runtimekit_test")
+			assert.Equal(t, fni.Receiver, "*TYPE")
+			assert.Equal(t, fni.ID, "ptrMethod")
+		})
+		t.Run("top level package without any importpath", func(t *testing.T) {
+			fn := runtimekit.FuncOf(testing.TB.Name)
+			fni := runtimekit.FuncInfoOf(fn.Name())
+			assert.Equal(t, fni.Package, "testing")
+			assert.Equal(t, fni.Import, "testing")
+			assert.Equal(t, fni.Receiver, "TB")
+			assert.Equal(t, fni.ID, "Name")
+		})
+	})
+	t.Run("runtime.Frame", func(t *testing.T) {
+		frame := FrameOfStubFunc(t)
+		fni := runtimekit.FuncInfoOf(frame)
 		assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
 		assert.Equal(t, fni.Package, "runtimekit_test")
 		assert.Empty(t, fni.Receiver)
 		assert.Equal(t, fni.ID, "stubFunc")
 	})
-	t.Run("method-func", func(t *testing.T) {
-		fn := runtimekit.FuncOf(TYPE.method)
-		fni := runtimekit.FuncInfoOf(fn)
-		assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
-		assert.Equal(t, fni.Package, "runtimekit_test")
-		assert.Equal(t, fni.Receiver, "TYPE")
-		assert.Equal(t, fni.ID, "method")
-		assert.False(t, fni.IsMethodValue)
-	})
-	t.Run("method-value", func(t *testing.T) {
-		var v TYPE
-		fn := runtimekit.FuncOf(v.method)
-		fni := runtimekit.FuncInfoOf(fn)
-		assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
-		assert.Equal(t, fni.Package, "runtimekit_test")
-		assert.Equal(t, fni.Receiver, "TYPE")
-		assert.Equal(t, fni.ID, "method")
-		assert.True(t, fni.IsMethodValue)
-	})
-	t.Run("prt-method", func(t *testing.T) {
-		var v TYPE
-		fn := runtimekit.FuncOf(v.ptrMethod)
-		fni := runtimekit.FuncInfoOf(fn)
-		assert.Equal(t, fni.Import, "go.llib.dev/frameless/pkg/runtimekit_test")
-		assert.Equal(t, fni.Package, "runtimekit_test")
-		assert.Equal(t, fni.Receiver, "*TYPE")
-		assert.Equal(t, fni.ID, "ptrMethod")
-	})
-	t.Run("top level package without any importpath", func(t *testing.T) {
-		fn := runtimekit.FuncOf(testing.TB.Name)
-		fni := runtimekit.FuncInfoOf(fn)
-		assert.Equal(t, fni.Package, "testing")
-		assert.Equal(t, fni.Import, "testing")
-		assert.Equal(t, fni.Receiver, "TB")
-		assert.Equal(t, fni.ID, "Name")
+}
+
+func TestOverStack(t *testing.T) {
+	t.Run("runtimekit scope is an exception", func(t *testing.T) {
+		for frame := range runtimekit.OverStack() {
+			assert.NotContain(t, frame.File, "runtimekit.go")
+		}
 	})
 }

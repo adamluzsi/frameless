@@ -1,9 +1,13 @@
 package teardown
 
 import (
+	"fmt"
+	"reflect"
 	"sync"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/runtimekit"
+	"go.llib.dev/testcase/pp"
 )
 
 type Teardown struct {
@@ -32,11 +36,106 @@ type Teardown struct {
 //   - basically anything that has the io.Closer interface
 //
 // https://github.com/golang/go/issues/41891
-func (td *Teardown) Defer(fn func() error) {
-	td.mutex.Lock()
-	defer td.mutex.Unlock()
-	td.fns = append(td.fns, fn)
+func (td *Teardown) Defer(fn interface{}, args ...interface{}) {
+	//// FAST-PATH
+	//
+	if len(args) == 0 {
+		switch fn := fn.(type) {
+		case func() error:
+			td.add(fn)
+			return
+		case func():
+			td.add(func() error { fn(); return nil })
+			return
+		}
+	}
+
+	//// SLOW-PATH
+	//
+	rfn := reflect.ValueOf(fn)
+	if rfn.Kind() != reflect.Func {
+		panic(`T#Defer can only take functions`)
+	}
+	rfnType := rfn.Type()
+
+	var caller = func() (file string, line int) {
+		for frame := range runtimekit.OverStack() {
+			fi := runtimekit.FuncInfoOf(frame.Func)
+			pp.PP(fi, frame)
+
+			if fi.Package == "teardown" {
+				continue
+			}
+			return frame.File, frame.Line
+		}
+		return "", 0
+	}
+
+	numInCountMatch := func() bool {
+		inCount := rfnType.NumIn()
+		if rfnType.IsVariadic() {
+			return inCount-1 <= len(args)
+		}
+		return inCount == len(args)
+	}
+
+	getInType := func(index int) reflect.Type {
+		if !rfnType.IsVariadic() {
+			return rfnType.In(index)
+		}
+		if index < rfnType.NumIn()-1 {
+			return rfnType.In(index)
+		}
+		return rfnType.In(rfnType.NumIn() - 1).Elem()
+	}
+
+	if !numInCountMatch() {
+		file, line := caller()
+		const format = "deferred function argument count mismatch: expected %d, but got %d from %s:%d"
+		panic(fmt.Sprintf(format, rfnType.NumIn(), len(args), file, line))
+	}
+	var refArgs = make([]reflect.Value, 0, len(args))
+	for i, arg := range args {
+		value := reflect.ValueOf(arg)
+		inType := getInType(i)
+		switch expected := inType.Kind(); expected {
+		case reflect.Interface:
+			if !value.Type().Implements(inType) {
+				file, line := caller()
+				const format = "deferred function argument[%d] %s doesn't implements %s.%s from %s:%d"
+				panic(fmt.Sprintf(format, i, value.Kind(), inType.PkgPath(), inType.Name(), file, line))
+			}
+		case value.Kind():
+			// OK
+		default:
+			file, line := caller()
+			const format = "deferred function argument[%d] type mismatch: expected %s, but got %s from %s:%d"
+			panic(fmt.Sprintf(format, i, expected, value.Kind(), file, line))
+		}
+
+		refArgs = append(refArgs, value)
+	}
+
+	var toErr func(vs []reflect.Value) error
+	toErr = func(vs []reflect.Value) error { return nil }
+
+	if outCount := rfnType.NumOut(); 0 < outCount {
+		index := outCount - 1
+		last := rfnType.Out(index)
+		if last.Implements(errorInterface) {
+			toErr = func(vs []reflect.Value) error {
+				err, _ := vs[index].Interface().(error)
+				return err
+			}
+		}
+	}
+
+	td.add(func() error {
+		return toErr(rfn.Call(refArgs))
+	})
 }
+
+var errorInterface = reflect.TypeOf((*error)(nil)).Elem()
 
 func (td *Teardown) Finish() error {
 	var errors []error
@@ -50,6 +149,12 @@ func (td *Teardown) IsEmpty() bool {
 	td.mutex.RLock()
 	defer td.mutex.RUnlock()
 	return len(td.fns) == 0
+}
+
+func (td *Teardown) add(fn func() error) {
+	td.mutex.Lock()
+	defer td.mutex.Unlock()
+	td.fns = append(td.fns, fn)
 }
 
 func (td *Teardown) run() (errs []error) {

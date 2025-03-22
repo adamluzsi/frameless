@@ -1,6 +1,8 @@
 package teardown_test
 
 import (
+	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"testing"
@@ -12,6 +14,22 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 )
+
+func ExampleTeardown() {
+	var td teardown.Teardown
+	td.Defer(func() { fmt.Println("teardown scoped deferred function") })
+	td.Defer(func() { fmt.Println("this runs prior to the previous defer call, in a LIFO stack style") })
+	var x X
+	td.Defer(x.Hello, "world") // argument passing works as well
+
+	_ = td.Finish()
+}
+
+type X struct{}
+
+func (X) Hello(to string) {
+	fmt.Printf("Hello %s!\n", to)
+}
 
 func TestTeardown_Defer_order(t *testing.T) {
 	td := &teardown.Teardown{}
@@ -206,4 +224,87 @@ func TestTeardown_IsEmpty(t *testing.T) {
 	assert.False(t, td.IsEmpty())
 	assert.NoError(t, td.Finish())
 	assert.True(t, td.IsEmpty())
+}
+
+func TestTeardown_Defer_args(t *testing.T) {
+	td := &teardown.Teardown{}
+	t.Run(`arg is primitive type`, func(t *testing.T) {
+		fn := func(_ int) {}
+
+		t.Run(`proper input`, func(t *testing.T) {
+			assert.Must(t).NotPanic(func() { td.Defer(fn, 42) })
+		})
+
+		t.Run(`invalid input`, func(t *testing.T) {
+			const msg = `deferred function argument[0] type mismatch: expected int, but got string from`
+			message := getPanicMessage(t, func() { td.Defer(fn, "42") })
+			assert.Must(t).Contain(message, msg)
+		})
+	})
+
+	t.Run(`arg is interface type`, func(t *testing.T) {
+		fn := func(ctx context.Context) {}
+
+		t.Run(`proper input`, func(t *testing.T) {
+			assert.Must(t).NotPanic(func() { td.Defer(fn, context.Background()) })
+		})
+
+		t.Run(`invalid input`, func(t *testing.T) {
+			const msg = `deferred function argument[0] string doesn't implements context.Context from`
+			message := getPanicMessage(t, func() { td.Defer(fn, "42") })
+			assert.Must(t).Contain(message, msg)
+		})
+	})
+
+	t.Run(`pass by value`, func(t *testing.T) {
+		td := &teardown.Teardown{}
+		v := 42
+		var out int
+		td.Defer(func(n int) { out = n }, v)
+		v++
+		td.Finish()
+		assert.Must(t).Equal(42, out)
+	})
+}
+
+func TestT_Defer_withArgumentsButArgumentCountMismatch(t *testing.T) {
+	var subject = func() {
+		td := &teardown.Teardown{}
+		td.Defer(func(text string) {}, `this would be ok`, `but this extra argument is not ok`)
+	}
+
+	t.Run(`it will panics early on to help ease the pain of seeing mistakes`, func(t *testing.T) {
+		assert.Must(t).Panic(func() { subject() })
+	})
+
+	t.Run(`panic message will include hint`, func(t *testing.T) {
+		message := getPanicMessage(t, func() { subject() })
+		assert.Must(t).Contain(message, `/Teardown_test.go`)
+		assert.Must(t).Contain(message, `expected 1`)
+		assert.Must(t).Contain(message, `got 2`)
+	})
+
+	t.Run(`interface type with wrong implementation`, func(t *testing.T) {
+		type notContextForSure struct{}
+		var fn = func(ctx context.Context) {}
+		var subject = func(ctx interface{}) {
+			td := &teardown.Teardown{}
+			td.Defer(fn, ctx)
+		}
+		assert.Must(t).Panic(func() { subject(notContextForSure{}) })
+		message := getPanicMessage(t, func() { subject(notContextForSure{}) })
+		assert.Must(t).Contain(message, `Teardown_test.go`)
+		assert.Must(t).Contain(message, `doesn't implements context.Context`)
+		assert.Must(t).Contain(message, `argument[0]`)
+	})
+}
+
+func getPanicMessage(tb testing.TB, fn func()) (r string) {
+	defer func() {
+		var ok bool
+		r, ok = recover().(string)
+		assert.Must(tb).True(ok, `expected to panic`)
+	}()
+	fn()
+	return
 }

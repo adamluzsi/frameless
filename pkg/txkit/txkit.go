@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/teardown"
+	"go.llib.dev/frameless/port/comproto"
 )
 
 const (
@@ -66,8 +69,29 @@ var m = Manager[any, contextTransaction, any]{
 	ErrTxDone: ErrTxDone,
 }
 
-func Begin(ctx context.Context) (context.Context, error) {
-	return m.BeginTx(ctx)
+func Begin(ctx context.Context) (_ context.Context, rErr error) {
+	var teardown teardown.Teardown
+	defer errorkit.FinishOnError(&rErr, func() {
+		teardown.Finish() // roll back context
+	})
+
+	ctx, err := m.BeginTx(ctx)
+	if err != nil {
+		return ctx, err
+	}
+	teardown.Defer(func() error {
+		return Rollback(ctx)
+	})
+
+	for cm := range overOnePhaseCommitManagers(ctx) {
+		ctx, err = cm.BeginTx(ctx)
+		if err != nil {
+			return ctx, err
+		}
+		teardown.Defer(func() error {})
+	}
+
+	return
 }
 
 func Finish(returnError *error, tx context.Context) {
@@ -299,5 +323,49 @@ func (m Manager[DB, TX, Queryable]) lookupRootTx(ctx context.Context) (*txInCont
 			return tx, false
 		}
 		tx = tx.parent
+	}
+}
+
+type ctxKeyComprotoManager struct{}
+
+type ctxWithComprotoManager struct {
+	context.Context
+
+	OnePhaseCommitManager comproto.OnePhaseCommitProtocol
+}
+
+func (ctx ctxWithComprotoManager) Value(key any) any {
+	if _, ok := key.(ctxKeyComprotoManager); ok {
+		return ctx
+	}
+	if ctx.Context == nil {
+		return nil
+	}
+	return ctx.Context.Value(key)
+}
+
+func WithOnePhaseCommitManager(ctx context.Context, cm comproto.OnePhaseCommitProtocol) context.Context {
+	return ctxWithComprotoManager{
+		Context:               ctx,
+		OnePhaseCommitManager: cm,
+	}
+}
+
+func overOnePhaseCommitManagers(ctx context.Context) iter.Seq[comproto.OnePhaseCommitProtocol] {
+	if ctx == nil {
+		return iterkit.Empty[comproto.OnePhaseCommitProtocol]()
+	}
+	return func(yield func(comproto.OnePhaseCommitProtocol) bool) {
+		var current context.Context = ctx
+		for {
+			wcm, ok := current.Value(ctxKeyComprotoManager{}).(ctxWithComprotoManager)
+			if !ok {
+				break
+			}
+			if !yield(wcm.OnePhaseCommitManager) {
+				return
+			}
+			current = wcm.Context
+		}
 	}
 }
