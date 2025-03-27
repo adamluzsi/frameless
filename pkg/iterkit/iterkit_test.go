@@ -23,6 +23,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/tasker"
 	. "go.llib.dev/frameless/spechelper/testent"
@@ -664,6 +665,64 @@ func TestHead(t *testing.T) {
 	})
 }
 
+func ExampleHead2() {
+	inf42 := func(yield func(int, int) bool) {
+		for /* infinite */ {
+			if !yield(42, 24) {
+				return
+			}
+		}
+	}
+
+	i := iterkit.Head2[int](inf42, 3)
+
+	vs := iterkit.Collect2Map(i)
+	_ = vs // map[int]int{42:24, 42:24, 42:24}, nil
+}
+
+func TestHead2(t *testing.T) {
+	var values iter.Seq2[string, int] = func(yield func(string, int) bool) {
+		if !yield("foo", 42) {
+			return
+		}
+		if !yield("bar", 7) {
+			return
+		}
+		if !yield("baz", 13) {
+			return
+		}
+	}
+	t.Run("less", func(t *testing.T) {
+		i := iterkit.Head2(values, 2)
+		vs := iterkit.Collect2Map(i)
+		assert.ContainExactly(t, map[string]int{"foo": 42, "bar": 7}, vs)
+	})
+	t.Run("more", func(t *testing.T) {
+		i := iterkit.Head2(values, 5)
+		vs := iterkit.Collect2Map(i)
+		assert.Equal(t, map[string]int{"foo": 42, "bar": 7, "baz": 13}, vs)
+	})
+	t.Run("inf iterator", func(t *testing.T) {
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			infStream := iter.Seq2[int, int](func(yield func(int, int) bool) {
+				var index int
+				for {
+					index++
+					if ctx.Err() != nil {
+						return
+					}
+					if !yield(index, index*2) {
+						return
+					}
+				}
+			})
+			i := iterkit.Head2(infStream, 3)
+			vs := iterkit.Collect2Map(i)
+			assert.Equal(t, map[int]int{1: 2, 2: 4, 3: 6}, vs)
+		})
+	})
+}
+
 func TestTake(t *testing.T) {
 	t.Run("NoElementsToTake", func(t *testing.T) {
 		i := iterkit.Empty[int]()
@@ -1150,6 +1209,41 @@ func TestCollect2(t *testing.T) {
 	})
 }
 
+func ExampleCollect2Map() {
+	var values iter.Seq2[string, int] = func(yield func(string, int) bool) {
+		if !yield("foo", 42) {
+			return
+		}
+		if !yield("bar", 7) {
+			return
+		}
+		if !yield("baz", 13) {
+			return
+		}
+	}
+
+	vs := iterkit.Collect2Map(values)
+
+	_ = vs // map[string]int{"foo": 42, "bar": 7, "baz": 13}
+}
+
+func TestCollect2Map(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		exp := random.Map(t.Random.IntBetween(3, 7), func() (string, int) {
+			return t.Random.String(), t.Random.Int()
+		})
+		got := iterkit.Collect2Map(maps.All(exp))
+		assert.ContainExactly(t, exp, got)
+	})
+
+	s.Test("nil", func(t *testcase.T) {
+		var itr iter.Seq2[string, int]
+		assert.Nil(t, iterkit.Collect2Map(itr))
+	})
+}
+
 func ExampleCollectPull() {
 	var itr iter.Seq[int] = iterkit.IntRange(1, 10)
 	vs := iterkit.CollectPull(iter.Pull(itr))
@@ -1405,6 +1499,62 @@ func TestMap(t *testing.T) {
 			values := iterkit.Collect(subject(t))
 			t.Must.Equal([]string{`A0`, `B1`, `C2`}, values)
 		})
+	})
+}
+
+func ExampleMap2() {
+	itr := maps.All(map[int]string{1: "1", 2: "2", 3: "42"})
+
+	numbers := iterkit.Map2[int, int](itr, func(k int, v string) (int, int) {
+		return k, len(v)
+	})
+
+	_ = numbers
+}
+
+func TestMap2(t *testing.T) {
+	s := testcase.NewSpec(t)
+	s.Parallel()
+
+	var (
+		yieldedValues = let.Var(s, func(t *testcase.T) map[string]int {
+			return make(map[string]int)
+		})
+		length = let.IntB(s, 3, 7)
+		itr    = testcase.Let(s, func(t *testcase.T) iter.Seq2[string, int] {
+			return func(yield func(string, int) bool) {
+				for range length.Get(t) {
+					k := t.Random.String()
+					v := t.Random.Int()
+					cont := yield(k, v)
+					yieldedValues.Get(t)[k] = v
+					if !cont {
+						return
+					}
+				}
+			}
+		})
+		transform = let.Var(s, func(t *testcase.T) func(string, int) (string, string) {
+			return func(k string, v int) (string, string) {
+				return k, strconv.Itoa(v)
+			}
+		})
+	)
+	act := func(t *testcase.T) iter.Seq2[string, string] {
+		return iterkit.Map2(itr.Get(t), transform.Get(t))
+	}
+
+	s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
+		got := iterkit.Collect2Map(act(t))
+		exp := mapkit.Map(yieldedValues.Get(t), transform.Get(t))
+		assert.ContainExactly(t, exp, got)
+	})
+
+	s.Then("it respects if iteration is interupted", func(t *testcase.T) {
+		expLen := t.Random.IntB(1, length.Get(t))
+		got := iterkit.Collect2Map(iterkit.Head2(act(t), expLen))
+		assert.Equal(t, len(got), expLen)
+		assert.Equal(t, len(yieldedValues.Get(t)), expLen)
 	})
 }
 

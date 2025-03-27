@@ -161,6 +161,18 @@ func CollectKV[K, V any](i iter.Seq2[K, V]) []KV[K, V] {
 	})
 }
 
+// Collect2Map will collect2 an iter.Seq2 into a map.
+func Collect2Map[K comparable, V any](i iter.Seq2[K, V]) map[K]V {
+	if i == nil {
+		return nil
+	}
+	var out = make(map[K]V)
+	for k, v := range i {
+		out[k] = v
+	}
+	return out
+}
+
 func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
 	var vs = make([]T, 0)
 	for _, stop := range stops {
@@ -538,6 +550,26 @@ func Head[T any](i iter.Seq[T], n int) iter.Seq[T] {
 	}
 }
 
+// Head2 takes the first n element, similarly how the coreutils "head" app works.
+func Head2[K, V any](i iter.Seq2[K, V], n int) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		if n <= 0 {
+			return
+		}
+		next, stop := iter.Pull2(i)
+		defer stop()
+		for i := 0; i < n; i++ {
+			k, v, ok := next()
+			if !ok {
+				break
+			}
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
+}
+
 // Take will take the next N value from a pull iterator.
 func Take[T any](next func() (T, bool), n int) []T {
 	var vs []T
@@ -598,6 +630,16 @@ func Map[To any, From any](i iter.Seq[From], transform func(From) To) iter.Seq[T
 		for v := range i {
 			if !yield(transform(v)) {
 				break
+			}
+		}
+	}
+}
+
+func Map2[OKey, OVal, IKey, IVal any](i iter.Seq2[IKey, IVal], transform func(IKey, IVal) (OKey, OVal)) iter.Seq2[OKey, OVal] {
+	return func(yield func(OKey, OVal) bool) {
+		for k, v := range i {
+			if !yield(transform(k, v)) {
+				return
 			}
 		}
 	}
