@@ -2,6 +2,7 @@ package synckit_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -454,7 +455,23 @@ func ExampleMap() {
 	m.GetOrInit("foo", func() int { // -> 42
 		return 42
 	})
+}
 
+func ExampleMap_Do() {
+	var m synckit.Map[string, int]
+
+	m.Set("foo", 42) // 42 set for "foo" key
+	m.Get("foo")     // -> 42
+	m.Lookup("foo")  // -> 42, true
+	m.Lookup("bar")  // -> 0, false
+
+	err := m.Do(func(vs map[string]int) error {
+		// this is protected by the map mutex
+		_ = vs["foo"] // 42, true
+
+		return errors.New("the-error")
+	})
+	_ = err // &errors.errorString{s:"the-error"}
 }
 
 var _ datastruct.MapInterface[string, int] = &synckit.Map[string, int]{}
@@ -464,6 +481,165 @@ func TestMap(t *testing.T) {
 
 	subject := testcase.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
 		return &synckit.Map[string, int]{}
+	})
+
+	s.Describe("#Do", func(s *testcase.Spec) {
+		var (
+			lastValues = let.VarOf[map[string]int](s, nil)
+			fnErr      = let.VarOf[error](s, nil)
+
+			fn = let.Var(s, func(t *testcase.T) func(map[string]int) error {
+				return func(m map[string]int) error {
+					lastValues.Set(t, m)
+					return fnErr.Get(t)
+				}
+			})
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return subject.Get(t).Do(fn.Get(t))
+		})
+
+		var (
+			key   = let.String(s)
+			value = let.Int(s)
+		)
+		subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+			m := subject.Super(t)
+			m.Set(key.Get(t), value.Get(t))
+			return m
+		})
+
+		s.Then("values are accessed", func(t *testcase.T) {
+			assert.NoError(t, act(t))
+			assert.NotNil(t, lastValues.Get(t))
+			assert.ContainExactly(t, lastValues.Get(t), map[string]int{key.Get(t): value.Get(t)})
+		})
+
+		s.Then("after accessing values, Map Operations continue to work", func(t *testcase.T) {
+			act(t)
+
+			key := t.Random.String()
+			val := t.Random.Int()
+			subject.Get(t).Set(key, val)
+			assert.Equal(t, subject.Get(t).Get(key), val)
+		})
+
+		s.When("Map is in a zero state (no values)", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				return &synckit.Map[string, int]{}
+			})
+
+			s.Then("non nil map will be passed to the function", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.NotNil(t, lastValues.Get(t))
+			})
+
+			s.And("Do func modifies the values of the map", func(s *testcase.Spec) {
+				othKey := let.String(s)
+				othVal := let.Int(s)
+
+				fn.Let(s, func(t *testcase.T) func(map[string]int) error {
+					return func(m map[string]int) error {
+						assert.NotNil(t, m)
+						m[othKey.Get(t)] = othVal.Get(t)
+						return nil
+					}
+				})
+
+				s.Then("modifications can be observed through other map operations", func(t *testcase.T) {
+					act(t)
+
+					assert.Equal(t, subject.Get(t).Get(othKey.Get(t)), othVal.Get(t))
+				})
+			})
+		})
+
+		s.When("error raised in the Do func", func(s *testcase.Spec) {
+			fnErr.Let(s, let.Error(s).Get)
+
+			s.Then("error is returned", func(t *testcase.T) {
+				assert.ErrorIs(t, fnErr.Get(t), act(t))
+			})
+		})
+
+		s.When("Do func modifies the values of the map", func(s *testcase.Spec) {
+			othKey := let.String(s)
+			othVal := let.Int(s)
+
+			fn.Let(s, func(t *testcase.T) func(map[string]int) error {
+				return func(m map[string]int) error {
+					m[othKey.Get(t)] = othVal.Get(t)
+					return nil
+				}
+			})
+
+			s.Then("modifications can be observed through other map operations", func(t *testcase.T) {
+				act(t)
+
+				assert.Equal(t, subject.Get(t).Get(key.Get(t)), value.Get(t))
+				assert.Equal(t, subject.Get(t).Get(othKey.Get(t)), othVal.Get(t))
+			})
+		})
+
+		s.When("panic occurs in the Do func", func(s *testcase.Spec) {
+			panicValue := let.Var(s, func(t *testcase.T) any {
+				return t.Random.Error()
+			})
+
+			fn.Let(s, func(t *testcase.T) func(map[string]int) error {
+				return func(m map[string]int) error {
+					panic(panicValue.Get(t))
+				}
+			})
+
+			s.Then("panic bubbles up", func(t *testcase.T) {
+				out := assert.Panic(t, func() { act(t) })
+				assert.Equal(t, out, panicValue.Get(t))
+			})
+
+			s.Then("Map Operations continue to work", func(t *testcase.T) {
+				assert.Panic(t, func() { act(t) })
+				key := t.Random.String()
+				val := t.Random.Int()
+				subject.Get(t).Set(key, val)
+				assert.Equal(t, subject.Get(t).Get(key), val)
+			})
+		})
+
+		s.When("Do func is nil", func(s *testcase.Spec) {
+			fn.LetValue(s, nil)
+
+			s.Then("no error raied", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+			})
+		})
+
+		s.Test("race", func(t *testcase.T) {
+			m := subject.Get(t)
+
+			testcase.Race(func() {
+				m.Do(func(vs map[string]int) error {
+					vs["foo"] = 42
+					return nil
+				})
+			}, func() {
+				m.Do(func(vs map[string]int) error {
+					vs["bar"] = 7
+					return nil
+				})
+			}, func() {
+				m.Do(func(vs map[string]int) error {
+					vs["baz"] = 13
+					return nil
+				})
+			}, func() {
+				m.Do(func(vs map[string]int) error {
+					delete(vs, "foo")
+					return nil
+				})
+			})
+		})
 	})
 
 	s.Describe("#GetOrInit", func(s *testcase.Spec) {

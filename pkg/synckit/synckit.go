@@ -236,6 +236,18 @@ func (m *Map[K, V]) Delete(key K) {
 	delete(m.vs, key)
 }
 
+func (m *Map[K, V]) Do(fn func(vs map[K]V) error) error {
+	if fn == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.vs == nil {
+		m.vs = make(map[K]V)
+	}
+	return fn(m.vs)
+}
+
 func (m *Map[K, V]) GetOrInit(key K, init func() V) V {
 	{ // READ
 		m.mu.RLock()
@@ -318,6 +330,7 @@ func (m *Map[K, V]) Keys() []K {
 }
 
 func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
+	// TODO: make this into a key specific operation
 	m.mu.Lock()
 	v, ok := m.lookup(key)
 	if !ok {
