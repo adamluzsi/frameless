@@ -16,6 +16,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -55,26 +56,32 @@ func Test_debug(t *testing.T) {
 	})
 
 	s.Test("AddDuration", func(t *testcase.T) {
-		// 		timekit.go:494 time.Date(2004, time.June, 15, 8, 2, 30, 333738005, time.Local)	"start"
+		// timekit.go:494 time.Date(2004, time.June, 15, 8, 2, 30, 333738005, time.Local)	"start"
 		// timekit.go:495 time.Date(2025, time.April, 14, 10, 53, 49, 0, time.Local)	"start + delta"
 		// timekit.go:496 time.Date(2025, time.April, 14, 11, 53, 49, 0, time.Local)	"end"
+		var (
+			A = t.Random.Time()
+			B = A.AddDate(1000, 0, 0)
+		)
 
-		A := t.Random.Time()
-		B := t.Random.TimeBetween(A, A.AddDate(1000, 0, 0))
-		c := A
-		d := timekit.Delta{}
-
+		var (
+			d = timekit.Delta{}
+			c = A
+		)
 		for {
 			remaining := B.Sub(c)
-			if remaining <= 0 {
+			if remaining == 0 {
 				break
 			}
+
 			c = c.Add(remaining)
 			d = d.AddDuration(remaining)
-
-			assert.True(t, d.AddTo(A).Equal(c), assert.MessageF(
-				"diff: %s", c.Sub(d.AddTo(A))))
 		}
+
+		t.LogPretty(A, "start")
+		t.LogPretty(B, "end")
+		t.LogPretty(d.AddTo(A), "start+delta")
+		pp.PP(d)
 
 		assert.True(t, d.AddTo(A).Equal(B), assert.MessageF("diff: %s", B.Sub(d.AddTo(A))))
 
@@ -886,7 +893,7 @@ func TestDelta(t *testing.T) {
 		return total.Sub(r)
 	}
 
-	s.Describe("ByDuration", func(s *testcase.Spec) {
+	s.Describe("#ByDuration", func(s *testcase.Spec) {
 		var (
 			duration = let.DurationBetween(s, 0, 365*24*time.Hour)
 		)
@@ -947,8 +954,7 @@ func TestDelta(t *testing.T) {
 
 			s.Then("proper distance is calculated", func(t *testcase.T) {
 				assert.Equal(t, act(t), timekit.Delta{
-					Day:        106751,
-					Hour:       23,
+					Hour:       2562047,
 					Minute:     47,
 					Second:     16,
 					Nanosecond: 854775807,
@@ -957,7 +963,7 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
-	s.Describe("Between", func(s *testcase.Spec) {
+	s.Describe("#Between", func(s *testcase.Spec) {
 		var (
 			A = let.Time(s)
 			B = let.Time(s)
@@ -1163,7 +1169,7 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
-	s.Describe("Normalise", func(s *testcase.Spec) {
+	s.Describe("#Normalise", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) timekit.Delta {
 			return delta.Get(t).Normalise()
 		})
@@ -1362,7 +1368,7 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
-	s.Describe("Compare", func(s *testcase.Spec) {
+	s.Describe("#Compare", func(s *testcase.Spec) {
 		var (
 			oth = let.VarOf(s, timekit.Delta{})
 		)
@@ -1524,7 +1530,7 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
-	s.Describe("AddTo", func(s *testcase.Spec) {
+	s.Describe("#AddTo", func(s *testcase.Spec) {
 		var ref = let.Time(s)
 		act := let.Act(func(t *testcase.T) time.Time {
 			return delta.Get(t).AddTo(ref.Get(t))
@@ -1643,7 +1649,7 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
-	s.Describe("Normalise", func(s *testcase.Spec) {
+	s.Describe("#Normalise", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) timekit.Delta {
 			return delta.Get(t).Normalise()
 		})
@@ -1675,8 +1681,8 @@ func TestDelta(t *testing.T) {
 				return timekit.Delta{
 					Year:       t.Random.IntBetween(0, math.MaxInt),
 					Month:      t.Random.IntBetween(0, maxMonth),
-					Day:        t.Random.IntBetween(0, 20),
-					Hour:       t.Random.IntBetween(0, maxHour),
+					Day:        t.Random.IntBetween(0, 20), // days can't be normalised as a month is not a fixed amount of day.
+					Hour:       t.Random.IntBetween(0, 23), // hour can't be normalised as a Day is not a fixed 24h.
 					Minute:     t.Random.IntBetween(0, maxMinute),
 					Second:     t.Random.IntBetween(0, maxSecond),
 					Nanosecond: t.Random.IntBetween(0, maxNanosecond),

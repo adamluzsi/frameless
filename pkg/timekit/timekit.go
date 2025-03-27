@@ -11,7 +11,6 @@ import (
 	"go.llib.dev/frameless/pkg/internal/compare"
 	"go.llib.dev/frameless/pkg/internal/mathkit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/testcase/pp"
 )
 
 func EnableTimeEnum() func() {
@@ -368,30 +367,30 @@ func (d Delta) Compare(o Delta) int {
 func (d Delta) add(o Delta) Delta {
 	d = d.Normalise()
 	o = o.Normalise()
-	if 0 < o.Nanosecond {
+	if o.Nanosecond != 0 {
 		d.Nanosecond = mathkit.MustSum(d.Nanosecond, o.Nanosecond)
 		d = d.Normalise()
 	}
-	if 0 < o.Second {
+	if o.Second != 0 {
 		d.Second = mathkit.MustSum(d.Second, o.Second)
 		d = d.Normalise()
 	}
-	if 0 < o.Minute {
+	if o.Minute != 0 {
 		d.Minute = mathkit.MustSum(d.Minute, o.Minute)
 		d = d.Normalise()
 	}
-	if 0 < o.Hour {
+	if o.Hour != 0 {
 		d.Hour = mathkit.MustSum(d.Hour, o.Hour)
 		d = d.Normalise()
 	}
-	if 0 < o.Day {
+	if o.Day != 0 {
 		d.Day = mathkit.MustSum(d.Day, o.Day)
 	}
-	if 0 < o.Month {
+	if o.Month != 0 {
 		d.Month = mathkit.MustSum(d.Month, o.Month)
 		d = d.Normalise()
 	}
-	if 0 < o.Year {
+	if o.Year != 0 {
 		// since we don't have a higher level of structure, thus year can't be protected from int overflow
 		if mathkit.CanSumOverflow(d.Year, o.Year) {
 			panic(mathkit.ErrOverflow.F("timekit.Delta Year doesn't have a higher level time unit, and thus can't avoid int overflow"))
@@ -406,17 +405,7 @@ func (d Delta) AddDuration(duration time.Duration) Delta {
 }
 
 func (Delta) ByDuration(duration time.Duration) Delta {
-	var (
-		dist Delta
-	)
-
-	{ // day
-		const Day = 24 * time.Hour
-		for i := 0; 0 <= duration-time.Duration(i)*Day; i++ {
-			dist.Day = i
-		}
-		duration -= time.Duration(dist.Day) * Day
-	}
+	var delta Delta
 
 	const (
 		nanoPerSecond = int64(time.Second)
@@ -427,104 +416,83 @@ func (Delta) ByDuration(duration time.Duration) Delta {
 	remaining := int64(duration)
 
 	if remaining == 0 {
-		return dist
+		return delta
 	}
 
-	dist.Hour = int(remaining / nanoPerHour)
+	delta.Hour = int(remaining / nanoPerHour)
 	remaining %= nanoPerHour
 
-	dist.Minute = int(remaining / nanoPerMinute)
+	delta.Minute = int(remaining / nanoPerMinute)
 	remaining %= nanoPerMinute
 
-	dist.Second = int(remaining / nanoPerSecond)
+	delta.Second = int(remaining / nanoPerSecond)
 	remaining %= nanoPerSecond
 
-	dist.Nanosecond = int(remaining)
+	delta.Nanosecond = int(remaining)
 
-	return dist
+	return delta
 }
 
-func (Delta) Between(from, till time.Time) Delta {
+func (Delta) Between(start, end time.Time) Delta {
 	var (
-		delta      Delta
-		start, end = from, till
-		isNegative = from.After(till)
+		delta Delta
+		mod   = 1
 	)
+
+	var isNegative = start.After(end)
 	if isNegative {
-		start, end = end, start
+		mod = -1
 	}
+
+	var isOver = func(c time.Time) bool {
+		if isNegative {
+			/// end ---> c ---> start
+			return c.Before(end)
+		}
+		// start ---> c ---> end
+		return c.After(end)
+	}
+
 	var cursor = start
 
 	for { // years
-		candidate := cursor.AddDate(1, 0, 0)
-		if candidate.After(end) {
+		var y = 1 * mod
+		candidate := cursor.AddDate(y, 0, 0)
+		if isOver(candidate) {
 			break
 		}
 		cursor = candidate
-		delta.Year++
+		delta.Year += y
 	}
 
 	for { // months
-		candidate := cursor.AddDate(0, 1, 0)
-		if candidate.After(end) {
+		var m = 1 * mod
+		candidate := cursor.AddDate(0, m, 0)
+		if isOver(candidate) {
 			break
 		}
 		cursor = candidate
-		delta.Month++
+		delta.Month += m
 	}
 
-	for { // months
-		candidate := cursor.AddDate(0, 0, 1)
-		if candidate.After(end) {
+	for { // days
+		var d = 1 * mod
+		candidate := cursor.AddDate(0, 0, d)
+		if isOver(candidate) {
 			break
 		}
 		cursor = candidate
-		delta.Day++
-	}
-
-	if !delta.AddTo(start).Equal(cursor) {
-		panic("!!!")
+		delta.Day += d
 	}
 
 	for { // remaining
 		remaining := end.Sub(cursor)
-		if remaining <= 0 {
-			pp.PP()
-			pp.PP(delta.AddTo(start), "start+delta")
-			pp.PP(end, "end")
+		if remaining == 0 {
 			break
 		}
+
 		cursor = cursor.Add(remaining)
-		pp.PP(remaining)
 		delta = delta.AddDuration(remaining)
-
-		if !delta.AddTo(start).Equal(cursor) {
-			panic("!!!")
-		}
-	}
-
-	if !delta.AddTo(start).Equal(end) {
-		panic("???")
-	}
-
-	// 	for cursor.Before(end) {
-	// 		dur := end.Sub(cursor)
-	// 		cursor = cursor.Add(dur)
-	// 		delta = delta.AddDuration(dur)
-	// 	}
-
-	pp.PP("---")
-	pp.PP(start, "start")
-	pp.PP(delta.AddTo(start), "start + delta")
-	pp.PP(end, "end")
-	pp.PP("===")
-	pp.PP(start, "start")
-	pp.PP(delta.invert().AddTo(end), "end + invert delta")
-	pp.PP(end, "end")
-	pp.PP("~~~")
-
-	if isNegative {
-		return delta.invert()
 	}
 
 	return delta
@@ -586,12 +554,12 @@ func (d Delta) Normalise() Delta {
 		d.Minute = d.Minute - n*hourMinutes
 	}
 
-	if ubHour <= d.Hour || d.Hour <= -ubHour {
-		const dayHours = 24
-		n := d.Hour / dayHours
-		d.Day += n
-		d.Hour = d.Hour - n*dayHours
-	}
+	// if ubHour <= d.Hour || d.Hour <= -ubHour {
+	// 	const dayHours = 24
+	// 	n := d.Hour / dayHours
+	// 	d.Day += n
+	// 	d.Hour = d.Hour - n*dayHours
+	// }
 
 	return d
 }
