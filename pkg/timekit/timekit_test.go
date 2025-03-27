@@ -3,6 +3,7 @@ package timekit_test
 import (
 	"context"
 	"math"
+	"math/big"
 	"reflect"
 	"testing"
 	"time"
@@ -29,17 +30,17 @@ func Test_debug(t *testing.T) {
 			end   = let.VarOf(s, time.Date(2025, time.April, 14, 11, 53, 49, 0, time.Local))
 		)
 		s.Test("positive", func(t *testcase.T) {
-			var dp = timekit.Delta{}.Between(start.Get(t), end.Get(t))
+			var dp = timekit.Duration{}.Between(start.Get(t), end.Get(t))
 			assert.True(t, dp.AddTo(start.Get(t)).Equal(end.Get(t)))
 		})
 		s.Test("negative", func(t *testcase.T) {
-			var dn = timekit.Delta{}.Between(end.Get(t), start.Get(t))
+			var dn = timekit.Duration{}.Between(end.Get(t), start.Get(t))
 			assert.True(t, dn.AddTo(end.Get(t)).Equal(start.Get(t)))
 		})
 	})
 
 	s.Test("normalise", func(t *testcase.T) {
-		norms := []timekit.Delta{
+		norms := []timekit.Duration{
 			{Minute: 1},
 		}
 
@@ -49,7 +50,7 @@ func Test_debug(t *testing.T) {
 	})
 
 	s.Test("Add a minute of time duration", func(t *testcase.T) {
-		od := timekit.Delta{}
+		od := timekit.Duration{}
 		nd := od.AddDuration(time.Minute)
 		assert.NotEqual(t, od, nd)
 		assert.Equal(t, nd.Minute, 1)
@@ -60,31 +61,72 @@ func Test_debug(t *testing.T) {
 		// timekit.go:495 time.Date(2025, time.April, 14, 10, 53, 49, 0, time.Local)	"start + delta"
 		// timekit.go:496 time.Date(2025, time.April, 14, 11, 53, 49, 0, time.Local)	"end"
 		var (
-			A = t.Random.Time()
-			B = A.AddDate(1000, 0, 0)
+			begin = t.Random.Time()
+			end   = begin.AddDate(1000, 0, 0)
 		)
 
 		var (
-			d = timekit.Delta{}
-			c = A
+			d timekit.Duration
+			c = begin
 		)
 		for {
-			remaining := B.Sub(c)
+			remaining := end.Sub(c)
+			t.Log(remaining)
 			if remaining == 0 {
 				break
 			}
 
 			c = c.Add(remaining)
 			d = d.AddDuration(remaining)
+
+			if !d.AddTo(begin).Equal(c) {
+				t.LogPretty(d)
+				t.LogPretty(begin, "begin")
+				t.LogPretty(d.AddTo(begin), "begin+delta")
+				t.LogPretty(c, "cursor")
+				t.FailNow()
+			}
 		}
 
-		t.LogPretty(A, "start")
-		t.LogPretty(B, "end")
-		t.LogPretty(d.AddTo(A), "start+delta")
-		pp.PP(d)
+		t.LogPretty(begin, "begin")
+		t.LogPretty(d.AddTo(begin), "begin+delta")
+		t.LogPretty(end, "end")
+		t.LogPretty(c, "cursor")
 
-		assert.True(t, d.AddTo(A).Equal(B), assert.MessageF("diff: %s", B.Sub(d.AddTo(A))))
+		assert.True(t, d.AddTo(begin).Equal(end), assert.MessageF("diff: %s", end.Sub(d.AddTo(begin))))
 
+	})
+
+	s.Test("normalise", func(t *testcase.T) {
+		var d timekit.Duration
+		d = d.AddDuration(math.MaxInt64)
+
+		var get = func() *big.Int {
+			got := big.NewInt(0)
+
+			got = got.Add(got, big.NewInt(0).Mul(big.NewInt(int64(d.Hour)), big.NewInt(int64(time.Hour))))
+			got = got.Add(got, big.NewInt(0).Mul(big.NewInt(int64(d.Minute)), big.NewInt(int64(time.Minute))))
+			got = got.Add(got, big.NewInt(0).Mul(big.NewInt(int64(d.Second)), big.NewInt(int64(time.Second))))
+			got = got.Add(got, big.NewInt(0).Mul(big.NewInt(int64(d.Nanosecond)), big.NewInt(int64(time.Second))))
+			return got
+		}
+
+		exp := big.NewInt(0)
+		exp = exp.Add(exp, big.NewInt(math.MaxInt64))
+
+		assert.Equal(t, d.Hour, 2562047)
+
+		assert.Equal(t, math.MaxInt64,
+			time.Duration(d.Hour)*time.Hour+
+				time.Duration(d.Minute)*time.Minute+
+				time.Duration(d.Second)*time.Second+
+				time.Duration(d.Nanosecond))
+
+		d = d.AddDuration(math.MaxInt64)
+
+		exp = exp.Add(exp, big.NewInt(math.MaxInt64))
+
+		assert.Equal(t, exp, got)
 	})
 }
 
@@ -871,8 +913,8 @@ func TestRange(t *testing.T) {
 func TestDelta(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	delta := let.Var(s, func(t *testcase.T) timekit.Delta {
-		return timekit.Delta{}
+	delta := let.Var(s, func(t *testcase.T) timekit.Duration {
+		return timekit.Duration{}
 	})
 
 	var (
@@ -883,7 +925,7 @@ func TestDelta(t *testing.T) {
 		maxMonth      = 11
 	)
 
-	var ToDuration = func(d timekit.Delta, r time.Time) time.Duration {
+	var ToDuration = func(d timekit.Duration, r time.Time) time.Duration {
 		var total time.Time = r.
 			AddDate(d.Year, d.Month, d.Day).
 			Add(time.Hour * time.Duration(d.Hour)).
@@ -897,7 +939,7 @@ func TestDelta(t *testing.T) {
 		var (
 			duration = let.DurationBetween(s, 0, 365*24*time.Hour)
 		)
-		act := let.Act(func(t *testcase.T) timekit.Delta {
+		act := let.Act(func(t *testcase.T) timekit.Duration {
 			return delta.Get(t).ByDuration(duration.Get(t))
 		})
 
@@ -953,7 +995,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.Then("proper distance is calculated", func(t *testcase.T) {
-				assert.Equal(t, act(t), timekit.Delta{
+				assert.Equal(t, act(t), timekit.Duration{
 					Hour:       2562047,
 					Minute:     47,
 					Second:     16,
@@ -968,7 +1010,7 @@ func TestDelta(t *testing.T) {
 			A = let.Time(s)
 			B = let.Time(s)
 		)
-		act := let.Act(func(t *testcase.T) timekit.Delta {
+		act := let.Act(func(t *testcase.T) timekit.Duration {
 			a, b := A.Get(t), B.Get(t)
 			d := delta.Get(t).Between(a, b)
 			t.OnFail(func() {
@@ -1111,7 +1153,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.Then("proper distance is calculated", func(t *testcase.T) {
-				assert.Equal(t, act(t), timekit.Delta{
+				assert.Equal(t, act(t), timekit.Duration{
 					Year:       292,
 					Month:      3,
 					Day:        10,
@@ -1162,7 +1204,7 @@ func TestDelta(t *testing.T) {
 			a := time.Date(2000, time.December, 1, 0, 0, 0, 0, time.Local)
 			b := time.Date(2001, time.January, 3, 0, 0, 0, 0, time.Local)
 
-			d := timekit.Delta{}.Between(a, b)
+			d := timekit.Duration{}.Between(a, b)
 			assert.Equal(t, 0, d.Year)
 			assert.Equal(t, 1, d.Month)
 			assert.Equal(t, 2, d.Day)
@@ -1170,15 +1212,15 @@ func TestDelta(t *testing.T) {
 	})
 
 	s.Describe("#Normalise", func(s *testcase.Spec) {
-		act := let.Act(func(t *testcase.T) timekit.Delta {
+		act := let.Act(func(t *testcase.T) timekit.Duration {
 			return delta.Get(t).Normalise()
 		})
 
 		s.When("nanosec has so much time, it overflows to all", func(s *testcase.Spec) {})
 
 		s.When("positive distance is already normalised", func(s *testcase.Spec) {
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Year:       t.Random.IntBetween(0, 999),
 					Month:      t.Random.IntBetween(0, maxMonth),
 					Day:        t.Random.IntBetween(0, 20),
@@ -1195,8 +1237,8 @@ func TestDelta(t *testing.T) {
 		})
 
 		s.When("negative distance is already normalised", func(s *testcase.Spec) {
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Year:       t.Random.IntBetween(-999, 0),
 					Month:      t.Random.IntBetween(-maxMonth, 0),
 					Day:        t.Random.IntBetween(-20, 0),
@@ -1216,8 +1258,8 @@ func TestDelta(t *testing.T) {
 			nanosecs := let.IntB(s, 1, maxNanosecond)
 			seconds := let.IntB(s, 1, maxSecond)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Nanosecond: seconds.Get(t)*maxNanosecond + nanosecs.Get(t),
 				}
 			})
@@ -1229,7 +1271,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.And("it is a negative", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
 					d := delta.Super(t)
 					d.Nanosecond = d.Nanosecond * -1
 					return d
@@ -1247,8 +1289,8 @@ func TestDelta(t *testing.T) {
 			minutes := let.IntB(s, 1, maxMinute)
 			seconds := let.IntB(s, 0, maxSecond)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Second: minutes.Get(t)*60 + seconds.Get(t),
 				}
 			})
@@ -1260,7 +1302,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.And("it is a negative", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
 					d := delta.Super(t)
 					d.Second = d.Second * -1
 					return d
@@ -1278,8 +1320,8 @@ func TestDelta(t *testing.T) {
 			hours := let.IntB(s, 1, maxHour)
 			minutes := let.IntB(s, 0, maxMinute)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Minute: hours.Get(t)*60 + minutes.Get(t),
 				}
 			})
@@ -1291,7 +1333,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.And("it is a negative", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
 					d := delta.Super(t)
 					d.Minute = d.Minute * -1
 					return d
@@ -1309,8 +1351,8 @@ func TestDelta(t *testing.T) {
 			days := let.IntB(s, 1, 10)
 			hours := let.IntB(s, 0, maxHour)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Hour: days.Get(t)*24 + hours.Get(t),
 				}
 			})
@@ -1322,7 +1364,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.And("it is a negative", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
 					d := delta.Super(t)
 					d.Hour = d.Hour * -1
 					return d
@@ -1340,8 +1382,8 @@ func TestDelta(t *testing.T) {
 			days := let.IntB(s, 1, 10)
 			hours := let.IntB(s, 0, maxHour)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Hour: days.Get(t)*24 + hours.Get(t),
 				}
 			})
@@ -1353,7 +1395,7 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.And("it is a negative", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
 					d := delta.Super(t)
 					d.Hour = d.Hour * -1
 					return d
@@ -1370,25 +1412,25 @@ func TestDelta(t *testing.T) {
 
 	s.Describe("#Compare", func(s *testcase.Spec) {
 		var (
-			oth = let.VarOf(s, timekit.Delta{})
+			oth = let.VarOf(s, timekit.Duration{})
 		)
 		act := let.Act(func(t *testcase.T) int {
 			return delta.Get(t).Compare(oth.Get(t))
 		})
 
 		s.When("both is delta is zero value", func(s *testcase.Spec) {
-			delta.LetValue(s, timekit.Delta{})
-			oth.LetValue(s, timekit.Delta{})
+			delta.LetValue(s, timekit.Duration{})
+			oth.LetValue(s, timekit.Duration{})
 
 			s.Then("values are equal", func(t *testcase.T) {
 				assert.Equal(t, 0, act(t))
 			})
 		})
 
-		var WhenX = func(s *testcase.Spec, name string, accr func(*timekit.Delta) *int) {
+		var WhenX = func(s *testcase.Spec, name string, accr func(*timekit.Duration) *int) {
 			s.When("receiver's "+name+" is less", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
-					var d timekit.Delta
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
+					var d timekit.Duration
 					*accr(&d) = t.Random.IntBetween(1, 7) * -1
 					return d
 				})
@@ -1399,8 +1441,8 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.When("argument's "+name+" is less", func(s *testcase.Spec) {
-				oth.Let(s, func(t *testcase.T) timekit.Delta {
-					var d timekit.Delta
+				oth.Let(s, func(t *testcase.T) timekit.Duration {
+					var d timekit.Duration
 					*accr(&d) = t.Random.IntBetween(1, 7) * -1
 					return d
 				})
@@ -1411,8 +1453,8 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.When("receiver's "+name+" is greater", func(s *testcase.Spec) {
-				delta.Let(s, func(t *testcase.T) timekit.Delta {
-					var d timekit.Delta
+				delta.Let(s, func(t *testcase.T) timekit.Duration {
+					var d timekit.Duration
 					*accr(&d) = t.Random.IntBetween(1, 7)
 					return d
 				})
@@ -1423,8 +1465,8 @@ func TestDelta(t *testing.T) {
 			})
 
 			s.When("argument's "+name+" is greater", func(s *testcase.Spec) {
-				oth.Let(s, func(t *testcase.T) timekit.Delta {
-					var d timekit.Delta
+				oth.Let(s, func(t *testcase.T) timekit.Duration {
+					var d timekit.Duration
 					*accr(&d) = t.Random.IntBetween(1, 7)
 					return d
 				})
@@ -1435,27 +1477,27 @@ func TestDelta(t *testing.T) {
 			})
 		}
 
-		WhenX(s, "Year", func(d *timekit.Delta) *int {
+		WhenX(s, "Year", func(d *timekit.Duration) *int {
 			return &d.Year
 		})
 
-		WhenX(s, "Day", func(d *timekit.Delta) *int {
+		WhenX(s, "Day", func(d *timekit.Duration) *int {
 			return &d.Year
 		})
 
-		WhenX(s, "Hour", func(d *timekit.Delta) *int {
+		WhenX(s, "Hour", func(d *timekit.Duration) *int {
 			return &d.Hour
 		})
 
-		WhenX(s, "Minute", func(d *timekit.Delta) *int {
+		WhenX(s, "Minute", func(d *timekit.Duration) *int {
 			return &d.Minute
 		})
 
-		WhenX(s, "Second", func(d *timekit.Delta) *int {
+		WhenX(s, "Second", func(d *timekit.Duration) *int {
 			return &d.Second
 		})
 
-		WhenX(s, "Nanosecond", func(d *timekit.Delta) *int {
+		WhenX(s, "Nanosecond", func(d *timekit.Duration) *int {
 			return &d.Nanosecond
 		})
 	})
@@ -1463,7 +1505,7 @@ func TestDelta(t *testing.T) {
 	s.Describe("#AddDuration", func(s *testcase.Spec) {
 		var duration = let.DurationBetween(s, time.Nanosecond, 48*time.Hour)
 
-		act := let.Act(func(t *testcase.T) timekit.Delta {
+		act := let.Act(func(t *testcase.T) timekit.Duration {
 			return delta.Get(t).AddDuration(duration.Get(t))
 		})
 
@@ -1485,7 +1527,7 @@ func TestDelta(t *testing.T) {
 
 		s.Then("result is in a normalised form already", func(t *testcase.T) {
 			got := act(t)
-			type D timekit.Delta // to avoid any Equal implementation to hijack the assertEqual
+			type D timekit.Duration // to avoid any Equal implementation to hijack the assertEqual
 			assert.Equal(t, D(got), D(got.Normalise()))
 		})
 
@@ -1512,7 +1554,7 @@ func TestDelta(t *testing.T) {
 						t.Random.IntBetween(1, 100),
 					))
 				cursor = start
-				delta  = timekit.Delta{}
+				delta  = timekit.Duration{}
 			)
 			for {
 				remaining := end.Sub(cursor)
@@ -1527,6 +1569,35 @@ func TestDelta(t *testing.T) {
 			}
 			assert.True(t, delta.AddTo(start).Equal(end),
 				assert.MessageF("diff between Start+Delta and End: %s", end.Sub(delta.AddTo(start))))
+		})
+
+		s.Test("1000 year length", func(t *testcase.T) {
+			var (
+				begin = time.Date(2025, time.May, 10, 16, 16, 47, 0, time.UTC)
+				end   = begin.AddDate(1000, 0, 0)
+			)
+
+			var (
+				d = timekit.Duration{}
+				c = begin
+			)
+			for {
+				remaining := end.Sub(c)
+				if remaining == 0 {
+					break
+				}
+
+				c = c.Add(remaining)
+				d = d.AddDuration(remaining)
+			}
+
+			t.LogPretty(begin, "begin")
+			t.LogPretty(d.AddTo(begin), "begin+delta")
+			t.LogPretty(end, "end")
+			pp.PP(d)
+
+			assert.True(t, d.AddTo(begin).Equal(end), assert.MessageF("diff: %s", end.Sub(d.AddTo(begin))))
+
 		})
 	})
 
@@ -1549,8 +1620,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has years", func(s *testcase.Spec) {
 			years := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Year: years.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Year: years.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1561,8 +1632,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has months", func(s *testcase.Spec) {
 			months := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Month: months.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Month: months.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1573,8 +1644,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has days", func(s *testcase.Spec) {
 			days := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Day: days.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Day: days.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1585,8 +1656,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has hours", func(s *testcase.Spec) {
 			hours := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Hour: hours.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Hour: hours.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1597,8 +1668,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has minutes", func(s *testcase.Spec) {
 			minutes := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Minute: minutes.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Minute: minutes.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1609,8 +1680,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has seconds", func(s *testcase.Spec) {
 			seconds := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Second: seconds.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Second: seconds.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1621,8 +1692,8 @@ func TestDelta(t *testing.T) {
 		s.When("it has nanoseconds", func(s *testcase.Spec) {
 			nanoseconds := let.IntB(s, -3, 7)
 
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{Nanosecond: nanoseconds.Get(t)}
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{Nanosecond: nanoseconds.Get(t)}
 			})
 
 			s.Then("delta added to the ref time", func(t *testcase.T) {
@@ -1631,8 +1702,8 @@ func TestDelta(t *testing.T) {
 		})
 
 		s.When("it has all kinds of time attributes", func(s *testcase.Spec) {
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Year:       t.Random.IntBetween(3, 7),
 					Month:      t.Random.IntBetween(3, 7),
 					Day:        t.Random.IntBetween(3, 7),
@@ -1650,7 +1721,7 @@ func TestDelta(t *testing.T) {
 	})
 
 	s.Describe("#Normalise", func(s *testcase.Spec) {
-		act := let.Act(func(t *testcase.T) timekit.Delta {
+		act := let.Act(func(t *testcase.T) timekit.Duration {
 			return delta.Get(t).Normalise()
 		})
 
@@ -1669,16 +1740,16 @@ func TestDelta(t *testing.T) {
 		ThenValueSumIsTheSame(s)
 
 		s.Test("smoke", func(t *testcase.T) {
-			assert.Equal(t, timekit.Delta{Second: 1}, timekit.Delta{Nanosecond: int(time.Second)}.Normalise())
-			assert.Equal(t, timekit.Delta{Minute: 1}, timekit.Delta{Second: 60}.Normalise())
-			assert.Equal(t, timekit.Delta{Hour: 1}, timekit.Delta{Minute: 60}.Normalise())
-			assert.Equal(t, timekit.Delta{Day: 1}, timekit.Delta{Hour: 24}.Normalise())
-			assert.Equal(t, timekit.Delta{Year: 1}, timekit.Delta{Month: 12}.Normalise())
+			assert.Equal(t, timekit.Duration{Second: 1}, timekit.Duration{Nanosecond: int(time.Second)}.Normalise())
+			assert.Equal(t, timekit.Duration{Minute: 1}, timekit.Duration{Second: 60}.Normalise())
+			assert.Equal(t, timekit.Duration{Hour: 1}, timekit.Duration{Minute: 60}.Normalise())
+			assert.Equal(t, timekit.Duration{Day: 1}, timekit.Duration{Hour: 24}.Normalise())
+			assert.Equal(t, timekit.Duration{Year: 1}, timekit.Duration{Month: 12}.Normalise())
 		})
 
 		s.When("delta is already normalised positive value", func(s *testcase.Spec) {
-			delta.Let(s, func(t *testcase.T) timekit.Delta {
-				return timekit.Delta{
+			delta.Let(s, func(t *testcase.T) timekit.Duration {
+				return timekit.Duration{
 					Year:       t.Random.IntBetween(0, math.MaxInt),
 					Month:      t.Random.IntBetween(0, maxMonth),
 					Day:        t.Random.IntBetween(0, 20), // days can't be normalised as a month is not a fixed amount of day.
@@ -1692,13 +1763,13 @@ func TestDelta(t *testing.T) {
 	})
 }
 
-func ThenResultDeltaIsNormalised(s *testcase.Spec, act func(t *testcase.T) timekit.Delta) {
+func ThenResultDeltaIsNormalised(s *testcase.Spec, act func(t *testcase.T) timekit.Duration) {
 	s.Then("result has normalised time intervals in its fields", func(t *testcase.T) {
 		assertDeltaIsNormalised(t, act(t))
 	})
 }
 
-func assertDeltaIsNormalised(t testing.TB, got timekit.Delta) {
+func assertDeltaIsNormalised(t testing.TB, got timekit.Duration) {
 	var (
 		maxNanosecond = int(math.Pow(10, 9))
 		maxSecond     = 59

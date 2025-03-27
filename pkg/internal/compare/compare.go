@@ -1,6 +1,6 @@
 package compare
 
-import "go.llib.dev/frameless/pkg/internal/mathkit"
+import "go.llib.dev/frameless/pkg/internal/constraints"
 
 // Interface defines how comparison can be implemented.
 // An implementation of Interface can be sorted by the routines in this package.
@@ -64,7 +64,7 @@ func IsGreaterOrEqual(cmp int) bool {
 	return 0 <= cmp
 }
 
-func Numbers[T mathkit.Number](a, b T) int {
+func Numbers[T constraints.Number](a, b T) int {
 	switch {
 	case a < b:
 		return -1

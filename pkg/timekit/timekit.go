@@ -5,9 +5,12 @@ package timekit
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"time"
 
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/compare"
 	"go.llib.dev/frameless/pkg/internal/mathkit"
 	"go.llib.dev/frameless/pkg/validate"
@@ -324,169 +327,69 @@ func truncateDay(t time.Time) time.Time {
 }
 
 type FromDistanceCalculator interface {
-	DistanceFrom(ref time.Time) Delta
+	DistanceFrom(ref time.Time) Duration
 }
 
-// Delta allows to describe distances between two time point,
+// Duration allows to describe distances between two time point,
 // that normally would not be possible with time.Duration.
-type Delta struct {
-	Year       int
-	Month      int
-	Day        int
-	Hour       int
-	Minute     int
-	Second     int
-	Nanosecond int
+type Duration struct {
+	i *big.Int
+	d time.Duration
 }
 
-func (d Delta) Compare(o Delta) int {
-	if cmp := compare.Numbers(d.Year, o.Year); !compare.IsEqual(cmp) {
-		return cmp
+func (Duration) fromBigInt(i *big.Int) Duration {
+	if i == nil {
+		i = big.NewInt(0)
 	}
-	if cmp := compare.Numbers(d.Month, o.Month); !compare.IsEqual(cmp) {
-		return cmp
-	}
-	if cmp := compare.Numbers(d.Day, o.Day); !compare.IsEqual(cmp) {
-		return cmp
-	}
-	if cmp := compare.Numbers(d.Hour, o.Hour); !compare.IsEqual(cmp) {
-		return cmp
-	}
-	if cmp := compare.Numbers(d.Minute, o.Minute); !compare.IsEqual(cmp) {
-		return cmp
-	}
-	if cmp := compare.Numbers(d.Second, o.Second); !compare.IsEqual(cmp) {
-		return cmp
-	}
-	if cmp := compare.Numbers(d.Nanosecond, o.Nanosecond); !compare.IsEqual(cmp) {
-		return cmp
-	}
-	return 0
+	return Duration{i: i}
 }
 
-func (d Delta) add(o Delta) Delta {
-	d = d.Normalise()
-	o = o.Normalise()
-	if o.Nanosecond != 0 {
-		d.Nanosecond = mathkit.MustSum(d.Nanosecond, o.Nanosecond)
-		d = d.Normalise()
+func (d Duration) toBigInt() *big.Int {
+	if d.i != nil {
+		return d.i
 	}
-	if o.Second != 0 {
-		d.Second = mathkit.MustSum(d.Second, o.Second)
-		d = d.Normalise()
-	}
-	if o.Minute != 0 {
-		d.Minute = mathkit.MustSum(d.Minute, o.Minute)
-		d = d.Normalise()
-	}
-	if o.Hour != 0 {
-		d.Hour = mathkit.MustSum(d.Hour, o.Hour)
-		d = d.Normalise()
-	}
-	if o.Day != 0 {
-		d.Day = mathkit.MustSum(d.Day, o.Day)
-	}
-	if o.Month != 0 {
-		d.Month = mathkit.MustSum(d.Month, o.Month)
-		d = d.Normalise()
-	}
-	if o.Year != 0 {
-		// since we don't have a higher level of structure, thus year can't be protected from int overflow
-		if mathkit.CanSumOverflow(d.Year, o.Year) {
-			panic(mathkit.ErrOverflow.F("timekit.Delta Year doesn't have a higher level time unit, and thus can't avoid int overflow"))
-		}
-		d.Year += o.Year
-	}
-	return d
+	return big.NewInt(d.d.Nanoseconds())
 }
 
-func (d Delta) AddDuration(duration time.Duration) Delta {
-	return d.add(Delta{Nanosecond: int(duration)})
+const ErrParseDuration errorkit.Error = "ErrParseDuration"
+
+func (Duration) Parse(raw string) (Duration, error) {
+	i, ok := big.NewInt(0).SetString(raw, 10)
+	if !ok {
+		return Duration{}, ErrParseDuration.F("unable to parse Duration: %s", raw)
+	}
+
+	return Duration{}.fromBigInt(i), nil
 }
 
-func (Delta) ByDuration(duration time.Duration) Delta {
-	var delta Delta
-
-	const (
-		nanoPerSecond = int64(time.Second)
-		nanoPerMinute = 60 * nanoPerSecond
-		nanoPerHour   = 60 * nanoPerMinute
-	)
-
-	remaining := int64(duration)
-
-	if remaining == 0 {
-		return delta
-	}
-
-	delta.Hour = int(remaining / nanoPerHour)
-	remaining %= nanoPerHour
-
-	delta.Minute = int(remaining / nanoPerMinute)
-	remaining %= nanoPerMinute
-
-	delta.Second = int(remaining / nanoPerSecond)
-	remaining %= nanoPerSecond
-
-	delta.Nanosecond = int(remaining)
-
-	return delta
+func (d Duration) String() string {
+	return d.toBigInt().String()
 }
 
-func (Delta) Between(start, end time.Time) Delta {
-	var (
-		delta Delta
-		mod   = 1
-	)
+func (d Duration) Compare(o Duration) int {
+	return d.toBigInt().Cmp(o.toBigInt())
+}
 
-	var isNegative = start.After(end)
-	if isNegative {
-		mod = -1
-	}
+func (d Duration) Add(o Duration) Duration {
+	a := d.toBigInt()
+	b := o.toBigInt()
+	return d.fromBigInt(big.NewInt(0).Add(a, b))
+}
 
-	var isOver = func(c time.Time) bool {
-		if isNegative {
-			/// end ---> c ---> start
-			return c.Before(end)
-		}
-		// start ---> c ---> end
-		return c.After(end)
-	}
+func (d Duration) AddDuration(duration time.Duration) Duration {
+	return d.Add(d.fromBigInt(big.NewInt(int64(duration))))
+}
 
-	var cursor = start
+func (Duration) ByDuration(duration time.Duration) Duration {
+	return Duration{}.AddDuration(duration)
+}
 
-	for { // years
-		var y = 1 * mod
-		candidate := cursor.AddDate(y, 0, 0)
-		if isOver(candidate) {
-			break
-		}
-		cursor = candidate
-		delta.Year += y
-	}
+func (Duration) Between(from, till time.Time) Duration {
+	var delta Duration
 
-	for { // months
-		var m = 1 * mod
-		candidate := cursor.AddDate(0, m, 0)
-		if isOver(candidate) {
-			break
-		}
-		cursor = candidate
-		delta.Month += m
-	}
-
-	for { // days
-		var d = 1 * mod
-		candidate := cursor.AddDate(0, 0, d)
-		if isOver(candidate) {
-			break
-		}
-		cursor = candidate
-		delta.Day += d
-	}
-
-	for { // remaining
-		remaining := end.Sub(cursor)
+	cursor := from
+	for {
+		remaining := till.Sub(cursor)
 		if remaining == 0 {
 			break
 		}
@@ -498,25 +401,62 @@ func (Delta) Between(start, end time.Time) Delta {
 	return delta
 }
 
-func (d Delta) invert() Delta {
-	return Delta{
-		Year:       -1 * d.Year,
-		Month:      -1 * d.Month,
-		Day:        -1 * d.Day,
-		Hour:       -1 * d.Hour,
-		Minute:     -1 * d.Minute,
-		Second:     -1 * d.Second,
-		Nanosecond: -1 * d.Nanosecond,
+const maxTimeDuration = math.MaxInt64
+
+var maxTimeDurationBigInt = big.NewInt(maxTimeDuration)
+
+func (d Duration) AddTo(t time.Time) time.Time {
+	dur := d.toBigInt()
+	cmp := dur.Cmp(maxTimeDurationBigInt)
+
+	if compare.IsLessOrEqual(cmp) {
+		return t.Add(time.Duration(dur.Int64()))
 	}
+
+	big.NewInt(0).Sub(dur, maxTimeDurationBigInt)
+
+	return time.Time{}
 }
 
-func (d Delta) AddTo(t time.Time) time.Time {
-	return t.
-		AddDate(d.Year, d.Month, d.Day).
-		Add(time.Hour * time.Duration(d.Hour)).
-		Add(time.Minute * time.Duration(d.Minute)).
-		Add(time.Second * time.Duration(d.Second)).
-		Add(time.Nanosecond * time.Duration(d.Nanosecond))
+// func (d Delta) AddTo(t time.Time) time.Time {
+// 	return t.
+// 		AddDate(d.Year, d.Month, d.Day).
+// 		Add(time.Hour * time.Duration(d.Hour)).
+// 		Add(time.Minute * time.Duration(d.Minute)).
+// 		Add(time.Second * time.Duration(d.Second)).
+// 		Add(time.Nanosecond * time.Duration(d.Nanosecond))
+// }
+
+// func (d Duration) AddTo(t time.Time) time.Time {
+// 	t = add(t, time.Hour, d.Hour)
+// 	t = add(t, time.Minute, d.Minute)
+// 	t = add(t, time.Second, d.Second)
+// 	t = add(t, time.Nanosecond, d.Nanosecond)
+// 	return t
+// }
+
+func add[int mathkit.Int](t time.Time, unit time.Duration, m int) time.Time {
+	var n = int64(m)
+	if n == 0 {
+		return t
+	}
+
+	var maxMultiplier = mathkit.MaxIntMultiplier(int64(unit)) // unit is positive here
+
+	if n < 0 {
+		n *= -1 // n is ensured to be positive after this
+		unit *= -1
+	}
+
+	// MVP version
+	// The use of for loop helps avoiding int overflow related issues with multiplication.
+	if maxMultiplier < n {
+		t = t.Add(unit * time.Duration(maxMultiplier))
+		t = t.Add(unit * time.Duration(int64(n)-maxMultiplier))
+		return t
+	}
+
+	return t.Add(unit * time.Duration(n))
 }
 
 const (
@@ -528,7 +468,7 @@ const (
 	ubNanosecond = 1_000_000_000
 )
 
-func (d Delta) Normalise() Delta {
+func (d Duration) Normalise() Duration {
 	if d.isNormalised() {
 		return d
 	}
@@ -554,17 +494,10 @@ func (d Delta) Normalise() Delta {
 		d.Minute = d.Minute - n*hourMinutes
 	}
 
-	// if ubHour <= d.Hour || d.Hour <= -ubHour {
-	// 	const dayHours = 24
-	// 	n := d.Hour / dayHours
-	// 	d.Day += n
-	// 	d.Hour = d.Hour - n*dayHours
-	// }
-
 	return d
 }
 
-func (d Delta) IsZero() bool {
+func (d Duration) IsZero() bool {
 	return d.Day == 0 &&
 		d.Hour == 0 &&
 		d.Minute == 0 &&
@@ -572,7 +505,7 @@ func (d Delta) IsZero() bool {
 		d.Nanosecond == 0
 }
 
-func (d Delta) IsPositive() bool {
+func (d Duration) IsPositive() bool {
 	return 0 <= d.Day &&
 		0 <= d.Hour &&
 		0 <= d.Minute &&
@@ -580,12 +513,10 @@ func (d Delta) IsPositive() bool {
 		0 <= d.Nanosecond
 }
 
-func (d Delta) isNormalised() bool {
+func (d Duration) isNormalised() bool {
 	// not correct fully, because -3 month + 3 day is considered also normalised by this, and might not be what people would expect
 	// also, a Day cannot be normalised as not all month has the same amount of days.
-	return d.Hour <= 23 &&
-		-1*23 <= d.Hour &&
-		d.Minute <= 59 &&
+	return d.Minute <= 59 &&
 		-1*59 <= d.Minute &&
 		d.Second <= 59 &&
 		-1*59 <= d.Second &&

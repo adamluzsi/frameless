@@ -2,45 +2,49 @@ package mathkit
 
 import (
 	"math"
+	"math/big"
+	"unsafe"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/internal/compare"
+	"go.llib.dev/frameless/pkg/internal/constraints"
 	"go.llib.dev/frameless/pkg/must"
 )
 
-type Int interface {
-	int | int8 | int16 | int32 | int64
+type (
+	Int    = constraints.Int
+	UInt   = constraints.UInt
+	Float  = constraints.Float
+	Number = constraints.Number
+)
+
+func MaxInt[T Int]() T {
+	var zero T
+	// Get the size in bits by multiplying byte size by 8
+	typeSizeInBits := 8 * unsafe.Sizeof(zero)
+	// Maximum value is 2^(n-1) - 1 where n is the number of bits
+	// For signed integers, this is all bits set except the sign bit
+	return T((1 << (typeSizeInBits - 1)) - 1)
 }
 
-type UInt interface {
-	uint | uint8 | uint16 | uint32 | uint64
-}
-
-type Float interface {
-	float32 | float64
-}
-
-type Number interface {
-	Int | UInt | Float
-}
-
-func MaxInt[INT Int]() INT {
-	var v int64
-	switch any(*new(INT)).(type) {
-	case int:
-		v = math.MaxInt
-	case int8:
-		v = math.MaxInt8
-	case int16:
-		v = math.MaxInt16
-	case int32:
-		v = math.MaxInt32
-	case int64:
-		v = math.MaxInt64
-	default:
-		panic("not-implemented")
-	}
-	return INT(v)
-}
+// func MaxInt[INT Int]() INT {
+// 	var v int64
+// 	switch reflect.TypeOf((*INT)(nil)).Elem().Kind() {
+// 	case reflect.Int:
+// 		v = math.MaxInt
+// 	case reflect.Int8:
+// 		v = math.MaxInt8
+// 	case reflect.Int16:
+// 		v = math.MaxInt16
+// 	case reflect.Int32:
+// 		v = math.MaxInt32
+// 	case reflect.Int64:
+// 		v = math.MaxInt64
+// 	default:
+// 		panic("not-implemented")
+// 	}
+// 	return INT(v)
+// }
 
 func MinInt[INT Int]() INT {
 	var v int64
@@ -71,8 +75,8 @@ func Sum[int Int](a, b int) (int, error) {
 	return a + b, nil
 }
 
-func MustSum[int Int](a, b int) int {
-	return must.Must(Sum[int](a, b))
+func MustSum[INT Int](a, b INT) INT {
+	return must.Must(Sum[INT](a, b))
 }
 
 // func SumR[int Int](a, b int) (int, int) {
@@ -91,14 +95,14 @@ func GuardSumF[int Int](x, y int, format string, a ...any) {
 	}
 }
 
-func CanSumOverflow[int Int](a, b int) bool {
+func CanSumOverflow[INT Int](a, b INT) bool {
 	less, more := a, b
 	if more < less {
 		less, more = more, less
 	}
 	var (
-		max = MaxInt[int]()
-		min = MinInt[int]()
+		max = MaxInt[INT]()
+		min = MinInt[INT]()
 	)
 	switch {
 	case 0 < less && 0 < more:
@@ -116,10 +120,104 @@ func CanSumOverflow[int Int](a, b int) bool {
 	return false //, 0, more + minMore
 }
 
-func MaxIntMultiplier[int Int](x int) int {
-	var maxInt = MaxInt[int]()
+func MaxIntMultiplier[INT Int](x INT) INT {
+	var maxInt = MaxInt[INT]()
 	if x == 0 {
 		return maxInt // no risk of overflow
 	}
 	return maxInt / x
+}
+
+func MinIntDivider[INT Int](x INT) INT {
+	var minInt = MinInt[INT]()
+	if x == 0 {
+		return minInt // division by zero is invalid
+	}
+	return minInt / x
+}
+
+type BigInt[INT Int] struct {
+	i *big.Int
+	n INT
+}
+
+func (i BigInt[INT]) maxInt() *big.Int {
+	return big.NewInt(int64(MaxInt[INT]()))
+}
+
+func (i BigInt[INT]) switchToBigIntMode() BigInt[INT] {
+	if i.i != nil {
+		return i
+	}
+	return BigInt[INT]{i: big.NewInt(int64(i.n))}
+}
+
+func (i BigInt[INT]) tryToSwitchToIntMode() BigInt[INT] {
+	if i.i == nil {
+		return i
+	}
+	if compare.IsLessOrEqual(i.i.Cmp(i.maxInt())) {
+		return BigInt[INT]{n: INT(i.i.Int64())}
+	}
+	return i
+}
+
+func (BigInt[INT]) fromBigInt(i *big.Int) BigInt[INT] {
+	return BigInt[INT]{i: i}
+}
+
+func (i BigInt[INT]) Compare(o BigInt[INT]) int {
+	if i.i == nil && o.i == nil { // fast path
+		return compare.Numbers[INT](i.n, o.n)
+	}
+
+	return i.switchToBigIntMode().i.Cmp(o.switchToBigIntMode().i)
+}
+
+func (i BigInt[INT]) Sum(n INT) BigInt[INT] {
+	if i.i != nil {
+		i.i = i.i.Add(i.i, big.NewInt(int64(n)))
+		return i.tryToSwitchToIntMode()
+	}
+	if CanSumOverflow(i.n, n) {
+		return i.switchToBigIntMode().Sum(n)
+	}
+	i.n += n
+	return i
+}
+
+func (i BigInt[INT]) Sub(n INT) BigInt[INT] {
+	if i.i != nil {
+		i.i = i.i.Sub(i.i, big.NewInt(int64(n)))
+		return i.tryToSwitchToIntMode()
+	}
+	if CanSumOverflow(i.n, -n) {
+		return i.switchToBigIntMode().Sub(n)
+	}
+	i.n -= n
+	return i
+}
+
+func (i BigInt[INT]) Mul(n INT) BigInt[INT] {
+	if i.i != nil {
+		i.i = i.i.Mul(i.i, big.NewInt(int64(n)))
+		return i.tryToSwitchToIntMode()
+	}
+	if maxMul := MaxIntMultiplier[INT](i.n); maxMul < n {
+		return i.switchToBigIntMode().Mul(n)
+	}
+	i.n *= n
+	return i
+}
+
+func (i BigInt[INT]) Div(n INT) BigInt[INT] {
+	if i.i != nil {
+		i.i = i.i.Div(i.i, big.NewInt(int64(n)))
+		return i.tryToSwitchToIntMode()
+	}
+	if minDiv := MinIntDivider[INT](i.n); n < minDiv {
+		return i.switchToBigIntMode().Div(n)
+	}
+	i.n /= n
+	return i
 }

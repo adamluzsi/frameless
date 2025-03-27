@@ -8,6 +8,25 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
+func TestMaxInt(t *testing.T) {
+	t.Run("core types", func(t *testing.T) {
+		assert.Equal(t, math.MaxInt8, mathkit.MaxInt[int8]())
+		assert.Equal(t, math.MaxInt16, mathkit.MaxInt[int16]())
+		assert.Equal(t, math.MaxInt32, mathkit.MaxInt[int32]())
+		assert.Equal(t, math.MaxInt64, mathkit.MaxInt[int64]())
+	})
+	t.Run("type based on core types", func(t *testing.T) {
+		type Int8 int8
+		assert.Equal(t, math.MaxInt8, mathkit.MaxInt[Int8]())
+		type Int16 int16
+		assert.Equal(t, math.MaxInt16, mathkit.MaxInt[Int16]())
+		type Int32 int32
+		assert.Equal(t, math.MaxInt32, mathkit.MaxInt[Int32]())
+		type Int64 int64
+		assert.Equal(t, math.MaxInt64, mathkit.MaxInt[Int64]())
+	})
+}
+
 func TestMaxIntMultiplier(t *testing.T) {
 	t.Run("Positive small integer", func(t *testing.T) {
 		input := 2
