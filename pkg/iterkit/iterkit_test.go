@@ -508,11 +508,10 @@ func ExamplePaginate() {
 		return vs, probablyHasNextPage, nil
 	}
 
-	foos, release := iterkit.Paginate(ctx, fetchMoreFoo)
+	foos := iterkit.Paginate(ctx, fetchMoreFoo)
 	_ = foos // foos can be called like any iterator,
 	// and under the hood, the fetchMoreFoo function will be used dynamically,
 	// to retrieve more values when the previously called values are already used up.
-	_ = release
 }
 
 func TestPaginate(t *testing.T) {
@@ -522,7 +521,7 @@ func TestPaginate(t *testing.T) {
 		ctx  = let.Context(s)
 		more = testcase.Let[func(ctx context.Context, offset int) (values []Foo, hasMore bool, _ error)](s, nil)
 	)
-	act := func(t *testcase.T) (iter.Seq[Foo], func() error) {
+	act := func(t *testcase.T) iter.Seq2[Foo, error] {
 		return iterkit.Paginate(ctx.Get(t), more.Get(t))
 	}
 
@@ -534,7 +533,7 @@ func TestPaginate(t *testing.T) {
 		})
 
 		s.Then("iteration finishes and we get the empty result", func(t *testcase.T) {
-			vs, err := iterkit.CollectErr(act(t))
+			vs, err := iterkit.CollectErrIter(act(t))
 			assert.NoError(t, err)
 			assert.Empty(t, vs)
 		})
@@ -549,7 +548,7 @@ func TestPaginate(t *testing.T) {
 		})
 
 		s.Then("we can collect that single value and return back", func(t *testcase.T) {
-			vs, err := iterkit.CollectErr(act(t))
+			vs, err := iterkit.CollectErrIter(act(t))
 			assert.NoError(t, err)
 			assert.Equal(t, []Foo{value.Get(t)}, vs)
 		})
@@ -564,7 +563,7 @@ func TestPaginate(t *testing.T) {
 
 		s.Then("it is treated as NoMore", func(t *testcase.T) {
 			assert.Within(t, time.Second, func(ctx context.Context) {
-				vs, err := iterkit.CollectErr(act(t))
+				vs, err := iterkit.CollectErrIter(act(t))
 				assert.NoError(t, err)
 				assert.Empty(t, vs)
 			})
@@ -596,7 +595,7 @@ func TestPaginate(t *testing.T) {
 		})
 
 		s.Then("all the values received back till more function had no more values to be retrieved", func(t *testcase.T) {
-			vs, err := iterkit.CollectErr(act(t))
+			vs, err := iterkit.CollectErrIter(act(t))
 			assert.NoError(t, err)
 			assert.Equal(t, vs, values.Get(t))
 		})
@@ -612,7 +611,7 @@ func TestPaginate(t *testing.T) {
 		})
 
 		s.Then("the error is bubbled up to the iterator consumer", func(t *testcase.T) {
-			_, err := iterkit.CollectErr(act(t))
+			_, err := iterkit.CollectErrIter(act(t))
 			assert.ErrorIs(t, expErr.Get(t), err)
 		})
 	})

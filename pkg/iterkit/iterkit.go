@@ -206,12 +206,27 @@ func CollectErr[T any](i iter.Seq[T], e ErrFunc) ([]T, error) {
 func Paginate[T any](
 	ctx context.Context,
 	more func(ctx context.Context, offset int) (values []T, hasNext bool, _ error),
-	errFuncs ...ErrFunc,
-) (SingleUseSeq[T], ErrFunc) {
-	return toIterSeqWithRelease(&paginator[T]{
-		Context: ctx,
-		More:    more,
-	}, errFuncs...)
+) SingleUseSeq2[T, error] {
+	return Once2(func(yield func(T, error) bool) {
+		p := &paginator[T]{Context: ctx, More: more}
+		for p.Next() {
+			if !yield(p.Value(), p.Err()) {
+				return
+			}
+		}
+		if err := p.Err(); err != nil {
+			var zero T
+			if !yield(zero, err) {
+				return
+			}
+		}
+		if err := p.Close(); err != nil {
+			var zero T
+			if !yield(zero, err) {
+				return
+			}
+		}
+	})
 }
 
 type paginator[T any] struct {
