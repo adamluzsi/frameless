@@ -1678,12 +1678,70 @@ func TestMapErr_wErrIter(t *testing.T) {
 		assert.Equal(t, len(yielded.Get(t)), expLen)
 	})
 
-	s.When("error occurs during mapping", func(s *testcase.Spec) {
-		s.Test("", func(t *testcase.T) { t.Skip("TODO") })
+	s.When("error occurs during transformation", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+		errCount := let.VarOf(s, 0)
+
+		transform.Let(s, func(t *testcase.T) func(int) (string, error) {
+			trf := transform.Super(t)
+			ok := length.Get(t) / 2
+			return func(i int) (string, error) {
+				ok--
+				if 0 < ok {
+					return trf(i)
+				}
+				errCount.Set(t, errCount.Get(t)+1)
+				return "", expErr.Get(t)
+			}
+		})
+
+		s.Then("error is propagated back", func(t *testcase.T) {
+			_, err := iterkit.CollectErr(act(t))
+			assert.ErrorIs(t, err, expErr.Get(t))
+		})
+
+		s.Then("it won't stop iteration because transform had an error on a given element", func(t *testcase.T) {
+			vs, _ := iterkit.CollectErr(act(t))
+			assert.NotEmpty(t, vs, "expected that some of the values are still processed (length/2)")
+			assert.True(t, 1 < errCount.Get(t), "expected that error in transform doesn't ent the iteration")
+		})
 	})
 
 	s.When("error occurs in upstream iterator", func(s *testcase.Spec) {
-		s.Test("", func(t *testcase.T) { t.Skip("TODO") })
+		expErr := let.Error(s)
+		errCount := let.VarOf(s, 0)
+
+		iterator.Let(s, func(t *testcase.T) iterkit.ErrIter[int] {
+			i := iterator.Super(t)
+			ok := length.Get(t) / 2
+			return func(yield func(int, error) bool) {
+				for v, err := range i {
+					ok--
+					if 0 < ok {
+						if !yield(v, err) {
+							return
+						}
+						continue
+					}
+
+					errCount.Set(t, errCount.Get(t)+1)
+					if !yield(0, expErr.Get(t)) {
+						return
+					}
+				}
+			}
+		})
+
+		s.Then("error is propagated back", func(t *testcase.T) {
+			_, err := iterkit.CollectErr(act(t))
+			assert.ErrorIs(t, err, expErr.Get(t))
+		})
+
+		s.Then("it won't stop iteration because transform had an error on a given element", func(t *testcase.T) {
+			vs, _ := iterkit.CollectErr(act(t))
+			assert.NotEmpty(t, vs, "expected that some of the values are still processed (length/2)")
+			assert.True(t, 1 < errCount.Get(t), "expected that error in transform doesn't ent the iteration")
+		})
 	})
 }
 
