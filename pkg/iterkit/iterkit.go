@@ -143,7 +143,9 @@ func Collect[T any](i iter.Seq[T]) []T {
 	return vs
 }
 
-func Collect2[K, V, KV any](i iter.Seq2[K, V], m func(K, V) KV) []KV {
+type Collect2Func[KV any, K, V any] func(K, V) KV
+
+func Collect2[K, V, KV any](i iter.Seq2[K, V], m Collect2Func[KV, K, V]) []KV {
 	if i == nil {
 		return nil
 	}
@@ -157,6 +159,16 @@ func Collect2[K, V, KV any](i iter.Seq2[K, V], m func(K, V) KV) []KV {
 type KV[K, V any] struct {
 	K K
 	V V
+}
+
+func FromKV[K, V any](kvs []KV[K, V]) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		for _, kv := range kvs {
+			if !yield(kv.K, kv.V) {
+				return
+			}
+		}
+	}
 }
 
 func CollectKV[K, V any](i iter.Seq2[K, V]) []KV[K, V] {
@@ -625,6 +637,19 @@ func Take[T any](next func() (T, bool), n int) []T {
 			break
 		}
 		vs = append(vs, v)
+	}
+	return vs
+}
+
+// Take will take the next N value from a pull iterator.
+func Take2[KV any, K, V any](next func() (K, V, bool), n int, collect Collect2Func[KV, K, V]) []KV {
+	var vs []KV
+	for i := 0; i < n; i++ {
+		k, v, ok := next()
+		if !ok {
+			break
+		}
+		vs = append(vs, collect(k, v))
 	}
 	return vs
 }

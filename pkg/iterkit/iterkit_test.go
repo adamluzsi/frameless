@@ -846,6 +846,66 @@ func TestTake(t *testing.T) {
 	})
 }
 
+func TestTake2(t *testing.T) {
+	var collKV = func(n int, s string) iterkit.KV[int, string] {
+		return iterkit.KV[int, string]{K: n, V: s}
+	}
+
+	var values = []iterkit.KV[int, string]{
+		{K: 1, V: "foo"},
+		{K: 2, V: "bar"},
+		{K: 3, V: "baz"},
+	}
+
+	t.Run("NoElementsToTake", func(t *testing.T) {
+		i := iterkit.Empty2[int, string]()
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs := iterkit.Take2(next, 5, collKV)
+		assert.Empty(t, vs)
+	})
+
+	t.Run("EnoughElementsToTake", func(t *testing.T) {
+		i := iterkit.FromKV(values)
+		next, stop := iter.Pull(i)
+		defer stop()
+		vs := iterkit.Take(next, 3)
+		assert.Equal(t, []int{1, 2, 3}, vs)
+
+		rem := iterkit.TakeAll(next)
+		assert.Equal(t, rem, []int{4, 5})
+	})
+
+	t.Run("MoreElementsToTakeThanAvailable", func(t *testing.T) {
+		i := iterkit.Slice([]int{1, 2, 3})
+		next, stop := iter.Pull(i)
+		defer stop()
+		vs := iterkit.Take(next, 5)
+		assert.Equal(t, []int{1, 2, 3}, vs)
+		_, ok := next()
+		assert.False(t, ok, "expected no next value")
+	})
+
+	t.Run("ZeroElementsToTake", func(t *testing.T) {
+		i := iterkit.Slice([]int{1, 2, 3})
+		next, stop := iter.Pull(i)
+		defer stop()
+		vs := iterkit.Take(next, 0)
+		assert.Empty(t, vs)
+
+		rem := iterkit.TakeAll(next)
+		assert.Equal(t, rem, []int{1, 2, 3})
+	})
+
+	t.Run("NegativeNumberOfElementsToTake", func(t *testing.T) {
+		i := iterkit.Slice([]int{1, 2, 3})
+		next, stop := iter.Pull(i)
+		defer stop()
+		vs := iterkit.Take(next, -5)
+		assert.Empty(t, vs)
+	})
+}
+
 func ExampleTakeAll() {
 	i := iterkit.Slice([]int{1, 2, 3, 4, 5})
 	next, stop := iter.Pull(i)
