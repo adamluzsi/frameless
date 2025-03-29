@@ -60,7 +60,10 @@ func FromErrIter[T any](i ErrIter[T]) (iter.Seq[T], ErrFunc) {
 		}
 }
 
-func CollectErrIter[T any](i iter.Seq2[T, error]) ([]T, error) {
+// Deprecated: This is a temporal alias to iterkit.CollectErr.
+func CollectErrIter[T any](i iter.Seq2[T, error]) ([]T, error) { return CollectErr[T](i) }
+
+func CollectErr[T any](i iter.Seq2[T, error]) ([]T, error) {
 	if i == nil {
 		return nil, nil
 	}

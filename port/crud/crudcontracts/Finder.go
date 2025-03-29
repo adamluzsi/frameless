@@ -181,7 +181,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		s.Then(`result is an empty list`, func(t *testcase.T) {
 			itr, err := act(t)
 			assert.NoError(t, err)
-			vs, err := iterkit.CollectErrIter(itr)
+			vs, err := iterkit.CollectErr(itr)
 			assert.NoError(t, err)
 			assert.Empty(t, vs)
 		})
@@ -196,7 +196,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
 			itr, err := act(t)
 			assert.NoError(t, err)
-			actual, err := iterkit.CollectErrIter(itr)
+			actual, err := iterkit.CollectErr(itr)
 			assert.NoError(t, err)
 			t.Must.ContainExactly(expected, actual)
 		})
@@ -222,7 +222,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 						tc := t
 						a.Case(func(t assert.It) {
 							assert.NotNil(t, itr)
-							_, err := iterkit.CollectErrIter(itr)
+							_, err := iterkit.CollectErr(itr)
 							assert.ErrorIs(t, err, crud.ErrNotFound)
 							tc.Log("[WARN]", "returning an error about the missing entity as part of the iteration is suboptimal")
 							tc.Log("[WARN]", "because it becomes difficult to handle early on an invalid input argument scenario.")

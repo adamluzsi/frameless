@@ -40,7 +40,7 @@ func IteratorWithRelease[V any](mk func(testing.TB) (iter.Seq[V], func() error))
 	})
 
 	s.Then("values can be collected from the iterator", func(t *testcase.T) {
-		vs, err := iterkit.CollectErr[V](subject.Get(t), errFunc.Get(t))
+		vs, err := iterkit.CollectErrFunc[V](subject.Get(t), errFunc.Get(t))
 		t.Must.NoError(err)
 		t.Must.NotEmpty(vs)
 	})

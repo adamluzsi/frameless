@@ -81,7 +81,7 @@ func TestSQLRows(t *testing.T) {
 
 		s.Then("it will be an empty iterator", func(t *testcase.T) {
 			itr := act(t)
-			vs, err := iterkit.CollectErrIter(itr)
+			vs, err := iterkit.CollectErr(itr)
 			assert.NoError(t, err)
 			assert.Empty(t, vs)
 		})
@@ -99,7 +99,7 @@ func TestSQLRows(t *testing.T) {
 		s.Then(`it will fetch the values`, func(t *testcase.T) {
 			itr := act(t)
 
-			vs, err := iterkit.CollectErrIter(itr)
+			vs, err := iterkit.CollectErr(itr)
 			assert.NoError(t, err)
 			assert.Equal(t, []testType{testType{Text: `42`}}, vs)
 		})
@@ -114,7 +114,7 @@ func TestSQLRows(t *testing.T) {
 			})
 
 			s.Then(`it will be propagated during decode`, func(t *testcase.T) {
-				_, err := iterkit.CollectErrIter(act(t))
+				_, err := iterkit.CollectErr(act(t))
 
 				assert.ErrorIs(t, err, expectedErr.Get(t))
 			})
@@ -132,7 +132,7 @@ func TestSQLRows(t *testing.T) {
 		})
 
 		s.Then(`it will be propagated during iterator closing`, func(t *testcase.T) {
-			_, err := iterkit.CollectErrIter(act(t))
+			_, err := iterkit.CollectErr(act(t))
 			assert.ErrorIs(t, err, expectedErr.Get(t))
 		})
 	})
@@ -225,7 +225,7 @@ func TestQueryMany(t *testing.T) {
 
 		res, err := flsql.QueryMany(c, t.Context(), m, expQuery, expArgs...)
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(res)
+		vs, err := iterkit.CollectErr(res)
 		assert.NoError(t, err)
 		assert.ContainExactly(t, vs, []T{{ID: 42}})
 	})

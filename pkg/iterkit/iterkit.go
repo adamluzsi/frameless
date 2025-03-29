@@ -32,6 +32,10 @@ import (
 	"go.llib.dev/frameless/pkg/tasker"
 )
 
+type I1[T any] interface {
+	iter.Seq[T] | ErrIter[T]
+}
+
 // SingleUseSeq is an iter.Seq[T] that can only iterated once.
 // After iteration, it is expected to yield no more values.
 //
@@ -188,7 +192,7 @@ func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
 	return vs
 }
 
-func CollectErr[T any](i iter.Seq[T], e ErrFunc) ([]T, error) {
+func CollectErrFunc[T any](i iter.Seq[T], e ErrFunc) ([]T, error) {
 	var vs = Collect(i)
 	var err error
 	if e != nil {
@@ -474,15 +478,42 @@ func getBatchSize(size int) int {
 	return size
 }
 
-func Filter[T any](i iter.Seq[T], filter func(T) bool) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for v := range i {
-			if filter(v) {
-				if !yield(v) {
-					break
+func Filter[T any, Iter I1[T]](i Iter, filter func(T) bool) Iter {
+	if i == nil {
+		return nil
+	}
+	switch i := any(i).(type) {
+	case iter.Seq[T]:
+		var itr iter.Seq[T] = func(yield func(T) bool) {
+			for v := range i {
+				if filter(v) {
+					if !yield(v) {
+						break
+					}
 				}
 			}
 		}
+		return any(itr).(Iter)
+	case ErrIter[T]:
+		var itr ErrIter[T] = func(yield func(T, error) bool) {
+			for v, err := range i {
+				if err != nil {
+					var zero T
+					if !yield(zero, err) {
+						return
+					}
+					continue
+				}
+				if filter(v) {
+					if !yield(v, nil) {
+						return
+					}
+				}
+			}
+		}
+		return any(itr).(Iter)
+	default:
+		panic("not-implemented")
 	}
 }
 
@@ -660,21 +691,30 @@ func Map2[OKey, OVal, IKey, IVal any](i iter.Seq2[IKey, IVal], transform func(IK
 	}
 }
 
-func MapErr[To any, From any](i iter.Seq[From], transform func(From) (To, error), errs ...ErrFunc) (iter.Seq[To], ErrFunc) {
-	var returnError error
-	return func(yield func(To) bool) {
-			for v := range i {
-				tv, err := transform(v)
-				if err != nil {
-					returnError = err
-					break
+func MapErr[To any, From any, Iter I1[From]](i Iter, transform func(From) (To, error)) ErrIter[To] {
+	var src ErrIter[From]
+	switch i := any(i).(type) {
+	case ErrIter[From]:
+		src = i
+	case iter.Seq[From]:
+		src = ToErrIter(i)
+	default:
+		panic("not-implemented")
+	}
+	return func(yield func(To, error) bool) {
+		for v, err := range src {
+			if err != nil {
+				var zero To
+				if !yield(zero, err) {
+					return
 				}
-				if !yield(tv) {
-					break
-				}
+				continue
 			}
-		}, errorkit.MergeErrFunc(append(errs,
-			func() error { return returnError })...)
+			if !yield(transform(v)) {
+				return
+			}
+		}
+	}
 }
 
 // Count will iterate over and count the total iterations number

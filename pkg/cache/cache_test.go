@@ -65,7 +65,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 	var getHits = func() []cache.Hit[testent.FooID] {
 		iter, err := cachei.Repository.Hits().FindAll(context.Background())
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(iter)
+		vs, err := iterkit.CollectErr(iter)
 		assert.NoError(t, err)
 		return vs
 	}
@@ -144,7 +144,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 			return iterkit.ToErrIter(iterkit.Slice([]testent.Foo{foo2})), nil
 		})
 		assert.NoError(t, err)
-		_, err = iterkit.CollectErrIter(iter) // drain iterator
+		_, err = iterkit.CollectErr(iter) // drain iterator
 		assert.NoError(t, err)
 
 		t.Log("then we expect that the new NOK-MANY-BAZ will be filtered")
@@ -298,7 +298,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 				return source.Get(t).FindAll(context.Background())
 			})
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(all)
+		vs, err := iterkit.CollectErr(all)
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
 	})

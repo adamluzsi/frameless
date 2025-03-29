@@ -169,7 +169,7 @@ func Test_noleftoverAfterTests(t *testing.T) {
 		itr, err := subject.FindAll(t.Context())
 		assert.NoError(t, err)
 
-		vs, err := iterkit.CollectErrIter(itr)
+		vs, err := iterkit.CollectErr(itr)
 		assert.NoError(t, err)
 
 		t.OnFail(func() { t.LogPretty(vs) })

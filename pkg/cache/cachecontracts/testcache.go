@@ -276,7 +276,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 		t.Helper()
 		itr, err := act(t)
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(itr)
+		vs, err := iterkit.CollectErr(itr)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, vs)
 		return vs
