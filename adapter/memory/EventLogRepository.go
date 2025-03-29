@@ -134,7 +134,7 @@ func (s *EventLogRepository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[EN
 	for _, ent := range view {
 		res = append(res, ent)
 	}
-	return iterkit.ToErrIter(iterkit.Slice(res)), nil
+	return iterkit.ToErrSeq(iterkit.Slice(res)), nil
 }
 
 func (s *EventLogRepository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
@@ -205,7 +205,7 @@ func (s *EventLogRepository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) 
 		}
 		values = append(values, ent)
 	}
-	return iterkit.ToErrIter(iterkit.Slice(values)), nil
+	return iterkit.ToErrSeq(iterkit.Slice(values)), nil
 }
 
 func (s *EventLogRepository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr error) {

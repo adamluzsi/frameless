@@ -224,7 +224,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error]
 			return nil, fmt.Errorf("error while mapping from DTO: %w", err)
 		}
 
-		return iterkit.ToErrIter(iterkit.Slice(got)), nil
+		return iterkit.ToErrSeq(iterkit.Slice(got)), nil
 	}
 
 	dec := dm.MakeListDecoder(resp.Body)
@@ -343,7 +343,7 @@ func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq
 		return nil, err
 	}
 
-	var itr iterkit.ErrIter[ENT] = func(yield func(ENT, error) bool) {
+	var itr iterkit.ErrSeq[ENT] = func(yield func(ENT, error) bool) {
 		var zero ENT
 		for _, id := range ids {
 			if err := ctx.Err(); err != nil {
@@ -388,7 +388,7 @@ func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq
 	}
 	prefectDone = true
 	return iterkit.Merge2(
-		iterkit.ToErrIter(iterkit.Slice(prefetchedEntities)),
+		iterkit.ToErrSeq(iterkit.Slice(prefetchedEntities)),
 		iterkit.FromPull2(next, stop),
 	), nil
 }

@@ -56,7 +56,7 @@ func TestQueryMany(t *testing.T) {
 					if err != nil {
 						return nil, err
 					}
-					return iterkit.OnErrIterValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+					return iterkit.OnErrSeqValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
 						return iterkit.Filter(itr, func(f testent.Foo) bool {
 							return f.Foo == foo
 						})

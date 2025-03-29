@@ -7,7 +7,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 )
 
-func QueryMany[T any](c Queryable, ctx context.Context, mapper RowMapper[T], query string, args ...any) (iterkit.ErrIter[T], error) {
+func QueryMany[T any](c Queryable, ctx context.Context, mapper RowMapper[T], query string, args ...any) (iterkit.ErrSeq[T], error) {
 	rows, err := c.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -19,7 +19,7 @@ func QueryMany[T any](c Queryable, ctx context.Context, mapper RowMapper[T], que
 // it allows you to do dynamic filtering, pipeline/middleware pattern on your sql results
 // by using this wrapping around it.
 // it also makes testing easier with the same Interface interface.
-func MakeRowsIterator[T any](rows Rows, mapper RowMapper[T]) iterkit.ErrIter[T] {
+func MakeRowsIterator[T any](rows Rows, mapper RowMapper[T]) iterkit.ErrSeq[T] {
 	if rows == nil {
 		return iterkit.Empty2[T, error]()
 	}

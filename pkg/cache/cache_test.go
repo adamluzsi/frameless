@@ -65,7 +65,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 	var getHits = func() []cache.Hit[testent.FooID] {
 		iter, err := cachei.Repository.Hits().FindAll(context.Background())
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(iter)
+		vs, err := iterkit.CollectErr(iter)
 		assert.NoError(t, err)
 		return vs
 	}
@@ -116,7 +116,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 			if err != nil {
 				return ent, found, err
 			}
-			itr = iterkit.OnErrIterValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+			itr = iterkit.OnErrSeqValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
 				return iterkit.Filter(itr, func(f testent.Foo) bool {
 					return f.Bar == foo1.Bar
 				})
@@ -141,10 +141,10 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("when we have a custom query that has no arguments but only returns foo2")
 		qid := cache.Query{Name: "NOK-MANY-BAZ"}
 		iter, err := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
-			return iterkit.ToErrIter(iterkit.Slice([]testent.Foo{foo2})), nil
+			return iterkit.ToErrSeq(iterkit.Slice([]testent.Foo{foo2})), nil
 		})
 		assert.NoError(t, err)
-		_, err = iterkit.CollectErrIter(iter) // drain iterator
+		_, err = iterkit.CollectErr(iter) // drain iterator
 		assert.NoError(t, err)
 
 		t.Log("then we expect that the new NOK-MANY-BAZ will be filtered")
@@ -298,7 +298,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 				return source.Get(t).FindAll(context.Background())
 			})
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(all)
+		vs, err := iterkit.CollectErr(all)
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
 	})

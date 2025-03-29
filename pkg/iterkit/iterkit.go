@@ -20,6 +20,7 @@ package iterkit
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -30,7 +31,12 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/port/option"
 )
+
+type I1[T any] interface {
+	iter.Seq[T] | ErrSeq[T]
+}
 
 // SingleUseSeq is an iter.Seq[T] that can only iterated once.
 // After iteration, it is expected to yield no more values.
@@ -55,8 +61,16 @@ type SingleUseSeq[T any] = iter.Seq[T]
 // For more information on single use sequences, please read the documentation of SingleUseSeq.
 type SingleUseSeq2[K, V any] = iter.Seq2[K, V]
 
+// SingleUseErrSeq is an iter.Seq2[T, error] that can only iterated once.
+// After iteration, it is expected to yield no more values.
+// For more information on single use sequences, please read the documentation of SingleUseSeq.
+type SingleUseErrSeq[T any] = ErrSeq[T]
+
 // ErrFunc is the check function that can tell if currently an iterator that is related to the error function has an issue or not.
 type ErrFunc = errorkit.ErrFunc
+
+// ErrSeq is an iterator that can tell if a currently returned value has an issue or not.
+type ErrSeq[T any] = iter.Seq2[T, error]
 
 func Reduce[R, T any](i iter.Seq[T], initial R, fn func(R, T) R) R {
 	var v = initial
@@ -66,10 +80,12 @@ func Reduce[R, T any](i iter.Seq[T], initial R, fn func(R, T) R) R {
 	return v
 }
 
-func ReduceErr[R, T any](i iter.Seq[T], initial R, fn func(R, T) (R, error)) (result R, rErr error) {
+func ReduceErr[R, T any, I I1[T]](i I, initial R, fn func(R, T) (R, error)) (result R, rErr error) {
 	var v = initial
-	for c := range i {
-		var err error
+	for c, err := range castToErrSeq[T](i) {
+		if err != nil {
+			return v, err
+		}
 		v, err = fn(v, c)
 		if err != nil {
 			return v, err
@@ -82,11 +98,11 @@ func Slice[T any](slice []T) iter.Seq[T] {
 	return slices.Values(slice)
 }
 
-func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer, errFuncs ...ErrFunc) (SingleUseSeq[T], ErrFunc) {
-	return toIterSeqWithRelease(&bufioScannerIter[T]{
+func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer) SingleUseErrSeq[T] {
+	return FromPullIter(&bufioScannerIter[T]{
 		Scanner: s,
 		Closer:  closer,
-	}, errFuncs...)
+	})
 }
 
 type bufioScannerIter[T string | []byte] struct {
@@ -139,7 +155,9 @@ func Collect[T any](i iter.Seq[T]) []T {
 	return vs
 }
 
-func Collect2[K, V, KV any](i iter.Seq2[K, V], m func(K, V) KV) []KV {
+type KVMapFunc[KV any, K, V any] func(K, V) KV
+
+func Collect2[K, V, KV any](i iter.Seq2[K, V], m KVMapFunc[KV, K, V]) []KV {
 	if i == nil {
 		return nil
 	}
@@ -153,6 +171,16 @@ func Collect2[K, V, KV any](i iter.Seq2[K, V], m func(K, V) KV) []KV {
 type KV[K, V any] struct {
 	K K
 	V V
+}
+
+func FromKV[K, V any](kvs []KV[K, V]) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		for _, kv := range kvs {
+			if !yield(kv.K, kv.V) {
+				return
+			}
+		}
+	}
 }
 
 func CollectKV[K, V any](i iter.Seq2[K, V]) []KV[K, V] {
@@ -188,102 +216,51 @@ func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
 	return vs
 }
 
-func CollectErr[T any](i iter.Seq[T], e ErrFunc) ([]T, error) {
-	var vs = Collect(i)
-	var err error
-	if e != nil {
-		err = e()
-	}
-	return vs, err
-}
+const NoMore errorkit.Error = "[[ErrNoMorePage]]"
 
-// Paginate will create an iter.Seq[T] which can be used like any other iterator,
+// FromPages will create an iter.Seq[T] which can be used like any other iterator,
 // Under the hood the "more" function will be used to dynamically retrieve more values
 // when the previously called values are already used up.
 //
 // If the more function has a hard-coded true for the "has next page" return value,
 // then the pagination will interpret an empty result as "no more pages left".
-func Paginate[T any](
-	ctx context.Context,
-	more func(ctx context.Context, offset int) (values []T, hasNext bool, _ error),
-	errFuncs ...ErrFunc,
-) (SingleUseSeq[T], ErrFunc) {
-	return toIterSeqWithRelease(&paginator[T]{
-		Context: ctx,
-		More:    more,
-	}, errFuncs...)
-}
-
-type paginator[T any] struct {
-	// Context is the iteration context.
-	Context context.Context
-	// Offset is the current offset at which the next More will be called.
-	Offset int
-	// More is the function that meant to retrieve values for iteration.
-	// It gets Offset which is used for pagination.
-	More func(ctx context.Context, offset int) (_ []T, hasNext bool, _ error)
-
-	value T
-	err   error
-
-	buffer []T
-	index  int
-
-	done   bool
-	noMore bool
-}
-
-func (i *paginator[T]) Next() bool {
-	if i.done || i.err != nil {
-		return false
-	}
-	if !(i.index < len(i.buffer)) {
-		vs, err := i.more()
-		if err != nil {
-			i.err = err
-			return false
+func FromPages[T any](next func(offset int) (values []T, _ error)) ErrSeq[T] {
+	return func(yield func(T, error) bool) {
+		var (
+			offset  int  // offset is the current offset at which the next More will be called.
+			hasMore bool = true
+		)
+	fetching:
+		for hasMore {
+			vs, err := next(offset)
+			if err != nil {
+				if errors.Is(err, NoMore) {
+					hasMore = !true
+				} else {
+					var zero T
+					yield(zero, err)
+					return
+				}
+			}
+			switch vsLen := len(vs); true {
+			case vsLen == 0:
+				// when vsLen is zero, aka result is empty,
+				// then it is treated as a NoMore,
+				break fetching
+			case 0 < vsLen:
+				offset += vsLen
+			}
+			for _, v := range vs {
+				if !yield(v, nil) {
+					return
+				}
+			}
 		}
-		if len(vs) == 0 {
-			i.done = true
-			return false
-		}
-		i.index = 0
-		i.buffer = vs
 	}
-
-	i.value = i.buffer[i.index]
-	i.index++
-	return true
-}
-
-func (i *paginator[T]) Close() error { i.done = true; return nil }
-func (i *paginator[T]) Err() error   { return i.err }
-func (i *paginator[T]) Value() T     { return i.value }
-
-func (i *paginator[T]) more() ([]T, error) {
-	if i.noMore {
-		return nil, nil
-	}
-	vs, hasMore, err := i.More(i.Context, i.Offset)
-	if err != nil {
-		return nil, err
-	}
-	if 0 < len(vs) {
-		i.Offset += len(vs)
-	}
-	if hasMore && len(vs) == 0 {
-		// when hasMore is true but the result is empty,
-		// then it is treated as a NoMore,
-		// to enable easy implementations for those cases,
-		// where the developer just wants to use a hard-coded true for this value.
-		return nil, nil
-	}
-	i.noMore = !hasMore
-	return vs, nil
 }
 
 // Error returns an Interface that only can do is returning an Err and never have next element
-func Error[T any](err error) ErrIter[T] {
+func Error[T any](err error) ErrSeq[T] {
 	return func(yield func(T, error) bool) {
 		var zero T
 		yield(zero, err)
@@ -291,7 +268,7 @@ func Error[T any](err error) ErrIter[T] {
 }
 
 // ErrorF behaves exactly like fmt.ErrorF but returns the error wrapped as iterator
-func ErrorF[T any](format string, a ...any) ErrIter[T] {
+func ErrorF[T any](format string, a ...any) ErrSeq[T] {
 	return Error[T](fmt.Errorf(format, a...))
 }
 
@@ -344,8 +321,16 @@ func Empty2[T1, T2 any]() iter.Seq2[T1, T2] {
 	return func(yield func(T1, T2) bool) {}
 }
 
-func Batch[T any](i iter.Seq[T], size int) iter.Seq[[]T] {
-	size = getBatchSize(size)
+func Batch[T any](i iter.Seq[T], opts ...BatchOption) iter.Seq[[]T] {
+	c := option.Use(opts)
+	if 0 < c.WaitLimit {
+		return asyncBatch(i, c)
+	}
+	return syncBatch(i, c)
+}
+
+func syncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
+	size := c.getSize()
 	return func(yield func([]T) bool) {
 		var next, stop = iter.Pull(i)
 		defer stop()
@@ -378,11 +363,33 @@ func Batch[T any](i iter.Seq[T], size int) iter.Seq[[]T] {
 	}
 }
 
-func BatchWithWaitLimit[T any](i iter.Seq[T], size int, waitLimit time.Duration) iter.Seq[[]T] {
-	size = getBatchSize(size)
-	if waitLimit <= 0 {
-		panic(fmt.Sprintf("[BatchWithWaitLimit] invalid waitLimit: %d", waitLimit))
+type BatchConfig struct {
+	Size      int
+	WaitLimit time.Duration
+}
+
+func (c BatchConfig) Configure(t *BatchConfig) { option.Configure(c, t) }
+
+type BatchOption option.Option[BatchConfig]
+
+func BatchWaitLimit(d time.Duration) BatchOption {
+	return option.Func[BatchConfig](func(c *BatchConfig) {
+		c.WaitLimit = d
+	})
+}
+
+func BatchSize(n int) BatchOption {
+	return option.Func[BatchConfig](func(c *BatchConfig) {
+		c.Size = n
+		c.Size = c.getSize()
+	})
+}
+
+func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
+	if c.WaitLimit <= 0 {
+		panic(fmt.Sprintf("[Batch with WaitLimit] invalid waitLimit: %d", c.WaitLimit))
 	}
+	size := c.getSize()
 	return func(yield func([]T) bool) {
 		var (
 			feed = make(chan T)
@@ -404,7 +411,7 @@ func BatchWithWaitLimit[T any](i iter.Seq[T], size int, waitLimit time.Duration)
 
 		var (
 			vs     = make([]T, 0, size)
-			ticker = time.NewTicker(waitLimit)
+			ticker = time.NewTicker(c.WaitLimit)
 		)
 
 		var flush = func() bool {
@@ -423,7 +430,7 @@ func BatchWithWaitLimit[T any](i iter.Seq[T], size int, waitLimit time.Duration)
 				ok bool
 			)
 
-			ticker.Reset(waitLimit)
+			ticker.Reset(c.WaitLimit)
 			select {
 			case v, ok = <-feed:
 				if !ok {
@@ -451,23 +458,50 @@ func BatchWithWaitLimit[T any](i iter.Seq[T], size int, waitLimit time.Duration)
 	}
 }
 
-func getBatchSize(size int) int {
+func (c BatchConfig) getSize() int {
 	const defaultBatchSize = 64
-	if size <= 0 {
+	if c.Size <= 0 {
 		return defaultBatchSize
 	}
-	return size
+	return c.Size
 }
 
-func Filter[T any](i iter.Seq[T], filter func(T) bool) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		for v := range i {
-			if filter(v) {
-				if !yield(v) {
-					break
+func Filter[T any, Iter I1[T]](i Iter, filter func(T) bool) Iter {
+	if i == nil {
+		return nil
+	}
+	switch i := any(i).(type) {
+	case iter.Seq[T]:
+		var itr iter.Seq[T] = func(yield func(T) bool) {
+			for v := range i {
+				if filter(v) {
+					if !yield(v) {
+						break
+					}
 				}
 			}
 		}
+		return any(itr).(Iter)
+	case ErrSeq[T]:
+		var itr ErrSeq[T] = func(yield func(T, error) bool) {
+			for v, err := range i {
+				if err != nil {
+					var zero T
+					if !yield(zero, err) {
+						return
+					}
+					continue
+				}
+				if filter(v) {
+					if !yield(v, nil) {
+						return
+					}
+				}
+			}
+		}
+		return any(itr).(Iter)
+	default:
+		panic("not-implemented")
 	}
 }
 
@@ -583,6 +617,19 @@ func Take[T any](next func() (T, bool), n int) []T {
 	return vs
 }
 
+// Take will take the next N value from a pull iterator.
+func Take2[KV any, K, V any](next func() (K, V, bool), n int, m KVMapFunc[KV, K, V]) []KV {
+	var kvs []KV
+	for i := 0; i < n; i++ {
+		k, v, ok := next()
+		if !ok {
+			break
+		}
+		kvs = append(kvs, m(k, v))
+	}
+	return kvs
+}
+
 // TakeAll will take all the remaining values from a pull iterator.
 func TakeAll[T any](next func() (T, bool)) []T {
 	var vs []T
@@ -596,26 +643,22 @@ func TakeAll[T any](next func() (T, bool)) []T {
 	return vs
 }
 
+// TakeAll will take all the remaining values from a pull iterator.
+func Take2All[KV any, K, V any](next func() (K, V, bool), m KVMapFunc[KV, K, V]) []KV {
+	var kvs []KV
+	for {
+		k, v, ok := next()
+		if !ok {
+			break
+		}
+		kvs = append(kvs, m(k, v))
+	}
+	return kvs
+}
+
 // SingleValue creates an iterator that can return one single element and will ensure that Next can only be called once.
 func SingleValue[T any](v T) iter.Seq[T] {
 	return func(yield func(T) bool) { yield(v) }
-}
-
-const Break errorkit.Error = `iterators:break`
-
-func ForEach[T any](i iter.Seq[T], fn func(T) error, errFuncs ...ErrFunc) (rErr error) {
-	if 0 < len(errFuncs) {
-		defer errorkit.Finish(&rErr, errorkit.MergeErrFunc(errFuncs...))
-	}
-	for v := range i {
-		if err := fn(v); err != nil {
-			if err == Break {
-				break
-			}
-			return err
-		}
-	}
-	return nil
 }
 
 // Map allows you to do additional transformation on the values.
@@ -645,21 +688,22 @@ func Map2[OKey, OVal, IKey, IVal any](i iter.Seq2[IKey, IVal], transform func(IK
 	}
 }
 
-func MapErr[To any, From any](i iter.Seq[From], transform func(From) (To, error), errs ...ErrFunc) (iter.Seq[To], ErrFunc) {
-	var returnError error
-	return func(yield func(To) bool) {
-			for v := range i {
-				tv, err := transform(v)
-				if err != nil {
-					returnError = err
-					break
+func MapErr[To any, From any, Iter I1[From]](i Iter, transform func(From) (To, error)) ErrSeq[To] {
+	var src ErrSeq[From] = castToErrSeq[From](i)
+	return func(yield func(To, error) bool) {
+		for v, err := range src {
+			if err != nil {
+				var zero To
+				if !yield(zero, err) {
+					return
 				}
-				if !yield(tv) {
-					break
-				}
+				continue
 			}
-		}, errorkit.MergeErrFunc(append(errs,
-			func() error { return returnError })...)
+			if !yield(transform(v)) {
+				return
+			}
+		}
+	}
 }
 
 // Count will iterate over and count the total iterations number
@@ -902,5 +946,175 @@ func FromPull2[K, V any](next func() (K, V, bool), stops ...func()) iter.Seq2[K,
 				return
 			}
 		}
+	}
+}
+
+//////////////////////////////////////////////// failable iteration //////////////////////////////////////////////////
+
+// ToErrSeq will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
+// and use the error function to yield potential issues with the iteration.
+func ToErrSeq[T any](i iter.Seq[T], errFuncs ...ErrFunc) ErrSeq[T] {
+	return func(yield func(T, error) bool) {
+		for v := range i {
+			if !yield(v, nil) {
+				return
+			}
+		}
+		if 0 < len(errFuncs) {
+			errFunc := errorkit.MergeErrFunc(errFuncs...)
+			if err := errFunc(); err != nil {
+				var zero T
+				yield(zero, errFunc())
+			}
+		}
+	}
+}
+
+// SplitErrSeq will split an iter.Seq2[T, error] iterator into a iter.Seq[T] iterator plus an error retrival func.
+func SplitErrSeq[T any](i ErrSeq[T]) (iter.Seq[T], ErrFunc) {
+	var m sync.RWMutex
+	var errors []error
+	return func(yield func(T) bool) {
+			m.Lock()
+			errors = nil
+			m.Unlock()
+			for v, err := range i {
+				if err != nil {
+					m.Lock()
+					errors = append(errors, err)
+					m.Unlock()
+					continue
+				}
+				if !yield(v) {
+					return
+				}
+			}
+		},
+		func() error {
+			m.RLock()
+			defer m.RUnlock()
+			return errorkit.Merge(errors...)
+		}
+}
+
+func CollectErr[T any](i iter.Seq2[T, error]) ([]T, error) {
+	if i == nil {
+		return nil, nil
+	}
+	var (
+		vs   []T
+		errs []error
+	)
+	for v, err := range i {
+		if err == nil {
+			vs = append(vs, v)
+		} else {
+			errs = append(errs, err)
+		}
+	}
+	return vs, errorkit.Merge(errs...)
+}
+
+// OnErrSeqValue will apply a iterator pipeline on a given ErrSeq
+func OnErrSeqValue[To any, From any](itr ErrSeq[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) ErrSeq[To] {
+	return func(yield func(To, error) bool) {
+		var g tasker.JobGroup[tasker.Manual]
+		defer g.Stop()
+
+		var (
+			in   = make(chan From)
+			out  = make(chan To)
+			errs = make(chan error)
+		)
+
+		g.Go(func(ctx context.Context) error {
+			defer close(errs)
+			defer close(in)
+
+		listening:
+			for from, err := range itr {
+				if err != nil {
+					select {
+					case errs <- err:
+						continue listening
+					case <-ctx.Done():
+						break listening
+					}
+				}
+
+				select {
+				case in <- from:
+					continue listening
+				case <-ctx.Done():
+					break listening
+				}
+			}
+
+			return nil
+		})
+
+		g.Go(func(ctx context.Context) error {
+			defer close(out)
+			var transformPipeline iter.Seq[To] = pipeline(Chan(in))
+
+		feeding:
+			for output := range transformPipeline {
+				select {
+				case out <- output:
+					continue feeding
+				case <-ctx.Done():
+					break feeding
+				}
+			}
+
+			return nil
+		})
+
+	pushing:
+		for {
+			select {
+			case output, ok := <-out:
+				if !ok {
+					break pushing
+				}
+				if !yield(output, nil) {
+					break pushing
+				}
+			case err, ok := <-errs:
+				if !ok {
+					// close(errs) happen earlier than close(out)
+					// so we need to collect the remaining values
+					output, ok := <-out
+					if !ok {
+						break pushing
+					}
+					if !yield(output, nil) {
+						break pushing
+					}
+					continue pushing
+				}
+				var zero To
+				if !yield(zero, err) {
+					break pushing
+				}
+			}
+		}
+	}
+}
+
+func castToErrSeq[T any, I I1[T]](i I) ErrSeq[T] {
+	switch i := any(i).(type) {
+	case iter.Seq2[T, error]:
+		return i
+	case iter.Seq[T]:
+		return func(yield func(T, error) bool) {
+			for v := range i {
+				if !yield(v, nil) {
+					return
+				}
+			}
+		}
+	default:
+		panic("not-implemented")
 	}
 }

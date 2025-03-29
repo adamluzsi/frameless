@@ -126,7 +126,7 @@ func DeleteAll[ENT, ID any](tb testing.TB, subject deleteAllDeleter[ENT, ID], ct
 	Eventually.Assert(tb, func(t assert.It) {
 		itr, err := subject.FindAll(ctx)
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(itr)
+		vs, err := iterkit.CollectErr(itr)
 		assert.NoError(t, err)
 		assert.Empty(t, vs, `no entity was expected to be found`)
 	})

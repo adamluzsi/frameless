@@ -271,7 +271,7 @@ func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iter.Seq2[ENT,
 		})
 		if itr != nil {
 			a.Case(func(t assert.It) {
-				_, err := iterkit.CollectErrIter(itr)
+				_, err := iterkit.CollectErr(itr)
 				t.Must.Error(err)
 				rErr = err
 			})

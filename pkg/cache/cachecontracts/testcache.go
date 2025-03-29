@@ -276,7 +276,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 		t.Helper()
 		itr, err := act(t)
 		assert.NoError(t, err)
-		vs, err := iterkit.CollectErrIter(itr)
+		vs, err := iterkit.CollectErr(itr)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, vs)
 		return vs
@@ -480,7 +480,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 			vs, err := crudkit.CollectQueryMany(cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
 				hitID,
 				func(ctx context.Context) (iter.Seq2[ENT, error], error) {
-					return iterkit.ToErrIter(iterkit.Slice(res)), nil
+					return iterkit.ToErrSeq(iterkit.Slice(res)), nil
 				}))
 			assert.NoError(t, err)
 			return vs
@@ -490,7 +490,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 			return cache.Get(t).RefreshQueryMany(c.CRUD.MakeContext(t),
 				hitID,
 				func(ctx context.Context) (iter.Seq2[ENT, error], error) {
-					return iterkit.ToErrIter(iterkit.Slice(res)), nil
+					return iterkit.ToErrSeq(iterkit.Slice(res)), nil
 				})
 		}
 
@@ -933,7 +933,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 
 		query.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
 			return func(ctx context.Context) (iter.Seq2[ENT, error], error) {
-				return iterkit.ToErrIter(iterkit.Slice[ENT]([]ENT{*ent1.Get(t), *ent2.Get(t)})), nil
+				return iterkit.ToErrSeq(iterkit.Slice[ENT]([]ENT{*ent1.Get(t), *ent2.Get(t)})), nil
 			}
 		})
 
@@ -1100,7 +1100,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 				if !found {
 					return iterkit.Empty2[ENT, error](), nil
 				}
-				return iterkit.ToErrIter(iterkit.SingleValue(ent)),
+				return iterkit.ToErrSeq(iterkit.SingleValue(ent)),
 					nil
 			}
 		})
@@ -1369,7 +1369,7 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 				if !found {
 					return iterkit.Empty2[ENT, error](), nil
 				}
-				return iterkit.ToErrIter(iterkit.SingleValue(ent)), nil
+				return iterkit.ToErrSeq(iterkit.SingleValue(ent)), nil
 			}
 		})
 

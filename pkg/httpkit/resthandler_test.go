@@ -83,7 +83,7 @@ func ExampleRESTHandler_withIndexFilteringByQuery() {
 				if err != nil {
 					return nil, err
 				}
-				foos = iterkit.OnErrIterValue(foos, func(itr iter.Seq[X]) iter.Seq[X] {
+				foos = iterkit.OnErrSeqValue(foos, func(itr iter.Seq[X]) iter.Seq[X] {
 					return iterkit.Filter(itr, func(foo X) bool {
 						return bigger < foo.N
 					})
@@ -303,7 +303,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 							if ok {
 								receivedQuery.Set(t, req.URL.Query())
 							}
-							return iterkit.ToErrIter(iterkit.SingleValue(x.Get(t))), nil
+							return iterkit.ToErrSeq(iterkit.SingleValue(x.Get(t))), nil
 						}
 					})
 
@@ -1143,7 +1143,7 @@ func TestRouter_Resource(t *testing.T) {
 
 	r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
 		Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
-			return iterkit.ToErrIter(iterkit.SingleValue(foo)), nil
+			return iterkit.ToErrSeq(iterkit.SingleValue(foo)), nil
 		},
 		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
 			return foo, true, nil

@@ -127,7 +127,7 @@ func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error
 		return nil, err
 	}
 	all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
-	return iterkit.ToErrIter(all), nil
+	return iterkit.ToErrSeq(all), nil
 }
 
 func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
@@ -194,7 +194,7 @@ func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Se
 		}
 		vs[key] = v.(ENT)
 	}
-	return iterkit.ToErrIter(iterkit.Slice(toSlice[ENT, string](vs))), nil
+	return iterkit.ToErrSeq(iterkit.Slice(toSlice[ENT, string](vs))), nil
 }
 
 func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) bool) (ENT, bool, error) {
@@ -219,7 +219,7 @@ func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) 
 	if err != nil {
 		return nil, err
 	}
-	return iterkit.OnErrIterValue(itr, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+	return iterkit.OnErrSeqValue(itr, func(i iter.Seq[ENT]) iter.Seq[ENT] {
 		return iterkit.Filter(i, filter)
 	}), nil
 }
