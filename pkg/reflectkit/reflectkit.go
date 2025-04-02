@@ -426,7 +426,7 @@ func Clone(value reflect.Value) reflect.Value {
 		return reflect.Value{}
 	}
 	switch value.Kind() {
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if value.IsNil() {
 			return reflect.Zero(value.Type())
 		}
@@ -565,16 +565,71 @@ type CmpComparable[T any] interface {
 
 const ErrNotComparable errorkit.Error = "ErrNotComparable"
 
-func Compare(a, b reflect.Value) (int, error) {
+// Compare will compare "a" and "b" and return the comparison result.
+//
+//   - -1 if "a" is smaller than "b"
+//   - 0  if "a" is equal   to   "b"
+//   - 1  if "a" is bigger  than "b"
+func Compare[T reflect.Value | any](a, b T) (int, error) {
+	if cmp, ok := tryTypedCompare[T](a, b); ok {
+		return cmp, nil
+	}
+	return reflectCompare(ToValue(a), ToValue(b))
+}
+
+func tryTypedCompare[T any](a, b T) (int, bool) {
+	if _, ok := any(a).(reflect.Value); ok {
+		return 0, false
+	}
+	switch a := any(a).(type) {
+	case Comparable[T]:
+		return a.Compare(b), true
+	case CmpComparable[T]:
+		return a.Cmp(b), true
+	case float32:
+		return compareNumbares(a, any(b).(float32)), true
+	case float64:
+		return compareNumbares(a, any(b).(float64)), true
+	case int:
+		return compareNumbares(a, any(b).(int)), true
+	case int8:
+		return compareNumbares(a, any(b).(int8)), true
+	case int16:
+		return compareNumbares(a, any(b).(int16)), true
+	case int32:
+		return compareNumbares(a, any(b).(int32)), true
+	case int64:
+		return compareNumbares(a, any(b).(int64)), true
+	case uint:
+		return compareNumbares(a, any(b).(uint)), true
+	case uint8:
+		return compareNumbares(a, any(b).(uint8)), true
+	case uint16:
+		return compareNumbares(a, any(b).(uint16)), true
+	case uint32:
+		return compareNumbares(a, any(b).(uint32)), true
+	case uint64:
+		return compareNumbares(a, any(b).(uint64)), true
+	case string:
+		return strings.Compare(a, any(b).(string)), true
+	default:
+		return 0, false
+	}
+}
+
+func reflectCompare(a, b reflect.Value) (int, error) {
 	if compare, ok := internal.ImplementsComparable(a.Type()); ok {
 		return compare(a, b)
 	}
-	for compareCanUnwrap(a, b) {
-		a = a.Elem()
-		b = b.Elem()
+	for canElem(a) && canElem(b) {
+		a, b = a.Elem(), b.Elem()
+
+		if compare, ok := internal.ImplementsComparable(a.Type()); ok {
+			return compare(a, b)
+		}
 	}
-	if err := validateComparedTypes(a, b); err != nil {
-		return 0, err
+	if a.Type() != b.Type() {
+		return 0, ErrTypeMismatch.F("comparison between %s and %s is not possible.", a.Type().String(), b.Type().String())
 	}
 	if a.CanInt() {
 		return compareNumbares(a.Int(), b.Int()), nil
@@ -589,22 +644,6 @@ func Compare(a, b reflect.Value) (int, error) {
 		return strings.Compare(a.String(), b.String()), nil
 	}
 	return 0, ErrNotComparable.F("%s <=/=> %s", a.Type().String(), b.Type().String())
-}
-
-func validateComparedTypes(a, b reflect.Value) error {
-	if a.Type() == b.Type() {
-		return nil
-	}
-	return ErrTypeMismatch.F("comparison between %s and %s is not possible.", a.Type().String(), b.Type().String())
-}
-
-func compareCanUnwrap(vs ...reflect.Value) bool {
-	for _, v := range vs {
-		if !canElem(v) {
-			return false
-		}
-	}
-	return true
 }
 
 type number interface {
@@ -634,6 +673,10 @@ func compareTime(a, b time.Time) int {
 }
 
 func canElem(val reflect.Value) bool {
-	// Check if Elem() can be called
-	return val.Kind() == reflect.Ptr || val.Kind() == reflect.Interface
+	kind := val.Kind()
+	can := kind == reflect.Pointer || kind == reflect.Interface
+	if !can {
+		return false
+	}
+	return !val.IsNil()
 }

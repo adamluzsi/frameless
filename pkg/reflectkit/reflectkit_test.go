@@ -2603,6 +2603,189 @@ func TestCompare(t *testing.T) {
 	// }, func(t *testcase.T) uint {
 	// 	return uint(t.Random.IntBetween(101, 200))
 	// }))
+
+	s.Test("support non-reflect values", func(t *testcase.T) {
+		timeVal := t.Random.Time()
+		duration := t.Random.DurationBetween(time.Second, time.Hour)
+
+		assert.Equal(t, -1, mustCompare(t, timeVal, timeVal.Add(duration)))
+		assert.Equal(t, 0, mustCompare(t, timeVal, timeVal))
+		assert.Equal(t, 1, mustCompare(t, timeVal.Add(duration), timeVal))
+
+		assert.Equal(t, -1, mustCompare(t, -1, 0))
+		assert.Equal(t, 0, mustCompare(t, 0, 0))
+		assert.Equal(t, 1, mustCompare(t, 0, -1))
+
+		assert.Equal(t, -1, mustCompare(t, big.NewInt(-1), big.NewInt(0)))
+		assert.Equal(t, 0, mustCompare(t, big.NewInt(0), big.NewInt(0)))
+		assert.Equal(t, 1, mustCompare(t, big.NewInt(0), big.NewInt(-1)))
+	})
+
+	s.Test("pointer types are supported", func(t *testcase.T) {
+		timeVal := t.Random.Time()
+		duration := t.Random.DurationBetween(time.Second, time.Hour)
+
+		assert.Equal(t, -1, mustCompare(t, &timeVal, pointer.Of(timeVal.Add(duration))))
+		assert.Equal(t, 0, mustCompare(t, &timeVal, &timeVal))
+		assert.Equal(t, 1, mustCompare(t, pointer.Of(timeVal.Add(duration)), &timeVal))
+
+		assert.Equal(t, -1, mustCompare(t, pointer.Of(-1), pointer.Of(0)))
+		assert.Equal(t, 0, mustCompare(t, pointer.Of(0), pointer.Of(0)))
+		assert.Equal(t, 1, mustCompare(t, pointer.Of(0), pointer.Of(-1)))
+
+	})
+
+	s.Test("pointer of pointer of comparable", func(t *testcase.T) {
+		timeVal := t.Random.Time()
+		duration := t.Random.DurationBetween(time.Second, time.Hour)
+
+		less := pointer.Of(pointer.Of(timeVal))
+		more := pointer.Of(pointer.Of(timeVal.Add(duration)))
+
+		assert.Equal(t, -1, mustCompare(t, less, more))
+		assert.Equal(t, 0, mustCompare(t, less, less))
+		assert.Equal(t, 1, mustCompare(t, more, less))
+	})
+
+	s.Test("pointer of comparable pointer", func(t *testcase.T) {
+		less := pointer.Of(big.NewInt(int64(t.Random.IntBetween(100, 200))))
+		more := pointer.Of(big.NewInt(int64(t.Random.IntBetween(300, 400))))
+
+		assert.Equal(t, -1, mustCompare(t, less, more))
+		assert.Equal(t, 0, mustCompare(t, less, less))
+		assert.Equal(t, 1, mustCompare(t, more, less))
+	})
+
+	s.Test("type safe comparison for string", func(t *testcase.T) {
+		less := t.Random.StringNWithCharset(5, "abc")
+		more := t.Random.StringNWithCharset(5, "def")
+
+		assert.Equal(t, -1, mustCompare(t, less, more))
+		assert.Equal(t, 0, mustCompare(t, less, less))
+		assert.Equal(t, 1, mustCompare(t, more, less))
+	})
+
+	s.Test("type safe comparison for numericals", func(t *testcase.T) {
+		assert.Equal(t, -1, mustCompare(t, float32(1), float32(2)))
+		assert.Equal(t, 0, mustCompare(t, float32(1), float32(1)))
+		assert.Equal(t, 1, mustCompare(t, float32(1), float32(0)))
+		assert.Equal(t, -1, mustCompare(t, float64(1), float64(2)))
+		assert.Equal(t, 0, mustCompare(t, float64(1), float64(1)))
+		assert.Equal(t, 1, mustCompare(t, float64(1), float64(0)))
+		assert.Equal(t, -1, mustCompare(t, int(1), int(2)))
+		assert.Equal(t, 0, mustCompare(t, int(1), int(1)))
+		assert.Equal(t, 1, mustCompare(t, int(1), int(0)))
+		assert.Equal(t, -1, mustCompare(t, int8(1), int8(2)))
+		assert.Equal(t, 0, mustCompare(t, int8(1), int8(1)))
+		assert.Equal(t, 1, mustCompare(t, int8(1), int8(0)))
+		assert.Equal(t, -1, mustCompare(t, int16(1), int16(2)))
+		assert.Equal(t, 0, mustCompare(t, int16(1), int16(1)))
+		assert.Equal(t, 1, mustCompare(t, int16(1), int16(0)))
+		assert.Equal(t, -1, mustCompare(t, int32(1), int32(2)))
+		assert.Equal(t, 0, mustCompare(t, int32(1), int32(1)))
+		assert.Equal(t, 1, mustCompare(t, int32(1), int32(0)))
+		assert.Equal(t, -1, mustCompare(t, int64(1), int64(2)))
+		assert.Equal(t, 0, mustCompare(t, int64(1), int64(1)))
+		assert.Equal(t, 1, mustCompare(t, int64(1), int64(0)))
+		assert.Equal(t, -1, mustCompare(t, uint(1), uint(2)))
+		assert.Equal(t, 0, mustCompare(t, uint(1), uint(1)))
+		assert.Equal(t, 1, mustCompare(t, uint(1), uint(0)))
+		assert.Equal(t, -1, mustCompare(t, uint8(1), uint8(2)))
+		assert.Equal(t, 0, mustCompare(t, uint8(1), uint8(1)))
+		assert.Equal(t, 1, mustCompare(t, uint8(1), uint8(0)))
+		assert.Equal(t, -1, mustCompare(t, uint16(1), uint16(2)))
+		assert.Equal(t, 0, mustCompare(t, uint16(1), uint16(1)))
+		assert.Equal(t, 1, mustCompare(t, uint16(1), uint16(0)))
+		assert.Equal(t, -1, mustCompare(t, uint32(1), uint32(2)))
+		assert.Equal(t, 0, mustCompare(t, uint32(1), uint32(1)))
+		assert.Equal(t, 1, mustCompare(t, uint32(1), uint32(0)))
+		assert.Equal(t, -1, mustCompare(t, uint64(1), uint64(2)))
+		assert.Equal(t, 0, mustCompare(t, uint64(1), uint64(1)))
+		assert.Equal(t, 1, mustCompare(t, uint64(1), uint64(0)))
+	})
+}
+
+func BenchmarkCompare(b *testing.B) {
+	b.Run("w Comparable impl", func(b *testing.B) {
+		A := rnd.Time()
+		B := A.Add(rnd.DurationBetween(time.Second, time.Hour))
+
+		b.Run("through reflect.Value", func(b *testing.B) {
+			vA := reflect.ValueOf(A)
+			vB := reflect.ValueOf(B)
+			b.ResetTimer()
+			for range b.N {
+				reflectkit.Compare(vA, vB)
+			}
+		})
+		b.Run("through concrete type", func(b *testing.B) {
+			for range b.N {
+				reflectkit.Compare(A, B)
+			}
+		})
+	})
+	b.Run("int", func(b *testing.B) {
+		A := rnd.IntBetween(0, 1000)
+		B := A + rnd.IntBetween(0, 42)
+
+		b.Run("through reflect.Value", func(b *testing.B) {
+			vA := reflect.ValueOf(A)
+			vB := reflect.ValueOf(B)
+			b.ResetTimer()
+			for range b.N {
+				reflectkit.Compare(vA, vB)
+			}
+		})
+		b.Run("through concrete type", func(b *testing.B) {
+			for range b.N {
+				reflectkit.Compare(A, B)
+			}
+		})
+	})
+
+	b.Run("uint", func(b *testing.B) {
+		A := uint(rnd.IntBetween(0, 1000))
+		B := A + uint(rnd.IntBetween(0, 42))
+
+		b.Run("through reflect.Value", func(b *testing.B) {
+			vA := reflect.ValueOf(A)
+			vB := reflect.ValueOf(B)
+			b.ResetTimer()
+			for range b.N {
+				reflectkit.Compare(vA, vB)
+			}
+		})
+		b.Run("through concrete type", func(b *testing.B) {
+			for range b.N {
+				reflectkit.Compare(A, B)
+			}
+		})
+	})
+
+	b.Run("string", func(b *testing.B) {
+		A := rnd.StringNC(7, random.CharsetAlpha())
+		B := rnd.StringNC(7, random.CharsetAlpha())
+
+		b.Run("through reflect.Value", func(b *testing.B) {
+			vA := reflect.ValueOf(A)
+			vB := reflect.ValueOf(B)
+			b.ResetTimer()
+			for range b.N {
+				reflectkit.Compare(vA, vB)
+			}
+		})
+		b.Run("through concrete type", func(b *testing.B) {
+			for range b.N {
+				reflectkit.Compare(A, B)
+			}
+		})
+	})
+}
+
+func mustCompare[T any](tb testing.TB, a, b T) int {
+	cmp, err := reflectkit.Compare(a, b)
+	assert.NoError(tb, err)
+	return cmp
 }
 
 type number interface {
