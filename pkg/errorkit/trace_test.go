@@ -42,7 +42,7 @@ func TestWithTrace(t *testing.T) {
 		inputErr.LetValue(s, nil)
 
 		s.Then("the returned error is also nil", func(t *testcase.T) {
-			assert.Nil(t, act(t))
+			assert.NoError(t, act(t))
 		})
 	})
 

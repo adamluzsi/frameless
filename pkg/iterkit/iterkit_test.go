@@ -441,7 +441,7 @@ func TestReduceErr(t *testing.T) {
 
 	s.Then("it will execute the reducing", func(t *testcase.T) {
 		r, err := act(t)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal(1+2+3+4+initial.Get(t), r)
 	})
 
@@ -492,7 +492,7 @@ func TestReduceErr_wErrSeq(t *testing.T) {
 
 	s.Then("it will execute the reducing", func(t *testcase.T) {
 		r, err := act(t)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal(1+2+3+4+initial.Get(t), r)
 	})
 
@@ -1744,7 +1744,7 @@ func TestMapErr(t *testing.T) {
 
 	s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
 		vs, err := iterkit.CollectErr[string](act(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal([]string{`A`, `B`, `C`}, vs)
 	})
 
@@ -1797,7 +1797,7 @@ func TestMapErr_daisyChain(t *testing.T) {
 
 	s.Then(`it will execute all the map steps in the final iterator composition`, func(t *testcase.T) {
 		values, err := iterkit.CollectErr(act(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal([]string{`A0`, `B1`, `C2`}, values)
 	})
 

@@ -72,7 +72,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.True(found, `entity was expected to be stored`)
 					t.Must.Equal(*ptr.Get(t), got)
 				})
@@ -94,7 +94,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.True(found, `entity was expected to be stored`)
 					t.Must.Equal(*ptr.Get(t), got)
 				})
@@ -117,7 +117,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.True(found, `entity was expected to be stored`)
 					t.Must.Equal(*ptr.Get(t), got)
 				})

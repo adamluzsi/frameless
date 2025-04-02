@@ -50,7 +50,7 @@ func OnePhaseCommitProtocol[ENT, ID any](subject any, manager comproto.OnePhaseC
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ctx, err := manager.BeginTx(ctx)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Nil(manager.CommitTx(ctx))
 			t.Must.NotNil(manager.CommitTx(ctx))
 		})
@@ -58,7 +58,7 @@ func OnePhaseCommitProtocol[ENT, ID any](subject any, manager comproto.OnePhaseC
 		s.Test(`RollbackTx multiple times will yield error`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ctx, err := manager.BeginTx(ctx)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Nil(manager.RollbackTx(ctx))
 			t.Must.NotNil(manager.RollbackTx(ctx))
 		})
@@ -91,7 +91,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 
 	s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		ptr := pointer.Of(c.MakeEntity(t))
 		crudtest.Create[ENT, ID](t, subject, tx, ptr)
 		id := crudtest.HasID[ENT, ID](t, ptr)
@@ -127,7 +127,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 	s.Test(`BeginTx+RollbackTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 		ctx := c.MakeContext(t)
 		ctx, err := manager.BeginTx(ctx)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		p := pointer.Of(c.MakeEntity(t))
 		t.Must.NoError(subject.Create(ctx, p))
 		id, _ := lookupID[ID](c, *p)
@@ -159,7 +159,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 
 	s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		entity := pointer.Of(c.MakeEntity(t))
 		crudtest.Create[ENT, ID](t, subject, tx, entity)
@@ -177,7 +177,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 
 	s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		entity := pointer.Of(c.MakeEntity(t))
 		crudtest.Create[ENT, ID](t, subject, tx, entity)
 
@@ -199,7 +199,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Defer(subject.DeleteByID, ctx, id)
 
 		tx, err := manager.BeginTx(ctx)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		crudtest.IsPresent[ENT, ID](t, subject, tx, id)
 		t.Must.Nil(subject.DeleteByID(tx, id))
@@ -219,7 +219,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		id := crudtest.HasID[ENT, ID](t, entity)
 
 		tx, err := manager.BeginTx(ctx)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		crudtest.IsPresent[ENT, ID](t, subject, tx, id)
 		t.Must.Nil(subject.DeleteByID(tx, id))
 		crudtest.IsAbsent[ENT, ID](t, subject, tx, id)
@@ -245,7 +245,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		var globalContext = c.MakeContext(t)
 
 		tx1, err := manager.BeginTx(globalContext)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Log(`given tx1 is began`)
 
 		e1 := pointer.Of(c.MakeEntity(t))
@@ -255,7 +255,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Logf("and e1 is created in tx1: %#v", e1)
 
 		tx2InTx1, err := manager.BeginTx(tx1)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Log(`and tx2 is began using tx1 as a base`)
 
 		e2 := pointer.Of(c.MakeEntity(t))
@@ -284,7 +284,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 	s.Test(`BeginTx+RollbackTx / Save`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		ent := c.MakeEntity(t)
 		crudtest.Save[ENT, ID](t, subject, tx, &ent)
@@ -300,7 +300,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 		s.Test(`BeginTx+RollbackTx / Save+FindByID`, func(t *testcase.T) {
 			tx, err := manager.BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			ent := c.MakeEntity(t)
 			crudtest.Save[ENT, ID](t, subject, tx, &ent)
 
@@ -330,7 +330,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			var globalContext = c.MakeContext(t)
 
 			tx1, err := manager.BeginTx(globalContext)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Log(`given tx1 is began`)
 
 			e1 := pointer.Of(c.MakeEntity(t))
@@ -340,7 +340,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Logf("and e1 is created in tx1: %#v", e1)
 
 			tx2InTx1, err := manager.BeginTx(tx1)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
 			e2 := pointer.Of(c.MakeEntity(t))
@@ -371,7 +371,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 		s.Test(`BeginTx+CommitTx, Saver/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			tx, err := manager.BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			ptr := pointer.Of(c.MakeEntity(t))
 			crudtest.Save[ENT, ID](t, subject, tx, ptr)
 			id := crudtest.HasID[ENT, ID](t, ptr)
@@ -408,7 +408,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 		s.Test(`BeginTx+RollbackTx, Saver/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ctx, err := manager.BeginTx(ctx)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			p := pointer.Of(c.MakeEntity(t))
 			t.Must.NoError(subject.Save(ctx, p))
 			id, _ := lookupID[ID](c, *p)
@@ -440,7 +440,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 		s.Test(`BeginTx+CommitTx / Save+FindByID`, func(t *testcase.T) {
 			tx, err := manager.BeginTx(c.MakeContext(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			ent := c.MakeEntity(t)
 			crudtest.Save[ENT, ID](t, subject, tx, &ent)
@@ -466,7 +466,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Defer(subject.DeleteByID, ctx, id)
 
 			tx, err := manager.BeginTx(ctx)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			_ = tx
 
 			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
@@ -487,7 +487,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			id := crudtest.HasID[ENT, ID](t, &ent)
 
 			tx, err := manager.BeginTx(ctx)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
 			t.Must.Nil(subject.DeleteByID(tx, id))
 			crudtest.IsAbsent[ENT, ID](t, subject, tx, id)
@@ -511,7 +511,7 @@ func specOPCPPurger[ENT, ID any](s *testcase.Spec, subject subjectSpecOPCPPurger
 		crudtest.Create[ENT, ID](t, subject, c.MakeContext(t), ptr)
 
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		t.Must.Nil(subject.Purge(tx))
 		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
@@ -526,7 +526,7 @@ func specOPCPPurger[ENT, ID any](s *testcase.Spec, subject subjectSpecOPCPPurger
 		crudtest.Create[ENT, ID](t, subject, c.MakeContext(t), ptr)
 
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		t.Must.Nil(subject.Purge(tx))
 		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))

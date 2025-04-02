@@ -473,7 +473,7 @@ func TestWithContext(t *testing.T) {
 		err.LetValue(s, nil)
 
 		s.Then("the returned error is also nil", func(t *testcase.T) {
-			assert.Nil(t, act(t))
+			assert.NoError(t, act(t))
 		})
 	})
 }
@@ -700,7 +700,7 @@ func TestMergeErrFunc(t *testing.T) {
 			got := act(t)
 			assert.NotNil(t, got)
 			assert.NotPanic(t, func() {
-				assert.Nil(t, got())
+				assert.NoError(t, got())
 			})
 		})
 	})
@@ -780,7 +780,7 @@ func TestMergeErrFunc(t *testing.T) {
 				got := act(t)
 				assert.NotNil(t, got)
 				assert.NotPanic(t, func() {
-					assert.Nil(t, got())
+					assert.NoError(t, got())
 				})
 			})
 		})

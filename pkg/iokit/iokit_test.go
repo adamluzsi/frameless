@@ -49,15 +49,15 @@ func TestBuffer(t *testing.T) {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(t.TempDir(), name)
 			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Equal(len(data.Get(t)), n)
 			t.Must.Nil(f.Close())
 
 			f, err = os.OpenFile(path, os.O_RDWR, 0)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Defer(f.Close)
 			return f
 		}}
@@ -66,9 +66,9 @@ func TestBuffer(t *testing.T) {
 	thenContentsAreMatching := func(s *testcase.Spec) {
 		s.Then("contents are matching with the reference ReadWriteSeeker", func(t *testcase.T) {
 			expected, err := io.ReadAll(rwsc.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			actual, err := io.ReadAll(buffer.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Equal(string(expected), string(actual))
 		})
 	}
@@ -77,17 +77,17 @@ func TestBuffer(t *testing.T) {
 
 	seekOnBoth := func(t *testcase.T, offset int64, whench int) {
 		expected, err := rwsc.Get(t).Seek(offset, whench)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		actual, err := buffer.Get(t).Seek(offset, whench)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal(expected, actual, "seek length matches")
 	}
 
 	writeOnBoth := func(t *testcase.T, bs []byte) {
 		expected, err := rwsc.Get(t).Write(bs)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		actual, err := buffer.Get(t).Write(bs)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal(expected, actual, "write length matches")
 	}
 
@@ -207,7 +207,7 @@ func TestBuffer(t *testing.T) {
 			s.Then(".String() matches with reference rwsc's read content", func(t *testcase.T) {
 				rwsc.Get(t).Seek(0, io.SeekStart)
 				expectedBS, err := io.ReadAll(rwsc.Get(t))
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Equal(string(expectedBS), buffer.Get(t).String())
 				t.Must.Equal(expectedBS, buffer.Get(t).Bytes())
 			})
@@ -215,7 +215,7 @@ func TestBuffer(t *testing.T) {
 			s.Then(".Bytes() matches with reference rwsc's read content", func(t *testcase.T) {
 				rwsc.Get(t).Seek(0, io.SeekStart)
 				expectedBS, err := io.ReadAll(rwsc.Get(t))
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Equal(string(expectedBS), buffer.Get(t).String())
 				t.Must.Equal(expectedBS, buffer.Get(t).Bytes())
 			})
@@ -275,44 +275,44 @@ func TestBuffer_smoke(tt *testing.T) {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(tmpDir, name)
 			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Equal(len(data), n)
 			t.Must.Nil(f.Close())
 
 			f, err = os.OpenFile(path, os.O_RDWR, 0)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Defer(f.Close)
 			return f
 		}(t)
 	)
 
 	bseek, err := buffer.Seek(offset, whench)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 
 	fseek, err := file.Seek(offset, whench)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 
 	t.Must.Equal(fseek, bseek)
 
 	wData := []byte(t.Random.StringN(1))
 	bwrite, err := buffer.Write(wData)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	fwrite, err := file.Write(wData)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	t.Must.Equal(fwrite, bwrite)
 
 	_, err = file.Seek(0, io.SeekStart)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	_, err = buffer.Seek(0, io.SeekStart)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 
 	expectedBS, err := io.ReadAll(file)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	actualBS, err := io.ReadAll(buffer)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	t.Must.Equal(string(expectedBS), string(actualBS))
 }
 
@@ -329,7 +329,7 @@ func TestBuffer_Read_ioReadAll(t *testing.T) {
 		t := testcase.NewT(tt)
 		b := &iokit.Buffer{}
 		bs, err := io.ReadAll(b)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Empty(bs)
 	})
 	t.Run("on populated buffer", func(tt *testing.T) {
@@ -337,7 +337,7 @@ func TestBuffer_Read_ioReadAll(t *testing.T) {
 		d := t.Random.String()
 		b := iokit.NewBuffer(d)
 		bs, err := io.ReadAll(b)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Equal(d, string(bs))
 	})
 }

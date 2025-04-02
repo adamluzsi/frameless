@@ -901,7 +901,7 @@ func Test_range(t *testing.T) {
 
 			s.Context("within", func(s *testcase.Spec) {
 				Struct.Let(s, func(t *testcase.T) any {
-					return T{V: t.Random.IntBetween(-42, 42)}
+					return T{V: t.Random.IntBetween(-42, 41)}
 				})
 
 				ThenNoErrorIsExpected(s, Struct)
@@ -909,7 +909,7 @@ func Test_range(t *testing.T) {
 
 			s.Context("not-within", func(s *testcase.Spec) {
 				Struct.Let(s, func(t *testcase.T) any {
-					return T{V: t.Random.IntBetween(43, 100)}
+					return T{V: t.Random.IntBetween(42, 100)}
 				})
 
 				ThenErrorIsExpected(s, Struct)
@@ -922,7 +922,7 @@ func Test_range(t *testing.T) {
 
 				s.Context("within", func(s *testcase.Spec) {
 					Struct.Let(s, func(t *testcase.T) any {
-						return T{V: t.Random.IntBetween(-42, 42)}
+						return T{V: t.Random.IntBetween(-42, 41)}
 					})
 
 					ThenNoErrorIsExpected(s, Struct)
@@ -930,7 +930,7 @@ func Test_range(t *testing.T) {
 
 				s.Context("not-within", func(s *testcase.Spec) {
 					Struct.Let(s, func(t *testcase.T) any {
-						return T{V: t.Random.IntBetween(43, 100)}
+						return T{V: t.Random.IntBetween(42, 100)}
 					})
 
 					ThenErrorIsExpected(s, Struct)

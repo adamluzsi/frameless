@@ -43,7 +43,7 @@ func IsPresent[ENT, ID any](tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(ENT), id)
 	Eventually.Assert(tb, func(it assert.It) {
 		e, found, err := subject.FindByID(ctx, id)
-		it.Must.Nil(err)
+		it.Must.NoError(err)
 		it.Must.True(found, assert.Message(errMessage))
 		ent = e
 	})
@@ -55,7 +55,7 @@ func IsAbsent[ENT, ID any](tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx 
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", *new(ENT), id)
 	Eventually.Assert(tb, func(it assert.It) {
 		_, found, err := subject.FindByID(ctx, id)
-		it.Must.Nil(err)
+		it.Must.NoError(err)
 		it.Must.False(found, assert.Message(errMessage))
 	})
 }
@@ -95,7 +95,7 @@ func Update[ENT, ID any](tb testing.TB, subject updater[ENT, ID], ctx context.Co
 	// IsFindable ensures that by the time Update is executed,
 	// the entity is present in the resource.
 	IsPresent[ENT, ID](tb, subject, ctx, id)
-	assert.Nil(tb, subject.Update(ctx, ptr))
+	assert.NoError(tb, subject.Update(ctx, ptr))
 	Eventually.Assert(tb, func(it assert.It) {
 		entity := IsPresent[ENT, ID](it, subject, ctx, id)
 		it.Must.Equal(ptr, entity)
@@ -108,7 +108,7 @@ func Delete[ENT, ID any](tb testing.TB, subject crud.ByIDDeleter[ID], ctx contex
 	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 		IsPresent[ENT, ID](tb, finder, ctx, id)
 	}
-	assert.Nil(tb, subject.DeleteByID(ctx, id))
+	assert.NoError(tb, subject.DeleteByID(ctx, id))
 	if finder, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 		IsAbsent[ENT, ID](tb, finder, ctx, id)
 	}
@@ -121,7 +121,7 @@ type deleteAllDeleter[ENT, ID any] interface {
 
 func DeleteAll[ENT, ID any](tb testing.TB, subject deleteAllDeleter[ENT, ID], ctx context.Context) {
 	tb.Helper()
-	assert.Nil(tb, subject.DeleteAll(ctx))
+	assert.NoError(tb, subject.DeleteAll(ctx))
 	Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	Eventually.Assert(tb, func(t assert.It) {
 		itr, err := subject.FindAll(ctx)

@@ -13,9 +13,9 @@ import (
 func TestBitwise(t *testing.T) {
 	it := assert.MakeIt(t)
 	a, err := strconv.ParseInt("1000", 2, 64)
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 	b, err := strconv.ParseInt("0100", 2, 64)
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 	t.Log(strconv.FormatInt(a|b, 2))
 	t.Log(strconv.FormatInt((a|b)&a, 2))
 

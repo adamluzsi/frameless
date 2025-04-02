@@ -343,7 +343,7 @@ func TestMerge(t *testing.T) {
 		defer cancel()
 		assert.Equal[any](t, ctx.Value(Key("foo")), 1)
 		assert.Equal[any](t, ctx.Value(Key("bar")), 2)
-		assert.Nil(t, ctx.Err())
+		assert.NoError(t, ctx.Err())
 		_, ok := ctx.Deadline()
 		assert.False(t, ok)
 		assert.Within(t, time.Second, func(actx context.Context) {
@@ -525,7 +525,7 @@ func TestMerge(t *testing.T) {
 		defer cancel()
 		assert.NotNil(t, ctx)
 
-		assert.Nil(t, ctx.Err())
+		assert.NoError(t, ctx.Err())
 
 		pcancel()
 

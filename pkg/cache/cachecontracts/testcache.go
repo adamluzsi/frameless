@@ -842,7 +842,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 
 					eventually.Assert(t, func(it assert.It) {
 						v, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
-						it.Must.Nil(err)
+						it.Must.NoError(err)
 						it.Must.True(found)
 						it.Log(`actually`, v)
 						it.Must.Equal(*valueWithNewContent.Get(t), v)

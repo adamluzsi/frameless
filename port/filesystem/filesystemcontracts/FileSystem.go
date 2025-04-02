@@ -110,7 +110,7 @@ func (c specFileSystem) specOpenFile(s *testcase.Spec) {
 
 				s.Then("it creates an empty file", func(t *testcase.T) {
 					file, err := subject(t)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 
 					c.assertReaderEquals(t, []byte{}, file)
 				})
@@ -124,10 +124,10 @@ func (c specFileSystem) specOpenFile(s *testcase.Spec) {
 
 		s.Then("current working directory file is returned", func(t *testcase.T) {
 			file, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			info, err := file.Stat()
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.True(info.IsDir())
 		})
 	})
@@ -149,13 +149,13 @@ func (c specFileSystem) specOpenFile(s *testcase.Spec) {
 
 			s.Then("returned file can be consumed for its content", func(t *testcase.T) {
 				file, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				c.assertReaderEquals(t, []byte(content.Get(t)), file)
 			})
 
 			s.Then("returned file does not allow writing", func(t *testcase.T) {
 				file, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				_, err = file.Write([]byte(t.Random.String()))
 				c.assertWriteError(t, err, c.name().Get(t))
 			})
@@ -168,7 +168,7 @@ func (c specFileSystem) specOpenFile(s *testcase.Spec) {
 
 			s.Then("returned file can not be consumed for its content", func(t *testcase.T) {
 				file, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 
 				_, err = file.Read(make([]byte, 1))
 				c.assertReadError(t, err, c.name().Get(t))
@@ -184,7 +184,7 @@ func (c specFileSystem) specOpenFile(s *testcase.Spec) {
 
 			s.Then("returned file's contents can read out", func(t *testcase.T) {
 				file, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 
 				c.assertReaderEquals(t, []byte(content.Get(t)), file)
 			})
@@ -221,7 +221,7 @@ func (c specFileSystem) andForTheExistingFileOpening(s *testcase.Spec, subject f
 
 		s.Then("file opening succeeds with existing content since file already exists", func(t *testcase.T) {
 			_, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			c.assertFileContent(t, name.Get(t), []byte(content.Get(t)))
 		})
 	})
@@ -231,15 +231,15 @@ func (c specFileSystem) andForAbsentFileOpening(s *testcase.Spec, subject func(t
 	thenFileCanBeCreated := func(s *testcase.Spec) {
 		s.Then("file opening succeeds with file is just created", func(t *testcase.T) {
 			_, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			c.assertFileContent(t, c.name().Get(t), []byte{})
 		})
 
 		s.Then("permission matches the permission of the newly created file", func(t *testcase.T) {
 			file, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			info, err := file.Stat()
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(c.perm().Get(t).String(), info.Mode().String())
 		})
@@ -270,7 +270,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 ) {
 	s.Then("returned file allows writing over the existing initialContent", func(t *testcase.T) {
 		file, err := subject(t)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		data := t.Random.String()
 		c.writeToFile(t, file, []byte(data))
@@ -288,7 +288,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 
 		s.Then("returned file allows writing on the truncated file", func(t *testcase.T) {
 			file, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			data := t.Random.String()
 			c.writeToFile(t, file, []byte(data))
@@ -306,7 +306,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 
 		s.Then(".Write appends to the end of the file", func(t *testcase.T) {
 			file, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			data := t.Random.String()
 			c.writeToFile(t, file, []byte(data))
@@ -324,10 +324,10 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 
 		s.Then(".Write always appends to the end of the file, regardless if seek were used", func(t *testcase.T) {
 			file, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			_, err = file.Seek(0, io.SeekStart)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			data := t.Random.String()
 			c.writeToFile(t, file, []byte(data))
@@ -374,21 +374,21 @@ func (c specFileSystem) specMkdir(s *testcase.Spec) {
 
 			s.Then("FileSystem.Stat returns the directory details", func(t *testcase.T) {
 				info, err := c.FileSystem.Stat(c.name().Get(t))
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				assertFileInfo(t, info)
 			})
 
 			s.Then("FileSystem.OpenFile returns the directory details", func(t *testcase.T) {
 				file, err := c.FileSystem.OpenFile(c.name().Get(t), os.O_RDONLY, 0)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Defer(file.Close)
 
 				info, err := file.Stat()
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				assertFileInfo(t, info)
 
 				entries, err := file.ReadDir(-1)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Empty(entries)
 			})
 		})
@@ -529,7 +529,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 
 		s.Then("it will return file stat", func(t *testcase.T) {
 			info, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Contain(info.Name(), c.name().Get(t))
 			t.Must.Equal(c.perm().Get(t).String(), info.Mode().String())
 			t.Must.False(info.IsDir())
@@ -545,7 +545,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 
 		s.Then("it will return directory stat", func(t *testcase.T) {
 			info, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.Contain(info.Name(), c.name().Get(t))
 			t.Must.Equal(c.perm().Get(t).String(), info.Mode().String())
 			t.Must.True(info.IsDir())
@@ -557,7 +557,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 
 		s.Then("it will return directory stat", func(t *testcase.T) {
 			info, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.True(info.IsDir())
 		})
 	})
@@ -571,7 +571,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 			if err != nil {
 				t.Log(err.Error())
 			}
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Defer(file.Close)
 			return file
 		})
@@ -611,7 +611,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 			s.Then("directory entries are returned", func(t *testcase.T) {
 				entries, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.NotEmpty(entries)
 				t.Must.Equal(3, len(entries))
 
@@ -643,7 +643,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 			s.Then("it will return back an empty list successfully", func(t *testcase.T) {
 				dirEntries, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Empty(dirEntries)
 			})
 		})
@@ -653,7 +653,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 			s.Then("it will return that the directory is empty", func(t *testcase.T) {
 				entries, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Empty(entries)
 			})
 
@@ -671,7 +671,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 				s.Then("it lists all the directory entry", func(t *testcase.T) {
 					entries, err := subject(t)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.NotEmpty(entries)
 
 					dirFileNames := dirFileNames.Get(t)
@@ -681,7 +681,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 						t.Must.False(ent.IsDir())
 
 						info, err := ent.Info()
-						t.Must.Nil(err)
+						t.Must.NoError(err)
 						_ = info.Sys()
 						t.Must.False(info.IsDir())
 						c.assertFileTime(t, cTime.Get(t), info.ModTime())
@@ -692,11 +692,11 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 				s.Then("it lists entries, but only on the first call", func(t *testcase.T) {
 					entries, err := subject(t)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.NotEmpty(entries)
 
 					entries, err = subject(t)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.Empty(entries)
 				})
 			})
@@ -721,7 +721,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 				s.Then("it iterates over the entries in chunks of N", func(t *testcase.T) {
 					entries, err := subject(t)
-					t.Must.Nil(err)
+					t.Must.NoError(err)
 					t.Must.NotEmpty(entries)
 					t.Must.Equal(n.Get(t), len(entries))
 
@@ -731,7 +731,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 						if err == io.EOF {
 							break consuming
 						}
-						t.Must.Nil(err)
+						t.Must.NoError(err)
 						entries = append(entries, entrs...)
 					}
 
@@ -755,7 +755,7 @@ func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 		file = testcase.Let(s, func(t *testcase.T) filesystem.File {
 			c.saveFile(t, c.name().Get(t), data.Get(t))
 			file, err := c.FileSystem.OpenFile(c.name().Get(t), os.O_RDWR, 0)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			return file
 		})
 		offset = testcase.Let[int64](s, func(t *testcase.T) int64 {
@@ -772,19 +772,19 @@ func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 
 		s.Then("it will seek from the start", func(t *testcase.T) {
 			actualAbs, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			dataReader := bytes.NewReader(data.Get(t))
 			expectedAbs, err := dataReader.Seek(offset.Get(t), whence.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(expectedAbs, actualAbs)
 
 			actualContent, err := io.ReadAll(file.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			expectedContent, err := io.ReadAll(dataReader)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(string(expectedContent), string(actualContent))
 		})
@@ -795,19 +795,19 @@ func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 
 		s.Then("it will seek starting from the end", func(t *testcase.T) {
 			actualAbs, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			dataReader := bytes.NewReader(data.Get(t))
 			expectedAbs, err := dataReader.Seek(offset.Get(t), whence.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(expectedAbs, actualAbs)
 
 			actualContent, err := io.ReadAll(file.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			expectedContent, err := io.ReadAll(dataReader)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(string(expectedContent), string(actualContent))
 		})
@@ -818,19 +818,19 @@ func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 
 		s.Then("it will seek starting from the start by default", func(t *testcase.T) {
 			actualAbs, err := subject(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			dataReader := bytes.NewReader(data.Get(t))
 			expectedAbs, err := dataReader.Seek(offset.Get(t), whence.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(expectedAbs, actualAbs)
 
 			actualContent, err := io.ReadAll(file.Get(t))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			expectedContent, err := io.ReadAll(dataReader)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			t.Must.Equal(string(expectedContent), string(actualContent))
 		})
@@ -853,22 +853,22 @@ func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 
 			s.Then("it starts seeking relative to the previous reading", func(t *testcase.T) {
 				actualAbs, err := subject(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 
 				dataReader := bytes.NewReader(data.Get(t))
 				someInitialReading(t, dataReader)
 
 				expectedAbs, err := dataReader.Seek(offset.Get(t), whence.Get(t))
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Equal(expectedAbs, actualAbs)
 
 				actualContent, err := io.ReadAll(file.Get(t))
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 
 				t.Log(string(actualContent))
 
 				expectedContent, err := io.ReadAll(dataReader)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.Equal(string(expectedContent), string(actualContent))
 			})
 		})
@@ -886,14 +886,14 @@ func (c specFileSystem) touchDir(t *testcase.T, name string, perm fs.FileMode) {
 func (c specFileSystem) touchFile(t *testcase.T, name string, perm fs.FileMode) {
 	t.Helper()
 	file, err := c.FileSystem.OpenFile(name, os.O_RDONLY|os.O_CREATE|os.O_EXCL, perm)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	t.Must.Nil(file.Close())
 	t.Defer(c.FileSystem.Remove, name)
 }
 
 func (c specFileSystem) saveFile(t *testcase.T, name string, data []byte) {
 	file, err := c.FileSystem.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	defer func() { t.Should.Nil(file.Close()) }()
 	t.Defer(c.FileSystem.Remove, name)
 	c.writeToFile(t, file, data)
@@ -913,7 +913,7 @@ func (c specFileSystem) overwrite(dst []byte, src []byte) []byte {
 func (c specFileSystem) writeToFile(t *testcase.T, file filesystem.File, data []byte) {
 	t.Helper()
 	n, err := file.Write(data)
-	t.Must.Nil(err)
+	t.Must.NoError(err)
 	t.Must.Equal(len(data), n)
 }
 
@@ -952,7 +952,7 @@ func (c specFileSystem) assertReaderEquals(tb testing.TB, expected []byte, actua
 	tb.Helper()
 	defer actual.Close()
 	bytes, err := io.ReadAll(actual)
-	assert.Nil(tb, err)
+	assert.NoError(tb, err)
 	assert.Must(tb).Equal(string(expected), string(bytes))
 }
 
@@ -960,10 +960,10 @@ func (c specFileSystem) assertFileContent(t *testcase.T, name string, expected [
 	t.Helper()
 	t.Eventually(func(it *testcase.T) {
 		file, err := c.FileSystem.OpenFile(name, os.O_RDONLY, 0)
-		it.Must.Nil(err)
+		it.Must.NoError(err)
 		defer file.Close()
 		info, err := file.Stat()
-		it.Must.Nil(err)
+		it.Must.NoError(err)
 		it.Should.Equal(int64(len(expected)), info.Size())
 		c.assertReaderEquals(it, expected, file)
 	})

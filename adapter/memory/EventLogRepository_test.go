@@ -54,56 +54,56 @@ func TestEventLogRepository_smoke(t *testing.T) {
 		err     error
 	)
 
-	assert.Nil(t, subject.Create(ctx, &TestEntity{Data: `A`}))
-	assert.Nil(t, subject.Create(ctx, &TestEntity{Data: `B`}))
+	assert.NoError(t, subject.Create(ctx, &TestEntity{Data: `A`}))
+	assert.NoError(t, subject.Create(ctx, &TestEntity{Data: `B`}))
 	itr, err := subject.FindAll(ctx)
 	assert.NoError(t, err)
 	count = iterkit.Count2(itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 2, count)
 
-	assert.Nil(t, subject.DeleteAll(ctx))
+	assert.NoError(t, subject.DeleteAll(ctx))
 	itr, err = subject.FindAll(ctx)
 	assert.NoError(t, err)
 	count = iterkit.Count2(itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 0, count)
 
 	tx1CTX, err := subject.BeginTx(ctx)
-	assert.Nil(t, err)
-	assert.Nil(t, subject.Create(tx1CTX, &TestEntity{Data: `C`}))
+	assert.NoError(t, err)
+	assert.NoError(t, subject.Create(tx1CTX, &TestEntity{Data: `C`}))
 	tx1itr, err := subject.FindAll(tx1CTX)
 	assert.NoError(t, err)
 	count = iterkit.Count2(tx1itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
-	assert.Nil(t, subject.RollbackTx(tx1CTX))
+	assert.NoError(t, subject.RollbackTx(tx1CTX))
 	itr, err = subject.FindAll(ctx)
 	assert.NoError(t, err)
 	count = iterkit.Count2(itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 0, count)
 
 	tx2CTX, err := subject.BeginTx(ctx)
-	assert.Nil(t, err)
-	assert.Nil(t, subject.Create(tx2CTX, &TestEntity{Data: `D`}))
+	assert.NoError(t, err)
+	assert.NoError(t, subject.Create(tx2CTX, &TestEntity{Data: `D`}))
 	tx2itr, err := subject.FindAll(tx2CTX)
 	assert.NoError(t, err)
 	count = iterkit.Count2(tx2itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
-	assert.Nil(t, subject.CommitTx(tx2CTX))
+	assert.NoError(t, subject.CommitTx(tx2CTX))
 	itr, err = subject.FindAll(ctx)
 	assert.NoError(t, err)
 	count = iterkit.Count2(itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 1, count)
 
-	assert.Nil(t, subject.DeleteAll(ctx))
+	assert.NoError(t, subject.DeleteAll(ctx))
 	itr, err = subject.FindAll(ctx)
 	assert.NoError(t, err)
 	count = iterkit.Count2(itr)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
 
@@ -151,26 +151,26 @@ func TestEventLogRepository_multipleInstanceTransactionOnTheSameContext(t *testi
 
 		bctx := context.Background()
 		txS1, err := subject1.BeginTx(bctx)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		txS2, err := subject2.BeginTx(txS1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		t.Log(`when in subject 1 store an entity`)
 		entity := &TestEntity{Data: `42`}
-		assert.Nil(t, subject1.Create(txS1, entity))
+		assert.NoError(t, subject1.Create(txS1, entity))
 
 		t.Log(`and subject 2 finish comproto`)
-		assert.Nil(t, subject2.CommitTx(txS2))
+		assert.NoError(t, subject2.CommitTx(txS2))
 		t.Log(`and subject 2 then try to find this entity`)
 		_, found, err := subject2.FindByID(bctx, entity.ID)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Must(t).False(found, `it should not see the uncommitted entity`)
 
 		t.Log(`but after subject 1 commit the comproto`)
-		assert.Nil(t, subject1.CommitTx(txS1))
+		assert.NoError(t, subject1.CommitTx(txS1))
 		t.Log(`subject 1 can see the newT entity`)
 		_, found, err = subject1.FindByID(bctx, entity.ID)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.True(t, found)
 	})
 
@@ -184,27 +184,27 @@ func TestEventLogRepository_multipleInstanceTransactionOnTheSameContext(t *testi
 		e2 := rnd.Make(TestEntity{}).(TestEntity)
 		e2.ID = ""
 
-		assert.Nil(t, subject1.Create(bctx, &e1))
+		assert.NoError(t, subject1.Create(bctx, &e1))
 		id1, ok := extid.Lookup[string](e1)
 		assert.True(t, ok)
 		assert.NotEmpty(t, id1)
 		t.Cleanup(func() { _ = subject1.DeleteByID(context.Background(), id1) })
 
-		assert.Nil(t, subject2.Create(bctx, &e2))
+		assert.NoError(t, subject2.Create(bctx, &e2))
 		id2, ok := extid.Lookup[string](e2)
 		assert.True(t, ok)
 		assert.NotEmpty(t, id2)
 		t.Cleanup(func() { _ = subject2.DeleteByID(context.Background(), id2) })
 
 		tx1, err := subject1.BeginTx(bctx)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		tx2, err := subject2.BeginTx(tx1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		_, found, err := subject1.FindByID(tx1, id1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.True(t, found)
-		assert.Nil(t, subject1.DeleteByID(tx1, id1))
+		assert.NoError(t, subject1.DeleteByID(tx1, id1))
 
 		_, found, err = subject2.FindByID(tx2, id2)
 		assert.NoError(t, err)
@@ -212,25 +212,25 @@ func TestEventLogRepository_multipleInstanceTransactionOnTheSameContext(t *testi
 		_, found, err = subject2.FindByID(tx1, id2)
 		assert.NoError(t, err)
 		assert.True(t, found)
-		assert.Nil(t, subject2.DeleteByID(tx2, id2))
+		assert.NoError(t, subject2.DeleteByID(tx2, id2))
 
 		_, found, err = subject1.FindByID(tx1, id1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Must(t).False(found)
 
 		_, found, err = subject2.FindByID(tx2, id2)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Must(t).False(found)
 
 		_, found, err = subject1.FindByID(bctx, id1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.True(t, found)
 
-		assert.Nil(t, subject2.CommitTx(tx2))
-		assert.Nil(t, subject1.CommitTx(tx1))
+		assert.NoError(t, subject2.CommitTx(tx2))
+		assert.NoError(t, subject1.CommitTx(tx1))
 
 		_, found, err = subject1.FindByID(bctx, id1)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.False(t, found)
 	})
 }
@@ -248,7 +248,7 @@ func TestEventLogRepository_NewIDFunc(t *testing.T) {
 		repository.MakeID = nil
 
 		ptr := &TestEntity{Data: "42"}
-		assert.Nil(t, repository.Create(context.Background(), ptr))
+		assert.NoError(t, repository.Create(context.Background(), ptr))
 		assert.NotEmpty(t, ptr.ID)
 	})
 
@@ -260,7 +260,7 @@ func TestEventLogRepository_NewIDFunc(t *testing.T) {
 		}
 
 		ptr := &TestEntity{Data: "42"}
-		assert.Nil(t, repository.Create(context.Background(), ptr))
+		assert.NoError(t, repository.Create(context.Background(), ptr))
 		assert.Equal(t, expectedID, ptr.ID)
 	})
 }
@@ -283,19 +283,19 @@ func TestEventLogRepository_CompressEvents_smoke(t *testing.T) {
 	bS.Options.CompressEventLog = true
 
 	a := &A{V: "42"}
-	assert.Nil(t, aS.Create(ctx, a))
+	assert.NoError(t, aS.Create(ctx, a))
 	a.V = "24"
-	assert.Nil(t, aS.Update(ctx, a))
-	assert.Nil(t, aS.DeleteByID(ctx, a.ID))
+	assert.NoError(t, aS.Update(ctx, a))
+	assert.NoError(t, aS.DeleteByID(ctx, a.ID))
 	assert.Equal(t, len(el.Events()), 3)
 
 	b := &B{V: "4242"}
-	assert.Nil(t, bS.Create(ctx, b))
+	assert.NoError(t, bS.Create(ctx, b))
 	assert.Equal(t, len(el.Events()), 4)
 	b.V = "2424"
-	assert.Nil(t, bS.Update(ctx, b))
+	assert.NoError(t, bS.Update(ctx, b))
 	assert.Equal(t, len(el.Events()), 4)
-	assert.Nil(t, bS.DeleteByID(ctx, b.ID))
+	assert.NoError(t, bS.DeleteByID(ctx, b.ID))
 	assert.Equal(t, len(el.Events()), 3)
 
 	aS.Compress()
@@ -312,16 +312,16 @@ func TestEventLogRepository_LookupTx(t *testing.T) {
 
 	t.Run(`when during comproto`, func(t *testing.T) {
 		ctx, err := s.BeginTx(context.Background())
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		defer func() { _ = s.RollbackTx(ctx) }()
 
 		e := TestEntity{Data: `42`}
-		assert.Nil(t, s.Create(ctx, &e))
+		assert.NoError(t, s.Create(ctx, &e))
 		_, found, err := s.FindByID(ctx, e.ID)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.True(t, found)
 		_, found, err = s.FindByID(context.Background(), e.ID)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Must(t).False(found)
 
 		_, ok := s.EventLog.LookupTx(ctx)

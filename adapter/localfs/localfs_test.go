@@ -70,24 +70,24 @@ func TestFileSystem_smoke(t *testing.T) {
 
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filesystem.ModeUserRWX)
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 	defer func() { it.Should.Nil(mfs.Remove(name)) }()
 
 	_, err = file.Write([]byte("/foo"))
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 	_, err = file.Write([]byte("/bar"))
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 	file.Seek(0, io.SeekStart)
 	_, err = file.Write([]byte("/baz"))
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 
-	it.Must.Nil(file.Close())
+	it.Must.NoError(file.Close())
 
 	file, err = mfs.OpenFile(name, os.O_RDONLY, 0)
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 
 	bs, err := io.ReadAll(file)
-	it.Must.Nil(err)
+	it.Must.NoError(err)
 	it.Must.Equal("/foo/bar/baz", string(bs))
 }
 
@@ -98,7 +98,7 @@ func TestLocal_rootPath(t *testing.T) {
 		t.Helper()
 		tmpDir := os.TempDir()
 		stat, err := os.Stat(tmpDir)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.True(stat.IsDir())
 		return tmpDir
 	}
@@ -132,12 +132,12 @@ func TestLocal_rootPath(t *testing.T) {
 		name := tmpFile(t, tmpDir)
 		t.Must.Nil(touchFile(t, fs, name))
 		_, err := os.Stat(name)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 
 		name = tmpFile(t, getSysTmpDir(t))
 		t.Must.Nil(touchFile(t, fs, name))
 		_, err = os.Stat(name)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 	})
 
 	s.Test("with .RootPath set, fs is jailed and path used as relative path", func(t *testcase.T) {
@@ -147,9 +147,9 @@ func TestLocal_rootPath(t *testing.T) {
 		name := makeName(t)
 		t.Must.Nil(touchFile(t, fs, name))
 		_, err := os.Stat(filepath.Join(tmpDir, name))
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		_, err = fs.Stat(name)
-		t.Must.Nil(err)
+		t.Must.NoError(err)
 		t.Must.Nil(fs.Mkdir(makeName(t), filesystem.ModeUserRWX))
 		t.Must.Nil(fs.Remove(name))
 

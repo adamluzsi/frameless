@@ -168,7 +168,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 		tx = testcase.Let(s, func(t *testcase.T) interface{} {
 			ctx := context.Background()
 			tx, err := cpmGet(t).BeginTx(ctx)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			return tx
 		})
 		txGet = func(t *testcase.T) context.Context { return tx.Get(t).(context.Context) }

@@ -96,7 +96,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 				s.Then("it reports that the entity is not found", func(t *testcase.T) {
 					crudtest.Eventually.Assert(t, func(it assert.It) {
 						_, ok, err := act(t)
-						it.Must.Nil(err)
+						it.Must.NoError(err)
 						it.Must.False(ok)
 					})
 				})

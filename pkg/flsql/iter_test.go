@@ -254,5 +254,4 @@ func TestQueryMany(t *testing.T) {
 		assert.ErrorIs(t, err, expErr)
 		assert.Nil(t, res)
 	})
-
 }

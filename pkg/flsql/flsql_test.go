@@ -76,7 +76,7 @@ func TestMapper_ToQuery(t *testing.T) {
 
 		_, mscan := m.ToQuery(ctx)
 		x, err := mscan.Map(scanner)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.Equal(t, expectedInt, x.Foo)
 	})
 

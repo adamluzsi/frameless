@@ -36,7 +36,7 @@ func MetaAccessor[V any](subject meta.MetaAccessor, opts ...Option[V]) contract.
 
 		s.Test(`on an empty context the lookup will yield no result without an issue`, func(t *testcase.T) {
 			found, err := lookupMeta(t, new(V))
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.False(found)
 		})
 
@@ -50,7 +50,7 @@ func MetaAccessor[V any](subject meta.MetaAccessor, opts ...Option[V]) contract.
 			s.Then(`value can be found with lookup`, func(t *testcase.T) {
 				ptr := new(V)
 				found, err := lookupMeta(t, ptr)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.True(found)
 				t.Must.Equal(pointer.Deref(ptr), value.Get(t))
 			})

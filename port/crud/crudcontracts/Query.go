@@ -76,7 +76,7 @@ func QueryOne[ENT, ID any](
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
 			got, found, err := act(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.True(found)
 			t.Must.Equal(got, ent.Get(t))
 		})
@@ -103,7 +103,7 @@ func QueryOne[ENT, ID any](
 
 			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
 				got, found, err := act(t)
-				t.Must.Nil(err)
+				t.Must.NoError(err)
 				t.Must.True(found)
 				t.Must.Equal(got, ent.Get(t))
 			})
@@ -119,7 +119,7 @@ func QueryOne[ENT, ID any](
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
 			_, found, err := act(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.False(found)
 		})
 	})
@@ -135,7 +135,7 @@ func QueryOne[ENT, ID any](
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
 			_, found, err := act(t)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 			t.Must.False(found)
 		})
 	})

@@ -158,7 +158,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			e := c.MakeEntity(t)
 
 			err := subject.Create(c.MakeContext(t), &e)
-			t.Must.Nil(err)
+			t.Must.NoError(err)
 
 			id, ok := extid.Lookup[ID](&e)
 			t.Must.True(ok, "ID is not defined in the entity struct src definition")

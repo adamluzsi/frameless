@@ -69,7 +69,7 @@ func TestQueryableAdapter_ExecContext(t *testing.T) {
 	result, err := adapter.ExecContext(ctx, query)
 
 	// Assert
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal[flsql.Result](t, res, result)
 }
