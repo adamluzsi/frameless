@@ -60,7 +60,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 		}).EagerLoading(s)
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {
-			t.Must.Nil(act(t))
+			t.Must.NoError(act(t))
 
 			shouldAbsent(t, c, subject, c.MakeContext(t), id.Get(t))
 		})
@@ -86,7 +86,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 			}).EagerLoading(s)
 
 			s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 				othID, _ := lookupID[ID](c, *othEntPtr.Get(t))
 				shouldPresent(t, c, subject, c.MakeContext(t), othID)
 			})
@@ -94,7 +94,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 
 		s.And(`the entity was deleted`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 				shouldAbsent(t, c, subject, Context.Get(t), id.Get(t))
 			})
 
@@ -146,7 +146,7 @@ func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], o
 		crudtest.Create[Entity, ID](t, subject, conf.MakeContext(t), &ent)
 		entID := crudtest.HasID[Entity, ID](t, &ent)
 		crudtest.IsPresent[Entity, ID](t, subject, conf.MakeContext(t), entID)
-		t.Must.Nil(act(t))
+		t.Must.NoError(act(t))
 		crudtest.IsAbsent[Entity, ID](t, subject, conf.MakeContext(t), entID)
 	})
 

@@ -49,17 +49,17 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 
 	s.When(`entity was not saved before`, func(s *testcase.Spec) {
 		s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
-			t.Must.Nil(act(t))
+			t.Must.NoError(act(t))
 			t.Must.NotEmpty(getID(t))
 		})
 
 		s.Then("it should call Create successfully", func(t *testcase.T) {
-			t.Must.Nil(act(t))
+			t.Must.NoError(act(t))
 		})
 
 		if fOK {
 			s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 				t.Must.Equal(ptr.Get(t), IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t)))
 			})
 		}
@@ -84,7 +84,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 					wait()
 				}
 
-				t.Must.Nil(d.DeleteByID(c.MakeContext(t), getID(t)))
+				t.Must.NoError(d.DeleteByID(c.MakeContext(t), getID(t)))
 				if fOK {
 					IsAbsent[ENT, ID](t, f, c.MakeContext(t), getID(t))
 				} else {
@@ -93,12 +93,12 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 			})
 
 			if fOK {
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
-					t.Must.Nil(act(t))
+					t.Must.NoError(act(t))
 
 					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
 				})
@@ -110,14 +110,14 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				ogEnt := *ptr.Get(t) // a deep copy might be better
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 				if fOK {
 					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
 				} else {
 					wait()
 				}
 
-				t.Must.Nil(d.DeleteByID(c.MakeContext(t), getID(t)))
+				t.Must.NoError(d.DeleteByID(c.MakeContext(t), getID(t)))
 				if fOK {
 					IsAbsent[ENT, ID](t, f, c.MakeContext(t), getID(t))
 				} else {
@@ -128,12 +128,12 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 			})
 
 			if fOK {
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
-					t.Must.Nil(act(t))
+					t.Must.NoError(act(t))
 
 					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
 				})
@@ -167,7 +167,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			t.Must.Equal(e, *IsPresent[ENT, ID](t, f, c.MakeContext(t), id))
 
 			if dOK {
-				t.Must.Nil(d.DeleteByID(c.MakeContext(t), id))
+				t.Must.NoError(d.DeleteByID(c.MakeContext(t), id))
 			}
 		})
 	}

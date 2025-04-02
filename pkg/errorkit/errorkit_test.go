@@ -213,7 +213,7 @@ func TestRecover(t *testing.T) {
 		actionLet(s, errorkit.NullErrFunc)
 
 		s.Then(`it will do nothing`, func(t *testcase.T) {
-			assert.Must(t).Nil(subject(t))
+			assert.Must(t).NoError(subject(t))
 		})
 	})
 
@@ -500,7 +500,7 @@ func TestMerge(t *testing.T) {
 		})
 
 		s.Then("it will return with nil", func(t *testcase.T) {
-			t.Must.Nil(act(t))
+			t.Must.NoError(act(t))
 		})
 
 		s.Then("errors.Is yield false", func(t *testcase.T) {
@@ -563,7 +563,7 @@ func TestMerge(t *testing.T) {
 			expectedErr.LetValue(s, nil)
 
 			s.Then("it will return with nil", func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 			})
 
 			s.Then("errors.Is yield false", func(t *testcase.T) {
@@ -667,7 +667,7 @@ func TestMerge(t *testing.T) {
 			expectedErr3.LetValue(s, nil)
 
 			s.Then("it will return with nil", func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 			})
 
 			s.Then("errors.Is yield false", func(t *testcase.T) {

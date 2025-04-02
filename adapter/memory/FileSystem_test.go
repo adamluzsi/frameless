@@ -70,7 +70,7 @@ func TestFileSystem_smoke(t *testing.T) {
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filesystem.ModeUserRWX)
 	it.Must.NoError(err)
-	defer func() { it.Should.Nil(mfs.Remove(name)) }()
+	defer func() { it.Should.NoError(mfs.Remove(name)) }()
 
 	_, err = file.Write([]byte("/foo"))
 	it.Must.NoError(err)

@@ -90,7 +90,7 @@ func TestID_E2E(t *testing.T) {
 	assert.Must(t).False(ok)
 
 	idVal := 42
-	assert.Must(t).Nil(extid.Set(ptr, idVal))
+	assert.Must(t).NoError(extid.Set(ptr, idVal))
 
 	id, ok := extid.Lookup[any](ptr)
 	assert.True(t, ok)
@@ -255,19 +255,19 @@ func TestSet_PtrStructGivenButIDIsCannotBeIdentified_ErrorWarnsAboutMissingIDFie
 
 func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
 	subject := &testhelper.IDByIDField{}
-	assert.Must(t).Nil(extid.Set(subject, "OK"))
+	assert.Must(t).NoError(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.ID)
 }
 
 func TestSet_PtrStructGivenWithIDTaggedField_IDSaved(t *testing.T) {
 	subject := &testhelper.IDByUppercaseTag{}
-	assert.Must(t).Nil(extid.Set(subject, "OK"))
+	assert.Must(t).NoError(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.DI)
 }
 
 func TestSet_InterfaceTypeGiven_IDSaved(t *testing.T) {
 	var subject interface{} = &testhelper.IDByIDField{}
-	assert.Must(t).Nil(extid.Set(subject, "OK"))
+	assert.Must(t).NoError(extid.Set(subject, "OK"))
 	assert.Equal(t, "OK", subject.(*testhelper.IDByIDField).ID)
 }
 
@@ -572,7 +572,7 @@ func TestReflectAccessor_ReflectSet(t *testing.T) {
 		rEnt := reflect.ValueOf(ent)
 		newID := reflect.ValueOf("new-id")
 		err := accessor.ReflectSet(rEnt, newID)
-		assert.Must(t).Nil(err)
+		assert.Must(t).NoError(err)
 		assert.Equal(t, "new-id", ent.DI)
 	})
 

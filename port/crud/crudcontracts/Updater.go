@@ -60,7 +60,7 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 
 				if fOK {
 					s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
-						assert.Must(t).Nil(act(t))
+						assert.Must(t).NoError(act(t))
 
 						crudtest.HasEntity[ENT, ID](t, f, c.MakeContext(t), entityWithChanges.Get(t))
 					})
@@ -107,6 +107,6 @@ func updaterBenchmark[ENT, ID any](s *testcase.Spec, subject crud.Updater[ENT], 
 	})
 
 	s.Benchmark("", func(t *testcase.T) {
-		t.Must.Nil(subject.Update(c.MakeContext(t), ent.Get(t)))
+		t.Must.NoError(subject.Update(c.MakeContext(t), ent.Get(t)))
 	})
 }

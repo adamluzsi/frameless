@@ -793,7 +793,7 @@ func TestLink(t *testing.T) {
 			})
 
 			s.Then(`it will link the value`, func(t *testcase.T) {
-				assert.Must(t).Nil(subject(t))
+				assert.Must(t).NoError(subject(t))
 				assert.Equal(t, src.Get(t), *ptr.Get(t).(*any))
 			})
 		})
@@ -806,7 +806,7 @@ func TestLink(t *testing.T) {
 			})
 
 			s.Then(`ptr pointed value equal with source value`, func(t *testcase.T) {
-				assert.Must(t).Nil(subject(t))
+				assert.Must(t).NoError(subject(t))
 
 				assert.Equal(t, src.Get(t), reflect.ValueOf(ptr.Get(t)).Elem().Interface())
 			})

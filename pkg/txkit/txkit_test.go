@@ -157,7 +157,7 @@ func Test(t *testing.T) {
 		tx2, err := txkit.Begin(tx1)
 		t.Must.NoError(err)
 		t.Must.NoError(txkit.Commit(tx2))
-		t.Must.Nil(tx1.Err())
+		t.Must.NoError(tx1.Err())
 		t.Must.NoError(txkit.Commit(tx1))
 	})
 
@@ -168,7 +168,7 @@ func Test(t *testing.T) {
 		t.Must.NoError(err)
 		t.Must.NoError(txkit.OnRollback(tx2, func(ctx context.Context) error { return ctx.Err() }))
 		t.Must.NoError(txkit.Commit(tx2))
-		t.Must.Nil(tx1.Err())
+		t.Must.NoError(tx1.Err())
 		t.Must.NoError(txkit.Commit(tx1))
 	})
 

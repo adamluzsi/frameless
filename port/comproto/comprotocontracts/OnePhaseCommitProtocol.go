@@ -20,54 +20,54 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 		s.Test(`BeginTx + CommitTx, no error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.NoError(subject.CommitTx(tx))
 		})
 
 		s.Test(`CommitTx cancels the context`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.NoError(subject.CommitTx(tx))
 			t.Must.ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple CommitTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.NoError(subject.CommitTx(tx))
 			t.Must.NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx, no error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.NoError(subject.RollbackTx(tx))
 		})
 
 		s.Test(`RollbackTx cancels the context`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.NoError(subject.RollbackTx(tx))
 			t.Must.ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple RollbackTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.NoError(subject.RollbackTx(tx))
 			t.Must.NotNil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx + CommitTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.RollbackTx(tx))
+			t.Must.NoError(subject.RollbackTx(tx))
 			t.Must.NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + CommitTx + RollbackTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
-			t.Must.Nil(subject.CommitTx(tx))
+			t.Must.NoError(subject.CommitTx(tx))
 			t.Must.NotNil(subject.RollbackTx(tx))
 		})
 
@@ -93,10 +93,10 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			t.Must.NoError(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
-			t.Must.Nil(subject.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
+			t.Must.NoError(subject.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
 			t.Must.NotNil(subject.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
 
-			t.Must.Nil(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
+			t.Must.NoError(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
 			t.Must.NotNil(subject.CommitTx(tx1), `"outer" comproto should be already done`)
 		})
 
@@ -111,7 +111,7 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			assert.ErrorIs(t, context.Canceled, tx2.Err())
 			assert.NoError(t, tx1.Err())
 
-			t.Must.Nil(subject.CommitTx(tx1))
+			t.Must.NoError(subject.CommitTx(tx1))
 			assert.ErrorIs(t, context.Canceled, tx1.Err())
 		})
 

@@ -274,7 +274,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 
 		data := t.Random.String()
 		c.writeToFile(t, file, []byte(data))
-		t.Must.Nil(file.Close())
+		t.Must.NoError(file.Close())
 
 		expectedContent := append([]byte{}, []byte(initialContent.Get(t))...)
 		expectedContent = c.overwrite(expectedContent, []byte(data))
@@ -292,7 +292,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 
 			data := t.Random.String()
 			c.writeToFile(t, file, []byte(data))
-			t.Must.Nil(file.Close())
+			t.Must.NoError(file.Close())
 
 			c.assertFileContent(t, c.name().Get(t), []byte(data))
 		})
@@ -317,7 +317,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 				t.Must.ErrorIs(io.EOF, err)
 			}
 
-			t.Must.Nil(file.Close())
+			t.Must.NoError(file.Close())
 			expectedContent := append([]byte(initialContent.Get(t)), []byte(data)...)
 			c.assertFileContent(t, c.name().Get(t), expectedContent)
 		})
@@ -331,7 +331,7 @@ func (c specFileSystem) thenCanBeWritten(s *testcase.Spec, subject func(t *testc
 
 			data := t.Random.String()
 			c.writeToFile(t, file, []byte(data))
-			t.Must.Nil(file.Close())
+			t.Must.NoError(file.Close())
 
 			expectedContent := append([]byte(initialContent.Get(t)), []byte(data)...)
 			c.assertFileContent(t, c.name().Get(t), expectedContent)
@@ -355,14 +355,14 @@ func (c specFileSystem) specMkdir(s *testcase.Spec) {
 		})
 
 		s.Then("directory can be made without an issue", func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.NoError(subject(t))
 		})
 
 		s.And("on successful directory making", func(s *testcase.Spec) {
 			cTime := testcase.Let[time.Time](s, nil)
 			s.Before(func(t *testcase.T) {
 				cTime.Set(t, time.Now().UTC())
-				t.Must.Nil(subject(t))
+				t.Must.NoError(subject(t))
 			})
 
 			assertFileInfo := func(t *testcase.T, info fs.FileInfo) {
@@ -412,7 +412,7 @@ func (c specFileSystem) specMkdir(s *testcase.Spec) {
 
 	s.When("when name points to an existing directory", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(c.FileSystem.Mkdir(c.name().Get(t), 0700))
+			t.Must.NoError(c.FileSystem.Mkdir(c.name().Get(t), 0700))
 			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
@@ -464,7 +464,7 @@ func (c specFileSystem) specRemove(s *testcase.Spec) {
 		})
 
 		s.Then("it will remove the file", func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.NoError(subject(t))
 			_, err := c.FileSystem.Stat(c.name().Get(t))
 			os.IsNotExist(err)
 		})
@@ -472,12 +472,12 @@ func (c specFileSystem) specRemove(s *testcase.Spec) {
 
 	s.When("name points to a directory", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(c.FileSystem.Mkdir(c.name().Get(t), 0700))
+			t.Must.NoError(c.FileSystem.Mkdir(c.name().Get(t), 0700))
 			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
 		s.Then("it will remove the directory", func(t *testcase.T) {
-			t.Must.Nil(subject(t))
+			t.Must.NoError(subject(t))
 			_, err := c.FileSystem.Stat(c.name().Get(t))
 			os.IsNotExist(err)
 		})
@@ -539,7 +539,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 	s.When("name points to a directory", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			c.perm().Set(t, c.perm().Get(t)|fs.ModeDir)
-			t.Must.Nil(c.FileSystem.Mkdir(c.name().Get(t), c.perm().Get(t)))
+			t.Must.NoError(c.FileSystem.Mkdir(c.name().Get(t), c.perm().Get(t)))
 			t.Defer(c.FileSystem.Remove, c.name().Get(t))
 		})
 
@@ -879,7 +879,7 @@ func (c specFileSystem) specFile_Seek(s *testcase.Spec) {
 
 func (c specFileSystem) touchDir(t *testcase.T, name string, perm fs.FileMode) {
 	t.Helper()
-	t.Must.Nil(c.FileSystem.Mkdir(name, perm|fs.ModeDir))
+	t.Must.NoError(c.FileSystem.Mkdir(name, perm|fs.ModeDir))
 	t.Defer(c.FileSystem.Remove, name)
 }
 
@@ -887,14 +887,14 @@ func (c specFileSystem) touchFile(t *testcase.T, name string, perm fs.FileMode) 
 	t.Helper()
 	file, err := c.FileSystem.OpenFile(name, os.O_RDONLY|os.O_CREATE|os.O_EXCL, perm)
 	t.Must.NoError(err)
-	t.Must.Nil(file.Close())
+	t.Must.NoError(file.Close())
 	t.Defer(c.FileSystem.Remove, name)
 }
 
 func (c specFileSystem) saveFile(t *testcase.T, name string, data []byte) {
 	file, err := c.FileSystem.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
 	t.Must.NoError(err)
-	defer func() { t.Should.Nil(file.Close()) }()
+	defer func() { t.Should.NoError(file.Close()) }()
 	t.Defer(c.FileSystem.Remove, name)
 	c.writeToFile(t, file, data)
 }

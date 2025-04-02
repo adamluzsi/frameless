@@ -87,14 +87,14 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 	s.When(`during transaction`, func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			tx, err := spec.memoryGet(t).BeginTx(spec.ctxGet(t))
-			assert.Must(t).Nil(err)
+			assert.Must(t).NoError(err)
 			spec.ctx().Set(t, tx)
 		})
 
 		s.Then(`Add will execute in the scope of transaction`, func(t *testcase.T) {
-			assert.Must(t).Nil(subject(t))
+			assert.Must(t).NoError(subject(t))
 			assert.Must(t).NotContain(spec.memoryGet(t).Events(), eventGet(t))
-			assert.Must(t).Nil(spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
+			assert.Must(t).NoError(spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
 			assert.Must(t).Contain(spec.memoryGet(t).Events(), eventGet(t))
 		})
 	})

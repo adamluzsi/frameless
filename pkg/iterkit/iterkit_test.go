@@ -2369,7 +2369,7 @@ func TestScanner_Split(t *testing.T) {
 	i := iterkit.BufioScanner[string](scanner, nil)
 
 	lines, err := iterkit.CollectErr(i)
-	assert.Must(t).Nil(err)
+	assert.Must(t).NoError(err)
 	assert.Equal(t, 4, len(lines))
 	assert.Equal(t, `a`, lines[0])
 	assert.Equal(t, `b`, lines[1])

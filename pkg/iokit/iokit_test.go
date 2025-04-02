@@ -54,7 +54,7 @@ func TestBuffer(t *testing.T) {
 			n, err := f.Write(data.Get(t))
 			t.Must.NoError(err)
 			t.Must.Equal(len(data.Get(t)), n)
-			t.Must.Nil(f.Close())
+			t.Must.NoError(f.Close())
 
 			f, err = os.OpenFile(path, os.O_RDWR, 0)
 			t.Must.NoError(err)
@@ -167,8 +167,8 @@ func TestBuffer(t *testing.T) {
 
 	s.When(".Close is called", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.Nil(buffer.Get(t).Close())
-			t.Must.Nil(rwsc.Get(t).Close())
+			t.Must.NoError(buffer.Get(t).Close())
+			t.Must.NoError(rwsc.Get(t).Close())
 		})
 
 		s.Then("simultaneous .Close yields error", func(t *testcase.T) {
@@ -280,7 +280,7 @@ func TestBuffer_smoke(tt *testing.T) {
 			n, err := f.Write(data)
 			t.Must.NoError(err)
 			t.Must.Equal(len(data), n)
-			t.Must.Nil(f.Close())
+			t.Must.NoError(f.Close())
 
 			f, err = os.OpenFile(path, os.O_RDWR, 0)
 			t.Must.NoError(err)

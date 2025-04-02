@@ -26,7 +26,7 @@ func TestEventuallyConsistentResource(t *testing.T) {
 	repo := &EventuallyConsistentResource[Entity, string]{EventLogRepository: memory.NewEventLogRepository[Entity, string](eventLog)}
 	repo.jobs.queue = make(chan func(), 100)
 	repo.Spawn()
-	t.Cleanup(func() { assert.Must(t).Nil(repo.Close()) })
+	t.Cleanup(func() { assert.Must(t).NoError(repo.Close()) })
 
 	testcase.RunSuite(t, resource.Contract[Entity, string](repo, resource.Config[Entity, string]{
 		MetaAccessor:  eventLog,

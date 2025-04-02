@@ -40,7 +40,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 
 			s.Then(`it will be created`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
 				t.Must.True(ok, `entity should have id`)
@@ -65,7 +65,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 
 			s.Then(`it will be created`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
 				t.Must.True(ok, `entity should have id`)
@@ -87,7 +87,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			}).EagerLoading(s)
 
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
 				t.Must.True(ok, `entity should have id`)
@@ -110,7 +110,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			}).EagerLoading(s)
 
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {
-				t.Must.Nil(act(t))
+				t.Must.NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
 				t.Must.True(ok, `entity should have id`)

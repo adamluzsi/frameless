@@ -71,7 +71,7 @@ func TestFileSystem_smoke(t *testing.T) {
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filesystem.ModeUserRWX)
 	it.Must.NoError(err)
-	defer func() { it.Should.Nil(mfs.Remove(name)) }()
+	defer func() { it.Should.NoError(mfs.Remove(name)) }()
 
 	_, err = file.Write([]byte("/foo"))
 	it.Must.NoError(err)
@@ -119,7 +119,7 @@ func TestLocal_rootPath(t *testing.T) {
 		t.Helper()
 		file, err := fs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, filesystem.ModeUserRWX)
 		if err == nil {
-			t.Must.Nil(file.Close())
+			t.Must.NoError(file.Close())
 			t.Cleanup(func() { _ = fs.Remove(name) })
 		}
 		return err
@@ -130,12 +130,12 @@ func TestLocal_rootPath(t *testing.T) {
 		fs := localfs.FileSystem{}
 
 		name := tmpFile(t, tmpDir)
-		t.Must.Nil(touchFile(t, fs, name))
+		t.Must.NoError(touchFile(t, fs, name))
 		_, err := os.Stat(name)
 		t.Must.NoError(err)
 
 		name = tmpFile(t, getSysTmpDir(t))
-		t.Must.Nil(touchFile(t, fs, name))
+		t.Must.NoError(touchFile(t, fs, name))
 		_, err = os.Stat(name)
 		t.Must.NoError(err)
 	})
@@ -145,13 +145,13 @@ func TestLocal_rootPath(t *testing.T) {
 		fs := localfs.FileSystem{RootPath: tmpDir}
 
 		name := makeName(t)
-		t.Must.Nil(touchFile(t, fs, name))
+		t.Must.NoError(touchFile(t, fs, name))
 		_, err := os.Stat(filepath.Join(tmpDir, name))
 		t.Must.NoError(err)
 		_, err = fs.Stat(name)
 		t.Must.NoError(err)
-		t.Must.Nil(fs.Mkdir(makeName(t), filesystem.ModeUserRWX))
-		t.Must.Nil(fs.Remove(name))
+		t.Must.NoError(fs.Mkdir(makeName(t), filesystem.ModeUserRWX))
+		t.Must.NoError(fs.Remove(name))
 
 		path := filepath.Join("..", name)
 		t.Must.ErrorIs(syscall.EACCES, touchFile(t, fs, path))
