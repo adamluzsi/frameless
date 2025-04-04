@@ -70,9 +70,9 @@ func TestSet(t *testing.T) {
 		assert.False(t, set.Has(othValue))
 	})
 
-	t.Run("MakeSet from slice", func(t *testing.T) {
+	t.Run("FromSlice", func(t *testing.T) {
 		values := []int{rnd.Int(), rnd.Int()}
-		set := datastruct.MakeSet(values...)
+		set := datastruct.Set[int]{}.FromSlice(values)
 
 		for _, v := range values {
 			assert.True(t, set.Has(v), "Set should contain the value added from the slice")
@@ -80,22 +80,32 @@ func TestSet(t *testing.T) {
 	})
 
 	t.Run("ToSlice uniqueness", func(t *testing.T) {
-		values := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
-		set := datastruct.MakeSet(values...)
-		slice := set.ToSlice()
+		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
+		set := datastruct.Set[int]{}.FromSlice(exp)
+		got := set.ToSlice()
 
 		// Create a temporary map to check for duplicates in the slice
 		tempMap := make(map[int]struct{})
-		for _, item := range slice {
+		for _, item := range got {
 			if _, exists := tempMap[item]; exists {
 				t.Errorf("Duplicate found in the slice returned by ToSlice, which should not happen")
 			}
 			tempMap[item] = struct{}{}
 		}
 		// Ensure all original unique values are present
-		for _, v := range values {
+		for _, v := range exp {
 			_, ok := tempMap[v]
-			assert.True(t, ok, "All unique values from the initial slice should be present in the slice returned by ToSlice")
+
+			assert.True(t, ok, assert.MessageF("%v was missing", v),
+				"\nAll unique values from the initial slice should be present in the slice returned by ToSlice.")
 		}
+	})
+
+	t.Run("ToSlice is ordered by default", func(t *testing.T) {
+		exp := []int{1, 5, 2, 7, 3, 9} // Intentional duplicate to test uniqueness
+		set := datastruct.Set[int]{}.FromSlice(exp)
+		got := set.ToSlice()
+
+		assert.Equal(t, exp, got, "values were expected, and in the same order")
 	})
 }
