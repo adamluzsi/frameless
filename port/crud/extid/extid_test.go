@@ -301,7 +301,7 @@ func TestRegisterType(t *testing.T) {
 	assert.Equal(t, ent.Identification, gotID)
 }
 
-func TestMappingFunc_Lookup(t *testing.T) {
+func TestAccessor_Lookup(t *testing.T) {
 	type ID string
 	type ENT struct {
 		ID ID `ext:"id"`
@@ -329,7 +329,7 @@ func TestMappingFunc_Lookup(t *testing.T) {
 	})
 }
 
-func TestMappingFunc_Set(t *testing.T) {
+func TestAccessor_Set(t *testing.T) {
 	type ID string
 	type ENT struct {
 		ID ID `ext:"id"`
@@ -357,6 +357,38 @@ func TestMappingFunc_Set(t *testing.T) {
 
 		assert.Error(t, extid.Accessor[ENT, ID](nil).
 			Set(nil, "42"))
+	})
+}
+
+func TestAccessor_Get(t *testing.T) {
+	type ID string
+
+	type ENT struct {
+		ID ID `ext:"id"`
+		DI ID
+	}
+
+	t.Run("nil accessor", func(t *testing.T) {
+		var acc extid.Accessor[ENT, ID]
+		var ent ENT
+		assert.Empty(t, acc.Get(ent))
+		assert.NoError(t, acc.Set(&ent, "42"))
+		assert.Equal(t, ent.ID, "42")
+		assert.Equal(t, acc.Get(ent), "42")
+	})
+
+	t.Run("non-nil accessor", func(t *testing.T) {
+		var acc extid.Accessor[ENT, ID] = func(p *ENT) *ID { return &p.DI }
+		var ent ENT
+		assert.Empty(t, acc.Get(ent))
+		assert.NoError(t, acc.Set(&ent, "42"))
+		assert.Empty(t, ent.ID)
+		assert.Equal(t, ent.DI, "42")
+		assert.Equal(t, acc.Get(ent), "42")
+	})
+
+	t.Run("", func(t *testing.T) {
+
 	})
 }
 
@@ -432,7 +464,7 @@ func TestIDStructField(t *testing.T) {
 	})
 }
 
-func TestMappingFunc_ReflectLookup(t *testing.T) {
+func TestAccessor_ReflectLookup(t *testing.T) {
 	type ID string
 	type ENT struct {
 		ID ID `ext:"id"`
@@ -472,7 +504,7 @@ func TestMappingFunc_ReflectLookup(t *testing.T) {
 	})
 }
 
-func TestMappingFunc_ReflectSet(t *testing.T) {
+func TestAccessor_ReflectSet(t *testing.T) {
 	type ID string
 	type ENT struct {
 		ID ID `ext:"id"`

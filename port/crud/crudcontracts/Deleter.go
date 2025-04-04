@@ -5,7 +5,6 @@ import (
 
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/pp"
 
 	"go.llib.dev/frameless/pkg/pointer"
 
@@ -54,9 +53,9 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 		id.Let(s, func(t *testcase.T) ID {
 			p := ptr.Get(t)
 			shouldStore[ENT, ID](t, c, subject, p)
-			id, ok := lookupID[ID](c, *p)
-			t.Must.True(ok, assert.Message(pp.Format(spechelper.ErrIDRequired.Error())))
-			return id
+			// id, ok := lookupID[ID](c, *p)
+			// t.Must.True(ok, assert.Message(pp.Format(spechelper.ErrIDRequired.Error())))
+			return c.IDA.Get(*p)
 		}).EagerLoading(s)
 
 		s.Then(`the entity will no longer be find-able in the resource by the id`, func(t *testcase.T) {

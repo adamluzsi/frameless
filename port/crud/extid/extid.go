@@ -177,6 +177,15 @@ type typeRegistration struct {
 // default: extid.Lookup, extid.Set, which will use either the `ext:"id"` tag, or the `ENT.ID()` & `ENT.SetID()` methods.
 type Accessor[ENT, ID any] func(*ENT) *ID
 
+func (fn Accessor[ENT, ID]) Get(ent ENT) ID {
+	if fn == nil {
+		id, _ := Lookup[ID](ent)
+		return id
+	}
+	id := fn.ptr(&ent)
+	return *id
+}
+
 func (fn Accessor[ENT, ID]) Lookup(ent ENT) (ID, bool) {
 	if fn == nil {
 		return Lookup[ID](ent)

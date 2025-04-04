@@ -81,6 +81,39 @@ func Test_memory(t *testing.T) {
 	testcase.RunSuite(s, contracts[Entity, ID](subject, m, config)...)
 }
 
+func Test_fieldWithNoTaggedExtID(t *testing.T) {
+	type DI string
+
+	type Entity struct {
+		DI   DI
+		Data string
+	}
+
+	accessor := func(e *Entity) *DI {
+		return &e.DI
+	}
+
+	s := testcase.NewSpec(t)
+
+	m := memory.NewMemory()
+	subject := &memory.Repository[Entity, DI]{
+		Memory: m,
+		IDA:    accessor,
+	}
+
+	config := crudcontracts.Config[Entity, DI]{
+		MakeEntity: func(tb testing.TB) Entity {
+			return Entity{Data: testcase.ToT(&tb).Random.String()}
+		},
+		SupportIDReuse:  true,
+		SupportRecreate: true,
+
+		IDA: accessor,
+	}
+
+	testcase.RunSuite(s, contracts[Entity, DI](subject, m, config)...)
+}
+
 func Test_memory_prepopulatedID(t *testing.T) {
 	type ID string
 	type Entity struct {

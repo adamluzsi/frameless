@@ -54,6 +54,10 @@ func (s Set[T]) Has(v T) bool {
 	return ok
 }
 
+func (set Set[T]) From(vs ...T) Set[T] {
+	return set.FromSlice(vs)
+}
+
 func (set Set[T]) FromSlice(vs []T) Set[T] {
 	for _, v := range vs {
 		set.Add(v)
