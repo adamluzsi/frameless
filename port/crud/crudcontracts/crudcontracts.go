@@ -55,6 +55,8 @@ func (c Config[ENT, ID]) Configure(config *Config[ENT, ID]) {
 	option.Configure(c, config)
 }
 
-func (c *Config[ENT, ID]) CRUDTestConfig() crudtest.Config[ENT, ID] {
-	return crudtest.Config[ENT, ID]{IDA: c.IDA}
+func (c *Config[ENT, ID]) Helper() crudtest.Helper[ENT, ID] {
+	return crudtest.Helper[ENT, ID]{
+		IDA: c.IDA,
+	}
 }

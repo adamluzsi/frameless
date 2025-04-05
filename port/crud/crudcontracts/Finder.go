@@ -57,7 +57,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 			})
 
 			id.Let(s, func(t *testcase.T) ID {
-				return crudtest.HasID[ENT, ID](t, pointer.Of(ent.Get(t)))
+				return c.Helper().HasID(t, pointer.Of(ent.Get(t)))
 			})
 
 			s.Then("it will find and return the entity", func(t *testcase.T) {
@@ -77,7 +77,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 					var (
 						ctx = c.MakeContext(t)
 						ent = mkEnt(t)
-						id  = crudtest.HasID[ENT, ID](t, &ent)
+						id  = c.Helper().HasID(t, &ent)
 					)
 					crudtest.Eventually.Assert(t, func(it assert.It) {
 						_, found, err := subject.FindByID(ctx, id)
@@ -207,7 +207,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			})
 
 			s.Before(func(t *testcase.T) {
-				crudtest.Delete[ENT, ID](t, deleter, ctx.Get(t), ent1.Get(t))
+				c.Helper().Delete(t, deleter, ctx.Get(t), ent1.Get(t))
 			})
 
 			s.Then(`it will yield error early on`, func(t *testcase.T) {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
@@ -19,7 +20,7 @@ import (
 	"go.llib.dev/testcase/pp"
 )
 
-type Asserter[ENT, ID any] struct {
+type Helper[ENT, ID any] struct {
 	Waiter assert.Waiter
 	IDA    extid.Accessor[ENT, ID]
 	R      Resource[ENT, ID]
@@ -27,7 +28,14 @@ type Asserter[ENT, ID any] struct {
 	SkipOnNotSupportedOperation bool
 }
 
-func (a Asserter[ENT, ID]) opMust(tb testing.TB, ok bool, name string) {
+func (a Helper[ENT, ID]) waiter() assert.Waiter {
+	if a.Waiter == (assert.Waiter{}) {
+		a.Waiter = Waiter
+	}
+	return a.Waiter
+}
+
+func (a Helper[ENT, ID]) opMust(tb testing.TB, ok bool, name string) {
 	tb.Helper()
 	msg := "expected Resource to support " + name
 	if ok {
@@ -39,12 +47,12 @@ func (a Asserter[ENT, ID]) opMust(tb testing.TB, ok bool, name string) {
 	tb.Fatal(msg)
 }
 
-func (a Asserter[ENT, ID]) ByIDFinder() (crud.ByIDFinder[ENT, ID], bool) {
+func (a Helper[ENT, ID]) ByIDFinder() (crud.ByIDFinder[ENT, ID], bool) {
 	r, ok := a.R.(crud.ByIDFinder[ENT, ID])
 	return r, ok
 }
 
-func (a Asserter[ENT, ID]) MustByIDFinder(tb testing.TB) crud.ByIDFinder[ENT, ID] {
+func (a Helper[ENT, ID]) MustByIDFinder(tb testing.TB) crud.ByIDFinder[ENT, ID] {
 	tb.Helper()
 	r, ok := a.ByIDFinder()
 	a.opMust(tb, ok, "ByIDFinder")
@@ -53,8 +61,8 @@ func (a Asserter[ENT, ID]) MustByIDFinder(tb testing.TB) crud.ByIDFinder[ENT, ID
 
 type Resource[ENT, ID any] interface{}
 
-func (a Asserter[ENT, ID]) Eventually() assert.Retry {
-	return assert.Retry{Strategy: &a.Waiter}
+func (a Helper[ENT, ID]) Eventually() assert.Retry {
+	return assert.Retry{Strategy: pointer.Of(a.waiter())}
 }
 
 var Waiter = assert.Waiter{
@@ -74,9 +82,9 @@ func (c Config[ENT, ID]) Configure(t *Config[ENT, ID]) {
 
 type Option[ENT, ID any] option.Option[Config[ENT, ID]]
 
-func makeAsserter[ENT, ID any](opts []Option[ENT, ID]) Asserter[ENT, ID] {
+func makeAsserter[ENT, ID any](opts []Option[ENT, ID]) Helper[ENT, ID] {
 	c := option.Use(opts)
-	return Asserter[ENT, ID]{
+	return Helper[ENT, ID]{
 		Waiter: Waiter,
 		IDA:    c.IDA,
 	}
@@ -87,7 +95,7 @@ func HasID[ENT, ID any](tb testing.TB, ent *ENT, opts ...Option[ENT, ID]) (id ID
 	return makeAsserter(opts).HasID(tb, ent)
 }
 
-func (a Asserter[ENT, ID]) HasID(tb testing.TB, ptr *ENT) ID {
+func (a Helper[ENT, ID]) HasID(tb testing.TB, ptr *ENT) ID {
 	tb.Helper()
 	assert.NotNil(tb, ptr)
 	id, idOK := a.IDA.Lookup(*ptr)
@@ -109,7 +117,7 @@ func IsPresent[ENT, ID any](tb testing.TB, resource crud.ByIDFinder[ENT, ID], ct
 	return makeAsserter[ENT, ID](opts).IsPresent(tb, resource, ctx, id)
 }
 
-func (a Asserter[ENT, ID]) IsPresent(tb testing.TB, resource crud.ByIDFinder[ENT, ID], ctx context.Context, id ID) *ENT {
+func (a Helper[ENT, ID]) IsPresent(tb testing.TB, resource crud.ByIDFinder[ENT, ID], ctx context.Context, id ID) *ENT {
 	tb.Helper()
 	var ent ENT
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(ENT), id)
@@ -128,7 +136,7 @@ func IsAbsent[ENT, ID any](tb testing.TB, resource crud.ByIDFinder[ENT, ID], ctx
 	a.IsAbsent(tb, resource, ctx, id)
 }
 
-func (a Asserter[ENT, ID]) IsAbsent(tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx context.Context, id ID) {
+func (a Helper[ENT, ID]) IsAbsent(tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx context.Context, id ID) {
 	tb.Helper()
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", *new(ENT), id)
 	a.Eventually().Assert(tb, func(it assert.It) {
@@ -143,7 +151,7 @@ func HasEntity[ENT, ID any](tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx
 	makeAsserter(opts).HasEntity(tb, subject, ctx, ptr)
 }
 
-func (a Asserter[ENT, ID]) HasEntity(tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx context.Context, ptr *ENT) {
+func (a Helper[ENT, ID]) HasEntity(tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	id := a.HasID(tb, ptr)
 	a.Eventually().Assert(tb, func(it assert.It) {
@@ -159,7 +167,7 @@ func Save[ENT, ID any](tb testing.TB, resource crud.Saver[ENT], ctx context.Cont
 	makeAsserter(opts).Save(tb, resource, ctx, ptr)
 }
 
-func (a Asserter[ENT, ID]) Save(tb testing.TB, resource crud.Saver[ENT], ctx context.Context, ptr *ENT) {
+func (a Helper[ENT, ID]) Save(tb testing.TB, resource crud.Saver[ENT], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	assert.NoError(tb, resource.Save(ctx, ptr))
 	a.cleanupENT(tb, resource, ctx, ptr)
@@ -170,7 +178,7 @@ func Create[ENT, ID any](tb testing.TB, resource crud.Creator[ENT], ctx context.
 	makeAsserter(opts).Create(tb, resource, ctx, ptr)
 }
 
-func (a Asserter[ENT, ID]) Create(tb testing.TB, resource crud.Creator[ENT], ctx context.Context, ptr *ENT) {
+func (a Helper[ENT, ID]) Create(tb testing.TB, resource crud.Creator[ENT], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	assert.NoError(tb, resource.Create(ctx, ptr))
 	a.cleanupENT(tb, resource, ctx, ptr)
@@ -187,7 +195,7 @@ func Update[ENT, ID any](tb testing.TB, resource updater[ENT, ID], ctx context.C
 	makeAsserter(opts).Update(tb, resource, ctx, ptr)
 }
 
-func (a Asserter[ENT, ID]) Update(tb testing.TB, resource updater[ENT, ID], ctx context.Context, ptr *ENT) {
+func (a Helper[ENT, ID]) Update(tb testing.TB, resource updater[ENT, ID], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	assert.NotNil(tb, ptr)
 	id := a.IDA.Get(*ptr)
@@ -206,7 +214,7 @@ func Delete[ENT, ID any](tb testing.TB, resource crud.ByIDDeleter[ID], ctx conte
 	makeAsserter(opts).Delete(tb, resource, ctx, ptr)
 }
 
-func (a Asserter[ENT, ID]) Delete(tb testing.TB, resource crud.ByIDDeleter[ID], ctx context.Context, ptr *ENT) {
+func (a Helper[ENT, ID]) Delete(tb testing.TB, resource crud.ByIDDeleter[ID], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	id := a.HasID(tb, ptr)
 	if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
@@ -228,10 +236,10 @@ func DeleteAll[ENT, ID any](tb testing.TB, resource deleteAllDeleter[ENT, ID], c
 	makeAsserter(opts).DeleteAll(tb, resource, ctx)
 }
 
-func (a Asserter[ENT, ID]) DeleteAll(tb testing.TB, subject deleteAllDeleter[ENT, ID], ctx context.Context) {
+func (a Helper[ENT, ID]) DeleteAll(tb testing.TB, subject deleteAllDeleter[ENT, ID], ctx context.Context) {
 	tb.Helper()
 	assert.NoError(tb, subject.DeleteAll(ctx))
-	a.Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
+	a.waiter().Wait() // TODO: FIXME: race condition between tests might depend on this
 	a.Eventually().Assert(tb, func(t assert.It) {
 		itr, err := subject.FindAll(ctx)
 		assert.NoError(t, err)
@@ -246,12 +254,12 @@ func CountIs[T any](tb testing.TB, itr iter.Seq[T], expected int) {
 	makeAsserter[T, any](nil).CountIs(tb, itr, expected)
 }
 
-func (a Asserter[ENT, ID]) CountIs(tb testing.TB, iter iter.Seq[ENT], expected int) {
+func (a Helper[ENT, ID]) CountIs(tb testing.TB, iter iter.Seq[ENT], expected int) {
 	tb.Helper()
 	assert.Must(tb).Equal(expected, iterkit.Count(iter))
 }
 
-func (a Asserter[ENT, ID]) cleanupENT(tb testing.TB, resource any, ctx context.Context, ptr *ENT) {
+func (a Helper[ENT, ID]) cleanupENT(tb testing.TB, resource any, ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	id := a.HasID(tb, ptr)
 	tb.Cleanup(func() {

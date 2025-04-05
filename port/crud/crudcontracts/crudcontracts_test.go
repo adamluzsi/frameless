@@ -34,19 +34,25 @@ var _ = []contract.Contract{
 	crudcontracts.QueryMany[EntType, IDType](nil, "", nil),
 }
 
-func contracts[ENT, ID any](subject Subject[ENT, ID], cm comproto.OnePhaseCommitProtocol, opts ...crudcontracts.Option[ENT, ID]) []contract.Contract {
+func contracts[ENT, ID any](resource Resource[ENT, ID], cm comproto.OnePhaseCommitProtocol, opts ...crudcontracts.Option[ENT, ID]) []contract.Contract {
 	return []contract.Contract{
-		crudcontracts.Creator[ENT, ID](subject, opts...),
-		crudcontracts.Saver[ENT, ID](subject, opts...),
-		crudcontracts.Finder[ENT, ID](subject, opts...),
-		crudcontracts.Deleter[ENT, ID](subject, opts...),
-		crudcontracts.Updater[ENT, ID](subject, opts...),
-		crudcontracts.ByIDsFinder[ENT, ID](subject, opts...),
-		crudcontracts.OnePhaseCommitProtocol[ENT, ID](subject, cm, opts...),
+		crudcontracts.Creator[ENT, ID](resource, opts...),
+		crudcontracts.Saver[ENT, ID](resource, opts...),
+		crudcontracts.Finder[ENT, ID](resource, opts...),
+		crudcontracts.Deleter[ENT, ID](resource, opts...),
+		crudcontracts.Updater[ENT, ID](resource, opts...),
+		crudcontracts.ByIDsFinder[ENT, ID](resource, opts...),
+		crudcontracts.ByIDFinder[ENT, ID](resource, opts...),
+		crudcontracts.AllFinder[ENT, ID](resource, opts...),
+		crudcontracts.ByIDDeleter[ENT, ID](resource, opts...),
+		crudcontracts.AllDeleter[ENT, ID](resource, opts...),
+		crudcontracts.AllFinder[ENT, ID](resource, opts...),
+		crudcontracts.OnePhaseCommitProtocol[ENT, ID](resource, cm, opts...),
+		// crudcontracts.Purger[ENT, ID](resource, opts...),
 	}
 }
 
-type Subject[ENT, ID any] interface {
+type Resource[ENT, ID any] interface {
 	crud.Creator[ENT]
 	crud.Saver[ENT]
 	crud.Updater[ENT]
@@ -56,6 +62,7 @@ type Subject[ENT, ID any] interface {
 	crud.ByIDDeleter[ID]
 	crud.AllDeleter
 	spechelper.CRD[ENT, ID]
+	// crud.Purger
 }
 
 func Test_memory(t *testing.T) {
@@ -68,7 +75,7 @@ func Test_memory(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	m := memory.NewMemory()
-	subject := memory.NewRepository[Entity, ID](m)
+	resource := memory.NewRepository[Entity, ID](m)
 
 	config := crudcontracts.Config[Entity, ID]{
 		MakeEntity: func(tb testing.TB) Entity {
@@ -78,7 +85,7 @@ func Test_memory(t *testing.T) {
 		SupportRecreate: true,
 	}
 
-	testcase.RunSuite(s, contracts[Entity, ID](subject, m, config)...)
+	testcase.RunSuite(s, contracts[Entity, ID](resource, m, config)...)
 }
 
 func Test_fieldWithNoTaggedExtID(t *testing.T) {
@@ -96,7 +103,8 @@ func Test_fieldWithNoTaggedExtID(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	m := memory.NewMemory()
-	subject := &memory.Repository[Entity, DI]{
+
+	resource := &memory.Repository[Entity, DI]{
 		Memory: m,
 		IDA:    accessor,
 	}
@@ -111,7 +119,7 @@ func Test_fieldWithNoTaggedExtID(t *testing.T) {
 		IDA: accessor,
 	}
 
-	testcase.RunSuite(s, contracts[Entity, DI](subject, m, config)...)
+	testcase.RunSuite(s, contracts[Entity, DI](resource, m, config)...)
 }
 
 func Test_memory_prepopulatedID(t *testing.T) {
@@ -124,8 +132,8 @@ func Test_memory_prepopulatedID(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	m := memory.NewMemory()
-	subject := memory.NewRepository[Entity, ID](m)
-	subject.ExpectID = true
+	resource := memory.NewRepository[Entity, ID](m)
+	resource.ExpectID = true
 
 	var index int64
 	config := crudcontracts.Config[Entity, ID]{
@@ -140,13 +148,13 @@ func Test_memory_prepopulatedID(t *testing.T) {
 		SupportRecreate: true,
 	}
 
-	testcase.RunSuite(s, contracts[Entity, ID](subject, m, config)...)
+	testcase.RunSuite(s, contracts[Entity, ID](resource, m, config)...)
 }
 
 func Test_cleanup(t *testing.T) {
 	m := memory.NewEventLog()
-	subject := memory.NewEventLogRepository[testent.Foo, testent.FooID](m)
-	subject.Options.CompressEventLog = true
+	resource := memory.NewEventLogRepository[testent.Foo, testent.FooID](m)
+	resource.Options.CompressEventLog = true
 
 	crudConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
 		SupportIDReuse:  true,
@@ -158,10 +166,10 @@ func Test_cleanup(t *testing.T) {
 	s.After(func(t *testcase.T) {
 		// TODO: compress doesn't handle well if there is a case where previously a delete was made in a transaction for an entity, and then i was committed.
 		// For some reason, it doesn't clean up the logs
-		subject.Compress()
+		resource.Compress()
 	})
 
-	testcase.RunSuite(s, contracts[testent.Foo, testent.FooID](subject, m, crudConfig)...)
+	testcase.RunSuite(s, contracts[testent.Foo, testent.FooID](resource, m, crudConfig)...)
 }
 
 func Test_preAssignedID(t *testing.T) {
@@ -189,17 +197,17 @@ func Test_preAssignedID(t *testing.T) {
 
 func Test_noleftoverAfterTests(t *testing.T) {
 	mem := &memory.Memory{}
-	subject := &memory.Repository[testent.Foo, testent.FooID]{Memory: mem}
+	resource := &memory.Repository[testent.Foo, testent.FooID]{Memory: mem}
 
 	s := testcase.NewSpec(t)
 
 	s.Before(func(t *testcase.T) {
 		// TODO: something actually poops into the subject even before one of the test...
-		spechelper.TryCleanup(t, t.Context(), subject)
+		spechelper.TryCleanup(t, t.Context(), resource)
 	})
 
 	s.After(func(t *testcase.T) {
-		itr, err := subject.FindAll(t.Context())
+		itr, err := resource.FindAll(t.Context())
 		assert.NoError(t, err)
 
 		vs, err := iterkit.CollectErr(itr)
@@ -212,7 +220,7 @@ func Test_noleftoverAfterTests(t *testing.T) {
 				` If the repository has values, it means something is not cleaning up properly in the specs.`)
 	})
 
-	testcase.RunSuite(s, contracts(subject, mem)...)
+	testcase.RunSuite(s, contracts(resource, mem)...)
 }
 
 func Test_NoSkippedTestBecauseShouldStore(t *testing.T) {

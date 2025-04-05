@@ -116,11 +116,11 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 		}
 	}
 	if creator, ok := resource.(crud.Creator[ENT]); ok {
-		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(tb), &ent, c.CRUDTestConfig())
+		c.Helper().Create(tb, creator, c.MakeContext(tb), &ent)
 		return ent
 	}
 	if saver, ok := resource.(crud.Saver[ENT]); ok {
-		crudtest.Save[ENT, ID](tb, saver, c.MakeContext(tb), &ent, c.CRUDTestConfig())
+		c.Helper().Save(tb, saver, c.MakeContext(tb), &ent)
 		return ent
 	}
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")
@@ -207,13 +207,13 @@ func storer[ENT, ID any](c Config[ENT, ID], resource any) (func(tb testing.TB, p
 	if subject, ok := resource.(crud.Creator[ENT]); ok {
 		return func(tb testing.TB, ptr *ENT) {
 			tb.Helper()
-			crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+			c.Helper().Create(tb, subject, c.MakeContext(tb), ptr)
 		}, true
 	}
 	if subject, ok := resource.(crud.Saver[ENT]); ok {
 		return func(tb testing.TB, ptr *ENT) {
 			tb.Helper()
-			crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+			c.Helper().Save(tb, subject, c.MakeContext(tb), ptr)
 		}, true
 	}
 	return nil, false

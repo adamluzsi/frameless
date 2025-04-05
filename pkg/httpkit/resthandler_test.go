@@ -1389,24 +1389,24 @@ func TestRESTHandler_nestedOwnershipConstraint(t *testing.T) {
 
 	t.Log("given we have some users")
 	user1 := User{}
-	crudtest.Create[User, string](t, userRepo, ctx, &user1)
+	c.Helper().Create[User, string](t, userRepo, ctx, &user1)
 	user2 := User{}
-	crudtest.Create[User, string](t, userRepo, ctx, &user2)
+	c.Helper().Create[User, string](t, userRepo, ctx, &user2)
 
 	t.Log("each has its own note")
 	note1 := Note{UserID: user1.ID}
-	crudtest.Create[Note, string](t, noteRepo, ctx, &note1)
+	c.Helper().Create[Note, string](t, noteRepo, ctx, &note1)
 	note2 := Note{UserID: user2.ID}
-	crudtest.Create[Note, string](t, noteRepo, ctx, &note2)
+	c.Helper().Create[Note, string](t, noteRepo, ctx, &note2)
 
 	t.Log("and each note has its own attachment")
 	attachment1 := Attachment{BS: []byte(rnd.Domain())}
-	crudtest.Create[Attachment, string](t, attaRepo, ctx, &attachment1)
+	c.Helper().Create[Attachment, string](t, attaRepo, ctx, &attachment1)
 	assert.NoError(t, relationship.Associate(&note1, &attachment1))
 	crudtest.Update[Note, string](t, noteRepo, ctx, &note1)
 
 	attachment2 := Attachment{BS: []byte(rnd.Domain())}
-	crudtest.Create[Attachment, string](t, attaRepo, ctx, &attachment2)
+	c.Helper().Create[Attachment, string](t, attaRepo, ctx, &attachment2)
 	assert.NoError(t, relationship.Associate(&note2, &attachment2))
 	crudtest.Update[Note, string](t, noteRepo, ctx, &note2)
 

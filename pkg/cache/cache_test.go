@@ -14,7 +14,6 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud/crudkit"
-	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -70,9 +69,9 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		return vs
 	}
 
-	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo1)
-	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo2)
-	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo3)
+	c.Helper().Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo1)
+	c.Helper().Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo2)
+	c.Helper().Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo3)
 
 	{
 		t.Log("when we use FindByID with foo1.ID")
@@ -213,9 +212,9 @@ func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
 		cachei     = cache.New[testent.Foo, testent.FooID](source, repository)
 	)
 
-	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo1)
-	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo2)
-	crudtest.Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo3)
+	c.Helper().Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo1)
+	c.Helper().Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo2)
+	c.Helper().Create[testent.Foo, testent.FooID](t, source, context.Background(), &foo3)
 
 	_, _, err := cachei.FindByID(ctx, foo1.ID)
 	assert.NoError(t, err)
@@ -256,7 +255,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	// given we have a foo
 	foo := testcase.Let(s, func(t *testcase.T) testent.Foo {
 		foo := testent.MakeFoo(t)
-		crudtest.Create[testent.Foo, testent.FooID](t, source.Get(t), context.Background(), &foo)
+		c.Helper().Create[testent.Foo, testent.FooID](t, source.Get(t), context.Background(), &foo)
 		return foo
 	}).EagerLoading(s)
 

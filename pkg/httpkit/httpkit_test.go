@@ -23,7 +23,6 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/pkg/resilience"
-	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -613,7 +612,7 @@ func TestMount_spec(t *testing.T) {
 
 		ent := testcase.Let(s, func(t *testcase.T) X {
 			v := X{N: t.Random.Int()}
-			crudtest.Create[X, XID](t, repo.Get(t), context.Background(), &v)
+			c.Helper().Create[X, XID](t, repo.Get(t), context.Background(), &v)
 			return v
 		}).EagerLoading(s)
 

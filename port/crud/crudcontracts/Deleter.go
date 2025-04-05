@@ -113,7 +113,7 @@ type allDeleterSubjectResource[Entity, ID any] interface {
 	crud.AllDeleter
 }
 
-func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
+func AllDeleter[ENT, ID any](subject allDeleterSubjectResource[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
 	c := option.Use(opts)
 	s := testcase.NewSpec(nil)
 
@@ -142,11 +142,11 @@ func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], o
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
 		ent := c.MakeEntity(t)
-		crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), &ent, c.CRUDTestConfig())
-		entID := crudtest.HasID[Entity, ID](t, &ent, c.CRUDTestConfig())
-		crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(t), entID)
+		c.Helper().Create(t, subject, c.MakeContext(t), &ent)
+		entID := c.Helper().HasID(t, &ent)
+		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), entID)
 		t.Must.NoError(act(t))
-		crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(t), entID)
+		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), entID)
 	})
 
 	return s.AsSuite("AllDeleter")

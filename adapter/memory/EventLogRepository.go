@@ -180,6 +180,12 @@ func (s *EventLogRepository[ENT, ID]) DeleteByID(ctx context.Context, id ID) err
 	})
 }
 
+func (s *EventLogRepository[ENT, ID]) Purge(ctx context.Context) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.EventLog.Purge(ctx)
+}
+
 func (s *EventLogRepository[ENT, ID]) DeleteAll(ctx context.Context) error {
 	if err := s.isDoneTx(ctx); err != nil {
 		return err

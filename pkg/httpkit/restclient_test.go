@@ -18,7 +18,6 @@ import (
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudkit"
-	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -158,7 +157,7 @@ func TestRESTClient_subresource(t *testing.T) {
 
 	foo := rnd.Make(testent.Foo{}).(testent.Foo)
 	foo.ID = ""
-	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
+	c.Helper().Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
 
 	barClient := httpkit.RESTClient[testent.Bar, testent.BarID]{
 		HTTPClient: srv.Client(),
@@ -211,7 +210,7 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 
 	foo := rnd.Make(testent.Foo{}).(testent.Foo)
 	foo.ID = ""
-	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
+	c.Helper().Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
 
 	fooClient := httpkit.RESTClient[testent.Foo, testent.FooID]{
 		HTTPClient: srv.Client(),
@@ -274,7 +273,7 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 	foo := rnd.Make(testent.Foo{}).(testent.Foo)
 	foo.ID = ""
-	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
+	c.Helper().Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
 
 	fooClient := httpkit.RESTClient[testent.Foo, testent.FooID]{
 		HTTPClient: srv.Client(),
@@ -326,7 +325,7 @@ func TestRESTClient_bodyReadLimit(t *testing.T) {
 
 	foo := rnd.Make(testent.Foo{}).(testent.Foo)
 	foo.ID = ""
-	crudtest.Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
+	c.Helper().Create[testent.Foo, testent.FooID](t, fooRepo, context.Background(), &foo)
 	fooValPath := pathkit.Join("/", foo.ID.String())
 
 	fooAPI := httpkit.NewRouter()
