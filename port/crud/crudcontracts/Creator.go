@@ -5,7 +5,7 @@ import (
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
-	. "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -41,7 +41,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				t.Defer(d.DeleteByID, ctx, id)
 			}
 			if ByIDFinderOK {
-				IsPresent[ENT, ID](t, fID, ctx, id)
+				crudtest.IsPresent[ENT, ID](t, fID, ctx, id)
 			}
 		}
 		return err
@@ -60,7 +60,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		if ByIDFinderOK {
 			s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
 				t.Must.NoError(act(t))
-				t.Must.Equal(ptr.Get(t), IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t)))
+				t.Must.Equal(ptr.Get(t), crudtest.IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t)))
 			})
 		}
 	})
@@ -79,14 +79,14 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				assert.NoError(t, subject.Create(c.MakeContext(t), ptr.Get(t)))
 
 				if ByIDFinderOK {
-					IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
+					crudtest.IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
 				} else {
 					wait()
 				}
 
 				t.Must.NoError(d.DeleteByID(c.MakeContext(t), getID(t)))
 				if ByIDFinderOK {
-					IsAbsent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
+					crudtest.IsAbsent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
 				} else {
 					wait()
 				}
@@ -100,7 +100,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
 					t.Must.NoError(act(t))
 
-					IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
+					crudtest.IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
 				})
 			}
 		})
@@ -112,14 +112,14 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				ogEnt := *ptr.Get(t) // a deep copy might be better
 				t.Must.NoError(act(t))
 				if ByIDFinderOK {
-					IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
+					crudtest.IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
 				} else {
 					wait()
 				}
 
 				t.Must.NoError(d.DeleteByID(c.MakeContext(t), getID(t)))
 				if ByIDFinderOK {
-					IsAbsent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
+					crudtest.IsAbsent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
 				} else {
 					wait()
 				}
@@ -135,7 +135,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
 					t.Must.NoError(act(t))
 
-					IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
+					crudtest.IsPresent[ENT, ID](t, fID, c.MakeContext(t), getID(t))
 				})
 			}
 		})
@@ -165,7 +165,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				t.Defer(d.DeleteByID, c.MakeContext(t), id)
 			}
 
-			t.Must.Equal(e, *IsPresent[ENT, ID](t, fID, c.MakeContext(t), id))
+			t.Must.Equal(e, *crudtest.IsPresent[ENT, ID](t, fID, c.MakeContext(t), id))
 		})
 	}
 

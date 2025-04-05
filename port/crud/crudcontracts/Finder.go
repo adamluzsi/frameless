@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"

@@ -10,7 +10,6 @@ import (
 
 	"go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudtest"
-	. "go.llib.dev/frameless/port/crud/crudtest"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/port/comproto"
@@ -56,8 +55,8 @@ func TestRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *te
 	s2 := memory.NewRepositoryWithNamespace[TestEntity, string](m, "TestEntity#B")
 	ent := random.New(random.CryptoSeed{}).Make(TestEntity{}).(TestEntity)
 	ent.ID = ""
-	Create[TestEntity, string](t, s1, ctx, &ent)
-	IsAbsent[TestEntity, string](t, s2, ctx, ent.ID)
+	crudtest.Create[TestEntity, string](t, s1, ctx, &ent)
+	crudtest.IsAbsent[TestEntity, string](t, s2, ctx, ent.ID)
 }
 
 func TestRepository_Create_expectID(t *testing.T) {

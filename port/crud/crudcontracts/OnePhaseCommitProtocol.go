@@ -14,7 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 
 	"go.llib.dev/frameless/port/comproto"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper"
 
 	"go.llib.dev/testcase"
@@ -287,7 +287,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 		t.Must.NoError(err)
 
 		ent := c.MakeEntity(t)
-		crudtest.Save[ENT, ID](t, subject, tx, &ent)
+		crudtest.Save[ENT, ID](t, subject, tx, &ent, c.CRUDTestConfig())
 		crudtest.HasID[ENT, ID](t, &ent)
 		t.Must.NoError(manager.RollbackTx(tx))
 	})
@@ -302,7 +302,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			tx, err := manager.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
 			ent := c.MakeEntity(t)
-			crudtest.Save[ENT, ID](t, subject, tx, &ent)
+			crudtest.Save[ENT, ID](t, subject, tx, &ent, c.CRUDTestConfig())
 
 			id := crudtest.HasID[ENT, ID](t, &ent)
 			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
@@ -373,7 +373,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			tx, err := manager.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
 			ptr := pointer.Of(c.MakeEntity(t))
-			crudtest.Save[ENT, ID](t, subject, tx, ptr)
+			crudtest.Save[ENT, ID](t, subject, tx, ptr, c.CRUDTestConfig())
 			id := crudtest.HasID[ENT, ID](t, ptr)
 
 			t.Must.NoError(manager.CommitTx(tx))
@@ -443,7 +443,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Must.NoError(err)
 
 			ent := c.MakeEntity(t)
-			crudtest.Save[ENT, ID](t, subject, tx, &ent)
+			crudtest.Save[ENT, ID](t, subject, tx, &ent, c.CRUDTestConfig())
 			id := crudtest.HasID[ENT, ID](t, &ent)
 			t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
 
@@ -461,7 +461,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			ent := c.MakeEntity(t)
 
 			_, _ = ctx, ent
-			crudtest.Save[ENT, ID](t, subject, ctx, &ent)
+			crudtest.Save[ENT, ID](t, subject, ctx, &ent, c.CRUDTestConfig())
 			id := crudtest.HasID[ENT, ID](t, &ent)
 			t.Defer(subject.DeleteByID, ctx, id)
 
@@ -483,7 +483,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ent := c.MakeEntity(t)
-			crudtest.Save[ENT, ID](t, subject, ctx, &ent)
+			crudtest.Save[ENT, ID](t, subject, ctx, &ent, c.CRUDTestConfig())
 			id := crudtest.HasID[ENT, ID](t, &ent)
 
 			tx, err := manager.BeginTx(ctx)

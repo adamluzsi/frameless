@@ -76,20 +76,20 @@ func (f YMapping) MapDTO(ctx context.Context, entity Y) (YDTO, error) {
 	return YDTO{ID: entity.ID, C: entity.C}, nil
 }
 
-type BazID int
+type BazENTID int
 
-type Baz struct {
-	ID  BazID
+type BazENT struct {
+	ID  BazENTID
 	Baz int
 }
 
 type BazDTO struct {
-	ID  BazID `json:"id"`
-	Baz int   `json:"baz"`
+	ID  BazENTID `json:"id"`
+	Baz int      `json:"baz"`
 }
 
-func MakeBazMapping() BazMapping {
-	return BazMapping{
+func MakeBazMapping() BazENTMapping {
+	return BazENTMapping{
 		IDConverter: httpkit.IDConverter[int]{
 			Format: func(id int) (string, error) {
 				return strconv.Itoa(id), nil
@@ -99,16 +99,16 @@ func MakeBazMapping() BazMapping {
 	}
 }
 
-type BazMapping struct {
+type BazENTMapping struct {
 	httpkit.IDConverter[int]
-	httpkit.IDInContext[BazMapping, string]
+	httpkit.IDInContext[BazENTMapping, string]
 }
 
-func (f BazMapping) MapEntity(ctx context.Context, dto BazDTO) (Baz, error) {
-	return Baz{ID: dto.ID, Baz: dto.Baz}, nil
+func (f BazENTMapping) MapEntity(ctx context.Context, dto BazDTO) (BazENT, error) {
+	return BazENT{ID: dto.ID, Baz: dto.Baz}, nil
 }
 
-func (f BazMapping) MapDTO(ctx context.Context, entity Baz) (BazDTO, error) {
+func (f BazENTMapping) MapDTO(ctx context.Context, entity BazENT) (BazDTO, error) {
 	return BazDTO{ID: entity.ID, Baz: entity.Baz}, nil
 }
 

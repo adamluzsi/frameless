@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 
 	"go.llib.dev/frameless/port/contract"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"
@@ -114,23 +114,23 @@ type allDeleterSubjectResource[Entity, ID any] interface {
 }
 
 func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], opts ...Option[Entity, ID]) contract.Contract {
-	conf := option.Use(opts)
+	c := option.Use(opts)
 	s := testcase.NewSpec(nil)
 
 	var (
-		ctx = testcase.Let(s, func(t *testcase.T) context.Context { return conf.MakeContext(t) })
+		ctx = testcase.Let(s, func(t *testcase.T) context.Context { return c.MakeContext(t) })
 	)
 	act := func(t *testcase.T) error {
 		return subject.DeleteAll(ctx.Get(t))
 	}
 
 	s.Benchmark("", func(t *testcase.T) {
-		assert.NoError(t, subject.DeleteAll(conf.MakeContext(t)))
+		assert.NoError(t, subject.DeleteAll(c.MakeContext(t)))
 	})
 
 	s.When(`ctx arg is canceled`, func(s *testcase.Spec) {
 		ctx.Let(s, func(t *testcase.T) context.Context {
-			ctx, cancel := context.WithCancel(conf.MakeContext(t))
+			ctx, cancel := context.WithCancel(c.MakeContext(t))
 			cancel()
 			return ctx
 		})
@@ -141,12 +141,12 @@ func AllDeleter[Entity, ID any](subject allDeleterSubjectResource[Entity, ID], o
 	})
 
 	s.Then(`it should remove all entities from the resource`, func(t *testcase.T) {
-		ent := conf.MakeEntity(t)
-		crudtest.Create[Entity, ID](t, subject, conf.MakeContext(t), &ent)
-		entID := crudtest.HasID[Entity, ID](t, &ent)
-		crudtest.IsPresent[Entity, ID](t, subject, conf.MakeContext(t), entID)
+		ent := c.MakeEntity(t)
+		crudtest.Create[Entity, ID](t, subject, c.MakeContext(t), &ent, c.CRUDTestConfig())
+		entID := crudtest.HasID[Entity, ID](t, &ent, c.CRUDTestConfig())
+		crudtest.IsPresent[Entity, ID](t, subject, c.MakeContext(t), entID)
 		t.Must.NoError(act(t))
-		crudtest.IsAbsent[Entity, ID](t, subject, conf.MakeContext(t), entID)
+		crudtest.IsAbsent[Entity, ID](t, subject, c.MakeContext(t), entID)
 	})
 
 	return s.AsSuite("AllDeleter")

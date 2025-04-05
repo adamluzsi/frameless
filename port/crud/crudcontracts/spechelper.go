@@ -11,7 +11,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -116,11 +116,11 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 		}
 	}
 	if creator, ok := resource.(crud.Creator[ENT]); ok {
-		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(tb), &ent)
+		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(tb), &ent, c.CRUDTestConfig())
 		return ent
 	}
 	if saver, ok := resource.(crud.Saver[ENT]); ok {
-		crudtest.Save[ENT, ID](tb, saver, c.MakeContext(tb), &ent)
+		crudtest.Save[ENT, ID](tb, saver, c.MakeContext(tb), &ent, c.CRUDTestConfig())
 		return ent
 	}
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")

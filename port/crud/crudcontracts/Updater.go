@@ -62,7 +62,7 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 					s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 						assert.Must(t).NoError(act(t))
 
-						crudtest.HasEntity[ENT, ID](t, f, c.MakeContext(t), entityWithChanges.Get(t))
+						crudtest.HasEntity[ENT, ID](t, f, c.MakeContext(t), entityWithChanges.Get(t), c.CRUDTestConfig())
 					})
 				}
 
