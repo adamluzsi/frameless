@@ -6,7 +6,6 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud/crudkit"
-	. "go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -43,7 +42,7 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 			n := t.Random.IntN(42)
 			for i := 0; i < n; i++ {
 				ptr := pointer.Of(c.MakeEntity(t))
-				Create[Entity, ID](t, subject, ctx.Get(t), ptr)
+				c.Helper().Create(t, subject, ctx.Get(t), ptr)
 			}
 		})
 

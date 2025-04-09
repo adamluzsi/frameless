@@ -85,7 +85,7 @@ type AllDeleter interface {
 }
 
 // Purger supplies functionality to purge a resource completely.
-// On high level this looks similar to what Deleter do,
+// On high level this looks similar to what AllDeleter do,
 // but in case of an event logged resource, this will purge all the events.
 // After a purge, it is not expected to have anything in the repository.
 // It is heavily discouraged to use Purge for domain interactions.

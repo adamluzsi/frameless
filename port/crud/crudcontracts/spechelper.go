@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"flag"
-	"fmt"
 	"iter"
 	"reflect"
 	"testing"
@@ -12,7 +11,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -21,14 +20,6 @@ import (
 type Contract interface {
 	testcase.Suite
 	testcase.OpenSuite
-}
-
-func getID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ent ENT) ID {
-	id, ok := c.IDA.Lookup(ent)
-	assert.Must(tb).True(ok,
-		`id was expected to be present for the entity`,
-		assert.Message(fmt.Sprintf(` (%#v)`, ent)))
-	return id
 }
 
 type TestingTBContextKey struct{}
@@ -94,7 +85,7 @@ func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], resourc
 
 	ctx := c.MakeContext(tb)
 
-	if id, ok := c.IDA.Lookup(ent); ok {
+	if id, ok := lookupID[ID, ENT](c, ent); ok {
 
 		if finder, canFindByID := resource.(crud.ByIDFinder[ENT, ID]); canFindByID {
 			_, found, err := finder.FindByID(ctx, id)
@@ -125,11 +116,11 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 		}
 	}
 	if creator, ok := resource.(crud.Creator[ENT]); ok {
-		crudtest.Create[ENT, ID](tb, creator, c.MakeContext(tb), &ent)
+		c.Helper().Create(tb, creator, c.MakeContext(tb), &ent)
 		return ent
 	}
 	if saver, ok := resource.(crud.Saver[ENT]); ok {
-		crudtest.Save[ENT, ID](tb, saver, c.MakeContext(tb), &ent)
+		c.Helper().Save(tb, saver, c.MakeContext(tb), &ent)
 		return ent
 	}
 	tb.Log("unable to ensure that the test has an entity that will be included in the query results")
@@ -141,7 +132,12 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 }
 
 func lookupID[ID, ENT any](c Config[ENT, ID], ent ENT) (ID, bool) {
-	return c.IDA.Lookup(ent)
+	id, ok := c.IDA.Lookup(ent)
+	if !ok && reflect.ValueOf(id).CanInt() {
+		// int is an accepted zero value due to many system stores data under indexes, which are starting from zero.
+		ok = true
+	}
+	return id, ok
 }
 
 func setID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ptr *ENT, id ID) {
@@ -149,7 +145,7 @@ func setID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ptr *ENT, id ID) {
 }
 
 func tryDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
-	id, ok := c.IDA.Lookup(v)
+	id, ok := lookupID(c, v)
 	if !ok {
 		return
 	}
@@ -211,13 +207,13 @@ func storer[ENT, ID any](c Config[ENT, ID], resource any) (func(tb testing.TB, p
 	if subject, ok := resource.(crud.Creator[ENT]); ok {
 		return func(tb testing.TB, ptr *ENT) {
 			tb.Helper()
-			crudtest.Create[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+			c.Helper().Create(tb, subject, c.MakeContext(tb), ptr)
 		}, true
 	}
 	if subject, ok := resource.(crud.Saver[ENT]); ok {
 		return func(tb testing.TB, ptr *ENT) {
 			tb.Helper()
-			crudtest.Save[ENT, ID](tb, subject, c.MakeContext(tb), ptr)
+			c.Helper().Save(tb, subject, c.MakeContext(tb), ptr)
 		}, true
 	}
 	return nil, false
@@ -234,7 +230,7 @@ func shouldStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, pt
 
 func shouldDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
 	tb.Helper()
-	id, ok := c.IDA.Lookup(v)
+	id, ok := lookupID(c, v)
 	if !ok {
 		return
 	}
@@ -278,8 +274,4 @@ func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iter.Seq2[ENT,
 		}
 	})
 	return
-}
-
-func wait() {
-	crudtest.Waiter.Wait()
 }

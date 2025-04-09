@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"math/rand"
+	"runtime"
 	"time"
 
 	"go.llib.dev/frameless/pkg/zerokit"
@@ -176,17 +177,72 @@ type Waiter struct {
 	//
 	// Default: 30 seconds
 	Timeout time.Duration
+	// WaitDuration is the time how lone Waiter.Wait should wait between attempting a new retry during Waiter.While.
+	//
+	// Default: 1ms
+	WaitDuration time.Duration
 }
 
+func (rs Waiter) getTimeout() time.Duration {
+	const defaultTimeout = 30 * time.Second
+	return zerokit.Coalesce(rs.Timeout, defaultTimeout)
+}
+
+func (rs Waiter) getWaitDuration() time.Duration {
+	const defaultWaitDuration = time.Millisecond
+	return zerokit.Coalesce(rs.WaitDuration, defaultWaitDuration)
+}
 func (rs Waiter) ShouldTry(ctx context.Context, startedAt StartedAt) bool {
 	now := clock.Now()
-	deadline := startedAt.Add(rs.timeout())
+	deadline := startedAt.Add(rs.getTimeout())
 	return now.Before(deadline) && ctx.Err() == nil
 }
 
-func (rs Waiter) timeout() time.Duration {
-	const defaultTimeout = 30 * time.Second
-	return zerokit.Coalesce(rs.Timeout, defaultTimeout)
+// While implements the retry strategy looping part.
+// Depending on the outcome of the condition,
+// the RetryStrategy can decide whether further iterations can be done or not
+func (rs Waiter) While(do func() (Continue bool)) {
+	finishTime := clock.Now().Add(rs.getTimeout())
+	for do() && clock.Now().Before(finishTime) {
+		rs.wait()
+	}
+}
+
+// Wait will attempt to wait a bit and leave breathing space for other goroutines to steal processing time.
+// It will also attempt to schedule other goroutines.
+func (rs Waiter) wait() {
+	finishTime := clock.Now().Add(rs.getWaitDuration())
+	for clock.Now().Before(finishTime) {
+		wait(rs.getWaitDuration())
+	}
+}
+
+func wait(maxWait time.Duration) {
+	var (
+		goroutNum = runtime.NumGoroutine()
+		startedAt = clock.Now()
+		WaitUnit  = maxWait / time.Duration(goroutNum)
+	)
+	if WaitUnit == 0 {
+		WaitUnit = time.Nanosecond
+	}
+	for i := 0; i < goroutNum; i++ { // since goroutines don't have guarantee when they will be scheduled
+		runtime.Gosched() // we explicitly mark that we are okay with other goroutines to be scheduled
+		elapsed := clock.Now().Sub(startedAt)
+		if maxWait <= elapsed { // if max wait time is reached
+			return
+		}
+		if elapsed < maxWait { // if we withint the max wait time,
+			var (
+				ttw  = WaitUnit
+				diff = maxWait - elapsed
+			)
+			if diff < ttw {
+				ttw = diff
+			}
+			clock.Sleep(ttw) // then we could just yield CPU too with sleep
+		}
+	}
 }
 
 var _ RetryPolicy[FailureCount] = FixedDelay{}

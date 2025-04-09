@@ -146,8 +146,18 @@ func WithShutdown[StartFn, StopFn genericTask](start StartFn, stop StopFn) Task 
 	startTask := ToTask(start)
 	stopTask := ToTask(stop)
 	return func(signal context.Context) error {
-		serveErrChan := make(chan error, 1)
-		go func() { serveErrChan <- startTask(signal) }()
+		var (
+			serveErrChan = make(chan error)
+			done         = make(chan struct{})
+		)
+		defer close(done)
+		go func() {
+			err := startTask(signal)
+			select {
+			case serveErrChan <- err:
+			case <-done:
+			}
+		}()
 		select {
 		case <-signal.Done():
 			break

@@ -30,8 +30,8 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/relationship"
+	"go.llib.dev/frameless/spechelper/testent"
 
-	. "go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -978,14 +978,14 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 func TestRESTHandler_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 	ctx := context.Background()
 
-	var got Foo
-	res := httpkit.RESTHandler[Foo, FooID]{
-		Create: func(ctx context.Context, ptr *Foo) error {
+	var got testent.Foo
+	res := httpkit.RESTHandler[testent.Foo, testent.FooID]{
+		Create: func(ctx context.Context, ptr *testent.Foo) error {
 			ptr.ID = "ok"
 			got = *ptr
 			return nil
 		},
-		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+		Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 			if got.ID != id {
 				return ent, false, nil
 			}
@@ -993,7 +993,7 @@ func TestRESTHandler_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 		},
 	}
 
-	client := httpkit.RESTClient[Foo, FooID]{
+	client := httpkit.RESTClient[testent.Foo, testent.FooID]{
 		HTTPClient: &http.Client{
 			Transport: httpkit.RoundTripperFunc(func(request *http.Request) (*http.Response, error) {
 				rr := httptest.NewRecorder()
@@ -1004,7 +1004,7 @@ func TestRESTHandler_formUrlencodedRequestBodyIsSupported(t *testing.T) {
 		MediaType: mediatype.FormUrlencoded,
 	}
 
-	exp := Foo{
+	exp := testent.Foo{
 		Foo: "foo",
 		Bar: "bar",
 		Baz: "baz",
@@ -1024,26 +1024,26 @@ func TestRESTHandler_WithCRUD_onNotEmptyOperations(t *testing.T) {
 	mem := memory.NewMemory()
 
 	var createC, indexC, showC, updateC, destroyC, destroyAllC bool
-	fooRepo := memory.NewRepository[Foo, FooID](mem)
-	fooAPI := httpkit.RESTHandlerFromCRUD[Foo, FooID](fooRepo, func(h *httpkit.RESTHandler[Foo, FooID]) {
-		h.Create = func(ctx context.Context, ptr *Foo) error {
+	fooRepo := memory.NewRepository[testent.Foo, testent.FooID](mem)
+	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+		h.Create = func(ctx context.Context, ptr *testent.Foo) error {
 			createC = true
-			ptr.ID = FooID(rnd.StringNC(5, random.CharsetAlpha()))
+			ptr.ID = testent.FooID(rnd.StringNC(5, random.CharsetAlpha()))
 			return nil
 		}
-		h.Index = func(ctx context.Context) (iter.Seq2[Foo, error], error) {
+		h.Index = func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
 			indexC = true
-			return iterkit.Empty2[Foo, error](), nil
+			return iterkit.Empty2[testent.Foo, error](), nil
 		}
-		h.Show = func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+		h.Show = func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 			showC = true
-			return Foo{ID: id}, true, nil
+			return testent.Foo{ID: id}, true, nil
 		}
-		h.Update = func(ctx context.Context, ptr *Foo) error {
+		h.Update = func(ctx context.Context, ptr *testent.Foo) error {
 			updateC = true
 			return nil
 		}
-		h.Destroy = func(ctx context.Context, id FooID) error {
+		h.Destroy = func(ctx context.Context, id testent.FooID) error {
 			destroyC = true
 			return nil
 		}
@@ -1071,33 +1071,33 @@ func TestRESTHandler_WithCRUD_onNotEmptyOperations(t *testing.T) {
 }
 
 func TestDTOMapping_manual(t *testing.T) {
-	fooRepository := memory.NewRepository[Foo, FooID](memory.NewMemory())
+	fooRepository := memory.NewRepository[testent.Foo, testent.FooID](memory.NewMemory())
 
 	// FooCustomDTO is not a proper DTO.
 	// The only reason we use this is to ensure that the custom mapping is used
 	// instead of the default dtos mapping.
-	type FooCustomDTO struct{ Foo }
+	type FooCustomDTO struct{ testent.Foo }
 
-	resource := httpkit.RESTHandlerFromCRUD[Foo, FooID](fooRepository, func(h *httpkit.RESTHandler[Foo, FooID]) {
-		h.Mapping = dtokit.Mapping[Foo, FooCustomDTO]{
-			ToENT: func(ctx context.Context, dto FooCustomDTO) (Foo, error) {
+	resource := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepository, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+		h.Mapping = dtokit.Mapping[testent.Foo, FooCustomDTO]{
+			ToENT: func(ctx context.Context, dto FooCustomDTO) (testent.Foo, error) {
 				return dto.Foo, nil
 			},
-			ToDTO: func(ctx context.Context, ent Foo) (FooCustomDTO, error) {
+			ToDTO: func(ctx context.Context, ent testent.Foo) (FooCustomDTO, error) {
 				return FooCustomDTO{Foo: ent}, nil
 			},
 		}
 	})
 
 	example := FooCustomDTO{
-		Foo: Foo{
+		Foo: testent.Foo{
 			Foo: "foo",
 			Bar: "bar",
 			Baz: "baz",
 		},
 	}
 
-	var id FooID
+	var id testent.FooID
 	{
 		t.Log("given we create an entity with our custom DTO")
 		data, err := json.Marshal(example)
@@ -1134,21 +1134,21 @@ func TestRouter_Resource(t *testing.T) {
 
 	ctx := context.Background()
 
-	foo := Foo{
+	foo := testent.Foo{
 		ID:  "42",
 		Foo: "foo",
 		Bar: "bar",
 		Baz: "baz",
 	}
 
-	r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
-		Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
+	r.Resource("foo", httpkit.RESTHandler[testent.Foo, testent.FooID]{
+		Index: func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
 			return iterkit.ToErrSeq(iterkit.SingleValue(foo)), nil
 		},
-		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+		Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 			return foo, true, nil
 		},
-		Mapping: dtokit.Mapping[Foo, FooDTO]{},
+		Mapping: dtokit.Mapping[testent.Foo, testent.FooDTO]{},
 	})
 
 	{
@@ -1157,7 +1157,7 @@ func TestRouter_Resource(t *testing.T) {
 		req.Header.Set("Content-Type", mediatype.JSON)
 		r.ServeHTTP(rr, req)
 
-		var index []FooDTO
+		var index []testent.FooDTO
 		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &index))
 		assert.NotEmpty(t, index)
 		assert.True(t, len(index) == 1)
@@ -1169,10 +1169,10 @@ func TestRouter_Resource(t *testing.T) {
 		req.Header.Set("Content-Type", mediatype.JSON)
 		r.ServeHTTP(rr, req)
 
-		var show FooDTO
+		var show testent.FooDTO
 		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &show))
 		assert.NotEmpty(t, show)
-		assert.Equal(t, dtokit.MustMap[FooDTO](ctx, foo), show)
+		assert.Equal(t, dtokit.MustMap[testent.FooDTO](ctx, foo), show)
 	}
 }
 
@@ -1182,32 +1182,32 @@ func TestRESTHandler_withContext(t *testing.T) {
 	val := rnd.Error().Error()
 
 	var (
-		lastID            FooID
+		lastID            testent.FooID
 		ResourceRoutesRan bool
 	)
 
-	h := httpkit.RESTHandler[Foo, FooID]{
-		Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
+	h := httpkit.RESTHandler[testent.Foo, testent.FooID]{
+		Index: func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
 			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
 			assert.Nil(t, ctx.Value(ResourceProbeKey{}))
-			return iterkit.Empty2[Foo, error](), nil
+			return iterkit.Empty2[testent.Foo, error](), nil
 		},
-		Create: func(ctx context.Context, ptr *Foo) error {
+		Create: func(ctx context.Context, ptr *testent.Foo) error {
 			assert.Equal[any](t, ctx.Value(CollectionProbeKey{}), val)
 			assert.Nil(t, ctx.Value(ResourceProbeKey{}))
 			return nil
 		},
-		Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+		Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
 			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
-			return Foo{ID: id}, true, nil
+			return testent.Foo{ID: id}, true, nil
 		},
-		Update: func(ctx context.Context, ptr *Foo) error {
+		Update: func(ctx context.Context, ptr *testent.Foo) error {
 			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
 			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
 			return nil
 		},
-		Destroy: func(ctx context.Context, id FooID) error {
+		Destroy: func(ctx context.Context, id testent.FooID) error {
 			assert.Equal[any](t, ctx.Value(ResourceProbeKey{}), val)
 			assert.Nil(t, ctx.Value(CollectionProbeKey{}))
 			return nil
@@ -1226,14 +1226,14 @@ func TestRESTHandler_withContext(t *testing.T) {
 		CollectionContext: func(ctx context.Context) (context.Context, error) {
 			return context.WithValue(ctx, CollectionProbeKey{}, val), nil
 		},
-		ResourceContext: func(ctx context.Context, id FooID) (context.Context, error) {
+		ResourceContext: func(ctx context.Context, id testent.FooID) (context.Context, error) {
 			lastID = id
 			return context.WithValue(ctx, ResourceProbeKey{}, val), nil
 		},
 		ScopeAware: true,
 	}
 
-	data, err := json.Marshal(MakeFoo(t))
+	data, err := json.Marshal(testent.MakeFoo(t))
 	assert.NoError(t, err)
 	var mkbody = func() io.Reader {
 		return bytes.NewReader(data)
@@ -1286,14 +1286,14 @@ func TestRESTHandler_withContext(t *testing.T) {
 	t.Run("rainy", func(t *testing.T) {
 		expErr := rnd.Error()
 
-		h := httpkit.RESTHandler[Foo, FooID]{
-			Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
+		h := httpkit.RESTHandler[testent.Foo, testent.FooID]{
+			Index: func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
 				t.Error("Index was not expected to be called")
-				return iterkit.Empty2[Foo, error](), nil
+				return iterkit.Empty2[testent.Foo, error](), nil
 			},
-			Show: func(ctx context.Context, id FooID) (ent Foo, found bool, err error) {
+			Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 				t.Error("Show was not exepcted to be called")
-				return Foo{}, false, nil
+				return testent.Foo{}, false, nil
 			},
 
 			ResourceRoutes: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1312,7 +1312,7 @@ func TestRESTHandler_withContext(t *testing.T) {
 			CollectionContext: func(ctx context.Context) (context.Context, error) {
 				return ctx, expErr
 			},
-			ResourceContext: func(ctx context.Context, id FooID) (context.Context, error) {
+			ResourceContext: func(ctx context.Context, id testent.FooID) (context.Context, error) {
 				return ctx, expErr
 			},
 		}

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase"
 )
@@ -164,3 +165,20 @@ func (r *FooRepository) Update(ctx context.Context, ptr *Foo) error {
 	//TODO implement me
 	panic("implement me")
 }
+
+type Baz struct {
+	Name string // ID
+	V    int
+}
+
+func MakeBaz(tb testing.TB) Baz {
+	t := testcase.ToT(&tb)
+	return Baz{
+		Name: t.Random.Domain(),
+		V:    t.Random.Int(),
+	}
+}
+
+var _ extid.Accessor[Baz, string] = BazIDA
+
+func BazIDA(v *Baz) *string { return &v.Name }

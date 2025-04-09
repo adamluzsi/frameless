@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/tasker/internal"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -622,14 +623,15 @@ func ExampleWithRepeat() {
 	}
 }
 
-func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
+func TestWithShutdown(t *testing.T) { // TODO: flaky
 	StubShutdownTimeout(t, time.Millisecond)
+	s := testcase.NewSpec(t)
 
 	type Key struct{}
 	var expectedKey = Key{}
 	const expectedValue = "value"
 
-	t.Run("with context", func(t *testing.T) {
+	s.Test("with context", func(t *testcase.T) {
 		var (
 			startBegin, startFinished, stopBegin int32
 			stopFinished, stopGraceTimeout       int32
@@ -675,40 +677,45 @@ func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 		})
 	})
 
-	t.Run("smoke on without context", func(t *testing.T) {
+	s.Test("smoke on without context", func(t *testcase.T) {
 		var (
 			startOK int32
 			stopOK  int32
+			done    = make(chan struct{})
 		)
 		task := tasker.WithShutdown(func() error {
-			atomic.AddInt32(&startOK, 1)
-			time.Sleep(blockCheckWaitTime)
+			atomic.StoreInt32(&startOK, 1)
+			<-done
 			return nil
 		}, func() error {
-			atomic.AddInt32(&stopOK, 1)
+			atomic.StoreInt32(&stopOK, 1)
 			return nil
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		assert.NotWithin(t, blockCheckWaitTime, func(context.Context) { // expected to block & ignore assert ctx cancel
-			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
+		w := assert.NotWithin(t, blockCheckWaitTime, func(context.Context) { // expected to block & ignore assert ctx cancel
+			ctx := context.WithValue(ctx, expectedKey, expectedValue)
+			err := task(ctx)
+			assert.NoError(t, err)
 		})
 
 		assert.Eventually(t, time.Second, func(it assert.It) {
-			it.Must.True(atomic.LoadInt32(&startOK) == 1)
-			it.Must.True(atomic.LoadInt32(&stopOK) == 0)
+			it.Must.True(atomic.LoadInt32(&startOK) == 1, "it was expected that task started")
+			it.Must.True(atomic.LoadInt32(&stopOK) == 0, "it was not expected that the task already stopped")
 		})
 
-		cancel() // cancel task
+		close(done) // cancel StartTask
+		cancel()    // cancel task all together
+		w.Wait()
 
 		assert.Eventually(t, time.Second, func(it assert.It) {
 			it.Must.True(atomic.LoadInt32(&stopOK) == 1)
 		})
 	})
 
-	t.Run("error is propagated back from both StartFn", func(t *testing.T) {
+	s.Test("error is propagated back from both StartFn", func(t *testcase.T) {
 		var expectedErr = random.New(random.CryptoSeed{}).Error()
 
 		task := tasker.WithShutdown(func() error {
@@ -722,7 +729,7 @@ func TestWithShutdown_smoke(t *testing.T) { // TODO: flaky
 		})
 	})
 
-	t.Run("error is propagated back from both StopFn", func(t *testing.T) {
+	s.Test("error is propagated back from both StopFn", func(t *testcase.T) {
 		var expectedErr = random.New(random.CryptoSeed{}).Error()
 
 		task := tasker.WithShutdown(func(ctx context.Context) error {

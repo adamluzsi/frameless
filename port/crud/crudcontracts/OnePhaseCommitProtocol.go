@@ -14,7 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 
 	"go.llib.dev/frameless/port/comproto"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper"
 
 	"go.llib.dev/testcase"
@@ -93,8 +93,8 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		tx, err := manager.BeginTx(c.MakeContext(t))
 		t.Must.NoError(err)
 		ptr := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[ENT, ID](t, subject, tx, ptr)
-		id := crudtest.HasID[ENT, ID](t, ptr)
+		c.Helper().Create(t, subject, tx, ptr)
+		id := c.Helper().HasID(t, ptr)
 
 		t.Must.NoError(manager.CommitTx(tx))
 		t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
@@ -121,7 +121,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 			t.Must.NotNil(allDeleter.DeleteAll(tx))
 		}
 
-		crudtest.Waiter.Wait()
+		// crudtest.Waiter.Wait()
 	})
 
 	s.Test(`BeginTx+RollbackTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
@@ -162,16 +162,16 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Must.NoError(err)
 
 		entity := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[ENT, ID](t, subject, tx, entity)
-		id := crudtest.HasID[ENT, ID](t, entity)
+		c.Helper().Create(t, subject, tx, entity)
+		id := c.Helper().HasID(t, entity)
 		t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
 
-		crudtest.IsPresent[ENT, ID](t, subject, tx, id)              // can be found in tx Context
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id) // is absent from the global Context
+		c.Helper().IsPresent(t, subject, tx, id)              // can be found in tx Context
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id) // is absent from the global Context
 
 		t.Must.NoError(manager.CommitTx(tx)) // after the commit
 
-		actually := crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+		actually := c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 		t.Must.Equal(entity, actually)
 	})
 
@@ -179,53 +179,53 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		tx, err := manager.BeginTx(c.MakeContext(t))
 		t.Must.NoError(err)
 		entity := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[ENT, ID](t, subject, tx, entity)
+		c.Helper().Create(t, subject, tx, entity)
 
-		id := crudtest.HasID[ENT, ID](t, entity)
-		crudtest.IsPresent[ENT, ID](t, subject, tx, id)
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id)
+		id := c.Helper().HasID(t, entity)
+		c.Helper().IsPresent(t, subject, tx, id)
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 
 		t.Must.NoError(manager.RollbackTx(tx))
 
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id)
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 	})
 
 	s.Test(`BeginTx+CommitTx / committed delete during transaction`, func(t *testcase.T) {
 		ctx := c.MakeContext(t)
 		entity := pointer.Of(c.MakeEntity(t))
 
-		crudtest.Create[ENT, ID](t, subject, ctx, entity)
-		id := crudtest.HasID[ENT, ID](t, entity)
+		c.Helper().Create(t, subject, ctx, entity)
+		id := c.Helper().HasID(t, entity)
 		t.Defer(subject.DeleteByID, ctx, id)
 
 		tx, err := manager.BeginTx(ctx)
 		t.Must.NoError(err)
 
-		crudtest.IsPresent[ENT, ID](t, subject, tx, id)
+		c.Helper().IsPresent(t, subject, tx, id)
 		t.Must.NoError(subject.DeleteByID(tx, id))
-		crudtest.IsAbsent[ENT, ID](t, subject, tx, id)
+		c.Helper().IsAbsent(t, subject, tx, id)
 
 		// in global Context it is findable
-		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
 		t.Must.NoError(manager.CommitTx(tx))
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id)
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 	})
 
 	s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
 		ctx := c.MakeContext(t)
 		entity := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[ENT, ID](t, subject, ctx, entity)
-		id := crudtest.HasID[ENT, ID](t, entity)
+		c.Helper().Create(t, subject, ctx, entity)
+		id := c.Helper().HasID(t, entity)
 
 		tx, err := manager.BeginTx(ctx)
 		t.Must.NoError(err)
-		crudtest.IsPresent[ENT, ID](t, subject, tx, id)
+		c.Helper().IsPresent(t, subject, tx, id)
 		t.Must.NoError(subject.DeleteByID(tx, id))
-		crudtest.IsAbsent[ENT, ID](t, subject, tx, id)
-		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+		c.Helper().IsAbsent(t, subject, tx, id)
+		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 		t.Must.NoError(manager.RollbackTx(tx))
-		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 	})
 
 	s.Test(`BeginTx should be callable multiple times to ensure emulate multi level transaction`, func(t *testcase.T) {
@@ -250,8 +250,8 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 
 		e1 := pointer.Of(c.MakeEntity(t))
 		t.Must.NoError(subject.Create(tx1, e1))
-		crudtest.IsPresent[ENT, ID](t, subject, tx1, crudtest.HasID[ENT, ID](t, e1))
-		crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e1))
+		c.Helper().IsPresent(t, subject, tx1, c.Helper().HasID(t, e1))
+		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
 		t.Logf("and e1 is created in tx1: %#v", e1)
 
 		tx2InTx1, err := manager.BeginTx(tx1)
@@ -260,20 +260,20 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 
 		e2 := pointer.Of(c.MakeEntity(t))
 		t.Must.NoError(subject.Create(tx2InTx1, e2))
-		crudtest.IsPresent[ENT, ID](t, subject, tx2InTx1, crudtest.HasID[ENT, ID](t, e2))     // tx2 can see e2
-		crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e2)) // global don't see e2
+		c.Helper().IsPresent(t, subject, tx2InTx1, c.Helper().HasID(t, e2))     // tx2 can see e2
+		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2)) // global don't see e2
 		t.Logf(`and e2 is created in tx2 %#v`, e2)
 
 		t.Log(`before commit, entities should be absent from the resource`)
-		crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e1))
-		crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e2))
+		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
+		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2))
 
 		t.Must.NoError(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
 		t.Must.NoError(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
 
 		t.Log(`after everything is committed, entities should be in the resource`)
-		crudtest.IsPresent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e1))
-		crudtest.IsPresent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e2))
+		c.Helper().IsPresent(t, subject, globalContext, c.Helper().HasID(t, e1))
+		c.Helper().IsPresent(t, subject, globalContext, c.Helper().HasID(t, e2))
 	})
 }
 
@@ -287,8 +287,8 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 		t.Must.NoError(err)
 
 		ent := c.MakeEntity(t)
-		crudtest.Save[ENT, ID](t, subject, tx, &ent)
-		crudtest.HasID[ENT, ID](t, &ent)
+		c.Helper().Save(t, subject, tx, &ent)
+		c.Helper().HasID(t, &ent)
 		t.Must.NoError(manager.RollbackTx(tx))
 	})
 
@@ -302,15 +302,15 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			tx, err := manager.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
 			ent := c.MakeEntity(t)
-			crudtest.Save[ENT, ID](t, subject, tx, &ent)
+			c.Helper().Save(t, subject, tx, &ent)
 
-			id := crudtest.HasID[ENT, ID](t, &ent)
-			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
-			crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id)
+			id := c.Helper().HasID(t, &ent)
+			c.Helper().IsPresent(t, subject, tx, id)
+			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 
 			t.Must.NoError(manager.RollbackTx(tx))
 
-			crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id)
+			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure emulate multi level transaction`, func(t *testcase.T) {
@@ -335,8 +335,8 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 			e1 := pointer.Of(c.MakeEntity(t))
 			t.Must.NoError(subject.Save(tx1, e1))
-			crudtest.IsPresent[ENT, ID](t, subject, tx1, crudtest.HasID[ENT, ID](t, e1))
-			crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e1))
+			c.Helper().IsPresent(t, subject, tx1, c.Helper().HasID(t, e1))
+			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
 			t.Logf("and e1 is created in tx1: %#v", e1)
 
 			tx2InTx1, err := manager.BeginTx(tx1)
@@ -345,20 +345,20 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 			e2 := pointer.Of(c.MakeEntity(t))
 			t.Must.NoError(subject.Save(tx2InTx1, e2))
-			crudtest.IsPresent[ENT, ID](t, subject, tx2InTx1, crudtest.HasID[ENT, ID](t, e2))     // tx2 can see e2
-			crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e2)) // global don't see e2
+			c.Helper().IsPresent(t, subject, tx2InTx1, c.Helper().HasID(t, e2))     // tx2 can see e2
+			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2)) // global don't see e2
 			t.Logf(`and e2 is created in tx2 %#v`, e2)
 
 			t.Log(`before commit, entities should be absent from the resource`)
-			crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e1))
-			crudtest.IsAbsent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e2))
+			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
+			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2))
 
 			t.Must.NoError(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
 			t.Must.NoError(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
-			crudtest.IsPresent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e1))
-			crudtest.IsPresent[ENT, ID](t, subject, globalContext, crudtest.HasID[ENT, ID](t, e2))
+			c.Helper().IsPresent(t, subject, globalContext, c.Helper().HasID(t, e1))
+			c.Helper().IsPresent(t, subject, globalContext, c.Helper().HasID(t, e2))
 		})
 	}
 
@@ -373,8 +373,8 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			tx, err := manager.BeginTx(c.MakeContext(t))
 			t.Must.NoError(err)
 			ptr := pointer.Of(c.MakeEntity(t))
-			crudtest.Save[ENT, ID](t, subject, tx, ptr)
-			id := crudtest.HasID[ENT, ID](t, ptr)
+			c.Helper().Save(t, subject, tx, ptr)
+			id := c.Helper().HasID(t, ptr)
 
 			t.Must.NoError(manager.CommitTx(tx))
 			t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
@@ -402,7 +402,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 				t.Must.NotNil(allDeleter.DeleteAll(tx))
 			}
 
-			crudtest.Waiter.Wait()
+			// crudtest.Waiter.Wait()
 		})
 
 		s.Test(`BeginTx+RollbackTx, Saver/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
@@ -443,16 +443,16 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Must.NoError(err)
 
 			ent := c.MakeEntity(t)
-			crudtest.Save[ENT, ID](t, subject, tx, &ent)
-			id := crudtest.HasID[ENT, ID](t, &ent)
+			c.Helper().Save(t, subject, tx, &ent)
+			id := c.Helper().HasID(t, &ent)
 			t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
 
-			crudtest.IsPresent[ENT, ID](t, subject, tx, id)              // can be found in tx Context
-			crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id) // is absent from the global Context
+			c.Helper().IsPresent(t, subject, tx, id)              // can be found in tx Context
+			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id) // is absent from the global Context
 
 			t.Must.NoError(manager.CommitTx(tx)) // after the commit
 
-			actually := crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+			actually := c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 			assert.Equal(t, &ent, actually)
 		})
 
@@ -461,39 +461,39 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			ent := c.MakeEntity(t)
 
 			_, _ = ctx, ent
-			crudtest.Save[ENT, ID](t, subject, ctx, &ent)
-			id := crudtest.HasID[ENT, ID](t, &ent)
+			c.Helper().Save(t, subject, ctx, &ent)
+			id := c.Helper().HasID(t, &ent)
 			t.Defer(subject.DeleteByID, ctx, id)
 
 			tx, err := manager.BeginTx(ctx)
 			t.Must.NoError(err)
 			_ = tx
 
-			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
+			c.Helper().IsPresent(t, subject, tx, id)
 			t.Must.NoError(subject.DeleteByID(tx, id))
-			crudtest.IsAbsent[ENT, ID](t, subject, tx, id)
+			c.Helper().IsAbsent(t, subject, tx, id)
 
 			// in global Context it is findable
-			crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+			c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
 			t.Must.NoError(manager.CommitTx(tx))
-			crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), id)
+			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 		})
 
 		s.Test(`BeginTx+RollbackTx / reverted delete during transaction`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ent := c.MakeEntity(t)
-			crudtest.Save[ENT, ID](t, subject, ctx, &ent)
-			id := crudtest.HasID[ENT, ID](t, &ent)
+			c.Helper().Save(t, subject, ctx, &ent)
+			id := c.Helper().HasID(t, &ent)
 
 			tx, err := manager.BeginTx(ctx)
 			t.Must.NoError(err)
-			crudtest.IsPresent[ENT, ID](t, subject, tx, id)
+			c.Helper().IsPresent(t, subject, tx, id)
 			t.Must.NoError(subject.DeleteByID(tx, id))
-			crudtest.IsAbsent[ENT, ID](t, subject, tx, id)
-			crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+			c.Helper().IsAbsent(t, subject, tx, id)
+			c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 			t.Must.NoError(manager.RollbackTx(tx))
-			crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), id)
+			c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 		})
 	}
 }
@@ -508,31 +508,33 @@ func specOPCPPurger[ENT, ID any](s *testcase.Spec, subject subjectSpecOPCPPurger
 
 	s.Test(`entity created prior to transaction won't be affected by a purge after a rollback`, func(t *testcase.T) {
 		ptr := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[ENT, ID](t, subject, c.MakeContext(t), ptr)
+		c.Helper().Create(t, subject, c.MakeContext(t), ptr)
+		id := c.Helper().HasID(t, ptr)
 
 		tx, err := manager.BeginTx(c.MakeContext(t))
 		t.Must.NoError(err)
 
 		t.Must.NoError(subject.Purge(tx))
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
-		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
+		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
 		t.Must.NoError(manager.RollbackTx(tx))
-		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
+		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 	})
 
 	s.Test(`entity created prior to transaction will be removed by a purge after the commit`, func(t *testcase.T) {
 		ptr := pointer.Of(c.MakeEntity(t))
-		crudtest.Create[ENT, ID](t, subject, c.MakeContext(t), ptr)
+		c.Helper().Create(t, subject, c.MakeContext(t), ptr)
+		id := c.Helper().HasID(t, ptr)
 
 		tx, err := manager.BeginTx(c.MakeContext(t))
 		t.Must.NoError(err)
 
 		t.Must.NoError(subject.Purge(tx))
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
-		crudtest.IsPresent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
+		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
 		t.Must.NoError(manager.CommitTx(tx))
-		crudtest.IsAbsent[ENT, ID](t, subject, c.MakeContext(t), crudtest.HasID[ENT, ID](t, ptr))
+		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 	})
 }

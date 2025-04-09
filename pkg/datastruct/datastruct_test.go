@@ -103,6 +103,28 @@ func TestSet(t *testing.T) {
 		}
 	})
 
+	t.Run("FromValues uniqueness", func(t *testing.T) {
+		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
+		set := datastruct.Set[int]{}.From(exp...)
+		got := set.ToSlice()
+
+		// Create a temporary map to check for duplicates in the slice
+		tempMap := make(map[int]struct{})
+		for _, item := range got {
+			if _, exists := tempMap[item]; exists {
+				t.Errorf("Duplicate found in the slice returned by ToSlice, which should not happen")
+			}
+			tempMap[item] = struct{}{}
+		}
+		// Ensure all original unique values are present
+		for _, v := range exp {
+			_, ok := tempMap[v]
+
+			assert.True(t, ok, assert.MessageF("%v was missing", v),
+				"\nAll unique values from the initial slice should be present in the slice returned by ToSlice.")
+		}
+	})
+
 	t.Run("ToSlice is ordered by default", func(t *testing.T) {
 		exp := []int{1, 5, 2, 7, 3, 9} // Intentional duplicate to test uniqueness
 		set := datastruct.Set[int]{}.FromSlice(exp)

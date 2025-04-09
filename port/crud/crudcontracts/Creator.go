@@ -5,8 +5,6 @@ import (
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
-	. "go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -16,8 +14,9 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 	c := option.Use[Config[ENT, ID], Option[ENT, ID]](opts)
 	s := testcase.NewSpec(nil)
 
-	d, dOK := subject.(crud.ByIDDeleter[ID])
-	f, fOK := subject.(crud.ByIDFinder[ENT, ID])
+	byIDD, byIDDeleterOK := subject.(crud.ByIDDeleter[ID])
+	byIDF, ByIDFinderOK := subject.(crud.ByIDFinder[ENT, ID])
+	allF, AllFinderOK := subject.(crud.AllFinder[ENT])
 
 	var (
 		ctxVar = testcase.Let(s, func(t *testcase.T) context.Context {
@@ -27,24 +26,24 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			v := c.MakeEntity(t)
 			return &v
 		})
-		getID = func(t *testcase.T) ID {
-			id, _ := lookupID[ID](c, *ptr.Get(t))
-			return id
-		}
 	)
 	act := func(t *testcase.T) error {
 		ctx := ctxVar.Get(t)
 		err := subject.Create(ctx, ptr.Get(t))
 		if err == nil {
-			id, _ := lookupID[ID](c, *ptr.Get(t))
-			if dOK {
-				t.Defer(d.DeleteByID, ctx, id)
+			id := c.Helper().HasID(t, ptr.Get(t))
+			if byIDDeleterOK {
+				t.Defer(byIDD.DeleteByID, ctx, id)
 			}
-			if fOK {
-				IsPresent[ENT, ID](t, f, ctx, id)
+			if ByIDFinderOK {
+				c.Helper().IsPresent(t, byIDF, ctx, id)
 			}
 		}
 		return err
+	}
+
+	var getID = func(t *testcase.T) ID {
+		return c.IDA.Get(*ptr.Get(t))
 	}
 
 	s.When(`entity was not saved before`, func(s *testcase.Spec) {
@@ -57,38 +56,34 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			t.Must.NoError(act(t))
 		})
 
-		if fOK {
+		if ByIDFinderOK {
 			s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
 				t.Must.NoError(act(t))
-				t.Must.Equal(ptr.Get(t), IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t)))
+				t.Must.Equal(ptr.Get(t), c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t)))
 			})
 		}
 	})
 
-	if c.SupportIDReuse {
+	if c.SupportIDReuse && byIDDeleterOK {
 		s.When(`entity ID is provided ahead of time`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				if _, hasID := c.IDA.Lookup(*ptr.Get(t)); hasID {
+				if _, hasID := lookupID(c, *ptr.Get(t)); hasID {
 					return
 				}
 
-				if !dOK {
+				if !byIDDeleterOK {
 					t.Skipf("unable to finish test as MakeEntity doesn't supply ID, and %T doesn't implement crud.ByIDDeleter", subject)
 				}
 
 				assert.NoError(t, subject.Create(c.MakeContext(t), ptr.Get(t)))
 
-				if fOK {
-					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
-				} else {
-					wait()
+				if ByIDFinderOK {
+					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 
-				t.Must.NoError(d.DeleteByID(c.MakeContext(t), getID(t)))
-				if fOK {
-					IsAbsent[ENT, ID](t, f, c.MakeContext(t), getID(t))
-				} else {
-					wait()
+				t.Must.NoError(byIDD.DeleteByID(c.MakeContext(t), getID(t)))
+				if ByIDFinderOK {
+					c.Helper().IsAbsent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 			})
 
@@ -96,32 +91,28 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				t.Must.NoError(act(t))
 			})
 
-			if fOK {
+			if ByIDFinderOK {
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
 					t.Must.NoError(act(t))
 
-					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
+					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				})
 			}
 		})
 	}
 
-	if c.SupportRecreate && dOK {
+	if c.SupportRecreate && byIDDeleterOK {
 		s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				ogEnt := *ptr.Get(t) // a deep copy might be better
 				t.Must.NoError(act(t))
-				if fOK {
-					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
-				} else {
-					wait()
+				if ByIDFinderOK {
+					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 
-				t.Must.NoError(d.DeleteByID(c.MakeContext(t), getID(t)))
-				if fOK {
-					IsAbsent[ENT, ID](t, f, c.MakeContext(t), getID(t))
-				} else {
-					wait()
+				t.Must.NoError(byIDD.DeleteByID(c.MakeContext(t), getID(t)))
+				if ByIDFinderOK {
+					c.Helper().IsAbsent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 
 				ptr.Set(t, &ogEnt)
@@ -131,11 +122,11 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				t.Must.NoError(act(t))
 			})
 
-			if fOK {
+			if ByIDFinderOK {
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
 					t.Must.NoError(act(t))
 
-					IsPresent[ENT, ID](t, f, c.MakeContext(t), getID(t))
+					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				})
 			}
 		})
@@ -153,22 +144,36 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		})
 	})
 
-	if fOK {
-		s.Test(`persist on #Create`, func(t *testcase.T) {
+	if ByIDFinderOK {
+		s.Test(`created entity can be retrieved with #FindByID`, func(t *testcase.T) {
 			e := c.MakeEntity(t)
+			c.Helper().Create(t, subject, c.MakeContext(t), &e)
+			id := c.Helper().HasID(t, &e)
 
-			err := subject.Create(c.MakeContext(t), &e)
-			t.Must.NoError(err)
+			t.Must.Equal(e, *c.Helper().IsPresent(t, byIDF, c.MakeContext(t), id))
+		})
+	}
 
-			id, ok := extid.Lookup[ID](&e)
-			t.Must.True(ok, "ID is not defined in the entity struct src definition")
-			t.Must.NotEmpty(id, "it's expected that repository set the external ID in the entity")
+	if AllFinderOK {
+		s.Test(`created entity can be retrieved with #FindAll`, func(t *testcase.T) {
+			e := c.MakeEntity(t)
+			c.Helper().Create(t, subject, c.MakeContext(t), &e)
+			id := c.Helper().HasID(t, &e)
 
-			t.Must.Equal(e, *IsPresent[ENT, ID](t, f, c.MakeContext(t), id))
+			t.Eventually(func(t *testcase.T) {
+				itr, err := allF.FindAll(c.MakeContext(t))
+				assert.NoError(t, err)
 
-			if dOK {
-				t.Must.NoError(d.DeleteByID(c.MakeContext(t), id))
-			}
+				assert.AnyOf(t, func(a *assert.A) {
+					for got := range itr {
+						a.Case(func(t assert.It) {
+							gotID := c.IDA.Get(got)
+							assert.Equal(t, id, gotID)
+							assert.Equal(t, e, got)
+						})
+					}
+				})
+			})
 		})
 	}
 

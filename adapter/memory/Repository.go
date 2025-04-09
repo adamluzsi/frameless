@@ -11,6 +11,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/port/crud"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -291,6 +292,25 @@ func (m *Memory) ctxKeyMeta() ctxKeyMemoryMeta {
 	return ctxKeyMemoryMeta{NS: m.getNS()}
 }
 
+func (m *Memory) PurgeNamespace(ctx context.Context, namespace string) error {
+	if tx, ok := m.LookupTx(ctx); ok {
+		if tx.done {
+			return errTxDone
+		}
+		for _, key := range mapkit.Keys(tx.all(namespace)) {
+			tx.del(namespace, key)
+		}
+		return nil
+	}
+	m.m.Lock()
+	defer m.m.Unlock()
+	if m.tables == nil {
+		return nil
+	}
+	m.tables[namespace] = MemoryNamespace{}
+	return nil
+}
+
 func (m *Memory) lookupMetaMap(ctx context.Context) (ctxValueMemoryMeta, bool) {
 	if ctx == nil {
 		return nil, false
@@ -449,7 +469,7 @@ func (m *Memory) namespace(name string) MemoryNamespace {
 }
 
 type MemoryTx struct {
-	m       sync.Mutex
+	m       sync.RWMutex
 	done    bool
 	super   memoryActions
 	changes map[string]memoryTxChanges
@@ -463,8 +483,8 @@ type memoryTxChanges struct {
 }
 
 func (tx *MemoryTx) all(namespace string) map[string]interface{} {
-	tx.m.Lock()
-	defer tx.m.Unlock()
+	tx.m.RLock()
+	defer tx.m.RUnlock()
 	svs := tx.super.all(namespace)
 	cvs := tx.getChanges(namespace)
 	avs := make(map[string]interface{})

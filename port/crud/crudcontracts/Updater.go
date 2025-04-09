@@ -5,7 +5,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"
@@ -62,7 +61,7 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 					s.Then(`then it will update stored entity values by the received one`, func(t *testcase.T) {
 						assert.Must(t).NoError(act(t))
 
-						crudtest.HasEntity[ENT, ID](t, f, c.MakeContext(t), entityWithChanges.Get(t))
+						c.Helper().HasEntity(t, f, c.MakeContext(t), entityWithChanges.Get(t))
 					})
 				}
 
@@ -86,7 +85,7 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 			entityWithChanges.Let(s, func(t *testcase.T) *ENT {
 				newEntity := pointer.Of(c.MakeEntity(t))
 				store(t, newEntity)
-				crudtest.Delete[ENT, ID](t, d, c.MakeContext(t), newEntity)
+				c.Helper().Delete(t, d, c.MakeContext(t), newEntity)
 				return newEntity
 			})
 

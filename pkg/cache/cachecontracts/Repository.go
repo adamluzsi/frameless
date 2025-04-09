@@ -46,7 +46,7 @@ func Repository[Entity any, ID comparable](subject cachepkg.Repository[Entity, I
 					ID: cachepkg.HitID(t.Random.UUID()),
 					EntityIDs: random.Slice[ID](t.Random.IntBetween(3, 7), func() ID {
 						ent := c.CRUD.MakeEntity(t)
-						crudtest.Create[Entity, ID](t, repository, ctx, &ent)
+						c.CRUD.Helper().Create(t, repository, ctx, &ent)
 						id, _ := c.CRUD.IDA.Lookup(ent)
 						return id
 					}),

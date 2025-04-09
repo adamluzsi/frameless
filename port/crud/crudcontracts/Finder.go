@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
-	crudtest "go.llib.dev/frameless/port/crud/crudtest"
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"
@@ -57,7 +57,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 			})
 
 			id.Let(s, func(t *testcase.T) ID {
-				return crudtest.HasID[ENT, ID](t, pointer.Of(ent.Get(t)))
+				return c.Helper().HasID(t, pointer.Of(ent.Get(t)))
 			})
 
 			s.Then("it will find and return the entity", func(t *testcase.T) {
@@ -77,7 +77,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 					var (
 						ctx = c.MakeContext(t)
 						ent = mkEnt(t)
-						id  = crudtest.HasID[ENT, ID](t, &ent)
+						id  = c.Helper().HasID(t, &ent)
 					)
 					crudtest.Eventually.Assert(t, func(it assert.It) {
 						_, found, err := subject.FindByID(ctx, id)
@@ -108,9 +108,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 
 			return QueryOneSubject[ENT]{
 				Query: func(ctx context.Context) (_ ENT, found bool, _ error) {
-					id, ok := c.IDA.Lookup(ent)
-					assert.True(tb, ok, "expected that the prepared entity has an ID ready for the FindByID test")
-					return subject.FindByID(ctx, id)
+					return subject.FindByID(ctx, c.IDA.Get(ent))
 				},
 				ExpectedEntity: ent,
 				ExcludedEntity: func() ENT {
@@ -189,7 +187,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 
 	s.When(`id list contains ids stored in the repository`, func(s *testcase.Spec) {
 		ids.Let(s, func(t *testcase.T) []ID {
-			return []ID{getID[ENT, ID](t, c, *ent1.Get(t)), getID[ENT, ID](t, c, *ent2.Get(t))}
+			return []ID{c.IDA.Get(*ent1.Get(t)), c.IDA.Get(*ent2.Get(t))}
 		})
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
@@ -205,11 +203,11 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 	if deleter, ok := subject.(crud.ByIDDeleter[ID]); ok {
 		s.When(`id list contains at least one id that doesn't have stored entity`, func(s *testcase.Spec) {
 			ids.Let(s, func(t *testcase.T) []ID {
-				return []ID{getID[ENT, ID](t, c, *ent1.Get(t)), getID[ENT, ID](t, c, *ent2.Get(t))}
+				return []ID{c.IDA.Get(*ent1.Get(t)), c.IDA.Get(*ent2.Get(t))}
 			})
 
 			s.Before(func(t *testcase.T) {
-				crudtest.Delete[ENT, ID](t, deleter, ctx.Get(t), ent1.Get(t))
+				c.Helper().Delete(t, deleter, ctx.Get(t), ent1.Get(t))
 			})
 
 			s.Then(`it will yield error early on`, func(t *testcase.T) {

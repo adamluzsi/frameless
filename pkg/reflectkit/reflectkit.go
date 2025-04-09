@@ -6,7 +6,6 @@ import (
 	"iter"
 	"reflect"
 	"strings"
-	"time"
 	"unsafe"
 
 	"go.llib.dev/frameless/internal/interr"
@@ -661,15 +660,6 @@ func compareNumbares[T number](a, b T) int {
 	default:
 		return 0
 	}
-}
-
-func compareTime(a, b time.Time) int {
-	if a.Before(b) {
-		return -1
-	} else if a.After(b) {
-		return 1
-	}
-	return 0
 }
 
 func canElem(val reflect.Value) bool {

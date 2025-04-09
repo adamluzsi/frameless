@@ -4,14 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/spechelper"
 )
 
-type Option[ENT, ID any] interface {
-	option.Option[Config[ENT, ID]]
-}
+type Option[ENT, ID any] option.Option[Config[ENT, ID]]
 
 type Config[ENT, ID any] struct {
 	// MakeContext is responsible to return back a backgrond context for testing with the crud contract subject.
@@ -54,4 +53,10 @@ func (c *Config[ENT, ID]) Init() {
 
 func (c Config[ENT, ID]) Configure(config *Config[ENT, ID]) {
 	option.Configure(c, config)
+}
+
+func (c *Config[ENT, ID]) Helper() crudtest.Helper[ENT, ID] {
+	return crudtest.Helper[ENT, ID]{
+		IDA: c.IDA,
+	}
 }

@@ -45,6 +45,13 @@ func (el *EventLog) lookupMetaMap(ctx context.Context) (ctxValueEventLogMeta, bo
 	return m, ok
 }
 
+func (el *EventLog) Purge(ctx context.Context) error {
+	el.eMutex.Lock()
+	defer el.eMutex.Unlock()
+	el.events = nil
+	return nil
+}
+
 func (el *EventLog) SetMeta(ctx context.Context, key string, value interface{}) (context.Context, error) {
 	if ctx == nil {
 		return ctx, fmt.Errorf(`input context.Context was nil`)

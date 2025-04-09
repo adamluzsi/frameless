@@ -277,16 +277,14 @@ func QueryMany[ENT, ID any](
 						probes := t.Random.IntBetween(3, 5)
 
 						for value, err := range itr {
+							assert.NoError(t, err)
+
 							if probes == 0 {
 								break
 							}
 							probes--
 
-							assert.NoError(t, err)
-							id, ok := lookupID[ID](c, value)
-							assert.True(t, ok, "expected that value has an external ID reference")
-
-							ent, found, err := subject.FindByID(c.MakeContext(t), id)
+							ent, found, err := subject.FindByID(c.MakeContext(t), c.IDA.Get(value))
 							assert.NoError(t, err)
 							assert.True(t, found, "expected that FindByID will able to retrieve a value for the given ID")
 							assert.Equal(t, value, ent)

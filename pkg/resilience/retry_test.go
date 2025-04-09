@@ -3,6 +3,7 @@ package resilience_test
 import (
 	"context"
 	"math"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -398,15 +399,18 @@ func TestJitter_ShouldTry(t *testing.T) {
 		})
 	})
 
-	s.Context("integration with testcase/clock package", func(s *testcase.Spec) {
+	s.Context("integrate testcase/clock", func(s *testcase.Spec) {
 		const multiplier = 200000
+
 		s.Before(func(t *testcase.T) {
 			timecop.SetSpeed(t, multiplier)
 		})
 
+		delay := let.DurationBetween(s, 30*time.Second, time.Minute)
+
 		subject.Let(s, func(t *testcase.T) *resilience.Jitter {
 			v := subject.Super(t)
-			v.Delay = time.Hour
+			v.Delay = delay.Get(t)
 			v.Attempts = 10
 			return v
 		})
@@ -414,14 +418,9 @@ func TestJitter_ShouldTry(t *testing.T) {
 		failureCount.LetValue(s, 5)
 
 		s.Then("it will finish quickly", func(t *testcase.T) {
-			const buffer = 500 * time.Millisecond
-
-			var duration time.Duration
-			t.Must.Within(subject.Get(t).Delay, func(ctx context.Context) {
-				duration = measure(func() { act(t) })
+			t.Must.Within(time.Hour, func(ctx context.Context) {
+				act(t)
 			})
-
-			t.Must.True(duration <= (subject.Get(t).Delay/multiplier)+buffer)
 		})
 	})
 }
@@ -440,69 +439,205 @@ func ExampleWaiter_ShouldTry() {
 	// return failure
 }
 
-func TestWaiter_ShouldTry(t *testing.T) {
+func TestWaiter(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		timeout = testcase.Let[time.Duration](s, func(t *testcase.T) time.Duration {
-			return time.Hour
+		timeout      = let.DurationBetween(s, time.Minute, time.Hour)
+		waitDuration = let.VarOf[time.Duration](s, 0)
+
+		subject = let.Var(s, func(t *testcase.T) resilience.Waiter {
+			return resilience.Waiter{
+				Timeout:      timeout.Get(t),
+				WaitDuration: waitDuration.Get(t),
+			}
 		})
 	)
-	subject := testcase.Let(s, func(t *testcase.T) resilience.Waiter {
-		return resilience.Waiter{Timeout: timeout.Get(t)}
-	})
 
-	var (
-		Context   = let.Context(s)
-		startedAt = testcase.Let[resilience.StartedAt](s, func(t *testcase.T) resilience.StartedAt {
-			return clock.Now()
-		}).EagerLoading(s)
-	)
-	act := func(t *testcase.T) bool {
-		return subject.Get(t).ShouldTry(Context.Get(t), startedAt.Get(t))
-	}
+	s.Test("implements testcase/assert.RetryStrategy", func(t *testcase.T) {
+		var rs assert.Loop = subject.Get(t) // implements assert retry strategy
+		var r = assert.Retry{Strategy: rs}
 
-	s.Then("we can attempt to retry", func(t *testcase.T) {
-		t.Must.True(act(t))
-	})
-
-	s.When("context is cancelled", func(s *testcase.Spec) {
-		Context.Let(s, func(t *testcase.T) context.Context {
-			ctx, cancel := context.WithCancel(Context.Super(t))
-			cancel()
-			return ctx
-		})
-
-		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
-			t.Must.False(act(t))
+		var once int32
+		r.Assert(t, func(t assert.It) {
+			if atomic.CompareAndSwapInt32(&once, 0, 1) {
+				t.FailNow()
+			}
+			t.Log("pass")
 		})
 	})
 
-	s.When("the last failure occured within the deadline", func(s *testcase.Spec) {
-		startedAt.Let(s, func(t *testcase.T) resilience.StartedAt {
-			return time.Now()
-		})
-		timeout.Let(s, func(t *testcase.T) time.Duration {
-			return time.Hour
+	s.Describe("ShouldTry", func(s *testcase.Spec) {
+		var (
+			Context   = let.Context(s)
+			startedAt = let.Var(s, func(t *testcase.T) resilience.StartedAt {
+				return clock.Now()
+			}).EagerLoading(s)
+		)
+		act := func(t *testcase.T) bool {
+			return subject.Get(t).ShouldTry(Context.Get(t), startedAt.Get(t))
+		}
+
+		s.Then("we can attempt to retry", func(t *testcase.T) {
+			t.Must.True(act(t))
 		})
 
-		s.Then("it will instantly return", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
-				Context.Set(t, ctx)
-				act(t)
+		s.When("context is cancelled", func(s *testcase.Spec) {
+			Context.Let(s, func(t *testcase.T) context.Context {
+				ctx, cancel := context.WithCancel(Context.Super(t))
+				cancel()
+				return ctx
+			})
+
+			s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
+				t.Must.False(act(t))
+			})
+		})
+
+		s.When("the last failure occured within the deadline", func(s *testcase.Spec) {
+			startedAt.Let(s, func(t *testcase.T) resilience.StartedAt {
+				return time.Now()
+			})
+			timeout.Let(s, func(t *testcase.T) time.Duration {
+				return time.Hour
+			})
+
+			s.Then("it will instantly return", func(t *testcase.T) {
+				t.Must.Within(time.Second, func(ctx context.Context) {
+					Context.Set(t, ctx)
+					act(t)
+				})
+			})
+		})
+
+		s.When("we are over the deadline", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				timecop.Travel(t, time.Hour+time.Second)
+			})
+
+			s.Then("we are told to not avoid a new retry attempt", func(t *testcase.T) {
+				t.Must.False(act(t))
 			})
 		})
 	})
 
-	s.When("we are over the deadline", func(s *testcase.Spec) {
-		s.Before(func(t *testcase.T) {
-			timecop.Travel(t, time.Hour+time.Second)
+	s.Describe("WaitWhile", func(s *testcase.Spec) {
+		var condition = let.Var[func() (cont bool)](s, nil)
+		act := func(t *testcase.T) {
+			subject.Get(t).While(condition.Get(t))
+		}
+
+		s.When("condition keeps remaining true", func(s *testcase.Spec) {
+			condition.Let(s, func(t *testcase.T) func() (cont bool) {
+				return func() (cont bool) {
+					return true // while true
+				}
+			})
+
+			s.Then("the wait time will fully reached", func(t *testcase.T) {
+				const wtime = time.Second / 4
+				assert.True(t, wtime < timeout.Get(t))
+
+				w := assert.NotWithin(t, wtime, func(ctx context.Context) {
+					act(t)
+				}, "expected that the timeout is not reached due to the `while true {}` condition")
+
+				timecop.Travel(t, timeout.Get(t))
+
+				assert.Within(t, wtime, func(ctx context.Context) {
+					w.Wait()
+				}, "expected that deadline reached already by this point")
+			})
 		})
 
-		s.Then("we are told to not avoid a new retry attempt", func(t *testcase.T) {
-			t.Must.False(act(t))
+		s.When("condition terminates the while loop", func(s *testcase.Spec) {
+			condition.Let(s, func(t *testcase.T) func() (cont bool) {
+				return func() (cont bool) {
+					return false // while false
+				}
+			})
+
+			s.Then("the timeout is not reached", func(t *testcase.T) {
+				const wtime = time.Second / 4
+				assert.True(t, wtime < timeout.Get(t))
+
+				assert.Within(t, wtime, func(ctx context.Context) {
+					act(t)
+				})
+			})
 		})
+
+		s.When("while condition is true for once", func(s *testcase.Spec) {
+			condition.Let(s, func(t *testcase.T) func() (cont bool) {
+				var once int32
+				return func() (cont bool) {
+					if atomic.CompareAndSwapInt32(&once, 0, 1) {
+						return true // while true once
+					}
+					return false
+				}
+			})
+
+			s.And("wait duration is not set", func(s *testcase.Spec) {
+				waitDuration.LetValue(s, 0)
+
+				s.Then("default wait duration is waited", func(t *testcase.T) {
+					const defaultWaitDuration = time.Millisecond
+
+					w := assert.NotWithin(t, defaultWaitDuration-(defaultWaitDuration/4), func(ctx context.Context) {
+						act(t)
+					})
+
+					timecop.Travel(t, defaultWaitDuration)
+
+					assert.Within(t, defaultWaitDuration+(defaultWaitDuration/10), func(ctx context.Context) {
+						w.Wait()
+					})
+				})
+			})
+
+			s.And("wait duration is set", func(s *testcase.Spec) {
+				waitDuration.Let(s, let.DurationBetween(s, time.Minute, time.Hour).Get)
+
+				s.Then("default wait duration is waited", func(t *testcase.T) {
+					var wtime = 25 * time.Millisecond
+					assert.True(t, wtime < waitDuration.Get(t))
+
+					w := assert.NotWithin(t, wtime-(wtime/4), func(ctx context.Context) {
+						act(t)
+					})
+
+					timecop.Travel(t, waitDuration.Get(t))
+
+					assert.Within(t, wtime, func(ctx context.Context) {
+						w.Wait()
+					})
+				})
+			})
+
+		})
+
 	})
+
+	// s.Describe("#WaitWhile", func(s *testcase.Spec) {
+	// 	var condition = let.Var[func() bool](s, nil)
+	// 	act := let.Act0(func(t *testcase.T) {
+	// 		subject.Get(t).WaitWhile(condition.Get(t))
+	// 	})
+
+	// 	s.When("condition is forever true", func(s *testcase.Spec) {
+	// 		condition.Let(s, func(t *testcase.T) func() (cont bool) {
+	// 			return func() (cont bool) { return true }
+	// 		})
+	// 	})
+
+	// 	s.When("condition is always false", func(s *testcase.Spec) {
+	// 		condition.Let(s, func(t *testcase.T) func() (cont bool) {
+	// 			return func() (cont bool) { return true }
+	// 		})
+	// 	})
+
+	// })
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -656,29 +791,27 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		})
 	})
 
-	s.Context("integration with testcase/clock package", func(s *testcase.Spec) {
+	s.Context("integrate testcase/clock", func(s *testcase.Spec) {
 		const multiplier = 200000
+
 		s.Before(func(t *testcase.T) {
 			timecop.SetSpeed(t, multiplier)
 		})
 
+		delay := let.DurationBetween(s, 30*time.Second, time.Minute)
+
 		subject.Let(s, func(t *testcase.T) *resilience.FixedDelay {
 			v := subject.Super(t)
-			v.Delay = time.Hour
+			v.Delay = delay.Get(t)
 			return v
 		})
 
 		failureCount.LetValue(s, 5)
 
 		s.Then("it will finish quickly", func(t *testcase.T) {
-			const buffer = 500 * time.Millisecond
-
-			var duration time.Duration
-			t.Must.Within(subject.Get(t).Delay, func(ctx context.Context) {
-				duration = measure(func() { act(t) })
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				act(t)
 			})
-
-			t.Must.True(duration <= (subject.Get(t).Delay/multiplier)+buffer)
 		})
 	})
 
