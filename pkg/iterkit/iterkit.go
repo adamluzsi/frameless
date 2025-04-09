@@ -386,10 +386,10 @@ func BatchSize(n int) BatchOption {
 }
 
 func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
-	if c.WaitLimit <= 0 {
-		panic(fmt.Sprintf("[Batch with WaitLimit] invalid waitLimit: %d", c.WaitLimit))
-	}
 	size := c.getSize()
+	if c.WaitLimit <= 0 {
+		panic(fmt.Sprintf("invalid iterkit.BatchWaitLimit for iterkit.Batch: %d", c.WaitLimit))
+	}
 	return func(yield func([]T) bool) {
 		var (
 			feed = make(chan T)
@@ -399,12 +399,12 @@ func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
 
 		go func() {
 			defer close(feed)
-		consume:
+		SUB:
 			for v := range i {
 				select {
 				case feed <- v:
 				case <-done:
-					break consume
+					break SUB
 				}
 			}
 		}()
@@ -423,30 +423,27 @@ func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
 			return cont
 		}
 
-	pushing:
+	PUB:
 		for {
-			var (
-				v  T
-				ok bool
-			)
-
 			ticker.Reset(c.WaitLimit)
 			select {
-			case v, ok = <-feed:
-				if !ok {
+			case v, ok := <-feed:
+				if !ok { // feed is over
 					if !flush() {
 						return
 					}
-					break pushing
+					break PUB
+				}
+				vs = append(vs, v)
+				if size <= len(vs) {
+					if !flush() {
+						return
+					}
 				}
 			case <-ticker.C:
 				if len(vs) == 0 {
-					continue pushing
+					continue PUB
 				}
-			}
-
-			vs = append(vs, v)
-			if size <= len(vs) {
 				if !flush() {
 					return
 				}
