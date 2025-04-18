@@ -136,10 +136,10 @@ func ShiftMonth(m time.Month, n int) time.Month {
 	return time.Month(adjusted + 1)
 }
 
-// DiffMonth calculates the number of months between ref and target.
+// MonthDiff calculates the number of months between ref and target.
 // It assumes a cyclic nature, meaning that if target is before ref in the year,
 // it wraps around after December.
-func DiffMonth(ref, target time.Month) int {
+func MonthDiff(ref, target time.Month) int {
 	diff := int(target) - int(ref)
 	if diff < 0 {
 		diff += 12
@@ -147,10 +147,10 @@ func DiffMonth(ref, target time.Month) int {
 	return diff
 }
 
-// DiffWeekday calculates the number of days between ref and target.
+// WeekdayDiff calculates the number of days between ref and target.
 // It assumes a cyclic nature, meaning that if target is before ref in the week,
 // it wraps around after Sunday.
-func DiffWeekday(ref, target time.Weekday) int {
+func WeekdayDiff(ref, target time.Weekday) int {
 	diff := int(target) - int(ref)
 	if diff < 0 {
 		diff += 7
@@ -158,16 +158,18 @@ func DiffWeekday(ref, target time.Weekday) int {
 	return diff
 }
 
-func DiffDay(ref, target time.Time) int {
+// DayDiff returns the difference in days between two times,
+// truncating each to midnight before comparison.
+func DayDiff(ref, target time.Time) int {
 	ref = truncateDay(ref)
 	target = truncateDay(target)
 	diff := target.Sub(ref)
 	return int(diff.Hours() / 24)
 }
 
-// Schedule allows to define an abstract time,
+// ScheduleMVP allows to define an abstract time,
 // that continously reoccurs in time based on the specifications set in its field.
-type Schedule struct {
+type ScheduleMVP struct {
 	// DayTime is the time during a day, where the scheduling begins.
 	DayTime DayTime
 	// Duration is length of the scheduling.
@@ -184,7 +186,7 @@ type Schedule struct {
 	Location *time.Location
 }
 
-func (sch Schedule) IsZero() bool {
+func (sch ScheduleMVP) IsZero() bool {
 	return sch.DayTime.IsZero() &&
 		sch.Duration == 0 &&
 		sch.Month == nil &&
@@ -193,7 +195,7 @@ func (sch Schedule) IsZero() bool {
 		sch.Location == nil
 }
 
-func (sch Schedule) Validate() error {
+func (sch ScheduleMVP) Validate() error {
 	if err := validate.Struct(sch, validate.InsideValidateFunc); err != nil {
 		return err
 	}
@@ -203,7 +205,7 @@ func (sch Schedule) Validate() error {
 	return nil
 }
 
-func (sch Schedule) Check(ref time.Time) bool {
+func (sch ScheduleMVP) Check(ref time.Time) bool {
 	if sch.Location != nil {
 		ref = ref.In(sch.Location)
 	}
@@ -221,7 +223,7 @@ func (sch Schedule) Check(ref time.Time) bool {
 	return true
 }
 
-func (sch Schedule) getRangeOnDate(ref time.Time) Range {
+func (sch ScheduleMVP) getRangeOnDate(ref time.Time) Range {
 	var (
 		from = sch.DayTime.ToTimeRelTo(ref)
 		till = from.Add(sch.Duration)
@@ -232,7 +234,7 @@ func (sch Schedule) getRangeOnDate(ref time.Time) Range {
 	}
 }
 
-func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
+func (sch ScheduleMVP) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 	for {
 		occurrence, ok := sch.near(ref)
 		if !ok {
@@ -246,7 +248,7 @@ func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 	}
 }
 
-func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
+func (sch ScheduleMVP) near(ref time.Time) (nearOccurrence Range, ok bool) {
 	if sch.Validate() != nil {
 		return Range{}, false
 	}
@@ -263,7 +265,7 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 
 	for {
 		if sch.Month != nil {
-			distance := DiffMonth(candidate.Month(), *sch.Month)
+			distance := MonthDiff(candidate.Month(), *sch.Month)
 			if distance != 0 {
 				targetMonth := candidate.Month() + time.Month(distance)
 				// first day of the target Month
@@ -288,7 +290,7 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 		}
 
 		if sch.Weekday != nil {
-			daysTill := DiffWeekday(candidate.Weekday(), *sch.Weekday)
+			daysTill := WeekdayDiff(candidate.Weekday(), *sch.Weekday)
 			if daysTill != 0 {
 				candidate = truncateDay(candidate)
 				candidate = candidate.AddDate(0, 0, daysTill)
@@ -406,6 +408,64 @@ func (Delta) ByDuration(duration time.Duration) Delta {
 	return dist
 }
 
+func (Delta) Between(a, b time.Time) Delta {
+	var (
+		d          Delta
+		isNegative = a.After(b)
+	)
+	if isNegative {
+		b, a = a, b
+	}
+
+	{ // years
+		for c, i := a, 1; c.Year() < b.Year(); i++ {
+			c = a.AddDate(i, 0, 0)
+			if !compare.IsLessOrEqual(c.Compare(b)) {
+				break
+			}
+			d.Year = i
+		}
+		a = a.AddDate(d.Year, 0, 0)
+	}
+
+	{ // months
+
+		for c, i := a, 1; 0 < MonthDiff(c.Month(), b.Month()); i++ {
+			c = a.AddDate(0, i, 0)
+			if !compare.IsLessOrEqual(c.Compare(b)) {
+				break
+			}
+			d.Month = i
+		}
+		a = a.AddDate(0, d.Month, 0)
+	}
+
+	rem := Delta{}.ByDuration(b.Sub(a))
+	d.Day = rem.Day
+	d.Hour = rem.Hour
+	d.Minute = rem.Minute
+	d.Second = rem.Second
+	d.Nanosecond = rem.Nanosecond
+
+	if isNegative {
+		return d.invert()
+	}
+
+	return d
+}
+
+func (d Delta) invert() Delta {
+	return Delta{
+		Year:       -1 * d.Year,
+		Month:      -1 * d.Month,
+		Day:        -1 * d.Day,
+		Hour:       -1 * d.Hour,
+		Minute:     -1 * d.Minute,
+		Second:     -1 * d.Second,
+		Nanosecond: -1 * d.Nanosecond,
+	}
+}
+
 func (d Delta) AddTo(t time.Time) time.Time {
 	year, month, day := t.Date()
 	hour, min, sec := t.Clock()
@@ -488,4 +548,23 @@ func (d Delta) isNormalised() bool {
 		-1*59 <= d.Second &&
 		d.Nanosecond <= maxNormalisedNanosecond &&
 		-1*maxNormalisedNanosecond <= d.Nanosecond
+}
+
+type Schedule interface {
+	// Near will return the nearest time to the reference time, for the given Schedule.
+	// Near included the reference time as valid result.
+	Near(ref time.Time) (time.Time, bool)
+}
+
+func FindNext(ref time.Time, schedules ...Schedule) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+var _ Schedule = Monthly(0)
+
+type Monthly time.Month
+
+// Near will return the nearest time that Has the given Month.
+func (m Monthly) Near(ref time.Time) (_ time.Time, _ bool) {
+	panic("not implemented") // TODO: Implement
 }

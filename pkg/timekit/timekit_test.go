@@ -222,40 +222,67 @@ func TestShiftMonth(t *testing.T) {
 	})
 }
 
-func TestDiffMonth(t *testing.T) {
+func ExampleMonthDiff() {
+	_ = timekit.MonthDiff(time.January, time.January)   // 0
+	_ = timekit.MonthDiff(time.January, time.February)  // 1
+	_ = timekit.MonthDiff(time.January, time.March)     // 2
+	_ = timekit.MonthDiff(time.January, time.April)     // 3
+	_ = timekit.MonthDiff(time.January, time.May)       // 4
+	_ = timekit.MonthDiff(time.January, time.June)      // 5
+	_ = timekit.MonthDiff(time.January, time.July)      // 6
+	_ = timekit.MonthDiff(time.January, time.August)    // 7
+	_ = timekit.MonthDiff(time.January, time.September) // 8
+	_ = timekit.MonthDiff(time.January, time.October)   // 9
+	_ = timekit.MonthDiff(time.January, time.November)  // 10
+	_ = timekit.MonthDiff(time.January, time.December)  // 11
+	_ = timekit.MonthDiff(time.December, time.January)  // 1
+	_ = timekit.MonthDiff(time.October, time.January)   // 3
+}
+
+func TestMonthDiff(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Test("smoke", func(t *testcase.T) {
-		assert.Equal(t, timekit.DiffMonth(time.January, time.January), 0)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.February), 1)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.March), 2)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.April), 3)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.May), 4)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.June), 5)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.July), 6)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.August), 7)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.September), 8)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.October), 9)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.November), 10)
-		assert.Equal(t, timekit.DiffMonth(time.January, time.December), 11)
-		assert.Equal(t, timekit.DiffMonth(time.December, time.January), 1)
-		assert.Equal(t, timekit.DiffMonth(time.October, time.January), 3)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.January), 0)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.February), 1)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.March), 2)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.April), 3)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.May), 4)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.June), 5)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.July), 6)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.August), 7)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.September), 8)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.October), 9)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.November), 10)
+		assert.Equal(t, timekit.MonthDiff(time.January, time.December), 11)
+		assert.Equal(t, timekit.MonthDiff(time.December, time.January), 1)
+		assert.Equal(t, timekit.MonthDiff(time.October, time.January), 3)
 	})
 }
 
-func TestDiffWeekday(t *testing.T) {
+func ExampleWeekdayDiff() {
+	_ = timekit.WeekdayDiff(time.Monday, time.Monday)    // 0
+	_ = timekit.WeekdayDiff(time.Monday, time.Tuesday)   // 1
+	_ = timekit.WeekdayDiff(time.Monday, time.Wednesday) // 2
+	_ = timekit.WeekdayDiff(time.Monday, time.Thursday)  // 3
+	_ = timekit.WeekdayDiff(time.Monday, time.Friday)    // 4
+	_ = timekit.WeekdayDiff(time.Monday, time.Saturday)  // 5
+	_ = timekit.WeekdayDiff(time.Monday, time.Sunday)    // 6
+}
+
+func TestWeekdayDiff(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Test("smoke", func(t *testcase.T) {
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Monday), 0)
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Tuesday), 1)
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Wednesday), 2)
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Thursday), 3)
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Friday), 4)
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Saturday), 5)
-		assert.Equal(t, timekit.DiffWeekday(time.Monday, time.Sunday), 6)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Monday), 0)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Tuesday), 1)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Wednesday), 2)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Thursday), 3)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Friday), 4)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Saturday), 5)
+		assert.Equal(t, timekit.WeekdayDiff(time.Monday, time.Sunday), 6)
 	})
 }
 
-func TestDiffDay(t *testing.T) {
+func TestDayDiff(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
@@ -263,7 +290,7 @@ func TestDiffDay(t *testing.T) {
 		target = let.Var[time.Time](s, nil)
 	)
 	act := let.Act(func(t *testcase.T) int {
-		return timekit.DiffDay(ref.Get(t), target.Get(t))
+		return timekit.DayDiff(ref.Get(t), target.Get(t))
 	})
 
 	s.When("ref time is before target time", func(s *testcase.Spec) {
@@ -442,8 +469,8 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 		return t.Random.Time()
 	})
 
-	var schedule = let.Var(s, func(t *testcase.T) timekit.Schedule {
-		return timekit.Schedule{}
+	var schedule = let.Var(s, func(t *testcase.T) timekit.ScheduleMVP {
+		return timekit.ScheduleMVP{}
 	})
 
 	s.Before(func(t *testcase.T) {
@@ -497,7 +524,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	s.When(".From is provided", func(s *testcase.Spec) {
 		from := let.VarOf(s, timekit.DayTime{Hour: 12, Minute: 00})
 
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			sch := schedule.Super(t)
 			sch.DayTime = from.Get(t)
 			return sch
@@ -530,7 +557,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	s.When("schedule defines the month", func(s *testcase.Spec) {
 		month := let.OneOf(s, timekit.Months()...)
 
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			sch := schedule.Super(t)
 			sch.Month = pointer.Of(month.Get(t))
 			t.OnFail(func() {
@@ -558,7 +585,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	s.When("schedule defines the weekday", func(s *testcase.Spec) {
 		weekday := let.OneOf(s, timekit.Weekdays()...)
 
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			sch := schedule.Super(t)
 			sch.Weekday = pointer.Of(weekday.Get(t))
 			return sch
@@ -575,7 +602,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	s.When("schedule defines the day", func(s *testcase.Spec) {
 		day := let.IntB(s, 1, 25)
 
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			sch := schedule.Super(t)
 			sch.Day = pointer.Of(day.Get(t))
 			return sch
@@ -599,7 +626,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 			return random.Pick(t.Random, time.Local, time.UTC, timeGMT)
 		})
 
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			sch := schedule.Super(t)
 			sch.Location = location.Get(t)
 			return sch
@@ -619,12 +646,12 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	})
 
 	s.When("current time is within the availability policy", func(s *testcase.Spec) {
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			from := timekit.DayTime{
 				Hour:   t.Random.IntBetween(7, 10),
 				Minute: random.Pick(t.Random, 0, 15, 30, 45),
 			}
-			return timekit.Schedule{
+			return timekit.ScheduleMVP{
 				DayTime:  from,
 				Duration: random.Pick[time.Duration](t.Random, 0, 15, 30, 45) * time.Minute,
 				Location: time.Local,
@@ -665,13 +692,13 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	})
 
 	s.When("current time is before the next occurence", func(s *testcase.Spec) {
-		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+		schedule.Let(s, func(t *testcase.T) timekit.ScheduleMVP {
 			from := timekit.DayTime{
 				Hour:   t.Random.IntBetween(7, 10),
 				Minute: random.Pick(t.Random, 0, 30),
 			}
 			weekday := timekit.ShiftWeekday(ref.Get(t).Weekday(), 1)
-			return timekit.Schedule{
+			return timekit.ScheduleMVP{
 				Weekday:  &weekday,
 				DayTime:  from,
 				Duration: random.Pick[time.Duration](t.Random, 0, 15, 30) * time.Minute,
@@ -873,6 +900,219 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
+	s.Describe("Between", func(s *testcase.Spec) {
+		var (
+			A = let.Time(s)
+			B = let.Time(s)
+		)
+		act := let.Act(func(t *testcase.T) timekit.Delta {
+			a, b := A.Get(t), B.Get(t)
+			d := delta.Get(t).Between(a, b)
+			t.OnFail(func() {
+				t.LogPretty("A", a)
+				t.LogPretty("B", b)
+				t.LogPretty("Delta", d)
+			})
+			return d
+		})
+
+		// In this case, where we need stability, we'll use fix times to simplify things.
+		// Using flexible dates could get complicated
+		// because different years have varying numbers of days,
+		// which might make the test harder to manage than needed.
+		fixA := let.VarOf(s, time.Date(2025, time.April, 14, 11, 53, 49, 0, time.Local))
+
+		s.Then("non-empty distance returned", func(t *testcase.T) {
+			assert.NotEmpty(t, act(t))
+		})
+
+		s.Then("original delta is not affected", func(t *testcase.T) {
+			assert.Empty(t, delta.Get(t))
+		})
+
+		var ThenDeltaPlusFirstEqualsSecond = func(s *testcase.Spec) {
+			s.Then("adding the result delta to first ref time argumentref will yield the second ref time as a result", func(t *testcase.T) {
+				delta := act(t)
+				aPlusDelta := delta.AddTo(A.Get(t))
+				t.OnFail(func() {
+					t.LogPretty("A + delta", aPlusDelta)
+				})
+				assert.Equal(t, aPlusDelta, B.Get(t))
+			})
+		}
+
+		ThenDeltaPlusFirstEqualsSecond(s)
+
+		s.Then("result distance has normalised time intervals in its fields", func(t *testcase.T) {
+			got := act(t)
+
+			assert.AnyOf(t, func(a *assert.A) {
+				a.Case(func(t assert.It) { // when A is before B
+					assert.True(t, 0 <= got.Year, assert.MessageF("Year: %v", got.Year))
+					assert.True(t, 0 <= got.Month, assert.MessageF("Month: %v", got.Month))
+					assert.True(t, 0 <= got.Day, assert.MessageF("Day: %v", got.Day))
+					assert.True(t, got.Hour <= maxHour, assert.MessageF("Hour: %v", got.Hour))
+					assert.True(t, got.Minute <= maxMinute, assert.MessageF("Minute: %v", got.Minute))
+					assert.True(t, got.Second <= maxSecond, assert.MessageF("Second: %v", got.Second))
+					assert.True(t, got.Nanosecond <= maxNanosecond, assert.MessageF("Nanosecond: %v", got.Nanosecond))
+				})
+
+				a.Case(func(t assert.It) { // when B is before A
+					assert.True(t, got.Year <= 0, assert.MessageF("Year: %v", got.Year))
+					assert.True(t, got.Month <= 0, assert.MessageF("Month: %v", got.Month))
+					assert.True(t, got.Day <= 0, assert.MessageF("Day: %v", got.Day))
+					assert.True(t, -maxHour <= got.Hour, assert.MessageF("Hour: %v", got.Hour))
+					assert.True(t, -maxMinute <= got.Minute, assert.MessageF("Minute: %v", got.Minute))
+					assert.True(t, -maxSecond <= got.Second, assert.MessageF("Second: %v", got.Second))
+					assert.True(t, -maxNanosecond <= got.Nanosecond, assert.MessageF("Nanosecond: %v", got.Nanosecond))
+				})
+			})
+		})
+
+		s.When("the delta between the two time is zero", func(s *testcase.Spec) {
+			B.Let(s, A.Get)
+
+			s.Then("zero distance returned", func(t *testcase.T) {
+				got := act(t)
+				assert.Empty(t, got)
+				assert.True(t, got.IsZero())
+			})
+
+			ThenDeltaPlusFirstEqualsSecond(s)
+		})
+
+		s.When("the delta is between A and B is negative", func(s *testcase.Spec) {
+			A.Let(s, fixA.Get)
+
+			B.Let(s, func(t *testcase.T) time.Time {
+				return A.Get(t).Add(t.Random.DurationBetween(-1, -math.MaxInt64))
+			})
+
+			ThenDeltaPlusFirstEqualsSecond(s)
+
+			s.Context("by years", func(s *testcase.Spec) {
+				var years = let.IntB(s, -500, -1000)
+
+				B.Let(s, func(t *testcase.T) time.Time {
+					return A.Get(t).AddDate(years.Get(t), 0, 0)
+				})
+
+				ThenDeltaPlusFirstEqualsSecond(s)
+
+				s.Then("negative years are returned", func(t *testcase.T) {
+					assert.Equal(t, years.Get(t), act(t).Year)
+				})
+			})
+
+			s.Context("by months", func(s *testcase.Spec) {
+				var months = let.IntB(s, -1, -11)
+
+				B.Let(s, func(t *testcase.T) time.Time {
+					return A.Get(t).AddDate(0, months.Get(t), 0)
+				})
+
+				ThenDeltaPlusFirstEqualsSecond(s)
+
+				s.Then("negative months are returned", func(t *testcase.T) {
+					assert.Equal(t, months.Get(t), act(t).Month)
+				})
+			})
+
+			s.Context("by days", func(s *testcase.Spec) {
+				var days = let.IntB(s, -1, -25)
+
+				B.Let(s, func(t *testcase.T) time.Time {
+					return A.Get(t).AddDate(0, 0, days.Get(t))
+				})
+
+				ThenDeltaPlusFirstEqualsSecond(s)
+
+				s.Then("negative days are returned", func(t *testcase.T) {
+					assert.Equal(t, days.Get(t), act(t).Day)
+				})
+			})
+
+			s.Context("by something smaller than a day", func(s *testcase.Spec) {
+				var rem = let.DurationBetween(s, 0, -1*23*time.Hour+59*time.Minute+59*time.Second)
+
+				B.Let(s, func(t *testcase.T) time.Time {
+					return A.Get(t).Add(rem.Get(t))
+				})
+
+				ThenDeltaPlusFirstEqualsSecond(s)
+
+				s.Then("negative remainder is returned", func(t *testcase.T) {
+					assert.Equal(t, ToDuration(act(t), A.Get(t)), rem.Get(t))
+				})
+			})
+		})
+
+		s.When("max duration (int64) is given", func(s *testcase.Spec) {
+			A.Let(s, fixA.Get)
+
+			B.Let(s, func(t *testcase.T) time.Time {
+				return A.Get(t).Add(math.MaxInt64)
+			})
+
+			s.Then("result distance's ToDuration is equal to the max int64 duration", func(t *testcase.T) {
+				assert.Equal(t, ToDuration(act(t), A.Get(t)), math.MaxInt64)
+			})
+
+			s.Then("proper distance is calculated", func(t *testcase.T) {
+				assert.Equal(t, act(t), timekit.Delta{
+					Year:       292,
+					Month:      3,
+					Day:        10,
+					Hour:       23,
+					Minute:     47,
+					Second:     16,
+					Nanosecond: 854775807,
+				})
+			})
+
+			ThenDeltaPlusFirstEqualsSecond(s)
+		})
+
+		s.When("delta is between the two is bigger than what time.Duration can express", func(s *testcase.Spec) {
+			var (
+				years  = let.IntB(s, 500, 1000)
+				months = let.IntB(s, 1, 11)
+				days   = let.IntB(s, 1, 25)
+				rem    = let.DurationBetween(s, 0, 23*time.Hour+59*time.Minute+59*time.Second)
+			)
+
+			B.Let(s, func(t *testcase.T) time.Time {
+				return A.Get(t).
+					AddDate(years.Get(t), months.Get(t), days.Get(t)).
+					Add(rem.Get(t))
+			})
+
+			s.Then("delta is calculated correctly", func(t *testcase.T) {
+				d := act(t)
+				assert.Equal(t, d.Year, years.Get(t))
+				assert.Equal(t, d.Month, months.Get(t))
+				assert.Equal(t, d.Day, days.Get(t))
+
+				d.Year = 0
+				d.Month = 0
+				d.Day = 0
+				assert.Equal(t, rem.Get(t), ToDuration(d, time.Time{}))
+			})
+
+			ThenDeltaPlusFirstEqualsSecond(s)
+		})
+
+		s.Test("years differ, but by months count it is not a whole year difference", func(t *testcase.T) {
+			a := time.Date(2000, time.December, 1, 0, 0, 0, 0, time.Local)
+			b := time.Date(2001, time.January, 3, 0, 0, 0, 0, time.Local)
+
+			d := timekit.Delta{}.Between(a, b)
+			assert.Equal(t, 0, d.Year)
+			assert.Equal(t, 1, d.Month)
+			assert.Equal(t, 2, d.Day)
+		})
+	})
+
 	s.Describe("Normalise", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) timekit.Delta {
 			return delta.Get(t).Normalise()
@@ -1070,7 +1310,7 @@ func TestDelta(t *testing.T) {
 
 	s.Describe("Compare", func(s *testcase.Spec) {
 		var (
-			oth = let.VarOf[timekit.Delta](s, timekit.Delta{})
+			oth = let.VarOf(s, timekit.Delta{})
 		)
 		act := let.Act(func(t *testcase.T) int {
 			return delta.Get(t).Compare(oth.Get(t))
@@ -1320,4 +1560,8 @@ func TestDelta(t *testing.T) {
 			})
 		})
 	})
+}
+
+func TestMonthly(t *testing.T) {
+
 }
