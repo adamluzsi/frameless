@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -909,9 +910,9 @@ func TestDelta(t *testing.T) {
 			a, b := A.Get(t), B.Get(t)
 			d := delta.Get(t).Between(a, b)
 			t.OnFail(func() {
-				t.LogPretty("A", a)
-				t.LogPretty("B", b)
-				t.LogPretty("Delta", d)
+				t.LogPretty(a, "A")
+				t.LogPretty(b, "B")
+				t.LogPretty(d, "Delta")
 			})
 			return d
 		})
@@ -935,8 +936,17 @@ func TestDelta(t *testing.T) {
 				delta := act(t)
 				aPlusDelta := delta.AddTo(A.Get(t))
 				t.OnFail(func() {
-					t.LogPretty("A + delta", aPlusDelta)
+					t.LogPretty(aPlusDelta, "A + delta")
 				})
+
+				pp.PP(B.Get(t), "B")
+				v := A.Get(t)
+				pp.PP(v, "A")
+				v = v.AddDate(delta.Year, delta.Month, delta.Day)
+				pp.PP(v, "A + year+month+day")
+				v = v.Add(time.Duration(delta.Hour) * time.Hour)
+				pp.PP(v)
+
 				assert.Equal(t, aPlusDelta, B.Get(t))
 			})
 		}
@@ -981,7 +991,7 @@ func TestDelta(t *testing.T) {
 			ThenDeltaPlusFirstEqualsSecond(s)
 		})
 
-		s.When("the delta is between A and B is negative", func(s *testcase.Spec) {
+		s.When("the delta between A and B is negative", func(s *testcase.Spec) {
 			A.Let(s, fixA.Get)
 
 			B.Let(s, func(t *testcase.T) time.Time {

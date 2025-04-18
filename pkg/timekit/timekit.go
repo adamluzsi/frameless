@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/internal/compare"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/testcase/pp"
 )
 
 func EnableTimeEnum() func() {
@@ -427,6 +428,7 @@ func (Delta) Between(a, b time.Time) Delta {
 		}
 		a = a.AddDate(d.Year, 0, 0)
 	}
+	pp.PP(a, b, d.Year)
 
 	{ // months
 
@@ -439,6 +441,7 @@ func (Delta) Between(a, b time.Time) Delta {
 		}
 		a = a.AddDate(0, d.Month, 0)
 	}
+	pp.PP(a, b, d.Year, d.Month)
 
 	rem := Delta{}.ByDuration(b.Sub(a))
 	d.Day = rem.Day
@@ -475,6 +478,21 @@ func (d Delta) AddTo(t time.Time) time.Time {
 		t.Nanosecond()+d.Nanosecond, t.Location(),
 	)
 }
+
+// func (d Delta) AddTo(t time.Time) time.Time {
+// 	t = t.AddDate(d.Year, d.Month, d.Day)
+// 	t = t.Add(d.clockDuration())
+// 	return t
+// }
+
+// func (d Delta) clockDuration() time.Duration {
+// 	var duration time.Duration
+// 	duration += time.Hour * time.Duration(d.Hour)
+// 	duration += time.Minute * time.Duration(d.Minute)
+// 	duration += time.Second * time.Duration(d.Second)
+// 	duration += time.Nanosecond * time.Duration(d.Nanosecond)
+// 	return duration
+// }
 
 const maxNormalisedNanosecond = 999_999_999
 
