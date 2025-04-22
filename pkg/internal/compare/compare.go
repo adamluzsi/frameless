@@ -1,5 +1,7 @@
 package compare
 
+import "go.llib.dev/frameless/pkg/internal/mathkit"
+
 // Interface defines how comparison can be implemented.
 // An implementation of Interface can be sorted by the routines in this package.
 // The methods refer to elements of the underlying collection by integer index.
@@ -62,14 +64,7 @@ func IsGreaterOrEqual(cmp int) bool {
 	return 0 <= cmp
 }
 
-// --- NUMBER ---//
-type number interface {
-	float32 | float64 |
-		int | int8 | int16 | int32 | int64 |
-		uint | uint8 | uint16 | uint32 | uint64
-}
-
-func Numbers[T number](a, b T) int {
+func Numbers[T mathkit.Number](a, b T) int {
 	switch {
 	case a < b:
 		return -1

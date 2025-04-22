@@ -9,7 +9,9 @@ import (
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/internal/compare"
+	"go.llib.dev/frameless/pkg/internal/mathkit"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/testcase/pp"
 )
 
 func EnableTimeEnum() func() {
@@ -136,10 +138,10 @@ func ShiftMonth(m time.Month, n int) time.Month {
 	return time.Month(adjusted + 1)
 }
 
-// DiffMonth calculates the number of months between ref and target.
+// MonthDiff calculates the number of months between ref and target.
 // It assumes a cyclic nature, meaning that if target is before ref in the year,
 // it wraps around after December.
-func DiffMonth(ref, target time.Month) int {
+func MonthDiff(ref, target time.Month) int {
 	diff := int(target) - int(ref)
 	if diff < 0 {
 		diff += 12
@@ -147,10 +149,10 @@ func DiffMonth(ref, target time.Month) int {
 	return diff
 }
 
-// DiffWeekday calculates the number of days between ref and target.
+// WeekdayDiff calculates the number of days between ref and target.
 // It assumes a cyclic nature, meaning that if target is before ref in the week,
 // it wraps around after Sunday.
-func DiffWeekday(ref, target time.Weekday) int {
+func WeekdayDiff(ref, target time.Weekday) int {
 	diff := int(target) - int(ref)
 	if diff < 0 {
 		diff += 7
@@ -158,16 +160,18 @@ func DiffWeekday(ref, target time.Weekday) int {
 	return diff
 }
 
-func DiffDay(ref, target time.Time) int {
+// DayDiff returns the difference in days between two times,
+// truncating each to midnight before comparison.
+func DayDiff(ref, target time.Time) int {
 	ref = truncateDay(ref)
 	target = truncateDay(target)
 	diff := target.Sub(ref)
 	return int(diff.Hours() / 24)
 }
 
-// Schedule allows to define an abstract time,
+// ScheduleMVP allows to define an abstract time,
 // that continously reoccurs in time based on the specifications set in its field.
-type Schedule struct {
+type ScheduleMVP struct {
 	// DayTime is the time during a day, where the scheduling begins.
 	DayTime DayTime
 	// Duration is length of the scheduling.
@@ -184,7 +188,7 @@ type Schedule struct {
 	Location *time.Location
 }
 
-func (sch Schedule) IsZero() bool {
+func (sch ScheduleMVP) IsZero() bool {
 	return sch.DayTime.IsZero() &&
 		sch.Duration == 0 &&
 		sch.Month == nil &&
@@ -193,7 +197,7 @@ func (sch Schedule) IsZero() bool {
 		sch.Location == nil
 }
 
-func (sch Schedule) Validate() error {
+func (sch ScheduleMVP) Validate() error {
 	if err := validate.Struct(sch, validate.InsideValidateFunc); err != nil {
 		return err
 	}
@@ -203,7 +207,7 @@ func (sch Schedule) Validate() error {
 	return nil
 }
 
-func (sch Schedule) Check(ref time.Time) bool {
+func (sch ScheduleMVP) Check(ref time.Time) bool {
 	if sch.Location != nil {
 		ref = ref.In(sch.Location)
 	}
@@ -221,7 +225,7 @@ func (sch Schedule) Check(ref time.Time) bool {
 	return true
 }
 
-func (sch Schedule) getRangeOnDate(ref time.Time) Range {
+func (sch ScheduleMVP) getRangeOnDate(ref time.Time) Range {
 	var (
 		from = sch.DayTime.ToTimeRelTo(ref)
 		till = from.Add(sch.Duration)
@@ -232,7 +236,7 @@ func (sch Schedule) getRangeOnDate(ref time.Time) Range {
 	}
 }
 
-func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
+func (sch ScheduleMVP) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 	for {
 		occurrence, ok := sch.near(ref)
 		if !ok {
@@ -246,7 +250,7 @@ func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 	}
 }
 
-func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
+func (sch ScheduleMVP) near(ref time.Time) (nearOccurrence Range, ok bool) {
 	if sch.Validate() != nil {
 		return Range{}, false
 	}
@@ -263,7 +267,7 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 
 	for {
 		if sch.Month != nil {
-			distance := DiffMonth(candidate.Month(), *sch.Month)
+			distance := MonthDiff(candidate.Month(), *sch.Month)
 			if distance != 0 {
 				targetMonth := candidate.Month() + time.Month(distance)
 				// first day of the target Month
@@ -288,7 +292,7 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 		}
 
 		if sch.Weekday != nil {
-			daysTill := DiffWeekday(candidate.Weekday(), *sch.Weekday)
+			daysTill := WeekdayDiff(candidate.Weekday(), *sch.Weekday)
 			if daysTill != 0 {
 				candidate = truncateDay(candidate)
 				candidate = candidate.AddDate(0, 0, daysTill)
@@ -327,9 +331,8 @@ type FromDistanceCalculator interface {
 // Delta allows to describe distances between two time point,
 // that normally would not be possible with time.Duration.
 type Delta struct {
-	Year  int
-	Month int
-
+	Year       int
+	Month      int
 	Day        int
 	Hour       int
 	Minute     int
@@ -362,9 +365,42 @@ func (d Delta) Compare(o Delta) int {
 	return 0
 }
 
-func (d Delta) Add(duration time.Duration) Delta {
-	d.Nanosecond += int(duration)
-	return d.Normalise()
+func (d Delta) add(o Delta) Delta {
+	d = d.Normalise()
+	o = o.Normalise()
+	if 0 < o.Nanosecond {
+		d.Nanosecond = mathkit.MustSum(d.Nanosecond, o.Nanosecond)
+		d = d.Normalise()
+	}
+	if 0 < o.Second {
+		d.Second = mathkit.MustSum(d.Second, o.Second)
+		d = d.Normalise()
+	}
+	if 0 < o.Minute {
+		d.Minute = mathkit.MustSum(d.Minute, o.Minute)
+		d = d.Normalise()
+	}
+	if 0 < o.Hour {
+		d.Hour = mathkit.MustSum(d.Hour, o.Hour)
+		d = d.Normalise()
+	}
+	if 0 < o.Day {
+		d.Day = mathkit.MustSum(d.Day, o.Day)
+	}
+	if 0 < o.Month {
+		d.Month = mathkit.MustSum(d.Month, o.Month)
+		d = d.Normalise()
+	}
+	if 0 < o.Year {
+		// since we don't have a higher level of structure, thus year can't be protected from int overflow
+		mathkit.GuardSumF(d.Year, o.Year, "timekit.Delta Year doesn't have a higher level time unit, and thus can't avoid int overflow")
+		d.Year += o.Year
+	}
+	return d
+}
+
+func (d Delta) AddDuration(duration time.Duration) Delta {
+	return d.add(Delta{Nanosecond: int(duration)})
 }
 
 func (Delta) ByDuration(duration time.Duration) Delta {
@@ -406,6 +442,81 @@ func (Delta) ByDuration(duration time.Duration) Delta {
 	return dist
 }
 
+func (Delta) Between(a, b time.Time) Delta {
+	var (
+		d          Delta
+		isNegative = a.After(b)
+	)
+	if isNegative {
+		b, a = a, b
+	}
+
+	var start, end = a, b
+
+	{ // years
+		for c, i := a, 1; c.Year() < b.Year(); i++ {
+			c = a.AddDate(i, 0, 0)
+			if !compare.IsLessOrEqual(c.Compare(b)) {
+				break
+			}
+			d.Year = i
+		}
+		a = a.AddDate(d.Year, 0, 0)
+	}
+
+	{ // months
+		for c, i := a, 1; 0 < MonthDiff(c.Month(), b.Month()); i++ {
+			c = a.AddDate(0, i, 0)
+			if !compare.IsLessOrEqual(c.Compare(b)) {
+				break
+			}
+			d.Month = i
+		}
+		a = a.AddDate(0, d.Month, 0)
+	}
+
+	{
+		var cursor = a
+		pp.PP(b, "b")
+		pp.PP(cursor, "cursor (initial)")
+		pp.PP(cursor.Add(2602278666261995), "cursor (plus 2602278666261995)")
+		for cursor.Before(b) {
+			dur := b.Sub(cursor)
+			cursor = cursor.Add(dur)
+			pp.PP("dur", dur)
+			pp.PP(d, "bef")
+			bd := d
+			d = d.AddDuration(dur)
+			pp.PP(d, "af")
+			pp.PP(bd != d)
+		}
+		a = cursor
+		pp.PP(a.Equal(b))
+	}
+
+	pp.PP("---")
+	pp.PP(d.AddTo(start), "start + delta")
+	pp.PP(end, "end")
+
+	if isNegative {
+		return d.Invert()
+	}
+
+	return d
+}
+
+func (d Delta) Invert() Delta {
+	return Delta{
+		Year:       -1 * d.Year,
+		Month:      -1 * d.Month,
+		Day:        -1 * d.Day,
+		Hour:       -1 * d.Hour,
+		Minute:     -1 * d.Minute,
+		Second:     -1 * d.Second,
+		Nanosecond: -1 * d.Nanosecond,
+	}
+}
+
 func (d Delta) AddTo(t time.Time) time.Time {
 	year, month, day := t.Date()
 	hour, min, sec := t.Clock()
@@ -416,46 +527,61 @@ func (d Delta) AddTo(t time.Time) time.Time {
 	)
 }
 
-const maxNormalisedNanosecond = 999_999_999
+// func (d Delta) AddTo(t time.Time) time.Time {
+// 	t = t.AddDate(d.Year, d.Month, d.Day)
+// 	t = t.Add(d.clockDuration())
+// 	return t
+// }
+
+// func (d Delta) clockDuration() time.Duration {
+// 	var duration time.Duration
+// 	duration += time.Hour * time.Duration(d.Hour)
+// 	duration += time.Minute * time.Duration(d.Minute)
+// 	duration += time.Second * time.Duration(d.Second)
+// 	duration += time.Nanosecond * time.Duration(d.Nanosecond)
+// 	return duration
+// }
+
+const (
+	ubMonth  = 12
+	ubHour   = 24
+	ubMinute = 60
+	ubSecond = 60
+
+	ubNanosecond = 1_000_000_000
+)
 
 func (d Delta) Normalise() Delta {
 	if d.isNormalised() {
 		return d
 	}
 
-	const (
-		maxMonth  = 11
-		maxHour   = 23
-		maxMinute = 59
-		maxSecond = 59
-	)
-
-	if maxNormalisedNanosecond < d.Nanosecond || d.Nanosecond < -maxNormalisedNanosecond {
+	if ubNanosecond <= d.Nanosecond || d.Nanosecond <= -ubNanosecond {
 		const secondNanos = int(time.Second)
-		v := d.Nanosecond / secondNanos
-		d.Second += v
-		d.Nanosecond = d.Nanosecond - v*secondNanos
+		n := d.Nanosecond / secondNanos
+		d.Second += n
+		d.Nanosecond = d.Nanosecond - n*secondNanos
 	}
 
-	if maxSecond < d.Second || d.Second < -maxSecond {
+	if ubSecond <= d.Second || d.Second <= -ubSecond {
 		const minuteSeconds = 60
-		v := d.Second / minuteSeconds
-		d.Minute += v
-		d.Second = d.Second - v*minuteSeconds
+		n := d.Second / minuteSeconds
+		d.Minute += n
+		d.Second = d.Second - n*minuteSeconds
 	}
 
-	if maxMinute < d.Minute || d.Minute < -maxMinute {
+	if ubMinute <= d.Minute || d.Minute <= -ubMinute {
 		const hourMinutes = 60
-		v := d.Minute / hourMinutes
-		d.Hour += v
-		d.Minute = d.Minute - v*hourMinutes
+		n := d.Minute / hourMinutes
+		d.Hour += n
+		d.Minute = d.Minute - n*hourMinutes
 	}
 
-	if maxHour < d.Hour || d.Hour < -maxHour {
+	if ubHour <= d.Hour || d.Hour <= -ubHour {
 		const dayHours = 24
-		v := d.Hour / dayHours
-		d.Day += v
-		d.Hour = d.Hour - v*dayHours
+		n := d.Hour / dayHours
+		d.Day += n
+		d.Hour = d.Hour - n*dayHours
 	}
 
 	return d
@@ -486,6 +612,25 @@ func (d Delta) isNormalised() bool {
 		-1*59 <= d.Minute &&
 		d.Second <= 59 &&
 		-1*59 <= d.Second &&
-		d.Nanosecond <= maxNormalisedNanosecond &&
-		-1*maxNormalisedNanosecond <= d.Nanosecond
+		d.Nanosecond <= ubNanosecond &&
+		-1*ubNanosecond < d.Nanosecond
+}
+
+type Schedule interface {
+	// Near will return the nearest time to the reference time, for the given Schedule.
+	// Near included the reference time as valid result.
+	Near(ref time.Time) (time.Time, bool)
+}
+
+func FindNext(ref time.Time, schedules ...Schedule) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+var _ Schedule = Monthly(0)
+
+type Monthly time.Month
+
+// Near will return the nearest time that Has the given Month.
+func (m Monthly) Near(ref time.Time) (_ time.Time, _ bool) {
+	panic("not implemented") // TODO: Implement
 }
