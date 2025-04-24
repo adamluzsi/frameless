@@ -20,7 +20,24 @@ import (
 )
 
 func Test_debug(t *testing.T) {
-	t.Run("normalise", func(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Context("delta-between", func(s *testcase.Spec) {
+		var (
+			start = let.VarOf(s, time.Date(2004, time.June, 15, 8, 2, 30, 333738005, time.Local))
+			end   = let.VarOf(s, time.Date(2025, time.April, 14, 11, 53, 49, 0, time.Local))
+		)
+		s.Test("positive", func(t *testcase.T) {
+			var dp = timekit.Delta{}.Between(start.Get(t), end.Get(t))
+			assert.True(t, dp.AddTo(start.Get(t)).Equal(end.Get(t)))
+		})
+		s.Test("negative", func(t *testcase.T) {
+			var dn = timekit.Delta{}.Between(end.Get(t), start.Get(t))
+			assert.True(t, dn.AddTo(end.Get(t)).Equal(start.Get(t)))
+		})
+	})
+
+	s.Test("normalise", func(t *testcase.T) {
 		norms := []timekit.Delta{
 			{Minute: 1},
 		}
@@ -30,11 +47,37 @@ func Test_debug(t *testing.T) {
 		}
 	})
 
-	t.Run("Add a minute of time duration", func(t *testing.T) {
+	s.Test("Add a minute of time duration", func(t *testcase.T) {
 		od := timekit.Delta{}
 		nd := od.AddDuration(time.Minute)
 		assert.NotEqual(t, od, nd)
 		assert.Equal(t, nd.Minute, 1)
+	})
+
+	s.Test("AddDuration", func(t *testcase.T) {
+		// 		timekit.go:494 time.Date(2004, time.June, 15, 8, 2, 30, 333738005, time.Local)	"start"
+		// timekit.go:495 time.Date(2025, time.April, 14, 10, 53, 49, 0, time.Local)	"start + delta"
+		// timekit.go:496 time.Date(2025, time.April, 14, 11, 53, 49, 0, time.Local)	"end"
+
+		A := t.Random.Time()
+		B := t.Random.TimeBetween(A, A.AddDate(1000, 0, 0))
+		c := A
+		d := timekit.Delta{}
+
+		for {
+			remaining := B.Sub(c)
+			if remaining <= 0 {
+				break
+			}
+			c = c.Add(remaining)
+			d = d.AddDuration(remaining)
+
+			assert.True(t, d.AddTo(A).Equal(c), assert.MessageF(
+				"diff: %s", c.Sub(d.AddTo(A))))
+		}
+
+		assert.True(t, d.AddTo(A).Equal(B), assert.MessageF("diff: %s", B.Sub(d.AddTo(A))))
+
 	})
 }
 
@@ -1411,7 +1454,7 @@ func TestDelta(t *testing.T) {
 		})
 	})
 
-	s.Describe("#Add", func(s *testcase.Spec) {
+	s.Describe("#AddDuration", func(s *testcase.Spec) {
 		var duration = let.DurationBetween(s, time.Nanosecond, 48*time.Hour)
 
 		act := let.Act(func(t *testcase.T) timekit.Delta {
@@ -1451,6 +1494,33 @@ func TestDelta(t *testing.T) {
 
 				assert.Equal(t, delta.Get(t).Compare(got), 1)
 			})
+		})
+
+		s.Test("smoke", func(t *testcase.T) {
+			var (
+				start = t.Random.Time()
+				end   = t.Random.TimeBetween(start,
+					start.AddDate(
+						t.Random.IntBetween(1000, 2000),
+						t.Random.IntBetween(1, 100),
+						t.Random.IntBetween(1, 100),
+					))
+				cursor = start
+				delta  = timekit.Delta{}
+			)
+			for {
+				remaining := end.Sub(cursor)
+				if remaining <= 0 {
+					break
+				}
+				cursor = cursor.Add(remaining)
+				delta = delta.AddDuration(remaining)
+
+				assert.True(t, delta.AddTo(start).Equal(cursor),
+					assert.MessageF("diff: %s", cursor.Sub(delta.AddTo(start))))
+			}
+			assert.True(t, delta.AddTo(start).Equal(end),
+				assert.MessageF("diff between Start+Delta and End: %s", end.Sub(delta.AddTo(start))))
 		})
 	})
 

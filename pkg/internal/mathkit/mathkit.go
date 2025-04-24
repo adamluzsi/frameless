@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/must"
 )
 
 type Int interface {
@@ -62,12 +63,27 @@ func MinInt[INT Int]() INT {
 
 const ErrOverflow errorkit.Error = "ErrOverflow"
 
-func MustSum[int Int](a, b int) int {
+func Sum[int Int](a, b int) (int, error) {
 	if CanSumOverflow(a, b) {
-		panic(ErrOverflow.F("%T overflow", a))
+		var zero int
+		return zero, ErrOverflow.F("%T overflow", a)
 	}
-	return a + b
+	return a + b, nil
 }
+
+func MustSum[int Int](a, b int) int {
+	return must.Must(Sum[int](a, b))
+}
+
+// func SumR[int Int](a, b int) (int, int) {
+// 	if b < a {
+// 		a, b = b, a // less -> more
+// 	}
+// 	if CanSumOverflow(a, b) {
+//
+// 	}
+// 	return a + b, 0
+// }
 
 func GuardSumF[int Int](x, y int, format string, a ...any) {
 	if CanSumOverflow(x, y) {

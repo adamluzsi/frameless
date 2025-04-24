@@ -393,7 +393,9 @@ func (d Delta) add(o Delta) Delta {
 	}
 	if 0 < o.Year {
 		// since we don't have a higher level of structure, thus year can't be protected from int overflow
-		mathkit.GuardSumF(d.Year, o.Year, "timekit.Delta Year doesn't have a higher level time unit, and thus can't avoid int overflow")
+		if mathkit.CanSumOverflow(d.Year, o.Year) {
+			panic(mathkit.ErrOverflow.F("timekit.Delta Year doesn't have a higher level time unit, and thus can't avoid int overflow"))
+		}
 		d.Year += o.Year
 	}
 	return d
@@ -442,70 +444,93 @@ func (Delta) ByDuration(duration time.Duration) Delta {
 	return dist
 }
 
-func (Delta) Between(a, b time.Time) Delta {
+func (Delta) Between(from, till time.Time) Delta {
 	var (
-		d          Delta
-		isNegative = a.After(b)
+		delta      Delta
+		start, end = from, till
+		isNegative = from.After(till)
 	)
 	if isNegative {
-		b, a = a, b
+		start, end = end, start
 	}
+	var cursor = start
 
-	var start, end = a, b
-
-	{ // years
-		for c, i := a, 1; c.Year() < b.Year(); i++ {
-			c = a.AddDate(i, 0, 0)
-			if !compare.IsLessOrEqual(c.Compare(b)) {
-				break
-			}
-			d.Year = i
+	for { // years
+		candidate := cursor.AddDate(1, 0, 0)
+		if candidate.After(end) {
+			break
 		}
-		a = a.AddDate(d.Year, 0, 0)
+		cursor = candidate
+		delta.Year++
 	}
 
-	{ // months
-		for c, i := a, 1; 0 < MonthDiff(c.Month(), b.Month()); i++ {
-			c = a.AddDate(0, i, 0)
-			if !compare.IsLessOrEqual(c.Compare(b)) {
-				break
-			}
-			d.Month = i
+	for { // months
+		candidate := cursor.AddDate(0, 1, 0)
+		if candidate.After(end) {
+			break
 		}
-		a = a.AddDate(0, d.Month, 0)
+		cursor = candidate
+		delta.Month++
 	}
 
-	{
-		var cursor = a
-		pp.PP(b, "b")
-		pp.PP(cursor, "cursor (initial)")
-		pp.PP(cursor.Add(2602278666261995), "cursor (plus 2602278666261995)")
-		for cursor.Before(b) {
-			dur := b.Sub(cursor)
-			cursor = cursor.Add(dur)
-			pp.PP("dur", dur)
-			pp.PP(d, "bef")
-			bd := d
-			d = d.AddDuration(dur)
-			pp.PP(d, "af")
-			pp.PP(bd != d)
+	for { // months
+		candidate := cursor.AddDate(0, 0, 1)
+		if candidate.After(end) {
+			break
 		}
-		a = cursor
-		pp.PP(a.Equal(b))
+		cursor = candidate
+		delta.Day++
 	}
+
+	if !delta.AddTo(start).Equal(cursor) {
+		panic("!!!")
+	}
+
+	for { // remaining
+		remaining := end.Sub(cursor)
+		if remaining <= 0 {
+			pp.PP()
+			pp.PP(delta.AddTo(start), "start+delta")
+			pp.PP(end, "end")
+			break
+		}
+		cursor = cursor.Add(remaining)
+		pp.PP(remaining)
+		delta = delta.AddDuration(remaining)
+
+		if !delta.AddTo(start).Equal(cursor) {
+			panic("!!!")
+		}
+	}
+
+	if !delta.AddTo(start).Equal(end) {
+		panic("???")
+	}
+
+	// 	for cursor.Before(end) {
+	// 		dur := end.Sub(cursor)
+	// 		cursor = cursor.Add(dur)
+	// 		delta = delta.AddDuration(dur)
+	// 	}
 
 	pp.PP("---")
-	pp.PP(d.AddTo(start), "start + delta")
+	pp.PP(start, "start")
+	pp.PP(delta.AddTo(start), "start + delta")
 	pp.PP(end, "end")
+	pp.PP("===")
+	pp.PP(start, "start")
+	pp.PP(delta.invert().AddTo(end), "end + invert delta")
+	pp.PP(end, "end")
+	pp.PP("~~~")
 
 	if isNegative {
-		return d.Invert()
+		return delta.invert()
 	}
 
-	return d
+	return delta
 }
 
-func (d Delta) Invert() Delta {
+func (d Delta) invert() Delta {
 	return Delta{
 		Year:       -1 * d.Year,
 		Month:      -1 * d.Month,
@@ -518,29 +543,13 @@ func (d Delta) Invert() Delta {
 }
 
 func (d Delta) AddTo(t time.Time) time.Time {
-	year, month, day := t.Date()
-	hour, min, sec := t.Clock()
-	return time.Date(
-		year+d.Year, month+time.Month(d.Month), day+d.Day,
-		hour+d.Hour, min+d.Minute, sec+d.Second,
-		t.Nanosecond()+d.Nanosecond, t.Location(),
-	)
+	return t.
+		AddDate(d.Year, d.Month, d.Day).
+		Add(time.Hour * time.Duration(d.Hour)).
+		Add(time.Minute * time.Duration(d.Minute)).
+		Add(time.Second * time.Duration(d.Second)).
+		Add(time.Nanosecond * time.Duration(d.Nanosecond))
 }
-
-// func (d Delta) AddTo(t time.Time) time.Time {
-// 	t = t.AddDate(d.Year, d.Month, d.Day)
-// 	t = t.Add(d.clockDuration())
-// 	return t
-// }
-
-// func (d Delta) clockDuration() time.Duration {
-// 	var duration time.Duration
-// 	duration += time.Hour * time.Duration(d.Hour)
-// 	duration += time.Minute * time.Duration(d.Minute)
-// 	duration += time.Second * time.Duration(d.Second)
-// 	duration += time.Nanosecond * time.Duration(d.Nanosecond)
-// 	return duration
-// }
 
 const (
 	ubMonth  = 12
