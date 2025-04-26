@@ -115,3 +115,11 @@ func CanSumOverflow[int Int](a, b int) bool {
 	}
 	return false //, 0, more + minMore
 }
+
+func MaxIntMultiplier[int Int](x int) int {
+	var maxInt = MaxInt[int]()
+	if x == 0 {
+		return maxInt // no risk of overflow
+	}
+	return maxInt / x
+}
