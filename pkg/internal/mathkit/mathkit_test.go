@@ -27,6 +27,25 @@ func TestMaxInt(t *testing.T) {
 	})
 }
 
+func TestMinInt(t *testing.T) {
+	t.Run("core types", func(t *testing.T) {
+		assert.Equal(t, math.MinInt8, mathkit.MinInt[int8]())
+		assert.Equal(t, math.MinInt16, mathkit.MinInt[int16]())
+		assert.Equal(t, math.MinInt32, mathkit.MinInt[int32]())
+		assert.Equal(t, math.MinInt64, mathkit.MinInt[int64]())
+	})
+	t.Run("type based on core types", func(t *testing.T) {
+		type Int8 int8
+		assert.Equal(t, math.MinInt8, mathkit.MinInt[Int8]())
+		type Int16 int16
+		assert.Equal(t, math.MinInt16, mathkit.MinInt[Int16]())
+		type Int32 int32
+		assert.Equal(t, math.MinInt32, mathkit.MinInt[Int32]())
+		type Int64 int64
+		assert.Equal(t, math.MinInt64, mathkit.MinInt[Int64]())
+	})
+}
+
 func TestMaxIntMultiplier(t *testing.T) {
 	t.Run("Positive small integer", func(t *testing.T) {
 		input := 2
@@ -69,5 +88,54 @@ func TestMaxIntMultiplier(t *testing.T) {
 		overflowCandidate := input * (maxMul + 1)
 		// Should overflow an int if done naively; we check if it's less than zero or wraps
 		assert.True(t, overflowCandidate < 0 || overflowCandidate < input, "Expected overflow")
+	})
+}
+
+func TestMinIntDivider(t *testing.T) {
+	t.Run("Positive small integer", func(t *testing.T) {
+		input := 2
+		expected := math.MinInt / input
+		result := mathkit.MinIntDivider(input)
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("MinInt as input", func(t *testing.T) {
+		input := math.MinInt
+		expected := 1
+		result := mathkit.MinIntDivider(input)
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("Negative input", func(t *testing.T) {
+		input := -3
+		expected := math.MinInt / input
+		result := mathkit.MinIntDivider(input)
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("Zero input", func(t *testing.T) {
+		input := 0
+		expected := math.MinInt
+		result := mathkit.MinIntDivider(input)
+		assert.Equal(t, expected, result)
+	})
+
+	t.Run("Just above minimum", func(t *testing.T) {
+		input := 5
+		minDiv := mathkit.MinIntDivider(input)
+		result := minDiv / input
+		assert.True(t, result >= math.MinInt)
+	})
+
+	t.Run("Below min divider produces larger quotient", func(t *testing.T) {
+		input := 5
+		minDiv := mathkit.MinIntDivider(input)
+		smallerDiv := minDiv - 1
+
+		// Division of a smaller numerator should produce a slightly larger result
+		originalResult := minDiv / input
+		newResult := smallerDiv / input
+
+		assert.True(t, newResult >= originalResult, "Expected larger or equal quotient when decreasing numerator")
 	})
 }

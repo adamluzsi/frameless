@@ -1,7 +1,6 @@
 package mathkit
 
 import (
-	"math"
 	"math/big"
 	"unsafe"
 
@@ -27,42 +26,11 @@ func MaxInt[T Int]() T {
 	return T((1 << (typeSizeInBits - 1)) - 1)
 }
 
-// func MaxInt[INT Int]() INT {
-// 	var v int64
-// 	switch reflect.TypeOf((*INT)(nil)).Elem().Kind() {
-// 	case reflect.Int:
-// 		v = math.MaxInt
-// 	case reflect.Int8:
-// 		v = math.MaxInt8
-// 	case reflect.Int16:
-// 		v = math.MaxInt16
-// 	case reflect.Int32:
-// 		v = math.MaxInt32
-// 	case reflect.Int64:
-// 		v = math.MaxInt64
-// 	default:
-// 		panic("not-implemented")
-// 	}
-// 	return INT(v)
-// }
-
-func MinInt[INT Int]() INT {
-	var v int64
-	switch any(*new(INT)).(type) {
-	case int:
-		v = math.MinInt
-	case int8:
-		v = math.MinInt8
-	case int16:
-		v = math.MinInt16
-	case int32:
-		v = math.MinInt32
-	case int64:
-		v = math.MinInt64
-	default:
-		panic("not-implemented")
-	}
-	return INT(v)
+func MinInt[T Int]() T {
+	var zero T
+	typeSizeInBits := 8 * unsafe.Sizeof(zero)
+	// Minimum value is -2^(n-1) for signed integers
+	return T(-1 << (typeSizeInBits - 1))
 }
 
 const ErrOverflow errorkit.Error = "ErrOverflow"
@@ -162,13 +130,9 @@ func (i BigInt[INT]) tryToSwitchToIntMode() BigInt[INT] {
 	return i
 }
 
-func (BigInt[INT]) fromBigInt(i *big.Int) BigInt[INT] {
-	return BigInt[INT]{i: i}
-}
-
 func (i BigInt[INT]) Compare(o BigInt[INT]) int {
 	if i.i == nil && o.i == nil { // fast path
-		return compare.Numbers[INT](i.n, o.n)
+		return compare.Numbers(i.n, o.n)
 	}
 
 	return i.switchToBigIntMode().i.Cmp(o.switchToBigIntMode().i)
