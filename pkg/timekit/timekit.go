@@ -333,51 +333,35 @@ type FromDistanceCalculator interface {
 // Duration allows to describe distances between two time point,
 // that normally would not be possible with time.Duration.
 type Duration struct {
-	i *big.Int
-	d time.Duration
-}
-
-func (Duration) fromBigInt(i *big.Int) Duration {
-	if i == nil {
-		i = big.NewInt(0)
-	}
-	return Duration{i: i}
-}
-
-func (d Duration) toBigInt() *big.Int {
-	if d.i != nil {
-		return d.i
-	}
-	return big.NewInt(d.d.Nanoseconds())
+	i mathkit.BigInt[time.Duration]
 }
 
 const ErrParseDuration errorkit.Error = "ErrParseDuration"
 
 func (Duration) Parse(raw string) (Duration, error) {
-	i, ok := big.NewInt(0).SetString(raw, 10)
-	if !ok {
+	v, err := mathkit.BigInt[time.Duration]{}.Parse(raw)
+	if err != nil {
 		return Duration{}, ErrParseDuration.F("unable to parse Duration: %s", raw)
 	}
-
-	return Duration{}.fromBigInt(i), nil
+	return Duration{i: v}, nil
 }
 
 func (d Duration) String() string {
-	return d.toBigInt().String()
+	return d.i.String()
 }
 
 func (d Duration) Compare(o Duration) int {
-	return d.toBigInt().Cmp(o.toBigInt())
+	return d.i.Compare(o.i)
 }
 
 func (d Duration) Add(o Duration) Duration {
-	a := d.toBigInt()
-	b := o.toBigInt()
-	return d.fromBigInt(big.NewInt(0).Add(a, b))
+	d.i = d.i.Add(o.i)
+	return d
 }
 
 func (d Duration) AddDuration(duration time.Duration) Duration {
-	return d.Add(d.fromBigInt(big.NewInt(int64(duration))))
+	d.i = d.i.Add(mathkit.BigInt[time.Duration]{}.Of(duration))
+	return d
 }
 
 func (Duration) ByDuration(duration time.Duration) Duration {
@@ -406,16 +390,10 @@ const maxTimeDuration = math.MaxInt64
 var maxTimeDurationBigInt = big.NewInt(maxTimeDuration)
 
 func (d Duration) AddTo(t time.Time) time.Time {
-	dur := d.toBigInt()
-	cmp := dur.Cmp(maxTimeDurationBigInt)
-
-	if compare.IsLessOrEqual(cmp) {
-		return t.Add(time.Duration(dur.Int64()))
+	for v := range d.i.Iter() {
+		t = t.Add(v)
 	}
-
-	big.NewInt(0).Sub(dur, maxTimeDurationBigInt)
-
-	return time.Time{}
+	return t
 }
 
 // func (d Delta) AddTo(t time.Time) time.Time {
@@ -441,7 +419,7 @@ func add[int mathkit.Int](t time.Time, unit time.Duration, m int) time.Time {
 		return t
 	}
 
-	var maxMultiplier = mathkit.MaxIntMultiplier(int64(unit)) // unit is positive here
+	var maxMultiplier = mathkit.CanIntMulOverflow(int64(unit)) // unit is positive here
 
 	if n < 0 {
 		n *= -1 // n is ensured to be positive after this
