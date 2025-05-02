@@ -58,6 +58,7 @@ func TestNumbers(t *testing.T) {
 		})
 
 		s.Then("greater will be false", func(t *testcase.T) {
+			assert.False(t, compare.IsMore(act(t)))
 			assert.False(t, compare.IsGreater(act(t)))
 		})
 
@@ -66,6 +67,7 @@ func TestNumbers(t *testing.T) {
 		})
 
 		s.Then("greater or equal will be true", func(t *testcase.T) {
+			assert.True(t, compare.IsMoreOrEqual(act(t)))
 			assert.True(t, compare.IsGreaterOrEqual(act(t)))
 		})
 	})
@@ -87,6 +89,7 @@ func TestNumbers(t *testing.T) {
 		})
 
 		s.Then("greater will be false", func(t *testcase.T) {
+			assert.False(t, compare.IsMore(act(t)))
 			assert.False(t, compare.IsGreater(act(t)))
 		})
 
@@ -95,6 +98,7 @@ func TestNumbers(t *testing.T) {
 		})
 
 		s.Then("greater or equal will be false", func(t *testcase.T) {
+			assert.False(t, compare.IsMoreOrEqual(act(t)))
 			assert.False(t, compare.IsGreaterOrEqual(act(t)))
 		})
 	})
@@ -116,6 +120,7 @@ func TestNumbers(t *testing.T) {
 		})
 
 		s.Then("greater will be true", func(t *testcase.T) {
+			assert.True(t, compare.IsMore(act(t)))
 			assert.True(t, compare.IsGreater(act(t)))
 		})
 
@@ -124,6 +129,7 @@ func TestNumbers(t *testing.T) {
 		})
 
 		s.Then("greater or equal will be true", func(t *testcase.T) {
+			assert.True(t, compare.IsMoreOrEqual(act(t)))
 			assert.True(t, compare.IsGreaterOrEqual(act(t)))
 		})
 	})

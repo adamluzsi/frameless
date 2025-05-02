@@ -54,14 +54,24 @@ func IsLessOrEqual(cmp int) bool {
 	return cmp <= 0
 }
 
+// IsMore reports whether the receiver is greater than another value.
+func IsMore(cmp int) bool {
+	return 0 < cmp
+}
+
+// IsMoreOrEqual reports whether the receiver is more than or equal to another value.
+func IsMoreOrEqual(cmp int) bool {
+	return 0 <= cmp
+}
+
 // IsGreater reports whether the receiver is greater than another value.
 func IsGreater(cmp int) bool {
-	return 0 < cmp
+	return IsMore(cmp)
 }
 
 // IsGreaterOrEqual reports whether the receiver is greater than or equal to another value.
 func IsGreaterOrEqual(cmp int) bool {
-	return 0 <= cmp
+	return IsMoreOrEqual(cmp)
 }
 
 func Numbers[T constraints.Number](a, b T) int {

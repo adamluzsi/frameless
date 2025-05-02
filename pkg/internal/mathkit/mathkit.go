@@ -108,6 +108,11 @@ func (i BigInt[INT]) String() string {
 	return i.switchToBigIntMode().i.String()
 }
 
+func (i BigInt[INT]) ToInt() (INT, bool) {
+	i = i.tryToSwitchToIntMode()
+	return i.n, i.i == nil
+}
+
 const ErrParseBigInt errorkit.Error = "ErrParseBigInt"
 
 func (BigInt[INT]) Parse(raw string) (BigInt[INT], error) {
@@ -135,49 +140,31 @@ func (i BigInt[INT]) Iter() iter.Seq[INT] {
 			yield(i.n)
 		}
 	}
-	switch cmp {
-	case 1:
-		var (
-			cursor        = i
-			maxInt        = MaxInt[INT]()
-			UpperBoundary = BigInt[INT]{n: maxInt}.switchToBigIntMode()
-		)
-		return func(yield func(INT) bool) {
-			for {
-				cmp := cursor.Compare(UpperBoundary)
-				if compare.IsLessOrEqual(cmp) {
-					last := cursor.tryToSwitchToIntMode()
-					yield(last.n)
-					return
-				}
-				if !yield(maxInt) {
-					return
-				}
-				cursor = cursor.Sub(UpperBoundary)
-			}
+	var isNegative = compare.IsLess(cmp)
+	var format = func(n INT) INT {
+		if isNegative {
+			return -n
 		}
-	case -1:
-		var (
-			cursor        = i
-			minInt        = MinInt[INT]()
-			LowerBoundary = BigInt[INT]{n: minInt}.switchToBigIntMode()
-		)
-		return func(yield func(INT) bool) {
-			for {
-				cmp := cursor.Compare(LowerBoundary)
-				if compare.IsGreaterOrEqual(cmp) {
-					last := cursor.tryToSwitchToIntMode()
-					yield(last.n)
-					return
-				}
-				if !yield(minInt) {
-					return
-				}
-				cursor = cursor.Sub(LowerBoundary) // -x - -y => -x + y
+		return n
+	}
+	var (
+		maxInt        = MaxInt[INT]()
+		UpperBoundary = BigInt[INT]{n: maxInt}.switchToBigIntMode()
+	)
+	return func(yield func(INT) bool) {
+		var cursor = i.Abs()
+		for {
+			cmp := cursor.Compare(UpperBoundary)
+			if compare.IsLessOrEqual(cmp) {
+				last := cursor.tryToSwitchToIntMode()
+				yield(format(last.n))
+				return
 			}
+			if !yield(format(maxInt)) {
+				return
+			}
+			cursor = cursor.Sub(UpperBoundary)
 		}
-	default:
-		panic("not-implemented")
 	}
 }
 

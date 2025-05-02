@@ -2,11 +2,14 @@ package mathkit_test
 
 import (
 	"math"
+	"strconv"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/internal/compare"
 	"go.llib.dev/frameless/pkg/internal/mathkit"
-	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 )
 
 func TestAbs_smoke(t *testing.T) {
@@ -163,18 +166,16 @@ func TestMinInt(t *testing.T) {
 
 func Test_bigInt(t *testing.T) {
 	t.Run("pos", func(t *testing.T) {
-		n := mathkit.BigInt[int]{}
+		var n mathkit.BigInt[int]
 		n = n.Add(mathkit.BigInt[int]{}.Of(math.MaxInt))
 		n = n.Add(mathkit.BigInt[int]{}.Of(math.MaxInt))
 		n = n.Add(mathkit.BigInt[int]{}.Of(42))
 
-		vs := iterkit.Collect(n.Iter())
-
-		assert.Equal(t, vs, []int{
-			math.MaxInt,
-			math.MaxInt,
-			42,
-		})
+		var o mathkit.BigInt[int]
+		for v := range n.Iter() {
+			o.Add(mathkit.BigInt[int]{}.Of(v))
+		}
+		assert.Equal(t, n, o)
 	})
 	t.Run("neg", func(t *testing.T) {
 		n := mathkit.BigInt[int]{}
@@ -182,16 +183,263 @@ func Test_bigInt(t *testing.T) {
 		n = n.Add(mathkit.BigInt[int]{}.Of(math.MinInt))
 		n = n.Add(mathkit.BigInt[int]{}.Of(-42))
 
-		vs := iterkit.Collect(n.Iter())
-
-		assert.Equal(t, vs, []int{
-			math.MinInt,
-			math.MinInt,
-			-42,
-		})
+		var o mathkit.BigInt[int]
+		for v := range n.Iter() {
+			o.Add(mathkit.BigInt[int]{}.Of(v))
+		}
+		assert.Equal(t, n, o)
 	})
 }
 
 func TestBigInt(t *testing.T) {
+	s := testcase.NewSpec(t)
 
+	subjectN := let.IntB(s, 0, 100)
+	subject := let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
+		return mathkit.BigInt[int]{}.Of(subjectN.Get(t))
+	})
+
+	var ThenSubjectDoNotChange = func(s *testcase.Spec, act func(t *testcase.T)) {
+		s.Then("subject do not change", func(t *testcase.T) {
+			original := subject.Get(t)
+			act(t)
+			assert.Equal(t, original, subject.Get(t))
+		})
+	}
+
+	s.Describe("ToInt", func(s *testcase.Spec) {
+		act := let.Act2(func(t *testcase.T) (int, bool) {
+			return subject.Get(t).ToInt()
+		})
+
+		s.When("value range is within the normal int range", func(s *testcase.Spec) {
+			var n = let.IntB(s, math.MinInt, math.MaxInt)
+
+			subject.Let(s, func(t *testcase.T) mathkit.BigInt[int] {
+				return mathkit.BigInt[int]{}.Of(n.Get(t))
+			})
+
+			s.Then("int value returned back", func(t *testcase.T) {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.Equal(t, got, n.Get(t))
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("value range is within the big int range", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) mathkit.BigInt[int] {
+				if t.Random.Bool() {
+					return mathkit.BigInt[int]{}.
+						Of(mathkit.MinInt[int]()).
+						Sub(mathkit.BigInt[int]{}.Of(t.Random.IntBetween(1, 10)))
+				}
+
+				return mathkit.BigInt[int]{}.
+					Of(mathkit.MaxInt[int]()).
+					Add(mathkit.BigInt[int]{}.Of(t.Random.IntBetween(1, 10)))
+			})
+
+			s.Then("extraction of the int value is not possible", func(t *testcase.T) {
+				_, ok := act(t)
+				assert.False(t, ok)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+	})
+
+	s.Describe("Of", func(s *testcase.Spec) {
+		var n = let.IntB(s, math.MinInt, math.MaxInt)
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).Of(n.Get(t))
+		})
+
+		s.Then("a big int which value equals to the input argument is returned", func(t *testcase.T) {
+			got := act(t)
+
+			v, ok := got.ToInt()
+			assert.True(t, ok)
+			assert.Equal(t, n.Get(t), v)
+
+			assert.Equal(t, strconv.Itoa(n.Get(t)), got.String())
+		})
+
+		ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+	})
+
+	s.Describe("Add", func(s *testcase.Spec) {
+		var (
+			n   = let.IntB(s, 1, 100)
+			oth = let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
+				return mathkit.BigInt[int]{}.Of(n.Get(t))
+			})
+		)
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).Add(oth.Get(t))
+		})
+
+		s.When("the added value is negative", func(s *testcase.Spec) {
+			n.Let(s, let.IntB(s, -1, math.MinInt).Get)
+
+			s.Then("it results in a substraction", func(t *testcase.T) {
+				got := act(t)
+
+				assert.True(t, compare.IsGreater(subject.Get(t).Compare(got)))
+			})
+		})
+
+		s.When("sum done within the normal integer range", func(s *testcase.Spec) {
+			subjectN.Let(s, let.IntB(s, 1, 100).Get)
+			n.Let(s, let.IntB(s, 1, 100).Get)
+
+			s.Then("the result is the sum of the receiver and the argument", func(t *testcase.T) {
+				exp := mathkit.BigInt[int]{}.Of(subjectN.Get(t) + n.Get(t))
+				assert.Equal(t, act(t), exp)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("addition's result would yield a big int", func(s *testcase.Spec) {
+			subjectN.LetValue(s, math.MaxInt)
+			n.LetValue(s, math.MaxInt)
+
+			s.Then("result will be equalement of the sum of the values", func(t *testcase.T) {
+				got := act(t)
+
+				assert.True(t, compare.IsGreater(got.Compare(subject.Get(t))))
+				assert.True(t, compare.IsGreater(got.Compare(oth.Get(t))))
+
+				got = got.Sub(subject.Get(t))
+				got = got.Sub(oth.Get(t))
+
+				var zero mathkit.BigInt[int]
+				assert.Equal(t, got, zero)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.Test("smoke", func(t *testcase.T) {
+			var i mathkit.BigInt[int]
+
+			t.Random.Repeat(12, 42, func() {
+				prev := i
+				i = i.Add(mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]()))
+				assert.True(t, compare.IsLess(prev.Compare(i)))
+			})
+
+			t.Random.Repeat(3, 7, func() {
+				prev := i
+				i = i.Add(mathkit.BigInt[int]{}.Of(t.Random.IntBetween(-10, -100)))
+				assert.True(t, compare.IsGreater(prev.Compare(i)))
+			})
+
+		})
+	})
+
+	s.Describe("Sub", func(s *testcase.Spec) {
+		var (
+			n   = let.IntB(s, 1, 100)
+			oth = let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
+				return mathkit.BigInt[int]{}.Of(n.Get(t))
+			})
+		)
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).Sub(oth.Get(t))
+		})
+
+		s.When("the added value is negative", func(s *testcase.Spec) {
+			n.Let(s, let.IntB(s, -1, math.MinInt).Get)
+
+			s.Then("it results in a addition", func(t *testcase.T) {
+				got := act(t)
+
+				assert.True(t, compare.IsLess(subject.Get(t).Compare(got)))
+			})
+		})
+
+		s.When("sub done within the normal integer range", func(s *testcase.Spec) {
+			subjectN.Let(s, let.IntB(s, 1, 100).Get)
+			n.Let(s, let.IntB(s, 1, 100).Get)
+
+			s.Then("the result is the sub of the receiver and the argument", func(t *testcase.T) {
+				exp := mathkit.BigInt[int]{}.Of(subjectN.Get(t) - n.Get(t))
+				assert.Equal(t, act(t), exp)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("substraction's result would yield a big int", func(s *testcase.Spec) {
+			subjectN.LetValue(s, math.MinInt)
+			n.LetValue(s, math.MaxInt)
+
+			s.Then("result will be equalement of the sum of the values", func(t *testcase.T) {
+				got := act(t)
+
+				assert.True(t, compare.IsLess(got.Compare(subject.Get(t))))
+				assert.True(t, compare.IsLess(got.Compare(oth.Get(t))))
+
+				got = got.Add(subject.Get(t))
+				got = got.Add(oth.Get(t))
+
+				var zero mathkit.BigInt[int]
+				assert.Equal(t, got, zero)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.Test("smoke", func(t *testcase.T) {
+			var i mathkit.BigInt[int]
+			t.Random.Repeat(12, 42, func() {
+				prev := i
+				i = i.Sub(mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]()))
+				assert.True(t, compare.IsLess(prev.Compare(i)))
+			})
+
+			t.Random.Repeat(3, 7, func() {
+				prev := i
+				i = i.Sub(mathkit.BigInt[int]{}.Of(t.Random.IntBetween(-10, -100)))
+				assert.True(t, compare.IsGreater(prev.Compare(i)))
+			})
+
+		})
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		var bi1, bi2 mathkit.BigInt[int]
+
+		maxInt := mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]())
+		t.Random.Repeat(3, 7, func() {
+			prev := bi1
+			bi1 = bi1.Add(maxInt)
+			bi2 = bi2.Add(maxInt)
+			assert.True(t, compare.IsLess(prev.Compare(bi1)))
+			assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+		})
+
+		t.Random.Repeat(3, 7, func() {
+			n := t.Random.IntBetween(1, 1000)
+			v := mathkit.BigInt[int]{}.Of(n)
+			prev := bi1
+			bi1 = bi1.Add(v)
+			bi2 = bi2.Add(v)
+			assert.True(t, compare.IsLess(prev.Compare(bi1)))
+			assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+		})
+
+		t.Random.Repeat(3, 7, func() {
+			n := t.Random.IntBetween(1, 1000)
+			v := mathkit.BigInt[int]{}.Of(n)
+			prev := bi1
+			bi1 = bi1.Sub(v)
+			bi2 = bi2.Sub(v)
+			assert.True(t, compare.IsGreater(prev.Compare(bi1)))
+			assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+		})
+	})
 }
