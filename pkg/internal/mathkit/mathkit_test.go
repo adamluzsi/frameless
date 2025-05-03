@@ -269,6 +269,53 @@ func TestBigInt(t *testing.T) {
 		ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
 	})
 
+	s.Describe("Compare", func(s *testcase.Spec) {
+		var (
+			other = let.Var[mathkit.BigInt[int]](s, nil)
+		)
+		act := let.Act(func(t *testcase.T) int {
+			return subject.Get(t).Compare(other.Get(t))
+		})
+
+		s.When("the compared value equals", func(s *testcase.Spec) {
+			other.Let(s, subject.Get)
+
+			s.Then("comparison reports equality", func(t *testcase.T) {
+				assert.True(t, compare.IsEqual(act(t)))
+			})
+		})
+
+		s.When("the other value is greater", func(s *testcase.Spec) {
+			other.Let(s, func(t *testcase.T) mathkit.BigInt[int] { // other is greater
+				var base = subject.Get(t)
+				t.Random.Repeat(3, 7, func() {
+					n := t.Random.IntBetween(1, math.MaxInt)
+					base = base.Add(mathkit.BigInt[int]{}.Of(n))
+				})
+				return base
+			})
+
+			s.Then("compared value reported as less", func(t *testcase.T) {
+				assert.True(t, compare.IsLess(act(t)))
+			})
+		})
+
+		s.When("the other value is less", func(s *testcase.Spec) {
+			other.Let(s, func(t *testcase.T) mathkit.BigInt[int] {
+				var base = subject.Get(t)
+				t.Random.Repeat(3, 7, func() {
+					n := t.Random.IntBetween(1, math.MaxInt)
+					base = base.Sub(mathkit.BigInt[int]{}.Of(n))
+				})
+				return base
+			})
+
+			s.Then("compared value reported as more", func(t *testcase.T) {
+				assert.True(t, compare.IsMore(act(t)))
+			})
+		})
+	})
+
 	s.Describe("Add", func(s *testcase.Spec) {
 		var (
 			n   = let.IntB(s, 1, 100)
@@ -320,23 +367,6 @@ func TestBigInt(t *testing.T) {
 			})
 
 			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
-		})
-
-		s.Test("smoke", func(t *testcase.T) {
-			var i mathkit.BigInt[int]
-
-			t.Random.Repeat(12, 42, func() {
-				prev := i
-				i = i.Add(mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]()))
-				assert.True(t, compare.IsLess(prev.Compare(i)))
-			})
-
-			t.Random.Repeat(3, 7, func() {
-				prev := i
-				i = i.Add(mathkit.BigInt[int]{}.Of(t.Random.IntBetween(-10, -100)))
-				assert.True(t, compare.IsGreater(prev.Compare(i)))
-			})
-
 		})
 	})
 
@@ -392,54 +422,166 @@ func TestBigInt(t *testing.T) {
 
 			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
 		})
+	})
 
-		s.Test("smoke", func(t *testcase.T) {
-			var i mathkit.BigInt[int]
-			t.Random.Repeat(12, 42, func() {
-				prev := i
-				i = i.Sub(mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]()))
-				assert.True(t, compare.IsLess(prev.Compare(i)))
+	s.Describe("Mul", func(s *testcase.Spec) { // TAINT
+		var (
+			n   = let.IntB(s, -10_000, 10_000)
+			oth = let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
+				return mathkit.BigInt[int]{}.Of(n.Get(t))
+			})
+		)
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).Mul(oth.Get(t))
+		})
+
+		s.When("multiplied by zero", func(s *testcase.Spec) {
+			n.LetValue(s, 0)
+
+			s.Then("result equals to zero", func(t *testcase.T) {
+				got := act(t)
+				var zero mathkit.BigInt[int]
+				assert.Equal(t, zero, got)
 			})
 
-			t.Random.Repeat(3, 7, func() {
-				prev := i
-				i = i.Sub(mathkit.BigInt[int]{}.Of(t.Random.IntBetween(-10, -100)))
-				assert.True(t, compare.IsGreater(prev.Compare(i)))
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("product is within normal int range", func(s *testcase.Spec) {
+			subjectN.Let(s, let.IntB(s, -10_000, 10_000).Get)
+			n.Let(s, let.IntB(s, -10_000, 10_000).Get)
+
+			s.Then("the result is the product of receiver and argument", func(t *testcase.T) {
+				a := subjectN.Get(t)
+				b := n.Get(t)
+				expectedProduct := a * b
+
+				exp := mathkit.BigInt[int]{}.Of(expectedProduct)
+				got := act(t)
+
+				assert.Equal(t, exp, got)
+
+				v, ok := got.ToInt()
+				assert.True(t, ok)
+				assert.Equal(t, expectedProduct, v)
 			})
 
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("product would overflow into big int", func(s *testcase.Spec) {
+			subjectN.LetValue(s, math.MaxInt)
+			n.LetValue(s, 2)
+
+			expectedBig := mathkit.BigInt[int]{}.Of(math.MaxInt).Mul(mathkit.BigInt[int]{}.Of(2))
+
+			s.Then("result is correctly calculated as the product of the two values", func(t *testcase.T) {
+				got := act(t)
+				assert.Equal(t, expectedBig, got)
+
+				originalSubject := subject.Get(t)
+				// Result should be greater than both operands
+				assert.True(t, compare.IsGreater(got.Compare(originalSubject)))
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("one of the values is negative", func(s *testcase.Spec) {
+			n.LetValue(s, -5)
+
+			s.Then("the product has correct sign and magnitude", func(t *testcase.T) {
+				a := subjectN.Get(t)
+				expectedProduct := a * (-5)
+				exp := mathkit.BigInt[int]{}.Of(expectedProduct)
+				got := act(t)
+				assert.Equal(t, exp, got)
+
+				v, ok := got.ToInt()
+				assert.True(t, ok)
+				assert.Equal(t, expectedProduct, v)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("both values are negative", func(s *testcase.Spec) {
+			subjectN.LetValue(s, -3)
+			n.LetValue(s, -5)
+
+			expectedProduct := 15
+			exp := mathkit.BigInt[int]{}.Of(expectedProduct)
+
+			s.Then("product is positive and correct", func(t *testcase.T) {
+				got := act(t)
+				assert.Equal(t, exp, got)
+
+				v, ok := got.ToInt()
+				assert.True(t, ok)
+				assert.Equal(t, expectedProduct, v)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
 		})
 	})
 
-	s.Test("smoke", func(t *testcase.T) {
-		var bi1, bi2 mathkit.BigInt[int]
+	s.Context("smoke", func(s *testcase.Spec) {
+		s.Test("Add+Sub", func(t *testcase.T) {
+			var i1, i2 mathkit.BigInt[int]
 
-		maxInt := mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]())
-		t.Random.Repeat(3, 7, func() {
-			prev := bi1
-			bi1 = bi1.Add(maxInt)
-			bi2 = bi2.Add(maxInt)
-			assert.True(t, compare.IsLess(prev.Compare(bi1)))
-			assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+			t.Random.Repeat(3, 7, func() {
+				prev1, prev2 := i1, i2
+				val := mathkit.BigInt[int]{}.Of(t.Random.IntBetween(-10, -100))
+				i1 = i1.Add(val)
+				i2 = i2.Sub(val)
+				assert.True(t, compare.IsMore(prev1.Compare(i1)))
+				assert.True(t, compare.IsLess(prev2.Compare(i2)))
+			})
+
+			t.Random.Repeat(12, 42, func() {
+				prev1, prev2 := i1, i2
+				val := mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]())
+				i1 = i1.Add(val)
+				i2 = i2.Sub(val)
+				assert.True(t, compare.IsLess(prev1.Compare(i1)))
+				assert.True(t, compare.IsMore(prev2.Compare(i2)))
+			})
+
+			var zero mathkit.BigInt[int]
+			assert.Equal(t, zero, i1.Add(i2))
 		})
 
-		t.Random.Repeat(3, 7, func() {
-			n := t.Random.IntBetween(1, 1000)
-			v := mathkit.BigInt[int]{}.Of(n)
-			prev := bi1
-			bi1 = bi1.Add(v)
-			bi2 = bi2.Add(v)
-			assert.True(t, compare.IsLess(prev.Compare(bi1)))
-			assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
-		})
+		s.Test("smoke", func(t *testcase.T) {
+			var bi1, bi2 mathkit.BigInt[int]
 
-		t.Random.Repeat(3, 7, func() {
-			n := t.Random.IntBetween(1, 1000)
-			v := mathkit.BigInt[int]{}.Of(n)
-			prev := bi1
-			bi1 = bi1.Sub(v)
-			bi2 = bi2.Sub(v)
-			assert.True(t, compare.IsGreater(prev.Compare(bi1)))
-			assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+			maxInt := mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]())
+			t.Random.Repeat(3, 7, func() {
+				prev := bi1
+				bi1 = bi1.Add(maxInt)
+				bi2 = bi2.Add(maxInt)
+				assert.True(t, compare.IsLess(prev.Compare(bi1)))
+				assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+			})
+
+			t.Random.Repeat(3, 7, func() {
+				n := t.Random.IntBetween(1, 1000)
+				v := mathkit.BigInt[int]{}.Of(n)
+				prev := bi1
+				bi1 = bi1.Add(v)
+				bi2 = bi2.Add(v)
+				assert.True(t, compare.IsLess(prev.Compare(bi1)))
+				assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+			})
+
+			t.Random.Repeat(3, 7, func() {
+				n := t.Random.IntBetween(1, 1000)
+				v := mathkit.BigInt[int]{}.Of(n)
+				prev := bi1
+				bi1 = bi1.Sub(v)
+				bi2 = bi2.Sub(v)
+				assert.True(t, compare.IsGreater(prev.Compare(bi1)))
+				assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+			})
 		})
 	})
 }
