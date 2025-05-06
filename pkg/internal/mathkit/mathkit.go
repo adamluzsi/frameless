@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/compare"
 	"go.llib.dev/frameless/pkg/internal/constraints"
-	"go.llib.dev/frameless/pkg/must"
+	"go.llib.dev/testcase/pp"
 )
 
 type (
@@ -34,24 +34,12 @@ func MinInt[T Int]() T {
 	return T(-1 << (typeSizeInBits - 1))
 }
 
-const ErrOverflow errorkit.Error = "ErrOverflow"
-
-func Sum[int Int](a, b int) (int, error) {
+func Sum[INT Int](a, b INT) (INT, bool) {
 	if CanSumOverflow(a, b) {
-		var zero int
-		return zero, ErrOverflow.F("%T overflow", a)
+		var zero INT
+		return zero, false
 	}
-	return a + b, nil
-}
-
-func MustSum[INT Int](a, b INT) INT {
-	return must.Must(Sum[INT](a, b))
-}
-
-func GuardSumF[int Int](x, y int, format string, a ...any) {
-	if CanSumOverflow(x, y) {
-		panic(ErrOverflow.F(format, a...))
-	}
+	return a + b, true
 }
 
 func CanSumOverflow[INT Int](a, b INT) bool {
@@ -78,21 +66,59 @@ func CanSumOverflow[INT Int](a, b INT) bool {
 }
 
 func CanIntMulOverflow[INT Int](x, y INT) bool {
-	if x == 0 {
+	return CanIntMulOverflowX(x, y)
+}
+
+func CanIntMulOverflowX[INT Int](x, y INT) bool {
+	pp.PP(x, y)
+	if x == 0 || y == 0 {
 		return false
 	}
 	var (
-		maxInt = MaxInt[INT]()
-		maxMul = maxInt / Abs(x)
+		maxInt = AbsInt(MaxInt[INT]())
+		maxMul = maxInt / AbsInt(x)
 	)
-	return maxMul < Abs(y)
+	return maxMul < AbsInt(y)
 }
 
-func Abs[N Number](n N) N {
-	if n < 0 {
-		return -n
+func CanIntMulOverflowY[INT Int](x, y INT) bool {
+	if x == 0 || y == 0 ||
+		x == 1 || y == 1 ||
+		x == -1 || y == -1 {
+		return false
 	}
-	return n
+	var (
+		o  = x * y
+		ok bool
+	)
+	pp.PP(x, y, o)
+	switch {
+	case 0 < x && 0 < y: // + * + = +
+		ok = x < o && y < o
+	case x < 0 && y < 0: // - * - = +
+		ok = x < o && y < o
+	case x < 0 && 0 < y: // - * + = -
+		ok = o < x && o < y
+	case 0 < x && y < 0: // + * - = -
+		ok = o < x && o < y
+	default:
+		panic("not-implemented")
+	}
+	return !ok
+}
+
+// AInt is an absolut int value type.
+// It is an alias type to remove unnecessary
+//
+// It is kept always on the maximums supported uint type,
+// which is currently uint64.
+type AInt = uint64
+
+func AbsInt[N Int](n N) AInt {
+	if n < 0 {
+		return AInt(n)
+	}
+	return AInt(n)
 }
 
 type BigInt[INT Int] struct {
@@ -148,7 +174,7 @@ func (i BigInt[INT]) Iter() iter.Seq[INT] {
 		return n
 	}
 	var (
-		maxInt        = MaxInt[INT]()
+		maxInt        = MaxInt[INT]() // MaxInt is perfect because a negative MaxInt is also a valid value, unlike a positive MinInt
 		UpperBoundary = BigInt[INT]{n: maxInt}.switchToBigIntMode()
 	)
 	return func(yield func(INT) bool) {
@@ -170,9 +196,16 @@ func (i BigInt[INT]) Iter() iter.Seq[INT] {
 
 func (i BigInt[INT]) Abs() BigInt[INT] {
 	if i.i == nil {
-		return BigInt[INT]{n: Abs(i.n)}
+		if 0 <= i.n {
+			return i
+		}
+		if MinInt[INT]() < i.n {
+			return BigInt[INT]{n: -i.n}
+		}
 	}
-	return BigInt[INT]{i: (&big.Int{}).Abs(i.i)}
+	i = i.switchToBigIntMode()
+	i.i = big.NewInt(0).Abs(i.i)
+	return i.tryToSwitchToIntMode()
 }
 
 func (i BigInt[INT]) Add(n BigInt[INT]) BigInt[INT] {

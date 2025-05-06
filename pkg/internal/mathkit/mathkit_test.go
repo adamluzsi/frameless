@@ -1,35 +1,36 @@
 package mathkit_test
 
 import (
+	"iter"
 	"math"
 	"strconv"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/internal/compare"
 	"go.llib.dev/frameless/pkg/internal/mathkit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
-func TestAbs_smoke(t *testing.T) {
-	assert.Equal[int](t, 42, mathkit.Abs[int](42))
-	assert.Equal[int](t, 42, mathkit.Abs[int](-42))
+func TestAbsInt(t *testing.T) {
+	assert.Equal[uint64](t, 42, mathkit.AbsInt[int](42))
+	assert.Equal[uint64](t, 42, mathkit.AbsInt[int](-42))
 
-	assert.Equal[int8](t, 2, mathkit.Abs[int8](2))
-	assert.Equal[int8](t, 2, mathkit.Abs[int8](-2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int8](2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int8](-2))
 
-	assert.Equal[int16](t, 2, mathkit.Abs[int16](2))
-	assert.Equal[int16](t, 2, mathkit.Abs[int16](-2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int16](2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int16](-2))
 
-	assert.Equal[int32](t, 2, mathkit.Abs[int32](2))
-	assert.Equal[int32](t, 2, mathkit.Abs[int32](-2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int32](2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int32](-2))
 
-	assert.Equal[int64](t, 2, mathkit.Abs[int64](2))
-	assert.Equal[int64](t, 2, mathkit.Abs[int64](-2))
-
-	assert.Equal[float32](t, 2.1, mathkit.Abs[float32](2.1))
-	assert.Equal[float32](t, 2.1, mathkit.Abs[float32](-2.1))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int64](2))
+	assert.Equal[uint64](t, 2, mathkit.AbsInt[int64](-2))
 }
 
 func TestMaxInt(t *testing.T) {
@@ -70,133 +71,150 @@ func TestMinInt(t *testing.T) {
 	})
 }
 
-// func TestMaxIntMultiplier(t *testing.T) {
-// 	t.Run("Positive small integer", func(t *testing.T) {
-// 		input := 2
-// 		expected := math.MaxInt / input
-// 		result := mathkit.CanIntMulOverflow(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("MaxInt as input", func(t *testing.T) {
-// 		input := math.MaxInt
-// 		expected := 1
-// 		result := mathkit.CanIntMulOverflow(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("Negative input", func(t *testing.T) {
-// 		input := -3
-// 		expected := math.MaxInt / input
-// 		result := mathkit.CanIntMulOverflow(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("Zero input", func(t *testing.T) {
-// 		input := 0
-// 		expected := math.MaxInt
-// 		result := mathkit.CanIntMulOverflow(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("Just below overflow", func(t *testing.T) {
-// 		input := 5
-// 		maxMul := mathkit.CanIntMulOverflow(input)
-// 		result := input * maxMul
-// 		assert.True(t, result <= math.MaxInt)
-// 	})
-
-// 	t.Run("Just above overflow", func(t *testing.T) {
-// 		input := 5
-// 		maxMul := mathkit.CanIntMulOverflow(input)
-// 		overflowCandidate := input * (maxMul + 1)
-// 		// Should overflow an int if done naively; we check if it's less than zero or wraps
-// 		assert.True(t, overflowCandidate < 0 || overflowCandidate < input, "Expected overflow")
-// 	})
-// }
-
-// func TestMinIntDivider(t *testing.T) {
-// 	t.Run("Positive small integer", func(t *testing.T) {
-// 		input := 2
-// 		expected := math.MinInt / input
-// 		result := mathkit.MinIntDivider(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("MinInt as input", func(t *testing.T) {
-// 		input := math.MinInt
-// 		expected := 1
-// 		result := mathkit.MinIntDivider(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("Negative input", func(t *testing.T) {
-// 		input := -3
-// 		expected := math.MinInt / input
-// 		result := mathkit.MinIntDivider(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("Zero input", func(t *testing.T) {
-// 		input := 0
-// 		expected := math.MinInt
-// 		result := mathkit.MinIntDivider(input)
-// 		assert.Equal(t, expected, result)
-// 	})
-
-// 	t.Run("Just above minimum", func(t *testing.T) {
-// 		input := 5
-// 		minDiv := mathkit.MinIntDivider(input)
-// 		result := minDiv / input
-// 		assert.True(t, result >= math.MinInt)
-// 	})
-
-// 	t.Run("Below min divider produces larger quotient", func(t *testing.T) {
-// 		input := 5
-// 		minDiv := mathkit.MinIntDivider(input)
-// 		smallerDiv := minDiv - 1
-
-// 		// Division of a smaller numerator should produce a slightly larger result
-// 		originalResult := minDiv / input
-// 		newResult := smallerDiv / input
-
-// 		assert.True(t, newResult >= originalResult, "Expected larger or equal quotient when decreasing numerator")
-// 	})
-// }
-
-func Test_bigInt(t *testing.T) {
+func TestCanSumOverflow(t *testing.T) {
 	t.Run("pos", func(t *testing.T) {
-		var n mathkit.BigInt[int]
-		n = n.Add(mathkit.BigInt[int]{}.Of(math.MaxInt))
-		n = n.Add(mathkit.BigInt[int]{}.Of(math.MaxInt))
-		n = n.Add(mathkit.BigInt[int]{}.Of(42))
+		assert.False(t, mathkit.CanSumOverflow[int](0, mathkit.MaxInt[int]()))
+		assert.True(t, mathkit.CanSumOverflow[int](1, mathkit.MaxInt[int]()))
 
-		var o mathkit.BigInt[int]
-		for v := range n.Iter() {
-			o.Add(mathkit.BigInt[int]{}.Of(v))
-		}
-		assert.Equal(t, n, o)
+		assert.False(t, mathkit.CanSumOverflow[int8](0, mathkit.MaxInt[int8]()))
+		assert.True(t, mathkit.CanSumOverflow[int8](1, mathkit.MaxInt[int8]()))
+
+		assert.False(t, mathkit.CanSumOverflow[int16](0, mathkit.MaxInt[int16]()))
+		assert.True(t, mathkit.CanSumOverflow[int16](1, mathkit.MaxInt[int16]()))
+
+		assert.False(t, mathkit.CanSumOverflow[int32](0, mathkit.MaxInt[int32]()))
+		assert.True(t, mathkit.CanSumOverflow[int32](1, mathkit.MaxInt[int32]()))
+
+		assert.False(t, mathkit.CanSumOverflow[int64](0, mathkit.MaxInt[int64]()))
+		assert.True(t, mathkit.CanSumOverflow[int64](1, mathkit.MaxInt[int64]()))
+
+		assert.False(t, mathkit.CanSumOverflow[time.Duration](0, mathkit.MaxInt[time.Duration]()))
+		assert.True(t, mathkit.CanSumOverflow[time.Duration](1, mathkit.MaxInt[time.Duration]()))
 	})
 	t.Run("neg", func(t *testing.T) {
-		n := mathkit.BigInt[int]{}
-		n = n.Add(mathkit.BigInt[int]{}.Of(math.MinInt))
-		n = n.Add(mathkit.BigInt[int]{}.Of(math.MinInt))
-		n = n.Add(mathkit.BigInt[int]{}.Of(-42))
+		assert.False(t, mathkit.CanSumOverflow[int](0, mathkit.MinInt[int]()))
+		assert.True(t, mathkit.CanSumOverflow[int](-1, mathkit.MinInt[int]()))
 
-		var o mathkit.BigInt[int]
-		for v := range n.Iter() {
-			o.Add(mathkit.BigInt[int]{}.Of(v))
-		}
-		assert.Equal(t, n, o)
+		assert.False(t, mathkit.CanSumOverflow[int8](0, mathkit.MinInt[int8]()))
+		assert.True(t, mathkit.CanSumOverflow[int8](-1, mathkit.MinInt[int8]()))
+
+		assert.False(t, mathkit.CanSumOverflow[int16](0, mathkit.MinInt[int16]()))
+		assert.True(t, mathkit.CanSumOverflow[int16](-1, mathkit.MinInt[int16]()))
+
+		assert.False(t, mathkit.CanSumOverflow[int32](0, mathkit.MinInt[int32]()))
+		assert.True(t, mathkit.CanSumOverflow[int32](-1, mathkit.MinInt[int32]()))
+
+		assert.False(t, mathkit.CanSumOverflow[int64](0, mathkit.MinInt[int64]()))
+		assert.True(t, mathkit.CanSumOverflow[int64](-1, mathkit.MinInt[int64]()))
+
+		assert.False(t, mathkit.CanSumOverflow[time.Duration](0, mathkit.MinInt[time.Duration]()))
+		assert.True(t, mathkit.CanSumOverflow[time.Duration](-1, mathkit.MinInt[time.Duration]()))
+	})
+}
+
+func TestSum(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		// pos
+		got1, ok := mathkit.Sum(0, mathkit.MaxInt[int]())
+		assert.True(t, ok)
+		assert.Equal(t, got1, mathkit.MaxInt[int]())
+		// neg
+		got1, ok = mathkit.Sum(0, mathkit.MinInt[int]())
+		assert.True(t, ok)
+		assert.Equal(t, got1, mathkit.MinInt[int]())
+		// overflow
+		_, ok = mathkit.Sum(1, mathkit.MaxInt[int]())
+		assert.False(t, ok)
+		_, ok = mathkit.Sum(-1, mathkit.MinInt[int]())
+		assert.False(t, ok)
+	})
+
+	t.Run("custom type", func(t *testing.T) {
+		type CINT int64
+		// max OK
+		got, ok := mathkit.Sum(0, mathkit.MaxInt[CINT]())
+		assert.True(t, ok)
+		assert.Equal(t, got, mathkit.MaxInt[CINT]())
+		// min OK
+		got, ok = mathkit.Sum(0, mathkit.MinInt[CINT]())
+		assert.True(t, ok)
+		assert.Equal(t, got, mathkit.MinInt[CINT]())
+		// overflow
+		_, ok = mathkit.Sum(1, mathkit.MaxInt[CINT]())
+		assert.False(t, ok)
+		_, ok = mathkit.Sum(-1, mathkit.MinInt[CINT]())
+		assert.False(t, ok)
+	})
+}
+
+func TestCanIntMulOverflow(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("detects overflow correctly", func(t *testcase.T) {
+		a := t.Random.IntBetween(1, math.MaxInt/2)
+		b := math.MaxInt/a + 1 // Guaranteed to overflow
+		assert.True(t, mathkit.CanIntMulOverflow(a, b))
+
+		b = math.MaxInt / a // Safe from overflow
+		assert.False(t, mathkit.CanIntMulOverflow(a, b))
+	})
+
+	s.Test("handles zero", func(t *testcase.T) {
+		assert.False(t, mathkit.CanIntMulOverflow(0, 0))
+		assert.False(t, mathkit.CanIntMulOverflow(0, t.Random.Int()))
+		assert.False(t, mathkit.CanIntMulOverflow(t.Random.Int(), 0))
+	})
+
+	s.Test("pos", func(t *testcase.T) {
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int](), 1))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int](), 2))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int]()/2, 3))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int]()/2, 2))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int]()/3, 4))
+	})
+
+	s.Test("neg-1", func(t *testcase.T) {
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int](), 1))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int](), 2))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/2, 3))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/2, 2))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/3, 4))
+	})
+
+	s.Test("neg-2", func(t *testcase.T) {
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int](), -1))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int](), -2))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/2, -3))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/2, -2))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/3, -3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MinInt[int]()/3, -4))
+	})
+
+	s.Test("type specific", func(t *testcase.T) {
+		type CINT int64
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int8]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int8]()/3, 4))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int16]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int16]()/3, 4))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int32]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int32]()/3, 4))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int64]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[int64]()/3, 4))
+		assert.False(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[CINT]()/3, 3))
+		assert.True(t, mathkit.CanIntMulOverflow(mathkit.MaxInt[CINT]()/3, 4))
 	})
 }
 
 func TestBigInt(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	subjectN := let.IntB(s, 0, 100)
+	// base is the number the current testing subject is initially based on.
+	base := let.IntB(s, 0, 100)
+
 	subject := let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
-		return mathkit.BigInt[int]{}.Of(subjectN.Get(t))
+		return mathkit.BigInt[int]{}.Of(base.Get(t))
 	})
 
 	var ThenSubjectDoNotChange = func(s *testcase.Spec, act func(t *testcase.T)) {
@@ -207,7 +225,26 @@ func TestBigInt(t *testing.T) {
 		})
 	}
 
-	s.Describe("ToInt", func(s *testcase.Spec) {
+	s.Describe("#Of", func(s *testcase.Spec) {
+		var n = let.IntB(s, math.MinInt, math.MaxInt)
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).Of(n.Get(t))
+		})
+
+		s.Then("a big int which value equals to the input argument is returned", func(t *testcase.T) {
+			got := act(t)
+
+			v, ok := got.ToInt()
+			assert.True(t, ok)
+			assert.Equal(t, n.Get(t), v)
+
+			assert.Equal(t, strconv.Itoa(n.Get(t)), got.String())
+		})
+
+		ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+	})
+
+	s.Describe("#ToInt", func(s *testcase.Spec) {
 		act := let.Act2(func(t *testcase.T) (int, bool) {
 			return subject.Get(t).ToInt()
 		})
@@ -250,26 +287,7 @@ func TestBigInt(t *testing.T) {
 		})
 	})
 
-	s.Describe("Of", func(s *testcase.Spec) {
-		var n = let.IntB(s, math.MinInt, math.MaxInt)
-		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
-			return subject.Get(t).Of(n.Get(t))
-		})
-
-		s.Then("a big int which value equals to the input argument is returned", func(t *testcase.T) {
-			got := act(t)
-
-			v, ok := got.ToInt()
-			assert.True(t, ok)
-			assert.Equal(t, n.Get(t), v)
-
-			assert.Equal(t, strconv.Itoa(n.Get(t)), got.String())
-		})
-
-		ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
-	})
-
-	s.Describe("Compare", func(s *testcase.Spec) {
+	s.Describe("#Compare", func(s *testcase.Spec) {
 		var (
 			other = let.Var[mathkit.BigInt[int]](s, nil)
 		)
@@ -316,7 +334,7 @@ func TestBigInt(t *testing.T) {
 		})
 	})
 
-	s.Describe("Add", func(s *testcase.Spec) {
+	s.Describe("#Add", func(s *testcase.Spec) {
 		var (
 			n   = let.IntB(s, 1, 100)
 			oth = let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
@@ -338,11 +356,11 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("sum done within the normal integer range", func(s *testcase.Spec) {
-			subjectN.Let(s, let.IntB(s, 1, 100).Get)
+			base.Let(s, let.IntB(s, 1, 100).Get)
 			n.Let(s, let.IntB(s, 1, 100).Get)
 
 			s.Then("the result is the sum of the receiver and the argument", func(t *testcase.T) {
-				exp := mathkit.BigInt[int]{}.Of(subjectN.Get(t) + n.Get(t))
+				exp := mathkit.BigInt[int]{}.Of(base.Get(t) + n.Get(t))
 				assert.Equal(t, act(t), exp)
 			})
 
@@ -350,7 +368,7 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("addition's result would yield a big int", func(s *testcase.Spec) {
-			subjectN.LetValue(s, math.MaxInt)
+			base.LetValue(s, math.MaxInt)
 			n.LetValue(s, math.MaxInt)
 
 			s.Then("result will be equalement of the sum of the values", func(t *testcase.T) {
@@ -370,7 +388,7 @@ func TestBigInt(t *testing.T) {
 		})
 	})
 
-	s.Describe("Sub", func(s *testcase.Spec) {
+	s.Describe("#Sub", func(s *testcase.Spec) {
 		var (
 			n   = let.IntB(s, 1, 100)
 			oth = let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
@@ -392,11 +410,11 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("sub done within the normal integer range", func(s *testcase.Spec) {
-			subjectN.Let(s, let.IntB(s, 1, 100).Get)
+			base.Let(s, let.IntB(s, 1, 100).Get)
 			n.Let(s, let.IntB(s, 1, 100).Get)
 
 			s.Then("the result is the sub of the receiver and the argument", func(t *testcase.T) {
-				exp := mathkit.BigInt[int]{}.Of(subjectN.Get(t) - n.Get(t))
+				exp := mathkit.BigInt[int]{}.Of(base.Get(t) - n.Get(t))
 				assert.Equal(t, act(t), exp)
 			})
 
@@ -404,7 +422,7 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("substraction's result would yield a big int", func(s *testcase.Spec) {
-			subjectN.LetValue(s, math.MinInt)
+			base.LetValue(s, math.MinInt)
 			n.LetValue(s, math.MaxInt)
 
 			s.Then("result will be equalement of the sum of the values", func(t *testcase.T) {
@@ -424,7 +442,7 @@ func TestBigInt(t *testing.T) {
 		})
 	})
 
-	s.Describe("Mul", func(s *testcase.Spec) { // TAINT
+	s.Describe("#Mul", func(s *testcase.Spec) { // TAINT
 		var (
 			n   = let.IntB(s, -10_000, 10_000)
 			oth = let.Var(s, func(t *testcase.T) mathkit.BigInt[int] {
@@ -448,11 +466,11 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("product is within normal int range", func(s *testcase.Spec) {
-			subjectN.Let(s, let.IntB(s, -10_000, 10_000).Get)
+			base.Let(s, let.IntB(s, -10_000, 10_000).Get)
 			n.Let(s, let.IntB(s, -10_000, 10_000).Get)
 
 			s.Then("the result is the product of receiver and argument", func(t *testcase.T) {
-				a := subjectN.Get(t)
+				a := base.Get(t)
 				b := n.Get(t)
 				expectedProduct := a * b
 
@@ -470,7 +488,7 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("product would overflow into big int", func(s *testcase.Spec) {
-			subjectN.LetValue(s, math.MaxInt)
+			base.LetValue(s, math.MaxInt)
 			n.LetValue(s, 2)
 
 			expectedBig := mathkit.BigInt[int]{}.Of(math.MaxInt).Mul(mathkit.BigInt[int]{}.Of(2))
@@ -491,7 +509,7 @@ func TestBigInt(t *testing.T) {
 			n.LetValue(s, -5)
 
 			s.Then("the product has correct sign and magnitude", func(t *testcase.T) {
-				a := subjectN.Get(t)
+				a := base.Get(t)
 				expectedProduct := a * (-5)
 				exp := mathkit.BigInt[int]{}.Of(expectedProduct)
 				got := act(t)
@@ -506,7 +524,7 @@ func TestBigInt(t *testing.T) {
 		})
 
 		s.When("both values are negative", func(s *testcase.Spec) {
-			subjectN.LetValue(s, -3)
+			base.LetValue(s, -3)
 			n.LetValue(s, -5)
 
 			expectedProduct := 15
@@ -522,6 +540,113 @@ func TestBigInt(t *testing.T) {
 			})
 
 			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+	})
+
+	s.Describe("#Iter", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) iter.Seq[int] {
+			return subject.Get(t).Iter()
+		})
+
+		vs := let.Var[[]int](s, nil)
+
+		subject.Let(s, func(t *testcase.T) mathkit.BigInt[int] {
+			var v mathkit.BigInt[int]
+			for _, n := range vs.Get(t) {
+				v = v.Add(v.Of(n))
+			}
+			return v
+		})
+
+		s.When("the big int value is zero", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) mathkit.BigInt[int] {
+				return mathkit.BigInt[int]{}
+			})
+
+			s.Then("iteration won't yield even once", func(t *testcase.T) {
+				count := iterkit.Count(act(t))
+				assert.Equal(t, 0, count, "expected that the iteration count is zero")
+			})
+		})
+
+		s.When("the big int value is positive", func(s *testcase.Spec) {
+			vs.Let(s, func(t *testcase.T) []int {
+				return random.Slice(t.Random.IntBetween(3, 42), func() int {
+					return t.Random.IntBetween(math.MaxInt/2, math.MaxInt)
+				})
+			})
+
+			s.Then("the iterated value's sum equal to the big int itself", func(t *testcase.T) {
+				var o mathkit.BigInt[int]
+				for v := range act(t) {
+					assert.True(t, 0 < v)
+					o.Add(mathkit.BigInt[int]{}.Of(v))
+				}
+				assert.Equal(t, subject.Get(t), o)
+			})
+		})
+
+		s.When("the big int value is negative", func(s *testcase.Spec) {
+			vs.Let(s, func(t *testcase.T) []int {
+				return random.Slice(t.Random.IntBetween(3, 42), func() int {
+					return t.Random.IntBetween(math.MinInt/2, math.MinInt)
+				})
+			})
+
+			s.Then("the iterated value's sum equal to the big int itself", func(t *testcase.T) {
+				var o mathkit.BigInt[int]
+				for v := range act(t) {
+					assert.True(t, v < 0)
+					o.Add(mathkit.BigInt[int]{}.Of(v))
+				}
+				assert.Equal(t, subject.Get(t), o)
+			})
+		})
+	})
+
+	s.Describe("#Abs", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).Abs()
+		})
+
+		s.When("int is positive", func(s *testcase.Spec) {
+			base.Let(s, let.IntB(s, 1, 1000).Get)
+
+			s.Then("it won't affect it", func(t *testcase.T) {
+				got, ok := act(t).ToInt()
+				assert.True(t, ok)
+				assert.Equal(t, got, base.Get(t))
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("int is negative", func(s *testcase.Spec) {
+			base.Let(s, let.IntB(s, -1, -1000).Get)
+
+			s.Then("result is a positive abs int", func(t *testcase.T) {
+				got, ok := act(t).ToInt()
+				assert.True(t, ok)
+				assert.Equal(t, got, base.Get(t)*-1)
+			})
+
+			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+		})
+
+		s.When("int is over the positive int range", func(s *testcase.Spec) {
+			base.LetValue(s, math.MinInt)
+
+			s.Then("we get back a value that is equal to the expected absolute value", func(t *testcase.T) {
+
+			})
+		})
+
+		s.When("int is a MinInt which doesn't have a equalement on the positive side due to int overflow", func(s *testcase.Spec) {
+			base.LetValue(s, math.MinInt)
+
+			s.Then("we get back a value that is equal to the expected absolute value", func(t *testcase.T) {
+
+			})
 		})
 	})
 
