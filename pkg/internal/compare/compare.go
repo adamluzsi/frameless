@@ -1,5 +1,7 @@
 package compare
 
+import "go.llib.dev/frameless/pkg/internal/constraints"
+
 // Interface defines how comparison can be implemented.
 // An implementation of Interface can be sorted by the routines in this package.
 // The methods refer to elements of the underlying collection by integer index.
@@ -52,24 +54,27 @@ func IsLessOrEqual(cmp int) bool {
 	return cmp <= 0
 }
 
+// IsMore reports whether the receiver is greater than another value.
+func IsMore(cmp int) bool {
+	return 0 < cmp
+}
+
+// IsMoreOrEqual reports whether the receiver is more than or equal to another value.
+func IsMoreOrEqual(cmp int) bool {
+	return 0 <= cmp
+}
+
 // IsGreater reports whether the receiver is greater than another value.
 func IsGreater(cmp int) bool {
-	return 0 < cmp
+	return IsMore(cmp)
 }
 
 // IsGreaterOrEqual reports whether the receiver is greater than or equal to another value.
 func IsGreaterOrEqual(cmp int) bool {
-	return 0 <= cmp
+	return IsMoreOrEqual(cmp)
 }
 
-// --- NUMBER ---//
-type number interface {
-	float32 | float64 |
-		int | int8 | int16 | int32 | int64 |
-		uint | uint8 | uint16 | uint32 | uint64
-}
-
-func Numbers[T number](a, b T) int {
+func Numbers[T constraints.Number](a, b T) int {
 	switch {
 	case a < b:
 		return -1
