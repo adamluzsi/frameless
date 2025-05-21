@@ -8,3 +8,5 @@ go.llib.dev/testcase v0.178.5 h1:S7GvAaxlGyCkc01YacIXg0QgK+VRnpBrp0TkTdg2voA=
 go.llib.dev/testcase v0.178.5/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 go.llib.dev/testcase v0.179.0 h1:lTeRxStksMD+9bvXtFkL2z5b7b/7fC8OpquV/Wx+i+0=
 go.llib.dev/testcase v0.179.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/testcase v0.179.1 h1:QHzIHsveRwApCmj5OY2mY7/pQjVIPloXYws7jdspJCw=
+go.llib.dev/testcase v0.179.1/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
