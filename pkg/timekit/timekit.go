@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/mathkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
 )
 
@@ -178,12 +179,12 @@ type Schedule struct {
 	// Duration is length of the scheduling.
 	Duration time.Duration
 	// Month defines for which month the AvailabilityPolicy is meant for.
-	Month *time.Month
+	Months []time.Month
 	// Day defines for which day the AvailabilityPolicy is meant for.
-	Day *int
+	Days []int
 	// Weekday defines if the policy is meant for a given day, or for any day of the week.
 	// if nil, then it is interpreted as unbound.
-	Weekday *time.Weekday
+	Weekdays []time.Weekday
 	// Location of the AvailabilityPolicy.
 	// When no Location set, then Product specific configuration is expected.
 	Location *time.Location
@@ -192,9 +193,9 @@ type Schedule struct {
 func (sch Schedule) IsZero() bool {
 	return sch.DayTime.IsZero() &&
 		sch.Duration == 0 &&
-		sch.Month == nil &&
-		sch.Day == nil &&
-		sch.Weekday == nil &&
+		len(sch.Months) == 0 &&
+		len(sch.Days) == 0 &&
+		len(sch.Weekdays) == 0 &&
 		sch.Location == nil
 }
 
@@ -212,16 +213,17 @@ func (sch Schedule) Check(ref time.Time) bool {
 	if sch.Location != nil {
 		ref = ref.In(sch.Location)
 	}
-	if sch.Weekday != nil && ref.Weekday() != *sch.Weekday {
+	if 0 < len(sch.Months) && !slicekit.Contains(sch.Months, ref.Month()) {
 		return false
 	}
-	if sch.Month != nil && ref.Month() != *sch.Month {
+	if 0 < len(sch.Weekdays) && !slicekit.Contains(sch.Weekdays, ref.Weekday()) {
 		return false
 	}
-	if !sch.DayTime.IsZero() {
-		if !sch.getRangeOnDate(ref).Contain(ref) {
-			return false
-		}
+	if 0 < len(sch.Days) && !slicekit.Contains(sch.Days, ref.Day()) {
+		return false
+	}
+	if !sch.DayTime.IsZero() && !sch.getRangeOnDate(ref).Contain(ref) {
+		return false
 	}
 	return true
 }
@@ -267,9 +269,12 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 	}
 
 	for {
-		if sch.Month != nil {
-			distance := MonthDiff(candidate.Month(), *sch.Month)
-			if distance != 0 {
+		if 0 < len(sch.Months) {
+			m := candidate.Month()
+			distance, ok := closest(sch.Months, func(o time.Month) int {
+				return MonthDiff(m, o)
+			})
+			if ok && distance != 0 {
 				targetMonth := candidate.Month() + time.Month(distance)
 				// first day of the target Month
 				candidate = time.Date(candidate.Year(), targetMonth, 1,
@@ -277,24 +282,45 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 				continue
 			}
 		}
-		if sch.Day != nil {
-			switch {
-			case candidate.Day() < *sch.Day:
-				distance := *sch.Day - candidate.Day()
-				candidate = time.Date(candidate.Year(), candidate.Month(), candidate.Day()+distance,
-					0, 0, 0, 0, candidate.Location())
-				continue
-			case *sch.Day < candidate.Day(): // then we likely need next month's day
-				target := candidate.AddDate(0, 1, 0)
-				target = time.Date(target.Year(), target.Month()+1, *sch.Day, 0, 0, 0, 0, target.Location())
-				candidate = target
+		if 0 < len(sch.Days) {
+			var (
+				cDay     = candidate.Day()
+				nextTime time.Time
+			)
+			for _, eDay := range sch.Days {
+				var next time.Time
+				switch {
+				case cDay == eDay:
+					next = candidate
+				case cDay < eDay:
+					distance := eDay - cDay
+					next = time.Date(candidate.Year(), candidate.Month(), cDay+distance,
+						0, 0, 0, 0, candidate.Location())
+				case eDay < cDay: // then we likely need next month's day
+					target := candidate.AddDate(0, 1, 0)
+					next = time.Date(target.Year(), target.Month()+1, eDay, 0, 0, 0, 0, target.Location())
+				default:
+					continue
+				}
+				if nextTime.IsZero() {
+					nextTime = next
+				}
+				if next.Before(nextTime) {
+					nextTime = next
+				}
+			}
+			if !nextTime.IsZero() {
+				candidate = nextTime
 				continue
 			}
 		}
 
-		if sch.Weekday != nil {
-			daysTill := WeekdayDiff(candidate.Weekday(), *sch.Weekday)
-			if daysTill != 0 {
+		if 0 < len(sch.Weekdays) {
+			wd := candidate.Weekday()
+			daysTill, ok := closest(sch.Weekdays, func(o time.Weekday) int {
+				return WeekdayDiff(wd, o)
+			})
+			if ok && daysTill != 0 {
 				candidate = truncateDay(candidate)
 				candidate = candidate.AddDate(0, 0, daysTill)
 				continue
@@ -312,6 +338,19 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 
 		continue
 	}
+}
+
+func closest[O mathkit.Int, T any](vs []T, m func(T) O) (O, bool) {
+	var distance O
+	for _, d := range slicekit.Map(vs, m) {
+		if distance == 0 {
+			distance = d
+		}
+		if d < distance {
+			distance = d
+		}
+	}
+	return distance, len(vs) != 0
 }
 
 func nextDay(t time.Time) time.Time {

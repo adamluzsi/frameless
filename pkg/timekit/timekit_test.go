@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/compare"
-	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/frameless/pkg/validate"
@@ -620,7 +619,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 
 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
 			sch := schedule.Super(t)
-			sch.Month = pointer.Of(month.Get(t))
+			sch.Months = []time.Month{month.Get(t)}
 			t.OnFail(func() {
 				t.LogPretty(sch)
 			})
@@ -648,7 +647,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 
 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
 			sch := schedule.Super(t)
-			sch.Weekday = pointer.Of(weekday.Get(t))
+			sch.Weekdays = []time.Weekday{weekday.Get(t)}
 			return sch
 		})
 
@@ -665,7 +664,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 
 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
 			sch := schedule.Super(t)
-			sch.Day = pointer.Of(day.Get(t))
+			sch.Days = []int{day.Get(t)}
 			return sch
 		})
 
@@ -760,7 +759,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 			}
 			weekday := timekit.ShiftWeekday(ref.Get(t).Weekday(), 1)
 			return timekit.Schedule{
-				Weekday:  &weekday,
+				Weekdays: []time.Weekday{weekday},
 				DayTime:  from,
 				Duration: random.Pick[time.Duration](t.Random, 0, 15, 30) * time.Minute,
 				Location: ref.Get(t).Location(),
