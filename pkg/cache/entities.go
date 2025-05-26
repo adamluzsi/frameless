@@ -43,7 +43,7 @@ type HitID string
 
 type Interface[ENT, ID any] interface {
 	CachedQueryOne(ctx context.Context, hid HitID, query QueryOneFunc[ENT]) (_ent ENT, _found bool, _err error)
-	CachedQueryMany(ctx context.Context, hid HitID, query QueryManyFunc[ENT]) (iter.Seq2[ENT, error], error)
+	CachedQueryMany(ctx context.Context, hid HitID, query QueryManyFunc[ENT]) iter.Seq2[ENT, error]
 	InvalidateCachedQuery(ctx context.Context, hid HitID) error
 	InvalidateByID(ctx context.Context, id ID) (rErr error)
 	DropCachedValues(ctx context.Context) error
@@ -51,7 +51,7 @@ type Interface[ENT, ID any] interface {
 
 type (
 	QueryOneFunc[ENT any]  func(ctx context.Context) (_ ENT, found bool, _ error)
-	QueryManyFunc[ENT any] func(ctx context.Context) (iter.Seq2[ENT, error], error)
+	QueryManyFunc[ENT any] func(ctx context.Context) iter.Seq2[ENT, error]
 )
 
 // Query is a helper that allows you to create a cache.HitID

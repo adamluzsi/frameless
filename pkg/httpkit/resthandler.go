@@ -77,7 +77,7 @@ type RESTHandler[ENT, ID any] struct {
 	// Index will return the entities, optionally filtered with the query argument.
 	// Index is a collection endpoint.
 	//		GET /
-	Index func(ctx context.Context) (iter.Seq2[ENT, error], error)
+	Index func(ctx context.Context) iter.Seq2[ENT, error]
 	// Show will return a single entity, looked up by its ID.
 	// Show is a resource endpoint.
 	// 		GET /:id
@@ -361,11 +361,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	index, err := h.indexIter(ctx)
-	if err != nil {
-		h.getErrorHandler().HandleError(w, r, err)
-		return
-	}
+	index := h.indexIter(ctx)
 
 	if len(h.Filters) != 0 {
 		index = iterkit.OnErrSeqValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
@@ -453,11 +449,8 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iter.Seq2[ENT, error], error) {
-	index, err := h.Index(ctx)
-	if err != nil {
-		return index, err
-	}
+func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) iter.Seq2[ENT, error] {
+	index := h.Index(ctx)
 	if _, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx); ok {
 		index = iterkit.OnErrSeqValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
 			return iterkit.Filter(i, func(v ENT) bool {
@@ -465,7 +458,7 @@ func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) (iter.Seq2[ENT, err
 			})
 		})
 	}
-	return index, nil
+	return index
 }
 
 func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
@@ -817,10 +810,7 @@ func (res RESTHandler[ENT, ID]) trySoftDeleteAll(ctx context.Context) (ok bool, 
 		defer comproto.FinishOnePhaseCommit(&rerr, res.CommitManager, ctx)
 	}
 
-	all, err := res.Index(ctx)
-	if err != nil {
-		return true, err
-	}
+	all := res.Index(ctx)
 
 	var ids []ID
 	for v, err := range all {

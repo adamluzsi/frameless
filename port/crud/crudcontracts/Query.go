@@ -5,9 +5,9 @@ import (
 	"iter"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/spechelper"
@@ -154,7 +154,7 @@ type QueryManySubject[ENT any] struct {
 	// The func signature for Query is the generic representation of a query that meant to find one result.
 	// It is really similar to resources.Finder#FindByID,
 	// with the exception that the closure meant to know the query method name on the subject and the inputs it requires.
-	Query func(ctx context.Context) (iter.Seq2[ENT, error], error)
+	Query func(ctx context.Context) iter.Seq2[ENT, error]
 	// IncludedEntity return an entity that is matched by the QueryManyFunc.
 	// If subject doesn't support Creator, then it should be present in the subject resource.
 	IncludedEntity func() ENT
@@ -195,7 +195,7 @@ func QueryMany[ENT, ID any](
 			return c.MakeContext(t)
 		})
 	)
-	act := func(t *testcase.T) (iter.Seq2[ENT, error], error) {
+	act := func(t *testcase.T) iter.Seq2[ENT, error] {
 		assert.NotNil(t, subject, "QueryMany subject has no MakeQuery value")
 		return sub.Get(t).Query(ctx.Get(t))
 	}
@@ -207,7 +207,7 @@ func QueryMany[ENT, ID any](
 
 		s.Then(`the query will return the entity`, func(t *testcase.T) {
 			t.Eventually(func(it *testcase.T) {
-				ents, err := crudkit.CollectQueryMany(act(it))
+				ents, err := iterkit.CollectErr(act(it))
 				assert.NoError(t, err)
 				assert.Contain(t, ents, includedEntity.Get(it))
 			})
@@ -227,7 +227,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then(`both entity is returned`, func(t *testcase.T) {
 				t.Eventually(func(t *testcase.T) {
-					ents, err := crudkit.CollectQueryMany(act(t))
+					ents, err := iterkit.CollectErr(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, ents, includedEntity.Get(t))
 					assert.Contain(t, ents, additionalEntities.Get(t))
@@ -236,8 +236,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then("query execution can interlace between the same queries", func(t *testcase.T) { // multithreaded apps
 				t.Eventually(func(t *testcase.T) {
-					i1, err := act(t)
-					assert.NoError(t, err)
+					i1 := act(t)
 
 					i1Next, i1Stop := iter.Pull2(i1)
 					defer i1Stop()
@@ -246,7 +245,7 @@ func QueryMany[ENT, ID any](
 					assert.True(t, ok)
 					assert.NoError(t, err)
 
-					vs2, err := crudkit.CollectQueryMany(act(t))
+					vs2, err := iterkit.CollectErr(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, vs2, includedEntity.Get(t))
 					assert.Contain(t, vs2, additionalEntities.Get(t))
@@ -271,8 +270,7 @@ func QueryMany[ENT, ID any](
 			if subject, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
 				s.Then("query execution can interlace with FindByID", func(t *testcase.T) { // multithreaded apps
 					t.Eventually(func(t *testcase.T) {
-						itr, err := act(t)
-						assert.NoError(t, err)
+						itr := act(t)
 
 						probes := t.Random.IntBetween(3, 5)
 
@@ -307,7 +305,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then(`only the matching entity is returned`, func(t *testcase.T) {
 				t.Eventually(func(t *testcase.T) {
-					ents, err := crudkit.CollectQueryMany(act(t))
+					ents, err := iterkit.CollectErr(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, ents, includedEntity.Get(t))
 					assert.NotContain(t, ents, othEnt.Get(t))
@@ -324,7 +322,7 @@ func QueryMany[ENT, ID any](
 		})
 
 		s.Then(`it expected to return with context error`, func(t *testcase.T) {
-			gotErr := shouldIterEventuallyError(t, func() (iter.Seq2[ENT, error], error) {
+			gotErr := shouldIterEventuallyError(t, func() iter.Seq2[ENT, error] {
 				return act(t)
 			})
 			assert.ErrorIs(t, gotErr, ctx.Get(t).Err())

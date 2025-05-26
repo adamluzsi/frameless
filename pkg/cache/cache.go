@@ -20,7 +20,6 @@ import (
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/guard"
 	"go.llib.dev/testcase/clock"
@@ -146,12 +145,7 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 		return err
 	}
 
-	hitsIter, err := m.Repository.Hits().FindAll(ctx)
-	if err != nil {
-		return err
-	}
-
-	HitsThatReferenceOurEntity := iterkit.OnErrSeqValue(hitsIter, func(i iter.Seq[Hit[ID]]) iter.Seq[Hit[ID]] {
+	HitsThatReferenceOurEntity := iterkit.OnErrSeqValue(m.Repository.Hits().FindAll(ctx), func(i iter.Seq[Hit[ID]]) iter.Seq[Hit[ID]] {
 		return iterkit.Filter[Hit[ID]](i, func(h Hit[ID]) bool {
 			for _, gotID := range h.EntityIDs {
 				if gotID == id {
@@ -230,11 +224,11 @@ func (m *Cache[ENT, ID]) invalidateCachedQueryWithoutCascadeEffect(ctx context.C
 	return hit, found, m.Repository.Hits().DeleteByID(ctx, hitID)
 }
 
-func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) (_ iter.Seq2[ENT, error], rErr error) {
+func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query QueryManyFunc[ENT]) iter.Seq2[ENT, error] {
 	// TODO: double check
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
-			return nil, ctx.Err()
+			return iterkit.Error[ENT](err)
 		}
 	}
 
@@ -245,34 +239,39 @@ func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query
 	}
 	if found {
 		if len(hit.EntityIDs) == 0 {
-			return iterkit.Empty2[ENT, error](), nil
+			return iterkit.Empty2[ENT, error]()
 		}
 
 		m.doRefreshBehind(ctx, hitID, query)
 
-		itr, err := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
+		itr := m.Repository.Entities().FindByIDs(ctx, hit.EntityIDs...)
 		const msg = "cache Repository.Entities().FindByIDs had an error"
-		if err != nil {
-			if errors.Is(err, crud.ErrNotFound) {
-				_ = m.Repository.Hits().DeleteByID(ctx, hit.ID)
-			} else {
-				logger.Warn(ctx, msg, logging.ErrField(err))
-			}
-			return query(ctx)
-		}
 
 		return func(yield func(ENT, error) bool) {
+			var ok bool
 			for ent, err := range itr {
 				if err != nil {
 					if errors.Is(err, crud.ErrNotFound) {
 						_ = m.Repository.Hits().DeleteByID(ctx, hit.ID)
+					} else {
+						logger.Warn(ctx, msg, logging.ErrField(err))
 					}
+					continue
 				}
+				ok = true
 				if !yield(ent, err) {
 					return
 				}
 			}
-		}, nil
+			if ok {
+				return
+			}
+			for ent, err := range query(ctx) {
+				if !yield(ent, err) {
+					return
+				}
+			}
+		}
 	}
 
 	ids, err := m.cacheQuery(ctx, hitID, query)
@@ -281,12 +280,26 @@ func (m *Cache[ENT, ID]) CachedQueryMany(ctx context.Context, hitID HitID, query
 		return query(ctx)
 	}
 
-	result, err := m.Repository.Entities().FindByIDs(ctx, ids...)
-	if err != nil {
-		return query(ctx)
+	return func(yield func(ENT, error) bool) {
+		var ok bool // OK signals that at least one successful non err yield was done with the cached repository
+		for v, err := range m.Repository.Entities().FindByIDs(ctx, ids...) {
+			if err != nil {
+				continue
+			}
+			ok = true
+			if !yield(v, err) {
+				return
+			}
+		}
+		if ok {
+			return
+		}
+		for v, err := range query(ctx) { // fallback in case cached entity repository is having issues
+			if !yield(v, err) {
+				return
+			}
+		}
 	}
-
-	return result, nil
 }
 
 func (m *Cache[ENT, ID]) CachedQueryOne(
@@ -294,11 +307,8 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 	hitID HitID,
 	query QueryOneFunc[ENT],
 ) (_ent ENT, _found bool, _err error) {
-	itr, err := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
-	if err != nil {
-		return _ent, false, err
-	}
-	ent, found, err := crudkit.First(itr)
+	vs := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
+	ent, found, err := iterkit.FirstErr(vs)
 	if err != nil {
 		return _ent, false, err
 	}
@@ -324,18 +334,13 @@ func (m *Cache[ENT, ID]) RefreshByID(ctx context.Context, id ID) (rErr error) {
 
 func (m *Cache[ENT, ID]) Refresh(ctx context.Context) (rErr error) {
 	if source, err := getAs[crud.AllFinder[ENT]](m.Source); err == nil {
-		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iter.Seq2[ENT, error], error) {
+		return m.RefreshQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) iter.Seq2[ENT, error] {
 			return source.FindAll(ctx)
 		})
 	}
 
-	entities, err := m.Repository.Entities().FindAll(ctx)
-	if err != nil {
-		return err
-	}
-
 	var refreshErrors []error
-	for v, err := range entities {
+	for v, err := range m.Repository.Entities().FindAll(ctx) {
 		if err != nil {
 			return err
 		}
@@ -398,10 +403,7 @@ func (m *Cache[ENT, ID]) cacheQuery(
 	hitID HitID,
 	query QueryManyFunc[ENT],
 ) (_ []ID, rErr error) {
-	srcIter, err := query(ctx)
-	if err != nil {
-		return nil, err
-	}
+	srcIter := query(ctx)
 
 	// intentionally an empty slice and not a nil slice to avoid it to be stored as null value in the Hits.
 	var ids = make([]ID, 0)
@@ -431,15 +433,15 @@ func (m *Cache[ENT, ID]) cacheQuery(
 }
 
 func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFunc[ENT] {
-	return func(ctx context.Context) (iter.Seq2[ENT, error], error) {
+	return func(ctx context.Context) iter.Seq2[ENT, error] {
 		ent, found, err := q(ctx)
 		if err != nil {
-			return nil, err
+			return iterkit.Error[ENT](err)
 		}
 		if !found {
-			return iterkit.Empty2[ENT, error](), nil
+			return iterkit.Empty2[ENT, error]()
 		}
-		return iterkit.ToErrSeq(iterkit.SingleValue(ent)), nil
+		return iterkit.ToErrSeq(iterkit.SingleValue(ent))
 	}
 }
 
@@ -539,12 +541,12 @@ func (m *Cache[ENT, ID]) HitIDFindAll() HitID {
 	return Query{Name: "FindAll"}.HitID()
 }
 
-func (m *Cache[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
+func (m *Cache[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
 	source, err := getAs[crud.AllFinder[ENT]](m.Source)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", "FindAll", ErrNotImplementedBySource)
+		return iterkit.Error[ENT](fmt.Errorf("%s: %w", "FindAll", ErrNotImplementedBySource))
 	}
-	return m.CachedQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) (iter.Seq2[ENT, error], error) {
+	return m.CachedQueryMany(ctx, m.HitIDFindAll(), func(ctx context.Context) iter.Seq2[ENT, error] {
 		return source.FindAll(ctx)
 	})
 }

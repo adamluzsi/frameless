@@ -257,21 +257,9 @@ func testingRunFlagProvided() bool {
 	return runFlag != nil && runFlag.Value.String() != ""
 }
 
-func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() (iter.Seq2[ENT, error], error)) (rErr error) {
-	itr, err := fn()
-
-	assert.AnyOf(tb, func(a *assert.A) {
-		a.Case(func(t assert.It) {
-			t.Must.Error(err)
-			rErr = err
-		})
-		if itr != nil {
-			a.Case(func(t assert.It) {
-				_, err := iterkit.CollectErr(itr)
-				t.Must.Error(err)
-				rErr = err
-			})
-		}
-	})
-	return
+func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() iter.Seq2[ENT, error]) error {
+	itr := fn()
+	_, err := iterkit.CollectErr(itr)
+	assert.Error(tb, err)
+	return err
 }

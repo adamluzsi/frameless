@@ -53,13 +53,13 @@ type ByIDFinder[ENT, ID any] interface {
 type ByIDsFinder[ENT, ID any] interface {
 	// FindByIDs finds entities with the given IDs in the repository.
 	// If any of the ID points to a non-existent ENT, the returned iterator will eventually yield an error.
-	FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error)
+	FindByIDs(ctx context.Context, ids ...ID) iter.Seq2[ENT, error]
 }
 
 type AllFinder[ENT any] interface {
 	// FindAll will return all entity that has <V> type
 	// TODO: consider using error as 2nd argument, to make it similar to sql package
-	FindAll(context.Context) (iter.Seq2[ENT, error], error)
+	FindAll(context.Context) iter.Seq2[ENT, error]
 }
 
 type Updater[ENT any] interface {
@@ -157,4 +157,4 @@ type QueryOneMethodSignature[ENT, ARGS any] func(context.Context, ARGS) (_ ENT, 
 // Similar to standard library patterns like SQL row iterators,
 // this approach offers control over how the caller consumes the results,
 // ensuring both performance and clarity in handling multiple entities.
-type QueryManyMethodSignature[ENT, ARGS any] func(context.Context, ARGS) (iter.Seq2[ENT, error], error)
+type QueryManyMethodSignature[ENT, ARGS any] func(context.Context, ARGS) iter.Seq2[ENT, error]

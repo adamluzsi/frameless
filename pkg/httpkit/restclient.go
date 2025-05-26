@@ -26,6 +26,7 @@ import (
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
+	"go.llib.dev/testcase/pp"
 )
 
 type RESTClient[ENT, ID any] struct {
@@ -164,72 +165,91 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
-	ctx = r.withContext(ctx)
-
-	var details []logging.Detail
-	defer func() { logger.Debug(ctx, "find all entity with a rest client http request", details...) }()
-
-	baseURL, err := r.getBaseURL(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	reqURL := pathkit.Join(baseURL, "/")
-	details = append(details, logging.Field("url", reqURL))
-
-	//mapping := r.getMapping()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	reqMediaType := r.getMediaType()
-	req.Header.Set(headerKeyContentType, reqMediaType)
-	req.Header.Set(headerKeyAccept, reqMediaType)
-	details = append(details, logging.Field("request content type", reqMediaType))
-	details = append(details, logging.Field("request accept media type", reqMediaType))
-
-	resp, err := r.httpClient().Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	details = append(details, logging.Field("status code", resp.StatusCode))
-
-	mapping := r.getMapping()
-
-	cod, respMediaType, ok := r.contentTypeBasedCodec(resp)
-	if !ok {
-		return nil, fmt.Errorf("no codec configured for response content type: %s", respMediaType)
-	}
-
-	details = append(details, logging.Field("response content type", respMediaType))
-
-	dm, ok := cod.(codec.ListDecoderMaker)
-
-	if r.DisableStreaming || !ok {
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return nil, err
-		}
-
-		ptr := mapping.NewDTOSlice()
-		if err := cod.Unmarshal(data, ptr); err != nil {
-			return nil, err
-		}
-
-		got, err := mapping.MapFromDTOSlice(ctx, ptr)
-		if err != nil {
-			return nil, fmt.Errorf("error while mapping from DTO: %w", err)
-		}
-
-		return iterkit.ToErrSeq(iterkit.Slice(got)), nil
-	}
-
-	dec := dm.MakeListDecoder(resp.Body)
-
+func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
 	return func(yield func(ENT, error) bool) {
+		ctx = r.withContext(ctx)
+		var details []logging.Detail
+		defer func() { logger.Debug(ctx, "find all entity with a rest client http request", details...) }()
+
+		baseURL, err := r.getBaseURL(ctx)
+		if err != nil {
+			var zero ENT
+			pp.PP(err)
+			yield(zero, err)
+			return
+		}
+
+		reqURL := pathkit.Join(baseURL, "/")
+		details = append(details, logging.Field("url", reqURL))
+
+		//mapping := r.getMapping()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			var zero ENT
+			yield(zero, err)
+			return
+		}
+
+		reqMediaType := r.getMediaType()
+		req.Header.Set(headerKeyContentType, reqMediaType)
+		req.Header.Set(headerKeyAccept, reqMediaType)
+		details = append(details, logging.Field("request content type", reqMediaType))
+		details = append(details, logging.Field("request accept media type", reqMediaType))
+
+		resp, err := r.httpClient().Do(req)
+		if err != nil {
+			var zero ENT
+			yield(zero, err)
+			return
+		}
+
+		details = append(details, logging.Field("status code", resp.StatusCode))
+
+		mapping := r.getMapping()
+
+		cod, respMediaType, ok := r.contentTypeBasedCodec(resp)
+		if !ok {
+			err := fmt.Errorf("no codec configured for response content type: %s", respMediaType)
+			var zero ENT
+			yield(zero, err)
+			return
+		}
+
+		details = append(details, logging.Field("response content type", respMediaType))
+
+		dm, ok := cod.(codec.ListDecoderMaker)
+
+		if r.DisableStreaming || !ok {
+			data, err := io.ReadAll(resp.Body)
+			if err != nil {
+				var zero ENT
+				yield(zero, err)
+				return
+			}
+
+			ptr := mapping.NewDTOSlice()
+			if err := cod.Unmarshal(data, ptr); err != nil {
+				var zero ENT
+				yield(zero, err)
+				return
+			}
+
+			got, err := mapping.MapFromDTOSlice(ctx, ptr)
+			if err != nil {
+				var zero ENT
+				yield(zero, fmt.Errorf("error while mapping from DTO: %w", err))
+				return
+			}
+
+			for _, v := range got {
+				if !yield(v, nil) {
+					return
+				}
+			}
+			return
+		}
+
+		dec := dm.MakeListDecoder(resp.Body)
 		for dec.Next() {
 			ptr := mapping.NewDTO()
 			if err := dec.Decode(ptr); err != nil {
@@ -249,7 +269,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error]
 				return
 			}
 		}
-	}, nil
+	}
 }
 
 func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, found bool, err error) {
@@ -338,59 +358,73 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 	return got, true, nil
 }
 
-func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-
-	var itr iterkit.ErrSeq[ENT] = func(yield func(ENT, error) bool) {
-		var zero ENT
-		for _, id := range ids {
-			if err := ctx.Err(); err != nil {
-				yield(zero, err)
-				return
-			}
-			ent, found, err := r.FindByID(ctx, id)
-			if err != nil {
-				yield(zero, err)
-				return
-			}
-			if !found {
-				yield(zero, fmt.Errorf("%w: id=%v", crud.ErrNotFound, id))
-				return
-			}
-			if !yield(ent, nil) {
-				return
-			}
-		}
-	}
-
-	next, stop := iter.Pull2(itr)
-	var prefectDone bool
-	defer func() {
-		if prefectDone {
+func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2[ENT, error] {
+	return func(yield func(ENT, error) bool) {
+		if err := ctx.Err(); err != nil {
+			var zero ENT
+			yield(zero, err)
 			return
 		}
-		stop()
-	}()
 
-	var prefetchedEntities []ENT
-	limit := r.getPrefetchLimit()
-	for i := 0; i < limit; i++ {
-		ent, err, ok := next()
-		if !ok {
-			break
+		var itr iterkit.ErrSeq[ENT] = func(yield func(ENT, error) bool) {
+			var zero ENT
+			for _, id := range ids {
+				if err := ctx.Err(); err != nil {
+					yield(zero, err)
+					return
+				}
+				ent, found, err := r.FindByID(ctx, id)
+				if err != nil {
+					yield(zero, err)
+					return
+				}
+				if !found {
+					yield(zero, fmt.Errorf("%w: id=%v", crud.ErrNotFound, id))
+					return
+				}
+				if !yield(ent, nil) {
+					return
+				}
+			}
 		}
-		if err != nil {
-			return nil, err
+
+		next, stop := iter.Pull2(itr)
+		var prefectDone bool
+		defer func() {
+			if prefectDone {
+				return
+			}
+			stop()
+		}()
+
+		var prefetchedEntities []ENT
+		limit := r.getPrefetchLimit()
+		for i := 0; i < limit; i++ {
+			ent, err, ok := next()
+			if !ok {
+				break
+			}
+			if err != nil {
+				var zero ENT
+				yield(zero, err)
+				return
+			}
+			prefetchedEntities = append(prefetchedEntities, ent)
 		}
-		prefetchedEntities = append(prefetchedEntities, ent)
+
+		prefectDone = true
+
+		src := iterkit.Merge2(
+			iterkit.ToErrSeq(iterkit.Slice(prefetchedEntities)),
+			iterkit.FromPull2(next, stop),
+		)
+
+		for v, err := range src {
+			if !yield(v, err) {
+				return
+			}
+		}
 	}
-	prefectDone = true
-	return iterkit.Merge2(
-		iterkit.ToErrSeq(iterkit.Slice(prefetchedEntities)),
-		iterkit.FromPull2(next, stop),
-	), nil
 }
 
 func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {

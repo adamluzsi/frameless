@@ -152,7 +152,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 		ids = testcase.Var[[]ID]{ID: `entities ids`}
 	)
-	var act = func(t *testcase.T) (iter.Seq2[ENT, error], error) {
+	var act = func(t *testcase.T) iter.Seq2[ENT, error] {
 		return subject.FindByIDs(ctx.Get(t), ids.Get(t)...)
 	}
 
@@ -177,9 +177,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 
 		s.Then(`result is an empty list`, func(t *testcase.T) {
-			itr, err := act(t)
-			assert.NoError(t, err)
-			vs, err := iterkit.CollectErr(itr)
+			vs, err := iterkit.CollectErr(act(t))
 			assert.NoError(t, err)
 			assert.Empty(t, vs)
 		})
@@ -192,9 +190,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
-			itr, err := act(t)
-			assert.NoError(t, err)
-			actual, err := iterkit.CollectErr(itr)
+			actual, err := iterkit.CollectErr(act(t))
 			assert.NoError(t, err)
 			t.Must.ContainExactly(expected, actual)
 		})
@@ -211,22 +207,8 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			})
 
 			s.Then(`it will yield error early on`, func(t *testcase.T) {
-				itr, err := act(t)
-
-				t.Must.AnyOf(func(a *assert.A) {
-					a.Case(func(t assert.It) { assert.ErrorIs(t, err, crud.ErrNotFound) })
-
-					if c.LazyNotFoundError {
-						tc := t
-						a.Case(func(t assert.It) {
-							assert.NotNil(t, itr)
-							_, err := iterkit.CollectErr(itr)
-							assert.ErrorIs(t, err, crud.ErrNotFound)
-							tc.Log("[WARN]", "returning an error about the missing entity as part of the iteration is suboptimal")
-							tc.Log("[WARN]", "because it becomes difficult to handle early on an invalid input argument scenario.")
-						})
-					}
-				})
+				_, _, err := iterkit.FirstErr(act(t))
+				assert.ErrorIs(t, err, crud.ErrNotFound)
 			})
 		})
 	}

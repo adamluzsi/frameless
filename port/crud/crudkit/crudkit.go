@@ -12,11 +12,3 @@ func CollectQueryMany[T any](i iter.Seq2[T, error], err error) ([]T, error) {
 	}
 	return iterkit.CollectErr(i)
 }
-
-func First[T any](i iter.Seq2[T, error]) (T, bool, error) {
-	for v, err := range i {
-		return v, err == nil, err
-	}
-	var zero T
-	return zero, false, nil
-}
