@@ -47,14 +47,14 @@ func ExampleRouter() {
 
 		r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
 			Mapping: dtokit.Mapping[Foo, FooDTO]{},
-			Index: func(ctx context.Context) (iter.Seq2[Foo, error], error) {
+			Index: func(ctx context.Context) iter.Seq2[Foo, error] {
 				foo := Foo{
 					ID:  "42",
 					Foo: "foo",
 					Bar: "bar",
 					Baz: "baz",
 				}
-				return iterkit.ToErrSeq(iterkit.Slice([]Foo{foo})), nil
+				return iterkit.ToErrSeq(iterkit.Slice([]Foo{foo}))
 			},
 		})
 	})
@@ -1212,7 +1212,7 @@ func TestGetRouteInfo(t *testing.T) {
 
 		ro.Resource("foos", httpkit.RESTHandler[Foo, FooID]{
 			Create:     func(ctx context.Context, ptr *Foo) error { return nil },
-			Index:      func(ctx context.Context) (iter.Seq2[Foo, error], error) { return nil, nil },
+			Index:      func(ctx context.Context) iter.Seq2[Foo, error] { return nil },
 			Show:       func(ctx context.Context, id FooID) (ent Foo, found bool, err error) { return },
 			Update:     func(ctx context.Context, ptr *Foo) error { return nil },
 			Destroy:    func(ctx context.Context, id FooID) error { return nil },

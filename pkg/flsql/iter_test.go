@@ -223,8 +223,7 @@ func TestQueryMany(t *testing.T) {
 			return v, err
 		}
 
-		res, err := flsql.QueryMany(c, t.Context(), m, expQuery, expArgs...)
-		assert.NoError(t, err)
+		res := flsql.QueryMany(c, t.Context(), m, expQuery, expArgs...)
 		vs, err := iterkit.CollectErr(res)
 		assert.NoError(t, err)
 		assert.ContainExactly(t, vs, []T{{ID: 42}})
@@ -250,8 +249,9 @@ func TestQueryMany(t *testing.T) {
 
 		query := fmt.Sprintf("SELECT id FROM table as %s WHERE x = ? AND y = ?", t.Random.StringNC(2, random.CharsetAlpha()))
 		args := []any{t.Random.Int(), t.Random.Int()}
-		res, err := flsql.QueryMany(c, t.Context(), m, query, args...)
+		res := flsql.QueryMany(c, t.Context(), m, query, args...)
+		vs, err := iterkit.CollectErr(res)
 		assert.ErrorIs(t, err, expErr)
-		assert.Nil(t, res)
+		assert.Empty(t, vs)
 	})
 }

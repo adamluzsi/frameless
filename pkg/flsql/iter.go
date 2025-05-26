@@ -7,12 +7,20 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 )
 
-func QueryMany[T any](c Queryable, ctx context.Context, mapper RowMapper[T], query string, args ...any) (iterkit.ErrSeq[T], error) {
-	rows, err := c.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
+func QueryMany[T any](c Queryable, ctx context.Context, mapper RowMapper[T], query string, args ...any) iterkit.ErrSeq[T] {
+	return func(yield func(T, error) bool) {
+		rows, err := c.QueryContext(ctx, query, args...)
+		if err != nil {
+			var zero T
+			yield(zero, err)
+			return
+		}
+		for v, err := range MakeRowsIterator(rows, mapper) {
+			if !yield(v, err) {
+				return
+			}
+		}
 	}
-	return MakeRowsIterator(rows, mapper), nil
 }
 
 // MakeRowsIterator allow you to use the same iterator pattern with sql.Rows structure.

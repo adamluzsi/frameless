@@ -13,11 +13,11 @@ import (
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/crud/crudcontracts"
-	"go.llib.dev/frameless/port/crud/crudkit"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/spechelper/testent"
 	"go.llib.dev/testcase/assert"
@@ -80,7 +80,7 @@ func ExampleRESTClient_subresource() {
 	}
 
 	ctx := context.Background()
-	_, _ = barResourceClient.FindAll(ctx)
+	_ = barResourceClient.FindAll(ctx)
 	_, _, _ = barResourceClient.FindByID(ctx, "baridvalue")
 }
 
@@ -384,7 +384,7 @@ func TestRESTClient_bodyReadLimit(t *testing.T) {
 	_, _, err = fooClient.FindByID(t.Context(), foo.ID)
 	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
 
-	_, err = crudkit.CollectQueryMany(fooClient.FindByIDs(t.Context(), foo.ID))
+	_, err = iterkit.CollectErr(fooClient.FindByIDs(t.Context(), foo.ID))
 	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
 
 	err = fooClient.Update(t.Context(), &foo)

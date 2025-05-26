@@ -120,15 +120,22 @@ func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 
 func blankErrFunc() error { return nil }
 
-func (r *Repository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := r.isDoneTx(ctx); err != nil {
-		return nil, err
-	}
-	all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
-	return iterkit.ToErrSeq(all), nil
+func (r *Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
+	return iterkit.From(func(yield func(ENT) bool) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := r.isDoneTx(ctx); err != nil {
+			return err
+		}
+		all := memoryAll[ENT](r.memory(), ctx, getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
+		for v := range all {
+			if !yield(v) {
+				return nil
+			}
+		}
+		return ctx.Err()
+	})
 }
 
 func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
@@ -145,10 +152,7 @@ func (r *Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) error {
 }
 
 func (r *Repository[ENT, ID]) DeleteAll(ctx context.Context) error {
-	itr, err := r.FindAll(ctx)
-	if err != nil {
-		return err
-	}
+	itr := r.FindAll(ctx)
 	for v, err := range itr {
 		if err != nil {
 			return err
@@ -180,29 +184,33 @@ func (r *Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	return nil
 }
 
-func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error) {
-	var m memoryActions = r.memory()
-	if tx, ok := r.memory().LookupTx(ctx); ok {
-		m = tx
-	}
-	all := m.all(getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
-	var vs = make(map[string]ENT, len(ids))
-	for _, id := range ids {
-		key := r.IDToMemoryKey(id)
-		v, ok := all[key]
-		if !ok {
-			return nil, errNotFound(*new(ENT), id)
+func (r *Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2[ENT, error] {
+	return iterkit.From(func(yield func(ENT) bool) error {
+		var m memoryActions = r.memory()
+		if tx, ok := r.memory().LookupTx(ctx); ok {
+			m = tx
 		}
-		vs[key] = v.(ENT)
-	}
-	return iterkit.ToErrSeq(iterkit.Slice(toSlice[ENT, string](vs))), nil
+		all := m.all(getNamespaceFor[ENT](typeNameRepository, &r.Namespace))
+		var vs = make(map[string]ENT, len(ids))
+		for _, id := range ids {
+			key := r.IDToMemoryKey(id)
+			v, ok := all[key]
+			if !ok {
+				return errNotFound(*new(ENT), id)
+			}
+			vs[key] = v.(ENT)
+		}
+		for _, v := range vs {
+			if !yield(v) {
+				return nil
+			}
+		}
+		return nil
+	})
 }
 
 func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) bool) (ENT, bool, error) {
-	itr, err := r.FindAll(ctx)
-	if err != nil {
-		return *new(ENT), false, err
-	}
+	itr := r.FindAll(ctx)
 	var zero ENT
 	for v, err := range itr {
 		if err != nil {
@@ -216,11 +224,7 @@ func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) b
 }
 
 func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iter.Seq2[ENT, error], error) {
-	itr, err := r.FindAll(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return iterkit.OnErrSeqValue(itr, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+	return iterkit.OnErrSeqValue(r.FindAll(ctx), func(i iter.Seq[ENT]) iter.Seq[ENT] {
 		return iterkit.Filter(i, filter)
 	}), nil
 }

@@ -161,11 +161,10 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			id := c.Helper().HasID(t, &e)
 
 			t.Eventually(func(t *testcase.T) {
-				itr, err := allF.FindAll(c.MakeContext(t))
-				assert.NoError(t, err)
-
 				assert.AnyOf(t, func(a *assert.A) {
-					for got := range itr {
+					for got, err := range allF.FindAll(c.MakeContext(t)) {
+						assert.NoError(t, err)
+
 						a.Case(func(t assert.It) {
 							gotID := c.IDA.Get(got)
 							assert.Equal(t, id, gotID)

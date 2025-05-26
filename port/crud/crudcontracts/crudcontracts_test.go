@@ -207,9 +207,7 @@ func Test_noleftoverAfterTests(t *testing.T) {
 	})
 
 	s.After(func(t *testcase.T) {
-		itr, err := resource.FindAll(t.Context())
-		assert.NoError(t, err)
-
+		itr := resource.FindAll(t.Context())
 		vs, err := iterkit.CollectErr(itr)
 		assert.NoError(t, err)
 

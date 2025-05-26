@@ -122,19 +122,21 @@ func (s *EventLogRepository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent
 	return ent, ok, nil
 }
 
-func (s *EventLogRepository[ENT, ID]) FindAll(ctx context.Context) (iter.Seq2[ENT, error], error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := s.isDoneTx(ctx); err != nil {
-		return nil, err
-	}
-	res := make([]ENT, 0)
-	view := s.View(ctx)
-	for _, ent := range view {
-		res = append(res, ent)
-	}
-	return iterkit.ToErrSeq(iterkit.Slice(res)), nil
+func (s *EventLogRepository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
+	return iterkit.From(func(yield func(ENT) bool) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.isDoneTx(ctx); err != nil {
+			return err
+		}
+		for _, ent := range s.View(ctx) {
+			if !yield(ent) {
+				return nil
+			}
+		}
+		return nil
+	})
 }
 
 func (s *EventLogRepository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
@@ -193,19 +195,22 @@ func (s *EventLogRepository[ENT, ID]) DeleteAll(ctx context.Context) error {
 	})
 }
 
-func (s *EventLogRepository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) (iter.Seq2[ENT, error], error) {
-	var values []ENT
-	for _, id := range ids {
-		ent, found, err := s.FindByID(ctx, id)
-		if err != nil {
-			return nil, err
+func (s *EventLogRepository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2[ENT, error] {
+	return iterkit.From(func(yield func(ENT) bool) error {
+		for _, id := range ids {
+			ent, found, err := s.FindByID(ctx, id)
+			if err != nil {
+				return err
+			}
+			if !found {
+				return fmt.Errorf(`%T with %v id is not found (%w)`, *new(ENT), id, crud.ErrNotFound)
+			}
+			if !yield(ent) {
+				return nil
+			}
 		}
-		if !found {
-			return nil, fmt.Errorf(`%T with %v id is not found (%w)`, *new(ENT), id, crud.ErrNotFound)
-		}
-		values = append(values, ent)
-	}
-	return iterkit.ToErrSeq(iterkit.Slice(values)), nil
+		return nil
+	})
 }
 
 func (s *EventLogRepository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr error) {

@@ -117,10 +117,7 @@ func TestMigrator_Migrate(t *testing.T) {
 				t.Log("and state repository is used to store states")
 				assert.NotNil(t, stateRepository.Get(t).Repository)
 
-				itr, err := stateRepository.Get(t).Repository.FindAll(context.Background())
-				assert.NoError(t, err)
-
-				n := iterkit.Count2(itr)
+				n := iterkit.Count2(stateRepository.Get(t).Repository.FindAll(context.Background()))
 				assert.Equal(t, n, len(steps.Get(t)))
 			})
 

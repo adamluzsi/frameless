@@ -207,9 +207,7 @@ func (a Helper[ENT, ID]) DeleteAll(tb testing.TB, subject deleteAllDeleter[ENT, 
 	assert.NoError(tb, subject.DeleteAll(ctx))
 	// a.Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	a.eventually().Assert(tb, func(t assert.It) {
-		itr, err := subject.FindAll(ctx)
-		assert.NoError(t, err)
-		vs, err := iterkit.CollectErr(itr)
+		vs, err := iterkit.CollectErr(subject.FindAll(ctx))
 		assert.NoError(t, err)
 		assert.Empty(t, vs, `no entity was expected to be found`)
 	})

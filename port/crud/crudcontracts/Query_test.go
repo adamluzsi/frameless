@@ -51,16 +51,12 @@ func TestQueryMany(t *testing.T) {
 			tb.Log("expected foo value:", foo)
 
 			return crudcontracts.QueryManySubject[testent.Foo]{
-				Query: func(ctx context.Context) (iter.Seq2[testent.Foo, error], error) {
-					itr, err := repo.FindAll(ctx)
-					if err != nil {
-						return nil, err
-					}
-					return iterkit.OnErrSeqValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+				Query: func(ctx context.Context) iter.Seq2[testent.Foo, error] {
+					return iterkit.OnErrSeqValue(repo.FindAll(ctx), func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
 						return iterkit.Filter(itr, func(f testent.Foo) bool {
 							return f.Foo == foo
 						})
-					}), nil
+					})
 				},
 				IncludedEntity: func() testent.Foo {
 					v := testent.MakeFoo(tb)

@@ -480,7 +480,7 @@ func Test_range(t *testing.T) {
 			Struct.Let(s, func(t *testcase.T) any {
 				return T{V: random.Pick(t.Random,
 					t.Random.IntBetween(-100, 4),
-					t.Random.IntBetween(100, 200))}
+					t.Random.IntBetween(101, 200))}
 			})
 
 			ThenErrorIsExpected(s, Struct)
@@ -1332,7 +1332,7 @@ func Test_max_smoke(t *testing.T) {
 
 		s.When("number is greater compared the max", func(s *testcase.Spec) {
 			Struct.Let(s, func(t *testcase.T) any {
-				return T{V: 4.49 + float64(t.Random.IntBetween(0, 100))}
+				return T{V: 4.51 + float64(t.Random.IntBetween(0, 100))}
 			})
 
 			ThenErrorIsExpected(s, Struct)
