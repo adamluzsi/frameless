@@ -535,6 +535,15 @@ func First2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 	return zeroK, zeroV, false
 }
 
+// FirstErr will find the first value in a ErrSequence, and return it in a idiomatic tuple return value order.
+func FirstErr[T any](i ErrSeq[T]) (T, bool, error) {
+	for v, err := range i {
+		return v, true, err
+	}
+	var zero T
+	return zero, false, nil
+}
+
 func Last[T any](i iter.Seq[T]) (T, bool) {
 	var (
 		last T
@@ -559,6 +568,21 @@ func Last2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 		ok = true
 	}
 	return lastK, lastV, ok
+}
+
+// LastErr will find the last value in a ErrSequence, and return it in a idiomatic way.
+func LastErr[T any](i ErrSeq[T]) (T, bool, error) {
+	var (
+		val T
+		ok  bool
+		err error
+	)
+	for v, e := range i {
+		val = v
+		err = e
+		ok = true
+	}
+	return val, ok, err
 }
 
 // Head takes the first n element, similarly how the coreutils "head" app works.
@@ -1113,5 +1137,22 @@ func castToErrSeq[T any, I I1[T]](i I) ErrSeq[T] {
 		}
 	default:
 		panic("not-implemented")
+	}
+}
+
+// From creates a ErrSeq with a function that feels similar than creating an iter.Seq.
+func From[T any](fn func(yield func(T) bool) error) ErrSeq[T] {
+	return func(yield func(T, error) bool) {
+		var done bool
+		err := fn(func(v T) bool {
+			if !done && !yield(v, nil) {
+				done = true
+			}
+			return !done
+		})
+		if err != nil && !done {
+			var zero T
+			yield(zero, err)
+		}
 	}
 }

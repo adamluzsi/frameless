@@ -134,6 +134,66 @@ func TestLast2(t *testing.T) {
 	})
 }
 
+func ExampleLastErr() {
+	var itr iter.Seq2[string, error] = func(yield func(string, error) bool) {
+		for i := 0; i < 42; i++ {
+			if !yield(strconv.Itoa(i), nil) {
+				return
+			}
+		}
+	}
+
+	v, ok, err := iterkit.LastErr(itr)
+	_, _, _ = v, ok, err
+}
+func TestLastErr(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("empty", func(t *testcase.T) {
+		_, found, err := iterkit.LastErr(iterkit.Empty2[Entity, error]())
+		assert.NoError(t, err)
+		assert.False(t, found)
+	})
+
+	s.Test("iter has values", func(t *testcase.T) {
+		var exp = t.Random.String()
+
+		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+			for range t.Random.IntBetween(1, 7) {
+				if !yield(t.Random.String(), nil) {
+					return
+				}
+			}
+			yield(exp, nil)
+		}
+
+		got, ok, err := iterkit.LastErr(itr)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("iter has an error", func(t *testcase.T) {
+		var (
+			expVal = t.Random.String()
+			expErr = t.Random.Error()
+		)
+		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+			for range t.Random.IntBetween(1, 7) {
+				if !yield(t.Random.String(), t.Random.Error()) {
+					return
+				}
+			}
+			yield(expVal, expErr)
+		}
+
+		got, ok, err := iterkit.LastErr(itr)
+		assert.ErrorIs(t, expErr, err)
+		assert.True(t, ok)
+		assert.Equal(t, expVal, got)
+	})
+}
+
 func TestErrorf(t *testing.T) {
 	i := iterkit.ErrorF[any]("%s", "hello world!")
 	vs, err := iterkit.CollectErr(i)
@@ -248,7 +308,7 @@ func TestFilter2(t *testing.T) {
 
 func ExampleFilter_withErrSeq() {
 	var repo crud.AllFinder[Foo]
-	all, _ := repo.FindAll(context.Background())
+	all := repo.FindAll(context.Background())
 
 	hasBar := iterkit.Filter(all, func(foo Foo) bool {
 		return foo.Bar != ""
@@ -1879,6 +1939,80 @@ func TestFirst2(t *testing.T) {
 	})
 }
 
+func ExampleFirstErr() {
+	var itr iter.Seq2[string, error] = func(yield func(string, error) bool) {
+		for i := 0; i < 42; i++ {
+			if !yield(strconv.Itoa(i), nil) {
+				return
+			}
+		}
+	}
+
+	v, ok, err := iterkit.FirstErr(itr)
+	_, _, _ = v, ok, err
+}
+func TestFirstErr(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("empty", func(t *testcase.T) {
+		_, found, err := iterkit.FirstErr(iterkit.Empty2[Entity, error]())
+		assert.NoError(t, err)
+		assert.False(t, found)
+	})
+
+	s.Test("iter has values", func(t *testcase.T) {
+		var (
+			once sync.Once
+			exp  = t.Random.String()
+		)
+
+		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+			for {
+				var (
+					v = t.Random.String()
+				)
+				once.Do(func() {
+					v = exp
+				})
+				if !yield(v, nil) {
+					return
+				}
+			}
+		}
+
+		got, ok, err := iterkit.FirstErr(itr)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("iter has an error", func(t *testcase.T) {
+		var (
+			once   sync.Once
+			expVal = t.Random.String()
+			expErr = t.Random.Error()
+		)
+
+		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+			for {
+				var (
+					val string
+					err error
+				)
+				once.Do(func() { val, err = expVal, expErr })
+				if !yield(val, err) {
+					return
+				}
+			}
+		}
+
+		got, ok, err := iterkit.FirstErr(itr)
+		assert.ErrorIs(t, expErr, err)
+		assert.True(t, ok)
+		assert.Equal(t, expVal, got)
+	})
+}
+
 func ExampleChan() {
 	ch := make(chan int)
 
@@ -3301,4 +3435,105 @@ func TestCollectPullIter(tt *testing.T) {
 	got, err := iterkit.CollectPullIter(pullIter)
 	assert.NoError(t, err)
 	assert.Equal(t, exp, got)
+}
+
+func ExampleFrom() {
+	src := iterkit.From(func(yield func(int) bool) error {
+		for v := range 42 {
+			if !yield(v) {
+				return nil
+			}
+		}
+		return nil
+	})
+
+	_ = src
+}
+
+func TestFrom(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("empty", func(t *testcase.T) {
+		vs, err := iterkit.CollectErr(iterkit.From(func(yield func(int) bool) error {
+			return nil
+		}))
+
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
+	})
+
+	s.Test("values + no error", func(t *testcase.T) {
+		var expVS = random.Slice(t.Random.IntBetween(0, 100), t.Random.Int)
+		vs, err := iterkit.CollectErr(iterkit.From(func(yield func(int) bool) error {
+			for _, v := range expVS {
+				if !yield(v) {
+					return nil
+				}
+			}
+			return nil
+		}))
+
+		assert.NoError(t, err)
+		assert.Equal(t, vs, expVS)
+	})
+
+	s.Test("error at the end", func(t *testcase.T) {
+		var (
+			expVS  = random.Slice(t.Random.IntBetween(0, 100), t.Random.Int)
+			expErr = t.Random.Error()
+		)
+		vs, err := iterkit.CollectErr(iterkit.From(func(yield func(int) bool) error {
+			for _, v := range expVS {
+				if !yield(v) {
+					return nil
+				}
+			}
+			return expErr
+		}))
+
+		assert.ErrorIs(t, err, expErr)
+		assert.Equal(t, vs, expVS)
+	})
+
+	s.Test("iteration interrupted", func(t *testcase.T) {
+		var (
+			length    = t.Random.IntBetween(30, 100)
+			inVS      = random.Slice(length, t.Random.Int)
+			notExpErr = t.Random.Error()
+		)
+		src := iterkit.From(func(yield func(int) bool) error {
+			for _, v := range inVS {
+				if !yield(v) {
+					return nil
+				}
+			}
+			return notExpErr
+		})
+
+		n := length / 2
+		exp := inVS[0:n]
+
+		vs, err := iterkit.CollectErr(iterkit.Head2(src, n))
+		assert.NoError(t, err)
+		assert.Equal(t, exp, vs)
+	})
+
+	s.Test("not handled interuption handled", func(t *testcase.T) {
+		src := iterkit.From(func(yield func(int) bool) error {
+			for i := range 100 {
+				yield(i)
+			}
+			return nil
+		})
+
+		assert.NotPanic(t, func() {
+			var i int = 50
+			for range src {
+				i--
+				if i <= 0 {
+					break
+				}
+			}
+		})
+	})
 }
