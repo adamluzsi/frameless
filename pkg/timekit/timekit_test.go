@@ -779,6 +779,261 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	})
 }
 
+func (spec ScheduleSpec) specNear(s *testcase.Spec) {
+	var ref = let.Var(s, func(t *testcase.T) time.Time {
+		return t.Random.Time()
+	})
+
+	var schedule = let.Var(s, func(t *testcase.T) timekit.Schedule {
+		return timekit.Schedule{}
+	})
+
+	s.Before(func(t *testcase.T) {
+		t.OnFail(func() {
+			t.LogPretty("ref", ref.Get(t))
+			t.LogPretty("schedule", schedule.Get(t))
+		})
+	})
+
+	act := let.Act2(func(t *testcase.T) (timekit.Range, bool) {
+		t.Helper()
+		var (
+			next timekit.Range
+			ok   bool
+		)
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			next, ok = schedule.Get(t).Near(ref.Get(t))
+		})
+		t.OnFail(func() {
+			t.LogPretty(next, ok)
+		})
+		return next, ok
+	})
+
+	s.Before(func(t *testcase.T) {
+		assert.NoError(t, validate.Value(schedule.Get(t)), "sanity check")
+	})
+
+	s.Test("A zero Schedule should still be valid and yield a next occurence related to a reference time", func(t *testcase.T) {
+		got, ok := act(t)
+		assert.True(t, ok)
+		assert.NotEmpty(t, got)
+		assert.True(t, ref.Get(t).Before(got.From))
+	})
+
+	s.Test("A zero Schedule means 0-7/0-24", func(t *testcase.T) {
+		got, ok := act(t)
+		assert.True(t, ok)
+		assert.NotEmpty(t, got)
+
+		t.Log("so the next occurence will be the next day related to the reference time")
+		loc := zerokit.Coalesce(schedule.Get(t).Location, ref.Get(t).Location())
+
+		expFrom := time.Date(
+			ref.Get(t).Year(), ref.Get(t).Month(), ref.Get(t).Day()+1,
+			schedule.Get(t).DayTime.Hour, schedule.Get(t).DayTime.Minute, 0, 0, loc)
+
+		assert.Equal(t, expFrom, got.From)
+	})
+
+	s.When(".From is provided", func(s *testcase.Spec) {
+		from := let.VarOf(s, timekit.DayTime{Hour: 12, Minute: 00})
+
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			sch := schedule.Super(t)
+			sch.DayTime = from.Get(t)
+			return sch
+		})
+
+		s.And("the ref time takes place prior to from", func(s *testcase.Spec) {
+			ref.Let(s, func(t *testcase.T) time.Time {
+				rf := ref.Super(t)
+				year, month, day := rf.Date()
+				_, min, sec := rf.Clock()
+				return time.Date(year, month, day, from.Get(t).Hour-1, min, sec, rf.Nanosecond(), rf.Location())
+			})
+
+			s.Then("then occurence starts from the defined .From time", func(t *testcase.T) {
+				got, ok := act(t)
+				assert.True(t, ok)
+
+				assert.Equal(t, got.From.Hour(), from.Get(t).Hour)
+				assert.Equal(t, got.From.Minute(), from.Get(t).Minute)
+			})
+
+			s.Then("then occurence is after the ref time", func(t *testcase.T) {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.True(t, ref.Get(t).Before(got.From))
+			})
+		})
+	})
+
+	s.When("schedule defines the month", func(s *testcase.Spec) {
+		month := let.OneOf(s, timekit.Months()...)
+
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			sch := schedule.Super(t)
+			sch.Months = []time.Month{month.Get(t)}
+			t.OnFail(func() {
+				t.LogPretty(sch)
+			})
+			return sch
+		})
+
+		s.Then("month will be used as a constraing to retrieve the next occurence", func(t *testcase.T) {
+			t.Random.Repeat(1, 3, func() {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.NotEmpty(t, got)
+				assert.Equal(t, got.From.Month(), month.Get(t))
+
+				if t.Random.Bool() {
+					ref.Set(t, got.Till.AddDate(0, 0, 1))
+					return
+				}
+				ref.Set(t, got.Till.Add(1))
+			})
+		})
+	})
+
+	s.When("schedule defines the weekday", func(s *testcase.Spec) {
+		weekday := let.OneOf(s, timekit.Weekdays()...)
+
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			sch := schedule.Super(t)
+			sch.Weekdays = []time.Weekday{weekday.Get(t)}
+			return sch
+		})
+
+		s.Test("weekday will be used as a constraing to retrieve the next occurence", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.NotEmpty(t, got)
+			assert.Equal(t, got.From.Weekday(), weekday.Get(t))
+		})
+	})
+
+	s.When("schedule defines the day", func(s *testcase.Spec) {
+		day := let.IntB(s, 1, 25)
+
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			sch := schedule.Super(t)
+			sch.Days = []int{day.Get(t)}
+			return sch
+		})
+
+		s.Test("day will be used as a constraing to retrieve the next occurence", func(t *testcase.T) {
+			t.Random.Repeat(1, 3, func() {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.NotEmpty(t, got)
+				assert.Equal(t, got.From.Day(), day.Get(t))
+				ref.Set(t, got.Till.AddDate(0, 0, 1))
+			})
+		})
+	})
+
+	s.When("schedule defines the location", func(s *testcase.Spec) {
+		location := let.Var(s, func(t *testcase.T) *time.Location {
+			timeGMT, err := time.LoadLocation("GMT")
+			assert.NoError(t, err)
+			return random.Pick(t.Random, time.Local, time.UTC, timeGMT)
+		})
+
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			sch := schedule.Super(t)
+			sch.Location = location.Get(t)
+			return sch
+		})
+
+		s.Test("location is used as part of the next occurence calculation", func(t *testcase.T) {
+			t.Random.Repeat(3, len(timekit.Months()), func() {
+				got, ok := act(t)
+				assert.True(t, ok)
+				assert.NotEmpty(t, got)
+				assert.Equal(t, got.From.Location(), location.Get(t))
+				ref.Set(t, got.Till.AddDate(0, 0, 1))
+			})
+		})
+
+		// TODO add more coverage for edge cases with location.
+	})
+
+	s.When("current time is within the availability policy", func(s *testcase.Spec) {
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			from := timekit.DayTime{
+				Hour:   t.Random.IntBetween(7, 10),
+				Minute: random.Pick(t.Random, 0, 15, 30, 45),
+			}
+			return timekit.Schedule{
+				DayTime:  from,
+				Duration: random.Pick[time.Duration](t.Random, 0, 15, 30, 45) * time.Minute,
+				Location: time.Local,
+			}
+		})
+
+		ref.Let(s, func(t *testcase.T) time.Time {
+			super := ref.Super(t)
+			sch := schedule.Get(t)
+			loc := sch.Location
+			hour := t.Random.IntBetween(sch.DayTime.Hour,
+				sch.DayTime.Hour+int(sch.Duration/time.Hour))
+			return time.Date(super.Year(), super.Month(), super.Day(),
+				hour, sch.DayTime.Minute, t.Random.IntBetween(0, 59),
+				0, loc)
+		})
+
+		s.Then("the next occurence is returned", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+
+			from := schedule.Get(t).DayTime.
+				ToTimeRelTo(ref.Get(t)).
+				AddDate(0, 0, 1) // next day
+
+			assert.Equal(t, timekit.Range{
+				From: from,
+				Till: from.Add(schedule.Get(t).Duration),
+			}, got, "exp | got")
+		})
+
+		s.Then("the the next occurence doesn't include the current ref time", func(t *testcase.T) {
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.False(t, got.Contain(ref.Get(t)))
+			assert.True(t, got.From.After(ref.Get(t)))
+		})
+	})
+
+	s.When("current time is before the next occurence", func(s *testcase.Spec) {
+		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
+			from := timekit.DayTime{
+				Hour:   t.Random.IntBetween(7, 10),
+				Minute: random.Pick(t.Random, 0, 30),
+			}
+			weekday := timekit.ShiftWeekday(ref.Get(t).Weekday(), 1)
+			return timekit.Schedule{
+				Weekdays: []time.Weekday{weekday},
+				DayTime:  from,
+				Duration: random.Pick[time.Duration](t.Random, 0, 15, 30) * time.Minute,
+				Location: ref.Get(t).Location(),
+			}
+		})
+
+		s.Then("next occurence is given back", func(t *testcase.T) {
+			loc := schedule.Get(t).Location
+			from := schedule.Get(t).DayTime.ToTimeRelTo(ref.Get(t).AddDate(0, 0, 1).In(loc))
+			till := from.Add(schedule.Get(t).Duration)
+			exp := timekit.Range{From: from, Till: till}
+
+			got, ok := act(t)
+			assert.True(t, ok)
+			assert.Equal(t, exp, got)
+		})
+	})
+}
+
 func TestRange(t *testing.T) {
 	s := testcase.NewSpec(t)
 

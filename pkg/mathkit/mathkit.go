@@ -11,10 +11,10 @@ import (
 )
 
 type (
-	Int    = constraints.Int
-	UInt   = constraints.UInt
-	Float  = constraints.Float
-	Number = constraints.Number
+	Int    constraints.Int
+	UInt   constraints.UInt
+	Float  constraints.Float
+	Number constraints.Number
 )
 
 func MaxInt[T Int]() T {
@@ -112,6 +112,10 @@ func (i BigInt[INT]) Of(n INT) BigInt[INT] {
 	return BigInt[INT]{n: n}
 }
 
+func (i BigInt[INT]) FromBigInt(n *big.Int) BigInt[INT] {
+	return BigInt[INT]{i: n}.tryToSwitchToIntMode()
+}
+
 func (i BigInt[INT]) String() string {
 	return i.switchToBigIntMode().i.String()
 }
@@ -119,6 +123,10 @@ func (i BigInt[INT]) String() string {
 func (i BigInt[INT]) ToInt() (INT, bool) {
 	i = i.tryToSwitchToIntMode()
 	return i.n, i.i == nil
+}
+
+func (i BigInt[INT]) ToBigInt() *big.Int {
+	return i.switchToBigIntMode().i
 }
 
 const ErrParseBigInt errorkit.Error = "ErrParseBigInt"
@@ -138,6 +146,8 @@ func (i BigInt[INT]) Compare(o BigInt[INT]) int {
 	return i.switchToBigIntMode().i.Cmp(o.switchToBigIntMode().i)
 }
 
+// Iter produces non-zero integer values ranging from 1 to the maximum or minimum possible integer value.
+// When you add up all these yielded values, they equal the current big integer being iterated over.
 func (i BigInt[INT]) Iter() iter.Seq[INT] {
 	var cmp = i.Compare(BigInt[INT]{}.Of(0))
 	if cmp == 0 {

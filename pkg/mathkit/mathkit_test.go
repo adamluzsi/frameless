@@ -3,6 +3,7 @@ package mathkit_test
 import (
 	"iter"
 	"math"
+	"math/big"
 	"strconv"
 	"testing"
 	"time"
@@ -382,6 +383,50 @@ func TestCanIntMulOverflow(t *testing.T) {
 	})
 }
 
+func ExampleBigInt() {
+	var v mathkit.BigInt[time.Duration]
+	v = v.Add(v.Of(24 * time.Hour))
+	v = v.Mul(v.Of(365))
+	v = v.Mul(v.Of(1024))
+	_ = v
+}
+
+func ExampleBigInt_String() {
+	var v mathkit.BigInt[time.Duration]
+	v = v.Add(v.Of(24 * time.Hour))
+	_ = v.String()
+}
+
+func ExampleBigInt_Add() {
+	var v mathkit.BigInt[time.Duration]
+	v = v.Add(v.Of(24 * time.Hour))
+}
+
+func ExampleBigInt_Mul() {
+	var v mathkit.BigInt[time.Duration]
+	v = v.Add(v.Of(24 * time.Hour))
+	v = v.Mul(v.Of(365))
+}
+
+func ExampleBigInt_Div() {
+	var v mathkit.BigInt[time.Duration]
+	v = v.Add(v.Of(24 * time.Hour))
+	v = v.Div(v.Of(2))
+}
+
+func ExampleBigInt_Iter() {
+	var v mathkit.BigInt[time.Duration]
+	v = v.Add(v.Of(mathkit.MaxInt[time.Duration]()))
+	v = v.Add(v.Of(mathkit.MaxInt[time.Duration]()))
+	v = v.Add(v.Of(mathkit.MaxInt[time.Duration]()))
+
+	for n := range v.Iter() {
+		// n will contain a non-zero Int<time.Duration> value,
+		// and the total sum of the iterated n values will be equal to the value of v.
+		_ = n //
+	}
+}
+
 func TestBigInt(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -417,6 +462,35 @@ func TestBigInt(t *testing.T) {
 		})
 
 		ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+	})
+
+	s.Describe("#FromBigInt", func(s *testcase.Spec) {
+		var n = let.IntB(s, math.MinInt, math.MaxInt)
+		var b = let.Var(s, func(t *testcase.T) *big.Int {
+			return big.NewInt(int64(n.Get(t)))
+		})
+		act := let.Act(func(t *testcase.T) mathkit.BigInt[int] {
+			return subject.Get(t).FromBigInt(b.Get(t))
+		})
+
+		s.Then("a big int which value equals to the input argument is returned", func(t *testcase.T) {
+			got := act(t)
+
+			v, ok := got.ToInt()
+			assert.True(t, ok)
+			assert.Equal(t, n.Get(t), v)
+
+			assert.Equal(t, strconv.Itoa(n.Get(t)), got.String())
+		})
+
+		ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
+
+		s.Then("a big int can be received back", func(t *testcase.T) {
+			got := act(t)
+
+			v := got.ToBigInt()
+			assert.Equal(t, b.Get(t), v)
+		})
 	})
 
 	s.Describe("#ToInt", func(s *testcase.Spec) {
@@ -644,11 +718,11 @@ func TestBigInt(t *testing.T) {
 				assert.True(t, compare.IsLess(got.Compare(subject.Get(t))))
 				assert.True(t, compare.IsLess(got.Compare(oth.Get(t))))
 
-				got = got.Add(subject.Get(t))
-				got = got.Add(oth.Get(t))
+				exp := big.NewInt(0)
+				exp = exp.Add(exp, big.NewInt(int64(base.Get(t))))
+				exp = exp.Sub(exp, big.NewInt(int64(n.Get(t))))
 
-				var zero mathkit.BigInt[int]
-				assert.Equal(t, got, zero)
+				assert.Equal(t, got, mathkit.BigInt[int]{}.FromBigInt(exp))
 			})
 
 			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
@@ -793,7 +867,7 @@ func TestBigInt(t *testing.T) {
 				var o mathkit.BigInt[int]
 				for v := range act(t) {
 					assert.True(t, 0 < v)
-					o.Add(mathkit.BigInt[int]{}.Of(v))
+					o = o.Add(mathkit.BigInt[int]{}.Of(v))
 				}
 				assert.Equal(t, subject.Get(t), o)
 			})
@@ -810,7 +884,7 @@ func TestBigInt(t *testing.T) {
 				var o mathkit.BigInt[int]
 				for v := range act(t) {
 					assert.True(t, v < 0)
-					o.Add(mathkit.BigInt[int]{}.Of(v))
+					o = o.Add(mathkit.BigInt[int]{}.Of(v))
 				}
 				assert.Equal(t, subject.Get(t), o)
 			})

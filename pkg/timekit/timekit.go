@@ -241,7 +241,7 @@ func (sch Schedule) getRangeOnDate(ref time.Time) Range {
 
 func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 	for {
-		occurrence, ok := sch.near(ref)
+		occurrence, ok := sch.Near(ref)
 		if !ok {
 			return occurrence, ok
 		}
@@ -253,7 +253,7 @@ func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 	}
 }
 
-func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
+func (sch Schedule) Near(ref time.Time) (nearOccurrence Range, ok bool) {
 	if sch.Validate() != nil {
 		return Range{}, false
 	}
@@ -309,7 +309,7 @@ func (sch Schedule) near(ref time.Time) (nearOccurrence Range, ok bool) {
 					nextTime = next
 				}
 			}
-			if !nextTime.IsZero() {
+			if !nextTime.IsZero() && !nextTime.Equal(candidate) {
 				candidate = nextTime
 				continue
 			}
