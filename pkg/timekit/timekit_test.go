@@ -424,105 +424,11 @@ type ScheduleSpec struct{}
 func (suite ScheduleSpec) Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Describe("#Next", suite.specNext)
+	s.Describe("#Near", suite.specNear)
 	s.Context("implements", func(s *testcase.Spec) {
 		// s.Context("timekit.Interval", suite.implementsInterval)
 	})
 }
-
-// func (spec ScheduleSpec) implementsInterval(s *testcase.Spec) {
-// 	var ref = let.Var(s, func(t *testcase.T) time.Time {
-// 		return t.Random.Time()
-// 	})
-
-// 	schedule := let.Var(s, func(t *testcase.T) timekit.Schedule {
-// 		return timekit.Schedule{}
-// 	})
-
-// 	act := let.Act(func(t *testcase.T) time.Duration {
-// 		return schedule.Get(t).UntilNext(ref.Get(t))
-// 	})
-
-// 	s.When("schedule is unspecified", func(s *testcase.Spec) {
-// 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
-// 			return timekit.Schedule{}
-// 		})
-
-// 		s.Then("it will yield back zero", func(t *testcase.T) {
-// 			assert.Equal(t, 0, act(t))
-// 		})
-// 	})
-
-// 	s.When("schedule defines day-time", func(s *testcase.Spec) {
-// 		dayTime := let.Var(s, func(t *testcase.T) timekit.DayTime {
-// 			return timekit.DayTime{
-// 				Hour: t.Random.IntBetween(9, 12),
-// 			}
-// 		})
-
-// 		duration := let.DurationBetween(s, time.Minute, time.Hour)
-
-// 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
-// 			sch := schedule.Super(t)
-// 			sch.DayTime = dayTime.Get(t)
-// 			sch.Duration = duration.Get(t)
-// 			return sch
-// 		})
-
-// 		s.And("ref time is at the day-time", func(s *testcase.Spec) {
-// 			ref.Let(s, func(t *testcase.T) time.Time {
-// 				return dayTime.Get(t).ToTimeRelTo(ref.Super(t))
-// 			})
-
-// 			s.Then("until is time is zero", func(t *testcase.T) {
-// 				assert.Equal(t, 0, act(t))
-// 			})
-// 		})
-
-// 		s.And("ref time is after the day-time (exl) but within the schedule's duration", func(s *testcase.Spec) {
-// 			ref.Let(s, func(t *testcase.T) time.Time {
-// 				from := dayTime.Get(t).ToTimeRelTo(ref.Super(t))
-// 				return t.Random.TimeBetween(from.Add(1), from.Add(schedule.Get(t).Duration))
-// 			})
-
-// 			s.Then("time till next occurence received", func(t *testcase.T) {
-// 				nextDayOccurence := dayTime.Get(t).ToTimeRelTo(ref.Get(t)).AddDate(0, 0, 1)
-
-// 				assert.Equal(t, act(t), nextDayOccurence.Sub(ref.Get(t)))
-// 			})
-// 		})
-
-// 		s.And("ref time is before the day-time", func(s *testcase.Spec) {
-// 			diff := let.DurationBetween(s, time.Minute, time.Hour*3)
-
-// 			ref.Let(s, func(t *testcase.T) time.Time {
-// 				return dayTime.Get(t).ToTimeRelTo(ref.Super(t)).Add(diff.Get(t) * -1)
-// 			})
-
-// 			s.Then("time until the nearest occurence is retruned", func(t *testcase.T) {
-// 				assert.Equal(t, act(t), diff.Get(t))
-// 			})
-// 		})
-
-// 		s.And("ref time is after the end of the schedule's duration", func(s *testcase.Spec) {
-// 			ref.Let(s, func(t *testcase.T) time.Time {
-// 				from := dayTime.Get(t).ToTimeRelTo(ref.Super(t))
-// 				return t.Random.TimeBetween(from.Add(1), from.Add(schedule.Get(t).Duration))
-// 			})
-
-// 			diff := let.DurationBetween(s, time.Minute, time.Hour*3)
-
-// 			ref.Let(s, func(t *testcase.T) time.Time {
-// 				return dayTime.Get(t).ToTimeRelTo(ref.Super(t)).Add(diff.Get(t))
-// 			})
-
-// 			s.Then("until is then point to the next day", func(t *testcase.T) {
-// 				nextDayOccurence := dayTime.Get(t).ToTimeRelTo(ref.Get(t)).AddDate(0, 0, 1)
-
-// 				assert.Equal(t, act(t), nextDayOccurence.Sub(ref.Get(t)))
-// 			})
-// 		})
-// 	})
-// }
 
 func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	var ref = let.Var(s, func(t *testcase.T) time.Time {
@@ -798,23 +704,23 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 	act := let.Act2(func(t *testcase.T) (timekit.Range, bool) {
 		t.Helper()
 		var (
-			next timekit.Range
+			near timekit.Range
 			ok   bool
 		)
 		assert.Within(t, time.Second, func(ctx context.Context) {
-			next, ok = schedule.Get(t).Near(ref.Get(t))
+			near, ok = schedule.Get(t).Near(ref.Get(t))
 		})
 		t.OnFail(func() {
-			t.LogPretty(next, ok)
+			t.LogPretty(near, ok)
 		})
-		return next, ok
+		return near, ok
 	})
 
 	s.Before(func(t *testcase.T) {
 		assert.NoError(t, validate.Value(schedule.Get(t)), "sanity check")
 	})
 
-	s.Test("A zero Schedule should still be valid and yield a next occurence related to a reference time", func(t *testcase.T) {
+	s.Test("A zero Schedule should still be valid and yield a near occurence related to a reference time", func(t *testcase.T) {
 		got, ok := act(t)
 		assert.True(t, ok)
 		assert.NotEmpty(t, got)
@@ -826,7 +732,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 		assert.True(t, ok)
 		assert.NotEmpty(t, got)
 
-		t.Log("so the next occurence will be the next day related to the reference time")
+		t.Log("so the near occurence will be the near day related to the reference time")
 		loc := zerokit.Coalesce(schedule.Get(t).Location, ref.Get(t).Location())
 
 		expFrom := time.Date(
@@ -881,7 +787,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			return sch
 		})
 
-		s.Then("month will be used as a constraing to retrieve the next occurence", func(t *testcase.T) {
+		s.Then("month will be used as a constraing to retrieve the near occurence", func(t *testcase.T) {
 			t.Random.Repeat(1, 3, func() {
 				got, ok := act(t)
 				assert.True(t, ok)
@@ -906,7 +812,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			return sch
 		})
 
-		s.Test("weekday will be used as a constraing to retrieve the next occurence", func(t *testcase.T) {
+		s.Test("weekday will be used as a constraing to retrieve the near occurence", func(t *testcase.T) {
 			got, ok := act(t)
 			assert.True(t, ok)
 			assert.NotEmpty(t, got)
@@ -923,7 +829,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			return sch
 		})
 
-		s.Test("day will be used as a constraing to retrieve the next occurence", func(t *testcase.T) {
+		s.Test("day will be used as a constraing to retrieve the near occurence", func(t *testcase.T) {
 			t.Random.Repeat(1, 3, func() {
 				got, ok := act(t)
 				assert.True(t, ok)
@@ -947,7 +853,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			return sch
 		})
 
-		s.Test("location is used as part of the next occurence calculation", func(t *testcase.T) {
+		s.Test("location is used as part of the near occurence calculation", func(t *testcase.T) {
 			t.Random.Repeat(3, len(timekit.Months()), func() {
 				got, ok := act(t)
 				assert.True(t, ok)
@@ -968,7 +874,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			}
 			return timekit.Schedule{
 				DayTime:  from,
-				Duration: random.Pick[time.Duration](t.Random, 0, 15, 30, 45) * time.Minute,
+				Duration: random.Pick[time.Duration](t.Random, 15, 30, 45) * time.Minute,
 				Location: time.Local,
 			}
 		})
@@ -977,36 +883,33 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			super := ref.Super(t)
 			sch := schedule.Get(t)
 			loc := sch.Location
-			hour := t.Random.IntBetween(sch.DayTime.Hour,
-				sch.DayTime.Hour+int(sch.Duration/time.Hour))
 			return time.Date(super.Year(), super.Month(), super.Day(),
-				hour, sch.DayTime.Minute, t.Random.IntBetween(0, 59),
+				sch.DayTime.Hour,
+				sch.DayTime.Minute,
+				t.Random.IntBetween(0, int(sch.Duration/time.Second)),
 				0, loc)
 		})
 
-		s.Then("the next occurence is returned", func(t *testcase.T) {
+		s.Then("the current range is returned", func(t *testcase.T) {
 			got, ok := act(t)
 			assert.True(t, ok)
 
-			from := schedule.Get(t).DayTime.
-				ToTimeRelTo(ref.Get(t)).
-				AddDate(0, 0, 1) // next day
-
-			assert.Equal(t, timekit.Range{
-				From: from,
-				Till: from.Add(schedule.Get(t).Duration),
-			}, got, "exp | got")
+			exp := timekit.Range{}
+			exp.From = schedule.Get(t).DayTime.ToTimeRelTo(ref.Get(t))
+			exp.Till = exp.From.Add(schedule.Get(t).Duration)
+			assert.Equal(t, exp, got, "exp | got")
+			assert.True(t, got.Contain(ref.Get(t)))
 		})
 
-		s.Then("the the next occurence doesn't include the current ref time", func(t *testcase.T) {
+		s.Then("the the near occurence does include the current ref time", func(t *testcase.T) {
 			got, ok := act(t)
 			assert.True(t, ok)
-			assert.False(t, got.Contain(ref.Get(t)))
-			assert.True(t, got.From.After(ref.Get(t)))
+			assert.True(t, got.Contain(ref.Get(t)))
+			assert.False(t, got.From.After(ref.Get(t)))
 		})
 	})
 
-	s.When("current time is before the next occurence", func(s *testcase.Spec) {
+	s.When("current time is before the near occurence", func(s *testcase.Spec) {
 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
 			from := timekit.DayTime{
 				Hour:   t.Random.IntBetween(7, 10),
@@ -1021,7 +924,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			}
 		})
 
-		s.Then("next occurence is given back", func(t *testcase.T) {
+		s.Then("near occurence is given back", func(t *testcase.T) {
 			loc := schedule.Get(t).Location
 			from := schedule.Get(t).DayTime.ToTimeRelTo(ref.Get(t).AddDate(0, 0, 1).In(loc))
 			till := from.Add(schedule.Get(t).Duration)
