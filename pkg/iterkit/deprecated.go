@@ -10,19 +10,19 @@ type ErrIter[T any] = ErrSeq[T]
 // CollectErrIter is a temporal alias to CollectErr
 //
 // Deprecated: use iterkit.CollectErr instead
-func CollectErrIter[T any](i iter.Seq2[T, error]) ([]T, error) { return CollectErr[T](i) }
+func CollectErrIter[T any](i iter.Seq2[T, error]) ([]T, error) { return Collect[T](i) }
 
 // FromErrIter is a temporal alias to SplitErrSeq
 //
 // Deprecated: use iterkit.SplitErrSeq instead
-func FromErrIter[T any](i ErrSeq[T]) (iter.Seq[T], ErrFunc) {
+func FromErrIter[T any](i ErrSeq[T]) (iter.Seq[T], func() error) {
 	return SplitErrSeq[T](i)
 }
 
 // ToErrIter is a temporal alias to ToErrSeq
 //
 // Deprecated: use iterkit.ToErrSeq instead
-func ToErrIter[T any](i iter.Seq[T], errFuncs ...ErrFunc) ErrSeq[T] {
+func ToErrIter[T any](i iter.Seq[T], errFuncs ...func() error) ErrSeq[T] {
 	return ToErrSeq[T](i, errFuncs...)
 }
 

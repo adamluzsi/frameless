@@ -207,7 +207,7 @@ func (a Helper[ENT, ID]) DeleteAll(tb testing.TB, subject deleteAllDeleter[ENT, 
 	assert.NoError(tb, subject.DeleteAll(ctx))
 	// a.Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
 	a.eventually().Assert(tb, func(t assert.It) {
-		vs, err := iterkit.CollectErr(subject.FindAll(ctx))
+		vs, err := iterkit.Collect(subject.FindAll(ctx))
 		assert.NoError(t, err)
 		assert.Empty(t, vs, `no entity was expected to be found`)
 	})
@@ -220,7 +220,7 @@ func CountIs[T any](tb testing.TB, itr iter.Seq[T], expected int) {
 
 func (a Helper[ENT, ID]) CountIs(tb testing.TB, iter iter.Seq[ENT], expected int) {
 	tb.Helper()
-	assert.Must(tb).Equal(expected, iterkit.Count(iter))
+	assert.Must(tb).Equal(expected, iterkit.Count1(iter))
 }
 
 func (a Helper[ENT, ID]) cleanupENT(tb testing.TB, resource any, ctx context.Context, ptr *ENT) {

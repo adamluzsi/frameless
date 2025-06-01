@@ -73,27 +73,6 @@ func CollectPullIter[T any](itr PullIter[T]) ([]T, error) {
 	return vs, errorkit.Merge(errs...)
 }
 
-// toIterSeqWithRelease
-//
-// Deprecated: use FromPullIter
-func toIterSeqWithRelease[V any](i PullIter[V], errFuncs ...ErrFunc) (iter.Seq[V], ErrFunc) {
-	var (
-		returnError error
-		errFunc     = func() error {
-			return returnError
-		}
-	)
-	return func(yield func(V) bool) {
-		defer errorkit.Finish(&returnError, i.Err)
-		defer errorkit.Finish(&returnError, i.Close)
-		for i.Next() {
-			if !yield(i.Value()) {
-				break
-			}
-		}
-	}, errorkit.MergeErrFunc(append(errFuncs, errFunc)...)
-}
-
 type pullIter[T any] struct {
 	next func() (T, error, bool)
 	stop func()

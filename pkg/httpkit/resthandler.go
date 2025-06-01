@@ -383,7 +383,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	serMaker, ok := resCodec.(codec.ListEncoderMaker)
 	if !ok {
-		vs, err := iterkit.CollectErr(index)
+		vs, err := iterkit.Collect(index)
 		if err != nil {
 			h.getErrorHandler().HandleError(w, r, err)
 			return
