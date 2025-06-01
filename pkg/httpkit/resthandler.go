@@ -364,7 +364,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	index := h.indexIter(ctx)
 
 	if len(h.Filters) != 0 {
-		index = iterkit.OnErrSeqValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+		index = iterkit.OnSeqEValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
 			return iterkit.Filter(i, func(v ENT) bool {
 				for _, filter := range h.Filters {
 					if !filter(ctx, v) {
@@ -383,7 +383,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	serMaker, ok := resCodec.(codec.ListEncoderMaker)
 	if !ok {
-		vs, err := iterkit.CollectErr(index)
+		vs, err := iterkit.CollectE(index)
 		if err != nil {
 			h.getErrorHandler().HandleError(w, r, err)
 			return
@@ -418,7 +418,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	listEncoder := serMaker.MakeListEncoder(w)
 
-	index = iterkit.Merge2(iterkit.ToErrSeq(iterkit.SingleValue(ent)), iterkit.FromPull2(next))
+	index = iterkit.Merge2(iterkit.ToSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
 
 	defer func() {
 		if err := listEncoder.Close(); err != nil {
@@ -452,7 +452,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 func (h RESTHandler[ENT, ID]) indexIter(ctx context.Context) iter.Seq2[ENT, error] {
 	index := h.Index(ctx)
 	if _, ok := internal.ContextRESTParentResourceValuePointer.Lookup(ctx); ok {
-		index = iterkit.OnErrSeqValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
+		index = iterkit.OnSeqEValue(index, func(i iter.Seq[ENT]) iter.Seq[ENT] {
 			return iterkit.Filter(i, func(v ENT) bool {
 				return h.isOwnershipOK(ctx, v)
 			})

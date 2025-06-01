@@ -93,7 +93,7 @@ func TestRepository_query(t *testing.T) {
 		return v.ID == ent1.ID || v.ID == ent3.ID
 	})
 	assert.NoError(t, err)
-	vs, err := iterkit.CollectErr(iter)
+	vs, err := iterkit.CollectE(iter)
 	assert.NoError(t, err)
 	assert.ContainExactly(t, vs, []testent.Foo{ent1, ent3})
 }

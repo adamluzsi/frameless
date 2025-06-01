@@ -27,12 +27,12 @@ type PullIter[V any] interface {
 	Err() error
 }
 
-func ToPullIter[T any](itr ErrSeq[T]) PullIter[T] {
+func ToPullIter[T any](itr SeqE[T]) PullIter[T] {
 	next, stop := iter.Pull2(itr)
 	return &pullIter[T]{next: next, stop: stop}
 }
 
-func FromPullIter[T any](itr PullIter[T]) ErrSeq[T] {
+func FromPullIter[T any](itr PullIter[T]) SeqE[T] {
 	return Once2(func(yield func(T, error) bool) {
 		defer itr.Close()
 		for itr.Next() {
@@ -71,27 +71,6 @@ func CollectPullIter[T any](itr PullIter[T]) ([]T, error) {
 		errs = append(errs, err)
 	}
 	return vs, errorkit.Merge(errs...)
-}
-
-// toIterSeqWithRelease
-//
-// Deprecated: use FromPullIter
-func toIterSeqWithRelease[V any](i PullIter[V], errFuncs ...ErrFunc) (iter.Seq[V], ErrFunc) {
-	var (
-		returnError error
-		errFunc     = func() error {
-			return returnError
-		}
-	)
-	return func(yield func(V) bool) {
-		defer errorkit.Finish(&returnError, i.Err)
-		defer errorkit.Finish(&returnError, i.Close)
-		for i.Next() {
-			if !yield(i.Value()) {
-				break
-			}
-		}
-	}, errorkit.MergeErrFunc(append(errFuncs, errFunc)...)
 }
 
 type pullIter[T any] struct {

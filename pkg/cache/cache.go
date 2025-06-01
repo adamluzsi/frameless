@@ -145,7 +145,7 @@ func (m *Cache[ENT, ID]) InvalidateByID(ctx context.Context, id ID) (rErr error)
 		return err
 	}
 
-	HitsThatReferenceOurEntity := iterkit.OnErrSeqValue(m.Repository.Hits().FindAll(ctx), func(i iter.Seq[Hit[ID]]) iter.Seq[Hit[ID]] {
+	HitsThatReferenceOurEntity := iterkit.OnSeqEValue(m.Repository.Hits().FindAll(ctx), func(i iter.Seq[Hit[ID]]) iter.Seq[Hit[ID]] {
 		return iterkit.Filter[Hit[ID]](i, func(h Hit[ID]) bool {
 			for _, gotID := range h.EntityIDs {
 				if gotID == id {
@@ -308,7 +308,7 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 	query QueryOneFunc[ENT],
 ) (_ent ENT, _found bool, _err error) {
 	vs := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
-	ent, found, err := iterkit.FirstErr(vs)
+	ent, found, err := iterkit.FirstE(vs)
 	if err != nil {
 		return _ent, false, err
 	}
@@ -441,7 +441,7 @@ func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFu
 		if !found {
 			return iterkit.Empty2[ENT, error]()
 		}
-		return iterkit.ToErrSeq(iterkit.SingleValue(ent))
+		return iterkit.ToSeqE(iterkit.Of(ent))
 	}
 }
 

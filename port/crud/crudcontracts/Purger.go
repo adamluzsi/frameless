@@ -32,7 +32,7 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 		}
 		t.Must.NoError(act(t))
 
-		vs, err := iterkit.CollectErr(allFinder.FindAll(c.MakeContext(t)))
+		vs, err := iterkit.CollectE(allFinder.FindAll(c.MakeContext(t)))
 		assert.NoError(t, err)
 		assert.Empty(t, vs)
 	})
@@ -53,7 +53,7 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 			}
 			t.Must.NoError(act(t))
 
-			vs, err := iterkit.CollectErr(allFinder.FindAll(ctx.Get(t)))
+			vs, err := iterkit.CollectE(allFinder.FindAll(ctx.Get(t)))
 			assert.NoError(t, err)
 			assert.Empty(t, vs)
 		})

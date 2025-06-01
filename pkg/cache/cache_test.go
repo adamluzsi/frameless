@@ -63,7 +63,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 
 	var getHits = func() []cache.Hit[testent.FooID] {
 		hits := cachei.Repository.Hits().FindAll(context.Background())
-		vs, err := iterkit.CollectErr(hits)
+		vs, err := iterkit.CollectE(hits)
 		assert.NoError(t, err)
 		return vs
 	}
@@ -111,12 +111,12 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		qid := cache.Query{Name: "FindByBarID", ARGS: map[string]any{"bar": foo1.Bar}}
 		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func(ctx context.Context) (ent testent.Foo, found bool, err error) {
 			itr := cachei.FindAll(ctx)
-			itr = iterkit.OnErrSeqValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+			itr = iterkit.OnSeqEValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
 				return iterkit.Filter(itr, func(f testent.Foo) bool {
 					return f.Bar == foo1.Bar
 				})
 			})
-			return iterkit.FirstErr(itr)
+			return iterkit.FirstE(itr)
 		})
 		assert.NoError(t, err)
 
@@ -136,9 +136,9 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("when we have a custom query that has no arguments but only returns foo2")
 		qid := cache.Query{Name: "NOK-MANY-BAZ"}
 		query := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) iter.Seq2[testent.Foo, error] {
-			return iterkit.ToErrSeq(iterkit.Slice([]testent.Foo{foo2}))
+			return iterkit.ToSeqE(iterkit.Slice1([]testent.Foo{foo2}))
 		})
-		_, err := iterkit.CollectErr(query) // drain iterator
+		_, err := iterkit.CollectE(query) // drain iterator
 		assert.NoError(t, err)
 
 		t.Log("then we expect that the new NOK-MANY-BAZ will be filtered")
@@ -214,19 +214,19 @@ func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
 	_, _, err := cachei.FindByID(ctx, foo1.ID)
 	assert.NoError(t, err)
 
-	vs, err := iterkit.CollectErr(cachei.FindAll(ctx))
+	vs, err := iterkit.CollectE(cachei.FindAll(ctx))
 	assert.NoError(t, err)
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
 
-	vs, err = iterkit.CollectErr(cachei.FindAll(ctx))
+	vs, err = iterkit.CollectE(cachei.FindAll(ctx))
 	assert.NoError(t, err)
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
 
-	hvs, err := iterkit.CollectErr(cachei.Repository.Hits().FindAll(ctx))
+	hvs, err := iterkit.CollectE(cachei.Repository.Hits().FindAll(ctx))
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(hvs))
 
-	vs, err = iterkit.CollectErr(cachei.Repository.Entities().FindAll(ctx))
+	vs, err = iterkit.CollectE(cachei.Repository.Entities().FindAll(ctx))
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(vs), assert.Message(pp.Format(vs)))
 	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
@@ -262,7 +262,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	})
 
 	s.Test("FindAll works even with a faulty repo", func(t *testcase.T) {
-		vs, err := iterkit.CollectErr(subject.Get(t).FindAll(context.Background()))
+		vs, err := iterkit.CollectE(subject.Get(t).FindAll(context.Background()))
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
@@ -271,7 +271,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 		foo2 := testent.MakeFoo(t)
 		t.Must.NoError(subject.Get(t).Create(context.Background(), &foo2))
 
-		vs, err := iterkit.CollectErr(subject.Get(t).FindAll(context.Background()))
+		vs, err := iterkit.CollectE(subject.Get(t).FindAll(context.Background()))
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t), foo2}, vs)
 	})
@@ -291,7 +291,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 			func(ctx context.Context) iter.Seq2[testent.Foo, error] {
 				return source.Get(t).FindAll(context.Background())
 			})
-		vs, err := iterkit.CollectErr(all)
+		vs, err := iterkit.CollectE(all)
 		t.Must.NoError(err)
 		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
 	})

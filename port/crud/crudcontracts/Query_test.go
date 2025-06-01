@@ -52,7 +52,7 @@ func TestQueryMany(t *testing.T) {
 
 			return crudcontracts.QueryManySubject[testent.Foo]{
 				Query: func(ctx context.Context) iter.Seq2[testent.Foo, error] {
-					return iterkit.OnErrSeqValue(repo.FindAll(ctx), func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+					return iterkit.OnSeqEValue(repo.FindAll(ctx), func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
 						return iterkit.Filter(itr, func(f testent.Foo) bool {
 							return f.Foo == foo
 						})

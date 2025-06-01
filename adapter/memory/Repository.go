@@ -224,7 +224,7 @@ func (r *Repository[ENT, ID]) QueryOne(ctx context.Context, filter func(v ENT) b
 }
 
 func (r *Repository[ENT, ID]) QueryMany(ctx context.Context, filter func(v ENT) bool) (iter.Seq2[ENT, error], error) {
-	return iterkit.OnErrSeqValue(r.FindAll(ctx), func(i iter.Seq[ENT]) iter.Seq[ENT] {
+	return iterkit.OnSeqEValue(r.FindAll(ctx), func(i iter.Seq[ENT]) iter.Seq[ENT] {
 		return iterkit.Filter(i, filter)
 	}), nil
 }
@@ -371,7 +371,7 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 
 func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iter.Seq[ENT] {
 	var T ENT
-	return iterkit.Slice[ENT](m.All(T, ctx, namespace).([]ENT))
+	return iterkit.Slice1[ENT](m.All(T, ctx, namespace).([]ENT))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {

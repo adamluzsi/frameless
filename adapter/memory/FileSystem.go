@@ -117,7 +117,7 @@ func (mfs *FileSystem) OpenFile(name string, flag int, perm fs.FileMode) (filesy
 		entry:      f,
 		openFlag:   flag,
 		buffer:     iokit.NewBuffer(f.data),
-		dirEntries: iterkit.ToPullIter(iterkit.ToErrSeq(iterkit.Slice(mfs.getDirEntriesFn(path)))),
+		dirEntries: iterkit.ToPullIter(iterkit.ToSeqE(iterkit.Slice1(mfs.getDirEntriesFn(path)))),
 	}, nil
 }
 

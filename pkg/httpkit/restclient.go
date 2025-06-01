@@ -366,7 +366,7 @@ func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2
 			return
 		}
 
-		var itr iterkit.ErrSeq[ENT] = func(yield func(ENT, error) bool) {
+		var itr iterkit.SeqE[ENT] = func(yield func(ENT, error) bool) {
 			var zero ENT
 			for _, id := range ids {
 				if err := ctx.Err(); err != nil {
@@ -415,7 +415,7 @@ func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2
 		prefectDone = true
 
 		src := iterkit.Merge2(
-			iterkit.ToErrSeq(iterkit.Slice(prefetchedEntities)),
+			iterkit.ToSeqE(iterkit.Slice1(prefetchedEntities)),
 			iterkit.FromPull2(next, stop),
 		)
 

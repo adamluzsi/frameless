@@ -259,7 +259,7 @@ func testingRunFlagProvided() bool {
 
 func shouldIterEventuallyError[ENT any](tb testing.TB, fn func() iter.Seq2[ENT, error]) error {
 	itr := fn()
-	_, err := iterkit.CollectErr(itr)
+	_, err := iterkit.CollectE(itr)
 	assert.Error(tb, err)
 	return err
 }

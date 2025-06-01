@@ -384,7 +384,7 @@ func TestRESTClient_bodyReadLimit(t *testing.T) {
 	_, _, err = fooClient.FindByID(t.Context(), foo.ID)
 	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
 
-	_, err = iterkit.CollectErr(fooClient.FindByIDs(t.Context(), foo.ID))
+	_, err = iterkit.CollectE(fooClient.FindByIDs(t.Context(), foo.ID))
 	assert.ErrorIs(t, httpkit.ErrResponseEntityTooLarge, err)
 
 	err = fooClient.Update(t.Context(), &foo)

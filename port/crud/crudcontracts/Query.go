@@ -207,7 +207,7 @@ func QueryMany[ENT, ID any](
 
 		s.Then(`the query will return the entity`, func(t *testcase.T) {
 			t.Eventually(func(it *testcase.T) {
-				ents, err := iterkit.CollectErr(act(it))
+				ents, err := iterkit.CollectE(act(it))
 				assert.NoError(t, err)
 				assert.Contain(t, ents, includedEntity.Get(it))
 			})
@@ -227,7 +227,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then(`both entity is returned`, func(t *testcase.T) {
 				t.Eventually(func(t *testcase.T) {
-					ents, err := iterkit.CollectErr(act(t))
+					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, ents, includedEntity.Get(t))
 					assert.Contain(t, ents, additionalEntities.Get(t))
@@ -245,7 +245,7 @@ func QueryMany[ENT, ID any](
 					assert.True(t, ok)
 					assert.NoError(t, err)
 
-					vs2, err := iterkit.CollectErr(act(t))
+					vs2, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, vs2, includedEntity.Get(t))
 					assert.Contain(t, vs2, additionalEntities.Get(t))
@@ -305,7 +305,7 @@ func QueryMany[ENT, ID any](
 
 			s.Then(`only the matching entity is returned`, func(t *testcase.T) {
 				t.Eventually(func(t *testcase.T) {
-					ents, err := iterkit.CollectErr(act(t))
+					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
 					assert.Contain(t, ents, includedEntity.Get(t))
 					assert.NotContain(t, ents, othEnt.Get(t))

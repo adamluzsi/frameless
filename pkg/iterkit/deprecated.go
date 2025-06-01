@@ -4,31 +4,62 @@ import "iter"
 
 // ErrIter is a temporal alias to ErrSeq for backward compability purposes.
 //
-// Deprecated: use iterkit.ErrSeq[T] instead.
-type ErrIter[T any] = ErrSeq[T]
+// Deprecated: use iterkit.SeqE[T] instead.
+type ErrIter[T any] = SeqE[T]
+
+// ErrSeq is a temporal alias to SeqE for backward compability purposes.
+//
+// Deprecated: use iterkit.SeqE[T] instead.
+type ErrSeq[T any] = SeqE[T]
+
+// ErrSeq is a temporal alias to SeqE for backward compability purposes.
+//
+// Deprecated: use iterkit.SingleUseSeqE[T] instead.
+type SingleUseErrSeq[T any] = SingleUseSeqE[T]
 
 // CollectErrIter is a temporal alias to CollectErr
 //
 // Deprecated: use iterkit.CollectErr instead
-func CollectErrIter[T any](i iter.Seq2[T, error]) ([]T, error) { return CollectErr[T](i) }
+func CollectErrIter[T any](i iter.Seq2[T, error]) ([]T, error) { return CollectE[T](i) }
 
 // FromErrIter is a temporal alias to SplitErrSeq
 //
 // Deprecated: use iterkit.SplitErrSeq instead
-func FromErrIter[T any](i ErrSeq[T]) (iter.Seq[T], ErrFunc) {
-	return SplitErrSeq[T](i)
+func FromErrIter[T any](i SeqE[T]) (iter.Seq[T], func() error) {
+	return SplitSeqE[T](i)
 }
 
 // ToErrIter is a temporal alias to ToErrSeq
 //
 // Deprecated: use iterkit.ToErrSeq instead
-func ToErrIter[T any](i iter.Seq[T], errFuncs ...ErrFunc) ErrSeq[T] {
-	return ToErrSeq[T](i, errFuncs...)
+func ToErrIter[T any](i iter.Seq[T], errFuncs ...func() error) SeqE[T] {
+	return ToSeqE[T](i, errFuncs...)
 }
 
 // OnErrIterValue is a temporal alias to OnErrSeqValue
 //
 // Deprecated: use iterkit.OnErrSeqValue instead
-func OnErrIterValue[To any, From any](itr ErrSeq[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) ErrSeq[To] {
-	return OnErrSeqValue[To, From](itr, pipeline)
+func OnErrIterValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) SeqE[To] {
+	return OnSeqEValue[To, From](itr, pipeline)
+}
+
+// ToErrSeq is a temporal alias.
+//
+// Deprecated: use iterkit.ToSeqE instead
+func ToErrSeq[T any](i iter.Seq[T], errFuncs ...func() error) SeqE[T] {
+	return ToSeqE(i, errFuncs...)
+}
+
+// SplitErrSeq is a temporal alias.
+//
+// Deprecated: use iterkit.SplitSeqE instead
+func SplitErrSeq[T any](i SeqE[T]) (iter.Seq[T], func() error) {
+	return SplitSeqE(i)
+}
+
+// OnErrSeqValue is a temporal alias.
+//
+// Deprecated: use iterkit.OnSeqEValue instead
+func OnErrSeqValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) SeqE[To] {
+	return OnSeqEValue(itr, pipeline)
 }
