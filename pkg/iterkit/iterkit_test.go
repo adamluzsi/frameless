@@ -1412,19 +1412,20 @@ func ExampleOffset1() {
 func TestOffset1(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	const iterLen = 10
 	var (
-		makeIter = func() iter.Seq[int] {
-			return iterkit.IntRange1(1, iterLen)
-		}
+		values = let.Var(s, func(t *testcase.T) []int {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
+		})
 		itr = let.Var(s, func(t *testcase.T) iter.Seq[int] {
-			return makeIter()
+			return iterkit.Slice1(values.Get(t))
 		})
 		offset = let.Var(s, func(t *testcase.T) int {
-			return t.Random.IntB(3, iterLen)
+			length := len(values.Get(t))
+			assert.NotEqual(t, 0, length)
+			return t.Random.IntBetween(1, length)
 		})
 	)
-	subject := let.Var(s, func(t *testcase.T) iter.Seq[int] {
+	act := let.Act(func(t *testcase.T) iter.Seq[int] {
 		return iterkit.Offset1(itr.Get(t), offset.Get(t))
 	})
 
@@ -1435,67 +1436,276 @@ func TestOffset1(t *testing.T) {
 		it.Must.Equal([]int{4, 5, 6}, vs)
 	})
 
-	s.Then("it will limit the results by skipping by the offset number", func(t *testcase.T) {
-		got := iterkit.Collect1(subject.Get(t))
-		all := iterkit.Collect1(makeIter())
-
-		var exp = make([]int, 0)
-		for i := offset.Get(t); i < len(all); i++ {
-			exp = append(exp, all[i])
-		}
-
-		t.Must.Equal(exp, got)
-	})
-
 	s.When("the iterator is empty", func(s *testcase.Spec) {
 		itr.Let(s, func(t *testcase.T) iter.Seq[int] {
 			return iterkit.Empty1[int]()
 		})
 
 		s.Then("it will iterate over without an issue and returns no value", func(t *testcase.T) {
-			i := subject.Get(t)
+			i := act(t)
 
 			assert.Empty(t, iterkit.Collect1(i))
 		})
 	})
 
+	s.When("offset number is bigger than the iterator element count", func(s *testcase.Spec) {
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t)) + t.Random.IntBetween(1, 7)
+		})
+
+		s.Then("the result iterator will be empty", func(t *testcase.T) {
+			got := iterkit.Collect1(act(t))
+
+			assert.Empty(t, got)
+		})
+	})
+
+	s.When("offset number is equal to the iterator element count", func(s *testcase.Spec) {
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t))
+		})
+
+		s.Then("the result iterator will be empty", func(t *testcase.T) {
+			got := iterkit.Collect1(act(t))
+
+			assert.Empty(t, got)
+		})
+	})
+
+	s.When("the offset number is smaller than the iterator element count", func(s *testcase.Spec) {
+		offset.Let(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(0, len(values.Get(t))-1)
+		})
+
+		s.Then("it will offset the results by provided offset number and yield the remainder", func(t *testcase.T) {
+			got := iterkit.Collect1(act(t))
+
+			var exp = values.Get(t)[offset.Get(t):]
+			assert.Equal(t, exp, got)
+		})
+	})
+
+	s.Context("immplement iter.Seq1", iterkitcontract.IterSeq(func(t testing.TB) iter.Seq[int] {
+		const iterLen = 10
+		src := iterkit.IntRange1(1, iterLen)
+		return iterkit.Offset1(src, iterLen/2)
+	}).Spec)
+}
+
+func ExampleOffset2() {
+	_ = iterkit.Offset2(iterkit.IntRange(2, 6), 2)
+}
+
+func TestOffset2(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const iterLen = 10
+	var (
+		values = let.Var(s, func(t *testcase.T) []int {
+			return random.Slice(int(iterLen), func() int {
+				return t.Random.Int()
+			})
+		})
+		itr = let.Var(s, func(t *testcase.T) iter.Seq2[int, int] {
+			return func(yield func(int, int) bool) {
+				for _, v := range values.Get(t) {
+					if !yield(v, v*2) {
+						return
+					}
+				}
+			}
+		})
+		offset = let.Var(s, func(t *testcase.T) int {
+			return t.Random.IntB(3, iterLen)
+		})
+	)
+	subject := let.Var(s, func(t *testcase.T) iter.Seq2[int, int] {
+		return iterkit.Offset2(itr.Get(t), offset.Get(t))
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		subject := iterkit.Offset2(func(yield func(int, int) bool) {
+			for v := range iterkit.IntRange1(2, 6) {
+				if !yield(v, v*2) {
+					return
+				}
+			}
+		}, 2)
+		vs := iterkit.Collect2KV(subject)
+		assert.Equal(t, vs, []iterkit.KV[int, int]{
+			{K: 4, V: 8},
+			{K: 5, V: 10},
+			{K: 6, V: 12},
+		})
+	})
+
+	s.When("the iterator is empty", func(s *testcase.Spec) {
+		itr.Let(s, func(t *testcase.T) iter.Seq2[int, int] {
+			return iterkit.Empty2[int, int]()
+		})
+
+		s.Then("it will iterate over without an issue and returns no value", func(t *testcase.T) {
+			i := subject.Get(t)
+
+			assert.Empty(t, iterkit.Collect2Map(i))
+		})
+	})
+
+	s.When("offset is zero", func(s *testcase.Spec) {
+		offset.LetValue(s, 0)
+
+		s.Then("all the values will be received from te source iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.ContainExactly(t, values.Get(t), mapkit.Keys(got))
+		})
+	})
+
 	s.When("the source iterator has less values than the defined offset number", func(s *testcase.Spec) {
-		offset.LetValue(s, iterLen+1)
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t)) + 1
+		})
 
-		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
-			got := iterkit.Collect1(subject.Get(t))
+		s.Then("no value received back from the offsetted iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
 
-			t.Must.Empty(got)
+			assert.Empty(t, got)
 		})
 	})
 
 	s.When("the source iterator has as many values as the offset number", func(s *testcase.Spec) {
-		offset.LetValue(s, iterLen)
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t))
+		})
 
-		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
-			assert.Empty(t, iterkit.Collect1(subject.Get(t)))
+		s.Then("no value received back from the offsetted iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.Empty(t, got)
 		})
 	})
 
 	s.When("the source iterator has more values than the defined offset number", func(s *testcase.Spec) {
-		offset.LetValue(s, iterLen-1)
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t)) - t.Random.IntBetween(1, len(values.Get(t))-1)
+		})
 
 		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
-			got := iterkit.Collect1(subject.Get(t))
-			t.Must.NotEmpty(got)
-			t.Must.Equal([]int{iterLen}, got)
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.Equal(t, len(values.Get(t))-offset.Get(t), len(got))
+			var exp1 = values.Get(t)[offset.Get(t):]
+			var exp2 = slicekit.Map(exp1, func(n int) int { return n * 2 })
+			assert.ContainExactly(t, exp1, mapkit.Keys(got))
+			assert.ContainExactly(t, exp2, mapkit.Values(got))
 		})
 	})
+
+	s.Context("immplement iter.Seq2", iterkitcontract.IterSeq2[int, error](func(t testing.TB) iter.Seq2[int, error] {
+		const iterLen = 10
+		src := iterkit.IntRange(1, iterLen)
+		return iterkit.Offset2(src, iterLen/2)
+	}).Spec)
 }
 
-func TestOffset_implementsIterator(t *testing.T) {
-	iterkitcontract.IterSeq[int](func(tb testing.TB) iter.Seq[int] {
-		t := testcase.ToT(&tb)
-		return iterkit.Offset1(
-			iterkit.IntRange1(1, 99),
-			t.Random.IntB(1, 12),
-		)
-	}).Test(t)
+func ExampleOffset() {
+	_ = iterkit.Offset(iterkit.IntRange(2, 6), 2)
+}
+
+func TestOffset(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	const iterLen = 10
+	var (
+		values = let.Var(s, func(t *testcase.T) []int {
+			return random.Slice(int(iterLen), func() int {
+				return t.Random.Int()
+			})
+		})
+		itr = let.Var(s, func(t *testcase.T) iter.Seq2[int, error] {
+			return func(yield func(int, error) bool) {
+				for _, v := range values.Get(t) {
+					if !yield(v, fmt.Errorf("%d", v)) {
+						return
+					}
+				}
+			}
+		})
+		offset = let.Var(s, func(t *testcase.T) int {
+			return t.Random.IntB(3, iterLen)
+		})
+	)
+	subject := let.Var(s, func(t *testcase.T) iter.Seq2[int, error] {
+		return iterkit.Offset(itr.Get(t), offset.Get(t))
+	})
+
+	s.When("the iterator is empty", func(s *testcase.Spec) {
+		itr.Let(s, func(t *testcase.T) iter.Seq2[int, error] {
+			return iterkit.Empty2[int, error]()
+		})
+
+		s.Then("it will iterate over without an issue and returns no value", func(t *testcase.T) {
+			i := subject.Get(t)
+
+			assert.Empty(t, iterkit.Collect2Map(i))
+		})
+	})
+
+	s.When("offset is zero", func(s *testcase.Spec) {
+		offset.LetValue(s, 0)
+
+		s.Then("all the values will be received from te source iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.ContainExactly(t, values.Get(t), mapkit.Keys(got))
+		})
+	})
+
+	s.When("the source iterator has less values than the defined offset number", func(s *testcase.Spec) {
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t)) + 1
+		})
+
+		s.Then("no value received back from the offsetted iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.Empty(t, got)
+		})
+	})
+
+	s.When("the source iterator has as many values as the offset number", func(s *testcase.Spec) {
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t))
+		})
+
+		s.Then("no value received back from the offsetted iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.Empty(t, got)
+		})
+	})
+
+	s.When("the source iterator has more values than the defined offset number", func(s *testcase.Spec) {
+		offset.Let(s, func(t *testcase.T) int {
+			return len(values.Get(t)) - t.Random.IntBetween(1, len(values.Get(t))-1)
+		})
+
+		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
+			got := iterkit.Collect2Map(subject.Get(t))
+
+			assert.Equal(t, len(values.Get(t))-offset.Get(t), len(got))
+			var exp1 = values.Get(t)[offset.Get(t):]
+			var exp2 = slicekit.Map(exp1, func(n int) error { return fmt.Errorf("%d", n) })
+			assert.ContainExactly(t, exp1, mapkit.Keys(got))
+			assert.ContainExactly(t, exp2, mapkit.Values(got))
+		})
+	})
+
+	s.Context("immplement iter.Seq2", iterkitcontract.IterSeq2[int, error](func(t testing.TB) iter.Seq2[int, error] {
+		const iterLen = 10
+		src := iterkit.IntRange(1, iterLen)
+		return iterkit.Offset(src, iterLen/2)
+	}).Spec)
 }
 
 func ExampleEmpty() {
@@ -4069,7 +4279,7 @@ func TestFrom(t *testing.T) {
 
 	s.Test("error at the end", func(t *testcase.T) {
 		var (
-			expVS  = random.Slice(t.Random.IntBetween(0, 100), t.Random.Int)
+			expVS  = append([]int{}, random.Slice(t.Random.IntBetween(0, 100), t.Random.Int)...)
 			expErr = t.Random.Error()
 		)
 		vs, err := iterkit.Collect(iterkit.From(func(yield func(int) bool) error {

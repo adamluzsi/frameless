@@ -362,16 +362,19 @@ func Limit2[K, V any](i iter.Seq2[K, V], n int) iter.Seq2[K, V] {
 	}
 }
 
-func Offset1[V any](i iter.Seq[V], offset int) iter.Seq[V] {
-	return func(yield func(V) bool) {
+func Offset[T any](i ErrSeq[T], offset int) ErrSeq[T] {
+	return Offset2(i, offset)
+}
+
+func Offset1[T any](i iter.Seq[T], offset int) iter.Seq[T] {
+	return func(yield func(T) bool) {
 		next, stop := iter.Pull(i)
 		defer stop()
 		for i := 0; i < offset; i++ {
-			v, ok := next()
+			_, ok := next() // dispose
 			if !ok {
 				return
 			}
-			_ = v // dispose
 		}
 		for {
 			v, ok := next()
@@ -379,6 +382,28 @@ func Offset1[V any](i iter.Seq[V], offset int) iter.Seq[V] {
 				break
 			}
 			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+func Offset2[K, V any](i iter.Seq2[K, V], offset int) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		next, stop := iter.Pull2(i)
+		defer stop()
+		for i := 0; i < offset; i++ {
+			_, _, ok := next() // dispose
+			if !ok {
+				return
+			}
+		}
+		for {
+			k, v, ok := next()
+			if !ok {
+				break
+			}
+			if !yield(k, v) {
 				return
 			}
 		}
