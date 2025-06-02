@@ -57,6 +57,10 @@ func From[T any](fn func(yield func(T) bool) error) ErrSeq[T] {
 	}
 }
 
+type NoMore struct{}
+
+func (NoMore) Error() string { return "no more page to iterate" }
+
 // FromPages will create an iter.Seq[T] which can be used like any other iterator,
 // Under the hood the "more" function will be used to dynamically retrieve more values
 // when the previously called values are already used up.
@@ -73,7 +77,7 @@ func FromPages[T any](next func(offset int) (values []T, _ error)) ErrSeq[T] {
 		for hasMore {
 			vs, err := next(offset)
 			if err != nil {
-				if errors.Is(err, NoMore) {
+				if errors.Is(err, NoMore{}) {
 					hasMore = !true
 				} else {
 					var zero T
@@ -296,8 +300,6 @@ func Collect1Pull[T any](next func() (T, bool), stops ...func()) []T {
 	}
 	return vs
 }
-
-const NoMore errorkit.Error = "[[ErrNoMorePage]]"
 
 // Error returns an Interface that only can do is returning an Err and never have next element
 func Error[T any](err error) ErrSeq[T] {

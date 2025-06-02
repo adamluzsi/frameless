@@ -769,7 +769,7 @@ func ExampleFromPages() {
 			return nil, err
 		}
 		if len(vs) < limit {
-			return vs, iterkit.NoMore
+			return vs, iterkit.NoMore{}
 		}
 		return vs, nil
 	}
@@ -809,7 +809,7 @@ func TestFromPages(t *testing.T) {
 
 		more.Let(s, func(t *testcase.T) func(offset int) (values []Foo, _ error) {
 			return func(offset int) (values []Foo, _ error) {
-				return []Foo{value.Get(t)}, iterkit.NoMore
+				return []Foo{value.Get(t)}, iterkit.NoMore{}
 			}
 		})
 
@@ -838,7 +838,7 @@ func TestFromPages(t *testing.T) {
 				})
 				testcase.Append[Foo](t, values, vs...)
 				if cur == totalPageNumber {
-					return vs, iterkit.NoMore
+					return vs, iterkit.NoMore{}
 				}
 				return vs, nil
 			}
