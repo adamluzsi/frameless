@@ -34,10 +34,11 @@ import (
 	"go.llib.dev/frameless/port/option"
 )
 
-// SeqE is an iterator sequence that represent an external resource iteration,
-// with the potential that the iteration might fails.
+// SeqE is an iterator sequence that represents the iteration of external resources, which may potentially fail.
+// The name draws inspiration from the standard library's `Seq2`,
+// but with a key distinction: the suffix "E" highlights the possibility of errors occurring during iteration.
 //
-// Such resources are gRPC streams, HTTP Streams, DB query result iterations.
+// Examples of such resources include gRPC streams, HTTP streams, and database query result iterations.
 type SeqE[T any] = iter.Seq2[T, error]
 
 // From creates a ErrSeq with a function that feels similar than creating an iter.Seq.
@@ -870,6 +871,11 @@ func TakeAll2[KV any, K, V any](next func() (K, V, bool), m kvMapFunc[KV, K, V])
 // Of creates an iterator that can return the value of v.
 func Of[T any](v T) iter.Seq[T] {
 	return func(yield func(T) bool) { yield(v) }
+}
+
+// Of creates an iterator that can return the value of v.
+func Of2[K, V any](k K, v V) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) { yield(k, v) }
 }
 
 // OfE creates an SeqE iterator that can return the value of v.

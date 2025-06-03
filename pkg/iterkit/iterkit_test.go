@@ -127,6 +127,21 @@ func TestSliceE(t *testing.T) {
 		iterkitcontract.IterSeq2(func(t testing.TB) iter.Seq2[int, error] {
 			return iterkit.SliceE([]int{1, 2, 3})
 		}).Spec)
+
+	s.Test("supports custom slice types", func(t *testcase.T) {
+		type T struct{ N int }
+		type TS []T
+
+		exp := TS(slicekit.Map(random.Slice(3, t.Random.Int), func(n int) T {
+			return T{N: n}
+		}))
+
+		i := iterkit.SliceE(exp)
+
+		got, err := iterkit.CollectE(i)
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+	})
 }
 
 func ExampleSlice() {
@@ -356,7 +371,7 @@ func ExampleFilter() {
 func TestFilter(t *testing.T) {
 	t.Run("given the iterator has set of elements", func(t *testing.T) {
 		originalInput := []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-		iterator := func() iter.Seq[int] { return iterkit.Slice1[int](originalInput) }
+		iterator := func() iter.Seq[int] { return iterkit.Slice1(originalInput) }
 
 		t.Run("when filter allow everything", func(t *testing.T) {
 			i := iterkit.Filter(iterator(), func(int) bool { return true })
@@ -1726,6 +1741,43 @@ func TestOf(t *testing.T) {
 		checkAmount := rnd.IntBetween(1, 100)
 		for n := 0; n < checkAmount; n++ {
 			_, ok := next()
+			assert.False(t, ok)
+		}
+	})
+}
+
+func TestOf2(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("StructGiven_StructReceivedWithDecode", func(t *testcase.T) {
+		var (
+			exp1 = ExampleStruct{Name: t.Random.Domain()}
+			exp2 = t.Random.Int()
+		)
+		i := iterkit.Of2(exp1, exp2)
+		got1, got2, found := iterkit.First2(i)
+		assert.True(t, found)
+		assert.Equal(t, exp1, got1)
+		assert.Equal(t, exp2, got2)
+	})
+	s.Test("StructGivenAndNextCalledMultipleTimes_NextOnlyReturnTrueOnceAndStayFalseAfterThat", func(t *testcase.T) {
+		var (
+			exp1 = ExampleStruct{Name: t.Random.Domain()}
+			exp2 = t.Random.Int()
+		)
+		i := iterkit.Of2(exp1, exp2)
+
+		next, stop := iter.Pull2(i)
+		defer stop()
+
+		k, v, ok := next()
+		assert.True(t, ok)
+		assert.Equal(t, exp1, k)
+		assert.Equal(t, exp2, v)
+
+		checkAmount := rnd.IntBetween(1, 100)
+		for n := 0; n < checkAmount; n++ {
+			_, _, ok := next()
 			assert.False(t, ok)
 		}
 	})

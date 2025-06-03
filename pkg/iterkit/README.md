@@ -2,13 +2,31 @@
 
 [![Go Reference](https://pkg.go.dev/badge/go.llib.dev/frameless/pkg/iterkit.svg)](https://pkg.go.dev/go.llib.dev/frameless/pkg/iterkit)
 
-`iterkit` is a Go package that provides a collection of iterator implementations and utilities,
-designed to help developers work with data sequences in a memory-efficient manner.
-It offers tools for processing, transforming, and managing iterators in a way that is both intuitive and performant.
+`iterkit` is a Go package that streamlines working with data sequences, prioritising an intuitive developer experience.
+The package's helper functions are designed with streaming in mind, ensuring mindful memory usage.
+It offers various iterator implementations and utilities that enable developers to process, transform, and manage data efficiently.
 
-This package is designed to make working with iterators intuitive and efficient,
-while providing robust error handling options tailored to real-world scenarios.
-If you have any questions or need further clarification, feel free to reach out!
+## Failable iterators
+
+Another goal of `iterkit` is to simplify working with iterators that abstract failable external resources.
+They are represented by the `iterkit.SeqE[T]` type - an alias for `iter.Seq2[T, error]`.
+
+`SeqE[T]` is an iterator sequence that represents a data sequence, which may potentially fail at any time.
+The name draws inspiration from the standard library's `Seq2`,
+but with a key distinction: the suffix "E" highlights the possibility of errors occurring during iteration.
+
+```go
+type SeqE[T any] = iter.Seq2[T, error]
+```
+
+The approach of using the second argument of a `iter.Seq2[T, error]` for error handling,
+has been established through community consensus and testing as a stable and idiomatic method.
+
+Multiple solutions were extensive A/B tested, and validated through production code integration,
+to determine the optimal approach for providing a seamless developer experience
+when working with iterators that may encounter errors or failures.
+
+If you have any questions or need further clarification, please feel free to get in touch.
 
 ## Features
 
@@ -27,13 +45,28 @@ If you have any questions or need further clarification, feel free to reach out!
 - **Offset**: Skip a specified number of elements before iteration begins.  
 - **First/Last**: Retrieve only the first or last element.  
 - **Take/TakeAll**: Collect the next n elements from a `iter.Pull` iteration.  
-- **Take/TakeAll**: Collect the remaining elements from a `iter.Pull` iteration.  
 - **Count**: Determine the number of elements in an iterator.  
 - **Channel Integration (Chan)**: Convert between iterators to channels for concurrent processing.  
 - **Range Creation**: Generate sequences of values efficiently.  
   - **CharRange**: Create an iterator over a range of characters.  
   - **IntRange**: Generate a range of integers.  
 - **and more...**
+
+| Description                                       | iter.Seq         | iter.Seq2                               | iterkit.SeqE       |
+| ------------------------------------------------- | ---------------- | --------------------------------------- | ------------------ |
+| Convert slice to iterator                         | Slice1           |                                         | SliceE             |
+| Empty iterator                                    | Empty            | Empty2                                  | EmptyE             |
+| Create single value iterator                      | Of               | Of2                                     | OfE                |
+| Transform values between types                    | Map              | Map2                                    | MapE               |
+| Collect all values                                | Collect          | Collect2,<br>Collect2KV,<br>Collect2Map | CollectE           |
+| Filter                                            | Filter           | Filter2                                 | Filter             |
+| Limit number of items                             | Limit            | Limit2                                  | LimitE             |
+| Take N values                                     | Take,<br>TakeAll | Take2,<br>TakeAll2                      | TakeE,<br>TakeAllE |
+| Count all elements                                | Count            | Count2                                  | CountE             |
+| Enable FanOut/FanIn with iterators                | Sync             | Sync2                                   | SyncE              |
+| Create iterator from paginated data source        |                  |                                         | FromPages          |
+| Create int range between a given boundary         | IntRange         |                                         | IntRangeE          |
+| Create a character range between a given boundary | CharRange        |                                         | CharRangeE         |
 
 ## Error Handling in Iterators
 
