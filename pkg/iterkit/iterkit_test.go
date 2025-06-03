@@ -270,26 +270,6 @@ func TestLastE(t *testing.T) {
 		assert.False(t, found)
 	})
 
-	s.Test("iter has an error", func(t *testcase.T) {
-		var (
-			expVal = t.Random.String()
-			expErr = t.Random.Error()
-		)
-		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
-			for range t.Random.IntBetween(1, 7) {
-				if !yield(t.Random.String(), t.Random.Error()) {
-					return
-				}
-			}
-			yield(expVal, expErr)
-		}
-
-		got, ok, err := iterkit.LastE(itr)
-		assert.ErrorIs(t, expErr, err)
-		assert.True(t, ok)
-		assert.Equal(t, expVal, got)
-	})
-
 	s.Test("last element returned", func(t *testcase.T) {
 		var expected int = t.Random.Int()
 		slc := random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
@@ -957,7 +937,92 @@ func TestFromPages(t *testing.T) {
 	})
 }
 
-func ExampleHead() {
+func ExampleHeadE() {
+	inf42 := func(yield func(int, error) bool) {
+		for /* infinite */ {
+			if !yield(42, nil) {
+				return
+			}
+		}
+	}
+
+	i := iterkit.HeadE(inf42, 3)
+	vs, err := iterkit.Collect(i)
+	_ = err // nil
+	_ = vs  // []{42, 42, 42}, nil
+}
+
+func TestHeadE(t *testing.T) {
+	var values iter.Seq2[string, error] = func(yield func(string, error) bool) {
+		if !yield("foo", errors.New("oof")) {
+			return
+		}
+		if !yield("bar", errors.New("rab")) {
+			return
+		}
+		if !yield("baz", errors.New("zab")) {
+			return
+		}
+	}
+	t.Run("less", func(t *testing.T) {
+		i := iterkit.HeadE(values, 2)
+		got := iterkit.Collect2Map(i)
+		exp := map[string]error{"foo": errors.New("oof"), "bar": errors.New("rab")}
+		assert.ContainExactly(t, exp, got)
+	})
+
+	t.Run("more", func(t *testing.T) {
+		i := iterkit.HeadE(values, 5)
+		got := iterkit.Collect2Map(i)
+		exp := map[string]error{"foo": errors.New("oof"), "bar": errors.New("rab"), "baz": errors.New("zab")}
+		assert.Equal(t, exp, got)
+	})
+
+	t.Run("inf iterator", func(t *testing.T) {
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			infStream := iter.Seq2[int, error](func(yield func(int, error) bool) {
+				for {
+					if ctx.Err() != nil {
+						return
+					}
+					if !yield(42, nil) {
+						return
+					}
+				}
+			})
+			i := iterkit.HeadE(infStream, 3)
+			vs, err := iterkit.Collect(i)
+			assert.NoError(t, err)
+			assert.Equal(t, []int{42, 42, 42}, vs)
+		})
+	})
+
+	t.Run("inf iterator with errors", func(t *testing.T) {
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			infStream := iter.Seq2[int, error](func(yield func(int, error) bool) {
+				var index int
+				for {
+					index++
+					if ctx.Err() != nil {
+						return
+					}
+					if !yield(index, errors.New(fmt.Sprintf("%d", index*2))) {
+						return
+					}
+				}
+			})
+			i := iterkit.HeadE(infStream, 3)
+			got := iterkit.Collect2Map(i)
+			assert.Equal(t, got, map[int]error{
+				1: errors.New("2"),
+				2: errors.New("4"),
+				3: errors.New("6"),
+			})
+		})
+	})
+}
+
+func ExampleHead1() {
 	inf42 := func(yield func(int) bool) {
 		for /* infinite */ {
 			if !yield(42) {
@@ -966,22 +1031,22 @@ func ExampleHead() {
 		}
 	}
 
-	i := iterkit.Head[int](inf42, 3)
+	i := iterkit.Head1[int](inf42, 3)
 
 	vs := iterkit.Collect1(i)
 	_ = vs // []{42, 42, 42}, nil
 }
 
-func TestHead(t *testing.T) {
+func TestHead1(t *testing.T) {
 	t.Run("less", func(t *testing.T) {
 		i := iterkit.Slice1([]int{1, 2, 3})
-		i = iterkit.Head(i, 2)
+		i = iterkit.Head1(i, 2)
 		vs := iterkit.Collect1(i)
 		assert.Equal(t, []int{1, 2}, vs)
 	})
 	t.Run("more", func(t *testing.T) {
 		i := iterkit.Slice1([]int{1, 2, 3})
-		i = iterkit.Head(i, 5)
+		i = iterkit.Head1(i, 5)
 		vs := iterkit.Collect1(i)
 		assert.Equal(t, []int{1, 2, 3}, vs)
 	})
@@ -997,7 +1062,7 @@ func TestHead(t *testing.T) {
 					}
 				}
 			})
-			i := iterkit.Head(infStream, 3)
+			i := iterkit.Head1(infStream, 3)
 			vs := iterkit.Collect1(i)
 			assert.Equal(t, []int{42, 42, 42}, vs)
 		})

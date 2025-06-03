@@ -738,8 +738,13 @@ func Last2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 	return lastK, lastV, ok
 }
 
-// Head takes the first n element, similarly how the coreutils "head" app works.
-func Head[T any](i iter.Seq[T], n int) iter.Seq[T] {
+// Head1 takes the first n element, similarly how the coreutils "head" app works.
+func HeadE[T any](i ErrSeq[T], n int) ErrSeq[T] {
+	return Head2(i, n)
+}
+
+// Head1 takes the first n element, similarly how the coreutils "head" app works.
+func Head1[T any](i iter.Seq[T], n int) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if n <= 0 {
 			return
