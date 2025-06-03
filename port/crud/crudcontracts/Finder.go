@@ -177,7 +177,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 		})
 
 		s.Then(`result is an empty list`, func(t *testcase.T) {
-			vs, err := iterkit.Collect(act(t))
+			vs, err := iterkit.CollectE(act(t))
 			assert.NoError(t, err)
 			assert.Empty(t, vs)
 		})
@@ -190,7 +190,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 
 		s.Then(`it will return all entities`, func(t *testcase.T) {
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
-			actual, err := iterkit.Collect(act(t))
+			actual, err := iterkit.CollectE(act(t))
 			assert.NoError(t, err)
 			t.Must.ContainExactly(expected, actual)
 		})

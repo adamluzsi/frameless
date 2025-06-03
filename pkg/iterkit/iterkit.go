@@ -189,7 +189,7 @@ func Slice1[T any](vs []T) iter.Seq[T] {
 	return slices.Values(vs)
 }
 
-func Collect[T any](i iter.Seq2[T, error]) ([]T, error) {
+func CollectE[T any](i iter.Seq2[T, error]) ([]T, error) {
 	if i == nil {
 		return nil, nil
 	}
@@ -867,9 +867,14 @@ func TakeAll2[KV any, K, V any](next func() (K, V, bool), m kvMapFunc[KV, K, V])
 	return kvs
 }
 
-// SingleValue creates an iterator that can return one single element and will ensure that Next can only be called once.
-func SingleValue[T any](v T) iter.Seq[T] {
+// Of creates an iterator that can return the value of v.
+func Of[T any](v T) iter.Seq[T] {
 	return func(yield func(T) bool) { yield(v) }
+}
+
+// OfE creates an SeqE iterator that can return the value of v.
+func OfE[T any](v T) ErrSeq[T] {
+	return func(yield func(T, error) bool) { yield(v, nil) }
 }
 
 // Map allows you to do additional transformation on the values.
@@ -899,7 +904,7 @@ func Map2[OKey, OVal, IKey, IVal any](i iter.Seq2[IKey, IVal], transform func(IK
 	}
 }
 
-func MapErr[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, error)) ErrSeq[To] {
+func MapE[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, error)) ErrSeq[To] {
 	var src ErrSeq[From] = castToErrSeq[From](i)
 	return func(yield func(To, error) bool) {
 		for v, err := range src {
@@ -917,7 +922,7 @@ func MapErr[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, e
 	}
 }
 
-func Count[T any](i ErrSeq[T]) (int, error) {
+func CountE[T any](i ErrSeq[T]) (int, error) {
 	var (
 		total int
 		errs  []error
@@ -1057,6 +1062,37 @@ func Sync2[K, V any](i iter.Seq2[K, V]) (SingleUseSeq2[K, V], func()) {
 	}, stop
 }
 
+// SyncE ensures that an iterator can be safely used by multiple goroutines at the same time.
+func SyncE[T any](i ErrSeq[T]) (SingleUseErrSeq[T], func()) {
+	// the reason we initiate pull prior to the range iteration
+	// is because we expect multiple range iterations to start simulteniously,
+	// and the result should be distributed between them.
+	next, stop := iter.Pull2(i)
+	var m sync.Mutex
+	var fetch = func() (T, error, bool) {
+		m.Lock()
+		defer m.Unlock()
+		return next()
+	}
+	var finish = func() {
+		m.Lock()
+		defer m.Unlock()
+		stop()
+	}
+	return func(yield func(T, error) bool) {
+		for {
+			v, err, ok := fetch()
+			if !ok {
+				finish()
+				break
+			}
+			if !yield(v, err) {
+				return
+			}
+		}
+	}, stop
+}
+
 func Merge[T any](is ...iter.Seq[T]) iter.Seq[T] {
 	if len(is) == 0 {
 		return Empty1[T]()
@@ -1085,6 +1121,10 @@ func Merge2[K, V any](is ...iter.Seq2[K, V]) iter.Seq2[K, V] {
 			}
 		}
 	}
+}
+
+func MergeE[T any](is ...ErrSeq[T]) ErrSeq[T] {
+	return Merge2(is...)
 }
 
 // CharRange1 returns an iterator that will range between the specified `begin“ and the `end` rune.
@@ -1131,23 +1171,6 @@ func IntRange(begin, end int) iter.Seq[int] {
 	}
 }
 
-// Reverse will reverse the iteration direction.
-//
-// # WARNING
-//
-// It does not work with infinite iterators,
-// as it requires to collect all values before it can reverse the elements.
-func Reverse[T any](i iter.Seq[T]) iter.Seq[T] {
-	return func(yield func(T) bool) {
-		var vs []T = Collect1(i)
-		for i := len(vs) - 1; 0 <= i; i-- {
-			if !yield(vs[i]) {
-				return
-			}
-		}
-	}
-}
-
 func Once[T any](i iter.Seq[T]) SingleUseSeq[T] {
 	var done int32
 	return func(yield func(T) bool) {
@@ -1174,6 +1197,10 @@ func Once2[K, V any](i iter.Seq2[K, V]) SingleUseSeq2[K, V] {
 			}
 		}
 	}
+}
+
+func OnceE[T any](i ErrSeq[T]) SingleUseErrSeq[T] {
+	return Once2(i)
 }
 
 func FromPull[T any](next func() (T, bool), stops ...func()) iter.Seq[T] {
@@ -1208,6 +1235,10 @@ func FromPull2[K, V any](next func() (K, V, bool), stops ...func()) iter.Seq2[K,
 			}
 		}
 	}
+}
+
+func FromPullE[T any](next func() (T, error, bool), stops ...func()) ErrSeq[T] {
+	return FromPull2(next, stops...)
 }
 
 //////////////////////////////////////////////// failable iteration //////////////////////////////////////////////////
