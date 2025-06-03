@@ -220,7 +220,7 @@ func CountIs[T any](tb testing.TB, itr iter.Seq[T], expected int) {
 
 func (a Helper[ENT, ID]) CountIs(tb testing.TB, iter iter.Seq[ENT], expected int) {
 	tb.Helper()
-	assert.Must(tb).Equal(expected, iterkit.Count1(iter))
+	assert.Must(tb).Equal(expected, iterkit.Count(iter))
 }
 
 func (a Helper[ENT, ID]) cleanupENT(tb testing.TB, resource any, ctx context.Context, ptr *ENT) {

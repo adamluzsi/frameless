@@ -34,14 +34,14 @@ import (
 	"go.llib.dev/frameless/port/option"
 )
 
-// ErrSeq is an iterator sequence that represent an external resource iteration,
+// SeqE is an iterator sequence that represent an external resource iteration,
 // with the potential that the iteration might fails.
 //
 // Such resources are gRPC streams, HTTP Streams, DB query result iterations.
-type ErrSeq[T any] = iter.Seq2[T, error]
+type SeqE[T any] = iter.Seq2[T, error]
 
 // From creates a ErrSeq with a function that feels similar than creating an iter.Seq.
-func From[T any](fn func(yield func(T) bool) error) ErrSeq[T] {
+func From[T any](fn func(yield func(T) bool) error) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		var done bool
 		err := fn(func(v T) bool {
@@ -67,7 +67,7 @@ func (NoMore) Error() string { return "no more page to iterate" }
 //
 // If the more function has a hard-coded true for the "has next page" return value,
 // then the pagination will interpret an empty result as "no more pages left".
-func FromPages[T any](next func(offset int) (values []T, _ error)) ErrSeq[T] {
+func FromPages[T any](next func(offset int) (values []T, _ error)) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		var (
 			offset  int  // offset is the current offset at which the next More will be called.
@@ -125,18 +125,18 @@ type SingleUseSeq[T any] = iter.Seq[T]
 // For more information on single use sequences, please read the documentation of SingleUseSeq.
 type SingleUseSeq2[K, V any] = iter.Seq2[K, V]
 
-// SingleUseErrSeq is an iter.Seq2[T, error] that can only iterated once.
+// SingleUseSeqE is an iter.Seq2[T, error] that can only iterated once.
 // After iteration, it is expected to yield no more values.
 // For more information on single use sequences, please read the documentation of SingleUseSeq.
-type SingleUseErrSeq[T any] = ErrSeq[T]
+type SingleUseSeqE[T any] = SeqE[T]
 
 type i1[T any] interface {
-	iter.Seq[T] | ErrSeq[T]
+	iter.Seq[T] | SeqE[T]
 }
 
 func Reduce[R, T any, I i1[T]](i I, initial R, fn func(R, T) R) (R, error) {
 	var v = initial
-	for c, err := range castToErrSeq[T](i) {
+	for c, err := range castToSeqE[T](i) {
 		if err != nil {
 			return v, err
 		}
@@ -147,7 +147,7 @@ func Reduce[R, T any, I i1[T]](i I, initial R, fn func(R, T) R) (R, error) {
 
 func ReduceErr[R, T any, I i1[T]](i I, initial R, fn func(R, T) (R, error)) (result R, rErr error) {
 	var v = initial
-	for c, err := range castToErrSeq[T](i) {
+	for c, err := range castToSeqE[T](i) {
 		if err != nil {
 			return v, err
 		}
@@ -175,7 +175,7 @@ func Reduce2[R, T any](i iter.Seq[T], initial R, fn func(R, T) R) R {
 	return v
 }
 
-func SliceE[T any](vs []T) ErrSeq[T] {
+func SliceE[T any](vs []T) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		for _, v := range vs {
 			if !yield(v, nil) {
@@ -207,7 +207,7 @@ func CollectE[T any](i iter.Seq2[T, error]) ([]T, error) {
 	return vs, errorkit.Merge(errs...)
 }
 
-func Collect1[T any](i iter.Seq[T]) []T {
+func Collect[T any](i iter.Seq[T]) []T {
 	if i == nil {
 		return nil
 	}
@@ -264,7 +264,7 @@ func Collect2Map[K comparable, V any](i iter.Seq2[K, V]) map[K]V {
 	return out
 }
 
-func CollectPull[T any](next func() (T, error, bool), stops ...func()) ([]T, error) {
+func CollectEPull[T any](next func() (T, error, bool), stops ...func()) ([]T, error) {
 	var (
 		vs   = make([]T, 0)
 		errs []error
@@ -286,7 +286,7 @@ func CollectPull[T any](next func() (T, error, bool), stops ...func()) ([]T, err
 	return vs, errorkit.Merge(errs...)
 }
 
-func Collect1Pull[T any](next func() (T, bool), stops ...func()) []T {
+func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
 	var vs = make([]T, 0)
 	for _, stop := range stops {
 		defer stop()
@@ -302,7 +302,7 @@ func Collect1Pull[T any](next func() (T, bool), stops ...func()) []T {
 }
 
 // Error returns an Interface that only can do is returning an Err and never have next element
-func Error[T any](err error) ErrSeq[T] {
+func Error[T any](err error) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		var zero T
 		yield(zero, err)
@@ -310,11 +310,11 @@ func Error[T any](err error) ErrSeq[T] {
 }
 
 // ErrorF behaves exactly like fmt.ErrorF but returns the error wrapped as iterator
-func ErrorF[T any](format string, a ...any) ErrSeq[T] {
+func ErrorF[T any](format string, a ...any) SeqE[T] {
 	return Error[T](fmt.Errorf(format, a...))
 }
 
-func Limit[T any](i ErrSeq[T], n int) ErrSeq[T] {
+func LimitE[T any](i SeqE[T], n int) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		next, stop := iter.Pull2(i)
 		defer stop()
@@ -330,7 +330,7 @@ func Limit[T any](i ErrSeq[T], n int) ErrSeq[T] {
 	}
 }
 
-func Limit1[V any](i iter.Seq[V], n int) iter.Seq[V] {
+func Limit[V any](i iter.Seq[V], n int) iter.Seq[V] {
 	return func(yield func(V) bool) {
 		next, stop := iter.Pull(i)
 		defer stop()
@@ -362,11 +362,11 @@ func Limit2[K, V any](i iter.Seq2[K, V], n int) iter.Seq2[K, V] {
 	}
 }
 
-func Offset[T any](i ErrSeq[T], offset int) ErrSeq[T] {
+func OffsetE[T any](i SeqE[T], offset int) SeqE[T] {
 	return Offset2(i, offset)
 }
 
-func Offset1[T any](i iter.Seq[T], offset int) iter.Seq[T] {
+func Offset[T any](i iter.Seq[T], offset int) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		next, stop := iter.Pull(i)
 		defer stop()
@@ -410,13 +410,13 @@ func Offset2[K, V any](i iter.Seq2[K, V], offset int) iter.Seq2[K, V] {
 	}
 }
 
-// Empty iterator is used to represent nil result with Null object pattern
-func Empty[T any]() ErrSeq[T] {
+// EmptyE iterator is used to represent nil result with Null object pattern
+func EmptyE[T any]() SeqE[T] {
 	return func(yield func(T, error) bool) {}
 }
 
-// Empty1 iterator is used to represent nil result with Null object pattern
-func Empty1[T any]() iter.Seq[T] {
+// Empty iterator is used to represent nil result with Null object pattern
+func Empty[T any]() iter.Seq[T] {
 	return func(yield func(T) bool) {}
 }
 
@@ -425,7 +425,7 @@ func Empty2[T1, T2 any]() iter.Seq2[T1, T2] {
 	return func(yield func(T1, T2) bool) {}
 }
 
-func Batch[T any](i ErrSeq[T], opts ...BatchOption) ErrSeq[[]T] {
+func BatchE[T any](i SeqE[T], opts ...BatchOption) SeqE[[]T] {
 	c := option.Use(opts)
 	var batched iter.Seq[[]KV[T, error]]
 	if 0 < c.WaitLimit {
@@ -452,7 +452,7 @@ func Batch[T any](i ErrSeq[T], opts ...BatchOption) ErrSeq[[]T] {
 	}
 }
 
-func Batch1[T any](i iter.Seq[T], opts ...BatchOption) iter.Seq[[]T] {
+func Batch[T any](i iter.Seq[T], opts ...BatchOption) iter.Seq[[]T] {
 	c := option.Use(opts)
 	var src iter.Seq2[T, struct{}] = func(yield func(T, struct{}) bool) {
 		for v := range i {
@@ -630,8 +630,8 @@ func Filter[T any, Iter i1[T]](i Iter, filter func(T) bool) Iter {
 			}
 		}
 		return any(itr).(Iter)
-	case ErrSeq[T]:
-		var itr ErrSeq[T] = func(yield func(T, error) bool) {
+	case SeqE[T]:
+		var itr SeqE[T] = func(yield func(T, error) bool) {
 			for v, err := range i {
 				if err != nil {
 					var zero T
@@ -665,8 +665,8 @@ func Filter2[K, V any](i iter.Seq2[K, V], filter func(k K, v V) bool) iter.Seq2[
 	}
 }
 
-// First1 decode the first next value of the iterator and close the iterator
-func First1[T any](i iter.Seq[T]) (T, bool) {
+// First decode the first next value of the iterator and close the iterator
+func First[T any](i iter.Seq[T]) (T, bool) {
 	for v := range i {
 		return v, true
 	}
@@ -687,7 +687,7 @@ func First2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 }
 
 // FirstE will find the first value in a ErrSequence, and return it in a idiomatic tuple return value order.
-func FirstE[T any](i ErrSeq[T]) (T, bool, error) {
+func FirstE[T any](i SeqE[T]) (T, bool, error) {
 	for v, err := range i {
 		return v, true, err
 	}
@@ -697,7 +697,7 @@ func FirstE[T any](i ErrSeq[T]) (T, bool, error) {
 
 // LastE will find the last value in a ErrSeq, and return it in a idiomatic way.
 // If an error occurs during execution, it will be immediately returned.
-func LastE[T any](i ErrSeq[T]) (T, bool, error) {
+func LastE[T any](i SeqE[T]) (T, bool, error) {
 	var (
 		last T
 		ok   bool
@@ -712,7 +712,7 @@ func LastE[T any](i ErrSeq[T]) (T, bool, error) {
 	return last, ok, nil
 }
 
-func Last1[T any](i iter.Seq[T]) (T, bool) {
+func Last[T any](i iter.Seq[T]) (T, bool) {
 	var (
 		last T
 		ok   bool
@@ -739,12 +739,12 @@ func Last2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 }
 
 // Head1 takes the first n element, similarly how the coreutils "head" app works.
-func HeadE[T any](i ErrSeq[T], n int) ErrSeq[T] {
+func HeadE[T any](i SeqE[T], n int) SeqE[T] {
 	return Head2(i, n)
 }
 
-// Head1 takes the first n element, similarly how the coreutils "head" app works.
-func Head1[T any](i iter.Seq[T], n int) iter.Seq[T] {
+// Head takes the first n element, similarly how the coreutils "head" app works.
+func Head[T any](i iter.Seq[T], n int) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if n <= 0 {
 			return
@@ -873,7 +873,7 @@ func Of[T any](v T) iter.Seq[T] {
 }
 
 // OfE creates an SeqE iterator that can return the value of v.
-func OfE[T any](v T) ErrSeq[T] {
+func OfE[T any](v T) SeqE[T] {
 	return func(yield func(T, error) bool) { yield(v, nil) }
 }
 
@@ -904,8 +904,8 @@ func Map2[OKey, OVal, IKey, IVal any](i iter.Seq2[IKey, IVal], transform func(IK
 	}
 }
 
-func MapE[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, error)) ErrSeq[To] {
-	var src ErrSeq[From] = castToErrSeq[From](i)
+func MapE[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, error)) SeqE[To] {
+	var src SeqE[From] = castToSeqE[From](i)
 	return func(yield func(To, error) bool) {
 		for v, err := range src {
 			if err != nil {
@@ -922,7 +922,7 @@ func MapE[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, err
 	}
 }
 
-func CountE[T any](i ErrSeq[T]) (int, error) {
+func CountE[T any](i SeqE[T]) (int, error) {
 	var (
 		total int
 		errs  []error
@@ -936,10 +936,10 @@ func CountE[T any](i ErrSeq[T]) (int, error) {
 	return total, errorkit.Merge(errs...)
 }
 
-// Count1 will iterate over and count the total iterations number
+// Count will iterate over and count the total iterations number
 //
 // Good when all you want is count all the elements in an iterator but don't want to do anything else.
-func Count1[T any](i iter.Seq[T]) int {
+func Count[T any](i iter.Seq[T]) int {
 	var total int
 	for range i {
 		total++
@@ -956,7 +956,7 @@ func Count2[K, V any](i iter.Seq2[K, V]) int {
 }
 
 // ChanE creates an iterator out from a channel
-func ChanE[T any](ch <-chan T) ErrSeq[T] {
+func ChanE[T any](ch <-chan T) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		if ch == nil {
 			return
@@ -969,8 +969,8 @@ func ChanE[T any](ch <-chan T) ErrSeq[T] {
 	}
 }
 
-// Chan1 creates an iterator out from a channel
-func Chan1[T any](ch <-chan T) iter.Seq[T] {
+// Chan creates an iterator out from a channel
+func Chan[T any](ch <-chan T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if ch == nil {
 			return
@@ -1063,7 +1063,7 @@ func Sync2[K, V any](i iter.Seq2[K, V]) (SingleUseSeq2[K, V], func()) {
 }
 
 // SyncE ensures that an iterator can be safely used by multiple goroutines at the same time.
-func SyncE[T any](i ErrSeq[T]) (SingleUseErrSeq[T], func()) {
+func SyncE[T any](i SeqE[T]) (SingleUseSeqE[T], func()) {
 	// the reason we initiate pull prior to the range iteration
 	// is because we expect multiple range iterations to start simulteniously,
 	// and the result should be distributed between them.
@@ -1095,7 +1095,7 @@ func SyncE[T any](i ErrSeq[T]) (SingleUseErrSeq[T], func()) {
 
 func Merge[T any](is ...iter.Seq[T]) iter.Seq[T] {
 	if len(is) == 0 {
-		return Empty1[T]()
+		return Empty[T]()
 	}
 	return func(yield func(T) bool) {
 		for _, i := range is {
@@ -1123,12 +1123,12 @@ func Merge2[K, V any](is ...iter.Seq2[K, V]) iter.Seq2[K, V] {
 	}
 }
 
-func MergeE[T any](is ...ErrSeq[T]) ErrSeq[T] {
+func MergeE[T any](is ...SeqE[T]) SeqE[T] {
 	return Merge2(is...)
 }
 
 // CharRange1 returns an iterator that will range between the specified `begin“ and the `end` rune.
-func CharRangeE(begin, end rune) ErrSeq[rune] {
+func CharRangeE(begin, end rune) SeqE[rune] {
 	return func(yield func(rune, error) bool) {
 		for char := range CharRange(begin, end) {
 			if !yield(char, nil) {
@@ -1150,7 +1150,7 @@ func CharRange(begin, end rune) iter.Seq[rune] {
 }
 
 // IntRangeE returns an iterator that will range between the specified `begin“ and the `end` int.
-func IntRangeE(begin, end int) ErrSeq[int] {
+func IntRangeE(begin, end int) SeqE[int] {
 	return func(yield func(int, error) bool) {
 		for i := range IntRange(begin, end) {
 			if !yield(i, nil) {
@@ -1199,7 +1199,7 @@ func Once2[K, V any](i iter.Seq2[K, V]) SingleUseSeq2[K, V] {
 	}
 }
 
-func OnceE[T any](i ErrSeq[T]) SingleUseErrSeq[T] {
+func OnceE[T any](i SeqE[T]) SingleUseSeqE[T] {
 	return Once2(i)
 }
 
@@ -1237,15 +1237,15 @@ func FromPull2[K, V any](next func() (K, V, bool), stops ...func()) iter.Seq2[K,
 	}
 }
 
-func FromPullE[T any](next func() (T, error, bool), stops ...func()) ErrSeq[T] {
+func FromPullE[T any](next func() (T, error, bool), stops ...func()) SeqE[T] {
 	return FromPull2(next, stops...)
 }
 
 //////////////////////////////////////////////// failable iteration //////////////////////////////////////////////////
 
-// ToErrSeq will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
+// ToSeqE will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
 // and use the error function to yield potential issues with the iteration.
-func ToErrSeq[T any](i iter.Seq[T], errFuncs ...func() error) ErrSeq[T] {
+func ToSeqE[T any](i iter.Seq[T], errFuncs ...func() error) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		for v := range i {
 			if !yield(v, nil) {
@@ -1262,8 +1262,8 @@ func ToErrSeq[T any](i iter.Seq[T], errFuncs ...func() error) ErrSeq[T] {
 	}
 }
 
-// SplitErrSeq will split an iter.Seq2[T, error] iterator into a iter.Seq[T] iterator plus an error retrival func.
-func SplitErrSeq[T any](i ErrSeq[T]) (iter.Seq[T], func() error) {
+// SplitSeqE will split an iter.Seq2[T, error] iterator into a iter.Seq[T] iterator plus an error retrival func.
+func SplitSeqE[T any](i SeqE[T]) (iter.Seq[T], func() error) {
 	var m sync.RWMutex
 	var errors []error
 	return func(yield func(T) bool) {
@@ -1289,8 +1289,8 @@ func SplitErrSeq[T any](i ErrSeq[T]) (iter.Seq[T], func() error) {
 		}
 }
 
-// OnErrSeqValue will apply a iterator pipeline on a given ErrSeq
-func OnErrSeqValue[To any, From any](itr ErrSeq[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) ErrSeq[To] {
+// OnSeqEValue will apply a iterator pipeline on a given ErrSeq
+func OnSeqEValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) SeqE[To] {
 	return func(yield func(To, error) bool) {
 		var g tasker.JobGroup[tasker.Manual]
 		defer g.Stop()
@@ -1329,7 +1329,7 @@ func OnErrSeqValue[To any, From any](itr ErrSeq[From], pipeline func(itr iter.Se
 
 		g.Go(func(ctx context.Context) error {
 			defer close(out)
-			var transformPipeline iter.Seq[To] = pipeline(Chan1(in))
+			var transformPipeline iter.Seq[To] = pipeline(Chan(in))
 
 		feeding:
 			for output := range transformPipeline {
@@ -1376,7 +1376,7 @@ func OnErrSeqValue[To any, From any](itr ErrSeq[From], pipeline func(itr iter.Se
 	}
 }
 
-func castToErrSeq[T any, I i1[T]](i I) ErrSeq[T] {
+func castToSeqE[T any, I i1[T]](i I) SeqE[T] {
 	switch i := any(i).(type) {
 	case iter.Seq2[T, error]:
 		return i
@@ -1393,7 +1393,7 @@ func castToErrSeq[T any, I i1[T]](i I) ErrSeq[T] {
 	}
 }
 
-func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer) SingleUseErrSeq[T] {
+func BufioScanner[T string | []byte](s *bufio.Scanner, closer io.Closer) SingleUseSeqE[T] {
 	return FromPullIter(&bufioScannerIter[T]{
 		Scanner: s,
 		Closer:  closer,

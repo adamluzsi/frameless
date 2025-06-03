@@ -467,7 +467,7 @@ func Query(ctx context.Context, r io.Reader, path ...Kind) iter.Seq2[json.RawMes
 	return visit(ctx, in, path)
 }
 
-func visit(ctx context.Context, input Input, path Path) iterkit.ErrSeq[json.RawMessage] {
+func visit(ctx context.Context, input Input, path Path) iterkit.SeqE[json.RawMessage] {
 	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
 		var callerNoLongerListens bool
 		if closer, ok := input.(io.Closer); ok {

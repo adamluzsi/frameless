@@ -27,12 +27,12 @@ type PullIter[V any] interface {
 	Err() error
 }
 
-func ToPullIter[T any](itr ErrSeq[T]) PullIter[T] {
+func ToPullIter[T any](itr SeqE[T]) PullIter[T] {
 	next, stop := iter.Pull2(itr)
 	return &pullIter[T]{next: next, stop: stop}
 }
 
-func FromPullIter[T any](itr PullIter[T]) ErrSeq[T] {
+func FromPullIter[T any](itr PullIter[T]) SeqE[T] {
 	return Once2(func(yield func(T, error) bool) {
 		defer itr.Close()
 		for itr.Next() {

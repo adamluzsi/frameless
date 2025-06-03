@@ -471,7 +471,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 			vs, err := iterkit.CollectE(cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
 				hitID,
 				func(ctx context.Context) iter.Seq2[ENT, error] {
-					return iterkit.ToErrSeq(iterkit.Slice1(res))
+					return iterkit.ToSeqE(iterkit.Slice1(res))
 				}))
 			assert.NoError(t, err)
 			return vs
@@ -481,7 +481,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 			return cache.Get(t).RefreshQueryMany(c.CRUD.MakeContext(t),
 				hitID,
 				func(ctx context.Context) iter.Seq2[ENT, error] {
-					return iterkit.ToErrSeq(iterkit.Slice1(res))
+					return iterkit.ToSeqE(iterkit.Slice1(res))
 				})
 		}
 
@@ -924,7 +924,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 
 		query.Let(s, func(t *testcase.T) cachepkg.QueryManyFunc[ENT] {
 			return func(ctx context.Context) iter.Seq2[ENT, error] {
-				return iterkit.ToErrSeq(iterkit.Slice1[ENT]([]ENT{*ent1.Get(t), *ent2.Get(t)}))
+				return iterkit.ToSeqE(iterkit.Slice1[ENT]([]ENT{*ent1.Get(t), *ent2.Get(t)}))
 			}
 		})
 

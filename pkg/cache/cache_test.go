@@ -111,7 +111,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		qid := cache.Query{Name: "FindByBarID", ARGS: map[string]any{"bar": foo1.Bar}}
 		_, _, err := cachei.CachedQueryOne(ctx, qid.HitID(), func(ctx context.Context) (ent testent.Foo, found bool, err error) {
 			itr := cachei.FindAll(ctx)
-			itr = iterkit.OnErrSeqValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
+			itr = iterkit.OnSeqEValue(itr, func(itr iter.Seq[testent.Foo]) iter.Seq[testent.Foo] {
 				return iterkit.Filter(itr, func(f testent.Foo) bool {
 					return f.Bar == foo1.Bar
 				})
@@ -136,7 +136,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("when we have a custom query that has no arguments but only returns foo2")
 		qid := cache.Query{Name: "NOK-MANY-BAZ"}
 		query := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) iter.Seq2[testent.Foo, error] {
-			return iterkit.ToErrSeq(iterkit.Slice1([]testent.Foo{foo2}))
+			return iterkit.ToSeqE(iterkit.Slice1([]testent.Foo{foo2}))
 		})
 		_, err := iterkit.CollectE(query) // drain iterator
 		assert.NoError(t, err)

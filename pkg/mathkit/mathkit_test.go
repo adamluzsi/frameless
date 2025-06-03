@@ -892,7 +892,7 @@ func TestBigInt(t *testing.T) {
 			})
 
 			s.Then("iteration won't yield even once", func(t *testcase.T) {
-				count := iterkit.Count1(act(t))
+				count := iterkit.Count(act(t))
 				assert.Equal(t, 0, count, "expected that the iteration count is zero")
 			})
 		})

@@ -27,7 +27,6 @@ import (
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/option"
 	. "go.llib.dev/frameless/spechelper/testent"
 
@@ -80,7 +79,7 @@ func TestSliceE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var vs = let.Var[[]int](s, nil)
-	act := let.Act(func(t *testcase.T) iterkit.ErrSeq[int] {
+	act := let.Act(func(t *testcase.T) iterkit.SeqE[int] {
 		return iterkit.SliceE(vs.Get(t))
 	})
 
@@ -130,7 +129,7 @@ func TestSliceE(t *testing.T) {
 		}).Spec)
 }
 
-func ExampleSlice1() {
+func ExampleSlice() {
 	var vs = []int{1, 2, 3}
 	var i = iterkit.Slice1(vs)
 
@@ -151,7 +150,7 @@ func TestSlice1(t *testing.T) {
 		vs.LetValue(s, nil)
 
 		s.Then("it will act as an empty iterator", func(t *testcase.T) {
-			assert.Empty(t, iterkit.Collect1(act(t)))
+			assert.Empty(t, iterkit.Collect(act(t)))
 		})
 	})
 
@@ -161,7 +160,7 @@ func TestSlice1(t *testing.T) {
 		})
 
 		s.Then("it will act as an empty iterator", func(t *testcase.T) {
-			assert.Empty(t, iterkit.Collect1(act(t)))
+			assert.Empty(t, iterkit.Collect(act(t)))
 		})
 	})
 
@@ -173,7 +172,7 @@ func TestSlice1(t *testing.T) {
 		})
 
 		s.Then("it will act as an empty iterator", func(t *testcase.T) {
-			got := iterkit.Collect1(act(t))
+			got := iterkit.Collect(act(t))
 
 			assert.Equal(t, vs.Get(t), got)
 		})
@@ -185,10 +184,10 @@ func TestSlice1(t *testing.T) {
 		}).Spec)
 }
 
-func ExampleLast1() {
+func ExampleLast() {
 	itr := iterkit.IntRange(0, 10)
 
-	n, ok := iterkit.Last1(itr)
+	n, ok := iterkit.Last(itr)
 	_ = ok // true
 	_ = n  // 10
 }
@@ -199,13 +198,13 @@ func TestLast1(t *testing.T) {
 	s.Test("smoke", func(t *testcase.T) {
 		var expected int = 42
 		i := iterkit.Slice1([]int{4, 2, expected})
-		actually, found := iterkit.Last1(i)
+		actually, found := iterkit.Last(i)
 		assert.True(t, found)
 		assert.Equal(t, expected, actually)
 	})
 
 	s.Test("empty", func(t *testcase.T) {
-		_, found := iterkit.Last1(iterkit.Empty1[Entity]())
+		_, found := iterkit.Last(iterkit.Empty[Entity]())
 		assert.False(t, found)
 	})
 }
@@ -363,7 +362,7 @@ func TestFilter(t *testing.T) {
 			i := iterkit.Filter(iterator(), func(int) bool { return true })
 			assert.Must(t).NotNil(i)
 
-			numbers := iterkit.Collect1[int](i)
+			numbers := iterkit.Collect[int](i)
 			assert.Equal(t, originalInput, numbers)
 		})
 
@@ -371,7 +370,7 @@ func TestFilter(t *testing.T) {
 			i := iterkit.Filter(iterator(), func(n int) bool { return 5 < n })
 			assert.Must(t).NotNil(i)
 
-			numbers := iterkit.Collect1[int](i)
+			numbers := iterkit.Collect[int](i)
 			assert.Equal(t, []int{6, 7, 8, 9}, numbers)
 		})
 	})
@@ -427,18 +426,16 @@ func TestFilter2(t *testing.T) {
 	})
 }
 
-func ExampleFilter_withErrSeq() {
-	var repo crud.AllFinder[Foo]
-	all := repo.FindAll(context.Background())
-
-	hasBar := iterkit.Filter(all, func(foo Foo) bool {
-		return foo.Bar != ""
+func ExampleFilter_withSeqE() {
+	numbers := iterkit.IntRangeE(1, 100)
+	evens := iterkit.Filter(numbers, func(n int) bool {
+		return n%2 == 0
 	})
 
-	_ = hasBar
+	_ = evens
 }
 
-func TestFilter_withErrSeq(t *testing.T) {
+func TestFilter_withSeqE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
@@ -454,7 +451,7 @@ func TestFilter_withErrSeq(t *testing.T) {
 			})
 			return slice
 		})
-		itr = let.Var(s, func(t *testcase.T) iterkit.ErrSeq[int] {
+		itr = let.Var(s, func(t *testcase.T) iterkit.SeqE[int] {
 			return func(yield func(int, error) bool) {
 				for _, v := range itrVs.Get(t) {
 					if !yield(v, itrErr.Get(t)) {
@@ -470,7 +467,7 @@ func TestFilter_withErrSeq(t *testing.T) {
 			}
 		})
 	)
-	act := let.Act(func(t *testcase.T) iterkit.ErrSeq[int] {
+	act := let.Act(func(t *testcase.T) iterkit.SeqE[int] {
 		return iterkit.Filter(itr.Get(t), filter.Get(t))
 	})
 
@@ -592,7 +589,7 @@ func TestReduce(t *testing.T) {
 				}
 			})
 			iterator = let.Var(s, func(t *testcase.T) iter.Seq2[string, error] {
-				return iterkit.ToErrSeq(iterkit.Slice1(src.Get(t)))
+				return iterkit.ToSeqE(iterkit.Slice1(src.Get(t)))
 			})
 			initial = let.Var(s, func(t *testcase.T) int {
 				return t.Random.Int()
@@ -746,7 +743,7 @@ func TestReduceErr(t *testing.T) {
 	})
 }
 
-func TestReduceErr_wErrSeq(t *testing.T) {
+func TestReduceErr_wSeqE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
@@ -759,7 +756,7 @@ func TestReduceErr_wErrSeq(t *testing.T) {
 			}
 		})
 		iterator = let.Var(s, func(t *testcase.T) iter.Seq2[string, error] {
-			return iterkit.ToErrSeq(iterkit.Slice1(src.Get(t)))
+			return iterkit.ToSeqE(iterkit.Slice1(src.Get(t)))
 		})
 		initial = let.Var(s, func(t *testcase.T) int {
 			return t.Random.Int()
@@ -1022,7 +1019,7 @@ func TestHeadE(t *testing.T) {
 	})
 }
 
-func ExampleHead1() {
+func ExampleHead() {
 	inf42 := func(yield func(int) bool) {
 		for /* infinite */ {
 			if !yield(42) {
@@ -1031,23 +1028,23 @@ func ExampleHead1() {
 		}
 	}
 
-	i := iterkit.Head1[int](inf42, 3)
+	i := iterkit.Head[int](inf42, 3)
 
-	vs := iterkit.Collect1(i)
+	vs := iterkit.Collect(i)
 	_ = vs // []{42, 42, 42}, nil
 }
 
 func TestHead1(t *testing.T) {
 	t.Run("less", func(t *testing.T) {
 		i := iterkit.Slice1([]int{1, 2, 3})
-		i = iterkit.Head1(i, 2)
-		vs := iterkit.Collect1(i)
+		i = iterkit.Head(i, 2)
+		vs := iterkit.Collect(i)
 		assert.Equal(t, []int{1, 2}, vs)
 	})
 	t.Run("more", func(t *testing.T) {
 		i := iterkit.Slice1([]int{1, 2, 3})
-		i = iterkit.Head1(i, 5)
-		vs := iterkit.Collect1(i)
+		i = iterkit.Head(i, 5)
+		vs := iterkit.Collect(i)
 		assert.Equal(t, []int{1, 2, 3}, vs)
 	})
 	t.Run("inf iterator", func(t *testing.T) {
@@ -1062,8 +1059,8 @@ func TestHead1(t *testing.T) {
 					}
 				}
 			})
-			i := iterkit.Head1(infStream, 3)
-			vs := iterkit.Collect1(i)
+			i := iterkit.Head(infStream, 3)
+			vs := iterkit.Collect(i)
 			assert.Equal(t, []int{42, 42, 42}, vs)
 		})
 	})
@@ -1227,7 +1224,7 @@ func ExampleTake() {
 
 func TestTake(t *testing.T) {
 	t.Run("NoElementsToTake", func(t *testing.T) {
-		i := iterkit.Empty1[int]()
+		i := iterkit.Empty[int]()
 		next, stop := iter.Pull(i)
 		defer stop()
 		vs := iterkit.Take(next, 5)
@@ -1460,7 +1457,7 @@ func TestTakeAllE(t *testing.T) {
 
 func TestLimit_smoke(t *testing.T) {
 	it := assert.MakeIt(t)
-	subject := iterkit.Limit(iterkit.IntRangeE(2, 6), 3)
+	subject := iterkit.LimitE(iterkit.IntRangeE(2, 6), 3)
 	vs, err := iterkit.CollectE(subject)
 	it.Must.NoError(err)
 	it.Must.Equal([]int{2, 3, 4}, vs)
@@ -1471,15 +1468,15 @@ func TestLimit(t *testing.T) {
 
 	const iterLen = 10
 	var (
-		itr = let.Var[iterkit.ErrSeq[int]](s, func(t *testcase.T) iterkit.ErrSeq[int] {
+		itr = let.Var[iterkit.SeqE[int]](s, func(t *testcase.T) iterkit.SeqE[int] {
 			return iterkit.IntRangeE(1, iterLen)
 		})
 		n = let.Var(s, func(t *testcase.T) int {
 			return t.Random.IntB(3, iterLen-1)
 		})
 	)
-	act := let.Var(s, func(t *testcase.T) iterkit.ErrSeq[int] {
-		return iterkit.Limit(itr.Get(t), n.Get(t))
+	act := let.Var(s, func(t *testcase.T) iterkit.SeqE[int] {
+		return iterkit.LimitE(itr.Get(t), n.Get(t))
 	})
 
 	s.Then("it will limit the returned results to the expected number", func(t *testcase.T) {
@@ -1502,8 +1499,8 @@ func TestLimit(t *testing.T) {
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
-		itr.Let(s, func(t *testcase.T) iterkit.ErrSeq[int] {
-			return iterkit.Empty[int]()
+		itr.Let(s, func(t *testcase.T) iterkit.SeqE[int] {
+			return iterkit.EmptyE[int]()
 		})
 
 		s.Then("it will iterate over without an issue and returns no value", func(t *testcase.T) {
@@ -1531,7 +1528,7 @@ func TestLimit(t *testing.T) {
 			t.Must.NoError(err)
 			t.Must.NotEmpty(got)
 
-			total := iterkit.Collect1(iterkit.IntRange(1, iterLen))
+			total := iterkit.Collect(iterkit.IntRange(1, iterLen))
 			t.Must.NotEmpty(got)
 
 			t.Logf("%v < %v", got, total)
@@ -1542,8 +1539,8 @@ func TestLimit(t *testing.T) {
 
 func TestLimit1_smoke(t *testing.T) {
 	it := assert.MakeIt(t)
-	subject := iterkit.Limit1(iterkit.IntRange(2, 6), 3)
-	vs := iterkit.Collect1(subject)
+	subject := iterkit.Limit(iterkit.IntRange(2, 6), 3)
+	vs := iterkit.Collect(subject)
 	it.Must.Equal([]int{2, 3, 4}, vs)
 }
 
@@ -1560,16 +1557,16 @@ func TestLimit1(t *testing.T) {
 		})
 	)
 	act := let.Var(s, func(t *testcase.T) iter.Seq[int] {
-		return iterkit.Limit1(itr.Get(t), n.Get(t))
+		return iterkit.Limit(itr.Get(t), n.Get(t))
 	})
 
 	s.Then("it will limit the returned results to the expected number", func(t *testcase.T) {
-		vs := iterkit.Collect1(act.Get(t))
+		vs := iterkit.Collect(act.Get(t))
 		t.Must.Equal(n.Get(t), len(vs))
 	})
 
 	s.Then("it will limited amount of value", func(t *testcase.T) {
-		vs := iterkit.Collect1(act.Get(t))
+		vs := iterkit.Collect(act.Get(t))
 
 		t.Log("n", n.Get(t))
 		var exp []int
@@ -1582,11 +1579,11 @@ func TestLimit1(t *testing.T) {
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
 		itr.Let(s, func(t *testcase.T) iter.Seq[int] {
-			return iterkit.Empty1[int]()
+			return iterkit.Empty[int]()
 		})
 
 		s.Then("it will iterate over without an issue and returns no value", func(t *testcase.T) {
-			assert.Empty(t, iterkit.Collect1(act.Get(t)))
+			assert.Empty(t, iterkit.Collect(act.Get(t)))
 		})
 	})
 
@@ -1594,7 +1591,7 @@ func TestLimit1(t *testing.T) {
 		n.LetValue(s, iterLen+1)
 
 		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
-			vs := iterkit.Collect1(act.Get(t))
+			vs := iterkit.Collect(act.Get(t))
 			t.Must.Equal(iterLen, len(vs))
 		})
 	})
@@ -1603,10 +1600,10 @@ func TestLimit1(t *testing.T) {
 		n.LetValue(s, iterLen-1)
 
 		s.Then("it will iterate only the limited number", func(t *testcase.T) {
-			got := iterkit.Collect1(act.Get(t))
+			got := iterkit.Collect(act.Get(t))
 			t.Must.NotEmpty(got)
 
-			total := iterkit.Collect1(iterkit.IntRange(1, iterLen))
+			total := iterkit.Collect(iterkit.IntRange(1, iterLen))
 			t.Must.NotEmpty(got)
 
 			t.Logf("%v < %v", got, total)
@@ -1690,7 +1687,7 @@ func TestLimit2(t *testing.T) {
 func TestLimit1_implementsIterator(t *testing.T) {
 	iterkitcontract.IterSeq[int](func(tb testing.TB) iter.Seq[int] {
 		t := testcase.ToT(&tb)
-		return iterkit.Limit1(
+		return iterkit.Limit(
 			iterkit.IntRange(1, 99),
 			t.Random.IntB(1, 12),
 		)
@@ -1711,7 +1708,7 @@ func TestOf(t *testing.T) {
 	t.Run("StructGiven_StructReceivedWithDecode", func(t *testing.T) {
 		var expected = ExampleStruct{Name: RandomName}
 		i := iterkit.Of(expected)
-		actually, found := iterkit.First1(i)
+		actually, found := iterkit.First(i)
 		assert.True(t, found)
 		assert.Equal(t, expected, actually)
 	})
@@ -1762,11 +1759,11 @@ func TestOfE(t *testing.T) {
 	})
 }
 
-func ExampleOffset1() {
-	_ = iterkit.Offset1(iterkit.IntRange(2, 6), 2)
+func ExampleOffsetE() {
+	_ = iterkit.Offset(iterkit.IntRange(2, 6), 2)
 }
 
-func TestOffset1(t *testing.T) {
+func TestOffsetE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
@@ -1783,25 +1780,25 @@ func TestOffset1(t *testing.T) {
 		})
 	)
 	act := let.Act(func(t *testcase.T) iter.Seq[int] {
-		return iterkit.Offset1(itr.Get(t), offset.Get(t))
+		return iterkit.Offset(itr.Get(t), offset.Get(t))
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
 		it := assert.MakeIt(t)
-		subject := iterkit.Offset1(iterkit.IntRange(2, 6), 2)
-		vs := iterkit.Collect1(subject)
+		subject := iterkit.Offset(iterkit.IntRange(2, 6), 2)
+		vs := iterkit.Collect(subject)
 		it.Must.Equal([]int{4, 5, 6}, vs)
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
 		itr.Let(s, func(t *testcase.T) iter.Seq[int] {
-			return iterkit.Empty1[int]()
+			return iterkit.Empty[int]()
 		})
 
 		s.Then("it will iterate over without an issue and returns no value", func(t *testcase.T) {
 			i := act(t)
 
-			assert.Empty(t, iterkit.Collect1(i))
+			assert.Empty(t, iterkit.Collect(i))
 		})
 	})
 
@@ -1811,7 +1808,7 @@ func TestOffset1(t *testing.T) {
 		})
 
 		s.Then("the result iterator will be empty", func(t *testcase.T) {
-			got := iterkit.Collect1(act(t))
+			got := iterkit.Collect(act(t))
 
 			assert.Empty(t, got)
 		})
@@ -1823,7 +1820,7 @@ func TestOffset1(t *testing.T) {
 		})
 
 		s.Then("the result iterator will be empty", func(t *testcase.T) {
-			got := iterkit.Collect1(act(t))
+			got := iterkit.Collect(act(t))
 
 			assert.Empty(t, got)
 		})
@@ -1835,7 +1832,7 @@ func TestOffset1(t *testing.T) {
 		})
 
 		s.Then("it will offset the results by provided offset number and yield the remainder", func(t *testcase.T) {
-			got := iterkit.Collect1(act(t))
+			got := iterkit.Collect(act(t))
 
 			var exp = values.Get(t)[offset.Get(t):]
 			assert.Equal(t, exp, got)
@@ -1845,7 +1842,7 @@ func TestOffset1(t *testing.T) {
 	s.Context("immplement iter.Seq1", iterkitcontract.IterSeq(func(t testing.TB) iter.Seq[int] {
 		const iterLen = 10
 		src := iterkit.IntRange(1, iterLen)
-		return iterkit.Offset1(src, iterLen/2)
+		return iterkit.Offset(src, iterLen/2)
 	}).Spec)
 }
 
@@ -1966,7 +1963,7 @@ func TestOffset2(t *testing.T) {
 }
 
 func ExampleOffset() {
-	_ = iterkit.Offset(iterkit.IntRangeE(2, 6), 2)
+	_ = iterkit.OffsetE(iterkit.IntRangeE(2, 6), 2)
 }
 
 func TestOffset(t *testing.T) {
@@ -1993,7 +1990,7 @@ func TestOffset(t *testing.T) {
 		})
 	)
 	subject := let.Var(s, func(t *testcase.T) iter.Seq2[int, error] {
-		return iterkit.Offset(itr.Get(t), offset.Get(t))
+		return iterkit.OffsetE(itr.Get(t), offset.Get(t))
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
@@ -2061,26 +2058,26 @@ func TestOffset(t *testing.T) {
 	s.Context("immplement iter.Seq2", iterkitcontract.IterSeq2[int, error](func(t testing.TB) iter.Seq2[int, error] {
 		const iterLen = 10
 		src := iterkit.IntRangeE(1, iterLen)
-		return iterkit.Offset(src, iterLen/2)
+		return iterkit.OffsetE(src, iterLen/2)
 	}).Spec)
+}
+
+func ExampleEmptyE() {
+	_ = iterkit.EmptyE[any]()
+}
+
+func TestEmptyE(t *testing.T) {
+	vs, err := iterkit.CollectE(iterkit.EmptyE[any]())
+	assert.NoError(t, err)
+	assert.Empty(t, vs)
 }
 
 func ExampleEmpty() {
 	_ = iterkit.Empty[any]()
 }
 
-func TestEmpty(t *testing.T) {
-	vs, err := iterkit.CollectE(iterkit.Empty[any]())
-	assert.NoError(t, err)
-	assert.Empty(t, vs)
-}
-
-func ExampleEmpty1() {
-	_ = iterkit.Empty1[any]()
-}
-
 func TestEmpty1(t *testing.T) {
-	assert.Empty(t, iterkit.Collect1(iterkit.Empty1[any]()))
+	assert.Empty(t, iterkit.Collect(iterkit.Empty[any]()))
 }
 
 func TestEmpty2(t *testing.T) {
@@ -2091,14 +2088,14 @@ func TestEmpty2(t *testing.T) {
 	assert.Equal(t, 0, n)
 }
 
-func ExampleCollect1() {
+func ExampleCollect() {
 	var itr iter.Seq[int]
 
-	ints := iterkit.Collect1(itr)
+	ints := iterkit.Collect(itr)
 	_ = ints
 }
 
-func TestCollect1(t *testing.T) {
+func TestCollect(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.NoSideEffect()
 
@@ -2106,12 +2103,12 @@ func TestCollect1(t *testing.T) {
 		iterator = testcase.Var[iter.Seq[int]]{ID: `iterator`}
 	)
 	act := func(t *testcase.T) []int {
-		return iterkit.Collect1(iterator.Get(t))
+		return iterkit.Collect(iterator.Get(t))
 	}
 
 	s.When(`no elements in iterator`, func(s *testcase.Spec) {
 		iterator.Let(s, func(t *testcase.T) iter.Seq[int] {
-			return iterkit.Empty1[int]()
+			return iterkit.Empty[int]()
 		})
 
 		s.Then(`no element appended to the slice`, func(t *testcase.T) {
@@ -2316,9 +2313,9 @@ func TestCollect2Map(t *testing.T) {
 	})
 }
 
-func ExampleCollectPull() {
-	var itr iter.Seq2[int, error] = iterkit.ToErrSeq(iterkit.IntRange(1, 10))
-	vs, err := iterkit.CollectPull(iter.Pull2(itr))
+func ExampleCollectEPull() {
+	var itr iter.Seq2[int, error] = iterkit.ToSeqE(iterkit.IntRange(1, 10))
+	vs, err := iterkit.CollectEPull(iter.Pull2(itr))
 	_ = vs
 	_ = err
 }
@@ -2346,7 +2343,7 @@ func TestCollectPull(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) ([]int, error) {
-		return iterkit.CollectPull(next.Get(t), stop.Get(t))
+		return iterkit.CollectEPull(next.Get(t), stop.Get(t))
 	}
 
 	s.Then("values are collected", func(t *testcase.T) {
@@ -2437,15 +2434,15 @@ func TestCollectPull(t *testing.T) {
 
 	s.Test("supports collection without stop func", func(t *testcase.T) {
 		defer stop.Get(t)()
-		vs, err := iterkit.CollectPull(next.Get(t))
+		vs, err := iterkit.CollectEPull(next.Get(t))
 		assert.NoError(t, err)
 		assert.Equal(t, vs, values.Get(t))
 	})
 }
 
-func ExampleCollect1Pull() {
+func ExampleCollectPull() {
 	var itr iter.Seq[int] = iterkit.IntRange(1, 10)
-	vs := iterkit.Collect1Pull(iter.Pull(itr))
+	vs := iterkit.CollectPull(iter.Pull(itr))
 	_ = vs
 }
 
@@ -2472,7 +2469,7 @@ func TestCollect1Pull(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) []int {
-		return iterkit.Collect1Pull(next.Get(t), stop.Get(t))
+		return iterkit.CollectPull(next.Get(t), stop.Get(t))
 	}
 
 	s.Then("values are collected", func(t *testcase.T) {
@@ -2489,7 +2486,7 @@ func TestCollect1Pull(t *testing.T) {
 
 	s.When(`no elements in iterator`, func(s *testcase.Spec) {
 		itr.Let(s, func(t *testcase.T) iter.Seq[int] {
-			return iterkit.Empty1[int]()
+			return iterkit.Empty[int]()
 		})
 
 		s.Then(`no element appended to the slice`, func(t *testcase.T) {
@@ -2529,20 +2526,20 @@ func TestCollect1Pull(t *testing.T) {
 
 	s.Test("supports collection without stop func", func(t *testcase.T) {
 		defer stop.Get(t)()
-		vs := iterkit.Collect1Pull(next.Get(t))
+		vs := iterkit.CollectPull(next.Get(t))
 		assert.Equal(t, vs, values.Get(t))
 	})
 }
 
-func ExampleCount1() {
+func ExampleCount() {
 	i := iterkit.Slice1[int]([]int{1, 2, 3})
-	total := iterkit.Count1[int](i)
+	total := iterkit.Count[int](i)
 	_ = total // 3
 }
 
 func TestCount1(t *testing.T) {
 	i := iterkit.Slice1[int]([]int{1, 2, 3})
-	total := iterkit.Count1[int](i)
+	total := iterkit.Count[int](i)
 	assert.Equal(t, 3, total)
 }
 
@@ -2563,15 +2560,6 @@ func TestCount2(t *testing.T) {
 	})
 	total := iterkit.Count2(itr)
 	assert.Equal(t, 3, total)
-}
-
-func ExampleCount() {
-	itr := maps.All(map[string]int{
-		"foo": 2,
-		"bar": 4,
-		"baz": 8,
-	})
-	iterkit.Count2(itr) // 3
 }
 
 func ExampleCountE() {
@@ -2620,7 +2608,7 @@ func TestMap(t *testing.T) {
 		})
 
 		s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
-			vs := iterkit.Collect1[string](subject(t))
+			vs := iterkit.Collect[string](subject(t))
 
 			t.Must.Equal([]string{`A`, `B`, `C`}, vs)
 		})
@@ -2648,7 +2636,7 @@ func TestMap(t *testing.T) {
 		}
 
 		s.Then(`it will execute all the map steps in the final iterator composition`, func(t *testcase.T) {
-			values := iterkit.Collect1(subject(t))
+			values := iterkit.Collect(subject(t))
 			t.Must.Equal([]string{`A0`, `B1`, `C2`}, values)
 		})
 	})
@@ -2710,7 +2698,7 @@ func TestMap2(t *testing.T) {
 	})
 }
 
-func TestMapE_wErrSeq(t *testing.T) {
+func TestMapE_wSeqE(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.Parallel()
 
@@ -2719,7 +2707,7 @@ func TestMapE_wErrSeq(t *testing.T) {
 			return []int{}
 		})
 		length   = let.IntB(s, 7, 12)
-		iterator = let.Var(s, func(t *testcase.T) iterkit.ErrSeq[int] {
+		iterator = let.Var(s, func(t *testcase.T) iterkit.SeqE[int] {
 			return func(yield func(int, error) bool) {
 				for range length.Get(t) {
 					n := t.Random.Int()
@@ -2737,7 +2725,7 @@ func TestMapE_wErrSeq(t *testing.T) {
 			}
 		})
 	)
-	act := func(t *testcase.T) iterkit.ErrSeq[string] {
+	act := func(t *testcase.T) iterkit.SeqE[string] {
 		return iterkit.MapE(iterator.Get(t), transform.Get(t))
 	}
 
@@ -2790,7 +2778,7 @@ func TestMapE_wErrSeq(t *testing.T) {
 		expErr := let.Error(s)
 		errCount := let.VarOf(s, 0)
 
-		iterator.Let(s, func(t *testcase.T) iterkit.ErrSeq[int] {
+		iterator.Let(s, func(t *testcase.T) iterkit.SeqE[int] {
 			i := iterator.Super(t)
 			ok := length.Get(t) / 2
 			return func(yield func(int, error) bool) {
@@ -2924,13 +2912,13 @@ func TestFirst1_NextValueDecodable_TheFirstNextValueDecoded(t *testing.T) {
 	var expected int = 42
 	i := iterkit.Slice1([]int{expected, 4, 2})
 
-	actually, found := iterkit.First1[int](i)
+	actually, found := iterkit.First[int](i)
 	assert.Equal(t, expected, actually)
 	assert.True(t, found)
 }
 
 func TestFirst1_WhenNextSayThereIsNoValueToBeDecoded_NotFoundReturned(t *testing.T) {
-	_, found := iterkit.First1[Entity](iterkit.Empty1[Entity]())
+	_, found := iterkit.First[Entity](iterkit.Empty[Entity]())
 	assert.False(t, found)
 }
 
@@ -3011,7 +2999,7 @@ func TestFirstE(t *testing.T) {
 			exp  = t.Random.String()
 		)
 
-		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+		var itr iterkit.SeqE[string] = func(yield func(string, error) bool) {
 			for {
 				var (
 					v = t.Random.String()
@@ -3038,7 +3026,7 @@ func TestFirstE(t *testing.T) {
 			expErr = t.Random.Error()
 		)
 
-		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+		var itr iterkit.SeqE[string] = func(yield func(string, error) bool) {
 			for {
 				var (
 					val string
@@ -3081,7 +3069,7 @@ func TestChanE(t *testing.T) {
 			return make(chan int)
 		})
 	)
-	act := func(t *testcase.T) iterkit.ErrSeq[int] {
+	act := func(t *testcase.T) iterkit.SeqE[int] {
 		return iterkit.ChanE(ch.Get(t))
 	}
 
@@ -3220,10 +3208,10 @@ func TestChanE(t *testing.T) {
 	})
 }
 
-func ExampleChan1() {
+func ExampleChan() {
 	ch := make(chan int)
 
-	i := iterkit.Chan1(ch)
+	i := iterkit.Chan(ch)
 
 	go func() {
 		defer close(ch)
@@ -3244,7 +3232,7 @@ func TestChan1(t *testing.T) {
 		})
 	)
 	act := func(t *testcase.T) iter.Seq[int] {
-		return iterkit.Chan1(ch.Get(t))
+		return iterkit.Chan(ch.Get(t))
 	}
 
 	s.When("channel receives values from another goroutine", func(s *testcase.Spec) {
@@ -3274,7 +3262,7 @@ func TestChan1(t *testing.T) {
 		})
 
 		s.Then("all values are received", func(t *testcase.T) {
-			assert.Equal(t, values.Get(t), iterkit.Collect1(act(t)))
+			assert.Equal(t, values.Get(t), iterkit.Collect(act(t)))
 		})
 
 		s.Then("iteration can be closed early", func(t *testcase.T) {
@@ -3369,36 +3357,36 @@ func TestChan1(t *testing.T) {
 
 		s.Then("we have got a non-blocking empty iterator", func(t *testcase.T) {
 			assert.Within(t, time.Second, func(ctx context.Context) {
-				assert.Empty(t, iterkit.Collect1(act(t)))
+				assert.Empty(t, iterkit.Collect(act(t)))
 			})
 		})
 	})
 }
 
-func ExampleBatch1() {
+func ExampleBatch() {
 	src := iterkit.IntRange(0, 1000)
 
-	batched := iterkit.Batch1(src)
+	batched := iterkit.Batch(src)
 
 	for vs := range batched {
 		fmt.Printf("%#v\n", vs)
 	}
 }
 
-func ExampleBatch_withSize() {
+func ExampleBatchE_withSize() {
 	src := iterkit.IntRangeE(0, 1000)
 
-	batched := iterkit.Batch(src, iterkit.BatchSize(100))
+	batched := iterkit.BatchE(src, iterkit.BatchSize(100))
 
 	for vs := range batched {
 		fmt.Printf("%#v\n", vs)
 	}
 }
 
-func ExampleBatch_withWaitLimit() {
+func ExampleBatchE_withWaitLimit() {
 	slowIterSeq := iterkit.IntRangeE(0, 1000)
 
-	batched := iterkit.Batch(slowIterSeq, iterkit.BatchWaitLimit(time.Second))
+	batched := iterkit.BatchE(slowIterSeq, iterkit.BatchWaitLimit(time.Second))
 
 	// Batching will occure either when the batching size reached
 	// or when the wait limit duration passed
@@ -3418,13 +3406,13 @@ func TestBatch(t *testing.T) {
 				return t.Random.Int()
 			})
 		})
-		src = let.Var[iterkit.ErrSeq[int]](s, func(t *testcase.T) iterkit.ErrSeq[int] {
+		src = let.Var[iterkit.SeqE[int]](s, func(t *testcase.T) iterkit.SeqE[int] {
 			return iterkit.SliceE(values.Get(t))
 		})
 		opts = let.VarOf[[]iterkit.BatchOption](s, nil)
 	)
-	act := func(t *testcase.T) iterkit.ErrSeq[[]int] {
-		return iterkit.Batch(src.Get(t), opts.Get(t)...)
+	act := func(t *testcase.T) iterkit.SeqE[[]int] {
+		return iterkit.BatchE(src.Get(t), opts.Get(t)...)
 	}
 
 	var ThenIterates = func(s *testcase.Spec) {
@@ -3565,7 +3553,7 @@ func TestBatch(t *testing.T) {
 		s.When("the source iterator is slower than the batch wait time", func(s *testcase.Spec) {
 			src.Let(s, func(t *testcase.T) iter.Seq2[int, error] {
 				in := make(chan int)
-				out := iterkit.Chan1(in)
+				out := iterkit.Chan(in)
 
 				var push = func() {
 					defer close(in)
@@ -3582,7 +3570,7 @@ func TestBatch(t *testing.T) {
 
 				go push()
 
-				return iterkit.ToErrSeq(out)
+				return iterkit.ToSeqE(out)
 			})
 
 			s.Then("batch timeout takes action and we get  corresponds to the configuration", func(t *testcase.T) {
@@ -3601,7 +3589,7 @@ func TestBatch(t *testing.T) {
 	s.When("error occurs during the stream", func(s *testcase.Spec) {
 		expErr := let.Error(s)
 
-		src.Let(s, func(t *testcase.T) iterkit.ErrSeq[int] {
+		src.Let(s, func(t *testcase.T) iterkit.SeqE[int] {
 			var errIndex = t.Random.IntN(len(values.Get(t)))
 			return func(yield func(int, error) bool) {
 				for i, v := range values.Get(t) {
@@ -3642,24 +3630,24 @@ func TestBatch(t *testing.T) {
 
 	s.Context("behaves like a iter.Seq2[T, error]", iterkitcontract.IterSeq2(func(t testing.TB) iter.Seq2[[]int, error] {
 		src := iterkit.IntRangeE(1, 100)
-		return iterkit.Batch(src, iterkit.BatchSize(25))
+		return iterkit.BatchE(src, iterkit.BatchSize(25))
 	}).Spec)
 }
 
-func ExampleBatch1_withSize() {
+func ExampleBatch_withSize() {
 	src := iterkit.IntRange(0, 1000)
 
-	batched := iterkit.Batch1(src, iterkit.BatchSize(100))
+	batched := iterkit.Batch(src, iterkit.BatchSize(100))
 
 	for vs := range batched {
 		fmt.Printf("%#v\n", vs)
 	}
 }
 
-func ExampleBatch1_withWaitLimit() {
+func ExampleBatch_withWaitLimit() {
 	slowIterSeq := iterkit.IntRange(0, 1000)
 
-	batched := iterkit.Batch1(slowIterSeq, iterkit.BatchWaitLimit(time.Second))
+	batched := iterkit.Batch(slowIterSeq, iterkit.BatchWaitLimit(time.Second))
 
 	// Batching will occure either when the batching size reached
 	// or when the wait limit duration passed
@@ -3685,7 +3673,7 @@ func TestBatch1(t *testing.T) {
 		opts = let.VarOf[[]iterkit.BatchOption](s, nil)
 	)
 	act := func(t *testcase.T) iter.Seq[[]int] {
-		return iterkit.Batch1(src.Get(t), opts.Get(t)...)
+		return iterkit.Batch(src.Get(t), opts.Get(t)...)
 	}
 
 	var ThenIterates = func(s *testcase.Spec) {
@@ -3822,7 +3810,7 @@ func TestBatch1(t *testing.T) {
 		s.When("the source iterator is slower than the batch wait time", func(s *testcase.Spec) {
 			src.Let(s, func(t *testcase.T) iter.Seq[int] {
 				in := make(chan int)
-				out := iterkit.Chan1(in)
+				out := iterkit.Chan(in)
 
 				var push = func() {
 					defer close(in)
@@ -3856,7 +3844,7 @@ func TestBatch1(t *testing.T) {
 
 	s.Context("behaves like a iter.Seq[T]", iterkitcontract.IterSeq(func(t testing.TB) iter.Seq[[]int] {
 		src := iterkit.IntRange(1, 100)
-		return iterkit.Batch1(src, iterkit.BatchSize(25))
+		return iterkit.Batch(src, iterkit.BatchSize(25))
 	}).Spec)
 }
 
@@ -4025,7 +4013,7 @@ func TestSync(t *testing.T) {
 
 	testcase.Race(collect, collect, collect)
 
-	exp := iterkit.Collect1(iterkit.IntRange(0, 100))
+	exp := iterkit.Collect(iterkit.IntRange(0, 100))
 	assert.Must(t).ContainExactly(exp, got)
 }
 
@@ -4084,7 +4072,7 @@ func TestSyncE(t *testing.T) {
 
 func ExampleSync2() {
 	src := iterkit.IntRange(0, 100)
-	itr, cancel := iterkit.Sync2(iterkit.ToErrSeq(src))
+	itr, cancel := iterkit.Sync2(iterkit.ToSeqE(src))
 	defer cancel()
 
 	var g tasker.JobGroup[tasker.FireAndForget]
@@ -4139,14 +4127,14 @@ func TestSync2(t *testing.T) {
 func TestMerge(t *testing.T) {
 	t.Run("EmptyIterators", func(t *testing.T) {
 		iter := iterkit.Merge[int]()
-		vs := iterkit.Collect1(iter)
+		vs := iterkit.Collect(iter)
 		assert.Empty(t, vs)
 	})
 
 	t.Run("SingleIterator", func(t *testing.T) {
 		iter1 := iterkit.Slice1([]int{1, 2, 3})
 		mergedIter := iterkit.Merge(iter1)
-		valuses := iterkit.Collect1(mergedIter)
+		valuses := iterkit.Collect(mergedIter)
 		assert.Equal(t, valuses, []int{1, 2, 3})
 	})
 
@@ -4154,14 +4142,14 @@ func TestMerge(t *testing.T) {
 		iter1 := iterkit.Slice1([]int{1, 2})
 		iter2 := iterkit.Slice1([]int{3, 4})
 		iter3 := iterkit.Slice1([]int{5, 6})
-		vs := iterkit.Collect1(iterkit.Merge(iter1, iter2, iter3))
+		vs := iterkit.Collect(iterkit.Merge(iter1, iter2, iter3))
 		assert.Equal(t, []int{1, 2, 3, 4, 5, 6}, vs)
 	})
 
 	t.Run("IteratorsWithError", func(t *testing.T) {
 		iter1 := iterkit.Slice1([]int{1, 2})
 		expErr := rnd.Error()
-		iter2, _ := iterkit.SplitErrSeq(iterkit.Error[int](expErr))
+		iter2, _ := iterkit.SplitSeqE(iterkit.Error[int](expErr))
 		mergedIter := iterkit.Merge(iter1, iter2)
 		values := []int{}
 		for v := range mergedIter {
@@ -4340,13 +4328,13 @@ func ExampleCharRange() {
 
 func TestCharRange1_smoke(t *testing.T) {
 	it := assert.MakeIt(t)
-	vs := iterkit.Collect1(iterkit.CharRange('A', 'C'))
+	vs := iterkit.Collect(iterkit.CharRange('A', 'C'))
 	it.Must.Equal([]rune{'A', 'B', 'C'}, vs)
 
-	vs = iterkit.Collect1(iterkit.CharRange('a', 'c'))
+	vs = iterkit.Collect(iterkit.CharRange('a', 'c'))
 	it.Must.Equal([]rune{'a', 'b', 'c'}, vs)
 
-	vs = iterkit.Collect1(iterkit.CharRange('1', '9'))
+	vs = iterkit.Collect(iterkit.CharRange('1', '9'))
 	it.Must.Equal([]rune{'1', '2', '3', '4', '5', '6', '7', '8', '9'}, vs)
 }
 
@@ -4368,7 +4356,7 @@ func TestCharRange1(t *testing.T) {
 	})
 
 	s.Then("it returns an iterator that contains the defined character range from min to max", func(t *testcase.T) {
-		actual := iterkit.Collect1(subject.Get(t))
+		actual := iterkit.Collect(subject.Get(t))
 
 		var expected []rune
 		for i := min.Get(t); i <= max.Get(t); i++ {
@@ -4383,7 +4371,7 @@ func TestCharRange1(t *testing.T) {
 		min.Set(t, 'A')
 		max.Set(t, 'D')
 
-		vs := iterkit.Collect1(subject.Get(t))
+		vs := iterkit.Collect(subject.Get(t))
 		t.Must.Equal([]rune{'A', 'B', 'C', 'D'}, vs)
 	})
 }
@@ -4480,7 +4468,7 @@ func TestIntRange(t *testing.T) {
 	})
 
 	s.Then("it returns an iterator that contains the defined numeric range from min to max", func(t *testcase.T) {
-		actual := iterkit.Collect1(subject.Get(t))
+		actual := iterkit.Collect(subject.Get(t))
 
 		var expected []int
 		for i := begin.Get(t); i <= end.Get(t); i++ {
@@ -4492,13 +4480,13 @@ func TestIntRange(t *testing.T) {
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
-		vs := iterkit.Collect1(iterkit.IntRange(1, 9))
+		vs := iterkit.Collect(iterkit.IntRange(1, 9))
 		t.Must.Equal([]int{1, 2, 3, 4, 5, 6, 7, 8, 9}, vs)
 
-		vs = iterkit.Collect1(iterkit.IntRange(4, 7))
+		vs = iterkit.Collect(iterkit.IntRange(4, 7))
 		t.Must.Equal([]int{4, 5, 6, 7}, vs)
 
-		vs = iterkit.Collect1(iterkit.IntRange(5, 1))
+		vs = iterkit.Collect(iterkit.IntRange(5, 1))
 		t.Must.Equal([]int{}, vs)
 	})
 
@@ -4557,7 +4545,7 @@ func Test_spikeIterPull(t *testing.T) {
 
 }
 
-func ExampleCollect() {
+func ExampleCollectE() {
 	var itr iter.Seq2[int, error] = func(yield func(int, error) bool) {
 		for i := 0; i < 42; i++ {
 			if !yield(i, nil) {
@@ -4569,7 +4557,7 @@ func ExampleCollect() {
 	vs, err := iterkit.CollectE(itr)
 	_, _ = vs, err
 }
-func TestCollect(t *testing.T) {
+func TestCollectE(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.NoSideEffect()
 
@@ -4638,13 +4626,13 @@ func TestCollect(t *testing.T) {
 	})
 }
 
-func ExampleOnErrSeqValue() {
+func ExampleOnSeqEValue() {
 	var (
 		input  iter.Seq2[int, error]
 		output iter.Seq2[string, error]
 	)
 
-	output = iterkit.OnErrSeqValue(input, func(itr iter.Seq[int]) iter.Seq[string] {
+	output = iterkit.OnSeqEValue(input, func(itr iter.Seq[int]) iter.Seq[string] {
 		// we receive an iterator without the error second value
 		// we do our iterator manipulation like it doesn't have an error
 		// then we return it back
@@ -4658,9 +4646,9 @@ func ExampleOnErrSeqValue() {
 	_ = output
 }
 
-func ExampleToErrSeq() {
+func ExampleToSeqE() {
 	seq1Iter := iterkit.Slice1([]int{1, 2, 3})
-	errIter := iterkit.ToErrSeq(seq1Iter)
+	errIter := iterkit.ToSeqE(seq1Iter)
 	for v, err := range errIter {
 		if err != nil {
 			// will be always nil for the []int slice
@@ -4669,7 +4657,7 @@ func ExampleToErrSeq() {
 	}
 }
 
-func TestToErrSeq_iterSeq(t *testing.T) {
+func TestToSeqE_iterSeq(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.NoSideEffect()
 
@@ -4684,8 +4672,8 @@ func TestToErrSeq_iterSeq(t *testing.T) {
 			return nil
 		})
 	)
-	act := let.Act(func(t *testcase.T) iterkit.ErrSeq[int] {
-		return iterkit.ToErrSeq(itr.Get(t), errFuncs.Get(t)...)
+	act := let.Act(func(t *testcase.T) iterkit.SeqE[int] {
+		return iterkit.ToSeqE(itr.Get(t), errFuncs.Get(t)...)
 	})
 
 	s.Then("it turns the iter.Seq[T] into a iter.Seq2[T, error] while having all the values yielded", func(t *testcase.T) {
@@ -4773,10 +4761,10 @@ func TestToErrSeq_iterSeq(t *testing.T) {
 	})
 }
 
-func ExampleSplitErrSeq() {
-	var sourceErrSeq iter.Seq2[int, error]
+func ExampleSplitSeqE() {
+	var sourceSeqE iter.Seq2[int, error]
 
-	i, errFunc := iterkit.SplitErrSeq(sourceErrSeq)
+	i, errFunc := iterkit.SplitSeqE(sourceSeqE)
 	for v := range i {
 		fmt.Println(v)
 	}
@@ -4785,7 +4773,7 @@ func ExampleSplitErrSeq() {
 	}
 }
 
-func TestSplitErrSeq(t *testing.T) {
+func TestSplitSeqE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	type E struct {
@@ -4818,12 +4806,12 @@ func TestSplitErrSeq(t *testing.T) {
 		})
 	)
 	act := let.Act2(func(t *testcase.T) (iter.Seq[int], func() error) {
-		return iterkit.SplitErrSeq(errIter.Get(t))
+		return iterkit.SplitSeqE(errIter.Get(t))
 	})
 
 	s.Then("values can be collected", func(t *testcase.T) {
 		itr, eFunc := act(t)
-		vs := iterkit.Collect1(itr)
+		vs := iterkit.Collect(itr)
 		assert.Equal(t, vs, valuesGet(t))
 		assert.NotNil(t, eFunc)
 		assert.NoError(t, eFunc())
@@ -4840,14 +4828,14 @@ func TestSplitErrSeq(t *testing.T) {
 
 		s.Then("the error yielded back", func(t *testcase.T) {
 			itr, eFunc := act(t)
-			_ = iterkit.Collect1(itr)
+			_ = iterkit.Collect(itr)
 			assert.NotNil(t, eFunc)
 			assert.ErrorIs(t, expErr.Get(t), eFunc())
 		})
 
 		s.Then("values are still collected", func(t *testcase.T) {
 			i, _ := act(t)
-			vs := iterkit.Collect1(i)
+			vs := iterkit.Collect(i)
 			assert.Equal(t, vs, valuesGet(t))
 		})
 
@@ -4862,7 +4850,7 @@ func TestSplitErrSeq(t *testing.T) {
 
 			s.Then("both error is propagated back", func(t *testcase.T) {
 				itr, eFunc := act(t)
-				_ = iterkit.Collect1(itr)
+				_ = iterkit.Collect(itr)
 				assert.NotNil(t, eFunc)
 				assert.ErrorIs(t, eFunc(), expErr.Get(t))
 				assert.ErrorIs(t, eFunc(), othErr.Get(t))
@@ -4885,7 +4873,7 @@ func TestSplitErrSeq(t *testing.T) {
 	})
 }
 
-func TestOnErrSeqValue(t *testing.T) {
+func TestOnSeqEValue(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.NoSideEffect()
 
@@ -4918,7 +4906,7 @@ func TestOnErrSeqValue(t *testing.T) {
 		})
 	)
 	act := let.Act(func(t *testcase.T) iter.Seq2[string, error] {
-		return iterkit.OnErrSeqValue(itr.Get(t), pipeline.Get(t))
+		return iterkit.OnSeqEValue(itr.Get(t), pipeline.Get(t))
 	})
 
 	s.Then("we expect that iteration has the pipeline applied to the value", func(t *testcase.T) {
@@ -4938,7 +4926,7 @@ func TestOnErrSeqValue(t *testing.T) {
 	})
 }
 
-func TestOnErrSeqValue_batch(tt *testing.T) {
+func TestOnSeqEValue_batch(tt *testing.T) {
 	t := testcase.NewT(tt)
 	_ = t
 }
@@ -4955,20 +4943,20 @@ func TestOnce(tt *testing.T) {
 
 	t.Log("given we have an iterator that can be iterated multiple times")
 	t.Random.Repeat(3, 7, func() {
-		assert.Equal(t, vs, iterkit.Collect1(itr))
+		assert.Equal(t, vs, iterkit.Collect(itr))
 	})
 
 	t.Log("but with iterkit.Once it will only iterate once")
 	itrOnce := iterkit.Once(itr)
-	assert.Equal(t, vs, iterkit.Collect1(itrOnce))
-	assert.Empty(t, iterkit.Collect1(itrOnce))
+	assert.Equal(t, vs, iterkit.Collect(itrOnce))
+	assert.Empty(t, iterkit.Collect(itrOnce))
 
 	tt.Run("race", func(t *testing.T) {
 		sub := iterkit.Once(itr)
 		testcase.Race(func() {
-			iterkit.Collect1(sub)
+			iterkit.Collect(sub)
 		}, func() {
-			iterkit.Collect1(sub)
+			iterkit.Collect(sub)
 		})
 	})
 }
@@ -5054,7 +5042,7 @@ func TestFromPull_smoke(tt *testing.T) {
 	vs := random.Slice(5, t.Random.Int)
 	itr := iterkit.Slice1(vs)
 	fromPullIter := iterkit.FromPull(iter.Pull(itr))
-	got := iterkit.Collect1(fromPullIter)
+	got := iterkit.Collect(fromPullIter)
 	assert.Equal(t, vs, got)
 }
 
@@ -5132,11 +5120,11 @@ func TestFromPullIter(tt *testing.T) {
 	t := testcase.NewT(tt)
 
 	exp := random.Slice(5, t.Random.Int)
-	errIter := iterkit.ToErrSeq(iterkit.Slice1(exp))
+	errIter := iterkit.ToSeqE(iterkit.Slice1(exp))
 	pullIter := iterkit.ToPullIter(errIter)
-	gotErrSeq := iterkit.FromPullIter(pullIter)
+	gotSeqE := iterkit.FromPullIter(pullIter)
 
-	got, err := iterkit.CollectE(gotErrSeq)
+	got, err := iterkit.CollectE(gotSeqE)
 	assert.NoError(t, err)
 	assert.Equal(t, exp, got)
 }
@@ -5146,18 +5134,18 @@ func TestPullIter(t *testing.T) {
 
 	s.Test("smoke", func(t *testcase.T) {
 		exp := random.Slice(5, t.Random.Int)
-		errIter := iterkit.ToErrSeq(iterkit.Slice1(exp))
+		errIter := iterkit.ToSeqE(iterkit.Slice1(exp))
 		pullIter := iterkit.ToPullIter(errIter)
-		fromPullErrSeq := iterkit.FromPullIter(pullIter)
+		fromPullSeqE := iterkit.FromPullIter(pullIter)
 
-		got, err := iterkit.CollectE(fromPullErrSeq)
+		got, err := iterkit.CollectE(fromPullSeqE)
 		assert.NoError(t, err)
 		assert.Equal(t, exp, got)
 	})
 
 	s.Test("error", func(t *testcase.T) {
 		expErr := t.Random.Error()
-		var errIter iterkit.ErrSeq[int] = func(yield func(int, error) bool) {
+		var errIter iterkit.SeqE[int] = func(yield func(int, error) bool) {
 			if !yield(42, expErr) {
 				return
 			}
@@ -5175,7 +5163,7 @@ func TestCollect1Pull_smoke(tt *testing.T) {
 	t := testcase.NewT(tt)
 
 	exp := random.Slice(5, t.Random.Int)
-	errIter := iterkit.ToErrSeq(iterkit.Slice1(exp))
+	errIter := iterkit.ToSeqE(iterkit.Slice1(exp))
 	pullIter := iterkit.ToPullIter(errIter)
 
 	got, err := iterkit.CollectPullIter(pullIter)
@@ -5267,7 +5255,7 @@ func TestFrom(t *testing.T) {
 	s.Test("not handled interuption handled", func(t *testcase.T) {
 		src := iterkit.From(func(yield func(int) bool) error {
 			for i := range 100 {
-				yield(i)
+				yield(i) // intentionally not handled
 			}
 			return nil
 		})
