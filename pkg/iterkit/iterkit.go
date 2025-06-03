@@ -695,6 +695,8 @@ func FirstE[T any](i ErrSeq[T]) (T, bool, error) {
 	return zero, false, nil
 }
 
+// LastE will find the last value in a ErrSeq, and return it in a idiomatic way.
+// If an error occurs during execution, it will be immediately returned.
 func LastE[T any](i ErrSeq[T]) (T, bool, error) {
 	var (
 		last T
@@ -734,21 +736,6 @@ func Last2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 		ok = true
 	}
 	return lastK, lastV, ok
-}
-
-// LastErr will find the last value in a ErrSequence, and return it in a idiomatic way.
-func LastErr[T any](i ErrSeq[T]) (T, bool, error) {
-	var (
-		val T
-		ok  bool
-		err error
-	)
-	for v, e := range i {
-		val = v
-		err = e
-		ok = true
-	}
-	return val, ok, err
 }
 
 // Head takes the first n element, similarly how the coreutils "head" app works.

@@ -265,7 +265,7 @@ func TestLastE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("empty", func(t *testcase.T) {
-		_, found, err := iterkit.LastErr(iterkit.Empty2[Entity, error]())
+		_, found, err := iterkit.LastE(iterkit.Empty2[Entity, error]())
 		assert.NoError(t, err)
 		assert.False(t, found)
 	})
@@ -284,7 +284,7 @@ func TestLastE(t *testing.T) {
 			yield(expVal, expErr)
 		}
 
-		got, ok, err := iterkit.LastErr(itr)
+		got, ok, err := iterkit.LastE(itr)
 		assert.ErrorIs(t, expErr, err)
 		assert.True(t, ok)
 		assert.Equal(t, expVal, got)
