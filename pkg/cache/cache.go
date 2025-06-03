@@ -308,7 +308,7 @@ func (m *Cache[ENT, ID]) CachedQueryOne(
 	query QueryOneFunc[ENT],
 ) (_ent ENT, _found bool, _err error) {
 	vs := m.CachedQueryMany(ctx, hitID, m.mapQueryOneToQueryMany(query))
-	ent, found, err := iterkit.FirstErr(vs)
+	ent, found, err := iterkit.FirstE(vs)
 	if err != nil {
 		return _ent, false, err
 	}

@@ -116,7 +116,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 					return f.Bar == foo1.Bar
 				})
 			})
-			return iterkit.FirstErr(itr)
+			return iterkit.FirstE(itr)
 		})
 		assert.NoError(t, err)
 

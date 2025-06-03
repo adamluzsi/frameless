@@ -175,7 +175,7 @@ func Reduce2[R, T any](i iter.Seq[T], initial R, fn func(R, T) R) R {
 	return v
 }
 
-func Slice[T any](vs []T) ErrSeq[T] {
+func SliceE[T any](vs []T) ErrSeq[T] {
 	return func(yield func(T, error) bool) {
 		for _, v := range vs {
 			if !yield(v, nil) {
@@ -425,40 +425,87 @@ func Empty2[T1, T2 any]() iter.Seq2[T1, T2] {
 	return func(yield func(T1, T2) bool) {}
 }
 
-func Batch[T any](i iter.Seq[T], opts ...BatchOption) iter.Seq[[]T] {
+func Batch[T any](i ErrSeq[T], opts ...BatchOption) ErrSeq[[]T] {
 	c := option.Use(opts)
+	var batched iter.Seq[[]KV[T, error]]
 	if 0 < c.WaitLimit {
-		return asyncBatch(i, c)
+		batched = asyncBatch(c, i)
+	} else {
+		batched = syncBatch(c, i)
 	}
-	return syncBatch(i, c)
+	return func(yield func([]T, error) bool) {
+		for kvs := range batched {
+			var vs []T
+			for _, kv := range kvs {
+				if kv.V != nil {
+					if !yield([]T{kv.K}, kv.V) {
+						return
+					}
+					continue
+				}
+				vs = append(vs, kv.K)
+			}
+			if !yield(vs, nil) {
+				return
+			}
+		}
+	}
 }
 
-func syncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
-	size := c.getSize()
+func Batch1[T any](i iter.Seq[T], opts ...BatchOption) iter.Seq[[]T] {
+	c := option.Use(opts)
+	var src iter.Seq2[T, struct{}] = func(yield func(T, struct{}) bool) {
+		for v := range i {
+			if !yield(v, struct{}{}) {
+				return
+			}
+		}
+	}
+	var batched iter.Seq[[]KV[T, struct{}]]
+	if 0 < c.WaitLimit {
+		batched = asyncBatch(c, src)
+	} else {
+		batched = syncBatch(c, src)
+	}
 	return func(yield func([]T) bool) {
-		var next, stop = iter.Pull(i)
+		for kvs := range batched {
+			var vs []T
+			for _, kv := range kvs {
+				vs = append(vs, kv.K)
+			}
+			if !yield(vs) {
+				return
+			}
+		}
+	}
+}
+
+func syncBatch[K, V any](c BatchConfig, i iter.Seq2[K, V]) iter.Seq[[]KV[K, V]] {
+	size := c.getSize()
+	return func(yield func([]KV[K, V]) bool) {
+		var next, stop = iter.Pull2(i)
 		defer stop()
 
-		var vs = make([]T, 0, size)
+		var kvs = make([]KV[K, V], 0, size)
 		var flush = func() bool {
 			var cont bool = true
-			if 0 < len(vs) {
-				cont = yield(vs)
-				vs = make([]T, 0, size)
+			if 0 < len(kvs) {
+				cont = yield(kvs)
+				kvs = make([]KV[K, V], 0, size)
 			}
 			return cont
 		}
 
 		for {
-			v, ok := next()
+			k, v, ok := next()
 			if !ok {
 				if !flush() {
 					return
 				}
 				break
 			}
-			vs = append(vs, v)
-			if size <= len(vs) {
+			kvs = append(kvs, KV[K, V]{K: k, V: v})
+			if size <= len(kvs) {
 				if !flush() {
 					return
 				}
@@ -489,14 +536,14 @@ func BatchSize(n int) BatchOption {
 	})
 }
 
-func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
+func asyncBatch[K, V any](c BatchConfig, i iter.Seq2[K, V]) iter.Seq[[]KV[K, V]] {
 	size := c.getSize()
 	if c.WaitLimit <= 0 {
 		panic(fmt.Sprintf("invalid iterkit.BatchWaitLimit for iterkit.Batch: %d", c.WaitLimit))
 	}
-	return func(yield func([]T) bool) {
+	return func(yield func([]KV[K, V]) bool) {
 		var (
-			feed = make(chan T)
+			feed = make(chan KV[K, V])
 			done = make(chan struct{})
 		)
 		defer close(done)
@@ -504,9 +551,9 @@ func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
 		go func() {
 			defer close(feed)
 		SUB:
-			for v := range i {
+			for k, v := range i {
 				select {
-				case feed <- v:
+				case feed <- KV[K, V]{K: k, V: v}:
 				case <-done:
 					break SUB
 				}
@@ -514,15 +561,15 @@ func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
 		}()
 
 		var (
-			vs     = make([]T, 0, size)
+			kvs    = make([]KV[K, V], 0, size)
 			ticker = time.NewTicker(c.WaitLimit)
 		)
 
 		var flush = func() bool {
 			var cont bool = true
-			if 0 < len(vs) {
-				cont = yield(vs)
-				vs = make([]T, 0, size)
+			if 0 < len(kvs) {
+				cont = yield(kvs)
+				kvs = make([]KV[K, V], 0, size)
 			}
 			return cont
 		}
@@ -538,14 +585,14 @@ func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
 					}
 					break PUB
 				}
-				vs = append(vs, v)
-				if size <= len(vs) {
+				kvs = append(kvs, v)
+				if size <= len(kvs) {
 					if !flush() {
 						return
 					}
 				}
 			case <-ticker.C:
-				if len(vs) == 0 {
+				if len(kvs) == 0 {
 					continue PUB
 				}
 				if !flush() {
@@ -553,8 +600,8 @@ func asyncBatch[T any](i iter.Seq[T], c BatchConfig) iter.Seq[[]T] {
 				}
 			}
 		}
-		if 0 < len(vs) {
-			yield(vs)
+		if 0 < len(kvs) {
+			yield(kvs)
 		}
 	}
 }
@@ -618,8 +665,8 @@ func Filter2[K, V any](i iter.Seq2[K, V], filter func(k K, v V) bool) iter.Seq2[
 	}
 }
 
-// First decode the first next value of the iterator and close the iterator
-func First[T any](i iter.Seq[T]) (T, bool) {
+// First1 decode the first next value of the iterator and close the iterator
+func First1[T any](i iter.Seq[T]) (T, bool) {
 	for v := range i {
 		return v, true
 	}
@@ -639,8 +686,8 @@ func First2[K, V any](i iter.Seq2[K, V]) (K, V, bool) {
 	return zeroK, zeroV, false
 }
 
-// FirstErr will find the first value in a ErrSequence, and return it in a idiomatic tuple return value order.
-func FirstErr[T any](i ErrSeq[T]) (T, bool, error) {
+// FirstE will find the first value in a ErrSequence, and return it in a idiomatic tuple return value order.
+func FirstE[T any](i ErrSeq[T]) (T, bool, error) {
 	for v, err := range i {
 		return v, true, err
 	}
@@ -648,7 +695,22 @@ func FirstErr[T any](i ErrSeq[T]) (T, bool, error) {
 	return zero, false, nil
 }
 
-func Last[T any](i iter.Seq[T]) (T, bool) {
+func LastE[T any](i ErrSeq[T]) (T, bool, error) {
+	var (
+		last T
+		ok   bool
+	)
+	for v, err := range i {
+		last = v
+		ok = true
+		if err != nil {
+			return last, false, err
+		}
+	}
+	return last, ok, nil
+}
+
+func Last1[T any](i iter.Seq[T]) (T, bool) {
 	var (
 		last T
 		ok   bool
@@ -864,8 +926,22 @@ func Count2[K, V any](i iter.Seq2[K, V]) int {
 	return total
 }
 
-// Chan creates an iterator out from a channel
-func Chan[T any](ch <-chan T) iter.Seq[T] {
+// ChanE creates an iterator out from a channel
+func ChanE[T any](ch <-chan T) ErrSeq[T] {
+	return func(yield func(T, error) bool) {
+		if ch == nil {
+			return
+		}
+		for v := range ch {
+			if !yield(v, nil) {
+				return
+			}
+		}
+	}
+}
+
+// Chan1 creates an iterator out from a channel
+func Chan1[T any](ch <-chan T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if ch == nil {
 			return
@@ -988,9 +1064,9 @@ func Merge2[K, V any](is ...iter.Seq2[K, V]) iter.Seq2[K, V] {
 }
 
 // CharRange1 returns an iterator that will range between the specified `begin“ and the `end` rune.
-func CharRange(begin, end rune) ErrSeq[rune] {
+func CharRangeE(begin, end rune) ErrSeq[rune] {
 	return func(yield func(rune, error) bool) {
-		for char := range CharRange1(begin, end) {
+		for char := range CharRange(begin, end) {
 			if !yield(char, nil) {
 				return
 			}
@@ -998,8 +1074,8 @@ func CharRange(begin, end rune) ErrSeq[rune] {
 	}
 }
 
-// CharRange1 returns an iterator that will range between the specified `begin“ and the `end` rune.
-func CharRange1(begin, end rune) iter.Seq[rune] {
+// CharRange returns an iterator that will range between the specified `begin“ and the `end` rune.
+func CharRange(begin, end rune) iter.Seq[rune] {
 	return func(yield func(rune) bool) {
 		for i := rune(0); begin+i < end+1; i++ {
 			if !yield(begin + i) {
@@ -1009,10 +1085,10 @@ func CharRange1(begin, end rune) iter.Seq[rune] {
 	}
 }
 
-// IntRange1 returns an iterator that will range between the specified `begin“ and the `end` int.
-func IntRange(begin, end int) ErrSeq[int] {
+// IntRangeE returns an iterator that will range between the specified `begin“ and the `end` int.
+func IntRangeE(begin, end int) ErrSeq[int] {
 	return func(yield func(int, error) bool) {
-		for i := range IntRange1(begin, end) {
+		for i := range IntRange(begin, end) {
 			if !yield(i, nil) {
 				return
 			}
@@ -1020,8 +1096,8 @@ func IntRange(begin, end int) ErrSeq[int] {
 	}
 }
 
-// IntRange1 returns an iterator that will range between the specified `begin“ and the `end` int.
-func IntRange1(begin, end int) iter.Seq[int] {
+// IntRange returns an iterator that will range between the specified `begin“ and the `end` int.
+func IntRange(begin, end int) iter.Seq[int] {
 	return func(yield func(int) bool) {
 		for i := 0; begin+i < end+1; i++ {
 			if !yield(begin + i) {
@@ -1198,7 +1274,7 @@ func OnErrSeqValue[To any, From any](itr ErrSeq[From], pipeline func(itr iter.Se
 
 		g.Go(func(ctx context.Context) error {
 			defer close(out)
-			var transformPipeline iter.Seq[To] = pipeline(Chan(in))
+			var transformPipeline iter.Seq[To] = pipeline(Chan1(in))
 
 		feeding:
 			for output := range transformPipeline {

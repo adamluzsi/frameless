@@ -207,7 +207,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			})
 
 			s.Then(`it will yield error early on`, func(t *testcase.T) {
-				_, _, err := iterkit.FirstErr(act(t))
+				_, _, err := iterkit.FirstE(act(t))
 				assert.ErrorIs(t, err, crud.ErrNotFound)
 			})
 		})

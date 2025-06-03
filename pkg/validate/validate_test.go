@@ -746,7 +746,7 @@ func Test_range(t *testing.T) {
 
 			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(1, "abc")}))
 			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(t.Random.IntBetween(3, 7), "abc")}))
-			assert.Error(t, validate.Value(T{V: t.Random.StringNC(1, string(iterkit.Collect1(iterkit.CharRange1('d', 'z'))))}))
+			assert.Error(t, validate.Value(T{V: t.Random.StringNC(1, string(iterkit.Collect1(iterkit.CharRange('d', 'z'))))}))
 		})
 
 		s.Test("no-max", func(t *testcase.T) {
@@ -754,7 +754,7 @@ func Test_range(t *testing.T) {
 				V string `range:"d-"`
 			}
 
-			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(t.Random.IntBetween(1, 7), string(iterkit.Collect1(iterkit.CharRange1('d', 'z'))))}))
+			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(t.Random.IntBetween(1, 7), string(iterkit.Collect1(iterkit.CharRange('d', 'z'))))}))
 			assert.Error(t, validate.Value(T{V: t.Random.StringNC(1, "abc")}))
 		})
 
@@ -1098,7 +1098,7 @@ func Test_char(t *testing.T) {
 
 			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(1, "abc")}))
 			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(t.Random.IntBetween(3, 7), "abc")}))
-			assert.Error(t, validate.Value(T{V: t.Random.StringNC(1, string(iterkit.Collect1(iterkit.CharRange1('d', 'z'))))}))
+			assert.Error(t, validate.Value(T{V: t.Random.StringNC(1, string(iterkit.Collect1(iterkit.CharRange('d', 'z'))))}))
 		})
 
 		s.Test("no-max", func(t *testcase.T) {
@@ -1106,7 +1106,7 @@ func Test_char(t *testing.T) {
 				V string `char:"d-"`
 			}
 
-			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(t.Random.IntBetween(1, 7), string(iterkit.Collect1(iterkit.CharRange1('d', 'z'))))}))
+			assert.NoError(t, validate.Value(T{V: t.Random.StringNC(t.Random.IntBetween(1, 7), string(iterkit.Collect1(iterkit.CharRange('d', 'z'))))}))
 			assert.Error(t, validate.Value(T{V: t.Random.StringNC(1, "abc")}))
 		})
 	})
