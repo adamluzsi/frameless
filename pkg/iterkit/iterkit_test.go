@@ -1127,6 +1127,104 @@ func TestHead2(t *testing.T) {
 	})
 }
 
+func ExampleTakeE() {
+	i := iterkit.SliceE([]int{1, 2, 3})
+	next, stop := iter.Pull2(i)
+	defer stop()
+	vs, err := iterkit.TakeE(next, 2)
+	_ = err // nil
+	_ = vs  // []int{1, 2}
+}
+
+func TestTakeE(t *testing.T) {
+	t.Run("NoElementsToTake", func(t *testing.T) {
+		i := iterkit.Empty2[int, error]()
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs, err := iterkit.TakeE(next, 5)
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
+	})
+
+	t.Run("EnoughElementsToTake", func(t *testing.T) {
+		i := iterkit.SliceE([]int{1, 2, 3, 4, 5})
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs, err := iterkit.TakeE(next, 3)
+		assert.NoError(t, err)
+		assert.Equal(t, []int{1, 2, 3}, vs)
+
+		rem, err := iterkit.TakeAllE(next)
+		assert.NoError(t, err)
+		assert.Equal(t, rem, []int{4, 5})
+	})
+
+	t.Run("MoreElementsToTakeThanAvailable", func(t *testing.T) {
+		i := iterkit.SliceE([]int{1, 2, 3})
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs, err := iterkit.TakeE(next, 5)
+		assert.NoError(t, err)
+		assert.Equal(t, []int{1, 2, 3}, vs)
+		_, _, ok := next()
+		assert.False(t, ok, "expected no next value")
+	})
+
+	t.Run("ZeroElementsToTake", func(t *testing.T) {
+		i := iterkit.SliceE([]int{1, 2, 3})
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs, err := iterkit.TakeE(next, 0)
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
+
+		rem, err := iterkit.TakeAllE(next)
+		assert.NoError(t, err)
+		assert.Equal(t, rem, []int{1, 2, 3})
+	})
+
+	t.Run("NegativeNumberOfElementsToTake", func(t *testing.T) {
+		i := iterkit.SliceE([]int{1, 2, 3})
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs, err := iterkit.TakeE(next, -5)
+		assert.NoError(t, err)
+		assert.Empty(t, vs)
+	})
+
+	t.Run("when error occurs in the middle of taking", func(t *testing.T) {
+		var expErr = rnd.Error()
+		var i iter.Seq2[int, error] = func(yield func(int, error) bool) {
+			if !yield(1, nil) {
+				return
+			}
+			if !yield(2, nil) {
+				return
+			}
+			if !yield(0, expErr) {
+				return
+			}
+			if !yield(3, nil) {
+				return
+			}
+		}
+
+		next, stop := iter.Pull2(i)
+		defer stop()
+
+		_, err := iterkit.TakeE(next, 10)
+		assert.ErrorIs(t, err, expErr)
+	})
+}
+
+func ExampleTake() {
+	i := iterkit.Slice1([]int{1, 2, 3})
+	next, stop := iter.Pull(i)
+	defer stop()
+	vs := iterkit.Take(next, 2)
+	_ = vs // []int{1, 2}
+}
+
 func TestTake(t *testing.T) {
 	t.Run("NoElementsToTake", func(t *testing.T) {
 		i := iterkit.Empty1[int]()
@@ -1227,7 +1325,7 @@ func TestTake2(t *testing.T) {
 		vs := iterkit.Take2(next, 2, toKV)
 		assert.Equal(t, vs, values[:2])
 
-		rem := iterkit.Take2All(next, toKV)
+		rem := iterkit.TakeAll2(next, toKV)
 		assert.Equal(t, rem, values[2:])
 	})
 
@@ -1248,7 +1346,7 @@ func TestTake2(t *testing.T) {
 		vs := iterkit.Take2(next, 0, toKV)
 		assert.Empty(t, vs)
 
-		rem := iterkit.Take2All(next, toKV)
+		rem := iterkit.TakeAll2(next, toKV)
 		assert.Equal(t, rem, values)
 	})
 
@@ -1275,6 +1373,52 @@ func TestTakeAll(t *testing.T) {
 	defer stop()
 	vs := iterkit.TakeAll(next)
 	assert.Equal(t, []int{1, 2, 3, 4, 5}, vs)
+}
+
+func ExampleTakeAll2() {
+	var i iter.Seq2[int, int] = func(yield func(int, int) bool) {
+		for i := range 3 {
+			if !yield(i, i*2) {
+				return
+			}
+		}
+	}
+
+	next, stop := iter.Pull2(i)
+	defer stop()
+
+	vs := iterkit.TakeAll2(next, func(n int, v int) int {
+		return n + v
+	})
+
+	_ = vs
+}
+
+func TestTakeAll2(t *testing.T) {
+	var i iter.Seq2[int, string] = func(yield func(int, string) bool) {
+		for i := range 3 {
+			if !yield(i, fmt.Sprintf("%d", i)) {
+				return
+			}
+		}
+	}
+
+	next, stop := iter.Pull2(i)
+	defer stop()
+
+	type E struct {
+		N int
+		V string
+	}
+	vs := iterkit.TakeAll2(next, func(n int, v string) E {
+		return E{N: n, V: v}
+	})
+
+	assert.Equal(t, vs, []E{
+		{N: 0, V: "0"},
+		{N: 1, V: "1"},
+		{N: 2, V: "2"},
+	})
 }
 
 func TestLimit_smoke(t *testing.T) {

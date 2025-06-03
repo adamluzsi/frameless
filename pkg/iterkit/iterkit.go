@@ -783,10 +783,26 @@ func Head2[K, V any](i iter.Seq2[K, V], n int) iter.Seq2[K, V] {
 	}
 }
 
+// TakeE will take the next N value from a pull iterator.
+func TakeE[T any](next func() (T, error, bool), n int) ([]T, error) {
+	var vs []T
+	for range n {
+		v, err, ok := next()
+		if err != nil {
+			return vs, err
+		}
+		if !ok {
+			break
+		}
+		vs = append(vs, v)
+	}
+	return vs, nil
+}
+
 // Take will take the next N value from a pull iterator.
 func Take[T any](next func() (T, bool), n int) []T {
 	var vs []T
-	for i := 0; i < n; i++ {
+	for range n {
 		v, ok := next()
 		if !ok {
 			break
@@ -809,6 +825,22 @@ func Take2[KV any, K, V any](next func() (K, V, bool), n int, m kvMapFunc[KV, K,
 	return kvs
 }
 
+// TakeEAll will take all the remaining values from a pull iterator.
+func TakeAllE[T any](next func() (T, error, bool)) ([]T, error) {
+	var vs []T
+	for {
+		v, err, ok := next()
+		if err != nil {
+			return vs, err
+		}
+		if !ok {
+			break
+		}
+		vs = append(vs, v)
+	}
+	return vs, nil
+}
+
 // TakeAll will take all the remaining values from a pull iterator.
 func TakeAll[T any](next func() (T, bool)) []T {
 	var vs []T
@@ -823,7 +855,7 @@ func TakeAll[T any](next func() (T, bool)) []T {
 }
 
 // TakeAll will take all the remaining values from a pull iterator.
-func Take2All[KV any, K, V any](next func() (K, V, bool), m kvMapFunc[KV, K, V]) []KV {
+func TakeAll2[KV any, K, V any](next func() (K, V, bool), m kvMapFunc[KV, K, V]) []KV {
 	var kvs []KV
 	for {
 		k, v, ok := next()
