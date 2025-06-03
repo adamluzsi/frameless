@@ -1421,6 +1421,43 @@ func TestTakeAll2(t *testing.T) {
 	})
 }
 
+func TestTakeAllE(t *testing.T) {
+	t.Run("happy", func(t *testing.T) {
+		expVS := []int{1, 2, 3, 42}
+		i := iterkit.SliceE(expVS)
+		next, stop := iter.Pull2(i)
+		defer stop()
+		vs, err := iterkit.TakeAllE(next)
+		assert.NoError(t, err)
+		assert.Equal(t, vs, expVS)
+	})
+
+	t.Run("rainy", func(t *testing.T) {
+		var expErr = rnd.Error()
+		var i iter.Seq2[int, error] = func(yield func(int, error) bool) {
+			if !yield(1, nil) {
+				return
+			}
+			if !yield(2, nil) {
+				return
+			}
+			if !yield(0, expErr) {
+				return
+			}
+			if !yield(3, nil) {
+				return
+			}
+		}
+
+		next, stop := iter.Pull2(i)
+		defer stop()
+
+		vs, err := iterkit.TakeE(next, 10)
+		assert.ErrorIs(t, err, expErr)
+		assert.Equal(t, []int{1, 2}, vs)
+	})
+}
+
 func TestLimit_smoke(t *testing.T) {
 	it := assert.MakeIt(t)
 	subject := iterkit.Limit(iterkit.IntRangeE(2, 6), 3)
