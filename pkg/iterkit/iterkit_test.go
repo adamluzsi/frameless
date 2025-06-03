@@ -264,6 +264,32 @@ func ExampleLastE() {
 func TestLastE(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	s.Test("empty", func(t *testcase.T) {
+		_, found, err := iterkit.LastErr(iterkit.Empty2[Entity, error]())
+		assert.NoError(t, err)
+		assert.False(t, found)
+	})
+
+	s.Test("iter has an error", func(t *testcase.T) {
+		var (
+			expVal = t.Random.String()
+			expErr = t.Random.Error()
+		)
+		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
+			for range t.Random.IntBetween(1, 7) {
+				if !yield(t.Random.String(), t.Random.Error()) {
+					return
+				}
+			}
+			yield(expVal, expErr)
+		}
+
+		got, ok, err := iterkit.LastErr(itr)
+		assert.ErrorIs(t, expErr, err)
+		assert.True(t, ok)
+		assert.Equal(t, expVal, got)
+	})
+
 	s.Test("last element returned", func(t *testcase.T) {
 		var expected int = t.Random.Int()
 		slc := random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
@@ -306,66 +332,6 @@ func TestLastE(t *testing.T) {
 		assert.ErrorIs(t, err, expErr)
 		assert.False(t, found)
 		assert.Equal(t, got, expVal)
-	})
-}
-
-func ExampleLastErr() {
-	var itr iter.Seq2[string, error] = func(yield func(string, error) bool) {
-		for i := 0; i < 42; i++ {
-			if !yield(strconv.Itoa(i), nil) {
-				return
-			}
-		}
-	}
-
-	v, ok, err := iterkit.LastErr(itr)
-	_, _, _ = v, ok, err
-}
-func TestLastErr(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	s.Test("empty", func(t *testcase.T) {
-		_, found, err := iterkit.LastErr(iterkit.Empty2[Entity, error]())
-		assert.NoError(t, err)
-		assert.False(t, found)
-	})
-
-	s.Test("iter has values", func(t *testcase.T) {
-		var exp = t.Random.String()
-
-		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
-			for range t.Random.IntBetween(1, 7) {
-				if !yield(t.Random.String(), nil) {
-					return
-				}
-			}
-			yield(exp, nil)
-		}
-
-		got, ok, err := iterkit.LastErr(itr)
-		assert.NoError(t, err)
-		assert.True(t, ok)
-		assert.Equal(t, exp, got)
-	})
-
-	s.Test("iter has an error", func(t *testcase.T) {
-		var (
-			expVal = t.Random.String()
-			expErr = t.Random.Error()
-		)
-		var itr iterkit.ErrSeq[string] = func(yield func(string, error) bool) {
-			for range t.Random.IntBetween(1, 7) {
-				if !yield(t.Random.String(), t.Random.Error()) {
-					return
-				}
-			}
-			yield(expVal, expErr)
-		}
-
-		got, ok, err := iterkit.LastErr(itr)
-		assert.ErrorIs(t, expErr, err)
-		assert.True(t, ok)
-		assert.Equal(t, expVal, got)
 	})
 }
 
