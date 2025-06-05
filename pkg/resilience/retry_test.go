@@ -883,6 +883,134 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	})
 }
 
-func wbuffer(d time.Duration, m float64) time.Duration {
-	return time.Duration(float64(d) * m)
+func ExampleRetries() {
+	var (
+		ctx = context.Background()
+		rp  = resilience.ExponentialBackoff{}
+	)
+
+	for range resilience.Retries(ctx, rp) {
+		// on success, break out from retries
+		break
+	}
+}
+
+func ExampleRetries_withFailureCountBasedRetryPolicy() {
+	var (
+		ctx = context.Background()
+		rp  = resilience.ExponentialBackoff{}
+	)
+
+	for range resilience.Retries(ctx, rp) {
+		// on success, break out from retries
+		break
+	}
+}
+
+func ExampleRetries_withTimeDelayBasedRetryPolicy() {
+	var (
+		ctx = context.Background()
+		rp  = resilience.Waiter{Timeout: time.Minute}
+	)
+
+	for range resilience.Retries(ctx, rp) {
+		// on success, break out from retries
+		break
+	}
+}
+
+func ExampleRetries_withFailureCountRangeArgument() {
+	var (
+		ctx = context.Background()
+		rp  = resilience.ExponentialBackoff{}
+	)
+
+	for failureCount := range resilience.Retries(ctx, rp) {
+		_ = failureCount // starts from zero
+		// on success, break out from retries
+		break
+	}
+}
+
+func TestRetries(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Context("failure count based retries", func(s *testcase.Spec) {
+		s.Test("on success", func(t *testcase.T) {
+			rs := resilience.FixedDelay{Delay: time.Nanosecond, Attempts: 3}
+
+			var done bool
+
+			assert.NotPanic(t, func() {
+				for range resilience.Retries(t.Context(), rs) {
+					done = true
+					break
+				}
+
+			})
+
+			assert.True(t, done)
+		})
+
+		s.Test("on failure", func(t *testcase.T) {
+			var Attempts = t.Random.IntBetween(3, 7)
+			var exp []int
+			for i := range Attempts {
+				exp = append(exp, i)
+			}
+
+			rs := resilience.FixedDelay{Delay: time.Nanosecond, Attempts: Attempts}
+
+			var got []int
+			for v := range resilience.Retries(t.Context(), rs) {
+				got = append(got, v)
+			}
+
+			assert.Equal(t, exp, got)
+		})
+	})
+
+	s.Context("start time based retries", func(s *testcase.Spec) {
+		s.Test("on success", func(t *testcase.T) {
+			rs := resilience.Waiter{
+				Timeout:      time.Hour,
+				WaitDuration: time.Nanosecond,
+			}
+
+			var done bool
+			assert.NotPanic(t, func() {
+				for range resilience.Retries(t.Context(), rs) {
+					done = true
+					break
+				}
+
+			})
+			assert.True(t, done)
+		})
+
+		s.Test("on failure", func(t *testcase.T) {
+			startAt := time.Date(2000, time.January, 1, 12, 30, 45, 0, time.UTC)
+			timecop.Travel(t, startAt)
+
+			rs := resilience.Waiter{
+				Timeout:      time.Hour,
+				WaitDuration: 100 * time.Millisecond,
+			}
+
+			w := assert.NotWithin(t, time.Second/2, func(ctx context.Context) {
+				var expFailureCount resilience.FailureCount
+				for v := range resilience.Retries(context.Background(), rs) {
+					assert.Equal(t, v, expFailureCount)
+					expFailureCount++
+				}
+			})
+
+			timecop.Travel(t, time.Hour+time.Second)
+
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				w.Wait()
+			})
+		})
+	})
+
 }

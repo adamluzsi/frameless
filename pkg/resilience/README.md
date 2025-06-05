@@ -21,7 +21,8 @@ import (
 
 func (ms MyStruct) MyFunc(ctx context.Context) error {
 	var rp resilience.ExponentialBackoff
-	for i := 0; rp.ShouldTry(ctx, i); i++ {
+
+	for range := resilience.Retries(ctx, rp) {
 		err := ms.DoAction(ctx)
 		if err != nil {
 			if ms.isErrTemporary(err) {
@@ -150,7 +151,7 @@ retry := resilience.FixedDelay{
 }
 ```
 
-## rate limiting
+## Rate Limiting
 
 Rate limiting ensures that operations are performed at a controlled rate, preventing overloads on systems or services.
 

@@ -2,6 +2,7 @@ package resilience
 
 import (
 	"context"
+	"iter"
 	"math"
 	"math/rand"
 	"runtime"
@@ -10,6 +11,40 @@ import (
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 )
+
+func Retries[U FailureCount | StartedAt](ctx context.Context, rp RetryPolicy[U]) iter.Seq[FailureCount] {
+	switch rp := rp.(type) {
+	case RetryPolicy[FailureCount]:
+		return func(yield func(FailureCount) bool) {
+			var failureCount FailureCount
+			for {
+				if !rp.ShouldTry(ctx, failureCount) {
+					return
+				}
+				if !yield(failureCount) {
+					return
+				}
+				failureCount++
+			}
+		}
+	case RetryPolicy[StartedAt]:
+		return func(yield func(FailureCount) bool) {
+			var startedAt StartedAt = clock.Now()
+			var failureCount FailureCount
+			for {
+				if !rp.ShouldTry(ctx, startedAt) {
+					return
+				}
+				if !yield(failureCount) {
+					return
+				}
+				failureCount++
+			}
+		}
+	default:
+		panic("not-implemented")
+	}
+}
 
 type RetryPolicy[U FailureCount | StartedAt] interface {
 	// ShouldTry will tell if retry should be attempted after a given number of failed attempts.
