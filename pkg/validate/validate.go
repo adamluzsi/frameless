@@ -99,6 +99,10 @@ func StructField(field reflect.StructField, value reflect.Value, opts ...Option)
 		return Error{Cause: err}
 	}
 
+	if err := regexpTag.HandleStructField(field, value); err != nil {
+		return Error{Cause: err}
+	}
+
 	return Value(value, opts...)
 }
 
@@ -255,7 +259,7 @@ var rangeTag = reflectkit.TagHandler[checkFunc]{
 	ForceCache:        true,
 	PanicOnParseError: true,
 
-	Parse: func(field reflect.StructField, tagValue string) (checkFunc, error) {
+	Parse: func(field reflect.StructField, tagName, tagValue string) (checkFunc, error) {
 		var checks []checkFunc
 		var charChecks charTagChecks
 
@@ -263,7 +267,7 @@ var rangeTag = reflectkit.TagHandler[checkFunc]{
 			raw := raw // copy bass by value
 
 			if checkCharTagFormat(field.Type, raw) {
-				charRange, err := charTag.Parse(field, raw)
+				charRange, err := charTag.Parse(field, tagName, raw)
 				if err != nil {
 					return nil, err
 				}
@@ -378,7 +382,7 @@ var charTag = reflectkit.TagHandler[charTagChecks]{
 	ForceCache:        true,
 	PanicOnParseError: true,
 
-	Parse: func(field reflect.StructField, tagValue string) (charTagChecks, error) {
+	Parse: func(field reflect.StructField, tagName, tagValue string) (charTagChecks, error) {
 		var checks = charTagChecks{}
 
 		if !field.Type.ConvertibleTo(stringType) {
@@ -434,7 +438,7 @@ var minTag = reflectkit.TagHandler[reflect.Value]{
 	ForceCache:        true,
 	PanicOnParseError: true,
 
-	Parse: func(field reflect.StructField, tagValue string) (reflect.Value, error) {
+	Parse: func(field reflect.StructField, tagName, tagValue string) (reflect.Value, error) {
 		return convkit.ParseReflect(field.Type, tagValue)
 	},
 
@@ -456,7 +460,7 @@ var maxTag = reflectkit.TagHandler[reflect.Value]{
 	ForceCache:        true,
 	PanicOnParseError: true,
 
-	Parse: func(field reflect.StructField, tagValue string) (reflect.Value, error) {
+	Parse: func(field reflect.StructField, tagName, tagValue string) (reflect.Value, error) {
 		return convkit.ParseReflect(field.Type, tagValue)
 	},
 
@@ -626,7 +630,7 @@ var lengthTag = reflectkit.TagHandler[checkFunc]{
 
 	PanicOnParseError: true,
 
-	Parse: func(field reflect.StructField, tagValue string) (checkFunc, error) {
+	Parse: func(field reflect.StructField, tagName, tagValue string) (checkFunc, error) {
 		var checks []checkFunc
 		for _, raw := range splitList(tagValue) {
 			switch field.Type.Kind() {
@@ -693,4 +697,46 @@ func tryLengthTagLenFormat(raw string) (checkFunc, bool, error) {
 	}
 
 	return nil, false, nil
+}
+
+var byteSliceType = reflectkit.TypeOf[[]byte]()
+
+type tagRegexp struct {
+	Name string
+	*regexp.Regexp
+}
+
+type X struct {
+	X string `match-posix:"^foo$"`
+}
+
+var regexpTag = reflectkit.TagHandler[tagRegexp]{
+	Name: "regexp",
+
+	Alias: []string{"rgx", "match"},
+
+	ForceCache:        true,
+	PanicOnParseError: true,
+
+	Parse: func(field reflect.StructField, name, value string) (tagRegexp, error) {
+		if !field.Type.ConvertibleTo(byteSliceType) {
+			return tagRegexp{}, fmt.Errorf("regexp validation tag only supports []byte and string types")
+		}
+		rgx, err := regexp.Compile(value)
+		if err != nil {
+			return tagRegexp{}, err
+		}
+		return tagRegexp{
+			Name:   name,
+			Regexp: rgx,
+		}, nil
+	},
+
+	Use: func(field reflect.StructField, value reflect.Value, rgx tagRegexp) error {
+		if rgx.Regexp.Match(value.Convert(byteSliceType).Interface().([]byte)) {
+			return nil
+		}
+
+		return fmt.Errorf("%#v doesn't match %q regexp [%s tag]", value.Interface(), rgx.String(), rgx.Name)
+	},
 }

@@ -67,11 +67,11 @@ func initStruct(rStruct reflect.Value) {
 
 var defaultTag = reflectkit.TagHandler[func() (reflect.Value, error)]{
 	Name: "default",
-	Parse: func(sf reflect.StructField, tag string) (func() (reflect.Value, error), error) {
+	Parse: func(sf reflect.StructField, tagName, tagValue string) (func() (reflect.Value, error), error) {
 		if reflectkit.IsMutableType(sf.Type) {
-			return func() (reflect.Value, error) { return parseDefaultValue(sf, tag) }, nil
+			return func() (reflect.Value, error) { return parseDefaultValue(sf, tagValue) }, nil
 		}
-		val, err := parseDefaultValue(sf, tag)
+		val, err := parseDefaultValue(sf, tagValue)
 		if err != nil {
 			return nil, err
 		}

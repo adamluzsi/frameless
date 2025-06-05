@@ -303,7 +303,7 @@ type TagHandler[T any] struct {
 	//
 	// If an unrecoverable error occurs during parsing, such as invalid tag format,
 	// consider either panicking or enabling PanicOnParseError to handle the failure.
-	Parse func(field reflect.StructField, tagValue string) (T, error)
+	Parse func(field reflect.StructField, tagName, tagValue string) (T, error)
 	// Use specifies what should be done with the parse tag value
 	// while the tag is being applied on a given struct field.
 	Use func(field reflect.StructField, value reflect.Value, v T) error
@@ -366,11 +366,13 @@ func (h *TagHandler[T]) handleStructField(field reflect.StructField, value refle
 }
 
 func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
-	tag, ok := field.Tag.Lookup(h.Name)
+	var name string = h.Name
+	value, ok := field.Tag.Lookup(name)
 	if !ok && 0 < len(h.Alias) {
 		for _, alias := range h.Alias {
-			tag, ok = field.Tag.Lookup(alias)
+			value, ok = field.Tag.Lookup(alias)
 			if ok {
+				name = alias
 				break
 			}
 		}
@@ -379,7 +381,7 @@ func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
 		var zero T
 		return zero, ok, nil
 	}
-	v, err := h.parse(field, tag)
+	v, err := h.parse(field, name, value)
 	if err != nil {
 		if h.PanicOnParseError {
 			panic(err)
@@ -390,10 +392,10 @@ func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
 	return v, true, nil
 }
 
-func (h *TagHandler[T]) parse(field reflect.StructField, tagValue string) (T, error) {
+func (h *TagHandler[T]) parse(field reflect.StructField, tagName, tagValue string) (T, error) {
 	var tagValueType = TypeOf[T]()
 	if !h.ForceCache && IsMutableType(tagValueType) {
-		return h.Parse(field, tagValue)
+		return h.Parse(field, tagName, tagValue)
 	}
 	key := tagHandlerCacheKey{
 		TagValueType:    FullyQualifiedName(tagValueType),
@@ -405,7 +407,7 @@ func (h *TagHandler[T]) parse(field reflect.StructField, tagValue string) (T, er
 		// we only need to parse once the tag, not more
 		// since the tag itself is a constant value
 		// that only change when the source code is changed.
-		return h.Parse(field, tagValue)
+		return h.Parse(field, tagName, tagValue)
 	})
 }
 

@@ -1161,7 +1161,7 @@ func TestTagHandler_smoke(t *testing.T) {
 
 	var DefaultTag = reflectkit.TagHandler[reflect.Value]{
 		Name: "default",
-		Parse: func(sf reflect.StructField, tag string) (reflect.Value, error) {
+		Parse: func(sf reflect.StructField, name, tag string) (reflect.Value, error) {
 			return convkit.ParseReflect(sf.Type, tag)
 		},
 		Use: func(sf reflect.StructField, field, defaultValue reflect.Value) error {
@@ -1187,7 +1187,7 @@ func TestTagHandler_panicOnParseError(t *testing.T) {
 
 	var tagH = reflectkit.TagHandler[any]{
 		Name: "mytag",
-		Parse: func(sf reflect.StructField, tagValue string) (any, error) {
+		Parse: func(sf reflect.StructField, tagName, tagValue string) (any, error) {
 			return nil, parseErr
 		},
 		Use: func(sf reflect.StructField, field reflect.Value, v any) error {
@@ -1226,7 +1226,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
 			Name:  "test",
-			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) { return nil, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
 		}
 
@@ -1236,7 +1236,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 	t.Run("invalid_reflect_value", func(t *testing.T) {
 		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
 			Name:  "test",
-			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) { return nil, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
 		}
 
@@ -1253,7 +1253,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
 				vs = append(vs, v)
 				return nil
@@ -1274,7 +1274,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 		var n int
 		handler := reflectkit.TagHandler[any]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (any, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) {
 				n++
 				return nil, nil
 			},
@@ -1296,7 +1296,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
 				field.SetString(v)
 				return nil
@@ -1316,7 +1316,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 		var expErr = rnd.Error()
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, expErr },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, expErr },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
 		}
 
@@ -1332,7 +1332,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 		var expErr = rnd.Error()
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return expErr },
 		}
 
@@ -1350,7 +1350,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				parseCount++
 				assert.Empty(t, tag)
 				return "foo", nil
@@ -1386,7 +1386,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				parseCount++
 				return tag, nil
 			},
@@ -1419,7 +1419,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[*string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (*string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (*string, error) {
 				parseCount++
 				return &tag, nil
 			},
@@ -1452,7 +1452,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				parseCount++
 				return tag, nil
 			},
@@ -1491,7 +1491,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[*S]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (*S, error) {
 				parseCount++
 				return &S{}, nil
 			},
@@ -1519,7 +1519,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
 		}
 
@@ -1535,7 +1535,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 	t.Run("invalid struct field", func(t *testing.T) {
 		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
 			Name:  "test",
-			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) { return nil, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
 		}
 
@@ -1549,7 +1549,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 	t.Run("invalid field value", func(t *testing.T) {
 		handler := reflectkit.TagHandler[any]{ // Initialize handler with dummy functions for testing
 			Name:  "test",
-			Parse: func(sf reflect.StructField, tag string) (any, error) { return nil, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) { return nil, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v any) error { return nil },
 		}
 
@@ -1570,7 +1570,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
 				vs = append(vs, v)
 				return nil
@@ -1598,7 +1598,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 		var n int
 		handler := reflectkit.TagHandler[any]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (any, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) {
 				n++
 				return nil, nil
 			},
@@ -1623,7 +1623,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use: func(sf reflect.StructField, field reflect.Value, v string) error {
 				field.SetString(v)
 				return nil
@@ -1646,7 +1646,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 		var expErr = rnd.Error()
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, expErr },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, expErr },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
 		}
 
@@ -1664,7 +1664,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 		var expErr = rnd.Error()
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return expErr },
 		}
 
@@ -1686,7 +1686,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				parseCount++
 				return tag, nil
 			},
@@ -1726,7 +1726,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 
 		handler := reflectkit.TagHandler[*S]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (*S, error) {
 				parseCount++
 				return &S{}, nil
 			},
@@ -1764,7 +1764,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 
 		handler := reflectkit.TagHandler[*S]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (*S, error) {
 				parseCount++
 				return &S{}, nil
 			},
@@ -1798,7 +1798,7 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
 		}
 
@@ -1829,7 +1829,7 @@ func TestTagHandler_alias(t *testing.T) {
 		Name:  "testtag",
 		Alias: []string{"tt1", "tt2"},
 
-		Parse: func(field reflect.StructField, tagValue string) (string, error) {
+		Parse: func(field reflect.StructField, tagName, tagValue string) (string, error) {
 			return tagValue, nil
 		},
 
@@ -1852,6 +1852,40 @@ func TestTagHandler_alias(t *testing.T) {
 	assert.ContainExactly(t, []string{"y"}, found)
 }
 
+func TestTagHandler_parseTagName(t *testing.T) {
+	type T struct {
+		V1 string `tt1:"x"`
+		V2 string `tt2:"y"`
+		V3 string `tt3:"z"`
+	}
+
+	var tags = map[string]string{}
+	th := reflectkit.TagHandler[string]{
+		Name:  "tt1",
+		Alias: []string{"tt2", "tt3"},
+
+		Parse: func(field reflect.StructField, tagName, tagValue string) (string, error) {
+			tags[tagName] = tagValue
+			return tagValue, nil
+		},
+
+		Use: func(field reflect.StructField, value reflect.Value, v string) error {
+			return nil
+		},
+	}
+
+	var v T
+
+	rStruct := reflect.ValueOf(v)
+	assert.NoError(t, th.HandleStruct(rStruct))
+
+	assert.ContainExactly(t, tags, map[string]string{
+		"tt1": "x",
+		"tt2": "y",
+		"tt3": "z",
+	})
+}
+
 func TestTagHandler_LookupTag(t *testing.T) {
 	t.Run("presence_of_specified_tag", func(t *testing.T) {
 		type T struct {
@@ -1863,7 +1897,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				vs = append(vs, tag)
 				return tag, nil
 			},
@@ -1896,7 +1930,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		var n int
 		handler := reflectkit.TagHandler[any]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (any, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (any, error) {
 				n++
 				return nil, nil
 			},
@@ -1922,7 +1956,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		var n int
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				n++
 				return "foo", nil
 			},
@@ -1950,7 +1984,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		var expErr = rnd.Error()
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, expErr },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, expErr },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
 		}
 
@@ -1970,7 +2004,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) {
 				parseCount++
 				return tag, nil
 			},
@@ -2002,7 +2036,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 
 		handler := reflectkit.TagHandler[*S]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (*S, error) {
 				parseCount++
 				return &S{}, nil
 			},
@@ -2032,7 +2066,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 
 		handler := reflectkit.TagHandler[*S]{
 			Name: "testtag",
-			Parse: func(sf reflect.StructField, tag string) (*S, error) {
+			Parse: func(sf reflect.StructField, name, tag string) (*S, error) {
 				parseCount++
 				return &S{}, nil
 			},
@@ -2060,7 +2094,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 
 		handler := reflectkit.TagHandler[string]{
 			Name:  "testtag",
-			Parse: func(sf reflect.StructField, tag string) (string, error) { return tag, nil },
+			Parse: func(sf reflect.StructField, name, tag string) (string, error) { return tag, nil },
 			Use:   func(sf reflect.StructField, field reflect.Value, v string) error { return nil },
 		}
 

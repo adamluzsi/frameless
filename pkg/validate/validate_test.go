@@ -1839,3 +1839,100 @@ func ThenNoErrorIsExpected(s *testcase.Spec, Struct testcase.Var[any]) {
 		assert.NoError(t, validate.StructField(toStructField(t, Struct.Get(t), "V")))
 	})
 }
+
+func Test_match_smoke(t *testing.T) {
+	t.Run("string", func(t *testing.T) {
+		type T struct {
+			V string `match:"^foo$"`
+		}
+		var (
+			ok   = T{V: "foo"}
+			nok  = T{V: "oof"}
+			zero = T{}
+		)
+
+		assert.NoError(t, validate.Value(ok))
+		assert.Error(t, validate.Value(nok))
+		assert.Error(t, validate.Value(zero))
+
+		assert.NoError(t, validate.Struct(ok))
+		assert.Error(t, validate.Struct(nok))
+		assert.Error(t, validate.Struct(zero))
+
+		assert.NoError(t, validate.StructField(toStructField(t, ok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, nok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, zero, "V")))
+	})
+
+	t.Run("~string", func(t *testing.T) {
+		type S string
+		type T struct {
+			V S `match:"^foo$"`
+		}
+		var (
+			ok   = T{V: "foo"}
+			nok  = T{V: "oof"}
+			zero = T{}
+		)
+
+		assert.NoError(t, validate.Value(ok))
+		assert.Error(t, validate.Value(nok))
+		assert.Error(t, validate.Value(zero))
+
+		assert.NoError(t, validate.Struct(ok))
+		assert.Error(t, validate.Struct(nok))
+		assert.Error(t, validate.Struct(zero))
+
+		assert.NoError(t, validate.StructField(toStructField(t, ok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, nok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, zero, "V")))
+	})
+
+	t.Run("[]byte", func(t *testing.T) {
+		type T struct {
+			V []byte `match:"^foo$"`
+		}
+		var (
+			ok   = T{V: []byte("foo")}
+			nok  = T{V: []byte("oof")}
+			zero = T{}
+		)
+
+		assert.NoError(t, validate.Value(ok))
+		assert.Error(t, validate.Value(nok))
+		assert.Error(t, validate.Value(zero))
+
+		assert.NoError(t, validate.Struct(ok))
+		assert.Error(t, validate.Struct(nok))
+		assert.Error(t, validate.Struct(zero))
+
+		assert.NoError(t, validate.StructField(toStructField(t, ok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, nok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, zero, "V")))
+	})
+
+	t.Run("~[]byte", func(t *testing.T) {
+		type BSlice []byte
+
+		type T struct {
+			V BSlice `match:"^foo$"`
+		}
+		var (
+			ok   = T{V: BSlice("foo")}
+			nok  = T{V: BSlice("oof")}
+			zero = T{}
+		)
+
+		assert.NoError(t, validate.Value(ok))
+		assert.Error(t, validate.Value(nok))
+		assert.Error(t, validate.Value(zero))
+
+		assert.NoError(t, validate.Struct(ok))
+		assert.Error(t, validate.Struct(nok))
+		assert.Error(t, validate.Struct(zero))
+
+		assert.NoError(t, validate.StructField(toStructField(t, ok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, nok, "V")))
+		assert.Error(t, validate.StructField(toStructField(t, zero, "V")))
+	})
+}
