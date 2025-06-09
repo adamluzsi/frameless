@@ -1,7 +1,6 @@
 package extid
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -13,10 +12,13 @@ import (
 )
 
 const errSetWithNonPtr errorkit.Error = "ptr should given as *ENT, else pass by value prevents the ID field remotely"
+const errSetWithNonStructENT errorkit.Error = "ENT type was expected to be a struct type"
+
+const ErrIDFieldNotFound errorkit.Error = "ErrIDFieldNotFound"
 
 func Set[ID any](ptr any, id ID) error {
 	if ptr == nil {
-		return fmt.Errorf("nil given as ptr for extid.Set[%T]", *new(ID))
+		return fmt.Errorf("nil given as ptr for extid.Set[%s]", reflectkit.TypeOf[ID]().String())
 	}
 
 	var (
@@ -29,7 +31,11 @@ func Set[ID any](ptr any, id ID) error {
 	}
 
 	if r.IsNil() {
-		return fmt.Errorf("nil pointer given for extid.Set[%T]", *new(ID))
+		return fmt.Errorf("nil pointer given for extid.Set[%T]", reflectkit.TypeOf[ID]().String())
+	}
+
+	if rt.Elem().Kind() != reflect.Struct {
+		return errSetWithNonStructENT
 	}
 
 	tr, ok := register[rt.Elem()]
@@ -38,34 +44,137 @@ func Set[ID any](ptr any, id ID) error {
 		return nil
 	}
 
-	_, val, ok := ExtractIdentifierField(ptr)
-	if !ok {
-		return errors.New("could not locate ID field in the given structure")
+	lookupByIDType := extractIdentifierFieldByType(idByTypeKey{
+		ENT: rt.Elem(),
+		ID:  reflectkit.TypeOf[ID](),
+	})
+
+	if _, val, ok := lookupByIDType(r.Elem()); ok {
+		val.Set(reflect.ValueOf(id))
+		return nil
 	}
 
-	val.Set(reflect.ValueOf(id))
+	if _, val, ok := ExtractIdentifierField(ptr); ok {
+		val.Set(reflect.ValueOf(id))
+		return nil
+	}
 
-	return nil
+	return ErrIDFieldNotFound
 }
 
-func Lookup[ID, Ent any](ent Ent) (id ID, ok bool) {
-	val := reflectkit.BaseValueOf(ent)
-	if tr, ok := register[val.Type()]; ok {
-		id := tr.Get(val.Interface()).(ID)
+func Get[ID, ENT any](ent ENT) ID {
+	id, _ := Lookup[ID, ENT](ent)
+	return id
+}
+
+// Lookup checks if the given ENT struct type contains a field of type ID.
+//
+// It returns two values:
+// - The ID field, if found.
+// - A boolean OK indicating whether an ID field exists in the given ENT struct.
+//
+// The function prioritises the following when selecting an ID field:
+// - Any field of type ID.
+// - If multiple fields of type ID exist, the one tagged as 'ext:"id"' is preferred.
+//
+// This function helps identify the primary ID field in ENT structs consistently.
+func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
+	str := reflectkit.BaseValueOf(ent)
+	if tr, ok := register[str.Type()]; ok {
+		id := tr.Get(str.Interface()).(ID)
 		return id, !zerokit.IsZero(id)
 	}
-	_, val, ok = ExtractIdentifierField(val)
-	if !ok {
-		return id, false
+	if _, value, ok := extractIdentifierFieldByType(idByTypeKey{
+		ENT: reflectkit.TypeOf[ENT](),
+		ID:  reflectkit.TypeOf[ID](),
+	})(str); ok {
+		id, ok = value.Interface().(ID)
+		return id, ok
 	}
-	if reflectkit.IsEmpty(val) {
-		return id, false
+	if _, value, ok := ExtractIdentifierField(str); ok {
+		id, ok = value.Interface().(ID)
+		return id, ok
 	}
-	id, ok = val.Interface().(ID)
-	if !ok {
-		return id, false
-	}
-	return id, ok
+	return id, false
+}
+
+type idByTypeKey struct {
+	ENT reflect.Type
+	ID  reflect.Type
+}
+
+var cacheExtractIdentifierFieldByIDType synckit.Map[idByTypeKey, func(reflect.Value) (reflect.StructField, reflect.Value, bool)]
+
+func nullLookup(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+	return reflect.StructField{}, reflect.Value{}, false
+}
+
+func extractIdentifierFieldByType(key idByTypeKey) func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
+	return cacheExtractIdentifierFieldByIDType.GetOrInit(key, func() func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
+		if key.ENT.Kind() != reflect.Struct {
+			return nullLookup
+		}
+
+		type Hit struct {
+			Index int
+			Field reflect.StructField
+			Tag   reflect.StructTag
+		}
+
+		var hits []Hit
+		for i := range key.ENT.NumField() {
+			field := key.ENT.Field(i)
+
+			if field.Type == key.ID {
+				hits = append(hits, Hit{
+					Index: i,
+					Field: field,
+					Tag:   field.Tag,
+				})
+			}
+		}
+
+		if len(hits) == 0 {
+			return nullLookup
+		}
+
+		if len(hits) == 1 {
+			var FieldIndex = hits[0].Index
+			return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+				return v.Type().Field(FieldIndex), v.Field(FieldIndex), true
+			}
+		}
+
+		var (
+			candidate Hit
+			lastTag   *extTagField
+			init      bool
+		)
+		for _, hit := range hits {
+			if !init {
+				candidate = hit
+			}
+			tag, ok, err := extTag.LookupTag(hit.Field)
+			if err != nil {
+				return nullLookup
+			}
+			if ok && tag.IsID {
+				if lastTag != nil && lastTag.IsID {
+					return nullLookup
+				}
+				candidate = hit
+				lastTag = &tag
+			}
+		}
+		if !init {
+			return nullLookup
+		}
+
+		var FieldIndex = candidate.Index
+		return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
+			return v.Type().Field(FieldIndex), v.Field(FieldIndex), true
+		}
+	})
 }
 
 var cacheExtractIdentifierField synckit.Map[reflect.Type, func(reflect.Value) (reflect.StructField, reflect.Value, bool)]
@@ -79,6 +188,25 @@ func ExtractIdentifierField(ent any) (reflect.StructField, reflect.Value, bool) 
 	return cacheExtractIdentifierField.GetOrInit(val.Type(), init)(val)
 }
 
+type extTagField struct {
+	IsID bool
+}
+
+var extTag = reflectkit.TagHandler[extTagField]{
+	Name: "ext",
+
+	Parse: func(field reflect.StructField, tagName, tagValue string) (extTagField, error) {
+		const isIDFlag = "id"
+		var tag extTagField
+		for _, field := range strings.Fields(tagValue) {
+			if strings.EqualFold(field, isIDFlag) {
+				tag.IsID = true
+			}
+		}
+		return tag, nil
+	},
+}
+
 func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructField, reflect.Value, bool) {
 	{
 		if val.Kind() != reflect.Struct {
@@ -88,14 +216,15 @@ func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructFi
 		}
 	}
 	{ // lookup by "ext":"id" tag
-		const extTagIDFlag = "id"
-		for i := 0; i < val.NumField(); i++ {
-			sf := val.Type().Field(i)
-			tagValue := sf.Tag.Get("ext")
-			if strings.EqualFold(tagValue, extTagIDFlag) {
-				index := i
+		for i := range val.NumField() {
+			tag, ok, err := extTag.LookupTag(val.Type().Field(i))
+			if err != nil {
+				continue
+			}
+			if ok && tag.IsID {
+				var index = i
 				return func(v reflect.Value) (reflect.StructField, reflect.Value, bool) {
-					return sf, v.Field(index), true
+					return v.Type().Field(index), v.Field(index), true
 				}
 			}
 		}
@@ -178,20 +307,15 @@ type typeRegistration struct {
 type Accessor[ENT, ID any] func(*ENT) *ID
 
 func (fn Accessor[ENT, ID]) Get(ent ENT) ID {
-	if fn == nil {
-		id, _ := Lookup[ID](ent)
-		return id
-	}
-	id := fn.ptr(&ent)
-	return *id
+	id, _ := fn.Lookup(ent)
+	return id
 }
 
 func (fn Accessor[ENT, ID]) Lookup(ent ENT) (ID, bool) {
 	if fn == nil {
 		return Lookup[ID](ent)
 	}
-	id := fn.ptr(&ent)
-	return *id, !zerokit.IsZero[ID](*id)
+	return *fn.ptr(&ent), true
 }
 
 func (fn Accessor[ENT, ID]) Set(ent *ENT, id ID) error {

@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/crud"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -45,11 +46,18 @@ type Repository[ENT, ID any] struct {
 }
 
 const ErrMissingID errorkit.Error = "ErrMissingID"
+const ErrNilPointer errorkit.Error = "ErrNilPointer"
 
 const typeNameRepository = "Repository"
 
 func (r *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
-	if _, ok := r.IDA.Lookup(*ptr); !ok {
+	if ptr == nil {
+		return ErrNilPointer.F("%T#Create called with nil %T", r, ptr)
+	}
+
+	id := r.IDA.Get(*ptr)
+
+	if zerokit.IsZero(id) {
 		if r.ExpectID {
 			return ErrMissingID
 		}
@@ -57,6 +65,7 @@ func (r *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		if err != nil {
 			return err
 		}
+		id = newID
 
 		if err := r.IDA.Set(ptr, newID); err != nil {
 			return err
@@ -67,7 +76,6 @@ func (r *Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	id, _ := r.IDA.Lookup(*ptr)
 	if _, found, err := r.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {

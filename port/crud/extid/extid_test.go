@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/port/crud/extid/internal/testhelper"
 	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/testcase"
 
 	"go.llib.dev/frameless/port/crud/extid"
 
@@ -26,6 +27,42 @@ func Benchmark(b *testing.B) {
 	type IDByTag struct {
 		IDD string `ext:"id"`
 	}
+	b.Run("extid", func(b *testing.B) {
+		b.Run("Lookup", func(b *testing.B) {
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := range b.N {
+				extid.Lookup[string](vs[i])
+			}
+		})
+		b.Run("Set", func(b *testing.B) {
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := range b.N {
+				v := vs[i]
+				extid.Set(&v, v.ID)
+			}
+		})
+		b.Run("Get", func(b *testing.B) {
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := range b.N {
+				extid.Get[string](vs[i])
+			}
+		})
+	})
 	b.Run("ExtractIdentifierField", func(b *testing.B) {
 		b.Run("id by ID field", func(b *testing.B) {
 			extid.ExtractIdentifierField(IDByField{})
@@ -34,7 +71,7 @@ func Benchmark(b *testing.B) {
 			})
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := range b.N {
 				extid.ExtractIdentifierField(vs[i])
 			}
 		})
@@ -45,7 +82,7 @@ func Benchmark(b *testing.B) {
 			})
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := range b.N {
 				extid.ExtractIdentifierField(vs[i])
 			}
 		})
@@ -61,7 +98,7 @@ func Benchmark(b *testing.B) {
 			})
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := range b.N {
 				accessor.Lookup(vs[i])
 			}
 		})
@@ -75,9 +112,23 @@ func Benchmark(b *testing.B) {
 			})
 			b.ResetTimer()
 
-			for i := 0; i < b.N; i++ {
+			for i := range b.N {
 				v := vs[i]
 				accessor.Set(&v, v.ID)
+			}
+		})
+		b.Run("Get", func(b *testing.B) {
+			accessor := extid.Accessor[IDByField, string](func(v *IDByField) *string {
+				return &v.ID
+			})
+			extid.ExtractIdentifierField(IDByField{})
+			vs := random.Slice(b.N, func() IDByField {
+				return IDByField{ID: rnd.String()}
+			})
+			b.ResetTimer()
+
+			for i := range b.N {
+				accessor.Get(vs[i])
 			}
 		})
 	})
@@ -201,7 +252,7 @@ func TestLookup_PointerIDGivenByTag_IDReturned(t *testing.T) {
 }
 
 func TestLookup_UnidentifiableIDGiven_NotFoundReturnedAsBoolean(t *testing.T) {
-	id, ok := extid.Lookup[any](testhelper.UnidentifiableID{UserID: "ok"})
+	id, ok := extid.Lookup[any](testhelper.UnidentifiableID{UserID: 42.24})
 	assert.Must(t).False(ok)
 	assert.Must(t).Nil(id)
 }
@@ -221,14 +272,14 @@ func TestLookup_InterfaceTypeWithNilAsValue_NotFoundReturned(t *testing.T) {
 func TestLookup_InterfaceTypeWithPointerTypeThatHasNoValueNilAsValue_NotFoundReturned(t *testing.T) {
 	var idVal *string
 	id, ok := extid.Lookup[any](&testhelper.IDAsInterface{ID: idVal})
-	assert.Must(t).False(ok)
-	assert.Must(t).Nil(id)
+	assert.True(t, ok, "id field indentified")
+	assert.Nil(t, id, "id field is nil")
 }
 
 func TestLookup_PointerTypeThatIsNotInitialized_NotFoundReturned(t *testing.T) {
 	id, ok := extid.Lookup[*string](&testhelper.IDAsPointer{})
-	assert.Must(t).False(ok)
-	assert.Must(t).Nil(id)
+	assert.True(t, ok, "testhelper.IDAsPointer has an ID field, and it can be located")
+	assert.Nil(t, id, "the actual value is nil since a pointer zero value is nil")
 }
 
 func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
@@ -238,9 +289,10 @@ func TestLookup_PointerTypeWithValue_ValueReturned(t *testing.T) {
 	assert.Equal(t, &idVal, id)
 }
 
-func TestLookup_IDFieldWithZeroValueFound_NotOkReturned(t *testing.T) {
-	_, ok := extid.Lookup[string](testhelper.IDByIDField{ID: ""})
-	assert.Must(t).False(ok, "zero value should be not OK")
+func TestLookup_IDFieldWithZeroValueFound_OkReturned(t *testing.T) {
+	var zero string
+	_, ok := extid.Lookup[string](testhelper.IDByIDField{ID: zero})
+	assert.True(t, ok, "zero value should be OK, since the field exist")
 }
 
 // ------------------------------------------------------------------------------------------------------------------ //
@@ -250,7 +302,7 @@ func TestSet_NonPtrStructGiven_ErrorWarnsAboutNonPtrObject(t *testing.T) {
 }
 
 func TestSet_PtrStructGivenButIDIsCannotBeIdentified_ErrorWarnsAboutMissingIDFieldOrTagName(t *testing.T) {
-	assert.Must(t).NotNil(extid.Set(&testhelper.UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
+	assert.NotNil(t, extid.Set(&testhelper.UnidentifiableID{}, "Cannot be passed because the missing ID Field or Tag spec"))
 }
 
 func TestSet_PtrStructGivenWithIDField_IDSaved(t *testing.T) {
@@ -313,18 +365,18 @@ func TestAccessor_Lookup(t *testing.T) {
 		assert.Equal(t, id, "42")
 
 		id, found = extid.Accessor[ENT, ID](nil).Lookup(ENT{})
-		assert.False(t, found)
-		assert.Empty(t, id)
+		assert.True(t, found, "founds the ext ID field")
+		assert.Empty(t, id, "ext id field is zero")
 	})
 
-	t.Run("function returns non-zero value", func(t *testing.T) {
+	t.Run("function returns non-zero value, lookup still reports that ID field itself exist", func(t *testing.T) {
 		fn := extid.Accessor[ENT, ID](func(v *ENT) *ID { return &v.ID })
 		id, found := fn.Lookup(ENT{ID: "24"})
 		assert.True(t, found)
 		assert.Equal(t, id, "24")
 
 		id, found = fn.Lookup(ENT{ID: ""})
-		assert.False(t, found)
+		assert.True(t, found)
 		assert.Empty(t, id)
 	})
 }
@@ -385,10 +437,6 @@ func TestAccessor_Get(t *testing.T) {
 		assert.Empty(t, ent.ID)
 		assert.Equal(t, ent.DI, "42")
 		assert.Equal(t, acc.Get(ent), "42")
-	})
-
-	t.Run("", func(t *testing.T) {
-
 	})
 }
 
@@ -637,5 +685,126 @@ func TestReflectAccessor_TypeMismatchErrorHandling(t *testing.T) {
 		newID := reflect.ValueOf("new-id")
 		err := accessor.ReflectSet(rEnt, newID)
 		assert.Error(t, err)
+	})
+}
+
+func TestLookup_byMatchingTypes(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		type ARepoID string
+		type BRepoID string
+
+		type T struct {
+			ARepoID ARepoID
+			BRepoID BRepoID
+		}
+
+		var v T
+
+		{
+			exp := ARepoID(rnd.StringN(3))
+			var idaA extid.Accessor[T, ARepoID]
+			assert.NoError(t, idaA.Set(&v, exp))
+			id, ok := idaA.Lookup(v)
+			assert.True(t, ok)
+			assert.Equal(t, id, exp)
+			assert.Equal(t, v.ARepoID, exp)
+		}
+
+		{
+			exp := BRepoID(rnd.StringN(3))
+			var idaA extid.Accessor[T, BRepoID]
+			assert.NoError(t, idaA.Set(&v, exp))
+			id, ok := idaA.Lookup(v)
+			assert.True(t, ok)
+			assert.Equal(t, id, exp)
+			assert.Equal(t, v.BRepoID, exp)
+		}
+	})
+
+	s.Test("same type multiple fields but one marked as id", func(t *testcase.T) {
+		type IDType string
+
+		type T struct {
+			A IDType
+			B IDType `ext:"id"`
+		}
+
+		var v T
+
+		exp := IDType(t.Random.StringN(4))
+		var ida extid.Accessor[T, IDType]
+		assert.NoError(t, ida.Set(&v, exp))
+		id, ok := ida.Lookup(v)
+		assert.True(t, ok)
+		assert.Equal(t, id, exp)
+		assert.Equal(t, v.B, exp)
+	})
+
+	s.Test("same type multiple fields but one marked as id along with other external id type is also present", func(t *testcase.T) {
+		type IDType string
+
+		type T struct {
+			A IDType
+			B IDType `ext:"id"`
+			C string `ext:"id"`
+		}
+
+		var v T
+
+		exp := IDType(t.Random.StringN(4))
+		var ida extid.Accessor[T, IDType]
+		assert.NoError(t, ida.Set(&v, exp))
+		id, ok := ida.Lookup(v)
+		assert.True(t, ok)
+		assert.Equal(t, id, exp)
+		assert.Equal(t, v.B, exp)
+	})
+}
+
+func TestGet(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test(`by .ID field`, func(t *testcase.T) {
+		type T struct{ ID string }
+		var v = T{ID: t.Random.HexN(42)}
+		assert.Equal(t, extid.Get[string](v), v.ID)
+	})
+
+	s.Test(`by ext:"id" tag`, func(t *testcase.T) {
+		type T struct {
+			V string `ext:"id"`
+		}
+		var v = T{V: t.Random.HexN(42)}
+		assert.Equal(t, extid.Get[string](v), v.V)
+	})
+
+	s.Test(`by ext:"ID" tag`, func(t *testcase.T) {
+		type T struct {
+			V string `ext:"ID"`
+		}
+		var v = T{V: t.Random.HexN(42)}
+		assert.Equal(t, extid.Get[string](v), v.V)
+	})
+
+	s.Test(`by ID type`, func(t *testcase.T) {
+		type MyIDType int
+		type T struct {
+			ID string
+			DI MyIDType
+		}
+		var v = T{ID: t.Random.HexN(42), DI: MyIDType(t.Random.Int())}
+		assert.Equal(t, extid.Get[MyIDType](v), v.DI)
+	})
+
+	s.Test(`by ID type`, func(t *testcase.T) {
+		type MyIDType int
+		type T struct {
+			ID string
+			DI MyIDType
+		}
+		var v = T{ID: t.Random.HexN(42), DI: MyIDType(t.Random.Int())}
+		assert.Equal(t, extid.Get[MyIDType](v), v.DI)
 	})
 }

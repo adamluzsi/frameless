@@ -21,5 +21,5 @@ type IDAsPointer struct {
 }
 
 type UnidentifiableID struct {
-	UserID string
+	UserID float64
 }

@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/crud"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -27,6 +28,7 @@ func NewEventLogRepositoryWithNamespace[ENT, ID any](m *EventLog, ns string) *Ev
 type EventLogRepository[ENT, ID any] struct {
 	EventLog *EventLog
 	MakeID   func(ctx context.Context) (ID, error)
+	IDA      extid.Accessor[ENT, ID]
 
 	// Namespace separates different repository events in the event log.
 	// By default same entities reside under the same Namespace through their fully qualified name used as namespace ID.
@@ -79,13 +81,21 @@ func (s *EventLogRepository[ENT, ID]) ownEvent(e EventLogRepositoryEvent[ENT, ID
 }
 
 func (s *EventLogRepository[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
-	if _, ok := extid.Lookup[ID](ptr); !ok {
+	if ptr == nil {
+		return ErrNilPointer.F("%T#Create is called with nil %T", s, ptr)
+	}
+
+	id := s.IDA.Get(*ptr)
+
+	if zerokit.IsZero(id) {
 		newID, err := s.newID(ctx)
 		if err != nil {
 			return err
 		}
 
-		if err := extid.Set[ID](ptr, newID); err != nil {
+		id = newID
+
+		if err := s.IDA.Set(ptr, newID); err != nil {
 			return err
 		}
 	}
@@ -94,7 +104,6 @@ func (s *EventLogRepository[ENT, ID]) Create(ctx context.Context, ptr *ENT) erro
 		return err
 	}
 
-	id, _ := extid.Lookup[ID](ptr)
 	if _, found, err := s.FindByID(ctx, id); err != nil {
 		return err
 	} else if found {
@@ -140,9 +149,16 @@ func (s *EventLogRepository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT
 }
 
 func (s *EventLogRepository[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
-	id, ok := extid.Lookup[ID](ptr)
+	if ptr == nil {
+		return ErrNilPointer.F("%T#Update is called with nil %T", s, ptr)
+	}
+
+	id, ok := s.IDA.Lookup(*ptr)
 	if !ok {
-		return fmt.Errorf(`entity doesn't have id field`)
+		return fmt.Errorf(`%T doesn't have id field`, ptr)
+	}
+	if zerokit.IsZero(id) {
+		return fmt.Errorf(`%T's external id field is empty`, ptr)
 	}
 
 	_, found, err := s.FindByID(ctx, id)
@@ -171,7 +187,7 @@ func (s *EventLogRepository[ENT, ID]) DeleteByID(ctx context.Context, id ID) err
 	}
 
 	ptr := new(ENT)
-	if err := extid.Set[ID](ptr, id); err != nil {
+	if err := s.IDA.Set(ptr, id); err != nil {
 		return err
 	}
 	return s.append(ctx, EventLogRepositoryEvent[ENT, ID]{
@@ -229,8 +245,8 @@ func (s *EventLogRepository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr 
 		rErr = s.CommitTx(tx)
 	}()
 
-	id, ok := extid.Lookup[ID](ptr)
-	if !ok {
+	id := s.IDA.Get(*ptr)
+	if zerokit.IsZero(id) {
 		return s.Create(tx, ptr)
 	}
 	_, found, err := s.FindByID(tx, id)
@@ -294,14 +310,14 @@ func (s *EventLogRepository[ENT, ID]) view(events []EventLogRepositoryEvent[ENT,
 	for _, event := range events {
 		switch event.Name {
 		case CreateEvent, UpdateEvent:
-			id, ok := extid.Lookup[ID](event.Value)
+			id, ok := s.IDA.Lookup(event.Value)
 			if !ok {
 				panic(fmt.Errorf(`missing id in event value: %#v<%T>`, event.Value, event.Value))
 			}
 
 			view.setByID(id, event.Value)
 		case DeleteByIDEvent:
-			id, ok := extid.Lookup[ID](event.Value)
+			id, ok := s.IDA.Lookup(event.Value)
 			if !ok {
 				panic(fmt.Errorf(`missing id in event value: %#v<%T>`, event.Value, event.Value))
 			}
