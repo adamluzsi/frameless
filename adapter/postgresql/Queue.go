@@ -10,6 +10,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/migration"
@@ -113,17 +114,26 @@ func (q Queue[Entity, JSONDTO]) Migrate(ctx context.Context) error {
 	}).Migrate(ctx)
 }
 
-func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) (pubsub.Subscription[Entity], error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if err := q.Connection.DB.Ping(ctx); err != nil {
-		return nil, err
-	}
-	return iterkit.FromPullIter(&queueSubscription[Entity, JSONDTO]{
-		Queue: q,
-		CTX:   ctx,
-	}), nil
+func (q Queue[Entity, JSONDTO]) Subscribe(ctx context.Context) pubsub.Subscription[Entity] {
+	return iterkit.From(func(yield func(pubsub.Message[Entity]) bool) (rErr error) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := q.Connection.DB.Ping(ctx); err != nil {
+			return err
+		}
+		sub := &queueSubscription[Entity, JSONDTO]{
+			Queue: q,
+			CTX:   ctx,
+		}
+		defer errorkit.Finish(&rErr, sub.Close)
+		for sub.Next() {
+			if !yield(sub.Value()) {
+				return nil
+			}
+		}
+		return sub.Err()
+	})
 }
 
 type queueSubscription[Entity, JSONDTO any] struct {

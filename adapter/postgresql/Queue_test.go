@@ -45,12 +45,7 @@ func ExampleQueue() {
 		panic(err)
 	}
 
-	sub, err := q.Subscribe(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	for msg, err := range sub {
+	for msg, err := range q.Subscribe(ctx) {
 		if err != nil {
 			break
 		}
@@ -285,8 +280,8 @@ func BenchmarkQueue(b *testing.B) {
 			}
 		})...))
 
-		sub, err := q.Subscribe(ctx)
-		assert.NoError(b, err)
+		sub := q.Subscribe(ctx)
+		assert.NotNil(b, sub)
 
 		next, stop := iter.Pull2(sub)
 		defer stop()
