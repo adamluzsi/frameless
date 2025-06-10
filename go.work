@@ -5,7 +5,6 @@ toolchain go1.24.0
 use (
 	.
 	./adapter/mariadb
-	./adapter/mysql
 	./adapter/postgresql
 	./examples/restful-api
 )
