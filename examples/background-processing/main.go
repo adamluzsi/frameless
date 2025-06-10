@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"go.llib.dev/frameless/adapter/postgresql"
-	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/comproto"
@@ -18,7 +17,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	cm, err := postgresql.NewConnectionWithDSN(os.Getenv("DATABASE_URL"))
+	cm, err := postgresql.Connect(os.Getenv("DATABASE_URL"))
 	if err != nil {
 		logger.Error(ctx, err.Error())
 	}
@@ -71,13 +70,22 @@ type MyDomainEventConsumer struct {
 }
 
 func (c MyDomainEventConsumer) HandleEvents(ctx context.Context) error {
-	return iterkit.ForEach(c.Subscriber.Subscribe(ctx), func(msg pubsub.Message[MyDomainEventEntity]) (rErr error) {
+	var handle = func(msg pubsub.Message[MyDomainEventEntity]) (rErr error) {
 		defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 
 		logger.Info(ctx, fmt.Sprint(msg.Data()))
 
 		return nil // all good, I'm ok yay \o/
-	})
+	}
+	for msg, err := range c.Subscriber.Subscribe(ctx) {
+		if err != nil {
+			return err
+		}
+
+		if err := handle(msg); err != nil {
+			return err
+		}
+	}
 }
 
 // package myhttpapi
@@ -109,10 +117,10 @@ type MyDomainEventEntityPGQueueJSONDTO struct {
 
 type MappingForMyDomainEventEntity struct{}
 
-func (MappingForMyDomainEventEntity) ToDTO(ent MyDomainEventEntity) (MyDomainEventEntityPGQueueJSONDTO, error) {
+func (MappingForMyDomainEventEntity) MapToDTO(ctx context.Context, ent MyDomainEventEntity) (MyDomainEventEntityPGQueueJSONDTO, error) {
 	return MyDomainEventEntityPGQueueJSONDTO(ent), nil
 }
 
-func (MappingForMyDomainEventEntity) ToEnt(dto MyDomainEventEntityPGQueueJSONDTO) (MyDomainEventEntity, error) {
+func (MappingForMyDomainEventEntity) MapToENT(ctx context.Context, dto MyDomainEventEntityPGQueueJSONDTO) (MyDomainEventEntity, error) {
 	return MyDomainEventEntity(dto), nil
 }

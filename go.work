@@ -7,4 +7,5 @@ use (
 	./adapter/mariadb
 	./adapter/postgresql
 	./examples/restful-api
+	./examples/background-processing
 )

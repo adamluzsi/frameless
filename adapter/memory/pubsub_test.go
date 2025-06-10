@@ -180,9 +180,8 @@ func TestQueue_smoke(t *testing.T) {
 	// t.Log(pp.Format(q))
 
 	t.Log("#1 subscribe to queue")
-	sub1, err := q.Subscribe(ctx)
-	t.Log("sub created without an error")
-	assert.NoError(t, err)
+	sub1 := q.Subscribe(ctx)
+	assert.NotNil(t, sub1)
 
 	sub1Next, sub1Stop := iter.Pull2(sub1)
 	defer sub1Stop()
@@ -197,8 +196,8 @@ func TestQueue_smoke(t *testing.T) {
 	t.Log("intentionally not ACKing the message, to prove subscriptions don't step on each other's foot")
 
 	t.Log("#2 subscribe to queue")
-	sub2, err := q.Subscribe(ctx)
-	assert.NoError(t, err)
+	sub2 := q.Subscribe(ctx)
+	assert.NotNil(t, sub2)
 
 	sub2Next, sub2Stop := iter.Pull2(sub2)
 	defer sub2Stop()

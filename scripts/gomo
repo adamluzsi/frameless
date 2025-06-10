@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+set \
+  -o errexit \
+  -o errtrace \
+  -o nounset \
+  -o pipefail
+
 shopt -s nullglob globstar
 
 declare gmpath path
@@ -12,7 +18,17 @@ for gmpath in **/go.mod; do
   path=$(dirname "${gmpath}")
   path=$(readlink -f "${path}")
   (
+    echo "${path}"
     cd "${path}"
+
+    if [[ -f ".envrc" ]]; then
+      source .envrc
+    fi
+
+    if [[ -f "docker-compose.yml" ]]; then
+      docker-compose up --detach --no-recreate 1>/dev/null
+    fi
+
     "${@}"
   )
 done

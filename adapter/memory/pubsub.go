@@ -178,26 +178,26 @@ func (q *Queue[Data]) txm() txkit.Manager[Queue[Data], queueTx[Data], qpub[Data]
 	}
 }
 
-func (q *Queue[Data]) Subscribe(ctx context.Context) (pubsub.Subscription[Data], error) {
-	sub := &QueueSubscription[Data]{
-		ctx:       ctx,
-		q:         q,
-		createdAt: clock.Now(),
-	}
-	for i := 1; i < math.MaxInt; i++ {
-		sub.id = subscriptionID(i)
-		q.m.Lock()
-		if q.subs == nil {
-			q.subs = make(map[subscriptionID]*QueueSubscription[Data])
-		}
-		if _, ok := q.subs[sub.id]; !ok {
-			q.subs[sub.id] = sub
-			q.m.Unlock()
-			break
-		}
-		q.m.Unlock()
-	}
+func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 	return func(yield func(pubsub.Message[Data], error) bool) {
+		sub := &QueueSubscription[Data]{
+			ctx:       ctx,
+			q:         q,
+			createdAt: clock.Now(),
+		}
+		for i := 1; i < math.MaxInt; i++ {
+			sub.id = subscriptionID(i)
+			q.m.Lock()
+			if q.subs == nil {
+				q.subs = make(map[subscriptionID]*QueueSubscription[Data])
+			}
+			if _, ok := q.subs[sub.id]; !ok {
+				q.subs[sub.id] = sub
+				q.m.Unlock()
+				break
+			}
+			q.m.Unlock()
+		}
 		defer sub.Close()
 		for sub.Next() {
 			v := sub.Value()
@@ -216,7 +216,7 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) (pubsub.Subscription[Data],
 				return
 			}
 		}
-	}, nil
+	}
 }
 
 // BeginTx creates a context with a transaction.

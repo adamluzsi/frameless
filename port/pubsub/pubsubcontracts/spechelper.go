@@ -146,14 +146,7 @@ func (sih *subscriptionIteratorHelper[Data]) ReceivedAt() time.Time {
 func (sih *subscriptionIteratorHelper[Data]) Start(tb testing.TB, ctx context.Context) {
 	assert.Nil(tb, sih.cancel)
 	ctx, cancel := context.WithCancel(ctx)
-	sub, err := sih.Subscriber.Subscribe(ctx)
-	if err != nil {
-		cancel()
-		if ctx.Err() == nil {
-			assert.NoError(tb, err)
-		}
-		return
-	}
+	sub := sih.Subscriber.Subscribe(ctx)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go sih.wrk(tb, ctx, &wg, sub)
@@ -217,9 +210,7 @@ func (c base[Data]) GivenWeHadSubscriptionBefore(s *testcase.Spec) {
 func (c base[Data]) MakeSubscription(t *testcase.T) pubsub.Subscription[Data] {
 	ctx, cancel := context.WithCancel(c.subject().Get(t).MakeContext(t))
 	t.Defer(cancel)
-	sub, err := c.subject().Get(t).Subscriber.Subscribe(ctx)
-	assert.NoError(t, err)
-	return sub
+	return c.subject().Get(t).Subscriber.Subscribe(ctx)
 }
 
 func (c base[Data]) TryCleanup(s *testcase.Spec) {

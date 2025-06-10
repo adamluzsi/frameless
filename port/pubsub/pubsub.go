@@ -10,7 +10,7 @@ type Publisher[Data any] interface {
 }
 
 type Subscriber[Data any] interface {
-	Subscribe(context.Context) (Subscription[Data], error) // crud.QueryMany
+	Subscribe(context.Context) Subscription[Data] // crud.QueryMany
 }
 
 type Subscription[Data any] = iter.Seq2[Message[Data], error]
