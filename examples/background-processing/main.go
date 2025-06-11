@@ -81,11 +81,11 @@ func (c MyDomainEventConsumer) HandleEvents(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-
 		if err := handle(msg); err != nil {
 			return err
 		}
 	}
+	return nil
 }
 
 // package myhttpapi
