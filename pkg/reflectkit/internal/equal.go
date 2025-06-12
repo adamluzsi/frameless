@@ -34,20 +34,7 @@ func reflectDeepEqual(m *refMem, v1, v2 reflect.Value) (iseq bool) {
 
 	switch v1.Kind() {
 	case reflect.Struct:
-		for i, n := 0, v1.NumField(); i < n; i++ {
-			f1, ok := TryToMakeAccessible(v1.Field(i))
-			if !ok {
-				continue
-			}
-			f2, ok := TryToMakeAccessible(v2.Field(i))
-			if !ok {
-				continue
-			}
-			if eq := reflectDeepEqual(m, f1, f2); !eq {
-				return eq
-			}
-		}
-		return true
+		return equalStruct(m, v1, v2)
 
 	case reflect.Pointer:
 		if v1.UnsafePointer() == v2.UnsafePointer() {
@@ -168,6 +155,52 @@ func reflectDeepEqual(m *refMem, v1, v2 reflect.Value) (iseq bool) {
 			Accessible(v1).Interface(),
 			Accessible(v2).Interface())
 	}
+}
+
+func equalStruct(m *refMem, v1 reflect.Value, v2 reflect.Value) bool {
+	var (
+		v1cptr = reflect.New(v1.Type())
+		v2cptr = reflect.New(v2.Type())
+	)
+	if v1c, ok := TryToMakeAccessible(v1); ok {
+		v1cptr.Elem().Set(reflect.ValueOf(v1c.Interface()))
+	}
+	if v2c, ok := TryToMakeAccessible(v2); ok {
+		v2cptr.Elem().Set(reflect.ValueOf(v2c.Interface()))
+	}
+	for i, n := 0, v1.NumField(); i < n; i++ {
+		f1, ok := TryToMakeAccessible(v1.Field(i))
+		if !ok {
+			continue
+		}
+		f2, ok := TryToMakeAccessible(v2.Field(i))
+		if !ok {
+			continue
+		}
+		if eq := reflectDeepEqual(m, f1, f2); !eq {
+			return eq
+		}
+		// we zero out fields that we already checked,
+		// so we can repsect if something should be compared not through `==`
+		// but with a method comparison based approach (Cmp/Compare/Equal)
+		var zero = reflect.New(f1.Type()).Elem()
+		if cf, ok := ToSettable(v1cptr.Elem().Field(i)); ok {
+			cf.Set(zero)
+		}
+		if cf, ok := ToSettable(v2cptr.Elem().Field(i)); ok {
+			cf.Set(zero)
+		}
+	}
+	// Check equality of the remaining unexported fields
+	// The fields that could be already confirmed to be equal,
+	// has already set to zero value state as part of the previous iteration,
+	// so what left is the unexported fields that we want to check.
+	//
+	// Specification:
+	// 	Struct types are comparable if all their field types are comparable.
+	// 	Two struct values are equal if their corresponding non-blank field values are equal.
+	// 	The fields are compared in source order, and comparison stops as soon as two field values differ (or all fields have been compared).
+	return v1cptr.Elem().Interface() == v2cptr.Elem().Interface()
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

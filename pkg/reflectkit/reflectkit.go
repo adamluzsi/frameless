@@ -278,18 +278,7 @@ type LookupFieldID interface {
 }
 
 func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
-	if !rv.IsValid() {
-		return reflect.Value{}, false
-	}
-	if rv.CanSet() {
-		return rv, true
-	}
-	if rv.CanAddr() {
-		if uv := reflect.NewAt(rv.Type(), rv.Addr().UnsafePointer()).Elem(); uv.CanInterface() {
-			return uv, true
-		}
-	}
-	return reflect.Value{}, false
+	return internal.ToSettable(rv)
 }
 
 type TagHandler[T any] struct {

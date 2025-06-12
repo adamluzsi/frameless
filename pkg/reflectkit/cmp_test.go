@@ -1,8 +1,10 @@
 package reflectkit_test
 
 import (
+	"net/netip"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/testcase/random"
 )
@@ -209,6 +211,18 @@ func TestEqual(t *testing.T) {
 				Irrelevant: rnd.Int(),
 				Relevant:   42,
 			},
+			isEqual: false,
+		},
+		{ // netip is a struct that is expected to be comparable with `==``
+			desc:    "structs with unexported fields - equal",
+			v1:      must.Must(netip.ParsePrefix("10.0.0.0/24")),
+			v2:      must.Must(netip.ParsePrefix("10.0.0.0/24")),
+			isEqual: true,
+		},
+		{
+			desc:    "structs with unexported fields - equal",
+			v1:      must.Must(netip.ParsePrefix("10.0.0.0/24")),
+			v2:      must.Must(netip.ParsePrefix("10.0.0.1/24")),
 			isEqual: false,
 		},
 	}

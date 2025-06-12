@@ -9,6 +9,21 @@ import (
 
 const ErrTypeMismatch errorkit.Error = "ErrTypeMismatch"
 
+func ToSettable(rv reflect.Value) (_ reflect.Value, ok bool) {
+	if !rv.IsValid() {
+		return reflect.Value{}, false
+	}
+	if rv.CanSet() {
+		return rv, true
+	}
+	if rv.CanAddr() {
+		if uv := reflect.NewAt(rv.Type(), rv.Addr().UnsafePointer()).Elem(); uv.CanInterface() {
+			return uv, true
+		}
+	}
+	return reflect.Value{}, false
+}
+
 func Accessible(rv reflect.Value) reflect.Value {
 	if rv, ok := TryToMakeAccessible(rv); ok {
 		return rv
