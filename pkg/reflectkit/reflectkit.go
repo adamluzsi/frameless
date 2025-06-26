@@ -3,7 +3,6 @@ package reflectkit
 import (
 	"errors"
 	"fmt"
-	"iter"
 	"reflect"
 	"strings"
 	"unsafe"
@@ -316,7 +315,7 @@ func (h *TagHandler[T]) HandleStruct(rStruct reflect.Value) error {
 	if rStruct.Kind() != reflect.Struct {
 		return interr.ImplementationError.F("%s is not a struct type", rStruct.Type().String())
 	}
-	for field, value := range OverStruct(rStruct) {
+	for field, value := range IterStructFields(rStruct) {
 		if err := h.handleStructField(field, value); err != nil {
 			return err
 		}
@@ -472,51 +471,6 @@ func Clone(value reflect.Value) reflect.Value {
 	}
 }
 
-func OverStruct(rStruct reflect.Value) iter.Seq2[reflect.StructField, reflect.Value] {
-	if rStruct.Kind() != reflect.Struct {
-		panic(interr.ImplementationError.F("expected %s to be a struct type", rStruct.Type().String()))
-	}
-	return iter.Seq2[reflect.StructField, reflect.Value](func(yield func(reflect.StructField, reflect.Value) bool) {
-		var (
-			typ = rStruct.Type()
-			num = typ.NumField()
-		)
-		for i := 0; i < num; i++ {
-			if !yield(typ.Field(i), rStruct.Field(i)) {
-				break
-			}
-		}
-	})
-}
-
-func OverMap(rMap reflect.Value) iter.Seq2[reflect.Value, reflect.Value] {
-	if rMap.Kind() != reflect.Map {
-		panic(interr.ImplementationError.F("expected %s to be a map type", rMap.Type().String()))
-	}
-	return iter.Seq2[reflect.Value, reflect.Value](func(yield func(reflect.Value, reflect.Value) bool) {
-		i := rMap.MapRange()
-		for i.Next() {
-			if !yield(i.Key(), i.Value()) {
-				break
-			}
-		}
-	})
-}
-
-func OverSlice(rSlice reflect.Value) iter.Seq2[int, reflect.Value] {
-	if rSlice.Kind() != reflect.Slice {
-		panic(interr.ImplementationError.F("expected %s to be a slice type", rSlice.Type().String()))
-	}
-	return iter.Seq2[int, reflect.Value](func(yield func(int, reflect.Value) bool) {
-		var length = rSlice.Len()
-		for i := 0; i < length; i++ {
-			if !yield(i, rSlice.Index(i)) {
-				break
-			}
-		}
-	})
-}
-
 func IsBuiltInType(typ reflect.Type) bool {
 	return typ.PkgPath() == ""
 }
@@ -644,4 +598,77 @@ func canElem(val reflect.Value) bool {
 		return false
 	}
 	return !val.IsNil()
+}
+
+// Accessor is syntax sugar to build a value accessor paths.
+type Accessor func(reflect.Value) (reflect.Value, bool)
+
+// Lookup applies the path to the provided reflect.Value.
+// Returns the result of the path application or the input if the path is nil.
+func (p Accessor) Lookup(v reflect.Value) (reflect.Value, bool) {
+	defer recoverReflectPanic()
+	if p == nil {
+		return v, false
+	}
+	return p(v)
+}
+
+// Next composes a new Path by applying the current path followed by the provided function.
+// It is used to build a sequence of steps in a fluent interface, e.g., path.Next(...).
+func (p Accessor) Next(next Accessor) Accessor {
+	if next == nil {
+		panic("reflectkit.Accessor#Next called with nil argument")
+	}
+	return func(v reflect.Value) (reflect.Value, bool) {
+		if p != nil {
+			var ok bool
+			v, ok = p(v)
+			if !ok {
+				return v, ok
+			}
+		}
+		return next(v)
+	}
+}
+
+func recoverReflectPanic() {
+	recovered := recover()
+	if recovered == nil {
+		return
+	}
+	err, ok := recovered.(error)
+	if !ok {
+		panic(recovered)
+	}
+	var verr *reflect.ValueError
+	if !errors.As(err, &verr) {
+		panic(recovered)
+	}
+}
+
+// Configure is a default implementation that can be used to implement the Option interface' Configure method.
+func MergeStruct[Struct any](vs ...Struct) Struct {
+	var T = TypeOf[Struct]()
+
+	if kind := T.Kind(); kind != reflect.Struct {
+		panic(fmt.Sprintf("reflectkit.MergeStruct called with non-struct kind: %s", kind.String()))
+	}
+
+	var out = reflect.New(T).Elem()
+
+	for _, v := range vs {
+		rv := reflect.ValueOf(v)
+
+		for field, src := range IterStructFields(rv) {
+			dst := out.FieldByIndex(field.Index)
+			if !dst.IsValid() {
+				continue
+			}
+			if !IsZero(src) {
+				dst.Set(src)
+			}
+		}
+	}
+
+	return out.Interface().(Struct)
 }

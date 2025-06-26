@@ -2,8 +2,6 @@ package reflectkit_test
 
 import (
 	"context"
-	"fmt"
-	"iter"
 	"math/big"
 	"reflect"
 	"strings"
@@ -2256,191 +2254,6 @@ func TestClone(t *testing.T) {
 	})
 }
 
-func TestOverStruct(t *testing.T) {
-	type T struct {
-		Foo string
-		Bar string
-		Baz string
-	}
-
-	var example = T{
-		Foo: "foo",
-		Bar: "bar",
-		Baz: "baz",
-	}
-
-	t.Run("iter.Pull2", func(t *testing.T) {
-		i := reflectkit.OverStruct(reflect.ValueOf(example))
-
-		next, stop := iter.Pull2(i)
-		defer stop()
-
-		var (
-			fields []string
-			n      int
-		)
-		for {
-			sf, val, ok := next()
-			if !ok {
-				break
-			}
-			n++
-			fields = append(fields, sf.Name)
-			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
-		}
-		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
-		assert.Equal(t, n, 3)
-	})
-
-	t.Run("range", func(t *testing.T) {
-		var (
-			fields []string
-			n      int
-		)
-		for sf, val := range reflectkit.OverStruct(reflect.ValueOf(example)) {
-			n++
-			fields = append(fields, sf.Name)
-			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
-		}
-		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
-		assert.Equal(t, n, 3)
-	})
-
-	t.Run("not struct kind", func(t *testing.T) {
-		assert.Panic(t, func() {
-			reflectkit.OverStruct(reflect.ValueOf("hello:world"))
-		})
-	})
-}
-
-func TestOverMap(t *testing.T) {
-	var example = map[string]string{
-		"Foo": "foo",
-		"Bar": "bar",
-		"Baz": "baz",
-	}
-
-	t.Run("iter.Pull2 on non empty map", func(t *testing.T) {
-		i := reflectkit.OverMap(reflect.ValueOf(example))
-
-		next, stop := iter.Pull2(i)
-		defer stop()
-
-		var (
-			elems []string
-			n     int
-		)
-		for {
-			key, val, ok := next()
-			if !ok {
-				break
-			}
-			n++
-			elems = append(elems, fmt.Sprintf("%s:%s", key.String(), val.String()))
-		}
-		assert.ContainExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
-		assert.Equal(t, n, 3)
-	})
-
-	t.Run("iter.Pull2 on nil map", func(t *testing.T) {
-		i := reflectkit.OverMap(reflect.ValueOf((map[string]string)(nil)))
-
-		next, stop := iter.Pull2(i)
-		defer stop()
-
-		for {
-			_, _, ok := next()
-			if !ok {
-				break
-			}
-			t.Fatal("unexpected to have even a single iteration for a nil map")
-		}
-	})
-
-	t.Run("range on non empty map", func(t *testing.T) {
-		var (
-			elems []string
-			n     int
-		)
-		for key, val := range reflectkit.OverMap(reflect.ValueOf(example)) {
-			n++
-			assert.Equal(t, val.String(), strings.ToLower(key.String()))
-			elems = append(elems, fmt.Sprintf("%s:%s", key.String(), val.String()))
-		}
-		assert.ContainExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
-		assert.Equal(t, n, 3)
-	})
-
-	t.Run("not map kind", func(t *testing.T) {
-		assert.Panic(t, func() {
-			reflectkit.OverMap(reflect.ValueOf("hello:world"))
-		})
-	})
-}
-
-func TestOverSlice(t *testing.T) {
-	var example = []string{"foo", "bar", "baz"}
-
-	t.Run("iter.Pull2 on non empty slice", func(t *testing.T) {
-		i := reflectkit.OverSlice(reflect.ValueOf(example))
-
-		next, stop := iter.Pull2(i)
-		defer stop()
-
-		var (
-			elems []string
-			n     int
-			last  = -1
-		)
-		for {
-			index, val, ok := next()
-			if !ok {
-				break
-			}
-			assert.True(t, last < index)
-			last = index
-			n++
-			elems = append(elems, fmt.Sprintf("%d:%s", index, val.String()))
-		}
-		assert.ContainExactly(t, elems, []string{"0:foo", "1:bar", "2:baz"})
-		assert.Equal(t, n, 3)
-	})
-
-	t.Run("iter.Pull2 on nil slice", func(t *testing.T) {
-		i := reflectkit.OverSlice(reflect.ValueOf(([]string)(nil)))
-
-		next, stop := iter.Pull2(i)
-		defer stop()
-
-		for {
-			_, _, ok := next()
-			if !ok {
-				break
-			}
-			t.Fatal("unexpected to have any value")
-		}
-	})
-
-	t.Run("range on non empty slice", func(t *testing.T) {
-		var (
-			elems []string
-			n     int
-		)
-		for index, val := range reflectkit.OverSlice(reflect.ValueOf(example)) {
-			n++
-			elems = append(elems, fmt.Sprintf("%d:%s", index, val.String()))
-		}
-		assert.ContainExactly(t, elems, []string{"0:foo", "1:bar", "2:baz"})
-		assert.Equal(t, n, 3)
-	})
-
-	t.Run("not map kind", func(t *testing.T) {
-		assert.Panic(t, func() {
-			reflectkit.OverSlice(reflect.ValueOf("hello:world"))
-		})
-	})
-}
-
 func TestIsBuiltInType(t *testing.T) {
 	t.Run("smoke", func(t *testing.T) {
 		assert.True(t, reflectkit.IsBuiltInType(reflectkit.TypeOf[string]()))
@@ -2961,5 +2774,157 @@ func TestToType(t *testing.T) {
 		err, ok := out.(error)
 		assert.True(t, ok, "error panic value was expected")
 		assert.Contain(t, err.Error(), "Value.Type")
+	})
+}
+
+func ExampleAccessor() {
+	type T3 struct {
+		V string
+	}
+	type T2 struct {
+		T3 T3
+	}
+	type T1 struct {
+		T2 T2
+	}
+
+	var path reflectkit.Accessor
+	path = path.
+		Next(func(v reflect.Value) (reflect.Value, bool) { // .T2
+			return v.FieldByName("T2"), true
+		}).
+		Next(func(v reflect.Value) (reflect.Value, bool) { // .T3
+			return v.FieldByName("T3"), true
+		}).
+		Next(func(v reflect.Value) (reflect.Value, bool) { // .V
+			return v.FieldByName("V"), true
+		})
+
+	var v T1
+	_, _ = path.Lookup(reflect.ValueOf(v)) // -> T1.T2.T3.V
+}
+
+func TestAccessor_Next(t *testing.T) {
+	t.Run("smoke", func(t *testing.T) {
+		type T3 struct {
+			V string
+		}
+		type T2 struct {
+			T3 T3
+		}
+		type T1 struct {
+			T2 T2
+		}
+
+		var v T1 = T1{
+			T2: T2{
+				T3: T3{
+					V: rnd.HexN(4),
+				},
+			},
+		}
+
+		var path reflectkit.Accessor
+
+		path = path.
+			Next(func(v reflect.Value) (reflect.Value, bool) { // .T2
+				return v.FieldByName("T2"), true
+			}).
+			Next(func(v reflect.Value) (reflect.Value, bool) { // .T3
+				return v.FieldByName("T3"), true
+			}).
+			Next(func(v reflect.Value) (reflect.Value, bool) { // .V
+				return v.FieldByName("V"), true
+			})
+
+		got, ok := path.Lookup(reflect.ValueOf(v))
+		assert.True(t, ok)
+		assert.Equal(t, v.T2.T3.V, got.String())
+	})
+
+	t.Run("nil#Lookup", func(t *testing.T) {
+		var path reflectkit.Accessor
+		exp := rnd.String()
+		_, ok := path.Lookup(reflect.ValueOf(exp))
+		assert.False(t, ok)
+	})
+
+	t.Run("nil#Next", func(t *testing.T) {
+		var acc reflectkit.Accessor
+
+		acc = acc.Next(func(v reflect.Value) (reflect.Value, bool) {
+			return v.FieldByName("V"), true
+		})
+
+		type T struct{ V string }
+		exp := rnd.String()
+		var v = T{V: exp}
+
+		got, ok := acc.Lookup(reflect.ValueOf(v))
+		assert.True(t, ok)
+		assert.Equal(t, got.Kind(), reflect.String)
+		assert.Equal(t, exp, got.String())
+	})
+
+	t.Run("#Next with nil arg", func(t *testing.T) {
+		var path reflectkit.Accessor = func(v reflect.Value) (reflect.Value, bool) {
+			return v, true
+		}
+
+		assert.Panic(t, func() {
+			path.Next(nil)
+		})
+	})
+
+	t.Run("#Lookup on non faulty path", func(t *testing.T) {
+		var acc reflectkit.Accessor
+		acc = acc.Next(func(v reflect.Value) (reflect.Value, bool) {
+			return v.FieldByName("V"), true
+		})
+
+		var val = "foo bar baz"
+
+		got, ok := acc.Lookup(reflect.ValueOf(val))
+		assert.False(t, ok)
+		assert.Empty(t, got)
+	})
+}
+
+func TestMergeStruct(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type T struct {
+		A int
+		B int
+		C int
+	}
+
+	s.Test("empty list", func(t *testcase.T) {
+		var (
+			exp T
+			got = reflectkit.MergeStruct[T]()
+		)
+		assert.Equal(t, exp, got)
+	})
+
+	s.Test("take non-empty fields", func(t *testcase.T) {
+		got := reflectkit.MergeStruct[T](
+			T{A: 1},
+			T{B: 2},
+			T{C: 3},
+		)
+		assert.Equal(t, T{A: 1, B: 2, C: 3}, got)
+	})
+
+	s.Test("last value has the highest priority", func(t *testcase.T) {
+		got := reflectkit.MergeStruct[T](
+			T{A: 2},
+			T{B: 3},
+			T{C: 4},
+			T{A: 1},
+			T{B: 2},
+			T{C: 3},
+		)
+		assert.Equal(t, T{A: 1, B: 2, C: 3}, got)
 	})
 }
