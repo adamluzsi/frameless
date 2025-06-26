@@ -195,7 +195,7 @@ func TestMux(t *testing.T) {
 
 						fmt.Fprintln(w, ExpCmdReply.Get(t))
 					}}
-				})
+				}).EagerLoading(s)
 
 				s.And("one of the flag is a bool type", func(s *testcase.Spec) {
 					var _ bool = CommandWithFlag{}.Flag5
@@ -1220,4 +1220,98 @@ type CommandWithUnexportedField struct {
 
 func (cmd CommandWithUnexportedField) ServeCLI(w cli.Response, r *cli.Request) {
 	w.Write([]byte("Hello, world!"))
+}
+
+func TestConfigureHandler_withNestedConfig(t *testing.T) {
+	testcase.SetEnv(t, "EV3", "baz")
+
+	req := &cli.Request{Args: []string{"-ev1", "foo"}}
+	h, err := cli.ConfigureHandler(&CommandWithNestedConfig{}, "", req)
+	assert.NoError(t, err)
+	assert.NotNil(t, h)
+	assert.Equal(t, h.NestedConfig.Env1, "foo")
+	assert.Equal(t, h.NestedConfig.Env2, "bar")
+	assert.Equal(t, h.NestedConfig.Env3, "baz")
+}
+
+type CommandWithNestedConfig struct {
+	NestedConfig NestedConfig
+}
+
+type NestedConfig struct {
+	Env1 string `env:"EV1" flag:"ev1"`
+	Env2 string `env:"EV2" default:"bar"`
+	Env3 string `env:"EV3"`
+}
+
+func (cmd CommandWithNestedConfig) ServeCLI(w cli.Response, r *cli.Request) {
+	w.Write([]byte("foo/bar/baz"))
+}
+
+func TestRequest_WithContext(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		request = let.Var(s, func(t *testcase.T) *cli.Request {
+			return &cli.Request{
+				Args: random.Slice(3, t.Random.String),
+				Body: strings.NewReader(t.Random.String()),
+			}
+		})
+		Context = let.Context(s)
+	)
+	act := let.Act(func(t *testcase.T) *cli.Request {
+		return request.Get(t).WithContext(Context.Get(t))
+	})
+
+	s.Test("preior to the act, the #Context already returns a non-nil value", func(t *testcase.T) {
+		assert.NotNil(t, request.Get(t).Context())
+	})
+
+	s.Test("it sets the new context", func(t *testcase.T) {
+		got := act(t)
+		assert.NotNil(t, got)
+		assert.Equal(t, Context.Get(t), got.Context())
+	})
+
+	s.When("context contains values", func(s *testcase.Spec) {
+		var (
+			key   = let.StringNC(s, 5, random.Charset())
+			value = let.Int(s)
+		)
+
+		Context.Let(s, func(t *testcase.T) context.Context {
+			ctx := Context.Super(t)
+			return context.WithValue(ctx, key.Get(t), value.Get(t))
+		})
+
+		s.Then("the value will be present in the result request's context", func(t *testcase.T) {
+			got := act(t)
+			assert.NotNil(t, got)
+			assert.NotNil(t, got.Context())
+			assert.Equal[any](t, got.Context().Value(key.Get(t)), value.Get(t))
+		})
+
+		s.Then("it always return back the same value", func(t *testcase.T) {
+			got := act(t)
+
+			t.Random.Repeat(3, 7, func() {
+				assert.Equal(t, got.Context(), Context.Get(t))
+			})
+		})
+	})
+
+	s.Then("result request contains the same body and args as the receiver value", func(t *testcase.T) {
+		got := act(t)
+		assert.Equal(t, request.Get(t).Args, got.Args)
+		assert.Equal(t, request.Get(t).Body, got.Body)
+	})
+
+	s.Then("result Request value will be a shallow copy", func(t *testcase.T) {
+		expArgs := slicekit.Clone(request.Get(t).Args)
+		got := act(t)
+
+		got.Args = nil
+		assert.Equal(t, request.Get(t).Args, expArgs)
+	})
 }
