@@ -5,16 +5,16 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
+	"go.llib.dev/frameless/internal/spechelper/resource"
 	"go.llib.dev/frameless/pkg/cache"
-	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	"go.llib.dev/frameless/pkg/cache/cachecontract"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
-	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/frameless/port/meta/metacontracts"
-	"go.llib.dev/frameless/spechelper/resource"
+	"go.llib.dev/frameless/port/meta/metacontract"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -36,7 +36,7 @@ func TestEventLogRepository(t *testing.T) {
 	repo := memory.NewEventLogRepository[TestEntity, string](m)
 
 	testcase.RunSuite(t, resource.Contract[TestEntity, string](repo, resource.Config[TestEntity, string]{
-		CRUD:          crudcontracts.Config[TestEntity, string]{MakeEntity: makeTestEntity},
+		CRUD:          crudcontract.Config[TestEntity, string]{MakeEntity: makeTestEntity},
 		MetaAccessor:  m,
 		CommitManager: repo,
 	}))
@@ -105,26 +105,26 @@ func getRepositorySpecsForT[Entity any, ID comparable](
 	MakeContext func(testing.TB) context.Context,
 	MakeEntity func(testing.TB) Entity,
 ) []testcase.Suite {
-	crudConfig := crudcontracts.Config[Entity, ID]{
+	crudConfig := crudcontract.Config[Entity, ID]{
 		MakeContext:     MakeContext,
 		MakeEntity:      MakeEntity,
 		SupportIDReuse:  true,
 		SupportRecreate: false,
 	}
-	cacheConfig := cachecontracts.Config[Entity, ID]{
+	cacheConfig := cachecontract.Config[Entity, ID]{
 		CRUD: crudConfig,
 	}
-	metaConfig := metacontracts.Config[int]{
+	metaConfig := metacontract.Config[int]{
 		MakeV: func(tb testing.TB) int { return testcase.ToT(&tb).Random.Int() },
 	}
 	return []testcase.Suite{
-		crudcontracts.Creator[Entity, ID](subject, crudConfig),
-		crudcontracts.Finder[Entity, ID](subject, crudConfig),
-		crudcontracts.Updater[Entity, ID](subject, crudConfig),
-		crudcontracts.Deleter[Entity, ID](subject, crudConfig),
-		crudcontracts.OnePhaseCommitProtocol[Entity, ID](subject, subject.EventLog, crudConfig),
-		cachecontracts.EntityRepository[Entity, ID](subject, subject.EventLog, cacheConfig),
-		metacontracts.MetaAccessor[int](subject.EventLog, metaConfig),
+		crudcontract.Creator[Entity, ID](subject, crudConfig),
+		crudcontract.Finder[Entity, ID](subject, crudConfig),
+		crudcontract.Updater[Entity, ID](subject, crudConfig),
+		crudcontract.Deleter[Entity, ID](subject, crudConfig),
+		crudcontract.OnePhaseCommitProtocol[Entity, ID](subject, subject.EventLog, crudConfig),
+		cachecontract.EntityRepository[Entity, ID](subject, subject.EventLog, cacheConfig),
+		metacontract.MetaAccessor[int](subject.EventLog, metaConfig),
 	}
 }
 
@@ -358,7 +358,7 @@ func TestEventLogRepository_implementsCacheEntityRepository(t *testing.T) {
 	eventLog := memory.NewEventLog()
 	repository := memory.NewEventLogRepository[TestEntity, string](eventLog)
 	memory.LogHistoryOnFailure(t, eventLog)
-	testcase.RunSuite(t, cachecontracts.EntityRepository[TestEntity, string](repository, eventLog))
+	testcase.RunSuite(t, cachecontract.EntityRepository[TestEntity, string](repository, eventLog))
 }
 
 func TestEventLogRepository_multipleRepositoryForSameEntityUnderDifferentNamespace(t *testing.T) {

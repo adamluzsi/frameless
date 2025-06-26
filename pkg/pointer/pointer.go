@@ -10,7 +10,8 @@ func Of[T any](v T) *T { return &v }
 // then it returns with the zero value.
 func Deref[T any](v *T) T {
 	if v == nil {
-		return *new(T)
+		var zero T
+		return zero
 	}
 	return *v
 }

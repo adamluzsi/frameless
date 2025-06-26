@@ -30,7 +30,7 @@ import (
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/relationship"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"

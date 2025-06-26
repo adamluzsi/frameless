@@ -17,9 +17,9 @@ import (
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
-	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
@@ -96,18 +96,18 @@ func TestRESTClient_crud(t *testing.T) {
 		BaseURL:    srv.URL,
 	}
 
-	crudcontractsConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
+	crudcontractsConfig := crudcontract.Config[testent.Foo, testent.FooID]{
 		MakeEntity:        testent.MakeFoo,
 		SupportIDReuse:    true,
 		SupportRecreate:   true,
 		LazyNotFoundError: true,
 	}
 
-	crudcontracts.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontracts.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontracts.ByIDsFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontracts.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontracts.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontract.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontract.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontract.ByIDsFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontract.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontract.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
 }
 
 func TestRESTClient_FindAll_withDisableStreaming(t *testing.T) {
@@ -123,11 +123,11 @@ func TestRESTClient_FindAll_withDisableStreaming(t *testing.T) {
 		DisableStreaming: true,
 	}
 
-	crudcontractsConfig := crudcontracts.Config[testent.Foo, testent.FooID]{
+	crudcontractsConfig := crudcontract.Config[testent.Foo, testent.FooID]{
 		MakeEntity: testent.MakeFoo,
 	}
 
-	crudcontracts.AllFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	crudcontract.AllFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
 }
 
 func TestRESTClient_subresource(t *testing.T) {
@@ -165,7 +165,7 @@ func TestRESTClient_subresource(t *testing.T) {
 		BaseURL:    srv.URL + "/foos/:foo_id/bars",
 	}
 
-	crudcontractsConfig := crudcontracts.Config[testent.Bar, testent.BarID]{
+	crudcontractsConfig := crudcontract.Config[testent.Bar, testent.BarID]{
 		MakeContext: func(testing.TB) context.Context {
 			return httpkit.WithPathParam(context.Background(), "foo_id", foo.ID.String())
 		},
@@ -179,10 +179,10 @@ func TestRESTClient_subresource(t *testing.T) {
 		},
 	}
 
-	t.Run("Creator", crudcontracts.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
-	t.Run("Finder", crudcontracts.Finder[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
-	t.Run("Updater", crudcontracts.Updater[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
-	t.Run("Deleter", crudcontracts.Deleter[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Creator", crudcontract.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Finder", crudcontract.Finder[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Updater", crudcontract.Updater[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Deleter", crudcontract.Deleter[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
 }
 
 func TestRESTClient_Resource_subresource(t *testing.T) {
@@ -227,7 +227,7 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 		},
 	}
 
-	crudcontractsConfig := crudcontracts.Config[testent.Bar, testent.BarID]{
+	crudcontractsConfig := crudcontract.Config[testent.Bar, testent.BarID]{
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 		MakeEntity: func(t testing.TB) testent.Bar {
@@ -238,10 +238,10 @@ func TestRESTClient_Resource_subresource(t *testing.T) {
 		},
 	}
 
-	t.Run("Creator", crudcontracts.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
-	t.Run("Finder", crudcontracts.Finder[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
-	t.Run("Updater", crudcontracts.Updater[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
-	t.Run("Deleter", crudcontracts.Deleter[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Creator", crudcontract.Creator[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Finder", crudcontract.Finder[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Updater", crudcontract.Updater[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
+	t.Run("Deleter", crudcontract.Deleter[testent.Bar, testent.BarID](barClient, crudcontractsConfig).Test)
 }
 
 var _ = func() struct{} {
@@ -287,11 +287,11 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 		},
 	}
 
-	crudcontracts.Creator[testent.Foo, testent.FooID](fooClient).Test(t)
-	crudcontracts.Finder[testent.Foo, testent.FooID](fooClient).Test(t)
-	crudcontracts.ByIDsFinder[testent.Foo, testent.FooID](fooClient).Test(t)
-	crudcontracts.Updater[testent.Foo, testent.FooID](fooClient).Test(t)
-	crudcontracts.Deleter[testent.Foo, testent.FooID](fooClient).Test(t)
+	crudcontract.Creator[testent.Foo, testent.FooID](fooClient).Test(t)
+	crudcontract.Finder[testent.Foo, testent.FooID](fooClient).Test(t)
+	crudcontract.ByIDsFinder[testent.Foo, testent.FooID](fooClient).Test(t)
+	crudcontract.Updater[testent.Foo, testent.FooID](fooClient).Test(t)
+	crudcontract.Deleter[testent.Foo, testent.FooID](fooClient).Test(t)
 }
 
 const GobMediaType = "application/gob"

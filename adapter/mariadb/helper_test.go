@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/adapter/mariadb"
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/random"
 

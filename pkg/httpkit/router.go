@@ -500,7 +500,7 @@ func httpServeMuxRoutingNodeRouteInfo(v reflect.Value) RouteInfo {
 
 	if _, children, ok := rf.LookupField(v, "children"); ok && !rf.IsNil(children) {
 		if _, s, ok := rf.LookupField(children, "s"); ok && !rf.IsNil(s) {
-			for _, entry := range rf.OverSlice(s) {
+			for _, entry := range rf.IterSlice(s) {
 				_, routingNodePtr, ok := rf.LookupField(entry, "value") /* *routingNode */
 				if !ok {
 					continue
@@ -510,7 +510,7 @@ func httpServeMuxRoutingNodeRouteInfo(v reflect.Value) RouteInfo {
 			}
 		}
 		if _, m, ok := rf.LookupField(children, "m"); ok && !rf.IsEmpty(m) { // map[string, *routingNode]
-			for _, routingNodePtr := range rf.OverMap(m) {
+			for _, routingNodePtr := range rf.IterMap(m) {
 				ri = append(ri, httpServeMuxRoutingNodeRouteInfo(routingNodePtr)...)
 			}
 		}

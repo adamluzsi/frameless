@@ -14,7 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/cache/cachecontracts"
 	crudcontracts "go.llib.dev/frameless/port/crud/crudcontracts"
 	"go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"

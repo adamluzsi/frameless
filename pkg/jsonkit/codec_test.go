@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/port/codec"
-	. "go.llib.dev/frameless/spechelper/testent"
+	. "go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase/assert"
 )
 

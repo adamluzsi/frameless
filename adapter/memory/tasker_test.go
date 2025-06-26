@@ -4,14 +4,14 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/pkg/tasker/taskercontracts"
+	"go.llib.dev/frameless/pkg/tasker/taskercontract"
 )
 
 func TestTasker(t *testing.T) {
-	taskercontracts.ScheduleStateRepository(memory.NewTaskerSchedulerStateRepository()).Test(t)
-	taskercontracts.SchedulerLocks(memory.NewTaskerSchedulerLocks()).Test(t)
+	taskercontract.ScheduleStateRepository(memory.NewTaskerSchedulerStateRepository()).Test(t)
+	taskercontract.SchedulerLocks(memory.NewTaskerSchedulerLocks()).Test(t)
 
 	scheduler := memory.Scheduler()
-	taskercontracts.ScheduleStateRepository(scheduler.States).Test(t)
-	taskercontracts.SchedulerLocks(scheduler.Locks).Test(t)
+	taskercontract.ScheduleStateRepository(scheduler.States).Test(t)
+	taskercontract.SchedulerLocks(scheduler.Locks).Test(t)
 }

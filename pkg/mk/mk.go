@@ -10,8 +10,10 @@ import (
 
 // New will make a new T and call Init function recursively on it if it is implemented.
 func New[T any]() *T {
-	ptr := new(T)
-	typ := reflectkit.TypeOf[T]()
+	var (
+		ptr = new(T)
+		typ = reflectkit.TypeOf[T]()
+	)
 	if typ.Kind() == reflect.Struct {
 		refPtr := reflect.ValueOf(ptr)
 		initStruct(refPtr.Elem()) // TODO: test .Elem() rrequired
@@ -60,7 +62,7 @@ func initStruct(rStruct reflect.Value) {
 	if err := defaultTag.HandleStruct(rStruct); err != nil {
 		panic(err)
 	}
-	for _, value := range reflectkit.OverStruct(rStruct) {
+	for _, value := range reflectkit.IterStructFields(rStruct) {
 		reflectInit(value.Addr())
 	}
 }

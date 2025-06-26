@@ -7,7 +7,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/crud/extid/internal/testhelper"
 	"go.llib.dev/frameless/port/migration"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 
 	"go.llib.dev/frameless/port/crud/extid"

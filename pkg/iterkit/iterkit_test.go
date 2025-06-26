@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,14 +22,13 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/dtokit"
-	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/option"
-	. "go.llib.dev/frameless/spechelper/testent"
+	. "go.llib.dev/frameless/testing/testent"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -3624,7 +3624,7 @@ func TestBatch(t *testing.T) {
 	var batchSizeCases = func(s *testcase.Spec) {
 		s.When("size is not configured", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				c := option.Use(opts.Get(t))
+				c := option.ToConfig(opts.Get(t))
 				assert.Empty(t, c.Size)
 			})
 
@@ -3884,7 +3884,7 @@ func TestBatch1(t *testing.T) {
 	var batchSizeCases = func(s *testcase.Spec) {
 		s.When("size is not configured", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				c := option.Use(opts.Get(t))
+				c := option.ToConfig(opts.Get(t))
 				assert.Empty(t, c.Size)
 			})
 
@@ -4851,12 +4851,9 @@ func TestToSeqE_iterSeq(t *testing.T) {
 		itr = let.Var(s, func(t *testcase.T) iter.Seq[int] {
 			return iterkit.Slice1(values.Get(t))
 		})
-		errFuncs = let.Var(s, func(t *testcase.T) []func() error {
-			return nil
-		})
 	)
 	act := let.Act(func(t *testcase.T) iterkit.SeqE[int] {
-		return iterkit.ToSeqE(itr.Get(t), errFuncs.Get(t)...)
+		return iterkit.ToSeqE(itr.Get(t))
 	})
 
 	s.Then("it turns the iter.Seq[T] into a iter.Seq2[T, error] while having all the values yielded", func(t *testcase.T) {
@@ -4865,82 +4862,10 @@ func TestToSeqE_iterSeq(t *testing.T) {
 		assert.Equal(t, vs, values.Get(t))
 	})
 
-	s.When("ErrFunc provided", func(s *testcase.Spec) {
-		expErr := let.Var[error](s, nil)
-
-		errFuncs.Let(s, func(t *testcase.T) []func() error {
-			efs := errFuncs.Super(t)
-			efs = append(efs, func() error { return expErr.Get(t) })
-			return efs
-		})
-
-		s.And("it returns no error", func(s *testcase.Spec) {
-			expErr.LetValue(s, nil)
-
-			s.Then("iterating will not yield any error", func(t *testcase.T) {
-				vs, err := iterkit.CollectE(act(t))
-				assert.NoError(t, err)
-				assert.Equal(t, vs, values.Get(t))
-			})
-
-			s.And("but there is another err function passed as well that has an error", func(s *testcase.Spec) {
-				othErr := let.Error(s)
-
-				errFuncs.Let(s, func(t *testcase.T) []func() error {
-					efs := errFuncs.Super(t)
-					efs = append(efs, func() error { return othErr.Get(t) })
-					return efs
-				})
-
-				s.Then("that error is also checked by the iterator", func(t *testcase.T) {
-					_, err := iterkit.CollectE(act(t))
-					assert.ErrorIs(t, err, othErr.Get(t))
-				})
-			})
-		})
-
-		s.And("it yields an error", func(s *testcase.Spec) {
-			expErr.Let(s, func(t *testcase.T) error {
-				return t.Random.Error()
-			})
-
-			s.Then("the error is forwarded back", func(t *testcase.T) {
-				_, err := iterkit.CollectE(act(t))
-				assert.ErrorIs(t, err, expErr.Get(t))
-			})
-
-			s.And("there is another err func that has an error as well", func(s *testcase.Spec) {
-				othErr := let.Error(s)
-
-				errFuncs.Let(s, func(t *testcase.T) []func() error {
-					efs := errFuncs.Super(t)
-					efs = append(efs, func() error { return othErr.Get(t) })
-					return efs
-				})
-
-				s.Then("the first error is forwarded back", func(t *testcase.T) {
-					_, err := iterkit.CollectE(act(t))
-					assert.ErrorIs(t, err, expErr.Get(t))
-				})
-
-				s.Then("the error from the other error function is returned", func(t *testcase.T) {
-					_, err := iterkit.CollectE(act(t))
-					assert.ErrorIs(t, err, othErr.Get(t))
-				})
-
-				s.Then("we expect that both error yielded back as a combined one", func(t *testcase.T) {
-					var gotErr error
-					for _, err := range act(t) {
-						if err != nil {
-							gotErr = err
-							break
-						}
-					}
-					assert.ErrorIs(t, gotErr, expErr.Get(t))
-					assert.ErrorIs(t, gotErr, othErr.Get(t))
-				})
-			})
-		})
+	s.Then("iterating will not yield any error", func(t *testcase.T) {
+		vs, err := iterkit.CollectE(act(t))
+		assert.NoError(t, err)
+		assert.Equal(t, vs, values.Get(t))
 	})
 }
 
@@ -5112,11 +5037,6 @@ func TestOnSeqEValue(t *testing.T) {
 func TestOnSeqEValue_batch(tt *testing.T) {
 	t := testcase.NewT(tt)
 	_ = t
-}
-
-func TestNullErrFunc(t *testing.T) {
-	assert.NotPanic(t, func() { _ = errorkit.NullErrFunc() })
-	assert.NoError(t, errorkit.NullErrFunc())
 }
 
 func TestOnce(tt *testing.T) {
@@ -5452,5 +5372,76 @@ func TestFrom(t *testing.T) {
 				}
 			}
 		})
+	})
+}
+
+func ExampleReverse() {
+	var i iter.Seq[int]
+	i = iterkit.Reverse(i)
+}
+
+func TestReverse(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		input := random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
+
+		exp := slicekit.Clone(input)
+		slices.Reverse(exp)
+
+		i := iterkit.Slice1(input)
+		got := iterkit.Collect(iterkit.Reverse(i))
+
+		assert.Equal(t, exp, got)
+	})
+}
+
+func ExampleReverse2() {
+	var i iter.Seq2[string, int]
+	i = iterkit.Reverse2(i)
+}
+
+func TestReverse2(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		input := random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, int] {
+			return iterkit.KV[string, int]{
+				K: t.Random.Domain(),
+				V: t.Random.Int(),
+			}
+		})
+		exp := slicekit.Clone(input)
+		slices.Reverse(exp)
+
+		i := iterkit.FromKV(input)
+		got := iterkit.Collect2KV(iterkit.Reverse2(i))
+
+		assert.Equal(t, exp, got)
+	})
+}
+
+func ExampleReverseE() {
+	var i iter.Seq2[string, error]
+	i = iterkit.ReverseE(i)
+}
+
+func TestReverseE(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		input := random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, error] {
+			return iterkit.KV[string, error]{
+				K: t.Random.Domain(),
+				V: t.Random.Error(),
+			}
+		})
+		exp := slicekit.Clone(input)
+		slices.Reverse(exp)
+
+		i := iterkit.FromKV(input)
+		got := iterkit.Collect2KV(iterkit.ReverseE(i))
+
+		assert.Equal(t, exp, got)
 	})
 }

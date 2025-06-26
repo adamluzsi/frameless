@@ -11,7 +11,7 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 
 	"go.llib.dev/frameless/port/filesystem"
-	filesystemcontracts "go.llib.dev/frameless/port/filesystem/filesystemcontracts"
+	filesystemcontracts "go.llib.dev/frameless/port/filesystem/filesystemcontract"
 
 	"go.llib.dev/frameless/adapter/localfs"
 	"go.llib.dev/testcase/assert"

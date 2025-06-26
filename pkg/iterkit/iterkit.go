@@ -1,5 +1,5 @@
-// package iterators provide iterator implementations.
-//
+package iterkit
+
 // # Summary
 //
 // An Iterator's goal is to decouple the origin of the data from the consumer who uses that data.
@@ -15,11 +15,9 @@
 //
 // https://en.wikipedia.org/wiki/Iterator_pattern
 // https://en.wikipedia.org/wiki/Pipeline_(software)
-package iterkit
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -29,8 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/pkg/internal/errorkitlite"
 	"go.llib.dev/frameless/port/option"
 )
 
@@ -40,6 +37,71 @@ import (
 //
 // Examples of such resources include gRPC streams, HTTP streams, and database query result iterations.
 type SeqE[T any] = iter.Seq2[T, error]
+
+// SingleUseSeq is an iter.Seq[T] that can only iterated once.
+// After iteration, it is expected to yield no more values.
+//
+// Most iterators provide the ability to walk an entire sequence:
+// when called, the iterator does any setup necessary to start the sequence,
+// then calls yield on successive elements of the sequence, and then cleans up before returning.
+// Calling the iterator again walks the sequence again.
+//
+// SingleUseSeq iterators break that convention, providing the ability to walk a sequence only once.
+// These “single-use iterators” typically report values from a data stream that cannot be rewound to start over.
+// Calling the iterator again after stopping early may continue the stream,
+// but calling it again after the sequence is finished will yield no values at all.
+//
+// If an iterator Sequence is single use,
+// it should either has comments for functions or methods that it return single-use iterators
+// or it should use the SingleUseSeq to clearly express it with a return type.
+type SingleUseSeq[T any] = iter.Seq[T]
+
+// SingleUseSeq2 is an iter.Seq2[K, V] that can only iterated once.
+// After iteration, it is expected to yield no more values.
+// For more information on single use sequences, please read the documentation of SingleUseSeq.
+type SingleUseSeq2[K, V any] = iter.Seq2[K, V]
+
+// SingleUseSeqE is an iter.Seq2[T, error] that can only iterated once.
+// After iteration, it is expected to yield no more values.
+// For more information on single use sequences, please read the documentation of SingleUseSeq.
+type SingleUseSeqE[T any] = SeqE[T]
+
+// EagerSeq is an iter.Seq[T] that eagerly loads its content, thus not safe to use with infinite streams.
+//
+// EagerSeq iterators load all data upfront, meaning they cannot be used with infinite or unbounded sequences.
+// This type is intended for scenarios where the entire sequence must be loaded into memory at once,
+// which is impractical for infinite streams. Using EagerSeq with such streams may lead to memory exhaustion
+// or unexpected behavior.
+//
+// If an iterator Sequence is eager, it should either have comments for functions or methods that return eager iterators
+// or use the EagerSeq to clearly express it with a return type.
+type EagerSeq[T any] = iter.Seq[T]
+
+// EagerSeq2 is an iter.Seq2[K, V] that eagerly loads its content, thus not safe to use with infinite streams.
+//
+// EagerSeq2 iterators load all data upfront, meaning they cannot be used with infinite or unbounded sequences.
+// This type is intended for scenarios where the entire sequence must be loaded into memory at once,
+// which is impractical for infinite streams. Using EagerSeq2 with such streams may lead to memory exhaustion
+// or unexpected behavior.
+//
+// If an iterator Sequence is eager, it should either have comments for functions or methods that return eager iterators
+// or use the EagerSeq2 to clearly express it with a return type.
+type EagerSeq2[K, V any] = iter.Seq2[K, V]
+
+// EagerSeqE is an iter.Seq2[T, error] that eagerly loads its content, thus not safe to use with infinite streams.
+//
+// EagerSeqE iterators load all data upfront, meaning they cannot be used with infinite or unbounded sequences.
+// This type is intended for scenarios where the entire sequence must be loaded into memory at once,
+// which is impractical for infinite streams. Using EagerSeqE with such streams may lead to memory exhaustion
+// or unexpected behavior.
+//
+// If an iterator Sequence is eager, it should either have comments for functions or methods that return eager iterators
+// or use the EagerSeqE to clearly express it with a return type.
+type EagerSeqE[T any] = SeqE[T]
+
+type i1[T any] interface {
+	iter.Seq[T] | SeqE[T]
+}
 
 // From creates a ErrSeq with a function that feels similar than creating an iter.Seq.
 func From[T any](fn func(yield func(T) bool) error) SeqE[T] {
@@ -101,38 +163,6 @@ func FromPages[T any](next func(offset int) (values []T, _ error)) SeqE[T] {
 			}
 		}
 	}
-}
-
-// SingleUseSeq is an iter.Seq[T] that can only iterated once.
-// After iteration, it is expected to yield no more values.
-//
-// Most iterators provide the ability to walk an entire sequence:
-// when called, the iterator does any setup necessary to start the sequence,
-// then calls yield on successive elements of the sequence, and then cleans up before returning.
-// Calling the iterator again walks the sequence again.
-//
-// SingleUseSeq iterators break that convention, providing the ability to walk a sequence only once.
-// These “single-use iterators” typically report values from a data stream that cannot be rewound to start over.
-// Calling the iterator again after stopping early may continue the stream,
-// but calling it again after the sequence is finished will yield no values at all.
-//
-// If an iterator Sequence is single use,
-// it should either has comments for functions or methods that it return single-use iterators
-// or it should use the SingleUseSeq to clearly express it with a return type.
-type SingleUseSeq[T any] = iter.Seq[T]
-
-// SingleUseSeq2 is an iter.Seq2[K, V] that can only iterated once.
-// After iteration, it is expected to yield no more values.
-// For more information on single use sequences, please read the documentation of SingleUseSeq.
-type SingleUseSeq2[K, V any] = iter.Seq2[K, V]
-
-// SingleUseSeqE is an iter.Seq2[T, error] that can only iterated once.
-// After iteration, it is expected to yield no more values.
-// For more information on single use sequences, please read the documentation of SingleUseSeq.
-type SingleUseSeqE[T any] = SeqE[T]
-
-type i1[T any] interface {
-	iter.Seq[T] | SeqE[T]
 }
 
 func Reduce[R, T any, I i1[T]](i I, initial R, fn func(R, T) R) (R, error) {
@@ -213,7 +243,7 @@ func CollectE[T any](i iter.Seq2[T, error]) ([]T, error) {
 			errs = append(errs, err)
 		}
 	}
-	return vs, errorkit.Merge(errs...)
+	return vs, errorkitlite.Merge(errs...)
 }
 
 func Collect[T any](i iter.Seq[T]) []T {
@@ -307,7 +337,7 @@ func CollectEPull[T any](next func() (T, error, bool), stops ...func()) ([]T, er
 		}
 		vs = append(vs, v)
 	}
-	return vs, errorkit.Merge(errs...)
+	return vs, errorkitlite.Merge(errs...)
 }
 
 // Error returns an Interface that only can do is returning an Err and never have next element
@@ -399,7 +429,7 @@ func Empty2[T1, T2 any]() iter.Seq2[T1, T2] {
 }
 
 func BatchE[T any](i SeqE[T], opts ...BatchOption) SeqE[[]T] {
-	c := option.Use(opts)
+	c := option.ToConfig(opts)
 	var batched iter.Seq[[]KV[T, error]]
 	if 0 < c.WaitLimit {
 		batched = asyncBatch(c, i)
@@ -426,7 +456,7 @@ func BatchE[T any](i SeqE[T], opts ...BatchOption) SeqE[[]T] {
 }
 
 func Batch[T any](i iter.Seq[T], opts ...BatchOption) iter.Seq[[]T] {
-	c := option.Use(opts)
+	c := option.ToConfig(opts)
 	var src iter.Seq2[T, struct{}] = func(yield func(T, struct{}) bool) {
 		for v := range i {
 			if !yield(v, struct{}{}) {
@@ -492,7 +522,16 @@ type BatchConfig struct {
 	WaitLimit time.Duration
 }
 
-func (c BatchConfig) Configure(t *BatchConfig) { option.Configure(c, t) }
+var _ option.Option[BatchConfig] = BatchConfig{}
+
+func (c BatchConfig) Configure(t *BatchConfig) {
+	if c.Size != 0 {
+		t.Size = c.Size
+	}
+	if c.WaitLimit != 0 {
+		t.WaitLimit = c.WaitLimit
+	}
+}
 
 type BatchOption option.Option[BatchConfig]
 
@@ -911,7 +950,7 @@ func CountE[T any](i SeqE[T]) (int, error) {
 			errs = append(errs, err)
 		}
 	}
-	return total, errorkit.Merge(errs...)
+	return total, errorkitlite.Merge(errs...)
 }
 
 // Count will iterate over and count the total iterations number
@@ -962,20 +1001,30 @@ func Chan[T any](ch <-chan T) iter.Seq[T] {
 }
 
 func ToChan[T any](itr iter.Seq[T]) (_ <-chan T, cancel func()) {
-	var ch = make(chan T)
-	jg := tasker.Background(context.Background(), func(ctx context.Context) {
+	var (
+		ch     = make(chan T)
+		doneS  = make(chan struct{})
+		doneF  = make(chan struct{})
+		finish sync.Once
+	)
+	go func() {
+		defer close(doneF)
 		defer close(ch)
 	pull:
 		for v := range itr {
 			select {
-			case <-ctx.Done():
+			case <-doneS:
 				break pull
 			case ch <- v:
-				continue pull
 			}
 		}
-	})
-	return ch, func() { _ = jg.Stop() }
+	}()
+	return ch, func() {
+		finish.Do(func() {
+			close((doneS))
+		})
+		<-doneF
+	}
 }
 
 // Sync ensures that an iterator can be safely used by multiple goroutines at the same time.
@@ -1223,18 +1272,11 @@ func FromPullE[T any](next func() (T, error, bool), stops ...func()) SeqE[T] {
 
 // ToSeqE will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
 // and use the error function to yield potential issues with the iteration.
-func ToSeqE[T any](i iter.Seq[T], errFuncs ...func() error) SeqE[T] {
+func ToSeqE[T any](i iter.Seq[T]) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		for v := range i {
 			if !yield(v, nil) {
 				return
-			}
-		}
-		if 0 < len(errFuncs) {
-			errFunc := errorkit.MergeErrFunc(errFuncs...)
-			if err := errFunc(); err != nil {
-				var zero T
-				yield(zero, errFunc())
 			}
 		}
 	}
@@ -1263,23 +1305,31 @@ func SplitSeqE[T any](i SeqE[T]) (iter.Seq[T], func() error) {
 		func() error {
 			m.RLock()
 			defer m.RUnlock()
-			return errorkit.Merge(errors...)
+			return errorkitlite.Merge(errors...)
 		}
 }
 
 // OnSeqEValue will apply a iterator pipeline on a given ErrSeq
 func OnSeqEValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) SeqE[To] {
 	return func(yield func(To, error) bool) {
-		var g tasker.JobGroup[tasker.Manual]
-		defer g.Stop()
-
 		var (
 			in   = make(chan From)
 			out  = make(chan To)
 			errs = make(chan error)
+
+			done = make(chan struct{})
+			wg   sync.WaitGroup
 		)
 
-		g.Go(func(ctx context.Context) error {
+		var finish = func() {
+			close(done)
+			wg.Wait()
+		}
+		defer finish()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			defer close(errs)
 			defer close(in)
 
@@ -1289,7 +1339,7 @@ func OnSeqEValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[Fr
 					select {
 					case errs <- err:
 						continue listening
-					case <-ctx.Done():
+					case <-done:
 						break listening
 					}
 				}
@@ -1297,15 +1347,15 @@ func OnSeqEValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[Fr
 				select {
 				case in <- from:
 					continue listening
-				case <-ctx.Done():
+				case <-done:
 					break listening
 				}
 			}
+		}()
 
-			return nil
-		})
-
-		g.Go(func(ctx context.Context) error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			defer close(out)
 			var transformPipeline iter.Seq[To] = pipeline(Chan(in))
 
@@ -1314,13 +1364,11 @@ func OnSeqEValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[Fr
 				select {
 				case out <- output:
 					continue feeding
-				case <-ctx.Done():
+				case <-done:
 					break feeding
 				}
 			}
-
-			return nil
-		})
+		}()
 
 	pushing:
 		for {
@@ -1415,4 +1463,40 @@ func (i *bufioScannerIter[T]) Close() error {
 
 func (i *bufioScannerIter[T]) Value() T {
 	return i.value
+}
+
+// Reverse will reverse the iteration order.
+//
+// WARNING, it is not possible to reverse an iteration without first fully consuming it.
+func Reverse[T any](i iter.Seq[T]) EagerSeq[T] {
+	return func(yield func(T) bool) {
+		var vs = Collect(i)
+		for i := len(vs) - 1; 0 <= i; i-- {
+			if !yield(vs[i]) {
+				return
+			}
+		}
+	}
+}
+
+// Reverse2 will reverse the iteration order.
+//
+// WARNING, it is not possible to reverse an iteration without first fully consuming it.
+func Reverse2[K, V any](i iter.Seq2[K, V]) EagerSeq2[K, V] {
+	return func(yield func(K, V) bool) {
+		var kvs = Collect2KV(i)
+		for i := len(kvs) - 1; 0 <= i; i-- {
+
+			if !yield(kvs[i].K, kvs[i].V) {
+				return
+			}
+		}
+	}
+}
+
+// ReverseE will reverse the iteration order.
+//
+// WARNING, it is not possible to reverse an iteration without first fully consuming it.
+func ReverseE[T any](i SeqE[T]) EagerSeqE[T] {
+	return Reverse2(i)
 }

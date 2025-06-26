@@ -43,13 +43,13 @@ type Config[ENT, ID any] struct {
 }
 
 func (c Config[ENT, ID]) Configure(t *Config[ENT, ID]) {
-	option.Configure(c, t)
+	*t = reflectkit.MergeStruct(*t, c)
 }
 
 type Option[ENT, ID any] option.Option[Config[ENT, ID]]
 
 func makeAsserter[ENT, ID any](opts []Option[ENT, ID]) Helper[ENT, ID] {
-	c := option.Use(opts)
+	c := option.ToConfig(opts)
 	return Helper[ENT, ID]{
 		Waiter: Waiter,
 		IDA:    c.IDA,

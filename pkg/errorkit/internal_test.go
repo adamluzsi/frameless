@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/internal/errorkitlite"
 	"go.llib.dev/testcase"
-	"go.llib.dev/testcase/random"
 )
 
 var (
@@ -15,8 +15,8 @@ var (
 	_ ErrorAs = wrapper{}
 	_ ErrorIs = wrapper{}
 
-	_ ErrorIs = multiError{}
-	_ ErrorAs = multiError{}
+	_ ErrorIs = errorkitlite.MultiError{}
+	_ ErrorAs = errorkitlite.MultiError{}
 )
 
 type ErrorUnwrap interface {
@@ -30,8 +30,6 @@ type ErrorAs interface {
 type ErrorIs interface {
 	Is(target error) bool
 }
-
-var rnd = random.New(random.CryptoSeed{})
 
 type ErrT struct{ V any }
 
