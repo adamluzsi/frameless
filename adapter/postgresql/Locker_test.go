@@ -12,7 +12,7 @@ import (
 	"go.llib.dev/testcase/random"
 
 	"go.llib.dev/frameless/adapter/postgresql"
-	"go.llib.dev/frameless/port/guard/guardcontracts"
+	"go.llib.dev/frameless/port/guard/guardcontract"
 	"go.llib.dev/frameless/port/migration"
 )
 
@@ -49,8 +49,8 @@ func TestLocker(t *testing.T) {
 	assert.NoError(t, l.Migrate(context.Background()))
 
 	testcase.RunSuite(t,
-		guardcontracts.Locker(l),
-		guardcontracts.NonBlockingLocker(l),
+		guardcontract.Locker(l),
+		guardcontract.NonBlockingLocker(l),
 	)
 }
 
@@ -85,11 +85,11 @@ func TestNewLockerFactory(t *testing.T) {
 
 	lockerFactoryStrKey := postgresql.LockerFactory[string]{Connection: cm}
 	assert.NoError(t, lockerFactoryStrKey.Migrate(ctx))
-	guardcontracts.LockerFactory[string](lockerFactoryStrKey).Test(t)
+	guardcontract.LockerFactory[string](lockerFactoryStrKey).Test(t)
 
 	lockerFactoryIntKey := postgresql.LockerFactory[int]{Connection: cm}
 	assert.NoError(t, lockerFactoryIntKey.Migrate(ctx))
-	guardcontracts.LockerFactory[int](lockerFactoryIntKey).Test(t)
+	guardcontract.LockerFactory[int](lockerFactoryIntKey).Test(t)
 }
 
 func TestLocker_TryLock_smoke(t *testing.T) {

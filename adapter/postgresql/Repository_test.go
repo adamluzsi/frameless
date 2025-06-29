@@ -11,8 +11,8 @@ import (
 	"go.llib.dev/frameless/pkg/flsql"
 
 	"go.llib.dev/frameless/pkg/cache"
-	"go.llib.dev/frameless/pkg/cache/cachecontracts"
-	crudcontracts "go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/pkg/cache/cachecontract"
+	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
@@ -79,7 +79,7 @@ func TestRepository(t *testing.T) {
 
 	MigrateEntity(t, cm)
 
-	config := crudcontracts.Config[Entity, string]{
+	config := crudcontract.Config[Entity, string]{
 		MakeContext: func(t testing.TB) context.Context {
 			return context.Background()
 		},
@@ -90,11 +90,11 @@ func TestRepository(t *testing.T) {
 	}
 
 	testcase.RunSuite(t,
-		crudcontracts.Creator[Entity, string](subject, config),
-		crudcontracts.Finder[Entity, string](subject, config),
-		crudcontracts.Updater[Entity, string](subject, config),
-		crudcontracts.Deleter[Entity, string](subject, config),
-		crudcontracts.OnePhaseCommitProtocol[Entity, string](subject, subject.Connection),
+		crudcontract.Creator[Entity, string](subject, config),
+		crudcontract.Finder[Entity, string](subject, config),
+		crudcontract.Updater[Entity, string](subject, config),
+		crudcontract.Deleter[Entity, string](subject, config),
+		crudcontract.OnePhaseCommitProtocol[Entity, string](subject, subject.Connection),
 	)
 }
 
@@ -110,7 +110,7 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 		Connection: cm,
 	}
 
-	crudcontracts.Creator[Entity, string](subject, crudcontracts.Config[Entity, string]{
+	crudcontract.Creator[Entity, string](subject, crudcontract.Config[Entity, string]{
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 	}).Test(t)
@@ -125,7 +125,7 @@ func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 		Connection: cm,
 	}
 
-	cachecontracts.EntityRepository[Entity, string](repo, cm).Test(t)
+	cachecontract.EntityRepository[Entity, string](repo, cm).Test(t)
 }
 
 func TestRepository_canImplementCacheHitRepository(t *testing.T) {
@@ -176,7 +176,7 @@ func TestRepository_canImplementCacheHitRepository(t *testing.T) {
 		Connection: c,
 	}
 
-	cachecontracts.HitRepository[string](hitRepo, c, crudcontracts.Config[cache.Hit[string], cache.HitID]{
+	cachecontract.HitRepository[string](hitRepo, c, crudcontract.Config[cache.Hit[string], cache.HitID]{
 		MakeEntity: func(tb testing.TB) cache.Hit[string] {
 			t := tb.(*testcase.T)
 			return cache.Hit[string]{

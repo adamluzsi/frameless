@@ -9,7 +9,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/cache"
-	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	cachecontracts "go.llib.dev/frameless/pkg/cache/cachecontract"
 	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/zerokit"

@@ -7,7 +7,7 @@ import (
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/adapter/postgresql/internal"
 	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/frameless/port/migration/migrationcontracts"
+	"go.llib.dev/frameless/port/migration/migrationcontract"
 	"go.llib.dev/testcase/assert"
 )
 
@@ -22,5 +22,5 @@ func TestMigrationStateRepository(t *testing.T) {
 	_, err = conn.ExecContext(ctx, queryStateRepoCreate)
 	assert.NoError(t, err)
 	t.Cleanup(func() { conn.ExecContext(ctx, `DROP TABLE IF EXISTS frameless_schema_migrations_test`) })
-	migrationcontracts.StateRepository(repo).Test(t)
+	migrationcontract.StateRepository(repo).Test(t)
 }

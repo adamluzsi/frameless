@@ -11,7 +11,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/port/migration"
-	"go.llib.dev/frameless/port/pubsub/pubsubcontracts"
+	"go.llib.dev/frameless/port/pubsub/pubsubcontract"
 	"go.llib.dev/frameless/port/pubsub/pubsubtest"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
@@ -87,11 +87,11 @@ func TestQueue(t *testing.T) {
 	}
 
 	testcase.RunSuite(t,
-		pubsubcontracts.FIFO[Entity](basicQueue, basicQueue),
-		pubsubcontracts.LIFO[Entity](lifoQueue, lifoQueue),
-		pubsubcontracts.Buffered[Entity](basicQueue, basicQueue),
-		pubsubcontracts.Blocking[Entity](blockingQueue, blockingQueue),
-		pubsubcontracts.Queue[Entity](basicQueue, basicQueue),
+		pubsubcontract.FIFO[Entity](basicQueue, basicQueue),
+		pubsubcontract.LIFO[Entity](lifoQueue, lifoQueue),
+		pubsubcontract.Buffered[Entity](basicQueue, basicQueue),
+		pubsubcontract.Blocking[Entity](blockingQueue, blockingQueue),
+		pubsubcontract.Queue[Entity](basicQueue, basicQueue),
 	)
 }
 

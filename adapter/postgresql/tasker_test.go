@@ -8,7 +8,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/tasker"
-	"go.llib.dev/frameless/pkg/tasker/taskercontracts"
+	"go.llib.dev/frameless/pkg/tasker/taskercontract"
 	"go.llib.dev/testcase/assert"
 )
 
@@ -21,8 +21,8 @@ func TestTaskerScheduleRepository(t *testing.T) {
 
 	locks := postgresql.TaskerSchedulerLocks{Connection: cm}
 
-	taskercontracts.ScheduleStateRepository(stateRepo).Test(t)
-	taskercontracts.SchedulerLocks(locks).Test(t)
+	taskercontract.ScheduleStateRepository(stateRepo).Test(t)
+	taskercontract.SchedulerLocks(locks).Test(t)
 }
 
 func ExampleTaskerSchedulerStateRepository() {

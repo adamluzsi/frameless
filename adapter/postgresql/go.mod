@@ -6,7 +6,7 @@ toolchain go1.24.0
 
 require (
 	github.com/jackc/pgx/v5 v5.7.5
-	go.llib.dev/frameless v0.299.0
+	go.llib.dev/frameless v0.300.0
 	go.llib.dev/testcase v0.179.1
 )
 

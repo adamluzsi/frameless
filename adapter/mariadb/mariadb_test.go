@@ -10,14 +10,14 @@ import (
 
 	"go.llib.dev/frameless/adapter/mariadb"
 	"go.llib.dev/frameless/adapter/mariadb/internal/queries"
-	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	"go.llib.dev/frameless/pkg/cache/cachecontract"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/logger"
-	"go.llib.dev/frameless/pkg/tasker/taskercontracts"
-	"go.llib.dev/frameless/port/crud/crudcontracts"
-	"go.llib.dev/frameless/port/guard/guardcontracts"
+	"go.llib.dev/frameless/pkg/tasker/taskercontract"
+	"go.llib.dev/frameless/port/crud/crudcontract"
+	"go.llib.dev/frameless/port/guard/guardcontract"
 	"go.llib.dev/frameless/port/migration"
-	"go.llib.dev/frameless/port/migration/migrationcontracts"
+	"go.llib.dev/frameless/port/migration/migrationcontract"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -35,7 +35,7 @@ func TestRepository(t *testing.T) {
 
 	MigrateEntity(t, cm)
 
-	config := crudcontracts.Config[Entity, EntityID]{
+	config := crudcontract.Config[Entity, EntityID]{
 		MakeContext:     func(t testing.TB) context.Context { return context.Background() },
 		SupportIDReuse:  true,
 		SupportRecreate: true,
@@ -43,13 +43,13 @@ func TestRepository(t *testing.T) {
 	}
 
 	testcase.RunSuite(t,
-		crudcontracts.Creator[Entity, EntityID](subject, config),
-		crudcontracts.Finder[Entity, EntityID](subject, config),
-		crudcontracts.ByIDsFinder[Entity, EntityID](subject, config),
-		crudcontracts.Updater[Entity, EntityID](subject, config),
-		crudcontracts.Saver[Entity, EntityID](subject, config),
-		crudcontracts.Deleter[Entity, EntityID](subject, config),
-		crudcontracts.OnePhaseCommitProtocol[Entity, EntityID](subject, subject.Connection),
+		crudcontract.Creator[Entity, EntityID](subject, config),
+		crudcontract.Finder[Entity, EntityID](subject, config),
+		crudcontract.ByIDsFinder[Entity, EntityID](subject, config),
+		crudcontract.Updater[Entity, EntityID](subject, config),
+		crudcontract.Saver[Entity, EntityID](subject, config),
+		crudcontract.Deleter[Entity, EntityID](subject, config),
+		crudcontract.OnePhaseCommitProtocol[Entity, EntityID](subject, subject.Connection),
 	)
 }
 
@@ -76,8 +76,8 @@ func TestCacheRepository(t *testing.T) {
 	}
 	assert.NoError(t, subject.Migrate(ctx))
 
-	conf := cachecontracts.Config[testent.Foo, testent.FooID]{
-		CRUD: crudcontracts.Config[testent.Foo, testent.FooID]{
+	conf := cachecontract.Config[testent.Foo, testent.FooID]{
+		CRUD: crudcontract.Config[testent.Foo, testent.FooID]{
 			MakeEntity: func(tb testing.TB) testent.Foo {
 				foo := testent.MakeFoo(tb)
 				foo.ID = testent.FooID(testcase.ToT(&tb).Random.UUID())
@@ -86,9 +86,9 @@ func TestCacheRepository(t *testing.T) {
 		},
 	}
 
-	cachecontracts.EntityRepository[testent.Foo, testent.FooID](subject.Entities(), cm, conf)
-	cachecontracts.HitRepository[testent.FooID](subject.Hits(), cm)
-	cachecontracts.Repository(subject, conf).Test(t)
+	cachecontract.EntityRepository[testent.Foo, testent.FooID](subject.Entities(), cm, conf)
+	cachecontract.HitRepository[testent.FooID](subject.Hits(), cm)
+	cachecontract.Repository(subject, conf).Test(t)
 }
 
 func TestMigrationStateRepository(t *testing.T) {
@@ -103,7 +103,7 @@ func TestMigrationStateRepository(t *testing.T) {
 	assert.NoError(t, err)
 	t.Cleanup(func() { _, _ = conn.ExecContext(ctx, fmt.Sprintf(queries.DropTableTmpl, repo.Mapping.TableName)) })
 
-	migrationcontracts.StateRepository(repo).Test(t)
+	migrationcontract.StateRepository(repo).Test(t)
 }
 
 func TestMigrationStateRepository_smoke(t *testing.T) {
@@ -171,7 +171,7 @@ func TestLocker(t *testing.T) {
 	}
 	assert.NoError(t, l.Migrate(context.Background()))
 
-	guardcontracts.Locker(l).Test(t)
+	guardcontract.Locker(l).Test(t)
 }
 
 func ExampleLockerFactory() {
@@ -208,8 +208,8 @@ func TestNewLockerFactory(t *testing.T) {
 	assert.NoError(t, lockerFactoryStrKey.Purge(ctx))
 
 	testcase.RunSuite(t,
-		guardcontracts.LockerFactory[string](lockerFactoryStrKey),
-		guardcontracts.NonBlockingLockerFactory[string](lockerFactoryStrKey),
+		guardcontract.LockerFactory[string](lockerFactoryStrKey),
+		guardcontract.NonBlockingLockerFactory[string](lockerFactoryStrKey),
 	)
 }
 
@@ -221,8 +221,8 @@ func TestNewLockerFactory_altKeyInt(t *testing.T) {
 	assert.NoError(t, lockerFactoryIntKey.Migrate(ctx))
 
 	testcase.RunSuite(t,
-		guardcontracts.LockerFactory[int](lockerFactoryIntKey),
-		guardcontracts.NonBlockingLockerFactory[int](lockerFactoryIntKey),
+		guardcontract.LockerFactory[int](lockerFactoryIntKey),
+		guardcontract.NonBlockingLockerFactory[int](lockerFactoryIntKey),
 	)
 }
 
@@ -234,7 +234,7 @@ func TestTaskerSchedulerStateRepository(t *testing.T) {
 
 	r := mariadb.TaskerSchedulerStateRepository{Connection: cm}
 	assert.NoError(t, r.Migrate(context.Background()))
-	taskercontracts.ScheduleStateRepository(r).Test(t)
+	taskercontract.ScheduleStateRepository(r).Test(t)
 }
 
 func TestTaskerSchedulerLocks(t *testing.T) {
@@ -242,7 +242,7 @@ func TestTaskerSchedulerLocks(t *testing.T) {
 
 	l := mariadb.TaskerSchedulerLocks{Connection: cm}
 	assert.NoError(t, l.Migrate(context.Background()))
-	taskercontracts.SchedulerLocks(l).Test(t)
+	taskercontract.SchedulerLocks(l).Test(t)
 }
 
 func TestLockerFactory_Namespace_smoke(t *testing.T) {

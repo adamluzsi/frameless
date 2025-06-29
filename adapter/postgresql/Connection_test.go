@@ -10,7 +10,7 @@ import (
 
 	"go.llib.dev/frameless/adapter/postgresql"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -72,7 +72,7 @@ func TestConnection_PoolContract(t *testing.T) {
 
 func TestConnection_OnePhaseCommitProtocolContract(t *testing.T) {
 	repo := NewEntityRepository(t)
-	crudcontracts.OnePhaseCommitProtocol[Entity, string](repo, repo.Connection).Test(t)
+	crudcontract.OnePhaseCommitProtocol[Entity, string](repo, repo.Connection).Test(t)
 }
 
 func Test_createSQLRowWithErr(t *testing.T) {
