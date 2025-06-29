@@ -3,7 +3,7 @@ package teardown
 import (
 	"sync"
 
-	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/internal/errorkitlite"
 )
 
 type Teardown struct {
@@ -43,7 +43,7 @@ func (td *Teardown) Finish() error {
 	for !td.IsEmpty() { // handle Deferred functions deferred during the execution of a deferred function
 		errors = append(errors, td.run()...)
 	}
-	return errorkit.Merge(errors...)
+	return errorkitlite.Merge(errors...)
 }
 
 func (td *Teardown) IsEmpty() bool {

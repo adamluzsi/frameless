@@ -10,11 +10,11 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/internal/constant"
 	"go.llib.dev/frameless/pkg/cache"
-	"go.llib.dev/frameless/pkg/cache/cachecontracts"
+	"go.llib.dev/frameless/pkg/cache/cachecontract"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud/crudtest"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
@@ -30,7 +30,7 @@ var _ cache.Interface[testent.Foo, testent.FooID] = &cache.Cache[testent.Foo, te
 
 func TestCache(t *testing.T) {
 	cacheRepository := &memory.CacheRepository[testent.Foo, testent.FooID]{}
-	cachecontracts.Cache(cacheRepository).Test(t)
+	cachecontract.Cache(cacheRepository).Test(t)
 }
 
 func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 1024 -failfast -run TestCache_InvalidateByID_smoke

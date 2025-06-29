@@ -9,7 +9,7 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/txkit"
-	"go.llib.dev/frameless/port/comproto/comprotocontracts"
+	"go.llib.dev/frameless/port/comproto/comprotocontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -19,7 +19,7 @@ func Test(t *testing.T) {
 	s := testcase.NewSpec(t)
 	s.HasSideEffect()
 
-	comprotocontracts.OnePhaseCommitProtocol(CPProxy{
+	comprotocontract.OnePhaseCommitProtocol(CPProxy{
 		BeginTxFn:    txkit.Begin,
 		CommitTxFn:   txkit.Commit,
 		RollbackTxFn: txkit.Rollback,
@@ -362,7 +362,7 @@ func TestManager(t *testing.T) {
 	}
 
 	t.Run("comprotocontracts.OnePhaseCommitProtocol",
-		comprotocontracts.OnePhaseCommitProtocol(subject).Test)
+		comprotocontract.OnePhaseCommitProtocol(subject).Test)
 
 	t.Run("smoke", func(t *testing.T) {
 		ctx := context.Background()

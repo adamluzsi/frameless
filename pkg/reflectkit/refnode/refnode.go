@@ -1,6 +1,10 @@
 package refnode
 
-import "fmt"
+import (
+	"fmt"
+
+	"go.llib.dev/frameless/pkg/slicekit"
+)
 
 type Type int
 
@@ -82,3 +86,25 @@ const (
 
 	// UnsafePointer
 )
+
+type Path []Type
+
+func (p Path) Contains(ntp ...Type) bool {
+	if len(ntp) == 0 {
+		return true
+	}
+	var i int
+	for _, gnt := range p {
+		ent, ok := slicekit.Lookup(ntp, i)
+		if !ok {
+			break
+		}
+		if ent == gnt {
+			i++
+			continue
+		} else if 0 < i {
+			return false
+		}
+	}
+	return len(ntp) == i
+}

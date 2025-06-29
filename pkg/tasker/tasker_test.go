@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
@@ -66,7 +65,7 @@ func TestToTask(t *testing.T) {
 	})
 
 	t.Run("on func() error", func(t *testing.T) {
-		assert.NotNil(t, tasker.ToTask(errorkit.NullErrFunc))
+		assert.NotNil(t, tasker.ToTask(func() error { return nil }))
 		expErr := rnd.Error()
 		assert.Equal(t, expErr, tasker.ToTask(func() error { return expErr })(context.Background()))
 	})
@@ -864,7 +863,7 @@ func TestOnError(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("on no error, error handler is not triggered", func(t *testcase.T) {
-		task := tasker.OnError(errorkit.NullErrFunc, func(err error) error { panic("boom") })
+		task := tasker.OnError(func() error { return nil }, func(err error) error { panic("boom") })
 		t.Must.NoError(task(context.Background()))
 	})
 

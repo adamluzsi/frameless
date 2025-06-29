@@ -130,7 +130,7 @@ func ValidateStruct(v any) error {
 	if rv.Kind() != reflect.Struct {
 		return interr.ImplementationError.F("only struct types are supported. (%T)", v)
 	}
-	for field, value := range reflectkit.OverStruct(rv) {
+	for field, value := range reflectkit.IterStructFields(rv) {
 		if err := ValidateStructField(field, value); err != nil {
 			return err
 		}
@@ -365,7 +365,7 @@ func mapVS(vs []string, rt reflect.Type, transform func(string) (reflect.Value, 
 // ReflectValidate checks whether a given value exists within its predefined set of valid enum options.
 // If the given type has no enum constraint, error is never exepcted.
 func ReflectValidate(value any, opts ...Option) error {
-	c := option.Use(opts)
+	c := option.ToConfig(opts)
 	v := reflectkit.ToValue(value)
 	T := c.CorrelateType(v)
 

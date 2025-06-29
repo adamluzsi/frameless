@@ -10,8 +10,10 @@ import (
 
 // New will make a new T and call Init function recursively on it if it is implemented.
 func New[T any]() *T {
-	ptr := new(T)
-	typ := reflectkit.TypeOf[T]()
+	var (
+		ptr = new(T)
+		typ = reflectkit.TypeOf[T]()
+	)
 	if typ.Kind() == reflect.Struct {
 		refPtr := reflect.ValueOf(ptr)
 		initStruct(refPtr.Elem()) // TODO: test .Elem() rrequired
@@ -60,14 +62,20 @@ func initStruct(rStruct reflect.Value) {
 	if err := defaultTag.HandleStruct(rStruct); err != nil {
 		panic(err)
 	}
-	for _, value := range reflectkit.OverStruct(rStruct) {
+	for _, value := range reflectkit.IterStructFields(rStruct) {
 		reflectInit(value.Addr())
 	}
 }
 
-var defaultTag = reflectkit.TagHandler[func() (reflect.Value, error)]{
+func DefaultTag() reflectkit.TagHandlerProxy[InitDefaultTagValue] {
+	return defaultTag.Proxy()
+}
+
+type InitDefaultTagValue func() (reflect.Value, error)
+
+var defaultTag = reflectkit.TagHandler[InitDefaultTagValue]{
 	Name: "default",
-	Parse: func(sf reflect.StructField, tagName, tagValue string) (func() (reflect.Value, error), error) {
+	Parse: func(sf reflect.StructField, tagName, tagValue string) (InitDefaultTagValue, error) {
 		if reflectkit.IsMutableType(sf.Type) {
 			return func() (reflect.Value, error) { return parseDefaultValue(sf, tagValue) }, nil
 		}
@@ -77,7 +85,7 @@ var defaultTag = reflectkit.TagHandler[func() (reflect.Value, error)]{
 		}
 		return func() (reflect.Value, error) { return val, nil }, nil
 	},
-	Use: func(sf reflect.StructField, field reflect.Value, getDefault func() (reflect.Value, error)) error {
+	Use: func(sf reflect.StructField, field reflect.Value, getDefault InitDefaultTagValue) error {
 		if !reflectkit.IsZero(field) {
 			return nil
 		}

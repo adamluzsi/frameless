@@ -18,7 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/pathkit"
 
-	. "go.llib.dev/frameless/spechelper/testent"
+	. "go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/httpspec"

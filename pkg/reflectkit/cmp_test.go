@@ -225,6 +225,18 @@ func TestEqual(t *testing.T) {
 			v2:      must.Must(netip.ParsePrefix("10.0.0.1/24")),
 			isEqual: false,
 		},
+		{
+			desc:    "structs with non comparable field - equal",
+			v1:      NonComparableStruct{Field1: []int{1, 2, 3}},
+			v2:      NonComparableStruct{Field1: []int{1, 2, 3}},
+			isEqual: true,
+		},
+		{
+			desc:    "structs with non comparable field - not equal",
+			v1:      NonComparableStruct{Field1: []int{1, 2, 3}},
+			v2:      NonComparableStruct{Field1: []int{3, 2, 1}},
+			isEqual: false,
+		},
 	}
 	for _, tc := range tt {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -234,6 +246,10 @@ func TestEqual(t *testing.T) {
 			}
 		})
 	}
+}
+
+type NonComparableStruct struct {
+	Field1 []int
 }
 
 type TestStruct struct {

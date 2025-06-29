@@ -7,7 +7,7 @@ import (
 	"go.llib.dev/testcase"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/port/guard/guardcontracts"
+	"go.llib.dev/frameless/port/guard/guardcontract"
 )
 
 func ExampleLocker() {
@@ -24,11 +24,11 @@ func ExampleLocker() {
 }
 
 func TestLocker(t *testing.T) {
-	guardcontracts.Locker(memory.NewLocker()).Test(t)
+	guardcontract.Locker(memory.NewLocker()).Test(t)
 }
 
 func TestLockerFactory(t *testing.T) {
-	guardcontracts.LockerFactory[string](memory.NewLockerFactory[string]()).Test(t)
+	guardcontract.LockerFactory[string](memory.NewLockerFactory[string]()).Test(t)
 }
 
 func TestNewLockerFactory_race(tt *testing.T) {

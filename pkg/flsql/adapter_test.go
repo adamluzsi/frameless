@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/flsql"
-	"go.llib.dev/frameless/port/comproto/comprotocontracts"
+	"go.llib.dev/frameless/port/comproto/comprotocontract"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
@@ -202,7 +202,7 @@ func TestConnectionAdapter_LookupTx(t *testing.T) {
 	}
 
 	t.Run("comprotocontracts.OnePhaseCommitProtocol",
-		comprotocontracts.OnePhaseCommitProtocol(subject).Test)
+		comprotocontract.OnePhaseCommitProtocol(subject).Test)
 
 	t.Run("smoke", func(t *testing.T) {
 		ctx := context.Background()

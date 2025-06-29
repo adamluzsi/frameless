@@ -18,7 +18,7 @@ import (
 	"go.llib.dev/frameless/port/guard/guardcontracts"
 	"go.llib.dev/frameless/port/migration"
 	"go.llib.dev/frameless/port/migration/migrationcontracts"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"

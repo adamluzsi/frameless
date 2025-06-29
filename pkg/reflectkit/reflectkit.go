@@ -410,6 +410,28 @@ func (h *TagHandler[T]) isStructFieldOK(field reflect.StructField) bool {
 	return field.Type != nil && field.Index != nil && field.Name != ""
 }
 
+func (h *TagHandler[T]) Proxy() TagHandlerProxy[T] {
+	return TagHandlerProxy[T]{h: h}
+}
+
+// TagHandlerProxy is a Proxy object that allows you to expose a TagHandler,
+// without allowing its configuration to be changed.
+type TagHandlerProxy[T any] struct {
+	h *TagHandler[T]
+}
+
+func (p TagHandlerProxy[T]) LookupTag(field reflect.StructField) (T, bool, error) {
+	return p.h.LookupTag(field)
+}
+
+func (p TagHandlerProxy[T]) HandleStruct(rStruct reflect.Value) error {
+	return p.h.HandleStruct(rStruct)
+}
+
+func (p TagHandlerProxy[T]) HandleStructField(field reflect.StructField, value reflect.Value) error {
+	return p.h.HandleStructField(field, value)
+}
+
 // Clone recursively creates a deep copy of a reflect.Value
 func Clone(value reflect.Value) reflect.Value {
 	if !value.IsValid() {
@@ -649,26 +671,53 @@ func recoverReflectPanic() {
 // Configure is a default implementation that can be used to implement the Option interface' Configure method.
 func MergeStruct[Struct any](vs ...Struct) Struct {
 	var T = TypeOf[Struct]()
-
 	if kind := T.Kind(); kind != reflect.Struct {
 		panic(fmt.Sprintf("reflectkit.MergeStruct called with non-struct kind: %s", kind.String()))
 	}
-
-	var out = reflect.New(T).Elem()
-
+	if len(vs) == 0 {
+		var zero Struct
+		return zero
+	}
+	var rvs []reflect.Value
 	for _, v := range vs {
-		rv := reflect.ValueOf(v)
+		rvs = append(rvs, reflect.ValueOf(v))
+	}
+	out, ok := mergeStruct(rvs...)
+	if !ok {
+		var zero Struct
+		return zero
+	}
+	return out.Interface().(Struct)
+}
 
-		for field, src := range IterStructFields(rv) {
+func mergeStruct(structs ...reflect.Value) (reflect.Value, bool) {
+	if len(structs) == 0 {
+		return reflect.Value{}, false
+	}
+
+	var out = reflect.New(structs[0].Type()).Elem()
+
+	for _, rStruct := range structs {
+		for field, src := range IterStructFields(rStruct) {
+			if !field.IsExported() {
+				continue
+			}
 			dst := out.FieldByIndex(field.Index)
 			if !dst.IsValid() {
 				continue
 			}
-			if !IsZero(src) {
+			if IsZero(src) {
+				continue
+			}
+			if field.Type.Kind() == reflect.Struct {
+				if got, ok := mergeStruct(dst, src); ok {
+					dst.Set(got)
+				}
+			} else {
 				dst.Set(src)
 			}
 		}
 	}
 
-	return out.Interface().(Struct)
+	return out, true
 }

@@ -9,11 +9,11 @@ import (
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/port/pubsub"
-	"go.llib.dev/frameless/port/pubsub/pubsubcontracts"
+	"go.llib.dev/frameless/port/pubsub/pubsubcontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 )
 
 var _ interface {
@@ -22,7 +22,7 @@ var _ interface {
 } = &memory.Queue[testent.Foo]{}
 
 func TestQueue_implementsFIFO(t *testing.T) {
-	pubsubConfig := pubsubcontracts.Config[TestEntity]{
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
 		SupportPublishContextCancellation: true,
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -34,11 +34,11 @@ func TestQueue_implementsFIFO(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{}
 
-	pubsubcontracts.FIFO[TestEntity](q, q, pubsubConfig).Test(t)
+	pubsubcontract.FIFO[TestEntity](q, q, pubsubConfig).Test(t)
 }
 
 func TestQueue_implementsLIFO(t *testing.T) {
-	pubsubConfig := pubsubcontracts.Config[TestEntity]{
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
 		SupportPublishContextCancellation: true,
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -50,11 +50,11 @@ func TestQueue_implementsLIFO(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{LIFO: true}
 
-	testcase.RunSuite(t, pubsubcontracts.LIFO[TestEntity](q, q, pubsubConfig))
+	testcase.RunSuite(t, pubsubcontract.LIFO[TestEntity](q, q, pubsubConfig))
 }
 
 func TestQueue_implementsBuffered(t *testing.T) {
-	pubsubConfig := pubsubcontracts.Config[TestEntity]{
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
 		SupportPublishContextCancellation: true,
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -66,11 +66,11 @@ func TestQueue_implementsBuffered(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{}
 
-	pubsubcontracts.Buffered[TestEntity](q, q, pubsubConfig).Test(t)
+	pubsubcontract.Buffered[TestEntity](q, q, pubsubConfig).Test(t)
 }
 
 func TestQueue_implementsVolatile(t *testing.T) {
-	pubsubConfig := pubsubcontracts.Config[TestEntity]{
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
 		SupportPublishContextCancellation: true,
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -82,11 +82,11 @@ func TestQueue_implementsVolatile(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{Volatile: true}
 
-	testcase.RunSuite(t, pubsubcontracts.Volatile[TestEntity](q, q, pubsubConfig))
+	testcase.RunSuite(t, pubsubcontract.Volatile[TestEntity](q, q, pubsubConfig))
 }
 
 func TestQueue_implementsBlocking(t *testing.T) {
-	pubsubConfig := pubsubcontracts.Config[TestEntity]{
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
 		// SupportPublishContextCancellation: true,// TODO: fixme in memory queue
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -98,11 +98,11 @@ func TestQueue_implementsBlocking(t *testing.T) {
 
 	q := &memory.Queue[TestEntity]{Blocking: true}
 
-	pubsubcontracts.Blocking[TestEntity](q, q, pubsubConfig).Test(t)
+	pubsubcontract.Blocking[TestEntity](q, q, pubsubConfig).Test(t)
 }
 
 func TestQueue_implementsOrdering(t *testing.T) {
-	pubsubConfig := pubsubcontracts.Config[TestEntity]{
+	pubsubConfig := pubsubcontract.Config[TestEntity]{
 		SupportPublishContextCancellation: true,
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -124,7 +124,7 @@ func TestQueue_implementsOrdering(t *testing.T) {
 		})
 	}
 
-	pubsubcontracts.Ordering(q, q, sorting, pubsubConfig).Test(t)
+	pubsubcontract.Ordering(q, q, sorting, pubsubConfig).Test(t)
 }
 
 var _ pubsub.Publisher[testent.Foo] = &memory.FanOutExchange[testent.Foo]{}
@@ -137,7 +137,7 @@ func TestQueue_implementsFanOutExchange(t *testing.T) {
 	}
 
 	testcase.RunSuite(t,
-		pubsubcontracts.FanOut[testent.Foo](exchange, MakeQueue),
+		pubsubcontract.FanOut[testent.Foo](exchange, MakeQueue),
 		//pubsubcontracts.OnePhaseCommitProtocol
 	)
 }
@@ -155,9 +155,9 @@ func TestQueue_combined(t *testing.T) {
 	}
 
 	testcase.RunSuite(t,
-		pubsubcontracts.Queue[testent.Foo](q, q),
-		pubsubcontracts.Buffered[testent.Foo](q, q),
-		pubsubcontracts.FIFO[testent.Foo](q, q),
+		pubsubcontract.Queue[testent.Foo](q, q),
+		pubsubcontract.Buffered[testent.Foo](q, q),
+		pubsubcontract.FIFO[testent.Foo](q, q),
 	)
 }
 

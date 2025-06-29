@@ -1,0 +1,129 @@
+package errorkitlite
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+// Finish is a helper function that can be used from a deferred context.
+//
+// Usage:
+//
+//	defer errorkit.Finish(&returnError, rows.Close)
+func Finish(returnErr *error, blk func() error) {
+	*returnErr = Merge(*returnErr, blk())
+}
+
+// FinishOnError is a helper function that can be used from a deferred context.
+// It runs the block conditionally, when the return error, which was assigned by the `return` keyword is not nil.
+//
+// Usage:
+//
+//	defer errorkit.FinishOnError(&returnError, func() { rollback(ctx) })
+func FinishOnError(returnErr *error, blk func()) {
+	if returnErr == nil || *returnErr == nil {
+		return
+	}
+	blk()
+}
+
+// Recover will attempt a recover, and if recovery yields a value, it sets it as an error.
+func Recover(returnErr *error) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	switch r := r.(type) {
+	case error:
+		*returnErr = r
+	default:
+		*returnErr = fmt.Errorf("%v", r)
+	}
+}
+
+// As function serves as a shorthand to enable one-liner error handling with errors.As.
+// It's meant to be used within an if statement, much like Lookup functions such as os.LookupEnv.
+func As[T error](err error) (T, bool) {
+	var v T
+	ok := errors.As(err, &v)
+	return v, ok
+}
+
+// Merge will combine all given non nil error values into a single error value.
+// If no valid error is given, nil is returned.
+// If only a single non nil error value is given, the error value is returned.
+func Merge(errs ...error) error {
+
+	var cleanErrs []error
+	for _, err := range errs {
+		if err == nil {
+			continue
+		}
+		cleanErrs = append(cleanErrs, err)
+	}
+	errs = cleanErrs
+	if len(errs) == 0 {
+		return nil
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+	return MultiError(errs)
+}
+
+type MultiError []error
+
+func (errs MultiError) Error() string {
+	var msgs []string
+	for _, err := range errs {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "\n")
+}
+
+func (errs MultiError) As(target any) bool {
+	for _, err := range errs {
+		if errors.As(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func (errs MultiError) Is(target error) bool {
+	for _, err := range errs {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
+}
+
+// ErrFunc is a function that checks whether a stateful system currently has an error.
+// For example context.Context#Err is an ErrFunc.
+type ErrFunc = func() error
+
+func NullErrFunc() error { return nil }
+
+func MergeErrFunc(errFuncs ...ErrFunc) func() error {
+	var fns []ErrFunc
+	for _, fn := range errFuncs {
+		if fn == nil {
+			continue
+		}
+		fns = append(fns, ErrFunc(fn))
+	}
+	switch len(fns) {
+	case 0:
+		return NullErrFunc
+	case 1:
+		return ErrFunc(fns[0])
+	}
+	return func() (returnError error) {
+		for i := len(fns) - 1; 0 <= i; i-- {
+			defer Finish(&returnError, fns[i])
+		}
+		return nil
+	}
+}

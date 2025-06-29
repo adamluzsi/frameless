@@ -191,16 +191,19 @@ func equalStruct(m *refMem, v1 reflect.Value, v2 reflect.Value) bool {
 			cf.Set(zero)
 		}
 	}
-	// Check equality of the remaining unexported fields
-	// The fields that could be already confirmed to be equal,
-	// has already set to zero value state as part of the previous iteration,
-	// so what left is the unexported fields that we want to check.
-	//
-	// Specification:
-	// 	Struct types are comparable if all their field types are comparable.
-	// 	Two struct values are equal if their corresponding non-blank field values are equal.
-	// 	The fields are compared in source order, and comparison stops as soon as two field values differ (or all fields have been compared).
-	return v1cptr.Elem().Interface() == v2cptr.Elem().Interface()
+	if T := v1cptr.Type().Elem(); T.Comparable() && v1cptr.Elem().CanInterface() {
+		// Check equality of the remaining unexported fields
+		// The fields that could be already confirmed to be equal,
+		// has already set to zero value state as part of the previous iteration,
+		// so what left is the unexported fields that we want to check.
+		//
+		// Specification:
+		// 	Struct types are comparable if all their field types are comparable.
+		// 	Two struct values are equal if their corresponding non-blank field values are equal.
+		// 	The fields are compared in source order, and comparison stops as soon as two field values differ (or all fields have been compared).
+		return v1cptr.Elem().Interface() == v2cptr.Elem().Interface()
+	}
+	return true
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

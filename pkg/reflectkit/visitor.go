@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit/refnode"
-	"go.llib.dev/frameless/pkg/slicekit"
 )
 
 func VisitValues(v reflect.Value) iter.Seq[V] {
@@ -136,67 +135,12 @@ func (v V) Is(nt refnode.Type) bool {
 	return false
 }
 
-func (v V) Path() []refnode.Type {
+func (v V) Path() refnode.Path {
 	i := iterkit.Map(v.Iter(), func(v V) refnode.Type {
 		return v.NodeType
 	})
 	return iterkit.Collect(i)
 }
-
-func (v V) PathIs(ntp ...refnode.Type) bool {
-	if len(ntp) == 0 {
-		return true
-	}
-	var i int
-	for v := range v.Iter() {
-		nt, ok := slicekit.Lookup(ntp, i)
-		if !ok {
-			break
-		}
-
-		if v.NodeType == nt {
-			i++
-		}
-	}
-	return len(ntp) == i
-}
-
-// func (v V) PathString() string {
-// 	var path string
-// 	for v := range v.IterUp() {
-// 		switch v.NodeType {
-// 		case refnode.StructField:
-// 			path = fmt.Sprintf(".%s%s", v.StructField.Name, path)
-// 		case refnode.Array, refnode.Slice, refnode.Map, refnode.Struct:
-// 			path = fmt.Sprintf("%s%s", v.Value.Type().String(), path)
-// 		case refnode.ArrayElem, refnode.SliceElem:
-// 			path = fmt.Sprintf("[%d]%s", v.Index, path)
-// 		case refnode.MapKey:
-// 			path = fmt.Sprintf("{%#v:%s}", v.MapKey.Interface(), path)
-// 		case refnode.MapValue:
-// 			path = fmt.Sprintf("[%#v]%s", v.MapKey.Interface(), path)
-// 		case refnode.InterfaceElem, refnode.PointerElem:
-// 			var (
-// 				val string
-// 				typ string
-// 			)
-// 			if IsNil(v.Value) {
-// 				val = "(nil)"
-// 			} else {
-// 				val = fmt.Sprintf("(%s)", path)
-// 			}
-// 			if v.Parent != nil {
-// 				typ = v.Parent.Value.Type().String()
-// 			} else {
-// 				typ = v.Value.Type().String()
-// 			}
-// 			path = fmt.Sprintf("(%s)(%s)", typ, val)
-// 		default:
-// 			path = fmt.Sprintf("%#v%s", v.Value.Interface(), path)
-// 		}
-// 	}
-// 	return path
-// }
 
 func (v V) Validate() error {
 	if v.NodeType == refnode.Unknown {
@@ -303,3 +247,40 @@ var vNodeTypeElemOf = map[refnode.Type]refnode.Type{
 	refnode.Pointer:   refnode.PointerElem,
 	refnode.Interface: refnode.InterfaceElem,
 }
+
+// func (v V) PathString() string {
+// 	var path string
+// 	for v := range v.IterUp() {
+// 		switch v.NodeType {
+// 		case refnode.StructField:
+// 			path = fmt.Sprintf(".%s%s", v.StructField.Name, path)
+// 		case refnode.Array, refnode.Slice, refnode.Map, refnode.Struct:
+// 			path = fmt.Sprintf("%s%s", v.Value.Type().String(), path)
+// 		case refnode.ArrayElem, refnode.SliceElem:
+// 			path = fmt.Sprintf("[%d]%s", v.Index, path)
+// 		case refnode.MapKey:
+// 			path = fmt.Sprintf("{%#v:%s}", v.MapKey.Interface(), path)
+// 		case refnode.MapValue:
+// 			path = fmt.Sprintf("[%#v]%s", v.MapKey.Interface(), path)
+// 		case refnode.InterfaceElem, refnode.PointerElem:
+// 			var (
+// 				val string
+// 				typ string
+// 			)
+// 			if IsNil(v.Value) {
+// 				val = "(nil)"
+// 			} else {
+// 				val = fmt.Sprintf("(%s)", path)
+// 			}
+// 			if v.Parent != nil {
+// 				typ = v.Parent.Value.Type().String()
+// 			} else {
+// 				typ = v.Value.Type().String()
+// 			}
+// 			path = fmt.Sprintf("(%s)(%s)", typ, val)
+// 		default:
+// 			path = fmt.Sprintf("%#v%s", v.Value.Interface(), path)
+// 		}
+// 	}
+// 	return path
+// }

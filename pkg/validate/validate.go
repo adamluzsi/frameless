@@ -17,13 +17,14 @@ import (
 
 type Validator interface {
 	Validate() error
+	// Validate(context.Context) error
 }
 
 var interfaceValidator = reflectkit.TypeOf[Validator]()
 
 func Value[T any](v T, opts ...Option) error {
 	rv := reflectkit.ToValue(v)
-	c := option.Use(opts)
+	c := option.ToConfig(opts)
 
 	if rv.Kind() == reflect.Struct {
 		return Struct(rv, opts...)
@@ -44,7 +45,7 @@ func Value[T any](v T, opts ...Option) error {
 
 func Struct(v any, opts ...Option) error {
 	rStruct := reflectkit.ToValue(v)
-	c := option.Use(opts)
+	c := option.ToConfig(opts)
 
 	if rStruct.Kind() != reflect.Struct {
 		return ImplementationError.F("non struct type type: %s", rStruct.Type().String())

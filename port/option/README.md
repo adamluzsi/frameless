@@ -6,7 +6,7 @@ using the variadic parameter syntax.
 
 ```go
 func MyFunctionWithOptions(arg1 string, arg2 int, opts ...Option) {
-    conf := option.Use[config](opts)
+    conf := option.ToConfig[config](opts)
     // ...
 }
 ```

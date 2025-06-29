@@ -1,6 +1,7 @@
 package mk_test
 
 import (
+	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/mk"
@@ -119,4 +120,14 @@ type TypeWithDefaultTags struct {
 	Foo string `default:"foo"`
 	Bar int    `default:"42"`
 	Baz bool   `default:"true"`
+}
+
+func TestDeafaultTag_smoke(t *testing.T) {
+	var v TypeWithDefaultTags
+	assert.NoError(t, mk.DefaultTag().HandleStruct(reflect.ValueOf(&v).Elem()))
+	assert.Equal(t, v, TypeWithDefaultTags{
+		Foo: "foo",
+		Bar: 42,
+		Baz: true,
+	})
 }

@@ -25,7 +25,7 @@ func FooIs(foo int) Option {
 }
 
 func FuncWithOptionalConfigurationInput(arg1 string, opts ...Option) string {
-	conf := option.Use[config](opts)
+	conf := option.ToConfig[config](opts)
 
 	return fmt.Sprintf("Hello %s. (foo=%d)", arg1, conf.Foo)
 }

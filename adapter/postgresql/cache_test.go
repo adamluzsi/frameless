@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/flsql"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 )
 
 func TestRepository_cache(t *testing.T) {

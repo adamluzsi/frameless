@@ -5,7 +5,6 @@ import (
 	"sync"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/teardown"
 	"go.llib.dev/testcase/sandbox"
 
@@ -201,8 +200,8 @@ func TestTeardown_Finish_idempotent(t *testing.T) {
 
 func TestTeardown_IsEmpty(t *testing.T) {
 	var td teardown.Teardown
-	td.Defer(errorkit.NullErrFunc)
-	td.Defer(errorkit.NullErrFunc)
+	td.Defer(func() error { return nil })
+	td.Defer(func() error { return nil })
 	assert.False(t, td.IsEmpty())
 	assert.NoError(t, td.Finish())
 	assert.True(t, td.IsEmpty())

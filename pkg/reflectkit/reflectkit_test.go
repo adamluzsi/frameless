@@ -12,7 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -1177,6 +1177,55 @@ func TestTagHandler_smoke(t *testing.T) {
 	v2 := T{V: "bar"}
 	assert.NoError(t, DefaultTag.HandleStruct(reflect.ValueOf(&v1).Elem()))
 	assert.Equal(t, v2.V, "bar")
+}
+
+func TestTagHandlerProxy_smoke(t *testing.T) {
+	type T struct {
+		V string `default:"foo"`
+		W string
+	}
+
+	var DefaultTag = reflectkit.TagHandler[reflect.Value]{
+		Name: "default",
+		Parse: func(sf reflect.StructField, name, tag string) (reflect.Value, error) {
+			return convkit.ParseReflect(sf.Type, tag)
+		},
+		Use: func(sf reflect.StructField, field, defaultValue reflect.Value) error {
+			if field.IsZero() {
+				field.Set(defaultValue) // defaultValue is the result of Parse
+			}
+			return nil
+		},
+	}
+
+	p := DefaultTag.Proxy()
+
+	v1 := T{}
+	assert.NoError(t, p.HandleStruct(reflect.ValueOf(&v1).Elem()))
+	assert.Equal(t, v1.V, "foo")
+
+	v2 := T{V: "bar"}
+	assert.NoError(t, p.HandleStruct(reflect.ValueOf(&v1).Elem()))
+	assert.Equal(t, v2.V, "bar")
+
+	v3 := T{}
+	rv3 := reflect.ValueOf(&v3).Elem()
+	fieldV, ok := rv3.Type().FieldByName("V")
+	assert.True(t, ok, "V field was expected in T for the test sake, something is incorrect with the test")
+	tag, ok, err := p.LookupTag(fieldV)
+	assert.NoError(t, err)
+	assert.True(t, ok, "expected that the proxy finds the tag")
+	assert.Equal(t, tag.String(), "foo", "expected the correct tag value")
+
+	assert.NoError(t, p.HandleStructField(fieldV, rv3.FieldByIndex(fieldV.Index)))
+	assert.Equal(t, v3.V, "foo")
+
+	fieldW, ok := rv3.Type().FieldByName("W")
+	assert.True(t, ok, "W field was expected in T for the test sake, something is incorrect with the test")
+
+	_, ok, err = p.LookupTag(fieldW)
+	assert.NoError(t, err)
+	assert.False(t, ok)
 }
 
 func TestTagHandler_panicOnParseError(t *testing.T) {
@@ -2927,4 +2976,65 @@ func TestMergeStruct(t *testing.T) {
 		)
 		assert.Equal(t, T{A: 1, B: 2, C: 3}, got)
 	})
+
+	t.Run("nested", func(t *testing.T) {
+		type NT struct {
+			T T
+		}
+
+		s.Test("empty list", func(t *testcase.T) {
+			var (
+				exp NT
+				got = reflectkit.MergeStruct[NT]()
+			)
+			assert.Equal(t, exp, got)
+		})
+
+		s.Test("take non-empty fields", func(t *testcase.T) {
+			got := reflectkit.MergeStruct[NT](
+				NT{T: T{A: 1}},
+				NT{T: T{B: 2}},
+				NT{T: T{C: 3}},
+			)
+			assert.Equal(t, NT{T{A: 1, B: 2, C: 3}}, got)
+		})
+
+		s.Test("last value has the highest priority", func(t *testcase.T) {
+			got := reflectkit.MergeStruct[NT](
+				NT{T{A: 2}},
+				NT{T{B: 3}},
+				NT{T{C: 4}},
+				NT{T{A: 1}},
+				NT{T{B: 2}},
+				NT{T{C: 3}},
+			)
+			assert.Equal(t, NT{T{A: 1, B: 2, C: 3}}, got)
+		})
+
+	})
+
+	t.Run("nested but unexported", func(t *testing.T) {
+		type NT struct {
+			T T
+			t T
+		}
+
+		s.Test("empty list", func(t *testcase.T) {
+			var (
+				exp NT
+				got = reflectkit.MergeStruct[NT]()
+			)
+			assert.Equal(t, exp, got)
+		})
+
+		s.Test("take non-empty fields", func(t *testcase.T) {
+			got := reflectkit.MergeStruct[NT](
+				NT{t: T{A: 1}},
+				NT{t: T{B: 2}},
+				NT{t: T{C: 3}},
+			)
+			assert.Equal(t, NT{}, got)
+		})
+	})
+
 }

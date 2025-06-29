@@ -29,25 +29,11 @@ func FromErrIter[T any](i SeqE[T]) (iter.Seq[T], func() error) {
 	return SplitSeqE[T](i)
 }
 
-// ToErrIter is a temporal alias to ToErrSeq
-//
-// Deprecated: use iterkit.ToErrSeq instead
-func ToErrIter[T any](i iter.Seq[T], errFuncs ...func() error) SeqE[T] {
-	return ToSeqE[T](i, errFuncs...)
-}
-
 // OnErrIterValue is a temporal alias to OnErrSeqValue
 //
 // Deprecated: use iterkit.OnErrSeqValue instead
 func OnErrIterValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) SeqE[To] {
 	return OnSeqEValue[To, From](itr, pipeline)
-}
-
-// ToErrSeq is a temporal alias.
-//
-// Deprecated: use iterkit.ToSeqE instead
-func ToErrSeq[T any](i iter.Seq[T], errFuncs ...func() error) SeqE[T] {
-	return ToSeqE(i, errFuncs...)
 }
 
 // SplitErrSeq is a temporal alias.

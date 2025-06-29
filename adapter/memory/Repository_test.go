@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"go.llib.dev/frameless/internal/spechelper/resource"
 	"go.llib.dev/frameless/pkg/iterkit"
-	"go.llib.dev/frameless/spechelper/resource"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 
-	"go.llib.dev/frameless/port/crud/crudcontracts"
+	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/crud/crudtest"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -30,7 +30,7 @@ func TestRepository(t *testing.T) {
 	testcase.RunSuite(t, resource.Contract[TestEntity, string](repo, resource.Config[TestEntity, string]{
 		MetaAccessor:  m,
 		CommitManager: m,
-		CRUD: crudcontracts.Config[TestEntity, string]{
+		CRUD: crudcontract.Config[TestEntity, string]{
 			MakeEntity: makeTestEntity,
 		},
 	}))
@@ -42,7 +42,7 @@ func TestRepository_implementsOnePhaseCommitProtocol(t *testing.T) {
 	testcase.RunSuite(t, resource.Contract[TestEntity, string](repo, resource.Config[TestEntity, string]{
 		MetaAccessor:  m,
 		CommitManager: repo,
-		CRUD: crudcontracts.Config[TestEntity, string]{
+		CRUD: crudcontract.Config[TestEntity, string]{
 			MakeEntity: makeTestEntity,
 		},
 	}))

@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/reflectkit/refnode"
-	"go.llib.dev/frameless/spechelper/testent"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -60,16 +60,16 @@ func TestVisitValues(t *testing.T) {
 
 		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.Array))
-			assert.True(t, got.PathIs(refnode.Array))
-			assert.False(t, got.PathIs(refnode.Array, refnode.ArrayElem))
+			assert.True(t, got.Path().Contains(refnode.Array))
+			assert.False(t, got.Path().Contains(refnode.Array, refnode.ArrayElem))
 			assert.Equal[any](t, in, got.Value.Interface())
 		})
 
 		for i, n := range in {
 			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.ArrayElem))
-				assert.True(t, got.PathIs(refnode.Array))
-				assert.True(t, got.PathIs(refnode.Array, refnode.ArrayElem))
+				assert.True(t, got.Path().Contains(refnode.Array))
+				assert.True(t, got.Path().Contains(refnode.Array, refnode.ArrayElem))
 				assert.Equal(t, got.Index, i)
 				assert.Equal[any](t, n, got.Value.Interface())
 			})
@@ -91,16 +91,16 @@ func TestVisitValues(t *testing.T) {
 
 		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.Slice))
-			assert.True(t, got.PathIs(refnode.Slice))
-			assert.False(t, got.PathIs(refnode.Slice, refnode.SliceElem))
+			assert.True(t, got.Path().Contains(refnode.Slice))
+			assert.False(t, got.Path().Contains(refnode.Slice, refnode.SliceElem))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
 		for i, n := range input {
 			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.SliceElem))
-				assert.True(t, got.PathIs(refnode.Slice))
-				assert.True(t, got.PathIs(refnode.Slice, refnode.SliceElem))
+				assert.True(t, got.Path().Contains(refnode.Slice))
+				assert.True(t, got.Path().Contains(refnode.Slice, refnode.SliceElem))
 				assert.Equal(t, got.Index, i)
 				assert.Equal[any](t, n, got.Value.Interface())
 			})
@@ -124,24 +124,24 @@ func TestVisitValues(t *testing.T) {
 
 		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.Map))
-			assert.True(t, got.PathIs(refnode.Map))
-			assert.False(t, got.PathIs(refnode.Map, refnode.MapKey))
-			assert.False(t, got.PathIs(refnode.Map, refnode.MapValue))
+			assert.True(t, got.Path().Contains(refnode.Map))
+			assert.False(t, got.Path().Contains(refnode.Map, refnode.MapKey))
+			assert.False(t, got.Path().Contains(refnode.Map, refnode.MapValue))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
 		for mKey, mVal := range input {
 			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.MapKey))
-				assert.True(t, got.PathIs(refnode.Map, refnode.MapKey))
-				assert.False(t, got.PathIs(refnode.Map, refnode.MapValue))
+				assert.True(t, got.Path().Contains(refnode.Map, refnode.MapKey))
+				assert.False(t, got.Path().Contains(refnode.Map, refnode.MapValue))
 				assert.Equal[any](t, mKey, got.Value.Interface())
 			})
 
 			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.MapValue))
-				assert.False(t, got.PathIs(refnode.Map, refnode.MapKey))
-				assert.True(t, got.PathIs(refnode.Map, refnode.MapValue))
+				assert.False(t, got.Path().Contains(refnode.Map, refnode.MapKey))
+				assert.True(t, got.Path().Contains(refnode.Map, refnode.MapValue))
 				assert.Equal[any](t, mVal, got.Value.Interface())
 			})
 		}
@@ -157,15 +157,15 @@ func TestVisitValues(t *testing.T) {
 
 		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 			assert.Equal(t, got.NodeType, refnode.Pointer)
-			assert.True(t, got.PathIs(refnode.Pointer))
-			assert.False(t, got.PathIs(refnode.Pointer, refnode.PointerElem))
+			assert.True(t, got.Path().Contains(refnode.Pointer))
+			assert.False(t, got.Path().Contains(refnode.Pointer, refnode.PointerElem))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
 		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.PointerElem))
-			assert.True(t, got.PathIs(refnode.Pointer, refnode.PointerElem))
-			assert.False(t, got.PathIs(refnode.PointerElem, refnode.Pointer))
+			assert.True(t, got.Path().Contains(refnode.Pointer, refnode.PointerElem))
+			assert.False(t, got.Path().Contains(refnode.PointerElem, refnode.Pointer))
 			assert.Equal[any](t, *input, got.Value.Interface())
 		})
 	})
@@ -308,7 +308,7 @@ func TestVisitValues(t *testing.T) {
 				assert.Equal(t, got.Value.Type(), elemType)
 				assert.True(t, got.Is(refnode.InterfaceElem))
 				assert.False(t, got.Is(refnode.Interface))
-				assert.True(t, got.PathIs(refnode.Interface, refnode.InterfaceElem))
+				assert.True(t, got.Path().Contains(refnode.Interface, refnode.InterfaceElem))
 			})
 		})
 
@@ -330,11 +330,11 @@ func TestVisitValues(t *testing.T) {
 				assert.Equal(t, got.Value.Type(), expectedValueType)
 				assert.NotEqual(t, got.Value.Kind(), reflect.Interface)
 
-				assert.True(t, got.PathIs(
+				assert.True(t, got.Path().Contains(
 					refnode.Pointer, refnode.PointerElem,
 					refnode.Interface, refnode.InterfaceElem,
 				))
-				assert.False(t, got.PathIs(
+				assert.False(t, got.Path().Contains(
 					refnode.Interface, refnode.InterfaceElem,
 					refnode.Pointer, refnode.PointerElem,
 				))

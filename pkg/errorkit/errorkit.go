@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+
+	"go.llib.dev/frameless/pkg/internal/errorkitlite"
 )
 
 // F functions similarly to fmt.Errorf but includes tracing capabilities.
@@ -49,7 +50,7 @@ type ErrorHandler interface {
 //
 //	defer errorkit.Finish(&returnError, rows.Close)
 func Finish(returnErr *error, blk func() error) {
-	*returnErr = Merge(*returnErr, blk())
+	errorkitlite.Finish(returnErr, blk)
 }
 
 // FinishOnError is a helper function that can be used from a deferred context.
@@ -59,24 +60,12 @@ func Finish(returnErr *error, blk func() error) {
 //
 //	defer errorkit.FinishOnError(&returnError, func() { rollback(ctx) })
 func FinishOnError(returnErr *error, blk func()) {
-	if returnErr == nil || *returnErr == nil {
-		return
-	}
-	blk()
+	errorkitlite.FinishOnError(returnErr, blk)
 }
 
 // Recover will attempt a recover, and if recovery yields a value, it sets it as an error.
 func Recover(returnErr *error) {
-	r := recover()
-	if r == nil {
-		return
-	}
-	switch r := r.(type) {
-	case error:
-		*returnErr = r
-	default:
-		*returnErr = fmt.Errorf("%v", r)
-	}
+	errorkitlite.Recover(returnErr)
 }
 
 // RecoverWith will attempt a recover, and if recovery yields a non nil value, it executs the passed function.
@@ -91,9 +80,7 @@ func RecoverWith(blk func(r any)) {
 // As function serves as a shorthand to enable one-liner error handling with errors.As.
 // It's meant to be used within an if statement, much like Lookup functions such as os.LookupEnv.
 func As[T error](err error) (T, bool) {
-	var v T
-	ok := errors.As(err, &v)
-	return v, ok
+	return errorkitlite.As[T](err)
 }
 
 func wrapF(format string, owner, wrapped error) error {
@@ -184,75 +171,5 @@ func (err withContextError) Unwrap() error {
 // If no valid error is given, nil is returned.
 // If only a single non nil error value is given, the error value is returned.
 func Merge(errs ...error) error {
-	var cleanErrs []error
-	for _, err := range errs {
-		if err == nil {
-			continue
-		}
-		cleanErrs = append(cleanErrs, err)
-	}
-	errs = cleanErrs
-	if len(errs) == 0 {
-		return nil
-	}
-	if len(errs) == 1 {
-		return errs[0]
-	}
-	return multiError(errs)
-}
-
-type multiError []error
-
-func (errs multiError) Error() string {
-	var msgs []string
-	for _, err := range errs {
-		msgs = append(msgs, err.Error())
-	}
-	return strings.Join(msgs, "\n")
-}
-
-func (errs multiError) As(target any) bool {
-	for _, err := range errs {
-		if errors.As(err, target) {
-			return true
-		}
-	}
-	return false
-}
-
-func (errs multiError) Is(target error) bool {
-	for _, err := range errs {
-		if errors.Is(err, target) {
-			return true
-		}
-	}
-	return false
-}
-
-// ErrFunc is a function that checks whether a stateful system currently has an error.
-// For example context.Context#Err is an ErrFunc.
-type ErrFunc = func() error
-
-func NullErrFunc() error { return nil }
-
-func MergeErrFunc(errFuncs ...ErrFunc) func() error {
-	var fns []ErrFunc
-	for _, fn := range errFuncs {
-		if fn == nil {
-			continue
-		}
-		fns = append(fns, ErrFunc(fn))
-	}
-	switch len(fns) {
-	case 0:
-		return NullErrFunc
-	case 1:
-		return ErrFunc(fns[0])
-	}
-	return func() (returnError error) {
-		for i := len(fns) - 1; 0 <= i; i-- {
-			defer Finish(&returnError, fns[i])
-		}
-		return nil
-	}
+	return errorkitlite.Merge(errs...)
 }
