@@ -119,7 +119,7 @@ func TestQueue_emptyQueueBreakTime(t *testing.T) {
 	time.Sleep(time.Second)
 	// idler, ok := res.Subscription().(interface{ IsIdle() bool })
 	// assert.True(t, ok)
-	// assert.Eventually(t, 5*time.Second, func(it assert.It) {
+	// assert.Eventually(t, 5*time.Second, func(it testing.TB) {
 	// 	it.Should.True(idler.IsIdle())
 	// })
 

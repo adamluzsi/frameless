@@ -4,5 +4,9 @@ github.com/go-sql-driver/mysql v1.9.3 h1:U/N249h2WzJ3Ukj8SowVFjdtZKfu9vlLZxjPXV1
 github.com/go-sql-driver/mysql v1.9.3/go.mod h1:qn46aNg1333BRMNU69Lq93t8du/dwxI64Gl8i5p1WMU=
 go.llib.dev/frameless v0.300.0 h1:34Yyh1l6AOR1rjzx+IzKYYjkVb+XeRz/WoM08n5zQXk=
 go.llib.dev/frameless v0.300.0/go.mod h1:iuwsZhANY94c52KI0+ECogjOTuIhvV+SUpT0Z7oP4hc=
+go.llib.dev/frameless v0.300.2 h1:JXn6KvcbdPEtCVyaeczrvfClORij7Auh18g4saReVU0=
+go.llib.dev/frameless v0.300.2/go.mod h1:xbPLF9r1chr7t40t5wZJ5CKV0BkLqzvRPpwXbTlHbas=
 go.llib.dev/testcase v0.179.1 h1:QHzIHsveRwApCmj5OY2mY7/pQjVIPloXYws7jdspJCw=
 go.llib.dev/testcase v0.179.1/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
+go.llib.dev/testcase v0.180.0 h1:XtXRr1jSbjgg8fkfj3sTz3dgWK7sMYNUJLD9oRNiA7s=
+go.llib.dev/testcase v0.180.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
