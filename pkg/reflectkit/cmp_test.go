@@ -2,6 +2,7 @@ package reflectkit_test
 
 import (
 	"net/netip"
+	"reflect"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/must"
@@ -235,6 +236,18 @@ func TestEqual(t *testing.T) {
 			desc:    "structs with non comparable field - not equal",
 			v1:      NonComparableStruct{Field1: []int{1, 2, 3}},
 			v2:      NonComparableStruct{Field1: []int{3, 2, 1}},
+			isEqual: false,
+		},
+		{
+			desc:    "comparable values under an interfaces such as reflect.Type - equal",
+			v1:      reflect.TypeOf((*string)(nil)).Elem(),
+			v2:      reflect.TypeOf((*string)(nil)).Elem(),
+			isEqual: true,
+		},
+		{
+			desc:    "comparable values under an interfaces such as reflect.Type - not equal",
+			v1:      reflect.TypeOf((*string)(nil)).Elem(),
+			v2:      reflect.TypeOf((*int)(nil)).Elem(),
 			isEqual: false,
 		},
 	}

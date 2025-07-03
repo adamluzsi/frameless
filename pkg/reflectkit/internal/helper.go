@@ -108,32 +108,13 @@ func (i *refMem) tryVisit(v reflect.Value) (ok bool) {
 }
 
 func (i *refMem) addr(v reflect.Value) (uintptr, bool) {
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.UnsafePointer:
-		return v.Pointer(), true
-	case reflect.Struct, reflect.Array:
-		if v.CanAddr() {
-			return v.Addr().Pointer(), true
-		} else {
-			return 0, false
-		}
-	default:
-		// For basic types, use the address of the reflect.Value itself as the key.
-		return reflect.ValueOf(&v).Pointer(), true
+	if v.CanAddr() {
+		return v.UnsafeAddr(), true
 	}
-}
-
-func (i *refMem) canPointer(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Pointer, reflect.Chan, reflect.Map, reflect.UnsafePointer, reflect.Func, reflect.Slice:
-		return true
-	default:
-		return false
-	}
+	return reflect.ValueOf(&v).Pointer(), true
 }
 
 var (
-	errType  = reflect.TypeOf((*error)(nil)).Elem()
 	boolType = reflect.TypeOf((*bool)(nil)).Elem()
 	intType  = reflect.TypeOf((*int)(nil)).Elem()
 )
