@@ -30,18 +30,18 @@ func TestVisitValues(t *testing.T) {
 
 		assert.Equal(t, len(vs), 3)
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.Equal(t, got.NodeType, refnode.Struct)
 			assert.Equal[any](t, v, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.StructField))
 			assert.Equal(t, "A", got.StructField.Name)
 			assert.Equal[any](t, v.A, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.StructField))
 			assert.Equal(t, "B", got.StructField.Name)
 			assert.Equal[any](t, v.B, got.Value.Interface())
@@ -58,7 +58,7 @@ func TestVisitValues(t *testing.T) {
 
 		assert.Equal(t, len(vs), 5, "array[4] + the 4 element")
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.Array))
 			assert.True(t, got.Path().Contains(refnode.Array))
 			assert.False(t, got.Path().Contains(refnode.Array, refnode.ArrayElem))
@@ -66,7 +66,7 @@ func TestVisitValues(t *testing.T) {
 		})
 
 		for i, n := range in {
-			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.ArrayElem))
 				assert.True(t, got.Path().Contains(refnode.Array))
 				assert.True(t, got.Path().Contains(refnode.Array, refnode.ArrayElem))
@@ -89,7 +89,7 @@ func TestVisitValues(t *testing.T) {
 
 		assert.Equal(t, len(vs), 1+length, "one for slice plus the length of slice (elements)")
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.Slice))
 			assert.True(t, got.Path().Contains(refnode.Slice))
 			assert.False(t, got.Path().Contains(refnode.Slice, refnode.SliceElem))
@@ -97,7 +97,7 @@ func TestVisitValues(t *testing.T) {
 		})
 
 		for i, n := range input {
-			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.SliceElem))
 				assert.True(t, got.Path().Contains(refnode.Slice))
 				assert.True(t, got.Path().Contains(refnode.Slice, refnode.SliceElem))
@@ -122,7 +122,7 @@ func TestVisitValues(t *testing.T) {
 
 		assert.Equal(t, len(vs), 1+length+length, "map + its keys and values")
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.Map))
 			assert.True(t, got.Path().Contains(refnode.Map))
 			assert.False(t, got.Path().Contains(refnode.Map, refnode.MapKey))
@@ -131,14 +131,14 @@ func TestVisitValues(t *testing.T) {
 		})
 
 		for mKey, mVal := range input {
-			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.MapKey))
 				assert.True(t, got.Path().Contains(refnode.Map, refnode.MapKey))
 				assert.False(t, got.Path().Contains(refnode.Map, refnode.MapValue))
 				assert.Equal[any](t, mKey, got.Value.Interface())
 			})
 
-			assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.MapValue))
 				assert.False(t, got.Path().Contains(refnode.Map, refnode.MapKey))
 				assert.True(t, got.Path().Contains(refnode.Map, refnode.MapValue))
@@ -155,14 +155,14 @@ func TestVisitValues(t *testing.T) {
 
 		assert.Equal(t, len(vs), 2, "pointer + value")
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.Equal(t, got.NodeType, refnode.Pointer)
 			assert.True(t, got.Path().Contains(refnode.Pointer))
 			assert.False(t, got.Path().Contains(refnode.Pointer, refnode.PointerElem))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.PointerElem))
 			assert.True(t, got.Path().Contains(refnode.Pointer, refnode.PointerElem))
 			assert.False(t, got.Path().Contains(refnode.PointerElem, refnode.Pointer))
@@ -190,13 +190,13 @@ func TestVisitValues(t *testing.T) {
 		interValVisitCount := iterkit.Count(reflectkit.VisitValues(reflect.ValueOf(input)))
 		assert.Equal(t, len(vs), 1+interValVisitCount, "interface + interface value")
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.Equal(t, got.NodeType, refnode.Interface)
 			assert.Equal(t, got.Value.Kind(), reflect.Interface)
 			assert.Equal[any](t, x, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.Equal(t, FooT, got.Value.Type())
 			assert.True(t, got.Is(refnode.InterfaceElem))
 			assert.Equal(t, got.Value.Kind(), FooT.Kind())
@@ -229,13 +229,13 @@ func TestVisitValues(t *testing.T) {
 		vs := iterkit.Collect(reflectkit.VisitValues(rv))
 
 		var bazVs []string
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.StructField))
 			assert.Equal(t, got.StructField.Name, "V")
 			bazVs = append(bazVs, got.Value.String())
 		})
 
-		assert.OneOf(t, vs, func(t assert.It, got reflectkit.V) {
+		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
 			assert.True(t, got.Is(refnode.PointerElem))
 		})
 	})
@@ -247,7 +247,7 @@ func TestVisitValues(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(vs)))
 
-			assert.OneOf(t, vvs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.SliceElem))
 				assert.Equal(t, got.Value.Type(), elemType)
 			})
@@ -259,7 +259,7 @@ func TestVisitValues(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(vs)))
 
-			assert.OneOf(t, vvs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.ArrayElem))
 				assert.Equal(t, got.Value.Type(), elemType)
 			})
@@ -273,7 +273,7 @@ func TestVisitValues(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(T{V: t.Random.HexN(4)})))
 
-			assert.OneOf(t, vvs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.StructField))
 				assert.NotEmpty(t, got.StructField)
 				assert.Equal(t, got.StructField.Name, "V")
@@ -287,7 +287,7 @@ func TestVisitValues(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(&n)))
 
-			assert.OneOf(t, vvs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.Equal(t, got.Value.Type(), elemType)
 				assert.True(t, got.Is(refnode.PointerElem))
 				assert.False(t, got.Is(refnode.Pointer))
@@ -304,7 +304,7 @@ func TestVisitValues(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(&i).Elem()))
 
-			assert.OneOf(t, vvs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.Equal(t, got.Value.Type(), elemType)
 				assert.True(t, got.Is(refnode.InterfaceElem))
 				assert.False(t, got.Is(refnode.Interface))
@@ -326,7 +326,7 @@ func TestVisitValues(t *testing.T) {
 			assert.Equal(t, 3, len(vvs), "pointer -> interface -> int")
 
 			var expectedValueType = reflectkit.TypeOf(n)
-			assert.OneOf(t, vvs, func(t assert.It, got reflectkit.V) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.Equal(t, got.Value.Type(), expectedValueType)
 				assert.NotEqual(t, got.Value.Kind(), reflect.Interface)
 

@@ -481,7 +481,7 @@ func TestMerge(t *testing.T) {
 	})
 
 	t.Run("cancel will clean up the hanging Merge goroutine", func(t *testing.T) {
-		assert.Eventually(t, 5, func(t assert.It) {
+		assert.Eventually(t, 5, func(t testing.TB) {
 			var initialNumGoroutine int = runtime.NumGoroutine()
 			for i := 0; i < 1024; i++ {
 				ngrc := runtime.NumGoroutine()
@@ -507,7 +507,7 @@ func TestMerge(t *testing.T) {
 			cancel()
 
 			// assert Eventually don't use go routines, should be safe to use
-			assert.Eventually(t, time.Millisecond, func(it assert.It) {
+			assert.Eventually(t, time.Millisecond, func(it testing.TB) {
 				currentNumGoroutine := runtime.NumGoroutine()
 				assert.True(it,
 					afterMergeNumGoroutine < currentNumGoroutine ||

@@ -98,7 +98,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 
 			s.Then("event received through the subscription", func(t *testcase.T) {
 				t.Eventually(func(it *testcase.T) {
-					it.Must.Contain(sub.Get(t).Values(), val.Get(t))
+					assert.Contain(it, sub.Get(t).Values(), val.Get(t))
 				})
 			})
 		})
@@ -170,8 +170,8 @@ func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Cont
 		if err != nil {
 			assert.Should(tb).AnyOf(func(a *assert.A) {
 				// TODO: survey which behaviour is more natural
-				a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), err) })
-				a.Test(func(t assert.It) { t.Must.NoError(err) })
+				a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), err) })
+				a.Test(func(t testing.TB) { assert.NoError(t, err) })
 			})
 			continue
 		}
@@ -248,7 +248,7 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	})
 }
 
-func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], blk func(it assert.It, actual []Data)) {
+func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], blk func(it testing.TB, actual []Data)) {
 	var (
 		actual []Data
 		lock   sync.Mutex
@@ -269,14 +269,14 @@ func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[pubsub
 }
 
 func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], expected []Data) {
-	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
-		it.Must.Equal(expected, actual)
+	c.EventuallyIt(t, subscription, func(it testing.TB, actual []Data) {
+		assert.Equal(it, expected, actual)
 	})
 }
 
 func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], expected []Data) {
-	c.EventuallyIt(t, subscription, func(it assert.It, actual []Data) {
-		it.Must.ContainExactly(expected, actual)
+	c.EventuallyIt(t, subscription, func(it testing.TB, actual []Data) {
+		assert.ContainExactly(it, expected, actual)
 	})
 }
 

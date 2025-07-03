@@ -61,11 +61,11 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 			})
 
 			s.Then("it will find and return the entity", func(t *testcase.T) {
-				crudtest.Eventually.Assert(t, func(it assert.It) {
+				crudtest.Eventually.Assert(t, func(it testing.TB) {
 					got, found, err := act(t)
-					it.Must.NoError(err)
-					it.Must.True(found)
-					it.Must.Equal(ent.Get(t), got)
+					assert.NoError(it, err)
+					assert.True(it, found)
+					assert.Equal(it, ent.Get(t), got)
 				})
 			})
 		})
@@ -79,25 +79,25 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 						ent = mkEnt(t)
 						id  = c.Helper().HasID(t, &ent)
 					)
-					crudtest.Eventually.Assert(t, func(it assert.It) {
+					crudtest.Eventually.Assert(t, func(it testing.TB) {
 						_, found, err := subject.FindByID(ctx, id)
-						it.Must.NoError(err)
-						it.Must.True(found)
+						assert.NoError(it, err)
+						assert.True(it, found)
 					})
 					t.Must.NoError(deleter.DeleteByID(ctx, id))
-					crudtest.Eventually.Assert(t, func(it assert.It) {
+					crudtest.Eventually.Assert(t, func(it testing.TB) {
 						_, found, err := subject.FindByID(ctx, id)
-						it.Must.NoError(err)
-						it.Must.False(found)
+						assert.NoError(it, err)
+						assert.False(it, found)
 					})
 					return id
 				}).EagerLoading(s)
 
 				s.Then("it reports that the entity is not found", func(t *testcase.T) {
-					crudtest.Eventually.Assert(t, func(it assert.It) {
+					crudtest.Eventually.Assert(t, func(it testing.TB) {
 						_, ok, err := act(t)
-						it.Must.NoError(err)
-						it.Must.False(ok)
+						assert.NoError(it, err)
+						assert.False(it, ok)
 					})
 				})
 			})

@@ -960,10 +960,10 @@ func (c specFileSystem) assertFileContent(t *testcase.T, name string, expected [
 	t.Helper()
 	t.Eventually(func(it *testcase.T) {
 		file, err := c.FileSystem.OpenFile(name, os.O_RDONLY, 0)
-		it.Must.NoError(err)
+		assert.NoError(it, err)
 		defer file.Close()
 		info, err := file.Stat()
-		it.Must.NoError(err)
+		assert.NoError(it, err)
 		it.Should.Equal(int64(len(expected)), info.Size())
 		c.assertReaderEquals(it, expected, file)
 	})

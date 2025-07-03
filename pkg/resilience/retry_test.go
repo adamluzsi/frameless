@@ -173,9 +173,9 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		testcase.TableTest(s, FaultUseCases, func(t *testcase.T, tc FaultAttemptCase) {
 			failureCount.Set(t, tc.FailureCount)
 			var buffer = time.Duration(float64(tc.WaitTime) * 0.30)
-			assert.Eventually(t, 10, func(it assert.It) {
+			assert.Eventually(t, 10, func(it testing.TB) {
 				duration := measure(func() { act(t) })
-				it.Must.True(duration <= tc.WaitTime+buffer,
+				assert.True(it, duration <= tc.WaitTime+buffer,
 					"expected duration", assert.Message(tc.WaitTime.String()),
 					"got duration:", assert.Message(duration.String()),
 					"buffer", assert.Message(buffer.String()))
@@ -392,9 +392,9 @@ func TestJitter_ShouldTry(t *testing.T) {
 		s.Test("we wait a bit, but less than the maximum wait time", func(t *testcase.T) {
 			failureCount.Set(t, 1)
 			var buffer = time.Duration(float64(subject.Get(t).Delay) * 0.30)
-			assert.Eventually(t, 10, func(it assert.It) {
+			assert.Eventually(t, 10, func(it testing.TB) {
 				duration := measure(func() { act(t) })
-				it.Must.True(duration <= subject.Get(t).Delay+buffer)
+				assert.True(it, duration <= subject.Get(t).Delay+buffer)
 			})
 		})
 	})
@@ -459,7 +459,7 @@ func TestWaiter(t *testing.T) {
 		var r = assert.Retry{Strategy: rs}
 
 		var once int32
-		r.Assert(t, func(t assert.It) {
+		r.Assert(t, func(t testing.TB) {
 			if atomic.CompareAndSwapInt32(&once, 0, 1) {
 				t.FailNow()
 			}
@@ -782,10 +782,10 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 			for i := 0; i < 5; i++ {
 				failureCount.Set(t, i)
 
-				assert.Eventually(t, 10, func(it assert.It) {
+				assert.Eventually(t, 10, func(it testing.TB) {
 					duration := measure(func() { act(t) })
 
-					it.Must.True(duration <= subject.Get(t).Delay+buffer)
+					assert.True(it, duration <= subject.Get(t).Delay+buffer)
 				})
 			}
 		})

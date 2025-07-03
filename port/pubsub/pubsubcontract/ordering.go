@@ -124,7 +124,7 @@ func FIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 
 			s.Then("messages are received in their publishing order", func(t *testcase.T) {
 				t.Eventually(func(it *testcase.T) {
-					it.Must.Equal([]Data{val1.Get(t), val2.Get(t), val3.Get(t)}, subscription.Get(t).Values())
+					assert.Equal(it, []Data{val1.Get(t), val2.Get(t), val3.Get(t)}, subscription.Get(t).Values())
 				})
 			})
 		})

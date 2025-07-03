@@ -157,9 +157,9 @@ func TestAsyncLogging(t *testing.T) {
 
 	logger.Info(ctx, "gsm", logging.Field("fieldKey", "value"))
 
-	assert.Eventually(t, 3*time.Second, func(it assert.It) {
-		it.Must.Contain(out.String(), `"Msg":"gsm"`)
-		it.Must.Contain(out.String(), `"FieldKey":"value"`)
+	assert.Eventually(t, 3*time.Second, func(it testing.TB) {
+		assert.Contain(it, out.String(), `"Msg":"gsm"`)
+		assert.Contain(it, out.String(), `"FieldKey":"value"`)
 	})
 }
 
@@ -212,12 +212,12 @@ func TestStub(t *testing.T) {
 		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
 
 		assert.Equal(t, len(entries), 2)
-		assert.OneOf(t, entries, func(it assert.It, got Entry) {
-			it.Must.Equal(got.Level, logging.LevelDebug)
-			it.Must.Equal(got.Message, "msg-1")
-			it.Must.NotEmpty(got.Fields)
-			it.Must.Equal(got.Fields["foo"], 42)
-			it.Must.Equal(got.Fields["bar"], 24)
+		assert.OneOf(t, entries, func(it testing.TB, got Entry) {
+			assert.Equal(it, got.Level, logging.LevelDebug)
+			assert.Equal(it, got.Message, "msg-1")
+			assert.NotEmpty(it, got.Fields)
+			assert.Equal(it, got.Fields["foo"], 42)
+			assert.Equal(it, got.Fields["bar"], 24)
 		})
 	})
 }
@@ -246,17 +246,17 @@ func TestTesting(t *testing.T) {
 		ctx := logging.ContextWith(context.Background(), logging.Field("foo", 42))
 		logger.Debug(ctx, "msg-1", logging.Field("bar", 24))
 		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
-		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			it.Must.Contain(entry, "[debug] msg-1")
-			it.Must.Contain(entry, `foo = 42`)
-			it.Must.Contain(entry, `bar = 24`)
+			assert.Contain(it, entry, "[debug] msg-1")
+			assert.Contain(it, entry, `foo = 42`)
+			assert.Contain(it, entry, `bar = 24`)
 		})
-		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			it.Must.Contain(entry, "[info] msg-2")
-			it.Must.Contain(entry, `foo = 42`)
-			it.Must.Contain(entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
+			assert.Contain(it, entry, "[info] msg-2")
+			assert.Contain(it, entry, `foo = 42`)
+			assert.Contain(it, entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
 		})
 	})
 	t.Run("individual log level", func(t *testing.T) {
@@ -269,17 +269,17 @@ func TestTesting(t *testing.T) {
 		logger.Debug(ctx, "msg-1", logging.Field("bar", 24))
 		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
 
-		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			it.Must.Contain(entry, "[debug] msg-1")
-			it.Must.Contain(entry, `foo = 42`)
-			it.Must.Contain(entry, `bar = 24`)
+			assert.Contain(it, entry, "[debug] msg-1")
+			assert.Contain(it, entry, `foo = 42`)
+			assert.Contain(it, entry, `bar = 24`)
 		})
-		assert.OneOf(t, dtb.Logs, func(it assert.It, got []any) {
+		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			it.Must.Contain(entry, "[info] msg-2")
-			it.Must.Contain(entry, `foo = 42`)
-			it.Must.Contain(entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
+			assert.Contain(it, entry, "[info] msg-2")
+			assert.Contain(it, entry, `foo = 42`)
+			assert.Contain(it, entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
 		})
 
 		assert.Empty(t, out.Bytes())

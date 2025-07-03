@@ -227,7 +227,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		for _, hsv := range enum.Values[health.Status]() {
 			status = hsv
 			healthState := hc.HealthCheck(ctx)
-			assert.OneOf(t, healthState.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, healthState.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Status, status)
 				assert.Equal(it, got.Message, message)
 			})
@@ -246,7 +246,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		for _, hsv := range enum.Values[health.Status]() {
 			status = hsv
 			healthState := hc.HealthCheck(ctx)
-			assert.OneOf(t, healthState.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, healthState.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Status, status)
 				assert.Equal(it, got.Message, health.StateMessage(got.Status))
 			})
@@ -270,8 +270,8 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		report := monitor.HealthCheck(ctx)
 
 		assert.NotEmpty(t, report.Dependencies)
-		assert.OneOf(t, report.Dependencies, func(t assert.It, dep health.Report) {
-			assert.OneOf(t, dep.Dependencies, func(t assert.It, depdep health.Report) {
+		assert.OneOf(t, report.Dependencies, func(t testing.TB, dep health.Report) {
+			assert.OneOf(t, dep.Dependencies, func(t testing.TB, depdep health.Report) {
 				assert.Equal(t, depdep.Status, health.Up)
 				assert.NotEmpty(t, depdep.Message)
 			})
@@ -290,7 +290,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		for _, hsv := range enum.Values[health.Status]() {
 			status = hsv
 			healthState := hc.HealthCheck(ctx)
-			assert.OneOf(t, healthState.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, healthState.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Status, status)
 				assert.Equal(it, got.Message, "foo")
 			})
@@ -336,7 +336,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		ctx := context.Background()
 		hs := hc.HealthCheck(ctx)
 		assert.NotEmpty(t, hs.Dependencies)
-		assert.OneOf(t, hs.Dependencies, func(it assert.It, got health.Report) {
+		assert.OneOf(t, hs.Dependencies, func(it testing.TB, got health.Report) {
 			assert.Equal(t, health.Down, got.Status)
 			assert.Equal(t, health.StateMessage(health.Down), got.Message)
 		})
@@ -373,7 +373,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 		assert.Equal(t, health.Up, report.Status,
 			"a metric error should not cause an issue in the service health")
 
-		assert.OneOf(t, report.Issues, func(t assert.It, got health.Issue) {
+		assert.OneOf(t, report.Issues, func(t testing.TB, got health.Issue) {
 			assert.Equal(t, got.Code, "metric-error")
 			assert.Contain(t, got.Message, "x-metric")
 			assert.Contain(t, got.Message, "error")
@@ -483,10 +483,10 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 			t.Must.Equal(dto.Message, health.StateMessage(health.Up))
 			t.Must.Empty(dto.Issues)
 			t.Must.NotEmpty(dto.Dependencies)
-			assert.OneOf(t, dto.Dependencies, func(it assert.It, got health.ReportJSONDTO) {
-				it.Must.Equal(got.Status, depState.Get(t).Status.String())
-				it.Must.Equal(got.Name, depState.Get(t).Name)
-				it.Must.Equal(got.Message, depState.Get(t).Message)
+			assert.OneOf(t, dto.Dependencies, func(it testing.TB, got health.ReportJSONDTO) {
+				assert.Equal(it, got.Status, depState.Get(t).Status.String())
+				assert.Equal(it, got.Name, depState.Get(t).Name)
+				assert.Equal(it, got.Message, depState.Get(t).Message)
 			})
 		})
 
@@ -508,10 +508,10 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 				t.Must.Equal(dto.Message, health.StateMessage(health.PartialOutage))
 				t.Must.Empty(dto.Issues)
 				t.Must.NotEmpty(dto.Dependencies)
-				assert.OneOf(t, dto.Dependencies, func(it assert.It, got health.ReportJSONDTO) {
-					it.Must.Equal(got.Status, depState.Get(t).Status.String())
-					it.Must.Equal(got.Name, depState.Get(t).Name)
-					it.Must.Equal(got.Message, depState.Get(t).Message)
+				assert.OneOf(t, dto.Dependencies, func(it testing.TB, got health.ReportJSONDTO) {
+					assert.Equal(it, got.Status, depState.Get(t).Status.String())
+					assert.Equal(it, got.Name, depState.Get(t).Name)
+					assert.Equal(it, got.Message, depState.Get(t).Message)
 				})
 			})
 
@@ -604,7 +604,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 			assert.NotEmpty(t, report)
 			assert.Equal(t, health.Up, report.Status)
 			assert.NotEmpty(t, report.Dependencies)
-			assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Name, othMonitor.Get(t).ServiceName)
 				assert.Equal(it, got.Status, health.Up)
 			})
@@ -626,7 +626,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 				assert.NotEmpty(t, report)
 				assert.Equal(t, health.PartialOutage, report.Status)
 				assert.NotEmpty(t, report.Dependencies)
-				assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+				assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 					assert.Equal(it, got.Name, othMonitor.Get(t).ServiceName)
 					assert.Equal(it, got.Status, health.Down)
 				})
@@ -652,9 +652,9 @@ func TestHTTPHealthCheck(t *testing.T) {
 				assert.NotEmpty(t, report)
 				assert.Equal(t, health.Up, report.Status)
 				assert.NotEmpty(t, report.Dependencies)
-				assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+				assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 					assert.NotEmpty(it, got.Dependencies)
-					assert.OneOf(it, got.Dependencies, func(it assert.It, got health.Report) {
+					assert.OneOf(it, got.Dependencies, func(it testing.TB, got health.Report) {
 						assert.Equal(it, got.Name, nameOfTheDependencyOfOurDependency.Get(t))
 					})
 				})
@@ -680,7 +680,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 		s.Then("the dependency state marked as UNKNOWN", func(t *testcase.T) {
 			report := act(t)
-			assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Status, health.Unknown)
 			})
 		})
@@ -708,7 +708,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 		s.Then("it reports it as a dependency", func(t *testcase.T) {
 			report := act(t)
-			assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Contain(it, got.Name, remoteService.Get(t).URL)
 				assert.Equal(it, got.Status, health.Up)
 			})
@@ -725,7 +725,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 			s.Then("the dependency marked as down", func(t *testcase.T) {
 				report := act(t)
-				assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+				assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 					assert.Contain(it, got.Name, remoteService.Get(t).URL)
 					assert.Equal(it, got.Status, health.Down)
 				})
@@ -781,7 +781,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 		s.Then("it reports it as a dependency", func(t *testcase.T) {
 			report := act(t)
-			assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Name, "service-x")
 				assert.Equal(it, got.Status, health.Up)
 			})
@@ -798,7 +798,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 			s.Then("the dependency marked as down", func(t *testcase.T) {
 				report := act(t)
-				assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+				assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 					assert.Equal(it, got.Name, "service-x")
 					assert.Equal(it, got.Status, health.Down)
 				})
@@ -839,7 +839,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 
 		s.Then("it reports it as a dependency", func(t *testcase.T) {
 			report := act(t)
-			assert.OneOf(t, report.Dependencies, func(it assert.It, got health.Report) {
+			assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
 				assert.Equal(it, got.Name, "service-x")
 				assert.Equal(it, got.Status, health.Up)
 			})

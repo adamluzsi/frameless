@@ -247,7 +247,7 @@ func TestRWLockerFactory(t *testing.T) {
 	// 		<-t.Done()
 	// 	}()
 
-	// 	assert.Eventually(t, timeout, func(t assert.It) {
+	// 	assert.Eventually(t, timeout, func(t testing.TB) {
 	// 		assert.Equal(t, atomic.LoadInt32(&ready), 2)
 	// 	})
 	// })

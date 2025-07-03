@@ -2,6 +2,7 @@ package crudcontract
 
 import (
 	"context"
+	"testing"
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
@@ -165,7 +166,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 					for got, err := range allF.FindAll(c.MakeContext(t)) {
 						assert.NoError(t, err)
 
-						a.Case(func(t assert.It) {
+						a.Case(func(t testing.TB) {
 							gotID := c.IDA.Get(got)
 							assert.Equal(t, id, gotID)
 							assert.Equal(t, e, got)

@@ -48,13 +48,13 @@ func TestLogger_AsyncLogging(t *testing.T) {
 	l.KeyFormatter = stringkit.ToPascal
 	l.Info(context.Background(), "gsm", logging.Field("fieldKey", "value"))
 
-	asyncLoggingEventually.Assert(t, func(it assert.It) {
+	asyncLoggingEventually.Assert(t, func(it testing.TB) {
 		m.Lock()
 		logs := out.String()
 		m.Unlock()
 
-		it.Must.Contain(logs, `"Msg":"gsm"`)
-		it.Must.Contain(logs, `"FieldKey":"value"`)
+		assert.Contain(it, logs, `"Msg":"gsm"`)
+		assert.Contain(it, logs, `"FieldKey":"value"`)
 	})
 }
 
@@ -74,7 +74,7 @@ func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 	for i := 0; i < sampling; i++ {
 		l.Info(context.Background(), strconv.Itoa(i))
 	}
-	asyncLoggingEventually.Assert(t, func(it assert.It) {
+	asyncLoggingEventually.Assert(t, func(it testing.TB) {
 		m.Lock()
 		logs := out.String()
 		m.Unlock()

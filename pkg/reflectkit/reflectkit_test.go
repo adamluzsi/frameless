@@ -2254,7 +2254,7 @@ func TestClone(t *testing.T) {
 			cloned.Send(reflect.ValueOf(int(42)))
 		})
 
-		assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Eventually(t, time.Second, func(t testing.TB) {
 			assert.True(t, clRec)
 			assert.False(t, ogRec)
 		})

@@ -554,8 +554,8 @@ func TestMux(t *testing.T) {
 							assert.NotEmpty(t, errOutput)
 							assert.Contain(t, strings.ToLower(errOutput), "usage")
 							assert.AnyOf(t, func(a *assert.A) {
-								a.Case(func(t assert.It) { assert.Contain(t, errOutput, "qux") })
-								a.Case(func(t assert.It) { assert.Contain(t, errOutput, "quux") })
+								a.Case(func(t testing.TB) { assert.Contain(t, errOutput, "qux") })
+								a.Case(func(t testing.TB) { assert.Contain(t, errOutput, "quux") })
 							})
 						})
 

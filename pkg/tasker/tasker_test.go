@@ -247,8 +247,8 @@ func TestConcurrence_Run(t *testing.T) {
 		assert.Within(t, time.Second, func(ctx context.Context) {
 			assert.NoError(t, s.Run(ctx))
 
-			assert.Eventually(t, time.Second, func(it assert.It) {
-				it.Must.Equal(int32(111), atomic.LoadInt32(&out))
+			assert.Eventually(t, time.Second, func(it testing.TB) {
+				assert.Equal(it, int32(111), atomic.LoadInt32(&out))
 			})
 		})
 	})
@@ -278,8 +278,8 @@ func TestConcurrence_Run(t *testing.T) {
 		)
 
 		go func() { assert.NoError(t, s.Run(ctx)) }()
-		assert.Eventually(t, time.Second, func(it assert.It) {
-			it.Must.Equal(int32(111), atomic.LoadInt32(&out))
+		assert.Eventually(t, time.Second, func(it testing.TB) {
+			assert.Equal(it, int32(111), atomic.LoadInt32(&out))
 		})
 	})
 
@@ -525,8 +525,8 @@ func Test_Main_contextCancelDoesNotBubbleUp(t *testing.T) {
 		})
 	}()
 
-	assert.Eventually(t, time.Second, func(it assert.It) {
-		it.Must.Equal(atomic.LoadInt32(&ready), int32(1))
+	assert.Eventually(t, time.Second, func(it testing.TB) {
+		assert.Equal(it, atomic.LoadInt32(&ready), int32(1))
 	})
 
 	cancel()
@@ -661,18 +661,18 @@ func TestWithShutdown(t *testing.T) { // TODO: flaky
 		assert.NotWithin(t, blockCheckWaitTime, func(context.Context) { // expected to block
 			assert.NoError(t, task(context.WithValue(ctx, expectedKey, expectedValue)))
 		})
-		assert.Eventually(t, time.Second, func(it assert.It) {
-			it.Must.True(atomic.LoadInt32(&startBegin) == 1)
-			it.Must.True(atomic.LoadInt32(&startFinished) == 0)
+		assert.Eventually(t, time.Second, func(it testing.TB) {
+			assert.True(it, atomic.LoadInt32(&startBegin) == 1)
+			assert.True(it, atomic.LoadInt32(&startFinished) == 0)
 		})
 
 		cancel() // cancel task
 
-		assert.Eventually(t, time.Second+500*time.Millisecond, func(it assert.It) {
-			it.Must.True(atomic.LoadInt32(&startFinished) == 1)
-			it.Must.True(atomic.LoadInt32(&stopBegin) == 1)
-			it.Must.True(atomic.LoadInt32(&stopFinished) == 1)
-			it.Must.True(atomic.LoadInt32(&stopGraceTimeout) == 1)
+		assert.Eventually(t, time.Second+500*time.Millisecond, func(it testing.TB) {
+			assert.True(it, atomic.LoadInt32(&startFinished) == 1)
+			assert.True(it, atomic.LoadInt32(&stopBegin) == 1)
+			assert.True(it, atomic.LoadInt32(&stopFinished) == 1)
+			assert.True(it, atomic.LoadInt32(&stopGraceTimeout) == 1)
 		})
 	})
 
@@ -700,17 +700,17 @@ func TestWithShutdown(t *testing.T) { // TODO: flaky
 			assert.NoError(t, err)
 		})
 
-		assert.Eventually(t, time.Second, func(it assert.It) {
-			it.Must.True(atomic.LoadInt32(&startOK) == 1, "it was expected that task started")
-			it.Must.True(atomic.LoadInt32(&stopOK) == 0, "it was not expected that the task already stopped")
+		assert.Eventually(t, time.Second, func(it testing.TB) {
+			assert.True(it, atomic.LoadInt32(&startOK) == 1, "it was expected that task started")
+			assert.True(it, atomic.LoadInt32(&stopOK) == 0, "it was not expected that the task already stopped")
 		})
 
 		close(done) // cancel StartTask
 		cancel()    // cancel task all together
 		w.Wait()
 
-		assert.Eventually(t, time.Second, func(it assert.It) {
-			it.Must.True(atomic.LoadInt32(&stopOK) == 1)
+		assert.Eventually(t, time.Second, func(it testing.TB) {
+			assert.True(it, atomic.LoadInt32(&stopOK) == 1)
 		})
 	})
 
@@ -1139,8 +1139,8 @@ func TestBackground(t *testing.T) {
 			})
 		}, "it was expected that background task will immediately returns back")
 		rdy.Store(true) // ok ,we have returned, time to break INF loop
-		assert.Eventually(t, time.Second, func(it assert.It) {
-			it.Must.True(ok.Load())
+		assert.Eventually(t, time.Second, func(it testing.TB) {
+			assert.True(it, ok.Load())
 		})
 	})
 	t.Run("join can be done multiple times", func(t *testing.T) {
@@ -1197,7 +1197,7 @@ func TestBackground(t *testing.T) {
 			return nil
 		})
 
-		assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Eventually(t, time.Second, func(t testing.TB) {
 			assert.True(t, ready.Load())
 		})
 
@@ -1294,13 +1294,13 @@ func TestJobGroup_asFireAndForget(t *testing.T) {
 			})
 		})
 
-		assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Eventually(t, time.Second, func(t testing.TB) {
 			assert.Equal(t, n, g.Len())
 		})
 
 		close(done)
 
-		assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Eventually(t, time.Second, func(t testing.TB) {
 			assert.Equal(t, g.Len(), 0)
 		})
 
@@ -1348,7 +1348,7 @@ func TestJobGroup_asManual(t *testing.T) {
 			})
 		})
 
-		assert.Eventually(t, time.Second, func(t assert.It) {
+		assert.Eventually(t, time.Second, func(t testing.TB) {
 			assert.Equal(t, n, g.Len())
 		})
 
@@ -1403,7 +1403,7 @@ func TestJobGroup_Go_wManual(t *testing.T) {
 		})
 	})
 
-	assert.Eventually(t, time.Second, func(t assert.It) {
+	assert.Eventually(t, time.Second, func(t testing.TB) {
 		assert.Equal(t, n, g.Len())
 	})
 

@@ -5,6 +5,7 @@ import (
 	"io"
 	"iter"
 	"reflect"
+	"testing"
 	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -831,12 +832,12 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 					t.Must.NotEmpty(id)
 					c.CRUD.Helper().HasEntity(t, cache.Get(t), c.CRUD.MakeContext(t), valueWithNewContent.Get(t))
 
-					eventually.Assert(t, func(it assert.It) {
+					eventually.Assert(t, func(it testing.TB) {
 						v, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
-						it.Must.NoError(err)
-						it.Must.True(found)
+						assert.NoError(it, err)
+						assert.True(it, found)
 						it.Log(`actually`, v)
-						it.Must.Equal(*valueWithNewContent.Get(t), v)
+						assert.Equal(it, *valueWithNewContent.Get(t), v)
 					})
 				})
 			})
@@ -950,9 +951,9 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 			hits, err := iterkit.CollectE(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
 			t.Must.NoError(err)
 
-			assert.OneOf(t, hits, func(it assert.It, got cachepkg.Hit[ID]) {
-				it.Must.Equal(got.ID, hitID.Get(t))
-				it.Must.ContainExactly(got.EntityIDs, []ID{
+			assert.OneOf(t, hits, func(it testing.TB, got cachepkg.Hit[ID]) {
+				assert.Equal(it, got.ID, hitID.Get(t))
+				assert.ContainExactly(it, got.EntityIDs, []ID{
 					c.CRUD.Helper().HasID(t, ent1.Get(t)),
 					c.CRUD.Helper().HasID(t, ent2.Get(t)),
 				})
@@ -1020,7 +1021,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 			hvs, err := iterkit.CollectE(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
 			assert.NoError(t, err)
 
-			assert.OneOf(t, hvs, func(t assert.It, got cachepkg.Hit[ID]) {
+			assert.OneOf(t, hvs, func(t testing.TB, got cachepkg.Hit[ID]) {
 				assert.Contain(t, got.EntityIDs, id)
 			}, "expected that there is at least one hit that points to our ID")
 

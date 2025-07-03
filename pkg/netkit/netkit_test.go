@@ -30,11 +30,11 @@ func TestIsPortFree_tcp(t *testing.T) {
 		}
 		run(t, srv)
 
-		assert.Eventually(t, 5*time.Second, func(it assert.It) {
+		assert.Eventually(t, 5*time.Second, func(it testing.TB) {
 			c := http.Client{Timeout: time.Second}
 			resp, err := c.Get(fmt.Sprintf("http://%s", srv.Addr))
-			it.Must.NoError(err)
-			it.Must.Equal(resp.StatusCode, http.StatusTeapot)
+			assert.NoError(it, err)
+			assert.Equal(it, resp.StatusCode, http.StatusTeapot)
 		})
 
 		t.Run("tcp", func(t *testing.T) {
@@ -76,10 +76,10 @@ func TestIsPortFree_udp(t *testing.T) {
 		assert.NoError(t, err)
 		defer c.Close()
 
-		assert.Eventually(t, 5*time.Second, func(it assert.It) {
+		assert.Eventually(t, 5*time.Second, func(it testing.TB) {
 			dial, err := net.Dial("udp", fmt.Sprintf("%s:%d", localhost, port))
-			it.Must.NoError(err)
-			it.Must.NoError(dial.Close())
+			assert.NoError(it, err)
+			assert.NoError(it, dial.Close())
 		})
 
 		isPortOpen, err := netkit.IsPortFree("tcp", port)
@@ -120,11 +120,11 @@ func TestGetFreePort(t *testing.T) {
 		}
 		run(t, srv)
 
-		assert.Eventually(t, 5*time.Second, func(it assert.It) {
+		assert.Eventually(t, 5*time.Second, func(it testing.TB) {
 			c := http.Client{Timeout: time.Second}
 			resp, err := c.Get(fmt.Sprintf("http://%s", srv.Addr))
-			it.Must.NoError(err)
-			it.Must.Equal(resp.StatusCode, http.StatusTeapot)
+			assert.NoError(it, err)
+			assert.Equal(it, resp.StatusCode, http.StatusTeapot)
 		})
 
 		t.Run("and using the received port and requesting a new free port", func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestGetFreePort(t *testing.T) {
 		})
 	})
 	t.Run("works concurrently", func(t *testing.T) {
-		assert.Eventually(t, time.Minute, func(t assert.It) {
+		assert.Eventually(t, time.Minute, func(t testing.TB) {
 			var a, b, c, d int
 			testcase.Race(func() {
 				var err error

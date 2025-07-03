@@ -55,7 +55,7 @@ func (r *AsyncResults[Data]) ReceivedAt() time.Time {
 
 func (r *AsyncResults[Data]) Eventually(tb testing.TB, blk func(testing.TB, []Data)) {
 	tb.Helper()
-	Eventually.Assert(tb, func(it assert.It) { blk(it, r.Values()) })
+	Eventually.Assert(tb, func(it testing.TB) { blk(it, r.Values()) })
 }
 
 func (r *AsyncResults[Data]) Finish() {
@@ -115,8 +115,8 @@ func (sih *consumer[Data]) wrk(
 		if err != nil {
 			it.Should.AnyOf(func(a *assert.A) {
 				// TODO: survey which behaviour is more natural
-				a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), err) })
-				a.Test(func(t assert.It) { t.Must.NoError(err) })
+				a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), err) })
+				a.Test(func(t testing.TB) { assert.NoError(t, err) })
 			}, assert.Message(fmt.Sprintf("error: %#v", err)))
 			continue
 		}

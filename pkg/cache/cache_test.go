@@ -79,7 +79,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 
 		t.Log("then it will be cached")
 		expID := cache.Query{Name: "FindByID", ARGS: cache.QueryARGS{"id": foo1.ID}}.HitID()
-		assert.OneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Contain(t, got.ID, expID)
 		})
 	}
@@ -92,7 +92,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		assert.NoError(t, err)
 
 		t.Log("then it will be cached")
-		assert.OneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
 			assert.Contain(t, got.EntityIDs, foo1.ID)
 		})
@@ -121,7 +121,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		assert.NoError(t, err)
 
 		t.Log("then FindByBarID will be cached")
-		assert.OneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
 			assert.Contain(t, got.EntityIDs, foo1.ID)
 		})
@@ -142,7 +142,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		assert.NoError(t, err)
 
 		t.Log("then we expect that the new NOK-MANY-BAZ will be filtered")
-		assert.OneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
 			assert.Contain(t, got.EntityIDs, foo2.ID)
 		})
@@ -157,7 +157,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		assert.NoError(t, err)
 
 		t.Log("then we expect that the query which will be intentionally unrelated to foo1 is also cached")
-		assert.OneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
 			assert.Contain(t, got.EntityIDs, foo3.ID)
 		})
@@ -168,24 +168,24 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		assert.NoError(t, cachei.InvalidateByID(ctx, foo1.ID))
 
 		t.Log(`then OP:"NOK-ONE-1" should be invalidated as it was also related to foo1`)
-		assert.NoneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.NoneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Contain(t, got.ID, "NOK-ONE-1")
 		})
 
 		t.Log("then FindByBarID query that has an invalidator telling that FindByBarID for foo1 should be invalidated, is actually invalidated")
 		FindByBarIDForFoo1 := cache.Query{Name: "FindByBarID", ARGS: map[string]any{"bar": foo1.Bar}}
-		assert.NoneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.NoneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, FindByBarIDForFoo1.HitID())
 		})
 
 		t.Log("then NOK-MANY-BAZ will be invalidated as well as its result because the cahed query invalidator will match it")
-		assert.NoneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.NoneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			qid := cache.Query{Name: "NOK-MANY-BAZ"}
 			assert.Equal(t, got.ID, qid.HitID())
 		})
 
 		t.Log("then the cached query that was not related to foo1 should be left there")
-		assert.OneOf(t, getHits(), func(t assert.It, got cache.Hit[testent.FooID]) {
+		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			qid := cache.Query{Name: "notAffectedQueryKey"}
 			assert.Equal(t, got.ID, qid.HitID())
 		})

@@ -284,8 +284,8 @@ func TestScan_smoke(t *testing.T) {
 
 				t.Must.AnyOf(func(a *assert.A) {
 					const msg = "expected that the input reader is already empty"
-					a.Case(func(t assert.It) { assert.True(t, len(gotExtra) == 0, msg) })
-					a.Case(func(t assert.It) { assert.ErrorIs(t, err, io.EOF, msg) })
+					a.Case(func(t testing.TB) { assert.True(t, len(gotExtra) == 0, msg) })
+					a.Case(func(t testing.TB) { assert.ErrorIs(t, err, io.EOF, msg) })
 				})
 			})
 

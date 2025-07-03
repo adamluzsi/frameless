@@ -118,7 +118,7 @@ func thenIterationIsRepeatable(s *testcase.Spec, mk func(testing.TB) iter.Seq[st
 		})
 
 		if hasValues {
-			assert.Eventually(t, 3, func(t assert.It) {
+			assert.Eventually(t, 3, func(t testing.TB) {
 				var n int
 				for range i {
 					n++

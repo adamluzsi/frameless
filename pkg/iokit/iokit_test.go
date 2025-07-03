@@ -415,8 +415,8 @@ func TestSyncReaderWriter_smoke(t *testing.T) {
 	read := func() {
 		_, err := rw.Read(make([]byte, msgLen))
 		assert.Should(t).AnyOf(func(a *assert.A) {
-			a.Test(func(t assert.It) { t.Must.ErrorIs(io.EOF, err) })
-			a.Test(func(t assert.It) { t.Must.NoError(err) })
+			a.Test(func(t testing.TB) { assert.ErrorIs(t, io.EOF, err) })
+			a.Test(func(t testing.TB) { assert.NoError(t, err) })
 		})
 	}
 	testcase.Race(
@@ -671,7 +671,7 @@ func TestKeepAliveReader(t *testing.T) {
 		})
 
 		s.Then("the keep alive mechanism read from the the source reader to avoid read timeout", func(t *testcase.T) {
-			assert.Eventually(t, time.Second, func(it assert.It) {
+			assert.Eventually(t, time.Second, func(it testing.TB) {
 				assert.NotEmpty(it, stub.Get(t).LastReadAt)
 			})
 

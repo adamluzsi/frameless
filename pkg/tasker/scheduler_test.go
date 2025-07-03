@@ -72,8 +72,8 @@ func TestScheduler(t *testing.T) {
 			assert.NotWithin(t, blockCheckWaitTime, func(ctx context.Context) {
 				gotErr := act(t)(ctx)
 				t.Must.AnyOf(func(a *assert.A) {
-					a.Test(func(t assert.It) { t.Must.NoError(gotErr) })
-					a.Test(func(t assert.It) { t.Must.ErrorIs(ctx.Err(), gotErr) })
+					a.Test(func(t testing.TB) { assert.NoError(t, gotErr) })
+					a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), gotErr) })
 				})
 			}).Wait()
 		})
@@ -84,7 +84,7 @@ func TestScheduler(t *testing.T) {
 			for i := 0; i < 7; i++ {
 				t.Must.Within(time.Second, func(ctx context.Context) {
 					t.Eventually(func(it *testcase.T) {
-						it.Must.Equal(i+1, ran.Get(t))
+						assert.Equal(it, i+1, ran.Get(t))
 					})
 				})
 
@@ -95,7 +95,7 @@ func TestScheduler(t *testing.T) {
 		s.Then("the passed Job func will not run faster than the expected interval", func(t *testcase.T) {
 			go act(t)(Context.Get(t))
 			t.Eventually(func(it *testcase.T) {
-				it.Must.Equal(1, ran.Get(t))
+				assert.Equal(it, 1, ran.Get(t))
 			})
 			timecop.Travel(t, interval.Get(t)/2)
 			t.Must.True(time.Millisecond < interval.Get(t),
@@ -112,7 +112,7 @@ func TestScheduler(t *testing.T) {
 			for i := 0; i < 7; i++ {
 				t.Must.Within(time.Second, func(ctx context.Context) {
 					t.Eventually(func(it *testcase.T) {
-						it.Must.Equal(i+1, ran.Get(t))
+						assert.Equal(it, i+1, ran.Get(t))
 					})
 				})
 
@@ -255,7 +255,7 @@ func TestWithNoOverlap(t *testing.T) {
 // 		current := atomic.LoadInt32(&count)
 // 		assert.NoError(t, job.Run(context.Background()))
 
-// 		assert.Eventually(t, time.Second, func(t assert.It) {
+// 		assert.Eventually(t, time.Second, func(t testing.TB) {
 // 			assert.Equal(t, atomic.LoadInt32(&count), current+1)
 // 		})
 // 	})

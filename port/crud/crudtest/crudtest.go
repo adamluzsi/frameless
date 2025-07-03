@@ -87,10 +87,10 @@ func (a Helper[ENT, ID]) IsPresent(tb testing.TB, resource crud.ByIDFinder[ENT, 
 	tb.Helper()
 	var ent ENT
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be findable", new(ENT), id)
-	a.eventually().Assert(tb, func(it assert.It) {
+	a.eventually().Assert(tb, func(it testing.TB) {
 		e, found, err := resource.FindByID(ctx, id)
-		it.Must.NoError(err)
-		it.Must.True(found, assert.Message(errMessage))
+		assert.NoError(it, err)
+		assert.True(it, found, assert.Message(errMessage))
 		ent = e
 	})
 	return &ent
@@ -105,10 +105,10 @@ func IsAbsent[ENT, ID any](tb testing.TB, resource crud.ByIDFinder[ENT, ID], ctx
 func (a Helper[ENT, ID]) IsAbsent(tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx context.Context, id ID) {
 	tb.Helper()
 	errMessage := fmt.Sprintf("it was expected that %T with id %#v will be absent", *new(ENT), id)
-	a.eventually().Assert(tb, func(it assert.It) {
+	a.eventually().Assert(tb, func(it testing.TB) {
 		_, found, err := subject.FindByID(ctx, id)
-		it.Must.NoError(err)
-		it.Must.False(found, assert.Message(errMessage))
+		assert.NoError(it, err)
+		assert.False(it, found, assert.Message(errMessage))
 	})
 }
 
@@ -120,7 +120,7 @@ func HasEntity[ENT, ID any](tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx
 func (a Helper[ENT, ID]) HasEntity(tb testing.TB, subject crud.ByIDFinder[ENT, ID], ctx context.Context, ptr *ENT) {
 	tb.Helper()
 	id := a.HasID(tb, ptr)
-	a.eventually().Assert(tb, func(it assert.It) {
+	a.eventually().Assert(tb, func(it testing.TB) {
 		// IsPresent yields the currently found value
 		// that might be not yet the value we expect to see
 		// so the .Assert block ensure multiple tries
@@ -169,7 +169,7 @@ func (a Helper[ENT, ID]) Update(tb testing.TB, resource updater[ENT, ID], ctx co
 	// the entity is present in the resource.
 	a.IsPresent(tb, resource, ctx, id) // wait for entity presence
 	assert.NoError(tb, resource.Update(ctx, ptr))
-	a.eventually().Assert(tb, func(it assert.It) {
+	a.eventually().Assert(tb, func(it testing.TB) {
 		entity := a.IsPresent(it, resource, ctx, id)
 		assert.Equal(it, ptr, entity)
 	})
@@ -206,7 +206,7 @@ func (a Helper[ENT, ID]) DeleteAll(tb testing.TB, subject deleteAllDeleter[ENT, 
 	tb.Helper()
 	assert.NoError(tb, subject.DeleteAll(ctx))
 	// a.Waiter.Wait() // TODO: FIXME: race condition between tests might depend on this
-	a.eventually().Assert(tb, func(t assert.It) {
+	a.eventually().Assert(tb, func(t testing.TB) {
 		vs, err := iterkit.CollectE(subject.FindAll(ctx))
 		assert.NoError(t, err)
 		assert.Empty(t, vs, `no entity was expected to be found`)

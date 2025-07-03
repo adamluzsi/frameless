@@ -59,7 +59,7 @@ func TestHTTPServerTask_gracefulShutdown(t *testing.T) {
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
-	eventually.Assert(t, func(it assert.It) {
+	eventually.Assert(t, func(it testing.TB) {
 		resp, err := http.Get(srvURL)
 		assert.NoError(it, err)
 		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
@@ -74,7 +74,7 @@ func TestHTTPServerTask_gracefulShutdown(t *testing.T) {
 		atomic.AddInt32(&done, 1)
 	}()
 
-	eventually.Assert(t, func(it assert.It) { // wait until the long request is made
+	eventually.Assert(t, func(it testing.TB) { // wait until the long request is made
 		assert.NotEqual(it, 0, atomic.LoadInt64(&inFlight))
 	})
 
@@ -89,7 +89,7 @@ func TestHTTPServerTask_gracefulShutdown(t *testing.T) {
 	// then we travel forward in time, so the long request finish up its business
 	timecop.Travel(t, time.Minute)
 
-	eventually.Assert(t, func(it assert.It) {
+	eventually.Assert(t, func(it testing.TB) {
 		_, err := http.Get(srvURL)
 		assert.Error(it, err)
 	})
@@ -113,7 +113,7 @@ func TestHTTPServerPortFromENV(t *testing.T) {
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
-	eventually.Assert(t, func(it assert.It) {
+	eventually.Assert(t, func(it testing.TB) {
 		resp, err := http.Get(srvURL)
 		assert.NoError(it, err)
 		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
@@ -141,7 +141,7 @@ func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
-	eventually.Assert(t, func(it assert.It) {
+	eventually.Assert(t, func(it testing.TB) {
 		resp, err := http.Get(srvURL)
 		assert.NoError(it, err)
 		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
@@ -168,7 +168,7 @@ func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
-	eventually.Assert(t, func(it assert.It) {
+	eventually.Assert(t, func(it testing.TB) {
 		resp, err := http.Get(srvURL)
 		assert.NoError(it, err)
 		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
@@ -196,7 +196,7 @@ func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
-	eventually.Assert(t, func(it assert.It) {
+	eventually.Assert(t, func(it testing.TB) {
 		resp, err := http.Get(srvURL)
 		assert.NoError(it, err)
 		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
@@ -228,7 +228,7 @@ func TestHTTPServerTask_withContextValuesPassedDownToRequests(t *testing.T) {
 
 	go func() { assert.NoError(t, tasker.HTTPServerTask(srv).Run(ctx)) }()
 
-	assert.Eventually(t, time.Second, func(it assert.It) {
+	assert.Eventually(t, time.Second, func(it testing.TB) {
 		resp, err := http.Get(srvURL)
 		assert.NoError(it, err)
 		assert.Equal(it, http.StatusTeapot, resp.StatusCode)
@@ -266,7 +266,7 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 
 	defer tasker.Background(ctx, func(ctx context.Context) {
 		httpClient := &http.Client{Timeout: time.Second}
-		assert.Eventually(t, 10*time.Second, func(t assert.It) {
+		assert.Eventually(t, 10*time.Second, func(t testing.TB) {
 			resp, err := httpClient.Get("http://localhost:58080/")
 			assert.NoError(t, err)
 			assert.NotNil(t, resp)
@@ -274,7 +274,7 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 		})
 	}).Stop()
 
-	assert.Eventually(t, time.Second, func(it assert.It) {
+	assert.Eventually(t, time.Second, func(it testing.TB) {
 		assert.Equal(it, atomic.LoadInt32(&ready), 1)
 	})
 
@@ -289,7 +289,7 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 
 	close(finish)
 
-	assert.Eventually(t, time.Second, func(it assert.It) {
+	assert.Eventually(t, time.Second, func(it testing.TB) {
 		assert.Equal(it, atomic.LoadInt32(&done), 1)
 	})
 }

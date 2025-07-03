@@ -288,9 +288,9 @@ func TestLogger_smoke(t *testing.T) {
 		assert.Equal(t, 0, buf.Len())
 		assert.Equal(t, 2, len(logs))
 
-		assert.OneOf(t, logs, func(it assert.It, got LogEntry) {
-			it.Must.Equal("the info message", got.Message)
-			it.Must.Equal(logging.LevelInfo, got.Level)
+		assert.OneOf(t, logs, func(it testing.TB, got LogEntry) {
+			assert.Equal(it, "the info message", got.Message)
+			assert.Equal(it, logging.LevelInfo, got.Level)
 			assert.Equal[any](it, "xuq", got.Fields["qux"])
 			assert.Equal[any](it, "1", got.Fields["foo"])
 			assert.Equal[any](it, 2, got.Fields["bar"])
@@ -378,11 +378,11 @@ func TestLogger_AsyncLogging_smoke(t *testing.T) {
 
 	l.Info(context.Background(), "gsm", logging.Field("fieldKey", "value"))
 
-	assert.Eventually(t, 3*time.Second, func(it assert.It) {
+	assert.Eventually(t, 3*time.Second, func(it testing.TB) {
 		m.Lock()
 		defer m.Unlock()
 
-		it.Must.Contain(out.String(), `"Msg":"gsm"`)
-		it.Must.Contain(out.String(), `"FieldKey":"value"`)
+		assert.Contain(it, out.String(), `"Msg":"gsm"`)
+		assert.Contain(it, out.String(), `"FieldKey":"value"`)
 	})
 }

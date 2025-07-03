@@ -69,23 +69,23 @@ func TestFileSystem_smoke(t *testing.T) {
 
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filesystem.ModeUserRWX)
-	it.Must.NoError(err)
+	assert.NoError(it, err)
 	defer func() { it.Should.NoError(mfs.Remove(name)) }()
 
 	_, err = file.Write([]byte("/foo"))
-	it.Must.NoError(err)
+	assert.NoError(it, err)
 	_, err = file.Write([]byte("/bar"))
-	it.Must.NoError(err)
+	assert.NoError(it, err)
 	file.Seek(0, io.SeekStart)
 	_, err = file.Write([]byte("/baz"))
-	it.Must.NoError(err)
+	assert.NoError(it, err)
 
-	it.Must.NoError(file.Close())
+	assert.NoError(it, file.Close())
 
 	file, err = mfs.OpenFile(name, os.O_RDONLY, 0)
-	it.Must.NoError(err)
+	assert.NoError(it, err)
 
 	bs, err := io.ReadAll(file)
-	it.Must.NoError(err)
-	it.Must.Equal("/foo/bar/baz", string(bs))
+	assert.NoError(it, err)
+	assert.Equal(it, "/foo/bar/baz", string(bs))
 }

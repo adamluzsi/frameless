@@ -30,7 +30,7 @@ func TestArchBitSize(t *testing.T) {
 }
 
 func TestRegisterTraceException(t *testing.T) {
-	assert.OneOf(t, runtimekit.Stack(), func(t assert.It, got runtime.Frame) {
+	assert.OneOf(t, runtimekit.Stack(), func(t testing.TB, got runtime.Frame) {
 		assert.Contain(t, got.Function, t.Name())
 	})
 
@@ -38,13 +38,13 @@ func TestRegisterTraceException(t *testing.T) {
 		return strings.Contains(f.Function, t.Name())
 	})
 
-	assert.NoneOf(t, runtimekit.Stack(), func(t assert.It, got runtime.Frame) {
+	assert.NoneOf(t, runtimekit.Stack(), func(t testing.TB, got runtime.Frame) {
 		assert.Contain(t, got.Function, t.Name())
 	})
 
 	undo()
 
-	assert.OneOf(t, runtimekit.Stack(), func(t assert.It, got runtime.Frame) {
+	assert.OneOf(t, runtimekit.Stack(), func(t testing.TB, got runtime.Frame) {
 		assert.Contain(t, got.Function, t.Name())
 	})
 }
@@ -54,12 +54,12 @@ func TestStack(t *testing.T) {
 
 	assert.NotEmpty(t, stack)
 
-	assert.OneOf(t, stack, func(t assert.It, frame runtime.Frame) {
+	assert.OneOf(t, stack, func(t testing.TB, frame runtime.Frame) {
 		assert.Contain(t, frame.Function, t.Name())
 		assert.Contain(t, frame.File, "runtimekit_test.go")
 	}, "expected that the current function is part of the stack")
 
-	assert.NoneOf(t, stack, func(t assert.It, frame runtime.Frame) {
+	assert.NoneOf(t, stack, func(t testing.TB, frame runtime.Frame) {
 		assert.Contain(t, frame.File, "runtimekit.go")
 	}, "expected that runtimekit itself is not in the stack trace")
 
@@ -69,7 +69,7 @@ func TestStack(t *testing.T) {
 
 	fn := runtimekit.FuncOf(stubFunc)
 
-	assert.OneOf(t, stack, func(t assert.It, frame runtime.Frame) {
+	assert.OneOf(t, stack, func(t testing.TB, frame runtime.Frame) {
 		assert.Contain(t, frame.Function, fn.Name())
 	})
 }

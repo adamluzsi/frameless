@@ -415,7 +415,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	assert.True(t, len(logs) == 1)
 	u, _ := url.Parse(server.URL)
 
-	assert.OneOf(t, logs, func(t assert.It, fields logging.Fields) {
+	assert.OneOf(t, logs, func(t testing.TB, fields logging.Fields) {
 		assert.Equal(t, fields, logging.Fields{
 			"duration":             "1.542s",
 			"duration_ms":          int64(1542),

@@ -35,9 +35,9 @@ func TestNumbers(t *testing.T) {
 		got := act(t)
 
 		assert.AnyOf(t, func(a *assert.A) {
-			a.Case(func(t assert.It) { assert.Equal(t, got, -1) })
-			a.Case(func(t assert.It) { assert.Equal(t, got, 0) })
-			a.Case(func(t assert.It) { assert.Equal(t, got, 1) })
+			a.Case(func(t testing.TB) { assert.Equal(t, got, -1) })
+			a.Case(func(t testing.TB) { assert.Equal(t, got, 0) })
+			a.Case(func(t testing.TB) { assert.Equal(t, got, 1) })
 		}, "expected that result is one of -1, 0 or 1")
 	})
 

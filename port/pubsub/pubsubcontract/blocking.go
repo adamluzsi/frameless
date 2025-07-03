@@ -50,9 +50,9 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 			)
 			t.Eventually(func(it *testcase.T) {
 				ackedAt = sub.Get(t).AckedAt()
-				it.Must.False(ackedAt.IsZero())
+				assert.False(it, ackedAt.IsZero())
 				receivedAt = sub.Get(t).ReceivedAt()
-				it.Must.False(receivedAt.IsZero())
+				assert.False(it, receivedAt.IsZero())
 			})
 
 			var publishedAt time.Time

@@ -681,7 +681,7 @@ func TestReflectValuesOfStructField(t *testing.T) {
 		got, err := enum.ReflectValuesOfStructField(field)
 		assert.NoError(t, err)
 		assert.Equal(t, len(got), 3)
-		assert.OneOf(t, got, func(t assert.It, v reflect.Value) {
+		assert.OneOf(t, got, func(t testing.TB, v reflect.Value) {
 			assert.Equal(t, v.String(), "foo")
 		})
 	})
@@ -699,7 +699,7 @@ func TestReflectValuesOfStructField(t *testing.T) {
 		got, err := enum.ReflectValuesOfStructField(field)
 		assert.NoError(t, err)
 		assert.Equal(t, len(got), 3)
-		assert.OneOf(t, got, func(t assert.It, v reflect.Value) {
+		assert.OneOf(t, got, func(t testing.TB, v reflect.Value) {
 			assert.Equal(t, v.String(), "foo")
 		})
 	})
