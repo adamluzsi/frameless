@@ -437,3 +437,31 @@ func TestToSlice(t *testing.T) {
 		})
 	})
 }
+
+func TestLookup(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		var vs map[int]string
+		v, ok := mapkit.Lookup(vs, 42)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+	t.Run("missing", func(t *testing.T) {
+		var vs = map[int]string{}
+		v, ok := mapkit.Lookup(vs, 42)
+		assert.False(t, ok)
+		assert.Empty(t, v)
+	})
+	t.Run("contain", func(t *testing.T) {
+		var vs = map[int]string{42: "foo"}
+		v, ok := mapkit.Lookup(vs, 42)
+		assert.True(t, ok)
+		assert.Equal(t, v, "foo")
+	})
+	t.Run("maptype", func(t *testing.T) {
+		type M map[int]string
+		var vs = M{42: "foo"}
+		v, ok := mapkit.Lookup(vs, 42)
+		assert.True(t, ok)
+		assert.Equal(t, v, "foo")
+	})
+}
