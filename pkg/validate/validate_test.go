@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/enum"
+	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -1977,5 +1978,31 @@ func Test_match_smoke(t *testing.T) {
 		assert.NoError(t, validate.StructField(toStructField(t, ok, "V")))
 		assert.Error(t, validate.StructField(toStructField(t, nok, "V")))
 		assert.Error(t, validate.StructField(toStructField(t, zero, "V")))
+	})
+}
+
+type DeprecatedSelfValidatorMethod struct {
+	ValidateErr error
+}
+
+func (stub DeprecatedSelfValidatorMethod) Validate() error {
+	return stub.ValidateErr
+}
+
+func Test_backwardCompability_ValidatorValidate(t *testing.T) {
+	t.Run("fallback to deprecated method signature", func(t *testing.T) {
+		assert.NoError(t, validate.Value(t.Context(), DeprecatedSelfValidatorMethod{}))
+
+		expErr := rnd.Error()
+		gotErr := validate.Value(t.Context(), DeprecatedSelfValidatorMethod{ValidateErr: expErr})
+
+		assert.ErrorIs(t, gotErr, expErr)
+
+		vErr, ok := errorkit.As[validate.Error](gotErr)
+		assert.True(t, ok, "expected that got error is a validate.Error type")
+		assert.ErrorIs(t, expErr, vErr)
+	})
+	t.Run("SkipValidate respected", func(t *testing.T) {
+
 	})
 }
