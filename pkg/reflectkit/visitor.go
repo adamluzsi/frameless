@@ -1,6 +1,7 @@
 package reflectkit
 
 import (
+	"context"
 	"fmt"
 	"iter"
 	"reflect"
@@ -142,7 +143,7 @@ func (v V) Path() refnode.Path {
 	return iterkit.Collect(i)
 }
 
-func (v V) Validate() error {
+func (v V) Validate(context.Context) error {
 	if v.NodeType == refnode.Unknown {
 		return errorkit.F("unknown Path Kind")
 	}
@@ -203,7 +204,8 @@ func (v V) Next(n V) V {
 	if v.NodeType != refnode.Unknown {
 		n.Parent = &v
 	}
-	if err := n.Validate(); err != nil {
+	var ctx = context.Background()
+	if err := n.Validate(ctx); err != nil {
 		panic(err)
 	}
 	return n

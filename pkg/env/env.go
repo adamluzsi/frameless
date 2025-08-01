@@ -1,6 +1,7 @@
 package env
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -73,10 +74,11 @@ func Load[T any](ptr *T) error {
 	if ptr == nil {
 		return ErrInvalidType.F("nil value received")
 	}
-	return reflectLoad(reflect.ValueOf(ptr))
+	ctx := context.Background()
+	return reflectLoad(ctx, reflect.ValueOf(ptr))
 }
 
-func reflectLoad(ptr reflect.Value) error {
+func reflectLoad(ctx context.Context, ptr reflect.Value) error {
 	rStruct, err := reflectStructValueOfPointer(ptr)
 	if err != nil {
 		return err
@@ -84,13 +86,14 @@ func reflectLoad(ptr reflect.Value) error {
 	if err := ReflectTryLoad(ptr); err != nil {
 		return err
 	}
-	return validate.Struct(rStruct.Interface())
+	return validate.Struct(ctx, rStruct.Interface())
 }
 
 // ReflectTryLoad attempts to load configuration struct, but does not produce an error if the overall config is not valid.
 // Instead, it raises a validation issue only when a given struct field's value is present in the environment variables
 // but does not meet the validation requirements for the specified field type/tag.
 func ReflectTryLoad(ptr reflect.Value) error {
+	ctx := context.Background()
 	val, err := reflectStructValueOfPointer(ptr)
 	if err != nil {
 		return err
@@ -98,7 +101,7 @@ func ReflectTryLoad(ptr reflect.Value) error {
 	if val.Kind() != reflect.Struct {
 		return ErrInvalidValue.F("non struct value type passed to TryLoad: %s", val.Type().String())
 	}
-	if err := vistiLoadStruct(val); err != nil {
+	if err := vistiLoadStruct(ctx, val); err != nil {
 		return err
 	}
 	return nil
@@ -114,7 +117,7 @@ func reflectStructValueOfPointer(ptr reflect.Value) (reflect.Value, error) {
 	return reflectkit.BaseValue(ptr), nil
 }
 
-func reflectLoadField[I reflect.StructField | int](rStruct reflect.Value, i I) error {
+func reflectLoadField[I reflect.StructField | int](ctx context.Context, rStruct reflect.Value, i I) error {
 	var structField reflect.StructField
 
 	switch i := any(i).(type) {
@@ -136,26 +139,26 @@ func reflectLoadField[I reflect.StructField | int](rStruct reflect.Value, i I) e
 		return ErrInvalidValue.F("struct field type not found: %s", structField.Name)
 	}
 
-	return loadVisitStructField(structField, field)
+	return loadVisitStructField(ctx, structField, field)
 }
 
-func vistiLoadStruct(rStruct reflect.Value) error {
+func vistiLoadStruct(ctx context.Context, rStruct reflect.Value) error {
 	for i, numField := 0, rStruct.NumField(); i < numField; i++ {
-		if err := reflectLoadField(rStruct, i); err != nil {
+		if err := reflectLoadField(ctx, rStruct, i); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
+func loadVisitStructField(ctx context.Context, sf reflect.StructField, field reflect.Value) error {
 	if !sf.IsExported() {
 		return nil
 	}
 
 	// We don't want to visit struct types which have their own registered parser.
 	if field.Kind() == reflect.Struct && !convkit.IsRegistered(field.Interface()) {
-		return vistiLoadStruct(field)
+		return vistiLoadStruct(ctx, field)
 	}
 
 	osEnvNames, ok := LookupFieldEnvNames(sf)
@@ -188,7 +191,7 @@ func loadVisitStructField(sf reflect.StructField, field reflect.Value) error {
 
 	field.Set(val)
 
-	return validate.StructField(sf, field)
+	return validate.StructField(ctx, sf, field)
 }
 
 const envTagKey = "env"

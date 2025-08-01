@@ -1,11 +1,13 @@
 package validate
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -15,26 +17,25 @@ import (
 	"go.llib.dev/frameless/port/option"
 )
 
-type Validator interface {
-	Validate() error
-	// Validate(context.Context) error
+type Validatable interface {
+	Validate(context.Context) error
 }
 
-var interfaceValidator = reflectkit.TypeOf[Validator]()
+var interfaceValidatable = reflectkit.TypeOf[Validatable]()
 
-func Value[T any](v T, opts ...Option) error {
+func Value[T any](ctx context.Context, v T) error {
 	rv := reflectkit.ToValue(v)
-	c := option.ToConfig(opts)
 
 	if rv.Kind() == reflect.Struct {
-		return Struct(rv, opts...)
+		return Struct(ctx, rv)
 	}
 
-	if err := tryValidatorValidate(rv, c); err != nil {
+	if err := tryValidatorValidate(ctx, rv); err != nil {
 		return err
 	}
 
-	if !c.SkipEnum {
+	c, ok := ctxConfig.Lookup(ctx)
+	if !ok || !c.SkipEnum {
 		if err := enum.ReflectValidate(rv, enum.Type[T]()); err != nil {
 			return Error{Cause: err}
 		}
@@ -43,25 +44,24 @@ func Value[T any](v T, opts ...Option) error {
 	return nil
 }
 
-func Struct(v any, opts ...Option) error {
+func Struct(ctx context.Context, v any) error {
 	rStruct := reflectkit.ToValue(v)
-	c := option.ToConfig(opts)
 
 	if rStruct.Kind() != reflect.Struct {
 		return ImplementationError.F("non struct type type: %s", rStruct.Type().String())
 	}
 
-	if err := tryValidatorValidate(rStruct, c); err != nil {
+	if err := tryValidatorValidate(ctx, rStruct); err != nil {
 		return err
 	}
 
 	var (
-		T           = rStruct.Type()
-		NumField    = T.NumField()
-		fieldConfig = c.StructFieldScope(rStruct)
+		T        = rStruct.Type()
+		NumField = T.NumField()
 	)
+	ctx = ctxWithStructFieldScope(ctx, rStruct)
 	for i := 0; i < NumField; i++ {
-		if err := StructField(T.Field(i), rStruct.Field(i), fieldConfig); err != nil {
+		if err := StructField(ctx, T.Field(i), rStruct.Field(i)); err != nil {
 			return err
 		}
 	}
@@ -69,7 +69,11 @@ func Struct(v any, opts ...Option) error {
 	return nil
 }
 
-func StructField(field reflect.StructField, value reflect.Value, opts ...Option) error {
+func StructField(ctx context.Context, field reflect.StructField, value reflect.Value) error {
+	if !field.IsExported() {
+		return nil
+	}
+
 	if field.Type != value.Type() {
 		return ImplementationError.F("struct field doesn't belong to the provided field value (%s <=> %s)",
 			field.Type.String(), value.Type().String())
@@ -78,7 +82,10 @@ func StructField(field reflect.StructField, value reflect.Value, opts ...Option)
 	if err := enum.ValidateStructField(field, value); err != nil {
 		return Error{Cause: err}
 	}
-	opts = append(opts, skipEnum)
+
+	c, _ := ctxConfig.Lookup(ctx)
+	c.SkipEnum = true
+	ctx = ctxConfig.ContextWith(ctx, c)
 
 	if err := rangeTag.HandleStructField(field, value); err != nil {
 		return Error{Cause: err}
@@ -104,7 +111,7 @@ func StructField(field reflect.StructField, value reflect.Value, opts ...Option)
 		return Error{Cause: err}
 	}
 
-	return Value(value, opts...)
+	return Value(ctx, value)
 }
 
 type Option option.Option[config]
@@ -112,8 +119,25 @@ type Option option.Option[config]
 type config struct {
 	Path []string
 
-	SkipValidate bool
-	SkipEnum     bool
+	SkipEnum        bool
+	SkipValidate    bool
+	SkipValidateFor map[reflectkit.UID]struct{}
+}
+
+func (c config) Context() context.Context {
+	return context.Background()
+}
+
+type ctxKeyConfig struct{}
+
+var ctxConfig contextkit.ValueHandler[ctxKeyConfig, config]
+
+func ctxWithStructFieldScope(ctx context.Context, rStruct reflect.Value) context.Context {
+	var c config
+	if cfg, ok := ctxConfig.Lookup(ctx); ok {
+		c = cfg
+	}
+	return ctxConfig.ContextWith(ctx, c.StructFieldScope(rStruct))
 }
 
 func (c config) StructFieldScope(rStruct reflect.Value) config {
@@ -125,34 +149,38 @@ func (c config) StructFieldScope(rStruct reflect.Value) config {
 
 func (c config) Configure(t *config) { *t = c }
 
-// InsideValidateFunc option indicates that the function is being used inside a Validate() error method.
+// SkipValidate option indicates that the function is being used inside a Validate(context.Context) error method.
 //
 // When this option is set, the Validate function call is skipped to prevent an infinite loop caused by a circular Validate call.
-const InsideValidateFunc copt = 1
-
-const skipEnum copt = 2
-
-type copt int
-
-func (n copt) Configure(c *config) {
-	switch n {
-	case 1:
-		c.SkipValidate = true
-	case 2:
-		c.SkipEnum = true
-	default:
-		panic("not-implemented")
-	}
+func SkipValidate(ctx context.Context) context.Context {
+	c, _ := ctxConfig.Lookup(ctx)
+	c.SkipValidate = true
+	return ctxConfig.ContextWith(ctx, c)
 }
 
-func tryValidatorValidate(rv reflect.Value, c config) error {
+func skipValidateOf(ctx context.Context, uid reflectkit.UID) context.Context {
+	c, _ := ctxConfig.Lookup(ctx)
+	if c.SkipValidateFor == nil {
+		c.SkipValidateFor = make(map[reflectkit.UID]struct{})
+	}
+	c.SkipValidateFor[uid] = struct{}{}
+	return ctxConfig.ContextWith(ctx, c)
+}
+
+func tryValidatorValidate(ctx context.Context, rv reflect.Value) error {
+	c, _ := ctxConfig.Lookup(ctx)
 	if c.SkipValidate {
 		return nil
 	}
-	if !rv.Type().Implements(interfaceValidator) {
+	if !rv.Type().Implements(interfaceValidatable) {
 		return nil
 	}
-	outTuble := rv.MethodByName("Validate").Call([]reflect.Value{})
+	uid := reflectkit.UIDOf(rv, c.Path...)
+	if _, ok := c.SkipValidateFor[uid]; ok {
+		return nil
+	}
+	ctx = skipValidateOf(ctx, uid)
+	outTuble := rv.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(ctx)})
 	err, ok := outTuble[0].Interface().(error)
 	if ok && err != nil {
 		return Error{Cause: err}

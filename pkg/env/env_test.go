@@ -1,6 +1,7 @@
 package env_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1034,7 +1035,7 @@ type ValidatorStub struct {
 	Error error
 }
 
-func (m ValidatorStub) Validate() error {
+func (m ValidatorStub) Validate(context.Context) error {
 	return m.Error
 }
 
@@ -1043,7 +1044,7 @@ type StringTypeWithValidator string
 const ErrStringTypeWithValidatorZero errorkit.Error = "zero value is considered incorrect"
 const ErrStringTypeWithValidatorInvalid errorkit.Error = `"invalid" is considered as an invalid value`
 
-func (str StringTypeWithValidator) Validate() error {
+func (str StringTypeWithValidator) Validate(context.Context) error {
 	if len(str) == 0 {
 		return ErrStringTypeWithValidatorZero
 	}
@@ -1058,9 +1059,9 @@ func Test_TypeWithValidator(t *testing.T) {
 	var validValue StringTypeWithValidator = random.Unique(func() StringTypeWithValidator {
 		return StringTypeWithValidator(rnd.StringNC(rnd.IntBetween(3, 7), random.CharsetAlpha()))
 	}, "invalid", "")
-	assert.NoError(t, validate.Value(StringTypeWithValidator(validValue)))
-	assert.Error(t, validate.Value(StringTypeWithValidator("")))
-	assert.Error(t, validate.Value(StringTypeWithValidator("invalid")))
+	assert.NoError(t, validate.Value(t.Context(), StringTypeWithValidator(validValue)))
+	assert.Error(t, validate.Value(t.Context(), StringTypeWithValidator("")))
+	assert.Error(t, validate.Value(t.Context(), StringTypeWithValidator("invalid")))
 }
 
 func TestLoad_typeWithValidator(t *testing.T) {

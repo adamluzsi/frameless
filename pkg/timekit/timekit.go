@@ -4,6 +4,7 @@
 package timekit
 
 import (
+	"context"
 	"fmt"
 	"iter"
 	"time"
@@ -104,7 +105,7 @@ type Range struct {
 	Till time.Time
 }
 
-func (tr Range) Validate() error {
+func (tr Range) Validate(context.Context) error {
 	if tr.Till.Before(tr.From) {
 		return fmt.Errorf("Range.From is before Range.Till")
 	}
@@ -199,8 +200,8 @@ func (sch Schedule) IsZero() bool {
 		sch.Location == nil
 }
 
-func (sch Schedule) Validate() error {
-	if err := validate.Struct(sch, validate.InsideValidateFunc); err != nil {
+func (sch Schedule) Validate(ctx context.Context) error {
+	if err := validate.Struct(ctx, sch); err != nil {
 		return err
 	}
 	if sch.Duration < 0 {
@@ -254,7 +255,8 @@ func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 }
 
 func (sch Schedule) Near(ref time.Time) (nearOccurrence Range, ok bool) {
-	if sch.Validate() != nil {
+	var ctx = context.Background()
+	if sch.Validate(ctx) != nil {
 		return Range{}, false
 	}
 

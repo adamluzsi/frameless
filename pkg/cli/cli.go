@@ -366,7 +366,7 @@ func configure[H Handler](h H, meta structMeta, r *Request) (H, error) {
 	}
 
 	for _, f := range meta.Flags {
-		callbacks = append(callbacks, f.mapToFlagSet(flagSet, val))
+		callbacks = append(callbacks, f.mapToFlagSet(r.Context(), flagSet, val))
 	}
 
 	err := flagSet.Parse(r.Args)
@@ -791,7 +791,7 @@ type structFlag struct {
 	Enum     []reflect.Value
 }
 
-func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) {
+func (sf structFlag) Setter(ctx context.Context, Struct reflect.Value, value flagValue) (rErr error) {
 	name := strings.Join(sf.Names, "/")
 	defer errorkit.Recover(&rErr)
 	field := Struct.FieldByIndex(sf.StructField.Index)
@@ -827,7 +827,7 @@ func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) 
 		return ErrFlagParseIssue.F("%s (%s) encountered a parsing error with the value of: %q", name, field.Type().String(), value.Raw)
 	}
 
-	if err := validate.StructField(sf.StructField, rval); err != nil {
+	if err := validate.StructField(ctx, sf.StructField, rval); err != nil {
 		if errors.Is(err, enum.ErrInvalid) {
 			return ErrFlagInvalid.Wrap(enumError(name, sf.Enum, rval))
 		}
@@ -867,12 +867,12 @@ func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) 
 // 	return nil
 // }
 
-func (sf structFlag) mapToFlagSet(fs *flag.FlagSet, Struct reflect.Value) func() error {
+func (sf structFlag) mapToFlagSet(ctx context.Context, fs *flag.FlagSet, Struct reflect.Value) func() error {
 	var v = flagValue{Type: sf.StructField.Type}
 	for _, n := range sf.Names {
 		fs.Var(&v, n, sf.Default)
 	}
-	return func() error { return sf.Setter(Struct, v) }
+	return func() error { return sf.Setter(ctx, Struct, v) }
 }
 
 type flagValue struct {

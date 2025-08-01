@@ -69,7 +69,7 @@ func (m *Monitor) HealthCheck(ctx context.Context) Report {
 	m.collectIssues(ctx, &report)
 	m.collectDependencies(ctx, &report)
 	m.collectDetails(ctx, &report)
-	report.Correlate()
+	report.Correlate(ctx)
 	return report
 }
 
@@ -95,7 +95,7 @@ func (m *Monitor) collectIssues(ctx context.Context, hs *Report) {
 func (m *Monitor) collectDependencies(ctx context.Context, hs *Report) {
 	for _, checker := range m.Dependencies {
 		dep := checker(ctx)
-		dep.Correlate()
+		dep.Correlate(ctx)
 		hs.Dependencies = append(hs.Dependencies, dep)
 	}
 }
@@ -176,11 +176,11 @@ type Report struct {
 	Details map[string]any
 }
 
-func (r *Report) Validate() error {
-	return r.Status.Validate()
+func (r *Report) Validate(ctx context.Context) error {
+	return r.Status.Validate(ctx)
 }
 
-func (r *Report) Correlate() {
+func (r *Report) Correlate(ctx context.Context) {
 	if r.Status.IsZero() {
 		r.Status = Up
 	}
@@ -188,15 +188,15 @@ func (r *Report) Correlate() {
 		if issue.Causes.IsZero() {
 			continue
 		}
-		if issue.Causes.Validate() != nil {
+		if issue.Causes.Validate(ctx) != nil {
 			continue
 		}
 		if r.Status.IsLessSevere(issue.Causes) {
 			r.Status = issue.Causes
 		}
 	}
-	for i, _ := range r.Dependencies {
-		r.Dependencies[i].Correlate()
+	for i := range r.Dependencies {
+		r.Dependencies[i].Correlate(ctx)
 		dep := r.Dependencies[i]
 		if r.Status == Up && dep.Status != Up {
 			r.Status = PartialOutage
@@ -261,7 +261,7 @@ var _ = enum.Register[Status](
 	Unknown,
 )
 
-func (hss Status) Validate() error {
+func (hss Status) Validate(context.Context) error {
 	return enum.Validate[Status](hss)
 }
 
@@ -350,7 +350,7 @@ func HTTPHealthCheck(healthCheckEndpointURL string, config *HTTPHealthCheckConfi
 	readLimit := zerokit.Coalesce(c.BodyReadLimit, 25*iokit.Megabyte)
 	return func(ctx context.Context) (s Report) {
 		s = Report{Name: defaultName}
-		defer s.Correlate()
+		defer s.Correlate(ctx)
 		defer func() { s.Name = zerokit.Coalesce(s.Name, defaultName) }()
 
 		resp, err := client.Get(healthCheckEndpointURL)

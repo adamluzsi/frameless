@@ -68,7 +68,7 @@ var _ = dtokit.Register[Report, ReportJSONDTO](
 			Timestamp: timestamp,
 			Details:   dto.Details,
 		}
-		return hs, hs.Validate()
+		return hs, hs.Validate(ctx)
 	})
 
 type IssueJSONDTO struct {
@@ -96,5 +96,5 @@ var _ = dtokit.Register[Status, string](
 	},
 	func(ctx context.Context, s string) (Status, error) {
 		status := Status(s)
-		return status, status.Validate()
+		return status, status.Validate(ctx)
 	})

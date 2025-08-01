@@ -859,9 +859,11 @@ func TestSTructField_tagTakesPriorityOverType(t *testing.T) {
 	v.V = "hello"
 
 	assert.NoError(t, enum.ValidateStruct(v))
-	assert.NoError(t, validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "hello"}), "V"))))
+	sf1, sv1 := must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "hello"}), "V"))
+	assert.NoError(t, validate.StructField(t.Context(), sf1, sv1))
 
-	err := validate.StructField(must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "foo"}), "V")))
+	sf2, sv2 := must.OK2(reflectkit.LookupField(reflect.ValueOf(T{V: "foo"}), "V"))
+	err := validate.StructField(t.Context(), sf2, sv2)
 	assert.ErrorIs(t, err, enum.ErrInvalid)
 	var verr validate.Error
 	assert.True(t, errors.As(err, &verr))

@@ -462,7 +462,7 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	})
 
 	s.Before(func(t *testcase.T) {
-		assert.NoError(t, validate.Value(schedule.Get(t)), "sanity check")
+		assert.NoError(t, validate.Value(t.Context(), schedule.Get(t)), "sanity check")
 	})
 
 	s.Test("A zero Schedule should still be valid and yield a next occurence related to a reference time", func(t *testcase.T) {
@@ -717,7 +717,7 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 	})
 
 	s.Before(func(t *testcase.T) {
-		assert.NoError(t, validate.Value(schedule.Get(t)), "sanity check")
+		assert.NoError(t, validate.Value(t.Context(), schedule.Get(t)), "sanity check")
 	})
 
 	s.Test("A zero Schedule should still be valid and yield a near occurence related to a reference time", func(t *testcase.T) {
@@ -954,8 +954,11 @@ func TestRange(t *testing.T) {
 	})
 
 	s.Describe("Validate", func(s *testcase.Spec) {
+		var (
+			ctx = let.Context(s)
+		)
 		act := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Validate()
+			return subject.Get(t).Validate(ctx.Get(t))
 		})
 
 		s.Test("for a valid range, error is not returned", func(t *testcase.T) {
