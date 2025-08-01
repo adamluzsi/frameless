@@ -138,3 +138,12 @@ func FilterErr[K comparable, V any](m map[K]V, filter func(k K, v V) (bool, erro
 	}
 	return out, nil
 }
+
+func Lookup[K comparable, V any](m map[K]V, k K) (V, bool) {
+	if m == nil {
+		var zero V
+		return zero, false
+	}
+	v, ok := m[k]
+	return v, ok
+}
