@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+type Error string
+
+func (err Error) Error() string { return string(err) }
+
 // Finish is a helper function that can be used from a deferred context.
 //
 // Usage:

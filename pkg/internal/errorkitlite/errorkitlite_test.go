@@ -532,3 +532,11 @@ func TestAs(t *testing.T) {
 		assert.Empty(t, gotErr)
 	})
 }
+
+func TestError(t *testing.T) {
+	var err errorkitlite.Error = "foo/bar/baz"
+	exp := errorkitlite.Error("foo/bar/baz")
+	assert.ErrorIs(t, err, exp)
+	assert.True(t, errors.Is(err, exp))
+	assert.Equal(t, err.Error(), "foo/bar/baz")
+}

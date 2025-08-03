@@ -5,9 +5,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strconv"
 	"text/template"
 )
+
+type TemplateFuncMap map[string]any
+
+func (fm TemplateFuncMap) Validate(context.Context) error {
+	for name, fn := range fm {
+		fnType := reflect.TypeOf(fn)
+
+		if fnType.Kind() != reflect.Func {
+			const format = "invalid workflow.FuncMap value for %s, expected function but got %s"
+			return fmt.Errorf(format, name, fnType.Kind().String())
+		}
+	}
+	return nil
+}
 
 func NewConditionTemplate[STR ~string](s STR) *ConditionTemplate {
 	var c ConditionTemplate = ConditionTemplate(s)
