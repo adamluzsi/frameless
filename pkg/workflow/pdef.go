@@ -6,7 +6,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/testcase/pp"
 )
 
 type Definition interface {
@@ -54,10 +53,6 @@ type Sequence []Definition
 var _ Definition = (*Sequence)(nil)
 
 func (seq Sequence) Execute(ctx context.Context, s *State) error {
-
-	c, _ := ctxConfigH.Lookup(ctx)
-	pp.PP(c)
-
 	for _, participant := range seq {
 		if err := participant.Execute(ctx, s); err != nil {
 			return err

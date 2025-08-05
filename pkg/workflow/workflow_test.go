@@ -94,19 +94,34 @@ func (stub *StubParticipant) Execute(ctx context.Context, s *workflow.State) err
 type C struct {
 	Context testcase.Var[context.Context]
 	State   testcase.Var[*workflow.State]
-	Stub    testcase.Var[*StubParticipant]
+}
 
-	stubs testcase.Var[map[workflow.ParticipantID]*StubParticipant]
+func (c *C) stubs() testcase.Var[map[workflow.ParticipantID]*StubParticipant] {
+	return testcase.Var[map[workflow.ParticipantID]*StubParticipant]{
+		ID: "C#stubs",
+		Init: func(t *testcase.T) map[workflow.ParticipantID]*StubParticipant {
+			return make(map[workflow.ParticipantID]*StubParticipant)
+		},
+	}
 }
 
 func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*StubParticipant] {
+	s.H().Helper()
 	stub := let.Var(s, func(t *testcase.T) *StubParticipant {
 		return &StubParticipant{}
 	})
-	ctx := c.Context
-	c.Context.Let(s, func(t *testcase.T) context.Context {
-		og := ctx.Super(t)
+	c.stubs().Bind(s)
+	c.stubs().Let(s, func(t *testcase.T) map[workflow.ParticipantID]*StubParticipant {
+		v := c.stubs().Super(t)
+		v[pid] = stub.Get(t)
+		return v
+	}).EagerLoading(s)
+	s.Before(func(t *testcase.T) {
 		pp.PP(pid)
+	})
+	c.Context.Let(s, func(t *testcase.T) context.Context {
+		og := c.Context.Super(t)
+		pp.PP(pid, stub.ID)
 		return workflow.ContextWithParticipants(og, workflow.Participants{
 			pid: stub.Get(t),
 		})
@@ -120,6 +135,7 @@ func letC(s *testcase.Spec) C {
 	c.Context = let.Var(s, func(t *testcase.T) context.Context {
 		ctx, cancel := context.WithCancel(t.Context())
 		t.Defer(cancel)
+
 		ctx = workflow.ContextWithParticipants(ctx, workflow.Participants{
 			"/dev/null": workflow.ParticipantFunc(func(ctx context.Context, s *workflow.State) error {
 				return nil
@@ -131,8 +147,6 @@ func letC(s *testcase.Spec) C {
 	c.State = let.Var(s, func(t *testcase.T) *workflow.State {
 		return NewRandomState(t)
 	})
-
-	c.Stub = c.LetStub(s, "stub")
 
 	return c
 }
