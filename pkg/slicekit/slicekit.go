@@ -1,6 +1,7 @@
 package slicekit
 
 import (
+	"iter"
 	"sort"
 
 	"go.llib.dev/frameless/pkg/must"
@@ -287,4 +288,14 @@ func normaliseIndex(length, index int) (int, bool) {
 		return n, 0 <= n
 	}
 	return index, index < length
+}
+
+func IterReverse[T any](vs []T) iter.Seq2[int, T] {
+	return func(yield func(int, T) bool) {
+		for i := len(vs) - 1; i >= 0; i-- {
+			if !yield(i, vs[i]) {
+				return
+			}
+		}
+	}
 }

@@ -1500,3 +1500,23 @@ func Reverse2[K, V any](i iter.Seq2[K, V]) EagerSeq2[K, V] {
 func ReverseE[T any](i SeqE[T]) EagerSeqE[T] {
 	return Reverse2(i)
 }
+
+func ToK[K, V any](i iter.Seq2[K, V]) iter.Seq[K] {
+	return func(yield func(K) bool) {
+		for k, _ := range i {
+			if !yield(k) {
+				return
+			}
+		}
+	}
+}
+
+func ToV[K, V any](i iter.Seq2[K, V]) iter.Seq[V] {
+	return func(yield func(V) bool) {
+		for _, v := range i {
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}

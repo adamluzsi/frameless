@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase"
@@ -1218,5 +1219,40 @@ func TestPopAt(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, got, exp)
 		assert.Equal(t, list, []int{first, last})
+	})
+}
+
+func ExampleIterReverse() {
+	var vs = []int{1, 2, 3}
+
+	for _, v := range slicekit.IterReverse(vs) {
+		_ = v // 3 -> 2 -> 1
+	}
+}
+
+func TestIterReverse_smoke(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("empty", func(t *testcase.T) {
+		slc := []string{}
+		got := iterkit.Collect(iterkit.ToV(slicekit.IterReverse(slc)))
+		assert.Equal(t, slc, got)
+	})
+
+	s.Test("not empty values", func(t *testcase.T) {
+		slc := random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
+		got := iterkit.Collect(iterkit.Reverse(iterkit.ToV(slicekit.IterReverse(slc))))
+		assert.Equal(t, slc, got)
+	})
+
+	s.Test("not empty index", func(t *testcase.T) {
+		slc := []int{1, 2, 3}
+		exp := []iterkit.KV[int, int]{
+			{K: 2, V: 3},
+			{K: 1, V: 2},
+			{K: 0, V: 1},
+		}
+		got := iterkit.Collect2KV(slicekit.IterReverse(slc))
+		assert.Equal(t, exp, got)
 	})
 }
