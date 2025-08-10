@@ -47,7 +47,7 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 				s.Then("subscription receives the messages", func(t *testcase.T) {
 					expected := []Data{val1.Get(t), val2.Get(t)}
 					t.Eventually(func(it *testcase.T) {
-						assert.ContainExactly(it, expected, sub.Get(t).Values())
+						assert.ContainsExactly(it, expected, sub.Get(t).Values())
 					})
 				})
 			})
@@ -84,7 +84,7 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 						var actual []Data
 						actual = append(actual, sub1vs...)
 						actual = append(actual, sub2vs...)
-						assert.ContainExactly(t, expected, actual)
+						assert.ContainsExactly(t, expected, actual)
 					})
 				})
 			})

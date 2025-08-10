@@ -43,7 +43,7 @@ func TestIterStructFields(t *testing.T) {
 			fields = append(fields, sf.Name)
 			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
 		}
-		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
+		assert.ContainsExactly(t, fields, []string{"Foo", "Bar", "Baz"})
 		assert.Equal(t, n, 3)
 	})
 
@@ -57,7 +57,7 @@ func TestIterStructFields(t *testing.T) {
 			fields = append(fields, sf.Name)
 			assert.Equal(t, val.String(), strings.ToLower(sf.Name))
 		}
-		assert.ContainExactly(t, fields, []string{"Foo", "Bar", "Baz"})
+		assert.ContainsExactly(t, fields, []string{"Foo", "Bar", "Baz"})
 		assert.Equal(t, n, 3)
 	})
 
@@ -93,7 +93,7 @@ func TestIterMap(t *testing.T) {
 			n++
 			elems = append(elems, fmt.Sprintf("%s:%s", key.String(), val.String()))
 		}
-		assert.ContainExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
+		assert.ContainsExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
 		assert.Equal(t, n, 3)
 	})
 
@@ -122,7 +122,7 @@ func TestIterMap(t *testing.T) {
 			assert.Equal(t, val.String(), strings.ToLower(key.String()))
 			elems = append(elems, fmt.Sprintf("%s:%s", key.String(), val.String()))
 		}
-		assert.ContainExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
+		assert.ContainsExactly(t, elems, []string{"Foo:foo", "Bar:bar", "Baz:baz"})
 		assert.Equal(t, n, 3)
 	})
 
@@ -157,7 +157,7 @@ func TestIterSlice(t *testing.T) {
 			n++
 			elems = append(elems, fmt.Sprintf("%d:%s", index, val.String()))
 		}
-		assert.ContainExactly(t, elems, []string{"0:foo", "1:bar", "2:baz"})
+		assert.ContainsExactly(t, elems, []string{"0:foo", "1:bar", "2:baz"})
 		assert.Equal(t, n, 3)
 	})
 
@@ -185,7 +185,7 @@ func TestIterSlice(t *testing.T) {
 			n++
 			elems = append(elems, fmt.Sprintf("%d:%s", index, val.String()))
 		}
-		assert.ContainExactly(t, elems, []string{"0:foo", "1:bar", "2:baz"})
+		assert.ContainsExactly(t, elems, []string{"0:foo", "1:bar", "2:baz"})
 		assert.Equal(t, n, 3)
 	})
 

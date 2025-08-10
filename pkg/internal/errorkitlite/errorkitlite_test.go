@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -531,4 +532,57 @@ func TestAs(t *testing.T) {
 		assert.False(t, ok)
 		assert.Empty(t, gotErr)
 	})
+}
+
+func TestError(t *testing.T) {
+	var err errorkitlite.Error = "foo/bar/baz"
+	exp := errorkitlite.Error("foo/bar/baz")
+	assert.ErrorIs(t, err, exp)
+	assert.True(t, errors.Is(err, exp))
+	assert.Equal(t, err.Error(), "foo/bar/baz")
+}
+
+func TestError_F_smoke(t *testing.T) {
+	const ErrExample errorkitlite.Error = "ErrExample"
+	t.Run("sprintf", func(t *testing.T) {
+		got := ErrExample.F("foo - bar - %s", "baz")
+		assert.ErrorIs(t, got, ErrExample)
+		assert.Contains(t, got.Error(), "foo - bar - baz")
+	})
+	t.Run("errorf", func(t *testing.T) {
+		exp := rnd.Error()
+		got := ErrExample.F("%w", exp)
+		assert.ErrorIs(t, got, ErrExample)
+		assert.ErrorIs(t, got, exp)
+		assert.Contains(t, got.Error(), ErrExample.Error())
+	})
+}
+
+type StubErr struct {
+	V int
+}
+
+func (err StubErr) Error() string {
+	return strconv.Itoa(err.V)
+}
+
+func TestW_smoke(t *testing.T) {
+	cstErr := errorkitlite.Error(rnd.Error().Error())
+	expErr := StubErr{V: rnd.Int()}
+
+	w := errorkitlite.W{E: cstErr, W: expErr}
+
+	assert.Error(t, w)
+	assert.Equal(t, w.Error(), fmt.Sprintf("[%s] %s", cstErr.Error(), expErr.Error()))
+
+	assert.True(t, errors.Is(w, expErr))
+	assert.True(t, errors.Is(w, cstErr))
+
+	var gotCST errorkitlite.Error
+	assert.True(t, errors.As(w, &gotCST))
+	assert.Equal(t, gotCST, cstErr)
+
+	var gotEXP StubErr
+	assert.True(t, errors.As(w, &gotEXP))
+	assert.Equal(t, expErr, gotEXP)
 }

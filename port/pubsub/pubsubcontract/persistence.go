@@ -47,7 +47,7 @@ func Buffered[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 				s.Then("messages are received", func(t *testcase.T) {
 					expected := []Data{val1.Get(t), val2.Get(t)}
 					t.Eventually(func(it *testcase.T) {
-						assert.ContainExactly(it, expected, sub.Get(t).Values())
+						assert.ContainsExactly(it, expected, sub.Get(t).Values())
 					})
 				})
 			})

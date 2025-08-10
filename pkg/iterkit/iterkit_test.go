@@ -406,14 +406,14 @@ func TestFilter2(t *testing.T) {
 			var got []int
 
 			i := iterkit.Filter2(iterator, func(k int, v int) bool {
-				assert.Contain(t, originalInput, k)
+				assert.Contains(t, originalInput, k)
 				got = append(got, k)
 				return true
 			})
 
 			assert.NotNil(t, i)
 			kvs := iterkit.Collect2KV(i)
-			assert.ContainExactly(t, originalInput, got)
+			assert.ContainsExactly(t, originalInput, got)
 			assert.Equal(t, len(kvs), len(originalInput))
 			for i, kv := range kvs {
 				assert.Equal(t, kv.K, originalInput[i])
@@ -436,7 +436,7 @@ func TestFilter2(t *testing.T) {
 				got = append(got, k)
 			}
 
-			assert.ContainExactly(t, exp, got)
+			assert.ContainsExactly(t, exp, got)
 		})
 	})
 }
@@ -1111,7 +1111,7 @@ func TestHeadE(t *testing.T) {
 		i := iterkit.HeadE(values, 2)
 		got := iterkit.Collect2Map(i)
 		exp := map[string]error{"foo": errors.New("oof"), "bar": errors.New("rab")}
-		assert.ContainExactly(t, exp, got)
+		assert.ContainsExactly(t, exp, got)
 	})
 
 	t.Run("more", func(t *testing.T) {
@@ -1242,7 +1242,7 @@ func TestHead2(t *testing.T) {
 	t.Run("less", func(t *testing.T) {
 		i := iterkit.Head2(values, 2)
 		vs := iterkit.Collect2Map(i)
-		assert.ContainExactly(t, map[string]int{"foo": 42, "bar": 7}, vs)
+		assert.ContainsExactly(t, map[string]int{"foo": 42, "bar": 7}, vs)
 	})
 	t.Run("more", func(t *testing.T) {
 		i := iterkit.Head2(values, 5)
@@ -1768,7 +1768,7 @@ func TestLimit2_smoke(tt *testing.T) {
 	var i iter.Seq2[int, string] = maps.All(m)
 	subject := iterkit.Limit2(i, 3)
 	vs := iterkit.Collect2Map(subject)
-	t.Must.Contain(m, vs)
+	assert.Contains(t, m, vs)
 	t.Must.Equal(3, len(vs))
 }
 
@@ -1796,7 +1796,7 @@ func TestLimit2(t *testing.T) {
 	s.Then("it will limit the returned results to the expected number", func(t *testcase.T) {
 		vs := iterkit.Collect2Map(act.Get(t))
 		t.Must.Equal(n.Get(t), len(vs))
-		t.Must.Contain(values.Get(t), vs)
+		assert.Contains(t, values.Get(t), vs)
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
@@ -1814,7 +1814,7 @@ func TestLimit2(t *testing.T) {
 
 		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
 			vs := iterkit.Collect2Map(act.Get(t))
-			t.Must.ContainExactly(values.Get(t), vs)
+			t.Must.ContainsExactly(values.Get(t), vs)
 		})
 	})
 
@@ -1825,7 +1825,7 @@ func TestLimit2(t *testing.T) {
 			got := iterkit.Collect2Map(act.Get(t))
 			t.Must.NotEmpty(got)
 			assert.Equal(t, len(got), n.Get(t))
-			t.Must.Contain(values.Get(t), got)
+			assert.Contains(t, values.Get(t), got)
 		})
 	})
 }
@@ -2094,7 +2094,7 @@ func TestOffset2(t *testing.T) {
 		s.Then("all the values will be received from te source iterator", func(t *testcase.T) {
 			got := iterkit.Collect2Map(subject.Get(t))
 
-			assert.ContainExactly(t, values.Get(t), mapkit.Keys(got))
+			assert.ContainsExactly(t, values.Get(t), mapkit.Keys(got))
 		})
 	})
 
@@ -2133,8 +2133,8 @@ func TestOffset2(t *testing.T) {
 			assert.Equal(t, len(values.Get(t))-offset.Get(t), len(got))
 			var exp1 = values.Get(t)[offset.Get(t):]
 			var exp2 = slicekit.Map(exp1, func(n int) int { return n * 2 })
-			assert.ContainExactly(t, exp1, mapkit.Keys(got))
-			assert.ContainExactly(t, exp2, mapkit.Values(got))
+			assert.ContainsExactly(t, exp1, mapkit.Keys(got))
+			assert.ContainsExactly(t, exp2, mapkit.Values(got))
 		})
 	})
 
@@ -2194,7 +2194,7 @@ func TestOffset(t *testing.T) {
 		s.Then("all the values will be received from te source iterator", func(t *testcase.T) {
 			got := iterkit.Collect2Map(subject.Get(t))
 
-			assert.ContainExactly(t, values.Get(t), mapkit.Keys(got))
+			assert.ContainsExactly(t, values.Get(t), mapkit.Keys(got))
 		})
 	})
 
@@ -2233,8 +2233,8 @@ func TestOffset(t *testing.T) {
 			assert.Equal(t, len(values.Get(t))-offset.Get(t), len(got))
 			var exp1 = values.Get(t)[offset.Get(t):]
 			var exp2 = slicekit.Map(exp1, func(n int) error { return fmt.Errorf("%d", n) })
-			assert.ContainExactly(t, exp1, mapkit.Keys(got))
-			assert.ContainExactly(t, exp2, mapkit.Values(got))
+			assert.ContainsExactly(t, exp1, mapkit.Keys(got))
+			assert.ContainsExactly(t, exp2, mapkit.Values(got))
 		})
 	})
 
@@ -2487,7 +2487,7 @@ func TestCollect2Map(t *testing.T) {
 			return t.Random.String(), t.Random.Int()
 		})
 		got := iterkit.Collect2Map(maps.All(exp))
-		assert.ContainExactly(t, exp, got)
+		assert.ContainsExactly(t, exp, got)
 	})
 
 	s.Test("nil", func(t *testcase.T) {
@@ -2603,7 +2603,7 @@ func TestCollectPull(t *testing.T) {
 		s.Then("error bubles up", func(t *testcase.T) {
 			vs, err := act(t)
 			assert.ErrorIs(t, err, expErr.Get(t))
-			assert.ContainExactly(t, vs, values.Get(t))
+			assert.ContainsExactly(t, vs, values.Get(t))
 		})
 
 		s.Then("stop is called", func(t *testcase.T) {
@@ -2870,7 +2870,7 @@ func TestMap2(t *testing.T) {
 	s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
 		got := iterkit.Collect2Map(act(t))
 		exp := mapkit.Map(yieldedValues.Get(t), transform.Get(t))
-		assert.ContainExactly(t, exp, got)
+		assert.ContainsExactly(t, exp, got)
 	})
 
 	s.Then("it respects if iteration is interupted", func(t *testcase.T) {
@@ -2917,7 +2917,7 @@ func TestMapE_wSeqE(t *testing.T) {
 		assert.NoError(t, err)
 		exp, err := slicekit.MapErr(yielded.Get(t), transform.Get(t))
 		assert.NoError(t, err)
-		assert.ContainExactly(t, exp, got)
+		assert.ContainsExactly(t, exp, got)
 	})
 
 	s.Then("it respects if iteration is interupted", func(t *testcase.T) {
@@ -3332,7 +3332,7 @@ func TestChanE(t *testing.T) {
 				collect,
 			)
 
-			assert.ContainExactly(t, values.Get(t), got)
+			assert.ContainsExactly(t, values.Get(t), got)
 		})
 
 		s.And("if the channel is not closed due to we are still expecting values", func(s *testcase.Spec) {
@@ -3490,7 +3490,7 @@ func TestChan1(t *testing.T) {
 				collect,
 			)
 
-			assert.ContainExactly(t, values.Get(t), got)
+			assert.ContainsExactly(t, values.Get(t), got)
 		})
 
 		s.And("if the channel is not closed due to we are still expecting values", func(s *testcase.Spec) {
@@ -3638,7 +3638,7 @@ func TestBatch(t *testing.T) {
 					got = append(got, vs...)
 				}
 				t.Must.NotEmpty(got)
-				t.Must.ContainExactly(values.Get(t), got)
+				t.Must.ContainsExactly(values.Get(t), got)
 			})
 
 			ThenIterates(s)
@@ -3675,7 +3675,7 @@ func TestBatch(t *testing.T) {
 						got = append(got, vs...)
 					}
 					t.Must.NotEmpty(got)
-					t.Must.ContainExactly(values.Get(t), got)
+					t.Must.ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -3698,7 +3698,7 @@ func TestBatch(t *testing.T) {
 						got = append(got, vs...)
 					}
 					t.Must.NotEmpty(got)
-					t.Must.ContainExactly(values.Get(t), got)
+					t.Must.ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -3764,7 +3764,7 @@ func TestBatch(t *testing.T) {
 				t.Must.True(ok, "expected that batching is triggered due to wait time limit exceeding")
 				assert.NoError(t, err)
 				assert.NotEmpty(t, vs)
-				t.Must.Contain(values.Get(t), vs)
+				assert.Contains(t, values.Get(t), vs)
 			})
 		})
 	})
@@ -3796,7 +3796,7 @@ func TestBatch(t *testing.T) {
 					gvs = append(gvs, vs...)
 				}
 			}
-			assert.ContainExactly(t, gvs, values.Get(t))
+			assert.ContainsExactly(t, gvs, values.Get(t))
 		})
 
 		s.Then("the error yielded", func(t *testcase.T) {
@@ -3897,7 +3897,7 @@ func TestBatch1(t *testing.T) {
 					got = append(got, vs...)
 				}
 				t.Must.NotEmpty(got)
-				t.Must.ContainExactly(values.Get(t), got)
+				t.Must.ContainsExactly(values.Get(t), got)
 			})
 
 			ThenIterates(s)
@@ -3933,7 +3933,7 @@ func TestBatch1(t *testing.T) {
 						got = append(got, vs...)
 					}
 					t.Must.NotEmpty(got)
-					t.Must.ContainExactly(values.Get(t), got)
+					t.Must.ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -3955,7 +3955,7 @@ func TestBatch1(t *testing.T) {
 						got = append(got, vs...)
 					}
 					t.Must.NotEmpty(got)
-					t.Must.ContainExactly(values.Get(t), got)
+					t.Must.ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -4020,7 +4020,7 @@ func TestBatch1(t *testing.T) {
 				vs, ok := next()
 				t.Must.True(ok, "expected that batching is triggered due to wait time limit exceeding")
 				assert.NotEmpty(t, vs)
-				t.Must.Contain(values.Get(t), vs)
+				assert.Contains(t, values.Get(t), vs)
 			})
 		})
 	})
@@ -4043,7 +4043,7 @@ func TestErrorF(t *testing.T) {
 	vs, err := iterkit.CollectE(iterkit.ErrorF[any]("wrap:%w", expectedError))
 	assert.Empty(t, vs)
 	assert.ErrorIs(t, err, expectedError)
-	assert.Contain(t, err.Error(), "wrap:"+expectedError.Error())
+	assert.Contains(t, err.Error(), "wrap:"+expectedError.Error())
 }
 
 func ExampleScanner() {
@@ -4073,7 +4073,7 @@ func TestScanner_SingleLineGiven_EachLineFetched(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, readCloser.IsClosed)
 	assert.NotEmpty(t, vs)
-	assert.ContainExactly(t, vs, []string{"Hello, World!"})
+	assert.ContainsExactly(t, vs, []string{"Hello, World!"})
 }
 
 func TestScanner_nilCloserGiven_EachLineFetched(t *testing.T) {
@@ -4197,7 +4197,7 @@ func TestSync(t *testing.T) {
 	testcase.Race(collect, collect, collect)
 
 	exp := iterkit.Collect(iterkit.IntRange(0, 100))
-	assert.Must(t).ContainExactly(exp, got)
+	assert.Must(t).ContainsExactly(exp, got)
 }
 
 func ExampleSyncE() {
@@ -4250,7 +4250,7 @@ func TestSyncE(t *testing.T) {
 	}
 
 	testcase.Race(collect, collect, collect)
-	assert.ContainExactly(t, exp, got)
+	assert.ContainsExactly(t, exp, got)
 }
 
 func ExampleSync2() {
@@ -4304,7 +4304,7 @@ func TestSync2(t *testing.T) {
 	}
 
 	testcase.Race(collect, collect, collect)
-	assert.ContainExactly(t, exp, got)
+	assert.ContainsExactly(t, exp, got)
 }
 
 func TestMerge(t *testing.T) {

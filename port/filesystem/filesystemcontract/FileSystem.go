@@ -214,7 +214,7 @@ func (c specFileSystem) andForTheExistingFileOpening(s *testcase.Spec, subject f
 				t.Must.NotNil(err)
 				perr := c.isPathError(t, err)
 				t.Must.Equal("open", perr.Op)
-				t.Must.Contain(perr.Path, name.Get(t))
+				assert.Contains(t, perr.Path, name.Get(t))
 				t.Must.True(os.IsExist(err))
 			})
 		})
@@ -406,7 +406,7 @@ func (c specFileSystem) specMkdir(s *testcase.Spec) {
 
 			perr := c.isPathError(t, err)
 			t.Must.Equal("mkdir", perr.Op)
-			t.Must.Contain(perr.Path, c.name().Get(t))
+			assert.Contains(t, perr.Path, c.name().Get(t))
 		})
 	})
 
@@ -454,7 +454,7 @@ func (c specFileSystem) specRemove(s *testcase.Spec) {
 
 			perr := c.isPathError(t, err)
 			t.Must.Equal("remove", perr.Op)
-			t.Must.Contain(perr.Path, c.name().Get(t))
+			assert.Contains(t, perr.Path, c.name().Get(t))
 		})
 	})
 
@@ -494,7 +494,7 @@ func (c specFileSystem) specRemove(s *testcase.Spec) {
 
 				perr := c.isPathError(t, err)
 				t.Must.Equal("remove", perr.Op)
-				t.Must.Contain(perr.Path, c.name().Get(t))
+				assert.Contains(t, perr.Path, c.name().Get(t))
 				t.Must.Equal(syscall.ENOTEMPTY, perr.Err)
 			})
 		})
@@ -518,7 +518,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 
 			perr := c.isPathError(t, err)
 			t.Must.Equal("stat", perr.Op)
-			t.Must.Contain(perr.Path, c.name().Get(t))
+			assert.Contains(t, perr.Path, c.name().Get(t))
 		})
 	})
 
@@ -530,7 +530,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 		s.Then("it will return file stat", func(t *testcase.T) {
 			info, err := subject(t)
 			t.Must.NoError(err)
-			t.Must.Contain(info.Name(), c.name().Get(t))
+			assert.Contains(t, info.Name(), c.name().Get(t))
 			t.Must.Equal(c.perm().Get(t).String(), info.Mode().String())
 			t.Must.False(info.IsDir())
 		})
@@ -546,7 +546,7 @@ func (c specFileSystem) specStat(s *testcase.Spec) {
 		s.Then("it will return directory stat", func(t *testcase.T) {
 			info, err := subject(t)
 			t.Must.NoError(err)
-			t.Must.Contain(info.Name(), c.name().Get(t))
+			assert.Contains(t, info.Name(), c.name().Get(t))
 			t.Must.Equal(c.perm().Get(t).String(), info.Mode().String())
 			t.Must.True(info.IsDir())
 		})
@@ -592,8 +592,8 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 			t.Must.NotNil(err)
 
 			perr := c.isPathError(t, err)
-			t.Must.Contain([]string{"fdopendir", "readdirent"}, perr.Op)
-			t.Must.Contain(perr.Path, c.name().Get(t))
+			assert.Contains(t, []string{"fdopendir", "readdirent"}, perr.Op)
+			assert.Contains(t, perr.Path, c.name().Get(t))
 			t.Must.ErrorIs(syscall.ENOTDIR, perr.Err)
 		})
 	})
@@ -617,7 +617,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 				names := []string{"a", "b", "c"}
 				for _, entry := range entries {
-					t.Must.Contain(names, entry.Name())
+					assert.Contains(t, names, entry.Name())
 				}
 			})
 		})
@@ -677,7 +677,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 					dirFileNames := dirFileNames.Get(t)
 					t.Must.Equal(len(dirFileNames), len(entries))
 					for _, ent := range entries {
-						t.Must.Contain(dirFileNames, ent.Name())
+						assert.Contains(t, dirFileNames, ent.Name())
 						t.Must.False(ent.IsDir())
 
 						info, err := ent.Info()
@@ -739,7 +739,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 					t.Must.Equal(len(dirFileNames), len(entries))
 
 					for _, ent := range entries {
-						t.Must.Contain(dirFileNames, ent.Name())
+						assert.Contains(t, dirFileNames, ent.Name())
 					}
 				})
 			})
@@ -927,7 +927,7 @@ func (c specFileSystem) isPathError(t *testcase.T, err error) *fs.PathError {
 func (c specFileSystem) assertErrorIsNotExist(t *testcase.T, err error, name string) {
 	t.Helper()
 	pathError := c.isPathError(t, err)
-	t.Must.Contain(pathError.Path, name)
+	assert.Contains(t, pathError.Path, name)
 	t.Must.Equal("open", pathError.Op)
 	t.Must.True(os.IsNotExist(pathError))
 }
@@ -935,7 +935,7 @@ func (c specFileSystem) assertErrorIsNotExist(t *testcase.T, err error, name str
 func (c specFileSystem) assertReadError(t *testcase.T, err error, name string) {
 	t.Helper()
 	pathError := c.isPathError(t, err)
-	t.Must.Contain(pathError.Path, name)
+	assert.Contains(t, pathError.Path, name)
 	t.Must.Equal("read", pathError.Op)
 	t.Must.NotNil(pathError.Err)
 }
@@ -943,7 +943,7 @@ func (c specFileSystem) assertReadError(t *testcase.T, err error, name string) {
 func (c specFileSystem) assertWriteError(t *testcase.T, err error, name string) {
 	t.Helper()
 	pathError := c.isPathError(t, err)
-	t.Must.Contain(pathError.Path, name)
+	assert.Contains(t, pathError.Path, name)
 	t.Must.Equal("write", pathError.Op)
 	t.Must.NotNil(pathError.Err)
 }

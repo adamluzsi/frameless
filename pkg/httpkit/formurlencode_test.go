@@ -31,12 +31,12 @@ func TestFormURLEncoder_struct(t *testing.T) {
 
 	data, err := ser.Marshal(exp)
 	assert.NoError(t, err)
-	assert.Contain(t, string(data), "foo=foo")
-	assert.Contain(t, string(data), "BAR=42")
-	assert.Contain(t, string(data), "baz=42.24")
-	assert.Contain(t, string(data), "qux=true")
-	assert.Contain(t, string(data), "duration=1h0m1s")
-	assert.Contain(t, string(data), "pascal_case=true")
+	assert.Contains(t, string(data), "foo=foo")
+	assert.Contains(t, string(data), "BAR=42")
+	assert.Contains(t, string(data), "baz=42.24")
+	assert.Contains(t, string(data), "qux=true")
+	assert.Contains(t, string(data), "duration=1h0m1s")
+	assert.Contains(t, string(data), "pascal_case=true")
 
 	var got DTO
 	assert.NoError(t, ser.Unmarshal(data, &got))
@@ -56,11 +56,11 @@ func TestFormURLEncoder_mapStringAny(t *testing.T) {
 
 	data, err := ser.Marshal(exp)
 	assert.NoError(t, err)
-	assert.Contain(t, string(data), "foo=foo")
-	assert.Contain(t, string(data), "BAR=42")
-	assert.Contain(t, string(data), "baz=42.24")
-	assert.Contain(t, string(data), "qux=1h0m1s")
-	assert.Contain(t, string(data), "QuuX=true")
+	assert.Contains(t, string(data), "foo=foo")
+	assert.Contains(t, string(data), "BAR=42")
+	assert.Contains(t, string(data), "baz=42.24")
+	assert.Contains(t, string(data), "qux=1h0m1s")
+	assert.Contains(t, string(data), "QuuX=true")
 
 	var got map[string]any
 	assert.NoError(t, ser.Unmarshal(data, &got))
@@ -76,7 +76,7 @@ func TestFormURLEncoder_mapCustomKeyAnyValue(t *testing.T) {
 
 	data, err := ser.Marshal(exp)
 	assert.NoError(t, err)
-	assert.Contain(t, string(data), "1s=foo")
+	assert.Contains(t, string(data), "1s=foo")
 
 	var got map[time.Duration]any
 	assert.NoError(t, ser.Unmarshal(data, &got))

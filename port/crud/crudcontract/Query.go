@@ -209,7 +209,7 @@ func QueryMany[ENT, ID any](
 			t.Eventually(func(it *testcase.T) {
 				ents, err := iterkit.CollectE(act(it))
 				assert.NoError(t, err)
-				assert.Contain(t, ents, includedEntity.Get(it))
+				assert.Contains(t, ents, includedEntity.Get(it))
 			})
 		})
 
@@ -229,8 +229,8 @@ func QueryMany[ENT, ID any](
 				t.Eventually(func(t *testcase.T) {
 					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
-					assert.Contain(t, ents, includedEntity.Get(t))
-					assert.Contain(t, ents, additionalEntities.Get(t))
+					assert.Contains(t, ents, includedEntity.Get(t))
+					assert.Contains(t, ents, additionalEntities.Get(t))
 				})
 			})
 
@@ -247,8 +247,8 @@ func QueryMany[ENT, ID any](
 
 					vs2, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
-					assert.Contain(t, vs2, includedEntity.Get(t))
-					assert.Contain(t, vs2, additionalEntities.Get(t))
+					assert.Contains(t, vs2, includedEntity.Get(t))
+					assert.Contains(t, vs2, additionalEntities.Get(t))
 
 					var vs1 []ENT
 					vs1 = append(vs1, vsv1)
@@ -262,8 +262,8 @@ func QueryMany[ENT, ID any](
 					}
 
 					vs1 = append(vs1, vsv1)
-					assert.Contain(t, vs1, includedEntity.Get(t))
-					assert.Contain(t, vs1, additionalEntities.Get(t))
+					assert.Contains(t, vs1, includedEntity.Get(t))
+					assert.Contains(t, vs1, additionalEntities.Get(t))
 				})
 			})
 
@@ -307,7 +307,7 @@ func QueryMany[ENT, ID any](
 				t.Eventually(func(t *testcase.T) {
 					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
-					assert.Contain(t, ents, includedEntity.Get(t))
+					assert.Contains(t, ents, includedEntity.Get(t))
 					assert.NotContain(t, ents, othEnt.Get(t))
 				})
 			})

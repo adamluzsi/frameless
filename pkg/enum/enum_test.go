@@ -150,7 +150,7 @@ func TestValidateStruct_smoke(t *testing.T) {
 
 				enums := slicekit.Map(enum.ReflectValues(field), reflect.Value.String)
 				t.LogPretty(enums)
-				assert.ContainExactly(t, enums, []string{"foo", "bar", "baz"})
+				assert.ContainsExactly(t, enums, []string{"foo", "bar", "baz"})
 
 				assert.NoError(t, enum.Validate(DefaultSeperationWithSpacesAndTrimmingRequired{V: "foo"}))
 				assert.NoError(t, enum.Validate(DefaultSeperationWithSpacesAndTrimmingRequired{V: "bar"}))
@@ -169,7 +169,7 @@ func TestValidateStruct_smoke(t *testing.T) {
 				assert.NoError(t, err)
 
 				strEnums := slicekit.Map(enums, reflect.Value.String)
-				assert.ContainExactly(t, []string{"foo", "bar", "baz"}, strEnums)
+				assert.ContainsExactly(t, []string{"foo", "bar", "baz"}, strEnums)
 			},
 		},
 
@@ -439,7 +439,7 @@ func TestValues(t *testing.T) {
 		defer unregister()
 
 		t.Log("after register, enum member values are available")
-		assert.ContainExactly(t, []T{V1, V2, V3}, enum.Values[T]())
+		assert.ContainsExactly(t, []T{V1, V2, V3}, enum.Values[T]())
 
 		t.Log("after unregister, enum member values are no longer available")
 		unregister()
@@ -476,7 +476,7 @@ func TestReflectValues(t *testing.T) {
 		defer unregister()
 
 		t.Log("after register, enum member values are available")
-		assert.ContainExactly(t,
+		assert.ContainsExactly(t,
 			[]reflect.Value{reflect.ValueOf(V1), reflect.ValueOf(V2), reflect.ValueOf(V3)},
 			enum.ReflectValues(reflectkit.TypeOf[T]()))
 

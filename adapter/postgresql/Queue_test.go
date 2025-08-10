@@ -184,7 +184,7 @@ func TestQueue_smoke(t *testing.T) {
 		assert.NoError(t, q1.Publish(context.Background(), ent1A, ent1B, ent1C))
 
 		res1.Eventually(t, func(tb testing.TB, foos []testent.Foo) {
-			assert.ContainExactly(tb, expected1, foos)
+			assert.ContainsExactly(tb, expected1, foos)
 		})
 	})
 	t.Run("multi", func(t *testing.T) {
@@ -231,11 +231,11 @@ func TestQueue_smoke(t *testing.T) {
 		})
 
 		res1.Eventually(t, func(tb testing.TB, foos []testent.Foo) {
-			assert.ContainExactly(tb, expected1, foos)
+			assert.ContainsExactly(tb, expected1, foos)
 		})
 
 		res2.Eventually(t, func(tb testing.TB, foos []testent.Foo) {
-			assert.ContainExactly(tb, expected2, foos)
+			assert.ContainsExactly(tb, expected2, foos)
 		})
 	})
 }

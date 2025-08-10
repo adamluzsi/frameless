@@ -410,7 +410,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	defer response.Body.Close()
 	gotResponseBody, err := io.ReadAll(response.Body)
 	assert.NoError(t, err)
-	assert.Contain(t, string(gotResponseBody), responseBody)
+	assert.Contains(t, string(gotResponseBody), responseBody)
 	assert.Equal(t, responseCode, response.StatusCode)
 	assert.True(t, len(logs) == 1)
 	u, _ := url.Parse(server.URL)
@@ -443,7 +443,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	defer response.Body.Close()
 	gotResponseBody, err = io.ReadAll(response.Body)
 	assert.NoError(t, err)
-	assert.Contain(t, string(gotResponseBody), responseBody)
+	assert.Contains(t, string(gotResponseBody), responseBody)
 	assert.Equal(t, responseCode, response.StatusCode)
 	assert.True(t, len(logs) == 1)
 	assert.Equal(t, logs[0], logging.Fields{

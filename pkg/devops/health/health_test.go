@@ -168,7 +168,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 
 		state := hc.HealthCheck(context.Background())
 		assert.Equal(t, health.Up, state.Status)
-		assert.Contain(t, state.Issues, expIssue)
+		assert.Contains(t, state.Issues, expIssue)
 	})
 
 	t.Run("all-dependencies-pass", func(t *testing.T) {
@@ -375,8 +375,8 @@ func TestMonitor_HealthCheck(t *testing.T) {
 
 		assert.OneOf(t, report.Issues, func(t testing.TB, got health.Issue) {
 			assert.Equal(t, got.Code, "metric-error")
-			assert.Contain(t, got.Message, "x-metric")
-			assert.Contain(t, got.Message, "error")
+			assert.Contains(t, got.Message, "x-metric")
+			assert.Contains(t, got.Message, "error")
 		})
 	})
 
@@ -549,8 +549,8 @@ func TestIssue(t *testing.T) {
 	}
 	var _ error = i // interface check
 	assert.NotEmpty(t, i.Error())
-	assert.Contain(t, i.Error(), i.Code)
-	assert.Contain(t, i.Error(), i.Message)
+	assert.Contains(t, i.Error(), i.Code)
+	assert.Contains(t, i.Error(), i.Message)
 }
 
 func ExampleHTTPHealthCheck() {
@@ -709,7 +709,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 		s.Then("it reports it as a dependency", func(t *testcase.T) {
 			report := act(t)
 			assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
-				assert.Contain(it, got.Name, remoteService.Get(t).URL)
+				assert.Contains(it, got.Name, remoteService.Get(t).URL)
 				assert.Equal(it, got.Status, health.Up)
 			})
 		})
@@ -726,7 +726,7 @@ func TestHTTPHealthCheck(t *testing.T) {
 			s.Then("the dependency marked as down", func(t *testcase.T) {
 				report := act(t)
 				assert.OneOf(t, report.Dependencies, func(it testing.TB, got health.Report) {
-					assert.Contain(it, got.Name, remoteService.Get(t).URL)
+					assert.Contains(it, got.Name, remoteService.Get(t).URL)
 					assert.Equal(it, got.Status, health.Down)
 				})
 			})
@@ -938,5 +938,5 @@ func TestReport_WithIssue(t *testing.T) {
 	assert.NotEqual(t, r, gotReport)
 	assert.Empty(t, r.Issues)
 	assert.NotEmpty(t, gotReport.Issues)
-	assert.Contain(t, gotReport.Issues, expIssue)
+	assert.Contains(t, gotReport.Issues, expIssue)
 }

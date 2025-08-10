@@ -53,8 +53,8 @@ func TestLogger_AsyncLogging(t *testing.T) {
 		logs := out.String()
 		m.Unlock()
 
-		assert.Contain(it, logs, `"Msg":"gsm"`)
-		assert.Contain(it, logs, `"FieldKey":"value"`)
+		assert.Contains(it, logs, `"Msg":"gsm"`)
+		assert.Contains(it, logs, `"FieldKey":"value"`)
 	})
 }
 
@@ -80,7 +80,7 @@ func TestLogger_AsyncLogging_onCancellationAllMessageIsFlushed(t *testing.T) {
 		m.Unlock()
 
 		for i := 0; i < sampling; i++ {
-			assert.Contain(it, logs, fmt.Sprintf(`"message":"%d"`, i))
+			assert.Contains(it, logs, fmt.Sprintf(`"message":"%d"`, i))
 		}
 	})
 }
