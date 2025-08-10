@@ -1,6 +1,7 @@
 package synckit
 
 import (
+	"iter"
 	"sync"
 	"sync/atomic"
 
@@ -330,7 +331,8 @@ func (m *Map[K, V]) Keys() []K {
 }
 
 func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
-	// TODO: make this into a key specific operation
+	// TODO: make this operation only block when a specific key is affected
+
 	m.mu.Lock()
 	v, ok := m.lookup(key)
 	if !ok {
@@ -355,4 +357,30 @@ func (m *Map[K, V]) BorrowWithInit(key K, init func() V) (ptr *V, release func()
 		m.mu.Unlock()
 	}
 	return &v, release
+}
+
+func (m *Map[K, V]) RIter() iter.Seq2[K, V] {
+	return m.iter(m.mu.RLocker())
+}
+
+func (m *Map[K, V]) Iter() iter.Seq2[K, V] {
+	return m.iter(&m.mu)
+}
+
+func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		l.Lock()
+		defer l.Unlock()
+		for k, v := range m.vs {
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
+}
+
+func (m *Map[K, V]) ToMap() map[K]V {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return mapkit.Clone(m.vs)
 }
