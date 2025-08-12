@@ -5445,3 +5445,45 @@ func TestReverseE(t *testing.T) {
 		assert.Equal(t, exp, got)
 	})
 }
+
+func TestToK_smoke(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		input := random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, error] {
+			return iterkit.KV[string, error]{
+				K: t.Random.Domain(),
+				V: t.Random.Error(),
+			}
+		})
+
+		exp := slicekit.Map(input, func(kv iterkit.KV[string, error]) string {
+			return kv.K
+		})
+
+		got := iterkit.Collect(iterkit.ToK(iterkit.FromKV(input)))
+
+		assert.Equal(t, exp, got)
+	})
+}
+
+func TestToV_smoke(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		input := random.Slice(t.Random.IntBetween(3, 7), func() iterkit.KV[string, error] {
+			return iterkit.KV[string, error]{
+				K: t.Random.Domain(),
+				V: t.Random.Error(),
+			}
+		})
+
+		exp := slicekit.Map(input, func(kv iterkit.KV[string, error]) error {
+			return kv.V
+		})
+
+		got := iterkit.Collect(iterkit.ToV(iterkit.FromKV(input)))
+
+		assert.Equal(t, exp, got)
+	})
+}
