@@ -190,7 +190,7 @@ func TestMap(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, val1, got)
 		assert.Equal(t, val1, m.Get(t).Get(key))
-		assert.Contain(t, m.Get(t).Keys(), key)
+		assert.Contains(t, m.Get(t).Keys(), key)
 		assert.Equal(t, 1, m.Get(t).Len())
 
 		m.Get(t).Set(key, val2)
@@ -198,7 +198,7 @@ func TestMap(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, val2, got)
 		assert.Equal(t, val2, m.Get(t).Get(key))
-		assert.Contain(t, m.Get(t).Keys(), key)
+		assert.Contains(t, m.Get(t).Keys(), key)
 		assert.Equal(t, 1, m.Get(t).Len())
 
 		m.Get(t).Delete(key)

@@ -1309,7 +1309,7 @@ func TestTagHandler_HandleStruct(t *testing.T) {
 
 		ts := TestStruct{}
 		assert.NoError(t, handler.HandleStruct(reflect.ValueOf(ts)))
-		assert.ContainExactly(t, vs, []string{"value1", "42"})
+		assert.ContainsExactly(t, vs, []string{"value1", "42"})
 	})
 
 	t.Run("absence_of_specified_tag", func(t *testing.T) {
@@ -1628,13 +1628,13 @@ func TestTagHandler_HandleStructField(t *testing.T) {
 		sf, field, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
 		assert.True(t, ok)
 		assert.NoError(t, handler.HandleStructField(sf, field))
-		assert.ContainExactly(t, vs, []string{"value1"})
+		assert.ContainsExactly(t, vs, []string{"value1"})
 
 		sf, field, ok = reflectkit.LookupField(reflect.ValueOf(v), "Field2")
 		assert.True(t, ok)
 		assert.NoError(t, handler.HandleStructField(sf, field))
 
-		assert.ContainExactly(t, vs, []string{"value1", "42"})
+		assert.ContainsExactly(t, vs, []string{"value1", "42"})
 	})
 
 	t.Run("absence_of_specified_tag", func(t *testing.T) {
@@ -1890,13 +1890,13 @@ func TestTagHandler_alias(t *testing.T) {
 
 	rStruct := reflect.ValueOf(v)
 	assert.NoError(t, th.HandleStruct(rStruct))
-	assert.ContainExactly(t, []string{"x", "y", "z"}, found)
+	assert.ContainsExactly(t, []string{"x", "y", "z"}, found)
 	found = nil
 
 	field, value, ok := reflectkit.LookupField(rStruct, "V2")
 	assert.True(t, ok)
 	assert.NoError(t, th.HandleStructField(field, value))
-	assert.ContainExactly(t, []string{"y"}, found)
+	assert.ContainsExactly(t, []string{"y"}, found)
 }
 
 func TestTagHandler_parseTagName(t *testing.T) {
@@ -1926,7 +1926,7 @@ func TestTagHandler_parseTagName(t *testing.T) {
 	rStruct := reflect.ValueOf(v)
 	assert.NoError(t, th.HandleStruct(rStruct))
 
-	assert.ContainExactly(t, tags, map[string]string{
+	assert.ContainsExactly(t, tags, map[string]string{
 		"tt1": "x",
 		"tt2": "y",
 		"tt3": "z",
@@ -1966,7 +1966,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, tag, "42")
 
-		assert.ContainExactly(t, []string{"value1", "42"}, vs)
+		assert.ContainsExactly(t, []string{"value1", "42"}, vs)
 	})
 
 	t.Run("absence of specified tag", func(t *testing.T) {
@@ -2822,7 +2822,7 @@ func TestToType(t *testing.T) {
 		out := assert.Panic(t, func() { reflectkit.ToType(val) })
 		err, ok := out.(error)
 		assert.True(t, ok, "error panic value was expected")
-		assert.Contain(t, err.Error(), "Value.Type")
+		assert.Contains(t, err.Error(), "Value.Type")
 	})
 }
 

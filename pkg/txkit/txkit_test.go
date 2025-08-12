@@ -122,8 +122,8 @@ func Test(t *testing.T) {
 		expectedOthErr := t.Random.Error()
 		rErr := expectedOthErr
 		txkit.Finish(&rErr, ctx)
-		t.Must.Contain(rErr.Error(), expectedErr.Error())
-		t.Must.Contain(rErr.Error(), expectedOthErr.Error())
+		assert.Contains(t, rErr.Error(), expectedErr.Error())
+		assert.Contains(t, rErr.Error(), expectedOthErr.Error())
 	})
 
 	s.Test("transaction allows concurrent interactions", func(t *testcase.T) {

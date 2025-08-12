@@ -210,7 +210,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					t.Must.Contain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+					assert.Contains(t, respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
 				})
 
 				s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
@@ -225,7 +225,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					s.Then("it will return back the entity", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.NotEmpty(rr.Body.String())
-						t.Must.Contain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+						assert.Contains(t, respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
 					})
 				})
 
@@ -241,7 +241,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					s.Then("it will not return back the entity", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.NotEmpty(rr.Body.String())
-						t.Must.NotContain(respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+						assert.NotContains(t, respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
 					})
 				})
 			})
@@ -254,7 +254,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					t.Must.ContainExactly([]XDTO{dto1.Get(t), dto2.Get(t), dto3.Get(t)},
+					t.Must.ContainsExactly([]XDTO{dto1.Get(t), dto2.Get(t), dto3.Get(t)},
 						respondsWithJSON[[]XDTO](t, rr))
 				})
 			})
@@ -317,7 +317,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					s.Then("the result will be based on the value returned by the controller function", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusOK, rr.Code)
-						t.Must.ContainExactly(
+						t.Must.ContainsExactly(
 							[]XDTO{{ID: int(x.Get(t).ID), X: x.Get(t).N}},
 							respondsWithJSON[[]XDTO](t, rr))
 					})
@@ -1460,7 +1460,7 @@ func TestRESTHandler_nestedOwnershipConstraint(t *testing.T) {
 		gotNote, found, err := noteRepo.FindByID(ctx, note1.ID)
 		assert.NoError(t, err)
 		assert.True(t, found)
-		assert.Contain(t, gotNote.Attachments, gotAttach.ID)
+		assert.Contains(t, gotNote.Attachments, gotAttach.ID)
 	})
 }
 

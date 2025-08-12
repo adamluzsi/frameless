@@ -192,7 +192,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
 			actual, err := iterkit.CollectE(act(t))
 			assert.NoError(t, err)
-			t.Must.ContainExactly(expected, actual)
+			t.Must.ContainsExactly(expected, actual)
 		})
 	})
 

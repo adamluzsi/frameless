@@ -98,7 +98,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 
 			s.Then("event received through the subscription", func(t *testcase.T) {
 				t.Eventually(func(it *testcase.T) {
-					assert.Contain(it, sub.Get(t).Values(), val.Get(t))
+					assert.Contains(it, sub.Get(t).Values(), val.Get(t))
 				})
 			})
 		})
@@ -276,7 +276,7 @@ func (c base[Data]) EventuallyEqual(t *testcase.T, subscription testcase.Var[pub
 
 func (c base[Data]) EventuallyContainExactly(t *testcase.T, subscription testcase.Var[pubsub.Subscription[Data]], expected []Data) {
 	c.EventuallyIt(t, subscription, func(it testing.TB, actual []Data) {
-		assert.ContainExactly(it, expected, actual)
+		assert.ContainsExactly(it, expected, actual)
 	})
 }
 

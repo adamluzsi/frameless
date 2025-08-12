@@ -98,7 +98,3 @@ func Numbers[T constraints.Number](a, b T) int {
 		return 0
 	}
 }
-
-type Equable[T any] interface {
-	IsEqual(oth T) bool
-}

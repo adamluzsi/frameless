@@ -6,6 +6,16 @@ import (
 	"strings"
 )
 
+const ErrNotImplemented Error = "ErrNotImplemented"
+
+type Error string
+
+func (err Error) Error() string { return string(err) }
+
+func (err Error) F(format string, a ...any) error {
+	return W{E: err, W: fmt.Errorf(format, a...)}
+}
+
 // Finish is a helper function that can be used from a deferred context.
 //
 // Usage:
@@ -54,7 +64,6 @@ func As[T error](err error) (T, bool) {
 // If no valid error is given, nil is returned.
 // If only a single non nil error value is given, the error value is returned.
 func Merge(errs ...error) error {
-
 	var cleanErrs []error
 	for _, err := range errs {
 		if err == nil {
@@ -126,4 +135,37 @@ func MergeErrFunc(errFuncs ...ErrFunc) func() error {
 		}
 		return nil
 	}
+}
+
+type W struct {
+	E Error
+	W error
+}
+
+func (w W) Error() string {
+	var msg string
+	if w.W != nil {
+		msg = w.W.Error()
+	}
+	return fmt.Sprintf("[%s] %s", w.E, msg)
+}
+
+func (w W) As(target any) bool {
+	if errors.As(w.E, target) {
+		return true
+	}
+	if errors.As(w.W, target) {
+		return true
+	}
+	return false
+}
+
+func (w W) Is(target error) bool {
+	if errors.Is(w.E, target) {
+		return true
+	}
+	if errors.Is(w.W, target) {
+		return true
+	}
+	return false
 }

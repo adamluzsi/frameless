@@ -132,7 +132,7 @@ func TestShiftWeekday(t *testing.T) {
 	})
 
 	s.Then("the result is a valid weekday", func(t *testcase.T) {
-		assert.Contain(t, timekit.Weekdays(), act(t))
+		assert.Contains(t, timekit.Weekdays(), act(t))
 	})
 
 	s.When("positive value is added", func(s *testcase.Spec) {
@@ -213,7 +213,7 @@ func TestShiftMonth(t *testing.T) {
 	})
 
 	s.Then("the result is a valid month", func(t *testcase.T) {
-		assert.Contain(t, timekit.Months(), act(t))
+		assert.Contains(t, timekit.Months(), act(t))
 	})
 
 	s.When("positive value is added", func(s *testcase.Spec) {

@@ -125,7 +125,7 @@ func TestDTOExt_UnmarshalJSON_invalidTypeURL(t *testing.T) {
 	var dto rfc7807.DTOExt[struct{}]
 	gotErr := json.Unmarshal([]byte(body), &dto)
 	assert.NotNil(t, gotErr)
-	assert.Contain(t, gotErr.Error(), "net/url: invalid userinfo")
+	assert.Contains(t, gotErr.Error(), "net/url: invalid userinfo")
 }
 
 func TestDTOExt_UnmarshalJSON_emptyType(t *testing.T) {

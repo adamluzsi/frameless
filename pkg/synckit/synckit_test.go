@@ -512,7 +512,7 @@ func TestMap(t *testing.T) {
 		s.Then("values are accessed", func(t *testcase.T) {
 			assert.NoError(t, act(t))
 			assert.NotNil(t, lastValues.Get(t))
-			assert.ContainExactly(t, lastValues.Get(t), map[string]int{key.Get(t): value.Get(t)})
+			assert.ContainsExactly(t, lastValues.Get(t), map[string]int{key.Get(t): value.Get(t)})
 		})
 
 		s.Then("after accessing values, Map Operations continue to work", func(t *testcase.T) {
@@ -1033,7 +1033,7 @@ func TestMap(t *testing.T) {
 			})
 
 			s.Then("the returned keys contain all the stored value's key", func(t *testcase.T) {
-				assert.ContainExactly(t, act(t), expKeys.Get(t))
+				assert.ContainsExactly(t, act(t), expKeys.Get(t))
 			})
 		})
 	})

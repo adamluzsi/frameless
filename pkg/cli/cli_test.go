@@ -152,8 +152,8 @@ func TestMux(t *testing.T) {
 
 				act(t)
 
-				assert.Contain(t, response.Get(t).Out.String(), "out")
-				assert.Contain(t, response.Get(t).Err.String(), "errout")
+				assert.Contains(t, response.Get(t).Out.String(), "out")
+				assert.Contains(t, response.Get(t).Err.String(), "errout")
 
 				assert.Equal(t, cmd.Flag1, "foo")
 				assert.Equal(t, cmd.Flag2, "defval")
@@ -183,7 +183,7 @@ func TestMux(t *testing.T) {
 
 				act(t)
 
-				assert.Contain(t, response.Get(t).Out.String(), "teapot")
+				assert.Contains(t, response.Get(t).Out.String(), "teapot")
 			})
 
 			s.And("the command have flags", func(s *testcase.Spec) {
@@ -386,7 +386,7 @@ func TestMux(t *testing.T) {
 
 							errOutput := response.Get(t).Err.String()
 							assert.NotEmpty(t, errOutput)
-							assert.Contain(t, errOutput, cli.ErrFlagInvalid)
+							assert.Contains(t, errOutput, cli.ErrFlagInvalid)
 						})
 
 						s.Then("the the error response will mention valid enum values", func(t *testcase.T) {
@@ -400,7 +400,7 @@ func TestMux(t *testing.T) {
 
 							var _ string = CommandWithFlagWithEnum{}.Flag // static check for Flag field type
 							for _, v := range vs {
-								assert.Contain(t, response.Get(t).Err.String(), v.String())
+								assert.Contains(t, response.Get(t).Err.String(), v.String())
 							}
 						})
 					})
@@ -552,10 +552,10 @@ func TestMux(t *testing.T) {
 
 							errOutput := response.Get(t).Err.String()
 							assert.NotEmpty(t, errOutput)
-							assert.Contain(t, strings.ToLower(errOutput), "usage")
+							assert.Contains(t, strings.ToLower(errOutput), "usage")
 							assert.AnyOf(t, func(a *assert.A) {
-								a.Case(func(t testing.TB) { assert.Contain(t, errOutput, "qux") })
-								a.Case(func(t testing.TB) { assert.Contain(t, errOutput, "quux") })
+								a.Case(func(t testing.TB) { assert.Contains(t, errOutput, "qux") })
+								a.Case(func(t testing.TB) { assert.Contains(t, errOutput, "quux") })
 							})
 						})
 
@@ -570,7 +570,7 @@ func TestMux(t *testing.T) {
 
 							var _ string = CommandWithArgWithEnum{}.Arg // static check for Flag field type
 							for _, v := range vs {
-								assert.Contain(t, response.Get(t).Err.String(), v.String())
+								assert.Contains(t, response.Get(t).Err.String(), v.String())
 							}
 						})
 					})
@@ -620,7 +620,7 @@ func TestMux(t *testing.T) {
 						assert.Empty(t, response.Get(t).Out.String())
 						assert.NotEmpty(t, response.Get(t).Err.String())
 
-						assert.Contain(t, response.Get(t).Err.String(), unknownCommandName.Get(t),
+						assert.Contains(t, response.Get(t).Err.String(), unknownCommandName.Get(t),
 							"expected that the unknown command name is mentioned")
 					})
 
@@ -641,9 +641,9 @@ func TestMux(t *testing.T) {
 
 							const expectedToFindCommands = "expected that the available commands are listed"
 							t.Log(response.Get(t).Err.String())
-							assert.Contain(t, response.Get(t).Err.String(), "foo", expectedToFindCommands)
-							assert.Contain(t, response.Get(t).Err.String(), "bar", expectedToFindCommands)
-							assert.Contain(t, response.Get(t).Err.String(), "baz", expectedToFindCommands)
+							assert.Contains(t, response.Get(t).Err.String(), "foo", expectedToFindCommands)
+							assert.Contains(t, response.Get(t).Err.String(), "bar", expectedToFindCommands)
+							assert.Contains(t, response.Get(t).Err.String(), "baz", expectedToFindCommands)
 						})
 					})
 				})
@@ -673,7 +673,7 @@ func TestMux(t *testing.T) {
 
 					out := response.Get(t).Out.String()
 					assert.NotEmpty(t, out)
-					assert.Contain(t, strings.ToLower(out), "usage")
+					assert.Contains(t, strings.ToLower(out), "usage")
 				})
 			}
 
@@ -704,9 +704,9 @@ func TestMux(t *testing.T) {
 
 					out := response.Get(t).Out.String()
 					assert.NotEmpty(t, out)
-					assert.Contain(t, strings.ToLower(out), "commands")
-					assert.Contain(t, out, "foo")
-					assert.Contain(t, out, "e2e: "+CommandE2E{}.Summary())
+					assert.Contains(t, strings.ToLower(out), "commands")
+					assert.Contains(t, out, "foo")
+					assert.Contains(t, out, "e2e: "+CommandE2E{}.Summary())
 				})
 
 				s.And("and command is specified before the help flag", func(s *testcase.Spec) {
@@ -726,7 +726,7 @@ func TestMux(t *testing.T) {
 						out := response.Get(t).Out.String()
 						_ = out
 
-						assert.Contain(t, out, "")
+						assert.Contains(t, out, "")
 					})
 				})
 			})
@@ -1089,23 +1089,23 @@ func TestUsage(t *testing.T) {
 		usage, err := cli.Usage(CommandE2E{}, "thepath")
 		assert.NoError(t, err)
 
-		assert.Contain(t, usage, "Usage: thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
-		assert.Contain(t, usage, "-str=[string]: flag1 desc")
-		assert.Contain(t, usage, "-strwd=[string] (default: defval)")
-		assert.Contain(t, usage, "-int=[int]")
-		assert.Contain(t, usage, "-bool=[bool]")
-		assert.Contain(t, usage, "-sbool=[bool]")
-		assert.Contain(t, usage, "-fbool=[bool]")
-		assert.Contain(t, usage, "Arg1 [string]")
-		assert.Contain(t, usage, "Arg2 [int]")
-		assert.Contain(t, usage, "Arg3 [bool]")
-		assert.Contain(t, usage, "-int=[int] (env: FLAG3)", "env variable is mentioned")
+		assert.Contains(t, usage, "Usage: thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
+		assert.Contains(t, usage, "-str=[string]: flag1 desc")
+		assert.Contains(t, usage, "-strwd=[string] (default: defval)")
+		assert.Contains(t, usage, "-int=[int]")
+		assert.Contains(t, usage, "-bool=[bool]")
+		assert.Contains(t, usage, "-sbool=[bool]")
+		assert.Contains(t, usage, "-fbool=[bool]")
+		assert.Contains(t, usage, "Arg1 [string]")
+		assert.Contains(t, usage, "Arg2 [int]")
+		assert.Contains(t, usage, "Arg3 [bool]")
+		assert.Contains(t, usage, "-int=[int] (env: FLAG3)", "env variable is mentioned")
 	})
 	t.Run("when cli.Handler#Usage(path) is supported", func(t *testing.T) {
 		usage, err := cli.Usage(CommandWithUsageSupport{}, "thepath")
 		assert.NoError(t, err)
 
-		assert.Contain(t, usage, "Custom Usage Message: thepath")
+		assert.Contains(t, usage, "Custom Usage Message: thepath")
 	})
 }
 

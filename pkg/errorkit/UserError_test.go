@@ -67,9 +67,9 @@ func TestUserError(t *testing.T) {
 		t.Must.Equal(usrErr, gotUserErr)
 		t.Must.True(errors.As(err, &errorkit.UserError{}))
 		t.Must.ErrorIs(usrErr, err)
-		t.Must.Contain(err.Error(), "wrapped: ")
-		t.Must.Contain(err.Error(), usrErr.Message)
-		t.Must.Contain(err.Error(), usrErr.Code)
+		assert.Contains(t, err.Error(), "wrapped: ")
+		assert.Contains(t, err.Error(), usrErr.Message)
+		assert.Contains(t, err.Error(), usrErr.Code)
 
 		gotUsrErr := errorkit.UserError{}
 		t.Must.True(errors.As(err, &gotUsrErr))
@@ -95,14 +95,14 @@ func TestUserError_F_smoke(t *testing.T) {
 	t.Run("sprintf", func(t *testing.T) {
 		got := ErrExample.F("foo - bar - %s", "baz")
 		assert.ErrorIs(t, got, ErrExample)
-		assert.Contain(t, got.Error(), "foo - bar - baz")
+		assert.Contains(t, got.Error(), "foo - bar - baz")
 	})
 	t.Run("errorf", func(t *testing.T) {
 		exp := rnd.Error()
 		got := ErrExample.F("%w", exp)
 		assert.ErrorIs(t, got, ErrExample)
 		assert.ErrorIs(t, got, exp)
-		assert.Contain(t, got.Error(), ErrExample.Error())
+		assert.Contains(t, got.Error(), ErrExample.Error())
 	})
 }
 

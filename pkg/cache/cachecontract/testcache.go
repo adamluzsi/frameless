@@ -325,7 +325,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 
 				s.Then(`querying it continously will refresh the value behind the scenes`, func(t *testcase.T) {
 					t.Eventually(func(t *testcase.T) {
-						assert.Contain(t, AfterAct(t), *valueWithNewContent.Get(t))
+						assert.Contains(t, AfterAct(t), *valueWithNewContent.Get(t))
 					})
 				})
 
@@ -487,7 +487,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		}
 
 		t.Log("a value is already cached")
-		assert.ContainExactly(t, query(t), res)
+		assert.ContainsExactly(t, query(t), res)
 
 		t.Eventually(func(t *testcase.T) {
 			assert.True(t, cache.Get(t).Idle())
@@ -507,7 +507,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		assert.NoError(t, refreshQuery(t))
 
 		t.Eventually(func(t *testcase.T) {
-			assert.ContainExactly(t, query(t), res)
+			assert.ContainsExactly(t, query(t), res)
 		})
 	})
 
@@ -932,7 +932,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 		s.Then("it will return all the entities", func(t *testcase.T) {
 			vs, err := iterkit.CollectE(act(t))
 			t.Must.NoError(err)
-			t.Must.ContainExactly([]ENT{*ent1.Get(t), *ent2.Get(t)}, vs)
+			t.Must.ContainsExactly([]ENT{*ent1.Get(t), *ent2.Get(t)}, vs)
 		})
 
 		s.Then("it will cache all returned entities", func(t *testcase.T) {
@@ -941,7 +941,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 
 			cached, err := iterkit.CollectE(repository.Entities().FindAll(c.CRUD.MakeContext(t)))
 			t.Must.NoError(err)
-			t.Must.Contain(cached, vs)
+			assert.Contains(t, cached, vs)
 		})
 
 		s.Then("it will create a hit record", func(t *testcase.T) {
@@ -953,7 +953,7 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 
 			assert.OneOf(t, hits, func(it testing.TB, got cachepkg.Hit[ID]) {
 				assert.Equal(it, got.ID, hitID.Get(t))
-				assert.ContainExactly(it, got.EntityIDs, []ID{
+				assert.ContainsExactly(it, got.EntityIDs, []ID{
 					c.CRUD.Helper().HasID(t, ent1.Get(t)),
 					c.CRUD.Helper().HasID(t, ent2.Get(t)),
 				})
@@ -1022,7 +1022,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 			assert.NoError(t, err)
 
 			assert.OneOf(t, hvs, func(t testing.TB, got cachepkg.Hit[ID]) {
-				assert.Contain(t, got.EntityIDs, id)
+				assert.Contains(t, got.EntityIDs, id)
 			}, "expected that there is at least one hit that points to our ID")
 
 			// we have cached entities
@@ -1106,13 +1106,13 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 			// warm up the cache before making the data invalidated
 			vs, err := iterkit.CollectE(queryMany(t))
 			t.Must.NoError(err)
-			t.Must.Contain(vs, *entPtr.Get(t))
+			assert.Contains(t, vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			vs, err = iterkit.CollectE(queryMany(t))
 			t.Must.NoError(err)
-			t.Must.Contain(vs, *entPtr.Get(t))
+			assert.Contains(t, vs, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {
@@ -1377,13 +1377,13 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 			// warm up the cache before making the data invalidated
 			vs, err := iterkit.CollectE(queryMany(t))
 			t.Must.NoError(err)
-			t.Must.Contain(vs, *entPtr.Get(t))
+			assert.Contains(t, vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
 			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			vs, err = iterkit.CollectE(queryMany(t))
 			t.Must.NoError(err)
-			t.Must.Contain(vs, *entPtr.Get(t))
+			assert.Contains(t, vs, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {

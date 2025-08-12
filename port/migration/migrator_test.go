@@ -186,7 +186,7 @@ func TestMigrator_Migrate(t *testing.T) {
 			s.Then("error is raised about the missing namespace", func(t *testcase.T) {
 				err := act(t)
 				assert.Error(t, err)
-				assert.Contain(t, strings.ToLower(err.Error()), "namespace")
+				assert.Contains(t, strings.ToLower(err.Error()), "namespace")
 			})
 		})
 

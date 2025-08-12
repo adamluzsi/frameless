@@ -1023,7 +1023,7 @@ func TestWithSignalNotify(t *testing.T) {
 			var run atomic.Bool
 			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
 				run.Store(true)
-				t.Must.ContainExactly(signals.Get(t), sigs)
+				t.Must.ContainsExactly(signals.Get(t), sigs)
 			})
 
 			t.Must.NotWithin(time.Second, func(context.Context) {

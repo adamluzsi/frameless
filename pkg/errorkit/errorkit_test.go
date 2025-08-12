@@ -63,7 +63,7 @@ func TestError_Wrap_smoke(t *testing.T) {
 		got := ErrExample.Wrap(exp)
 		assert.ErrorIs(t, got, exp)
 		assert.ErrorIs(t, got, ErrExample)
-		assert.Contain(t, got.Error(), fmt.Sprintf("[%s] %s", ErrExample, exp.Error()))
+		assert.Contains(t, got.Error(), fmt.Sprintf("[%s] %s", ErrExample, exp.Error()))
 
 		t.Run("Is", func(t *testing.T) {
 			assert.True(t, errors.Is(got, ErrExample))
@@ -93,14 +93,14 @@ func TestError_F_smoke(t *testing.T) {
 	t.Run("sprintf", func(t *testing.T) {
 		got := ErrExample.F("foo - bar - %s", "baz")
 		assert.ErrorIs(t, got, ErrExample)
-		assert.Contain(t, got.Error(), "foo - bar - baz")
+		assert.Contains(t, got.Error(), "foo - bar - baz")
 	})
 	t.Run("errorf", func(t *testing.T) {
 		exp := rnd.Error()
 		got := ErrExample.F("%w", exp)
 		assert.ErrorIs(t, got, ErrExample)
 		assert.ErrorIs(t, got, exp)
-		assert.Contain(t, got.Error(), ErrExample.Error())
+		assert.Contains(t, got.Error(), ErrExample.Error())
 	})
 }
 
@@ -719,7 +719,7 @@ func TestF(t *testing.T) {
 
 		assert.Error(t, err)
 		message := fmt.Sprintf(format.Get(t), args.Get(t)...)
-		assert.Contain(t, err.Error(), message)
+		assert.Contains(t, err.Error(), message)
 	})
 
 	s.Then("the error has trace", func(t *testcase.T) {
@@ -739,7 +739,7 @@ func TestF(t *testing.T) {
 		s.Then("then the passed error's content is part of the result error's content", func(t *testcase.T) {
 			err := act(t)
 			assert.Error(t, err)
-			assert.Contain(t, err.Error(), fmt.Sprintf("error:%s", expErr.Get(t).Error()))
+			assert.Contains(t, err.Error(), fmt.Sprintf("error:%s", expErr.Get(t).Error()))
 		})
 
 		s.Then("the result error wraps the passed error", func(t *testcase.T) {

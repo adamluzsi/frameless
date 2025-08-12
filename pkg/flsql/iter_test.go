@@ -226,7 +226,7 @@ func TestQueryMany(t *testing.T) {
 		res := flsql.QueryMany(c, t.Context(), m, expQuery, expArgs...)
 		vs, err := iterkit.CollectE(res)
 		assert.NoError(t, err)
-		assert.ContainExactly(t, vs, []T{{ID: 42}})
+		assert.ContainsExactly(t, vs, []T{{ID: 42}})
 	})
 
 	s.Test("rainy", func(t *testcase.T) {

@@ -418,7 +418,7 @@ func TestAssociate(t *testing.T) {
 		assert.False(t, relationship.Related(a, b))
 		assert.NoError(t, relationship.Associate(&a, &b))
 		assert.True(t, relationship.Related(a, b))
-		assert.ContainExactly(t, []string{b.ID}, a.BIDs)
+		assert.ContainsExactly(t, []string{b.ID}, a.BIDs)
 	})
 
 	s.Test("1:N through reference many ref ids are not updated with empty ID", func(t *testcase.T) {
@@ -452,7 +452,7 @@ func TestAssociate(t *testing.T) {
 		assert.False(t, relationship.Related(a, b))
 		assert.NoError(t, relationship.Associate(&a, &b))
 		assert.True(t, relationship.Related(a, b))
-		assert.ContainExactly(t, []string{b.ID}, a.Bs)
+		assert.ContainsExactly(t, []string{b.ID}, a.Bs)
 	})
 
 	s.Test("1:N through RefMany & BelongsTo ref ids", func(t *testcase.T) {
@@ -473,7 +473,7 @@ func TestAssociate(t *testing.T) {
 		assert.True(t, relationship.Related(a, b))
 
 		assert.Equal(t, b.AID, a.ID)
-		assert.ContainExactly(t, []string{b.ID}, a.BIDs)
+		assert.ContainsExactly(t, []string{b.ID}, a.BIDs)
 	})
 }
 

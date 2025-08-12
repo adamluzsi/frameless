@@ -69,7 +69,7 @@ func TestField(t *testing.T) {
 
 	keyIsLogged := func(t *testcase.T) {
 		t.Helper()
-		t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
+		assert.Contains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 	}
 
 	s.When("value is int", func(s *testcase.Spec) {
@@ -81,7 +81,7 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), strconv.Itoa(value.Get(t).(int)))
+			assert.Contains(t, buf.Get(t).String(), strconv.Itoa(value.Get(t).(int)))
 		})
 
 		s.And("is a sub type", func(s *testcase.Spec) {
@@ -94,7 +94,7 @@ func TestField(t *testing.T) {
 				afterLogging(t)
 				keyIsLogged(t)
 
-				t.Must.Contain(buf.Get(t).String(), strconv.Itoa(int(value.Get(t).(IntType))))
+				assert.Contains(t, buf.Get(t).String(), strconv.Itoa(int(value.Get(t).(IntType))))
 			})
 		})
 	})
@@ -108,7 +108,7 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", value.Get(t).(string)))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", value.Get(t).(string)))
 		})
 
 		s.And("is a sub type", func(s *testcase.Spec) {
@@ -124,7 +124,7 @@ func TestField(t *testing.T) {
 				data, err := json.Marshal(value.Get(t).(StringType))
 				assert.NoError(t, err)
 
-				t.Must.Contain(buf.Get(t).String(), string(data))
+				assert.Contains(t, buf.Get(t).String(), string(data))
 			})
 		})
 	})
@@ -158,10 +158,10 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
 		})
 
 		s.And("the field value passed as a pointer", func(s *testcase.Spec) {
@@ -173,10 +173,10 @@ func TestField(t *testing.T) {
 				afterLogging(t)
 				keyIsLogged(t)
 
-				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
-				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
-				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
-				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+				assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+				assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+				assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+				assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
 			})
 		})
 	})
@@ -210,10 +210,10 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
 		})
 	})
 
@@ -227,9 +227,9 @@ func TestField(t *testing.T) {
 		s.Then("field is ignored, but a warning is made", func(t *testcase.T) {
 			afterLogging(t)
 
-			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
-			t.Must.Contain(buf.Get(t).String(), "security concerns")
-			t.Must.Contain(buf.Get(t).String(), "logger.RegisterFieldType")
+			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), "security concerns")
+			assert.Contains(t, buf.Get(t).String(), "logger.RegisterFieldType")
 		})
 	})
 
@@ -245,9 +245,9 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
 			// snake is the default key formatting
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
 	})
 
@@ -266,8 +266,8 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:%q", defaultKeyFormatter("IDDQD"), myData.Get(t).ID))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:%q", defaultKeyFormatter("IDDQD"), myData.Get(t).ID))
 		})
 	})
 
@@ -280,7 +280,7 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", *value.Get(t).(*string)))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", *value.Get(t).(*string)))
 		})
 
 		s.And("it is a constructed nil pointer", func(s *testcase.Spec) {
@@ -293,7 +293,7 @@ func TestField(t *testing.T) {
 				afterLogging(t)
 				keyIsLogged(t)
 
-				t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
+				assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
 			})
 		})
 	})
@@ -305,7 +305,7 @@ func TestField(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:null", defaultKeyFormatter(key.Get(t))))
 		})
 	})
 }
@@ -336,8 +336,8 @@ func TestLazyDetail(t *testing.T) {
 
 		l.Info(ctx, "", fn)
 		assert.True(t, called)
-		assert.Contain(t, buf.String(), "foo")
-		assert.Contain(t, buf.String(), "bar")
+		assert.Contains(t, buf.String(), "foo")
+		assert.Contains(t, buf.String(), "bar")
 	})
 
 	t.Run("on nil detail result", func(t *testing.T) {
@@ -357,7 +357,7 @@ func TestLazyDetail(t *testing.T) {
 			l.Info(ctx, "msg", fn)
 		})
 		assert.True(t, called)
-		assert.Contain(t, buf.String(), "msg")
+		assert.Contains(t, buf.String(), "msg")
 	})
 
 	t.Run("on nil func", func(t *testing.T) {
@@ -370,7 +370,7 @@ func TestLazyDetail(t *testing.T) {
 			l.Debug(ctx, "", fn)
 			l.Info(ctx, "msg", fn)
 		})
-		assert.Contain(t, buf.String(), "msg")
+		assert.Contains(t, buf.String(), "msg")
 	})
 }
 
@@ -383,12 +383,12 @@ func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 		})
 
 		l.Info(nil, "msg", logging.Field("x", X{V: 123456789}))
-		assert.Contain(t, buf.String(), "123456789")
+		assert.Contains(t, buf.String(), "123456789")
 
 		unregister()
 		l.Info(nil, "msg", logging.Field("x", X{V: 987654321}))
 		assert.NotContain(t, buf.String(), "987654321")
-		assert.Contain(t, buf.String(), "security")
+		assert.Contains(t, buf.String(), "security")
 	})
 	t.Run("for interface", func(t *testing.T) {
 		l, buf := logging.Stub(t)
@@ -397,12 +397,12 @@ func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 		})
 
 		l.Info(nil, "msg", logging.Field("x", testent.Foo{Foo: "123456789"}))
-		assert.Contain(t, buf.String(), "123456789")
+		assert.Contains(t, buf.String(), "123456789")
 
 		unregister()
 		l.Info(nil, "msg", logging.Field("x", testent.Foo{Foo: "987654321"}))
 		assert.NotContain(t, buf.String(), "987654321")
-		assert.Contain(t, buf.String(), "security")
+		assert.Contains(t, buf.String(), "security")
 	})
 }
 
@@ -436,7 +436,7 @@ func TestFields(t *testing.T) {
 
 	keyIsLogged := func(t *testcase.T) {
 		t.Helper()
-		t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
+		assert.Contains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 	}
 
 	s.When("value is int", func(s *testcase.Spec) {
@@ -448,7 +448,7 @@ func TestFields(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), strconv.Itoa(value.Get(t).(int)))
+			assert.Contains(t, buf.Get(t).String(), strconv.Itoa(value.Get(t).(int)))
 		})
 	})
 
@@ -461,7 +461,7 @@ func TestFields(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", value.Get(t).(string)))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", value.Get(t).(string)))
 		})
 	})
 
@@ -494,10 +494,10 @@ func TestFields(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
 		})
 	})
 
@@ -511,9 +511,11 @@ func TestFields(t *testing.T) {
 		s.Then("field is ignored, but a warning is made", func(t *testcase.T) {
 			afterLogging(t)
 
+			assert.Must(t).NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
-			t.Must.Contain(buf.Get(t).String(), "security concerns")
-			t.Must.Contain(buf.Get(t).String(), "logger.RegisterFieldType")
+			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), "security concerns")
+			assert.Contains(t, buf.Get(t).String(), "logger.RegisterFieldType")
 		})
 	})
 
@@ -529,9 +531,9 @@ func TestFields(t *testing.T) {
 			afterLogging(t)
 			keyIsLogged(t)
 
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q:{", defaultKeyFormatter(key.Get(t))))
 			// snake is the default key formatting
-			t.Must.Contain(buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf(`"foo_bar":%q`, mapValue.Get(t)))
 		})
 	})
 }
@@ -550,8 +552,8 @@ func TestErrField(t *testing.T) {
 		l, buf := logging.Stub(t)
 		expErr := rnd.Error()
 		l.Info(nil, "boom", logging.ErrField(expErr))
-		assert.Contain(t, buf.String(), `"error":{`)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
+		assert.Contains(t, buf.String(), `"error":{`)
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
 	})
 	t.Run("nil error", func(t *testing.T) {
 		l, buf := logging.Stub(t)
@@ -567,9 +569,9 @@ func TestErrField(t *testing.T) {
 		expErr = fmt.Errorf("err: %w", expErr)
 		d := logging.ErrField(expErr)
 		l.Info(nil, "boom", d)
-		assert.Contain(t, buf.String(), `"error":{`)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
+		assert.Contains(t, buf.String(), `"error":{`)
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
 	})
 }
 

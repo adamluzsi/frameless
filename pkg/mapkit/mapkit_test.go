@@ -200,8 +200,8 @@ func ExampleKeys() {
 
 func TestKeys(t *testing.T) {
 	t.Run("smoke", func(t *testing.T) {
-		assert.ContainExactly(t, []string{"a", "b", "c"}, mapkit.Keys(map[string]string{"a": "1", "b": "2", "c": "3"}))
-		assert.ContainExactly(t, []int{42, 32, 88}, mapkit.Keys(map[int]string{42: "A", 32: "B", 88: "C"}))
+		assert.ContainsExactly(t, []string{"a", "b", "c"}, mapkit.Keys(map[string]string{"a": "1", "b": "2", "c": "3"}))
+		assert.ContainsExactly(t, []int{42, 32, 88}, mapkit.Keys(map[int]string{42: "A", 32: "B", 88: "C"}))
 	})
 	t.Run("with sort", func(t *testing.T) {
 		m := map[int]string{42: "A", 32: "B", 88: "C"}
@@ -383,7 +383,7 @@ func TestValues(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		m := map[int]string{1: "a", 2: "b", 3: "c"}
 		vs := mapkit.Values(m)
-		assert.ContainExactly(t, vs, []string{"a", "b", "c"})
+		assert.ContainsExactly(t, vs, []string{"a", "b", "c"})
 	})
 	t.Run("with sort", func(t *testing.T) {
 		m := map[int]string{1: "a", 2: "b", 3: "c"}
@@ -430,7 +430,7 @@ func TestToSlice(t *testing.T) {
 		input := map[string]int{"foo": 1, "bar": 2, "baz": 3}
 		output := mapkit.ToSlice(input)
 
-		assert.ContainExactly(t, output, []mapkit.Entry[string, int]{
+		assert.ContainsExactly(t, output, []mapkit.Entry[string, int]{
 			{Key: "foo", Value: 1},
 			{Key: "bar", Value: 2},
 			{Key: "baz", Value: 3},

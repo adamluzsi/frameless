@@ -914,7 +914,7 @@ func TestInitGlobal(t *testing.T) {
 
 		out := readSTDERR(t)
 		assert.NotEmpty(t, out)
-		assert.Contain(t, string(out), env.ErrInvalidValue.Error())
+		assert.Contains(t, string(out), env.ErrInvalidValue.Error())
 	})
 
 	s.Test("missing key", func(t *testcase.T) {
@@ -925,8 +925,8 @@ func TestInitGlobal(t *testing.T) {
 
 		out := readSTDERR(t)
 		assert.NotEmpty(t, out)
-		assert.Contain(t, string(out), envKey)
-		assert.Contain(t, string(out), env.ErrMissingEnvironmentVariable.Error())
+		assert.Contains(t, string(out), envKey)
+		assert.Contains(t, string(out), env.ErrMissingEnvironmentVariable.Error())
 	})
 }
 
@@ -941,11 +941,11 @@ func TestLookupFieldEnvNames(t *testing.T) {
 
 	names, ok := env.LookupFieldEnvNames(must.OK(T.FieldByName("A")))
 	assert.True(t, ok)
-	assert.ContainExactly(t, names, []string{"X_A"})
+	assert.ContainsExactly(t, names, []string{"X_A"})
 
 	names, ok = env.LookupFieldEnvNames(must.OK(T.FieldByName("B")))
 	assert.True(t, ok)
-	assert.ContainExactly(t, names, []string{"X_B", "XB"})
+	assert.ContainsExactly(t, names, []string{"X_B", "XB"})
 
 	names, ok = env.LookupFieldEnvNames(must.OK(T.FieldByName("C")))
 	assert.False(t, ok)

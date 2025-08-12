@@ -203,8 +203,8 @@ func TestRegister_doubleRegisterPanics(t *testing.T) {
 	assert.NotNil(t, panicResults)
 	out, ok := panicResults.(string)
 	assert.True(t, ok, "panic value suppose to be a string")
-	assert.Contain(t, out, `Unable to register "xx"`)
-	assert.Contain(t, out, fmt.Sprintf("%T", X{}))
+	assert.Contains(t, out, `Unable to register "xx"`)
+	assert.Contains(t, out, fmt.Sprintf("%T", X{}))
 }
 
 func TestRegister_race(t *testing.T) {

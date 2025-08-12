@@ -260,7 +260,7 @@ func TestJSON_Strict(t *testing.T) {
 		dto.DisallowUnknownFields = true
 		err := dto.Scan(inv)
 		assert.Error(t, err)
-		assert.Contain(t, err.Error(), "bar")
+		assert.Contains(t, err.Error(), "bar")
 	})
 }
 
@@ -287,6 +287,6 @@ func TestJSON_jsonMarshaler(t *testing.T) {
 
 		gotErr := dtodec.UnmarshalJSON([]byte(`{"fox":"cba"}`))
 		assert.Error(t, gotErr)
-		assert.Contain(t, gotErr.Error(), "fox")
+		assert.Contains(t, gotErr.Error(), "fox")
 	})
 }

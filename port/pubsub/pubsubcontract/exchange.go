@@ -56,7 +56,7 @@ func FanOut[Data any](
 			res1 := pubsubtest.Subscribe(t, q1, c.MakeContext(t))
 
 			res1.Eventually(t, func(tb testing.TB, got []Data) {
-				assert.Must(tb).ContainExactly(expected, got)
+				assert.Must(tb).ContainsExactly(expected, got)
 			})
 		})
 
@@ -73,7 +73,7 @@ func FanOut[Data any](
 
 			for i, res := range results {
 				res.Eventually(t, func(tb testing.TB, got []Data) {
-					assert.Must(tb).ContainExactly(expected, got,
+					assert.Must(tb).ContainsExactly(expected, got,
 						assert.Message(fmt.Sprintf("expected that the %d. subscription also received all events", i+1)))
 				})
 			}

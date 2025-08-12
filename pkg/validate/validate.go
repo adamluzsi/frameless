@@ -17,8 +17,9 @@ import (
 	"go.llib.dev/frameless/port/option"
 )
 
+// Validatable is a value that can self-validate.
 type Validatable interface {
-	Validate(context.Context) error
+	Validate(ctx context.Context) error
 }
 
 var interfaceValidatable = reflectkit.TypeOf[Validatable]()
@@ -30,7 +31,7 @@ func Value[T any](ctx context.Context, v T) error {
 		return Struct(ctx, rv)
 	}
 
-	if err := tryValidatorValidate(ctx, rv); err != nil {
+	if err := tryValidateMethod(ctx, rv); err != nil {
 		return err
 	}
 
@@ -51,7 +52,7 @@ func Struct(ctx context.Context, v any) error {
 		return ImplementationError.F("non struct type type: %s", rStruct.Type().String())
 	}
 
-	if err := tryValidatorValidate(ctx, rStruct); err != nil {
+	if err := tryValidateMethod(ctx, rStruct); err != nil {
 		return err
 	}
 
@@ -149,15 +150,6 @@ func (c config) StructFieldScope(rStruct reflect.Value) config {
 
 func (c config) Configure(t *config) { *t = c }
 
-// SkipValidate option indicates that the function is being used inside a Validate(context.Context) error method.
-//
-// When this option is set, the Validate function call is skipped to prevent an infinite loop caused by a circular Validate call.
-func SkipValidate(ctx context.Context) context.Context {
-	c, _ := ctxConfig.Lookup(ctx)
-	c.SkipValidate = true
-	return ctxConfig.ContextWith(ctx, c)
-}
-
 func skipValidateOf(ctx context.Context, uid reflectkit.UID) context.Context {
 	c, _ := ctxConfig.Lookup(ctx)
 	if c.SkipValidateFor == nil {
@@ -167,18 +159,25 @@ func skipValidateOf(ctx context.Context, uid reflectkit.UID) context.Context {
 	return ctxConfig.ContextWith(ctx, c)
 }
 
-func tryValidatorValidate(ctx context.Context, rv reflect.Value) error {
+func tryValidateMethod(ctx context.Context, rv reflect.Value) error {
 	c, _ := ctxConfig.Lookup(ctx)
 	if c.SkipValidate {
 		return nil
 	}
+
 	if !rv.Type().Implements(interfaceValidatable) {
+		if err, ok := tryDeprecatedValidatorValidateMethod(rv); ok {
+			return err
+		}
+
 		return nil
 	}
+
 	uid := reflectkit.UIDOf(rv, c.Path...)
 	if _, ok := c.SkipValidateFor[uid]; ok {
 		return nil
 	}
+
 	ctx = skipValidateOf(ctx, uid)
 	outTuble := rv.MethodByName("Validate").Call([]reflect.Value{reflect.ValueOf(ctx)})
 	err, ok := outTuble[0].Interface().(error)
@@ -186,6 +185,22 @@ func tryValidatorValidate(ctx context.Context, rv reflect.Value) error {
 		return Error{Cause: err}
 	}
 	return nil
+}
+
+var interfaceValidator = reflectkit.TypeOf[Validator]()
+
+func tryDeprecatedValidatorValidateMethod(rv reflect.Value) (error, bool) {
+	if rv.Type().Implements(interfaceValidator) {
+		return nil, false
+	}
+
+	outTuble := rv.MethodByName("Validate").Call([]reflect.Value{})
+	err, ok := outTuble[0].Interface().(error)
+	if ok && err != nil {
+		return Error{Cause: err}, true
+	}
+
+	return nil, true
 }
 
 type checkFunc func(value reflect.Value) error

@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	rfc78072 "go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/httpspec"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
@@ -144,14 +145,14 @@ func TestHandler(t *testing.T) {
 
 			s.Then("message is returned as part of detail", func(t *testcase.T) {
 				dto := respondedWith(t)
-				t.Must.Contain(dto.Detail, usrErr.Get(t).Message)
+				assert.Contains(t, dto.Detail, usrErr.Get(t).Message)
 			})
 
 			s.And("mapping is provided", func(s *testcase.Spec) {
 				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 						t.Must.Equal(string(usrErr.Get(t).Code), dto.Type.ID)
-						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
+						assert.Contains(t, dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
 					}
 				})
@@ -252,14 +253,14 @@ func TestHandler(t *testing.T) {
 
 			s.Then("message is returned as part of detail", func(t *testcase.T) {
 				dto := act(t)
-				t.Must.Contain(dto.Detail, usrErr.Get(t).Message)
+				assert.Contains(t, dto.Detail, usrErr.Get(t).Message)
 			})
 
 			s.And("mapping is provided", func(s *testcase.Spec) {
 				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
 						t.Must.Equal(string(usrErr.Get(t).Code), dto.Type.ID)
-						t.Must.Contain(dto.Detail, string(usrErr.Get(t).Message))
+						assert.Contains(t, dto.Detail, string(usrErr.Get(t).Message))
 						t.Must.ErrorIs(usrErr.Get(t), err)
 					}
 				})

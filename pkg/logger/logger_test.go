@@ -89,29 +89,29 @@ func Test_pkgFuncSmoke(t *testing.T) {
 		ctx = logging.ContextWith(ctx, logging.Fields{"bar": 42})
 
 		logger.Info(ctx, "a", logging.Fields{"info": "level"})
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), `"info":"level"`)
-		assert.Contain(t, buf.String(), `"foo":"bar"`)
-		assert.Contain(t, buf.String(), `"message":"a"`)
-		assert.Contain(t, buf.String(), `"bar":42`)
-		assert.Contain(t, buf.String(), `"level":"info"`)
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), `"info":"level"`)
+		assert.Contains(t, buf.String(), `"foo":"bar"`)
+		assert.Contains(t, buf.String(), `"message":"a"`)
+		assert.Contains(t, buf.String(), `"bar":42`)
+		assert.Contains(t, buf.String(), `"level":"info"`)
 
 		t.Run("on all levels", func(t *testing.T) {
 			logger.Debug(ctx, "b", logging.Fields{"debug": "level"})
-			assert.Contain(t, buf.String(), `"message":"b"`)
-			assert.Contain(t, buf.String(), `"debug":"level"`)
+			assert.Contains(t, buf.String(), `"message":"b"`)
+			assert.Contains(t, buf.String(), `"debug":"level"`)
 			logger.Warn(ctx, "c", logging.Fields{"warn": "level"})
-			assert.Contain(t, buf.String(), `"message":"c"`)
-			assert.Contain(t, buf.String(), `"level":"warn"`)
-			assert.Contain(t, buf.String(), `"warn":"level"`)
+			assert.Contains(t, buf.String(), `"message":"c"`)
+			assert.Contains(t, buf.String(), `"level":"warn"`)
+			assert.Contains(t, buf.String(), `"warn":"level"`)
 			logger.Error(ctx, "d", logging.Fields{"error": "level"})
-			assert.Contain(t, buf.String(), `"message":"d"`)
-			assert.Contain(t, buf.String(), `"level":"error"`)
-			assert.Contain(t, buf.String(), `"error":"level"`)
+			assert.Contains(t, buf.String(), `"message":"d"`)
+			assert.Contains(t, buf.String(), `"level":"error"`)
+			assert.Contains(t, buf.String(), `"error":"level"`)
 			logger.Fatal(ctx, "e", logging.Fields{"fatal": "level"})
-			assert.Contain(t, buf.String(), `"message":"e"`)
-			assert.Contain(t, buf.String(), `"level":"fatal"`)
-			assert.Contain(t, buf.String(), `"fatal":"level"`)
+			assert.Contains(t, buf.String(), `"message":"e"`)
+			assert.Contains(t, buf.String(), `"level":"fatal"`)
+			assert.Contains(t, buf.String(), `"fatal":"level"`)
 		})
 	})
 
@@ -130,11 +130,11 @@ func Test_pkgFuncSmoke(t *testing.T) {
 		})
 
 		logger.Info(ctx, "foo")
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
 			defaultKeyFormatter(timestampKey), now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
 			defaultKeyFormatter(messageKey), "foo"))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
 			defaultKeyFormatter(levelKey), "info"))
 	})
 }
@@ -158,8 +158,8 @@ func TestAsyncLogging(t *testing.T) {
 	logger.Info(ctx, "gsm", logging.Field("fieldKey", "value"))
 
 	assert.Eventually(t, 3*time.Second, func(it testing.TB) {
-		assert.Contain(it, out.String(), `"Msg":"gsm"`)
-		assert.Contain(it, out.String(), `"FieldKey":"value"`)
+		assert.Contains(it, out.String(), `"Msg":"gsm"`)
+		assert.Contains(it, out.String(), `"FieldKey":"value"`)
 	})
 }
 
@@ -174,7 +174,7 @@ func TestStub(t *testing.T) {
 	t.Run("smoke", func(t *testing.T) {
 		buf := logger.Stub(t)
 		logger.Info(context.Background(), "hello")
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"hello"`, defaultKeyFormatter("message")))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"hello"`, defaultKeyFormatter("message")))
 	})
 	t.Run("mutating", func(t *testing.T) {
 		rnd := random.New(random.CryptoSeed{})
@@ -183,7 +183,7 @@ func TestStub(t *testing.T) {
 		})
 		msg := rnd.UUID()
 		logger.Info(context.Background(), msg)
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, "foo", msg))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, "foo", msg))
 	})
 	t.Run("with optional HijackFunc", func(t *testing.T) {
 		type Entry struct {
@@ -248,15 +248,15 @@ func TestTesting(t *testing.T) {
 		logger.Info(ctx, "msg-2", logging.Field("baz", []int{1, 2, 3}))
 		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			assert.Contain(it, entry, "[debug] msg-1")
-			assert.Contain(it, entry, `foo = 42`)
-			assert.Contain(it, entry, `bar = 24`)
+			assert.Contains(it, entry, "[debug] msg-1")
+			assert.Contains(it, entry, `foo = 42`)
+			assert.Contains(it, entry, `bar = 24`)
 		})
 		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			assert.Contain(it, entry, "[info] msg-2")
-			assert.Contain(it, entry, `foo = 42`)
-			assert.Contain(it, entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
+			assert.Contains(it, entry, "[info] msg-2")
+			assert.Contains(it, entry, `foo = 42`)
+			assert.Contains(it, entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
 		})
 	})
 	t.Run("individual log level", func(t *testing.T) {
@@ -271,15 +271,15 @@ func TestTesting(t *testing.T) {
 
 		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			assert.Contain(it, entry, "[debug] msg-1")
-			assert.Contain(it, entry, `foo = 42`)
-			assert.Contain(it, entry, `bar = 24`)
+			assert.Contains(it, entry, "[debug] msg-1")
+			assert.Contains(it, entry, `foo = 42`)
+			assert.Contains(it, entry, `bar = 24`)
 		})
 		assert.OneOf(t, dtb.Logs, func(it testing.TB, got []any) {
 			entry := fmt.Sprint(got...)
-			assert.Contain(it, entry, "[info] msg-2")
-			assert.Contain(it, entry, `foo = 42`)
-			assert.Contain(it, entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
+			assert.Contains(it, entry, "[info] msg-2")
+			assert.Contains(it, entry, `foo = 42`)
+			assert.Contains(it, entry, fmt.Sprintf(`baz = %s`, pp.Format([]int{1, 2, 3})))
 		})
 
 		assert.Empty(t, out.Bytes())

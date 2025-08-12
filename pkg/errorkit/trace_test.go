@@ -78,7 +78,7 @@ func TestWithTrace(t *testing.T) {
 			got := act(t)
 
 			assert.NotNil(t, got)
-			assert.Contain(t, got.Error(), "trace_test.go")
+			assert.Contains(t, got.Error(), "trace_test.go")
 		})
 
 		s.Then("the trace doesn't contain the errorkit package", func(t *testcase.T) {
@@ -136,7 +136,7 @@ func TestWithTrace(t *testing.T) {
 func TestRegisterTraceException_smoke(t *testing.T) {
 	err := errorkit.WithTrace(errorkit.Error("boom"))
 	assert.Error(t, err)
-	assert.Contain(t, err.Error(), t.Name())
+	assert.Contains(t, err.Error(), t.Name())
 
 	undo := runtimekit.RegisterFrameException(func(f runtime.Frame) bool {
 		return strings.Contains(f.Function, t.Name())
@@ -150,5 +150,5 @@ func TestRegisterTraceException_smoke(t *testing.T) {
 
 	err = errorkit.WithTrace(errorkit.Error("boom"))
 	assert.Error(t, err)
-	assert.Contain(t, err.Error(), t.Name())
+	assert.Contains(t, err.Error(), t.Name())
 }

@@ -80,7 +80,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("then it will be cached")
 		expID := cache.Query{Name: "FindByID", ARGS: cache.QueryARGS{"id": foo1.ID}}.HitID()
 		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
-			assert.Contain(t, got.ID, expID)
+			assert.Contains(t, got.ID, expID)
 		})
 	}
 	{
@@ -94,7 +94,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("then it will be cached")
 		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
-			assert.Contain(t, got.EntityIDs, foo1.ID)
+			assert.Contains(t, got.EntityIDs, foo1.ID)
 		})
 	}
 	{
@@ -123,7 +123,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("then FindByBarID will be cached")
 		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
-			assert.Contain(t, got.EntityIDs, foo1.ID)
+			assert.Contains(t, got.EntityIDs, foo1.ID)
 		})
 	}
 	{
@@ -144,7 +144,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("then we expect that the new NOK-MANY-BAZ will be filtered")
 		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
-			assert.Contain(t, got.EntityIDs, foo2.ID)
+			assert.Contains(t, got.EntityIDs, foo2.ID)
 		})
 	}
 
@@ -159,7 +159,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("then we expect that the query which will be intentionally unrelated to foo1 is also cached")
 		assert.OneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
 			assert.Equal(t, got.ID, qid.HitID())
-			assert.Contain(t, got.EntityIDs, foo3.ID)
+			assert.Contains(t, got.EntityIDs, foo3.ID)
 		})
 	}
 
@@ -169,7 +169,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 
 		t.Log(`then OP:"NOK-ONE-1" should be invalidated as it was also related to foo1`)
 		assert.NoneOf(t, getHits(), func(t testing.TB, got cache.Hit[testent.FooID]) {
-			assert.Contain(t, got.ID, "NOK-ONE-1")
+			assert.Contains(t, got.ID, "NOK-ONE-1")
 		})
 
 		t.Log("then FindByBarID query that has an invalidator telling that FindByBarID for foo1 should be invalidated, is actually invalidated")
@@ -216,11 +216,11 @@ func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
 
 	vs, err := iterkit.CollectE(cachei.FindAll(ctx))
 	assert.NoError(t, err)
-	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
+	assert.Contains(t, vs, []testent.Foo{foo1, foo2, foo3})
 
 	vs, err = iterkit.CollectE(cachei.FindAll(ctx))
 	assert.NoError(t, err)
-	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
+	assert.Contains(t, vs, []testent.Foo{foo1, foo2, foo3})
 
 	hvs, err := iterkit.CollectE(cachei.Repository.Hits().FindAll(ctx))
 	assert.NoError(t, err)
@@ -229,7 +229,7 @@ func TestCache_InvalidateByID_hasNoCascadeEffect(t *testing.T) {
 	vs, err = iterkit.CollectE(cachei.Repository.Entities().FindAll(ctx))
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(vs), assert.Message(pp.Format(vs)))
-	assert.Contain(t, vs, []testent.Foo{foo1, foo2, foo3})
+	assert.Contains(t, vs, []testent.Foo{foo1, foo2, foo3})
 }
 
 func TestCache_withFaultyCacheRepository(t *testing.T) {
@@ -264,7 +264,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 	s.Test("FindAll works even with a faulty repo", func(t *testcase.T) {
 		vs, err := iterkit.CollectE(subject.Get(t).FindAll(context.Background()))
 		t.Must.NoError(err)
-		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
+		t.Must.ContainsExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
 
 	s.Test("Create works even with a faulty repo", func(t *testcase.T) {
@@ -273,7 +273,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 
 		vs, err := iterkit.CollectE(subject.Get(t).FindAll(context.Background()))
 		t.Must.NoError(err)
-		t.Must.ContainExactly([]testent.Foo{foo.Get(t), foo2}, vs)
+		t.Must.ContainsExactly([]testent.Foo{foo.Get(t), foo2}, vs)
 	})
 
 	s.Test("CachedQueryOne works even with a faulty repo", func(t *testcase.T) {
@@ -293,7 +293,7 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 			})
 		vs, err := iterkit.CollectE(all)
 		t.Must.NoError(err)
-		t.Must.ContainExactly([]testent.Foo{foo.Get(t)}, vs)
+		t.Must.ContainsExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
 
 	s.Test("InvalidateByID will fail on an error", func(t *testcase.T) {

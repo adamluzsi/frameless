@@ -95,5 +95,5 @@ func TestRepository_query(t *testing.T) {
 	assert.NoError(t, err)
 	vs, err := iterkit.CollectE(iter)
 	assert.NoError(t, err)
-	assert.ContainExactly(t, vs, []testent.Foo{ent1, ent3})
+	assert.ContainsExactly(t, vs, []testent.Foo{ent1, ent3})
 }

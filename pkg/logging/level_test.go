@@ -14,7 +14,7 @@ import (
 func TestLogger_level(t *testing.T) {
 	assertHasLevel := func(tb testing.TB, buf *bytes.Buffer, level string) {
 		tb.Helper()
-		assert.Contain(tb, buf.String(), fmt.Sprintf(`"level":"%s"`, level))
+		assert.Contains(tb, buf.String(), fmt.Sprintf(`"level":"%s"`, level))
 	}
 
 	assertDoesNotHave := func(tb testing.TB, buf *bytes.Buffer, level string) {

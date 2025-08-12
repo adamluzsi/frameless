@@ -55,11 +55,11 @@ func TestLogger_smoke(t *testing.T) {
 		l.Warn(nil, "Warn")
 		l.Error(nil, "Error")
 		l.Fatal(nil, "Fatal")
-		assert.Contain(t, buf.String(), "Debug")
-		assert.Contain(t, buf.String(), "Info")
-		assert.Contain(t, buf.String(), "Warn")
-		assert.Contain(t, buf.String(), "Error")
-		assert.Contain(t, buf.String(), "Fatal")
+		assert.Contains(t, buf.String(), "Debug")
+		assert.Contains(t, buf.String(), "Info")
+		assert.Contains(t, buf.String(), "Warn")
+		assert.Contains(t, buf.String(), "Error")
+		assert.Contains(t, buf.String(), "Fatal")
 	})
 
 	t.Run("output is a valid JSON by default", func(t *testing.T) {
@@ -88,11 +88,11 @@ func TestLogger_smoke(t *testing.T) {
 			buf := &bytes.Buffer{}
 			l := logging.Logger{Out: buf, MarshalFunc: func(a any) ([]byte, error) {
 				assert.NotEmpty(t, a)
-				assert.Contain(t, fmt.Sprintf("%#v", a), "msg")
+				assert.Contains(t, fmt.Sprintf("%#v", a), "msg")
 				return []byte("Hello, world!"), nil
 			}}
 			l.Info(ctx, "msg")
-			assert.Contain(t, buf.String(), "Hello, world!")
+			assert.Contains(t, buf.String(), "Hello, world!")
 		})
 	})
 
@@ -134,29 +134,29 @@ func TestLogger_smoke(t *testing.T) {
 		ctx = logging.ContextWith(ctx, logging.Fields{"bar": 42})
 
 		l.Info(ctx, "a", logging.Fields{"info": "level"})
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), `"info":"level"`)
-		assert.Contain(t, buf.String(), `"foo":"bar"`)
-		assert.Contain(t, buf.String(), `"message":"a"`)
-		assert.Contain(t, buf.String(), `"bar":42`)
-		assert.Contain(t, buf.String(), `"level":"info"`)
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), `"info":"level"`)
+		assert.Contains(t, buf.String(), `"foo":"bar"`)
+		assert.Contains(t, buf.String(), `"message":"a"`)
+		assert.Contains(t, buf.String(), `"bar":42`)
+		assert.Contains(t, buf.String(), `"level":"info"`)
 
 		t.Log("on all levels")
 		l.Debug(ctx, "b", logging.Fields{"debug": "level"})
-		assert.Contain(t, buf.String(), `"message":"b"`)
-		assert.Contain(t, buf.String(), `"debug":"level"`)
+		assert.Contains(t, buf.String(), `"message":"b"`)
+		assert.Contains(t, buf.String(), `"debug":"level"`)
 		l.Warn(ctx, "c", logging.Fields{"warn": "level"})
-		assert.Contain(t, buf.String(), `"message":"c"`)
-		assert.Contain(t, buf.String(), `"level":"warn"`)
-		assert.Contain(t, buf.String(), `"warn":"level"`)
+		assert.Contains(t, buf.String(), `"message":"c"`)
+		assert.Contains(t, buf.String(), `"level":"warn"`)
+		assert.Contains(t, buf.String(), `"warn":"level"`)
 		l.Error(ctx, "d", logging.Fields{"error": "level"})
-		assert.Contain(t, buf.String(), `"message":"d"`)
-		assert.Contain(t, buf.String(), `"level":"error"`)
-		assert.Contain(t, buf.String(), `"error":"level"`)
+		assert.Contains(t, buf.String(), `"message":"d"`)
+		assert.Contains(t, buf.String(), `"level":"error"`)
+		assert.Contains(t, buf.String(), `"error":"level"`)
 		l.Fatal(ctx, "e", logging.Fields{"fatal": "level"})
-		assert.Contain(t, buf.String(), `"message":"e"`)
-		assert.Contain(t, buf.String(), `"level":"fatal"`)
-		assert.Contain(t, buf.String(), `"fatal":"level"`)
+		assert.Contains(t, buf.String(), `"message":"e"`)
+		assert.Contains(t, buf.String(), `"level":"fatal"`)
+		assert.Contains(t, buf.String(), `"fatal":"level"`)
 	})
 
 	t.Run("keys can be configured", func(t *testing.T) {
@@ -170,9 +170,9 @@ func TestLogger_smoke(t *testing.T) {
 
 		l.Info(ctx, "foo")
 		fm := defaultKeyFormatter
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.TimestampKey), now.Format(time.RFC3339)))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.MessageKey), "foo"))
-		assert.Contain(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.LevelKey), "info"))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.TimestampKey), now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.MessageKey), "foo"))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.LevelKey), "info"))
 	})
 
 	t.Run("by default, it will print into the stdout", func(t *testing.T) {
@@ -192,7 +192,7 @@ func TestLogger_smoke(t *testing.T) {
 
 		bs, err := io.ReadAll(tmpFile)
 		assert.NoError(t, err)
-		assert.Contain(t, string(bs), `"message":"msg"`)
+		assert.Contains(t, string(bs), `"message":"msg"`)
 	})
 
 	t.Run("logging key string format is consistent based based on the supplied KeyFormatter", func(t *testing.T) {
@@ -229,11 +229,11 @@ func TestLogger_smoke(t *testing.T) {
 		)
 
 		l.Info(ctx, "msg", logging.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
-		assert.Contain(t, buf.String(), expectedKey1)
-		assert.Contain(t, buf.String(), expectedKey2)
-		assert.Contain(t, buf.String(), expectedKey3)
-		assert.Contain(t, buf.String(), expectedKey4)
-		assert.Contain(t, buf.String(), expectedKey5)
+		assert.Contains(t, buf.String(), expectedKey1)
+		assert.Contains(t, buf.String(), expectedKey2)
+		assert.Contains(t, buf.String(), expectedKey3)
+		assert.Contains(t, buf.String(), expectedKey4)
+		assert.Contains(t, buf.String(), expectedKey5)
 	})
 
 	t.Run("logging key string format is consistent even in absence of KeyFormatter, with snake_case format", func(t *testing.T) {
@@ -254,8 +254,8 @@ func TestLogger_smoke(t *testing.T) {
 
 		l.Info(ctx, "msg", logging.Field(exampleKey1, map[string]string{exampleKey2: "qux"}))
 
-		assert.Contain(t, buf.String(), expectedKey1)
-		assert.Contain(t, buf.String(), expectedKey2)
+		assert.Contains(t, buf.String(), expectedKey1)
+		assert.Contains(t, buf.String(), expectedKey2)
 	})
 
 	t.Run("logging can be hijacked to support piping logging requests into other logging libraries", func(t *testing.T) {
@@ -344,7 +344,7 @@ func TestLogger_Clone(t *testing.T) {
 	assert.Equal(t, logging.LevelDebug, cln.Level)
 	assert.NotEqual(t, &lgr, cln)
 	cln.Debug(context.Background(), "msg")
-	assert.Contain(t, buf.String(), "msg")
+	assert.Contains(t, buf.String(), "msg")
 }
 
 type TeeBuffer struct {
@@ -382,7 +382,7 @@ func TestLogger_AsyncLogging_smoke(t *testing.T) {
 		m.Lock()
 		defer m.Unlock()
 
-		assert.Contain(it, out.String(), `"Msg":"gsm"`)
-		assert.Contain(it, out.String(), `"FieldKey":"value"`)
+		assert.Contains(it, out.String(), `"Msg":"gsm"`)
+		assert.Contains(it, out.String(), `"FieldKey":"value"`)
 	})
 }
