@@ -190,7 +190,7 @@ func tryValidateMethod(ctx context.Context, rv reflect.Value) error {
 var interfaceValidator = reflectkit.TypeOf[Validator]()
 
 func tryDeprecatedValidatorValidateMethod(rv reflect.Value) (error, bool) {
-	if rv.Type().Implements(interfaceValidator) {
+	if !rv.Type().Implements(interfaceValidator) {
 		return nil, false
 	}
 
