@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/internal/signalint"
+	"go.llib.dev/frameless/pkg/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"
@@ -26,6 +27,9 @@ import (
 )
 
 var rnd = random.New(random.CryptoSeed{})
+
+var _ = tasker.Task((taskerlite.Task)(nil))
+var _ tasker.Runnable = (taskerlite.Task)(nil)
 
 func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
 	t.Cleanup(signalint.StubNotify(fn))
@@ -1103,115 +1107,6 @@ func TestWithSignalNotify(t *testing.T) {
 	})
 }
 
-func ExampleBackground() {
-	var ctx context.Context
-	var (
-		task1 tasker.Task
-		task2 tasker.Task
-	)
-	jobGroup := tasker.Background(ctx,
-		task1,
-		task2,
-	)
-	if err := jobGroup.Join(); err != nil {
-		logger.Error(ctx, "error in background task", logging.ErrField(err))
-	}
-}
-
-func TestBackground(t *testing.T) {
-	makeContext := func(tb testing.TB) context.Context {
-		ctx, cancel := context.WithCancel(context.Background())
-		tb.Cleanup(cancel)
-		return ctx
-	}
-	t.Run("happy", func(t *testing.T) {
-		var (
-			ok  atomic.Bool
-			rdy atomic.Bool
-		)
-		rdy.Store(false)
-		assert.Within(t, time.Second, func(ctx context.Context) {
-			tasker.Background(makeContext(t), func() {
-				for !rdy.Load() {
-					time.Sleep(time.Microsecond)
-				}
-				ok.Store(true)
-			})
-		}, "it was expected that background task will immediately returns back")
-		rdy.Store(true) // ok ,we have returned, time to break INF loop
-		assert.Eventually(t, time.Second, func(it testing.TB) {
-			assert.True(it, ok.Load())
-		})
-	})
-	t.Run("join can be done multiple times", func(t *testing.T) {
-		j := tasker.Background(makeContext(t), func() {})
-		rnd.Repeat(2, 5, func() {
-			assert.NoError(t, j.Join())
-		})
-	})
-	t.Run("on error, join yields the same result consistently", func(t *testing.T) {
-		var (
-			expErr1 = rnd.Error()
-			expErr2 = rnd.Error()
-			expErr3 = rnd.Error()
-		)
-		job := tasker.Background(makeContext(t),
-			func() error { return expErr1 },
-			func() error { return expErr2 },
-			func() error { return expErr3 },
-		)
-		got1 := job.Join()
-		assert.ErrorIs(t, expErr1, got1)
-		assert.ErrorIs(t, expErr2, got1)
-		assert.ErrorIs(t, expErr3, got1)
-		got2 := job.Join()
-		assert.ErrorIs(t, expErr1, got2)
-		assert.ErrorIs(t, expErr2, got2)
-		assert.ErrorIs(t, expErr3, got2)
-	})
-
-	t.Run("tasker.Background tasks are registered in tasker.Main", func(t *testing.T) {
-		ctx := context.Background()
-		job := tasker.Background(ctx, tasker.Task(func(ctx context.Context) error {
-			<-ctx.Done()
-			return ctx.Err()
-		}))
-
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		assert.NoError(t, tasker.Main[tasker.Task](ctx))
-		assert.False(t, job.Alive())
-	})
-
-	t.Run("eventually created tasker.Background jobs also registered in tasker.Main", func(t *testing.T) {
-		ctx := context.Background()
-		var ready atomic.Bool
-		var main tasker.Job
-
-		main.Start(ctx, func(ctx context.Context) error {
-			tasker.Main[tasker.Task](ctx, func(ctx context.Context) error {
-				ready.Store(true)
-				<-ctx.Done()
-				return nil
-			})
-			return nil
-		})
-
-		assert.Eventually(t, time.Second, func(t testing.TB) {
-			assert.True(t, ready.Load())
-		})
-
-		job := tasker.Background(ctx, tasker.Task(func(ctx context.Context) error {
-			<-ctx.Done()
-			return ctx.Err()
-		}))
-
-		main.Stop()
-
-		assert.False(t, job.Alive())
-	})
-}
-
 func TestJobGroup_race(t *testing.T) {
 	var g tasker.JobGroup[tasker.FireAndForget]
 
@@ -1325,11 +1220,17 @@ func TestJobGroup_asFireAndForget(t *testing.T) {
 		close(done)
 
 		random.Pick(rnd,
-			func() { assert.NoError(t, g.Join()) }, // Join should wait for the jobs to finish
-			func() { g.Wait() },                    // Wait should work just as good as Join
+			func() {
+				t.Log("Join should wait for the jobs to finish")
+				assert.NoError(t, g.Join())
+			},
+			func() {
+				t.Log("Wait should work just as good as Join")
+				g.Wait()
+			},
 		)()
 
-		assert.Equal(t, 0, g.Len(), "after Join, it was expected that we waited for all the ")
+		assert.Equal(t, 0, g.Len(), "it was expected that we waited for all the jobs")
 	})
 }
 

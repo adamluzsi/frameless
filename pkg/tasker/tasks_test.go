@@ -134,10 +134,7 @@ func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
 		}),
 	}
 
-	ctx := context.Background()
-
-	a := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
-	defer func() { assert.NoError(t, a.Stop()) }()
+	go tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV())(t.Context())
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
@@ -161,10 +158,10 @@ func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
 		}),
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	a := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV()))
-	defer func() { assert.NoError(t, a.Stop()) }()
+	go tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV())(ctx)
+	defer cancel()
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
@@ -189,10 +186,7 @@ func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
 		}),
 	}
 
-	ctx := context.Background()
-
-	a := tasker.Background(ctx, tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV("PORT2", "PORT")))
-	defer func() { assert.NoError(t, a.Stop()) }()
+	go tasker.HTTPServerTask(srv, tasker.HTTPServerPortFromENV("PORT2", "PORT"))(t.Context())
 
 	eventually := assert.MakeRetry(5 * time.Second)
 
@@ -261,18 +255,20 @@ func TestHTTPServerTask_requestContextIsNotDoneWhenAppContextIsCancelled(t *test
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	a := tasker.Background(ctx, tasker.HTTPServerTask(srv))
-	defer func() { assert.NoError(t, a.Stop()) }()
+	go tasker.HTTPServerTask(srv)(ctx)
 
-	defer tasker.Background(ctx, func(ctx context.Context) {
+	go func() {
 		httpClient := &http.Client{Timeout: time.Second}
 		assert.Eventually(t, 10*time.Second, func(t testing.TB) {
+			if err := t.Context().Err(); err != nil {
+				return
+			}
 			resp, err := httpClient.Get("http://localhost:58080/")
 			assert.NoError(t, err)
 			assert.NotNil(t, resp)
 			assert.Equal(t, http.StatusTeapot, resp.StatusCode)
 		})
-	}).Stop()
+	}()
 
 	assert.Eventually(t, time.Second, func(it testing.TB) {
 		assert.Equal(it, atomic.LoadInt32(&ready), 1)
