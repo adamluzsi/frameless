@@ -2,12 +2,17 @@ package synckit_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"iter"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -474,7 +479,7 @@ func ExampleMap_Do() {
 	_ = err // &errors.errorString{s:"the-error"}
 }
 
-var _ datastruct.MapInterface[string, int] = &synckit.Map[string, int]{}
+var _ datastruct.KVS[string, int] = &synckit.Map[string, int]{}
 
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -1238,5 +1243,513 @@ func TestMap(t *testing.T) {
 				}
 			},
 		)
+	})
+
+	s.Describe("#Iter", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) iter.Seq2[string, int] {
+			return subject.Get(t).Iter()
+		})
+
+		s.When("map is empty", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				return &synckit.Map[string, int]{}
+			})
+
+			s.Then("empty iteration occurs", func(t *testcase.T) {
+				var ran bool
+				for range act(t) {
+					ran = true
+				}
+				assert.False(t, ran)
+			})
+		})
+
+		s.When("map is populated", func(s *testcase.Spec) {
+			values := letExampleValues(s, 5, 7)
+
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				var m synckit.Map[string, int]
+				for k, v := range values.Get(t) {
+					m.Set(k, v)
+				}
+				return &m
+			})
+
+			s.Then("it will iterate", func(t *testcase.T) {
+				var n int
+				for range act(t) {
+					n++
+				}
+				assert.Equal(t, n, len(values.Get(t)))
+				assert.Equal(t, n, subject.Get(t).Len())
+			})
+
+			s.Then("it will block concurrent write access", func(t *testcase.T) {
+				next, stop := iter.Pull2(act(t))
+				k, _, ok := next()
+				assert.True(t, ok)
+
+				expV := t.Random.Int()
+				w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					subject.Get(t).Set(k, expV)
+				})
+
+				stop()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w.Wait()
+				})
+
+				assert.Equal(t, subject.Get(t).Get(k), expV)
+			})
+
+			s.Then("it will block concurrent read access", func(t *testcase.T) {
+				next, stop := iter.Pull2(act(t))
+				k, _, ok := next()
+				assert.True(t, ok)
+
+				w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					subject.Get(t).Get(k)
+				})
+
+				stop()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w.Wait()
+				})
+			})
+
+			s.Then("it will block concurrent until iteration is done", func(t *testcase.T) {
+				next, stop := iter.Pull2(act(t))
+
+				var key string
+				for range values.Get(t) {
+					k, _, ok := next()
+					assert.True(t, ok)
+					key = k
+				}
+
+				// still not done, only in the last next call
+
+				w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					subject.Get(t).Set(key, t.Random.Int())
+				})
+
+				stop()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w.Wait()
+				})
+			})
+
+			s.And("during iteration", func(s *testcase.Spec) {
+				release := let.Var(s, func(t *testcase.T) chan struct{} {
+					return make(chan struct{})
+				})
+
+				currentKey := let.Var[string](s, nil)
+
+				s.Before(func(t *testcase.T) {
+					var ready int32
+					go func() {
+						for key := range act(t) {
+							currentKey.Set(t, key)
+							atomic.StoreInt32(&ready, 1)
+							select {
+							case <-release.Get(t):
+								schedule()
+
+							case <-t.Done():
+								return
+							}
+						}
+					}()
+					assert.Eventually(t, timeout, func(t testing.TB) {
+						assert.Equal(t, atomic.LoadInt32(&ready), 1)
+					})
+				})
+
+				s.Then("during the iteration, fetching the keys is still possible between iteration yields", func(t *testcase.T) {
+					exp := mapkit.Keys(values.Get(t))
+
+					w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+						assert.ContainsExactly(t, exp, subject.Get(t).Keys())
+					})
+
+					release.Get(t) <- struct{}{}
+
+					assert.Within(t, timeout, func(ctx context.Context) {
+						w.Wait()
+					})
+				})
+
+				s.Then("accessing other values between iteration yields is permitted", func(t *testcase.T) {
+					keys := mapkit.Keys(values.Get(t))
+
+					// due to go scheduling, it is difficutl to nail it always on the first
+					tc := t
+
+					assert.Eventually(t, len(keys)-1, func(t testing.TB) {
+						randomValuesKey := func() string { return random.Pick(tc.Random, keys...) }
+						othKey := random.Unique(randomValuesKey, currentKey.Get(tc))
+						othVal := tc.Random.Int()
+
+						w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+							subject.Get(tc).Set(othKey, othVal)
+						})
+
+						release.Get(tc) <- struct{}{}
+
+						assert.Within(t, time.Second, func(ctx context.Context) {
+							w.Wait()
+						})
+					})
+				})
+
+				s.Then("accessing the currently iterated value is not permitted while it is being yielded", func(t *testcase.T) {
+					assert.NotWithin(t, timeout, func(ctx context.Context) {
+						_, release, ok := subject.Get(t).Borrow(currentKey.Get(t))
+						if ok {
+							release()
+						}
+					})
+				})
+			})
+		})
+
+	})
+
+	s.Describe("#RIter", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) iter.Seq2[string, int] {
+			return subject.Get(t).RIter()
+		})
+
+		s.When("map is empty", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				return &synckit.Map[string, int]{}
+			})
+
+			s.Then("empty iteration occurs", func(t *testcase.T) {
+				var ran bool
+				for range act(t) {
+					ran = true
+				}
+				assert.False(t, ran)
+			})
+		})
+
+		s.When("map is populated", func(s *testcase.Spec) {
+			values := letExampleValues(s, 3, 7)
+
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				var m synckit.Map[string, int]
+				for k, v := range values.Get(t) {
+					m.Set(k, v)
+				}
+				return &m
+			})
+
+			s.Then("it will iterate", func(t *testcase.T) {
+				var n int
+				for range act(t) {
+					n++
+				}
+				assert.Equal(t, n, len(values.Get(t)))
+				assert.Equal(t, n, subject.Get(t).Len())
+			})
+
+			s.Then("it will block concurrent write access", func(t *testcase.T) {
+				next, stop := iter.Pull2(act(t))
+				k, _, ok := next()
+				assert.True(t, ok)
+
+				expV := t.Random.Int()
+				w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					subject.Get(t).Set(k, expV)
+				})
+
+				stop()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w.Wait()
+				})
+
+				assert.Equal(t, subject.Get(t).Get(k), expV)
+			})
+
+			s.Then("it will NOT block concurrent read access", func(t *testcase.T) {
+				next, stop := iter.Pull2(act(t))
+				k, _, ok := next()
+				assert.True(t, ok)
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					subject.Get(t).Get(k)
+				})
+
+				stop()
+			})
+
+			s.Then("it will block concurrent write access until iteration is done", func(t *testcase.T) {
+				next, stop := iter.Pull2(act(t))
+
+				var key string
+				for range values.Get(t) {
+					k, _, ok := next()
+					assert.True(t, ok)
+					key = k
+				}
+
+				// still not done, only in the last next call
+
+				w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					subject.Get(t).Set(key, t.Random.Int())
+				})
+
+				stop()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w.Wait()
+				})
+			})
+
+			s.And("during iteration", func(s *testcase.Spec) {
+				release := let.Var(s, func(t *testcase.T) chan struct{} {
+					return make(chan struct{})
+				})
+
+				currentKey := let.Var[string](s, nil)
+
+				s.Before(func(t *testcase.T) {
+					var ready int32
+					go func() {
+						for key := range act(t) {
+							currentKey.Set(t, key)
+							atomic.StoreInt32(&ready, 1)
+							select {
+							case <-release.Get(t):
+								schedule()
+
+							case <-t.Done():
+								return
+							}
+						}
+					}()
+					assert.Eventually(t, timeout, func(t testing.TB) {
+						assert.Equal(t, atomic.LoadInt32(&ready), 1)
+					})
+				})
+
+				s.Then("during the iteration, fetching the keys is always possible even during a yield", func(t *testcase.T) {
+					exp := mapkit.Keys(values.Get(t))
+
+					t.Random.Repeat(3, 7, func() {
+						assert.ContainsExactly(t, exp, subject.Get(t).Keys())
+					})
+				})
+
+				s.Then("WRITE accessing other values between iteration yields is permitted", func(t *testcase.T) {
+					keys := mapkit.Keys(values.Get(t))
+
+					// due to go scheduling, it is difficutl to nail it always on the first
+					tc := t
+
+					assert.Eventually(t, len(keys)-1, func(t testing.TB) {
+						randomValuesKey := func() string { return random.Pick(tc.Random, keys...) }
+						othKey := random.Unique(randomValuesKey, currentKey.Get(tc))
+						othVal := tc.Random.Int()
+
+						w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+							subject.Get(tc).Set(othKey, othVal)
+						})
+
+						release.Get(tc) <- struct{}{}
+
+						assert.Within(t, time.Second, func(ctx context.Context) {
+							w.Wait()
+						})
+					})
+				})
+
+				s.Then("READ accessing any key is always possible during the iteration", func(t *testcase.T) {
+					keys := mapkit.Keys(values.Get(t))
+
+					for _, k := range keys {
+						assert.Within(t, time.Second, func(ctx context.Context) {
+							subject.Get(t).Get(k)
+						})
+					}
+				})
+
+				s.Then("accessing the currently iterated value is not permitted while it is being yielded", func(t *testcase.T) {
+					assert.NotWithin(t, timeout, func(ctx context.Context) {
+						_, release, ok := subject.Get(t).Borrow(currentKey.Get(t))
+						if ok {
+							release()
+						}
+					})
+				})
+			})
+		})
+	})
+
+	s.Describe("#ToMap", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) map[string]int {
+			return subject.Get(t).ToMap()
+		})
+
+		s.When("map is empty", func(s *testcase.Spec) {
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				return &synckit.Map[string, int]{}
+			})
+
+			s.Then("empty but not nil map is returned", func(t *testcase.T) {
+				got := act(t)
+				assert.NotNil(t, got)
+				assert.Empty(t, got)
+			})
+		})
+
+		s.When("map is populated", func(s *testcase.Spec) {
+			values := letExampleValues(s, 3, 7)
+
+			subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+				var m synckit.Map[string, int]
+				for k, v := range values.Get(t) {
+					m.Set(k, v)
+				}
+				return &m
+			})
+
+			s.Then("a map with the values is returned", func(t *testcase.T) {
+				got := act(t)
+				assert.ContainsExactly(t, got, values.Get(t))
+			})
+
+			s.Then("the returned map is independent from the synckit.Map", func(t *testcase.T) {
+				got := act(t)
+
+				k := random.Unique(t.Random.String, mapkit.Keys(got)...)
+				v := t.Random.Int()
+				got[k] = v
+
+				_, ok := subject.Get(t).Lookup(k)
+				assert.False(t, ok, "not expected to see the value here")
+			})
+		})
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		var m synckit.Map[string, int]
+		t.Random.Repeat(3, 7, func() {
+			m.Set(t.Random.String(), t.Random.Int())
+		})
+		var (
+			keys    = m.Keys()
+			newKey1 = random.Unique(t.Random.String, keys...)
+			newVal1 = t.Random.Int()
+			expKey  = random.Pick(t.Random, keys...)
+		)
+		testcase.Race(func() {
+			m.Get(expKey)
+		}, func() {
+			m.Lookup(expKey)
+		}, func() {
+
+		}, func() {
+			m.Set(newKey1, newVal1)
+		}, func() {
+			m.Delete(expKey)
+		}, func() {
+			ptr, release, ok := m.Borrow(expKey)
+			if !ok {
+				return
+			}
+			defer release()
+			*ptr = 42
+		}, func() {
+			ptr, release := m.BorrowWithInit(expKey, func() int {
+				return newVal1
+			})
+			*ptr = 42
+			release()
+		}, func() {
+			m.Do(func(vs map[string]int) error {
+				vs[expKey] = 24
+				return nil
+			})
+		}, func() {
+			m.GetOrInit(expKey, func() int {
+				return newVal1
+			})
+		}, func() {
+			m.Keys()
+		}, func() {
+			m.GetOrInitErr(expKey, func() (int, error) {
+				return newVal1, nil
+			})
+		}, func() {
+			for range m.Iter() {
+			}
+		}, func() {
+			for range m.Iter() {
+			}
+		}, func() {
+			for range m.RIter() {
+			}
+		}, func() {
+			for range m.RIter() {
+			}
+		}, func() {
+			m.Len()
+		}, func() {
+			m.Reset()
+		}, func() {
+			m.ToMap()
+		})
+	})
+
+	s.Context("JSON", func(s *testcase.Spec) {
+		values := letExampleValues(s, 0, 7)
+
+		subject.Let(s, func(t *testcase.T) *synckit.Map[string, int] {
+			var m synckit.Map[string, int]
+			for k, v := range values.Get(t) {
+				m.Set(k, v)
+			}
+			return &m
+		})
+
+		s.Test("smoke", func(t *testcase.T) {
+			var m synckit.Map[string, int]
+			t.Random.Repeat(3, 7, func() {
+				m.Set(t.Random.HexN(5), t.Random.Int())
+			})
+
+			data, err := json.Marshal(&m)
+			assert.NoError(t, err)
+			assert.NotEmpty(t, data)
+
+			var dto map[string]int
+			assert.NoError(t, json.Unmarshal(data, &dto))
+			assert.Equal(t, m.ToMap(), dto)
+
+			var got synckit.Map[string, int]
+			assert.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, m.ToMap(), got.ToMap())
+		})
+	})
+}
+
+func schedule() {
+	for range runtime.NumGoroutine() {
+		runtime.Gosched()
+	}
+}
+
+func letExampleValues(s *testcase.Spec, min, max int) testcase.Var[map[string]int] {
+	return let.Var(s, func(t *testcase.T) map[string]int {
+		return random.Map(t.Random.IntBetween(min, max), func() (string, int) {
+			return t.Random.HexN(5), t.Random.Int()
+		})
 	})
 }

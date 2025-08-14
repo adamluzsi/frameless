@@ -1,9 +1,13 @@
 package synckit
 
 import (
+	"encoding/json"
+	"iter"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
+	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/mapkit"
 )
 
@@ -189,6 +193,8 @@ type Map[K comparable, V any] struct {
 	vs map[K]V
 }
 
+var _ datastruct.KVS[any, any] = (*Map[any, any])(nil)
+
 func (m *Map[K, V]) Set(key K, val V) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -330,7 +336,8 @@ func (m *Map[K, V]) Keys() []K {
 }
 
 func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
-	// TODO: make this into a key specific operation
+	// TODO: make this operation only block when a specific key is affected
+
 	m.mu.Lock()
 	v, ok := m.lookup(key)
 	if !ok {
@@ -355,4 +362,53 @@ func (m *Map[K, V]) BorrowWithInit(key K, init func() V) (ptr *V, release func()
 		m.mu.Unlock()
 	}
 	return &v, release
+}
+
+func (m *Map[K, V]) RIter() iter.Seq2[K, V] {
+	return m.iter(m.mu.RLocker())
+}
+
+func (m *Map[K, V]) Iter() iter.Seq2[K, V] {
+	return m.iter(&m.mu)
+}
+
+func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		var handle = func(key K) bool {
+			defer runtime.Gosched()
+			l.Lock()
+			defer l.Unlock()
+			if m.vs == nil {
+				return false // no point to continue, the map's content is nuked
+			}
+			v, ok := m.vs[key]
+			if !ok { // value were deleted in the meantime, skipping its processing
+				return true
+			}
+			return yield(key, v)
+		}
+		for _, key := range m.Keys() {
+			if !handle(key) {
+				return
+			}
+		}
+	}
+}
+
+func (m *Map[K, V]) ToMap() map[K]V {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return mapkit.Clone(m.vs)
+}
+
+func (m *Map[K, V]) MarshalJSON() ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return json.Marshal(m.vs)
+}
+
+func (m *Map[K, V]) UnmarshalJSON(data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return json.Unmarshal(data, &m.vs)
 }
