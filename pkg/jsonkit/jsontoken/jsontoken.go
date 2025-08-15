@@ -20,10 +20,17 @@ import (
 
 const ErrMalformed errorkit.Error = "malformed json error"
 
-var (
-	nullToken  = []rune("null")
-	trueToken  = []rune("true")
-	falseToken = []rune("false")
+type token string
+
+func (tkn token) Bytes() []byte {
+	return []byte(tkn)
+}
+
+const (
+	nullToken  token = "null"
+	trueToken  token = "true"
+	falseToken token = "false"
+
 	quoteToken = '"'
 
 	arrayOpenToken  = '['
@@ -33,6 +40,12 @@ var (
 	objectOpenToken  = '{'
 	objectCloseToken = '}'
 	nameSepToken     = ':'
+)
+
+var (
+	nullTokenUTF8  = []rune(nullToken)
+	trueTokenUTF8  = []rune(trueToken)
+	falseTokenUTF8 = []rune(falseToken)
 )
 
 type Scanner struct {
@@ -200,7 +213,7 @@ func (s *Scanner) scanNumber(in Input, out Output, path Path) error {
 }
 
 func (s *Scanner) scanNull(in Input, out Output, path Path) error {
-	return s.scanToken(in, out, path.With(KindNull), nullToken)
+	return s.scanToken(in, out, path.With(KindNull), nullTokenUTF8)
 }
 
 func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error {
@@ -232,9 +245,9 @@ func (s *Scanner) scanBoolean(in Input, out Output, path Path) error {
 	}
 	switch char {
 	case 't':
-		return s.scanToken(in, out, path, trueToken)
+		return s.scanToken(in, out, path, trueTokenUTF8)
 	case 'f':
-		return s.scanToken(in, out, path, falseToken)
+		return s.scanToken(in, out, path, falseTokenUTF8)
 	default:
 		return ErrMalformedF("unexpected boolean first character: %c", char)
 	}
