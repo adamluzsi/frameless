@@ -379,7 +379,7 @@ func (m *Memory) Get(ctx context.Context, namespace string, key string) (interfa
 
 func memoryAll[ENT any](m *Memory, ctx context.Context, namespace string) iter.Seq[ENT] {
 	var T ENT
-	return iterkit.Slice1[ENT](m.All(T, ctx, namespace).([]ENT))
+	return iterkit.FromSlice[ENT](m.All(T, ctx, namespace).([]ENT))
 }
 
 func (m *Memory) All(T any, ctx context.Context, namespace string) (sliceOfT interface{}) {

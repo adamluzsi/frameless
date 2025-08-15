@@ -89,7 +89,7 @@ func TestSQLRows(t *testing.T) {
 
 	s.Context(`has value(s)`, func(s *testcase.Spec) {
 		stub := let.Var(s, func(t *testcase.T) *SQLRowsStub {
-			return NewSQLRowsStubFromIter(t, iterkit.ToSeqE(iterkit.Slice1([][]any{[]any{`42`}})))
+			return NewSQLRowsStubFromIter(t, iterkit.AsSeqE(iterkit.FromSlice([][]any{[]any{`42`}})))
 		})
 
 		rows.Let(s, func(t *testcase.T) flsql.Rows {
@@ -126,7 +126,7 @@ func TestSQLRows(t *testing.T) {
 		expectedErr := let.Error(s)
 
 		rows.Let(s, func(t *testcase.T) flsql.Rows {
-			stub := NewSQLRowsStubFromIter(t, iterkit.ToSeqE(iterkit.Empty[[]any]()))
+			stub := NewSQLRowsStubFromIter(t, iterkit.AsSeqE(iterkit.Empty[[]any]()))
 			stub.CloseErr = expectedErr.Get(t)
 			return stub
 		})
@@ -209,7 +209,7 @@ func TestQueryMany(t *testing.T) {
 			QueryFunc: func(ctx context.Context, query string, args ...any) (flsql.Rows, error) {
 				assert.Equal(t, query, expQuery)
 				assert.Equal(t, args, expArgs)
-				itr := iterkit.ToSeqE(iterkit.Slice1([][]any{[]any{42}}))
+				itr := iterkit.AsSeqE(iterkit.FromSlice([][]any{[]any{42}}))
 				return NewSQLRowsStubFromIter(t, itr), nil
 			},
 		}

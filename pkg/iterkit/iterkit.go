@@ -120,6 +120,20 @@ func From[T any](fn func(yield func(T) bool) error) SeqE[T] {
 	}
 }
 
+func FromSliceE[T any](vs []T) SeqE[T] {
+	return func(yield func(T, error) bool) {
+		for _, v := range vs {
+			if !yield(v, nil) {
+				return
+			}
+		}
+	}
+}
+
+func FromSlice[T any](vs []T) iter.Seq[T] {
+	return slices.Values(vs)
+}
+
 type NoMore struct{}
 
 func (NoMore) Error() string { return "no more page to iterate" }
@@ -214,20 +228,6 @@ func Reduce2[R, T any](i iter.Seq[T], initial R, fn func(R, T) R) R {
 	return v
 }
 
-func SliceE[T any](vs []T) SeqE[T] {
-	return func(yield func(T, error) bool) {
-		for _, v := range vs {
-			if !yield(v, nil) {
-				return
-			}
-		}
-	}
-}
-
-func Slice1[T any](vs []T) iter.Seq[T] {
-	return slices.Values(vs)
-}
-
 func CollectE[T any](i iter.Seq2[T, error]) ([]T, error) {
 	if i == nil {
 		return nil, nil
@@ -259,7 +259,7 @@ func Collect[T any](i iter.Seq[T]) []T {
 
 type kvMapFunc[KV any, K, V any] func(K, V) KV
 
-func Collect2[K, V, KV any](i iter.Seq2[K, V], m kvMapFunc[KV, K, V]) []KV {
+func Collect2[KV, K, V any](i iter.Seq2[K, V], m kvMapFunc[KV, K, V]) []KV {
 	if i == nil {
 		return nil
 	}
@@ -301,21 +301,6 @@ func Collect2Map[K comparable, V any](i iter.Seq2[K, V]) map[K]V {
 		out[k] = v
 	}
 	return out
-}
-
-func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
-	var vs = make([]T, 0)
-	for _, stop := range stops {
-		defer stop()
-	}
-	for {
-		v, ok := next()
-		if !ok {
-			break
-		}
-		vs = append(vs, v)
-	}
-	return vs
 }
 
 func CollectEPull[T any](next func() (T, error, bool), stops ...func()) ([]T, error) {
@@ -879,6 +864,13 @@ func TakeAll2[KV any, K, V any](next func() (K, V, bool), m kvMapFunc[KV, K, V])
 	return kvs
 }
 
+// TakeAll will take all the remaining values from a pull iterator and return it as a KV[K,V] slice.
+func TakeAll2KV[K, V any](next func() (K, V, bool)) []KV[K, V] {
+	return TakeAll2(next, func(k K, v V) KV[K, V] {
+		return KV[K, V]{K: k, V: v}
+	})
+}
+
 // Of creates an iterator that can return the value of v.
 func Of[T any](v T) iter.Seq[T] {
 	return func(yield func(T) bool) { yield(v) }
@@ -933,6 +925,26 @@ func MapE[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, err
 				continue
 			}
 			if !yield(transform(v)) {
+				return
+			}
+		}
+	}
+}
+
+func Map2ToSeq[T, K, V any](i iter.Seq2[K, V], fn func(K, V) T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for k, v := range i {
+			if !yield(fn(k, v)) {
+				return
+			}
+		}
+	}
+}
+
+func MapToSeq2[K, V, T any](i iter.Seq[T], fn func(T) (K, V)) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		for t := range i {
+			if !yield(fn(t)) {
 				return
 			}
 		}
@@ -1270,9 +1282,9 @@ func FromPullE[T any](next func() (T, error, bool), stops ...func()) SeqE[T] {
 
 //////////////////////////////////////////////// failable iteration //////////////////////////////////////////////////
 
-// ToSeqE will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
+// AsSeqE will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
 // and use the error function to yield potential issues with the iteration.
-func ToSeqE[T any](i iter.Seq[T]) SeqE[T] {
+func AsSeqE[T any](i iter.Seq[T]) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		for v := range i {
 			if !yield(v, nil) {
