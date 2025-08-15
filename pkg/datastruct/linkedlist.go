@@ -12,37 +12,35 @@ type LinkedList[T any] struct {
 	length int
 }
 
+var _ List[any] = (*LinkedList[any])(nil)
+
 type llElem[T any] struct {
 	data T
 	prev *llElem[T]
 	next *llElem[T]
 }
 
-func (ll *LinkedList[T]) Iter() iter.Seq2[int, T] {
-	return func(yield func(int, T) bool) {
+func (ll *LinkedList[T]) Iter() iter.Seq[T] {
+	return func(yield func(T) bool) {
 		if ll == nil {
 			return
 		}
-		var (
-			current = ll.head
-			index   int
-		)
+		var current = ll.head
 		for {
 			if current == nil {
 				break
 			}
-			if !yield(index, current.data) {
+			if !yield(current.data) {
 				return
 			}
 			current = current.next
-			index++
 		}
 	}
 }
 
 func (ll *LinkedList[T]) ToSlice() []T {
 	var vs []T
-	for _, v := range ll.Iter() {
+	for v := range ll.Iter() {
 		vs = append(vs, v)
 	}
 	return vs
@@ -96,8 +94,8 @@ func (ll *LinkedList[T]) prepend(v T) {
 	ll.length++
 }
 
-// Length returns the number of elements in the list
-func (ll *LinkedList[T]) Length() int {
+// Len returns the length of elements in the list
+func (ll *LinkedList[T]) Len() int {
 	return ll.length
 }
 
@@ -146,10 +144,12 @@ func (ll *LinkedList[T]) Lookup(index int) (T, bool) {
 		var zero T
 		return zero, false
 	}
-	for i, v := range ll.Iter() {
+	var i int
+	for v := range ll.Iter() {
 		if i == index {
 			return v, true
 		}
+		i++
 	}
 	var zero T
 	return zero, false

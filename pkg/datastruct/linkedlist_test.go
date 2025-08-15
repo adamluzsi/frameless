@@ -1,9 +1,11 @@
 package datastruct_test
 
 import (
+	"iter"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -57,7 +59,7 @@ func TestLinkedList(t *testing.T) {
 
 		ll.Prepend(0, 1)
 		ll.Append(2, 3)
-		assert.Equal(t, 4, ll.Length())
+		assert.Equal(t, 4, ll.Len())
 		assert.Equal(t, []int{0, 1, 2, 3}, ll.ToSlice())
 	})
 
@@ -83,9 +85,9 @@ func TestLinkedList(t *testing.T) {
 			newVS.LetValue(s, nil)
 
 			s.Then("nothing changes", func(t *testcase.T) {
-				bl := ll.Get(t).Length()
+				bl := ll.Get(t).Len()
 				act(t)
-				al := ll.Get(t).Length()
+				al := ll.Get(t).Len()
 				assert.Equal(t, bl, al)
 			})
 		})
@@ -112,7 +114,7 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expLen := len(newVS.Get(t)) + len(existing.Get(t))
-				assert.Equal(t, expLen, ll.Get(t).Length())
+				assert.Equal(t, expLen, ll.Get(t).Len())
 			})
 		})
 	})
@@ -138,16 +140,16 @@ func TestLinkedList(t *testing.T) {
 		s.Then("length is updated", func(t *testcase.T) {
 			act(t)
 
-			assert.Equal(t, len(newVS.Get(t)), ll.Get(t).Length())
+			assert.Equal(t, len(newVS.Get(t)), ll.Get(t).Len())
 		})
 
 		s.When("no new value is provided", func(s *testcase.Spec) {
 			newVS.LetValue(s, nil)
 
 			s.Then("nothing changes", func(t *testcase.T) {
-				bl := ll.Get(t).Length()
+				bl := ll.Get(t).Len()
 				act(t)
-				al := ll.Get(t).Length()
+				al := ll.Get(t).Len()
 				assert.Equal(t, bl, al)
 			})
 		})
@@ -173,14 +175,14 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expLen := len(newVS.Get(t)) + len(existing.Get(t))
-				assert.Equal(t, expLen, ll.Get(t).Length())
+				assert.Equal(t, expLen, ll.Get(t).Len())
 			})
 		})
 	})
 
-	s.Describe("#Length", func(s *testcase.Spec) {
+	s.Describe("#Len", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) int {
-			return ll.Get(t).Length()
+			return ll.Get(t).Len()
 		})
 
 		s.When("list is empty", func(s *testcase.Spec) {
@@ -228,7 +230,7 @@ func TestLinkedList(t *testing.T) {
 			})
 
 			s.Then("length stays zero", func(t *testcase.T) {
-				assert.Equal(t, 0, ll.Get(t).Length())
+				assert.Equal(t, 0, ll.Get(t).Len())
 			})
 		})
 
@@ -252,7 +254,7 @@ func TestLinkedList(t *testing.T) {
 			s.Then("list length is decreased to zero", func(t *testcase.T) {
 				act(t)
 
-				assert.Equal(t, 0, ll.Get(t).Length())
+				assert.Equal(t, 0, ll.Get(t).Len())
 			})
 
 			s.Then("list became empty", func(t *testcase.T) {
@@ -291,7 +293,7 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expLen := len(values.Get(t)) - 1
-				assert.Equal(t, expLen, ll.Get(t).Length())
+				assert.Equal(t, expLen, ll.Get(t).Len())
 			})
 
 			s.Then("remaining slice matches expected", func(t *testcase.T) {
@@ -321,7 +323,7 @@ func TestLinkedList(t *testing.T) {
 			})
 
 			s.Then("length stays zero", func(t *testcase.T) {
-				assert.Equal(t, 0, ll.Get(t).Length())
+				assert.Equal(t, 0, ll.Get(t).Len())
 			})
 		})
 
@@ -345,7 +347,7 @@ func TestLinkedList(t *testing.T) {
 			s.Then("list length is decreased to zero", func(t *testcase.T) {
 				act(t)
 
-				assert.Equal(t, 0, ll.Get(t).Length())
+				assert.Equal(t, 0, ll.Get(t).Len())
 			})
 
 			s.Then("list became empty", func(t *testcase.T) {
@@ -384,7 +386,7 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expLen := len(values.Get(t)) - 1
-				assert.Equal(t, expLen, ll.Get(t).Length())
+				assert.Equal(t, expLen, ll.Get(t).Len())
 			})
 
 			s.Then("remaining slice matches expected", func(t *testcase.T) {
@@ -431,7 +433,7 @@ func TestLinkedList(t *testing.T) {
 			})
 
 			s.Then("length stays zero", func(t *testcase.T) {
-				assert.Equal(t, 0, ll.Get(t).Length())
+				assert.Equal(t, 0, ll.Get(t).Len())
 			})
 
 			whenIndexIsNegative(s)
@@ -467,6 +469,79 @@ func TestLinkedList(t *testing.T) {
 			})
 
 			whenIndexIsNegative(s)
+		})
+	})
+
+	s.Describe("#Iter", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) iter.Seq[int] {
+			return ll.Get(t).Iter()
+		})
+
+		s.Then("non nil, iterable iterator returned", func(t *testcase.T) {
+			i := act(t)
+			assert.NotNil(t, i)
+			for range i {
+			}
+		})
+
+		s.When("link list have values", func(s *testcase.Spec) {
+			values := let.Var(s, func(t *testcase.T) []int {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
+			})
+
+			s.Before(func(t *testcase.T) {
+				ll.Get(t).Append(values.Get(t)...)
+			})
+
+			s.Then("those values can be iterated", func(t *testcase.T) {
+				exp := values.Get(t)
+				got := iterkit.Collect(act(t))
+				assert.ContainsExactly(t, exp, got)
+			})
+
+			s.Then("the iteration order aligns with how the values are inserted", func(t *testcase.T) {
+				exp := values.Get(t)
+				got := iterkit.Collect(act(t))
+				assert.Equal(t, exp, got)
+			})
+		})
+	})
+
+	s.Describe("#ToSlice", func(s *testcase.Spec) {
+		act := let.Act(func(t *testcase.T) []int {
+			return ll.Get(t).ToSlice()
+		})
+
+		s.When("link list is empty", func(s *testcase.Spec) {
+			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
+				return &datastruct.LinkedList[int]{}
+			})
+
+			s.Then("empty slice is returned", func(t *testcase.T) {
+				assert.Empty(t, act(t))
+			})
+		})
+
+		s.When("link list have values", func(s *testcase.Spec) {
+			values := let.Var(s, func(t *testcase.T) []int {
+				return random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
+			})
+
+			s.Before(func(t *testcase.T) {
+				ll.Get(t).Append(values.Get(t)...)
+			})
+
+			s.Then("those values returned as a slice", func(t *testcase.T) {
+				exp := values.Get(t)
+				got := act(t)
+				assert.ContainsExactly(t, exp, got)
+			})
+
+			s.Then("the returned slice's element order aligns with how the values are inserted", func(t *testcase.T) {
+				exp := values.Get(t)
+				got := act(t)
+				assert.Equal(t, exp, got)
+			})
 		})
 	})
 }
