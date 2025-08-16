@@ -310,6 +310,10 @@ func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
 	return TakeAll(next)
 }
 
+// TODO:
+// 	func Collect2PullMap[K comparable, V any](next func() (K, V, bool), stops ...func()) map[K]V
+// 	func Collect2PullKV[K comparable, V any](next func() (K, V, bool), stops ...func()) map[K]V
+
 func CollectEPull[T any](next func() (T, error, bool), stops ...func()) ([]T, error) {
 	var (
 		vs   = make([]T, 0)

@@ -1359,8 +1359,6 @@ func TestMap(t *testing.T) {
 
 				s.Then("adding values should be possible", func(t *testcase.T) {
 
-					iterkit.CollectPull()()
-
 				})
 
 			})
