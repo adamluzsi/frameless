@@ -300,7 +300,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 							if ok {
 								receivedQuery.Set(t, req.URL.Query())
 							}
-							return iterkit.ToSeqE(iterkit.Of(x.Get(t)))
+							return iterkit.AsSeqE(iterkit.Of(x.Get(t)))
 						}
 					})
 
@@ -1140,7 +1140,7 @@ func TestRouter_Resource(t *testing.T) {
 
 	r.Resource("foo", httpkit.RESTHandler[testent.Foo, testent.FooID]{
 		Index: func(ctx context.Context) iter.Seq2[testent.Foo, error] {
-			return iterkit.ToSeqE(iterkit.Of(foo))
+			return iterkit.AsSeqE(iterkit.Of(foo))
 		},
 		Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 			return foo, true, nil

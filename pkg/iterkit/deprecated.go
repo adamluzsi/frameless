@@ -49,3 +49,24 @@ func SplitErrSeq[T any](i SeqE[T]) (iter.Seq[T], func() error) {
 func OnErrSeqValue[To any, From any](itr SeqE[From], pipeline func(itr iter.Seq[From]) iter.Seq[To]) SeqE[To] {
 	return OnSeqEValue(itr, pipeline)
 }
+
+// ToSeqE is a temporal alias.
+//
+// Deprecated: use AsSeqE
+func ToSeqE[T any](i iter.Seq[T]) SeqE[T] {
+	return AsSeqE[T](i)
+}
+
+// SliceE is a backport
+//
+// Deprecated: use FromSliceE instead
+func SliceE[T any](vs []T) SeqE[T] {
+	return FromSliceE(vs)
+}
+
+// Slice1 is a backport
+//
+// Deprecated: use FromSlice instead
+func Slice1[T any](vs []T) iter.Seq[T] {
+	return FromSlice(vs)
+}

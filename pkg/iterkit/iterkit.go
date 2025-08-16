@@ -120,6 +120,20 @@ func From[T any](fn func(yield func(T) bool) error) SeqE[T] {
 	}
 }
 
+func FromSliceE[T any](vs []T) SeqE[T] {
+	return func(yield func(T, error) bool) {
+		for _, v := range vs {
+			if !yield(v, nil) {
+				return
+			}
+		}
+	}
+}
+
+func FromSlice[T any](vs []T) iter.Seq[T] {
+	return slices.Values(vs)
+}
+
 type NoMore struct{}
 
 func (NoMore) Error() string { return "no more page to iterate" }
@@ -212,20 +226,6 @@ func Reduce2[R, T any](i iter.Seq[T], initial R, fn func(R, T) R) R {
 		v = fn(v, c)
 	}
 	return v
-}
-
-func SliceE[T any](vs []T) SeqE[T] {
-	return func(yield func(T, error) bool) {
-		for _, v := range vs {
-			if !yield(v, nil) {
-				return
-			}
-		}
-	}
-}
-
-func Slice1[T any](vs []T) iter.Seq[T] {
-	return slices.Values(vs)
 }
 
 func CollectE[T any](i iter.Seq2[T, error]) ([]T, error) {
@@ -939,6 +939,26 @@ func MapE[To any, From any, Iter i1[From]](i Iter, transform func(From) (To, err
 	}
 }
 
+func Map2ToSeq[T, K, V any](i iter.Seq2[K, V], fn func(K, V) T) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for k, v := range i {
+			if !yield(fn(k, v)) {
+				return
+			}
+		}
+	}
+}
+
+func MapToSeq2[K, V, T any](i iter.Seq[T], fn func(T) (K, V)) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		for t := range i {
+			if !yield(fn(t)) {
+				return
+			}
+		}
+	}
+}
+
 func CountE[T any](i SeqE[T]) (int, error) {
 	var (
 		total int
@@ -1270,9 +1290,9 @@ func FromPullE[T any](next func() (T, error, bool), stops ...func()) SeqE[T] {
 
 //////////////////////////////////////////////// failable iteration //////////////////////////////////////////////////
 
-// ToSeqE will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
+// AsSeqE will turn a iter.Seq[T] into an iter.Seq2[T, error] iterator,
 // and use the error function to yield potential issues with the iteration.
-func ToSeqE[T any](i iter.Seq[T]) SeqE[T] {
+func AsSeqE[T any](i iter.Seq[T]) SeqE[T] {
 	return func(yield func(T, error) bool) {
 		for v := range i {
 			if !yield(v, nil) {

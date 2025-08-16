@@ -136,7 +136,7 @@ func TestCache_InvalidateByID_smoke(t *testing.T) { // flaky: go test -count 102
 		t.Log("when we have a custom query that has no arguments but only returns foo2")
 		qid := cache.Query{Name: "NOK-MANY-BAZ"}
 		query := cachei.CachedQueryMany(ctx, qid.HitID(), func(ctx context.Context) iter.Seq2[testent.Foo, error] {
-			return iterkit.ToSeqE(iterkit.Slice1([]testent.Foo{foo2}))
+			return iterkit.AsSeqE(iterkit.FromSlice([]testent.Foo{foo2}))
 		})
 		_, err := iterkit.CollectE(query) // drain iterator
 		assert.NoError(t, err)

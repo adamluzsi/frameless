@@ -415,7 +415,7 @@ func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2
 		prefectDone = true
 
 		src := iterkit.Merge2(
-			iterkit.ToSeqE(iterkit.Slice1(prefetchedEntities)),
+			iterkit.AsSeqE(iterkit.FromSlice(prefetchedEntities)),
 			iterkit.FromPull2(next, stop),
 		)
 

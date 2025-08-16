@@ -441,7 +441,7 @@ func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFu
 		if !found {
 			return iterkit.Empty2[ENT, error]()
 		}
-		return iterkit.ToSeqE(iterkit.Of(ent))
+		return iterkit.AsSeqE(iterkit.Of(ent))
 	}
 }
 

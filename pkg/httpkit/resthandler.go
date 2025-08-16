@@ -418,7 +418,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	listEncoder := serMaker.MakeListEncoder(w)
 
-	index = iterkit.Merge2(iterkit.ToSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
+	index = iterkit.Merge2(iterkit.AsSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
 
 	defer func() {
 		if err := listEncoder.Close(); err != nil {

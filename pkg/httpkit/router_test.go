@@ -54,7 +54,7 @@ func ExampleRouter() {
 					Bar: "bar",
 					Baz: "baz",
 				}
-				return iterkit.ToSeqE(iterkit.Slice1([]Foo{foo}))
+				return iterkit.AsSeqE(iterkit.FromSlice([]Foo{foo}))
 			},
 		})
 	})
