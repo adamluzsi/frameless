@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/testcase"
@@ -1340,7 +1341,31 @@ func TestMap(t *testing.T) {
 				})
 			})
 
+			s.And("pulling from the iteration already started", func(s *testcase.Spec) {
+				collected := let.Var(s, func(t *testcase.T) map[string]int {
+					return make(map[string]int)
+				})
+
+				next := let.Var(s, func(t *testcase.T) func() (string, int, bool) {
+					next, stop := iter.Pull2(act(t))
+					t.Defer(stop)
+
+					k, v, ok := next()
+					assert.True(t, ok)
+					collected.Get(t)[k] = v
+
+					return next
+				}).EagerLoading(s)
+
+				s.Then("adding values should be possible", func(t *testcase.T) {
+
+					iterkit.CollectPull()()
+
+				})
+
+			})
 		})
+
 	})
 
 	s.Describe("#RIter", func(s *testcase.Spec) {
@@ -1536,6 +1561,12 @@ func TestMap(t *testing.T) {
 			})
 		}, func() {
 			for range m.Iter() {
+			}
+		}, func() {
+			for range m.Iter() {
+			}
+		}, func() {
+			for range m.RIter() {
 			}
 		}, func() {
 			for range m.RIter() {

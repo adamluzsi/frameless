@@ -368,13 +368,38 @@ func (m *Map[K, V]) Iter() iter.Seq2[K, V] {
 }
 
 func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
-	var m sync.Map
 	return func(yield func(K, V) bool) {
-		l.Lock()
-		defer l.Unlock()
-		for k, v := range m.vs {
-			if !yield(k, v) {
-				return
+		var iterated = make(map[K]struct{}, m.Len())
+		for {
+			m.mu.RLock()
+			var keys []K
+			for key, _ := range m.vs {
+				if _, ok := iterated[key]; ok {
+					continue
+				}
+				keys = append(keys, key)
+			}
+			m.mu.RUnlock()
+			if len(keys) == 0 {
+				break
+			}
+			var handle = func(key K) bool {
+				l.Lock()
+				defer l.Unlock()
+				if m.vs == nil {
+					return false // no point to continue, the values are nuked
+				}
+				v, ok := m.vs[key]
+				if !ok { // value were deleted in the meantime, skipping its processing
+					return true
+				}
+				iterated[key] = struct{}{} // memorise
+				return yield(key, v)
+			}
+			for _, key := range keys {
+				if !handle(key) {
+					return
+				}
 			}
 		}
 	}
@@ -384,42 +409,4 @@ func (m *Map[K, V]) ToMap() map[K]V {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return mapkit.Clone(m.vs)
-}
-
-func (jg *Map[K, V]) siter(l sync.Locker) iter.Seq2[K, V] {
-	return func(yield func(K, V) bool) {
-		var completed = map[K]struct{}{}
-		for {
-			jg.m.RLock()
-			var ids []int64
-			for id, _ := range jg.jobs {
-				if _, ok := completed[id]; ok {
-					continue
-				}
-				ids = append(ids, id)
-			}
-			jg.m.RUnlock()
-			if len(ids) == 0 {
-				break
-			}
-			for _, id := range ids {
-				shouldContinue := func() bool {
-					jg.m.RLock()
-					defer jg.m.RUnlock()
-					if jg.jobs == nil {
-						return true
-					}
-					job, ok := jg.jobs[id]
-					if !ok {
-						return true
-					}
-					return yield(id, job)
-				}()
-				completed[id] = struct{}{}
-				if !shouldContinue {
-					return
-				}
-			}
-		}
-	}
 }

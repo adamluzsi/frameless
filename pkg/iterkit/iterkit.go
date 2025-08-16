@@ -304,18 +304,10 @@ func Collect2Map[K comparable, V any](i iter.Seq2[K, V]) map[K]V {
 }
 
 func CollectPull[T any](next func() (T, bool), stops ...func()) []T {
-	var vs = make([]T, 0)
 	for _, stop := range stops {
 		defer stop()
 	}
-	for {
-		v, ok := next()
-		if !ok {
-			break
-		}
-		vs = append(vs, v)
-	}
-	return vs
+	return TakeAll(next)
 }
 
 func CollectEPull[T any](next func() (T, error, bool), stops ...func()) ([]T, error) {
