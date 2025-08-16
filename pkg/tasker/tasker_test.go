@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/internal/signalint"
+	"go.llib.dev/frameless/pkg/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"
@@ -26,6 +27,9 @@ import (
 )
 
 var rnd = random.New(random.CryptoSeed{})
+
+var _ = tasker.Task((taskerlite.Task)(nil))
+var _ tasker.Runnable = (taskerlite.Task)(nil)
 
 func StubSignalNotify(t *testcase.T, fn func(chan<- os.Signal, ...os.Signal)) {
 	t.Cleanup(signalint.StubNotify(fn))

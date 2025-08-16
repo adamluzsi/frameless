@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/signalint"
+	"go.llib.dev/frameless/pkg/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/tasker/internal"
 	"go.llib.dev/frameless/pkg/teardown"
@@ -25,115 +26,30 @@ import (
 // Working with synchronous functions removes the complexity of thinking about how to run your application.
 // Your components become more stateless and focus on the domain rather than the lifecycle management.
 // This less stateful approach can help to make testing your Task also easier.
-type Task func(context.Context) error
+type Task = taskerlite.Task
 
-// Run method supplies Runnable interface for Task.
-func (fn Task) Run(ctx context.Context) error { return fn(ctx) }
+type Runnable = taskerlite.Runnable
 
-type Runnable interface{ Run(context.Context) error }
-
-type genericTask interface {
-	Task | *Runnable |
-		func(context.Context) error |
-		func(context.Context) |
-		func() error |
-		func()
-}
+type genericTask = taskerlite.GenericTask
 
 func ToTask[TFN genericTask](tfn TFN) Task {
-	switch v := any(tfn).(type) {
-	case Task:
-		return v
-	case func(context.Context) error:
-		return v
-	case func(context.Context):
-		return func(ctx context.Context) error { v(ctx); return nil }
-	case func() error:
-		return func(context.Context) error { return v() }
-	case func():
-		return func(context.Context) error { v(); return nil }
-	case *Runnable:
-		return (*v).Run
-	default:
-		panic(fmt.Sprintf("%T is not supported Task func", v))
-	}
+	return taskerlite.ToTask[TFN](tfn)
 }
 
 func toTasks[TFN genericTask](tfns []TFN) []Task {
-	var tasks []Task
-	for _, t := range tfns {
-		tasks = append(tasks, ToTask(t))
-	}
-	return tasks
-}
-
-func Sequence[TFN genericTask](tfns ...TFN) Task {
-	return sequence(toTasks[TFN](tfns)).Run
+	return taskerlite.ToTasks[TFN](tfns)
 }
 
 // Sequence is a construct that allows you to execute a list of Task sequentially.
 // If any of the Task fails with an error, it breaks the sequential execution and the error is returned.
-type sequence []Task
-
-func (s sequence) Run(ctx context.Context) error {
-	for _, task := range s {
-		if err := task(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
+func Sequence[TFN genericTask](tfns ...TFN) Task {
+	return taskerlite.Sequence[TFN](tfns...)
 }
 
 // Concurrence is a construct that allows you to execute a list of Task concurrently.
 // If any of the Task fails with an error, all Task will receive cancellation signal.
 func Concurrence[TFN genericTask](tfns ...TFN) Task {
-	if len(tfns) == 1 {
-		return ToTask[TFN](tfns[0])
-	}
-	return concurrence(toTasks[TFN](tfns)).Run
-}
-
-type concurrence []Task
-
-func (c concurrence) Run(ctx context.Context) error {
-	var (
-		wwg, cwg sync.WaitGroup
-		errs     []error
-		errCh    = make(chan error, len(c))
-	)
-	ctx, cancelDueToError := context.WithCancel(ctx)
-	defer cancelDueToError()
-
-	wwg.Add(len(c))
-	for _, task := range c {
-		go func(t Task) {
-			defer wwg.Done()
-			errCh <- t(ctx)
-		}(task)
-	}
-
-	cwg.Add(1)
-	go func() {
-		defer cwg.Done()
-		for err := range errCh {
-			if err == nil { // shutdown with no error is OK
-				continue
-			}
-
-			cancelDueToError() // if one fails, all will shut down
-
-			if errors.Is(err, context.Canceled) { // we don't report back context cancellation error
-				continue
-			}
-
-			errs = append(errs, err)
-		}
-	}()
-
-	wwg.Wait()
-	close(errCh)
-	cwg.Wait()
-	return errorkit.Merge(errs...)
+	return taskerlite.Concurrence[TFN](tfns...)
 }
 
 // WithShutdown will combine the start and stop/shutdown function into a single Task function.
@@ -449,7 +365,7 @@ type (
 	FireAndForget struct{}
 	// Manual allows you to collect the results of the background jobs,
 	// and you need to call Join to free up their results.
-	// Ideal for jog groups where you need to collect their error results.
+	// Ideal for concurrent jobs where you need to collect their error results.
 	Manual struct{}
 )
 
