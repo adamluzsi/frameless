@@ -24,6 +24,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/validate"
 )
 
@@ -257,6 +258,7 @@ func (m Mux) serveCLI(e *muxEntry, w Response, r *Request) error {
 }
 
 func Main(ctx context.Context, h Handler) {
+	tasker.Main[tasker.Task](ctx)
 	var args []string
 	if 1 < len(os.Args) {
 		args = os.Args[1:]

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"os"
 	"sync"
@@ -14,7 +15,6 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/internal/taskerlite"
-	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/tasker/internal"
 	"go.llib.dev/frameless/pkg/teardown"
 	"go.llib.dev/testcase/clock"
@@ -312,18 +312,18 @@ func (j *Job) alive(done chan struct{}) bool {
 	}
 }
 
-func (j *Job) getDone() chan struct{} {
+func (j *Job) Done() <-chan struct{} {
 	j.mutex.RLock()
 	defer j.mutex.RUnlock()
+	if j.done == nil {
+		j.done = make(chan struct{})
+		close(j.done)
+	}
 	return j.done
 }
 
 func (j *Job) Wait() {
-	done := j.getDone()
-	if done == nil {
-		return
-	}
-	<-j.done
+	<-j.Done()
 }
 
 func (j *Job) finish() {
@@ -353,6 +353,8 @@ type JobGroup[M Manual | FireAndForget] struct {
 	jobs map[int64]*Job
 	// disableCleanup will disable the job cleanup during results collection.
 	disableCleanup bool
+
+	done chan struct{}
 }
 
 type (
@@ -433,7 +435,7 @@ func (jg *JobGroup[M]) Background(ctx context.Context, tsk Task) *Job {
 }
 
 func (jg *JobGroup[M]) Wait() {
-	for _, job := range jg.getJob() {
+	for _, job := range jg.iter() {
 		job.Wait()
 	}
 }
@@ -451,7 +453,7 @@ func (jg *JobGroup[M]) Stop() error {
 }
 
 func (jg *JobGroup[M]) Alive() bool {
-	for _, job := range jg.getJob() {
+	for _, job := range jg.iter() {
 		if job.Alive() {
 			return true
 		}
@@ -459,10 +461,44 @@ func (jg *JobGroup[M]) Alive() bool {
 	return false
 }
 
-func (jg *JobGroup[M]) getJob() map[int64]*Job {
+func (jg *JobGroup[M]) iter() iter.Seq2[int64, *Job] {
 	jg.m.RLock()
 	defer jg.m.RUnlock()
-	return mapkit.Clone(jg.jobs)
+	return func(yield func(int64, *Job) bool) {
+		var completed = map[int64]struct{}{}
+		for {
+			jg.m.RLock()
+			var ids []int64
+			for id, _ := range jg.jobs {
+				if _, ok := completed[id]; ok {
+					continue
+				}
+				ids = append(ids, id)
+			}
+			jg.m.RUnlock()
+			if len(ids) == 0 {
+				break
+			}
+			for _, id := range ids {
+				shouldContinue := func() bool {
+					jg.m.RLock()
+					defer jg.m.RUnlock()
+					if jg.jobs == nil {
+						return true
+					}
+					job, ok := jg.jobs[id]
+					if !ok {
+						return true
+					}
+					return yield(id, job)
+				}()
+				completed[id] = struct{}{}
+				if !shouldContinue {
+					return
+				}
+			}
+		}
+	}
 }
 
 func (jg *JobGroup[M]) isFnF() bool {
@@ -477,7 +513,7 @@ func (jg *JobGroup[M]) isFnF() bool {
 func (jg *JobGroup[M]) collect(blk func(j *Job) error) error {
 	isFnF := jg.isFnF()
 	var errs []error
-	for id, job := range jg.getJob() {
+	for id, job := range jg.iter() {
 		err := blk(job)
 		if !isFnF {
 			errs = append(errs, err)

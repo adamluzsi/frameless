@@ -368,6 +368,7 @@ func (m *Map[K, V]) Iter() iter.Seq2[K, V] {
 }
 
 func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
+	var m sync.Map
 	return func(yield func(K, V) bool) {
 		l.Lock()
 		defer l.Unlock()
@@ -383,4 +384,42 @@ func (m *Map[K, V]) ToMap() map[K]V {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return mapkit.Clone(m.vs)
+}
+
+func (jg *Map[K, V]) siter(l sync.Locker) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		var completed = map[K]struct{}{}
+		for {
+			jg.m.RLock()
+			var ids []int64
+			for id, _ := range jg.jobs {
+				if _, ok := completed[id]; ok {
+					continue
+				}
+				ids = append(ids, id)
+			}
+			jg.m.RUnlock()
+			if len(ids) == 0 {
+				break
+			}
+			for _, id := range ids {
+				shouldContinue := func() bool {
+					jg.m.RLock()
+					defer jg.m.RUnlock()
+					if jg.jobs == nil {
+						return true
+					}
+					job, ok := jg.jobs[id]
+					if !ok {
+						return true
+					}
+					return yield(id, job)
+				}()
+				completed[id] = struct{}{}
+				if !shouldContinue {
+					return
+				}
+			}
+		}
+	}
 }
