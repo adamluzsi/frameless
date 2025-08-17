@@ -9,6 +9,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 )
 
 type RWLocker interface {
@@ -411,4 +412,57 @@ func (m *Map[K, V]) UnmarshalJSON(data []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return json.Unmarshal(data, &m.vs)
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Slice[T any] struct {
+	mu sync.RWMutex
+	vs []T
+}
+
+var _ datastruct.List[any] = (*Slice[any])(nil)
+
+func (s *Slice[T]) Lookup(index int) (T, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slicekit.Lookup(s.vs, index)
+}
+
+func (s *Slice[T]) Append(vs ...T) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.vs = append(s.vs, vs...)
+}
+
+func (s *Slice[T]) ToSlice() []T {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return slicekit.Clone(s.vs)
+}
+
+func (s *Slice[T]) Iter() iter.Seq[T] {
+	return s.iter(&s.mu)
+}
+
+func (s *Slice[T]) RIter() iter.Seq[T] {
+	return s.iter(s.mu.RLocker())
+}
+
+func (s *Slice[T]) iter(l sync.Locker) iter.Seq[T] {
+	return func(yield func(T) bool) {
+		l.Lock()
+		defer l.Unlock()
+		for _, v := range s.vs {
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+func (s *Slice[T]) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.vs)
 }

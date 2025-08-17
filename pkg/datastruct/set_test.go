@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
@@ -117,4 +119,28 @@ func TestOrderedSet(t *testing.T) {
 
 		assert.Equal(t, exp, got, "values were expected, and in the same order")
 	})
+
+	vs := testcase.Var[[]string]{
+		ID: "already used values",
+		Init: func(t *testcase.T) []string {
+			return []string{}
+		},
+	}
+	c := datastructcontract.ListConfig[string]{
+		MakeT: func(tb testing.TB) string {
+			t := tb.(*testcase.T)
+			// we produce unique values because a Set type only accept new unique value
+			v := random.Unique(func() string { return t.Random.String() }, vs.Get(t)...)
+			testcase.Append(t, vs, v)
+			return v
+		},
+	}
+
+	t.Run("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
+		return &datastruct.OrderedSet[string]{}
+	}, c).Test)
+
+	t.Run("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) datastruct.List[string] {
+		return &datastruct.OrderedSet[string]{}
+	}, c).Test)
 }

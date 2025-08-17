@@ -1,5 +1,7 @@
 package datastruct
 
+import "iter"
+
 type Map[K comparable, V any] map[K]V
 
 var _ KVS[any, any] = (Map[any, any])(nil)
@@ -29,6 +31,16 @@ func (m Map[K, V]) Keys() []K {
 
 func (m Map[K, V]) ToMap() map[K]V {
 	return m
+}
+
+func (m Map[K, V]) Iter() iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		for k, v := range m {
+			if !yield(k, v) {
+				return
+			}
+		}
+	}
 }
 
 func MapAdd[K comparable, V any, Map KVS[K, V]](m Map, k K, v V) func() {

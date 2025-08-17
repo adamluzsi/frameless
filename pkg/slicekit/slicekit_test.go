@@ -951,6 +951,26 @@ func TestInsert(t *testing.T) {
 			assert.Equal(t, *slice.Get(t), exp)
 		})
 	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		var makeElem = func() string {
+			return t.Random.HexN(5)
+		}
+		for i := range 10 {
+			i += 10 // offset
+			vs := random.Slice(i, makeElem)
+			index := t.Random.IntN(len(vs))
+			nvs := random.Slice(t.Random.IntBetween(3, 5), makeElem)
+			got := slicekit.Clone(vs)
+			slicekit.Insert(&got, index, nvs...)
+			assert.Contains(t, got, vs)
+			assert.Contains(t, got, nvs)
+			assert.Equal(t, nvs, got[index:index+len(nvs)])
+			assert.Equal(t, vs[:index], got[:index])
+			assert.Equal(t, vs[index:], got[index+len(nvs):])
+			// assert.Equal(t, got[:index], vs[:index])
+		}
+	})
 }
 
 func TestAnyOf(t *testing.T) {

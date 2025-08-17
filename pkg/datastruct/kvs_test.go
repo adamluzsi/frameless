@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -65,6 +66,10 @@ func TestMap(t *testing.T) {
 		})
 		assert.Equal(t, exp, m.ToMap())
 	})
+
+	s.Context("implements Key-Value-Store", datastructcontract.KVS(func(tb testing.TB) datastruct.KVS[string, int] {
+		return m.Get(testcase.ToT(&tb))
+	}).Spec)
 }
 
 func TestMapAdd(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase"
@@ -544,4 +545,8 @@ func TestLinkedList(t *testing.T) {
 			})
 		})
 	})
+
+	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
+		return &datastruct.LinkedList[string]{}
+	}).Spec)
 }
