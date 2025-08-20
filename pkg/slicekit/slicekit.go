@@ -206,26 +206,27 @@ func Unshift[T any](vs *[]T, nvs ...T) {
 	*vs = append(nvs, *vs...)
 }
 
-func Insert[T any](vs *[]T, index int, nvs ...T) {
+func Insert[T any](vs *[]T, index int, nvs ...T) bool {
 	if len(nvs) == 0 {
-		return
-	}
-	if len(*vs) < index {
-		*vs = append(*vs, nvs...)
-		return
+		return true
 	}
 	index, ok := normaliseIndex(len(*vs), index)
-	if !ok {
-		*vs = append(*vs, nvs...)
-		return
-	} else if len(*vs) < index {
-		index = len(*vs)
+	if !ok { // out of bound
+		if nextindex := len(*vs); index == nextindex {
+			*vs = append(*vs, nvs...)
+			return true
+		}
+		return false
+	}
+	if len(*vs) < index {
+		return false
 	}
 	var og = Clone(*vs)
 	*vs = make([]T, 0, len(og)+len(nvs))
 	*vs = append(*vs, og[:index]...)
 	*vs = append(*vs, nvs...)
 	*vs = append(*vs, og[index:]...)
+	return true
 }
 
 func First[T any](vs []T) (T, bool) {

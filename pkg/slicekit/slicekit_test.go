@@ -872,8 +872,8 @@ func TestInsert(t *testing.T) {
 			return random.Slice(t.Random.IntBetween(3, 5), t.Random.String, random.UniqueValues)
 		})
 	)
-	act := func(t *testcase.T) {
-		slicekit.Insert(slice.Get(t), index.Get(t), values.Get(t)...)
+	act := func(t *testcase.T) bool {
+		return slicekit.Insert(slice.Get(t), index.Get(t), values.Get(t)...)
 	}
 
 	s.When("input slice is empty/nil", func(s *testcase.Spec) {
@@ -888,7 +888,7 @@ func TestInsert(t *testing.T) {
 		index.LetValue(s, 0)
 
 		s.Then("it will add the values to it", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			assert.Equal(t, *slice.Get(t), values.Get(t))
 		})
@@ -898,7 +898,7 @@ func TestInsert(t *testing.T) {
 		index.LetValue(s, 0)
 
 		s.Then("it will act as unshift", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			var exp []string
 			exp = append(exp, values.Get(t)...)
@@ -911,7 +911,7 @@ func TestInsert(t *testing.T) {
 		index.LetValue(s, 1)
 
 		s.Then("it insert the values to the posistion", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			var exp []string
 			exp = append(exp, og.Get(t)[0])
@@ -921,11 +921,26 @@ func TestInsert(t *testing.T) {
 		})
 	})
 
+	s.When("index is pointing to next index number of the slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return len(*slice.Get(t))
+		})
+
+		s.Then("it will append the new values at the end of the slice", func(t *testcase.T) {
+			assert.True(t, act(t))
+
+			var exp []string
+			exp = append(exp, og.Get(t)...)
+			exp = append(exp, values.Get(t)...)
+			assert.Equal(t, *slice.Get(t), exp)
+		})
+	})
+
 	s.When("index is a negative number", func(s *testcase.Spec) {
 		index.LetValue(s, -1)
 
 		s.Then("it will insert the values at the last index position, just before/in-place of the last element", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			lastIndex := len(og.Get(t)) - 1
 			var exp []string
@@ -939,16 +954,13 @@ func TestInsert(t *testing.T) {
 
 	s.When("index is bigger than the input slice", func(s *testcase.Spec) {
 		index.Let(s, func(t *testcase.T) int {
-			return len(og.Get(t)) + t.Random.IntBetween(3, 7)
+			return len(og.Get(t)) + t.Random.IntBetween(1, 7)
 		})
 
-		s.Then("it will append the values to the end", func(t *testcase.T) {
-			act(t)
+		s.Then("it will report that insertion is not possible due to being too much out of bound", func(t *testcase.T) {
+			assert.False(t, act(t))
 
-			var exp []string
-			exp = append(exp, og.Get(t)...)
-			exp = append(exp, values.Get(t)...)
-			assert.Equal(t, *slice.Get(t), exp)
+			assert.Equal(t, og.Get(t), *slice.Get(t))
 		})
 	})
 
