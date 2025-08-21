@@ -300,3 +300,15 @@ func IterReverse[T any](vs []T) iter.Seq2[int, T] {
 		}
 	}
 }
+
+func Delete[S ~[]T, T any](vs *S, index int) bool {
+	index, ok := normaliseIndex(len(*vs), index)
+	if !ok {
+		return false
+	}
+	var out = make(S, 0, len(*vs)-1)
+	out = append(out, (*vs)[:index]...)
+	out = append(out, (*vs)[index+1:]...)
+	*vs = out
+	return true
+}

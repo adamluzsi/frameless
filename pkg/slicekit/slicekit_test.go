@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -936,7 +937,7 @@ func TestInsert(t *testing.T) {
 		})
 	})
 
-	s.When("index is a negative number", func(s *testcase.Spec) {
+	s.When("index is referencing the last element through using -1", func(s *testcase.Spec) {
 		index.LetValue(s, -1)
 
 		s.Then("it will insert the values at the last index position, just before/in-place of the last element", func(t *testcase.T) {
@@ -1286,5 +1287,119 @@ func TestIterReverse_smoke(t *testing.T) {
 		}
 		got := iterkit.Collect2KV(slicekit.IterReverse(slc))
 		assert.Equal(t, exp, got)
+	})
+}
+
+func TestDelete(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		og = testcase.Let(s, func(t *testcase.T) []string {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.String, random.UniqueValues)
+		})
+		slice = testcase.Let(s, func(t *testcase.T) *[]string {
+			var s = slicekit.Clone(og.Get(t))
+			return &s
+		})
+		index = testcase.Let[int](s, nil)
+	)
+	act := func(t *testcase.T) bool {
+		return slicekit.Delete(slice.Get(t), index.Get(t))
+	}
+
+	s.When("input slice is empty/nil", func(s *testcase.Spec) {
+		slice.Let(s, func(t *testcase.T) *[]string {
+			var s []string
+			if t.Random.Bool() {
+				s = []string{}
+			}
+			return &s
+		})
+
+		index.Let(s, let.IntB(s, 0, 3).Get)
+
+		s.Then("unsuccess is reported", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.When("index is pointing somewhere inside the slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return t.Random.IntN(len(og.Get(t)))
+		})
+
+		s.Then("it deletes the value at the index", func(t *testcase.T) {
+			assert.True(t, act(t))
+
+			var exp []string
+			exp = append(exp, og.Get(t)[:index.Get(t)]...)
+
+			if len(og.Get(t))-1 != index.Get(t) { // if not Pop case, add the remaining ones
+				exp = append(exp, og.Get(t)[index.Get(t)+1:]...)
+			}
+
+			assert.Equal(t, exp, *slice.Get(t))
+		})
+
+		s.And("if the index points to the last element", func(s *testcase.Spec) {
+			index.Let(s, func(t *testcase.T) int {
+				if t.Random.Bool() {
+					t.Log("given last element identified with -1")
+					return -1
+				}
+
+				i := len(og.Get(t)) - 1
+				assert.NotEqual(t, i, -1, "incorrect test setup")
+				return i
+			})
+
+			s.Then("delete act like deque pop", func(t *testcase.T) {
+				assert.True(t, act(t))
+				lastIndex := len(og.Get(t)) - 1
+				exp := og.Get(t)[:lastIndex]
+				assert.Equal(t, exp, *slice.Get(t))
+			})
+		})
+
+		s.And("if the index points to the first element", func(s *testcase.Spec) {
+			index.LetValue(s, 0)
+
+			s.Then("delete act like deque shift", func(t *testcase.T) {
+				assert.True(t, act(t))
+				exp := og.Get(t)[1:]
+				assert.Equal(t, exp, *slice.Get(t))
+			})
+		})
+	})
+
+	s.When("index is bigger than the input slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return len(og.Get(t)) + t.Random.IntBetween(1, 7)
+		})
+
+		s.Then("it will report that insertion is not possible due to being too much out of bound", func(t *testcase.T) {
+			assert.False(t, act(t))
+
+			assert.Equal(t, og.Get(t), *slice.Get(t))
+		})
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		var makeElem = func() string {
+			return t.Random.HexN(5)
+		}
+		for i := range 10 {
+			i += 10 // offset
+			vs := random.Slice(i, makeElem)
+			index := t.Random.IntN(len(vs))
+			nvs := random.Slice(t.Random.IntBetween(3, 5), makeElem)
+			got := slicekit.Clone(vs)
+			slicekit.Insert(&got, index, nvs...)
+			assert.Contains(t, got, vs)
+			assert.Contains(t, got, nvs)
+			assert.Equal(t, nvs, got[index:index+len(nvs)])
+			assert.Equal(t, vs[:index], got[:index])
+			assert.Equal(t, vs[index:], got[index+len(nvs):])
+		}
 	})
 }
