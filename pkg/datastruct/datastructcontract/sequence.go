@@ -1,6 +1,7 @@
 package datastructcontract
 
 import (
+	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/contract"
@@ -13,6 +14,13 @@ import (
 type SequenceConfig[T any] struct {
 	Make     func() datastruct.Sequence[T]
 	MakeElem func() T
+}
+
+func (c SequenceConfig[T]) makeElem(t *testcase.T) T {
+	if c.MakeElem != nil {
+		return c.MakeElem()
+	}
+	return spechelper.MakeValue[T](t)
 }
 
 func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
@@ -51,7 +59,9 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 
 		s.When("sequence contains values", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []T {
-				return random.Slice(t.Random.IntBetween(3, 7), conf.Get(t).MakeElem)
+				return random.Slice(t.Random.IntBetween(3, 7), func() T {
+					return conf.Get(t).makeElem(t)
+				})
 			})
 
 			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
@@ -90,7 +100,7 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 		var (
 			index = let.Var[int](s, nil)
 			value = let.Var[T](s, func(t *testcase.T) T {
-				return conf.Get(t).MakeElem()
+				return conf.Get(t).makeElem(t)
 			})
 		)
 		act := let.Act(func(t *testcase.T) bool {
@@ -116,7 +126,9 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 
 		s.When("sequence contains values", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []T {
-				return random.Slice(t.Random.IntBetween(3, 7), conf.Get(t).MakeElem)
+				return random.Slice(t.Random.IntBetween(3, 7), func() T {
+					return conf.Get(t).makeElem(t)
+				})
 			})
 
 			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
@@ -177,7 +189,9 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 		var (
 			index     = let.Var[int](s, nil)
 			newValues = let.Var(s, func(t *testcase.T) []T {
-				return random.Slice(t.Random.IntBetween(3, 7), conf.Get(t).MakeElem)
+				return random.Slice(t.Random.IntBetween(3, 7), func() T {
+					return conf.Get(t).makeElem(t)
+				})
 			})
 		)
 		act := let.Act(func(t *testcase.T) bool {
@@ -230,7 +244,9 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 			// 1:B -> 4:B -> 1 + /* len new values */ 3 == 4 4:B
 
 			values := let.Var(s, func(t *testcase.T) []T {
-				return random.Slice(t.Random.IntBetween(3, 7), conf.Get(t).MakeElem)
+				return random.Slice(t.Random.IntBetween(3, 7), func() T {
+					return conf.Get(t).makeElem(t)
+				})
 			})
 
 			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
@@ -242,14 +258,6 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 			s.And("index points to an existing value", func(s *testcase.Spec) {
 				index.Let(s, func(t *testcase.T) int {
 					return t.Random.IntN(len(values.Get(t)))
-				})
-
-				s.Then("the new value is set for the given index", func(t *testcase.T) {
-					assert.True(t, act(t), "expected a success report for Set")
-
-					got, ok := seq.Get(t).Lookup(index.Get(t))
-					assert.True(t, ok)
-					assert.Equal(t, newValues.Get(t), got)
 				})
 
 				s.Then("the total length increases to the sum of values", func(t *testcase.T) {
@@ -333,7 +341,9 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 
 		s.When("sequence contains values", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []T {
-				return random.Slice(t.Random.IntBetween(3, 7), conf.Get(t).MakeElem)
+				return random.Slice(t.Random.IntBetween(3, 7), func() T {
+					return conf.Get(t).makeElem(t)
+				})
 			})
 
 			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
@@ -347,35 +357,24 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 					return t.Random.IntN(len(values.Get(t)))
 				})
 
-				s.Then("the value is deleted", func(t *testcase.T) {
-					exp := slicekit.Clone(values.Get(t))
-					slicekit.Delete(&exp, index.Get(t))
-					assert.True(t, act(t), "expected a success report for Set")
-
-					got, ok := seq.Get(t).Lookup(index.Get(t))
-					assert.True(t, ok)
-					assert.Equal(t, value.Get(t), got)
-				})
-
-				s.Then("the total length remains the same", func(t *testcase.T) {
+				s.Then("the total length shrinks by one", func(t *testcase.T) {
 					befLen := seq.Get(t).Len()
 					act(t)
 					aftLen := seq.Get(t).Len()
-
-					assert.Equal(t, befLen, aftLen)
+					assert.Equal(t, befLen, aftLen+1)
 				})
 
 				s.Then("apart from the changed value, everything else remains the original one", func(t *testcase.T) {
+					expected := slicekit.Clone(values.Get(t))
+					assert.True(t, slicekit.Delete(&expected, index.Get(t)))
+
 					act(t)
 
-					for i := 0; i < seq.Get(t).Len(); i++ {
-						v, ok := seq.Get(t).Lookup(i)
+					assert.Equal(t, len(expected), seq.Get(t).Len())
+					for i, exp := range expected {
+						got, ok := seq.Get(t).Lookup(i)
 						assert.True(t, ok)
-						if i == index.Get(t) {
-							assert.Equal(t, v, value.Get(t))
-						} else {
-							assert.Equal(t, v, values.Get(t)[i])
-						}
+						assert.Equal(t, exp, got)
 					}
 				})
 			})

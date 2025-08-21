@@ -143,4 +143,12 @@ func TestOrderedSet(t *testing.T) {
 	t.Run("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) datastruct.List[string] {
 		return &datastruct.OrderedSet[string]{}
 	}, c).Test)
+
+	t.Run("implements sequence", datastructcontract.Sequence[string](func(t testing.TB) datastructcontract.SequenceConfig[string] {
+		return datastructcontract.SequenceConfig[string]{
+			Make: func() datastruct.Sequence[string] {
+				return &datastruct.OrderedSet[string]{}
+			},
+		}
+	}).Test)
 }

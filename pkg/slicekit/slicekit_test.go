@@ -1403,3 +1403,49 @@ func TestDelete(t *testing.T) {
 		}
 	})
 }
+
+func ExampleResolveIndex() {
+	var s = []string{"foo", "bar", "baz"}
+	_, _ = slicekit.ResolveIndex(len(s), 1)  // 1, true
+	_, _ = slicekit.ResolveIndex(len(s), 2)  // 2, true
+	_, _ = slicekit.ResolveIndex(len(s), -1) // 2, true
+	_, _ = slicekit.ResolveIndex(len(s), 3)  // 3, false
+}
+
+func TestResolveIndex(t *testing.T) {
+	var s = []string{"foo", "bar", "baz"}
+	rnd := random.New(random.CryptoSeed{})
+
+	t.Run("pos", func(t *testing.T) {
+		for exp := range s {
+			got, ok := slicekit.ResolveIndex(len(s), exp)
+			assert.True(t, ok)
+			assert.Equal(t, exp, got)
+		}
+	})
+	t.Run("pos - out of bound", func(t *testing.T) {
+		i := len(s) + rnd.IntBetween(0, 100)
+		got, ok := slicekit.ResolveIndex(len(s), i)
+		assert.False(t, ok)
+		assert.Equal(t, i, got)
+	})
+
+	t.Run("neg", func(t *testing.T) {
+		for exp := range s {
+			// 0 - 3 = -3
+			// 1 - 3 = -2
+			// 2 - 3 = -1
+			var negIndex = exp - len(s)
+			got, ok := slicekit.ResolveIndex(len(s), negIndex)
+			assert.True(t, ok)
+			assert.Equal(t, exp, got)
+		}
+	})
+
+	t.Run("neg - out of bound", func(t *testing.T) {
+		var negIndex = -len(s) - rnd.IntBetween(1, 100)
+		got, ok := slicekit.ResolveIndex(len(s), negIndex)
+		assert.False(t, ok)
+		assert.Equal(t, negIndex, got)
+	})
+}

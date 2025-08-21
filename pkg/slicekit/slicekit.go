@@ -74,7 +74,7 @@ func FilterErr[T any](src []T, filter func(v T) (bool, error)) ([]T, error) {
 }
 
 func Lookup[T any](vs []T, index int) (T, bool) {
-	index, ok := normaliseIndex(len(vs), index)
+	index, ok := ResolveIndex(len(vs), index)
 	if !ok {
 		var zero T
 		return zero, false
@@ -171,7 +171,7 @@ func PopAt[T any](vs *[]T, index int) (T, bool) {
 		return zero, false
 	}
 
-	index, ok := normaliseIndex(length, index)
+	index, ok := ResolveIndex(length, index)
 	if !ok {
 		var zero T
 		return zero, false
@@ -210,7 +210,7 @@ func Insert[T any](vs *[]T, index int, nvs ...T) bool {
 	if len(nvs) == 0 {
 		return true
 	}
-	index, ok := normaliseIndex(len(*vs), index)
+	index, ok := ResolveIndex(len(*vs), index)
 	if !ok { // out of bound
 		if nextindex := len(*vs); index == nextindex {
 			*vs = append(*vs, nvs...)
@@ -283,14 +283,6 @@ func SortBy[T any](vs []T, less func(a, b T) bool) {
 	})
 }
 
-func normaliseIndex(length, index int) (int, bool) {
-	if index < 0 {
-		n := length + index
-		return n, 0 <= n
-	}
-	return index, index < length
-}
-
 func IterReverse[T any](vs []T) iter.Seq2[int, T] {
 	return func(yield func(int, T) bool) {
 		for i := len(vs) - 1; i >= 0; i-- {
@@ -302,7 +294,7 @@ func IterReverse[T any](vs []T) iter.Seq2[int, T] {
 }
 
 func Delete[S ~[]T, T any](vs *S, index int) bool {
-	index, ok := normaliseIndex(len(*vs), index)
+	index, ok := ResolveIndex(len(*vs), index)
 	if !ok {
 		return false
 	}
@@ -311,4 +303,17 @@ func Delete[S ~[]T, T any](vs *S, index int) bool {
 	out = append(out, (*vs)[index+1:]...)
 	*vs = out
 	return true
+}
+
+// ResolveIndex returns the zero-based element position for index (negative wraps from end),
+// It returns false for second argument if the index is out of bounds.
+func ResolveIndex(length, index int) (int, bool) {
+	if index < 0 {
+		n := length + index
+		if 0 <= n {
+			return n, true
+		}
+		return index, false
+	}
+	return index, index < length
 }

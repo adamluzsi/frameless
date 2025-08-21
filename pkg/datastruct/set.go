@@ -1,6 +1,10 @@
 package datastruct
 
-import "iter"
+import (
+	"iter"
+
+	"go.llib.dev/frameless/pkg/slicekit"
+)
 
 type OrderedSet[T comparable] struct {
 	vs map[T]int
@@ -23,6 +27,89 @@ func (s *OrderedSet[T]) add(v T) {
 	}
 	index := len(s.vs)
 	s.vs[v] = index
+}
+
+func (s *OrderedSet[T]) Lookup(index int) (T, bool) {
+	index, ok := slicekit.ResolveIndex(len(s.vs), index)
+	if !ok {
+		var zero T
+		return zero, false
+	}
+	for v, i := range s.vs {
+		if i == index {
+			return v, true
+		}
+	}
+	var zero T
+	return zero, false
+}
+
+func (s *OrderedSet[T]) Set(index int, v T) bool {
+	cur, ok := s.Lookup(index)
+	if !ok {
+		return false
+	}
+	delete(s.vs, cur)
+	s.vs[v] = index
+	return true
+}
+
+func (s *OrderedSet[T]) Delete(index int) bool {
+	if s.vs == nil {
+		return false
+	}
+	if !(index < len(s.vs)) {
+		return false
+	}
+
+	var ok bool
+	var upd []T
+	for v, i := range s.vs {
+		if i == index {
+			ok = true
+			delete(s.vs, v)
+			break
+		}
+		if index < i {
+			upd = append(upd, v)
+		}
+	}
+	if !ok {
+		return false
+	}
+	for _, v := range upd {
+		s.vs[v]--
+	}
+	return true
+}
+
+func (s *OrderedSet[T]) Insert(index int, vs ...T) bool {
+	if s.vs == nil {
+		return false
+	}
+	if !(index < len(s.vs)) {
+		return false
+	}
+
+	var ok bool
+	var upd []T
+	for v, i := range s.vs {
+		if i == index {
+			ok = true
+			delete(s.vs, v)
+			break
+		}
+		if index < i {
+			upd = append(upd, v)
+		}
+	}
+	if !ok {
+		return false
+	}
+	for _, v := range upd {
+		s.vs[v]--
+	}
+	return true
 }
 
 func (s OrderedSet[T]) Has(v T) bool {
