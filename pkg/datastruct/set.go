@@ -1,32 +1,45 @@
 package datastruct
 
 import (
+	"fmt"
 	"iter"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
 type OrderedSet[T comparable] struct {
-	vs map[T]int
+	vs map[T]struct{}
+	is map[int]*T
 }
 
 var _ List[any] = (*OrderedSet[any])(nil)
+var _ Sequence[any] = (*OrderedSet[any])(nil)
 
-func (s *OrderedSet[T]) Append(vs ...T) {
-	for _, v := range vs {
-		s.add(v)
+func (s *OrderedSet[T]) init() {
+	if s.vs == nil {
+		s.vs = make(map[T]struct{})
+	}
+	if s.is == nil {
+		s.is = make(map[int]*T)
 	}
 }
 
-func (s *OrderedSet[T]) add(v T) {
-	if s.vs == nil {
-		s.vs = make(map[T]int)
+func (s *OrderedSet[T]) Append(vs ...T) {
+	for _, v := range vs {
+		s.add(len(s.vs), v)
 	}
+}
+
+func (s *OrderedSet[T]) add(index int, v T) {
+	s.init()
 	if _, ok := s.vs[v]; ok {
 		return
 	}
-	index := len(s.vs)
-	s.vs[v] = index
+	s.vs[v] = struct{}{}
+	s.is[index] = &v
+	// the cached variable might be an issue as the variable won't be released after the stack,
+	// but let's think about this issue later
 }
 
 func (s *OrderedSet[T]) Lookup(index int) (T, bool) {
@@ -35,10 +48,8 @@ func (s *OrderedSet[T]) Lookup(index int) (T, bool) {
 		var zero T
 		return zero, false
 	}
-	for v, i := range s.vs {
-		if i == index {
-			return v, true
-		}
+	if k, ok := s.is[index]; ok {
+		return *k, true
 	}
 	var zero T
 	return zero, false
@@ -50,64 +61,66 @@ func (s *OrderedSet[T]) Set(index int, v T) bool {
 		return false
 	}
 	delete(s.vs, cur)
-	s.vs[v] = index
+	delete(s.is, index)
+	s.add(index, v)
 	return true
 }
 
 func (s *OrderedSet[T]) Delete(index int) bool {
-	if s.vs == nil {
-		return false
-	}
-	if !(index < len(s.vs)) {
-		return false
-	}
-
-	var ok bool
-	var upd []T
-	for v, i := range s.vs {
-		if i == index {
-			ok = true
-			delete(s.vs, v)
-			break
-		}
-		if index < i {
-			upd = append(upd, v)
-		}
-	}
+	index, ok := slicekit.ResolveIndex(len(s.vs), index)
 	if !ok {
 		return false
 	}
-	for _, v := range upd {
-		s.vs[v]--
+	ptr, ok := s.is[index]
+	if !ok {
+		return false
 	}
+	delete(s.is, index)
+	delete(s.vs, *ptr)
 	return true
 }
 
 func (s *OrderedSet[T]) Insert(index int, vs ...T) bool {
-	if s.vs == nil {
-		return false
+	if len(vs) == 0 {
+		return true
 	}
-	if !(index < len(s.vs)) {
+
+	s.init()
+
+	index, ok := slicekit.ResolveIndex(len(s.vs), index)
+	if !ok && index != len(s.vs) {
 		return false
 	}
 
-	var ok bool
-	var upd []T
-	for v, i := range s.vs {
-		if i == index {
-			ok = true
-			delete(s.vs, v)
-			break
+	if _, ok := s.Lookup(index); !ok {
+		if index == len(s.vs) { // index point to next index candidate, act as append
+			s.Append(vs...)
+			return true
 		}
-		if index < i {
-			upd = append(upd, v)
-		}
-	}
-	if !ok {
 		return false
 	}
-	for _, v := range upd {
-		s.vs[v]--
+
+	{ // offset existing values to the right to make room for the new values
+		var (
+			offset = len(vs)
+			idxs   = iterkit.Reverse(iterkit.IntRange(
+				index,       // first index
+				len(s.vs)-1, // last index
+			))
+		)
+		for i := range idxs {
+			ptr, ok := s.is[i]
+			if !ok {
+				panic(fmt.Sprintf("[implementation-error] missing value at index %d from OrderedSet", i))
+			}
+			delete(s.is, i)
+			s.is[i+offset] = ptr
+		}
+	}
+
+	// add new values
+	for i, v := range vs {
+		s.add(index+i, v)
 	}
 	return true
 }
@@ -126,9 +139,9 @@ func (set OrderedSet[T]) FromSlice(vs []T) OrderedSet[T] {
 }
 
 func (s OrderedSet[T]) ToSlice() []T {
-	var out []T = make([]T, len(s.vs))
-	for v, index := range s.vs {
-		out[index] = v
+	var out []T = make([]T, len(s.is))
+	for i, ptr := range s.is {
+		out[i] = *ptr
 	}
 	return out
 }
@@ -139,8 +152,8 @@ func (s OrderedSet[T]) Len() int {
 
 func (s OrderedSet[T]) Iter() iter.Seq[T] {
 	return func(yield func(T) bool) {
-		for k := range s.vs {
-			if !yield(k) {
+		for i := 0; i < len(s.is); i++ {
+			if !yield(*s.is[i]) {
 				return
 			}
 		}

@@ -1,7 +1,8 @@
 package datastructcontract
 
 import (
-	"go.llib.dev/frameless/internal/spechelper"
+	"testing"
+
 	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/contract"
@@ -16,13 +17,6 @@ type SequenceConfig[T any] struct {
 	MakeElem func() T
 }
 
-func (c SequenceConfig[T]) makeElem(t *testcase.T) T {
-	if c.MakeElem != nil {
-		return c.MakeElem()
-	}
-	return spechelper.MakeValue[T](t)
-}
-
 func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 	s := testcase.NewSpec(nil)
 
@@ -31,6 +25,10 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 	seq := let.Var(s, func(t *testcase.T) datastruct.Sequence[T] {
 		return conf.Get(t).Make()
 	})
+
+	OrderedList(func(tb testing.TB) datastruct.List[T] {
+		return init(tb).Make()
+	}).Spec(s)
 
 	s.Describe("#Lookup", func(s *testcase.Spec) {
 		var (
@@ -60,7 +58,7 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 		s.When("sequence contains values", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []T {
 				return random.Slice(t.Random.IntBetween(3, 7), func() T {
-					return conf.Get(t).makeElem(t)
+					return mk[T](t, conf.Get(t).MakeElem)
 				})
 			})
 
@@ -99,8 +97,8 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 	s.Describe("#Set", func(s *testcase.Spec) {
 		var (
 			index = let.Var[int](s, nil)
-			value = let.Var[T](s, func(t *testcase.T) T {
-				return conf.Get(t).makeElem(t)
+			value = let.Var(s, func(t *testcase.T) T {
+				return mk[T](t, conf.Get(t).MakeElem)
 			})
 		)
 		act := let.Act(func(t *testcase.T) bool {
@@ -127,7 +125,7 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 		s.When("sequence contains values", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []T {
 				return random.Slice(t.Random.IntBetween(3, 7), func() T {
-					return conf.Get(t).makeElem(t)
+					return mk[T](t, conf.Get(t).MakeElem)
 				})
 			})
 
@@ -190,7 +188,7 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 			index     = let.Var[int](s, nil)
 			newValues = let.Var(s, func(t *testcase.T) []T {
 				return random.Slice(t.Random.IntBetween(3, 7), func() T {
-					return conf.Get(t).makeElem(t)
+					return mk[T](t, conf.Get(t).MakeElem)
 				})
 			})
 		)
@@ -245,7 +243,7 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 
 			values := let.Var(s, func(t *testcase.T) []T {
 				return random.Slice(t.Random.IntBetween(3, 7), func() T {
-					return conf.Get(t).makeElem(t)
+					return mk[T](t, conf.Get(t).MakeElem)
 				})
 			})
 
@@ -293,9 +291,11 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 				s.Then("old values from the original index are present after the last elem of the newly inserted values", func(t *testcase.T) {
 					onSuccess(t)
 
-					for i, exp := range values.Get(t)[index.Get(t):] {
-						targetIndex := i + len(newValues.Get(t))
-						got, ok := seq.Get(t).Lookup(targetIndex)
+					var remainder = values.Get(t)[index.Get(t):]
+					var offset = len(values.Get(t)[:index.Get(t)]) + len(newValues.Get(t))
+					for i, exp := range remainder {
+						outIndex := i + offset
+						got, ok := seq.Get(t).Lookup(outIndex)
 						assert.True(t, ok)
 						assert.Equal(t, exp, got)
 					}
@@ -342,7 +342,7 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 		s.When("sequence contains values", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []T {
 				return random.Slice(t.Random.IntBetween(3, 7), func() T {
-					return conf.Get(t).makeElem(t)
+					return mk[T](t, conf.Get(t).MakeElem)
 				})
 			})
 

@@ -206,7 +206,7 @@ func Unshift[T any](vs *[]T, nvs ...T) {
 	*vs = append(nvs, *vs...)
 }
 
-func Insert[T any](vs *[]T, index int, nvs ...T) bool {
+func Insert[S ~[]T, T any](vs *S, index int, nvs ...T) bool {
 	if len(nvs) == 0 {
 		return true
 	}

@@ -2,11 +2,14 @@ package slicekit_test
 
 import (
 	"fmt"
+	"iter"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
@@ -1448,4 +1451,53 @@ func TestResolveIndex(t *testing.T) {
 		assert.False(t, ok)
 		assert.Equal(t, negIndex, got)
 	})
+}
+
+func Test_sequence(t *testing.T) {
+	datastructcontract.Sequence[string](func(t testing.TB) datastructcontract.SequenceConfig[string] {
+		return datastructcontract.SequenceConfig[string]{
+			Make: func() datastruct.Sequence[string] {
+				return &Sequence[string]{}
+			},
+		}
+	}).Test(t)
+}
+
+type Sequence[T any] []T
+
+func (seq *Sequence[T]) Lookup(index int) (T, bool) {
+	return slicekit.Lookup(*seq, index)
+}
+
+func (seq *Sequence[T]) Set(index int, val T) bool {
+	index, ok := slicekit.ResolveIndex(len(*seq), index)
+	if !ok {
+		return false
+	}
+	(*seq)[index] = val
+	return true
+}
+
+func (seq *Sequence[T]) Insert(index int, vs ...T) bool {
+	return slicekit.Insert(seq, index, vs...)
+}
+
+func (seq *Sequence[T]) Delete(index int) bool {
+	return slicekit.Delete(seq, index)
+}
+
+func (seq *Sequence[T]) Append(vs ...T) {
+	*seq = append(*seq, vs...)
+}
+
+func (seq *Sequence[T]) ToSlice() []T {
+	return *seq
+}
+
+func (seq *Sequence[T]) Iter() iter.Seq[T] {
+	return iterkit.FromSlice(*seq)
+}
+
+func (seq *Sequence[T]) Len() int {
+	return len(*seq)
 }
