@@ -83,8 +83,8 @@ func Lookup[T any](vs []T, index int) (T, bool) {
 }
 
 // Merge will merge every []T slice into a single one.
-func Merge[T any](slices ...[]T) []T {
-	var out []T
+func Merge[S ~[]T, T any](slices ...S) S {
+	var out S
 	for _, slice := range slices {
 		out = append(out, slice...)
 	}
@@ -92,18 +92,18 @@ func Merge[T any](slices ...[]T) []T {
 }
 
 // Clone creates a clone from passed src slice.
-func Clone[T any](src []T) []T {
+func Clone[S ~[]T, T any](src S) S {
 	if src == nil {
 		return nil
 	}
-	var dst = make([]T, len(src))
+	var dst = make(S, len(src))
 	copy(dst, src)
 	return dst
 }
 
 // Contains reports if a slice contains a given value.
-func Contains[T comparable](s []T, v T) bool {
-	for _, got := range s {
+func Contains[T comparable](vs []T, v T) bool {
+	for _, got := range vs {
 		if got == v {
 			return true
 		}
@@ -141,7 +141,7 @@ func UniqueBy[T any, ID comparable](vs []T, by func(T) ID) []T {
 	return out
 }
 
-func Pop[T any](vs *[]T) (T, bool) {
+func Pop[S ~[]T, T any](vs *S) (T, bool) {
 	var v T
 	if vs == nil {
 		return v, false
@@ -158,7 +158,7 @@ func Pop[T any](vs *[]T) (T, bool) {
 	return v, true
 }
 
-func PopAt[T any](vs *[]T, index int) (T, bool) {
+func PopAt[S ~[]T, T any](vs *S, index int) (T, bool) {
 	if vs == nil {
 		var zero T
 		return zero, false
@@ -183,7 +183,7 @@ func PopAt[T any](vs *[]T, index int) (T, bool) {
 	return val, true
 }
 
-func Shift[T any](vs *[]T) (T, bool) {
+func Shift[S ~[]T, T any](vs *S) (T, bool) {
 	var v T
 	if vs == nil {
 		return v, false
@@ -199,7 +199,7 @@ func Shift[T any](vs *[]T) (T, bool) {
 	return v, true
 }
 
-func Unshift[T any](vs *[]T, nvs ...T) {
+func Unshift[S ~[]T, T any](vs *S, nvs ...T) {
 	if len(nvs) == 0 {
 		return
 	}
@@ -246,7 +246,7 @@ func Last[T any](vs []T) (T, bool) {
 }
 
 func AnyOf[T any](vs []T, filter func(T) bool) bool {
-	_, ok := Find[T](vs, filter)
+	_, ok := Find(vs, filter)
 	return ok
 }
 
@@ -291,6 +291,15 @@ func IterReverse[T any](vs []T) iter.Seq2[int, T] {
 			}
 		}
 	}
+}
+
+func Set[T any](vs []T, index int, v T) bool {
+	index, ok := ResolveIndex(len(vs), index)
+	if !ok {
+		return false
+	}
+	vs[index] = v
+	return true
 }
 
 func Delete[S ~[]T, T any](vs *S, index int) bool {

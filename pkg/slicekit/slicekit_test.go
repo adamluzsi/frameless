@@ -300,7 +300,7 @@ func TestClone(t *testing.T) {
 		assert.Equal(t, dst, []string{"a", "42", "c", "foo"})
 	})
 	t.Run("nil slice clones into a nil slice", func(t *testing.T) {
-		assert.Equal(t, slicekit.Clone[int](nil), nil)
+		assert.Equal(t, slicekit.Clone[[]int](nil), nil)
 	})
 }
 
@@ -603,14 +603,14 @@ func TestPop(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
-		v, ok := slicekit.Pop[string](nil)
+		v, ok := slicekit.Pop[[]string](nil)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
-		v, ok := slicekit.Pop[string](&list)
+		v, ok := slicekit.Pop(&list)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
@@ -680,14 +680,14 @@ func TestShift(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
-		v, ok := slicekit.Shift[string](nil)
+		v, ok := slicekit.Shift[[]string](nil)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
-		v, ok := slicekit.Shift[string](&list)
+		v, ok := slicekit.Shift(&list)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
@@ -742,14 +742,14 @@ func TestUnshift(t *testing.T) {
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
 		assert.Panic(t, func() {
-			slicekit.Unshift[string](nil, "")
+			slicekit.Unshift[[]string](nil, "")
 		})
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
 		exp := t.Random.String()
-		slicekit.Unshift[string](&list, exp)
+		slicekit.Unshift(&list, exp)
 		assert.Equal(t, []string{exp}, list)
 	})
 
@@ -1152,7 +1152,7 @@ func TestSortBy(t *testing.T) {
 
 func TestFirst(t *testing.T) {
 	t.Run("nil", func(t *testing.T) {
-		_, ok := slicekit.First[string](nil)
+		_, ok := slicekit.First[[]string](nil)
 		assert.False(t, ok)
 	})
 	t.Run("empty", func(t *testing.T) {
@@ -1178,14 +1178,14 @@ func TestPopAt(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
-		v, ok := slicekit.PopAt[string](nil, 0)
+		v, ok := slicekit.PopAt[[]string](nil, 0)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
-		v, ok := slicekit.PopAt[string](&list, t.Random.IntBetween(0, 100))
+		v, ok := slicekit.PopAt(&list, t.Random.IntBetween(0, 100))
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
@@ -1470,12 +1470,7 @@ func (seq *Sequence[T]) Lookup(index int) (T, bool) {
 }
 
 func (seq *Sequence[T]) Set(index int, val T) bool {
-	index, ok := slicekit.ResolveIndex(len(*seq), index)
-	if !ok {
-		return false
-	}
-	(*seq)[index] = val
-	return true
+	return slicekit.Set(*seq, index, val)
 }
 
 func (seq *Sequence[T]) Insert(index int, vs ...T) bool {
