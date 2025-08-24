@@ -260,6 +260,16 @@ func Sequence[T any](init contract.Init[SequenceConfig[T]]) contract.Contract {
 
 				s.Then("the total length increases to the sum of values", func(t *testcase.T) {
 					onSuccess(t)
+					t.OnFail(func() {
+						t.LogPretty("---")
+						t.LogPretty(values.Get(t))
+						t.LogPretty(newValues.Get(t))
+						t.LogPretty(seq.Get(t).Len())
+						t.Log("old values len", len(values.Get(t)))
+						t.Log("new values len", len(newValues.Get(t)))
+					})
+
+					t.LogPretty("###")
 					expLen := len(values.Get(t)) + len(newValues.Get(t))
 					gotLen := seq.Get(t).Len()
 					assert.Equal(t, expLen, gotLen)

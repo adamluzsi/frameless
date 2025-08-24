@@ -136,6 +136,16 @@ func TestOrderedSet(t *testing.T) {
 		},
 	}
 
+	var createMakeUniqueVFunc = func(tb testing.TB) func() string {
+		t := testcase.ToT(&tb)
+		var vs []string
+		return func() string {
+			nv := random.Unique(t.Random.String, vs...)
+			vs = append(vs, nv)
+			return nv
+		}
+	}
+
 	t.Run("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
 		return &datastruct.OrderedSet[string]{}
 	}, c).Test)
@@ -144,11 +154,13 @@ func TestOrderedSet(t *testing.T) {
 		return &datastruct.OrderedSet[string]{}
 	}, c).Test)
 
-	t.Run("implements sequence", datastructcontract.Sequence[string](func(t testing.TB) datastructcontract.SequenceConfig[string] {
+	t.Run("implements sequence", datastructcontract.Sequence[string](func(tb testing.TB) datastructcontract.SequenceConfig[string] {
+		makeElem := createMakeUniqueVFunc(tb)
 		return datastructcontract.SequenceConfig[string]{
 			Make: func() datastruct.Sequence[string] {
 				return &datastruct.OrderedSet[string]{}
 			},
+			MakeElem: makeElem,
 		}
 	}).Test)
 }
