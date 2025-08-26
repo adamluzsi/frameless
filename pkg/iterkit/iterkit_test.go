@@ -2841,8 +2841,8 @@ func TestMap2(t *testing.T) {
 	s.Parallel()
 
 	var (
-		yieldedValues = let.Var(s, func(t *testcase.T) map[string]int {
-			return make(map[string]int)
+		yieldedValues = let.Var(s, func(t *testcase.T) []iterkit.KV[string, int] {
+			return make([]iterkit.KV[string, int], 0)
 		})
 		length = let.IntB(s, 3, 7)
 		itr    = let.Var(s, func(t *testcase.T) iter.Seq2[string, int] {
@@ -2850,9 +2850,8 @@ func TestMap2(t *testing.T) {
 				for range length.Get(t) {
 					k := t.Random.String()
 					v := t.Random.Int()
-					cont := yield(k, v)
-					yieldedValues.Get(t)[k] = v
-					if !cont {
+					testcase.Append(t, yieldedValues, iterkit.KV[string, int]{K: k, V: v})
+					if !yield(k, v) {
 						return
 					}
 				}
@@ -2868,16 +2867,23 @@ func TestMap2(t *testing.T) {
 		return iterkit.Map2(itr.Get(t), transform.Get(t))
 	}
 
+	var transformKV = func(t *testcase.T, kvs []iterkit.KV[string, int]) []iterkit.KV[string, string] {
+		return slicekit.Map(kvs, func(kv iterkit.KV[string, int]) iterkit.KV[string, string] {
+			nk, nv := transform.Get(t)(kv.K, kv.V)
+			return iterkit.KV[string, string]{K: nk, V: nv}
+		})
+	}
+
 	s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
-		got := iterkit.Collect2Map(act(t))
-		exp := mapkit.Map(yieldedValues.Get(t), transform.Get(t))
+		got := iterkit.Collect2KV(act(t))
+		exp := transformKV(t, yieldedValues.Get(t))
 		assert.ContainsExactly(t, exp, got)
 	})
 
 	s.Then("it respects if iteration is interupted", func(t *testcase.T) {
 		expLen := t.Random.IntB(1, length.Get(t))
-		got := iterkit.Collect2Map(iterkit.Head2(act(t), expLen))
-		assert.Equal(t, len(got), expLen)
+		got := iterkit.Collect2KV(iterkit.Head2(act(t), expLen))
+		assert.Equal(t, expLen, len(got))
 		assert.Equal(t, len(yieldedValues.Get(t)), expLen)
 	})
 }
