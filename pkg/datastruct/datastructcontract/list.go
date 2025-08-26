@@ -90,16 +90,15 @@ type ListOption[T any] interface {
 }
 
 type ListConfig[T any] struct {
-	MakeT func(testing.TB) T
-	// ChangeT func(testing.TB, *T)
+	MakeElem func(testing.TB) T
 }
 
 var _ ListOption[any] = ListConfig[any]{}
 
 func (c ListConfig[T]) Configure(o *ListConfig[T]) {
-	o.MakeT = zerokit.Coalesce(c.MakeT, o.MakeT)
+	o.MakeElem = zerokit.Coalesce(c.MakeElem, o.MakeElem)
 }
 
 func (c ListConfig[T]) makeT(tb testing.TB) T {
-	return zerokit.Coalesce(c.MakeT, spechelper.MakeValue[T])(tb)
+	return zerokit.Coalesce(c.MakeElem, spechelper.MakeValue[T])(tb)
 }

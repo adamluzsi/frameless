@@ -126,21 +126,32 @@ func TestOrderedSet(t *testing.T) {
 			return []string{}
 		},
 	}
-	c := datastructcontract.ListConfig[string]{
-		MakeT: func(tb testing.TB) string {
-			t := tb.(*testcase.T)
-			// we produce unique values because a Set type only accept new unique value
-			v := random.Unique(func() string { return t.Random.String() }, vs.Get(t)...)
-			testcase.Append(t, vs, v)
-			return v
-		},
+
+	var makeElem = func(tb testing.TB) string {
+		t := tb.(*testcase.T)
+		// we produce unique values because a Set type only accept new unique value
+		v := random.Unique(func() string { return t.Random.String() }, vs.Get(t)...)
+		testcase.Append(t, vs, v)
+		return v
+	}
+
+	lc := datastructcontract.ListConfig[string]{
+		MakeElem: makeElem,
+	}
+
+	sc := datastructcontract.SequenceConfig[string]{
+		MakeElem: makeElem,
 	}
 
 	t.Run("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
 		return &datastruct.OrderedSet[string]{}
-	}, c).Test)
+	}, lc).Test)
 
 	t.Run("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) datastruct.List[string] {
 		return &datastruct.OrderedSet[string]{}
-	}, c).Test)
+	}, lc).Test)
+
+	t.Run("implements sequence", datastructcontract.Sequence[string](func(tb testing.TB) datastruct.Sequence[string] {
+		return &datastruct.OrderedSet[string]{}
+	}, sc).Test)
 }

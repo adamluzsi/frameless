@@ -9,13 +9,13 @@ type List[T any] interface {
 	Sizer
 }
 
-// type Sequence[T any] interface {
-// 	List[T]
-// 	Lookup(index int) (T, bool)
-// 	Set(index int, val T) bool
-// 	Insert(index int, v T) bool
-// 	Delete(index int) bool
-// }
+type Sequence[T any] interface {
+	List[T]
+	Lookup(index int) (T, bool)
+	Set(index int, val T) bool
+	Insert(index int, vs ...T) bool
+	Delete(index int) bool
+}
 
 // type Deque[T any] interface {
 // 	Shift() (T, bool)
