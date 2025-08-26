@@ -2,18 +2,40 @@ package slicekit_test
 
 import (
 	"fmt"
+	"iter"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
+
+type CustomSliceType []int
+
+func Example_customType() {
+	var vs CustomSliceType
+	var o CustomSliceType
+	_ = o
+	o = slicekit.Clone(vs)
+	slicekit.Insert(&vs, 0, 1, 2, 3)
+	slicekit.Set(vs, 0, 42)
+	slicekit.Delete(&vs, -1) // pop
+	o = slicekit.Filter(vs, func(v int) bool { return true })
+	o, _ = slicekit.FilterErr(vs, func(v int) (bool, error) { return true, nil })
+	slicekit.GroupBy(vs, func(n int) int { return n })
+	o = slicekit.Merge(vs, vs)
+	_, _ = slicekit.Pop(&vs)
+	_, _ = slicekit.PopAt(&vs, -1)
+}
 
 func ExampleMust() {
 	var x = []int{1, 2, 3}
@@ -296,7 +318,7 @@ func TestClone(t *testing.T) {
 		assert.Equal(t, dst, []string{"a", "42", "c", "foo"})
 	})
 	t.Run("nil slice clones into a nil slice", func(t *testing.T) {
-		assert.Equal(t, slicekit.Clone[int](nil), nil)
+		assert.Equal(t, slicekit.Clone[[]int](nil), nil)
 	})
 }
 
@@ -336,7 +358,7 @@ func TestFilter(t *testing.T) {
 func ExampleFilterErr() {
 	var (
 		src      = []string{"a", "b", "c"}
-		dst, err = slicekit.FilterErr[string](src, func(s string) (bool, error) {
+		dst, err = slicekit.FilterErr(src, func(s string) (bool, error) {
 			return s != "c", nil
 		})
 	)
@@ -347,7 +369,7 @@ func TestFilterErr(t *testing.T) {
 	t.Run("happy", func(t *testing.T) {
 		var (
 			src      = []string{"a", "b", "c"}
-			dst, err = slicekit.FilterErr[string](src, func(s string) (bool, error) {
+			dst, err = slicekit.FilterErr(src, func(s string) (bool, error) {
 				return s != "c", nil
 			})
 		)
@@ -358,7 +380,7 @@ func TestFilterErr(t *testing.T) {
 	t.Run("happy (no-error)", func(t *testing.T) {
 		var (
 			src = []string{"a", "b", "c"}
-			dst = must.Must(slicekit.FilterErr[string](src, func(s string) (bool, error) {
+			dst = must.Must(slicekit.FilterErr(src, func(s string) (bool, error) {
 				return s != "b", nil
 			}))
 		)
@@ -367,7 +389,7 @@ func TestFilterErr(t *testing.T) {
 	})
 	t.Run("error is propagated back", func(t *testing.T) {
 		expErr := fmt.Errorf("boom")
-		got, err := slicekit.FilterErr[string]([]string{"a", "b", "c"}, func(s string) (bool, error) {
+		got, err := slicekit.FilterErr([]string{"a", "b", "c"}, func(s string) (bool, error) {
 			return false, expErr
 		})
 		assert.ErrorIs(t, err, expErr)
@@ -599,14 +621,14 @@ func TestPop(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
-		v, ok := slicekit.Pop[string](nil)
+		v, ok := slicekit.Pop[[]string](nil)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
-		v, ok := slicekit.Pop[string](&list)
+		v, ok := slicekit.Pop(&list)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
@@ -676,14 +698,14 @@ func TestShift(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
-		v, ok := slicekit.Shift[string](nil)
+		v, ok := slicekit.Shift[[]string](nil)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
-		v, ok := slicekit.Shift[string](&list)
+		v, ok := slicekit.Shift(&list)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
@@ -738,14 +760,14 @@ func TestUnshift(t *testing.T) {
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
 		assert.Panic(t, func() {
-			slicekit.Unshift[string](nil, "")
+			slicekit.Unshift[[]string](nil, "")
 		})
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
 		exp := t.Random.String()
-		slicekit.Unshift[string](&list, exp)
+		slicekit.Unshift(&list, exp)
 		assert.Equal(t, []string{exp}, list)
 	})
 
@@ -872,8 +894,8 @@ func TestInsert(t *testing.T) {
 			return random.Slice(t.Random.IntBetween(3, 5), t.Random.String, random.UniqueValues)
 		})
 	)
-	act := func(t *testcase.T) {
-		slicekit.Insert(slice.Get(t), index.Get(t), values.Get(t)...)
+	act := func(t *testcase.T) bool {
+		return slicekit.Insert(slice.Get(t), index.Get(t), values.Get(t)...)
 	}
 
 	s.When("input slice is empty/nil", func(s *testcase.Spec) {
@@ -888,7 +910,7 @@ func TestInsert(t *testing.T) {
 		index.LetValue(s, 0)
 
 		s.Then("it will add the values to it", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			assert.Equal(t, *slice.Get(t), values.Get(t))
 		})
@@ -898,7 +920,7 @@ func TestInsert(t *testing.T) {
 		index.LetValue(s, 0)
 
 		s.Then("it will act as unshift", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			var exp []string
 			exp = append(exp, values.Get(t)...)
@@ -911,7 +933,7 @@ func TestInsert(t *testing.T) {
 		index.LetValue(s, 1)
 
 		s.Then("it insert the values to the posistion", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			var exp []string
 			exp = append(exp, og.Get(t)[0])
@@ -921,11 +943,26 @@ func TestInsert(t *testing.T) {
 		})
 	})
 
-	s.When("index is a negative number", func(s *testcase.Spec) {
+	s.When("index is pointing to next index number of the slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return len(*slice.Get(t))
+		})
+
+		s.Then("it will append the new values at the end of the slice", func(t *testcase.T) {
+			assert.True(t, act(t))
+
+			var exp []string
+			exp = append(exp, og.Get(t)...)
+			exp = append(exp, values.Get(t)...)
+			assert.Equal(t, *slice.Get(t), exp)
+		})
+	})
+
+	s.When("index is referencing the last element through using -1", func(s *testcase.Spec) {
 		index.LetValue(s, -1)
 
 		s.Then("it will insert the values at the last index position, just before/in-place of the last element", func(t *testcase.T) {
-			act(t)
+			assert.True(t, act(t))
 
 			lastIndex := len(og.Get(t)) - 1
 			var exp []string
@@ -939,16 +976,13 @@ func TestInsert(t *testing.T) {
 
 	s.When("index is bigger than the input slice", func(s *testcase.Spec) {
 		index.Let(s, func(t *testcase.T) int {
-			return len(og.Get(t)) + t.Random.IntBetween(3, 7)
+			return len(og.Get(t)) + t.Random.IntBetween(1, 7)
 		})
 
-		s.Then("it will append the values to the end", func(t *testcase.T) {
-			act(t)
+		s.Then("it will report that insertion is not possible due to being too much out of bound", func(t *testcase.T) {
+			assert.False(t, act(t))
 
-			var exp []string
-			exp = append(exp, og.Get(t)...)
-			exp = append(exp, values.Get(t)...)
-			assert.Equal(t, *slice.Get(t), exp)
+			assert.Equal(t, og.Get(t), *slice.Get(t))
 		})
 	})
 
@@ -1093,7 +1127,7 @@ func ExampleGroupBy() {
 
 func TestGroupBy(t *testing.T) {
 	t.Run("nil slice", func(t *testing.T) {
-		assert.Nil(t, slicekit.GroupBy[int, int](nil, func(v int) int { return 0 }))
+		assert.Nil(t, slicekit.GroupBy[[]int, int](nil, func(v int) int { return 0 }))
 	})
 
 	t.Run("empty slice", func(t *testing.T) {
@@ -1104,7 +1138,7 @@ func TestGroupBy(t *testing.T) {
 
 	t.Run("nil group by func", func(t *testing.T) {
 		assert.Panic(t, func() {
-			_ = slicekit.GroupBy[int, int]([]int{1, 2, 3}, nil)
+			_ = slicekit.GroupBy[[]int, int]([]int{1, 2, 3}, nil)
 		})
 	})
 
@@ -1136,7 +1170,7 @@ func TestSortBy(t *testing.T) {
 
 func TestFirst(t *testing.T) {
 	t.Run("nil", func(t *testing.T) {
-		_, ok := slicekit.First[string](nil)
+		_, ok := slicekit.First[[]string](nil)
 		assert.False(t, ok)
 	})
 	t.Run("empty", func(t *testing.T) {
@@ -1162,14 +1196,14 @@ func TestPopAt(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test("nil slice pointer", func(t *testcase.T) {
-		v, ok := slicekit.PopAt[string](nil, 0)
+		v, ok := slicekit.PopAt[[]string](nil, 0)
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
 
 	s.Test("nil slice", func(t *testcase.T) {
 		var list []string
-		v, ok := slicekit.PopAt[string](&list, t.Random.IntBetween(0, 100))
+		v, ok := slicekit.PopAt(&list, t.Random.IntBetween(0, 100))
 		assert.False(t, ok)
 		assert.Empty(t, v)
 	})
@@ -1275,4 +1309,204 @@ func TestIterReverse_smoke(t *testing.T) {
 		got := iterkit.Collect2KV(slicekit.IterReverse(slc))
 		assert.Equal(t, exp, got)
 	})
+}
+
+func TestDelete(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		og = testcase.Let(s, func(t *testcase.T) []string {
+			return random.Slice(t.Random.IntBetween(3, 7), t.Random.String, random.UniqueValues)
+		})
+		slice = testcase.Let(s, func(t *testcase.T) *[]string {
+			var s = slicekit.Clone(og.Get(t))
+			return &s
+		})
+		index = testcase.Let[int](s, nil)
+	)
+	act := func(t *testcase.T) bool {
+		return slicekit.Delete(slice.Get(t), index.Get(t))
+	}
+
+	s.When("input slice is empty/nil", func(s *testcase.Spec) {
+		slice.Let(s, func(t *testcase.T) *[]string {
+			var s []string
+			if t.Random.Bool() {
+				s = []string{}
+			}
+			return &s
+		})
+
+		index.Let(s, let.IntB(s, 0, 3).Get)
+
+		s.Then("unsuccess is reported", func(t *testcase.T) {
+			assert.False(t, act(t))
+		})
+	})
+
+	s.When("index is pointing somewhere inside the slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return t.Random.IntN(len(og.Get(t)))
+		})
+
+		s.Then("it deletes the value at the index", func(t *testcase.T) {
+			assert.True(t, act(t))
+
+			var exp []string
+			exp = append(exp, og.Get(t)[:index.Get(t)]...)
+
+			if len(og.Get(t))-1 != index.Get(t) { // if not Pop case, add the remaining ones
+				exp = append(exp, og.Get(t)[index.Get(t)+1:]...)
+			}
+
+			assert.Equal(t, exp, *slice.Get(t))
+		})
+
+		s.And("if the index points to the last element", func(s *testcase.Spec) {
+			index.Let(s, func(t *testcase.T) int {
+				if t.Random.Bool() {
+					t.Log("given last element identified with -1")
+					return -1
+				}
+
+				i := len(og.Get(t)) - 1
+				assert.NotEqual(t, i, -1, "incorrect test setup")
+				return i
+			})
+
+			s.Then("delete act like deque pop", func(t *testcase.T) {
+				assert.True(t, act(t))
+				lastIndex := len(og.Get(t)) - 1
+				exp := og.Get(t)[:lastIndex]
+				assert.Equal(t, exp, *slice.Get(t))
+			})
+		})
+
+		s.And("if the index points to the first element", func(s *testcase.Spec) {
+			index.LetValue(s, 0)
+
+			s.Then("delete act like deque shift", func(t *testcase.T) {
+				assert.True(t, act(t))
+				exp := og.Get(t)[1:]
+				assert.Equal(t, exp, *slice.Get(t))
+			})
+		})
+	})
+
+	s.When("index is bigger than the input slice", func(s *testcase.Spec) {
+		index.Let(s, func(t *testcase.T) int {
+			return len(og.Get(t)) + t.Random.IntBetween(1, 7)
+		})
+
+		s.Then("it will report that insertion is not possible due to being too much out of bound", func(t *testcase.T) {
+			assert.False(t, act(t))
+
+			assert.Equal(t, og.Get(t), *slice.Get(t))
+		})
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		var makeElem = func() string {
+			return t.Random.HexN(5)
+		}
+		for i := range 10 {
+			i += 10 // offset
+			vs := random.Slice(i, makeElem)
+			index := t.Random.IntN(len(vs))
+			nvs := random.Slice(t.Random.IntBetween(3, 5), makeElem)
+			got := slicekit.Clone(vs)
+			slicekit.Insert(&got, index, nvs...)
+			assert.Contains(t, got, vs)
+			assert.Contains(t, got, nvs)
+			assert.Equal(t, nvs, got[index:index+len(nvs)])
+			assert.Equal(t, vs[:index], got[:index])
+			assert.Equal(t, vs[index:], got[index+len(nvs):])
+		}
+	})
+}
+
+func ExampleResolveIndex() {
+	var s = []string{"foo", "bar", "baz"}
+	_, _ = slicekit.ResolveIndex(len(s), 1)  // 1, true
+	_, _ = slicekit.ResolveIndex(len(s), 2)  // 2, true
+	_, _ = slicekit.ResolveIndex(len(s), -1) // 2, true
+	_, _ = slicekit.ResolveIndex(len(s), 3)  // 3, false
+}
+
+func TestResolveIndex(t *testing.T) {
+	var s = []string{"foo", "bar", "baz"}
+	rnd := random.New(random.CryptoSeed{})
+
+	t.Run("pos", func(t *testing.T) {
+		for exp := range s {
+			got, ok := slicekit.ResolveIndex(len(s), exp)
+			assert.True(t, ok)
+			assert.Equal(t, exp, got)
+		}
+	})
+	t.Run("pos - out of bound", func(t *testing.T) {
+		i := len(s) + rnd.IntBetween(0, 100)
+		got, ok := slicekit.ResolveIndex(len(s), i)
+		assert.False(t, ok)
+		assert.Equal(t, i, got)
+	})
+
+	t.Run("neg", func(t *testing.T) {
+		for exp := range s {
+			// 0 - 3 = -3
+			// 1 - 3 = -2
+			// 2 - 3 = -1
+			var negIndex = exp - len(s)
+			got, ok := slicekit.ResolveIndex(len(s), negIndex)
+			assert.True(t, ok)
+			assert.Equal(t, exp, got)
+		}
+	})
+
+	t.Run("neg - out of bound", func(t *testing.T) {
+		var negIndex = -len(s) - rnd.IntBetween(1, 100)
+		got, ok := slicekit.ResolveIndex(len(s), negIndex)
+		assert.False(t, ok)
+		assert.Equal(t, negIndex, got)
+	})
+}
+
+func Test_sequence(t *testing.T) {
+	datastructcontract.Sequence(func(tb testing.TB) datastruct.Sequence[string] {
+		return &Sequence[string]{}
+	}).Test(t)
+}
+
+type Sequence[T any] []T
+
+func (seq *Sequence[T]) Lookup(index int) (T, bool) {
+	return slicekit.Lookup(*seq, index)
+}
+
+func (seq *Sequence[T]) Set(index int, val T) bool {
+	return slicekit.Set(*seq, index, val)
+}
+
+func (seq *Sequence[T]) Insert(index int, vs ...T) bool {
+	return slicekit.Insert(seq, index, vs...)
+}
+
+func (seq *Sequence[T]) Delete(index int) bool {
+	return slicekit.Delete(seq, index)
+}
+
+func (seq *Sequence[T]) Append(vs ...T) {
+	*seq = append(*seq, vs...)
+}
+
+func (seq *Sequence[T]) ToSlice() []T {
+	return *seq
+}
+
+func (seq *Sequence[T]) Iter() iter.Seq[T] {
+	return iterkit.FromSlice(*seq)
+}
+
+func (seq *Sequence[T]) Len() int {
+	return len(*seq)
 }

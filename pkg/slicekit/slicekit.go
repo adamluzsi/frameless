@@ -50,18 +50,18 @@ func ReduceErr[O, I any](s []I, initial O, reducer func(O, I) (O, error)) (O, er
 	return result, nil
 }
 
-func Filter[T any](src []T, filter func(v T) bool) []T {
-	return must.Must(FilterErr(src, func(v T) (bool, error) {
+func Filter[S ~[]T, T any](s S, filter func(v T) bool) S {
+	return must.Must(FilterErr(s, func(v T) (bool, error) {
 		return filter(v), nil
 	}))
 }
 
-func FilterErr[T any](src []T, filter func(v T) (bool, error)) ([]T, error) {
-	if src == nil {
+func FilterErr[S ~[]T, T any](s S, filter func(v T) (bool, error)) (S, error) {
+	if s == nil {
 		return nil, nil
 	}
-	var out = make([]T, 0, len(src))
-	for _, val := range src {
+	var out = make([]T, 0, len(s))
+	for _, val := range s {
 		ok, err := filter(val)
 		if err != nil {
 			return nil, err
@@ -74,7 +74,7 @@ func FilterErr[T any](src []T, filter func(v T) (bool, error)) ([]T, error) {
 }
 
 func Lookup[T any](vs []T, index int) (T, bool) {
-	index, ok := normaliseIndex(len(vs), index)
+	index, ok := ResolveIndex(len(vs), index)
 	if !ok {
 		var zero T
 		return zero, false
@@ -83,8 +83,8 @@ func Lookup[T any](vs []T, index int) (T, bool) {
 }
 
 // Merge will merge every []T slice into a single one.
-func Merge[T any](slices ...[]T) []T {
-	var out []T
+func Merge[S ~[]T, T any](slices ...S) S {
+	var out S
 	for _, slice := range slices {
 		out = append(out, slice...)
 	}
@@ -92,18 +92,18 @@ func Merge[T any](slices ...[]T) []T {
 }
 
 // Clone creates a clone from passed src slice.
-func Clone[T any](src []T) []T {
+func Clone[S ~[]T, T any](src S) S {
 	if src == nil {
 		return nil
 	}
-	var dst = make([]T, len(src))
+	var dst = make(S, len(src))
 	copy(dst, src)
 	return dst
 }
 
 // Contains reports if a slice contains a given value.
-func Contains[T comparable](s []T, v T) bool {
-	for _, got := range s {
+func Contains[T comparable](vs []T, v T) bool {
+	for _, got := range vs {
 		if got == v {
 			return true
 		}
@@ -141,7 +141,7 @@ func UniqueBy[T any, ID comparable](vs []T, by func(T) ID) []T {
 	return out
 }
 
-func Pop[T any](vs *[]T) (T, bool) {
+func Pop[S ~[]T, T any](vs *S) (T, bool) {
 	var v T
 	if vs == nil {
 		return v, false
@@ -158,7 +158,7 @@ func Pop[T any](vs *[]T) (T, bool) {
 	return v, true
 }
 
-func PopAt[T any](vs *[]T, index int) (T, bool) {
+func PopAt[S ~[]T, T any](vs *S, index int) (T, bool) {
 	if vs == nil {
 		var zero T
 		return zero, false
@@ -171,7 +171,7 @@ func PopAt[T any](vs *[]T, index int) (T, bool) {
 		return zero, false
 	}
 
-	index, ok := normaliseIndex(length, index)
+	index, ok := ResolveIndex(length, index)
 	if !ok {
 		var zero T
 		return zero, false
@@ -183,7 +183,7 @@ func PopAt[T any](vs *[]T, index int) (T, bool) {
 	return val, true
 }
 
-func Shift[T any](vs *[]T) (T, bool) {
+func Shift[S ~[]T, T any](vs *S) (T, bool) {
 	var v T
 	if vs == nil {
 		return v, false
@@ -199,33 +199,34 @@ func Shift[T any](vs *[]T) (T, bool) {
 	return v, true
 }
 
-func Unshift[T any](vs *[]T, nvs ...T) {
+func Unshift[S ~[]T, T any](vs *S, nvs ...T) {
 	if len(nvs) == 0 {
 		return
 	}
 	*vs = append(nvs, *vs...)
 }
 
-func Insert[T any](vs *[]T, index int, nvs ...T) {
+func Insert[S ~[]T, T any](vs *S, index int, nvs ...T) bool {
 	if len(nvs) == 0 {
-		return
+		return true
+	}
+	index, ok := ResolveIndex(len(*vs), index)
+	if !ok { // out of bound
+		if nextindex := len(*vs); index == nextindex {
+			*vs = append(*vs, nvs...)
+			return true
+		}
+		return false
 	}
 	if len(*vs) < index {
-		*vs = append(*vs, nvs...)
-		return
-	}
-	index, ok := normaliseIndex(len(*vs), index)
-	if !ok {
-		*vs = append(*vs, nvs...)
-		return
-	} else if len(*vs) < index {
-		index = len(*vs)
+		return false
 	}
 	var og = Clone(*vs)
 	*vs = make([]T, 0, len(og)+len(nvs))
 	*vs = append(*vs, og[:index]...)
 	*vs = append(*vs, nvs...)
 	*vs = append(*vs, og[index:]...)
+	return true
 }
 
 func First[T any](vs []T) (T, bool) {
@@ -245,7 +246,7 @@ func Last[T any](vs []T) (T, bool) {
 }
 
 func AnyOf[T any](vs []T, filter func(T) bool) bool {
-	_, ok := Find[T](vs, filter)
+	_, ok := Find(vs, filter)
 	return ok
 }
 
@@ -261,14 +262,14 @@ func Find[T any](vs []T, by func(T) bool) (T, bool) {
 }
 
 // GroupBy will group values in []T based on the group indetifier function.
-func GroupBy[T any, ID comparable](vs []T, by func(v T) ID) map[ID][]T {
+func GroupBy[S ~[]T, ID comparable, T any](vs S, by func(v T) ID) map[ID]S {
 	if len(vs) == 0 {
 		return nil
 	}
 	if by == nil {
 		panic("Incorrect use of slicekit.GroupBy[T, ID], it must receive the `func(v T) ID` function!")
 	}
-	var groups = map[ID][]T{}
+	var groups = map[ID]S{}
 	for _, v := range vs {
 		var id = by(v)
 		groups[id] = append(groups[id], v)
@@ -282,14 +283,6 @@ func SortBy[T any](vs []T, less func(a, b T) bool) {
 	})
 }
 
-func normaliseIndex(length, index int) (int, bool) {
-	if index < 0 {
-		n := length + index
-		return n, 0 <= n
-	}
-	return index, index < length
-}
-
 func IterReverse[T any](vs []T) iter.Seq2[int, T] {
 	return func(yield func(int, T) bool) {
 		for i := len(vs) - 1; i >= 0; i-- {
@@ -298,4 +291,38 @@ func IterReverse[T any](vs []T) iter.Seq2[int, T] {
 			}
 		}
 	}
+}
+
+func Set[T any](vs []T, index int, v T) bool {
+	index, ok := ResolveIndex(len(vs), index)
+	if !ok {
+		return false
+	}
+	vs[index] = v
+	return true
+}
+
+func Delete[S ~[]T, T any](vs *S, index int) bool {
+	index, ok := ResolveIndex(len(*vs), index)
+	if !ok {
+		return false
+	}
+	var out = make(S, 0, len(*vs)-1)
+	out = append(out, (*vs)[:index]...)
+	out = append(out, (*vs)[index+1:]...)
+	*vs = out
+	return true
+}
+
+// ResolveIndex returns the zero-based element position for index (negative wraps from end),
+// It returns false for second argument if the index is out of bounds.
+func ResolveIndex(length, index int) (int, bool) {
+	if index < 0 {
+		n := length + index
+		if 0 <= n {
+			return n, true
+		}
+		return index, false
+	}
+	return index, index < length
 }
