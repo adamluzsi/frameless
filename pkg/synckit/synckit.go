@@ -422,11 +422,18 @@ type Slice[T any] struct {
 }
 
 var _ datastruct.List[any] = (*Slice[any])(nil)
+var _ datastruct.Sequence[any] = (*Slice[any])(nil)
 
 func (s *Slice[T]) Lookup(index int) (T, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return slicekit.Lookup(s.vs, index)
+}
+
+func (s *Slice[T]) Set(index int, val T) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slicekit.Set(s.vs, index, val)
 }
 
 func (s *Slice[T]) Append(vs ...T) {
@@ -465,4 +472,16 @@ func (s *Slice[T]) Len() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.vs)
+}
+
+func (s *Slice[T]) Delete(index int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slicekit.Delete(&s.vs, index)
+}
+
+func (s *Slice[T]) Insert(index int, vs ...T) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slicekit.Insert(&s.vs, index, vs...)
 }

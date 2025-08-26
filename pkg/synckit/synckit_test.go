@@ -1784,11 +1784,47 @@ func TestSlice(t *testing.T) {
 		return &synckit.Slice[string]{}
 	})
 
+	s.Test("race", func(t *testcase.T) {
+		var (
+			slc = &synckit.Slice[string]{}
+			v1  = t.Random.HexN(5)
+			v2  = t.Random.HexN(4)
+			v3  = t.Random.HexN(3)
+			v4  = t.Random.HexN(2)
+			v5  = t.Random.HexN(1)
+		)
+		testcase.Race(func() {
+			slc.Append(v1)
+		}, func() {
+			slc.Append(v2, v3)
+		}, func() {
+			for range slc.Iter() {
+			}
+		}, func() {
+			for range slc.RIter() {
+			}
+		}, func() {
+			slc.Len()
+		}, func() {
+			slc.ToSlice()
+		}, func() {
+			slc.Insert(slc.Len(), v4, v5)
+		}, func() {
+			slc.Set(0, "the answer")
+		}, func() {
+			slc.Delete(-1)
+		})
+	})
+
 	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
 	s.Context("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) datastruct.List[string] {
+		return &synckit.Slice[string]{}
+	}).Spec)
+
+	s.Context("implements sequence", datastructcontract.Sequence(func(tb testing.TB) datastruct.Sequence[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
@@ -2084,30 +2120,6 @@ func TestSlice(t *testing.T) {
 					})
 				})
 			})
-		})
-	})
-
-	s.Test("race", func(t *testcase.T) {
-		var (
-			slc = &synckit.Slice[string]{}
-			v1  = t.Random.HexN(5)
-			v2  = t.Random.HexN(4)
-			v3  = t.Random.HexN(3)
-		)
-		testcase.Race(func() {
-			slc.Append(v1)
-		}, func() {
-			slc.Append(v2, v3)
-		}, func() {
-			for range slc.Iter() {
-			}
-		}, func() {
-			for range slc.RIter() {
-			}
-		}, func() {
-			slc.Len()
-		}, func() {
-			slc.ToSlice()
 		})
 	})
 }
