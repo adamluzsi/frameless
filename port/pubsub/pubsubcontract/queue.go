@@ -1,8 +1,10 @@
 package pubsubcontract
 
 import (
+	"slices"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
@@ -10,6 +12,7 @@ import (
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,
@@ -84,6 +87,37 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 						var actual []Data
 						actual = append(actual, sub1vs...)
 						actual = append(actual, sub2vs...)
+						t.OnFail(func() {
+							t.Log("expdcted:")
+							t.LogPretty(expected)
+							t.Log("sub1")
+							t.LogPretty(sub1vs)
+							t.Log("sub2")
+							t.LogPretty(sub2vs)
+
+							switch {
+							case len(actual) < len(expected):
+								for _, exp := range expected {
+									if !slices.ContainsFunc(actual, func(got Data) bool {
+										return reflectkit.Equal(exp, got)
+									}) {
+										t.Log("missing")
+										t.LogPretty(exp)
+									}
+								}
+							case len(expected) < len(actual):
+								for _, exp := range actual {
+									if !slices.ContainsFunc(expected, func(got Data) bool {
+										return reflectkit.Equal(exp, got)
+									}) {
+										t.Log("missing")
+										t.LogPretty(exp)
+									}
+								}
+							default:
+								t.Log(pp.DiffString(pp.Format(expected), pp.Format(actual)))
+							}
+						})
 						assert.ContainsExactly(t, expected, actual)
 					})
 				})
