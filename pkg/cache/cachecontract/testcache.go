@@ -379,7 +379,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 				s.Then(`querying it continously won't change the outcome of the currently cached value`, func(t *testcase.T) {
 					assert.NotWithin(t, time.Second, func(ctx context.Context) {
 						for ctx.Err() == nil {
-							assert.NotContain(t, AfterAct(t), *valueWithNewContent.Get(t))
+							assert.NotContains(t, AfterAct(t), *valueWithNewContent.Get(t))
 							// time.Sleep(10 * time.Millisecond)
 						}
 					}).Wait()
@@ -463,27 +463,24 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		var res []ENT
 		t.Random.Repeat(3, 7, func() {
 			v := c.CRUD.MakeEntity(t)
-			id := c.MakeID(t)
+			id := c.makeID(t)
 			assert.NoError(t, c.CRUD.IDA.Set(&v, id))
 			res = append(res, v)
 		})
 
+		var sourceQueryMany = func(ctx context.Context) iter.Seq2[ENT, error] {
+			return iterkit.AsSeqE(iterkit.FromSlice(res))
+		}
+
 		var query = func(t *testcase.T) []ENT {
-			vs, err := iterkit.CollectE(cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t),
-				hitID,
-				func(ctx context.Context) iter.Seq2[ENT, error] {
-					return iterkit.AsSeqE(iterkit.FromSlice(res))
-				}))
+			vs, err := iterkit.CollectE(cache.Get(t).CachedQueryMany(c.CRUD.MakeContext(t), hitID, sourceQueryMany))
 			assert.NoError(t, err)
 			return vs
 		}
 
 		var refreshQuery = func(t *testcase.T) error {
-			return cache.Get(t).RefreshQueryMany(c.CRUD.MakeContext(t),
-				hitID,
-				func(ctx context.Context) iter.Seq2[ENT, error] {
-					return iterkit.AsSeqE(iterkit.FromSlice(res))
-				})
+			t.Log("RefreshQueryMany", hitID)
+			return cache.Get(t).RefreshQueryMany(c.CRUD.MakeContext(t), hitID, sourceQueryMany)
 		}
 
 		t.Log("a value is already cached")
@@ -496,24 +493,24 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 		t.Log("this value is being modified in the source")
 		t.Random.Repeat(1, 3, func() {
 			v := c.CRUD.MakeEntity(t)
-			id := c.MakeID(t)
+			id := c.makeID(t)
 			assert.NoError(t, c.CRUD.IDA.Set(&v, id))
 			res = append(res, v)
 		})
 
-		assert.NotContain(t, query(t), res)
+		assert.NotContains(t, query(t), res)
 
 		t.Log("then the data refreshes when refresh many is called")
 		assert.NoError(t, refreshQuery(t))
 
 		t.Eventually(func(t *testcase.T) {
-			assert.ContainsExactly(t, query(t), res)
+			assert.ContainsExactly(t, res, query(t))
 		})
 	})
 
 	s.Test("RefreshQueryOne", func(t *testcase.T) {
 		value := c.CRUD.MakeEntity(t)
-		id := c.MakeID(t)
+		id := c.makeID(t)
 		assert.NoError(t, c.CRUD.IDA.Set(&value, id))
 		hitID := cachepkg.HitID(t.Random.String())
 
