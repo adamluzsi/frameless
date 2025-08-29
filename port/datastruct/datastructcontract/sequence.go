@@ -3,10 +3,11 @@ package datastructcontract
 import (
 	"testing"
 
-	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/datastruct"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -380,8 +381,11 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 					assert.True(t, slicekit.Delete(&exp, index.Get(t)))
 					act(t)
 
-					got := seq.Get(t).ToSlice()
-					assert.Equal(t, exp, got)
+					assert.Equal(t, exp, iterkit.Collect(seq.Get(t).Iter()))
+
+					if cts, ok := seq.Get(t).(datastruct.Slicer[T]); ok {
+						assert.Equal(t, exp, cts.Slice())
+					}
 				})
 			})
 

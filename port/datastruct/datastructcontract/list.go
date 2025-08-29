@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/internal/spechelper"
-	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/datastruct"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -30,7 +30,9 @@ func OrderedList[T any](make func(tb testing.TB) datastruct.List[T], opts ...Lis
 			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeT(t) }, random.UniqueValues)
 		)
 		list.Append(expected...)
-		assert.Equal(t, expected, list.ToSlice())
+		if ts, ok := list.(datastruct.Slicer[T]); ok {
+			assert.Equal(t, expected, ts.Slice())
+		}
 		assert.Equal(t, expected, iterkit.Collect(list.Iter()))
 	})
 
@@ -57,8 +59,11 @@ func List[T any](make func(tb testing.TB) datastruct.List[T], opts ...ListOption
 			expLen++
 		}
 
-		assert.ContainsExactly(t, expected, list.ToSlice())
 		assert.ContainsExactly(t, expected, iterkit.Collect(list.Iter()))
+
+		if cts, ok := list.(datastruct.Slicer[T]); ok {
+			assert.ContainsExactly(t, expected, cts.Slice())
+		}
 	})
 
 	s.Test("Append many", func(t *testcase.T) {
@@ -68,8 +73,11 @@ func List[T any](make func(tb testing.TB) datastruct.List[T], opts ...ListOption
 		)
 		list.Append(expected...)
 		assert.Equal(t, len(expected), list.Len())
-		assert.ContainsExactly(t, expected, list.ToSlice())
 		assert.ContainsExactly(t, expected, iterkit.Collect(list.Iter()))
+
+		if cts, ok := list.(datastruct.Slicer[T]); ok {
+			assert.ContainsExactly(t, expected, cts.Slice())
+		}
 	})
 
 	s.Describe("#Iter", iterkitcontract.IterSeq(func(tb testing.TB) iter.Seq[T] {

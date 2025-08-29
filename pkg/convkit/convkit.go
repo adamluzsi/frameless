@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/datastruct"
+	"go.llib.dev/frameless/pkg/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
@@ -77,7 +77,7 @@ var (
 	typeUint64 = reflectkit.TypeOf[uint64]()
 )
 
-const missingTimeLayoutErrMsg = `missing TimeLayout ParseOption`
+const errMissingTimeLayout errorkitlite.Error = `missing TimeLayout ParseOption`
 
 func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 	if opts.ParseFunc != nil {
@@ -98,7 +98,7 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 	}
 	if typ == typeTime {
 		if opts.TimeLayout == "" {
-			return reflect.Value{}, fmt.Errorf(missingTimeLayoutErrMsg)
+			return reflect.Value{}, errMissingTimeLayout
 		}
 		date, err := time.Parse(opts.TimeLayout, val)
 		if err != nil {
@@ -214,7 +214,7 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 	return ptr.Elem(), nil
 }
 
-var registry = datastruct.Map[reflect.Type, registryRecord]{}
+var registry = map[reflect.Type]registryRecord{}
 
 type registryRecord interface {
 	Parse(data string, ptr any) error
@@ -265,7 +265,7 @@ func IsRegistered[T any](i ...T) bool {
 	if typ == typeTime {
 		return true
 	}
-	_, ok := registry.Lookup(typ)
+	_, ok := registry[typ]
 	return ok
 }
 
@@ -288,7 +288,19 @@ func Register[T any](
 			return string(out), err
 		}
 	}
-	return datastruct.MapAdd[reflect.Type, registryRecord](registry, typ, rec)
+	return registerAdd(typ, rec)
+}
+
+func registerAdd(k reflect.Type, v registryRecord) func() {
+	og, ok := registry[k]
+	registry[k] = v
+	return func() {
+		if ok {
+			registry[k] = og
+		} else {
+			delete(registry, k)
+		}
+	}
 }
 
 func ParseWith[T any](parser parseFunc[T]) Option {
@@ -344,7 +356,7 @@ func format(val reflect.Value, opts Options) (string, error) {
 	}
 	if val.Type() == typeTime {
 		if opts.TimeLayout == "" {
-			return "", fmt.Errorf("%s", missingTimeLayoutErrMsg)
+			return "", errMissingTimeLayout
 		}
 		return val.Interface().(time.Time).Format(opts.TimeLayout), nil
 	}
@@ -390,7 +402,7 @@ func format(val reflect.Value, opts Options) (string, error) {
 		return strings.Join(list, opts.Separator), nil
 
 	case reflect.Map:
-		data, err := json.Marshal(val)
+		data, err := json.Marshal(val.Interface())
 		return string(data), err
 
 	case reflect.Pointer:

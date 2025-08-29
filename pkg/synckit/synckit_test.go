@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/datastruct"
-	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/datastruct/datastructcontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -480,7 +480,8 @@ func ExampleMap_Do() {
 	_ = err // &errors.errorString{s:"the-error"}
 }
 
-var _ datastruct.KVS[string, int] = &synckit.Map[string, int]{}
+var _ datastruct.KeyValueStore[string, int] = (*synckit.Map[string, int])(nil)
+var _ datastruct.Mapper[string, int] = (*synckit.Map[string, int])(nil)
 
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -1605,7 +1606,7 @@ func TestMap(t *testing.T) {
 
 	s.Describe("#ToMap", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) map[string]int {
-			return subject.Get(t).ToMap()
+			return subject.Get(t).Map()
 		})
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -1715,7 +1716,7 @@ func TestMap(t *testing.T) {
 		}, func() {
 			m.Reset()
 		}, func() {
-			m.ToMap()
+			m.Map()
 		})
 	})
 
@@ -1742,15 +1743,15 @@ func TestMap(t *testing.T) {
 
 			var dto map[string]int
 			assert.NoError(t, json.Unmarshal(data, &dto))
-			assert.Equal(t, m.ToMap(), dto)
+			assert.Equal(t, m.Map(), dto)
 
 			var got synckit.Map[string, int]
 			assert.NoError(t, json.Unmarshal(data, &got))
-			assert.Equal(t, m.ToMap(), got.ToMap())
+			assert.Equal(t, m.Map(), got.Map())
 		})
 	})
 
-	s.Context("implements Key-Value-Store", datastructcontract.KVS[string, int](func(tb testing.TB) datastruct.KVS[string, int] {
+	s.Context("implements Key-Value-Store", datastructcontract.KeyValueStore[string, int](func(tb testing.TB) datastruct.KeyValueStore[string, int] {
 		return &synckit.Map[string, int]{}
 	}).Spec)
 }
@@ -1776,6 +1777,10 @@ func letExampleSliceValues(s *testcase.Spec, min, max int) testcase.Var[[]string
 		})
 	})
 }
+
+var _ datastruct.List[string] = (*synckit.Slice[string])(nil)
+var _ datastruct.Sequence[string] = (*synckit.Slice[string])(nil)
+var _ datastruct.Slicer[string] = (*synckit.Slice[string])(nil)
 
 func TestSlice(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -1806,7 +1811,7 @@ func TestSlice(t *testing.T) {
 		}, func() {
 			slc.Len()
 		}, func() {
-			slc.ToSlice()
+			slc.Slice()
 		}, func() {
 			slc.Insert(slc.Len(), v4, v5)
 		}, func() {

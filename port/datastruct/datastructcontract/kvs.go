@@ -6,20 +6,20 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/internal/spechelper"
-	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
+	"go.llib.dev/frameless/port/datastruct"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
-func KVS[K comparable, V any](make func(tb testing.TB) datastruct.KVS[K, V], opts ...KVSOption[K, V]) contract.Contract {
+func KeyValueStore[K comparable, V any](make func(tb testing.TB) datastruct.KeyValueStore[K, V], opts ...KVSOption[K, V]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
@@ -28,9 +28,7 @@ func KVS[K comparable, V any](make func(tb testing.TB) datastruct.KVS[K, V], opt
 
 		expected := map[K]V{}
 		t.Random.Repeat(3, 7, func() {
-			key := random.Unique(func() K {
-				return c.makeK(t)
-			}, mapkit.Keys(expected)...)
+			key := c.makeUniqueK(t)
 			expected[key] = c.makeV(t)
 		})
 
@@ -50,7 +48,7 @@ func KVS[K comparable, V any](make func(tb testing.TB) datastruct.KVS[K, V], opt
 			assert.Equal(t, v, kvs.Get(k))
 		}
 
-		kNoise, vNoise := c.makeK(t), c.makeV(t)
+		kNoise, vNoise := c.makeUniqueK(t), c.makeV(t)
 		kvs.Set(kNoise, vNoise)
 		assert.Equal(t, expLen+1, kvs.Len())
 		kvs.Delete(kNoise)
@@ -60,8 +58,11 @@ func KVS[K comparable, V any](make func(tb testing.TB) datastruct.KVS[K, V], opt
 		assert.Empty(t, kvs.Get(kNoise))
 
 		assert.ContainsExactly(t, mapkit.Keys(expected), kvs.Keys())
-		assert.ContainsExactly(t, expected, kvs.ToMap())
 		assert.ContainsExactly(t, expected, iterkit.Collect2Map(kvs.Iter()))
+
+		if m, ok := kvs.(datastruct.Mapper[K, V]); ok {
+			assert.ContainsExactly(t, expected, m.Map())
+		}
 	})
 
 	s.Test("keys are unique in the store", func(t *testcase.T) {
@@ -109,6 +110,21 @@ var _ KVSOption[string, int] = KVSConfig[string, int]{}
 func (c KVSConfig[K, V]) Configure(o *KVSConfig[K, V]) {
 	o.MakeK = zerokit.Coalesce(c.MakeK, o.MakeK)
 	o.MakeV = zerokit.Coalesce(c.MakeV, o.MakeV)
+}
+
+func (c KVSConfig[K, V]) keys() testcase.Var[[]K] {
+	return testcase.Var[[]K]{
+		ID: "kvs generated keys",
+		Init: func(t *testcase.T) []K {
+			return []K{}
+		},
+	}
+}
+
+func (c KVSConfig[K, V]) makeUniqueK(t *testcase.T) K {
+	key := random.Unique(func() K { return c.makeK(t) }, c.keys().Get(t)...)
+	testcase.Append(t, c.keys(), key)
+	return key
 }
 
 func (c KVSConfig[K, V]) makeK(tb testing.TB) K {

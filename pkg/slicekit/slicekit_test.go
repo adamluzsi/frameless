@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/datastruct"
-	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/datastruct/datastructcontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -1499,7 +1499,7 @@ func (seq *Sequence[T]) Append(vs ...T) {
 	*seq = append(*seq, vs...)
 }
 
-func (seq *Sequence[T]) ToSlice() []T {
+func (seq *Sequence[T]) Slice() []T {
 	return *seq
 }
 

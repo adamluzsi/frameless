@@ -38,7 +38,7 @@ func (ll *LinkedList[T]) Iter() iter.Seq[T] {
 	}
 }
 
-func (ll *LinkedList[T]) ToSlice() []T {
+func (ll *LinkedList[T]) Slice() []T {
 	var vs []T
 	for v := range ll.Iter() {
 		vs = append(vs, v)

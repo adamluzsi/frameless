@@ -1,3 +1,4 @@
+// Package datastruct is an experimental package, that is a candidate to become a port if there is use-case to support it.
 package datastruct
 
 import (
@@ -5,9 +6,39 @@ import (
 	"iter"
 	"slices"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
+
+type Set[T comparable] map[T]struct{}
+
+func (s *Set[T]) Append(vs ...T) {
+	if *s == nil {
+		*s = make(Set[T])
+	}
+	for _, v := range vs {
+		(*s)[v] = struct{}{}
+	}
+}
+
+func (s *Set[T]) Slice() []T {
+	return iterkit.Collect(s.Iter())
+}
+
+func (s *Set[T]) Iter() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for v, _ := range *s {
+			if !yield(v) {
+				return
+			}
+		}
+	}
+}
+
+func (s *Set[T]) Len() int {
+	return len(*s)
+}
 
 type OrderedSet[T comparable] struct {
 	vs map[T]struct{}
@@ -146,7 +177,7 @@ func (set OrderedSet[T]) FromSlice(vs []T) OrderedSet[T] {
 	return set
 }
 
-func (s OrderedSet[T]) ToSlice() []T {
+func (s OrderedSet[T]) Slice() []T {
 	var out []T = make([]T, len(s.is))
 	for i, ptr := range s.is {
 		out[i] = *ptr

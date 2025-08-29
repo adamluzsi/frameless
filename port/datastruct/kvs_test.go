@@ -3,15 +3,15 @@ package datastruct_test
 import (
 	"testing"
 
-	"go.llib.dev/frameless/pkg/datastruct"
-	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
+	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/datastruct/datastructcontract"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 )
 
-var _ datastruct.KVS[string, int] = (datastruct.Map[string, int])(nil)
+var _ datastruct.KeyValueStore[string, int] = (datastruct.Map[string, int])(nil)
 
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -64,40 +64,10 @@ func TestMap(t *testing.T) {
 			exp[k] = v
 			m.Set(k, v)
 		})
-		assert.Equal(t, exp, m.ToMap())
+		assert.Equal(t, exp, m.Map())
 	})
 
-	s.Context("implements Key-Value-Store", datastructcontract.KVS(func(tb testing.TB) datastruct.KVS[string, int] {
+	s.Context("implements Key-Value-Store", datastructcontract.KeyValueStore(func(tb testing.TB) datastruct.KeyValueStore[string, int] {
 		return m.Get(testcase.ToT(&tb))
 	}).Spec)
-}
-
-func TestMapAdd(t *testing.T) {
-	var (
-		key string = "foo"
-		v1  int    = 1
-		v2  int    = 2
-		v3  int    = 3
-	)
-
-	var m = datastruct.Map[string, int]{}
-
-	td1 := datastruct.MapAdd(m, key, v1)
-	assert.Equal(t, m.Get(key), v1)
-
-	td2 := datastruct.MapAdd(m, key, v2)
-	assert.Equal(t, m.Get(key), v2)
-
-	td3 := datastruct.MapAdd(m, key, v3)
-	assert.Equal(t, m.Get(key), v3)
-
-	td3()
-	assert.Equal(t, m.Get(key), v2)
-
-	td2()
-	assert.Equal(t, m.Get(key), v1)
-
-	td1()
-	_, ok := m.Lookup(key)
-	assert.False(t, ok)
 }

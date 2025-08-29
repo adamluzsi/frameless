@@ -7,7 +7,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go.llib.dev/frameless/pkg/datastruct"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
@@ -193,8 +192,6 @@ type Map[K comparable, V any] struct {
 	mu sync.RWMutex
 	vs map[K]V
 }
-
-var _ datastruct.KVS[any, any] = (*Map[any, any])(nil)
 
 func (m *Map[K, V]) Set(key K, val V) {
 	m.mu.Lock()
@@ -396,7 +393,7 @@ func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
 	}
 }
 
-func (m *Map[K, V]) ToMap() map[K]V {
+func (m *Map[K, V]) Map() map[K]V {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return mapkit.Clone(m.vs)
@@ -421,9 +418,6 @@ type Slice[T any] struct {
 	vs []T
 }
 
-var _ datastruct.List[any] = (*Slice[any])(nil)
-var _ datastruct.Sequence[any] = (*Slice[any])(nil)
-
 func (s *Slice[T]) Lookup(index int) (T, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -442,7 +436,7 @@ func (s *Slice[T]) Append(vs ...T) {
 	s.vs = append(s.vs, vs...)
 }
 
-func (s *Slice[T]) ToSlice() []T {
+func (s *Slice[T]) Slice() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return slicekit.Clone(s.vs)

@@ -3,25 +3,60 @@ package datastruct_test
 import (
 	"testing"
 
-	"go.llib.dev/frameless/pkg/datastruct"
-	"go.llib.dev/frameless/pkg/datastruct/datastructcontract"
+	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/datastruct/datastructcontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
+func ExampleSet() {
+	var set datastruct.Set[string]
+	set.Append("foo", "bar", "baz")
+	for v := range set.Iter() {
+		_ = v // "foo" / "bar" / "baz"
+	}
+}
+
+func TestSet(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	vs := testcase.Var[[]string]{
+		ID: "already used values",
+		Init: func(t *testcase.T) []string {
+			return []string{}
+		},
+	}
+
+	var makeElem = func(tb testing.TB) string {
+		t := tb.(*testcase.T)
+		// we produce unique values because a Set type only accept new unique value
+		v := random.Unique(func() string { return t.Random.String() }, vs.Get(t)...)
+		testcase.Append(t, vs, v)
+		return v
+	}
+
+	lc := datastructcontract.ListConfig[string]{
+		MakeElem: makeElem,
+	}
+
+	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
+		return &datastruct.Set[string]{}
+	}, lc).Spec)
+}
+
 func ExampleOrderedSet() {
 	var set datastruct.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
-	set.ToSlice() // []string{"foo", "bar", "baz"}
-	set.Len()     // 3
+	set.Slice() // []string{"foo", "bar", "baz"}
+	set.Len()   // 3
 }
 
 func ExampleOrderedSet_fromSlice() {
 	var vs = []string{"foo", "bar", "baz", "foo"}
 	var set = datastruct.OrderedSet[string]{}.FromSlice(vs)
-	set.ToSlice() // []string{"foo", "bar", "baz"}
-	set.Len()     // 3
+	set.Slice() // []string{"foo", "bar", "baz"}
+	set.Len()   // 3
 }
 
 func ExampleOrderedSet_iterate() {
@@ -71,7 +106,7 @@ func TestOrderedSet(t *testing.T) {
 	t.Run("ToSlice uniqueness", func(t *testing.T) {
 		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
 		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
-		got := set.ToSlice()
+		got := set.Slice()
 
 		// Create a temporary map to check for duplicates in the slice
 		tempMap := make(map[int]struct{})
@@ -93,7 +128,7 @@ func TestOrderedSet(t *testing.T) {
 	t.Run("FromSlice uniqueness", func(t *testing.T) {
 		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
 		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
-		got := set.ToSlice()
+		got := set.Slice()
 
 		// Create a temporary map to check for duplicates in the slice
 		tempMap := make(map[int]struct{})
@@ -115,7 +150,7 @@ func TestOrderedSet(t *testing.T) {
 	t.Run("ToSlice is ordered by default", func(t *testing.T) {
 		exp := []int{1, 5, 2, 7, 3, 9} // Intentional duplicate to test uniqueness
 		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
-		got := set.ToSlice()
+		got := set.Slice()
 
 		assert.Equal(t, exp, got, "values were expected, and in the same order")
 	})

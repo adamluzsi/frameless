@@ -4,7 +4,7 @@ import "iter"
 
 type Map[K comparable, V any] map[K]V
 
-var _ KVS[any, any] = (Map[any, any])(nil)
+var _ KeyValueStore[any, any] = (Map[any, any])(nil)
 
 func (m Map[K, V]) Lookup(key K) (V, bool) {
 	val, ok := m[key]
@@ -29,7 +29,7 @@ func (m Map[K, V]) Keys() []K {
 	return keys
 }
 
-func (m Map[K, V]) ToMap() map[K]V {
+func (m Map[K, V]) Map() map[K]V {
 	return m
 }
 
@@ -39,18 +39,6 @@ func (m Map[K, V]) Iter() iter.Seq2[K, V] {
 			if !yield(k, v) {
 				return
 			}
-		}
-	}
-}
-
-func MapAdd[K comparable, V any, Map KVS[K, V]](m Map, k K, v V) func() {
-	og, ok := m.Lookup(k)
-	m.Set(k, v)
-	return func() {
-		if ok {
-			m.Set(k, og)
-		} else {
-			m.Delete(k)
 		}
 	}
 }
