@@ -387,7 +387,7 @@ func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 
 		unregister()
 		l.Info(nil, "msg", logging.Field("x", X{V: 987654321}))
-		assert.NotContain(t, buf.String(), "987654321")
+		assert.NotContains(t, buf.String(), "987654321")
 		assert.Contains(t, buf.String(), "security")
 	})
 	t.Run("for interface", func(t *testing.T) {
@@ -401,7 +401,7 @@ func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 
 		unregister()
 		l.Info(nil, "msg", logging.Field("x", testent.Foo{Foo: "987654321"}))
-		assert.NotContain(t, buf.String(), "987654321")
+		assert.NotContains(t, buf.String(), "987654321")
 		assert.Contains(t, buf.String(), "security")
 	})
 }
@@ -511,8 +511,8 @@ func TestFields(t *testing.T) {
 		s.Then("field is ignored, but a warning is made", func(t *testcase.T) {
 			afterLogging(t)
 
-			assert.Must(t).NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
-			t.Must.NotContain(buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
+			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
+			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			assert.Contains(t, buf.Get(t).String(), "security concerns")
 			assert.Contains(t, buf.Get(t).String(), "logger.RegisterFieldType")
@@ -558,7 +558,7 @@ func TestErrField(t *testing.T) {
 	t.Run("nil error", func(t *testing.T) {
 		l, buf := logging.Stub(t)
 		l.Info(nil, "boom", logging.ErrField(nil))
-		assert.NotContain(t, buf.String(), `"error"`)
+		assert.NotContains(t, buf.String(), `"error"`)
 	})
 	t.Run("when err is a user error", func(t *testing.T) {
 		l, buf := logging.Stub(t)

@@ -1694,11 +1694,10 @@ func TestTakeAllE(t *testing.T) {
 }
 
 func TestLimit_smoke(t *testing.T) {
-	it := assert.MakeIt(t)
 	subject := iterkit.LimitE(iterkit.IntRangeE(2, 6), 3)
 	vs, err := iterkit.CollectE(subject)
-	assert.NoError(it, err)
-	assert.Equal(it, []int{2, 3, 4}, vs)
+	assert.NoError(t, err)
+	assert.Equal(t, []int{2, 3, 4}, vs)
 }
 
 func TestLimit(t *testing.T) {
@@ -1776,10 +1775,9 @@ func TestLimit(t *testing.T) {
 }
 
 func TestLimit1_smoke(t *testing.T) {
-	it := assert.MakeIt(t)
 	subject := iterkit.Limit(iterkit.IntRange(2, 6), 3)
 	vs := iterkit.Collect(subject)
-	assert.Equal(it, []int{2, 3, 4}, vs)
+	assert.Equal(t, []int{2, 3, 4}, vs)
 }
 
 func TestLimit1(t *testing.T) {
@@ -2059,10 +2057,9 @@ func TestOffsetE(t *testing.T) {
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
-		it := assert.MakeIt(t)
 		subject := iterkit.Offset(iterkit.IntRange(2, 6), 2)
 		vs := iterkit.Collect(subject)
-		assert.Equal(it, []int{4, 5, 6}, vs)
+		assert.Equal(t, []int{4, 5, 6}, vs)
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
@@ -4454,18 +4451,17 @@ func ExampleCharRangeE() {
 }
 
 func TestCharRange_smoke(t *testing.T) {
-	it := assert.MakeIt(t)
 	vs, err := iterkit.CollectE(iterkit.CharRangeE('A', 'C'))
-	assert.NoError(it, err)
-	assert.Equal(it, []rune{'A', 'B', 'C'}, vs)
+	assert.NoError(t, err)
+	assert.Equal(t, []rune{'A', 'B', 'C'}, vs)
 
 	vs, err = iterkit.CollectE(iterkit.CharRangeE('a', 'c'))
-	assert.NoError(it, err)
-	assert.Equal(it, []rune{'a', 'b', 'c'}, vs)
+	assert.NoError(t, err)
+	assert.Equal(t, []rune{'a', 'b', 'c'}, vs)
 
 	vs, err = iterkit.CollectE(iterkit.CharRangeE('1', '9'))
-	assert.NoError(it, err)
-	assert.Equal(it, []rune{'1', '2', '3', '4', '5', '6', '7', '8', '9'}, vs)
+	assert.NoError(t, err)
+	assert.Equal(t, []rune{'1', '2', '3', '4', '5', '6', '7', '8', '9'}, vs)
 }
 
 func TestCharRange(t *testing.T) {
@@ -4517,15 +4513,14 @@ func ExampleCharRange() {
 }
 
 func TestCharRange1_smoke(t *testing.T) {
-	it := assert.MakeIt(t)
 	vs := iterkit.Collect(iterkit.CharRange('A', 'C'))
-	assert.Equal(it, []rune{'A', 'B', 'C'}, vs)
+	assert.Equal(t, []rune{'A', 'B', 'C'}, vs)
 
 	vs = iterkit.Collect(iterkit.CharRange('a', 'c'))
-	assert.Equal(it, []rune{'a', 'b', 'c'}, vs)
+	assert.Equal(t, []rune{'a', 'b', 'c'}, vs)
 
 	vs = iterkit.Collect(iterkit.CharRange('1', '9'))
-	assert.Equal(it, []rune{'1', '2', '3', '4', '5', '6', '7', '8', '9'}, vs)
+	assert.Equal(t, []rune{'1', '2', '3', '4', '5', '6', '7', '8', '9'}, vs)
 }
 
 func TestCharRange1(t *testing.T) {

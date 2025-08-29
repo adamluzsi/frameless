@@ -88,7 +88,7 @@ func TestRetryRoundTripper(t *testing.T) {
 					w.WriteHeader(http.StatusBadRequest)
 					return
 				}
-				assert.Should(t).Contain(string(bs), requestBody.Get(t))
+				assert.Should(t).Contains(string(bs), requestBody.Get(t))
 				w.WriteHeader(responseCode.Get(t))
 				_, _ = w.Write([]byte(responseBody.Get(t)))
 			}
@@ -158,7 +158,7 @@ func TestRetryRoundTripper(t *testing.T) {
 			return func(w http.ResponseWriter, r *http.Request) {
 				bs, err := io.ReadAll(r.Body)
 				assert.Should(t).NoError(err)
-				assert.Should(t).Contain(string(bs), requestBody.Get(t))
+				assert.Should(t).Contains(string(bs), requestBody.Get(t))
 
 				var done bool
 				once.Do(func() {
@@ -386,7 +386,7 @@ func TestAccessLog_smoke(t *testing.T) {
 			bs, err := io.ReadAll(r.Body)
 			should.NoError(err)
 			if err == nil {
-				should.Contain(string(bs), requestBody)
+				should.Contains(string(bs), requestBody)
 			}
 			should.Equal(requestMethod, r.Method)
 			should.Equal(requestQuery.Encode(), r.URL.Query().Encode())
@@ -918,7 +918,8 @@ func TestWithRoundTripper(t *testing.T) {
 
 func TestRequest(t *testing.T) {
 	t.Run("when context is nil", func(t *testing.T) {
-		req, ok := httpkit.LookupRequest(nil)
+		var nilContext context.Context
+		req, ok := httpkit.LookupRequest(nilContext)
 		assert.False(t, ok)
 		assert.Nil(t, req)
 	})

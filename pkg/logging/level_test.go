@@ -19,7 +19,7 @@ func TestLogger_level(t *testing.T) {
 
 	assertDoesNotHave := func(tb testing.TB, buf *bytes.Buffer, level string) {
 		tb.Helper()
-		assert.NotContain(tb, buf.String(), fmt.Sprintf(`"level":"%s"`, level))
+		assert.NotContains(tb, buf.String(), fmt.Sprintf(`"level":"%s"`, level))
 	}
 
 	t.Run("when level is not set", func(t *testing.T) {
