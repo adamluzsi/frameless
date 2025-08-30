@@ -37,21 +37,30 @@ func (q *Queue[Data]) Publish(ctx context.Context, vs ...Data) (rErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var msgs = slicekit.Map(vs, func(v Data) *queueMessage[Data] {
-		return &queueMessage[Data]{
-			q:         q,
-			v:         v,
-			id:        rnd.UUID(),
-			timestamp: clock.Now(),
-		}
-	})
-	q.m.Lock()
-	q.msgs = append(q.msgs, msgs...)
-	q.m.Unlock()
+	msgs := q.publish(ctx, vs)
 	q.blockingWait(ctx, msgs)
 	return nil
 }
 
+var msgIDIndex uint64
+
+func (q *Queue[Data]) publish(ctx context.Context, vs []Data) []*queueMessage[Data] {
+	if len(vs) == 0 {
+		return make([]*queueMessage[Data], 0, 0)
+	}
+	q.m.Lock()
+	defer q.m.Unlock()
+	var msgs = slicekit.Map(vs, func(v Data) *queueMessage[Data] {
+		return &queueMessage[Data]{
+			q:         q,
+			v:         v,
+			id:        fmt.Sprintf("%s-%d", rnd.UUID(), atomic.AddUint64(&msgIDIndex, 1)),
+			timestamp: clock.Now(),
+		}
+	})
+	q.msgs = append(q.msgs, msgs...)
+	return msgs
+}
 func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessages []*queueMessage[Data]) {
 	if !q.Blocking {
 		return
@@ -94,7 +103,6 @@ do:
 
 	for _, msg := range msgs {
 		if msg.take(s.id) {
-
 			ack := func() error {
 				q.m.Lock()
 				defer q.m.Unlock()
@@ -186,8 +194,8 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 			createdAt: clock.Now(),
 		}
 		for i := 1; i < math.MaxInt; i++ {
-			sub.id = subscriptionID(i)
 			q.m.Lock()
+			sub.id = subscriptionID(i)
 			if q.subs == nil {
 				q.subs = make(map[subscriptionID]*QueueSubscription[Data])
 			}
