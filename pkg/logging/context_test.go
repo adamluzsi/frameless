@@ -56,7 +56,7 @@ func TestContextWith(t *testing.T) {
 		l.Info(ctx1, "42")
 		assert.Contains(t, buf.String(), `"message":"42"`)
 		assert.Contains(t, buf.String(), `"foo":"bar"`)
-		assert.NotContain(t, buf.String(), `"bar":42`)
+		assert.NotContains(t, buf.String(), `"bar":42`)
 
 		l.Info(ctx2, "24")
 		assert.Contains(t, buf.String(), `"foo":"bar"`)

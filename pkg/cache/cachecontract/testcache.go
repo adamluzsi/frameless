@@ -5,6 +5,7 @@ import (
 	"io"
 	"iter"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -332,14 +333,14 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 				s.Then("source eventually accessed", func(t *testcase.T) {
 					t.Log("given we query the cache multiple times")
 
-					initial := spy.Get(t).count.Total
+					initial := spy.Get(t).count.Total()
 					t.Random.Repeat(3, 7, func() {
 						AfterAct(t)
 					})
 
 					t.Log("then eventually the query is executed behind the scenes")
 					t.Eventually(func(t *testcase.T) {
-						total := spy.Get(t).count.Total
+						total := spy.Get(t).count.Total()
 						assert.True(t, initial < total,
 							assert.MessageF("%d < %d", initial, total))
 					})
@@ -354,7 +355,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 					s.Then("refresh behind should still succeed", func(t *testcase.T) {
 						t.Log("given we query the cache multiple times")
 
-						initial := spy.Get(t).count.Total
+						initial := spy.Get(t).count.Total()
 
 						ctx, cancel := context.WithCancel(c.CRUD.MakeContext(t))
 						for _, err := range cache.Get(t).FindAll(ctx) {
@@ -364,7 +365,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 
 						t.Log("then eventually the query is executed behind the scenes")
 						t.Eventually(func(t *testcase.T) {
-							total := spy.Get(t).count.Total
+							total := spy.Get(t).count.Total()
 							assert.True(t, initial < total,
 								"expected that source was called behind the scene other than the initial caching act.",
 								"It is possible that the query running begind the scene as part of refresh-behind got cancelled")
@@ -390,7 +391,7 @@ func describeCacheRefreshBehind[ENT any, ID comparable](s *testcase.Spec,
 					t.Random.Repeat(2, 7, func() { AfterAct(t) })
 
 					t.Log("source only accessed once")
-					assert.Equal(t, 1, spy.Get(t).count.Total)
+					assert.Equal(t, 1, spy.Get(t).count.Total())
 				})
 			})
 		})
@@ -750,27 +751,46 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 
 type spySource[ENT, ID any] struct {
 	cacheSource[ENT, ID]
-	count struct {
-		Total    int
-		FindAll  int
-		FindByID int
-	}
+	count   spySourceCounter
 	sleepOn struct {
 		FindAll  time.Duration
 		FindByID time.Duration
 	}
 }
 
+type spySourceCounter struct {
+	findAll  int64
+	findByID int64
+}
+
+func (c *spySourceCounter) Total() int64 {
+	return c.FindAll() + c.FindByID()
+}
+
+func (c *spySourceCounter) IncFindAll() {
+	atomic.AddInt64(&c.findAll, 1)
+}
+
+func (c *spySourceCounter) FindAll() int64 {
+	return atomic.LoadInt64(&c.findAll)
+}
+
+func (c *spySourceCounter) IncFindByID() {
+	atomic.AddInt64(&c.findByID, 1)
+}
+
+func (c *spySourceCounter) FindByID() int64 {
+	return atomic.LoadInt64(&c.findByID)
+}
+
 func (spy *spySource[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
-	spy.count.Total++
-	spy.count.FindAll++
+	spy.count.IncFindAll()
 	time.Sleep(spy.sleepOn.FindAll)
 	return spy.cacheSource.(crud.AllFinder[ENT]).FindAll(ctx)
 }
 
 func (spy *spySource[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _found bool, _err error) {
-	spy.count.Total++
-	spy.count.FindByID++
+	spy.count.IncFindByID()
 	time.Sleep(spy.sleepOn.FindByID)
 	return spy.cacheSource.FindByID(ctx, id)
 }
@@ -872,14 +892,14 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 
 					// trigger caching
 					assert.Equal(t, val, c.CRUD.Helper().IsPresent(t, cache.Get(t), c.CRUD.MakeContext(t), id))
-					numberOfFindByIDCallAfterEntityIsFound := spy.Get(t).count.FindByID
+					numberOfFindByIDCallAfterEntityIsFound := spy.Get(t).count.FindByID()
 					waiter.Wait()
 
 					nv, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id) // should use cached val
 					t.Must.NoError(err)
 					assert.True(t, found)
 					assert.Equal(t, *val, nv)
-					assert.Equal(t, numberOfFindByIDCallAfterEntityIsFound, spy.Get(t).count.FindByID)
+					assert.Equal(t, numberOfFindByIDCallAfterEntityIsFound, spy.Get(t).count.FindByID())
 				})
 			})
 		})

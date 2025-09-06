@@ -65,30 +65,29 @@ func TestLocal_contractsFileSystem(t *testing.T) {
 }
 
 func TestFileSystem_smoke(t *testing.T) {
-	it := assert.MakeIt(t)
 	mfs := &localfs.FileSystem{}
 
 	name := "test"
 	file, err := mfs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_APPEND, filesystem.ModeUserRWX)
-	assert.NoError(it, err)
-	defer func() { it.Should.NoError(mfs.Remove(name)) }()
+	assert.NoError(t, err)
+	defer func() { assert.Should(t).NoError(mfs.Remove(name)) }()
 
 	_, err = file.Write([]byte("/foo"))
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 	_, err = file.Write([]byte("/bar"))
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 	file.Seek(0, io.SeekStart)
 	_, err = file.Write([]byte("/baz"))
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 
-	assert.NoError(it, file.Close())
+	assert.NoError(t, file.Close())
 
 	file, err = mfs.OpenFile(name, os.O_RDONLY, 0)
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 
 	bs, err := io.ReadAll(file)
-	assert.NoError(it, err)
-	assert.Equal(it, "/foo/bar/baz", string(bs))
+	assert.NoError(t, err)
+	assert.Equal(t, "/foo/bar/baz", string(bs))
 }
 
 func TestLocal_rootPath(t *testing.T) {

@@ -85,15 +85,15 @@ func TestWithTrace(t *testing.T) {
 			got := act(t)
 
 			assert.NotNil(t, got)
-			assert.NotContain(t, got.Error(), "pkg/errorkit.")
+			assert.NotContains(t, got.Error(), "pkg/errorkit.")
 		})
 
 		s.Then("the trace doesn't contain some standard lib that would just make it difficult to read the trace", func(t *testcase.T) {
 			got := act(t)
 
 			assert.NotNil(t, got)
-			assert.NotContain(t, got.Error(), "runtime")
-			assert.NotContain(t, got.Error(), "testing")
+			assert.NotContains(t, got.Error(), "runtime")
+			assert.NotContains(t, got.Error(), "testing")
 		})
 
 		s.Then("trace can be accessed directly with errors.As", func(t *testcase.T) {
@@ -144,7 +144,7 @@ func TestRegisterTraceException_smoke(t *testing.T) {
 
 	err = errorkit.WithTrace(errorkit.Error("boom"))
 	assert.Error(t, err)
-	assert.NotContain(t, err.Error(), t.Name())
+	assert.NotContains(t, err.Error(), t.Name())
 
 	undo()
 

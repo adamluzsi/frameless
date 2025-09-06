@@ -119,7 +119,6 @@ type subscriptionIteratorHelper[Data any] struct {
 
 	mutex sync.Mutex
 	data  []Data
-	wg    sync.WaitGroup
 
 	receivedAt time.Time
 	ackedAt    time.Time
@@ -167,27 +166,37 @@ func (sih *subscriptionIteratorHelper[Data]) Stop() {
 func (sih *subscriptionIteratorHelper[Data]) wrk(tb testing.TB, ctx context.Context, wg *sync.WaitGroup, sub pubsub.Subscription[Data]) {
 	defer wg.Done()
 	for msg, err := range sub {
-		if err != nil {
-			assert.Should(tb).AnyOf(func(a *assert.A) {
-				// TODO: survey which behaviour is more natural
-				a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), err) })
-				a.Test(func(t testing.TB) { assert.NoError(t, err) })
-			})
-			continue
-		}
-		sih.mutex.Lock()
-		assert.Should(tb).True(msg != nil, "msg should not be nil")
-		if msg == nil {
+		if !sih.handle(tb, ctx, msg, err) {
 			break
 		}
-		sih.receivedAt = time.Now().UTC()
-		time.Sleep(sih.HandlingDuration)
-		sih.data = append(sih.data, msg.Data())
-		sih.ackedAt = time.Now().UTC()
-		pubsubtest.Waiter.Wait()
-		assert.Should(tb).NoError(msg.ACK())
-		sih.mutex.Unlock()
 	}
+}
+func (sih *subscriptionIteratorHelper[Data]) handle(tb testing.TB, ctx context.Context, msg pubsub.Message[Data], err error) bool {
+	var should = assert.Should(tb)
+	if err != nil {
+		should.AnyOf(func(a *assert.A) {
+			// TODO: survey which behaviour is more natural
+			a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), err) })
+			a.Test(func(t testing.TB) { assert.NoError(t, err) })
+		})
+		return true
+	}
+	sih.mutex.Lock()
+	defer sih.mutex.Unlock()
+	if msg == nil {
+		should.True(msg != nil, "msg should not be nil")
+		return false
+	}
+	sih.receivedAt = time.Now().UTC()
+	if 0 < sih.HandlingDuration {
+		time.Sleep(sih.HandlingDuration)
+	}
+	pubsubtest.Waiter.Wait()
+	sih.data = append(sih.data, msg.Data())
+	sih.ackedAt = time.Now().UTC()
+	pubsubtest.Waiter.Wait()
+	should.NoError(msg.ACK())
+	return true
 }
 
 func (c base[Data]) GivenWeHaveSubscription(s *testcase.Spec) testcase.Var[*subscriptionIteratorHelper[Data]] {

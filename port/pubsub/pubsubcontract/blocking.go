@@ -3,10 +3,11 @@ package pubsubcontract
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
@@ -17,7 +18,7 @@ import (
 
 func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscriber[Data], opts ...Option[Data]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	c := option.ToConfig[Config[Data]](opts)
+	c := option.ToConfig(opts)
 
 	b := base[Data](func(tb testing.TB) baseSubject[Data] {
 		return baseSubject[Data]{
@@ -35,40 +36,51 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 		sub := b.GivenWeHaveSubscription(s)
 
 		s.Test("publish will block until a subscriber acknowledged the published message", func(t *testcase.T) {
-			sub.Get(t).HandlingDuration = 42 * time.Millisecond
+			sub.Get(t).HandlingDuration = time.Millisecond
 
-			var publishedAtUNIXMilli int64
+			var m synckit.Map[string, time.Time]
+			const PublishedAt = "publishedAt"
+			const ReceivedAt = "receivedAt"
+			const AckedAt = "ackedAt"
+
 			go func() {
-				t.Must.NoError(publisher.Publish(c.MakeContext(t), c.MakeData(t)))
-				publishedAt := time.Now().UTC()
-				atomic.AddInt64(&publishedAtUNIXMilli, publishedAt.UnixMilli())
+				ctx, cancel := contextkit.Merge(c.MakeContext(t), t.Context())
+				defer cancel()
+				t.Must.NoError(publisher.Publish(ctx, c.MakeData(t)))
+				m.Set(PublishedAt, time.Now())
 			}()
 
-			var (
-				receivedAt time.Time
-				ackedAt    time.Time
-			)
 			t.Eventually(func(it *testcase.T) {
-				ackedAt = sub.Get(t).AckedAt()
+				ackedAt := sub.Get(t).AckedAt()
 				assert.False(it, ackedAt.IsZero())
-				receivedAt = sub.Get(t).ReceivedAt()
+				receivedAt := sub.Get(t).ReceivedAt()
 				assert.False(it, receivedAt.IsZero())
+				m.Set(AckedAt, ackedAt)
+				m.Set(ReceivedAt, receivedAt)
 			})
 
-			var publishedAt time.Time
 			t.Eventually(func(t *testcase.T) {
-				unixMilli := atomic.LoadInt64(&publishedAtUNIXMilli)
-				t.Must.NotEmpty(unixMilli)
-				publishedAt = time.UnixMilli(unixMilli).UTC()
+				_, ok := m.Lookup(PublishedAt)
+				assert.True(t, ok)
 			})
 
-			t.Must.True(receivedAt.Before(publishedAt),
+			var (
+				publishedAt = m.Get(PublishedAt)
+				receivedAt  = m.Get(ReceivedAt)
+				ackedAt     = m.Get(AckedAt)
+			)
+
+			assert.True(t, receivedAt.Before(publishedAt),
 				"it was expected that the message was received before the publish was done.",
 				assert.Message(fmt.Sprintf("received at - published at: %s", receivedAt.Sub(publishedAt))))
 
-			t.Must.True(ackedAt.Before(publishedAt),
+			assert.True(t, ackedAt.Before(publishedAt),
 				"it was expected that acknowledging time is before the publishing time.",
-				assert.Message(fmt.Sprintf("acknowledged at - published at: %s", ackedAt.Sub(publishedAt))))
+				assert.MessageF("\n\tacknowledged at %s\n\tpublished at: %s\n\tdiff: %d",
+					ackedAt.Format(time.RFC3339Nano),
+					publishedAt.Format(time.RFC3339Nano),
+					publishedAt.Sub(publishedAt),
+				))
 		})
 
 		if c.SupportPublishContextCancellation {
@@ -89,7 +101,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 
 				pubsubtest.Waiter.Wait()
 
-				t.Must.True(sub.Get(t).AckedAt().IsZero())
+				assert.True(t, sub.Get(t).AckedAt().IsZero())
 			})
 		}
 	})
