@@ -101,16 +101,6 @@ func Clone[S ~[]T, T any](src S) S {
 	return dst
 }
 
-// Contains reports if a slice contains a given value.
-func Contains[T comparable](vs []T, v T) bool {
-	for _, got := range vs {
-		if got == v {
-			return true
-		}
-	}
-	return false
-}
-
 func Batch[T any](vs []T, size int) [][]T {
 	var out [][]T
 	for i := 0; i < len(vs); i += size {

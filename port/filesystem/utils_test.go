@@ -10,6 +10,7 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 
 	"go.llib.dev/frameless/port/filesystem"
+	"go.llib.dev/frameless/port/filesystem/filemode"
 
 	ffs "go.llib.dev/frameless/adapter/localfs"
 	"go.llib.dev/testcase/assert"
@@ -23,118 +24,115 @@ func makeFS(tb testing.TB) filesystem.FileSystem {
 }
 
 func Test_createAndOpen(t *testing.T) {
-	it := assert.MakeIt(t)
 	fsys := makeFS(t)
 	name := "test.txt"
 	file, err := filesystem.Create(fsys, name)
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 	fileInfo, err := file.Stat()
-	assert.NoError(it, err)
-	assert.False(it, fileInfo.IsDir())
-	assert.True(it, fileInfo.Mode()&filesystem.ModeUserRW != 0)
+	assert.NoError(t, err)
+	assert.False(t, fileInfo.IsDir())
+	assert.True(t, fileInfo.Mode()&filemode.UserRW != 0)
 
 	data := "Hello, world!"
 	n, err := file.Write([]byte(data))
-	assert.NoError(it, err)
-	assert.Equal(it, len([]byte(data)), n)
-	assert.NoError(it, file.Close())
+	assert.NoError(t, err)
+	assert.Equal(t, len([]byte(data)), n)
+	assert.NoError(t, file.Close())
 
 	file, err = filesystem.Open(fsys, name)
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 
 	bs, err := io.ReadAll(file)
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 
-	assert.Equal(it, data, string(bs))
+	assert.Equal(t, data, string(bs))
 }
 
 func TestReadDir(t *testing.T) {
-	it := assert.MakeIt(t)
 	fsys := makeFS(t)
 	dirName := "test.d"
 
 	t.Log("on missing dir, it yields error")
 	_, err := filesystem.ReadDir(fsys, dirName)
-	it.Must.ErrorIs(fs.ErrNotExist, err)
+	assert.ErrorIs(t, fs.ErrNotExist, err)
 
 	t.Log("on empty dir, returns an empty list")
-	assert.NoError(it, fsys.Mkdir(dirName, filesystem.ModeUserRWX))
+	assert.NoError(t, fsys.Mkdir(dirName, filemode.UserRWX))
 	dirEntries, err := filesystem.ReadDir(fsys, dirName)
-	assert.NoError(it, err)
-	it.Must.Empty(dirEntries)
+	assert.NoError(t, err)
+	assert.Empty(t, dirEntries)
 
 	t.Log("on dir with entries, return the list in sorted order")
 	for _, fileName := range []string{"c", "a", "b"} {
 		filePath := filepath.Join(dirName, fileName)
 		f, err := filesystem.Create(fsys, filePath)
-		assert.NoError(it, err)
-		assert.NoError(it, f.Close())
+		assert.NoError(t, err)
+		assert.NoError(t, f.Close())
 		t.Cleanup(func() { fsys.Remove(filePath) })
 	}
 	dirEntries, err = filesystem.ReadDir(fsys, dirName)
-	assert.NoError(it, err)
-	assert.Equal(it, 3, len(dirEntries))
-	assert.Equal(it, "a", dirEntries[0].Name())
-	assert.Equal(it, "b", dirEntries[1].Name())
-	assert.Equal(it, "c", dirEntries[2].Name())
+	assert.NoError(t, err)
+	assert.Equal(t, 3, len(dirEntries))
+	assert.Equal(t, "a", dirEntries[0].Name())
+	assert.Equal(t, "b", dirEntries[1].Name())
+	assert.Equal(t, "c", dirEntries[2].Name())
 }
 
 // TestWalkDir
 //
 // TODO: make stub tests to cover all rainy-Path
 func TestWalkDir(t *testing.T) {
-	it := assert.MakeIt(t)
 	fsys := makeFS(t)
 
 	touchFile := func(tb testing.TB, name string) {
-		file, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filesystem.ModeUserRWX)
+		file, err := fsys.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, filemode.UserRWX)
 		assert.NoError(tb, err)
 		assert.NoError(tb, file.Close())
 	}
 
-	assert.NoError(it, fsys.Mkdir("a", filesystem.ModeUserRWX))
+	assert.NoError(t, fsys.Mkdir("a", filemode.UserRWX))
 	touchFile(t, "a/1")
 	touchFile(t, "a/2")
 	touchFile(t, "a/3")
-	assert.NoError(it, fsys.Mkdir("b", filesystem.ModeUserRWX))
+	assert.NoError(t, fsys.Mkdir("b", filemode.UserRWX))
 	touchFile(t, "b/4")
 	touchFile(t, "b/5")
 	touchFile(t, "b/6")
-	assert.NoError(it, fsys.Mkdir("a/c", filesystem.ModeUserRWX))
+	assert.NoError(t, fsys.Mkdir("a/c", filemode.UserRWX))
 	touchFile(t, "a/c/7")
 	touchFile(t, "a/c/8")
 	touchFile(t, "a/c/9")
 
 	var names []string
-	assert.NoError(it, filesystem.WalkDir(fsys, "a", func(path string, d fs.DirEntry, err error) error {
-		assert.NoError(it, err)
+	assert.NoError(t, filesystem.WalkDir(fsys, "a", func(path string, d fs.DirEntry, err error) error {
+		assert.NoError(t, err)
 		names = append(names, d.Name())
 		return nil
 	}))
-	assert.Equal(it, []string{"a", "1", "2", "3", "c", "7", "8", "9"}, names)
+	assert.Equal(t, []string{"a", "1", "2", "3", "c", "7", "8", "9"}, names)
 
 	names = nil
-	assert.NoError(it, filesystem.WalkDir(fsys, "a/c", func(path string, d fs.DirEntry, err error) error {
-		assert.NoError(it, err)
+	assert.NoError(t, filesystem.WalkDir(fsys, "a/c", func(path string, d fs.DirEntry, err error) error {
+		assert.NoError(t, err)
 		names = append(names, d.Name())
 		return nil
 	}))
-	assert.Equal(it, []string{"c", "7", "8", "9"}, names)
+	assert.Equal(t, []string{"c", "7", "8", "9"}, names)
 
 	names = nil
-	assert.NoError(it, filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+	assert.NoError(t, filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			t.Log(err.Error())
 		}
-		assert.NoError(it, err)
+		assert.NoError(t, err)
 		names = append(names, d.Name())
 		return nil
 	}))
-	assert.Equal(it, []string{".", "a", "1", "2", "3", "c", "7", "8", "9", "b", "4", "5", "6"}, names)
+	assert.Equal(t, []string{".", "a", "1", "2", "3", "c", "7", "8", "9", "b", "4", "5", "6"}, names)
 
 	names = nil
-	assert.NoError(it, filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
-		assert.NoError(it, err)
+	assert.NoError(t, filesystem.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+		assert.NoError(t, err)
 		names = append(names, d.Name())
 
 		// intentionally skipping after name is already added,
@@ -144,5 +142,5 @@ func TestWalkDir(t *testing.T) {
 		}
 		return nil
 	}))
-	assert.Equal(it, []string{".", "a", "b", "4", "5", "6"}, names)
+	assert.Equal(t, []string{".", "a", "b", "4", "5", "6"}, names)
 }

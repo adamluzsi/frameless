@@ -86,7 +86,9 @@ func TestQueue_implementsVolatile(t *testing.T) {
 }
 
 func TestQueue_implementsBlocking(t *testing.T) {
-	pubsubConfig := pubsubcontract.Config[TestEntity]{
+	q := &memory.Queue[TestEntity]{Blocking: true}
+
+	pubsubcontract.Blocking(q, q, pubsubcontract.Config[TestEntity]{
 		// SupportPublishContextCancellation: true,// TODO: fixme in memory queue
 
 		MakeData: func(tb testing.TB) TestEntity {
@@ -94,11 +96,7 @@ func TestQueue_implementsBlocking(t *testing.T) {
 			v.Data = testcase.ToT(&tb).Random.UUID()
 			return v
 		},
-	}
-
-	q := &memory.Queue[TestEntity]{Blocking: true}
-
-	pubsubcontract.Blocking[TestEntity](q, q, pubsubConfig).Test(t)
+	}).Test(t)
 }
 
 func TestQueue_implementsOrdering(t *testing.T) {

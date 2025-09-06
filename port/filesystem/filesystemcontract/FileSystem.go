@@ -14,6 +14,7 @@ import (
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/filesystem"
+	"go.llib.dev/frameless/port/filesystem/filemode"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/testcase"
@@ -55,12 +56,12 @@ func (c specFileSystem) perm() testcase.Var[fs.FileMode] {
 		Init: func(t *testcase.T) fs.FileMode {
 			var mode fs.FileMode
 			if t.Random.Bool() {
-				mode |= filesystem.ModeUserRWX
+				mode |= filemode.UserRWX
 			} else {
-				mode |= filesystem.ModeUserRW
+				mode |= filemode.UserRW
 			}
 			if t.Random.Bool() {
-				mode |= filesystem.ModeOtherR
+				mode |= filemode.OtherR
 			}
 			return mode
 		},
@@ -396,7 +397,7 @@ func (c specFileSystem) specMkdir(s *testcase.Spec) {
 
 	s.When("when name points to an existing file", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			c.touchFile(t, c.name().Get(t), filesystem.ModeUserRWX)
+			c.touchFile(t, c.name().Get(t), filemode.UserRWX)
 		})
 
 		s.Then("directory making fails", func(t *testcase.T) {
@@ -604,9 +605,9 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 		s.And("it contains files", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				c.touchFile(t, filepath.Join(".", "a"), filesystem.ModeUserRWX)
-				c.touchFile(t, filepath.Join(".", "b"), filesystem.ModeUserRWX)
-				c.touchFile(t, filepath.Join(".", "c"), filesystem.ModeUserRWX)
+				c.touchFile(t, filepath.Join(".", "a"), filemode.UserRWX)
+				c.touchFile(t, filepath.Join(".", "b"), filemode.UserRWX)
+				c.touchFile(t, filepath.Join(".", "c"), filemode.UserRWX)
 			})
 
 			s.Then("directory entries are returned", func(t *testcase.T) {
@@ -625,7 +626,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 	s.When("a directory exists where the file name points", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			c.touchDir(t, c.name().Get(t), c.perm().Get(t)|filesystem.ModeUserRWX)
+			c.touchDir(t, c.name().Get(t), c.perm().Get(t)|filemode.UserRWX)
 		})
 
 		dirFileNames := testcase.Var[[]string]{ID: "dirFileNames", Init: func(t *testcase.T) []string {
@@ -659,7 +660,7 @@ func (c specFileSystem) specFile_ReadDir(s *testcase.Spec) {
 
 			s.And("directory has file(s)", func(s *testcase.Spec) {
 				dirFileNames.Bind(s)
-				const expectedEntryPerm = filesystem.ModeUserRWX
+				const expectedEntryPerm = filemode.UserRWX
 
 				cTime := testcase.Let[time.Time](s, nil)
 				s.Before(func(t *testcase.T) {
@@ -892,7 +893,7 @@ func (c specFileSystem) touchFile(t *testcase.T, name string, perm fs.FileMode) 
 }
 
 func (c specFileSystem) saveFile(t *testcase.T, name string, data []byte) {
-	file, err := c.FileSystem.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
+	file, err := c.FileSystem.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filemode.UserRWX)
 	t.Must.NoError(err)
 	defer func() { t.Should.NoError(file.Close()) }()
 	t.Defer(c.FileSystem.Remove, name)

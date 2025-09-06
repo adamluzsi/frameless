@@ -716,14 +716,14 @@ func TestSet(t *testing.T) {
 			var str string
 			env.SetLookup(nil, &str, "KEY")
 		})
-		assert.NotContain(t, fmt.Sprintf("%v", val), "nil pointer dereference")
+		assert.NotContains(t, fmt.Sprintf("%v", val), "nil pointer dereference")
 	})
 
 	t.Run("nil value pointer is given", func(t *testing.T) {
 		val := assert.Panic(t, func() {
 			env.SetLookup[string](&env.Set{}, nil, "KEY")
 		})
-		assert.NotContain(t, fmt.Sprintf("%v", val), "nil pointer dereference")
+		assert.NotContains(t, fmt.Sprintf("%v", val), "nil pointer dereference")
 	})
 }
 

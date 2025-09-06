@@ -15,6 +15,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/port/filesystem"
+	"go.llib.dev/frameless/port/filesystem/filemode"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
@@ -48,7 +49,7 @@ func TestBuffer(t *testing.T) {
 		rwsc = testcase.Var[RWSC]{ID: "reference reader/writer/seeker/closer", Init: func(t *testcase.T) RWSC {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(t.TempDir(), name)
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filemode.UserRWX)
 			t.Must.NoError(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data.Get(t))
@@ -274,7 +275,7 @@ func TestBuffer_smoke(tt *testing.T) {
 		file   = func(t *testcase.T) filesystem.File {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(tmpDir, name)
-			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filesystem.ModeUserRWX)
+			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filemode.UserRWX)
 			t.Must.NoError(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data)

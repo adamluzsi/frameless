@@ -11,11 +11,10 @@ import (
 )
 
 func TestBitwise(t *testing.T) {
-	it := assert.MakeIt(t)
 	a, err := strconv.ParseInt("1000", 2, 64)
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 	b, err := strconv.ParseInt("0100", 2, 64)
-	assert.NoError(it, err)
+	assert.NoError(t, err)
 	t.Log(strconv.FormatInt(a|b, 2))
 	t.Log(strconv.FormatInt((a|b)&a, 2))
 
@@ -62,24 +61,21 @@ func TestFlagHas(t *testing.T) {
 		tc := tc
 		t.Run(tc.Desc, func(t *testing.T) {
 			t.Run("#HasOpenFlagRead", func(t *testing.T) {
-				it := assert.MakeIt(t)
-
 				t.Log(tc.FlagBase)
 				t.Log(strconv.FormatInt(int64((tc.FlagBase|os.O_APPEND)&os.O_RDONLY), 2))
 
-				assert.Equal(it, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase))
-				assert.Equal(it, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_APPEND))
-				assert.Equal(it, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_TRUNC))
-				assert.Equal(it, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_CREATE))
-				assert.Equal(it, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_CREATE|os.O_EXCL))
+				assert.Equal(t, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase))
+				assert.Equal(t, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_APPEND))
+				assert.Equal(t, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_TRUNC))
+				assert.Equal(t, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_CREATE))
+				assert.Equal(t, tc.HasRead, ffs.HasOpenFlagRead(tc.FlagBase|os.O_CREATE|os.O_EXCL))
 			})
 			t.Run("HasOpenFlagWrite", func(t *testing.T) {
-				it := assert.MakeIt(t)
-				assert.Equal(it, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase))
-				assert.Equal(it, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_APPEND))
-				assert.Equal(it, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_TRUNC))
-				assert.Equal(it, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_CREATE))
-				assert.Equal(it, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_CREATE|os.O_EXCL))
+				assert.Equal(t, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase))
+				assert.Equal(t, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_APPEND))
+				assert.Equal(t, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_TRUNC))
+				assert.Equal(t, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_CREATE))
+				assert.Equal(t, tc.HasWrite, ffs.HasOpenFlagWrite(tc.FlagBase|os.O_CREATE|os.O_EXCL))
 			})
 		})
 	}

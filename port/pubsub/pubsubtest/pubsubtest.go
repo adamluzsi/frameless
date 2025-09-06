@@ -110,17 +110,16 @@ func (sih *consumer[Data]) wrk(
 	itr pubsub.Subscription[Data],
 ) {
 	defer wg.Done()
-	it := assert.MakeIt(tb)
 	for v, err := range itr {
 		if err != nil {
-			it.Should.AnyOf(func(a *assert.A) {
+			assert.Should(tb).AnyOf(func(a *assert.A) {
 				// TODO: survey which behaviour is more natural
 				a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), err) })
 				a.Test(func(t testing.TB) { assert.NoError(t, err) })
 			}, assert.Message(fmt.Sprintf("error: %#v", err)))
 			continue
 		}
-		it.Should.NoError(func(msg pubsub.Message[Data]) (rErr error) {
+		assert.Should(tb).NoError(func(msg pubsub.Message[Data]) (rErr error) {
 			defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 			if sih.OnData != nil {
 				sih.OnData(msg.Data())

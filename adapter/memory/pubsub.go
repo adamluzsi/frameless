@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"fmt"
+	"iter"
 	"math"
 	"runtime"
 	"sort"
@@ -10,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/txkit"
 	"go.llib.dev/frameless/port/comproto"
@@ -37,21 +39,30 @@ func (q *Queue[Data]) Publish(ctx context.Context, vs ...Data) (rErr error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var msgs = slicekit.Map(vs, func(v Data) *queueMessage[Data] {
-		return &queueMessage[Data]{
-			q:         q,
-			v:         v,
-			id:        rnd.UUID(),
-			timestamp: clock.Now(),
-		}
-	})
-	q.m.Lock()
-	q.msgs = append(q.msgs, msgs...)
-	q.m.Unlock()
+	if len(vs) == 0 {
+		return nil
+	}
+	var msgs = q.publish(ctx, vs)
 	q.blockingWait(ctx, msgs)
 	return nil
 }
 
+var msgIDIndex uint64
+
+func (q *Queue[Data]) publish(ctx context.Context, vs []Data) []*queueMessage[Data] {
+	q.m.Lock()
+	defer q.m.Unlock()
+	var msgs = slicekit.Map(vs, func(v Data) *queueMessage[Data] {
+		return &queueMessage[Data]{
+			q:         q,
+			v:         v,
+			id:        fmt.Sprintf("%s-%d", rnd.UUID(), atomic.AddUint64(&msgIDIndex, 1)),
+			timestamp: clock.Now(),
+		}
+	})
+	q.msgs = append(q.msgs, msgs...)
+	return msgs
+}
 func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessages []*queueMessage[Data]) {
 	if !q.Blocking {
 		return
@@ -61,7 +72,7 @@ func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessages []*que
 		for _, msg := range publishedMessages {
 			check[msg.id] = struct{}{}
 		}
-		for _, msg := range q.messages() {
+		for msg := range q.riter() {
 			delete(check, msg.id)
 		}
 		if len(check) == len(publishedMessages) { // all processed since nothing was found
@@ -70,10 +81,20 @@ func (q *Queue[Data]) blockingWait(ctx context.Context, publishedMessages []*que
 	}
 }
 
-func (q *Queue[Data]) messages() []*queueMessage[Data] {
-	q.m.Lock()
-	defer q.m.Unlock()
-	return slicekit.Clone(q.msgs)
+func (q *Queue[Data]) riter() iter.Seq[*queueMessage[Data]] {
+	return func(yield func(*queueMessage[Data]) bool) {
+		q.m.Lock()
+		q.sort(q.msgs)
+		q.m.Unlock()
+
+		q.m.RLock()
+		defer q.m.RUnlock()
+		for _, msg := range q.msgs {
+			if !yield(msg) {
+				return
+			}
+		}
+	}
 }
 
 func (q *Queue[Data]) take(ctx context.Context, s *QueueSubscription[Data]) (_ *queueMessage[Data], ack, nack func() error, _ error) {
@@ -82,19 +103,16 @@ do:
 		return nil, nil, nil, err
 	}
 
-	msgs := q.messages()
+	msgs := q.riter()
 
 	if q.Volatile {
-		msgs = slicekit.Filter(msgs, func(qm *queueMessage[Data]) bool {
+		msgs = iterkit.Filter(msgs, func(qm *queueMessage[Data]) bool {
 			return s.createdAt.Before(qm.timestamp) || s.createdAt.Equal(qm.timestamp)
 		})
 	}
 
-	s.q.sort(msgs)
-
-	for _, msg := range msgs {
+	for msg := range msgs {
 		if msg.take(s.id) {
-
 			ack := func() error {
 				q.m.Lock()
 				defer q.m.Unlock()
@@ -113,8 +131,8 @@ do:
 			}
 
 			return msg, ack, nack, nil
-
 		}
+
 		runtime.Gosched()
 	}
 
@@ -186,8 +204,8 @@ func (q *Queue[Data]) Subscribe(ctx context.Context) pubsub.Subscription[Data] {
 			createdAt: clock.Now(),
 		}
 		for i := 1; i < math.MaxInt; i++ {
-			sub.id = subscriptionID(i)
 			q.m.Lock()
+			sub.id = subscriptionID(i)
 			if q.subs == nil {
 				q.subs = make(map[subscriptionID]*QueueSubscription[Data])
 			}

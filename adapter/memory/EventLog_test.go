@@ -92,10 +92,10 @@ func (spec SpecMemory) SpecAdd(s *testcase.Spec) {
 		})
 
 		s.Then(`Add will execute in the scope of transaction`, func(t *testcase.T) {
-			assert.Must(t).NoError(subject(t))
-			assert.Must(t).NotContain(spec.memoryGet(t).Events(), eventGet(t))
-			assert.Must(t).NoError(spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
-			assert.Must(t).Contain(spec.memoryGet(t).Events(), eventGet(t))
+			assert.NoError(t, subject(t))
+			assert.NotContains(t, spec.memoryGet(t).Events(), eventGet(t))
+			assert.NoError(t, spec.memoryGet(t).CommitTx(spec.ctxGet(t)))
+			assert.Contains(t, spec.memoryGet(t).Events(), eventGet(t))
 		})
 	})
 }

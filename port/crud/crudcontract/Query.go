@@ -308,7 +308,7 @@ func QueryMany[ENT, ID any](
 					ents, err := iterkit.CollectE(act(t))
 					assert.NoError(t, err)
 					assert.Contains(t, ents, includedEntity.Get(t))
-					assert.NotContain(t, ents, othEnt.Get(t))
+					assert.NotContains(t, ents, othEnt.Get(t))
 				})
 			})
 		})

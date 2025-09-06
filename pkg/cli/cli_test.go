@@ -684,7 +684,7 @@ func TestMux(t *testing.T) {
 			s.Then("the help request is not interpreted as an unknown command", func(t *testcase.T) {
 				act(t)
 
-				assert.NotContain(t, strings.ToLower(response.Get(t).Out.String()), "unknown")
+				assert.NotContains(t, strings.ToLower(response.Get(t).Out.String()), "unknown")
 			})
 
 			s.When("commands are registered", func(s *testcase.Spec) {
@@ -785,8 +785,8 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 			s.Then("we expect that the request args no longer contain the raw flag input", func(t *testcase.T) {
 				c.Act(t)
 
-				assert.NotContain(t, c.Request.Get(t).Args, c.Flag)
-				assert.NotContain(t, c.Request.Get(t).Args, raw.Get(t))
+				assert.NotContains(t, c.Request.Get(t).Args, c.Flag)
+				assert.NotContains(t, c.Request.Get(t).Args, raw.Get(t))
 			})
 		})
 
@@ -806,7 +806,7 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 		s.And("the flag is not provided", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				for _, arg := range c.Request.Get(t).Args {
-					assert.NotContain(t, arg, c.Flag)
+					assert.NotContains(t, arg, c.Flag)
 				}
 			})
 
@@ -886,7 +886,7 @@ func (c AndTheArgTypeIs[T]) Spec(s *testcase.Spec) {
 		s.Then("we expect that the request args no longer contain the raw flag input", func(t *testcase.T) {
 			c.Act(t)
 
-			assert.NotContain(t, c.Request.Get(t).Args, raw.Get(t))
+			assert.NotContains(t, c.Request.Get(t).Args, raw.Get(t))
 		})
 	})
 

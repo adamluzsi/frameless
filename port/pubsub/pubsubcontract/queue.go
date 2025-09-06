@@ -1,8 +1,10 @@
 package pubsubcontract
 
 import (
+	"slices"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/frameless/port/pubsub"
@@ -10,6 +12,7 @@ import (
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 )
 
 // Queue defines a publisher behaviour where each message is only delivered to a single subscriber,
@@ -74,6 +77,42 @@ func Queue[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscri
 					for _, v := range values {
 						expected = append(expected, v.Get(t))
 					}
+
+					t.OnFail(func() {
+						var actual []Data
+						actual = append(actual, sub1.Get(t).Values()...)
+						actual = append(actual, sub2.Get(t).Values()...)
+
+						t.Log("expdcted:")
+						t.LogPretty(expected)
+						t.Log("actual:")
+						t.LogPretty(actual)
+
+						var printMissing = func(main, sub []Data) {
+							for _, exp := range main {
+								isFound := slices.ContainsFunc(sub, func(got Data) bool {
+									return reflectkit.Equal(exp, got)
+								})
+								if !isFound {
+									t.Log("missing")
+									t.LogPretty(exp)
+								}
+							}
+						}
+
+						switch {
+						case len(actual) < len(expected):
+							t.Log("actual is less than expected")
+							printMissing(expected, actual)
+
+						case len(expected) < len(actual):
+							t.Log("expected is less than actual")
+							printMissing(actual, expected)
+
+						default:
+							t.Log(pp.DiffString(pp.Format(expected), pp.Format(actual)))
+						}
+					})
 
 					t.Eventually(func(t *testcase.T) {
 						pubsubtest.Waiter.Wait()
