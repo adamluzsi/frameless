@@ -1,6 +1,7 @@
 package netkit
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -9,12 +10,16 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/resilience"
 )
 
 type Network string
+
+func (n Network) String() string { return string(n) }
 
 const (
 	TCP  Network = "tcp"
@@ -28,13 +33,18 @@ const (
 	UDP6 Network = "udp6"
 )
 
-var _ = enum.Register[Network]("",
+var _ = enum.Register[Network](
 	TCP, TCP4, TCP6,
 	UDP, UDP4, UDP6,
 )
 
 var allAvailableInterfaces = net.ParseIP("0.0.0.0") // bind to all available interfaces
 var localhost = net.ParseIP("127.0.0.1")            // bind to all available interfaces
+
+var anyNetworkIsPortFree = map[Network]struct{}{
+	"*": {},
+	"":  {},
+}
 
 // IsPortFree checks if a given TCP port is free to bind to. It takes into account specifics of
 //
@@ -45,7 +55,9 @@ var localhost = net.ParseIP("127.0.0.1")            // bind to all available int
 //
 // If you wish to check both TCP and UDP networks, then give a zero value to the Network argument.
 func IsPortFree(network Network, port int) (ok bool, returnErr error) {
-	if err := enum.Validate[Network](network); err != nil {
+	if _, ok := anyNetworkIsPortFree[network]; ok {
+		network = "*"
+	} else if err := enum.Validate(network); err != nil {
 		return false, err
 	}
 	const (
@@ -61,13 +73,12 @@ func IsPortFree(network Network, port int) (ok bool, returnErr error) {
 			return []Network{TCP, TCP4, TCP6}
 		case UDP:
 			return []Network{UDP, UDP4, UDP6}
-		case "": // scan all network type
+		case "*": // scan all network type
 			return []Network{TCP, TCP4, TCP6, UDP, UDP4, UDP6}
 		default:
 			return []Network{n}
 		}
 	}
-
 	for _, ip := range []net.IP{allAvailableInterfaces, localhost} {
 		for _, n := range expandNetwork(network) {
 			var (
@@ -110,28 +121,51 @@ func IsPortFree(network Network, port int) (ok bool, returnErr error) {
 	return true, nil
 }
 
-// GetFreePort opens a TCP listener on a randomly selected available port.
-// It returns the listener and the selected port number.
-func GetFreePort() (int, error) {
-	listener, err := net.Listen("tcp", "0.0.0.0:0")
-	if err != nil {
+// FreePort attempts to request from the OS an available local free port for a given network type.
+//
+// Be careful, as it might take a bit time to have the port fully released before you can use it to initiate a new connection
+func FreePort(n Network) (int, error) {
+	if err := enum.Validate(n); err != nil {
 		return 0, err
 	}
-
-	// Determine the port selected by the operating system.
-	addr := listener.Addr().String()
-	_, portStr, err := net.SplitHostPort(addr)
+	if isUDP(n) {
+		pc, err := net.ListenPacket(n.String(), ":0")
+		if err != nil {
+			return 0, err
+		}
+		if err := pc.Close(); err != nil {
+			return 0, err
+		}
+		return toFreePort(n, pc.LocalAddr().String())
+	}
+	listener, err := net.Listen(n.String(), ":0")
 	if err != nil {
 		return 0, err
 	}
 	if err := listener.Close(); err != nil {
 		return 0, err
 	}
-	port, err := strconv.Atoi(portStr)
+	return toFreePort(n, listener.Addr().String())
+}
+
+func toFreePort(n Network, addr string) (int, error) {
+	_, portEnc, err := net.SplitHostPort(addr)
 	if err != nil {
 		return 0, err
 	}
-	return port, nil
+	port, err := strconv.Atoi(portEnc)
+	if err != nil {
+		return 0, err
+	}
+	w := resilience.Waiter{Timeout: time.Second, WaitDuration: time.Millisecond}
+	for range resilience.Retries(context.Background(), w) {
+		conn, err := net.DialTimeout(n.String(), addr, time.Millisecond)
+		if err != nil {
+			break
+		}
+		_ = conn.Close()
+	}
+	return port, nil // still listening
 }
 
 func isUDP(n Network) bool {
