@@ -2,6 +2,7 @@ package crudcontract
 
 import (
 	"context"
+	"runtime"
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/contract"
@@ -14,10 +15,6 @@ import (
 func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig[Config[ENT, ID]](opts)
-
-	if c.MakeEntity == nil {
-		panic("?!")
-	}
 
 	s.Describe(`.Save`, func(s *testcase.Spec) {
 		var (
@@ -109,6 +106,10 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			ptr.Let(s, func(t *testcase.T) *ENT {
 				p := ptr.Super(t)
 				assert.NoError(t, subject.Save(c.MakeContext(t), p))
+				if bif, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
+					c.Helper().IsPresent(t, bif, c.MakeContext(t), c.IDA.Get(*p))
+				}
+
 				c.ModifyEntity(t, p) // change entity to represent an update state
 				return p
 			}).EagerLoading(s)
@@ -133,9 +134,22 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 					t.Skipf("unable to continue with the test, crud.AllFinder is not implemented in %T", subject)
 				}
 
-				vs, err := iterkit.CollectE(allFinder.FindAll(ctx.Get(t)))
-				assert.NoError(t, err)
-				initialCount := len(vs)
+				var initialCount int
+				for {
+					var counts = map[int]struct{}{}
+					t.Random.Repeat(5, 7, func() {
+						c, err := iterkit.CountE(allFinder.FindAll(ctx.Get(t)))
+						assert.NoError(t, err)
+						counts[c] = struct{}{}
+						runtime.Gosched()
+					})
+					if len(counts) == 1 {
+						for c := range counts {
+							initialCount = c
+						}
+						break
+					}
+				}
 
 				assert.NoError(t, act(t))
 
