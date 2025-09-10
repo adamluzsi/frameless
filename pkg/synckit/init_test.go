@@ -1,12 +1,11 @@
 package synckit_test
 
 import (
-	"context"
-	"runtime"
+	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -247,55 +246,93 @@ func TestInitErr(t *testing.T) {
 	})
 }
 
-func makeConcurrentReadsAccesses[T any](tb testing.TB, init func(*T) T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	tb.Cleanup(cancel)
-	var (
-		ready int32
-		v     T
-		blk   = func() { _ = init(&v) }
-	)
-	blk()
-	go func() {
-		more := random.Slice[func()](runtime.NumCPU()*2, func() func() { return blk })
-		atomic.AddInt32(&ready, 1)
-		for {
-			if ctx.Err() != nil {
-				break
+func Benchmark_init_once(b *testing.B) {
+	b.Run("Init", func(b *testing.B) {
+		initBenchmarkCases(b, func() *sync.Once {
+			return &sync.Once{}
+		}, func(l *sync.Once, ptr *string, init func() string) {
+			synckit.Init(l, ptr, init)
+		})
+
+		b.Run("*sync.Once raw/real", func(b *testing.B) {
+			var v string
+			rnd := random.New(random.CryptoSeed{})
+			val := rnd.HexN(8)
+			var init = func() string {
+				return val
 			}
-			testcase.Race(blk, blk, more...)
-		}
-	}()
-	for {
-		if atomic.LoadInt32(&ready) != 0 {
-			break
-		}
-	}
+			var once sync.Once
+			b.ResetTimer()
+			for range b.N {
+				_ = InitOncePure(&once, &v, init)
+			}
+		})
+
+		initBenchmarkCases(b, func() *sync.Mutex {
+			return &sync.Mutex{}
+		}, func(l *sync.Mutex, ptr *string, init func() string) {
+			synckit.Init(l, ptr, init)
+		})
+
+		initBenchmarkCases(b, func() *sync.RWMutex {
+			return &sync.RWMutex{}
+		}, func(l *sync.RWMutex, ptr *string, init func() string) {
+			synckit.Init(l, ptr, init)
+		})
+	})
+
+	b.Run("InitErr", func(b *testing.B) {
+		initBenchmarkCases(b, func() *sync.Mutex {
+			return &sync.Mutex{}
+		}, func(l *sync.Mutex, ptr *string, init func() string) {
+			synckit.InitErr(l, ptr, func() (string, error) {
+				return init(), nil
+			})
+		})
+
+		initBenchmarkCases(b, func() *sync.RWMutex {
+			return &sync.RWMutex{}
+		}, func(l *sync.RWMutex, ptr *string, init func() string) {
+			synckit.InitErr(l, ptr, func() (string, error) {
+				return init(), nil
+			})
+		})
+	})
 }
 
-func makeConcurrentAccesses[T any](tb testing.TB, init func(*T) T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	tb.Cleanup(cancel)
-	var ready int32
-	go func() {
-		blk := func() {
-			var v T
-			_ = init(&v)
-		}
-		more := random.Slice[func()](runtime.NumCPU()*2, func() func() { return blk })
-		atomic.AddInt32(&ready, 1)
-		func() {
-			for {
-				if ctx.Err() != nil {
-					break
-				}
-				testcase.Race(blk, blk, more...)
-			}
-		}()
-	}()
-	for {
-		if atomic.LoadInt32(&ready) != 0 {
-			break
-		}
+func InitOncePure(l *sync.Once, ptr *string, init func() string) string {
+	l.Do(func() { *ptr = init() })
+	return *ptr
+}
+
+func initBenchmarkCases[L *sync.RWMutex | *sync.Mutex | *sync.Once](b *testing.B,
+	mkl func() L,
+	subject func(L L, ptr *string, init func() string),
+) {
+	name := reflectkit.TypeOf[L]().String()
+	rnd := random.New(random.CryptoSeed{})
+	val := rnd.HexN(7)
+	var init = func() string {
+		return val
 	}
+
+	name += strings.Repeat("-", 15-len([]rune(name)))
+
+	b.Run(name, func(b *testing.B) {
+		b.Run("real-", func(b *testing.B) {
+			var l = mkl()
+			var v string
+			b.ResetTimer()
+			for range b.N {
+				subject(l, &v, init)
+			}
+		})
+		b.Run("worse", func(b *testing.B) {
+			for range b.N {
+				var l = mkl()
+				var v string
+				subject(l, &v, init)
+			}
+		})
+	})
 }
