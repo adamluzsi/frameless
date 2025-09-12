@@ -131,9 +131,9 @@ type testingTB interface {
 	Log(args ...any)
 }
 
-func testingTBLogger(tb testingTB) func(lvl logging.Level, msg string, fields logging.Fields) {
+func testingTBLogger(tb testingTB) func(ctx context.Context, lvl logging.Level, msg string, fields logging.Fields) {
 	tb.Helper()
-	return func(lvl logging.Level, msg string, fields logging.Fields) {
+	return func(ctx context.Context, lvl logging.Level, msg string, fields logging.Fields) {
 		tb.Helper()
 		var parts []string
 		parts = append(parts, fmt.Sprintf("[%s] %s", lvl.String(), msg))

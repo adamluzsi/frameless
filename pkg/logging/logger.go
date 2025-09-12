@@ -19,38 +19,36 @@ import (
 type Logger struct {
 	Out io.Writer
 
-	// Level is the logging level.
-	// The default Level is LevelInfo.
-	Level Level
-
-	Separator string
-
 	MessageKey   string
 	LevelKey     string
 	TimestampKey string
 
+	// Level is the logging level.
+	// The default Level is LevelInfo.
+	Level Level
+	// Separator is used to seperate log entries from each other.
+	// By default, it is the current operation system's file line seperator.
+	Separator string
 	// MarshalFunc is used to serialise the logging message event.
 	// When nil it defaults to JSON format.
 	MarshalFunc func(any) ([]byte, error)
 	// KeyFormatter will be used to format the logging field keys
 	KeyFormatter func(string) string
-
 	// Hijack will hijack the logging and instead of letting it logged out to the Out,
 	// the logging will be done with the Hijack function.
 	// This is useful if you want to use your own choice of logging,
 	// but also packages that use this logging package.
 	Hijack HijackFunc
-
-	outLock sync.Mutex
-
-	strategy _LoggerStrategy
-
+	// TestingTB is used to mark logging methods as helper functions,
+	// so when logging is used during testing, it points to the actual logging source in the test log entries.
 	TestingTB testingTB
-
 	// FlushTimeout is a deadline time for async logging to tell how much time it should wait with batching.
 	//
 	// Default: 1s
 	FlushTimeout time.Duration
+
+	outLock  sync.Mutex
+	strategy _LoggerStrategy
 }
 
 type _LoggerStrategy struct {
@@ -58,41 +56,34 @@ type _LoggerStrategy struct {
 	strategy strategy
 }
 
-type HijackFunc func(level Level, msg string, fields Fields)
+type HijackFunc func(ctc context.Context, level Level, msg string, fields Fields)
 
 func (l *Logger) Debug(ctx context.Context, msg string, ds ...Detail) {
 	l.tb().Helper()
-	l.log(ctx, LevelDebug, msg, ds)
+	l.Log(ctx, LevelDebug, msg, ds...)
 }
 
 func (l *Logger) Info(ctx context.Context, msg string, ds ...Detail) {
 	l.tb().Helper()
-	l.log(ctx, LevelInfo, msg, ds)
+	l.Log(ctx, LevelInfo, msg, ds...)
 }
 
 func (l *Logger) Warn(ctx context.Context, msg string, ds ...Detail) {
 	l.tb().Helper()
-	l.log(ctx, LevelWarn, msg, ds)
+	l.Log(ctx, LevelWarn, msg, ds...)
 }
 
 func (l *Logger) Error(ctx context.Context, msg string, ds ...Detail) {
 	l.tb().Helper()
-	l.log(ctx, LevelError, msg, ds)
+	l.Log(ctx, LevelError, msg, ds...)
 }
 
 func (l *Logger) Fatal(ctx context.Context, msg string, ds ...Detail) {
 	l.tb().Helper()
-	l.log(ctx, LevelFatal, msg, ds)
+	l.Log(ctx, LevelFatal, msg, ds...)
 }
 
-func (l *Logger) getKeyFormatter() func(string) string {
-	if l.KeyFormatter != nil {
-		return l.KeyFormatter
-	}
-	return stringkit.ToSnake
-}
-
-func (l *Logger) log(ctx context.Context, level Level, msg string, ds []Detail) {
+func (l *Logger) Log(ctx context.Context, level Level, msg string, ds ...Detail) {
 	l.tb().Helper()
 	if l.isHijacked(ctx, level, msg, ds) {
 		return
@@ -114,15 +105,22 @@ func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []D
 	if l.Hijack == nil {
 		return false
 	}
-	var le = make(logEntry)
+	var le = make(entry)
 	for _, d := range getLoggingDetailsFromContext(ctx) {
 		d.addTo(l, le)
 	}
 	for _, d := range ds {
 		d.addTo(l, le)
 	}
-	l.Hijack(level, msg, Fields(le))
+	l.Hijack(ctx, level, msg, Fields(le))
 	return true
+}
+
+func (l *Logger) getKeyFormatter() func(string) string {
+	if l.KeyFormatter != nil {
+		return l.KeyFormatter
+	}
+	return stringkit.ToSnake
 }
 
 func (l *Logger) logTo(out io.Writer, event logEvent) error {
@@ -170,8 +168,8 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 	return l.getKeyFormatter()(zerokit.Coalesce(key, defaultKey))
 }
 
-func (l *Logger) toLogEntry(event logEvent) logEntry {
-	le := make(logEntry)
+func (l *Logger) toLogEntry(event logEvent) entry {
+	le := make(entry)
 	for _, d := range getLoggingDetailsFromContext(event.Context) {
 		d.addTo(l, le)
 	}
@@ -228,12 +226,10 @@ func (l *Logger) getStrategy() strategy {
 }
 
 func (l *Logger) getLevel() Level {
-	if l.Level != "" {
-		return l.Level
-	}
-	return zerokit.Init[Level](&l.Level, func() Level {
+	if len(l.Level) == 0 {
 		return defaultLevel
-	})
+	}
+	return l.Level
 }
 
 func (l *Logger) Clone() *Logger {
@@ -259,14 +255,14 @@ type testingTB interface {
 	Log(args ...any)
 }
 
+var fallbackTestingTB = (*nullTestingTB)(nil)
+
 func (l *Logger) tb() testingTB {
 	if l.TestingTB != nil {
 		return l.TestingTB
 	}
 	return fallbackTestingTB
 }
-
-var fallbackTestingTB = (*nullTestingTB)(nil)
 
 type nullTestingTB struct{}
 

@@ -198,7 +198,7 @@ func TestStub(t *testing.T) {
 			l.LevelKey = "lvl"
 			l.Level = logging.LevelDebug
 
-			l.Hijack = func(level logging.Level, msg string, fields logging.Fields) {
+			l.Hijack = func(ctx context.Context, level logging.Level, msg string, fields logging.Fields) {
 				entries = append(entries, Entry{
 					Level:   level,
 					Message: msg,
@@ -325,7 +325,7 @@ func (tb *TestingTBDouble) Log(args ...any) {
 func TestHijack(t *testing.T) {
 	out := logger.Stub(t)
 	var lastMessage string
-	logger.Hijack(func(level logging.Level, msg string, fields logging.Fields) {
+	logger.Hijack(func(ctx context.Context, level logging.Level, msg string, fields logging.Fields) {
 		assert.NotEmpty(t, level.String())
 		assert.NotEmpty(t, msg)
 		assert.NotEmpty(t, fields)

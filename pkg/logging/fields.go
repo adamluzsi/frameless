@@ -9,6 +9,9 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 )
 
+// Detail is a logging detail that enrich the logging message with additional contextual detail.
+type Detail interface{ addTo(*Logger, entry) }
+
 // Field creates a single key value pair based logging detail.
 // It will enrich the log entry with a value in the key you gave.
 func Field(key string, value any) Detail {
@@ -20,7 +23,7 @@ type field struct {
 	Value any
 }
 
-func (f field) addTo(l *Logger, e logEntry) {
+func (f field) addTo(l *Logger, e entry) {
 	val := l.toFieldValue(f.Value)
 	if _, ok := val.(nullLoggingDetail); ok {
 		return
@@ -33,7 +36,7 @@ func (f field) addTo(l *Logger, e logEntry) {
 // but would be skipped in a production environment because of the logging level.
 type LazyDetail func() Detail
 
-func (df LazyDetail) addTo(l *Logger, e logEntry) {
+func (df LazyDetail) addTo(l *Logger, e entry) {
 	if df == nil {
 		return
 	}
@@ -48,7 +51,7 @@ func (df LazyDetail) addTo(l *Logger, e logEntry) {
 // It will enrich the log entry with a value in the key you gave.
 type Fields map[string]any
 
-func (fields Fields) addTo(l *Logger, e logEntry) {
+func (fields Fields) addTo(l *Logger, e entry) {
 	for k, v := range fields {
 		Field(k, v).addTo(l, e)
 	}
@@ -91,9 +94,6 @@ func RegisterFieldType[T any](mapping func(T) Detail) func() {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// Detail is a logging detail that enrich the logging message with additional contextual detail.
-type Detail interface{ addTo(*Logger, logEntry) }
-
 func (l *Logger) tryInterface(val any) (any, bool) {
 	rv := reflect.ValueOf(val)
 	for intType, mapping := range interfaceRegister {
@@ -113,7 +113,7 @@ func (l *Logger) toFieldValue(val any) any {
 		return l.toFieldValue(mapping(val))
 	}
 	switch val := rv.Interface().(type) {
-	case logEntry:
+	case entry:
 		vs := map[string]any{}
 		for k, v := range val {
 			vs[l.getKeyFormatter()(k)] = l.toFieldValue(v)
@@ -121,17 +121,17 @@ func (l *Logger) toFieldValue(val any) any {
 		return vs
 
 	case field:
-		le := logEntry{}
+		le := entry{}
 		val.addTo(l, le)
 		return l.toFieldValue(le)
 
 	case Fields:
-		le := logEntry{}
+		le := entry{}
 		val.addTo(l, le)
 		return l.toFieldValue(le)
 
 	case []Detail:
-		le := logEntry{}
+		le := entry{}
 		for _, v := range val {
 			v.addTo(l, le)
 		}
@@ -173,17 +173,17 @@ func (l *Logger) toFieldValue(val any) any {
 	}
 }
 
-type logEntry map[string]any
+type entry map[string]any
 
-func (ld logEntry) addTo(l *Logger, entry logEntry) { entry.Merge(ld) }
+func (e entry) addTo(l *Logger, entry entry) { entry.Merge(e) }
 
-func (ld logEntry) Merge(oth logEntry) logEntry {
+func (e entry) Merge(oth entry) entry {
 	for k, v := range oth {
-		ld[k] = v
+		e[k] = v
 	}
-	return ld
+	return e
 }
 
 type nullLoggingDetail struct{}
 
-func (nullLoggingDetail) addTo(*Logger, logEntry) {}
+func (nullLoggingDetail) addTo(*Logger, entry) {}

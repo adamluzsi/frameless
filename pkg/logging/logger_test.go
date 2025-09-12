@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
@@ -270,7 +272,7 @@ func TestLogger_smoke(t *testing.T) {
 			buf  = &bytes.Buffer{}
 			l    = logging.Logger{
 				Out: buf,
-				Hijack: func(level logging.Level, msg string, fields logging.Fields) {
+				Hijack: func(ctx context.Context, level logging.Level, msg string, fields logging.Fields) {
 					logs = append(logs, LogEntry{Level: level, Message: msg, Fields: fields})
 				},
 				Level: logging.LevelFatal,
@@ -384,5 +386,172 @@ func TestLogger_AsyncLogging_smoke(t *testing.T) {
 
 		assert.Contains(it, out.String(), `"Msg":"gsm"`)
 		assert.Contains(it, out.String(), `"FieldKey":"value"`)
+	})
+}
+
+func TestLogger_Log(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	type Message struct {
+		Context context.Context
+		Level   logging.Level
+		Message string
+		Fields  logging.Fields
+	}
+
+	messages := let.VarOf[[]Message](s, nil)
+
+	logger := let.Var(s, func(t *testcase.T) *logging.Logger {
+		return &logging.Logger{
+			Hijack: func(ctx context.Context, level logging.Level, msg string, fields logging.Fields) {
+				testcase.Append(t, messages, Message{Context: ctx, Level: level, Message: msg, Fields: fields})
+			},
+			KeyFormatter: stringkit.ToSnake,
+		}
+	})
+
+	type ctxKey struct{}
+
+	var (
+		ctxVal  = let.String(s)
+		Context = let.Var(s, func(t *testcase.T) context.Context {
+			return context.WithValue(t.Context(), ctxKey{}, ctxVal.Get(t))
+		})
+		level   = let.OneOf(s, enum.Values[logging.Level]()...)
+		message = let.Var(s, func(t *testcase.T) string {
+			return t.Random.String()
+		})
+		details = let.VarOf[[]logging.Detail](s, nil)
+	)
+	act := let.Act0(func(t *testcase.T) {
+		logger.Get(t).Log(Context.Get(t), level.Get(t), message.Get(t), details.Get(t)...)
+	})
+
+	s.Then("log entry is made using the inputs", func(t *testcase.T) {
+		act(t)
+
+		assert.NotEmpty(t, messages.Get(t))
+		assert.OneOf(t, messages.Get(t), func(tb testing.TB, msg Message) {
+			assert.Equal(tb, msg, Message{
+				Context: Context.Get(t),
+				Level:   level.Get(t),
+				Message: message.Get(t),
+				Fields:  logging.Fields{},
+			})
+		})
+	})
+
+	s.When("detail is given", func(s *testcase.Spec) {
+		details.Let(s, func(t *testcase.T) []logging.Detail {
+			return []logging.Detail{
+				logging.Field("foo", "1"),
+				logging.Fields{"bar": 2, "baz": "three"},
+			}
+		})
+
+		s.Then("logging entry is generated", func(t *testcase.T) {
+			act(t)
+
+			assert.NotEmpty(t, messages.Get(t))
+			assert.OneOf(t, messages.Get(t), func(tb testing.TB, msg Message) {
+				assert.NotNil(tb, msg.Context)
+				assert.Equal[any](t, msg.Context.Value(ctxKey{}), ctxVal.Get(t))
+				assert.Equal(tb, msg.Level, level.Get(t))
+				assert.Equal(tb, msg.Message, message.Get(t))
+				assert.Equal(tb, msg.Fields, logging.Fields{"foo": "1", "bar": 2, "baz": "three"})
+			})
+		})
+
+		s.And("a detail key is not aligned with the logoutput", func(s *testcase.Spec) {
+			details.Let(s, func(t *testcase.T) []logging.Detail {
+				return append(details.Super(t), logging.Field("Qux", logging.Fields{
+					"Abc": "a",
+					"Bcd": "b",
+					"Dce": "b",
+				}))
+			})
+
+			s.Then("the outcome logging fields will have formatted logs", func(t *testcase.T) {
+				act(t)
+
+				assert.NotEmpty(t, messages.Get(t))
+				assert.OneOf(t, messages.Get(t), func(tb testing.TB, msg Message) {
+					assert.Equal(tb, msg.Fields, logging.Fields{
+						"foo": "1",
+						"bar": 2,
+						"baz": "three",
+						"qux": map[string]any{
+							"abc": "a",
+							"bcd": "b",
+							"dce": "b",
+						},
+					})
+
+				})
+			})
+		})
+
+		s.And("the details contain a mapped struct type", func(s *testcase.Spec) {
+			type T struct {
+				Foo string
+				Bar int
+				Baz bool
+			}
+
+			s.Before(func(t *testcase.T) {
+				t.Cleanup(logging.RegisterFieldType[T](func(v T) logging.Detail {
+					return logging.Fields{
+						"FOO": v.Foo,
+						"BAR": v.Bar,
+						"BAZ": v.Baz,
+						"QUX": logging.Fields{
+							"FOO": v.Foo,
+							"BAR": v.Bar,
+							"BAZ": v.Baz,
+						},
+						"quux": map[string]any{
+							"FOO": v.Foo,
+							"BAR": v.Bar,
+							"BAZ": v.Baz,
+						},
+					}
+				}))
+			})
+
+			v := let.Var(s, func(t *testcase.T) T {
+				return T{
+					Foo: t.Random.HexN(5),
+					Bar: t.Random.Int(),
+					Baz: t.Random.Bool(),
+				}
+			})
+
+			details.Let(s, func(t *testcase.T) []logging.Detail {
+				return append(details.Super(t), logging.Field("val", v.Get(t)))
+			})
+
+			s.Then("the outcome logging fields will contain the field", func(t *testcase.T) {
+				act(t)
+
+				assert.NotEmpty(t, messages.Get(t))
+				assert.OneOf(t, messages.Get(t), func(tb testing.TB, msg Message) {
+					assert.NotNil(t, msg.Fields)
+
+					val, ok := msg.Fields["val"].(map[string]any)
+					assert.True(t, ok)
+					assert.NotNil(t, val)
+					assert.Equal[any](t, val["foo"], v.Get(t).Foo)
+					assert.Equal[any](t, val["bar"], v.Get(t).Bar)
+					assert.Equal[any](t, val["baz"], v.Get(t).Baz)
+
+					qux, ok := val["qux"].(map[string]any)
+					assert.True(t, ok)
+					assert.NotNil(t, qux)
+					assert.Equal[any](t, qux["foo"], v.Get(t).Foo)
+					assert.Equal[any](t, qux["bar"], v.Get(t).Bar)
+					assert.Equal[any](t, qux["baz"], v.Get(t).Baz)
+				})
+			})
+		})
 	})
 }

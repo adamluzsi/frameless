@@ -367,7 +367,7 @@ func TestAccessLog_smoke(t *testing.T) {
 	)
 
 	logger.Stub(t, func(l *logging.Logger) {
-		l.Hijack = func(level logging.Level, msg string, fields logging.Fields) {
+		l.Hijack = func(ctx context.Context, level logging.Level, msg string, fields logging.Fields) {
 			logs = append(logs, fields)
 		}
 	})
