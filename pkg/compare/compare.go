@@ -1,6 +1,10 @@
 package compare
 
-import "go.llib.dev/frameless/internal/constraints"
+import (
+	"strings"
+
+	"go.llib.dev/frameless/internal/constraints"
+)
 
 // Interface defines how comparison can be implemented.
 // An implementation of Interface can be sorted by the routines in this package.
@@ -97,4 +101,8 @@ func Numbers[T constraints.Number](a, b T) int {
 	default:
 		return 0
 	}
+}
+
+func Strings[S ~string](a, b S) int {
+	return strings.Compare(string(a), string(b))
 }
