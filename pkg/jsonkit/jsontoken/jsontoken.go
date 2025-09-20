@@ -18,7 +18,28 @@ import (
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
-const ErrMalformed errorkit.Error = "malformed json error"
+const ErrMalformed errorkit.Error = "[ErrMalformed] malformed JSON"
+
+type LexingError struct {
+	Message string
+	Path    Path
+}
+
+func (err LexingError) Error() string {
+	var (
+		format string = "JSON lexing error"
+		a      []any
+	)
+	if 0 < len(err.Message) {
+		format += ": %s"
+		a = append(a, err.Message)
+	}
+	if 0 < len(err.Path) {
+		format += "\n%s"
+		a = append(a, err.Path.String())
+	}
+	return fmt.Sprintf(format, a...)
+}
 
 type token string
 
@@ -48,23 +69,28 @@ var (
 	falseTokenUTF8 = []rune(falseToken)
 )
 
+// Scanner is a streaming lexer, that allows
 type Scanner struct {
-	Path Path
-	Func func(json.RawMessage) error
+	// Selectors allows granual control on what should be kept during scanning of a JSON input stream.
+	// When no Selectors is set, the default is to keep everything.
+	Selectors []Selector
 }
 
-// ScanFrom is a syntax sugar to use Scan with string and byte slices
-func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
-	switch src := any(v).(type) {
-	case string:
-		return Scan(bufio.NewReader(strings.NewReader(src)))
-	case []byte:
-		return Scan(bufio.NewReader(bytes.NewReader(src)))
-	case *bufio.Reader:
-		return Scan(src)
-	default:
-		panic("not-implemented")
+func (s *Scanner) isPathMatch(path Path) bool {
+	if len(s.Selectors) == 0 {
+		return true
 	}
+	for _, f := range s.Selectors {
+		if f.Path.Match(path) {
+			return true
+		}
+	}
+	return false
+}
+
+type Selector struct {
+	Path Path
+	Func func(json.RawMessage) error
 }
 
 var _ Input = (*bufio.Reader)(nil)
@@ -89,11 +115,6 @@ type noDiscard interface {
 	NoDiscard()
 }
 
-func Scan(in Input) (json.RawMessage, error) {
-	var s Scanner
-	return s.Scan(in)
-}
-
 func (s *Scanner) Scan(in Input) (json.RawMessage, error) {
 	var path Path
 	var out bytes.Buffer
@@ -102,15 +123,25 @@ func (s *Scanner) Scan(in Input) (json.RawMessage, error) {
 		if json.Valid(out.Bytes()) {
 			return out.Bytes(), nil
 		}
-		return nil, s.malformedErr(err)
+		return nil, s.asParseError(err, path)
 	}
 	if err != nil {
-		return nil, s.malformedErr(err)
+		return nil, s.asParseError(err, path)
 	}
-	if s.Path.Match(path) && !json.Valid(out.Bytes()) {
-		return nil, ErrMalformed
+	if s.isPathMatch(path) && !json.Valid(out.Bytes()) {
+		return nil, LexingError{Message: "invalid JSON file format", Path: path}
 	}
 	return out.Bytes(), nil
+}
+
+func (s *Scanner) asParseError(err error, path Path) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := errorkit.As[LexingError](err); ok {
+		return err
+	}
+	return errorkit.Merge(err, LexingError{Path: path})
 }
 
 func (s *Scanner) scan(in Input, out Output, path Path) error {
@@ -138,13 +169,20 @@ func (s *Scanner) scan(in Input, out Output, path Path) error {
 	case KindObject:
 		return s.scanObject(in, out, path)
 	default:
-		return fmt.Errorf("not-implemented, unable how to handle %s kind", kind)
+		var msg string = fmt.Sprintf("not-implemented, unhandled character: %q", string(char))
+		if kind != nil {
+			msg += fmt.Sprintf("\nkind=%s", kind.String())
+		}
+		return LexingError{
+			Message: msg,
+			Path:    path,
+		}
 	}
 }
 
 func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error {
 	var raw Output = &bytes.Buffer{}
-	if !s.Path.Match(path) {
+	if !s.isPathMatch(path) {
 		if _, ok := out.(noDiscard); !ok {
 			raw = discard
 		}
@@ -153,9 +191,11 @@ func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error 
 	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
 		return returnErr
 	}
-	if s.Path.Equal(path) && s.Func != nil {
-		if err := s.Func(raw.Bytes()); err != nil {
-			return err
+	for _, selector := range s.Selectors {
+		if selector.Path.Equal(path) && selector.Func != nil {
+			if err := selector.Func(raw.Bytes()); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err := raw.WriteTo(out); err != nil {
@@ -221,10 +261,10 @@ func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error
 		for i := 0; i < len(token); i++ {
 			char, _, err := in.ReadRune()
 			if err != nil {
-				return ErrMalformedF("error while parsing %q token: %w", string(token), err)
+				return LexingError{Message: "error while reading from input: " + err.Error(), Path: path}
 			}
 			if char != token[i] {
-				return ErrMalformedF(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i])
+				return LexingError{Message: fmt.Sprintf(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i]), Path: path}
 			}
 			if _, err := out.WriteRune(char); err != nil {
 				return err
@@ -249,7 +289,7 @@ func (s *Scanner) scanBoolean(in Input, out Output, path Path) error {
 	case 'f':
 		return s.scanToken(in, out, path, falseTokenUTF8)
 	default:
-		return ErrMalformedF("unexpected boolean first character: %c", char)
+		return LexingError{Message: fmt.Sprintf("unexpected boolean first character: %c", char), Path: path}
 	}
 }
 
@@ -259,21 +299,39 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
-		char, _, err := iokit.MoveRune(in, out)
+
+		firstChar, _, err := iokit.MoveRune(in, out)
 		if err != nil {
 			return err
 		}
-		if char != arrayOpenToken {
-			return ErrMalformedF(`unexpected array open token, expected "[" but got %c`, char)
+		if firstChar != arrayOpenToken {
+			return LexingError{Message: fmt.Sprintf(`unexpected array open token, expected "[" but got %c`, firstChar), Path: path}
 		}
 
-		nextChar, _, err := iokit.PeekRune(in)
+		secondChar, _, err := iokit.PeekRune(in)
 		if err != nil {
 			return err
 		}
-		if nextChar == arrayCloseToken { // empty array
+		if secondChar == arrayCloseToken { // empty array
 			_, _, err := iokit.MoveRune(in, out)
 			return err
+		}
+
+		{ // check for empty array
+			if err := trimSpace(in, out); err != nil {
+				return err
+			}
+
+			nextChar, _, err := iokit.PeekRune(in)
+			if err != nil {
+				return err
+			}
+			if nextChar == arrayCloseToken {
+				if _, _, err := iokit.MoveRune(in, out); err != nil {
+					return err
+				}
+				return nil
+			}
 		}
 
 	scanValues:
@@ -283,7 +341,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 			}
 
 			// scan array value
-			if err := s.scan(in, out, path.With(KindArrayValue)); err != nil {
+			if err := s.scan(in, out, path.With(KindElement)); err != nil {
 				return err
 			}
 
@@ -302,7 +360,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 			case arrayCloseToken:
 				break scanValues
 			default:
-				return ErrMalformedF("unexpected array token: %c", next)
+				return LexingError{Message: fmt.Sprintf("unexpected array token: %c", next), Path: path}
 			}
 		}
 		return nil
@@ -322,7 +380,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 		}
 
 		if firstChar != objectOpenToken { // '{'
-			return ErrMalformedF(`unexpected object open token, expected "{" but got %c`, firstChar)
+			return LexingError{Message: fmt.Sprintf(`unexpected object open token, expected "{" but got %c`, firstChar), Path: path}
 		}
 
 		if err := trimSpace(in, out); err != nil {
@@ -348,14 +406,14 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 
 				/* SCAN STRING KEY */
 
-				// we need to make sure that the object key is retrieved
+				// we need to make sure that the object name is retrieved
 				// and not discarded from the output writing.
-				var key objectKeyBuffer
-				if err := s.scanString(in, &key, path.With(KindObjectKey)); err != nil {
+				var name objectKeyBuffer
+				if err := s.scanString(in, &name, path.With(KindName)); err != nil {
 					return fmt.Errorf("(object key) %w", err)
 				}
 
-				if err := copyTo(&key, out); err != nil {
+				if err := copyTo(&name, out); err != nil {
 					return err
 				}
 
@@ -369,14 +427,19 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 					return err
 				}
 				if sep != nameSepToken {
-					return ErrMalformedF(`unexpected object key-value separator, expected ":" but got "%c"`, sep)
+					return LexingError{Message: fmt.Sprintf(`unexpected object key-value separator, expected ":" but got "%c"`, sep), Path: path}
 				}
 				if err := trimSpace(in, out); err != nil {
 					return err
 				}
 
 				/* SCAN OBJECT VALUE */
-				if err := s.scan(in, out, path.With(KindObjectValue{Key: key.Bytes()})); err != nil {
+				var valueName string = name.String()
+				if rawName := name.Bytes(); 2 <= len(rawName) {
+					valueName = string(rawName[1 : len(rawName)-1]) // drop quote tokens
+				}
+
+				if err := s.scan(in, out, path.With(KindValue{Name: valueName})); err != nil {
 					return err
 				}
 				if err := trimSpace(in, out); err != nil {
@@ -394,7 +457,10 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 			case valueSepToken:
 				continue scan
 			default:
-				return ErrMalformedF(`unexpected character in object, expected either "," or "}", but got "%c"`, next)
+				return LexingError{
+					Message: fmt.Sprintf(`unexpected character in object, expected either "," or "}", but got "%c"`, next),
+					Path:    path,
+				}
 			}
 		}
 	})
@@ -412,7 +478,10 @@ func (s *Scanner) scanString(in Input, out Output, path Path) error {
 			return err
 		}
 		if first != quoteToken {
-			return ErrMalformedF(`unexpected string starting token, expected quote but got "%c"`, first)
+			return LexingError{
+				Message: fmt.Sprintf(`unexpected string starting token, expected quote but got "%c"`, first),
+				Path:    path,
+			}
 		}
 	scan:
 		for {
@@ -457,87 +526,6 @@ func (s *Scanner) tokenStartKind(char rune) Kind {
 	return nil
 }
 
-func ErrMalformedF(format string, a ...any) error {
-	args := []any{ErrMalformed}
-	args = append(args, a...)
-	return fmt.Errorf("[%w] "+format, args...)
-}
-
-func (s *Scanner) malformedErr(err error) error {
-	return ErrMalformedF("%w", err)
-}
-
-// Query will turn the input reader into a json visitor that yields results when a path is matching.
-// Think about it something similar as jq.
-// It will not keep the visited json i n memory, to avoid problems with infinite streams.
-func Query(ctx context.Context, r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
-	var in Input
-	if input, ok := r.(Input); ok {
-		in = input
-	} else {
-		in = bufio.NewReader(r)
-	}
-	return visit(ctx, in, path)
-}
-
-func visit(ctx context.Context, input Input, path Path) iterkit.SeqE[json.RawMessage] {
-	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
-		var callerNoLongerListens bool
-		if closer, ok := input.(io.Closer); ok {
-			defer func() {
-				cErr := closer.Close()
-				if !callerNoLongerListens {
-					yield(nil, cErr)
-				}
-			}()
-		}
-		type M struct {
-			V json.RawMessage
-			E error
-		}
-		var (
-			feed = make(chan M)
-			done = make(chan struct{})
-		)
-		defer close(done)
-		go func() {
-			defer close(feed)
-			const breakScanning errorkit.Error = "break"
-
-			sc := Scanner{
-				Path: path,
-				Func: func(rm json.RawMessage) error {
-					select {
-					case feed <- M{V: rm}:
-						return nil
-					case <-done:
-						return breakScanning
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				},
-			}
-			_, err := sc.Scan(input)
-			if errors.Is(err, breakScanning) {
-				return
-			}
-			if err == nil {
-				return
-			}
-			select {
-			case feed <- M{E: err}:
-			case <-done:
-			case <-ctx.Done():
-			}
-		}()
-		for m := range feed {
-			if !yield(m.V, m.E) {
-				return
-			}
-		}
-	})
-}
-
 var whitespaceChars = map[rune]struct{}{
 	' ':  {},
 	'\n': {},
@@ -567,13 +555,8 @@ var numberChars = map[rune]struct{}{
 
 type Path []Kind
 
-// func (p Path) String() string {
-// 	return strings.Join(slicekit.Map(p, Kind.String), ".")
-// }
-
-func (p Path) With(k Kind) Path {
-	return append(slicekit.Clone(p), k)
-}
+func (p Path) String() string   { return strings.Join(slicekit.Map(p, Kind.String), " -> ") }
+func (p Path) With(k Kind) Path { return append(slicekit.Clone(p), k) }
 
 // Match check if the other path matches the
 func (p Path) Match(oth Path) bool {
@@ -601,13 +584,13 @@ func (p Path) Equal(oth Path) bool {
 		}
 		pLastIndex := len(p) - 1
 		pLastKind := p[pLastIndex]
-		if pLastKind.Equal(KindArrayValue) {
+		if pLastKind.Equal(KindElement) {
 			return true
 		}
-		if pLastKind.Equal(KindObjectKey) {
+		if pLastKind.Equal(KindName) {
 			return true
 		}
-		if (KindObjectValue{}).Equal(pLastKind) {
+		if (KindValue{}).Equal(pLastKind) {
 			return true //  pLastKind.Equal(oth[pLastIndex])
 		}
 	}
@@ -634,48 +617,52 @@ func (sk strKind) String() string {
 }
 
 const (
-	KindArray      strKind = "array"
-	KindArrayValue strKind = "array-value"
-
-	KindObject    strKind = "object"
-	KindObjectKey strKind = "object-key"
-
 	KindString  strKind = "string"
 	KindNumber  strKind = "number"
 	KindBoolean strKind = "boolean"
 	KindNull    strKind = "null"
 )
 
-type KindObjectValue struct {
-	// Key is the raw json data that represents the Key value
-	Key json.RawMessage
+const (
+	KindArray   strKind = "array"
+	KindElement strKind = "element"
+)
+
+const (
+	KindObject strKind = "object"
+	KindName   strKind = "name"
+)
+
+type KindValue struct {
+	// Name is the raw json data that represents the Object Name that contains the identified Value.
+	Name string
 }
 
-func (k KindObjectValue) Equal(oth Kind) bool {
-	other, ok := oth.(KindObjectValue)
+func (v KindValue) Equal(oth Kind) bool {
+	other, ok := oth.(KindValue)
 	if !ok {
 		return false
 	}
-	if len(k.Key) == 0 {
+	if len(v.Name) == 0 {
 		return true
 	}
-	if len(k.Key) != len(other.Key) {
+	if len(v.Name) != len(other.Name) {
 		return false
 	}
-	for i := 0; i < len(k.Key); i++ {
-		if k.Key[i] != other.Key[i] {
+	for i := 0; i < len(v.Name); i++ {
+		if v.Name[i] != other.Name[i] {
 			return false
 		}
 	}
 	return true
 }
 
-func (k KindObjectValue) String() string {
-	var name = "object-value"
-	if len(k.Key) != 0 {
-		name = fmt.Sprintf("%s(key=%s)", name, string(k.Key))
+func (v KindValue) String() string {
+	var name string
+	if 0 < len(name) {
+		return "." + v.Name
 	}
-	return name
+	return ".*"
 }
 
 var _ = enum.Register[Kind](
@@ -761,11 +748,15 @@ func (c *ArrayIterator) Next() bool {
 		}
 		delim, ok := tkn.(json.Delim)
 		if !ok {
-			c.err = ErrMalformedF("unexpecte json token: %v", tkn)
+			c.err = LexingError{Path: []Kind{KindArray},
+				Message: fmt.Sprintf("unexpecte json token: %v", tkn)}
 			return false
 		}
 		if delim != '[' {
-			c.err = ErrMalformedF(`unexpecte json token delimiter, expected "%c" but got "%s"`, '[', delim)
+			c.err = LexingError{
+				Message: fmt.Sprintf(`unexpecte json token delimiter, expected "%c" but got "%s"`, '[', delim),
+				Path:    []Kind{KindArray},
+			}
 			return false
 		}
 		c.inList = true
@@ -779,11 +770,17 @@ func (c *ArrayIterator) Next() bool {
 
 		delim, ok := tkn.(json.Delim)
 		if !ok {
-			c.err = ErrMalformedF("unexpecte json token: %v", tkn)
+			c.err = LexingError{
+				Message: fmt.Sprintf("unexpecte json token: %v", tkn),
+				Path:    []Kind{KindArray, KindElement},
+			}
 			return false
 		}
 		if delim != ']' {
-			c.err = ErrMalformedF(`unexpecte json token delimiter, expected "%c" but got "%s"`, ']', delim)
+			c.err = LexingError{
+				Message: fmt.Sprintf(`unexpecte json token delimiter, expected "%c" but got "%s"`, ']', delim),
+				Path:    []Kind{KindArray, KindElement},
+			}
 			return false
 		}
 
@@ -845,4 +842,24 @@ trim:
 		}
 	}
 	return out.Bytes()
+}
+
+// ScanFrom is a syntax sugar to use Scan with string and byte slices
+func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
+	switch src := any(v).(type) {
+	case string:
+		return Scan(bufio.NewReader(strings.NewReader(src)))
+	case []byte:
+		return Scan(bufio.NewReader(bytes.NewReader(src)))
+	case *bufio.Reader:
+		return Scan(src)
+	default:
+		panic("not-implemented")
+	}
+}
+
+// Scan scan a json raw message out from an input source.
+func Scan(in Input) (json.RawMessage, error) {
+	var s Scanner
+	return s.Scan(in)
 }

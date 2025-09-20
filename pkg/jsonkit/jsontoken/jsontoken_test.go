@@ -3,27 +3,273 @@ package jsontoken_test
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/enum"
-	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
-	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
 var rnd = random.New(random.CryptoSeed{})
+
+var Samples = map[string]string{
+	"string":                                   `"foo"`,
+	"empty string":                             `""`,
+	"int as number":                            `42`,
+	"float as number":                          `42.24`,
+	"negative int as number":                   `-42`,
+	"negative float as number":                 `-42.24`,
+	"zero as number":                           `0`,
+	"true boolean":                             `true`,
+	"false boolean":                            `false`,
+	"null value":                               `null`,
+	"empty array":                              `[]`,
+	"array of string ":                         `["foo","bar","baz"]`,
+	"array of int":                             `[1, 2, 3]`,
+	"array of float":                           `[1.23, 4.56, 7.89]`,
+	"array of boolean":                         `[true, false, true]`,
+	"array of object":                          `[{"k":1},{"k":2}]`,
+	"empty object":                             `{}`,
+	"object with string key":                   `{"foo":"bar"}`,
+	"object with int key":                      `{"42":"foo"}`,
+	"object with float key":                    `{"4.2":"foo"}`,
+	"object with boolean key":                  `{"true":"foo"}`,
+	"nested object":                            `{"foo":{"bar":"baz"}}`,
+	"array of arrays":                          `[[1, 2], [3, 4]]`,
+	"array of objects in array":                `[{"k":1}, {"k":2}]`,
+	"string with newline":                      `"foo\nbar"`,
+	"string with tab":                          `"foo\tbar"`,
+	"string with backspace":                    `"foo\bbar"`,
+	"string with form feed":                    `"foo\fbar"`,
+	"string with carriage return":              `"foo\rbar"`,
+	"string with double quote":                 `"\"foo\""`,  // escaped double quote
+	"string with backslash":                    `"foo\\bar"`, // escaped backslash
+	"string with unicode escape":               `"foo\u0041bar"`,
+	"string with non-ascii character":          `"föobar"`,
+	"string with special characters":           `"foo!@#$%^&*()_+-={}:<>?,./;'[]\\|~"`,
+	"array of strings with special characters": `["foo\nbar", "baz\tqux"]`,
+	"object with string values containing special characters": `{"foo":"bar\nbaz", "qux":"taz\r"}`,
+	"string with non-ASCII characters":                        `"föobarbazüéà"`,
+	"string with emojis":                                      `"foo🌟bar"`,
+	"array of numbers with exponent notation":                 `[1e2, 2.5e3, -4.2e-5]`,
+	"object with empty string key":                            `{"":""}`,
+	"object with zero-length string value":                    `{"foo":""}`,
+	"nested arrays":                                           `[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]`,
+	"nested objects":                                          `{ "a": { "b": { "c": 42 } }, "d": { "e": { "f": true } } }`,
+	"object with duplicate keys (last one wins)":              `{"foo":"bar", "foo":"baz"}`,
+	"A mix of right-to-left (RTL) and left-to-right (LTR)":    mustMarshal[string](`الكل في المجمو عة (5)`),
+	"double marshaled json":                                   mustMarshal[string](mustMarshal[string]("Hello, world!")),
+	"escaped quote in a string":                               `{"foo":"\\"}`,
+	"escape after an escaped escape sequence":                 `"\\\";alert('223');//"`,
+	"object with whitespaces":                                 `{ "foo" : {` + "\n\t" + `"bar" : { "baz" : 42 } } , "qux": 24 }`,
+	"array with whitespaces":                                  `[ ` + "\n\t" + `"foo",` + "\n\t" + `42,` + "\n\t" + `true ]`,
+	"object w objet w array of object 1":                      `{"foo":{"bar":[{"baz":123}]}}`,
+	"object w objet w array of object 2":                      `{"foo":{"bar":[{"baz":[{"ok":"ko"}]}]}}`,
+	"object of array of object of array":                      `{"foo":[{"bar":[{"baz":[]}]}]}`,
+
+	"whitespace filled empty array":  `[  ]`,
+	"whitespace filled empty object": `{  }`,
+
+	// Additional edge cases for arrays and complex scenarios
+	"object with whitespace filled empty array":       `{"foo":[  ],"bar":[ ]}`,
+	"array with mixed null and values":                `["foo", null, "bar", null, 42]`,
+	"array with only null values":                     `[null, null, null]`,
+	"single element array with string":                `["single"]`,
+	"single element array with number":                `[42]`,
+	"single element array with boolean":               `[true]`,
+	"single element array with null":                  `[null]`,
+	"single element array with object":                `[{"key":"value"}]`,
+	"single element array with nested array":          `[[1,2,3]]`,
+	"deeply nested arrays level 5":                    `[[[[[1]]]]]`,
+	"deeply nested arrays level 10":                   `[[[[[[[[[[1]]]]]]]]]]`,
+	"array of arrays of arrays with mixed content":    `[[[1, "two"]], [[true, null]], [[{}]]]`,
+	"array with many small integers":                  `[` + generateIntSequence(0, 99) + `]`,
+	"array with many strings":                         `[` + generateStringSequence(50) + `]`,
+	"array with very long string":                     `[` + jsonString(1000) + `]`,
+	"array with multiple long strings":                `[` + jsonString(500) + `, ` + jsonString(500) + `]`,
+	"array with all basic types":                      `[42, "string", true, false, null, [], {}]`,
+	"array with nested mixed types":                   `[42, {"nested": [1, 2, {"deep": true}]}, "end"]`,
+	"array ending object":                             `{"array": [1, 2, 3]}`,
+	"multiple arrays in object":                       `{"first": [1, 2], "second": [3, 4], "third": [5, 6]}`,
+	"array with scientific notation":                  `[1e10, 2.5e-3, -1.23e+15]`,
+	"array with large numbers":                        `[9223372036854775807, -9223372036854775808]`,
+	"array with precise decimals":                     `[0.1, 0.01, 0.001, 0.0001, 0.00001]`,
+	"array with zero variants":                        `[0, 0.0, -0, -0.0]`,
+	"object with nested arrays and objects":           `{"data": [{"items": [1, 2, {"nested": [true]}]}]}`,
+	"array of objects with arrays":                    `[{"arr": [1]}, {"arr": [2, 3]}, {"arr": []}]`,
+	"alternating arrays and objects":                  `[{"a": 1}, [2, 3], {"b": 4}, [5, 6, 7]]`,
+	"array with excessive whitespace":                 `[   1   ,   2   ,   3   ]`,
+	"array with tabs and newlines":                    "[\n\t1,\n\t2,\n\t3\n]",
+	"array with mixed whitespace":                     "[ 1,\t2,\n3,\r4 ]",
+	"array with unicode strings":                      `["Hello", "世界", "🌍", "مرحبا"]`,
+	"array with control characters in strings":        `["line1\nline2", "tab\there", "quote\"here"]`,
+	"array with escaped unicode":                      `["\u0048\u0065\u006C\u006C\u006F"]`,
+	"recursive-like structure":                        `{"children": [{"children": [{"children": []}]}]}`,
+	"array with self-similar structure":               `[{"array": [1, 2]}, {"array": [3, {"array": [4]}]}]`,
+	"array with alternating types (large)":            jsonArrayWithAlternatingTypes(rnd),
+	"deeply nested mixed structure":                   `{"a": [{"b": [{"c": [{"d": "end"}]}]}]}`,
+	"empty array in object":                           `{"empty": []}`,
+	"empty object in array":                           `[{}]`,
+	"array as last element":                           `{"key1": "value1", "key2": [1, 2, 3]}`,
+	"array as first element":                          `{"array": [1, 2, 3], "key": "value"}`,
+	"array of mixed booleans and nulls":               `[true, null, false, null, true]`,
+	"array with string representations of primitives": `["true", "false", "null", "42"]`,
+	"nested arrays with objects":                      `[{"array": [1, 2]}, [{"object": 3}]]`,
+	"array of arrays with empty arrays":               `[[1, 2], [], [3, 4], []]`,
+	"single character in array":                       `["a"]`,
+	"array with single space string":                  `[" "]`,
+	"array with empty and non-empty strings":          `["", "non-empty", "", "also non-empty"]`,
+
+	// Targeted edge cases that commonly break JSON token scanners
+	"array with nested quotes":                 `["\"nested\"", "simple"]`,
+	"array with backslash at end":              `["test\\"]`,
+	"array with escaped backslash and quote":   `["test\\\"quote"]`,
+	"array with 1024 elements":                 jsonArrayWithInt(rnd, 1024),
+	"array with string crossing 4096 boundary": `[` + jsonString(4090) + `, "next"]`,
+	"array with adjacent brackets":             `[[],[],[]]`,
+	"array with number edge cases":             `[0.0, -0.0, 1.0e308, -1.0e308, 2.2250738585072014e-308]`,
+	"array with all escape sequences":          `["\"", "\\", "\/", "\b", "\f", "\n", "\r", "\t"]`,
+	"array with unicode edge cases":            `["\u0000", "\uFFFF", "\uD800\uDC00"]`,
+	"array with 50 levels of nesting":          jsonArrayWithNestedArray(rnd, 50),
+	"array with 100 levels of nesting":         jsonArrayWithNestedArray(rnd, 100),
+	"deeply nested objects":                    jsonNestingObject(rnd, 25),
+	"array with many empty strings":            `[` + genjsonArrayElementsEmptyStrings(1000) + `]`,
+	"array with incrementing string lengths":   `[` + genjsonArrayElementsIncrementingStrings(100) + `]`,
+	"array with no whitespace complex":         `[{"key":[1,2,{"nested":[true,false,null]}]}]`,
+	"single element arrays of each type":       `[[true], [false], [null], [42], ["string"], [{}], [[]]]`,
+	"array with pattern ABAB":                  `[1, "a", 2, "b", 3, "c"]`,
+	"array with pattern AABA":                  `[1, 1, "string", 1]`,
+	"array with boolean pattern":               `[true, false, true, false, true]`,
+	"array with extra internal whitespace":     `[  1  ,  2  ,  3  ]`,
+	"nested array spacing variations":          `[ [ 1 , 2 ] , [ 3 , 4 ] ]`,
+	"array with mixed spacing":                 `[1,  2,   3,    4]`,
+	"deeply nested same structure":             `[[[[[[[[[["deep"]]]]]]]]]]`,
+	"alternating deep nesting":                 `[{},{},{},{},{},{},{},{},{},{}]`,
+	"array of arrays with crescendo":           `[[1], [1, 2], [1, 2, 3], [1, 2, 3, 4]]`,
+}
+
+// Invalid JSON cases that should cause parsing errors
+var InvalidSamples = map[string]string{
+	"array with empty slots":                        `[1,,3]`,
+	"array with trailing comma":                     `[1,2,3,]`,
+	"array with leading comma":                      `[,1,2,3]`,
+	"array with malformed numbers":                  `[01, 02, 03]`,
+	"array with incomplete numbers":                 `[1., .5, 1e, 1e-]`,
+	"array with numbers and strings without spaces": `[42"string"true]`,
+	"array with nested array no spaces":             `[[1][2][3]]`,
+	"multiple top-level arrays":                     `[] [] []`,
+	"array after object":                            `{} []`,
+	"mixed valid structures":                        `{"obj": true} [1, 2, 3]`,
+	"array with invalid escape sequences":           `["\\x", "\\z", "\"]`,
+}
+
+func Test_smoke_samples(t *testing.T) {
+	for desc, sample := range Samples {
+		assert.True(t, json.Valid([]byte(sample)),
+			assert.MessageF("%s: %s", desc, string(sample)))
+	}
+	for desc, sample := range ArraySamples {
+		assert.True(t, json.Valid([]byte(sample)),
+			assert.MessageF("%s: %s", desc, string(sample)))
+	}
+	for desc, sample := range InvalidSamples {
+		assert.False(t, json.Valid([]byte(sample)),
+			assert.MessageF("[not invalid] %s: %s", desc, string(sample)))
+	}
+}
+
+// Test function to validate JSON samples
+func TestJSONSamples(t *testing.T) {
+	passedCount := 0
+	failedCount := 0
+
+	t.Log("Testing valid JSON samples...")
+	for name, jsonStr := range Samples {
+		var result interface{}
+		err := json.Unmarshal([]byte(jsonStr), &result)
+		if err != nil {
+			t.Errorf("Failed to parse valid JSON sample '%s': %v\nJSON: %s", name, err, jsonStr)
+			failedCount++
+		} else {
+			passedCount++
+		}
+	}
+
+	t.Logf("Valid JSON tests: %d passed, %d failed", passedCount, failedCount)
+
+	// Test invalid JSON samples (these should fail to parse)
+	invalidPassedCount := 0
+	invalidFailedCount := 0
+
+	t.Log("Testing invalid JSON samples (should fail to parse)...")
+	for name, jsonStr := range InvalidSamples {
+		var result interface{}
+		err := json.Unmarshal([]byte(jsonStr), &result)
+		if err != nil {
+			// This is expected for invalid JSON
+			invalidPassedCount++
+		} else {
+			t.Errorf("Invalid JSON sample '%s' was unexpectedly parsed successfully\nJSON: %s", name, jsonStr)
+			invalidFailedCount++
+		}
+	}
+
+	t.Logf("Invalid JSON tests: %d correctly failed, %d unexpectedly passed", invalidPassedCount, invalidFailedCount)
+	t.Logf("\nTotal test cases: %d valid + %d invalid = %d",
+		len(Samples), len(InvalidSamples),
+		len(Samples)+len(InvalidSamples))
+}
+
+func Test_AnalyzeCommonFailures(t *testing.T) {
+	t.Log("Analyzing potentially problematic JSON patterns...")
+
+	problematicPatterns := []struct {
+		name        string
+		description string
+		example     string
+	}{
+		{
+			"Large Arrays",
+			"Arrays with many elements can cause buffer issues",
+			`[` + generateIntSequence(0, 1023) + `]`,
+		},
+		{
+			"Deep Nesting",
+			"Deeply nested structures can cause stack overflow",
+			jsonArrayWithNestedArray(rnd, 100),
+		},
+		{
+			"Long Strings",
+			"Very long strings can cause memory issues",
+			`["` + jsonString(10000) + `"]`,
+		},
+		{
+			"Mixed Complex",
+			"Complex mixed structures stress the parser",
+			`{"data": [{"items": [1, 2, {"nested": [true, false, null, {"deep": [1, 2, 3]}]}]}]}`,
+		},
+	}
+
+	for _, pattern := range problematicPatterns {
+		t.Logf("\n%s: %s\n", pattern.name, pattern.description)
+		t.Logf("Example length: %d characters\n", len(pattern.example))
+
+		var result interface{}
+		err := json.Unmarshal([]byte(pattern.example), &result)
+		if err != nil {
+			t.Logf("❌ Failed to parse: %v\n", err)
+		} else {
+			t.Logf("✅ Successfully parsed\n")
+		}
+	}
+}
 
 func TestScanner(t *testing.T) {
 	t.Run("AddString", func(t *testing.T) {
@@ -139,7 +385,7 @@ func TestScanner(t *testing.T) {
 	})
 
 	t.Run("smoke", func(t *testing.T) {
-		for name, sample := range SmokeSamples {
+		for name, sample := range Samples {
 			sample := sample
 			t.Run(name, func(t *testing.T) {
 				t.Log("json", sample)
@@ -152,80 +398,6 @@ func TestScanner(t *testing.T) {
 			})
 		}
 	})
-}
-
-func mustMarshal[T string | []byte](v any) T {
-	data, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return T(data)
-}
-
-var SmokeSamples = map[string]string{
-	"string":                                   `"foo"`,
-	"empty string":                             `""`,
-	"int as number":                            `42`,
-	"float as number":                          `42.24`,
-	"negative int as number":                   `-42`,
-	"negative float as number":                 `-42.24`,
-	"zero as number":                           `0`,
-	"true boolean":                             `true`,
-	"false boolean":                            `false`,
-	"null value":                               `null`,
-	"empty array":                              `[]`,
-	"array of string ":                         `["foo","bar","baz"]`,
-	"array of int":                             `[1, 2, 3]`,
-	"array of float":                           `[1.23, 4.56, 7.89]`,
-	"array of boolean":                         `[true, false, true]`,
-	"array of object":                          `[{"k":1},{"k":2}]`,
-	"empty object":                             `{}`,
-	"object with string key":                   `{"foo":"bar"}`,
-	"object with int key":                      `{"42":"foo"}`,
-	"object with float key":                    `{"4.2":"foo"}`,
-	"object with boolean key":                  `{"true":"foo"}`,
-	"nested object":                            `{"foo":{"bar":"baz"}}`,
-	"array of arrays":                          `[[1, 2], [3, 4]]`,
-	"array of objects in array":                `[{"k":1}, {"k":2}]`,
-	"string with newline":                      `"foo\nbar"`,
-	"string with tab":                          `"foo\tbar"`,
-	"string with backspace":                    `"foo\bbar"`,
-	"string with form feed":                    `"foo\fbar"`,
-	"string with carriage return":              `"foo\rbar"`,
-	"string with double quote":                 `"\"foo\""`,  // escaped double quote
-	"string with backslash":                    `"foo\\bar"`, // escaped backslash
-	"string with unicode escape":               `"foo\u0041bar"`,
-	"string with non-ascii character":          `"föobar"`,
-	"string with special characters":           `"foo!@#$%^&*()_+-={}:<>?,./;'[]\\|~"`,
-	"array of strings with special characters": `["foo\nbar", "baz\tqux"]`,
-	"object with string values containing special characters": `{"foo":"bar\nbaz", "qux":"taz\r"}`,
-	"string with non-ASCII characters":                        `"föobarbazüéà"`,
-	"string with emojis":                                      `"foo🌟bar"`,
-	"array of numbers with exponent notation":                 `[1e2, 2.5e3, -4.2e-5]`,
-	"object with empty string key":                            `{"":""}`,
-	"object with zero-length string value":                    `{"foo":""}`,
-	"nested arrays":                                           `[[[1, 2], [3, 4]], [[5, 6], [7, 8]]]`,
-	"nested objects":                                          `{ "a": { "b": { "c": 42 } }, "d": { "e": { "f": true } } }`,
-	"object with duplicate keys (last one wins)":              `{"foo":"bar", "foo":"baz"}`,
-	"A mix of right-to-left (RTL) and left-to-right (LTR)":    mustMarshal[string](`الكل في المجمو عة (5)`),
-	"double marshaled json":                                   mustMarshal[string](mustMarshal[string]("Hello, world!")),
-	"escaped quote in a string":                               `{"foo":"\\"}`,
-	"escape after an escaped escape sequence":                 `"\\\";alert('223');//"`,
-	"object with whitespaces":                                 `{ "foo" : {` + "\n\t" + `"bar" : { "baz" : 42 } } , "qux": 24 }`,
-	"array with whitespaces":                                  `[ ` + "\n\t" + `"foo",` + "\n\t" + `42,` + "\n\t" + `true ]`,
-}
-
-func Test_samples(t *testing.T) {
-	for desc, sample := range SmokeSamples {
-		t.Run("verify: "+desc, func(t *testing.T) {
-			assert.True(t, json.Valid([]byte(sample)))
-		})
-	}
-	for desc, sample := range ArraySamples {
-		t.Run("verify: "+desc, func(t *testing.T) {
-			assert.True(t, json.Valid([]byte(sample)))
-		})
-	}
 }
 
 func TestScanner_ScanFrom(t *testing.T) {
@@ -262,7 +434,7 @@ func TestScan_smoke(t *testing.T) {
 
 	input := testcase.Let[string](s, nil)
 
-	for desc, sample := range SmokeSamples {
+	for desc, sample := range Samples {
 		s.Context(desc, func(s *testcase.Spec) {
 			input.LetValue(s, sample)
 
@@ -306,7 +478,7 @@ func TestScan_smoke(t *testing.T) {
 }
 
 func FuzzScanner(f *testing.F) {
-	for _, sample := range SmokeSamples {
+	for _, sample := range Samples {
 		f.Add(sample)
 	}
 	for _, sample := range ArraySamples {
@@ -433,7 +605,7 @@ func Benchmark_arrayScan(b *testing.B) {
 			}
 		}
 		if !json.Valid(out) {
-			return nil, jsontoken.ErrMalformed
+			return nil, jsontoken.LexingError{}
 		}
 		return out, nil
 	}
@@ -490,111 +662,6 @@ func Benchmark_arrayScan(b *testing.B) {
 		}
 
 	})
-}
-
-func ExampleQuery() {
-	var ctx context.Context
-	var body io.Reader
-
-	result := jsontoken.Query(ctx, body, jsontoken.KindArray, jsontoken.KindArrayValue)
-	for rawJSON, err := range result {
-		if err != nil {
-			fmt.Println(err.Error())
-			continue
-		}
-		fmt.Println(string(rawJSON))
-	}
-}
-
-func TestQuery(t *testing.T) {
-	ctx := context.Background()
-	t.Run("array", func(t *testing.T) {
-		t.Run("empty", func(t *testing.T) {
-			in := toBufioReader(`[]`)
-			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
-			assert.NoError(t, err)
-			assert.Empty(t, raws)
-		})
-		t.Run("populated", func(t *testing.T) {
-			in := toBufioReader(`["The answer is", {"foo":"bar"}, true]`)
-			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
-			assert.NoError(t, err)
-			exp := []json.RawMessage{[]byte(`"The answer is"`), []byte(`{"foo":"bar"}`), []byte("true")}
-			assert.Equal(t, raws, exp)
-		})
-		t.Run("path-mismatch", func(t *testing.T) {
-			t.Log("when array kind is expected, but non array kind found")
-			in := toBufioReader(`{"foo":"bar"}`)
-			iter := jsontoken.Query(ctx, in, jsontoken.KindArray, jsontoken.KindArrayValue)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
-			assert.NoError(t, err)
-			assert.Empty(t, raws)
-		})
-	})
-	t.Run("object", func(t *testing.T) {
-		t.Run("keys", func(t *testing.T) {
-			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectKey)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
-			assert.NoError(t, err)
-			exp := []json.RawMessage{[]byte(`"foo"`), []byte(`"bar"`), []byte(`"baz"`)}
-			assert.Equal(t, raws, exp)
-		})
-		t.Run("values", func(t *testing.T) {
-			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectValue{})
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
-			assert.NoError(t, err)
-			exp := []json.RawMessage{[]byte(`1`), []byte(`2`), []byte(`3`)}
-			assert.Equal(t, raws, exp)
-		})
-		t.Run("value by key", func(t *testing.T) {
-			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.Query(ctx, in, jsontoken.KindObject, jsontoken.KindObjectValue{Key: []byte(`"foo"`)})
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
-			assert.NoError(t, err)
-			exp := []json.RawMessage{[]byte(`1`)}
-			assert.Equal(t, raws, exp)
-		})
-	})
-
-	s := testcase.NewSpec(t)
-
-	s.Test("smoke", func(t *testcase.T) {
-		samples := mapkit.Values(SmokeSamples, sort.Strings)
-		ctx := context.Background()
-
-		var exp []json.RawMessage
-		t.Random.Repeat(3, 7, func() {
-			exp = append(exp, jsonFromat(t, []byte(random.Pick(t.Random, samples...))))
-		})
-		data, err := json.Marshal(exp)
-		assert.NoError(t, err)
-
-		t.Log("input:", string(data))
-
-		got, err := iterkit.CollectE(jsontoken.Query(ctx, bytes.NewReader(data), jsontoken.KindArray, jsontoken.KindArrayValue))
-		assert.NoError(t, err)
-
-		assert.Equal(t, trim(exp), trim(got))
-	})
-}
-
-func toBufioReader(v any) *bufio.Reader {
-	var r io.Reader
-	switch data := v.(type) {
-	case string:
-		r = strings.NewReader(data)
-	case []byte:
-		r = bytes.NewReader(data)
-	case *bufio.Reader:
-		return data
-	default:
-		panic(fmt.Errorf("not implemented input type: %T", v))
-	}
-	return bufio.NewReader(r)
 }
 
 func TestPath(t *testing.T) {
@@ -667,9 +734,9 @@ func TestPath(t *testing.T) {
 		s.And("the other path can be whatever", func(s *testcase.Spec) {
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				return random.Pick(t.Random,
-					jsontoken.Path{jsontoken.KindArray, jsontoken.KindArrayValue, jsontoken.KindString},
-					jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectKey, jsontoken.KindString},
-					jsontoken.Path{jsontoken.KindObject, jsontoken.KindObjectValue{}, jsontoken.KindNumber},
+					jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement, jsontoken.KindString},
+					jsontoken.Path{jsontoken.KindObject, jsontoken.KindName, jsontoken.KindString},
+					jsontoken.Path{jsontoken.KindObject, jsontoken.KindValue{}, jsontoken.KindNumber},
 				)
 			})
 
@@ -682,7 +749,7 @@ func TestPath(t *testing.T) {
 		path.Let(s, func(t *testcase.T) jsontoken.Path {
 			return jsontoken.Path{
 				jsontoken.KindArray,
-				jsontoken.KindArrayValue,
+				jsontoken.KindElement,
 			}
 		})
 
@@ -690,7 +757,7 @@ func TestPath(t *testing.T) {
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				return jsontoken.Path{
 					jsontoken.KindArray,
-					jsontoken.KindArrayValue,
+					jsontoken.KindElement,
 					jsontoken.KindString,
 				}
 			})
@@ -702,9 +769,9 @@ func TestPath(t *testing.T) {
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				return jsontoken.Path{
 					jsontoken.KindArray,
-					jsontoken.KindArrayValue,
+					jsontoken.KindElement,
 					jsontoken.KindObject,
-					jsontoken.KindObjectKey,
+					jsontoken.KindName,
 				}
 			})
 
@@ -758,55 +825,6 @@ func TestPath(t *testing.T) {
 			thenItShouldMatch(s)
 			thenTheyAreNotEqual(s)
 		})
-	})
-}
-
-func trim[T []byte | [][]byte | []json.RawMessage | json.RawMessage](src T) T {
-	switch v := any(src).(type) {
-	case []json.RawMessage:
-		out := slicekit.Map(v, func(v json.RawMessage) json.RawMessage {
-			return jsontoken.TrimSpace(v)
-		})
-		return any(out).(T)
-	case [][]byte:
-		out := slicekit.Map(v, func(v []byte) []byte {
-			return jsontoken.TrimSpace(v)
-		})
-		return any(out).(T)
-	case json.RawMessage:
-		return any(jsontoken.TrimSpace(v)).(T)
-	case []byte:
-		return any(jsontoken.TrimSpace(v)).(T)
-	default:
-		panic("not-implemented")
-	}
-}
-
-func TestArrayIterator(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	samples := mapkit.Values(SmokeSamples, sort.Strings)
-
-	Context, _ := let.ContextWithCancel(s)
-
-	s.Test("smoke", func(t *testcase.T) {
-		var exp []json.RawMessage
-		t.Random.Repeat(3, 7, func() {
-			exp = append(exp, jsonFromat(t, []byte(random.Pick(t.Random, samples...))))
-		})
-		data, err := json.Marshal(exp)
-		assert.NoError(t, err)
-
-		got1, err := iterkit.CollectE[json.RawMessage](jsontoken.IterateArray(Context.Get(t), bytes.NewReader(data)))
-		assert.NoError(t, err)
-
-		got2, err := iterkit.CollectE(jsontoken.Query(context.Background(), bytes.NewReader(data),
-			jsontoken.KindArray, jsontoken.KindArrayValue))
-
-		assert.NoError(t, err)
-
-		assert.Equal(t, trim(exp), trim(got1))
-		assert.Equal(t, trim(exp), trim(got2))
 	})
 }
 
@@ -895,37 +913,4 @@ func BenchmarkTrimSpace(b *testing.B) {
 			jsontoken.TrimSpace([]byte(ExampleComplexJSON))
 		}
 	})
-}
-
-func TestX(t *testing.T) {
-	var input = strings.NewReader(`"&"`)
-
-	jsontoken.Scan(input)
-}
-
-// jsonFormat formats a JSON byte slice to a standardized representation.
-//
-// This function takes a JSON byte slice as input, marshals it into a JSON array,
-// and then unmarshals it back into a single JSON value. The resulting JSON value
-// has special characters escaped according to the JSON specification (RFC 7159).
-//
-// Specifically, this function ensures that:
-//
-//   - Unicode code points are represented in the format `\uxxxx`, where `xxxx`
-//     represents the hexadecimal value of the code point.
-//
-// This function is useful for normalizing JSON data before comparing it with
-// expected output. By using this function, you can ensure that special characters
-// are consistently escaped in your test data.
-func jsonFromat(tb testing.TB, data []byte) []byte {
-	var vs []json.RawMessage = []json.RawMessage{data}
-
-	out, err := json.Marshal(vs)
-	assert.NoError(tb, err)
-
-	vs = []json.RawMessage{}
-	assert.NoError(tb, json.Unmarshal(out, &vs))
-
-	assert.True(tb, len(vs) == 1)
-	return vs[0]
 }
