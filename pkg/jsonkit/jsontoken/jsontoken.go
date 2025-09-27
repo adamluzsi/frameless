@@ -10,6 +10,7 @@ import (
 	"io"
 	"iter"
 	"strings"
+	"sync"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
@@ -90,7 +91,7 @@ func (s *Scanner) isPathMatch(path Path) bool {
 
 type Selector struct {
 	Path Path
-	Func func(json.RawMessage) error
+	Func func(data json.RawMessage) error
 }
 
 var _ Input = (*bufio.Reader)(nil)
@@ -115,26 +116,46 @@ type noDiscard interface {
 	NoDiscard()
 }
 
-func (s *Scanner) Scan(in Input) (json.RawMessage, error) {
+func (s *Scanner) Scan(in Input) error {
 	var path Path
 	var out bytes.Buffer
-	err := s.scan(in, &out, path)
-	if err == io.EOF {
-		if json.Valid(out.Bytes()) {
-			return out.Bytes(), nil
-		}
-		return nil, s.asParseError(err, path)
+	err := s.with(&out, path, func(out Output) error {
+		return s.scan(in, out, path)
+	})
+	if err != nil && !errors.Is(err, io.EOF) {
+		return s.asLexingError(err, path)
 	}
-	if err != nil {
-		return nil, s.asParseError(err, path)
+	if err := s.yield(path, out.Bytes()); err != nil {
+		return err
 	}
-	if s.isPathMatch(path) && !json.Valid(out.Bytes()) {
-		return nil, LexingError{Message: "invalid JSON file format", Path: path}
-	}
-	return out.Bytes(), nil
+	return nil
 }
 
-func (s *Scanner) asParseError(err error, path Path) error {
+func (s *Scanner) yield(path Path, data json.RawMessage) error {
+	var o sync.Once
+	for _, selector := range s.Selectors {
+		if selector.Path.Equal(path) && selector.Func != nil {
+			var err error
+			o.Do(func() {
+				if !json.Valid(data) {
+					err = LexingError{
+						Message: "invalid JSON format",
+						Path:    path,
+					}
+				}
+			})
+			if err != nil {
+				return err
+			}
+			if err := selector.Func(data); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Scanner) asLexingError(err error, path Path) error {
 	if err == nil {
 		return nil
 	}
@@ -191,12 +212,8 @@ func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error 
 	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
 		return returnErr
 	}
-	for _, selector := range s.Selectors {
-		if selector.Path.Equal(path) && selector.Func != nil {
-			if err := selector.Func(raw.Bytes()); err != nil {
-				return err
-			}
-		}
+	if err := s.yield(path, raw.Bytes()); err != nil {
+		return err
 	}
 	if _, err := raw.WriteTo(out); err != nil {
 		return err
@@ -335,13 +352,13 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 		}
 
 	scanValues:
-		for {
+		for i := 0; ; i++ {
 			if err := trimSpace(in, out); err != nil {
 				return err
 			}
 
 			// scan array value
-			if err := s.scan(in, out, path.With(KindElement)); err != nil {
+			if err := s.scan(in, out, path.With(KindElement{Index: &i})); err != nil {
 				return err
 			}
 
@@ -439,7 +456,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 					valueName = string(rawName[1 : len(rawName)-1]) // drop quote tokens
 				}
 
-				if err := s.scan(in, out, path.With(KindValue{Name: valueName})); err != nil {
+				if err := s.scan(in, out, path.With(KindValue{Name: &valueName})); err != nil {
 					return err
 				}
 				if err := trimSpace(in, out); err != nil {
@@ -584,7 +601,7 @@ func (p Path) Equal(oth Path) bool {
 		}
 		pLastIndex := len(p) - 1
 		pLastKind := p[pLastIndex]
-		if pLastKind.Equal(KindElement) {
+		if pLastKind.Equal(KindElement{}) {
 			return true
 		}
 		if pLastKind.Equal(KindName) {
@@ -623,46 +640,54 @@ const (
 	KindNull    strKind = "null"
 )
 
-const (
-	KindArray   strKind = "array"
-	KindElement strKind = "element"
-)
+const KindArray strKind = "array"
+
+type KindElement struct{ Index *int }
+
+func (e KindElement) Equal(oth Kind) bool {
+	oe, ok := oth.(KindElement)
+	if !ok {
+		return false
+	}
+	if e.Index == nil || oe.Index == nil {
+		return true
+	}
+	return *e.Index == *oe.Index
+}
+
+func (e KindElement) String() string {
+	if e.Index == nil {
+		return "[]"
+	}
+	return fmt.Sprintf("[%d]", *e.Index)
+}
 
 const (
 	KindObject strKind = "object"
 	KindName   strKind = "name"
 )
 
-type KindValue struct {
-	// Name is the raw json data that represents the Object Name that contains the identified Value.
-	Name string
-}
+type KindValue struct{ Name *string }
 
 func (v KindValue) Equal(oth Kind) bool {
 	other, ok := oth.(KindValue)
 	if !ok {
 		return false
 	}
-	if len(v.Name) == 0 {
+	if v.Name == nil || other.Name == nil {
 		return true
 	}
-	if len(v.Name) != len(other.Name) {
-		return false
-	}
-	for i := 0; i < len(v.Name); i++ {
-		if v.Name[i] != other.Name[i] {
-			return false
-		}
-	}
-	return true
+	return *v.Name == *other.Name
 }
 
 func (v KindValue) String() string {
-	var name string
-	if 0 < len(name) {
-		return "." + v.Name
+	if v.Name == nil {
+		return ".*"
 	}
-	return ".*"
+	if len(*v.Name) == 0 {
+		return `[""]`
+	}
+	return "." + *v.Name
 }
 
 var _ = enum.Register[Kind](
@@ -672,6 +697,8 @@ var _ = enum.Register[Kind](
 	KindNumber,
 	KindBoolean,
 	KindNull,
+	KindElement{},
+	KindValue{},
 )
 
 var discard = &nullOutput{}
@@ -721,6 +748,7 @@ type ArrayIterator struct {
 
 	dec *json.Decoder
 
+	index  int
 	inList bool
 
 	err  error
@@ -760,6 +788,7 @@ func (c *ArrayIterator) Next() bool {
 			return false
 		}
 		c.inList = true
+		c.index = 0
 	}
 
 	if !c.dec.More() {
@@ -772,14 +801,14 @@ func (c *ArrayIterator) Next() bool {
 		if !ok {
 			c.err = LexingError{
 				Message: fmt.Sprintf("unexpecte json token: %v", tkn),
-				Path:    []Kind{KindArray, KindElement},
+				Path:    []Kind{KindArray, KindElement{Index: &c.index}},
 			}
 			return false
 		}
 		if delim != ']' {
 			c.err = LexingError{
 				Message: fmt.Sprintf(`unexpecte json token delimiter, expected "%c" but got "%s"`, ']', delim),
-				Path:    []Kind{KindArray, KindElement},
+				Path:    []Kind{KindArray, KindElement{Index: &c.index}},
 			}
 			return false
 		}
@@ -787,6 +816,7 @@ func (c *ArrayIterator) Next() bool {
 		c.done = true
 		return false
 	}
+	c.index++
 
 	var raw json.RawMessage
 	if err := c.dec.Decode(&raw); err != nil {
@@ -860,6 +890,15 @@ func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
 
 // Scan scan a json raw message out from an input source.
 func Scan(in Input) (json.RawMessage, error) {
-	var s Scanner
-	return s.Scan(in)
+	var output json.RawMessage
+	var s = Scanner{
+		Selectors: []Selector{{
+			Func: func(data json.RawMessage) error {
+				output = data
+				return nil
+			},
+		}},
+	}
+	err := s.Scan(in)
+	return output, err
 }

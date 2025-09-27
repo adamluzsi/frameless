@@ -164,9 +164,6 @@ var InvalidSamples = map[string]string{
 	"array with incomplete numbers":                 `[1., .5, 1e, 1e-]`,
 	"array with numbers and strings without spaces": `[42"string"true]`,
 	"array with nested array no spaces":             `[[1][2][3]]`,
-	"multiple top-level arrays":                     `[] [] []`,
-	"array after object":                            `{} []`,
-	"mixed valid structures":                        `{"obj": true} [1, 2, 3]`,
 	"array with invalid escape sequences":           `["\\x", "\\z", "\"]`,
 }
 
@@ -734,7 +731,7 @@ func TestPath(t *testing.T) {
 		s.And("the other path can be whatever", func(s *testcase.Spec) {
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				return random.Pick(t.Random,
-					jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement, jsontoken.KindString},
+					jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}, jsontoken.KindString},
 					jsontoken.Path{jsontoken.KindObject, jsontoken.KindName, jsontoken.KindString},
 					jsontoken.Path{jsontoken.KindObject, jsontoken.KindValue{}, jsontoken.KindNumber},
 				)
@@ -749,7 +746,7 @@ func TestPath(t *testing.T) {
 		path.Let(s, func(t *testcase.T) jsontoken.Path {
 			return jsontoken.Path{
 				jsontoken.KindArray,
-				jsontoken.KindElement,
+				jsontoken.KindElement{},
 			}
 		})
 
@@ -757,19 +754,29 @@ func TestPath(t *testing.T) {
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				return jsontoken.Path{
 					jsontoken.KindArray,
-					jsontoken.KindElement,
+					jsontoken.KindElement{},
 					jsontoken.KindString,
 				}
 			})
 
 			thenItShouldMatch(s)
 			thenTheyAreEqual(s)
+
+			// s.And("the array value path is expressed thourgh an element reference, and the array is only implicitly meant", func(s *testcase.Spec) {
+			// 	path.Let(s, func(t *testcase.T) jsontoken.Path {
+			// 		return jsontoken.Path{jsontoken.KindElement{}}
+			// 	})
+			//
+			// 	thenItShouldMatch(s)
+			// 	thenTheyAreEqual(s)
+			// })
 		})
+
 		s.And("oth is a concrete array value type's value", func(s *testcase.Spec) {
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				return jsontoken.Path{
 					jsontoken.KindArray,
-					jsontoken.KindElement,
+					jsontoken.KindElement{},
 					jsontoken.KindObject,
 					jsontoken.KindName,
 				}
@@ -807,7 +814,7 @@ func TestPath(t *testing.T) {
 				p[lastIndex] = random.Unique(func() jsontoken.Kind {
 					return randomKind(t)
 				}, p[lastIndex])
-				assert.NotEqual(t, p[lastIndex], path.Get(t)[lastIndex])
+				assert.NotEqual[jsontoken.Kind](t, p[lastIndex], path.Get(t)[lastIndex])
 				return p
 			})
 

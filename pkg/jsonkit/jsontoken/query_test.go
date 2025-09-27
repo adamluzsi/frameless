@@ -13,17 +13,17 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/mapkit"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
 func ExampleQuery() {
 	var body io.Reader
 
-	result := jsontoken.Query(body, jsontoken.KindArray, jsontoken.KindElement)
+	result := jsontoken.Query(body, jsontoken.KindArray, jsontoken.KindElement{})
 	for rawJSON, err := range result {
 		if err != nil {
 			fmt.Println(err.Error())
@@ -64,15 +64,15 @@ func TestQuery(t *testing.T) {
 	t.Run("array", func(t *testing.T) {
 		t.Run("empty", func(t *testing.T) {
 			in := toBufioReader(`[]`)
-			iter := jsontoken.Query(in, jsontoken.KindArray, jsontoken.KindElement)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
+			iter := jsontoken.Query(in, jsontoken.KindArray, jsontoken.KindElement{})
+			raws, err := iterkit.CollectE(iter)
 			assert.NoError(t, err)
 			assert.Empty(t, raws)
 		})
 		t.Run("populated", func(t *testing.T) {
 			in := toBufioReader(`["The answer is", {"foo":"bar"}, true]`)
-			iter := jsontoken.Query(in, jsontoken.KindArray, jsontoken.KindElement)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
+			iter := jsontoken.Query(in, jsontoken.KindArray, jsontoken.KindElement{})
+			raws, err := iterkit.CollectE(iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`"The answer is"`), []byte(`{"foo":"bar"}`), []byte("true")}
 			assert.Equal(t, raws, exp)
@@ -80,8 +80,8 @@ func TestQuery(t *testing.T) {
 		t.Run("path-mismatch", func(t *testing.T) {
 			t.Log("when array kind is expected, but non array kind found")
 			in := toBufioReader(`{"foo":"bar"}`)
-			iter := jsontoken.Query(in, jsontoken.KindArray, jsontoken.KindElement)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
+			iter := jsontoken.Query(in, jsontoken.KindArray, jsontoken.KindElement{})
+			raws, err := iterkit.CollectE(iter)
 			assert.NoError(t, err)
 			assert.Empty(t, raws)
 		})
@@ -90,7 +90,7 @@ func TestQuery(t *testing.T) {
 		t.Run("keys", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
 			iter := jsontoken.Query(in, jsontoken.KindObject, jsontoken.KindName)
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
+			raws, err := iterkit.CollectE(iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`"foo"`), []byte(`"bar"`), []byte(`"baz"`)}
 			assert.Equal(t, raws, exp)
@@ -98,15 +98,15 @@ func TestQuery(t *testing.T) {
 		t.Run("values", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
 			iter := jsontoken.Query(in, jsontoken.KindObject, jsontoken.KindValue{})
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
+			raws, err := iterkit.CollectE(iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`), []byte(`2`), []byte(`3`)}
 			assert.Equal(t, raws, exp)
 		})
 		t.Run("value by key", func(t *testing.T) {
 			in := toBufioReader(`{"foo":1,"bar":2 , "baz":3}`)
-			iter := jsontoken.Query(in, jsontoken.KindObject, jsontoken.KindValue{Name: "foo"})
-			raws, err := iterkit.CollectE[json.RawMessage](iter)
+			iter := jsontoken.Query(in, jsontoken.KindObject, jsontoken.KindValue{Name: pointer.Of("foo")})
+			raws, err := iterkit.CollectE(iter)
 			assert.NoError(t, err)
 			exp := []json.RawMessage{[]byte(`1`)}
 			assert.Equal(t, raws, exp)
@@ -127,7 +127,7 @@ func TestQuery(t *testing.T) {
 
 		t.Log("input:", string(data))
 
-		got, err := iterkit.CollectE(jsontoken.Query(bytes.NewReader(data), jsontoken.KindArray, jsontoken.KindElement))
+		got, err := iterkit.CollectE(jsontoken.Query(bytes.NewReader(data), jsontoken.KindArray, jsontoken.KindElement{}))
 		assert.NoError(t, err)
 
 		assert.Equal(t, trim(exp), trim(got))
@@ -149,9 +149,9 @@ func TestQuery_objectOfEmptyArray(t *testing.T) {
 	var data = []byte(ObjectOfObjectOfEmptyArray)
 	assert.True(t, json.Valid(data))
 
-	for raw, err := range jsontoken.Query(bytes.NewReader(data)) {
+	for data, err := range jsontoken.Query(bytes.NewReader(data)) {
 		assert.NoError(t, err)
-		pp.PP(raw)
+		assert.True(t, json.Valid(data))
 	}
 }
 
@@ -170,11 +170,11 @@ func TestQuery_iterateArray(t *testing.T) {
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
 
-		got1, err := iterkit.CollectE[json.RawMessage](jsontoken.IterateArray(Context.Get(t), bytes.NewReader(data)))
+		got1, err := iterkit.CollectE(jsontoken.IterateArray(Context.Get(t), bytes.NewReader(data)))
 		assert.NoError(t, err)
 
 		got2, err := iterkit.CollectE(jsontoken.Query(bytes.NewReader(data),
-			jsontoken.KindArray, jsontoken.KindElement))
+			jsontoken.KindArray, jsontoken.KindElement{}))
 
 		assert.NoError(t, err)
 
@@ -192,7 +192,7 @@ func TestQueryMany(t *testing.T) {
 		t.Run("empty", func(t *testing.T) {
 			in := toBufioReader(`[]`)
 			err := jsontoken.QueryMany(in, jsontoken.Selector{
-				Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement},
+				Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement{}},
 				Func: func(rm json.RawMessage) error {
 					return fmt.Errorf("I was not expected to be called on an empty array")
 				},
@@ -204,7 +204,7 @@ func TestQueryMany(t *testing.T) {
 
 			var got []json.RawMessage
 			sel := jsontoken.Selector{
-				Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement},
+				Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement{}},
 				Func: func(rm json.RawMessage) error {
 					got = append(got, rm)
 					return nil
@@ -220,7 +220,7 @@ func TestQueryMany(t *testing.T) {
 
 			var got []json.RawMessage
 			sel := jsontoken.Selector{
-				Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement},
+				Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement{}},
 				Func: func(rm json.RawMessage) error {
 					got = append(got, rm)
 					return nil
@@ -268,7 +268,7 @@ func TestQueryMany(t *testing.T) {
 
 			var got []json.RawMessage
 			sel := jsontoken.Selector{
-				Path: []jsontoken.Kind{jsontoken.KindObject, jsontoken.KindValue{Name: "foo"}},
+				Path: []jsontoken.Kind{jsontoken.KindObject, jsontoken.KindValue{Name: pointer.Of("foo")}},
 				Func: func(rm json.RawMessage) error {
 					got = append(got, rm)
 					return nil
@@ -297,7 +297,7 @@ func TestQueryMany(t *testing.T) {
 
 		var got []json.RawMessage
 		sel := jsontoken.Selector{
-			Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement},
+			Path: []jsontoken.Kind{jsontoken.KindArray, jsontoken.KindElement{}},
 			Func: func(rm json.RawMessage) error {
 				got = append(got, rm)
 				return nil

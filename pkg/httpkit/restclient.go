@@ -26,7 +26,6 @@ import (
 	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
-	"go.llib.dev/testcase/pp"
 )
 
 type RESTClient[ENT, ID any] struct {
@@ -174,7 +173,6 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		baseURL, err := r.getBaseURL(ctx)
 		if err != nil {
 			var zero ENT
-			pp.PP(err)
 			yield(zero, err)
 			return
 		}
