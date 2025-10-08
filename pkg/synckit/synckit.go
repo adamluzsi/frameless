@@ -11,6 +11,8 @@ import (
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
+type Waiter interface{ Wait() }
+
 type RWLocker interface {
 	sync.Locker
 	RLock()
@@ -478,4 +480,79 @@ func (s *Slice[T]) Insert(index int, vs ...T) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slicekit.Insert(&s.vs, index, vs...)
+}
+
+type Latch struct {
+	o sync.Once
+	c sync.Once
+	d chan struct{}
+}
+
+func (l *Latch) init() {
+	l.o.Do(func() {
+		l.d = make(chan struct{})
+	})
+}
+
+func (l *Latch) Wait() {
+	l.init()
+	<-l.d
+}
+
+func (l *Latch) Release() {
+	l.init()
+	l.c.Do(func() {
+		close(l.d)
+	})
+}
+
+type Barrier struct {
+	m sync.RWMutex
+	o sync.Once
+}
+
+func (rf *Barrier) init() {
+	rf.o.Do(func() { rf.m.Lock() })
+}
+
+func (rf *Barrier) Wait() {
+	rf.init()
+	rf.m.RLock()
+	_ = struct{}{}
+	rf.m.RUnlock()
+}
+
+func (rf *Barrier) Release() {
+	rf.init()
+	rf.m.Unlock()
+	rf.m.Lock()
+}
+
+type Phaser struct {
+	m sync.Mutex
+
+	done chan struct{}
+}
+
+func (p *Phaser) Waiter() *PhaserWaiter {
+	p.m.Lock()
+	defer p.m.Unlock()
+	if p.done == nil {
+		p.done = make(chan struct{})
+	}
+	return &PhaserWaiter{done: p.done}
+}
+
+type PhaserWaiter struct{ done chan struct{} }
+
+func (w *PhaserWaiter) Wait() { <-w.done }
+
+func (p *Phaser) Release() {
+	p.m.Lock()
+	defer p.m.Unlock()
+	if p.done == nil {
+		return
+	}
+	close(p.done)
+	p.done = nil
 }

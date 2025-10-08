@@ -2128,3 +2128,301 @@ func TestSlice(t *testing.T) {
 		})
 	})
 }
+
+func ExampleBarrier() {
+	var barrier synckit.Barrier
+	go func() { barrier.Wait() }()
+	go func() { barrier.Wait() }()
+	go func() { barrier.Wait() }()
+	barrier.Release() // stop blocking on Wait
+}
+
+func ExampleBarrier_reuse() {
+	for range 42 { // waiting with barrier is repeatable.
+		var barrier synckit.Barrier
+		go func() { barrier.Wait() }()
+		go func() { barrier.Wait() }()
+		go func() { barrier.Wait() }()
+		barrier.Release() // stop blocking on Wait
+	}
+}
+
+func TestBarrier(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	barrier := let.Var(s, func(t *testcase.T) *synckit.Barrier {
+		return &synckit.Barrier{}
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		b := barrier.Get(t)
+
+		go func() {
+			time.Sleep(5 * time.Millisecond)
+			b.Release()
+		}()
+
+		testcase.Race(func() {
+			b.Wait()
+		}, func() {
+			b.Wait()
+		}, func() {
+			b.Wait()
+		}, func() {
+			b.Release()
+		})
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		b := barrier.Get(t)
+
+		var ws []func()
+		t.Random.Repeat(3, 7, func() {
+			w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+				b.Wait()
+			})
+
+			ws = append(ws, w.Wait)
+		})
+
+		b.Release()
+
+		for _, w := range ws {
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				w()
+			})
+		}
+	})
+
+	s.Test("barrier is reusable", func(t *testcase.T) {
+		b := barrier.Get(t)
+
+		t.Random.Repeat(3, 7, func() {
+			w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+				b.Wait()
+			})
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				b.Release()
+			})
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				w.Wait()
+			})
+		})
+	})
+
+	s.Test("release repeatable", func(t *testcase.T) {
+		b := barrier.Get(t)
+
+		t.Random.Repeat(2, 7, func() {
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				b.Release()
+			})
+
+		})
+	})
+}
+
+func ExampleLatch() {
+	var latch synckit.Latch
+	go func() { latch.Wait() }()
+	go func() { latch.Wait() }()
+	go func() { latch.Wait() }()
+	latch.Release() // all waiting receives the flag to be allowed to run and get CPU time
+}
+
+func TestLatch(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	latch := let.Var(s, func(t *testcase.T) *synckit.Latch {
+		return &synckit.Latch{}
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			l := latch.Get(t)
+
+			testcase.Race(func() {
+				l.Wait()
+			}, func() {
+				l.Wait()
+			}, func() {
+				l.Wait()
+			}, func() {
+				time.Sleep(time.Millisecond)
+				l.Release()
+			})
+		})
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		l := latch.Get(t)
+
+		var ws []func()
+		t.Random.Repeat(3, 7, func() {
+			w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+				l.Wait()
+			})
+
+			ws = append(ws, w.Wait)
+		})
+
+		l.Release()
+
+		for _, w := range ws {
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				w()
+			})
+		}
+	})
+
+	s.Test("latch is not reusable, after release it will not wait", func(t *testcase.T) {
+		l := latch.Get(t)
+
+		w := assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+			l.Wait()
+		})
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			l.Release()
+		})
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			w.Wait()
+		})
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			w.Wait()
+		})
+
+		t.Random.Repeat(3, 7, func() {
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				l.Wait()
+			})
+
+		})
+	})
+
+	s.Test("release repeatable", func(t *testcase.T) {
+		l := latch.Get(t)
+
+		t.Random.Repeat(2, 7, func() {
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				l.Release()
+			})
+
+		})
+	})
+}
+
+func TestPhaser(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	phaser := let.Var(s, func(t *testcase.T) *synckit.Phaser {
+		return &synckit.Phaser{}
+	})
+
+	s.Test("smoke", func(t *testcase.T) {
+		p := phaser.Get(t)
+
+		waiter := p.Waiter()
+
+		w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			waiter.Wait()
+		})
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			phaser.Get(t).Release()
+		})
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			w.Wait()
+		})
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		p := phaser.Get(t)
+
+		go func() {
+			time.Sleep(5 * time.Millisecond)
+			p.Release()
+		}()
+
+		testcase.Race(func() {
+			p.Waiter()
+		}, func() {
+			p.Waiter().Wait()
+		}, func() {
+			p.Release()
+		})
+	})
+
+	s.Test("is reusable", func(t *testcase.T) {
+		p := phaser.Get(t)
+
+		t.Random.Repeat(3, 7, func() {
+			var waiter *synckit.PhaserWaiter
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				waiter = p.Waiter()
+			})
+
+			w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+				waiter.Wait()
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				phaser.Get(t).Release()
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			})
+		})
+	})
+
+	s.Test("release before wait", func(t *testcase.T) {
+		p := phaser.Get(t)
+
+		waiter := p.Waiter()
+		p.Release()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			waiter.Wait()
+		}, "expect to not block because already release")
+	})
+
+	s.Test("wait is repeatable and will only block until release signal", func(t *testcase.T) {
+		p := phaser.Get(t)
+
+		waiter := p.Waiter()
+
+		w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			waiter.Wait()
+		})
+
+		p.Release()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			w.Wait()
+		})
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			t.Random.Repeat(3, 7, func() { waiter.Wait() })
+		})
+	})
+
+	s.Test("release repeatable", func(t *testcase.T) {
+		p := phaser.Get(t)
+
+		t.Random.Repeat(2, 7, func() {
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				p.Release()
+			})
+		})
+	})
+}

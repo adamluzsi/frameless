@@ -8,6 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"go.llib.dev/frameless/pkg/compare"
+	"go.llib.dev/frameless/pkg/mathkit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 
@@ -446,4 +449,170 @@ func MoveByte(in ByteReader, out ByteWriter) (byte, error) {
 		return 0, err
 	}
 	return b, nil
+}
+
+// LockstepReaders creates n synchronized io.Reader instances that read from the same
+// underlying source r in lockstep. All readers receive identical data and progress
+// through the stream in perfect synchronization.
+//
+// The bufferWindow parameter controls the maximum amount of data that can be buffered
+// internally. When the fastest reader gets ahead of the slowest by bufferWindow bytes,
+// the fast readers will block until the slowest catches up, ensuring all readers
+// remain within the same buffer window.
+//
+// This is useful for scenarios where multiple consumers need to process the same
+// data stream concurrently while maintaining strict synchronization, such as
+// replicated processing or parallel analysis of identical input.
+//
+// The returned readers are safe for concurrent use across different goroutines.
+// If any reader encounters an error (including io.EOF), all readers will see
+// the same error at the same logical position in the stream.
+//
+// Parameters:
+//   - r: the source io.Reader to read from
+//   - n: number of synchronized readers to create (must be > 0)
+//   - bufferWindow: maximum buffer size before blocking fast readers
+//
+// Returns a slice of n synchronized io.Reader instances.
+func LockstepReaders(r io.Reader, n int, bufferWindow ByteSize) []io.ReadCloser {
+	if n <= 0 {
+		panic("iokit.LockstepReaders reader multiplexing count must be greater than zero")
+	}
+	if bufferWindow <= 0 {
+		panic("iokit.LockstepReaders buffer window size must be greater than zero")
+	}
+	src := &lockstepSource{
+		r:      r,
+		window: bufferWindow,
+		buffer: make([]byte, bufferWindow),
+	}
+	var out []io.ReadCloser
+	for range n {
+		out = append(out, src.NewOutput())
+	}
+	return out
+}
+
+type lockstepSource struct {
+	r io.Reader
+
+	index  mathkit.BigInt[int]
+	length int
+	window ByteSize
+	buffer []byte
+	err    error
+
+	phaser synckit.Phaser
+	mutex  sync.RWMutex
+
+	outs []*lockstepOutput
+}
+
+func (ls *lockstepSource) NewOutput() *lockstepOutput {
+	lo := &lockstepOutput{ls: ls}
+	ls.outs = append(ls.outs, lo)
+	return lo
+}
+
+func (lo *lockstepSource) waitForWindowUpdate() {
+	lo.mutex.Lock()
+	// defer lo.mutex.Unlock()
+	w := lo.phaser.Waiter()
+
+	var min mathkit.BigInt[int]
+	for _, out := range lo.outs {
+		if min.IsZero() {
+			min = out.index
+			continue
+		}
+		if compare.IsLess(out.index.Compare(min)) {
+			min = out.index
+		}
+	}
+
+	toAdvance, _ := min.ToInt()
+
+	if toAdvance <= 0 { // no chance to advance, let's just wait until someone else can advance
+		lo.mutex.Unlock()
+		w.Wait()
+		return
+	}
+
+	lo.shiftLeft(lo.buffer, toAdvance)
+
+	lo.mutex.Unlock()
+	lo.phaser.Release()
+}
+
+// shiftLeft shifts the elements of s left by k positions.
+// Vacated slots at the end are set to zero.
+func (lo *lockstepSource) shiftLeft(s []byte, k int) {
+	if k <= 0 || len(s) <= k {
+		// If k >= len(s), everything is shifted out; zero entire slice.
+		for i := range s {
+			s[i] = 0
+		}
+		return
+	}
+	// Move the tail of the slice forward by k positions.
+	copy(s, s[k:])
+	// Zero out the remaining slots at the end.
+	for i := len(s) - k; i < len(s); i++ {
+		s[i] = 0
+	}
+}
+
+type lockstepOutput struct {
+	ls *lockstepSource
+
+	index mathkit.BigInt[int]
+}
+
+func (lo *lockstepOutput) Read(p []byte) (int, error) {
+reading:
+	if n, err, ok := lo.tryRead(p); ok {
+		return n, err
+	}
+
+	// slow
+	lo.ls.waitForWindowUpdate()
+	goto reading
+}
+
+func (lo *lockstepOutput) tryRead(p []byte) (int, error, bool) {
+	lo.ls.mutex.RLock()
+	defer lo.ls.mutex.RUnlock()
+
+	start, ok := lo.index.Sub(lo.ls.index).ToInt()
+	if !ok {
+		panic("implementation issue")
+	}
+
+	if len(lo.ls.buffer) < start {
+		return 0, lo.ls.err, lo.ls.err != nil
+	}
+
+	current := lo.ls.buffer[start:]
+
+	if n := len(p); n <= len(current) { // fast path
+		copy(p, current[:n])
+		lo.index.Add(lo.index.Of(n))
+		lo.ls.mutex.Unlock()
+		return n, lo.ls.err, true
+	}
+
+	// ⬇ len(current) < l == true
+
+	if lo.ls.err != nil { // err case, no more reads expected
+		n := len(current)
+		copy(p, current)
+		lo.index.Add(lo.index.Of(n))
+		return n, lo.ls.err, true
+	}
+
+	return 0, lo.ls.err, false
+}
+
+func (lo *lockstepOutput) Close() error {
+	return nil
 }
