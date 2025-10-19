@@ -336,3 +336,83 @@ func initBenchmarkCases[L *sync.RWMutex | *sync.Mutex | *sync.Once](b *testing.B
 		})
 	})
 }
+
+func TestInitErrWL(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("sync.Mutex", func(t *testcase.T) {
+		var m sync.Mutex
+		exp := t.Random.Int()
+
+		var val int
+
+		got, err := synckit.InitErrWL(&m, &val, func() (int, error) {
+			return exp, nil
+		})
+		assert.NoError(t, err)
+
+		assert.Equal(t, exp, got)
+		assert.Equal(t, exp, val)
+
+		t.Random.Repeat(3, 7, func() {
+			got, err = synckit.InitErr(&m, &val, func() (int, error) { panic("boom") })
+			assert.NoError(t, err)
+		})
+
+		assert.Equal(t, exp, got)
+		assert.Equal(t, exp, val)
+	})
+
+	s.Test("sync.RWMutex", func(t *testcase.T) {
+		var m sync.RWMutex
+		exp := t.Random.Int()
+
+		var val int
+
+		got, err := synckit.InitErrWL(&m, &val, func() (int, error) {
+			return exp, nil
+		})
+		assert.NoError(t, err)
+
+		assert.Equal(t, exp, got)
+		assert.Equal(t, exp, val)
+
+		t.Random.Repeat(3, 7, func() {
+			got, err = synckit.InitErr(&m, &val, func() (int, error) { panic("boom") })
+			assert.NoError(t, err)
+		})
+
+		assert.Equal(t, exp, got)
+		assert.Equal(t, exp, val)
+	})
+
+	s.Test("rainy", func(t *testcase.T) {
+		var m sync.Mutex
+		exp := t.Random.Int()
+		expErr := t.Random.Error()
+		var val int
+		got, err := synckit.InitErr(&m, &val, func() (int, error) {
+			return exp, expErr
+		})
+		assert.ErrorIs(t, expErr, err)
+		got, err = synckit.InitErr(&m, &val, func() (int, error) {
+			return exp, nil
+		})
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+		assert.Equal(t, exp, val)
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		var m sync.Mutex
+		exp := t.Random.Int()
+		mk := func() (int, error) { return exp, nil }
+		var val int
+
+		testcase.Race(func() {
+			synckit.InitErr(&m, &val, mk)
+		}, func() {
+			synckit.InitErr(&m, &val, mk)
+		})
+	})
+}

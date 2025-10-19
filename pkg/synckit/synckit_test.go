@@ -656,7 +656,7 @@ func TestMap(t *testing.T) {
 		)
 		var (
 			key  = let.String(s)
-			init = testcase.Let[func() int](s, func(t *testcase.T) func() int {
+			init = testcase.Let(s, func(t *testcase.T) func() int {
 				return func() int {
 					initCallCount.Set(t, initCallCount.Get(t)+1)
 					lastInitResult.Set(t, t.Random.Int())
@@ -2127,4 +2127,692 @@ func TestSlice(t *testing.T) {
 			})
 		})
 	})
+}
+
+var _ datastruct.Sizer = (*synckit.Group)(nil)
+
+func ExampleGroup() {
+	var g synckit.Group
+
+	g.Go(func(ctx context.Context) error {
+
+		return nil
+	})
+
+	g.Wait()
+
+}
+
+func TestGroup(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	group := let.Var(s, func(t *testcase.T) *synckit.Group {
+		return &synckit.Group{}
+	})
+
+	var SpecGo = func(s *testcase.Spec, method func(g *synckit.Group, fn func(context.Context) error)) {
+		var (
+			done = let.Var(s, func(t *testcase.T) chan struct{} {
+				ch := make(chan struct{})
+				t.Cleanup(func() {
+					defer func() { _ = recover() }()
+					close(ch)
+				})
+				return ch
+			})
+			fnErr = let.VarOf[error](s, nil)
+			ran   = let.VarOf(s, false)
+			fn    = let.Var(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					ran.Set(t, true)
+					select {
+					case <-done.Get(t): // task is done
+					case <-ctx.Done(): // group requested cancellation
+					case <-t.Done(): // test is done
+					}
+					return fnErr.Get(t)
+				}
+			})
+		)
+		act := let.Act0(func(t *testcase.T) {
+			method(group.Get(t), fn.Get(t))
+		})
+
+		s.Then("it will start the function in the background", func(t *testcase.T) {
+			assert.Equal(t, 0, group.Get(t).Len())
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				act(t)
+			})
+
+			assert.Equal(t, 1, group.Get(t).Len())
+
+			close(done.Get(t))
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, 0, group.Get(t).Len())
+			})
+		})
+
+		s.Then("the background function can be cancelled through cancelling the Group", func(t *testcase.T) {
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				act(t)
+			})
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				t.Random.Repeat(1, 3, func() {
+					group.Get(t).Cancel()
+				})
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, 0, group.Get(t).Len())
+			})
+
+			assert.Within(t, time.Millisecond, func(ctx context.Context) {
+				assert.NoError(t, group.Get(t).Wait())
+			})
+		})
+
+		s.When("the function encounters an error", func(s *testcase.Spec) {
+			fnErr.Let(s, let.Error(s).Get)
+			s.Before(func(t *testcase.T) { close(done.Get(t)) }) // no blocking on function execution
+
+			s.Then("we get back the error during Wait", func(t *testcase.T) {
+				act(t)
+
+				assert.ErrorIs(t, fnErr.Get(t), group.Get(t).Wait())
+			})
+		})
+
+		s.When("the function returns with context error upon context cancellation", func(s *testcase.Spec) {
+			fn.Let(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					select {
+					case <-ctx.Done():
+					case <-t.Done():
+					}
+					return ctx.Err()
+				}
+			})
+
+			s.Then("upon cancellation, the context cancellation error is not counted as an error towards the group", func(t *testcase.T) {
+				act(t)
+
+				group.Get(t).Cancel()
+
+				assert.NoError(t, group.Get(t).Wait())
+			})
+		})
+
+		s.When("a function is already running in the background", func(s *testcase.Spec) {
+			othCancelled := let.VarOf(s, false)
+
+			s.Before(func(t *testcase.T) {
+				group.Get(t).Go(func(ctx context.Context) error {
+					select {
+					case <-t.Done():
+					case <-ctx.Done():
+						othCancelled.Set(t, true)
+					}
+					return ctx.Err()
+				})
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, 1, group.Get(t).Len())
+				})
+			})
+
+			s.Then("it starts a new background task", func(t *testcase.T) {
+				assert.Within(t, time.Millisecond, func(ctx context.Context) {
+					act(t)
+				})
+
+				assert.Equal(t, 2, group.Get(t).Len())
+			})
+
+			s.And("if the function encounters an error", func(s *testcase.Spec) {
+				fnErr.Let(s, let.Error(s).Get)
+
+				s.Before(func(t *testcase.T) {
+					close(done.Get(t)) // no blocking on function execution
+				})
+
+				s.Then("it will cancel the other goroutine's context", func(t *testcase.T) {
+					act(t)
+
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, othCancelled.Get(t))
+					})
+				})
+
+				s.And("Isolation was set to true", func(s *testcase.Spec) {
+					group.Let(s, func(t *testcase.T) *synckit.Group {
+						g := group.Super(t)
+						g.Isolation = true
+						return g
+					})
+
+					s.Then("it will NOT affect the other goroutines", func(t *testcase.T) {
+						act(t)
+
+						for range 42 {
+							runtime.Gosched()
+
+							assert.False(t, othCancelled.Get(t))
+						}
+					})
+				})
+			})
+		})
+	}
+
+	s.Describe("#Go", func(s *testcase.Spec) {
+		SpecGo(s, func(g *synckit.Group, fn func(context.Context) error) {
+			g.Go(fn)
+		})
+	})
+
+	s.Describe("#GoContext", func(s *testcase.Spec) {
+		var (
+			Context, Cancel = let.ContextWithCancel(s)
+
+			isReady    = let.VarOf(s, false)
+			isFinished = let.VarOf(s, false)
+			isCtxDone  = let.VarOf(s, false)
+
+			fn = let.Var(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					isReady.Set(t, true)
+					defer isFinished.Set(t, true)
+					select {
+					case <-ctx.Done():
+						isCtxDone.Set(t, true)
+					case <-t.Done():
+					}
+					return ctx.Err()
+				}
+			})
+		)
+		act := let.Act0(func(t *testcase.T) {
+			group.Get(t).GoContext(Context.Get(t), fn.Get(t))
+		})
+
+		SpecGo(s, func(g *synckit.Group, fn func(context.Context) error) {
+			g.GoContext(context.Background(), fn)
+		})
+
+		s.When("we start a goroutine within the group", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.Within(t, time.Millisecond, func(ctx context.Context) {
+					act(t)
+				})
+				t.Eventually(func(t *testcase.T) {
+					assert.True(t, isReady.Get(t))
+				})
+				for range 42 {
+					runtime.Gosched()
+					assert.False(t, isFinished.Get(t))
+					assert.False(t, isCtxDone.Get(t))
+				}
+			})
+
+			s.And("the input context of this goroutine is cancelled", func(s *testcase.Spec) {
+				s.Before(func(t *testcase.T) {
+					Cancel.Get(t)()
+				})
+
+				s.Then("the started goroutine's context will be cancelled", func(t *testcase.T) {
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, isCtxDone.Get(t))
+					})
+					t.Eventually(func(t *testcase.T) {
+						assert.True(t, isFinished.Get(t))
+					})
+				})
+
+				s.And("other goroutine in the group was already started previously", func(s *testcase.Spec) {
+					var (
+						isOthReady    = let.VarOf(s, false)
+						isOthFinished = let.VarOf(s, false)
+						isOthCtxDone  = let.VarOf(s, false)
+					)
+					group.Let(s, func(t *testcase.T) *synckit.Group {
+						g := group.Super(t)
+						g.GoContext(context.Background(), func(ctx context.Context) error {
+							isOthReady.Set(t, true)
+							defer isOthFinished.Set(t, true)
+							select {
+							case <-ctx.Done():
+								isOthCtxDone.Set(t, true)
+							case <-t.Done():
+							}
+							return ctx.Err()
+						})
+						return g
+					})
+
+					s.Then("other process will not be affected by the current execution context's cancellation", func(t *testcase.T) {
+						t.Eventually(func(t *testcase.T) {
+							assert.True(t, isCtxDone.Get(t))
+						})
+						t.Eventually(func(t *testcase.T) {
+							assert.True(t, isOthReady.Get(t))
+						})
+						for range 42 {
+							runtime.Gosched()
+							assert.False(t, isOthCtxDone.Get(t))
+						}
+					})
+				})
+			})
+		})
+	})
+}
+
+func BenchmarkGroup(b *testing.B) {
+	wrk := func() {
+		for i := range 128 {
+			_ = 5 * i
+		}
+	}
+
+	b.Run("with boilerplate", func(b *testing.B) {
+		var wg sync.WaitGroup
+		for range b.N {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				wrk()
+			}()
+			wg.Wait()
+		}
+	})
+
+	b.Run("group", func(b *testing.B) {
+		var g synckit.Group
+		for range b.N {
+			g.Go(func(ctx context.Context) error {
+				return nil
+			})
+			g.Wait()
+		}
+	})
+}
+
+func ExamplePhaser() {
+	var p synckit.Phaser
+	defer p.Finish()
+
+	go func() { p.Wait() }()
+	go func() { p.Wait() }()
+	go func() { p.Wait() }()
+
+	p.Broadcast() // wait no longer blocks
+}
+
+func TestPhaser(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	phaser := testcase.Let(s, func(t *testcase.T) *synckit.Phaser {
+		var p synckit.Phaser
+		t.Cleanup(p.Finish)
+		return &p
+	})
+
+	s.Test("smoke #Wait #Finish", func(t *testcase.T) {
+		go func() { phaser.Get(t).Wait() }()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, 1, phaser.Get(t).Len())
+		})
+
+		phaser.Get(t).Finish()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, 0, phaser.Get(t).Len())
+		})
+	})
+
+	var incJob = func(t *testcase.T, p *synckit.Phaser, c *int32) {
+	listening:
+		for {
+			select {
+			case <-t.Done():
+				break listening
+			default:
+				phaser.Get(t).Wait()
+				atomic.AddInt32(c, 1)
+			}
+		}
+	}
+
+	s.Test("smoke #Wait #Broadcast", func(t *testcase.T) {
+		var (
+			p  = phaser.Get(t)
+			ns []*int32
+		)
+		for range t.Random.IntBetween(2, 7) {
+			var n int32
+			ptr := &n
+			ns = append(ns, ptr)
+			go incJob(t, p, ptr)
+		}
+		for i := range t.Random.IntBetween(1, 7) {
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, len(ns), p.Len())
+			})
+
+			p.Broadcast() // release all waiter
+
+			t.Eventually(func(t *testcase.T) {
+				var total int32
+				for _, n := range ns {
+					total += atomic.LoadInt32(n)
+				}
+				assert.Equal(t, total, int32((i+1)*len(ns)))
+			})
+		}
+	})
+
+	s.Test("smoke #Wait #Signal", func(t *testcase.T) {
+		var (
+			p  = phaser.Get(t)
+			ns []*int32
+		)
+		for range t.Random.IntBetween(2, 7) {
+			var n int32
+			ptr := &n
+			ns = append(ns, ptr)
+			go incJob(t, p, ptr)
+		}
+		for i := range t.Random.IntBetween(1, 7) {
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, len(ns), p.Len())
+			})
+
+			p.Signal() // release one waiter
+
+			t.Eventually(func(t *testcase.T) {
+				var total int32
+				for _, n := range ns {
+					total += atomic.LoadInt32(n)
+				}
+				assert.Equal(t, total, int32(i+1))
+			})
+		}
+	})
+
+	s.Test("wait and release", func(t *testcase.T) {
+		var ready, done int32
+
+		n := t.Random.Repeat(1, 7, func() {
+			go func() {
+				atomic.AddInt32(&ready, 1)
+				defer atomic.AddInt32(&done, 1)
+				phaser.Get(t).Wait()
+			}()
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(n), atomic.LoadInt32(&ready))
+		})
+
+		for i := 0; i < 42; i++ {
+			runtime.Gosched()
+			assert.Equal(t, 0, atomic.LoadInt32(&done))
+		}
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			phaser.Get(t).Finish()
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(n), atomic.LoadInt32(&done))
+		})
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			phaser.Get(t).Wait()
+		}, "it is expected that phaser no longer blocks on wait")
+	})
+
+	s.Test("wait and broadcast", func(t *testcase.T) {
+		var ready, done int32
+
+		n := t.Random.Repeat(1, 7, func() {
+			go func() {
+				atomic.AddInt32(&ready, 1)
+				defer atomic.AddInt32(&done, 1)
+				phaser.Get(t).Wait()
+			}()
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(n), atomic.LoadInt32(&ready))
+		})
+
+		for i := 0; i < 42; i++ {
+			runtime.Gosched()
+			assert.Equal(t, 0, atomic.LoadInt32(&done))
+		}
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			phaser.Get(t).Broadcast()
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(n), atomic.LoadInt32(&done))
+		})
+
+		assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+			phaser.Get(t).Wait()
+		}, "it is expected that phaser is still blocking on wait")
+	})
+
+	s.Test("#Finish will act as a permanently continous #Broadcast", func(t *testcase.T) {
+		var i int
+
+		t.OnFail(func() {
+			t.Logf("i=%d", i)
+		})
+
+		for i = range 3 * runtime.NumCPU() {
+			var (
+				p synckit.Phaser
+				c int32
+
+				spam = make(chan struct{})
+			)
+			go func() {
+			work:
+				for {
+					select {
+					case <-t.Done():
+						return
+					case <-spam:
+						break work
+					default:
+						go func() {
+							atomic.AddInt32(&c, 1)
+							defer atomic.AddInt32(&c, -1)
+							p.Wait()
+						}()
+					}
+				}
+			}()
+
+			t.Eventually(func(t *testcase.T) {
+				assert.NotEmpty(t, p.Len())
+			})
+
+			p.Finish()
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Empty(t, p.Len())
+			})
+
+			close(spam)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, 0, atomic.LoadInt32(&c))
+			})
+
+			runtime.GC()
+		}
+	})
+
+	s.Test("wait and signal", func(t *testcase.T) {
+		var ready, done int32
+
+		n := t.Random.Repeat(1, 7, func() {
+			go func() {
+				atomic.AddInt32(&ready, 1)
+				defer atomic.AddInt32(&done, 1)
+				phaser.Get(t).Wait()
+			}()
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int32(n), atomic.LoadInt32(&ready))
+		})
+
+		for i := 0; i < 42; i++ {
+			runtime.Gosched()
+			assert.Equal(t, 0, atomic.LoadInt32(&done))
+		}
+
+		assert.Within(t, time.Millisecond, func(ctx context.Context) {
+			phaser.Get(t).Signal()
+		})
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, 1, atomic.LoadInt32(&done))
+		})
+
+		t.Random.Repeat(3, 7, func() {
+			runtime.Gosched()
+			assert.Equal(t, 1, atomic.LoadInt32(&done))
+		})
+
+		assert.NotWithin(t, time.Millisecond, func(ctx context.Context) {
+			phaser.Get(t).Wait()
+		}, "it is expected that phaser is still blocking on wait")
+	})
+
+	s.Test("Release is safe to be called multiple times", func(t *testcase.T) {
+		t.Random.Repeat(2, 7, func() {
+			phaser.Get(t).Finish()
+		})
+	})
+
+	s.Test("Finish does broadcast", func(t *testcase.T) {
+		var (
+			p = phaser.Get(t)
+			c int32
+			n int32
+		)
+
+		n = int32(t.Random.Repeat(3, 7, func() {
+			go func() {
+				atomic.AddInt32(&c, 1)
+				defer atomic.AddInt32(&c, -1)
+				p.Wait()
+			}()
+		}))
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, int(n), p.Len())
+		}) // eventually all waiter starts to wait
+
+		for range t.Random.IntBetween(32, 128) {
+			runtime.Gosched()
+			assert.Equal(t, n, atomic.LoadInt32(&c),
+				"it was expected that none of the waiters finish at this point")
+		}
+
+		p.Finish()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, 0, atomic.LoadInt32(&c))
+		})
+	})
+
+	s.Test("Wait with Locker", func(t *testcase.T) {
+		var m sync.Mutex
+		var sl StubLocker
+
+		go func() {
+			m.Lock()
+			defer m.Unlock()
+			phaser.Get(t).Wait(&m, &sl)
+		}()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, phaser.Get(t).Len(), 1)
+		})
+
+		phaser.Get(t).Broadcast()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, sl.UnlockingN(), 1)
+			assert.Equal(t, sl.LockingN(), 1)
+		})
+	})
+
+	s.Test("mixed locker usage", func(t *testcase.T) {
+		var (
+			p  = phaser.Get(t)
+			sl StubLocker
+		)
+		go func() { p.Wait(&sl) }()
+		go func() { p.Wait() }()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, 2, p.Len())
+		})
+
+		p.Broadcast()
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, 0, p.Len())
+		})
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		var (
+			p  = phaser.Get(t)
+			sl StubLocker
+		)
+		testcase.Race(func() {
+			p.Wait()
+		}, func() {
+			p.Wait(&sl)
+		}, func() {
+			p.Broadcast()
+		}, func() {
+			p.Signal()
+		}, func() {
+			p.Finish()
+		})
+	})
+}
+
+type StubLocker struct {
+	_LockingN, _UnlockingN int32
+}
+
+func (stub *StubLocker) LockingN() int32 {
+	return atomic.LoadInt32(&stub._LockingN)
+}
+
+func (stub *StubLocker) UnlockingN() int32 {
+	return atomic.LoadInt32(&stub._UnlockingN)
+}
+
+func (stub *StubLocker) Lock() {
+	atomic.AddInt32(&stub._LockingN, 1)
+}
+
+func (stub *StubLocker) Unlock() {
+	atomic.AddInt32(&stub._UnlockingN, 1)
 }
