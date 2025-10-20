@@ -8,7 +8,6 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/synckit"
-	"go.llib.dev/frameless/pkg/zerokit"
 )
 
 const errSetWithNonPtr errorkit.Error = "ptr should given as *ENT, else pass by value prevents the ID field remotely"
@@ -81,8 +80,8 @@ func Get[ID, ENT any](ent ENT) ID {
 func Lookup[ID, ENT any](ent ENT) (id ID, ok bool) {
 	str := reflectkit.BaseValueOf(ent)
 	if tr, ok := register[str.Type()]; ok {
-		id := tr.Get(str.Interface()).(ID)
-		return id, !zerokit.IsZero(id)
+		id, ok := tr.Get(str.Interface()).(ID)
+		return id, ok
 	}
 	if _, value, ok := extractIdentifierFieldByType(idByTypeKey{
 		ENT: reflectkit.TypeOf[ENT](),
@@ -382,7 +381,7 @@ func (fn ReflectAccessor) ReflectLookup(rENT reflect.Value) (rID reflect.Value, 
 	ptrID := fn(reflectkit.PointerOf(rENT))
 	fn.checkPtrID(ptrID)
 	id := ptrID.Elem()
-	return id, !reflectkit.IsEmpty(id)
+	return id, true
 }
 
 func (fn ReflectAccessor) ReflectSet(ptrENT reflect.Value, id reflect.Value) (rErr error) {

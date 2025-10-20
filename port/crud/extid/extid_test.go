@@ -188,6 +188,28 @@ func TestLookup_PointerIDGivenByFieldName_IDReturned(t *testing.T) {
 	assert.Equal(t, "ok", id)
 }
 
+func TestLookup_zeroIntTypesConsideredFound(t *testing.T) {
+	type I struct{ ID int }
+	type I8 struct{ ID int8 }
+	type I16 struct{ ID int16 }
+	type I32 struct{ ID int32 }
+	type I64 struct{ ID int64 }
+
+	type UI struct{ ID uint }
+	type UI8 struct{ ID uint8 }
+	type UI16 struct{ ID uint16 }
+	type UI32 struct{ ID uint32 }
+	type UI64 struct{ ID uint64 }
+
+	var examples = []any{I{}, I8{}, I16{}, I32{}, I64{}, UI{}, UI8{}, UI16{}, UI32{}, UI64{}}
+
+	for _, example := range examples {
+		id, ok := extid.Lookup[any](example)
+		assert.True(t, ok)
+		assert.Empty(t, id)
+	}
+}
+
 func TestLookup_withPointerValueTypeWhereValueTypeHasRegisteredGetter(t *testing.T) {
 	type T struct{ IDD string }
 
@@ -204,7 +226,7 @@ func TestLookup_withPointerValueTypeWhereValueTypeHasRegisteredGetter(t *testing
 
 	t.Run("when id is empty", func(t *testing.T) {
 		id, ok := extid.Lookup[string](T{IDD: ""})
-		assert.False(t, ok)
+		assert.True(t, ok, "it is still reported to be found (string id field found because of the T#IDD field)")
 		assert.Equal(t, "", id)
 	})
 }
@@ -342,7 +364,7 @@ func TestRegisterType(t *testing.T) {
 	var ent TypeWithCustomIDSet
 	id := random.New(random.CryptoSeed{}).String()
 	gotID, ok := extid.Lookup[string](ent)
-	assert.False(t, ok)
+	assert.True(t, ok, "it was expected that a string ID field will be found due to extid.RegisterType[TypeWithCustomIDSet, string] usage")
 	assert.Empty(t, gotID)
 
 	assert.NoError(t, extid.Set(&ent, id))
@@ -624,7 +646,7 @@ func TestReflectAccessor_ReflectLookup(t *testing.T) {
 		ent := T{DI: ""}
 		rEnt := reflect.ValueOf(ent)
 		id, ok := accessor.ReflectLookup(rEnt)
-		assert.Must(t).False(ok)
+		assert.True(t, ok, "the entity does have ID, it is just happen to be zero")
 		assert.Empty(t, id.String())
 	})
 
