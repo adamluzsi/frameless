@@ -8,6 +8,10 @@ import (
 	"sync"
 	"time"
 
+	"go.llib.dev/frameless/pkg/compare"
+	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/mathkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 
@@ -446,4 +450,271 @@ func MoveByte(in ByteReader, out ByteWriter) (byte, error) {
 		return 0, err
 	}
 	return b, nil
+}
+
+// LockstepReaders creates n synchronized io.Reader instances that read from the same
+// underlying source r in lockstep. All readers receive identical data and progress
+// through the stream in perfect synchronization.
+//
+// The bufferWindow parameter controls the maximum amount of data that can be buffered
+// internally. When the fastest reader gets ahead of the slowest by bufferWindow bytes,
+// the fast readers will block until the slowest catches up, ensuring all readers
+// remain within the same buffer window.
+//
+// This is useful for scenarios where multiple consumers need to process the same
+// data stream concurrently while maintaining strict synchronization, such as
+// replicated processing or parallel analysis of identical input.
+//
+// The returned readers are safe for concurrent use across different goroutines.
+// If any reader encounters an error (including io.EOF), all readers will see
+// the same error at the same logical position in the stream.
+//
+// Parameters:
+//   - r: the source io.Reader to read from
+//   - n: number of synchronized readers to create (must be > 0)
+//   - bufferWindow: maximum buffer size before blocking fast readers
+//
+// Returns a slice of n synchronized io.Reader instances.
+func LockstepReaders(r io.Reader, n int, bufferWindow ByteSize) []io.ReadCloser {
+	if r == nil {
+		panic("iokit.LockstepReaders input reader is nil")
+	}
+	if n <= 0 {
+		panic("iokit.LockstepReaders reader multiplexing count must be greater than zero")
+	}
+	if bufferWindow <= 0 {
+		panic("iokit.LockstepReaders buffer window size must be greater than zero")
+	}
+	src := newLockstepSource(r, bufferWindow)
+	var out []io.ReadCloser
+	for range n {
+		out = append(out, src.NewOutput())
+	}
+	return out
+}
+
+func newLockstepSource(r io.Reader, bufferWindow ByteSize) *lockstepSource {
+	var rwm sync.RWMutex
+	return &lockstepSource{
+		reader: r,
+		wcap:   bufferWindow,
+		buffer: make([]byte, bufferWindow),
+		mutex:  &rwm,
+		phaser: sync.NewCond(&rwm),
+	}
+}
+
+type lockstepSource struct {
+	reader io.Reader
+	err    error
+
+	mutex  *sync.RWMutex
+	phaser *sync.Cond
+
+	wlen   int
+	wcap   ByteSize
+	buffer []byte
+	index  mathkit.BigInt[int]
+
+	outs []*lockstepOutput
+}
+
+// window is an unsafe access to the current buffer,
+// the caller must hold the lock for the mutex
+func (src *lockstepSource) window() []byte {
+	return src.buffer[:src.wlen]
+}
+
+func (src *lockstepSource) NewOutput() *lockstepOutput {
+	lo := &lockstepOutput{src: src}
+	src.outs = append(src.outs, lo)
+	return lo
+}
+
+func (src *lockstepSource) advanceble() int {
+	if src.err != nil {
+		return 0
+	}
+	var (
+		// once is requires here because we can't rely on zero value comparison.
+		once                       sync.Once
+		indexOfTheMostBehindOutput mathkit.BigInt[int]
+	)
+	for _, out := range src.outs {
+		once.Do(func() { indexOfTheMostBehindOutput = out.index })
+		if compare.IsLess(out.index.Compare(indexOfTheMostBehindOutput)) {
+			indexOfTheMostBehindOutput = out.index
+		}
+	}
+	ToAdvance := indexOfTheMostBehindOutput.Sub(src.index)
+	toAdvance, ok := ToAdvance.ToInt()
+	if !ok {
+		toAdvance, ok = iterkit.First(ToAdvance.Iter())
+		if !ok {
+			return 0
+		}
+	}
+	if src.wcap < toAdvance {
+		toAdvance = src.wcap
+	}
+	return toAdvance
+}
+
+func (src *lockstepSource) fillBuffer() {
+	if src.wcap <= src.wlen {
+		return // buffer is full
+	}
+	if src.err != nil {
+		return // no more read is possible
+	}
+	// fill the remaining buffer window
+
+	n, err := io.ReadFull(src.reader, src.buffer[src.wlen:])
+	if 0 < n {
+		src.wlen += n
+	}
+	if err != nil {
+		if err == io.ErrUnexpectedEOF {
+			err = io.EOF
+		}
+		src.err = err
+	}
+}
+
+func (src *lockstepSource) advance() bool {
+	src.fillBuffer()
+	toAdvance := src.advanceble()
+
+	if src.wlen < toAdvance {
+		toAdvance = src.wlen
+	}
+	switch {
+	case toAdvance <= src.wlen:
+		src.shiftLeft(toAdvance)
+	case src.wlen < toAdvance:
+		src.shiftLeft(src.wlen)
+	}
+	src.fillBuffer()
+	return true
+}
+
+func (src *lockstepSource) WaitForWindowUpdate() {
+	src.mutex.Lock()
+	defer src.mutex.Unlock()
+
+	if src.err != nil {
+		return
+	}
+
+	if !src.advance() {
+		// no chance to advance for us,
+		// we have to wait until the one that was the most behind will be able to read.
+		src.phaser.Wait()
+		return
+	}
+	src.phaser.Broadcast()
+}
+
+// shiftLeft shifts the elements of s left by k positions.
+// Vacated slots at the end are set to zero.
+func (src *lockstepSource) shiftLeft(n int) {
+	if len(src.buffer) < n || src.wcap < n {
+		panic("not possible to shift more than the buffer window size")
+	}
+	if src.wlen < n {
+		panic("not possible to shift more than the buffer window length")
+	}
+	// Move the tail of the slice forward by k positions.
+	// [1,2,3,4,5] << 3
+	// [4,5,0,0,0]
+	// len == wlen - n  == 5 - 3 == 2
+	copy(src.buffer, src.buffer[n:])
+	for i := len(src.buffer) - n; i < len(src.buffer); i++ {
+		src.buffer[i] = 0
+	}
+	src.wlen -= n
+	src.index = src.index.Add(src.index.Of(n))
+}
+
+type lockstepOutput struct {
+	src *lockstepSource
+
+	index mathkit.BigInt[int]
+}
+
+func (out *lockstepOutput) Read(p []byte) (int, error) {
+	var pIndex int
+	for {
+
+		n, err := out.read(p[pIndex:])
+
+		// fast path
+		if 0 < n {
+			pIndex += n
+		}
+		if err != nil {
+			return pIndex, err
+		}
+
+		if len(p) <= pIndex {
+			return pIndex, nil
+		}
+
+		// slow path
+		out.src.WaitForWindowUpdate()
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func (out *lockstepOutput) read(p []byte) (_ int, rErr error) {
+	out.src.mutex.RLock()
+	defer out.src.mutex.RUnlock()
+	defer func() { rErr = errorkitlite.Merge(out.src.err, rErr) }()
+
+	start, ok := out.index.Sub(out.src.index).ToInt()
+	if !ok {
+		// potentially this will never be false,
+		// since the max expectec diff between the reader index and the source index
+		// is a max windows size, and a max windows size already fit into memory
+		panic("implementation issue")
+	}
+
+	window := out.src.window()
+
+	if len(window) < start || 0 < start {
+		return 0, rErr
+	}
+
+	var current = window[start:]
+
+	switch {
+	// NO POSSIBLE READ // slow path
+	case len(current) == 0:
+		return 0, rErr
+
+	// FULL READ IS POSSIBLE // fast path
+	case len(p) <= len(current):
+
+		n := len(p)
+		copy(p, current[:n])
+		out.index = out.index.Add(out.index.Of(n))
+		return n, rErr
+
+	// PARTIAL READ IS POSSIBLE // fast path
+	case len(current) < len(p):
+
+		n := len(current)
+		copy(p, current)
+		out.index = out.index.Add(out.index.Of(n))
+
+		return n, rErr
+
+	default:
+
+		return 0, rErr
+	}
+}
+
+func (out *lockstepOutput) Close() error {
+	return nil
 }

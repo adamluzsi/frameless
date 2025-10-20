@@ -3,6 +3,7 @@ package iokit_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/filesystem"
 	"go.llib.dev/frameless/port/filesystem/filemode"
 	"go.llib.dev/testcase/assert"
@@ -1000,4 +1002,93 @@ func (m *mockRuneReaderWriter) WriteRune(r rune) (n int, err error) {
 		return 0, m.writeError
 	}
 	return 1, nil
+}
+
+func TestLockstepReaders(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var MakeRandomData = func(t *testcase.T, length int) []byte {
+		var data = make([]byte, length)
+		_, err := t.Random.Read(data)
+		assert.NoError(t, err)
+		assert.Equal(t, len(data), length)
+		return data
+	}
+
+	s.Test("one", func(t *testcase.T) {
+		var (
+			window   = t.Random.IntBetween(iokit.Byte, 10*iokit.Byte)
+			length   = t.Random.IntBetween(window, window*3)
+			expected = MakeRandomData(t, length)
+			source   = bytes.NewReader(expected)
+		)
+
+		t.Log("windows size", window)
+		t.Log("input length", len(expected))
+		const rLen = 1
+		readers := iokit.LockstepReaders(source, rLen, window)
+		assert.Equal(t, len(readers), rLen)
+
+		var (
+			jg      synckit.Group
+			results synckit.Slice[[]byte]
+		)
+		for _, r := range readers {
+			var r = r
+			jg.Go(func(ctx context.Context) error {
+				data, err := io.ReadAll(r)
+				if err == nil {
+					results.Append(data)
+				}
+				return err
+			})
+		}
+
+		assert.Within(t, 2*time.Second, func(ctx context.Context) {
+			assert.NoError(t, jg.Wait())
+		})
+
+		assert.Equal(t, rLen, results.Len())
+
+		for got := range results.Iter() {
+			assert.Equal(t, expected, got)
+		}
+	})
+
+	s.Test("many", func(t *testcase.T) {
+		var (
+			window   = t.Random.IntBetween(iokit.Byte, iokit.Kilobyte)
+			length   = t.Random.IntBetween(window, window*3)
+			expected = MakeRandomData(t, length)
+			source   = bytes.NewReader(expected)
+		)
+
+		rLen := t.Random.IntBetween(2, 7)
+		readers := iokit.LockstepReaders(source, rLen, window)
+		assert.Equal(t, rLen, len(readers))
+
+		var (
+			jg      synckit.Group
+			results synckit.Slice[[]byte]
+		)
+		for _, r := range readers {
+			var r = r
+			jg.Go(func(ctx context.Context) error {
+				data, err := io.ReadAll(r)
+				if err == nil {
+					results.Append(data)
+				}
+				return err
+			})
+		}
+
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			assert.NoError(t, jg.Wait())
+		})
+
+		assert.Equal(t, rLen, results.Len())
+		for i, got := range results.Slice() {
+			assert.Equal(t, expected, got, assert.MessageF("i=%d", i))
+		}
+	})
 }
