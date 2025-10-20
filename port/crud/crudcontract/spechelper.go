@@ -7,6 +7,7 @@ import (
 	"iter"
 	"reflect"
 	"testing"
+	"time"
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -47,7 +48,7 @@ func makeUnique[ENT any](tb testing.TB, mk func(tb testing.TB) ENT, oths ...ENT)
 		ent ENT
 		ok  bool
 	)
-	crudtest.Eventually.Strategy.While(func() bool {
+	assert.Waiter{Timeout: 10 * time.Second}.While(func() bool {
 		ent = mk(tb)
 		ok = isUnique(ent, oths...)
 		return !ok

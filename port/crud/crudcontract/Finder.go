@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/option"
 
 	"go.llib.dev/frameless/port/crud"
@@ -19,12 +18,7 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
-type subjectFinder[ENT, ID any] interface {
-	crud.ByIDFinder[ENT, ID]
-	crud.AllFinder[ENT]
-}
-
-func Finder[ENT, ID any](subject subjectFinder[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
+func Finder[ENT, ID any](subject crud.Finder[ENT, ID], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	s.Describe("ByIDFinder", ByIDFinder[ENT, ID](subject, opts...).Spec)
 	s.Describe("AllFinder", AllFinder[ENT, ID](subject, opts...).Spec)
@@ -61,11 +55,11 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 			})
 
 			s.Then("it will find and return the entity", func(t *testcase.T) {
-				crudtest.Eventually.Assert(t, func(it testing.TB) {
+				t.Eventually(func(t *testcase.T) {
 					got, found, err := act(t)
-					assert.NoError(it, err)
-					assert.True(it, found)
-					assert.Equal(it, ent.Get(t), got)
+					assert.NoError(t, err)
+					assert.True(t, found)
+					assert.Equal(t, ent.Get(t), got)
 				})
 			})
 		})
@@ -79,25 +73,25 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 						ent = mkEnt(t)
 						id  = c.Helper().HasID(t, &ent)
 					)
-					crudtest.Eventually.Assert(t, func(it testing.TB) {
+					t.Eventually(func(t *testcase.T) {
 						_, found, err := subject.FindByID(ctx, id)
-						assert.NoError(it, err)
-						assert.True(it, found)
+						assert.NoError(t, err)
+						assert.True(t, found)
 					})
 					t.Must.NoError(deleter.DeleteByID(ctx, id))
-					crudtest.Eventually.Assert(t, func(it testing.TB) {
+					t.Eventually(func(t *testcase.T) {
 						_, found, err := subject.FindByID(ctx, id)
-						assert.NoError(it, err)
-						assert.False(it, found)
+						assert.NoError(t, err)
+						assert.False(t, found)
 					})
 					return id
 				}).EagerLoading(s)
 
 				s.Then("it reports that the entity is not found", func(t *testcase.T) {
-					crudtest.Eventually.Assert(t, func(it testing.TB) {
+					t.Eventually(func(t *testcase.T) {
 						_, ok, err := act(t)
-						assert.NoError(it, err)
-						assert.False(it, ok)
+						assert.NoError(t, err)
+						assert.False(t, ok)
 					})
 				})
 			})

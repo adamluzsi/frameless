@@ -36,7 +36,7 @@ var Waiter = resilience.Waiter{
 	Timeout:      5 * time.Second,
 }
 
-var Eventually = assert.Retry{Strategy: &Waiter}
+var eventually = assert.Retry{Strategy: &Waiter}
 
 type Config[ENT, ID any] struct {
 	IDA extid.Accessor[ENT, ID]
@@ -148,6 +148,12 @@ func (a Helper[ENT, ID]) Create(tb testing.TB, resource crud.Creator[ENT], ctx c
 	tb.Helper()
 	assert.NoError(tb, resource.Create(ctx, ptr))
 	a.cleanupENT(tb, resource, ctx, ptr)
+
+	if id, ok := a.IDA.Lookup(*ptr); ok {
+		if byIDFinder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
+			a.IsPresent(tb, byIDFinder, ctx, id)
+		}
+	}
 }
 
 type updater[ENT, ID any] interface {

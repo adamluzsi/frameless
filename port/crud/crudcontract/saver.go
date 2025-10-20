@@ -14,7 +14,7 @@ import (
 
 func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
-	c := option.ToConfig[Config[ENT, ID]](opts)
+	c := option.ToConfig(opts)
 
 	s.Describe(`.Save`, func(s *testcase.Spec) {
 		var (
