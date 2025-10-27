@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"

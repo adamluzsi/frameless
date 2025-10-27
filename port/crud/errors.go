@@ -1,8 +1,8 @@
 package crud
 
-import "go.llib.dev/frameless/pkg/errorkit"
+import "go.llib.dev/frameless/internal/errorkitlite"
 
 const (
-	ErrAlreadyExists errorkit.Error = "err-already-exists"
-	ErrNotFound      errorkit.Error = "err-not-found"
+	ErrAlreadyExists errorkitlite.Error = "err-already-exists"
+	ErrNotFound      errorkitlite.Error = "err-not-found"
 )

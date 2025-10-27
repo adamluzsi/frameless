@@ -9,7 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )

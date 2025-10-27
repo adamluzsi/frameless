@@ -1,8 +1,10 @@
+// Package mapkit provides utilities working with maps.
+//
+// The mapkit package is considered as a `lite` pacakge,
+// and therefore its dependencies stritcly restricted.
 package mapkit
 
-import (
-	"go.llib.dev/frameless/pkg/must"
-)
+import "go.llib.dev/frameless/pkg/must"
 
 func Map[
 	OK comparable, OV any,

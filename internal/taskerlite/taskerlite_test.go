@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/internal/taskerlite"
+	"go.llib.dev/frameless/internal/taskerlite"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )

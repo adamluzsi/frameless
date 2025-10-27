@@ -11,6 +11,9 @@
 // Dot import can be used since the package is intentionally kept small and focused on this specific topic:
 //
 //	Must(regexp.Compile(`regexp`))
+//
+// The `must` package is considered as a `lite` pacakge,
+// and therefore its dependencies stritcly restricted.
 package must
 
 // Must is a syntax sugar to express things like must.Must(regexp.Compile(`regexp`))

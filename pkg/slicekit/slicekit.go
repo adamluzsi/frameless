@@ -1,3 +1,7 @@
+// Package slicekit provides utilities working with slices.
+//
+// The slicekit package is considered as a `lite` pacakge,
+// and therefore its dependencies stritcly restricted.
 package slicekit
 
 import (

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/internal/errorkitlite"
 )
 
 func FinishTx(errp *error, commit, rollback func() error) {
@@ -12,7 +12,7 @@ func FinishTx(errp *error, commit, rollback func() error) {
 		panic(fmt.Errorf(`error pointer cannot be nil for Finish Tx methods`))
 	}
 	if *errp != nil {
-		*errp = errorkit.Merge(*errp, rollback())
+		*errp = errorkitlite.Merge(*errp, rollback())
 		return
 	}
 	*errp = commit()

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/testcase"
 )
 

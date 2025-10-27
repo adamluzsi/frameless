@@ -5,15 +5,15 @@ import (
 	"reflect"
 	"strings"
 
-	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/synckit"
 )
 
-const errSetWithNonPtr errorkit.Error = "ptr should given as *ENT, else pass by value prevents the ID field remotely"
-const errSetWithNonStructENT errorkit.Error = "ENT type was expected to be a struct type"
+const errSetWithNonPtr errorkitlite.Error = "ptr should given as *ENT, else pass by value prevents the ID field remotely"
+const errSetWithNonStructENT errorkitlite.Error = "ENT type was expected to be a struct type"
 
-const ErrIDFieldNotFound errorkit.Error = "ErrIDFieldNotFound"
+const ErrIDFieldNotFound errorkitlite.Error = "ErrIDFieldNotFound"
 
 func Set[ID any](ptr any, id ID) error {
 	if ptr == nil {
@@ -385,7 +385,7 @@ func (fn ReflectAccessor) ReflectLookup(rENT reflect.Value) (rID reflect.Value, 
 }
 
 func (fn ReflectAccessor) ReflectSet(ptrENT reflect.Value, id reflect.Value) (rErr error) {
-	defer errorkit.Recover(&rErr)
+	defer errorkitlite.Recover(&rErr)
 	if ptrENT.Kind() != reflect.Pointer {
 		return fmt.Errorf("%w: pointer ENT type was expected", reflectkit.ErrTypeMismatch)
 	}

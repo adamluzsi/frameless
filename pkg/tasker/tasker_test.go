@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/internal/signalint"
-	"go.llib.dev/frameless/pkg/internal/taskerlite"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/tasker"

@@ -7,16 +7,16 @@ import (
 	"strings"
 	"unsafe"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/internal/interr"
 	"go.llib.dev/frameless/pkg/compare"
-	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit/internal"
 	"go.llib.dev/frameless/pkg/synckit"
 )
 
 const ErrTypeMismatch = internal.ErrTypeMismatch
 
-const ErrInvalid errorkit.Error = "ErrInvalid"
+const ErrInvalid errorkitlite.Error = "ErrInvalid"
 
 func Cast[T any](v any) (T, bool) {
 	var (
@@ -530,7 +530,7 @@ type CmpComparable[T any] interface {
 	Cmp(T) int
 }
 
-const ErrNotComparable errorkit.Error = "ErrNotComparable"
+const ErrNotComparable errorkitlite.Error = "ErrNotComparable"
 
 // Compare will compare "a" and "b" and return the comparison result.
 //

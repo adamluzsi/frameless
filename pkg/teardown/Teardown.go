@@ -3,7 +3,7 @@ package teardown
 import (
 	"sync"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 )
 
 type Teardown struct {

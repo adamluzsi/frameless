@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 )
 
 // F functions similarly to fmt.Errorf but includes tracing capabilities.

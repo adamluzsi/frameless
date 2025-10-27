@@ -27,7 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/port/option"
 )
 

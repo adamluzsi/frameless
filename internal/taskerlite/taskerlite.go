@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"go.llib.dev/frameless/pkg/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/errorkitlite"
 )
 
 // Task is the basic unit of tasker package, which represents an executable work.
