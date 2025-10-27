@@ -3,17 +3,21 @@ package iokit_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/filesystem"
 	"go.llib.dev/frameless/port/filesystem/filemode"
 	"go.llib.dev/testcase/assert"
@@ -183,7 +187,7 @@ func TestBuffer(t *testing.T) {
 			_, err := rwsc.Get(t).Read([]byte{})
 			t.Must.ErrorIs(fs.ErrClosed, err)
 			_, err = buffer.Get(t).Read([]byte{})
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			t.Must.ErrorIs(iokit.ErrClosed, err)
 		})
 
 		s.Then(".Write fails with fs.ErrClosed", func(t *testcase.T) {
@@ -1000,4 +1004,277 @@ func (m *mockRuneReaderWriter) WriteRune(r rune) (n int, err error) {
 		return 0, m.writeError
 	}
 	return 1, nil
+}
+
+func TestLockstepReaders(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var MakeRandomData = func(t *testcase.T, length int) []byte {
+		var data = make([]byte, length)
+		_, err := t.Random.Read(data)
+		assert.NoError(t, err)
+		assert.Equal(t, len(data), length)
+		return data
+	}
+
+	var (
+		bufferWindowSize = let.Var(s, func(t *testcase.T) iokit.ByteSize {
+			return t.Random.IntBetween(iokit.Byte, iokit.Kilobyte)
+		})
+		data = let.Var(s, func(t *testcase.T) []byte {
+			mul := t.Random.IntBetween(2, 8)
+			length := t.Random.IntBetween(bufferWindowSize.Get(t), bufferWindowSize.Get(t)*mul)
+			return MakeRandomData(t, length)
+		})
+		sourceReader = let.Var(s, func(t *testcase.T) io.Reader {
+			return bytes.NewReader(data.Get(t))
+		})
+		count = let.Var(s, func(t *testcase.T) int {
+			return t.Random.IntBetween(1, 7)
+		})
+	)
+
+	act := let.Act(func(t *testcase.T) []io.ReadCloser {
+		rs := iokit.LockstepReaders(sourceReader.Get(t), count.Get(t), bufferWindowSize.Get(t))
+		assert.Equal(t, len(rs), count.Get(t))
+		return rs
+	})
+
+	type BGRead struct {
+		synckit.Group
+		Results synckit.Slice[[]byte]
+	}
+	var readAll = func(t *testcase.T, readers []io.ReadCloser) *BGRead {
+		var bgr BGRead
+		t.Cleanup(bgr.Cancel)
+		t.Cleanup(func() {
+			bgr.Cancel()
+			t.Eventually(func(t *testcase.T) {
+				assert.Empty(t, bgr.Group.Len())
+			})
+		})
+		for _, r := range readers {
+			var r = r
+			bgr.Group.Go(func(ctx context.Context) error {
+				data, err := io.ReadAll(r)
+				if err == nil {
+					bgr.Results.Append(data)
+				}
+				return err
+			})
+		}
+		return &bgr
+	}
+
+	var ThenTheOutputReadersWillContainTheSameData = func(s *testcase.Spec) {
+		s.Then("the lockstep reader(s) will be able to read the same identical data from the source reader", func(t *testcase.T) {
+			readers := act(t)
+
+			bgr := readAll(t, readers)
+
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				assert.NoError(t, bgr.Wait())
+			}, "all the lockstep reader should finished through concurrent reading")
+
+			assert.Equal(t, count.Get(t), bgr.Results.Len(),
+				"all the reader should have finished without an error")
+
+			for got := range bgr.Results.Iter() {
+				assert.Equal(t, data.Get(t), got, "all the output results should be identical")
+			}
+		})
+	}
+
+	s.Context("incorrect usage", func(s *testcase.Spec) {
+		s.When("negative output reader count requested", func(s *testcase.Spec) {
+			count.Let(s, func(t *testcase.T) int {
+				return t.Random.IntBetween(-1, -100)
+			})
+
+			s.Then("it is considered as a programming error and it will panic", func(t *testcase.T) {
+				assert.Panic(t, func() { act(t) })
+			})
+		})
+
+		s.When("negative buffer window is defined", func(s *testcase.Spec) {
+			bufferWindowSize.Let(s, func(t *testcase.T) int {
+				return t.Random.IntBetween(-1, -100)
+			})
+
+			s.Then("it is considered as a programming error and it will panic", func(t *testcase.T) {
+				assert.Panic(t, func() { act(t) })
+			})
+		})
+
+		s.When("nil source reader is provided", func(s *testcase.Spec) {
+			sourceReader.LetValue(s, nil)
+
+			s.Then("it is considered as a programming error and it will panic", func(t *testcase.T) {
+				assert.Panic(t, func() { act(t) })
+			})
+		})
+	})
+
+	s.When("zero output reader is requested", func(s *testcase.Spec) {
+		count.LetValue(s, 0)
+
+		s.Then("empty reader result received", func(t *testcase.T) {
+			assert.Empty(t, act(t))
+		})
+	})
+
+	s.When("the reader count is one", func(s *testcase.Spec) {
+		count.LetValue(s, 1)
+
+		s.Then("it will create a single output reader", func(t *testcase.T) {
+			readers := act(t)
+			assert.Equal(t, len(readers), count.Get(t))
+		})
+
+		ThenTheOutputReadersWillContainTheSameData(s)
+	})
+
+	ThenTheOutputReadersWillContainTheSameData(s)
+
+	s.Context("sync", func(s *testcase.Spec) {
+		count.Let(s, func(t *testcase.T) int {
+			t.Log("in sync aspects related testing we work with at least two concurrent lockstep reader")
+			return t.Random.IntBetween(2, 7)
+		})
+
+		data.Let(s, func(t *testcase.T) []byte {
+			t.Log("in sync related tests, the source reader's total data must be larger than the buffering window byte size")
+			mul := t.Random.IntBetween(2, 8)
+			length := t.Random.IntBetween(bufferWindowSize.Get(t)+1, bufferWindowSize.Get(t)*mul)
+			return MakeRandomData(t, length)
+		})
+
+		s.Test("if a lockstep reader laggs behind, then the others will have to wait", func(t *testcase.T) {
+			readers := act(t)
+
+			otherReaders := readers[1:]
+			bg := readAll(t, otherReaders)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bg.Len(), len(otherReaders), "expected that other readers eventually queu up and start to waiting")
+			})
+			for range t.Random.IntBetween(3, 7) {
+				runtime.Gosched()
+				assert.Equal(t, bg.Len(), len(otherReaders), "queud up lockstep readers should be still waiting")
+			}
+
+			first, ok := slicekit.First(readers)
+			assert.True(t, ok)
+			defer first.Close()
+
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				n, err := first.Read(make([]byte, 1))
+				assert.NoError(t, err)
+				assert.Equal(t, 1, n)
+			})
+
+			for range t.Random.IntBetween(13, 42) {
+				runtime.Gosched()
+				assert.Equal(t, bg.Len(), len(otherReaders), "other readers should be still stuck waiting")
+			}
+
+			for range t.Random.IntBetween(3, 42) {
+				runtime.Gosched()
+				assert.Empty(t, bg.Results.Len())
+			}
+
+			t.Log("star reading the first consumer")
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				_, err := io.ReadAll(first)
+				assert.NoError(t, err)
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bg.Len(), 0)
+			})
+
+			for got := range bg.Results.Iter() {
+				assert.Equal(t, data.Get(t), got)
+			}
+		})
+
+		s.Test("reading one buffer window size should be always possible without being blocked", func(t *testcase.T) {
+			readers := act(t)
+
+			otherReaders := readers[1:]
+			bg := readAll(t, otherReaders)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bg.Len(), len(otherReaders))
+			})
+
+			first, ok := slicekit.First(readers)
+			assert.True(t, ok)
+			defer first.Close()
+
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				n, err := first.Read(make([]byte, bufferWindowSize.Get(t)))
+				assert.NoError(t, err)
+				assert.Equal(t, n, bufferWindowSize.Get(t))
+			})
+		})
+
+		s.Test("closing a lockstep reader removes it from the active readers group", func(t *testcase.T) {
+			readers := act(t)
+
+			otherReaders := readers[1:]
+			bg := readAll(t, otherReaders)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, bg.Len(), len(otherReaders))
+			})
+
+			first, ok := slicekit.First(readers)
+			assert.True(t, ok)
+			defer first.Close()
+
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				n, err := first.Read(make([]byte, 1))
+				assert.NoError(t, err)
+				assert.Equal(t, 1, n)
+			})
+
+			assert.NoError(t, first.Close())
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Empty(t, bg.Len())
+				assert.Equal(t, len(otherReaders), bg.Results.Len())
+			})
+
+			for got := range bg.Results.Iter() {
+				assert.Equal(t, data.Get(t), got)
+			}
+		})
+	})
+
+	s.Test("closing a lockstep reader multiple times should yield no error", func(t *testcase.T) {
+		readers := act(t)
+
+		for _, r := range readers {
+			t.Random.Repeat(3, 7, func() {
+				assert.NoError(t, r.Close())
+			})
+		}
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		rs := iokit.LockstepReaders(sourceReader.Get(t), 3, 1)
+
+		a, b, c := rs[0], rs[1], rs[2]
+		testcase.Race(func() {
+			io.ReadAll(a)
+		}, func() {
+			time.Sleep(time.Millisecond)
+			runtime.Gosched()
+			b.Close()
+		}, func() {
+			defer c.Close()
+			io.ReadFull(c, make([]byte, len(data.Get(t))/2))
+		})
+	})
 }
