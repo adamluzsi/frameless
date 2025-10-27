@@ -6,12 +6,16 @@ import (
 	"iter"
 	"slices"
 
-	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
 type Set[T comparable] map[T]struct{}
+
+var _ List[any] = (*Set[any])(nil)
+var _ Appendable[any] = (*Set[any])(nil)
+var _ Iterable[any] = (*Set[any])(nil)
+var _ Containable[any] = (*Set[any])(nil)
 
 func (s *Set[T]) Append(vs ...T) {
 	if *s == nil {
@@ -22,8 +26,20 @@ func (s *Set[T]) Append(vs ...T) {
 	}
 }
 
+func (s Set[T]) FromSlice(vs []T) Set[T] {
+	s.Append(vs...)
+	return s
+}
+
 func (s *Set[T]) Slice() []T {
-	return iterkit.Collect(s.Iter())
+	if s == nil {
+		return nil
+	}
+	var vs []T = make([]T, 0, len(*s))
+	for v := range *s {
+		vs = append(vs, v)
+	}
+	return vs
 }
 
 func (s *Set[T]) Iter() iter.Seq[T] {
@@ -40,13 +56,23 @@ func (s *Set[T]) Len() int {
 	return len(*s)
 }
 
+func (s Set[T]) Contains(o T) bool {
+	if s == nil {
+		return false
+	}
+	_, ok := s[o]
+	return ok
+}
+
 type OrderedSet[T comparable] struct {
 	vs map[T]struct{}
 	is map[int]*T
 }
 
 var _ List[any] = (*OrderedSet[any])(nil)
+var _ Iterable[any] = (*OrderedSet[any])(nil)
 var _ Sequence[any] = (*OrderedSet[any])(nil)
+var _ Containable[any] = (*OrderedSet[any])(nil)
 
 func (s *OrderedSet[T]) init() {
 	if s.vs == nil {
@@ -164,7 +190,7 @@ func (s *OrderedSet[T]) offsetIndexesBy(fromIndex, offset int) {
 	}
 }
 
-func (s OrderedSet[T]) Has(v T) bool {
+func (s OrderedSet[T]) Contains(v T) bool {
 	if s.vs == nil {
 		return false
 	}
@@ -190,9 +216,7 @@ func (s OrderedSet[T]) Len() int {
 }
 
 func (s OrderedSet[T]) indexes() []int {
-	indexes := mapkit.Keys(s.is)
-	slices.Sort(indexes)
-	return indexes
+	return mapkit.Keys(s.is, slices.Sort[[]int])
 }
 
 func (s OrderedSet[T]) Iter() iter.Seq[T] {

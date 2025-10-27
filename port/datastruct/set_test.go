@@ -36,6 +36,15 @@ func TestSet(t *testing.T) {
 		return v
 	}
 
+	s.Test("#FromSlice", func(t *testcase.T) {
+		values := random.Slice(t.Random.IntBetween(0, 10), t.Random.String, random.UniqueValues)
+		set := datastruct.Set[string]{}.FromSlice(values)
+		assert.Equal(t, set.Len(), len(values))
+		for _, v := range values {
+			assert.True(t, set.Contains(v), "Set should contain the value added from the slice")
+		}
+	})
+
 	lc := datastructcontract.ListConfig[string]{
 		MakeElem: makeElem,
 	}
@@ -43,23 +52,47 @@ func TestSet(t *testing.T) {
 	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
 		return &datastruct.Set[string]{}
 	}, lc).Spec)
+
+	s.Context("implements Containable", datastructcontract.Containable(func(t testing.TB) *datastruct.Set[string] {
+		return &datastruct.Set[string]{}
+	}, lc).Spec)
+
+	s.Test("#Contains on nil Set", func(t *testcase.T) {
+		var set datastruct.Set[string]
+		assert.False(t, set.Contains(t.Random.String()))
+	})
 }
 
 func ExampleOrderedSet() {
+	var set datastruct.OrderedSet[string]
+	set.Append("foo", "bar", "baz", "foo")
+	set.Slice()         // []string{"foo", "bar", "baz"}
+	set.Len()           // 3
+	set.Contains("foo") // true
+}
+
+func ExampleOrderedSet_Append() {
 	var set datastruct.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
 	set.Slice() // []string{"foo", "bar", "baz"}
 	set.Len()   // 3
 }
 
-func ExampleOrderedSet_fromSlice() {
+func ExampleOrderedSet_Slice() {
+	var set datastruct.OrderedSet[string]
+	set.Append("foo", "bar", "baz", "foo")
+	set.Slice() // []string{"foo", "bar", "baz"}
+	set.Len()   // 3
+}
+
+func ExampleOrderedSet_FromSlice() {
 	var vs = []string{"foo", "bar", "baz", "foo"}
 	var set = datastruct.OrderedSet[string]{}.FromSlice(vs)
 	set.Slice() // []string{"foo", "bar", "baz"}
 	set.Len()   // 3
 }
 
-func ExampleOrderedSet_iterate() {
+func ExampleOrderedSet_Iter() {
 	var set datastruct.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
 
@@ -68,17 +101,17 @@ func ExampleOrderedSet_iterate() {
 	}
 }
 
-func ExampleOrderedSet_has() {
+func ExampleOrderedSet_Contains() {
 	var set datastruct.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
-	set.Has("foo") // true
-	set.Has("bar") // true
-	set.Has("oof") // false
+	set.Contains("foo") // true
+	set.Contains("bar") // true
+	set.Contains("oof") // false
 }
 
 func TestOrderedSet(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
-	t.Run("Add and Has", func(t *testing.T) {
+	t.Run("Add and Contains", func(t *testing.T) {
 		var (
 			set      datastruct.OrderedSet[int]
 			value    = rnd.Int()
@@ -86,12 +119,12 @@ func TestOrderedSet(t *testing.T) {
 		)
 
 		// Initially, the set should not contain the random value
-		assert.False(t, set.Has(value))
+		assert.False(t, set.Contains(value))
 
-		// After adding the value, Has should return true
+		// After adding the value, Contains should return true
 		set.Append(value)
-		assert.True(t, set.Has(value))
-		assert.False(t, set.Has(othValue))
+		assert.True(t, set.Contains(value))
+		assert.False(t, set.Contains(othValue))
 	})
 
 	t.Run("FromSlice", func(t *testing.T) {
@@ -99,11 +132,11 @@ func TestOrderedSet(t *testing.T) {
 		set := datastruct.OrderedSet[int]{}.FromSlice(values)
 
 		for _, v := range values {
-			assert.True(t, set.Has(v), "Set should contain the value added from the slice")
+			assert.True(t, set.Contains(v), "Set should contain the value added from the slice")
 		}
 	})
 
-	t.Run("ToSlice uniqueness", func(t *testing.T) {
+	t.Run("Slice uniqueness", func(t *testing.T) {
 		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
 		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
 		got := set.Slice()
@@ -112,7 +145,7 @@ func TestOrderedSet(t *testing.T) {
 		tempMap := make(map[int]struct{})
 		for _, item := range got {
 			if _, exists := tempMap[item]; exists {
-				t.Errorf("Duplicate found in the slice returned by ToSlice, which should not happen")
+				t.Errorf("Duplicate found in the slice returned by Slice, which should not happen")
 			}
 			tempMap[item] = struct{}{}
 		}
@@ -121,7 +154,7 @@ func TestOrderedSet(t *testing.T) {
 			_, ok := tempMap[v]
 
 			assert.True(t, ok, assert.MessageF("%v was missing", v),
-				"\nAll unique values from the initial slice should be present in the slice returned by ToSlice.")
+				"\nAll unique values from the initial slice should be present in the slice returned by Slice.")
 		}
 	})
 
@@ -134,7 +167,7 @@ func TestOrderedSet(t *testing.T) {
 		tempMap := make(map[int]struct{})
 		for _, item := range got {
 			if _, exists := tempMap[item]; exists {
-				t.Errorf("Duplicate found in the slice returned by ToSlice, which should not happen")
+				t.Errorf("Duplicate found in the slice returned by Slice, which should not happen")
 			}
 			tempMap[item] = struct{}{}
 		}
@@ -143,11 +176,11 @@ func TestOrderedSet(t *testing.T) {
 			_, ok := tempMap[v]
 
 			assert.True(t, ok, assert.MessageF("%v was missing", v),
-				"\nAll unique values from the initial slice should be present in the slice returned by ToSlice.")
+				"\nAll unique values from the initial slice should be present in the slice returned by Slice.")
 		}
 	})
 
-	t.Run("ToSlice is ordered by default", func(t *testing.T) {
+	t.Run("Slice is ordered by default", func(t *testing.T) {
 		exp := []int{1, 5, 2, 7, 3, 9} // Intentional duplicate to test uniqueness
 		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
 		got := set.Slice()
@@ -189,4 +222,8 @@ func TestOrderedSet(t *testing.T) {
 	t.Run("implements sequence", datastructcontract.Sequence[string](func(tb testing.TB) datastruct.Sequence[string] {
 		return &datastruct.OrderedSet[string]{}
 	}, sc).Test)
+
+	t.Run("implements Containable", datastructcontract.Containable(func(t testing.TB) *datastruct.OrderedSet[string] {
+		return &datastruct.OrderedSet[string]{}
+	}, lc).Test)
 }

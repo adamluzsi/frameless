@@ -5,8 +5,8 @@ import (
 )
 
 type List[T any] interface {
-	Append(vs ...T)
-	Iter() iter.Seq[T]
+	Appendable[T]
+	Iterable[T]
 	Sizer
 }
 
@@ -40,4 +40,16 @@ type Mapper[K comparable, V any] interface {
 type Slicer[T any] interface {
 	// Slice returns the contents as a slice of T.
 	Slice() []T
+}
+
+type Iterable[T any] interface {
+	Iter() iter.Seq[T]
+}
+
+type Appendable[T any] interface {
+	Append(vs ...T)
+}
+
+type Containable[T any] interface {
+	Contains(element T) bool
 }
