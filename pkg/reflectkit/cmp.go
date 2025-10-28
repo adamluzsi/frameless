@@ -12,7 +12,10 @@ import (
 // Equal will compare two value deeply.
 // It looks for Equal method on the value as well.
 // You can define how a type's value should be compared by using RegisterEqual.
-func Equal(x, y any) bool {
+func Equal[T any](x, y T) bool {
+	if cmp, ok := tryTypedCompare[T](x, y); ok {
+		return cmp == 0
+	}
 	return internal.Equal(ToValue(x), ToValue(y))
 }
 

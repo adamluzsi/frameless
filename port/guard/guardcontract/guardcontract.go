@@ -15,6 +15,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 // TODO:
@@ -399,8 +400,10 @@ func LockerFactory[Key comparable](subject guard.LockerFactory[Key], opts ...Loc
 	s.Test("result Lock with different name don't interfere with each other", func(t *testcase.T) {
 		var (
 			ctx = c.MakeContext(t)
-			l1  = subject.LockerFor(c.MakeKey(t))
-			l2  = subject.LockerFor(c.MakeKey(t))
+			k1  = c.MakeKey(t)
+			k2  = random.Unique(func() Key { return c.MakeKey(t) }, k1)
+			l1  = subject.LockerFor(k1)
+			l2  = subject.LockerFor(k2)
 		)
 		t.Must.Within(3*time.Second, func(context.Context) {
 			lockCtx1, err := l1.Lock(ctx)

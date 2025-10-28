@@ -1,4 +1,4 @@
-# go.llib.dev/testcase v0.184.1
+# go.llib.dev/testcase v0.187.0
 ## explicit; go 1.18
 go.llib.dev/testcase
 go.llib.dev/testcase/assert
@@ -19,6 +19,7 @@ go.llib.dev/testcase/internal/slicekit
 go.llib.dev/testcase/internal/teardown
 go.llib.dev/testcase/internal/wait
 go.llib.dev/testcase/let
+go.llib.dev/testcase/pkg/synctest
 go.llib.dev/testcase/pp
 go.llib.dev/testcase/random
 go.llib.dev/testcase/random/internal/fixture

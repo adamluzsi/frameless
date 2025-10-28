@@ -27,7 +27,7 @@ func OrderedList[T any](make func(tb testing.TB) datastruct.List[T], opts ...Lis
 	s.Test("ordered", func(t *testcase.T) {
 		var (
 			list         = make(t)
-			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeT(t) }, random.UniqueValues)
+			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) }, random.UniqueValues)
 		)
 		list.Append(expected...)
 		if ts, ok := list.(datastruct.Slicer[T]); ok {
@@ -39,14 +39,14 @@ func OrderedList[T any](make func(tb testing.TB) datastruct.List[T], opts ...Lis
 	return s.AsSuite(fmt.Sprintf("ordered List[%s]", reflectkit.TypeOf[T]().String()))
 }
 
-func List[T any](make func(tb testing.TB) datastruct.List[T], opts ...ListOption[T]) contract.Contract {
+func List[T any, Subject datastruct.List[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
 	s.Test("smoke", func(t *testcase.T) {
 		var (
-			list         = make(t)
-			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeT(t) })
+			list         = mk(t)
+			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) })
 		)
 
 		list.Append()
@@ -60,35 +60,33 @@ func List[T any](make func(tb testing.TB) datastruct.List[T], opts ...ListOption
 		}
 
 		assert.ContainsExactly(t, expected, iterkit.Collect(list.Iter()))
-
-		if cts, ok := list.(datastruct.Slicer[T]); ok {
-			assert.ContainsExactly(t, expected, cts.Slice())
-		}
 	})
 
 	s.Test("Append many", func(t *testcase.T) {
 		var (
-			list         = make(t)
-			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeT(t) })
+			list         = mk(t)
+			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) })
 		)
 		list.Append(expected...)
 		assert.Equal(t, len(expected), list.Len())
 		assert.ContainsExactly(t, expected, iterkit.Collect(list.Iter()))
 
-		if cts, ok := list.(datastruct.Slicer[T]); ok {
+		if cts, ok := any(list).(datastruct.Slicer[T]); ok {
 			assert.ContainsExactly(t, expected, cts.Slice())
 		}
 	})
 
 	s.Describe("#Iter", iterkitcontract.IterSeq(func(tb testing.TB) iter.Seq[T] {
 		t := testcase.ToT(&tb)
-		list := make(t)
+		list := mk(t)
 		t.Random.Repeat(3, 7, func() {
-			v := c.makeT(t)
+			v := c.makeElem(t)
 			list.Append(v)
 		})
 		return list.Iter()
 	}).Spec)
+
+	s.Context("implements Appendable", Appendable(mk).Spec)
 
 	return s.AsSuite(fmt.Sprintf("List[%s]", reflectkit.TypeOf[T]().String()))
 }
@@ -107,6 +105,6 @@ func (c ListConfig[T]) Configure(o *ListConfig[T]) {
 	o.MakeElem = zerokit.Coalesce(c.MakeElem, o.MakeElem)
 }
 
-func (c ListConfig[T]) makeT(tb testing.TB) T {
+func (c ListConfig[T]) makeElem(tb testing.TB) T {
 	return zerokit.Coalesce(c.MakeElem, spechelper.MakeValue[T])(tb)
 }

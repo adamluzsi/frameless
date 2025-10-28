@@ -30,8 +30,8 @@ func Containable[T any, Subject SubjectContainable[T]](mk func(testing.TB) Subje
 
 	s.Describe("#Contains", func(s *testcase.Spec) {
 		var (
-			element = let.Var[T](s, func(t *testcase.T) T {
-				return c.MakeElem(t)
+			element = let.Var(s, func(t *testcase.T) T {
+				return c.makeElem(t)
 			})
 		)
 		act := let.Act(func(t *testcase.T) bool {

@@ -45,6 +45,11 @@ func TestSet(t *testing.T) {
 		}
 	})
 
+	s.Test("#Contains on nil Set", func(t *testcase.T) {
+		var set datastruct.Set[string]
+		assert.False(t, set.Contains(t.Random.String()))
+	})
+
 	lc := datastructcontract.ListConfig[string]{
 		MakeElem: makeElem,
 	}
@@ -57,10 +62,9 @@ func TestSet(t *testing.T) {
 		return &datastruct.Set[string]{}
 	}, lc).Spec)
 
-	s.Test("#Contains on nil Set", func(t *testcase.T) {
-		var set datastruct.Set[string]
-		assert.False(t, set.Contains(t.Random.String()))
-	})
+	s.Context("implements Appendable", datastructcontract.Appendable(func(tb testing.TB) *datastruct.Set[string] {
+		return &datastruct.Set[string]{}
+	}).Spec)
 }
 
 func ExampleOrderedSet() {
@@ -226,4 +230,8 @@ func TestOrderedSet(t *testing.T) {
 	t.Run("implements Containable", datastructcontract.Containable(func(t testing.TB) *datastruct.OrderedSet[string] {
 		return &datastruct.OrderedSet[string]{}
 	}, lc).Test)
+
+	t.Run("implements Appendable", datastructcontract.Appendable(func(tb testing.TB) *datastruct.OrderedSet[string] {
+		return &datastruct.OrderedSet[string]{}
+	}).Test)
 }

@@ -52,7 +52,9 @@ func TestScheduler(t *testing.T) {
 	s.Describe(".WithSchedule", func(s *testcase.Spec) {
 		var (
 			id       = let.As[tasker.ScheduleID](let.String(s))
-			interval = let.As[time.Duration](let.IntB(s, int(time.Hour), 24*int(time.Hour)))
+			interval = let.Var[time.Duration](s, func(t *testcase.T) time.Duration {
+				return time.Duration(t.Random.IntBetween(int(time.Hour), 24*int(time.Hour)))
+			})
 
 			ran  = testcase.LetValue[int](s, 0)
 			task = testcase.Let(s, func(t *testcase.T) tasker.Task {
