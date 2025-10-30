@@ -1,6 +1,7 @@
 package reflectkit
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,9 +10,9 @@ import (
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/internal/interr"
-	"go.llib.dev/frameless/pkg/compare"
 	"go.llib.dev/frameless/pkg/reflectkit/internal"
 	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/frameless/port/predicate"
 )
 
 const ErrTypeMismatch = internal.ErrTypeMismatch
@@ -497,39 +498,6 @@ func IsBuiltInType(typ reflect.Type) bool {
 	return typ.PkgPath() == ""
 }
 
-// Comparable is an optional interface type that allows implementing types to perform value comparisons.
-//
-// Types implementing this interface must provide a Compare method that defines the ordering or equivalence of values.
-// This pattern is useful when working with:
-// 1. Custom user-defined types requiring comparison logic
-// 2. Encapsulated values needing semantic comparisons
-// 3. Comparison-agnostic systems (e.g., sorting algorithms)
-//
-// Example usage:
-//
-//	type MyNumber struct {
-//	    Value int
-//	}
-//
-//	func (m MyNumber) Compare(other MyNumber) int {
-//	    if m.Value < other.Value { return -1 }
-//	    if m.Value > other.Value { return +1 }
-//	    return 0
-//	}
-type Comparable[T any] interface {
-	// Compare returns:
-	//   -1 if receiver is less than the argument,
-	//    0 if they're equal, and
-	//    +1 if receiver is greater.
-	//
-	// Implementors must ensure consistent ordering semantics.
-	Compare(T) int
-}
-
-type CmpComparable[T any] interface {
-	Cmp(T) int
-}
-
 const ErrNotComparable errorkitlite.Error = "ErrNotComparable"
 
 // Compare will compare "a" and "b" and return the comparison result.
@@ -549,34 +517,34 @@ func tryTypedCompare[T any](a, b T) (int, bool) {
 		return 0, false
 	}
 	switch a := any(a).(type) {
-	case Comparable[T]:
+	case predicate.Comparable[T]:
 		return a.Compare(b), true
-	case CmpComparable[T]:
+	case predicate.ComparableShort[T]:
 		return a.Cmp(b), true
 	case float32:
-		return compare.Numbers(a, any(b).(float32)), true
+		return cmp.Compare(a, any(b).(float32)), true
 	case float64:
-		return compare.Numbers(a, any(b).(float64)), true
+		return cmp.Compare(a, any(b).(float64)), true
 	case int:
-		return compare.Numbers(a, any(b).(int)), true
+		return cmp.Compare(a, any(b).(int)), true
 	case int8:
-		return compare.Numbers(a, any(b).(int8)), true
+		return cmp.Compare(a, any(b).(int8)), true
 	case int16:
-		return compare.Numbers(a, any(b).(int16)), true
+		return cmp.Compare(a, any(b).(int16)), true
 	case int32:
-		return compare.Numbers(a, any(b).(int32)), true
+		return cmp.Compare(a, any(b).(int32)), true
 	case int64:
-		return compare.Numbers(a, any(b).(int64)), true
+		return cmp.Compare(a, any(b).(int64)), true
 	case uint:
-		return compare.Numbers(a, any(b).(uint)), true
+		return cmp.Compare(a, any(b).(uint)), true
 	case uint8:
-		return compare.Numbers(a, any(b).(uint8)), true
+		return cmp.Compare(a, any(b).(uint8)), true
 	case uint16:
-		return compare.Numbers(a, any(b).(uint16)), true
+		return cmp.Compare(a, any(b).(uint16)), true
 	case uint32:
-		return compare.Numbers(a, any(b).(uint32)), true
+		return cmp.Compare(a, any(b).(uint32)), true
 	case uint64:
-		return compare.Numbers(a, any(b).(uint64)), true
+		return cmp.Compare(a, any(b).(uint64)), true
 	case string:
 		return strings.Compare(a, any(b).(string)), true
 	default:
@@ -599,13 +567,13 @@ func reflectCompare(a, b reflect.Value) (int, error) {
 		return 0, ErrTypeMismatch.F("comparison between %s and %s is not possible.", a.Type().String(), b.Type().String())
 	}
 	if a.CanInt() {
-		return compare.Numbers(a.Int(), b.Int()), nil
+		return cmp.Compare(a.Int(), b.Int()), nil
 	}
 	if a.CanUint() {
-		return compare.Numbers(a.Uint(), b.Uint()), nil
+		return cmp.Compare(a.Uint(), b.Uint()), nil
 	}
 	if a.CanFloat() {
-		return compare.Numbers(a.Float(), b.Float()), nil
+		return cmp.Compare(a.Float(), b.Float()), nil
 	}
 	if a.Kind() == reflect.String {
 		return strings.Compare(a.String(), b.String()), nil

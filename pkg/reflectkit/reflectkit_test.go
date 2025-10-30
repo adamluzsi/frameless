@@ -2463,8 +2463,6 @@ func TestCompare(t *testing.T) {
 	})
 
 	s.Describe("Comparable implementation", func(s *testcase.Spec) {
-		var _ reflectkit.Comparable[time.Time] = time.Time{}
-
 		tme := let.Var(s, func(t *testcase.T) time.Time {
 			return t.Random.Time()
 		})
@@ -2478,8 +2476,6 @@ func TestCompare(t *testing.T) {
 	})
 
 	s.Describe("Cmp implementation", func(s *testcase.Spec) {
-		var _ reflectkit.CmpComparable[*big.Int] = (*big.Int)(nil)
-
 		ref := let.Var(s, func(t *testcase.T) int64 {
 			return int64(t.Random.Int())
 		})

@@ -1,12 +1,12 @@
 package mathkit
 
 import (
+	"cmp"
 	"iter"
 	"math/big"
 	"unsafe"
 
 	"go.llib.dev/frameless/internal/constraints"
-	"go.llib.dev/frameless/pkg/compare"
 	"go.llib.dev/frameless/pkg/errorkit"
 )
 
@@ -141,7 +141,7 @@ func (BigInt[INT]) Parse(raw string) (BigInt[INT], error) {
 
 func (i BigInt[INT]) Compare(o BigInt[INT]) int {
 	if i.i == nil && o.i == nil { // fast path
-		return compare.Numbers(i.n, o.n)
+		return cmp.Compare(i.n, o.n)
 	}
 	return i.switchToBigIntMode().i.Cmp(o.switchToBigIntMode().i)
 }
@@ -158,7 +158,7 @@ func (i BigInt[INT]) Iter() iter.Seq[INT] {
 			yield(i.n)
 		}
 	}
-	var isNegative = compare.IsLess(cmp)
+	var isNegative = cmp < 0
 	var format = func(n INT) INT {
 		if isNegative {
 			return -n
@@ -172,8 +172,7 @@ func (i BigInt[INT]) Iter() iter.Seq[INT] {
 	return func(yield func(INT) bool) {
 		var cursor = i.Abs()
 		for {
-			cmp := cursor.Compare(UpperBoundary)
-			if compare.IsLessOrEqual(cmp) {
+			if cursor.Compare(UpperBoundary) <= 0 {
 				last := cursor.tryToSwitchToIntMode()
 				yield(format(last.n))
 				return
@@ -238,8 +237,7 @@ func (i BigInt[INT]) Div(n BigInt[INT]) BigInt[INT] {
 }
 
 func (i BigInt[INT]) IsZero() bool {
-
-	return compare.IsEqual(i.Compare(BigInt[INT]{}))
+	return i.Compare(BigInt[INT]{}) == 0
 }
 
 func (i BigInt[INT]) switchToBigIntMode() BigInt[INT] {
@@ -257,7 +255,7 @@ func (i BigInt[INT]) tryToSwitchToIntMode() BigInt[INT] {
 	var zero BigInt[INT]
 	cmp := i.Compare(zero)
 
-	if compare.IsEqual(cmp) {
+	if cmp == 0 {
 		return zero
 	}
 
@@ -265,11 +263,11 @@ func (i BigInt[INT]) tryToSwitchToIntMode() BigInt[INT] {
 		return BigInt[INT]{n: INT(i.i.Int64())}
 	}
 
-	if compare.IsLess(cmp) && compare.IsGreaterOrEqual(i.Compare(BigInt[INT]{n: MinInt[INT]()})) {
+	if cmp < 0 && 0 <= i.Compare(BigInt[INT]{n: MinInt[INT]()}) {
 		return toIntMode()
 	}
 
-	if compare.IsGreater(cmp) && compare.IsLessOrEqual(i.Compare(BigInt[INT]{n: MaxInt[INT]()})) {
+	if 0 < cmp && i.Compare(BigInt[INT]{n: MaxInt[INT]()}) <= 0 {
 		return toIntMode()
 	}
 

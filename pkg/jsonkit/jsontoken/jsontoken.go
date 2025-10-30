@@ -583,7 +583,7 @@ func (p Path) Match(oth Path) bool {
 	if len(oth) < len(p) {
 		return false
 	}
-	for i := 0; i < len(p); i++ {
+	for i := range p {
 		if !p[i].Equal(oth[i]) {
 			return false
 		}
@@ -596,6 +596,11 @@ func (p Path) Equal(oth Path) bool {
 		return p.Match(oth)
 	}
 	if 2 <= len(p) && len(oth) == len(p)+1 {
+		// len(p)-1 defines that if the p Path is an array element path,
+		// then potentially an any value index selector
+		// is accepted as an equal path.
+		// But I wonder if this should be checked by Match instead.
+		// It is technically speaking not Equal...
 		if !p.Match(oth) { //  smoke test that p match to oth
 			return false
 		}

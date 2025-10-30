@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"slices"
 	"time"
 
-	"go.llib.dev/frameless/pkg/compare"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/mathkit"
@@ -214,13 +214,13 @@ func (sch Schedule) Check(ref time.Time) bool {
 	if sch.Location != nil {
 		ref = ref.In(sch.Location)
 	}
-	if 0 < len(sch.Months) && !slicekit.Contains(sch.Months, ref.Month()) {
+	if 0 < len(sch.Months) && !slices.Contains(sch.Months, ref.Month()) {
 		return false
 	}
-	if 0 < len(sch.Weekdays) && !slicekit.Contains(sch.Weekdays, ref.Weekday()) {
+	if 0 < len(sch.Weekdays) && !slices.Contains(sch.Weekdays, ref.Weekday()) {
 		return false
 	}
-	if 0 < len(sch.Days) && !slicekit.Contains(sch.Days, ref.Day()) {
+	if 0 < len(sch.Days) && !slices.Contains(sch.Days, ref.Day()) {
 		return false
 	}
 	if !sch.DayTime.IsZero() && !sch.getRangeOnDate(ref).Contain(ref) {
@@ -247,7 +247,7 @@ func (sch Schedule) Next(ref time.Time) (nextOccurrence Range, ok bool) {
 			return occurrence, ok
 		}
 		// Is ref Less than occurrence.From ?
-		if compare.IsLess(ref.Compare(occurrence.From)) {
+		if ref.Compare(occurrence.From) < 0 {
 			return occurrence, true
 		}
 		ref = occurrence.Till.Add(1)

@@ -691,8 +691,8 @@ func TestPath(t *testing.T) {
 	thenTheyAreNotEqual := func(s *testcase.Spec) {
 		s.Then("they are not equal", func(t *testcase.T) {
 			t.OnFail(func() {
-				t.Log("path", path.Get(t), len(path.Get(t)))
-				t.Log("oth", oth.Get(t), len(oth.Get(t)))
+				t.Log("path", "len:", len(path.Get(t)), "v:", path.Get(t))
+				t.Log("oth ", "len:", len(oth.Get(t)), "v:", oth.Get(t))
 			})
 			assert.False(t, equal(t))
 		})

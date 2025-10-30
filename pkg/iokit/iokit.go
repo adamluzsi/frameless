@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
-	"go.llib.dev/frameless/pkg/compare"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mathkit"
 	"go.llib.dev/frameless/pkg/synckit"
@@ -560,7 +559,7 @@ func (src *lockstepSource) advancebleIndexDistance() int {
 			continue
 		}
 		once.Do(func() { indexOfTheMostBehindOutput = out.index })
-		if compare.IsLess(out.index.Compare(indexOfTheMostBehindOutput)) {
+		if out.index.Compare(indexOfTheMostBehindOutput) < 0 {
 			indexOfTheMostBehindOutput = out.index
 		}
 	}
@@ -625,7 +624,7 @@ func (src *lockstepSource) advance() bool {
 	src.fillBuffer()
 	var toAdvance = min(src.advancebleIndexDistance(), src.wlen)
 	if toAdvance == 0 {
-		return compare.IsLess(initialTail.Compare(src.tail()))
+		return initialTail.Compare(src.tail()) < 0
 	}
 	switch {
 	case toAdvance <= src.wlen:
@@ -795,5 +794,5 @@ func (out *lockstepOutput) isSourceFinished() bool {
 		return false
 	}
 	sourceLastPosition := out.src.index.Add(out.src.index.Of(out.src.wlen))
-	return compare.IsEqual(out.index.Compare(sourceLastPosition))
+	return out.index.Compare(sourceLastPosition) == 0
 }

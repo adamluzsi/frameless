@@ -121,7 +121,7 @@ func TestHTTPServerPortFromENV(t *testing.T) {
 }
 
 func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
-	port, err := netkit.GetFreePort()
+	port, err := netkit.FreePort(netkit.TCP)
 	assert.NoError(t, err)
 	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
 
@@ -146,7 +146,7 @@ func TestHTTPServerPortFromENV_replacePortInBindingAddress(t *testing.T) {
 }
 
 func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
-	port, err := netkit.GetFreePort()
+	port, err := netkit.FreePort(netkit.TCP)
 	assert.NoError(t, err)
 	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
 	var srvURL = fmt.Sprintf("http://127.0.0.1:%d/", port)
@@ -173,7 +173,7 @@ func TestHTTPServerPortFromENV_multiplePORTEnvVariable(t *testing.T) {
 }
 
 func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
-	port, err := netkit.GetFreePort()
+	port, err := netkit.FreePort(netkit.TCP)
 	assert.NoError(t, err)
 	testcase.UnsetEnv(t, "PORT2")
 	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
@@ -198,7 +198,7 @@ func TestHTTPServerPortFromENV_httpServerAddrHasOnlyPort(t *testing.T) {
 }
 
 func TestHTTPServerTask_withContextValuesPassedDownToRequests(t *testing.T) {
-	port, err := netkit.GetFreePort()
+	port, err := netkit.FreePort(netkit.TCP)
 	assert.NoError(t, err)
 	testcase.SetEnv(t, "PORT", strconv.Itoa(port))
 	var srvURL = fmt.Sprintf("http://127.0.0.1:%d/", port)

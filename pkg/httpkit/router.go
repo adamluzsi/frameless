@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 
@@ -53,7 +54,7 @@ func (dn *_DynNode) NodeFor(pathParamName string) *_Node {
 		dn.node = &_Node{}
 		dn.node.init()
 	}
-	if slicekit.Contains(dn.varnames, pathParamName) {
+	if slices.Contains(dn.varnames, pathParamName) {
 		return dn.node
 	}
 	dn.varnames = append(dn.varnames, pathParamName)

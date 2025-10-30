@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/compare"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mathkit"
 	"go.llib.dev/testcase"
@@ -589,7 +588,7 @@ func TestBigInt(t *testing.T) {
 			other.Let(s, subject.Get)
 
 			s.Then("comparison reports equality", func(t *testcase.T) {
-				assert.True(t, compare.IsEqual(act(t)))
+				assert.True(t, act(t) == 0)
 			})
 		})
 
@@ -604,7 +603,7 @@ func TestBigInt(t *testing.T) {
 			})
 
 			s.Then("compared value reported as less", func(t *testcase.T) {
-				assert.True(t, compare.IsLess(act(t)))
+				assert.True(t, act(t) < 0)
 			})
 		})
 
@@ -619,7 +618,7 @@ func TestBigInt(t *testing.T) {
 			})
 
 			s.Then("compared value reported as more", func(t *testcase.T) {
-				assert.True(t, compare.IsMore(act(t)))
+				assert.True(t, 0 < act(t))
 			})
 		})
 	})
@@ -679,7 +678,7 @@ func TestBigInt(t *testing.T) {
 			s.Then("it results in a substraction", func(t *testcase.T) {
 				got := act(t)
 
-				assert.True(t, compare.IsGreater(subject.Get(t).Compare(got)))
+				assert.True(t, 0 < subject.Get(t).Compare(got))
 			})
 		})
 
@@ -702,8 +701,8 @@ func TestBigInt(t *testing.T) {
 			s.Then("result will be equalement of the sum of the values", func(t *testcase.T) {
 				got := act(t)
 
-				assert.True(t, compare.IsGreater(got.Compare(subject.Get(t))))
-				assert.True(t, compare.IsGreater(got.Compare(oth.Get(t))))
+				assert.True(t, 0 < got.Compare(subject.Get(t)))
+				assert.True(t, 0 < got.Compare(oth.Get(t)))
 
 				got = got.Sub(subject.Get(t))
 				got = got.Sub(oth.Get(t))
@@ -733,7 +732,7 @@ func TestBigInt(t *testing.T) {
 			s.Then("it results in a addition", func(t *testcase.T) {
 				got := act(t)
 
-				assert.True(t, compare.IsLess(subject.Get(t).Compare(got)))
+				assert.True(t, subject.Get(t).Compare(got) < 0)
 			})
 		})
 
@@ -756,8 +755,8 @@ func TestBigInt(t *testing.T) {
 			s.Then("result will be equalement of the sum of the values", func(t *testcase.T) {
 				got := act(t)
 
-				assert.True(t, compare.IsLess(got.Compare(subject.Get(t))))
-				assert.True(t, compare.IsLess(got.Compare(oth.Get(t))))
+				assert.True(t, got.Compare(subject.Get(t)) < 0)
+				assert.True(t, got.Compare(oth.Get(t)) < 0)
 
 				exp := big.NewInt(0)
 				exp = exp.Add(exp, big.NewInt(int64(base.Get(t))))
@@ -827,7 +826,7 @@ func TestBigInt(t *testing.T) {
 
 				originalSubject := subject.Get(t)
 				// Result should be greater than both operands
-				assert.True(t, compare.IsGreater(got.Compare(originalSubject)))
+				assert.True(t, 0 < got.Compare(originalSubject))
 			})
 
 			ThenSubjectDoNotChange(s, func(t *testcase.T) { act(t) })
@@ -987,8 +986,8 @@ func TestBigInt(t *testing.T) {
 				val := mathkit.BigInt[int]{}.Of(t.Random.IntBetween(-10, -100))
 				i1 = i1.Add(val)
 				i2 = i2.Sub(val)
-				assert.True(t, compare.IsMore(prev1.Compare(i1)))
-				assert.True(t, compare.IsLess(prev2.Compare(i2)))
+				assert.True(t, 0 < prev1.Compare(i1))
+				assert.True(t, prev2.Compare(i2) < 0)
 			})
 
 			t.Random.Repeat(12, 42, func() {
@@ -996,8 +995,8 @@ func TestBigInt(t *testing.T) {
 				val := mathkit.BigInt[int]{}.Of(mathkit.MaxInt[int]())
 				i1 = i1.Add(val)
 				i2 = i2.Sub(val)
-				assert.True(t, compare.IsLess(prev1.Compare(i1)))
-				assert.True(t, compare.IsMore(prev2.Compare(i2)))
+				assert.True(t, prev1.Compare(i1) < 0)
+				assert.True(t, 0 < prev2.Compare(i2))
 			})
 
 			var zero mathkit.BigInt[int]
@@ -1012,8 +1011,8 @@ func TestBigInt(t *testing.T) {
 				prev := bi1
 				bi1 = bi1.Add(maxInt)
 				bi2 = bi2.Add(maxInt)
-				assert.True(t, compare.IsLess(prev.Compare(bi1)))
-				assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+				assert.True(t, prev.Compare(bi1) < 0)
+				assert.True(t, bi1.Compare(bi2) == 0)
 			})
 
 			t.Random.Repeat(3, 7, func() {
@@ -1022,8 +1021,8 @@ func TestBigInt(t *testing.T) {
 				prev := bi1
 				bi1 = bi1.Add(v)
 				bi2 = bi2.Add(v)
-				assert.True(t, compare.IsLess(prev.Compare(bi1)))
-				assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+				assert.True(t, prev.Compare(bi1) < 0)
+				assert.True(t, bi1.Compare(bi2) == 0)
 			})
 
 			t.Random.Repeat(3, 7, func() {
@@ -1032,8 +1031,8 @@ func TestBigInt(t *testing.T) {
 				prev := bi1
 				bi1 = bi1.Sub(v)
 				bi2 = bi2.Sub(v)
-				assert.True(t, compare.IsGreater(prev.Compare(bi1)))
-				assert.True(t, compare.IsEqual(bi1.Compare(bi2)))
+				assert.True(t, 0 < prev.Compare(bi1))
+				assert.True(t, bi1.Compare(bi2) == 0)
 			})
 		})
 	})

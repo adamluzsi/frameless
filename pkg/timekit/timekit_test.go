@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/compare"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/frameless/pkg/validate"
@@ -1093,7 +1092,7 @@ func TestDuration(t *testing.T) {
 			})
 
 			s.Then("negative duration is returned", func(t *testcase.T) {
-				assert.True(t, compare.IsLess(act(t).Compare(timekit.Duration{})))
+				assert.True(t, act(t).Compare(timekit.Duration{}) < 0)
 			})
 		})
 
@@ -1329,7 +1328,7 @@ func TestDuration(t *testing.T) {
 			})
 
 			s.Then("results indicates that duration is more compared to the other value", func(t *testcase.T) {
-				assert.True(t, compare.IsGreater(act(t)))
+				assert.True(t, 0 < act(t))
 			})
 		})
 
@@ -1339,7 +1338,7 @@ func TestDuration(t *testing.T) {
 			})
 
 			s.Then("results indicates that duration is less compared to the other value", func(t *testcase.T) {
-				assert.True(t, compare.IsLess(act(t)))
+				assert.True(t, act(t) < 0)
 			})
 		})
 	})
@@ -1456,7 +1455,7 @@ func TestDuration(t *testing.T) {
 			})
 
 			s.Then("the returned time is earlier than the input", func(t *testcase.T) {
-				assert.True(t, compare.IsGreater(ref.Get(t).Compare(act(t))))
+				assert.True(t, 0 < ref.Get(t).Compare(act(t)))
 			})
 		})
 
@@ -1466,7 +1465,7 @@ func TestDuration(t *testing.T) {
 			})
 
 			s.Then("the returned time is later than the input", func(t *testcase.T) {
-				assert.True(t, compare.IsLess(ref.Get(t).Compare(act(t))))
+				assert.True(t, ref.Get(t).Compare(act(t)) < 0)
 			})
 		})
 	})
