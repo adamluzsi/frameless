@@ -197,10 +197,11 @@ func TestReduceErr(t *testing.T) {
 
 func ExampleLookup() {
 	vs := []int{2, 4, 8, 16}
-	slicekit.Lookup(vs, 0)      // -> return 2, true
-	slicekit.Lookup(vs, 0-1)    // lookup previous -> return 0, false
-	slicekit.Lookup(vs, 0+1)    // lookup next -> return 4, true
-	slicekit.Lookup(vs, 0+1000) // lookup 1000th element -> return 0, false
+	slicekit.Lookup(vs, 0)  // 2
+	slicekit.Lookup(vs, 1)  // 4
+	slicekit.Lookup(vs, 2)  // 8
+	slicekit.Lookup(vs, -1) // 16 (last)
+	slicekit.Lookup(vs, -2) // 8  (second last)
 }
 
 func TestLookup_smoke(t *testing.T) {
@@ -251,6 +252,61 @@ func TestLookup_negativeIndex(t *testing.T) {
 	v, ok = slicekit.Lookup(vs, (len(vs)+1)*-1)
 	assert.Equal(t, ok, false)
 	assert.Empty(t, v)
+}
+
+func ExampleGet() {
+	vs := []int{2, 4, 8, 16}
+	slicekit.Get(vs, 0) // 2
+	slicekit.Get(vs, 1) // 4
+	slicekit.Get(vs, 2) // 8
+	slicekit.Get(vs, 3) // 16
+
+	slicekit.Get(vs, -1) // 16 (last)
+	slicekit.Get(vs, -2) // 16 (second last)
+
+	slicekit.Get(vs, 0+1000) // 0 (zero value for not found)
+}
+
+func TestGet(t *testing.T) {
+	t.Run("pos", func(t *testing.T) {
+		vs := []int{2, 4, 8, 16}
+
+		v := slicekit.Get(vs, 0)
+		assert.Equal(t, v, 2)
+
+		v = slicekit.Get(vs, -1)
+		assert.Equal(t, v, 16)
+
+		v = slicekit.Get(vs, 0+1)
+		assert.Equal(t, v, 4)
+
+		v = slicekit.Get(vs, 0+1000)
+		assert.Empty(t, v)
+
+		v = slicekit.Get(vs, 0+1000)
+		assert.Empty(t, v)
+
+		for i, exp := range vs {
+			got := slicekit.Get(vs, i)
+			assert.Equal(t, exp, got)
+		}
+	})
+
+	t.Run("neg", func(t *testing.T) {
+		vs := []int{2, 4, 8, 16, 32}
+
+		v := slicekit.Get(vs, -1)
+		assert.Equal(t, v, 32)
+
+		v = slicekit.Get(vs, -2)
+		assert.Equal(t, v, 16)
+
+		v = slicekit.Get(vs, -3)
+		assert.Equal(t, v, 8)
+
+		v = slicekit.Get(vs, (len(vs)+1)*-1)
+		assert.Empty(t, v)
+	})
 }
 
 func ExampleMerge() {

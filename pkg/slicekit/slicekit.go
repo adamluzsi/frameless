@@ -86,6 +86,11 @@ func Lookup[T any](vs []T, index int) (T, bool) {
 	return vs[index], true
 }
 
+func Get[T any](vs []T, index int) T {
+	v, _ := Lookup(vs, index)
+	return v
+}
+
 // Merge will merge every []T slice into a single one.
 func Merge[S ~[]T, T any](slices ...S) S {
 	var out S
