@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/sandbox"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
@@ -490,12 +491,16 @@ type Group struct {
 	// so if one encounters an error, it won’t affect the others.
 	Isolation bool
 
-	rwm sync.RWMutex
-	wg  sync.WaitGroup
+	ErrorOnGoexit bool
 
-	seq     int
+	wg sync.WaitGroup
+
+	rwm     sync.RWMutex
 	cancels map[int]func()
 	errs    []error
+	panic   *any
+
+	subs map[int]*Group
 }
 
 func (g *Group) Len() int {
@@ -508,25 +513,27 @@ func (g *Group) Go(fn func(ctx context.Context) error) {
 	g.GoContext(context.Background(), fn)
 }
 
+const ErrGoexit errorkitlite.Error = "ErrGoexit"
+
 func (g *Group) GoContext(ctx context.Context, fn func(ctx context.Context) error) {
 	g.rwm.Lock()
 	defer g.rwm.Unlock()
 
 	ctx, cancel := context.WithCancel(ctx)
-
-	g.seq++
-	id := g.seq
-
 	if g.cancels == nil {
 		g.cancels = make(map[int]func())
 	}
 
+	id := nextID(g.cancels)
 	g.cancels[id] = cancel
 
 	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
-		err := fn(ctx)
+		var err error
+		o := sandbox.Run(func() {
+			err = fn(ctx)
+		})
 		err = g.filterErr(ctx, err)
 		if err != nil && !g.Isolation {
 			g.Cancel()
@@ -535,6 +542,12 @@ func (g *Group) GoContext(ctx context.Context, fn func(ctx context.Context) erro
 		defer g.rwm.Unlock()
 		if err != nil {
 			g.errs = append(g.errs, err)
+		}
+		if o.Panic {
+			g.panic = &o.PanicValue
+		}
+		if g.ErrorOnGoexit && o.Goexit {
+			g.errs = append(g.errs, ErrGoexit)
 		}
 		delete(g.cancels, id)
 	}()
@@ -559,30 +572,77 @@ func (g *Group) Cancel() {
 	for _, cancel := range g.cancels {
 		cancel()
 	}
-	g.seq = 0
 	g.cancels = nil
 }
 
 func (g *Group) Wait() error {
 	g.wg.Wait()
-
 	g.rwm.RLock()
-	if len(g.errs) == 0 { // fast path
+	// fast path
+	if len(g.errs) == 0 && g.panic == nil {
+		g.waitSub()
 		g.rwm.RUnlock()
 		return nil
 	}
 	g.rwm.RUnlock()
+	// slow path
+	g.rwm.Lock()
+	defer g.rwm.Unlock()
+	defer g.waitSub()
+	if g.panic != nil {
+		pv := *g.panic
+		g.panic = nil
+		panic(pv)
+	}
+	if len(g.errs) != 0 {
+		err := errorkitlite.Merge(g.errs...)
+		g.errs = nil
+		return err
+	}
+	return nil
+}
 
+func (g *Group) waitSub() {
+	if len(g.subs) == 0 {
+		return
+	}
+	for _, sub := range g.subs {
+		_ = sub.Wait()
+	}
+}
+
+func (g *Group) Sub() (*Group, func()) {
 	g.rwm.Lock()
 	defer g.rwm.Unlock()
 
-	if len(g.errs) == 0 {
-		return nil
+	var sub = &Group{}
+
+	if g.subs == nil {
+		g.subs = make(map[int]*Group)
 	}
 
-	err := errorkitlite.Merge(g.errs...)
-	g.errs = nil
-	return err
+	id := nextID(g.subs)
+	g.subs[id] = sub
+
+	var finish sync.Once
+	return sub, func() {
+		finish.Do(func() {
+			g.rwm.Lock()
+			defer g.rwm.Unlock()
+			delete(g.subs, id)
+		})
+	}
+}
+
+func nextID[M ~map[int]V, V any](m M) int {
+	if m == nil {
+		return 0 // zero
+	}
+	for i := 0; ; i++ {
+		if _, ok := m[i]; !ok {
+			return i
+		}
+	}
 }
 
 // Phaser is a synchronization primitive for coordinating multiple goroutines.

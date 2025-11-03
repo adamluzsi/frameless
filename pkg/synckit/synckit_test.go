@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pkg/synctest"
 	"go.llib.dev/testcase/random"
 )
 
@@ -2143,6 +2144,23 @@ func ExampleGroup() {
 
 }
 
+func ExampleGroup_Sub_subGroupCreation() {
+	var g synckit.Group
+
+	go func() {
+		sg1, cancelSG1 := g.Sub()
+		defer cancelSG1()
+
+		sg1.Go(func(ctx context.Context) error {
+			return nil
+		})
+
+		sg1.Wait()
+	}()
+
+	g.Wait()
+}
+
 func TestGroup(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -2222,6 +2240,57 @@ func TestGroup(t *testing.T) {
 				act(t)
 
 				assert.ErrorIs(t, fnErr.Get(t), group.Get(t).Wait())
+			})
+		})
+
+		s.When("the function panics", func(s *testcase.Spec) {
+			expErr := let.Error(s)
+
+			fn.Let(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					panic(expErr.Get(t))
+				}
+			})
+
+			s.Then("then on wait, we get the panic back", func(t *testcase.T) {
+				act(t)
+
+				got := assert.Panic(t, func() {
+					group.Get(t).Wait()
+				})
+
+				assert.Equal[any](t, got, expErr.Get(t))
+			})
+		})
+
+		s.When("the function runtime.Goexit", func(s *testcase.Spec) {
+			fn.Let(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					runtime.Goexit()
+					return nil
+				}
+			})
+
+			s.Then("then on wait, we get no error, or panic as goexit is not an error issue", func(t *testcase.T) {
+				act(t)
+
+				assert.NotPanic(t, func() {
+					group.Get(t).Wait()
+				})
+			})
+
+			s.And("Group#ErrorOnGoexit set to ", func(s *testcase.Spec) {
+				group.Let(s, func(t *testcase.T) *synckit.Group {
+					g := group.Super(t)
+					g.ErrorOnGoexit = true
+					return g
+				})
+
+				s.Then("then on wait, we get back an error due to the runtime.Goexit call", func(t *testcase.T) {
+					act(t)
+
+					assert.ErrorIs(t, group.Get(t).Wait(), synckit.ErrGoexit)
+				})
 			})
 		})
 
@@ -2405,6 +2474,146 @@ func TestGroup(t *testing.T) {
 					})
 				})
 			})
+		})
+	})
+
+	s.Describe("Sub", func(s *testcase.Spec) {
+		sub, cancel := let.Var2(s, func(t *testcase.T) (*synckit.Group, func()) {
+			return group.Get(t).Sub()
+		})
+		_, _ = sub, cancel
+
+		s.Test("sub group works just like any other group", func(t *testcase.T) {
+			var done int32
+
+			sub.Get(t).Go(func(ctx context.Context) error {
+				atomic.SwapInt32(&done, 1)
+				return nil
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				assert.NoError(t, sub.Get(t).Wait())
+			})
+
+			assert.Assert(t, atomic.LoadInt32(&done) == 1)
+		})
+
+		s.Test("main group will wait until all sub group goroutines are finished too", func(t *testcase.T) {
+			var p synctest.Phaser
+
+			n := t.Random.Repeat(3, 12, func() {
+				sg, _ := group.Get(t).Sub()
+				sg.Go(func(ctx context.Context) error {
+					p.Wait()
+					return nil
+				})
+			})
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, p.Len(), n)
+			})
+
+			assert.NotWithin(t, timeout, func(ctx context.Context) {
+				group.Get(t).Wait()
+			})
+
+			p.Signal() // release one group
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, p.Len(), n-1)
+			})
+
+			assert.NotWithin(t, timeout, func(ctx context.Context) {
+				group.Get(t).Wait()
+			})
+
+			p.Finish() // release all remaining
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, p.Len(), 0)
+			})
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				group.Get(t).Wait()
+			})
+		})
+
+		s.Test("cancel is safe to execute multiple times", func(t *testcase.T) {
+			var g synckit.Group
+
+			_, cancel1A := g.Sub()
+			cancel1A()
+
+			sub1B, cancel1B := g.Sub()
+			defer cancel1B()
+
+			var p synctest.Phaser
+			sub1B.Go(func(ctx context.Context) error {
+				p.Wait()
+				return nil
+			})
+
+			assert.NotWithin(t, timeout, func(ctx context.Context) {
+				g.Wait()
+			})
+			p.Finish()
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				g.Wait()
+			})
+		})
+
+		s.Test("creating sub group is race condition safe", func(t *testcase.T) {
+			var g synckit.Group
+			defer g.Wait()
+			testcase.Race(func() {
+				sub, cancel := g.Sub()
+				defer cancel()
+				sub.Go(func(ctx context.Context) error {
+					return nil
+				})
+				sub.Wait()
+
+			}, func() {
+				sub, cancel := g.Sub()
+				defer cancel()
+				sub.Go(func(ctx context.Context) error {
+					return nil
+				})
+				sub.Wait()
+			})
+		})
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		var g synckit.Group
+		defer g.Wait()
+
+		const sampling = 42
+		var work = func(ctx context.Context) error {
+			for range sampling {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-t.Done():
+					return nil
+				default:
+					runtime.Gosched()
+				}
+			}
+			return nil
+		}
+
+		g.GoContext(t.Context(), work)
+		g.Go(work)
+
+		testcase.Race(func() {
+			// Len is thread safe
+			g.Len()
+		}, func() {
+			// Sub is thread safe
+			sub, cancel := g.Sub()
+			defer cancel()
+			sub.Go(work)
+			sub.Wait()
 		})
 	})
 }
