@@ -81,6 +81,8 @@ type Scanner struct {
 	//
 	// default: 16 Mb
 	BufferSize iokit.ByteSize
+
+	g synckit.Group
 }
 
 type Selector struct {
@@ -201,8 +203,7 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 		return blk(outerScopeData)
 	}
 
-	var g synckit.Group
-	defer errorkit.Finish(&rErr, g.Wait)
+	defer errorkit.Finish(&rErr, s.g.Wait)
 
 	pr, pw := io.Pipe()
 	defer pw.Close()
@@ -215,7 +216,7 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 
 	for i := range len(selectors) {
 		var i = i
-		g.Go(func(ctx context.Context) error {
+		s.g.Go(func(ctx context.Context) error {
 			var selector = selectors[i]
 			var reader = readers[i]
 			defer reader.Close()

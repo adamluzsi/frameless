@@ -8,6 +8,7 @@ import (
 	"iter"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/testcase/pp"
 )
 
@@ -19,31 +20,39 @@ func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 	return func(yield func(json.RawMessage, error) bool) {
 
 		var stop bool
-		sc := Scanner{Selectors: []Selector{{
-			Path: path,
-			On: func(src io.Reader) error {
-				var ok bool
-				defer func() {
-					if !ok {
-						pp.PP("!ok")
+		sc := Scanner{
+			Selectors: []Selector{{
+				Path: path,
+				On: func(src io.Reader) error {
+					var ok bool
+					defer func() {
+						if !ok {
+							pp.PP("!ok")
+							stop = true
+						}
+					}()
+					pp.PP("yield:before")
+					cont := yield(io.ReadAll(src))
+					pp.PP("yield:after")
+					ok = true
+					if !cont {
 						stop = true
+						return stopIteration
 					}
-				}()
-				pp.PP("yield:before")
-				cont := yield(io.ReadAll(src))
-				pp.PP("yield:after")
-				ok = true
-				if !cont {
-					stop = true
-					return stopIteration
-				}
-				return nil
+					return nil
+				},
+			}},
+			g: synckit.Group{
+				ErrorOnGoexit: true,
 			},
-		}}}
+		}
 		pp.PP("res", "stop", stop)
 		var err = sc.Scan(toInput(r))
 		pp.PP(err)
 		if errors.Is(err, stopIteration) {
+			return
+		}
+		if errors.Is(err, synckit.ErrGoexit) {
 			return
 		}
 		if stop {
