@@ -3,6 +3,7 @@ package jsontoken
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,13 +11,14 @@ import (
 	"io"
 	"iter"
 	"strings"
-	"sync"
+	"unicode/utf8"
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/synckit"
 )
 
 const ErrMalformed errorkit.Error = "[ErrMalformed] malformed JSON"
@@ -75,31 +77,31 @@ type Scanner struct {
 	// Selectors allows granual control on what should be kept during scanning of a JSON input stream.
 	// When no Selectors is set, the default is to keep everything.
 	Selectors []Selector
-}
-
-func (s *Scanner) isPathMatch(path Path) bool {
-	if len(s.Selectors) == 0 {
-		return true
-	}
-	for _, f := range s.Selectors {
-		if f.Path.Match(path) {
-			return true
-		}
-	}
-	return false
+	// BufferSize is the size of the reading buffer for each group of Selectors who match the same Selector#Path.
+	//
+	// default: 16 Mb
+	BufferSize iokit.ByteSize
 }
 
 type Selector struct {
 	Path Path
-	Func func(data json.RawMessage) error
+	On   func(src io.Reader) error
+}
+
+func (s Selector) on(src io.ReadCloser) error {
+	defer src.Close()
+	if s.On != nil {
+		return s.On(src)
+	}
+	return nil
 }
 
 var _ Input = (*bufio.Reader)(nil)
 
 type Input interface {
-	iokit.RuneReader
-	iokit.RuneUnreader
-	iokit.ByteReader
+	ReadRune() (r rune, size int, err error)
+	UnreadRune() error
+	ReadByte() (byte, error)
 }
 
 var _ Output = (*bytes.Buffer)(nil)
@@ -118,39 +120,12 @@ type noDiscard interface {
 
 func (s *Scanner) Scan(in Input) error {
 	var path Path
-	var out bytes.Buffer
-	err := s.with(&out, path, func(out Output) error {
+	var out io.Writer = discard
+	err := s.with(out, path, func(out io.Writer) error {
 		return s.scan(in, out, path)
 	})
 	if err != nil && !errors.Is(err, io.EOF) {
 		return s.asLexingError(err, path)
-	}
-	if err := s.yield(path, out.Bytes()); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Scanner) yield(path Path, data json.RawMessage) error {
-	var o sync.Once
-	for _, selector := range s.Selectors {
-		if selector.Path.Equal(path) && selector.Func != nil {
-			var err error
-			o.Do(func() {
-				if !json.Valid(data) {
-					err = LexingError{
-						Message: "invalid JSON format",
-						Path:    path,
-					}
-				}
-			})
-			if err != nil {
-				return err
-			}
-			if err := selector.Func(data); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }
@@ -165,17 +140,19 @@ func (s *Scanner) asLexingError(err error, path Path) error {
 	return errorkit.Merge(err, LexingError{Path: path})
 }
 
-func (s *Scanner) scan(in Input, out Output, path Path) error {
+func (s *Scanner) scan(in Input, out io.Writer, path Path) error {
 	if in == nil {
 		return nil
 	}
 	if err := trimSpace(in, out); err != nil {
 		return err
 	}
+
 	char, _, err := iokit.PeekRune(in)
 	if err != nil {
 		return err
 	}
+
 	switch kind := s.tokenStartKind(char); kind {
 	case KindNull:
 		return s.scanNull(in, out, path)
@@ -190,7 +167,7 @@ func (s *Scanner) scan(in Input, out Output, path Path) error {
 	case KindObject:
 		return s.scanObject(in, out, path)
 	default:
-		var msg string = fmt.Sprintf("not-implemented, unhandled character: %q", string(char))
+		var msg string = fmt.Sprintf("unexpected character: %q", string(char))
 		if kind != nil {
 			msg += fmt.Sprintf("\nkind=%s", kind.String())
 		}
@@ -201,37 +178,57 @@ func (s *Scanner) scan(in Input, out Output, path Path) error {
 	}
 }
 
-func (s *Scanner) with(out Output, path Path, blk func(out Output) error) error {
-	var raw Output = &bytes.Buffer{}
-	if !s.isPathMatch(path) {
-		if _, ok := out.(noDiscard); !ok {
-			raw = discard
-		}
-	}
-	returnErr := blk(raw)
-	if returnErr != nil && !errors.Is(returnErr, io.EOF) { // EOF is a good type of error, signaling the end of the input stream
-		return returnErr
-	}
-	if err := s.yield(path, raw.Bytes()); err != nil {
-		return err
-	}
-	if _, err := raw.WriteTo(out); err != nil {
-		return err
-	}
-	return returnErr
+func (s *Scanner) getBufferSize() iokit.ByteSize {
+	const DefaultBufferSize = 16 * iokit.Megabyte
+	return cmp.Or(s.BufferSize, DefaultBufferSize)
 }
 
-// copyTo will not exhaust the input buffer but retains its content.
-func copyTo(in, out Output) error {
-	for _, c := range in.Bytes() {
-		if err := out.WriteByte(c); err != nil {
-			return err
+func (s *Scanner) selectorsForPath(path Path) []Selector {
+	return slicekit.Filter(s.Selectors, func(s Selector) bool {
+		if s.On == nil {
+			return false
 		}
-	}
-	return nil
+		return s.Path.Match(path)
+	})
 }
 
-func trimSpace(in Input, out Output) error {
+func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writer) error) (rErr error) {
+	var selectors = s.selectorsForPath(path)
+
+	if len(selectors) == 0 {
+		// if no selector is interested about this path
+		// we just continue with the inner scope.
+		return blk(outerScopeData)
+	}
+
+	var g synckit.Group
+	defer errorkit.Finish(&rErr, g.Wait)
+
+	pr, pw := io.Pipe()
+	defer pw.Close()
+
+	// we want to ensure that both the original outer scope receives further json tokens
+	// and matched current inner scope alike
+	var currentScopeData io.Writer = io.MultiWriter(outerScopeData, pw)
+
+	readers := iokit.LockstepReaders(pr, len(selectors), s.getBufferSize())
+
+	for i := range len(selectors) {
+		var i = i
+		g.Go(func(ctx context.Context) error {
+			var selector = selectors[i]
+			var reader = readers[i]
+			defer reader.Close()
+			return selector.on(reader)
+		})
+	}
+
+	err := blk(currentScopeData)
+	pw.Close()
+	return err
+}
+
+func trimSpace(in Input, out io.Writer) error {
 	for {
 		char, _, err := in.ReadRune()
 		if err != nil {
@@ -240,13 +237,13 @@ func trimSpace(in Input, out Output) error {
 		if _, ok := whitespaceChars[char]; !ok {
 			return in.UnreadRune()
 		}
-		out.WriteRune(char)
+		writeRune(out, char)
 	}
 }
 
-func (s *Scanner) scanNumber(in Input, out Output, path Path) error {
+func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
 	path = path.With(KindNumber)
-	return s.with(out, path, func(out Output) error {
+	return s.with(out, path, func(out io.Writer) error {
 	scan:
 		for {
 			digit, _, err := in.ReadRune()
@@ -261,7 +258,8 @@ func (s *Scanner) scanNumber(in Input, out Output, path Path) error {
 				}
 				break scan
 			}
-			if _, err := out.WriteRune(digit); err != nil {
+
+			if _, err := writeRune(out, digit); err != nil {
 				return err
 			}
 		}
@@ -269,12 +267,29 @@ func (s *Scanner) scanNumber(in Input, out Output, path Path) error {
 	})
 }
 
-func (s *Scanner) scanNull(in Input, out Output, path Path) error {
+func writeRune(w io.Writer, r rune) (int, error) {
+	buf := make([]byte, utf8.UTFMax) // UTFMax = 4 bytes (max UTF-8 size)
+	n := utf8.EncodeRune(buf, r)
+	return w.Write(buf[:n])
+}
+
+func moveRune(in Input, o io.Writer) (rune, int, error) {
+	char, size, err := in.ReadRune()
+	if err != nil {
+		return char, size, err
+	}
+	if _, err := writeRune(o, char); err != nil {
+		return 0, 0, err
+	}
+	return char, size, nil
+}
+
+func (s *Scanner) scanNull(in Input, out io.Writer, path Path) error {
 	return s.scanToken(in, out, path.With(KindNull), nullTokenUTF8)
 }
 
-func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error {
-	return s.with(out, path, func(out Output) error {
+func (s *Scanner) scanToken(in Input, out io.Writer, path Path, token []rune) error {
+	return s.with(out, path, func(out io.Writer) error {
 		for i := 0; i < len(token); i++ {
 			char, _, err := in.ReadRune()
 			if err != nil {
@@ -283,7 +298,7 @@ func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error
 			if char != token[i] {
 				return LexingError{Message: fmt.Sprintf(`error parsing %q token: expected "%q" but got "%c"`, string(token), char, token[i]), Path: path}
 			}
-			if _, err := out.WriteRune(char); err != nil {
+			if _, err := writeRune(out, char); err != nil {
 				return err
 			}
 		}
@@ -291,7 +306,7 @@ func (s *Scanner) scanToken(in Input, out Output, path Path, token []rune) error
 	})
 }
 
-func (s *Scanner) scanBoolean(in Input, out Output, path Path) error {
+func (s *Scanner) scanBoolean(in Input, out io.Writer, path Path) error {
 	path = path.With(KindBoolean)
 	if err := trimSpace(in, out); err != nil {
 		return err
@@ -310,14 +325,14 @@ func (s *Scanner) scanBoolean(in Input, out Output, path Path) error {
 	}
 }
 
-func (s *Scanner) scanArray(in Input, out Output, path Path) error {
+func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 	path = path.With(KindArray)
-	return s.with(out, path, func(out Output) error {
+	return s.with(out, path, func(out io.Writer) error {
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
 
-		firstChar, _, err := iokit.MoveRune(in, out)
+		firstChar, _, err := moveRune(in, out)
 		if err != nil {
 			return err
 		}
@@ -330,7 +345,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 			return err
 		}
 		if secondChar == arrayCloseToken { // empty array
-			_, _, err := iokit.MoveRune(in, out)
+			_, _, err := moveRune(in, out)
 			return err
 		}
 
@@ -344,7 +359,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 				return err
 			}
 			if nextChar == arrayCloseToken {
-				if _, _, err := iokit.MoveRune(in, out); err != nil {
+				if _, _, err := moveRune(in, out); err != nil {
 					return err
 				}
 				return nil
@@ -367,7 +382,7 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 			}
 
 			// scan sep/close
-			next, _, err := iokit.MoveRune(in, out)
+			next, _, err := moveRune(in, out)
 			if err != nil {
 				return err
 			}
@@ -384,14 +399,14 @@ func (s *Scanner) scanArray(in Input, out Output, path Path) error {
 	})
 }
 
-func (s *Scanner) scanObject(in Input, out Output, path Path) error {
+func (s *Scanner) scanObject(in Input, out io.Writer, path Path) error {
 	path = path.With(KindObject)
-	return s.with(out, path, func(out Output) error {
+	return s.with(out, path, func(out io.Writer) error {
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
 
-		firstChar, _, err := iokit.MoveRune(in, out)
+		firstChar, _, err := moveRune(in, out)
 		if err != nil {
 			return err
 		}
@@ -409,7 +424,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 			return err
 		}
 		if secondChar == objectCloseToken { // empty object
-			_, _, err := iokit.MoveRune(in, out) // write '}'
+			_, _, err := moveRune(in, out) // write '}'
 			return err
 		}
 
@@ -430,7 +445,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 					return fmt.Errorf("(object key) %w", err)
 				}
 
-				if err := copyTo(&name, out); err != nil {
+				if _, err := out.Write(name.Bytes()); err != nil {
 					return err
 				}
 
@@ -439,7 +454,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 				}
 
 				/* SEPERATOR */
-				sep, _, err := iokit.MoveRune(in, out)
+				sep, _, err := moveRune(in, out)
 				if err != nil {
 					return err
 				}
@@ -464,7 +479,7 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 				}
 			}
 
-			next, _, err := iokit.MoveRune(in, out)
+			next, _, err := moveRune(in, out)
 			if err != nil {
 				return err
 			}
@@ -483,14 +498,14 @@ func (s *Scanner) scanObject(in Input, out Output, path Path) error {
 	})
 }
 
-func (s *Scanner) scanString(in Input, out Output, path Path) error {
+func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 	path = path.With(KindString)
-	return s.with(out, path, func(out Output) error {
+	return s.with(out, path, func(out io.Writer) error {
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
 		var str bytes.Buffer
-		first, _, err := iokit.MoveRune(in, &str)
+		first, _, err := moveRune(in, &str)
 		if err != nil {
 			return err
 		}
@@ -575,8 +590,8 @@ type Path []Kind
 func (p Path) String() string   { return strings.Join(slicekit.Map(p, Kind.String), " -> ") }
 func (p Path) With(k Kind) Path { return append(slicekit.Clone(p), k) }
 
-// Match check if the other path matches the
-func (p Path) Match(oth Path) bool {
+// Contains check if the other path matches the
+func (p Path) Contains(oth Path) bool {
 	if len(p) == 0 {
 		return true
 	}
@@ -584,49 +599,51 @@ func (p Path) Match(oth Path) bool {
 		return false
 	}
 	for i := range p {
-		if !p[i].Equal(oth[i]) {
+		if !p[i].Match(oth[i]) {
 			return false
 		}
 	}
 	return true
 }
 
-func (p Path) Equal(oth Path) bool {
-	if len(p) == len(oth) {
-		return p.Match(oth)
+func (p Path) Match(oth Path) bool {
+	if p.Equal(oth) {
+		return true
 	}
-	if 2 <= len(p) && len(oth) == len(p)+1 {
-		// len(p)-1 defines that if the p Path is an array element path,
-		// then potentially an any value index selector
-		// is accepted as an equal path.
-		// But I wonder if this should be checked by Match instead.
-		// It is technically speaking not Equal...
-		if !p.Match(oth) { //  smoke test that p match to oth
-			return false
-		}
-		pLastIndex := len(p) - 1
-		pLastKind := p[pLastIndex]
-		if pLastKind.Equal(KindElement{}) {
-			return true
-		}
-		if pLastKind.Equal(KindName) {
-			return true
-		}
-		if (KindValue{}).Equal(pLastKind) {
-			return true //  pLastKind.Equal(oth[pLastIndex])
-		}
+	// len(p)-1 defines that if the p Path is an array element path,
+	// then potentially an any value index selector
+	// is accepted as a matching path.
+	if len(p) < 2 || len(oth) != len(p)+1 {
+		return false
+	}
+	if !p.Contains(oth) { //  smoke test that p match to oth
+		return false
+	}
+	var last = p[len(p)-1]
+	switch last.(type) { // last
+	case KindElement, KindValue:
+		// if the p's last elem is a Element / Value kind,
+		// then since contains already matched, we consider it as a full match
+		return true
+	}
+	if last.Match(KindName) { // Name is also accepted as a container selector pat to Object name string values.
+		return true
 	}
 	return false
 }
 
+func (p Path) Equal(oth Path) bool {
+	return len(p) == len(oth) && p.Contains(oth)
+}
+
 type Kind interface {
-	Equal(Kind) bool
+	Match(Kind) bool
 	String() string
 }
 
 type strKind string
 
-func (sk strKind) Equal(oth Kind) bool {
+func (sk strKind) Match(oth Kind) bool {
 	osk, ok := oth.(strKind)
 	if !ok {
 		return false
@@ -649,7 +666,7 @@ const KindArray strKind = "array"
 
 type KindElement struct{ Index *int }
 
-func (e KindElement) Equal(oth Kind) bool {
+func (e KindElement) Match(oth Kind) bool {
 	oe, ok := oth.(KindElement)
 	if !ok {
 		return false
@@ -674,7 +691,7 @@ const (
 
 type KindValue struct{ Name *string }
 
-func (v KindValue) Equal(oth Kind) bool {
+func (v KindValue) Match(oth Kind) bool {
 	other, ok := oth.(KindValue)
 	if !ok {
 		return false
@@ -861,7 +878,7 @@ trim:
 		}
 	move:
 		for { // move until next white space
-			_, _, err := iokit.MoveRune(in, out)
+			_, _, err := moveRune(in, out)
 			if err != nil {
 				break trim
 			}
@@ -898,12 +915,13 @@ func Scan(in Input) (json.RawMessage, error) {
 	var output json.RawMessage
 	var s = Scanner{
 		Selectors: []Selector{{
-			Func: func(data json.RawMessage) error {
+			On: func(src io.Reader) error {
+				data, err := io.ReadAll(src)
 				output = data
-				return nil
+				return err
 			},
 		}},
 	}
-	err := s.Scan(in)
+	var err = s.Scan(in)
 	return output, err
 }

@@ -10,10 +10,12 @@ import (
 
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/slicekit"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -668,12 +670,22 @@ func TestPath(t *testing.T) {
 		path = testcase.Let[jsontoken.Path](s, nil)
 		oth  = testcase.Let[jsontoken.Path](s, nil)
 	)
+	contains := func(t *testcase.T) bool {
+		return path.Get(t).Contains(oth.Get(t))
+	}
+
 	match := func(t *testcase.T) bool {
 		return path.Get(t).Match(oth.Get(t))
 	}
 
 	equal := func(t *testcase.T) bool {
 		return path.Get(t).Equal(oth.Get(t))
+	}
+
+	thenItShouldContains := func(s *testcase.Spec) {
+		s.Then("it should contains", func(t *testcase.T) {
+			assert.True(t, contains(t))
+		})
 	}
 
 	thenItShouldMatch := func(s *testcase.Spec) {
@@ -698,8 +710,14 @@ func TestPath(t *testing.T) {
 		})
 	}
 
+	thenItShouldNotContains := func(s *testcase.Spec) {
+		s.Then("it should not contain it", func(t *testcase.T) {
+			assert.False(t, contains(t))
+		})
+	}
+
 	thenItShouldNotMatch := func(s *testcase.Spec) {
-		s.Then("it should not match", func(t *testcase.T) {
+		s.Then("it should not match it", func(t *testcase.T) {
 			assert.False(t, match(t))
 		})
 	}
@@ -724,6 +742,7 @@ func TestPath(t *testing.T) {
 				return nil
 			})
 
+			thenItShouldContains(s)
 			thenItShouldMatch(s)
 			thenTheyAreEqual(s)
 		})
@@ -737,7 +756,8 @@ func TestPath(t *testing.T) {
 				)
 			})
 
-			thenItShouldMatch(s)
+			thenItShouldContains(s)
+			thenItShouldNotMatch(s)
 			thenTheyAreNotEqual(s)
 		})
 	})
@@ -759,8 +779,9 @@ func TestPath(t *testing.T) {
 				}
 			})
 
+			thenItShouldContains(s)
 			thenItShouldMatch(s)
-			thenTheyAreEqual(s)
+			thenTheyAreNotEqual(s)
 
 			// s.And("the array value path is expressed thourgh an element reference, and the array is only implicitly meant", func(s *testcase.Spec) {
 			// 	path.Let(s, func(t *testcase.T) jsontoken.Path {
@@ -782,7 +803,8 @@ func TestPath(t *testing.T) {
 				}
 			})
 
-			thenItShouldMatch(s)
+			thenItShouldContains(s)
+			thenItShouldNotMatch(s)
 			thenTheyAreNotEqual(s)
 		})
 	})
@@ -801,6 +823,7 @@ func TestPath(t *testing.T) {
 				return path.Get(t)
 			})
 
+			thenItShouldContains(s)
 			thenItShouldMatch(s)
 			thenTheyAreEqual(s)
 		})
@@ -818,19 +841,122 @@ func TestPath(t *testing.T) {
 				return p
 			})
 
+			thenItShouldNotContains(s)
 			thenItShouldNotMatch(s)
 			thenTheyAreNotEqual(s)
 		})
 
-		s.And("the other path contains it, and even extends it with furter elements", func(s *testcase.Spec) {
+		s.And("it contains the other path, while the other path has additional element(s)", func(s *testcase.Spec) {
+			newElement := let.Var(s, randomKind)
+
 			oth.Let(s, func(t *testcase.T) jsontoken.Path {
 				p := slicekit.Clone(path.Get(t))
-				p = append(p, randomKind(t))
+				p = append(p, newElement.Get(t))
 				return p
 			})
 
-			thenItShouldMatch(s)
-			thenTheyAreNotEqual(s)
+			s.And("the previous element is an array/any-value kind", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) jsontoken.Path {
+					p := path.Super(t)
+					return append(p, jsontoken.KindArray, jsontoken.KindElement{})
+				})
+
+				thenItShouldContains(s)
+				thenItShouldMatch(s)
+				thenTheyAreNotEqual(s)
+			})
+
+			s.And("the previous element is an array/value-by-index kind", func(s *testcase.Spec) {
+				index := let.IntB(s, 0, 42)
+
+				path.Let(s, func(t *testcase.T) jsontoken.Path {
+					p := path.Super(t)
+					i := index.Get(t)
+					return append(p, jsontoken.KindArray, jsontoken.KindElement{Index: &i})
+				})
+
+				s.And("the other value's element index value is matching", func(s *testcase.Spec) {
+					s.Before(func(t *testcase.T) {
+						v, ok := slicekit.Lookup(oth.Get(t), -2)
+						assert.True(t, ok)
+						e, ok := v.(jsontoken.KindElement)
+						assert.True(t, ok)
+						assert.NotNil(t, e.Index)
+						assert.Equal(t, *e.Index, index.Get(t))
+					})
+
+					thenItShouldContains(s)
+					thenItShouldMatch(s)
+					thenTheyAreNotEqual(s)
+				})
+
+				s.And("the other value's element index value is NOT matching", func(s *testcase.Spec) {
+					oth.Let(s, func(t *testcase.T) jsontoken.Path {
+						p := oth.Super(t)
+
+						assert.Equal[jsontoken.Kind](t,
+							jsontoken.KindElement{Index: pointer.Of(index.Get(t))},
+							slicekit.Get(p, -2))
+
+						nonMatchingIndex := random.Unique(func() int { return t.Random.IntBetween(0, 42) }, index.Get(t))
+						slicekit.Set[jsontoken.Kind](p, -2,
+							jsontoken.KindElement{Index: &nonMatchingIndex})
+
+						return p
+					})
+
+					thenItShouldNotContains(s)
+					thenItShouldNotMatch(s)
+					thenTheyAreNotEqual(s)
+				})
+
+				thenItShouldContains(s)
+				thenItShouldMatch(s)
+				thenTheyAreNotEqual(s)
+			})
+
+			s.And("the previous element is an object/any-value kind", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) jsontoken.Path {
+					p := path.Super(t)
+					return append(p, jsontoken.KindObject, jsontoken.KindValue{})
+				})
+
+				thenItShouldContains(s)
+				thenItShouldMatch(s)
+				thenTheyAreNotEqual(s)
+			})
+
+			s.And("the last element is anything but a container type", func(s *testcase.Spec) {
+				path.Let(s, func(t *testcase.T) jsontoken.Path {
+					p := path.Super(t)
+					mk := func() jsontoken.Kind {
+						return randomKind(t)
+					}
+					next := random.Unique[jsontoken.Kind](mk,
+						jsontoken.KindArray, jsontoken.KindValue{},
+						jsontoken.KindObject, jsontoken.KindElement{})
+					return append(p, next)
+				})
+
+				thenItShouldContains(s)
+				thenItShouldNotMatch(s)
+				thenTheyAreNotEqual(s)
+			})
+
+			s.And("the the other path extends the previous with multiple elements", func(s *testcase.Spec) {
+				oth.Let(s, func(t *testcase.T) jsontoken.Path {
+					p := oth.Super(t)
+					for range t.Random.IntBetween(3, 7) {
+						p = append(p, randomKind(t))
+					}
+					return p
+				})
+
+				thenItShouldContains(s)
+				thenItShouldNotMatch(s)
+				thenTheyAreNotEqual(s)
+			})
+
 		})
 	})
 }
@@ -920,4 +1046,29 @@ func BenchmarkTrimSpace(b *testing.B) {
 			jsontoken.TrimSpace([]byte(ExampleComplexJSON))
 		}
 	})
+}
+
+func TestQueryMany_e2e(t *testing.T) {
+	input := bytes.NewReader([]byte(`["foo", "bar", "baz"]`))
+
+	var expVS = []json.RawMessage{
+		json.RawMessage(`"foo"`),
+		json.RawMessage(`"bar"`),
+		json.RawMessage(`"baz"`),
+	}
+
+	var gotVS []json.RawMessage
+	err := jsontoken.QueryMany(input, jsontoken.Selector{
+		Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
+		On: func(src io.Reader) error {
+			data, err := io.ReadAll(src)
+			if err == nil {
+				gotVS = append(gotVS, data)
+			}
+			return err
+		},
+	})
+	assert.NoError(t, err)
+
+	assert.ContainsExactly(t, expVS, gotVS)
 }
