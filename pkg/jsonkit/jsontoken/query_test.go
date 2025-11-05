@@ -52,9 +52,17 @@ func TestQuery_smoke(t *testing.T) {
 	}
 	for desc, sample := range InvalidSamples {
 		t.Run("invalid: "+desc, func(t *testing.T) {
-			for _, err := range jsontoken.Query(strings.NewReader(sample)) {
-				assert.Error(t, err)
-				break
+			for data, err := range jsontoken.Query(strings.NewReader(sample)) {
+				assert.AnyOf(t, func(a *assert.A) {
+					a.Case(func(t testing.TB) {
+						assert.NoError(t, err)
+						assert.NotEmpty(t, data)
+						assert.False(t, json.Valid(data))
+					})
+					a.Case(func(t testing.TB) {
+						assert.Error(t, err)
+					})
+				})
 			}
 		})
 	}

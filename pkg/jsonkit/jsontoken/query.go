@@ -2,6 +2,7 @@ package jsontoken
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -9,7 +10,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/synckit"
-	"go.llib.dev/testcase/pp"
 )
 
 // Query will turn the input reader into a json visitor that yields results when a path is matching.
@@ -17,45 +17,47 @@ import (
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
 func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 	const stopIteration errorkit.Error = "break"
+	type Hit struct {
+		Data json.RawMessage
+		Err  error
+	}
 	return func(yield func(json.RawMessage, error) bool) {
+		var hits = make(chan Hit)
 
-		var stop bool
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		sc := Scanner{
 			Selectors: []Selector{{
 				Path: path,
 				On: func(src io.Reader) error {
-					var ok bool
-					defer func() {
-						if !ok {
-							pp.PP("!ok")
-							stop = true
-						}
-					}()
-					pp.PP("yield:before")
-					cont := yield(io.ReadAll(src))
-					pp.PP("yield:after")
-					ok = true
-					if !cont {
-						stop = true
+					data, err := io.ReadAll(src)
+					select {
+					case hits <- Hit{Data: data, Err: err}:
+					case <-ctx.Done():
 						return stopIteration
 					}
 					return nil
 				},
 			}},
-			g: synckit.Group{
-				ErrorOnGoexit: true,
-			},
 		}
-		pp.PP("res", "stop", stop)
-		var err = sc.Scan(toInput(r))
-		pp.PP(err)
+
+		var g synckit.Group
+		defer g.Wait()
+
+		g.Go(func(ctx context.Context) error {
+			defer close(hits)
+			return sc.Scan(toInput(r))
+		})
+
+		for hit := range hits {
+			if !yield(hit.Data, hit.Err) {
+				return
+			}
+		}
+
+		var err = g.Wait()
 		if errors.Is(err, stopIteration) {
-			return
-		}
-		if errors.Is(err, synckit.ErrGoexit) {
-			return
-		}
-		if stop {
 			return
 		}
 		if err != nil {
