@@ -8,7 +8,7 @@ import (
 	"io"
 	"iter"
 
-	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/synckit"
 )
 
@@ -16,7 +16,7 @@ import (
 // Think about it something similar as jq.
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
 func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
-	const stopIteration errorkit.Error = "break"
+	const stopIteration errorkitlite.Error = "break"
 	type Hit struct {
 		Data json.RawMessage
 		Err  error

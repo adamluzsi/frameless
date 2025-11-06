@@ -17,7 +17,6 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -114,7 +113,9 @@ func TestQueryMany_smoke(t *testing.T) {
 	}
 	for desc, sample := range InvalidSamples {
 		s.Test("invalid: "+desc, func(t *testcase.T) {
-			t.Log(string(sample))
+			t.OnFail(func() {
+				t.Log(string(sample))
+			})
 			err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
 				Path: jsontoken.Path{},
 				On: func(src io.Reader) error {
@@ -122,7 +123,6 @@ func TestQueryMany_smoke(t *testing.T) {
 					return nil
 				},
 			})
-			pp.PP(err)
 			assert.Error(t, err)
 		})
 	}
@@ -375,4 +375,44 @@ func TestQueryMany(t *testing.T) {
 
 		assert.Equal(t, trim(exp), trim(got))
 	})
+}
+
+func ExampleQueryMany_structuredLexing() {
+	var jsonData io.Reader
+
+	jsontoken.QueryMany(jsonData, jsontoken.Selector{
+		Path: jsontoken.Path{
+			jsontoken.KindObject,
+			jsontoken.KindValue{Name: pointer.Of("values")},
+			jsontoken.KindArray,
+			jsontoken.KindElement{},
+		},
+		On: func(valuesElement io.Reader) error {
+			return jsontoken.QueryMany(valuesElement,
+				jsontoken.Selector{
+					Path: jsontoken.Path{
+						jsontoken.KindObject,
+						jsontoken.KindValue{Name: pointer.Of("foos")},
+						jsontoken.KindArray,
+						jsontoken.KindElement{},
+					},
+					On: func(fooElement io.Reader) error {
+						return nil
+					},
+				},
+				jsontoken.Selector{
+					Path: jsontoken.Path{
+						jsontoken.KindObject,
+						jsontoken.KindValue{Name: pointer.Of("bars")},
+						jsontoken.KindArray,
+						jsontoken.KindElement{},
+					},
+					On: func(barElement io.Reader) error {
+						return nil
+					},
+				},
+			)
+		},
+	})
+
 }

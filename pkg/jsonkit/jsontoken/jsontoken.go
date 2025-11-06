@@ -245,6 +245,8 @@ func trimSpace(in Input, out io.Writer) error {
 func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
 	path = path.With(KindNumber)
 	return s.with(out, path, func(out io.Writer) error {
+		var number bytes.Buffer
+		out = io.MultiWriter(&number, out)
 	scan:
 		for {
 			digit, _, err := in.ReadRune()
@@ -259,10 +261,12 @@ func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
 				}
 				break scan
 			}
-
 			if _, err := writeRune(out, digit); err != nil {
 				return err
 			}
+		}
+		if !json.Valid(number.Bytes()) {
+			return ErrMalformed.F("not a valid number: %s", number.String())
 		}
 		return nil
 	})
@@ -329,6 +333,9 @@ func (s *Scanner) scanBoolean(in Input, out io.Writer, path Path) error {
 func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 	path = path.With(KindArray)
 	return s.with(out, path, func(out io.Writer) error {
+		var debugOut bytes.Buffer
+		out = io.MultiWriter(&debugOut, out)
+
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
@@ -374,9 +381,12 @@ func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 			}
 
 			// scan array value
-			if err := s.scan(in, out, path.With(KindElement{Index: &i})); err != nil {
+			var debugVal bytes.Buffer
+			valOut := io.MultiWriter(out, &debugVal)
+			if err := s.scan(in, valOut, path.With(KindElement{Index: &i})); err != nil {
 				return err
 			}
+			fmt.Println(debugVal.String())
 
 			if err := trimSpace(in, out); err != nil {
 				return err
@@ -393,6 +403,7 @@ func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 			case arrayCloseToken:
 				break scanValues
 			default:
+				fmt.Println(debugOut.String())
 				return LexingError{Message: fmt.Sprintf("unexpected array token: %c", next), Path: path}
 			}
 		}
@@ -502,11 +513,12 @@ func (s *Scanner) scanObject(in Input, out io.Writer, path Path) error {
 func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 	path = path.With(KindString)
 	return s.with(out, path, func(out io.Writer) error {
+		var str bytes.Buffer
+		out = io.MultiWriter(&str, out)
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
-		var str bytes.Buffer
-		first, _, err := moveRune(in, &str)
+		first, _, err := moveRune(in, out)
 		if err != nil {
 			return err
 		}
@@ -516,26 +528,51 @@ func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 				Path:    path,
 			}
 		}
+
+		var inEscape bool
 	scan:
 		for {
-			b, err := iokit.MoveByte(in, &str)
+			char, _, err := in.ReadRune()
 			if err != nil {
 				return err
 			}
-			if b == byte(quoteToken) {
-				// it is only enough to check if the string is fully found when we see a potential closing quote character.
-				// this way, we don't need to check the validity on each utf8 character.
-				if json.Valid(str.Bytes()) {
+			if _, err := writeRune(out, char); err != nil {
+				return err
+			}
+			switch char {
+			case stringEscapesToken:
+				inEscape = !inEscape
+			case quoteToken:
+				if !inEscape {
+					// it is only enough to check if the string is fully found when we see a potential closing quote character.
+					// this way, we don't need to check the validity on each utf8 character.
 					break scan
 				}
+
+			default:
+				inEscape = false
 			}
 		}
-		if _, err := str.WriteTo(out); err != nil {
-			return err
-		}
+		// if !json.Valid(str.Bytes()) {
+		// 	return ErrMalformed.F("malformed string: %q", str.String())
+		// }
 		return nil
 	})
 }
+
+const stringEscapesToken = '\\'
+
+// var validStringEscapes = map[rune]struct{}{
+// 	'"':  {}, // quotation mark
+// 	'\\': {}, // backslash
+// 	'/':  {}, // forward slash
+// 	'b':  {}, // backspace
+// 	'f':  {}, // form feed
+// 	'n':  {}, // newline
+// 	'r':  {}, // carriage return
+// 	't':  {}, // tab
+// 	'u':  {}, // unicode
+// }
 
 func (s *Scanner) tokenStartKind(char rune) Kind {
 	if _, ok := numberChars[char]; ok {

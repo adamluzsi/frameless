@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -271,35 +272,41 @@ func Test_AnalyzeCommonFailures(t *testing.T) {
 }
 
 func TestScanner(t *testing.T) {
-	t.Run("AddString", func(t *testing.T) {
-		exp := mustMarshal[string](rnd.String())
+	s := testcase.NewSpec(t)
+
+	s.Test("AddString", func(t *testcase.T) {
+		exp := mustMarshal[string](t.Random.String())
+		t.Log(exp)
+
+		fmt.Println(exp)
+
 		raw, err := jsontoken.ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("AddChar", func(t *testing.T) {
-		exp := mustMarshal[string](rnd.String())
+	s.Test("AddChar", func(t *testcase.T) {
+		exp := mustMarshal[string](t.Random.String())
 		raw, err := jsontoken.ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("null", func(t *testing.T) {
+	s.Test("null", func(t *testcase.T) {
 		const exp = `null`
 		raw, err := jsontoken.ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("string", func(t *testing.T) {
-		t.Run("normal", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.StringNWithCharset(10, random.CharsetAlpha()))
+	s.Context("string", func(s *testcase.Spec) {
+		s.Test("normal", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.StringNWithCharset(10, random.CharsetAlpha()))
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("with escape", func(t *testing.T) {
+		s.Test("with escape", func(t *testcase.T) {
 			exp := `"\"foo\""`
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
@@ -307,36 +314,36 @@ func TestScanner(t *testing.T) {
 		})
 	})
 
-	t.Run("number", func(t *testing.T) {
-		t.Run("integer", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.IntBetween(1, 100))
+	s.Context("number", func(s *testcase.Spec) {
+		s.Test("integer", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.IntBetween(1, 100))
 			t.Log("number", exp)
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("float", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.Float64())
+		s.Test("float", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.Float64())
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("negative", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.Float64() * -1.0)
+		s.Test("negative", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.Float64() * -1.0)
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
 	})
 
-	t.Run("bool", func(t *testing.T) {
-		t.Run("true", func(t *testing.T) {
+	s.Context("bool", func(s *testcase.Spec) {
+		s.Test("true", func(t *testcase.T) {
 			exp := `true`
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("false", func(t *testing.T) {
+		s.Test("false", func(t *testcase.T) {
 			exp := `false`
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
@@ -344,28 +351,28 @@ func TestScanner(t *testing.T) {
 		})
 	})
 
-	t.Run("empty array", func(t *testing.T) {
+	s.Test("empty array", func(t *testcase.T) {
 		exp := `[]`
 		raw, err := jsontoken.ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("non-empty array", func(t *testing.T) {
+	s.Test("non-empty array", func(t *testcase.T) {
 		exp := `["foo", 42, true]`
 		raw, err := jsontoken.ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("array of array", func(t *testing.T) {
-		t.Run("empty", func(t *testing.T) {
+	s.Context("array of array", func(s *testcase.Spec) {
+		s.Test("empty", func(t *testcase.T) {
 			exp := `[[]]`
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("non-empty", func(t *testing.T) {
+		s.Test("non-empty", func(t *testcase.T) {
 			exp := `[[42]]`
 			raw, err := jsontoken.ScanFrom(exp)
 			assert.NoError(t, err)
@@ -373,7 +380,7 @@ func TestScanner(t *testing.T) {
 		})
 	})
 
-	t.Run("e2e", func(t *testing.T) {
+	s.Test("e2e", func(t *testcase.T) {
 		exp := `[
 			  {"key": "foo", "ary": [1, 2, 3]},
 			  {"key": "bar", "ary": [3, 2, 1]}
@@ -383,10 +390,11 @@ func TestScanner(t *testing.T) {
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("smoke", func(t *testing.T) {
+	s.Context("smoke", func(s *testcase.Spec) {
 		for name, sample := range Samples {
-			sample := sample
-			t.Run(name, func(t *testing.T) {
+			name, sample := name, sample
+
+			s.Test(name, func(t *testcase.T) {
 				t.Log("json", sample)
 				assert.True(t, json.Valid([]byte(sample)),
 					"Perform a sanity check before testing to ensure the sample is valid JSON")
@@ -396,6 +404,14 @@ func TestScanner(t *testing.T) {
 				assert.Equal(t, string(raw), sample)
 			})
 		}
+	})
+
+	s.Test("string with backslash", func(t *testcase.T) {
+		example := `["\\"]` // the array surrounding ensures that incorrect string handling causes issues
+
+		var s jsontoken.Scanner
+		assert.NoError(t, s.Scan(bytes.NewReader([]byte(example))))
+
 	})
 }
 
