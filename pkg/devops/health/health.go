@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 )
@@ -25,29 +26,28 @@ type Monitor struct {
 	// Check should return with nil in case the check passed.
 	// Check should return back with an Issue or a generic error, in case the check failed.
 	// Returned generic errors are considered as an Issue with Down Status.
-	Checks []Check
+	Checks []IssueCheck
 	// Dependencies represent our service's dependencies and their health state (Report).
 	// DependencyCheck should come back always with a valid Report.
-	Dependencies []DependencyCheck
+	Dependencies []HealthCheck
 	// Details represents our service's monitoring metrics.
 	Details map[string]DetailCheck
 }
 
 type (
-	// Check represents a health check.
-	// Check supposed to yield back nil if the check passes.
-	// Check should yield back an error in case the check detected a problem.
-	// For problems, Check may return back an Issue to describe in detail the problem.
+	// IssueCheck represents a health check.
+	// IssueCheck supposed to yield back nil if the check passes.
+	// IssueCheck should yield back an error in case the check detected a problem.
+	// For problems, IssueCheck may return back an Issue to describe in detail the problem.
 	// Most Errors will be considered as
-	Check func(ctx context.Context) error
-	// DependencyCheck serves as a health check for a specific dependency.
-	// If an error occurs during the check,
-	// it should be represented as an Issue in the returned Report.Issues list.
+	IssueCheck func(ctx context.Context) error
+	// HealthCheck serves as a health check.
+	// If an error occurs during the check, then it should be represented as an Issue in the returned Report.Issues list.
 	//
 	// For example, if a remote service is unreachable on the network,
 	// it should be represented as an issue in the Report.Issues that the service is unreachable,
 	// and the Issue.Causes should tell that this makes the given dependency health Status considered as Down.
-	DependencyCheck func(ctx context.Context) Report
+	HealthCheck func(ctx context.Context) Report
 	// DetailCheck represents a metric reporting function. The result will be added to the Report.Metrics.
 	// A DetailCheck results encompass analytical purpose, a status indicators for the service
 	// for the given time when the service were called.
@@ -100,38 +100,38 @@ func (m *Monitor) collectDependencies(ctx context.Context, hs *Report) {
 	}
 }
 
-func (m *Monitor) HTTPHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var ctx = r.Context()
+func (m *Monitor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	var ctx = r.Context()
 
-		report := m.HealthCheck(ctx)
+	report := m.HealthCheck(ctx)
 
-		dto, err := dtokit.Map[ReportJSONDTO](ctx, report)
-		if err != nil {
-			logger.Error(ctx, "error mapping devops.HealthState to HealthState json DTO", logging.ErrField(err))
-			return
+	dto, err := dtokit.Map[ReportJSONDTO](ctx, report)
+	if err != nil {
+		logger.Error(ctx, "error mapping devops.HealthState to HealthState json DTO", logging.ErrField(err))
+		return
+	}
+
+	statusCode, ok := healthStatusToHTTPStatus[report.Status]
+	if !ok {
+		if report.Status == Up {
+			statusCode = http.StatusOK
+		} else {
+			statusCode = http.StatusServiceUnavailable
 		}
+	}
+	w.WriteHeader(statusCode)
 
-		statusCode, ok := healthStatusToHTTPStatus[report.Status]
-		if !ok {
-			if report.Status == Up {
-				statusCode = http.StatusOK
-			} else {
-				statusCode = http.StatusServiceUnavailable
-			}
-		}
-		w.WriteHeader(statusCode)
-
-		// The JSON specification specifies that only space (ASCII decimal 32) character can be used for indentation.
-		// To improve the health check endpoint readability with human consumption, two space indentations are used.
-		data, err := json.MarshalIndent(dto, "", "  ")
-		if err != nil {
-			logger.Error(ctx, "error while marshaling health check DTO", logging.ErrField(err))
-			return
-		}
-		_, _ = w.Write(data)
-	})
+	// The JSON specification specifies that only space (ASCII decimal 32) character can be used for indentation.
+	// To improve the health check endpoint readability with human consumption, two space indentations are used.
+	data, err := json.MarshalIndent(dto, "", "  ")
+	if err != nil {
+		logger.Error(ctx, "error while marshaling health check DTO", logging.ErrField(err))
+		return
+	}
+	_, _ = w.Write(data)
 }
+
+func (m *Monitor) HTTPHandler() http.Handler { return m }
 
 func (m *Monitor) collectDetails(ctx context.Context, r *Report) {
 	for name, check := range m.Details {
@@ -207,8 +207,11 @@ func (r *Report) Correlate(ctx context.Context) {
 	r.Timestamp = zerokit.Coalesce(r.Timestamp, clock.Now().UTC())
 }
 
-func (r Report) WithIssue(issue Issue) Report {
-	r.Issues = append(append([]Issue{}, r.Issues...), issue)
+// WithIssue is a syntax sugar to return a Report that is correlated with a given issue
+func (r Report) WithIssue(ctx context.Context, issue Issue) Report {
+	r.Issues = slicekit.Clone(r.Issues)
+	r.Issues = append(r.Issues, issue)
+	r.Correlate(ctx)
 	return r
 }
 

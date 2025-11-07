@@ -28,7 +28,7 @@ var rnd = random.New(random.CryptoSeed{})
 
 func ExampleMonitor_HTTPHandler() {
 	var m = health.Monitor{
-		Checks: []health.Check{
+		Checks: []health.IssueCheck{
 			func(ctx context.Context) error {
 				return nil // all good
 			},
@@ -40,12 +40,19 @@ func ExampleMonitor_HTTPHandler() {
 	_ = http.ListenAndServe("0.0.0.0:8080", mux)
 }
 
+func ExampleMonitor_asHTTPHandler() {
+	var m health.Monitor
+	mux := http.NewServeMux()
+	mux.Handle("/health", &m)
+	_ = http.ListenAndServe("0.0.0.0:8080", mux)
+}
+
 func ExampleMonitor_check() {
 	const detailKeyForHTTPRetryPerSec = "http-retry-average-per-second"
 	appDetails := sync.Map{}
 
 	var hm = health.Monitor{
-		Checks: []health.Check{
+		Checks: []health.IssueCheck{
 			func(ctx context.Context) error {
 				value, ok := appDetails.Load(detailKeyForHTTPRetryPerSec)
 				if !ok {
@@ -299,7 +306,7 @@ func TestMonitor_HealthCheck(t *testing.T) {
 
 	t.Run("dependency timestamp message is populated when it is empty", func(t *testing.T) {
 		hc := health.Monitor{
-			Dependencies: []health.DependencyCheck{
+			Dependencies: []health.HealthCheck{
 				func(ctx context.Context) health.Report {
 					return health.Report{
 						Name: "the-name",
@@ -392,12 +399,12 @@ func TestMonitor_HealthCheck(t *testing.T) {
 func TestMonitor_race(t *testing.T) {
 	m := &health.Monitor{
 		ServiceName: "name",
-		Checks: []health.Check{
+		Checks: []health.IssueCheck{
 			func(ctx context.Context) error {
 				return nil
 			},
 		},
-		Dependencies: []health.DependencyCheck{
+		Dependencies: []health.HealthCheck{
 			func(ctx context.Context) health.Report {
 				return health.Report{
 					Status: health.Up,
@@ -428,7 +435,7 @@ func TestMonitor_race(t *testing.T) {
 	)
 }
 
-func TestMonitor_HTTPHandler(t *testing.T) {
+func TestMonitor_ServeHTTP(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	subject := testcase.Let(s, func(t *testcase.T) *health.Monitor {
@@ -438,7 +445,11 @@ func TestMonitor_HTTPHandler(t *testing.T) {
 	act := func(t *testcase.T) *httptest.ResponseRecorder {
 		rr := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		subject.Get(t).HTTPHandler().ServeHTTP(rr, req)
+		if t.Random.Bool() {
+			subject.Get(t).ServeHTTP(rr, req)
+		} else {
+			subject.Get(t).HTTPHandler().ServeHTTP(rr, req)
+		}
 		return rr
 	}
 
@@ -555,7 +566,7 @@ func TestIssue(t *testing.T) {
 
 func ExampleHTTPHealthCheck() {
 	var m = health.Monitor{
-		Dependencies: []health.DependencyCheck{
+		Dependencies: []health.HealthCheck{
 			health.HTTPHealthCheck("https://www.example.com/health", nil),
 		},
 	}
@@ -861,7 +872,7 @@ func TestExampleResponse(t *testing.T) {
 
 	m := health.Monitor{
 		// our service related checks
-		Checks: []health.Check{
+		Checks: []health.IssueCheck{
 			func(ctx context.Context) error {
 				value, ok := appDetails.Load(detailKeyForHTTPRetryPerSec)
 				if !ok {
@@ -884,7 +895,7 @@ func TestExampleResponse(t *testing.T) {
 			},
 		},
 		// our service's dependencies like DB or downstream services
-		Dependencies: []health.DependencyCheck{
+		Dependencies: []health.HealthCheck{
 			func(ctx context.Context) health.Report {
 				return health.Report{
 					Name: "downstream-service-name",
@@ -933,10 +944,11 @@ func TestReport_WithIssue(t *testing.T) {
 		Causes:  health.Degraded,
 	}
 
-	gotReport := r.WithIssue(expIssue)
+	gotReport := r.WithIssue(t.Context(), expIssue)
 
 	assert.NotEqual(t, r, gotReport)
 	assert.Empty(t, r.Issues)
 	assert.NotEmpty(t, gotReport.Issues)
 	assert.Contains(t, gotReport.Issues, expIssue)
+	assert.Equal(t, gotReport.Status, expIssue.Causes)
 }
