@@ -119,7 +119,13 @@ func TestQueryMany_smoke(t *testing.T) {
 			err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
 				Path: jsontoken.Path{},
 				On: func(src io.Reader) error {
-					_, _ = io.ReadAll(src)
+					data, err := io.ReadAll(src)
+					if err != nil {
+						return err
+					}
+					if !json.Valid(data) {
+						return jsontoken.ErrMalformed
+					}
 					return nil
 				},
 			})

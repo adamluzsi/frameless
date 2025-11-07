@@ -17,7 +17,6 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -289,9 +288,6 @@ func TestScanner(t *testing.T) {
 	s.Test("AddString", func(t *testcase.T) {
 		exp := mustMarshal[string](t.Random.String())
 		t.Log(exp)
-
-		fmt.Println(exp)
-
 		raw, err := jsontoken.ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
@@ -422,36 +418,59 @@ func TestScanner(t *testing.T) {
 		var (
 			input = let.Var[jsontoken.Input](s, nil)
 		)
-		scan := let.Act(func(t *testcase.T) error {
+		act := let.Act(func(t *testcase.T) error {
 			return scanner.Get(t).Scan(input.Get(t))
 		})
 
 		s.Context("string", func(s *testcase.Spec) {
-			// the array surrounding ensures that incorrect string handling causes issues
-
-			s.Test("quote", func(t *testcase.T) {
-
+			expectedData := let.Var[json.RawMessage](s, nil)
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				dv := expectedData.Get(t)
+				assert.True(t, json.Valid(dv), "expected that the json raw message is valid")
+				// the array surrounding ensures that incorrect string handling causes issues
+				dv = []byte(fmt.Sprintf(`[%s]`, string(dv)))
+				data, err := json.Marshal(dv)
+				assert.NoError(t, err)
+				return bytes.NewReader(data)
 			})
-		})
-		s.Test("string with backslash", func(t *testcase.T) {
-			example := `["\\"]`
 
-			var data []byte
-			var s = jsontoken.Scanner{
-				Selectors: []jsontoken.Selector{
+			gotData := let.VarOf[[]byte](s, nil)
+			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+				return []jsontoken.Selector{
 					{
-						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{Index: pointer.Of(0)}},
+						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
 						On: func(src io.Reader) error {
-							var err error
-							data, err = io.ReadAll(src)
-							pp.PP(data, err)
+							data, err := io.ReadAll(src)
+							gotData.Set(t, data)
 							return err
 						},
 					},
-				},
-			}
-			assert.NoError(t, s.Scan(bytes.NewReader([]byte(example))))
-			assert.Equal(t, `"\\"`, string(data))
+				}
+			})
+
+			s.Context("quote", func(s *testcase.Spec) {
+				expectedData.Let(s, func(t *testcase.T) json.RawMessage {
+					return []byte(`"\""`)
+				})
+
+				s.Then("scan will able to lex it", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, expectedData.Get(t), gotData.Get(t))
+				})
+			})
+
+			s.Context("backslash", func(s *testcase.Spec) {
+				expectedData.Let(s, func(t *testcase.T) json.RawMessage {
+					return []byte(`"\\"`)
+				})
+
+				s.Then("scan will able to lex it", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, expectedData.Get(t), gotData.Get(t))
+				})
+			})
 		})
 	})
 }

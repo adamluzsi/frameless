@@ -13,16 +13,16 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
-	"go.llib.dev/testcase/pp"
 )
 
-const ErrMalformed errorkit.Error = "[ErrMalformed] malformed JSON"
+const ErrMalformed errorkitlite.Error = "[ErrMalformed] malformed JSON"
 
 type LexingError struct {
 	Message string
@@ -127,20 +127,40 @@ func (s *Scanner) Scan(in Input) error {
 	err := s.with(out, path, func(out io.Writer) error {
 		return s.scan(in, out, path)
 	})
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
+		if err, ok := s.isScanError(err, path); ok {
+			return err
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 		return s.asLexingError(err, path)
 	}
 	return nil
+}
+
+func (s *Scanner) isScanError(err error, path Path) (error, bool) {
+	if errors.As(err, &LexingError{}) {
+		return err, true
+	}
+	if errors.Is(err, ErrMalformed) {
+		return s.asLexingError(err, path), true
+	}
+	return nil, false
+}
+
+func (s *Scanner) malformedF(path Path, format string, a ...any) error {
+	return s.asLexingError(ErrMalformed.F(format, a...), path)
 }
 
 func (s *Scanner) asLexingError(err error, path Path) error {
 	if err == nil {
 		return nil
 	}
-	if _, ok := errorkit.As[LexingError](err); ok {
+	if _, ok := errorkitlite.As[LexingError](err); ok {
 		return err
 	}
-	return errorkit.Merge(err, LexingError{Path: path})
+	return errorkitlite.Merge(err, LexingError{Path: path})
 }
 
 func (s *Scanner) scan(in Input, out io.Writer, path Path) error {
@@ -204,7 +224,8 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 		return blk(outerScopeData)
 	}
 
-	defer errorkit.Finish(&rErr, s.g.Wait)
+	var g synckit.Group
+	defer errorkitlite.Finish(&rErr, g.Wait)
 
 	pr, pw := io.Pipe()
 	defer pw.Close()
@@ -267,7 +288,7 @@ func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
 			}
 		}
 		if !json.Valid(number.Bytes()) {
-			return ErrMalformed.F("not a valid number: %s", number.String())
+			return s.malformedF(path, "not a valid number: %s", number.String())
 		}
 		return nil
 	})
@@ -382,12 +403,15 @@ func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 			}
 
 			// scan array value
-			var debugVal bytes.Buffer
-			valOut := io.MultiWriter(out, &debugVal)
-			if err := s.scan(in, valOut, path.With(KindElement{Index: &i})); err != nil {
+			if err := s.scan(in, out, path.With(KindElement{Index: &i})); err != nil {
+				if err, ok := s.isScanError(err, path); ok {
+					return err
+				}
+				if errors.Is(err, io.EOF) {
+					return s.malformedF(path, "unexpected %w during array value token scanning", err)
+				}
 				return err
 			}
-			pp.PP(debugVal.String())
 
 			if err := trimSpace(in, out); err != nil {
 				return err
@@ -404,7 +428,6 @@ func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 			case arrayCloseToken:
 				break scanValues
 			default:
-				fmt.Println(debugOut.String())
 				return LexingError{Message: fmt.Sprintf("unexpected array token: %c", next), Path: path}
 			}
 		}
@@ -530,34 +553,33 @@ func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 			}
 		}
 
+		var complete bool
 		var inEscape bool
-	scan:
-		for {
-			char, _, err := in.ReadRune()
-			if err != nil {
-				return err
-			}
-			if _, err := writeRune(out, char); err != nil {
-				return err
-			}
-			switch char {
-			case stringEscapesToken:
-				inEscape = !inEscape
-				pp.PP(str.String())
-			case quoteToken:
-				if !inEscape {
-					// it is only enough to check if the string is fully found when we see a potential closing quote character.
-					// this way, we don't need to check the validity on each utf8 character.
-					break scan
+		for !complete {
+			char, n, err := in.ReadRune()
+			if n < 0 {
+				if _, err := writeRune(out, char); err != nil {
+					return err
 				}
-
-			default:
-				inEscape = false
+				switch {
+				case char == stringEscapesToken:
+					inEscape = !inEscape
+				case char == quoteToken && !inEscape:
+					complete = true
+				default:
+					inEscape = false
+				}
+			}
+			if err != nil {
+				if complete {
+					return err
+				}
+				if errors.Is(err, io.EOF) {
+					return s.malformedF(path, "unexpected %w during incomplete string token", err)
+				}
+				return s.malformedF(path, "unexpected error during string scanning: %w", err)
 			}
 		}
-		// if !json.Valid(str.Bytes()) {
-		// 	return ErrMalformed.F("malformed string: %q", str.String())
-		// }
 		return nil
 	})
 }
