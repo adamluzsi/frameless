@@ -17,6 +17,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -274,6 +275,17 @@ func Test_AnalyzeCommonFailures(t *testing.T) {
 func TestScanner(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	var (
+		selectors = let.Var(s, func(t *testcase.T) []jsontoken.Selector {
+			return nil
+		})
+	)
+	scanner := let.Var(s, func(t *testcase.T) *jsontoken.Scanner {
+		return &jsontoken.Scanner{
+			Selectors: selectors.Get(t),
+		}
+	})
+
 	s.Test("AddString", func(t *testcase.T) {
 		exp := mustMarshal[string](t.Random.String())
 		t.Log(exp)
@@ -406,12 +418,41 @@ func TestScanner(t *testing.T) {
 		}
 	})
 
-	s.Test("string with backslash", func(t *testcase.T) {
-		example := `["\\"]` // the array surrounding ensures that incorrect string handling causes issues
+	s.Describe("#Scan", func(s *testcase.Spec) {
+		var (
+			input = let.Var[jsontoken.Input](s, nil)
+		)
+		scan := let.Act(func(t *testcase.T) error {
+			return scanner.Get(t).Scan(input.Get(t))
+		})
 
-		var s jsontoken.Scanner
-		assert.NoError(t, s.Scan(bytes.NewReader([]byte(example))))
+		s.Context("string", func(s *testcase.Spec) {
+			// the array surrounding ensures that incorrect string handling causes issues
 
+			s.Test("quote", func(t *testcase.T) {
+
+			})
+		})
+		s.Test("string with backslash", func(t *testcase.T) {
+			example := `["\\"]`
+
+			var data []byte
+			var s = jsontoken.Scanner{
+				Selectors: []jsontoken.Selector{
+					{
+						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{Index: pointer.Of(0)}},
+						On: func(src io.Reader) error {
+							var err error
+							data, err = io.ReadAll(src)
+							pp.PP(data, err)
+							return err
+						},
+					},
+				},
+			}
+			assert.NoError(t, s.Scan(bytes.NewReader([]byte(example))))
+			assert.Equal(t, `"\\"`, string(data))
+		})
 	})
 }
 

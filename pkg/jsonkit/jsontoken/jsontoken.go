@@ -19,6 +19,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/testcase/pp"
 )
 
 const ErrMalformed errorkit.Error = "[ErrMalformed] malformed JSON"
@@ -386,7 +387,7 @@ func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 			if err := s.scan(in, valOut, path.With(KindElement{Index: &i})); err != nil {
 				return err
 			}
-			fmt.Println(debugVal.String())
+			pp.PP(debugVal.String())
 
 			if err := trimSpace(in, out); err != nil {
 				return err
@@ -542,6 +543,7 @@ func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 			switch char {
 			case stringEscapesToken:
 				inEscape = !inEscape
+				pp.PP(str.String())
 			case quoteToken:
 				if !inEscape {
 					// it is only enough to check if the string is fully found when we see a potential closing quote character.
