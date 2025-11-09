@@ -317,23 +317,29 @@ func HandleError(w Response, r *Request, err error) {
 	fmt.Fprintf(w, "%s\n", err.Error())
 }
 
-func Main(ctx context.Context, h Handler) {
+func NewStdRequest(ctx context.Context) *Request {
 	var args []string
 	if 1 < len(os.Args) {
 		args = os.Args[1:]
 	}
+	return &Request{
+		ctx:  ctx,
+		Args: args,
+		Body: os.Stdin,
+	}
+}
+
+func Main(ctx context.Context, h Handler) {
 	logger.Configure(func(l *logging.Logger) {
 		if l.Out == nil { // avoid logging into STDOUT as a CLI app
 			l.Out = os.Stderr
 		}
 	})
-	var w stdResponse
-	r := &Request{
-		ctx:  ctx,
-		Args: args,
-		Body: os.Stdin,
-	}
-	ServeCLI(h, &w, r)
+	var (
+		w = &StdResponse{}
+		r = NewStdRequest(ctx)
+	)
+	ServeCLI(h, w, r)
 	osint.Exit(w.Code)
 }
 
@@ -461,16 +467,12 @@ func errOut(w Response) io.Writer {
 	return w
 }
 
-type stdResponse struct {
-	Code int
-	Err  *os.File
-	Out  *os.File
-}
+type StdResponse struct{ Code int }
 
-func (rr *stdResponse) ExitCode(n int)                    { rr.Code = n }
-func (rr *stdResponse) Stdeout() io.Writer                { return os.Stdout }
-func (rr *stdResponse) Stderr() io.Writer                 { return os.Stderr }
-func (rr *stdResponse) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
+func (rr *StdResponse) ExitCode(n int)                    { rr.Code = n }
+func (rr *StdResponse) Stdeout() io.Writer                { return os.Stdout }
+func (rr *StdResponse) Stderr() io.Writer                 { return os.Stderr }
+func (rr *StdResponse) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
