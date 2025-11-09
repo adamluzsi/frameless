@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -188,10 +189,10 @@ func TestMux(t *testing.T) {
 			})
 
 			s.And("the command have flags", func(s *testcase.Spec) {
-				var h = testcase.LetValue[*CommandWithFlag](s, nil)
+				var h = testcase.LetValue[*ExampleCommandWithFlag](s, nil)
 
 				command.Let(s, func(t *testcase.T) cli.Handler {
-					return CommandWithFlag{Callback: func(v CommandWithFlag, w cli.Response, r *cli.Request) {
+					return ExampleCommandWithFlag{Callback: func(v ExampleCommandWithFlag, w cli.Response, r *cli.Request) {
 						h.Set(t, &v)
 
 						fmt.Fprintln(w, ExpCmdReply.Get(t))
@@ -199,7 +200,7 @@ func TestMux(t *testing.T) {
 				})
 
 				s.And("one of the flag is a bool type", func(s *testcase.Spec) {
-					var _ bool = CommandWithFlag{}.Flag5
+					var _ bool = ExampleCommandWithFlag{}.Flag5
 
 					s.And("the flag value is provided as a boolean value", func(s *testcase.Spec) {
 						exp := let.Bool(s)
@@ -807,6 +808,59 @@ func TestServeCLI(t *testing.T) {
 		assert.Equal(t, configuredCommant.Flag3, 24)
 		assert.Equal(t, configuredCommant.Flag4, true)
 	})
+
+	s.Context("dependency", func(s *testcase.Spec) {
+		type Dependency struct {
+			Env  string `env:"ENV_VAL"`
+			Flag string `flag:"flag_val"`
+			Arg  string `arg:"1"`
+		}
+
+		var dep = let.Var[Dependency](s, nil)
+
+		cmd := let.Var(s, func(t *testcase.T) CommandWithTypedDependency[Dependency] {
+			return CommandWithTypedDependency[Dependency]{
+				Callback: func(v CommandWithTypedDependency[Dependency], w cli.Response, r *cli.Request) {
+					pp.PP(r.Args)
+					dep.Set(t, v.D)
+				},
+			}
+		})
+
+		s.Test("ok", func(t *testcase.T) {
+			var (
+				argV  = t.Random.String()
+				flagV = t.Random.String()
+				envV  = t.Random.String()
+			)
+			testcase.SetEnv(t, "ENV_VAL", envV)
+
+			r := &cli.Request{Args: []string{"-flag_val", flagV, argV}}
+			w := &cli.ResponseRecorder{}
+			cli.ServeCLI(cmd.Get(t), w, r)
+
+			assert.Equal(t, cli.ExitCodeOK, w.Code,
+				assert.MessageF("%s%s", w.Out.String(), w.Err.String()))
+
+			assert.Equal(t, dep.Get(t).Env, envV)
+			assert.Equal(t, dep.Get(t).Flag, flagV)
+			assert.Equal(t, dep.Get(t).Arg, argV)
+		})
+
+		s.Test("help", func(t *testcase.T) {
+
+		})
+	})
+}
+
+type CommandWithTypedDependency[Dependency any] struct {
+	Callback[CommandWithTypedDependency[Dependency]]
+
+	D Dependency
+}
+
+func (cmd CommandWithTypedDependency[Dependency]) ServeCLI(w cli.Response, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
 }
 
 type AndTheFlagTypeIs[T any] struct {
@@ -1052,8 +1106,8 @@ func (cmd *CommandWithPointerReceiver) ServeCLI(w cli.Response, r *cli.Request) 
 	cmd.Callback.Call(cmd, w, r)
 }
 
-type CommandWithFlag struct {
-	Callback[CommandWithFlag]
+type ExampleCommandWithFlag struct {
+	Callback[ExampleCommandWithFlag]
 	Noise string `flag:"noise"`
 
 	FlagStr    string `flag:"str"`
@@ -1070,7 +1124,7 @@ type CommandWithFlag struct {
 
 type SubStr string
 
-func (cmd CommandWithFlag) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd ExampleCommandWithFlag) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 

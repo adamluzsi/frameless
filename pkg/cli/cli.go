@@ -25,8 +25,10 @@ import (
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/reflectkit/refnode"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/testcase/pp"
 )
 
 const (
@@ -269,8 +271,11 @@ func ServeCLI(h Handler, w Response, r *Request) {
 	if r == nil {
 		panic("nil *cli.Request")
 	}
+
+	pp.PP()
 	if _, ok := h.(Multiplexer); !ok {
 		handler, err := ConfigureHandler(h, r)
+		pp.PP(handler, err)
 		if err != nil {
 			var exitCode = ExitCodeBadRequest
 			if isHelp(err) {
@@ -306,16 +311,16 @@ func ServeCLI(h Handler, w Response, r *Request) {
 
 type stop struct{}
 
-func Stop() { panic(stop{}) }
-
-func HandleError(w Response, r *Request, err error) {
-	if err == nil {
-		return
-	}
-
-	w.ExitCode(ExitCodeError)
-	fmt.Fprintf(w, "%s\n", err.Error())
-}
+// func Stop() { panic(stop{}) }
+//
+// func HandleError(w Response, r *Request, err error) {
+// 	if err == nil {
+// 		return
+// 	}
+// 	w.ExitCode(ExitCodeError)
+// 	fmt.Fprintf(w, "%s\n", err.Error())
+// 	Stop()
+// }
 
 func NewStdRequest(ctx context.Context) *Request {
 	var args []string
@@ -489,27 +494,17 @@ func (rr *ResponseRecorder) Write(p []byte) (n int, err error) { return rr.Stdeo
 
 func structMetaFor(h Handler) (structMeta, bool, error) {
 	var (
-		v = reflectkit.BaseValueOf(h)
-		T = v.Type()
+		v = reflect.ValueOf(&h)
 		m = structMeta{}
 	)
 
-	if v.Kind() != reflect.Struct {
-		return m, false, nil
-	}
-
-	fieldNum := T.NumField()
-
 	var foundFlags = map[string]struct{}{}
 
-	for i := 0; i < fieldNum; i++ {
-		sf := T.Field(i)
-
-		if sf.Anonymous {
+	for v := range reflectkit.VisitValues(v) {
+		if v.NodeType != refnode.StructField {
 			continue
 		}
-
-		sFlag, ok, err := scanForFlag(sf)
+		sFlag, ok, err := scanForFlag(v.StructField)
 		if err != nil {
 			return structMeta{}, false, err
 		}
@@ -519,7 +514,7 @@ func structMetaFor(h Handler) (structMeta, bool, error) {
 			}
 			m.Flags = append(m.Flags, sFlag)
 		}
-		sArg, ok, err := scanForArg(sf)
+		sArg, ok, err := scanForArg(v.StructField)
 		if err != nil {
 			return structMeta{}, false, err
 		}
@@ -535,6 +530,7 @@ func structMetaFor(h Handler) (structMeta, bool, error) {
 		return a.Index < b.Index
 	})
 
+	pp.PP(m.Args)
 	for i, a := range m.Args {
 		if a.Index != i {
 			const format = "%s field is an arg, and it was expected to be at index %d but it has the index of %d"
@@ -542,7 +538,8 @@ func structMetaFor(h Handler) (structMeta, bool, error) {
 		}
 	}
 
-	return m, true, nil
+	var ok = 0 < len(m.Args) || 0 < len(m.Flags)
+	return m, ok, nil
 }
 
 func scanForFlag(sf reflect.StructField) (structFlag, bool, error) {
