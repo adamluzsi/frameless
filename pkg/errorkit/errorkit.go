@@ -35,15 +35,6 @@ func (err Error) Wrap(oth error) error {
 // F will format the error value
 func (err Error) F(format string, a ...any) error { return err.Wrap(fmt.Errorf(format, a...)) }
 
-// ErrorHandler describes that an object able to handle error use-cases for its purpose.
-//
-// For e.g. if the component is a pubsub subscription event handler,
-// then implementing ErrorHandler means it suppose to handle unexpected use-cases such as connection interruption.
-type ErrorHandler interface {
-	// HandleError allow the interactor implementation to be notified about unexpected situations.
-	HandleError(ctx context.Context, err error) error
-}
-
 // Finish is a helper function that can be used from a deferred context.
 //
 // Usage:

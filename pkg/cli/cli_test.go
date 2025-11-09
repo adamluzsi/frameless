@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -75,7 +76,7 @@ func TestMux(t *testing.T) {
 			response = testcase.Let(s, func(t *testcase.T) *cli.ResponseRecorder {
 				return &cli.ResponseRecorder{}
 			})
-			request = testcase.Let[*cli.Request](s, func(t *testcase.T) *cli.Request {
+			request = testcase.Let(s, func(t *testcase.T) *cli.Request {
 				return &cli.Request{}
 			})
 		)
@@ -734,6 +735,80 @@ func TestMux(t *testing.T) {
 	})
 }
 
+func TestServeCLI(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("cmd", func(t *testcase.T) {
+		testcase.SetEnv(t, "FLAG3", "24")
+
+		var configuredCommant CommandE2E
+		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.Response, r *cli.Request) {
+			configuredCommant = v
+			data, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		}}
+
+		const expBody = "foo/bar/baz"
+		var w cli.ResponseRecorder
+		cli.ServeCLI(cmd, &w, &cli.Request{
+			Args: []string{
+				"-str", "strstring",
+				"-bool=true",
+				"Hello, world!", "42", "true",
+			},
+			Body: strings.NewReader(expBody),
+		})
+
+		assert.Equal(t, cli.ExitCodeOK, w.Code, assert.Message(w.Err.String()))
+		assert.Equal(t, expBody, w.Out.String())
+		assert.Equal(t, configuredCommant.Arg1, "Hello, world!")
+		assert.Equal(t, configuredCommant.Arg2, 42)
+		assert.Equal(t, configuredCommant.Arg3, true)
+		assert.Equal(t, configuredCommant.Flag1, "strstring")
+		assert.Equal(t, configuredCommant.Flag2, "defval")
+		assert.Equal(t, configuredCommant.Flag3, 24)
+		assert.Equal(t, configuredCommant.Flag4, true)
+	})
+
+	s.Test("mux", func(t *testcase.T) {
+		var mux cli.Mux
+
+		testcase.SetEnv(t, "FLAG3", "24")
+
+		var configuredCommant CommandE2E
+		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.Response, r *cli.Request) {
+			configuredCommant = v
+			data, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		}}
+
+		mux.Handle("cmd", cmd)
+
+		const expBody = "foo/bar/baz"
+		var w cli.ResponseRecorder
+		cli.ServeCLI(&mux, &w, &cli.Request{
+			Args: []string{"cmd",
+				"-str", "strstring",
+				"-bool=true",
+				"Hello, world!", "42", "true",
+			},
+			Body: strings.NewReader(expBody),
+		})
+
+		assert.Equal(t, cli.ExitCodeOK, w.Code, assert.Message(w.Err.String()))
+		assert.Equal(t, expBody, w.Out.String())
+		assert.Equal(t, configuredCommant.Arg1, "Hello, world!")
+		assert.Equal(t, configuredCommant.Arg2, 42)
+		assert.Equal(t, configuredCommant.Arg3, true)
+		assert.Equal(t, configuredCommant.Flag1, "strstring")
+		assert.Equal(t, configuredCommant.Flag2, "defval")
+		assert.Equal(t, configuredCommant.Flag3, 24)
+		assert.Equal(t, configuredCommant.Flag4, true)
+	})
+}
+
 type AndTheFlagTypeIs[T any] struct {
 	Desc     string
 	Act      func(t *testcase.T)
@@ -1068,7 +1143,7 @@ func TestConfigureHandler(t *testing.T) {
 		/* args */ "hello-world", "42", "True",
 	}}
 
-	cmd, err := cli.ConfigureHandler(CommandE2E{}, "", req)
+	cmd, err := cli.ConfigureHandler(CommandE2E{}, req)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, cmd)
 
@@ -1141,7 +1216,7 @@ func TestConfigureHandler_requiredFlag_defaultValueDependencyInjected(t *testing
 	cmd := CommandWithFlagWithRequired[string]{Flag: "42"}
 	cmd.Callback = func(v CommandWithFlagWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
 
-	cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+	cmd, err := cli.ConfigureHandler(cmd, &cli.Request{})
 	assert.NoError(t, err, "expected no error, since default value is already provided")
 	assert.Equal(t, cmd.Flag, "42")
 }
@@ -1150,7 +1225,7 @@ func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
 	cmd := CommandWithArgWithRequired[string]{Arg: "42"}
 	cmd.Callback = func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
 
-	cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+	cmd, err := cli.ConfigureHandler(cmd, &cli.Request{})
 	assert.NoError(t, err, "expected no error, since default value is already provided")
 	assert.Equal(t, cmd.Arg, "42")
 }
@@ -1160,7 +1235,7 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 	const envName = "FLAGNAME"
 	t.Run("no env var", func(t *testing.T) {
 		testcase.UnsetEnv(t, envName)
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+		cmd, err := cli.ConfigureHandler(cmd, &cli.Request{})
 		assert.NoError(t, err)
 		assert.Empty(t, cmd.Flag)
 	})
@@ -1168,7 +1243,7 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 	t.Run("with env var", func(t *testing.T) {
 		testcase.SetEnv(t, envName, "val")
 
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+		cmd, err := cli.ConfigureHandler(cmd, &cli.Request{})
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, "val")
 	})
@@ -1178,7 +1253,7 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 	cmd := CommandWithFlagWithEnum{}
 
 	t.Run("no enum value", func(t *testing.T) {
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{}})
+		cmd, err := cli.ConfigureHandler(cmd, &cli.Request{Args: []string{}})
 		assert.NoError(t, err)
 		assert.Empty(t, cmd.Flag)
 	})
@@ -1187,13 +1262,13 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 		t := testcase.NewT(tt)
 		exp := random.Pick(t.Random, "foo", "bar", "baz")
 
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{"-flag", exp}})
+		cmd, err := cli.ConfigureHandler(cmd, &cli.Request{Args: []string{"-flag", exp}})
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, exp)
 	})
 
 	t.Run("with invalid enum value", func(t *testing.T) {
-		_, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{"-flag", "invalid"}})
+		_, err := cli.ConfigureHandler(cmd, &cli.Request{Args: []string{"-flag", "invalid"}})
 
 		assert.Error(t, err)
 
@@ -1205,7 +1280,7 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 
 func TestConfigureHandler_unexportedStructField(t *testing.T) {
 	req := &cli.Request{Args: []string{"-ef", "fooinput"}}
-	h, err := cli.ConfigureHandler(&CommandWithUnexportedField{}, "", req)
+	h, err := cli.ConfigureHandler(&CommandWithUnexportedField{}, req)
 	assert.NoError(t, err)
 	assert.NotNil(t, h)
 	assert.Equal(t, "fooinput", h.ExportedFlag)

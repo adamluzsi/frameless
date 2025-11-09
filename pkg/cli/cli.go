@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/sandbox"
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/env"
@@ -37,15 +39,15 @@ const (
 )
 
 const (
-	ErrFlagMissing    errorkit.Error = "ErrFlagMissing"
-	ErrFlagParseIssue errorkit.Error = "ErrFlagParseIssue"
-	ErrFlagInvalid    errorkit.Error = "ErrFlagInvalid"
+	ErrFlagMissing    errorkitlite.Error = "ErrFlagMissing"
+	ErrFlagParseIssue errorkitlite.Error = "ErrFlagParseIssue"
+	ErrFlagInvalid    errorkitlite.Error = "ErrFlagInvalid"
 
-	ErrArgMissing      errorkit.Error = "ErrArgMissing"
-	ErrArgParseIssue   errorkit.Error = "ErrArgParseIssue"
-	ErrArgIndexInvalid errorkit.Error = "ErrArgIndexInvalid"
+	ErrArgMissing      errorkitlite.Error = "ErrArgMissing"
+	ErrArgParseIssue   errorkitlite.Error = "ErrArgParseIssue"
+	ErrArgIndexInvalid errorkitlite.Error = "ErrArgIndexInvalid"
 
-	ErrInvalidDefaultValue errorkit.Error = "ErrInvalidDefaultValue"
+	ErrInvalidDefaultValue errorkitlite.Error = "ErrInvalidDefaultValue"
 )
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -192,6 +194,7 @@ func (m *Mux) ServeCLI(w Response, r *Request) {
 		m.helpCommands(o)
 	}
 
+	// TODO: replace it with maybe the ServceCLI ?
 	if err := m.serveCLI(entry, w, r); err != nil {
 		isHelp := errors.Is(err, flag.ErrHelp)
 
@@ -256,60 +259,88 @@ func (m Mux) serveCLI(e *muxEntry, w Response, r *Request) error {
 	return nil
 }
 
+func ServeCLI(h Handler, w Response, r *Request) {
+	if h == nil {
+		panic("nil cli.Handler")
+	}
+	if w == nil {
+		panic("nil cli.Response")
+	}
+	if r == nil {
+		panic("nil *cli.Request")
+	}
+	if _, ok := h.(Multiplexer); !ok {
+		handler, err := ConfigureHandler(h, r)
+		if err != nil {
+			var exitCode = ExitCodeBadRequest
+			if isHelp(err) {
+				exitCode = ExitCodeOK
+			}
+			w.ExitCode(exitCode)
+
+			var msg = toHelp(h, err)
+			var o io.Writer = w
+			if !isHelp(err) {
+				o = errOut(w)
+			}
+			printfln(o, msg)
+			return
+		}
+		h = handler
+	}
+	o := sandbox.Run(func() {
+		h.ServeCLI(w, r)
+	})
+	if o.OK {
+		return
+	}
+	if o.Goexit {
+		runtime.Goexit()
+	}
+	if o.Panic {
+		if _, ok := o.PanicValue.(stop); !ok {
+			panic(o.PanicValue)
+		}
+	}
+}
+
+type stop struct{}
+
+func Stop() { panic(stop{}) }
+
+func HandleError(w Response, r *Request, err error) {
+	if err == nil {
+		return
+	}
+
+	w.ExitCode(ExitCodeError)
+	fmt.Fprintf(w, "%s\n", err.Error())
+}
+
 func Main(ctx context.Context, h Handler) {
 	var args []string
 	if 1 < len(os.Args) {
 		args = os.Args[1:]
 	}
-
+	logger.Configure(func(l *logging.Logger) {
+		if l.Out == nil { // avoid logging into STDOUT as a CLI app
+			l.Out = os.Stderr
+		}
+	})
+	var w stdResponse
 	r := &Request{
 		ctx:  ctx,
 		Args: args,
 		Body: os.Stdin,
 	}
-	w := &stdResponse{}
-
-	logger.Configure(func(l *logging.Logger) {
-		if l.Out == nil {
-			l.Out = os.Stderr
-		}
-	})
-
-	if _, ok := h.(Multiplexer); !ok {
-		handler, err := ConfigureHandler(h, execName(), r)
-		if err != nil {
-			isHelp := errors.Is(err, flag.ErrHelp)
-
-			usage, usageErr := Usage(h, execName())
-			if usageErr != nil {
-				panic(usageErr.Error())
-			}
-			var o io.Writer = w
-			if !isHelp {
-				o = errOut(w)
-			}
-			printfln(o, usage)
-			printfln(o)
-			if !isHelp {
-				printfln(o, err.Error())
-			}
-
-			var exitCode = ExitCodeBadRequest
-			if isHelp {
-				exitCode = ExitCodeOK
-			}
-			osint.Exit(exitCode)
-		}
-		h = handler
-	}
-
-	h.ServeCLI(w, r)
+	ServeCLI(h, &w, r)
 	osint.Exit(w.Code)
 }
 
-func ConfigureHandler[H Handler](h H, path string, r *Request) (zero H, _ error) {
+func ConfigureHandler[H Handler](h H, r *Request) (H, error) {
 	sm, ok, err := structMetaFor(h)
 	if err != nil {
+		var zero H
 		return zero, err
 	}
 	if !ok {
@@ -317,29 +348,10 @@ func ConfigureHandler[H Handler](h H, path string, r *Request) (zero H, _ error)
 	}
 	handler, err := configure[H](h, sm, r)
 	if err != nil {
+		var zero H
 		return zero, err
 	}
 	return handler, nil
-}
-
-type HelpUsage interface {
-	Usage(pattern string) (string, error)
-}
-
-// Usage will generate a help usage message for a given handler on a given command request pattern/path.
-func Usage(h Handler, pattern string) (string, error) {
-	if u, ok := h.(HelpUsage); ok {
-		return u.Usage(pattern)
-	}
-	var meta *structMeta
-	m, ok, err := structMetaFor(h)
-	if err != nil {
-		return "", err
-	}
-	if ok {
-		meta = &m
-	}
-	return helpCreateUsage(h, meta, pattern), nil
 }
 
 func configure[H Handler](h H, meta structMeta, r *Request) (H, error) {
@@ -427,116 +439,8 @@ func execName() string {
 	return ""
 }
 
-func (m Mux) helpLineBreak(w io.Writer, n int) {
-	w.Write([]byte(strings.Repeat(lineSeparator, n)))
-}
-
-func (m Mux) helpUsage(w io.Writer) {
-	var msg []string
-	msg = append(msg, fmt.Sprintf("Usage: %s", m.getPath()))
-	printfln(w, msg...)
-}
-
-func helpUsageOf(w io.Writer, h Handler, meta *structMeta, path string) {
-	printfln(w, helpCreateUsage(h, meta, path))
-}
-
-func helpCreateUsage(h Handler, meta *structMeta, path string) string {
-	var lines []string
-
-	var usage string
-	usage += "Usage: " + path
-
-	if meta != nil {
-		if 0 < len(meta.Flags) {
-			usage += " [OPTION]..."
-		}
-		if 0 < len(meta.Args) {
-			for _, arg := range meta.Args {
-				usage += fmt.Sprintf(" [%s]", arg.Name)
-			}
-		}
-	}
-
-	lines = append(lines, usage, "")
-
-	if s, ok := h.(HelpSummary); ok {
-		lines = append(lines, s.Summary(), "")
-	}
-
-	if meta != nil {
-		if 0 < len(meta.Flags) {
-			lines = append(lines, "Options:")
-			for _, flag := range meta.Flags {
-				name, ok := slicekit.First(flag.Names)
-				if !ok {
-					continue
-				}
-
-				line := fmt.Sprintf("  -%s=[%s]", name, flag.StructField.Type.String())
-				if 0 < len(flag.Desc) {
-					line += ": " + flag.Desc
-				}
-
-				if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.StructField); ok && 0 < len(osEnvVarNames) {
-					line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
-				}
-
-				if 0 < len(flag.Default) {
-					line += fmt.Sprintf(" (default: %s)", flag.Default)
-				}
-
-				lines = append(lines, line)
-
-				for i := 1; i < len(flag.Names); i++ {
-					lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
-				}
-			}
-		}
-		if 0 < len(meta.Args) {
-			if 0 < len(meta.Flags) {
-				lines = append(lines, "") // empty line for seperation
-			}
-			lines = append(lines, "Arguments:")
-			for _, arg := range meta.Args {
-				line := fmt.Sprintf("  %s [%s]", arg.Name, arg.StructField.Type.String())
-				if 0 < len(arg.Desc) {
-					line += ": " + arg.Desc
-				}
-				if 0 < len(arg.Default) {
-					line += fmt.Sprintf(" (Default: %s)", arg.Default)
-				}
-
-				lines = append(lines, line)
-			}
-		}
-	}
-
-	return strings.Join(lines, lineSeparator)
-}
-
-func (m Mux) helpCommands(w io.Writer) {
-	var msg []string
-
-	var cmds []string
-	for name, entry := range m.entries() {
-		var line string
-		line = " - " + name
-
-		if h, ok := entry.Handler.(HelpSummary); ok {
-			line += ": " + h.Summary()
-		}
-
-		cmds = append(cmds, line)
-	}
-
-	if 0 < len(cmds) {
-		msg = append(msg, "Commands:")
-		sort.Strings(cmds)
-		msg = append(msg, cmds...)
-	}
-
-	printfln(w, msg...)
+func printfln(w io.Writer, msg ...string) {
+	w.Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
 }
 
 var lineSeparator = func() string {
@@ -547,10 +451,6 @@ var lineSeparator = func() string {
 		return "\n"
 	}
 }()
-
-func printfln(w io.Writer, msg ...string) {
-	w.Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
-}
 
 func errOut(w Response) io.Writer {
 	if rwe, ok := w.(ErrorWriter); ok {
@@ -829,7 +729,7 @@ func (sf structFlag) Setter(ctx context.Context, Struct reflect.Value, value fla
 
 	if err := validate.StructField(ctx, sf.StructField, rval); err != nil {
 		if errors.Is(err, enum.ErrInvalid) {
-			return ErrFlagInvalid.Wrap(enumError(name, sf.Enum, rval))
+			return ErrFlagInvalid.F("%w", enumError(name, sf.Enum, rval))
 		}
 	}
 
