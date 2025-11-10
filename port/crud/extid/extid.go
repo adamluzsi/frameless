@@ -153,7 +153,7 @@ func extractIdentifierFieldByType(key idByTypeKey) func(reflect.Value) (reflect.
 			if !init {
 				candidate = hit
 			}
-			tag, ok, err := extTag.LookupTag(hit.Field)
+			tag, ok, err := extTag.Lookup(hit.Field)
 			if err != nil {
 				return nullLookup
 			}
@@ -216,7 +216,7 @@ func refMakeExtractFunc(val reflect.Value) func(reflect.Value) (reflect.StructFi
 	}
 	{ // lookup by "ext":"id" tag
 		for i := range val.NumField() {
-			tag, ok, err := extTag.LookupTag(val.Type().Field(i))
+			tag, ok, err := extTag.Lookup(val.Type().Field(i))
 			if err != nil {
 				continue
 			}

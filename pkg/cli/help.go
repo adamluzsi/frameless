@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/env"
+	"go.llib.dev/frameless/pkg/mk"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
@@ -45,15 +46,7 @@ func Usage(h Handler, pattern string) (string, error) {
 	if u, ok := h.(HelpUsage); ok {
 		return u.Usage(pattern)
 	}
-	var meta *structMeta
-	m, ok, err := structMetaFor(h)
-	if err != nil {
-		return "", err
-	}
-	if ok {
-		meta = &m
-	}
-	return helpCreateUsage(h, meta, pattern), nil
+	return helpCreateUsage(h, pattern), nil
 }
 
 func (m Mux) helpLineBreak(w io.Writer, n int) {
@@ -66,24 +59,27 @@ func (m Mux) helpUsage(w io.Writer) {
 	printfln(w, msg...)
 }
 
-func helpUsageOf(w io.Writer, h Handler, meta *structMeta, path string) {
-	printfln(w, helpCreateUsage(h, meta, path))
+func helpUsageOf(w io.Writer, h Handler, path string) {
+	printfln(w, helpCreateUsage(h, path))
 }
 
-func helpCreateUsage(h Handler, meta *structMeta, path string) string {
+func helpCreateUsage(h Handler, path string) string {
 	var lines []string
+	var (
+		m     = metaFrom(&h)
+		flags = m.Flags()
+		args  = m.Args()
+	)
 
 	var usage string
 	usage += "Usage: " + path
 
-	if meta != nil {
-		if 0 < len(meta.Flags) {
-			usage += " [OPTION]..."
-		}
-		if 0 < len(meta.Args) {
-			for _, arg := range meta.Args {
-				usage += fmt.Sprintf(" [%s]", arg.Name)
-			}
+	if 0 < len(flags) {
+		usage += " [OPTION]..."
+	}
+	if 0 < len(args) {
+		for _, arg := range args {
+			usage += fmt.Sprintf(" [%s]", arg.Name)
 		}
 	}
 
@@ -93,51 +89,53 @@ func helpCreateUsage(h Handler, meta *structMeta, path string) string {
 		lines = append(lines, s.Summary(), "")
 	}
 
-	if meta != nil {
-		if 0 < len(meta.Flags) {
-			lines = append(lines, "Options:")
-			for _, flag := range meta.Flags {
-				name, ok := slicekit.First(flag.Names)
-				if !ok {
-					continue
-				}
+	if 0 < len(flags) {
+		lines = append(lines, "Options:")
+		for _, flag := range m.Flags {
+			name, ok := slicekit.First(flag.Names)
+			if !ok {
+				continue
+			}
 
-				line := fmt.Sprintf("  -%s=[%s]", name, flag.StructField.Type.String())
-				if 0 < len(flag.Desc) {
-					line += ": " + flag.Desc
-				}
+			line := fmt.Sprintf("  -%s=[%s]", name, flag.V.StructField.Type.String())
+			if 0 < len(flag.Desc) {
+				line += ": " + flag.Desc
+			}
 
-				if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.StructField); ok && 0 < len(osEnvVarNames) {
-					line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
-				}
+			if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.V.StructField); ok && 0 < len(osEnvVarNames) {
+				line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
+			}
 
-				if 0 < len(flag.Default) {
-					line += fmt.Sprintf(" (default: %s)", flag.Default)
-				}
+			if 0 < len(flag.Default) {
+				line += fmt.Sprintf(" (default: %s)", flag.Default)
+			}
 
-				lines = append(lines, line)
+			lines = append(lines, line)
 
-				for i := 1; i < len(flag.Names); i++ {
-					lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
-				}
+			for i := 1; i < len(flag.Names); i++ {
+				lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
 			}
 		}
-		if 0 < len(meta.Args) {
-			if 0 < len(meta.Flags) {
-				lines = append(lines, "") // empty line for seperation
-			}
-			lines = append(lines, "Arguments:")
-			for _, arg := range meta.Args {
-				line := fmt.Sprintf("  %s [%s]", arg.Name, arg.StructField.Type.String())
-				if 0 < len(arg.Desc) {
-					line += ": " + arg.Desc
-				}
-				if 0 < len(arg.Default) {
-					line += fmt.Sprintf(" (Default: %s)", arg.Default)
-				}
+	}
+	if 0 < len(args) {
+		if 0 < len(flags) {
+			lines = append(lines, "") // empty line for seperation
+		}
+		lines = append(lines, "Arguments:")
+		for _, arg := range args {
+			line := fmt.Sprintf("  %s [%s]", arg.Name, arg.V.StructField.Type.String())
 
-				lines = append(lines, line)
+			_, desc, ok := descTagHandler.LookupTag(arg.V.StructField)
+			if ok {
+				line += ": " + desc
 			}
+
+			_, defVal, ok := mk.DefaultTag().LookupTag(arg.V.StructField)
+			if ok {
+				line += fmt.Sprintf(" (Default: %s)", defVal)
+			}
+
+			lines = append(lines, line)
 		}
 	}
 

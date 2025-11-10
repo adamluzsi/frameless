@@ -341,7 +341,7 @@ func (h *TagHandler[T]) HandleStructField(field reflect.StructField, value refle
 }
 
 func (h *TagHandler[T]) handleStructField(field reflect.StructField, value reflect.Value) error {
-	v, ok, err := h.LookupTag(field)
+	v, ok, err := h.Lookup(field)
 	if err != nil {
 		return err
 	}
@@ -354,18 +354,23 @@ func (h *TagHandler[T]) handleStructField(field reflect.StructField, value refle
 	return nil
 }
 
-func (h *TagHandler[T]) LookupTag(field reflect.StructField) (T, bool, error) {
-	var name string = h.Name
-	value, ok := field.Tag.Lookup(name)
+func (h *TagHandler[T]) LookupTag(field reflect.StructField) (name, value string, ok bool) {
+	if value, ok = field.Tag.Lookup(h.Name); ok {
+		return h.Name, value, ok
+	}
 	if !ok && 0 < len(h.Alias) {
 		for _, alias := range h.Alias {
 			value, ok = field.Tag.Lookup(alias)
 			if ok {
-				name = alias
-				break
+				return alias, value, ok
 			}
 		}
 	}
+	return
+}
+
+func (h *TagHandler[T]) Lookup(field reflect.StructField) (T, bool, error) {
+	name, value, ok := h.LookupTag(field)
 	if !ok && !h.HandleUntagged {
 		var zero T
 		return zero, ok, nil
@@ -421,8 +426,20 @@ type TagHandlerProxy[T any] struct {
 	h *TagHandler[T]
 }
 
-func (p TagHandlerProxy[T]) LookupTag(field reflect.StructField) (T, bool, error) {
+func (p TagHandlerProxy[T]) Parse(field reflect.StructField, tagName, tagValue string) (T, error) {
+	return p.h.Parse(field, tagName, tagValue)
+}
+
+func (p TagHandlerProxy[T]) Use(field reflect.StructField, value reflect.Value, v T) error {
+	return p.h.Use(field, value, v)
+}
+
+func (p TagHandlerProxy[T]) LookupTag(field reflect.StructField) (name, value string, ok bool) {
 	return p.h.LookupTag(field)
+}
+
+func (p TagHandlerProxy[T]) Lookup(field reflect.StructField) (T, bool, error) {
+	return p.h.Lookup(field)
 }
 
 func (p TagHandlerProxy[T]) HandleStruct(rStruct reflect.Value) error {
