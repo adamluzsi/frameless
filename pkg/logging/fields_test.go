@@ -129,6 +129,20 @@ func TestField(t *testing.T) {
 		})
 	})
 
+	s.When("value is time.Time", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return t.Random.Time()
+		})
+
+		s.Then("field is logged", func(t *testcase.T) {
+			afterLogging(t)
+			keyIsLogged(t)
+
+			assert.Contains(t, buf.Get(t).String(), fmt.Sprintf("%q", value.Get(t).(time.Time).Format(time.DateOnly)))
+		})
+
+	})
+
 	s.When("value is a struct registered for logging", func(s *testcase.Spec) {
 		type MyStruct struct {
 			Foo string
