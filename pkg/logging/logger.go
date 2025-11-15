@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/stringkit"
+	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/testcase/clock"
 )
@@ -178,7 +179,7 @@ func (l *Logger) toLogEntry(event logEvent) entry {
 	}
 	le[l.getLevelKey()] = event.Level
 	le[l.getMessageKey()] = event.Message
-	le[l.getTimestampKey()] = event.Timestamp.Format(time.RFC3339)
+	le[l.getTimestampKey()] = event.Timestamp.Format(timekit.RFC5424)
 	return le
 }
 

@@ -17,6 +17,17 @@ import (
 	"go.llib.dev/frameless/pkg/validate"
 )
 
+const (
+	ISO8601      = "2006-01-02T15:04:05Z07:00"           // with seconds only (0 digits)
+	ISO8601Milli = "2006-01-02T15:04:05.000Z07:00"       // with milliseconds (3 digits)
+	ISO8601Micro = "2006-01-02T15:04:05.000000Z07:00"    // with microseconds (6 digits)
+	ISO8601Nano  = "2006-01-02T15:04:05.000000000Z07:00" // with nanoseconds  (9 digits)
+)
+
+const RFC5424 = ISO8601Milli
+
+var _ = time.RFC3339
+
 func EnableTimeEnum() func() {
 	var tdWeekday = enum.Register[time.Weekday](Weekdays()...)                       // zero accepted as Sunday
 	var tdMonth = enum.Register[time.Month](append([]time.Month{0}, Months()...)...) // zero accepted as well for backward compability of no month

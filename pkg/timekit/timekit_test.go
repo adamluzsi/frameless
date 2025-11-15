@@ -4,6 +4,8 @@ import (
 	"context"
 	"math"
 	"reflect"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -1469,4 +1471,145 @@ func TestDuration(t *testing.T) {
 			})
 		})
 	})
+}
+
+func Test_iso8601(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("seconds", func(t *testcase.T) {
+		// Use case: Simple systems, audit logs, or APIs that don't require sub-second accuracy
+		tm := t.Random.Time() // ← Your global t.Random.Time()
+		expected := tm.Truncate(time.Second)
+
+		formatted := expected.Format(timekit.ISO8601)
+		parsed, err := time.Parse(timekit.ISO8601, formatted)
+		assert.NoError(t, err, "should parse ISO 8601 seconds format without error")
+		assert.Equal(t, expected, parsed, "parsed time should match original after roundtrip at seconds precision")
+	})
+
+	s.Test("milliseconds", func(t *testcase.T) {
+		// Use case: Most common in web applications (JavaScript, frontend, REST), balances precision and readability
+		tm := t.Random.Time() // ← Your global t.Random.Time()
+		expected := tm.Truncate(time.Millisecond)
+
+		formatted := expected.Format(timekit.ISO8601Milli)
+		parsed, err := time.Parse(timekit.ISO8601Milli, formatted)
+		assert.NoError(t, err, "should parse ISO 8601 millisecond format without error")
+		assert.Equal(t, expected, parsed, "parsed time should match original after roundtrip at millisecond precision")
+	})
+
+	s.Test("microseconds", func(t *testcase.T) {
+		// Use case: Systems like PostgreSQL, Kafka, or internal event stores needing finer granularity than ms
+		tm := t.Random.Time() // ← Your global t.Random.Time()
+		expected := tm.Truncate(time.Microsecond)
+
+		formatted := expected.Format(timekit.ISO8601Micro)
+		parsed, err := time.Parse(timekit.ISO8601Micro, formatted)
+		assert.NoError(t, err, "should parse ISO 8601 microsecond format without error")
+		assert.Equal(t, expected, parsed, "parsed time should match original after roundtrip at microsecond precision")
+	})
+
+	s.Test("nanoseconds", func(t *testcase.T) {
+		// Use case: Go’s native time precision; used in internal systems, benchmarks, financial tick data
+		tm := t.Random.Time()                    // ← Your global t.Random.Time()
+		expected := tm.Truncate(time.Nanosecond) // Go time is nanosecond-precise by default
+
+		formatted := expected.Format(timekit.ISO8601Nano)
+		parsed, err := time.Parse(timekit.ISO8601Nano, formatted)
+		assert.NoError(t, err, "should parse ISO 8601 nanosecond format without error")
+		assert.Equal(t, expected, parsed, "parsed time should match original after roundtrip at nanosecond precision")
+	})
+}
+
+func Test_rfc5424(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	// Validate that RFC5424 is defined as ISO8601Milli — sanity check
+	s.Test("RFC5424 is defined as ISO8601Milli", func(t *testcase.T) {
+		assert.Equal(t, timekit.ISO8601Milli, timekit.RFC5424,
+			"RFC5424 must be exactly ISO8601Milli to comply with RFC 5424's mandatory millisecond precision")
+	})
+
+	s.Test("RFC5424 requires exactly 3 fractional digits (milliseconds)", func(t *testcase.T) {
+		// Use case: RFC 5424 mandates exactly 3 digits after decimal — no more, no less
+		tm := t.Random.Time()
+		expected := tm.Truncate(time.Millisecond)
+
+		formatted := expected.Format(timekit.RFC5424) // == ISO8601Milli
+
+		// Parse the formatted string back to ensure it's valid
+		parsed, err := time.Parse(timekit.RFC5424, formatted)
+		assert.NoError(t, err, "RFC5424 format must be parseable")
+
+		// Assert parsed time matches original
+		assert.Equal(t, expected, parsed, "parsed RFC5424 time must match original truncated time")
+
+		// Now manually validate the format string: it MUST have exactly 3 fractional digits
+		// Example: "2024-06-15T13:45:30.123Z" — exactly 3 digits after '.'
+		pattern := `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[Z+\-]`
+		matched, err := regexp.MatchString(pattern, formatted)
+		assert.NoError(t, err, "regex compilation failed")
+		assert.True(t, matched, "RFC5424 formatted string must have exactly 3 fractional digits and valid timezone suffix")
+
+		// Also ensure there are NOT more than 3
+		assert.NotContains(t, formatted, ".0000", "RFC5424 must NOT contain 4+ fractional digits")
+	})
+
+	s.Test("RFC5424 requires mandatory timezone (Z or ±HH:MM)", func(t *testcase.T) {
+		// Use case: RFC 5424 requires explicit time zone — no local time or omitted offset
+		tm := t.Random.Time()
+		expected := tm.Truncate(time.Millisecond)
+
+		formatted := expected.Format(timekit.RFC5424)
+
+		// Must end with Z or +HH:MM or -HH:MM
+		assert.True(t, strings.HasSuffix(formatted, "Z") ||
+			strings.HasPrefix(formatted[len(formatted)-6:], "+") || strings.HasPrefix(formatted[len(formatted)-6:], "-"),
+			assert.MessageF("RFC5424 timestamp must end in 'Z' or '+HH:MM' or '-HH:MM', got %s", formatted))
+
+		// Ensure the timezone offset is in correct format: ±HH:MM (length 6 if not Z)
+		if !strings.HasSuffix(formatted, "Z") {
+			assert.Equal(t, len(formatted), 29, "RFC5424 with offset must be exactly 29 chars (e.g., '2006-01-02T15:04:05.000+07:00')")
+			assert.Equal(t, ":", string(formatted[len(formatted)-3]), "offset must use colon separator (HH:MM)")
+		}
+	})
+
+	s.Test("RFC5424 does NOT allow omission of milliseconds", func(t *testcase.T) {
+		// Use case: RFC 5424 explicitly requires milliseconds — omitting them is non-compliant
+		tm := t.Random.Time()
+		expected := tm.Truncate(time.Millisecond)
+
+		formatted := expected.Format(timekit.RFC5424)
+		// Format without milliseconds would be: "2006-01-02T15:04:05Z" — which is NOT RFC5424
+		assert.Contains(t, formatted, ".", "RFC5424 must include fractional seconds (dot and milliseconds)")
+	})
+
+	s.Test("RFC5424 does NOT allow 6-digit microseconds", func(t *testcase.T) {
+		// Use case: Some systems output 6 digits — this is INVALID under RFC5424
+		tm := t.Random.Time()
+		formattedMicros := tm.Truncate(time.Microsecond).Format("2006-01-02T15:04:05.000000Z07:00")
+
+		// Try to parse it as RFC5424 — should FAIL
+		_, err := time.Parse(timekit.RFC5424, formattedMicros)
+		assert.Error(t, err, "RFC5424 parser must reject 6-digit microsecond precision")
+
+		// Also verify the format contains 6 digits
+		assert.Contains(t, formattedMicros, ".", "test setup failed: no decimal point")
+		count := strings.Count(formattedMicros, ".")
+		assert.Equal(t, 1, count, "test setup failed: too many decimal points")
+
+		// Find digits after dot
+		parts := strings.Split(formattedMicros, ".")
+		assert.Equal(t, len(parts), 2)
+		frac := parts[1]
+		idx := strings.Index(frac, "Z")
+		if idx == -1 {
+			idx = strings.Index(frac, "+")
+			if idx == -1 {
+				idx = strings.Index(frac, "-")
+			}
+		}
+		assert.Equal(t, 6, idx, "microsecond format must have exactly 6 fractional digits — this is invalid for RFC5424")
+	})
+
 }
