@@ -1185,12 +1185,16 @@ func TestTagHandlerProxy_smoke(t *testing.T) {
 		W string
 	}
 
+	var pN, uN int
+
 	var DefaultTag = reflectkit.TagHandler[reflect.Value]{
 		Name: "default",
 		Parse: func(sf reflect.StructField, name, tag string) (reflect.Value, error) {
+			pN++
 			return convkit.ParseReflect(sf.Type, tag)
 		},
 		Use: func(sf reflect.StructField, field, defaultValue reflect.Value) error {
+			uN++
 			if field.IsZero() {
 				field.Set(defaultValue) // defaultValue is the result of Parse
 			}
@@ -1210,20 +1214,37 @@ func TestTagHandlerProxy_smoke(t *testing.T) {
 
 	v3 := T{}
 	rv3 := reflect.ValueOf(&v3).Elem()
-	fieldV, ok := rv3.Type().FieldByName("V")
+	const StructFieldName = "V"
+	fieldSF, ok := rv3.Type().FieldByName(StructFieldName)
 	assert.True(t, ok, "V field was expected in T for the test sake, something is incorrect with the test")
-	tag, ok, err := p.LookupTag(fieldV)
+	fieldV := rv3.FieldByName(StructFieldName)
+
+	tag, ok, err := p.Lookup(fieldSF)
 	assert.NoError(t, err)
 	assert.True(t, ok, "expected that the proxy finds the tag")
 	assert.Equal(t, tag.String(), "foo", "expected the correct tag value")
 
-	assert.NoError(t, p.HandleStructField(fieldV, rv3.FieldByIndex(fieldV.Index)))
+	tagName, tagValue, ok := p.LookupTag(fieldSF)
+	assert.True(t, ok)
+	assert.Equal(t, tagValue, "foo")
+
+	ipn := pN
+	parsed, err := p.Parse(fieldSF, tagName, tagValue)
+	assert.NoError(t, err)
+	assert.Equal(t, parsed.String(), tag.String())
+	assert.Equal(t, ipn+1, pN)
+
+	iun := uN
+	assert.NoError(t, p.Use(fieldSF, parsed, fieldV))
+	assert.Equal(t, iun+1, uN)
+
+	assert.NoError(t, p.HandleStructField(fieldSF, rv3.FieldByIndex(fieldSF.Index)))
 	assert.Equal(t, v3.V, "foo")
 
 	fieldW, ok := rv3.Type().FieldByName("W")
 	assert.True(t, ok, "W field was expected in T for the test sake, something is incorrect with the test")
 
-	_, ok, err = p.LookupTag(fieldW)
+	_, ok, err = p.Lookup(fieldW)
 	assert.NoError(t, err)
 	assert.False(t, ok)
 }
@@ -1933,7 +1954,7 @@ func TestTagHandler_parseTagName(t *testing.T) {
 	})
 }
 
-func TestTagHandler_LookupTag(t *testing.T) {
+func TestTagHandler_Lookup(t *testing.T) {
 	t.Run("presence_of_specified_tag", func(t *testing.T) {
 		type T struct {
 			Field1 string `testtag:"value1"`
@@ -1954,17 +1975,27 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		v := T{}
 		field, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
 		assert.True(t, ok)
-		tag, ok, err := handler.LookupTag(field)
+		tag, ok, err := handler.Lookup(field)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 		assert.Equal(t, tag, "value1")
 
+		name, raw, ok := handler.LookupTag(field)
+		assert.True(t, ok)
+		assert.Equal(t, name, "testtag")
+		assert.Equal(t, raw, "value1")
+
 		field, _, ok = reflectkit.LookupField(reflect.ValueOf(v), "Field2")
 		assert.True(t, ok)
-		tag, ok, err = handler.LookupTag(field)
+		tag, ok, err = handler.Lookup(field)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 		assert.Equal(t, tag, "42")
+
+		name, raw, ok = handler.LookupTag(field)
+		assert.True(t, ok)
+		assert.Equal(t, name, "testtag")
+		assert.Equal(t, raw, "42")
 
 		assert.ContainsExactly(t, []string{"value1", "42"}, vs)
 	})
@@ -1990,9 +2021,13 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		v := T{}
 		field, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
 		assert.True(t, ok)
-		_, ok, err := handler.LookupTag(field)
+		_, ok, err := handler.Lookup(field)
 		assert.NoError(t, err)
 		assert.False(t, ok)
+		name, raw, ok := handler.LookupTag(field)
+		assert.False(t, ok)
+		assert.Empty(t, name)
+		assert.Empty(t, raw)
 	})
 
 	t.Run("absence of specified tag but with untagged handling", func(t *testing.T) {
@@ -2017,10 +2052,15 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		v := T{}
 		field, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "Field1")
 		assert.True(t, ok)
-		tag, ok, err := handler.LookupTag(field)
+		tag, ok, err := handler.Lookup(field)
 		assert.NoError(t, err)
 		assert.True(t, ok)
 		assert.Equal(t, tag, "foo")
+
+		name, raw, ok := handler.LookupTag(field)
+		assert.False(t, ok, "the tag itself is reported as absent")
+		assert.Empty(t, name)
+		assert.Empty(t, raw)
 	})
 
 	t.Run("parse error propagated back", func(t *testing.T) {
@@ -2038,8 +2078,13 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		v := T{}
 		sf, _, ok := reflectkit.LookupField(reflect.ValueOf(v), "StringField")
 		assert.True(t, ok)
-		_, _, err := handler.LookupTag(sf)
+		_, _, err := handler.Lookup(sf)
 		assert.ErrorIs(t, err, expErr)
+
+		name, raw, ok := handler.LookupTag(sf)
+		assert.True(t, ok, "the raw tag should be still findable if it is present")
+		assert.Equal(t, name, "testtag")
+		assert.Equal(t, raw, "hello")
 	})
 
 	t.Run("cache for immutable types", func(t *testing.T) {
@@ -2062,7 +2107,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		assert.True(t, ok)
 
 		n := rnd.Repeat(3, 7, func() {
-			_, _, err := handler.LookupTag(sf)
+			_, _, err := handler.Lookup(sf)
 			assert.NoError(t, err)
 		})
 
@@ -2094,7 +2139,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		assert.True(t, ok)
 
 		n := rnd.Repeat(3, 7, func() {
-			_, _, err := handler.LookupTag(sf)
+			_, _, err := handler.Lookup(sf)
 			assert.NoError(t, err)
 		})
 
@@ -2125,7 +2170,7 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		assert.True(t, ok)
 
 		n := rnd.Repeat(3, 7, func() {
-			_, _, err := handler.LookupTag(sf)
+			_, _, err := handler.Lookup(sf)
 			assert.NoError(t, err)
 		})
 
@@ -2152,9 +2197,11 @@ func TestTagHandler_LookupTag(t *testing.T) {
 		assert.True(t, ok)
 
 		testcase.Race(
+			func() { handler.Lookup(field1) },
+			func() { handler.Lookup(field1) },
+			func() { handler.Lookup(field2) },
+			func() { handler.Lookup(field2) },
 			func() { handler.LookupTag(field1) },
-			func() { handler.LookupTag(field1) },
-			func() { handler.LookupTag(field2) },
 			func() { handler.LookupTag(field2) },
 		)
 	})

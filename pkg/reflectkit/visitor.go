@@ -1,7 +1,6 @@
 package reflectkit
 
 import (
-	"context"
 	"fmt"
 	"iter"
 	"reflect"
@@ -12,17 +11,17 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit/refnode"
 )
 
-func VisitValues(v reflect.Value) iter.Seq[V] {
+func Visit(v reflect.Value) iter.Seq[V] {
 	return func(yield func(V) bool) {
-		visitValues(yield, V{Value: v})
+		visit(yield, V{Value: v})
 	}
 }
 
-func visitValues(yield func(V) bool, v V) bool {
+func visit(yield func(V) bool, v V) bool {
 	var kind = v.Value.Kind()
 	switch kind {
 	case reflect.Struct:
-		v := v.Next(V{
+		v := v.next(V{
 			Value:    v.Value,
 			NodeType: refnode.Struct,
 		})
@@ -30,19 +29,19 @@ func visitValues(yield func(V) bool, v V) bool {
 			return false
 		}
 		for field, value := range IterStructFields(v.Value) {
-			v := v.Next(V{
+			v := v.next(V{
 				Value:       value,
 				NodeType:    refnode.StructField,
 				StructField: field,
 			})
-			if !visitValues(yield, v) {
+			if !visit(yield, v) {
 				return false
 			}
 		}
 		return true
 
 	case reflect.Array, reflect.Slice:
-		v := v.Next(V{
+		v := v.next(V{
 			Value:    v.Value,
 			NodeType: vNodeTypeOf[kind],
 		})
@@ -50,19 +49,19 @@ func visitValues(yield func(V) bool, v V) bool {
 			return false
 		}
 		for i := range v.Value.Len() {
-			vElem := v.Next(V{
+			vElem := v.next(V{
 				Value:    v.Value.Index(i),
 				NodeType: vNodeTypeElemOf[v.NodeType],
 				Index:    i,
 			})
-			if !visitValues(yield, vElem) {
+			if !visit(yield, vElem) {
 				return false
 			}
 		}
 		return true
 
 	case reflect.Map:
-		v := v.Next(V{
+		v := v.next(V{
 			Value:    v.Value,
 			NodeType: refnode.Map,
 		})
@@ -70,27 +69,26 @@ func visitValues(yield func(V) bool, v V) bool {
 			return false
 		}
 		for key, value := range IterMap(v.Value) {
-			vMapKey := v.Next(V{
+			vMapKey := v.next(V{
 				Value:    key,
 				NodeType: refnode.MapKey,
 				MapKey:   key,
 			})
-			if !visitValues(yield, vMapKey) {
+			if !visit(yield, vMapKey) {
 				return false
 			}
-			vMapValue := v.Next(V{
+			vMapValue := v.next(V{
 				Value:    value,
 				NodeType: refnode.MapValue,
 				MapKey:   key,
 			})
-			if !visitValues(yield, vMapValue) {
+			if !visit(yield, vMapValue) {
 				return false
 			}
 		}
 		return true
-
 	case reflect.Pointer, reflect.Interface:
-		v := v.Next(V{
+		v := v.next(V{
 			Value:    v.Value,
 			NodeType: vNodeTypeOf[kind],
 		})
@@ -100,12 +98,10 @@ func visitValues(yield func(V) bool, v V) bool {
 		if v.Value.IsNil() {
 			return true
 		}
-		vElem := v.Next(V{
+		return visit(yield, v.next(V{
 			Value:    v.Value.Elem(),
 			NodeType: vNodeTypeElemOf[v.NodeType],
-		})
-		return visitValues(yield, vElem)
-
+		}))
 	default:
 		if v.NodeType == refnode.Unknown {
 			v.NodeType = refnode.Value
@@ -143,7 +139,7 @@ func (v V) Path() refnode.Path {
 	return iterkit.Collect(i)
 }
 
-func (v V) Validate(context.Context) error {
+func (v V) validate() error {
 	if v.NodeType == refnode.Unknown {
 		return errorkit.F("unknown Path Kind")
 	}
@@ -191,21 +187,20 @@ func (v V) String() string {
 	return out
 }
 
-func (v V) IsZero() bool {
-	return v.NodeType == 0 &&
-		v.Index == 0 &&
-		v.MapKey == reflect.Value{} &&
-		len(v.StructField.Name) == 0 &&
-		len(v.StructField.PkgPath) == 0 &&
-		v.Parent == nil
-}
+// func (v V) isZero() bool {
+// 	return v.NodeType == 0 &&
+// 		v.Index == 0 &&
+// 		v.MapKey == reflect.Value{} &&
+// 		len(v.StructField.Name) == 0 &&
+// 		len(v.StructField.PkgPath) == 0 &&
+// 		v.Parent == nil
+// }
 
-func (v V) Next(n V) V {
+func (v V) next(n V) V {
 	if v.NodeType != refnode.Unknown {
 		n.Parent = &v
 	}
-	var ctx = context.Background()
-	if err := n.Validate(ctx); err != nil {
+	if err := n.validate(); err != nil {
 		panic(err)
 	}
 	return n

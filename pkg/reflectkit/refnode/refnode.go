@@ -2,6 +2,7 @@ package refnode
 
 import (
 	"fmt"
+	"strings"
 
 	"go.llib.dev/frameless/pkg/slicekit"
 )
@@ -88,6 +89,10 @@ const (
 )
 
 type Path []Type
+
+func (p Path) String() string {
+	return strings.Join(slicekit.Map(p, Type.String), "/")
+}
 
 func (p Path) Contains(ntp ...Type) bool {
 	if len(ntp) == 0 {

@@ -1,6 +1,7 @@
 package reflectkit_test
 
 import (
+	"iter"
 	"reflect"
 	"testing"
 
@@ -11,11 +12,19 @@ import (
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
-func TestVisitValues(t *testing.T) {
+func TestVisit(t *testing.T) {
 	s := testcase.NewSpec(t)
+
+	var (
+		v = let.Var[reflect.Value](s, nil)
+	)
+	act := let.Act(func(t *testcase.T) iter.Seq[reflectkit.V] {
+		return reflectkit.Visit(v.Get(t))
+	})
 
 	s.Test("struct", func(t *testcase.T) {
 		type T struct {
@@ -26,7 +35,7 @@ func TestVisitValues(t *testing.T) {
 		var v = T{A: t.Random.Int()}
 
 		rv := reflect.ValueOf(v)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
+		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		assert.Equal(t, len(vs), 3)
 
@@ -54,7 +63,7 @@ func TestVisitValues(t *testing.T) {
 		var in = T{1, 2, 3}
 
 		rv := reflect.ValueOf(in)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
+		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		assert.Equal(t, len(vs), 5, "array[4] + the 4 element")
 
@@ -85,7 +94,7 @@ func TestVisitValues(t *testing.T) {
 		)
 
 		rv := reflect.ValueOf(input)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
+		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		assert.Equal(t, len(vs), 1+length, "one for slice plus the length of slice (elements)")
 
@@ -118,7 +127,7 @@ func TestVisitValues(t *testing.T) {
 		)
 
 		rv := reflect.ValueOf(input)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
+		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		assert.Equal(t, len(vs), 1+length+length, "map + its keys and values")
 
@@ -151,7 +160,7 @@ func TestVisitValues(t *testing.T) {
 		var input = pointer.Of(t.Random.Int())
 
 		rv := reflect.ValueOf(input)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
+		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		assert.Equal(t, len(vs), 2, "pointer + value")
 
@@ -170,38 +179,51 @@ func TestVisitValues(t *testing.T) {
 		})
 	})
 
-	s.Test("interface", func(t *testcase.T) {
-		var (
-			RType = reflectkit.TypeOf[testent.Fooer]()
-			FooT  = reflectkit.TypeOf[testent.Foo]()
-			input = testent.Foo{
+	s.Context("interface", func(s *testcase.Spec) {
+		concrete := let.Var(s, func(t *testcase.T) testent.Foo {
+			return testent.Foo{
 				ID:  testent.FooID(t.Random.HexN(4)),
-				Foo: "foo",
-				Bar: "bar",
-				Baz: "baz",
+				Foo: t.Random.String(),
+				Bar: t.Random.String(),
+				Baz: t.Random.String(),
 			}
-		)
-
-		var x testent.Fooer = input
-		rv := reflect.ValueOf(&x).Elem()
-		assert.Equal(t, rv.Type(), RType)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
-
-		interValVisitCount := iterkit.Count(reflectkit.VisitValues(reflect.ValueOf(input)))
-		assert.Equal(t, len(vs), 1+interValVisitCount, "interface + interface value")
-
-		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
-			assert.Equal(t, got.NodeType, refnode.Interface)
-			assert.Equal(t, got.Value.Kind(), reflect.Interface)
-			assert.Equal[any](t, x, got.Value.Interface())
+		})
+		v.Let(s, func(t *testcase.T) reflect.Value {
+			var x testent.Fooer = concrete.Get(t)
+			rv := reflect.ValueOf(&x).Elem()
+			assert.Equal(t, rv.Type(), reflectkit.TypeOf[testent.Fooer]())
+			return rv
 		})
 
-		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
-			assert.Equal(t, FooT, got.Value.Type())
-			assert.True(t, got.Is(refnode.InterfaceElem))
-			assert.Equal(t, got.Value.Kind(), FooT.Kind())
-			assert.Equal(t, got.Value.Type(), FooT)
-			assert.Equal[any](t, input, got.Value.Interface())
+		s.Then("it will visit the interface, and its value both", func(t *testcase.T) {
+			wInterfaceVisitCount := iterkit.Count(act(t))
+			wValueVisitCount := iterkit.Count(reflectkit.Visit(reflect.ValueOf(concrete.Get(t))))
+			assert.Equal(t, wInterfaceVisitCount, 1+wValueVisitCount, "interface + interface values")
+		})
+
+		s.Then("the visited values will contain the interface node", func(t *testcase.T) {
+			vs := iterkit.Collect(act(t))
+
+			FooerT := reflectkit.TypeOf[testent.Fooer]()
+			assert.OneOf(t, vs, func(tb testing.TB, got reflectkit.V) {
+				assert.Equal(tb, got.NodeType, refnode.Interface)
+				assert.Equal(tb, got.Value.Kind(), reflect.Interface)
+				assert.Equal(tb, got.Value.Type(), FooerT)
+				assert.Equal[any](tb, concrete.Get(t), got.Value.Interface())
+			})
+		})
+
+		s.Then("the visited values will contain the interface elem node", func(t *testcase.T) {
+			vs := iterkit.Collect(act(t))
+
+			FooT := reflectkit.TypeOf[testent.Foo]()
+			assert.OneOf(t, vs, func(tb testing.TB, got reflectkit.V) {
+				assert.Equal(tb, FooT, got.Value.Type())
+				assert.True(tb, got.Is(refnode.InterfaceElem))
+				assert.Equal(tb, got.Value.Kind(), FooT.Kind())
+				assert.Equal(tb, got.Value.Type(), FooT)
+				assert.Equal[any](tb, concrete.Get(t), got.Value.Interface())
+			})
 		})
 	})
 
@@ -226,7 +248,7 @@ func TestVisitValues(t *testing.T) {
 		}
 
 		rv := reflect.ValueOf(v)
-		vs := iterkit.Collect(reflectkit.VisitValues(rv))
+		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		var bazVs []string
 		assert.OneOf(t, vs, func(t testing.TB, got reflectkit.V) {
@@ -245,7 +267,7 @@ func TestVisitValues(t *testing.T) {
 			var vs []int = []int{1, 2, 3}
 			elemType := reflectkit.TypeOf[int]()
 
-			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(vs)))
+			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(vs)))
 
 			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.SliceElem))
@@ -257,7 +279,7 @@ func TestVisitValues(t *testing.T) {
 			var vs [3]int = [3]int{1, 2, 3}
 			elemType := reflectkit.TypeOf[int]()
 
-			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(vs)))
+			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(vs)))
 
 			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.ArrayElem))
@@ -271,7 +293,7 @@ func TestVisitValues(t *testing.T) {
 			}
 			elemType := reflectkit.TypeOf[string]()
 
-			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(T{V: t.Random.HexN(4)})))
+			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(T{V: t.Random.HexN(4)})))
 
 			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.True(t, got.Is(refnode.StructField))
@@ -285,7 +307,7 @@ func TestVisitValues(t *testing.T) {
 			var n int = t.Random.Int()
 			elemType := reflectkit.TypeOf[int]()
 
-			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(&n)))
+			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(&n)))
 
 			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.Equal(t, got.Value.Type(), elemType)
@@ -302,7 +324,7 @@ func TestVisitValues(t *testing.T) {
 
 			elemType := reflectkit.TypeOf[int]()
 
-			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(&i).Elem()))
+			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(&i).Elem()))
 
 			assert.OneOf(t, vvs, func(t testing.TB, got reflectkit.V) {
 				assert.Equal(t, got.Value.Type(), elemType)
@@ -321,7 +343,7 @@ func TestVisitValues(t *testing.T) {
 				v *X  = &x
 			)
 
-			vvs := iterkit.Collect(reflectkit.VisitValues(reflect.ValueOf(v)))
+			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(v)))
 
 			assert.Equal(t, 3, len(vvs), "pointer -> interface -> int")
 
@@ -350,6 +372,51 @@ func TestVisitValues(t *testing.T) {
 				assert.Equal(t, got.Value.Type(), expectedValueType)
 				assert.Equal[any](t, got.Value.Interface(), n)
 			})
+		})
+	})
+
+	s.Context("smoke", func(s *testcase.Spec) {
+		s.Test("visited struct field can be set", func(t *testcase.T) {
+			type T struct{ X string }
+
+			var v T
+			rv := reflect.ValueOf(&v).Elem()
+
+			var vX reflectkit.V
+			for v := range reflectkit.Visit(rv) {
+				if v.NodeType != refnode.StructField {
+					continue
+				}
+				if v.StructField.Name == "X" {
+					vX = v
+					break
+				}
+			}
+			vX.Value.Set(reflect.ValueOf("foo"))
+			assert.Equal(t, v.X, "foo")
+		})
+
+		s.Test("setting a field value using the visited reflection value", func(t *testcase.T) {
+			var (
+				foo              = testent.MakeFoo(t)
+				fooFooFieldValue reflectkit.V
+				found            bool
+			)
+			for v := range reflectkit.Visit(reflect.ValueOf(&foo)) {
+				if v.NodeType != refnode.StructField {
+					continue
+				}
+				if v.StructField.Name == "Foo" {
+					fooFooFieldValue = v
+					found = true
+					break
+				}
+			}
+			assert.True(t, found, assert.MessageF("expected that a %T has a Foo field", foo))
+
+			exp := t.Random.Domain()
+			fooFooFieldValue.Value.Set(reflect.ValueOf(exp))
+			assert.Equal(t, foo.Foo, exp)
 		})
 	})
 }
