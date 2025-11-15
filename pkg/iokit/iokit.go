@@ -454,7 +454,7 @@ func MoveByte(in ByteReader, out ByteWriter) (byte, error) {
 	return b, nil
 }
 
-// NewLockstepReaders creates virtual clones of an io.Reader.
+// LockstepReaders creates virtual clones of an io.Reader.
 // Each clone can be read independently by different goroutines.
 //
 // This helps when several utilities need to use the io.Reader API,

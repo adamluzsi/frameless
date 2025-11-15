@@ -1006,6 +1006,24 @@ func (m *mockRuneReaderWriter) WriteRune(r rune) (n int, err error) {
 	return 1, nil
 }
 
+func ExampleLockstepReaders() {
+	input := strings.NewReader(strings.Repeat("EndIsNeverThe", 1024))
+
+	rs := iokit.LockstepReaders(input, 3, 16*iokit.Megabyte)
+
+	var g synckit.Group
+	defer g.Wait()
+
+	for i := range rs {
+		r := rs[i]
+		g.Go(func(ctx context.Context) error {
+			data, err := io.ReadAll(r)
+			_ = data
+			return err
+		})
+	}
+}
+
 func TestLockstepReaders(t *testing.T) {
 	s := testcase.NewSpec(t)
 
