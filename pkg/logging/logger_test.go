@@ -24,6 +24,10 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+const defaultLevelKey = "level"
+const defaultMessageKey = "message"
+const defaultTimestampKey = "timestamp"
+
 func Test_smoke(t *testing.T) {
 	ctx := context.Background()
 	l, buf := logging.Stub(t)
@@ -49,14 +53,31 @@ func TestLogger_smoke(t *testing.T) {
 	timecop.Travel(t, now, timecop.Freeze)
 	rnd := random.New(random.CryptoSeed{})
 
+	t.Run("default field keys", func(t *testing.T) {
+		now := rnd.Time().In(time.Local)
+		timecop.Travel(t, now, timecop.Freeze)
+		buf := &bytes.Buffer{}
+		l := logging.Logger{Out: buf, Level: logging.LevelDebug}
+		assert.Empty(t, l.LevelKey)
+		assert.Empty(t, l.MessageKey)
+		assert.Empty(t, l.TimestampKey)
+		ctx := context.Background()
+
+		l.Info(ctx, "msg")
+		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"info"`, defaultLevelKey))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"msg"`, defaultMessageKey))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"%s"`, defaultTimestampKey, now.Format(time.RFC3339)))
+	})
+
 	t.Run("log methods accept nil context", func(t *testing.T) {
 		buf := &bytes.Buffer{}
 		l := logging.Logger{Out: buf, Level: logging.LevelDebug}
-		l.Debug(nil, "Debug")
-		l.Info(nil, "Info")
-		l.Warn(nil, "Warn")
-		l.Error(nil, "Error")
-		l.Fatal(nil, "Fatal")
+		var nilContext context.Context = nil
+		l.Debug(nilContext, "Debug")
+		l.Info(nilContext, "Info")
+		l.Warn(nilContext, "Warn")
+		l.Error(nilContext, "Error")
+		l.Fatal(nilContext, "Fatal")
 		assert.Contains(t, buf.String(), "Debug")
 		assert.Contains(t, buf.String(), "Info")
 		assert.Contains(t, buf.String(), "Warn")
@@ -293,10 +314,10 @@ func TestLogger_smoke(t *testing.T) {
 		assert.OneOf(t, logs, func(it testing.TB, got LogEntry) {
 			assert.Equal(it, "the info message", got.Message)
 			assert.Equal(it, logging.LevelInfo, got.Level)
-			assert.Equal[any](it, "xuq", got.Fields["qux"])
-			assert.Equal[any](it, "1", got.Fields["foo"])
-			assert.Equal[any](it, 2, got.Fields["bar"])
-			assert.Equal[any](it, true, got.Fields["baz"])
+			assert.Equal(it, "xuq", got.Fields["qux"])
+			assert.Equal(it, "1", got.Fields["foo"])
+			assert.Equal(it, 2, got.Fields["bar"])
+			assert.Equal(it, true, got.Fields["baz"])
 		})
 	})
 }
@@ -499,7 +520,7 @@ func TestLogger_Log(t *testing.T) {
 			}
 
 			s.Before(func(t *testcase.T) {
-				t.Cleanup(logging.RegisterFieldType[T](func(v T) logging.Detail {
+				t.Cleanup(logging.RegisterType[T](func(ctx context.Context, v T) logging.Detail {
 					return logging.Fields{
 						"FOO": v.Foo,
 						"BAR": v.Bar,

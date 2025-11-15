@@ -131,7 +131,7 @@ type MyEntity struct {
 	SensitiveData    string
 }
 
-var _ = logger.RegisterFieldType(func(ent MyEntity) logging.LoggingDetail {
+var _ = logger.RegisterType(func(ent MyEntity) logging.LoggingDetail {
 	return logging.Fields{
 		"id":   ent.ID,
 		"data": ent.NonSensitiveData,

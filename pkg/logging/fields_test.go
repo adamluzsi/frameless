@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/testing/testent"
@@ -32,7 +34,7 @@ func ExampleField() {
 		logging.Field("key2", "value"))
 }
 
-func ExampleRegisterFieldType_asLoggingDetails() {
+func ExampleRegisterType_asLoggingDetails() {
 	type MyEntity struct {
 		ID               string
 		NonSensitiveData string
@@ -40,7 +42,7 @@ func ExampleRegisterFieldType_asLoggingDetails() {
 	}
 
 	// at package level
-	var _ = logging.RegisterFieldType(func(ent MyEntity) logging.Detail {
+	var _ = logging.RegisterType(func(ctx context.Context, ent MyEntity) logging.Detail {
 		return logging.Fields{
 			"id":   ent.ID,
 			"data": ent.NonSensitiveData,
@@ -136,7 +138,7 @@ func TestField(t *testing.T) {
 			Baz string
 		}
 
-		logging.RegisterFieldType(func(ms MyStruct) logging.Detail {
+		logging.RegisterType(func(ctx context.Context, ms MyStruct) logging.Detail {
 			return logging.Fields{
 				"foo": ms.Foo,
 				"bar": ms.Bar,
@@ -188,7 +190,7 @@ func TestField(t *testing.T) {
 			Baz string
 		}
 
-		logging.RegisterFieldType(func(ms *MyStruct) logging.Detail {
+		logging.RegisterType(func(ctx context.Context, ms *MyStruct) logging.Detail {
 			return logging.Fields{
 				"foo": ms.Foo,
 				"bar": ms.Bar,
@@ -229,7 +231,7 @@ func TestField(t *testing.T) {
 
 			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			assert.Contains(t, buf.Get(t).String(), "security concerns")
-			assert.Contains(t, buf.Get(t).String(), "logger.RegisterFieldType")
+			assert.Contains(t, buf.Get(t).String(), "logger.RegisterType")
 		})
 	})
 
@@ -252,7 +254,7 @@ func TestField(t *testing.T) {
 	})
 
 	s.When("value is implementing an interface type which is registered for logging", func(s *testcase.Spec) {
-		logging.RegisterFieldType(func(mi MyInterface) logging.Detail {
+		logging.RegisterType(func(ctx context.Context, mi MyInterface) logging.Detail {
 			return logging.Field("IDDQD", mi.GetIDDQD())
 		})
 
@@ -374,11 +376,11 @@ func TestLazyDetail(t *testing.T) {
 	})
 }
 
-func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
+func TestRegisterType_unregisterTypeCallback(t *testing.T) {
 	t.Run("for concrete type", func(t *testing.T) {
 		type X struct{ V int }
 		l, buf := logging.Stub(t)
-		unregister := logging.RegisterFieldType[X](func(x X) logging.Detail {
+		unregister := logging.RegisterType[X](func(ctx context.Context, x X) logging.Detail {
 			return logging.Fields{"v": x.V}
 		})
 
@@ -392,7 +394,7 @@ func TestRegisterFieldType_unregisterTypeCallback(t *testing.T) {
 	})
 	t.Run("for interface", func(t *testing.T) {
 		l, buf := logging.Stub(t)
-		unregister := logging.RegisterFieldType[testent.Fooer](func(fooer testent.Fooer) logging.Detail {
+		unregister := logging.RegisterType[testent.Fooer](func(ctx context.Context, fooer testent.Fooer) logging.Detail {
 			return logging.Fields{"foo": fooer.GetFoo()}
 		})
 
@@ -472,7 +474,7 @@ func TestFields(t *testing.T) {
 			Baz string
 		}
 
-		logging.RegisterFieldType(func(ms MyStruct) logging.Detail {
+		logging.RegisterType(func(ctx context.Context, ms MyStruct) logging.Detail {
 			return logging.Fields{
 				"foo": ms.Foo,
 				"bar": ms.Bar,
@@ -515,7 +517,7 @@ func TestFields(t *testing.T) {
 			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			assert.NotContains(t, buf.Get(t).String(), fmt.Sprintf(`%q:`, defaultKeyFormatter(key.Get(t))))
 			assert.Contains(t, buf.Get(t).String(), "security concerns")
-			assert.Contains(t, buf.Get(t).String(), "logger.RegisterFieldType")
+			assert.Contains(t, buf.Get(t).String(), "logger.RegisterType")
 		})
 	})
 
@@ -573,13 +575,24 @@ func TestErrField(t *testing.T) {
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"code":%q`, code))
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"message":%q`, expErr.Error()))
 	})
+	t.Run("when error handling registered", func(t *testing.T) {
+		t.Cleanup(logging.RegisterType[error](func(ctx context.Context, err error) logging.Detail {
+			return logging.Field("err", err.Error())
+		}))
+
+		l, buf := logging.Stub(t)
+		var expErr error = rnd.Error()
+		d := logging.ErrField(expErr)
+		l.Info(t.Context(), "boom", d)
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"err":%q`, expErr.Error()))
+	})
 }
 
 type Foo struct {
 	Bar Bar
 }
 
-var _ = logging.RegisterFieldType[Foo](func(foo Foo) logging.Detail {
+var _ = logging.RegisterType[Foo](func(ctx context.Context, foo Foo) logging.Detail {
 	return logging.Field("bar", foo.Bar)
 })
 
@@ -587,7 +600,7 @@ type Bar struct {
 	V string
 }
 
-var _ = logging.RegisterFieldType[Bar](func(bar Bar) logging.Detail {
+var _ = logging.RegisterType[Bar](func(ctx context.Context, bar Bar) logging.Detail {
 	return logging.Field("v", bar.V)
 })
 
@@ -633,3 +646,177 @@ type MyInterface interface{ GetIDDQD() string }
 type MyData struct{ ID string }
 
 func (d MyData) GetIDDQD() string { return d.ID }
+
+func TestWith(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	logger, logs := testcase.Let2(s, func(t *testcase.T) (*logging.Logger, logging.StubOutput) {
+		return logging.Stub(t)
+	})
+
+	var value = testcase.Let[any](s, nil)
+	act := func(t *testcase.T) logging.Detail {
+		return logging.With(value.Get(t))
+	}
+
+	afterLogging := func(t *testcase.T) {
+		t.Helper()
+		logger.Get(t).Info(t.Context(), "", act(t))
+	}
+
+	s.When("value is an unregistered logging detail type", func(s *testcase.Spec) {
+		value.Let(s, func(t *testcase.T) any {
+			return random.Pick(t.Random,
+				func() any { return t.Random.StringNWithCharset(5, random.CharsetAlpha()) },
+				func() any { return t.Random.Int() },
+				func() any { return t.Random.Bool() },
+			)()
+		})
+
+		s.Then("warn issued", func(t *testcase.T) {
+			afterLogging(t)
+			assert.Contains(t, logs.Get(t).String(), `"level":"warn"`)
+		})
+	})
+
+	s.When("value is a struct registered for logging", func(s *testcase.Spec) {
+		type MyStruct struct {
+			Foo string
+			Bar string
+			Baz string
+		}
+
+		s.Before(func(t *testcase.T) {
+			unregister := logging.RegisterType(func(ctx context.Context, ms MyStruct) logging.Detail {
+				return logging.Fields{
+					"foo": ms.Foo,
+					"bar": ms.Bar,
+					"baz": ms.Baz,
+				}
+			})
+			t.Cleanup(unregister)
+		})
+
+		myStruct := testcase.Let(s, func(t *testcase.T) MyStruct {
+			return MyStruct{
+				Foo: t.Random.UUID(),
+				Bar: t.Random.UUID(),
+				Baz: t.Random.UUID(),
+			}
+		})
+
+		value.Let(s, func(t *testcase.T) any { return myStruct.Get(t) })
+
+		s.Then("then the registered field mapping is used", func(t *testcase.T) {
+			afterLogging(t)
+
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+		})
+
+		s.And("the field value passed as a pointer", func(s *testcase.Spec) {
+			value.Let(s, func(t *testcase.T) any {
+				return pointer.Of(myStruct.Get(t))
+			})
+
+			s.Then("then the registered field mapping is used", func(t *testcase.T) {
+				afterLogging(t)
+
+				assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+				assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+				assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			})
+		})
+	})
+
+	s.When("value type is registered for logging as a pointer type", func(s *testcase.Spec) {
+		type MyStruct struct {
+			Foo string
+			Bar string
+			Baz string
+		}
+
+		logging.RegisterType(func(ctx context.Context, ms *MyStruct) logging.Detail {
+			return logging.Fields{
+				"foo": ms.Foo,
+				"bar": ms.Bar,
+				"baz": ms.Baz,
+			}
+		})
+
+		myStruct := testcase.Let(s, func(t *testcase.T) *MyStruct {
+			return &MyStruct{
+				Foo: t.Random.UUID(),
+				Bar: t.Random.UUID(),
+				Baz: t.Random.UUID(),
+			}
+		})
+
+		value.Let(s, func(t *testcase.T) any { return myStruct.Get(t) })
+
+		s.Then("then the registered field mapping is used", func(t *testcase.T) {
+			afterLogging(t)
+
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Foo))
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q", myStruct.Get(t).Baz))
+		})
+	})
+
+	s.When("value is a struct not registered for logging", func(s *testcase.Spec) {
+		type MyUnregisteredStruct struct{ Foo string }
+
+		value.Let(s, func(t *testcase.T) any {
+			return MyUnregisteredStruct{Foo: t.Random.String()}
+		})
+
+		s.Then("field is ignored, but a warning is made", func(t *testcase.T) {
+			afterLogging(t)
+
+			assert.Contains(t, logs.Get(t).String(), "security concerns")
+			assert.Contains(t, logs.Get(t).String(), "logger.RegisterType")
+		})
+	})
+
+	s.When("value is implementing an interface type which is registered for logging", func(s *testcase.Spec) {
+		s.Before(func(t *testcase.T) {
+			unregister := logging.RegisterType(func(ctx context.Context, mi MyInterface) logging.Detail {
+				return logging.Field("IDDQD", mi.GetIDDQD())
+			})
+			t.Cleanup(unregister)
+		})
+
+		myData := testcase.Let(s, func(t *testcase.T) MyData {
+			return MyData{ID: t.Random.UUID()}
+		})
+
+		value.Let(s, func(t *testcase.T) any { return myData.Get(t) })
+
+		s.Then("then the registered field mapping is used", func(t *testcase.T) {
+			afterLogging(t)
+
+			assert.Contains(t, logs.Get(t).String(), fmt.Sprintf("%q:%q", defaultKeyFormatter("IDDQD"), myData.Get(t).ID))
+		})
+	})
+
+	s.When("value is nil", func(s *testcase.Spec) {
+		value.LetValue(s, nil)
+
+		s.Then("logging detail is ignored logged as nil/null", func(t *testcase.T) {
+			afterLogging(t)
+
+			out := logs.Get(t).String()
+			dec := json.NewDecoder(strings.NewReader(out))
+
+			for dec.More() {
+				var record map[string]any
+				assert.NoError(t, dec.Decode(&record))
+				assert.ContainsExactly(t, mapkit.Keys(record),
+					[]string{defaultLevelKey, defaultMessageKey, defaultTimestampKey},
+					assert.MessageF("logs: %s", out))
+			}
+
+		})
+	})
+}

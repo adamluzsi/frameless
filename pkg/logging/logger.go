@@ -107,10 +107,10 @@ func (l *Logger) isHijacked(ctx context.Context, level Level, msg string, ds []D
 	}
 	var le = make(entry)
 	for _, d := range getLoggingDetailsFromContext(ctx) {
-		d.addTo(l, le)
+		d.addTo(ctx, l, le)
 	}
 	for _, d := range ds {
-		d.addTo(l, le)
+		d.addTo(ctx, l, le)
 	}
 	l.Hijack(ctx, level, msg, Fields(le))
 	return true
@@ -171,10 +171,10 @@ func (l *Logger) coalesceKey(key, defaultKey string) string {
 func (l *Logger) toLogEntry(event logEvent) entry {
 	le := make(entry)
 	for _, d := range getLoggingDetailsFromContext(event.Context) {
-		d.addTo(l, le)
+		d.addTo(event.Context, l, le)
 	}
 	for _, ld := range event.Details {
-		ld.addTo(l, le)
+		ld.addTo(event.Context, l, le)
 	}
 	le[l.getLevelKey()] = event.Level
 	le[l.getMessageKey()] = event.Message
