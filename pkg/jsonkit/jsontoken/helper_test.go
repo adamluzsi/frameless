@@ -15,6 +15,35 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+func Scan(in jsontoken.Input) (json.RawMessage, error) {
+	var output json.RawMessage
+	var s = jsontoken.Scanner{
+		Selectors: []jsontoken.Selector{{
+			On: func(src io.Reader) error {
+				data, err := io.ReadAll(src)
+				output = data
+				return err
+			},
+		}},
+	}
+	var err = s.Scan(in)
+	return output, err
+}
+
+// ScanFrom is a syntax sugar to use Scan with string and byte slices
+func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
+	switch src := any(v).(type) {
+	case string:
+		return Scan(bufio.NewReader(strings.NewReader(src)))
+	case []byte:
+		return Scan(bufio.NewReader(bytes.NewReader(src)))
+	case *bufio.Reader:
+		return Scan(src)
+	default:
+		panic("not-implemented")
+	}
+}
+
 func jsonArrayWithInt(rnd *random.Random, length int) string {
 	ary := random.Slice(length, rnd.Int)
 	return mustMarshal[string](ary)

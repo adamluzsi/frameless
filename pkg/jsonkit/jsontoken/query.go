@@ -2,51 +2,62 @@ package jsontoken
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"iter"
 
-	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/testcase/pp"
+	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/synckit"
 )
 
 // Query will turn the input reader into a json visitor that yields results when a path is matching.
 // Think about it something similar as jq.
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
 func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
-	const stopIteration errorkit.Error = "break"
+	const stopIteration errorkitlite.Error = "break"
+	type Hit struct {
+		Data json.RawMessage
+		Err  error
+	}
 	return func(yield func(json.RawMessage, error) bool) {
+		var hits = make(chan Hit)
 
-		var stop bool
-		sc := Scanner{Selectors: []Selector{{
-			Path: path,
-			On: func(src io.Reader) error {
-				var ok bool
-				defer func() {
-					if !ok {
-						pp.PP("!ok")
-						stop = true
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		sc := Scanner{
+			Selectors: []Selector{{
+				Path: path,
+				On: func(src io.Reader) error {
+					data, err := io.ReadAll(src)
+					select {
+					case hits <- Hit{Data: data, Err: err}:
+					case <-ctx.Done():
+						return stopIteration
 					}
-				}()
-				pp.PP("yield:before")
-				cont := yield(io.ReadAll(src))
-				pp.PP("yield:after")
-				ok = true
-				if !cont {
-					stop = true
-					return stopIteration
-				}
-				return nil
-			},
-		}}}
-		pp.PP("res", "stop", stop)
-		var err = sc.Scan(toInput(r))
-		pp.PP(err)
-		if errors.Is(err, stopIteration) {
-			return
+					return nil
+				},
+			}},
 		}
-		if stop {
+
+		var g synckit.Group
+		defer g.Wait()
+
+		g.Go(func(ctx context.Context) error {
+			defer close(hits)
+			return sc.Scan(toInput(r))
+		})
+
+		for hit := range hits {
+			if !yield(hit.Data, hit.Err) {
+				return
+			}
+		}
+
+		var err = g.Wait()
+		if errors.Is(err, stopIteration) {
 			return
 		}
 		if err != nil {

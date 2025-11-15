@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
@@ -21,7 +22,7 @@ import (
 	"go.llib.dev/frameless/pkg/synckit"
 )
 
-const ErrMalformed errorkit.Error = "[ErrMalformed] malformed JSON"
+const ErrMalformed errorkitlite.Error = "[ErrMalformed] malformed JSON"
 
 type LexingError struct {
 	Message string
@@ -83,6 +84,13 @@ type Scanner struct {
 	BufferSize iokit.ByteSize
 }
 
+func (s *Scanner) On(path Path, on func(io.Reader) error) {
+	s.Selectors = append(s.Selectors, Selector{
+		Path: path,
+		On:   on,
+	})
+}
+
 type Selector struct {
 	Path Path
 	On   func(src io.Reader) error
@@ -124,20 +132,40 @@ func (s *Scanner) Scan(in Input) error {
 	err := s.with(out, path, func(out io.Writer) error {
 		return s.scan(in, out, path)
 	})
-	if err != nil && !errors.Is(err, io.EOF) {
+	if err != nil {
+		if err, ok := s.isScanError(err, path); ok {
+			return err
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 		return s.asLexingError(err, path)
 	}
 	return nil
+}
+
+func (s *Scanner) isScanError(err error, path Path) (error, bool) {
+	if errors.As(err, &LexingError{}) {
+		return err, true
+	}
+	if errors.Is(err, ErrMalformed) {
+		return s.asLexingError(err, path), true
+	}
+	return nil, false
+}
+
+func (s *Scanner) malformedF(path Path, format string, a ...any) error {
+	return s.asLexingError(ErrMalformed.F(format, a...), path)
 }
 
 func (s *Scanner) asLexingError(err error, path Path) error {
 	if err == nil {
 		return nil
 	}
-	if _, ok := errorkit.As[LexingError](err); ok {
+	if _, ok := errorkitlite.As[LexingError](err); ok {
 		return err
 	}
-	return errorkit.Merge(err, LexingError{Path: path})
+	return errorkitlite.Merge(err, LexingError{Path: path})
 }
 
 func (s *Scanner) scan(in Input, out io.Writer, path Path) error {
@@ -202,7 +230,7 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 	}
 
 	var g synckit.Group
-	defer errorkit.Finish(&rErr, g.Wait)
+	defer errorkitlite.Finish(&rErr, g.Wait)
 
 	pr, pw := io.Pipe()
 	defer pw.Close()
@@ -244,6 +272,8 @@ func trimSpace(in Input, out io.Writer) error {
 func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
 	path = path.With(KindNumber)
 	return s.with(out, path, func(out io.Writer) error {
+		var number bytes.Buffer
+		out = io.MultiWriter(&number, out)
 	scan:
 		for {
 			digit, _, err := in.ReadRune()
@@ -258,10 +288,12 @@ func (s *Scanner) scanNumber(in Input, out io.Writer, path Path) error {
 				}
 				break scan
 			}
-
 			if _, err := writeRune(out, digit); err != nil {
 				return err
 			}
+		}
+		if !json.Valid(number.Bytes()) {
+			return s.malformedF(path, "not a valid number: %s", number.String())
 		}
 		return nil
 	})
@@ -328,6 +360,9 @@ func (s *Scanner) scanBoolean(in Input, out io.Writer, path Path) error {
 func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 	path = path.With(KindArray)
 	return s.with(out, path, func(out io.Writer) error {
+		var debugOut bytes.Buffer
+		out = io.MultiWriter(&debugOut, out)
+
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
@@ -374,6 +409,12 @@ func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 
 			// scan array value
 			if err := s.scan(in, out, path.With(KindElement{Index: &i})); err != nil {
+				if err, ok := s.isScanError(err, path); ok {
+					return err
+				}
+				if errors.Is(err, io.EOF) {
+					return s.malformedF(path, "unexpected %w during array value token scanning", err)
+				}
 				return err
 			}
 
@@ -501,11 +542,12 @@ func (s *Scanner) scanObject(in Input, out io.Writer, path Path) error {
 func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 	path = path.With(KindString)
 	return s.with(out, path, func(out io.Writer) error {
+		// var str bytes.Buffer
+		// out = io.MultiWriter(&str, out)
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
-		var str bytes.Buffer
-		first, _, err := moveRune(in, &str)
+		first, _, err := moveRune(in, out)
 		if err != nil {
 			return err
 		}
@@ -515,26 +557,49 @@ func (s *Scanner) scanString(in Input, out io.Writer, path Path) error {
 				Path:    path,
 			}
 		}
-	scan:
-		for {
-			b, err := iokit.MoveByte(in, &str)
-			if err != nil {
-				return err
-			}
-			if b == byte(quoteToken) {
-				// it is only enough to check if the string is fully found when we see a potential closing quote character.
-				// this way, we don't need to check the validity on each utf8 character.
-				if json.Valid(str.Bytes()) {
-					break scan
+		var complete, inEscape bool
+		for !complete {
+			char, n, err := in.ReadRune()
+			if 0 < n {
+				if _, err := writeRune(out, char); err != nil {
+					return err
+				}
+				switch {
+				case char == stringEscapesToken:
+					inEscape = !inEscape
+				case char == quoteToken && !inEscape:
+					complete = true
+				default:
+					inEscape = false
 				}
 			}
-		}
-		if _, err := str.WriteTo(out); err != nil {
-			return err
+			if complete {
+				return err
+			}
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return s.malformedF(path, "unexpected %w during incomplete string token", err)
+				}
+				return s.malformedF(path, "unexpected error during string scanning: %w", err)
+			}
 		}
 		return nil
 	})
 }
+
+const stringEscapesToken = '\\'
+
+// var validStringEscapes = map[rune]struct{}{
+// 	'"':  {}, // quotation mark
+// 	'\\': {}, // backslash
+// 	'/':  {}, // forward slash
+// 	'b':  {}, // backspace
+// 	'f':  {}, // form feed
+// 	'n':  {}, // newline
+// 	'r':  {}, // carriage return
+// 	't':  {}, // tab
+// 	'u':  {}, // unicode
+// }
 
 func (s *Scanner) tokenStartKind(char rune) Kind {
 	if _, ok := numberChars[char]; ok {
@@ -894,34 +959,4 @@ trim:
 		}
 	}
 	return out.Bytes()
-}
-
-// ScanFrom is a syntax sugar to use Scan with string and byte slices
-func ScanFrom[T string | []byte | *bufio.Reader](v T) (json.RawMessage, error) {
-	switch src := any(v).(type) {
-	case string:
-		return Scan(bufio.NewReader(strings.NewReader(src)))
-	case []byte:
-		return Scan(bufio.NewReader(bytes.NewReader(src)))
-	case *bufio.Reader:
-		return Scan(src)
-	default:
-		panic("not-implemented")
-	}
-}
-
-// Scan scan a json raw message out from an input source.
-func Scan(in Input) (json.RawMessage, error) {
-	var output json.RawMessage
-	var s = Scanner{
-		Selectors: []Selector{{
-			On: func(src io.Reader) error {
-				data, err := io.ReadAll(src)
-				output = data
-				return err
-			},
-		}},
-	}
-	var err = s.Scan(in)
-	return output, err
 }

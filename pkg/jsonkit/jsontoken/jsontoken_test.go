@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -271,164 +272,263 @@ func Test_AnalyzeCommonFailures(t *testing.T) {
 }
 
 func TestScanner(t *testing.T) {
-	t.Run("AddString", func(t *testing.T) {
-		exp := mustMarshal[string](rnd.String())
-		raw, err := jsontoken.ScanFrom(exp)
+	s := testcase.NewSpec(t)
+
+	var (
+		selectors = let.Var(s, func(t *testcase.T) []jsontoken.Selector {
+			return nil
+		})
+	)
+	scanner := let.Var(s, func(t *testcase.T) *jsontoken.Scanner {
+		return &jsontoken.Scanner{
+			Selectors: selectors.Get(t),
+		}
+	})
+
+	s.Test("AddString", func(t *testcase.T) {
+		exp := mustMarshal[string](t.Random.String())
+		t.Log(exp)
+		t.Logf("%q", exp)
+		raw, err := ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("AddChar", func(t *testing.T) {
-		exp := mustMarshal[string](rnd.String())
-		raw, err := jsontoken.ScanFrom(exp)
+	s.Test("AddChar", func(t *testcase.T) {
+		exp := mustMarshal[string](t.Random.String())
+		raw, err := ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("null", func(t *testing.T) {
+	s.Test("null", func(t *testcase.T) {
 		const exp = `null`
-		raw, err := jsontoken.ScanFrom(exp)
+		raw, err := ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("string", func(t *testing.T) {
-		t.Run("normal", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.StringNWithCharset(10, random.CharsetAlpha()))
-			raw, err := jsontoken.ScanFrom(exp)
+	s.Context("string", func(s *testcase.Spec) {
+		s.Test("normal", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.StringNWithCharset(10, random.CharsetAlpha()))
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("with escape", func(t *testing.T) {
+		s.Test("with escape", func(t *testcase.T) {
 			exp := `"\"foo\""`
-			raw, err := jsontoken.ScanFrom(exp)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
 	})
 
-	t.Run("number", func(t *testing.T) {
-		t.Run("integer", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.IntBetween(1, 100))
+	s.Context("number", func(s *testcase.Spec) {
+		s.Test("integer", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.IntBetween(1, 100))
 			t.Log("number", exp)
-			raw, err := jsontoken.ScanFrom(exp)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("float", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.Float64())
-			raw, err := jsontoken.ScanFrom(exp)
+		s.Test("float", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.Float64())
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("negative", func(t *testing.T) {
-			exp := mustMarshal[string](rnd.Float64() * -1.0)
-			raw, err := jsontoken.ScanFrom(exp)
+		s.Test("negative", func(t *testcase.T) {
+			exp := mustMarshal[string](t.Random.Float64() * -1.0)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
 	})
 
-	t.Run("bool", func(t *testing.T) {
-		t.Run("true", func(t *testing.T) {
+	s.Context("bool", func(s *testcase.Spec) {
+		s.Test("true", func(t *testcase.T) {
 			exp := `true`
-			raw, err := jsontoken.ScanFrom(exp)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("false", func(t *testing.T) {
+		s.Test("false", func(t *testcase.T) {
 			exp := `false`
-			raw, err := jsontoken.ScanFrom(exp)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
 	})
 
-	t.Run("empty array", func(t *testing.T) {
+	s.Test("empty array", func(t *testcase.T) {
 		exp := `[]`
-		raw, err := jsontoken.ScanFrom(exp)
+		raw, err := ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("non-empty array", func(t *testing.T) {
+	s.Test("non-empty array", func(t *testcase.T) {
 		exp := `["foo", 42, true]`
-		raw, err := jsontoken.ScanFrom(exp)
+		raw, err := ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("array of array", func(t *testing.T) {
-		t.Run("empty", func(t *testing.T) {
+	s.Context("array of array", func(s *testcase.Spec) {
+		s.Test("empty", func(t *testcase.T) {
 			exp := `[[]]`
-			raw, err := jsontoken.ScanFrom(exp)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
-		t.Run("non-empty", func(t *testing.T) {
+		s.Test("non-empty", func(t *testcase.T) {
 			exp := `[[42]]`
-			raw, err := jsontoken.ScanFrom(exp)
+			raw, err := ScanFrom(exp)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), exp)
 		})
 	})
 
-	t.Run("e2e", func(t *testing.T) {
+	s.Test("e2e", func(t *testcase.T) {
 		exp := `[
 			  {"key": "foo", "ary": [1, 2, 3]},
 			  {"key": "bar", "ary": [3, 2, 1]}
 		]`
-		raw, err := jsontoken.ScanFrom(exp)
+		raw, err := ScanFrom(exp)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), exp)
 	})
 
-	t.Run("smoke", func(t *testing.T) {
+	s.Context("smoke", func(s *testcase.Spec) {
 		for name, sample := range Samples {
-			sample := sample
-			t.Run(name, func(t *testing.T) {
+			name, sample := name, sample
+
+			s.Test(name, func(t *testcase.T) {
 				t.Log("json", sample)
 				assert.True(t, json.Valid([]byte(sample)),
 					"Perform a sanity check before testing to ensure the sample is valid JSON")
 
-				raw, err := jsontoken.ScanFrom(sample)
+				raw, err := ScanFrom(sample)
 				assert.NoError(t, err)
 				assert.Equal(t, string(raw), sample)
 			})
 		}
+	})
+
+	s.Describe("#Scan", func(s *testcase.Spec) {
+		var (
+			input = let.Var[jsontoken.Input](s, nil)
+		)
+		act := let.Act(func(t *testcase.T) error {
+			return scanner.Get(t).Scan(input.Get(t))
+		})
+
+		s.Context("string", func(s *testcase.Spec) {
+			expectedData := let.Var[json.RawMessage](s, nil)
+			input.Let(s, func(t *testcase.T) jsontoken.Input {
+				dv := expectedData.Get(t)
+				assert.True(t, json.Valid(dv), "expected that the json raw message is valid")
+				// the array surrounding ensures that incorrect string handling causes issues
+				dv = []byte(fmt.Sprintf(`[%s]`, string(dv)))
+				data, err := json.Marshal(dv)
+				assert.NoError(t, err)
+				return bytes.NewReader(data)
+			})
+
+			gotData := let.VarOf[[]byte](s, nil)
+			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
+				return []jsontoken.Selector{
+					{
+						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
+						On: func(src io.Reader) error {
+							data, err := io.ReadAll(src)
+							gotData.Set(t, data)
+							return err
+						},
+					},
+				}
+			})
+
+			s.Context("quote", func(s *testcase.Spec) {
+				expectedData.Let(s, func(t *testcase.T) json.RawMessage {
+					return []byte(`"\""`)
+				})
+
+				s.Then("scan will able to lex it", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, expectedData.Get(t), gotData.Get(t))
+				})
+
+				s.Test("smoke", func(t *testcase.T) {
+					var (
+						in      = `"\""`
+						s       jsontoken.Scanner
+						gotData []byte
+					)
+					s.Selectors = []jsontoken.Selector{
+						{
+							Path: jsontoken.Path{jsontoken.KindString},
+							On: func(src io.Reader) error {
+								data, err := io.ReadAll(src)
+								if err == nil {
+									gotData = data
+								}
+								return err
+							},
+						},
+					}
+
+					assert.NoError(t, s.Scan(strings.NewReader(in)))
+					assert.Equal(t, string(gotData), in)
+				})
+			})
+
+			s.Context("backslash", func(s *testcase.Spec) {
+				expectedData.Let(s, func(t *testcase.T) json.RawMessage {
+					return []byte(`"\\"`)
+				})
+
+				s.Then("scan will able to lex it", func(t *testcase.T) {
+					assert.NoError(t, act(t))
+
+					assert.Equal(t, expectedData.Get(t), gotData.Get(t))
+				})
+			})
+		})
 	})
 }
 
 func TestScanner_ScanFrom(t *testing.T) {
 	t.Run("number", func(t *testing.T) {
 		in := `12.34d`
-		raw, err := jsontoken.ScanFrom(in)
+		raw, err := ScanFrom(in)
 		assert.NoError(t, err)
 		assert.Equal(t, string(raw), "12.34")
 	})
 	t.Run("array", func(t *testing.T) {
 		t.Run("of object", func(t *testing.T) {
 			in := `[{"foo":"bar"}, {"foo":"baz"}] |`
-			raw, err := jsontoken.ScanFrom(in)
+			raw, err := ScanFrom(in)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), `[{"foo":"bar"}, {"foo":"baz"}]`)
 		})
 		t.Run("of number", func(t *testing.T) {
 			in := `[1 ,2 ,3] x`
-			raw, err := jsontoken.ScanFrom(in)
+			raw, err := ScanFrom(in)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), `[1 ,2 ,3]`)
 		})
 		t.Run("of string", func(t *testing.T) {
 			in := `["1" ,"2" ,"3"] x`
-			raw, err := jsontoken.ScanFrom(in)
+			raw, err := ScanFrom(in)
 			assert.NoError(t, err)
 			assert.Equal(t, string(raw), `["1" ,"2" ,"3"]`)
 		})
 	})
 }
 
-func TestScan_smoke(t *testing.T) {
+func TestScanner_Scan_smoke(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	input := testcase.Let[string](s, nil)
@@ -444,7 +544,7 @@ func TestScan_smoke(t *testing.T) {
 			s.Test("exact", func(t *testcase.T) {
 				in := bufio.NewReader(strings.NewReader(input.Get(t)))
 
-				raw, err := jsontoken.Scan(in)
+				raw, err := Scan(in)
 				assert.NoError(t, err)
 				assert.Equal(t, string(raw), input.Get(t))
 
@@ -464,7 +564,7 @@ func TestScan_smoke(t *testing.T) {
 				extra := " " + t.Random.String() // naughty strings injection
 				in := bufio.NewReader(strings.NewReader(input.Get(t) + extra))
 
-				raw, err := jsontoken.Scan(in)
+				raw, err := Scan(in)
 				assert.NoError(t, err)
 				assert.Equal(t, string(raw), input.Get(t))
 
@@ -498,7 +598,7 @@ func FuzzScanner(f *testing.F) {
 		buf2 := bufio.NewReader(strings.NewReader(in))
 		bs, _ := io.ReadAll(buf2)
 		assert.Equal(t, string(bs), in)
-		out, err := jsontoken.Scan(buf)
+		out, err := Scan(buf)
 		assert.NoError(t, err)
 		assert.Equal(t, in, string(out))
 	})
@@ -623,7 +723,7 @@ func Benchmark_arrayScan(b *testing.B) {
 			buf := bufio.NewReader(bytes.NewReader(input))
 			b.StartTimer()
 
-			got, err := jsontoken.Scan(buf)
+			got, err := Scan(buf)
 			assert.NoError(b, err)
 			assert.Equal(b, got, input)
 
