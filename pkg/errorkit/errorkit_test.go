@@ -722,14 +722,7 @@ func TestF(t *testing.T) {
 		assert.Contains(t, err.Error(), message)
 	})
 
-	s.Then("the error has trace", func(t *testcase.T) {
-		err := act(t)
-
-		var trace errorkit.TracedError
-		assert.True(t, errors.As(err, &trace))
-		assert.NotEmpty(t, trace)
-		assert.Error(t, trace.Err)
-	})
+	ThenErrorTraceIsPresent(s, act)
 
 	s.When("format wraps another error", func(s *testcase.Spec) {
 		expErr := let.Error(s)

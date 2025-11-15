@@ -9,22 +9,38 @@ import (
 	"go.llib.dev/frameless/pkg/runtimekit"
 )
 
+func WithoutTrace(err error) error {
+	if te, ok := As[*TracedError](err); ok {
+		te.HideStack = true
+		return err
+	}
+	return err
+}
+
 func WithTrace(err error) error {
 	if err == nil {
 		return err
 	}
-	if errors.As(err, &TracedError{}) {
+	var p *TracedError
+	if errors.As(err, &p) {
+		p.HideStack = false
 		return err
 	}
-	return TracedError{
+	p = &TracedError{
 		Err:   err,
 		Stack: runtimekit.Stack(),
 	}
+	p.p = p
+	return p
 }
 
 type TracedError struct {
 	Err   error
 	Stack []runtime.Frame
+
+	HideStack bool
+
+	p *TracedError
 }
 
 func (err TracedError) Error() string {
@@ -32,7 +48,7 @@ func (err TracedError) Error() string {
 	if err.Err != nil {
 		msg += err.Err.Error()
 	}
-	if 0 < len(err.Stack) {
+	if !err.HideStack && 0 < len(err.Stack) {
 		var traceLines []string
 		for _, frame := range err.Stack {
 			traceLines = append(traceLines, err.frameToString(frame))
@@ -55,7 +71,20 @@ func (err TracedError) frameToString(f runtime.Frame) string {
 }
 
 func (err TracedError) As(target any) bool {
-	return errors.As(err.Err, target)
+	switch target := target.(type) {
+	case **TracedError:
+		var p = err.p
+		if p == nil {
+			p = &err
+		}
+		*target = p
+		return true
+	case *TracedError:
+		*target = err
+		return true
+	default:
+		return errors.As(err.Err, target)
+	}
 }
 
 func (err TracedError) Is(target error) bool {

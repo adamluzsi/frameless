@@ -13,6 +13,31 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
+func TestWithoutTrace(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("smoke", func(t *testcase.T) {
+		var exp = t.Random.Error()
+		var got = exp
+
+		got = errorkit.WithTrace(got)
+		got = errorkit.WithoutTrace(got)
+
+		assert.Equal(t, exp.Error(), got.Error())
+	})
+
+	s.Test("With Without With", func(t *testcase.T) {
+		var exp = t.Random.Error()
+		var got = exp
+
+		got = errorkit.WithTrace(got)
+		got = errorkit.WithoutTrace(got)
+		got = errorkit.WithTrace(got)
+
+		assert.True(t, len(exp.Error()) < len(got.Error()))
+	})
+}
+
 func ExampleWithTrace() {
 	const ErrBase errorkit.Error = "some error that we get back from a function call"
 
@@ -96,15 +121,7 @@ func TestWithTrace(t *testing.T) {
 			assert.NotContains(t, got.Error(), "testing")
 		})
 
-		s.Then("trace can be accessed directly with errors.As", func(t *testcase.T) {
-			got := act(t)
-			assert.NotNil(t, got)
-
-			var traced errorkit.TracedError
-			assert.True(t, errors.As(got, &traced))
-			assert.NotNil(t, traced.Err)
-			assert.NotEmpty(t, traced.Stack)
-		})
+		ThenErrorTraceIsPresent(s, act)
 	})
 
 	s.When("input error alreay has a trace", func(s *testcase.Spec) {
@@ -130,6 +147,8 @@ func TestWithTrace(t *testing.T) {
 			assert.Equal(t, got.Error(), inputErr.Get(t).Error(),
 				"since nothing is changed, the two error should have the same output")
 		})
+
+		ThenErrorTraceIsPresent(s, act)
 	})
 }
 
@@ -151,4 +170,25 @@ func TestRegisterTraceException_smoke(t *testing.T) {
 	err = errorkit.WithTrace(errorkit.Error("boom"))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), t.Name())
+}
+
+func ThenErrorTraceIsPresent(s *testcase.Spec, act func(*testcase.T) error) {
+	s.Then("the error has TraceError", func(t *testcase.T) {
+		err := act(t)
+
+		var trace errorkit.TracedError
+		assert.True(t, errors.As(err, &trace))
+		assert.NotEmpty(t, trace)
+		assert.Error(t, trace.Err)
+	})
+
+	s.Then("*TraceError pointer can be retrieved from the error value", func(t *testcase.T) {
+		err := act(t)
+
+		var tracep *errorkit.TracedError
+		assert.True(t, errors.As(err, &tracep))
+		assert.NotNil(t, tracep)
+		assert.NotEmpty(t, tracep)
+		assert.Error(t, tracep.Err)
+	})
 }
