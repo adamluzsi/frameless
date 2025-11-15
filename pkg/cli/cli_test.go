@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -75,13 +76,17 @@ func TestMux(t *testing.T) {
 			response = testcase.Let(s, func(t *testcase.T) *cli.ResponseRecorder {
 				return &cli.ResponseRecorder{}
 			})
-			request = testcase.Let[*cli.Request](s, func(t *testcase.T) *cli.Request {
+			request = testcase.Let(s, func(t *testcase.T) *cli.Request {
 				return &cli.Request{}
 			})
 		)
 		act := func(t *testcase.T) {
 			mux.Get(t).ServeCLI(response.Get(t), request.Get(t))
 		}
+
+		callback := let.Var(s, func(t *testcase.T) func(w cli.Response, r *cli.Request) {
+			return func(w cli.Response, r *cli.Request) {}
+		})
 
 		s.Before(func(t *testcase.T) {
 			args := slicekit.Clone(request.Get(t).Args)
@@ -99,6 +104,7 @@ func TestMux(t *testing.T) {
 				ExpCmdReply = let.String(s)
 				command     = testcase.Let(s, func(t *testcase.T) cli.Handler {
 					return StubServeCLIFunc(func(w cli.Response, r *cli.Request) {
+						callback.Get(t)(w, r)
 						fmt.Fprint(w, ExpCmdReply.Get(t))
 					})
 				})
@@ -187,18 +193,18 @@ func TestMux(t *testing.T) {
 			})
 
 			s.And("the command have flags", func(s *testcase.Spec) {
-				var h = testcase.LetValue[*CommandWithFlag](s, nil)
+				var h = testcase.LetValue[*ExampleCommandWithFlag](s, nil)
 
 				command.Let(s, func(t *testcase.T) cli.Handler {
-					return CommandWithFlag{Callback: func(v CommandWithFlag, w cli.Response, r *cli.Request) {
+					return ExampleCommandWithFlag{Callback: func(v ExampleCommandWithFlag, w cli.Response, r *cli.Request) {
 						h.Set(t, &v)
-
+						callback.Get(t)(w, r)
 						fmt.Fprintln(w, ExpCmdReply.Get(t))
 					}}
 				})
 
 				s.And("one of the flag is a bool type", func(s *testcase.Spec) {
-					var _ bool = CommandWithFlag{}.Flag5
+					var _ bool = ExampleCommandWithFlag{}.Flag5
 
 					s.And("the flag value is provided as a boolean value", func(s *testcase.Spec) {
 						exp := let.Bool(s)
@@ -244,6 +250,7 @@ func TestMux(t *testing.T) {
 
 				AndTheFlagTypeIs[string]{
 					Act:      act,
+					Callback: callback,
 					Response: response,
 					Request:  request,
 					Flag:     "-str",
@@ -257,6 +264,7 @@ func TestMux(t *testing.T) {
 
 				AndTheFlagTypeIs[SubStr]{
 					Act:      act,
+					Callback: callback,
 					Desc:     "where string is a subtype",
 					Response: response,
 					Request:  request,
@@ -272,6 +280,7 @@ func TestMux(t *testing.T) {
 				AndTheFlagTypeIs[string]{
 					Desc:     "with default value",
 					Act:      act,
+					Callback: callback,
 					Response: response,
 					Request:  request,
 					Flag:     "-strwd",
@@ -286,6 +295,7 @@ func TestMux(t *testing.T) {
 
 				AndTheFlagTypeIs[int]{
 					Act:      act,
+					Callback: callback,
 					Response: response,
 					Request:  request,
 					Flag:     "-int",
@@ -299,6 +309,7 @@ func TestMux(t *testing.T) {
 
 				AndTheFlagTypeIs[int]{
 					Act:      act,
+					Callback: callback,
 					Response: response,
 					Request:  request,
 					Flag:     "-intwd",
@@ -318,6 +329,7 @@ func TestMux(t *testing.T) {
 						return CommandWithFlagWithRequired[string]{
 							Callback: func(v CommandWithFlagWithRequired[string], w cli.Response, r *cli.Request) {
 								h.Set(t, &v)
+								callback.Get(t)(w, r)
 							},
 						}
 					})
@@ -326,6 +338,7 @@ func TestMux(t *testing.T) {
 						IsRequired: true,
 
 						Act:      act,
+						Callback: callback,
 						Response: response,
 						Request:  request,
 						Flag:     "-flag",
@@ -345,6 +358,7 @@ func TestMux(t *testing.T) {
 						return CommandWithFlagWithEnum{
 							Callback: func(v CommandWithFlagWithEnum, w cli.Response, r *cli.Request) {
 								h.Set(t, &v)
+								callback.Get(t)(w, r)
 							},
 						}
 					})
@@ -386,7 +400,8 @@ func TestMux(t *testing.T) {
 
 							errOutput := response.Get(t).Err.String()
 							assert.NotEmpty(t, errOutput)
-							assert.Contains(t, errOutput, cli.ErrFlagInvalid)
+							assert.Contains(t, errOutput, "flag")
+							assert.Contains(t, errOutput, "enum")
 						})
 
 						s.Then("the the error response will mention valid enum values", func(t *testcase.T) {
@@ -407,111 +422,213 @@ func TestMux(t *testing.T) {
 				})
 			})
 
-			s.When("the command defines an argument(s)", func(s *testcase.Spec) {
-				s.Context("string", func(s *testcase.Spec) {
-					h := testcase.LetValue[*CommandWithArg[string]](s, nil)
+			s.When("the command has argument(s)", func(s *testcase.Spec) {
+				s.Context("optional", func(s *testcase.Spec) {
+					s.Context("string", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithOptArg[string]](s, nil)
 
-					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArg[string]{Callback: func(v CommandWithArg[string], w cli.Response, r *cli.Request) { h.Set(t, &v) }}
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithOptArg[string]{Callback: func(v CommandWithOptArg[string], w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
+
+						AndTheArgTypeIs[string]{
+							Act:      act,
+							Callback: callback,
+							Response: response,
+							Request:  request,
+							Expected: func(t *testcase.T) string {
+								return t.Random.String()
+							},
+							Got: func(t *testcase.T) string {
+								return h.Get(t).Arg
+							},
+						}.OptionalArgSpec(s)
 					})
 
-					AndTheArgTypeIs[string]{
-						Act:      act,
-						Response: response,
-						Request:  request,
-						Expected: func(t *testcase.T) string {
-							return t.Random.String()
-						},
-						Got: func(t *testcase.T) string {
-							return h.Get(t).Arg
-						},
-					}.Spec(s)
+					s.Context("int", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithOptArg[int]](s, nil)
+
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithOptArg[int]{Callback: func(v CommandWithOptArg[int], w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
+
+						AndTheArgTypeIs[int]{
+							Act:      act,
+							Callback: callback,
+							Response: response,
+							Request:  request,
+							Expected: func(t *testcase.T) int {
+								return t.Random.Int()
+							},
+							Got: func(t *testcase.T) int {
+								return h.Get(t).Arg
+							},
+						}.OptionalArgSpec(s)
+					})
+
+					s.Context("bool", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithOptArg[bool]](s, nil)
+
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithOptArg[bool]{Callback: func(v CommandWithOptArg[bool], w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
+
+						AndTheArgTypeIs[bool]{
+							Act:      act,
+							Callback: callback,
+							Response: response,
+							Request:  request,
+							Expected: func(t *testcase.T) bool {
+								return t.Random.Bool()
+							},
+							Got: func(t *testcase.T) bool {
+								return h.Get(t).Arg
+							},
+						}.OptionalArgSpec(s)
+					})
+
+					s.Context("along with a default", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithArgWithDefault](s, nil)
+
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithArgWithDefault{Callback: func(v CommandWithArgWithDefault, w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
+
+						AndTheArgTypeIs[string]{
+							Default: "defval",
+
+							Act:      act,
+							Callback: callback,
+							Response: response,
+							Request:  request,
+							Expected: func(t *testcase.T) string { return t.Random.String() },
+							Got:      func(t *testcase.T) string { return h.Get(t).Arg },
+						}.OptionalArgSpec(s)
+					})
 				})
 
-				s.Context("int", func(s *testcase.Spec) {
-					h := testcase.LetValue[*CommandWithArg[int]](s, nil)
+				s.Context("required", func(s *testcase.Spec) {
+					s.Context("string", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithReqArg[string]](s, nil)
 
-					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArg[int]{Callback: func(v CommandWithArg[int], w cli.Response, r *cli.Request) { h.Set(t, &v) }}
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithReqArg[string]{Callback: func(v CommandWithReqArg[string], w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
+
+						AndTheArgTypeIs[string]{
+							Act:        act,
+							Callback:   callback,
+							Response:   response,
+							Request:    request,
+							IsRequired: true,
+							Expected: func(t *testcase.T) string {
+								return t.Random.String()
+							},
+							Got: func(t *testcase.T) string {
+								return h.Get(t).Arg
+							},
+						}.OptionalArgSpec(s)
 					})
 
-					AndTheArgTypeIs[int]{
-						Act:      act,
-						Response: response,
-						Request:  request,
-						Expected: func(t *testcase.T) int {
-							return t.Random.Int()
-						},
-						Got: func(t *testcase.T) int {
-							return h.Get(t).Arg
-						},
-					}.Spec(s)
-				})
+					s.Context("int", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithReqArg[int]](s, nil)
 
-				s.Context("bool", func(s *testcase.Spec) {
-					h := testcase.LetValue[*CommandWithArg[bool]](s, nil)
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithReqArg[int]{Callback: func(v CommandWithReqArg[int], w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
 
-					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArg[bool]{Callback: func(v CommandWithArg[bool], w cli.Response, r *cli.Request) { h.Set(t, &v) }}
+						AndTheArgTypeIs[int]{
+							Act:        act,
+							Callback:   callback,
+							Response:   response,
+							Request:    request,
+							IsRequired: true,
+							Expected: func(t *testcase.T) int {
+								return t.Random.Int()
+							},
+							Got: func(t *testcase.T) int {
+								return h.Get(t).Arg
+							},
+						}.OptionalArgSpec(s)
 					})
 
-					AndTheArgTypeIs[bool]{
-						Act:      act,
-						Response: response,
-						Request:  request,
-						Expected: func(t *testcase.T) bool {
-							return t.Random.Bool()
-						},
-						Got: func(t *testcase.T) bool {
-							return h.Get(t).Arg
-						},
-					}.Spec(s)
-				})
+					s.Context("bool", func(s *testcase.Spec) {
+						h := testcase.LetValue[*CommandWithReqArg[bool]](s, nil)
 
-				s.Context("along with a default", func(s *testcase.Spec) {
-					h := testcase.LetValue[*CommandWithArgWithDefault](s, nil)
+						command.Let(s, func(t *testcase.T) cli.Handler {
+							return CommandWithReqArg[bool]{Callback: func(v CommandWithReqArg[bool], w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							}}
+						})
 
-					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArgWithDefault{Callback: func(v CommandWithArgWithDefault, w cli.Response, r *cli.Request) { h.Set(t, &v) }}
+						AndTheArgTypeIs[bool]{
+							Act:        act,
+							Callback:   callback,
+							Response:   response,
+							Request:    request,
+							IsRequired: true,
+							Expected: func(t *testcase.T) bool {
+								return t.Random.Bool()
+							},
+							Got: func(t *testcase.T) bool {
+								return h.Get(t).Arg
+							},
+						}.OptionalArgSpec(s)
 					})
-
-					AndTheArgTypeIs[string]{
-						Default: "defval",
-
-						Act:      act,
-						Response: response,
-						Request:  request,
-						Expected: func(t *testcase.T) string { return t.Random.String() },
-						Got:      func(t *testcase.T) string { return h.Get(t).Arg },
-					}.Spec(s)
 				})
 
 				s.Context("which is mandatory/required", func(s *testcase.Spec) {
-					h := testcase.Let[*CommandWithArgWithRequired[string]](s, func(t *testcase.T) *CommandWithArgWithRequired[string] {
+					h := testcase.Let(s, func(t *testcase.T) *CommandWithArgWithRequired[string] {
 						return &CommandWithArgWithRequired[string]{}
 					})
 
 					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArgWithRequired[string]{Callback: func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) { h.Set(t, &v) }}
+						return CommandWithArgWithRequired[string]{Callback: func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) {
+							h.Set(t, &v)
+							callback.Get(t)(w, r)
+						}}
 					})
 
 					AndTheArgTypeIs[string]{
 						IsRequired: true,
 
 						Act:      act,
+						Callback: callback,
 						Response: response,
 						Request:  request,
 						Expected: func(t *testcase.T) string { return t.Random.String() },
 						Got:      func(t *testcase.T) string { return h.Get(t).Arg },
-					}.Spec(s)
+					}.OptionalArgSpec(s)
 				})
 
 				s.And("the it has an enum limitation", func(s *testcase.Spec) {
-					h := testcase.LetValue[*CommandWithArgWithEnum](s, nil)
+					h := testcase.LetValue[*CommandWithOptArgWithEnum](s, nil)
 
 					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArgWithEnum{
-							Callback: func(v CommandWithArgWithEnum, w cli.Response, r *cli.Request) { h.Set(t, &v) },
+						return CommandWithOptArgWithEnum{
+							Callback: func(v CommandWithOptArgWithEnum, w cli.Response, r *cli.Request) {
+								h.Set(t, &v)
+								callback.Get(t)(w, r)
+							},
 						}
 					})
 
@@ -544,6 +661,12 @@ func TestMux(t *testing.T) {
 						s.Then("the exit code will indenticate a bad usage", func(t *testcase.T) {
 							act(t)
 
+							assert.Equal(t, response.Get(t).Code, cli.ExitCodeBadRequest)
+						})
+
+						s.Then("the error output will contain response", func(t *testcase.T) {
+							act(t)
+
 							assert.NotEmpty(t, response.Get(t).Err.String())
 						})
 
@@ -552,7 +675,8 @@ func TestMux(t *testing.T) {
 
 							errOutput := response.Get(t).Err.String()
 							assert.NotEmpty(t, errOutput)
-							assert.Contains(t, strings.ToLower(errOutput), "usage")
+
+							assert.Contains(t, errOutput, "sage: "+commandName.Get(t))
 							assert.AnyOf(t, func(a *assert.A) {
 								a.Case(func(t testing.TB) { assert.Contains(t, errOutput, "qux") })
 								a.Case(func(t testing.TB) { assert.Contains(t, errOutput, "quux") })
@@ -562,13 +686,13 @@ func TestMux(t *testing.T) {
 						s.Then("the the error response will mention valid enum values", func(t *testcase.T) {
 							act(t)
 
-							field, ok := reflectkit.TypeOf[CommandWithArgWithEnum]().FieldByName("Arg")
+							field, ok := reflectkit.TypeOf[CommandWithOptArgWithEnum]().FieldByName("Arg")
 							assert.True(t, ok, "expected to find the struct value")
 							vs, err := enum.ReflectValuesOfStructField(field)
 							assert.NoError(t, err)
 							assert.NotEmpty(t, vs)
 
-							var _ string = CommandWithArgWithEnum{}.Arg // static check for Flag field type
+							var _ string = CommandWithOptArgWithEnum{}.Arg // static check for Flag field type
 							for _, v := range vs {
 								assert.Contains(t, response.Get(t).Err.String(), v.String())
 							}
@@ -734,11 +858,134 @@ func TestMux(t *testing.T) {
 	})
 }
 
+func TestServeCLI(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("cmd", func(t *testcase.T) {
+		testcase.SetEnv(t, "FLAG3", "24")
+
+		var configuredCommant CommandE2E
+		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.Response, r *cli.Request) {
+			configuredCommant = v
+			data, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		}}
+
+		const expBody = "foo/bar/baz"
+		var w cli.ResponseRecorder
+		cli.ServeCLI(cmd, &w, &cli.Request{
+			Args: []string{
+				"-str", "strstring",
+				"-bool=true",
+				"Hello, world!", "42", "true",
+			},
+			Body: strings.NewReader(expBody),
+		})
+
+		assert.Equal(t, cli.ExitCodeOK, w.Code, assert.Message(w.Err.String()))
+		assert.Equal(t, expBody, w.Out.String())
+		assert.Equal(t, configuredCommant.Arg1, "Hello, world!")
+		assert.Equal(t, configuredCommant.Arg2, 42)
+		assert.Equal(t, configuredCommant.Arg3, true)
+		assert.Equal(t, configuredCommant.Flag1, "strstring")
+		assert.Equal(t, configuredCommant.Flag2, "defval")
+		assert.Equal(t, configuredCommant.Flag3, 24)
+		assert.Equal(t, configuredCommant.Flag4, true)
+	})
+
+	s.Test("mux", func(t *testcase.T) {
+		var mux cli.Mux
+
+		testcase.SetEnv(t, "FLAG3", "24")
+
+		var configuredCommant CommandE2E
+		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.Response, r *cli.Request) {
+			configuredCommant = v
+			data, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		}}
+
+		mux.Handle("cmd", cmd)
+
+		const expBody = "foo/bar/baz"
+		var w cli.ResponseRecorder
+		cli.ServeCLI(&mux, &w, &cli.Request{
+			Args: []string{"cmd",
+				"-str", "strstring",
+				"-bool=true",
+				"Hello, world!", "42", "true",
+			},
+			Body: strings.NewReader(expBody),
+		})
+
+		assert.Equal(t, cli.ExitCodeOK, w.Code, assert.Message(w.Err.String()))
+		assert.Equal(t, expBody, w.Out.String())
+		assert.Equal(t, configuredCommant.Arg1, "Hello, world!")
+		assert.Equal(t, configuredCommant.Arg2, 42)
+		assert.Equal(t, configuredCommant.Arg3, true)
+		assert.Equal(t, configuredCommant.Flag1, "strstring")
+		assert.Equal(t, configuredCommant.Flag2, "defval")
+		assert.Equal(t, configuredCommant.Flag3, 24)
+		assert.Equal(t, configuredCommant.Flag4, true)
+	})
+
+	s.Context("dependency", func(s *testcase.Spec) {
+		type Dependency struct {
+			Env  string `env:"ENV_VAL"`
+			Flag string `flag:"flag_val"`
+			Arg  string `arg:"0"`
+		}
+
+		var dep = let.Var[Dependency](s, nil)
+
+		cmd := let.Var(s, func(t *testcase.T) CommandWithTypedDependency[Dependency] {
+			return CommandWithTypedDependency[Dependency]{
+				Callback: func(v CommandWithTypedDependency[Dependency], w cli.Response, r *cli.Request) {
+					dep.Set(t, v.D)
+				},
+			}
+		})
+
+		s.Test("ok", func(t *testcase.T) {
+			var (
+				argV  = t.Random.String()
+				flagV = t.Random.String()
+				envV  = t.Random.String()
+			)
+			testcase.SetEnv(t, "ENV_VAL", envV)
+
+			r := &cli.Request{Args: []string{"-flag_val", flagV, argV}}
+			w := &cli.ResponseRecorder{}
+			cli.ServeCLI(cmd.Get(t), w, r)
+
+			assert.Equal(t, cli.ExitCodeOK, w.Code,
+				assert.MessageF("%s%s", w.Out.String(), w.Err.String()))
+
+			assert.Equal(t, dep.Get(t).Env, envV)
+			assert.Equal(t, dep.Get(t).Flag, flagV)
+			assert.Equal(t, dep.Get(t).Arg, argV)
+		})
+	})
+}
+
+type CommandWithTypedDependency[Dependency any] struct {
+	Callback[CommandWithTypedDependency[Dependency]]
+
+	D Dependency
+}
+
+func (cmd CommandWithTypedDependency[Dependency]) ServeCLI(w cli.Response, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
 type AndTheFlagTypeIs[T any] struct {
 	Desc     string
 	Act      func(t *testcase.T)
 	Response testcase.Var[*cli.ResponseRecorder]
 	Request  testcase.Var[*cli.Request]
+	Callback testcase.Var[func(w cli.Response, r *cli.Request)]
 
 	Flag    string
 	Default T
@@ -757,6 +1004,16 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 	}
 
 	s.And("the flag type is a "+name+" type"+desc, func(s *testcase.Spec) {
+
+		gotRequest := let.Var[*cli.Request](s, nil)
+		gotResponse := let.Var[cli.Response](s, nil)
+
+		c.Callback.Let(s, func(t *testcase.T) func(w cli.Response, r *cli.Request) {
+			return func(w cli.Response, r *cli.Request) {
+				gotResponse.Set(t, w)
+				gotRequest.Set(t, r)
+			}
+		})
 
 		s.And("the flag value is provided as a "+name+" value", func(s *testcase.Spec) {
 			exp := testcase.Let(s, c.Expected)
@@ -785,8 +1042,8 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 			s.Then("we expect that the request args no longer contain the raw flag input", func(t *testcase.T) {
 				c.Act(t)
 
-				assert.NotContains(t, c.Request.Get(t).Args, c.Flag)
-				assert.NotContains(t, c.Request.Get(t).Args, raw.Get(t))
+				assert.NotContains(t, gotRequest.Get(t).Args, c.Flag)
+				assert.NotContains(t, gotRequest.Get(t).Args, raw.Get(t))
 			})
 		})
 
@@ -840,6 +1097,7 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 
 type AndTheArgTypeIs[T any] struct {
 	Act      func(t *testcase.T)
+	Callback testcase.Var[func(w cli.Response, r *cli.Request)]
 	Response testcase.Var[*cli.ResponseRecorder]
 	Request  testcase.Var[*cli.Request]
 
@@ -851,11 +1109,23 @@ type AndTheArgTypeIs[T any] struct {
 	IsRequired bool
 }
 
-func (c AndTheArgTypeIs[T]) Spec(s *testcase.Spec) {
-	var name = reflectkit.SymbolicName(reflectkit.TypeOf[T]())
+func (c AndTheArgTypeIs[T]) name() string {
+	return reflectkit.SymbolicName(reflectkit.TypeOf[T]())
+}
 
-	s.And("the ARG value is provided as a "+name+" value", func(s *testcase.Spec) {
+func (c AndTheArgTypeIs[T]) OptionalArgSpec(s *testcase.Spec) {
+	s.And("the ARG value is provided as a "+c.name()+" value", func(s *testcase.Spec) {
 		exp := testcase.Let(s, c.Expected)
+
+		gotRequest := let.Var[*cli.Request](s, nil)
+		gotResponse := let.Var[cli.Response](s, nil)
+
+		c.Callback.Let(s, func(t *testcase.T) func(w cli.Response, r *cli.Request) {
+			return func(w cli.Response, r *cli.Request) {
+				gotResponse.Set(t, w)
+				gotRequest.Set(t, r)
+			}
+		})
 
 		raw := testcase.Let(s, func(t *testcase.T) string {
 			raw, err := convkit.Format(exp.Get(t))
@@ -886,7 +1156,7 @@ func (c AndTheArgTypeIs[T]) Spec(s *testcase.Spec) {
 		s.Then("we expect that the request args no longer contain the raw flag input", func(t *testcase.T) {
 			c.Act(t)
 
-			assert.NotContains(t, c.Request.Get(t).Args, raw.Get(t))
+			assert.NotContains(t, gotRequest.Get(t).Args, raw.Get(t))
 		})
 	})
 
@@ -959,6 +1229,9 @@ type CommandE2E struct {
 	Arg1 string `arg:"0"`
 	Arg2 int    `arg:"1"`
 	Arg3 bool   `arg:"2"`
+
+	Env1 string `desc:"env-1" env:"ENV1" default:"1vne"`
+	Env2 string `desc:"env-1" env:"ENV2,ENV22" default:"2vne"`
 }
 
 func (cmd CommandE2E) Summary() string { return "E2E command summary" }
@@ -977,8 +1250,8 @@ func (cmd *CommandWithPointerReceiver) ServeCLI(w cli.Response, r *cli.Request) 
 	cmd.Callback.Call(cmd, w, r)
 }
 
-type CommandWithFlag struct {
-	Callback[CommandWithFlag]
+type ExampleCommandWithFlag struct {
+	Callback[ExampleCommandWithFlag]
 	Noise string `flag:"noise"`
 
 	FlagStr    string `flag:"str"`
@@ -995,7 +1268,7 @@ type CommandWithFlag struct {
 
 type SubStr string
 
-func (cmd CommandWithFlag) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd ExampleCommandWithFlag) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1026,18 +1299,27 @@ func (cmd CommandWithFlagWithEnum) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
-type CommandWithArg[T any] struct {
-	Callback[CommandWithArg[T]]
+type CommandWithOptArg[T any] struct {
+	Callback[CommandWithOptArg[T]]
+	Arg T `arg:"0" opt:"true"`
+}
+
+func (cmd CommandWithOptArg[T]) ServeCLI(w cli.Response, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithReqArg[T any] struct {
+	Callback[CommandWithReqArg[T]]
 	Arg T `arg:"0"`
 }
 
-func (cmd CommandWithArg[T]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithReqArg[T]) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
 type CommandWithArgWithDefault struct {
 	Callback[CommandWithArgWithDefault]
-	Arg string `arg:"0" default:"defval"`
+	Arg string `arg:"0" default:"defval"` // anything with a default is already optional
 }
 
 func (cmd CommandWithArgWithDefault) ServeCLI(w cli.Response, r *cli.Request) {
@@ -1053,12 +1335,12 @@ func (cmd CommandWithArgWithRequired[T]) ServeCLI(w cli.Response, r *cli.Request
 	cmd.Callback.Call(cmd, w, r)
 }
 
-type CommandWithArgWithEnum struct {
-	Callback[CommandWithArgWithEnum]
+type CommandWithOptArgWithEnum struct {
+	Callback[CommandWithOptArgWithEnum]
 	Arg string `arg:"0" enum:"foo,bar,baz,"`
 }
 
-func (cmd CommandWithArgWithEnum) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithOptArgWithEnum) ServeCLI(w cli.Response, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1067,8 +1349,9 @@ func TestConfigureHandler(t *testing.T) {
 		/* flags */ "-str", "foo", "-int", "42", "-bool=true", "-sbool", "-fbool=0",
 		/* args */ "hello-world", "42", "True",
 	}}
+	var cmd CommandE2E
 
-	cmd, err := cli.ConfigureHandler(CommandE2E{}, "", req)
+	err := cli.ConfigureHandler(&cmd, req)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, cmd)
 
@@ -1082,31 +1365,6 @@ func TestConfigureHandler(t *testing.T) {
 	assert.Equal(t, cmd.Arg1, "hello-world")
 	assert.Equal(t, cmd.Arg2, 42)
 	assert.Equal(t, cmd.Arg3, true)
-}
-
-func TestUsage(t *testing.T) {
-	t.Run("struct", func(t *testing.T) {
-		usage, err := cli.Usage(CommandE2E{}, "thepath")
-		assert.NoError(t, err)
-
-		assert.Contains(t, usage, "Usage: thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
-		assert.Contains(t, usage, "-str=[string]: flag1 desc")
-		assert.Contains(t, usage, "-strwd=[string] (default: defval)")
-		assert.Contains(t, usage, "-int=[int]")
-		assert.Contains(t, usage, "-bool=[bool]")
-		assert.Contains(t, usage, "-sbool=[bool]")
-		assert.Contains(t, usage, "-fbool=[bool]")
-		assert.Contains(t, usage, "Arg1 [string]")
-		assert.Contains(t, usage, "Arg2 [int]")
-		assert.Contains(t, usage, "Arg3 [bool]")
-		assert.Contains(t, usage, "-int=[int] (env: FLAG3)", "env variable is mentioned")
-	})
-	t.Run("when cli.Handler#Usage(path) is supported", func(t *testing.T) {
-		usage, err := cli.Usage(CommandWithUsageSupport{}, "thepath")
-		assert.NoError(t, err)
-
-		assert.Contains(t, usage, "Custom Usage Message: thepath")
-	})
 }
 
 type CommandWithUsageSupport struct{}
@@ -1141,7 +1399,7 @@ func TestConfigureHandler_requiredFlag_defaultValueDependencyInjected(t *testing
 	cmd := CommandWithFlagWithRequired[string]{Flag: "42"}
 	cmd.Callback = func(v CommandWithFlagWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
 
-	cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+	err := cli.ConfigureHandler(&cmd, &cli.Request{})
 	assert.NoError(t, err, "expected no error, since default value is already provided")
 	assert.Equal(t, cmd.Flag, "42")
 }
@@ -1150,7 +1408,7 @@ func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
 	cmd := CommandWithArgWithRequired[string]{Arg: "42"}
 	cmd.Callback = func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
 
-	cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+	err := cli.ConfigureHandler(&cmd, &cli.Request{})
 	assert.NoError(t, err, "expected no error, since default value is already provided")
 	assert.Equal(t, cmd.Arg, "42")
 }
@@ -1160,7 +1418,7 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 	const envName = "FLAGNAME"
 	t.Run("no env var", func(t *testing.T) {
 		testcase.UnsetEnv(t, envName)
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+		err := cli.ConfigureHandler(&cmd, &cli.Request{})
 		assert.NoError(t, err)
 		assert.Empty(t, cmd.Flag)
 	})
@@ -1168,7 +1426,7 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 	t.Run("with env var", func(t *testing.T) {
 		testcase.SetEnv(t, envName, "val")
 
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{})
+		err := cli.ConfigureHandler(&cmd, &cli.Request{})
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, "val")
 	})
@@ -1178,7 +1436,7 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 	cmd := CommandWithFlagWithEnum{}
 
 	t.Run("no enum value", func(t *testing.T) {
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{}})
+		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{}})
 		assert.NoError(t, err)
 		assert.Empty(t, cmd.Flag)
 	})
@@ -1187,14 +1445,13 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 		t := testcase.NewT(tt)
 		exp := random.Pick(t.Random, "foo", "bar", "baz")
 
-		cmd, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{"-flag", exp}})
+		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{"-flag", exp}})
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, exp)
 	})
 
 	t.Run("with invalid enum value", func(t *testing.T) {
-		_, err := cli.ConfigureHandler(cmd, "path", &cli.Request{Args: []string{"-flag", "invalid"}})
-
+		err := cli.ConfigureHandler(&cmd, &cli.Request{Args: []string{"-flag", "invalid"}})
 		assert.Error(t, err)
 
 		var got errorkit.UserError
@@ -1205,7 +1462,8 @@ func TestConfigureHandler_enumIntegration(t *testing.T) {
 
 func TestConfigureHandler_unexportedStructField(t *testing.T) {
 	req := &cli.Request{Args: []string{"-ef", "fooinput"}}
-	h, err := cli.ConfigureHandler(&CommandWithUnexportedField{}, "", req)
+	var h CommandWithUnexportedField
+	err := cli.ConfigureHandler(&h, req)
 	assert.NoError(t, err)
 	assert.NotNil(t, h)
 	assert.Equal(t, "fooinput", h.ExportedFlag)

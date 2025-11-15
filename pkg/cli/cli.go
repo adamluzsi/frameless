@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/sandbox"
+	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/env"
@@ -22,9 +24,12 @@ import (
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/mk"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/reflectkit/refnode"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/frameless/port/datastruct"
 )
 
 const (
@@ -37,15 +42,15 @@ const (
 )
 
 const (
-	ErrFlagMissing    errorkit.Error = "ErrFlagMissing"
-	ErrFlagParseIssue errorkit.Error = "ErrFlagParseIssue"
-	ErrFlagInvalid    errorkit.Error = "ErrFlagInvalid"
+	ErrFlagMissing    errorkitlite.Error = "ErrFlagMissing"
+	ErrFlagParseIssue errorkitlite.Error = "ErrFlagParseIssue"
+	ErrFlagInvalid    errorkitlite.Error = "ErrFlagInvalid"
 
-	ErrArgMissing      errorkit.Error = "ErrArgMissing"
-	ErrArgParseIssue   errorkit.Error = "ErrArgParseIssue"
-	ErrArgIndexInvalid errorkit.Error = "ErrArgIndexInvalid"
+	ErrArgMissing      errorkitlite.Error = "ErrArgMissing"
+	ErrArgParseIssue   errorkitlite.Error = "ErrArgParseIssue"
+	ErrArgIndexInvalid errorkitlite.Error = "ErrArgIndexInvalid"
 
-	ErrInvalidDefaultValue errorkit.Error = "ErrInvalidDefaultValue"
+	ErrInvalidDefaultValue errorkitlite.Error = "ErrInvalidDefaultValue"
 )
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -77,6 +82,16 @@ func (r Request) Context() context.Context {
 	return context.Background()
 }
 
+func (r *Request) WithContext(ctx context.Context) *Request {
+	if ctx == nil {
+		panic("nil context")
+	}
+	r2 := new(Request)
+	*r2 = *r
+	r2.ctx = ctx
+	return r2
+}
+
 type HandlerFunc func(w Response, r *Request)
 
 func (fn HandlerFunc) ServeCLI(w Response, r *Request) {
@@ -100,27 +115,17 @@ type Multiplexer interface {
 
 type muxEntry struct {
 	Handler Handler
-	meta    *structMeta
-	Mux     *Mux
+	// meta    *meta
+	Mux *Mux
 }
 
 func (m *Mux) Handle(pattern string, h Handler) {
 	path := m.toPath(pattern)
 	e := m.entryFor(path)
-
 	if e.Handler != nil {
 		panic(fmt.Sprintf("The %q pattern already had a handler registered", pattern))
 	}
-
 	e.Handler = h
-
-	sm, ok, err := structMetaFor(h)
-	if err != nil {
-		panic(err.Error())
-	}
-	if ok {
-		e.meta = &sm
-	}
 }
 
 func (m *Mux) Sub(pattern string) *Mux {
@@ -151,6 +156,18 @@ func (m *Mux) ServeCLI(w Response, r *Request) {
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
+	}
+
+	{ // configure command name
+		var (
+			ctx        = r.Context()
+			cmd string = name
+		)
+		if cmdName, ok := ctxCommandName.Lookup(ctx); ok {
+			cmd = cmdName + " " + name
+		}
+
+		r = r.WithContext(ctxCommandName.ContextWith(ctx, cmd))
 	}
 
 	entry, ok := m.entries()[name]
@@ -190,24 +207,10 @@ func (m *Mux) ServeCLI(w Response, r *Request) {
 		m.helpUsage(o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
+		return
 	}
 
-	if err := m.serveCLI(entry, w, r); err != nil {
-		isHelp := errors.Is(err, flag.ErrHelp)
-
-		var o io.Writer = w
-		if !isHelp {
-			o = errOut(w)
-		}
-
-		helpUsageOf(o, entry.Handler, entry.meta, m.getPath()+" "+name)
-		m.helpLineBreak(o, 1)
-
-		if !isHelp {
-			w.ExitCode(ExitCodeBadRequest)
-			printfln(o, err.Error())
-		}
-	}
+	ServeCLI(entry.Handler, w, r)
 }
 
 func isHelpFlag(v string) bool {
@@ -241,166 +244,120 @@ func (m Mux) toPath(pattern string) []string {
 	return strings.Fields(pattern)
 }
 
-func (m Mux) serveCLI(e *muxEntry, w Response, r *Request) error {
-	var h Handler = e.Handler
-
-	if e.meta != nil {
-		var err error
-		h, err = configure(h, *e.meta, r)
-		if err != nil {
-			return err
+func ServeCLI(h Handler, w Response, r *Request) {
+	if h == nil {
+		panic("nil cli.Handler")
+	}
+	if w == nil {
+		panic("nil cli.Response")
+	}
+	if r == nil {
+		panic("nil *cli.Request")
+	}
+	if _, ok := h.(Multiplexer); ok {
+		// When the Handler is also a multiplexer,
+		// we leave the configuration to it
+		// so it can handle routing properly.
+		h.ServeCLI(w, r)
+		return
+	}
+	ptr := reflect.New(reflect.TypeOf(h))
+	ptr.Elem().Set(reflect.ValueOf(h))
+	if err := metaFor(ptr).Configure(r); err != nil {
+		var exitCode = ExitCodeBadRequest
+		if isHelp(err) {
+			exitCode = ExitCodeOK
 		}
-	}
+		w.ExitCode(exitCode)
 
-	h.ServeCLI(w, r)
-	return nil
-}
-
-func Main(ctx context.Context, h Handler) {
-	var args []string
-	if 1 < len(os.Args) {
-		args = os.Args[1:]
-	}
-
-	r := &Request{
-		ctx:  ctx,
-		Args: args,
-		Body: os.Stdin,
-	}
-	w := &stdResponse{}
-
-	logger.Configure(func(l *logging.Logger) {
-		if l.Out == nil {
-			l.Out = os.Stderr
+		var msg = toHelp(r.Context(), h, err)
+		var o io.Writer = w
+		if !isHelp(err) {
+			o = errOut(w)
 		}
+		printfln(o, msg)
+		return
+	}
+	h = ptr.Elem().Interface().(Handler)
+	o := sandbox.Run(func() {
+		h.ServeCLI(w, r)
 	})
+	if o.OK {
+		return
+	}
+	if o.Goexit {
+		runtime.Goexit()
+	}
+	if o.Panic {
+		if _, ok := o.PanicValue.(stop); !ok {
+			panic(o.PanicValue)
+		}
+	}
 
-	if _, ok := h.(Multiplexer); !ok {
-		handler, err := ConfigureHandler(h, execName(), r)
-		if err != nil {
+	/*
+		if err := m.serveCLI(entry, w, r); err != nil {
+			ServeCLI()
 			isHelp := errors.Is(err, flag.ErrHelp)
 
-			usage, usageErr := Usage(h, execName())
-			if usageErr != nil {
-				panic(usageErr.Error())
-			}
 			var o io.Writer = w
 			if !isHelp {
 				o = errOut(w)
 			}
-			printfln(o, usage)
-			printfln(o)
+
+			if entry.Handler != nil {
+				helpUsageOf(o, entry.Handler, m.getPath()+" "+name)
+				m.helpLineBreak(o, 1)
+			}
+
 			if !isHelp {
+				w.ExitCode(ExitCodeBadRequest)
 				printfln(o, err.Error())
 			}
-
-			var exitCode = ExitCodeBadRequest
-			if isHelp {
-				exitCode = ExitCodeOK
-			}
-			osint.Exit(exitCode)
 		}
-		h = handler
-	}
+	*/
+}
 
-	h.ServeCLI(w, r)
+type stop struct{}
+
+// func Stop() { panic(stop{}) }
+//
+// func HandleError(w Response, r *Request, err error) {
+// 	if err == nil {
+// 		return
+// 	}
+// 	w.ExitCode(ExitCodeError)
+// 	fmt.Fprintf(w, "%s\n", err.Error())
+// 	Stop()
+// }
+
+func NewStdRequest(ctx context.Context) *Request {
+	var args []string
+	if 1 < len(os.Args) {
+		args = os.Args[1:]
+	}
+	return &Request{
+		ctx:  ctx,
+		Args: args,
+		Body: os.Stdin,
+	}
+}
+
+func Main(ctx context.Context, h Handler) {
+	logger.Configure(func(l *logging.Logger) {
+		if l.Out == nil { // avoid logging into STDOUT as a CLI app
+			l.Out = os.Stderr
+		}
+	})
+	var (
+		w = &StdResponse{}
+		r = NewStdRequest(ctx)
+	)
+	ServeCLI(h, w, r)
 	osint.Exit(w.Code)
 }
 
-func ConfigureHandler[H Handler](h H, path string, r *Request) (zero H, _ error) {
-	sm, ok, err := structMetaFor(h)
-	if err != nil {
-		return zero, err
-	}
-	if !ok {
-		return h, nil
-	}
-	handler, err := configure[H](h, sm, r)
-	if err != nil {
-		return zero, err
-	}
-	return handler, nil
-}
-
-type HelpUsage interface {
-	Usage(pattern string) (string, error)
-}
-
-// Usage will generate a help usage message for a given handler on a given command request pattern/path.
-func Usage(h Handler, pattern string) (string, error) {
-	if u, ok := h.(HelpUsage); ok {
-		return u.Usage(pattern)
-	}
-	var meta *structMeta
-	m, ok, err := structMetaFor(h)
-	if err != nil {
-		return "", err
-	}
-	if ok {
-		meta = &m
-	}
-	return helpCreateUsage(h, meta, pattern), nil
-}
-
-func configure[H Handler](h H, meta structMeta, r *Request) (H, error) {
-	ptr := reflect.New(reflect.TypeOf(h))
-	handler := reflect.ValueOf(h)
-	ptr.Elem().Set(handler)
-	handler = ptr.Elem()
-	if !handler.CanInterface() {
-		return h, nil
-	}
-
-	val := reflectkit.BaseValue(ptr)
-
-	var flagSetOutput bytes.Buffer
-	var flagSet = flag.NewFlagSet("", flag.ContinueOnError)
-	flagSet.Usage = func() {}
-	flagSet.SetOutput(&flagSetOutput)
-
-	var callbacks []func() error
-
-	if err := env.ReflectTryLoad(val.Addr()); err != nil {
-		var zero H
-		return zero, err
-	}
-
-	for _, f := range meta.Flags {
-		callbacks = append(callbacks, f.mapToFlagSet(r.Context(), flagSet, val))
-	}
-
-	err := flagSet.Parse(r.Args)
-	if err != nil {
-		return h, err
-	}
-
-	r.Args = flagSet.Args()
-
-	for _, cb := range callbacks {
-		if err := cb(); err != nil {
-			return h, err
-		}
-	}
-
-	var indexsToPop []int
-	for _, a := range meta.Args {
-		raw, ok := slicekit.Lookup(r.Args, a.Index)
-
-		if err := a.Setter(val, raw, ok); err != nil {
-			return h, err
-		}
-		indexsToPop = append(indexsToPop, a.Index)
-	}
-
-	if 0 < len(indexsToPop) {
-		sort.Sort(sort.Reverse(sort.IntSlice(indexsToPop)))
-
-		for _, index := range indexsToPop {
-			slicekit.PopAt(&r.Args, index)
-		}
-	}
-
-	return handler.Interface().(H), nil
+func ConfigureHandler[H Handler](ptr *H, r *Request) error {
+	return metaFor(reflect.ValueOf(ptr)).Configure(r)
 }
 
 func (m *Mux) entries() map[string]*muxEntry {
@@ -417,6 +374,17 @@ func (m Mux) getPath() string {
 	return execName()
 }
 
+type ctxCommandNameKey struct{}
+
+var ctxCommandName contextkit.ValueHandler[ctxCommandNameKey, string]
+
+func commandName(ctx context.Context) string {
+	if name, ok := ctxCommandName.Lookup(ctx); ok {
+		return name
+	}
+	return execName()
+}
+
 func execName() string {
 	if ep, err := os.Executable(); err == nil {
 		return filepath.Base(ep)
@@ -427,116 +395,8 @@ func execName() string {
 	return ""
 }
 
-func (m Mux) helpLineBreak(w io.Writer, n int) {
-	w.Write([]byte(strings.Repeat(lineSeparator, n)))
-}
-
-func (m Mux) helpUsage(w io.Writer) {
-	var msg []string
-	msg = append(msg, fmt.Sprintf("Usage: %s", m.getPath()))
-	printfln(w, msg...)
-}
-
-func helpUsageOf(w io.Writer, h Handler, meta *structMeta, path string) {
-	printfln(w, helpCreateUsage(h, meta, path))
-}
-
-func helpCreateUsage(h Handler, meta *structMeta, path string) string {
-	var lines []string
-
-	var usage string
-	usage += "Usage: " + path
-
-	if meta != nil {
-		if 0 < len(meta.Flags) {
-			usage += " [OPTION]..."
-		}
-		if 0 < len(meta.Args) {
-			for _, arg := range meta.Args {
-				usage += fmt.Sprintf(" [%s]", arg.Name)
-			}
-		}
-	}
-
-	lines = append(lines, usage, "")
-
-	if s, ok := h.(HelpSummary); ok {
-		lines = append(lines, s.Summary(), "")
-	}
-
-	if meta != nil {
-		if 0 < len(meta.Flags) {
-			lines = append(lines, "Options:")
-			for _, flag := range meta.Flags {
-				name, ok := slicekit.First(flag.Names)
-				if !ok {
-					continue
-				}
-
-				line := fmt.Sprintf("  -%s=[%s]", name, flag.StructField.Type.String())
-				if 0 < len(flag.Desc) {
-					line += ": " + flag.Desc
-				}
-
-				if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.StructField); ok && 0 < len(osEnvVarNames) {
-					line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
-				}
-
-				if 0 < len(flag.Default) {
-					line += fmt.Sprintf(" (default: %s)", flag.Default)
-				}
-
-				lines = append(lines, line)
-
-				for i := 1; i < len(flag.Names); i++ {
-					lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
-				}
-			}
-		}
-		if 0 < len(meta.Args) {
-			if 0 < len(meta.Flags) {
-				lines = append(lines, "") // empty line for seperation
-			}
-			lines = append(lines, "Arguments:")
-			for _, arg := range meta.Args {
-				line := fmt.Sprintf("  %s [%s]", arg.Name, arg.StructField.Type.String())
-				if 0 < len(arg.Desc) {
-					line += ": " + arg.Desc
-				}
-				if 0 < len(arg.Default) {
-					line += fmt.Sprintf(" (Default: %s)", arg.Default)
-				}
-
-				lines = append(lines, line)
-			}
-		}
-	}
-
-	return strings.Join(lines, lineSeparator)
-}
-
-func (m Mux) helpCommands(w io.Writer) {
-	var msg []string
-
-	var cmds []string
-	for name, entry := range m.entries() {
-		var line string
-		line = " - " + name
-
-		if h, ok := entry.Handler.(HelpSummary); ok {
-			line += ": " + h.Summary()
-		}
-
-		cmds = append(cmds, line)
-	}
-
-	if 0 < len(cmds) {
-		msg = append(msg, "Commands:")
-		sort.Strings(cmds)
-		msg = append(msg, cmds...)
-	}
-
-	printfln(w, msg...)
+func printfln(w io.Writer, msg ...string) {
+	w.Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
 }
 
 var lineSeparator = func() string {
@@ -548,10 +408,6 @@ var lineSeparator = func() string {
 	}
 }()
 
-func printfln(w io.Writer, msg ...string) {
-	w.Write([]byte(strings.Join(msg, lineSeparator) + lineSeparator))
-}
-
 func errOut(w Response) io.Writer {
 	if rwe, ok := w.(ErrorWriter); ok {
 		if o := rwe.Stderr(); o != nil {
@@ -561,16 +417,12 @@ func errOut(w Response) io.Writer {
 	return w
 }
 
-type stdResponse struct {
-	Code int
-	Err  *os.File
-	Out  *os.File
-}
+type StdResponse struct{ Code int }
 
-func (rr *stdResponse) ExitCode(n int)                    { rr.Code = n }
-func (rr *stdResponse) Stdeout() io.Writer                { return os.Stdout }
-func (rr *stdResponse) Stderr() io.Writer                 { return os.Stderr }
-func (rr *stdResponse) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
+func (rr *StdResponse) ExitCode(n int)                    { rr.Code = n }
+func (rr *StdResponse) Stdeout() io.Writer                { return os.Stdout }
+func (rr *StdResponse) Stderr() io.Writer                 { return os.Stderr }
+func (rr *StdResponse) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -585,183 +437,30 @@ func (rr *ResponseRecorder) Stdeout() io.Writer                { return &rr.Out 
 func (rr *ResponseRecorder) Stderr() (_ io.Writer)             { return &rr.Err }
 func (rr *ResponseRecorder) Write(p []byte) (n int, err error) { return rr.Stdeout().Write(p) }
 
-func structMetaFor(h Handler) (structMeta, bool, error) {
-	var (
-		v = reflectkit.BaseValueOf(h)
-		T = v.Type()
-		m = structMeta{}
-	)
-
-	if v.Kind() != reflect.Struct {
-		return m, false, nil
-	}
-
-	fieldNum := T.NumField()
-
-	var foundFlags = map[string]struct{}{}
-
-	for i := 0; i < fieldNum; i++ {
-		sf := T.Field(i)
-
-		if sf.Anonymous {
-			continue
+var flagTagHandler = reflectkit.TagHandler[[]string]{
+	Name: "flag",
+	Parse: func(field reflect.StructField, tagName, tagValue string) ([]string, error) {
+		var names = splitFlagTag(tagValue)
+		if len(names) == 0 {
+			return nil, fmt.Errorf("%s's flag tag is empty", field.Name)
 		}
-
-		sFlag, ok, err := scanForFlag(sf)
-		if err != nil {
-			return structMeta{}, false, err
-		}
-		if ok {
-			for _, f := range sFlag.Names {
-				foundFlags[f] = struct{}{}
+		for _, name := range names {
+			if err := validateFlagName(name); err != nil {
+				return nil, err
 			}
-			m.Flags = append(m.Flags, sFlag)
 		}
-		sArg, ok, err := scanForArg(sf)
-		if err != nil {
-			return structMeta{}, false, err
-		}
-		if ok {
-			for _, f := range sFlag.Names {
-				foundFlags[f] = struct{}{}
-			}
-			m.Args = append(m.Args, sArg)
-		}
-	}
+		return names, nil
+	},
+	Use: func(field reflect.StructField, value reflect.Value, names []string) error {
+		return nil
+	},
 
-	slicekit.SortBy(m.Args, func(a, b structArg) bool {
-		return a.Index < b.Index
-	})
-
-	for i, a := range m.Args {
-		if a.Index != i {
-			const format = "%s field is an arg, and it was expected to be at index %d but it has the index of %d"
-			panic(fmt.Sprintf(format, a.Name, i, a.Index))
-		}
-	}
-
-	return m, true, nil
+	PanicOnParseError: true,
 }
 
-func scanForFlag(sf reflect.StructField) (structFlag, bool, error) {
-	flag, ok := sf.Tag.Lookup("flag")
-	if !ok {
-		return structFlag{}, false, nil
-	}
-
-	flags := splitFlag(flag)
-	def, defVal, hasDefault, err := getDefault(sf)
-	if err != nil {
-		return structFlag{}, true, err
-	}
-
-	desc, _ := getDescription(sf)
-	isRequired, err := getIsRequired(sf)
-	if err != nil {
-		return structFlag{}, true, err
-	}
-
-	enumValues, err := enum.ReflectValuesOfStructField(sf)
-	if err != nil {
-		return structFlag{}, true, err
-	}
-
-	return structFlag{
-		StructField: sf,
-
-		Default:    def,
-		HasDefault: hasDefault,
-		DefVal:     defVal,
-
-		Names: flags,
-		Desc:  desc,
-
-		Required: isRequired,
-		Enum:     enumValues,
-	}, true, nil
-}
-
-func scanForArg(sf reflect.StructField) (structArg, bool, error) {
-	argIndex, ok := sf.Tag.Lookup("arg")
-	if !ok {
-		return structArg{}, false, nil
-	}
-
-	index, err := strconv.Atoi(argIndex)
-	if err != nil {
-		panic(ErrArgIndexInvalid.F("invalid arg index for %s field: %q", sf.Name, argIndex))
-	}
-
-	def, defVal, hasDefault, err := getDefault(sf)
-	if err != nil {
-		return structArg{}, false, err
-	}
-
-	desc, _ := getDescription(sf)
-
-	isRequired, err := getIsRequired(sf)
-	if err != nil {
-		return structArg{}, true, err
-	}
-
-	enumvs, err := enum.ReflectValuesOfStructField(sf)
-	if err != nil {
-		return structArg{}, true, err
-	}
-
-	return structArg{
-		StructField: sf,
-
-		Default:    def,
-		DefVal:     defVal,
-		HasDefault: hasDefault,
-
-		Name:     sf.Name,
-		Index:    index,
-		Desc:     desc,
-		Required: isRequired,
-		Enum:     enumvs,
-	}, true, nil
-}
-
-func getDefault(sf reflect.StructField) (string, reflect.Value, bool, error) {
-	def, ok := sf.Tag.Lookup("default")
-	if !ok {
-		return "", reflect.New(sf.Type).Elem(), false, nil
-	}
-	val, err := convkit.ParseReflect(sf.Type, def)
-	if err != nil {
-		return "", reflect.Value{}, true, ErrInvalidDefaultValue.F("%s field got %q as default value, but it is not interpretable as %s", sf.Name, def, sf.Type.String())
-	}
-	return def, val, true, nil
-}
-
-var structDescriptionTags = []string{"desc", "description"}
-
-func getDescription(sf reflect.StructField) (string, bool) {
-	for _, tag := range structDescriptionTags {
-		if v, ok := sf.Tag.Lookup(tag); ok {
-			return v, true
-		}
-	}
-	return "", false
-}
-
-func getIsRequired(sf reflect.StructField) (bool, error) {
-	if _, _, ok, err := getDefault(sf); err == nil && ok {
-		return false, nil
-	}
-	if req, ok := sf.Tag.Lookup("required"); ok {
-		return strconv.ParseBool(req)
-	}
-	return false, nil
-}
-
-func splitFlag(flag string) []string {
-	flags := strings.Split(flag, ",")
-	flags = slicekit.Map(flags, func(flag string) string {
-		return strings.TrimSpace(flag)
-	})
+func splitFlagTag(tag string) []string {
+	flags := strings.Split(tag, ",")
+	flags = slicekit.Map(flags, strings.TrimSpace)
 	flags = slicekit.Map(flags, func(flag string) string {
 		for strings.HasPrefix("-", flag) {
 			flag = strings.TrimPrefix("-", flag)
@@ -771,14 +470,378 @@ func splitFlag(flag string) []string {
 	return flags
 }
 
-type structMeta struct {
-	New   func() any
-	Flags []structFlag
-	Args  []structArg
+func validateFlagName(name string) (rErr error) {
+	defer errorkit.Recover(&rErr)
+	var fs flag.FlagSet
+	fs.Var((*nullFlagValue)(nil), name, "")
+	return nil
 }
 
-type structFlag struct {
-	StructField reflect.StructField
+type nullFlagValue struct{}
+
+func (*nullFlagValue) String() string   { return "" }
+func (*nullFlagValue) Set(string) error { return nil }
+
+var argTagHandler = reflectkit.TagHandler[int]{
+	Name: "arg",
+	Parse: func(field reflect.StructField, tagName, tagValue string) (int, error) {
+		return strconv.Atoi(tagValue)
+	},
+	Use: func(field reflect.StructField, value reflect.Value, index int) error {
+		return nil
+	},
+
+	PanicOnParseError: true,
+}
+
+var descTagHandler = reflectkit.TagHandler[string]{
+	Name:  "desc",
+	Alias: []string{"description"},
+
+	Parse: func(field reflect.StructField, tagName, tagValue string) (string, error) {
+		return tagValue, nil
+	},
+	Use: func(field reflect.StructField, value reflect.Value, v string) error {
+		return nil
+	},
+}
+
+// TODO: maybe this should be in validation
+
+var isRequiredTagHandler = reflectkit.TagHandler[bool]{
+	Name: "required",
+	Parse: func(field reflect.StructField, tagName, tagValue string) (bool, error) {
+		if len(tagValue) == 0 {
+			return true, nil
+		}
+		return convkit.Parse[bool](tagValue)
+	},
+	Use: func(field reflect.StructField, value reflect.Value, v bool) error {
+		return nil
+	},
+	PanicOnParseError: true,
+}
+
+var isOptionalTagHandler = reflectkit.TagHandler[bool]{
+	Name:  "optional",
+	Alias: []string{"opt"},
+	Parse: func(field reflect.StructField, tagName, tagValue string) (bool, error) {
+		if len(tagValue) == 0 {
+			return true, nil
+		}
+		return convkit.Parse[bool](tagValue)
+	},
+	Use: func(field reflect.StructField, value reflect.Value, v bool) error {
+		return nil
+	},
+	PanicOnParseError: true,
+}
+
+func metaFor(ptr reflect.Value) metaH {
+	if ptr.Kind() != reflect.Pointer {
+		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non pointer type", ptr.Type().String()))
+	}
+	var m = metaH{}
+	for v := range reflectkit.Visit(ptr) {
+		if v.NodeType != refnode.StructField {
+			continue
+		}
+		if !v.StructField.IsExported() {
+			continue
+		}
+		var ref = &metaRef{V: v}
+		if ref.IsRelevant() {
+			m.refs = append(m.refs, ref)
+		}
+	}
+	return m
+}
+
+type metaH struct {
+	ptr  any
+	refs []*metaRef
+}
+
+func (m metaH) Validate(ctx context.Context) (rErr error) {
+	defer errorkit.Recover(&rErr)
+	for i, a := range m.Args() {
+		if a.Index != i {
+			const format = "%s field is an arg, and it was expected to be at index %d but it has the index of %d"
+			return fmt.Errorf(format, a.Ref.FieldName(), i, a.Index)
+		}
+	}
+	var ufn datastruct.Set[string]
+	for _, flag := range m.Flags() {
+		for _, name := range flag.Names {
+			if ufn.Contains(name) {
+				return fmt.Errorf("flag collision on %s", name)
+			}
+			ufn.Append(name)
+		}
+	}
+	return nil
+}
+
+func (m metaH) Configure(r *Request) error {
+	var flagSetOutput bytes.Buffer
+	var flagSet = flag.NewFlagSet("", flag.ContinueOnError)
+	flagSet.Usage = func() {}
+	flagSet.SetOutput(&flagSetOutput)
+
+	var flagValues []*flagValue
+	for _, flg := range m.Flags() {
+		var fv = &flagValue{Ref: flg.Ref}
+		for _, n := range flg.Names {
+			flagSet.Var(fv, n, "")
+		}
+		flagValues = append(flagValues, fv)
+	}
+
+	if err := flagSet.Parse(r.Args); err != nil {
+		return err
+	}
+
+	r.Args = flagSet.Args()
+
+	for _, fv := range flagValues {
+		fv.Link()
+	}
+
+	for _, a := range slicekit.IterReverse(m.Args()) {
+		raw, ok := slicekit.PopAt(&r.Args, a.Index)
+		if ok {
+			a.Ref.IsSet = true
+			a.Ref.Raw = raw
+		}
+	}
+
+	var ctx = r.Context()
+	for _, ref := range m.refs {
+		if err := ref.Parse(ctx); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type metaArg struct {
+	Ref   *metaRef
+	Index int
+	Name  string
+}
+
+func (m metaH) Args() []metaArg {
+	var args []metaArg
+	for _, ref := range m.refs {
+		index, ok := ref.ArgIndex()
+		if !ok {
+			continue
+		}
+		args = append(args, metaArg{
+			Ref:   ref,
+			Index: index,
+			Name:  ref.V.StructField.Name,
+		})
+	}
+	slicekit.SortBy(args, func(a, b metaArg) bool {
+		return a.Index < b.Index
+	})
+	return args
+}
+
+type metaFlag struct {
+	Ref *metaRef
+
+	Names []string
+}
+
+func (m metaH) Flags() []metaFlag {
+	var mFlags []metaFlag
+	for _, ref := range m.refs {
+		if !ref.IsFlag() {
+			continue
+		}
+		mFlags = append(mFlags, metaFlag{
+			Ref:   ref,
+			Names: ref.Flags(),
+		})
+	}
+	return mFlags
+}
+
+type metaRef struct {
+	V reflectkit.V
+
+	IsSet bool
+	Raw   string
+}
+
+func (ref metaRef) InputName() string {
+	if ref.IsFlag() {
+		fname, _ := slicekit.First(ref.Flags())
+		return fname
+	}
+	if ref.IsArg() {
+		return ref.FieldName()
+	}
+	if ref.IsEnv() {
+		ename, _ := slicekit.First(ref.Envs())
+		return ename
+	}
+	return ref.FieldName()
+}
+
+func (ref metaRef) FieldName() string {
+	if ref.V.Parent != nil {
+		return ref.V.Parent.Value.Type().String() + "." + ref.V.StructField.Name
+	}
+	return ref.V.StructField.Name
+}
+
+func (ref metaRef) Parse(ctx context.Context) error {
+	typ, ok := ref.LookupType()
+	if !ok {
+		return fmt.Errorf("unable to determine type for %s", ref.InputName())
+	}
+	if ref.IsSet {
+		return ref.parseRaw(ctx, typ, ref.Raw)
+	}
+	if envVal, ok := ref.LookupEnv(); ok {
+		return ref.parseRaw(ctx, typ, envVal)
+	}
+	if defVal, ok := ref.LookupDefault(); ok {
+		return ref.parseRaw(ctx, typ, defVal)
+	}
+	if !reflectkit.IsEmpty(ref.V.Value) {
+		return nil
+	}
+	if ref.IsRequired() {
+		return fmt.Errorf("missing input for %s", ref.InputName())
+	}
+	return nil
+}
+
+func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) error {
+	value, err := convkit.ParseReflect(typ, raw)
+	if err != nil {
+		return err
+	}
+	if ref.V.NodeType == refnode.StructField {
+		if err := validate.StructField(ctx, ref.V.StructField, value); err != nil {
+			if errors.Is(err, enum.ErrInvalid) {
+				return enumError(ref.InputName(), enum.ReflectValues(ref.V.StructField), value)
+			}
+			return err
+		}
+	}
+
+	ref.V.Value.Set(value)
+	return nil
+}
+
+func (ref metaRef) LookupType() (reflect.Type, bool) {
+	if ref.V.StructField.Type != nil {
+		return ref.V.StructField.Type, true
+	}
+	if ref.V.Value.IsValid() {
+		return ref.V.Value.Type(), true
+	}
+	return nil, false
+}
+
+func (ref metaRef) LookupDescription() (string, bool) {
+	_, desc, ok := descTagHandler.LookupTag(ref.V.StructField)
+	return desc, ok
+}
+
+func (ref metaRef) LookupDefault() (string, bool) {
+	_, val, ok := mk.DefaultTag().LookupTag(ref.V.StructField)
+	return val, ok
+}
+
+func (ref metaRef) ArgIndex() (int, bool) {
+	index, ok, _ := argTagHandler.Lookup(ref.V.StructField)
+	return index, ok
+}
+
+func (ref metaRef) Flags() []string {
+	names, ok, err := flagTagHandler.Lookup(ref.V.StructField)
+	if err != nil {
+		panic(err)
+	}
+	if !ok {
+		return nil
+	}
+	return names
+}
+
+func (ref metaRef) IsFlag() bool {
+	_, _, ok := flagTagHandler.LookupTag(ref.V.StructField)
+	return ok
+}
+
+func (ref metaRef) IsArg() bool {
+	_, _, ok := argTagHandler.LookupTag(ref.V.StructField)
+	return ok
+}
+
+func (ref metaRef) Type() reflect.Type {
+	if ref.V.NodeType == refnode.StructField {
+		return ref.V.StructField.Type
+	}
+	return ref.V.Value.Type()
+}
+
+func (ref metaRef) Envs() []string {
+	names, _ := env.LookupFieldEnvNames(ref.V.StructField)
+	return names
+}
+
+func (ref metaRef) LookupEnv() (string, bool) {
+	names, ok := env.LookupFieldEnvNames(ref.V.StructField)
+	if !ok {
+		return "", false
+	}
+	for _, name := range names {
+		if val, ok := os.LookupEnv(name); ok {
+			return val, true
+		}
+	}
+	return "", false
+}
+
+func (ref metaRef) IsRequired() bool {
+	if _, ok := ref.LookupDefault(); ok {
+		return false
+	}
+	if is, ok, _ := isRequiredTagHandler.Lookup(ref.V.StructField); ok && is {
+		return true
+	}
+	if is, ok, _ := isOptionalTagHandler.Lookup(ref.V.StructField); ok && is {
+		return false
+	}
+	if !ref.IsFlag() && (ref.IsArg() || ref.IsEnv()) {
+		return true
+	}
+	return false
+}
+
+func (ref metaRef) IsEnv() bool {
+	_, ok := env.LookupFieldEnvNames(ref.V.StructField)
+	return ok
+}
+
+func (ref metaRef) IsRelevant() bool {
+	return ref.IsFlag() || ref.IsArg() || ref.IsEnv()
+}
+
+type envMeta struct {
+	V reflectkit.V
+}
+
+type flagMeta struct {
+	V reflectkit.V
 
 	Default    string
 	HasDefault bool
@@ -791,51 +854,51 @@ type structFlag struct {
 	Enum     []reflect.Value
 }
 
-func (sf structFlag) Setter(ctx context.Context, Struct reflect.Value, value flagValue) (rErr error) {
-	name := strings.Join(sf.Names, "/")
-	defer errorkit.Recover(&rErr)
-	field := Struct.FieldByIndex(sf.StructField.Index)
+// func (sf flagMeta) Setter(ctx context.Context, Struct reflect.Value, value flagValue) (rErr error) {
+// 	name := strings.Join(sf.Names, "/")
+// 	defer errorkit.Recover(&rErr)
+// 	field := Struct.FieldByIndex(sf.StructField.Index)
 
-	field, ok := reflectkit.ToSettable(field)
-	if !ok {
-		if sf.StructField.Anonymous {
-			return nil
-		}
-		const ErrNotSettableField errorkit.Error = "ErrNotSettableField"
-		return ErrNotSettableField.F("%s field is not settable in %s", sf.StructField.Name, Struct.Type().String())
-	}
+// 	field, ok := reflectkit.ToSettable(field)
+// 	if !ok {
+// 		if sf.StructField.Anonymous {
+// 			return nil
+// 		}
+// 		const ErrNotSettableField errorkit.Error = "ErrNotSettableField"
+// 		return ErrNotSettableField.F("%s field is not settable in %s", sf.StructField.Name, Struct.Type().String())
+// 	}
 
-	if !value.IsSet && sf.HasDefault { // use default value
-		field.Set(sf.DefVal)
-		return nil
-	}
-	if !value.IsSet {
-		if !reflectkit.IsZero(field) {
-			return nil
-		}
-		if sf.HasDefault {
-			field.Set(sf.DefVal)
-			return nil
-		}
-		if sf.Required { // raise error for the missing but expected flag
-			return ErrFlagMissing.F("%s flag is required", name)
-		}
-		return nil // ignore the flag, no value to be dependency injected
-	}
-	rval, err := convkit.ParseReflect(field.Type(), value.Raw)
-	if err != nil {
-		return ErrFlagParseIssue.F("%s (%s) encountered a parsing error with the value of: %q", name, field.Type().String(), value.Raw)
-	}
+// 	if !value.IsSet && sf.HasDefault { // use default value
+// 		field.Set(sf.DefVal)
+// 		return nil
+// 	}
+// 	if !value.IsSet {
+// 		if !reflectkit.IsZero(field) {
+// 			return nil
+// 		}
+// 		if sf.HasDefault {
+// 			field.Set(sf.DefVal)
+// 			return nil
+// 		}
+// 		if sf.Required { // raise error for the missing but expected flag
+// 			return ErrFlagMissing.F("%s flag is required", name)
+// 		}
+// 		return nil // ignore the flag, no value to be dependency injected
+// 	}
+// 	rval, err := convkit.ParseReflect(field.Type(), value.Raw)
+// 	if err != nil {
+// 		return ErrFlagParseIssue.F("%s (%s) encountered a parsing error with the value of: %q", name, field.Type().String(), value.Raw)
+// 	}
 
-	if err := validate.StructField(ctx, sf.StructField, rval); err != nil {
-		if errors.Is(err, enum.ErrInvalid) {
-			return ErrFlagInvalid.Wrap(enumError(name, sf.Enum, rval))
-		}
-	}
+// 	if err := validate.StructField(ctx, sf.StructField, rval); err != nil {
+// 		if errors.Is(err, enum.ErrInvalid) {
+// 			return ErrFlagInvalid.F("%w", enumError(name, sf.Enum, rval))
+// 		}
+// 	}
 
-	field.Set(rval)
-	return nil
-}
+// 	field.Set(rval)
+// 	return nil
+// }
 
 // func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) {
 // 	name := strings.Join(sf.Names, "/")
@@ -867,23 +930,31 @@ func (sf structFlag) Setter(ctx context.Context, Struct reflect.Value, value fla
 // 	return nil
 // }
 
-func (sf structFlag) mapToFlagSet(ctx context.Context, fs *flag.FlagSet, Struct reflect.Value) func() error {
-	var v = flagValue{Type: sf.StructField.Type}
-	for _, n := range sf.Names {
-		fs.Var(&v, n, sf.Default)
-	}
-	return func() error { return sf.Setter(ctx, Struct, v) }
-}
+// func (sf flagMeta) mapToFlagSet(ctx context.Context, fs *flag.FlagSet, Struct reflect.Value) func() error {
+// 	var v = flagValue{Type: sf.StructField.Type}
+// 	for _, n := range sf.Names {
+// 		fs.Var(&v, n, sf.Default)
+// 	}
+// 	return func() error { return sf.Setter(ctx, Struct, v) }
+// }
 
 type flagValue struct {
-	Raw   string
-	IsSet bool
-	Type  reflect.Type
+	Ref *metaRef
+
+	Raw     string
+	Default string
+	IsSet   bool
+	Type    reflect.Type
 }
 
 func (v *flagValue) String() string { return v.Raw }
 
-func (v *flagValue) IsBoolFlag() bool { return v.Type.Kind() == reflect.Bool }
+func (v *flagValue) IsBoolFlag() bool {
+	if typ, ok := v.Ref.LookupType(); ok {
+		return typ.Kind() == reflect.Bool
+	}
+	return false
+}
 
 func (v *flagValue) Set(raw string) error {
 	v.Raw = raw
@@ -891,46 +962,11 @@ func (v *flagValue) Set(raw string) error {
 	return nil
 }
 
-type structArg struct {
-	StructField reflect.StructField
-
-	Index int
-	Name  string
-
-	Default    string
-	HasDefault bool
-	DefVal     reflect.Value
-
-	Desc     string
-	Required bool
-	Enum     []reflect.Value
-}
-
-func (sa structArg) Setter(Struct reflect.Value, raw string, ok bool) (rErr error) {
-	defer errorkit.Recover(&rErr)
-	field := Struct.FieldByIndex(sa.StructField.Index)
-	if !ok {
-		if !reflectkit.IsZero(field) {
-			return nil
-		}
-		if sa.HasDefault {
-			field.Set(sa.DefVal)
-			return nil
-		}
-		if sa.Required {
-			return ErrArgParseIssue.F("%s argument is not provided", sa.Name)
-		}
-		return nil // then allow zero state for arguments which are not supplied nor required.
+func (v *flagValue) Link() {
+	if v.IsSet {
+		v.Ref.IsSet = true
+		v.Ref.Raw = v.Raw
 	}
-	rval, err := convkit.ParseReflect(field.Type(), raw)
-	if err != nil {
-		return ErrArgParseIssue.F("argument at index %d is not a %s type, and encountered a parsing error on %q: %s", sa.Index, field.Type().String(), raw, err.Error())
-	}
-	if err := checkEnum(sa.Enum, rval, sa.Name); err != nil {
-		return err
-	}
-	field.Set(rval)
-	return nil
 }
 
 func checkEnum(enums []reflect.Value, val reflect.Value, name string) error {
