@@ -2,6 +2,7 @@ package convkit_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
@@ -499,5 +501,66 @@ func TestDuckParse(t *testing.T) {
 		got, err := convkit.DuckParse(duration.String())
 		assert.NoError(t, err)
 		assert.Equal[any](t, duration, got)
+	})
+}
+
+type ValueWithTextMarshaler struct{ Data []byte }
+
+func (v ValueWithTextMarshaler) MarshalText() (text []byte, err error) {
+	return v.Data, nil
+}
+
+func (v *ValueWithTextMarshaler) UnmarshalText(text []byte) error {
+	v.Data = text
+	return nil
+}
+
+type ValueWithTextMarshalerErr struct{ Err error }
+
+func (v ValueWithTextMarshalerErr) MarshalText() (text []byte, err error) {
+	return []byte{}, v.Err
+}
+
+func (v *ValueWithTextMarshalerErr) UnmarshalText(text []byte) error {
+	return errors.New(string(text))
+}
+
+func Test_textMarshalerIntegration(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("happy", func(t *testcase.T) {
+		var v = ValueWithTextMarshaler{
+			Data: []byte(rnd.HexN(5)),
+		}
+
+		data, err := convkit.Format(v)
+		assert.NoError(t, err)
+		assert.Equal(t, []byte(data), v.Data)
+
+		got, err := convkit.Parse[ValueWithTextMarshaler](data)
+		assert.NoError(t, err)
+		assert.Equal(t, v, got)
+
+		rgot, err := convkit.ParseReflect(reflectkit.TypeOf[ValueWithTextMarshaler](), data)
+		assert.NoError(t, err)
+		assert.Equal(t, v, rgot.Interface().(ValueWithTextMarshaler))
+	})
+
+	s.Test("rainy", func(t *testcase.T) {
+		var v = ValueWithTextMarshalerErr{
+			Err: t.Random.Error(),
+		}
+
+		_, err := convkit.Format(v)
+		assert.ErrorIs(t, err, v.Err)
+
+		var data = t.Random.HexN(8)
+		_, err = convkit.Parse[ValueWithTextMarshalerErr](data)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), data)
+
+		_, err = convkit.ParseReflect(reflectkit.TypeOf[ValueWithTextMarshalerErr](), data)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), data)
 	})
 }

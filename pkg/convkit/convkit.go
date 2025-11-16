@@ -1,6 +1,7 @@
 package convkit
 
 import (
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -105,6 +106,9 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(date), nil
+	}
+	if got, err, ok := textUnmarshal(typ, []byte(val)); ok {
+		return got, err
 	}
 	switch typ.Kind() {
 	case reflect.String:
@@ -360,6 +364,9 @@ func format(val reflect.Value, opts Options) (string, error) {
 		}
 		return val.Interface().(time.Time).Format(opts.TimeLayout), nil
 	}
+	if text, err, ok := textMarshal(val); ok {
+		return string(text), err
+	}
 	switch val.Kind() {
 	case reflect.String:
 		return val.Convert(typeString).String(), nil
@@ -478,4 +485,37 @@ func duckParseList(raw string, options Options) (any, error) {
 		return list.Interface(), nil
 	}
 	return values, nil
+}
+
+var encodingTextMarshaler = reflectkit.TypeOf[encoding.TextMarshaler]()
+
+func textMarshal(val reflect.Value) ([]byte, error, bool) {
+	if reflect.PointerTo(val.Type()).Implements(encodingTextMarshaler) {
+		val = reflectkit.PointerOf(val)
+	}
+	if val.Type().Implements(encodingTextMarshaler) {
+		result := val.MethodByName("MarshalText").Call([]reflect.Value{})
+		text, _ := result[0].Interface().([]byte)
+		err, _ := result[1].Interface().(error)
+		return text, err, true
+	}
+	return nil, nil, false
+}
+
+var encodingTextUnmarshaler = reflectkit.TypeOf[encoding.TextUnmarshaler]()
+
+func textUnmarshal(typ reflect.Type, data []byte) (reflect.Value, error, bool) {
+	var ptr = reflect.New(typ)
+	if ptr.Type().Implements(encodingTextUnmarshaler) {
+		res := ptr.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf(data)})
+		err, _ := res[0].Interface().(error)
+		return ptr.Elem(), err, true
+	}
+	if ptr.Type().Elem().Implements(encodingTextUnmarshaler) {
+		value := ptr.Elem()
+		res := value.MethodByName("UnmarshalText").Call([]reflect.Value{reflect.ValueOf(data)})
+		err, _ := res[0].Interface().(error)
+		return value, err, true
+	}
+	return reflect.Value{}, nil, false
 }
