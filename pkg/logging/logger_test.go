@@ -16,6 +16,7 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/stringkit"
+	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
@@ -66,7 +67,7 @@ func TestLogger_smoke(t *testing.T) {
 		l.Info(ctx, "msg")
 		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"info"`, defaultLevelKey))
 		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"msg"`, defaultMessageKey))
-		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"%s"`, defaultTimestampKey, now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`%q:"%s"`, defaultTimestampKey, now.Format(timekit.RFC5424)))
 	})
 
 	t.Run("log methods accept nil context", func(t *testing.T) {
@@ -157,7 +158,7 @@ func TestLogger_smoke(t *testing.T) {
 		ctx = logging.ContextWith(ctx, logging.Fields{"bar": 42})
 
 		l.Info(ctx, "a", logging.Fields{"info": "level"})
-		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(timekit.RFC5424)))
 		assert.Contains(t, buf.String(), `"info":"level"`)
 		assert.Contains(t, buf.String(), `"foo":"bar"`)
 		assert.Contains(t, buf.String(), `"message":"a"`)
@@ -193,7 +194,7 @@ func TestLogger_smoke(t *testing.T) {
 
 		l.Info(ctx, "foo")
 		fm := defaultKeyFormatter
-		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.TimestampKey), now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.TimestampKey), now.Format(timekit.RFC5424)))
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.MessageKey), "foo"))
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`, fm(l.LevelKey), "info"))
 	})

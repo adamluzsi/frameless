@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/pkg/teardown"
+	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/pp"
@@ -89,7 +90,7 @@ func Test_pkgFuncSmoke(t *testing.T) {
 		ctx = logging.ContextWith(ctx, logging.Fields{"bar": 42})
 
 		logger.Info(ctx, "a", logging.Fields{"info": "level"})
-		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(timekit.RFC5424)))
 		assert.Contains(t, buf.String(), `"info":"level"`)
 		assert.Contains(t, buf.String(), `"foo":"bar"`)
 		assert.Contains(t, buf.String(), `"message":"a"`)
@@ -131,7 +132,7 @@ func Test_pkgFuncSmoke(t *testing.T) {
 
 		logger.Info(ctx, "foo")
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
-			defaultKeyFormatter(timestampKey), now.Format(time.RFC3339)))
+			defaultKeyFormatter(timestampKey), now.Format(timekit.RFC5424)))
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,
 			defaultKeyFormatter(messageKey), "foo"))
 		assert.Contains(t, buf.String(), fmt.Sprintf(`"%s":"%s"`,

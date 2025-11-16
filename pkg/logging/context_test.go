@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/logging"
+	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
 )
@@ -44,7 +45,7 @@ func TestContextWith(t *testing.T) {
 		assert.Contains(t, buf.String(), `"foo":"bar"`)
 		assert.Contains(t, buf.String(), `"hello":"world"`)
 		assert.Contains(t, buf.String(), `"numbers":[1,2,3]`)
-		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(time.RFC3339)))
+		assert.Contains(t, buf.String(), fmt.Sprintf(`"timestamp":"%s"`, now.Format(timekit.RFC5424)))
 	})
 
 	t.Run("contextkit are isolated and not leaking out between each other", func(t *testing.T) {
