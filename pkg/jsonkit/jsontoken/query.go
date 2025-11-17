@@ -17,12 +17,8 @@ import (
 // It will not keep the visited json i n memory, to avoid problems with infinite streams.
 func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 	const stopIteration errorkitlite.Error = "break"
-	type Hit struct {
-		Data json.RawMessage
-		Err  error
-	}
 	return func(yield func(json.RawMessage, error) bool) {
-		var hits = make(chan Hit)
+		var dch = make(chan []byte)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -30,10 +26,9 @@ func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 		sc := Scanner{
 			Selectors: []Selector{{
 				Path: path,
-				On: func(src io.Reader) error {
-					data, err := io.ReadAll(src)
+				Func: func(data []byte) error {
 					select {
-					case hits <- Hit{Data: data, Err: err}:
+					case dch <- data:
 					case <-ctx.Done():
 						return stopIteration
 					}
@@ -46,12 +41,12 @@ func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 		defer g.Wait()
 
 		g.Go(func(ctx context.Context) error {
-			defer close(hits)
+			defer close(dch)
 			return sc.Scan(toInput(r))
 		})
 
-		for hit := range hits {
-			if !yield(hit.Data, hit.Err) {
+		for data := range dch {
+			if !yield(data, nil) {
 				return
 			}
 		}

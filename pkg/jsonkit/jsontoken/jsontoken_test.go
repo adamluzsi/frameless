@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -424,33 +423,35 @@ func TestScanner(t *testing.T) {
 		})
 
 		s.Context("string", func(s *testcase.Spec) {
-			expectedData := let.Var[json.RawMessage](s, nil)
+			expectedData := let.Var[[]byte](s, nil)
+
 			input.Let(s, func(t *testcase.T) jsontoken.Input {
-				dv := expectedData.Get(t)
-				assert.True(t, json.Valid(dv), "expected that the json raw message is valid")
-				// the array surrounding ensures that incorrect string handling causes issues
-				dv = []byte(fmt.Sprintf(`[%s]`, string(dv)))
-				data, err := json.Marshal(dv)
-				assert.NoError(t, err)
+				data := expectedData.Get(t)
+				assert.True(t, json.Valid(data), "expected that the expected data is a valid JSON")
 				return bytes.NewReader(data)
 			})
 
 			gotData := let.VarOf[[]byte](s, nil)
 			selectors.Let(s, func(t *testcase.T) []jsontoken.Selector {
-				return []jsontoken.Selector{
-					{
-						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
-						On: func(src io.Reader) error {
-							data, err := io.ReadAll(src)
-							gotData.Set(t, data)
-							return err
-						},
-					},
+				var selector jsontoken.Selector
+				selector.Path = jsontoken.Path{jsontoken.KindString}
+				selector.Func = func(data []byte) error {
+					gotData.Set(t, data)
+					return nil
 				}
+				if t.Random.Bool() {
+					selector.Func = nil
+					selector.On = func(src io.Reader) error {
+						data, err := io.ReadAll(src)
+						gotData.Set(t, data)
+						return err
+					}
+				}
+				return []jsontoken.Selector{selector}
 			})
 
 			s.Context("quote", func(s *testcase.Spec) {
-				expectedData.Let(s, func(t *testcase.T) json.RawMessage {
+				expectedData.Let(s, func(t *testcase.T) []byte {
 					return []byte(`"\""`)
 				})
 
@@ -466,26 +467,33 @@ func TestScanner(t *testing.T) {
 						s       jsontoken.Scanner
 						gotData []byte
 					)
-					s.Selectors = []jsontoken.Selector{
-						{
-							Path: jsontoken.Path{jsontoken.KindString},
-							On: func(src io.Reader) error {
-								data, err := io.ReadAll(src)
-								if err == nil {
-									gotData = data
-								}
-								return err
-							},
+
+					var selector = jsontoken.Selector{
+						Path: jsontoken.Path{jsontoken.KindString},
+						Func: func(data []byte) error {
+							gotData = data
+							return nil
 						},
 					}
+					if t.Random.Bool() {
+						selector.Func = nil
+						selector.On = func(src io.Reader) error {
+							data, err := io.ReadAll(src)
+							if err == nil {
+								gotData = data
+							}
+							return err
+						}
+					}
 
+					s.Selectors = []jsontoken.Selector{selector}
 					assert.NoError(t, s.Scan(strings.NewReader(in)))
 					assert.Equal(t, string(gotData), in)
 				})
 			})
 
 			s.Context("backslash", func(s *testcase.Spec) {
-				expectedData.Let(s, func(t *testcase.T) json.RawMessage {
+				expectedData.Let(s, func(t *testcase.T) []byte {
 					return []byte(`"\\"`)
 				})
 
@@ -1157,18 +1165,23 @@ func TestQueryMany_e2e(t *testing.T) {
 		json.RawMessage(`"baz"`),
 	}
 
-	var gotVS []json.RawMessage
+	var gotVSFunc, gotVSOn []json.RawMessage
 	err := jsontoken.QueryMany(input, jsontoken.Selector{
 		Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
 		On: func(src io.Reader) error {
 			data, err := io.ReadAll(src)
 			if err == nil {
-				gotVS = append(gotVS, data)
+				gotVSFunc = append(gotVSFunc, data)
 			}
 			return err
+		},
+		Func: func(data []byte) error {
+			gotVSOn = append(gotVSOn, data)
+			return nil
 		},
 	})
 	assert.NoError(t, err)
 
-	assert.ContainsExactly(t, expVS, gotVS)
+	assert.ContainsExactly(t, expVS, gotVSFunc)
+	assert.ContainsExactly(t, expVS, gotVSOn)
 }

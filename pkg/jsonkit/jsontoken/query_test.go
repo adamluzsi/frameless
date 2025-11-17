@@ -72,7 +72,7 @@ func TestQueryMany_smoke(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	for desc, sample := range Samples {
-		s.Test(desc, func(t *testcase.T) {
+		s.Test(desc+"(.On)", func(t *testcase.T) {
 			err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
 				Path: jsontoken.Path{},
 				On: func(src io.Reader) error {
@@ -83,31 +83,70 @@ func TestQueryMany_smoke(t *testing.T) {
 			})
 			assert.NoError(t, err)
 		})
+		s.Test(desc+"(.Func)", func(t *testcase.T) {
+			err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
+				Path: jsontoken.Path{},
+				Func: func(data []byte) error {
+					assert.NotEmpty(t, data)
+					return nil
+				},
+			})
+			assert.NoError(t, err)
+		})
 	}
 	for desc, sample := range ArraySamples {
 		s.Context(desc, func(s *testcase.Spec) {
-			s.Test("select-all", func(t *testcase.T) {
-				err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
-					Path: jsontoken.Path{},
-					On: func(src io.Reader) error {
-						data, err := io.ReadAll(src)
-						assert.NotEmpty(t, data)
-						return err
-					},
+			s.Context(".On", func(s *testcase.Spec) {
+				s.Test("select-all", func(t *testcase.T) {
+					err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
+						Path: jsontoken.Path{},
+						On: func(src io.Reader) error {
+							data, err := io.ReadAll(src)
+							assert.NotEmpty(t, data)
+							assert.True(t, json.Valid(data))
+							return err
+						},
+					})
+					assert.NoError(t, err)
 				})
-				assert.NoError(t, err)
-			})
 
-			s.Test("select-array-elements", func(t *testcase.T) {
-				err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
-					Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
-					On: func(src io.Reader) error {
-						data, err := io.ReadAll(src)
-						assert.NotEmpty(t, data)
-						return err
-					},
+				s.Test("select-array-elements", func(t *testcase.T) {
+					err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
+						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
+						On: func(src io.Reader) error {
+							data, err := io.ReadAll(src)
+							assert.NotEmpty(t, data)
+							assert.True(t, json.Valid(data))
+							return err
+						},
+					})
+					assert.NoError(t, err)
 				})
-				assert.NoError(t, err)
+			})
+			s.Context(".Func", func(s *testcase.Spec) {
+				s.Test("select-all", func(t *testcase.T) {
+					err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
+						Path: jsontoken.Path{},
+						Func: func(data []byte) error {
+							assert.NotEmpty(t, data)
+							assert.True(t, json.Valid(data))
+							return nil
+						},
+					})
+					assert.NoError(t, err)
+				})
+
+				s.Test("select-array-elements", func(t *testcase.T) {
+					err := jsontoken.QueryMany(strings.NewReader(sample), jsontoken.Selector{
+						Path: jsontoken.Path{jsontoken.KindArray, jsontoken.KindElement{}},
+						Func: func(data []byte) error {
+							assert.NotEmpty(t, data)
+							assert.True(t, json.Valid(data))
+							return nil
+						},
+					})
+					assert.NoError(t, err)
+				})
 			})
 		})
 	}

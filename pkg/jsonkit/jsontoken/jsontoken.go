@@ -93,15 +93,8 @@ func (s *Scanner) On(path Path, on func(io.Reader) error) {
 
 type Selector struct {
 	Path Path
+	Func func(data []byte) error
 	On   func(src io.Reader) error
-}
-
-func (s Selector) on(src io.ReadCloser) error {
-	defer src.Close()
-	if s.On != nil {
-		return s.On(src)
-	}
-	return nil
 }
 
 var _ Input = (*bufio.Reader)(nil)
@@ -211,49 +204,75 @@ func (s *Scanner) getBufferSize() iokit.ByteSize {
 	return cmp.Or(s.BufferSize, DefaultBufferSize)
 }
 
-func (s *Scanner) selectorsForPath(path Path) []Selector {
-	return slicekit.Filter(s.Selectors, func(s Selector) bool {
-		if s.On == nil {
-			return false
+func (s *Scanner) selectorsForPath(path Path) ([]func(data []byte) error, []func(src io.Reader) error) {
+	var (
+		sfs []func(data []byte) error
+		sos []func(src io.Reader) error
+	)
+	for _, selector := range s.Selectors {
+		if !selector.Path.Match(path) {
+			continue
 		}
-		return s.Path.Match(path)
-	})
+		if selector.Func != nil {
+			sfs = append(sfs, selector.Func)
+		}
+		if selector.On != nil {
+			sos = append(sos, selector.On)
+		}
+	}
+	return sfs, sos
 }
 
 func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writer) error) (rErr error) {
-	var selectors = s.selectorsForPath(path)
+	var innerScopeData io.Writer = outerScopeData
+	var fns, ons = s.selectorsForPath(path)
 
-	if len(selectors) == 0 {
+	if len(fns) == 0 && len(ons) == 0 {
 		// if no selector is interested about this path
 		// we just continue with the inner scope.
-		return blk(outerScopeData)
+		return blk(innerScopeData)
 	}
 
-	var g synckit.Group
-	defer errorkitlite.Finish(&rErr, g.Wait)
-
-	pr, pw := io.Pipe()
-	defer pw.Close()
-
-	// we want to ensure that both the original outer scope receives further json tokens
-	// and matched current inner scope alike
-	var currentScopeData io.Writer = io.MultiWriter(outerScopeData, pw)
-
-	readers := iokit.LockstepReaders(pr, len(selectors), s.getBufferSize())
-
-	for i := range len(selectors) {
-		var i = i
-		g.Go(func(ctx context.Context) error {
-			var selector = selectors[i]
-			var reader = readers[i]
-			defer reader.Close()
-			return selector.on(reader)
-		})
+	if 0 < len(fns) {
+		var local bytes.Buffer
+		innerScopeData = io.MultiWriter(innerScopeData, &local)
+		defer func() {
+			if rErr != nil {
+				return
+			}
+			for _, fn := range fns {
+				if err := fn(local.Bytes()); err != nil {
+					rErr = err
+					break
+				}
+			}
+		}()
 	}
 
-	err := blk(currentScopeData)
-	pw.Close()
-	return err
+	if 0 < len(ons) {
+		var g synckit.Group
+		defer errorkitlite.Finish(&rErr, g.Wait)
+
+		pr, pw := io.Pipe()
+		defer pw.Close()
+
+		// we want to ensure that both the original outer scope receives further json tokens
+		// and matched current inner scope alike
+		innerScopeData = io.MultiWriter(innerScopeData, pw)
+
+		lsrs := iokit.LockstepReaders(pr, len(ons), s.getBufferSize())
+		for i := range len(ons) {
+			var i = i
+			g.Go(func(ctx context.Context) error {
+				var onFunc = ons[i]
+				var reader = lsrs[i]
+				defer reader.Close()
+				return onFunc(reader)
+			})
+		}
+	}
+
+	return blk(innerScopeData)
 }
 
 func trimSpace(in Input, out io.Writer) error {
@@ -360,9 +379,6 @@ func (s *Scanner) scanBoolean(in Input, out io.Writer, path Path) error {
 func (s *Scanner) scanArray(in Input, out io.Writer, path Path) error {
 	path = path.With(KindArray)
 	return s.with(out, path, func(out io.Writer) error {
-		var debugOut bytes.Buffer
-		out = io.MultiWriter(&debugOut, out)
-
 		if err := trimSpace(in, out); err != nil {
 			return err
 		}
