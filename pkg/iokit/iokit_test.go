@@ -3,8 +3,10 @@ package iokit_test
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -1293,6 +1295,85 @@ func TestLockstepReaders(t *testing.T) {
 		}, func() {
 			defer c.Close()
 			io.ReadFull(c, make([]byte, len(data.Get(t))/2))
+		})
+	})
+
+	s.Test("pprof", func(t *testcase.T) {
+		testcase.GetEnv(t, "profile", t.SkipNow)
+		const DataMoveSize = 100 * iokit.Megabyte
+		var window = cmp.Or(DataMoveSize/100, DataMoveSize/10, 1)
+		_ = window
+
+		var g synckit.Group
+		t.Cleanup(func() { assert.NoError(t, g.Wait()) })
+		out, in := io.Pipe()
+
+		g.Go(func(ctx context.Context) error {
+			defer in.Close()
+
+			chunk := make([]byte, window)
+			t.Random.Read(chunk)
+
+			var written int
+			for written < DataMoveSize {
+				var toWrite = chunk
+				if DataMoveSize < len(toWrite)+window {
+					toWrite = toWrite[:DataMoveSize-window]
+				}
+				n, err := in.Write(toWrite)
+				if err != nil {
+					return fmt.Errorf("write error: %w", err)
+				}
+				written += n
+			}
+			return in.Close()
+		})
+
+		for _, r := range iokit.LockstepReaders(out, 3, window) {
+			r := r
+			g.Go(func(ctx context.Context) error {
+				var p = make([]byte, 10)
+				for {
+					_, err := r.Read(p)
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							return nil
+						}
+						return err
+					}
+				}
+			})
+		}
+	})
+}
+
+func BenchmarkLockstepReaders(b *testing.B) {
+	rnd := random.New(random.CryptoSeed{})
+
+	const sampling = 3
+	b.Run("100KB", func(b *testing.B) {
+		window := iokit.Kilobyte
+		input := rnd.StringN(100 * window)
+
+		b.Run("1", func(b *testing.B) {
+			for b.Loop() {
+				lrs := iokit.LockstepReaders(strings.NewReader(input), 1, window)
+				io.ReadAll(lrs[0])
+			}
+		})
+		b.Run("N", func(b *testing.B) {
+			var g synckit.Group
+			for b.Loop() {
+				lrs := iokit.LockstepReaders(strings.NewReader(input), sampling, window)
+				for _, r := range lrs {
+					var r = r
+					g.Go(func(ctx context.Context) error {
+						_, err := io.ReadAll(r)
+						return err
+					})
+				}
+				g.Wait()
+			}
 		})
 	})
 }
