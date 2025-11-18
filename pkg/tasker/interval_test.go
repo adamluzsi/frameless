@@ -1,12 +1,16 @@
 package tasker_test
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
@@ -117,4 +121,110 @@ func TestDaily_smoke(t *testing.T) {
 	assert.Equal(t, expUntilNext, interval.UntilNext(now),
 		"when the next interval is in the future",
 		"then remaining time until the next occurrence is returned")
+}
+
+func TestDaily(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var daily = let.Var(s, func(t *testcase.T) *tasker.Daily {
+		return &tasker.Daily{
+			Hour:     t.Random.IntBetween(0, 23),
+			Minute:   t.Random.IntBetween(0, 59),
+			Location: random.Pick(t.Random, time.Local, time.UTC),
+		}
+	})
+
+	s.Describe("#MarshalText", func(s *testcase.Spec) {
+		act := let.Act2(func(t *testcase.T) ([]byte, error) {
+			return daily.Get(t).MarshalText()
+		})
+
+		s.Then("text format is returned", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+
+			exp := fmt.Sprintf("%02d:%02d", daily.Get(t).Hour, daily.Get(t).Minute)
+			assert.True(t, strings.HasPrefix(string(got), exp))
+		})
+
+		s.When("location is NOT provided", func(s *testcase.Spec) {
+			daily.Let(s, func(t *testcase.T) *tasker.Daily {
+				d := daily.Super(t)
+				d.Location = nil
+				return d
+			})
+
+			s.Then("text format will look like HH:mm", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+
+				exp := fmt.Sprintf("%02d:%02d", daily.Get(t).Hour, daily.Get(t).Minute)
+				assert.Equal(t, exp, string(got))
+			})
+		})
+
+		s.When("location is provided", func(s *testcase.Spec) {
+			daily.Let(s, func(t *testcase.T) *tasker.Daily {
+				d := daily.Super(t)
+				d.Location = random.Pick(t.Random, time.Local, time.UTC)
+				return d
+			})
+
+			s.Then("text format will look like HH:mmz", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+
+				local := time.Date(0, 0, 0, 0, 0, 0, 0, daily.Get(t).Location).Format("Z07:00")
+				exp := fmt.Sprintf("%02d:%02d%s", daily.Get(t).Hour, daily.Get(t).Minute, local)
+				assert.Equal(t, exp, string(got))
+			})
+		})
+	})
+
+	s.Describe("#UnmarshalText", func(s *testcase.Spec) {
+		var text = let.Var[[]byte](s, nil)
+		act := let.Act(func(t *testcase.T) error {
+			return daily.Get(t).UnmarshalText(text.Get(t))
+		})
+
+		var (
+			hour   = let.IntB(s, 0, 23)
+			minute = let.IntB(s, 0, 59)
+		)
+
+		s.When("HH:mm format is provided", func(s *testcase.Spec) {
+			text.Let(s, func(t *testcase.T) []byte {
+				return []byte(fmt.Sprintf("%02d:%02d", hour.Get(t), minute.Get(t)))
+			})
+
+			s.Then("hour is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, daily.Get(t).Hour, hour.Get(t))
+			})
+
+			s.Then("minute is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, daily.Get(t).Minute, minute.Get(t))
+			})
+
+			s.Then("location set to Local", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, daily.Get(t).Location, time.Local)
+			})
+		})
+	})
+
+	s.Context("encoding.TextMarshaler", func(s *testcase.Spec) {
+
+		s.Test("marshal ", func(t *testcase.T) {
+			var d = tasker.Daily{Hour: t.Random.IntBetween(0, 23), Minute: t.Random.IntBetween(0, 59)}
+
+			enc, err := d.MarshalText()
+			assert.NoError(t, err)
+			assert.Equal(t, fmt.Sprintf("%02d:%02d", d.Hour, d.Minute), string(enc))
+		})
+	})
 }
