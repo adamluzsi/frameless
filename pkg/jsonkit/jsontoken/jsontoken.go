@@ -102,7 +102,6 @@ var _ Input = (*bufio.Reader)(nil)
 type Input interface {
 	ReadRune() (r rune, size int, err error)
 	UnreadRune() error
-	ReadByte() (byte, error)
 }
 
 var _ Output = (*bytes.Buffer)(nil)
@@ -256,19 +255,24 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 		pr, pw := io.Pipe()
 		defer pw.Close()
 
-		// we want to ensure that both the original outer scope receives further json tokens
-		// and matched current inner scope alike
 		innerScopeData = io.MultiWriter(innerScopeData, pw)
 
-		lsrs := iokit.LockstepReaders(pr, len(ons), s.getBufferSize())
-		for i := range len(ons) {
-			var i = i
+		if len(ons) == 1 {
 			g.Go(func(ctx context.Context) error {
-				var onFunc = ons[i]
-				var reader = lsrs[i]
-				defer reader.Close()
-				return onFunc(reader)
+				defer pr.Close()
+				return ons[0](pr)
 			})
+		} else {
+			lsrs := iokit.LockstepReaders(pr, len(ons), s.getBufferSize())
+			for i := range len(ons) {
+				var i = i
+				g.Go(func(ctx context.Context) error {
+					var onFunc = ons[i]
+					var reader = lsrs[i]
+					defer reader.Close()
+					return onFunc(reader)
+				})
+			}
 		}
 	}
 

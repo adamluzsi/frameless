@@ -279,9 +279,25 @@ func TestScanner(t *testing.T) {
 		})
 	)
 	scanner := let.Var(s, func(t *testcase.T) *jsontoken.Scanner {
-		return &jsontoken.Scanner{
-			Selectors: selectors.Get(t),
+		sels := selectors.Get(t)
+		if t.Random.Bool() {
+			var dummySels []jsontoken.Selector
+			for _, sel := range sels {
+				if sel.On != nil {
+					dummySels = append(dummySels, jsontoken.Selector{
+						Path: sel.Path,
+						On: func(src io.Reader) error {
+							_, err := io.ReadAll(src)
+							return err
+						},
+					})
+				}
+			}
+			if 0 < len(dummySels) {
+				sels = append(sels, dummySels...)
+			}
 		}
+		return &jsontoken.Scanner{Selectors: sels}
 	})
 
 	s.Test("AddString", func(t *testcase.T) {
