@@ -22,14 +22,16 @@ func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {
 		typ     = reflectkit.TypeOf[T]()
 		val     = string(raw)
 		options = toOptions(opts)
+		rv, err = parse(typ, val, options)
 	)
-	rv, err := parse(typ, val, options)
 	if err != nil {
-		return *new(T), fmt.Errorf("convkit.Parse failed: %w", err)
+		var zero T
+		return zero, fmt.Errorf("convkit.Parse failed: %w", err)
 	}
-	out, ok := rv.Interface().(T)
+	var out, ok = rv.Interface().(T)
 	if !ok {
-		return *new(T), fmt.Errorf("error, incorrect return value made during parsing")
+		var zero T
+		return zero, fmt.Errorf("error, incorrect return value made during parsing")
 	}
 	return out, nil
 }
