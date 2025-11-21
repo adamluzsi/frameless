@@ -3,6 +3,7 @@ package tasker
 import (
 	"time"
 
+	"go.llib.dev/frameless/pkg/timekit"
 	"go.llib.dev/testcase/clock"
 )
 
@@ -47,35 +48,7 @@ func (i Monthly) UntilNext(lastRanAt time.Time) time.Duration {
 	return occurrenceAt.Sub(lastRanAt)
 }
 
-type Daily struct {
-	Hour, Minute int
-	Location     *time.Location
-}
-
-func (i Daily) UntilNext(lastRanAt time.Time) time.Duration {
-	loc := getLocation(i.Location)
-	now := clock.Now().In(loc)
-	if lastRanAt.IsZero() {
-		lastRanAt = now
-	}
-	lastRanAt = lastRanAt.In(loc)
-
-	if lastRanAt.Year() < now.Year() {
-		return 0
-	}
-	if lastRanAt.Month() < now.Month() {
-		return 0
-	}
-	if lastRanAt.Day() < now.Day() {
-		return 0
-	}
-
-	occurrenceAt := time.Date(now.Year(), now.Month(), now.Day(),
-		i.Hour, i.Minute, 0, 0, loc).
-		AddDate(0, 0, 1)
-
-	return occurrenceAt.Sub(lastRanAt)
-}
+type Daily = timekit.DayTime
 
 func getLocation(loc *time.Location) *time.Location {
 	if loc == nil {

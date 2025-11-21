@@ -4,10 +4,13 @@
 package timekit
 
 import (
+	"cmp"
 	"context"
+	"encoding"
 	"fmt"
 	"iter"
 	"slices"
+	"strings"
 	"time"
 
 	"go.llib.dev/frameless/pkg/enum"
@@ -15,6 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/mathkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/testcase/clock"
 )
 
 const (
@@ -71,44 +75,102 @@ type Interval interface {
 }
 
 type DayTime struct {
-	Hour   int `range:"0..24"`
-	Minute int `range:"0..60"`
+	Hour     int `range:"0..24"`
+	Minute   int `range:"0..60"`
+	Location *time.Location
 }
 
-func ToDate(ref time.Time) (year int, month time.Month, day int, tz *time.Location) {
-	year, month, day = ref.Date()
-	tz = ref.Location()
-	return
+func (dt DayTime) loc() *time.Location {
+	return cmp.Or(dt.Location, time.Local)
 }
 
-func (d DayTime) ToTime(year int, month time.Month, day int, tz *time.Location) time.Time {
-	return time.Date(year, month, day, d.Hour, d.Minute, 0, 0, tz)
+func (dt DayTime) ToTime(year int, month time.Month, day int) time.Time {
+	return time.Date(year, month, day, dt.Hour, dt.Minute, 0, 0, dt.loc())
 }
 
-// ToTimeRelTo will return the time.Time equalement of a DayTime,
-// which is relative to the provided reference time's date.
-func (d DayTime) ToTimeRelTo(ref time.Time) time.Time {
-	return d.ToTime(ToDate(ref))
+func (dt DayTime) IsZero() bool {
+	return dt.Hour == 0 && dt.Minute == 0
 }
 
-func (d DayTime) IsZero() bool {
-	return d.Hour == 0 && d.Minute == 0
-}
-
-func (d DayTime) Compare(oth DayTime) int {
-	if d.Hour < oth.Hour {
+func (dt DayTime) Compare(oth DayTime) int {
+	if dt.Hour < oth.Hour {
 		return -1
 	}
-	if oth.Hour < d.Hour {
+	if oth.Hour < dt.Hour {
 		return 1
 	}
-	if d.Minute < oth.Minute {
+	if dt.Minute < oth.Minute {
 		return -1
 	}
-	if oth.Minute < d.Minute {
+	if oth.Minute < dt.Minute {
 		return 1
 	}
 	return 0
+}
+
+func (dt DayTime) UntilNext(since time.Time) time.Duration {
+	loc := dt.loc()
+	now := clock.Now().In(loc)
+	if since.IsZero() {
+		since = now
+	}
+	since = since.In(loc)
+
+	if since.Year() < now.Year() {
+		return 0
+	}
+	if since.Month() < now.Month() {
+		return 0
+	}
+	if since.Day() < now.Day() {
+		return 0
+	}
+
+	occurrenceAt := time.Date(now.Year(), now.Month(), now.Day(),
+		dt.Hour, dt.Minute, 0, 0, loc).
+		AddDate(0, 0, 1)
+
+	return occurrenceAt.Sub(since)
+}
+
+var _ encoding.TextUnmarshaler = (*DayTime)(nil)
+
+func (dt *DayTime) UnmarshalText(text []byte) error {
+	var (
+		raw = string(text)
+		t   time.Time
+		err error
+		loc *time.Location
+	)
+	if strings.ContainsAny(raw, "+Z") {
+		const layoutWTZ = "15:04Z07:00"
+		t, err = time.Parse(layoutWTZ, string(text))
+		loc = t.Location()
+	} else {
+		const layout = "15:04"
+		t, err = time.Parse(layout, string(text))
+		loc = time.Local
+	}
+	if err != nil {
+		return err
+	}
+	dt.Hour = t.Hour()
+	dt.Minute = t.Minute()
+	dt.Location = loc
+	return nil
+}
+
+var _ encoding.TextMarshaler = (*DayTime)(nil)
+
+func (dt DayTime) MarshalText() (text []byte, err error) {
+	if dt.Location != nil {
+		const layoutWTZ = "15:04Z07:00"
+		d := time.Date(0, 0, 0, dt.Hour, dt.Minute, 0, 0, dt.Location)
+		return []byte(d.Format(layoutWTZ)), nil
+	}
+	const layoutLocal = "15:04"
+	d := time.Date(0, 0, 0, dt.Hour, dt.Minute, 0, 0, time.Local)
+	return []byte(d.Format(layoutLocal)), nil
 }
 
 type Range struct {
@@ -241,8 +303,10 @@ func (sch Schedule) Check(ref time.Time) bool {
 }
 
 func (sch Schedule) getRangeOnDate(ref time.Time) Range {
+	var dt = sch.DayTime
+	dt.Location = ref.Location()
 	var (
-		from = sch.DayTime.ToTimeRelTo(ref)
+		from = dt.ToTime(ref.Date())
 		till = from.Add(sch.Duration)
 	)
 	return Range{

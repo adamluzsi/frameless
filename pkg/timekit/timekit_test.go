@@ -2,6 +2,7 @@ package timekit_test
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"reflect"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock/timecop"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
@@ -489,7 +491,9 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 	})
 
 	s.When(".From is provided", func(s *testcase.Spec) {
-		from := let.VarOf(s, timekit.DayTime{Hour: 12, Minute: 00})
+		from := let.Var(s, func(t *testcase.T) timekit.DayTime {
+			return timekit.DayTime{Hour: 12, Minute: 00}
+		})
 
 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
 			sch := schedule.Super(t)
@@ -640,8 +644,10 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 			got, ok := act(t)
 			assert.True(t, ok)
 
-			from := schedule.Get(t).DayTime.
-				ToTimeRelTo(ref.Get(t)).
+			dt := schedule.Get(t).DayTime
+			dt.Location = ref.Get(t).Location()
+			from := dt.
+				ToTime(ref.Get(t).Date()).
 				AddDate(0, 0, 1) // next day
 
 			assert.Equal(t, timekit.Range{
@@ -675,7 +681,9 @@ func (spec ScheduleSpec) specNext(s *testcase.Spec) {
 
 		s.Then("next occurence is given back", func(t *testcase.T) {
 			loc := schedule.Get(t).Location
-			from := schedule.Get(t).DayTime.ToTimeRelTo(ref.Get(t).AddDate(0, 0, 1).In(loc))
+			dt := schedule.Get(t).DayTime
+			dt.Location = loc
+			from := dt.ToTime(ref.Get(t).AddDate(0, 0, 1).In(loc).Date())
 			till := from.Add(schedule.Get(t).Duration)
 			exp := timekit.Range{From: from, Till: till}
 
@@ -744,7 +752,9 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 	})
 
 	s.When(".From is provided", func(s *testcase.Spec) {
-		from := let.VarOf(s, timekit.DayTime{Hour: 12, Minute: 00})
+		from := let.Var(s, func(t *testcase.T) timekit.DayTime {
+			return timekit.DayTime{Hour: 12, Minute: 00}
+		})
 
 		schedule.Let(s, func(t *testcase.T) timekit.Schedule {
 			sch := schedule.Super(t)
@@ -896,7 +906,9 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 			assert.True(t, ok)
 
 			exp := timekit.Range{}
-			exp.From = schedule.Get(t).DayTime.ToTimeRelTo(ref.Get(t))
+			dt := schedule.Get(t).DayTime
+			dt.Location = ref.Get(t).Location()
+			exp.From = schedule.Get(t).DayTime.ToTime(ref.Get(t).Date())
 			exp.Till = exp.From.Add(schedule.Get(t).Duration)
 			assert.Equal(t, exp, got, "exp | got")
 			assert.True(t, got.Contain(ref.Get(t)))
@@ -927,7 +939,9 @@ func (spec ScheduleSpec) specNear(s *testcase.Spec) {
 
 		s.Then("near occurence is given back", func(t *testcase.T) {
 			loc := schedule.Get(t).Location
-			from := schedule.Get(t).DayTime.ToTimeRelTo(ref.Get(t).AddDate(0, 0, 1).In(loc))
+			dt := schedule.Get(t).DayTime
+			dt.Location = loc
+			from := dt.ToTime(ref.Get(t).AddDate(0, 0, 1).In(loc).Date())
 			till := from.Add(schedule.Get(t).Duration)
 			exp := timekit.Range{From: from, Till: till}
 
@@ -1612,4 +1626,158 @@ func Test_rfc5424(t *testing.T) {
 		assert.Equal(t, 6, idx, "microsecond format must have exactly 6 fractional digits — this is invalid for RFC5424")
 	})
 
+}
+
+func TestDaytime(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var dayTime = let.Var(s, func(t *testcase.T) *timekit.DayTime {
+		return &timekit.DayTime{
+			Hour:     t.Random.IntBetween(0, 23),
+			Minute:   t.Random.IntBetween(0, 59),
+			Location: random.Pick(t.Random, time.Local, time.UTC),
+		}
+	})
+
+	s.Describe("#MarshalText", func(s *testcase.Spec) {
+		act := let.Act2(func(t *testcase.T) ([]byte, error) {
+			return dayTime.Get(t).MarshalText()
+		})
+
+		s.Then("text format is returned", func(t *testcase.T) {
+			got, err := act(t)
+			assert.NoError(t, err)
+
+			exp := fmt.Sprintf("%02d:%02d", dayTime.Get(t).Hour, dayTime.Get(t).Minute)
+			assert.True(t, strings.HasPrefix(string(got), exp))
+		})
+
+		s.When("location is NOT provided", func(s *testcase.Spec) {
+			dayTime.Let(s, func(t *testcase.T) *timekit.DayTime {
+				d := dayTime.Super(t)
+				d.Location = nil
+				return d
+			})
+
+			s.Then("text format will look like HH:mm", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+
+				exp := fmt.Sprintf("%02d:%02d", dayTime.Get(t).Hour, dayTime.Get(t).Minute)
+				assert.Equal(t, exp, string(got))
+			})
+		})
+
+		s.When("location is provided", func(s *testcase.Spec) {
+			dayTime.Let(s, func(t *testcase.T) *timekit.DayTime {
+				d := dayTime.Super(t)
+				d.Location = random.Pick(t.Random, time.Local, time.UTC)
+				return d
+			})
+
+			s.Then("text format will look like HH:mmz", func(t *testcase.T) {
+				got, err := act(t)
+				assert.NoError(t, err)
+
+				local := time.Date(0, 0, 0, 0, 0, 0, 0, dayTime.Get(t).Location).Format("Z07:00")
+				exp := fmt.Sprintf("%02d:%02d%s", dayTime.Get(t).Hour, dayTime.Get(t).Minute, local)
+				assert.Equal(t, exp, string(got))
+			})
+		})
+	})
+
+	s.Describe("#UnmarshalText", func(s *testcase.Spec) {
+		var text = let.Var[[]byte](s, nil)
+		act := let.Act(func(t *testcase.T) error {
+			return dayTime.Get(t).UnmarshalText(text.Get(t))
+		})
+
+		var (
+			hour   = let.IntB(s, 0, 23)
+			minute = let.IntB(s, 0, 59)
+		)
+
+		s.When("HH:mm format is provided", func(s *testcase.Spec) {
+			text.Let(s, func(t *testcase.T) []byte {
+				return []byte(fmt.Sprintf("%02d:%02d", hour.Get(t), minute.Get(t)))
+			})
+
+			s.Then("hour is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, dayTime.Get(t).Hour, hour.Get(t))
+			})
+
+			s.Then("minute is parsed", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, dayTime.Get(t).Minute, minute.Get(t))
+			})
+
+			s.Then("location set to Local", func(t *testcase.T) {
+				assert.NoError(t, act(t))
+
+				assert.Equal(t, dayTime.Get(t).Location, time.Local)
+			})
+		})
+	})
+
+	s.Test("encoding.TextMarshaler", func(t *testcase.T) {
+		var exp = timekit.DayTime{
+			Hour:     t.Random.IntBetween(0, 23),
+			Minute:   t.Random.IntBetween(0, 59),
+			Location: random.Pick(t.Random, time.Local, time.UTC, nil),
+		}
+
+		text, err := exp.MarshalText()
+		assert.NoError(t, err)
+
+		var got timekit.DayTime
+		assert.NoError(t, got.UnmarshalText(text))
+
+		assert.Equal(t, exp, got)
+	})
+
+	s.Context("implements tasker.Interval", func(s *testcase.Spec) {
+
+		s.Test("e2e", func(t *testcase.T) {
+			var (
+				now  = time.Now().UTC()
+				rnd  = random.New(random.CryptoSeed{})
+				hour = rnd.IntB(0, 23)
+				min  = rnd.IntB(0, 59)
+			)
+
+			willOccureNextAt := time.Date(now.Year(), now.Month(), now.Day(), hour, min, 0, 0, time.UTC).
+				AddDate(0, 0, 1)
+
+			timecop.Travel(t, now, timecop.Freeze)
+			interval := timekit.DayTime{
+				Hour:     hour,
+				Minute:   min,
+				Location: time.UTC,
+			}
+
+			assert.Equal(t, 0, interval.UntilNext(willOccureNextAt),
+				"when the next occurrence in that moment")
+
+			assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(0, 0, -2)),
+				"when we skipped the past day's occurrence")
+
+			assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(0, -1, 0)),
+				"when we skipped all the occurrence in the past month")
+
+			assert.Equal(t, 0, interval.UntilNext(willOccureNextAt.AddDate(-1, 0, 0)),
+				"when we skipped all the occurrence in the past year")
+
+			expUntilNext := willOccureNextAt.Sub(now)
+
+			assert.Equal(t, expUntilNext, interval.UntilNext(time.Time{}),
+				"when lastRunAt is zero, then we receive the time it takes until the next occasion")
+
+			assert.Equal(t, expUntilNext, interval.UntilNext(now),
+				"when the next interval is in the future",
+				"then remaining time until the next occurrence is returned")
+		})
+	})
 }
