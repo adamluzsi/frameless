@@ -1272,6 +1272,52 @@ func TestLockstepReaders(t *testing.T) {
 		})
 	})
 
+	s.Test("close invalidates the reader from the group", func(t *testcase.T) {
+		var (
+			data = []byte(t.Random.String())
+			lsrs = iokit.LockstepReaders(bytes.NewReader(data), 2, len(data)/3+1)
+			g    synckit.Group
+		)
+
+		g.Go(func(ctx context.Context) error {
+			defer lsrs[0].Close()
+			return nil
+		})
+
+		var gotData []byte
+		g.Go(func(ctx context.Context) error {
+			defer lsrs[1].Close()
+			data, err := io.ReadAll(lsrs[1])
+			gotData = data
+			return err
+		})
+
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			assert.NoError(t, g.Wait())
+		})
+
+		assert.Equal(t, data, gotData)
+
+	})
+
+	s.Test("close a the reader of a single instance lsreader group invalidates the whole group", func(t *testcase.T) {
+		var (
+			data = []byte(t.Random.String())
+			lsrs = iokit.LockstepReaders(bytes.NewReader(data), 1, len(data)/3+1)
+			g    synckit.Group
+		)
+
+		assert.Equal(t, len(lsrs), 1)
+
+		g.Go(func(ctx context.Context) error {
+			return lsrs[0].Close()
+		})
+
+		assert.Within(t, time.Second, func(ctx context.Context) {
+			assert.NoError(t, g.Wait())
+		})
+	})
+
 	s.Test("closing a lockstep reader multiple times should yield no error", func(t *testcase.T) {
 		readers := act(t)
 
