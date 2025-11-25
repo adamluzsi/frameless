@@ -348,36 +348,52 @@ var _ = Register[url.URL](func(data string) (url.URL, error) {
 
 // Format allows you to format a value into a string format
 func Format[T any](v T, opts ...Option) (string, error) {
-	var (
-		value   = reflect.ValueOf(v)
-		options = toOptions(opts)
-	)
-	return format(value, options)
+	return format(reflect.ValueOf(v), toOptions(opts))
+}
+
+// FormatReflect allows you to Format a value into a string, passed as a reflect.Value.
+func FormatReflect(v reflect.Value, opts ...Option) (string, error) {
+	return format(v, toOptions(opts))
 }
 
 func format(val reflect.Value, opts Options) (string, error) {
-	val = reflectkit.BaseValue(val)
+	if enc, err, ok := pformat(val, opts); ok {
+		return enc, err
+	}
+	if base := reflectkit.BaseValue(val); base.IsValid() {
+		if enc, err, ok := pformat(base, opts); ok {
+			return enc, err
+		}
+	}
+	return "", fmt.Errorf("unknown type: %s", val.Type().String())
+}
+
+func pformat(val reflect.Value, opts Options) (string, error, bool) {
+	if !val.IsValid() {
+		return "", nil, false
+	}
 	if rec, ok := registry[val.Type()]; ok && rec.CanFormat() {
-		return rec.Format(val.Interface())
+		enc, err := rec.Format(val.Interface())
+		return enc, err, true
 	}
 	if val.Type() == typeTime {
 		if opts.TimeLayout == "" {
-			return "", errMissingTimeLayout
+			return "", errMissingTimeLayout, true
 		}
-		return val.Interface().(time.Time).Format(opts.TimeLayout), nil
+		return val.Interface().(time.Time).Format(opts.TimeLayout), nil, true
 	}
 	if text, err, ok := textMarshal(val); ok {
-		return string(text), err
+		return string(text), err, true
 	}
 	switch val.Kind() {
 	case reflect.String:
-		return val.Convert(typeString).String(), nil
+		return val.Convert(typeString).String(), nil, true
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return strconv.FormatUint(val.Convert(typeUint64).Interface().(uint64), 10), nil
+		return strconv.FormatUint(val.Convert(typeUint64).Interface().(uint64), 10), nil, true
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return strconv.Itoa(val.Convert(typeInt).Interface().(int)), nil
+		return strconv.Itoa(val.Convert(typeInt).Interface().(int)), nil, true
 
 	case reflect.Float32, reflect.Float64:
 		// In this example, we call strconv.FormatFloat with the following arguments:
@@ -386,15 +402,15 @@ func format(val reflect.Value, opts Options) (string, error) {
 		//   -1: the precision to use (the number of digits after the decimal point).
 		//       We specify -1 to use the default precision for the format.
 		//   64: the bit size of the floating-point number (float64 in this case)
-		return strconv.FormatFloat(val.Float(), 'f', -1, 64), nil
+		return strconv.FormatFloat(val.Float(), 'f', -1, 64), nil, true
 
 	case reflect.Bool:
-		return strconv.FormatBool(val.Bool()), nil
+		return strconv.FormatBool(val.Bool()), nil, true
 
 	case reflect.Slice:
 		if zerokit.IsZero(opts.Separator) {
 			data, err := json.Marshal(val.Interface())
-			return string(data), err
+			return string(data), err, true
 		}
 
 		list := make([]string, 0, val.Len())
@@ -402,23 +418,26 @@ func format(val reflect.Value, opts Options) (string, error) {
 			out, err := format(val.Index(i), opts)
 			if err != nil {
 				return "", fmt.Errorf("error while formatting eleement at index: %d\n%#v", i,
-					val.Index(i).Interface())
+					val.Index(i).Interface()), true
 			}
 			out = strings.Replace(out, opts.Separator, `\`+opts.Separator, -1)
 			list = append(list, out)
 		}
 
-		return strings.Join(list, opts.Separator), nil
+		return strings.Join(list, opts.Separator), nil, true
 
 	case reflect.Map:
 		data, err := json.Marshal(val.Interface())
-		return string(data), err
+		return string(data), err, true
 
-	case reflect.Pointer:
-		return format(val.Elem(), opts)
+	case reflect.Pointer: // ???
+		if val.IsNil() {
+			return "", nil, true
+		}
+		return pformat(val.Elem(), opts)
 
 	default:
-		return "", fmt.Errorf("unknown type: %s", val.Type().String())
+		return "", nil, false
 	}
 }
 

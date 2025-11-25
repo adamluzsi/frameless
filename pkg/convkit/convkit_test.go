@@ -564,3 +564,131 @@ func Test_textMarshalerIntegration(t *testing.T) {
 		assert.Contains(t, err.Error(), data)
 	})
 }
+
+func TestFormatReflect(t *testing.T) {
+	var (
+		foo = "forty-two"
+		bar = "42"
+		baz = "42.42"
+		qux = "1;23;4"
+
+		refTime = rnd.Time()
+		layout  = time.RFC3339
+		quux    = refTime.Format(layout)
+	)
+
+	// Test string type
+	strval := reflect.ValueOf(foo)
+	gotStr, err := convkit.FormatReflect(strval)
+	assert.NoError(t, err)
+	assert.Equal(t, foo, gotStr)
+
+	// Test int type
+	intval := reflect.ValueOf(42)
+	gotInt, err := convkit.FormatReflect(intval)
+	assert.NoError(t, err)
+	assert.Equal(t, bar, gotInt)
+
+	// Test float64 type
+	fltval := reflect.ValueOf(42.42)
+	gotFloat, err := convkit.FormatReflect(fltval)
+	assert.NoError(t, err)
+	assert.Equal(t, baz, gotFloat)
+
+	// Test uint type
+	uintval := reflect.ValueOf(uint(42))
+	gotUint, err := convkit.FormatReflect(uintval)
+	assert.NoError(t, err)
+	assert.Equal(t, bar, gotUint)
+
+	// Test []int type with separator
+	vals := reflect.ValueOf([]int{1, 23, 4})
+	gotVals, err := convkit.FormatReflect(vals, convkit.Options{Separator: ";"})
+	assert.NoError(t, err)
+	assert.Equal(t, qux, gotVals)
+
+	// Test time.Time type with layout
+	timeval := reflect.ValueOf(refTime)
+	gotTimeval, err := convkit.FormatReflect(timeval, convkit.Options{TimeLayout: layout})
+	assert.NoError(t, err)
+	assert.Equal(t, quux, gotTimeval)
+
+	// Test bool type
+	boolval := reflect.ValueOf(true)
+	gotBool, err := convkit.FormatReflect(boolval)
+	assert.NoError(t, err)
+	assert.Equal(t, "true", gotBool)
+
+	// Test nil pointer (should return empty string)
+	var nilPtr *string
+	nilVal := reflect.ValueOf(nilPtr)
+	gotNil, err := convkit.FormatReflect(nilVal)
+	assert.NoError(t, err)
+	assert.Empty(t, gotNil)
+
+	// Test slice of different types (as interface{})
+	var mixedSlice []interface{}
+	mixedSlice = append(mixedSlice, 1, "foo", true)
+	mixedVal := reflect.ValueOf(mixedSlice)
+	gotMixed, err := convkit.FormatReflect(mixedVal, convkit.Options{Separator: ";"})
+	assert.NoError(t, err)
+	assert.Equal(t, "1;foo;true", gotMixed)
+
+	// Test time.Duration
+	duration := reflect.ValueOf(time.Minute + 5*time.Second)
+	gotDuration, err := convkit.FormatReflect(duration)
+	assert.NoError(t, err)
+	assert.Equal(t, "1m5s", gotDuration)
+
+	// Test map
+	testMap := map[string]int{"a": 42, "b": 100}
+	mapVal := reflect.ValueOf(testMap)
+	gotMap, err := convkit.FormatReflect(mapVal)
+	assert.NoError(t, err)
+	// For map, Format should use JSON serialization since it's complex
+	var expectedMap string
+	expectedBytes, _ := json.Marshal(testMap)
+	expectedMap = string(expectedBytes)
+	assert.Equal(t, expectedMap, gotMap)
+
+	// Test struct
+	type Person struct {
+		Name string `json:"name"`
+		Age  int    `json:"age"`
+	}
+
+	unreg := convkit.Register[Person](func(data string) (Person, error) {
+		var p Person
+		err := json.Unmarshal([]byte(data), &p)
+		return p, err
+	}, func(p Person) (string, error) {
+		data, err := json.Marshal(p)
+		return string(data), err
+	})
+	t.Cleanup(unreg)
+
+	person := Person{Name: "John", Age: 30}
+	personVal := reflect.ValueOf(person)
+	gotPerson, err := convkit.FormatReflect(personVal)
+	assert.NoError(t, err)
+	expectedPersonBytes, _ := json.Marshal(person)
+	expectedPerson := string(expectedPersonBytes)
+	assert.Equal(t, expectedPerson, gotPerson)
+
+	// Test with custom text marshaler
+	textMarshaler := ValueWithTextMarshaler{
+		Data: []byte(rnd.HexN(5)),
+	}
+	marshalerVal := reflect.ValueOf(textMarshaler)
+	gotText, err := convkit.FormatReflect(marshalerVal)
+	assert.NoError(t, err)
+	assert.Equal(t, string(textMarshaler.Data), gotText)
+
+	// Test error case with custom text marshaler
+	textMarshalerErr := ValueWithTextMarshalerErr{
+		Err: errors.New("test error"),
+	}
+	marshalerErrVal := reflect.ValueOf(textMarshalerErr)
+	_, err = convkit.FormatReflect(marshalerErrVal)
+	assert.Error(t, err)
+}

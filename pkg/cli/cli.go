@@ -729,6 +729,9 @@ func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) e
 	}
 	if ref.V.NodeType == refnode.StructField {
 		if err := validate.StructField(ctx, ref.V.StructField, value); err != nil {
+			// enum error is soncidered as a user error,
+			// this we intercept the validation error
+			// and return back the list of enum value which are accepted for this field.
 			if errors.Is(err, enum.ErrInvalid) {
 				return enumError(ref.InputName(), enum.ReflectValues(ref.V.StructField), value)
 			}
@@ -967,31 +970,6 @@ func (v *flagValue) Link() {
 		v.Ref.IsSet = true
 		v.Ref.Raw = v.Raw
 	}
-}
-
-func checkEnum(enums []reflect.Value, val reflect.Value, name string) error {
-	if len(enums) == 0 {
-		return nil
-	}
-	_, ok := slicekit.Find(enums, func(e reflect.Value) bool {
-		return reflectkit.Equal(e, val)
-	})
-	if ok {
-		return nil
-	}
-
-	var acceptedValues []string
-	for _, val := range enums {
-		fval, err := convkit.Format[any](val.Interface())
-		if err != nil {
-			return err
-		}
-		acceptedValues = append(acceptedValues, fval)
-	}
-
-	acceptedValuesFormatted := strings.Join(slicekit.Map(acceptedValues, func(v string) string { return " - " + v }), lineSeparator)
-
-	return ErrFlagInvalid.F("%s got the value of %s which is not part of the acceptable values\n\naccepted values:\n%s", name, val.Interface(), acceptedValuesFormatted)
 }
 
 var EnumError = errorkit.UserError{
