@@ -122,13 +122,13 @@ func TestIsRegistered(t *testing.T) {
 
 	type X struct{}
 	assert.False(t, convkit.IsRegistered[X]())
-	undo := convkit.Register[X](func(data string) (X, error) {
-		if data != "X{}" {
+	undo := convkit.Register[X](func(data []byte) (X, error) {
+		if string(data) != "X{}" {
 			return X{}, fmt.Errorf("not X")
 		}
 		return X{}, nil
-	}, func(x X) (string, error) {
-		return "X{}", nil
+	}, func(x X) ([]byte, error) {
+		return []byte("X{}"), nil
 	})
 	assert.True(t, convkit.IsRegistered[X]())
 	assert.True(t, convkit.IsRegistered(X{}))
@@ -335,8 +335,8 @@ func ExampleParseWith() {
 		Foo string
 		Bar string
 	}
-	parserFunc := func(v string) (Conf, error) {
-		parts := strings.SplitN(v, ":", 1)
+	parserFunc := func(v []byte) (Conf, error) {
+		parts := strings.SplitN(string(v), ":", 1)
 		if len(parts) != 2 {
 			return Conf{}, fmt.Errorf("invalid format")
 		}
@@ -345,7 +345,7 @@ func ExampleParseWith() {
 			Bar: parts[1],
 		}, nil
 	}
-	conf, err := convkit.Parse[Conf]("foo:bar", convkit.ParseWith(parserFunc))
+	conf, err := convkit.Parse[Conf]("foo:bar", convkit.UnmarshalWith(parserFunc))
 	_, _ = conf, err
 }
 
@@ -356,9 +356,9 @@ func TestParseWith(t *testing.T) {
 	}
 	t.Run("happy", func(t *testing.T) {
 		conf, err := convkit.Parse[Conf]("foo:bar",
-			convkit.ParseWith(func(v string) (Conf, error) {
+			convkit.UnmarshalWith(func(v []byte) (Conf, error) {
 				var c Conf
-				parts := strings.SplitN(v, ":", 2)
+				parts := strings.SplitN(string(v), ":", 2)
 				if len(parts) != 2 {
 					return c, fmt.Errorf("invalid format")
 				}
@@ -371,7 +371,7 @@ func TestParseWith(t *testing.T) {
 	})
 	t.Run("rainy", func(t *testing.T) {
 		expErr := rnd.Error()
-		conf, err := convkit.Parse[Conf]("whatever", convkit.ParseWith(func(v string) (Conf, error) {
+		conf, err := convkit.Parse[Conf]("whatever", convkit.UnmarshalWith(func(v []byte) (Conf, error) {
 			return Conf{}, expErr
 		}))
 		assert.Empty(t, conf)
@@ -657,13 +657,12 @@ func TestFormatReflect(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 
-	unreg := convkit.Register[Person](func(data string) (Person, error) {
+	unreg := convkit.Register[Person](func(data []byte) (Person, error) {
 		var p Person
 		err := json.Unmarshal([]byte(data), &p)
 		return p, err
-	}, func(p Person) (string, error) {
-		data, err := json.Marshal(p)
-		return string(data), err
+	}, func(p Person) ([]byte, error) {
+		return json.Marshal(p)
 	})
 	t.Cleanup(unreg)
 

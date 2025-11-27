@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/port/option"
 )
 
 type encoded interface{ ~string | ~[]byte }
@@ -26,7 +27,7 @@ func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {
 	var (
 		typ     = reflectkit.TypeOf[T]()
 		val     = []byte(raw)
-		options = toOptions(opts)
+		options = option.ToConfig(opts)
 		rv, err = parse(typ, val, options)
 	)
 	if err != nil {
@@ -44,12 +45,12 @@ func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {
 func ParseReflect[Raw encoded](typ reflect.Type, raw Raw, opts ...Option) (reflect.Value, error) {
 	var (
 		val     = []byte(raw)
-		options = toOptions(opts)
+		options = option.ToConfig(opts)
 	)
 	return parse(typ, val, options)
 }
 
-type Option interface{ configure(*Options) }
+type Option option.Option[Options]
 
 type Options struct {
 	// Separator is the separator character which will be used to detect list elements.
@@ -60,15 +61,7 @@ type Options struct {
 	ParseFunc func(data []byte, ptr any) error
 }
 
-func toOptions(opts []Option) Options {
-	var options Options
-	for _, opt := range opts {
-		opt.configure(&options)
-	}
-	return options
-}
-
-func (o Options) configure(options *Options) { options.Merge(o) }
+func (o Options) Configure(options *Options) { options.Merge(o) }
 
 func (o *Options) Merge(oth Options) {
 	o.Separator = zerokit.Coalesce(oth.Separator, o.Separator)
@@ -233,16 +226,16 @@ type registryRecord interface {
 }
 
 type regrec[T any] struct {
-	ParseFunc  func(data []byte) (T, error)
-	FormatFunc func(T) ([]byte, error)
+	Unmarshal func(data []byte) (T, error)
+	Marschal  func(T) ([]byte, error)
 }
 
 func (r regrec[T]) Parse(data []byte, ptr any) error {
-	if r.ParseFunc == nil {
+	if r.Unmarshal == nil {
 		return fmt.Errorf("no parser registered for %s",
 			reflectkit.TypeOf[T]().String())
 	}
-	out, err := r.ParseFunc(data)
+	out, err := r.Unmarshal(data)
 	if err != nil {
 		return err
 	}
@@ -250,7 +243,7 @@ func (r regrec[T]) Parse(data []byte, ptr any) error {
 }
 
 func (r regrec[T]) Format(v any) ([]byte, error) {
-	if r.FormatFunc == nil {
+	if r.Marschal == nil {
 		return nil, fmt.Errorf("no formatter registered for %s",
 			reflectkit.TypeOf[T]().String())
 	}
@@ -259,14 +252,16 @@ func (r regrec[T]) Format(v any) ([]byte, error) {
 		return nil, fmt.Errorf("incorrect type received. Expected %s, but got %T",
 			reflectkit.TypeOf[T](), v)
 	}
-	return r.FormatFunc(val)
+	return r.Marschal(val)
 }
 
-func (r regrec[T]) CanParse() bool  { return r.ParseFunc != nil }
-func (r regrec[T]) CanFormat() bool { return r.FormatFunc != nil }
+func (r regrec[T]) CanParse() bool  { return r.Unmarshal != nil }
+func (r regrec[T]) CanFormat() bool { return r.Marschal != nil }
 
-type parseFunc[T any] func(data []byte) (T, error)
-type formatFunc[T any] func(T) ([]byte, error)
+type (
+	MarshalFunc[T any]   func(T) ([]byte, error)
+	UnmarshalFunc[T any] func(data []byte) (T, error)
+)
 
 func IsRegistered[T any](i ...T) bool {
 	typ := reflectkit.TypeOf[T](i...)
@@ -279,21 +274,21 @@ func IsRegistered[T any](i ...T) bool {
 }
 
 func Register[T any](
-	parser parseFunc[T],
-	formatter formatFunc[T],
+	unmarschaler UnmarshalFunc[T],
+	marschaler MarshalFunc[T],
 ) func() {
 	var (
 		typ = reflectkit.TypeOf[T]()
 		rec = regrec[T]{}
 	)
-	if parser != nil {
-		rec.ParseFunc = func(data []byte) (T, error) {
-			return parser(data)
+	if unmarschaler != nil {
+		rec.Unmarshal = func(data []byte) (T, error) {
+			return unmarschaler(data)
 		}
 	}
-	if formatter != nil {
-		rec.FormatFunc = func(v T) ([]byte, error) {
-			out, err := formatter(v)
+	if marschaler != nil {
+		rec.Marschal = func(v T) ([]byte, error) {
+			out, err := marschaler(v)
 			return out, err
 		}
 	}
@@ -312,7 +307,7 @@ func registerAdd(k reflect.Type, v registryRecord) func() {
 	}
 }
 
-func ParseWith[T any](parser parseFunc[T]) Option {
+func UnmarshalWith[T any](parser UnmarshalFunc[T]) Option {
 	return Options{
 		ParseFunc: func(data []byte, ptr any) error {
 			out, err := parser(data)
@@ -352,13 +347,13 @@ var _ = Register[url.URL](func(data []byte) (url.URL, error) {
 
 // Format allows you to format a value into a string format
 func Format[T any](v T, opts ...Option) (string, error) {
-	data, err := marshal(reflect.ValueOf(v), toOptions(opts))
+	data, err := marshal(reflect.ValueOf(v), option.ToConfig(opts))
 	return string(data), err
 }
 
 // FormatReflect allows you to Format a value into a string, passed as a reflect.Value.
 func FormatReflect(v reflect.Value, opts ...Option) (string, error) {
-	data, err := marshal(v, toOptions(opts))
+	data, err := marshal(v, option.ToConfig(opts))
 	return string(data), err
 }
 
@@ -456,7 +451,7 @@ var (
 )
 
 func DuckParse[Raw encoded](raw Raw, opts ...Option) (any, error) {
-	options := toOptions(opts)
+	options := option.ToConfig(opts)
 	if matchInt.Match([]byte(raw)) {
 		return Parse[int](raw, options)
 	}
