@@ -1,6 +1,7 @@
 package convkit
 
 import (
+	"bytes"
 	"encoding"
 	"encoding/json"
 	"fmt"
@@ -12,15 +13,19 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/bytekit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
+
+type encoded interface{ ~string | ~[]byte }
 
 func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {
 	var (
 		typ     = reflectkit.TypeOf[T]()
-		val     = string(raw)
+		val     = []byte(raw)
 		options = toOptions(opts)
 		rv, err = parse(typ, val, options)
 	)
@@ -38,13 +43,11 @@ func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {
 
 func ParseReflect[Raw encoded](typ reflect.Type, raw Raw, opts ...Option) (reflect.Value, error) {
 	var (
-		val     = string(raw)
+		val     = []byte(raw)
 		options = toOptions(opts)
 	)
 	return parse(typ, val, options)
 }
-
-type encoded interface{ ~string | []byte }
 
 type Option interface{ configure(*Options) }
 
@@ -82,7 +85,7 @@ var (
 
 const errMissingTimeLayout errorkitlite.Error = `missing TimeLayout ParseOption`
 
-func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
+func parse(typ reflect.Type, val []byte, opts Options) (reflect.Value, error) {
 	if opts.ParseFunc != nil {
 		var ptr = reflect.New(typ)
 		err := opts.ParseFunc([]byte(val), ptr.Interface())
@@ -103,7 +106,7 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 		if opts.TimeLayout == "" {
 			return reflect.Value{}, errMissingTimeLayout
 		}
-		date, err := time.Parse(opts.TimeLayout, val)
+		date, err := time.Parse(opts.TimeLayout, string(val))
 		if err != nil {
 			return reflect.Value{}, err
 		}
@@ -117,28 +120,28 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 		return reflect.ValueOf(val).Convert(typ), nil
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		num, err := strconv.ParseUint(val, 10, 64)
+		num, err := strconv.ParseUint(string(val), 10, 64)
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(num).Convert(typ), nil
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		num, err := strconv.ParseInt(val, 10, 64)
+		num, err := strconv.ParseInt(string(val), 10, 64)
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(num).Convert(typ), nil
 
 	case reflect.Float32, reflect.Float64:
-		num, err := strconv.ParseFloat(val, 64)
+		num, err := strconv.ParseFloat(string(val), 64)
 		if err != nil {
 			return reflect.Value{}, err
 		}
 		return reflect.ValueOf(num).Convert(typ), nil
 
 	case reflect.Bool:
-		bl, err := strconv.ParseBool(val)
+		bl, err := strconv.ParseBool(string(val))
 		if err != nil {
 			return reflect.Value{}, err
 		}
@@ -184,17 +187,17 @@ func parse(typ reflect.Type, val string, opts Options) (reflect.Value, error) {
 	}
 }
 
-func split(s string, sep string) []string {
+func split(s []byte, sep string) [][]byte {
 	var (
-		out []string
+		out [][]byte
 		cur string
 	)
 	var push = func() {
 		cur = strings.TrimSuffix(cur, sep)
-		out = append(out, cur)
+		out = append(out, []byte(cur))
 		cur = ""
 	}
-	for _, r := range s { // UTF-8 compliant
+	for r := range bytekit.IterUTF8(s) { // UTF-8 compliant
 		cur += string(r)
 		if strings.HasSuffix(cur, sep) {
 			escaped := "\\" + sep
@@ -223,18 +226,18 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 var registry = map[reflect.Type]registryRecord{}
 
 type registryRecord interface {
-	Parse(data string, ptr any) error
-	Format(v any) (string, error)
+	Parse(data []byte, ptr any) error
+	Format(v any) ([]byte, error)
 	CanParse() bool
 	CanFormat() bool
 }
 
 type regrec[T any] struct {
-	ParseFunc  func(data string) (T, error)
-	FormatFunc func(T) (string, error)
+	ParseFunc  func(data []byte) (T, error)
+	FormatFunc func(T) ([]byte, error)
 }
 
-func (r regrec[T]) Parse(data string, ptr any) error {
+func (r regrec[T]) Parse(data []byte, ptr any) error {
 	if r.ParseFunc == nil {
 		return fmt.Errorf("no parser registered for %s",
 			reflectkit.TypeOf[T]().String())
@@ -246,14 +249,14 @@ func (r regrec[T]) Parse(data string, ptr any) error {
 	return pointer.Link[T](out, ptr)
 }
 
-func (r regrec[T]) Format(v any) (string, error) {
+func (r regrec[T]) Format(v any) ([]byte, error) {
 	if r.FormatFunc == nil {
-		return "", fmt.Errorf("no formatter registered for %s",
+		return nil, fmt.Errorf("no formatter registered for %s",
 			reflectkit.TypeOf[T]().String())
 	}
 	val, ok := v.(T)
 	if !ok {
-		return "", fmt.Errorf("incorrect type received. Expected %s, but got %T",
+		return nil, fmt.Errorf("incorrect type received. Expected %s, but got %T",
 			reflectkit.TypeOf[T](), v)
 	}
 	return r.FormatFunc(val)
@@ -262,8 +265,8 @@ func (r regrec[T]) Format(v any) (string, error) {
 func (r regrec[T]) CanParse() bool  { return r.ParseFunc != nil }
 func (r regrec[T]) CanFormat() bool { return r.FormatFunc != nil }
 
-type parseFunc[T any] func(data string) (T, error)
-type formatFunc[T any] func(T) (string, error)
+type parseFunc[T any] func(data []byte) (T, error)
+type formatFunc[T any] func(T) ([]byte, error)
 
 func IsRegistered[T any](i ...T) bool {
 	typ := reflectkit.TypeOf[T](i...)
@@ -284,14 +287,14 @@ func Register[T any](
 		rec = regrec[T]{}
 	)
 	if parser != nil {
-		rec.ParseFunc = func(data string) (T, error) {
+		rec.ParseFunc = func(data []byte) (T, error) {
 			return parser(data)
 		}
 	}
 	if formatter != nil {
-		rec.FormatFunc = func(v T) (string, error) {
+		rec.FormatFunc = func(v T) ([]byte, error) {
 			out, err := formatter(v)
-			return string(out), err
+			return out, err
 		}
 	}
 	return registerAdd(typ, rec)
@@ -312,7 +315,7 @@ func registerAdd(k reflect.Type, v registryRecord) func() {
 func ParseWith[T any](parser parseFunc[T]) Option {
 	return Options{
 		ParseFunc: func(data []byte, ptr any) error {
-			out, err := parser(string(data))
+			out, err := parser(data)
 			if err != nil {
 				return err
 			}
@@ -322,41 +325,44 @@ func ParseWith[T any](parser parseFunc[T]) Option {
 	}
 }
 
-var _ = Register(func(envValue string) (time.Duration, error) {
-	return time.ParseDuration(envValue)
-}, func(duration time.Duration) (string, error) {
-	return duration.String(), nil
+var _ = Register(func(envValue []byte) (time.Duration, error) {
+	return time.ParseDuration(string(envValue))
+}, func(duration time.Duration) ([]byte, error) {
+	return []byte(duration.String()), nil
 })
 
 //// should never be called as it is not possible to parse time from this scope,
 //// because we don't have access to the layout defined in the tag
 //var _ = Register[time.Time, string](nil, nil)
 
-var _ = Register[url.URL](func(data string) (url.URL, error) {
-	u, err := url.Parse(data)
+var _ = Register[url.URL](func(data []byte) (url.URL, error) {
+	raw := string(data)
+	u, err := url.Parse(raw)
 	if err == nil {
 		return *u, nil
 	}
-	u, err = url.ParseRequestURI(data)
+	u, err = url.ParseRequestURI(raw)
 	if err == nil {
 		return *u, nil
 	}
-	return url.URL{}, fmt.Errorf("invalid url: %s", data)
-}, func(u url.URL) (string, error) {
-	return u.String(), nil
+	return url.URL{}, fmt.Errorf("invalid url: %s", raw)
+}, func(u url.URL) ([]byte, error) {
+	return []byte(u.String()), nil
 })
 
 // Format allows you to format a value into a string format
 func Format[T any](v T, opts ...Option) (string, error) {
-	return format(reflect.ValueOf(v), toOptions(opts))
+	data, err := marshal(reflect.ValueOf(v), toOptions(opts))
+	return string(data), err
 }
 
 // FormatReflect allows you to Format a value into a string, passed as a reflect.Value.
 func FormatReflect(v reflect.Value, opts ...Option) (string, error) {
-	return format(v, toOptions(opts))
+	data, err := marshal(v, toOptions(opts))
+	return string(data), err
 }
 
-func format(val reflect.Value, opts Options) (string, error) {
+func marshal(val reflect.Value, opts Options) ([]byte, error) {
 	if enc, err, ok := pformat(val, opts); ok {
 		return enc, err
 	}
@@ -365,12 +371,12 @@ func format(val reflect.Value, opts Options) (string, error) {
 			return enc, err
 		}
 	}
-	return "", fmt.Errorf("unknown type: %s", val.Type().String())
+	return nil, fmt.Errorf("unknown type: %s", val.Type().String())
 }
 
-func pformat(val reflect.Value, opts Options) (string, error, bool) {
+func pformat(val reflect.Value, opts Options) ([]byte, error, bool) {
 	if !val.IsValid() {
-		return "", nil, false
+		return nil, nil, false
 	}
 	if rec, ok := registry[val.Type()]; ok && rec.CanFormat() {
 		enc, err := rec.Format(val.Interface())
@@ -378,22 +384,22 @@ func pformat(val reflect.Value, opts Options) (string, error, bool) {
 	}
 	if val.Type() == typeTime {
 		if opts.TimeLayout == "" {
-			return "", errMissingTimeLayout, true
+			return nil, errMissingTimeLayout, true
 		}
-		return val.Interface().(time.Time).Format(opts.TimeLayout), nil, true
+		return []byte(val.Interface().(time.Time).Format(opts.TimeLayout)), nil, true
 	}
 	if text, err, ok := textMarshal(val); ok {
-		return string(text), err, true
+		return text, err, true
 	}
 	switch val.Kind() {
 	case reflect.String:
-		return val.Convert(typeString).String(), nil, true
+		return []byte(val.Convert(typeString).String()), nil, true
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return strconv.FormatUint(val.Convert(typeUint64).Interface().(uint64), 10), nil, true
+		return []byte(strconv.FormatUint(val.Convert(typeUint64).Interface().(uint64), 10)), nil, true
 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return strconv.Itoa(val.Convert(typeInt).Interface().(int)), nil, true
+		return []byte(strconv.Itoa(val.Convert(typeInt).Interface().(int))), nil, true
 
 	case reflect.Float32, reflect.Float64:
 		// In this example, we call strconv.FormatFloat with the following arguments:
@@ -402,42 +408,45 @@ func pformat(val reflect.Value, opts Options) (string, error, bool) {
 		//   -1: the precision to use (the number of digits after the decimal point).
 		//       We specify -1 to use the default precision for the format.
 		//   64: the bit size of the floating-point number (float64 in this case)
-		return strconv.FormatFloat(val.Float(), 'f', -1, 64), nil, true
+		return []byte(strconv.FormatFloat(val.Float(), 'f', -1, 64)), nil, true
 
 	case reflect.Bool:
-		return strconv.FormatBool(val.Bool()), nil, true
+		return []byte(strconv.FormatBool(val.Bool())), nil, true
 
 	case reflect.Slice:
-		if zerokit.IsZero(opts.Separator) {
+		if len(opts.Separator) == 0 {
 			data, err := json.Marshal(val.Interface())
-			return string(data), err, true
+			return data, err, true
 		}
 
-		list := make([]string, 0, val.Len())
+		var (
+			list   = make([][]byte, 0, val.Len())
+			sep    = []byte(opts.Separator)
+			escSep = slicekit.Merge([]byte(`\`), sep)
+		)
 		for i, length := 0, val.Len(); i < length; i++ {
-			out, err := format(val.Index(i), opts)
+			out, err := marshal(val.Index(i), opts)
 			if err != nil {
-				return "", fmt.Errorf("error while formatting eleement at index: %d\n%#v", i,
+				return nil, fmt.Errorf("error while formatting eleement at index: %d\n%#v", i,
 					val.Index(i).Interface()), true
 			}
-			out = strings.Replace(out, opts.Separator, `\`+opts.Separator, -1)
+			out = bytes.Replace(out, sep, escSep, -1)
 			list = append(list, out)
 		}
-
-		return strings.Join(list, opts.Separator), nil, true
+		return []byte(bytes.Join(list, sep)), nil, true
 
 	case reflect.Map:
 		data, err := json.Marshal(val.Interface())
-		return string(data), err, true
+		return data, err, true
 
 	case reflect.Pointer: // ???
 		if val.IsNil() {
-			return "", nil, true
+			return nil, nil, true
 		}
 		return pformat(val.Elem(), opts)
 
 	default:
-		return "", nil, false
+		return nil, nil, false
 	}
 }
 
@@ -461,7 +470,7 @@ func DuckParse[Raw encoded](raw Raw, opts ...Option) (any, error) {
 		return Parse[time.Time](raw, options)
 	}
 	if !zerokit.IsZero(options.Separator) {
-		return duckParseList(string(raw), options)
+		return duckParseList([]byte(raw), options)
 	}
 	if data := []byte(raw); json.Valid(data) { // enable the registration of serializers
 		var (
@@ -476,7 +485,7 @@ func DuckParse[Raw encoded](raw Raw, opts ...Option) (any, error) {
 	return string(raw), nil
 }
 
-func duckParseList(raw string, options Options) (any, error) {
+func duckParseList(raw []byte, options Options) (any, error) {
 	var (
 		values   []any
 		types    = map[reflect.Type]struct{}{}
