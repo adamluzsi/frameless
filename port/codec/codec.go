@@ -2,9 +2,38 @@ package codec
 
 import "io"
 
-// Codec defines the general behaviour for encoding and decoding values into a given codec format.
-// An exmaple would be the JSON Codec, where values can be marshaled and unmarshaled back and forth.
-type Codec interface {
+type MarshalFunc[T any] func(v T) ([]byte, error)
+
+type UnmarshalFunc[T any] func(data []byte, p *T) error
+
+// CodecT defines codec for a specific T type.
+type CodecT[T any] interface {
+	// Marshal encodes a value v into a byte slice.
+	Marshal(v T) ([]byte, error)
+	// Unmarshal decodes a byte slice into a provided pointer ptr.
+	Unmarshal(data []byte) (T, error)
+}
+
+var _ CodecT[int] = ImplCodecT[int]{}
+
+type ImplCodecT[T any] struct {
+	MarshalFunc   func(v T) ([]byte, error)
+	UnmarshalFunc func(data []byte) (T, error)
+}
+
+func (c ImplCodecT[T]) Marshal(v T) ([]byte, error) {
+	return c.MarshalFunc(v)
+}
+
+func (c ImplCodecT[T]) Unmarshal(data []byte) (T, error) {
+	return c.UnmarshalFunc(data)
+}
+
+// CodecG defines the typeles common codec, which should have the ability to either encode/decode various types,
+// or to be used as part of a codec set where using gramatically not possible to express a dynamic set of supported type
+type CodecG interface {
+	// Supports answers whether or not this CodecG supports the provided value.
+	Supports(v any) bool
 	// Marshal encodes a value v into a byte slice.
 	Marshal(v any) ([]byte, error)
 	// Unmarshal decodes a byte slice into a provided pointer ptr.

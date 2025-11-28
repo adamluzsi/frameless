@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	_ codec.Codec            = jsonkit.Codec{}
+	_ codec.CodecG           = jsonkit.Codec{}
 	_ codec.ListDecoderMaker = jsonkit.Codec{}
 	_ codec.ListEncoderMaker = jsonkit.Codec{}
 )

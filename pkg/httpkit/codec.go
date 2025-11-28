@@ -16,9 +16,9 @@ import (
 
 type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
 
-type MediaTypeCodecs map[mediatype.MediaType]codec.Codec
+type MediaTypeCodecs map[mediatype.MediaType]codec.CodecG
 
-var defaultCodecs = map[mediatype.MediaType]codec.Codec{
+var defaultCodecs = map[mediatype.MediaType]codec.CodecG{
 	"application/json":                  jsonkit.Codec{},
 	"application/problem+json":          jsonkit.Codec{},
 	"application/x-ndjson":              jsonkit.LinesCodec{},
@@ -27,7 +27,7 @@ var defaultCodecs = map[mediatype.MediaType]codec.Codec{
 	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
 }
 
-func (m MediaTypeCodecs) Lookup(mediaType string) (codec.Codec, bool) {
+func (m MediaTypeCodecs) Lookup(mediaType string) (codec.CodecG, bool) {
 	mediaType, ok := lookupMediaType(mediaType) // TODO: TEST ME
 	if !ok {
 		return nil, false
@@ -153,6 +153,6 @@ var defaultCodec = codecDefault{
 }
 
 type codecDefault struct {
-	Codec     codec.Codec
+	Codec     codec.CodecG
 	MediaType mediatype.MediaType
 }

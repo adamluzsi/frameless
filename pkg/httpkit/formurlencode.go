@@ -14,6 +14,15 @@ import (
 
 type FormURLEncodedCodec struct{}
 
+func (e FormURLEncodedCodec) Supports(v any) bool {
+	switch reflectkit.BaseValueOf(v).Kind() {
+	case reflect.Struct, reflect.Map:
+		return true
+	default:
+		return false
+	}
+}
+
 func (e FormURLEncodedCodec) Marshal(v any) ([]byte, error) {
 	if v == nil {
 		return []byte{}, nil

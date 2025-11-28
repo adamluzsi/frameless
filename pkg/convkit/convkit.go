@@ -14,10 +14,10 @@ import (
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/bytekit"
-	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/option"
 )
 
@@ -87,9 +87,9 @@ func parse(typ reflect.Type, val []byte, opts Options) (reflect.Value, error) {
 		}
 		return ptr.Elem(), nil
 	}
-	if rec, ok := registry[typ]; ok && rec.CanParse() {
+	if rec, ok := registry[typ]; ok {
 		var ptr = reflect.New(typ)
-		err := rec.Parse(val, ptr.Interface())
+		err := rec.Unmarshal(val, ptr.Interface())
 		if err != nil {
 			return reflect.Value{}, err
 		}
@@ -219,44 +219,39 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 var registry = map[reflect.Type]registryRecord{}
 
 type registryRecord interface {
-	Parse(data []byte, ptr any) error
-	Format(v any) ([]byte, error)
-	CanParse() bool
-	CanFormat() bool
+	codec.CodecG
 }
 
 type regrec[T any] struct {
-	Unmarshal func(data []byte) (T, error)
-	Marschal  func(T) ([]byte, error)
+	TextCodec TextCodec[T]
 }
 
-func (r regrec[T]) Parse(data []byte, ptr any) error {
-	if r.Unmarshal == nil {
-		return fmt.Errorf("no parser registered for %s",
-			reflectkit.TypeOf[T]().String())
-	}
-	out, err := r.Unmarshal(data)
-	if err != nil {
-		return err
-	}
-	return pointer.Link[T](out, ptr)
+func (r regrec[T]) Supports(v any) bool {
+	_, ok := v.(T)
+	return ok
 }
 
-func (r regrec[T]) Format(v any) ([]byte, error) {
-	if r.Marschal == nil {
-		return nil, fmt.Errorf("no formatter registered for %s",
-			reflectkit.TypeOf[T]().String())
-	}
+func (r regrec[T]) Marshal(v any) ([]byte, error) {
 	val, ok := v.(T)
 	if !ok {
 		return nil, fmt.Errorf("incorrect type received. Expected %s, but got %T",
 			reflectkit.TypeOf[T](), v)
 	}
-	return r.Marschal(val)
+	return r.TextCodec.Marshal(val)
 }
 
-func (r regrec[T]) CanParse() bool  { return r.Unmarshal != nil }
-func (r regrec[T]) CanFormat() bool { return r.Marschal != nil }
+func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
+	p, ok := ptr.(*T)
+	if !ok {
+		return fmt.Errorf("type mismatch, expected %T but got %T", (*T)(nil), ptr)
+	}
+	v, err := r.TextCodec.Unmarshal(data)
+	if err != nil {
+		return err
+	}
+	*p = v
+	return nil
+}
 
 type (
 	MarshalFunc[T any]   func(T) ([]byte, error)
@@ -273,25 +268,15 @@ func IsRegistered[T any](i ...T) bool {
 	return ok
 }
 
-func Register[T any](
-	unmarschaler UnmarshalFunc[T],
-	marschaler MarshalFunc[T],
-) func() {
+type TextCodec[T any] interface {
+	codec.CodecT[T]
+}
+
+func Register[T any](c TextCodec[T]) func() {
 	var (
 		typ = reflectkit.TypeOf[T]()
-		rec = regrec[T]{}
+		rec = regrec[T]{TextCodec: c}
 	)
-	if unmarschaler != nil {
-		rec.Unmarshal = func(data []byte) (T, error) {
-			return unmarschaler(data)
-		}
-	}
-	if marschaler != nil {
-		rec.Marschal = func(v T) ([]byte, error) {
-			out, err := marschaler(v)
-			return out, err
-		}
-	}
 	return registerAdd(typ, rec)
 }
 
@@ -320,17 +305,31 @@ func UnmarshalWith[T any](parser UnmarshalFunc[T]) Option {
 	}
 }
 
-var _ = Register(func(envValue []byte) (time.Duration, error) {
-	return time.ParseDuration(string(envValue))
-}, func(duration time.Duration) ([]byte, error) {
-	return []byte(duration.String()), nil
-})
+var _ = Register[time.Duration](timeDuractionTextCodec{})
+
+type timeDuractionTextCodec struct{}
+
+func (timeDuractionTextCodec) Marshal(d time.Duration) ([]byte, error) {
+	return []byte(d.String()), nil
+}
+
+func (timeDuractionTextCodec) Unmarshal(data []byte) (time.Duration, error) {
+	return time.ParseDuration(string(data))
+}
 
 //// should never be called as it is not possible to parse time from this scope,
 //// because we don't have access to the layout defined in the tag
 //var _ = Register[time.Time, string](nil, nil)
 
-var _ = Register[url.URL](func(data []byte) (url.URL, error) {
+var _ = Register[url.URL](urlURLTextCodec{})
+
+type urlURLTextCodec struct{}
+
+func (urlURLTextCodec) Marshal(u url.URL) ([]byte, error) {
+	return []byte(u.String()), nil
+}
+
+func (urlURLTextCodec) Unmarshal(data []byte) (url.URL, error) {
 	raw := string(data)
 	u, err := url.Parse(raw)
 	if err == nil {
@@ -341,9 +340,7 @@ var _ = Register[url.URL](func(data []byte) (url.URL, error) {
 		return *u, nil
 	}
 	return url.URL{}, fmt.Errorf("invalid url: %s", raw)
-}, func(u url.URL) ([]byte, error) {
-	return []byte(u.String()), nil
-})
+}
 
 // Format allows you to format a value into a string format
 func Format[T any](v T, opts ...Option) (string, error) {
@@ -373,9 +370,9 @@ func pformat(val reflect.Value, opts Options) ([]byte, error, bool) {
 	if !val.IsValid() {
 		return nil, nil, false
 	}
-	if rec, ok := registry[val.Type()]; ok && rec.CanFormat() {
-		enc, err := rec.Format(val.Interface())
-		return enc, err, true
+	if rec, ok := registry[val.Type()]; ok {
+		text, err := rec.Marshal(val.Interface())
+		return text, err, true
 	}
 	if val.Type() == typeTime {
 		if opts.TimeLayout == "" {

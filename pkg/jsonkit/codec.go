@@ -12,6 +12,10 @@ import (
 
 type Codec struct{}
 
+func (s Codec) Supports(v any) bool {
+	return true
+}
+
 func (s Codec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
@@ -110,6 +114,10 @@ func (c *jsonListEncoder) beginList() error {
 
 // LinesCodec is a json codec that uses the application/jsonlines
 type LinesCodec struct{}
+
+func (s LinesCodec) Supports(any) bool {
+	return true
+}
 
 func (s LinesCodec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)

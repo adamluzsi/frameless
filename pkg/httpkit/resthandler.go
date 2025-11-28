@@ -890,11 +890,11 @@ func (h RESTHandler[ENT, ID]) restHandler() {}
 
 var _ restHandler = RESTHandler[any, any]{}
 
-func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType) {
 	return h.contentTypeCodec(r, fallbackMediaType)
 }
 
-func (h RESTHandler[ENT, ID]) lookupByContentType(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType, bool) {
+func (h RESTHandler[ENT, ID]) lookupByContentType(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType, bool) {
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
 		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
 			return c, mediaType, true
@@ -907,7 +907,7 @@ func (h RESTHandler[ENT, ID]) lookupByContentType(r *http.Request, fallbackMedia
 	return nil, "", false
 }
 
-func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType) {
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
 		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
 			return c, mediaType
@@ -920,7 +920,7 @@ func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaTyp
 	return defaultCodec.Codec, defaultCodec.MediaType
 }
 
-func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Codec, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return h.contentTypeCodec(r, fallbackMediaType)

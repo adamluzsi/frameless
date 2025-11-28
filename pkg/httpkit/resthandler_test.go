@@ -138,7 +138,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 	subject := testcase.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
 		return httpkit.RESTHandlerFromCRUD[X, XID](resource.Get(t), func(h *httpkit.RESTHandler[X, XID]) {
 			h.IDContextKey = FooIDContextKey{}
-			h.MediaTypeCodecs = map[string]codec.Codec{
+			h.MediaTypeCodecs = map[string]codec.CodecG{
 				mediatype.JSON: jsonkit.Codec{},
 			}
 			h.Mapping = dtokit.Mapping[X, XDTO]{}

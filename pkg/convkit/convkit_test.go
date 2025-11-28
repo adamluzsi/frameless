@@ -12,6 +12,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -122,13 +123,16 @@ func TestIsRegistered(t *testing.T) {
 
 	type X struct{}
 	assert.False(t, convkit.IsRegistered[X]())
-	undo := convkit.Register[X](func(data []byte) (X, error) {
-		if string(data) != "X{}" {
-			return X{}, fmt.Errorf("not X")
-		}
-		return X{}, nil
-	}, func(x X) ([]byte, error) {
-		return []byte("X{}"), nil
+	undo := convkit.Register[X](codec.ImplCodecT[X]{
+		MarshalFunc: func(v X) ([]byte, error) {
+			return []byte("X{}"), nil
+		},
+		UnmarshalFunc: func(data []byte) (X, error) {
+			if string(data) != "X{}" {
+				return X{}, fmt.Errorf("not X")
+			}
+			return X{}, nil
+		},
 	})
 	assert.True(t, convkit.IsRegistered[X]())
 	assert.True(t, convkit.IsRegistered(X{}))
@@ -657,12 +661,15 @@ func TestFormatReflect(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 
-	unreg := convkit.Register[Person](func(data []byte) (Person, error) {
-		var p Person
-		err := json.Unmarshal([]byte(data), &p)
-		return p, err
-	}, func(p Person) ([]byte, error) {
-		return json.Marshal(p)
+	unreg := convkit.Register[Person](codec.ImplCodecT[Person]{
+		MarshalFunc: func(v Person) ([]byte, error) {
+			return json.Marshal(v)
+		},
+		UnmarshalFunc: func(data []byte) (Person, error) {
+			var p Person
+			err := json.Unmarshal([]byte(data), &p)
+			return p, err
+		},
 	})
 	t.Cleanup(unreg)
 

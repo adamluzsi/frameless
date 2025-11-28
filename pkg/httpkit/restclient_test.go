@@ -298,6 +298,10 @@ const GobMediaType = "application/gob"
 
 type GobCodec struct{}
 
+func (c GobCodec) Supports(any) bool {
+	return true
+}
+
 // Marshal encodes a value v into a byte slice.
 func (c GobCodec) Marshal(v any) (_ []byte, _ error) {
 	var buf bytes.Buffer
