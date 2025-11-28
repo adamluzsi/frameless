@@ -93,7 +93,7 @@ type RESTClient[ENT, ID any] struct {
 
 type RestClientCodec interface {
 	codec.CodecG
-	codec.ListDecoderMaker
+	ListDecoderMaker
 }
 
 func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
@@ -215,7 +215,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("response content type", respMediaType))
 
-		dm, ok := cod.(codec.ListDecoderMaker)
+		dm, ok := cod.(ListDecoderMaker)
 
 		if r.DisableStreaming || !ok {
 			data, err := io.ReadAll(resp.Body)

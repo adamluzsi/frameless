@@ -381,7 +381,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set(headerKeyContentType, resMediaType)
 
-	serMaker, ok := resCodec.(codec.ListEncoderMaker)
+	serMaker, ok := resCodec.(ListEncoderMaker)
 	if !ok {
 		vs, err := iterkit.CollectE(index)
 		if err != nil {
@@ -892,19 +892,6 @@ var _ restHandler = RESTHandler[any, any]{}
 
 func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType) {
 	return h.contentTypeCodec(r, fallbackMediaType)
-}
-
-func (h RESTHandler[ENT, ID]) lookupByContentType(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType, bool) {
-	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
-		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
-			return c, mediaType, true
-		}
-	}
-	if c, ok := h.MediaTypeCodecs.Lookup(fallbackMediaType); ok {
-		return c, fallbackMediaType, true
-
-	}
-	return nil, "", false
 }
 
 func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.CodecG, mediatype.MediaType) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/port/codec"
@@ -14,9 +15,9 @@ import (
 )
 
 var (
-	_ codec.CodecG           = jsonkit.Codec{}
-	_ codec.ListDecoderMaker = jsonkit.Codec{}
-	_ codec.ListEncoderMaker = jsonkit.Codec{}
+	_ codec.CodecG             = jsonkit.Codec{}
+	_ httpkit.ListDecoderMaker = jsonkit.Codec{}
+	_ httpkit.ListEncoderMaker = jsonkit.Codec{}
 )
 
 func TestSerializer_serializer(t *testing.T) {

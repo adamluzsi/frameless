@@ -3,6 +3,7 @@ package httpkit
 import (
 	"context"
 	"fmt"
+	"io"
 	"reflect"
 	"strconv"
 
@@ -13,6 +14,16 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
+
+type ListEncoderMaker interface {
+	// MakeListEncoder creates a new ListEncoder that writes encoded data to the provided io.Writer.
+	MakeListEncoder(w io.Writer) codec.ListEncoderG
+}
+
+type ListDecoderMaker interface {
+	// MakeListDecoder creates a new ListDecoder that reads decoded data from the provided io.Reader.
+	MakeListDecoder(w io.Reader) codec.ListDecoderG
+}
 
 type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
 
