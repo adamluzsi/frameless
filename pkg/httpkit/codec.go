@@ -27,9 +27,9 @@ type ListDecoderMaker interface {
 
 type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
 
-type MediaTypeCodecs map[mediatype.MediaType]codec.CodecG
+type MediaTypeCodecs map[mediatype.MediaType]codec.Registry
 
-var defaultCodecs = map[mediatype.MediaType]codec.CodecG{
+var defaultCodecs = map[mediatype.MediaType]codec.Registry{
 	"application/json":                  jsonkit.Codec{},
 	"application/problem+json":          jsonkit.Codec{},
 	"application/x-ndjson":              jsonkit.LinesCodec{},
@@ -38,7 +38,7 @@ var defaultCodecs = map[mediatype.MediaType]codec.CodecG{
 	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
 }
 
-func (m MediaTypeCodecs) Lookup(mediaType string) (codec.CodecG, bool) {
+func (m MediaTypeCodecs) Lookup(mediaType string) (codec.Registry, bool) {
 	mediaType, ok := lookupMediaType(mediaType) // TODO: TEST ME
 	if !ok {
 		return nil, false
@@ -164,6 +164,6 @@ var defaultCodec = codecDefault{
 }
 
 type codecDefault struct {
-	Codec     codec.CodecG
+	Codec     codec.Registry
 	MediaType mediatype.MediaType
 }

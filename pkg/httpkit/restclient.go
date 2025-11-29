@@ -46,7 +46,7 @@ type RESTClient[ENT, ID any] struct {
 	// Codec [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
-	Codec codec.CodecG
+	Codec codec.Registry
 	// MediaTypeCodecs [optional] is a registry that helps choose the right codec for each media type.
 	//
 	// default: DefaultCodecs
@@ -92,7 +92,7 @@ type RESTClient[ENT, ID any] struct {
 }
 
 type RestClientCodec interface {
-	codec.CodecG
+	codec.Registry
 	ListDecoderMaker
 }
 
@@ -582,7 +582,7 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RESTClient[ENT, ID]) getCodec(mimeType string) codec.CodecG {
+func (r RESTClient[ENT, ID]) getCodec(mimeType string) codec.Registry {
 	if c, ok := r.MediaTypeCodecs.Lookup(mimeType); ok {
 		return c
 	}
@@ -592,7 +592,7 @@ func (r RESTClient[ENT, ID]) getCodec(mimeType string) codec.CodecG {
 	return defaultCodec.Codec
 }
 
-func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.CodecG, mediatype.MediaType, bool) {
+func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Registry, mediatype.MediaType, bool) {
 	mt := string(resp.Header.Get(headerKeyContentType))
 	c, ok := r.MediaTypeCodecs.Lookup(mt)
 	if !ok && r.Codec != nil {

@@ -2,17 +2,6 @@ package codec
 
 import "io"
 
-// CodecG defines the typeles common codec, which should have the ability to either encode/decode various types,
-// or to be used as part of a codec set where using gramatically not possible to express a dynamic set of supported type
-type CodecG interface {
-	// Supports answers whether or not this CodecG supports the provided value.
-	Supports(v any) bool
-	// Marshal encodes a value v into a byte slice.
-	Marshal(v any) ([]byte, error)
-	// Unmarshal decodes a byte slice into a provided pointer ptr.
-	Unmarshal(data []byte, ptr any) error
-}
-
 // ListEncoderG represents an interface for encoding multiple entities to an underlying io.Writer.
 // It includes methods to encode individual values and to close the encoder once the encoding is complete.
 type ListEncoderG interface {

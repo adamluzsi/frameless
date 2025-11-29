@@ -219,7 +219,7 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 var registry = map[reflect.Type]registryRecord{}
 
 type registryRecord interface {
-	codec.CodecG
+	codec.Registry
 }
 
 type regrec[T any] struct {
@@ -227,8 +227,7 @@ type regrec[T any] struct {
 }
 
 func (r regrec[T]) Supports(v any) bool {
-	_, ok := v.(T)
-	return ok
+	return codec.DefaultRegistrySupports[T](v)
 }
 
 func (r regrec[T]) Marshal(v any) ([]byte, error) {
@@ -245,12 +244,7 @@ func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
 	if !ok {
 		return fmt.Errorf("type mismatch, expected %T but got %T", (*T)(nil), ptr)
 	}
-	v, err := r.TextCodec.Unmarshal(data)
-	if err != nil {
-		return err
-	}
-	*p = v
-	return nil
+	return r.TextCodec.Unmarshal(data, p)
 }
 
 type (
@@ -269,7 +263,7 @@ func IsRegistered[T any](i ...T) bool {
 }
 
 type TextCodec[T any] interface {
-	codec.CodecT[T]
+	codec.Codec[T]
 }
 
 func Register[T any](c TextCodec[T]) func() {
@@ -313,8 +307,13 @@ func (timeDuractionTextCodec) Marshal(d time.Duration) ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-func (timeDuractionTextCodec) Unmarshal(data []byte) (time.Duration, error) {
-	return time.ParseDuration(string(data))
+func (timeDuractionTextCodec) Unmarshal(data []byte, p *time.Duration) error {
+	d, err := time.ParseDuration(string(data))
+	if err != nil {
+		return err
+	}
+	*p = d
+	return nil
 }
 
 //// should never be called as it is not possible to parse time from this scope,
@@ -329,17 +328,19 @@ func (urlURLTextCodec) Marshal(u url.URL) ([]byte, error) {
 	return []byte(u.String()), nil
 }
 
-func (urlURLTextCodec) Unmarshal(data []byte) (url.URL, error) {
+func (urlURLTextCodec) Unmarshal(data []byte, p *url.URL) error {
 	raw := string(data)
 	u, err := url.Parse(raw)
 	if err == nil {
-		return *u, nil
+		*p = *u
+		return nil
 	}
 	u, err = url.ParseRequestURI(raw)
 	if err == nil {
-		return *u, nil
+		*p = *u
+		return nil
 	}
-	return url.URL{}, fmt.Errorf("invalid url: %s", raw)
+	return fmt.Errorf("invalid url: %s", raw)
 }
 
 // Format allows you to format a value into a string format
