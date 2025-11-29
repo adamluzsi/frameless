@@ -13,29 +13,29 @@ func TestMergeRegistry(t *testing.T) {
 	type T2 struct{ V string }
 	type T3 struct{}
 
-	c1 := codec.Implement[T1]{
-		Enc: func(v T1) ([]byte, error) {
+	c1 := codec.CodecImpl[T1]{
+		MarshalFunc: func(v T1) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		Dec: func(data []byte, p *T1) error {
+		UnmarshalFunc: func(data []byte, p *T1) error {
 			return json.Unmarshal(data, p)
 		},
 	}
 
-	c2 := codec.Implement[T2]{
-		Enc: func(v T2) ([]byte, error) {
+	c2 := codec.CodecImpl[T2]{
+		MarshalFunc: func(v T2) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		Dec: func(data []byte, p *T2) error {
+		UnmarshalFunc: func(data []byte, p *T2) error {
 			return json.Unmarshal(data, p)
 		},
 	}
 
-	c3 := codec.Implement[T3]{
-		Enc: func(v T3) ([]byte, error) {
+	c3 := codec.CodecImpl[T3]{
+		MarshalFunc: func(v T3) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		Dec: func(data []byte, p *T3) error {
+		UnmarshalFunc: func(data []byte, p *T3) error {
 			return json.Unmarshal(data, p)
 		},
 	}

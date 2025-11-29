@@ -4,19 +4,29 @@ import (
 	"fmt"
 )
 
-var _ Codec[int] = Implement[int]{}
+// MarshalFunc is the marshaling implementation
+type MarshalFunc[T any] func(v T) ([]byte, error)
 
-type Implement[T any] struct {
-	Enc func(v T) ([]byte, error)
-	Dec func(data []byte, p *T) error
+var _ Marshaler[int] = (MarshalFunc[int])(nil)
+
+func (fn MarshalFunc[T]) Marshal(v T) ([]byte, error) {
+	return fn(v)
 }
 
-func (c Implement[T]) Marshal(v T) ([]byte, error) {
-	return c.Enc(v)
+// UnmarshalFunc is the unmarshaling implementation
+type UnmarshalFunc[T any] func(data []byte, p *T) error
+
+var _ Unmarshaler[int] = (UnmarshalFunc[int])(nil)
+
+func (fn UnmarshalFunc[T]) Unmarshal(data []byte, p *T) error {
+	return fn(data, p)
 }
 
-func (c Implement[T]) Unmarshal(data []byte, p *T) error {
-	return c.Dec(data, p)
+var _ Codec[int] = CodecImpl[int]{}
+
+type CodecImpl[T any] struct {
+	MarshalFunc[T]
+	UnmarshalFunc[T]
 }
 
 func DefaultRegistrySupports[T any](vT any) bool {
@@ -32,22 +42,22 @@ func DefaultRegistrySupports[T any](vT any) bool {
 	return false
 }
 
-func (c Implement[T]) Registry() Registry {
-	return regrec{
-		SupportsFunc: DefaultRegistrySupports[T],
-		MarshalFunc: func(v any) ([]byte, error) {
+func (c CodecImpl[T]) Registry() Registry {
+	return reg{
+		S: DefaultRegistrySupports[T],
+		M: func(v any) ([]byte, error) {
 			val, ok := v.(T)
 			if !ok {
 				return nil, fmt.Errorf("type mismatch, expected %T but got %T", val, v)
 			}
-			return c.Enc(val)
+			return c.MarshalFunc(val)
 		},
-		UnmarshalFunc: func(data []byte, ptr any) error {
+		U: func(data []byte, ptr any) error {
 			p, ok := ptr.(*T)
 			if !ok {
 				return fmt.Errorf("type mismatch, expected %T but got %T", (*T)(nil), ptr)
 			}
-			return c.Dec(data, p)
+			return c.UnmarshalFunc(data, p)
 		},
 	}
 }

@@ -75,14 +75,14 @@ func (r registry) deref(ptr any) (any, bool) {
 	return rp.Elem().Interface(), true
 }
 
-var _ Registry = regrec{}
+var _ Registry = reg{}
 
-type regrec struct {
-	SupportsFunc  func(v any) bool
-	MarshalFunc   func(v any) ([]byte, error)
-	UnmarshalFunc func(data []byte, ptr any) error
+type reg struct {
+	S func(v any) bool
+	M MarshalFunc[any]
+	U func(data []byte, ptr any) error
 }
 
-func (i regrec) Supports(v any) bool                  { return i.SupportsFunc(v) }
-func (i regrec) Marshal(v any) ([]byte, error)        { return i.MarshalFunc(v) }
-func (i regrec) Unmarshal(data []byte, ptr any) error { return i.UnmarshalFunc(data, ptr) }
+func (i reg) Supports(v any) bool                  { return i.S(v) }
+func (i reg) Marshal(v any) ([]byte, error)        { return i.M(v) }
+func (i reg) Unmarshal(data []byte, ptr any) error { return i.U(data, ptr) }

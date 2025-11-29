@@ -123,11 +123,11 @@ func TestIsRegistered(t *testing.T) {
 
 	type X struct{}
 	assert.False(t, convkit.IsRegistered[X]())
-	undo := convkit.Register[X](codec.Implement[X]{
-		Enc: func(v X) ([]byte, error) {
+	undo := convkit.Register[X](codec.CodecImpl[X]{
+		MarshalFunc: func(v X) ([]byte, error) {
 			return []byte("X{}"), nil
 		},
-		Dec: func(data []byte, p *X) error {
+		UnmarshalFunc: func(data []byte, p *X) error {
 			if string(data) != "X{}" {
 				return fmt.Errorf("not X")
 			}
@@ -662,11 +662,11 @@ func TestFormatReflect(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 
-	unreg := convkit.Register[Person](codec.Implement[Person]{
-		Enc: func(v Person) ([]byte, error) {
+	unreg := convkit.Register[Person](codec.CodecImpl[Person]{
+		MarshalFunc: func(v Person) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		Dec: func(data []byte, p *Person) error {
+		UnmarshalFunc: func(data []byte, p *Person) error {
 			return json.Unmarshal(data, p)
 		},
 	})
