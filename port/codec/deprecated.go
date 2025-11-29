@@ -2,23 +2,13 @@ package codec
 
 import "io"
 
-// ListEncoder
-//
-// Deprecated: use ListEncoderG
-type ListEncoder ListEncoderG
-
-// ListDecoder
-//
-// Deprecated: use ListDecoderG
-type ListDecoder ListDecoderG
-
 // ListEncoderMaker defines an interface for creating ListEncoder instances.
 // It is responsible for providing a ListEncoder that writes to a specific io.Writer.
 //
 // Deprecated: use httpkit.ListEncoderMaker
 type ListEncoderMaker interface {
 	// MakeListEncoder creates a new ListEncoder that writes encoded data to the provided io.Writer.
-	MakeListEncoder(w io.Writer) ListEncoderG
+	MakeListEncoder(w io.Writer) ListEncoder
 }
 
 // ListDecoderMaker defines an interface for creating ListDecoder instances.
@@ -27,5 +17,5 @@ type ListEncoderMaker interface {
 // Deprecated: use httpkit.ListDecoderMaker
 type ListDecoderMaker interface {
 	// MakeListDecoder creates a new ListDecoder that reads decoded data from the provided io.Reader.
-	MakeListDecoder(w io.Reader) ListDecoderG
+	MakeListDecoder(w io.Reader) ListDecoder
 }

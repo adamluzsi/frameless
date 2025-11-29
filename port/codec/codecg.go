@@ -2,15 +2,15 @@ package codec
 
 import "io"
 
-// ListEncoderG represents an interface for encoding multiple entities to an underlying io.Writer.
+// ListEncoder represents an interface for encoding multiple entities to an underlying io.Writer.
 // It includes methods to encode individual values and to close the encoder once the encoding is complete.
-type ListEncoderG interface {
+type ListEncoder interface {
 	// Encode serialises a value v and writes it to the underlying io.Writer.
 	Encode(v any) error
 	io.Closer
 }
 
-type ListDecoderG interface {
+type ListDecoder interface {
 	// Decode restores the next value from the underlying io.Reader and stores it in the provided pointer.
 	Decode(ptr any) error
 	// Next will ensure that Value returns the next item when executed.
