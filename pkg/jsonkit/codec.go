@@ -21,12 +21,12 @@ import (
 
 type Codec[T any] struct{}
 
-func (s Codec[T]) Marshal(v any) ([]byte, error) {
+func (Codec[T]) Marshal(v T) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (s Codec[T]) Unmarshal(data []byte, dtoPtr any) error {
-	return json.Unmarshal(data, &dtoPtr)
+func (Codec[T]) Unmarshal(data []byte, p *T) error {
+	return json.Unmarshal(data, p)
 }
 
 func NewArrayStreamEncoder[T any](w io.Writer) *ArrayEncoder[T] {
@@ -110,19 +110,29 @@ func (c *ArrayEncoder[T]) beginList() error {
 	return nil
 }
 
-// LinesCodec is a json codec that uses the application/jsonlines format
-type LinesCodec[T any] struct{}
-
-func (s LinesCodec[T]) Marshal(v any) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func (s LinesCodec[T]) Unmarshal(data []byte, ptr any) error {
-	return json.Unmarshal(data, ptr)
-}
-
-func (s LinesCodec[T]) MakeListEncoder(w io.Writer) *Encoder[T] {
-	return NewEncoder[T](w)
+func NewArrayStreamDecoder[T any](r io.Reader) codec.StreamDecoder[T] {
+	i := &jsontoken.ArrayIterator[T]{
+		Context: context.Background(),
+		Input:   r,
+	}
+	return func(yield func(codec.Decoder[T], error) bool) {
+		defer i.Close()
+		for i.Next() {
+			if !yield(i, nil) {
+				return
+			}
+		}
+		if err := i.Err(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+		if err := i.Close(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+	}
 }
 
 func NewEncoder[T any](w io.Writer) *Encoder[T] {
@@ -135,7 +145,13 @@ func (e *Encoder[T]) Encode(v T) error {
 	return e.Encoder.Encode(v)
 }
 
-func (s LinesCodec[T]) NewListDecoder(rc io.ReadCloser) *Decoder[T] {
+func NewDecoder[T any](r io.Reader) *Decoder[T] {
+	var rc io.ReadCloser
+	if v, ok := r.(io.ReadCloser); ok {
+		rc = v
+	} else {
+		rc = io.NopCloser(r)
+	}
 	return &Decoder[T]{
 		Decoder: json.NewDecoder(rc),
 		Closer:  rc,

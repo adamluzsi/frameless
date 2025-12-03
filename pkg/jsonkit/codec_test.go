@@ -3,10 +3,9 @@ package jsonkit_test
 import (
 	"bytes"
 	"encoding/json"
-	"io"
+	"iter"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/port/codec"
@@ -15,9 +14,9 @@ import (
 )
 
 var (
-	_ codec.Registry           = jsonkit.Codec{}
-	_ httpkit.ListDecoderMaker[] = jsonkit.Codec{}
-	_ httpkit.ListEncoderMaker = jsonkit.Codec{}
+	_ codec.Codec[int] = jsonkit.Codec[int]{}
+	// _ httpkit.ListDecoderMaker[] = jsonkit.Codec{}
+	// _ httpkit.ListEncoderMaker = jsonkit.Codec{}
 )
 
 func TestSerializer_serializer(t *testing.T) {
@@ -28,7 +27,7 @@ func TestSerializer_serializer(t *testing.T) {
 		Baz: "baz",
 	}
 
-	ser := jsonkit.Codec{}
+	ser := jsonkit.Codec[Foo]{}
 	data, err := ser.Marshal(exp)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
@@ -39,18 +38,15 @@ func TestSerializer_serializer(t *testing.T) {
 	assert.Equal(t, exp, got)
 }
 
-func TestSerializer_list(t *testing.T) {
+func Test_arrayStream(t *testing.T) {
 	var (
 		exp1 = rnd.Make(Foo{}).(Foo)
 		exp2 = rnd.Make(Foo{}).(Foo)
 		exp3 = rnd.Make(Foo{}).(Foo)
 	)
 
-	ser := jsonkit.Codec{}
-
 	var buf bytes.Buffer
-
-	enc := ser.MakeListEncoder(&buf)
+	enc := jsonkit.NewArrayStreamEncoder[Foo](&buf)
 	assert.NoError(t, enc.Encode(exp1))
 	assert.NoError(t, enc.Encode(exp2))
 	assert.NoError(t, enc.Encode(exp3))
@@ -60,83 +56,33 @@ func TestSerializer_list(t *testing.T) {
 		"expected that the final output after close is a valid json")
 
 	stub := iokit.StubReader{Data: buf.Bytes()}
-	dec := ser.MakeListDecoder(&stub)
+
+	stream := jsonkit.NewArrayStreamDecoder[Foo](&stub)
+
+	next, stop := iter.Pull2(stream)
+	defer stop()
 
 	var got1, got2, got3 Foo
-	assert.True(t, dec.Next())
-	assert.NoError(t, dec.Decode(&got1))
-	assert.True(t, dec.Next())
-	assert.NoError(t, dec.Decode(&got2))
-	assert.True(t, dec.Next())
-	assert.NoError(t, dec.Decode(&got3))
-	assert.False(t, dec.Next())
-	assert.NoError(t, dec.Err())
-	assert.NoError(t, dec.Close())
-	assert.True(t, stub.IsClosed())
 
-	assert.Equal(t, exp1, got1)
-	assert.Equal(t, exp2, got2)
-	assert.Equal(t, exp3, got3)
-}
-
-func TestJSONStream_serializer(t *testing.T) {
-	exp := Foo{
-		ID:  "1",
-		Foo: "foo",
-		Bar: "bar",
-		Baz: "baz",
-	}
-
-	ser := jsonkit.LinesCodec{}
-	data, err := ser.Marshal(exp)
+	dec, err, ok := next()
+	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, data)
-
-	var got Foo
-	assert.NoError(t, ser.Unmarshal(data, &got))
-	assert.Equal(t, exp, got)
-}
-
-func TestJSONStream_list(t *testing.T) {
-	var (
-		exp1 = rnd.Make(Foo{}).(Foo)
-		exp2 = rnd.Make(Foo{}).(Foo)
-		exp3 = rnd.Make(Foo{}).(Foo)
-	)
-
-	ser := jsonkit.LinesCodec{}
-
-	var buf bytes.Buffer
-
-	enc := ser.MakeListEncoder(&buf)
-	assert.NoError(t, enc.Encode(exp1))
-	assert.NoError(t, enc.Encode(exp2))
-	assert.NoError(t, enc.Encode(exp3))
-	assert.NoError(t, enc.Close())
-
-	for _, line := range bytes.Split(buf.Bytes(), []byte("\n")) {
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-
-		assert.True(t, json.Valid(line),
-			"expected that each line is a valid json in the stream+json")
-	}
-
-	stub := iokit.StubReader{Data: buf.Bytes()}
-	dec := ser.NewListDecoder(&stub)
-
-	var got1, got2, got3 Foo
-	assert.True(t, dec.Next())
 	assert.NoError(t, dec.Decode(&got1))
-	assert.True(t, dec.Next())
+
+	dec, err, ok = next()
+	assert.True(t, ok)
+	assert.NoError(t, err)
 	assert.NoError(t, dec.Decode(&got2))
-	assert.True(t, dec.Next())
+
+	dec, err, ok = next()
+	assert.True(t, ok)
+	assert.NoError(t, err)
 	assert.NoError(t, dec.Decode(&got3))
-	assert.False(t, dec.Next())
-	assert.NoError(t, dec.Err())
-	assert.NoError(t, dec.Close())
+
+	_, _, ok = next()
+	assert.False(t, ok)
+
+	stop()
 	assert.True(t, stub.IsClosed())
 
 	assert.Equal(t, exp1, got1)
@@ -163,20 +109,19 @@ func TestJSONSerializer_NewListDecoder(t *testing.T) {
 		data, err := json.Marshal(foos)
 		assert.NoError(t, err)
 
-		dec := jsonkit.Codec{}.MakeListDecoder(io.NopCloser(bytes.NewReader(data)))
+		stream := jsonkit.NewArrayStreamDecoder[Foo](bytes.NewReader(data))
 
 		var (
 			gotFoos    []Foo
 			iterations int
 		)
-		for dec.Next() {
+		for dec, err := range stream {
+			assert.NoError(t, err)
 			iterations++
 			var got Foo
 			assert.NoError(t, dec.Decode(&got))
 			gotFoos = append(gotFoos, got)
 		}
-		assert.NoError(t, dec.Err())
-		assert.NoError(t, dec.Close())
 		assert.Equal(t, foos, gotFoos)
 		assert.Equal(t, 2, iterations)
 	})
@@ -200,7 +145,7 @@ func TestJSONSerializer_NewListEncoder(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		enc := jsonkit.Codec{}.MakeListEncoder(&buf)
+		enc := jsonkit.NewArrayStreamEncoder[Foo](&buf)
 		for _, foo := range foos {
 			assert.NoError(t, enc.Encode(foo))
 		}

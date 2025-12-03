@@ -18,10 +18,8 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
-	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
-	"go.llib.dev/frameless/port/codec"
 )
 
 const ErrMalformed errorkitlite.Error = "[ErrMalformed] malformed JSON"
@@ -849,31 +847,6 @@ func IterateArray(ctx context.Context, r io.Reader) iter.Seq2[json.RawMessage, e
 			}
 		}
 	})
-}
-
-func NewArrayStreamDecoder[T any](r io.Reader) codec.StreamDecoder[T] {
-	i := &jsontoken.ArrayIterator[T]{
-		Context: context.Background(),
-		Input:   r,
-	}
-	return func(yield func(codec.Decoder[T], error) bool) {
-		defer i.Close()
-		for i.Next() {
-			if !yield(i, nil) {
-				return
-			}
-		}
-		if err := i.Err(); err != nil {
-			if !yield(nil, err) {
-				return
-			}
-		}
-		if err := i.Close(); err != nil {
-			if !yield(nil, err) {
-				return
-			}
-		}
-	}
 }
 
 type ArrayIterator[T any] struct {

@@ -32,4 +32,4 @@ type StreamEncoder[T any] interface {
 //
 // The iterator abstraction provides natural control flow for processing multiple
 // encoded values without explicit loop management.
-type StreamDecoder[T any] iter.Seq2[Decoder[T], error]
+type StreamDecoder[T any] = iter.Seq2[Decoder[T], error]
