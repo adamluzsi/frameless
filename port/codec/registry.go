@@ -1,18 +1,12 @@
 package codec
 
 import (
-	"reflect"
-
 	"go.llib.dev/frameless/internal/errorkitlite"
 )
 
-// Registry defines the typeles common codec, which should have the ability to either encode/decode various types,
+// Registry defines the typeles common codec, which should have the ability to marshal/unmarshal various types,
 // or to be used as part of a codec set where using gramatically not possible to express a dynamic set of supported type
 type Registry interface {
-	// Supports answers whether or not this CodecG supports the provided value.
-	// Supports is expected to recognise both value type and pointer types.
-	// A nil value is never considered as a supported value type.
-	Supports(vT any) bool
 	// Marshal encodes a value v into a byte slice.
 	Marshal(v any) ([]byte, error)
 	// Unmarshal decodes a byte slice into a provided pointer ptr.
@@ -21,58 +15,38 @@ type Registry interface {
 
 const ErrNotSupported errorkitlite.Error = "ErrNotSupported"
 
-func MergeRegistry(rs ...Registry) Registry {
-	var reg registry
-	for _, r := range rs {
-		if ry, ok := r.(registry); ok {
-			reg = append(reg, ry...)
-			continue
-		}
-		reg = append(reg, r)
-	}
-	return reg
+func NewRegistry() Registry {
+	return (*nullRegistry)(nil)
 }
 
-var _ Registry = (registry)(nil)
-
-type registry []Registry
-
-func (r registry) Supports(v any) bool {
-	for _, e := range r {
-		if e.Supports(v) {
-			return true
-		}
+func Register[T any](r Registry, c Codec[T]) Registry {
+	if r == nil {
+		r = (*nullRegistry)(nil)
 	}
-	return false
+	return reg{
+		M: func(v any) ([]byte, error) {
+			if v, ok := v.(T); ok {
+				return c.Marshal(v)
+			}
+			return r.Marshal(v)
+		},
+		U: func(data []byte, ptr any) error {
+			if ptr, ok := ptr.(*T); ok {
+				return c.Unmarshal(data, ptr)
+			}
+			return r.Unmarshal(data, ptr)
+		},
+	}
 }
 
-func (r registry) Marshal(v any) ([]byte, error) {
-	for _, e := range r {
-		if e.Supports(v) {
-			return e.Marshal(v)
-		}
-	}
+type nullRegistry struct{}
+
+func (*nullRegistry) Marshal(v any) ([]byte, error) {
 	return nil, ErrNotSupported
 }
 
-func (r registry) Unmarshal(data []byte, ptr any) error {
-	for _, e := range r {
-		if e.Supports(ptr) {
-			return e.Unmarshal(data, ptr)
-		}
-	}
+func (*nullRegistry) Unmarshal(data []byte, ptr any) error {
 	return ErrNotSupported
-}
-
-func (r registry) deref(ptr any) (any, bool) {
-	rp := reflect.ValueOf(ptr)
-	if rp.Kind() != reflect.Pointer {
-		return nil, false
-	}
-	if rp.IsNil() {
-		return nil, false
-	}
-	return rp.Elem().Interface(), true
 }
 
 var _ Registry = reg{}

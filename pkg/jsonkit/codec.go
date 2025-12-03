@@ -24,11 +24,11 @@ func (s Codec) Unmarshal(data []byte, dtoPtr any) error {
 	return json.Unmarshal(data, &dtoPtr)
 }
 
-func (s Codec) MakeListEncoder(w io.Writer) codec.ListEncoder {
+func (s Codec) MakeListEncoder(w io.Writer) codec.StreamEncoder {
 	return &jsonListEncoder{W: w}
 }
 
-func (s Codec) MakeListDecoder(r io.Reader) codec.ListDecoder {
+func (s Codec) MakeListDecoder(r io.Reader) codec.StreamDecoder {
 	return &jsontoken.ArrayIterator{
 		Context: context.Background(),
 		Input:   r,
@@ -127,7 +127,7 @@ func (s LinesCodec) Unmarshal(data []byte, ptr any) error {
 	return json.Unmarshal(data, ptr)
 }
 
-func (s LinesCodec) MakeListEncoder(w io.Writer) codec.ListEncoder {
+func (s LinesCodec) MakeListEncoder(w io.Writer) codec.StreamEncoder {
 	return jsonEncoder{Encoder: json.NewEncoder(w)}
 }
 
@@ -141,7 +141,7 @@ func (e jsonEncoder) Encode(v any) error {
 
 func (jsonEncoder) Close() error { return nil }
 
-func (s LinesCodec) NewListDecoder(w io.ReadCloser) codec.ListDecoder {
+func (s LinesCodec) NewListDecoder(w io.ReadCloser) codec.StreamDecoder {
 	return &jsonDecoder{Decoder: json.NewDecoder(w), Closer: w}
 }
 

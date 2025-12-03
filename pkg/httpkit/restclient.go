@@ -91,7 +91,7 @@ type RESTClient[ENT, ID any] struct {
 	DisableStreaming bool
 }
 
-type RestClientCodec interface {
+type RESTClientCodec interface {
 	codec.Registry
 	ListDecoderMaker
 }

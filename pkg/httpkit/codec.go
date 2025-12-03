@@ -17,12 +17,12 @@ import (
 
 type ListEncoderMaker interface {
 	// MakeListEncoder creates a new ListEncoder that writes encoded data to the provided io.Writer.
-	MakeListEncoder(w io.Writer) codec.ListEncoder
+	MakeListEncoder(w io.Writer) codec.StreamEncoder
 }
 
 type ListDecoderMaker interface {
 	// MakeListDecoder creates a new ListDecoder that reads decoded data from the provided io.Reader.
-	MakeListDecoder(w io.Reader) codec.ListDecoder
+	MakeListDecoder(w io.Reader) codec.StreamDecoder
 }
 
 type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]

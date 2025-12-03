@@ -226,10 +226,6 @@ type regrec[T any] struct {
 	TextCodec TextCodec[T]
 }
 
-func (r regrec[T]) Supports(v any) bool {
-	return codec.DefaultRegistrySupports[T](v)
-}
-
 func (r regrec[T]) Marshal(v any) ([]byte, error) {
 	val, ok := v.(T)
 	if !ok {
