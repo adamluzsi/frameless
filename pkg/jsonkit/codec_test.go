@@ -16,7 +16,7 @@ import (
 
 var (
 	_ codec.Registry           = jsonkit.Codec{}
-	_ httpkit.ListDecoderMaker = jsonkit.Codec{}
+	_ httpkit.ListDecoderMaker[] = jsonkit.Codec{}
 	_ httpkit.ListEncoderMaker = jsonkit.Codec{}
 )
 

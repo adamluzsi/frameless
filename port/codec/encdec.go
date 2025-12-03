@@ -24,6 +24,10 @@ type Encoder[T any] interface {
 	Encode(v T) error
 }
 
+type EncoderFunc[T any] func(v T) error
+
+func (fn EncoderFunc[T]) Encode(v T) error { return fn(v) }
+
 // Decoder decodes data in a specific serialized format into a value of type T.
 //
 // Decoder represents a specific decoding format's implementation, encapsulating
@@ -51,3 +55,7 @@ type Encoder[T any] interface {
 type Decoder[T any] interface {
 	Decode(p *T) error
 }
+
+type DecoderFunc[T any] func(p *T) error
+
+func (fn DecoderFunc[T]) Decode(p *T) error { return fn(p) }

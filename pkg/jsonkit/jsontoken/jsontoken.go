@@ -18,8 +18,10 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/synckit"
+	"go.llib.dev/frameless/port/codec"
 )
 
 const ErrMalformed errorkitlite.Error = "[ErrMalformed] malformed JSON"
@@ -828,7 +830,7 @@ type objectKeyBuffer struct {
 }
 
 func IterateArray(ctx context.Context, r io.Reader) iter.Seq2[json.RawMessage, error] {
-	i := &ArrayIterator{Context: ctx, Input: r}
+	i := &ArrayIterator[json.RawMessage]{Context: ctx, Input: r}
 	return iterkit.Once2(func(yield func(json.RawMessage, error) bool) {
 		defer i.Close()
 		for i.Next() {
@@ -849,7 +851,32 @@ func IterateArray(ctx context.Context, r io.Reader) iter.Seq2[json.RawMessage, e
 	})
 }
 
-type ArrayIterator struct {
+func NewArrayStreamDecoder[T any](r io.Reader) codec.StreamDecoder[T] {
+	i := &jsontoken.ArrayIterator[T]{
+		Context: context.Background(),
+		Input:   r,
+	}
+	return func(yield func(codec.Decoder[T], error) bool) {
+		defer i.Close()
+		for i.Next() {
+			if !yield(i, nil) {
+				return
+			}
+		}
+		if err := i.Err(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+		if err := i.Close(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+	}
+}
+
+type ArrayIterator[T any] struct {
 	Context context.Context
 	Input   io.Reader
 
@@ -864,7 +891,7 @@ type ArrayIterator struct {
 	data []byte
 }
 
-func (c *ArrayIterator) Next() bool {
+func (c *ArrayIterator[T]) Next() bool {
 	if c.done {
 		return false
 	}
@@ -935,18 +962,18 @@ func (c *ArrayIterator) Next() bool {
 	return true
 }
 
-func (c *ArrayIterator) Value() json.RawMessage { return c.data }
+func (c *ArrayIterator[T]) Value() json.RawMessage { return c.data }
 
-func (c *ArrayIterator) Decode(ptr any) error { return json.Unmarshal(c.data, ptr) }
+func (c *ArrayIterator[T]) Decode(p *T) error { return json.Unmarshal(c.data, p) }
 
-func (c *ArrayIterator) Err() error {
+func (c *ArrayIterator[T]) Err() error {
 	if c.Context == nil {
 		return c.err
 	}
 	return errorkit.Merge(c.err, c.Context.Err())
 }
 
-func (c *ArrayIterator) Close() error {
+func (c *ArrayIterator[T]) Close() error {
 	if c, ok := c.Input.(io.Closer); ok {
 		return c.Close()
 	}

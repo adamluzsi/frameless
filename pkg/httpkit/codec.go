@@ -15,14 +15,14 @@ import (
 	"go.llib.dev/frameless/port/codec"
 )
 
-type ListEncoderMaker interface {
+type ListEncoderMaker[T any, StreamEncoder codec.StreamEncoder[T]] interface {
 	// MakeListEncoder creates a new ListEncoder that writes encoded data to the provided io.Writer.
-	MakeListEncoder(w io.Writer) codec.StreamEncoder
+	MakeListEncoder(w io.Writer) StreamEncoder
 }
 
-type ListDecoderMaker interface {
+type ListDecoderMaker[T any, StreamDecoder codec.StreamDecoder[T]] interface {
 	// MakeListDecoder creates a new ListDecoder that reads decoded data from the provided io.Reader.
-	MakeListDecoder(w io.Reader) codec.StreamDecoder
+	MakeListDecoder(w io.Reader) StreamDecoder
 }
 
 type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]

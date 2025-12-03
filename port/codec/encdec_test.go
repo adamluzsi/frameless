@@ -2,6 +2,9 @@ package codec_test
 
 import "go.llib.dev/frameless/port/codec"
 
+var _ codec.Encoder[int] = (codec.EncoderFunc[int])(nil)
+var _ codec.Decoder[int] = (codec.DecoderFunc[int])(nil)
+
 func ExampleEncoder() {
 	var format codec.Encoder[int]
 	var v = 42
