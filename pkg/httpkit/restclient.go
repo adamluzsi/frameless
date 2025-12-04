@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -37,20 +38,16 @@ type RESTClient[ENT, ID any] struct {
 	HTTPClient *http.Client
 	// MediaType [optional] is used in the related headers such as Content-Type and Accept.
 	//
-	// default: httpkit.DefaultCodec.MediaType
+	// default: JSON
 	MediaType mediatype.MediaType
-	// Mapping [optional] is used if the ENT must be mapped into a DTO type prior to serialization.
-	//
-	// default: ENT type is used as the DTO type.
-	Mapping dtokit.Mapper[ENT]
 	// Codec [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
-	Codec codec.Registry
+	Codec RESTClientCodecs[ENT]
 	// MediaTypeCodecs [optional] is a registry that helps choose the right codec for each media type.
 	//
 	// default: DefaultCodecs
-	MediaTypeCodecs MediaTypeCodecs
+	MediaTypeCodecs MediaTypeCodecs[ENT]
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
 	// default: httpkit.IDFormatter[ID].Format
@@ -91,9 +88,38 @@ type RESTClient[ENT, ID any] struct {
 	DisableStreaming bool
 }
 
-type RESTClientCodec interface {
-	codec.Registry
-	ListDecoderMaker
+type RESTClientCodecs[T any] []RESTClientCodec[T]
+
+type RESTClientCodec[T any] interface {
+	mediaTypeSupporter
+	codec.Marshaler[T]
+	codec.Unmarshaler[T]
+	ListDecoderFactory[T]
+}
+
+func (cs RESTClientCodecs[T]) FindByMediaType(mediaType string) (RESTHandlerCodec[T], bool) {
+	mediaType, ok := lookupMediaType(mediaType)
+	if !ok {
+		return nil, false
+	}
+	for _, c := range cs {
+		if c.SupporsMediaType(mediaType) {
+			return c, true
+		}
+	}
+	for _, c := range defaultRESTClientCodecs[T]() {
+		if c.SupporsMediaType(mediaType) {
+			return c, true
+		}
+	}
+	return nil, false
+}
+
+func defaultRESTClientCodecs[T any]() []RESTHandlerCodec[T] {
+	return []RESTHandlerCodec[T]{
+		httpkitcodec.JSON[T]{},
+		httpkitcodec.JSONLines[T]{},
+	}
 }
 
 func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
@@ -215,7 +241,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("response content type", respMediaType))
 
-		dm, ok := cod.(ListDecoderMaker)
+		dm, ok := cod.(ListDecoderFactory)
 
 		if r.DisableStreaming || !ok {
 			data, err := io.ReadAll(resp.Body)

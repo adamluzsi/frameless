@@ -141,6 +141,12 @@ func NewEncoder[T any](w io.Writer) *Encoder[T] {
 
 type Encoder[T any] struct{ *json.Encoder }
 
+var _ codec.StreamEncoder[int] = (*Encoder[int])(nil)
+
+func (e *Encoder[T]) Close() error {
+	return nil
+}
+
 func (e *Encoder[T]) Encode(v T) error {
 	return e.Encoder.Encode(v)
 }

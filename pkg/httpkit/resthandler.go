@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
@@ -110,23 +110,14 @@ type RESTHandler[ENT, ID any] struct {
 	// Request paths will be stripped from their prefix.
 	// For example, "/users/42/jobs" will end up as "/jobs".
 	ResourceRoutes http.Handler
-	// Mapping [optional] is the generic ENT to DTO mapping configuration.
+	// MediaType [optional] configures what should the the preferred MediaType in case the caller doesn't specified it.
 	//
-	// default: the ENT type itself is used as the DTO type.
-	Mapping dtokit.Mapper[ENT]
-	// MediaType [optional] configures what MediaType the handler should use, when the request doesn't defines it.
-	//
-	// default: DefaultCodec.MediaType
+	// default: application/json
 	MediaType mediatype.MediaType
-	// MediaTypeMappings [optional] defines a per MediaType DTO Mapping,
-	// that takes priority over the Mapping.
-	//
-	// default: Mapping is used.
-	MediaTypeMappings MediaTypeMappings[ENT]
 	// MediaTypeCodecs [optional] contains per media type related codec which is used to marshal and unmarshal data in the response and response body.
 	//
-	// default: will use httpkit.DefaultCodecs
-	MediaTypeCodecs MediaTypeCodecs
+	// default: will use common default codecs, such as JSON, and form URL encoded.
+	Codecs RESTHandlerCodecs[ENT]
 	// ErrorHandler [optional] is used to handle errors from the request, by mapping the error value into an error DTO Mapping.
 	ErrorHandler ErrorHandler
 	// IDContextKey is an optional field used to store the parsed ID from the URL in the context.
@@ -186,36 +177,38 @@ type RESTHandler[ENT, ID any] struct {
 	CommitManager comproto.OnePhaseCommitProtocol
 }
 
-func (h RESTHandler[ENT, ID]) getMapping(mediaType string) dtokit.Mapper[ENT] {
-	mediaType, _ = lookupMediaType(mediaType) // TODO: TEST ME
-	if h.MediaTypeMappings != nil {
-		if mapping, ok := h.MediaTypeMappings[mediaType]; ok {
-			return mapping
+type RESTHandlerCodecs[T any] []RESTHandlerCodec[T]
+
+func FindByMediaType[T any](mediaType string) (RESTHandlerCodec[T], bool) {
+	mediaType, ok := lookupMediaType(mediaType)
+	if !ok {
+		return nil, false
+	}
+	for _, c := range cs {
+		if c.SupporsMediaType(mediaType) {
+			return c, true
 		}
 	}
-	if h.Mapping != nil {
-		return h.Mapping
+	for _, c := range defaultRESTHandlerCodecs[T]() {
+		if c.SupporsMediaType(mediaType) {
+			return c, true
+		}
 	}
-	return passthroughMappingMode[ENT]()
+	return nil, false
 }
 
-// passthroughMappingMode enables a passthrough mapping mode where entity is used as the DTO itself.
-// Since we can't rule out that they don't use httpkit.Resource with a DTO type in the first place.
-func passthroughMappingMode[ENT any]() dtokit.Mapping[ENT, ENT] {
-	return dtokit.Mapping[ENT, ENT]{}
+func defaultRESTHandlerCodecs[T any]() []RESTHandlerCodec[T] {
+	return []RESTHandlerCodec[T]{
+		httpkitcodec.JSON[T]{},
+		httpkitcodec.JSONLines[T]{},
+	}
 }
 
-// Mapper is a generic interface used for representing a DTO-ENT mapping relationship.
-// Its primary function is to allow Resource to list various mappings,
-// each with its own DTO type, for different MIMEType values.
-// This means we can use different DTO types within the same restful Resource handler based on different content types,
-// making it more flexible and adaptable to support different Serialization formats.
-//
-// It is implemented by DTOMapping.
-type Mapper[ENT any] interface {
-	newDTO() (dtoPtr any)
-	toEnt(ctx context.Context, dtoPtr any) (ENT, error)
-	toDTO(ctx context.Context, ent ENT) (DTO any, _ error)
+type RESTHandlerCodec[T any] interface {
+	mediaTypeSupporter
+	codec.Marshaler[T]
+	codec.Unmarshaler[T]
+	ListEncoderFactory[T]
 }
 
 func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -376,39 +369,17 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	resCodec, resMediaType := h.responseBodyCodec(r, h.MediaType) // TODO:TEST_ME
-	resMapping := h.getMapping(resMediaType)
+	codec, responseMediaType := h.responseBodyCodec(r)
+	w.Header().Set(headerKeyContentType, responseMediaType)
 
-	w.Header().Set(headerKeyContentType, resMediaType)
-
-	serMaker, ok := resCodec.(ListEncoderMaker)
-	if !ok {
-		vs, err := iterkit.CollectE(index)
-		if err != nil {
-			h.getErrorHandler().HandleError(w, r, err)
-			return
-		}
-
-		data, err := resCodec.Marshal(vs)
-		if err != nil {
-			h.getErrorHandler().HandleError(w, r, err)
-			return
-		}
-
-		if _, err := w.Write(data); err != nil {
-			logger.Debug(ctx, "failed index write response in non streaming mode due to the codec not supporting ListEncoderMaker",
-				logging.ErrField(err))
-		}
-
-		return
-	}
+	list := codec.NewListEncoder(w)
 
 	next, stop := iter.Pull2(index)
 	defer stop()
 
 	ent, err, ok := next()
 	if !ok {
-		_ = serMaker.MakeListEncoder(w).Close()
+		_ = list.Close()
 		return
 	}
 	if err != nil {
@@ -416,17 +387,15 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	listEncoder := serMaker.MakeListEncoder(w)
-
-	index = iterkit.Merge2(iterkit.AsSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
-
 	defer func() {
-		if err := listEncoder.Close(); err != nil {
-			logger.Warn(ctx, "finishing the index list encoding encountered an error",
+		if err := list.Close(); err != nil {
+			logger.Debug(ctx, "finishing the index list encoding encountered an error",
 				logging.ErrField(err))
 			return
 		}
 	}()
+
+	index = iterkit.Merge2(iterkit.AsSeqE(iterkit.Of(ent)), iterkit.FromPull2(next))
 
 	for ent, err := range index {
 		if err != nil {
@@ -436,13 +405,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		dto, err := resMapping.MapToIDTO(ctx, ent)
-		if err != nil {
-			logger.Warn(ctx, "error during index element DTO Mapping", logging.ErrField(err))
-			break
-		}
-
-		if err := listEncoder.Encode(dto); err != nil {
+		if err := list.Encode(ent); err != nil {
 			logger.Warn(ctx, "error during DTO value encoding", logging.ErrField(err))
 			break
 		}
@@ -474,21 +437,14 @@ func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		ctx                    = r.Context()
-		reqCodec, reqMediaType = h.requestBodyCodec(r, h.MediaType)
-		reqMapping             = h.getMapping(reqMediaType)
+		ctx          = r.Context()
+		requestCodec = h.requestBodyCodec(r)
 	)
 
-	dtoPtr := reqMapping.NewDTO()
-	if err := reqCodec.Unmarshal(data, dtoPtr); err != nil {
+	var ent ENT
+	if err := requestCodec.Unmarshal(data, &ent); err != nil {
 		logger.Debug(ctx, "invalid request body", logging.ErrField(err))
 		h.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody)
-		return
-	}
-
-	ent, err := reqMapping.MapFromDTO(ctx, dtoPtr)
-	if err != nil {
-		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
@@ -524,18 +480,9 @@ func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var (
-		resSer, resMIMEType = h.responseBodyCodec(r, h.MediaType)
-		resMapping          = h.getMapping(resMIMEType)
-	)
+	var respCodec, respMediaType = h.responseBodyCodec(r)
 
-	dto, err := resMapping.MapToIDTO(ctx, ent)
-	if err != nil {
-		h.getErrorHandler().HandleError(w, r, err)
-		return
-	}
-
-	data, err = resSer.Marshal(dto) // TODO:TEST_ME
+	data, err = respCodec.Marshal(ent) // TODO:TEST_ME
 	if err != nil {
 		logger.Error(ctx, "error during Marshaling entity operation",
 			logging.Field("type", reflectkit.TypeOf[ENT]().String()),
@@ -544,7 +491,7 @@ func (h RESTHandler[ENT, ID]) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set(headerKeyContentType, resMIMEType)
+	w.Header().Set(headerKeyContentType, respMediaType)
 	w.WriteHeader(http.StatusCreated)
 
 	if _, err := w.Write(data); err != nil {
@@ -607,7 +554,7 @@ func (h RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id ID
 
 	ctx := r.Context()
 
-	entity, found, err := h.Show(ctx, id)
+	ent, found, err := h.Show(ctx, id)
 	if err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
 		return
@@ -617,23 +564,16 @@ func (h RESTHandler[ENT, ID]) show(w http.ResponseWriter, r *http.Request, id ID
 		return
 	}
 
-	if !h.isOwnershipOK(ctx, entity) {
+	if !h.isOwnershipOK(ctx, ent) {
 		h.errEntityNotFound(w, r)
 		return
 	}
 
-	resSer, resMIMEType := h.responseBodyCodec(r, h.MediaType)
-	mapping := h.getMapping(resMIMEType)
+	respCodec, resMIMEType := h.responseBodyCodec(r)
 
 	w.Header().Set(headerKeyContentType, resMIMEType)
 
-	dto, err := mapping.MapToIDTO(ctx, entity)
-	if err != nil {
-		h.getErrorHandler().HandleError(w, r, err)
-		return
-	}
-
-	data, err := resSer.Marshal(dto)
+	data, err := respCodec.Marshal(ent)
 	if err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
 		return
@@ -652,9 +592,8 @@ func (h RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 	var (
-		ctx                 = r.Context()
-		reqSer, reqMIMEType = h.requestBodyCodec(r, h.MediaType)
-		reqMapping          = h.getMapping(reqMIMEType)
+		ctx          = r.Context()
+		requestCodec = h.requestBodyCodec(r)
 	)
 
 	data, err := h.readAllBody(r)
@@ -663,9 +602,8 @@ func (h RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	dtoPtr := reqMapping.NewDTO()
-
-	if err := reqSer.Unmarshal(data, dtoPtr); err != nil {
+	var ent ENT
+	if err := requestCodec.Unmarshal(data, &ent); err != nil {
 		h.getErrorHandler().HandleError(w, r, ErrInvalidRequestBody.Wrap(err))
 		return
 	}
@@ -690,23 +628,17 @@ func (h RESTHandler[ENT, ID]) update(w http.ResponseWriter, r *http.Request, id 
 		return
 	}
 
-	entity, err := reqMapping.MapFromDTO(ctx, dtoPtr)
-	if err != nil {
+	if err := h.IDAccessor.Set(&ent, id); err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
 
-	if err := h.IDAccessor.Set(&entity, id); err != nil {
-		h.getErrorHandler().HandleError(w, r, err)
-		return
-	}
-
-	if !h.isOwnershipOK(ctx, entity) {
+	if !h.isOwnershipOK(ctx, ent) {
 		h.errEntityNotFound(w, r)
 		return
 	}
 
-	if err := h.Update(ctx, &entity); err != nil {
+	if err := h.Update(ctx, &ent); err != nil {
 		if errors.Is(err, crud.ErrNotFound) { // TODO:TEST_ME
 			h.getErrorHandler().HandleError(w, r, ErrEntityNotFound)
 			return
@@ -886,38 +818,44 @@ func (h RESTHandler[ENT, ID]) getIDParser(rawID string) (ID, error) {
 	return IDConverter[ID]{}.ParseID(rawID)
 }
 
-func (h RESTHandler[ENT, ID]) restHandler() {}
-
 var _ restHandler = RESTHandler[any, any]{}
 
-func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Registry, mediatype.MediaType) {
-	return h.contentTypeCodec(r, fallbackMediaType)
+func (h RESTHandler[ENT, ID]) restHandler() {}
+
+func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) RESTHandlerCodec[ENT] {
+	c, _ := h.contentTypeCodec(r)
+	return c
 }
 
-func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Registry, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (RESTHandlerCodec[ENT], mediatype.MediaType) {
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
-		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
+		if c, ok := h.Codecs.FindByMediaType(mediaType); ok {
 			return c, mediaType
 		}
 	}
-	if c, ok := h.MediaTypeCodecs.Lookup(fallbackMediaType); ok {
-		return c, fallbackMediaType
-
+	if 0 < len(h.MediaType) {
+		if c, ok := h.Codecs.FindByMediaType(h.MediaType); ok {
+			return c, h.MediaType
+		}
 	}
-	return defaultCodec.Codec, defaultCodec.MediaType
+	return h.defaultCodec()
 }
 
-func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request, fallbackMediaType mediatype.MediaType) (codec.Registry, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) defaultCodec() (RESTHandlerCodec[ENT], mediatype.MediaType) {
+	return httpkitcodec.JSON[ENT]{}, mediatype.JSON
+}
+
+func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (RESTHandlerCodec[ENT], mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
-		return h.contentTypeCodec(r, fallbackMediaType)
+		return h.contentTypeCodec(r)
 	}
 	for _, mediaType := range strings.Fields(accept) {
-		if c, ok := h.MediaTypeCodecs.Lookup(mediaType); ok {
+		if c, ok := h.Codecs.FindByMediaType(mediaType); ok {
 			return c, mediaType
 		}
 	}
-	return h.contentTypeCodec(r, fallbackMediaType)
+	return h.contentTypeCodec(r)
 }
 
 func (h RESTHandler[ENT, ID]) getRequestBodyMediaType(r *http.Request) (mediatype.MediaType, bool) {

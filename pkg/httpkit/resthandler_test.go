@@ -103,16 +103,10 @@ func ExampleRESTHandler_withMediaTypeConfiguration() {
 		Update:  fooRepository.Update,
 		Destroy: fooRepository.DeleteByID,
 
-		Mapping: dtokit.Mapping[X, XDTO]{},
-
 		MediaType: mediatype.JSON, // we can set the preferred default media type in case the requester don't specify it.
 
-		MediaTypeMappings: httpkit.MediaTypeMappings[X]{ // we can populate this with any media type we want
-			mediatype.JSON: dtokit.Mapping[X, XDTO]{},
-		},
-
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{ // we can populate with any custom codec for any custom media type
-			mediatype.JSON: jsonkit.Codec{},
+		MediaTypeCodecs: httpkit.MediaTypeCodecs[X]{ // we can populate with any custom codec for any custom media type
+			mediatype.JSON: jsonkit.Codec[X]{},
 		},
 	}
 

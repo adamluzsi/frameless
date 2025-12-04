@@ -7,51 +7,27 @@ import (
 	"reflect"
 	"strconv"
 
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
-	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type ListEncoderMaker[T any, StreamEncoder codec.StreamEncoder[T]] interface {
-	// MakeListEncoder creates a new ListEncoder that writes encoded data to the provided io.Writer.
-	MakeListEncoder(w io.Writer) StreamEncoder
+type mediaTypeSupporter interface {
+	SupporsMediaType(mediaType string) bool
 }
 
-type ListDecoderMaker[T any, StreamDecoder codec.StreamDecoder[T]] interface {
-	// MakeListDecoder creates a new ListDecoder that reads decoded data from the provided io.Reader.
-	MakeListDecoder(w io.Reader) StreamDecoder
+type MediaTypeCodec[T any] interface {
+	codec.Marshaler[T]
+	codec.Unmarshaler[T]
 }
 
-type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
-
-type MediaTypeCodecs map[mediatype.MediaType]codec.Registry
-
-var defaultCodecs = map[mediatype.MediaType]codec.Registry{
-	"application/json":                  jsonkit.Codec{},
-	"application/problem+json":          jsonkit.Codec{},
-	"application/x-ndjson":              jsonkit.LinesCodec{},
-	"application/stream+json":           jsonkit.LinesCodec{},
-	"application/json-stream":           jsonkit.LinesCodec{},
-	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
+type ListEncoderFactory[T any] interface {
+	NewListEncoder(w io.Writer) codec.StreamEncoder[T]
 }
 
-func (m MediaTypeCodecs) Lookup(mediaType string) (codec.Registry, bool) {
-	mediaType, ok := lookupMediaType(mediaType) // TODO: TEST ME
-	if !ok {
-		return nil, false
-	}
-	if m != nil {
-		if c, ok := m[mediaType]; ok {
-			return c, true
-		}
-	}
-	if c, ok := defaultCodecs[mediaType]; ok {
-		return c, true
-	}
-	return nil, false
+type ListDecoderFactory[T any] interface {
+	NewListDecoder(w io.Reader) codec.StreamDecoder[T]
 }
 
 /////////////////////////////////////////////////////// MAPPING ///////////////////////////////////////////////////////
@@ -156,11 +132,6 @@ func (m IDConverter[ID]) getParser() func(string) (ID, error) {
 			return *new(ID), fmt.Errorf("not implemented")
 		}
 	}
-}
-
-var defaultCodec = codecDefault{
-	Codec:     jsonkit.Codec{},
-	MediaType: mediatype.JSON,
 }
 
 type codecDefault struct {

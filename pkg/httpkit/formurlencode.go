@@ -12,18 +12,9 @@ import (
 	"go.llib.dev/frameless/pkg/stringkit"
 )
 
-type FormURLEncodedCodec struct{}
+type FormURLEncodedCodec[T any] struct{}
 
-func (e FormURLEncodedCodec) Supports(v any) bool {
-	switch reflectkit.BaseValueOf(v).Kind() {
-	case reflect.Struct, reflect.Map:
-		return true
-	default:
-		return false
-	}
-}
-
-func (e FormURLEncodedCodec) Marshal(v any) ([]byte, error) {
+func (e FormURLEncodedCodec[T]) Marshal(v any) ([]byte, error) {
 	if v == nil {
 		return []byte{}, nil
 	}
@@ -39,7 +30,7 @@ func (e FormURLEncodedCodec) Marshal(v any) ([]byte, error) {
 	}
 }
 
-func (e FormURLEncodedCodec) marshalStruct(input reflect.Value) ([]byte, error) {
+func (e FormURLEncodedCodec[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for i, num := 0, input.NumField(); i < num; i++ {
 		var (
@@ -71,7 +62,7 @@ func (e FormURLEncodedCodec) marshalStruct(input reflect.Value) ([]byte, error) 
 	return []byte(values.Encode()), nil
 }
 
-func (e FormURLEncodedCodec) Unmarshal(data []byte, iptr any) error {
+func (e FormURLEncodedCodec[T]) Unmarshal(data []byte, iptr any) error {
 	values, err := url.ParseQuery(string(data))
 	if err != nil {
 		return err
@@ -91,7 +82,7 @@ func (e FormURLEncodedCodec) Unmarshal(data []byte, iptr any) error {
 	}
 }
 
-func (e FormURLEncodedCodec) unmarshalStruct(values url.Values, ptr reflect.Value) error {
+func (e FormURLEncodedCodec[T]) unmarshalStruct(values url.Values, ptr reflect.Value) error {
 	for i, num := 0, ptr.Type().Elem().NumField(); i < num; i++ {
 		var (
 			field = ptr.Elem().Field(i)
@@ -121,7 +112,7 @@ func (e FormURLEncodedCodec) unmarshalStruct(values url.Values, ptr reflect.Valu
 	return nil
 }
 
-func (e FormURLEncodedCodec) unmarshalMap(values url.Values, ptr reflect.Value) error {
+func (e FormURLEncodedCodec[T]) unmarshalMap(values url.Values, ptr reflect.Value) error {
 	var (
 		keyType   = ptr.Type().Elem().Key()
 		valueType = ptr.Type().Elem().Elem()
@@ -164,7 +155,7 @@ type formProperties struct {
 	OmitEmpty bool
 }
 
-func (e FormURLEncodedCodec) getFormProperties(typ reflect.StructField) formProperties {
+func (e FormURLEncodedCodec[T]) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
 	prop.Key = stringkit.ToSnake(typ.Name)
 	e.lookupTag(typ, "url", &prop)
@@ -172,7 +163,7 @@ func (e FormURLEncodedCodec) getFormProperties(typ reflect.StructField) formProp
 	return prop
 }
 
-func (e FormURLEncodedCodec) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
+func (e FormURLEncodedCodec[T]) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
 	tag, ok := typ.Tag.Lookup(tagKey)
 	if !ok || len(tag) == 0 {
 		return
@@ -189,7 +180,7 @@ func (e FormURLEncodedCodec) lookupTag(typ reflect.StructField, tagKey string, p
 	}
 }
 
-func (e FormURLEncodedCodec) marshalMap(m reflect.Value) ([]byte, error) {
+func (e FormURLEncodedCodec[T]) marshalMap(m reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for _, mKey := range m.MapKeys() {
 		mVal := m.MapIndex(mKey)
