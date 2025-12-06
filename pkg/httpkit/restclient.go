@@ -2,6 +2,7 @@ package httpkit
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -76,10 +77,14 @@ type RESTClient[ENT, ID any] struct {
 	//
 	// This is useful for situations:
 	//   - where slowwer servers might feel overwhelmed with holding connections concurrently open (lik ruby's unicorn server)
-	//   - when the server incorrect mistake the streaming based request processing as a slow-client attack.
+	//   - when the server incorrectly mistake the streaming based request processing as a slow-client attack.
 	//
 	// default: false
 	DisableStreaming bool
+	// KeepAliveInterval is the interval in between the response body guaranteed to be read, to avoid read timeout.
+	//
+	// default: 5s
+	KeepAliveInterval time.Duration
 }
 
 type RESTClientCodec[T any] interface {
@@ -186,18 +191,18 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("response content type", respMediaType))
 
-		var src io.Reader = resp.Body
-		defer resp.Body.Close()
+		var src io.ReadCloser = r.withKeepAlive(resp.Body)
+		defer src.Close()
 
 		if r.DisableStreaming {
-			data, err := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+			data, err := io.ReadAll(src)
+			_ = src.Close()
 			if err != nil {
 				var zero ENT
 				yield(zero, err)
 				return
 			}
-			src = bytes.NewReader(data)
+			src = io.NopCloser(bytes.NewReader(data))
 		}
 
 		var list = codec.NewListDecoder(src)
@@ -580,6 +585,12 @@ func (r RESTClient[ENT, ID]) bodyReadAll(body io.ReadCloser) ([]byte, error) {
 		return nil, ErrResponseEntityTooLarge
 	}
 	return data, nil
+}
+
+func (r RESTClient[ENT, ID]) withKeepAlive(body io.ReadCloser) io.ReadCloser {
+	const defaultInterval = 25 * time.Second
+	var interval time.Duration = cmp.Or(r.KeepAliveInterval, defaultInterval)
+	return iokit.NewKeepAliveReader(body, interval)
 }
 
 var pathResourceIdentifierRGX = regexp.MustCompile(`^:[\w[:punct:]]+$`)

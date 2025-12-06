@@ -9,8 +9,8 @@ import (
 	"go.llib.dev/testcase/assert"
 )
 
-var _ httpkit.RESTHandlerCodec[int] = httpkitcodec.FormURLEncodedCodec[int]{}
-var _ httpkit.RESTClientCodec[int] = httpkitcodec.FormURLEncodedCodec[int]{}
+var _ httpkit.RESTHandlerCodec[int] = httpkitcodec.FormURLEncoded[int]{}
+var _ httpkit.RESTClientCodec[int] = httpkitcodec.FormURLEncoded[int]{}
 
 func TestFormURLEncoder_struct(t *testing.T) {
 	ser := httpkit.FormURLEncodedCodec{}
