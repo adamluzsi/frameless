@@ -1,4 +1,4 @@
-package httpkit
+package httpkitcodec
 
 import (
 	"fmt"
@@ -14,15 +14,11 @@ import (
 
 type FormURLEncodedCodec[T any] struct{}
 
-func (e FormURLEncodedCodec[T]) Marshal(v any) ([]byte, error) {
-	if v == nil {
-		return []byte{}, nil
-	}
-	var input = reflectkit.BaseValueOf(v)
+func (e FormURLEncodedCodec[T]) Marshal(v T) ([]byte, error) {
+	var input = reflect.ValueOf(v)
 	switch input.Kind() {
 	case reflect.Struct:
 		return e.marshalStruct(input)
-
 	case reflect.Map:
 		return e.marshalMap(input)
 	default:
@@ -62,16 +58,15 @@ func (e FormURLEncodedCodec[T]) marshalStruct(input reflect.Value) ([]byte, erro
 	return []byte(values.Encode()), nil
 }
 
-func (e FormURLEncodedCodec[T]) Unmarshal(data []byte, iptr any) error {
+func (e FormURLEncodedCodec[T]) Unmarshal(data []byte, p *T) error {
 	values, err := url.ParseQuery(string(data))
 	if err != nil {
 		return err
 	}
-	if iptr == nil {
+	if p == nil {
 		return fmt.Errorf("nil pointer received")
 	}
-	var ptr = reflect.ValueOf(iptr)
-
+	var ptr = reflect.ValueOf(p)
 	switch ptr.Type().Elem().Kind() {
 	case reflect.Struct:
 		return e.unmarshalStruct(values, ptr)

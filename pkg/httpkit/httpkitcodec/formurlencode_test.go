@@ -1,12 +1,16 @@
-package httpkit_test
+package httpkitcodec_test
 
 import (
 	"testing"
 	"time"
 
 	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
 	"go.llib.dev/testcase/assert"
 )
+
+var _ httpkit.RESTHandlerCodec[int] = httpkitcodec.FormURLEncodedCodec[int]{}
+var _ httpkit.RESTClientCodec[int] = httpkitcodec.FormURLEncodedCodec[int]{}
 
 func TestFormURLEncoder_struct(t *testing.T) {
 	ser := httpkit.FormURLEncodedCodec{}

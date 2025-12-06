@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
@@ -24,7 +23,6 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/zerokit"
-	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 )
@@ -40,14 +38,10 @@ type RESTClient[ENT, ID any] struct {
 	//
 	// default: JSON
 	MediaType mediatype.MediaType
-	// Codec [optional] is used for the serialization process with DTO values.
+	// Codecs [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
-	Codec RESTClientCodecs[ENT]
-	// MediaTypeCodecs [optional] is a registry that helps choose the right codec for each media type.
-	//
-	// default: DefaultCodecs
-	MediaTypeCodecs MediaTypeCodecs[ENT]
+	Codecs []RESTClientCodec[ENT]
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
 	// default: httpkit.IDFormatter[ID].Format
@@ -88,38 +82,9 @@ type RESTClient[ENT, ID any] struct {
 	DisableStreaming bool
 }
 
-type RESTClientCodecs[T any] []RESTClientCodec[T]
-
 type RESTClientCodec[T any] interface {
-	mediaTypeSupporter
-	codec.Marshaler[T]
-	codec.Unmarshaler[T]
+	MediaTypeCodec[T]
 	ListDecoderFactory[T]
-}
-
-func (cs RESTClientCodecs[T]) FindByMediaType(mediaType string) (RESTHandlerCodec[T], bool) {
-	mediaType, ok := lookupMediaType(mediaType)
-	if !ok {
-		return nil, false
-	}
-	for _, c := range cs {
-		if c.SupporsMediaType(mediaType) {
-			return c, true
-		}
-	}
-	for _, c := range defaultRESTClientCodecs[T]() {
-		if c.SupporsMediaType(mediaType) {
-			return c, true
-		}
-	}
-	return nil, false
-}
-
-func defaultRESTClientCodecs[T any]() []RESTHandlerCodec[T] {
-	return []RESTHandlerCodec[T]{
-		httpkitcodec.JSON[T]{},
-		httpkitcodec.JSONLines[T]{},
-	}
 }
 
 func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
@@ -136,15 +101,9 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	}
 
 	mimeType := r.getMediaType()
-	cod := r.getCodec(mimeType)
-	mapping := r.getMapping()
+	codec := r.getCodec(mimeType)
 
-	dto, err := mapping.MapToIDTO(ctx, *ptr)
-	if err != nil {
-		return err
-	}
-
-	data, err := cod.Marshal(dto)
+	data, err := codec.Marshal(*ptr)
 	if err != nil {
 		return err
 	}
@@ -176,18 +135,7 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		}
 	}
 
-	dtoPtr := mapping.NewDTO()
-	if err := cod.Unmarshal(responseBody, dtoPtr); err != nil {
-		return err
-	}
-
-	got, err := mapping.MapFromDTO(ctx, dtoPtr)
-	if err != nil {
-		return err
-	}
-
-	*ptr = got
-	return nil
+	return codec.Unmarshal(responseBody, ptr)
 }
 
 func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
@@ -206,7 +154,6 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		reqURL := pathkit.Join(baseURL, "/")
 		details = append(details, logging.Field("url", reqURL))
 
-		//mapping := r.getMapping()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
 			var zero ENT
@@ -229,9 +176,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("status code", resp.StatusCode))
 
-		mapping := r.getMapping()
-
-		cod, respMediaType, ok := r.contentTypeBasedCodec(resp)
+		codec, respMediaType, ok := r.contentTypeBasedCodec(resp)
 		if !ok {
 			err := fmt.Errorf("no codec configured for response content type: %s", respMediaType)
 			var zero ENT
@@ -241,55 +186,34 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("response content type", respMediaType))
 
-		dm, ok := cod.(ListDecoderFactory)
+		var src io.Reader = resp.Body
+		defer resp.Body.Close()
 
-		if r.DisableStreaming || !ok {
+		if r.DisableStreaming {
 			data, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
 			if err != nil {
 				var zero ENT
 				yield(zero, err)
 				return
 			}
-
-			ptr := mapping.NewDTOSlice()
-			if err := cod.Unmarshal(data, ptr); err != nil {
-				var zero ENT
-				yield(zero, err)
-				return
-			}
-
-			got, err := mapping.MapFromDTOSlice(ctx, ptr)
-			if err != nil {
-				var zero ENT
-				yield(zero, fmt.Errorf("error while mapping from DTO: %w", err))
-				return
-			}
-
-			for _, v := range got {
-				if !yield(v, nil) {
-					return
-				}
-			}
-			return
+			src = bytes.NewReader(data)
 		}
 
-		dec := dm.MakeListDecoder(resp.Body)
-		for dec.Next() {
-			ptr := mapping.NewDTO()
-			if err := dec.Decode(ptr); err != nil {
-				var zero ENT
-				if !yield(zero, err) {
+		var list = codec.NewListDecoder(src)
+		for dec, err := range list {
+			var ent ENT
+			if err != nil {
+				yield(ent, err)
+				return
+			}
+			if err := dec.Decode(&ent); err != nil {
+				if !yield(ent, err) {
 					return
 				}
 				continue
 			}
-			if !yield(mapping.MapFromDTO(ctx, ptr)) {
-				return
-			}
-		}
-		if err := dec.Err(); err != nil {
-			var zero ENT
-			if !yield(zero, err) {
+			if yield(ent, nil) {
 				return
 			}
 		}
@@ -312,8 +236,6 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 		logging.Field("entity type", reflectkit.TypeOf[ENT]().String()),
 		logging.Field("id", id),
 	)
-
-	mapping := r.getMapping()
 
 	pathParamID, err := r.formatID(id)
 	if err != nil {
@@ -362,24 +284,18 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 		return ent, false, makeClientErrUnexpectedResponse(req, resp, responseBody)
 	}
 
-	cdk, responseMediaType, ok := r.contentTypeBasedCodec(resp)
+	codec, responseMediaType, ok := r.contentTypeBasedCodec(resp)
 	if !ok {
 		return ent, false, fmt.Errorf("no codec configured for response content type: %s", responseMediaType)
 	}
 
 	details = append(details, logging.Field("response content type", responseMediaType))
 
-	dtoPtr := mapping.NewDTO()
-	if err := cdk.Unmarshal(responseBody, dtoPtr); err != nil {
+	if err := codec.Unmarshal(responseBody, &ent); err != nil {
 		return ent, false, err
 	}
 
-	got, err := mapping.MapFromDTO(ctx, dtoPtr)
-	if err != nil {
-		return ent, false, err
-	}
-
-	return got, true, nil
+	return ent, true, nil
 }
 
 func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2[ENT, error] {
@@ -467,7 +383,6 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 	var idAccessor = r.IDA
 
 	ser := r.getCodec(r.getMediaType())
-	mapping := r.getMapping()
 
 	id, ok := idAccessor.Lookup(*ptr)
 	if !ok {
@@ -480,12 +395,7 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	dto, err := mapping.MapToIDTO(ctx, *ptr)
-	if err != nil {
-		return err
-	}
-
-	data, err := ser.Marshal(dto)
+	data, err := ser.Marshal(*ptr)
 	if err != nil {
 		return err
 	}
@@ -608,22 +518,16 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RESTClient[ENT, ID]) getCodec(mimeType string) codec.Registry {
-	if c, ok := r.MediaTypeCodecs.Lookup(mimeType); ok {
+func (r RESTClient[ENT, ID]) getCodec(mimeType string) RESTClientCodec[ENT] {
+	if c, ok := findCodecByMediaType(r.Codecs, mimeType); ok {
 		return c
 	}
-	if r.Codec != nil {
-		return r.Codec
-	}
-	return defaultCodec.Codec
+	return httpkitcodec.JSON[ENT]{}
 }
 
-func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Registry, mediatype.MediaType, bool) {
+func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (RESTClientCodec[ENT], mediatype.MediaType, bool) {
 	mt := string(resp.Header.Get(headerKeyContentType))
-	c, ok := r.MediaTypeCodecs.Lookup(mt)
-	if !ok && r.Codec != nil {
-		c, ok = r.Codec, true
-	}
+	c, ok := findCodecByMediaType(r.Codecs, mt)
 	return c, mt, ok
 }
 
@@ -641,13 +545,6 @@ func (r RESTClient[ENT, ID]) httpClient() *http.Client {
 	return zerokit.Coalesce(r.HTTPClient, &DefaultRestClientHTTPClient)
 }
 
-func (r RESTClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
-	if r.Mapping == nil {
-		return passthroughMappingMode[ENT]()
-	}
-	return r.Mapping
-}
-
 func (r RESTClient[ENT, ID]) getPrefetchLimit() int {
 	if 0 < r.PrefetchLimit {
 		return r.PrefetchLimit
@@ -663,7 +560,7 @@ func (r RESTClient[ENT, ID]) getMediaType() string {
 	if r.MediaType != zero {
 		return r.MediaType
 	}
-	return defaultCodec.MediaType
+	return mediatype.JSON
 }
 
 func (r RESTClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {

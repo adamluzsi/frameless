@@ -114,10 +114,10 @@ type RESTHandler[ENT, ID any] struct {
 	//
 	// default: application/json
 	MediaType mediatype.MediaType
-	// MediaTypeCodecs [optional] contains per media type related codec which is used to marshal and unmarshal data in the response and response body.
+	// Codecs [optional] contains per media type related codec which is used to marshal and unmarshal data in the response and response body.
 	//
 	// default: will use common default codecs, such as JSON, and form URL encoded.
-	Codecs RESTHandlerCodecs[ENT]
+	Codecs []RESTHandlerCodec[ENT]
 	// ErrorHandler [optional] is used to handle errors from the request, by mapping the error value into an error DTO Mapping.
 	ErrorHandler ErrorHandler
 	// IDContextKey is an optional field used to store the parsed ID from the URL in the context.
@@ -177,37 +177,8 @@ type RESTHandler[ENT, ID any] struct {
 	CommitManager comproto.OnePhaseCommitProtocol
 }
 
-type RESTHandlerCodecs[T any] []RESTHandlerCodec[T]
-
-func FindByMediaType[T any](mediaType string) (RESTHandlerCodec[T], bool) {
-	mediaType, ok := lookupMediaType(mediaType)
-	if !ok {
-		return nil, false
-	}
-	for _, c := range cs {
-		if c.SupporsMediaType(mediaType) {
-			return c, true
-		}
-	}
-	for _, c := range defaultRESTHandlerCodecs[T]() {
-		if c.SupporsMediaType(mediaType) {
-			return c, true
-		}
-	}
-	return nil, false
-}
-
-func defaultRESTHandlerCodecs[T any]() []RESTHandlerCodec[T] {
-	return []RESTHandlerCodec[T]{
-		httpkitcodec.JSON[T]{},
-		httpkitcodec.JSONLines[T]{},
-	}
-}
-
 type RESTHandlerCodec[T any] interface {
-	mediaTypeSupporter
-	codec.Marshaler[T]
-	codec.Unmarshaler[T]
+	MediaTypeCodec[T]
 	ListEncoderFactory[T]
 }
 
@@ -829,12 +800,12 @@ func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) RESTHandlerCodec
 
 func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (RESTHandlerCodec[ENT], mediatype.MediaType) {
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
-		if c, ok := h.Codecs.FindByMediaType(mediaType); ok {
+		if c, ok := findCodecByMediaType(h.Codecs, mediaType); ok {
 			return c, mediaType
 		}
 	}
 	if 0 < len(h.MediaType) {
-		if c, ok := h.Codecs.FindByMediaType(h.MediaType); ok {
+		if c, ok := findCodecByMediaType(h.Codecs, h.MediaType); ok {
 			return c, h.MediaType
 		}
 	}
@@ -851,7 +822,7 @@ func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (RESTHandlerCod
 		return h.contentTypeCodec(r)
 	}
 	for _, mediaType := range strings.Fields(accept) {
-		if c, ok := h.Codecs.FindByMediaType(mediaType); ok {
+		if c, ok := findCodecByMediaType(h.Codecs, mediaType); ok {
 			return c, mediaType
 		}
 	}
@@ -945,3 +916,38 @@ func RESTOwnershipCheck(ctx context.Context, entity any) bool {
 }
 
 type IDContextKey[ENT, ID any] struct{}
+
+func findCodecByMediaType[Codecs ~[]I, I mediaTypeSupporter](cs Codecs, mediaType string) (I, bool) {
+	mediaType, ok := lookupMediaType(mediaType)
+	if !ok {
+		var zero I
+		return zero, false
+	}
+	for _, c := range cs {
+		if c.SupporsMediaType(mediaType) {
+			return c, true
+		}
+	}
+	for _, c := range defaultRESTHandlerCodecs[I]() {
+		if c.SupporsMediaType(mediaType) {
+			return any(c).(I), true
+		}
+	}
+	var zero I
+	return zero, false
+}
+
+func defaultRESTHandlerCodecs[T any]() []restCodec[T] {
+	return []restCodec[T]{
+		httpkitcodec.JSON[T]{},
+		httpkitcodec.JSONLines[T]{},
+	}
+}
+
+type restCodec[T any] interface {
+	mediaTypeSupporter
+	codec.Marshaler[T]
+	codec.Unmarshaler[T]
+	ListEncoderFactory[T]
+	ListDecoderFactory[T]
+}

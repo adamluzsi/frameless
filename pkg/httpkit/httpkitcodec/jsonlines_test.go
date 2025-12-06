@@ -6,3 +6,4 @@ import (
 )
 
 var _ httpkit.RESTHandlerCodec[int] = httpkitcodec.JSONLines[int]{}
+var _ httpkit.RESTClientCodec[int] = httpkitcodec.JSONLines[int]{}

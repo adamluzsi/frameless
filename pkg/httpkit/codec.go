@@ -18,6 +18,7 @@ type mediaTypeSupporter interface {
 }
 
 type MediaTypeCodec[T any] interface {
+	mediaTypeSupporter
 	codec.Marshaler[T]
 	codec.Unmarshaler[T]
 }
