@@ -23,8 +23,27 @@ const ErrSeekNegativePosition errorkitlite.Error = "iokit: negative position"
 const ErrClosed errorkitlite.Error = "iokit: read/write on closed io"
 
 func WriteAll(w io.Writer, p []byte) (int, error) {
-	return w.Write(p)
-	// io.ErrShortWrite
+	var (
+		index int
+		tries = 32
+	)
+	for index < len(p) {
+		n, err := w.Write(p[index:])
+		if 0 < n {
+			index += n
+		}
+		if err != nil {
+			if errors.Is(err, io.ErrShortWrite) {
+				tries--
+				if 0 < tries {
+					continue
+				}
+				return index, err
+			}
+			return index, err
+		}
+	}
+	return index, nil
 }
 
 func NewBuffer[T []byte | string](data T) *Buffer {
@@ -204,19 +223,30 @@ func ReadAllWithLimit(body io.Reader, readLimit ByteSize) (_ []byte, returnErr e
 type Stub struct {
 	Data     []byte
 	ReadErr  error
+	WriteErr error
 	CloseErr error
 
 	EagerEOF bool
 
-	index  int
-	lock   sync.RWMutex
-	readAt time.Time
-	closed bool
+	lock     sync.RWMutex
+	numRead  int
+	numWrite int
+	index    int
+	closed   bool
+}
+
+func (r *Stub) Write(p []byte) (int, error) {
+	r.lock.Lock()
+	r.numWrite++
+	r.lock.Unlock()
+
+	r.Data = append(r.Data, p...)
+	return len(p), r.WriteErr
 }
 
 func (r *Stub) Read(p []byte) (int, error) {
 	r.lock.Lock()
-	r.readAt = clock.Now()
+	r.numRead++
 	r.lock.Unlock()
 
 	if r.ReadErr != nil {
@@ -245,10 +275,7 @@ func (r *Stub) Read(p []byte) (int, error) {
 	if got := copy(p[:n], data); got != n {
 		panic("copy error in iokit.Stub")
 	}
-
-	r.lock.Lock()
 	r.index += n
-	r.lock.Unlock()
 
 	return n, err
 }
@@ -260,16 +287,22 @@ func (r *Stub) Close() error {
 	return r.CloseErr
 }
 
-func (r *Stub) LastReadAt() time.Time {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	return r.readAt
-}
-
 func (r *Stub) IsClosed() bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.closed
+}
+
+func (r *Stub) NumRead() int {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.numRead
+}
+
+func (r *Stub) NumWrite() int {
+	r.lock.Lock()
+	defer r.lock.RUnlock()
+	return r.numWrite
 }
 
 func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {

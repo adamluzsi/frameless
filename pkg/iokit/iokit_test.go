@@ -510,6 +510,10 @@ func TestReadAllWithLimit(t *testing.T) {
 func TestStub(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	stub := let.Var(s, func(t *testcase.T) *iokit.Stub {
+		return &iokit.Stub{}
+	})
+
 	s.Describe("Read", func(s *testcase.Spec) {
 		s.Test("behaves like bytes.Reader", func(t *testcase.T) {
 			data := []byte(t.Random.String())
@@ -641,30 +645,26 @@ func TestStub(t *testing.T) {
 
 			data := []byte(t.Random.StringN(5))
 			stub := &iokit.Stub{Data: data}
-			assert.Empty(t, stub.LastReadAt())
+			assert.Empty(t, stub.NumRead())
 
 			n, err := stub.Read(make([]byte, 1))
 			assert.NoError(t, err)
 			assert.Equal(t, 1, n)
-			assert.Equal(t, stub.LastReadAt(), now)
-
-			now = now.Add(time.Hour)
-			timecop.Travel(t, now, timecop.Freeze)
-			assert.NotEqual(t, stub.LastReadAt(), now)
+			assert.Equal(t, stub.NumRead(), 1)
 
 			n, err = stub.Read(make([]byte, 1))
 			assert.NoError(t, err)
 			assert.Equal(t, 1, n)
-			assert.Equal(t, stub.LastReadAt(), now)
+			assert.Equal(t, stub.NumRead(), 2)
 		})
 
-		s.Test("LastReadAt is thread safe", func(t *testcase.T) {
+		s.Test("NumRead is thread safe", func(t *testcase.T) {
 			stub := &iokit.Stub{Data: []byte(t.Random.StringN(5))}
 
 			testcase.Race(func() {
-				stub.LastReadAt()
+				stub.NumRead()
 			}, func() {
-				stub.LastReadAt()
+				stub.NumRead()
 			}, func() {
 				_, _ = stub.Read(make([]byte, 1))
 			})
@@ -684,13 +684,42 @@ func TestStub(t *testing.T) {
 			stub := &iokit.Stub{Data: []byte(t.Random.StringN(5))}
 			assert.NoError(t, stub.Close())
 			_, _ = stub.Read(make([]byte, 1))
-			assert.NotEmpty(t, stub.LastReadAt())
+			assert.NotEmpty(t, stub.NumRead())
 		})
 	})
 
 	s.Describe("Write", func(s *testcase.Spec) {
-		act := let.Act2(func(t *testcase.T) {
+		var (
+			p = let.Var(s, func(t *testcase.T) []byte {
+				var data = make([]byte, t.Random.IntBetween(2, 128))
+				_, err := io.ReadFull(t.Random, data)
+				assert.NoError(t, err)
+				return data
+			})
+		)
+		act := let.Act2(func(t *testcase.T) (int, error) {
+			return stub.Get(t).Write(p.Get(t))
+		})
 
+		s.Then("it will record the written data", func(t *testcase.T) {
+			n, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, n, len(p.Get(t)))
+			assert.Equal(t, stub.Get(t).Data, p.Get(t))
+		})
+
+		s.When("write error is configured", func(s *testcase.Spec) {
+			expErr := let.Error(s)
+			stub.Let(s, func(t *testcase.T) *iokit.Stub {
+				v := stub.Super(t)
+				v.WriteErr = expErr.Get(t)
+				return v
+			})
+
+			s.Then("error is returned back", func(t *testcase.T) {
+				_, err := act(t)
+				assert.ErrorIs(t, err, expErr.Get(t))
+			})
 		})
 	})
 }
@@ -736,13 +765,13 @@ func TestKeepAliveReader(t *testing.T) {
 		})
 
 		s.Then("triggering won't happen anymore", func(t *testcase.T) {
-			assert.Empty(t, stub.Get(t).LastReadAt(), "something is not ok, the last read at at this point should be still empty")
+			assert.Empty(t, stub.Get(t).NumRead(), "something is not ok, the last read at at this point should be still empty")
 
 			t.Random.Repeat(2, 5, func() {
 				timecop.Travel(t, keepAliveTime.Get(t))
 			})
 
-			assert.Empty(t, stub.Get(t).LastReadAt(), "due to close, last read at should be still empty due to having the keep alive closed")
+			assert.Empty(t, stub.Get(t).NumRead(), "due to close, last read at should be still empty due to having the keep alive closed")
 		})
 	})
 
@@ -761,7 +790,7 @@ func TestKeepAliveReader(t *testing.T) {
 
 		s.Then("the keep alive mechanism read from the the source reader to avoid read timeout", func(t *testcase.T) {
 			assert.Eventually(t, time.Second, func(it testing.TB) {
-				assert.NotEmpty(it, stub.Get(t).LastReadAt)
+				assert.NotEmpty(it, stub.Get(t).NumRead())
 			})
 
 			t.Log("and even though the source reader is being read, the content can be still retrieved")
