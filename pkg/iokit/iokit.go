@@ -22,6 +22,11 @@ const ErrSeekNegativePosition errorkitlite.Error = "iokit: negative position"
 
 const ErrClosed errorkitlite.Error = "iokit: read/write on closed io"
 
+func WriteAll(w io.Writer, p []byte) (int, error) {
+	return w.Write(p)
+	// io.ErrShortWrite
+}
+
 func NewBuffer[T []byte | string](data T) *Buffer {
 	return &Buffer{buffer: *bytes.NewBuffer([]byte(data)), position: 0}
 }
@@ -196,10 +201,12 @@ func ReadAllWithLimit(body io.Reader, readLimit ByteSize) (_ []byte, returnErr e
 	return data, nil
 }
 
-type StubReader struct {
+type Stub struct {
 	Data     []byte
 	ReadErr  error
 	CloseErr error
+
+	EagerEOF bool
 
 	index  int
 	lock   sync.RWMutex
@@ -207,7 +214,7 @@ type StubReader struct {
 	closed bool
 }
 
-func (r *StubReader) Read(p []byte) (int, error) {
+func (r *Stub) Read(p []byte) (int, error) {
 	r.lock.Lock()
 	r.readAt = clock.Now()
 	r.lock.Unlock()
@@ -215,28 +222,51 @@ func (r *StubReader) Read(p []byte) (int, error) {
 	if r.ReadErr != nil {
 		return 0, r.ReadErr
 	}
-	if len(r.Data) <= r.index {
-		return 0, io.EOF
+
+	var data []byte
+	if r.index < len(r.Data) {
+		data = r.Data[r.index:]
 	}
-	n := copy(p, r.Data[r.index:])
+
+	var (
+		n   = len(p)
+		err error
+	)
+	if len(data) < n {
+		n = len(data)
+		if r.EagerEOF {
+			err = io.EOF
+		}
+	}
+	if len(data) == 0 {
+		err = io.EOF
+	}
+
+	if got := copy(p[:n], data); got != n {
+		panic("copy error in iokit.Stub")
+	}
+
+	r.lock.Lock()
 	r.index += n
-	return n, nil
+	r.lock.Unlock()
+
+	return n, err
 }
 
-func (r *StubReader) Close() error {
+func (r *Stub) Close() error {
 	r.lock.Lock()
 	r.closed = true
 	r.lock.Unlock()
 	return r.CloseErr
 }
 
-func (r *StubReader) LastReadAt() time.Time {
+func (r *Stub) LastReadAt() time.Time {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.readAt
 }
 
-func (r *StubReader) IsClosed() bool {
+func (r *Stub) IsClosed() bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.closed

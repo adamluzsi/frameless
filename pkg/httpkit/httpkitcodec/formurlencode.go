@@ -16,25 +16,25 @@ import (
 
 type FormURLEncoded[T any] struct{}
 
-func (e FormURLEncoded[T]) Marshal(v T) ([]byte, error) {
+func (c FormURLEncoded[T]) Marshal(v T) ([]byte, error) {
 	var input = reflect.ValueOf(v)
 	switch input.Kind() {
 	case reflect.Struct:
-		return e.marshalStruct(input)
+		return c.marshalStruct(input)
 	case reflect.Map:
-		return e.marshalMap(input)
+		return c.marshalMap(input)
 	default:
 		return nil, fmt.Errorf("not supported type for form-urlncoding: %T", v)
 	}
 }
 
-func (e FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
+func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for i, num := 0, input.NumField(); i < num; i++ {
 		var (
 			typ  = input.Type().Field(i)
 			val  = input.Field(i)
-			prop = e.getFormProperties(typ)
+			prop = c.getFormProperties(typ)
 		)
 		if prop.OmitEmpty && reflectkit.IsEmpty(val) {
 			continue
@@ -60,7 +60,7 @@ func (e FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 	return []byte(values.Encode()), nil
 }
 
-func (e FormURLEncoded[T]) Unmarshal(data []byte, p *T) error {
+func (c FormURLEncoded[T]) Unmarshal(data []byte, p *T) error {
 	values, err := url.ParseQuery(string(data))
 	if err != nil {
 		return err
@@ -71,19 +71,19 @@ func (e FormURLEncoded[T]) Unmarshal(data []byte, p *T) error {
 	var ptr = reflect.ValueOf(p)
 	switch ptr.Type().Elem().Kind() {
 	case reflect.Struct:
-		return e.unmarshalStruct(values, ptr)
+		return c.unmarshalStruct(values, ptr)
 	case reflect.Map:
-		return e.unmarshalMap(values, ptr)
+		return c.unmarshalMap(values, ptr)
 	default:
 		return fmt.Errorf("not implemented type: %s", ptr.Type().Elem().String())
 	}
 }
 
-func (e FormURLEncoded[T]) unmarshalStruct(values url.Values, ptr reflect.Value) error {
+func (c FormURLEncoded[T]) unmarshalStruct(values url.Values, ptr reflect.Value) error {
 	for i, num := 0, ptr.Type().Elem().NumField(); i < num; i++ {
 		var (
 			field = ptr.Elem().Field(i)
-			props = e.getFormProperties(ptr.Elem().Type().Field(i))
+			props = c.getFormProperties(ptr.Elem().Type().Field(i))
 		)
 		switch field.Type().Kind() {
 		case reflect.Slice:
@@ -109,7 +109,7 @@ func (e FormURLEncoded[T]) unmarshalStruct(values url.Values, ptr reflect.Value)
 	return nil
 }
 
-func (e FormURLEncoded[T]) unmarshalMap(values url.Values, ptr reflect.Value) error {
+func (c FormURLEncoded[T]) unmarshalMap(values url.Values, ptr reflect.Value) error {
 	var (
 		keyType   = ptr.Type().Elem().Key()
 		valueType = ptr.Type().Elem().Elem()
@@ -152,15 +152,15 @@ type formProperties struct {
 	OmitEmpty bool
 }
 
-func (e FormURLEncoded[T]) getFormProperties(typ reflect.StructField) formProperties {
+func (c FormURLEncoded[T]) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
 	prop.Key = stringkit.ToSnake(typ.Name)
-	e.lookupTag(typ, "url", &prop)
-	e.lookupTag(typ, "form", &prop)
+	c.lookupTag(typ, "url", &prop)
+	c.lookupTag(typ, "form", &prop)
 	return prop
 }
 
-func (e FormURLEncoded[T]) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
+func (c FormURLEncoded[T]) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
 	tag, ok := typ.Tag.Lookup(tagKey)
 	if !ok || len(tag) == 0 {
 		return
@@ -177,7 +177,7 @@ func (e FormURLEncoded[T]) lookupTag(typ reflect.StructField, tagKey string, pro
 	}
 }
 
-func (e FormURLEncoded[T]) marshalMap(m reflect.Value) ([]byte, error) {
+func (c FormURLEncoded[T]) marshalMap(m reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for _, mKey := range m.MapKeys() {
 		mVal := m.MapIndex(mKey)
@@ -188,7 +188,7 @@ func (e FormURLEncoded[T]) marshalMap(m reflect.Value) ([]byte, error) {
 		switch mVal.Kind() {
 		case reflect.Slice, reflect.Array:
 			for i, l := 0, mVal.Len(); i < l; i++ {
-				qVal, err := convkit.Format(mVal.Index(i).Interface())
+				qVal, err := convkit.FormatReflect(mVal.Index(i))
 				if err != nil {
 					return nil, fmt.Errorf("error while formatting %#v[%d] element: %w",
 						i, mKey.Interface(), err)
@@ -207,17 +207,34 @@ func (e FormURLEncoded[T]) marshalMap(m reflect.Value) ([]byte, error) {
 	return []byte(values.Encode()), nil
 }
 
-func (e FormURLEncoded[T]) NewListEncoder(w io.Writer) codec.StreamEncoder[T] {
-	return &formURLStreamEncoder[T]{W: w}
+func (c FormURLEncoded[T]) NewListEncoder(w io.Writer) codec.StreamEncoder[T] {
+	return &formURLStreamEncoder[T]{FormURLEncoded: c, W: w}
 }
 
 type formURLStreamEncoder[T any] struct {
+	FormURLEncoded[T]
 	W     io.Writer
 	index int
 }
 
 func (se *formURLStreamEncoder[T]) Encode(v T) error {
+	data, err := se.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if 0 < se.index {
+		se.W.Write([]byte("&"))
+	}
 
+	n, err := se.W.Write(data)
+	if err != nil {
+		return err
+	}
+	se.index++
+	if n != len(data) {
+		// return iokit.ErrPartialWrite
+	}
+	return nil
 }
 
 func (se *formURLStreamEncoder[T]) Close() error {

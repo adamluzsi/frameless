@@ -55,7 +55,7 @@ func Test_arrayStream(t *testing.T) {
 	assert.True(t, json.Valid(buf.Bytes()),
 		"expected that the final output after close is a valid json")
 
-	stub := iokit.StubReader{Data: buf.Bytes()}
+	stub := iokit.Stub{Data: buf.Bytes()}
 
 	stream := jsonkit.NewArrayStreamDecoder[Foo](&stub)
 
