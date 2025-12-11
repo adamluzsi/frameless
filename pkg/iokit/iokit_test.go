@@ -514,7 +514,7 @@ func TestStub(t *testing.T) {
 		return &iokit.Stub{}
 	})
 
-	s.Describe("Read", func(s *testcase.Spec) {
+	s.Describe("#Read", func(s *testcase.Spec) {
 		s.Test("behaves like bytes.Reader", func(t *testcase.T) {
 			data := []byte(t.Random.String())
 
@@ -688,7 +688,7 @@ func TestStub(t *testing.T) {
 		})
 	})
 
-	s.Describe("Write", func(s *testcase.Spec) {
+	s.Describe("#Write", func(s *testcase.Spec) {
 		var (
 			p = let.Var(s, func(t *testcase.T) []byte {
 				var data = make([]byte, t.Random.IntBetween(2, 128))
@@ -720,6 +720,16 @@ func TestStub(t *testing.T) {
 				_, err := act(t)
 				assert.ErrorIs(t, err, expErr.Get(t))
 			})
+		})
+
+		s.Test("on repeated write, all writes' data are appended to the stub", func(t *testcase.T) {
+			_, err := stub.Get(t).Write([]byte("foo"))
+			assert.NoError(t, err)
+			_, err = stub.Get(t).Write([]byte("bar"))
+			assert.NoError(t, err)
+			_, err = stub.Get(t).Write([]byte("baz"))
+			assert.NoError(t, err)
+			assert.Equal(t, []byte("foobarbaz"), stub.Get(t).Data)
 		})
 	})
 }
