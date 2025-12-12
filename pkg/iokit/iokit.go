@@ -221,41 +221,61 @@ func ReadAllWithLimit(body io.Reader, readLimit ByteSize) (_ []byte, returnErr e
 }
 
 type Stub struct {
-	Data     []byte
-	ReadErr  error
-	WriteErr error
-	CloseErr error
+	Data []byte
+
+	StubWrite func(stub *Stub, p []byte) (int, error)
+	StubRead  func(stub *Stub, p []byte) (int, error)
+	StubClose func(stub *Stub) error
 
 	EagerEOF bool
 
-	lock     sync.RWMutex
-	numRead  int
-	numWrite int
-	index    int
-	closed   bool
+	index    int64
+	closed   int32 `enum:"0,1"`
+	stubbed  int32 `enum:"0,1"`
+	numRead  int64
+	numWrite int64
+}
+
+func withoutStubbFunc[FN any](stubbed *int32, p *FN) func() {
+	atomic.StoreInt32(stubbed, 1)
+	fn := *p
+	var zero FN
+	*p = zero
+	return func() {
+		*p = fn
+		atomic.StoreInt32(stubbed, 0)
+	}
+}
+
+func (r *Stub) incNum(p *int64) {
+	if atomic.LoadInt32(&r.stubbed) == 0 {
+		atomic.AddInt64(p, 1)
+	}
 }
 
 func (r *Stub) Write(p []byte) (int, error) {
-	r.lock.Lock()
-	r.numWrite++
-	r.lock.Unlock()
-
+	r.incNum(&r.numWrite)
+	if fn := r.StubWrite; fn != nil {
+		defer withoutStubbFunc(&r.stubbed, &r.StubWrite)()
+		return fn(r, p)
+	}
 	r.Data = append(r.Data, p...)
-	return len(p), r.WriteErr
+	return len(p), nil
 }
 
 func (r *Stub) Read(p []byte) (int, error) {
-	r.lock.Lock()
-	r.numRead++
-	r.lock.Unlock()
+	r.incNum(&r.numRead)
 
-	if r.ReadErr != nil {
-		return 0, r.ReadErr
+	if r.StubRead != nil {
+		fn := r.StubRead
+		defer withoutStubbFunc(&r.stubbed, &r.StubRead)()
+		return fn(r, p)
 	}
 
 	var data []byte
-	if r.index < len(r.Data) {
-		data = r.Data[r.index:]
+	index := int(atomic.LoadInt64(&r.index))
+	if index < len(r.Data) {
+		data = r.Data[index:]
 	}
 
 	var (
@@ -275,34 +295,30 @@ func (r *Stub) Read(p []byte) (int, error) {
 	if got := copy(p[:n], data); got != n {
 		panic("copy error in iokit.Stub")
 	}
-	r.index += n
 
+	atomic.AddInt64(&r.index, int64(n))
 	return n, err
 }
 
 func (r *Stub) Close() error {
-	r.lock.Lock()
-	r.closed = true
-	r.lock.Unlock()
-	return r.CloseErr
+	if fn := r.StubClose; fn != nil {
+		defer withoutStubbFunc(&r.stubbed, &r.StubClose)()
+		return fn(r)
+	}
+	atomic.StoreInt32(&r.closed, 1)
+	return nil
 }
 
 func (r *Stub) IsClosed() bool {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	return r.closed
+	return atomic.LoadInt32(&r.closed) != 0
 }
 
 func (r *Stub) NumRead() int {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	return r.numRead
+	return int(atomic.LoadInt64(&r.numRead))
 }
 
 func (r *Stub) NumWrite() int {
-	r.lock.Lock()
-	defer r.lock.RUnlock()
-	return r.numWrite
+	return int(atomic.LoadInt64(&r.numWrite))
 }
 
 func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {
