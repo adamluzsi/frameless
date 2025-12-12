@@ -37,11 +37,8 @@ func TestWriteAll(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
-		out = let.Var(s, func(t *testcase.T) *bytes.Buffer {
-			return &bytes.Buffer{}
-		})
-		w = let.Var(s, func(t *testcase.T) io.Writer {
-			return out.Get(t)
+		stub = let.Var(s, func(t *testcase.T) *iokit.Stub {
+			return &iokit.Stub{}
 		})
 		p = let.Var(s, func(t *testcase.T) []byte {
 			var data = make([]byte, t.Random.IntBetween(1, 42))
@@ -51,21 +48,49 @@ func TestWriteAll(t *testing.T) {
 		})
 	)
 	act := let.Act2(func(t *testcase.T) (int, error) {
-		return iokit.WriteAll(w.Get(t), p.Get(t))
+		return iokit.WriteAll(stub.Get(t), p.Get(t))
 	})
 
 	s.Then("it will write all data into the writer", func(t *testcase.T) {
 		n, err := act(t)
 		assert.Equal(t, len(p.Get(t)), n)
 		assert.NoError(t, err)
-		assert.Equal(t, p.Get(t), out.Get(t).Bytes())
+		assert.Equal(t, p.Get(t), stub.Get(t).Bytes())
 	})
 
-	s.When("partial write occurs during reading", func(s *testcase.Spec) {
-		stub := let.Var(s, func(t *testcase.T) *iokit.Stub {
-			return &iokit.Stub{}
+	s.When("partial/short write occurs during writing", func(s *testcase.Spec) {
+		p.Let(s, func(t *testcase.T) []byte {
+			t.Log("given we have a long enough byte slice that contains more than a single byte")
+			var data = make([]byte, t.Random.IntBetween(13, 1000))
+			_, err := io.ReadFull(t.Random, data)
+			assert.NoError(t, err)
+			return data
 		})
-		w.Let(s, let.As[io.Writer](stub).Get)
+
+		stub.Let(s, func(t *testcase.T) *iokit.Stub {
+			var chunks = t.Random.IntBetween(1, len(p.Get(t))/2)
+			return &iokit.Stub{
+				StubWrite: func(stub *iokit.Stub, p []byte) (int, error) {
+					if 0 < chunks {
+						chunks--
+						n, err := stub.Write(p[:1])
+						assert.NoError(t, err, "expected no error from stub read")
+						if t.Random.Bool() { // WriteAll should handle both case, when we have and when we don't have ShortWrite error
+							err = io.ErrShortWrite
+						}
+						return n, err
+					}
+					return stub.Write(p)
+				},
+			}
+		})
+
+		s.Then("it will write everything onto the io.Writer", func(t *testcase.T) {
+			n, err := act(t)
+			assert.NoError(t, err)
+			assert.Equal(t, n, len(p.Get(t)))
+			assert.Equal(t, p.Get(t), stub.Get(t).Data)
+		})
 	})
 }
 

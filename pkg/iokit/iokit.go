@@ -25,7 +25,7 @@ const ErrClosed errorkitlite.Error = "iokit: read/write on closed io"
 func WriteAll(w io.Writer, p []byte) (int, error) {
 	var (
 		index int
-		tries = 32
+		tries = 42
 	)
 	for index < len(p) {
 		n, err := w.Write(p[index:])
@@ -34,7 +34,12 @@ func WriteAll(w io.Writer, p []byte) (int, error) {
 		}
 		if err != nil {
 			if errors.Is(err, io.ErrShortWrite) {
-				tries--
+				if n == 0 {
+					// if short write occurs with zero write length results,
+					// only then we assume a potentially stuck/broken IO,
+					// and limit or retry attempts.
+					tries--
+				}
 				if 0 < tries {
 					continue
 				}
@@ -319,6 +324,10 @@ func (r *Stub) NumRead() int {
 
 func (r *Stub) NumWrite() int {
 	return int(atomic.LoadInt64(&r.numWrite))
+}
+
+func (r *Stub) Bytes() []byte {
+	return r.Data
 }
 
 func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {
