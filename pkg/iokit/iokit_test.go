@@ -752,44 +752,79 @@ func TestStub(t *testing.T) {
 		})
 	})
 
-	s.Test("Stub... act as a middleware and calling original method will not cause inf recursion", func(t *testcase.T) {
-		var exp = make([]byte, t.Random.IntBetween(1, 42))
-		t.Random.Read(exp)
+	s.Context("Stub function fields", func(s *testcase.Spec) {
+		s.Test("act as a middleware and calling original method will not cause inf recursion", func(t *testcase.T) {
+			var exp = make([]byte, t.Random.IntBetween(1, 42))
+			t.Random.Read(exp)
 
-		var writeOK, readOK, closeOK bool
-		stub := &iokit.Stub{
-			Data: nil,
-			StubWrite: func(stub *iokit.Stub, p []byte) (int, error) {
-				writeOK = true
-				return stub.Write(p)
-			},
-			StubRead: func(stub *iokit.Stub, p []byte) (int, error) {
-				readOK = true
-				return stub.Read(p)
-			},
-			StubClose: func(stub *iokit.Stub) error {
-				closeOK = true
-				return stub.Close()
-			},
-		}
+			var writeOK, readOK, closeOK bool
+			stub := &iokit.Stub{
+				Data: nil,
+				StubWrite: func(stub *iokit.Stub, p []byte) (int, error) {
+					writeOK = true
+					return stub.Write(p)
+				},
+				StubRead: func(stub *iokit.Stub, p []byte) (int, error) {
+					readOK = true
+					return stub.Read(p)
+				},
+				StubClose: func(stub *iokit.Stub) error {
+					closeOK = true
+					return stub.Close()
+				},
+			}
 
-		n, err := stub.Write(exp)
-		assert.NoError(t, err)
-		assert.Equal(t, n, len(exp))
-		assert.True(t, writeOK)
-		assert.Equal(t, stub.NumWrite(), 1)
+			n, err := stub.Write(exp)
+			assert.NoError(t, err)
+			assert.Equal(t, n, len(exp))
+			assert.True(t, writeOK)
+			assert.Equal(t, stub.NumWrite(), 1)
 
-		var got = make([]byte, len(exp))
-		n, err = stub.Read(got)
-		assert.NoError(t, err)
-		assert.Equal(t, n, len(exp))
-		assert.Equal(t, exp, got)
-		assert.True(t, readOK)
-		assert.Equal(t, stub.NumRead(), 1)
+			var got = make([]byte, len(exp))
+			n, err = stub.Read(got)
+			assert.NoError(t, err)
+			assert.Equal(t, n, len(exp))
+			assert.Equal(t, exp, got)
+			assert.True(t, readOK)
+			assert.Equal(t, stub.NumRead(), 1)
 
-		assert.NoError(t, stub.Close())
-		assert.True(t, stub.IsClosed())
-		assert.True(t, closeOK)
+			assert.NoError(t, stub.Close())
+			assert.True(t, stub.IsClosed())
+			assert.True(t, closeOK)
+		})
+
+		s.Test("Stub can intercept/affect the returned values", func(t *testcase.T) {
+			var exp = make([]byte, t.Random.IntBetween(1, 42))
+			t.Random.Read(exp)
+
+			var (
+				wN   = t.Random.Int()
+				wErr = t.Random.Error()
+				rN   = t.Random.Int()
+				rErr = t.Random.Error()
+				cErr = t.Random.Error()
+			)
+			stub := &iokit.Stub{
+				Data: nil,
+				StubWrite: func(stub *iokit.Stub, p []byte) (int, error) {
+					return wN, wErr
+				},
+				StubRead: func(stub *iokit.Stub, p []byte) (int, error) {
+					return rN, rErr
+				},
+				StubClose: func(stub *iokit.Stub) error {
+					return cErr
+				},
+			}
+
+			n, err := stub.Write(exp)
+			assert.Equal(t, wN, n)
+			assert.Equal(t, wErr, err)
+			n, err = stub.Read(make([]byte, 1))
+			assert.Equal(t, rN, n)
+			assert.Equal(t, rErr, err)
+			assert.Equal(t, stub.Close(), cErr)
+		})
 	})
 }
 
