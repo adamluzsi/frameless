@@ -8,13 +8,47 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/pkg/convkit"
+	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type FormURLEncoded[T any] struct{}
+type FormURLEncoded[T any] struct {
+	urlValuesKeySuffix string
+}
+
+var mediaTypeFormURLEncoded = map[string]struct{}{
+	mediatype.FormUrlencoded: {},
+}
+
+func (c FormURLEncoded[T]) SupporsMediaType(mediaType string) bool {
+	_, ok := mediaTypeFormURLEncoded[mediaType]
+	return ok
+}
+
+func (c FormURLEncoded[T]) formatValues(values url.Values) {
+	if 0 < len(c.urlValuesKeySuffix) {
+		var addSuffix func(vs url.Values, key, suffix string)
+		addSuffix = func(vs url.Values, key, suffix string) {
+			if vs == nil {
+				return
+			}
+			nkey := key + suffix
+			if _, ok := vs[nkey]; ok {
+				addSuffix(vs, nkey, suffix)
+			}
+			vs[nkey] = vs[key]
+			delete(vs, key)
+		}
+		for _, key := range mapkit.Keys(values) {
+			addSuffix(values, key, c.urlValuesKeySuffix)
+		}
+	}
+}
 
 func (c FormURLEncoded[T]) Marshal(v T) ([]byte, error) {
 	var input = reflect.ValueOf(v)
@@ -57,6 +91,7 @@ func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 			values.Set(prop.Key, formatted)
 		}
 	}
+	c.formatValues(values)
 	return []byte(values.Encode()), nil
 }
 
@@ -204,6 +239,7 @@ func (c FormURLEncoded[T]) marshalMap(m reflect.Value) ([]byte, error) {
 			values.Set(qKey, qVal)
 		}
 	}
+	c.formatValues(values)
 	return []byte(values.Encode()), nil
 }
 
@@ -218,25 +254,28 @@ type formURLStreamEncoder[T any] struct {
 }
 
 func (se *formURLStreamEncoder[T]) Encode(v T) error {
-	data, err := se.Marshal(v)
+	enc := se.FormURLEncoded
+	enc.urlValuesKeySuffix = fmt.Sprintf("[%d]", se.index)
+	data, err := enc.Marshal(v)
 	if err != nil {
 		return err
 	}
 	if 0 < se.index {
 		se.W.Write([]byte("&"))
 	}
-
-	n, err := se.W.Write(data)
+	_, err = iokit.WriteAll(se.W, data)
+	se.index++
 	if err != nil {
 		return err
 	}
-	se.index++
-	if n != len(data) {
-		// return iokit.ErrPartialWrite
-	}
+
 	return nil
 }
 
 func (se *formURLStreamEncoder[T]) Close() error {
+	return nil
+}
+
+func (c *FormURLEncoded[T]) NewListDecoder(r io.Reader) codec.StreamDecoder[T] {
 	return nil
 }
