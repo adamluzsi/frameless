@@ -127,6 +127,17 @@ func (c FormURLEncoded[T]) Marshal(v T) ([]byte, error) {
 	}
 }
 
+func (c FormURLEncoded[T]) marshalAppend(vs url.Values, prefix string, val reflect.Value) error {
+	switch val.Kind() {
+	case reflect.Struct:
+		return c.marshalStruct(val)
+	case reflect.Map:
+		return c.marshalMap(val)
+	default:
+		return fmt.Errorf("not supported type for form-urlncoding: %T", v)
+	}
+}
+
 func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 	var values = url.Values{}
 	for i, num := 0, input.NumField(); i < num; i++ {
@@ -149,7 +160,6 @@ func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 			}
 
 		default:
-			convkit.Format()
 			formatted, err := convkit.Format(val.Interface())
 			if err != nil {
 				return nil, err

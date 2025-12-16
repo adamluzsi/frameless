@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1090,4 +1091,91 @@ func TestUnmarshalReflect(t *testing.T) {
 		ptr := reflect.New(typ)
 		assert.Error(t, convkit.UnmarshalReflect(typ, []byte("not-a-number"), ptr))
 	})
+}
+
+func ExampleUnmarshal_basicType() {
+	var num int
+	convkit.Unmarshal([]byte("42"), &num)
+	fmt.Println(num) // Output: 42
+}
+
+func ExampleUnmarshal_sliceWithSeparator() {
+	var nums []int
+	convkit.Unmarshal([]byte("1;2;3"), &nums, convkit.Options{Separator: ";"})
+	fmt.Println(nums) // Output: [1 2 3]
+}
+
+func ExampleUnmarshal_json() {
+	var data map[string]interface{}
+	convkit.Unmarshal([]byte(`{"key":"value"}`), &data)
+	fmt.Println(data["key"]) // Output: value
+}
+
+func ExampleUnmarshal_timeWithLayout() {
+	var t time.Time
+	layout := "2006-01-02"
+	convkit.Unmarshal([]byte("2023-05-15"), &t, convkit.Options{TimeLayout: layout})
+	fmt.Println(t.Format(layout)) // Output: 2023-05-15
+}
+
+func ExampleUnmarshal_url() {
+	var url url.URL
+	convkit.Unmarshal([]byte("https://example.com/path?query=value"), &url)
+	fmt.Println(url.String()) // Output: https://example.com/path?query=value
+}
+
+func ExampleUnmarshal_customType() {
+	type Config struct {
+		Host string
+		Port int
+	}
+	var cfg Config
+	convkit.Unmarshal([]byte("host=localhost,port=8080"), &cfg,
+		convkit.UnmarshalWith(func(data []byte) (Config, error) {
+			parts := strings.SplitN(string(data), ",", 2)
+			if len(parts) != 2 {
+				return Config{}, fmt.Errorf("invalid format")
+			}
+			var c Config
+			for _, part := range parts {
+				kv := strings.SplitN(part, "=", 2)
+				if len(kv) != 2 {
+					continue
+				}
+				switch kv[0] {
+				case "host":
+					c.Host = kv[1]
+				case "port":
+					var err error
+					c.Port, err = strconv.Atoi(kv[1])
+					if err != nil {
+						return Config{}, fmt.Errorf("invalid port: %w", err)
+					}
+				}
+			}
+			return c, nil
+		}))
+	fmt.Printf("%s:%d\n", cfg.Host, cfg.Port) // Output: localhost:8080
+}
+
+func ExampleUnmarshalReflect() {
+	typ := reflectkit.TypeOf[int]()
+	ptr := reflect.New(typ)
+	convkit.UnmarshalReflect(typ, []byte("42"), ptr)
+	fmt.Println(ptr.Elem().Interface()) // Output: 42
+}
+
+func ExampleUnmarshalReflect_sliceWithSeparator() {
+	typ := reflectkit.TypeOf[[]int]()
+	ptr := reflect.New(typ)
+	convkit.UnmarshalReflect(typ, []byte("1;2;3"), ptr, convkit.Options{Separator: ";"})
+	fmt.Println(ptr.Elem().Interface()) // Output: [1 2 3]
+}
+
+func ExampleUnmarshalReflect_timeWithLayout() {
+	typ := reflectkit.TypeOf[time.Time]()
+	ptr := reflect.New(typ)
+	layout := "2006-01-02"
+	convkit.UnmarshalReflect(typ, []byte("2023-05-15"), ptr, convkit.Options{TimeLayout: layout})
+	fmt.Println(ptr.Elem().Interface().(time.Time).Format(layout)) // Output: 2023-05-15
 }
