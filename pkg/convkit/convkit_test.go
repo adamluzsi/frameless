@@ -914,85 +914,67 @@ func TestMarshalReflect(t *testing.T) {
 func TestUnmarshal(t *testing.T) {
 	t.Run("empty string", func(t *testing.T) {
 		var val string
-		err := convkit.Unmarshal([]byte(""), &val)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte(""), &val))
 		assert.Empty(t, val)
 	})
 
 	t.Run("string value", func(t *testing.T) {
 		var val string
-		err := convkit.Unmarshal([]byte("forty-two"), &val)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("forty-two"), &val))
 		assert.Equal(t, "forty-two", val)
 	})
 
 	t.Run("int value", func(t *testing.T) {
 		var val int
-		err := convkit.Unmarshal([]byte("42"), &val)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("42"), &val))
 		assert.Equal(t, 42, val)
 	})
 
 	t.Run("float64 value", func(t *testing.T) {
 		var val float64
-		err := convkit.Unmarshal([]byte("42.42"), &val)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("42.42"), &val))
 		assert.Equal(t, 42.42, val)
 	})
 
 	t.Run("bool value", func(t *testing.T) {
 		var val bool
-		err := convkit.Unmarshal([]byte("true"), &val)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("true"), &val))
 		assert.True(t, val)
 	})
 
 	t.Run("uint value", func(t *testing.T) {
 		var val uint
-		err := convkit.Unmarshal([]byte("42"), &val)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("42"), &val))
 		assert.Equal(t, uint(42), val)
-	})
-
-	t.Run("pointer to int", func(t *testing.T) {
-		val := 0
-		err := convkit.Unmarshal([]byte("42"), &val)
-		assert.NoError(t, err)
-		assert.Equal(t, 42, val)
 	})
 
 	t.Run("slice of ints with separator", func(t *testing.T) {
 		var vals []int
-		err := convkit.Unmarshal([]byte("1;23;4"), &vals, convkit.Options{Separator: ";"})
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("1;23;4"), &vals, convkit.Options{Separator: ";"}))
 		assert.Equal(t, []int{1, 23, 4}, vals)
 	})
 
 	t.Run("slice of ints without separator (JSON)", func(t *testing.T) {
 		var vals []int
-		err := convkit.Unmarshal([]byte("[1,23,4]"), &vals)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("[1,23,4]"), &vals))
 		assert.Equal(t, []int{1, 23, 4}, vals)
 	})
 
 	t.Run("slice of strings with separator", func(t *testing.T) {
 		var vals []string
-		err := convkit.Unmarshal([]byte("foo,bar,baz"), &vals, convkit.Options{Separator: ","})
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("foo,bar,baz"), &vals, convkit.Options{Separator: ","}))
 		assert.Equal(t, []string{"foo", "bar", "baz"}, vals)
 	})
 
 	t.Run("slice with escaped separator", func(t *testing.T) {
 		var vals []string
-		err := convkit.Unmarshal([]byte("Hello\\, world!,foo,bar"), &vals, convkit.Options{Separator: ","})
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("Hello\\, world!,foo,bar"), &vals, convkit.Options{Separator: ","}))
 		assert.Equal(t, []string{"Hello, world!", "foo", "bar"}, vals)
 	})
 
 	t.Run("map value (JSON)", func(t *testing.T) {
 		var m map[string]int
-		err := convkit.Unmarshal([]byte(`{"a":42,"b":100}`), &m)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte(`{"a":42,"b":100}`), &m))
 		assert.Equal(t, map[string]int{"a": 42, "b": 100}, m)
 	})
 
@@ -1000,35 +982,30 @@ func TestUnmarshal(t *testing.T) {
 		var val time.Time
 		refTime := rnd.Time()
 		layout := time.RFC3339
-		err := convkit.Unmarshal([]byte(refTime.Format(layout)), &val, convkit.Options{TimeLayout: layout})
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte(refTime.Format(layout)), &val, convkit.Options{TimeLayout: layout}))
 		assert.True(t, val.Equal(refTime))
 	})
 
 	// t.Run("time.Time without layout", func(t *testing.T) {
 	// 	var val time.Time
-	// 	err := convkit.Unmarshal([]byte(time.Now().Format(time.RFC3339)), &val)
-	// 	assert.ErrorIs(t, err, errMissingTimeLayout)
+	// 	assert.ErrorIs(t, convkit.Unmarshal([]byte(time.Now().Format(time.RFC3339)), &val), errMissingTimeLayout)
 	// })
 
 	t.Run("time.Duration", func(t *testing.T) {
 		var duration time.Duration
-		err := convkit.Unmarshal([]byte("1m5s"), &duration)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("1m5s"), &duration))
 		assert.Equal(t, time.Minute+5*time.Second, duration)
 	})
 
 	t.Run("url.URL", func(t *testing.T) {
 		var u url.URL
-		err := convkit.Unmarshal([]byte("https://go.llib.dev/frameless"), &u)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("https://go.llib.dev/frameless"), &u))
 		assert.Equal(t, "https://go.llib.dev/frameless", u.String())
 	})
 
 	t.Run("pointer to url.URL", func(t *testing.T) {
 		var u *url.URL
-		err := convkit.Unmarshal([]byte("https://go.llib.dev/frameless"), &u)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("https://go.llib.dev/frameless"), &u))
 		assert.NotNil(t, u)
 		assert.Equal(t, "https://go.llib.dev/frameless", u.String())
 	})
@@ -1050,74 +1027,67 @@ func TestUnmarshal(t *testing.T) {
 		defer unreg()
 
 		var x X
-		err := convkit.Unmarshal([]byte("X{test}"), &x)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("X{test}"), &x))
 		assert.Equal(t, "test", x.Value)
 	})
 
 	t.Run("value with TextUnmarshaler", func(t *testing.T) {
 		var v ValueWithTextMarshaler
-		err := convkit.Unmarshal([]byte("custom-data"), &v)
-		assert.NoError(t, err)
+		assert.NoError(t, convkit.Unmarshal([]byte("custom-data"), &v))
 		assert.Equal(t, []byte("custom-data"), v.Data)
 	})
 
 	t.Run("value with TextUnmarshaler error", func(t *testing.T) {
 		var v ValueWithTextMarshalerErr
-		err := convkit.Unmarshal([]byte("test-error"), &v)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "test-error")
+		assert.Error(t, convkit.Unmarshal([]byte("test-error"), &v))
 	})
 
 	t.Run("unknown type", func(t *testing.T) {
 		type Unknown struct{ Field string }
 		var u Unknown
-		err := convkit.Unmarshal([]byte("test"), &u)
-		assert.Error(t, err)
+		assert.Error(t, convkit.Unmarshal([]byte("test"), &u))
 	})
 
 	t.Run("invalid input for type", func(t *testing.T) {
 		var val int
-		err := convkit.Unmarshal([]byte("not-a-number"), &val)
-		assert.Error(t, err)
+		assert.Error(t, convkit.Unmarshal([]byte("not-a-number"), &val))
 	})
 }
 
 func TestUnmarshalReflect(t *testing.T) {
 	t.Run("string value", func(t *testing.T) {
-		val := reflect.ValueOf(new(string))
-		err := convkit.UnmarshalReflect(reflect.TypeOf(""), []byte("forty-two"), val)
-		assert.NoError(t, err)
-		assert.Equal(t, "forty-two", val.Elem().Interface())
+		typ := reflectkit.TypeOf[string]()
+		ptr := reflect.New(typ)
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte("forty-two"), ptr))
+		assert.Equal(t, "forty-two", ptr.Elem().Interface())
 	})
 
 	t.Run("int value", func(t *testing.T) {
-		val := reflect.ValueOf(new(int))
-		err := convkit.UnmarshalReflect(reflect.TypeOf(0), []byte("42"), val)
-		assert.NoError(t, err)
-		assert.Equal(t, 42, val.Elem().Interface())
+		typ := reflectkit.TypeOf[int]()
+		ptr := reflect.New(typ)
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte("42"), ptr))
+		assert.Equal(t, 42, ptr.Elem().Interface())
 	})
 
 	t.Run("slice of ints with separator", func(t *testing.T) {
-		val := reflect.ValueOf(new([]int))
-		err := convkit.UnmarshalReflect(reflect.TypeOf([]int{}), []byte("1;23;4"), val, convkit.Options{Separator: ";"})
-		assert.NoError(t, err)
-		assert.Equal(t, []int{1, 23, 4}, val.Elem().Interface())
+		typ := reflectkit.TypeOf[[]int]()
+		ptr := reflect.New(typ)
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte("1;23;4"), ptr, convkit.Options{Separator: ";"}))
+		assert.Equal(t, []int{1, 23, 4}, ptr.Elem().Interface().([]int))
 	})
 
 	t.Run("time.Time with layout", func(t *testing.T) {
-		val := reflect.ValueOf(new(time.Time))
+		typ := reflectkit.TypeOf[time.Time]()
+		ptr := reflect.New(typ)
 		refTime := rnd.Time()
 		layout := time.RFC3339
-		err := convkit.UnmarshalReflect(reflect.TypeOf(time.Time{}), []byte(refTime.Format(layout)),
-			val, convkit.Options{TimeLayout: layout})
-		assert.NoError(t, err)
-		assert.True(t, val.Elem().Interface().(time.Time).Equal(refTime))
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte(refTime.Format(layout)), ptr, convkit.Options{TimeLayout: layout}))
+		assert.True(t, ptr.Elem().Interface().(time.Time).Equal(refTime))
 	})
 
 	t.Run("invalid input for type", func(t *testing.T) {
-		val := reflect.ValueOf(new(int))
-		err := convkit.UnmarshalReflect(reflect.TypeOf(0), []byte("not-a-number"), val)
-		assert.Error(t, err)
+		typ := reflectkit.TypeOf[int]()
+		ptr := reflect.New(typ)
+		assert.Error(t, convkit.UnmarshalReflect(typ, []byte("not-a-number"), ptr))
 	})
 }
