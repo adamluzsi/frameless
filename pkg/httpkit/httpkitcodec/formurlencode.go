@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/url"
 	"reflect"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"go.llib.dev/frameless/pkg/convkit"
@@ -22,7 +24,52 @@ import (
 )
 
 type FormURLEncoded[T any] struct {
-	urlValuesKeySuffix string
+	// Collection is the id/name of the collection type.
+	// The default value is the short type name of T in snake case with an "s" suffix.
+	// For example if T is
+	// - `Item` -> `items`
+	// - `User` -> `users`
+	// - `UserEmail` -> `user_emails`
+	Collection string
+	// StringCase is the formatter used to format the url keys.
+	// Default: stringkit.ToSnake
+	StringCase func(string) string
+	prefix     string
+}
+
+func (c FormURLEncoded[T]) withPrefix(prefix string) FormURLEncoded[T] {
+	if len(c.prefix) == 0 {
+		c.prefix = prefix
+		return c
+	}
+	c.prefix = c.prefix + "." + prefix
+	return c
+}
+
+func (c *FormURLEncoded[T]) fmtKey(key string) string {
+	if c.StringCase != nil {
+		return c.StringCase(key)
+	}
+	return stringkit.ToSnake(key)
+}
+
+var pkgPrefix = regexp.MustCompile(`^[\w\d]+\.`)
+
+func (c *FormURLEncoded[T]) getCollection() string {
+	if 0 < len(c.Collection) {
+		return c.Collection
+	}
+	typ := reflectkit.TypeOf[T]()
+	if name := typ.Name(); 0 < len(name) {
+		c.Collection = c.fmtKey(name) + "s"
+		return c.Collection
+	}
+	raw := typ.String()
+	raw = pkgPrefix.ReplaceAllString(raw, "")
+	raw = c.fmtKey(raw)
+	raw = raw + "s"
+	c.Collection = raw
+	return c.Collection
 }
 
 var mediaTypeFormURLEncoded = map[string]struct{}{
@@ -35,13 +82,13 @@ func (c FormURLEncoded[T]) SupporsMediaType(mediaType string) bool {
 }
 
 func (c FormURLEncoded[T]) filterValues(values url.Values) url.Values {
-	if 0 < len(c.urlValuesKeySuffix) {
+	if 0 < len(c.prefix) {
 		var vs = url.Values{}
 		for key, value := range values {
-			if !strings.HasSuffix(key, c.urlValuesKeySuffix) {
+			if !strings.HasPrefix(key, c.prefix) {
 				continue
 			}
-			vs[strings.TrimSuffix(key, c.urlValuesKeySuffix)] = value
+			vs[strings.TrimSuffix(key, c.prefix)] = value
 		}
 		return vs
 	}
@@ -49,7 +96,7 @@ func (c FormURLEncoded[T]) filterValues(values url.Values) url.Values {
 }
 
 func (c FormURLEncoded[T]) formatValues(values url.Values) {
-	if 0 < len(c.urlValuesKeySuffix) {
+	if 0 < len(c.prefix) {
 		var addSuffix func(vs url.Values, key, suffix string)
 		addSuffix = func(vs url.Values, key, suffix string) {
 			if vs == nil {
@@ -63,7 +110,7 @@ func (c FormURLEncoded[T]) formatValues(values url.Values) {
 			delete(vs, key)
 		}
 		for _, key := range mapkit.Keys(values) {
-			addSuffix(values, key, c.urlValuesKeySuffix)
+			addSuffix(values, key, c.prefix)
 		}
 	}
 }
@@ -102,6 +149,7 @@ func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 			}
 
 		default:
+			convkit.Format()
 			formatted, err := convkit.Format(val.Interface())
 			if err != nil {
 				return nil, err
@@ -212,9 +260,12 @@ type formProperties struct {
 
 func (c FormURLEncoded[T]) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
-	prop.Key = stringkit.ToSnake(typ.Name)
+	prop.Key = c.fmtKey(typ.Name)
 	c.lookupTag(typ, "url", &prop)
 	c.lookupTag(typ, "form", &prop)
+	if len(c.prefix) != 0 {
+		prop.Key = c.prefix + "." + prop.Key
+	}
 	return prop
 }
 
@@ -277,8 +328,10 @@ type formURLStreamEncoder[T any] struct {
 }
 
 func (se *formURLStreamEncoder[T]) Encode(v T) error {
-	enc := se.FormURLEncoded
-	enc.urlValuesKeySuffix = fmt.Sprintf("[%d]", se.index)
+	enc := se.FormURLEncoded.
+		withPrefix(se.FormURLEncoded.getCollection()).
+		withPrefix(strconv.Itoa(se.index))
+
 	data, err := enc.Marshal(v)
 	if err != nil {
 		return err
@@ -335,13 +388,13 @@ func (c *formURLStreamDecoder[T]) Next() bool {
 		c.buffer = bufio.NewReader(c.Reader)
 	}
 
-	c.curSuffix = fmt.Sprintf("[%d]", c.index)
+	c.curSuffix = fmt.Sprintf("%s[%d]", c.FormURLEncoded.getCollection(), c.index)
 	c.index++
 
 	var prev = url.Values{}
 	if 0 < len(c.queryBuffer) {
 		for key, kvs := range c.queryBuffer {
-			if strings.HasSuffix(key, c.curSuffix) {
+			if strings.HasPrefix(key, c.curSuffix) {
 				prev[key] = kvs
 				delete(c.queryBuffer, key)
 			}
@@ -384,7 +437,7 @@ func (c *formURLStreamDecoder[T]) Next() bool {
 	query = mapkit.Merge(query, prev)
 
 	for key, vs := range query {
-		if !strings.HasSuffix(key, c.curSuffix) {
+		if !strings.HasPrefix(key, c.curSuffix) {
 			if c.queryBuffer == nil {
 				c.queryBuffer = make(url.Values)
 			}
@@ -403,7 +456,7 @@ func (c *formURLStreamDecoder[T]) Value() codec.Decoder[T] {
 
 func (c *formURLStreamDecoder[T]) Decode(p *T) error {
 	dec := c.FormURLEncoded
-	dec.urlValuesKeySuffix = c.curSuffix
+	dec.prefix = c.curSuffix
 	return dec.unmarshal(c.curQuery, p)
 }
 
