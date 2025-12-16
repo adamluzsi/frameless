@@ -127,19 +127,23 @@ func (c FormURLEncoded[T]) Marshal(v T) ([]byte, error) {
 	}
 }
 
-func (c FormURLEncoded[T]) marshalAppend(vs url.Values, prefix string, val reflect.Value) error {
+func (c FormURLEncoded[T]) marshalAppend(vs url.Values, qKey string, val reflect.Value) error {
 	switch val.Kind() {
 	case reflect.Struct:
-		return c.marshalStruct(val)
+		return c.marshalStruct(vs, val)
 	case reflect.Map:
 		return c.marshalMap(val)
 	default:
-		return fmt.Errorf("not supported type for form-urlncoding: %T", v)
+		qVal, err := convkit.FormatReflect(val)
+		if err != nil {
+			return err
+		}
+		vs.Add(qKey, qVal)
+		return nil
 	}
 }
 
-func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
-	var values = url.Values{}
+func (c FormURLEncoded[T]) marshalStruct(vs url.Values, input reflect.Value) error {
 	for i, num := 0, input.NumField(); i < num; i++ {
 		var (
 			typ  = input.Type().Field(i)
@@ -154,21 +158,20 @@ func (c FormURLEncoded[T]) marshalStruct(input reflect.Value) ([]byte, error) {
 			for i, l := 0, val.Len(); i < l; i++ {
 				value, err := convkit.Format(val.Index(i))
 				if err != nil {
-					return nil, err
+					return err
 				}
-				values.Add(prop.Key, value)
+				vs.Add(prop.Key, value)
 			}
 
 		default:
 			formatted, err := convkit.Format(val.Interface())
 			if err != nil {
-				return nil, err
+				return err
 			}
-			values.Set(prop.Key, formatted)
+			vs.Set(prop.Key, formatted)
 		}
 	}
-	c.formatValues(values)
-	return []byte(values.Encode()), nil
+	return nil
 }
 
 func (c FormURLEncoded[T]) Unmarshal(data []byte, p *T) error {
@@ -296,35 +299,36 @@ func (c FormURLEncoded[T]) lookupTag(typ reflect.StructField, tagKey string, pro
 	}
 }
 
-func (c FormURLEncoded[T]) marshalMap(m reflect.Value) ([]byte, error) {
-	var values = url.Values{}
+func (c FormURLEncoded[T]) marshalMap(vs url.Values, m reflect.Value) error {
 	for _, mKey := range m.MapKeys() {
 		mVal := m.MapIndex(mKey)
 		qKey, err := convkit.Format(mKey.Interface())
+
+		if 0 < len(c.prefix) {
+			qKey = c.prefix + "." + qKey
+		}
+
 		if err != nil {
-			return nil, fmt.Errorf("error while formatting %#v key: %w", mKey.Interface(), err)
+			return fmt.Errorf("error while formatting %#v key: %w", mKey.Interface(), err)
 		}
 		switch mVal.Kind() {
 		case reflect.Slice, reflect.Array:
 			for i, l := 0, mVal.Len(); i < l; i++ {
-				qVal, err := convkit.FormatReflect(mVal.Index(i))
-				if err != nil {
-					return nil, fmt.Errorf("error while formatting %#v[%d] element: %w",
-						i, mKey.Interface(), err)
+				c := c.withPrefix(strconv.Itoa(i))
+				if err := c.marshalAppend(vs, qKey, mVal.Index(i)); err != nil {
+					return err
 				}
-				values.Add(qKey, qVal)
 			}
 
 		default:
 			qVal, err := convkit.Format(mVal.Interface())
 			if err != nil {
-				return nil, fmt.Errorf("error while formatting %#v key: %w", mKey.Interface(), err)
+				return fmt.Errorf("error while formatting %#v key: %w", mKey.Interface(), err)
 			}
-			values.Set(qKey, qVal)
+			vs.Set(qKey, qVal)
 		}
 	}
-	c.formatValues(values)
-	return []byte(values.Encode()), nil
+	return []byte(vs.Encode()), nil
 }
 
 func (c FormURLEncoded[T]) NewListEncoder(w io.Writer) codec.StreamEncoder[T] {
