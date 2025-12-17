@@ -100,11 +100,17 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 		V   string `url:"qv"`
 		Foo testent.Foo
 		Bar testent.Bar
+
+		VS []testent.Foo
 	}
 
 	exp := T{
+		V:   t.Random.Domain(),
 		Foo: testent.MakeFoo(t),
 		Bar: testent.MakeBar(t),
+		VS: random.Slice(t.Random.IntBetween(0, 3), func() testent.Foo {
+			return testent.MakeFoo(t)
+		}),
 	}
 
 	c := httpkitcodec.FormURLEncoded[T]{}
@@ -122,11 +128,15 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 	_, ok = q["bar.foo_id"]
 	assert.True(t, ok)
 
-	pp.PP(exp)
-	pp.PP(q)
+	t.OnFail(func() {
+		pp.PP(exp)
+		pp.PP(q)
+	})
 
 	var got T
 	assert.NoError(t, c.Unmarshal(data, &got))
+	pp.PP(exp)
+	pp.PP(got)
 }
 
 func TestFormURLEncoder_stream(tt *testing.T) {

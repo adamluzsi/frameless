@@ -159,11 +159,9 @@ func (c FormURLEncoded[T]) marshalAppend(vs url.Values, qKey string, val reflect
 		return nil
 	case reflect.Slice, reflect.Array:
 		for i, l := 0, val.Len(); i < l; i++ {
-			value, err := convkit.Format(val.Index(i))
-			if err != nil {
+			if err := c.marshalAppend(vs, strconv.Itoa(i), val.Index(i)); err != nil {
 				return err
 			}
-			vs.Add(qKey, value)
 		}
 		return nil
 	default:
@@ -185,7 +183,6 @@ func (c FormURLEncoded[T]) Unmarshal(data []byte, p *T) error {
 }
 
 func (c FormURLEncoded[T]) unmarshal(vs url.Values, p *T) error {
-	pp.PP(vs)
 	if p == nil {
 		return fmt.Errorf("nil pointer received")
 	}
@@ -216,19 +213,32 @@ func (c FormURLEncoded[T]) unmarshal(vs url.Values, p *T) error {
 		if err != nil {
 			return err
 		}
-		pp.PP(qKey, v.Value.Interface())
-		vs, ok := vs[qKey]
-		pp.PP(vs, ok, v.Value.Interface())
+
+		switch v.NodeType {
+		case refnode.Array, refnode.Slice:
+			pp.PP("?", qKey)
+		default:
+			qVS, ok := vs[qKey]
+			if !ok {
+				continue
+			}
+			if len(qVS) == 0 {
+				continue
+			}
+			raw := qVS[0]
+
+			typ := v.Value.Type()
+			if v.NodeType == refnode.StructField {
+				typ = v.StructField.Type
+			}
+
+			if err := convkit.UnmarshalReflect(typ, []byte(raw), v.Value.Addr()); err != nil {
+				return err
+			}
+		}
 	}
 
-	// switch ptr.Type().Elem().Kind() {
-	// case reflect.Struct:
-	// 	return c.unmarshalStruct(vs, ptr)
-	// case reflect.Map:
-	// 	return c.unmarshalMap(vs, ptr)
-	// default:
-	return fmt.Errorf("not implemented type: %s", ptr.Type().Elem().String())
-	// }
+	return nil
 }
 
 func (c FormURLEncoded[T]) unmarshalStruct(vs url.Values, ptr reflect.Value) error {
