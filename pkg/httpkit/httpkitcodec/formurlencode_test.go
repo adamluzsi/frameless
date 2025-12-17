@@ -2,6 +2,7 @@ package httpkitcodec_test
 
 import (
 	"bytes"
+	"net/url"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -91,28 +93,72 @@ func TestFormURLEncoder_mapCustomKeyAnyValue(t *testing.T) {
 	assert.Equal(t, exp, got)
 }
 
+func TestFormURLEncoder_smoke(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	type T struct {
+		V   string `url:"qv"`
+		Foo testent.Foo
+		Bar testent.Bar
+	}
+
+	exp := T{
+		Foo: testent.MakeFoo(t),
+		Bar: testent.MakeBar(t),
+	}
+
+	c := httpkitcodec.FormURLEncoded[T]{}
+
+	data, err := c.Marshal(exp)
+	assert.NoError(t, err)
+	q, err := url.ParseQuery(string(data))
+	assert.NoError(t, err)
+
+	var ok bool
+	_, ok = q["qv"]
+	assert.True(t, ok)
+	_, ok = q["foo.id"]
+	assert.True(t, ok)
+	_, ok = q["bar.foo_id"]
+	assert.True(t, ok)
+
+	pp.PP(exp)
+	pp.PP(q)
+
+	var got T
+	assert.NoError(t, c.Unmarshal(data, &got))
+}
+
 func TestFormURLEncoder_stream(tt *testing.T) {
 	t := testcase.NewT(tt)
 
-	exp := random.Slice(t.Random.IntBetween(3, 7), func() testent.Foo {
-		return testent.MakeFoo(t)
+	type T struct {
+		Foo testent.Foo
+		Bar testent.Bar
+	}
+
+	exp := random.Slice(t.Random.IntBetween(3, 7), func() T {
+		return T{
+			Foo: testent.MakeFoo(t),
+			Bar: testent.MakeBar(t),
+		}
 	})
 
-	c := httpkitcodec.FormURLEncoded[testent.Foo]{}
+	c := httpkitcodec.FormURLEncoded[T]{}
 
 	var buf bytes.Buffer
 
 	enc := c.NewListEncoder(&buf)
-	for _, foo := range exp {
-		assert.NoError(t, enc.Encode(foo))
+	for _, v := range exp {
+		assert.NoError(t, enc.Encode(v))
 	}
 	assert.NoError(t, enc.Close())
 
-	var got []testent.Foo
+	var got []T
 	decoder := c.NewListDecoder(&buf)
 	for dec, err := range decoder {
 		assert.NoError(t, err, assert.MessageF("got so far %d and expected %d", len(got), len(exp)))
-		var v testent.Foo
+		var v T
 		assert.NoError(t, dec.Decode(&v))
 		got = append(got, v)
 	}

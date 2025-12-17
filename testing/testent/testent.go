@@ -106,6 +106,12 @@ type Fooer interface {
 	GetFoo() string
 }
 
+func MakeBar(tb testing.TB) Bar {
+	v := testcase.ToT(&tb).Random.Make(Bar{}).(Bar)
+	v.ID = ""
+	return v
+}
+
 type Bar struct {
 	ID BarID `ext:"id"`
 
