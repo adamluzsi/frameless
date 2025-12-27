@@ -179,15 +179,13 @@ func (c FormURLEncoded[T]) Unmarshal(data []byte, p *T) error {
 	if err != nil {
 		return err
 	}
-	return c.unmarshal(vs, p)
-}
-
-func (c FormURLEncoded[T]) unmarshal(vs url.Values, p *T) error {
 	if p == nil {
 		return fmt.Errorf("nil pointer received")
 	}
-	var ptr = reflect.ValueOf(p)
+	return c.unmarshal(vs, reflect.ValueOf(p))
+}
 
+func (c FormURLEncoded[T]) unmarshal(vs url.Values, val reflect.Value) error {
 	var qKeyOf = func(v reflectkit.V) (string, error) {
 		var k []string
 		for e := range v.Iter() {
@@ -207,25 +205,30 @@ func (c FormURLEncoded[T]) unmarshal(vs url.Values, p *T) error {
 		}
 		return strings.Join(k, "."), nil
 	}
-
-	for v := range reflectkit.Visit(ptr) {
+	for v := range reflectkit.Visit(val) {
 		qKey, err := qKeyOf(v)
 		if err != nil {
 			return err
 		}
-
+		qVS, ok := vs[qKey]
+		if !ok {
+			continue
+		}
 		switch v.NodeType {
-		case refnode.Array, refnode.Slice:
+		case refnode.Slice:
+			v.Value.Set(reflect.MakeSlice(v.Value.Type(), len(qVS), len(qVS)))
+			fallthrough
+		case refnode.Array:
+			for i, raw := range qVS {
+
+			}
+
 			pp.PP("?", qKey)
 		default:
-			qVS, ok := vs[qKey]
+			raw, ok := slicekit.First(qVS)
 			if !ok {
 				continue
 			}
-			if len(qVS) == 0 {
-				continue
-			}
-			raw := qVS[0]
 
 			typ := v.Value.Type()
 			if v.NodeType == refnode.StructField {
@@ -237,7 +240,6 @@ func (c FormURLEncoded[T]) unmarshal(vs url.Values, p *T) error {
 			}
 		}
 	}
-
 	return nil
 }
 

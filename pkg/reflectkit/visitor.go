@@ -11,6 +11,47 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit/refnode"
 )
 
+// type VisitorFunc[Context context.Context] func(receiver *Visitor[Context], ctx Context, v reflect.Value) error
+
+// type Visitor[Context context.Context] struct {
+// 	Bool          VisitorFunc[Context]
+// 	Int           VisitorFunc[Context]
+// 	Int8          VisitorFunc[Context]
+// 	Int16         VisitorFunc[Context]
+// 	Int32         VisitorFunc[Context]
+// 	Int64         VisitorFunc[Context]
+// 	Uint          VisitorFunc[Context]
+// 	Uint8         VisitorFunc[Context]
+// 	Uint16        VisitorFunc[Context]
+// 	Uint32        VisitorFunc[Context]
+// 	Uint64        VisitorFunc[Context]
+// 	Uintptr       VisitorFunc[Context]
+// 	Float32       VisitorFunc[Context]
+// 	Float64       VisitorFunc[Context]
+// 	Complex64     VisitorFunc[Context]
+// 	Complex128    VisitorFunc[Context]
+// 	Array         VisitorFunc[Context]
+// 	Chan          VisitorFunc[Context]
+// 	Func          VisitorFunc[Context]
+// 	Interface     VisitorFunc[Context]
+// 	Map           VisitorFunc[Context]
+// 	Pointer       VisitorFunc[Context]
+// 	Slice         VisitorFunc[Context]
+// 	String        VisitorFunc[Context]
+// 	Struct        VisitorFunc[Context]
+// 	UnsafePointer VisitorFunc[Context]
+// }
+
+// func (visitor *Visitor[Context]) Visit(ctx context.Context, v reflect.Value) error {
+
+// }
+
+// func Traverse(v any) iter.Seq2[*TraverseCTRL, V] {
+// 	return nil
+// }
+
+// type TraverseCTRL struct{}
+
 func Visit(v reflect.Value) iter.Seq[V] {
 	return func(yield func(V) bool) {
 		visit(yield, V{Value: v})

@@ -16,6 +16,10 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
+type Visitor struct {
+	Struct func()
+}
+
 func TestVisit(t *testing.T) {
 	s := testcase.NewSpec(t)
 
