@@ -1,56 +1,192 @@
 package reflectkit
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"reflect"
 	"strings"
 
+	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit/refnode"
 )
 
-// type VisitorFunc[Context context.Context] func(receiver *Visitor[Context], ctx Context, v reflect.Value) error
+type VisitorFunc func(receiver *Visitor, v V) error
 
-// type Visitor[Context context.Context] struct {
-// 	Bool          VisitorFunc[Context]
-// 	Int           VisitorFunc[Context]
-// 	Int8          VisitorFunc[Context]
-// 	Int16         VisitorFunc[Context]
-// 	Int32         VisitorFunc[Context]
-// 	Int64         VisitorFunc[Context]
-// 	Uint          VisitorFunc[Context]
-// 	Uint8         VisitorFunc[Context]
-// 	Uint16        VisitorFunc[Context]
-// 	Uint32        VisitorFunc[Context]
-// 	Uint64        VisitorFunc[Context]
-// 	Uintptr       VisitorFunc[Context]
-// 	Float32       VisitorFunc[Context]
-// 	Float64       VisitorFunc[Context]
-// 	Complex64     VisitorFunc[Context]
-// 	Complex128    VisitorFunc[Context]
-// 	Array         VisitorFunc[Context]
-// 	Chan          VisitorFunc[Context]
-// 	Func          VisitorFunc[Context]
-// 	Interface     VisitorFunc[Context]
-// 	Map           VisitorFunc[Context]
-// 	Pointer       VisitorFunc[Context]
-// 	Slice         VisitorFunc[Context]
-// 	String        VisitorFunc[Context]
-// 	Struct        VisitorFunc[Context]
-// 	UnsafePointer VisitorFunc[Context]
-// }
+type Visitor struct {
+	OnVisit VisitorFunc
+	OnKind  map[reflect.Kind]VisitorFunc
+	OnType  map[reflect.Type]VisitorFunc
+}
 
-// func (visitor *Visitor[Context]) Visit(ctx context.Context, v reflect.Value) error {
+func (visitor Visitor) VisitValue(v reflect.Value) error {
+	return visitor.Visit(V{Value: v})
+}
 
-// }
+type errVisitorBreak struct{}
 
-// func Traverse(v any) iter.Seq2[*TraverseCTRL, V] {
-// 	return nil
-// }
+func (errVisitorBreak) Error() string { return "Visitor#Break" }
 
-// type TraverseCTRL struct{}
+func (visitor Visitor) Break() error           { return errVisitorBreak{} }
+func (visitor Visitor) isBreak(err error) bool { return errors.Is(err, errVisitorBreak{}) }
+
+func (visitor *Visitor) yield(v V) error {
+	if visitor.OnVisit != nil {
+		if err := visitor.OnVisit(visitor, v); err != nil {
+			return err
+		}
+	}
+
+	if 0 < len(visitor.OnType) {
+		if fn, ok := visitor.OnType[v.Value.Type()]; ok {
+			err := fn(visitor, v)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if 0 < len(visitor.OnKind) {
+		if fn, ok := visitor.OnKind[v.Value.Kind()]; ok {
+			err := fn(visitor, v)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (visitor Visitor) Visit(v V) (errReturn error) {
+	defer visitor.errFilter(&errReturn, v)
+
+	var kind = v.Value.Kind()
+	switch kind {
+	case reflect.Struct:
+		v := v.next(V{
+			Value:    v.Value,
+			NodeType: refnode.Struct,
+		})
+		if err := visitor.yield(v); err != nil {
+			return err
+		}
+		for field, value := range IterStructFields(v.Value) {
+			vFieldValue := v.next(V{
+				Value:       value,
+				NodeType:    refnode.StructField,
+				StructField: field,
+			})
+			if err := visitor.Visit(vFieldValue); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case reflect.Array, reflect.Slice:
+		v := v.next(V{
+			Value:    v.Value,
+			NodeType: vNodeTypeOf[kind],
+		})
+		if err := visitor.yield(v); err != nil {
+			return err
+		}
+		for i := range v.Value.Len() {
+			vElem := v.next(V{
+				Value:    v.Value.Index(i),
+				NodeType: vNodeTypeElemOf[v.NodeType],
+				Index:    i,
+			})
+			if err := visitor.Visit(vElem); err != nil {
+				return err
+			}
+		}
+		return nil
+
+	case reflect.Map:
+		v := v.next(V{
+			Value:    v.Value,
+			NodeType: refnode.Map,
+		})
+		if err := visitor.yield(v); err != nil {
+			return err
+		}
+		for key, value := range IterMap(v.Value) {
+			vMapKey := v.next(V{
+				Value:    key,
+				NodeType: refnode.MapKey,
+				MapKey:   key,
+			})
+			if err := visitor.Visit(vMapKey); err != nil {
+				return err
+			}
+			vMapValue := v.next(V{
+				Value:    value,
+				NodeType: refnode.MapValue,
+				MapKey:   key,
+			})
+			if err := visitor.Visit(vMapValue); err != nil {
+				return err
+			}
+		}
+		return nil
+	case reflect.Pointer, reflect.Interface:
+		v := v.next(V{
+			Value:    v.Value,
+			NodeType: vNodeTypeOf[kind],
+		})
+		if err := visitor.yield(v); err != nil {
+			return err
+		}
+		if v.Value.IsNil() {
+			return nil
+		}
+		return visitor.Visit(v.next(V{
+			Value:    v.Value.Elem(),
+			NodeType: vNodeTypeElemOf[v.NodeType],
+		}))
+	default:
+		if v.NodeType == refnode.Unknown {
+			v.NodeType = refnode.Value
+		}
+		return visitor.yield(v)
+	}
+}
+
+func (visitor *Visitor) errFilter(err *error, v V) {
+	if err == nil {
+		return
+	}
+	if *err == nil {
+		return
+	}
+	if visitor.isBreak(*err) && v.Parent == nil {
+		*err = nil
+	}
+}
+
+func (visitor Visitor) Iter(v reflect.Value) iter.Seq[V] {
+	return func(yield func(V) bool) {
+		var OnVisit VisitorFunc = func(receiver *Visitor, v V) error {
+			if !yield(v) {
+				return visitor.Break()
+			}
+			return nil
+		}
+		if visitor.OnVisit != nil {
+			og := visitor.OnVisit
+			iterVisit := OnVisit
+			OnVisit = func(receiver *Visitor, v V) error {
+				return errorkitlite.Merge(iterVisit(receiver, v), og(receiver, v))
+			}
+		}
+		visitor := visitor
+		visitor.OnVisit = OnVisit
+		visitor.Visit(V{Value: v})
+	}
+}
 
 func Visit(v reflect.Value) iter.Seq[V] {
 	return func(yield func(V) bool) {
@@ -237,8 +373,12 @@ func (v V) String() string {
 // 		v.Parent == nil
 // }
 
+func (v V) isUnindentifiedRoot() bool {
+	return v.NodeType == refnode.Unknown
+}
+
 func (v V) next(n V) V {
-	if v.NodeType != refnode.Unknown {
+	if !v.isUnindentifiedRoot() {
 		n.Parent = &v
 	}
 	if err := n.validate(); err != nil {
