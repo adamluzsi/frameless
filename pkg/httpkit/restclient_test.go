@@ -12,9 +12,9 @@ import (
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
+	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iterkit"
-	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/crud/crudcontract"
@@ -30,8 +30,12 @@ func ExampleRESTClient() {
 		fooRepo = httpkit.RESTClient[testent.Foo, testent.FooID]{
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
-			Mapping:   dtokit.Mapping[testent.Foo, testent.FooDTO]{},
-			Codecs:    jsonkit.Codec{},
+			Codecs: []httpkit.RESTClientCodec[testent.Foo]{
+
+				httpkitcodec.JSON[testent.Foo]{
+					DTO: dtokit.Mapping[testent.Foo, testent.FooDTO]{},
+				},
+			},
 			// leave IDFormatter empty for using the default id formatter, or provide your own
 			IDFormatter: func(fi testent.FooID) (string, error) {
 				return httpkit.IDConverter[testent.FooID]{}.Format(fi)

@@ -21,6 +21,35 @@ import (
 	"go.llib.dev/frameless/port/option"
 )
 
+func Unmarshal[T any](data []byte, p *T, opts ...Option) error {
+	var (
+		typ     = reflectkit.TypeOf[T]()
+		options = option.ToConfig(opts)
+		rv, err = parse(typ, data, options)
+	)
+	if err != nil {
+		return fmt.Errorf("convkit.Unmarshal failed: %w", err)
+	}
+	var out, ok = rv.Interface().(T)
+	if !ok {
+		return fmt.Errorf("error, incorrect return value made during parsing")
+	}
+	*p = out
+	return nil
+}
+
+func UnmarshalReflect(typ reflect.Type, data []byte, ptr reflect.Value, opts ...Option) error {
+	var rv, err = parse(typ, data, option.ToConfig(opts))
+	if err != nil {
+		return fmt.Errorf("convkit.Unmarshal failed: %w", err)
+	}
+	if rv.Type() != typ {
+		return fmt.Errorf("error, incorrect return value type")
+	}
+	ptr.Elem().Set(rv)
+	return nil
+}
+
 type encoded interface{ ~string | ~[]byte }
 
 func Parse[T any, Raw encoded](raw Raw, opts ...Option) (T, error) {
@@ -341,22 +370,27 @@ func (urlURLTextCodec) Unmarshal(data []byte, p *url.URL) error {
 
 // Format allows you to format a value into a string format
 func Format[T any](v T, opts ...Option) (string, error) {
-	data, err := marshal(reflect.ValueOf(v), option.ToConfig(opts))
+	data, err := MarshalReflect(reflect.ValueOf(v), option.ToConfig(opts))
 	return string(data), err
 }
 
 // FormatReflect allows you to Format a value into a string, passed as a reflect.Value.
 func FormatReflect(v reflect.Value, opts ...Option) (string, error) {
-	data, err := marshal(v, option.ToConfig(opts))
+	data, err := MarshalReflect(v, option.ToConfig(opts))
 	return string(data), err
 }
 
-func marshal(val reflect.Value, opts Options) ([]byte, error) {
-	if enc, err, ok := pformat(val, opts); ok {
+func Marshal[T any](v T, opts ...Option) ([]byte, error) {
+	return MarshalReflect(reflect.ValueOf(v), option.ToConfig(opts))
+}
+
+func MarshalReflect(val reflect.Value, opts ...Option) ([]byte, error) {
+	options := option.ToConfig(opts)
+	if enc, err, ok := pformat(val, options); ok {
 		return enc, err
 	}
 	if base := reflectkit.BaseValue(val); base.IsValid() {
-		if enc, err, ok := pformat(base, opts); ok {
+		if enc, err, ok := pformat(base, options); ok {
 			return enc, err
 		}
 	}
@@ -414,7 +448,7 @@ func pformat(val reflect.Value, opts Options) ([]byte, error, bool) {
 			escSep = slicekit.Merge([]byte(`\`), sep)
 		)
 		for i, length := 0, val.Len(); i < length; i++ {
-			out, err := marshal(val.Index(i), opts)
+			out, err := MarshalReflect(val.Index(i), opts)
 			if err != nil {
 				return nil, fmt.Errorf("error while formatting eleement at index: %d\n%#v", i,
 					val.Index(i).Interface()), true
