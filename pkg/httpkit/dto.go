@@ -8,8 +8,18 @@ import (
 	"go.llib.dev/frameless/port/codec"
 )
 
-func WithRESTClientDTO[ENT, DTO any](c RESTClientCodec[DTO], m dtokit.MapperTo[ENT, DTO]) RESTClientCodec[ENT] {
+func WithDTOForCodecC[ENT, DTO any](c RESTClientCodec[DTO], m dtokit.MapperTo[ENT, DTO]) RESTClientCodec[ENT] {
+	return dtoCodecPipeline[ENT, DTO]{
+		clientC: c,
+		mapping: m,
+	}
+}
 
+func WithDTOForCodecH[ENT, DTO any](h RESTHandlerCodec[DTO], m dtokit.MapperTo[ENT, DTO]) RESTHandlerCodec[ENT] {
+	return dtoCodecPipeline[ENT, DTO]{
+		handlerC: h,
+		mapping:  m,
+	}
 }
 
 type dtoCodecPipeline[ENT, DTO any] struct {
@@ -59,15 +69,16 @@ func (m dtoCodecPipeline[ENT, DTO]) NewListEncoder(w io.Writer) codec.StreamEnco
 }
 
 type dtoStreamEncoder[ENT, DTO any] struct {
+	m dtoCodecPipeline[ENT, DTO]
 	codec.StreamEncoder[DTO]
 }
 
 func (streamMapping *dtoStreamEncoder[ENT, DTO]) Encode(v ENT) error {
-	dto, err := m.mapping.MapToDTO(context.Background(), v)
+	dto, err := streamMapping.m.mapping.MapToDTO(context.Background(), v)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return streamMapping.Encode(dto)
+	return streamMapping.StreamEncoder.Encode(dto)
 }
 
 func (m dtoCodecPipeline[ENT, DTO]) NewListDecoder(w io.Reader) codec.StreamDecoder[ENT] {
@@ -99,20 +110,3 @@ func (m dtoCodecPipeline[ENT, DTO]) NewListDecoder(w io.Reader) codec.StreamDeco
 
 	}
 }
-
-type dtoStreamDecoder[ENT, DTO any] struct {
-	codec.StreamDecoder[DTO]
-}
-
-func (streamMapping *dtoStreamDecoder[ENT, DTO]) Encode(v ENT) error {
-	dto, err := m.mapping.MapToDTO(context.Background(), v)
-	if err != nil {
-		return nil, err
-	}
-	return streamMapping.Encode(dto)
-}
-
-// type WithDTOMapping[ENT, DTO any] struct {
-// 	M dtokit.MapperTo[ENT, DTO]
-// 	C any
-// }

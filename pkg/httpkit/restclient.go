@@ -92,6 +92,9 @@ type RESTClientCodec[T any] interface {
 	ListDecoderFactory[T]
 }
 
+type RESTStreamCodec[T any] interface {
+}
+
 func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	ctx = r.withContext(ctx)
 

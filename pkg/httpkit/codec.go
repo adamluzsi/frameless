@@ -13,6 +13,14 @@ import (
 	"go.llib.dev/frameless/port/codec"
 )
 
+type RESTCodec[T any] interface {
+	mediaTypeSupporter
+	codec.Marshaler[T]
+	codec.Unmarshaler[T]
+	codec.ListMarshaler[[]T, T]
+	codec.ListUnmarshaler[[]T, T]
+}
+
 type mediaTypeSupporter interface {
 	SupporsMediaType(mediaType string) bool
 }

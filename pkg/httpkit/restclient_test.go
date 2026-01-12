@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
@@ -31,10 +32,8 @@ func ExampleRESTClient() {
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
 			Codecs: []httpkit.RESTClientCodec[testent.Foo]{
-
-				httpkitcodec.JSON[testent.Foo]{
-					DTO: dtokit.Mapping[testent.Foo, testent.FooDTO]{},
-				},
+				httpkit.WithDTOForCodecC(httpkitcodec.JSON[testent.FooDTO]{},
+					dtokit.Mapping[testent.Foo, testent.FooDTO]{}),
 			},
 			// leave IDFormatter empty for using the default id formatter, or provide your own
 			IDFormatter: func(fi testent.FooID) (string, error) {
@@ -264,8 +263,9 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
 		h.MediaType = GobMediaType
-		h.MediaTypeCodecs = httpkit.MediaTypeCodecs{
-			GobMediaType: GobCodec{},
+		h.Codecs = []httpkit.RESTHandlerCodec[testent.Foo]{
+			httpkitcodec.
+				GobMediaType: GobCodec{},
 		}
 	})
 
@@ -287,7 +287,7 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 		MediaType: GobMediaType,
 
 		MediaTypeCodecs: httpkit.MediaTypeCodecs{
-			GobMediaType: GobCodec{},
+			GobCodec[testent.Foo]{},
 		},
 	}
 
@@ -300,14 +300,19 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 const GobMediaType = "application/gob"
 
-type GobCodec struct{}
+type GobCodec[T any] struct {
+	regonce sync.Once
+}
 
-func (c GobCodec) Supports(any) bool {
+func (c *GobCodec[T]) Supports(v any) bool {
+	c.regonce.Do(func() {
+		gob.Register(v)
+	})
 	return true
 }
 
 // Marshal encodes a value v into a byte slice.
-func (c GobCodec) Marshal(v any) (_ []byte, _ error) {
+func (c *GobCodec[T]) Marshal(v any) (_ []byte, _ error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(v); err != nil {
@@ -317,7 +322,7 @@ func (c GobCodec) Marshal(v any) (_ []byte, _ error) {
 }
 
 // Unmarshal decodes a byte slice into a provided pointer ptr.
-func (c GobCodec) Unmarshal(data []byte, ptr any) (_ error) {
+func (c *GobCodec[T]) Unmarshal(data []byte, ptr any) (_ error) {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
 	if err := dec.Decode(ptr); err != nil {
