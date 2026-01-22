@@ -59,6 +59,11 @@ var ErrResponseEntityTooLarge = errorkit.UserError{
 	Message: "The response body was larger than the size limit allowed for the client.",
 }
 
+var ErrResponseUnsupportedMediaType = errorkit.UserError{
+	Code:    "response-unsupported-media-type",
+	Message: "The requested media type is not supported for this resource.",
+}
+
 var defaultErrorHandler = rfc7807.Handler{
 	Mapping: ErrorMapping,
 }

@@ -8,7 +8,7 @@ import "io"
 // Deprecated: use httpkit.ListEncoderMaker
 type ListEncoderMaker interface {
 	// MakeListEncoder creates a new ListEncoder that writes encoded data to the provided io.Writer.
-	MakeListEncoder(w io.Writer) StreamEncoder[any]
+	MakeListEncoder(w io.Writer) StreamEncoderT[any]
 }
 
 // ListDecoderMaker defines an interface for creating ListDecoder instances.
@@ -17,5 +17,5 @@ type ListEncoderMaker interface {
 // Deprecated: use httpkit.ListDecoderMaker
 type ListDecoderMaker interface {
 	// MakeListDecoder creates a new ListDecoder that reads decoded data from the provided io.Reader.
-	MakeListDecoder(w io.Reader) StreamDecoder[any]
+	MakeListDecoder(w io.Reader) StreamDecoderT[any]
 }

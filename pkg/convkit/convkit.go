@@ -248,7 +248,7 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 var registry = map[reflect.Type]registryRecord{}
 
 type registryRecord interface {
-	codec.Registry
+	codec.Bundle
 }
 
 type regrec[T any] struct {
@@ -261,7 +261,7 @@ func (r regrec[T]) Marshal(v any) ([]byte, error) {
 		return nil, fmt.Errorf("incorrect type received. Expected %s, but got %T",
 			reflectkit.TypeOf[T](), v)
 	}
-	return r.TextCodec.Marshal(val)
+	return r.TextCodec.MarshalT(val)
 }
 
 func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
@@ -269,7 +269,7 @@ func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
 	if !ok {
 		return fmt.Errorf("type mismatch, expected %T but got %T", (*T)(nil), ptr)
 	}
-	return r.TextCodec.Unmarshal(data, p)
+	return r.TextCodec.UnmarshalT(data, p)
 }
 
 type (
@@ -328,11 +328,11 @@ var _ = Register[time.Duration](timeDuractionTextCodec{})
 
 type timeDuractionTextCodec struct{}
 
-func (timeDuractionTextCodec) Marshal(d time.Duration) ([]byte, error) {
+func (timeDuractionTextCodec) MarshalT(d time.Duration) ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-func (timeDuractionTextCodec) Unmarshal(data []byte, p *time.Duration) error {
+func (timeDuractionTextCodec) UnmarshalT(data []byte, p *time.Duration) error {
 	d, err := time.ParseDuration(string(data))
 	if err != nil {
 		return err
@@ -349,11 +349,11 @@ var _ = Register[url.URL](urlURLTextCodec{})
 
 type urlURLTextCodec struct{}
 
-func (urlURLTextCodec) Marshal(u url.URL) ([]byte, error) {
+func (urlURLTextCodec) MarshalT(u url.URL) ([]byte, error) {
 	return []byte(u.String()), nil
 }
 
-func (urlURLTextCodec) Unmarshal(data []byte, p *url.URL) error {
+func (urlURLTextCodec) UnmarshalT(data []byte, p *url.URL) error {
 	raw := string(data)
 	u, err := url.Parse(raw)
 	if err == nil {

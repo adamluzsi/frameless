@@ -14,9 +14,43 @@ import (
 )
 
 var (
-	_ codec.Codec[int] = jsonkit.Codec[int]{}
-	// _ httpkit.ListDecoderMaker[] = jsonkit.Codec{}
-	// _ httpkit.ListEncoderMaker = jsonkit.Codec{}
+	_ codec.Bundle         = jsonkit.Codec[any]{}
+	_ codec.Marshaler      = jsonkit.Codec[any]{}
+	_ codec.Unmarshaler    = jsonkit.Codec[any]{}
+	_ codec.StreamProducer = jsonkit.Codec[any]{}
+	_ codec.StreamConsumer = jsonkit.Codec[any]{}
+	_ codec.StreamEncoder  = jsonkit.Codec[any]{}.NewStreamEncoder(nil)
+	_ codec.StreamDecoder  = jsonkit.Codec[any]{}.NewStreamDecoder(nil)
+
+	_ codec.Codec[Foo]             = jsonkit.Codec[Foo]{}
+	_ codec.MarshalerT[Foo]        = jsonkit.Codec[Foo]{}
+	_ codec.UnmarshalerT[Foo]      = jsonkit.Codec[Foo]{}
+	_ codec.StreamProducerT[Foo]   = jsonkit.Codec[Foo]{}
+	_ codec.StreamConsumerT[Foo]   = jsonkit.Codec[Foo]{}
+	_ codec.StreamEncoderT[Foo]    = jsonkit.Codec[Foo]{}.NewStreamEncoderT(nil)
+	_ codec.StreamDecoderT[Foo]    = jsonkit.Codec[Foo]{}.NewStreamDecoderT(nil)
+	_ codec.SliceMarshalerT[Foo]   = jsonkit.Codec[Foo]{}
+	_ codec.SliceUnmarshalerT[Foo] = jsonkit.Codec[Foo]{}
+)
+
+var (
+	_ codec.Bundle         = jsonkit.LinesCodec[any]{}
+	_ codec.Marshaler      = jsonkit.LinesCodec[any]{}
+	_ codec.Unmarshaler    = jsonkit.LinesCodec[any]{}
+	_ codec.StreamProducer = jsonkit.LinesCodec[any]{}
+	_ codec.StreamConsumer = jsonkit.LinesCodec[any]{}
+	_ codec.StreamEncoder  = jsonkit.LinesCodec[any]{}.NewStreamEncoder(nil)
+	_ codec.StreamDecoder  = jsonkit.LinesCodec[any]{}.NewStreamDecoder(nil)
+
+	_ codec.Codec[Foo]             = jsonkit.LinesCodec[Foo]{}
+	_ codec.MarshalerT[Foo]        = jsonkit.LinesCodec[Foo]{}
+	_ codec.UnmarshalerT[Foo]      = jsonkit.LinesCodec[Foo]{}
+	_ codec.StreamProducerT[Foo]   = jsonkit.LinesCodec[Foo]{}
+	_ codec.StreamConsumerT[Foo]   = jsonkit.LinesCodec[Foo]{}
+	_ codec.StreamEncoderT[Foo]    = jsonkit.LinesCodec[Foo]{}.NewStreamEncoderT(nil)
+	_ codec.StreamDecoderT[Foo]    = jsonkit.LinesCodec[Foo]{}.NewStreamDecoderT(nil)
+	_ codec.SliceMarshalerT[Foo]   = jsonkit.LinesCodec[Foo]{}
+	_ codec.SliceUnmarshalerT[Foo] = jsonkit.LinesCodec[Foo]{}
 )
 
 func TestSerializer_serializer(t *testing.T) {
@@ -67,17 +101,17 @@ func Test_arrayStream(t *testing.T) {
 	dec, err, ok := next()
 	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NoError(t, dec.Decode(&got1))
+	assert.NoError(t, dec.DecodeT(&got1))
 
 	dec, err, ok = next()
 	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NoError(t, dec.Decode(&got2))
+	assert.NoError(t, dec.DecodeT(&got2))
 
 	dec, err, ok = next()
 	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NoError(t, dec.Decode(&got3))
+	assert.NoError(t, dec.DecodeT(&got3))
 
 	_, _, ok = next()
 	assert.False(t, ok)
@@ -119,7 +153,7 @@ func TestJSONSerializer_NewListDecoder(t *testing.T) {
 			assert.NoError(t, err)
 			iterations++
 			var got Foo
-			assert.NoError(t, dec.Decode(&got))
+			assert.NoError(t, dec.DecodeT(&got))
 			gotFoos = append(gotFoos, got)
 		}
 		assert.Equal(t, foos, gotFoos)

@@ -125,11 +125,11 @@ func TestIsRegistered(t *testing.T) {
 
 	type X struct{}
 	assert.False(t, convkit.IsRegistered[X]())
-	undo := convkit.Register[X](codec.CodecImpl[X]{
-		MarshalFunc: func(v X) ([]byte, error) {
+	undo := convkit.Register[X](codec.ImplT[X]{
+		MarshalTFunc: func(v X) ([]byte, error) {
 			return []byte("X{}"), nil
 		},
-		UnmarshalFunc: func(data []byte, p *X) error {
+		UnmarshalTFunc: func(data []byte, p *X) error {
 			if string(data) != "X{}" {
 				return fmt.Errorf("not X")
 			}
@@ -664,11 +664,11 @@ func TestFormatReflect(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 
-	unreg := convkit.Register[Person](codec.CodecImpl[Person]{
-		MarshalFunc: func(v Person) ([]byte, error) {
+	unreg := convkit.Register[Person](codec.ImplT[Person]{
+		MarshalTFunc: func(v Person) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		UnmarshalFunc: func(data []byte, p *Person) error {
+		UnmarshalTFunc: func(data []byte, p *Person) error {
 			return json.Unmarshal(data, p)
 		},
 	})
@@ -827,11 +827,11 @@ func TestMarshal(t *testing.T) {
 
 	t.Run("custom registered type", func(t *testing.T) {
 		type X struct{ Value string }
-		unreg := convkit.Register[X](codec.CodecImpl[X]{
-			MarshalFunc: func(v X) ([]byte, error) {
+		unreg := convkit.Register[X](codec.ImplT[X]{
+			MarshalTFunc: func(v X) ([]byte, error) {
 				return []byte("X{" + v.Value + "}"), nil
 			},
-			UnmarshalFunc: func(data []byte, p *X) error {
+			UnmarshalTFunc: func(data []byte, p *X) error {
 				if !bytes.HasPrefix(data, []byte("X{")) || !bytes.HasSuffix(data, []byte("}")) {
 					return fmt.Errorf("invalid format")
 				}
@@ -1013,11 +1013,11 @@ func TestUnmarshal(t *testing.T) {
 
 	t.Run("custom registered type", func(t *testing.T) {
 		type X struct{ Value string }
-		unreg := convkit.Register[X](codec.CodecImpl[X]{
-			MarshalFunc: func(v X) ([]byte, error) {
+		unreg := convkit.Register[X](codec.ImplT[X]{
+			MarshalTFunc: func(v X) ([]byte, error) {
 				return []byte("X{" + v.Value + "}"), nil
 			},
-			UnmarshalFunc: func(data []byte, p *X) error {
+			UnmarshalTFunc: func(data []byte, p *X) error {
 				if !bytes.HasPrefix(data, []byte("X{")) || !bytes.HasSuffix(data, []byte("}")) {
 					return fmt.Errorf("invalid format")
 				}

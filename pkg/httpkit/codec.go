@@ -3,40 +3,46 @@ package httpkit
 import (
 	"context"
 	"fmt"
-	"io"
 	"reflect"
 	"strconv"
 
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type RESTCodec[T any] interface {
-	mediaTypeSupporter
-	codec.Marshaler[T]
-	codec.Unmarshaler[T]
-	codec.ListMarshaler[[]T, T]
-	codec.ListUnmarshaler[[]T, T]
+type Codecs map[mediatype.MediaType]codec.Bundle
+
+func findCodecByMediaType[T any](cs Codecs, mimeType string) (codec.Bundle, bool) {
+	var mediaType, ok = lookupMediaType(mimeType)
+	if !ok {
+		return nil, false
+	}
+	if cs != nil {
+		if c, ok := cs[mediaType]; ok {
+			return c, true
+		}
+	}
+	if c, ok := defaultRESTCodecs[T]()[mediaType]; ok {
+		return c, true
+	}
+	return nil, false
 }
 
-type mediaTypeSupporter interface {
-	SupporsMediaType(mediaType string) bool
-}
-
-type MediaTypeCodec[T any] interface {
-	mediaTypeSupporter
-	codec.Marshaler[T]
-	codec.Unmarshaler[T]
-}
-
-type ListEncoderFactory[T any] interface {
-	NewListEncoder(w io.Writer) codec.StreamEncoder[T]
-}
-
-type ListDecoderFactory[T any] interface {
-	NewListDecoder(w io.Reader) codec.StreamDecoder[T]
+func defaultRESTCodecs[T any]() Codecs {
+	var jsonC httpcodec.JSON[T]
+	var jsonLinesC httpcodec.JSONLines[T]
+	formURLEncodedC := httpcodec.FormURLEncoded[T]()
+	return Codecs{
+		"application/json":                  jsonC,
+		"application/problem+json":          jsonC,
+		"application/x-ndjson":              jsonLinesC,
+		"application/stream+json":           jsonLinesC,
+		"application/json-stream":           jsonLinesC,
+		"application/x-www-form-urlencoded": formURLEncodedC,
+	}
 }
 
 /////////////////////////////////////////////////////// MAPPING ///////////////////////////////////////////////////////
@@ -144,6 +150,6 @@ func (m IDConverter[ID]) getParser() func(string) (ID, error) {
 }
 
 type codecDefault struct {
-	Codec     codec.Registry
+	Codec     codec.Bundle
 	MediaType mediatype.MediaType
 }

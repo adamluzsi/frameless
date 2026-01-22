@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
+	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
@@ -117,7 +117,7 @@ type RESTHandler[ENT, ID any] struct {
 	// Codecs [optional] contains per media type related codec which is used to marshal and unmarshal data in the response and response body.
 	//
 	// default: will use common default codecs, such as JSON, and form URL encoded.
-	Codecs []RESTHandlerCodec[ENT]
+	Codecs Codecs
 	// ErrorHandler [optional] is used to handle errors from the request, by mapping the error value into an error DTO Mapping.
 	ErrorHandler ErrorHandler
 	// IDContextKey is an optional field used to store the parsed ID from the URL in the context.
@@ -175,11 +175,6 @@ type RESTHandler[ENT, ID any] struct {
 	//
 	// CommitManager is meant to make the API interaction transactional.
 	CommitManager comproto.OnePhaseCommitProtocol
-}
-
-type RESTHandlerCodec[T any] interface {
-	MediaTypeCodec[T]
-	ListEncoderFactory[T]
 }
 
 func (h RESTHandler[ENT, ID]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -340,17 +335,48 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	codec, responseMediaType := h.responseBodyCodec(r)
+	c, responseMediaType := h.responseBodyCodec(r)
 	w.Header().Set(headerKeyContentType, responseMediaType)
 
-	list := codec.NewListEncoder(w)
+	if c.List.NewEncoder != nil {
+		h.indexStreamReply(ctx, w, r, index, c.List.NewEncoder)
+		return
+	}
+
+	if c.List.MarshalTFunc != nil {
+		h.indexReply(ctx, w, r, index, c.List.MarshalTFunc)
+		return
+	}
+
+	h.getErrorHandler().HandleError(w, r, ErrResponseUnsupportedMediaType)
+}
+
+func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], c codec.MarshalerT[[]ENT]) {
+	vs, err := iterkit.CollectE(index)
+	if err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+	data, err := c.Marshal(vs)
+	if err != nil {
+		h.getErrorHandler().HandleError(w, r, err)
+		return
+	}
+	if _, err := iokit.WriteAll(w, data); err != nil {
+		logger.Debug(ctx, "error during DTO value encoding", logging.ErrField(err))
+	}
+	return
+}
+
+func (h RESTHandler[ENT, ID]) indexStreamReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], NewEncoder func(w io.Writer) codec.StreamEncoderT[ENT]) {
+	var encoder = NewEncoder(w)
 
 	next, stop := iter.Pull2(index)
 	defer stop()
 
 	ent, err, ok := next()
 	if !ok {
-		_ = list.Close()
+		_ = encoder.Close()
 		return
 	}
 	if err != nil {
@@ -359,7 +385,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer func() {
-		if err := list.Close(); err != nil {
+		if err := encoder.Close(); err != nil {
 			logger.Debug(ctx, "finishing the index list encoding encountered an error",
 				logging.ErrField(err))
 			return
@@ -376,8 +402,8 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		if err := list.Encode(ent); err != nil {
-			logger.Warn(ctx, "error during DTO value encoding", logging.ErrField(err))
+		if err := encoder.Encode(ent); err != nil {
+			logger.Warn(ctx, "error while encoding response", logging.ErrField(err))
 			break
 		}
 	}
@@ -793,36 +819,33 @@ var _ restHandler = RESTHandler[any, any]{}
 
 func (h RESTHandler[ENT, ID]) restHandler() {}
 
-func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) RESTHandlerCodec[ENT] {
+func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) httpcodec.Codec[ENT] {
 	c, _ := h.contentTypeCodec(r)
 	return c
 }
 
-func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (RESTHandlerCodec[ENT], mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (httpcodec.Codec[ENT], mediatype.MediaType) {
+	var mtype = h.MediaType
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
-		if c, ok := findCodecByMediaType(h.Codecs, mediaType); ok {
-			return c, mediaType
-		}
+		mtype = mediaType
 	}
-	if 0 < len(h.MediaType) {
-		if c, ok := findCodecByMediaType(h.Codecs, h.MediaType); ok {
-			return c, h.MediaType
-		}
+	if c, ok := findCodecByMediaType[ENT](h.Codecs, mtype); ok {
+		return c, mtype
 	}
 	return h.defaultCodec()
 }
 
-func (h RESTHandler[ENT, ID]) defaultCodec() (RESTHandlerCodec[ENT], mediatype.MediaType) {
-	return httpkitcodec.JSON[ENT]{}, mediatype.JSON
+func (h RESTHandler[ENT, ID]) defaultCodec() (httpcodec.Codec[ENT], mediatype.MediaType) {
+	return httpcodec.JSON[ENT](), mediatype.JSON
 }
 
-func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (RESTHandlerCodec[ENT], mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (httpcodec.Codec[ENT], mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return h.contentTypeCodec(r)
 	}
 	for _, mediaType := range strings.Fields(accept) {
-		if c, ok := findCodecByMediaType(h.Codecs, mediaType); ok {
+		if c, ok := findCodecByMediaType[ENT](h.Codecs, mediaType); ok {
 			return c, mediaType
 		}
 	}
@@ -916,38 +939,3 @@ func RESTOwnershipCheck(ctx context.Context, entity any) bool {
 }
 
 type IDContextKey[ENT, ID any] struct{}
-
-func findCodecByMediaType[Codecs ~[]I, I mediaTypeSupporter](cs Codecs, mediaType string) (I, bool) {
-	mediaType, ok := lookupMediaType(mediaType)
-	if !ok {
-		var zero I
-		return zero, false
-	}
-	for _, c := range cs {
-		if c.SupporsMediaType(mediaType) {
-			return c, true
-		}
-	}
-	for _, c := range defaultRESTHandlerCodecs[I]() {
-		if c.SupporsMediaType(mediaType) {
-			return any(c).(I), true
-		}
-	}
-	var zero I
-	return zero, false
-}
-
-func defaultRESTHandlerCodecs[T any]() []restCodec[T] {
-	return []restCodec[T]{
-		httpkitcodec.JSON[T]{},
-		httpkitcodec.JSONLines[T]{},
-	}
-}
-
-type restCodec[T any] interface {
-	mediaTypeSupporter
-	codec.Marshaler[T]
-	codec.Unmarshaler[T]
-	ListEncoderFactory[T]
-	ListDecoderFactory[T]
-}

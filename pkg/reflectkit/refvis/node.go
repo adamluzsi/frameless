@@ -12,14 +12,13 @@ import (
 )
 
 type Node struct {
-	Type  NodeType
-	Value reflect.Value
+	Value  reflect.Value
+	Type   NodeType
+	Parent *Node
 
 	Index       int
 	MapKey      reflect.Value
 	StructField reflect.StructField
-
-	Parent *Node
 }
 
 func (v Node) Is(nt NodeType) bool {
@@ -110,7 +109,7 @@ func (v Node) next(n Node) Node {
 	return n
 }
 
-func (v Node) IterUp() iter.Seq[Node] {
+func (v Node) IterUpward() iter.Seq[Node] {
 	return func(yield func(Node) bool) {
 		var cur = v
 		for {
@@ -127,7 +126,7 @@ func (v Node) IterUp() iter.Seq[Node] {
 
 func (v Node) Iter() iter.Seq[Node] {
 	return func(yield func(Node) bool) {
-		for v := range iterkit.Reverse(v.IterUp()) {
+		for v := range iterkit.Reverse(v.IterUpward()) {
 			if !yield(v) {
 				return
 			}
@@ -212,8 +211,6 @@ const (
 	Map
 	MapKey
 	MapValue
-
-	// UnsafePointer
 )
 
 type Path []NodeType
@@ -244,7 +241,7 @@ func (p Path) Contains(ntp ...NodeType) bool {
 
 // func (v V) PathString() string {
 // 	var path string
-// 	for v := range v.IterUp() {
+// 	for v := range v.IterUpward() {
 // 		switch v.NodeType {
 // 		case StructField:
 // 			path = fmt.Sprintf(".%s%s", v.StructField.Name, path)

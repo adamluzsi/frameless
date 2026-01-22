@@ -11,9 +11,8 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
-	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
+	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/logger"
@@ -31,9 +30,8 @@ func ExampleRESTClient() {
 		fooRepo = httpkit.RESTClient[testent.Foo, testent.FooID]{
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
-			Codecs: []httpkit.RESTClientCodec[testent.Foo]{
-				httpkit.WithDTOForCodecC(httpkitcodec.JSON[testent.FooDTO]{},
-					dtokit.Mapping[testent.Foo, testent.FooDTO]{}),
+			Codecs: httpkit.RESTClientCodecs[testent.Foo]{
+				mediatype.JSON: httpcodec.JSON[testent.Foo]{},
 			},
 			// leave IDFormatter empty for using the default id formatter, or provide your own
 			IDFormatter: func(fi testent.FooID) (string, error) {
@@ -264,8 +262,7 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
 		h.MediaType = GobMediaType
 		h.Codecs = []httpkit.RESTHandlerCodec[testent.Foo]{
-			httpkitcodec.
-				GobMediaType: GobCodec{},
+			GobMediaType: GobCodec{},
 		}
 	})
 

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/httpkit/httpkitcodec"
+	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -42,7 +42,7 @@ type RESTClient[ENT, ID any] struct {
 	// Codecs [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
-	Codecs []RESTClientCodec[ENT]
+	Codecs Codecs[ENT]
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
 	// default: httpkit.IDFormatter[ID].Format
@@ -85,14 +85,6 @@ type RESTClient[ENT, ID any] struct {
 	//
 	// default: 5s
 	KeepAliveInterval time.Duration
-}
-
-type RESTClientCodec[T any] interface {
-	MediaTypeCodec[T]
-	ListDecoderFactory[T]
-}
-
-type RESTStreamCodec[T any] interface {
 }
 
 func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
@@ -527,15 +519,15 @@ func statusOK(resp *http.Response) bool {
 }
 
 func (r RESTClient[ENT, ID]) getCodec(mimeType string) RESTClientCodec[ENT] {
-	if c, ok := findCodecByMediaType(r.Codecs, mimeType); ok {
+	if c, ok := findCodecByMediaType[ENT, RESTClientCodec[ENT]](r.Codecs, mimeType); ok {
 		return c
 	}
-	return httpkitcodec.JSON[ENT]{}
+	return httpcodec.JSON[ENT]{}
 }
 
 func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (RESTClientCodec[ENT], mediatype.MediaType, bool) {
 	mt := string(resp.Header.Get(headerKeyContentType))
-	c, ok := findCodecByMediaType(r.Codecs, mt)
+	c, ok := findCodecByMediaType[ENT, RESTClientCodec[ENT]](r.Codecs, mt)
 	return c, mt, ok
 }
 
