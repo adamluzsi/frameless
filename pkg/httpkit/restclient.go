@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -24,6 +23,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/extid"
 )
@@ -42,7 +42,7 @@ type RESTClient[ENT, ID any] struct {
 	// Codecs [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
-	Codecs Codecs[ENT]
+	Codecs Codecs
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
 	// default: httpkit.IDFormatter[ID].Format
@@ -101,7 +101,7 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	}
 
 	mimeType := r.getMediaType()
-	codec := r.getCodec(mimeType)
+	codec, mimeType := r.getCodec(mimeType)
 
 	data, err := codec.Marshal(*ptr)
 	if err != nil {
@@ -176,7 +176,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("status code", resp.StatusCode))
 
-		codec, respMediaType, ok := r.contentTypeBasedCodec(resp)
+		c, respMediaType, ok := r.contentTypeBasedCodec(resp)
 		if !ok {
 			err := fmt.Errorf("no codec configured for response content type: %s", respMediaType)
 			var zero ENT
@@ -186,36 +186,70 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("response content type", respMediaType))
 
-		var src io.ReadCloser = r.withKeepAlive(resp.Body)
-		defer src.Close()
-
-		if r.DisableStreaming {
-			data, err := io.ReadAll(src)
-			_ = src.Close()
-			if err != nil {
-				var zero ENT
-				yield(zero, err)
-				return
-			}
-			src = io.NopCloser(bytes.NewReader(data))
+		if sc, ok := c.(codec.StreamConsumer); ok {
+			r.streamFindAll(ctx, sc, resp.Body, yield)
+			return
 		}
 
-		var list = codec.NewListDecoder(src)
-		for dec, err := range list {
-			var ent ENT
-			if err != nil {
-				yield(ent, err)
+		r.findAll(ctx, c, resp.Body, yield)
+	}
+}
+
+func (r RESTClient[ENT, ID]) findAll(ctx context.Context, c codec.Bundle, body io.ReadCloser, yield func(ENT, error) bool) {
+	defer body.Close()
+	data, err := r.bodyReadAll(body)
+	if err != nil {
+		var zero ENT
+		yield(zero, err)
+		return
+	}
+
+	var vs []ENT
+	if err := c.Unmarshal(data, &vs); err != nil {
+		var zero ENT
+		yield(zero, err)
+		return
+	}
+
+	for _, v := range vs {
+		if !yield(v, nil) {
+			return
+		}
+	}
+}
+
+func (r RESTClient[ENT, ID]) streamFindAll(ctx context.Context, sc codec.StreamConsumer, body io.ReadCloser, yield func(ENT, error) bool) {
+	defer body.Close()
+
+	var src io.ReadCloser = r.withKeepAlive(body)
+	defer src.Close()
+
+	if r.DisableStreaming {
+		data, err := io.ReadAll(src)
+		_ = src.Close()
+		if err != nil {
+			var zero ENT
+			yield(zero, err)
+			return
+		}
+		src = io.NopCloser(bytes.NewReader(data))
+	}
+
+	var stream = sc.NewStreamDecoder(src)
+	for elem, err := range stream {
+		var ent ENT
+		if err != nil {
+			yield(ent, err)
+			return
+		}
+		if err := elem.Decode(&ent); err != nil {
+			if !yield(ent, err) {
 				return
 			}
-			if err := dec.Decode(&ent); err != nil {
-				if !yield(ent, err) {
-					return
-				}
-				continue
-			}
-			if yield(ent, nil) {
-				return
-			}
+			continue
+		}
+		if yield(ent, nil) {
+			return
 		}
 	}
 }
@@ -382,7 +416,7 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 
 	var idAccessor = r.IDA
 
-	ser := r.getCodec(r.getMediaType())
+	ser, mediaType := r.getCodec(r.getMediaType())
 
 	id, ok := idAccessor.Lookup(*ptr)
 	if !ok {
@@ -405,8 +439,8 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMediaType())
-	req.Header.Set(headerKeyAccept, r.getMediaType())
+	req.Header.Set(headerKeyContentType, mediaType)
+	req.Header.Set(headerKeyAccept, mediaType)
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -518,16 +552,16 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RESTClient[ENT, ID]) getCodec(mimeType string) RESTClientCodec[ENT] {
-	if c, ok := findCodecByMediaType[ENT, RESTClientCodec[ENT]](r.Codecs, mimeType); ok {
-		return c
+func (r RESTClient[ENT, ID]) getCodec(mimeType string) (codec.Bundle, mediatype.MediaType) {
+	if c, mt, ok := findCodecByMediaType(r.Codecs, mimeType); ok {
+		return c, mt
 	}
-	return httpcodec.JSON[ENT]{}
+	return defaultCodec()
 }
 
-func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (RESTClientCodec[ENT], mediatype.MediaType, bool) {
+func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Bundle, mediatype.MediaType, bool) {
 	mt := string(resp.Header.Get(headerKeyContentType))
-	c, ok := findCodecByMediaType[ENT, RESTClientCodec[ENT]](r.Codecs, mt)
+	c, mt, ok := findCodecByMediaType(r.Codecs, mt)
 	return c, mt, ok
 }
 

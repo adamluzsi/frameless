@@ -11,41 +11,21 @@ import (
 	"go.llib.dev/frameless/port/codec"
 )
 
-type Codec[T any] struct{}
+type Bundle struct{}
 
-func (Codec[T]) Marshal(v any) ([]byte, error) {
+func (Bundle) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (Codec[T]) MarshalT(v T) ([]byte, error) {
-	return json.Marshal(v)
+func (Bundle) Unmarshal(data []byte, ptr any) error {
+	return json.Unmarshal(data, ptr)
 }
 
-func (Codec[T]) Unmarshal(data []byte, p any) error {
-	return json.Unmarshal(data, p)
-}
-
-func (Codec[T]) UnmarshalT(data []byte, p *T) error {
-	return json.Unmarshal(data, p)
-}
-
-func (Codec[T]) MarshalSlice(vs []T) ([]byte, error) {
-	return json.Marshal(vs)
-}
-
-func (Codec[T]) UnmarshalSlice(data []byte, p *[]T) error {
-	return json.Unmarshal(data, p)
-}
-
-func (Codec[T]) NewStreamEncoder(w io.Writer) codec.StreamEncoder {
+func (Bundle) NewStreamEncoder(w io.Writer) codec.StreamEncoder {
 	return &ArrayEncoder[any]{W: w}
 }
 
-func (Codec[T]) NewStreamEncoderT(w io.Writer) codec.StreamEncoderT[T] {
-	return &ArrayEncoder[T]{W: w}
-}
-
-func (Codec[T]) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
+func (Bundle) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
 	i := &jsontoken.ArrayIterator[any]{
 		Context: context.Background(),
 		Input:   r,
@@ -53,7 +33,7 @@ func (Codec[T]) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
 	return func(yield func(codec.Decoder, error) bool) {
 		defer i.Close()
 		for i.Next() {
-			if !yield(i, nil) {
+			if !yield(codec.DecoderFunc(i.DecodeAny), nil) {
 				return
 			}
 		}
@@ -70,12 +50,34 @@ func (Codec[T]) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
 	}
 }
 
-func (Codec[T]) NewStreamDecoderT(r io.Reader) codec.StreamDecoderT[T] {
+type Codec[T any] struct{}
+
+func (Codec[T]) Marshal(v T) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+func (Codec[T]) Unmarshal(data []byte, p *T) error {
+	return json.Unmarshal(data, p)
+}
+
+func (Codec[T]) MarshalSlice(vs []T) ([]byte, error) {
+	return json.Marshal(vs)
+}
+
+func (Codec[T]) UnmarshalSlice(data []byte, p *[]T) error {
+	return json.Unmarshal(data, p)
+}
+
+func (Codec[T]) NewStreamEncoder(w io.Writer) codec.TypeStreamEncoder[T] {
+	return &ArrayEncoder[T]{W: w}
+}
+
+func (Codec[T]) NewStreamDecoder(r io.Reader) codec.TypeStreamDecoder[T] {
 	i := &jsontoken.ArrayIterator[T]{
 		Context: context.Background(),
 		Input:   r,
 	}
-	return func(yield func(codec.DecoderT[T], error) bool) {
+	return func(yield func(codec.TypeDecoder[T], error) bool) {
 		defer i.Close()
 		for i.Next() {
 			if !yield(i, nil) {
@@ -97,21 +99,54 @@ func (Codec[T]) NewStreamDecoderT(r io.Reader) codec.StreamDecoderT[T] {
 
 //////////////
 
-type LinesCodec[T any] struct{}
+type LinesBundle struct{}
 
-func (LinesCodec[T]) Marshal(v any) ([]byte, error) {
+func (LinesBundle) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (LinesCodec[T]) MarshalT(v T) ([]byte, error) {
-	return json.Marshal(v)
-}
-
-func (LinesCodec[T]) Unmarshal(data []byte, p any) error {
+func (LinesBundle) Unmarshal(data []byte, p any) error {
 	return json.Unmarshal(data, p)
 }
 
-func (LinesCodec[T]) UnmarshalT(data []byte, p *T) error {
+func (LinesBundle) NewStreamEncoder(w io.Writer) codec.StreamEncoder {
+	return &ArrayEncoder[any]{W: w}
+}
+
+func (LinesBundle) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
+	i := &jsontoken.ArrayIterator[any]{
+		Context: context.Background(),
+		Input:   r,
+	}
+	return func(yield func(codec.Decoder, error) bool) {
+		defer i.Close()
+		for i.Next() {
+			if !yield(codec.DecoderFunc(i.DecodeAny), nil) {
+				return
+			}
+		}
+		if err := i.Err(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+		if err := i.Close(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+	}
+}
+
+//////////////
+
+type LinesCodec[T any] struct{}
+
+func (LinesCodec[T]) Marshal(v T) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+func (LinesCodec[T]) Unmarshal(data []byte, p *T) error {
 	return json.Unmarshal(data, p)
 }
 
@@ -141,45 +176,16 @@ func (c LinesCodec[T]) UnmarshalSlice(data []byte, p *[]T) error {
 	return nil
 }
 
-func (LinesCodec[T]) NewStreamEncoder(w io.Writer) codec.StreamEncoder {
-	return &ArrayEncoder[any]{W: w}
-}
-
-func (LinesCodec[T]) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
-	i := &jsontoken.ArrayIterator[any]{
-		Context: context.Background(),
-		Input:   r,
-	}
-	return func(yield func(codec.Decoder, error) bool) {
-		defer i.Close()
-		for i.Next() {
-			if !yield(i, nil) {
-				return
-			}
-		}
-		if err := i.Err(); err != nil {
-			if !yield(nil, err) {
-				return
-			}
-		}
-		if err := i.Close(); err != nil {
-			if !yield(nil, err) {
-				return
-			}
-		}
-	}
-}
-
-func (LinesCodec[T]) NewStreamEncoderT(w io.Writer) codec.StreamEncoderT[T] {
+func (LinesCodec[T]) NewStreamEncoder(w io.Writer) codec.TypeStreamEncoder[T] {
 	return &ArrayEncoder[T]{W: w}
 }
 
-func (LinesCodec[T]) NewStreamDecoderT(r io.Reader) codec.StreamDecoderT[T] {
+func (LinesCodec[T]) NewStreamDecoder(r io.Reader) codec.TypeStreamDecoder[T] {
 	i := &jsontoken.ArrayIterator[T]{
 		Context: context.Background(),
 		Input:   r,
 	}
-	return func(yield func(codec.DecoderT[T], error) bool) {
+	return func(yield func(codec.TypeDecoder[T], error) bool) {
 		defer i.Close()
 		for i.Next() {
 			if !yield(i, nil) {
@@ -214,7 +220,7 @@ type ArrayEncoder[T any] struct {
 	done        bool
 }
 
-func (c *ArrayEncoder[T]) Encode(v any) error {
+func (c *ArrayEncoder[T]) Encode(v T) error {
 	if c.err != nil {
 		return c.err
 	}
@@ -244,10 +250,6 @@ func (c *ArrayEncoder[T]) Encode(v any) error {
 
 	c.index++
 	return nil
-}
-
-func (c *ArrayEncoder[T]) EncodeT(v T) error {
-	return c.Encode(v)
 }
 
 func (c *ArrayEncoder[T]) Close() error {
@@ -286,12 +288,12 @@ func (c *ArrayEncoder[T]) beginList() error {
 	return nil
 }
 
-func NewArrayStreamDecoder[T any](r io.Reader) codec.StreamDecoderT[T] {
+func NewArrayStreamDecoder[T any](r io.Reader) codec.TypeStreamDecoder[T] {
 	i := &jsontoken.ArrayIterator[T]{
 		Context: context.Background(),
 		Input:   r,
 	}
-	return func(yield func(codec.DecoderT[T], error) bool) {
+	return func(yield func(codec.TypeDecoder[T], error) bool) {
 		defer i.Close()
 		for i.Next() {
 			if !yield(i, nil) {
@@ -317,17 +319,13 @@ func NewEncoder[T any](w io.Writer) *Encoder[T] {
 
 type Encoder[T any] struct{ *json.Encoder }
 
-var _ codec.StreamEncoderT[int] = (*Encoder[int])(nil)
+var _ codec.TypeStreamEncoder[int] = (*Encoder[int])(nil)
 
 func (e *Encoder[T]) Close() error {
 	return nil
 }
 
-func (e *Encoder[T]) Encode(v any) error {
-	return e.Encoder.Encode(v)
-}
-
-func (e *Encoder[T]) EncodeT(v T) error {
+func (e *Encoder[T]) Encode(v T) error {
 	return e.Encoder.Encode(v)
 }
 

@@ -7,41 +7,50 @@ import (
 	"strconv"
 
 	"go.llib.dev/frameless/pkg/errorkit"
-	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
+	"go.llib.dev/frameless/pkg/httpkit/formurlencoded"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
 type Codecs map[mediatype.MediaType]codec.Bundle
 
-func findCodecByMediaType[T any](cs Codecs, mimeType string) (codec.Bundle, bool) {
+func findCodecByMediaType(cs Codecs, mimeType string) (codec.Bundle, string, bool) {
 	var mediaType, ok = lookupMediaType(mimeType)
 	if !ok {
-		return nil, false
+		return nil, mediaType, false
 	}
 	if cs != nil {
 		if c, ok := cs[mediaType]; ok {
-			return c, true
+			return c, mediaType, true
 		}
 	}
-	if c, ok := defaultRESTCodecs[T]()[mediaType]; ok {
-		return c, true
+	if c, ok := defaultCodecs[mediaType]; ok {
+		return c, mediaType, true
 	}
-	return nil, false
+	return nil, mediaType, false
 }
 
-func defaultRESTCodecs[T any]() Codecs {
-	var jsonC httpcodec.JSON[T]
-	var jsonLinesC httpcodec.JSONLines[T]
-	formURLEncodedC := httpcodec.FormURLEncoded[T]()
+func defaultCodec() (codec.Bundle, mediatype.MediaType) {
+	return defaultCodecBundle, mediatype.JSON
+}
+
+var defaultCodecBundle jsonkit.Bundle
+
+var defaultCodecs Codecs = makeDefaultCodecs()
+
+func makeDefaultCodecs() Codecs {
+	var jsonB jsonkit.Bundle
+	var jsonLinesB jsonkit.LinesBundle
+	var formURLEncodedB formurlencoded.Bundle
 	return Codecs{
-		"application/json":                  jsonC,
-		"application/problem+json":          jsonC,
-		"application/x-ndjson":              jsonLinesC,
-		"application/stream+json":           jsonLinesC,
-		"application/json-stream":           jsonLinesC,
-		"application/x-www-form-urlencoded": formURLEncodedC,
+		"application/json":                  jsonB,
+		"application/problem+json":          jsonB,
+		"application/x-ndjson":              jsonLinesB,
+		"application/stream+json":           jsonLinesB,
+		"application/json-stream":           jsonLinesB,
+		"application/x-www-form-urlencoded": formURLEncodedB,
 	}
 }
 

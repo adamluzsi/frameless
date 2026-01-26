@@ -937,9 +937,8 @@ func (c *ArrayIterator[T]) Next() bool {
 
 func (c *ArrayIterator[T]) Value() json.RawMessage { return c.data }
 
-func (c *ArrayIterator[T]) Decode(ptr any) error { return json.Unmarshal(c.data, ptr) }
-
-func (c *ArrayIterator[T]) DecodeT(p *T) error { return json.Unmarshal(c.data, p) }
+func (c *ArrayIterator[T]) Decode(p *T) error       { return json.Unmarshal(c.data, p) }
+func (c *ArrayIterator[T]) DecodeAny(ptr any) error { return json.Unmarshal(c.data, ptr) }
 
 func (c *ArrayIterator[T]) Err() error {
 	if c.Context == nil {

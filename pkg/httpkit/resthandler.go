@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 
-	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
@@ -338,20 +337,15 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	c, responseMediaType := h.responseBodyCodec(r)
 	w.Header().Set(headerKeyContentType, responseMediaType)
 
-	if c.List.NewEncoder != nil {
-		h.indexStreamReply(ctx, w, r, index, c.List.NewEncoder)
+	if sp, ok := c.(codec.StreamProducer); ok {
+		h.indexStreamReply(ctx, w, r, index, sp)
 		return
 	}
 
-	if c.List.MarshalTFunc != nil {
-		h.indexReply(ctx, w, r, index, c.List.MarshalTFunc)
-		return
-	}
-
-	h.getErrorHandler().HandleError(w, r, ErrResponseUnsupportedMediaType)
+	h.indexReply(ctx, w, r, index, c)
 }
 
-func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], c codec.MarshalerT[[]ENT]) {
+func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], c codec.Bundle) {
 	vs, err := iterkit.CollectE(index)
 	if err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
@@ -365,11 +359,10 @@ func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWri
 	if _, err := iokit.WriteAll(w, data); err != nil {
 		logger.Debug(ctx, "error during DTO value encoding", logging.ErrField(err))
 	}
-	return
 }
 
-func (h RESTHandler[ENT, ID]) indexStreamReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], NewEncoder func(w io.Writer) codec.StreamEncoderT[ENT]) {
-	var encoder = NewEncoder(w)
+func (h RESTHandler[ENT, ID]) indexStreamReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], sp codec.StreamProducer) {
+	var encoder = sp.NewStreamEncoder(w)
 
 	next, stop := iter.Pull2(index)
 	defer stop()
@@ -819,34 +812,30 @@ var _ restHandler = RESTHandler[any, any]{}
 
 func (h RESTHandler[ENT, ID]) restHandler() {}
 
-func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) httpcodec.Codec[ENT] {
+func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) codec.Bundle {
 	c, _ := h.contentTypeCodec(r)
 	return c
 }
 
-func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (httpcodec.Codec[ENT], mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (codec.Bundle, mediatype.MediaType) {
 	var mtype = h.MediaType
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
 		mtype = mediaType
 	}
-	if c, ok := findCodecByMediaType[ENT](h.Codecs, mtype); ok {
-		return c, mtype
+	if c, mt, ok := findCodecByMediaType(h.Codecs, mtype); ok {
+		return c, mt
 	}
-	return h.defaultCodec()
+	return defaultCodec()
 }
 
-func (h RESTHandler[ENT, ID]) defaultCodec() (httpcodec.Codec[ENT], mediatype.MediaType) {
-	return httpcodec.JSON[ENT](), mediatype.JSON
-}
-
-func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (httpcodec.Codec[ENT], mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (codec.Bundle, mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return h.contentTypeCodec(r)
 	}
 	for _, mediaType := range strings.Fields(accept) {
-		if c, ok := findCodecByMediaType[ENT](h.Codecs, mediaType); ok {
-			return c, mediaType
+		if c, mt, ok := findCodecByMediaType(h.Codecs, mediaType); ok {
+			return c, mt
 		}
 	}
 	return h.contentTypeCodec(r)

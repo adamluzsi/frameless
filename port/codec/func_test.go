@@ -5,19 +5,32 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/port/codec"
+	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 )
 
-func TestMarshalFunc(t *testing.T) {
+var _ codec.Marshaler = (codec.MarshalerFunc)(nil)
+var _ codec.Unmarshaler = (codec.UnmarshalerFunc)(nil)
+
+var _ codec.TypeMarshaler[testent.Foo] = (codec.TypeMarshalerFunc[testent.Foo])(nil)
+var _ codec.TypeUnmarshaler[testent.Foo] = (codec.TypeUnmarshalerFunc[testent.Foo])(nil)
+
+var _ codec.Encoder = (codec.EncoderFunc)(nil)
+var _ codec.TypeEncoder[testent.Foo] = (codec.TypeEncoderFunc[testent.Foo])(nil)
+
+var _ codec.Decoder = (codec.DecoderFunc)(nil)
+var _ codec.TypeDecoder[testent.Foo] = (codec.TypeDecoderFunc[testent.Foo])(nil)
+
+func TestTypeMarshalerFunc(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	type T struct{ V string }
 
 	called := let.VarOf(s, false)
 
-	fn := let.Var(s, func(t *testcase.T) codec.MarshalTFunc[T] {
+	fn := let.Var(s, func(t *testcase.T) codec.TypeMarshalerFunc[T] {
 		return func(v T) ([]byte, error) {
 			called.Set(t, true)
 			return json.Marshal(v)
@@ -39,7 +52,7 @@ func TestMarshalFunc(t *testing.T) {
 	s.When("marshaling implementation has an error", func(s *testcase.Spec) {
 		expErr := let.Error(s)
 
-		fn.Let(s, func(t *testcase.T) codec.MarshalTFunc[T] {
+		fn.Let(s, func(t *testcase.T) codec.TypeMarshalerFunc[T] {
 			return func(v T) ([]byte, error) {
 				return nil, expErr.Get(t)
 			}
@@ -59,7 +72,7 @@ func TestUnmarshalFunc(t *testing.T) {
 
 	uCalled := let.VarOf(s, false)
 
-	fn := let.Var(s, func(t *testcase.T) codec.UnmarshalTFunc[T] {
+	fn := let.Var(s, func(t *testcase.T) codec.TypeUnmarshalerFunc[T] {
 		return func(data []byte, p *T) error {
 			uCalled.Set(t, true)
 			return json.Unmarshal(data, p)
@@ -81,7 +94,7 @@ func TestUnmarshalFunc(t *testing.T) {
 	s.When("unmarshaling implementation has an error", func(s *testcase.Spec) {
 		expErr := let.Error(s)
 
-		fn.Let(s, func(t *testcase.T) codec.UnmarshalTFunc[T] {
+		fn.Let(s, func(t *testcase.T) codec.TypeUnmarshalerFunc[T] {
 			return func(data []byte, p *T) error {
 				return expErr.Get(t)
 			}

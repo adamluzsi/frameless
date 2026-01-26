@@ -9,57 +9,57 @@ import (
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/port/codec"
+	"go.llib.dev/frameless/testing/testent"
 	. "go.llib.dev/frameless/testing/testent"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 var (
-	_ codec.Bundle         = jsonkit.Codec[any]{}
-	_ codec.Marshaler      = jsonkit.Codec[any]{}
-	_ codec.Unmarshaler    = jsonkit.Codec[any]{}
-	_ codec.StreamProducer = jsonkit.Codec[any]{}
-	_ codec.StreamConsumer = jsonkit.Codec[any]{}
-	_ codec.StreamEncoder  = jsonkit.Codec[any]{}.NewStreamEncoder(nil)
-	_ codec.StreamDecoder  = jsonkit.Codec[any]{}.NewStreamDecoder(nil)
+	_ codec.Bundle         = jsonkit.Bundle{}
+	_ codec.Marshaler      = jsonkit.Bundle{}
+	_ codec.Unmarshaler    = jsonkit.Bundle{}
+	_ codec.StreamProducer = jsonkit.Bundle{}
+	_ codec.StreamConsumer = jsonkit.Bundle{}
+	_ codec.StreamEncoder  = jsonkit.Bundle{}.NewStreamEncoder(nil)
+	_ codec.StreamDecoder  = jsonkit.Bundle{}.NewStreamDecoder(nil)
 
-	_ codec.Codec[Foo]             = jsonkit.Codec[Foo]{}
-	_ codec.MarshalerT[Foo]        = jsonkit.Codec[Foo]{}
-	_ codec.UnmarshalerT[Foo]      = jsonkit.Codec[Foo]{}
-	_ codec.StreamProducerT[Foo]   = jsonkit.Codec[Foo]{}
-	_ codec.StreamConsumerT[Foo]   = jsonkit.Codec[Foo]{}
-	_ codec.StreamEncoderT[Foo]    = jsonkit.Codec[Foo]{}.NewStreamEncoderT(nil)
-	_ codec.StreamDecoderT[Foo]    = jsonkit.Codec[Foo]{}.NewStreamDecoderT(nil)
-	_ codec.SliceMarshalerT[Foo]   = jsonkit.Codec[Foo]{}
-	_ codec.SliceUnmarshalerT[Foo] = jsonkit.Codec[Foo]{}
+	_ codec.Codec[Foo]              = jsonkit.Codec[Foo]{}
+	_ codec.TypeMarshaler[Foo]      = jsonkit.Codec[Foo]{}
+	_ codec.TypeUnmarshaler[Foo]    = jsonkit.Codec[Foo]{}
+	_ codec.TypeStreamProducer[Foo] = jsonkit.Codec[Foo]{}
+	_ codec.TypeStreamConsumer[Foo] = jsonkit.Codec[Foo]{}
+	_ codec.TypeStreamEncoder[Foo]  = jsonkit.Codec[Foo]{}.NewStreamEncoder(nil)
+	_ codec.TypeStreamDecoder[Foo]  = jsonkit.Codec[Foo]{}.NewStreamDecoder(nil)
+	_ codec.SliceMarshalerT[Foo]    = jsonkit.Codec[Foo]{}
+	_ codec.SliceUnmarshalerT[Foo]  = jsonkit.Codec[Foo]{}
 )
 
 var (
-	_ codec.Bundle         = jsonkit.LinesCodec[any]{}
-	_ codec.Marshaler      = jsonkit.LinesCodec[any]{}
-	_ codec.Unmarshaler    = jsonkit.LinesCodec[any]{}
-	_ codec.StreamProducer = jsonkit.LinesCodec[any]{}
-	_ codec.StreamConsumer = jsonkit.LinesCodec[any]{}
-	_ codec.StreamEncoder  = jsonkit.LinesCodec[any]{}.NewStreamEncoder(nil)
-	_ codec.StreamDecoder  = jsonkit.LinesCodec[any]{}.NewStreamDecoder(nil)
+	_ codec.Bundle         = jsonkit.LinesBundle{}
+	_ codec.Marshaler      = jsonkit.LinesBundle{}
+	_ codec.Unmarshaler    = jsonkit.LinesBundle{}
+	_ codec.StreamProducer = jsonkit.LinesBundle{}
+	_ codec.StreamConsumer = jsonkit.LinesBundle{}
+	_ codec.StreamEncoder  = jsonkit.LinesBundle{}.NewStreamEncoder(nil)
+	_ codec.StreamDecoder  = jsonkit.LinesBundle{}.NewStreamDecoder(nil)
 
-	_ codec.Codec[Foo]             = jsonkit.LinesCodec[Foo]{}
-	_ codec.MarshalerT[Foo]        = jsonkit.LinesCodec[Foo]{}
-	_ codec.UnmarshalerT[Foo]      = jsonkit.LinesCodec[Foo]{}
-	_ codec.StreamProducerT[Foo]   = jsonkit.LinesCodec[Foo]{}
-	_ codec.StreamConsumerT[Foo]   = jsonkit.LinesCodec[Foo]{}
-	_ codec.StreamEncoderT[Foo]    = jsonkit.LinesCodec[Foo]{}.NewStreamEncoderT(nil)
-	_ codec.StreamDecoderT[Foo]    = jsonkit.LinesCodec[Foo]{}.NewStreamDecoderT(nil)
-	_ codec.SliceMarshalerT[Foo]   = jsonkit.LinesCodec[Foo]{}
-	_ codec.SliceUnmarshalerT[Foo] = jsonkit.LinesCodec[Foo]{}
+	_ codec.Codec[Foo]              = jsonkit.LinesCodec[Foo]{}
+	_ codec.TypeMarshaler[Foo]      = jsonkit.LinesCodec[Foo]{}
+	_ codec.TypeUnmarshaler[Foo]    = jsonkit.LinesCodec[Foo]{}
+	_ codec.TypeStreamProducer[Foo] = jsonkit.LinesCodec[Foo]{}
+	_ codec.TypeStreamConsumer[Foo] = jsonkit.LinesCodec[Foo]{}
+	_ codec.TypeStreamEncoder[Foo]  = jsonkit.LinesCodec[Foo]{}.NewStreamEncoder(nil)
+	_ codec.TypeStreamDecoder[Foo]  = jsonkit.LinesCodec[Foo]{}.NewStreamDecoder(nil)
+	_ codec.SliceMarshalerT[Foo]    = jsonkit.LinesCodec[Foo]{}
+	_ codec.SliceUnmarshalerT[Foo]  = jsonkit.LinesCodec[Foo]{}
 )
 
-func TestSerializer_serializer(t *testing.T) {
-	exp := Foo{
-		ID:  "1",
-		Foo: "foo",
-		Bar: "bar",
-		Baz: "baz",
-	}
+func TestCodec(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	exp := testent.MakeFoo(t)
 
 	ser := jsonkit.Codec[Foo]{}
 	data, err := ser.Marshal(exp)
@@ -70,6 +70,90 @@ func TestSerializer_serializer(t *testing.T) {
 	var got Foo
 	assert.NoError(t, ser.Unmarshal(data, &got))
 	assert.Equal(t, exp, got)
+
+	vs := random.Slice(t.Random.IntBetween(3, 7), func() Foo {
+		return testent.MakeFoo(t)
+	}, random.UniqueValues)
+
+	var buf bytes.Buffer
+	enc := ser.NewStreamEncoder(&buf)
+
+	for _, v := range vs {
+		assert.NoError(t, enc.Encode(v))
+	}
+	assert.NoError(t, enc.Close())
+
+	assert.True(t, json.Valid(buf.Bytes()), "expcted that json Budnle stream encoding produces a whole valid json value")
+
+	var vsGOT []Foo
+	assert.NoError(t, ser.UnmarshalSlice(buf.Bytes(), &vsGOT))
+	assert.Equal(t, vs, vsGOT)
+
+	vsGOT = nil
+	data, err = ser.MarshalSlice(vs)
+	assert.NoError(t, err)
+	assert.NoError(t, ser.UnmarshalSlice(buf.Bytes(), &vsGOT))
+	assert.Equal(t, vs, vsGOT)
+
+	stream := ser.NewStreamDecoder(&buf)
+
+	vsGOT = nil
+	for elem, err := range stream {
+		assert.NoError(t, err)
+
+		var v Foo
+		assert.NoError(t, elem.Decode(&v))
+		vsGOT = append(vsGOT, v)
+	}
+
+	assert.Equal(t, vs, vsGOT)
+}
+
+func TestBundle(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	exp := testent.MakeFoo(t)
+
+	ser := jsonkit.Bundle{}
+	data, err := ser.Marshal(exp)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, data)
+	assert.True(t, json.Valid(data))
+
+	var got Foo
+	assert.NoError(t, ser.Unmarshal(data, &got))
+	assert.Equal(t, exp, got)
+
+	vs := random.Slice(t.Random.IntBetween(3, 7), func() Foo {
+		return testent.MakeFoo(t)
+	}, random.UniqueValues)
+
+	var buf bytes.Buffer
+	enc := ser.NewStreamEncoder(&buf)
+
+	for _, v := range vs {
+		assert.NoError(t, enc.Encode(v))
+	}
+	assert.NoError(t, enc.Close())
+
+	assert.True(t, json.Valid(buf.Bytes()), "expcted that json Budnle stream encoding produces a whole valid json value")
+
+	var vsGOT []Foo
+	assert.NoError(t, ser.Unmarshal(buf.Bytes(), &vsGOT))
+	assert.Equal(t, vs, vsGOT)
+
+	stream := ser.NewStreamDecoder(&buf)
+
+	vsGOT = nil
+	for elem, err := range stream {
+		assert.NoError(t, err)
+
+		var v Foo
+		assert.NoError(t, elem.Decode(&v))
+		vsGOT = append(vsGOT, v)
+	}
+
+	assert.Equal(t, vs, vsGOT)
 }
 
 func Test_arrayStream(t *testing.T) {
@@ -101,17 +185,17 @@ func Test_arrayStream(t *testing.T) {
 	dec, err, ok := next()
 	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NoError(t, dec.DecodeT(&got1))
+	assert.NoError(t, dec.Decode(&got1))
 
 	dec, err, ok = next()
 	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NoError(t, dec.DecodeT(&got2))
+	assert.NoError(t, dec.Decode(&got2))
 
 	dec, err, ok = next()
 	assert.True(t, ok)
 	assert.NoError(t, err)
-	assert.NoError(t, dec.DecodeT(&got3))
+	assert.NoError(t, dec.Decode(&got3))
 
 	_, _, ok = next()
 	assert.False(t, ok)
@@ -153,7 +237,7 @@ func TestJSONSerializer_NewListDecoder(t *testing.T) {
 			assert.NoError(t, err)
 			iterations++
 			var got Foo
-			assert.NoError(t, dec.DecodeT(&got))
+			assert.NoError(t, dec.Decode(&got))
 			gotFoos = append(gotFoos, got)
 		}
 		assert.Equal(t, foos, gotFoos)

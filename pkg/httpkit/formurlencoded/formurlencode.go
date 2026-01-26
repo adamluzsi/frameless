@@ -1,4 +1,4 @@
-package httpcodec
+package formurlencoded
 
 import (
 	"bufio"
@@ -15,27 +15,15 @@ import (
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
-	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/reflectkit/refvis"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/port/codec"
-	"go.llib.dev/testcase/pp"
 )
 
-func FormURLEncoded[T any]() Codec[T] {
-	var c formURLEncoded[T]
-	return Codec[T]{
-		Marshal:   c.Marshal,
-		Unmarshal: c.Unmarshal,
-
-		List: ListCodec[T]{},
-	}
-}
-
-type formURLEncoded[T any] struct {
+type Bundle struct {
 	// Collection is the id/name of the collection type.
 	// The default value is the short type name of T in snake case with an "s" suffix.
 	// For example if T is
@@ -49,7 +37,7 @@ type formURLEncoded[T any] struct {
 	prefix     string
 }
 
-func (c formURLEncoded[T]) withPrefix(prefix string) formURLEncoded[T] {
+func (c Bundle) withPrefix(prefix string) Bundle {
 	if len(c.prefix) == 0 {
 		c.prefix = prefix
 		return c
@@ -58,7 +46,7 @@ func (c formURLEncoded[T]) withPrefix(prefix string) formURLEncoded[T] {
 	return c
 }
 
-func (c *formURLEncoded[T]) fmtKey(key string) string {
+func (c *Bundle) fmtKey(key string) string {
 	if c.StringCase != nil {
 		return c.StringCase(key)
 	}
@@ -67,7 +55,7 @@ func (c *formURLEncoded[T]) fmtKey(key string) string {
 
 var pkgPrefix = regexp.MustCompile(`^[\w\d]+\.`)
 
-func (c *formURLEncoded[T]) typeName(typ reflect.Type) string {
+func (c *Bundle) typeName(typ reflect.Type) string {
 	if name := typ.Name(); 0 < len(name) {
 		return c.fmtKey(name)
 	}
@@ -76,18 +64,11 @@ func (c *formURLEncoded[T]) typeName(typ reflect.Type) string {
 	return c.fmtKey(raw)
 }
 
-func (c *formURLEncoded[T]) getCollection() string {
-	if len(c.Collection) == 0 {
-		c.Collection = c.typeName(reflectkit.TypeOf[T]()) + "s"
-	}
-	return c.Collection
-}
-
 var mediaTypeFormURLEncoded = map[string]struct{}{
 	mediatype.FormUrlencoded: {},
 }
 
-func (c formURLEncoded[T]) filterValues(values url.Values) url.Values {
+func (c Bundle) filterValues(values url.Values) url.Values {
 	if 0 < len(c.prefix) {
 		var vs = url.Values{}
 		for key, value := range values {
@@ -101,7 +82,7 @@ func (c formURLEncoded[T]) filterValues(values url.Values) url.Values {
 	return values
 }
 
-func (c formURLEncoded[T]) formatValues(values url.Values) {
+func (c Bundle) formatValues(values url.Values) {
 	if 0 < len(c.prefix) {
 		var addSuffix func(vs url.Values, key, suffix string)
 		addSuffix = func(vs url.Values, key, suffix string) {
@@ -121,14 +102,14 @@ func (c formURLEncoded[T]) formatValues(values url.Values) {
 	}
 }
 
-func (c formURLEncoded[T]) Marshal(v T) ([]byte, error) {
+func (c Bundle) Marshal(v any) ([]byte, error) {
 	var input = reflect.ValueOf(v)
 	q := url.Values{}
 	err := c.marshalAppend(q, "", input)
 	return []byte(q.Encode()), err
 }
 
-func (c formURLEncoded[T]) marshalAppend(vs url.Values, qKey string, val reflect.Value) error {
+func (c Bundle) marshalAppend(vs url.Values, qKey string, val reflect.Value) error {
 	switch val.Kind() {
 	case reflect.Struct:
 		c := c.withPrefix(qKey)
@@ -177,19 +158,22 @@ func (c formURLEncoded[T]) marshalAppend(vs url.Values, qKey string, val reflect
 	}
 }
 
-func (c formURLEncoded[T]) Unmarshal(data []byte, p *T) error {
+func (c Bundle) Unmarshal(data []byte, ptr any) error {
 	vs, err := url.ParseQuery(string(data))
 	if err != nil {
 		return err
 	}
-	if p == nil {
+	if ptr == nil {
 		return fmt.Errorf("nil pointer received")
 	}
-
-	return c.unmarshal(vs, reflect.ValueOf(p))
+	p := reflect.ValueOf(ptr)
+	if p.Kind() != reflect.Pointer {
+		return fmt.Errorf("non pointer type received as ptr argument for Form URL Encoded Unmarshal")
+	}
+	return c.visitUnmarshal(vs, p)
 }
 
-func (c formURLEncoded[T]) getQueryKeyFor(node refvis.Node) (string, error) {
+func (c Bundle) getQueryKeyFor(node refvis.Node) (string, error) {
 	var k []string
 	for e := range node.Iter() {
 		switch e.Type {
@@ -209,7 +193,7 @@ func (c formURLEncoded[T]) getQueryKeyFor(node refvis.Node) (string, error) {
 	return strings.Join(k, "."), nil
 }
 
-func (c formURLEncoded[T]) getQueryFor(q url.Values, n refvis.Node) (url.Values, error) {
+func (c Bundle) getQueryFor(q url.Values, n refvis.Node) (url.Values, error) {
 	prefix, err := c.getQueryKeyFor(n)
 	if err != nil {
 		return nil, err
@@ -223,7 +207,7 @@ func (c formURLEncoded[T]) getQueryFor(q url.Values, n refvis.Node) (url.Values,
 	return subq, nil
 }
 
-func (c formURLEncoded[T]) getQueryKeyValue(query url.Values, node refvis.Node) ([]string, bool, error) {
+func (c Bundle) getQueryKeyValue(query url.Values, node refvis.Node) ([]string, bool, error) {
 	qKey, err := c.getQueryKeyFor(node)
 	if err != nil {
 		return nil, false, err
@@ -235,60 +219,18 @@ func (c formURLEncoded[T]) getQueryKeyValue(query url.Values, node refvis.Node) 
 	return qVS, true, nil
 }
 
-func (c formURLEncoded[T]) unmarshal(q url.Values, val reflect.Value) error {
-	return refvis.Walk(val.Addr(), func(n refvis.Node) error {
+func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
+	return refvis.Walk(val, func(n refvis.Node) error {
 		switch n.Type {
-		case refvis.Map:
-			sq, err := c.getQueryFor(q, n)
-			if err != nil {
-				return err
-			}
-			if len(sq) == 0 {
-				return refvis.StepOver
-			}
-
-			// n.Value.Set(reflect.MakeMap(n.VType))
-
-			return nil
-
-			if err := c.unmarshalMap(q, n); err != nil {
-				return err
-			}
-			return refvis.StepOver
-
-		case refvis.Slice:
+		case refvis.StructField:
 			qVS, ok, err := c.getQueryKeyValue(q, n)
 			if err != nil {
 				return err
 			}
 			if !ok {
-				return refvis.StepOver
+				return nil
 			}
-			n.Value.Set(reflect.MakeSlice(n.Value.Type(), len(qVS), len(qVS)))
-			fallthrough
-		case refvis.Array:
-			qVS, ok, err := c.getQueryKeyValue(q, n)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return refvis.StepOver
-			}
-			var elemType = n.Value.Type().Elem()
-			for i, raw := range qVS {
-				if err := convkit.UnmarshalReflect(elemType, []byte(raw), n.Value.Index(i).Addr()); err != nil {
-					return err
-				}
-			}
-			return refvis.StepOver
-		default:
-			qVS, ok, err := c.getQueryKeyValue(q, n)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return refvis.StepOver
-			}
+
 			raw, ok := slicekit.First(qVS)
 			if !ok {
 				return nil
@@ -299,15 +241,82 @@ func (c formURLEncoded[T]) unmarshal(q url.Values, val reflect.Value) error {
 				typ = n.StructField.Type
 			}
 
-			if err := convkit.UnmarshalReflect(typ, []byte(raw), n.Value.Addr()); err != nil {
+			ptr := reflect.New(n.StructField.Type)
+
+			if err := convkit.UnmarshalReflect(typ, []byte(raw), ptr); err != nil {
 				return err
 			}
+
+			n.Value.Set(ptr.Elem())
+			return refvis.Skip
+
+		case refvis.Map:
+			sq, err := c.getQueryFor(q, n)
+			if err != nil {
+				return err
+			}
+			if len(sq) == 0 {
+				return nil
+			}
+			n.Value.Set(reflect.MakeMap(n.Value.Type()))
+			if err := c.unmarshalMap(q, n); err != nil {
+				return err
+			}
+			return nil
+
+		case refvis.Slice:
+			qVS, ok, err := c.getQueryKeyValue(q, n)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			n.Value.Set(reflect.MakeSlice(n.Value.Type(), len(qVS), len(qVS)))
+			fallthrough
+		case refvis.Array:
+			qVS, ok, err := c.getQueryKeyValue(q, n)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return nil
+			}
+			var elemType = n.Value.Type().Elem()
+			for i, raw := range qVS {
+				if err := convkit.UnmarshalReflect(elemType, []byte(raw), n.Value.Index(i).Addr()); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
 		return nil
 	})
 }
 
-func (c formURLEncoded[T]) unmarshalStruct(vs url.Values, ptr reflect.Value) error {
+func (c Bundle) unmarshalValue(q url.Values, n refvis.Node, ptr reflect.Value) error {
+	qVS, ok, err := c.getQueryKeyValue(q, n)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	raw, ok := slicekit.First(qVS)
+	if !ok {
+		return nil
+	}
+
+	var typ = n.Value.Type()
+	if n.Type == refvis.StructField {
+		typ = n.StructField.Type
+	}
+
+	return convkit.UnmarshalReflect(typ, []byte(raw), ptr)
+}
+
+func (c Bundle) unmarshalStruct(vs url.Values, ptr reflect.Value) error {
 	for i, num := 0, ptr.Type().Elem().NumField(); i < num; i++ {
 		var (
 			field = ptr.Elem().Field(i)
@@ -337,41 +346,7 @@ func (c formURLEncoded[T]) unmarshalStruct(vs url.Values, ptr reflect.Value) err
 	return nil
 }
 
-func (c formURLEncoded[T]) unmarshalValue(query url.Values, n refvis.Node) error {
-	return nil
-	// vs, ok, err := c.getQueryKeyValue(query, n)
-	// if err != nil {
-	// 	return err
-	// }
-	// if !ok {
-	// 	return refvis.StepOver
-	// }
-	// switch n.Value.Kind() {
-	// case reflect.Slice:
-	// 	// mValP.Elem().Set(reflect.MakeSlice(valueType, len(vs), len(vs)))
-	// 	// ptr.Elem().SetMapIndex(mKey, mValP.Elem())
-
-	// case reflect.Array:
-	// 	elemType := valueType.Elem()
-	// 	for i, raw := range vs {
-	// 		err := convkit.UnmarshalReflect(elemType, []byte(raw), mValP.Elem().Index(i).Addr())
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	// 	}
-	// default:
-	// 	raw, ok := slicekit.Last(vs)
-	// 	if !ok {
-	// 		continue
-	// 	}
-	// 	err := convkit.UnmarshalReflect(valueType, []byte(raw), mValP)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
-}
-
-func (c formURLEncoded[T]) unmarshalMap(query url.Values, n refvis.Node) error {
+func (c Bundle) unmarshalMap(query url.Values, n refvis.Node) error {
 	var (
 		ptr       = n.Value.Addr()
 		mapType   = ptr.Type().Elem()
@@ -383,13 +358,6 @@ func (c formURLEncoded[T]) unmarshalMap(query url.Values, n refvis.Node) error {
 	// qKeyPrefix :=
 
 	for qKey, qVS := range query {
-		// out, err := slicekit.MapErr(qVS, func(i string) (any, error) {
-		// 	return convkit.DuckParse(i)
-		// })
-		// if err != nil {
-		// 	return fmt.Errorf("error while parsing %s's values: %w", qKey, err)
-		// }
-
 		mKey, err := convkit.ParseReflect(keyType, qKey)
 		if err != nil {
 			return fmt.Errorf("failed to parse key value for type %s: %w",
@@ -397,18 +365,16 @@ func (c formURLEncoded[T]) unmarshalMap(query url.Values, n refvis.Node) error {
 		}
 
 		mValP := reflect.New(valueType)
-		pp.PP(mValP.Interface())
-		mValP.Elem().Set(ptr.Elem().MapIndex(mKey))
-		ptr.Elem().SetMapIndex(mKey, mValP.Elem())
+		// mValP.Elem().Set(ptr.Elem().MapIndex(mKey))
 
 		switch {
 		case len(qVS) == 0:
 			continue
+
 		case 0 < len(qVS):
 			switch valueType.Kind() {
 			case reflect.Slice:
 				mValP.Elem().Set(reflect.MakeSlice(valueType, len(qVS), len(qVS)))
-				ptr.Elem().SetMapIndex(mKey, mValP.Elem())
 
 			case reflect.Array:
 				elemType := valueType.Elem()
@@ -439,14 +405,14 @@ type formProperties struct {
 	OmitEmpty bool
 }
 
-func (c formURLEncoded[T]) qKeyFor(k string) string {
+func (c Bundle) qKeyFor(k string) string {
 	if len(c.prefix) != 0 {
 		k = c.prefix + "." + k
 	}
 	return k
 }
 
-func (c formURLEncoded[T]) getFormProperties(typ reflect.StructField) formProperties {
+func (c Bundle) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
 	prop.Name = c.fmtKey(typ.Name)
 	c.lookupTag(typ, "url", &prop)
@@ -454,7 +420,7 @@ func (c formURLEncoded[T]) getFormProperties(typ reflect.StructField) formProper
 	return prop
 }
 
-func (c formURLEncoded[T]) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
+func (c Bundle) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
 	tag, ok := typ.Tag.Lookup(tagKey)
 	if !ok || len(tag) == 0 {
 		return
@@ -471,20 +437,24 @@ func (c formURLEncoded[T]) lookupTag(typ reflect.StructField, tagKey string, pro
 	}
 }
 
-func (c formURLEncoded[T]) NewListEncoder(w io.Writer) codec.StreamEncoderT[T] {
-	return &formURLStreamEncoder[T]{formURLEncoded: c, Writer: w}
-}
+// func (c Bundle) NewListEncoder(w io.Writer) codec.StreamEncoder {
+// 	return &streamEncoder{Bundle: c, Writer: w}
+// }
 
-type formURLStreamEncoder[T any] struct {
-	formURLEncoded[T]
+type encoder struct {
+	Bundle
 	Writer io.Writer
 	index  int
 }
 
-func (se *formURLStreamEncoder[T]) Encode(v T) error {
-	enc := se.formURLEncoded.
-		withPrefix(se.formURLEncoded.getCollection()).
-		withPrefix(strconv.Itoa(se.index))
+func (se *encoder) Encode(v any) error {
+	enc := se.Bundle
+
+	if 0 < len(se.Bundle.Collection) {
+		enc = enc.
+			withPrefix(se.Bundle.Collection).
+			withPrefix(strconv.Itoa(se.index))
+	}
 
 	data, err := enc.Marshal(v)
 	if err != nil {
@@ -498,20 +468,17 @@ func (se *formURLStreamEncoder[T]) Encode(v T) error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }
 
-func (se *formURLStreamEncoder[T]) Close() error {
-	return nil
-}
+func (se *encoder) Close() error { return nil }
 
-func (c formURLEncoded[T]) NewListDecoder(r io.Reader) codec.StreamDecoderT[T] {
-	return iterkit.FromPullIter(&formURLStreamDecoder[T]{formURLEncoded: c, Reader: r})
-}
+// func (c Bundle) NewListDecoder(r io.Reader) codec.TypeStreamDecoder[T] {
+// 	return iterkit.FromPullIter(&formURLStreamDecoder[T]{Codec: c, Reader: r})
+// }
 
-type formURLStreamDecoder[T any] struct {
-	formURLEncoded[T]
+type decoder[T any] struct {
+	Bundle
 	Reader io.Reader
 
 	index int
@@ -526,11 +493,11 @@ type formURLStreamDecoder[T any] struct {
 	queryBuffer url.Values
 }
 
-func (c *formURLStreamDecoder[T]) Err() error {
+func (c *decoder[T]) Err() error {
 	return c.err
 }
 
-func (c *formURLStreamDecoder[T]) Next() bool {
+func (c *decoder[T]) Next() bool {
 	if c.done {
 		return false
 	}
@@ -542,7 +509,7 @@ func (c *formURLStreamDecoder[T]) Next() bool {
 		c.buffer = bufio.NewReader(c.Reader)
 	}
 
-	c.curSuffix = fmt.Sprintf("%s[%d]", c.formURLEncoded.getCollection(), c.index)
+	c.curSuffix = fmt.Sprintf("%s[%d]", c.Bundle.Collection, c.index)
 	c.index++
 
 	var prev = url.Values{}
@@ -564,13 +531,11 @@ func (c *formURLStreamDecoder[T]) Next() bool {
 			queryPart = append(queryPart, part...)
 		}
 		if err != nil && !errors.Is(err, io.EOF) {
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					break
-				}
-				c.err = err
-				return false
+			if errors.Is(err, io.EOF) {
+				break
 			}
+			c.err = err
+			return false
 		}
 		if !bytes.Contains(part, contSignature) {
 			break
@@ -604,17 +569,17 @@ func (c *formURLStreamDecoder[T]) Next() bool {
 	return true
 }
 
-func (c *formURLStreamDecoder[T]) Value() codec.DecoderT[T] {
+func (c *decoder[T]) Value() codec.TypeDecoder[T] {
 	return c
 }
 
-func (c *formURLStreamDecoder[T]) Decode(p *T) error {
-	dec := c.formURLEncoded
+func (c *decoder[T]) Decode(p *T) error {
+	dec := c.Bundle
 	dec.prefix = c.curSuffix
-	return dec.unmarshal(c.curQuery, reflect.ValueOf(p))
+	return dec.visitUnmarshal(c.curQuery, reflect.ValueOf(p))
 }
 
-func (c *formURLStreamDecoder[T]) Close() error {
+func (c *decoder[T]) Close() error {
 	if len(c.queryBuffer) != 0 {
 		return fmt.Errorf("unprocessed query string are in the stream decoder:\n%s", c.queryBuffer.Encode())
 	}

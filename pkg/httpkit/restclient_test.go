@@ -12,9 +12,9 @@ import (
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/httpkit"
-	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/pathkit"
 	"go.llib.dev/frameless/port/crud/crudcontract"
@@ -30,8 +30,8 @@ func ExampleRESTClient() {
 		fooRepo = httpkit.RESTClient[testent.Foo, testent.FooID]{
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
-			Codecs: httpkit.RESTClientCodecs[testent.Foo]{
-				mediatype.JSON: httpcodec.JSON[testent.Foo]{},
+			Codecs: httpkit.Codecs{
+				mediatype.JSON: jsonkit.Bundle{},
 			},
 			// leave IDFormatter empty for using the default id formatter, or provide your own
 			IDFormatter: func(fi testent.FooID) (string, error) {
@@ -261,8 +261,8 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
 		h.MediaType = GobMediaType
-		h.Codecs = []httpkit.RESTHandlerCodec[testent.Foo]{
-			GobMediaType: GobCodec{},
+		h.Codecs = httpkit.Codecs{
+			GobMediaType: &GobBundle{},
 		}
 	})
 
@@ -283,8 +283,8 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 		MediaType: GobMediaType,
 
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{
-			GobCodec[testent.Foo]{},
+		Codecs: httpkit.Codecs{
+			GobMediaType: &GobBundle{},
 		},
 	}
 
@@ -297,19 +297,12 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 const GobMediaType = "application/gob"
 
-type GobCodec[T any] struct {
+type GobBundle struct {
 	regonce sync.Once
 }
 
-func (c *GobCodec[T]) Supports(v any) bool {
-	c.regonce.Do(func() {
-		gob.Register(v)
-	})
-	return true
-}
-
 // Marshal encodes a value v into a byte slice.
-func (c *GobCodec[T]) Marshal(v any) (_ []byte, _ error) {
+func (c *GobBundle) Marshal(v any) (_ []byte, _ error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(v); err != nil {
@@ -319,7 +312,7 @@ func (c *GobCodec[T]) Marshal(v any) (_ []byte, _ error) {
 }
 
 // Unmarshal decodes a byte slice into a provided pointer ptr.
-func (c *GobCodec[T]) Unmarshal(data []byte, ptr any) (_ error) {
+func (c *GobBundle) Unmarshal(data []byte, ptr any) (_ error) {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
 	if err := dec.Decode(ptr); err != nil {
@@ -379,8 +372,8 @@ func TestRESTClient_bodyReadLimit(t *testing.T) {
 
 		MediaType: GobMediaType,
 
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{
-			GobMediaType: GobCodec{},
+		Codecs: httpkit.Codecs{
+			GobMediaType: &GobBundle{},
 		},
 
 		BodyReadLimit: 1,

@@ -4,7 +4,7 @@ import "go.llib.dev/frameless/port/codec"
 
 func ExampleStreamEncoderT() {
 	var upstream = []int{1, 2, 3, 4, 5}
-	var downstream codec.StreamEncoderT[int]
+	var downstream codec.TypeStreamEncoder[int]
 	// ensuring that the underlying stream is finalised,
 	// and potential remaining writings are flushed from the stream encoder
 	defer downstream.Close()
@@ -17,7 +17,7 @@ func ExampleStreamEncoderT() {
 }
 
 func ExampleStreamDecoderT() {
-	var stream codec.StreamDecoderT[int]
+	var stream codec.TypeStreamDecoder[int]
 
 	for next, err := range stream {
 		// error that occured with the stream itselt

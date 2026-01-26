@@ -88,7 +88,7 @@ func TestWalk(t *testing.T) {
 			})
 		})
 
-		s.Test("Visitor#StepOver can stop further down traversing", func(t *testcase.T) {
+		s.Test("Visitor#Skip can stop further down traversing during struct field iteration", func(t *testcase.T) {
 			type A struct {
 				V int
 			}
@@ -115,7 +115,7 @@ func TestWalk(t *testing.T) {
 			visit.Set(t, func(node refvis.Node) error {
 				nodes = append(nodes, node)
 				if node.Type == refvis.StructField && node.StructField.Name == "B1" {
-					return refvis.StepOver
+					return refvis.Skip
 				}
 				return nil
 			})
@@ -135,57 +135,143 @@ func TestWalk(t *testing.T) {
 			}, "but a2 is visited since it was not step over")
 		})
 
-		s.Test("Visitor#StepOut stops the iteration of the struct fields", func(t *testcase.T) {
-			type T struct {
-				A int
-				B int
-				C int
+		s.Test("Visitor#Skip can stop further down traversing within a sub node of a iterated struct field", func(t *testcase.T) {
+			type A struct {
+				V int
+			}
+			type B struct {
+				A A
+				V string
+			}
+			type C struct {
+				B1 B
+				B2 B
+				V  float32
 			}
 
-			var v = T{
-				A: t.Random.Int(),
-				B: t.Random.Int(),
-				C: t.Random.Int(),
-			}
+			var (
+				a1 = A{V: t.Random.Int()}
+				a2 = A{V: t.Random.Int()}
+				b1 = B{A: a1, V: t.Random.String()}
+				b2 = B{A: a2, V: t.Random.String()}
+				c0 = C{B1: b1, B2: b2, V: t.Random.Float32()}
+			)
 
 			var nodes []refvis.Node
+
 			visit.Set(t, func(node refvis.Node) error {
-				nodes = append(nodes, node)
-				if node.Type == refvis.StructField && node.StructField.Name == "B" {
-					var aF, cF bool
-					for _, n := range nodes {
-						if n.StructField.Name == "A" {
-							aF = true
-						}
-						if n.StructField.Name == "C" {
-							cF = true
+				if node.Type == refvis.Struct && node.Parent != nil && node.Parent.Type == refvis.StructField && node.Parent.StructField.Name == "A" {
+					var ok bool
+					for n := range node.IterUpward() {
+						if n.Type == refvis.StructField && n.StructField.Name == "B1" {
+							ok = true
 						}
 					}
-					if aF && cF {
-						t.Skip("flaky test, it was not expected that struct field A and C is already visited")
+					if ok {
+						return refvis.Skip
 					}
-					return refvis.StepOut
 				}
+				nodes = append(nodes, node)
 				return nil
 			})
-			value.Set(t, reflect.ValueOf(v))
+
+			value.Set(t, reflect.ValueOf(c0))
 
 			assert.NoError(t, act(t))
 
-			var aFound, cFound bool
-			for _, node := range nodes {
-				if node.Type != refvis.StructField {
-					continue
-				}
-				if node.StructField.Name == "A" {
-					aFound = true
-				}
-				if node.StructField.Name == "C" {
-					cFound = true
-				}
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal(t, node.Type, refvis.Struct)
+				assert.Equal[any](t, a1, node.Value.Interface())
+			}, "a1 is not visited")
+
+			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal(t, node.Type, refvis.Struct)
+				assert.Equal[any](t, a2, node.Value.Interface())
+			}, "but a2 is visited since it was not step over")
+		})
+
+		s.Test("Visitor#Skip interrupts the visiting of the struct field", func(t *testcase.T) {
+			type A struct {
+				V int
+			}
+			type B struct {
+				A A
+				V string
+			}
+			type C struct {
+				B1 B
+				B2 B
+				V  float32
 			}
 
-			assert.False(t, aFound && cFound, "expected that one of them should be missing, since we skipped ")
+			var (
+				a1 = A{V: t.Random.Int()}
+				a2 = A{V: t.Random.Int()}
+				b1 = B{A: a1, V: t.Random.String()}
+				b2 = B{A: a2, V: t.Random.String()}
+				c0 = C{B1: b1, B2: b2, V: t.Random.Float32()}
+			)
+
+			var nodes []refvis.Node
+
+			visit.Set(t, func(node refvis.Node) error {
+				nodes = append(nodes, node)
+				if node.Type == refvis.StructField && node.StructField.Name == "B1" {
+					return refvis.Skip
+				}
+				return nil
+			})
+
+			value.Set(t, reflect.ValueOf(c0))
+
+			assert.NoError(t, act(t))
+
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal(t, node.Type, refvis.Struct)
+				assert.Equal[any](t, a1, node.Value.Interface())
+			}, "a1 is not visited")
+		})
+
+		s.Test("Visitor#Skip will not the interrupt the iteration of the struct fields", func(t *testcase.T) {
+			type A struct {
+				V int
+			}
+			type B struct {
+				A A
+				V string
+			}
+			type C struct {
+				B1 B
+				B2 B
+				V  float32
+			}
+
+			var (
+				a1 = A{V: t.Random.Int()}
+				a2 = A{V: t.Random.Int()}
+				b1 = B{A: a1, V: t.Random.String()}
+				b2 = B{A: a2, V: t.Random.String()}
+				c0 = C{B1: b1, B2: b2, V: t.Random.Float32()}
+			)
+
+			var nodes []refvis.Node
+
+			visit.Set(t, func(node refvis.Node) error {
+				nodes = append(nodes, node)
+				if node.Type == refvis.StructField && node.StructField.Name == "B1" {
+					return refvis.Skip
+				}
+				return nil
+			})
+
+			value.Set(t, reflect.ValueOf(c0))
+
+			assert.NoError(t, act(t))
+
+			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal(t, node.Type, refvis.Struct)
+				assert.Equal[any](t, a2, node.Value.Interface())
+			}, "but a2 is visited since the iteration should continued")
 		})
 	})
 
@@ -265,6 +351,48 @@ func TestWalk(t *testing.T) {
 						assert.Equal[any](tb, elem.V, v.Value.Interface())
 					})
 				}
+			})
+		})
+
+		s.Test("Visitor#Break skips the currently visited item AND break the iteration of the map", func(t *testcase.T) {
+			var ary = [3]Visitable{
+				t.Random.Make(Visitable{}).(Visitable),
+				t.Random.Make(Visitable{}).(Visitable),
+				t.Random.Make(Visitable{}).(Visitable),
+			}
+
+			type W struct {
+				A [3]Visitable
+				V testent.Foo
+			}
+
+			var w = W{
+				A: ary,
+				V: testent.MakeFoo(t),
+			}
+
+			var nodes []refvis.Node
+			var breaks int
+			visit.Set(t, func(node refvis.Node) error {
+				if node.Type == refvis.ArrayElem {
+					breaks++
+					return refvis.Break
+				}
+				nodes = append(nodes, node)
+				return nil
+			})
+			value.Set(t, reflect.ValueOf(w))
+
+			assert.NoError(t, act(t))
+			assert.Equal(t, breaks, 1)
+
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, node.Type, refvis.ArrayElem)
+			})
+
+			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal(t, node.Type, refvis.StructField)
+				assert.Equal[any](t, node.Value.Interface(), w.V)
 			})
 		})
 	})
@@ -365,7 +493,7 @@ func TestWalk(t *testing.T) {
 			})
 		})
 
-		s.Test("Visitor#StepOver can stop further down traversing", func(t *testcase.T) {
+		s.Test("Visitor#Skip can stop further down traversing without breaking the iteration", func(t *testcase.T) {
 			var slc = []Visitable{
 				makeVisitable(t),
 				makeVisitable(t),
@@ -376,7 +504,7 @@ func TestWalk(t *testing.T) {
 			visit.Set(t, func(node refvis.Node) error {
 				nodes = append(nodes, node)
 				if node.Type == refvis.SliceElem && node.Index == 1 {
-					return refvis.StepOver
+					return refvis.Skip
 				}
 				return nil
 			})
@@ -395,7 +523,37 @@ func TestWalk(t *testing.T) {
 			})
 		})
 
-		s.Test("Visitor#StepOut stops the slice traversing", func(t *testcase.T) {
+		s.Test("Visitor#Skip only skips the current element without breaking the iteration", func(t *testcase.T) {
+			var slc = []Visitable{
+				makeVisitable(t),
+				makeVisitable(t),
+				makeVisitable(t),
+			}
+
+			var nodes []refvis.Node
+			visit.Set(t, func(node refvis.Node) error {
+				nodes = append(nodes, node)
+				if node.Type == refvis.SliceElem && node.Index == 1 {
+					return refvis.Skip
+				}
+				return nil
+			})
+			value.Set(t, reflect.ValueOf(slc))
+
+			assert.NoError(t, act(t))
+
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, slc[1].V, node.Value.Interface())
+			})
+			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, slc[0].V, node.Value.Interface())
+			})
+			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, slc[2].V, node.Value.Interface())
+			})
+		})
+
+		s.Test("Visitor#Break stops the slice traversing", func(t *testcase.T) {
 			slc := random.Slice(t.Random.IntBetween(3, 7), t.Random.Int, random.UniqueValues)
 
 			type W struct {
@@ -405,17 +563,17 @@ func TestWalk(t *testing.T) {
 
 			var w = W{
 				S: slc,
-				V: t.Random.Int(),
+				V: random.Unique(t.Random.Int, slc...),
 			}
 
 			var firstElem refvis.Node
 			var nodes []refvis.Node
 			visit.Set(t, func(node refvis.Node) error {
-				nodes = append(nodes, node)
 				if node.Type == refvis.SliceElem { // step out on the first slice elem
 					firstElem = node
-					return refvis.StepOut
+					return refvis.Break
 				}
+				nodes = append(nodes, node)
 				return nil
 			})
 
@@ -426,16 +584,19 @@ func TestWalk(t *testing.T) {
 			assert.NotNil(t, firstElem)
 			assert.NotEmpty(t, firstElem)
 			assert.NoneOf(t, nodes, func(t testing.TB, n refvis.Node) {
-				// no other keys found before
-				// and basically after the first step out,
-				// the map iteration should be stopped.
 				assert.Equal(t, n.Type, refvis.SliceElem)
 				assert.NotEqual(t, n.Index, firstElem.Index)
 			})
 
-			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
-				assert.Equal[any](t, w.V, node.Value.Interface())
-			})
+			for _, n := range slc {
+				elemT := reflect.TypeOf(slc).Elem()
+				notExpectedValue := reflect.ValueOf(n)
+				assert.NoneOf(t, nodes, func(t testing.TB, n refvis.Node) {
+					assert.Equal(t, n.Type, refvis.SliceElem)
+					assert.Equal(t, n.Value.Type(), elemT)
+					assert.Equal(t, notExpectedValue, n.Value)
+				})
+			}
 		})
 	})
 
@@ -548,7 +709,7 @@ func TestWalk(t *testing.T) {
 			})
 		})
 
-		s.Test("Visitor#StepOver can stop further down traversing", func(t *testcase.T) {
+		s.Test("Visitor#Skip can stop further down traversing", func(t *testcase.T) {
 			var m = map[int]Visitable{
 				1: makeVisitable(t),
 				2: makeVisitable(t),
@@ -559,7 +720,7 @@ func TestWalk(t *testing.T) {
 			visit.Set(t, func(node refvis.Node) error {
 				nodes = append(nodes, node)
 				if node.Type == refvis.MapValue && node.MapKey.Int() == 2 {
-					return refvis.StepOver
+					return refvis.Skip
 				}
 				return nil
 			})
@@ -576,48 +737,75 @@ func TestWalk(t *testing.T) {
 			})
 		})
 
-		s.Test("Visitor#StepOut stops the iteration of the map", func(t *testcase.T) {
-			m := random.Map(t.Random.IntBetween(3, 7), func() (int, string) {
-				return t.Random.Int(), t.Random.String()
-			}, random.UniqueValues)
+		s.Test("Visitor#Skip skips the currently visited item but doesn't break the iteration of the map", func(t *testcase.T) {
+			var m = map[int]Visitable{
+				1: makeVisitable(t),
+				2: makeVisitable(t),
+				3: makeVisitable(t),
+			}
+
+			var nodes []refvis.Node
+			visit.Set(t, func(node refvis.Node) error {
+				nodes = append(nodes, node)
+				if node.Type == refvis.MapValue && node.MapKey.Int() == 2 {
+					return refvis.Skip
+				}
+				return nil
+			})
+			value.Set(t, reflect.ValueOf(m))
+
+			assert.NoError(t, act(t))
+
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, m[2].V, node.Value.Interface())
+			})
+
+			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, m[3].V, node.Value.Interface())
+			})
+		})
+
+		s.Test("Visitor#Break skips the currently visited item AND break the iteration of the map", func(t *testcase.T) {
+			var m = map[int]Visitable{
+				1: makeVisitable(t),
+				2: makeVisitable(t),
+				3: makeVisitable(t),
+			}
 
 			type W struct {
-				M map[int]string
-				V int
+				M map[int]Visitable
+				V testent.Foo
 			}
 
 			var w = W{
 				M: m,
-				V: t.Random.Int(),
+				V: testent.MakeFoo(t),
 			}
 
-			var firstKey refvis.Node
 			var nodes []refvis.Node
 			visit.Set(t, func(node refvis.Node) error {
-				nodes = append(nodes, node)
-				if node.Type == refvis.MapValue { // step out on the first map key
-					firstKey = node
-					return refvis.StepOut
+				if node.Type == refvis.MapValue {
+					return refvis.Break
 				}
+				nodes = append(nodes, node)
 				return nil
 			})
 			value.Set(t, reflect.ValueOf(w))
 
 			assert.NoError(t, act(t))
 
-			assert.NotEmpty(t, firstKey)
-			assert.NoneOf(t, nodes, func(t testing.TB, n refvis.Node) {
-				// no other keys found before
-				// and basically after the first step out,
-				// the map iteration should be stopped.
-				assert.Equal(t, n.Type, refvis.MapValue)
-				assert.NotEqual(t, n.MapKey.Interface(), firstKey.MapKey.Interface())
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, m[2].V, node.Value.Interface())
+			})
+
+			assert.NoneOf(t, nodes, func(t testing.TB, node refvis.Node) {
+				assert.Equal[any](t, node.Type, refvis.MapValue)
 			})
 
 			assert.OneOf(t, nodes, func(t testing.TB, node refvis.Node) {
-				assert.Equal[any](t, w.V, node.Value.Interface())
+				assert.Equal(t, node.Type, refvis.StructField)
+				assert.Equal[any](t, node.Value.Interface(), w.V)
 			})
-
 		})
 	})
 

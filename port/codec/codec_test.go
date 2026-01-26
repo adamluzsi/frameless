@@ -3,16 +3,16 @@ package codec_test
 import "go.llib.dev/frameless/port/codec"
 
 var _ codec.Marshaler = (codec.MarshalTFunc[int])(nil)
-var _ codec.MarshalerT[int] = (codec.MarshalTFunc[int])(nil)
+var _ codec.TypeMarshaler[int] = (codec.MarshalTFunc[int])(nil)
 
 var _ codec.Unmarshaler = (codec.UnmarshalTFunc[int])(nil)
-var _ codec.UnmarshalerT[int] = (codec.UnmarshalTFunc[int])(nil)
+var _ codec.TypeUnmarshaler[int] = (codec.UnmarshalTFunc[int])(nil)
 
 var _ codec.Encoder = (codec.EncoderFunc[int])(nil)
-var _ codec.EncoderT[int] = (codec.EncoderFunc[int])(nil)
+var _ codec.TypeEncoder[int] = (codec.EncoderFunc[int])(nil)
 
 var _ codec.Decoder = (codec.DecoderFunc[int])(nil)
-var _ codec.DecoderT[int] = (codec.DecoderFunc[int])(nil)
+var _ codec.TypeDecoder[int] = (codec.DecoderFunc[int])(nil)
 
 func ExampleMarshaler() {
 	var c codec.Marshaler
@@ -21,7 +21,7 @@ func ExampleMarshaler() {
 }
 
 func ExampleMarshalerT() {
-	var c codec.MarshalerT[int]
+	var c codec.TypeMarshaler[int]
 	var v = 42
 	c.MarshalT(v) // handl error
 }
@@ -37,7 +37,7 @@ func ExampleUnmarshaler() {
 
 func ExampleUnmarshalerT() {
 	var (
-		c    codec.UnmarshalerT[int]
+		c    codec.TypeUnmarshaler[int]
 		data []byte
 		v    int
 	)
@@ -51,7 +51,7 @@ func ExampleEncoder() {
 }
 
 func ExampleEncoderT() {
-	var format codec.EncoderT[int]
+	var format codec.TypeEncoder[int]
 	var v = 42
 	format.EncodeT(v) // handl error
 }
@@ -66,7 +66,7 @@ func ExampleDecoder() {
 }
 
 func ExampleDecoderT() {
-	var encodedValue codec.DecoderT[int]             // encoded value that can be decoded
+	var encodedValue codec.TypeDecoder[int]             // encoded value that can be decoded
 	var v int                                        // allocation
 	if err := encodedValue.DecodeT(&v); err != nil { // handle error
 		return // err

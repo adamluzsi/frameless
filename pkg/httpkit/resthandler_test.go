@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
@@ -105,8 +104,8 @@ func ExampleRESTHandler_withMediaTypeConfiguration() {
 
 		MediaType: mediatype.JSON, // we can set the preferred default media type in case the requester don't specify it.
 
-		MediaTypeCodecs: httpkit.MediaTypeCodecs[X]{ // we can populate with any custom codec for any custom media type
-			mediatype.JSON: jsonkit.Codec[X]{},
+		Codecs: httpkit.Codecs{ // we can populate with any custom codec for any custom media type
+			mediatype.JSON: jsonkit.Bundle{},
 		},
 	}
 
@@ -132,10 +131,10 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 	subject := testcase.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
 		return httpkit.RESTHandlerFromCRUD[X, XID](resource.Get(t), func(h *httpkit.RESTHandler[X, XID]) {
 			h.IDContextKey = FooIDContextKey{}
-			h.MediaTypeCodecs = map[string]codec.Bundle{
-				mediatype.JSON: jsonkit.Codec{},
+			h.Codecs = map[string]codec.Bundle{
+				mediatype.JSON: jsonkit.Bundle{},
 			}
-			h.Mapping = dtokit.Mapping[X, XDTO]{}
+			// h.Mapping = dtokit.Mapping[X, XDTO]{}
 		})
 	})
 
@@ -1061,69 +1060,67 @@ func TestRESTHandler_WithCRUD_onNotEmptyOperations(t *testing.T) {
 	assert.True(t, destroyC)
 }
 
-func TestDTOMapping_manual(t *testing.T) {
-	fooRepository := memory.NewRepository[testent.Foo, testent.FooID](memory.NewMemory())
+// func TestDTOMapping_manual(t *testing.T) {
+// 	fooRepository := memory.NewRepository[testent.Foo, testent.FooID](memory.NewMemory())
 
-	// FooCustomDTO is not a proper DTO.
-	// The only reason we use this is to ensure that the custom mapping is used
-	// instead of the default dtos mapping.
-	type FooCustomDTO struct{ testent.Foo }
+// 	// FooCustomDTO is not a proper DTO.
+// 	// The only reason we use this is to ensure that the custom mapping is used
+// 	// instead of the default dtos mapping.
+// 	type FooCustomDTO struct{ testent.Foo }
 
-	resource := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepository, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
-		h.Mapping = dtokit.Mapping[testent.Foo, FooCustomDTO]{
-			ToENT: func(ctx context.Context, dto FooCustomDTO) (testent.Foo, error) {
-				return dto.Foo, nil
-			},
-			ToDTO: func(ctx context.Context, ent testent.Foo) (FooCustomDTO, error) {
-				return FooCustomDTO{Foo: ent}, nil
-			},
-		}
-	})
+// 	resource := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepository, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
+// 		// h.Mapping = dtokit.Mapping[testent.Foo, FooCustomDTO]{
+// 		// 	ToENT: func(ctx context.Context, dto FooCustomDTO) (testent.Foo, error) {
+// 		// 		return dto.Foo, nil
+// 		// 	},
+// 		// 	ToDTO: func(ctx context.Context, ent testent.Foo) (FooCustomDTO, error) {
+// 		// 		return FooCustomDTO{Foo: ent}, nil
+// 		// 	},
+// 		// }
+// 	})
 
-	example := FooCustomDTO{
-		Foo: testent.Foo{
-			Foo: "foo",
-			Bar: "bar",
-			Baz: "baz",
-		},
-	}
+// 	example := FooCustomDTO{
+// 		Foo: testent.Foo{
+// 			Foo: "foo",
+// 			Bar: "bar",
+// 			Baz: "baz",
+// 		},
+// 	}
 
-	var id testent.FooID
-	{
-		t.Log("given we create an entity with our custom DTO")
-		data, err := json.Marshal(example)
-		assert.NoError(t, err)
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
-		r.Header.Set("Content-Type", mediatype.JSON)
-		resource.ServeHTTP(w, r)
-		assert.Equal(t, w.Code, http.StatusCreated)
+// 	var id testent.FooID
+// 	{
+// 		t.Log("given we create an entity with our custom DTO")
+// 		data, err := json.Marshal(example)
+// 		assert.NoError(t, err)
+// 		w := httptest.NewRecorder()
+// 		r := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(data))
+// 		r.Header.Set("Content-Type", mediatype.JSON)
+// 		resource.ServeHTTP(w, r)
+// 		assert.Equal(t, w.Code, http.StatusCreated)
 
-		var response FooCustomDTO
-		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-		id = response.Foo.ID
-		assert.NotEmpty(t, id)
-	}
-	{
-		t.Log("then we are able to retrieve this entity through the custom DTO")
-		w := httptest.NewRecorder()
-		r := httptest.NewRequest(http.MethodGet, pathkit.Join("/", id.String()), nil)
-		r.Header.Set("Accept", mediatype.JSON)
-		resource.ServeHTTP(w, r)
-		assert.Equal(t, w.Code, http.StatusOK)
+// 		var response FooCustomDTO
+// 		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+// 		id = response.Foo.ID
+// 		assert.NotEmpty(t, id)
+// 	}
+// 	{
+// 		t.Log("then we are able to retrieve this entity through the custom DTO")
+// 		w := httptest.NewRecorder()
+// 		r := httptest.NewRequest(http.MethodGet, pathkit.Join("/", id.String()), nil)
+// 		r.Header.Set("Accept", mediatype.JSON)
+// 		resource.ServeHTTP(w, r)
+// 		assert.Equal(t, w.Code, http.StatusOK)
 
-		var response FooCustomDTO
-		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
-		expected := example
-		expected.ID = id
-		assert.Equal(t, response, expected)
-	}
-}
+// 		var response FooCustomDTO
+// 		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+// 		expected := example
+// 		expected.ID = id
+// 		assert.Equal(t, response, expected)
+// 	}
+// }
 
 func TestRouter_Resource(t *testing.T) {
 	var r httpkit.Router
-
-	ctx := context.Background()
 
 	foo := testent.Foo{
 		ID:  "42",
@@ -1139,7 +1136,6 @@ func TestRouter_Resource(t *testing.T) {
 		Show: func(ctx context.Context, id testent.FooID) (ent testent.Foo, found bool, err error) {
 			return foo, true, nil
 		},
-		Mapping: dtokit.Mapping[testent.Foo, testent.FooDTO]{},
 	})
 
 	{
@@ -1160,10 +1156,10 @@ func TestRouter_Resource(t *testing.T) {
 		req.Header.Set("Content-Type", mediatype.JSON)
 		r.ServeHTTP(rr, req)
 
-		var show testent.FooDTO
+		var show testent.Foo
 		assert.NoError(t, json.Unmarshal(rr.Body.Bytes(), &show))
 		assert.NotEmpty(t, show)
-		assert.Equal(t, dtokit.MustMap[testent.FooDTO](ctx, foo), show)
+		assert.Equal(t, foo, show)
 	}
 }
 

@@ -67,24 +67,24 @@ func (v Node) validate() error {
 	return nil
 }
 
-func (v Node) String() string {
-	var (
-		out   string
-		parts []string
-	)
-	for path := range v.Iter() {
-		parts = append(parts, path.Type.String())
-	}
-	if 0 < len(parts) {
-		out += strings.Join(parts, "/") + " "
-	}
-	if v.Value.CanInterface() {
-		out += fmt.Sprintf("%#v", v.Value.Interface())
-	} else {
-		out += fmt.Sprintf("%#v", v.Value.String())
-	}
-	return out
-}
+// func (v Node) Pathway() string {
+// 	var (
+// 		out   string
+// 		parts []string
+// 	)
+// 	for path := range v.Iter() {
+// 		parts = append(parts, path.Type.String())
+// 	}
+// 	if 0 < len(parts) {
+// 		out += strings.Join(parts, "/") + " "
+// 	}
+// 	if v.Value.CanInterface() {
+// 		out += fmt.Sprintf("%#v", v.Value.Interface())
+// 	} else {
+// 		out += fmt.Sprintf("%#v", v.Value.String())
+// 	}
+// 	return out
+// }
 
 // func (v V) isZero() bool {
 // 	return v.NodeType == 0 &&

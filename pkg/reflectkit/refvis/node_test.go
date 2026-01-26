@@ -26,18 +26,36 @@ func TestNode(t *testing.T) {
 			return node.Get(t).Is(nodeType.Get(t))
 		})
 
+		s.Before(func(t *testcase.T) {
+			t.OnFail(func() {
+				t.Log("node type:", nodeType.Get(t).String())
+			})
+		})
+
 		s.When("node is a zero value", func(s *testcase.Spec) {
 			node.Let(s, func(t *testcase.T) refvis.Node {
 				return refvis.Node{}
 			})
 
-			s.Context("regardless what node type is asked", func(s *testcase.Spec) {
+			s.Context("regardless what node type is asked apart from unknown", func(s *testcase.Spec) {
 				nodeType.Let(s, func(t *testcase.T) refvis.NodeType {
-					return random.Pick(t.Random, NodeTypes...)
+					return random.Unique(func() refvis.NodeType {
+						return random.Pick(t.Random, NodeTypes...)
+					}, refvis.Unknown)
 				})
 
 				s.Test("it will be false", func(t *testcase.T) {
 					assert.False(t, act(t))
+				})
+			})
+
+			s.Context("checked for unknown node type", func(s *testcase.Spec) {
+				nodeType.Let(s, func(t *testcase.T) refvis.NodeType {
+					return refvis.Unknown
+				})
+
+				s.Test("it will be true", func(t *testcase.T) {
+					assert.True(t, act(t))
 				})
 			})
 		})
@@ -63,11 +81,14 @@ func TestNode(t *testing.T) {
 				return refvis.Node{
 					Type: refvis.Value,
 					Parent: &refvis.Node{
-						Type: refvis.Pointer,
+						Type: refvis.PointerElem,
 						Parent: &refvis.Node{
-							Type: refvis.StructField,
+							Type: refvis.Pointer,
 							Parent: &refvis.Node{
-								Type: refvis.Struct,
+								Type: refvis.StructField,
+								Parent: &refvis.Node{
+									Type: refvis.Struct,
+								},
 							},
 						},
 					},
@@ -76,7 +97,7 @@ func TestNode(t *testing.T) {
 
 			s.And("an embedding/container node type is asked", func(s *testcase.Spec) {
 				nodeType.Let(s, func(t *testcase.T) refvis.NodeType {
-					return random.Pick(t.Random, refvis.StructField, refvis.Pointer)
+					return random.Pick(t.Random, refvis.StructField, refvis.PointerElem)
 				})
 
 				s.Then("it is reported to be true", func(t *testcase.T) {

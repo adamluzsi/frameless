@@ -1,11 +1,11 @@
-package httpcodec_test
+package formurlencoded_test
 
 import (
 	"net/url"
 	"testing"
 	"time"
 
-	"go.llib.dev/frameless/pkg/httpkit/httpcodec"
+	"go.llib.dev/frameless/pkg/httpkit/formurlencoded"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func TestFormURLEncoder_struct(t *testing.T) {
+func TestCodec_struct(t *testing.T) {
 	type DTO struct {
 		Foo        string `form:"foo"`
 		Bar        int    `url:"BAR"`
@@ -23,7 +23,7 @@ func TestFormURLEncoder_struct(t *testing.T) {
 		PascalCase bool
 	}
 
-	ser := httpcodec.FormURLEncoded[DTO]()
+	var ser formurlencoded.Bundle
 
 	var exp = DTO{
 		Foo:        "foo",
@@ -49,7 +49,7 @@ func TestFormURLEncoder_struct(t *testing.T) {
 }
 
 func TestFormURLEncoder_mapStringAny(t *testing.T) {
-	ser := httpcodec.FormURLEncoded[map[string]any]()
+	var ser formurlencoded.Bundle
 
 	var exp = map[string]any{
 		"foo":  "foo",
@@ -73,7 +73,7 @@ func TestFormURLEncoder_mapStringAny(t *testing.T) {
 }
 
 func TestFormURLEncoder_mapCustomKeyAnyValue(t *testing.T) {
-	ser := httpcodec.FormURLEncoded[map[time.Duration]any]()
+	var ser formurlencoded.Bundle
 
 	var exp = map[time.Duration]any{
 		time.Second: "foo",
@@ -108,7 +108,7 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 		}),
 	}
 
-	c := httpcodec.FormURLEncoded[T]()
+	var c formurlencoded.Bundle
 
 	data, err := c.Marshal(exp)
 	assert.NoError(t, err)
@@ -130,8 +130,6 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 
 	var got T
 	assert.NoError(t, c.Unmarshal(data, &got))
-	pp.PP(exp)
-	pp.PP(got)
 }
 
 // func TestFormURLEncoder_stream(tt *testing.T) {
@@ -149,7 +147,7 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 // 		}
 // 	})
 //
-// 	c := httpcodec.FormURLEncoded[T]()
+// 	c := httpcodec.Codec[T]()
 //
 // 	var buf bytes.Buffer
 //

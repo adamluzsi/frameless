@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -90,7 +91,7 @@ func TestIsPortFree_udp(t *testing.T) {
 		defer c.Close()
 
 		assert.Eventually(t, 5*time.Second, func(it testing.TB) {
-			dial, err := net.Dial("udp", fmt.Sprintf("%s:%d", localhost, port))
+			dial, err := net.Dial("udp", net.JoinHostPort(localhost, strconv.Itoa(port)))
 			assert.NoError(it, err)
 			assert.NoError(it, dial.Close())
 		})

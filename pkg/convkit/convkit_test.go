@@ -117,6 +117,11 @@ func Test_smoke(t *testing.T) {
 	assert.Equal(t, gotTimeval, quux)
 }
 
+type ImplT[T any] struct {
+	codec.TypeMarshalerFunc[T]
+	codec.TypeUnmarshalerFunc[T]
+}
+
 func TestIsRegistered(t *testing.T) {
 	assert.False(t, convkit.IsRegistered[string]())
 	assert.True(t, convkit.IsRegistered[time.Time]())
@@ -125,11 +130,11 @@ func TestIsRegistered(t *testing.T) {
 
 	type X struct{}
 	assert.False(t, convkit.IsRegistered[X]())
-	undo := convkit.Register[X](codec.ImplT[X]{
-		MarshalTFunc: func(v X) ([]byte, error) {
+	undo := convkit.Register[X](ImplT[X]{
+		TypeMarshalerFunc: func(v X) ([]byte, error) {
 			return []byte("X{}"), nil
 		},
-		UnmarshalTFunc: func(data []byte, p *X) error {
+		TypeUnmarshalerFunc: func(data []byte, p *X) error {
 			if string(data) != "X{}" {
 				return fmt.Errorf("not X")
 			}
@@ -664,11 +669,11 @@ func TestFormatReflect(t *testing.T) {
 		Age  int    `json:"age"`
 	}
 
-	unreg := convkit.Register[Person](codec.ImplT[Person]{
-		MarshalTFunc: func(v Person) ([]byte, error) {
+	unreg := convkit.Register[Person](ImplT[Person]{
+		TypeMarshalerFunc: func(v Person) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		UnmarshalTFunc: func(data []byte, p *Person) error {
+		TypeUnmarshalerFunc: func(data []byte, p *Person) error {
 			return json.Unmarshal(data, p)
 		},
 	})
@@ -827,11 +832,11 @@ func TestMarshal(t *testing.T) {
 
 	t.Run("custom registered type", func(t *testing.T) {
 		type X struct{ Value string }
-		unreg := convkit.Register[X](codec.ImplT[X]{
-			MarshalTFunc: func(v X) ([]byte, error) {
+		unreg := convkit.Register[X](ImplT[X]{
+			TypeMarshalerFunc: func(v X) ([]byte, error) {
 				return []byte("X{" + v.Value + "}"), nil
 			},
-			UnmarshalTFunc: func(data []byte, p *X) error {
+			TypeUnmarshalerFunc: func(data []byte, p *X) error {
 				if !bytes.HasPrefix(data, []byte("X{")) || !bytes.HasSuffix(data, []byte("}")) {
 					return fmt.Errorf("invalid format")
 				}
@@ -1013,11 +1018,11 @@ func TestUnmarshal(t *testing.T) {
 
 	t.Run("custom registered type", func(t *testing.T) {
 		type X struct{ Value string }
-		unreg := convkit.Register[X](codec.ImplT[X]{
-			MarshalTFunc: func(v X) ([]byte, error) {
+		unreg := convkit.Register[X](ImplT[X]{
+			TypeMarshalerFunc: func(v X) ([]byte, error) {
 				return []byte("X{" + v.Value + "}"), nil
 			},
-			UnmarshalTFunc: func(data []byte, p *X) error {
+			TypeUnmarshalerFunc: func(data []byte, p *X) error {
 				if !bytes.HasPrefix(data, []byte("X{")) || !bytes.HasSuffix(data, []byte("}")) {
 					return fmt.Errorf("invalid format")
 				}
@@ -1090,6 +1095,34 @@ func TestUnmarshalReflect(t *testing.T) {
 		typ := reflectkit.TypeOf[int]()
 		ptr := reflect.New(typ)
 		assert.Error(t, convkit.UnmarshalReflect(typ, []byte("not-a-number"), ptr))
+	})
+
+	t.Run("empty interface type", func(t *testing.T) {
+		typ := reflectkit.TypeOf[any]()
+		ptr := reflect.New(typ)
+
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte("42"), ptr))
+		assert.Equal[any](t, 42, ptr.Elem().Interface())
+
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte(`"hello"`), ptr))
+		assert.Equal[any](t, "hello", ptr.Elem().Interface())
+	})
+
+	t.Run("empty interface but concrete ptr type", func(t *testing.T) {
+		typ := reflectkit.TypeOf[any]()
+		ptr := reflect.New(reflectkit.TypeOf[int]())
+
+		assert.NoError(t, convkit.UnmarshalReflect(typ, []byte("42"), ptr))
+		assert.Equal[any](t, 42, ptr.Elem().Interface())
+
+		assert.Error(t, convkit.UnmarshalReflect(typ, []byte(`"hello"`), ptr))
+	})
+
+	t.Run("non-pointer type for ptr argument", func(t *testing.T) {
+		typ := reflectkit.TypeOf[any]()
+		ptr := reflect.ValueOf(0)
+
+		assert.Error(t, convkit.UnmarshalReflect(typ, []byte("42"), ptr))
 	})
 }
 

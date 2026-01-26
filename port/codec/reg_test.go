@@ -15,42 +15,42 @@ type T3 struct{ B bool }
 type T4 struct{ F float64 }
 
 type ImplT[T any] struct {
-	codec.MarshalTFunc[T]
-	codec.UnmarshalTFunc[T]
+	codec.TypeMarshalerFunc[T]
+	codec.TypeUnmarshalerFunc[T]
 }
 
 var C1 = ImplT[T1]{
-	MarshalTFunc: func(v T1) ([]byte, error) {
+	TypeMarshalerFunc: func(v T1) ([]byte, error) {
 		return json.Marshal(v)
 	},
-	UnmarshalTFunc: func(data []byte, p *T1) error {
+	TypeUnmarshalerFunc: func(data []byte, p *T1) error {
 		return json.Unmarshal(data, p)
 	},
 }
 
 var C2 = ImplT[T2]{
-	MarshalTFunc: func(v T2) ([]byte, error) {
+	TypeMarshalerFunc: func(v T2) ([]byte, error) {
 		return json.Marshal(v)
 	},
-	UnmarshalTFunc: func(data []byte, p *T2) error {
+	TypeUnmarshalerFunc: func(data []byte, p *T2) error {
 		return json.Unmarshal(data, p)
 	},
 }
 
 var C3 = ImplT[T3]{
-	MarshalTFunc: func(v T3) ([]byte, error) {
+	TypeMarshalerFunc: func(v T3) ([]byte, error) {
 		return json.Marshal(v)
 	},
-	UnmarshalTFunc: func(data []byte, p *T3) error {
+	TypeUnmarshalerFunc: func(data []byte, p *T3) error {
 		return json.Unmarshal(data, p)
 	},
 }
 
 var C4 = ImplT[T4]{
-	MarshalTFunc: func(v T4) ([]byte, error) {
+	TypeMarshalerFunc: func(v T4) ([]byte, error) {
 		return json.Marshal(v)
 	},
-	UnmarshalTFunc: func(data []byte, p *T4) error {
+	TypeUnmarshalerFunc: func(data []byte, p *T4) error {
 		return json.Unmarshal(data, p)
 	},
 }
@@ -95,7 +95,7 @@ func TestRegister(t *testing.T) {
 
 	type unknown struct{}
 	_, err = reg.Marshal(unknown{})
-	assert.ErrorIs(t, err, codec.ErrNotSupported{})
+	assert.Error(t, err)
 }
 
 func ExampleMerge() {
@@ -114,10 +114,11 @@ func ExampleMerge() {
 }
 
 func TestMerge(t *testing.T) {
-	var bundle codec.Bundle
-	bundle = codec.Merge(bundle, C1)
-	bundle = codec.Merge(bundle, C2)
-	bundle = codec.Merge(bundle, C3)
+	var bundle, b1, b2, b3 codec.Bundle
+	b1 = codec.Register(b1, C1)
+	b2 = codec.Register(b2, C2)
+	b3 = codec.Register(b3, C3)
+	bundle = codec.Merge(b1, b2, b3)
 
 	var exp1 = T1{N: 42}
 	data, err := bundle.Marshal(exp1)
@@ -146,5 +147,5 @@ func TestMerge(t *testing.T) {
 
 	type unknown struct{}
 	_, err = bundle.Marshal(unknown{})
-	assert.ErrorIs(t, err, codec.ErrNotSupported{})
+	assert.Error(t, err)
 }

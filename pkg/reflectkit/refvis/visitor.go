@@ -7,20 +7,15 @@ import (
 )
 
 // Stop will command the Visitor to stop with the traversing of the reflect.Value.
-const Stop visitCTRL = "Stop"
+const Stop visitCTRL = "stop"
 
-// StepOver will instruct the Visitor to avoid any further down traversing on the current node.
-//
-// For example, if the given value can be further down visited (e.g.: struct, map, slice, array),
-// then the sub nodes of the current node won't be visited
-const StepOver visitCTRL = "StepOver"
+const Break visitCTRL = "break"
 
-// StepOut will instruct the Visitor to stop processing of the current node,
-// and step back to the outer node and continue from there.
+// Skip will instruct the Visitor to stop processing of the current node,
+// and step back to the outer node and proceed from there with the reflection walking.
 //
-// For example, if during a struct field processing, we receive the StepOut,
-// it will stop the processing of the remaining fields and return back to an outer node layer.
-const StepOut visitCTRL = "StepOut"
+// It will not break iterations, such as struct field or slice element visiting.
+const Skip visitCTRL = "skip"
 
 func Walk(v reflect.Value, visit VisitorFunc) error {
 	var (
@@ -85,8 +80,10 @@ func (vis *visitor) Visit(v Node) (errReturn error) {
 				Type:        StructField,
 				StructField: field,
 			})
-			if err := vis.yieldElem(vFieldValue); err != nil {
+			if cont, err := vis.yieldElem(vFieldValue); err != nil {
 				return err
+			} else if !cont {
+				break
 			}
 		}
 		return nil
@@ -105,8 +102,10 @@ func (vis *visitor) Visit(v Node) (errReturn error) {
 				Type:  vNodeTypeElemOf[v.Type],
 				Index: i,
 			})
-			if err := vis.yieldElem(elem); err != nil {
+			if cont, err := vis.yieldElem(elem); err != nil {
 				return err
+			} else if !cont {
+				break
 			}
 		}
 		return nil
@@ -130,16 +129,20 @@ func (vis *visitor) Visit(v Node) (errReturn error) {
 				Type:   MapKey,
 				MapKey: key,
 			})
-			if err := vis.yieldElem(vMapKey); err != nil {
+			if cont, err := vis.yieldElem(vMapKey); err != nil {
 				return err
+			} else if !cont {
+				break
 			}
 			var vMapValue = v.next(Node{
 				Value:  value,
 				Type:   MapValue,
 				MapKey: key,
 			})
-			if err := vis.yieldElem(vMapValue); err != nil {
+			if cont, err := vis.yieldElem(vMapValue); err != nil {
 				return err
+			} else if !cont {
+				break
 			}
 		}
 		return nil
@@ -178,19 +181,22 @@ func (vis *visitor) yield(v Node) error {
 	return nil
 }
 
-func (vis *visitor) yieldElem(v Node) error {
+func (vis *visitor) yieldElem(v Node) (cont bool, rerr error) {
 	if err := vis.yield(v); err != nil {
-		if errors.Is(err, StepOver) {
-			return nil
+		if errors.Is(err, Skip) {
+			return true, nil
 		}
-		return err
+		if errors.Is(err, Break) {
+			return false, nil
+		}
+		return false, err
 	}
 	if vis.canStepIn(v.Value) {
 		if err := vis.Visit(v); err != nil {
-			return err
+			return false, err
 		}
 	}
-	return nil
+	return true, nil
 }
 
 func (vis *visitor) getRecursionGuard() *RecursionGuard {
@@ -201,13 +207,13 @@ func (vis *visitor) getRecursionGuard() *RecursionGuard {
 }
 
 var kindStepIn = map[reflect.Kind]struct{}{
-	reflect.Array:     {},
-	reflect.Chan:      {},
-	reflect.Interface: {},
 	reflect.Map:       {},
-	reflect.Pointer:   {},
+	reflect.Chan:      {},
+	reflect.Array:     {},
 	reflect.Slice:     {},
 	reflect.Struct:    {},
+	reflect.Pointer:   {},
+	reflect.Interface: {},
 }
 
 func (vis *visitor) canStepIn(v reflect.Value) bool {
@@ -225,7 +231,7 @@ func (vis *visitor) errFilter(err *error, v Node) {
 	if errors.Is(*err, Stop) && v.Parent == nil {
 		*err = nil
 	}
-	if errors.Is(*err, StepOut) {
+	if errors.Is(*err, Skip) {
 		*err = nil
 	}
 }

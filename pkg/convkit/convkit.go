@@ -39,11 +39,23 @@ func Unmarshal[T any](data []byte, p *T, opts ...Option) error {
 }
 
 func UnmarshalReflect(typ reflect.Type, data []byte, ptr reflect.Value, opts ...Option) error {
+	if ptr.Kind() != reflect.Pointer {
+		return fmt.Errorf("convkit.UnmarshalReflect called with non-pointer type: %s", ptr.Type().String())
+	}
+	if typ == emptyInterfaceType {
+		typ = ptr.Type().Elem()
+	}
 	var rv, err = parse(typ, data, option.ToConfig(opts))
 	if err != nil {
-		return fmt.Errorf("convkit.Unmarshal failed: %w", err)
+		return fmt.Errorf("convkit.UnmarshalReflect failed: %w", err)
 	}
-	if rv.Type() != typ {
+	if rvt := rv.Type(); rvt != typ {
+		if typ.Kind() == reflect.Interface && rvt.Implements(typ) {
+			iface := reflect.New(typ).Elem()
+			iface.Set(rv)
+			ptr.Elem().Set(iface)
+			return nil
+		}
 		return fmt.Errorf("error, incorrect return value type")
 	}
 	ptr.Elem().Set(rv)
@@ -107,7 +119,16 @@ var (
 
 const errMissingTimeLayout errorkitlite.Error = `missing TimeLayout ParseOption`
 
+var emptyInterfaceType = reflectkit.TypeOf[any]()
+
 func parse(typ reflect.Type, val []byte, opts Options) (reflect.Value, error) {
+	if typ == emptyInterfaceType {
+		out, err := DuckParse(val)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		return reflect.ValueOf(out), nil
+	}
 	if opts.ParseFunc != nil {
 		var ptr = reflect.New(typ)
 		err := opts.ParseFunc([]byte(val), ptr.Interface())
@@ -252,7 +273,7 @@ type registryRecord interface {
 }
 
 type regrec[T any] struct {
-	TextCodec TextCodec[T]
+	TextCodec codec.Codec[T]
 }
 
 func (r regrec[T]) Marshal(v any) ([]byte, error) {
@@ -261,7 +282,7 @@ func (r regrec[T]) Marshal(v any) ([]byte, error) {
 		return nil, fmt.Errorf("incorrect type received. Expected %s, but got %T",
 			reflectkit.TypeOf[T](), v)
 	}
-	return r.TextCodec.MarshalT(val)
+	return r.TextCodec.Marshal(val)
 }
 
 func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
@@ -269,7 +290,7 @@ func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
 	if !ok {
 		return fmt.Errorf("type mismatch, expected %T but got %T", (*T)(nil), ptr)
 	}
-	return r.TextCodec.UnmarshalT(data, p)
+	return r.TextCodec.Unmarshal(data, p)
 }
 
 type (
@@ -287,11 +308,7 @@ func IsRegistered[T any](i ...T) bool {
 	return ok
 }
 
-type TextCodec[T any] interface {
-	codec.Codec[T]
-}
-
-func Register[T any](c TextCodec[T]) func() {
+func Register[T any](c codec.Codec[T]) func() {
 	var (
 		typ = reflectkit.TypeOf[T]()
 		rec = regrec[T]{TextCodec: c}
@@ -328,11 +345,11 @@ var _ = Register[time.Duration](timeDuractionTextCodec{})
 
 type timeDuractionTextCodec struct{}
 
-func (timeDuractionTextCodec) MarshalT(d time.Duration) ([]byte, error) {
+func (timeDuractionTextCodec) Marshal(d time.Duration) ([]byte, error) {
 	return []byte(d.String()), nil
 }
 
-func (timeDuractionTextCodec) UnmarshalT(data []byte, p *time.Duration) error {
+func (timeDuractionTextCodec) Unmarshal(data []byte, p *time.Duration) error {
 	d, err := time.ParseDuration(string(data))
 	if err != nil {
 		return err
@@ -349,11 +366,11 @@ var _ = Register[url.URL](urlURLTextCodec{})
 
 type urlURLTextCodec struct{}
 
-func (urlURLTextCodec) MarshalT(u url.URL) ([]byte, error) {
+func (urlURLTextCodec) Marshal(u url.URL) ([]byte, error) {
 	return []byte(u.String()), nil
 }
 
-func (urlURLTextCodec) UnmarshalT(data []byte, p *url.URL) error {
+func (urlURLTextCodec) Unmarshal(data []byte, p *url.URL) error {
 	raw := string(data)
 	u, err := url.Parse(raw)
 	if err == nil {
