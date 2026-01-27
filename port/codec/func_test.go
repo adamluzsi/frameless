@@ -116,11 +116,11 @@ func TestImplement(t *testing.T) {
 
 	impl := let.Var(s, func(t *testcase.T) ImplT[T] {
 		return ImplT[T]{
-			MarshalTFunc: func(v T) ([]byte, error) {
+			TypeMarshalerFunc: func(v T) ([]byte, error) {
 				mCalled.Set(t, true)
 				return json.Marshal(v)
 			},
-			UnmarshalTFunc: func(data []byte, p *T) error {
+			TypeUnmarshalerFunc: func(data []byte, p *T) error {
 				uCalled.Set(t, true)
 				return json.Unmarshal(data, p)
 			},
@@ -145,7 +145,7 @@ func TestImplement(t *testing.T) {
 
 		impl.Let(s, func(t *testcase.T) ImplT[T] {
 			i := impl.Super(t)
-			i.MarshalTFunc = func(v T) ([]byte, error) {
+			i.TypeMarshalerFunc = func(v T) ([]byte, error) {
 				return nil, expErr.Get(t)
 			}
 			return i
@@ -162,7 +162,7 @@ func TestImplement(t *testing.T) {
 
 		impl.Let(s, func(t *testcase.T) ImplT[T] {
 			i := impl.Super(t)
-			i.UnmarshalTFunc = func(data []byte, p *T) error {
+			i.TypeUnmarshalerFunc = func(data []byte, p *T) error {
 				return expErr.Get(t)
 			}
 			return i

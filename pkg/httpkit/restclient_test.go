@@ -20,6 +20,7 @@ import (
 	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/testing/testent"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
@@ -104,11 +105,12 @@ func TestRESTClient_crud(t *testing.T) {
 		LazyNotFoundError: true,
 	}
 
-	crudcontract.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.ByIDsFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	s := testcase.NewSpec(t)
+	crudcontract.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.ByIDsFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
 }
 
 func TestRESTClient_FindAll_withDisableStreaming(t *testing.T) {

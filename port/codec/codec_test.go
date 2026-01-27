@@ -2,28 +2,16 @@ package codec_test
 
 import "go.llib.dev/frameless/port/codec"
 
-var _ codec.Marshaler = (codec.MarshalTFunc[int])(nil)
-var _ codec.TypeMarshaler[int] = (codec.MarshalTFunc[int])(nil)
-
-var _ codec.Unmarshaler = (codec.UnmarshalTFunc[int])(nil)
-var _ codec.TypeUnmarshaler[int] = (codec.UnmarshalTFunc[int])(nil)
-
-var _ codec.Encoder = (codec.EncoderFunc[int])(nil)
-var _ codec.TypeEncoder[int] = (codec.EncoderFunc[int])(nil)
-
-var _ codec.Decoder = (codec.DecoderFunc[int])(nil)
-var _ codec.TypeDecoder[int] = (codec.DecoderFunc[int])(nil)
-
 func ExampleMarshaler() {
 	var c codec.Marshaler
 	var v = 42
 	c.Marshal(v) // handl error
 }
 
-func ExampleMarshalerT() {
+func ExampleTypeMarshaler() {
 	var c codec.TypeMarshaler[int]
 	var v = 42
-	c.MarshalT(v) // handl error
+	c.Marshal(v) // handl error
 }
 
 func ExampleUnmarshaler() {
@@ -35,13 +23,13 @@ func ExampleUnmarshaler() {
 	c.Unmarshal(data, &v) // handl error
 }
 
-func ExampleUnmarshalerT() {
+func ExampleTypeUnmarshaler() {
 	var (
 		c    codec.TypeUnmarshaler[int]
 		data []byte
 		v    int
 	)
-	c.UnmarshalT(data, &v) // handl error
+	c.Unmarshal(data, &v) // handl error
 }
 
 func ExampleEncoder() {
@@ -50,10 +38,10 @@ func ExampleEncoder() {
 	format.Encode(v) // handl error
 }
 
-func ExampleEncoderT() {
+func ExampleTypeEncoder() {
 	var format codec.TypeEncoder[int]
 	var v = 42
-	format.EncodeT(v) // handl error
+	format.Encode(v) // handl error
 }
 
 func ExampleDecoder() {
@@ -65,10 +53,10 @@ func ExampleDecoder() {
 	_ = v // using the decoded value
 }
 
-func ExampleDecoderT() {
-	var encodedValue codec.TypeDecoder[int]             // encoded value that can be decoded
-	var v int                                        // allocation
-	if err := encodedValue.DecodeT(&v); err != nil { // handle error
+func ExampleTypeDecoder() {
+	var encodedValue codec.TypeDecoder[int]         // encoded value that can be decoded
+	var v int                                       // allocation
+	if err := encodedValue.Decode(&v); err != nil { // handle error
 		return // err
 	}
 	_ = v // using the decoded value

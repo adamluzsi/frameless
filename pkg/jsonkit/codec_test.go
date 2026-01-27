@@ -274,3 +274,38 @@ func TestJSONSerializer_NewListEncoder(t *testing.T) {
 		assert.Equal(t, foos, gotFoos)
 	})
 }
+
+var dataSmokeFoos = []byte(`[
+	{
+		"ID": "3",
+		"Foo": "0 or 1=1",
+		"Bar": "+++ATH0",
+		"Baz": "ABC\u003cdiv style=\"x:exp\\x5Cression(javascript:alert(38)\"\u003eDEF"
+	},
+	{
+		"ID": "2",
+		"Foo": " ORDER BY 17# ",
+		"Bar": "\u003cIMG SRC=\"jav\u0026#x0D;ascript:alert('217');\"\u003e",
+		"Baz": " or '1'='1"
+	}
+]`)
+
+func TestBundle_NewStreamDecoder_smoke(t *testing.T) {
+	var exp []testent.Foo
+	assert.NoError(t, json.Unmarshal(dataSmokeFoos, &exp))
+
+	var c jsonkit.Bundle
+
+	stream := c.NewStreamDecoder(bytes.NewReader(dataSmokeFoos))
+
+	var got []testent.Foo
+	for elem, err := range stream {
+		assert.NoError(t, err)
+
+		var v testent.Foo
+		assert.NoError(t, elem.Decode(&v))
+		got = append(got, v)
+	}
+
+	assert.Equal(t, exp, got)
+}

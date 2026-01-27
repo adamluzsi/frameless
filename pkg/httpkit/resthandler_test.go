@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
 	"go.llib.dev/frameless/pkg/httpkit"
@@ -134,7 +133,6 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			h.Codecs = map[string]codec.Bundle{
 				mediatype.JSON: jsonkit.Bundle{},
 			}
-			// h.Mapping = dtokit.Mapping[X, XDTO]{}
 		})
 	})
 
@@ -142,23 +140,13 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 		return &O{ID: OID(t.Random.IntBetween(1, 99))}
 	})
 
-	GivenWeHaveStoredFooWithDTO := func(s *testcase.Spec) (testcase.Var[X], testcase.Var[XDTO]) {
-		return testcase.Let2(s, func(t *testcase.T) (X, XDTO) {
-			// create ent and persist
+	GivenWeHaveStoredValue := func(s *testcase.Spec) testcase.Var[X] {
+		return testcase.Let(s, func(t *testcase.T) X {
 			ent := X{N: t.Random.Int(), OID: o.Get(t).ID}
 			t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
 			t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
-			// map ent to DTO
-			dto, err := XMapping{}.MapDTO(context.Background(), ent)
-			t.Must.NoError(err)
-			return ent, dto
-		})
-	}
-
-	GivenWeHaveStoredFooDTO := func(s *testcase.Spec) testcase.Var[XDTO] {
-		_, dto := GivenWeHaveStoredFooWithDTO(s)
-		dto.EagerLoading(s)
-		return dto
+			return ent
+		}).EagerLoading(s)
 	}
 
 	s.Describe("#ServeHTTP", func(s *testcase.Spec) {
@@ -194,16 +182,16 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			s.Then(`it will return an empty result`, func(t *testcase.T) {
 				rr := act(t)
 				t.Must.NotEmpty(rr.Body.String())
-				t.Must.Empty(respondsWithJSON[[]XDTO](t, rr))
+				t.Must.Empty(respondsWithJSON[[]X](t, rr))
 			})
 
 			s.When("we have entity in the repository", func(s *testcase.Spec) {
-				dto := GivenWeHaveStoredFooDTO(s)
+				ent := GivenWeHaveStoredValue(s)
 
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					assert.Contains(t, respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+					assert.Contains(t, respondsWithJSON[[]X](t, rr), ent.Get(t))
 				})
 
 				s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
@@ -218,7 +206,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					s.Then("it will return back the entity", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.NotEmpty(rr.Body.String())
-						assert.Contains(t, respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+						assert.Contains(t, respondsWithJSON[[]X](t, rr), ent.Get(t))
 					})
 				})
 
@@ -234,21 +222,21 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					s.Then("it will not return back the entity", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.NotEmpty(rr.Body.String())
-						assert.NotContains(t, respondsWithJSON[[]XDTO](t, rr), dto.Get(t))
+						assert.NotContains(t, respondsWithJSON[[]X](t, rr), ent.Get(t))
 					})
 				})
 			})
 
 			s.When("we have multiple entities in the repository", func(s *testcase.Spec) {
-				dto1 := GivenWeHaveStoredFooDTO(s)
-				dto2 := GivenWeHaveStoredFooDTO(s)
-				dto3 := GivenWeHaveStoredFooDTO(s)
+				ent1 := GivenWeHaveStoredValue(s)
+				ent2 := GivenWeHaveStoredValue(s)
+				ent3 := GivenWeHaveStoredValue(s)
 
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					t.Must.ContainsExactly([]XDTO{dto1.Get(t), dto2.Get(t), dto3.Get(t)},
-						respondsWithJSON[[]XDTO](t, rr))
+					t.Must.ContainsExactly([]X{ent1.Get(t), ent2.Get(t), ent3.Get(t)},
+						respondsWithJSON[[]X](t, rr))
 				})
 			})
 
@@ -310,9 +298,9 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					s.Then("the result will be based on the value returned by the controller function", func(t *testcase.T) {
 						rr := act(t)
 						t.Must.Equal(http.StatusOK, rr.Code)
-						t.Must.ContainsExactly(
-							[]XDTO{{ID: int(x.Get(t).ID), X: x.Get(t).N}},
-							respondsWithJSON[[]XDTO](t, rr))
+						t.Must.ContainsExactly( // TODO: clean it up
+							[]X{{ID: x.Get(t).ID, N: x.Get(t).N}},
+							respondsWithJSON[[]X](t, rr))
 					})
 				})
 
@@ -363,11 +351,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			var (
 				_   = method.LetValue(s, http.MethodPost)
 				_   = path.LetValue(s, `/`)
-				dto = testcase.Let(s, func(t *testcase.T) XDTO {
-					return XDTO{X: t.Random.Int()}
+				ent = testcase.Let(s, func(t *testcase.T) X {
+					return X{N: t.Random.Int()}
 				})
 				_ = body.Let(s, func(t *testcase.T) []byte {
-					bs, err := json.Marshal(dto.Get(t))
+					bs, err := json.Marshal(ent.Get(t))
 					t.Must.NoError(err)
 					return bs
 				})
@@ -377,14 +365,14 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				rr := act(t)
 				t.Must.Equal(http.StatusCreated, rr.Code)
 				t.Must.NotEmpty(rr.Body.String())
-				gotDTO := respondsWithJSON[XDTO](t, rr)
-				t.Must.Equal(dto.Get(t).X, gotDTO.X)
-				t.Must.NotEmpty(gotDTO.ID)
+				gotENT := respondsWithJSON[X](t, rr)
+				t.Must.Equal(ent.Get(t).N, gotENT.N)
+				t.Must.NotEmpty(gotENT.ID)
 
-				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotDTO.ID))
+				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotENT.ID))
 				t.Must.NoError(err)
 				t.Must.True(found)
-				t.Must.Equal(ent.N, gotDTO.X)
+				t.Must.Equal(ent.N, gotENT.N)
 			})
 
 			s.When("the method is not supported", func(s *testcase.Spec) {
@@ -409,23 +397,24 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					return m
 				})
 
-				dto.Let(s, func(t *testcase.T) XDTO {
-					d := dto.Super(t)
-					d.ID = int(time.Now().Unix())
+				ent.Let(s, func(t *testcase.T) X {
+					d := ent.Super(t)
+					d.ID = XID(t.Random.Time().Unix())
+
 					return d
 				})
 
 				s.Then(`it will create a new entity in the repository with the given entity`, func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					gotDTO := respondsWithJSON[XDTO](t, rr)
-					t.Must.Equal(dto.Get(t), gotDTO)
+					gotDTO := respondsWithJSON[X](t, rr)
+					t.Must.Equal(ent.Get(t), gotDTO)
 					t.Must.NotEmpty(gotDTO.ID)
 
 					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotDTO.ID))
 					t.Must.NoError(err)
 					t.Must.True(found)
-					t.Must.Equal(ent.N, gotDTO.X)
+					t.Must.Equal(ent.N, gotDTO.N)
 				})
 
 				s.And("the entity was already created", func(s *testcase.Spec) {
@@ -506,7 +495,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 		s.Describe(`#show`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				dto = GivenWeHaveStoredValue(s)
 				_   = method.LetValue(s, http.MethodGet)
 				_   = path.Let(s, func(t *testcase.T) string {
 					return fmt.Sprintf("/%d", dto.Get(t).ID)
@@ -516,7 +505,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			s.Then(`it will show the requested entity`, func(t *testcase.T) {
 				rr := act(t)
 				t.Must.NotEmpty(rr.Body.String())
-				gotDTO := respondsWithJSON[XDTO](t, rr)
+				gotDTO := respondsWithJSON[X](t, rr)
 				t.Must.Equal(dto.Get(t), gotDTO)
 			})
 
@@ -528,7 +517,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				s.Then(`it accept the request`, func(t *testcase.T) {
 					rr := act(t)
 					t.Must.NotEmpty(rr.Body.String())
-					gotDTO := respondsWithJSON[XDTO](t, rr)
+					gotDTO := respondsWithJSON[X](t, rr)
 					t.Must.Equal(dto.Get(t), gotDTO)
 				})
 			})
@@ -580,7 +569,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 		s.Describe(`#update`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				ent = GivenWeHaveStoredValue(s)
 				_   = method.Let(s, func(t *testcase.T) string {
 					return t.Random.Pick([]string{
 						http.MethodPut,
@@ -588,16 +577,15 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					}).(string)
 				})
 				_ = path.Let(s, func(t *testcase.T) string {
-					return fmt.Sprintf("/%d", dto.Get(t).ID)
+					return fmt.Sprintf("/%d", ent.Get(t).ID)
 				})
-
-				updatedDTO = testcase.Let(s, func(t *testcase.T) XDTO {
-					v := dto.Get(t)
-					v.X = t.Random.Int()
+				updatedENT = testcase.Let(s, func(t *testcase.T) X {
+					v := ent.Get(t)
+					v.N = t.Random.Int()
 					return v
 				})
 				_ = body.Let(s, func(t *testcase.T) []byte {
-					bs, err := json.Marshal(updatedDTO.Get(t))
+					bs, err := json.Marshal(updatedENT.Get(t))
 					t.Must.NoError(err)
 					return bs
 				})
@@ -607,10 +595,10 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				rr := act(t)
 				t.Must.Empty(rr.Body.String())
 				t.Must.Equal(http.StatusNoContent, rr.Code)
-				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(ent.Get(t).ID))
 				t.Must.NoError(err)
 				t.Must.True(found)
-				t.Must.Equal(ent.N, updatedDTO.Get(t).X)
+				t.Must.Equal(ent.N, updatedENT.Get(t).N)
 			})
 
 			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
@@ -622,10 +610,10 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					rr := act(t)
 					t.Must.Empty(rr.Body.String())
 					t.Must.Equal(http.StatusNoContent, rr.Code)
-					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
+					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(ent.Get(t).ID))
 					t.Must.NoError(err)
 					t.Must.True(found)
-					t.Must.Equal(ent.N, updatedDTO.Get(t).X)
+					t.Must.Equal(ent.N, updatedENT.Get(t).N)
 				})
 			})
 
@@ -650,7 +638,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), XID(dto.Get(t).ID)))
+					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), XID(ent.Get(t).ID)))
 				})
 
 				s.Then("it will respond with 404, entity not found", func(t *testcase.T) {
@@ -684,7 +672,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 		s.Describe(`#destroy`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				dto = GivenWeHaveStoredValue(s)
 				_   = method.LetValue(s, http.MethodDelete)
 				_   = path.Let(s, func(t *testcase.T) string {
 					return fmt.Sprintf("/%d", dto.Get(t).ID)
@@ -807,7 +795,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 		s.Describe(`#destroy-all`, func(s *testcase.Spec) {
 			var (
-				dto = GivenWeHaveStoredFooDTO(s)
+				dto = GivenWeHaveStoredValue(s)
 				_   = method.LetValue(s, http.MethodDelete)
 				_   = path.LetValue(s, "/")
 			)
@@ -847,15 +835,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						assert.NotNil(t, subject.Get(t).Destroy)
 					})
 
-					_, othDTO := testcase.Let2(s, func(t *testcase.T) (X, XDTO) {
+					othENT := testcase.Let(s, func(t *testcase.T) X {
 						// create ent and persist
 						ent := X{N: t.Random.Int(), OID: random.Unique(func() OID { return OID(t.Random.Int()) }, o.Get(t).ID)}
 						t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
 						t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
-						// map ent to DTO
-						dto, err := XMapping{}.MapDTO(context.Background(), ent)
-						t.Must.NoError(err)
-						return ent, dto
+						return ent
 					})
 
 					s.Then(`it will delete the entities related to the current REST Scope`, func(t *testcase.T) {
@@ -867,7 +852,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						t.Must.NoError(err)
 						t.Must.False(found, "expected that the entity is deleted")
 
-						_, found, err = mdb.Get(t).FindByID(context.Background(), XID(othDTO.Get(t).ID))
+						_, found, err = mdb.Get(t).FindByID(context.Background(), XID(othENT.Get(t).ID))
 						t.Must.NoError(err)
 						t.Must.True(found, "expected that the unrelated entity is not deleted")
 					})
@@ -913,7 +898,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 		s.Describe(".ResourceRoutes", func(s *testcase.Spec) {
 			var lastSubResourceRequest = testcase.LetValue[*http.Request](s, nil)
-			var foo, dto = GivenWeHaveStoredFooWithDTO(s)
+			var foo = GivenWeHaveStoredValue(s)
 
 			subject.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
 				sub := subject.Super(t)
@@ -926,7 +911,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 			})
 
 			path.Let(s, func(t *testcase.T) string {
-				return pathkit.Join(strconv.Itoa(dto.Get(t).ID), "bars")
+				return pathkit.Join(strconv.Itoa(foo.Get(t).ID.Int()), "bars")
 			})
 
 			s.Then("the .Routes will be used to route the request", func(t *testcase.T) {

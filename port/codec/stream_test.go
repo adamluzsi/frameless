@@ -2,7 +2,7 @@ package codec_test
 
 import "go.llib.dev/frameless/port/codec"
 
-func ExampleStreamEncoderT() {
+func ExampleTypeStreamEncoder() {
 	var upstream = []int{1, 2, 3, 4, 5}
 	var downstream codec.TypeStreamEncoder[int]
 	// ensuring that the underlying stream is finalised,
@@ -10,13 +10,13 @@ func ExampleStreamEncoderT() {
 	defer downstream.Close()
 
 	for _, val := range upstream {
-		if err := downstream.EncodeT(val); err != nil {
+		if err := downstream.Encode(val); err != nil {
 			return // err
 		}
 	}
 }
 
-func ExampleStreamDecoderT() {
+func ExampleTypeStreamDecoder() {
 	var stream codec.TypeStreamDecoder[int]
 
 	for next, err := range stream {
@@ -30,7 +30,7 @@ func ExampleStreamDecoderT() {
 		// explicit allocation on the handler side.
 		var x int
 		// Mutating the allocated value based on the input stream.
-		if err := next.DecodeT(&x); err != nil {
+		if err := next.Decode(&x); err != nil {
 			return // err
 		}
 	}

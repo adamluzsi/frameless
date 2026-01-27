@@ -126,8 +126,6 @@ func (r *Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (_ent ENT, _f
 	return ent.(ENT), true, nil
 }
 
-func blankErrFunc() error { return nil }
-
 func (r *Repository[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
 	return iterkit.From(func(yield func(ENT) bool) error {
 		if err := ctx.Err(); err != nil {

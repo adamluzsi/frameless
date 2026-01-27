@@ -175,7 +175,6 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		}
 
 		details = append(details, logging.Field("status code", resp.StatusCode))
-
 		c, respMediaType, ok := r.contentTypeBasedCodec(resp)
 		if !ok {
 			err := fmt.Errorf("no codec configured for response content type: %s", respMediaType)
@@ -190,7 +189,6 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 			r.streamFindAll(ctx, sc, resp.Body, yield)
 			return
 		}
-
 		r.findAll(ctx, c, resp.Body, yield)
 	}
 }
@@ -218,21 +216,22 @@ func (r RESTClient[ENT, ID]) findAll(ctx context.Context, c codec.Bundle, body i
 	}
 }
 
-func (r RESTClient[ENT, ID]) streamFindAll(ctx context.Context, sc codec.StreamConsumer, body io.ReadCloser, yield func(ENT, error) bool) {
-	defer body.Close()
-
-	var src io.ReadCloser = r.withKeepAlive(body)
-	defer src.Close()
+func (r RESTClient[ENT, ID]) streamFindAll(_ context.Context, sc codec.StreamConsumer, body io.ReadCloser, yield func(ENT, error) bool) {
+	var src io.Reader = body
 
 	if r.DisableStreaming {
-		data, err := io.ReadAll(src)
-		_ = src.Close()
+		data, err := io.ReadAll(body)
+		_ = body.Close()
 		if err != nil {
 			var zero ENT
 			yield(zero, err)
 			return
 		}
 		src = io.NopCloser(bytes.NewReader(data))
+	} else {
+		bodyWithKeepAliveReads := r.withKeepAlive(body)
+		defer bodyWithKeepAliveReads.Close()
+		src = bodyWithKeepAliveReads
 	}
 
 	var stream = sc.NewStreamDecoder(src)
@@ -248,7 +247,7 @@ func (r RESTClient[ENT, ID]) streamFindAll(ctx context.Context, sc codec.StreamC
 			}
 			continue
 		}
-		if yield(ent, nil) {
+		if !yield(ent, nil) {
 			return
 		}
 	}
@@ -616,7 +615,7 @@ func (r RESTClient[ENT, ID]) bodyReadAll(body io.ReadCloser) ([]byte, error) {
 	return data, nil
 }
 
-func (r RESTClient[ENT, ID]) withKeepAlive(body io.ReadCloser) io.ReadCloser {
+func (r RESTClient[ENT, ID]) withKeepAlive(body io.ReadCloser) *iokit.KeepAliveReader {
 	const defaultInterval = 25 * time.Second
 	var interval time.Duration = cmp.Or(r.KeepAliveInterval, defaultInterval)
 	return iokit.NewKeepAliveReader(body, interval)
