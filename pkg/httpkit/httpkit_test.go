@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/logger"
@@ -619,7 +618,6 @@ func TestMount_spec(t *testing.T) {
 
 		handler.Let(s, func(t *testcase.T) http.Handler {
 			return httpkit.RESTHandlerFromCRUD[X, XID](repo.Get(t), func(h *httpkit.RESTHandler[X, XID]) {
-				h.Mapping = dtokit.Mapping[X, XDTO]{}
 				h.ResourceRoutes = httpkit.NewRouter(func(r *httpkit.Router) {
 					r.Mount("/test", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 						lastReq.Set(t, r)

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/internal"
 	"go.llib.dev/frameless/pkg/httpkit/rfc7807"
@@ -46,7 +45,6 @@ func ExampleRouter() {
 		}))
 
 		r.Resource("foo", httpkit.RESTHandler[Foo, FooID]{
-			Mapping: dtokit.Mapping[Foo, FooDTO]{},
 			Index: func(ctx context.Context) iter.Seq2[Foo, error] {
 				foo := Foo{
 					ID:  "42",

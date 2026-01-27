@@ -3,7 +3,6 @@ package jsonkit
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
@@ -12,26 +11,92 @@ import (
 
 type Codec struct{}
 
-func (s Codec) Marshal(v any) ([]byte, error) {
+func (Codec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func (s Codec) Unmarshal(data []byte, dtoPtr any) error {
-	return json.Unmarshal(data, &dtoPtr)
+func (Codec) Unmarshal(data []byte, ptr any) error {
+	return json.Unmarshal(data, ptr)
 }
 
-func (s Codec) MakeListEncoder(w io.Writer) codec.ListEncoder {
-	return &jsonListEncoder{W: w}
+func (Codec) NewStreamEncoder(w io.Writer) codec.StreamEncoder {
+	return &ArrayEncoder[any]{W: w}
 }
 
-func (s Codec) MakeListDecoder(r io.Reader) codec.ListDecoder {
-	return &jsontoken.ArrayIterator{
+func (Codec) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
+	i := &jsontoken.ArrayIterator{
 		Context: context.Background(),
 		Input:   r,
 	}
+	return func(yield func(codec.Decoder, error) bool) {
+		defer i.Close()
+		for i.Next() {
+			if !yield(i, nil) {
+				return
+			}
+		}
+		if err := i.Err(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+		if err := i.Close(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+	}
 }
 
-type jsonListEncoder struct {
+//////////////
+
+type LinesCodec struct {
+	// UseNumber causes the Decoder to unmarshal a number into an
+	// interface value as a [Number] instead of as a float64.
+	UseNumber             bool
+	DisallowUnknownFields bool
+}
+
+func (LinesCodec) Marshal(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+func (LinesCodec) Unmarshal(data []byte, p any) error {
+	return json.Unmarshal(data, p)
+}
+
+func (LinesCodec) NewStreamEncoder(w io.Writer) codec.StreamEncoder {
+	return streamEncoder{Encoder: json.NewEncoder(w)}
+}
+
+type streamEncoder struct{ *json.Encoder }
+
+func (streamEncoder) Close() error { return nil }
+
+func (c LinesCodec) NewStreamDecoder(r io.Reader) codec.StreamDecoder {
+	dec := json.NewDecoder(r)
+	if c.UseNumber {
+		dec.UseNumber()
+	}
+	if c.DisallowUnknownFields {
+		dec.DisallowUnknownFields()
+	}
+	return func(yield func(dec codec.Decoder, err error) bool) {
+		for dec.More() {
+			if !yield(dec, nil) {
+				return
+			}
+		}
+	}
+}
+
+//////////////
+
+func NewArrayStreamEncoder[T any](w io.Writer) *ArrayEncoder[T] {
+	return &ArrayEncoder[T]{W: w}
+}
+
+type ArrayEncoder[T any] struct {
 	W io.Writer
 
 	bracketOpen bool
@@ -40,7 +105,7 @@ type jsonListEncoder struct {
 	done        bool
 }
 
-func (c *jsonListEncoder) Encode(dto any) error {
+func (c *ArrayEncoder[T]) Encode(v T) error {
 	if c.err != nil {
 		return c.err
 	}
@@ -51,7 +116,7 @@ func (c *jsonListEncoder) Encode(dto any) error {
 		}
 	}
 
-	data, err := json.Marshal(dto)
+	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
@@ -72,7 +137,7 @@ func (c *jsonListEncoder) Encode(dto any) error {
 	return nil
 }
 
-func (c *jsonListEncoder) Close() error {
+func (c *ArrayEncoder[T]) Close() error {
 	if c.done {
 		return c.err
 	}
@@ -90,7 +155,7 @@ func (c *jsonListEncoder) Close() error {
 	return nil
 }
 
-func (c *jsonListEncoder) endList() error {
+func (c *ArrayEncoder[T]) endList() error {
 	if _, err := c.W.Write([]byte(`]`)); err != nil {
 		c.err = err
 		return err
@@ -99,7 +164,7 @@ func (c *jsonListEncoder) endList() error {
 	return nil
 }
 
-func (c *jsonListEncoder) beginList() error {
+func (c *ArrayEncoder[T]) beginList() error {
 	if _, err := c.W.Write([]byte(`[`)); err != nil {
 		c.err = err
 		return err
@@ -108,68 +173,63 @@ func (c *jsonListEncoder) beginList() error {
 	return nil
 }
 
-// LinesCodec is a json codec that uses the application/jsonlines
-type LinesCodec struct{}
-
-func (s LinesCodec) Marshal(v any) ([]byte, error) {
-	return json.Marshal(v)
+func NewArrayStreamDecoder(r io.Reader) codec.StreamDecoder {
+	i := &jsontoken.ArrayIterator{
+		Context: context.Background(),
+		Input:   r,
+	}
+	return func(yield func(codec.Decoder, error) bool) {
+		defer i.Close()
+		for i.Next() {
+			if !yield(i, nil) {
+				return
+			}
+		}
+		if err := i.Err(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+		if err := i.Close(); err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+	}
 }
 
-func (s LinesCodec) Unmarshal(data []byte, ptr any) error {
-	return json.Unmarshal(data, ptr)
+func NewEncoder[T any](w io.Writer) *Encoder[T] {
+	return &Encoder[T]{Encoder: json.NewEncoder(w)}
 }
 
-func (s LinesCodec) MakeListEncoder(w io.Writer) codec.ListEncoder {
-	return jsonEncoder{Encoder: json.NewEncoder(w)}
+type Encoder[T any] struct{ *json.Encoder }
+
+func (e *Encoder[T]) Close() error {
+	return nil
 }
 
-type jsonEncoder struct {
-	Encoder interface{ Encode(v any) error }
-}
-
-func (e jsonEncoder) Encode(v any) error {
+func (e *Encoder[T]) Encode(v T) error {
 	return e.Encoder.Encode(v)
 }
 
-func (jsonEncoder) Close() error { return nil }
-
-func (s LinesCodec) NewListDecoder(w io.ReadCloser) codec.ListDecoder {
-	return &jsonDecoder{Decoder: json.NewDecoder(w), Closer: w}
-}
-
-type jsonDecoder struct {
-	Decoder interface{ Decode(v any) error }
-	Closer  io.Closer
-
-	err error
-	val json.RawMessage
-}
-
-func (i *jsonDecoder) Next() bool {
-	if i.err != nil {
-		return false
+func NewDecoder[T any](r io.Reader) *Decoder[T] {
+	var rc io.ReadCloser
+	if v, ok := r.(io.ReadCloser); ok {
+		rc = v
+	} else {
+		rc = io.NopCloser(r)
 	}
-	var next json.RawMessage
-	err := i.Decoder.Decode(&next)
-	if errors.Is(err, io.EOF) {
-		return false
+	return &Decoder[T]{
+		Decoder: json.NewDecoder(rc),
+		Closer:  rc,
 	}
-	if err != nil {
-		i.err = err
-		return false
-	}
-	i.val = next
-	return true
 }
 
-func (i *jsonDecoder) Err() error {
-	return i.err
+type Decoder[T any] struct {
+	*json.Decoder
+	io.Closer
 }
 
-func (i jsonDecoder) Close() error {
-	return i.Closer.Close()
-}
-
-func (i jsonDecoder) Decode(v any) error {
-	return json.Unmarshal(i.val, v)
+func (d *Decoder[T]) Decode(p *T) error {
+	return d.Decoder.Decode(p)
 }

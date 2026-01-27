@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/adapter/memory"
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -20,6 +20,7 @@ import (
 	"go.llib.dev/frameless/port/crud/crudcontract"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/testing/testent"
+	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
@@ -30,8 +31,9 @@ func ExampleRESTClient() {
 		fooRepo = httpkit.RESTClient[testent.Foo, testent.FooID]{
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
-			Mapping:   dtokit.Mapping[testent.Foo, testent.FooDTO]{},
-			Codec:     jsonkit.Codec{},
+			Codecs: httpkit.Codecs{
+				mediatype.JSON: jsonkit.Codec{},
+			},
 			// leave IDFormatter empty for using the default id formatter, or provide your own
 			IDFormatter: func(fi testent.FooID) (string, error) {
 				return httpkit.IDConverter[testent.FooID]{}.Format(fi)
@@ -103,11 +105,12 @@ func TestRESTClient_crud(t *testing.T) {
 		LazyNotFoundError: true,
 	}
 
-	crudcontract.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.ByIDsFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
-	crudcontract.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Test(t)
+	s := testcase.NewSpec(t)
+	crudcontract.Creator[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.Finder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.ByIDsFinder[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.Updater[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
+	crudcontract.Deleter[testent.Foo, testent.FooID](fooClient, crudcontractsConfig).Spec(s)
 }
 
 func TestRESTClient_FindAll_withDisableStreaming(t *testing.T) {
@@ -260,8 +263,8 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 	fooAPI := httpkit.RESTHandlerFromCRUD[testent.Foo, testent.FooID](fooRepo, func(h *httpkit.RESTHandler[testent.Foo, testent.FooID]) {
 		h.MediaType = GobMediaType
-		h.MediaTypeCodecs = httpkit.MediaTypeCodecs{
-			GobMediaType: GobCodec{},
+		h.Codecs = httpkit.Codecs{
+			GobMediaType: &GobBundle{},
 		}
 	})
 
@@ -282,8 +285,8 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 		MediaType: GobMediaType,
 
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{
-			GobMediaType: GobCodec{},
+		Codecs: httpkit.Codecs{
+			GobMediaType: &GobBundle{},
 		},
 	}
 
@@ -296,10 +299,12 @@ func TestRESTClient_withMediaTypeCodecs(t *testing.T) {
 
 const GobMediaType = "application/gob"
 
-type GobCodec struct{}
+type GobBundle struct {
+	regonce sync.Once
+}
 
 // Marshal encodes a value v into a byte slice.
-func (c GobCodec) Marshal(v any) (_ []byte, _ error) {
+func (c *GobBundle) Marshal(v any) (_ []byte, _ error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(v); err != nil {
@@ -309,7 +314,7 @@ func (c GobCodec) Marshal(v any) (_ []byte, _ error) {
 }
 
 // Unmarshal decodes a byte slice into a provided pointer ptr.
-func (c GobCodec) Unmarshal(data []byte, ptr any) (_ error) {
+func (c *GobBundle) Unmarshal(data []byte, ptr any) (_ error) {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
 	if err := dec.Decode(ptr); err != nil {
@@ -369,8 +374,8 @@ func TestRESTClient_bodyReadLimit(t *testing.T) {
 
 		MediaType: GobMediaType,
 
-		MediaTypeCodecs: httpkit.MediaTypeCodecs{
-			GobMediaType: GobCodec{},
+		Codecs: httpkit.Codecs{
+			GobMediaType: &GobBundle{},
 		},
 
 		BodyReadLimit: 1,

@@ -6,9 +6,11 @@ import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/dtokit"
+	"go.llib.dev/frameless/pkg/uuid"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/pubsub"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/random"
 )
 
 type Foo struct {
@@ -106,6 +108,12 @@ type Fooer interface {
 	GetFoo() string
 }
 
+func MakeBar(tb testing.TB) Bar {
+	v := testcase.ToT(&tb).Random.Make(Bar{}).(Bar)
+	v.ID = ""
+	return v
+}
+
 type Bar struct {
 	ID BarID `ext:"id"`
 
@@ -182,3 +190,26 @@ func MakeBaz(tb testing.TB) Baz {
 var _ extid.Accessor[Baz, string] = BazIDA
 
 func BazIDA(v *Baz) *string { return &v.Name }
+
+func MakeQux(tb testing.TB) Qux {
+	t := testcase.ToT(&tb)
+	return Qux{
+		ID: uuid.Must(func() (uuid.UUID, error) {
+			return uuid.Parse(t.Random.UUID())
+		}),
+		Foo: MakeFoo(t),
+		Bars: random.Slice(t.Random.IntBetween(0, 7), func() Bar {
+			return MakeBar(t)
+		}),
+		Bazs: random.Map(t.Random.IntBetween(0, 7), func() (string, Baz) {
+			return t.Random.HexN(t.Random.IntBetween(4, 16)), MakeBaz(t)
+		}),
+	}
+}
+
+type Qux struct {
+	ID   uuid.UUID `ext:"id"`
+	Foo  Foo
+	Bars []Bar
+	Bazs map[string]Baz
+}

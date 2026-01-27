@@ -39,7 +39,8 @@ func Coalesce[T any](vs ...T) T {
 			return v
 		}
 	}
-	return *new(T)
+	var zero T
+	return zero
 }
 
 // V is a type that can initialise itself upon access (V.Get).

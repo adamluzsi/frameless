@@ -26,7 +26,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/mk"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/reflectkit/refnode"
+	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/datastruct"
@@ -543,7 +543,7 @@ func metaFor(ptr reflect.Value) metaH {
 	}
 	var m = metaH{}
 	for v := range reflectkit.Visit(ptr) {
-		if v.NodeType != refnode.StructField {
+		if v.Type != reftree.StructField {
 			continue
 		}
 		if !v.StructField.IsExported() {
@@ -671,7 +671,7 @@ func (m metaH) Flags() []metaFlag {
 }
 
 type metaRef struct {
-	V reflectkit.V
+	V reftree.Node
 
 	IsSet bool
 	Raw   string
@@ -727,8 +727,11 @@ func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) e
 	if err != nil {
 		return err
 	}
-	if ref.V.NodeType == refnode.StructField {
+	if ref.V.Type == reftree.StructField {
 		if err := validate.StructField(ctx, ref.V.StructField, value); err != nil {
+			// enum error is soncidered as a user error,
+			// this we intercept the validation error
+			// and return back the list of enum value which are accepted for this field.
 			if errors.Is(err, enum.ErrInvalid) {
 				return enumError(ref.InputName(), enum.ReflectValues(ref.V.StructField), value)
 			}
@@ -787,7 +790,7 @@ func (ref metaRef) IsArg() bool {
 }
 
 func (ref metaRef) Type() reflect.Type {
-	if ref.V.NodeType == refnode.StructField {
+	if ref.V.Type == reftree.StructField {
 		return ref.V.StructField.Type
 	}
 	return ref.V.Value.Type()
@@ -837,11 +840,11 @@ func (ref metaRef) IsRelevant() bool {
 }
 
 type envMeta struct {
-	V reflectkit.V
+	V reftree.Node
 }
 
 type flagMeta struct {
-	V reflectkit.V
+	V reftree.Node
 
 	Default    string
 	HasDefault bool
@@ -967,31 +970,6 @@ func (v *flagValue) Link() {
 		v.Ref.IsSet = true
 		v.Ref.Raw = v.Raw
 	}
-}
-
-func checkEnum(enums []reflect.Value, val reflect.Value, name string) error {
-	if len(enums) == 0 {
-		return nil
-	}
-	_, ok := slicekit.Find(enums, func(e reflect.Value) bool {
-		return reflectkit.Equal(e, val)
-	})
-	if ok {
-		return nil
-	}
-
-	var acceptedValues []string
-	for _, val := range enums {
-		fval, err := convkit.Format[any](val.Interface())
-		if err != nil {
-			return err
-		}
-		acceptedValues = append(acceptedValues, fval)
-	}
-
-	acceptedValuesFormatted := strings.Join(slicekit.Map(acceptedValues, func(v string) string { return " - " + v }), lineSeparator)
-
-	return ErrFlagInvalid.F("%s got the value of %s which is not part of the acceptable values\n\naccepted values:\n%s", name, val.Interface(), acceptedValuesFormatted)
 }
 
 var EnumError = errorkit.UserError{

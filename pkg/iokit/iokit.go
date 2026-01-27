@@ -22,6 +22,35 @@ const ErrSeekNegativePosition errorkitlite.Error = "iokit: negative position"
 
 const ErrClosed errorkitlite.Error = "iokit: read/write on closed io"
 
+func WriteAll(w io.Writer, p []byte) (int, error) {
+	var (
+		index int
+		tries = 42
+	)
+	for index < len(p) {
+		n, err := w.Write(p[index:])
+		if 0 < n {
+			index += n
+		}
+		if err != nil {
+			if errors.Is(err, io.ErrShortWrite) {
+				if n == 0 {
+					// if short write occurs with zero write length results,
+					// only then we assume a potentially stuck/broken IO,
+					// and limit or retry attempts.
+					tries--
+				}
+				if 0 < tries {
+					continue
+				}
+				return index, err
+			}
+			return index, err
+		}
+	}
+	return index, nil
+}
+
 func NewBuffer[T []byte | string](data T) *Buffer {
 	return &Buffer{buffer: *bytes.NewBuffer([]byte(data)), position: 0}
 }
@@ -196,50 +225,109 @@ func ReadAllWithLimit(body io.Reader, readLimit ByteSize) (_ []byte, returnErr e
 	return data, nil
 }
 
-type StubReader struct {
-	Data     []byte
-	ReadErr  error
-	CloseErr error
+type Stub struct {
+	Data []byte
 
-	index  int
-	lock   sync.RWMutex
-	readAt time.Time
-	closed bool
+	StubWrite func(stub *Stub, p []byte) (int, error)
+	StubRead  func(stub *Stub, p []byte) (int, error)
+	StubClose func(stub *Stub) error
+
+	EagerEOF bool
+
+	index    int64
+	closed   int32 `enum:"0,1"`
+	stubbed  int32 `enum:"0,1"`
+	numRead  int64
+	numWrite int64
 }
 
-func (r *StubReader) Read(p []byte) (int, error) {
-	r.lock.Lock()
-	r.readAt = clock.Now()
-	r.lock.Unlock()
-
-	if r.ReadErr != nil {
-		return 0, r.ReadErr
+func withoutStubbFunc[FN any](stubbed *int32, p *FN) func() {
+	atomic.StoreInt32(stubbed, 1)
+	fn := *p
+	var zero FN
+	*p = zero
+	return func() {
+		*p = fn
+		atomic.StoreInt32(stubbed, 0)
 	}
-	if len(r.Data) <= r.index {
-		return 0, io.EOF
+}
+
+func (r *Stub) incNum(p *int64) {
+	if atomic.LoadInt32(&r.stubbed) == 0 {
+		atomic.AddInt64(p, 1)
 	}
-	n := copy(p, r.Data[r.index:])
-	r.index += n
-	return n, nil
 }
 
-func (r *StubReader) Close() error {
-	r.lock.Lock()
-	r.closed = true
-	r.lock.Unlock()
-	return r.CloseErr
+func (r *Stub) Write(p []byte) (int, error) {
+	r.incNum(&r.numWrite)
+	if fn := r.StubWrite; fn != nil {
+		defer withoutStubbFunc(&r.stubbed, &r.StubWrite)()
+		return fn(r, p)
+	}
+	r.Data = append(r.Data, p...)
+	return len(p), nil
 }
 
-func (r *StubReader) LastReadAt() time.Time {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	return r.readAt
+func (r *Stub) Read(p []byte) (int, error) {
+	r.incNum(&r.numRead)
+
+	if r.StubRead != nil {
+		fn := r.StubRead
+		defer withoutStubbFunc(&r.stubbed, &r.StubRead)()
+		return fn(r, p)
+	}
+
+	var data []byte
+	index := int(atomic.LoadInt64(&r.index))
+	if index < len(r.Data) {
+		data = r.Data[index:]
+	}
+
+	var (
+		n   = len(p)
+		err error
+	)
+	if len(data) < n {
+		n = len(data)
+		if r.EagerEOF {
+			err = io.EOF
+		}
+	}
+	if len(data) == 0 {
+		err = io.EOF
+	}
+
+	if got := copy(p[:n], data); got != n {
+		panic("copy error in iokit.Stub")
+	}
+
+	atomic.AddInt64(&r.index, int64(n))
+	return n, err
 }
 
-func (r *StubReader) IsClosed() bool {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	return r.closed
+func (r *Stub) Close() error {
+	if fn := r.StubClose; fn != nil {
+		defer withoutStubbFunc(&r.stubbed, &r.StubClose)()
+		return fn(r)
+	}
+	atomic.StoreInt32(&r.closed, 1)
+	return nil
+}
+
+func (r *Stub) IsClosed() bool {
+	return atomic.LoadInt32(&r.closed) != 0
+}
+
+func (r *Stub) NumRead() int {
+	return int(atomic.LoadInt64(&r.numRead))
+}
+
+func (r *Stub) NumWrite() int {
+	return int(atomic.LoadInt64(&r.numWrite))
+}
+
+func (r *Stub) Bytes() []byte {
+	return r.Data
 }
 
 func NewKeepAliveReader(r io.Reader, d time.Duration) *KeepAliveReader {

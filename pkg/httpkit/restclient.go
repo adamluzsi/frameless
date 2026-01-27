@@ -2,6 +2,7 @@ package httpkit
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/iterkit"
@@ -37,20 +37,12 @@ type RESTClient[ENT, ID any] struct {
 	HTTPClient *http.Client
 	// MediaType [optional] is used in the related headers such as Content-Type and Accept.
 	//
-	// default: httpkit.DefaultCodec.MediaType
-	MediaType mediatype.MediaType
-	// Mapping [optional] is used if the ENT must be mapped into a DTO type prior to serialization.
-	//
-	// default: ENT type is used as the DTO type.
-	Mapping dtokit.Mapper[ENT]
-	// Codec [optional] is used for the serialization process with DTO values.
+	// default: JSON
+	MediaType MediaType
+	// Codecs [optional] is used for the serialization process with DTO values.
 	//
 	// default: DefaultCodecs will be used to find a matching codec for the given media type.
-	Codec codec.Codec
-	// MediaTypeCodecs [optional] is a registry that helps choose the right codec for each media type.
-	//
-	// default: DefaultCodecs
-	MediaTypeCodecs MediaTypeCodecs
+	Codecs Codecs
 	// IDFormatter [optional] is used to format the ID value into a string format that can be part of the request path.
 	//
 	// default: httpkit.IDFormatter[ID].Format
@@ -85,15 +77,14 @@ type RESTClient[ENT, ID any] struct {
 	//
 	// This is useful for situations:
 	//   - where slowwer servers might feel overwhelmed with holding connections concurrently open (lik ruby's unicorn server)
-	//   - when the server incorrect mistake the streaming based request processing as a slow-client attack.
+	//   - when the server incorrectly mistake the streaming based request processing as a slow-client attack.
 	//
 	// default: false
 	DisableStreaming bool
-}
-
-type RestClientCodec interface {
-	codec.Codec
-	codec.ListDecoderMaker
+	// KeepAliveInterval is the interval in between the response body guaranteed to be read, to avoid read timeout.
+	//
+	// default: 5s
+	KeepAliveInterval time.Duration
 }
 
 func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
@@ -110,15 +101,9 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 	}
 
 	mimeType := r.getMediaType()
-	cod := r.getCodec(mimeType)
-	mapping := r.getMapping()
+	codec, mimeType := r.getCodec(mimeType)
 
-	dto, err := mapping.MapToIDTO(ctx, *ptr)
-	if err != nil {
-		return err
-	}
-
-	data, err := cod.Marshal(dto)
+	data, err := codec.Marshal(*ptr)
 	if err != nil {
 		return err
 	}
@@ -150,18 +135,7 @@ func (r RESTClient[ENT, ID]) Create(ctx context.Context, ptr *ENT) error {
 		}
 	}
 
-	dtoPtr := mapping.NewDTO()
-	if err := cod.Unmarshal(responseBody, dtoPtr); err != nil {
-		return err
-	}
-
-	got, err := mapping.MapFromDTO(ctx, dtoPtr)
-	if err != nil {
-		return err
-	}
-
-	*ptr = got
-	return nil
+	return codec.Unmarshal(responseBody, ptr)
 }
 
 func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] {
@@ -180,7 +154,6 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		reqURL := pathkit.Join(baseURL, "/")
 		details = append(details, logging.Field("url", reqURL))
 
-		//mapping := r.getMapping()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
 			var zero ENT
@@ -202,10 +175,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 		}
 
 		details = append(details, logging.Field("status code", resp.StatusCode))
-
-		mapping := r.getMapping()
-
-		cod, respMediaType, ok := r.contentTypeBasedCodec(resp)
+		c, respMediaType, ok := r.contentTypeBasedCodec(resp)
 		if !ok {
 			err := fmt.Errorf("no codec configured for response content type: %s", respMediaType)
 			var zero ENT
@@ -215,57 +185,70 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 
 		details = append(details, logging.Field("response content type", respMediaType))
 
-		dm, ok := cod.(codec.ListDecoderMaker)
-
-		if r.DisableStreaming || !ok {
-			data, err := io.ReadAll(resp.Body)
-			if err != nil {
-				var zero ENT
-				yield(zero, err)
-				return
-			}
-
-			ptr := mapping.NewDTOSlice()
-			if err := cod.Unmarshal(data, ptr); err != nil {
-				var zero ENT
-				yield(zero, err)
-				return
-			}
-
-			got, err := mapping.MapFromDTOSlice(ctx, ptr)
-			if err != nil {
-				var zero ENT
-				yield(zero, fmt.Errorf("error while mapping from DTO: %w", err))
-				return
-			}
-
-			for _, v := range got {
-				if !yield(v, nil) {
-					return
-				}
-			}
+		if sc, ok := c.(codec.StreamConsumer); ok {
+			r.streamFindAll(ctx, sc, resp.Body, yield)
 			return
 		}
+		r.findAll(ctx, c, resp.Body, yield)
+	}
+}
 
-		dec := dm.MakeListDecoder(resp.Body)
-		for dec.Next() {
-			ptr := mapping.NewDTO()
-			if err := dec.Decode(ptr); err != nil {
-				var zero ENT
-				if !yield(zero, err) {
-					return
-				}
-				continue
-			}
-			if !yield(mapping.MapFromDTO(ctx, ptr)) {
-				return
-			}
+func (r RESTClient[ENT, ID]) findAll(ctx context.Context, c codec.Codec, body io.ReadCloser, yield func(ENT, error) bool) {
+	defer body.Close()
+	data, err := r.bodyReadAll(body)
+	if err != nil {
+		var zero ENT
+		yield(zero, err)
+		return
+	}
+
+	var vs []ENT
+	if err := c.Unmarshal(data, &vs); err != nil {
+		var zero ENT
+		yield(zero, err)
+		return
+	}
+
+	for _, v := range vs {
+		if !yield(v, nil) {
+			return
 		}
-		if err := dec.Err(); err != nil {
+	}
+}
+
+func (r RESTClient[ENT, ID]) streamFindAll(_ context.Context, sc codec.StreamConsumer, body io.ReadCloser, yield func(ENT, error) bool) {
+	var src io.Reader = body
+
+	if r.DisableStreaming {
+		data, err := io.ReadAll(body)
+		_ = body.Close()
+		if err != nil {
 			var zero ENT
-			if !yield(zero, err) {
+			yield(zero, err)
+			return
+		}
+		src = io.NopCloser(bytes.NewReader(data))
+	} else {
+		bodyWithKeepAliveReads := r.withKeepAlive(body)
+		defer bodyWithKeepAliveReads.Close()
+		src = bodyWithKeepAliveReads
+	}
+
+	var stream = sc.NewStreamDecoder(src)
+	for elem, err := range stream {
+		var ent ENT
+		if err != nil {
+			yield(ent, err)
+			return
+		}
+		if err := elem.Decode(&ent); err != nil {
+			if !yield(ent, err) {
 				return
 			}
+			continue
+		}
+		if !yield(ent, nil) {
+			return
 		}
 	}
 }
@@ -286,8 +269,6 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 		logging.Field("entity type", reflectkit.TypeOf[ENT]().String()),
 		logging.Field("id", id),
 	)
-
-	mapping := r.getMapping()
 
 	pathParamID, err := r.formatID(id)
 	if err != nil {
@@ -336,24 +317,18 @@ func (r RESTClient[ENT, ID]) FindByID(ctx context.Context, id ID) (ent ENT, foun
 		return ent, false, makeClientErrUnexpectedResponse(req, resp, responseBody)
 	}
 
-	cdk, responseMediaType, ok := r.contentTypeBasedCodec(resp)
+	codec, responseMediaType, ok := r.contentTypeBasedCodec(resp)
 	if !ok {
 		return ent, false, fmt.Errorf("no codec configured for response content type: %s", responseMediaType)
 	}
 
 	details = append(details, logging.Field("response content type", responseMediaType))
 
-	dtoPtr := mapping.NewDTO()
-	if err := cdk.Unmarshal(responseBody, dtoPtr); err != nil {
+	if err := codec.Unmarshal(responseBody, &ent); err != nil {
 		return ent, false, err
 	}
 
-	got, err := mapping.MapFromDTO(ctx, dtoPtr)
-	if err != nil {
-		return ent, false, err
-	}
-
-	return got, true, nil
+	return ent, true, nil
 }
 
 func (r RESTClient[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iter.Seq2[ENT, error] {
@@ -440,8 +415,7 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 
 	var idAccessor = r.IDA
 
-	ser := r.getCodec(r.getMediaType())
-	mapping := r.getMapping()
+	ser, mediaType := r.getCodec(r.getMediaType())
 
 	id, ok := idAccessor.Lookup(*ptr)
 	if !ok {
@@ -454,12 +428,7 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	dto, err := mapping.MapToIDTO(ctx, *ptr)
-	if err != nil {
-		return err
-	}
-
-	data, err := ser.Marshal(dto)
+	data, err := ser.Marshal(*ptr)
 	if err != nil {
 		return err
 	}
@@ -469,8 +438,8 @@ func (r RESTClient[ENT, ID]) Update(ctx context.Context, ptr *ENT) error {
 		return err
 	}
 
-	req.Header.Set(headerKeyContentType, r.getMediaType())
-	req.Header.Set(headerKeyAccept, r.getMediaType())
+	req.Header.Set(headerKeyContentType, mediaType)
+	req.Header.Set(headerKeyAccept, mediaType)
 
 	resp, err := r.httpClient().Do(req)
 	if err != nil {
@@ -582,22 +551,16 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RESTClient[ENT, ID]) getCodec(mimeType string) codec.Codec {
-	if c, ok := r.MediaTypeCodecs.Lookup(mimeType); ok {
-		return c
+func (r RESTClient[ENT, ID]) getCodec(mimeType string) (codec.Codec, MediaType) {
+	if c, mt, ok := findCodecByMediaType(r.Codecs, mimeType); ok {
+		return c, mt
 	}
-	if r.Codec != nil {
-		return r.Codec
-	}
-	return defaultCodec.Codec
+	return defaultCodec()
 }
 
-func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Codec, mediatype.MediaType, bool) {
+func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Codec, MediaType, bool) {
 	mt := string(resp.Header.Get(headerKeyContentType))
-	c, ok := r.MediaTypeCodecs.Lookup(mt)
-	if !ok && r.Codec != nil {
-		c, ok = r.Codec, true
-	}
+	c, mt, ok := findCodecByMediaType(r.Codecs, mt)
 	return c, mt, ok
 }
 
@@ -615,13 +578,6 @@ func (r RESTClient[ENT, ID]) httpClient() *http.Client {
 	return zerokit.Coalesce(r.HTTPClient, &DefaultRestClientHTTPClient)
 }
 
-func (r RESTClient[ENT, ID]) getMapping() dtokit.Mapper[ENT] {
-	if r.Mapping == nil {
-		return passthroughMappingMode[ENT]()
-	}
-	return r.Mapping
-}
-
 func (r RESTClient[ENT, ID]) getPrefetchLimit() int {
 	if 0 < r.PrefetchLimit {
 		return r.PrefetchLimit
@@ -637,7 +593,7 @@ func (r RESTClient[ENT, ID]) getMediaType() string {
 	if r.MediaType != zero {
 		return r.MediaType
 	}
-	return defaultCodec.MediaType
+	return mediatype.JSON
 }
 
 func (r RESTClient[ENT, ID]) getBaseURL(ctx context.Context) (string, error) {
@@ -657,6 +613,12 @@ func (r RESTClient[ENT, ID]) bodyReadAll(body io.ReadCloser) ([]byte, error) {
 		return nil, ErrResponseEntityTooLarge
 	}
 	return data, nil
+}
+
+func (r RESTClient[ENT, ID]) withKeepAlive(body io.ReadCloser) *iokit.KeepAliveReader {
+	const defaultInterval = 25 * time.Second
+	var interval time.Duration = cmp.Or(r.KeepAliveInterval, defaultInterval)
+	return iokit.NewKeepAliveReader(body, interval)
 }
 
 var pathResourceIdentifierRGX = regexp.MustCompile(`^:[\w[:punct:]]+$`)

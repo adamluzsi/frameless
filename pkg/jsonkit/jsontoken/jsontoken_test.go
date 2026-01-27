@@ -12,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/testing/testent"
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -1200,4 +1201,39 @@ func TestQueryMany_e2e(t *testing.T) {
 
 	assert.ContainsExactly(t, expVS, gotVSFunc)
 	assert.ContainsExactly(t, expVS, gotVSOn)
+}
+
+var dataSmokeTestArrayIterator = []byte(`[
+	{
+		"ID": "3",
+		"Foo": "0 or 1=1",
+		"Bar": "+++ATH0",
+		"Baz": "ABC\u003cdiv style=\"x:exp\\x5Cression(javascript:alert(38)\"\u003eDEF"
+	},
+	{
+		"ID": "2",
+		"Foo": " ORDER BY 17# ",
+		"Bar": "\u003cIMG SRC=\"jav\u0026#x0D;ascript:alert('217');\"\u003e",
+		"Baz": " or '1'='1"
+	}
+]`)
+
+func TestArrayIterator_smoke(t *testing.T) {
+	var exp []testent.Foo
+	assert.NoError(t, json.Unmarshal(dataSmokeTestArrayIterator, &exp))
+
+	var i = jsontoken.ArrayIterator{
+		Input: bytes.NewReader(dataSmokeTestArrayIterator),
+	}
+
+	var got []testent.Foo
+	for i.Next() {
+		var v testent.Foo
+		assert.NoError(t, i.Decode(&v))
+		got = append(got, v)
+	}
+	assert.NoError(t, i.Err())
+	assert.NoError(t, i.Close())
+
+	assert.Equal(t, exp, got)
 }

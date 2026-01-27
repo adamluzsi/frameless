@@ -6,41 +6,54 @@ import (
 	"reflect"
 	"strconv"
 
-	"go.llib.dev/frameless/pkg/dtokit"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/httpkit/formurlencoded"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
 	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type MediaTypeMappings[ENT any] map[mediatype.MediaType]dtokit.Mapper[ENT]
+type MediaType = mediatype.MediaType
 
-type MediaTypeCodecs map[mediatype.MediaType]codec.Codec
+type Codecs map[MediaType]codec.Codec
 
-var defaultCodecs = map[mediatype.MediaType]codec.Codec{
-	"application/json":                  jsonkit.Codec{},
-	"application/problem+json":          jsonkit.Codec{},
-	"application/x-ndjson":              jsonkit.LinesCodec{},
-	"application/stream+json":           jsonkit.LinesCodec{},
-	"application/json-stream":           jsonkit.LinesCodec{},
-	"application/x-www-form-urlencoded": FormURLEncodedCodec{},
-}
-
-func (m MediaTypeCodecs) Lookup(mediaType string) (codec.Codec, bool) {
-	mediaType, ok := lookupMediaType(mediaType) // TODO: TEST ME
+func findCodecByMediaType(cs Codecs, mimeType string) (codec.Codec, string, bool) {
+	var mediaType, ok = lookupMediaType(mimeType)
 	if !ok {
-		return nil, false
+		return nil, mediaType, false
 	}
-	if m != nil {
-		if c, ok := m[mediaType]; ok {
-			return c, true
+	if cs != nil {
+		if c, ok := cs[mediaType]; ok {
+			return c, mediaType, true
 		}
 	}
 	if c, ok := defaultCodecs[mediaType]; ok {
-		return c, true
+		return c, mediaType, true
 	}
-	return nil, false
+	return nil, mediaType, false
+}
+
+func defaultCodec() (codec.Codec, MediaType) {
+	return defaultCodecBundle, mediatype.JSON
+}
+
+var defaultCodecBundle jsonkit.Codec
+
+var defaultCodecs Codecs = makeDefaultCodecs()
+
+func makeDefaultCodecs() Codecs {
+	var jsonB jsonkit.Codec
+	var jsonLinesB jsonkit.LinesCodec
+	var formURLEncodedB formurlencoded.Codec
+	return Codecs{
+		"application/json":                  jsonB,
+		"application/problem+json":          jsonB,
+		"application/x-ndjson":              jsonLinesB,
+		"application/stream+json":           jsonLinesB,
+		"application/json-stream":           jsonLinesB,
+		"application/x-www-form-urlencoded": formURLEncodedB,
+	}
 }
 
 /////////////////////////////////////////////////////// MAPPING ///////////////////////////////////////////////////////
@@ -147,12 +160,7 @@ func (m IDConverter[ID]) getParser() func(string) (ID, error) {
 	}
 }
 
-var defaultCodec = codecDefault{
-	Codec:     jsonkit.Codec{},
-	MediaType: mediatype.JSON,
-}
-
 type codecDefault struct {
 	Codec     codec.Codec
-	MediaType mediatype.MediaType
+	MediaType MediaType
 }
