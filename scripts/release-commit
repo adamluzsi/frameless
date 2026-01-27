@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -eE -u
+
+cd "${WDP}"
+declare releaseFile=".release"
+
+git commit --allow-empty
+date "+%Y-%m-%d" >"${releaseFile}"
+git add "${releaseFile}"
+git commit --amend --no-edit
+
