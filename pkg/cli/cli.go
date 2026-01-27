@@ -26,7 +26,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/mk"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/reflectkit/refvis"
+	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/datastruct"
@@ -543,7 +543,7 @@ func metaFor(ptr reflect.Value) metaH {
 	}
 	var m = metaH{}
 	for v := range reflectkit.Visit(ptr) {
-		if v.Type != refvis.StructField {
+		if v.Type != reftree.StructField {
 			continue
 		}
 		if !v.StructField.IsExported() {
@@ -671,7 +671,7 @@ func (m metaH) Flags() []metaFlag {
 }
 
 type metaRef struct {
-	V refvis.Node
+	V reftree.Node
 
 	IsSet bool
 	Raw   string
@@ -727,7 +727,7 @@ func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) e
 	if err != nil {
 		return err
 	}
-	if ref.V.Type == refvis.StructField {
+	if ref.V.Type == reftree.StructField {
 		if err := validate.StructField(ctx, ref.V.StructField, value); err != nil {
 			// enum error is soncidered as a user error,
 			// this we intercept the validation error
@@ -790,7 +790,7 @@ func (ref metaRef) IsArg() bool {
 }
 
 func (ref metaRef) Type() reflect.Type {
-	if ref.V.Type == refvis.StructField {
+	if ref.V.Type == reftree.StructField {
 		return ref.V.StructField.Type
 	}
 	return ref.V.Value.Type()
@@ -840,11 +840,11 @@ func (ref metaRef) IsRelevant() bool {
 }
 
 type envMeta struct {
-	V refvis.Node
+	V reftree.Node
 }
 
 type flagMeta struct {
-	V refvis.Node
+	V reftree.Node
 
 	Default    string
 	HasDefault bool

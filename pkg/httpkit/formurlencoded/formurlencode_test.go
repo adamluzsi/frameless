@@ -23,7 +23,7 @@ func TestCodec_struct(t *testing.T) {
 		PascalCase bool
 	}
 
-	var ser formurlencoded.Bundle
+	var ser formurlencoded.Codec
 
 	var exp = DTO{
 		Foo:        "foo",
@@ -49,7 +49,7 @@ func TestCodec_struct(t *testing.T) {
 }
 
 func TestFormURLEncoder_mapStringAny(t *testing.T) {
-	var ser formurlencoded.Bundle
+	var ser formurlencoded.Codec
 
 	var exp = map[string]any{
 		"foo":  "foo",
@@ -73,7 +73,7 @@ func TestFormURLEncoder_mapStringAny(t *testing.T) {
 }
 
 func TestFormURLEncoder_mapCustomKeyAnyValue(t *testing.T) {
-	var ser formurlencoded.Bundle
+	var ser formurlencoded.Codec
 
 	var exp = map[time.Duration]any{
 		time.Second: "foo",
@@ -108,7 +108,7 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 		}),
 	}
 
-	var c formurlencoded.Bundle
+	var c formurlencoded.Codec
 
 	data, err := c.Marshal(exp)
 	assert.NoError(t, err)

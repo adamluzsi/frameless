@@ -8,24 +8,9 @@ func ExampleMarshaler() {
 	c.Marshal(v) // handl error
 }
 
-func ExampleTypeMarshaler() {
-	var c codec.TypeMarshaler[int]
-	var v = 42
-	c.Marshal(v) // handl error
-}
-
 func ExampleUnmarshaler() {
 	var (
 		c    codec.Unmarshaler
-		data []byte
-		v    int
-	)
-	c.Unmarshal(data, &v) // handl error
-}
-
-func ExampleTypeUnmarshaler() {
-	var (
-		c    codec.TypeUnmarshaler[int]
 		data []byte
 		v    int
 	)
@@ -38,23 +23,8 @@ func ExampleEncoder() {
 	format.Encode(v) // handl error
 }
 
-func ExampleTypeEncoder() {
-	var format codec.TypeEncoder[int]
-	var v = 42
-	format.Encode(v) // handl error
-}
-
 func ExampleDecoder() {
 	var encodedValue codec.Decoder                  // encoded value that can be decoded
-	var v int                                       // allocation
-	if err := encodedValue.Decode(&v); err != nil { // handle error
-		return // err
-	}
-	_ = v // using the decoded value
-}
-
-func ExampleTypeDecoder() {
-	var encodedValue codec.TypeDecoder[int]         // encoded value that can be decoded
 	var v int                                       // allocation
 	if err := encodedValue.Decode(&v); err != nil { // handle error
 		return // err

@@ -1,11 +1,7 @@
 package formurlencoded
 
 import (
-	"bufio"
-	"bytes"
-	"errors"
 	"fmt"
-	"io"
 	"net/url"
 	"reflect"
 	"regexp"
@@ -14,30 +10,30 @@ import (
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/httpkit/mediatype"
-	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/reflectkit/refvis"
+	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/stringkit"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type Bundle struct {
+type Codec struct {
 	// Collection is the id/name of the collection type.
 	// The default value is the short type name of T in snake case with an "s" suffix.
 	// For example if T is
 	// - `Item` -> `items`
 	// - `User` -> `users`
 	// - `UserEmail` -> `user_emails`
-	Collection string
+	// Collection string
+
 	// StringCase is the formatter used to format the url keys.
 	// Default: stringkit.ToSnake
 	StringCase func(string) string
 	prefix     string
 }
 
-func (c Bundle) withPrefix(prefix string) Bundle {
+func (c Codec) withPrefix(prefix string) Codec {
 	if len(c.prefix) == 0 {
 		c.prefix = prefix
 		return c
@@ -46,7 +42,7 @@ func (c Bundle) withPrefix(prefix string) Bundle {
 	return c
 }
 
-func (c *Bundle) fmtKey(key string) string {
+func (c *Codec) fmtKey(key string) string {
 	if c.StringCase != nil {
 		return c.StringCase(key)
 	}
@@ -55,7 +51,7 @@ func (c *Bundle) fmtKey(key string) string {
 
 var pkgPrefix = regexp.MustCompile(`^[\w\d]+\.`)
 
-func (c *Bundle) typeName(typ reflect.Type) string {
+func (c *Codec) typeName(typ reflect.Type) string {
 	if name := typ.Name(); 0 < len(name) {
 		return c.fmtKey(name)
 	}
@@ -68,7 +64,7 @@ var mediaTypeFormURLEncoded = map[string]struct{}{
 	mediatype.FormUrlencoded: {},
 }
 
-func (c Bundle) filterValues(values url.Values) url.Values {
+func (c Codec) filterValues(values url.Values) url.Values {
 	if 0 < len(c.prefix) {
 		var vs = url.Values{}
 		for key, value := range values {
@@ -82,7 +78,7 @@ func (c Bundle) filterValues(values url.Values) url.Values {
 	return values
 }
 
-func (c Bundle) formatValues(values url.Values) {
+func (c Codec) formatValues(values url.Values) {
 	if 0 < len(c.prefix) {
 		var addSuffix func(vs url.Values, key, suffix string)
 		addSuffix = func(vs url.Values, key, suffix string) {
@@ -102,14 +98,17 @@ func (c Bundle) formatValues(values url.Values) {
 	}
 }
 
-func (c Bundle) Marshal(v any) ([]byte, error) {
+func (c Codec) Marshal(v any) ([]byte, error) {
 	var input = reflect.ValueOf(v)
+	if input.Kind() == reflect.Slice {
+		return nil, fmt.Errorf("[%w] Slice types is not supported by form url encoded format", codec.ErrNotSupported)
+	}
 	q := url.Values{}
 	err := c.marshalAppend(q, "", input)
 	return []byte(q.Encode()), err
 }
 
-func (c Bundle) marshalAppend(vs url.Values, qKey string, val reflect.Value) error {
+func (c Codec) marshalAppend(vs url.Values, qKey string, val reflect.Value) error {
 	switch val.Kind() {
 	case reflect.Struct:
 		c := c.withPrefix(qKey)
@@ -158,7 +157,7 @@ func (c Bundle) marshalAppend(vs url.Values, qKey string, val reflect.Value) err
 	}
 }
 
-func (c Bundle) Unmarshal(data []byte, ptr any) error {
+func (c Codec) Unmarshal(data []byte, ptr any) error {
 	vs, err := url.ParseQuery(string(data))
 	if err != nil {
 		return err
@@ -170,19 +169,22 @@ func (c Bundle) Unmarshal(data []byte, ptr any) error {
 	if p.Kind() != reflect.Pointer {
 		return fmt.Errorf("non pointer type received as ptr argument for Form URL Encoded Unmarshal")
 	}
+	if p.Elem().Kind() == reflect.Slice {
+		return fmt.Errorf("[%w] Slice types is not supported by form url encoded format", codec.ErrNotSupported)
+	}
 	return c.visitUnmarshal(vs, p)
 }
 
-func (c Bundle) getQueryKeyFor(node refvis.Node) (string, error) {
+func (c Codec) getQueryKeyFor(node reftree.Node) (string, error) {
 	var k []string
 	for e := range node.Iter() {
 		switch e.Type {
-		case refvis.ArrayElem, refvis.SliceElem:
+		case reftree.ArrayElem, reftree.SliceElem:
 			k = append(k, strconv.Itoa(e.Index))
-		case refvis.StructField:
+		case reftree.StructField:
 			prop := c.getFormProperties(e.StructField)
 			k = append(k, prop.Name)
-		case refvis.MapValue:
+		case reftree.MapValue:
 			mKeyStr, err := convkit.FormatReflect(e.MapKey)
 			if err != nil {
 				return "", err
@@ -193,7 +195,7 @@ func (c Bundle) getQueryKeyFor(node refvis.Node) (string, error) {
 	return strings.Join(k, "."), nil
 }
 
-func (c Bundle) getQueryFor(q url.Values, n refvis.Node) (url.Values, error) {
+func (c Codec) getQueryFor(q url.Values, n reftree.Node) (url.Values, error) {
 	prefix, err := c.getQueryKeyFor(n)
 	if err != nil {
 		return nil, err
@@ -207,7 +209,7 @@ func (c Bundle) getQueryFor(q url.Values, n refvis.Node) (url.Values, error) {
 	return subq, nil
 }
 
-func (c Bundle) getQueryKeyValue(query url.Values, node refvis.Node) ([]string, bool, error) {
+func (c Codec) getQueryKeyValue(query url.Values, node reftree.Node) ([]string, bool, error) {
 	qKey, err := c.getQueryKeyFor(node)
 	if err != nil {
 		return nil, false, err
@@ -219,10 +221,10 @@ func (c Bundle) getQueryKeyValue(query url.Values, node refvis.Node) ([]string, 
 	return qVS, true, nil
 }
 
-func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
-	return refvis.Walk(val, func(n refvis.Node) error {
+func (c Codec) visitUnmarshal(q url.Values, val reflect.Value) error {
+	return reftree.Walk(val, func(n reftree.Node) error {
 		switch n.Type {
-		case refvis.StructField:
+		case reftree.StructField:
 			qVS, ok, err := c.getQueryKeyValue(q, n)
 			if err != nil {
 				return err
@@ -237,7 +239,7 @@ func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
 			}
 
 			var typ = n.Value.Type()
-			if n.Type == refvis.StructField {
+			if n.Type == reftree.StructField {
 				typ = n.StructField.Type
 			}
 
@@ -248,9 +250,9 @@ func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
 			}
 
 			n.Value.Set(ptr.Elem())
-			return refvis.Skip
+			return reftree.Skip
 
-		case refvis.Map:
+		case reftree.Map:
 			sq, err := c.getQueryFor(q, n)
 			if err != nil {
 				return err
@@ -264,7 +266,7 @@ func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
 			}
 			return nil
 
-		case refvis.Slice:
+		case reftree.Slice:
 			qVS, ok, err := c.getQueryKeyValue(q, n)
 			if err != nil {
 				return err
@@ -274,7 +276,7 @@ func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
 			}
 			n.Value.Set(reflect.MakeSlice(n.Value.Type(), len(qVS), len(qVS)))
 			fallthrough
-		case refvis.Array:
+		case reftree.Array:
 			qVS, ok, err := c.getQueryKeyValue(q, n)
 			if err != nil {
 				return err
@@ -294,7 +296,7 @@ func (c Bundle) visitUnmarshal(q url.Values, val reflect.Value) error {
 	})
 }
 
-func (c Bundle) unmarshalValue(q url.Values, n refvis.Node, ptr reflect.Value) error {
+func (c Codec) unmarshalValue(q url.Values, n reftree.Node, ptr reflect.Value) error {
 	qVS, ok, err := c.getQueryKeyValue(q, n)
 	if err != nil {
 		return err
@@ -309,14 +311,14 @@ func (c Bundle) unmarshalValue(q url.Values, n refvis.Node, ptr reflect.Value) e
 	}
 
 	var typ = n.Value.Type()
-	if n.Type == refvis.StructField {
+	if n.Type == reftree.StructField {
 		typ = n.StructField.Type
 	}
 
 	return convkit.UnmarshalReflect(typ, []byte(raw), ptr)
 }
 
-func (c Bundle) unmarshalStruct(vs url.Values, ptr reflect.Value) error {
+func (c Codec) unmarshalStruct(vs url.Values, ptr reflect.Value) error {
 	for i, num := 0, ptr.Type().Elem().NumField(); i < num; i++ {
 		var (
 			field = ptr.Elem().Field(i)
@@ -346,7 +348,7 @@ func (c Bundle) unmarshalStruct(vs url.Values, ptr reflect.Value) error {
 	return nil
 }
 
-func (c Bundle) unmarshalMap(query url.Values, n refvis.Node) error {
+func (c Codec) unmarshalMap(query url.Values, n reftree.Node) error {
 	var (
 		ptr       = n.Value.Addr()
 		mapType   = ptr.Type().Elem()
@@ -405,14 +407,14 @@ type formProperties struct {
 	OmitEmpty bool
 }
 
-func (c Bundle) qKeyFor(k string) string {
+func (c Codec) qKeyFor(k string) string {
 	if len(c.prefix) != 0 {
 		k = c.prefix + "." + k
 	}
 	return k
 }
 
-func (c Bundle) getFormProperties(typ reflect.StructField) formProperties {
+func (c Codec) getFormProperties(typ reflect.StructField) formProperties {
 	var prop formProperties
 	prop.Name = c.fmtKey(typ.Name)
 	c.lookupTag(typ, "url", &prop)
@@ -420,7 +422,7 @@ func (c Bundle) getFormProperties(typ reflect.StructField) formProperties {
 	return prop
 }
 
-func (c Bundle) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
+func (c Codec) lookupTag(typ reflect.StructField, tagKey string, prop *formProperties) {
 	tag, ok := typ.Tag.Lookup(tagKey)
 	if !ok || len(tag) == 0 {
 		return
@@ -435,153 +437,4 @@ func (c Bundle) lookupTag(typ reflect.StructField, tagKey string, prop *formProp
 			}
 		}
 	}
-}
-
-// func (c Bundle) NewListEncoder(w io.Writer) codec.StreamEncoder {
-// 	return &streamEncoder{Bundle: c, Writer: w}
-// }
-
-type encoder struct {
-	Bundle
-	Writer io.Writer
-	index  int
-}
-
-func (se *encoder) Encode(v any) error {
-	enc := se.Bundle
-
-	if 0 < len(se.Bundle.Collection) {
-		enc = enc.
-			withPrefix(se.Bundle.Collection).
-			withPrefix(strconv.Itoa(se.index))
-	}
-
-	data, err := enc.Marshal(v)
-	if err != nil {
-		return err
-	}
-	if 0 < se.index {
-		se.Writer.Write([]byte("&"))
-	}
-	_, err = iokit.WriteAll(se.Writer, data)
-	se.index++
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (se *encoder) Close() error { return nil }
-
-// func (c Bundle) NewListDecoder(r io.Reader) codec.TypeStreamDecoder[T] {
-// 	return iterkit.FromPullIter(&formURLStreamDecoder[T]{Codec: c, Reader: r})
-// }
-
-type decoder[T any] struct {
-	Bundle
-	Reader io.Reader
-
-	index int
-	err   error
-	done  bool
-
-	buffer *bufio.Reader
-
-	curQuery  url.Values
-	curSuffix string
-
-	queryBuffer url.Values
-}
-
-func (c *decoder[T]) Err() error {
-	return c.err
-}
-
-func (c *decoder[T]) Next() bool {
-	if c.done {
-		return false
-	}
-	if c.err != nil {
-		return false
-	}
-
-	if c.buffer == nil {
-		c.buffer = bufio.NewReader(c.Reader)
-	}
-
-	c.curSuffix = fmt.Sprintf("%s[%d]", c.Bundle.Collection, c.index)
-	c.index++
-
-	var prev = url.Values{}
-	if 0 < len(c.queryBuffer) {
-		for key, kvs := range c.queryBuffer {
-			if strings.HasPrefix(key, c.curSuffix) {
-				prev[key] = kvs
-				delete(c.queryBuffer, key)
-			}
-		}
-	}
-
-	var contSignature = []byte(url.QueryEscape(c.curSuffix))
-
-	var queryPart []byte
-	for {
-		part, err := c.buffer.ReadBytes('&')
-		if 0 < len(part) {
-			queryPart = append(queryPart, part...)
-		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			c.err = err
-			return false
-		}
-		if !bytes.Contains(part, contSignature) {
-			break
-		}
-	}
-	if len(queryPart) == 0 {
-		c.done = true
-		return false
-	}
-	bytes.TrimSuffix(queryPart, []byte("&"))
-
-	query, err := url.ParseQuery(string(queryPart))
-	if err != nil {
-		c.err = err
-		return false
-	}
-
-	query = mapkit.Merge(query, prev)
-
-	for key, vs := range query {
-		if !strings.HasPrefix(key, c.curSuffix) {
-			if c.queryBuffer == nil {
-				c.queryBuffer = make(url.Values)
-			}
-			c.queryBuffer[key] = vs
-			delete(query, key)
-		}
-	}
-
-	c.curQuery = query
-	return true
-}
-
-func (c *decoder[T]) Value() codec.TypeDecoder[T] {
-	return c
-}
-
-func (c *decoder[T]) Decode(p *T) error {
-	dec := c.Bundle
-	dec.prefix = c.curSuffix
-	return dec.visitUnmarshal(c.curQuery, reflect.ValueOf(p))
-}
-
-func (c *decoder[T]) Close() error {
-	if len(c.queryBuffer) != 0 {
-		return fmt.Errorf("unprocessed query string are in the stream decoder:\n%s", c.queryBuffer.Encode())
-	}
-	return nil
 }

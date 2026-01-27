@@ -193,7 +193,7 @@ func (r RESTClient[ENT, ID]) FindAll(ctx context.Context) iter.Seq2[ENT, error] 
 	}
 }
 
-func (r RESTClient[ENT, ID]) findAll(ctx context.Context, c codec.Bundle, body io.ReadCloser, yield func(ENT, error) bool) {
+func (r RESTClient[ENT, ID]) findAll(ctx context.Context, c codec.Codec, body io.ReadCloser, yield func(ENT, error) bool) {
 	defer body.Close()
 	data, err := r.bodyReadAll(body)
 	if err != nil {
@@ -551,14 +551,14 @@ func statusOK(resp *http.Response) bool {
 	return intWithin(resp.StatusCode, 200, 299)
 }
 
-func (r RESTClient[ENT, ID]) getCodec(mimeType string) (codec.Bundle, mediatype.MediaType) {
+func (r RESTClient[ENT, ID]) getCodec(mimeType string) (codec.Codec, mediatype.MediaType) {
 	if c, mt, ok := findCodecByMediaType(r.Codecs, mimeType); ok {
 		return c, mt
 	}
 	return defaultCodec()
 }
 
-func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Bundle, mediatype.MediaType, bool) {
+func (r RESTClient[ENT, ID]) contentTypeBasedCodec(resp *http.Response) (codec.Codec, mediatype.MediaType, bool) {
 	mt := string(resp.Header.Get(headerKeyContentType))
 	c, mt, ok := findCodecByMediaType(r.Codecs, mt)
 	return c, mt, ok

@@ -269,11 +269,11 @@ func parseJSONEnvValue(typ reflect.Type, rv reflect.Value, data []byte) (reflect
 var registry = map[reflect.Type]registryRecord{}
 
 type registryRecord interface {
-	codec.Bundle
+	codec.Codec
 }
 
 type regrec[T any] struct {
-	TextCodec codec.Codec[T]
+	TextCodec TextCodec[T]
 }
 
 func (r regrec[T]) Marshal(v any) ([]byte, error) {
@@ -293,10 +293,8 @@ func (r regrec[T]) Unmarshal(data []byte, ptr any) error {
 	return r.TextCodec.Unmarshal(data, p)
 }
 
-type (
-	MarshalFunc[T any]   func(T) ([]byte, error)
-	UnmarshalFunc[T any] func(data []byte) (T, error)
-)
+type MarshalFunc[T any] func(T) ([]byte, error)
+type UnmarshalFunc[T any] func(data []byte, p *T) error
 
 func IsRegistered[T any](i ...T) bool {
 	typ := reflectkit.TypeOf[T](i...)
@@ -308,7 +306,12 @@ func IsRegistered[T any](i ...T) bool {
 	return ok
 }
 
-func Register[T any](c codec.Codec[T]) func() {
+type TextCodec[T any] interface {
+	Marshal(v T) ([]byte, error)
+	Unmarshal(data []byte, p *T) error
+}
+
+func Register[T any](c TextCodec[T]) func() {
 	var (
 		typ = reflectkit.TypeOf[T]()
 		rec = regrec[T]{TextCodec: c}
@@ -331,12 +334,7 @@ func registerAdd(k reflect.Type, v registryRecord) func() {
 func UnmarshalWith[T any](parser UnmarshalFunc[T]) Option {
 	return Options{
 		ParseFunc: func(data []byte, ptr any) error {
-			out, err := parser(data)
-			if err != nil {
-				return err
-			}
-			*ptr.(*T) = out
-			return nil
+			return parser(data, ptr.(*T))
 		},
 	}
 }

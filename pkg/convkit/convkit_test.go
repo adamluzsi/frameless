@@ -14,7 +14,6 @@ import (
 
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
@@ -118,8 +117,16 @@ func Test_smoke(t *testing.T) {
 }
 
 type ImplT[T any] struct {
-	codec.TypeMarshalerFunc[T]
-	codec.TypeUnmarshalerFunc[T]
+	convkit.MarshalFunc[T]
+	convkit.UnmarshalFunc[T]
+}
+
+func (i ImplT[T]) Marshal(v T) ([]byte, error) {
+	return i.MarshalFunc(v)
+}
+
+func (i ImplT[T]) Unmarshal(data []byte, p *T) error {
+	return i.UnmarshalFunc(data, p)
 }
 
 func TestIsRegistered(t *testing.T) {
@@ -131,10 +138,10 @@ func TestIsRegistered(t *testing.T) {
 	type X struct{}
 	assert.False(t, convkit.IsRegistered[X]())
 	undo := convkit.Register[X](ImplT[X]{
-		TypeMarshalerFunc: func(v X) ([]byte, error) {
+		MarshalFunc: func(v X) ([]byte, error) {
 			return []byte("X{}"), nil
 		},
-		TypeUnmarshalerFunc: func(data []byte, p *X) error {
+		UnmarshalFunc: func(data []byte, p *X) error {
 			if string(data) != "X{}" {
 				return fmt.Errorf("not X")
 			}
@@ -341,26 +348,6 @@ func Test_spikeReflectSet(t *testing.T) {
 	assert.Equal(t, 42, p.Age)
 }
 
-func ExampleParseWith() {
-	// export FOO=foo:baz
-	type Conf struct {
-		Foo string
-		Bar string
-	}
-	parserFunc := func(v []byte) (Conf, error) {
-		parts := strings.SplitN(string(v), ":", 1)
-		if len(parts) != 2 {
-			return Conf{}, fmt.Errorf("invalid format")
-		}
-		return Conf{
-			Foo: parts[0],
-			Bar: parts[1],
-		}, nil
-	}
-	conf, err := convkit.Parse[Conf]("foo:bar", convkit.UnmarshalWith(parserFunc))
-	_, _ = conf, err
-}
-
 func TestParseWith(t *testing.T) {
 	type Conf struct {
 		Foo string
@@ -368,23 +355,22 @@ func TestParseWith(t *testing.T) {
 	}
 	t.Run("happy", func(t *testing.T) {
 		conf, err := convkit.Parse[Conf]("foo:bar",
-			convkit.UnmarshalWith(func(v []byte) (Conf, error) {
-				var c Conf
+			convkit.UnmarshalWith(func(v []byte, p *Conf) error {
 				parts := strings.SplitN(string(v), ":", 2)
 				if len(parts) != 2 {
-					return c, fmt.Errorf("invalid format")
+					return fmt.Errorf("invalid format")
 				}
-				c.Foo = parts[0]
-				c.Bar = parts[1]
-				return c, nil
+				p.Foo = parts[0]
+				p.Bar = parts[1]
+				return nil
 			}))
 		assert.Equal(t, conf, Conf{Foo: "foo", Bar: "bar"})
 		assert.NoError(t, err)
 	})
 	t.Run("rainy", func(t *testing.T) {
 		expErr := rnd.Error()
-		conf, err := convkit.Parse[Conf]("whatever", convkit.UnmarshalWith(func(v []byte) (Conf, error) {
-			return Conf{}, expErr
+		conf, err := convkit.Parse[Conf]("whatever", convkit.UnmarshalWith(func(v []byte, p *Conf) error {
+			return expErr
 		}))
 		assert.Empty(t, conf)
 		assert.ErrorIs(t, err, expErr)
@@ -670,10 +656,10 @@ func TestFormatReflect(t *testing.T) {
 	}
 
 	unreg := convkit.Register[Person](ImplT[Person]{
-		TypeMarshalerFunc: func(v Person) ([]byte, error) {
+		MarshalFunc: func(v Person) ([]byte, error) {
 			return json.Marshal(v)
 		},
-		TypeUnmarshalerFunc: func(data []byte, p *Person) error {
+		UnmarshalFunc: func(data []byte, p *Person) error {
 			return json.Unmarshal(data, p)
 		},
 	})
@@ -833,10 +819,10 @@ func TestMarshal(t *testing.T) {
 	t.Run("custom registered type", func(t *testing.T) {
 		type X struct{ Value string }
 		unreg := convkit.Register[X](ImplT[X]{
-			TypeMarshalerFunc: func(v X) ([]byte, error) {
+			MarshalFunc: func(v X) ([]byte, error) {
 				return []byte("X{" + v.Value + "}"), nil
 			},
-			TypeUnmarshalerFunc: func(data []byte, p *X) error {
+			UnmarshalFunc: func(data []byte, p *X) error {
 				if !bytes.HasPrefix(data, []byte("X{")) || !bytes.HasSuffix(data, []byte("}")) {
 					return fmt.Errorf("invalid format")
 				}
@@ -1019,10 +1005,10 @@ func TestUnmarshal(t *testing.T) {
 	t.Run("custom registered type", func(t *testing.T) {
 		type X struct{ Value string }
 		unreg := convkit.Register[X](ImplT[X]{
-			TypeMarshalerFunc: func(v X) ([]byte, error) {
+			MarshalFunc: func(v X) ([]byte, error) {
 				return []byte("X{" + v.Value + "}"), nil
 			},
-			TypeUnmarshalerFunc: func(data []byte, p *X) error {
+			UnmarshalFunc: func(data []byte, p *X) error {
 				if !bytes.HasPrefix(data, []byte("X{")) || !bytes.HasSuffix(data, []byte("}")) {
 					return fmt.Errorf("invalid format")
 				}
@@ -1164,12 +1150,11 @@ func ExampleUnmarshal_customType() {
 	}
 	var cfg Config
 	convkit.Unmarshal([]byte("host=localhost,port=8080"), &cfg,
-		convkit.UnmarshalWith(func(data []byte) (Config, error) {
+		convkit.UnmarshalWith(func(data []byte, c *Config) error {
 			parts := strings.SplitN(string(data), ",", 2)
 			if len(parts) != 2 {
-				return Config{}, fmt.Errorf("invalid format")
+				return fmt.Errorf("invalid format")
 			}
-			var c Config
 			for _, part := range parts {
 				kv := strings.SplitN(part, "=", 2)
 				if len(kv) != 2 {
@@ -1182,11 +1167,11 @@ func ExampleUnmarshal_customType() {
 					var err error
 					c.Port, err = strconv.Atoi(kv[1])
 					if err != nil {
-						return Config{}, fmt.Errorf("invalid port: %w", err)
+						return fmt.Errorf("invalid port: %w", err)
 					}
 				}
 			}
-			return c, nil
+			return nil
 		}))
 	fmt.Printf("%s:%d\n", cfg.Host, cfg.Port) // Output: localhost:8080
 }

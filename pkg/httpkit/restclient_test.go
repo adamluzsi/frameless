@@ -32,7 +32,7 @@ func ExampleRESTClient() {
 			BaseURL:   "https://mydomain.dev/api/v1/foos",
 			MediaType: mediatype.JSON,
 			Codecs: httpkit.Codecs{
-				mediatype.JSON: jsonkit.Bundle{},
+				mediatype.JSON: jsonkit.Codec{},
 			},
 			// leave IDFormatter empty for using the default id formatter, or provide your own
 			IDFormatter: func(fi testent.FooID) (string, error) {

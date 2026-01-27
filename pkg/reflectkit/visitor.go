@@ -4,9 +4,9 @@ import (
 	"iter"
 	"reflect"
 
-	"go.llib.dev/frameless/pkg/reflectkit/refvis"
+	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 )
 
-func Visit(v reflect.Value) iter.Seq[refvis.Node] {
-	return refvis.Iter(v)
+func Visit(v reflect.Value) iter.Seq[reftree.Node] {
+	return reftree.Iter(v)
 }

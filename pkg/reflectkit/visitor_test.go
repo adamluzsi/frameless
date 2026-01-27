@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
-	"go.llib.dev/frameless/pkg/reflectkit/refvis"
+	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -22,11 +22,11 @@ func TestVisit(t *testing.T) {
 	var (
 		v = let.Var[reflect.Value](s, nil)
 	)
-	act := let.Act(func(t *testcase.T) iter.Seq[refvis.Node] {
+	act := let.Act(func(t *testcase.T) iter.Seq[reftree.Node] {
 		return reflectkit.Visit(v.Get(t))
 	})
 
-	var collect = func(t *testcase.T) []refvis.Node {
+	var collect = func(t *testcase.T) []reftree.Node {
 		return iterkit.Collect(act(t))
 	}
 
@@ -43,19 +43,19 @@ func TestVisit(t *testing.T) {
 
 		assert.Equal(t, len(vs), 3)
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.Equal(t, got.Type, refvis.Struct)
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.Equal(t, got.Type, reftree.Struct)
 			assert.Equal[any](t, v, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.StructField))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.StructField))
 			assert.Equal(t, "A", got.StructField.Name)
 			assert.Equal[any](t, v.A, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.StructField))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.StructField))
 			assert.Equal(t, "B", got.StructField.Name)
 			assert.Equal[any](t, v.B, got.Value.Interface())
 		})
@@ -71,18 +71,18 @@ func TestVisit(t *testing.T) {
 
 		assert.Equal(t, len(vs), 5, "array[4] + the 4 element")
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.Array))
-			assert.True(t, got.Path().Contains(refvis.Array))
-			assert.False(t, got.Path().Contains(refvis.Array, refvis.ArrayElem))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.Array))
+			assert.True(t, got.Path().Contains(reftree.Array))
+			assert.False(t, got.Path().Contains(reftree.Array, reftree.ArrayElem))
 			assert.Equal[any](t, in, got.Value.Interface())
 		})
 
 		for i, n := range in {
-			assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.ArrayElem))
-				assert.True(t, got.Path().Contains(refvis.Array))
-				assert.True(t, got.Path().Contains(refvis.Array, refvis.ArrayElem))
+			assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.ArrayElem))
+				assert.True(t, got.Path().Contains(reftree.Array))
+				assert.True(t, got.Path().Contains(reftree.Array, reftree.ArrayElem))
 				assert.Equal(t, got.Index, i)
 				assert.Equal[any](t, n, got.Value.Interface())
 			})
@@ -102,18 +102,18 @@ func TestVisit(t *testing.T) {
 
 		assert.Equal(t, len(vs), 1+length, "one for slice plus the length of slice (elements)")
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.Slice))
-			assert.True(t, got.Path().Contains(refvis.Slice))
-			assert.False(t, got.Path().Contains(refvis.Slice, refvis.SliceElem))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.Slice))
+			assert.True(t, got.Path().Contains(reftree.Slice))
+			assert.False(t, got.Path().Contains(reftree.Slice, reftree.SliceElem))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
 		for i, n := range input {
-			assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.SliceElem))
-				assert.True(t, got.Path().Contains(refvis.Slice))
-				assert.True(t, got.Path().Contains(refvis.Slice, refvis.SliceElem))
+			assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.SliceElem))
+				assert.True(t, got.Path().Contains(reftree.Slice))
+				assert.True(t, got.Path().Contains(reftree.Slice, reftree.SliceElem))
 				assert.Equal(t, got.Index, i)
 				assert.Equal[any](t, n, got.Value.Interface())
 			})
@@ -135,26 +135,26 @@ func TestVisit(t *testing.T) {
 
 		assert.Equal(t, len(vs), 1+length+length, "map + its keys and values")
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.Map))
-			assert.True(t, got.Path().Contains(refvis.Map))
-			assert.False(t, got.Path().Contains(refvis.Map, refvis.MapKey))
-			assert.False(t, got.Path().Contains(refvis.Map, refvis.MapValue))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.Map))
+			assert.True(t, got.Path().Contains(reftree.Map))
+			assert.False(t, got.Path().Contains(reftree.Map, reftree.MapKey))
+			assert.False(t, got.Path().Contains(reftree.Map, reftree.MapValue))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
 		for mKey, mVal := range input {
-			assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.MapKey))
-				assert.True(t, got.Path().Contains(refvis.Map, refvis.MapKey))
-				assert.False(t, got.Path().Contains(refvis.Map, refvis.MapValue))
+			assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.MapKey))
+				assert.True(t, got.Path().Contains(reftree.Map, reftree.MapKey))
+				assert.False(t, got.Path().Contains(reftree.Map, reftree.MapValue))
 				assert.Equal[any](t, mKey, got.Value.Interface())
 			})
 
-			assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.MapValue))
-				assert.False(t, got.Path().Contains(refvis.Map, refvis.MapKey))
-				assert.True(t, got.Path().Contains(refvis.Map, refvis.MapValue))
+			assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.MapValue))
+				assert.False(t, got.Path().Contains(reftree.Map, reftree.MapKey))
+				assert.True(t, got.Path().Contains(reftree.Map, reftree.MapValue))
 				assert.Equal[any](t, mVal, got.Value.Interface())
 			})
 		}
@@ -168,17 +168,17 @@ func TestVisit(t *testing.T) {
 
 		assert.Equal(t, len(vs), 2, "pointer + value")
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.Equal(t, got.Type, refvis.Pointer)
-			assert.True(t, got.Path().Contains(refvis.Pointer))
-			assert.False(t, got.Path().Contains(refvis.Pointer, refvis.PointerElem))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.Equal(t, got.Type, reftree.Pointer)
+			assert.True(t, got.Path().Contains(reftree.Pointer))
+			assert.False(t, got.Path().Contains(reftree.Pointer, reftree.PointerElem))
 			assert.Equal[any](t, input, got.Value.Interface())
 		})
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.PointerElem))
-			assert.True(t, got.Path().Contains(refvis.Pointer, refvis.PointerElem))
-			assert.False(t, got.Path().Contains(refvis.PointerElem, refvis.Pointer))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.PointerElem))
+			assert.True(t, got.Path().Contains(reftree.Pointer, reftree.PointerElem))
+			assert.False(t, got.Path().Contains(reftree.PointerElem, reftree.Pointer))
 			assert.Equal[any](t, *input, got.Value.Interface())
 		})
 	})
@@ -209,8 +209,8 @@ func TestVisit(t *testing.T) {
 			vs := collect(t)
 
 			FooerT := reflectkit.TypeOf[testent.Fooer]()
-			assert.OneOf(t, vs, func(tb testing.TB, got refvis.Node) {
-				assert.Equal(tb, got.Type, refvis.Interface)
+			assert.OneOf(t, vs, func(tb testing.TB, got reftree.Node) {
+				assert.Equal(tb, got.Type, reftree.Interface)
 				assert.Equal(tb, got.Value.Kind(), reflect.Interface)
 				assert.Equal(tb, got.Value.Type(), FooerT)
 				assert.Equal[any](tb, concrete.Get(t), got.Value.Interface())
@@ -221,9 +221,9 @@ func TestVisit(t *testing.T) {
 			vs := collect(t)
 
 			FooT := reflectkit.TypeOf[testent.Foo]()
-			assert.OneOf(t, vs, func(tb testing.TB, got refvis.Node) {
+			assert.OneOf(t, vs, func(tb testing.TB, got reftree.Node) {
 				assert.Equal(tb, FooT, got.Value.Type())
-				assert.True(tb, got.Is(refvis.InterfaceElem))
+				assert.True(tb, got.Is(reftree.InterfaceElem))
 				assert.Equal(tb, got.Value.Kind(), FooT.Kind())
 				assert.Equal(tb, got.Value.Type(), FooT)
 				assert.Equal[any](tb, concrete.Get(t), got.Value.Interface())
@@ -255,14 +255,14 @@ func TestVisit(t *testing.T) {
 		vs := iterkit.Collect(reflectkit.Visit(rv))
 
 		var bazVs []string
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.StructField))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.StructField))
 			assert.Equal(t, got.StructField.Name, "V")
 			bazVs = append(bazVs, got.Value.String())
 		})
 
-		assert.OneOf(t, vs, func(t testing.TB, got refvis.Node) {
-			assert.True(t, got.Is(refvis.PointerElem))
+		assert.OneOf(t, vs, func(t testing.TB, got reftree.Node) {
+			assert.True(t, got.Is(reftree.PointerElem))
 		})
 	})
 
@@ -273,8 +273,8 @@ func TestVisit(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(vs)))
 
-			assert.OneOf(t, vvs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.SliceElem))
+			assert.OneOf(t, vvs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.SliceElem))
 				assert.Equal(t, got.Value.Type(), elemType)
 			})
 		})
@@ -285,8 +285,8 @@ func TestVisit(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(vs)))
 
-			assert.OneOf(t, vvs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.ArrayElem))
+			assert.OneOf(t, vvs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.ArrayElem))
 				assert.Equal(t, got.Value.Type(), elemType)
 			})
 		})
@@ -299,8 +299,8 @@ func TestVisit(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(T{V: t.Random.HexN(4)})))
 
-			assert.OneOf(t, vvs, func(t testing.TB, got refvis.Node) {
-				assert.True(t, got.Is(refvis.StructField))
+			assert.OneOf(t, vvs, func(t testing.TB, got reftree.Node) {
+				assert.True(t, got.Is(reftree.StructField))
 				assert.NotEmpty(t, got.StructField)
 				assert.Equal(t, got.StructField.Name, "V")
 				assert.Equal(t, got.Value.Type(), elemType)
@@ -313,10 +313,10 @@ func TestVisit(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(&n)))
 
-			assert.OneOf(t, vvs, func(t testing.TB, got refvis.Node) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reftree.Node) {
 				assert.Equal(t, got.Value.Type(), elemType)
-				assert.True(t, got.Is(refvis.PointerElem))
-				assert.False(t, got.Is(refvis.Pointer))
+				assert.True(t, got.Is(reftree.PointerElem))
+				assert.False(t, got.Is(reftree.Pointer))
 			})
 		})
 
@@ -330,11 +330,11 @@ func TestVisit(t *testing.T) {
 
 			vvs := iterkit.Collect(reflectkit.Visit(reflect.ValueOf(&i).Elem()))
 
-			assert.OneOf(t, vvs, func(t testing.TB, got refvis.Node) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reftree.Node) {
 				assert.Equal(t, got.Value.Type(), elemType)
-				assert.True(t, got.Is(refvis.InterfaceElem))
-				assert.False(t, got.Is(refvis.Interface))
-				assert.True(t, got.Path().Contains(refvis.Interface, refvis.InterfaceElem))
+				assert.True(t, got.Is(reftree.InterfaceElem))
+				assert.False(t, got.Is(reftree.Interface))
+				assert.True(t, got.Path().Contains(reftree.Interface, reftree.InterfaceElem))
 			})
 		})
 
@@ -352,26 +352,26 @@ func TestVisit(t *testing.T) {
 			assert.Equal(t, 3, len(vvs), "pointer -> interface -> int")
 
 			var expectedValueType = reflectkit.TypeOf(n)
-			assert.OneOf(t, vvs, func(t testing.TB, got refvis.Node) {
+			assert.OneOf(t, vvs, func(t testing.TB, got reftree.Node) {
 				assert.Equal(t, got.Value.Type(), expectedValueType)
 				assert.NotEqual(t, got.Value.Kind(), reflect.Interface)
 
 				assert.True(t, got.Path().Contains(
-					refvis.Pointer, refvis.PointerElem,
-					refvis.Interface, refvis.InterfaceElem,
+					reftree.Pointer, reftree.PointerElem,
+					reftree.Interface, reftree.InterfaceElem,
 				))
 				assert.False(t, got.Path().Contains(
-					refvis.Interface, refvis.InterfaceElem,
-					refvis.Pointer, refvis.PointerElem,
+					reftree.Interface, reftree.InterfaceElem,
+					reftree.Pointer, reftree.PointerElem,
 				))
 
 				assert.NotNil(t, got.Parent)
 
-				assert.True(t, got.Is(refvis.PointerElem))
-				assert.True(t, got.Is(refvis.InterfaceElem))
+				assert.True(t, got.Is(reftree.PointerElem))
+				assert.True(t, got.Is(reftree.InterfaceElem))
 
-				assert.False(t, got.Is(refvis.Pointer))
-				assert.False(t, got.Is(refvis.Interface))
+				assert.False(t, got.Is(reftree.Pointer))
+				assert.False(t, got.Is(reftree.Interface))
 
 				assert.Equal(t, got.Value.Type(), expectedValueType)
 				assert.Equal[any](t, got.Value.Interface(), n)
@@ -386,9 +386,9 @@ func TestVisit(t *testing.T) {
 			var v T
 			rv := reflect.ValueOf(&v).Elem()
 
-			var vX refvis.Node
+			var vX reftree.Node
 			for v := range reflectkit.Visit(rv) {
-				if v.Type != refvis.StructField {
+				if v.Type != reftree.StructField {
 					continue
 				}
 				if v.StructField.Name == "X" {
@@ -403,11 +403,11 @@ func TestVisit(t *testing.T) {
 		s.Test("setting a field value using the visited reflection value", func(t *testcase.T) {
 			var (
 				foo              = testent.MakeFoo(t)
-				fooFooFieldValue refvis.Node
+				fooFooFieldValue reftree.Node
 				found            bool
 			)
 			for v := range reflectkit.Visit(reflect.ValueOf(&foo)) {
-				if v.Type != refvis.StructField {
+				if v.Type != reftree.StructField {
 					continue
 				}
 				if v.StructField.Name == "Foo" {

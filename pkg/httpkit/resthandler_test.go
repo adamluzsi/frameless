@@ -104,7 +104,7 @@ func ExampleRESTHandler_withMediaTypeConfiguration() {
 		MediaType: mediatype.JSON, // we can set the preferred default media type in case the requester don't specify it.
 
 		Codecs: httpkit.Codecs{ // we can populate with any custom codec for any custom media type
-			mediatype.JSON: jsonkit.Bundle{},
+			mediatype.JSON: jsonkit.Codec{},
 		},
 	}
 
@@ -130,8 +130,8 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 	subject := testcase.Let(s, func(t *testcase.T) httpkit.RESTHandler[X, XID] {
 		return httpkit.RESTHandlerFromCRUD[X, XID](resource.Get(t), func(h *httpkit.RESTHandler[X, XID]) {
 			h.IDContextKey = FooIDContextKey{}
-			h.Codecs = map[string]codec.Bundle{
-				mediatype.JSON: jsonkit.Bundle{},
+			h.Codecs = map[string]codec.Codec{
+				mediatype.JSON: jsonkit.Codec{},
 			}
 		})
 	})

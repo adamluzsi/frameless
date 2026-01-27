@@ -14,9 +14,9 @@ import (
 	"go.llib.dev/frameless/port/codec"
 )
 
-type Codecs map[mediatype.MediaType]codec.Bundle
+type Codecs map[mediatype.MediaType]codec.Codec
 
-func findCodecByMediaType(cs Codecs, mimeType string) (codec.Bundle, string, bool) {
+func findCodecByMediaType(cs Codecs, mimeType string) (codec.Codec, string, bool) {
 	var mediaType, ok = lookupMediaType(mimeType)
 	if !ok {
 		return nil, mediaType, false
@@ -32,18 +32,18 @@ func findCodecByMediaType(cs Codecs, mimeType string) (codec.Bundle, string, boo
 	return nil, mediaType, false
 }
 
-func defaultCodec() (codec.Bundle, mediatype.MediaType) {
+func defaultCodec() (codec.Codec, mediatype.MediaType) {
 	return defaultCodecBundle, mediatype.JSON
 }
 
-var defaultCodecBundle jsonkit.Bundle
+var defaultCodecBundle jsonkit.Codec
 
 var defaultCodecs Codecs = makeDefaultCodecs()
 
 func makeDefaultCodecs() Codecs {
-	var jsonB jsonkit.Bundle
-	var jsonLinesB jsonkit.LinesBundle
-	var formURLEncodedB formurlencoded.Bundle
+	var jsonB jsonkit.Codec
+	var jsonLinesB jsonkit.LinesCodec
+	var formURLEncodedB formurlencoded.Codec
 	return Codecs{
 		"application/json":                  jsonB,
 		"application/problem+json":          jsonB,
@@ -159,6 +159,6 @@ func (m IDConverter[ID]) getParser() func(string) (ID, error) {
 }
 
 type codecDefault struct {
-	Codec     codec.Bundle
+	Codec     codec.Codec
 	MediaType mediatype.MediaType
 }

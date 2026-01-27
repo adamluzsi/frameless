@@ -1,37 +1,32 @@
 package codec_test
 
-import "go.llib.dev/frameless/port/codec"
+import (
+	"net/http"
 
-func ExampleTypeStreamEncoder() {
+	"go.llib.dev/frameless/port/codec"
+)
+
+func ExampleStreamProducer() {
+	var p codec.StreamProducer
+	var body http.ResponseWriter
+
+	enc := p.NewStreamEncoder(body)
+	enc.Close()
+
 	var upstream = []int{1, 2, 3, 4, 5}
-	var downstream codec.TypeStreamEncoder[int]
-	// ensuring that the underlying stream is finalised,
-	// and potential remaining writings are flushed from the stream encoder
-	defer downstream.Close()
-
-	for _, val := range upstream {
-		if err := downstream.Encode(val); err != nil {
-			return // err
-		}
+	for _, v := range upstream {
+		_ = enc.Encode(v)
 	}
 }
+func ExampleStreamConsumer() {
+	var c codec.StreamConsumer
+	var req *http.Request
 
-func ExampleTypeStreamDecoder() {
-	var stream codec.TypeStreamDecoder[int]
+	stream := c.NewStreamDecoder(req.Body)
 
-	for next, err := range stream {
-		// error that occured with the stream itselt
-		// and was not possible to recover from,
-		// thus got propagated back.
-		if err != nil {
-			return // err
-		}
-
-		// explicit allocation on the handler side.
-		var x int
-		// Mutating the allocated value based on the input stream.
-		if err := next.Decode(&x); err != nil {
-			return // err
-		}
+	for dec, err := range stream {
+		_ = err 
+		var v int 
+		_ = dec.Decode(&v)
 	}
 }

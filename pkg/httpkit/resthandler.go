@@ -345,7 +345,7 @@ func (h RESTHandler[ENT, ID]) index(w http.ResponseWriter, r *http.Request) {
 	h.indexReply(ctx, w, r, index, c)
 }
 
-func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], c codec.Bundle) {
+func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWriter, r *http.Request, index iter.Seq2[ENT, error], c codec.Codec) {
 	vs, err := iterkit.CollectE(index)
 	if err != nil {
 		h.getErrorHandler().HandleError(w, r, err)
@@ -353,6 +353,10 @@ func (h RESTHandler[ENT, ID]) indexReply(ctx context.Context, w http.ResponseWri
 	}
 	data, err := c.Marshal(vs)
 	if err != nil {
+		if errors.Is(err, codec.ErrNotSupported) {
+			h.getErrorHandler().HandleError(w, r, ErrResponseUnsupportedMediaType)
+			return
+		}
 		h.getErrorHandler().HandleError(w, r, err)
 		return
 	}
@@ -812,12 +816,12 @@ var _ restHandler = RESTHandler[any, any]{}
 
 func (h RESTHandler[ENT, ID]) restHandler() {}
 
-func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) codec.Bundle {
+func (h RESTHandler[ENT, ID]) requestBodyCodec(r *http.Request) codec.Codec {
 	c, _ := h.contentTypeCodec(r)
 	return c
 }
 
-func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (codec.Bundle, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (codec.Codec, mediatype.MediaType) {
 	var mtype = h.MediaType
 	if mediaType, ok := h.getRequestBodyMediaType(r); ok { // TODO: TEST ME
 		mtype = mediaType
@@ -828,7 +832,7 @@ func (h RESTHandler[ENT, ID]) contentTypeCodec(r *http.Request) (codec.Bundle, m
 	return defaultCodec()
 }
 
-func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (codec.Bundle, mediatype.MediaType) {
+func (h RESTHandler[ENT, ID]) responseBodyCodec(r *http.Request) (codec.Codec, mediatype.MediaType) {
 	var accept = r.Header.Get(headerKeyAccept)
 	if accept == "" {
 		return h.contentTypeCodec(r)
