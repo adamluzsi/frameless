@@ -1,12 +1,10 @@
 module go.llib.dev/frameless/adapter/mariadb
 
-go 1.24
-
-toolchain go1.24.0
+go 1.25
 
 require (
 	github.com/go-sql-driver/mysql v1.9.3
-	go.llib.dev/frameless v0.308.0
+	go.llib.dev/frameless v0.310.0
 	go.llib.dev/testcase v0.187.0
 )
 

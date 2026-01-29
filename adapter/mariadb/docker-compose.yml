@@ -4,7 +4,7 @@ version: '3'
 services:
 
   mariadb:
-    image: 'mariadb:11.5'
+    image: 'mariadb:12'
     ports:
       - ${MARIADB_PORT}:3306
 
