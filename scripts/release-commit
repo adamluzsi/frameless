@@ -5,7 +5,7 @@ cd "${WDP}"
 declare releaseFile=".release"
 
 git commit --allow-empty
-date "+%Y-%m-%d" >"${releaseFile}"
+uuidgen >"${releaseFile}"
 git add "${releaseFile}"
 git commit --amend --no-edit
 
