@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
@@ -122,11 +121,6 @@ func TestFormURLEncoder_smoke(tt *testing.T) {
 	assert.True(t, ok)
 	_, ok = q["bar.foo_id"]
 	assert.True(t, ok)
-
-	t.OnFail(func() {
-		pp.PP(exp)
-		pp.PP(q)
-	})
 
 	var got T
 	assert.NoError(t, c.Unmarshal(data, &got))

@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/internal/interr"
 	"go.llib.dev/frameless/internal/sandbox"
 	"go.llib.dev/frameless/pkg/contextkit"
 	"go.llib.dev/frameless/pkg/convkit"
@@ -24,7 +25,6 @@ import (
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
-	"go.llib.dev/frameless/pkg/mk"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/pkg/slicekit"
@@ -759,8 +759,49 @@ func (ref metaRef) LookupDescription() (string, bool) {
 }
 
 func (ref metaRef) LookupDefault() (string, bool) {
-	_, val, ok := mk.DefaultTag().LookupTag(ref.V.StructField)
+	_, val, ok := defaultTag.LookupTag(ref.V.StructField)
 	return val, ok
+}
+
+type InitDefaultTagValue func() (reflect.Value, error)
+
+var defaultTag = reflectkit.TagHandler[InitDefaultTagValue]{
+	Name: "default",
+	Parse: func(sf reflect.StructField, tagName, tagValue string) (InitDefaultTagValue, error) {
+		if reflectkit.IsMutableType(sf.Type) {
+			return func() (reflect.Value, error) { return parseDefaultValue(sf, tagValue) }, nil
+		}
+		val, err := parseDefaultValue(sf, tagValue)
+		if err != nil {
+			return nil, err
+		}
+		return func() (reflect.Value, error) { return val, nil }, nil
+	},
+	Use: func(sf reflect.StructField, field reflect.Value, getDefault InitDefaultTagValue) error {
+		if !reflectkit.IsZero(field) {
+			return nil
+		}
+		val, err := getDefault()
+		if err != nil {
+			return err
+		}
+		field, ok := reflectkit.ToSettable(field)
+		if !ok { // unsettable values are ignored
+			return nil
+		}
+		field.Set(val)
+		return nil
+	},
+	ForceCache: true,
+}
+
+func parseDefaultValue(sf reflect.StructField, raw string) (reflect.Value, error) {
+	val, err := convkit.ParseReflect(sf.Type, raw)
+	if err != nil {
+		const format = "%s field's default value is not a valid %s type: %w"
+		return val, interr.ImplementationError.F(format, sf.Name, sf.Type, err)
+	}
+	return val, nil
 }
 
 func (ref metaRef) ArgIndex() (int, bool) {
