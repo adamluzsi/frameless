@@ -60,7 +60,7 @@ type ExampleCommand struct {
 	ExampleConfig2
 }
 
-func (cmd ExampleCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd ExampleCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	w.ExitCode(cli.ExitCodeOK)
 	w.Write([]byte("OK"))
 }

@@ -38,25 +38,25 @@ type FooCommandArgs struct {
 }
 
 type FooCommand struct {
-	A string `flag:"the-a,a" default:"val"   desc:"this is flag A"`
-	B bool   `flag:"the-b,b" default:"true"` // missing description
+	A string `flag:"the-a,a" default:"val"   desc:"this is flag A"         opt:"T"`
+	B bool   `flag:"the-b,b" default:"true"                                opt:"T"` // missing description
 	C int    `flag:"c" required:"true"       desc:"this is flag C, not B"`
-	D string `flag:"d" enum:"FOO,BAR,BAZ,"   desc:"this flag is an enum"`
+	D string `flag:"d" enum:"FOO,BAR,BAZ,"   desc:"this flag is an enum"   opt:"T"`
 
-	Arg    string `arg:"0" desc:"something something"`
-	OthArg int    `arg:"1" default:"42"`
+	Arg    string `arg:"0" desc:"something something" opt:"T"`
+	OthArg int    `arg:"1" default:"42" opt:"T"`
 
 	// Dependency is a dependency of the FooCommand, which is populated though traditional dependency injection.
 	Dependency string
 }
 
-func (cmd FooCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd FooCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	fmt.Fprintln(w, "hello")
 }
 
 type SubCommand struct{}
 
-func (cmd SubCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd SubCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	w.Write([]byte("sub-cmd"))
 }
 
@@ -84,8 +84,8 @@ func TestMux(t *testing.T) {
 			mux.Get(t).ServeCLI(response.Get(t), request.Get(t))
 		}
 
-		callback := let.Var(s, func(t *testcase.T) func(w cli.Response, r *cli.Request) {
-			return func(w cli.Response, r *cli.Request) {}
+		callback := let.Var(s, func(t *testcase.T) func(w cli.ResponseWriter, r *cli.Request) {
+			return func(w cli.ResponseWriter, r *cli.Request) {}
 		})
 
 		s.Before(func(t *testcase.T) {
@@ -103,7 +103,7 @@ func TestMux(t *testing.T) {
 				commandName = let.StringNC(s, 5, CommandNameCharset)
 				ExpCmdReply = let.String(s)
 				command     = testcase.Let(s, func(t *testcase.T) cli.Handler {
-					return StubServeCLIFunc(func(w cli.Response, r *cli.Request) {
+					return StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {
 						callback.Get(t)(w, r)
 						fmt.Fprint(w, ExpCmdReply.Get(t))
 					})
@@ -128,7 +128,7 @@ func TestMux(t *testing.T) {
 					lastRequest   *cli.Request
 					expectedOuput = t.Random.String()
 				)
-				command.Set(t, StubServeCLIFunc(func(w cli.Response, r *cli.Request) {
+				command.Set(t, StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {
 					lastRequest = r
 					w.ExitCode(42)
 					w.Write([]byte(expectedOuput))
@@ -150,7 +150,7 @@ func TestMux(t *testing.T) {
 				t.OnFail(func() { t.Log("args:", request.Get(t).Args) })
 
 				var cmd CommandE2E
-				command.Set(t, CommandE2E{Callback: func(h CommandE2E, w cli.Response, r *cli.Request) {
+				command.Set(t, CommandE2E{Callback: func(h CommandE2E, w cli.ResponseWriter, r *cli.Request) {
 					cmd = h
 					fmt.Fprintln(w, "out")
 					fmt.Fprintln(w.(cli.ErrorWriter).Stderr(), "errout")
@@ -180,7 +180,7 @@ func TestMux(t *testing.T) {
 					/* args */ "hello-world",
 				)
 
-				command.Set(t, &CommandWithPointerReceiver{Callback: func(h *CommandWithPointerReceiver, w cli.Response, r *cli.Request) {
+				command.Set(t, &CommandWithPointerReceiver{Callback: func(h *CommandWithPointerReceiver, w cli.ResponseWriter, r *cli.Request) {
 					assert.NotNil(t, h)
 					assert.NotEmpty(t, h.Flag)
 					assert.NotEmpty(t, h.Arg)
@@ -196,7 +196,7 @@ func TestMux(t *testing.T) {
 				var h = testcase.LetValue[*ExampleCommandWithFlag](s, nil)
 
 				command.Let(s, func(t *testcase.T) cli.Handler {
-					return ExampleCommandWithFlag{Callback: func(v ExampleCommandWithFlag, w cli.Response, r *cli.Request) {
+					return ExampleCommandWithFlag{Callback: func(v ExampleCommandWithFlag, w cli.ResponseWriter, r *cli.Request) {
 						h.Set(t, &v)
 						callback.Get(t)(w, r)
 						fmt.Fprintln(w, ExpCmdReply.Get(t))
@@ -327,7 +327,7 @@ func TestMux(t *testing.T) {
 
 					command.Let(s, func(t *testcase.T) cli.Handler {
 						return CommandWithFlagWithRequired[string]{
-							Callback: func(v CommandWithFlagWithRequired[string], w cli.Response, r *cli.Request) {
+							Callback: func(v CommandWithFlagWithRequired[string], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							},
@@ -356,7 +356,7 @@ func TestMux(t *testing.T) {
 
 					command.Let(s, func(t *testcase.T) cli.Handler {
 						return CommandWithFlagWithEnum{
-							Callback: func(v CommandWithFlagWithEnum, w cli.Response, r *cli.Request) {
+							Callback: func(v CommandWithFlagWithEnum, w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							},
@@ -428,7 +428,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithOptArg[string]](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithOptArg[string]{Callback: func(v CommandWithOptArg[string], w cli.Response, r *cli.Request) {
+							return CommandWithOptArg[string]{Callback: func(v CommandWithOptArg[string], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -452,7 +452,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithOptArg[int]](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithOptArg[int]{Callback: func(v CommandWithOptArg[int], w cli.Response, r *cli.Request) {
+							return CommandWithOptArg[int]{Callback: func(v CommandWithOptArg[int], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -476,7 +476,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithOptArg[bool]](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithOptArg[bool]{Callback: func(v CommandWithOptArg[bool], w cli.Response, r *cli.Request) {
+							return CommandWithOptArg[bool]{Callback: func(v CommandWithOptArg[bool], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -500,7 +500,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithArgWithDefault](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithArgWithDefault{Callback: func(v CommandWithArgWithDefault, w cli.Response, r *cli.Request) {
+							return CommandWithArgWithDefault{Callback: func(v CommandWithArgWithDefault, w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -524,7 +524,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithReqArg[string]](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithReqArg[string]{Callback: func(v CommandWithReqArg[string], w cli.Response, r *cli.Request) {
+							return CommandWithReqArg[string]{Callback: func(v CommandWithReqArg[string], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -549,7 +549,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithReqArg[int]](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithReqArg[int]{Callback: func(v CommandWithReqArg[int], w cli.Response, r *cli.Request) {
+							return CommandWithReqArg[int]{Callback: func(v CommandWithReqArg[int], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -574,7 +574,7 @@ func TestMux(t *testing.T) {
 						h := testcase.LetValue[*CommandWithReqArg[bool]](s, nil)
 
 						command.Let(s, func(t *testcase.T) cli.Handler {
-							return CommandWithReqArg[bool]{Callback: func(v CommandWithReqArg[bool], w cli.Response, r *cli.Request) {
+							return CommandWithReqArg[bool]{Callback: func(v CommandWithReqArg[bool], w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							}}
@@ -602,7 +602,7 @@ func TestMux(t *testing.T) {
 					})
 
 					command.Let(s, func(t *testcase.T) cli.Handler {
-						return CommandWithArgWithRequired[string]{Callback: func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) {
+						return CommandWithArgWithRequired[string]{Callback: func(v CommandWithArgWithRequired[string], w cli.ResponseWriter, r *cli.Request) {
 							h.Set(t, &v)
 							callback.Get(t)(w, r)
 						}}
@@ -625,7 +625,7 @@ func TestMux(t *testing.T) {
 
 					command.Let(s, func(t *testcase.T) cli.Handler {
 						return CommandWithOptArgWithEnum{
-							Callback: func(v CommandWithOptArgWithEnum, w cli.Response, r *cli.Request) {
+							Callback: func(v CommandWithOptArgWithEnum, w cli.ResponseWriter, r *cli.Request) {
 								h.Set(t, &v)
 								callback.Get(t)(w, r)
 							},
@@ -751,9 +751,9 @@ func TestMux(t *testing.T) {
 					s.Context("but when other commands are registered", func(s *testcase.Spec) {
 						mux.Let(s, func(t *testcase.T) *cli.Mux {
 							m := mux.Super(t)
-							m.Handle("foo", StubServeCLIFunc(func(w cli.Response, r *cli.Request) {}))
-							m.Handle("bar", StubServeCLIFunc(func(w cli.Response, r *cli.Request) {}))
-							m.Handle("baz", StubServeCLIFunc(func(w cli.Response, r *cli.Request) {}))
+							m.Handle("foo", StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {}))
+							m.Handle("bar", StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {}))
+							m.Handle("baz", StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {}))
 							return m
 						})
 
@@ -861,11 +861,24 @@ func TestMux(t *testing.T) {
 func TestServeCLI(t *testing.T) {
 	s := testcase.NewSpec(t)
 
+	var (
+		handler  = let.Var[cli.Handler](s, nil)
+		response = let.Var(s, func(t *testcase.T) *cli.ResponseRecorder {
+			return &cli.ResponseRecorder{}
+		})
+		request = let.Var(s, func(t *testcase.T) *cli.Request {
+			return &cli.Request{}
+		})
+	)
+	act := let.Act0(func(t *testcase.T) {
+		cli.ServeCLI(handler.Get(t), response.Get(t), request.Get(t))
+	})
+
 	s.Test("cmd", func(t *testcase.T) {
 		testcase.SetEnv(t, "FLAG3", "24")
 
 		var configuredCommant CommandE2E
-		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.Response, r *cli.Request) {
+		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.ResponseWriter, r *cli.Request) {
 			configuredCommant = v
 			data, err := io.ReadAll(r.Body)
 			assert.NoError(t, err)
@@ -900,7 +913,7 @@ func TestServeCLI(t *testing.T) {
 		testcase.SetEnv(t, "FLAG3", "24")
 
 		var configuredCommant CommandE2E
-		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.Response, r *cli.Request) {
+		cmd := CommandE2E{Callback: func(v CommandE2E, w cli.ResponseWriter, r *cli.Request) {
 			configuredCommant = v
 			data, err := io.ReadAll(r.Body)
 			assert.NoError(t, err)
@@ -942,7 +955,7 @@ func TestServeCLI(t *testing.T) {
 
 		cmd := let.Var(s, func(t *testcase.T) CommandWithTypedDependency[Dependency] {
 			return CommandWithTypedDependency[Dependency]{
-				Callback: func(v CommandWithTypedDependency[Dependency], w cli.Response, r *cli.Request) {
+				Callback: func(v CommandWithTypedDependency[Dependency], w cli.ResponseWriter, r *cli.Request) {
 					dep.Set(t, v.D)
 				},
 			}
@@ -968,6 +981,63 @@ func TestServeCLI(t *testing.T) {
 			assert.Equal(t, dep.Get(t).Arg, argV)
 		})
 	})
+
+	s.Context("validation", func(s *testcase.Spec) {
+		type Dependency struct {
+			XYZ string `flag:"xyz" len:"5<"`
+		}
+
+		var dep = let.Var[Dependency](s, nil)
+
+		var handlerIsCalled = let.VarOf(s, false)
+		cmd := let.Var(s, func(t *testcase.T) CommandWithTypedDependency[Dependency] {
+			return CommandWithTypedDependency[Dependency]{
+				Callback: func(v CommandWithTypedDependency[Dependency], w cli.ResponseWriter, r *cli.Request) {
+					handlerIsCalled.Set(t, true)
+					dep.Set(t, v.D)
+				},
+			}
+		})
+		handler.Let(s, func(t *testcase.T) cli.Handler {
+			return cmd.Get(t)
+		})
+
+		val := let.Var[string](s, nil)
+
+		request.Let(s, func(t *testcase.T) *cli.Request {
+			req := request.Super(t)
+			req.Args = append(req.Args, "-xyz", val.Get(t))
+			return req
+		})
+
+		s.When("validation pass", func(s *testcase.Spec) {
+			val.Let(s, let.StringNC(s, 10, random.CharsetAlpha()).Get)
+
+			s.Then("handler is called", func(t *testcase.T) {
+				act(t)
+
+				assert.True(t, handlerIsCalled.Get(t))
+				assert.Equal(t, dep.Get(t).XYZ, val.Get(t))
+			})
+		})
+
+		s.When("validation detects an issue", func(s *testcase.Spec) {
+			val.Let(s, let.StringNC(s, 3, random.CharsetAlpha()).Get)
+
+			s.Then("handler is not called", func(t *testcase.T) {
+				act(t)
+
+				assert.False(t, handlerIsCalled.Get(t))
+			})
+
+			s.Then("error message returned", func(t *testcase.T) {
+				act(t)
+				assert.Contains(t, strings.ToLower(response.Get(t).Err.String()), "invalid")
+				assert.Contains(t, response.Get(t).Err.String(), "xyz")
+				assert.Contains(t, response.Get(t).Err.String(), "5<")
+			})
+		})
+	})
 }
 
 type CommandWithTypedDependency[Dependency any] struct {
@@ -976,7 +1046,7 @@ type CommandWithTypedDependency[Dependency any] struct {
 	D Dependency
 }
 
-func (cmd CommandWithTypedDependency[Dependency]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithTypedDependency[Dependency]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -985,7 +1055,7 @@ type AndTheFlagTypeIs[T any] struct {
 	Act      func(t *testcase.T)
 	Response testcase.Var[*cli.ResponseRecorder]
 	Request  testcase.Var[*cli.Request]
-	Callback testcase.Var[func(w cli.Response, r *cli.Request)]
+	Callback testcase.Var[func(w cli.ResponseWriter, r *cli.Request)]
 
 	Flag    string
 	Default T
@@ -1006,10 +1076,10 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 	s.And("the flag type is a "+name+" type"+desc, func(s *testcase.Spec) {
 
 		gotRequest := let.Var[*cli.Request](s, nil)
-		gotResponse := let.Var[cli.Response](s, nil)
+		gotResponse := let.Var[cli.ResponseWriter](s, nil)
 
-		c.Callback.Let(s, func(t *testcase.T) func(w cli.Response, r *cli.Request) {
-			return func(w cli.Response, r *cli.Request) {
+		c.Callback.Let(s, func(t *testcase.T) func(w cli.ResponseWriter, r *cli.Request) {
+			return func(w cli.ResponseWriter, r *cli.Request) {
 				gotResponse.Set(t, w)
 				gotRequest.Set(t, r)
 			}
@@ -1097,7 +1167,7 @@ func (c AndTheFlagTypeIs[T]) Spec(s *testcase.Spec) {
 
 type AndTheArgTypeIs[T any] struct {
 	Act      func(t *testcase.T)
-	Callback testcase.Var[func(w cli.Response, r *cli.Request)]
+	Callback testcase.Var[func(w cli.ResponseWriter, r *cli.Request)]
 	Response testcase.Var[*cli.ResponseRecorder]
 	Request  testcase.Var[*cli.Request]
 
@@ -1118,10 +1188,10 @@ func (c AndTheArgTypeIs[T]) OptionalArgSpec(s *testcase.Spec) {
 		exp := testcase.Let(s, c.Expected)
 
 		gotRequest := let.Var[*cli.Request](s, nil)
-		gotResponse := let.Var[cli.Response](s, nil)
+		gotResponse := let.Var[cli.ResponseWriter](s, nil)
 
-		c.Callback.Let(s, func(t *testcase.T) func(w cli.Response, r *cli.Request) {
-			return func(w cli.Response, r *cli.Request) {
+		c.Callback.Let(s, func(t *testcase.T) func(w cli.ResponseWriter, r *cli.Request) {
+			return func(w cli.ResponseWriter, r *cli.Request) {
 				gotResponse.Set(t, w)
 				gotRequest.Set(t, r)
 			}
@@ -1188,9 +1258,9 @@ func (c AndTheArgTypeIs[T]) OptionalArgSpec(s *testcase.Spec) {
 	})
 }
 
-type StubServeCLIFunc func(w cli.Response, r *cli.Request)
+type StubServeCLIFunc func(w cli.ResponseWriter, r *cli.Request)
 
-func (cmd StubServeCLIFunc) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd StubServeCLIFunc) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	if cmd != nil {
 		cmd(w, r)
 	}
@@ -1208,9 +1278,9 @@ type ExampleCommandWithFlags struct {
 	Dependency any
 }
 
-type Callback[T any] func(v T, w cli.Response, r *cli.Request)
+type Callback[T any] func(v T, w cli.ResponseWriter, r *cli.Request)
 
-func (fn Callback[T]) Call(v T, w cli.Response, r *cli.Request) {
+func (fn Callback[T]) Call(v T, w cli.ResponseWriter, r *cli.Request) {
 	if fn != nil {
 		fn(v, w, r)
 	}
@@ -1236,7 +1306,7 @@ type CommandE2E struct {
 
 func (cmd CommandE2E) Summary() string { return "E2E command summary" }
 
-func (cmd CommandE2E) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandE2E) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1246,7 +1316,7 @@ type CommandWithPointerReceiver struct {
 	Arg  string `arg:"0"`
 }
 
-func (cmd *CommandWithPointerReceiver) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd *CommandWithPointerReceiver) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1268,7 +1338,7 @@ type ExampleCommandWithFlag struct {
 
 type SubStr string
 
-func (cmd ExampleCommandWithFlag) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd ExampleCommandWithFlag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1277,7 +1347,7 @@ type CommandWithFlagWithRequired[T any] struct {
 	Flag T `flag:"flag" required:"true"`
 }
 
-func (cmd CommandWithFlagWithRequired[T]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithFlagWithRequired[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1286,16 +1356,16 @@ type CommandWithFlagWithEnv[T any] struct {
 	Flag T `flag:"flag" env:"FLAGNAME"`
 }
 
-func (cmd CommandWithFlagWithEnv[T]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithFlagWithEnv[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
 type CommandWithFlagWithEnum struct {
 	Callback[CommandWithFlagWithEnum]
-	Flag string `flag:"flag" enum:"foo,bar,baz,"`
+	Flag string `flag:"flag" enum:"foo,bar,baz," opt:"T"`
 }
 
-func (cmd CommandWithFlagWithEnum) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithFlagWithEnum) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1304,7 +1374,7 @@ type CommandWithOptArg[T any] struct {
 	Arg T `arg:"0" opt:"true"`
 }
 
-func (cmd CommandWithOptArg[T]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithOptArg[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1313,7 +1383,7 @@ type CommandWithReqArg[T any] struct {
 	Arg T `arg:"0"`
 }
 
-func (cmd CommandWithReqArg[T]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithReqArg[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1322,7 +1392,7 @@ type CommandWithArgWithDefault struct {
 	Arg string `arg:"0" default:"defval"` // anything with a default is already optional
 }
 
-func (cmd CommandWithArgWithDefault) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithArgWithDefault) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1331,7 +1401,7 @@ type CommandWithArgWithRequired[T any] struct {
 	Arg T `arg:"0" required:"1"`
 }
 
-func (cmd CommandWithArgWithRequired[T]) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithArgWithRequired[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1340,7 +1410,7 @@ type CommandWithOptArgWithEnum struct {
 	Arg string `arg:"0" enum:"foo,bar,baz,"`
 }
 
-func (cmd CommandWithOptArgWithEnum) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithOptArgWithEnum) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1373,7 +1443,7 @@ func (CommandWithUsageSupport) Usage(path string) (string, error) {
 	return fmt.Sprintf("Custom Usage Message: %s", path), nil
 }
 
-func (CommandWithUsageSupport) ServeCLI(w cli.Response, r *cli.Request) {}
+func (CommandWithUsageSupport) ServeCLI(w cli.ResponseWriter, r *cli.Request) {}
 
 type CommandWithDependency struct {
 	Flag1 string `flag:"flag1" default:"val" desc:"this is flag A"`
@@ -1387,7 +1457,7 @@ type CommandWithDependency struct {
 	Dependency any
 }
 
-func (CommandWithDependency) ServeCLI(w cli.Response, r *cli.Request) {}
+func (CommandWithDependency) ServeCLI(w cli.ResponseWriter, r *cli.Request) {}
 
 func Example_dependencyInjection() {
 	cli.Main(context.Background(), CommandWithDependency{
@@ -1397,7 +1467,7 @@ func Example_dependencyInjection() {
 
 func TestConfigureHandler_requiredFlag_defaultValueDependencyInjected(t *testing.T) {
 	cmd := CommandWithFlagWithRequired[string]{Flag: "42"}
-	cmd.Callback = func(v CommandWithFlagWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
+	cmd.Callback = func(v CommandWithFlagWithRequired[string], w cli.ResponseWriter, r *cli.Request) { cmd = v }
 
 	err := cli.ConfigureHandler(&cmd, &cli.Request{})
 	assert.NoError(t, err, "expected no error, since default value is already provided")
@@ -1406,7 +1476,7 @@ func TestConfigureHandler_requiredFlag_defaultValueDependencyInjected(t *testing
 
 func TestConfigureHandler_requiredArg_injextedDefaultValue(t *testing.T) {
 	cmd := CommandWithArgWithRequired[string]{Arg: "42"}
-	cmd.Callback = func(v CommandWithArgWithRequired[string], w cli.Response, r *cli.Request) { cmd = v }
+	cmd.Callback = func(v CommandWithArgWithRequired[string], w cli.ResponseWriter, r *cli.Request) { cmd = v }
 
 	err := cli.ConfigureHandler(&cmd, &cli.Request{})
 	assert.NoError(t, err, "expected no error, since default value is already provided")
@@ -1476,6 +1546,6 @@ type CommandWithUnexportedField struct {
 	unexportedFlag string `flag:"uf" env:"UF" default:"bar"`
 }
 
-func (cmd CommandWithUnexportedField) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd CommandWithUnexportedField) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	w.Write([]byte("Hello, world!"))
 }

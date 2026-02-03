@@ -28,7 +28,7 @@ type TestCommand struct {
 	IntArg    int    `arg:"1" default:"42"`
 }
 
-func (cmd TestCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd TestCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	fmt.Fprintln(w, pp.Format(cmd))
 }
 
@@ -47,13 +47,13 @@ type FooCommand struct {
 
 func (cmd FooCommand) Summary() string { return "foo command" }
 
-func (cmd FooCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd FooCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	fmt.Fprintf(w, "%#v\n", cmd)
 }
 
 type BarCommand struct{}
 
-func (cmd BarCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd BarCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	fmt.Fprintln(w, "bar")
 }
 
@@ -62,6 +62,6 @@ type BazCommand struct {
 	Second string `arg:"1"`
 }
 
-func (cmd BazCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd BazCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	fmt.Fprintln(w, "baz")
 }

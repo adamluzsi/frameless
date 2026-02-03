@@ -53,10 +53,40 @@ const (
 	ErrInvalidDefaultValue errorkitlite.Error = "ErrInvalidDefaultValue"
 )
 
+type ErrInvalidInput struct {
+	Err error
+
+	ref metaRef
+}
+
+func (err ErrInvalidInput) ValidateError() (validate.Error, bool) {
+	return errorkit.As[validate.Error](err.Err)
+}
+
+func (err ErrInvalidInput) Flags() []string {
+	return err.ref.Flags()
+}
+
+func (err ErrInvalidInput) Envs() []string {
+	return err.ref.Envs()
+}
+
+func (err ErrInvalidInput) ArgIndex() (int, bool) {
+	return err.ref.ArgIndex()
+}
+
+func (err ErrInvalidInput) Error() string {
+	return "[ErrInvalidInput]"
+}
+
+func (err ErrInvalidInput) Unwrap() error {
+	return err.Err
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Handler interface {
-	ServeCLI(w Response, r *Request)
+	ServeCLI(w ResponseWriter, r *Request)
 }
 
 type Request struct {
@@ -66,7 +96,7 @@ type Request struct {
 	ctx context.Context
 }
 
-type Response interface {
+type ResponseWriter interface {
 	ExitCode(n int)
 	io.Writer
 }
@@ -92,9 +122,9 @@ func (r *Request) WithContext(ctx context.Context) *Request {
 	return r2
 }
 
-type HandlerFunc func(w Response, r *Request)
+type HandlerFunc func(w ResponseWriter, r *Request)
 
-func (fn HandlerFunc) ServeCLI(w Response, r *Request) {
+func (fn HandlerFunc) ServeCLI(w ResponseWriter, r *Request) {
 	fn(w, r)
 }
 
@@ -134,7 +164,7 @@ func (m *Mux) Sub(pattern string) *Mux {
 	return e.Mux
 }
 
-func (m *Mux) ServeCLI(w Response, r *Request) {
+func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if r == nil {
 		w.ExitCode(1)
 		return
@@ -244,7 +274,7 @@ func (m Mux) toPath(pattern string) []string {
 	return strings.Fields(pattern)
 }
 
-func ServeCLI(h Handler, w Response, r *Request) {
+func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 	if h == nil {
 		panic("nil cli.Handler")
 	}
@@ -269,7 +299,6 @@ func ServeCLI(h Handler, w Response, r *Request) {
 			exitCode = ExitCodeOK
 		}
 		w.ExitCode(exitCode)
-
 		var msg = toHelp(r.Context(), h, err)
 		var o io.Writer = w
 		if !isHelp(err) {
@@ -408,7 +437,7 @@ var lineSeparator = func() string {
 	}
 }()
 
-func errOut(w Response) io.Writer {
+func errOut(w ResponseWriter) io.Writer {
 	if rwe, ok := w.(ErrorWriter); ok {
 		if o := rwe.Stderr(); o != nil {
 			return o
@@ -539,9 +568,9 @@ var isOptionalTagHandler = reflectkit.TagHandler[bool]{
 
 func metaFor(ptr reflect.Value) metaH {
 	if ptr.Kind() != reflect.Pointer {
-		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non pointer type", ptr.Type().String()))
+		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non-pointer type", ptr.Type().String()))
 	}
-	var m = metaH{}
+	var m = metaH{ptr: ptr}
 	for v := range reflectkit.Visit(ptr) {
 		if v.Type != reftree.StructField {
 			continue
@@ -549,7 +578,7 @@ func metaFor(ptr reflect.Value) metaH {
 		if !v.StructField.IsExported() {
 			continue
 		}
-		var ref = &metaRef{V: v}
+		var ref = &metaRef{Node: v}
 		if ref.IsRelevant() {
 			m.refs = append(m.refs, ref)
 		}
@@ -558,7 +587,7 @@ func metaFor(ptr reflect.Value) metaH {
 }
 
 type metaH struct {
-	ptr  any
+	ptr  reflect.Value
 	refs []*metaRef
 }
 
@@ -621,8 +650,14 @@ func (m metaH) Configure(r *Request) error {
 			return err
 		}
 	}
-
 	return nil
+	// TODO: maybe validate the whole structure too?
+	//
+	// if validate.Value(ctx, m.ptr.Interface()) != nil {
+	// 	// some error but difficult to tell what
+	// 	// maybe integrate error handler
+	// return errInternalValidationError
+	// }
 }
 
 type metaArg struct {
@@ -641,7 +676,7 @@ func (m metaH) Args() []metaArg {
 		args = append(args, metaArg{
 			Ref:   ref,
 			Index: index,
-			Name:  ref.V.StructField.Name,
+			Name:  ref.Node.StructField.Name,
 		})
 	}
 	slicekit.SortBy(args, func(a, b metaArg) bool {
@@ -671,8 +706,7 @@ func (m metaH) Flags() []metaFlag {
 }
 
 type metaRef struct {
-	V reftree.Node
-
+	Node  reftree.Node
 	IsSet bool
 	Raw   string
 }
@@ -693,13 +727,19 @@ func (ref metaRef) InputName() string {
 }
 
 func (ref metaRef) FieldName() string {
-	if ref.V.Parent != nil {
-		return ref.V.Parent.Value.Type().String() + "." + ref.V.StructField.Name
+	if ref.Node.Parent != nil {
+		return ref.Node.Parent.Value.Type().String() + "." + ref.Node.StructField.Name
 	}
-	return ref.V.StructField.Name
+	return ref.Node.StructField.Name
 }
 
-func (ref metaRef) Parse(ctx context.Context) error {
+func (ref metaRef) Parse(ctx context.Context) (rErr error) {
+	defer errorkit.FinishOnError(&rErr, func() {
+		rErr = ErrInvalidInput{
+			ref: ref,
+			Err: rErr,
+		}
+	})
 	typ, ok := ref.LookupType()
 	if !ok {
 		return fmt.Errorf("unable to determine type for %s", ref.InputName())
@@ -713,12 +753,17 @@ func (ref metaRef) Parse(ctx context.Context) error {
 	if defVal, ok := ref.LookupDefault(); ok {
 		return ref.parseRaw(ctx, typ, defVal)
 	}
-	if !reflectkit.IsEmpty(ref.V.Value) {
+	var isEmpty = reflectkit.IsEmpty(ref.Node.Value)
+	if !ref.IsRequired() && isEmpty {
 		return nil
 	}
-	if ref.IsRequired() {
+	if isEmpty {
 		return fmt.Errorf("missing input for %s", ref.InputName())
 	}
+	// switch ref.Node.Type {
+	// case reftree.StructField:
+	// 	return validate.StructField(ctx, ref.Node.StructField, ref.Node.Value)
+	// }
 	return nil
 }
 
@@ -727,39 +772,39 @@ func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) e
 	if err != nil {
 		return err
 	}
-	if ref.V.Type == reftree.StructField {
-		if err := validate.StructField(ctx, ref.V.StructField, value); err != nil {
+	if ref.Node.Type == reftree.StructField {
+		if err := validate.StructField(ctx, ref.Node.StructField, value); err != nil {
 			// enum error is soncidered as a user error,
 			// this we intercept the validation error
 			// and return back the list of enum value which are accepted for this field.
 			if errors.Is(err, enum.ErrInvalid) {
-				return enumError(ref.InputName(), enum.ReflectValues(ref.V.StructField), value)
+				return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), value)
 			}
 			return err
 		}
 	}
 
-	ref.V.Value.Set(value)
+	ref.Node.Value.Set(value)
 	return nil
 }
 
 func (ref metaRef) LookupType() (reflect.Type, bool) {
-	if ref.V.StructField.Type != nil {
-		return ref.V.StructField.Type, true
+	if ref.Node.StructField.Type != nil {
+		return ref.Node.StructField.Type, true
 	}
-	if ref.V.Value.IsValid() {
-		return ref.V.Value.Type(), true
+	if ref.Node.Value.IsValid() {
+		return ref.Node.Value.Type(), true
 	}
 	return nil, false
 }
 
 func (ref metaRef) LookupDescription() (string, bool) {
-	_, desc, ok := descTagHandler.LookupTag(ref.V.StructField)
+	_, desc, ok := descTagHandler.LookupTag(ref.Node.StructField)
 	return desc, ok
 }
 
 func (ref metaRef) LookupDefault() (string, bool) {
-	_, val, ok := defaultTag.LookupTag(ref.V.StructField)
+	_, val, ok := defaultTag.LookupTag(ref.Node.StructField)
 	return val, ok
 }
 
@@ -805,12 +850,12 @@ func parseDefaultValue(sf reflect.StructField, raw string) (reflect.Value, error
 }
 
 func (ref metaRef) ArgIndex() (int, bool) {
-	index, ok, _ := argTagHandler.Lookup(ref.V.StructField)
+	index, ok, _ := argTagHandler.Lookup(ref.Node.StructField)
 	return index, ok
 }
 
 func (ref metaRef) Flags() []string {
-	names, ok, err := flagTagHandler.Lookup(ref.V.StructField)
+	names, ok, err := flagTagHandler.Lookup(ref.Node.StructField)
 	if err != nil {
 		panic(err)
 	}
@@ -821,29 +866,29 @@ func (ref metaRef) Flags() []string {
 }
 
 func (ref metaRef) IsFlag() bool {
-	_, _, ok := flagTagHandler.LookupTag(ref.V.StructField)
+	_, _, ok := flagTagHandler.LookupTag(ref.Node.StructField)
 	return ok
 }
 
 func (ref metaRef) IsArg() bool {
-	_, _, ok := argTagHandler.LookupTag(ref.V.StructField)
+	_, _, ok := argTagHandler.LookupTag(ref.Node.StructField)
 	return ok
 }
 
 func (ref metaRef) Type() reflect.Type {
-	if ref.V.Type == reftree.StructField {
-		return ref.V.StructField.Type
+	if ref.Node.Type == reftree.StructField {
+		return ref.Node.StructField.Type
 	}
-	return ref.V.Value.Type()
+	return ref.Node.Value.Type()
 }
 
 func (ref metaRef) Envs() []string {
-	names, _ := env.LookupFieldEnvNames(ref.V.StructField)
+	names, _ := env.LookupFieldEnvNames(ref.Node.StructField)
 	return names
 }
 
 func (ref metaRef) LookupEnv() (string, bool) {
-	names, ok := env.LookupFieldEnvNames(ref.V.StructField)
+	names, ok := env.LookupFieldEnvNames(ref.Node.StructField)
 	if !ok {
 		return "", false
 	}
@@ -859,10 +904,10 @@ func (ref metaRef) IsRequired() bool {
 	if _, ok := ref.LookupDefault(); ok {
 		return false
 	}
-	if is, ok, _ := isRequiredTagHandler.Lookup(ref.V.StructField); ok && is {
+	if is, ok, _ := isRequiredTagHandler.Lookup(ref.Node.StructField); ok && is {
 		return true
 	}
-	if is, ok, _ := isOptionalTagHandler.Lookup(ref.V.StructField); ok && is {
+	if is, ok, _ := isOptionalTagHandler.Lookup(ref.Node.StructField); ok && is {
 		return false
 	}
 	if !ref.IsFlag() && (ref.IsArg() || ref.IsEnv()) {
@@ -872,7 +917,7 @@ func (ref metaRef) IsRequired() bool {
 }
 
 func (ref metaRef) IsEnv() bool {
-	_, ok := env.LookupFieldEnvNames(ref.V.StructField)
+	_, ok := env.LookupFieldEnvNames(ref.Node.StructField)
 	return ok
 }
 

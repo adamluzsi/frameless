@@ -20,6 +20,6 @@ type TestCommand struct {
 	IntArg    int    `arg:"1" default:"42"`
 }
 
-func (cmd TestCommand) ServeCLI(w cli.Response, r *cli.Request) {
+func (cmd TestCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	fmt.Fprintln(w, pp.Format(cmd))
 }

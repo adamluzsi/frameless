@@ -14,6 +14,7 @@ import (
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/pkg/validate"
 )
 
 func isHelp(err error) bool {
@@ -33,10 +34,39 @@ func toHelp(ctx context.Context, h Handler, err error) string {
 	printfln(o)
 
 	if !isHelpErr && err != nil {
-		printfln(o, errorkit.WithoutTrace(err).Error())
+		// TODO: we could integrate a check here to see if Handler implements an ErrorHandler to handle validation issues
+		if eii, ok := errorkit.As[ErrInvalidInput](err); ok {
+			defaultInvalidInputErrorHandler(ctx, o, eii)
+		} else {
+			printfln(o, errorkit.WithoutTrace(err).Error())
+		}
 	}
 
 	return o.String()
+}
+
+func defaultInvalidInputErrorHandler(ctx context.Context, w io.Writer, eii ErrInvalidInput) {
+	printfln(w)
+	printfln(w, "Invalid input:")
+	if i, ok := eii.ArgIndex(); ok {
+		printfln(w, fmt.Sprintf("\targ[%d]", i))
+	}
+	if flags := eii.Flags(); 0 < len(flags) {
+		printfln(w, fmt.Sprintf("\tflag: %s", strings.Join(flags, ", ")))
+	}
+	if envs := eii.Envs(); 0 < len(envs) {
+		printfln(w, fmt.Sprintf("\tenv: %s", strings.Join(envs, ", ")))
+	}
+	if eii.Err != nil {
+		printfln(w)
+		if verr, ok := errorkit.As[validate.Error](eii); ok {
+			if verr.Cause != nil {
+				printfln(w, errorkit.WithoutTrace(verr.Cause).Error())
+			}
+		} else {
+			printfln(w, errorkit.WithoutTrace(eii.Err).Error())
+		}
+	}
 }
 
 type HelpUsage interface {
@@ -107,14 +137,14 @@ func helpCreateUsage(h Handler, command string) string {
 				continue
 			}
 
-			line := fmt.Sprintf("  -%s=[%s]", name, flag.Ref.V.StructField.Type.String())
+			line := fmt.Sprintf("  -%s=[%s]", name, flag.Ref.Node.StructField.Type.String())
 
 			desc, ok := flag.Ref.LookupDescription()
 			if ok && 0 < len(desc) {
 				line += ": " + desc
 			}
 
-			if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.Ref.V.StructField); ok && 0 < len(osEnvVarNames) {
+			if osEnvVarNames, ok := env.LookupFieldEnvNames(flag.Ref.Node.StructField); ok && 0 < len(osEnvVarNames) {
 				line += fmt.Sprintf(" (env: %s)", strings.Join(osEnvVarNames, ", "))
 			}
 
@@ -141,7 +171,7 @@ func helpCreateUsage(h Handler, command string) string {
 		}
 		lines = append(lines, "Arguments:")
 		for _, arg := range args {
-			line := fmt.Sprintf("  %s [%s]", arg.Name, arg.Ref.V.StructField.Type.String())
+			line := fmt.Sprintf("  %s [%s]", arg.Name, arg.Ref.Node.StructField.Type.String())
 
 			if desc, ok := arg.Ref.LookupDescription(); ok {
 				line += ": " + desc
