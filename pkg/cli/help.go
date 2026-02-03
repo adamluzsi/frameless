@@ -158,9 +158,8 @@ func helpCreateUsage(h Handler, command string) string {
 			}
 
 			lines = append(lines, line)
-
 			for i := 1; i < len(flag.Names); i++ {
-				lines = append(lines, fmt.Sprintf("  -%s", flag.Names[i]))
+				lines = append(lines, fmt.Sprintf("    -%s", flag.Names[i]))
 			}
 		}
 	}

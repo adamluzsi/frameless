@@ -982,6 +982,56 @@ func TestServeCLI(t *testing.T) {
 		})
 	})
 
+	s.Test("flag with accidental empty alias name", func(t *testcase.T) {
+		type D struct {
+			V string `flag:"v,"`
+		}
+		var d D
+
+		var h = CommandWithTypedDependency[D]{
+			Callback: func(v CommandWithTypedDependency[D], w cli.ResponseWriter, r *cli.Request) {
+				d = v.D
+			},
+		}
+
+		exp := t.Random.String()
+
+		w := &cli.ResponseRecorder{}
+		r := &cli.Request{Args: []string{"-v", exp}}
+		cli.ServeCLI(h, w, r)
+		assert.Equal(t, d.V, exp)
+
+		w = &cli.ResponseRecorder{}
+		r = &cli.Request{Args: []string{"--help"}}
+		cli.ServeCLI(h, w, r)
+		assert.NotContains(t, w.Out.String(), "-\n")
+		assert.NotContains(t, w.Err.String(), "-\n")
+
+	})
+
+	s.Test("flag with leading dash", func(t *testcase.T) {
+		type D struct {
+			V string `flag:"-v"`
+			B string `flag:"--b"`
+		}
+		var d D
+
+		var h = CommandWithTypedDependency[D]{
+			Callback: func(v CommandWithTypedDependency[D], w cli.ResponseWriter, r *cli.Request) {
+				d = v.D
+			},
+		}
+
+		expV := t.Random.String()
+		expB := t.Random.String()
+
+		w := &cli.ResponseRecorder{}
+		r := &cli.Request{Args: []string{"-v", expV, "-b", expB}}
+		cli.ServeCLI(h, w, r)
+		assert.Equal(t, d.V, expV)
+		assert.Equal(t, d.B, expB)
+	})
+
 	s.Context("validation", func(s *testcase.Spec) {
 		type Dependency struct {
 			XYZ string `flag:"xyz" len:"5<"`
@@ -1289,8 +1339,8 @@ func (fn Callback[T]) Call(v T, w cli.ResponseWriter, r *cli.Request) {
 type CommandE2E struct {
 	Callback[CommandE2E]
 
-	Flag1 string `flag:"str" desc:"flag1 desc"`
-	Flag2 string `flag:"strwd" default:"defval"`
+	Flag1 string `flag:"str,rts," desc:"flag1 desc"`
+	Flag2 string `flag:"strwd,dwrts" default:"defval"`
 	Flag3 int    `flag:"int" env:"FLAG3"`
 	Flag4 bool   `flag:"bool"`
 	Flag5 bool   `flag:"sbool"`

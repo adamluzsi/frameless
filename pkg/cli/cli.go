@@ -489,12 +489,15 @@ var flagTagHandler = reflectkit.TagHandler[[]string]{
 
 func splitFlagTag(tag string) []string {
 	flags := strings.Split(tag, ",")
-	flags = slicekit.Map(flags, strings.TrimSpace)
 	flags = slicekit.Map(flags, func(flag string) string {
-		for strings.HasPrefix("-", flag) {
-			flag = strings.TrimPrefix("-", flag)
+		flag = strings.TrimSpace(flag)
+		for strings.HasPrefix(flag, "-") {
+			flag = strings.TrimPrefix(flag, "-")
 		}
 		return flag
+	})
+	flags = slicekit.Filter(flags, func(flag string) bool {
+		return 0 < len(flag)
 	})
 	return flags
 }
@@ -697,9 +700,10 @@ func (m metaH) Flags() []metaFlag {
 		if !ref.IsFlag() {
 			continue
 		}
+		names := ref.Flags()
 		mFlags = append(mFlags, metaFlag{
 			Ref:   ref,
-			Names: ref.Flags(),
+			Names: names,
 		})
 	}
 	return mFlags

@@ -14,6 +14,10 @@ func TestUsage(t *testing.T) {
 		usage, err := cli.Usage(CommandE2E{}, "thepath")
 		assert.NoError(t, err)
 
+		if testing.Verbose() {
+			t.Log(usage)
+		}
+
 		testcase.OnFail(t, func() {
 			t.Log(usage)
 		})
