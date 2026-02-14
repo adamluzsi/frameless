@@ -1,5 +1,23 @@
 # Workflow
 
+**Goals**:
+
+- A Workflow Engine's primary focus should be to enable the interpretation and scheduling of end-user-defined logic
+- Keep logic in code, not YAML files or external scripts (Code Over Configuration).
+  - Avoid of forcing context-switching, development should focus on codebase, and operations should focus on the orcestration of user data, no mixture, like the need to work with a service in containers, to develop and test workflows.
+- Avoid forcing retry logic, error handling, or resilience at the workflow engine level — let developers implement these with their choice of libraries, but leave space if they want to use the workflow to orchestrate retries or error handling.
+- Prioritise local development (with Dev/Prod parity) to avoid DX dependencies on potentially long CI/CD pipelines.
+- Built-in way to help observability of workflows, without the need of external tools or complex logging setups.
+- Workflows must be version-controlled with migration tooling to avoid brittle production setups.
+- API drift and schema changes silently break automations, consuming more time troubleshooting than developing.
+  - Developing new versions of participants should be easy with backwards compatibility.
+- Integration challenges arise from incompatible data formats and protocols across systems.
+- Static definition analyisis to avoid delegating issues till runtime execution.
+- Enable easy testing, including time-skipping, and other simulation related activities
+- Easy way to launch workflows, simple API for an easy to start DX experience.
+- Contract-driven testing for definitions and participants should replace the need for manual best practice enforcement.
+
+
 A package `workflow` is a workflow engine that provides solution to two main workflow engine responsabilities:
 
 - framework for building serialisable process definitions
