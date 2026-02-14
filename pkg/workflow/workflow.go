@@ -11,6 +11,10 @@ import (
 	"go.llib.dev/frameless/port/datastruct"
 )
 
+func Checkpoint(ctx context.Context, s *State, pid ParticipantID) error {
+	return nil
+}
+
 type JSONSerialisable interface {
 	json.Marshaler
 	json.Unmarshaler
