@@ -64,7 +64,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 			}
 
 			s.Then("it publish without an error", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 
 			s.When("context has an error", func(s *testcase.Spec) {
@@ -75,7 +75,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 				})
 
 				s.Then("it returns the error of the context", func(t *testcase.T) {
-					t.Must.ErrorIs(ctx.Get(t).Err(), act(t))
+					assert.Must(t).ErrorIs(ctx.Get(t).Err(), act(t))
 				})
 			})
 		})
@@ -85,7 +85,7 @@ func (c base[Data]) Spec(s *testcase.Spec) {
 
 			s.Then("subscription didn't received anything", func(t *testcase.T) {
 				pubsubtest.Waiter.Wait()
-				t.Must.Empty(sub.Get(t).Values())
+				assert.Must(t).Empty(sub.Get(t).Values())
 			})
 		})
 
@@ -251,7 +251,7 @@ func (c base[Data]) WhenWePublish(s *testcase.Spec, vars ...testcase.Var[Data]) 
 	s.Before(func(t *testcase.T) {
 		for _, v := range vars {
 			// we publish one by one intentionally to make the tests more deterministic.
-			t.Must.NoError(c.subject().Get(t).Publisher.Publish(c.subject().Get(t).MakeContext(t), v.Get(t)))
+			assert.Must(t).NoError(c.subject().Get(t).Publisher.Publish(c.subject().Get(t).MakeContext(t), v.Get(t)))
 			pubsubtest.Waiter.Wait()
 		}
 	})
@@ -265,15 +265,15 @@ func (c base[Data]) EventuallyIt(t *testcase.T, subscription testcase.Var[pubsub
 	go func() {
 		i := subscription.Get(t)
 		for m, err := range i {
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			lock.Lock()
 			actual = append(actual, m.Data())
-			t.Must.NoError(m.ACK())
+			assert.Must(t).NoError(m.ACK())
 			lock.Unlock()
 		}
 	}()
 	t.Eventually(func(t *testcase.T) {
-		blk(t.It, actual)
+		blk(t, actual)
 	})
 }
 

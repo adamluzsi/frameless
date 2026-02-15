@@ -92,7 +92,7 @@ func TestFinishTx(t *testing.T) {
 		})
 
 		s.Then(`it will panic as this is an invalid use-case for this function`, func(t *testcase.T) {
-			t.Must.Panic(func() { subject(t) })
+			assert.Must(t).Panic(func() { subject(t) })
 		})
 	})
 
@@ -168,7 +168,7 @@ func TestFinishOnePhaseCommit(t *testing.T) {
 		tx = testcase.Let(s, func(t *testcase.T) interface{} {
 			ctx := context.Background()
 			tx, err := cpmGet(t).BeginTx(ctx)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			return tx
 		})
 		txGet = func(t *testcase.T) context.Context { return tx.Get(t).(context.Context) }

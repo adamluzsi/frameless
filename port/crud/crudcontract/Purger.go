@@ -30,7 +30,7 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 		if !ok {
 			t.Skip("crud.AllFinder is not supported")
 		}
-		t.Must.NoError(act(t))
+		assert.Must(t).NoError(act(t))
 
 		vs, err := iterkit.CollectE(allFinder.FindAll(c.MakeContext(t)))
 		assert.NoError(t, err)
@@ -51,7 +51,7 @@ func Purger[Entity, ID any](subject purgerSubjectResource[Entity, ID], opts ...O
 			if !ok {
 				t.Skip("crud.AllFinder is not supported")
 			}
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			vs, err := iterkit.CollectE(allFinder.FindAll(ctx.Get(t)))
 			assert.NoError(t, err)

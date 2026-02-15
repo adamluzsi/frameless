@@ -399,10 +399,10 @@ func Test_Main(t *testing.T) {
 		Tasks.LetValue(s, nil)
 
 		s.Then("it returns early", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
 				Context.Set(t, ctx)
 
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 		})
 	})
@@ -434,7 +434,7 @@ func Test_Main(t *testing.T) {
 				atomic.AddInt64(&done, 1)
 			}()
 			assert.Waiter{WaitDuration: time.Millisecond}.Wait()
-			t.Must.Equal(int64(0), atomic.LoadInt64(&done))
+			assert.Must(t).Equal(int64(0), atomic.LoadInt64(&done))
 		})
 
 		s.Then("on context cancellation the block stops", func(t *testcase.T) {
@@ -443,25 +443,25 @@ func Test_Main(t *testing.T) {
 				contextCancel.Get(t).Cancel()
 			}()
 
-			t.Must.Within(time.Second, func(_ context.Context) {
-				t.Must.NoError(act(t))
+			assert.Must(t).Within(time.Second, func(_ context.Context) {
+				assert.Must(t).NoError(act(t))
 			})
 		})
 
 		s.When("subscribed signal is notified", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
-					t.Must.NotEmpty(sigs)
+					assert.Must(t).NotEmpty(sigs)
 					go func() { c <- t.Random.Pick(sigs).(os.Signal) }()
 				})
 			})
 
 			s.Then("it will not block but signal shutdown and return without an error", func(t *testcase.T) {
-				t.Must.Within(time.Second, func(ctx context.Context) {
+				assert.Must(t).Within(time.Second, func(ctx context.Context) {
 					Context.Set(t, ctx)
-					t.Must.NoError(act(t))
+					assert.Must(t).NoError(act(t))
 				})
-				t.Must.True(isDone.Get(t))
+				assert.True(t, isDone.Get(t))
 			})
 		})
 
@@ -479,8 +479,8 @@ func Test_Main(t *testing.T) {
 					atomic.AddInt64(&done, 1)
 				}()
 				assert.Waiter{WaitDuration: time.Millisecond}.Wait()
-				t.Must.Equal(int64(0), atomic.LoadInt64(&done))
-				t.Must.False(isDone.Get(t))
+				assert.Must(t).Equal(int64(0), atomic.LoadInt64(&done))
+				assert.Must(t).False(isDone.Get(t))
 			})
 		})
 
@@ -504,8 +504,8 @@ func Test_Main(t *testing.T) {
 				}()
 				wg.Wait()
 
-				t.Must.Equal(int64(1), atomic.LoadInt64(&done))
-				t.Must.True(isDone.Get(t))
+				assert.Must(t).Equal(int64(1), atomic.LoadInt64(&done))
+				assert.True(t, isDone.Get(t))
 			})
 		})
 	})
@@ -762,12 +762,12 @@ func TestWithRepeat_smoke(t *testing.T) {
 
 		task = tasker.WithRepeat(tasker.Every(0), task)
 
-		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.NoError(task(ctx))
+		assert.Must(t).NotWithin(blockCheckWaitTime, func(ctx context.Context) {
+			assert.Should(t).NoError(task(ctx))
 		})
 
 		t.Eventually(func(t *testcase.T) {
-			t.Must.True(1 < atomic.LoadInt32(&count), "should run more than one times, because the repeat")
+			assert.True(t, 1 < atomic.LoadInt32(&count), "should run more than one times, because the repeat")
 		})
 	})
 
@@ -782,18 +782,18 @@ func TestWithRepeat_smoke(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		t.Must.NotWithin(blockCheckWaitTime, func(context.Context) {
-			t.Should.NoError(task(ctx))
+		assert.Must(t).NotWithin(blockCheckWaitTime, func(context.Context) {
+			assert.Should(t).NoError(task(ctx))
 		})
 
 		t.Eventually(func(t *testcase.T) {
-			t.Must.Equal(int32(1), atomic.LoadInt32(&count), "should run at least once before the first interval")
+			assert.Must(t).Equal(int32(1), atomic.LoadInt32(&count), "should run at least once before the first interval")
 		})
 
 		timecop.Travel(t, time.Hour+time.Minute)
 
 		t.Eventually(func(t *testcase.T) {
-			t.Must.Equal(int32(2), atomic.LoadInt32(&count), "should run at twice because one interval passed")
+			assert.Must(t).Equal(int32(2), atomic.LoadInt32(&count), "should run at twice because one interval passed")
 		})
 	})
 
@@ -806,14 +806,14 @@ func TestWithRepeat_smoke(t *testing.T) {
 		task = tasker.WithRepeat(tasker.Every(0), task)
 
 		var done int32
-		t.Must.NotWithin(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.NoError(task(ctx))
+		assert.Must(t).NotWithin(blockCheckWaitTime, func(ctx context.Context) {
+			assert.Should(t).NoError(task(ctx))
 			atomic.AddInt32(&done, 1)
 		})
 
 		t.Eventually(func(t *testcase.T) {
 			const msg = "cancellation was expected to interrupt the wrapped task function"
-			t.Must.Equal(int32(1), atomic.LoadInt32(&done), msg)
+			assert.Must(t).Equal(int32(1), atomic.LoadInt32(&done), msg)
 		})
 	})
 
@@ -828,11 +828,11 @@ func TestWithRepeat_smoke(t *testing.T) {
 
 		task = tasker.WithRepeat(tasker.Every(0), task)
 
-		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.ErrorIs(expErr, task(ctx))
+		assert.Must(t).Within(blockCheckWaitTime, func(ctx context.Context) {
+			assert.Should(t).ErrorIs(expErr, task(ctx))
 		})
 
-		t.Must.Equal(int32(1), atomic.LoadInt32(&count), "task was expected to run only once")
+		assert.Must(t).Equal(int32(1), atomic.LoadInt32(&count), "task was expected to run only once")
 	})
 
 	s.Test("on error that happens eventually, the error is returned", func(t *testcase.T) {
@@ -849,8 +849,8 @@ func TestWithRepeat_smoke(t *testing.T) {
 
 		task = tasker.WithRepeat(tasker.Every(0), task)
 
-		t.Must.Within(blockCheckWaitTime, func(ctx context.Context) {
-			t.Should.ErrorIs(expErr, task(ctx))
+		assert.Must(t).Within(blockCheckWaitTime, func(ctx context.Context) {
+			assert.Should(t).ErrorIs(expErr, task(ctx))
 		})
 	})
 }
@@ -868,7 +868,7 @@ func TestOnError(t *testing.T) {
 
 	s.Test("on no error, error handler is not triggered", func(t *testcase.T) {
 		task := tasker.OnError(func() error { return nil }, func(err error) error { panic("boom") })
-		t.Must.NoError(task(context.Background()))
+		assert.Must(t).NoError(task(context.Background()))
 	})
 
 	s.Test("on context cancellation, error handler is not triggered", func(t *testcase.T) {
@@ -878,7 +878,7 @@ func TestOnError(t *testing.T) {
 		}, func(err error) error { panic("boom") })
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		t.Must.Equal(ctx.Err(), task(ctx))
+		assert.Must(t).Equal(ctx.Err(), task(ctx))
 	})
 
 	s.Test("on non context related error, error is propagated to the error handler", func(t *testcase.T) {
@@ -893,8 +893,8 @@ func TestOnError(t *testing.T) {
 			gotErrIn = err
 			return expErrOut
 		})
-		t.Must.Equal(expErrOut, task(context.Background()))
-		t.Must.Equal(expErrIn, gotErrIn)
+		assert.Must(t).Equal(expErrOut, task(context.Background()))
+		assert.Must(t).Equal(expErrIn, gotErrIn)
 	})
 
 	s.Test("with error handler that accepts context", func(t *testcase.T) {
@@ -905,15 +905,15 @@ func TestOnError(t *testing.T) {
 		)
 		type ctxKey struct{}
 		task := tasker.OnError(func(ctx context.Context) error {
-			t.Must.Equal(any(42), ctx.Value(ctxKey{}))
+			assert.Must(t).Equal(any(42), ctx.Value(ctxKey{}))
 			return expErrIn
 		}, func(ctx context.Context, err error) error {
-			t.Must.Equal(any(42), ctx.Value(ctxKey{}))
+			assert.Must(t).Equal(any(42), ctx.Value(ctxKey{}))
 			gotErrIn = err
 			return expErrOut
 		})
-		t.Must.Equal(expErrOut, task(context.WithValue(context.Background(), ctxKey{}, any(42))))
-		t.Must.Equal(expErrIn, gotErrIn)
+		assert.Must(t).Equal(expErrOut, task(context.WithValue(context.Background(), ctxKey{}, any(42))))
+		assert.Must(t).Equal(expErrIn, gotErrIn)
 	})
 }
 
@@ -926,18 +926,18 @@ func TestIgnoreError_smoke(t *testing.T) {
 		var ran bool
 		task := tasker.IgnoreError(func(ctx context.Context) error {
 			ran = true
-			t.Must.Equal(any(42), ctx.Value(Key{}))
+			assert.Must(t).Equal(any(42), ctx.Value(Key{}))
 			return nil
 		})
-		t.Must.NoError(task.Run(context.WithValue(context.Background(), Key{}, any(42))))
-		t.Must.True(ran)
+		assert.Must(t).NoError(task.Run(context.WithValue(context.Background(), Key{}, any(42))))
+		assert.True(t, ran)
 	})
 
 	s.Test("on empty error list, all error is ignored", func(t *testcase.T) {
 		task := tasker.IgnoreError(func(ctx context.Context) error {
 			return t.Random.Error()
 		})
-		t.Must.NoError(task.Run(context.Background()))
+		assert.Must(t).NoError(task.Run(context.Background()))
 	})
 
 	s.Test("when errors are specified, only they will be ignored", func(t *testcase.T) {
@@ -952,18 +952,18 @@ func TestIgnoreError_smoke(t *testing.T) {
 		task1 := tasker.IgnoreError(func(ctx context.Context) error {
 			return othErr
 		}, errToIgnore)
-		t.Must.ErrorIs(othErr, task1.Run(context.Background()))
+		assert.Must(t).ErrorIs(othErr, task1.Run(context.Background()))
 		task2 := tasker.IgnoreError(func(ctx context.Context) error {
 			return errToIgnore
 		}, errToIgnore)
-		t.Must.NoError(task2.Run(context.Background()))
+		assert.Must(t).NoError(task2.Run(context.Background()))
 	})
 	s.Test("when specified error retruned as wrapped error", func(t *testcase.T) {
 		errToIgnore := t.Random.Error()
 		task := tasker.IgnoreError(func(ctx context.Context) error {
 			return fmt.Errorf("wrapped error: %w", errToIgnore)
 		}, errToIgnore)
-		t.Must.NoError(task.Run(context.Background()))
+		assert.Must(t).NoError(task.Run(context.Background()))
 	})
 }
 
@@ -1027,14 +1027,14 @@ func TestWithSignalNotify(t *testing.T) {
 			var run atomic.Bool
 			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
 				run.Store(true)
-				t.Must.ContainsExactly(signals.Get(t), sigs)
+				assert.Must(t).ContainsExactly(signals.Get(t), sigs)
 			})
 
-			t.Must.NotWithin(time.Second, func(context.Context) {
-				t.Must.NoError(act(t))
+			assert.Must(t).NotWithin(time.Second, func(context.Context) {
+				assert.Must(t).NoError(act(t))
 			})
 
-			t.Must.True(run.Load())
+			assert.True(t, run.Load())
 		})
 	})
 
@@ -1045,7 +1045,7 @@ func TestWithSignalNotify(t *testing.T) {
 			atomic.AddInt64(&done, 1)
 		}()
 		assert.Waiter{WaitDuration: time.Millisecond}.Wait()
-		t.Must.Equal(int64(0), atomic.LoadInt64(&done))
+		assert.Must(t).Equal(int64(0), atomic.LoadInt64(&done))
 	})
 
 	s.Then("on context cancellation the block stops", func(t *testcase.T) {
@@ -1054,25 +1054,25 @@ func TestWithSignalNotify(t *testing.T) {
 			contextCancel.Get(t).Cancel()
 		}()
 
-		t.Must.Within(time.Second, func(_ context.Context) {
-			t.Must.NoError(act(t))
+		assert.Must(t).Within(time.Second, func(_ context.Context) {
+			assert.Must(t).NoError(act(t))
 		})
 	})
 
 	s.When("subscribed signal is notified", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			StubSignalNotify(t, func(c chan<- os.Signal, sigs ...os.Signal) {
-				t.Must.NotEmpty(sigs)
+				assert.Must(t).NotEmpty(sigs)
 				go func() { c <- t.Random.Pick(sigs).(os.Signal) }()
 			})
 		})
 
 		s.Then("it will not block but signal shutdown and return without an error", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
 				Context.Set(t, ctx)
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
-			t.Must.True(isDone.Get(t))
+			assert.True(t, isDone.Get(t))
 		})
 	})
 
@@ -1084,8 +1084,8 @@ func TestWithSignalNotify(t *testing.T) {
 		})
 
 		s.Then("it returns early", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
-				t.Must.NoError(act(t))
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
+				assert.Must(t).NoError(act(t))
 			})
 		})
 	})
@@ -1100,8 +1100,8 @@ func TestWithSignalNotify(t *testing.T) {
 		})
 
 		s.Then("error is returned", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
-				t.Must.ErrorIs(expectedErr.Get(t), act(t))
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
+				assert.Must(t).ErrorIs(expectedErr.Get(t), act(t))
 			})
 		})
 	})

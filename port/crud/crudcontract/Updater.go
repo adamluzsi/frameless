@@ -90,7 +90,7 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 			})
 
 			s.Then(`it will encounter error during the update of the stored entity`, func(t *testcase.T) {
-				t.Must.ErrorIs(crud.ErrNotFound, act(t))
+				assert.Must(t).ErrorIs(crud.ErrNotFound, act(t))
 			})
 		})
 	}
@@ -106,6 +106,6 @@ func updaterBenchmark[ENT, ID any](s *testcase.Spec, subject crud.Updater[ENT], 
 	})
 
 	s.Benchmark("", func(t *testcase.T) {
-		t.Must.NoError(subject.Update(c.MakeContext(t), ent.Get(t)))
+		assert.Must(t).NoError(subject.Update(c.MakeContext(t), ent.Get(t)))
 	})
 }

@@ -143,7 +143,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 	GivenWeHaveStoredValue := func(s *testcase.Spec) testcase.Var[X] {
 		return testcase.Let(s, func(t *testcase.T) X {
 			ent := X{N: t.Random.Int(), OID: o.Get(t).ID}
-			t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
+			assert.Must(t).NoError(mdb.Get(t).Create(context.Background(), &ent))
 			t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
 			return ent
 		}).EagerLoading(s)
@@ -168,10 +168,10 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 		ThenNotAllowed := func(s *testcase.Spec) {
 			s.Then("it will respond with 405, page not found", func(t *testcase.T) {
 				rr := act(t)
-				t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+				assert.Must(t).Equal(http.StatusMethodNotAllowed, rr.Code)
 				errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-				t.Must.NotEmpty(errDTO)
-				t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
+				assert.Must(t).NotEmpty(errDTO)
+				assert.Must(t).Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 			})
 		}
 
@@ -181,8 +181,8 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.Then(`it will return an empty result`, func(t *testcase.T) {
 				rr := act(t)
-				t.Must.NotEmpty(rr.Body.String())
-				t.Must.Empty(respondsWithJSON[[]X](t, rr))
+				assert.Must(t).NotEmpty(rr.Body.String())
+				assert.Must(t).Empty(respondsWithJSON[[]X](t, rr))
 			})
 
 			s.When("we have entity in the repository", func(s *testcase.Spec) {
@@ -190,7 +190,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.NotEmpty(rr.Body.String())
+					assert.Must(t).NotEmpty(rr.Body.String())
 					assert.Contains(t, respondsWithJSON[[]X](t, rr), ent.Get(t))
 				})
 
@@ -205,7 +205,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					s.Then("it will return back the entity", func(t *testcase.T) {
 						rr := act(t)
-						t.Must.NotEmpty(rr.Body.String())
+						assert.Must(t).NotEmpty(rr.Body.String())
 						assert.Contains(t, respondsWithJSON[[]X](t, rr), ent.Get(t))
 					})
 				})
@@ -221,7 +221,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					s.Then("it will not return back the entity", func(t *testcase.T) {
 						rr := act(t)
-						t.Must.NotEmpty(rr.Body.String())
+						assert.Must(t).NotEmpty(rr.Body.String())
 						assert.NotContains(t, respondsWithJSON[[]X](t, rr), ent.Get(t))
 					})
 				})
@@ -234,8 +234,8 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it will return back the entity", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.NotEmpty(rr.Body.String())
-					t.Must.ContainsExactly([]X{ent1.Get(t), ent2.Get(t), ent3.Get(t)},
+					assert.Must(t).NotEmpty(rr.Body.String())
+					assert.Must(t).ContainsExactly([]X{ent1.Get(t), ent2.Get(t), ent3.Get(t)},
 						respondsWithJSON[[]X](t, rr))
 				})
 			})
@@ -247,11 +247,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it will respond with StatusMethodNotAllowed, page not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+					assert.Must(t).Equal(http.StatusMethodNotAllowed, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -289,16 +289,16 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						path.Set(t, path.Get(t)+"?foo=bar")
 						act(t)
 						r := receivedQuery.Get(t)
-						t.Must.NotNil(r,
+						assert.Must(t).NotNil(r,
 							"it was expected that the override populate the receivedRequest variable")
-						t.Must.Equal("bar", r.Get("foo"),
+						assert.Must(t).Equal("bar", r.Get("foo"),
 							"it is expected that the override has access to a valid request object")
 					})
 
 					s.Then("the result will be based on the value returned by the controller function", func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Equal(http.StatusOK, rr.Code)
-						t.Must.ContainsExactly( // TODO: clean it up
+						assert.Must(t).Equal(http.StatusOK, rr.Code)
+						assert.Must(t).ContainsExactly( // TODO: clean it up
 							[]X{{ID: x.Get(t).ID, N: x.Get(t).N}},
 							respondsWithJSON[[]X](t, rr))
 					})
@@ -317,7 +317,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 						h := subject.Super(t)
 						h.ErrorHandler = rfc7807.Handler{
 							Mapping: func(ctx context.Context, err error, dto *rfc7807.DTO) {
-								t.Must.ErrorIs(expectedErr.Get(t), err)
+								assert.Must(t).ErrorIs(expectedErr.Get(t), err)
 								dto.Detail = err.Error()
 								dto.Status = http.StatusTeapot
 							},
@@ -327,11 +327,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					s.Then("the error is propagated back", func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Equal(http.StatusTeapot, rr.Code)
+						assert.Must(t).Equal(http.StatusTeapot, rr.Code)
 
 						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-						t.Must.NotEmpty(errDTO)
-						t.Must.Equal(expectedErr.Get(t).Error(), errDTO.Detail)
+						assert.Must(t).NotEmpty(errDTO)
+						assert.Must(t).Equal(expectedErr.Get(t).Error(), errDTO.Detail)
 					})
 				})
 			})
@@ -356,23 +356,23 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				})
 				_ = body.Let(s, func(t *testcase.T) []byte {
 					bs, err := json.Marshal(ent.Get(t))
-					t.Must.NoError(err)
+					assert.Must(t).NoError(err)
 					return bs
 				})
 			)
 
 			s.Then(`it will responds with the persisted entity's DTO that includes the populated ID field`, func(t *testcase.T) {
 				rr := act(t)
-				t.Must.Equal(http.StatusCreated, rr.Code)
-				t.Must.NotEmpty(rr.Body.String())
+				assert.Must(t).Equal(http.StatusCreated, rr.Code)
+				assert.Must(t).NotEmpty(rr.Body.String())
 				gotENT := respondsWithJSON[X](t, rr)
-				t.Must.Equal(ent.Get(t).N, gotENT.N)
-				t.Must.NotEmpty(gotENT.ID)
+				assert.Must(t).Equal(ent.Get(t).N, gotENT.N)
+				assert.Must(t).NotEmpty(gotENT.ID)
 
 				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotENT.ID))
-				t.Must.NoError(err)
-				t.Must.True(found)
-				t.Must.Equal(ent.N, gotENT.N)
+				assert.Must(t).NoError(err)
+				assert.True(t, found)
+				assert.Must(t).Equal(ent.N, gotENT.N)
 			})
 
 			s.When("the method is not supported", func(s *testcase.Spec) {
@@ -382,11 +382,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it replies back with method not supported error", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+					assert.Must(t).Equal(http.StatusMethodNotAllowed, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -406,27 +406,27 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then(`it will create a new entity in the repository with the given entity`, func(t *testcase.T) {
 					rr := act(t)
-					t.Must.NotEmpty(rr.Body.String())
+					assert.Must(t).NotEmpty(rr.Body.String())
 					gotDTO := respondsWithJSON[X](t, rr)
-					t.Must.Equal(ent.Get(t), gotDTO)
-					t.Must.NotEmpty(gotDTO.ID)
+					assert.Must(t).Equal(ent.Get(t), gotDTO)
+					assert.Must(t).NotEmpty(gotDTO.ID)
 
 					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(gotDTO.ID))
-					t.Must.NoError(err)
-					t.Must.True(found)
-					t.Must.Equal(ent.N, gotDTO.N)
+					assert.Must(t).NoError(err)
+					assert.True(t, found)
+					assert.Must(t).Equal(ent.N, gotDTO.N)
 				})
 
 				s.And("the entity was already created", func(s *testcase.Spec) {
 					s.Before(func(t *testcase.T) {
-						t.Must.Equal(http.StatusCreated, act(t).Code)
+						assert.Must(t).Equal(http.StatusCreated, act(t).Code)
 					})
 
 					s.Then("it will fail to create the resource", func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Equal(http.StatusConflict, rr.Code)
+						assert.Must(t).Equal(http.StatusConflict, rr.Code)
 						errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-						t.Must.Equal(httpkit.ErrEntityAlreadyExist.Code.String(), errDTO.Type.ID)
+						assert.Must(t).Equal(httpkit.ErrEntityAlreadyExist.Code.String(), errDTO.Type.ID)
 					})
 				})
 			})
@@ -438,11 +438,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it will respond with StatusMethodNotAllowed, page not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+					assert.Must(t).Equal(http.StatusMethodNotAllowed, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrMethodNotAllowed.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -456,11 +456,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				s.Then("it will fail because the request body is too large", func(t *testcase.T) {
 					rr := act(t)
 					t.Log(rr.Body.String())
-					t.Must.Equal(http.StatusRequestEntityTooLarge, rr.Code)
+					assert.Must(t).Equal(http.StatusRequestEntityTooLarge, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrRequestEntityTooLarge.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrRequestEntityTooLarge.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -484,11 +484,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it will fail on parsing the ID", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusBadRequest, rr.Code)
+					assert.Must(t).Equal(http.StatusBadRequest, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrMalformedID.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrMalformedID.Code.String(), errDTO.Type.ID)
 				})
 			})
 		}
@@ -504,9 +504,9 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.Then(`it will show the requested entity`, func(t *testcase.T) {
 				rr := act(t)
-				t.Must.NotEmpty(rr.Body.String())
+				assert.Must(t).NotEmpty(rr.Body.String())
 				gotDTO := respondsWithJSON[X](t, rr)
-				t.Must.Equal(dto.Get(t), gotDTO)
+				assert.Must(t).Equal(dto.Get(t), gotDTO)
 			})
 
 			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
@@ -516,9 +516,9 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then(`it accept the request`, func(t *testcase.T) {
 					rr := act(t)
-					t.Must.NotEmpty(rr.Body.String())
+					assert.Must(t).NotEmpty(rr.Body.String())
 					gotDTO := respondsWithJSON[X](t, rr)
-					t.Must.Equal(dto.Get(t), gotDTO)
+					assert.Must(t).Equal(dto.Get(t), gotDTO)
 				})
 			})
 
@@ -531,11 +531,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("replies back with not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -548,11 +548,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("it will respond with 404, entity not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -586,19 +586,19 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 				})
 				_ = body.Let(s, func(t *testcase.T) []byte {
 					bs, err := json.Marshal(updatedENT.Get(t))
-					t.Must.NoError(err)
+					assert.Must(t).NoError(err)
 					return bs
 				})
 			)
 
 			s.Then(`it will update the entity in the repository`, func(t *testcase.T) {
 				rr := act(t)
-				t.Must.Empty(rr.Body.String())
-				t.Must.Equal(http.StatusNoContent, rr.Code)
+				assert.Must(t).Empty(rr.Body.String())
+				assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 				ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(ent.Get(t).ID))
-				t.Must.NoError(err)
-				t.Must.True(found)
-				t.Must.Equal(ent.N, updatedENT.Get(t).N)
+				assert.Must(t).NoError(err)
+				assert.True(t, found)
+				assert.Must(t).Equal(ent.N, updatedENT.Get(t).N)
 			})
 
 			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
@@ -608,12 +608,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then(`it accept the request`, func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Empty(rr.Body.String())
-					t.Must.Equal(http.StatusNoContent, rr.Code)
+					assert.Must(t).Empty(rr.Body.String())
+					assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 					ent, found, err := mdb.Get(t).FindByID(context.Background(), XID(ent.Get(t).ID))
-					t.Must.NoError(err)
-					t.Must.True(found)
-					t.Must.Equal(ent.N, updatedENT.Get(t).N)
+					assert.Must(t).NoError(err)
+					assert.True(t, found)
+					assert.Must(t).Equal(ent.N, updatedENT.Get(t).N)
 				})
 			})
 
@@ -626,11 +626,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("the it replies back with forbidden due to the filter", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -638,16 +638,16 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), XID(ent.Get(t).ID)))
+					assert.Must(t).NoError(mdb.Get(t).DeleteByID(context.Background(), XID(ent.Get(t).ID)))
 				})
 
 				s.Then("it will respond with 404, entity not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -681,12 +681,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.Then(`it will delete the entity in the repository`, func(t *testcase.T) {
 				rr := act(t)
-				t.Must.Empty(rr.Body.String())
-				t.Must.Equal(http.StatusNoContent, rr.Code)
+				assert.Must(t).Empty(rr.Body.String())
+				assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 
 				_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
-				t.Must.NoError(err)
-				t.Must.False(found, "expected that the entity is deleted")
+				assert.Must(t).NoError(err)
+				assert.Must(t).False(found, "expected that the entity is deleted")
 			})
 
 			s.When("handler is a subresource and ownership check passes", func(s *testcase.Spec) {
@@ -696,12 +696,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then(`it accept the request`, func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Empty(rr.Body.String())
-					t.Must.Equal(http.StatusNoContent, rr.Code)
+					assert.Must(t).Empty(rr.Body.String())
+					assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 
 					_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
-					t.Must.NoError(err)
-					t.Must.False(found, "expected that the entity is deleted")
+					assert.Must(t).NoError(err)
+					assert.Must(t).False(found, "expected that the entity is deleted")
 				})
 			})
 
@@ -714,11 +714,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("the it replies back with forbidden due to the filter", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -735,7 +735,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then(`method not allowed returned`, func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+					assert.Must(t).Equal(http.StatusMethodNotAllowed, rr.Code)
 				})
 
 				s.And("DeletionIsContextAware", func(s *testcase.Spec) {
@@ -747,12 +747,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					s.Then(`it will delete the entity in the repository`, func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Empty(rr.Body.String())
-						t.Must.Equal(http.StatusNoContent, rr.Code)
+						assert.Must(t).Empty(rr.Body.String())
+						assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 
 						_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
-						t.Must.NoError(err)
-						t.Must.False(found, "expected that the entity is deleted")
+						assert.Must(t).NoError(err)
+						assert.Must(t).False(found, "expected that the entity is deleted")
 					})
 				})
 			})
@@ -761,16 +761,16 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.When("the referenced entity is absent", func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.NoError(mdb.Get(t).DeleteByID(context.Background(), XID(dto.Get(t).ID)))
+					assert.Must(t).NoError(mdb.Get(t).DeleteByID(context.Background(), XID(dto.Get(t).ID)))
 				})
 
 				s.Then("it will respond with 404, entity not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrEntityNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 
@@ -802,12 +802,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.Then(`it will delete the entity in the repository`, func(t *testcase.T) {
 				rr := act(t)
-				t.Must.Empty(rr.Body.String())
-				t.Must.Equal(http.StatusNoContent, rr.Code)
+				assert.Must(t).Empty(rr.Body.String())
+				assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 
 				_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
-				t.Must.NoError(err)
-				t.Must.False(found, "expected that the entity is deleted")
+				assert.Must(t).NoError(err)
+				assert.Must(t).False(found, "expected that the entity is deleted")
 			})
 
 			s.When("the handler is a subresource", func(s *testcase.Spec) {
@@ -825,7 +825,7 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					s.Then(`method not allowed returned`, func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Equal(http.StatusMethodNotAllowed, rr.Code)
+						assert.Must(t).Equal(http.StatusMethodNotAllowed, rr.Code)
 					})
 				})
 
@@ -838,23 +838,23 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 					othENT := testcase.Let(s, func(t *testcase.T) X {
 						// create ent and persist
 						ent := X{N: t.Random.Int(), OID: random.Unique(func() OID { return OID(t.Random.Int()) }, o.Get(t).ID)}
-						t.Must.NoError(mdb.Get(t).Create(context.Background(), &ent))
+						assert.Must(t).NoError(mdb.Get(t).Create(context.Background(), &ent))
 						t.Defer(mdb.Get(t).DeleteByID, context.Background(), ent.ID)
 						return ent
 					})
 
 					s.Then(`it will delete the entities related to the current REST Scope`, func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Empty(rr.Body.String())
-						t.Must.Equal(http.StatusNoContent, rr.Code)
+						assert.Must(t).Empty(rr.Body.String())
+						assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 
 						_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
-						t.Must.NoError(err)
-						t.Must.False(found, "expected that the entity is deleted")
+						assert.Must(t).NoError(err)
+						assert.Must(t).False(found, "expected that the entity is deleted")
 
 						_, found, err = mdb.Get(t).FindByID(context.Background(), XID(othENT.Get(t).ID))
-						t.Must.NoError(err)
-						t.Must.True(found, "expected that the unrelated entity is not deleted")
+						assert.Must(t).NoError(err)
+						assert.True(t, found, "expected that the unrelated entity is not deleted")
 					})
 				})
 
@@ -867,12 +867,12 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 					s.Then(`it will delete the entity in the repository`, func(t *testcase.T) {
 						rr := act(t)
-						t.Must.Empty(rr.Body.String())
-						t.Must.Equal(http.StatusNoContent, rr.Code)
+						assert.Must(t).Empty(rr.Body.String())
+						assert.Must(t).Equal(http.StatusNoContent, rr.Code)
 
 						_, found, err := mdb.Get(t).FindByID(context.Background(), XID(dto.Get(t).ID))
-						t.Must.NoError(err)
-						t.Must.False(found, "expected that the entity is deleted")
+						assert.Must(t).NoError(err)
+						assert.Must(t).False(found, "expected that the entity is deleted")
 					})
 				})
 			})
@@ -916,17 +916,17 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 			s.Then("the .Routes will be used to route the request", func(t *testcase.T) {
 				rr := act(t)
-				t.Must.Equal(http.StatusTeapot, rr.Code)
+				assert.Must(t).Equal(http.StatusTeapot, rr.Code)
 				req := lastSubResourceRequest.Get(t)
-				t.Must.NotNil(req)
+				assert.Must(t).NotNil(req)
 
 				id, ok := req.Context().Value(FooIDContextKey{}).(XID)
-				t.Must.True(ok)
+				assert.True(t, ok)
 				assert.Equal(t, foo.Get(t).ID, id)
 
 				routing, ok := internal.RoutingContext.Lookup(req.Context())
-				t.Must.True(ok)
-				t.Must.Equal("/bars", routing.PathLeft)
+				assert.True(t, ok)
+				assert.Must(t).Equal("/bars", routing.PathLeft)
 			})
 
 			s.And(".EntityRoutes is nil", func(s *testcase.Spec) {
@@ -938,11 +938,11 @@ func TestRESTHandler_ServeHTTP(t *testing.T) {
 
 				s.Then("path is not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 		})
@@ -1447,7 +1447,7 @@ func TestRESTHandler_idWithEscapedChars(tt *testing.T) {
 
 	h := httpkit.RESTHandler[T, string]{
 		Show: func(ctx context.Context, id string) (ent T, found bool, err error) {
-			t.Should.Equal(exp, id)
+			assert.Should(t).Equal(exp, id)
 			return T{ID: id}, true, nil
 		},
 

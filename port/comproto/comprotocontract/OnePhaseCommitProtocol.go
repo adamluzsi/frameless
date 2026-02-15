@@ -19,56 +19,56 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 
 		s.Test(`BeginTx + CommitTx, no error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.CommitTx(tx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.CommitTx(tx))
 		})
 
 		s.Test(`CommitTx cancels the context`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.CommitTx(tx))
-			t.Must.ErrorIs(tx.Err(), context.Canceled)
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.CommitTx(tx))
+			assert.Must(t).ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple CommitTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.CommitTx(tx))
-			t.Must.NotNil(subject.CommitTx(tx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.CommitTx(tx))
+			assert.Must(t).NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx, no error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.RollbackTx(tx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.RollbackTx(tx))
 		})
 
 		s.Test(`RollbackTx cancels the context`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.RollbackTx(tx))
-			t.Must.ErrorIs(tx.Err(), context.Canceled)
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.RollbackTx(tx))
+			assert.Must(t).ErrorIs(tx.Err(), context.Canceled)
 		})
 
 		s.Test(`BeginTx + multiple RollbackTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.RollbackTx(tx))
-			t.Must.NotNil(subject.RollbackTx(tx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.RollbackTx(tx))
+			assert.Must(t).NotNil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx + RollbackTx + CommitTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.RollbackTx(tx))
-			t.Must.NotNil(subject.CommitTx(tx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.RollbackTx(tx))
+			assert.Must(t).NotNil(subject.CommitTx(tx))
 		})
 
 		s.Test(`BeginTx + CommitTx + RollbackTx, yields error`, func(t *testcase.T) {
 			tx, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
-			t.Must.NoError(subject.CommitTx(tx))
-			t.Must.NotNil(subject.RollbackTx(tx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(subject.CommitTx(tx))
+			assert.Must(t).NotNil(subject.RollbackTx(tx))
 		})
 
 		s.Test(`BeginTx should be callable multiple times to ensure an emulated multi level transaction`, func(t *testcase.T) {
@@ -86,43 +86,43 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 			var globalContext = c.MakeContext(t)
 
 			tx1, err := subject.BeginTx(globalContext)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Log(`given tx1 is began`)
 
 			tx2InTx1, err := subject.BeginTx(tx1)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
-			t.Must.NoError(subject.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
-			t.Must.NotNil(subject.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
+			assert.Must(t).NoError(subject.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
+			assert.Must(t).NotNil(subject.CommitTx(tx2InTx1), `"inner" comproto should be already done`)
 
-			t.Must.NoError(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
-			t.Must.NotNil(subject.CommitTx(tx1), `"outer" comproto should be already done`)
+			assert.Must(t).NoError(subject.CommitTx(tx1), `"outer" comproto should be considered done`)
+			assert.Must(t).NotNil(subject.CommitTx(tx1), `"outer" comproto should be already done`)
 		})
 
 		s.Test("CommitTx and context cancellation behaviour with nested context", func(t *testcase.T) {
 			tx1, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
 			tx2, err := subject.BeginTx(tx1)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
-			t.Must.NoError(subject.CommitTx(tx2)) // commit innert tx
+			assert.Must(t).NoError(subject.CommitTx(tx2)) // commit innert tx
 			assert.ErrorIs(t, context.Canceled, tx2.Err())
 			assert.NoError(t, tx1.Err())
 
-			t.Must.NoError(subject.CommitTx(tx1))
+			assert.Must(t).NoError(subject.CommitTx(tx1))
 			assert.ErrorIs(t, context.Canceled, tx1.Err())
 		})
 
 		s.Test("RollbackTx and context cancellation behaviour with nested context", func(t *testcase.T) {
 			tx1, err := subject.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
 			tx2, err := subject.BeginTx(tx1)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
-			t.Must.NoError(subject.RollbackTx(tx2)) // commit innert tx
+			assert.Must(t).NoError(subject.RollbackTx(tx2)) // commit innert tx
 			assert.ErrorIs(t, context.Canceled, tx2.Err())
 			t.Log("note: We can't guarantee that rollback is not related to an error use-case")
 			t.Log("      or that the commit protocol support true nested transactions")
@@ -144,21 +144,21 @@ func OnePhaseCommitProtocol(subject comproto.OnePhaseCommitProtocol, opts ...Opt
 		s.Test("BeginTx returns the error", func(t *testcase.T) {
 			cancel.Get(t)()
 			_, err := subject.BeginTx(ctx.Get(t))
-			t.Must.ErrorIs(ctx.Get(t).Err(), err)
+			assert.Must(t).ErrorIs(ctx.Get(t).Err(), err)
 		})
 
 		s.Test("CommitTx returns error on context.Context.Error", func(t *testcase.T) {
 			tx, err := subject.BeginTx(ctx.Get(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			cancel.Get(t)()
-			t.Must.ErrorIs(ctx.Get(t).Err(), subject.CommitTx(tx))
+			assert.Must(t).ErrorIs(ctx.Get(t).Err(), subject.CommitTx(tx))
 		})
 
 		s.Test("RollbackTx returns error on context.Context.Error", func(t *testcase.T) {
 			tx, err := subject.BeginTx(ctx.Get(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			cancel.Get(t)()
-			t.Must.ErrorIs(ctx.Get(t).Err(), subject.RollbackTx(tx))
+			assert.Must(t).ErrorIs(ctx.Get(t).Err(), subject.RollbackTx(tx))
 		})
 	})
 

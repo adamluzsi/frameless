@@ -48,7 +48,7 @@ func FanOut[Data any](
 		s.Test("with a single queue, a consumer will receives all the messages", func(t *testcase.T) {
 			q1 := MakeQueue(t)
 
-			t.Must.NoError(Exchange.Publish(c.MakeContext(t),
+			assert.Must(t).NoError(Exchange.Publish(c.MakeContext(t),
 				val1.Get(t), val2.Get(t), val3.Get(t),
 			))
 
@@ -69,7 +69,7 @@ func FanOut[Data any](
 			})
 
 			expected := []Data{val1.Get(t), val2.Get(t), val3.Get(t)}
-			t.Must.NoError(Exchange.Publish(c.MakeContext(t), expected...))
+			assert.Must(t).NoError(Exchange.Publish(c.MakeContext(t), expected...))
 
 			for i, res := range results {
 				res.Eventually(t, func(tb testing.TB, got []Data) {

@@ -18,8 +18,8 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/pkg/synctest"
 	"go.llib.dev/testcase/random"
+	"go.llib.dev/testcase/tcsync"
 )
 
 const timeout = time.Second / 25
@@ -236,7 +236,7 @@ func TestRWLockerFactory(t *testing.T) {
 
 	// 	go func() {
 	// 		l := lockerFor(t, key.Get(t))
-	// 		t.Should.Within(timeout, func(ctx context.Context) {
+	// 		assert.Should(t).Within(timeout, func(ctx context.Context) {
 	// 			l.Lock()
 	// 		})
 	// 		t.Defer(l.Unlock)
@@ -246,7 +246,7 @@ func TestRWLockerFactory(t *testing.T) {
 
 	// 	go func() {
 	// 		l := lockerFor(t, othKey.Get(t))
-	// 		t.Should.Within(timeout, func(ctx context.Context) {
+	// 		assert.Should(t).Within(timeout, func(ctx context.Context) {
 	// 			l.Lock()
 	// 		})
 	// 		atomic.AddInt32(&ready, 1)
@@ -2499,7 +2499,7 @@ func TestGroup(t *testing.T) {
 		})
 
 		s.Test("main group will wait until all sub group goroutines are finished too", func(t *testcase.T) {
-			var p synctest.Phaser
+			var p tcsync.Phaser
 
 			n := t.Random.Repeat(3, 12, func() {
 				sg, _ := group.Get(t).Sub()
@@ -2545,7 +2545,7 @@ func TestGroup(t *testing.T) {
 			sub1B, cancel1B := g.Sub()
 			defer cancel1B()
 
-			var p synctest.Phaser
+			var p tcsync.Phaser
 			sub1B.Go(func(ctx context.Context) error {
 				p.Wait()
 				return nil

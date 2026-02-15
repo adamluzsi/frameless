@@ -49,18 +49,18 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 
 	s.When(`entity was not saved before`, func(s *testcase.Spec) {
 		s.Then(`entity field that is marked as ext:ID will be updated`, func(t *testcase.T) {
-			t.Must.NoError(act(t))
-			t.Must.NotEmpty(getID(t))
+			assert.Must(t).NoError(act(t))
+			assert.Must(t).NotEmpty(getID(t))
 		})
 
 		s.Then("it should call Create successfully", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 		})
 
 		if ByIDFinderOK {
 			s.Then(`after creation, the freshly made entity can be retrieved by its id`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
-				t.Must.Equal(ptr.Get(t), c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t)))
+				assert.Must(t).NoError(act(t))
+				assert.Must(t).Equal(ptr.Get(t), c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t)))
 			})
 		}
 	})
@@ -82,19 +82,19 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 
-				t.Must.NoError(byIDD.DeleteByID(c.MakeContext(t), getID(t)))
+				assert.Must(t).NoError(byIDD.DeleteByID(c.MakeContext(t), getID(t)))
 				if ByIDFinderOK {
 					c.Helper().IsAbsent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 
 			if ByIDFinderOK {
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
-					t.Must.NoError(act(t))
+					assert.Must(t).NoError(act(t))
 
 					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				})
@@ -106,12 +106,12 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		s.When(`entity is already created and then remove before`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				ogEnt := *ptr.Get(t) // a deep copy might be better
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 				if ByIDFinderOK {
 					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				}
 
-				t.Must.NoError(byIDD.DeleteByID(c.MakeContext(t), getID(t)))
+				assert.Must(t).NoError(byIDD.DeleteByID(c.MakeContext(t), getID(t)))
 				if ByIDFinderOK {
 					c.Helper().IsAbsent(t, byIDF, c.MakeContext(t), getID(t))
 				}
@@ -120,12 +120,12 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			})
 
 			s.Then(`it will accept it`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 
 			if ByIDFinderOK {
 				s.Then(`persisted object can be found`, func(t *testcase.T) {
-					t.Must.NoError(act(t))
+					assert.Must(t).NoError(act(t))
 
 					c.Helper().IsPresent(t, byIDF, c.MakeContext(t), getID(t))
 				})
@@ -141,7 +141,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.ErrorIs(context.Canceled, act(t))
+			assert.Must(t).ErrorIs(context.Canceled, act(t))
 		})
 	})
 
@@ -151,7 +151,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 			c.Helper().Create(t, subject, c.MakeContext(t), &e)
 			id := c.Helper().HasID(t, &e)
 
-			t.Must.Equal(e, *c.Helper().IsPresent(t, byIDF, c.MakeContext(t), id))
+			assert.Must(t).Equal(e, *c.Helper().IsPresent(t, byIDF, c.MakeContext(t), id))
 		})
 	}
 

@@ -40,7 +40,7 @@ func TestCoalesce(t *testing.T) {
 		values.LetValue(s, nil)
 
 		s.Then("zero value is returned", func(t *testcase.T) {
-			t.Must.Equal(*new(int), act(t))
+			assert.Must(t).Equal(*new(int), act(t))
 		})
 	})
 
@@ -52,7 +52,7 @@ func TestCoalesce(t *testing.T) {
 		})
 
 		s.Then("the non-zero value is returned", func(t *testcase.T) {
-			t.Must.Equal(expected.Get(t), act(t))
+			assert.Must(t).Equal(expected.Get(t), act(t))
 		})
 	})
 
@@ -64,7 +64,7 @@ func TestCoalesce(t *testing.T) {
 		})
 
 		s.Then("the non-zero value is returned", func(t *testcase.T) {
-			t.Must.Equal(expected.Get(t), act(t))
+			assert.Must(t).Equal(expected.Get(t), act(t))
 		})
 	})
 
@@ -76,7 +76,7 @@ func TestCoalesce(t *testing.T) {
 		})
 
 		s.Then("the non-zero value is returned", func(t *testcase.T) {
-			t.Must.Equal(expected.Get(t), act(t))
+			assert.Must(t).Equal(expected.Get(t), act(t))
 		})
 	})
 }

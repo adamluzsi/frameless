@@ -439,16 +439,16 @@ func TestWithContext(t *testing.T) {
 
 	s.Then("context can be looked up", func(t *testcase.T) {
 		_, ok := errorkit.LookupContext(err.Get(t))
-		t.Must.False(ok)
+		assert.Must(t).False(ok)
 
 		gotCtx, ok := errorkit.LookupContext(act(t))
-		t.Must.True(ok)
-		t.Must.Equal(ctx.Get(t), gotCtx)
-		t.Must.Equal("bar", gotCtx.Value(fooKey{}).(string))
+		assert.True(t, ok)
+		assert.Must(t).Equal(ctx.Get(t), gotCtx)
+		assert.Must(t).Equal("bar", gotCtx.Value(fooKey{}).(string))
 	})
 
 	s.Then(".Error() returns the underlying error's result", func(t *testcase.T) {
-		t.Must.Equal(err.Get(t).Error(), act(t).Error())
+		assert.Must(t).Equal(err.Get(t).Error(), act(t).Error())
 	})
 
 	s.When("the input error has a typed error", func(s *testcase.Spec) {
@@ -464,12 +464,12 @@ func TestWithContext(t *testing.T) {
 
 		s.Then("the typed error can be looked up with errors.As", func(t *testcase.T) {
 			var usrErr errorkit.UserError
-			t.Must.True(errors.As(act(t), &usrErr))
-			t.Must.Equal(expectedTypedError.Get(t), usrErr)
+			assert.True(t, errors.As(act(t), &usrErr))
+			assert.Must(t).Equal(expectedTypedError.Get(t), usrErr)
 		})
 
 		s.Then("we can check after the typed error with errors.Is", func(t *testcase.T) {
-			t.Must.True(errors.Is(act(t), expectedTypedError.Get(t)))
+			assert.True(t, errors.Is(act(t), expectedTypedError.Get(t)))
 		})
 	})
 
@@ -504,19 +504,19 @@ func TestMerge(t *testing.T) {
 		})
 
 		s.Then("it will return with nil", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 		})
 
 		s.Then("errors.Is yield false", func(t *testcase.T) {
 			err := act(t)
-			t.Must.False(errors.Is(err, ErrType1{}))
-			t.Must.False(errors.Is(err, ErrType2{}))
+			assert.Must(t).False(errors.Is(err, ErrType1{}))
+			assert.Must(t).False(errors.Is(err, ErrType2{}))
 		})
 
 		s.Then("errors.As yield false", func(t *testcase.T) {
 			err := act(t)
-			t.Must.False(errors.As(err, &ErrType1{}))
-			t.Must.False(errors.As(err, &ErrType2{}))
+			assert.Must(t).False(errors.As(err, &ErrType1{}))
+			assert.Must(t).False(errors.As(err, &ErrType2{}))
 		})
 	})
 
@@ -528,38 +528,38 @@ func TestMerge(t *testing.T) {
 		})
 
 		s.Then("the exact value is returned", func(t *testcase.T) {
-			t.Must.Equal(expectedErr.Get(t), act(t))
+			assert.Must(t).Equal(expectedErr.Get(t), act(t))
 		})
 
 		s.Then("errors.Is yield false", func(t *testcase.T) {
 			err := act(t)
-			t.Must.False(errors.Is(err, ErrType1{}))
-			t.Must.False(errors.Is(err, ErrType2{}))
+			assert.Must(t).False(errors.Is(err, ErrType1{}))
+			assert.Must(t).False(errors.Is(err, ErrType2{}))
 		})
 
 		s.Then("errors.As yield false", func(t *testcase.T) {
 			err := act(t)
-			t.Must.False(errors.As(err, &ErrType1{}))
-			t.Must.False(errors.As(err, &ErrType2{}))
+			assert.Must(t).False(errors.As(err, &ErrType1{}))
+			assert.Must(t).False(errors.As(err, &ErrType2{}))
 		})
 
 		s.And("the error value is a typed error value", func(s *testcase.Spec) {
 			expectedErr.LetValue(s, ErrType1{})
 
 			s.Then("the exact value is returned", func(t *testcase.T) {
-				t.Must.Equal(expectedErr.Get(t), act(t))
+				assert.Must(t).Equal(expectedErr.Get(t), act(t))
 			})
 
 			s.Then("errors.Is will find wrapped error", func(t *testcase.T) {
 				err := act(t)
-				t.Must.True(errors.Is(err, ErrType1{}))
-				t.Must.False(errors.Is(err, ErrType2{}))
+				assert.True(t, errors.Is(err, ErrType1{}))
+				assert.Must(t).False(errors.Is(err, ErrType2{}))
 			})
 
 			s.Then("errors.As will find the wrapped error", func(t *testcase.T) {
 				err := act(t)
-				t.Must.True(errors.As(err, &ErrType1{}))
-				t.Must.False(errors.As(err, &ErrType2{}))
+				assert.True(t, errors.As(err, &ErrType1{}))
+				assert.Must(t).False(errors.As(err, &ErrType2{}))
 			})
 		})
 
@@ -567,19 +567,19 @@ func TestMerge(t *testing.T) {
 			expectedErr.LetValue(s, nil)
 
 			s.Then("it will return with nil", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 
 			s.Then("errors.Is yield false", func(t *testcase.T) {
 				err := act(t)
-				t.Must.False(errors.Is(err, ErrType1{}))
-				t.Must.False(errors.Is(err, ErrType2{}))
+				assert.Must(t).False(errors.Is(err, ErrType1{}))
+				assert.Must(t).False(errors.Is(err, ErrType2{}))
 			})
 
 			s.Then("errors.As yield false", func(t *testcase.T) {
 				err := act(t)
-				t.Must.False(errors.As(err, &ErrType1{}))
-				t.Must.False(errors.As(err, &ErrType2{}))
+				assert.Must(t).False(errors.As(err, &ErrType1{}))
+				assert.Must(t).False(errors.As(err, &ErrType2{}))
 			})
 		})
 	})
@@ -599,40 +599,40 @@ func TestMerge(t *testing.T) {
 
 		s.Then("retruned value includes all three error value", func(t *testcase.T) {
 			err := act(t)
-			t.Must.ErrorIs(expectedErr1.Get(t), err)
-			t.Must.ErrorIs(expectedErr2.Get(t), err)
-			t.Must.ErrorIs(expectedErr2.Get(t), err)
+			assert.Must(t).ErrorIs(expectedErr1.Get(t), err)
+			assert.Must(t).ErrorIs(expectedErr2.Get(t), err)
+			assert.Must(t).ErrorIs(expectedErr2.Get(t), err)
 		})
 
 		s.Then("errors.Is yield false", func(t *testcase.T) {
 			err := act(t)
-			t.Must.False(errors.Is(err, ErrType1{}))
-			t.Must.False(errors.Is(err, ErrType2{}))
+			assert.Must(t).False(errors.Is(err, ErrType1{}))
+			assert.Must(t).False(errors.Is(err, ErrType2{}))
 		})
 
 		s.Then("errors.As yield false", func(t *testcase.T) {
 			err := act(t)
-			t.Must.False(errors.As(err, &ErrType1{}))
-			t.Must.False(errors.As(err, &ErrType2{}))
+			assert.Must(t).False(errors.As(err, &ErrType1{}))
+			assert.Must(t).False(errors.As(err, &ErrType2{}))
 		})
 
 		s.And("the errors has a typed error value", func(s *testcase.Spec) {
 			expectedErr2.LetValue(s, ErrType1{})
 
 			s.Then("the named error value is returned", func(t *testcase.T) {
-				t.Must.ErrorIs(expectedErr2.Get(t), act(t))
+				assert.Must(t).ErrorIs(expectedErr2.Get(t), act(t))
 			})
 
 			s.Then("errors.Is can find the wrapped error", func(t *testcase.T) {
 				err := act(t)
-				t.Must.True(errors.Is(err, ErrType1{}))
-				t.Must.False(errors.Is(err, ErrType2{}))
+				assert.True(t, errors.Is(err, ErrType1{}))
+				assert.Must(t).False(errors.Is(err, ErrType2{}))
 			})
 
 			s.Then("errors.As can find the wrapped error", func(t *testcase.T) {
 				err := act(t)
-				t.Must.True(errors.As(err, &ErrType1{}))
-				t.Must.False(errors.As(err, &ErrType2{}))
+				assert.True(t, errors.As(err, &ErrType1{}))
+				assert.Must(t).False(errors.As(err, &ErrType2{}))
 			})
 		})
 
@@ -643,25 +643,25 @@ func TestMerge(t *testing.T) {
 			})
 
 			s.Then("returned error contains all typed error", func(t *testcase.T) {
-				t.Must.ErrorIs(expectedErr2.Get(t), act(t))
-				t.Must.ErrorIs(expectedErr3.Get(t), act(t))
+				assert.Must(t).ErrorIs(expectedErr2.Get(t), act(t))
+				assert.Must(t).ErrorIs(expectedErr3.Get(t), act(t))
 			})
 
 			s.Then("errors.Is can find the wrapped error", func(t *testcase.T) {
 				err := act(t)
-				t.Must.True(errors.Is(err, expectedErr2.Get(t)))
-				t.Must.True(errors.Is(err, expectedErr3.Get(t)))
-				t.Must.False(errors.Is(err, ErrType2{}))
+				assert.True(t, errors.Is(err, expectedErr2.Get(t)))
+				assert.True(t, errors.Is(err, expectedErr3.Get(t)))
+				assert.Must(t).False(errors.Is(err, ErrType2{}))
 			})
 
 			s.Then("errors.As can find the wrapped error", func(t *testcase.T) {
 				err := act(t)
-				t.Must.True(errors.As(err, &ErrType1{}))
+				assert.True(t, errors.As(err, &ErrType1{}))
 
 				var gotErrWithAs ErrType2
-				t.Must.True(errors.As(err, &gotErrWithAs))
-				t.Must.NotNil(gotErrWithAs)
-				t.Must.Equal(expectedErr3.Get(t), gotErrWithAs)
+				assert.True(t, errors.As(err, &gotErrWithAs))
+				assert.Must(t).NotNil(gotErrWithAs)
+				assert.Must(t).Equal(expectedErr3.Get(t), gotErrWithAs)
 			})
 		})
 
@@ -671,19 +671,19 @@ func TestMerge(t *testing.T) {
 			expectedErr3.LetValue(s, nil)
 
 			s.Then("it will return with nil", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 
 			s.Then("errors.Is yield false", func(t *testcase.T) {
 				err := act(t)
-				t.Must.False(errors.Is(err, ErrType1{}))
-				t.Must.False(errors.Is(err, ErrType2{}))
+				assert.Must(t).False(errors.Is(err, ErrType1{}))
+				assert.Must(t).False(errors.Is(err, ErrType2{}))
 			})
 
 			s.Then("errors.As yield false", func(t *testcase.T) {
 				err := act(t)
-				t.Must.False(errors.As(err, &ErrType1{}))
-				t.Must.False(errors.As(err, &ErrType2{}))
+				assert.Must(t).False(errors.As(err, &ErrType1{}))
+				assert.Must(t).False(errors.As(err, &ErrType2{}))
 			})
 		})
 	})

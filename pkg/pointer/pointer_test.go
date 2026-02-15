@@ -27,7 +27,7 @@ func TestOf(tt *testing.T) {
 	t := testcase.ToT(tt)
 	var value = t.Random.String()
 	vPtr := pointer.Of(value)
-	t.Must.Equal(&value, vPtr)
+	assert.Must(t).Equal(&value, vPtr)
 }
 
 func ExampleDeref() {

@@ -370,9 +370,9 @@ func TestValidateStruct_smoke(t *testing.T) {
 		gotErr := enum.ValidateStruct(c.V)
 
 		if c.IsErr {
-			t.Must.Error(gotErr)
+			assert.Must(t).Error(gotErr)
 		} else {
-			t.Must.NoError(gotErr)
+			assert.Must(t).NoError(gotErr)
 		}
 
 	})

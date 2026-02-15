@@ -7,6 +7,7 @@ import (
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 var (
@@ -55,17 +56,17 @@ func TestWrap(t *testing.T) {
 
 	s.Then("wrapped error can be checked with errors.Is", func(t *testcase.T) {
 		gotErr := act(t)
-		t.Must.True(errors.Is(gotErr, usrErr.Get(t)))
-		t.Must.True(errors.Is(gotErr, err.Get(t)))
+		assert.True(t, errors.Is(gotErr, usrErr.Get(t)))
+		assert.True(t, errors.Is(gotErr, err.Get(t)))
 	})
 
 	s.Then("wrapped error can be checked with errors.As", func(t *testcase.T) {
 		gotErr := act(t)
 		var gotUsrErr UserError
-		t.Must.True(errors.As(gotErr, &gotUsrErr))
-		t.Must.Equal(usrErr.Get(t), gotUsrErr)
+		assert.True(t, errors.As(gotErr, &gotUsrErr))
+		assert.Must(t).Equal(usrErr.Get(t), gotUsrErr)
 		var gotErrT ErrT
-		t.Must.True(errors.As(gotErr, &gotErrT))
-		t.Must.Equal(err.Get(t), gotErrT)
+		assert.True(t, errors.As(gotErr, &gotErrT))
+		assert.Must(t).Equal(err.Get(t), gotErrT)
 	})
 }

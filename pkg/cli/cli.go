@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/internal/interr"
@@ -23,6 +24,7 @@ import (
 	"go.llib.dev/frameless/pkg/env"
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
+	"go.llib.dev/frameless/pkg/internal/signalint"
 	"go.llib.dev/frameless/pkg/logger"
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -381,6 +383,28 @@ func Main(ctx context.Context, h Handler) {
 		w = &StdResponse{}
 		r = NewStdRequest(ctx)
 	)
+
+	sigch := make(chan os.Signal)
+	signals := []os.Signal{
+		syscall.SIGINT,
+		syscall.SIGHUP,
+		syscall.SIGTERM,
+	}
+
+	signalint.Notify(sigch, signals...)
+	defer close(sigch)
+	defer signalint.Stop(sigch)
+
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-sigch:
+			cancel()
+		case <-ctx.Done():
+			return
+		}
+	}()
+
 	ServeCLI(h, w, r)
 	osint.Exit(w.Code)
 }

@@ -1,11 +1,10 @@
-# go.llib.dev/testcase v0.187.0
+# go.llib.dev/testcase v0.189.0
 ## explicit; go 1.18
 go.llib.dev/testcase
 go.llib.dev/testcase/assert
 go.llib.dev/testcase/clock
 go.llib.dev/testcase/clock/internal
 go.llib.dev/testcase/clock/timecop
-go.llib.dev/testcase/httpspec
 go.llib.dev/testcase/internal
 go.llib.dev/testcase/internal/caller
 go.llib.dev/testcase/internal/doc
@@ -19,9 +18,10 @@ go.llib.dev/testcase/internal/slicekit
 go.llib.dev/testcase/internal/teardown
 go.llib.dev/testcase/internal/wait
 go.llib.dev/testcase/let
-go.llib.dev/testcase/pkg/synctest
 go.llib.dev/testcase/pp
 go.llib.dev/testcase/random
 go.llib.dev/testcase/random/internal/fixture
 go.llib.dev/testcase/random/sextype
 go.llib.dev/testcase/sandbox
+go.llib.dev/testcase/tchttp
+go.llib.dev/testcase/tcsync

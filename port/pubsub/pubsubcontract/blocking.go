@@ -46,7 +46,7 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 			go func() {
 				ctx, cancel := contextkit.Merge(c.MakeContext(t), t.Context())
 				defer cancel()
-				t.Must.NoError(publisher.Publish(ctx, c.MakeData(t)))
+				assert.Must(t).NoError(publisher.Publish(ctx, c.MakeData(t)))
 				m.Set(PublishedAt, time.Now())
 			}()
 
@@ -94,8 +94,8 @@ func Blocking[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 					cancel()
 				}()
 
-				t.Must.ErrorIs(publisher.Publish(ctx, c.MakeData(t)), context.Canceled)
-				t.Must.ErrorIs(ctx.Err(), context.Canceled)
+				assert.Must(t).ErrorIs(publisher.Publish(ctx, c.MakeData(t)), context.Canceled)
+				assert.Must(t).ErrorIs(ctx.Err(), context.Canceled)
 
 				sub.Get(t).Start(t, c.MakeContext(t))
 

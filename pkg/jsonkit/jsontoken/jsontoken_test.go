@@ -578,7 +578,7 @@ func TestScanner_Scan_smoke(t *testing.T) {
 
 				t.OnFail(func() { t.Log("extra:", string(gotExtra)) })
 
-				t.Must.AnyOf(func(a *assert.A) {
+				assert.Must(t).AnyOf(func(a *assert.A) {
 					const msg = "expected that the input reader is already empty"
 					a.Case(func(t testing.TB) { assert.True(t, len(gotExtra) == 0, msg) })
 					a.Case(func(t testing.TB) { assert.ErrorIs(t, err, io.EOF, msg) })

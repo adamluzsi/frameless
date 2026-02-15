@@ -462,13 +462,13 @@ func TestMonitor_ServeHTTP(t *testing.T) {
 
 	s.Then("we get back a health response report", func(t *testcase.T) {
 		resp := act(t)
-		t.Must.Equal(http.StatusOK, resp.Code)
+		assert.Must(t).Equal(http.StatusOK, resp.Code)
 		var dto health.ReportJSONDTO
-		t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
-		t.Must.Equal(dto.Status, health.Up.String())
-		t.Must.Equal(dto.Message, health.StateMessage(health.Up))
-		t.Must.Empty(dto.Issues)
-		t.Must.Equal(dto.Timestamp, now.Get(t).Format(time.RFC3339))
+		assert.Must(t).NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
+		assert.Must(t).Equal(dto.Status, health.Up.String())
+		assert.Must(t).Equal(dto.Message, health.StateMessage(health.Up))
+		assert.Must(t).Empty(dto.Issues)
+		assert.Must(t).Equal(dto.Timestamp, now.Get(t).Format(time.RFC3339))
 	})
 
 	s.When("dependency is registered", func(s *testcase.Spec) {
@@ -487,13 +487,13 @@ func TestMonitor_ServeHTTP(t *testing.T) {
 
 		s.Then("the dependency health state is returned back", func(t *testcase.T) {
 			resp := act(t)
-			t.Must.Equal(http.StatusOK, resp.Code)
+			assert.Must(t).Equal(http.StatusOK, resp.Code)
 			var dto health.ReportJSONDTO
-			t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
-			t.Must.Equal(dto.Status, health.Up.String())
-			t.Must.Equal(dto.Message, health.StateMessage(health.Up))
-			t.Must.Empty(dto.Issues)
-			t.Must.NotEmpty(dto.Dependencies)
+			assert.Must(t).NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
+			assert.Must(t).Equal(dto.Status, health.Up.String())
+			assert.Must(t).Equal(dto.Message, health.StateMessage(health.Up))
+			assert.Must(t).Empty(dto.Issues)
+			assert.Must(t).NotEmpty(dto.Dependencies)
 			assert.OneOf(t, dto.Dependencies, func(it testing.TB, got health.ReportJSONDTO) {
 				assert.Equal(it, got.Status, depState.Get(t).Status.String())
 				assert.Equal(it, got.Name, depState.Get(t).Name)
@@ -512,13 +512,13 @@ func TestMonitor_ServeHTTP(t *testing.T) {
 
 			s.Then("the dependency's health issue is reflected on the response", func(t *testcase.T) {
 				resp := act(t)
-				t.Must.Equal(http.StatusServiceUnavailable, resp.Code)
+				assert.Must(t).Equal(http.StatusServiceUnavailable, resp.Code)
 				var dto health.ReportJSONDTO
-				t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
-				t.Must.Equal(dto.Status, health.PartialOutage.String())
-				t.Must.Equal(dto.Message, health.StateMessage(health.PartialOutage))
-				t.Must.Empty(dto.Issues)
-				t.Must.NotEmpty(dto.Dependencies)
+				assert.Must(t).NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
+				assert.Must(t).Equal(dto.Status, health.PartialOutage.String())
+				assert.Must(t).Equal(dto.Message, health.StateMessage(health.PartialOutage))
+				assert.Must(t).Empty(dto.Issues)
+				assert.Must(t).NotEmpty(dto.Dependencies)
 				assert.OneOf(t, dto.Dependencies, func(it testing.TB, got health.ReportJSONDTO) {
 					assert.Equal(it, got.Status, depState.Get(t).Status.String())
 					assert.Equal(it, got.Name, depState.Get(t).Name)
@@ -542,11 +542,11 @@ func TestMonitor_ServeHTTP(t *testing.T) {
 
 		s.Then("the detail result is returned back", func(t *testcase.T) {
 			resp := act(t)
-			t.Must.Equal(http.StatusOK, resp.Code)
+			assert.Must(t).Equal(http.StatusOK, resp.Code)
 			var dto health.ReportJSONDTO
-			t.Must.NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
-			t.Must.NotEmpty(dto.Details)
-			t.Must.Equal(dto.Details["x-detail"], float64(detailVal.Get(t)))
+			assert.Must(t).NoError(json.Unmarshal(resp.Body.Bytes(), &dto))
+			assert.Must(t).NotEmpty(dto.Details)
+			assert.Must(t).Equal(dto.Details["x-detail"], float64(detailVal.Get(t)))
 		})
 	})
 

@@ -117,15 +117,15 @@ func TestBuffer(t *testing.T) {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(t.TempDir(), name)
 			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filemode.UserRWX)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data.Get(t))
-			t.Must.NoError(err)
-			t.Must.Equal(len(data.Get(t)), n)
-			t.Must.NoError(f.Close())
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(len(data.Get(t)), n)
+			assert.Must(t).NoError(f.Close())
 
 			f, err = os.OpenFile(path, os.O_RDWR, 0)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Defer(f.Close)
 			return f
 		}}
@@ -134,10 +134,10 @@ func TestBuffer(t *testing.T) {
 	thenContentsAreMatching := func(s *testcase.Spec) {
 		s.Then("contents are matching with the reference ReadWriteSeeker", func(t *testcase.T) {
 			expected, err := io.ReadAll(rwsc.Get(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			actual, err := io.ReadAll(buffer.Get(t))
-			t.Must.NoError(err)
-			t.Must.Equal(string(expected), string(actual))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(string(expected), string(actual))
 		})
 	}
 
@@ -145,18 +145,18 @@ func TestBuffer(t *testing.T) {
 
 	seekOnBoth := func(t *testcase.T, offset int64, whench int) {
 		expected, err := rwsc.Get(t).Seek(offset, whench)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		actual, err := buffer.Get(t).Seek(offset, whench)
-		t.Must.NoError(err)
-		t.Must.Equal(expected, actual, "seek length matches")
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(expected, actual, "seek length matches")
 	}
 
 	writeOnBoth := func(t *testcase.T, bs []byte) {
 		expected, err := rwsc.Get(t).Write(bs)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		actual, err := buffer.Get(t).Write(bs)
-		t.Must.NoError(err)
-		t.Must.Equal(expected, actual, "write length matches")
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(expected, actual, "write length matches")
 	}
 
 	s.When("when seek is made", func(s *testcase.Spec) {
@@ -213,9 +213,9 @@ func TestBuffer(t *testing.T) {
 			s.Then(".Seek will fail because the negative position", func(t *testcase.T) {
 				_, err := rwsc.Get(t).Seek(offset.Get(t), whench.Get(t))
 				var pathError *fs.PathError
-				t.Must.True(errors.As(err, &pathError))
+				assert.True(t, errors.As(err, &pathError))
 				_, err = buffer.Get(t).Seek(offset.Get(t), whench.Get(t))
-				t.Must.ErrorIs(iokit.ErrSeekNegativePosition, err)
+				assert.Must(t).ErrorIs(iokit.ErrSeekNegativePosition, err)
 			})
 		})
 	})
@@ -235,36 +235,36 @@ func TestBuffer(t *testing.T) {
 
 	s.When(".Close is called", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
-			t.Must.NoError(buffer.Get(t).Close())
-			t.Must.NoError(rwsc.Get(t).Close())
+			assert.Must(t).NoError(buffer.Get(t).Close())
+			assert.Must(t).NoError(rwsc.Get(t).Close())
 		})
 
 		s.Then("simultaneous .Close yields error", func(t *testcase.T) {
 			err := rwsc.Get(t).Close()
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 			err = buffer.Get(t).Close()
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 		})
 
 		s.Then(".Read fails with fs.ErrClosed", func(t *testcase.T) {
 			_, err := rwsc.Get(t).Read([]byte{})
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 			_, err = buffer.Get(t).Read([]byte{})
-			t.Must.ErrorIs(iokit.ErrClosed, err)
+			assert.Must(t).ErrorIs(iokit.ErrClosed, err)
 		})
 
 		s.Then(".Write fails with fs.ErrClosed", func(t *testcase.T) {
 			_, err := rwsc.Get(t).Write([]byte{})
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 			_, err = buffer.Get(t).Write([]byte{})
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 		})
 
 		s.Then(".Seek fails with fs.ErrClosed", func(t *testcase.T) {
 			_, err := rwsc.Get(t).Seek(0, io.SeekStart)
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 			_, err = buffer.Get(t).Seek(0, io.SeekStart)
-			t.Must.ErrorIs(fs.ErrClosed, err)
+			assert.Must(t).ErrorIs(fs.ErrClosed, err)
 		})
 	})
 
@@ -275,17 +275,17 @@ func TestBuffer(t *testing.T) {
 			s.Then(".String() matches with reference rwsc's read content", func(t *testcase.T) {
 				rwsc.Get(t).Seek(0, io.SeekStart)
 				expectedBS, err := io.ReadAll(rwsc.Get(t))
-				t.Must.NoError(err)
-				t.Must.Equal(string(expectedBS), buffer.Get(t).String())
-				t.Must.Equal(expectedBS, buffer.Get(t).Bytes())
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(string(expectedBS), buffer.Get(t).String())
+				assert.Must(t).Equal(expectedBS, buffer.Get(t).Bytes())
 			})
 
 			s.Then(".Bytes() matches with reference rwsc's read content", func(t *testcase.T) {
 				rwsc.Get(t).Seek(0, io.SeekStart)
 				expectedBS, err := io.ReadAll(rwsc.Get(t))
-				t.Must.NoError(err)
-				t.Must.Equal(string(expectedBS), buffer.Get(t).String())
-				t.Must.Equal(expectedBS, buffer.Get(t).Bytes())
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(string(expectedBS), buffer.Get(t).String())
+				assert.Must(t).Equal(expectedBS, buffer.Get(t).Bytes())
 			})
 		}
 
@@ -343,53 +343,53 @@ func TestBuffer_smoke(tt *testing.T) {
 			name := t.Random.StringNWithCharset(5, "qwerty")
 			path := filepath.Join(tmpDir, name)
 			f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, filemode.UserRWX)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Defer(os.Remove, path)
 			n, err := f.Write(data)
-			t.Must.NoError(err)
-			t.Must.Equal(len(data), n)
-			t.Must.NoError(f.Close())
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(len(data), n)
+			assert.Must(t).NoError(f.Close())
 
 			f, err = os.OpenFile(path, os.O_RDWR, 0)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Defer(f.Close)
 			return f
 		}(t)
 	)
 
 	bseek, err := buffer.Seek(offset, whench)
-	t.Must.NoError(err)
+	assert.Must(t).NoError(err)
 
 	fseek, err := file.Seek(offset, whench)
-	t.Must.NoError(err)
+	assert.Must(t).NoError(err)
 
-	t.Must.Equal(fseek, bseek)
+	assert.Must(t).Equal(fseek, bseek)
 
 	wData := []byte(t.Random.StringN(1))
 	bwrite, err := buffer.Write(wData)
-	t.Must.NoError(err)
+	assert.Must(t).NoError(err)
 	fwrite, err := file.Write(wData)
-	t.Must.NoError(err)
-	t.Must.Equal(fwrite, bwrite)
+	assert.Must(t).NoError(err)
+	assert.Must(t).Equal(fwrite, bwrite)
 
 	_, err = file.Seek(0, io.SeekStart)
-	t.Must.NoError(err)
+	assert.Must(t).NoError(err)
 	_, err = buffer.Seek(0, io.SeekStart)
-	t.Must.NoError(err)
+	assert.Must(t).NoError(err)
 
 	expectedBS, err := io.ReadAll(file)
-	t.Must.NoError(err)
+	assert.Must(t).NoError(err)
 	actualBS, err := io.ReadAll(buffer)
-	t.Must.NoError(err)
-	t.Must.Equal(string(expectedBS), string(actualBS))
+	assert.Must(t).NoError(err)
+	assert.Must(t).Equal(string(expectedBS), string(actualBS))
 }
 
 func TestNew_smoke(tt *testing.T) {
 	t := testcase.NewT(tt)
 	dataSTR := t.Random.String()
 	dataBS := []byte(t.Random.String())
-	t.Must.Equal(iokit.NewBuffer(dataSTR).String(), dataSTR)
-	t.Must.Equal(iokit.NewBuffer(dataBS).Bytes(), dataBS)
+	assert.Must(t).Equal(iokit.NewBuffer(dataSTR).String(), dataSTR)
+	assert.Must(t).Equal(iokit.NewBuffer(dataBS).Bytes(), dataBS)
 }
 
 func TestBuffer_Read_ioReadAll(t *testing.T) {
@@ -397,16 +397,16 @@ func TestBuffer_Read_ioReadAll(t *testing.T) {
 		t := testcase.NewT(tt)
 		b := &iokit.Buffer{}
 		bs, err := io.ReadAll(b)
-		t.Must.NoError(err)
-		t.Must.Empty(bs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Empty(bs)
 	})
 	t.Run("on populated buffer", func(tt *testing.T) {
 		t := testcase.NewT(tt)
 		d := t.Random.String()
 		b := iokit.NewBuffer(d)
 		bs, err := io.ReadAll(b)
-		t.Must.NoError(err)
-		t.Must.Equal(d, string(bs))
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(d, string(bs))
 	})
 }
 

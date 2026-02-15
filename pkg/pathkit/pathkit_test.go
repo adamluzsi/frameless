@@ -29,8 +29,8 @@ func TestUnshift(t *testing.T) {
 
 		s.Then(`it unshift the parameter`, func(t *testcase.T) {
 			first, rest := act(t)
-			t.Must.Equal(value, first)
-			t.Must.Equal(`/`, rest)
+			assert.Must(t).Equal(value, first)
+			assert.Must(t).Equal(`/`, rest)
 		})
 	})
 
@@ -40,8 +40,8 @@ func TestUnshift(t *testing.T) {
 
 		s.Then(`it will unshift the parameter`, func(t *testcase.T) {
 			first, rest := act(t)
-			t.Must.Equal(value, first)
-			t.Must.Equal(`/`, rest)
+			assert.Must(t).Equal(value, first)
+			assert.Must(t).Equal(`/`, rest)
 		})
 
 		s.And(`not just one but multiple slashes`, func(s *testcase.Spec) {
@@ -51,8 +51,8 @@ func TestUnshift(t *testing.T) {
 
 			s.Then(`it will unshift the parameter`, func(t *testcase.T) {
 				first, rest := act(t)
-				t.Must.Equal(value, first)
-				t.Must.Equal(`/`, rest)
+				assert.Must(t).Equal(value, first)
+				assert.Must(t).Equal(`/`, rest)
 			})
 		})
 	})
@@ -63,8 +63,8 @@ func TestUnshift(t *testing.T) {
 
 		s.Then(`it will unshift the parameter`, func(t *testcase.T) {
 			first, rest := act(t)
-			t.Must.Equal(value, first)
-			t.Must.Equal(`/etc`, rest)
+			assert.Must(t).Equal(value, first)
+			assert.Must(t).Equal(`/etc`, rest)
 		})
 	})
 
@@ -73,8 +73,8 @@ func TestUnshift(t *testing.T) {
 
 		s.Then(`it will unshift the parameter`, func(t *testcase.T) {
 			first, rest := act(t)
-			t.Must.Equal(``, first)
-			t.Must.Equal(``, rest)
+			assert.Must(t).Equal(``, first)
+			assert.Must(t).Equal(``, rest)
 		})
 	})
 }
@@ -93,7 +93,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `/a/canonical/path`)
 
 		s.Then(`it will leave it as is`, func(t *testcase.T) {
-			t.Must.Equal(`/a/canonical/path`, act(t))
+			assert.Must(t).Equal(`/a/canonical/path`, act(t))
 		})
 	})
 
@@ -101,7 +101,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `/`)
 
 		s.Then(`it will leave it as is`, func(t *testcase.T) {
-			t.Must.Equal(`/`, act(t))
+			assert.Must(t).Equal(`/`, act(t))
 		})
 	})
 
@@ -109,7 +109,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, ``)
 
 		s.Then(`it will `, func(t *testcase.T) {
-			t.Must.Equal(`/`, act(t))
+			assert.Must(t).Equal(`/`, act(t))
 		})
 	})
 
@@ -117,7 +117,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `test`)
 
 		s.Then(`it will add the leading slash`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -125,7 +125,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `//test`)
 
 		s.Then(`it will remove the extra leading slash`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -133,7 +133,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `./test`)
 
 		s.Then(`it will remove the leading dot`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -141,7 +141,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `/../test`)
 
 		s.Then(`it will remove the parent directory reference double dot`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -149,7 +149,7 @@ func TestCanonical(t *testing.T) {
 		path.LetValue(s, `/test/`)
 
 		s.Then(`it will preserve the trailing slash`, func(t *testcase.T) {
-			t.Must.Equal(`/test/`, act(t))
+			assert.Must(t).Equal(`/test/`, act(t))
 		})
 	})
 }
@@ -175,7 +175,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `/a/canonical/path`)
 
 		s.Then(`it will leave it as is`, func(t *testcase.T) {
-			t.Must.Equal(`/a/canonical/path`, act(t))
+			assert.Must(t).Equal(`/a/canonical/path`, act(t))
 		})
 	})
 
@@ -183,7 +183,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `/`)
 
 		s.Then(`it will leave it as is`, func(t *testcase.T) {
-			t.Must.Equal(`/`, act(t))
+			assert.Must(t).Equal(`/`, act(t))
 		})
 	})
 
@@ -191,7 +191,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, ``)
 
 		s.Then(`it will `, func(t *testcase.T) {
-			t.Must.Equal(`/`, act(t))
+			assert.Must(t).Equal(`/`, act(t))
 		})
 	})
 
@@ -199,7 +199,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `test`)
 
 		s.Then(`it will add the leading slash`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -207,7 +207,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `//test`)
 
 		s.Then(`it will remove the extra leading slash`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -215,7 +215,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `./test`)
 
 		s.Then(`it will remove the leading dot`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -223,7 +223,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `/../test`)
 
 		s.Then(`it will remove the parent directory reference double dot`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 
@@ -231,7 +231,7 @@ func TestClean(t *testing.T) {
 		path.LetValue(s, `/test/`)
 
 		s.Then(`it will preserve the trailing slash`, func(t *testcase.T) {
-			t.Must.Equal(`/test`, act(t))
+			assert.Must(t).Equal(`/test`, act(t))
 		})
 	})
 }
@@ -250,7 +250,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `/a/canonical/path`)
 
 		s.Then(`it will leave it as is`, func(t *testcase.T) {
-			t.Must.Equal([]string{"a", "canonical", "path"}, act(t))
+			assert.Must(t).Equal([]string{"a", "canonical", "path"}, act(t))
 		})
 	})
 
@@ -258,7 +258,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `/`)
 
 		s.Then(`it will leave it as is`, func(t *testcase.T) {
-			t.Must.Equal([]string{}, act(t))
+			assert.Must(t).Equal([]string{}, act(t))
 		})
 	})
 
@@ -266,7 +266,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, ``)
 
 		s.Then(`it will return an empty list`, func(t *testcase.T) {
-			t.Must.Equal([]string{}, act(t))
+			assert.Must(t).Equal([]string{}, act(t))
 		})
 	})
 
@@ -274,7 +274,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `test`)
 
 		s.Then(`it will add the leading slash`, func(t *testcase.T) {
-			t.Must.Equal([]string{"test"}, act(t))
+			assert.Must(t).Equal([]string{"test"}, act(t))
 		})
 	})
 
@@ -282,7 +282,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `//test`)
 
 		s.Then(`it will remove the extra leading slash`, func(t *testcase.T) {
-			t.Must.Equal([]string{"test"}, act(t))
+			assert.Must(t).Equal([]string{"test"}, act(t))
 		})
 	})
 
@@ -290,7 +290,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `./test`)
 
 		s.Then(`it will remove the leading dot`, func(t *testcase.T) {
-			t.Must.Equal([]string{"test"}, act(t))
+			assert.Must(t).Equal([]string{"test"}, act(t))
 		})
 	})
 
@@ -298,7 +298,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `/../test`)
 
 		s.Then(`it will remove the parent directory reference double dot`, func(t *testcase.T) {
-			t.Must.Equal([]string{"test"}, act(t))
+			assert.Must(t).Equal([]string{"test"}, act(t))
 		})
 	})
 
@@ -306,7 +306,7 @@ func TestSplit(t *testing.T) {
 		path.LetValue(s, `/test/`)
 
 		s.Then(`it will preserve the trailing slash`, func(t *testcase.T) {
-			t.Must.Equal([]string{"test"}, act(t))
+			assert.Must(t).Equal([]string{"test"}, act(t))
 		})
 	})
 }

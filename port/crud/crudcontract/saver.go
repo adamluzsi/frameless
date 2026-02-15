@@ -41,10 +41,10 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 
 			s.Then(`it will be created`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
-				t.Must.True(ok, `entity should have id`)
+				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
@@ -66,16 +66,16 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 
 			s.Then(`it will be created`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
-				t.Must.True(ok, `entity should have id`)
+				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
-					t.Must.NoError(err)
-					t.Must.True(found, `entity was expected to be stored`)
-					t.Must.Equal(*ptr.Get(t), got)
+					assert.Must(t).NoError(err)
+					assert.True(t, found, `entity was expected to be stored`)
+					assert.Must(t).Equal(*ptr.Get(t), got)
 				})
 			})
 		})
@@ -88,16 +88,16 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			}).EagerLoading(s)
 
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
-				t.Must.True(ok, `entity should have id`)
+				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
-					t.Must.NoError(err)
-					t.Must.True(found, `entity was expected to be stored`)
-					t.Must.Equal(*ptr.Get(t), got)
+					assert.Must(t).NoError(err)
+					assert.True(t, found, `entity was expected to be stored`)
+					assert.Must(t).Equal(*ptr.Get(t), got)
 				})
 			})
 		})
@@ -115,16 +115,16 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			}).EagerLoading(s)
 
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 
 				entID, ok := lookupID[ID](c, *ptr.Get(t))
-				t.Must.True(ok, `entity should have id`)
+				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
 					got, found, err := shouldFindByID(t, c, subject, ctx.Get(t), entID)
-					t.Must.NoError(err)
-					t.Must.True(found, `entity was expected to be stored`)
-					t.Must.Equal(*ptr.Get(t), got)
+					assert.Must(t).NoError(err)
+					assert.True(t, found, `entity was expected to be stored`)
+					assert.Must(t).Equal(*ptr.Get(t), got)
 				})
 			})
 

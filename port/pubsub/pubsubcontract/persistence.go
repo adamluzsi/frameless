@@ -94,7 +94,7 @@ func Volatile[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subs
 					pubsubtest.Waiter.Wait()
 
 					t.Eventually(func(it *testcase.T) {
-						it.Must.Empty(sub.Get(t).Values())
+						assert.Must(it).Empty(sub.Get(t).Values())
 					})
 				})
 			})
