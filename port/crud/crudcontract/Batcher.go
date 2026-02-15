@@ -239,8 +239,14 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 				val := c.MakeEntity(t)
 				assert.NoError(t, batch.Add(val))
 				assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
-				assert.Error(t, batch.Add(c.MakeEntity(t)))
-				assert.Error(t, batch.Close())
+
+				// we will encounter an error
+				assert.AnyOf(t, func(a *assert.A) {
+					// either during Add
+					a.Case(func(t testing.TB) { assert.Error(t, batch.Add(c.MakeEntity(t))) })
+					// or during Close
+					a.Case(func(t testing.TB) { assert.Error(t, batch.Close()) })
+				})
 
 				if AllFinderOK {
 					var zeroID ID

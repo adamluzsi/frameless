@@ -40,7 +40,7 @@ func Query(r io.Reader, path ...Kind) iter.Seq2[json.RawMessage, error] {
 		var g synckit.Group
 		defer g.Wait()
 
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			defer close(dch)
 			return sc.Scan(toInput(r))
 		})

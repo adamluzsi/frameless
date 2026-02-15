@@ -2135,7 +2135,7 @@ var _ datastruct.Sizer = (*synckit.Group)(nil)
 func ExampleGroup() {
 	var g synckit.Group
 
-	g.Go(func(ctx context.Context) error {
+	g.Go(nil, func(ctx context.Context) error {
 
 		return nil
 	})
@@ -2151,7 +2151,7 @@ func ExampleGroup_Sub_subGroupCreation() {
 		sg1, cancelSG1 := g.Sub()
 		defer cancelSG1()
 
-		sg1.Go(func(ctx context.Context) error {
+		sg1.Go(nil, func(ctx context.Context) error {
 			return nil
 		})
 
@@ -2305,12 +2305,12 @@ func TestGroup(t *testing.T) {
 				}
 			})
 
-			s.Then("upon cancellation, the context cancellation error is not counted as an error towards the group", func(t *testcase.T) {
+			s.Then("upon cancellation, the information that the task was cancelled leaks back with #Wait", func(t *testcase.T) {
 				act(t)
 
 				group.Get(t).Cancel()
 
-				assert.NoError(t, group.Get(t).Wait())
+				assert.ErrorIs(t, group.Get(t).Wait(), context.Canceled)
 			})
 		})
 
@@ -2318,7 +2318,7 @@ func TestGroup(t *testing.T) {
 			othCancelled := let.VarOf(s, false)
 
 			s.Before(func(t *testcase.T) {
-				group.Get(t).Go(func(ctx context.Context) error {
+				group.Get(t).Go(nil, func(ctx context.Context) error {
 					select {
 					case <-t.Done():
 					case <-ctx.Done():
@@ -2376,12 +2376,6 @@ func TestGroup(t *testing.T) {
 	}
 
 	s.Describe("#Go", func(s *testcase.Spec) {
-		SpecGo(s, func(g *synckit.Group, fn func(context.Context) error) {
-			g.Go(fn)
-		})
-	})
-
-	s.Describe("#GoContext", func(s *testcase.Spec) {
 		var (
 			Context, Cancel = let.ContextWithCancel(s)
 
@@ -2403,11 +2397,11 @@ func TestGroup(t *testing.T) {
 			})
 		)
 		act := let.Act0(func(t *testcase.T) {
-			group.Get(t).GoContext(Context.Get(t), fn.Get(t))
+			group.Get(t).Go(Context.Get(t), fn.Get(t))
 		})
 
 		SpecGo(s, func(g *synckit.Group, fn func(context.Context) error) {
-			g.GoContext(context.Background(), fn)
+			g.Go(context.Background(), fn)
 		})
 
 		s.When("we start a goroutine within the group", func(s *testcase.Spec) {
@@ -2447,7 +2441,7 @@ func TestGroup(t *testing.T) {
 					)
 					group.Let(s, func(t *testcase.T) *synckit.Group {
 						g := group.Super(t)
-						g.GoContext(context.Background(), func(ctx context.Context) error {
+						g.Go(context.Background(), func(ctx context.Context) error {
 							isOthReady.Set(t, true)
 							defer isOthFinished.Set(t, true)
 							select {
@@ -2486,7 +2480,7 @@ func TestGroup(t *testing.T) {
 		s.Test("sub group works just like any other group", func(t *testcase.T) {
 			var done int32
 
-			sub.Get(t).Go(func(ctx context.Context) error {
+			sub.Get(t).Go(nil, func(ctx context.Context) error {
 				atomic.SwapInt32(&done, 1)
 				return nil
 			})
@@ -2503,7 +2497,7 @@ func TestGroup(t *testing.T) {
 
 			n := t.Random.Repeat(3, 12, func() {
 				sg, _ := group.Get(t).Sub()
-				sg.Go(func(ctx context.Context) error {
+				sg.Go(nil, func(ctx context.Context) error {
 					p.Wait()
 					return nil
 				})
@@ -2546,7 +2540,7 @@ func TestGroup(t *testing.T) {
 			defer cancel1B()
 
 			var p tcsync.Phaser
-			sub1B.Go(func(ctx context.Context) error {
+			sub1B.Go(nil, func(ctx context.Context) error {
 				p.Wait()
 				return nil
 			})
@@ -2567,7 +2561,7 @@ func TestGroup(t *testing.T) {
 			testcase.Race(func() {
 				sub, cancel := g.Sub()
 				defer cancel()
-				sub.Go(func(ctx context.Context) error {
+				sub.Go(nil, func(ctx context.Context) error {
 					return nil
 				})
 				sub.Wait()
@@ -2575,7 +2569,7 @@ func TestGroup(t *testing.T) {
 			}, func() {
 				sub, cancel := g.Sub()
 				defer cancel()
-				sub.Go(func(ctx context.Context) error {
+				sub.Go(nil, func(ctx context.Context) error {
 					return nil
 				})
 				sub.Wait()
@@ -2602,8 +2596,8 @@ func TestGroup(t *testing.T) {
 			return nil
 		}
 
-		g.GoContext(t.Context(), work)
-		g.Go(work)
+		g.Go(t.Context(), work)
+		g.Go(t.Context(), work)
 
 		testcase.Race(func() {
 			// Len is thread safe
@@ -2612,7 +2606,7 @@ func TestGroup(t *testing.T) {
 			// Sub is thread safe
 			sub, cancel := g.Sub()
 			defer cancel()
-			sub.Go(work)
+			sub.Go(t.Context(), work)
 			sub.Wait()
 		})
 	})
@@ -2640,7 +2634,7 @@ func BenchmarkGroup(b *testing.B) {
 	b.Run("group", func(b *testing.B) {
 		var g synckit.Group
 		for range b.N {
-			g.Go(func(ctx context.Context) error {
+			g.Go(nil, func(ctx context.Context) error {
 				return nil
 			})
 			g.Wait()
@@ -3024,4 +3018,219 @@ func (stub *StubLocker) Lock() {
 
 func (stub *StubLocker) Unlock() {
 	atomic.AddInt32(&stub._UnlockingN, 1)
+}
+
+func ExampleGo() {
+	job := synckit.Go(context.Background(), func(ctx context.Context) error {
+		return nil
+	})
+
+	_ = job.Wait() // the return nil result from the job
+}
+
+func TestGo(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var ran = let.VarOf(s, false)
+
+	var (
+		Context = let.Context(s)
+		Func    = let.Var(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				defer ran.Set(t, true)
+				return nil
+			}
+		})
+	)
+	act := let.Act(func(t *testcase.T) synckit.Job {
+		return synckit.Go(Context.Get(t), Func.Get(t))
+	})
+
+	s.Then("it will execute the function", func(t *testcase.T) {
+		act(t)
+
+		t.Eventually(func(t *testcase.T) {
+			assert.Equal(t, ran.Get(t), true)
+		})
+	})
+
+	s.Then("it won't block the current goroutine", func(t *testcase.T) {
+		assert.Within(t, timeout, func(ctx context.Context) {
+			act(t)
+		})
+	})
+
+	s.Then("on #Wait we will wait until the job finishes up", func(t *testcase.T) {
+		job := act(t)
+		assert.NoError(t, job.Wait())
+		assert.True(t, ran.Get(t)) // must always be true and not eventually
+	})
+
+	s.When("the job is long-lived", func(s *testcase.Spec) {
+		phaser := let.Phaser(s)
+
+		Func.Let(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				phaser.Get(t).Wait()
+				return nil
+			}
+		})
+
+		s.Then("it will still not block the current goroutine", func(t *testcase.T) {
+			assert.Within(t, time.Second, func(ctx context.Context) {
+				act(t)
+			})
+		})
+
+		s.Test("#Wait will block while the job is busy", func(t *testcase.T) {
+			job := act(t)
+
+			assert.NotWithin(t, timeout, func(ctx context.Context) {
+				job.Wait()
+			})
+		})
+
+		s.Test("#Wait will continue as soon the job finishes up", func(t *testcase.T) {
+			job := act(t)
+
+			phaser.Get(t).Finish()
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				job.Wait()
+			})
+		})
+	})
+
+	s.Context("Given a job is started", func(s *testcase.Spec) {
+		job := let.Var(s, func(t *testcase.T) synckit.Job {
+			return act(t)
+		}).EagerLoading(s)
+
+		s.And("it would work until its context gets cancelled", func(s *testcase.Spec) {
+			Func.Let(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					<-ctx.Done()
+					return nil
+				}
+			})
+
+			s.Then("we can cancel its context using Job#Cancel", func(t *testcase.T) {
+				job.Get(t).Cancel()
+
+				assert.Within(t, timeout, func(ctx context.Context) {
+					job.Get(t).Wait()
+				})
+			})
+		})
+	})
+
+	s.When("input context has an error", func(s *testcase.Spec) {
+		ctx, cancel := let.ContextWithCancel(s)
+		Context.Let(s, ctx.Get)
+
+		ctxErr := let.VarOf[error](s, nil)
+
+		phaser := let.Phaser(s)
+
+		Func.Let(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				phaser.Get(t).Wait()
+				ctxErr.Set(t, ctx.Err())
+				return nil
+			}
+		})
+
+		s.Context("prior to the request", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				cancel.Get(t)()
+				phaser.Get(t).Finish()
+			})
+
+			s.Then("it will still not block the current goroutine", func(t *testcase.T) {
+				assert.Within(t, time.Second, func(ctx context.Context) {
+					act(t)
+				})
+			})
+
+			s.Then("the job context contain the error", func(t *testcase.T) {
+				act(t)
+
+				t.Eventually(func(t *testcase.T) {
+					got := ctxErr.Get(t)
+					assert.NotNil(t, got)
+					assert.ErrorIs(t, got, Context.Get(t).Err())
+				})
+			})
+		})
+
+		s.Test("during the job processing", func(t *testcase.T) {
+			act(t)
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, 1, phaser.Get(t).Len())
+			})
+
+			cancel.Get(t)()
+			phaser.Get(t).Finish() // let it go continue
+
+			t.Eventually(func(t *testcase.T) {
+				// eventually the block continues, but it should aready be cancelled at this point
+				assert.Error(t, ctxErr.Get(t))
+			})
+		})
+	})
+
+	s.When("an error occurs during the job's function execution", func(s *testcase.Spec) {
+		expErr := let.Error(s)
+
+		Func.Let(s, func(t *testcase.T) func(context.Context) error {
+			return func(ctx context.Context) error {
+				return expErr.Get(t)
+			}
+		})
+
+		s.Then("the error is returned from #Wait", func(t *testcase.T) {
+			assert.ErrorIs(t, expErr.Get(t), act(t).Wait())
+		})
+
+		s.Then("#Wait will return deterministically the same error without any further waiting", func(t *testcase.T) {
+			job := act(t)
+			exp := job.Wait()
+
+			t.Random.Repeat(3, 7, func() {
+				assert.Equal(t, exp, job.Wait())
+			})
+		})
+	})
+
+	s.Then("the received job can be cancelled multiple times", func(t *testcase.T) {
+		job := act(t)
+
+		t.Random.Repeat(3, 7, func() {
+			job.Cancel()
+		})
+
+		job.Wait()
+	})
+
+	s.Test("race", func(t *testcase.T) {
+		testcase.Race(func() {
+			synckit.Go(t.Context(), func(ctx context.Context) error {
+				return nil
+			})
+		}, func() {
+			synckit.Go(t.Context(), func(ctx context.Context) error {
+				return nil
+			})
+		})
+		job := synckit.Go(t.Context(), func(ctx context.Context) error {
+			<-ctx.Done()
+			return nil
+		})
+		testcase.Race(func() {
+			job.Wait()
+		}, func() {
+			job.Cancel()
+		})
+	})
 }

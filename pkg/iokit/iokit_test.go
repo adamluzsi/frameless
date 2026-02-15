@@ -1262,7 +1262,7 @@ func ExampleLockstepReaders() {
 
 	for i := range rs {
 		r := rs[i]
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			data, err := io.ReadAll(r)
 			_ = data
 			return err
@@ -1523,13 +1523,13 @@ func TestLockstepReaders(t *testing.T) {
 			g    synckit.Group
 		)
 
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			defer lsrs[0].Close()
 			return nil
 		})
 
 		var gotData []byte
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			defer lsrs[1].Close()
 			data, err := io.ReadAll(lsrs[1])
 			gotData = data
@@ -1553,7 +1553,7 @@ func TestLockstepReaders(t *testing.T) {
 
 		assert.Equal(t, len(lsrs), 1)
 
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			return lsrs[0].Close()
 		})
 
@@ -1598,7 +1598,7 @@ func TestLockstepReaders(t *testing.T) {
 		t.Cleanup(func() { assert.NoError(t, g.Wait()) })
 		out, in := io.Pipe()
 
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			defer in.Close()
 
 			chunk := make([]byte, window)
@@ -1621,7 +1621,7 @@ func TestLockstepReaders(t *testing.T) {
 
 		for _, r := range iokit.LockstepReaders(out, 3, window) {
 			r := r
-			g.Go(func(ctx context.Context) error {
+			g.Go(nil, func(ctx context.Context) error {
 				var p = make([]byte, 10)
 				for {
 					_, err := r.Read(p)
@@ -1657,7 +1657,7 @@ func BenchmarkLockstepReaders(b *testing.B) {
 				lrs := iokit.LockstepReaders(strings.NewReader(input), sampling, window)
 				for _, r := range lrs {
 					var r = r
-					g.Go(func(ctx context.Context) error {
+					g.Go(nil, func(ctx context.Context) error {
 						_, err := io.ReadAll(r)
 						return err
 					})

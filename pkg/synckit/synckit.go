@@ -486,6 +486,52 @@ func (s *Slice[T]) Insert(index int, vs ...T) bool {
 	return slicekit.Insert(&s.vs, index, vs...)
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+type Job interface {
+	Wait() error
+	Cancel()
+}
+
+func Go(ctx context.Context, fn func(ctx context.Context) error) Job {
+	ctx, cancel := context.WithCancel(ctx)
+	var j = &job{
+		Func:    fn,
+		context: ctx,
+		cancel:  cancel,
+		done:    make(chan struct{}),
+	}
+	go j.do()
+	return j
+}
+
+var _ Job = (*job)(nil)
+
+type job struct {
+	Func    func(context.Context) error
+	context context.Context
+	cancel  func()
+	done    chan struct{}
+
+	err error
+}
+
+func (j *job) do() {
+	defer close(j.done)
+	j.err = j.Func(j.context)
+}
+
+func (j *job) Wait() error {
+	<-j.done
+	return j.err
+}
+
+func (j *job) Cancel() {
+	j.cancel()
+}
+
+var _ Job = (*Group)(nil)
+
 type Group struct {
 	// Isolation ensures that each function in a Group runs separately,
 	// so if one encounters an error, it won’t affect the others.
@@ -509,13 +555,13 @@ func (g *Group) Len() int {
 	return len(g.cancels)
 }
 
-func (g *Group) Go(fn func(ctx context.Context) error) {
-	g.GoContext(context.Background(), fn)
-}
-
 const ErrGoexit errorkitlite.Error = "ErrGoexit"
 
-func (g *Group) GoContext(ctx context.Context, fn func(ctx context.Context) error) {
+func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	g.rwm.Lock()
 	defer g.rwm.Unlock()
 
@@ -534,8 +580,7 @@ func (g *Group) GoContext(ctx context.Context, fn func(ctx context.Context) erro
 		o := sandbox.Run(func() {
 			err = fn(ctx)
 		})
-		err = g.filterErr(ctx, err)
-		if err != nil && !g.Isolation {
+		if gerr := g.filterErr(ctx, err); gerr != nil && !g.Isolation {
 			g.Cancel()
 		}
 		g.rwm.Lock()
@@ -644,6 +689,8 @@ func nextID[M ~map[int]V, V any](m M) int {
 		}
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Phaser is a synchronization primitive for coordinating multiple goroutines.
 // I that combines the behavior of a latch, barrier, and phaser.

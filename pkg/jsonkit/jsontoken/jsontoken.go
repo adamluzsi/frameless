@@ -258,7 +258,7 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 		innerScopeData = io.MultiWriter(innerScopeData, pw)
 
 		if len(ons) == 1 {
-			g.Go(func(ctx context.Context) error {
+			g.Go(nil, func(ctx context.Context) error {
 				defer pr.Close()
 				return ons[0](pr)
 			})
@@ -266,7 +266,7 @@ func (s *Scanner) with(outerScopeData io.Writer, path Path, blk func(out io.Writ
 			lsrs := iokit.LockstepReaders(pr, len(ons), s.getBufferSize())
 			for i := range len(ons) {
 				var i = i
-				g.Go(func(ctx context.Context) error {
+				g.Go(nil, func(ctx context.Context) error {
 					var onFunc = ons[i]
 					var reader = lsrs[i]
 					defer reader.Close()

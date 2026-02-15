@@ -1124,7 +1124,7 @@ func TestJobGroup_race(t *testing.T) {
 			return nil
 		})
 	}, func() {
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		})
@@ -1135,7 +1135,7 @@ func TestJobGroup_wManual_cleanup(t *testing.T) {
 	t.Run("group level cleanup", func(t *testing.T) {
 		var g tasker.JobGroup[tasker.FireAndForget]
 
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			<-ctx.Done()
 			return ctx.Err()
 		})
@@ -1298,7 +1298,7 @@ func TestJobGroup_Go_wManual(t *testing.T) {
 	done := make(chan struct{})
 
 	n := rnd.Repeat(3, 7, func() {
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			<-done
 			return nil
 		})
@@ -1320,7 +1320,7 @@ func TestJobGroup_Go_wManual(t *testing.T) {
 
 	expErr := rnd.Error()
 
-	g.Go(func(ctx context.Context) error {
+	g.Go(nil, func(ctx context.Context) error {
 		return expErr
 	})
 

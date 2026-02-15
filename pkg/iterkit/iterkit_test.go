@@ -4168,7 +4168,7 @@ func ExampleSync() {
 
 	var g tasker.JobGroup[tasker.FireAndForget]
 	for range 2 {
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			for v := range itr {
 				_ = v // use v
 			}
@@ -4211,7 +4211,7 @@ func ExampleSyncE() {
 
 	var g tasker.JobGroup[tasker.FireAndForget]
 	for range 2 {
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			for v := range itr {
 				_ = v // use v
 			}
@@ -4264,7 +4264,7 @@ func ExampleSync2() {
 
 	var g tasker.JobGroup[tasker.FireAndForget]
 	for range 2 {
-		g.Go(func(ctx context.Context) error {
+		g.Go(nil, func(ctx context.Context) error {
 			for v, err := range itr {
 				_ = err // handle err
 				_ = v   // use v
