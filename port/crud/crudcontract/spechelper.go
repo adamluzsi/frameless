@@ -149,27 +149,41 @@ func setID[ENT, ID any](tb testing.TB, c Config[ENT, ID], ptr *ENT, id ID) {
 	assert.NoError(tb, c.IDA.Set(ptr, id))
 }
 
-func tryDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
+var _tryDeleteAllVar = testcase.Var[bool]{
+	ID:   "port/crud/crudcontract/spechelper/trydeleteAll",
+	Init: func(t *testcase.T) bool { return false }}
+
+func tryDelete[ENT, ID any](t *testcase.T, c Config[ENT, ID], resource any, v ENT) {
 	id, ok := lookupID(c, v)
 	if !ok {
 		return
 	}
-	deleter, ok := resource.(crud.ByIDDeleter[ID])
-	if !ok {
-		return
-	}
 	if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
-		_, found, err := finder.FindByID(ctx, id)
-		assert.NoError(tb, err)
+		_, found, err := finder.FindByID(c.MakeContext(t), id)
+		assert.NoError(t, err)
 		if !found {
 			return
 		}
 	}
-	err := deleter.DeleteByID(ctx, id)
-	if errors.Is(err, crud.ErrNotFound) {
+	deleter, ok := resource.(crud.ByIDDeleter[ID])
+	if ok {
+		err := deleter.DeleteByID(c.MakeContext(t), id)
+		if errors.Is(err, crud.ErrNotFound) {
+			return
+		}
+		assert.NoError(t, err)
 		return
 	}
-	assert.NoError(tb, err)
+	if d, ok := resource.(crud.AllDeleter); ok {
+		t.Cleanup(func() { // after the test, we should wipe everything to ensure that it is clear
+			if _tryDeleteAllVar.Get(t) {
+				return
+			}
+			_tryDeleteAllVar.Set(t, true)
+			_ = d.DeleteAll(c.MakeContext(t))
+		})
+		return
+	}
 }
 
 func (c Config[ENT, ID]) ModifyEntity(tb testing.TB, ptr *ENT) {

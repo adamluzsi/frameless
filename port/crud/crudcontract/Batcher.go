@@ -207,74 +207,76 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 	}
 
 	if c.OnePhaseCommit != nil {
-		s.Test(`BeginTx+CommitTx, Batch#Add & Batch#Close succeed`, func(t *testcase.T) {
-			tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
-			assert.Must(t).NoError(err)
+		s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
+			s.Test(`BeginTx+CommitTx, Batch#Add & Batch#Close succeed`, func(t *testcase.T) {
+				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+				assert.Must(t).NoError(err)
 
-			batch := subject.Batch(tx)
-			exp := c.MakeEntity(t)
-			assert.NoError(t, batch.Add(exp))
-			assert.NoError(t, batch.Close())
-			assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
+				batch := subject.Batch(tx)
+				exp := c.MakeEntity(t)
+				assert.NoError(t, batch.Add(exp))
+				assert.NoError(t, batch.Close())
+				assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
 
-			if AllFinderOK {
-				var zeroID ID
-				assert.NoError(t, c.IDA.Set(&exp, zeroID))
-				for got, err := range allF.FindAll(c.MakeContext(t)) {
-					assert.NoError(t, err)
-					assert.NoError(t, c.IDA.Set(&got, zeroID))
-					assert.NoError(t, c.IDA.Set(&got, zeroID))
-					assert.NotEqual(t, exp, got)
+				if AllFinderOK {
+					var zeroID ID
+					assert.NoError(t, c.IDA.Set(&exp, zeroID))
+					for got, err := range allF.FindAll(c.MakeContext(t)) {
+						assert.NoError(t, err)
+						assert.NoError(t, c.IDA.Set(&got, zeroID))
+						assert.NoError(t, c.IDA.Set(&got, zeroID))
+						assert.NotEqual(t, exp, got)
+					}
 				}
-			}
-		})
+			})
 
-		s.Test(`Rollback during Batch#Add will yield error`, func(t *testcase.T) {
-			tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
-			assert.Must(t).NoError(err)
+			s.Test(`Rollback during Batch#Add will yield error`, func(t *testcase.T) {
+				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+				assert.Must(t).NoError(err)
 
-			batch := subject.Batch(tx)
+				batch := subject.Batch(tx)
 
-			val := c.MakeEntity(t)
-			assert.NoError(t, batch.Add(val))
-			assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
-			assert.Error(t, batch.Add(c.MakeEntity(t)))
-			assert.Error(t, batch.Close())
+				val := c.MakeEntity(t)
+				assert.NoError(t, batch.Add(val))
+				assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
+				assert.Error(t, batch.Add(c.MakeEntity(t)))
+				assert.Error(t, batch.Close())
 
-			if AllFinderOK {
-				var zeroID ID
-				assert.NoError(t, c.IDA.Set(&val, zeroID))
-				for got, err := range allF.FindAll(c.MakeContext(t)) {
-					assert.NoError(t, err)
-					assert.NoError(t, c.IDA.Set(&got, zeroID))
-					assert.NoError(t, c.IDA.Set(&got, zeroID))
-					assert.NotEqual(t, val, got)
+				if AllFinderOK {
+					var zeroID ID
+					assert.NoError(t, c.IDA.Set(&val, zeroID))
+					for got, err := range allF.FindAll(c.MakeContext(t)) {
+						assert.NoError(t, err)
+						assert.NoError(t, c.IDA.Set(&got, zeroID))
+						assert.NoError(t, c.IDA.Set(&got, zeroID))
+						assert.NotEqual(t, val, got)
+					}
 				}
-			}
-		})
+			})
 
-		s.Test(`Rollback after Batch will undo the adding`, func(t *testcase.T) {
-			tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
-			assert.Must(t).NoError(err)
+			s.Test(`Rollback after Batch will undo the adding`, func(t *testcase.T) {
+				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+				assert.Must(t).NoError(err)
 
-			batch := subject.Batch(tx)
+				batch := subject.Batch(tx)
 
-			val := c.MakeEntity(t)
-			assert.NoError(t, batch.Add(val))
-			assert.NoError(t, batch.Add(c.MakeEntity(t)))
-			assert.NoError(t, batch.Close())
-			assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
+				val := c.MakeEntity(t)
+				assert.NoError(t, batch.Add(val))
+				assert.NoError(t, batch.Add(c.MakeEntity(t)))
+				assert.NoError(t, batch.Close())
+				assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
 
-			if AllFinderOK {
-				var zeroID ID
-				assert.NoError(t, c.IDA.Set(&val, zeroID))
-				for got, err := range allF.FindAll(c.MakeContext(t)) {
-					assert.NoError(t, err)
-					assert.NoError(t, c.IDA.Set(&got, zeroID))
-					assert.NoError(t, c.IDA.Set(&got, zeroID))
-					assert.NotEqual(t, val, got)
+				if AllFinderOK {
+					var zeroID ID
+					assert.NoError(t, c.IDA.Set(&val, zeroID))
+					for got, err := range allF.FindAll(c.MakeContext(t)) {
+						assert.NoError(t, err)
+						assert.NoError(t, c.IDA.Set(&got, zeroID))
+						assert.NoError(t, c.IDA.Set(&got, zeroID))
+						assert.NotEqual(t, val, got)
+					}
 				}
-			}
+			})
 		})
 	}
 

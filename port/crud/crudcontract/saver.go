@@ -5,16 +5,20 @@ import (
 	"runtime"
 
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/random"
 )
 
 func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
+
+	byIDF, ByIDFinderOK := subject.(crud.ByIDFinder[ENT, ID])
 
 	s.Describe(`.Save`, func(s *testcase.Spec) {
 		var (
@@ -23,7 +27,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 			ptr = testcase.Let[*ENT](s, func(t *testcase.T) *ENT {
 				v := c.MakeEntity(t)
-				t.Cleanup(func() { tryDelete(t, c, subject, ctx.Get(t), v) })
+				t.Cleanup(func() { tryDelete(t, c, subject, v) })
 				return &v
 			})
 		)
@@ -163,6 +167,86 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			})
 		})
 
+		if c.OnePhaseCommit != nil {
+			s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
+				s.Test(`BeginTx -> Save -> CommitTx will create the entity in the resource`, func(t *testcase.T) {
+					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+					assert.Must(t).NoError(err)
+
+					ptr := pointer.Of(c.MakeEntity(t))
+					assert.NoError(t, subject.Save(tx, ptr))
+					id := c.Helper().HasID(t, ptr)
+
+					if ByIDFinderOK {
+						t.Eventually(func(t *testcase.T) {
+							got, found, err := byIDF.FindByID(tx, id)
+							assert.NoError(t, err)
+							assert.True(t, found)
+							assert.Equal(t, *ptr, got)
+						})
+						{
+							_, found, err := byIDF.FindByID(c.MakeContext(t), id)
+							assert.NoError(t, err)
+							assert.False(t, found)
+						}
+					}
+
+					assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
+					t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+
+					if ByIDFinderOK {
+						t.Eventually(func(t *testcase.T) {
+							got, found, err := byIDF.FindByID(tx, id)
+							assert.NoError(t, err)
+							assert.True(t, found)
+							assert.Equal(t, *ptr, got)
+						})
+					}
+				})
+
+				s.Test(`BeginTx -> Save -> Rollback will undo the entity creation in the resource`, func(t *testcase.T) {
+					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+					assert.Must(t).NoError(err)
+
+					ptr := pointer.Of(c.MakeEntity(t))
+					assert.NoError(t, subject.Save(tx, ptr))
+					id := c.Helper().HasID(t, ptr)
+
+					if ByIDFinderOK {
+						t.Eventually(func(t *testcase.T) {
+							got, found, err := byIDF.FindByID(tx, id)
+							assert.NoError(t, err)
+							assert.True(t, found)
+							assert.Equal(t, *ptr, got)
+						})
+						{
+							_, found, err := byIDF.FindByID(c.MakeContext(t), id)
+							assert.NoError(t, err)
+							assert.False(t, found)
+						}
+					}
+
+					assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
+					t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+
+					if ByIDFinderOK {
+						_, found, err := byIDF.FindByID(c.MakeContext(t), id)
+						assert.NoError(t, err)
+						assert.False(t, found)
+					}
+				})
+
+				s.Test(`A finished transaction will make Save yield error`, func(t *testcase.T) {
+					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+					assert.Must(t).NoError(err)
+
+					assert.NoError(t, random.Pick(t.Random, c.OnePhaseCommit.CommitTx, c.OnePhaseCommit.RollbackTx)(tx))
+
+					ptr := pointer.Of(c.MakeEntity(t))
+					assert.Error(t, subject.Save(tx, ptr))
+				})
+			})
+		}
 	})
 
 	return s.AsSuite("crud.Save")

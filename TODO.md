@@ -1,4 +1,5 @@
-# TODO
+- FINISH: /Users/adamluzsi/src/github.com/adamluzsi/frameless/pkg/cli/cli_test.go #Test_main
+
 
 features:
 
