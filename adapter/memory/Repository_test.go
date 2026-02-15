@@ -97,3 +97,9 @@ func TestRepository_query(t *testing.T) {
 	assert.NoError(t, err)
 	assert.ContainsExactly(t, vs, []testent.Foo{ent1, ent3})
 }
+
+func TestRepository_Batcher_crudBatch(t *testing.T) {
+	m := memory.NewMemory()
+	r := memory.NewRepository[testent.Foo, testent.FooID](m)
+	crudcontract.Batcher[testent.Foo, testent.FooID](r).Test(t)
+}
