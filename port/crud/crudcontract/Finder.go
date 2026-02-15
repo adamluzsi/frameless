@@ -78,7 +78,7 @@ func ByIDFinder[ENT, ID any](subject crud.ByIDFinder[ENT, ID], opts ...Option[EN
 						assert.NoError(t, err)
 						assert.True(t, found)
 					})
-					t.Must.NoError(deleter.DeleteByID(ctx, id))
+					assert.Must(t).NoError(deleter.DeleteByID(ctx, id))
 					t.Eventually(func(t *testcase.T) {
 						_, found, err := subject.FindByID(ctx, id)
 						assert.NoError(t, err)
@@ -186,7 +186,7 @@ func ByIDsFinder[ENT, ID any](subject crud.ByIDsFinder[ENT, ID], opts ...Option[
 			expected := append([]ENT{}, *ent1.Get(t), *ent2.Get(t))
 			actual, err := iterkit.CollectE(act(t))
 			assert.NoError(t, err)
-			t.Must.ContainsExactly(expected, actual)
+			assert.Must(t).ContainsExactly(expected, actual)
 		})
 	})
 

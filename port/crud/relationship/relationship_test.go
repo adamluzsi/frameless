@@ -73,6 +73,7 @@ func Test(t *testing.T) {
 
 		s.Before(func(t *testcase.T) {
 			t.Cleanup(relationship.BelongsTo[B, A](func(who *B) *string {
+				checkUsed = true
 				return &who.AID
 			}))
 		})

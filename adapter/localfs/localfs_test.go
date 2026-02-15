@@ -98,8 +98,8 @@ func TestLocal_rootPath(t *testing.T) {
 		t.Helper()
 		tmpDir := os.TempDir()
 		stat, err := os.Stat(tmpDir)
-		t.Must.NoError(err)
-		t.Must.True(stat.IsDir())
+		assert.Must(t).NoError(err)
+		assert.True(t, stat.IsDir())
 		return tmpDir
 	}
 
@@ -119,7 +119,7 @@ func TestLocal_rootPath(t *testing.T) {
 		t.Helper()
 		file, err := fs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, filemode.UserRWX)
 		if err == nil {
-			t.Must.NoError(file.Close())
+			assert.Must(t).NoError(file.Close())
 			t.Cleanup(func() { _ = fs.Remove(name) })
 		}
 		return err
@@ -130,14 +130,14 @@ func TestLocal_rootPath(t *testing.T) {
 		fs := localfs.FileSystem{}
 
 		name := tmpFile(t, tmpDir)
-		t.Must.NoError(touchFile(t, fs, name))
+		assert.Must(t).NoError(touchFile(t, fs, name))
 		_, err := os.Stat(name)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
 		name = tmpFile(t, getSysTmpDir(t))
-		t.Must.NoError(touchFile(t, fs, name))
+		assert.Must(t).NoError(touchFile(t, fs, name))
 		_, err = os.Stat(name)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 	})
 
 	s.Test("with .RootPath set, fs is jailed and path used as relative path", func(t *testcase.T) {
@@ -145,18 +145,18 @@ func TestLocal_rootPath(t *testing.T) {
 		fs := localfs.FileSystem{RootPath: tmpDir}
 
 		name := makeName(t)
-		t.Must.NoError(touchFile(t, fs, name))
+		assert.Must(t).NoError(touchFile(t, fs, name))
 		_, err := os.Stat(filepath.Join(tmpDir, name))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		_, err = fs.Stat(name)
-		t.Must.NoError(err)
-		t.Must.NoError(fs.Mkdir(makeName(t), filemode.UserRWX))
-		t.Must.NoError(fs.Remove(name))
+		assert.Must(t).NoError(err)
+		assert.Must(t).NoError(fs.Mkdir(makeName(t), filemode.UserRWX))
+		assert.Must(t).NoError(fs.Remove(name))
 
 		path := filepath.Join("..", name)
-		t.Must.ErrorIs(syscall.EACCES, touchFile(t, fs, path))
-		t.Must.ErrorIs(syscall.EACCES, fs.Mkdir(path, 0700))
-		t.Must.ErrorIs(syscall.EACCES, func() error { _, err := fs.Stat(path); return err }())
-		t.Must.ErrorIs(syscall.EACCES, fs.Remove(path))
+		assert.Must(t).ErrorIs(syscall.EACCES, touchFile(t, fs, path))
+		assert.Must(t).ErrorIs(syscall.EACCES, fs.Mkdir(path, 0700))
+		assert.Must(t).ErrorIs(syscall.EACCES, func() error { _, err := fs.Stat(path); return err }())
+		assert.Must(t).ErrorIs(syscall.EACCES, fs.Remove(path))
 	})
 }

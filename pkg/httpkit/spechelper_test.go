@@ -8,6 +8,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 )
 
 type (
@@ -90,7 +91,7 @@ func respondsWithJSON[DTO any](t *testcase.T, recorder *httptest.ResponseRecorde
 	t.Helper()
 	var dto DTO
 	t.Log("body:", recorder.Body.String())
-	t.Must.NotEmpty(recorder.Body.Bytes())
-	t.Must.NoError(json.Unmarshal(recorder.Body.Bytes(), &dto))
+	assert.Must(t).NotEmpty(recorder.Body.Bytes())
+	assert.Must(t).NoError(json.Unmarshal(recorder.Body.Bytes(), &dto))
 	return dto
 }

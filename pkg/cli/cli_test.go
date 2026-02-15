@@ -1,17 +1,22 @@
 package cli_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 
+	"go.llib.dev/frameless/internal/sandbox"
 	"go.llib.dev/frameless/pkg/cli"
 	"go.llib.dev/frameless/pkg/convkit"
 	"go.llib.dev/frameless/pkg/enum"
 	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/internal/osint"
+	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
@@ -1598,4 +1603,55 @@ type CommandWithUnexportedField struct {
 
 func (cmd CommandWithUnexportedField) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	w.Write([]byte("Hello, world!"))
+}
+
+func Test_main(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		handlerExitCode     = let.IntB(s, 0, 100)
+		handlerResponseBody = let.String(s)
+	)
+
+	var (
+		ctx     = let.Context(s)
+		handler = let.Var(s, func(t *testcase.T) cli.Handler {
+			return cli.HandlerFunc(func(w cli.ResponseWriter, r *cli.Request) {
+				w.ExitCode(handlerExitCode.Get(t))
+				iokit.WriteAll(w, []byte(handlerResponseBody.Get(t)))
+			})
+		})
+	)
+	act := let.Act(func(t *testcase.T) sandbox.O {
+		return sandbox.Run(func() {
+			cli.Main(ctx.Get(t), handler.Get(t))
+		})
+	})
+
+	code := let.VarOf[*int](s, nil)
+	s.Before(func(t *testcase.T) {
+		osint.StubExit(t, func(exitCode int) {
+			code.Set(t, &exitCode)
+			runtime.Goexit() // to mimic os.Exit(code)
+		})
+	})
+
+	stderr := let.Var(s, func(t *testcase.T) io.Writer {
+		return &bytes.Buffer{}
+	})
+	_ = stderr
+
+	//TODO: finish me up
+
+	s.Then("handler requested exit code is propagated as app os exit code", func(t *testcase.T) {
+		o := act(t)
+		assert.True(t, o.Goexit)
+		assert.NotNil(t, code.Get(t))
+		assert.Equal(t, *code.Get(t), handlerExitCode.Get(t))
+	})
+
+	s.Then("handler response body is propagated towards STDOUT", func(t *testcase.T) {
+
+	})
+
 }

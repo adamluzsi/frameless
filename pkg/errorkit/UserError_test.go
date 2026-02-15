@@ -63,27 +63,27 @@ func TestUserError(t *testing.T) {
 		}
 		err := fmt.Errorf("wrapped: %w", usrErr)
 		gotUserErr, ok := errorkit.LookupUserError(err)
-		t.Must.True(ok)
-		t.Must.Equal(usrErr, gotUserErr)
-		t.Must.True(errors.As(err, &errorkit.UserError{}))
-		t.Must.ErrorIs(usrErr, err)
+		assert.True(t, ok)
+		assert.Must(t).Equal(usrErr, gotUserErr)
+		assert.True(t, errors.As(err, &errorkit.UserError{}))
+		assert.Must(t).ErrorIs(usrErr, err)
 		assert.Contains(t, err.Error(), "wrapped: ")
 		assert.Contains(t, err.Error(), usrErr.Message)
 		assert.Contains(t, err.Error(), usrErr.Code)
 
 		gotUsrErr := errorkit.UserError{}
-		t.Must.True(errors.As(err, &gotUsrErr))
-		t.Must.Equal(usrErr, gotUsrErr)
-		t.Must.True(errors.Is(err, usrErr))
+		assert.True(t, errors.As(err, &gotUsrErr))
+		assert.Must(t).Equal(usrErr, gotUsrErr)
+		assert.True(t, errors.Is(err, usrErr))
 	})
 
 	s.Test("when it is not a user error", func(t *testcase.T) {
 		err := fmt.Errorf("wrapped: %w", t.Random.Error())
 		gotUserErr, ok := errorkit.LookupUserError(err)
-		t.Must.False(ok)
-		t.Must.Empty(gotUserErr)
-		t.Must.False(errors.As(err, &errorkit.UserError{}))
-		t.Must.False(errors.Is(err, errorkit.UserError{}))
+		assert.Must(t).False(ok)
+		assert.Must(t).Empty(gotUserErr)
+		assert.Must(t).False(errors.As(err, &errorkit.UserError{}))
+		assert.Must(t).False(errors.Is(err, errorkit.UserError{}))
 	})
 }
 

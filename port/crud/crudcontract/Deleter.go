@@ -57,7 +57,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.ErrorIs(context.Canceled, act(t))
+			assert.Must(t).ErrorIs(context.Canceled, act(t))
 		})
 	})
 
@@ -84,7 +84,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 					}).EagerLoading(s)
 
 					s.Then(`the other entity will be not affected by the operation`, func(t *testcase.T) {
-						t.Must.NoError(act(t))
+						assert.Must(t).NoError(act(t))
 
 						c.Helper().IsPresent(t, byIDFinder, c.MakeContext(t), c.IDA.Get(othEntPtr.Get(t)))
 					})
@@ -106,7 +106,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 
 			s.And(`the entity was already deleted before`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					t.Must.NoError(act(t))
+					assert.Must(t).NoError(act(t))
 
 					if r, ok := subject.(crud.ByIDFinder[ENT, ID]); ok {
 						c.Helper().IsAbsent(t, r, c.MakeContext(t), id.Get(t))
@@ -114,7 +114,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 				})
 
 				s.Then(`it will result in error for an already deleted entity`, func(t *testcase.T) {
-					t.Must.ErrorIs(crud.ErrNotFound, act(t))
+					assert.Must(t).ErrorIs(crud.ErrNotFound, act(t))
 				})
 			})
 
@@ -126,7 +126,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 				})
 
 				s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-					t.Must.ErrorIs(context.Canceled, act(t))
+					assert.Must(t).ErrorIs(context.Canceled, act(t))
 				})
 			})
 		})
@@ -158,7 +158,7 @@ func AllDeleter[ENT, ID any](subject crud.AllDeleter, opts ...Option[ENT, ID]) c
 		})
 
 		s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
-			t.Must.ErrorIs(context.Canceled, act(t))
+			assert.Must(t).ErrorIs(context.Canceled, act(t))
 		})
 	})
 

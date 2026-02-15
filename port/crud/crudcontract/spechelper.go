@@ -11,6 +11,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/testcase"
@@ -134,8 +135,11 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 
 func lookupID[ID, ENT any](c Config[ENT, ID], ent ENT) (ID, bool) {
 	id, ok := c.IDA.Lookup(ent)
-	if !ok && reflect.ValueOf(id).CanInt() {
-		// int is an accepted zero value due to many system stores data under indexes, which are starting from zero.
+	if !ok {
+		return id, false
+	}
+	// int is an accepted zero value due to many system stores data under indexes, which are starting from zero.
+	if zerokit.IsZero(id) && reflect.ValueOf(id).CanInt() {
 		ok = true
 	}
 	return id, ok

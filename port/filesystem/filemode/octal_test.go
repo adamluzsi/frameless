@@ -252,17 +252,17 @@ func TestCanXDoY(t *testing.T) {
 		tc := tc
 		s.Test(tc.Desc, func(t *testcase.T) {
 
-			t.Must.Equal(tc.UserR, tc.FileMode&filemode.UserR != 0)
-			t.Must.Equal(tc.UserW, tc.FileMode&filemode.UserW != 0)
-			t.Must.Equal(tc.UserX, tc.FileMode&filemode.UserX != 0)
+			assert.Must(t).Equal(tc.UserR, tc.FileMode&filemode.UserR != 0)
+			assert.Must(t).Equal(tc.UserW, tc.FileMode&filemode.UserW != 0)
+			assert.Must(t).Equal(tc.UserX, tc.FileMode&filemode.UserX != 0)
 
-			t.Must.Equal(tc.GroupR, tc.FileMode&filemode.GroupR != 0)
-			t.Must.Equal(tc.GroupW, tc.FileMode&filemode.GroupW != 0)
-			t.Must.Equal(tc.GroupX, tc.FileMode&filemode.GroupX != 0)
+			assert.Must(t).Equal(tc.GroupR, tc.FileMode&filemode.GroupR != 0)
+			assert.Must(t).Equal(tc.GroupW, tc.FileMode&filemode.GroupW != 0)
+			assert.Must(t).Equal(tc.GroupX, tc.FileMode&filemode.GroupX != 0)
 
-			t.Must.Equal(tc.OtherR, tc.FileMode&filemode.OtherR != 0)
-			t.Must.Equal(tc.OtherW, tc.FileMode&filemode.OtherW != 0)
-			t.Must.Equal(tc.OtherX, tc.FileMode&filemode.OtherX != 0)
+			assert.Must(t).Equal(tc.OtherR, tc.FileMode&filemode.OtherR != 0)
+			assert.Must(t).Equal(tc.OtherW, tc.FileMode&filemode.OtherW != 0)
+			assert.Must(t).Equal(tc.OtherX, tc.FileMode&filemode.OtherX != 0)
 
 		})
 	}

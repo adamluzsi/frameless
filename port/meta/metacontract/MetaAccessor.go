@@ -7,6 +7,7 @@ import (
 	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/testcase/assert"
 
 	"go.llib.dev/frameless/port/contract"
 	"go.llib.dev/frameless/port/meta"
@@ -37,23 +38,23 @@ func MetaAccessor[V any](subject meta.MetaAccessor, opts ...Option[V]) contract.
 
 		s.Test(`on an empty context the lookup will yield no result without an issue`, func(t *testcase.T) {
 			found, err := lookupMeta(t, new(V))
-			t.Must.NoError(err)
-			t.Must.False(found)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
 		})
 
 		s.When(`value is set in a context`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				newContext, err := setMeta(t)
-				t.Must.NoError(err)
+				assert.Must(t).NoError(err)
 				ctx.Set(t, newContext)
 			})
 
 			s.Then(`value can be found with lookup`, func(t *testcase.T) {
 				ptr := new(V)
 				found, err := lookupMeta(t, ptr)
-				t.Must.NoError(err)
-				t.Must.True(found)
-				t.Must.Equal(pointer.Deref(ptr), value.Get(t))
+				assert.Must(t).NoError(err)
+				assert.True(t, found)
+				assert.Must(t).Equal(pointer.Deref(ptr), value.Get(t))
 			})
 		})
 	})

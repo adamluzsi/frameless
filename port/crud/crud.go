@@ -4,6 +4,7 @@ package crud
 
 import (
 	"context"
+	"io"
 	"iter"
 )
 
@@ -101,6 +102,26 @@ type Saver[ENT any] interface {
 	// If the entity is present in the resource, the entity is updated based on the Updater's behaviour.
 	// Save requires the entity to have a valid non-empty ID value.
 	Save(ctx context.Context, ptr *ENT) error
+}
+
+type Batcher[ENT any, BATCH Batch[ENT]] interface {
+	// Batch lets you add multiple entities to a resource in one go, using a stream processing approach.
+	//
+	// Unlike Creator[ENT], Batch doesn't assign or update fields like id.
+	// If you need IDs to be generated automatically, please use Creator[ENT],
+	// or provide the IDs ahead of time when using Batch.
+	Batch(ctx context.Context) BATCH
+}
+
+type Batch[ENT any] interface {
+	// Add will prepare an entity for batch insertion.
+	// It is not guaranteed that at the time of adding, the entity is created in the resource.
+	Add(ENT) error
+	// Closer signals the end of the batch addition process.
+	// When called, it ensures any pending operations to add entities to a resource are completed smoothly.
+	// Cancellation should be handled through the context you provided at the start.
+	// Ideally, nn error received during Close should represent an atomic failure for the whole batch.
+	io.Closer
 }
 
 // QueryOneMethodSignature defines the structure of a "query one" method signature.

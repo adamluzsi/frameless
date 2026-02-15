@@ -162,6 +162,21 @@ func TestLookup_withEmbededField(t *testing.T) {
 	assert.Equal(t, expID, gotID)
 }
 
+func TestLookup_withZeroIDValue(t *testing.T) {
+	type T struct {
+		ID int `ext:"id"`
+	}
+	v := T{}
+	gotID, ok := extid.Lookup[int](v)
+	assert.True(t, ok)
+	assert.Empty(t, gotID)
+
+	var acc extid.Accessor[T, int]
+	gotID, ok = acc.Lookup(v)
+	assert.True(t, ok)
+	assert.Empty(t, gotID)
+}
+
 func TestExtractIdentifierField_nonStructValue(t *testing.T) {
 	_, _, ok := extid.ExtractIdentifierField("The answer is")
 	assert.False(t, ok)

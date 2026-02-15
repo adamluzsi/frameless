@@ -11,9 +11,9 @@ import (
 	rfc78072 "go.llib.dev/frameless/pkg/httpkit/rfc7807"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/httpspec"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
+	"go.llib.dev/testcase/tchttp"
 )
 
 func TestHandler(t *testing.T) {
@@ -32,8 +32,8 @@ func TestHandler(t *testing.T) {
 
 	s.Describe(".HandleError", func(s *testcase.Spec) {
 		var (
-			w   = httpspec.LetResponseRecorder(s)
-			r   = httpspec.LetRequest(s, httpspec.RequestVar{})
+			w   = tchttp.LetResponseRecorder(s)
+			r   = tchttp.LetServerRequest(s)
 			err = let.Error(s)
 		)
 		act := func(t *testcase.T) {
@@ -43,7 +43,7 @@ func TestHandler(t *testing.T) {
 			act(t)
 			var dto rfc78072.DTO
 			t.Log(w.Get(t).Body.String())
-			t.Must.NoError(json.Unmarshal(w.Get(t).Body.Bytes(), &dto))
+			assert.Must(t).NoError(json.Unmarshal(w.Get(t).Body.Bytes(), &dto))
 			return dto
 		}
 
@@ -51,13 +51,13 @@ func TestHandler(t *testing.T) {
 			act(t)
 
 			var dto rfc78072.DTO
-			t.Must.NoError(json.Unmarshal(w.Get(t).Body.Bytes(), &dto))
-			t.Must.Equal("internal-server-error", dto.Type.ID)
-			t.Must.Empty(dto.Type.BaseURL)
-			t.Must.Equal("Internal Server Error", dto.Title)
-			t.Must.Equal(http.StatusInternalServerError, dto.Status)
-			t.Must.Empty(dto.Detail)
-			t.Must.Empty(dto.Instance)
+			assert.Must(t).NoError(json.Unmarshal(w.Get(t).Body.Bytes(), &dto))
+			assert.Must(t).Equal("internal-server-error", dto.Type.ID)
+			assert.Must(t).Empty(dto.Type.BaseURL)
+			assert.Must(t).Equal("Internal Server Error", dto.Title)
+			assert.Must(t).Equal(http.StatusInternalServerError, dto.Status)
+			assert.Must(t).Empty(dto.Detail)
+			assert.Must(t).Empty(dto.Instance)
 		})
 
 		s.When("BaseURL is as resource path", func(s *testcase.Spec) {
@@ -67,7 +67,7 @@ func TestHandler(t *testing.T) {
 
 			s.Then("the type id value is under that resource path", func(t *testcase.T) {
 				dto := respondedWith(t)
-				t.Must.Equal(baseURL.Get(t), dto.Type.BaseURL)
+				assert.Must(t).Equal(baseURL.Get(t), dto.Type.BaseURL)
 			})
 		})
 
@@ -79,8 +79,8 @@ func TestHandler(t *testing.T) {
 			)
 			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 				return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-					t.Must.NotEmpty(dto.Type)
-					t.Must.NotEmpty(dto.Title)
+					assert.Must(t).NotEmpty(dto.Type)
+					assert.Must(t).NotEmpty(dto.Title)
 					dto.Extensions = ExampleExtensionError{
 						Code:    code.Get(t),
 						Message: msg.Get(t),
@@ -93,8 +93,8 @@ func TestHandler(t *testing.T) {
 
 			s.Then("mapping will receive a DTO with some values already configured", func(t *testcase.T) {
 				dto := respondedWith(t)
-				t.Must.Equal(code.Get(t), dto.Extensions.(map[string]any)["code"].(string))
-				t.Must.Equal(msg.Get(t), dto.Extensions.(map[string]any)["message"].(string))
+				assert.Must(t).Equal(code.Get(t), dto.Extensions.(map[string]any)["code"].(string))
+				assert.Must(t).Equal(msg.Get(t), dto.Extensions.(map[string]any)["message"].(string))
 			})
 
 			s.And("error has context attached to it", func(s *testcase.Spec) {
@@ -110,7 +110,7 @@ func TestHandler(t *testing.T) {
 
 				s.Then("then the mapping will receive this error context", func(t *testcase.T) {
 					dto := respondedWith(t)
-					t.Must.Equal(val.Get(t), dto.Detail)
+					assert.Must(t).Equal(val.Get(t), dto.Detail)
 				})
 			})
 		})
@@ -128,7 +128,7 @@ func TestHandler(t *testing.T) {
 
 			s.Then("no error response is written since nobody listens anymore", func(t *testcase.T) {
 				act(t)
-				t.Must.Equal(0, w.Get(t).Body.Len())
+				assert.Must(t).Equal(0, w.Get(t).Body.Len())
 			})
 		})
 
@@ -151,9 +151,9 @@ func TestHandler(t *testing.T) {
 			s.And("mapping is provided", func(s *testcase.Spec) {
 				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-						t.Must.Equal(string(usrErr.Get(t).Code), dto.Type.ID)
+						assert.Must(t).Equal(string(usrErr.Get(t).Code), dto.Type.ID)
 						assert.Contains(t, dto.Detail, string(usrErr.Get(t).Message))
-						t.Must.ErrorIs(usrErr.Get(t), err)
+						assert.Must(t).ErrorIs(usrErr.Get(t), err)
 					}
 				})
 
@@ -176,13 +176,13 @@ func TestHandler(t *testing.T) {
 		s.Then("it responds back with RFC7807 format encoded in JSON", func(t *testcase.T) {
 			var dto rfc78072.DTO
 			dto = act(t)
-			t.Must.NotEmpty(dto)
-			t.Must.Equal("internal-server-error", dto.Type.ID)
-			t.Must.Empty(dto.Type.BaseURL)
-			t.Must.Equal("Internal Server Error", dto.Title)
-			t.Must.Equal(http.StatusInternalServerError, dto.Status)
-			t.Must.Empty(dto.Detail)
-			t.Must.Empty(dto.Instance)
+			assert.Must(t).NotEmpty(dto)
+			assert.Must(t).Equal("internal-server-error", dto.Type.ID)
+			assert.Must(t).Empty(dto.Type.BaseURL)
+			assert.Must(t).Equal("Internal Server Error", dto.Title)
+			assert.Must(t).Equal(http.StatusInternalServerError, dto.Status)
+			assert.Must(t).Empty(dto.Detail)
+			assert.Must(t).Empty(dto.Instance)
 		})
 
 		s.When("BaseURL is as resource path", func(s *testcase.Spec) {
@@ -192,7 +192,7 @@ func TestHandler(t *testing.T) {
 
 			s.Then("the type id value is under that resource path", func(t *testcase.T) {
 				dto := act(t)
-				t.Must.Equal(baseURL.Get(t), dto.Type.BaseURL)
+				assert.Must(t).Equal(baseURL.Get(t), dto.Type.BaseURL)
 			})
 		})
 
@@ -204,8 +204,8 @@ func TestHandler(t *testing.T) {
 			)
 			mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 				return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-					t.Must.NotEmpty(dto.Type)
-					t.Must.NotEmpty(dto.Title)
+					assert.Must(t).NotEmpty(dto.Type)
+					assert.Must(t).NotEmpty(dto.Title)
 					dto.Extensions = ExampleExtensionError{
 						Code:    code.Get(t),
 						Message: msg.Get(t),
@@ -218,8 +218,8 @@ func TestHandler(t *testing.T) {
 
 			s.Then("mapping will receive a DTO with some values already configured", func(t *testcase.T) {
 				dto := act(t)
-				t.Must.Equal(code.Get(t), dto.Extensions.(ExampleExtensionError).Code)
-				t.Must.Equal(msg.Get(t), dto.Extensions.(ExampleExtensionError).Message)
+				assert.Must(t).Equal(code.Get(t), dto.Extensions.(ExampleExtensionError).Code)
+				assert.Must(t).Equal(msg.Get(t), dto.Extensions.(ExampleExtensionError).Message)
 			})
 
 			s.And("error has context attached to it", func(s *testcase.Spec) {
@@ -235,7 +235,7 @@ func TestHandler(t *testing.T) {
 
 				s.Then("then the mapping will receive this error context", func(t *testcase.T) {
 					dto := act(t)
-					t.Must.Equal(val.Get(t), dto.Detail)
+					assert.Must(t).Equal(val.Get(t), dto.Detail)
 				})
 			})
 		})
@@ -259,9 +259,9 @@ func TestHandler(t *testing.T) {
 			s.And("mapping is provided", func(s *testcase.Spec) {
 				mapping.Let(s, func(t *testcase.T) rfc78072.HandlerMappingFunc {
 					return func(ctx context.Context, err error, dto *rfc78072.DTO) {
-						t.Must.Equal(string(usrErr.Get(t).Code), dto.Type.ID)
+						assert.Must(t).Equal(string(usrErr.Get(t).Code), dto.Type.ID)
 						assert.Contains(t, dto.Detail, string(usrErr.Get(t).Message))
-						t.Must.ErrorIs(usrErr.Get(t), err)
+						assert.Must(t).ErrorIs(usrErr.Get(t), err)
 					}
 				})
 

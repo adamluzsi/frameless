@@ -20,8 +20,8 @@ import (
 	. "go.llib.dev/frameless/testing/testent"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/httpspec"
 	"go.llib.dev/testcase/random"
+	"go.llib.dev/testcase/tchttp"
 )
 
 var rnd = random.New(random.CryptoSeed{})
@@ -90,11 +90,11 @@ func TestRouter(t *testing.T) {
 		return &httpkit.Router{}
 	})
 
-	httpspec.ItBehavesLikeHandlerMiddleware(s, func(t *testcase.T, next http.Handler) http.Handler {
+	tchttp.HandlerMiddleware(func(t *testcase.T, next http.Handler) http.Handler {
 		r := &httpkit.Router{}
 		r.Mount("/", next)
 		return r
-	})
+	}).Spec(s)
 
 	s.Describe(".ServeHTTP", func(s *testcase.Spec) {
 		var (
@@ -112,11 +112,11 @@ func TestRouter(t *testing.T) {
 
 		s.Then("it will reply 404, path not found on empty router", func(t *testcase.T) {
 			rr := act(t)
-			t.Must.Equal(http.StatusNotFound, rr.Code)
+			assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 			errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-			t.Must.NotEmpty(errDTO)
-			t.Must.Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
+			assert.Must(t).NotEmpty(errDTO)
+			assert.Must(t).Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
 		})
 
 		ThenHandlerIsReachable := func(s *testcase.Spec, registeredPath testcase.Var[string]) {
@@ -127,18 +127,18 @@ func TestRouter(t *testing.T) {
 
 				s.Then("it proxy the call to the registered handler", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusTeapot, rr.Code)
-					t.Must.NotNil(lastRequest.Get(t))
+					assert.Must(t).Equal(http.StatusTeapot, rr.Code)
+					assert.Must(t).NotNil(lastRequest.Get(t))
 				})
 
 				s.Then("it configure the path to not include the routed path", func(t *testcase.T) {
 					act(t)
-					t.Must.NotNil(lastRequest.Get(t))
+					assert.Must(t).NotNil(lastRequest.Get(t))
 					lastRequest.Get(t)
 
 					routing, ok := internal.RoutingContext.Lookup(lastRequest.Get(t).Context())
-					t.Must.True(ok)
-					t.Must.Equal("/", routing.PathLeft)
+					assert.True(t, ok)
+					assert.Must(t).Equal("/", routing.PathLeft)
 				})
 			})
 
@@ -150,18 +150,18 @@ func TestRouter(t *testing.T) {
 
 				s.Then("it proxy the call to the registered http.Handler", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusTeapot, rr.Code)
-					t.Must.NotNil(lastRequest.Get(t))
+					assert.Must(t).Equal(http.StatusTeapot, rr.Code)
+					assert.Must(t).NotNil(lastRequest.Get(t))
 				})
 
 				s.Then("it configure the path to not include the routed path", func(t *testcase.T) {
 					act(t)
-					t.Must.NotNil(lastRequest.Get(t))
+					assert.Must(t).NotNil(lastRequest.Get(t))
 					lastRequest.Get(t)
 
 					routing, ok := internal.RoutingContext.Lookup(lastRequest.Get(t).Context())
-					t.Must.True(ok)
-					t.Must.Equal(pathRest, routing.PathLeft)
+					assert.True(t, ok)
+					assert.Must(t).Equal(pathRest, routing.PathLeft)
 				})
 			})
 		}
@@ -177,11 +177,11 @@ func TestRouter(t *testing.T) {
 
 				s.Then("it return path not found", func(t *testcase.T) {
 					rr := act(t)
-					t.Must.Equal(http.StatusNotFound, rr.Code)
+					assert.Must(t).Equal(http.StatusNotFound, rr.Code)
 
 					errDTO := respondsWithJSON[rfc7807.DTO](t, rr)
-					t.Must.NotEmpty(errDTO)
-					t.Must.Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
+					assert.Must(t).NotEmpty(errDTO)
+					assert.Must(t).Equal(httpkit.ErrPathNotFound.Code.String(), errDTO.Type.ID)
 				})
 			})
 		}

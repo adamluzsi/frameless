@@ -76,9 +76,9 @@ func QueryOne[ENT, ID any](
 
 		s.Then(`the entity will be returned`, func(t *testcase.T) {
 			got, found, err := act(t)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.Equal(got, ent.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).Equal(got, ent.Get(t))
 		})
 
 		s.And(`ctx arg is canceled`, func(s *testcase.Spec) {
@@ -91,8 +91,8 @@ func QueryOne[ENT, ID any](
 
 			s.Then(`it expected to return with Context cancel error`, func(t *testcase.T) {
 				_, found, err := act(t)
-				t.Must.ErrorIs(context.Canceled, err)
-				t.Must.False(found)
+				assert.Must(t).ErrorIs(context.Canceled, err)
+				assert.Must(t).False(found)
 			})
 		})
 
@@ -103,9 +103,9 @@ func QueryOne[ENT, ID any](
 
 			s.Then(`still the correct entity is returned`, func(t *testcase.T) {
 				got, found, err := act(t)
-				t.Must.NoError(err)
-				t.Must.True(found)
-				t.Must.Equal(got, ent.Get(t))
+				assert.Must(t).NoError(err)
+				assert.True(t, found)
+				assert.Must(t).Equal(got, ent.Get(t))
 			})
 		})
 	})
@@ -119,8 +119,8 @@ func QueryOne[ENT, ID any](
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
 			_, found, err := act(t)
-			t.Must.NoError(err)
-			t.Must.False(found)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
 		})
 	})
 
@@ -135,8 +135,8 @@ func QueryOne[ENT, ID any](
 
 		s.Then(`it will have no result`, func(t *testcase.T) {
 			_, found, err := act(t)
-			t.Must.NoError(err)
-			t.Must.False(found)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
 		})
 	})
 

@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/pkg/httpkit"
 	"go.llib.dev/testcase"
+	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 )
 
@@ -35,8 +36,8 @@ func TestIDConverter(t *testing.T) {
 
 			s.Then("format function is used", func(t *testcase.T) {
 				got, err := act(t)
-				t.Must.ErrorIs(err, fmt.Errorf("boom"))
-				t.Must.Equal(got, "format-ok")
+				assert.Must(t).ErrorIs(err, fmt.Errorf("boom"))
+				assert.Must(t).Equal(got, "format-ok")
 			})
 		})
 
@@ -49,8 +50,8 @@ func TestIDConverter(t *testing.T) {
 
 			s.Then("fallback function is used based on the type", func(t *testcase.T) {
 				got, err := act(t)
-				t.Must.NoError(err)
-				t.Must.Equal(got, id.Get(t))
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(got, id.Get(t))
 			})
 		})
 	})
@@ -74,8 +75,8 @@ func TestIDConverter(t *testing.T) {
 
 			s.Then("format function is used", func(t *testcase.T) {
 				got, err := act(t)
-				t.Must.ErrorIs(err, fmt.Errorf("boom"))
-				t.Must.Equal(got, "parse-ok")
+				assert.Must(t).ErrorIs(err, fmt.Errorf("boom"))
+				assert.Must(t).Equal(got, "parse-ok")
 			})
 		})
 
@@ -88,8 +89,8 @@ func TestIDConverter(t *testing.T) {
 
 			s.Then("fallback function is used based on the type", func(t *testcase.T) {
 				got, err := act(t)
-				t.Must.NoError(err)
-				t.Must.Equal(got, id.Get(t))
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(got, id.Get(t))
 			})
 		})
 	})
@@ -105,12 +106,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := "42"
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("int based", func(t *testcase.T) {
@@ -119,12 +120,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := "42"
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("int8", func(t *testcase.T) {
@@ -133,12 +134,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := "42"
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("int16", func(t *testcase.T) {
@@ -147,12 +148,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := "42"
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("int32", func(t *testcase.T) {
@@ -161,12 +162,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := "42"
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("int64", func(t *testcase.T) {
@@ -175,12 +176,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := "42"
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("string", func(t *testcase.T) {
@@ -189,12 +190,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := answer
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 
 		s.Test("string based", func(t *testcase.T) {
@@ -203,12 +204,12 @@ func TestIDConverter(t *testing.T) {
 			encoded := answer
 
 			formatted, err := idc.FormatID(id)
-			t.Must.NoError(err)
-			t.Must.Equal(formatted, encoded)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(formatted, encoded)
 
 			got, err := idc.ParseID(encoded)
-			t.Must.NoError(err)
-			t.Must.Equal(got, id)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(got, id)
 		})
 	}, testcase.Group("defaults"))
 }

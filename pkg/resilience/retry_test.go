@@ -57,7 +57,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 	s.Before(func(t *testcase.T) { timecop.SetSpeed(t, math.MaxFloat64) })
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
-		t.Must.True(act(t))
+		assert.True(t, act(t))
 	})
 
 	s.When(".Attempts field is configured", func(s *testcase.Spec) {
@@ -83,7 +83,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
-			t.Must.False(act(t))
+			assert.Must(t).False(act(t))
 		})
 	})
 
@@ -99,7 +99,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("we can't attempt to retry", func(t *testcase.T) {
-			t.Must.False(act(t))
+			assert.Must(t).False(act(t))
 		})
 	})
 
@@ -115,7 +115,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
-			t.Must.True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -129,7 +129,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("it will instantly return", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
 				Context.Set(t, ctx)
 				act(t)
 			})
@@ -202,12 +202,12 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 			var expected = 25 * time.Hour / multiplier // 450ms
 			const buffer = 500 * time.Millisecond
 			var duration time.Duration
-			t.Must.Within(expected+buffer, func(ctx context.Context) {
+			assert.Must(t).Within(expected+buffer, func(ctx context.Context) {
 				duration = measure(func() {
 					act(t)
 				})
 			}, "expected duration:", assert.Message(expected.String()))
-			t.Must.True(duration <= expected+buffer)
+			assert.True(t, duration <= expected+buffer)
 		}, testcase.Flaky(3))
 	})
 
@@ -240,7 +240,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 			})
 
 			s.Then("we are allowed to proceed with the retry", func(t *testcase.T) {
-				t.Must.True(act(t))
+				assert.True(t, act(t))
 			})
 		})
 
@@ -257,7 +257,7 @@ func TestExponentialBackoff_ShouldTry(t *testing.T) {
 			})
 
 			s.Then("we expect that we are over the timeout duration, and we are asked to not attempt further retries", func(t *testcase.T) {
-				t.Must.False(act(t))
+				assert.Must(t).False(act(t))
 			})
 		})
 	})
@@ -292,7 +292,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 	}
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
-		t.Must.True(act(t))
+		assert.True(t, act(t))
 	})
 
 	s.When(".Attempts field is configured", func(s *testcase.Spec) {
@@ -324,7 +324,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
-			t.Must.False(act(t))
+			assert.Must(t).False(act(t))
 		})
 	})
 
@@ -338,7 +338,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("it will instantly return", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
 				Context.Set(t, ctx)
 				act(t)
 			})
@@ -357,7 +357,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("we can't attempt to retry", func(t *testcase.T) {
-			t.Must.False(act(t))
+			assert.Must(t).False(act(t))
 		})
 	})
 
@@ -373,7 +373,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
-			t.Must.True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -418,7 +418,7 @@ func TestJitter_ShouldTry(t *testing.T) {
 		failureCount.LetValue(s, 5)
 
 		s.Then("it will finish quickly", func(t *testcase.T) {
-			t.Must.Within(time.Hour, func(ctx context.Context) {
+			assert.Must(t).Within(time.Hour, func(ctx context.Context) {
 				act(t)
 			})
 		})
@@ -479,7 +479,7 @@ func TestWaiter(t *testing.T) {
 		}
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
-			t.Must.True(act(t))
+			assert.True(t, act(t))
 		})
 
 		s.When("context is cancelled", func(s *testcase.Spec) {
@@ -490,7 +490,7 @@ func TestWaiter(t *testing.T) {
 			})
 
 			s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
-				t.Must.False(act(t))
+				assert.Must(t).False(act(t))
 			})
 		})
 
@@ -503,7 +503,7 @@ func TestWaiter(t *testing.T) {
 			})
 
 			s.Then("it will instantly return", func(t *testcase.T) {
-				t.Must.Within(time.Second, func(ctx context.Context) {
+				assert.Must(t).Within(time.Second, func(ctx context.Context) {
 					Context.Set(t, ctx)
 					act(t)
 				})
@@ -516,7 +516,7 @@ func TestWaiter(t *testing.T) {
 			})
 
 			s.Then("we are told to not avoid a new retry attempt", func(t *testcase.T) {
-				t.Must.False(act(t))
+				assert.Must(t).False(act(t))
 			})
 		})
 	})
@@ -691,7 +691,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 	}
 
 	s.Then("we can attempt to retry", func(t *testcase.T) {
-		t.Must.True(act(t))
+		assert.True(t, act(t))
 	})
 
 	s.Then("the wait time is around to what is configured in .WaitTime", func(t *testcase.T) {
@@ -730,7 +730,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("it will report that retry shouldn't be attempted", func(t *testcase.T) {
-			t.Must.False(act(t))
+			assert.Must(t).False(act(t))
 		})
 	})
 
@@ -742,7 +742,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("we can't attempt to retry", func(t *testcase.T) {
-			t.Must.False(act(t))
+			assert.Must(t).False(act(t))
 		})
 	})
 
@@ -754,7 +754,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("we can attempt to retry", func(t *testcase.T) {
-			t.Must.True(act(t))
+			assert.True(t, act(t))
 		})
 	})
 
@@ -768,7 +768,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 		})
 
 		s.Then("it will instantly return", func(t *testcase.T) {
-			t.Must.Within(time.Second, func(ctx context.Context) {
+			assert.Must(t).Within(time.Second, func(ctx context.Context) {
 				Context.Set(t, ctx)
 				act(t)
 			})
@@ -862,7 +862,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 				})
 
 				s.Then("we are allowed to proceed with the retry", func(t *testcase.T) {
-					t.Must.True(act(t))
+					assert.True(t, act(t))
 				})
 			})
 
@@ -876,7 +876,7 @@ func TestFixedDelay_ShouldTry(t *testing.T) {
 				})
 
 				s.Then("we expect that we are over the timeout duration, and we are asked to not attempt further retries", func(t *testcase.T) {
-					t.Must.False(act(t))
+					assert.Must(t).False(act(t))
 				})
 			})
 		})

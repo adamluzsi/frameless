@@ -757,7 +757,7 @@ func TestReduce1(t *testing.T) {
 
 	s.Then("it will execute the reducing", func(t *testcase.T) {
 		r := act(t)
-		t.Must.Equal(1+2+3+4+initial.Get(t), r)
+		assert.Must(t).Equal(1+2+3+4+initial.Get(t), r)
 	})
 }
 
@@ -805,8 +805,8 @@ func TestReduceErr(t *testing.T) {
 
 	s.Then("it will execute the reducing", func(t *testcase.T) {
 		r, err := act(t)
-		t.Must.NoError(err)
-		t.Must.Equal(1+2+3+4+initial.Get(t), r)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(1+2+3+4+initial.Get(t), r)
 	})
 
 	s.When("there is an error during reducing", func(s *testcase.Spec) {
@@ -856,8 +856,8 @@ func TestReduceErr_wSeqE(t *testing.T) {
 
 	s.Then("it will execute the reducing", func(t *testcase.T) {
 		r, err := act(t)
-		t.Must.NoError(err)
-		t.Must.Equal(1+2+3+4+initial.Get(t), r)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(1+2+3+4+initial.Get(t), r)
 	})
 
 	s.When("there is an error during reducing", func(s *testcase.Spec) {
@@ -919,8 +919,8 @@ func TestReduceEErr_wSeqE(t *testing.T) {
 
 	s.Then("it will execute the reducing", func(t *testcase.T) {
 		r, err := act(t)
-		t.Must.NoError(err)
-		t.Must.Equal(1+2+3+4+initial.Get(t), r)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(1+2+3+4+initial.Get(t), r)
 	})
 
 	s.When("there is an error during reducing", func(s *testcase.Spec) {
@@ -1718,13 +1718,13 @@ func TestLimit(t *testing.T) {
 
 	s.Then("it will limit the returned results to the expected number", func(t *testcase.T) {
 		vs, err := iterkit.CollectE(act.Get(t))
-		t.Must.NoError(err)
-		t.Must.Equal(n.Get(t), len(vs))
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(n.Get(t), len(vs))
 	})
 
 	s.Then("it will limited amount of value", func(t *testcase.T) {
 		vs, err := iterkit.CollectE(act.Get(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
 		t.Log("n", n.Get(t))
 		var exp []int
@@ -1732,7 +1732,7 @@ func TestLimit(t *testing.T) {
 			exp = append(exp, i+1)
 		}
 
-		t.Must.Equal(exp, vs)
+		assert.Must(t).Equal(exp, vs)
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
@@ -1752,8 +1752,8 @@ func TestLimit(t *testing.T) {
 
 		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
 			vs, err := iterkit.CollectE(act.Get(t))
-			t.Must.NoError(err)
-			t.Must.Equal(iterLen, len(vs))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(iterLen, len(vs))
 		})
 	})
 
@@ -1762,14 +1762,14 @@ func TestLimit(t *testing.T) {
 
 		s.Then("it will iterate only the limited number", func(t *testcase.T) {
 			got, err := iterkit.CollectE(act.Get(t))
-			t.Must.NoError(err)
-			t.Must.NotEmpty(got)
+			assert.Must(t).NoError(err)
+			assert.Must(t).NotEmpty(got)
 
 			total := iterkit.Collect(iterkit.IntRange(1, iterLen))
-			t.Must.NotEmpty(got)
+			assert.Must(t).NotEmpty(got)
 
 			t.Logf("%v < %v", got, total)
-			t.Must.True(len(got) < len(total), "got count is less than total")
+			assert.True(t, len(got) < len(total), "got count is less than total")
 		})
 	})
 }
@@ -1798,7 +1798,7 @@ func TestLimit1(t *testing.T) {
 
 	s.Then("it will limit the returned results to the expected number", func(t *testcase.T) {
 		vs := iterkit.Collect(act.Get(t))
-		t.Must.Equal(n.Get(t), len(vs))
+		assert.Must(t).Equal(n.Get(t), len(vs))
 	})
 
 	s.Then("it will limited amount of value", func(t *testcase.T) {
@@ -1810,7 +1810,7 @@ func TestLimit1(t *testing.T) {
 			exp = append(exp, i+1)
 		}
 
-		t.Must.Equal(exp, vs)
+		assert.Must(t).Equal(exp, vs)
 	})
 
 	s.When("the iterator is empty", func(s *testcase.Spec) {
@@ -1828,7 +1828,7 @@ func TestLimit1(t *testing.T) {
 
 		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
 			vs := iterkit.Collect(act.Get(t))
-			t.Must.Equal(iterLen, len(vs))
+			assert.Must(t).Equal(iterLen, len(vs))
 		})
 	})
 
@@ -1837,13 +1837,13 @@ func TestLimit1(t *testing.T) {
 
 		s.Then("it will iterate only the limited number", func(t *testcase.T) {
 			got := iterkit.Collect(act.Get(t))
-			t.Must.NotEmpty(got)
+			assert.Must(t).NotEmpty(got)
 
 			total := iterkit.Collect(iterkit.IntRange(1, iterLen))
-			t.Must.NotEmpty(got)
+			assert.Must(t).NotEmpty(got)
 
 			t.Logf("%v < %v", got, total)
-			t.Must.True(len(got) < len(total), "got count is less than total")
+			assert.True(t, len(got) < len(total), "got count is less than total")
 		})
 	})
 }
@@ -1859,7 +1859,7 @@ func TestLimit2_smoke(tt *testing.T) {
 	subject := iterkit.Limit2(i, 3)
 	vs := iterkit.Collect2Map(subject)
 	assert.Contains(t, m, vs)
-	t.Must.Equal(3, len(vs))
+	assert.Must(t).Equal(3, len(vs))
 }
 
 func TestLimit2(t *testing.T) {
@@ -1885,7 +1885,7 @@ func TestLimit2(t *testing.T) {
 
 	s.Then("it will limit the returned results to the expected number", func(t *testcase.T) {
 		vs := iterkit.Collect2Map(act.Get(t))
-		t.Must.Equal(n.Get(t), len(vs))
+		assert.Must(t).Equal(n.Get(t), len(vs))
 		assert.Contains(t, values.Get(t), vs)
 	})
 
@@ -1904,7 +1904,7 @@ func TestLimit2(t *testing.T) {
 
 		s.Then("it will collect the total amount of the iterator", func(t *testcase.T) {
 			vs := iterkit.Collect2Map(act.Get(t))
-			t.Must.ContainsExactly(values.Get(t), vs)
+			assert.Must(t).ContainsExactly(values.Get(t), vs)
 		})
 	})
 
@@ -1913,7 +1913,7 @@ func TestLimit2(t *testing.T) {
 
 		s.Then("it will iterate only the limited number", func(t *testcase.T) {
 			got := iterkit.Collect2Map(act.Get(t))
-			t.Must.NotEmpty(got)
+			assert.Must(t).NotEmpty(got)
 			assert.Equal(t, len(got), n.Get(t))
 			assert.Contains(t, values.Get(t), got)
 		})
@@ -2405,7 +2405,7 @@ func TestCollect(t *testing.T) {
 
 		s.Then(`it will collect the values`, func(t *testcase.T) {
 			vs := act(t)
-			t.Must.Equal([]int{1, 2, 3}, vs)
+			assert.Must(t).Equal([]int{1, 2, 3}, vs)
 		})
 	})
 }
@@ -2791,7 +2791,7 @@ func TestMap(t *testing.T) {
 		s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
 			vs := iterkit.Collect[string](subject(t))
 
-			t.Must.Equal([]string{`A`, `B`, `C`}, vs)
+			assert.Must(t).Equal([]string{`A`, `B`, `C`}, vs)
 		})
 	})
 
@@ -2818,7 +2818,7 @@ func TestMap(t *testing.T) {
 
 		s.Then(`it will execute all the map steps in the final iterator composition`, func(t *testcase.T) {
 			values := iterkit.Collect(subject(t))
-			t.Must.Equal([]string{`A0`, `B1`, `C2`}, values)
+			assert.Must(t).Equal([]string{`A0`, `B1`, `C2`}, values)
 		})
 	})
 }
@@ -3025,8 +3025,8 @@ func TestMapE(t *testing.T) {
 
 	s.Then(`the new iterator will return values with enhanced by the map step`, func(t *testcase.T) {
 		vs, err := iterkit.CollectE[string](act(t))
-		t.Must.NoError(err)
-		t.Must.Equal([]string{`A`, `B`, `C`}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal([]string{`A`, `B`, `C`}, vs)
 	})
 
 	s.When(`some error happen during mapping`, func(s *testcase.Spec) {
@@ -3078,8 +3078,8 @@ func TestMapE_daisyChain(t *testing.T) {
 
 	s.Then(`it will execute all the map steps in the final iterator composition`, func(t *testcase.T) {
 		values, err := iterkit.CollectE(act(t))
-		t.Must.NoError(err)
-		t.Must.Equal([]string{`A0`, `B1`, `C2`}, values)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal([]string{`A0`, `B1`, `C2`}, values)
 	})
 
 	s.And("if an interim step has an error", func(s *testcase.Spec) {
@@ -3609,11 +3609,11 @@ func TestBatch(t *testing.T) {
 			i := act(t)
 			var got []int
 			for vs, err := range i {
-				t.Must.NoError(err)
-				t.Must.NotEmpty(vs)
+				assert.Must(t).NoError(err)
+				assert.Must(t).NotEmpty(vs)
 				got = append(got, vs...)
 			}
-			t.Must.Equal(values.Get(t), got,
+			assert.Must(t).Equal(values.Get(t), got,
 				"expected both to contain all elements and also that the order is not affected")
 		})
 
@@ -3636,13 +3636,13 @@ func TestBatch(t *testing.T) {
 				i := act(t)
 				var got []int
 				for vs, err := range i {
-					t.Must.NoError(err)
-					t.Must.NotEmpty(vs)
-					t.Must.True(len(vs) <= defaultBatchSize, "iteration ")
+					assert.Must(t).NoError(err)
+					assert.Must(t).NotEmpty(vs)
+					assert.True(t, len(vs) <= defaultBatchSize, "iteration ")
 					got = append(got, vs...)
 				}
-				t.Must.NotEmpty(got)
-				t.Must.ContainsExactly(values.Get(t), got)
+				assert.Must(t).NotEmpty(got)
+				assert.Must(t).ContainsExactly(values.Get(t), got)
 			})
 
 			ThenIterates(s)
@@ -3672,14 +3672,14 @@ func TestBatch(t *testing.T) {
 					i := act(t)
 					var got []int
 					for vs, err := range i {
-						t.Must.NoError(err)
+						assert.Must(t).NoError(err)
 						t.Log(len(vs) <= size.Get(t), len(vs), size.Get(t))
-						t.Must.True(len(vs) <= size.Get(t))
-						t.Must.NotEmpty(vs)
+						assert.True(t, len(vs) <= size.Get(t))
+						assert.Must(t).NotEmpty(vs)
 						got = append(got, vs...)
 					}
-					t.Must.NotEmpty(got)
-					t.Must.ContainsExactly(values.Get(t), got)
+					assert.Must(t).NotEmpty(got)
+					assert.Must(t).ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -3696,13 +3696,13 @@ func TestBatch(t *testing.T) {
 					i := act(t)
 					var got []int
 					for vs, err := range i {
-						t.Must.NoError(err)
-						t.Must.NotEmpty(vs)
-						t.Must.True(len(vs) <= defaultBatchSize, "iteration ")
+						assert.Must(t).NoError(err)
+						assert.Must(t).NotEmpty(vs)
+						assert.True(t, len(vs) <= defaultBatchSize, "iteration ")
 						got = append(got, vs...)
 					}
-					t.Must.NotEmpty(got)
-					t.Must.ContainsExactly(values.Get(t), got)
+					assert.Must(t).NotEmpty(got)
+					assert.Must(t).ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -3765,7 +3765,7 @@ func TestBatch(t *testing.T) {
 				next, stop := iter.Pull2(i)
 				defer stop()
 				vs, err, ok := next()
-				t.Must.True(ok, "expected that batching is triggered due to wait time limit exceeding")
+				assert.True(t, ok, "expected that batching is triggered due to wait time limit exceeding")
 				assert.NoError(t, err)
 				assert.NotEmpty(t, vs)
 				assert.Contains(t, values.Get(t), vs)
@@ -3870,10 +3870,10 @@ func TestBatch1(t *testing.T) {
 			i := act(t)
 			var got []int
 			for vs := range i {
-				t.Must.NotEmpty(vs)
+				assert.Must(t).NotEmpty(vs)
 				got = append(got, vs...)
 			}
-			t.Must.Equal(values.Get(t), got,
+			assert.Must(t).Equal(values.Get(t), got,
 				"expected both to contain all elements and also that the order is not affected")
 		})
 
@@ -3896,12 +3896,12 @@ func TestBatch1(t *testing.T) {
 				i := act(t)
 				var got []int
 				for vs := range i {
-					t.Must.NotEmpty(vs)
-					t.Must.True(len(vs) <= defaultBatchSize, "iteration ")
+					assert.Must(t).NotEmpty(vs)
+					assert.True(t, len(vs) <= defaultBatchSize, "iteration ")
 					got = append(got, vs...)
 				}
-				t.Must.NotEmpty(got)
-				t.Must.ContainsExactly(values.Get(t), got)
+				assert.Must(t).NotEmpty(got)
+				assert.Must(t).ContainsExactly(values.Get(t), got)
 			})
 
 			ThenIterates(s)
@@ -3932,12 +3932,12 @@ func TestBatch1(t *testing.T) {
 					var got []int
 					for vs := range i {
 						t.Log(len(vs) <= size.Get(t), len(vs), size.Get(t))
-						t.Must.True(len(vs) <= size.Get(t))
-						t.Must.NotEmpty(vs)
+						assert.True(t, len(vs) <= size.Get(t))
+						assert.Must(t).NotEmpty(vs)
 						got = append(got, vs...)
 					}
-					t.Must.NotEmpty(got)
-					t.Must.ContainsExactly(values.Get(t), got)
+					assert.Must(t).NotEmpty(got)
+					assert.Must(t).ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -3954,12 +3954,12 @@ func TestBatch1(t *testing.T) {
 					i := act(t)
 					var got []int
 					for vs := range i {
-						t.Must.NotEmpty(vs)
-						t.Must.True(len(vs) <= defaultBatchSize, "iteration ")
+						assert.Must(t).NotEmpty(vs)
+						assert.True(t, len(vs) <= defaultBatchSize, "iteration ")
 						got = append(got, vs...)
 					}
-					t.Must.NotEmpty(got)
-					t.Must.ContainsExactly(values.Get(t), got)
+					assert.Must(t).NotEmpty(got)
+					assert.Must(t).ContainsExactly(values.Get(t), got)
 				})
 
 				ThenIterates(s)
@@ -4022,7 +4022,7 @@ func TestBatch1(t *testing.T) {
 				next, stop := iter.Pull(i)
 				defer stop()
 				vs, ok := next()
-				t.Must.True(ok, "expected that batching is triggered due to wait time limit exceeding")
+				assert.True(t, ok, "expected that batching is triggered due to wait time limit exceeding")
 				assert.NotEmpty(t, vs)
 				assert.Contains(t, values.Get(t), vs)
 			})
@@ -4490,8 +4490,8 @@ func TestCharRange(t *testing.T) {
 			expected = append(expected, i)
 		}
 
-		t.Must.NotEmpty(expected)
-		t.Must.Equal(expected, actual)
+		assert.Must(t).NotEmpty(expected)
+		assert.Must(t).Equal(expected, actual)
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
@@ -4499,8 +4499,8 @@ func TestCharRange(t *testing.T) {
 		max.Set(t, 'D')
 
 		vs, err := iterkit.CollectE(act.Get(t))
-		t.Must.NoError(err)
-		t.Must.Equal([]rune{'A', 'B', 'C', 'D'}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal([]rune{'A', 'B', 'C', 'D'}, vs)
 	})
 }
 
@@ -4548,8 +4548,8 @@ func TestCharRange1(t *testing.T) {
 			expected = append(expected, i)
 		}
 
-		t.Must.NotEmpty(expected)
-		t.Must.Equal(expected, actual)
+		assert.Must(t).NotEmpty(expected)
+		assert.Must(t).Equal(expected, actual)
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
@@ -4557,7 +4557,7 @@ func TestCharRange1(t *testing.T) {
 		max.Set(t, 'D')
 
 		vs := iterkit.Collect(subject.Get(t))
-		t.Must.Equal([]rune{'A', 'B', 'C', 'D'}, vs)
+		assert.Must(t).Equal([]rune{'A', 'B', 'C', 'D'}, vs)
 	})
 }
 
@@ -4604,23 +4604,23 @@ func TestIntRangeE(t *testing.T) {
 			expected = append(expected, i)
 		}
 
-		t.Must.NotEmpty(expected)
-		t.Must.Equal(expected, actual)
+		assert.Must(t).NotEmpty(expected)
+		assert.Must(t).Equal(expected, actual)
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
 		vs, err := iterkit.CollectE(iterkit.IntRangeE(1, 9))
-		t.Must.NoError(err)
-		t.Must.Equal([]int{1, 2, 3, 4, 5, 6, 7, 8, 9}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal([]int{1, 2, 3, 4, 5, 6, 7, 8, 9}, vs)
 
 		vs, err = iterkit.CollectE(iterkit.IntRangeE(4, 7))
-		t.Must.NoError(err)
-		t.Must.Equal([]int{4, 5, 6, 7}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal([]int{4, 5, 6, 7}, vs)
 
 		vs, err = iterkit.CollectE(iterkit.IntRangeE(5, 1))
-		t.Must.NoError(err)
-		t.Must.NotNil(vs)
-		t.Must.Equal([]int{}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).NotNil(vs)
+		assert.Must(t).Equal([]int{}, vs)
 	})
 
 	s.Context("it behaves like a iter.Seq2[int, error]",
@@ -4660,19 +4660,19 @@ func TestIntRange(t *testing.T) {
 			expected = append(expected, i)
 		}
 
-		t.Must.NotEmpty(expected)
-		t.Must.Equal(expected, actual)
+		assert.Must(t).NotEmpty(expected)
+		assert.Must(t).Equal(expected, actual)
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
 		vs := iterkit.Collect(iterkit.IntRange(1, 9))
-		t.Must.Equal([]int{1, 2, 3, 4, 5, 6, 7, 8, 9}, vs)
+		assert.Must(t).Equal([]int{1, 2, 3, 4, 5, 6, 7, 8, 9}, vs)
 
 		vs = iterkit.Collect(iterkit.IntRange(4, 7))
-		t.Must.Equal([]int{4, 5, 6, 7}, vs)
+		assert.Must(t).Equal([]int{4, 5, 6, 7}, vs)
 
 		vs = iterkit.Collect(iterkit.IntRange(5, 1))
-		t.Must.Equal([]int{}, vs)
+		assert.Must(t).Equal([]int{}, vs)
 	})
 
 	s.Context("it behaves like a iter.Seq[int]", iterkitcontract.IterSeq(func(t testing.TB) iter.Seq[int] {

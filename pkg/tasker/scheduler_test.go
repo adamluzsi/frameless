@@ -73,7 +73,7 @@ func TestScheduler(t *testing.T) {
 		s.Then("the resulting job will be a blocking job", func(t *testcase.T) {
 			assert.NotWithin(t, blockCheckWaitTime, func(ctx context.Context) {
 				gotErr := act(t)(ctx)
-				t.Must.AnyOf(func(a *assert.A) {
+				assert.Must(t).AnyOf(func(a *assert.A) {
 					a.Test(func(t testing.TB) { assert.NoError(t, gotErr) })
 					a.Test(func(t testing.TB) { assert.ErrorIs(t, ctx.Err(), gotErr) })
 				})
@@ -84,7 +84,7 @@ func TestScheduler(t *testing.T) {
 			go act(t)(Context.Get(t))
 
 			for i := 0; i < 7; i++ {
-				t.Must.Within(time.Second, func(ctx context.Context) {
+				assert.Must(t).Within(time.Second, func(ctx context.Context) {
 					t.Eventually(func(it *testcase.T) {
 						assert.Equal(it, i+1, ran.Get(t))
 					})
@@ -100,10 +100,10 @@ func TestScheduler(t *testing.T) {
 				assert.Equal(it, 1, ran.Get(t))
 			})
 			timecop.Travel(t, interval.Get(t)/2)
-			t.Must.True(time.Millisecond < interval.Get(t),
+			assert.True(t, time.Millisecond < interval.Get(t),
 				"to make here the sleep safe, the interval must be larger than a millisecond")
 			time.Sleep(time.Millisecond)
-			t.Must.Equal(1, ran.Get(t))
+			assert.Must(t).Equal(1, ran.Get(t))
 		})
 
 		s.Then("concurrently competing tasker guaranteed to not do the job twice", func(t *testcase.T) {
@@ -112,7 +112,7 @@ func TestScheduler(t *testing.T) {
 			})
 
 			for i := 0; i < 7; i++ {
-				t.Must.Within(time.Second, func(ctx context.Context) {
+				assert.Must(t).Within(time.Second, func(ctx context.Context) {
 					t.Eventually(func(it *testcase.T) {
 						assert.Equal(it, i+1, ran.Get(t))
 					})
@@ -131,8 +131,8 @@ func TestScheduler(t *testing.T) {
 			})
 
 			s.Then("error is returned", func(t *testcase.T) {
-				t.Must.Within(time.Second, func(ctx context.Context) {
-					t.Must.ErrorIs(expErr.Get(t), act(t)(ctx))
+				assert.Must(t).Within(time.Second, func(ctx context.Context) {
+					assert.Must(t).ErrorIs(expErr.Get(t), act(t)(ctx))
 				})
 			})
 		})
@@ -152,8 +152,8 @@ func TestScheduler(t *testing.T) {
 			})
 
 			s.Then("error is returned", func(t *testcase.T) {
-				t.Must.Within(time.Second, func(ctx context.Context) {
-					t.Must.ErrorIs(expErr.Get(t), act(t)(ctx))
+				assert.Must(t).Within(time.Second, func(ctx context.Context) {
+					assert.Must(t).ErrorIs(expErr.Get(t), act(t)(ctx))
 				})
 			})
 		})

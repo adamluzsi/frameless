@@ -36,8 +36,8 @@ func TestDetached(t *testing.T) {
 
 		s.Then("no deadline returned", func(t *testcase.T) {
 			deadline, ok := act(t)
-			t.Must.False(ok)
-			t.Must.Empty(deadline)
+			assert.Must(t).False(ok)
+			assert.Must(t).Empty(deadline)
 		})
 
 		s.When("parent deadline is reached", func(s *testcase.Spec) {
@@ -46,14 +46,14 @@ func TestDetached(t *testing.T) {
 				ctx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(-1*time.Second))
 				t.Cleanup(cancelFunc)
 				_, ok := ctx.Deadline()
-				t.Must.True(ok)
+				assert.True(t, ok)
 				return ctx
 			})
 
 			s.Then("no deadline returned", func(t *testcase.T) {
 				deadline, ok := act(t)
-				t.Must.False(ok)
-				t.Must.Empty(deadline)
+				assert.Must(t).False(ok)
+				assert.Must(t).Empty(deadline)
 			})
 		})
 	})
@@ -96,7 +96,7 @@ func TestDetached(t *testing.T) {
 		}
 
 		s.Then("there is no error", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 		})
 
 		s.When("parent context has an error due to context cancellation", func(s *testcase.Spec) {
@@ -104,12 +104,12 @@ func TestDetached(t *testing.T) {
 				ctx := parent.Super(t)
 				ctx, cancel := context.WithCancel(ctx)
 				cancel()
-				t.Must.NotNil(ctx.Err())
+				assert.Must(t).NotNil(ctx.Err())
 				return ctx
 			})
 
 			s.Then("there is no error", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 		})
 
@@ -117,12 +117,12 @@ func TestDetached(t *testing.T) {
 			parent.Let(s, func(t *testcase.T) context.Context {
 				ctx, cancel := context.WithDeadline(parent.Super(t), time.Now())
 				cancel()
-				t.Must.ErrorIs(context.DeadlineExceeded, ctx.Err())
+				assert.Must(t).ErrorIs(context.DeadlineExceeded, ctx.Err())
 				return ctx
 			})
 
 			s.Then("there is no error", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 		})
 	})
@@ -147,8 +147,8 @@ func TestWithoutCancel(t *testing.T) {
 
 		s.Then("no deadline returned", func(t *testcase.T) {
 			deadline, ok := act(t)
-			t.Must.False(ok)
-			t.Must.Empty(deadline)
+			assert.Must(t).False(ok)
+			assert.Must(t).Empty(deadline)
 		})
 
 		s.When("parent deadline is reached", func(s *testcase.Spec) {
@@ -157,14 +157,14 @@ func TestWithoutCancel(t *testing.T) {
 				ctx, cancelFunc := context.WithDeadline(ctx, time.Now().Add(-1*time.Second))
 				t.Cleanup(cancelFunc)
 				_, ok := ctx.Deadline()
-				t.Must.True(ok)
+				assert.True(t, ok)
 				return ctx
 			})
 
 			s.Then("no deadline returned", func(t *testcase.T) {
 				deadline, ok := act(t)
-				t.Must.False(ok)
-				t.Must.Empty(deadline)
+				assert.Must(t).False(ok)
+				assert.Must(t).Empty(deadline)
 			})
 		})
 	})
@@ -207,7 +207,7 @@ func TestWithoutCancel(t *testing.T) {
 		}
 
 		s.Then("there is no error", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 		})
 
 		s.When("parent context has an error due to context cancellation", func(s *testcase.Spec) {
@@ -215,12 +215,12 @@ func TestWithoutCancel(t *testing.T) {
 				ctx := parent.Super(t)
 				ctx, cancel := context.WithCancel(ctx)
 				cancel()
-				t.Must.NotNil(ctx.Err())
+				assert.Must(t).NotNil(ctx.Err())
 				return ctx
 			})
 
 			s.Then("there is no error", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 		})
 
@@ -228,12 +228,12 @@ func TestWithoutCancel(t *testing.T) {
 			parent.Let(s, func(t *testcase.T) context.Context {
 				ctx, cancel := context.WithDeadline(parent.Super(t), time.Now())
 				cancel()
-				t.Must.ErrorIs(context.DeadlineExceeded, ctx.Err())
+				assert.Must(t).ErrorIs(context.DeadlineExceeded, ctx.Err())
 				return ctx
 			})
 
 			s.Then("there is no error", func(t *testcase.T) {
-				t.Must.NoError(act(t))
+				assert.Must(t).NoError(act(t))
 			})
 		})
 	})

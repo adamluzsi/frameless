@@ -256,24 +256,24 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 
 	s.Test("FindByID works even with a faulty repo", func(t *testcase.T) {
 		value, found, err := subject.Get(t).FindByID(context.Background(), foo.Get(t).ID)
-		t.Must.NoError(err)
-		t.Must.True(found)
-		t.Must.Equal(foo.Get(t), value)
+		assert.Must(t).NoError(err)
+		assert.True(t, found)
+		assert.Must(t).Equal(foo.Get(t), value)
 	})
 
 	s.Test("FindAll works even with a faulty repo", func(t *testcase.T) {
 		vs, err := iterkit.CollectE(subject.Get(t).FindAll(context.Background()))
-		t.Must.NoError(err)
-		t.Must.ContainsExactly([]testent.Foo{foo.Get(t)}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).ContainsExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
 
 	s.Test("Create works even with a faulty repo", func(t *testcase.T) {
 		foo2 := testent.MakeFoo(t)
-		t.Must.NoError(subject.Get(t).Create(context.Background(), &foo2))
+		assert.Must(t).NoError(subject.Get(t).Create(context.Background(), &foo2))
 
 		vs, err := iterkit.CollectE(subject.Get(t).FindAll(context.Background()))
-		t.Must.NoError(err)
-		t.Must.ContainsExactly([]testent.Foo{foo.Get(t), foo2}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).ContainsExactly([]testent.Foo{foo.Get(t), foo2}, vs)
 	})
 
 	s.Test("CachedQueryOne works even with a faulty repo", func(t *testcase.T) {
@@ -281,9 +281,9 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 			func(ctx context.Context) (ent testent.Foo, found bool, err error) {
 				return source.Get(t).FindByID(context.Background(), foo.Get(t).ID)
 			})
-		t.Must.NoError(err)
-		t.Must.True(found)
-		t.Must.Equal(foo.Get(t), value)
+		assert.Must(t).NoError(err)
+		assert.True(t, found)
+		assert.Must(t).Equal(foo.Get(t), value)
 	})
 
 	s.Test("CachedQueryMany works even with a faulty repo", func(t *testcase.T) {
@@ -292,20 +292,20 @@ func TestCache_withFaultyCacheRepository(t *testing.T) {
 				return source.Get(t).FindAll(context.Background())
 			})
 		vs, err := iterkit.CollectE(all)
-		t.Must.NoError(err)
-		t.Must.ContainsExactly([]testent.Foo{foo.Get(t)}, vs)
+		assert.Must(t).NoError(err)
+		assert.Must(t).ContainsExactly([]testent.Foo{foo.Get(t)}, vs)
 	})
 
 	s.Test("InvalidateByID will fail on an error", func(t *testcase.T) {
 		cacheRepository.Get(t).FailurePercentage = 1
 
-		t.Must.Error(subject.Get(t).InvalidateByID(context.Background(), foo.Get(t).ID))
+		assert.Must(t).Error(subject.Get(t).InvalidateByID(context.Background(), foo.Get(t).ID))
 	})
 
 	s.Test("DropCachedValues will fail on an error", func(t *testcase.T) {
 		cacheRepository.Get(t).FailurePercentage = 1
 
-		t.Must.Error(subject.Get(t).DropCachedValues(context.Background()))
+		assert.Must(t).Error(subject.Get(t).DropCachedValues(context.Background()))
 	})
 
 	// TODO: Update, Delete

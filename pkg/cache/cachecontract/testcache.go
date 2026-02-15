@@ -138,14 +138,14 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 	s.Context(reflectkit.SymbolicName(*new(ENT)), func(s *testcase.Spec) {
 		value := testcase.Let(s, func(t *testcase.T) interface{} {
 			ptr := pointer.Of(c.CRUD.MakeEntity(t))
-			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), ptr))
+			assert.Must(t).NoError(source.Get(t).Create(c.CRUD.MakeContext(t), ptr))
 			id, _ := extid.Lookup[ID](ptr)
 			t.Defer(source.Get(t).DeleteByID, c.CRUD.MakeContext(t), id)
 			return ptr
 		})
 
 		s.Before(func(t *testcase.T) {
-			t.Must.NoError(cache.Get(t).DropCachedValues(c.CRUD.MakeContext(t)))
+			assert.Must(t).NoError(cache.Get(t).DropCachedValues(c.CRUD.MakeContext(t)))
 		})
 
 		s.Test(`an update to the repository should refresh the by id look`, func(t *testcase.T) {
@@ -161,12 +161,12 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
-			t.Must.NoError(extid.Set(vUpdated, entID))
+			assert.Must(t).NoError(extid.Set(vUpdated, entID))
 			crudtest.Update[ENT, ID](t, cache.Get(t), ctx, vUpdated)
 			waiter.Wait()
 
 			ptr := c.CRUD.Helper().IsPresent(t, cache.Get(t), ctx, entID) // should trigger caching
-			t.Must.Equal(vUpdated, ptr)
+			assert.Must(t).Equal(vUpdated, ptr)
 		})
 
 		s.Test(`an update to the repository should refresh the QueryMany cache hits`, func(t *testcase.T) {
@@ -180,7 +180,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 
 			// mutate
 			vUpdated := pointer.Of(c.CRUD.MakeEntity(t))
-			t.Must.NoError(extid.Set(vUpdated, entID))
+			assert.Must(t).NoError(extid.Set(vUpdated, entID))
 			crudtest.Update[ENT, ID](t, cache.Get(t), ctx, vUpdated)
 			waiter.Wait()
 
@@ -199,8 +199,8 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 				}
 			}
 
-			t.Must.True(found, "it was expected to find the entity in the FindAll query result")
-			t.Must.Equal(vUpdated, &gotEnt)
+			assert.True(t, found, "it was expected to find the entity in the FindAll query result")
+			assert.Must(t).Equal(vUpdated, &gotEnt)
 		})
 
 		s.Test(`a delete by id to the repository should invalidate the local cache unit entity state`, func(t *testcase.T) {
@@ -212,7 +212,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			_, _ = iterkit.CollectE(cache.Get(t).FindAll(c.CRUD.MakeContext(t))) // should trigger caching
 
 			// delete
-			t.Must.NoError(cache.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
+			assert.Must(t).NoError(cache.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 
 			// assert
 			c.CRUD.Helper().IsAbsent(t, cache.Get(t), c.CRUD.MakeContext(t), id)
@@ -227,7 +227,7 @@ func describeCacheInvalidationByEventsThatMutatesAnEntity[ENT any, ID comparable
 			_, _ = iterkit.CollectE(cache.Get(t).FindAll(c.CRUD.MakeContext(t))) // should trigger caching
 
 			// delete
-			t.Must.NoError(cache.Get(t).DeleteAll(c.CRUD.MakeContext(t)))
+			assert.Must(t).NoError(cache.Get(t).DeleteAll(c.CRUD.MakeContext(t)))
 			waiter.Wait()
 
 			c.CRUD.Helper().IsAbsent(t, cache.Get(t), c.CRUD.MakeContext(t), id) // should trigger caching for not found
@@ -572,7 +572,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 
 		ctx := c.CRUD.MakeContext(t)
 		value := c.CRUD.MakeEntity(t)
-		t.Must.NoError(source.Get(t).Create(ctx, &value))
+		assert.Must(t).NoError(source.Get(t).Create(ctx, &value))
 		id, _ := extid.Lookup[ID](value)
 		t.Defer(source.Get(t).DeleteByID, ctx, id)
 
@@ -609,7 +609,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 	s.Test("RefreshByID + FindByID", func(t *testcase.T) {
 		ctx := c.CRUD.MakeContext(t)
 		value := c.CRUD.MakeEntity(t)
-		t.Must.NoError(source.Get(t).Create(ctx, &value))
+		assert.Must(t).NoError(source.Get(t).Create(ctx, &value))
 		id, _ := extid.Lookup[ID](value)
 		t.Defer(source.Get(t).DeleteByID, ctx, id)
 		id, ok := c.CRUD.IDA.Lookup(value)
@@ -675,7 +675,7 @@ func describeCacheRefresh[ENT any, ID comparable](s *testcase.Spec,
 
 			ctx := c.CRUD.MakeContext(t)
 			value := c.CRUD.MakeEntity(t)
-			t.Must.NoError(source.Get(t).Create(ctx, &value))
+			assert.Must(t).NoError(source.Get(t).Create(ctx, &value))
 			id, _ := extid.Lookup[ID](value)
 			t.Defer(source.Get(t).DeleteByID, ctx, id)
 
@@ -805,7 +805,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 		value := testcase.Let(s, func(t *testcase.T) *ENT {
 			ctx := c.CRUD.MakeContext(t)
 			ptr := pointer.Of(c.CRUD.MakeEntity(t))
-			t.Must.NoError(source.Get(t).Create(ctx, ptr))
+			assert.Must(t).NoError(source.Get(t).Create(ctx, ptr))
 			id, _ := extid.Lookup[ID](ptr)
 			t.Defer(source.Get(t).DeleteByID, ctx, id)
 			return ptr
@@ -815,7 +815,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 			id, found := extid.Lookup[ID](value.Get(t))
 			assert.True(t, found)
 			v, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			assert.True(t, found)
 			assert.Equal(t, *value.Get(t), v)
 		})
@@ -833,7 +833,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 					id, found := extid.Lookup[ID](value.Get(t))
 					assert.True(t, found)
 					nv := pointer.Of(c.CRUD.MakeEntity(t))
-					t.Must.NoError(extid.Set(nv, id))
+					assert.Must(t).NoError(extid.Set(nv, id))
 					return nv
 				})
 
@@ -846,7 +846,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 				s.Then(`it will return the new value instead the old one`, func(t *testcase.T) {
 					id, found := extid.Lookup[ID](value.Get(t))
 					assert.True(t, found)
-					t.Must.NotEmpty(id)
+					assert.Must(t).NotEmpty(id)
 					c.CRUD.Helper().HasEntity(t, cache.Get(t), c.CRUD.MakeContext(t), valueWithNewContent.Get(t))
 
 					eventually.Assert(t, func(it testing.TB) {
@@ -868,7 +868,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 
 				for i := 0; i < 42; i++ {
 					v, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
-					t.Must.NoError(err)
+					assert.Must(t).NoError(err)
 					assert.True(t, found)
 					assert.Equal(t, *value, v)
 				}
@@ -896,7 +896,7 @@ func describeResultCaching[ENT any, ID comparable](s *testcase.Spec,
 					waiter.Wait()
 
 					nv, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id) // should use cached val
-					t.Must.NoError(err)
+					assert.Must(t).NoError(err)
 					assert.True(t, found)
 					assert.Equal(t, *val, nv)
 					assert.Equal(t, numberOfFindByIDCallAfterEntityIsFound, spy.Get(t).count.FindByID())
@@ -948,25 +948,25 @@ func specCachedQueryMany[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Then("it will return all the entities", func(t *testcase.T) {
 			vs, err := iterkit.CollectE(act(t))
-			t.Must.NoError(err)
-			t.Must.ContainsExactly([]ENT{*ent1.Get(t), *ent2.Get(t)}, vs)
+			assert.Must(t).NoError(err)
+			assert.Must(t).ContainsExactly([]ENT{*ent1.Get(t), *ent2.Get(t)}, vs)
 		})
 
 		s.Then("it will cache all returned entities", func(t *testcase.T) {
 			vs, err := iterkit.CollectE(act(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
 			cached, err := iterkit.CollectE(repository.Entities().FindAll(c.CRUD.MakeContext(t)))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			assert.Contains(t, cached, vs)
 		})
 
 		s.Then("it will create a hit record", func(t *testcase.T) {
 			_, err := iterkit.CollectE(act(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
 			hits, err := iterkit.CollectE(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
 			assert.OneOf(t, hits, func(it testing.TB, got cachepkg.Hit[ID]) {
 				assert.Equal(it, got.ID, hitID.Get(t))
@@ -1025,15 +1025,15 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
+			assert.Must(t).NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := queryOne(t)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.Equal(ent, *entPtr.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
+			assert.Must(t).NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// we have hits
 			hvs, err := iterkit.CollectE(repository.Hits().FindAll(c.CRUD.MakeContext(t)))
 			assert.NoError(t, err)
@@ -1049,48 +1049,48 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 
 			// cache still able to retrieve the invalid state
 			ent, found, err = queryOne(t)
-			t.Must.NoError(err)
-			t.Must.True(found, "it was not expected that the cached data got invalidated")
-			t.Must.Equal(ent, *entPtr.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found, "it was not expected that the cached data got invalidated")
+			assert.Must(t).Equal(ent, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err := queryOne(t)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
 			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 	})
 
@@ -1118,68 +1118,68 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
+			assert.Must(t).NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			vs, err := iterkit.CollectE(queryMany(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			assert.Contains(t, vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
+			assert.Must(t).NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			vs, err = iterkit.CollectE(queryMany(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			assert.Contains(t, vs, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			vs, err := iterkit.CollectE(queryMany(t))
-			t.Must.NoError(err)
-			t.Must.Empty(vs)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Empty(vs)
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
 			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 	})
 
 	s.When("queryKey does not belong to any cached query hit", func(s *testcase.Spec) {
 		s.Before(func(t *testcase.T) {
 			_, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
 		})
 
 		s.Then("nothing happens", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 		})
 	})
 
@@ -1191,7 +1191,7 @@ func specInvalidateCachedQuery[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("context error is propagated back", func(t *testcase.T) {
-			t.Must.ErrorIs(Context.Get(t).Err(), act(t))
+			assert.Must(t).ErrorIs(Context.Get(t).Err(), act(t))
 		})
 	})
 }
@@ -1231,7 +1231,7 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 
 	s.Before(func(t *testcase.T) {
 		t.Cleanup(func() {
-			t.Must.NoError(cache.Get(t).
+			assert.Must(t).NoError(cache.Get(t).
 				InvalidateCachedQuery(c.CRUD.MakeContext(t), hitID.Get(t)))
 		})
 	})
@@ -1253,59 +1253,59 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
+			assert.Must(t).NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := queryOne(t)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.Equal(ent, *entPtr.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
+			assert.Must(t).NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			ent, found, err = queryOne(t)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.Equal(ent, *entPtr.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).Equal(ent, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err := queryOne(t)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
 			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 	})
 
@@ -1319,45 +1319,45 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
+			assert.Must(t).NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			ent, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.Equal(ent, *entPtr.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).Equal(ent, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
+			assert.Must(t).NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			ent, found, err = cache.Get(t).FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.Equal(ent, *entPtr.Get(t))
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).Equal(ent, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err := cache.Get(t).FindByID(c.CRUD.MakeContext(t), id.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 	})
 
@@ -1389,56 +1389,56 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			// create ent in source
-			t.Must.NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
+			assert.Must(t).NoError(source.Get(t).Create(c.CRUD.MakeContext(t), entPtr.Get(t)))
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 			// warm up the cache before making the data invalidated
 			vs, err := iterkit.CollectE(queryMany(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			assert.Contains(t, vs, *entPtr.Get(t))
 			// make ent state differ in source from the cached one
-			t.Must.NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
+			assert.Must(t).NoError(source.Get(t).DeleteByID(c.CRUD.MakeContext(t), id))
 			// cache has still the invalid state
 			vs, err = iterkit.CollectE(queryMany(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			assert.Contains(t, vs, *entPtr.Get(t))
 		})
 
 		s.Then("cached data is invalidated", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			vs, err := iterkit.CollectE(queryMany(t))
-			t.Must.NoError(err)
-			t.Must.Empty(vs)
+			assert.Must(t).NoError(err)
+			assert.Must(t).Empty(vs)
 		})
 
 		s.Then("related data in entity repository is gone", func(t *testcase.T) {
 			id := c.CRUD.Helper().HasID(t, entPtr.Get(t))
 
 			ent, found, err := repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Entities().FindByID(c.CRUD.MakeContext(t), id)
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 
 		s.Then("hit for the query key is flushed", func(t *testcase.T) {
 			ent, found, err := repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.True(found)
-			t.Must.NotEmpty(ent)
+			assert.Must(t).NoError(err)
+			assert.True(t, found)
+			assert.Must(t).NotEmpty(ent)
 
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 
 			ent, found, err = repository.Hits().FindByID(c.CRUD.MakeContext(t), hitID.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
-			t.Must.Empty(ent)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
+			assert.Must(t).Empty(ent)
 		})
 	})
 
@@ -1453,12 +1453,12 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 
 		s.Before(func(t *testcase.T) {
 			_, found, err := source.Get(t).FindByID(c.CRUD.MakeContext(t), id.Get(t))
-			t.Must.NoError(err)
-			t.Must.False(found)
+			assert.Must(t).NoError(err)
+			assert.Must(t).False(found)
 		})
 
 		s.Then("nothing happens", func(t *testcase.T) {
-			t.Must.NoError(act(t))
+			assert.Must(t).NoError(act(t))
 		})
 	})
 
@@ -1475,7 +1475,7 @@ func specInvalidateByID[ENT any, ID comparable](s *testcase.Spec,
 		})
 
 		s.Then("context error is propagated back", func(t *testcase.T) {
-			t.Must.ErrorIs(Context.Get(t).Err(), act(t))
+			assert.Must(t).ErrorIs(Context.Get(t).Err(), act(t))
 		})
 	})
 }

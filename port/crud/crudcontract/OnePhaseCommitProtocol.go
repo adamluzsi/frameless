@@ -50,17 +50,17 @@ func OnePhaseCommitProtocol[ENT, ID any](subject any, manager comproto.OnePhaseC
 		s.Test(`CommitTx multiple times will yield error`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ctx, err := manager.BeginTx(ctx)
-			t.Must.NoError(err)
-			t.Must.NoError(manager.CommitTx(ctx))
-			t.Must.NotNil(manager.CommitTx(ctx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(manager.CommitTx(ctx))
+			assert.Must(t).NotNil(manager.CommitTx(ctx))
 		})
 
 		s.Test(`RollbackTx multiple times will yield error`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ctx, err := manager.BeginTx(ctx)
-			t.Must.NoError(err)
-			t.Must.NoError(manager.RollbackTx(ctx))
-			t.Must.NotNil(manager.RollbackTx(ctx))
+			assert.Must(t).NoError(err)
+			assert.Must(t).NoError(manager.RollbackTx(ctx))
+			assert.Must(t).NotNil(manager.RollbackTx(ctx))
 		})
 
 		if subject, ok := subject.(crd[ENT, ID]); ok {
@@ -91,18 +91,18 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 
 	s.Test(`BeginTx+CommitTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		ptr := pointer.Of(c.MakeEntity(t))
 		c.Helper().Create(t, subject, tx, ptr)
 		id := c.Helper().HasID(t, ptr)
 
-		t.Must.NoError(manager.CommitTx(tx))
+		assert.Must(t).NoError(manager.CommitTx(tx))
 		t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
 
 		t.Log(`using the tx context after commit should yield error`)
 		_, _, err = subject.FindByID(tx, id)
-		t.Must.NotNil(err)
-		t.Must.NotNil(subject.Create(tx, pointer.Of(c.MakeEntity(t))))
+		assert.Must(t).NotNil(err)
+		assert.Must(t).NotNil(subject.Create(tx, pointer.Of(c.MakeEntity(t))))
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
 			shouldIterEventuallyError(t, func() iter.Seq2[ENT, error] {
@@ -111,14 +111,14 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		}
 
 		if updater, ok := subject.(crud.Updater[ENT]); ok {
-			t.Must.NotNil(updater.Update(tx, ptr),
+			assert.Must(t).NotNil(updater.Update(tx, ptr),
 				assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
 					subject)))
 		}
 
-		t.Must.NotNil(subject.DeleteByID(tx, id))
+		assert.Must(t).NotNil(subject.DeleteByID(tx, id))
 		if allDeleter, ok := subject.(crud.AllDeleter); ok {
-			t.Must.NotNil(allDeleter.DeleteAll(tx))
+			assert.Must(t).NotNil(allDeleter.DeleteAll(tx))
 		}
 
 		// crudtest.Waiter.Wait()
@@ -127,14 +127,14 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 	s.Test(`BeginTx+RollbackTx, Creator/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 		ctx := c.MakeContext(t)
 		ctx, err := manager.BeginTx(ctx)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		p := pointer.Of(c.MakeEntity(t))
-		t.Must.NoError(subject.Create(ctx, p))
+		assert.Must(t).NoError(subject.Create(ctx, p))
 		id, _ := lookupID[ID](c, *p)
-		t.Must.NoError(manager.RollbackTx(ctx))
+		assert.Must(t).NoError(manager.RollbackTx(ctx))
 
 		_, _, err = subject.FindByID(ctx, id)
-		t.Must.NotNil(err)
+		assert.Must(t).NotNil(err)
 
 		if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
 			shouldIterEventuallyError(t, func() iter.Seq2[ENT, error] {
@@ -142,24 +142,24 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 			})
 		}
 
-		t.Must.NotNil(subject.Create(ctx, pointer.Of(c.MakeEntity(t))))
+		assert.Must(t).NotNil(subject.Create(ctx, pointer.Of(c.MakeEntity(t))))
 
 		if updater, ok := subject.(crud.Updater[ENT]); ok {
-			t.Must.NotNil(updater.Update(ctx, p),
+			assert.Must(t).NotNil(updater.Update(ctx, p),
 				assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
 					subject)))
 		}
 
-		t.Must.NotNil(subject.DeleteByID(ctx, id))
+		assert.Must(t).NotNil(subject.DeleteByID(ctx, id))
 
 		if allDeleter, ok := subject.(crud.AllDeleter); ok {
-			t.Must.NotNil(allDeleter.DeleteAll(ctx))
+			assert.Must(t).NotNil(allDeleter.DeleteAll(ctx))
 		}
 	})
 
 	s.Test(`BeginTx+CommitTx / Create+FindByID`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
 		entity := pointer.Of(c.MakeEntity(t))
 		c.Helper().Create(t, subject, tx, entity)
@@ -169,15 +169,15 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		c.Helper().IsPresent(t, subject, tx, id)              // can be found in tx Context
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id) // is absent from the global Context
 
-		t.Must.NoError(manager.CommitTx(tx)) // after the commit
+		assert.Must(t).NoError(manager.CommitTx(tx)) // after the commit
 
 		actually := c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
-		t.Must.Equal(entity, actually)
+		assert.Must(t).Equal(entity, actually)
 	})
 
 	s.Test(`BeginTx+RollbackTx / Create+FindByID`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		entity := pointer.Of(c.MakeEntity(t))
 		c.Helper().Create(t, subject, tx, entity)
 
@@ -185,7 +185,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		c.Helper().IsPresent(t, subject, tx, id)
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 
-		t.Must.NoError(manager.RollbackTx(tx))
+		assert.Must(t).NoError(manager.RollbackTx(tx))
 
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 	})
@@ -199,16 +199,16 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		t.Defer(subject.DeleteByID, ctx, id)
 
 		tx, err := manager.BeginTx(ctx)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
 		c.Helper().IsPresent(t, subject, tx, id)
-		t.Must.NoError(subject.DeleteByID(tx, id))
+		assert.Must(t).NoError(subject.DeleteByID(tx, id))
 		c.Helper().IsAbsent(t, subject, tx, id)
 
 		// in global Context it is findable
 		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
-		t.Must.NoError(manager.CommitTx(tx))
+		assert.Must(t).NoError(manager.CommitTx(tx))
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 	})
 
@@ -219,12 +219,12 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		id := c.Helper().HasID(t, entity)
 
 		tx, err := manager.BeginTx(ctx)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		c.Helper().IsPresent(t, subject, tx, id)
-		t.Must.NoError(subject.DeleteByID(tx, id))
+		assert.Must(t).NoError(subject.DeleteByID(tx, id))
 		c.Helper().IsAbsent(t, subject, tx, id)
 		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
-		t.Must.NoError(manager.RollbackTx(tx))
+		assert.Must(t).NoError(manager.RollbackTx(tx))
 		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 	})
 
@@ -245,21 +245,21 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		var globalContext = c.MakeContext(t)
 
 		tx1, err := manager.BeginTx(globalContext)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		t.Log(`given tx1 is began`)
 
 		e1 := pointer.Of(c.MakeEntity(t))
-		t.Must.NoError(subject.Create(tx1, e1))
+		assert.Must(t).NoError(subject.Create(tx1, e1))
 		c.Helper().IsPresent(t, subject, tx1, c.Helper().HasID(t, e1))
 		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
 		t.Logf("and e1 is created in tx1: %#v", e1)
 
 		tx2InTx1, err := manager.BeginTx(tx1)
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 		t.Log(`and tx2 is began using tx1 as a base`)
 
 		e2 := pointer.Of(c.MakeEntity(t))
-		t.Must.NoError(subject.Create(tx2InTx1, e2))
+		assert.Must(t).NoError(subject.Create(tx2InTx1, e2))
 		c.Helper().IsPresent(t, subject, tx2InTx1, c.Helper().HasID(t, e2))     // tx2 can see e2
 		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2)) // global don't see e2
 		t.Logf(`and e2 is created in tx2 %#v`, e2)
@@ -268,8 +268,8 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
 		c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2))
 
-		t.Must.NoError(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
-		t.Must.NoError(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
+		assert.Must(t).NoError(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
+		assert.Must(t).NoError(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
 
 		t.Log(`after everything is committed, entities should be in the resource`)
 		c.Helper().IsPresent(t, subject, globalContext, c.Helper().HasID(t, e1))
@@ -284,12 +284,12 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 	s.Test(`BeginTx+RollbackTx / Save`, func(t *testcase.T) {
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
 		ent := c.MakeEntity(t)
 		c.Helper().Save(t, subject, tx, &ent)
 		c.Helper().HasID(t, &ent)
-		t.Must.NoError(manager.RollbackTx(tx))
+		assert.Must(t).NoError(manager.RollbackTx(tx))
 	})
 
 	if gotByIDFinder {
@@ -300,7 +300,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 		s.Test(`BeginTx+RollbackTx / Save+FindByID`, func(t *testcase.T) {
 			tx, err := manager.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			ent := c.MakeEntity(t)
 			c.Helper().Save(t, subject, tx, &ent)
 
@@ -308,7 +308,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			c.Helper().IsPresent(t, subject, tx, id)
 			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 
-			t.Must.NoError(manager.RollbackTx(tx))
+			assert.Must(t).NoError(manager.RollbackTx(tx))
 
 			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 		})
@@ -330,21 +330,21 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			var globalContext = c.MakeContext(t)
 
 			tx1, err := manager.BeginTx(globalContext)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Log(`given tx1 is began`)
 
 			e1 := pointer.Of(c.MakeEntity(t))
-			t.Must.NoError(subject.Save(tx1, e1))
+			assert.Must(t).NoError(subject.Save(tx1, e1))
 			c.Helper().IsPresent(t, subject, tx1, c.Helper().HasID(t, e1))
 			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
 			t.Logf("and e1 is created in tx1: %#v", e1)
 
 			tx2InTx1, err := manager.BeginTx(tx1)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			t.Log(`and tx2 is began using tx1 as a base`)
 
 			e2 := pointer.Of(c.MakeEntity(t))
-			t.Must.NoError(subject.Save(tx2InTx1, e2))
+			assert.Must(t).NoError(subject.Save(tx2InTx1, e2))
 			c.Helper().IsPresent(t, subject, tx2InTx1, c.Helper().HasID(t, e2))     // tx2 can see e2
 			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2)) // global don't see e2
 			t.Logf(`and e2 is created in tx2 %#v`, e2)
@@ -353,8 +353,8 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e1))
 			c.Helper().IsAbsent(t, subject, globalContext, c.Helper().HasID(t, e2))
 
-			t.Must.NoError(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
-			t.Must.NoError(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
+			assert.Must(t).NoError(manager.CommitTx(tx2InTx1), `"inner" comproto should be considered done`)
+			assert.Must(t).NoError(manager.CommitTx(tx1), `"outer" comproto should be considered done`)
 
 			t.Log(`after everything is committed, entities should be in the resource`)
 			c.Helper().IsPresent(t, subject, globalContext, c.Helper().HasID(t, e1))
@@ -371,18 +371,18 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 
 		s.Test(`BeginTx+CommitTx, Saver/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			tx, err := manager.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			ptr := pointer.Of(c.MakeEntity(t))
 			c.Helper().Save(t, subject, tx, ptr)
 			id := c.Helper().HasID(t, ptr)
 
-			t.Must.NoError(manager.CommitTx(tx))
+			assert.Must(t).NoError(manager.CommitTx(tx))
 			t.Defer(subject.DeleteByID, c.MakeContext(t), id) // cleanup
 
 			t.Log(`using the tx context after commit should yield error`)
 			_, _, err = subject.FindByID(tx, id)
-			t.Must.NotNil(err)
-			t.Must.NotNil(subject.Save(tx, pointer.Of(c.MakeEntity(t))),
+			assert.Must(t).NotNil(err)
+			assert.Must(t).NotNil(subject.Save(tx, pointer.Of(c.MakeEntity(t))),
 				"expecte that .Save will respect that the tx in the context is already committed")
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
@@ -392,14 +392,14 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			}
 
 			if updater, ok := subject.(crud.Updater[ENT]); ok {
-				t.Must.NotNil(updater.Update(tx, ptr),
+				assert.Must(t).NotNil(updater.Update(tx, ptr),
 					assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
 						subject)))
 			}
 
-			t.Must.NotNil(subject.DeleteByID(tx, id))
+			assert.Must(t).NotNil(subject.DeleteByID(tx, id))
 			if allDeleter, ok := subject.(crud.AllDeleter); ok {
-				t.Must.NotNil(allDeleter.DeleteAll(tx))
+				assert.Must(t).NotNil(allDeleter.DeleteAll(tx))
 			}
 
 			// crudtest.Waiter.Wait()
@@ -408,14 +408,14 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 		s.Test(`BeginTx+RollbackTx, Saver/Reader/Deleter methods yields error on Context with finished tx`, func(t *testcase.T) {
 			ctx := c.MakeContext(t)
 			ctx, err := manager.BeginTx(ctx)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			p := pointer.Of(c.MakeEntity(t))
-			t.Must.NoError(subject.Save(ctx, p))
+			assert.Must(t).NoError(subject.Save(ctx, p))
 			id, _ := lookupID[ID](c, *p)
-			t.Must.NoError(manager.RollbackTx(ctx))
+			assert.Must(t).NoError(manager.RollbackTx(ctx))
 
 			_, _, err = subject.FindByID(ctx, id)
-			t.Must.NotNil(err)
+			assert.Must(t).NotNil(err)
 
 			if allFinder, ok := subject.(crud.AllFinder[ENT]); ok {
 				shouldIterEventuallyError(t, func() iter.Seq2[ENT, error] {
@@ -423,24 +423,24 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 				})
 			}
 
-			t.Must.NotNil(subject.Save(ctx, pointer.Of(c.MakeEntity(t))))
+			assert.Must(t).NotNil(subject.Save(ctx, pointer.Of(c.MakeEntity(t))))
 
 			if updater, ok := subject.(crud.Updater[ENT]); ok {
-				t.Must.NotNil(updater.Update(ctx, p),
+				assert.Must(t).NotNil(updater.Update(ctx, p),
 					assert.Message(fmt.Sprintf(`because %T implements resource.Updater it was expected to also yields error on update with finished comproto`,
 						subject)))
 			}
 
-			t.Must.NotNil(subject.DeleteByID(ctx, id))
+			assert.Must(t).NotNil(subject.DeleteByID(ctx, id))
 
 			if allDeleter, ok := subject.(crud.AllDeleter); ok {
-				t.Must.NotNil(allDeleter.DeleteAll(ctx))
+				assert.Must(t).NotNil(allDeleter.DeleteAll(ctx))
 			}
 		})
 
 		s.Test(`BeginTx+CommitTx / Save+FindByID`, func(t *testcase.T) {
 			tx, err := manager.BeginTx(c.MakeContext(t))
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 
 			ent := c.MakeEntity(t)
 			c.Helper().Save(t, subject, tx, &ent)
@@ -450,7 +450,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			c.Helper().IsPresent(t, subject, tx, id)              // can be found in tx Context
 			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id) // is absent from the global Context
 
-			t.Must.NoError(manager.CommitTx(tx)) // after the commit
+			assert.Must(t).NoError(manager.CommitTx(tx)) // after the commit
 
 			actually := c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 			assert.Equal(t, &ent, actually)
@@ -466,17 +466,17 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			t.Defer(subject.DeleteByID, ctx, id)
 
 			tx, err := manager.BeginTx(ctx)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			_ = tx
 
 			c.Helper().IsPresent(t, subject, tx, id)
-			t.Must.NoError(subject.DeleteByID(tx, id))
+			assert.Must(t).NoError(subject.DeleteByID(tx, id))
 			c.Helper().IsAbsent(t, subject, tx, id)
 
 			// in global Context it is findable
 			c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
-			t.Must.NoError(manager.CommitTx(tx))
+			assert.Must(t).NoError(manager.CommitTx(tx))
 			c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 		})
 
@@ -487,12 +487,12 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			id := c.Helper().HasID(t, &ent)
 
 			tx, err := manager.BeginTx(ctx)
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			c.Helper().IsPresent(t, subject, tx, id)
-			t.Must.NoError(subject.DeleteByID(tx, id))
+			assert.Must(t).NoError(subject.DeleteByID(tx, id))
 			c.Helper().IsAbsent(t, subject, tx, id)
 			c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
-			t.Must.NoError(manager.RollbackTx(tx))
+			assert.Must(t).NoError(manager.RollbackTx(tx))
 			c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 		})
 	}
@@ -512,13 +512,13 @@ func specOPCPPurger[ENT, ID any](s *testcase.Spec, subject subjectSpecOPCPPurger
 		id := c.Helper().HasID(t, ptr)
 
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
-		t.Must.NoError(subject.Purge(tx))
+		assert.Must(t).NoError(subject.Purge(tx))
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
-		t.Must.NoError(manager.RollbackTx(tx))
+		assert.Must(t).NoError(manager.RollbackTx(tx))
 		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 	})
 
@@ -528,13 +528,13 @@ func specOPCPPurger[ENT, ID any](s *testcase.Spec, subject subjectSpecOPCPPurger
 		id := c.Helper().HasID(t, ptr)
 
 		tx, err := manager.BeginTx(c.MakeContext(t))
-		t.Must.NoError(err)
+		assert.Must(t).NoError(err)
 
-		t.Must.NoError(subject.Purge(tx))
+		assert.Must(t).NoError(subject.Purge(tx))
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 		c.Helper().IsPresent(t, subject, c.MakeContext(t), id)
 
-		t.Must.NoError(manager.CommitTx(tx))
+		assert.Must(t).NoError(manager.CommitTx(tx))
 		c.Helper().IsAbsent(t, subject, c.MakeContext(t), id)
 	})
 }

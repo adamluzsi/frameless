@@ -53,16 +53,16 @@ func TestContracts_testcaseTNestingSupport(t *testing.T) {
 		CRUD: crudcontract.Config[Entity, string]{
 			MakeEntity: func(tb testing.TB) Entity {
 				t := mustBeTCT(tb)
-				t.Must.Equal(42, vGet(t))
-				t.Must.Equal(42, varWithNoInit.Get(t))
+				assert.Must(t).Equal(42, vGet(t))
+				assert.Must(t).Equal(42, varWithNoInit.Get(t))
 				ent := t.Random.Make(Entity{}).(Entity)
 				ent.ID = ""
 				return ent
 			},
 			ChangeEntity: func(tb testing.TB, e *Entity) {
 				t := mustBeTCT(tb)
-				t.Must.Equal(42, vGet(t))
-				t.Must.Equal(42, varWithNoInit.Get(t))
+				assert.Must(t).Equal(42, vGet(t))
+				assert.Must(t).Equal(42, varWithNoInit.Get(t))
 				ogID := e.ID
 				*e = t.Random.Make(Entity{}).(Entity)
 				e.ID = ogID

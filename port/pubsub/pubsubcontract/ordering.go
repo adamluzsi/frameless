@@ -51,7 +51,7 @@ func Ordering[Data any](
 
 			sub := subscriber.Subscribe(ctx)
 
-			t.Must.NoError(publisher.Publish(ctx, val1, val2, val3))
+			assert.Must(t).NoError(publisher.Publish(ctx, val1, val2, val3))
 			pubsubtest.Waiter.Wait()
 
 			expected := []Data{val1, val2, val3}
@@ -67,9 +67,9 @@ func Ordering[Data any](
 					err error
 					ok  bool
 				)
-				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
+				assert.Must(t).Within(pubsubtest.Waiter.Timeout, func(context.Context) {
 					msg, err, ok = next()
-					t.Must.True(ok)
+					assert.True(t, ok)
 				})
 
 				assert.NoError(t, err)
@@ -77,7 +77,7 @@ func Ordering[Data any](
 				assert.NoError(t, msg.ACK())
 			}
 
-			t.Must.Equal(expected, got)
+			assert.Must(t).Equal(expected, got)
 		})
 	})
 
@@ -169,7 +169,7 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 		s.Then("messages are received in their publishing order", func(t *testcase.T) {
 			sub := subscriber.Subscribe(c.MakeContext(t))
 
-			t.Must.NoError(publisher.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
+			assert.Must(t).NoError(publisher.Publish(c.MakeContext(t), val1.Get(t), val2.Get(t), val3.Get(t)))
 			expected := []Data{val3.Get(t), val2.Get(t), val1.Get(t)}
 
 			next, stop := iter.Pull2(iter.Seq2[pubsub.Message[Data], error](sub))
@@ -182,9 +182,9 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 					err error
 					ok  bool
 				)
-				t.Must.Within(pubsubtest.Waiter.Timeout, func(context.Context) {
+				assert.Must(t).Within(pubsubtest.Waiter.Timeout, func(context.Context) {
 					msg, err, ok = next()
-					t.Must.True(ok)
+					assert.True(t, ok)
 				})
 
 				assert.NoError(t, err)
@@ -192,7 +192,7 @@ func LIFO[Data any](publisher pubsub.Publisher[Data], subscriber pubsub.Subscrib
 				assert.NoError(t, msg.ACK())
 			}
 
-			t.Must.Equal(expected, got)
+			assert.Must(t).Equal(expected, got)
 		})
 	})
 

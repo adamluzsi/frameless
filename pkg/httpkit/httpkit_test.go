@@ -26,9 +26,9 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/clock/timecop"
-	"go.llib.dev/testcase/httpspec"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
+	"go.llib.dev/testcase/tchttp"
 )
 
 func Test_interfaceMultiplexer(t *testing.T) {
@@ -36,12 +36,11 @@ func Test_interfaceMultiplexer(t *testing.T) {
 }
 
 func TestRoundTripperFunc(t *testing.T) {
-	s := testcase.NewSpec(t)
-	httpspec.ItBehavesLikeRoundTripperMiddleware(s, func(t *testcase.T, next http.RoundTripper) http.RoundTripper {
+	tchttp.RoundTripperMiddleware(func(t *testcase.T, next http.RoundTripper) http.RoundTripper {
 		return httpkit.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 			return next.RoundTrip(r)
 		})
-	})
+	}).Test(t)
 }
 
 func ExampleRetryRoundTripper() {
@@ -92,7 +91,7 @@ func TestRetryRoundTripper(t *testing.T) {
 				_, _ = w.Write([]byte(responseBody.Get(t)))
 			}
 		})
-		server = httpspec.LetServer(s, func(t *testcase.T) http.Handler {
+		server = tchttp.LetServer(s, func(t *testcase.T) http.Handler {
 			return handler.Get(t)
 		})
 	)
@@ -113,7 +112,7 @@ func TestRetryRoundTripper(t *testing.T) {
 			type NonResettableBody struct{ io.Reader } // To forcefully prevent resetting of the request body by the http.Client
 			request, err := http.NewRequest(http.MethodGet, server.Get(t).URL,
 				NonResettableBody{Reader: strings.NewReader(requestBody.Get(t))})
-			t.Must.NoError(err)
+			assert.Must(t).NoError(err)
 			return request
 		})
 	)
@@ -132,23 +131,22 @@ func TestRetryRoundTripper(t *testing.T) {
 		timecop.SetSpeed(t, math.MaxFloat64/1000)
 	})
 
-	s.Context("", func(s *testcase.Spec) {
-		httpspec.Response.Let(s, func(t *testcase.T) *http.Response {
-			r := httpspec.Response.Super(t)
-			r.StatusCode = http.StatusOK
-			return r
-		})
-
-		httpspec.ItBehavesLikeRoundTripperMiddleware(s, func(t *testcase.T, next http.RoundTripper) http.RoundTripper {
+	s.Context("it behaves as a http round tripper middleware would",
+		tchttp.RoundTripperMiddleware(func(t *testcase.T, next http.RoundTripper) http.RoundTripper {
 			return httpkit.RetryRoundTripper{Transport: next}
-		})
-	})
+		}, tchttp.RoundTripperMiddlewareOption{
+			Response: func(t *testcase.T) *http.Response {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+				}
+			},
+		}).Spec)
 
 	s.Then("server response received back", func(t *testcase.T) {
 		response, err := act(t)
-		t.Must.NoError(err)
-		t.Must.Equal(responseCode.Get(t), response.StatusCode)
-		t.Must.Equal(responseBody.Get(t), getBody(t, response))
+		assert.Must(t).NoError(err)
+		assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+		assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
 	})
 
 	s.When("the server responds with a recoverable error", func(s *testcase.Spec) {
@@ -183,9 +181,9 @@ func TestRetryRoundTripper(t *testing.T) {
 
 		s.Then("eventually the request succeeds", func(t *testcase.T) {
 			response, err := act(t)
-			t.Must.NoError(err)
-			t.Must.Equal(responseCode.Get(t), response.StatusCode)
-			t.Must.Equal(responseBody.Get(t), getBody(t, response))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+			assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
 		})
 
 		s.And("if the recoverable just keep occuring too many times", func(s *testcase.Spec) {
@@ -207,8 +205,8 @@ func TestRetryRoundTripper(t *testing.T) {
 
 			s.Then("the retry eventually fails and the bad code is returned", func(t *testcase.T) {
 				response, err := act(t)
-				t.Must.NoError(err)
-				t.Must.Equal(responseCode.Get(t), response.StatusCode)
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
 			})
 		})
 	})
@@ -228,9 +226,9 @@ func TestRetryRoundTripper(t *testing.T) {
 
 		s.Then("eventually the request succeeds", func(t *testcase.T) {
 			response, err := act(t)
-			t.Must.NoError(err)
-			t.Must.Equal(responseCode.Get(t), response.StatusCode)
-			t.Must.Equal(responseBody.Get(t), getBody(t, response))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+			assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
 		})
 	})
 
@@ -249,9 +247,9 @@ func TestRetryRoundTripper(t *testing.T) {
 
 		s.Then("eventually the request succeeds", func(t *testcase.T) {
 			response, err := act(t)
-			t.Must.NoError(err)
-			t.Must.Equal(responseCode.Get(t), response.StatusCode)
-			t.Must.Equal(responseBody.Get(t), getBody(t, response))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+			assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
 		})
 	})
 
@@ -270,9 +268,9 @@ func TestRetryRoundTripper(t *testing.T) {
 
 		s.Then("eventually the request succeeds", func(t *testcase.T) {
 			response, err := act(t)
-			t.Must.NoError(err)
-			t.Must.Equal(responseCode.Get(t), response.StatusCode)
-			t.Must.Equal(responseBody.Get(t), getBody(t, response))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+			assert.Must(t).Equal(responseBody.Get(t), getBody(t, response))
 		})
 	})
 
@@ -296,9 +294,9 @@ func TestRetryRoundTripper(t *testing.T) {
 
 		s.Then("eventually the request succeeds", func(t *testcase.T) {
 			response, err := act(t)
-			t.Must.NoError(err)
-			t.Must.Equal(responseCode.Get(t), response.StatusCode)
-			t.Must.Equal(1, count.Get(t))
+			assert.Must(t).NoError(err)
+			assert.Must(t).Equal(responseCode.Get(t), response.StatusCode)
+			assert.Must(t).Equal(1, count.Get(t))
 		})
 
 	})
@@ -332,9 +330,9 @@ func TestRetryRoundTripper(t *testing.T) {
 
 			s.Then("eventually the request succeeds", func(t *testcase.T) {
 				response, err := act(t)
-				t.Must.NoError(err)
-				t.Must.Equal(http.StatusOK, response.StatusCode)
-				t.Must.NotEqual(1, count.Get(t))
+				assert.Must(t).NoError(err)
+				assert.Must(t).Equal(http.StatusOK, response.StatusCode)
+				assert.Must(t).NotEqual(1, count.Get(t))
 			})
 		})
 
@@ -505,7 +503,7 @@ func TestMount(t *testing.T) {
 			act(t)
 
 			response := makeRequest(t, "/a/b")
-			t.Must.Equal(http.StatusTeapot, response.StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, response.StatusCode)
 		})
 	})
 
@@ -519,7 +517,7 @@ func TestMount(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, `/path0/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
 
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 
@@ -532,7 +530,7 @@ func TestMount(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, `/path1/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 
@@ -545,7 +543,7 @@ func TestMount(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, `/path2/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 
@@ -558,7 +556,7 @@ func TestMount(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, `/test/this/out/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 }
@@ -596,13 +594,13 @@ func TestMount_spec(t *testing.T) {
 		act(t)
 
 		response := makeRequest(t, "/path/sub")
-		t.Must.Equal(http.StatusTeapot, response.StatusCode)
+		assert.Must(t).Equal(http.StatusTeapot, response.StatusCode)
 
-		t.Must.NotNil(lastReq.Get(t))
+		assert.Must(t).NotNil(lastReq.Get(t))
 		routing, ok := internal.RoutingContext.Lookup(lastReq.Get(t).Context())
 		t.LogPretty(routing)
-		t.Must.True(ok)
-		t.Must.Equal("/sub", routing.PathLeft)
+		assert.True(t, ok)
+		assert.Must(t).Equal("/sub", routing.PathLeft)
 	})
 
 	s.When("handler is a RestResource", func(s *testcase.Spec) {
@@ -630,12 +628,12 @@ func TestMount_spec(t *testing.T) {
 		s.Then("the handler is properly propagated", func(t *testcase.T) {
 			act(t)
 			resp := makeRequest(t, pathkit.Join(pattern.Get(t), strconv.Itoa(int(ent.Get(t).ID)), "test", "foo"))
-			t.Must.Equal(http.StatusTeapot, resp.StatusCode)
-			t.Must.NotNil(lastReq.Get(t))
+			assert.Must(t).Equal(http.StatusTeapot, resp.StatusCode)
+			assert.Must(t).NotNil(lastReq.Get(t))
 
 			routing, ok := internal.RoutingContext.Lookup(lastReq.Get(t).Context())
-			t.Must.True(ok)
-			t.Must.Equal("/foo", routing.PathLeft)
+			assert.True(t, ok)
+			assert.Must(t).Equal("/foo", routing.PathLeft)
 		})
 	})
 
@@ -646,7 +644,7 @@ func TestMount_spec(t *testing.T) {
 			act(t)
 
 			response := makeRequest(t, "/a/b")
-			t.Must.Equal(http.StatusTeapot, response.StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, response.StatusCode)
 		})
 	})
 
@@ -660,7 +658,7 @@ func TestMount_spec(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, `/path0/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
 
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 
@@ -673,7 +671,7 @@ func TestMount_spec(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, `/path1/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 
@@ -686,7 +684,7 @@ func TestMount_spec(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, `/path2/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 
@@ -699,7 +697,7 @@ func TestMount_spec(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, `/test/this/out/123`, nil)
 			serveMux.Get(t).ServeHTTP(w, r)
-			t.Must.Equal(http.StatusTeapot, w.Result().StatusCode)
+			assert.Must(t).Equal(http.StatusTeapot, w.Result().StatusCode)
 		})
 	})
 }
@@ -725,11 +723,11 @@ func TestMountPoint(tt *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, string(mountPoint)+remainingPath, nil)
 	gotHandler.ServeHTTP(rr, req)
-	t.Must.Equal(http.StatusTeapot, rr.Code)
-	t.Must.NotNil(gotReq)
+	assert.Must(t).Equal(http.StatusTeapot, rr.Code)
+	assert.Must(t).NotNil(gotReq)
 	rc, ok := internal.RoutingContext.Lookup(gotReq.Context())
-	t.Must.True(ok)
-	t.Must.Equal(remainingPath, rc.PathLeft)
+	assert.True(t, ok)
+	assert.Must(t).Equal(remainingPath, rc.PathLeft)
 }
 
 func TestWithMiddleware_order(t *testing.T) {
