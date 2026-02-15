@@ -643,3 +643,53 @@ func (m *Memory) LookupTx(ctx context.Context) (*MemoryTx, bool) {
 	tx, ok := ctx.Value(m.ctxKeyMemoryTx()).(*MemoryTx)
 	return tx, ok
 }
+
+func (r *Repository[ENT, ID]) Batch(ctx context.Context) crud.Batch[ENT] {
+
+	return &batch[ENT, ID]{
+		repository: r,
+		context:    ctx,
+	}
+}
+
+type batch[ENT, ID any] struct {
+	repository *Repository[ENT, ID]
+	context    context.Context
+
+	values []ENT
+	closed bool
+	clserr error
+}
+
+func (b *batch[ENT, ID]) Add(v ENT) error {
+	if b.closed {
+		return fmt.Errorf("batch is already closed")
+	}
+	if err := b.context.Err(); err != nil {
+		return err
+	}
+	b.values = append(b.values, v)
+	return nil
+}
+
+func (b *batch[ENT, ID]) Close() (rErr error) {
+	if b.closed {
+		return b.clserr
+	}
+	b.closed = true
+	defer func() { b.clserr = rErr }()
+	if err := b.context.Err(); err != nil {
+		return err
+	}
+	ctx, err := b.repository.BeginTx(b.context)
+	if err != nil {
+		return err
+	}
+	defer comproto.FinishOnePhaseCommit(&rErr, b.repository, ctx)
+	for _, v := range b.values {
+		if err := b.repository.Create(ctx, &v); err != nil {
+			return err
+		}
+	}
+	return nil
+}

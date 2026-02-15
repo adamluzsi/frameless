@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/internal/spechelper"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud/crudtest"
 	"go.llib.dev/frameless/port/crud/extid"
 	"go.llib.dev/frameless/port/option"
@@ -42,6 +43,8 @@ type Config[ENT, ID any] struct {
 	// instead during the method call.
 	// For e.g.: crud.ByIDsFinder[ENT, ID]
 	LazyNotFoundError bool
+
+	OnePhaseCommit comproto.OnePhaseCommitProtocol
 }
 
 func (c *Config[ENT, ID]) Init() {
