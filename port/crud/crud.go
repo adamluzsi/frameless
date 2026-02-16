@@ -121,6 +121,9 @@ type Batch[ENT any] interface {
 	// When called, it ensures any pending operations to add entities to a resource are completed smoothly.
 	// Cancellation should be handled through the context you provided at the start.
 	// Ideally, nn error received during Close should represent an atomic failure for the whole batch.
+	//
+	// Calling Close is mandatory, and should be at least deferred.
+	// Calling Close multiple times should be idempotent.
 	io.Closer
 }
 

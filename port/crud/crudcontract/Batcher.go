@@ -57,8 +57,20 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 		spechelper.TryCleanup(t, c.MakeContext(t), subject)
 	})
 
-	s.Then("it should succeed with the batch operation", func(t *testcase.T) {
+	s.Then(`it should succeed with the batch operation`, func(t *testcase.T) {
 		assert.NoError(t, act(t))
+	})
+
+	s.Test(`Batch#Close is idempotent and repeatable`, func(t *testcase.T) {
+		batch := subject.Batch(ctxVar.Get(t))
+
+		for _, v := range values.Get(t) {
+			assert.NoError(t, batch.Add(v))
+		}
+
+		t.Random.Repeat(3, 7, func() {
+			assert.NoError(t, batch.Close())
+		})
 	})
 
 	if AllFinderOK {
@@ -208,7 +220,7 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 
 	if c.OnePhaseCommit != nil {
 		s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
-			s.Test(`BeginTx+CommitTx, Batch#Add & Batch#Close succeed`, func(t *testcase.T) {
+			s.Test(`BeginTx -> Batch#Add -> Batch#Close -> CommitTx = value is persisted`, func(t *testcase.T) {
 				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
 				assert.Must(t).NoError(err)
 
@@ -225,63 +237,47 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 						assert.NoError(t, err)
 						assert.NoError(t, c.IDA.Set(&got, zeroID))
 						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NotEqual(t, exp, got)
+						assert.Equal(t, exp, got)
 					}
 				}
 			})
 
-			s.Test(`Rollback during Batch#Add will yield error`, func(t *testcase.T) {
+			s.Test(`BeginTx -> Batch#Add -> Batch#Close -> RollbackTx = value is not persisted`, func(t *testcase.T) {
 				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
 				assert.Must(t).NoError(err)
 
 				batch := subject.Batch(tx)
-
-				val := c.MakeEntity(t)
-				assert.NoError(t, batch.Add(val))
-				assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
-
-				// we will encounter an error
-				assert.AnyOf(t, func(a *assert.A) {
-					// either during Add
-					a.Case(func(t testing.TB) { assert.Error(t, batch.Add(c.MakeEntity(t))) })
-					// or during Close
-					a.Case(func(t testing.TB) { assert.Error(t, batch.Close()) })
-				})
-
-				if AllFinderOK {
-					var zeroID ID
-					assert.NoError(t, c.IDA.Set(&val, zeroID))
-					for got, err := range allF.FindAll(c.MakeContext(t)) {
-						assert.NoError(t, err)
-						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NotEqual(t, val, got)
-					}
-				}
-			})
-
-			s.Test(`Rollback after Batch will undo the adding`, func(t *testcase.T) {
-				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
-				assert.Must(t).NoError(err)
-
-				batch := subject.Batch(tx)
-
-				val := c.MakeEntity(t)
-				assert.NoError(t, batch.Add(val))
-				assert.NoError(t, batch.Add(c.MakeEntity(t)))
+				exp := c.MakeEntity(t)
+				assert.NoError(t, batch.Add(exp))
 				assert.NoError(t, batch.Close())
 				assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
 
 				if AllFinderOK {
 					var zeroID ID
-					assert.NoError(t, c.IDA.Set(&val, zeroID))
+					assert.NoError(t, c.IDA.Set(&exp, zeroID))
 					for got, err := range allF.FindAll(c.MakeContext(t)) {
 						assert.NoError(t, err)
 						assert.NoError(t, c.IDA.Set(&got, zeroID))
 						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NotEqual(t, val, got)
+						assert.NotEqual(t, exp, got)
 					}
 				}
+			})
+
+			s.Test(`finished transaction casuses issue for batch adding`, func(t *testcase.T) {
+				tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+				assert.Must(t).NoError(err)
+
+				t.Log("given the transaction is finished prior to the batch call")
+				assert.NoError(t, random.Pick(t.Random, c.OnePhaseCommit.CommitTx, c.OnePhaseCommit.RollbackTx)(tx))
+
+				batch := subject.Batch(tx)
+				defer batch.Close() // to ensure that batch is closed
+
+				assert.AnyOf(t, func(a *assert.A) {
+					a.Case(func(t testing.TB) { assert.Error(t, batch.Add(c.MakeEntity(t))) })
+					a.Case(func(t testing.TB) { assert.Error(t, batch.Close()) })
+				})
 			})
 		})
 	}
