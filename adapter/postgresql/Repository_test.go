@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -110,7 +111,7 @@ func TestRepository_mappingHasSchemaInTableName(t *testing.T) {
 		Connection: cm,
 	}
 
-	crudcontract.Creator[Entity, string](subject, crudcontract.Config[Entity, string]{
+	crudcontract.Creator(subject, crudcontract.Config[Entity, string]{
 		SupportIDReuse:  true,
 		SupportRecreate: true,
 	}).Test(t)
@@ -126,6 +127,38 @@ func TestRepository_implementsCacheEntityRepository(t *testing.T) {
 	}
 
 	cachecontract.EntityRepository[Entity, string](repo, cm).Test(t)
+}
+
+func TestRepository_implementscrudBatcher(t *testing.T) {
+	cm := GetConnection(t)
+	MigrateEntity(t, cm)
+
+	repo := postgresql.Repository[Entity, string]{
+		Mapping:    EntityMapping(),
+		Connection: cm,
+	}
+
+	crudcontract.Batcher(repo, crudcontract.Config[Entity, string]{
+		OnePhaseCommit: cm,
+	}).Test(t)
+
+	time.Sleep(time.Second)
+}
+
+func TestConnection_nRollbackTx(tt *testing.T) {
+	t := testcase.NewT(tt)
+
+	cm := GetConnection(tt)
+	MigrateEntity(tt, cm)
+
+	ctx := context.Background()
+	ctx, err := cm.BeginTx(ctx)
+	assert.NoError(tt, err)
+
+	assert.NoError(tt, cm.RollbackTx(ctx))
+	t.Random.Repeat(3, 7, func() {
+		cm.RollbackTx(ctx)
+	})
 }
 
 func TestRepository_canImplementCacheHitRepository(t *testing.T) {
