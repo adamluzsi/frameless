@@ -2314,6 +2314,55 @@ func TestGroup(t *testing.T) {
 			})
 		})
 
+		s.When("a nested Go call is made within the initial Go call", func(s *testcase.Spec) {
+			p1 := let.Phaser(s)
+			p2 := let.Phaser(s)
+
+			fn.Let(s, func(t *testcase.T) func(context.Context) error {
+				return func(ctx context.Context) error {
+					p1.Get(t).Wait()
+
+					group.Get(t).Go(t.Context(), func(ctx context.Context) error {
+						p2.Get(t).Wait()
+						return nil
+					})
+					return nil
+				}
+			})
+
+			s.Then("a #Wait that started to wait initially on the first Go call will also wait for the nested Go", func(t *testcase.T) {
+				act(t)
+
+				t.Log("given the main Go call already got CPU time")
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, p1.Get(t).Len(), 1)
+				})
+
+				t.Log("and we start to wait on the group")
+				w1 := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					group.Get(t).Wait()
+				})
+
+				t.Log("and then the nested Go call is started")
+				p1.Get(t).Finish()
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, p2.Get(t).Len(), 1)
+				})
+
+				t.Log("then the wait will remain waiting due to the nested Go call")
+				w2 := assert.NotWithin(t, timeout, func(ctx context.Context) {
+					w1.Wait()
+				})
+
+				t.Log("but when the nested Go call finish up too")
+				p2.Get(t).Finish()
+
+				t.Log("then the group Wait finally finishes up")
+				assert.Within(t, timeout, func(ctx context.Context) {
+					w2.Wait()
+				})
+			})
+		})
 		s.When("a function is already running in the background", func(s *testcase.Spec) {
 			othCancelled := let.VarOf(s, false)
 

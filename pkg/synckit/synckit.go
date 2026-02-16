@@ -557,6 +557,20 @@ func (g *Group) Len() int {
 
 const ErrGoexit errorkitlite.Error = "ErrGoexit"
 
+// Go calls fn in a new goroutine and adds that task to the [Group].
+// When fn returns, the task is removed from the Group.
+//
+// If the Group is empty, Go must happen before a [Group.Wait].
+// Typically, this simply means Go is called to start tasks before Wait is called.
+// If the Group is not empty, Go may happen at any time.
+// This means a goroutine started by Go may itself call Go.
+// If a Group is reused to wait for several independent sets of tasks,
+// new Go calls must happen after all previous Wait calls have returned.
+//
+// In the terminology of [the Go memory model], the return from fn
+// "synchronizes before" the return of any Wait call that it unblocks.
+//
+// [the Go memory model]: https://go.dev/ref/mem
 func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) {
 	if ctx == nil {
 		ctx = context.Background()
