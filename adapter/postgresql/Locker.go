@@ -104,21 +104,24 @@ type lockerContext struct {
 	Connection Connection
 	cancel     func()
 	ctx        context.Context
+
+	uerr error
 }
 
-func (lck *lockerContext) Unclock(ctx context.Context) (rerr error) {
+func (lck *lockerContext) Unclock(ctx context.Context) error {
 	lck.onUnlock.Do(func() {
 		if err := lck.tx.Rollback(lck.ctx); err != nil {
 			if driver.ErrBadConn == err && ctx.Err() != nil {
-				rerr = ctx.Err()
+				lck.uerr = ctx.Err()
+
 				return
 			}
-			rerr = err
+			lck.uerr = err
 			return
 		}
 		lck.cancel()
 	})
-	return rerr
+	return lck.uerr
 }
 
 func (l Locker) lockContext(ctx context.Context, tx pgx.Tx) context.Context {
