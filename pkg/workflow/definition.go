@@ -10,8 +10,14 @@ import (
 
 type Definition interface {
 	Participant
-	minDefinition
-	Visitable
+	JSONSerialisable
+	validate.Validatable
+
+	// definition communicates clearly that Definition is not something that can be implemented outside of the workflow engine.
+	// components are provided to build a wide range of possible definitions, through composition,
+	// but creating one outside of the framework would require the runtime to know how to traverse that definition,
+	// and how to create checkpoints to it.
+	definition()
 }
 
 var _ minDefinition = (Definition)(nil)
@@ -24,6 +30,8 @@ type minDefinition interface {
 type Sequence []Definition
 
 var _ Definition = (*Sequence)(nil)
+
+func (Sequence) definition() {}
 
 func (seq Sequence) Execute(ctx context.Context, s *State) error {
 	for _, participant := range seq {
