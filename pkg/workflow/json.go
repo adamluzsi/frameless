@@ -104,15 +104,15 @@ func (p *Process) UnmarshalJSON(data []byte) error {
 
 var _ JSONSerialisable = (*Concurrence)(nil)
 
-func (s Concurrence) MarshalJSON() ([]byte, error) {
-	return json.Marshal(jsonkit.Array[Definition](s))
+func (d Concurrence) MarshalJSON() ([]byte, error) {
+	return json.Marshal(jsonkit.Array[Definition](d))
 }
 
-func (s *Concurrence) UnmarshalJSON(data []byte) error {
+func (d *Concurrence) UnmarshalJSON(data []byte) error {
 	var dto jsonkit.Array[Definition]
 	if err := json.Unmarshal(data, &dto); err != nil {
 		return err
 	}
-	*s = Concurrence(dto)
+	*d = Concurrence(dto)
 	return nil
 }

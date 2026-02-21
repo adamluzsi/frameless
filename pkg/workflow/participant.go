@@ -24,6 +24,7 @@ func ContextWithParticipants(ctx context.Context, pr ParticipantRepository) cont
 	return ctxConfigH.ContextWith(ctx, c)
 }
 
+
 func PID[STR ~string](s STR) *ParticipantID {
 	var pid = ParticipantID(s)
 	return &pid

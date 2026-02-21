@@ -12,12 +12,18 @@ import (
 
 // Runtime is a workflow engine runtime instance that contains the runtime dependencies for executing process definitions.
 type Runtime struct {
-	Participants    ParticipantRepository
+	Participants ParticipantRepository
+	Conditions   ConditionRepository
+
 	TemplateFuncMap TemplateFuncMap
 }
 
 type ParticipantRepository interface {
 	crud.ByIDFinder[Participant, ParticipantID]
+}
+
+type ConditionRepository interface {
+	crud.ByIDFinder[Condition, ConditionID]
 }
 
 func lookupParticipant(pr ParticipantRepository, ctx context.Context, id ParticipantID) (Participant, bool, error) {
@@ -30,6 +36,7 @@ func lookupParticipant(pr ParticipantRepository, ctx context.Context, id Partici
 
 func (r Runtime) Context(ctx context.Context) context.Context {
 	ctx = ContextWithParticipants(ctx, r.Participants)
+	ctx = ContextWithConditions(ctx, r.Conditions)
 	ctx = ContextWithFuncMap(ctx, r.TemplateFuncMap)
 	return ctx
 }

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/validate"
 )
 
 type Definition interface {
-	Participant
 	JSONSerialisable
 	validate.Validatable
 
@@ -18,7 +18,22 @@ type Definition interface {
 	// but creating one outside of the framework would require the runtime to know how to traverse that definition,
 	// and how to create checkpoints to it.
 	definition()
+
+	// Execute(ctx Context, s *State) error
 }
+
+type Context interface {
+	context.Context
+	workflowContext()
+}
+
+type wfContext struct {
+	context.Context
+	path  []string
+	cache synckit.Map[string, any]
+}
+
+func (*wfContext) workflowContext() {}
 
 var _ minDefinition = (Definition)(nil)
 
@@ -40,17 +55,6 @@ func (seq Sequence) Execute(ctx context.Context, s *State) error {
 		}
 	}
 	return nil
-}
-
-func (seq Sequence) AcceptVisitor(root DefinitionPath, v Visitor) {
-	var path = root.In("sequence")
-	v.Visit(path, &seq)
-	for i, participant := range seq {
-		if participant == nil {
-			continue
-		}
-		participant.AcceptVisitor(path.In(fmt.Sprintf("[%d]", i)), v)
-	}
 }
 
 func (seq Sequence) Validate(ctx context.Context) error {
@@ -87,17 +91,6 @@ func (d If) Execute(ctx context.Context, p *State) error {
 	return nil
 }
 
-func (d If) AcceptVisitor(root DefinitionPath, v Visitor) {
-	var path = root.In("if")
-	v.Visit(path, &d)
-	if d.Then != nil {
-		d.Then.AcceptVisitor(path.In("then"), v)
-	}
-	if d.Else != nil {
-		d.Else.AcceptVisitor(path.In("else"), v)
-	}
-}
-
 func (d If) Validate(ctx context.Context) error {
 	if err := vd(ctx, "if.cond", d.Cond, true); err != nil {
 		return err
@@ -115,52 +108,77 @@ type Concurrence []Definition
 
 var _ Definition = (*Concurrence)(nil)
 
-func (spl *Concurrence) Execute(ctx context.Context, s *State) error {
-	if err := spl.Validate(ctx); err != nil {
+func (d *Concurrence) Execute(ctx context.Context, s *State) error {
+	if err := d.Validate(ctx); err != nil {
 		return err
 	}
-	if len(*spl) == 0 {
+	if len(*d) == 0 {
 		return nil
 	}
 	var tasks []tasker.Task
-	for _, pdef := range *spl {
-		tasks = append(tasks, spl.toTask(pdef, s))
+	for _, pdef := range *d {
+		tasks = append(tasks, d.toTask(pdef, s))
 	}
 
 	return nil
 }
 
-func (spl *Concurrence) toTask(pdef Definition, s *State) tasker.Task {
+func (d *Concurrence) toTask(pdef Definition, s *State) tasker.Task {
 	return func(ctx context.Context) error {
 		return pdef.Execute(ctx, s)
 	}
 }
 
-func (spl *Concurrence) Validate(ctx context.Context) error {
-	if spl == nil {
-		return fmt.Errorf("nil %T", spl)
+func (d *Concurrence) Validate(ctx context.Context) error {
+	if d == nil {
+		return fmt.Errorf("nil %T", d)
 	}
-	for i, pdef := range *spl {
+	for i, pdef := range *d {
 		if pdef == nil {
-			return fmt.Errorf("nil PDEF at %T[%d]", *spl, i)
+			return fmt.Errorf("nil PDEF at %T[%d]", *d, i)
 		}
 		if err := pdef.Validate(ctx); err != nil {
-			return fmt.Errorf("error with %T[%d]: %w", *spl, i, err)
+			return fmt.Errorf("error with %T[%d]: %w", *d, i, err)
 		}
 	}
 	return nil
 }
 
-func (spl *Concurrence) AcceptVisitor(p DefinitionPath, v Visitor) {
-	if spl == nil {
-		return
+type ExecuteParticipant struct {
+	ID        ParticipantID `json:"id"`
+	Arguments []VariableKey `json:"args,omitempty"`
+	Out       []VariableKey `json:"res,omitempty"`
+}
+
+func (d *ExecuteParticipant) Execute(ctx context.Context, s *State) error {
+
+	if err := pid.Validate(ctx); err != nil {
+		return err
 	}
-	p = p.In("split")
-	v.Visit(p, spl)
-	for i, def := range *spl {
-		if def == nil {
-			continue
-		}
-		def.AcceptVisitor(p.In(fmt.Sprintf("[%d]", i)), v)
+	c, _ := ctxConfigH.Lookup(ctx)
+	p, found, err := lookupParticipant(c.Participants, ctx, pid)
+	if err != nil {
+		return err
 	}
+	if !found {
+		return ErrParticipantNotFound{PID: pid}
+	}
+	return p.Execute(ctx, s)
+
+}
+
+func (d *ExecuteParticipant) Validate(ctx context.Context) error {
+	pid := d.ID
+	if len(pid) == 0 {
+		return validate.Error{Cause: fmt.Errorf("empty participant ID")}
+	}
+	c, _ := ctxConfigH.Lookup(ctx)
+	p, ok, err := lookupParticipant(c.Participants, ctx, pid)
+	if err != nil {
+		return err
+	}
+	if !ok || p == nil {
+		return ErrParticipantNotFound{PID: pid}
+	}
+	return nil
 }

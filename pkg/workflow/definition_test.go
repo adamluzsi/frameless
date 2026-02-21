@@ -219,7 +219,7 @@ func TestIf(t *testing.T) {
 	})
 }
 
-func TestParticipantID(t *testing.T) {
+func TestCallParticipant(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	var (
@@ -229,6 +229,18 @@ func TestParticipantID(t *testing.T) {
 
 	pid := let.Var(s, func(t *testcase.T) workflow.ParticipantID {
 		return workflow.ParticipantID("stub")
+	})
+
+	var (
+		args = let.VarOf[[]workflow.VariableKey](s, nil)
+
+	)
+	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
+		return &workflow.ExecuteParticipant{
+			ID:        pid.Get(t),
+			Arguments: args.Get(t),
+			Return:    returns.Get(t),
+		}
 	})
 
 	s.Describe("#Execute", func(s *testcase.Spec) {

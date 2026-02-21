@@ -42,10 +42,12 @@ func (s *State) Merge(oth *State) {
 }
 
 type Variables struct {
-	datastruct.Map[string, any]
+	datastruct.Map[VariableKey, any]
 }
 
-var _ datastruct.KeyValueStore[string, any] = (*Variables)(nil)
+type VariableKey string
+
+var _ datastruct.KeyValueStore[VariableKey, any] = (*Variables)(nil)
 
 func (vs Variables) MarshalJSON() ([]byte, error) {
 	return json.Marshal(vs.Map)

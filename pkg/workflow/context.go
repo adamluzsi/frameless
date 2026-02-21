@@ -13,6 +13,7 @@ type ctxConfigHKey struct{}
 
 type ctxConfig struct {
 	Participants ParticipantRepository
+	Conditions   ConditionRepository
 	FuncMap      TemplateFuncMap
 }
 

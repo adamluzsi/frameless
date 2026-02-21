@@ -12,6 +12,15 @@ type Condition interface {
 	minDefinition
 }
 
+func ContextWithConditions(ctx context.Context, cr ConditionRepository) context.Context {
+	if cr == nil {
+		return ctx
+	}
+	c, _ := ctxConfigH.Lookup(ctx)
+	c.Conditions = cr
+	return ctxConfigH.ContextWith(ctx, c)
+}
+
 func CID[STR ~string](s STR) *ConditionID {
 	var cid = ConditionID(s)
 	return &cid
