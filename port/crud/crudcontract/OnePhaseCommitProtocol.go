@@ -130,7 +130,7 @@ func specOPCPCRD[ENT, ID any](s *testcase.Spec, subject crd[ENT, ID], manager co
 		assert.Must(t).NoError(err)
 		p := pointer.Of(c.MakeEntity(t))
 		assert.Must(t).NoError(subject.Create(ctx, p))
-		id, _ := lookupID[ID](c, *p)
+		id, _ := lookupNonZeroID[ID](c, *p)
 		assert.Must(t).NoError(manager.RollbackTx(ctx))
 
 		_, _, err = subject.FindByID(ctx, id)
@@ -411,7 +411,7 @@ func specOPCPSaver[ENT, ID any](s *testcase.Spec, subject crud.Saver[ENT], manag
 			assert.Must(t).NoError(err)
 			p := pointer.Of(c.MakeEntity(t))
 			assert.Must(t).NoError(subject.Save(ctx, p))
-			id, _ := lookupID[ID](c, *p)
+			id, _ := lookupNonZeroID[ID](c, *p)
 			assert.Must(t).NoError(manager.RollbackTx(ctx))
 
 			_, _, err = subject.FindByID(ctx, id)

@@ -122,6 +122,7 @@ func getRepositorySpecsForT[Entity any, ID comparable](
 		crudcontract.Finder[Entity, ID](subject, crudConfig),
 		crudcontract.Updater[Entity, ID](subject, crudConfig),
 		crudcontract.Deleter[Entity, ID](subject, crudConfig),
+		crudcontract.Batcher[Entity, ID, crud.Batch[Entity]](subject, crudConfig),
 		crudcontract.OnePhaseCommitProtocol[Entity, ID](subject, subject.EventLog, crudConfig),
 		cachecontract.EntityRepository[Entity, ID](subject, subject.EventLog, cacheConfig),
 		metacontract.MetaAccessor[int](subject.EventLog, metaConfig),

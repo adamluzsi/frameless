@@ -37,7 +37,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 		s.When(`entity absent from the resource`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				id, ok := lookupID[ID](c, *ptr.Get(t))
+				id, ok := lookupNonZeroID[ID](c, *ptr.Get(t))
 				if !ok {
 					return
 				}
@@ -47,7 +47,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			s.Then(`it will be created`, func(t *testcase.T) {
 				assert.Must(t).NoError(act(t))
 
-				entID, ok := lookupID[ID](c, *ptr.Get(t))
+				entID, ok := lookupNonZeroID[ID](c, *ptr.Get(t))
 				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
@@ -61,7 +61,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 		s.When(`entity has an ext id that no longer points to a findable record`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				if _, ok := lookupID[ID](c, *ptr.Get(t)); ok {
+				if _, ok := lookupNonZeroID[ID](c, *ptr.Get(t)); ok {
 					return // OK, ID found
 				}
 				ctx := c.MakeContext(t)
@@ -72,7 +72,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			s.Then(`it will be created`, func(t *testcase.T) {
 				assert.Must(t).NoError(act(t))
 
-				entID, ok := lookupID[ID](c, *ptr.Get(t))
+				entID, ok := lookupNonZeroID[ID](c, *ptr.Get(t))
 				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
@@ -94,7 +94,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {
 				assert.Must(t).NoError(act(t))
 
-				entID, ok := lookupID[ID](c, *ptr.Get(t))
+				entID, ok := lookupNonZeroID[ID](c, *ptr.Get(t))
 				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
@@ -121,7 +121,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 			s.Then(`it will be updated with the new version`, func(t *testcase.T) {
 				assert.Must(t).NoError(act(t))
 
-				entID, ok := lookupID[ID](c, *ptr.Get(t))
+				entID, ok := lookupNonZeroID[ID](c, *ptr.Get(t))
 				assert.True(t, ok, `entity should have id`)
 
 				t.Eventually(func(t *testcase.T) {
@@ -196,7 +196,7 @@ func Saver[ENT, ID any](subject crud.Saver[ENT], opts ...Option[ENT, ID]) contra
 
 					if ByIDFinderOK {
 						t.Eventually(func(t *testcase.T) {
-							got, found, err := byIDF.FindByID(tx, id)
+							got, found, err := byIDF.FindByID(c.MakeContext(t), id)
 							assert.NoError(t, err)
 							assert.True(t, found)
 							assert.Equal(t, *ptr, got)

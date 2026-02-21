@@ -87,7 +87,7 @@ func ensureExistingEntity[ENT, ID any](tb testing.TB, c Config[ENT, ID], resourc
 
 	ctx := c.MakeContext(tb)
 
-	if id, ok := lookupID[ID, ENT](c, ent); ok {
+	if id, ok := lookupNonZeroID[ID, ENT](c, ent); ok {
 
 		if finder, canFindByID := resource.(crud.ByIDFinder[ENT, ID]); canFindByID {
 			_, found, err := finder.FindByID(ctx, id)
@@ -109,7 +109,7 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 	assert.NotNil(tb, mk)
 	ent := mk()
 	assert.NotEmpty(tb, ent)
-	if id, ok := lookupID[ID](c, ent); ok {
+	if id, ok := lookupNonZeroID[ID](c, ent); ok {
 		if finder, ok := resource.(crud.ByIDFinder[ENT, ID]); ok {
 			_, found, err := finder.FindByID(c.MakeContext(tb), id)
 			if err == nil && found {
@@ -133,13 +133,16 @@ func makeEntity[ENT, ID any](tb testing.TB, FailNow func(), c Config[ENT, ID], r
 	return *new(ENT)
 }
 
-func lookupID[ID, ENT any](c Config[ENT, ID], ent ENT) (ID, bool) {
+// lookupNonZeroID looks up the ID and report whether it is zero or not
+func lookupNonZeroID[ID, ENT any](c Config[ENT, ID], ent ENT) (ID, bool) {
 	id, ok := c.IDA.Lookup(ent)
 	if !ok {
 		return id, false
 	}
-	// int is an accepted zero value due to many system stores data under indexes, which are starting from zero.
-	if zerokit.IsZero(id) && reflect.ValueOf(id).CanInt() {
+	if zerokit.IsZero(id) {
+		ok = false
+	}
+	if !ok && reflect.ValueOf(id).CanInt() {
 		ok = true
 	}
 	return id, ok
@@ -154,7 +157,7 @@ var _tryDeleteAllVar = testcase.Var[bool]{
 	Init: func(t *testcase.T) bool { return false }}
 
 func tryDelete[ENT, ID any](t *testcase.T, c Config[ENT, ID], resource any, v ENT) {
-	id, ok := lookupID(c, v)
+	id, ok := lookupNonZeroID(c, v)
 	if !ok {
 		return
 	}
@@ -193,7 +196,7 @@ func (c Config[ENT, ID]) ModifyEntity(tb testing.TB, ptr *ENT) {
 		c.ChangeEntity(tb, ptr)
 		return
 	}
-	id, _ := lookupID[ID](c, *ptr)
+	id, _ := lookupNonZeroID[ID](c, *ptr)
 	*ptr = random.Unique(func() ENT { return c.MakeEntity(tb) }, *ptr)
 	setID(tb, c, ptr, id)
 }
@@ -249,7 +252,7 @@ func shouldStore[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, pt
 
 func shouldDelete[ENT, ID any](tb testing.TB, c Config[ENT, ID], resource any, ctx context.Context, v ENT) {
 	tb.Helper()
-	id, ok := lookupID(c, v)
+	id, ok := lookupNonZeroID(c, v)
 	if !ok {
 		return
 	}

@@ -32,6 +32,7 @@ var _ = []contract.Contract{
 	crudcontract.AllFinder[EntType, IDType](nil),
 	crudcontract.QueryOne[EntType, IDType](nil, "", nil),
 	crudcontract.QueryMany[EntType, IDType](nil, "", nil),
+	crudcontract.Batcher[EntType, IDType, crud.Batch[EntType]](nil),
 }
 
 func contracts[ENT, ID any](resource Resource[ENT, ID], cm comproto.OnePhaseCommitProtocol, opts ...crudcontract.Option[ENT, ID]) []contract.Contract {
@@ -47,6 +48,7 @@ func contracts[ENT, ID any](resource Resource[ENT, ID], cm comproto.OnePhaseComm
 		crudcontract.ByIDDeleter[ENT, ID](resource, opts...),
 		crudcontract.AllDeleter[ENT, ID](resource, opts...),
 		crudcontract.AllFinder[ENT, ID](resource, opts...),
+		crudcontract.Batcher[ENT, ID](resource, opts...),
 		crudcontract.OnePhaseCommitProtocol[ENT, ID](resource, cm, opts...),
 		// crudcontracts.Purger[ENT, ID](resource, opts...),
 	}
@@ -61,6 +63,7 @@ type Resource[ENT, ID any] interface {
 	crud.AllFinder[ENT]
 	crud.ByIDDeleter[ID]
 	crud.AllDeleter
+	crud.Batcher[ENT, crud.Batch[ENT]]
 	spechelper.CRD[ENT, ID]
 	// crud.Purger
 }
@@ -83,6 +86,7 @@ func Test_memory(t *testing.T) {
 		},
 		SupportIDReuse:  true,
 		SupportRecreate: true,
+		OnePhaseCommit:  m,
 	}
 
 	testcase.RunSuite(s, contracts[Entity, ID](resource, m, config)...)

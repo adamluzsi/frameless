@@ -179,7 +179,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 
 						if ByIDFinderOK {
 							t.Eventually(func(t *testcase.T) {
-								_, found, err := byIDF.FindByID(tx, id)
+								_, found, err := byIDF.FindByID(c.MakeContext(t), id)
 								assert.NoError(t, err)
 								assert.False(t, found)
 							})
@@ -210,7 +210,7 @@ func ByIDDeleter[ENT, ID any](subject crud.ByIDDeleter[ID], opts ...Option[ENT, 
 
 						if ByIDFinderOK {
 							t.Eventually(func(t *testcase.T) {
-								_, found, err := byIDF.FindByID(tx, id)
+								_, found, err := byIDF.FindByID(c.MakeContext(t), id)
 								assert.NoError(t, err)
 								assert.True(t, found)
 							})
@@ -352,7 +352,7 @@ func AllDeleter[ENT, ID any](subject crud.AllDeleter, opts ...Option[ENT, ID]) c
 
 						if ByIDFinderOK {
 							t.Eventually(func(t *testcase.T) {
-								_, found, err := byIDF.FindByID(tx, id)
+								_, found, err := byIDF.FindByID(c.MakeContext(t), id)
 								assert.NoError(t, err)
 								assert.False(t, found)
 							})
@@ -383,7 +383,7 @@ func AllDeleter[ENT, ID any](subject crud.AllDeleter, opts ...Option[ENT, ID]) c
 
 						if ByIDFinderOK {
 							t.Eventually(func(t *testcase.T) {
-								_, found, err := byIDF.FindByID(tx, id)
+								_, found, err := byIDF.FindByID(c.MakeContext(t), id)
 								assert.NoError(t, err)
 								assert.True(t, found)
 							})

@@ -71,7 +71,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 		if c.SupportIDReuse && byIDDeleterOK {
 			s.When(`entity ID is provided ahead of time`, func(s *testcase.Spec) {
 				s.Before(func(t *testcase.T) {
-					if _, hasID := lookupID(c, *ptr.Get(t)); hasID {
+					if _, hasID := lookupNonZeroID(c, *ptr.Get(t)); hasID {
 						return
 					}
 
@@ -153,7 +153,6 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 				e := c.MakeEntity(t)
 				c.Helper().Create(t, subject, c.MakeContext(t), &e)
 				id := c.Helper().HasID(t, &e)
-
 				assert.Must(t).Equal(e, *c.Helper().IsPresent(t, byIDF, c.MakeContext(t), id))
 			})
 		}
@@ -209,7 +208,7 @@ func Creator[ENT, ID any](subject crud.Creator[ENT], opts ...Option[ENT, ID]) co
 
 					if ByIDFinderOK {
 						t.Eventually(func(t *testcase.T) {
-							got, found, err := byIDF.FindByID(tx, id)
+							got, found, err := byIDF.FindByID(c.MakeContext(t), id)
 							assert.NoError(t, err)
 							assert.True(t, found)
 							assert.Equal(t, *ptr, got)

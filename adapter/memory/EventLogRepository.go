@@ -8,7 +8,9 @@ import (
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/zerokit"
+	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
@@ -261,6 +263,54 @@ func (s *EventLogRepository[ENT, ID]) Save(ctx context.Context, ptr *ENT) (rErr 
 	}
 
 	return nil
+}
+
+func (s *EventLogRepository[ENT, ID]) Batch(ctx context.Context) crud.Batch[ENT] {
+	return &EventLogRepositoryBatch[ENT, ID]{C: ctx, R: s, O: s.EventLog}
+}
+
+type EventLogRepositoryBatch[ENT, ID any] struct {
+	C context.Context
+	R *EventLogRepository[ENT, ID]
+	O comproto.OnePhaseCommitProtocol
+
+	vs       []ENT
+	closed   bool
+	_finish  sync.Once
+	closeErr error
+}
+
+func (b *EventLogRepositoryBatch[ENT, ID]) Add(v ENT) error {
+	if b.closed {
+		return fmt.Errorf("closed already")
+	}
+	if err := b.C.Err(); err != nil {
+		return err
+	}
+	b.vs = append(b.vs, v)
+	return nil
+}
+
+func (b *EventLogRepositoryBatch[ENT, ID]) Close() error {
+	return synckit.Init(&b._finish, &b.closeErr, func() (rErr error) {
+		ctx := b.C
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		ctx, err := b.O.BeginTx(ctx)
+		if err != nil {
+			return err
+		}
+		defer comproto.FinishOnePhaseCommit(&rErr, b.R, ctx)
+
+		for _, v := range b.vs {
+			if err := b.R.Create(ctx, &v); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 func (s *EventLogRepository[ENT, ID]) BeginTx(ctx context.Context) (context.Context, error) {

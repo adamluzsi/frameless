@@ -55,6 +55,9 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 
 	s.Before(func(t *testcase.T) {
 		spechelper.TryCleanup(t, c.MakeContext(t), subject)
+		// since we don't know what data we puked into the system by ID
+		// we just try to clean everything up.
+		t.Defer(spechelper.TryCleanup, t, c.MakeContext(t), subject)
 	})
 
 	s.Then(`it should succeed with the batch operation`, func(t *testcase.T) {
@@ -158,7 +161,7 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 		s.When(`entity ID is provided ahead of time`, func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
 				for i, value := range values.Get(t) {
-					if _, hasID := lookupID(c, value); hasID {
+					if _, hasID := lookupNonZeroID(c, value); hasID {
 						continue
 					}
 
@@ -204,15 +207,28 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 				s.Then(`the persisted objects are retrieved with #FindAll`, func(t *testcase.T) {
 					assert.Must(t).NoError(act(t))
 
-					gotVS, err := iterkit.CollectE(allF.FindAll(c.MakeContext(t)))
-					assert.NoError(t, err)
+					t.Eventually(func(t *testcase.T) {
+						for _, exp := range values.Get(t) {
+							id := c.IDA.Get(exp)
+							// if zerokit.IsZero(id) {
+							// 	continue
+							// }
 
-					for _, value := range values.Get(t) {
-						id := c.IDA.Get(value)
-						assert.OneOf(t, gotVS, func(t testing.TB, v ENT) {
-							assert.Equal(t, id, c.IDA.Get(v))
-						})
-					}
+							assert.AnyOf(t, func(a *assert.A) {
+								for got, err := range allF.FindAll(c.MakeContext(t)) {
+									assert.NoError(t, err)
+
+									a.Case(func(t testing.TB) {
+										assert.Equal(t, id, c.IDA.Get(got))
+									})
+
+									if a.OK() {
+										break
+									}
+								}
+							})
+						}
+					})
 				})
 			}
 		})
@@ -233,12 +249,14 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 				if AllFinderOK {
 					var zeroID ID
 					assert.NoError(t, c.IDA.Set(&exp, zeroID))
-					for got, err := range allF.FindAll(c.MakeContext(t)) {
-						assert.NoError(t, err)
-						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.Equal(t, exp, got)
-					}
+					t.Eventually(func(t *testcase.T) {
+						for got, err := range allF.FindAll(c.MakeContext(t)) {
+							assert.NoError(t, err)
+							assert.NoError(t, c.IDA.Set(&got, zeroID))
+							assert.NoError(t, c.IDA.Set(&got, zeroID))
+							assert.Equal(t, exp, got)
+						}
+					})
 				}
 			})
 
@@ -255,12 +273,14 @@ func Batcher[ENT, ID any, Batch crud.Batch[ENT]](subject crud.Batcher[ENT, Batch
 				if AllFinderOK {
 					var zeroID ID
 					assert.NoError(t, c.IDA.Set(&exp, zeroID))
-					for got, err := range allF.FindAll(c.MakeContext(t)) {
-						assert.NoError(t, err)
-						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NoError(t, c.IDA.Set(&got, zeroID))
-						assert.NotEqual(t, exp, got)
-					}
+					t.Eventually(func(t *testcase.T) {
+						for got, err := range allF.FindAll(c.MakeContext(t)) {
+							assert.NoError(t, err)
+							assert.NoError(t, c.IDA.Set(&got, zeroID))
+							assert.NoError(t, c.IDA.Set(&got, zeroID))
+							assert.NotEqual(t, exp, got)
+						}
+					})
 				}
 			})
 

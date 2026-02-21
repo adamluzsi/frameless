@@ -99,75 +99,85 @@ func Updater[ENT, ID any](subject crud.Updater[ENT], opts ...Option[ENT, ID]) co
 
 		if c.OnePhaseCommit != nil {
 			s.Context("OnePhaseCommitProtocol", func(s *testcase.Spec) {
-				s.Test(`BeginTx -> Update -> CommitTx will create the entity in the resource`, func(t *testcase.T) {
-					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
-					assert.Must(t).NoError(err)
+				if sOK {
+					s.Test(`BeginTx -> Update -> CommitTx will create the entity in the resource`, func(t *testcase.T) {
+						tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+						assert.Must(t).NoError(err)
 
-					ptr := pointer.Of(c.MakeEntity(t))
-					store(t, ptr)
-					c.ModifyEntity(t, ptr)
+						modifiedValue := c.MakeEntity(t)
+						ptr := &modifiedValue
+						store(t, ptr)
+						c.ModifyEntity(t, ptr)
 
-					assert.NoError(t, subject.Update(tx, ptr))
-					id := c.Helper().HasID(t, ptr)
+						assert.NoError(t, subject.Update(tx, ptr))
+						id := c.Helper().HasID(t, ptr)
 
-					if fOK {
-						t.Eventually(func(t *testcase.T) {
-							got, found, err := f.FindByID(tx, id)
-							assert.NoError(t, err)
-							assert.True(t, found)
-							assert.Equal(t, *ptr, got)
-						})
-						{
-							_, found, err := f.FindByID(c.MakeContext(t), id)
-							assert.NoError(t, err)
-							assert.False(t, found)
+						if fOK {
+							t.Eventually(func(t *testcase.T) {
+								got, found, err := f.FindByID(tx, id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.Equal(t, *ptr, got)
+							})
+							{
+								expOG, found, err := f.FindByID(c.MakeContext(t), id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.NotEqual(t, modifiedValue, expOG)
+							}
 						}
-					}
 
-					assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
-					t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+						assert.NoError(t, c.OnePhaseCommit.CommitTx(tx))
+						t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
 
-					if fOK {
-						t.Eventually(func(t *testcase.T) {
-							got, found, err := f.FindByID(tx, id)
-							assert.NoError(t, err)
-							assert.True(t, found)
-							assert.Equal(t, *ptr, got)
-						})
-					}
-				})
-
-				s.Test(`BeginTx -> Update -> Rollback will undo the entity creation in the resource`, func(t *testcase.T) {
-					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
-					assert.Must(t).NoError(err)
-
-					ptr := pointer.Of(c.MakeEntity(t))
-					assert.NoError(t, subject.Update(tx, ptr))
-					id := c.Helper().HasID(t, ptr)
-
-					if fOK {
-						t.Eventually(func(t *testcase.T) {
-							got, found, err := f.FindByID(tx, id)
-							assert.NoError(t, err)
-							assert.True(t, found)
-							assert.Equal(t, *ptr, got)
-						})
-						{
-							_, found, err := f.FindByID(c.MakeContext(t), id)
-							assert.NoError(t, err)
-							assert.False(t, found)
+						if fOK {
+							t.Eventually(func(t *testcase.T) {
+								got, found, err := f.FindByID(c.MakeContext(t), id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.Equal(t, modifiedValue, got)
+							})
 						}
-					}
+					})
 
-					assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
-					t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+					s.Test(`BeginTx -> Update -> Rollback will undo the entity creation in the resource`, func(t *testcase.T) {
+						tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
+						assert.Must(t).NoError(err)
 
-					if fOK {
-						_, found, err := f.FindByID(c.MakeContext(t), id)
-						assert.NoError(t, err)
-						assert.False(t, found)
-					}
-				})
+						modifiedValue := c.MakeEntity(t)
+						ptr := &modifiedValue
+						store(t, ptr)
+						c.ModifyEntity(t, ptr)
+
+						assert.NoError(t, subject.Update(tx, ptr))
+						id := c.Helper().HasID(t, ptr)
+
+						if fOK {
+							t.Eventually(func(t *testcase.T) {
+								got, found, err := f.FindByID(tx, id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.Equal(t, *ptr, got)
+							})
+							{
+								expOG, found, err := f.FindByID(c.MakeContext(t), id)
+								assert.NoError(t, err)
+								assert.True(t, found)
+								assert.NotEqual(t, expOG, modifiedValue)
+							}
+						}
+
+						assert.NoError(t, c.OnePhaseCommit.RollbackTx(tx))
+						t.Cleanup(func() { tryDelete(t, c, subject, *ptr) })
+
+						if fOK {
+							curVal, found, err := f.FindByID(c.MakeContext(t), id)
+							assert.NoError(t, err)
+							assert.True(t, found)
+							assert.NotEqual(t, curVal, modifiedValue)
+						}
+					})
+				}
 
 				s.Test(`A finished transaction will make Update yield error`, func(t *testcase.T) {
 					tx, err := c.OnePhaseCommit.BeginTx(c.MakeContext(t))
