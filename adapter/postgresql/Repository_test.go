@@ -88,6 +88,8 @@ func TestRepository(t *testing.T) {
 		SupportRecreate: true,
 
 		ChangeEntity: nil, // test entity can be freely changed
+
+		OnePhaseCommit: cm,
 	}
 
 	testcase.RunSuite(t,
@@ -96,6 +98,7 @@ func TestRepository(t *testing.T) {
 		crudcontract.Updater[Entity, string](subject, config),
 		crudcontract.Deleter[Entity, string](subject, config),
 		crudcontract.OnePhaseCommitProtocol[Entity, string](subject, subject.Connection),
+		crudcontract.Batcher(subject, config),
 	)
 }
 
