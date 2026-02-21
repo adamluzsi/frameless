@@ -147,24 +147,22 @@ func (d *Concurrence) Validate(ctx context.Context) error {
 type ExecuteParticipant struct {
 	ID        ParticipantID `json:"id"`
 	Arguments []VariableKey `json:"args,omitempty"`
-	Out       []VariableKey `json:"res,omitempty"`
+	Results   []VariableKey `json:"return,omitempty"`
 }
 
 func (d *ExecuteParticipant) Execute(ctx context.Context, s *State) error {
-
-	if err := pid.Validate(ctx); err != nil {
+	if err := d.Validate(ctx); err != nil {
 		return err
 	}
 	c, _ := ctxConfigH.Lookup(ctx)
-	p, found, err := lookupParticipant(c.Participants, ctx, pid)
+	p, found, err := lookupParticipant(c.Participants, ctx, d.ID)
 	if err != nil {
 		return err
 	}
 	if !found {
-		return ErrParticipantNotFound{PID: pid}
+		return ErrParticipantNotFound{PID: d.ID}
 	}
 	return p.Execute(ctx, s)
-
 }
 
 func (d *ExecuteParticipant) Validate(ctx context.Context) error {

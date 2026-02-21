@@ -25,6 +25,9 @@ type Process struct {
 	State *State     `json:"state"`
 }
 
+type Cache struct {
+}
+
 type State struct {
 	Variables Variables
 }
