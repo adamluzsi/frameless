@@ -391,11 +391,14 @@ func (jg *JobGroup[M]) add(job *Job) {
 	}
 }
 
-func (jg *JobGroup[M]) Go(tsk Task) *Job {
-	return jg.Background(context.Background(), tsk)
+func (jg *JobGroup[M]) Background(tsk Task) *Job {
+	return jg.Go(context.Background(), tsk)
 }
 
-func (jg *JobGroup[M]) Background(ctx context.Context, tsk Task) *Job {
+func (jg *JobGroup[M]) Go(ctx context.Context, tsk Task) *Job {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	var job Job
 	jg.add(&job)
 	if err := job.Start(ctx, tsk); err != nil {

@@ -388,7 +388,7 @@ func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query
 		return nil
 	})
 	// we simply execute the job in the background
-	job := m.jobs.Background(ctx, task)
+	job := m.jobs.Go(ctx, task)
 	// and then garbage collect its contents
 	go job.Join()
 }

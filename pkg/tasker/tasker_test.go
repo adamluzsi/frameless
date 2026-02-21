@@ -1114,12 +1114,12 @@ func TestJobGroup_race(t *testing.T) {
 	defer cancel()
 
 	testcase.Race(func() {
-		g.Background(ctx, func(ctx context.Context) error {
+		g.Go(ctx, func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		})
 	}, func() {
-		g.Background(ctx, func(ctx context.Context) error {
+		g.Go(ctx, func(ctx context.Context) error {
 			<-ctx.Done()
 			return nil
 		})
@@ -1183,7 +1183,7 @@ func TestJobGroup_asFireAndForget(t *testing.T) {
 		done := make(chan struct{})
 
 		n := rnd.Repeat(3, 7, func() {
-			g.Background(ctx, func(ctx context.Context) error {
+			g.Go(ctx, func(ctx context.Context) error {
 				<-done
 				return nil
 			})
@@ -1211,7 +1211,7 @@ func TestJobGroup_asFireAndForget(t *testing.T) {
 		done := make(chan struct{})
 
 		rnd.Repeat(3, 7, func() {
-			g.Background(ctx, func(ctx context.Context) error {
+			g.Go(ctx, func(ctx context.Context) error {
 				<-done
 				return rnd.Error()
 			})
@@ -1243,7 +1243,7 @@ func TestJobGroup_asManual(t *testing.T) {
 		done := make(chan struct{})
 
 		n := rnd.Repeat(3, 7, func() {
-			g.Background(ctx, func(ctx context.Context) error {
+			g.Go(ctx, func(ctx context.Context) error {
 				<-done
 				return nil
 			})
@@ -1274,7 +1274,7 @@ func TestJobGroup_asManual(t *testing.T) {
 		rnd.Repeat(3, 7, func() {
 			err := rnd.Error()
 			errs = append(errs, err)
-			g.Background(ctx, func(ctx context.Context) error {
+			g.Go(ctx, func(ctx context.Context) error {
 				<-done
 				return err
 			})

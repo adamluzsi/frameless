@@ -1319,7 +1319,7 @@ func TestLockstepReaders(t *testing.T) {
 		})
 		for _, r := range readers {
 			var r = r
-			bgr.Group.Go(func(ctx context.Context) error {
+			bgr.Group.Go(t.Context(), func(ctx context.Context) error {
 				data, err := io.ReadAll(r)
 				if err == nil {
 					bgr.Results.Append(data)
