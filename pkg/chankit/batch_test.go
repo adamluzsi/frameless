@@ -9,19 +9,26 @@ import (
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/option"
 
+	// "go.llib.dev/frameless/pkg/synckit"
+	// "go.llib.dev/frameless/port/option"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
+	"go.llib.dev/testcase/clock"
 	"go.llib.dev/testcase/clock/timecop"
-	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
+
+	// "go.llib.dev/testcase/clock/timecop"
+	"go.llib.dev/testcase/let"
+	// "go.llib.dev/testcase/random"
 )
 
-const waitTimeout = time.Second / 4
+const waitTimeout = time.Second / 8
 
-func TestBatch(t *testing.T) {
+func TestBatch(tt *testing.T) {
 	const defaultBatchSize = 64
 
-	s := testcase.NewSpec(t)
+	s := testcase.NewSpec(tt)
 
 	var (
 		src = let.Var(s, func(t *testcase.T) chan string {
@@ -63,7 +70,7 @@ func TestBatch(t *testing.T) {
 		})
 	})
 
-	var ThenOnValuesItWillIterate = func(s *testcase.Spec, subs ...func(s *testcase.Spec, values testcase.Var[[]string])) {
+	var ThenOnValuesItWillIterate = func(s *testcase.Spec, in testcase.Var[chan string], subs ...func(s *testcase.Spec, values testcase.Var[[]string])) {
 		s.Context("given values are sent through the source channel", func(s *testcase.Spec) {
 			values := let.Var(s, func(t *testcase.T) []string {
 				count := t.Random.IntBetween(50, 100)
@@ -71,7 +78,7 @@ func TestBatch(t *testing.T) {
 			}).EagerLoading(s)
 
 			s.Before(func(t *testcase.T) {
-				ch := src.Get(t)
+				ch := in.Get(t)
 				vs := values.Get(t)
 				go func() {
 					defer func() { _ = recover() }()
@@ -115,11 +122,11 @@ func TestBatch(t *testing.T) {
 		})
 	}
 
-	ThenOnValuesItWillIterate(s)
+	ThenOnValuesItWillIterate(s, src)
 
-	var WhenBatchSizeDefined = func(s *testcase.Spec) {
+	var WhenBatchSizeDefined = func(s *testcase.Spec, in testcase.Var[chan string]) {
 		var batchSizeCasesWith = func(s *testcase.Spec, expectedSize testcase.Var[int]) {
-			ThenOnValuesItWillIterate(s, func(s *testcase.Spec, values testcase.Var[[]string]) {
+			ThenOnValuesItWillIterate(s, in, func(s *testcase.Spec, values testcase.Var[[]string]) {
 				s.Context("given the number of value sent on the channel exceeds the expected batch size", func(s *testcase.Spec) {
 					values.Let(s, func(t *testcase.T) []string {
 						batchCount := t.Random.IntBetween(3, 7)
@@ -171,12 +178,10 @@ func TestBatch(t *testing.T) {
 		})
 	}
 
-	WhenBatchSizeDefined(s)
+	WhenBatchSizeDefined(s, src)
 
 	s.When("wait limit is set", func(s *testcase.Spec) {
-		return
-
-		timeout := let.DurationBetween(s, 3*time.Second, 7*time.Second)
+		timeout := let.DurationBetween(s, time.Minute, time.Hour)
 
 		opts.Let(s, func(t *testcase.T) []chankit.BatchOption {
 			o := opts.Super(t)
@@ -184,26 +189,87 @@ func TestBatch(t *testing.T) {
 			return o
 		})
 
-		ThenOnValuesItWillIterate(s)
-		WhenBatchSizeDefined(s)
+		ThenOnValuesItWillIterate(s, src)
+		WhenBatchSizeDefined(s, src)
 
-		s.Context("a timeout that is less or equal to zero will be ignored", func(s *testcase.Spec) {
+		s.And("it is less or equal to zero", func(s *testcase.Spec) {
 			timeout.Let(s, func(t *testcase.T) time.Duration {
 				return time.Duration(t.Random.IntB(-1*int(time.Minute), 0))
 			})
 
-			ThenOnValuesItWillIterate(s)
+			ThenOnValuesItWillIterate(s, src)
+			WhenBatchSizeDefined(s, src)
+
+			s.Then("timeout configuration is ignored", func(t *testcase.T) {
+				in := src.Get(t)
+				out := act(t)
+
+				exp := t.Random.UUID()
+				go func() {
+					select {
+					case in <- exp:
+					case <-t.Done():
+						return
+					}
+				}()
+
+				w := assert.NotWithin(t, waitTimeout, func(ctx context.Context) {
+					vs, ok := <-out
+					assert.True(t, ok)
+					assert.NotEmpty(t, vs)
+					assert.Contains(t, vs, exp)
+				})
+
+				close(src.Get(t))
+
+				assert.Within(t, waitTimeout, func(ctx context.Context) {
+					w.Wait()
+				})
+			})
 		})
 
 		s.When("the source channel is slower than the batch wait time", func(s *testcase.Spec) {
-			timeout.LetValue(s, time.Minute)
+			in := let.Var(s, func(t *testcase.T) chan string {
+				return make(chan string)
+			})
+
+			src.Let(s, func(t *testcase.T) chan string {
+				to := timeout.Get(t)
+				in := in.Get(t)
+				out := make(chan string)
+				go func() {
+					defer close(out)
+					for {
+						select {
+						case v, ok := <-in:
+							if !ok {
+								return
+							}
+							select {
+							case <-clock.After(to):
+								out <- v
+							case <-t.Done():
+								return
+							}
+						case <-t.Done():
+							return
+						}
+					}
+				}()
+				return out
+			})
 
 			s.Then("on no events, we don't get empty batches", func(t *testcase.T) {
+				timecop.SetSpeed(t, timecop.BlazingFast)
+
 				ch := act(t)
 
 				var total synckit.Slice[string]
 				w := assert.NotWithin(t, waitTimeout, func(ctx context.Context) {
-					vs := <-ch
+					vs, ok := <-ch
+					if !ok {
+						return
+					}
 					assert.NotEmpty(t, vs)
 					total.Append(vs...)
 				})
@@ -223,9 +289,11 @@ func TestBatch(t *testing.T) {
 
 				var total synckit.Slice[string]
 				w := assert.NotWithin(t, waitTimeout, func(ctx context.Context) {
-					vs := <-ch
-					assert.NotEmpty(t, vs)
-					total.Append(vs...)
+					vs, ok := <-ch
+					if ok {
+						assert.NotEmpty(t, vs)
+						total.Append(vs...)
+					}
 				})
 
 				// something below the default batch size
