@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/synckit"
-	"go.llib.dev/frameless/port/datastruct"
-	"go.llib.dev/frameless/port/datastruct/datastructcontract"
+	"go.llib.dev/frameless/port/ds"
+	datastructcontract "go.llib.dev/frameless/port/ds/dscontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -480,9 +481,6 @@ func ExampleMap_Do() {
 	})
 	_ = err // &errors.errorString{s:"the-error"}
 }
-
-var _ datastruct.KeyValueStore[string, int] = (*synckit.Map[string, int])(nil)
-var _ datastruct.Mapper[string, int] = (*synckit.Map[string, int])(nil)
 
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -1015,7 +1013,7 @@ func TestMap(t *testing.T) {
 
 	s.Describe("#Keys", func(s *testcase.Spec) {
 		act := func(t *testcase.T) []string {
-			return subject.Get(t).Keys()
+			return iterkit.Collect(subject.Get(t).Keys())
 		}
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -1248,9 +1246,9 @@ func TestMap(t *testing.T) {
 		)
 	})
 
-	s.Describe("#Iter", func(s *testcase.Spec) {
+	s.Describe("#All", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq2[string, int] {
-			return subject.Get(t).Iter()
+			return subject.Get(t).All()
 		})
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -1381,7 +1379,7 @@ func TestMap(t *testing.T) {
 					exp := mapkit.Keys(values.Get(t))
 
 					w := assert.NotWithin(t, timeout, func(ctx context.Context) {
-						assert.ContainsExactly(t, exp, subject.Get(t).Keys())
+						assert.ContainsExactly(t, exp, iterkit.Collect(subject.Get(t).Keys()))
 					})
 
 					release.Get(t) <- struct{}{}
@@ -1427,9 +1425,9 @@ func TestMap(t *testing.T) {
 
 	})
 
-	s.Describe("#RIter", func(s *testcase.Spec) {
+	s.Describe("#RAll", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq2[string, int] {
-			return subject.Get(t).RIter()
+			return subject.Get(t).RAll()
 		})
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -1556,7 +1554,7 @@ func TestMap(t *testing.T) {
 					exp := mapkit.Keys(values.Get(t))
 
 					t.Random.Repeat(3, 7, func() {
-						assert.ContainsExactly(t, exp, subject.Get(t).Keys())
+						assert.ContainsExactly(t, exp, iterkit.Collect(subject.Get(t).Keys()))
 					})
 				})
 
@@ -1607,7 +1605,7 @@ func TestMap(t *testing.T) {
 
 	s.Describe("#ToMap", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) map[string]int {
-			return subject.Get(t).Map()
+			return subject.Get(t).ToMap()
 		})
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -1657,7 +1655,7 @@ func TestMap(t *testing.T) {
 			m.Set(t.Random.String(), t.Random.Int())
 		})
 		var (
-			keys    = m.Keys()
+			keys    = iterkit.Collect(m.Keys())
 			newKey1 = random.Unique(t.Random.String, keys...)
 			newVal1 = t.Random.Int()
 			expKey  = random.Pick(t.Random, keys...)
@@ -1695,29 +1693,30 @@ func TestMap(t *testing.T) {
 				return newVal1
 			})
 		}, func() {
-			m.Keys()
+			for range m.Keys() {
+			}
 		}, func() {
 			m.GetOrInitErr(expKey, func() (int, error) {
 				return newVal1, nil
 			})
 		}, func() {
-			for range m.Iter() {
+			for range m.All() {
 			}
 		}, func() {
-			for range m.Iter() {
+			for range m.All() {
 			}
 		}, func() {
-			for range m.RIter() {
+			for range m.RAll() {
 			}
 		}, func() {
-			for range m.RIter() {
+			for range m.RAll() {
 			}
 		}, func() {
 			m.Len()
 		}, func() {
 			m.Reset()
 		}, func() {
-			m.Map()
+			m.ToMap()
 		})
 	})
 
@@ -1744,15 +1743,15 @@ func TestMap(t *testing.T) {
 
 			var dto map[string]int
 			assert.NoError(t, json.Unmarshal(data, &dto))
-			assert.Equal(t, m.Map(), dto)
+			assert.Equal(t, m.ToMap(), dto)
 
 			var got synckit.Map[string, int]
 			assert.NoError(t, json.Unmarshal(data, &got))
-			assert.Equal(t, m.Map(), got.Map())
+			assert.Equal(t, m.ToMap(), got.ToMap())
 		})
 	})
 
-	s.Context("implements Key-Value-Store", datastructcontract.KeyValueStore[string, int](func(tb testing.TB) datastruct.KeyValueStore[string, int] {
+	s.Context("implements Key-Value-Store", datastructcontract.Map[string, int](func(tb testing.TB) ds.Map[string, int] {
 		return &synckit.Map[string, int]{}
 	}).Spec)
 }
@@ -1779,9 +1778,9 @@ func letExampleSliceValues(s *testcase.Spec, min, max int) testcase.Var[[]string
 	})
 }
 
-var _ datastruct.List[string] = (*synckit.Slice[string])(nil)
-var _ datastruct.Sequence[string] = (*synckit.Slice[string])(nil)
-var _ datastruct.Slicer[string] = (*synckit.Slice[string])(nil)
+var _ ds.List[string] = (*synckit.Slice[string])(nil)
+var _ ds.Sequence[string] = (*synckit.Slice[string])(nil)
+var _ ds.SliceConveratble[string] = (*synckit.Slice[string])(nil)
 
 func TestSlice(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -1804,15 +1803,15 @@ func TestSlice(t *testing.T) {
 		}, func() {
 			slc.Append(v2, v3)
 		}, func() {
-			for range slc.Iter() {
+			for range slc.Values() {
 			}
 		}, func() {
-			for range slc.RIter() {
+			for range slc.RValues() {
 			}
 		}, func() {
 			slc.Len()
 		}, func() {
-			slc.Slice()
+			slc.ToSlice()
 		}, func() {
 			slc.Insert(slc.Len(), v4, v5)
 		}, func() {
@@ -1822,21 +1821,21 @@ func TestSlice(t *testing.T) {
 		})
 	})
 
-	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
+	s.Context("implements List", datastructcontract.List(func(tb testing.TB) ds.List[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
-	s.Context("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) datastruct.List[string] {
+	s.Context("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) ds.List[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
-	s.Context("implements sequence", datastructcontract.Sequence(func(tb testing.TB) datastruct.Sequence[string] {
+	s.Context("implements sequence", datastructcontract.Sequence(func(tb testing.TB) ds.Sequence[string] {
 		return &synckit.Slice[string]{}
 	}).Spec)
 
-	s.Describe("#Iter", func(s *testcase.Spec) {
+	s.Describe("#Values", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq[string] {
-			return slice.Get(t).Iter()
+			return slice.Get(t).Values()
 		})
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -1979,7 +1978,7 @@ func TestSlice(t *testing.T) {
 
 	s.Describe("#RIter", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq[string] {
-			return slice.Get(t).RIter()
+			return slice.Get(t).RValues()
 		})
 
 		s.When("map is empty", func(s *testcase.Spec) {
@@ -2117,7 +2116,7 @@ func TestSlice(t *testing.T) {
 					rndIndex := t.Random.IntN(len(vs))
 
 					assert.Within(t, timeout, func(ctx context.Context) {
-						for range slice.Get(t).RIter() {
+						for range slice.Get(t).RValues() {
 						}
 					})
 
@@ -2130,7 +2129,7 @@ func TestSlice(t *testing.T) {
 	})
 }
 
-var _ datastruct.Sizer = (*synckit.Group)(nil)
+var _ ds.Len = (*synckit.Group)(nil)
 
 func ExampleGroup() {
 	var g synckit.Group

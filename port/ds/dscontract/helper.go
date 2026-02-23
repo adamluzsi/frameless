@@ -1,4 +1,4 @@
-package datastructcontract
+package dscontract
 
 import (
 	"testing"

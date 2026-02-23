@@ -1,4 +1,4 @@
-package datastruct_test
+package dslist_test
 
 import (
 	"iter"
@@ -6,28 +6,43 @@ import (
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/datastruct"
-	"go.llib.dev/frameless/port/datastruct/datastructcontract"
+
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dscontract"
+	"go.llib.dev/frameless/port/ds/dslist"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
+func TestSlice(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	mk := func(tb testing.TB) *dslist.Slice[string] {
+		return &dslist.Slice[string]{}
+	}
+
+	s.Context("List", dscontract.List(mk).Spec)
+	s.Context("Len", dscontract.LenAppendable(mk).Spec)
+	s.Context("OrderedList", dscontract.OrderedList(mk).Spec)
+}
+
 func TestLinkedList(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	ll := let.Var(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-		return &datastruct.LinkedList[int]{}
+	ll := let.Var(s, func(t *testcase.T) *dslist.LinkedList[int] {
+		return &dslist.LinkedList[int]{}
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
-		var ll datastruct.LinkedList[int]
+		var ll dslist.LinkedList[int]
 
 		ll.Append(1, 2, 3)
 		ll.Append(4)
 		ll.Prepend(-1, 0)
-		assert.Equal(t, []int{-1, 0, 1, 2, 3, 4}, ll.Slice())
+		assert.Equal(t, []int{-1, 0, 1, 2, 3, 4}, ll.ToSlice())
 
 		last, ok := ll.Pop()
 		assert.True(t, ok)
@@ -46,7 +61,7 @@ func TestLinkedList(t *testing.T) {
 
 		ll.Append(1, 2, 3)
 		ll.Prepend(0)
-		assert.Equal(t, []int{0, 1, 2, 3}, ll.Slice())
+		assert.Equal(t, []int{0, 1, 2, 3}, ll.ToSlice())
 
 		var shifted []int
 		for {
@@ -61,7 +76,7 @@ func TestLinkedList(t *testing.T) {
 		ll.Prepend(0, 1)
 		ll.Append(2, 3)
 		assert.Equal(t, 4, ll.Len())
-		assert.Equal(t, []int{0, 1, 2, 3}, ll.Slice())
+		assert.Equal(t, []int{0, 1, 2, 3}, ll.ToSlice())
 	})
 
 	s.Describe("#Append", func(s *testcase.Spec) {
@@ -77,7 +92,7 @@ func TestLinkedList(t *testing.T) {
 		s.Then("value is appended to the list", func(t *testcase.T) {
 			act(t)
 
-			gotVS := ll.Get(t).Slice()
+			gotVS := ll.Get(t).ToSlice()
 			expVS := newVS.Get(t)
 			assert.Equal(t, gotVS, expVS)
 		})
@@ -106,7 +121,7 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expVS := slicekit.Merge(existing.Get(t), newVS.Get(t))
-				gotVS := ll.Get(t).Slice()
+				gotVS := ll.Get(t).ToSlice()
 
 				assert.Equal(t, expVS, gotVS)
 			})
@@ -134,7 +149,7 @@ func TestLinkedList(t *testing.T) {
 			act(t)
 
 			expVS := newVS.Get(t)
-			gotVS := ll.Get(t).Slice()
+			gotVS := ll.Get(t).ToSlice()
 			assert.Equal(t, expVS, gotVS)
 		})
 
@@ -168,7 +183,7 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expVS := slicekit.Merge(newVS.Get(t), existing.Get(t))
-				gotVS := ll.Get(t).Slice()
+				gotVS := ll.Get(t).ToSlice()
 				assert.Equal(t, expVS, gotVS)
 			})
 
@@ -187,8 +202,8 @@ func TestLinkedList(t *testing.T) {
 		})
 
 		s.When("list is empty", func(s *testcase.Spec) {
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				return &datastruct.LinkedList[int]{}
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				return &dslist.LinkedList[int]{}
 			})
 
 			s.Then("zero length is reported", func(t *testcase.T) {
@@ -201,8 +216,8 @@ func TestLinkedList(t *testing.T) {
 				return random.Slice(t.Random.IntBetween(3, 7), t.Random.Int)
 			})
 
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				var list datastruct.LinkedList[int]
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				var list dslist.LinkedList[int]
 				list.Append(values.Get(t)...)
 				return &list
 			})
@@ -220,8 +235,8 @@ func TestLinkedList(t *testing.T) {
 
 		// When the list is empty
 		s.When("list is empty", func(s *testcase.Spec) {
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				return &datastruct.LinkedList[int]{}
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				return &dslist.LinkedList[int]{}
 			})
 
 			s.Then("result signals that the list has no more elements to be popped", func(t *testcase.T) {
@@ -240,8 +255,8 @@ func TestLinkedList(t *testing.T) {
 				return t.Random.Int()
 			})
 
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				var list datastruct.LinkedList[int]
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				var list dslist.LinkedList[int]
 				list.Append(value.Get(t))
 				return &list
 			})
@@ -261,7 +276,7 @@ func TestLinkedList(t *testing.T) {
 			s.Then("list became empty", func(t *testcase.T) {
 				act(t)
 
-				assert.Empty(t, ll.Get(t).Slice())
+				assert.Empty(t, ll.Get(t).ToSlice())
 			})
 		})
 
@@ -274,8 +289,8 @@ func TestLinkedList(t *testing.T) {
 				)
 			})
 
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				var list datastruct.LinkedList[int]
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				var list dslist.LinkedList[int]
 				list.Append(values.Get(t)...)
 				return &list
 			})
@@ -301,7 +316,7 @@ func TestLinkedList(t *testing.T) {
 				act(t)
 
 				expVS := values.Get(t)[:len(values.Get(t))-1]
-				gotVS := ll.Get(t).Slice()
+				gotVS := ll.Get(t).ToSlice()
 				assert.Equal(t, expVS, gotVS)
 			})
 		})
@@ -313,8 +328,8 @@ func TestLinkedList(t *testing.T) {
 		})
 
 		s.When("list is empty", func(s *testcase.Spec) {
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				return &datastruct.LinkedList[int]{}
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				return &dslist.LinkedList[int]{}
 			})
 
 			s.Then("result signals that the list has no more elements to be popped", func(t *testcase.T) {
@@ -333,8 +348,8 @@ func TestLinkedList(t *testing.T) {
 				return t.Random.Int()
 			})
 
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				var list datastruct.LinkedList[int]
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				var list dslist.LinkedList[int]
 				list.Append(value.Get(t))
 				return &list
 			})
@@ -354,7 +369,7 @@ func TestLinkedList(t *testing.T) {
 			s.Then("list became empty", func(t *testcase.T) {
 				act(t)
 
-				assert.Empty(t, ll.Get(t).Slice())
+				assert.Empty(t, ll.Get(t).ToSlice())
 			})
 		})
 
@@ -367,8 +382,8 @@ func TestLinkedList(t *testing.T) {
 				)
 			})
 
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				var list datastruct.LinkedList[int]
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				var list dslist.LinkedList[int]
 				list.Append(values.Get(t)...)
 				return &list
 			})
@@ -393,7 +408,7 @@ func TestLinkedList(t *testing.T) {
 			s.Then("remaining slice matches expected", func(t *testcase.T) {
 				act(t)
 
-				gotVS := ll.Get(t).Slice()
+				gotVS := ll.Get(t).ToSlice()
 				expVS := values.Get(t)[1:]
 				assert.Equal(t, expVS, gotVS)
 			})
@@ -423,8 +438,8 @@ func TestLinkedList(t *testing.T) {
 		}
 
 		s.When("list is empty", func(s *testcase.Spec) {
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				return &datastruct.LinkedList[int]{}
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				return &dslist.LinkedList[int]{}
 			})
 
 			s.Then("not found is reportad for any index", func(t *testcase.T) {
@@ -453,8 +468,8 @@ func TestLinkedList(t *testing.T) {
 				return t.Random.IntN(len(values.Get(t)))
 			})
 
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				var list datastruct.LinkedList[int]
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				var list dslist.LinkedList[int]
 				list.Append(values.Get(t)...)
 				return &list
 			})
@@ -473,9 +488,9 @@ func TestLinkedList(t *testing.T) {
 		})
 	})
 
-	s.Describe("#Iter", func(s *testcase.Spec) {
+	s.Describe("#Values", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq[int] {
-			return ll.Get(t).Iter()
+			return ll.Get(t).Values()
 		})
 
 		s.Then("non nil, iterable iterator returned", func(t *testcase.T) {
@@ -510,12 +525,12 @@ func TestLinkedList(t *testing.T) {
 
 	s.Describe("#ToSlice", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) []int {
-			return ll.Get(t).Slice()
+			return ll.Get(t).ToSlice()
 		})
 
 		s.When("link list is empty", func(s *testcase.Spec) {
-			ll.Let(s, func(t *testcase.T) *datastruct.LinkedList[int] {
-				return &datastruct.LinkedList[int]{}
+			ll.Let(s, func(t *testcase.T) *dslist.LinkedList[int] {
+				return &dslist.LinkedList[int]{}
 			})
 
 			s.Then("empty slice is returned", func(t *testcase.T) {
@@ -546,7 +561,7 @@ func TestLinkedList(t *testing.T) {
 		})
 	})
 
-	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
-		return &datastruct.LinkedList[string]{}
+	s.Context("implements List", dscontract.List(func(tb testing.TB) ds.List[string] {
+		return &dslist.LinkedList[string]{}
 	}).Spec)
 }

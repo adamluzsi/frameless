@@ -1,11 +1,11 @@
-package datastructcontract
+package dscontract
 
 import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -13,7 +13,7 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-func Appendable[T any, Subject datastruct.Appendable[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
+func Appendable[T any, Subject ds.Appendable[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
@@ -33,23 +33,23 @@ func Appendable[T any, Subject datastruct.Appendable[T]](mk func(tb testing.TB) 
 			subject.Get(t).Append(vs.Get(t)...)
 		})
 
-		if sub, ok := testcase.Implements[datastruct.Iterable[T]](subject); ok {
+		if sub, ok := testcase.Implements[ds.Values[T]](subject); ok {
 			s.Then("appended values should be returned during iteration", func(t *testcase.T) {
 				act(t)
 
-				assert.Contains(t, vs.Get(t), iterkit.Collect(sub.Get(t).Iter()))
+				assert.Contains(t, vs.Get(t), iterkit.Collect(sub.Get(t).Values()))
 			})
 		}
 
-		if sub, ok := testcase.Implements[datastruct.Slicer[T]](subject); ok {
-			s.Then("appended values retrievable through #Slice()", func(t *testcase.T) {
+		if sub, ok := testcase.Implements[ds.SliceConveratble[T]](subject); ok {
+			s.Then("appended values retrievable through #ToSlice()", func(t *testcase.T) {
 				act(t)
 
-				assert.ContainsExactly(t, vs.Get(t), sub.Get(t).Slice())
+				assert.ContainsExactly(t, vs.Get(t), sub.Get(t).ToSlice())
 			})
 		}
 
-		if sub, ok := testcase.Implements[datastruct.Sizer](subject); ok {
+		if sub, ok := testcase.Implements[ds.Len](subject); ok {
 			s.Then("appending values will affect the length of the container", func(t *testcase.T) {
 				assert.Empty(t, sub.Get(t).Len())
 
@@ -59,7 +59,7 @@ func Appendable[T any, Subject datastruct.Appendable[T]](mk func(tb testing.TB) 
 			})
 		}
 
-		if sub, ok := testcase.Implements[datastruct.Sequence[T]](subject); ok {
+		if sub, ok := testcase.Implements[ds.Sequence[T]](subject); ok {
 			s.Then("Lookup will return the appended entries by their sequential index", func(t *testcase.T) {
 				act(t)
 

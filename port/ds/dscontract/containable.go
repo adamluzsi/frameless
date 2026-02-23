@@ -1,11 +1,11 @@
-package datastructcontract
+package dscontract
 
 import (
 	"testing"
 
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -13,8 +13,8 @@ import (
 )
 
 type SubjectContainable[T any] interface {
-	datastruct.Containable[T]
-	datastruct.Appendable[T]
+	ds.Containable[T]
+	ds.Appendable[T]
 }
 
 func Containable[T any, Subject SubjectContainable[T]](mk func(testing.TB) Subject, opts ...ListOption[T]) contract.Contract {

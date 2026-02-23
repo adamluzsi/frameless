@@ -13,6 +13,7 @@ import (
 	"go.llib.dev/frameless/internal/sandbox"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/ds"
 )
 
 type Waiter interface{ Wait() }
@@ -199,6 +200,11 @@ type Map[K comparable, V any] struct {
 	vs map[K]V
 }
 
+var _ ds.Map[string, int] = (*Map[string, int])(nil)
+var _ ds.ReadOnlyMap[string, int] = (*Map[string, int])(nil)
+var _ ds.MapConveratble[string, int] = (*Map[string, int])(nil)
+var _ ds.Len = (*Map[string, int])(nil)
+
 func (m *Map[K, V]) Set(key K, val V) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -333,10 +339,19 @@ func (m *Map[K, V]) Reset() {
 	m.vs = make(map[K]V)
 }
 
-func (m *Map[K, V]) Keys() []K {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return mapkit.Keys(m.vs)
+func (m *Map[K, V]) Keys() iter.Seq[K] {
+	var keys = func() []K {
+		m.mu.RLock()
+		defer m.mu.RUnlock()
+		return mapkit.Keys(m.vs)
+	}
+	return func(yield func(K) bool) {
+		for _, key := range keys() {
+			if !yield(key) {
+				return
+			}
+		}
+	}
 }
 
 func (m *Map[K, V]) Borrow(key K) (ptr *V, release func(), ok bool) {
@@ -368,12 +383,12 @@ func (m *Map[K, V]) BorrowWithInit(key K, init func() V) (ptr *V, release func()
 	return &v, release
 }
 
-func (m *Map[K, V]) RIter() iter.Seq2[K, V] {
-	return m.iter(m.mu.RLocker())
+func (m *Map[K, V]) All() iter.Seq2[K, V] {
+	return m.iter(&m.mu)
 }
 
-func (m *Map[K, V]) Iter() iter.Seq2[K, V] {
-	return m.iter(&m.mu)
+func (m *Map[K, V]) RAll() iter.Seq2[K, V] {
+	return m.iter(m.mu.RLocker())
 }
 
 func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
@@ -391,15 +406,28 @@ func (m *Map[K, V]) iter(l sync.Locker) iter.Seq2[K, V] {
 			}
 			return yield(key, v)
 		}
-		for _, key := range m.Keys() {
-			if !handle(key) {
-				return
+		var visited = make(map[K]struct{})
+	loop:
+		for {
+			for key := range m.Keys() {
+				if _, ok := visited[key]; !ok {
+					if !handle(key) {
+						return
+					}
+					visited[key] = struct{}{}
+				}
 			}
+			for key := range m.Keys() {
+				if _, ok := visited[key]; !ok {
+					continue loop
+				}
+			}
+			break
 		}
 	}
 }
 
-func (m *Map[K, V]) Map() map[K]V {
+func (m *Map[K, V]) ToMap() map[K]V {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return mapkit.Clone(m.vs)
@@ -424,6 +452,11 @@ type Slice[T any] struct {
 	vs []T
 }
 
+var _ ds.ReadOnlyList[string] = (*Slice[string])(nil)
+var _ ds.List[string] = (*Slice[string])(nil)
+var _ ds.SliceConveratble[string] = (*Slice[string])(nil)
+var _ ds.Len = (*Slice[string])(nil)
+
 func (s *Slice[T]) Lookup(index int) (T, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -442,17 +475,17 @@ func (s *Slice[T]) Append(vs ...T) {
 	s.vs = append(s.vs, vs...)
 }
 
-func (s *Slice[T]) Slice() []T {
+func (s *Slice[T]) ToSlice() []T {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return slicekit.Clone(s.vs)
 }
 
-func (s *Slice[T]) Iter() iter.Seq[T] {
+func (s *Slice[T]) Values() iter.Seq[T] {
 	return s.iter(&s.mu)
 }
 
-func (s *Slice[T]) RIter() iter.Seq[T] {
+func (s *Slice[T]) RValues() iter.Seq[T] {
 	return s.iter(s.mu.RLocker())
 }
 

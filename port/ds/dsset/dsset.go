@@ -1,5 +1,5 @@
 // Package datastruct is an experimental package, that is a candidate to become a port if there is use-case to support it.
-package datastruct
+package dsset
 
 import (
 	"fmt"
@@ -8,14 +8,15 @@ import (
 
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/ds"
 )
 
 type Set[T comparable] map[T]struct{}
 
-var _ List[any] = (*Set[any])(nil)
-var _ Appendable[any] = (*Set[any])(nil)
-var _ Iterable[any] = (*Set[any])(nil)
-var _ Containable[any] = (*Set[any])(nil)
+var _ ds.List[any] = (*Set[any])(nil)
+var _ ds.Appendable[any] = (*Set[any])(nil)
+var _ ds.Values[any] = (*Set[any])(nil)
+var _ ds.Containable[any] = (*Set[any])(nil)
 
 func (s *Set[T]) Append(vs ...T) {
 	if *s == nil {
@@ -31,7 +32,7 @@ func (s Set[T]) FromSlice(vs []T) Set[T] {
 	return s
 }
 
-func (s *Set[T]) Slice() []T {
+func (s *Set[T]) ToSlice() []T {
 	if s == nil {
 		return nil
 	}
@@ -42,7 +43,7 @@ func (s *Set[T]) Slice() []T {
 	return vs
 }
 
-func (s *Set[T]) Iter() iter.Seq[T] {
+func (s *Set[T]) Values() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for v, _ := range *s {
 			if !yield(v) {
@@ -69,10 +70,10 @@ type OrderedSet[T comparable] struct {
 	is map[int]*T
 }
 
-var _ List[any] = (*OrderedSet[any])(nil)
-var _ Iterable[any] = (*OrderedSet[any])(nil)
-var _ Sequence[any] = (*OrderedSet[any])(nil)
-var _ Containable[any] = (*OrderedSet[any])(nil)
+var _ ds.List[any] = (*OrderedSet[any])(nil)
+var _ ds.Values[any] = (*OrderedSet[any])(nil)
+var _ ds.Sequence[any] = (*OrderedSet[any])(nil)
+var _ ds.Containable[any] = (*OrderedSet[any])(nil)
 
 func (s *OrderedSet[T]) init() {
 	if s.vs == nil {
@@ -203,7 +204,7 @@ func (set OrderedSet[T]) FromSlice(vs []T) OrderedSet[T] {
 	return set
 }
 
-func (s OrderedSet[T]) Slice() []T {
+func (s OrderedSet[T]) ToSlice() []T {
 	var out []T = make([]T, len(s.is))
 	for i, ptr := range s.is {
 		out[i] = *ptr
@@ -219,7 +220,7 @@ func (s OrderedSet[T]) indexes() []int {
 	return mapkit.Keys(s.is, slices.Sort[[]int])
 }
 
-func (s OrderedSet[T]) Iter() iter.Seq[T] {
+func (s OrderedSet[T]) Values() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for i := 0; i < len(s.is); i++ {
 			if !yield(*s.is[i]) {

@@ -31,7 +31,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit/reftree"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds/dsset"
 )
 
 const (
@@ -626,7 +626,7 @@ func (m metaH) Validate(ctx context.Context) (rErr error) {
 			return fmt.Errorf(format, a.Ref.FieldName(), i, a.Index)
 		}
 	}
-	var ufn datastruct.Set[string]
+	var ufn dsset.Set[string]
 	for _, flag := range m.Flags() {
 		for _, name := range flag.Names {
 			if ufn.Contains(name) {

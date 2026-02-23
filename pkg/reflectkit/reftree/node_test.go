@@ -125,7 +125,7 @@ func TestNode(t *testing.T) {
 		})
 	})
 
-	s.Describe("#Iter", func(s *testcase.Spec) {
+	s.Describe("#Values", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq[reftree.Node] {
 			return node.Get(t).Iter()
 		})
@@ -175,7 +175,7 @@ func TestNode(t *testing.T) {
 		})
 	})
 
-	s.Describe("#IterUpward", func(s *testcase.Spec) {
+	s.Describe("#ValuesUpward", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq[reftree.Node] {
 			return node.Get(t).IterUpward()
 		})

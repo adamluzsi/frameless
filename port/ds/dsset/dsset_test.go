@@ -1,19 +1,21 @@
-package datastruct_test
+package dsset_test
 
 import (
 	"testing"
 
-	"go.llib.dev/frameless/port/datastruct"
-	"go.llib.dev/frameless/port/datastruct/datastructcontract"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dscontract"
+	"go.llib.dev/frameless/port/ds/dsset"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
 func ExampleSet() {
-	var set datastruct.Set[string]
+	var set dsset.Set[string]
 	set.Append("foo", "bar", "baz")
-	for v := range set.Iter() {
+	for v := range set.Values() {
 		_ = v // "foo" / "bar" / "baz"
 	}
 }
@@ -38,7 +40,7 @@ func TestSet(t *testing.T) {
 
 	s.Test("#FromSlice", func(t *testcase.T) {
 		values := random.Slice(t.Random.IntBetween(0, 10), t.Random.String, random.UniqueValues)
-		set := datastruct.Set[string]{}.FromSlice(values)
+		set := dsset.Set[string]{}.FromSlice(values)
 		assert.Equal(t, set.Len(), len(values))
 		for _, v := range values {
 			assert.True(t, set.Contains(v), "Set should contain the value added from the slice")
@@ -46,67 +48,67 @@ func TestSet(t *testing.T) {
 	})
 
 	s.Test("#Contains on nil Set", func(t *testcase.T) {
-		var set datastruct.Set[string]
+		var set dsset.Set[string]
 		assert.False(t, set.Contains(t.Random.String()))
 	})
 
-	lc := datastructcontract.ListConfig[string]{
+	lc := dscontract.ListConfig[string]{
 		MakeElem: makeElem,
 	}
 
-	s.Context("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
-		return &datastruct.Set[string]{}
+	s.Context("implements List", dscontract.List(func(tb testing.TB) ds.List[string] {
+		return &dsset.Set[string]{}
 	}, lc).Spec)
 
-	s.Context("implements Containable", datastructcontract.Containable(func(t testing.TB) *datastruct.Set[string] {
-		return &datastruct.Set[string]{}
+	s.Context("implements Containable", dscontract.Containable(func(t testing.TB) *dsset.Set[string] {
+		return &dsset.Set[string]{}
 	}, lc).Spec)
 
-	s.Context("implements Appendable", datastructcontract.Appendable(func(tb testing.TB) *datastruct.Set[string] {
-		return &datastruct.Set[string]{}
+	s.Context("implements Appendable", dscontract.Appendable(func(tb testing.TB) *dsset.Set[string] {
+		return &dsset.Set[string]{}
 	}).Spec)
 }
 
 func ExampleOrderedSet() {
-	var set datastruct.OrderedSet[string]
+	var set dsset.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
-	set.Slice()         // []string{"foo", "bar", "baz"}
+	set.ToSlice()       // []string{"foo", "bar", "baz"}
 	set.Len()           // 3
 	set.Contains("foo") // true
 }
 
 func ExampleOrderedSet_Append() {
-	var set datastruct.OrderedSet[string]
+	var set dsset.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
-	set.Slice() // []string{"foo", "bar", "baz"}
-	set.Len()   // 3
+	set.ToSlice() // []string{"foo", "bar", "baz"}
+	set.Len()     // 3
 }
 
-func ExampleOrderedSet_Slice() {
-	var set datastruct.OrderedSet[string]
+func ExampleOrderedSet_ToSlice() {
+	var set dsset.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
-	set.Slice() // []string{"foo", "bar", "baz"}
-	set.Len()   // 3
+	set.ToSlice() // []string{"foo", "bar", "baz"}
+	set.Len()     // 3
 }
 
 func ExampleOrderedSet_FromSlice() {
 	var vs = []string{"foo", "bar", "baz", "foo"}
-	var set = datastruct.OrderedSet[string]{}.FromSlice(vs)
-	set.Slice() // []string{"foo", "bar", "baz"}
-	set.Len()   // 3
+	var set = dsset.OrderedSet[string]{}.FromSlice(vs)
+	set.ToSlice() // []string{"foo", "bar", "baz"}
+	set.Len()     // 3
 }
 
-func ExampleOrderedSet_Iter() {
-	var set datastruct.OrderedSet[string]
+func ExampleOrderedSet_Values() {
+	var set dsset.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
 
-	for v := range set.Iter() {
+	for v := range set.Values() {
 		_ = v // "foo" -> "bar" -> "baz"
 	}
 }
 
 func ExampleOrderedSet_Contains() {
-	var set datastruct.OrderedSet[string]
+	var set dsset.OrderedSet[string]
 	set.Append("foo", "bar", "baz", "foo")
 	set.Contains("foo") // true
 	set.Contains("bar") // true
@@ -117,7 +119,7 @@ func TestOrderedSet(t *testing.T) {
 	rnd := random.New(random.CryptoSeed{})
 	t.Run("Add and Contains", func(t *testing.T) {
 		var (
-			set      datastruct.OrderedSet[int]
+			set      dsset.OrderedSet[int]
 			value    = rnd.Int()
 			othValue = random.Unique(rnd.Int, value)
 		)
@@ -133,7 +135,7 @@ func TestOrderedSet(t *testing.T) {
 
 	t.Run("FromSlice", func(t *testing.T) {
 		values := []int{rnd.Int(), rnd.Int()}
-		set := datastruct.OrderedSet[int]{}.FromSlice(values)
+		set := dsset.OrderedSet[int]{}.FromSlice(values)
 
 		for _, v := range values {
 			assert.True(t, set.Contains(v), "Set should contain the value added from the slice")
@@ -142,8 +144,8 @@ func TestOrderedSet(t *testing.T) {
 
 	t.Run("Slice uniqueness", func(t *testing.T) {
 		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
-		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
-		got := set.Slice()
+		set := dsset.OrderedSet[int]{}.FromSlice(exp)
+		got := set.ToSlice()
 
 		// Create a temporary map to check for duplicates in the slice
 		tempMap := make(map[int]struct{})
@@ -164,8 +166,8 @@ func TestOrderedSet(t *testing.T) {
 
 	t.Run("FromSlice uniqueness", func(t *testing.T) {
 		exp := []int{1, 2, 2, 3} // Intentional duplicate to test uniqueness
-		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
-		got := set.Slice()
+		set := dsset.OrderedSet[int]{}.FromSlice(exp)
+		got := set.ToSlice()
 
 		// Create a temporary map to check for duplicates in the slice
 		tempMap := make(map[int]struct{})
@@ -186,8 +188,8 @@ func TestOrderedSet(t *testing.T) {
 
 	t.Run("Slice is ordered by default", func(t *testing.T) {
 		exp := []int{1, 5, 2, 7, 3, 9} // Intentional duplicate to test uniqueness
-		set := datastruct.OrderedSet[int]{}.FromSlice(exp)
-		got := set.Slice()
+		set := dsset.OrderedSet[int]{}.FromSlice(exp)
+		got := set.ToSlice()
 
 		assert.Equal(t, exp, got, "values were expected, and in the same order")
 	})
@@ -207,31 +209,31 @@ func TestOrderedSet(t *testing.T) {
 		return v
 	}
 
-	lc := datastructcontract.ListConfig[string]{
+	lc := dscontract.ListConfig[string]{
 		MakeElem: makeElem,
 	}
 
-	sc := datastructcontract.SequenceConfig[string]{
+	sc := dscontract.SequenceConfig[string]{
 		MakeElem: makeElem,
 	}
 
-	t.Run("implements List", datastructcontract.List(func(tb testing.TB) datastruct.List[string] {
-		return &datastruct.OrderedSet[string]{}
+	t.Run("implements List", dscontract.List(func(tb testing.TB) ds.List[string] {
+		return &dsset.OrderedSet[string]{}
 	}, lc).Test)
 
-	t.Run("implements ordered List", datastructcontract.OrderedList(func(tb testing.TB) datastruct.List[string] {
-		return &datastruct.OrderedSet[string]{}
+	t.Run("implements ordered List", dscontract.OrderedList(func(tb testing.TB) ds.List[string] {
+		return &dsset.OrderedSet[string]{}
 	}, lc).Test)
 
-	t.Run("implements sequence", datastructcontract.Sequence[string](func(tb testing.TB) datastruct.Sequence[string] {
-		return &datastruct.OrderedSet[string]{}
+	t.Run("implements sequence", dscontract.Sequence[string](func(tb testing.TB) ds.Sequence[string] {
+		return &dsset.OrderedSet[string]{}
 	}, sc).Test)
 
-	t.Run("implements Containable", datastructcontract.Containable(func(t testing.TB) *datastruct.OrderedSet[string] {
-		return &datastruct.OrderedSet[string]{}
+	t.Run("implements Containable", dscontract.Containable(func(t testing.TB) *dsset.OrderedSet[string] {
+		return &dsset.OrderedSet[string]{}
 	}, lc).Test)
 
-	t.Run("implements Appendable", datastructcontract.Appendable(func(tb testing.TB) *datastruct.OrderedSet[string] {
-		return &datastruct.OrderedSet[string]{}
+	t.Run("implements Appendable", dscontract.Appendable(func(tb testing.TB) *dsset.OrderedSet[string] {
+		return &dsset.OrderedSet[string]{}
 	}).Test)
 }

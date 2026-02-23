@@ -1,10 +1,51 @@
-package datastruct
+package dslist
 
 import (
 	"iter"
+	"slices"
 
 	"go.llib.dev/frameless/pkg/slicekit"
+	"go.llib.dev/frameless/port/ds"
 )
+
+func Len[List ds.ReadOnlyList[T], T any](l List) int {
+	switch list := any(l).(type) {
+	case ds.Len:
+		return list.Len()
+	default:
+		var n int
+		for range l.Values() {
+			n++
+		}
+		return n
+	}
+}
+
+type Slice[T any] []T
+
+var _ ds.List[any] = (*Slice[any])(nil)
+var _ ds.ReadOnlyList[any] = (*Slice[any])(nil)
+var _ ds.Len = (*Slice[any])(nil)
+var _ ds.Values[string] = (*Slice[string])(nil)
+var _ ds.All[int, string] = (*Slice[string])(nil)
+
+func (slc *Slice[T]) Append(vs ...T) {
+	*slc = append(*slc, vs...)
+}
+
+func (slc Slice[T]) Len() int {
+	return len(slc)
+}
+
+func (slc Slice[T]) All() iter.Seq2[int, T] {
+	return slices.All(slc)
+}
+
+func (slc Slice[T]) Values() iter.Seq[T] {
+	return slices.Values(slc)
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 type LinkedList[T any] struct {
 	head   *llElem[T]
@@ -12,7 +53,10 @@ type LinkedList[T any] struct {
 	length int
 }
 
-var _ List[any] = (*LinkedList[any])(nil)
+var _ ds.List[any] = (*LinkedList[any])(nil)
+var _ ds.ReadOnlyList[any] = (*LinkedList[any])(nil)
+var _ ds.Len = (*LinkedList[any])(nil)
+var _ ds.Values[string] = (*LinkedList[string])(nil)
 
 type llElem[T any] struct {
 	data T
@@ -20,7 +64,7 @@ type llElem[T any] struct {
 	next *llElem[T]
 }
 
-func (ll *LinkedList[T]) Iter() iter.Seq[T] {
+func (ll *LinkedList[T]) Values() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if ll == nil {
 			return
@@ -38,9 +82,9 @@ func (ll *LinkedList[T]) Iter() iter.Seq[T] {
 	}
 }
 
-func (ll *LinkedList[T]) Slice() []T {
+func (ll *LinkedList[T]) ToSlice() []T {
 	var vs []T
-	for v := range ll.Iter() {
+	for v := range ll.Values() {
 		vs = append(vs, v)
 	}
 	return vs
@@ -145,7 +189,7 @@ func (ll *LinkedList[T]) Lookup(index int) (T, bool) {
 		return zero, false
 	}
 	var i int
-	for v := range ll.Iter() {
+	for v := range ll.Values() {
 		if i == index {
 			return v, true
 		}

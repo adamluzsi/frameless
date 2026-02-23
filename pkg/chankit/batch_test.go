@@ -327,7 +327,7 @@ func TestBatch(tt *testing.T) {
 				})
 
 				assert.Equal(t, len(expValues), total.Len())
-				assert.Equal(t, expValues, total.Slice())
+				assert.Equal(t, expValues, total.ToSlice())
 			})
 		})
 	})

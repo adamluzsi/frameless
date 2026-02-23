@@ -1,4 +1,4 @@
-package datastructcontract
+package dscontract
 
 import (
 	"fmt"
@@ -12,14 +12,15 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dsmap"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
-func KeyValueStore[K comparable, V any](make func(tb testing.TB) datastruct.KeyValueStore[K, V], opts ...KVSOption[K, V]) contract.Contract {
+func Map[K comparable, V any](make func(tb testing.TB) ds.Map[K, V], opts ...KVSOption[K, V]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
@@ -34,14 +35,15 @@ func KeyValueStore[K comparable, V any](make func(tb testing.TB) datastruct.KeyV
 
 		var expLen int
 		for k, v := range expected {
-			assert.Equal(t, kvs.Len(), expLen)
+
+			assert.Equal(t, expLen, dsmap.Len(kvs))
 			assert.Empty(t, kvs.Get(k), "zero value was expected for getting a non stored value")
 			_, ok := kvs.Lookup(k)
 			assert.False(t, ok, assert.MessageF("%#v key was not expected to be found", k))
 
 			kvs.Set(k, v)
 			expLen++
-			assert.Equal(t, kvs.Len(), expLen)
+			assert.Equal(t, expLen, dsmap.Len(kvs))
 			got, ok := kvs.Lookup(k)
 			assert.True(t, ok)
 			assert.Equal(t, v, got)
@@ -50,19 +52,15 @@ func KeyValueStore[K comparable, V any](make func(tb testing.TB) datastruct.KeyV
 
 		kNoise, vNoise := c.makeUniqueK(t), c.makeV(t)
 		kvs.Set(kNoise, vNoise)
-		assert.Equal(t, expLen+1, kvs.Len())
+		assert.Equal(t, expLen+1, dsmap.Len(kvs))
 		kvs.Delete(kNoise)
-		assert.Equal(t, expLen, kvs.Len())
+		assert.Equal(t, expLen, dsmap.Len(kvs))
 		_, ok := kvs.Lookup(kNoise)
 		assert.False(t, ok)
 		assert.Empty(t, kvs.Get(kNoise))
 
-		assert.ContainsExactly(t, mapkit.Keys(expected), kvs.Keys())
-		assert.ContainsExactly(t, expected, iterkit.Collect2Map(kvs.Iter()))
-
-		if m, ok := kvs.(datastruct.Mapper[K, V]); ok {
-			assert.ContainsExactly(t, expected, m.Map())
-		}
+		assert.ContainsExactly(t, mapkit.Keys(expected), iterkit.Collect(dsmap.Keys(kvs)))
+		assert.ContainsExactly(t, expected, iterkit.Collect2Map(kvs.All()))
 	})
 
 	s.Test("keys are unique in the store", func(t *testcase.T) {
@@ -71,16 +69,16 @@ func KeyValueStore[K comparable, V any](make func(tb testing.TB) datastruct.KeyV
 		t.Random.Repeat(3, 7, func() {
 			kvs.Set(k, c.makeV(t))
 		})
-		assert.Equal(t, 1, kvs.Len())
+		assert.Equal(t, 1, dsmap.Len(kvs))
 		exp := c.makeV(t)
 		kvs.Set(k, exp)
-		assert.Equal(t, 1, kvs.Len())
+		assert.Equal(t, 1, dsmap.Len(kvs))
 		assert.Equal(t, exp, kvs.Get(k))
 		kvs.Delete(k)
-		assert.Equal(t, 0, kvs.Len())
+		assert.Equal(t, 0, dsmap.Len(kvs))
 	})
 
-	s.Describe("#Iter", iterkitcontract.IterSeq2(func(tb testing.TB) iter.Seq2[K, V] {
+	s.Describe("#Values", iterkitcontract.IterSeq2(func(tb testing.TB) iter.Seq2[K, V] {
 		t := testcase.ToT(&tb)
 		kvs := make(t)
 		t.Random.Repeat(3, 7, func() {
@@ -88,12 +86,12 @@ func KeyValueStore[K comparable, V any](make func(tb testing.TB) datastruct.KeyV
 			v := c.makeV(t)
 			kvs.Set(k, v)
 		})
-		return kvs.Iter()
+		return kvs.All()
 	}).Spec)
 
 	kName := reflectkit.TypeOf[K]().String()
 	vName := reflectkit.TypeOf[V]().String()
-	return s.AsSuite(fmt.Sprintf("KVS[%s, %s]", kName, vName))
+	return s.AsSuite(fmt.Sprintf("Map[%s, %s]", kName, vName))
 }
 
 type KVSOption[K comparable, V any] interface {

@@ -1,4 +1,4 @@
-package datastructcontract
+package dscontract
 
 import (
 	"testing"
@@ -7,7 +7,8 @@ import (
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dslist"
 	"go.llib.dev/frameless/port/option"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
@@ -29,15 +30,15 @@ func (sc SequenceConfig[T]) ToListConfig() ListConfig[T] {
 
 type SequenceOption[T any] option.Option[SequenceConfig[T]]
 
-func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...SequenceOption[T]) contract.Contract {
+func Sequence[T any](make contract.Make[ds.Sequence[T]], opts ...SequenceOption[T]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
-	seq := let.Var(s, func(t *testcase.T) datastruct.Sequence[T] {
+	seq := let.Var(s, func(t *testcase.T) ds.Sequence[T] {
 		return make(t)
 	})
 
-	OrderedList(func(tb testing.TB) datastruct.List[T] {
+	OrderedList(func(tb testing.TB) ds.List[T] {
 		return make(tb)
 	}, c.ToListConfig()).Spec(s)
 
@@ -51,7 +52,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 
 		s.When("sequence is empty", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				assert.Equal(t, 0, seq.Get(t).Len(), `The "Make" sequence should be empty but isn't—please check the setup.`)
+				assert.Equal(t, 0, dslist.Len(seq.Get(t)), `The "Make" sequence should be empty but isn't—please check the setup.`)
 			})
 
 			s.And("index is out of bound", func(s *testcase.Spec) {
@@ -73,7 +74,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				})
 			})
 
-			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
+			seq.Let(s, func(t *testcase.T) ds.Sequence[T] {
 				seq := seq.Super(t)
 				seq.Append(values.Get(t)...)
 				return seq
@@ -118,7 +119,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 
 		s.When("sequence is empty", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				assert.Equal(t, 0, seq.Get(t).Len(), `The "Make" sequence should be empty but isn't—please check the setup.`)
+				assert.Equal(t, 0, dslist.Len(seq.Get(t)), `The "Make" sequence should be empty but isn't—please check the setup.`)
 			})
 
 			s.And("index is out of bound", func(s *testcase.Spec) {
@@ -140,7 +141,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				})
 			})
 
-			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
+			seq.Let(s, func(t *testcase.T) ds.Sequence[T] {
 				seq := seq.Super(t)
 				seq.Append(values.Get(t)...)
 				return seq
@@ -160,9 +161,9 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				})
 
 				s.Then("the total length remains the same", func(t *testcase.T) {
-					befLen := seq.Get(t).Len()
+					befLen := dslist.Len(seq.Get(t))
 					act(t)
-					aftLen := seq.Get(t).Len()
+					aftLen := dslist.Len(seq.Get(t))
 
 					assert.Equal(t, befLen, aftLen)
 				})
@@ -170,7 +171,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				s.Then("apart from the changed value, everything else remains the original one", func(t *testcase.T) {
 					act(t)
 
-					for i := 0; i < seq.Get(t).Len(); i++ {
+					for i := 0; i < dslist.Len(seq.Get(t)); i++ {
 						v, ok := seq.Get(t).Lookup(i)
 						assert.True(t, ok)
 						if i == index.Get(t) {
@@ -213,7 +214,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 
 		s.When("sequence is empty", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				assert.Equal(t, 0, seq.Get(t).Len(), `The "Make" sequence should be empty but isn't—please check the setup.`)
+				assert.Equal(t, 0, dslist.Len(seq.Get(t)), `The "Make" sequence should be empty but isn't—please check the setup.`)
 			})
 
 			s.And("index is out of bound", func(s *testcase.Spec) {
@@ -231,10 +232,10 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 
 				s.Then("it inserts the values", func(t *testcase.T) {
 					assert.True(t, act(t))
-					assert.Equal(t, len(newValues.Get(t)), seq.Get(t).Len(),
+					assert.Equal(t, len(newValues.Get(t)), dslist.Len(seq.Get(t)),
 						"expected that sequence length reflects the newly inserted values")
 
-					for i := 0; i < seq.Get(t).Len(); i++ {
+					for i := 0; i < dslist.Len(seq.Get(t)); i++ {
 						v, ok := seq.Get(t).Lookup(i)
 						assert.True(t, ok)
 						assert.Equal(t, newValues.Get(t)[i], v)
@@ -258,7 +259,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				})
 			})
 
-			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
+			seq.Let(s, func(t *testcase.T) ds.Sequence[T] {
 				seq := seq.Super(t)
 				seq.Append(values.Get(t)...)
 				return seq
@@ -273,7 +274,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 					onSuccess(t)
 
 					expLen := len(values.Get(t)) + len(newValues.Get(t))
-					gotLen := seq.Get(t).Len()
+					gotLen := dslist.Len(seq.Get(t))
 					assert.Equal(t, expLen, gotLen)
 				})
 
@@ -336,7 +337,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 
 		s.When("sequence is empty", func(s *testcase.Spec) {
 			s.Before(func(t *testcase.T) {
-				assert.Equal(t, 0, seq.Get(t).Len(), `The "Make" sequence should be empty but isn't—please check the setup.`)
+				assert.Equal(t, 0, dslist.Len(seq.Get(t)), `The "Make" sequence should be empty but isn't—please check the setup.`)
 			})
 
 			s.And("index is out of bound", func(s *testcase.Spec) {
@@ -358,7 +359,7 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				})
 			})
 
-			seq.Let(s, func(t *testcase.T) datastruct.Sequence[T] {
+			seq.Let(s, func(t *testcase.T) ds.Sequence[T] {
 				seq := seq.Super(t)
 				seq.Append(values.Get(t)...)
 				return seq
@@ -370,9 +371,9 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 				})
 
 				s.Then("the total length shrinks by one", func(t *testcase.T) {
-					befLen := seq.Get(t).Len()
+					befLen := dslist.Len(seq.Get(t))
 					act(t)
-					aftLen := seq.Get(t).Len()
+					aftLen := dslist.Len(seq.Get(t))
 					assert.Equal(t, befLen, aftLen+1)
 				})
 
@@ -381,10 +382,10 @@ func Sequence[T any](make contract.Make[datastruct.Sequence[T]], opts ...Sequenc
 					assert.True(t, slicekit.Delete(&exp, index.Get(t)))
 					act(t)
 
-					assert.Equal(t, exp, iterkit.Collect(seq.Get(t).Iter()))
+					assert.Equal(t, exp, iterkit.Collect(seq.Get(t).Values()))
 
-					if cts, ok := seq.Get(t).(datastruct.Slicer[T]); ok {
-						assert.Equal(t, exp, cts.Slice())
+					if cts, ok := seq.Get(t).(ds.SliceConveratble[T]); ok {
+						assert.Equal(t, exp, cts.ToSlice())
 					}
 				})
 			})

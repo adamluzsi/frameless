@@ -11,8 +11,8 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/must"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/port/datastruct"
-	"go.llib.dev/frameless/port/datastruct/datastructcontract"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dscontract"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
@@ -1528,7 +1528,7 @@ func TestResolveIndex(t *testing.T) {
 }
 
 func Test_sequence(t *testing.T) {
-	datastructcontract.Sequence(func(tb testing.TB) datastruct.Sequence[string] {
+	dscontract.Sequence(func(tb testing.TB) ds.Sequence[string] {
 		return &Sequence[string]{}
 	}).Test(t)
 }
@@ -1555,11 +1555,11 @@ func (seq *Sequence[T]) Append(vs ...T) {
 	*seq = append(*seq, vs...)
 }
 
-func (seq *Sequence[T]) Slice() []T {
+func (seq *Sequence[T]) ToSlice() []T {
 	return *seq
 }
 
-func (seq *Sequence[T]) Iter() iter.Seq[T] {
+func (seq *Sequence[T]) Values() iter.Seq[T] {
 	return iterkit.FromSlice(*seq)
 }
 

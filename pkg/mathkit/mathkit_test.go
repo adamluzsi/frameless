@@ -870,7 +870,7 @@ func TestBigInt(t *testing.T) {
 		})
 	})
 
-	s.Describe("#Iter", func(s *testcase.Spec) {
+	s.Describe("#Values", func(s *testcase.Spec) {
 		act := let.Act(func(t *testcase.T) iter.Seq[int] {
 			return subject.Get(t).Iter()
 		})

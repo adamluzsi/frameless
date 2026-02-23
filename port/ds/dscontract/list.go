@@ -1,4 +1,4 @@
-package datastructcontract
+package dscontract
 
 import (
 	"fmt"
@@ -10,36 +10,74 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/zerokit"
+
 	"go.llib.dev/frameless/port/contract"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dslist"
 	"go.llib.dev/frameless/port/option"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/random"
 )
 
-func OrderedList[T any](make func(tb testing.TB) datastruct.List[T], opts ...ListOption[T]) contract.Contract {
+type SubjectLenAppendable[T any] interface {
+	ds.Appendable[T]
+	ds.Len
+}
+
+func LenAppendable[T any, Subject SubjectLenAppendable[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
-	List(make, c).Spec(s)
+	s.Test("append affects length", func(t *testcase.T) {
+		subject := mk(t)
+
+		exp := 0
+		assert.Equal(t, exp, subject.Len())
+
+		t.Random.Repeat(3, 7, func() {
+			subject.Append(c.makeElem(t))
+			exp++
+			assert.Equal(t, exp, subject.Len())
+		})
+	})
+
+	s.Test("append many at once increase the length by the sum of appended values", func(t *testcase.T) {
+		var (
+			list         = mk(t)
+			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) })
+		)
+		baseLen := list.Len()
+		list.Append(expected...)
+		assert.Equal(t, len(expected)+baseLen, list.Len())
+	})
+
+	return s.AsSuite(fmt.Sprintf("Len[%s] (appendable)", reflectkit.TypeOf[T]().String()))
+}
+
+func OrderedList[T any, Subject ds.List[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
+	s := testcase.NewSpec(nil)
+	c := option.ToConfig(opts)
+
+	List(mk, c).Spec(s)
 
 	s.Test("ordered", func(t *testcase.T) {
 		var (
-			list         = make(t)
+			list         = mk(t)
 			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) }, random.UniqueValues)
 		)
 		list.Append(expected...)
-		if ts, ok := list.(datastruct.Slicer[T]); ok {
-			assert.Equal(t, expected, ts.Slice())
+		if ts, ok := any(list).(ds.SliceConveratble[T]); ok {
+			assert.Equal(t, expected, ts.ToSlice())
 		}
-		assert.Equal(t, expected, iterkit.Collect(list.Iter()))
+		assert.Equal(t, expected, iterkit.Collect(list.Values()))
 	})
 
 	return s.AsSuite(fmt.Sprintf("ordered List[%s]", reflectkit.TypeOf[T]().String()))
 }
 
-func List[T any, Subject datastruct.List[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
+func List[T any, Subject ds.List[T]](mk func(tb testing.TB) Subject, opts ...ListOption[T]) contract.Contract {
 	s := testcase.NewSpec(nil)
 	c := option.ToConfig(opts)
 
@@ -50,16 +88,16 @@ func List[T any, Subject datastruct.List[T]](mk func(tb testing.TB) Subject, opt
 		)
 
 		list.Append()
-		assert.Equal(t, 0, list.Len())
+		assert.Equal(t, 0, dslist.Len(list))
 
 		var expLen int
 		for _, v := range expected {
-			assert.Equal(t, expLen, list.Len())
+			assert.Equal(t, expLen, dslist.Len(list))
 			list.Append(v)
 			expLen++
 		}
 
-		assert.ContainsExactly(t, expected, iterkit.Collect(list.Iter()))
+		assert.ContainsExactly(t, expected, iterkit.Collect(list.Values()))
 	})
 
 	s.Test("Append many", func(t *testcase.T) {
@@ -68,22 +106,22 @@ func List[T any, Subject datastruct.List[T]](mk func(tb testing.TB) Subject, opt
 			expected []T = random.Slice(t.Random.IntBetween(3, 7), func() T { return c.makeElem(t) })
 		)
 		list.Append(expected...)
-		assert.Equal(t, len(expected), list.Len())
-		assert.ContainsExactly(t, expected, iterkit.Collect(list.Iter()))
+		assert.Equal(t, len(expected), dslist.Len(list))
+		assert.ContainsExactly(t, expected, iterkit.Collect(list.Values()))
 
-		if cts, ok := any(list).(datastruct.Slicer[T]); ok {
-			assert.ContainsExactly(t, expected, cts.Slice())
+		if cts, ok := any(list).(ds.SliceConveratble[T]); ok {
+			assert.ContainsExactly(t, expected, cts.ToSlice())
 		}
 	})
 
-	s.Describe("#Iter", iterkitcontract.IterSeq(func(tb testing.TB) iter.Seq[T] {
+	s.Describe("#Values", iterkitcontract.IterSeq(func(tb testing.TB) iter.Seq[T] {
 		t := testcase.ToT(&tb)
 		list := mk(t)
 		t.Random.Repeat(3, 7, func() {
 			v := c.makeElem(t)
 			list.Append(v)
 		})
-		return list.Iter()
+		return list.Values()
 	}).Spec)
 
 	s.Context("implements Appendable", Appendable(mk).Spec)

@@ -1343,7 +1343,7 @@ func TestLockstepReaders(t *testing.T) {
 			assert.Equal(t, count.Get(t), bgr.Results.Len(),
 				"all the reader should have finished without an error")
 
-			for got := range bgr.Results.Iter() {
+			for got := range bgr.Results.Values() {
 				assert.Equal(t, data.Get(t), got, "all the output results should be identical")
 			}
 		})
@@ -1457,7 +1457,7 @@ func TestLockstepReaders(t *testing.T) {
 				assert.Equal(t, bg.Len(), 0)
 			})
 
-			for got := range bg.Results.Iter() {
+			for got := range bg.Results.Values() {
 				assert.Equal(t, data.Get(t), got)
 			}
 		})
@@ -1510,7 +1510,7 @@ func TestLockstepReaders(t *testing.T) {
 				assert.Equal(t, len(otherReaders), bg.Results.Len())
 			})
 
-			for got := range bg.Results.Iter() {
+			for got := range bg.Results.Values() {
 				assert.Equal(t, data.Get(t), got)
 			}
 		})
