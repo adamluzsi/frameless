@@ -326,3 +326,28 @@ func Test_pgxQuery(t *testing.T) {
 	assert.NoError(t, rows.Err())
 	assert.Equal(t, 3, n)
 }
+
+func TestBatch_rainyAdd(t *testing.T) {
+	cm, err := postgresql.Connect(DatabaseURL(t))
+	assert.NoError(t, err)
+
+	MigrateEntity(t, cm)
+
+	mapping := EntityMapping()
+	mapping.TableName = "incorrect_non_existent"
+
+	subject := &postgresql.Repository[Entity, string]{
+		Connection: cm,
+		Mapping:    mapping,
+	}
+
+	batch := subject.Batch(t.Context())
+	defer batch.Close()
+
+	assert.Within(t, time.Second, func(ctx context.Context) {
+		assert.AnyOf(t, func(a *assert.A) {
+			a.Test(func(t testing.TB) { assert.Error(t, batch.Add(MakeEntityFunc(t)())) })
+			a.Test(func(t testing.TB) { assert.Error(t, batch.Close()) })
+		})
+	})
+}

@@ -18,6 +18,8 @@ github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 go.llib.dev/frameless v0.315.0 h1:HQ9PXfnxYS0IbcO5rI7tLx7L/CwpX1gJHWtf8WIKo0k=
 go.llib.dev/frameless v0.315.0/go.mod h1:YII372nGyfy7kgdOR5yL24UbcuZXg1k1pzKbmkS8z2g=
+go.llib.dev/frameless v0.316.0 h1:+d5e3wtAVXBSz1ERedsqPBJ8Q92UaYs6a91B7IPISL4=
+go.llib.dev/frameless v0.316.0/go.mod h1:YII372nGyfy7kgdOR5yL24UbcuZXg1k1pzKbmkS8z2g=
 go.llib.dev/testcase v0.189.0 h1:tW88kfp3L+ZsaSUy7HV9vfgx2ZBoysBRCZ7pc+aZMpI=
 go.llib.dev/testcase v0.189.0/go.mod h1:eNeWtttI6gxtHp/+r4X2Iqwv1QfIvcPTDHaAtkItfuQ=
 golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=

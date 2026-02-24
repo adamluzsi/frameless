@@ -83,7 +83,7 @@ func (r Repository[ENT, ID]) Create(ctx context.Context, ptr *ENT) (rErr error) 
 		valuesArgs = append(valuesArgs, arg)
 	}
 
-	query := fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableName, r.quotedColumnsClause(colums))
+	query := fmt.Sprintf("INSERT INTO %s (%s)\n", r.tableIdentifier().Sanitize(), r.quotedColumnsClause(colums))
 	query += fmt.Sprintf("VALUES (%s)\n", strings.Join(valuesClause, ", "))
 
 	logger.Debug(ctx, "postgresql.Repository.Create", logging.Field("query", query))
@@ -115,7 +115,7 @@ func (r Repository[ENT, ID]) FindByID(ctx context.Context, id ID) (ENT, bool, er
 
 	cols, scan := r.Mapping.ToQuery(ctx)
 
-	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.Mapping.TableName)
+	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.tableIdentifier().Sanitize())
 
 	nextPH := makePrepareStatementPlaceholderGenerator()
 
@@ -156,7 +156,7 @@ func (r Repository[ENT, ID]) DeleteAll(ctx context.Context) (rErr error) {
 	defer comproto.FinishOnePhaseCommit(&rErr, r, ctx)
 
 	var (
-		tableName = r.Mapping.TableName
+		tableName = r.tableIdentifier().Sanitize()
 		query     = fmt.Sprintf(`DELETE FROM %s`, tableName)
 	)
 
@@ -173,7 +173,7 @@ func (r Repository[ENT, ID]) DeleteByID(ctx context.Context, id ID) (rErr error)
 		return err
 	}
 
-	var query = fmt.Sprintf(`DELETE FROM %s WHERE %s`, r.Mapping.TableName, strings.Join(idWhereClause, " AND "))
+	var query = fmt.Sprintf(`DELETE FROM %s WHERE %s`, r.tableIdentifier().Sanitize(), strings.Join(idWhereClause, " AND "))
 
 	ctx, err = r.BeginTx(ctx)
 	if err != nil {
@@ -203,7 +203,7 @@ func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) (rErr error) 
 	}
 
 	var (
-		query           = fmt.Sprintf("UPDATE %s", r.Mapping.TableName)
+		query           = fmt.Sprintf("UPDATE %s", r.tableIdentifier().Sanitize())
 		nextPlaceholder = makePrepareStatementPlaceholderGenerator()
 
 		querySetClause   []string
@@ -263,7 +263,7 @@ func (r Repository[ENT, ID]) Update(ctx context.Context, ptr *ENT) (rErr error) 
 
 func (r Repository[ENT, ID]) FindAll(ctx context.Context) iterkit.ErrSeq[ENT] {
 	cols, scan := r.Mapping.ToQuery(ctx)
-	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.Mapping.TableName)
+	query := fmt.Sprintf(`SELECT %s FROM %s`, r.quotedColumnsClause(cols), r.tableIdentifier().Sanitize())
 	return flsql.QueryMany(r.Connection, ctx, scan.Map, query)
 }
 
@@ -289,7 +289,7 @@ func (r Repository[ENT, ID]) FindByIDs(ctx context.Context, ids ...ID) iterkit.S
 	selectClause, scan := r.Mapping.ToQuery(ctx)
 
 	query := fmt.Sprintf(`SELECT %s FROM %s WHERE %s`,
-		r.quotedColumnsClause(selectClause), r.Mapping.TableName, strings.Join(whereClause, " OR "))
+		r.quotedColumnsClause(selectClause), r.tableIdentifier().Sanitize(), strings.Join(whereClause, " OR "))
 
 	var count int
 	coundQuery := fmt.Sprintf(`SELECT COUNT(*) FROM (%s) AS src`, query)
@@ -406,7 +406,7 @@ func (r Repository[ENT, ID]) upsertWithID(ctx context.Context, ptrs ...*ENT) err
 	}
 
 	var query string
-	query += fmt.Sprintf("INSERT INTO %s (%s)\n", r.Mapping.TableName, r.quotedColumnsClause(columns))
+	query += fmt.Sprintf("INSERT INTO %s (%s)\n", r.tableIdentifier().Sanitize(), r.quotedColumnsClause(columns))
 	query += fmt.Sprintf("VALUES \n\t%s\n", strings.Join(valuesClause, ",\n\t"))
 	query += fmt.Sprintf("ON CONFLICT (%s) DO\n", flsql.JoinColumnName(idColumns, "%q", ", "))
 	query += fmt.Sprintf("\tUPDATE SET\n%s\n", strings.Join(onConflictUpdateSetClause, ",\n"))
@@ -434,6 +434,12 @@ func (r Repository[ENT, ID]) quotedColumnsClause(cols []flsql.ColumnName) string
 	return flsql.JoinColumnName(cols, "%q", ", ")
 }
 
+func (r Repository[ENT, ID]) tableIdentifier() pgx.Identifier {
+	ident := strings.Split(r.Mapping.TableName, ".")
+	ident = slicekit.Map(ident, strings.TrimSpace)
+	return pgx.Identifier(ident)
+}
+
 func (r Repository[ENT, ID]) Batch(ctx context.Context) crud.Batch[ENT] {
 	return &Batch[ENT, ID]{Repository: r, Context: ctx}
 }
@@ -445,7 +451,9 @@ type Batch[ENT, ID any] struct {
 	_begin  sync.Once
 	_finish sync.Once
 
-	bgjob synckit.Job
+	bgjob  synckit.Job
+	bgDone chan struct{}
+
 	input chan ENT
 }
 
@@ -457,7 +465,11 @@ func (b *Batch[ENT, ID]) init() {
 			b.Context = context.Background()
 		}
 
+		b.bgDone = make(chan struct{})
+
 		b.bgjob = synckit.Go(b.Context, func(ctx context.Context) (rErr error) {
+			defer close(b.bgDone)
+
 			if err := ctx.Err(); err != nil {
 				return err
 			}
@@ -479,7 +491,7 @@ func (b *Batch[ENT, ID]) init() {
 			}
 			_, err = (*tx).CopyFrom(
 				ctx,
-				pgx.Identifier{b.Repository.Mapping.TableName},
+				b.Repository.tableIdentifier(),
 				slicekit.Map(columns, func(cn flsql.ColumnName) string {
 					return string(cn)
 				}),
@@ -521,6 +533,8 @@ func (b *Batch[ENT, ID]) Add(v ENT) error {
 		return nil
 	case <-b.Context.Done():
 		return b.Context.Err()
+	case <-b.bgDone:
+		return b.bgjob.Wait()
 	}
 }
 
