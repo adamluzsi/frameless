@@ -8,7 +8,8 @@ import (
 	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
+	"go.llib.dev/frameless/port/ds/dsmap"
 )
 
 type Definition interface {
@@ -32,8 +33,8 @@ type ValidateDefinitionContext struct {
 	vs map[VariableKey]ValidateDefinitionContextVariable
 }
 
-func (ValidateDefinitionContext) Variables() datastruct.KeyValueStore {
-
+func (vdc ValidateDefinitionContext) Variables() ds.Map[VariableKey, ValidateDefinitionContextVariable] {
+	return dsmap.Map[VariableKey, ValidateDefinitionContextVariable](vdc.vs)
 }
 
 type ValidateDefinitionContextVariable struct {

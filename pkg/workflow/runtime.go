@@ -82,5 +82,5 @@ func (w Worker) Run(ctx context.Context) error {
 func (w Worker) handle(ctx context.Context, msg pubsub.Message[Process]) (rErr error) {
 	defer comproto.FinishTx(&rErr, msg.ACK, msg.NACK)
 	var process = msg.Data()
-	return w.Runtime.Execute(ctx, process.PDEF, process.State)
+	return w.Runtime.Execute(ctx, process.Definition, process.State)
 }

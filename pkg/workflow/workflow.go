@@ -8,7 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/frameless/port/datastruct"
+	"go.llib.dev/frameless/port/ds"
 )
 
 type JSONSerialisable interface {
@@ -21,8 +21,8 @@ type minCondition interface {
 }
 
 type Process struct {
-	PDEF  Definition `json:"pdef"`
-	State *State     `json:"state"`
+	Definition Definition `json:"pdef"`
+	State      *State     `json:"state"`
 }
 
 type Cache struct {
@@ -45,12 +45,12 @@ func (s *State) Merge(oth *State) {
 }
 
 type Variables struct {
-	datastruct.Map[VariableKey, any]
+	ds.Map[VariableKey, any]
 }
 
 type VariableKey string
 
-var _ datastruct.KeyValueStore[VariableKey, any] = (*Variables)(nil)
+var _ ds.Map[VariableKey, any] = (*Variables)(nil)
 
 func (vs Variables) MarshalJSON() ([]byte, error) {
 	return json.Marshal(vs.Map)
