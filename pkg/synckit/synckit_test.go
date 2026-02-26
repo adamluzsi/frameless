@@ -20,7 +20,6 @@ import (
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
-	"go.llib.dev/testcase/tcsync"
 )
 
 const timeout = time.Second / 25
@@ -232,163 +231,25 @@ func TestRWLockerFactory(t *testing.T) {
 		})
 	})
 
-	// s.Then("locking on different keys won't hang", func(t *testcase.T) {
-	// 	var ready int32
+	s.Test("multiple goroutines can acquire locks for different keys concurrently", func(t *testcase.T) {
+		lf := subject.Get(t)
+		var g synckit.Group
+		g.ErrorOnGoexit = true
 
-	// 	go func() {
-	// 		l := lockerFor(t, key.Get(t))
-	// 		assert.Should(t).Within(timeout, func(ctx context.Context) {
-	// 			l.Lock()
-	// 		})
-	// 		t.Defer(l.Unlock)
-	// 		atomic.AddInt32(&ready, 1)
-	// 		<-t.Done()
-	// 	}()
+		keys := random.Slice(t.Random.IntBetween(3, 7), t.Random.UUID, random.UniqueValues)
 
-	// 	go func() {
-	// 		l := lockerFor(t, othKey.Get(t))
-	// 		assert.Should(t).Within(timeout, func(ctx context.Context) {
-	// 			l.Lock()
-	// 		})
-	// 		atomic.AddInt32(&ready, 1)
-	// 		t.Defer(l.Unlock)
-	// 		<-t.Done()
-	// 	}()
+		for _, key := range keys {
+			g.Go(t.Context(), func(ctx context.Context) error {
+				assert.Within(t, timeout, func(ctx context.Context) {
+					locker := lf.RWLocker(key)
+					locker.Lock()
+					defer locker.Unlock()
+				})
+				return nil
+			})
+		}
 
-	// 	assert.Eventually(t, timeout, func(t testing.TB) {
-	// 		assert.Equal(t, atomic.LoadInt32(&ready), 2)
-	// 	})
-	// })
-
-	// s.When("multiple goroutines acquire locks for different keys concurrently", func(s *testcase.Spec) {
-	// 	jg := testcase.Let(s, func(t *testcase.T) *tasker.JobGroup[tasker.Manual] {
-	// 		var jg tasker.JobGroup[tasker.Manual]
-	// 		return &jg
-	// 	})
-
-	// 	s.Before(func(t *testcase.T) {
-	// 		wg.Add(2)
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			lockAndUnlock(t)
-	// 		}()
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			subject.Get(t).Locker(othKey.Get(t)).Lock()
-	// 			defer subject.Get(t).Locker(othKey.Get(t)).Unlock()
-	// 		}()
-	// 	})
-
-	// 	s.Then("no deadlocks occur", func(t *testcase.T) {
-	// 		wg.Wait()
-	// 	})
-	// })
-
-	// s.When("multiple goroutines acquire locks for the same key concurrently", func(s *testcase.Spec) {
-	// 	var wg sync.WaitGroup
-
-	// 	s.Before(func(t *testcase.T) {
-	// 		wg.Add(2)
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			lockAndUnlock(t)
-	// 		}()
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			locker(t).Lock()
-	// 			defer locker(t).Unlock()
-	// 		}()
-	// 	})
-
-	// 	s.Then("the second lock is blocked until the first is released", func(t *testcase.T) {
-	// 		wg.Wait()
-	// 	})
-	// })
-
-	// s.When("RLock is used", func(s *testcase.Spec) {
-	// 	act := func(t *testcase.T) {
-	// 		rlocker(t).Lock()
-	// 		defer rlocker(t).Unlock()
-	// 	}
-
-	// 	s.Then("multiple concurrent read locks are allowed", func(t *testcase.T) {
-	// 		var wg sync.WaitGroup
-
-	// 		wg.Add(2)
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			act(t)
-	// 		}()
-	// 		go func() {
-	// 			defer wg.Done()
-	// 			(act)(t)
-	// 		}()
-
-	// 		wg.Wait()
-	// 	})
-	// })
-
-	s.Context("race", func(s *testcase.Spec) {
-		s.Test("lock and unlock on same key", func(t *testcase.T) {
-			var (
-				factory = subject.Get(t)
-				key     = t.Random.String()
-			)
-			locking := func() {
-				l := factory.RWLocker(key)
-				l.Lock()
-				_ = 42 // empty critical section (SA2001)go-staticcheck
-				l.Unlock()
-			}
-			rlocking := func() {
-				l := factory.RWLocker(key)
-				l.RLock()
-				_ = 42 // empty critical section (SA2001)go-staticcheck
-				l.RUnlock()
-			}
-			testcase.Race(
-				locking, locking,
-				rlocking, rlocking,
-			)
-		})
-
-		s.Test("write lock on different keys", func(t *testcase.T) {
-			var (
-				factory = subject.Get(t)
-				keyA    = t.Random.String()
-				keyB    = t.Random.String()
-			)
-			lockingA := func() {
-				l := factory.RWLocker(keyA)
-				l.Lock()
-				_ = 42 // empty critical section (SA2001)go-staticcheck
-				l.Unlock()
-			}
-			lockingB := func() {
-				l := factory.RWLocker(keyB)
-				l.Lock()
-				_ = 42 // empty critical section (SA2001)go-staticcheck
-				l.Unlock()
-			}
-			rlockingA := func() {
-				l := factory.RWLocker(keyA).RLocker()
-				l.Lock()
-				_ = 42 // empty critical section (SA2001)go-staticcheck
-				l.Unlock()
-			}
-			rlockingB := func() {
-				l := factory.RWLocker(keyB).RLocker()
-				l.Lock()
-				_ = 42 // empty critical section (SA2001)go-staticcheck
-				l.Unlock()
-			}
-			testcase.Race(
-				lockingA,
-				rlockingA,
-				lockingB,
-				rlockingB,
-			)
-		})
+		assert.NoError(t, g.Wait())
 	})
 }
 
@@ -2143,23 +2004,6 @@ func ExampleGroup() {
 
 }
 
-func ExampleGroup_Sub_subGroupCreation() {
-	var g synckit.Group
-
-	go func() {
-		sg1, cancelSG1 := g.Sub()
-		defer cancelSG1()
-
-		sg1.Go(nil, func(ctx context.Context) error {
-			return nil
-		})
-
-		sg1.Wait()
-	}()
-
-	g.Wait()
-}
-
 func TestGroup(t *testing.T) {
 	s := testcase.NewSpec(t)
 
@@ -2519,112 +2363,6 @@ func TestGroup(t *testing.T) {
 		})
 	})
 
-	s.Describe("Sub", func(s *testcase.Spec) {
-		sub, cancel := let.Var2(s, func(t *testcase.T) (*synckit.Group, func()) {
-			return group.Get(t).Sub()
-		})
-		_, _ = sub, cancel
-
-		s.Test("sub group works just like any other group", func(t *testcase.T) {
-			var done int32
-
-			sub.Get(t).Go(nil, func(ctx context.Context) error {
-				atomic.SwapInt32(&done, 1)
-				return nil
-			})
-
-			assert.Within(t, timeout, func(ctx context.Context) {
-				assert.NoError(t, sub.Get(t).Wait())
-			})
-
-			assert.Assert(t, atomic.LoadInt32(&done) == 1)
-		})
-
-		s.Test("main group will wait until all sub group goroutines are finished too", func(t *testcase.T) {
-			var p tcsync.Phaser
-
-			n := t.Random.Repeat(3, 12, func() {
-				sg, _ := group.Get(t).Sub()
-				sg.Go(nil, func(ctx context.Context) error {
-					p.Wait()
-					return nil
-				})
-			})
-			t.Eventually(func(t *testcase.T) {
-				assert.Equal(t, p.Len(), n)
-			})
-
-			assert.NotWithin(t, timeout, func(ctx context.Context) {
-				group.Get(t).Wait()
-			})
-
-			p.Signal() // release one group
-			t.Eventually(func(t *testcase.T) {
-				assert.Equal(t, p.Len(), n-1)
-			})
-
-			assert.NotWithin(t, timeout, func(ctx context.Context) {
-				group.Get(t).Wait()
-			})
-
-			p.Finish() // release all remaining
-
-			t.Eventually(func(t *testcase.T) {
-				assert.Equal(t, p.Len(), 0)
-			})
-
-			assert.Within(t, timeout, func(ctx context.Context) {
-				group.Get(t).Wait()
-			})
-		})
-
-		s.Test("cancel is safe to execute multiple times", func(t *testcase.T) {
-			var g synckit.Group
-
-			_, cancel1A := g.Sub()
-			cancel1A()
-
-			sub1B, cancel1B := g.Sub()
-			defer cancel1B()
-
-			var p tcsync.Phaser
-			sub1B.Go(nil, func(ctx context.Context) error {
-				p.Wait()
-				return nil
-			})
-
-			assert.NotWithin(t, timeout, func(ctx context.Context) {
-				g.Wait()
-			})
-			p.Finish()
-
-			assert.Within(t, timeout, func(ctx context.Context) {
-				g.Wait()
-			})
-		})
-
-		s.Test("creating sub group is race condition safe", func(t *testcase.T) {
-			var g synckit.Group
-			defer g.Wait()
-			testcase.Race(func() {
-				sub, cancel := g.Sub()
-				defer cancel()
-				sub.Go(nil, func(ctx context.Context) error {
-					return nil
-				})
-				sub.Wait()
-
-			}, func() {
-				sub, cancel := g.Sub()
-				defer cancel()
-				sub.Go(nil, func(ctx context.Context) error {
-					return nil
-				})
-				sub.Wait()
-			})
-		})
-	})
-
 	s.Context("#Cancel", func(s *testcase.Spec) {
 		s.Test("Group", func(t *testcase.T) {
 			var (
@@ -2716,21 +2454,24 @@ func TestGroup(t *testing.T) {
 		})
 	})
 
-	s.Context("#Done", func(s *testcase.Spec) {
-		s.Test("Group", func(t *testcase.T) {
-			var p synckit.Phaser
-			defer p.Finish()
-
+	s.Describe("#Done", func(s *testcase.Spec) {
+		s.Test("on empty group Done acts akin to Group#wait and reports that the group is done", func(t *testcase.T) {
 			var g synckit.Group
 
-			emptyWait1 := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			assert.Within(t, timeout, func(ctx context.Context) {
 				select {
 				case <-g.Done():
 				case <-t.Done():
 				}
-			}, "expect that group by default blocks on done")
+			}, "expect that empty group act as being done already")
+		})
 
+		s.Test("Done will wait until goroutines are finished", func(t *testcase.T) {
+			var g synckit.Group
 			sampling := t.Random.IntBetween(3, 7)
+
+			var p synckit.Phaser
+			defer p.Finish()
 
 			for range sampling {
 				g.Go(t.Context(), func(ctx context.Context) error {
@@ -2739,7 +2480,7 @@ func TestGroup(t *testing.T) {
 				})
 			}
 
-			groupWait2 := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			waitingOnDone := assert.NotWithin(t, timeout, func(ctx context.Context) {
 				select {
 				case <-g.Done():
 				case <-t.Done():
@@ -2750,10 +2491,6 @@ func TestGroup(t *testing.T) {
 				assert.Equal(t, p.Len(), sampling,
 					"expect that all the go routine are waiting on the phaser")
 			})
-
-			assert.NotWithin(t, timeout, func(ctx context.Context) {
-				emptyWait1.Wait()
-			}, "empty wait is still waiting regardless of the new goroutines")
 
 			releaseCount := t.Random.IntN(sampling) // apart from one, other go routines are released
 			assert.NotEqual(t, 0, sampling-releaseCount,
@@ -2769,17 +2506,10 @@ func TestGroup(t *testing.T) {
 				})
 			}
 
-			assert.NotWithin(t, timeout, func(ctx context.Context) {
-				emptyWait1.Wait()
-			}, "since we should still have at least one running, the group should be still waiting")
-
 			p.Finish()
 
 			assert.Within(t, timeout, func(ctx context.Context) {
-				emptyWait1.Wait()
-			}, "when group reaches empty state, it is expected that a done signal is emitted")
-			assert.Within(t, timeout, func(ctx context.Context) {
-				groupWait2.Wait()
+				waitingOnDone.Wait()
 			}, "expected that all waiting processes finished waiting",
 				"including the ones started after goroutines were already fired")
 
@@ -2816,6 +2546,35 @@ func TestGroup(t *testing.T) {
 				}
 			}, "expect that a job that already finished no longer blocks on Done()")
 		})
+
+		s.Test("race", func(t *testcase.T) {
+			var g synckit.Group
+			var p synckit.Phaser
+
+			// race when Done is after Go
+			testcase.Race(func() {
+				g.Go(t.Context(), func(ctx context.Context) error {
+					p.Wait()
+					return nil
+				})
+			}, func() {
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, 1, p.Len())
+				})
+				p.Broadcast()
+				<-g.Done()
+			})
+
+			// race when Go is after Done (empty goroutine)
+			testcase.Race(func() {
+				wait()
+				g.Go(t.Context(), func(ctx context.Context) error {
+					return nil
+				})
+			}, func() {
+				<-g.Done()
+			})
+		})
 	})
 
 	s.Test("race", func(t *testcase.T) {
@@ -2837,18 +2596,25 @@ func TestGroup(t *testing.T) {
 			return nil
 		}
 
-		g.Go(t.Context(), work)
-		g.Go(t.Context(), work)
+		j := g.Go(t.Context(), work)
 
 		testcase.Race(func() {
-			// Len is thread safe
-			g.Len()
+			wait()
+			g.Go(t.Context(), work)
 		}, func() {
-			// Sub is thread safe
-			sub, cancel := g.Sub()
-			defer cancel()
-			sub.Go(t.Context(), work)
-			sub.Wait()
+			wait()
+			for range sampling {
+				g.Len()
+			}
+		}, func() {
+			<-g.Done()
+		}, func() {
+			g.Wait()
+		}, func() {
+			wait()
+			g.Cancel()
+		}, func() {
+			j.Wait()
 		})
 	})
 }
@@ -3504,4 +3270,28 @@ func TestGo(t *testing.T) {
 			job.Cancel()
 		})
 	})
+}
+
+func TestIsDone(t *testing.T) {
+	t.Run("nil is not done", func(t *testing.T) {
+		assert.False(t, synckit.IsDone(nil))
+	})
+
+	t.Run("open channel is not done", func(t *testing.T) {
+		assert.False(t, synckit.IsDone(make(chan struct{})))
+		assert.False(t, synckit.IsDone(t.Context().Done()))
+	})
+
+	t.Run("closed channel is considered as done", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		assert.True(t, synckit.IsDone(ctx.Done()))
+	})
+}
+
+func wait() {
+	for range 128 {
+		runtime.Gosched()
+		time.Sleep(time.Nanosecond)
+	}
 }

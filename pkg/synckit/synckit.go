@@ -576,13 +576,14 @@ type Group struct {
 	// Isolation ensures that each function in a Group runs separately,
 	// so if one encounters an error, it won’t affect the others.
 	Isolation bool
-
+	// ErrorOnGoexit makes Group#Wait and the Job#Wait of the jobs created within the group to return with error
+	// if goroutine was stopped due to `runtime.Goexit()`.
 	ErrorOnGoexit bool
 
 	wg sync.WaitGroup
 
 	rwm     sync.RWMutex
-	done    chan struct{}
+	_done   chan struct{}
 	cancels map[int]func()
 	errs    []error
 	panic   *any
@@ -674,18 +675,26 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job 
 	return j
 }
 
-func (g *Group) d() chan struct{} {
-	return Init(&g.rwm, &g.done, func() chan struct{} {
+func (g *Group) done() chan struct{} {
+	return Init(&g.rwm, &g._done, func() chan struct{} {
 		return make(chan struct{})
 	})
 }
 
 func (g *Group) Done() <-chan struct{} {
-	return g.d()
+	g.done() // init done chan
+	g.rwm.RLock()
+	defer g.rwm.RUnlock()
+	if g.len() == 0 {
+		d := make(chan struct{})
+		close(d)
+		return d
+	}
+	return g._done
 }
 
 func (g *Group) sigDone() {
-	done := g.d()
+	done := g.done()
 	g.rwm.RLock()
 	defer g.rwm.RUnlock()
 	if g.len() != 0 {
@@ -722,20 +731,18 @@ func (g *Group) Cancel() {
 	g.cancels = nil
 }
 
-func (g *Group) Wait() error {
+func (g *Group) Wait() (rErr error) {
 	g.wg.Wait()
 	g.rwm.RLock()
 	// fast path
 	if len(g.errs) == 0 && g.panic == nil {
-		g.waitSub()
-		g.rwm.RUnlock()
+		defer g.rwm.RUnlock()
 		return nil
 	}
 	g.rwm.RUnlock()
 	// slow path
 	g.rwm.Lock()
 	defer g.rwm.Unlock()
-	defer g.waitSub()
 	if g.panic != nil {
 		pv := *g.panic
 		g.panic = nil
@@ -747,38 +754,6 @@ func (g *Group) Wait() error {
 		return err
 	}
 	return nil
-}
-
-func (g *Group) waitSub() {
-	if len(g.subs) == 0 {
-		return
-	}
-	for _, sub := range g.subs {
-		_ = sub.Wait()
-	}
-}
-
-func (g *Group) Sub() (*Group, func()) {
-	g.rwm.Lock()
-	defer g.rwm.Unlock()
-
-	var sub = &Group{}
-
-	if g.subs == nil {
-		g.subs = make(map[int]*Group)
-	}
-
-	id := nextID(g.subs)
-	g.subs[id] = sub
-
-	var finish sync.Once
-	return sub, func() {
-		finish.Do(func() {
-			g.rwm.Lock()
-			defer g.rwm.Unlock()
-			delete(g.subs, id)
-		})
-	}
 }
 
 func nextID[M ~map[int]V, V any](m M) int {
@@ -878,4 +853,19 @@ func (p *Phaser) Finish() {
 	p.init()
 	atomic.CompareAndSwapInt32(&p.done, 0, 1)
 	p.c.Broadcast()
+}
+
+func IsDone(done <-chan struct{}) bool {
+	if done == nil {
+		return false
+	}
+	select {
+	case _, ok := <-done:
+		if !ok {
+			return true
+		}
+		panic("implementation-error")
+	default:
+		return false
+	}
 }

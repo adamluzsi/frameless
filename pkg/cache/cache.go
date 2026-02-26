@@ -17,6 +17,7 @@ import (
 	"go.llib.dev/frameless/pkg/logging"
 	"go.llib.dev/frameless/pkg/pointer"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/pkg/tasker"
 	"go.llib.dev/frameless/port/comproto"
 	"go.llib.dev/frameless/port/crud"
@@ -69,7 +70,7 @@ type Cache[ENT any, ID comparable] struct {
 	// A zero value means no expiration (cache entries never expire by age).
 	// TimeToLive time.Duration
 
-	jobs tasker.JobGroup[tasker.FireAndForget]
+	jobs synckit.Group
 }
 
 type Locks interface {
@@ -390,7 +391,7 @@ func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query
 	// we simply execute the job in the background
 	job := m.jobs.Go(ctx, task)
 	// and then garbage collect its contents
-	go job.Join()
+	go job.Wait()
 }
 
 // cacheQuery intentionally avoids using transactions to prioritise caching as many entities as possible.
@@ -448,7 +449,7 @@ func (m *Cache[ENT, ID]) mapQueryOneToQueryMany(q QueryOneFunc[ENT]) QueryManyFu
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 func (m *Cache[ENT, ID]) Idle() bool {
-	return !m.jobs.Alive()
+	return m.jobs.Len() == 0
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -593,7 +594,8 @@ func (m *Cache[ENT, ID]) locks() guard.NonBlockingLockerFactory[HitID] {
 }
 
 func (m *Cache[ENT, ID]) Close() (rErr error) {
-	return m.jobs.Stop()
+	m.jobs.Cancel()
+	return m.jobs.Wait()
 }
 
 // AutoRefreshCache is a generic cache that automatically refreshes its stored value when it becomes expired.

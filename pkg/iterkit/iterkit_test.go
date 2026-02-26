@@ -26,7 +26,7 @@ import (
 	"go.llib.dev/frameless/pkg/iterkit/iterkitcontract"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/slicekit"
-	"go.llib.dev/frameless/pkg/tasker"
+	"go.llib.dev/frameless/pkg/synckit"
 	"go.llib.dev/frameless/port/option"
 	. "go.llib.dev/frameless/testing/testent"
 
@@ -4166,7 +4166,7 @@ func ExampleSync() {
 	itr, cancel := iterkit.Sync(src)
 	defer cancel()
 
-	var g tasker.JobGroup[tasker.FireAndForget]
+	var g synckit.Group
 	for range 2 {
 		g.Go(nil, func(ctx context.Context) error {
 			for v := range itr {
@@ -4176,7 +4176,7 @@ func ExampleSync() {
 		})
 	}
 
-	g.Join()
+	g.Wait()
 }
 
 func TestSync(t *testing.T) {
@@ -4209,7 +4209,7 @@ func ExampleSyncE() {
 	itr, cancel := iterkit.SyncE(src)
 	defer cancel()
 
-	var g tasker.JobGroup[tasker.FireAndForget]
+	var g synckit.Group
 	for range 2 {
 		g.Go(nil, func(ctx context.Context) error {
 			for v := range itr {
@@ -4219,7 +4219,7 @@ func ExampleSyncE() {
 		})
 	}
 
-	g.Join()
+	g.Wait()
 }
 
 func TestSyncE(t *testing.T) {
@@ -4262,7 +4262,7 @@ func ExampleSync2() {
 	itr, cancel := iterkit.Sync2(iterkit.AsSeqE(src))
 	defer cancel()
 
-	var g tasker.JobGroup[tasker.FireAndForget]
+	var g synckit.Group
 	for range 2 {
 		g.Go(nil, func(ctx context.Context) error {
 			for v, err := range itr {
@@ -4273,7 +4273,7 @@ func ExampleSync2() {
 		})
 	}
 
-	g.Join()
+	g.Wait()
 }
 
 func TestSync2(t *testing.T) {
