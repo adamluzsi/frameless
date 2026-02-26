@@ -2625,6 +2625,199 @@ func TestGroup(t *testing.T) {
 		})
 	})
 
+	s.Context("#Cancel", func(s *testcase.Spec) {
+		s.Test("Group", func(t *testcase.T) {
+			var (
+				g synckit.Group
+				n atomic.Int32
+				p synckit.Phaser
+			)
+			defer p.Finish()
+
+			g.Go(t.Context(), func(ctx context.Context) error {
+				defer n.Add(1)
+				<-ctx.Done()
+				return nil
+			})
+
+			g.Go(t.Context(), func(ctx context.Context) error {
+				defer n.Add(1)
+				<-ctx.Done()
+				return nil
+			})
+
+			g.Go(t.Context(), func(ctx context.Context) error {
+				defer n.Add(1)
+				<-ctx.Done()
+				return nil
+			})
+
+			g.Cancel()
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, n.Load(), 3)
+			})
+		})
+
+		s.Test("GroupJob", func(t *testcase.T) {
+			var (
+				g synckit.Group
+				n atomic.Int32
+				p synckit.Phaser
+			)
+			defer p.Finish()
+
+			j1 := g.Go(t.Context(), func(ctx context.Context) error {
+				defer n.Add(1)
+				<-ctx.Done()
+				return nil
+			})
+
+			j2 := g.Go(t.Context(), func(ctx context.Context) error {
+				defer n.Add(1)
+				<-ctx.Done()
+				return nil
+			})
+
+			g.Go(t.Context(), func(ctx context.Context) error {
+				defer n.Add(1)
+				<-ctx.Done()
+				return nil
+			})
+
+			j1.Cancel()
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, n.Load(), 1)
+			})
+
+			t.Random.Repeat(3, 7, func() {
+				runtime.Gosched()
+
+				assert.Equal(t, n.Load(), 1)
+			})
+
+			j2.Cancel()
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, n.Load(), 2)
+			})
+			t.Random.Repeat(3, 7, func() {
+				runtime.Gosched()
+
+				assert.Equal(t, n.Load(), 2)
+			})
+
+			g.Cancel()
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, n.Load(), 3)
+			})
+		})
+	})
+
+	s.Context("#Done", func(s *testcase.Spec) {
+		s.Test("Group", func(t *testcase.T) {
+			var p synckit.Phaser
+			defer p.Finish()
+
+			var g synckit.Group
+
+			emptyWait1 := assert.NotWithin(t, timeout, func(ctx context.Context) {
+				select {
+				case <-g.Done():
+				case <-t.Done():
+				}
+			}, "expect that group by default blocks on done")
+
+			sampling := t.Random.IntBetween(3, 7)
+
+			for range sampling {
+				g.Go(t.Context(), func(ctx context.Context) error {
+					p.Wait()
+					return nil
+				})
+			}
+
+			groupWait2 := assert.NotWithin(t, timeout, func(ctx context.Context) {
+				select {
+				case <-g.Done():
+				case <-t.Done():
+				}
+			})
+
+			t.Eventually(func(t *testcase.T) {
+				assert.Equal(t, p.Len(), sampling,
+					"expect that all the go routine are waiting on the phaser")
+			})
+
+			assert.NotWithin(t, timeout, func(ctx context.Context) {
+				emptyWait1.Wait()
+			}, "empty wait is still waiting regardless of the new goroutines")
+
+			releaseCount := t.Random.IntN(sampling) // apart from one, other go routines are released
+			assert.NotEqual(t, 0, sampling-releaseCount,
+				"test implementation bug, it was not expected that IntN(sampling) returns with the count of sampling")
+
+			curr := sampling
+			for range releaseCount {
+				p.Signal()
+				curr--
+				t.Eventually(func(t *testcase.T) {
+					assert.Equal(t, p.Len(), curr)
+					assert.Equal(t, g.Len(), curr)
+				})
+			}
+
+			assert.NotWithin(t, timeout, func(ctx context.Context) {
+				emptyWait1.Wait()
+			}, "since we should still have at least one running, the group should be still waiting")
+
+			p.Finish()
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				emptyWait1.Wait()
+			}, "when group reaches empty state, it is expected that a done signal is emitted")
+			assert.Within(t, timeout, func(ctx context.Context) {
+				groupWait2.Wait()
+			}, "expected that all waiting processes finished waiting",
+				"including the ones started after goroutines were already fired")
+
+		})
+
+		s.Test("GroupJob", func(t *testcase.T) {
+			var p synckit.Phaser
+			defer p.Finish()
+
+			var g synckit.Group
+
+			job := g.Go(t.Context(), func(ctx context.Context) error {
+				p.Wait()
+				return nil
+			})
+
+			w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+				select {
+				case <-job.Done():
+				case <-t.Done():
+				}
+			}, "expect that job.Done blocks while the job is ")
+
+			p.Finish()
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				w.Wait()
+			}, "expect that job finish, the job.Done is finished")
+
+			assert.Within(t, timeout, func(ctx context.Context) {
+				select {
+				case <-job.Done():
+				case <-t.Done():
+				}
+			}, "expect that a job that already finished no longer blocks on Done()")
+		})
+	})
+
 	s.Test("race", func(t *testcase.T) {
 		var g synckit.Group
 		defer g.Wait()
@@ -3259,6 +3452,36 @@ func TestGo(t *testing.T) {
 		})
 
 		job.Wait()
+	})
+
+	s.Test("Job#Done", func(t *testcase.T) {
+		var p synckit.Phaser
+		defer p.Finish()
+
+		job := synckit.Go(t.Context(), func(ctx context.Context) error {
+			p.Wait()
+			return nil
+		})
+
+		w := assert.NotWithin(t, timeout, func(ctx context.Context) {
+			select {
+			case <-job.Done():
+			case <-t.Done():
+			}
+		}, "expect that job.Done blocks while the job is ")
+
+		p.Finish()
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			w.Wait()
+		}, "expect that job finish, the job.Done is finished")
+
+		assert.Within(t, timeout, func(ctx context.Context) {
+			select {
+			case <-job.Done():
+			case <-t.Done():
+			}
+		}, "expect that a job that already finished no longer blocks on Done()")
 	})
 
 	s.Test("race", func(t *testcase.T) {

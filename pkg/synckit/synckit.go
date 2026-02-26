@@ -523,44 +523,51 @@ func (s *Slice[T]) Insert(index int, vs ...T) bool {
 
 type Job interface {
 	Wait() error
+	Done() <-chan struct{}
 	Cancel()
 }
 
 func Go(ctx context.Context, fn func(ctx context.Context) error) Job {
 	ctx, cancel := context.WithCancel(ctx)
-	var j = &job{
-		Func:    fn,
+	var (
+		rerr error
+		done = make(chan struct{})
+	)
+	go func() {
+		defer close(done)
+		err := fn(ctx)
+		rerr = err
+	}()
+	return &job{
 		context: ctx,
 		cancel:  cancel,
-		done:    make(chan struct{}),
+		done:    done,
+		err:     &rerr,
 	}
-	go j.do()
-	return j
 }
 
 var _ Job = (*job)(nil)
 
 type job struct {
-	Func    func(context.Context) error
 	context context.Context
 	cancel  func()
 	done    chan struct{}
-
-	err error
+	err     *error
 }
 
-func (j *job) do() {
-	defer close(j.done)
-	j.err = j.Func(j.context)
+func (j *job) Done() <-chan struct{} {
+	return j.done
 }
 
 func (j *job) Wait() error {
 	<-j.done
-	return j.err
+	return *j.err
 }
 
 func (j *job) Cancel() {
-	j.cancel()
+	if j.cancel != nil {
+		j.cancel()
+	}
 }
 
 var _ Job = (*Group)(nil)
@@ -575,16 +582,20 @@ type Group struct {
 	wg sync.WaitGroup
 
 	rwm     sync.RWMutex
+	done    chan struct{}
 	cancels map[int]func()
 	errs    []error
 	panic   *any
-
-	subs map[int]*Group
+	subs    map[int]*Group
 }
 
 func (g *Group) Len() int {
 	g.rwm.RLock()
 	defer g.rwm.RUnlock()
+	return g.len()
+}
+
+func (g *Group) len() int {
 	return len(g.cancels)
 }
 
@@ -604,7 +615,7 @@ const ErrGoexit errorkitlite.Error = "ErrGoexit"
 // "synchronizes before" the return of any Wait call that it unblocks.
 //
 // [the Go memory model]: https://go.dev/ref/mem
-func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) {
+func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) Job {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -621,7 +632,15 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) {
 	g.cancels[id] = cancel
 
 	g.wg.Add(1)
+
+	var (
+		m    sync.Mutex
+		done = make(chan struct{})
+		rerr error
+	)
 	go func() {
+		defer close(done)
+		defer g.sigDone()
 		defer g.wg.Done()
 		var err error
 		o := sandbox.Run(func() {
@@ -630,6 +649,9 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) {
 		if gerr := g.filterErr(ctx, err); gerr != nil && !g.Isolation {
 			g.Cancel()
 		}
+		m.Lock()
+		rerr = err
+		m.Unlock()
 		g.rwm.Lock()
 		defer g.rwm.Unlock()
 		if err != nil {
@@ -643,6 +665,39 @@ func (g *Group) Go(ctx context.Context, fn func(ctx context.Context) error) {
 		}
 		delete(g.cancels, id)
 	}()
+	j := &job{
+		context: ctx,
+		cancel:  cancel,
+		done:    done,
+		err:     &rerr,
+	}
+	return j
+}
+
+func (g *Group) d() chan struct{} {
+	return Init(&g.rwm, &g.done, func() chan struct{} {
+		return make(chan struct{})
+	})
+}
+
+func (g *Group) Done() <-chan struct{} {
+	return g.d()
+}
+
+func (g *Group) sigDone() {
+	done := g.d()
+	g.rwm.RLock()
+	defer g.rwm.RUnlock()
+	if g.len() != 0 {
+		return
+	}
+	for {
+		select {
+		case done <- struct{}{}:
+		default:
+			return
+		}
+	}
 }
 
 func (g *Group) filterErr(ctx context.Context, err error) error {
