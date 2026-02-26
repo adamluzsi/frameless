@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/jackc/pgx/v5 v5.8.0
-	go.llib.dev/frameless v0.316.0
+	go.llib.dev/frameless v0.318.0
 	go.llib.dev/testcase v0.189.0
 )
 

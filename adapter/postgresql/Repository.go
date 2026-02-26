@@ -451,8 +451,7 @@ type Batch[ENT, ID any] struct {
 	_begin  sync.Once
 	_finish sync.Once
 
-	bgjob  synckit.Job
-	bgDone chan struct{}
+	bgjob synckit.Job
 
 	input chan ENT
 }
@@ -460,69 +459,10 @@ type Batch[ENT, ID any] struct {
 func (b *Batch[ENT, ID]) init() {
 	b._begin.Do(func() {
 		b.input = make(chan ENT)
-
 		if b.Context == nil {
 			b.Context = context.Background()
 		}
-
-		b.bgDone = make(chan struct{})
-
-		b.bgjob = synckit.Go(b.Context, func(ctx context.Context) (rErr error) {
-			defer close(b.bgDone)
-
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			var zero ENT // TODO: maybe Mapping should have a Columns and the ToArgs seperate, but then yeah... not so dynamic.
-			args, err := b.Repository.Mapping.ToArgs(zero)
-			if err != nil {
-				return err
-			}
-			ctx, err = b.Repository.Connection.BeginTx(ctx)
-			if err != nil {
-				return err
-			}
-			columns := mapkit.Keys(args)
-			defer comproto.FinishOnePhaseCommit(&rErr, b.Repository.Connection, ctx)
-
-			tx, ok := b.Repository.Connection.LookupTx(ctx)
-			if !ok {
-				return fmt.Errorf("impposible scenario, no transaction in context after BeginTx")
-			}
-			_, err = (*tx).CopyFrom(
-				ctx,
-				b.Repository.tableIdentifier(),
-				slicekit.Map(columns, func(cn flsql.ColumnName) string {
-					return string(cn)
-				}),
-				pgx.CopyFromFunc(func() (row []any, err error) {
-					select {
-					case <-ctx.Done():
-						return nil, ctx.Err()
-					case v, ok := <-b.input:
-						if !ok {
-							return nil, nil
-						}
-						if err := b.Repository.Mapping.OnPrepare(ctx, &v); err != nil {
-							return nil, err
-						}
-						var row []any
-						args, err := b.Repository.Mapping.ToArgs(v)
-						if err != nil {
-							return nil, err
-						}
-						for range columns {
-							row = append(row, nil)
-						}
-						for i, c := range columns {
-							row[i] = args[c]
-						}
-						return row, nil
-					}
-				}),
-			)
-			return err
-		})
+		b.bgjob = synckit.Go(b.Context, b.stream)
 	})
 }
 
@@ -533,7 +473,7 @@ func (b *Batch[ENT, ID]) Add(v ENT) error {
 		return nil
 	case <-b.Context.Done():
 		return b.Context.Err()
-	case <-b.bgDone:
+	case <-b.bgjob.Done():
 		return b.bgjob.Wait()
 	}
 }
@@ -544,4 +484,59 @@ func (b *Batch[ENT, ID]) Close() error {
 		close(b.input)
 	})
 	return b.bgjob.Wait()
+}
+
+func (b *Batch[ENT, ID]) stream(ctx context.Context) (rErr error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	var zero ENT // TODO: maybe Mapping should have a Columns and the ToArgs seperate, but then yeah... not so dynamic.
+	args, err := b.Repository.Mapping.ToArgs(zero)
+	if err != nil {
+		return err
+	}
+	ctx, err = b.Repository.Connection.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	columns := mapkit.Keys(args)
+	defer comproto.FinishOnePhaseCommit(&rErr, b.Repository.Connection, ctx)
+
+	tx, ok := b.Repository.Connection.LookupTx(ctx)
+	if !ok {
+		return fmt.Errorf("impposible scenario, no transaction in context after BeginTx")
+	}
+	_, err = (*tx).CopyFrom(
+		ctx,
+		b.Repository.tableIdentifier(),
+		slicekit.Map(columns, func(cn flsql.ColumnName) string {
+			return string(cn)
+		}),
+		pgx.CopyFromFunc(func() (row []any, err error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case v, ok := <-b.input:
+				if !ok {
+					return nil, nil
+				}
+				if err := b.Repository.Mapping.OnPrepare(ctx, &v); err != nil {
+					return nil, err
+				}
+				var row []any
+				args, err := b.Repository.Mapping.ToArgs(v)
+				if err != nil {
+					return nil, err
+				}
+				for range columns {
+					row = append(row, nil)
+				}
+				for i, c := range columns {
+					row[i] = args[c]
+				}
+				return row, nil
+			}
+		}),
+	)
+	return err
 }
