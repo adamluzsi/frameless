@@ -41,24 +41,32 @@ func Len[Map ds.ReadOnlyMap[K, V], K comparable, V any](m Map) int {
 
 type Map[K comparable, V any] map[K]V
 
+var _ ds.Map[string, int] = (*Map[string, int])(nil)
+var _ ds.ReadOnlyMap[string, int] = (Map[string, int])(nil)
+var _ ds.Keys[string] = (Map[string, int])(nil)
+var _ ds.Values[int] = (Map[string, int])(nil)
+var _ ds.All[string, int] = (Map[string, int])(nil)
+var _ ds.MapConveratble[string, int] = (Map[string, int])(nil)
+
 func (m Map[K, V]) Lookup(key K) (V, bool) {
 	val, ok := m[key]
 	return val, ok
 }
 
-func (m Map[K, V]) Get(key K) V {
-	return m[key]
-}
+func (m Map[K, V]) Get(key K) V { return m[key] }
 
-func (m Map[K, V]) Set(key K, val V) { m[key] = val }
+func (m *Map[K, V]) Set(key K, val V) {
+	if *m == nil {
+		*m = make(Map[K, V])
+	}
+	(*m)[key] = val
+}
 
 func (m Map[K, V]) Delete(key K) { delete(m, key) }
 
 func (m Map[K, V]) Len() int { return len(m) }
 
-func (m Map[K, V]) Map() map[K]V {
-	return m
-}
+func (m Map[K, V]) ToMap() map[K]V { return m }
 
 func (m Map[K, V]) Keys() iter.Seq[K] {
 	return func(yield func(K) bool) {

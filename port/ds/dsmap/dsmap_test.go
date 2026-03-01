@@ -16,15 +16,11 @@ import (
 	"go.llib.dev/testcase/random"
 )
 
-var _ ds.Map[string, int] = (dsmap.Map[string, int])(nil)
-
-var _ ds.Keys[string] = (dsmap.Map[string, int])(nil)
-
 func TestMap(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	m := let.Var(s, func(t *testcase.T) dsmap.Map[string, int] {
-		return dsmap.Map[string, int]{}
+	m := let.Var(s, func(t *testcase.T) *dsmap.Map[string, int] {
+		return &dsmap.Map[string, int]{}
 	})
 
 	s.Test("smoke", func(t *testcase.T) {
@@ -71,7 +67,31 @@ func TestMap(t *testing.T) {
 			exp[k] = v
 			m.Set(k, v)
 		})
-		assert.Equal(t, exp, m.Map())
+		assert.Equal(t, exp, m.ToMap())
+	})
+
+	s.Test("zero value is already usable", func(t *testcase.T) {
+		var m dsmap.Map[string, int]
+
+		var key = t.Random.UUID()
+
+		_, ok := m.Lookup(key)
+		assert.False(t, ok)
+		assert.Empty(t, m.Get(key))
+
+		var value = t.Random.Int()
+
+		m.Set(key, value)
+		assert.Equal(t, m.Get(key), value)
+
+		got, ok := m.Lookup(key)
+		assert.True(t, ok)
+		assert.Equal(t, value, got)
+
+		m.Delete(key)
+
+		_, ok = m.Lookup(key)
+		assert.False(t, ok)
 	})
 
 	s.Context("implements Key-Value-Store", dscontract.Map(func(tb testing.TB) ds.Map[string, int] {
