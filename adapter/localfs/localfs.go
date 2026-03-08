@@ -9,12 +9,19 @@ import (
 	"syscall"
 
 	"go.llib.dev/frameless/port/filesystem"
+	"go.llib.dev/frameless/port/filesystem/filemode"
 )
 
 // FileSystem provides local file system access through the filesystem.FileSystem interface.
 type FileSystem struct {
 	// RootPath is an optional parameter to jail the file system access for file access.
 	RootPath string
+}
+
+var _ fs.FS = (*FileSystem)(nil)
+
+func (fs FileSystem) Open(name string) (fs.File, error) {
+	return fs.OpenFile(name, os.O_RDONLY, filemode.UserR)
 }
 
 func (fs FileSystem) path(name, op string) (string, error) {

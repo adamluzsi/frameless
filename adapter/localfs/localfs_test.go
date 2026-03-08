@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"testing"
 
+	"go.llib.dev/frameless/pkg/errorkit"
+	"go.llib.dev/frameless/pkg/iokit"
 	"go.llib.dev/frameless/port/filesystem"
 	"go.llib.dev/testcase/assert"
 
@@ -61,7 +63,69 @@ func ExampleFileSystem() {
 	})
 }
 
-func TestLocal_contractsFileSystem(t *testing.T) {
+func TestFileSystem(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test("implements fs.FS", func(t *testcase.T) {
+		fsys := localfs.FileSystem{RootPath: t.TempDir()}
+
+		dir := filepath.Join("foo")
+		name := filepath.Join(dir, t.Random.UUID())
+		assert.NoError(t, fsys.Mkdir(dir, filemode.UserRWX))
+		exp := []byte(t.Random.String())
+
+		{ // mk file
+			infile, err := fsys.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, filemode.UserRWX)
+			assert.NoError(t, err)
+			assert.NotNil(t, infile)
+			t.Cleanup(func() { _ = fsys.Remove(name) })
+			_, err = iokit.WriteAll(infile, exp)
+			assert.NoError(t, err)
+			assert.NoError(t, infile.Close())
+		}
+
+		dirFS := os.DirFS(fsys.RootPath)
+		file1, err := fsys.Open(name)
+		assert.NoError(t, err)
+		assert.NotNil(t, file1)
+		file2, err := dirFS.Open(name)
+		assert.NoError(t, err)
+		assert.NotNil(t, file2)
+
+		got, err := io.ReadAll(file1)
+		assert.NoError(t, file1.Close())
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+
+		got, err = io.ReadAll(file2)
+		assert.NoError(t, file2.Close())
+		assert.NoError(t, err)
+		assert.Equal(t, exp, got)
+
+		file1, err = fsys.Open("unknown-file-name")
+		assert.ErrorIs(t, err, os.ErrNotExist)
+		assert.Nil(t, file1)
+		pathErr1, ok := errorkit.As[*fs.PathError](err)
+		assert.True(t, ok)
+		assert.NotEmpty(t, pathErr1.Err)
+		assert.NotEmpty(t, pathErr1.Op)
+		assert.NotEmpty(t, pathErr1.Path)
+
+		file2, err = dirFS.Open("unknown-file-name")
+		assert.ErrorIs(t, err, os.ErrNotExist)
+		assert.Nil(t, file2)
+		pathErr2, ok := errorkit.As[*fs.PathError](err)
+		assert.True(t, ok)
+		assert.NotEmpty(t, pathErr2.Err)
+		assert.NotEmpty(t, pathErr2.Op)
+		assert.NotEmpty(t, pathErr2.Path)
+
+		assert.Equal(t, pathErr1.Op, pathErr2.Op)
+		assert.ErrorIs(t, pathErr1.Err, pathErr2.Err)
+	})
+}
+
+func TestFileSystem_contractsFileSystem(t *testing.T) {
 	filesystemcontracts.FileSystem(localfs.FileSystem{RootPath: t.TempDir()}).Test(t)
 }
 
@@ -91,7 +155,7 @@ func TestFileSystem_smoke(t *testing.T) {
 	assert.Equal(t, "/foo/bar/baz", string(bs))
 }
 
-func TestLocal_rootPath(t *testing.T) {
+func TestFileSystem_rootPath(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	getSysTmpDir := func(t *testcase.T) string {
@@ -119,7 +183,7 @@ func TestLocal_rootPath(t *testing.T) {
 		t.Helper()
 		file, err := fs.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, filemode.UserRWX)
 		if err == nil {
-			assert.Must(t).NoError(file.Close())
+			assert.NoError(t, file.Close())
 			t.Cleanup(func() { _ = fs.Remove(name) })
 		}
 		return err
