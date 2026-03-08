@@ -1,6 +1,6 @@
 package netkit
 
-// GetFreePort returns a
+// GetFreePort returns a TCP port number which is free to start listening on.
 //
 // Deprecated: use netkit.FreePort("tcp") instead
 func GetFreePort() (int, error) {
