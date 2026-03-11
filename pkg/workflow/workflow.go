@@ -108,7 +108,3 @@ func vd(ctx context.Context, name string, v validate.Validatable, req bool) erro
 	}
 	return v.Validate(ctx)
 }
-
-func IdempotentParticipantExecute(ctx context.Context, s *State, id ParticipantID) error {
-
-}

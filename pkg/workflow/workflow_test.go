@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/workflow"
@@ -46,45 +47,117 @@ func Example() {
 	_ = rt.Execute(context.Background(), userDefinedWorkflowDefinition, &workflow.State{})
 }
 
-func Test_smoke(t *testing.T) {
-	templateFuncMap := workflow.TemplateFuncMap{
-		"isOK": func(v any) bool {
-			return true
-		},
-	}
+func Test_smoke(tt *testing.T) {
+	s := testcase.NewSpec(tt)
 
-	participants := workflow.ParticipantMapping{
-		"foo": func(ctx context.Context, r *workflow.State) error {
-			return nil
-		},
-		"bar": func(ctx context.Context, r *workflow.State) error {
-			return nil
-		},
-		"baz": func(ctx context.Context, r *workflow.State) error {
-			return nil
-		},
-		"qux": func(ctx context.Context, r *workflow.State) error {
-			return nil
-		},
-	}
+	s.Test("smoke", func(t *testcase.T) {
+		var (
+			fooOut = t.Random.String()
+			barOut = t.Random.Int()
+		)
 
-	var pdef workflow.Definition = &workflow.If{
-		Cond: workflow.NewConditionTemplate(`eq .X "foo"`),
-		Then: &workflow.Sequence{
-			workflow.PID("foo"),
-			workflow.PID("bar"),
-			&workflow.If{
-				Cond: workflow.NewConditionTemplate(`isOK .X`),
-				Then: workflow.PID("qux"),
+		participants := workflow.ParticipantMapping{
+			"foo": func(ctx context.Context) (string, error) {
+				return fooOut, nil
 			},
-		},
-		Else: workflow.PID("baz"),
-	}
+			"bar": func(ctx context.Context, in string) (int, error) {
+				assert.Equal(t, in, fooOut)
+				return barOut, nil
+			},
+			"baz": func(ctx context.Context, s string, n int) error {
+				assert.Equal(t, fooOut, s)
+				assert.Equal(t, barOut, n)
+				return nil
+			},
+		}
 
-	r := workflow.Runtime{
-		Participants:    participants,
-		TemplateFuncMap: templateFuncMap,
-	}
+		var pdef workflow.Definition = &workflow.Sequence{
+			&workflow.ExecuteParticipant{
+				ID:     "foo",
+				Output: []workflow.VariableKey{"foo-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID:     "bar",
+				Input:  []workflow.VariableKey{"foo-val"},
+				Output: []workflow.VariableKey{"bar-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID:    "baz",
+				Input: []workflow.VariableKey{"foo-val", "bar-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID: "flaky",
+			},
+		}
+
+		r := workflow.Runtime{
+			Participants: participants,
+		}
+
+		_ = pdef.Execute(r.Context(t.Context()))
+	})
+
+	s.Test("definition idempotency", func(t *testcase.T) {
+		var (
+			fooOut = t.Random.String()
+			barOut = t.Random.Int()
+
+			failOnce sync.Once
+		)
+
+		var ranCount = map[string]int{}
+		var inc = func(n string) {
+			ranCount[n] = ranCount[n] + 1
+		}
+
+		participants := workflow.ParticipantMapping{
+			"foo": func(ctx context.Context) (string, error) {
+				inc("foo")
+				return fooOut, nil
+			},
+			"bar": func(ctx context.Context, in string) (int, error) {
+				inc("bar")
+				assert.Equal(t, in, fooOut)
+
+				var err error
+				failOnce.Do(func() { err = t.Random.Error() })
+				return barOut, err
+			},
+			"baz": func(ctx context.Context, s string, n int) error {
+				inc("baz")
+				assert.Equal(t, fooOut, s)
+				assert.Equal(t, barOut, n)
+				return nil
+			},
+		}
+
+		var pdef workflow.Definition = &workflow.Sequence{
+			&workflow.ExecuteParticipant{
+				ID:     "foo",
+				Output: []workflow.VariableKey{"foo-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID:     "bar",
+				Input:  []workflow.VariableKey{"foo-val"},
+				Output: []workflow.VariableKey{"bar-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID:    "baz",
+				Input: []workflow.VariableKey{"foo-val", "bar-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID: "flaky",
+			},
+		}
+
+		r := workflow.Runtime{
+			Participants: participants,
+		}
+
+		_ = r
+	})
+
+	t := testcase.NewT(tt)
 
 	assert.NoError(t, pdef.Validate(r.Context(t.Context())), "expected that the process definition is valid")
 
