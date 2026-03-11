@@ -175,8 +175,8 @@ func (d *ExecuteParticipant) Execute(ctx context.Context, s *State) error {
 	return p.Execute(ctx, s)
 }
 
-func (d *ExecuteParticipant) Validate(ctx context.Context, s *State) error {
-	pid := d.ID
+func (d *ExecuteParticipant) Validate(ctx context.Context) error {
+	var pid = d.ID
 	if len(pid) == 0 {
 		return validate.Error{Cause: fmt.Errorf("empty participant ID")}
 	}
@@ -185,9 +185,10 @@ func (d *ExecuteParticipant) Validate(ctx context.Context, s *State) error {
 	if err != nil {
 		return err
 	}
-	if !ok || p == nil {
+	if !ok {
 		return ErrParticipantNotFound{PID: pid}
 	}
+	// p.ValidateSignature(d.Input, d.Output)
 	return nil
 }
 

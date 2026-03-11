@@ -24,6 +24,12 @@ A package `workflow` is a workflow engine that provides solution to two main wor
   - enabling business users to create executable processes as data
 - execution orchestration
 
+## Implementation
+
+- Participants are defined as Go functions, and process definitions are built using a set of composable types that can be serialized to JSON.
+- The execution layer is designed to be pluggable, allowing for simple task queues or more complex orchestration engines depending on the organization's needs.
+
+
 ## What is a Workflow Engine?
 
 At its core, a workflow engine is a system that manages the execution of business processes by orchestrating tasks, routing work to appropriate participants, and monitoring process flow according to predefined rules. However, modern workflow engines can be understood through two distinct but complementary responsibilities:
