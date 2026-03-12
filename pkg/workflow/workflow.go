@@ -27,6 +27,7 @@ type Process struct {
 	State      *State     `json:"state"`
 }
 
+// TODO: rename to Process
 type State struct {
 	rwm sync.Mutex
 	vs  dsmap.Map[VariableKey, any]
