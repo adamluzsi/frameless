@@ -12,10 +12,9 @@ import (
 )
 
 type Definition interface {
-	Execute(ctx context.Context, s *State) error
+	Execute(ctx context.Context, r Runtime, s *State) error
 
 	JSONSerialisable
-
 	validate.Validatable
 
 	// ValidateDefinition(ctx ValidateDefinitionContext) error
@@ -56,7 +55,7 @@ var _ Definition = (*Sequence)(nil)
 
 func (Sequence) definition() {}
 
-func (seq Sequence) Execute(ctx context.Context, s *State) error {
+func (seq Sequence) Execute(ctx context.Context, r Runtime, s *State) error {
 	for _, participant := range seq {
 		if err := participant.Execute(ctx, s); err != nil {
 			return err
@@ -116,7 +115,7 @@ type Concurrence []Definition
 
 var _ Definition = (*Concurrence)(nil)
 
-func (d *Concurrence) Execute(ctx context.Context, s *State) error {
+func (d *Concurrence) Execute(ctx context.Context, r Runtime, s *State) error {
 	if err := d.Validate(ctx); err != nil {
 		return err
 	}
@@ -160,7 +159,7 @@ type ExecuteParticipant struct {
 
 var _ Definition = (*ExecuteParticipant)(nil)
 
-func (d *ExecuteParticipant) Execute(ctx context.Context, s *State) error {
+func (d *ExecuteParticipant) Execute(ctx context.Context, r Runtime, s *State) error {
 	if err := d.Validate(ctx); err != nil {
 		return err
 	}

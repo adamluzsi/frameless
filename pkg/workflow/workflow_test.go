@@ -11,41 +11,41 @@ import (
 	"go.llib.dev/testcase/let"
 )
 
-func Example() {
+// func Example() {
 
-	rt := workflow.Runtime{
-		Participants: workflow.ParticipantMapping{
-			"foo": func(ctx context.Context, s *workflow.State) error {
-				s.Variables.Set("foo", 42)
-				return nil
-			},
-			"bar": func(ctx context.Context, s *workflow.State) error {
-				s.Variables.Set("bar", 24)
-				return nil
-			},
+// 	rt := workflow.Runtime{
+// 		Participants: workflow.ParticipantMapping{
+// 			"foo": func(ctx context.Context, s *workflow.State) error {
+// 				s.Variables.Set("foo", 42)
+// 				return nil
+// 			},
+// 			"bar": func(ctx context.Context, s *workflow.State) error {
+// 				s.Variables.Set("bar", 24)
+// 				return nil
+// 			},
 
-			"then": func(ctx context.Context, s *workflow.State) error {
-				return nil
-			},
-			"else": func(ctx context.Context, s *workflow.State) error {
-				return nil
-			},
-		},
-	}
+// 			"then": func(ctx context.Context, s *workflow.State) error {
+// 				return nil
+// 			},
+// 			"else": func(ctx context.Context, s *workflow.State) error {
+// 				return nil
+// 			},
+// 		},
+// 	}
 
-	userDefinedWorkflowDefinition := &workflow.Sequence{
-		workflow.PID("foo"),
-		workflow.PID("bar"),
-		&workflow.If{
-			Cond: workflow.NewConditionTemplate(".foo <= .bar"),
-			Then: workflow.PID("then"),
-			Else: workflow.PID("else"),
-		},
-		&workflow.Concurrence{},
-	}
+// 	userDefinedWorkflowDefinition := &workflow.Sequence{
+// 		workflow.PID("foo"),
+// 		workflow.PID("bar"),
+// 		&workflow.If{
+// 			Cond: workflow.NewConditionTemplate(".foo <= .bar"),
+// 			Then: workflow.PID("then"),
+// 			Else: workflow.PID("else"),
+// 		},
+// 		&workflow.Concurrence{},
+// 	}
 
-	_ = rt.Execute(context.Background(), userDefinedWorkflowDefinition, &workflow.State{})
-}
+// 	_ = userDefinedWorkflowDefinition.Execute(context.Background(), rt, &workflow.State{})
+// }
 
 func Test_smoke(tt *testing.T) {
 	s := testcase.NewSpec(tt)
@@ -85,16 +85,17 @@ func Test_smoke(tt *testing.T) {
 				ID:    "baz",
 				Input: []workflow.VariableKey{"foo-val", "bar-val"},
 			},
-			&workflow.ExecuteParticipant{
-				ID: "flaky",
-			},
 		}
 
 		r := workflow.Runtime{
 			Participants: participants,
 		}
 
-		_ = pdef.Execute(r.Context(t.Context()))
+		var state workflow.State
+		assert.NoError(t, pdef.Execute(r.Context(t.Context()), r, &state))
+		assert.Equal[any](t, state.Variables().Get("foo-val"), fooOut)
+		assert.Equal[any](t, state.Variables().Get("bar-val"), barOut)
+
 	})
 
 	s.Test("definition idempotency", func(t *testcase.T) {

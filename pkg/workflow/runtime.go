@@ -14,8 +14,6 @@ import (
 type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
-
-	TemplateFuncMap TemplateFuncMap
 }
 
 type ParticipantRepository interface {
@@ -37,7 +35,7 @@ func lookupParticipant(pr ParticipantRepository, ctx context.Context, id Partici
 func (r Runtime) Context(ctx context.Context) context.Context {
 	ctx = ContextWithParticipants(ctx, r.Participants)
 	ctx = ContextWithConditions(ctx, r.Conditions)
-	ctx = ContextWithFuncMap(ctx, r.TemplateFuncMap)
+	// ctx = ContextWithFuncMap(ctx, r.TemplateFuncMap)
 	return ctx
 }
 
@@ -52,7 +50,7 @@ func (r Runtime) Execute(ctx context.Context, pdef Definition, state *State) err
 	if err := pdef.Validate(ctx); err != nil {
 		return err
 	}
-	return pdef.Execute(ctx, state)
+	return pdef.Execute(ctx, r, state)
 }
 
 type Worker struct {
