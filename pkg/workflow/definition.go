@@ -11,22 +11,6 @@ import (
 	"go.llib.dev/frameless/pkg/validate"
 )
 
-type Definition interface {
-	Execute(ctx context.Context, r Runtime, s *State) error
-
-	JSONSerialisable
-	validate.Validatable
-
-	// ValidateDefinition(ctx ValidateDefinitionContext) error
-
-	// definition communicates clearly that Definition is not something that can be implemented outside of the workflow engine.
-	// components are provided to build a wide range of possible definitions, through composition,
-	// but creating one outside of the framework would require the runtime to know how to traverse that definition,
-	// and how to create checkpoints to it.
-
-	// Execute(ctx Context, s *State) error
-}
-
 type ValidateDefinitionContext struct {
 	context.Context
 
@@ -42,20 +26,11 @@ type ValidateDefinitionContextVariable struct {
 	Type reflect.Type
 }
 
-var _ minDefinition = (Definition)(nil)
-
-type minDefinition interface {
-	JSONSerialisable
-	validate.Validatable
-}
-
 type Sequence []Definition
 
 var _ Definition = (*Sequence)(nil)
 
-func (Sequence) definition() {}
-
-func (seq Sequence) Execute(ctx context.Context, r Runtime, s *State) error {
+func (seq Sequence) Execute(ctx context.Context, r Runtime, p *Process) error {
 	for _, participant := range seq {
 		if err := participant.Execute(ctx, s); err != nil {
 			return err
@@ -115,7 +90,7 @@ type Concurrence []Definition
 
 var _ Definition = (*Concurrence)(nil)
 
-func (d *Concurrence) Execute(ctx context.Context, r Runtime, s *State) error {
+func (d *Concurrence) Execute(ctx context.Context, r Runtime, p *Process) error {
 	if err := d.Validate(ctx); err != nil {
 		return err
 	}
@@ -159,7 +134,7 @@ type ExecuteParticipant struct {
 
 var _ Definition = (*ExecuteParticipant)(nil)
 
-func (d *ExecuteParticipant) Execute(ctx context.Context, r Runtime, s *State) error {
+func (d *ExecuteParticipant) Execute(ctx context.Context, r Runtime, p *Process) error {
 	if err := d.Validate(ctx); err != nil {
 		return err
 	}

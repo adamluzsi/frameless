@@ -13,24 +13,40 @@ import (
 	"go.llib.dev/frameless/port/ds/dsmap"
 )
 
-type JSONSerialisable interface {
-	json.Marshaler
-	json.Unmarshaler
+type Definition interface {
+	minDefinition
+	Execute(ctx context.Context, r Runtime, p *Process) error
 }
 
+var _ minDefinition = (Definition)(nil)
+
+type minDefinition interface {
+	JSONSerialisable
+	// ValidateDefinition(ctx ValidateDefinitionContext) error
+	// validate.Validatable
+}
+
+type Condition interface {
+	minCondition
+	minDefinition
+}
+
+var _ minCondition = (Condition)(nil)
+
 type minCondition interface {
-	Evaluate(ctx context.Context, s *State) (bool, error)
+	Evaluate(ctx context.Context, p *Process) (bool, error)
 }
 
 type Process struct {
 	Definition Definition `json:"pdef"`
-	State      *State     `json:"state"`
+	Variables  Variables  `json:"var"`
+
+	m sync.Mutex
 }
 
 // TODO: rename to Process
 type State struct {
-	rwm sync.Mutex
-	vs  dsmap.Map[VariableKey, any]
+	vs dsmap.Map[VariableKey, any]
 }
 
 func (s *State) Validate(ctx context.Context) error {
@@ -52,10 +68,6 @@ func (s *State) validateVariables(ctx context.Context) error {
 	return nil
 }
 
-func (s *State) Variables() Variables {
-	return &s.vs
-}
-
 func (s *State) Merge(oth *State) {
 	if s == nil {
 		panic(fmt.Sprintf("nil %T", s))
@@ -68,8 +80,8 @@ func (s *State) Merge(oth *State) {
 	}
 }
 
-type Variables interface {
-	ds.Map[VariableKey, any]
+type Variables struct {
+	vs ds.Map[VariableKey, any]
 }
 
 type VariableKey string
@@ -108,4 +120,9 @@ func vd(ctx context.Context, name string, v validate.Validatable, req bool) erro
 		return nil
 	}
 	return v.Validate(ctx)
+}
+
+type JSONSerialisable interface {
+	json.Marshaler
+	json.Unmarshaler
 }

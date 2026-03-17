@@ -7,10 +7,6 @@ import (
 	"go.llib.dev/frameless/pkg/validate"
 )
 
-type Condition interface {
-	minCondition
-	minDefinition
-}
 
 func ContextWithConditions(ctx context.Context, cr ConditionRepository) context.Context {
 	if cr == nil {
