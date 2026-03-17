@@ -91,10 +91,10 @@ func Test_smoke(tt *testing.T) {
 			Participants: participants,
 		}
 
-		var state workflow.State
-		assert.NoError(t, pdef.Execute(r.Context(t.Context()), r, &state))
-		assert.Equal[any](t, state.Variables().Get("foo-val"), fooOut)
-		assert.Equal[any](t, state.Variables().Get("bar-val"), barOut)
+		var p workflow.Process
+		assert.NoError(t, pdef.Execute(r.Context(t.Context()), r, &p))
+		assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
+		assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
 
 	})
 
