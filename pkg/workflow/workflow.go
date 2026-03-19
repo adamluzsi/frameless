@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"reflect"
 	"sync"
 
@@ -11,6 +12,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/crud"
+	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/ds/dsmap"
 )
 
@@ -82,6 +84,15 @@ type Variables struct {
 
 type VariableKey string
 
+var _ ds.ReadOnlyMap[VariableKey, any] = Variables{}
+var _ ds.Map[VariableKey, any] = (*Variables)(nil)
+
+func (vs Variables) Lookup(key VariableKey) (any, bool) { return vs.vs.Lookup(key) }
+func (vs Variables) Get(key VariableKey) any            { return vs.vs.Get(key) }
+func (vs Variables) All() iter.Seq2[VariableKey, any]   { return vs.vs.All() }
+func (cs *Variables) Set(key VariableKey, val any)      { cs.vs.Set(key, val) }
+func (cs *Variables) Delete(key VariableKey)            { cs.vs.Delete(key) }
+
 func (vs Variables) Validate(ctx context.Context) error {
 	return vs.validateVariables(ctx)
 }
@@ -95,7 +106,7 @@ func (vs *Variables) Merge(oth Variables) {
 	}
 }
 
-func (s *Variables) validateVariables(ctx context.Context) error {
+func (s *Variables) validateVariables(context.Context) error {
 	data, err := json.Marshal(s.vs)
 	if err != nil {
 		return fmt.Errorf("workflow variables are not valid because the values must be json encodable")
