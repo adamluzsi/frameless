@@ -56,7 +56,7 @@ func Test_smoke(tt *testing.T) {
 			barOut = t.Random.Int()
 		)
 
-		participants := workflow.ParticipantMapping{
+		participants := workflow.Participants{
 			"foo": func(ctx context.Context) (string, error) {
 				return fooOut, nil
 			},
@@ -111,7 +111,7 @@ func Test_smoke(tt *testing.T) {
 			ranCount[n] = ranCount[n] + 1
 		}
 
-		participants := workflow.ParticipantMapping{
+		participants := workflow.Participants{
 			"foo": func(ctx context.Context) (string, error) {
 				inc("foo")
 				return fooOut, nil
@@ -231,7 +231,7 @@ func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*
 	c.Context.Let(s, func(t *testcase.T) context.Context {
 		og := c.Context.Super(t)
 		return workflow.ContextWithParticipants(og,
-			workflow.ParticipantMapping{pid: stub.Get(t)})
+			workflow.Participants{pid: stub.Get(t)})
 	})
 
 	return stub
@@ -244,7 +244,7 @@ func letC(s *testcase.Spec) C {
 		ctx, cancel := context.WithCancel(t.Context())
 		t.Defer(cancel)
 
-		ctx = workflow.ContextWithParticipants(ctx, workflow.ParticipantMapping{
+		ctx = workflow.ContextWithParticipants(ctx, workflow.Participants{
 			"/dev/null": func(ctx context.Context, s *workflow.State) error {
 				return nil
 			},

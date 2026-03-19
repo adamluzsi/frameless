@@ -174,11 +174,11 @@ func (p Participant) Validate(ctx context.Context) error {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type ParticipantMapping map[ParticipantID]any
+type Participants map[ParticipantID]any
 
-var _ ParticipantRepository = (ParticipantMapping)(nil)
+var _ ParticipantRepository = (Participants)(nil)
 
-func (ps ParticipantMapping) FindByID(ctx context.Context, id ParticipantID) (Participant, bool, error) {
+func (ps Participants) FindByID(ctx context.Context, id ParticipantID) (Participant, bool, error) {
 	if len(ps) == 0 {
 		var zero Participant
 		return zero, false, nil
@@ -187,7 +187,7 @@ func (ps ParticipantMapping) FindByID(ctx context.Context, id ParticipantID) (Pa
 	return Participant{ID: id, Func: fn}, ok, nil
 }
 
-func (ps ParticipantMapping) Validate(ctx context.Context) error {
+func (ps Participants) Validate(ctx context.Context) error {
 	for id, fn := range ps {
 		p := Participant{
 			ID:   id,
