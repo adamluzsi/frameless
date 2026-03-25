@@ -8,26 +8,21 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/validate"
+
 	"go.llib.dev/frameless/pkg/workflow"
+	"go.llib.dev/frameless/pkg/workflow/wftemplate"
+
 	"go.llib.dev/frameless/port/visitor"
+
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
 	"go.llib.dev/testcase/random"
 )
 
-func TestPID_smoke(t *testing.T) {
-	tc := testcase.NewT(t)
-	name := tc.Random.String()
-	pid := workflow.PID(name)
-	assert.NotNil(t, pid)
-	assert.NotEmpty(t, *pid)
-	assert.Equal(t, name, string(*pid))
-}
-
 func ExampleIf() {
 	ifd := &workflow.If{
-		Cond: workflow.CID("is-ok"),
+		Cond: wftemplate.NewConditionTemplate(".X == .Y"),
 		Then: workflow.PID("run-on-true"),
 		Else: workflow.PID("run-on-false"),
 	}
@@ -233,13 +228,12 @@ func TestCallParticipant(t *testing.T) {
 
 	var (
 		args = let.VarOf[[]workflow.VariableKey](s, nil)
-
 	)
 	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
 		return &workflow.ExecuteParticipant{
-			ID:        pid.Get(t),
-			Input: args.Get(t),
-			Return:    returns.Get(t),
+			ID:     pid.Get(t),
+			Input:  args.Get(t),
+			Return: returns.Get(t),
 		}
 	})
 

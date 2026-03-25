@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/validate"
 	"go.llib.dev/frameless/port/crud"
@@ -82,12 +83,14 @@ type VariableKey string
 
 var _ ds.ReadOnlyMap[VariableKey, any] = Variables{}
 var _ ds.Map[VariableKey, any] = (*Variables)(nil)
+var _ ds.MapConveratble[VariableKey, any] = (*Variables)(nil)
 
 func (vs Variables) Lookup(key VariableKey) (any, bool) { return vs.vs.Lookup(key) }
 func (vs Variables) Get(key VariableKey) any            { return vs.vs.Get(key) }
 func (vs Variables) All() iter.Seq2[VariableKey, any]   { return vs.vs.All() }
 func (cs *Variables) Set(key VariableKey, val any)      { cs.vs.Set(key, val) }
 func (cs *Variables) Delete(key VariableKey)            { cs.vs.Delete(key) }
+func (cs *Variables) ToMap() map[VariableKey]any        { return mapkit.Clone(cs.ToMap()) }
 
 func (vs Variables) Validate(ctx context.Context) error {
 	return vs.validateVariables(ctx)

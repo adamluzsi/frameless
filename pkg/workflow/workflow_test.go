@@ -7,7 +7,6 @@ import (
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/let"
 )
 
 func Test_e2e(tt *testing.T) {
@@ -169,102 +168,102 @@ func Test_e2e(tt *testing.T) {
 // 	_ = userDefinedWorkflowDefinition.Execute(context.Background(), rt, &workflow.State{})
 // }
 
-type StubParticipant struct {
-	CallCount int
-	Stub      func(ctx context.Context, s *workflow.State) error
-	Cond      func(ctx context.Context, s *workflow.State) (bool, error)
-	Err       error
+// type StubParticipant struct {
+// 	CallCount int
+// 	Stub      func(ctx context.Context, s *workflow.State) error
+// 	Cond      func(ctx context.Context, s *workflow.State) (bool, error)
+// 	Err       error
 
-	last *struct {
-		ctx   context.Context
-		state *workflow.State
-	}
-}
+// 	last *struct {
+// 		ctx   context.Context
+// 		state *workflow.State
+// 	}
+// }
 
-func (stub *StubParticipant) LastExecutedWith() (context.Context, *workflow.State, bool) {
-	if stub.last == nil {
-		return nil, nil, false
-	}
-	return stub.last.ctx, stub.last.state, true
-}
+// func (stub *StubParticipant) LastExecutedWith() (context.Context, *workflow.State, bool) {
+// 	if stub.last == nil {
+// 		return nil, nil, false
+// 	}
+// 	return stub.last.ctx, stub.last.state, true
+// }
 
-func (stub *StubParticipant) Execute(ctx context.Context, s *workflow.State) error {
-	stub.CallCount++
-	if stub.Stub != nil {
-		return stub.Stub(ctx, s)
-	}
-	stub.last = &struct {
-		ctx   context.Context
-		state *workflow.State
-	}{
-		ctx:   ctx,
-		state: s,
-	}
-	return stub.Err
-}
+// func (stub *StubParticipant) Execute(ctx context.Context, s *workflow.State) error {
+// 	stub.CallCount++
+// 	if stub.Stub != nil {
+// 		return stub.Stub(ctx, s)
+// 	}
+// 	stub.last = &struct {
+// 		ctx   context.Context
+// 		state *workflow.State
+// 	}{
+// 		ctx:   ctx,
+// 		state: s,
+// 	}
+// 	return stub.Err
+// }
 
-func (stub *StubParticipant) Evaluate(ctx context.Context, s *workflow.State) (_ bool, _ error) {
-	stub.CallCount++
-	if stub.Cond != nil {
-		return stub.Cond(ctx, s)
-	}
-	stub.last = &struct {
-		ctx   context.Context
-		state *workflow.State
-	}{
-		ctx:   ctx,
-		state: s,
-	}
-	return stub.Err == nil, stub.Err
-}
+// func (stub *StubParticipant) Evaluate(ctx context.Context, s *workflow.State) (_ bool, _ error) {
+// 	stub.CallCount++
+// 	if stub.Cond != nil {
+// 		return stub.Cond(ctx, s)
+// 	}
+// 	stub.last = &struct {
+// 		ctx   context.Context
+// 		state *workflow.State
+// 	}{
+// 		ctx:   ctx,
+// 		state: s,
+// 	}
+// 	return stub.Err == nil, stub.Err
+// }
 
-type C struct {
-	Context testcase.Var[context.Context]
-	State   testcase.Var[*workflow.State]
-}
+// type C struct {
+// 	Context testcase.Var[context.Context]
+// 	State   testcase.Var[*workflow.State]
+// }
 
-func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*StubParticipant] {
-	s.H().Helper()
+// func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*StubParticipant] {
+// 	s.H().Helper()
 
-	stub := let.Var(s, func(t *testcase.T) *StubParticipant {
-		return &StubParticipant{}
-	})
+// 	stub := let.Var(s, func(t *testcase.T) *StubParticipant {
+// 		return &StubParticipant{}
+// 	})
 
-	c.Context.Let(s, func(t *testcase.T) context.Context {
-		og := c.Context.Super(t)
-		return workflow.ContextWithParticipants(og,
-			workflow.Participants{pid: stub.Get(t)})
-	})
+// 	c.Context.Let(s, func(t *testcase.T) context.Context {
+// 		og := c.Context.Super(t)
+// 		return workflow.ContextWithParticipants(og,
+// 			workflow.Participants{pid: stub.Get(t)})
+// 	})
 
-	return stub
-}
+// 	return stub
+// }
 
-func letC(s *testcase.Spec) C {
-	var c C
+// func letC(s *testcase.Spec) C {
+// 	var c C
 
-	c.Context = let.Var(s, func(t *testcase.T) context.Context {
-		ctx, cancel := context.WithCancel(t.Context())
-		t.Defer(cancel)
+// 	c.Context = let.Var(s, func(t *testcase.T) context.Context {
+// 		ctx, cancel := context.WithCancel(t.Context())
+// 		t.Defer(cancel)
 
-		ctx = workflow.ContextWithParticipants(ctx, workflow.Participants{
-			"/dev/null": func(ctx context.Context, s *workflow.State) error {
-				return nil
-			},
-		})
-		return ctx
-	})
+// 		ctx = workflow.ContextWithParticipants(ctx, workflow.Participants{
+// 			"/dev/null": func(ctx context.Context, s *workflow.State) error {
+// 				return nil
+// 			},
+// 		})
+// 		return ctx
+// 	})
 
-	c.State = let.Var(s, func(t *testcase.T) *workflow.State {
-		return NewRandomState(t)
-	})
+// 	c.State = let.Var(s, func(t *testcase.T) *workflow.State {
+// 		return NewRandomState(t)
+// 	})
 
-	return c
-}
+// 	return c
+// }
 
-func NewRandomState(t *testcase.T) *workflow.State {
-	var s = workflow.State{}
-	t.Random.Repeat(1, 3, func() {
-		s.Variables.Set(t.Random.String(), t.Random.Int())
-	})
-	return &s
-}
+// func NewRandomState(t *testcase.T) *workflow.State {
+// 	var s = workflow.State{}
+// 	t.Random.Repeat(1, 3, func() {
+// 		s.Variables.Set(t.Random.String(), t.Random.Int())
+// 	})
+// 	return &s
+// }
