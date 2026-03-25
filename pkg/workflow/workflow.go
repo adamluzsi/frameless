@@ -27,8 +27,6 @@ var _ minDefinition = (Definition)(nil)
 
 type minDefinition interface {
 	JSONSerialisable
-	// ValidateDefinition(ctx ValidateDefinitionContext) error
-	// validate.Validatable
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -38,19 +36,17 @@ type Condition interface {
 	minDefinition
 }
 
-type ConditionID string
-
-type ErrConditionNotFound struct{ CID ConditionID }
-
-func (e ErrConditionNotFound) Error() string {
-	return fmt.Sprintf("[ErrConditionNotFound] %s", e.CID)
+type ConditionConveratble interface {
+	ToCondition(ctx context.Context, r Runtime, p *Process) (Condition, bool)
 }
-
-var _ minCondition = (Condition)(nil)
 
 type minCondition interface {
-	Evaluate(ctx context.Context, p *Process) (bool, error)
+	Evaluate(ctx context.Context, r Runtime, p *Process) (bool, error)
 }
+
+type ConditionID string
+
+var _ minCondition = (Condition)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -147,10 +143,10 @@ var reflectContextType = reflectkit.TypeOf[context.Context]()
 
 var reflectErrorType = reflectkit.TypeOf[error]()
 
-func (p Participant) Validate(ctx context.Context) error {
+func (p Participant) rfn(ctx context.Context) (reflect.Value, error) {
 	rfunc := reflect.ValueOf(p.Func)
 	if rfunc.Kind() != reflect.Func {
-		return fmt.Errorf("invalid value for participant func")
+		return rfunc, ErrInvalidParicipantFunc.F("invalid value for participant func")
 	}
 	var (
 		funcType   = rfunc.Type()
@@ -158,18 +154,23 @@ func (p Participant) Validate(ctx context.Context) error {
 		funcNumOut = funcType.NumOut()
 	)
 	if funcNumIn < 1 {
-		return ErrInvalidParicipantFunc
+		return rfunc, ErrInvalidParicipantFunc
 	}
 	if funcType.In(0) != reflectContextType {
-		return ErrInvalidParicipantFunc
+		return rfunc, ErrInvalidParicipantFunc
 	}
 	if funcNumOut < 1 {
-		return ErrInvalidParicipantFunc
+		return rfunc, ErrInvalidParicipantFunc
 	}
 	if funcType.Out(funcNumOut-1) != reflectErrorType {
-		return ErrInvalidParicipantFunc
+		return rfunc, ErrInvalidParicipantFunc
 	}
-	return nil
+	return rfunc, nil
+}
+
+func (p Participant) Validate(ctx context.Context) error {
+	_, err := p.rfn(ctx)
+	return err
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
