@@ -21,7 +21,7 @@ import (
 
 type Definition interface {
 	minDefinition
-	Execute(ctx context.Context, r Runtime, p *Process) error
+	Execute(ctx context.Context, p *Process) error
 }
 
 var _ minDefinition = (Definition)(nil)
@@ -38,11 +38,11 @@ type Condition interface {
 }
 
 type ConditionConveratble interface {
-	ToCondition(ctx context.Context, r Runtime, p *Process) (Condition, bool)
+	ToCondition(ctx context.Context, p *Process) (Condition, bool)
 }
 
 type minCondition interface {
-	Evaluate(ctx context.Context, r Runtime, p *Process) (bool, error)
+	Evaluate(ctx context.Context, p *Process) (bool, error)
 }
 
 type ConditionID string

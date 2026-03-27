@@ -28,9 +28,9 @@ type Sequence []Definition
 
 var _ Definition = (*Sequence)(nil)
 
-func (seq Sequence) Execute(ctx context.Context, r Runtime, p *Process) error {
+func (seq Sequence) Execute(ctx context.Context, p *Process) error {
 	for _, participant := range seq {
-		if err := participant.Execute(ctx, r, p); err != nil {
+		if err := participant.Execute(ctx, p); err != nil {
 			return err
 		}
 	}
@@ -45,15 +45,15 @@ type If struct {
 
 var _ Definition = (*If)(nil)
 
-func (d If) Execute(ctx context.Context, r Runtime, p *Process) error {
-	var ok, err = d.Cond.Evaluate(ctx, r, p)
+func (d If) Execute(ctx context.Context, p *Process) error {
+	var ok, err = d.Cond.Evaluate(ctx, p)
 	if err != nil {
 		return err
 	}
 	if ok {
-		return d.Then.Execute(ctx, r, p)
+		return d.Then.Execute(ctx, p)
 	} else if d.Else != nil {
-		return d.Else.Execute(ctx, r, p)
+		return d.Else.Execute(ctx, p)
 	}
 	return nil
 }
@@ -66,12 +66,12 @@ type ExecuteParticipant struct {
 
 var _ Definition = (*ExecuteParticipant)(nil)
 
-func (d *ExecuteParticipant) Execute(ctx context.Context, r Runtime, p *Process) error {
-	if r.Participants == nil {
+func (d *ExecuteParticipant) Execute(ctx context.Context, p *Process) error {
+	pr, ok := ctxParticipantsH.Lookup(ctx)
+	if !ok {
 		return ErrFatal.F("missing participant mapping from workflow runtime")
 	}
-
-	participant, found, err := r.Participants.FindByID(ctx, d.ID)
+	participant, found, err := pr.FindByID(ctx, d.ID)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (d *ExecuteParticipant) UnmarshalJSON(data []byte) error {
 
 var _ ConditionConveratble = (*ExecuteParticipant)(nil)
 
-func (d ExecuteParticipant) ToCondition(ctx context.Context, r Runtime, p *Process) (Condition, bool) {
+func (d ExecuteParticipant) ToCondition(ctx context.Context, p *Process) (Condition, bool) {
 
 	return nil, false
 }

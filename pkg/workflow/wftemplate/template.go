@@ -52,7 +52,7 @@ type Condition string
 
 var _ workflow.Condition = (*Condition)(nil)
 
-func (tmpl Condition) Evaluate(ctx context.Context, r workflow.Runtime, p *workflow.Process) (bool, error) {
+func (tmpl Condition) Evaluate(ctx context.Context, p *workflow.Process) (bool, error) {
 	tpl, err := tmpl.templateNew(ctx)
 	if err != nil {
 		return false, err
