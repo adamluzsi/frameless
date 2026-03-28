@@ -11,8 +11,8 @@ import (
 
 type StubParticipant struct {
 	CallCount int
-	Stub      func(ctx context.Context, s *workflow.Process) error
-	Cond      func(ctx context.Context, s *workflow.Process) (bool, error)
+	Stub      func(ctx context.Context, p *workflow.Process) error
+	Cond      func(ctx context.Context, p *workflow.Process) (bool, error)
 	Err       error
 
 	last *struct {

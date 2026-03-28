@@ -15,7 +15,6 @@ func ContextWithParticipants(ctx context.Context, prs ...ParticipantRepository) 
 	}
 	if ctxprs, ok := ctxParticipantsH.Lookup(ctx); ok {
 		prs = slicekit.Merge(prs, ctxprs) // new with higher priority
-		return ctx
 	}
 	return ctxParticipantsH.ContextWith(ctx, ctxPRS(prs))
 }
@@ -46,7 +45,6 @@ func ContextWithConditions(ctx context.Context, crs ...ConditionRepository) cont
 	}
 	if ctxcrs, ok := ctxConditionsH.Lookup(ctx); ok {
 		crs = slicekit.Merge(crs, ctxcrs) // new with higher priority
-		return ctx
 	}
 	return ctxConditionsH.ContextWith(ctx, ctxCRS(crs))
 }

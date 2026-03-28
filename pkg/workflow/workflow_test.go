@@ -55,7 +55,7 @@ func Test_e2e(tt *testing.T) {
 
 		var p workflow.Process
 
-		assert.NoError(t, pdef.Execute(t.Context(), r, &p))
+		assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
 		assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
 		assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
 

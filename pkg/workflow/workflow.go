@@ -51,6 +51,8 @@ var _ minCondition = (Condition)(nil)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+// Runtime is the default runtime to execute process definitons.
+// It can be extended or reimplemented if it doesn't fit your workflow realted use-cases.
 type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
@@ -62,6 +64,20 @@ type ParticipantRepository interface {
 
 type ConditionRepository interface {
 	crud.ByIDFinder[Condition, ConditionID]
+}
+
+func (r Runtime) Context(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if r.Participants != nil {
+		ctx = ContextWithParticipants(ctx, r.Participants)
+	}
+	if r.Conditions != nil {
+		ctx = ContextWithConditions(ctx, r.Conditions)
+	}
+	// add participant execution cache too cache
+	return ctx
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
