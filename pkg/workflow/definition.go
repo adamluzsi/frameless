@@ -51,9 +51,13 @@ func (d If) Execute(ctx context.Context, p *Process) error {
 		return err
 	}
 	if ok {
-		return d.Then.Execute(ctx, p)
-	} else if d.Else != nil {
-		return d.Else.Execute(ctx, p)
+		if d.Then != nil {
+			return d.Then.Execute(ctx, p)
+		}
+	} else {
+		if d.Else != nil {
+			return d.Else.Execute(ctx, p)
+		}
 	}
 	return nil
 }
