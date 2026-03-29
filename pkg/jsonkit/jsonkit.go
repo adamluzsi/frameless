@@ -359,14 +359,3 @@ func typeAssert[T any](v any) (T, error) {
 	}
 	return value, nil
 }
-
-type container[T any] struct{ T T }
-
-func DefaultUnmarshalJSON[T any](data []byte, p *T) error {
-	var c container[T]
-	if err := json.Unmarshal(data, &c.T); err != nil {
-		return err
-	}
-	*p = T(c.T)
-	return nil
-}

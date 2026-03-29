@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"reflect"
+	"strings"
 	"sync"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
@@ -27,7 +28,7 @@ type Definition interface {
 var _ minDefinition = (Definition)(nil)
 
 type minDefinition interface {
-	JSONSerialisable
+	// JSONSerialisable
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -147,6 +148,33 @@ type Participant struct {
 	Func any // func(context.Context, ...) (..., error)
 }
 
+// funcSignature
+//
+// TODO: repalce with OpenAPI definition
+func (p Participant) funcSignature(ctx context.Context) string {
+	var fn, err = p.rfn(ctx)
+	if err != nil {
+		return ""
+	}
+	var (
+		fnType = fn.Type()
+		input  []string
+		output []string
+	)
+	for i := range fnType.NumIn() {
+		in := fnType.In(i)
+		val := in.String()
+		if in.IsVariadic() {
+			val = "..." + val
+		}
+		input = append(input, in.String())
+	}
+	for i := range fnType.NumOut() {
+		output = append(output, fnType.Out(i).String())
+	}
+	return fmt.Sprintf("func(%s) (%s)", strings.Join(input, ", "), strings.Join(output, ", "))
+}
+
 type ParticipantID string
 
 var _ validate.Validatable = (*Participant)(nil)
@@ -181,7 +209,7 @@ func (p Participant) rfn(ctx context.Context) (reflect.Value, error) {
 	if funcNumOut < 1 {
 		return rfunc, ErrInvalidParicipantFunc
 	}
-	if funcType.Out(funcNumOut-1) != reflectErrorType {
+	if lastOut := funcType.Out(funcNumOut - 1); lastOut != reflectErrorType || !lastOut.Implements(reflectErrorType) {
 		return rfunc, ErrInvalidParicipantFunc
 	}
 	return rfunc, nil
