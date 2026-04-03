@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"reflect"
 
 	"go.llib.dev/frameless/pkg/jsonkit/jsontoken"
 	"go.llib.dev/frameless/port/codec"
 )
 
-type Codec struct{}
+type Codec struct {
+	registry map[reflect.Type]any
+}
 
 func (Codec) Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)

@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/workflow"
@@ -61,73 +62,83 @@ func Test_e2e(tt *testing.T) {
 
 	})
 
-	// s.Test("definition idempotency", func(t *testcase.T) {
-	// 	var (
-	// 		fooOut = t.Random.String()
-	// 		barOut = t.Random.Int()
+	s.Test("definition idempotency", func(t *testcase.T) {
+		var (
+			fooOut = t.Random.String()
+			barOut = t.Random.Int()
 
-	// 		failOnce sync.Once
-	// 	)
+			failOnce sync.Once
+		)
 
-	// 	var ranCount = map[string]int{}
-	// 	var inc = func(n string) {
-	// 		ranCount[n] = ranCount[n] + 1
-	// 	}
+		var ranCount = map[string]int{}
+		var inc = func(n string) {
+			ranCount[n] = ranCount[n] + 1
+		}
 
-	// 	participants := workflow.Participants{
-	// 		"foo": func(ctx context.Context) (string, error) {
-	// 			inc("foo")
-	// 			return fooOut, nil
-	// 		},
-	// 		"bar": func(ctx context.Context, in string) (int, error) {
-	// 			inc("bar")
-	// 			assert.Equal(t, in, fooOut)
+		participants := workflow.Participants{
+			"foo": func(ctx context.Context) (string, error) {
+				inc("foo")
+				return fooOut, nil
+			},
+			"bar": func(ctx context.Context, in string) (int, error) {
+				inc("bar")
+				assert.Equal(t, in, fooOut)
 
-	// 			var err error
-	// 			failOnce.Do(func() { err = t.Random.Error() })
-	// 			return barOut, err
-	// 		},
-	// 		"baz": func(ctx context.Context, s string, n int) error {
-	// 			inc("baz")
-	// 			assert.Equal(t, fooOut, s)
-	// 			assert.Equal(t, barOut, n)
-	// 			return nil
-	// 		},
-	// 	}
+				var err error
+				failOnce.Do(func() { err = t.Random.Error() })
+				return barOut, err
+			},
+			"baz": func(ctx context.Context, s string, n int) error {
+				inc("baz")
+				assert.Equal(t, fooOut, s)
+				assert.Equal(t, barOut, n)
+				return nil
+			},
+			"flaky": func(ctx context.Context) (err error) {
+				inc("flaky")
+				failOnce.Do(func() {
+					err = t.Random.Error()
+				})
+				return err
+			},
+		}
 
-	// 	var pdef workflow.Definition = &workflow.Sequence{
-	// 		&workflow.ExecuteParticipant{
-	// 			ID:     "foo",
-	// 			Output: []workflow.VariableKey{"foo-val"},
-	// 		},
-	// 		&workflow.ExecuteParticipant{
-	// 			ID:     "bar",
-	// 			Input:  []workflow.VariableKey{"foo-val"},
-	// 			Output: []workflow.VariableKey{"bar-val"},
-	// 		},
-	// 		&workflow.ExecuteParticipant{
-	// 			ID:    "baz",
-	// 			Input: []workflow.VariableKey{"foo-val", "bar-val"},
-	// 		},
-	// 		&workflow.ExecuteParticipant{
-	// 			ID: "flaky",
-	// 		},
-	// 	}
+		var pdef workflow.Definition = &workflow.Sequence{
+			&workflow.ExecuteParticipant{
+				ID:     "foo",
+				Output: []workflow.VariableKey{"foo-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID:     "bar",
+				Input:  []workflow.VariableKey{"foo-val"},
+				Output: []workflow.VariableKey{"bar-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID:    "baz",
+				Input: []workflow.VariableKey{"foo-val", "bar-val"},
+			},
+			&workflow.ExecuteParticipant{
+				ID: "flaky",
 
-	// 	r := workflow.Runtime{
-	// 		Participants: participants,
-	// 	}
+				
+			},
+		}
 
-	// 	_ = r
-	// })
+		r := workflow.Runtime{
+			Participants: participants,
+		}
 
-	// t := testcase.NewT(tt)
+		var p workflow.Process
 
-	// assert.NoError(t, pdef.Validate(r.Context(t.Context())), "expected that the process definition is valid")
+		assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
+		assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)
+		assert.Equal[any](t, p.Variables.Get("bar-val"), barOut)
+		assert.Equal(t, ranCount["foo"], 1)
+		assert.Equal(t, ranCount["bar"], 1)
+		assert.Equal(t, ranCount["baz"], 1)
+		assert.Equal(t, ranCount["flaky"], 2)
+	})
 
-	// var state workflow.State
-
-	// assert.NoError(t, r.Execute(t.Context(), pdef, &state))
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

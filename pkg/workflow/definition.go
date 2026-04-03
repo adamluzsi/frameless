@@ -2,10 +2,7 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
-
-	"go.llib.dev/frameless/pkg/slicekit"
 )
 
 type ValidateDefinitionContext struct {
@@ -59,90 +56,4 @@ func (d If) Execute(ctx context.Context, p *Process) error {
 		}
 	}
 	return nil
-}
-
-type ExecuteParticipant struct {
-	ID     ParticipantID `json:"id"`
-	Input  []VariableKey `json:"input,omitempty"`
-	Output []VariableKey `json:"output,omitempty"`
-}
-
-var _ Definition = (*ExecuteParticipant)(nil)
-
-func (d *ExecuteParticipant) Execute(ctx context.Context, p *Process) error {
-	pr, ok := ctxParticipantsH.Lookup(ctx)
-	if !ok {
-		return ErrFatal.F("missing participant mapping from workflow runtime")
-	}
-	participant, found, err := pr.FindByID(ctx, d.ID)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return ErrParticipantNotFound{ID: d.ID}
-	}
-
-	fn, err := participant.rfn(ctx)
-	if err != nil {
-		return err
-	}
-
-	var args []reflect.Value
-	args = append(args, reflect.ValueOf(ctx))
-	for i, key := range d.Input {
-		value, ok := p.Variables.Lookup(key)
-		if !ok { // validate this at process definition level too as static validation
-			return ErrFatal.F("missing participant input argument: input argument of #%d -> %s", i, key)
-		}
-		args = append(args, reflect.ValueOf(value))
-	}
-
-	if len(args) != fn.Type().NumIn() {
-		const format = "participant execution arguments don't match the input arguments mapping.\nsignature in the format of func(inputs) (outputs)\n%s"
-		return ErrParticipantFuncMappingMismatch.F(format, participant.funcSignature(ctx))
-	}
-
-	var lastIsError bool
-	var expectedOuputMappingLen = fn.Type().NumOut()
-	if 0 < expectedOuputMappingLen {
-		lastOut := fn.Type().Out(expectedOuputMappingLen - 1)
-		if lastOut == reflectErrorType || lastOut.Implements(reflectErrorType) {
-			expectedOuputMappingLen-- // we don't count error output with output mapping
-			lastIsError = true
-		}
-	}
-
-	if len(d.Output) != expectedOuputMappingLen {
-		const format = "participant execution result values count don't match the output mapping\nsignature in the format of func(inputs) (outputs)\n%s"
-		return ErrParticipantFuncMappingMismatch.F(format, participant.funcSignature(ctx))
-	}
-
-	var out = fn.Call(args)
-	if lastIsError {
-		if errRV, ok := slicekit.Last(out); ok {
-			if err, ok := errRV.Interface().(error); ok && err != nil {
-				return err
-			}
-		}
-	}
-
-	for i, vn := range d.Output {
-		p.Variables.Set(vn, out[i].Interface())
-	}
-
-	return nil
-}
-
-var _ json.Marshaler = (*ExecuteParticipant)(nil)
-
-func (d ExecuteParticipant) MarshalJSON() ([]byte, error) {
-	type T ExecuteParticipant
-	return json.Marshal(T(d))
-}
-
-var _ ConditionConveratble = (*ExecuteParticipant)(nil)
-
-func (d ExecuteParticipant) ToCondition(ctx context.Context, p *Process) (Condition, bool) {
-
-	return nil, false
 }

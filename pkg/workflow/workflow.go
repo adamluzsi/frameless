@@ -7,48 +7,31 @@ import (
 	"iter"
 	"reflect"
 	"strings"
-	"sync"
 
 	"go.llib.dev/frameless/internal/errorkitlite"
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/validate"
+	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/ds/dsmap"
 )
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type Definition interface {
-	minDefinition
 	Execute(ctx context.Context, p *Process) error
 }
 
-var _ minDefinition = (Definition)(nil)
-
-type minDefinition interface {
-	// JSONSerialisable
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 type Condition interface {
-	minCondition
-	minDefinition
-}
-
-type ConditionConveratble interface {
-	ToCondition(ctx context.Context, p *Process) (Condition, bool)
-}
-
-type minCondition interface {
 	Evaluate(ctx context.Context, p *Process) (bool, error)
 }
 
 type ConditionID string
 
-var _ minCondition = (Condition)(nil)
+type ConditionConveratble interface {
+	ToCondition(ctx context.Context, p *Process) (Condition, bool)
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -57,6 +40,7 @@ var _ minCondition = (Condition)(nil)
 type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
+	Codec        codec.Codec
 }
 
 type ParticipantRepository interface {
@@ -84,10 +68,9 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Process struct {
-	Definition Definition `json:"pdef"`
-	Variables  Variables  `json:"var"`
-
-	m sync.Mutex
+	Definition   Definition     `json:"pdef"`
+	Variables    Variables      `json:"var"`
+	ExecuteEvent []ExecuteEvent `json:"execute-events"`
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -250,7 +233,7 @@ func (ps Participants) Validate(ctx context.Context) error {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type JSONSerialisable interface {
-	json.Marshaler
-	json.Unmarshaler
+func DefaultJSONCodec() jsonkit.Codec {
+	var c jsonkit.Codec
+	return c
 }

@@ -586,3 +586,46 @@ func TestW_smoke(t *testing.T) {
 	assert.True(t, errors.As(w, &gotEXP))
 	assert.Equal(t, expErr, gotEXP)
 }
+
+func ExampleFinishOnError() {
+	// example function
+	var _ = func() (rerr error) {
+		defer errorkitlite.FinishOnError(&rerr, func() { /* do something when the */ })
+
+		return errorkitlite.Error("boom")
+	}
+}
+
+func TestFinishOnError(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	var (
+		returnErr = testcase.Let[error](s, nil)
+		blockRan  = testcase.LetValue(s, false)
+	)
+	act := func(t *testcase.T) {
+		defer errorkitlite.FinishOnError(pointer.Of(returnErr.Get(t)), func() { blockRan.Set(t, true) })
+	}
+
+	s.When("return error is nil", func(s *testcase.Spec) {
+		returnErr.LetValue(s, nil)
+
+		s.Then("it will not execute the block", func(t *testcase.T) {
+			act(t)
+
+			assert.False(t, blockRan.Get(t))
+		})
+	})
+
+	s.When("return was a valid error value", func(s *testcase.Spec) {
+		returnErr.Let(s, func(t *testcase.T) error {
+			return t.Random.Error()
+		})
+
+		s.Then("it will execute the block", func(t *testcase.T) {
+			act(t)
+
+			assert.True(t, blockRan.Get(t))
+		})
+	})
+}
