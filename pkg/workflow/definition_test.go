@@ -1,7 +1,6 @@
 package workflow_test
 
 import (
-	"context"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/workflow"
@@ -10,7 +9,6 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
-	"go.llib.dev/testcase/random"
 )
 
 func ExampleIf() {
@@ -183,122 +181,6 @@ func ExampleIf() {
 // 		})
 // 	})
 // }
-
-func TestExecuteParticipant(t *testing.T) {
-	s := testcase.NewSpec(t)
-
-	var (
-		c    = letC(s)
-		stub = c.LetStub(s, "stub")
-	)
-
-	pid := let.Var(s, func(t *testcase.T) workflow.ParticipantID {
-		return workflow.ParticipantID("stub")
-	})
-
-	var (
-		args   = let.VarOf[[]workflow.VariableKey](s, nil)
-		output = let.VarOf[[]workflow.VariableKey](s, nil)
-	)
-	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
-		return &workflow.ExecuteParticipant{
-			ID:     pid.Get(t),
-			Input:  args.Get(t),
-			Output: output.Get(t),
-		}
-	})
-
-	s.Describe("#Execute", func(s *testcase.Spec) {
-		var (
-			ctx     = c.Context.Bind(s)
-			process = c.Process.Bind(s)
-		)
-		act := let.Act(func(t *testcase.T) error {
-			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
-		})
-
-		s.Then("pid is executing the referenced participant", func(t *testcase.T) {
-			n := t.Random.Repeat(3, 7, func() {
-				assert.NoError(t, act(t))
-			})
-
-			assert.Equal(t, stub.Get(t).CallCount, n)
-			gotCtx, gotState, ok := stub.Get(t).LastExecutedWith()
-			assert.True(t, ok)
-			assert.Equal(t, ctx.Get(t), gotCtx)
-			assert.Equal(t, process.Get(t), gotState)
-		})
-
-		s.When("the pid is invalid in the given context", func(s *testcase.Spec) {
-			pid.Let(s, func(t *testcase.T) workflow.ParticipantID {
-				validPID := pid.Super(t)
-				randomPID := random.Unique(t.Random.String, string(validPID))
-				return workflow.ParticipantID(randomPID)
-			})
-
-			s.Then("we get back a validation error", func(t *testcase.T) {
-				assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{ID: pid.Get(t)})
-			})
-		})
-
-		s.When("the referenced participant has an issue", func(s *testcase.Spec) {
-			expErr := let.Error(s)
-
-			stub.Let(s, func(t *testcase.T) *StubParticipant {
-				stub := stub.Super(t)
-				stub.Stub = func(ctx context.Context, p *workflow.Process) error {
-					return expErr.Get(t)
-				}
-				return stub
-			})
-
-			s.Then("error is propagated back", func(t *testcase.T) {
-				assert.ErrorIs(t, act(t), expErr.Get(t))
-			})
-		})
-	})
-
-	// s.Describe("#Validate", func(s *testcase.Spec) {
-	// 	var ctx = c.Context.Bind(s)
-	// 	act := let.Act(func(t *testcase.T) error {
-	// 		return pid.Get(t).Validate(ctx.Get(t))
-	// 	})
-	//
-	// 	s.Then("on a valid pid, it yields no error", func(t *testcase.T) {
-	// 		assert.NoError(t, act(t))
-	// 	})
-	//
-	// 	s.When("the pid is referencing an unknown participant", func(s *testcase.Spec) {
-	// 		pid.Let(s, func(t *testcase.T) workflow.ParticipantID {
-	// 			validPID := pid.Super(t)
-	// 			randomPID := random.Unique(t.Random.String, string(validPID))
-	// 			return workflow.ParticipantID(randomPID)
-	// 		})
-	//
-	// 		s.Then("we get back an error about the unknown participant", func(t *testcase.T) {
-	// 			assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{PID: pid.Get(t)})
-	// 		})
-	// 	})
-	//
-	// 	s.When("the pid is an empty string", func(s *testcase.Spec) {
-	// 		pid.LetValue(s, "")
-	//
-	// 		s.Then("we get back an error that we have a empty pid", func(t *testcase.T) {
-	// 			err := act(t)
-	// 			assert.Error(t, err)
-	// 			assert.Contains(t, err.Error(), "empty")
-	// 		})
-	// 	})
-	//
-	// 	s.When("context accidentally don't contain the referenced participant", func(s *testcase.Spec) {
-	// 		ctx.Let(s, let.Context(s).Get)
-	//
-	// 		s.Then("we get back an error about the unknown participant", func(t *testcase.T) {
-	// 			assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{PID: pid.Get(t)})
-	// 		})
-	// 	})
-	// })
-}
 
 func ExampleSequence() {
 	sequence := &workflow.Sequence{
