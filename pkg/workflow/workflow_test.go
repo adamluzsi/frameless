@@ -67,7 +67,8 @@ func Test_e2e(tt *testing.T) {
 			fooOut = t.Random.String()
 			barOut = t.Random.Int()
 
-			failOnce sync.Once
+			expectedFlakyErr = t.Random.Error()
+			failOnce         sync.Once
 		)
 
 		var ranCount = map[string]int{}
@@ -83,10 +84,7 @@ func Test_e2e(tt *testing.T) {
 			"bar": func(ctx context.Context, in string) (int, error) {
 				inc("bar")
 				assert.Equal(t, in, fooOut)
-
-				var err error
-				failOnce.Do(func() { err = t.Random.Error() })
-				return barOut, err
+				return barOut, nil
 			},
 			"baz": func(ctx context.Context, s string, n int) error {
 				inc("baz")
@@ -97,7 +95,7 @@ func Test_e2e(tt *testing.T) {
 			"flaky": func(ctx context.Context) (err error) {
 				inc("flaky")
 				failOnce.Do(func() {
-					err = t.Random.Error()
+					err = expectedFlakyErr
 				})
 				return err
 			},
@@ -119,8 +117,7 @@ func Test_e2e(tt *testing.T) {
 			},
 			&workflow.ExecuteParticipant{
 				ID: "flaky",
-
-				
+				//TODO: retry integration maybe?
 			},
 		}
 
@@ -129,6 +126,9 @@ func Test_e2e(tt *testing.T) {
 		}
 
 		var p workflow.Process
+
+		assert.ErrorIs(t, expectedFlakyErr, pdef.Execute(r.Context(t.Context()), &p))
+		assert.NotEmpty(t, p.Events)
 
 		assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
 		assert.Equal[any](t, p.Variables.Get("foo-val"), fooOut)

@@ -61,16 +61,20 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 	if r.Conditions != nil {
 		ctx = ContextWithConditions(ctx, r.Conditions)
 	}
-	// add participant execution cache too cache
+	ctx = WithExecutionCache(ctx)
 	return ctx
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Process struct {
-	Definition   Definition     `json:"pdef"`
-	Variables    Variables      `json:"var"`
-	ExecuteEvent []ExecuteEvent `json:"execute-events"`
+	Definition Definition `json:"pdef"`
+	Variables  Variables  `json:"var"`
+	Events     []Event    `json:"events"`
+}
+
+type Event interface {
+	Type() string
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

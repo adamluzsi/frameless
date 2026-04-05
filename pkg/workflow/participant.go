@@ -6,6 +6,7 @@ import (
 
 	"go.llib.dev/frameless/internal/errorkitlite"
 	"go.llib.dev/frameless/pkg/contextkit"
+	"go.llib.dev/frameless/pkg/iterkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/ds/dsmap"
 )
@@ -19,7 +20,7 @@ type ExecuteParticipant struct {
 var _ Definition = (*ExecuteParticipant)(nil)
 
 func (d *ExecuteParticipant) Execute(ctx context.Context, p *Process) error {
-	return d.execute(ctx, p)
+	return d.cachedExecute(ctx, p)
 }
 
 func (d *ExecuteParticipant) execute(ctx context.Context, p *Process) error {
@@ -48,7 +49,8 @@ func (d *ExecuteParticipant) execute(ctx context.Context, p *Process) error {
 			return ErrFatal.F("missing participant input argument: input argument of #%d -> %s", i, key)
 		}
 		rval := reflect.ValueOf(value)
-		// TODO: cover
+		// TODO: cover with extra tests
+		// TODO: extend functionality with use-cases where similar kinds can be used interchangeably, as long they can be converted to another.
 		// switch reflect.ValueOf(value) {
 		// default:
 		args = append(args, rval)
@@ -91,20 +93,72 @@ func (d *ExecuteParticipant) execute(ctx context.Context, p *Process) error {
 	return nil
 }
 
-func (d *ExecuteParticipant) cachedExecute(ctx context.Context, p *Process, do func() error) (rerr error) {
+func (d *ExecuteParticipant) cachedExecute(ctx context.Context, p *Process) (rerr error) {
 	prc, ok := executionCacheH.Lookup(ctx)
 	if !ok {
 		return ErrMissingParticipantExecutionCache
 	}
 
-	offset := prc.indexes.Get(d.ID)
+	pindex := prc.ParticipantCallIndex(d.ID)
 
-	// prc.offset.Set(d.ID, offset+1)
+	events := getExecuteParticipantEvents(p.Events)
 
-	p.Cache[participantCacheKey{}]
-	p.Cache.results[participantCacheKey{
-		CallIndex: offset,
-	}]
+	prevCall, found := iterkit.Find(iterkit.ToV(slicekit.IterReverse(events)), func(e ExecuteParticipantEvent) bool {
+		// find last matching call by call index and PID .
+		return e.ParticipantID == d.ID && e.CallIndex == pindex
+	})
+
+	if found {
+		if len(d.Input) == len(prevCall.Input) {
+			for i, key := range d.Input {
+				// invalidate on input value mismatch
+				// it is idempotent olny if input arguments the same too.
+				if p.Variables.Get(key) != prevCall.Input[i] {
+					found = false
+					break
+				}
+			}
+		} else {
+			found = false // invalidate previous call
+		}
+	}
+
+	if found && len(d.Output) != len(prevCall.Output) {
+		found = false
+	}
+
+	if found {
+		for i, key := range d.Output {
+			p.Variables.Set(key, prevCall.Output[i])
+		}
+		return nil
+	}
+
+	var newEvent ExecuteParticipantEvent
+	newEvent.CallIndex = pindex
+	newEvent.ParticipantID = d.ID
+	newEvent.Input = make([]any, len(d.Input))
+	for i, key := range d.Input {
+		newEvent.Input[i] = p.Variables.Get(key)
+	}
+
+	err := d.execute(ctx, p)
+	if err != nil {
+		return err
+	}
+
+	newEvent.Output = make([]any, len(d.Output))
+	for i, key := range d.Output {
+		newEvent.Output[i] = p.Variables.Get(key)
+	}
+
+	{
+		// memorise the call event, and make it idempotent for the next occurence
+		// transaction might be needed here,
+		// but to pull it off sciencifically correctly requires some thinking.
+		prc.IncrementParticipantCallIndex(d.ID)
+		p.Events = append(p.Events, newEvent)
+	}
 
 	return nil
 }
@@ -117,31 +171,60 @@ func (d *ExecuteParticipant) cachedExecute(ctx context.Context, p *Process, do f
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-type ParticipantCache struct {
+func getExecuteParticipantEvents(es []Event) []ExecuteParticipantEvent {
+	var epes []ExecuteParticipantEvent
+	for _, e := range es {
+		if e == nil {
+			continue
+		}
+		if e.Type() != eidExecuteParticipantEvent {
+			continue
+		}
+		if epe, ok := e.(ExecuteParticipantEvent); ok {
+			epes = append(epes, epe)
+		}
+	}
+	return epes
 }
 
-type ExecuteEvent struct {
+type ExecuteParticipantEvent struct {
 	CallIndex     int           `json:"index"`
 	ParticipantID ParticipantID `json:"pid,omitempty"`
-	ConditionID   ConditionID   `json:"cid,omitempty"`
 	Input         []any         `json:"input"`
 	Output        []any         `json:"output"`
+}
+
+const eidExecuteParticipantEvent = "execute-participant"
+
+func (ExecuteParticipantEvent) Type() string {
+	return eidExecuteParticipantEvent
 }
 
 const ErrMissingParticipantExecutionCache errorkitlite.Error = `ErrMissingParticipantExecutionCache
 missing from execution context, initiate it with
 workflow.Runtime#Context or workflow.WithParticipantExecuteCache`
 
-var executionCacheH contextkit.ValueHandler[ctxKeyCache, *ParticipantExecuteCache]
+var executionCacheH contextkit.ValueHandler[ctxKeyCache, *ExecutionCache]
 
 type ctxKeyCache struct{}
 
-func WithParticipantExecuteCache(ctx context.Context) context.Context {
-	return executionCacheH.ContextWith(ctx, &ParticipantExecuteCache{})
+func WithExecutionCache(ctx context.Context) context.Context {
+	if _, ok := executionCacheH.Lookup(ctx); ok {
+		return ctx
+	}
+	return executionCacheH.ContextWith(ctx, &ExecutionCache{})
 }
 
-type ParticipantExecuteCache struct {
-	indexes dsmap.Map[ParticipantID, int]
+type ExecutionCache struct {
+	pind dsmap.Map[ParticipantID, int]
+}
+
+func (ec *ExecutionCache) ParticipantCallIndex(pid ParticipantID) int {
+	return ec.pind.Get(pid)
+}
+
+func (ec *ExecutionCache) IncrementParticipantCallIndex(pid ParticipantID) {
+	ec.pind.Set(pid, ec.pind.Get(pid)+1)
 }
 
 type participantCacheKey struct {
