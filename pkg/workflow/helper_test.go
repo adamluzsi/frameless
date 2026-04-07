@@ -7,60 +7,70 @@ import (
 
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/random"
 )
 
 type StubParticipant struct {
 	CallCount int
-	Stub      func(ctx context.Context, p *workflow.Process) error
-	Cond      func(ctx context.Context, p *workflow.Process) (bool, error)
 	Err       error
-
-	last *struct {
-		ctx   context.Context
-		state *workflow.Process
-	}
+	last      *StubParticipantFuncArg
 }
 
-func (stub *StubParticipant) LastExecutedWith() (context.Context, *workflow.Process, bool) {
+type StubParticipantFuncArg struct {
+	Context context.Context
+}
+
+func (stub *StubParticipant) LastExecutedWith() (context.Context, bool) {
 	if stub.last == nil {
-		return nil, nil, false
+		return nil, false
 	}
-	return stub.last.ctx, stub.last.state, true
+	return stub.last.Context, true
 }
 
-func (stub *StubParticipant) Execute(ctx context.Context, s *workflow.Process) error {
+func (stub *StubParticipant) Func(ctx context.Context) error {
 	stub.CallCount++
-	if stub.Stub != nil {
-		return stub.Stub(ctx, s)
-	}
-	stub.last = &struct {
-		ctx   context.Context
-		state *workflow.Process
-	}{
-		ctx:   ctx,
-		state: s,
-	}
+	stub.last = &StubParticipantFuncArg{Context: ctx}
 	return stub.Err
-}
-
-func (stub *StubParticipant) Evaluate(ctx context.Context, s *workflow.Process) (_ bool, _ error) {
-	stub.CallCount++
-	if stub.Cond != nil {
-		return stub.Cond(ctx, s)
-	}
-	stub.last = &struct {
-		ctx   context.Context
-		state *workflow.Process
-	}{
-		ctx:   ctx,
-		state: s,
-	}
-	return stub.Err == nil, stub.Err
 }
 
 type C struct {
 	Context testcase.Var[context.Context]
 	Process testcase.Var[*workflow.Process]
+
+	Runtime      testcase.Var[workflow.Runtime]
+	Participants testcase.Var[workflow.Participants]
+}
+
+var pids = testcase.Var[[]workflow.ParticipantID]{
+	ID: "workflow participant IDs generated with LetParticipantID",
+	Init: func(t *testcase.T) []workflow.ParticipantID {
+		return make([]workflow.ParticipantID, 0)
+	},
+}
+
+func LetParticipantID(s *testcase.Spec) testcase.Var[workflow.ParticipantID] {
+	return let.Var(s, func(t *testcase.T) workflow.ParticipantID {
+		pid := random.Unique(func() workflow.ParticipantID {
+			return workflow.ParticipantID(t.Random.String())
+		}, pids.Get(t)...)
+		testcase.Append(t, pids, pid)
+		return pid
+	})
+}
+
+func LetParticipant[Func any](s *testcase.Spec, c C, pid testcase.Var[workflow.ParticipantID], mk func(t *testcase.T) Func) testcase.Var[Func] {
+	p := let.Var(s, func(t *testcase.T) Func {
+		return mk(t)
+	})
+	c.Participants.Let(s, func(t *testcase.T) workflow.Participants {
+		ps := c.Participants.Super(t)
+		if ps == nil {
+			ps = make(workflow.Participants)
+		}
+		ps[pid.Get(t)] = p.Get(t)
+		return ps
+	})
+	return p
 }
 
 func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*StubParticipant] {
@@ -70,10 +80,13 @@ func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*
 		return &StubParticipant{}
 	})
 
-	c.Context.Let(s, func(t *testcase.T) context.Context {
-		og := c.Context.Super(t)
-		return workflow.ContextWithParticipants(og,
-			workflow.Participants{pid: stub.Get(t)})
+	c.Participants.Let(s, func(t *testcase.T) workflow.Participants {
+		ps := c.Participants.Super(t)
+		if ps == nil {
+			ps = make(workflow.Participants)
+		}
+		ps[pid] = stub.Get(t).Func
+		return ps
 	})
 
 	return stub
@@ -82,16 +95,24 @@ func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*
 func letC(s *testcase.Spec) C {
 	var c C
 
-	c.Context = let.Var(s, func(t *testcase.T) context.Context {
-		ctx, cancel := context.WithCancel(t.Context())
-		t.Defer(cancel)
-
-		ctx = workflow.ContextWithParticipants(ctx, workflow.Participants{
+	c.Participants = let.Var(s, func(t *testcase.T) workflow.Participants {
+		return workflow.Participants{
 			"/dev/null": func(ctx context.Context, s *workflow.Process) error {
 				return nil
 			},
-		})
-		return ctx
+		}
+	})
+
+	c.Runtime = let.Var(s, func(t *testcase.T) workflow.Runtime {
+		return workflow.Runtime{
+			Participants: c.Participants.Get(t),
+		}
+	})
+
+	c.Context = let.Var(s, func(t *testcase.T) context.Context {
+		ctx, cancel := context.WithCancel(t.Context())
+		t.Defer(cancel)
+		return c.Runtime.Get(t).Context(ctx)
 	})
 
 	c.Process = let.Var(s, func(t *testcase.T) *workflow.Process {

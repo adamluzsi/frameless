@@ -177,3 +177,24 @@ func Test_e2e(tt *testing.T) {
 
 // 	_ = userDefinedWorkflowDefinition.Execute(context.Background(), rt, &workflow.State{})
 // }
+
+func TestContextWithParticipants(t *testing.T) {
+	execFoo := workflow.ExecuteParticipant{ID: "foo"}
+	execBar := workflow.ExecuteParticipant{ID: "bar"}
+
+	ctx0 := context.Background()
+	assert.Error(t, execFoo.Execute(ctx0, &workflow.Process{}))
+	assert.Error(t, execBar.Execute(ctx0, &workflow.Process{}))
+
+	ctx1 := workflow.ContextWithParticipants(ctx0, workflow.Participants{"foo": func(ctx context.Context) error { return nil }})
+	assert.Error(t, execFoo.Execute(ctx0, &workflow.Process{}))
+	assert.NoError(t, execFoo.Execute(ctx1, &workflow.Process{}))
+	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
+	assert.Error(t, execBar.Execute(ctx0, &workflow.Process{}))
+
+	ctx2 := workflow.ContextWithParticipants(ctx1, workflow.Participants{"bar": func(ctx context.Context) error { return nil }})
+	assert.Error(t, execFoo.Execute(ctx1, &workflow.Process{}))
+	assert.NoError(t, execFoo.Execute(ctx2, &workflow.Process{}))
+	assert.Error(t, execBar.Execute(ctx2, &workflow.Process{}))
+	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
+}

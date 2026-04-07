@@ -1,6 +1,7 @@
 package workflow_test
 
 import (
+	"context"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/workflow"
@@ -226,7 +227,11 @@ func TestSequence(t *testing.T) {
 		})
 
 		s.When("it has an element", func(s *testcase.Spec) {
-			foo := c.LetStub(s, "foo")
+			foo := c.LetStub(s, "foo", func(t *testcase.T) any {
+				return func(ctx context.Context) error {
+					return nil
+				}
+			})
 
 			seq.Let(s, func(t *testcase.T) workflow.Sequence {
 				return workflow.Sequence{&workflow.ExecuteParticipant{ID: "foo"}}

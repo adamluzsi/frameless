@@ -10,19 +10,21 @@ import (
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
 	"go.llib.dev/testcase/let"
+	"go.llib.dev/testcase/pp"
 	"go.llib.dev/testcase/random"
 )
 
-func TestExecuteParticipant_spec(t *testing.T) {
+func TestExecuteParticipant(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	var (
-		c    = letC(s)
-		stub = c.LetStub(s, "stub")
-	)
+	var c = letC(s)
 
-	pid := let.Var(s, func(t *testcase.T) workflow.ParticipantID {
-		return workflow.ParticipantID("stub")
+	var fooPID = LetParticipantID(s)
+
+	var fooP = LetParticipant(s, c, fooPID, func(t *testcase.T) func(ctx context.Context) error {
+		return func(ctx context.Context) error {
+			return nil
+		}
 	})
 
 	var (
@@ -31,7 +33,7 @@ func TestExecuteParticipant_spec(t *testing.T) {
 	)
 	subject := let.Var(s, func(t *testcase.T) *workflow.ExecuteParticipant {
 		return &workflow.ExecuteParticipant{
-			ID:     pid.Get(t),
+			ID:     fooPID.Get(t),
 			Input:  args.Get(t),
 			Output: output.Get(t),
 		}
@@ -43,30 +45,35 @@ func TestExecuteParticipant_spec(t *testing.T) {
 			process = c.Process.Bind(s)
 		)
 		act := let.Act(func(t *testcase.T) error {
+			sub := subject.Get(t)
+			pp.PP(sub)
+			ctxV := ctx.Get(t)
+			pp.PP(ctxV)
+			process.Get(t)
+			pp.PP()
 			return subject.Get(t).Execute(ctx.Get(t), process.Get(t))
 		})
 
-		s.Then("pid is executing the referenced participant", func(t *testcase.T) {
+		s.Then("participant is looked up by its PID", func(t *testcase.T) {
 			n := t.Random.Repeat(3, 7, func() {
 				assert.NoError(t, act(t))
 			})
 
 			assert.Equal(t, stub.Get(t).CallCount, n)
-			gotCtx, gotState, ok := stub.Get(t).LastExecutedWith()
+			gotCtx, ok := stub.Get(t).LastExecutedWith()
 			assert.True(t, ok)
 			assert.Equal(t, ctx.Get(t), gotCtx)
-			assert.Equal(t, process.Get(t), gotState)
 		})
 
 		s.When("the pid is invalid in the given context", func(s *testcase.Spec) {
-			pid.Let(s, func(t *testcase.T) workflow.ParticipantID {
-				validPID := pid.Super(t)
+			fooPID.Let(s, func(t *testcase.T) workflow.ParticipantID {
+				validPID := fooPID.Super(t)
 				randomPID := random.Unique(t.Random.String, string(validPID))
 				return workflow.ParticipantID(randomPID)
 			})
 
 			s.Then("we get back a validation error", func(t *testcase.T) {
-				assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{ID: pid.Get(t)})
+				assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{ID: fooPID.Get(t)})
 			})
 		})
 
@@ -86,47 +93,6 @@ func TestExecuteParticipant_spec(t *testing.T) {
 			})
 		})
 	})
-
-	// s.Describe("#Validate", func(s *testcase.Spec) {
-	// 	var ctx = c.Context.Bind(s)
-	// 	act := let.Act(func(t *testcase.T) error {
-	// 		return pid.Get(t).Validate(ctx.Get(t))
-	// 	})
-	//
-	// 	s.Then("on a valid pid, it yields no error", func(t *testcase.T) {
-	// 		assert.NoError(t, act(t))
-	// 	})
-	//
-	// 	s.When("the pid is referencing an unknown participant", func(s *testcase.Spec) {
-	// 		pid.Let(s, func(t *testcase.T) workflow.ParticipantID {
-	// 			validPID := pid.Super(t)
-	// 			randomPID := random.Unique(t.Random.String, string(validPID))
-	// 			return workflow.ParticipantID(randomPID)
-	// 		})
-	//
-	// 		s.Then("we get back an error about the unknown participant", func(t *testcase.T) {
-	// 			assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{PID: pid.Get(t)})
-	// 		})
-	// 	})
-	//
-	// 	s.When("the pid is an empty string", func(s *testcase.Spec) {
-	// 		pid.LetValue(s, "")
-	//
-	// 		s.Then("we get back an error that we have a empty pid", func(t *testcase.T) {
-	// 			err := act(t)
-	// 			assert.Error(t, err)
-	// 			assert.Contains(t, err.Error(), "empty")
-	// 		})
-	// 	})
-	//
-	// 	s.When("context accidentally don't contain the referenced participant", func(s *testcase.Spec) {
-	// 		ctx.Let(s, let.Context(s).Get)
-	//
-	// 		s.Then("we get back an error about the unknown participant", func(t *testcase.T) {
-	// 			assert.ErrorIs(t, act(t), workflow.ErrParticipantNotFound{PID: pid.Get(t)})
-	// 		})
-	// 	})
-	// })
 
 	s.Context("smoke", func(s *testcase.Spec) {
 		s.Context("idempotency", func(s *testcase.Spec) {
