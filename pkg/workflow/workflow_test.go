@@ -182,7 +182,7 @@ func TestContextWithParticipants(t *testing.T) {
 	execFoo := workflow.ExecuteParticipant{ID: "foo"}
 	execBar := workflow.ExecuteParticipant{ID: "bar"}
 
-	ctx0 := context.Background()
+	ctx0 := workflow.WithExecutionIndex(context.Background())
 	assert.Error(t, execFoo.Execute(ctx0, &workflow.Process{}))
 	assert.Error(t, execBar.Execute(ctx0, &workflow.Process{}))
 
@@ -193,8 +193,8 @@ func TestContextWithParticipants(t *testing.T) {
 	assert.Error(t, execBar.Execute(ctx0, &workflow.Process{}))
 
 	ctx2 := workflow.ContextWithParticipants(ctx1, workflow.Participants{"bar": func(ctx context.Context) error { return nil }})
-	assert.Error(t, execFoo.Execute(ctx1, &workflow.Process{}))
+	assert.NoError(t, execFoo.Execute(ctx1, &workflow.Process{}))
 	assert.NoError(t, execFoo.Execute(ctx2, &workflow.Process{}))
-	assert.Error(t, execBar.Execute(ctx2, &workflow.Process{}))
 	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
+	assert.NoError(t, execBar.Execute(ctx2, &workflow.Process{}))
 }

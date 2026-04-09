@@ -34,9 +34,7 @@ func (stub *StubParticipant) Func(ctx context.Context) error {
 }
 
 type C struct {
-	Context testcase.Var[context.Context]
-	Process testcase.Var[*workflow.Process]
-
+	Process      testcase.Var[*workflow.Process]
 	Runtime      testcase.Var[workflow.Runtime]
 	Participants testcase.Var[workflow.Participants]
 }
@@ -51,7 +49,7 @@ var pids = testcase.Var[[]workflow.ParticipantID]{
 func LetParticipantID(s *testcase.Spec) testcase.Var[workflow.ParticipantID] {
 	return let.Var(s, func(t *testcase.T) workflow.ParticipantID {
 		pid := random.Unique(func() workflow.ParticipantID {
-			return workflow.ParticipantID(t.Random.String())
+			return workflow.ParticipantID(t.Random.Domain())
 		}, pids.Get(t)...)
 		testcase.Append(t, pids, pid)
 		return pid
@@ -73,7 +71,7 @@ func LetParticipant[Func any](s *testcase.Spec, c C, pid testcase.Var[workflow.P
 	return p
 }
 
-func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*StubParticipant] {
+func (c *C) LetStub(s *testcase.Spec, pid testcase.Var[workflow.ParticipantID]) testcase.Var[*StubParticipant] {
 	s.H().Helper()
 
 	stub := let.Var(s, func(t *testcase.T) *StubParticipant {
@@ -85,7 +83,7 @@ func (c *C) LetStub(s *testcase.Spec, pid workflow.ParticipantID) testcase.Var[*
 		if ps == nil {
 			ps = make(workflow.Participants)
 		}
-		ps[pid] = stub.Get(t).Func
+		ps[pid.Get(t)] = stub.Get(t).Func
 		return ps
 	})
 
@@ -107,12 +105,6 @@ func letC(s *testcase.Spec) C {
 		return workflow.Runtime{
 			Participants: c.Participants.Get(t),
 		}
-	})
-
-	c.Context = let.Var(s, func(t *testcase.T) context.Context {
-		ctx, cancel := context.WithCancel(t.Context())
-		t.Defer(cancel)
-		return c.Runtime.Get(t).Context(ctx)
 	})
 
 	c.Process = let.Var(s, func(t *testcase.T) *workflow.Process {

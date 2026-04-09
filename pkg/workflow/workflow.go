@@ -61,7 +61,7 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 	if r.Conditions != nil {
 		ctx = ContextWithConditions(ctx, r.Conditions)
 	}
-	ctx = WithExecutionCache(ctx)
+	ctx = WithExecutionIndex(ctx)
 	return ctx
 }
 
@@ -69,7 +69,7 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 
 type Process struct {
 	Definition Definition `json:"pdef"`
-	Variables  Variables  `json:"var"`
+	Variables  Variables  `json:"var"` // TODO: turn this into a method that act as a proxy to get and set variables using the Events event source table.
 	Events     []Event    `json:"events"`
 }
 

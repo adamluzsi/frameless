@@ -100,7 +100,6 @@ func (d *ExecuteParticipant) cachedExecute(ctx context.Context, p *Process) (rer
 	}
 
 	pindex := prc.ParticipantCallIndex(d.ID)
-
 	events := getExecuteParticipantEvents(p.Events)
 
 	prevCall, found := iterkit.Find(iterkit.ToV(slicekit.IterReverse(events)), func(e ExecuteParticipantEvent) bool {
@@ -208,7 +207,10 @@ var executionCacheH contextkit.ValueHandler[ctxKeyCache, *ExecutionCache]
 
 type ctxKeyCache struct{}
 
-func WithExecutionCache(ctx context.Context) context.Context {
+// WithExecutionIndex initializes or returns a context containing the execution cache.
+// It is used to keep track of the participant execution indexes/offsets,
+// recording which participant was executed how many times.
+func WithExecutionIndex(ctx context.Context) context.Context {
 	if _, ok := executionCacheH.Lookup(ctx); ok {
 		return ctx
 	}
