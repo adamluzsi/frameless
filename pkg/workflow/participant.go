@@ -96,7 +96,7 @@ func (d *ExecuteParticipant) execute(ctx context.Context, p *Process) error {
 func (d *ExecuteParticipant) cachedExecute(ctx context.Context, p *Process) (rerr error) {
 	prc, ok := executionCacheH.Lookup(ctx)
 	if !ok {
-		return ErrMissingParticipantExecutionCache
+		return ErrMissingExecutionIndex
 	}
 
 	pindex := prc.ParticipantCallIndex(d.ID)
@@ -195,15 +195,15 @@ type ExecuteParticipantEvent struct {
 
 const eidExecuteParticipantEvent = "execute-participant"
 
-func (ExecuteParticipantEvent) Type() string {
+func (ExecuteParticipantEvent) Type() EventType {
 	return eidExecuteParticipantEvent
 }
 
-const ErrMissingParticipantExecutionCache errorkitlite.Error = `ErrMissingParticipantExecutionCache
+const ErrMissingExecutionIndex errorkitlite.Error = `ErrMissingParticipantExecutionCache
 missing from execution context, initiate it with
 workflow.Runtime#Context or workflow.WithParticipantExecuteCache`
 
-var executionCacheH contextkit.ValueHandler[ctxKeyCache, *ExecutionCache]
+var executionCacheH contextkit.ValueHandler[ctxKeyCache, *ExecutionIndex]
 
 type ctxKeyCache struct{}
 
@@ -214,19 +214,36 @@ func WithExecutionIndex(ctx context.Context) context.Context {
 	if _, ok := executionCacheH.Lookup(ctx); ok {
 		return ctx
 	}
-	return executionCacheH.ContextWith(ctx, &ExecutionCache{})
+	return executionCacheH.ContextWith(ctx, &ExecutionIndex{})
 }
 
-type ExecutionCache struct {
-	pind dsmap.Map[ParticipantID, int]
+type ExecutionIndex struct {
+	pind dsmap.Map[eiKeyInt, int]
 }
 
-func (ec *ExecutionCache) ParticipantCallIndex(pid ParticipantID) int {
-	return ec.pind.Get(pid)
+type eiKeyInt interface{ key() }
+
+type eiKey[T any] struct{ ID string }
+
+var _ eiKeyInt = (*eiKey[any])(nil)
+
+func (eiKey[T]) key() {}
+
+func getCallIndex[ID ~string](ec *ExecutionIndex, id ID) int {
+	return ec.pind.Get(eiKey[ID]{ID: string(id)})
 }
 
-func (ec *ExecutionCache) IncrementParticipantCallIndex(pid ParticipantID) {
-	ec.pind.Set(pid, ec.pind.Get(pid)+1)
+func incCallIndex[ID ~string](ec *ExecutionIndex, id ID) {
+	key := eiKey[ID]{ID: string(id)}
+	ec.pind.Set(key, ec.pind.Get(key)+1)
+}
+
+func (ec *ExecutionIndex) IncrementParticipantCallIndex(pid ParticipantID) {
+	incCallIndex(ec, pid)
+}
+
+func (ec *ExecutionIndex) ParticipantCallIndex(pid ParticipantID) int {
+	return getCallIndex(ec, pid)
 }
 
 type participantCacheKey struct {
@@ -239,4 +256,82 @@ type participantCacheValue struct {
 }
 
 type pcRes struct {
+}
+
+type idempotentExecutor[ID ~string, Func any] struct {
+	ID          ID
+	Func        Func
+	Input       []VariableKey
+	Output      []VariableKey
+	EventFilter func(e Event) bool
+}
+
+func (ie idempotentExecutor[ID, Func]) Execute(ctx context.Context, p *Process) (rerr error) {
+	ei, ok := executionCacheH.Lookup(ctx)
+	if !ok {
+		return ErrMissingExecutionIndex
+	}
+
+	index := getCallIndex(ei, ie.ID)
+
+	events := getExecuteParticipantEvents(p.Events)
+
+	prevCall, found := iterkit.Find(iterkit.ToV(slicekit.IterReverse(events)), func(e ExecuteParticipantEvent) bool {
+		// find last matching call by call index and PID .
+		return e.ParticipantID == d.ID && e.CallIndex == index
+	})
+
+	if found {
+		if len(d.Input) == len(prevCall.Input) {
+			for i, key := range input {
+				// invalidate on input value mismatch
+				// it is idempotent olny if input arguments the same too.
+				if p.Variables.Get(key) != prevCall.Input[i] {
+					found = false
+					break
+				}
+			}
+		} else {
+			found = false // invalidate previous call
+		}
+	}
+
+	if found && len(d.Output) != len(prevCall.Output) {
+		found = false
+	}
+
+	if found {
+		for i, key := range d.Output {
+			p.Variables.Set(key, prevCall.Output[i])
+		}
+		return nil
+	}
+
+	var newEvent ExecuteParticipantEvent
+	newEvent.CallIndex = index
+	newEvent.ParticipantID = d.ID
+	newEvent.Input = make([]any, len(d.Input))
+	for i, key := range d.Input {
+		newEvent.Input[i] = p.Variables.Get(key)
+	}
+
+	err := d.execute(ctx, p)
+	if err != nil {
+		return err
+	}
+
+	newEvent.Output = make([]any, len(d.Output))
+	for i, key := range d.Output {
+		newEvent.Output[i] = p.Variables.Get(key)
+	}
+
+	{
+		// memorise the call event, and make it idempotent for the next occurence
+		// transaction might be needed here,
+		// but to pull it off sciencifically correctly requires some thinking.
+		ei.IncrementParticipantCallIndex(d.ID)
+		p.Events = append(p.Events, newEvent)
+	}
+
+	return nil
 }
