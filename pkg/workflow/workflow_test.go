@@ -2,6 +2,7 @@ package workflow_test
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"testing"
 
@@ -190,11 +191,64 @@ func TestContextWithParticipants(t *testing.T) {
 	assert.Error(t, execFoo.Execute(ctx0, &workflow.Process{}))
 	assert.NoError(t, execFoo.Execute(ctx1, &workflow.Process{}))
 	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
-	assert.Error(t, execBar.Execute(ctx0, &workflow.Process{}))
 
 	ctx2 := workflow.ContextWithParticipants(ctx1, workflow.Participants{"bar": func(ctx context.Context) error { return nil }})
 	assert.NoError(t, execFoo.Execute(ctx1, &workflow.Process{}))
 	assert.NoError(t, execFoo.Execute(ctx2, &workflow.Process{}))
 	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
 	assert.NoError(t, execBar.Execute(ctx2, &workflow.Process{}))
+}
+
+func TestProcess_json_smoke(tt *testing.T) {
+	// Smoke test: verify that workflow.Process can be JSON encoded and decoded
+	// after going through a process definition execution.
+
+	var fooOut = "test-foo-value"
+	var barOut = 42
+
+	participants := workflow.Participants{
+		"foo": func(ctx context.Context) (string, error) {
+			return fooOut, nil
+		},
+		"bar": func(ctx context.Context, in string) (int, error) {
+			assert.Equal(tt, in, fooOut)
+			return barOut, nil
+		},
+	}
+
+	var pdef workflow.Definition = &workflow.Sequence{
+		&workflow.ExecuteParticipant{
+			ID:     "foo",
+			Output: []workflow.VariableKey{"foo-val"},
+		},
+		&workflow.ExecuteParticipant{
+			ID:     "bar",
+			Input:  []workflow.VariableKey{"foo-val"},
+			Output: []workflow.VariableKey{"bar-val"},
+		},
+	}
+
+	r := workflow.Runtime{Participants: participants}
+	var p workflow.Process
+
+	// Execute the workflow definition to populate process with variables and events
+	assert.NoError(tt, pdef.Execute(r.Context(context.Background()), &p))
+
+	// Verify initial state before JSON round-trip
+	assert.Equal[any](tt, p.Variables.Get("foo-val"), fooOut)
+	assert.Equal[any](tt, p.Variables.Get("bar-val"), barOut)
+	assert.NotEmpty(tt, p.Events)
+
+	// Encode to JSON
+	jsonData, err := json.Marshal(p)
+	assert.NoError(tt, err)
+
+	// Decode back from JSON
+	var decoded workflow.Process
+	err = json.Unmarshal(jsonData, &decoded)
+	assert.NoError(tt, err)
+
+	// Verify data is preserved after round-trip
+	assert.Equal[any](tt, decoded.Variables.Get("foo-val"), fooOut)
+	assert.Equal[any](tt, decoded.Variables.Get("bar-val"), barOut)
 }

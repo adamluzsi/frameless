@@ -74,8 +74,10 @@ func (r Runtime) Execute(ctx context.Context, def Definition, p *Process) error 
 type Process struct {
 	Definition Definition `json:"pdef"`
 	Variables  Variables  `json:"var"` // TODO: turn this into a method that act as a proxy to get and set variables using the Events event source table.
-	Events     []Event    `json:"events"`
+	Events     Events     `json:"events"`
 }
+
+type Events []Event
 
 type Event interface {
 	Type() EventType
