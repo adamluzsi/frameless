@@ -37,6 +37,7 @@ type C struct {
 	Process      testcase.Var[*workflow.Process]
 	Runtime      testcase.Var[workflow.Runtime]
 	Participants testcase.Var[workflow.Participants]
+	Conditions   testcase.Var[workflow.Conditions]
 }
 
 var pids = testcase.Var[[]workflow.ParticipantID]{
@@ -101,9 +102,18 @@ func letC(s *testcase.Spec) C {
 		}
 	})
 
+	c.Conditions = let.Var(s, func(t *testcase.T) workflow.Conditions {
+		return workflow.Conditions{
+			"/dev/null": func(ctx context.Context, p *workflow.Process) (bool, error) {
+				return false, nil
+			},
+		}
+	})
+
 	c.Runtime = let.Var(s, func(t *testcase.T) workflow.Runtime {
 		return workflow.Runtime{
 			Participants: c.Participants.Get(t),
+			Conditions:   c.Conditions.Get(t),
 		}
 	})
 

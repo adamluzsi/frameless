@@ -79,15 +79,25 @@ type idempotentExecutor[E Event, ID ~string] struct {
 }
 
 type executionEvent[ID ~string] struct {
-	ID     ID
-	Input  []any
+	// ID of the participant/condition/etc which did the trick
+	ID ID
+	// Input is the cached input variable setting
+	Input []any
+	// Output is the cached output variable setting
 	Output []any
+	// Result is the cached reutn value of the executeWR
+	Result []any
 }
 
 func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (rerr error) {
+	_, err := ie.executeWR(ctx, p)
+	return err
+}
+
+func (ie idempotentExecutor[E, ID]) executeWR(ctx context.Context, p *Process) ([]any, error) {
 	ei, ok := executionCacheH.Lookup(ctx)
 	if !ok {
-		return ErrMissingExecutionIndex
+		return nil, ErrMissingExecutionIndex
 	}
 
 	index := getCallIndex(ei, ie.ID)
@@ -155,21 +165,21 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 			// this won't be needed after Variables became part of the Events
 			p.Variables.Set(key, matchingEE.Output[i])
 		}
-		return nil
+		return slicekit.Clone(matchingEE.Result), nil
 	}
 
 	var input []any = make([]any, len(ie.Input))
 	for i, key := range ie.Input {
 		value, ok := p.Variables.Lookup(key)
 		if !ok { // validate this at process definition level too as static validation
-			return ErrFatal.F("missing input argument: input argument of #%d -> %s", i, key)
+			return nil, ErrFatal.F("missing input argument: input argument of #%d -> %s", i, key)
 		}
 		input[i] = value
 	}
 
 	output, err := ie.Func(ctx, slicekit.Clone(input))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	for i, key := range ie.Output {
@@ -177,7 +187,6 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 	}
 
 	newEvent := ie.NewEvent(ie.ID, input, output)
-
 	{
 		// memorise the call event, and make it idempotent for the next occurence
 		// transaction might be needed here,
@@ -186,5 +195,5 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 		p.Events = append(p.Events, newEvent)
 	}
 
-	return nil
+	return slicekit.Clone(output), nil
 }

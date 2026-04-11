@@ -11,6 +11,7 @@ import (
 func ErrIsFatal(err error) bool {
 	return errors.Is(err, ErrInvalidDefinition) ||
 		errors.Is(err, ErrInvalidParicipantFunc) ||
+		errors.Is(err, ErrInvalidConditionFunc) ||
 		errors.As(err, &ErrParticipantNotFound{}) ||
 		errors.As(err, &ErrConditionNotFound{}) ||
 		errors.Is(err, ErrFatal)
@@ -34,3 +35,10 @@ func (e ErrConditionNotFound) Error() string {
 }
 
 const ErrParticipantFuncMappingMismatch errorkitlite.Error = "ErrParticipantFuncMappingMismatch"
+
+const ErrInvalidConditionFunc errorkitlite.Error = `Invalid workflow.Condition#Func signature:
+expected func(context.Context, arg1 T1, ...OtherArgs) (bool, error)
+where the function signature starts with a context.Context, then user defined argument types,
+and the results tuple returns bool as first value and an error value type as last.
+The input argument types must be serializable.
+`
