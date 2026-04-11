@@ -217,7 +217,7 @@ func TestExecuteParticipant(t *testing.T) {
 
 				var p workflow.Process
 
-				assert.NoError(t, pdef.Execute(r.Context(t.Context()), &p))
+				assert.NoError(t, r.Execute(t.Context(), pdef, &p))
 				assert.NotEmpty(t, p.Events)
 				eventsAfterTheFirstExecution := slicekit.Clone(p.Events)
 

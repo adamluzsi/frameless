@@ -8,6 +8,7 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/ds/dsmap"
+	"go.llib.dev/testcase/pp"
 )
 
 const ErrMissingExecutionIndex errorkitlite.Error = `ErrMissingParticipantExecutionCache
@@ -75,8 +76,7 @@ type idempotentExecutor[E Event, ID ~string] struct {
 	Input     []VariableKey
 	Output    []VariableKey
 	CastEvent func(e E) (executionEvent[ID], bool)
-
-	NewEvent func(id ID, input []any, output []any) E
+	NewEvent  func(id ID, input []any, output []any) E
 }
 
 type executionEvent[ID ~string] struct {
@@ -137,11 +137,15 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 				// invalidate on input value mismatch
 				// it is idempotent olny if input arguments the same too.
 				if !reflectkit.Equal(mProcess.Variables.Get(key), matchingEE.Input[i]) {
+					pp.PP("invalidate due to variable mismatch")
 					found = false
 					break
 				}
 			}
 		} else { // invalidate previous call since input argument count changed
+			pp.PP("invalidate due to input mismatch")
+			pp.PP(len(ie.Input), len(matchingEE.Input))
+			pp.PP(matchingEE)
 			found = false
 		}
 	}
@@ -152,22 +156,23 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 
 	if found {
 		for i, key := range ie.Output {
+			// TODO: remove me when variables are event log based
 			// this won't be needed after Variables became part of the Events
 			p.Variables.Set(key, matchingEE.Output[i])
 		}
 		return nil
 	}
 
-	var (
-		input         []any
-		newEventInput []any = make([]any, len(ie.Input))
-	)
+	var input []any = make([]any, len(ie.Input))
 	for i, key := range ie.Input {
-		input[i] = p.Variables.Get(key)
-		newEventInput[i] = p.Variables.Get(key)
+		value, ok := p.Variables.Lookup(key)
+		if !ok { // validate this at process definition level too as static validation
+			return ErrFatal.F("missing input argument: input argument of #%d -> %s", i, key)
+		}
+		input[i] = value
 	}
 
-	output, err := ie.Func(ctx, input)
+	output, err := ie.Func(ctx, slicekit.Clone(input))
 	if err != nil {
 		return err
 	}
@@ -176,7 +181,8 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 		p.Variables.Set(key, output[i])
 	}
 
-	newEvent := ie.NewEvent(ie.ID, newEventInput, output)
+	newEvent := ie.NewEvent(ie.ID, input, output)
+	pp.PP(newEvent, input)
 
 	{
 		// memorise the call event, and make it idempotent for the next occurence

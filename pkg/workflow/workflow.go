@@ -65,6 +65,10 @@ func (r Runtime) Context(ctx context.Context) context.Context {
 	return ctx
 }
 
+func (r Runtime) Execute(ctx context.Context, def Definition, p *Process) error {
+	return def.Execute(r.Context(ctx), p)
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Process struct {
