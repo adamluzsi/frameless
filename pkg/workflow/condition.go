@@ -81,8 +81,15 @@ func (d *ExecuteCondition) cachedExecute(ctx context.Context, p *Process) (resul
 			return executionEvent[ConditionID]{
 				ID:     e.ConditionID,
 				Input:  e.Input,
-				Output: []any{e.Result},
+				Result: []any{e.Result},
 			}, true
+		},
+		NewEvent: func(id ConditionID, input, output []any) ExecuteConditionEvent {
+			return ExecuteConditionEvent{
+				ConditionID: id,
+				Input:       input,
+				Result:      output[0].(bool),
+			}
 		},
 	}
 	_ = exec
