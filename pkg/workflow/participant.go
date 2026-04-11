@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 
+	"go.llib.dev/frameless/pkg/jsonkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 )
 
@@ -146,6 +147,8 @@ type ExecuteParticipantEvent struct {
 }
 
 const eidExecuteParticipantEvent = "execute-participant"
+
+var _ = jsonkit.Register[ExecuteParticipantEvent]("workflow.ExecuteParticipantEvent")
 
 func (ExecuteParticipantEvent) Type() EventType {
 	return eidExecuteParticipantEvent

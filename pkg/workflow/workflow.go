@@ -13,7 +13,6 @@ import (
 	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/validate"
-	"go.llib.dev/frameless/port/codec"
 	"go.llib.dev/frameless/port/crud"
 	"go.llib.dev/frameless/port/ds"
 	"go.llib.dev/frameless/port/ds/dsmap"
@@ -40,7 +39,6 @@ type ConditionConveratble interface {
 type Runtime struct {
 	Participants ParticipantRepository
 	Conditions   ConditionRepository
-	Codec        codec.Codec
 }
 
 type ParticipantRepository interface {
@@ -79,6 +77,19 @@ type Process struct {
 
 type Events []Event
 
+func (es Events) MarshalJSON() ([]byte, error) {
+	return json.Marshal(jsonkit.Array[Event](es))
+}
+
+func (es *Events) UnmarshalJSON(data []byte) error {
+	var arr jsonkit.Array[Event]
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return err
+	}
+	*es = Events(arr)
+	return nil
+}
+
 type Event interface {
 	Type() EventType
 }
@@ -89,6 +100,19 @@ type EventType string
 
 type Variables struct {
 	vs dsmap.Map[VariableKey, any]
+}
+
+func (vs Variables) MarshalJSON() ([]byte, error) {
+	return json.Marshal(vs.vs)
+}
+
+func (vs *Variables) UnmarshalJSON(data []byte) error {
+	var m map[VariableKey]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	vs.vs = dsmap.Map[VariableKey, any](m)
+	return nil
 }
 
 type VariableKey string

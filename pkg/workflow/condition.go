@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"go.llib.dev/frameless/pkg/jsonkit"
 )
 
 type ExecuteCondition struct {
@@ -249,6 +251,8 @@ type ExecuteConditionEvent struct {
 }
 
 const eidExecuteConditionEvent = "execute-condition"
+
+var _ = jsonkit.Register[ExecuteConditionEvent]("workflow.ExecuteConditionEvent")
 
 func (ExecuteConditionEvent) Type() EventType {
 	return eidExecuteConditionEvent
