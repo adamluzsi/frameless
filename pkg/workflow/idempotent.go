@@ -8,7 +8,6 @@ import (
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/port/ds/dsmap"
-	"go.llib.dev/testcase/pp"
 )
 
 const ErrMissingExecutionIndex errorkitlite.Error = `ErrMissingParticipantExecutionCache
@@ -137,15 +136,11 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 				// invalidate on input value mismatch
 				// it is idempotent olny if input arguments the same too.
 				if !reflectkit.Equal(mProcess.Variables.Get(key), matchingEE.Input[i]) {
-					pp.PP("invalidate due to variable mismatch")
 					found = false
 					break
 				}
 			}
 		} else { // invalidate previous call since input argument count changed
-			pp.PP("invalidate due to input mismatch")
-			pp.PP(len(ie.Input), len(matchingEE.Input))
-			pp.PP(matchingEE)
 			found = false
 		}
 	}
@@ -182,7 +177,6 @@ func (ie idempotentExecutor[E, ID]) Execute(ctx context.Context, p *Process) (re
 	}
 
 	newEvent := ie.NewEvent(ie.ID, input, output)
-	pp.PP(newEvent, input)
 
 	{
 		// memorise the call event, and make it idempotent for the next occurence

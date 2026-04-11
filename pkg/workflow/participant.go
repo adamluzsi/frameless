@@ -99,7 +99,7 @@ func (d *ExecuteParticipant) cachedExecute(ctx context.Context, p *Process) (rer
 		Output: d.Output,
 		CastEvent: func(e ExecuteParticipantEvent) (executionEvent[ParticipantID], bool) {
 			return executionEvent[ParticipantID]{
-				ID:     d.ID,
+				ID:     e.ParticipantID,
 				Input:  e.Input,
 				Output: e.Output,
 			}, true
