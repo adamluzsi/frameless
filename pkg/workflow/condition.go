@@ -81,14 +81,14 @@ func (d *ExecuteCondition) cachedExecute(ctx context.Context, p *Process) (resul
 			return executionEvent[ConditionID]{
 				ID:     e.ConditionID,
 				Input:  e.Input,
-				Result: []any{e.Result},
+				Result: []any{e.Answer},
 			}, true
 		},
 		NewEvent: func(id ConditionID, input, output []any) ExecuteConditionEvent {
 			return ExecuteConditionEvent{
 				ConditionID: id,
 				Input:       input,
-				Result:      output[0].(bool),
+				Answer:      output[0].(bool),
 			}
 		},
 	}
@@ -242,26 +242,10 @@ func (cs Conditions) Validate(ctx context.Context) error {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-func getExecuteConditionEvents(es []Event) []ExecuteConditionEvent {
-	var eces []ExecuteConditionEvent
-	for _, e := range es {
-		if e == nil {
-			continue
-		}
-		if e.Type() != eidExecuteConditionEvent {
-			continue
-		}
-		if ece, ok := e.(ExecuteConditionEvent); ok {
-			eces = append(eces, ece)
-		}
-	}
-	return eces
-}
-
 type ExecuteConditionEvent struct {
 	ConditionID ConditionID `json:"cid,omitempty"`
 	Input       []any       `json:"input"`
-	Result      bool        `json:"result"`
+	Answer      bool        `json:"answer"`
 }
 
 const eidExecuteConditionEvent = "execute-condition"
