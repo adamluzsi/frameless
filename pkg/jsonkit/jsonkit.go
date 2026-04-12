@@ -2,12 +2,15 @@ package jsonkit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"time"
 
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
+	"go.llib.dev/frameless/pkg/resilience"
 	"go.llib.dev/frameless/pkg/zerokit"
 )
 
@@ -149,7 +152,16 @@ func (v *typed) unmarshalObject(data []byte) error {
 
 	var value reflect.Value
 	rType, ok := typeIDRegistry.TypeByID(typeID)
-	if !ok { // try for primitives
+	if ok { // try for primitives
+		ptr, err := newImpl(v.Type, rType)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
+			return err
+		}
+		value = ptr.Elem()
+	} else {
 		var val any
 		if err := json.Unmarshal(data, &val); err != nil {
 			return err
@@ -162,15 +174,6 @@ func (v *typed) unmarshalObject(data []byte) error {
 		} else {
 			value = reflect.ValueOf(val)
 		}
-	} else {
-		ptr, err := newImpl(v.Type, rType)
-		if err != nil {
-			return err
-		}
-		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-			return err
-		}
-		value = ptr.Elem()
 	}
 
 	vT := reflect.New(v.Type)
@@ -182,7 +185,7 @@ func (v *typed) unmarshalObject(data []byte) error {
 type Array[T any] []T
 
 func (ary Array[T]) MarshalJSON() ([]byte, error) {
-	if !isInterfaceType[T]() {
+	if !isInterfaceType(reflectkit.TypeOf[T]()) {
 		return json.Marshal([]T(ary))
 	}
 
@@ -199,7 +202,7 @@ func (ary Array[T]) MarshalJSON() ([]byte, error) {
 }
 
 func (ary *Array[T]) UnmarshalJSON(data []byte) error {
-	if !isInterfaceType[T]() {
+	if !isInterfaceType(reflectkit.TypeOf[T]()) {
 		v := []T(*zerokit.Coalesce(ary, &Array[T]{}))
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
@@ -230,8 +233,77 @@ func (ary *Array[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func isInterfaceType[T any]() bool {
-	return reflectkit.TypeOf[T]().Kind() == reflect.Interface
+type jsonArray struct {
+	// ptr is a *[]T pointer value
+	ptr reflect.Value
+}
+
+func (ary jsonArray) elemT() reflect.Type {
+	if reflectkit.IsNil(ary.ptr) {
+		return nil
+	}
+	pValType := ary.ptr.Type().Elem()
+
+	return
+}
+
+func (ary jsonArray) MarshalJSON() ([]byte, error) {
+	if !isInterfaceType(ary.elemT()) {
+		return json.Marshal(ary.SliceValue)
+	}
+
+	var vs = make([]json.RawMessage, ary.SliceValue.Len())
+
+	for i := 0; i < ary.SliceValue.Len(); i++ {
+		v := ary.SliceValue.Index(i)
+		data, err := json.Marshal(typed{Type: ary.elemT(), Value: v})
+		if err != nil {
+			return nil, err
+		}
+		vs[i] = data
+	}
+
+	return json.Marshal(vs)
+}
+
+func (ary *jsonArray) UnmarshalJSON(data []byte) error {
+	T := ary.elemT()
+
+	if !isInterfaceType(ary.elemT()) {
+		ptr := reflectkit.PointerOf(reflect.MakeSlice(reflect.SliceOf(T), 0, 0))
+		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
+			return err
+		}
+		ary.SliceValue.Set(ptr.Elem())
+		return nil
+	}
+
+	var raws []json.RawMessage
+	if err := json.Unmarshal(data, &raws); err != nil {
+		return err
+	}
+
+	var vs = reflect.MakeSlice(reflect.SliceOf(T), len(raws), 0)
+	for i, data := range raws {
+		var tv = typed{Type: T}
+		if err := json.Unmarshal(data, &tv); err != nil {
+			return err
+		}
+
+		var decValue = reflect.ValueOf(tv.Value)
+		if !decValue.CanConvert(T) {
+			return fmt.Errorf("unable to convert %s to %s", decValue.Type().String(), T.String())
+		}
+
+		vs = reflect.Append(vs, decValue.Convert(T))
+	}
+
+	ary.ptr.Elem().Set()
+	return nil
+}
+
+func isInterfaceType(T reflect.Type) bool {
+	return T.Kind() == reflect.Interface
 }
 
 type TypeID string
@@ -241,6 +313,11 @@ func (id TypeID) String() string { return string(id) }
 func (id TypeID) IsZero() bool {
 	const zero TypeID = ""
 	return id == zero
+}
+
+var ptrNestingLoop = resilience.FixedDelay{
+	Delay:   time.Nanosecond,
+	Timeout: time.Second,
 }
 
 func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
@@ -255,8 +332,11 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 			return typ.ConvertibleTo(targetType)
 		}
 	}
+
 	ptr := reflect.New(identifiedType)
-	for i := 0; i < 42; i++ { // max pointer to pointer nesting level is limited to 42 levels
+	ctx := context.Background()
+	// max pointer to pointer nesting level is limited to 42 levels
+	for i := 0; ptrNestingLoop.ShouldTry(ctx, i); i++ {
 		if check(ptr.Type().Elem()) {
 			return ptr, nil
 		}
@@ -264,8 +344,20 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 		ptrPtr.Elem().Set(ptr)
 		ptr = ptrPtr
 	}
+
 	const format = "unable to find implementation for %s with %s"
 	return reflect.Value{}, fmt.Errorf(format, targetType.String(), identifiedType.String())
+}
+
+var iJSONMarshaler reflect.Type = reflectkit.TypeOf[json.Marshaler]()
+
+type sliceProxy struct {
+	Type reflect.Type
+}
+
+func (sp *sliceProxy) MarshalJSON() ([]byte, error) {
+	var t Array
+
 }
 
 func isPrimitive(data []byte) bool {
@@ -353,7 +445,7 @@ func (i *Interface[I]) UnmarshalJSON(data []byte) error {
 
 func typeAssert[T any](v any) (T, error) {
 	value, ok := v.(T)
-	if !ok && !isInterfaceType[T]() {
+	if !ok && !isInterfaceType(reflectkit.TypeOf[T]()) {
 		return *new(T), fmt.Errorf("type assertion failed, expected %s got %T",
 			reflectkit.TypeOf[T]().String(), v)
 	}

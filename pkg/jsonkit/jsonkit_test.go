@@ -103,6 +103,20 @@ func TestInterface(t *testing.T) {
 		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.Equal(t, exp, got)
 	})
+	t.Run("intercace T type with slice implementation", func(t *testing.T) {
+		var exp jsonkit.Interface[Greeter]
+		exp.V = TypeE{TypeA{V: "hello"}}
+
+		data, err := json.Marshal(exp)
+		assert.NoError(t, err)
+		t.Logf("Marshaled: %s", string(data))
+
+		var got jsonkit.Interface[Greeter]
+		err = json.Unmarshal(data, &got)
+		assert.NoError(t, err)
+
+		assert.NotNil(t, got.V)
+	})
 	t.Run("interface T type with nil values", func(t *testing.T) {
 		var exp jsonkit.Interface[Greeter]
 		exp.V = nil
@@ -256,6 +270,7 @@ var ( // register types
 	_ = jsonkit.Register[TypeB]("type_b")
 	_ = jsonkit.Register[TypeC]("type_c")
 	_ = jsonkit.Register[TypeD]("type_d")
+	_ = jsonkit.Register[TypeE]("type_e")
 )
 
 type TypeA struct{ V string }
@@ -273,6 +288,14 @@ func (*TypeC) Hello() {}
 type TypeD string
 
 func (str TypeD) Hello() {}
+
+type TypeE []Greeter
+
+func (list TypeE) Hello() {
+	for _, g := range list {
+		g.Hello()
+	}
+}
 
 // func TestArrayStream(t *testing.T) {
 // 	type ItemDTO struct {
