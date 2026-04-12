@@ -2,30 +2,16 @@ package workflow
 
 import (
 	"context"
-	"reflect"
+	"encoding/json"
 
 	"go.llib.dev/frameless/pkg/jsonkit"
 )
 
-type ValidateDefinitionContext struct {
-	context.Context
-
-	vs map[VariableKey]ValidateDefinitionContextVariable
-}
-
-// func (vdc ValidateDefinitionContext) Variables() ds.Map[VariableKey, ValidateDefinitionContextVariable] {
-// 	return dsmap.Map[VariableKey, ValidateDefinitionContextVariable](vdc.vs)
-// }
-
-type ValidateDefinitionContextVariable struct {
-	Key  VariableKey
-	Type reflect.Type
-}
-
 type Sequence []Definition
 
-var _ Definition = (*Sequence)(nil)
 var _ = jsonkit.Register[Sequence]("workflow.Sequence")
+
+var _ Definition = (*Sequence)(nil)
 
 func (seq Sequence) Execute(ctx context.Context, p *Process) error {
 	for _, participant := range seq {
@@ -33,6 +19,24 @@ func (seq Sequence) Execute(ctx context.Context, p *Process) error {
 			return err
 		}
 	}
+	return nil
+}
+
+var _ json.Marshaler = (Sequence)(nil)
+
+func (s Sequence) MarshalJSON() ([]byte, error) {
+	var list = jsonkit.Array[Definition](s)
+	return json.Marshal(list)
+}
+
+var _ json.Unmarshaler = (*Sequence)(nil)
+
+func (s *Sequence) UnmarshalJSON(data []byte) error {
+	var list jsonkit.Array[Definition]
+	if err := json.Unmarshal(data, &list); err != nil {
+		return err
+	}
+	*s = Sequence(list)
 	return nil
 }
 
