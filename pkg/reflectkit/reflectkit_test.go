@@ -979,6 +979,72 @@ func TestPointerOf(t *testing.T) {
 	})
 }
 
+func TestCanElem(t *testing.T) {
+	t.Run("non-pointer non-interface value", func(t *testing.T) {
+		val := reflect.ValueOf(42)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("nil pointer", func(t *testing.T) {
+		var ptr *string
+		val := reflect.ValueOf(ptr)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("non-nil pointer to zero value", func(t *testing.T) {
+		v := ""
+		ptr := &v
+		val := reflect.ValueOf(ptr)
+		assert.True(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("non-nil pointer to non-zero value", func(t *testing.T) {
+		v := "hello"
+		ptr := &v
+		val := reflect.ValueOf(ptr)
+		assert.True(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("nil interface", func(t *testing.T) {
+		var iface any
+		val := reflect.ValueOf(iface)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("non-nil interface holding nil pointer", func(t *testing.T) {
+		var ptr *string
+		var iface any = ptr
+		val := reflect.ValueOf(iface)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("non-nil interface holding non-nil value", func(t *testing.T) {
+		v := "hello"
+		var iface any = &v
+		val := reflect.ValueOf(iface)
+		assert.True(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("slice value", func(t *testing.T) {
+		slice := []int{1, 2, 3}
+		val := reflect.ValueOf(slice)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("map value", func(t *testing.T) {
+		m := map[string]int{"a": 1}
+		val := reflect.ValueOf(m)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+
+	t.Run("struct value", func(t *testing.T) {
+		type S struct{ Field string }
+		s := S{Field: "value"}
+		val := reflect.ValueOf(s)
+		assert.False(t, reflectkit.CanElem(val))
+	})
+}
+
 func TestToValue(t *testing.T) {
 	t.Run("AlreadyReflectValue", func(t *testing.T) {
 		expectedRV := reflect.ValueOf(123)

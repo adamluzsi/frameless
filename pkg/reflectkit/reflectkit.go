@@ -573,7 +573,7 @@ func reflectCompare(a, b reflect.Value) (int, error) {
 	if compare, ok := internal.ImplementsComparable(a.Type()); ok {
 		return compare(a, b)
 	}
-	for canElem(a) && canElem(b) {
+	for CanElem(a) && CanElem(b) {
 		a, b = a.Elem(), b.Elem()
 
 		if compare, ok := internal.ImplementsComparable(a.Type()); ok {
@@ -598,7 +598,7 @@ func reflectCompare(a, b reflect.Value) (int, error) {
 	return 0, ErrNotComparable.F("%s <=/=> %s", a.Type().String(), b.Type().String())
 }
 
-func canElem(val reflect.Value) bool {
+func CanElem(val reflect.Value) bool {
 	kind := val.Kind()
 	can := kind == reflect.Pointer || kind == reflect.Interface
 	if !can {
