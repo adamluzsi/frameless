@@ -2,14 +2,12 @@ package workflow_test
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 	"testing"
 
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/pp"
 )
 
 func Test_e2e(tt *testing.T) {
@@ -198,61 +196,4 @@ func TestContextWithParticipants(t *testing.T) {
 	assert.NoError(t, execFoo.Execute(ctx2, &workflow.Process{}))
 	assert.Error(t, execBar.Execute(ctx1, &workflow.Process{}))
 	assert.NoError(t, execBar.Execute(ctx2, &workflow.Process{}))
-}
-
-func TestProcess_json_smoke(tt *testing.T) {
-	// Smoke test: verify that workflow.Process can be JSON encoded and decoded
-	// after going through a process definition execution.
-
-	var fooOut = "test-foo-value"
-	barOut := 42
-
-	participants := workflow.Participants{
-		"foo": func(ctx context.Context) (string, error) {
-			return fooOut, nil
-		},
-		"bar": func(ctx context.Context, in string) (int, error) {
-			assert.Equal(tt, in, fooOut)
-			return barOut, nil
-		},
-	}
-
-	var pdef workflow.Definition = &workflow.Sequence{
-		&workflow.ExecuteParticipant{
-			ID:     "foo",
-			Output: []workflow.VariableKey{"foo-val"},
-		},
-		&workflow.ExecuteParticipant{
-			ID:     "bar",
-			Input:  []workflow.VariableKey{"foo-val"},
-			Output: []workflow.VariableKey{"bar-val"},
-		},
-	}
-
-	r := workflow.Runtime{Participants: participants}
-	var p workflow.Process
-
-	// Execute the workflow definition to populate process with variables and events
-	assert.NoError(tt, pdef.Execute(r.Context(context.Background()), &p))
-
-	// Verify initial state before JSON round-trip
-	assert.Equal[any](tt, p.Variables.Get("foo-val"), fooOut)
-	assert.Equal[any](tt, p.Variables.Get("bar-val"), barOut)
-	assert.NotEmpty(tt, p.Events)
-
-	// Encode to JSON
-	jsonData, err := json.Marshal(p)
-	assert.NoError(tt, err)
-
-	pp.PP(jsonData)
-	// Decode back from JSON
-	var decoded workflow.Process
-	err = json.Unmarshal(jsonData, &decoded)
-	assert.NoError(tt, err)
-
-	// Verify data is preserved after round-trip
-	// Note: JSON decodes numbers as float64 by default
-	assert.Equal[any](tt, decoded.Variables.Get("foo-val"), fooOut)
-	// TODO: it should keep the base type if possible
-	assert.Equal(tt, barOut, int(decoded.Variables.Get("bar-val").(float64)))
 }

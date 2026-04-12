@@ -16,6 +16,7 @@ type ExecuteCondition struct {
 
 var _ Condition = (*ExecuteCondition)(nil)
 var _ Definition = (*ExecuteCondition)(nil)
+var _ = jsonkit.Register[ExecuteCondition]("workflow.ExecuteCondition")
 
 func (d *ExecuteCondition) Evaluate(ctx context.Context, p *Process) (bool, error) {
 	return d.cachedExecute(ctx, p)
@@ -250,9 +251,9 @@ type ExecuteConditionEvent struct {
 	Answer      bool        `json:"answer"`
 }
 
-const eidExecuteConditionEvent = "execute-condition"
-
 var _ = jsonkit.Register[ExecuteConditionEvent]("workflow.ExecuteConditionEvent")
+
+const eidExecuteConditionEvent = "execute-condition"
 
 func (ExecuteConditionEvent) Type() EventType {
 	return eidExecuteConditionEvent

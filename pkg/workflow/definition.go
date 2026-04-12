@@ -3,6 +3,8 @@ package workflow
 import (
 	"context"
 	"reflect"
+
+	"go.llib.dev/frameless/pkg/jsonkit"
 )
 
 type ValidateDefinitionContext struct {
@@ -23,6 +25,7 @@ type ValidateDefinitionContextVariable struct {
 type Sequence []Definition
 
 var _ Definition = (*Sequence)(nil)
+var _ = jsonkit.Register[Sequence]("workflow.Sequence")
 
 func (seq Sequence) Execute(ctx context.Context, p *Process) error {
 	for _, participant := range seq {
@@ -40,6 +43,7 @@ type If struct {
 }
 
 var _ Definition = (*If)(nil)
+var _ = jsonkit.Register[If]("workflow.If")
 
 func (d If) Execute(ctx context.Context, p *Process) error {
 	var ok, err = d.Cond.Evaluate(ctx, p)

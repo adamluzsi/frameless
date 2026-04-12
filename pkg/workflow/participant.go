@@ -15,6 +15,7 @@ type ExecuteParticipant struct {
 }
 
 var _ Definition = (*ExecuteParticipant)(nil)
+var _ = jsonkit.Register[ExecuteParticipant]("workflow.ExecuteParticipant")
 
 func (d *ExecuteParticipant) Execute(ctx context.Context, p *Process) error {
 	return d.cachedExecute(ctx, p)
@@ -146,9 +147,9 @@ type ExecuteParticipantEvent struct {
 	Output        []any         `json:"output"`
 }
 
-const eidExecuteParticipantEvent = "execute-participant"
+var _ = jsonkit.Register[ExecuteParticipantEvent]("workflow:event:ExecuteParticipant")
 
-var _ = jsonkit.Register[ExecuteParticipantEvent]("workflow.ExecuteParticipantEvent")
+const eidExecuteParticipantEvent = "execute-participant"
 
 func (ExecuteParticipantEvent) Type() EventType {
 	return eidExecuteParticipantEvent
