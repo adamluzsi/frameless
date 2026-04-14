@@ -21,15 +21,15 @@ type typed struct {
 }
 
 type typedContainer struct {
-	Type  TypeID          `json:"__type"`
-	Value json.RawMessage `json:"__value"`
+	Type  TypeID          `json:"@type"`
+	Value json.RawMessage `json:"@value"`
 }
 
-// MarshalJSON will marshal Typed T value with a __type property
+// MarshalJSON will marshal Typed T value with a @type property
 //
 //goland:noinspection GoMixedReceiverTypes
 func (v typed) MarshalJSON() ([]byte, error) {
-	const __type = `__type`
+	const __type = `@type`
 
 	rVal := reflect.ValueOf(v.Value)
 
@@ -69,9 +69,9 @@ func (v typed) MarshalJSON() ([]byte, error) {
 			data = append(append([]byte{}, fieldSep...), data...)
 		}
 		if !gotTypeID {
-			return nil, fmt.Errorf("missing __type id alias for %T", v.Value)
+			return nil, fmt.Errorf("missing @type id alias for %T", v.Value)
 		}
-		typeIDPart, err := json.Marshal(map[string]TypeID{__type: typeID})
+		typeIDPart, err := json.Marshal(map[string]TypeID{"@type": typeID})
 		if err != nil {
 			return nil, err
 		}
@@ -143,18 +143,18 @@ func (v *typed) unmarshalObject(data []byte) error {
 
 	if typeID.IsZero() {
 		type Probe struct {
-			TypeID *TypeID `json:"__type,omitempty"`
+			TypeID *TypeID `json:"@type,omitempty"`
 		}
 
 		var p Probe
 		if err := json.Unmarshal(data, &p); err != nil {
-			return fmt.Errorf("unable to unmarshal __type field for:\n%s", string(data))
+			return fmt.Errorf("unable to unmarshal @type field for:\n%s", string(data))
 		}
 		if p.TypeID == nil {
-			return fmt.Errorf("__type is not set")
+			return fmt.Errorf("@type is not set")
 		}
 		if *p.TypeID == "" {
-			return fmt.Errorf("__type is empty")
+			return fmt.Errorf("@type is empty")
 		}
 		typeID = *p.TypeID
 	}
@@ -415,7 +415,7 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 	return reflect.Value{}, fmt.Errorf(format, targetType.String(), identifiedType.String())
 }
 
-var iJSONMarshaler reflect.Type = reflectkit.TypeOf[json.Marshaler]()
+// var iJSONMarshaler reflect.Type = reflectkit.TypeOf[json.Marshaler]()
 
 func isPrimitive(data []byte) bool {
 	return isString(data) ||

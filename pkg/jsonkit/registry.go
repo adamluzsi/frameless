@@ -64,18 +64,18 @@ func (r *_TypeIDRegistry) Register(dtoType reflect.Type, id TypeID, aliases ...T
 	dtoType = base(dtoType)
 	gotID, ok := r.typeIDByType(dtoType)
 	if ok {
-		const format = "Unable to register %q __type id for %s, because it is already registered with %s"
+		const format = "Unable to register %q @type id for %s, because it is already registered with %s"
 		panic(fmt.Sprintf(format, id, dtoType.String(), gotID))
 	}
 	r.byType[dtoType] = id
 	r.byTypeID[id] = dtoType
 	for _, alias := range aliases {
 		if _, isRegistered := r.byAlias[alias]; isRegistered {
-			const format = "Unable to register %q __type alias for %s"
+			const format = "Unable to register %q @type alias for %s"
 			panic(fmt.Sprintf(format, alias, dtoType.String()))
 		}
 		if _, isRegistered := r.byTypeID[alias]; isRegistered {
-			const format = "Unable to register %q __type alias because it is an already registered __type id"
+			const format = "Unable to register %q @type alias because it is an already registered @type id"
 			panic(fmt.Sprintf(format, alias))
 		}
 		r.byAlias[alias] = id

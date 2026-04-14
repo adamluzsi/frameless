@@ -9,7 +9,6 @@ import (
 	"go.llib.dev/frameless/pkg/workflow"
 	"go.llib.dev/testcase"
 	"go.llib.dev/testcase/assert"
-	"go.llib.dev/testcase/pp"
 )
 
 func TestProcess_json_smoke(tt *testing.T) {
@@ -56,7 +55,6 @@ func TestProcess_json_smoke(tt *testing.T) {
 	jsonData, err := json.Marshal(p)
 	assert.NoError(tt, err)
 
-	pp.PP(jsonData)
 	// Decode back from JSON
 	var decoded workflow.Process
 	err = json.Unmarshal(jsonData, &decoded)
