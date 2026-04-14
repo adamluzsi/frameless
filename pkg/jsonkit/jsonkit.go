@@ -31,10 +31,11 @@ type typedContainer struct {
 func (v typed) MarshalJSON() ([]byte, error) {
 	const __type = `@type`
 
-	rVal := reflect.ValueOf(v.Value)
-
-	var data []byte
-	var err error
+	var (
+		rVal = reflect.ValueOf(v.Value)
+		data []byte
+		err  error
+	)
 	switch rVal.Kind() {
 	case reflect.Slice:
 		var ary jsonArray
