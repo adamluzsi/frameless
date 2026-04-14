@@ -31,14 +31,23 @@ type typedContainer struct {
 func (v typed) MarshalJSON() ([]byte, error) {
 	const __type = `__type`
 
-	data, err := json.Marshal(v.Value)
+	rVal := reflect.ValueOf(v.Value)
+
+	var data []byte
+	var err error
+	switch rVal.Kind() {
+	case reflect.Slice:
+		var ary jsonArray
+		ary.ptr = reflectkit.PointerOf(rVal)
+		data, err = json.Marshal(ary)
+	default:
+		data, err = json.Marshal(v.Value)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	isInterfaceType := v.Type.Kind() == reflect.Interface
-
-	if !isInterfaceType {
+	if !isInterfaceType(v.Type) {
 		switch {
 		case isNull(data), isPrimitive(data) && !v.Force:
 			return data, nil
@@ -54,7 +63,7 @@ func (v typed) MarshalJSON() ([]byte, error) {
 	}
 
 	switch {
-	case isObject(data) && (isInterfaceType || v.Force):
+	case isObject(data) && (isInterfaceType(v.Type) || v.Force):
 		data = bytes.TrimPrefix(data, curlyBracketOpen)
 		if !bytes.HasPrefix(data, curlyBracketClose) {
 			data = append(append([]byte{}, fieldSep...), data...)
@@ -152,15 +161,30 @@ func (v *typed) unmarshalObject(data []byte) error {
 
 	var value reflect.Value
 	rType, ok := typeIDRegistry.TypeByID(typeID)
-	if ok { // try for primitives
-		ptr, err := newImpl(v.Type, rType)
-		if err != nil {
-			return err
+	if ok {
+		switch rType.Kind() {
+		case reflect.Slice:
+			slice := reflect.MakeSlice(rType, 0, 0)
+			ptr := reflect.New(rType)
+			ptr.Elem().Set(slice)
+
+			var ary jsonArray
+			ary.ptr = ptr
+			if err := json.Unmarshal(data, &ary); err != nil {
+				return err
+			}
+			value = ptr.Elem()
+
+		default: // try for primitives
+			ptr, err := newImpl(v.Type, rType)
+			if err != nil {
+				return err
+			}
+			if err := json.Unmarshal(data, ptr.Interface()); err != nil {
+				return err
+			}
+			value = ptr.Elem()
 		}
-		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
-			return err
-		}
-		value = ptr.Elem()
 	} else {
 		var val any
 		if err := json.Unmarshal(data, &val); err != nil {
@@ -238,25 +262,25 @@ type jsonArray struct {
 	ptr reflect.Value
 }
 
-func (ary jsonArray) elemT() reflect.Type {
-	if reflectkit.IsNil(ary.ptr) {
-		return nil
-	}
-	pValType := ary.ptr.Type().Elem()
-
-	return
-}
-
 func (ary jsonArray) MarshalJSON() ([]byte, error) {
-	if !isInterfaceType(ary.elemT()) {
-		return json.Marshal(ary.SliceValue)
+	ET, ok := ary.elemT()
+	if !ok {
+		return nil, fmt.Errorf("unable to determine of type T in slice *[]T: %s", ary.typeName())
 	}
 
-	var vs = make([]json.RawMessage, ary.SliceValue.Len())
+	if !isInterfaceType(ET) {
+		return json.Marshal(ary.ptr.Interface())
+	}
 
-	for i := 0; i < ary.SliceValue.Len(); i++ {
-		v := ary.SliceValue.Index(i)
-		data, err := json.Marshal(typed{Type: ary.elemT(), Value: v})
+	slice, ok := ary.slice()
+	if !ok {
+		return nil, fmt.Errorf("invalid *[]T type: %s", ary.typeName())
+	}
+
+	var vs = make([]json.RawMessage, slice.Len())
+	for i := 0; i < slice.Len(); i++ {
+		v := slice.Index(i)
+		data, err := json.Marshal(typed{Type: ET, Value: v.Interface()})
 		if err != nil {
 			return nil, err
 		}
@@ -267,14 +291,17 @@ func (ary jsonArray) MarshalJSON() ([]byte, error) {
 }
 
 func (ary *jsonArray) UnmarshalJSON(data []byte) error {
-	T := ary.elemT()
+	ET, ok := ary.elemT()
+	if !ok {
+		return fmt.Errorf("unable to determine of type T in slice *[]T: %s", ary.typeName())
+	}
 
-	if !isInterfaceType(ary.elemT()) {
-		ptr := reflectkit.PointerOf(reflect.MakeSlice(reflect.SliceOf(T), 0, 0))
+	if !isInterfaceType(ET) {
+		ptr := reflectkit.PointerOf(reflect.MakeSlice(reflect.SliceOf(ET), 0, 0))
 		if err := json.Unmarshal(data, ptr.Interface()); err != nil {
 			return err
 		}
-		ary.SliceValue.Set(ptr.Elem())
+		ary.ptr.Elem().Set(ptr.Elem())
 		return nil
 	}
 
@@ -283,23 +310,62 @@ func (ary *jsonArray) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	var vs = reflect.MakeSlice(reflect.SliceOf(T), len(raws), 0)
-	for i, data := range raws {
-		var tv = typed{Type: T}
+	var vs = reflect.MakeSlice(reflect.SliceOf(ET), 0, len(raws))
+	for _, data := range raws {
+		var tv = typed{Type: ET}
 		if err := json.Unmarshal(data, &tv); err != nil {
 			return err
 		}
 
 		var decValue = reflect.ValueOf(tv.Value)
-		if !decValue.CanConvert(T) {
-			return fmt.Errorf("unable to convert %s to %s", decValue.Type().String(), T.String())
+		if !decValue.CanConvert(ET) {
+			return fmt.Errorf("unable to convert %s to %s", decValue.Type().String(), ET.String())
 		}
 
-		vs = reflect.Append(vs, decValue.Convert(T))
+		vs = reflect.Append(vs, decValue.Convert(ET))
 	}
 
-	ary.ptr.Elem().Set()
+	ary.ptr.Elem().Set(vs)
 	return nil
+}
+
+func (ary jsonArray) slice() (reflect.Value, bool) {
+	ptr := ary.ptr
+	if reflectkit.IsNil(ptr) {
+		return reflect.Value{}, false
+	}
+	if !reflectkit.CanElem(ptr) {
+		return reflect.Value{}, false
+	}
+	slice := ptr.Elem()
+	if slice.Kind() != reflect.Slice {
+		return reflect.Value{}, false
+	}
+	return slice, true
+}
+
+func (ary jsonArray) elemT() (reflect.Type, bool) {
+	ptr := ary.ptr
+	if reflectkit.IsNil(ptr) {
+		return nil, false
+	}
+	T := ptr.Type()
+	if T.Kind() != reflect.Pointer {
+		return nil, false
+	}
+	T = T.Elem()
+	if T.Kind() != reflect.Slice {
+		return nil, false
+	}
+	return T.Elem(), true
+}
+
+func (ary jsonArray) typeName() string {
+	T := ary.ptr.Type()
+	if T == nil {
+		return reflect.Invalid.String()
+	}
+	return T.String()
 }
 
 func isInterfaceType(T reflect.Type) bool {
@@ -350,15 +416,6 @@ func newImpl(targetType, identifiedType reflect.Type) (reflect.Value, error) {
 }
 
 var iJSONMarshaler reflect.Type = reflectkit.TypeOf[json.Marshaler]()
-
-type sliceProxy struct {
-	Type reflect.Type
-}
-
-func (sp *sliceProxy) MarshalJSON() ([]byte, error) {
-	var t Array
-
-}
 
 func isPrimitive(data []byte) bool {
 	return isString(data) ||
@@ -413,7 +470,7 @@ const ErrNotInterfaceType errorkit.Error = "jsonkit.ErrNotInterfaceType"
 type Interface[I any] struct{ V I }
 
 func (i Interface[I]) MarshalJSON() ([]byte, error) {
-	if !isInterfaceType[I]() {
+	if !isInterfaceType(reflectkit.TypeOf[I]()) {
 		return nil, ErrNotInterfaceType
 	}
 	return json.Marshal(typed{
@@ -424,7 +481,7 @@ func (i Interface[I]) MarshalJSON() ([]byte, error) {
 }
 
 func (i *Interface[I]) UnmarshalJSON(data []byte) error {
-	if !isInterfaceType[I]() {
+	if !isInterfaceType(reflectkit.TypeOf[I]()) {
 		return ErrNotInterfaceType
 	}
 	var t = typed{
@@ -450,4 +507,10 @@ func typeAssert[T any](v any) (T, error) {
 			reflectkit.TypeOf[T]().String(), v)
 	}
 	return value, nil
+}
+
+func Indent(src []byte, prefix, indent string) ([]byte, error) {
+	var buf bytes.Buffer
+	err := json.Indent(&buf, src, prefix, indent)
+	return buf.Bytes(), err
 }

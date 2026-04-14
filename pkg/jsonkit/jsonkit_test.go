@@ -105,17 +105,21 @@ func TestInterface(t *testing.T) {
 	})
 	t.Run("intercace T type with slice implementation", func(t *testing.T) {
 		var exp jsonkit.Interface[Greeter]
-		exp.V = TypeE{TypeA{V: "hello"}}
+		exp.V = TypeE{TypeA{V: "foo"}, TypeB{V: 42}, &TypeC{V: 42.42}}
 
 		data, err := json.Marshal(exp)
 		assert.NoError(t, err)
-		t.Logf("Marshaled: %s", string(data))
 
-		var got jsonkit.Interface[Greeter]
-		err = json.Unmarshal(data, &got)
+		data, err = jsonkit.Indent(data, "", "\t")
 		assert.NoError(t, err)
 
+		t.Log("typed marshal:")
+		t.Log(string(data))
+
+		var got jsonkit.Interface[Greeter]
+		assert.NoError(t, json.Unmarshal(data, &got))
 		assert.NotNil(t, got.V)
+		assert.Equal(t, got.V, exp.V)
 	})
 	t.Run("interface T type with nil values", func(t *testing.T) {
 		var exp jsonkit.Interface[Greeter]
