@@ -1433,6 +1433,15 @@ func (cmd CommandWithOptArg[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
+type CommandWithOptionalEnvVariable struct {
+	Callback[CommandWithOptionalEnvVariable]
+	V string `env:"V" opt:"true"`
+}
+
+func (cmd CommandWithOptionalEnvVariable) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
 type CommandWithReqArg[T any] struct {
 	Callback[CommandWithReqArg[T]]
 	Arg T `arg:"0"`
@@ -1555,6 +1564,100 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, cmd.Flag, "val")
 	})
+}
+
+func TestServeCLI_handlerWithOptionalEnvVariable(t *testing.T) {
+	t.Run("with env var set", func(tt *testing.T) {
+		t := testcase.NewT(tt)
+		testcase.SetEnv(t, "V", "test-value")
+
+		var ran bool
+		cmd := CommandWithOptionalEnvVariable{Callback: func(v CommandWithOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+			w.ExitCode(42)
+			w.Write([]byte("bar"))
+		}}
+
+		rr := &cli.ResponseRecorder{}
+		req := cli.Request{Body: &bytes.Buffer{}}
+		cli.ServeCLI(&cmd, rr, &req)
+		assert.Equal(t, rr.Code, 42)
+		assert.Equal(t, rr.Out.String(), "bar")
+		assert.True(t, ran)
+	})
+
+	t.Run("with env var unset", func(t *testing.T) {
+		testcase.UnsetEnv(t, "V")
+
+		var ran bool
+
+		cmd := CommandWithOptionalEnvVariable{Callback: func(v CommandWithOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+			w.ExitCode(42)
+			w.Write([]byte("foo"))
+		}}
+
+		rr := &cli.ResponseRecorder{}
+		req := cli.Request{Body: &bytes.Buffer{}}
+		cli.ServeCLI(&cmd, rr, &req)
+		assert.Equal(t, rr.Code, 42)
+		assert.Equal(t, rr.Out.String(), "foo")
+		assert.True(t, ran)
+	})
+
+	t.Run("handler which embeds a struct that has optional env variables", func(t *testing.T) {
+		t.Run("and it is populated", func(t *testing.T) {
+			value := "foobarbaz"
+			testcase.SetEnv(t, "X", value)
+
+			var ran bool
+
+			cmd := CommandWithEmbeddedOptionalEnvVariable{Callback: func(v CommandWithEmbeddedOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+				ran = true
+				w.ExitCode(42)
+				assert.Should(t).Equal(value, v.StructWithOptionalEnvVariable.X)
+				w.Write([]byte("foo"))
+			}}
+
+			rr := &cli.ResponseRecorder{}
+			req := cli.Request{Body: &bytes.Buffer{}}
+			cli.ServeCLI(&cmd, rr, &req)
+			assert.Equal(t, rr.Code, 42)
+			assert.Equal(t, rr.Out.String(), "foo")
+			assert.True(t, ran)
+		})
+		t.Run("and it is unset", func(t *testing.T) {
+			testcase.UnsetEnv(t, "X")
+
+			var ran bool
+
+			cmd := CommandWithEmbeddedOptionalEnvVariable{Callback: func(v CommandWithEmbeddedOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+				ran = true
+				w.ExitCode(42)
+				w.Write([]byte("foo"))
+			}}
+
+			rr := &cli.ResponseRecorder{}
+			req := cli.Request{Body: &bytes.Buffer{}}
+			cli.ServeCLI(&cmd, rr, &req)
+			assert.Equal(t, rr.Code, 42)
+			assert.Equal(t, rr.Out.String(), "foo")
+			assert.True(t, ran)
+		})
+	})
+}
+
+type CommandWithEmbeddedOptionalEnvVariable struct {
+	Callback[CommandWithEmbeddedOptionalEnvVariable]
+	StructWithOptionalEnvVariable
+}
+
+type StructWithOptionalEnvVariable struct {
+	X string `env:"X" opt:"true"`
+}
+
+func (cmd CommandWithEmbeddedOptionalEnvVariable) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
 }
 
 func TestConfigureHandler_enumIntegration(t *testing.T) {
