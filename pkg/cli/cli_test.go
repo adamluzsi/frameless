@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -681,7 +682,7 @@ func TestMux(t *testing.T) {
 							errOutput := response.Get(t).Err.String()
 							assert.NotEmpty(t, errOutput)
 
-							assert.Contains(t, errOutput, "sage: "+commandName.Get(t))
+							assert.MatchRegexp(t, errOutput, `sage: [^\s]+ `+regexp.QuoteMeta(commandName.Get(t)))
 							assert.AnyOf(t, func(a *assert.A) {
 								a.Case(func(t testing.TB) { assert.Contains(t, errOutput, "qux") })
 								a.Case(func(t testing.TB) { assert.Contains(t, errOutput, "quux") })
@@ -969,12 +970,12 @@ func TestServeCLI(t *testing.T) {
 		s.Test("ok", func(t *testcase.T) {
 			var (
 				argV  = t.Random.String()
-				flagV = t.Random.String()
+				flagV = t.Random.StringNC(5, random.CharsetAlpha()+random.CharsetDigit())
 				envV  = t.Random.String()
 			)
 			testcase.SetEnv(t, "ENV_VAL", envV)
 
-			r := &cli.Request{Args: []string{"-flag_val", flagV, argV}}
+			r := &cli.Request{Args: []string{"-flag_val", flagV, "--", argV}}
 			w := &cli.ResponseRecorder{}
 			cli.ServeCLI(cmd.Get(t), w, r)
 
@@ -1424,12 +1425,30 @@ func (cmd CommandWithFlagWithEnum) ServeCLI(w cli.ResponseWriter, r *cli.Request
 	cmd.Callback.Call(cmd, w, r)
 }
 
+type CommandWithSliceFlag struct {
+	Callback[CommandWithSliceFlag]
+	Flag []string `flag:"v" sep:","`
+}
+
+func (cmd CommandWithSliceFlag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
 type CommandWithOptArg[T any] struct {
 	Callback[CommandWithOptArg[T]]
 	Arg T `arg:"0" opt:"true"`
 }
 
 func (cmd CommandWithOptArg[T]) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithOptionalEnvVariable struct {
+	Callback[CommandWithOptionalEnvVariable]
+	V string `env:"V" opt:"true"`
+}
+
+func (cmd CommandWithOptionalEnvVariable) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
 }
 
@@ -1557,6 +1576,119 @@ func TestConfigureHandler_envIntegration(t *testing.T) {
 	})
 }
 
+func TestServeCLI_handlerWithOptionalEnvVariable(t *testing.T) {
+	t.Run("with env var set", func(tt *testing.T) {
+		t := testcase.NewT(tt)
+		testcase.SetEnv(t, "V", "test-value")
+
+		var ran bool
+		cmd := CommandWithOptionalEnvVariable{Callback: func(v CommandWithOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+			w.ExitCode(42)
+			w.Write([]byte("bar"))
+		}}
+
+		rr := &cli.ResponseRecorder{}
+		req := cli.Request{Body: &bytes.Buffer{}}
+		cli.ServeCLI(&cmd, rr, &req)
+		assert.Equal(t, rr.Code, 42)
+		assert.Equal(t, rr.Out.String(), "bar")
+		assert.True(t, ran)
+	})
+
+	t.Run("with env var unset", func(t *testing.T) {
+		testcase.UnsetEnv(t, "V")
+
+		var ran bool
+
+		cmd := CommandWithOptionalEnvVariable{Callback: func(v CommandWithOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+			w.ExitCode(42)
+			w.Write([]byte("foo"))
+		}}
+
+		rr := &cli.ResponseRecorder{}
+		req := cli.Request{Body: &bytes.Buffer{}}
+		cli.ServeCLI(&cmd, rr, &req)
+		assert.Equal(t, rr.Code, 42)
+		assert.Equal(t, rr.Out.String(), "foo")
+		assert.True(t, ran)
+	})
+
+	t.Run("with opt env var provided as empty string, cli should considered it as unset", func(t *testing.T) {
+		testcase.SetEnv(t, "V", "")
+
+		var ran bool
+		cmd := CommandWithOptionalEnvVariable{Callback: func(v CommandWithOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+			w.ExitCode(42)
+			w.Write([]byte("foo"))
+		}}
+
+		rr := &cli.ResponseRecorder{}
+		req := cli.Request{Body: &bytes.Buffer{}}
+		cli.ServeCLI(&cmd, rr, &req)
+
+		assert.Equal(t, rr.Code, 42)
+		assert.Equal(t, rr.Out.String(), "foo")
+		assert.True(t, ran)
+	})
+
+	t.Run("handler which embeds a struct that has optional env variables", func(t *testing.T) {
+		t.Run("and it is populated", func(t *testing.T) {
+			value := "foobarbaz"
+			testcase.SetEnv(t, "X", value)
+
+			var ran bool
+
+			cmd := CommandWithEmbeddedOptionalEnvVariable{Callback: func(v CommandWithEmbeddedOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+				ran = true
+				w.ExitCode(42)
+				assert.Should(t).Equal(value, v.StructWithOptionalEnvVariable.X)
+				w.Write([]byte("foo"))
+			}}
+
+			rr := &cli.ResponseRecorder{}
+			req := cli.Request{Body: &bytes.Buffer{}}
+			cli.ServeCLI(&cmd, rr, &req)
+			assert.Equal(t, rr.Code, 42)
+			assert.Equal(t, rr.Out.String(), "foo")
+			assert.True(t, ran)
+		})
+		t.Run("and it is unset", func(t *testing.T) {
+			testcase.UnsetEnv(t, "X")
+
+			var ran bool
+
+			cmd := CommandWithEmbeddedOptionalEnvVariable{Callback: func(v CommandWithEmbeddedOptionalEnvVariable, w cli.ResponseWriter, r *cli.Request) {
+				ran = true
+				w.ExitCode(42)
+				w.Write([]byte("foo"))
+			}}
+
+			rr := &cli.ResponseRecorder{}
+			req := cli.Request{Body: &bytes.Buffer{}}
+			cli.ServeCLI(&cmd, rr, &req)
+			assert.Equal(t, rr.Code, 42)
+			assert.Equal(t, rr.Out.String(), "foo")
+			assert.True(t, ran)
+		})
+	})
+}
+
+type CommandWithEmbeddedOptionalEnvVariable struct {
+	Callback[CommandWithEmbeddedOptionalEnvVariable]
+	StructWithOptionalEnvVariable
+}
+
+type StructWithOptionalEnvVariable struct {
+	X string `env:"X" opt:"true"`
+}
+
+func (cmd CommandWithEmbeddedOptionalEnvVariable) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
 func TestConfigureHandler_enumIntegration(t *testing.T) {
 	cmd := CommandWithFlagWithEnum{}
 
@@ -1655,4 +1787,184 @@ func Test_main(t *testing.T) {
 
 	})
 
+}
+
+func Test_help_path(t *testing.T) {
+	t.Run("top routes", func(t *testing.T) {
+		var mux cli.Mux
+		mux.Handle("cmd", SubCommand{})
+
+		t.Run("mux help output displays path", func(t *testing.T) {
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: []string{"--help"},
+				Body: &bytes.Buffer{},
+			}
+
+			testcase.OnFail(t, func() {
+				t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			})
+
+			cli.ServeCLI(&mux, rr, req)
+			assert.MatchRegexp(t, rr.Out.String(), `Usage: [^\s]+\n`)
+			assert.Contains(t, rr.Out.String(), "Commands:\n - cmd\n")
+		})
+
+		t.Run("sub command help output displays path", func(t *testing.T) {
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: []string{"cmd", "--help"},
+				Body: &bytes.Buffer{},
+			}
+
+			testcase.OnFail(t, func() {
+				t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			})
+
+			cli.ServeCLI(&mux, rr, req)
+			assert.MatchRegexp(t, rr.Out.String(), `Usage: [^\s]+ cmd`)
+			assert.NotContains(t, rr.Out.String(), "Commands:")
+		})
+	})
+	t.Run("sub routes", func(t *testing.T) {
+		var mux, foo, bar, baz cli.Mux
+		mux.Handle("foo", &foo)
+		foo.Handle("bar", &bar)
+		bar.Handle("baz", &baz)
+		baz.Handle("cmd", SubCommand{})
+
+		t.Run("sub mux help output displays path", func(t *testing.T) {
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: []string{"foo", "bar", "baz", "--help"},
+				Body: &bytes.Buffer{},
+			}
+
+			testcase.OnFail(t, func() {
+				t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			})
+
+			cli.ServeCLI(&mux, rr, req)
+			assert.MatchRegexp(t, rr.Out.String(), `Usage: [^\s]+ foo bar baz`)
+			assert.Contains(t, rr.Out.String(), "Commands:\n - cmd\n")
+		})
+
+		t.Run("sub command help output displays path", func(t *testing.T) {
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: []string{"foo", "bar", "baz", "cmd", "--help"},
+				Body: &bytes.Buffer{},
+			}
+
+			testcase.OnFail(t, func() {
+				t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			})
+
+			cli.ServeCLI(&mux, rr, req)
+			assert.MatchRegexp(t, rr.Out.String(), `Usage: [^\s]+ foo bar baz cmd`)
+			assert.NotContains(t, rr.Out.String(), "Commands:")
+		})
+	})
+}
+
+type SliceFlagWithSeperatorOption struct {
+	Callback[SliceFlagWithSeperatorOption]
+	VS []string `flag:"vs" separator:"/"`
+}
+
+func (cmd SliceFlagWithSeperatorOption) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
+	t.Run("help", func(t *testing.T) {
+		var mux cli.Mux
+		mux.Handle("cmd", SliceFlagWithSeperatorOption{})
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: []string{"cmd", "--help"},
+			Body: &bytes.Buffer{},
+		}
+
+		testcase.OnFail(t, func() {
+			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
+		})
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Contains(t, rr.Out.String(), `(seperator: /)`)
+	})
+
+	t.Run("value provided with correct separator", func(t *testing.T) {
+		var mux cli.Mux
+		var out SliceFlagWithSeperatorOption
+		mux.Handle("cmd", SliceFlagWithSeperatorOption{
+			Callback: func(v SliceFlagWithSeperatorOption, w cli.ResponseWriter, r *cli.Request) {
+				out = v
+			},
+		})
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: []string{"cmd", "-vs", "foo/bar/baz"},
+			Body: &bytes.Buffer{},
+		}
+
+		testcase.OnFail(t, func() {
+			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
+		})
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.VS, []string{"foo", "bar", "baz"})
+	})
+
+	t.Run("value provided with incorrect separator", func(t *testing.T) {
+		var mux cli.Mux
+		var out SliceFlagWithSeperatorOption
+		mux.Handle("cmd", SliceFlagWithSeperatorOption{
+			Callback: func(v SliceFlagWithSeperatorOption, w cli.ResponseWriter, r *cli.Request) {
+				out = v
+			},
+		})
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: []string{"cmd", "-vs", "foo,bar,baz"},
+			Body: &bytes.Buffer{},
+		}
+
+		testcase.OnFail(t, func() {
+			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
+		})
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.VS, []string{"foo,bar,baz"})
+	})
+}
+
+func Test_sliceFlagType_supportInputFlagRepetition(t *testing.T) {
+	t.Run("mixed use", func(t *testing.T) {
+		var mux cli.Mux
+		var out CommandWithSliceFlag
+		mux.Handle("cmd", CommandWithSliceFlag{Callback: func(v CommandWithSliceFlag, w cli.ResponseWriter, r *cli.Request) {
+			out = v
+		}})
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: []string{"cmd", "-v", "foo,bar", "-v", "baz"},
+			Body: &bytes.Buffer{},
+		}
+
+		testcase.OnFail(t, func() {
+			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
+			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
+		})
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.Flag, []string{"foo", "bar", "baz"})
+	})
 }

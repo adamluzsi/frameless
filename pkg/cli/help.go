@@ -85,9 +85,13 @@ func (m Mux) helpLineBreak(w io.Writer, n int) {
 	w.Write([]byte(strings.Repeat(lineSeparator, n)))
 }
 
-func (m Mux) helpUsage(w io.Writer) {
+func (m Mux) helpUsage(ctx context.Context, w io.Writer) {
+	usageName := execName()
+	if cmd, ok := ctxCommandName.Lookup(ctx); ok {
+		usageName += " " + cmd
+	}
 	var msg []string
-	msg = append(msg, fmt.Sprintf("Usage: %s", m.getPath()))
+	msg = append(msg, fmt.Sprintf("Usage: %s", usageName))
 	printfln(w, msg...)
 }
 
@@ -112,8 +116,10 @@ func helpCreateUsage(h Handler, command string) string {
 	}
 
 	var usage string
-	usage += "Usage: " + command
-
+	usage += "Usage: " + execName()
+	if 0 < len(command) {
+		usage += " " + command
+	}
 	if 0 < len(flags) {
 		usage += " [OPTION]..."
 	}
@@ -151,6 +157,10 @@ func helpCreateUsage(h Handler, command string) string {
 			def, ok := flag.Ref.LookupDefault()
 			if ok && 0 < len(def) {
 				line += fmt.Sprintf(" (default: %q)", def)
+			}
+
+			if sep := flag.Ref.Separator; sep != "" {
+				line += fmt.Sprintf(" (seperator: %s)", sep)
 			}
 
 			if flag.Ref.IsRequired() {

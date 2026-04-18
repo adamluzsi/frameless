@@ -133,8 +133,7 @@ func (fn HandlerFunc) ServeCLI(w ResponseWriter, r *Request) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Mux struct {
-	m    map[string]*muxEntry
-	path string
+	m map[string]*muxEntry
 }
 
 // Multiplexer is an interface that, when implemented by a command,
@@ -174,7 +173,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if len(r.Args) == 0 {
 		w.ExitCode(2)
 		o := errOut(w)
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -184,7 +183,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if !ok {
 		w.ExitCode(2)
 		o := errOut(w)
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -195,11 +194,13 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 			ctx        = r.Context()
 			cmd string = name
 		)
-		if cmdName, ok := ctxCommandName.Lookup(ctx); ok {
-			cmd = cmdName + " " + name
-		}
+		if !isHelpFlag(name) {
+			if cmdName, ok := ctxCommandName.Lookup(ctx); ok {
+				cmd = cmdName + " " + name
+			}
 
-		r = r.WithContext(ctxCommandName.ContextWith(ctx, cmd))
+			r = r.WithContext(ctxCommandName.ContextWith(ctx, cmd))
+		}
 	}
 
 	entry, ok := m.entries()[name]
@@ -214,7 +215,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 			o = errOut(w)
 		}
 
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 
@@ -236,7 +237,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if entry.Handler == nil {
 		w.ExitCode(2)
 		o := errOut(w)
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -293,6 +294,7 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 		h.ServeCLI(w, r)
 		return
 	}
+
 	ptr := reflect.New(reflect.TypeOf(h))
 	ptr.Elem().Set(reflect.ValueOf(h))
 	if err := metaFor(ptr).Configure(r); err != nil {
@@ -324,42 +326,9 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 			panic(o.PanicValue)
 		}
 	}
-
-	/*
-		if err := m.serveCLI(entry, w, r); err != nil {
-			ServeCLI()
-			isHelp := errors.Is(err, flag.ErrHelp)
-
-			var o io.Writer = w
-			if !isHelp {
-				o = errOut(w)
-			}
-
-			if entry.Handler != nil {
-				helpUsageOf(o, entry.Handler, m.getPath()+" "+name)
-				m.helpLineBreak(o, 1)
-			}
-
-			if !isHelp {
-				w.ExitCode(ExitCodeBadRequest)
-				printfln(o, err.Error())
-			}
-		}
-	*/
 }
 
 type stop struct{}
-
-// func Stop() { panic(stop{}) }
-//
-// func HandleError(w Response, r *Request, err error) {
-// 	if err == nil {
-// 		return
-// 	}
-// 	w.ExitCode(ExitCodeError)
-// 	fmt.Fprintf(w, "%s\n", err.Error())
-// 	Stop()
-// }
 
 func NewStdRequest(ctx context.Context) *Request {
 	var args []string
@@ -379,6 +348,7 @@ func Main(ctx context.Context, h Handler) {
 			l.Out = os.Stderr
 		}
 	})
+
 	var (
 		w = &StdResponse{}
 		r = NewStdRequest(ctx)
@@ -420,22 +390,13 @@ func (m *Mux) entries() map[string]*muxEntry {
 	return m.m
 }
 
-func (m Mux) getPath() string {
-	if m.path != "" {
-		return m.path
-	}
-	return execName()
-}
-
 type ctxCommandNameKey struct{}
 
 var ctxCommandName contextkit.ValueHandler[ctxCommandNameKey, string]
 
 func commandName(ctx context.Context) string {
-	if name, ok := ctxCommandName.Lookup(ctx); ok {
-		return name
-	}
-	return execName()
+	cmd, _ := ctxCommandName.Lookup(ctx)
+	return cmd
 }
 
 func execName() string {
@@ -593,6 +554,17 @@ var isOptionalTagHandler = reflectkit.TagHandler[bool]{
 	PanicOnParseError: true,
 }
 
+var separatorTagHandler = reflectkit.TagHandler[string]{
+	Name:  "separator",
+	Alias: []string{"sep"},
+	Parse: func(field reflect.StructField, tagName, tagValue string) (string, error) {
+		return tagValue, nil
+	},
+	Use: func(field reflect.StructField, value reflect.Value, v string) error {
+		return nil
+	},
+}
+
 func metaFor(ptr reflect.Value) metaH {
 	if ptr.Kind() != reflect.Pointer {
 		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non-pointer type", ptr.Type().String()))
@@ -606,6 +578,9 @@ func metaFor(ptr reflect.Value) metaH {
 			continue
 		}
 		var ref = &metaRef{Node: v}
+		if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
+			ref.Separator = sep
+		}
 		if ref.IsRelevant() {
 			m.refs = append(m.refs, ref)
 		}
@@ -734,9 +709,10 @@ func (m metaH) Flags() []metaFlag {
 }
 
 type metaRef struct {
-	Node  reftree.Node
-	IsSet bool
-	Raw   string
+	Node      reftree.Node
+	IsSet     bool
+	Raw       string
+	Separator string
 }
 
 func (ref metaRef) InputName() string {
@@ -796,10 +772,53 @@ func (ref metaRef) Parse(ctx context.Context) (rErr error) {
 }
 
 func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) error {
-	value, err := convkit.ParseReflect(typ, raw)
-	if err != nil {
-		return err
+	var opts []convkit.Option
+	if ref.Separator != "" {
+		opts = append(opts, convkit.Options{Separator: ref.Separator})
 	}
+
+	// Handle multiple flag repetitions by splitting on the internal separator first.
+	// This allows both `-v foo,bar -v baz` and `-vs foo/bar/baz` to work correctly.
+	var value reflect.Value
+	if strings.Contains(raw, flagValueSeparator) {
+		// Multiple flag values were provided via repetition.
+		// Parse each part separately and combine them into a slice.
+		parts := strings.Split(raw, flagValueSeparator)
+		typ, ok := ref.LookupType()
+		if !ok {
+			return fmt.Errorf("unable to determine type for %s", ref.InputName())
+		}
+
+		switch typ.Kind() {
+		case reflect.Slice:
+			sliceVal := reflect.MakeSlice(typ, 0, 0)
+			for _, part := range parts {
+				partVal, err := convkit.ParseReflect(typ, part, opts...)
+				if err != nil {
+					return err
+				}
+				// Append each element from the parsed part to our result slice.
+				for i := 0; i < partVal.Len(); i++ {
+					sliceVal = reflect.Append(sliceVal, partVal.Index(i))
+				}
+			}
+			value = sliceVal
+		default:
+			// For non-slice types, just use the first value.
+			var err error
+			value, err = convkit.ParseReflect(typ, parts[0], opts...)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		var err error
+		value, err = convkit.ParseReflect(typ, raw, opts...)
+		if err != nil {
+			return err
+		}
+	}
+
 	if ref.Node.Type == reftree.StructField {
 		if err := validate.StructField(ctx, ref.Node.StructField, value); err != nil {
 			// enum error is soncidered as a user error,
@@ -971,97 +990,18 @@ type flagMeta struct {
 	Enum     []reflect.Value
 }
 
-// func (sf flagMeta) Setter(ctx context.Context, Struct reflect.Value, value flagValue) (rErr error) {
-// 	name := strings.Join(sf.Names, "/")
-// 	defer errorkit.Recover(&rErr)
-// 	field := Struct.FieldByIndex(sf.StructField.Index)
-
-// 	field, ok := reflectkit.ToSettable(field)
-// 	if !ok {
-// 		if sf.StructField.Anonymous {
-// 			return nil
-// 		}
-// 		const ErrNotSettableField errorkit.Error = "ErrNotSettableField"
-// 		return ErrNotSettableField.F("%s field is not settable in %s", sf.StructField.Name, Struct.Type().String())
-// 	}
-
-// 	if !value.IsSet && sf.HasDefault { // use default value
-// 		field.Set(sf.DefVal)
-// 		return nil
-// 	}
-// 	if !value.IsSet {
-// 		if !reflectkit.IsZero(field) {
-// 			return nil
-// 		}
-// 		if sf.HasDefault {
-// 			field.Set(sf.DefVal)
-// 			return nil
-// 		}
-// 		if sf.Required { // raise error for the missing but expected flag
-// 			return ErrFlagMissing.F("%s flag is required", name)
-// 		}
-// 		return nil // ignore the flag, no value to be dependency injected
-// 	}
-// 	rval, err := convkit.ParseReflect(field.Type(), value.Raw)
-// 	if err != nil {
-// 		return ErrFlagParseIssue.F("%s (%s) encountered a parsing error with the value of: %q", name, field.Type().String(), value.Raw)
-// 	}
-
-// 	if err := validate.StructField(ctx, sf.StructField, rval); err != nil {
-// 		if errors.Is(err, enum.ErrInvalid) {
-// 			return ErrFlagInvalid.F("%w", enumError(name, sf.Enum, rval))
-// 		}
-// 	}
-
-// 	field.Set(rval)
-// 	return nil
-// }
-
-// func (sf structFlag) Setter(Struct reflect.Value, value flagValue) (rErr error) {
-// 	name := strings.Join(sf.Names, "/")
-// 	defer errorkit.Recover(&rErr)
-// 	field := Struct.FieldByIndex(sf.StructField.Index)
-// 	if len(raw) == 0 && sf.HasDefault { // use default value
-// 		field.Set(sf.DefVal)
-// 		return nil
-// 	}
-// 	if len(raw) == 0 {
-// 		if sf.Required { // raise error for the missing but expected flag
-// 			return ErrFlagMissing.F("%s flag is required", name)
-// 		}
-// 		return nil // ignore the flag, no value to be dependency injected
-// 	}
-// 	rval, err := convkit.ParseReflect(field.Type(), raw)
-// 	if err != nil {
-// 		return ErrFlagParseIssue.F("%s (%s) encountered a parsing error with the value of: %q", name, field.Type().String(), raw)
-// 	}
-// 	if 0 < len(sf.Enum) {
-// 		_, ok := slicekit.Find(sf.Enum, func(e reflect.Value) bool {
-// 			return reflectkit.Equal(e, rval)
-// 		})
-// 		if !ok {
-// 			return ErrFlagInvalid.F("%s got the value of %s which is not part of the acceptable values", name, rval.Interface())
-// 		}
-// 	}
-// 	field.Set(rval)
-// 	return nil
-// }
-
-// func (sf flagMeta) mapToFlagSet(ctx context.Context, fs *flag.FlagSet, Struct reflect.Value) func() error {
-// 	var v = flagValue{Type: sf.StructField.Type}
-// 	for _, n := range sf.Names {
-// 		fs.Var(&v, n, sf.Default)
-// 	}
-// 	return func() error { return sf.Setter(ctx, Struct, v) }
-// }
+// flagValueSeparator is the delimiter used to join multiple flag values.
+// It's chosen to be unlikely to appear in normal command-line arguments.
+const flagValueSeparator = "\x00"
 
 type flagValue struct {
 	Ref *metaRef
 
-	Raw     string
-	Default string
-	IsSet   bool
-	Type    reflect.Type
+	Raw       string
+	RawValues []string
+	Default   string
+	IsSet     bool
+	Type      reflect.Type
 }
 
 func (v *flagValue) String() string { return v.Raw }
@@ -1074,15 +1014,15 @@ func (v *flagValue) IsBoolFlag() bool {
 }
 
 func (v *flagValue) Set(raw string) error {
-	v.Raw = raw
+	v.RawValues = append(v.RawValues, raw)
 	v.IsSet = true
 	return nil
 }
 
 func (v *flagValue) Link() {
-	if v.IsSet {
+	if v.IsSet && len(v.RawValues) > 0 {
 		v.Ref.IsSet = true
-		v.Ref.Raw = v.Raw
+		v.Ref.Raw = strings.Join(v.RawValues, flagValueSeparator)
 	}
 }
 
