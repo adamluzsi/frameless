@@ -133,8 +133,7 @@ func (fn HandlerFunc) ServeCLI(w ResponseWriter, r *Request) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 type Mux struct {
-	m    map[string]*muxEntry
-	path string
+	m map[string]*muxEntry
 }
 
 // Multiplexer is an interface that, when implemented by a command,
@@ -174,7 +173,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if len(r.Args) == 0 {
 		w.ExitCode(2)
 		o := errOut(w)
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -184,7 +183,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if !ok {
 		w.ExitCode(2)
 		o := errOut(w)
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -195,11 +194,13 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 			ctx        = r.Context()
 			cmd string = name
 		)
-		if cmdName, ok := ctxCommandName.Lookup(ctx); ok {
-			cmd = cmdName + " " + name
-		}
+		if !isHelpFlag(name) {
+			if cmdName, ok := ctxCommandName.Lookup(ctx); ok {
+				cmd = cmdName + " " + name
+			}
 
-		r = r.WithContext(ctxCommandName.ContextWith(ctx, cmd))
+			r = r.WithContext(ctxCommandName.ContextWith(ctx, cmd))
+		}
 	}
 
 	entry, ok := m.entries()[name]
@@ -214,7 +215,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 			o = errOut(w)
 		}
 
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 
@@ -236,7 +237,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 	if entry.Handler == nil {
 		w.ExitCode(2)
 		o := errOut(w)
-		m.helpUsage(o)
+		m.helpUsage(r.Context(), o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -293,6 +294,7 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 		h.ServeCLI(w, r)
 		return
 	}
+
 	ptr := reflect.New(reflect.TypeOf(h))
 	ptr.Elem().Set(reflect.ValueOf(h))
 	if err := metaFor(ptr).Configure(r); err != nil {
@@ -324,42 +326,9 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 			panic(o.PanicValue)
 		}
 	}
-
-	/*
-		if err := m.serveCLI(entry, w, r); err != nil {
-			ServeCLI()
-			isHelp := errors.Is(err, flag.ErrHelp)
-
-			var o io.Writer = w
-			if !isHelp {
-				o = errOut(w)
-			}
-
-			if entry.Handler != nil {
-				helpUsageOf(o, entry.Handler, m.getPath()+" "+name)
-				m.helpLineBreak(o, 1)
-			}
-
-			if !isHelp {
-				w.ExitCode(ExitCodeBadRequest)
-				printfln(o, err.Error())
-			}
-		}
-	*/
 }
 
 type stop struct{}
-
-// func Stop() { panic(stop{}) }
-//
-// func HandleError(w Response, r *Request, err error) {
-// 	if err == nil {
-// 		return
-// 	}
-// 	w.ExitCode(ExitCodeError)
-// 	fmt.Fprintf(w, "%s\n", err.Error())
-// 	Stop()
-// }
 
 func NewStdRequest(ctx context.Context) *Request {
 	var args []string
@@ -379,6 +348,7 @@ func Main(ctx context.Context, h Handler) {
 			l.Out = os.Stderr
 		}
 	})
+
 	var (
 		w = &StdResponse{}
 		r = NewStdRequest(ctx)
@@ -420,22 +390,13 @@ func (m *Mux) entries() map[string]*muxEntry {
 	return m.m
 }
 
-func (m Mux) getPath() string {
-	if m.path != "" {
-		return m.path
-	}
-	return execName()
-}
-
 type ctxCommandNameKey struct{}
 
 var ctxCommandName contextkit.ValueHandler[ctxCommandNameKey, string]
 
 func commandName(ctx context.Context) string {
-	if name, ok := ctxCommandName.Lookup(ctx); ok {
-		return name
-	}
-	return execName()
+	cmd, _ := ctxCommandName.Lookup(ctx)
+	return cmd
 }
 
 func execName() string {
@@ -593,6 +554,16 @@ var isOptionalTagHandler = reflectkit.TagHandler[bool]{
 	PanicOnParseError: true,
 }
 
+var separatorTagHandler = reflectkit.TagHandler[string]{
+	Name: "separator",
+	Parse: func(field reflect.StructField, tagName, tagValue string) (string, error) {
+		return tagValue, nil
+	},
+	Use: func(field reflect.StructField, value reflect.Value, v string) error {
+		return nil
+	},
+}
+
 func metaFor(ptr reflect.Value) metaH {
 	if ptr.Kind() != reflect.Pointer {
 		panic(fmt.Sprintf("unable to configure %s type due to receiving it as non-pointer type", ptr.Type().String()))
@@ -606,6 +577,9 @@ func metaFor(ptr reflect.Value) metaH {
 			continue
 		}
 		var ref = &metaRef{Node: v}
+		if sep, ok, _ := separatorTagHandler.Lookup(ref.Node.StructField); ok {
+			ref.Separator = sep
+		}
 		if ref.IsRelevant() {
 			m.refs = append(m.refs, ref)
 		}
@@ -734,9 +708,10 @@ func (m metaH) Flags() []metaFlag {
 }
 
 type metaRef struct {
-	Node  reftree.Node
-	IsSet bool
-	Raw   string
+	Node      reftree.Node
+	IsSet     bool
+	Raw       string
+	Separator string
 }
 
 func (ref metaRef) InputName() string {
@@ -796,7 +771,11 @@ func (ref metaRef) Parse(ctx context.Context) (rErr error) {
 }
 
 func (ref metaRef) parseRaw(ctx context.Context, typ reflect.Type, raw string) error {
-	value, err := convkit.ParseReflect(typ, raw)
+	var opts []convkit.Option
+	if ref.Separator != "" {
+		opts = append(opts, convkit.Options{Separator: ref.Separator})
+	}
+	value, err := convkit.ParseReflect(typ, raw, opts...)
 	if err != nil {
 		return err
 	}
