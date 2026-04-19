@@ -231,11 +231,15 @@ func helpCreateUsage(h Handler, command string) string {
 				if ref.IsFlag() {
 					subs += fmt.Sprintf(" %s flag", strings.Join(ref.Flags(), " / "))
 				}
-				if argInd, ok := ref.ArgIndex(); ok {
+				if idx, ok := ref.ArgIndex(); ok {
 					if ref.IsFlag() {
 						subs += " or "
 					}
-					subs += fmt.Sprintf(" args[%d]", argInd)
+					if idx.Variadic {
+						subs += fmt.Sprintf(" args[%d:]", idx.Index)
+					} else {
+						subs += fmt.Sprintf(" args[%d]", idx.Index)
+					}
 				}
 				lines = append(lines, subs)
 			}

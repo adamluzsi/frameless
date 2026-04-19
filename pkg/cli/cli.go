@@ -74,7 +74,11 @@ func (err ErrInvalidInput) Envs() []string {
 }
 
 func (err ErrInvalidInput) ArgIndex() (int, bool) {
-	return err.ref.ArgIndex()
+	idx, ok := err.ref.ArgIndex()
+	if !ok {
+		return 0, false
+	}
+	return idx.Index, true
 }
 
 func (err ErrInvalidInput) Error() string {
@@ -499,16 +503,55 @@ type nullFlagValue struct{}
 func (*nullFlagValue) String() string   { return "" }
 func (*nullFlagValue) Set(string) error { return nil }
 
-var argTagHandler = reflectkit.TagHandler[int]{
+var argTagHandler = reflectkit.TagHandler[string]{
 	Name: "arg",
-	Parse: func(field reflect.StructField, tagName, tagValue string) (int, error) {
-		return strconv.Atoi(tagValue)
+	Parse: func(field reflect.StructField, tagName, tagValue string) (string, error) {
+		return tagValue, nil
 	},
-	Use: func(field reflect.StructField, value reflect.Value, index int) error {
+	Use: func(field reflect.StructField, value reflect.Value, v string) error {
 		return nil
 	},
 
 	PanicOnParseError: true,
+}
+
+// argIndex represents the index specification for an argument.
+// It supports both single indices (e.g., "0") and variadic slice expressions (e.g., "1:" or ":").
+type argIndex struct {
+	Index    int  // The starting index for the argument
+	Variadic bool // True if this is a variadic argument that captures all remaining args
+}
+
+// parseArgIndex parses an arg tag value and returns the index specification.
+// Supported formats:
+//   - "n" - single argument at index n
+//   - "n:" - variadic arguments starting from index n
+//   - ":" - all arguments (variadic, equivalent to "0:")
+func parseArgIndex(tagValue string) argIndex {
+	if tagValue == ":" {
+		return argIndex{Index: 0, Variadic: true}
+	}
+	if strings.HasSuffix(tagValue, ":") {
+		idxStr := strings.TrimSuffix(tagValue, ":")
+		if idxStr == "" {
+			return argIndex{Index: 0, Variadic: true}
+		}
+		if idx, err := strconv.Atoi(idxStr); err == nil {
+			return argIndex{Index: idx, Variadic: true}
+		}
+	}
+	if idx, err := strconv.Atoi(tagValue); err == nil {
+		return argIndex{Index: idx, Variadic: false}
+	}
+	return argIndex{Index: 0, Variadic: false}
+}
+
+// isVariadicArg checks if the tag value represents a variadic argument.
+func isVariadicArg(tagValue string) bool {
+	if tagValue == ":" {
+		return true
+	}
+	return strings.HasSuffix(tagValue, ":")
 }
 
 var descTagHandler = reflectkit.TagHandler[string]{
@@ -638,7 +681,32 @@ func (m metaH) Configure(r *Request) error {
 		fv.Link()
 	}
 
-	for _, a := range slicekit.IterReverse(m.Args()) {
+	// Process arguments: handle variadic args first to capture remaining values,
+	// then process fixed-index args in reverse order.
+	var (
+		variadicArgs []metaArg
+		fixedArgs    []metaArg
+	)
+	for _, a := range m.Args() {
+		if a.Variadic {
+			variadicArgs = append(variadicArgs, a)
+		} else {
+			fixedArgs = append(fixedArgs, a)
+		}
+	}
+
+	// Process variadic arguments - take all remaining args from their start index
+	for _, a := range variadicArgs {
+		if a.Index <= len(r.Args) {
+			rawValues := r.Args[a.Index:]
+			r.Args = r.Args[:a.Index]
+			a.Ref.IsSet = true
+			a.Ref.RawValues = rawValues
+		}
+	}
+
+	// Process fixed-index arguments in reverse order to avoid index shifting issues
+	for _, a := range slicekit.IterReverse(fixedArgs) {
 		raw, ok := slicekit.PopAt(&r.Args, a.Index)
 		if ok {
 			a.Ref.IsSet = true
@@ -662,23 +730,58 @@ func (m metaH) Configure(r *Request) error {
 	// }
 }
 
+func (ref metaRef) parseVariadicRaw(ctx context.Context, typ reflect.Type) error {
+	var opts []convkit.Option
+	if ref.Separator != "" {
+		opts = append(opts, convkit.Options{Separator: ref.Separator})
+	}
+
+	switch typ.Kind() {
+	case reflect.Slice:
+		sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
+		for _, raw := range ref.RawValues {
+			elemVal, err := convkit.ParseReflect(typ.Elem(), raw, opts...)
+			if err != nil {
+				return err
+			}
+			sliceVal = reflect.Append(sliceVal, elemVal)
+		}
+		ref.Node.Value.Set(sliceVal)
+		// Validate the field after setting the value
+		if ref.Node.Type == reftree.StructField {
+			if err := validate.StructField(ctx, ref.Node.StructField, sliceVal); err != nil {
+				if errors.Is(err, enum.ErrInvalid) {
+					return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), sliceVal)
+				}
+				return err
+			}
+		}
+		return nil
+	default:
+		// For non-slice types, use the first value only
+		return ref.parseRaw(ctx, typ, ref.RawValues[0])
+	}
+}
+
 type metaArg struct {
-	Ref   *metaRef
-	Index int
-	Name  string
+	Ref      *metaRef
+	Index    int
+	Variadic bool
+	Name     string
 }
 
 func (m metaH) Args() []metaArg {
 	var args []metaArg
 	for _, ref := range m.refs {
-		index, ok := ref.ArgIndex()
+		idx, ok := ref.ArgIndex()
 		if !ok {
 			continue
 		}
 		args = append(args, metaArg{
-			Ref:   ref,
-			Index: index,
-			Name:  ref.Node.StructField.Name,
+			Ref:      ref,
+			Index:    idx.Index,
+			Variadic: idx.Variadic,
+			Name:     ref.Node.StructField.Name,
 		})
 	}
 	slicekit.SortBy(args, func(a, b metaArg) bool {
@@ -712,6 +815,7 @@ type metaRef struct {
 	Node      reftree.Node
 	IsSet     bool
 	Raw       string
+	RawValues []string
 	Separator string
 }
 
@@ -747,6 +851,10 @@ func (ref metaRef) Parse(ctx context.Context) (rErr error) {
 	typ, ok := ref.LookupType()
 	if !ok {
 		return fmt.Errorf("unable to determine type for %s", ref.InputName())
+	}
+	// Handle variadic arguments with multiple raw values
+	if len(ref.RawValues) > 0 {
+		return ref.parseVariadicRaw(ctx, typ)
 	}
 	if ref.IsSet {
 		return ref.parseRaw(ctx, typ, ref.Raw)
@@ -896,9 +1004,18 @@ func parseDefaultValue(sf reflect.StructField, raw string) (reflect.Value, error
 	return val, nil
 }
 
-func (ref metaRef) ArgIndex() (int, bool) {
-	index, ok, _ := argTagHandler.Lookup(ref.Node.StructField)
-	return index, ok
+func (ref metaRef) ArgIndex() (argIndex, bool) {
+	tagValue, ok, _ := argTagHandler.Lookup(ref.Node.StructField)
+	if !ok {
+		return argIndex{}, false
+	}
+	return parseArgIndex(tagValue), true
+}
+
+// argIndexRaw returns the raw tag value for the argument index.
+func (ref metaRef) ArgIndexRaw() (string, bool) {
+	tagValue, ok, _ := argTagHandler.Lookup(ref.Node.StructField)
+	return tagValue, ok
 }
 
 func (ref metaRef) Flags() []string {
