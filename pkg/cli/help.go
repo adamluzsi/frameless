@@ -48,8 +48,14 @@ func toHelp(ctx context.Context, h Handler, err error) string {
 func defaultInvalidInputErrorHandler(ctx context.Context, w io.Writer, eii ErrInvalidInput) {
 	printfln(w)
 	printfln(w, "Invalid input:")
-	if i, ok := eii.ArgIndex(); ok {
-		printfln(w, fmt.Sprintf("\targ[%d]", i))
+	if tag, ok := eii.ArgTag(); ok && tag.Begin != nil {
+		if tag.IsVariadic || tag.End == nil {
+			printfln(w, fmt.Sprintf("\targ[%d:]", *tag.Begin))
+		} else if *tag.End > *tag.Begin+1 {
+			printfln(w, fmt.Sprintf("\targ[%d:%d]", *tag.Begin, *tag.End))
+		} else {
+			printfln(w, fmt.Sprintf("\targ[%d]", *tag.Begin))
+		}
 	}
 	if flags := eii.Flags(); 0 < len(flags) {
 		printfln(w, fmt.Sprintf("\tflag: %s", strings.Join(flags, ", ")))
@@ -115,9 +121,21 @@ func helpCreateUsage(h Handler, command string) string {
 		}
 	}
 
+	// Check if we have any non-range (single-index) arguments
+	var hasSingleIndexArg bool
+	for _, arg := range args {
+		if tag, ok := arg.Ref.ArgTag(); ok {
+			if !arg.Variadic && tag.Begin != nil && tag.End == nil {
+				hasSingleIndexArg = true
+				break
+			}
+		}
+	}
+
 	var usage string
 	usage += "Usage: " + execName()
-	if 0 < len(command) {
+	// Include command name unless we only have range arguments (which get expanded)
+	if 0 < len(command) && !(!hasSingleIndexArg && len(args) > 0) {
 		usage += " " + command
 	}
 	if 0 < len(flags) {
@@ -125,7 +143,14 @@ func helpCreateUsage(h Handler, command string) string {
 	}
 	if 0 < len(args) {
 		for _, arg := range args {
-			usage += fmt.Sprintf(" [%s]", arg.Name)
+			if tag, ok := arg.Ref.ArgTag(); ok && !arg.Variadic && tag.Begin != nil && tag.End != nil {
+				// Range argument: expand to individual placeholders (e.g., VS1 VS2 VS3)
+				for i := *tag.Begin; i < *tag.End; i++ {
+					usage += fmt.Sprintf(" %s%d", arg.Name, i+1)
+				}
+			} else {
+				usage += fmt.Sprintf(" %s", arg.Name)
+			}
 		}
 	}
 
@@ -231,11 +256,17 @@ func helpCreateUsage(h Handler, command string) string {
 				if ref.IsFlag() {
 					subs += fmt.Sprintf(" %s flag", strings.Join(ref.Flags(), " / "))
 				}
-				if argInd, ok := ref.ArgIndex(); ok {
+				if tag, ok := ref.ArgTag(); ok && tag.Begin != nil {
 					if ref.IsFlag() {
 						subs += " or "
 					}
-					subs += fmt.Sprintf(" args[%d]", argInd)
+					if tag.IsVariadic || tag.End == nil {
+						subs += fmt.Sprintf(" args[%d:]", *tag.Begin)
+					} else if *tag.End > *tag.Begin+1 {
+						subs += fmt.Sprintf(" args[%d:%d]", *tag.Begin, *tag.End)
+					} else {
+						subs += fmt.Sprintf(" args[%d]", *tag.Begin)
+					}
 				}
 				lines = append(lines, subs)
 			}

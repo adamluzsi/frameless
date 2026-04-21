@@ -1887,10 +1887,7 @@ func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 			Body: &bytes.Buffer{},
 		}
 
-		testcase.OnFail(t, func() {
-			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
-			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
-		})
+		debugRecorderResult(t, rr)
 
 		cli.ServeCLI(&mux, rr, req)
 		assert.Contains(t, rr.Out.String(), `(seperator: /)`)
@@ -1911,10 +1908,7 @@ func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 			Body: &bytes.Buffer{},
 		}
 
-		testcase.OnFail(t, func() {
-			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
-			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
-		})
+		debugRecorderResult(t, rr)
 
 		cli.ServeCLI(&mux, rr, req)
 		assert.Equal(t, out.VS, []string{"foo", "bar", "baz"})
@@ -1935,10 +1929,7 @@ func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 			Body: &bytes.Buffer{},
 		}
 
-		testcase.OnFail(t, func() {
-			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
-			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
-		})
+		debugRecorderResult(t, rr)
 
 		cli.ServeCLI(&mux, rr, req)
 		assert.Equal(t, out.VS, []string{"foo,bar,baz"})
@@ -1959,12 +1950,369 @@ func Test_sliceFlagType_supportInputFlagRepetition(t *testing.T) {
 			Body: &bytes.Buffer{},
 		}
 
-		testcase.OnFail(t, func() {
-			t.Logf("\noutput:\n\n%s\n", rr.Out.String())
-			t.Logf("\nerror:\n\n%s\n", rr.Err.String())
-		})
+		debugRecorderResult(t, rr)
 
 		cli.ServeCLI(&mux, rr, req)
 		assert.Equal(t, out.Flag, []string{"foo", "bar", "baz"})
+	})
+}
+
+type CommandWithVariadicArg1 struct {
+	Callback[CommandWithVariadicArg1]
+
+	ArgFirst string   `arg:"0"`
+	ArgsRest []string `arg:"1:"`
+}
+
+func (cmd CommandWithVariadicArg1) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithVariadicArg2 struct {
+	Callback[CommandWithVariadicArg2]
+
+	Args []string `arg:":"`
+}
+
+func (cmd CommandWithVariadicArg2) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithVariadicArg3 struct {
+	Callback[CommandWithVariadicArg3]
+
+	Args []string `arg:":" len:"2<"`
+}
+
+func (cmd CommandWithVariadicArg3) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithVariadicArgRange struct {
+	Callback[CommandWithVariadicArgRange]
+
+	First     string   `arg:"0"`
+	Middle    []string `arg:"1:3"`
+	Remaining []string `arg:"3:" opt:"T"`
+}
+
+func (cmd CommandWithVariadicArgRange) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithVariadicArgRange02 struct {
+	Callback[CommandWithVariadicArgRange02]
+
+	First     string   `arg:"0"`
+	Middle    []string `arg:"1:2"`
+	Remaining []string `arg:"2:" opt:"T"`
+}
+
+func (cmd CommandWithVariadicArgRange02) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithVariadicArgRange03 struct {
+	Callback[CommandWithVariadicArgRange03]
+
+	VS []string `arg:"0:5"`
+}
+
+func (cmd CommandWithVariadicArgRange03) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+type CommandWithVariadicArgRange04 struct {
+	Callback[CommandWithVariadicArgRange04]
+
+	VS []string `arg:"0:5" opt:"T" required:"false"`
+}
+
+func (cmd CommandWithVariadicArgRange04) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
+	cmd.Callback.Call(cmd, w, r)
+}
+
+func Test_variadicArgInput(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	s.Test(`args with slice expression to capture variadic arguments after n th index -- arg:"n:" -- for example arg:"1:`, func(t *testcase.T) {
+		var mux cli.Mux
+		var out CommandWithVariadicArg1
+		var lastRequest *cli.Request
+		mux.Handle("cmd", CommandWithVariadicArg1{Callback: func(v CommandWithVariadicArg1, w cli.ResponseWriter, r *cli.Request) {
+			out = v
+			lastRequest = r
+		}})
+
+		var first = t.Random.String()
+		var rest = random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+
+		var args []string = []string{"cmd", "--"}
+		args = append(args, first)
+		args = append(args, rest...)
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.ArgFirst, first)
+		assert.Equal(t, out.ArgsRest, rest)
+		assert.NotNil(t, lastRequest)
+		assert.Empty(t, lastRequest.Args)
+	})
+
+	s.Test(`args with slice expression to capture all variadic arguments (basically passthrough) -- arg:":"`, func(t *testcase.T) {
+		var mux cli.Mux
+		var out CommandWithVariadicArg2
+		var lastRequest *cli.Request
+		mux.Handle("cmd", CommandWithVariadicArg2{Callback: func(v CommandWithVariadicArg2, w cli.ResponseWriter, r *cli.Request) {
+			out = v
+			lastRequest = r
+		}})
+
+		var cmdArgs = random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+
+		var args []string = []string{"cmd", "--"}
+		args = append(args, cmdArgs...)
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.Args, cmdArgs)
+		assert.NotNil(t, lastRequest)
+		assert.Empty(t, lastRequest.Args)
+	})
+
+	s.Context(`arg slice expression combined with validation should make a good synenergy, for example argument length enforcement`, func(s *testcase.Spec) {
+		s.Test("happy", func(t *testcase.T) {
+			var mux cli.Mux
+			var out CommandWithVariadicArg3
+			var lastRequest *cli.Request
+			mux.Handle("cmd", CommandWithVariadicArg3{Callback: func(v CommandWithVariadicArg3, w cli.ResponseWriter, r *cli.Request) {
+				out = v
+				lastRequest = r
+			}})
+
+			var cmdArgs = random.Slice(t.Random.IntBetween(3, 7), t.Random.String)
+
+			var args []string = []string{"cmd", "--"}
+			args = append(args, cmdArgs...)
+
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: args,
+				Body: &bytes.Buffer{},
+			}
+
+			debugRecorderResult(t, rr)
+
+			cli.ServeCLI(&mux, rr, req)
+			assert.Equal(t, out.Args, cmdArgs)
+			assert.NotNil(t, lastRequest)
+			assert.Empty(t, lastRequest.Args)
+		})
+
+		s.Test("rainy", func(t *testcase.T) {
+			var mux cli.Mux
+			var ran bool
+			mux.Handle("cmd", CommandWithVariadicArg3{Callback: func(v CommandWithVariadicArg3, w cli.ResponseWriter, r *cli.Request) {
+				ran = true
+			}})
+
+			var cmdArgs = random.Slice(t.Random.IntBetween(0, 2), t.Random.String)
+
+			var args []string = []string{"cmd", "--"}
+			args = append(args, cmdArgs...)
+
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: args,
+				Body: &bytes.Buffer{},
+			}
+
+			debugRecorderResult(t, rr)
+
+			cli.ServeCLI(&mux, rr, req)
+			assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
+			assert.False(t, ran, "expected that the Command was not executed due to validation issue")
+		})
+	})
+
+	s.Test(`args with range expression to capture arguments between two indices -- arg:"1:3"`, func(t *testcase.T) {
+		var mux cli.Mux
+		var out CommandWithVariadicArgRange
+		var lastRequest *cli.Request
+		mux.Handle("cmd", CommandWithVariadicArgRange{Callback: func(v CommandWithVariadicArgRange, w cli.ResponseWriter, r *cli.Request) {
+			out = v
+			lastRequest = r
+		}})
+
+		// args[0] -> First
+		// args[1:3] -> Middle (indices 1 and 2)
+		// args[3:] -> Remaining
+		var first = t.Random.String()
+		var middleFirst = t.Random.String()
+		var middleSecond = t.Random.String()
+		var remaining = random.Slice(t.Random.IntBetween(0, 4), t.Random.String)
+
+		args := []string{"cmd", "--", first, middleFirst, middleSecond}
+		args = append(args, remaining...)
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.First, first)
+		assert.Equal(t, out.Middle, []string{middleFirst, middleSecond})
+		assert.ContainsExactly(t, out.Remaining, remaining)
+		assert.NotNil(t, lastRequest)
+		assert.Empty(t, lastRequest.Args)
+	})
+
+	s.Test(`args with range expression capturing single middle element -- arg:"1:2"`, func(t *testcase.T) {
+		var mux cli.Mux
+		var out CommandWithVariadicArgRange02
+		var lastRequest *cli.Request
+		mux.Handle("cmd", CommandWithVariadicArgRange02{Callback: func(v CommandWithVariadicArgRange02, w cli.ResponseWriter, r *cli.Request) {
+			out = v
+			lastRequest = r
+		}})
+
+		var first = t.Random.String()
+		var second = t.Random.String()
+		var remaining = random.Slice(t.Random.IntBetween(1, 4), t.Random.String)
+
+		args := []string{"cmd", "--", first, second}
+		args = append(args, remaining...)
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, out.First, first)
+		assert.Equal(t, out.Middle, []string{second})
+		assert.Equal(t, out.Remaining, remaining)
+		assert.NotNil(t, lastRequest)
+		assert.Empty(t, lastRequest.Args)
+	})
+
+	s.Test("non slice type with variadic arg tag", func(t *testcase.T) {
+		p := assert.Panic(t, func() {
+			cli.ConfigureHandler(&NonSliceTypeWithVariadicArgTag{}, &cli.Request{
+				Args: []string{"foo", "bar", "baz"},
+			})
+		}, "it is expected that an implementation error results in a panic, as this is non-recoverable at runtime")
+
+		assert.Contains(t, fmt.Sprintf("%v", p), `variadic arg tag selector with ":" only supported for []T types`)
+	})
+
+	s.Test("when the expected argument count is less than the variadic argument slicing range then it should report missing arguments", func(t *testcase.T) {
+		var mux cli.Mux
+		mux.Handle("cmd", CommandWithVariadicArgRange03{Callback: func(v CommandWithVariadicArgRange03, w cli.ResponseWriter, r *cli.Request) {}})
+
+		// 3 element is less than the expected args[0:5]
+		args := []string{"cmd", "--", t.Random.String(), t.Random.String(), t.Random.String()}
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
+		assert.MatchRegexp(t, rr.Err.String(), `Usage: [^\s]+ VS1 VS2 VS3 VS4 VS5`,
+			"expected that the usage showcase how many values expected for the VS input arg field")
+		assert.Contains(t, rr.Err.String(), "too few arguments for VS",
+			"expected that the error output points out that too few argument is provided for VS")
+	})
+
+	s.Test("when optional variadic argument is simply not provided at all, then it should be accepted without an issue", func(t *testcase.T) {
+		var mux cli.Mux
+
+		var ran bool
+		mux.Handle("cmd", CommandWithVariadicArgRange04{Callback: func(v CommandWithVariadicArgRange04, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+		}})
+
+		// 3 element is less than the expected args[0:5]
+		args := []string{"cmd"}
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, rr.Code, cli.ExitCodeOK)
+		assert.True(t, ran)
+	})
+
+	s.Test("when optional variadic argument is partially provided, then it is considered as bad request", func(t *testcase.T) {
+		var mux cli.Mux
+
+		var ran bool
+		mux.Handle("cmd", CommandWithVariadicArgRange04{Callback: func(v CommandWithVariadicArgRange04, w cli.ResponseWriter, r *cli.Request) {
+			ran = true
+		}})
+
+		// 3 element is less than the expected args[0:5]
+		args := []string{"cmd", "--", t.Random.String(), t.Random.String(), t.Random.String()}
+
+		rr := &cli.ResponseRecorder{}
+		req := &cli.Request{
+			Args: args,
+			Body: &bytes.Buffer{},
+		}
+
+		debugRecorderResult(t, rr)
+
+		cli.ServeCLI(&mux, rr, req)
+		assert.Equal(t, rr.Code, cli.ExitCodeBadRequest)
+		assert.False(t, ran, "expected that the command's ServeCLI was not executed due to bad input")
+		assert.MatchRegexp(t, rr.Err.String(), `Usage: [^\s]+ VS1 VS2 VS3 VS4 VS5`,
+			"expected that the usage showcase how many values expected for the VS input arg field")
+		assert.Contains(t, rr.Err.String(), "too few arguments for VS",
+			"expected that the error output points out that too few argument is provided for VS")
+
+	})
+}
+
+type NonSliceTypeWithVariadicArgTag struct {
+	V string `arg:":"`
+}
+
+func (NonSliceTypeWithVariadicArgTag) ServeCLI(w cli.ResponseWriter, r *cli.Request) {}
+
+func debugRecorderResult(tb testing.TB, rr *cli.ResponseRecorder) {
+	testcase.OnFail(tb, func() {
+		tb.Logf("\noutput:\n\n%s\n", rr.Out.String())
+		tb.Logf("\nerror:\n\n%s\n", rr.Err.String())
 	})
 }

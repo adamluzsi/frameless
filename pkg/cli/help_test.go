@@ -23,7 +23,7 @@ func TestUsage(t *testing.T) {
 		})
 
 		assert.MatchRegexp(t, usage, `Usage: [^\s]+ thepath`)
-		assert.Contains(t, usage, "thepath [OPTION]... [Arg1] [Arg2] [Arg3]")
+		assert.Contains(t, usage, "thepath [OPTION]... Arg1 Arg2 Arg3")
 		assert.Contains(t, usage, "-str=[string]: flag1 desc")
 		assert.Contains(t, usage, `-strwd=[string] (default: "defval")`)
 		assert.Contains(t, usage, "-int=[int]")

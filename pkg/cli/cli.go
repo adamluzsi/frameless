@@ -73,8 +73,8 @@ func (err ErrInvalidInput) Envs() []string {
 	return err.ref.Envs()
 }
 
-func (err ErrInvalidInput) ArgIndex() (int, bool) {
-	return err.ref.ArgIndex()
+func (err ErrInvalidInput) ArgTag() (argTag, bool) {
+	return err.ref.ArgTag()
 }
 
 func (err ErrInvalidInput) Error() string {
@@ -297,12 +297,23 @@ func ServeCLI(h Handler, w ResponseWriter, r *Request) {
 
 	ptr := reflect.New(reflect.TypeOf(h))
 	ptr.Elem().Set(reflect.ValueOf(h))
-	if err := metaFor(ptr).Configure(r); err != nil {
+	var mh = metaFor(ptr)
+	if err := mh.Configure(r); err != nil {
 		var exitCode = ExitCodeBadRequest
 		if isHelp(err) {
 			exitCode = ExitCodeOK
 		}
 		w.ExitCode(exitCode)
+		var msg = toHelp(r.Context(), h, err)
+		var o io.Writer = w
+		if !isHelp(err) {
+			o = errOut(w)
+		}
+		printfln(o, msg)
+		return
+	}
+	if err := mh.Validate(r.Context()); err != nil {
+		w.ExitCode(ExitCodeBadRequest)
 		var msg = toHelp(r.Context(), h, err)
 		var o io.Writer = w
 		if !isHelp(err) {
@@ -499,16 +510,95 @@ type nullFlagValue struct{}
 func (*nullFlagValue) String() string   { return "" }
 func (*nullFlagValue) Set(string) error { return nil }
 
-var argTagHandler = reflectkit.TagHandler[int]{
+type argTag struct {
+	Field      reflect.StructField
+	IsVariadic bool
+	Begin      *int
+	End        *int
+}
+
+var argTagHandler = reflectkit.TagHandler[argTag]{
 	Name: "arg",
-	Parse: func(field reflect.StructField, tagName, tagValue string) (int, error) {
-		return strconv.Atoi(tagValue)
+	Parse: func(field reflect.StructField, tagName, tagValue string) (argTag, error) {
+		return parseArgTag(tagValue)
 	},
-	Use: func(field reflect.StructField, value reflect.Value, index int) error {
+	Use: func(field reflect.StructField, value reflect.Value, v argTag) error {
+		// Validate that variadic tags are only used with slice types - panic on error
+		if v.IsVariadic && field.Type.Kind() != reflect.Slice {
+			panic(fmt.Sprintf(`variadic arg tag selector with ":" only supported for []T types, got %s`, field.Type.String()))
+		}
 		return nil
 	},
 
 	PanicOnParseError: true,
+}
+
+// parseArgTag parses an arg tag value and returns an argTag struct.
+// Supported formats:
+//   - "n" - single argument at index n (e.g., "0", "1", "2")
+//   - "n:" - variadic arguments starting from index n to end (e.g., "1:", "2:")
+//   - ":" - all arguments (variadic, equivalent to "0:")
+//   - "n:m" - range from index n (inclusive) to m (exclusive), like Go slicing (e.g., "1:3")
+func parseArgTag(tagValue string) (argTag, error) {
+	var result argTag
+	result.Field = reflect.StructField{}
+
+	// Handle ":" meaning all arguments
+	if tagValue == ":" {
+		b := 0
+		result.Begin = &b
+		result.IsVariadic = true
+		return result, nil
+	}
+
+	parts := strings.Split(tagValue, ":")
+	switch len(parts) {
+	case 1:
+		// Single index like "0", "1", etc.
+		idx, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return argTag{}, fmt.Errorf("invalid arg index %q: %w", tagValue, err)
+		}
+		result.Begin = &idx
+		result.IsVariadic = false
+		return result, nil
+
+	case 2:
+		// Range or variadic like "n:", ":m", or "n:m"
+		var begin, end *int
+
+		if parts[0] == "" {
+			// ":m" - from start to m (exclusive)
+			b := 0
+			begin = &b
+		} else {
+			idx, err := strconv.Atoi(parts[0])
+			if err != nil {
+				return argTag{}, fmt.Errorf("invalid begin index %q: %w", parts[0], err)
+			}
+			begin = &idx
+		}
+
+		if parts[1] == "" {
+			// "n:" - from n to end (variadic)
+			end = nil
+			result.IsVariadic = true
+		} else {
+			idx, err := strconv.Atoi(parts[1])
+			if err != nil {
+				return argTag{}, fmt.Errorf("invalid end index %q: %w", parts[1], err)
+			}
+			end = &idx
+			result.IsVariadic = false
+		}
+
+		result.Begin = begin
+		result.End = end
+		return result, nil
+
+	default:
+		return argTag{}, fmt.Errorf("invalid arg tag format %q", tagValue)
+	}
 }
 
 var descTagHandler = reflectkit.TagHandler[string]{
@@ -595,10 +685,66 @@ type metaH struct {
 
 func (m metaH) Validate(ctx context.Context) (rErr error) {
 	defer errorkit.Recover(&rErr)
-	for i, a := range m.Args() {
-		if a.Index != i {
-			const format = "%s field is an arg, and it was expected to be at index %d but it has the index of %d"
-			return fmt.Errorf(format, a.Ref.FieldName(), i, a.Index)
+	// Only validate single-index args for sequential ordering
+	// Slice args (variadic/range) don't need strict index validation
+	var expectedIdx int
+	for _, a := range m.Args() {
+		if !a.Variadic && a.End == nil && a.Begin != nil {
+			// Single index argument - check it's at the expected position
+			if *a.Begin != expectedIdx {
+				const format = "%s field is an arg, and it was expected to be at index %d but it has the index of %d"
+				return fmt.Errorf(format, a.Ref.FieldName(), expectedIdx, *a.Begin)
+			}
+			expectedIdx++
+		} else if a.Begin != nil {
+			// Slice argument - just ensure begin index is not before current position
+			if *a.Begin < expectedIdx {
+				const format = "%s field's arg range starts at %d but previous args already consumed up to index %d"
+				return fmt.Errorf(format, a.Ref.FieldName(), *a.Begin, expectedIdx)
+			}
+			expectedIdx = *a.Begin + 1
+		}
+	}
+	// Validate that range arguments have enough values when partially provided or fully expected
+	for _, ref := range m.refs {
+		if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
+			expectedLen := *tag.End - *tag.Begin
+			actualLen := len(ref.RawValues)
+			// If any values were provided but not enough, it's an error (partial provision)
+			if actualLen > 0 && actualLen < expectedLen {
+				return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
+			}
+			// If no values were provided and it's required, it's an error
+			if actualLen == 0 && ref.IsRequired() {
+				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.InputName(), *tag.Begin, *tag.End)
+			}
+		}
+	}
+	// Validate that range arguments have enough values when partially provided or fully expected
+	for _, ref := range m.refs {
+		if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
+			expectedLen := *tag.End - *tag.Begin
+			actualLen := len(ref.RawValues)
+			// If any values were provided but not enough, it's an error (partial provision)
+			if actualLen > 0 && actualLen < expectedLen {
+				return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
+			}
+			// If no values were provided and it's required, it's an error
+			if actualLen == 0 && ref.IsRequired() {
+				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.Node.StructField.Name, *tag.Begin, *tag.End)
+			}
+		}
+	}
+	// Validate that range arguments have enough values when partially provided
+	for _, ref := range m.refs {
+		if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
+			expectedLen := *tag.End - *tag.Begin
+			actualLen := len(ref.RawValues)
+			if actualLen > 0 && actualLen < expectedLen {
+				return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
+			} else if actualLen == 0 && ref.IsRequired() {
+				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.Node.StructField.Name, *tag.Begin, *tag.End)
+			}
 		}
 	}
 	var ufn dsset.Set[string]
@@ -638,13 +784,92 @@ func (m metaH) Configure(r *Request) error {
 		fv.Link()
 	}
 
-	for _, a := range slicekit.IterReverse(m.Args()) {
-		raw, ok := slicekit.PopAt(&r.Args, a.Index)
-		if ok {
-			a.Ref.IsSet = true
-			a.Ref.Raw = raw
+	// Validate that variadic arg tags are only used with slice types.
+	// This is a programming error that should panic immediately.
+	for _, ref := range m.refs {
+		if tag, ok := ref.ArgTag(); ok && tag.IsVariadic {
+			typ, ok := ref.LookupType()
+			if !ok {
+				continue
+			}
+			if typ.Kind() != reflect.Slice {
+				panic(fmt.Sprintf(`variadic arg tag selector with ":" only supported for []T types, got %s`, typ.String()))
+			}
 		}
 	}
+
+	// Process arguments: capture all values based on original indices first.
+	// We process in order of begin index to handle overlapping ranges correctly.
+	var consumedIndices = make(map[int]bool)
+
+	// First pass: identify which indices each arg wants to consume
+	type argRange struct {
+		a       metaArg
+		start   int
+		end     int
+		isSlice bool
+	}
+	var allRanges []argRange
+
+	for _, a := range m.Args() {
+		if a.Begin == nil {
+			continue
+		}
+		start := *a.Begin
+		end := len(r.Args)
+		isSlice := false
+
+		if a.Variadic || (a.End != nil && !func() bool { return *a.End <= start }()) {
+			isSlice = true
+			if a.End != nil && !a.Variadic {
+				end = *a.End
+				if end > len(r.Args) {
+					end = len(r.Args)
+				}
+			}
+		}
+
+		allRanges = append(allRanges, argRange{a: a, start: start, end: end, isSlice: isSlice})
+	}
+
+	// Sort by start index to process in order
+	slicekit.SortBy(allRanges, func(a, b argRange) bool {
+		return a.start < b.start
+	})
+
+	// Second pass: assign values, skipping indices already consumed
+	for _, ar := range allRanges {
+		if ar.isSlice {
+			// For slice args, collect unconsumed values in range
+			var rawValues []string
+			for i := ar.start; i < ar.end && i < len(r.Args); i++ {
+				if !consumedIndices[i] {
+					rawValues = append(rawValues, r.Args[i])
+					consumedIndices[i] = true
+				}
+			}
+			ar.a.Ref.RawValues = rawValues
+			if len(rawValues) > 0 {
+				ar.a.Ref.IsSet = true
+			}
+		} else {
+			// For single args, take the value if not consumed
+			if ar.start < len(r.Args) && !consumedIndices[ar.start] {
+				consumedIndices[ar.start] = true
+				ar.a.Ref.IsSet = true
+				ar.a.Ref.Raw = r.Args[ar.start]
+			}
+		}
+	}
+
+	// Clean up r.Args to remove all consumed indices
+	var remainingArgs []string
+	for i, arg := range r.Args {
+		if !consumedIndices[i] {
+			remainingArgs = append(remainingArgs, arg)
+		}
+	}
+	r.Args = remainingArgs
 
 	var ctx = r.Context()
 	for _, ref := range m.refs {
@@ -662,27 +887,74 @@ func (m metaH) Configure(r *Request) error {
 	// }
 }
 
+func (ref metaRef) parseVariadicRaw(ctx context.Context, typ reflect.Type) error {
+	var opts []convkit.Option
+	if ref.Separator != "" {
+		opts = append(opts, convkit.Options{Separator: ref.Separator})
+	}
+
+	switch typ.Kind() {
+	case reflect.Slice:
+		sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
+		for _, raw := range ref.RawValues {
+			elemVal, err := convkit.ParseReflect(typ.Elem(), raw, opts...)
+			if err != nil {
+				return err
+			}
+			sliceVal = reflect.Append(sliceVal, elemVal)
+		}
+		ref.Node.Value.Set(sliceVal)
+		// Validate the field after setting the value
+		if ref.Node.Type == reftree.StructField {
+			if err := validate.StructField(ctx, ref.Node.StructField, sliceVal); err != nil {
+				if errors.Is(err, enum.ErrInvalid) {
+					return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), sliceVal)
+				}
+				return err
+			}
+		}
+		return nil
+	default:
+		// For non-slice types with variadic tag, this should have been caught by validation
+		if len(ref.RawValues) > 0 {
+			return ref.parseRaw(ctx, typ, ref.RawValues[0])
+		}
+		return nil
+	}
+}
+
 type metaArg struct {
-	Ref   *metaRef
-	Index int
-	Name  string
+	Ref      *metaRef
+	Begin    *int
+	End      *int
+	Variadic bool
+	Name     string
 }
 
 func (m metaH) Args() []metaArg {
 	var args []metaArg
 	for _, ref := range m.refs {
-		index, ok := ref.ArgIndex()
+		tag, ok := ref.ArgTag()
 		if !ok {
 			continue
 		}
 		args = append(args, metaArg{
-			Ref:   ref,
-			Index: index,
-			Name:  ref.Node.StructField.Name,
+			Ref:      ref,
+			Begin:    tag.Begin,
+			End:      tag.End,
+			Variadic: tag.IsVariadic,
+			Name:     ref.Node.StructField.Name,
 		})
 	}
 	slicekit.SortBy(args, func(a, b metaArg) bool {
-		return a.Index < b.Index
+		var aIdx, bIdx int
+		if a.Begin != nil {
+			aIdx = *a.Begin
+		}
+		if b.Begin != nil {
+			bIdx = *b.Begin
+		}
+		return aIdx < bIdx
 	})
 	return args
 }
@@ -712,6 +984,7 @@ type metaRef struct {
 	Node      reftree.Node
 	IsSet     bool
 	Raw       string
+	RawValues []string
 	Separator string
 }
 
@@ -748,6 +1021,58 @@ func (ref metaRef) Parse(ctx context.Context) (rErr error) {
 	if !ok {
 		return fmt.Errorf("unable to determine type for %s", ref.InputName())
 	}
+	// Handle variadic arguments with multiple raw values
+	if len(ref.RawValues) > 0 {
+		return ref.parseVariadicRaw(ctx, typ)
+	}
+
+	// Handle variadic arguments with no values - create empty slice and validate
+	if tag, ok := ref.ArgTag(); ok && tag.IsVariadic && len(ref.RawValues) == 0 {
+		if typ.Kind() == reflect.Slice {
+			sliceVal := reflect.MakeSlice(typ, 0, 0)
+			ref.Node.Value.Set(sliceVal)
+			// Validate the empty slice against any length constraints
+			if ref.Node.Type == reftree.StructField {
+				if err := validate.StructField(ctx, ref.Node.StructField, sliceVal); err != nil {
+					if errors.Is(err, enum.ErrInvalid) {
+						return enumError(ref.InputName(), enum.ReflectValues(ref.Node.StructField), sliceVal)
+					}
+					return err
+				}
+			}
+			return nil
+		}
+	}
+
+	// Handle range arguments with no values - check if required
+	if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
+		actualLen := len(ref.RawValues)
+		if actualLen == 0 {
+			if ref.IsRequired() {
+				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.InputName(), *tag.Begin, *tag.End)
+			}
+			// Optional range with no args - set empty slice
+			if typ.Kind() == reflect.Slice {
+				sliceVal := reflect.MakeSlice(typ, 0, 0)
+				ref.Node.Value.Set(sliceVal)
+				return nil
+			}
+		}
+		// Note: partial provision (actualLen > 0 && actualLen < expectedLen) is handled in Validate()
+		// If we have some values but not enough, we still need to set what we got for the field
+		if typ.Kind() == reflect.Slice {
+			sliceVal := reflect.MakeSlice(typ, 0, len(ref.RawValues))
+			for _, raw := range ref.RawValues {
+				elemVal, err := convkit.ParseReflect(typ.Elem(), raw)
+				if err != nil {
+					return err
+				}
+				sliceVal = reflect.Append(sliceVal, elemVal)
+			}
+			ref.Node.Value.Set(sliceVal)
+		}
+	}
+
 	if ref.IsSet {
 		return ref.parseRaw(ctx, typ, ref.Raw)
 	}
@@ -896,9 +1221,22 @@ func parseDefaultValue(sf reflect.StructField, raw string) (reflect.Value, error
 	return val, nil
 }
 
+// ArgTag returns the parsed argTag for this reference.
+func (ref metaRef) ArgTag() (argTag, bool) {
+	tag, ok, _ := argTagHandler.Lookup(ref.Node.StructField)
+	if !ok {
+		return argTag{}, false
+	}
+	return tag, true
+}
+
+// ArgIndex returns the begin index for this argument.
 func (ref metaRef) ArgIndex() (int, bool) {
-	index, ok, _ := argTagHandler.Lookup(ref.Node.StructField)
-	return index, ok
+	tag, ok := ref.ArgTag()
+	if !ok || tag.Begin == nil {
+		return 0, false
+	}
+	return *tag.Begin, true
 }
 
 func (ref metaRef) Flags() []string {
