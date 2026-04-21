@@ -854,11 +854,90 @@ func TestMux(t *testing.T) {
 						act(t)
 
 						out := response.Get(t).Out.String()
-						_ = out
-
 						assert.Contains(t, out, "")
 					})
 				})
+			})
+		})
+	})
+
+	s.Describe("#Sub", func(s *testcase.Spec) {
+		var makePattern = func(t *testcase.T) string {
+			pattern := t.Random.StringNWithCharset(t.Random.IntBetween(1, 10), random.Charset())
+			// a pattern should not start like it is a flag
+			// Else the test coverage in the future can be extened
+			// if there is strong reason to this
+			pattern = strings.TrimLeft(pattern, "-")
+			return pattern
+		}
+
+		var (
+			pattern = let.Var(s, makePattern)
+		)
+		act := func(t *testcase.T) *cli.Mux {
+			return mux.Get(t).Sub(pattern.Get(t))
+		}
+
+		s.Then("on initial call, it returns a new Mux", func(t *testcase.T) {
+			sub := act(t)
+			assert.NotNil(t, sub)
+			assert.NotEqual(t, mux.Get(t), sub)
+		})
+
+		s.Then("on repeated call, it returns the same Mux", func(t *testcase.T) {
+			sub := act(t)
+
+			t.Random.Repeat(3, 7, func() {
+				assert.Equal(t, sub, act(t))
+			})
+		})
+
+		s.Then("mux help contains sub mux command", func(t *testcase.T) {
+			act(t)
+
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: []string{"--help"},
+				Body: &bytes.Buffer{},
+			}
+			mux.Get(t).ServeCLI(rr, req)
+
+			assert.Contains(t, string(rr.CombinedOutput()), pattern.Get(t))
+		})
+
+		s.Then("sub-mux help message can be requested", func(t *testcase.T) {
+			act(t)
+
+			rr := &cli.ResponseRecorder{}
+			req := &cli.Request{
+				Args: []string{pattern.Get(t), "--help"},
+				Body: &bytes.Buffer{},
+			}
+			mux.Get(t).ServeCLI(rr, req)
+
+			assert.MatchRegexp(t, string(rr.CombinedOutput()), `Usage: [^\s]+ `+regexp.QuoteMeta(pattern.Get(t)))
+		})
+
+		s.When("the sub-mux has a handler registered", func(s *testcase.Spec) {
+			sub := let.Var(s, func(t *testcase.T) *cli.Mux {
+				return act(t)
+			})
+
+			var commandName = let.Var(s, makePattern)
+
+			s.Before(func(t *testcase.T) {
+				sub.Get(t).Handle(commandName.Get(t), CommandE2E{})
+			})
+
+			s.Then("command is listed in the help message of the sub command", func(t *testcase.T) {
+				rr := &cli.ResponseRecorder{}
+				req := &cli.Request{
+					Args: []string{"--help"},
+					Body: &bytes.Buffer{},
+				}
+				sub.Get(t).ServeCLI(rr, req)
+
+				assert.Contains(t, string(rr.CombinedOutput()), commandName.Get(t))
 			})
 		})
 	})
@@ -2314,5 +2393,84 @@ func debugRecorderResult(tb testing.TB, rr *cli.ResponseRecorder) {
 	testcase.OnFail(tb, func() {
 		tb.Logf("\noutput:\n\n%s\n", rr.Out.String())
 		tb.Logf("\nerror:\n\n%s\n", rr.Err.String())
+	})
+}
+
+func TestResponseRecorder(t *testing.T) {
+	s := testcase.NewSpec(t)
+
+	subject := testcase.Let(s, func(t *testcase.T) *cli.ResponseRecorder {
+		return &cli.ResponseRecorder{}
+	})
+
+	s.Describe("#CombinedOutput", func(s *testcase.Spec) {
+		act := func(t *testcase.T) []byte {
+			return subject.Get(t).CombinedOutput()
+		}
+
+		s.When("both stdout and stderr are empty", func(s *testcase.Spec) {
+			s.Before(func(t *testcase.T) {
+				assert.Empty(t, subject.Get(t).Out.Bytes())
+				assert.Empty(t, subject.Get(t).Err.Bytes())
+			})
+
+			s.Then("returns an empty byte slice", func(t *testcase.T) {
+				result := act(t)
+				assert.Equal(t, len(result), 0)
+				assert.True(t, len(result) == 0 || result == nil)
+			})
+		})
+
+		s.When("stdout has content", func(s *testcase.Spec) {
+			expected := let.String(s)
+
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Out.WriteString(expected.Get(t))
+			})
+
+			s.Then("returns only stdout content", func(t *testcase.T) {
+				got := act(t)
+
+				assert.Equal(t, string(got), expected.Get(t))
+			})
+		})
+
+		s.When("stderr has content", func(s *testcase.Spec) {
+			expected := let.String(s)
+
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Out.WriteString(expected.Get(t))
+			})
+
+			s.Then("returns only stderr content", func(t *testcase.T) {
+				got := act(t)
+
+				assert.Equal(t, string(got), expected.Get(t))
+			})
+		})
+
+		s.When("both stdout and stderr have content", func(s *testcase.Spec) {
+			var (
+				expectedStdout = let.String(s)
+				expectedStderr = let.String(s)
+			)
+
+			s.Before(func(t *testcase.T) {
+				subject.Get(t).Out.WriteString(expectedStdout.Get(t))
+				subject.Get(t).Err.WriteString(expectedStderr.Get(t))
+			})
+
+			s.Then("returns stdout followed by stderr", func(t *testcase.T) {
+				result := act(t)
+
+				expected := expectedStdout.Get(t) + expectedStderr.Get(t)
+				assert.Equal(t, string(result), expected)
+
+				stdoutIdx := bytes.Index(result, []byte(expectedStdout.Get(t)))
+				stderrIdx := bytes.Index(result, []byte(expectedStderr.Get(t)))
+				assert.True(t, stdoutIdx >= 0 && stderrIdx >= 0)
+				assert.True(t, stdoutIdx < stderrIdx)
+			})
+		})
 	})
 }

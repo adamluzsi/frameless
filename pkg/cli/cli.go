@@ -457,6 +457,13 @@ type ResponseRecorder struct {
 	Err  bytes.Buffer
 }
 
+func (rr *ResponseRecorder) CombinedOutput() []byte {
+	var out = make([]byte, 0, rr.Out.Len()+rr.Err.Len())
+	out = append(out, rr.Out.Bytes()...)
+	out = append(out, rr.Err.Bytes()...)
+	return out
+}
+
 func (rr *ResponseRecorder) ExitCode(n int)                    { rr.Code = n }
 func (rr *ResponseRecorder) Stdeout() io.Writer                { return &rr.Out }
 func (rr *ResponseRecorder) Stderr() (_ io.Writer)             { return &rr.Err }
@@ -518,19 +525,12 @@ type argTag struct {
 }
 
 var argTagHandler = reflectkit.TagHandler[argTag]{
-	Name: "arg",
-	Parse: func(field reflect.StructField, tagName, tagValue string) (argTag, error) {
-		return parseArgTag(tagValue)
-	},
-	Use: func(field reflect.StructField, value reflect.Value, v argTag) error {
-		// Validate that variadic tags are only used with slice types - panic on error
-		if v.IsVariadic && field.Type.Kind() != reflect.Slice {
-			panic(fmt.Sprintf(`variadic arg tag selector with ":" only supported for []T types, got %s`, field.Type.String()))
-		}
-		return nil
-	},
+	Name:  "arg",
+	Parse: parseArgTag,
+	Use:   useArgTag,
 
 	PanicOnParseError: true,
+	ForceCache:        true,
 }
 
 // parseArgTag parses an arg tag value and returns an argTag struct.
@@ -539,66 +539,68 @@ var argTagHandler = reflectkit.TagHandler[argTag]{
 //   - "n:" - variadic arguments starting from index n to end (e.g., "1:", "2:")
 //   - ":" - all arguments (variadic, equivalent to "0:")
 //   - "n:m" - range from index n (inclusive) to m (exclusive), like Go slicing (e.g., "1:3")
-func parseArgTag(tagValue string) (argTag, error) {
+func parseArgTag(field reflect.StructField, tagName, tagValue string) (argTag, error) {
 	var result argTag
-	result.Field = reflect.StructField{}
+	result.Field = field
 
-	// Handle ":" meaning all arguments
-	if tagValue == ":" {
-		b := 0
-		result.Begin = &b
-		result.IsVariadic = true
-		return result, nil
-	}
-
-	parts := strings.Split(tagValue, ":")
-	switch len(parts) {
-	case 1:
+	if !strings.Contains(tagValue, ":") {
 		// Single index like "0", "1", etc.
-		idx, err := strconv.Atoi(parts[0])
+		idx, err := strconv.Atoi(tagValue)
 		if err != nil {
 			return argTag{}, fmt.Errorf("invalid arg index %q: %w", tagValue, err)
 		}
 		result.Begin = &idx
+		// result.End = &idx
 		result.IsVariadic = false
 		return result, nil
+	}
 
-	case 2:
-		// Range or variadic like "n:", ":m", or "n:m"
-		var begin, end *int
-
-		if parts[0] == "" {
-			// ":m" - from start to m (exclusive)
-			b := 0
-			begin = &b
-		} else {
-			idx, err := strconv.Atoi(parts[0])
-			if err != nil {
-				return argTag{}, fmt.Errorf("invalid begin index %q: %w", parts[0], err)
-			}
-			begin = &idx
-		}
-
-		if parts[1] == "" {
-			// "n:" - from n to end (variadic)
-			end = nil
-			result.IsVariadic = true
-		} else {
-			idx, err := strconv.Atoi(parts[1])
-			if err != nil {
-				return argTag{}, fmt.Errorf("invalid end index %q: %w", parts[1], err)
-			}
-			end = &idx
-			result.IsVariadic = false
-		}
-
-		result.Begin = begin
-		result.End = end
+	// Handle ":" meaning all arguments
+	if tagValue == ":" {
+		result.Begin = new(int) // [:] == [0:]
+		result.IsVariadic = true
 		return result, nil
+	}
 
-	default:
+	var parts = strings.Split(tagValue, ":")
+	if len(parts) != 2 {
 		return argTag{}, fmt.Errorf("invalid arg tag format %q", tagValue)
 	}
+
+	// by default both ":" and ":m" starts from index zero
+	result.Begin = new(int) // 0
+
+	// if n in "n:m" is provided
+	if beginRaw := parts[0]; 0 < len(beginRaw) {
+		idx, err := strconv.Atoi(beginRaw)
+		if err != nil {
+			return argTag{}, fmt.Errorf("invalid begin index %q: %w", beginRaw, err)
+		}
+		result.Begin = &idx
+	}
+
+	if endRaw := parts[1]; 0 < len(endRaw) {
+		idx, err := strconv.Atoi(endRaw)
+		if err != nil {
+			return argTag{}, fmt.Errorf("invalid end index %q: %w", parts[1], err)
+		}
+		result.End = &idx
+		// This is a fixed range like "0:5", not variadic
+		result.IsVariadic = false
+	} else {
+		// Only variadic if no end is specified (e.g., "n:" or ":")
+		result.IsVariadic = true
+	}
+
+	return result, nil
+}
+
+func useArgTag(field reflect.StructField, value reflect.Value, v argTag) error {
+	// Validate that variadic tags are only used with slice types - panic on error
+	if v.IsVariadic && field.Type.Kind() != reflect.Slice {
+		panic(fmt.Sprintf(`variadic arg tag selector with ":" only supported for []T types, got %s`, field.Type.String()))
+	}
+	return nil
 }
 
 var descTagHandler = reflectkit.TagHandler[string]{
@@ -705,48 +707,31 @@ func (m metaH) Validate(ctx context.Context) (rErr error) {
 			expectedIdx = *a.Begin + 1
 		}
 	}
+
 	// Validate that range arguments have enough values when partially provided or fully expected
 	for _, ref := range m.refs {
-		if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
-			expectedLen := *tag.End - *tag.Begin
-			actualLen := len(ref.RawValues)
-			// If any values were provided but not enough, it's an error (partial provision)
-			if actualLen > 0 && actualLen < expectedLen {
-				return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
-			}
-			// If no values were provided and it's required, it's an error
-			if actualLen == 0 && ref.IsRequired() {
-				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.InputName(), *tag.Begin, *tag.End)
-			}
-		}
-	}
-	// Validate that range arguments have enough values when partially provided or fully expected
-	for _, ref := range m.refs {
-		if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
-			expectedLen := *tag.End - *tag.Begin
-			actualLen := len(ref.RawValues)
-			// If any values were provided but not enough, it's an error (partial provision)
-			if actualLen > 0 && actualLen < expectedLen {
-				return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
-			}
-			// If no values were provided and it's required, it's an error
-			if actualLen == 0 && ref.IsRequired() {
-				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.Node.StructField.Name, *tag.Begin, *tag.End)
+		if tag, ok := ref.ArgTag(); ok {
+			var actualLen = len(ref.RawValues)
+			switch {
+			case tag.Begin != nil && tag.End != nil:
+				expectedLen := *tag.End - *tag.Begin
+				// If any values were provided but not enough, it's an error (partial provision)
+				if 0 < actualLen && actualLen < expectedLen {
+					return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
+				}
+				// If no values were provided and it's required, it's an error
+				if actualLen == 0 && ref.IsRequired() {
+					return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.InputName(), *tag.Begin, *tag.End)
+				}
+			case tag.Begin != nil && tag.End == nil && tag.IsVariadic:
+				// If no values were provided and it's required, it's an error
+				if actualLen == 0 && ref.IsRequired() {
+					return fmt.Errorf("missing arguments for %s: expected range [%d:]", ref.InputName(), *tag.Begin)
+				}
 			}
 		}
 	}
-	// Validate that range arguments have enough values when partially provided
-	for _, ref := range m.refs {
-		if tag, ok := ref.ArgTag(); ok && !tag.IsVariadic && tag.Begin != nil && tag.End != nil {
-			expectedLen := *tag.End - *tag.Begin
-			actualLen := len(ref.RawValues)
-			if actualLen > 0 && actualLen < expectedLen {
-				return fmt.Errorf("too few arguments for %s: expected range [%d:%d] (%d values), got %d", ref.Node.StructField.Name, *tag.Begin, *tag.End, expectedLen, actualLen)
-			} else if actualLen == 0 && ref.IsRequired() {
-				return fmt.Errorf("missing arguments for %s: expected range [%d:%d]", ref.Node.StructField.Name, *tag.Begin, *tag.End)
-			}
-		}
-	}
+
 	var ufn dsset.Set[string]
 	for _, flag := range m.Flags() {
 		for _, name := range flag.Names {
@@ -821,7 +806,7 @@ func (m metaH) Configure(r *Request) error {
 
 		if a.Variadic || (a.End != nil && !func() bool { return *a.End <= start }()) {
 			isSlice = true
-			if a.End != nil && !a.Variadic {
+			if a.End != nil {
 				end = *a.End
 				if end > len(r.Args) {
 					end = len(r.Args)
