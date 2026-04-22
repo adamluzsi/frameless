@@ -1,8 +1,14 @@
 package cli
 
 type HelpSummary interface {
-	// Summary returns a summary about the application
+	// Summary returns a summary about the application.
 	//
-	// TODO: Maybe ranem this to "Desc" as the tag "desc" is used for this purpose
+	// Summary used as part of the command list within a mux, to give a hint which sub command responsible for what.
 	Summary() string
+}
+
+type HelpDescription interface {
+	// Description returns a potentially detailed description about the application
+	//
+	Description() string
 }

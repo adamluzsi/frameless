@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -132,8 +133,49 @@ func (fn HandlerFunc) ServeCLI(w ResponseWriter, r *Request) {
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-type Mux struct {
+// ServeMux is a cli command multiplexer.
+type ServeMux struct {
 	m map[string]*muxEntry
+
+	summary     string
+	description string
+}
+
+func (m *ServeMux) WithSummary(d string) *ServeMux {
+	m.summary = d
+	return m
+}
+
+func (m *ServeMux) WithDescription(d string) *ServeMux {
+	m.description = d
+	return m
+}
+
+var _ HelpSummary = (*ServeMux)(nil)
+
+// Summary returns the description of this ServeMux, implementing HelpSummary.
+func (m *ServeMux) Summary() string {
+	return m.summary
+}
+
+var _ HelpDescription = (*ServeMux)(nil)
+
+// Description returns the description of this ServeMux, implementing HelpDescription.
+func (m *ServeMux) Description() string {
+	return m.description
+}
+
+func (m *ServeMux) helpSummaryDescription(w io.Writer) {
+	var hasSummary = 0 < len(m.summary)
+	if hasSummary {
+		printfln(w, m.summary)
+	}
+	if 0 < len(m.description) {
+		if hasSummary {
+			m.helpLineBreak(w, 1)
+		}
+		printfln(w, m.description)
+	}
 }
 
 // Multiplexer is an interface that, when implemented by a command,
@@ -147,11 +189,14 @@ type Multiplexer interface {
 type muxEntry struct {
 	Handler Handler
 	// meta    *meta
-	Mux *Mux
+	Mux *ServeMux
 }
 
-func (m *Mux) Handle(pattern string, h Handler) {
+func (m *ServeMux) Handle(pattern string, h Handler) {
 	path := m.toPath(pattern)
+	if len(path) == 0 {
+		panic("pattern cannot be empty")
+	}
 	e := m.entryFor(path)
 	if e.Handler != nil {
 		panic(fmt.Sprintf("The %q pattern already had a handler registered", pattern))
@@ -159,13 +204,16 @@ func (m *Mux) Handle(pattern string, h Handler) {
 	e.Handler = h
 }
 
-func (m *Mux) Sub(pattern string) *Mux {
+func (m *ServeMux) Sub(pattern string) *ServeMux {
 	path := m.toPath(pattern)
+	if len(path) == 0 {
+		panic("pattern cannot be empty")
+	}
 	e := m.entryFor(path)
 	return e.Mux
 }
 
-func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
+func (m *ServeMux) ServeCLI(w ResponseWriter, r *Request) {
 	if r == nil {
 		w.ExitCode(1)
 		return
@@ -174,6 +222,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 		w.ExitCode(2)
 		o := errOut(w)
 		m.helpUsage(r.Context(), o)
+		m.helpSummaryDescription(o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -184,6 +233,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 		w.ExitCode(2)
 		o := errOut(w)
 		m.helpUsage(r.Context(), o)
+		m.helpSummaryDescription(o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -216,6 +266,7 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 		}
 
 		m.helpUsage(r.Context(), o)
+		m.helpSummaryDescription(o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 
@@ -232,12 +283,20 @@ func (m *Mux) ServeCLI(w ResponseWriter, r *Request) {
 			entry.Mux.ServeCLI(w, r)
 			return
 		}
+		// If any remaining arg is a help flag and there's no Handler, recurse into sub-mux to show its help
+		if entry.Handler == nil {
+			if slices.ContainsFunc(r.Args, isHelpFlag) {
+				entry.Mux.ServeCLI(w, r)
+				return
+			}
+		}
 	}
 
 	if entry.Handler == nil {
 		w.ExitCode(2)
 		o := errOut(w)
 		m.helpUsage(r.Context(), o)
+		m.helpSummaryDescription(o)
 		m.helpLineBreak(o, 1)
 		m.helpCommands(o)
 		return
@@ -253,7 +312,7 @@ func isHelpFlag(v string) bool {
 	return errors.Is(err, flag.ErrHelp)
 }
 
-func (m *Mux) entryFor(path []string) *muxEntry {
+func (m *ServeMux) entryFor(path []string) *muxEntry {
 	var (
 		ent *muxEntry
 		mux = m
@@ -265,7 +324,7 @@ func (m *Mux) entryFor(path []string) *muxEntry {
 			mux.entries()[name] = e
 		}
 		if e.Mux == nil {
-			e.Mux = &Mux{}
+			e.Mux = &ServeMux{}
 		}
 		mux = e.Mux
 		ent = e
@@ -273,7 +332,7 @@ func (m *Mux) entryFor(path []string) *muxEntry {
 	return ent
 }
 
-func (m Mux) toPath(pattern string) []string {
+func (m ServeMux) toPath(pattern string) []string {
 	return strings.Fields(pattern)
 }
 
@@ -394,7 +453,7 @@ func ConfigureHandler[H Handler](ptr *H, r *Request) error {
 	return metaFor(reflect.ValueOf(ptr)).Configure(r)
 }
 
-func (m *Mux) entries() map[string]*muxEntry {
+func (m *ServeMux) entries() map[string]*muxEntry {
 	if m.m == nil {
 		m.m = map[string]*muxEntry{}
 	}

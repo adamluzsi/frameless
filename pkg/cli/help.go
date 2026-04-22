@@ -87,11 +87,11 @@ func Usage(h Handler, command string) (string, error) {
 	return helpCreateUsage(h, command), nil
 }
 
-func (m Mux) helpLineBreak(w io.Writer, n int) {
+func (m ServeMux) helpLineBreak(w io.Writer, n int) {
 	w.Write([]byte(strings.Repeat(lineSeparator, n)))
 }
 
-func (m Mux) helpUsage(ctx context.Context, w io.Writer) {
+func (m ServeMux) helpUsage(ctx context.Context, w io.Writer) {
 	usageName := execName()
 	if cmd, ok := ctxCommandName.Lookup(ctx); ok {
 		usageName += " " + cmd
@@ -157,7 +157,11 @@ func helpCreateUsage(h Handler, command string) string {
 	lines = append(lines, usage, "")
 
 	if s, ok := h.(HelpSummary); ok {
-		lines = append(lines, s.Summary(), "")
+		lines = append(lines, "", s.Summary(), "")
+	}
+
+	if s, ok := h.(HelpDescription); ok {
+		lines = append(lines, "", s.Description(), "")
 	}
 
 	if 0 < len(flags) {
@@ -277,7 +281,7 @@ func helpCreateUsage(h Handler, command string) string {
 	return strings.Join(lines, lineSeparator)
 }
 
-func (m Mux) helpCommands(w io.Writer) {
+func (m ServeMux) helpCommands(w io.Writer) {
 	var msg []string
 
 	var cmds []string
@@ -289,6 +293,8 @@ func (m Mux) helpCommands(w io.Writer) {
 			if h, ok := (entry.Handler).(HelpSummary); ok {
 				line += ": " + h.Summary()
 			}
+		} else if entry.Mux != nil && entry.Mux.summary != "" {
+			line += ": " + entry.Mux.summary
 		}
 
 		cmds = append(cmds, line)

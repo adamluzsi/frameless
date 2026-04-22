@@ -11,7 +11,8 @@ import (
 
 func TestUsage(t *testing.T) {
 	t.Run("struct", func(t *testing.T) {
-		usage, err := cli.Usage(CommandE2E{}, "thepath")
+		cmd := CommandE2E{}
+		usage, err := cli.Usage(cmd, "TheCommand")
 		assert.NoError(t, err)
 
 		if testing.Verbose() {
@@ -22,8 +23,10 @@ func TestUsage(t *testing.T) {
 			t.Log(usage)
 		})
 
-		assert.MatchRegexp(t, usage, `Usage: [^\s]+ thepath`)
-		assert.Contains(t, usage, "thepath [OPTION]... Arg1 Arg2 Arg3")
+		assert.MatchRegexp(t, usage, `Usage: [^\s]+ TheCommand`)
+		assert.Contains(t, usage, "TheCommand [OPTION]... Arg1 Arg2 Arg3")
+		assert.Contains(t, usage, cmd.Summary())
+		assert.Contains(t, usage, cmd.Description())
 		assert.Contains(t, usage, "-str=[string]: flag1 desc")
 		assert.Contains(t, usage, `-strwd=[string] (default: "defval")`)
 		assert.Contains(t, usage, "-int=[int]")
@@ -83,7 +86,7 @@ type ExampleConfig2 struct {
 func Test_example(t *testing.T) {
 	testcase.GetEnv(t, "example", t.SkipNow)
 
-	var mux cli.Mux
+	var mux cli.ServeMux
 	mux.Handle("cmd", ExampleCommand{})
 
 	var w cli.ResponseRecorder

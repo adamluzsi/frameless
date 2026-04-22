@@ -18,6 +18,7 @@ import (
 	"go.llib.dev/frameless/pkg/errorkit"
 	"go.llib.dev/frameless/pkg/internal/osint"
 	"go.llib.dev/frameless/pkg/iokit"
+	"go.llib.dev/frameless/pkg/mapkit"
 	"go.llib.dev/frameless/pkg/reflectkit"
 	"go.llib.dev/frameless/pkg/slicekit"
 	"go.llib.dev/frameless/pkg/zerokit"
@@ -28,7 +29,7 @@ import (
 )
 
 func Example() {
-	var mux cli.Mux
+	var mux cli.ServeMux
 
 	mux.Handle("foo", FooCommand{})
 
@@ -70,11 +71,11 @@ func (cmd SubCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 
 var CommandNameCharset = random.CharsetAlpha() + random.CharsetDigit()
 
-func TestMux(t *testing.T) {
+func TestServeMux(t *testing.T) {
 	s := testcase.NewSpec(t)
 
-	mux := testcase.Let(s, func(t *testcase.T) *cli.Mux {
-		return &cli.Mux{}
+	mux := testcase.Let(s, func(t *testcase.T) *cli.ServeMux {
+		return &cli.ServeMux{}
 	})
 
 	s.Describe("#ServeCLI", func(s *testcase.Spec) {
@@ -83,7 +84,10 @@ func TestMux(t *testing.T) {
 				return &cli.ResponseRecorder{}
 			})
 			request = testcase.Let(s, func(t *testcase.T) *cli.Request {
-				return &cli.Request{}
+				return &cli.Request{
+					Args: []string{},
+					Body: &bytes.Buffer{},
+				}
 			})
 		)
 		act := func(t *testcase.T) {
@@ -116,7 +120,7 @@ func TestMux(t *testing.T) {
 				})
 			)
 
-			mux.Let(s, func(t *testcase.T) *cli.Mux {
+			mux.Let(s, func(t *testcase.T) *cli.ServeMux {
 				m := mux.Super(t)
 				m.Handle(commandName.Get(t), command.Get(t))
 				return m
@@ -131,19 +135,19 @@ func TestMux(t *testing.T) {
 
 			s.Then("then the command is executed", func(t *testcase.T) {
 				var (
-					lastRequest   *cli.Request
-					expectedOuput = t.Random.String()
+					lastRequest    *cli.Request
+					expectedOutput = t.Random.String()
 				)
 				command.Set(t, StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {
 					lastRequest = r
 					w.ExitCode(42)
-					w.Write([]byte(expectedOuput))
+					w.Write([]byte(expectedOutput))
 				}))
 
 				act(t)
 
 				assert.NotNil(t, lastRequest)
-				assert.Equal(t, response.Get(t).Out.String(), expectedOuput)
+				assert.Equal(t, response.Get(t).Out.String(), expectedOutput)
 			})
 
 			s.Test("E2E", func(t *testcase.T) {
@@ -755,7 +759,7 @@ func TestMux(t *testing.T) {
 					})
 
 					s.Context("but when other commands are registered", func(s *testcase.Spec) {
-						mux.Let(s, func(t *testcase.T) *cli.Mux {
+						mux.Let(s, func(t *testcase.T) *cli.ServeMux {
 							m := mux.Super(t)
 							m.Handle("foo", StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {}))
 							m.Handle("bar", StubServeCLIFunc(func(w cli.ResponseWriter, r *cli.Request) {}))
@@ -817,8 +821,152 @@ func TestMux(t *testing.T) {
 				assert.NotContains(t, strings.ToLower(response.Get(t).Out.String()), "unknown")
 			})
 
+			s.When("summary is provided", func(s *testcase.Spec) {
+				muxSummary := let.UUID(s)
+
+				mux.Let(s, func(t *testcase.T) *cli.ServeMux {
+					m := mux.Super(t)
+					m2 := m.WithSummary(muxSummary.Get(t))
+					if t.Random.Bool() { // builder style
+						m = m2
+					}
+					return m
+				})
+
+				thenExitCodeIsOK(s)
+
+				thenUsagePrintedOutToSTDOUT(s)
+
+				s.Then("help message contains the summary", func(t *testcase.T) {
+					act(t)
+
+					assert.Contains(t, string(response.Get(t).CombinedOutput()), muxSummary.Get(t))
+				})
+
+				s.And("a sub mux is mounted", func(s *testcase.Spec) {
+					subName := let.Var(s, makePattern)
+					subSummary := let.Var(s, func(t *testcase.T) string {
+						return random.Unique(t.Random.UUID, muxSummary.Get(t))
+					})
+
+					s.Before(func(t *testcase.T) {
+						mux.Get(t).Sub(subName.Get(t)).
+							WithSummary(subSummary.Get(t))
+					})
+
+					s.Then("help message contains the summary of the main mux", func(t *testcase.T) {
+						act(t)
+
+						assert.Contains(t, string(response.Get(t).CombinedOutput()), muxSummary.Get(t))
+					})
+
+					s.Then("help message contains the summary of the sub mux within the command section", func(t *testcase.T) {
+						act(t)
+
+						exp := fmt.Sprintf("- %s: %s", subName.Get(t), subSummary.Get(t))
+						out := string(response.Get(t).CombinedOutput())
+						assert.Contains(t, out, exp)
+					})
+
+					s.Then("the sub mux help message don't contain the summary of the outer mux", func(t *testcase.T) {
+						request.Get(t).Args = []string{subName.Get(t), "--help"}
+						mux.Get(t).ServeCLI(response.Get(t), request.Get(t))
+
+						out := string(response.Get(t).CombinedOutput())
+						assert.Contains(t, out, subSummary.Get(t))
+						assert.NotContains(t, out, muxSummary.Get(t))
+					})
+				})
+
+				s.And("description is also provided", func(s *testcase.Spec) {
+					muxDescription := let.Var(s, func(t *testcase.T) string {
+						return random.Unique(t.Random.UUID, muxSummary.Get(t))
+					})
+
+					mux.Let(s, func(t *testcase.T) *cli.ServeMux {
+						return mux.Super(t).WithDescription(muxDescription.Get(t))
+					})
+
+					thenExitCodeIsOK(s)
+
+					thenUsagePrintedOutToSTDOUT(s)
+
+					s.Then("help message contains the summary", func(t *testcase.T) {
+						act(t)
+
+						assert.Contains(t, string(response.Get(t).CombinedOutput()), muxSummary.Get(t))
+					})
+
+					s.Then("help message contains the description", func(t *testcase.T) {
+						act(t)
+
+						assert.Contains(t, string(response.Get(t).CombinedOutput()), muxDescription.Get(t))
+					})
+
+					s.Then("in the help message, the usage is before the description", func(t *testcase.T) {
+						act(t)
+
+						out := string(response.Get(t).CombinedOutput())
+						indexSummary := strings.Index(out, muxSummary.Get(t))
+						indexDescription := strings.Index(out, muxDescription.Get(t))
+						assert.Assert(t, indexSummary < indexDescription, "expected that summary is before the description")
+					})
+				})
+			})
+
+			s.When("description is provided", func(s *testcase.Spec) {
+				muxDesc := let.UUID(s)
+
+				mux.Let(s, func(t *testcase.T) *cli.ServeMux {
+					m := mux.Super(t)
+					m2 := m.WithDescription(muxDesc.Get(t))
+					if t.Random.Bool() { // builder style
+						m = m2
+					}
+					return m
+				})
+
+				thenExitCodeIsOK(s)
+
+				thenUsagePrintedOutToSTDOUT(s)
+
+				s.Then("help message contains the description", func(t *testcase.T) {
+					act(t)
+
+					assert.Contains(t, string(response.Get(t).CombinedOutput()), muxDesc.Get(t))
+				})
+
+				s.And("a sub mux is mounted", func(s *testcase.Spec) {
+					name := let.Var(s, makePattern)
+
+					subDesc := let.Var(s, func(t *testcase.T) string {
+						return random.Unique(t.Random.UUID, muxDesc.Get(t))
+					})
+
+					s.Before(func(t *testcase.T) {
+						sub := mux.Get(t).Sub(name.Get(t))
+						sub.WithDescription(subDesc.Get(t))
+					})
+
+					s.Then("help message contains the description", func(t *testcase.T) {
+						act(t)
+
+						assert.Contains(t, string(response.Get(t).CombinedOutput()), muxDesc.Get(t))
+					})
+
+					s.Then("the sub mux help message don't contain the description of the outer mux", func(t *testcase.T) {
+						request.Get(t).Args = []string{name.Get(t), "--help"}
+						mux.Get(t).ServeCLI(response.Get(t), request.Get(t))
+
+						out := string(response.Get(t).CombinedOutput())
+						assert.Contains(t, out, subDesc.Get(t))
+						assert.NotContains(t, out, muxDesc.Get(t))
+					})
+				})
+			})
+
 			s.When("commands are registered", func(s *testcase.Spec) {
-				mux.Let(s, func(t *testcase.T) *cli.Mux {
+				mux.Let(s, func(t *testcase.T) *cli.ServeMux {
 					m := mux.Super(t)
 					m.Handle("e2e", CommandE2E{})
 					m.Handle("foo", FooCommand{})
@@ -858,23 +1006,92 @@ func TestMux(t *testing.T) {
 					})
 				})
 			})
+
+			s.When("commands are registered with various summary", func(s *testcase.Spec) {
+				commands := let.Var(s, func(t *testcase.T) map[string]CommandWithHelpText {
+					var summaries, descriptions []string
+					cmds := random.Slice(t.Random.IntBetween(3, 7), func() CommandWithHelpText {
+						summary := random.Unique(t.Random.UUID, summaries...)
+						summaries = append(summaries, summary)
+
+						description := random.Unique(t.Random.UUID, descriptions...)
+						descriptions = append(summaries, description)
+
+						return CommandWithHelpText{
+							summary:     summary,
+							description: description,
+						}
+					})
+
+					var commands = map[string]CommandWithHelpText{}
+					for _, cmd := range cmds {
+						name := random.Unique(t.Random.UUID,
+							slicekit.Merge(summaries, descriptions, mapkit.Keys(commands))...)
+
+						commands[name] = cmd
+					}
+					return commands
+				})
+
+				mux.Let(s, func(t *testcase.T) *cli.ServeMux {
+					m := mux.Super(t)
+					for name, cmd := range commands.Get(t) {
+						m.Handle(name, cmd)
+					}
+					return m
+				})
+
+				thenExitCodeIsOK(s)
+
+				thenUsagePrintedOutToSTDOUT(s)
+
+				s.Then("commands with their unique summary are listed", func(t *testcase.T) {
+					act(t)
+
+					out := string(response.Get(t).CombinedOutput())
+					assert.NotEmpty(t, out)
+
+					fmt.Println(out)
+					for name, cmd := range commands.Get(t) {
+						assert.Contains(t, out, fmt.Sprintf("- %s: %s", name, cmd.summary))
+						assert.NotContains(t, out, cmd.description)
+					}
+				})
+
+				s.And("and command is specified before the help flag", func(s *testcase.Spec) {
+					cmdName := let.Var(s, func(t *testcase.T) string {
+						return random.Pick(t.Random, mapkit.Keys(commands.Get(t))...)
+					})
+
+					request.Let(s, func(t *testcase.T) *cli.Request {
+						r := request.Super(t)
+						slicekit.Unshift(&r.Args, cmdName.Get(t))
+						return r
+					})
+
+					thenExitCodeIsOK(s)
+
+					thenUsagePrintedOutToSTDOUT(s)
+
+					s.Then("the command specific documentation is printed out", func(t *testcase.T) {
+						act(t)
+
+						out := string(response.Get(t).CombinedOutput())
+						cmd := commands.Get(t)[cmdName.Get(t)]
+						assert.Contains(t, out, cmdName.Get(t))
+						assert.Contains(t, out, cmd.summary)
+						assert.Contains(t, out, cmd.description)
+					})
+				})
+			})
 		})
 	})
 
 	s.Describe("#Sub", func(s *testcase.Spec) {
-		var makePattern = func(t *testcase.T) string {
-			pattern := t.Random.StringNWithCharset(t.Random.IntBetween(1, 10), random.Charset())
-			// a pattern should not start like it is a flag
-			// Else the test coverage in the future can be extened
-			// if there is strong reason to this
-			pattern = strings.TrimLeft(pattern, "-")
-			return pattern
-		}
-
 		var (
 			pattern = let.Var(s, makePattern)
 		)
-		act := func(t *testcase.T) *cli.Mux {
+		act := func(t *testcase.T) *cli.ServeMux {
 			return mux.Get(t).Sub(pattern.Get(t))
 		}
 
@@ -919,7 +1136,7 @@ func TestMux(t *testing.T) {
 		})
 
 		s.When("the sub-mux has a handler registered", func(s *testcase.Spec) {
-			sub := let.Var(s, func(t *testcase.T) *cli.Mux {
+			sub := let.Var(s, func(t *testcase.T) *cli.ServeMux {
 				return act(t)
 			})
 
@@ -942,6 +1159,17 @@ func TestMux(t *testing.T) {
 		})
 	})
 }
+
+type CommandWithHelpText struct {
+	summary     string
+	description string
+}
+
+func (cmd CommandWithHelpText) Summary() string { return cmd.summary }
+
+func (cmd CommandWithHelpText) Description() string { return cmd.description }
+
+func (cmd CommandWithHelpText) ServeCLI(w cli.ResponseWriter, r *cli.Request) {}
 
 func TestServeCLI(t *testing.T) {
 	s := testcase.NewSpec(t)
@@ -993,7 +1221,7 @@ func TestServeCLI(t *testing.T) {
 	})
 
 	s.Test("mux", func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 
 		testcase.SetEnv(t, "FLAG3", "24")
 
@@ -1314,6 +1542,20 @@ type AndTheArgTypeIs[T any] struct {
 	IsRequired bool
 }
 
+func makePattern(t *testcase.T) string {
+	for {
+		pattern := t.Random.StringNWithCharset(t.Random.IntBetween(1, 10), random.Charset())
+		// a pattern should not start like it is a flag
+		// Else the test coverage in the future can be extended
+		// if there is strong reason to this
+		pattern = strings.TrimLeft(pattern, "-")
+		if len(pattern) == 0 {
+			continue
+		}
+		return pattern
+	}
+}
+
 func (c AndTheArgTypeIs[T]) name() string {
 	return reflectkit.SymbolicName(reflectkit.TypeOf[T]())
 }
@@ -1439,7 +1681,13 @@ type CommandE2E struct {
 	Env2 string `desc:"env-1" env:"ENV2,ENV22" default:"2vne"`
 }
 
+var _ cli.HelpSummary = (*CommandE2E)(nil)
+
 func (cmd CommandE2E) Summary() string { return "E2E command summary" }
+
+var _ cli.HelpDescription = (*CommandE2E)(nil)
+
+func (cmd CommandE2E) Description() string { return "E2E command description" }
 
 func (cmd CommandE2E) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	cmd.Callback.Call(cmd, w, r)
@@ -1870,7 +2118,7 @@ func Test_main(t *testing.T) {
 
 func Test_help_path(t *testing.T) {
 	t.Run("top routes", func(t *testing.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		mux.Handle("cmd", SubCommand{})
 
 		t.Run("mux help output displays path", func(t *testing.T) {
@@ -1906,7 +2154,7 @@ func Test_help_path(t *testing.T) {
 		})
 	})
 	t.Run("sub routes", func(t *testing.T) {
-		var mux, foo, bar, baz cli.Mux
+		var mux, foo, bar, baz cli.ServeMux
 		mux.Handle("foo", &foo)
 		foo.Handle("bar", &bar)
 		bar.Handle("baz", &baz)
@@ -1957,7 +2205,7 @@ func (cmd SliceFlagWithSeperatorOption) ServeCLI(w cli.ResponseWriter, r *cli.Re
 
 func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 	t.Run("help", func(t *testing.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		mux.Handle("cmd", SliceFlagWithSeperatorOption{})
 
 		rr := &cli.ResponseRecorder{}
@@ -1973,7 +2221,7 @@ func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 	})
 
 	t.Run("value provided with correct separator", func(t *testing.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out SliceFlagWithSeperatorOption
 		mux.Handle("cmd", SliceFlagWithSeperatorOption{
 			Callback: func(v SliceFlagWithSeperatorOption, w cli.ResponseWriter, r *cli.Request) {
@@ -1994,7 +2242,7 @@ func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 	})
 
 	t.Run("value provided with incorrect separator", func(t *testing.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out SliceFlagWithSeperatorOption
 		mux.Handle("cmd", SliceFlagWithSeperatorOption{
 			Callback: func(v SliceFlagWithSeperatorOption, w cli.ResponseWriter, r *cli.Request) {
@@ -2017,7 +2265,7 @@ func Test_sliceFlagType_supportSeperatorOption(t *testing.T) {
 
 func Test_sliceFlagType_supportInputFlagRepetition(t *testing.T) {
 	t.Run("mixed use", func(t *testing.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out CommandWithSliceFlag
 		mux.Handle("cmd", CommandWithSliceFlag{Callback: func(v CommandWithSliceFlag, w cli.ResponseWriter, r *cli.Request) {
 			out = v
@@ -2115,7 +2363,7 @@ func Test_variadicArgInput(t *testing.T) {
 	s := testcase.NewSpec(t)
 
 	s.Test(`args with slice expression to capture variadic arguments after n th index -- arg:"n:" -- for example arg:"1:`, func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out CommandWithVariadicArg1
 		var lastRequest *cli.Request
 		mux.Handle("cmd", CommandWithVariadicArg1{Callback: func(v CommandWithVariadicArg1, w cli.ResponseWriter, r *cli.Request) {
@@ -2146,7 +2394,7 @@ func Test_variadicArgInput(t *testing.T) {
 	})
 
 	s.Test(`args with slice expression to capture all variadic arguments (basically passthrough) -- arg:":"`, func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out CommandWithVariadicArg2
 		var lastRequest *cli.Request
 		mux.Handle("cmd", CommandWithVariadicArg2{Callback: func(v CommandWithVariadicArg2, w cli.ResponseWriter, r *cli.Request) {
@@ -2175,7 +2423,7 @@ func Test_variadicArgInput(t *testing.T) {
 
 	s.Context(`arg slice expression combined with validation should make a good synenergy, for example argument length enforcement`, func(s *testcase.Spec) {
 		s.Test("happy", func(t *testcase.T) {
-			var mux cli.Mux
+			var mux cli.ServeMux
 			var out CommandWithVariadicArg3
 			var lastRequest *cli.Request
 			mux.Handle("cmd", CommandWithVariadicArg3{Callback: func(v CommandWithVariadicArg3, w cli.ResponseWriter, r *cli.Request) {
@@ -2203,7 +2451,7 @@ func Test_variadicArgInput(t *testing.T) {
 		})
 
 		s.Test("rainy", func(t *testcase.T) {
-			var mux cli.Mux
+			var mux cli.ServeMux
 			var ran bool
 			mux.Handle("cmd", CommandWithVariadicArg3{Callback: func(v CommandWithVariadicArg3, w cli.ResponseWriter, r *cli.Request) {
 				ran = true
@@ -2229,7 +2477,7 @@ func Test_variadicArgInput(t *testing.T) {
 	})
 
 	s.Test(`args with range expression to capture arguments between two indices -- arg:"1:3"`, func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out CommandWithVariadicArgRange
 		var lastRequest *cli.Request
 		mux.Handle("cmd", CommandWithVariadicArgRange{Callback: func(v CommandWithVariadicArgRange, w cli.ResponseWriter, r *cli.Request) {
@@ -2265,7 +2513,7 @@ func Test_variadicArgInput(t *testing.T) {
 	})
 
 	s.Test(`args with range expression capturing single middle element -- arg:"1:2"`, func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		var out CommandWithVariadicArgRange02
 		var lastRequest *cli.Request
 		mux.Handle("cmd", CommandWithVariadicArgRange02{Callback: func(v CommandWithVariadicArgRange02, w cli.ResponseWriter, r *cli.Request) {
@@ -2307,7 +2555,7 @@ func Test_variadicArgInput(t *testing.T) {
 	})
 
 	s.Test("when the expected argument count is less than the variadic argument slicing range then it should report missing arguments", func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 		mux.Handle("cmd", CommandWithVariadicArgRange03{Callback: func(v CommandWithVariadicArgRange03, w cli.ResponseWriter, r *cli.Request) {}})
 
 		// 3 element is less than the expected args[0:5]
@@ -2330,7 +2578,7 @@ func Test_variadicArgInput(t *testing.T) {
 	})
 
 	s.Test("when optional variadic argument is simply not provided at all, then it should be accepted without an issue", func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 
 		var ran bool
 		mux.Handle("cmd", CommandWithVariadicArgRange04{Callback: func(v CommandWithVariadicArgRange04, w cli.ResponseWriter, r *cli.Request) {
@@ -2354,7 +2602,7 @@ func Test_variadicArgInput(t *testing.T) {
 	})
 
 	s.Test("when optional variadic argument is partially provided, then it is considered as bad request", func(t *testcase.T) {
-		var mux cli.Mux
+		var mux cli.ServeMux
 
 		var ran bool
 		mux.Handle("cmd", CommandWithVariadicArgRange04{Callback: func(v CommandWithVariadicArgRange04, w cli.ResponseWriter, r *cli.Request) {
@@ -2451,8 +2699,8 @@ func TestResponseRecorder(t *testing.T) {
 
 		s.When("both stdout and stderr have content", func(s *testcase.Spec) {
 			var (
-				expectedStdout = let.String(s)
-				expectedStderr = let.String(s)
+				expectedStdout = let.UUID(s)
+				expectedStderr = let.UUID(s)
 			)
 
 			s.Before(func(t *testcase.T) {

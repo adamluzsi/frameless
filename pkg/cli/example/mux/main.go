@@ -9,12 +9,15 @@ import (
 )
 
 func main() {
-	var m cli.Mux
+	var m cli.ServeMux
+	m.WithDescription("my cli app")
+
 	m.Handle("test", TestCommand{})
 	m.Handle("foo", FooCommand{})
 	m.Handle("baz", BazCommand{})
 
 	sub := m.Sub("sub")
+	sub.WithDescription("sub command")
 	sub.Handle("bar", BarCommand{})
 
 	cli.Main(context.Background(), &m)

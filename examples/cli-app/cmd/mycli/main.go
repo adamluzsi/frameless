@@ -9,14 +9,16 @@ import (
 )
 
 func main() {
-	var mux cli.Mux
+	var mux cli.ServeMux
+	mux.WithDescription("Example cli app to showcase how the same pattern used for building HTTP web apps\ncan used for command line utilities")
 
 	mux.Handle("foo", FooCommand{})
-	mux.Handle("bar", FooCommand{})
-	mux.Handle("baz", FooCommand{})
+	mux.Handle("bar", BarCommand{})
+	mux.Handle("baz", BazCommand{})
 
-	var submux cli.Mux
-	mux.Handle("sub", &submux)
+	var submux = mux.Sub("sub").
+		WithSummary("xyz sub topic of this cli").
+		WithDescription("detailed description about this sub command namespace")
 	submux.Handle("cmd", SubCommand{})
 
 	ctx := context.Background()
@@ -29,6 +31,10 @@ type FooCommand struct {
 	Bar bool   `desc:"bar input" flag:"bar,b" default:"false"`
 	Baz int    `desc:"baz input" arg:"0" opt:"F"`
 }
+
+func (cmd FooCommand) Summary() string { return "doing foo stuff" }
+
+func (cmd FooCommand) Description() string { return "foo foo so foo foo fooer foo" }
 
 func (cmd FooCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 }
@@ -47,6 +53,8 @@ type BazCommand struct {
 
 	SomeRandomConfigWithEnvConfiguration // embedding config is supported
 }
+
+func (cmd BazCommand) Summary() string { return "doing baz stuff" }
 
 func (cmd BazCommand) ServeCLI(w cli.ResponseWriter, r *cli.Request) {
 	if cmd.Arg != "hello" {
