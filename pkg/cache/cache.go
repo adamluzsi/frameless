@@ -37,6 +37,8 @@ func New[ENT any, ID comparable](
 }
 
 // Cache supplies Read/Write-Through caching to CRUD resources.
+//
+// TODO: rename to RepositoryCache
 type Cache[ENT any, ID comparable] struct {
 	// Source is the location of the original data
 	Source Source[ENT, ID]
@@ -389,6 +391,7 @@ func (m *Cache[ENT, ID]) doRefreshBehind(ctx context.Context, hitID HitID, query
 		return nil
 	})
 	// we simply execute the job in the background
+	m.jobs.Isolation = true
 	job := m.jobs.Go(ctx, task)
 	// and then garbage collect its contents
 	go job.Wait()
